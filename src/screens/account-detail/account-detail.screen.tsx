@@ -1,6 +1,13 @@
+import {
+  type FC,
+  type ReactElement,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useState,
+} from 'react';
 import either from 'fnts/either';
 import { match } from 'ts-pattern';
-import { useTip } from '@kiko/tips';
 import {
   accountDisplayName,
   isImplicitAccount,
@@ -29,10 +36,10 @@ import { sumByCurrency } from '@kiko/rates/currency-totals';
 import { needsPriceBook } from '@kiko/holdings/priced-value';
 import Divider from '@kiko/design-system/components/divider';
 import type { ReminderKind } from '@kiko/reminders/schedule';
-import TipCard from '@kiko/design-system/components/tip-card';
 import { alertOnCatch } from '@kiko/design-system/alert-on-catch';
 import { accountIdentity } from '@kiko/holdings/account-identity';
 import { genericEntitySymbol } from '@kiko/holdings/entity-symbols';
+import EmptyState from '@kiko/design-system/components/empty-state';
 import { onGridDragEnd } from '@kiko/design-system/grid-interaction';
 import type { AccountsStackParamList } from '@kiko/navigation/types';
 import HoldingCard from '@kiko/design-system/components/holding-card';
@@ -49,7 +56,6 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import CardContextMenu from '@kiko/design-system/components/card-context-menu';
 import EntityHeaderIcon from '@kiko/design-system/components/entity-header-icon';
 import CurrencyBreakdown from '@kiko/design-system/components/currency-breakdown';
-import { type FC, useCallback, useEffect, useLayoutEffect, useState } from 'react';
 import ReminderOfferCard from '@kiko/design-system/components/reminder-offer-card';
 import EntityAmountHeader from '@kiko/design-system/components/entity-amount-header';
 import { editBarItem, REMINDERS_BELL_SYMBOL } from '@kiko/design-system/edit-bar-item';
@@ -91,21 +97,43 @@ const showsBankSync = (
     (found) => found.kind === 'bank' && (isConnectableBank(found.bankId) || isSyncedAccount(found)),
   ) ?? false;
 
-// The tip lives in its own component so the screen's branching stays within the complexity
-// budget; it is the screen's one `useTip`.
-const ImportStatementTip: FC<{ eligible: boolean }> = ({ eligible }) => {
-  const { t } = useTranslation();
-  const { visible, dismiss } = useTip('accountDetail.importStatement', eligible);
+type FooterOptions = {
+  t: TFunction;
+  showsImportStatement: boolean;
+  showsAddHolding: boolean;
+  onImportStatement: () => void;
+  onAddHolding: () => void;
+};
+
+// A function, not a component, and out of the screen body: inlined, the two
+// conditional buttons push the screen over biome's cognitive-complexity limit
+// (18 against 15). The empty holdings state carries its own Add holding action,
+// so the pinned footer drops that button rather than show it twice; with
+// nothing else to offer, there is no footer at all.
+const renderFooter = ({
+  t,
+  showsImportStatement,
+  showsAddHolding,
+  onImportStatement,
+  onAddHolding,
+}: FooterOptions): ReactElement | undefined => {
+  if (!(showsImportStatement || showsAddHolding)) {
+    return undefined;
+  }
 
   return (
-    visible && (
-      <TipCard
-        testID="tip-import-statement"
-        message={t('tips.importStatement')}
-        closeLabel={t('tips.close')}
-        onClose={dismiss}
-      />
-    )
+    <Box gap={2}>
+      {showsImportStatement && (
+        <Button variant="secondaryTonal" onPress={onImportStatement} icon="doc.badge.plus">
+          {t('accountDetail.importStatement')}
+        </Button>
+      )}
+      {showsAddHolding && (
+        <Button variant="primary" onPress={onAddHolding} icon={genericEntitySymbol.holding}>
+          {t('accountDetail.addHolding')}
+        </Button>
+      )}
+    </Box>
   );
 };
 
@@ -138,13 +166,6 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
     true,
     { cached: true },
   );
-  // The import tip shows only while the account has no transaction yet.
-  const { data: anyRows, isLoading: anyLoading } = useLiveQuery(
-    transactionsRepo.anyInAccountQuery(accountId),
-    ['transactions', 'holdings'],
-    true,
-    { cached: true },
-  );
   // kiko-architecture: skip the price_points read while nothing rendered on
   // this screen ever reads it — a holding whose type carries no priced spec
   // and is not a loan (`needsPriceBook`) never touches `price_points`. It
@@ -164,7 +185,6 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
     holdingsLoading,
     ratesLoading,
     settingsLoading,
-    anyLoading,
     priceBookLoading,
   );
   const account = accounts.at(0);
@@ -390,27 +410,20 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
     );
   }
 
+  const openHoldingForm = (): void => navigation.navigate('HoldingForm', { accountId });
+  const hasActiveHoldings = activeHoldings.length > 0;
+
   return (
     <Screen
       scroll
       scrollableRef={scrollableRef}
-      footer={
-        <Box gap={2}>
-          <ImportStatementTip eligible={canImportStatement && anyRows.length === 0} />
-          {canImportStatement && (
-            <Button variant="secondaryTonal" onPress={pickAndOpenStatement} icon="doc.badge.plus">
-              {t('accountDetail.importStatement')}
-            </Button>
-          )}
-          <Button
-            variant="primary"
-            onPress={() => navigation.navigate('HoldingForm', { accountId })}
-            icon={genericEntitySymbol.holding}
-          >
-            {t('accountDetail.addHolding')}
-          </Button>
-        </Box>
-      }
+      footer={renderFooter({
+        t,
+        showsImportStatement: canImportStatement,
+        showsAddHolding: hasActiveHoldings,
+        onImportStatement: pickAndOpenStatement,
+        onAddHolding: openHoldingForm,
+      })}
     >
       <Box gap={4} testID="account-detail-content">
         {offer && (
@@ -455,68 +468,82 @@ const AccountDetailScreen: FC<AccountDetailScreenProps> = ({ route, navigation }
         <Box gap={3}>
           <Text variant="heading">{t('accountDetail.holdingsHeading')}</Text>
 
-          {/* A single-column drag-and-drop list of wide holding row cards
-              (mirroring the accounts list). A plain tap opens the holding; a
-              touch-and-hold-still on a manual card opens the deep-press (haptic)
-              Close/Delete action list; a hold-and-move drags to reorder — see `CardContextMenu`
-              and `onGridDragEnd`. `overDrag="vertical"` keeps a dragged card on
-              its vertical axis (a single column has no horizontal move to make).
-              `scrollableRef` + `autoScrollActivationOffset` let a drag near an
-              edge scroll the parent list. `sortEnabled` is off until the
-              holdings query's own fresh read has applied — a drag persists
-              the order of the rows on screen, never the cached
-              (possibly one-read-old) order (kiko-architecture). A lone
-              holding stays enabled: it lifts on a hold and drops back, like
-              every other card. */}
-          <Box testID="holdings-grid">
-            <Sortable.Grid
-              data={activeHoldings}
-              sortEnabled={holdingsFresh}
-              // A subtle lift on touch-and-hold: the library default (1.1) pops
-              // the card up too much, so scale it just barely (matches the
-              // accounts grid).
-              activeItemScale={1.03}
-              columns={1}
-              overDrag="vertical"
-              rowGap={theme.spacing(3)}
-              scrollableRef={scrollableRef}
-              autoScrollActivationOffset={75}
-              keyExtractor={(holding) => holding.id}
-              renderItem={({ item }) => (
-                <Box testID="holding-grid-item">
-                  <CardContextMenu
-                    name={item.name}
-                    deletable={!isSyncedHolding(item, account)}
-                    // Read when the delete is requested, so it names what is stored
-                    // now: a holding's rows can be one part of a movement with
-                    // another holding, which the delete takes with it.
-                    deleteMessage={() => removeHoldingsNoticeOf([item.id], t)}
-                    onDelete={() => transactionsRepo.removeHolding(item.id)}
-                    closeAction={closeActionFor(item)}
-                  >
-                    <HoldingCard
-                      holding={item}
-                      now={now}
-                      baseCurrency={baseCurrency}
-                      rateTable={rateTable}
-                      priceBook={priceBook}
-                      onOpen={openUnlessLifted(item.id, () =>
-                        navigation.navigate('HoldingDetail', {
-                          holdingId: item.id,
-                          name: item.name,
-                        }),
-                      )}
-                    />
-                  </CardContextMenu>
-                </Box>
-              )}
-              onDragStart={onDragStart}
-              onActiveItemDropped={onActiveItemDropped}
-              onDragEnd={({ fromIndex, toIndex, indexToKey }) =>
-                onGridDragEnd({ fromIndex, toIndex, indexToKey }, holdingsRepo.reorder)
-              }
+          {!hasActiveHoldings ? (
+            <EmptyState
+              icon={genericEntitySymbol.holding}
+              title={t('accountDetail.emptyHoldings.title')}
+              message={t('accountDetail.emptyHoldings.message')}
+              action={{
+                label: t('accountDetail.addHolding'),
+                icon: genericEntitySymbol.holding,
+                onPress: openHoldingForm,
+              }}
+              testID="account-detail-holdings-empty"
             />
-          </Box>
+          ) : (
+            // A single-column drag-and-drop list of wide holding row cards
+            // (mirroring the accounts list). A plain tap opens the holding; a
+            // touch-and-hold-still on a manual card opens the deep-press (haptic)
+            // Close/Delete action list; a hold-and-move drags to reorder — see `CardContextMenu`
+            // and `onGridDragEnd`. `overDrag="vertical"` keeps a dragged card on
+            // its vertical axis (a single column has no horizontal move to make).
+            // `scrollableRef` + `autoScrollActivationOffset` let a drag near an
+            // edge scroll the parent list. `sortEnabled` is off until the
+            // holdings query's own fresh read has applied — a drag persists
+            // the order of the rows on screen, never the cached
+            // (possibly one-read-old) order (kiko-architecture). A lone
+            // holding stays enabled: it lifts on a hold and drops back, like
+            // every other card.
+            <Box testID="holdings-grid">
+              <Sortable.Grid
+                data={activeHoldings}
+                sortEnabled={holdingsFresh}
+                // A subtle lift on touch-and-hold: the library default (1.1) pops
+                // the card up too much, so scale it just barely (matches the
+                // accounts grid).
+                activeItemScale={1.03}
+                columns={1}
+                overDrag="vertical"
+                rowGap={theme.spacing(3)}
+                scrollableRef={scrollableRef}
+                autoScrollActivationOffset={75}
+                keyExtractor={(holding) => holding.id}
+                renderItem={({ item }) => (
+                  <Box testID="holding-grid-item">
+                    <CardContextMenu
+                      name={item.name}
+                      deletable={!isSyncedHolding(item, account)}
+                      // Read when the delete is requested, so it names what is stored
+                      // now: a holding's rows can be one part of a movement with
+                      // another holding, which the delete takes with it.
+                      deleteMessage={() => removeHoldingsNoticeOf([item.id], t)}
+                      onDelete={() => transactionsRepo.removeHolding(item.id)}
+                      closeAction={closeActionFor(item)}
+                    >
+                      <HoldingCard
+                        holding={item}
+                        now={now}
+                        baseCurrency={baseCurrency}
+                        rateTable={rateTable}
+                        priceBook={priceBook}
+                        onOpen={openUnlessLifted(item.id, () =>
+                          navigation.navigate('HoldingDetail', {
+                            holdingId: item.id,
+                            name: item.name,
+                          }),
+                        )}
+                      />
+                    </CardContextMenu>
+                  </Box>
+                )}
+                onDragStart={onDragStart}
+                onActiveItemDropped={onActiveItemDropped}
+                onDragEnd={({ fromIndex, toIndex, indexToKey }) =>
+                  onGridDragEnd({ fromIndex, toIndex, indexToKey }, holdingsRepo.reorder)
+                }
+              />
+            </Box>
+          )}
 
           {closeSheet}
         </Box>

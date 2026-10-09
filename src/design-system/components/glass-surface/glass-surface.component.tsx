@@ -199,7 +199,7 @@ const GlassSurface: FC<GlassSurfaceProps> = ({
   // hook — every hook this component calls must run unconditionally, before
   // any early return, per the rules of hooks.
   const isBloom = isActiveVariant(bloom, tint);
-  // FIRST-PAINT RE-SAMPLE (device bug, confirmed 2026-09-12 on the categories
+  // FIRST-PAINT RE-SAMPLE (a device bug seen on the categories
   // screen's `Sortable.Grid`-managed card): see `useBloomResample`
   // (`glass-surface.resample.hook.ts`) for the full mechanism doc. `bloom` on
   // the real glass path renders a backdrop-less `LiquidGlassView` with

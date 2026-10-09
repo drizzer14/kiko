@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { type ReactElement, useState } from 'react';
 import Box from '@kiko/design-system/components/box';
 import Text from '@kiko/design-system/components/text';
@@ -6,6 +7,7 @@ import FieldTrigger from '@kiko/design-system/components/field-trigger';
 import SelectableRow from '@kiko/design-system/components/selectable-row';
 
 import { styles } from './holding-select-field.styles';
+import { useSelectCreatedHolding } from './use-select-created-holding';
 import type { HoldingSelectFieldProps } from './holding-select-field.props';
 
 // A labeled single-select holding picker for the Exchange "To" field: the
@@ -14,8 +16,10 @@ import type { HoldingSelectFieldProps } from './holding-select-field.props';
 // `SelectableRow` — the shared single-select row, with its own leading
 // checkmark when selected. One choice; the sheet closes on pick. Mirrors
 // CategoryField's field-plus-sheet chrome so every form picker reads as one
-// family. Purely presentational — the caller (the exchange form) builds and
-// filters the option list; this component only renders what it is given.
+// family. The caller (the exchange form) builds and filters the option list;
+// this component only renders what it is given, and an empty list shows an
+// "Add holding" row (when `onCreateNew` is set) that selects the holding the
+// user creates through it.
 const HoldingSelectField = ({
   label,
   sheetTitle,
@@ -26,13 +30,22 @@ const HoldingSelectField = ({
   required,
   error,
   invalid,
+  onCreateNew,
 }: HoldingSelectFieldProps): ReactElement => {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
+  const startCreateRoundTrip = useSelectCreatedHolding(options, onSelect);
 
   const selected = options.find((option) => option.id === selectedId) ?? null;
 
   const handleSelect = (id: string): void => {
     onSelect(id);
+    setOpen(false);
+  };
+
+  const handleCreateNew = (createNew: () => void): void => {
+    startCreateRoundTrip();
+    createNew();
     setOpen(false);
   };
 
@@ -95,6 +108,16 @@ const HoldingSelectField = ({
             />
           );
         })}
+
+        {onCreateNew && options.length === 0 && (
+          <SelectableRow
+            selected={false}
+            onPress={() => handleCreateNew(onCreateNew)}
+            label={t('forms.fields.addHolding')}
+            icon="plus"
+            testID="holding-select-create-new"
+          />
+        )}
       </BottomSheet>
     </Box>
   );

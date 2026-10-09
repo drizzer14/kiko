@@ -7,6 +7,9 @@ export type HoldingSelectOption = {
   color: string;
   currency: Currency;
   accountName: string; // the parent account's display name
+  // The holding's `created_at` (ms). The "Add holding" round trip selects only
+  // a holding stamped inside its own window, never one a sync adds later.
+  createdAt: number;
 };
 
 export type HoldingSelectFieldProps = {
@@ -29,4 +32,8 @@ export type HoldingSelectFieldProps = {
   // error renders under its whole group (a split payment's return rows).
   // Forwarded to the shared FieldTrigger.
   invalid?: boolean;
+  // When set AND `options` is empty, the sheet shows one "Add holding" row that
+  // calls this (the caller opens the create form). The field then selects the
+  // holding created on that round trip, once it appears among `options`.
+  onCreateNew?: () => void;
 };

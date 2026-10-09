@@ -48,14 +48,6 @@ jest.mock('@react-navigation/native', () => ({
   useNavigation: () => ({ navigate: mockNavigate }),
 }));
 
-// A marker for the shared tip card, so a test can pin that Statistics renders none.
-jest.mock('@kiko/design-system/components/tip-card', () => {
-  const { View } = require('react-native');
-  const { createElement } = require('react');
-
-  return { __esModule: true, default: () => createElement(View, { testID: 'mock-tip-card' }) };
-});
-
 import { i18n } from '@kiko/i18n/init';
 import { toUtcMidnight } from '@kiko/rates/history-entry';
 import type { TrendFilter } from '@kiko/statistics/trend-filter';
@@ -1821,14 +1813,6 @@ describe('StatisticsScreen', () => {
 
       expect(queryByTestId('statistics-empty')).toBeNull();
       expect(getByTestId('statistics-blocks')).toBeTruthy();
-    });
-
-    it('shows no tip', async () => {
-      setLiveData({});
-
-      const { queryByTestId } = await renderScreen();
-
-      expect(queryByTestId('mock-tip-card')).toBeNull();
     });
   });
 

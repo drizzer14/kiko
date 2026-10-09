@@ -10,9 +10,11 @@ import { defaultHoldingColor } from '@kiko/holdings/entity-colors';
 import { isLabelInvalid } from '@kiko/test-support/field-label-spy';
 import type { TransactionFormParams } from '@kiko/navigation/types';
 import { defaultHoldingSymbol } from '@kiko/holdings/entity-symbols';
+import { makeFocusNavigation } from '@kiko/test-support/focus-navigation';
 import { isLedgerlessHoldingType } from '@kiko/holdings/holding-descriptor';
 import { scrollToField, useHeaderInset } from '@kiko/design-system/scroll-to-field';
 import { glyphNamesWithin, glyphTintsWithin } from '@kiko/test-support/glyphs-within';
+import { resolveCreateHoldingTarget } from '@kiko/screens/forms/create-holding-target';
 // Prefixed `mock*` so Jest's hoisted mock factory may reference it. Overrides
 // ONLY `useAnimatedRef` — see the module for the full rationale.
 import { mockReanimatedScrollToEnd } from '@kiko/test-support/mock-reanimated-scroll-to-end';
@@ -30,6 +32,13 @@ jest.mock('react-native-reanimated', () => mockReanimatedScrollToEnd(() => mockS
 // below can assert on the WIRING without depending on real
 // `measureLayout`/`measure` host-instance behavior under the test renderer.
 jest.mock('@kiko/design-system/scroll-to-field/scroll-to-field');
+// Real behavior, with a spy on the picker each "Add holding" row hands over, so a test can read
+// which holding types that row's own picker lists.
+jest.mock('@kiko/screens/forms/create-holding-target', () => {
+  const actual = jest.requireActual('@kiko/screens/forms/create-holding-target');
+
+  return { ...actual, resolveCreateHoldingTarget: jest.fn(actual.resolveCreateHoldingTarget) };
+});
 
 type TransactionFormProps = ComponentProps<typeof TransactionFormScreen>;
 
@@ -67,19 +76,7 @@ const mockSetCategory = jest.fn();
 const mockSetLoanPayment = jest.fn();
 const mockUndoAutoLoanLink = jest.fn();
 const mockUseLiveQuery = jest.fn();
-const mockDismissTip = jest.fn((..._args: unknown[]): Promise<void> => Promise.resolve());
-// The settings row the tip hook reads; a test sets it to hide a tip or to hold the first load.
-const mockDismissedTips: string[] = [];
-let mockSettingsIsLoading = false;
-// The override-rules read answers `data: []` until its first load, as the real hook does.
-let mockOverridesIsLoading = false;
 
-jest.mock('@kiko/settings/settings.repo', () => ({
-  settingsRepo: {
-    getQuery: () => ({ __kind: 'settings', toSQL: () => ({ sql: '', params: [] }) }),
-    dismissTip: (...args: unknown[]) => mockDismissTip(...args),
-  },
-}));
 jest.mock('@kiko/transactions/repo', () => ({
   transactionsRepo: {
     recordManual: (...args: unknown[]) => mockRecordManual(...args),
@@ -212,14 +209,6 @@ const setLiveData = (
 
   mockUseLiveQuery.mockImplementation((query: unknown, tables: string[]) => {
     const kind = (query as { __kind?: string })?.__kind;
-    // The tip hook's settings read, found by its own query rather than by call order.
-    if (kind === 'settings') {
-      return {
-        data: [{ dismissedTips: mockDismissedTips }],
-        isLoading: mockSettingsIsLoading,
-      };
-    }
-
     // The distinct-descriptions subscription shares the `['transactions']`
     // key with the by-id lookup, so it is disambiguated by the tagged query
     // object the mocked repo returns.
@@ -234,10 +223,6 @@ const setLiveData = (
         data: latestManualHoldingId ? [{ holdingId: latestManualHoldingId }] : [],
         isLoading: false,
       };
-    }
-
-    if (tables[0] === 'category_overrides' && mockOverridesIsLoading) {
-      return { data: [], isLoading: true };
     }
 
     return { data: dataByTable[tables[0]] ?? [] };
@@ -4431,8 +4416,7 @@ describe("TransactionFormScreen — a valid Save runs only the active mode's own
   });
 });
 
-describe('TransactionFormScreen — the apply-to-all tip', () => {
-  const TIP_ID = 'transaction.applyToAll';
+describe('TransactionFormScreen — the category override sheet on a manual row', () => {
   const HOLDINGS: Holding[] = [
     { id: 'h1', currency: 'UAH', balanceMinorUnits: 5000, type: 'cash', name: 'Wallet' },
   ];
@@ -4449,205 +4433,327 @@ describe('TransactionFormScreen — the apply-to-all tip', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    mockDismissedTips.length = 0;
-    mockSettingsIsLoading = false;
-    mockOverridesIsLoading = false;
-    mockDismissTip.mockResolvedValue(undefined);
-    mockUpsertCategoryOverride.mockResolvedValue(undefined);
-    mockSetCategory.mockResolvedValue(undefined);
   });
 
-  it('shows the tip above the Category field when opening a manual row', async () => {
+  it('reads no settings row, so the form needs nothing but its own reads', async () => {
+    setLiveData(HOLDINGS, ROW);
+    await renderEdit('txn-1');
+
+    const subscribedTables = mockUseLiveQuery.mock.calls.map(([, tables]) => tables[0]);
+
+    expect(subscribedTables).not.toContain('settings');
+  });
+
+  it('shows the save-error alert and stays on the form when the sheet "Apply" write fails', async () => {
+    mockUpsertCategoryOverride.mockRejectedValueOnce(new Error('boom'));
+    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
     setLiveData(HOLDINGS, ROW);
     const utils = await renderEdit('txn-1');
+    await pickCategory(utils, 'Dining');
+    await fireEvent.press(utils.getByText('Save'));
+    await fireEvent.press(utils.getByRole('button', { name: 'Apply' }));
 
-    expect(utils.getByTestId('tip-apply-to-all')).toBeTruthy();
-    expect(utils.getByLabelText(i18n.t('tips.close'))).toBeTruthy();
-    // The screen-reading order: the last field above the picker, the tip, then the picker.
-    const rendered = collectRenderedText(utils.toJSON());
-    const order = ['Time', i18n.t('tips.applyToAll'), 'Category'].map((text) =>
-      rendered.indexOf(text),
+    await waitFor(() =>
+      expect(alertSpy).toHaveBeenCalledWith('Could not save', 'Please try again.'),
     );
+    expect(mockUpsertCategoryOverride).toHaveBeenCalledWith('Coffee', 'dining');
+    expect(navigation.goBack).not.toHaveBeenCalled();
+    alertSpy.mockRestore();
+  });
+});
 
-    for (const index of order) {
-      expect(index).toBeGreaterThan(-1);
-    }
-    expect(order).toEqual([...order].sort((a, b) => a - b));
+describe('TransactionFormScreen — "Add holding" row in an empty holding picker', () => {
+  const WALLET: Account = { id: 'acc-1', name: 'Wallet', kind: 'cash' };
+  const SOURCE: Holding = {
+    id: 'only-cash',
+    currency: 'UAH',
+    balanceMinorUnits: 0,
+    type: 'cash',
+    name: 'Cash UAH',
+    accountId: 'acc-1',
+    sortOrder: 0,
+    createdAt: 1,
+  };
+  const DOLLARS = {
+    id: 'cash-usd',
+    currency: 'USD',
+    balanceMinorUnits: 0,
+    type: 'cash',
+    name: 'Cash USD',
+    accountId: 'acc-1',
+    sortOrder: 1,
+  };
+  const EXPENSE: Transaction = {
+    id: 'expense',
+    holdingId: 'only-cash',
+    amountMinorUnits: -10_000,
+    time: 42,
+    description: 'Coffee',
+    source: 'manual',
+  };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
   });
 
-  it('shows the tip for a synced row, whose category is still editable', async () => {
-    setLiveData(HOLDINGS, { ...ROW, source: 'monobank' });
-    const { getByTestId } = await renderEdit('txn-1');
+  it('is absent from the Exchange "To" sheet while another destination exists', async () => {
+    setLiveData([SOURCE, { ...DOLLARS, createdAt: 2 }], undefined, CATEGORIES, [WALLET]);
+    const utils = await renderAddFromHolding('only-cash');
 
-    expect(getByTestId('tip-apply-to-all')).toBeTruthy();
-  });
-
-  it('hides the tip on a create', async () => {
-    setLiveData(HOLDINGS);
-    const { queryByTestId } = await renderAddFromHolding('h1');
-
-    expect(queryByTestId('tip-apply-to-all')).toBeNull();
-  });
-
-  it('hides the tip on a duplicate', async () => {
-    setLiveData(HOLDINGS, ROW);
-    const { queryByTestId } = await renderDuplicate('txn-1');
-
-    expect(queryByTestId('tip-apply-to-all')).toBeNull();
-  });
-
-  it('hides the tip on an exchange being created', async () => {
-    setLiveData(EXCHANGE_HOLDINGS);
-    const utils = await renderAddFromHolding('cash-1');
     await pickType(utils, 'exchange');
+    await fireEvent.press(utils.getByLabelText('To'));
 
-    expect(utils.queryByTestId('tip-apply-to-all')).toBeNull();
+    expect(utils.getByText('Cash USD')).toBeTruthy();
+    expect(utils.queryByTestId('holding-select-create-new')).toBeNull();
   });
 
-  it('hides the tip while an existing row is converted to an exchange', async () => {
-    setLiveData(
-      CONVERT_HOLDINGS,
-      { ...CONVERT_TRANSACTIONS['expense-manual'], exchangeCounterpartHoldingId: null },
-      CATEGORIES,
-      CONVERT_ACCOUNTS,
-    );
-    const utils = await renderEdit('expense-manual');
+  it('opens the holding form on the source holding\'s account from the Exchange "To" sheet', async () => {
+    setLiveData([SOURCE], undefined, CATEGORIES, [WALLET]);
+    const utils = await renderAddFromHolding('only-cash');
 
-    expect(utils.getByTestId('tip-apply-to-all')).toBeTruthy();
+    await pickType(utils, 'exchange');
+    await fireEvent.press(utils.getByLabelText('To'));
+    await fireEvent.press(utils.getByText('Add holding'));
+
+    expect(navigation.navigate).toHaveBeenCalledTimes(1);
+    expect(navigation.navigate).toHaveBeenCalledWith('HoldingForm', {
+      accountId: 'acc-1',
+      initialType: 'cash',
+    });
+  });
+
+  it("opens the holding form on the payer's account from a return row with no option left", async () => {
+    setLiveData([SOURCE], undefined, CATEGORIES, [WALLET]);
+    const utils = await renderAddFromHolding('only-cash');
+
+    await pickType(utils, 'split');
+    // The only eligible holding is picked in row 1, so row 2 has none.
+    await fireEvent.press(utils.getByLabelText('Return to 1'));
+
+    expect(utils.queryByTestId('holding-select-create-new')).toBeNull();
+
+    await fireEvent.press(utils.getByText('Cash UAH'));
+    await fireEvent.press(utils.getByText('Add return'));
+    await fireEvent.press(utils.getByLabelText('Return to 2'));
+    await fireEvent.press(utils.getByText('Add holding'));
+
+    expect(navigation.navigate).toHaveBeenCalledTimes(1);
+    expect(navigation.navigate).toHaveBeenCalledWith('HoldingForm', {
+      accountId: 'acc-1',
+      initialType: 'cash',
+      initialCurrency: 'UAH',
+    });
+  });
+
+  it("opens the holding form on the existing holding's account from the Convert counterpart sheet", async () => {
+    setLiveData([SOURCE], EXPENSE, CATEGORIES, [WALLET]);
+    const utils = await renderEdit('expense');
 
     await fireEvent.press(utils.getByText('Exchange'));
+    await fireEvent.press(utils.getByLabelText('To'));
+    await fireEvent.press(utils.getByText('Add holding'));
 
-    expect(utils.queryByTestId('tip-apply-to-all')).toBeNull();
+    expect(navigation.navigate).toHaveBeenCalledTimes(1);
+    expect(navigation.navigate).toHaveBeenCalledWith('HoldingForm', {
+      accountId: 'acc-1',
+      initialType: 'cash',
+    });
   });
 
-  it.each([
-    ['the outgoing leg', { exchangeCounterpartHoldingId: 'h-usd' }],
-    ['the incoming leg', { holdingId: 'h-usd', exchangeCounterpartHoldingId: 'h1' }],
-  ])(
-    'hides the tip on an existing exchange leg (%s), whose category change is this row only',
-    async (_name, legFields) => {
-      setLiveData(
-        [...HOLDINGS, { id: 'h-usd', currency: 'USD', balanceMinorUnits: 5000, type: 'cash' }],
-        { ...ROW, ...legFields },
-      );
-      const { queryByTestId, getByTestId } = await renderEdit('txn-1');
+  describe('the holding types each picker lists', () => {
+    // The picker the last "Add holding" press handed over, read as the types it would list.
+    const listedTypes = () => {
+      const [picker] = jest.mocked(resolveCreateHoldingTarget).mock.calls.at(-1) ?? [];
 
-      expect(getByTestId('transaction-category-field')).toBeTruthy();
-      expect(queryByTestId('tip-apply-to-all')).toBeNull();
-    },
-  );
+      return holdingTypes.filter((type) => picker?.accepts(type));
+    };
+    const withLedger = holdingTypes.filter((type) => !isLedgerlessHoldingType(type));
+    const INCOME: Transaction = { ...EXPENSE, id: 'income', amountMinorUnits: 10_000 };
 
-  it('keeps the tip hidden while the override rules are still on their first load', async () => {
-    mockOverridesIsLoading = true;
-    setLiveData(HOLDINGS, ROW);
-    const { queryByTestId } = await renderEdit('txn-1');
+    it('lists only cash in the Exchange "To" sheet of a new exchange', async () => {
+      setLiveData([SOURCE], undefined, CATEGORIES, [WALLET]);
+      const utils = await renderAddFromHolding('only-cash');
 
-    expect(queryByTestId('tip-apply-to-all')).toBeNull();
-  });
+      await pickType(utils, 'exchange');
+      await fireEvent.press(utils.getByLabelText('To'));
+      await fireEvent.press(utils.getByText('Add holding'));
 
-  it('hides the tip on a row with a blank name, which can never get an override rule', async () => {
-    setLiveData(HOLDINGS, { ...ROW, description: '' });
-    const { queryByTestId } = await renderEdit('txn-1');
-
-    expect(queryByTestId('tip-apply-to-all')).toBeNull();
-  });
-
-  it('hides the tip when there is no category to change', async () => {
-    setLiveData(HOLDINGS, ROW, []);
-    const { queryByTestId } = await renderEdit('txn-1');
-
-    expect(queryByTestId('tip-apply-to-all')).toBeNull();
-  });
-
-  it('hides the tip once any category override exists', async () => {
-    setLiveData(HOLDINGS, ROW, CATEGORIES, [], [], [{ normalizedName: 'tea', category: 'dining' }]);
-    const { queryByTestId } = await renderEdit('txn-1');
-
-    expect(queryByTestId('tip-apply-to-all')).toBeNull();
-  });
-
-  it('hides the tip once its id is dismissed', async () => {
-    mockDismissedTips.push(TIP_ID);
-    setLiveData(HOLDINGS, ROW);
-    const { queryByTestId } = await renderEdit('txn-1');
-
-    expect(queryByTestId('tip-apply-to-all')).toBeNull();
-  });
-
-  it('keeps the tip hidden while the settings are still loading', async () => {
-    mockSettingsIsLoading = true;
-    setLiveData(HOLDINGS, ROW);
-    const { queryByTestId } = await renderEdit('txn-1');
-
-    expect(queryByTestId('tip-apply-to-all')).toBeNull();
-  });
-
-  it('dismisses the tip when its close button is pressed', async () => {
-    setLiveData(HOLDINGS, ROW);
-    const { getByLabelText } = await renderEdit('txn-1');
-
-    await act(async () => {
-      await fireEvent.press(getByLabelText(i18n.t('tips.close')));
+      expect(listedTypes()).toEqual(['cash']);
     });
 
-    expect(mockDismissTip).toHaveBeenCalledTimes(1);
-    expect(mockDismissTip).toHaveBeenCalledWith(TIP_ID);
+    it('lists every holding that takes a ledger in a return row', async () => {
+      setLiveData([SOURCE], undefined, CATEGORIES, [WALLET]);
+      const utils = await renderAddFromHolding('only-cash');
+
+      await pickType(utils, 'split');
+      await fireEvent.press(utils.getByLabelText('Return to 1'));
+      await fireEvent.press(utils.getByText('Cash UAH'));
+      await fireEvent.press(utils.getByText('Add return'));
+      await fireEvent.press(utils.getByLabelText('Return to 2'));
+      await fireEvent.press(utils.getByText('Add holding'));
+
+      expect(listedTypes()).toEqual(withLedger);
+    });
+
+    it('lists every Exchange destination type in the Convert "To" sheet of an expense', async () => {
+      setLiveData([SOURCE], EXPENSE, CATEGORIES, [WALLET]);
+      const utils = await renderEdit('expense');
+
+      await fireEvent.press(utils.getByText('Exchange'));
+      await fireEvent.press(utils.getByLabelText('To'));
+      await fireEvent.press(utils.getByText('Add holding'));
+
+      expect(listedTypes()).toEqual(['card', 'term_deposit', 'cash', 'crypto_asset']);
+    });
+
+    it('lists only the Exchange source types in the Convert "From" sheet of an income', async () => {
+      setLiveData([SOURCE], INCOME, CATEGORIES, [WALLET]);
+      const utils = await renderEdit('income');
+
+      await fireEvent.press(utils.getByText('Exchange'));
+      await fireEvent.press(utils.getByLabelText('From'));
+      await fireEvent.press(utils.getByText('Add holding'));
+
+      expect(listedTypes()).toEqual(['card', 'cash']);
+    });
   });
 
-  it('dismisses the tip once the sheet "Apply" has written the override, before leaving', async () => {
-    setLiveData(HOLDINGS, ROW);
-    const utils = await renderEdit('txn-1');
-    await pickCategory(utils, 'Dining');
-    await fireEvent.press(utils.getByText('Save'));
-    await fireEvent.press(utils.getByRole('button', { name: 'Apply' }));
+  describe('the currency a return row asks the holding form for', () => {
+    it("is the payer's", async () => {
+      const payer = { ...DOLLARS, createdAt: 1 };
 
-    await waitFor(() => expect(navigation.goBack).toHaveBeenCalled());
-    expect(mockDismissTip).toHaveBeenCalledTimes(1);
-    expect(mockDismissTip).toHaveBeenCalledWith(TIP_ID);
-    expect(mockUpsertCategoryOverride.mock.invocationCallOrder[0]).toBeLessThan(
-      mockDismissTip.mock.invocationCallOrder[0],
+      setLiveData([payer], undefined, CATEGORIES, [WALLET]);
+      const utils = await renderAddFromHolding('cash-usd');
+
+      await pickType(utils, 'split');
+      await fireEvent.press(utils.getByLabelText('Return to 1'));
+      await fireEvent.press(utils.getByText('Cash USD'));
+      await fireEvent.press(utils.getByText('Add return'));
+      await fireEvent.press(utils.getByLabelText('Return to 2'));
+      await fireEvent.press(utils.getByText('Add holding'));
+
+      expect(navigation.navigate).toHaveBeenCalledWith('HoldingForm', {
+        accountId: 'acc-1',
+        initialType: 'cash',
+        initialCurrency: 'USD',
+      });
+    });
+  });
+
+  describe('the global-add primary picker, which has no anchor holding', () => {
+    it('opens the holding form on the first account that can hold one', async () => {
+      const flats: Account = { id: 'flats', name: 'Property', kind: 'property' };
+
+      setLiveData([], undefined, CATEGORIES, [flats, WALLET]);
+      const utils = await renderEmptyCreate();
+
+      await fireEvent.press(utils.getByLabelText('Holding'));
+      await fireEvent.press(utils.getByText('Add holding'));
+
+      expect(navigation.navigate).toHaveBeenCalledWith('HoldingForm', {
+        accountId: 'acc-1',
+        initialType: 'cash',
+      });
+    });
+
+    it('skips a synced Monobank account, whose sync owns its ledgered holdings', async () => {
+      const monobank: Account = {
+        id: 'mono',
+        name: 'Monobank',
+        kind: 'bank',
+        institution: 'monobank',
+      };
+
+      setLiveData([], undefined, CATEGORIES, [monobank, WALLET]);
+      const utils = await renderEmptyCreate();
+
+      await fireEvent.press(utils.getByLabelText('Holding'));
+      await fireEvent.press(utils.getByText('Add holding'));
+
+      expect(navigation.navigate).toHaveBeenCalledWith('HoldingForm', {
+        accountId: 'acc-1',
+        initialType: 'cash',
+      });
+    });
+
+    it('opens the account form when the only account is a synced Monobank one', async () => {
+      const monobank: Account = {
+        id: 'mono',
+        name: 'Monobank',
+        kind: 'bank',
+        institution: 'monobank',
+      };
+
+      setLiveData([], undefined, CATEGORIES, [monobank]);
+      const utils = await renderEmptyCreate();
+
+      await fireEvent.press(utils.getByLabelText('Holding'));
+      await fireEvent.press(utils.getByText('Add holding'));
+
+      expect(navigation.navigate).toHaveBeenCalledWith('AccountForm', {});
+    });
+
+    it.each([
+      ['no account', []],
+      ['only implicit accounts', [{ id: 'flats', name: 'Property', kind: 'property' }]],
+    ])('opens the account form with %s', async (_label, accounts) => {
+      setLiveData([], undefined, CATEGORIES, accounts);
+      const utils = await renderEmptyCreate();
+
+      await fireEvent.press(utils.getByLabelText('Holding'));
+      await fireEvent.press(utils.getByText('Add holding'));
+
+      expect(navigation.navigate).toHaveBeenCalledWith('AccountForm', {});
+    });
+  });
+
+  it('keeps the draft and selects the new holding when it appears after the round trip', async () => {
+    setLiveData([SOURCE], undefined, CATEGORIES, [WALLET]);
+    const utils = await renderAddFromHolding('only-cash');
+
+    await pickType(utils, 'exchange');
+    await fireEvent.changeText(utils.getByLabelText('Value out'), '100');
+    await fireEvent.press(utils.getByLabelText('To'));
+    await fireEvent.press(utils.getByText('Add holding'));
+
+    // The holding form saved a USD cash holding and the user came back.
+    setLiveData([SOURCE, { ...DOLLARS, createdAt: Date.now() }], undefined, CATEGORIES, [WALLET]);
+    await utils.rerender(
+      <TransactionFormScreen
+        route={transactionFormRoute({ holdingId: 'only-cash' })}
+        navigation={navigationProp}
+      />,
     );
-    expect(mockDismissTip.mock.invocationCallOrder[0]).toBeLessThan(
-      (navigation.goBack as jest.Mock).mock.invocationCallOrder[0],
+
+    expect(utils.getByLabelText('Value out').props.value).toBe('100');
+    expect(utils.getByLabelText('To')).toHaveTextContent(/Cash USD/);
+  });
+
+  it('selects nothing when a holding appears after the holding form was cancelled', async () => {
+    const { provide, fireFocus } = makeFocusNavigation();
+    const route = transactionFormRoute({ holdingId: 'only-cash' });
+
+    setLiveData([SOURCE], undefined, CATEGORIES, [WALLET]);
+    const utils = await render(
+      provide(<TransactionFormScreen route={route} navigation={navigationProp} />),
     );
-  });
 
-  it('still leaves the form when the dismissal write fails', async () => {
-    mockDismissTip.mockRejectedValue(new Error('write failed'));
-    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
-    setLiveData(HOLDINGS, ROW);
-    const utils = await renderEdit('txn-1');
-    await pickCategory(utils, 'Dining');
-    await fireEvent.press(utils.getByText('Save'));
-    await fireEvent.press(utils.getByRole('button', { name: 'Apply' }));
+    await pickType(utils, 'exchange');
+    await fireEvent.press(utils.getByLabelText('To'));
+    await fireEvent.press(utils.getByText('Add holding'));
+    // Back from the holding form with nothing saved.
+    await act(async () => {
+      fireFocus();
+    });
 
-    await waitFor(() => expect(navigation.goBack).toHaveBeenCalled());
-    warn.mockRestore();
-  });
+    // A bank sync later adds a cash holding in another currency.
+    setLiveData([SOURCE, { ...DOLLARS, createdAt: Date.now() + 60_000 }], undefined, CATEGORIES, [
+      WALLET,
+    ]);
+    await utils.rerender(
+      provide(<TransactionFormScreen route={route} navigation={navigationProp} />),
+    );
 
-  it('keeps the tip when the override write fails', async () => {
-    mockUpsertCategoryOverride.mockRejectedValue(new Error('write failed'));
-    const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
-    setLiveData(HOLDINGS, ROW);
-    const utils = await renderEdit('txn-1');
-    await pickCategory(utils, 'Dining');
-    await fireEvent.press(utils.getByText('Save'));
-    await fireEvent.press(utils.getByRole('button', { name: 'Apply' }));
-
-    await waitFor(() => expect(alert).toHaveBeenCalled());
-    expect(mockDismissTip).not.toHaveBeenCalled();
-    alert.mockRestore();
-  });
-
-  it('does not dismiss the tip on "Just for this one"', async () => {
-    setLiveData(HOLDINGS, ROW);
-    const utils = await renderEdit('txn-1');
-    await pickCategory(utils, 'Dining');
-    await fireEvent.press(utils.getByText('Save'));
-    await fireEvent.press(utils.getByText('Just for this one'));
-
-    await waitFor(() => expect(mockSetCategory).toHaveBeenCalled());
-    await waitFor(() => expect(navigation.goBack).toHaveBeenCalled());
-    expect(mockDismissTip).not.toHaveBeenCalled();
+    expect(utils.getByLabelText('To')).toHaveTextContent('Select holding');
   });
 });

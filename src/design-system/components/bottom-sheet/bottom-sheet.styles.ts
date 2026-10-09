@@ -257,10 +257,9 @@ export const styles = StyleSheet.create((theme) => ({
   // separator gray) read almost invisible against the sheet's own dark glass
   // background — both are near-black, so the drag affordance nearly
   // disappeared instead of reading clearly. `textSecondary` (the iOS
-  // secondaryLabel translucency, ~6:1 contrast over true-black per
-  // `docs/design/2026-09-10-ios-hig-audit.md`'s "Secondary text contrast"
-  // finding) is the same lighter gray `ChipRow`'s unselected label already
-  // uses for a legible-but-subordinate tone, so the pill now reads as a clear
+  // secondaryLabel translucency, ~6:1 contrast over true-black per the iOS HIG audit's
+  // "Secondary text contrast" finding) is the same lighter gray `ChipRow`'s unselected label
+  // already uses for a legible-but-subordinate tone, so the pill now reads as a clear
   // affordance without competing with the sheet's primary content.
   // `alignSelf: 'center'` keeps it centered because its region does not set
   // `alignItems: 'center'` (so an optional header sibling can stay

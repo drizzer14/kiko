@@ -853,27 +853,20 @@ list has no table to derive a column count from.
 have their own, older, pre-existing chunking — don't assume they use
 `chunkForTable` too; check before touching either.
 
-## Tips and Help
+## Help (the tips are removed)
 
-- Dismissed tips live in `settings.dismissed_tips`, a JSON `string[]`
-  (migration 0055, `src/db/schema.ts`). `settingsRepo.dismissTip` reads
-  and updates inside one `write()` (read-modify-write), keeps ids it does
-  not know, and is a no-op without a settings row; `settingsRepo.resetTips`
-  sets `[]` (Help "Show tips again"). Never a global hide flag.
-- `src/tips/` (`tip-ids.ts`, `pick-tip.ts`, `use-tip.ts`): a tip id is
-  never reused — a removed one moves into `RETIRED_TIP_IDS`.
-  `dismissedTipIds` drops a stored id this build does not know
-  (`isTipId`). `useTip(id, condition)` is `visible` only once the
-  settings query has stopped loading; use one `useTip` per screen
-  (`pickTip` is the one-tip-per-screen place). A dismiss runs through
-  `logOnFailure('[tips] dismiss failed', …)`.
-- A tip condition or empty state that depends on a query must include
-  that query's loading state, the same as the `useDataReady` rule above;
-  otherwise it flashes while the query loads (the import/override-rules
-  tip did).
-- `transactionsRepo.anyQuery` / `anyInAccountQuery` are `LIMIT 1`
-  existence reads (the shape of `remindersRepo.hasAnyQuery`); the query
-  plan is pinned in `transactions.repo.any.test.ts`.
+- The first-use tips were removed by user ruling ("Hints still look bad, let's remove them for
+  now"): no tips feature folder, no `TipCard`, no `settingsRepo.dismissTip` / `resetTips`, and the Help
+  page has no "Show tips again" button. Do not bring a tip or hint back without asking the user.
+- `settings.dismissed_tips` (a JSON `string[]`, migration 0055, `src/db/schema.ts`) is kept but
+  unused: no reader and no writer. Migration 0055 already shipped and migrations are
+  additive-only, so the column stays instead of a new migration dropping it. A backup still
+  carries and restores it (`TAKEN_FROM_FILE_ON_RESTORE` in `src/db/settings-columns.test.ts`,
+  `src/data-transfer/snapshot/restore-dismissed-tips.test.ts`), and
+  `DOCUMENTED_READERLESS_COLUMNS` lists it. A new reader
+  of it needs the user's approval first.
+- Any condition or empty state that depends on a query must include that query's loading
+  state, the same as the `useDataReady` rule above; otherwise it flashes while the query loads.
 - `hasNoAccounts` (`src/holdings/implicit-account/`) drives the
   no-accounts empty state. `openAccountForm`
   (`src/navigation/open-account-form/`) takes
@@ -2292,6 +2285,11 @@ what a change must keep.
 - **Screens.** `ReminderForm` (`src/screens/forms/reminder-form/`,
   params `{ reminderId } | { accountId, kind }`) and `AccountReminders`
   (`src/screens/settings/account-reminders/`, params `{ accountId }`) — `AccountReminders` is registered in the Accounts stack.
+  The Home stack registers `HoldingForm` (`HoldingFormParams`, no `returnTo`) and `AccountForm` as
+  well as the Accounts stack, because leaving the tab resets its stack and would lose the
+  transaction form's draft; both take options from `src/navigation/swapped-form-options/`. A form
+  that stays mounted underneath uses `navigate`, but a `HoldingForm` opening another `HoldingForm`
+  uses `push` (navigate to its own name only changes params).
   `ReminderForm` is registered in BOTH the Accounts and Settings
   stacks, so its props type is structural (`route.params:
   ReminderFormParams` plus the `goBack`/`setOptions` it reads), not

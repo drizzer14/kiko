@@ -4,14 +4,11 @@ import SettingsRow, {
   chevronSize,
   chevronTrailingWhitespace,
 } from '@kiko/screens/settings/settings-row';
-import { settingsRepo } from '@kiko/settings';
 import { useTranslation } from 'react-i18next';
-import { logOnFailure } from '@kiko/diagnostics';
 import Box from '@kiko/design-system/components/box';
 import Text from '@kiko/design-system/components/text';
 import Card from '@kiko/design-system/components/card';
 import Screen from '@kiko/design-system/components/screen';
-import Button from '@kiko/design-system/components/button';
 import Divider from '@kiko/design-system/components/divider';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import type { SettingsStackParamList } from '@kiko/navigation/types';
@@ -41,10 +38,6 @@ const HelpScreen: FC<HelpScreenProps> = ({ navigation }) => {
     marginRight: theme.spacing(3) + chevronTrailingWhitespace(chevronSize(theme), theme),
   };
 
-  const handleShowTipsAgain = async (): Promise<void> => {
-    await logOnFailure('[help] tips reset failed', () => settingsRepo.resetTips());
-  };
-
   return (
     <Screen scroll>
       <Box gap={4}>
@@ -62,14 +55,6 @@ const HelpScreen: FC<HelpScreenProps> = ({ navigation }) => {
             </Fragment>
           ))}
         </Card>
-
-        <Button
-          testID="help-show-tips-again"
-          variant="secondaryTonal"
-          onPress={handleShowTipsAgain}
-        >
-          {t('help.showTipsAgain')}
-        </Button>
 
         <Text variant="caption" tone="textSecondary" style={styles.privacy}>
           {t('help.privacy')}

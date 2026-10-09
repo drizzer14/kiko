@@ -268,6 +268,13 @@ an entry (date + value) the moment the user approves a new visual.
   that sets `headerLargeTitle` itself, spreads that helper rather than
   setting `headerLargeTitle: true` inline. Device-confirm on an iOS 18
   device, not in the simulator or Jest.
+- **Tips were removed by user ruling** (2026-10-09: "Hints still look bad, let's remove them
+  for now"). There is no `TipCard`, `useTip`, or `accentSubtle` token; do not bring back a
+  first-use tip, or its old look (tinted accent fill, lightbulb glyph, close button), without
+  asking the user first. `InfoHint` stays allowed.
+- **EmptyState action is primary + small** (2026-10-08). 34pt tall, 44pt
+  tap via `SMALL_HIT_SLOP`, not full width, never the regular 50pt. Pinned
+  by `empty-state.component.test.tsx`.
 
 ## UX patterns
 
@@ -286,6 +293,9 @@ The established patterns grouped under this heading:
 - The capability-icon transparency principle — its own heading further
   down this file.
 - Field placeholder and error copy — below.
+- Content that APPEARS in response to a press (a banner, a confirmation) is silent to
+  VoiceOver: pair it with `AccessibilityInfo.announceForAccessibility(t(...))` using the same
+  i18n string as the visible text.
 - A filter never hides an active selection: a checkable filter's
   option list is scoped to the current data (e.g. the statistics
   category filter is scoped to the active date range), but a value
@@ -739,7 +749,9 @@ new component can land between reviews of this skill:
   `pasteButtonWrapper`) put the glyph 12pt from the input and 8pt from
   the row's end, while the `small` Button keeps its own 44pt-wide tap
   target (starting exactly at the input's edge, never overlapping it) —
-  the visual spacing shrinks, never the tap target.
+  the visual spacing shrinks, never the tap target. The `FieldError`
+  renders below the whole input/paste row, so the paste glyph stays
+  centered on the input (pinned by `clipboard-text-field.component.test.tsx`).
 - **Card** (`src/design-system/components/card/`) — the shared
   CONTENT-layer surface: a solid, opaque themed fill with a defined
   hairline border, no glass/blur material at all. Every content card,
@@ -1105,23 +1117,18 @@ new component can land between reviews of this skill:
   `textSecondary` symbol, a semibold `body` `textPrimary` title (sentence
   case, no final "."; never the `heading` variant, which would pull its keys
   into `TITLE_KEYS`), a centered `caption` `textSecondary` message (one or
-  two sentences, final "."), then an optional `primary` non-full-width
-  `Button` from `action: { label, icon?, onPress }`. Strings come in as
+  two sentences, final "."), then an optional `primary` `small` (34pt
+  pill, 44pt tap via `SMALL_HIT_SLOP`; user ruling 2026-10-08, the regular 50pt
+  read as disproportionately tall) non-full-width `Button` from `action: { label, icon?, onPress }`. Strings come in as
   props. `testID` gives `<testID>-icon` and `<testID>-action`. Gate it on
-  `useDataReady`, never on `data.length === 0` alone.
-- **TipCard** (`src/design-system/components/tip-card/`) — a one-time,
-  dismissible hint, following the ReminderOfferCard precedent: inline and
-  non-modal, on the plain `Card` (solid `surface`, hairline border, `padding={3}`;
-  NOT `GlassSurface`, whatever "glass card" says elsewhere), never a warning
-  tone. A `body` `textPrimary` message, then a trailing icon-only `ghost`
-  `compact` `xmark` close `Button` (44pt tap) labelled by `closeLabel`. Strings
-  come in as props. **One `useTip` call per screen, from `@kiko/tips`**:
-  `const { visible, dismiss } = useTip(TIP_ID, condition)`, then
-  `{visible && <TipCard onClose={dismiss} … />}`. `useTip` takes one candidate
-  (`id: TipId`, `condition: boolean`); `visible` is `!isLoading && condition &&
-  not dismissed`, so it is false while settings load and follows the caller's
-  condition. Two `useTip` calls on one screen could show two tips (`pickTip` is
-  the single picker), so a screen has one. Never hand-roll the dismissed state.
+  `useDataReady`, never on `data.length === 0` alone. Call sites: Home
+  (`home-empty`), Statistics (`statistics-empty`) and Accounts (`accounts-empty`)
+  fill the screen when there is no account; `AccountDetail`
+  (`account-detail-holdings-empty`) shows it inside the Holdings section, under
+  the kept "Holdings" heading, when the account has no ACTIVE holding (every
+  account kind; closed holdings do not count). Its action is the footer's Add
+  holding, so the footer drops that button while the empty state shows (the
+  Import statement button stays), as Accounts drops its footer.
 - **NotificationPreAlertSheet**
   (`src/design-system/components/notification-pre-alert-sheet/`) — the
   HIG pre-alert shown before the iOS notification prompt. It has ONE
@@ -1345,6 +1352,13 @@ new component can land between reviews of this skill:
   outside `src/screens/`. Enforced by `kiko-no-cross-screen-import`
   (`scripts/checks/screen-imports.js`, the guard and
   `check:screen-imports`).
+- **Empty holding picker.** An EMPTY holding picker (`HoldingSelectField`, `PaymentHoldingField`;
+  prop `onCreateNew`) shows an "Add holding" row (key `forms.fields.addHolding`). Its target comes
+  from `resolveCreateHoldingTarget` (`src/screens/forms/create-holding-target/`): the picker passes
+  `accepts(type)`, an optional `currency`, and `anchorAccountId`; the target is the anchor's own
+  account or the first live account that can create an accepted type, opened on that type/currency,
+  else `AccountForm`. `useSelectCreatedHolding` (`use-select-created-holding.ts`) selects only the
+  holding created between the tap and the return focus (a `createdAt` window), never after a cancel.
 - **CurrencyBreakdown** — a two-column per-currency amount grid (code
   left, formatted `MoneyText` right), filled row-major.
 - **SummaryTable** (`src/design-system/components/summary-table/`) — the

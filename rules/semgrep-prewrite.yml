@@ -325,6 +325,35 @@ rules:
       - pattern-either:
           - pattern-regex: '(?:^(?:[^''"`\n]|''[^''\n]*''|"[^"\n]*"|`[^`\n]*`)*(?<!:)//|(?!\A)\G)[^\n]*?\K\b(?:[Ii]t\sreplaces|[Nn]o\slonger|(?<!\bis\snever\s|\bare\snever\s|\bwas\snever\s|\bwere\snever\s|\bis\s|\bare\s|\bwas\s|\bwere\s|\bbe\s|\bbeen\s|\bbeing\s|\bget\s|\bgets\s|\bgot\s)used\sto|[Pp]reviously)\b'
           - pattern-regex: '(?:^(?:[^''"`\n]|''[^''\n]*''|"[^"\n]*"|`[^`\n]*`)*/\*|(?!\A)\G)(?:(?!\*/)[\s\S])*?\K\b(?:[Ii]t\sreplaces|[Nn]o\slonger|(?<!\bis\snever\s|\bare\snever\s|\bwas\snever\s|\bwere\snever\s|\bis\s|\bare\s|\bwas\s|\bwere\s|\bbe\s|\bbeen\s|\bbeing\s|\bget\s|\bgets\s|\bgot\s)used\sto|[Pp]reviously)\b(?=(?:(?!\*/)[\s\S])*?\*/)'
+  # ERROR: the tree holds 0 findings for this id (the sweep landed with the rule).
+  # See kiko-linter's "kiko-no-history-date-comment" section for the members, the
+  # false-positive classes that kept a bare ISO date out, and the scope.
+  - id: kiko-no-history-date-comment
+    languages: [typescript]
+    severity: ERROR
+    message: >
+      A comment dates a decision, a device finding, or a plan ("user-approved
+      2026-10-08", "Device finding", "(multi-account plan, 2026-09-11)", a
+      dated docs path). kiko-code-style's "Comments: WHY only, never history":
+      a date attached to a ruling, a finding, or a plan is history that belongs
+      in the commit message. Drop the date and keep the WHY; if nothing but the
+      date remains, delete the comment. A date that is data (a fixture day, a
+      DST day, a snapshot's capture day) stays, written as that data.
+    metadata:
+      fix: "Drop the date and the 'Device finding' label and state the reason itself; if nothing but history remains, delete the comment."
+      skill: "kiko-code-style › Comments: WHY only, never history"
+    paths:
+      exclude:
+        - "__tests__/**"
+        - "e2e/**"
+        - "scripts/**"
+        - "harness/**"
+        - "App.tsx"
+        - "drizzle.config.ts"
+    patterns:
+      - pattern-either:
+          - pattern-regex: '(?:^(?:[^''"`\n]|''[^''\n]*''|"[^"\n]*"|`[^`\n]*`)*(?<!:)//|(?!\A)\G)[^\n]*?\K(?:\b(?:[Dd]evice\s[Ff]indings?|(?:[Aa]pproved|[Rr]uled|[Rr]uling|[Dd]ecided|[Cc]onfirmed)\s(?:on\s)?\d{4}-\d{2}-\d{2}|(?:[Pp]lan|[Tt]rack|[Rr]ound|[Rr]uling|[Ff]eedback|[Aa]udit),\s+\d{4}-\d{2}-\d{2}|docs/[\w./-]*?\d{4}-\d{2}-\d{2}(?=-))\b|(?<=\*\s|//\s)\(\d{4}-\d{2}-\d{2}\))'
+          - pattern-regex: '(?:^(?:[^''"`\n]|''[^''\n]*''|"[^"\n]*"|`[^`\n]*`)*/\*|(?!\A)\G)(?:(?!\*/)[\s\S])*?\K(?:\b(?:[Dd]evice\s[Ff]indings?|(?:[Aa]pproved|[Rr]uled|[Rr]uling|[Dd]ecided|[Cc]onfirmed)\s(?:on\s)?\d{4}-\d{2}-\d{2}|(?:[Pp]lan|[Tt]rack|[Rr]ound|[Rr]uling|[Ff]eedback|[Aa]udit),\s+\d{4}-\d{2}-\d{2}|docs/[\w./-]*?\d{4}-\d{2}-\d{2}(?=-))\b|(?<=\*\s|//\s)\(\d{4}-\d{2}-\d{2}\))(?=(?:(?!\*/)[\s\S])*?\*/)'
   # WARNING until the tree holds 0 findings for this id: flip to ERROR when
   # check:security reports 0 for it, after the sweep. See kiko-linter's
   # "kiko-no-task-id-comment" section.
@@ -1123,6 +1152,39 @@ rules:
       - pattern-either:
           - pattern: process.env.TZ = $ZONE
           - pattern: process.env['TZ'] = $ZONE
+  # kiko-translator's "A test sets the language in a hook, never in an `it` body":
+  # a language change inside a test body leaks into every later test when an
+  # assertion throws before the reset. WARNING until the tree holds 0 findings for
+  # this id: flip to ERROR when check:security reports 0 for it, after the sweep. See
+  # kiko-linter's "kiko-no-change-language-in-test-body" section. The
+  # `src/test-support/**` include entry is path-prefixed, so the fixture pair is
+  # NESTED.
+  - id: kiko-no-change-language-in-test-body
+    languages: [typescript]
+    severity: WARNING
+    message: >
+      `changeLanguage(...)` runs inside an `it`/`test` body. When an assertion
+      throws first, the reset after it never runs and the language leaks into
+      every later test. Set the language in a `beforeEach` (inside `act`) and
+      reset it to `en` in an `afterEach` — see kiko-translator's "A test sets
+      the language in a hook, never in an `it` body".
+    metadata:
+      fix: "Move the `changeLanguage` call into a `beforeEach` wrapped in `act`, and reset to `en` in an `afterEach`."
+      skill: "kiko-translator › A test sets the language in a hook, never in an `it` body"
+    paths:
+      include:
+        - "*.test.ts"
+        - "*.test.tsx"
+        - "src/test-support/**"
+    patterns:
+      - pattern: $I18N.changeLanguage(...)
+      - pattern-either:
+          - pattern-inside: it($NAME, ...)
+          - pattern-inside: test($NAME, ...)
+          - pattern-inside: it.$MODIFIER($NAME, ...)
+          - pattern-inside: test.$MODIFIER($NAME, ...)
+          - pattern-inside: it.$MODIFIER(...)($NAME, ...)
+          - pattern-inside: test.$MODIFIER(...)($NAME, ...)
   # kiko-design-system's CardContextMenu: a form has no in-form Delete. An
   # entity is deleted only from its page's touch-and-hold CardContextMenu,
   # which owns the ConfirmSheet, so a form never imports the sheet at all

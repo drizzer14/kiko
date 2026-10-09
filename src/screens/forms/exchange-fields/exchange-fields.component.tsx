@@ -24,6 +24,7 @@ const ExchangeFields: FC<ExchangeFieldsProps> = ({
   destinationOptions,
   destinationHoldingId,
   onSelectDestination,
+  onCreateDestination,
   valueIn,
   onChangeValueIn,
   valueInSuffix,
@@ -62,6 +63,7 @@ const ExchangeFields: FC<ExchangeFieldsProps> = ({
           options={destinationOptions}
           selectedId={destinationHoldingId}
           onSelect={onSelectDestination}
+          onCreateNew={onCreateDestination}
           required
           error={destinationError}
         />

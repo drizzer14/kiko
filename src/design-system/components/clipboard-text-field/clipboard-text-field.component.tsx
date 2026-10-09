@@ -5,6 +5,7 @@ import Clipboard from '@react-native-clipboard/clipboard';
 import Box from '../box';
 import Button from '../button';
 import TextField from '../text-field';
+import FieldError from '../field-error';
 import FieldLabel from '../field-label';
 
 import { styles } from './clipboard-text-field.styles';
@@ -17,18 +18,20 @@ import type { ClipboardTextFieldProps } from './clipboard-text-field.props';
 // paste-icon-only ghost `Button` convention (see `kiko-design-system`) rather
 // than four near-identical hand-rolled copies.
 //
-// The caption renders through `FieldLabel` ABOVE the row, in its OWN
-// `Box gap={1}` (the 4pt gap `TextField` applies between its own label and
-// input), and `TextField` itself renders with NO `label` prop. If `TextField`
-// owned the caption, it would be part of the row's cross-axis box, so any
-// `alignItems`/`alignSelf` on the row would center or bottom-anchor the
-// button against (label + gap + input) together, not the 44pt input box alone
-// — landing the icon visibly off the input's true center. Splitting the
-// caption out removes that ambiguity structurally instead of nudging a
-// numeric offset (a magic-number fragility). The row below the caption is
+// The caption renders through `FieldLabel` ABOVE the row and the validation
+// message through `FieldError` BELOW it, all in this component's OWN
+// `Box gap={1}` (the same 4pt gap `TextField` applies between its own label,
+// input and error), and `TextField` itself renders with NO `label` and NO
+// `error` prop. If `TextField` owned the caption or the error line, it would be
+// part of the row's cross-axis box, so any `alignItems`/`alignSelf` on the row
+// would center or bottom-anchor the button against (label + gap + input +
+// error) together, not the 44pt input box alone — landing the icon visibly off
+// the input's true center (and, on an error, dropping it below the input).
+// Splitting both out removes that ambiguity structurally instead of nudging a
+// numeric offset (a magic-number fragility). The row between them is
 // just [`TextField` (`flex: 1`), the paste button's wrapper `Box`],
 // `alignItems: 'center'` (`styles.inputRow`) — both children are
-// fixed-height boxes with no label inside either, so Yoga centers the
+// fixed-height boxes with nothing else inside either, so Yoga centers the
 // button's own box exactly on the input's box, with no coordinate to get
 // wrong. The wrapper `Box` (`styles.pasteButtonWrapper`) is still required:
 // without it, `Button`'s own `size="small"` sets `alignSelf: 'flex-start'`
@@ -51,6 +54,7 @@ const ClipboardTextField: FC<ClipboardTextFieldProps> = ({
   error,
 }) => {
   const { theme } = useUnistyles();
+  const hasError = error !== undefined && error !== '';
 
   const handlePaste = (): void => {
     // A failed clipboard read leaves the field unchanged, which is the right outcome.
@@ -62,7 +66,7 @@ const ClipboardTextField: FC<ClipboardTextFieldProps> = ({
 
   return (
     <Box gap={1}>
-      <FieldLabel label={label} invalid={error !== undefined && error !== ''} />
+      <FieldLabel label={label} invalid={hasError} />
 
       <Box direction="row" gap={1} style={styles.inputRow}>
         <Box style={styles.tokenFieldColumn}>
@@ -74,7 +78,6 @@ const ClipboardTextField: FC<ClipboardTextFieldProps> = ({
             accessibilityLabel={label}
             autoCapitalize="none"
             autoCorrect={false}
-            error={error}
           />
         </Box>
 
@@ -90,6 +93,8 @@ const ClipboardTextField: FC<ClipboardTextFieldProps> = ({
           />
         </Box>
       </Box>
+
+      {hasError && <FieldError message={error} />}
     </Box>
   );
 };

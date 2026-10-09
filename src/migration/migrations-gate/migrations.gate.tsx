@@ -55,7 +55,7 @@ const applyPersistedLanguage = async (): Promise<void> => {
 
 /**
  * Move the single global Monobank token to a per-account Keychain item, bound to
- * the currently-connected Monobank account (multi-account plan, 2026-09-11). Runs
+ * the currently-connected Monobank account. Runs
  * in the boot chain AFTER `migrateLegacyToken` (which first brings a pre-`kiko`
  * token up to the global item) and BEFORE any per-account token read.
  *
@@ -74,7 +74,7 @@ const migratePerAccountMonobankToken = async (): Promise<void> => {
 
 /**
  * Move the single global Binance credentials to a per-account Keychain item, bound
- * to the currently-connected Binance account (multi-account plan, 2026-09-11). The
+ * to the currently-connected Binance account. The
  * exact counterpart of `migratePerAccountMonobankToken` above: it runs in the boot
  * chain AFTER that Monobank migration and BEFORE any per-account credential read.
  * There is at most one connected Binance account today (the one-connection

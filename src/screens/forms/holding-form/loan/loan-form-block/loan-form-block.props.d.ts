@@ -10,4 +10,6 @@ export type LoanFormBlockProps = {
   // pattern every other picker on this screen follows), not owned by
   // `useLoanFields` itself.
   paymentHoldingOptions: readonly HoldingSelectOption[];
+  // Forwarded to the "Paid from" field's "Add holding" row (see LoanSection).
+  onCreatePaymentHolding?: () => void;
 };

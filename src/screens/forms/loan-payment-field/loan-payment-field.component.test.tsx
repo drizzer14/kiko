@@ -13,6 +13,7 @@ const options: HoldingSelectOption[] = [
     color: '#AA3322',
     currency: 'UAH',
     accountName: 'Debts',
+    createdAt: 0,
   },
 ];
 
