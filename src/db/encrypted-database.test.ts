@@ -4,6 +4,7 @@ import {
   LIVE_PLAINTEXT_DATABASE_NAME,
   openEncryptedDatabase,
 } from './encrypted-database';
+import { DatabaseKeyMissingError } from './database-key-missing-error';
 
 const HEX_KEY = 'cd'.repeat(32);
 const RAW_KEY = `x'${HEX_KEY}'`;
@@ -165,9 +166,71 @@ describe('openEncryptedDatabase', () => {
       await openEncryptedDatabase();
 
       const encryptedOpenIndex = mockOpen.mock.calls.findIndex(
-        ([options]) => options.name === ENCRYPTED_DATABASE_NAME,
+        ([options]) =>
+          options.name === ENCRYPTED_DATABASE_NAME && options.encryptionKey !== undefined,
       );
       expect(orderOf(mockStoreDbKey)).toBeLessThan(orderOf(mockOpen, encryptedOpenIndex));
+    });
+  });
+
+  describe('key lost: no key, existing encrypted file, nothing to migrate', () => {
+    beforeEach(() => {
+      mockFiles.add(ENCRYPTED_DATABASE_NAME);
+    });
+
+    const everyDelete = (): jest.Mock[] => [...mockHandles.values()].map((handle) => handle.delete);
+
+    it('throws the distinct missing-key error', async () => {
+      await expect(openEncryptedDatabase()).rejects.toBeInstanceOf(DatabaseKeyMissingError);
+    });
+
+    it('generates no key, stores no key, and deletes no file', async () => {
+      await expect(openEncryptedDatabase()).rejects.toThrow();
+
+      expect(mockGenerateDbKey).not.toHaveBeenCalled();
+      expect(mockStoreDbKey).not.toHaveBeenCalled();
+
+      for (const deleteMock of everyDelete()) {
+        expect(deleteMock).not.toHaveBeenCalled();
+      }
+      expect(mockFiles.has(ENCRYPTED_DATABASE_NAME)).toBe(true);
+    });
+
+    it('never opens the encrypted file with a key and closes every handle it opened', async () => {
+      await expect(openEncryptedDatabase()).rejects.toThrow();
+
+      expect(mockOpen.mock.calls.some(([options]) => options.encryptionKey !== undefined)).toBe(
+        false,
+      );
+      expect(handleFor(ENCRYPTED_DATABASE_NAME).close).toHaveBeenCalled();
+      expect(handleFor(LIVE_PLAINTEXT_DATABASE_NAME).close).toHaveBeenCalled();
+    });
+
+    it('does not create the encrypted file just to probe for it', async () => {
+      mockFiles.delete(ENCRYPTED_DATABASE_NAME);
+
+      await openEncryptedDatabase();
+
+      const probe = mockOpen.mock.calls.find(
+        ([options]) =>
+          options.name === ENCRYPTED_DATABASE_NAME && options.encryptionKey === undefined,
+      );
+      expect(probe?.[0].failOnCreate).toBe(true);
+    });
+
+    it('opens the existing database on a later launch once the key is readable again', async () => {
+      await expect(openEncryptedDatabase()).rejects.toBeInstanceOf(DatabaseKeyMissingError);
+      mockReadDbKey.mockResolvedValue(HEX_KEY);
+
+      const db = await openEncryptedDatabase();
+
+      expect(db).toBe(handleFor(ENCRYPTED_DATABASE_NAME));
+      expect(mockOpen).toHaveBeenLastCalledWith({
+        name: ENCRYPTED_DATABASE_NAME,
+        encryptionKey: RAW_KEY,
+      });
+      expect(mockStoreDbKey).not.toHaveBeenCalled();
+      expect(handleFor(ENCRYPTED_DATABASE_NAME).delete).not.toHaveBeenCalled();
     });
   });
 

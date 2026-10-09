@@ -2,6 +2,7 @@ import { bifold, eitherSync, isLeft } from 'fnts/either';
 import { type DB, isSQLCipher, open } from '@op-engineering/op-sqlite';
 import { migrateLegacyDatabase } from '@kiko/migration/migrate-legacy-db';
 
+import { DatabaseKeyMissingError } from './database-key-missing-error';
 import { generateDbKey, readDbKey, storeDbKey, toSQLCipherRawKey } from './keys/db-key';
 
 /**
@@ -43,6 +44,14 @@ const openExisting = (name: string): DB | undefined => {
   }
 
   return bifold(attempt);
+};
+
+/** Whether the encrypted file is on disk; opened keyless and closed at once, so nothing is read. */
+const encryptedDatabaseExists = (): boolean => {
+  const existing = openExisting(ENCRYPTED_DATABASE_NAME);
+  existing?.close();
+
+  return existing !== undefined;
 };
 
 /** Deletes a plaintext DB file if it is on disk. No-op when absent. */
@@ -91,25 +100,43 @@ const exportPlaintextInto = async (
  *      key, so the next launch redoes the export from scratch),
  *   3. only then delete the plaintext files (a crash before this leaves stale
  *      plaintext, scrubbed by `removeLeftoverPlaintext` next launch).
+ *
+ * A key is generated only once it is known to be usable. With no plaintext data
+ * to migrate, a new key can only belong to a brand-new database: an encrypted
+ * file already on disk was written under a key the Keychain does not return
+ * now, and a new key would never open it, so launch stops with nothing touched.
  */
-const establishKey = async (keyHex: string): Promise<void> => {
+const establishKey = async (): Promise<string> => {
   const plaintext = migrateLegacyDatabase();
 
   if (userTableCount(plaintext) === 0) {
     plaintext.close();
-    await storeDbKey(keyHex);
+
+    if (encryptedDatabaseExists()) {
+      throw new DatabaseKeyMissingError();
+    }
+
+    const freshKeyHex = generateDbKey();
+    await storeDbKey(freshKeyHex);
     removeLeftoverPlaintext();
 
-    return;
+    return freshKeyHex;
   }
 
-  // A partial target from an interrupted earlier attempt would make the export
-  // fail on duplicate tables — start from a clean file.
+  const keyHex = generateDbKey();
+
+  // The plaintext is deleted only after the key is stored, so populated
+  // plaintext with no key means no key was ever stored for any encrypted file
+  // here: one beside it is a partial or keyless target of an interrupted export
+  // that the plaintext still fully backs. It would also make the export fail on
+  // duplicate tables, so start from a clean file.
   openExisting(ENCRYPTED_DATABASE_NAME)?.delete();
   await exportPlaintextInto(plaintext, encryptedPathBeside(plaintext), toSQLCipherRawKey(keyHex));
   await storeDbKey(keyHex);
   plaintext.close();
   removeLeftoverPlaintext();
+
+  return keyHex;
 };
 
 const resolveDbKey = async (): Promise<string> => {
@@ -121,10 +148,7 @@ const resolveDbKey = async (): Promise<string> => {
     return existingKey;
   }
 
-  const keyHex = generateDbKey();
-  await establishKey(keyHex);
-
-  return keyHex;
+  return establishKey();
 };
 
 /**

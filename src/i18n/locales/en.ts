@@ -1033,6 +1033,8 @@ export const en = {
   // under `common` even though it renders no other chrome.
   migrations: {
     error: 'Migration error: {{message}}',
+    keyMissing:
+      'Kiko cannot read its encryption key, so your data stays locked. Nothing has been changed or deleted. Unlock your device, then close and reopen Kiko.',
     preparing: 'Preparing database…',
   },
   // The shared preview + target-holding screen

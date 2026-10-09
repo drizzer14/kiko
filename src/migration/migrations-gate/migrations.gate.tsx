@@ -1,15 +1,15 @@
-import { match } from 'ts-pattern';
+import { match, P } from 'ts-pattern';
 import { i18n } from '@kiko/i18n/init';
 import { accountsRepo } from '@kiko/accounts';
 import { settingsRepo } from '@kiko/settings';
 import { useTranslation } from 'react-i18next';
 import { logFailure } from '@kiko/diagnostics';
 import Box from '@kiko/design-system/components/box';
-import { initDatabase, runMigrations } from '@kiko/db';
 import Text from '@kiko/design-system/components/text';
 import { migrateLegacyToken } from '@kiko/monobank/token';
 import { type FC, type ReactNode, useEffect, useState } from 'react';
 import { rezoneImportTimes } from '@kiko/statement-import/rezone-import-times';
+import { DatabaseKeyMissingError, initDatabase, runMigrations } from '@kiko/db';
 import { migrateBinanceCredentialToPerAccount } from '@kiko/crypto-sync/binance';
 import { migrateSingleTokenToPerAccount } from '@kiko/monobank/migrate-credential';
 import { upgradeStoredDedupKeys } from '@kiko/statement-import/upgrade-stored-dedup-keys';
@@ -167,6 +167,13 @@ const MigrationsGate: FC<{ children: ReactNode }> = ({ children }) => {
   }, []);
 
   return match(state)
+    .with({ status: 'error', error: P.instanceOf(DatabaseKeyMissingError) }, () => (
+      <Box testID="migrations-gate-error" style={styles.fill}>
+        <Text variant="body" tone="textSecondary">
+          {t('migrations.keyMissing')}
+        </Text>
+      </Box>
+    ))
     .with({ status: 'error' }, (errorState) => (
       <Box testID="migrations-gate-error" style={styles.fill}>
         <Text variant="body" tone="textSecondary">

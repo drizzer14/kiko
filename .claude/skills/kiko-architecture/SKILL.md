@@ -1549,7 +1549,15 @@ the kind of thing that can still change:
   one-time plaintext -> SQLCipher export. Its crash-safety ordering is
   the load-bearing fact: export first, persist the key second, delete
   the plaintext file last — a crash at any point leaves a resumable
-  state rather than data loss.
+  state rather than data loss. A missing Keychain key with an encrypted
+  file already on disk and no plaintext to migrate is never "fresh
+  install": a new key would not open that file and would brick it, so
+  `establishKey` throws `DatabaseKeyMissingError` (generates, stores and
+  deletes nothing) and `MigrationsGate` shows `migrations.keyMissing`;
+  the next launch retries. The only delete of an existing encrypted
+  file is in the populated-plaintext branch: the plaintext is removed
+  only after the key is stored, so plaintext + no key means the
+  encrypted file is a keyless leftover of an interrupted export.
 - `src/db/keys/db-key.ts` — the Keychain-backed SQLCipher key (service
   `'kiko.db.key'`), generated from SQLite's `randomblob()` rather than
   `Math.random` or a WebCrypto call Hermes doesn't have.

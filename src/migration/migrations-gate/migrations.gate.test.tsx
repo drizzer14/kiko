@@ -3,6 +3,7 @@ import { act, render } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
 import { settingsRepo } from '@kiko/settings';
+import { DatabaseKeyMissingError } from '@kiko/db';
 import { darkTheme } from '@kiko/design-system/theme';
 
 import MigrationsGate from './migrations.gate';
@@ -243,6 +244,21 @@ describe('MigrationsGate', () => {
     );
 
     expect(await findByText('Migration error: keychain unavailable')).toBeTruthy();
+    expect(queryByText('ready')).toBeNull();
+    expect(mockRunMigrations).not.toHaveBeenCalled();
+  });
+
+  it('explains a missing database key in plain words, not as a migration error', async () => {
+    mockInitDatabase.mockRejectedValue(new DatabaseKeyMissingError());
+
+    const { findByText, queryByText } = await render(
+      <MigrationsGate>
+        <Text>ready</Text>
+      </MigrationsGate>,
+    );
+
+    expect(await findByText(i18n.t('migrations.keyMissing'))).toBeTruthy();
+    expect(queryByText(/Migration error/)).toBeNull();
     expect(queryByText('ready')).toBeNull();
     expect(mockRunMigrations).not.toHaveBeenCalled();
   });
