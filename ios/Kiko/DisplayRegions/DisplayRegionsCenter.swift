@@ -31,6 +31,8 @@ import os
   // query to decide, because the handler's first call can report `unknown` while a fold is active.
   private var lastHinge: HingeState?
   private var settleTask: Task<Void, Never>?
+  // An angle tick arrived while a settle pair was running, so the pair's reads may all precede it.
+  private var hasTickDuringSettle = false
   private weak var observedWindow: UIWindow?
   private var traitRegistration: UITraitChangeRegistration?
   private var geometryObservation: NSKeyValueObservation?
@@ -305,10 +307,11 @@ import os
   }
 
   // The hinge reports its angle continuously. A change of status reads at once. An angle tick with
-  // the same status only starts the settle reads when none are pending: the division region can
-  // turn active later than the status change, or with no status change at all, and only these
-  // ticks follow it. A pending pair is never restarted, so a stream of ticks cannot postpone the
-  // reads past 1.2 s.
+  // the same status starts the settle reads when none are pending: the division region can turn
+  // active later than the status change, or with no status change at all, and only these ticks
+  // follow it. A pending pair is never restarted, so a stream of ticks cannot postpone its reads
+  // past 1.2 s; a tick that lands inside it is remembered, and the pair's end starts one more, so
+  // the last read always comes at least 1.2 s after the last tick.
   private func hingeDidUpdate(_ hinge: HingeState?, angle: Double?) {
     let status = hinge.map { String($0.status) } ?? "none"
     let angleText = angle.map { String($0) } ?? "none"
@@ -319,6 +322,8 @@ import os
     guard hinge != lastHinge else {
       if settleTask == nil {
         scheduleSettleReads()
+      } else {
+        hasTickDuringSettle = true
       }
 
       return
@@ -338,6 +343,11 @@ import os
 
   private func scheduleSettleReads() {
     settleTask?.cancel()
+    startSettlePair()
+  }
+
+  private func startSettlePair() {
+    hasTickDuringSettle = false
     settleTask = Task { [weak self] in
       let clock = ContinuousClock()
       let start = clock.now
@@ -353,12 +363,16 @@ import os
       }
 
       // A cancelled task was replaced in the same main-actor turn, so only the current one
-      // reaches here uncancelled and clears the slot.
-      guard !Task.isCancelled else {
+      // reaches here uncancelled; it either continues with the next pair or clears the slot.
+      guard !Task.isCancelled, let center = self else {
         return
       }
 
-      self?.settleTask = nil
+      if center.hasTickDuringSettle {
+        center.startSettlePair()
+      } else {
+        center.settleTask = nil
+      }
     }
   }
 

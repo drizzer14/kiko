@@ -2605,16 +2605,18 @@ in memory for the crash history this fixed.
   `closed` and `fullyOpen` read as no fold, any other status including
   `unknown` leaves the region query to decide, and `UIScene.didActivate`
   clears the last status; an angle tick with the same status starts the settle
-  reads only when none are pending and never cancels a pending pair, so a tick
-  stream cannot postpone them past 1.2 s), re-reads at 0.3 s and 1.2 s after
+  reads when none are pending and never cancels a pending pair, so a tick
+  stream cannot postpone a pair's reads past 1.2 s; a tick that lands inside a
+  pair sets a flag, and the pair's end starts one more, so the last read comes
+  at least 1.2 s after the last tick), re-reads at 0.3 s and 1.2 s after
   every trigger because the reserved region lands after the trigger and nothing
-  reports it, emits under
-  the emitter lock so no emit outlives `removeChangeEmitter`, and logs
-  `os.Logger` `.debug` lines (category `DisplayRegions`; read them with
-  `log stream --level debug`): one per emit, one per read
-  (`read source=… changed=…`), one per hinge update (status and angle). The JS
-  wrapper reads native once, keeps its cache current from `onChange`, and
-  falls back to `FALLBACK_SNAPSHOT` when the module is missing.
+  reports it, emits under the emitter lock so no emit outlives
+  `removeChangeEmitter`, and logs `os.Logger` `.debug` lines (category
+  `DisplayRegions`; read them with `log stream --level debug`): one per emit,
+  one per read (`read source=… changed=…`), one per hinge update (status and
+  angle). The JS wrapper reads native once, keeps its cache current from
+  `onChange`, and falls back to `FALLBACK_SNAPSHOT` when the module is
+  missing.
 - **`KikoReminders` also carries the one non-reminder read:
   `uses24HourClock()`.** A SYNCHRONOUS method (spec
   `src/native-specs/NativeKikoReminders.ts`, `- (NSNumber *)uses24HourClock` in
