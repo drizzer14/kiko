@@ -245,7 +245,6 @@ export const PaneRouter = ({
     }
 
     const routes = state.routes.filter((route) => !closing.includes(route));
-
     const closed: PaneStackState = { ...state, routes, index: routes.length - 1, panes };
 
     return settle(closed, state);
