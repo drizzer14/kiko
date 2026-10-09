@@ -1961,6 +1961,36 @@ describe('HomeScreen', () => {
       expect(header.alignSelf).toBe('center');
     });
 
+    // The sync caption and bar sit between the header and the list; left uncapped they would span
+    // the whole pane and stick out past the capped header card above them.
+    describe('the sync progress bar', () => {
+      const barCapOf = (view: Awaited<ReturnType<typeof render>>) =>
+        StyleSheet.flatten(view.getByTestId('sync-progress-bar').parent?.props.style);
+
+      beforeEach(() => {
+        mockUseSyncStatus.mockReturnValue(true);
+        mockUseSyncProgress.mockReturnValue({ completed: 1, total: 3 });
+      });
+
+      it('is capped and centred like the header above the list', async () => {
+        const cap = barCapOf(await renderInPane('rows', 'primary'));
+
+        expect(cap.maxWidth).toBe(darkTheme.layout.paneMaxWidth);
+        expect(cap.alignSelf).toBe('center');
+      });
+
+      it('is capped and centred while the screen loads', async () => {
+        setLiveData({ isLoading: { accounts: true } });
+        const cap = barCapOf(await renderInPane('rows', 'primary'));
+
+        expect(cap.maxWidth).toBe(darkTheme.layout.paneMaxWidth);
+      });
+
+      it('is not capped outside a pane', async () => {
+        expect(barCapOf(await renderHome())?.maxWidth).toBeUndefined();
+      });
+    });
+
     it('leaves the screen root the whole pane', async () => {
       const view = await renderInPane('rows', 'primary');
       const root = StyleSheet.flatten(view.getByTestId('home-content').parent?.props.style);
