@@ -3,9 +3,9 @@ import { ScrollView, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { styles } from './screen.styles';
-import { usePaneScreen } from './use-pane-screen';
 import type { ScreenProps } from './screen.props';
 import { useBottomClearance } from './use-bottom-clearance';
+import { useContentCap, usePaneScreen } from './use-pane-screen';
 
 const Screen: FC<ScreenProps> = ({
   children,
@@ -43,7 +43,8 @@ const Screen: FC<ScreenProps> = ({
   // too: it also gives a pane that is not at the window's bottom no clearance,
   // since no tab bar is over it.
   const bottomClearance = useBottomClearance();
-  const { contentCap, plainEdges, largeTitleEdges } = usePaneScreen();
+  const contentCap = useContentCap();
+  const { plainEdges, largeTitleEdges } = usePaneScreen();
   // The plain branch's `content` reserves the clearance itself only when it is
   // both the screen's true bottom edge AND has nothing else claiming that job:
   // a `footer` (pinned below it, see the plain-branch return) or a
@@ -111,7 +112,7 @@ const Screen: FC<ScreenProps> = ({
           {children}
         </ScrollView>
         {footer ? (
-          <View testID="screen-footer" style={styles.footer(bottomClearance)}>
+          <View testID="screen-footer" style={[styles.footer(bottomClearance), contentCap]}>
             {footer}
           </View>
         ) : null}
@@ -135,7 +136,7 @@ const Screen: FC<ScreenProps> = ({
   // owns ALL of its own padding — top (via `contentInsetAdjustmentBehavior`
   // "automatic" + its own content-container top padding), horizontal, AND the
   // floating tab-bar bottom clearance (the same `bleedBottom` contract Home's
-  // list follows, via `resolveBottomClearance`). The top safe-area edge is
+  // list follows, via `useBottomClearance()`). The top safe-area edge is
   // dropped here for the same reason the scroll branch drops it: the large-title
   // header owns the top inset. A `footer` still sits pinned below the child as a
   // sibling, with its own clearance, exactly as in the other two branches.
@@ -144,7 +145,7 @@ const Screen: FC<ScreenProps> = ({
       <SafeAreaView edges={largeTitleEdges} style={styles.safeArea}>
         {children}
         {footer ? (
-          <View testID="screen-footer" style={styles.footer(bottomClearance)}>
+          <View testID="screen-footer" style={[styles.footer(bottomClearance), contentCap]}>
             {footer}
           </View>
         ) : null}

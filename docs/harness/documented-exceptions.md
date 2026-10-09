@@ -822,8 +822,7 @@ verified usage, not dead weight:
   importing `resolveBottomClearance` (or its `bottom-clearance` module) so a
   `bleedBottom`/`bleedTop` child takes the pane-aware `useBottomClearance()`
   instead. The Screen folder is the one place that may: `use-bottom-clearance.ts`
-  and `screen.component.tsx` import the function, and `bottom-clearance.test.ts`
-  tests it. A whole-folder exclude is right here because every file in it is
+  imports the function, and `bottom-clearance.test.ts` tests it. A whole-folder exclude is right here because every file in it is
   part of the sink; the rule still reaches every consumer (Home, HoldingDetail).
 
 - **`sf-symbols-typescript` — a transitive package read by path in a test,

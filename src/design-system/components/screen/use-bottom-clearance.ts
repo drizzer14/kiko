@@ -1,9 +1,9 @@
 import { useWindowDimensions } from 'react-native';
 import { useVerticalBarEdge } from '@kiko/display-regions';
 import { useBottomTabBarHeight } from 'react-native-bottom-tabs';
+import { usePaneContext } from '@kiko/design-system/pane-context';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { usePaneScreen } from './use-pane-screen';
 import { resolveBottomClearance } from './bottom-clearance';
 
 /**
@@ -17,9 +17,9 @@ export const useBottomClearance = (): number => {
   const insets = useSafeAreaInsets();
   const windowHeight = useWindowDimensions().height;
   const verticalBarEdge = useVerticalBarEdge();
-  const { bottomClearanceFor } = usePaneScreen();
+  const isAwayFromWindowBottom = usePaneContext()?.edges.bottom === false;
 
-  return bottomClearanceFor(
-    resolveBottomClearance(tabBarHeight, insets.bottom, verticalBarEdge, windowHeight),
-  );
+  return isAwayFromWindowBottom
+    ? 0
+    : resolveBottomClearance(tabBarHeight, insets.bottom, verticalBarEdge, windowHeight);
 };

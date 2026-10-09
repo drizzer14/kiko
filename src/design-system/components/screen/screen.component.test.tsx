@@ -561,6 +561,29 @@ describe('Screen', () => {
       expect(root.alignSelf).toBeUndefined();
     });
 
+    it.each([
+      ['scroll', { scroll: true }],
+      ['bleedTop', { bleedTop: true }],
+    ] as const)(
+      'caps and centres the footer of the %s branch like its content',
+      async (_name, props) => {
+        const view = await renderInPane({ ...props, footer: footerNode }, 'rows', 'primary');
+        const footer = StyleSheet.flatten(view.getByTestId(FOOTER_TEST_ID).props.style);
+
+        expect(footer.maxWidth).toBe(darkTheme.layout.paneMaxWidth);
+        expect(footer.width).toBe('100%');
+        expect(footer.alignSelf).toBe('center');
+      },
+    );
+
+    it('caps the footer of the plain branch through its root', async () => {
+      const view = await renderInPane({ footer: footerNode }, 'rows', 'primary');
+      const root = StyleSheet.flatten(rootOf(view, {})?.props.style);
+
+      expect(view.getByTestId(FOOTER_TEST_ID).parent).toBe(rootOf(view, {}));
+      expect(root.maxWidth).toBe(darkTheme.layout.paneMaxWidth);
+    });
+
     it.each(BRANCHES)('does not cap the %s branch outside a pane', async (_name, props) => {
       const view = await renderScreen(props);
       const root = StyleSheet.flatten(rootOf(view, props)?.props.style);
