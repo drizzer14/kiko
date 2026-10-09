@@ -1564,8 +1564,18 @@ the kind of thing that can still change:
   removed only after the key is stored, and with the probe above it can
   be populated again only by an interrupted export, so a populated
   `kiko.db` + no key means the file beside it is a keyless leftover.
-  With a key present, the key must open the encrypted file (first read)
-  before any plaintext residue is deleted.
+  With a key present and the encrypted file on disk, the key must open
+  that file (first read, opened with `failOnCreate` so the proof can
+  never create an empty keyed file) before any plaintext residue is
+  deleted; a failure's message carries the cause's own message, because
+  `MigrationsGate` shows only `error.message`. With a key present and
+  the encrypted file GONE (for example a backup restored over the app),
+  the first-launch build path runs under the EXISTING key
+  (`buildEncryptedDatabase(storedKey)`): `migrateLegacyDatabase()`, then
+  a populated `kiko.db` is exported into a new encrypted file and the
+  copy is verified (the key opens it and it holds tables) before the
+  plaintext is deleted, while an empty one yields a fresh encrypted
+  database; the key is never stored again.
 - `src/db/keys/db-key.ts` — the Keychain-backed SQLCipher key (service
   `'kiko.db.key'`), generated from SQLite's `randomblob()` rather than
   `Math.random` or a WebCrypto call Hermes doesn't have.

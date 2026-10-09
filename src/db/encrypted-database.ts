@@ -80,20 +80,41 @@ const liveDatabaseHasUserTables = (): boolean => {
   return (bifoldr(counted) ?? 0) > 0;
 };
 
+const messageOf = (cause: unknown): string =>
+  cause instanceof Error ? cause.message : String(cause);
+
 /**
- * Proves the Keychain key opens the encrypted file (a wrong key fails on the first read) before
- * anything irreversible happens, so a key that does not match keeps the plaintext residue.
+ * Proves the key opens the existing encrypted file (a wrong key fails on the first read) before
+ * anything irreversible happens, so a key that does not match keeps the plaintext residue, and
+ * returns the file's user table count. `failOnCreate` keeps the proof from creating an empty keyed
+ * file where none exists, which would pass and let the plaintext be deleted. The failure message
+ * carries the cause's own message, since the launch gate shows only that.
  */
-const assertKeyOpensEncryptedFile = (keyHex: string): void => {
-  const probe = open({ name: ENCRYPTED_DATABASE_NAME, encryptionKey: toSQLCipherRawKey(keyHex) });
-  const proof = eitherSync<unknown, number>(() => userTableCount(probe));
-  probe.close();
+const assertKeyOpensEncryptedFile = (keyHex: string): number => {
+  const proof = eitherSync<unknown, number>(() => {
+    const probe = open({
+      name: ENCRYPTED_DATABASE_NAME,
+      encryptionKey: toSQLCipherRawKey(keyHex),
+      failOnCreate: true,
+    });
+
+    try {
+      return userTableCount(probe);
+    } finally {
+      probe.close();
+    }
+  });
 
   if (isLeft(proof)) {
-    throw new Error('The stored database key does not open the encrypted database', {
-      cause: bifold(proof),
-    });
+    const cause = bifold(proof);
+
+    throw new Error(
+      `The stored database key does not open the encrypted database: ${messageOf(cause)}`,
+      { cause },
+    );
   }
+
+  return bifold(proof);
 };
 
 /** Deletes a plaintext DB file if it is on disk. No-op when absent. */
@@ -133,65 +154,94 @@ const exportPlaintextInto = async (
   await plaintext.execute(`DETACH DATABASE ${ATTACHED_ALIAS}`);
 };
 
+/** An export that left a keyed file with no tables did not copy the data: the plaintext stays. */
+const assertExportHoldsTables = (keyHex: string): void => {
+  if (assertKeyOpensEncryptedFile(keyHex) === 0) {
+    throw new Error('The encrypted copy holds no tables; the plaintext database was kept');
+  }
+};
+
+/** A key that already sits in the Keychain is never stored again. */
+const persistNewKey = async (keyHex: string, storedKey: string | undefined): Promise<void> => {
+  if (storedKey === undefined) {
+    await storeDbKey(keyHex);
+  }
+};
+
 /**
- * First launch with no key. `migrateLegacyDatabase()` canonicalizes any
- * surviving pre-rename `pff.db` into `kiko.db` (idempotent) and returns the
- * live plaintext connection. Ordering below is the crash-safety contract:
+ * Exports the plaintext into a keyed encrypted file, or creates a fresh one when there is nothing
+ * to export. `migrateLegacyDatabase()` canonicalizes any surviving pre-rename `pff.db` into
+ * `kiko.db` (idempotent) and returns the live plaintext connection. Ordering below is the
+ * crash-safety contract:
  *   1. export the plaintext into a fresh encrypted copy,
- *   2. only then persist the key (a crash before this leaves plaintext + no
+ *   2. verify the key opens the copy and it holds tables,
+ *   3. only then persist a NEW key (a crash before this leaves plaintext + no
  *      key, so the next launch redoes the export from scratch),
- *   3. only then delete the plaintext files (a crash before this leaves stale
+ *   4. only then delete the plaintext files (a crash before this leaves stale
  *      plaintext, scrubbed by `removeLeftoverPlaintext` next launch).
  *
- * A key is generated only once it is known to be usable. An encrypted file on
- * disk with no populated kiko.db beside it was written under a key the Keychain
- * does not return, and a new key would never open it, so launch stops before
- * `migrateLegacyDatabase()` runs: that call would rebuild a populated kiko.db
- * from a surviving pff.db and hide the missing key.
+ * `storedKey` is the Keychain key when it survived while the encrypted file did not (for example
+ * an old backup restored over the app): the plaintext is then exported under that same key, and
+ * is deleted only after the copy is verified.
  */
-const establishKey = async (): Promise<string> => {
-  if ((await encryptedDatabaseExists()) && !liveDatabaseHasUserTables()) {
-    throw new DatabaseKeyMissingError();
-  }
-
+const buildEncryptedDatabase = async (storedKey: string | undefined): Promise<string> => {
   const plaintext = migrateLegacyDatabase();
+  const keyHex = storedKey ?? generateDbKey();
 
   if (userTableCount(plaintext) === 0) {
     plaintext.close();
-    const freshKeyHex = generateDbKey();
-    await storeDbKey(freshKeyHex);
+    await persistNewKey(keyHex, storedKey);
     removeLeftoverPlaintext();
 
-    return freshKeyHex;
+    return keyHex;
   }
 
-  const keyHex = generateDbKey();
-
-  // Reached with an encrypted file present only when kiko.db is populated. kiko.db
-  // is deleted only after the key is stored, so a populated kiko.db with no key
-  // means the file beside it was never keyed for good: a partial or keyless target
-  // of an interrupted export, which kiko.db still fully backs. It would also make
-  // the export fail on duplicate tables, so start from a clean file.
+  // With no stored key, an encrypted file is present here only when kiko.db is
+  // populated. kiko.db is deleted only after the key is stored, so a populated
+  // kiko.db with no key means the file beside it was never keyed for good: a
+  // partial or keyless target of an interrupted export, which kiko.db still fully
+  // backs. It would also make the export fail on duplicate tables, so start from
+  // a clean file.
   openExisting(ENCRYPTED_DATABASE_NAME)?.delete();
   await exportPlaintextInto(plaintext, encryptedPathBeside(plaintext), toSQLCipherRawKey(keyHex));
-  await storeDbKey(keyHex);
+  assertExportHoldsTables(keyHex);
+  await persistNewKey(keyHex, storedKey);
   plaintext.close();
   removeLeftoverPlaintext();
 
   return keyHex;
 };
 
+/**
+ * First launch with no key. A key is generated only once it is known to be usable. An encrypted
+ * file on disk with no populated kiko.db beside it was written under a key the Keychain does not
+ * return, and a new key would never open it, so launch stops before `migrateLegacyDatabase()`
+ * runs: that call would rebuild a populated kiko.db from a surviving pff.db and hide the missing
+ * key.
+ */
+const establishKey = async (): Promise<string> => {
+  if ((await encryptedDatabaseExists()) && !liveDatabaseHasUserTables()) {
+    throw new DatabaseKeyMissingError();
+  }
+
+  return buildEncryptedDatabase(undefined);
+};
+
 const resolveDbKey = async (): Promise<string> => {
   const existingKey = await readDbKey();
 
-  if (existingKey !== undefined) {
-    assertKeyOpensEncryptedFile(existingKey);
-    removeLeftoverPlaintext();
-
-    return existingKey;
+  if (existingKey === undefined) {
+    return establishKey();
   }
 
-  return establishKey();
+  if (!(await encryptedDatabaseExists())) {
+    return buildEncryptedDatabase(existingKey);
+  }
+
+  assertKeyOpensEncryptedFile(existingKey);
+  removeLeftoverPlaintext();
+
+  return existingKey;
 };
 
 /**
