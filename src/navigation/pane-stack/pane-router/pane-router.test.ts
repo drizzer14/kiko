@@ -7,6 +7,8 @@ import { PaneActions, PaneRouter, type PaneRouterAction, type PaneStackState } f
 const ROUTE_NAMES = [
   'Accounts',
   'AccountDetail',
+  'AccountsEmptyPane',
+  'AccountForm',
   'HoldingForm',
   'Statement',
   'Home',
@@ -652,6 +654,58 @@ describe('PaneRouter', () => {
 
         expect(
           router.getStateForAction(shown, from(keyOf(shown, 'AccountDetail'), action), CONFIG),
+        ).toBe(shown);
+      });
+    });
+
+    // [Accounts(c), AccountsEmptyPane(p, default)]: a placeholder stands for "nothing to show", so
+    // acting on it must not turn it into a page the pane keeps once the content exists.
+    describe('from a default that is a placeholder', () => {
+      const withPlaceholder = (): PaneStackState =>
+        run(initial(), PaneActions.showDefault('primary', 'AccountsEmptyPane', undefined, true));
+
+      const withForm = (): PaneStackState => {
+        const shown = withPlaceholder();
+
+        return run(
+          shown,
+          from(keyOf(shown, 'AccountsEmptyPane'), CommonActions.navigate('AccountForm')),
+        );
+      };
+
+      it('opens a navigate opposite it and keeps it a default', () => {
+        const form = withForm();
+
+        expect(names(form)).toEqual(['Accounts', 'AccountsEmptyPane', 'AccountForm']);
+        expect(form.routes[1].isDefault).toBe(true);
+        expect(paneNames(form, 'companion')).toEqual(['Accounts', 'AccountForm']);
+        expect(paneNames(form, 'primary')).toEqual(['AccountsEmptyPane']);
+      });
+
+      it('is dropped by a fold, so nothing is left behind it', () => {
+        expect(names(run(withForm(), PaneActions.fold()))).toEqual(['Accounts', 'AccountForm']);
+      });
+
+      it('is replaced by the default that content brings', () => {
+        const saved = run(withForm(), CommonActions.goBack());
+        const filled = run(
+          saved,
+          PaneActions.showDefault('primary', 'AccountDetail', { accountId: 'first' }),
+        );
+
+        expect(names(filled)).toEqual(['Accounts', 'AccountDetail']);
+        expect(filled.routes[1].isDefault).toBe(true);
+      });
+
+      it('does nothing on go back', () => {
+        const shown = withPlaceholder();
+
+        expect(
+          router.getStateForAction(
+            shown,
+            from(keyOf(shown, 'AccountsEmptyPane'), CommonActions.goBack()),
+            CONFIG,
+          ),
         ).toBe(shown);
       });
     });

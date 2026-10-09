@@ -9,6 +9,9 @@ export type RouteLike = {
   params?: Readonly<object | undefined>;
   // A route a pane shows only because nothing was tapped there. Folding drops it.
   isDefault?: boolean;
+  // A default that only says there is nothing to show yet. Opening a screen from it leaves it a
+  // default, so it is replaced once there is something to show and a fold drops it.
+  isPlaceholder?: boolean;
 };
 
 // What an empty pane shows: a screen the user did not tap.

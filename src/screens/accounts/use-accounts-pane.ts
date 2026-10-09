@@ -11,7 +11,9 @@ import type { AccountRow, HoldingRow } from '@kiko/db';
 import { usePaneContext } from '@kiko/design-system/pane-context';
 import { accountDisplayName } from '@kiko/holdings/implicit-account';
 
-type PaneDefault = { name: string; params: object | undefined };
+// The empty pane is a placeholder: opening the account form from it must not make it a page the
+// pane keeps once the new account exists.
+type PaneDefault = { name: string; params: object | undefined; isPlaceholder: boolean };
 
 type AccountsPaneInput = {
   isReady: boolean;
@@ -92,7 +94,7 @@ export const useAccountsPane = ({
   const paneDefault = useMemo<PaneDefault | undefined>(
     () =>
       isEmpty
-        ? { name: 'AccountsEmptyPane', params: undefined }
+        ? { name: 'AccountsEmptyPane', params: undefined, isPlaceholder: true }
         : foldMap(maybe(firstAccount), (account) => ({
             name: 'AccountDetail',
             params: {
@@ -100,6 +102,7 @@ export const useAccountsPane = ({
               name: accountDisplayName(account, t),
               kind: account.kind,
             },
+            isPlaceholder: false,
           })),
     [isEmpty, firstAccount, t],
   );
@@ -125,7 +128,7 @@ export const useAccountsPane = ({
 
   useEffect(() => {
     if (needsDefault && paneDefault !== undefined) {
-      showPaneDefault('primary', paneDefault.name, paneDefault.params);
+      showPaneDefault('primary', paneDefault.name, paneDefault.params, paneDefault.isPlaceholder);
     }
   }, [needsDefault, paneDefault, showPaneDefault]);
 

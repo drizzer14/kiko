@@ -435,17 +435,85 @@ describe('the Accounts tab with a runtime default in its primary pane', () => {
       expect(accountsRoutes().map(({ name }) => name)).toEqual(['Accounts', 'AccountDetail']);
     });
 
-    it('opens the account form from the empty pane in the companion pane', async () => {
-      const { getByTestId } = await walkTabs();
-      await goTo('AccountsTab');
-      await fireEvent.press(within(getByTestId('accounts-empty-pane')).getByText('Add account'));
+    // The empty pane only says there is no account yet, so acting on it leaves it a default: it is
+    // replaced once an account exists, and a fold drops it.
+    describe('the empty pane', () => {
+      const openAccountForm = async () => {
+        const rendered = await walkTabs();
+        await goTo('AccountsTab');
+        await fireEvent.press(
+          within(rendered.getByTestId('accounts-empty-pane')).getByText('Add account'),
+        );
 
-      expect(accountsRoutes().map(({ name, isDefault }) => [name, isDefault])).toEqual([
-        ['Accounts', undefined],
-        ['AccountsEmptyPane', undefined],
-        ['AccountForm', undefined],
-      ]);
-      expect(paneOf('AccountForm')).toBe('companion');
+        return rendered;
+      };
+
+      // What the account form does when it closes: the list reads the new row, then the form goes.
+      const closeAccountForm = async (saved: boolean) => {
+        if (saved) {
+          mockRows = { accounts: [accountRow('a', 'Monobank', 'bank')] };
+          await act(async () => {
+            mockWrite('accounts');
+          });
+        }
+
+        await act(async () => {
+          navigationRef.goBack();
+        });
+      };
+
+      it('opens the account form in the companion pane and stays the primary default', async () => {
+        await openAccountForm();
+
+        expect(accountsRoutes().map(({ name, isDefault }) => [name, isDefault])).toEqual([
+          ['Accounts', undefined],
+          ['AccountsEmptyPane', true],
+          ['AccountForm', undefined],
+        ]);
+        expect(paneOf('AccountForm')).toBe('companion');
+        expect(paneOf('AccountsEmptyPane')).toBe('primary');
+      });
+
+      it('gives way to the page of the new account, and marks its row, once it is saved', async () => {
+        const { getAllByRole } = await openAccountForm();
+
+        await closeAccountForm(true);
+
+        expect(accountsRoutes().map(({ name, isDefault }) => [name, isDefault])).toEqual([
+          ['Accounts', undefined],
+          ['AccountDetail', true],
+        ]);
+        expect(accountsRoutes().at(-1)?.params).toMatchObject({ accountId: 'a' });
+
+        const selected = getAllByRole('button').filter(
+          (row) => row.props.accessibilityState?.selected === true,
+        );
+
+        expect(selected).toHaveLength(1);
+        expect(within(selected[0]).getByText('Monobank')).toBeTruthy();
+      });
+
+      // This walk stays on a wide window, so only the fold itself is looked at: the list would
+      // fill the pane again as soon as the form closes.
+      it('is dropped by a fold, so Back from the form cannot lead to it', async () => {
+        await openAccountForm();
+
+        await act(async () => {
+          navigationRef.dispatch({ type: 'PANE_FOLD' });
+        });
+
+        expect(accountsRoutes().map(({ name }) => name)).toEqual(['Accounts', 'AccountForm']);
+      });
+
+      it('shows the empty pane again when the form is cancelled', async () => {
+        await openAccountForm();
+        await closeAccountForm(false);
+
+        expect(accountsRoutes().map(({ name, isDefault }) => [name, isDefault])).toEqual([
+          ['Accounts', undefined],
+          ['AccountsEmptyPane', true],
+        ]);
+      });
     });
   });
 
@@ -534,6 +602,46 @@ describe('the Accounts tab with a runtime default in its primary pane', () => {
         ['Accounts', undefined],
         ['AccountsEmptyPane', true],
       ]);
+    });
+
+    // The holding page opens in the companion pane, over the list, while the account page that has
+    // the holding's card stays in the primary pane; the card's menu deletes the holding there. The
+    // write is what that delete does, since the native menu cannot be driven from here.
+    it('closes a holding page in the companion pane when the account page deletes its holding', async () => {
+      const account = accountRow('a', 'Monobank', 'bank');
+      const wallet = {
+        id: 'h1',
+        name: 'Wallet',
+        icon: null,
+        color: null,
+        accountId: 'a',
+        currency: 'UAH',
+        balanceMinorUnits: 0,
+        type: 'cash',
+        closedAt: null,
+        metadata: null,
+      };
+
+      mockRows = { accounts: [account], holdings: [wallet] };
+      const { getByTestId } = await walkTabs();
+      await goTo('AccountsTab');
+      await fireEvent.press(within(getByTestId('accounts-grid')).getByText('Monobank'));
+      await fireEvent.press(within(getByTestId('holdings-grid')).getByText('Wallet'));
+
+      expect(accountsRoutes().map(({ name }) => name)).toEqual([
+        'Accounts',
+        'AccountDetail',
+        'HoldingDetail',
+      ]);
+      expect(paneOf('AccountDetail')).toBe('primary');
+
+      mockRows = { accounts: [account], holdings: [] };
+      await act(async () => {
+        mockWrite('holdings');
+      });
+
+      expect(accountsRoutes().map(({ name }) => name)).toEqual(['Accounts', 'AccountDetail']);
+      expect(paneOf('AccountDetail')).toBe('primary');
     });
 
     it('returns the pane to its default when a tapped holding is deleted', async () => {

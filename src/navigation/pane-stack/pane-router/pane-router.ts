@@ -37,7 +37,7 @@ export type PaneActionType =
   | { type: 'PANE_UNFOLD'; source?: string; target?: string }
   | {
       type: 'PANE_SHOW_DEFAULT';
-      payload: { pane: Pane; route: PaneRoute };
+      payload: { pane: Pane; route: PaneRoute; isPlaceholder: boolean };
       source?: string;
       target?: string;
     }
@@ -48,14 +48,20 @@ export const PaneActions = {
     ({ type: 'PANE_OPEN', payload: { openerKey, route: { name, params } } }) as const,
   fold: () => ({ type: 'PANE_FOLD' }) as const,
   unfold: () => ({ type: 'PANE_UNFOLD' }) as const,
-  showDefault: (pane: Pane, name: string, params?: object) =>
-    ({ type: 'PANE_SHOW_DEFAULT', payload: { pane, route: { name, params } } }) as const,
+  showDefault: (pane: Pane, name: string, params?: object, isPlaceholder = false) =>
+    ({
+      type: 'PANE_SHOW_DEFAULT',
+      payload: { pane, route: { name, params }, isPlaceholder },
+    }) as const,
   close: (routeKey: string) => ({ type: 'PANE_CLOSE', payload: { routeKey } }) as const,
 } satisfies Record<string, (...args: never[]) => PaneActionType>;
 
 type StackState = StackNavigationState<ParamListBase>;
 
-export type PaneStackRoute = StackState['routes'][number] & { isDefault?: boolean };
+export type PaneStackRoute = StackState['routes'][number] & {
+  isDefault?: boolean;
+  isPlaceholder?: boolean;
+};
 
 export type PaneStackState = Omit<StackState, 'routes'> & {
   routes: PaneStackRoute[];
@@ -66,7 +72,8 @@ export type PaneStackState = Omit<StackState, 'routes'> & {
 export type PaneRouterOptions = StackRouterOptions & {
   paneConfig: PaneConfig;
   // Whether the navigator shows two panes right now. With one, a covered route sends no action
-  // the user can reach, so the stack router's rules stay as they are.
+  // the user can reach, so the stack router's rules stay as they are, and `PANE_SHOW_DEFAULT`
+  // shows nothing.
   isSplit: () => boolean;
 };
 
@@ -153,19 +160,19 @@ export const PaneRouter = ({
 
   const showDefault = (
     state: PaneStackState,
-    payload: { pane: Pane; route: PaneRoute },
+    payload: { pane: Pane; route: PaneRoute; isPlaceholder: boolean },
     config: RouterConfigOptions,
   ): PaneStackState | null => {
-    const next = created(state, payload.route, config);
-
-    if (next === null) {
-      return null;
-    }
-
     // With one pane there is nothing to fill, and a default would sit on top of what the user
     // opened.
     if (!isSplit()) {
       return state;
+    }
+
+    const next = created(state, payload.route, config);
+
+    if (next === null) {
+      return null;
     }
 
     const panes = unfoldAssignment(state.routes, state.panes, paneConfig);
@@ -177,7 +184,12 @@ export const PaneRouter = ({
     }
 
     const others = state.routes.filter((route) => !inPane.includes(route));
-    const routes = [...others.slice(0, 1), { ...next.route, isDefault: true }, ...others.slice(1)];
+    const shown = {
+      ...next.route,
+      isDefault: true,
+      ...(payload.isPlaceholder ? { isPlaceholder: true } : {}),
+    };
+    const routes = [...others.slice(0, 1), shown, ...others.slice(1)];
 
     return {
       ...next.pushed,
@@ -188,7 +200,8 @@ export const PaneRouter = ({
   };
 
   // Closes one route and no other. A caller may send it after the route has already gone (the
-  // page and the list both notice a deleted entity), which must not close whatever is on top.
+  // page and the list both notice a deleted entity, and a list and a page can both close the same
+  // one), which must not close whatever is on top.
   const close = (
     state: PaneStackState,
     routeKey: string,

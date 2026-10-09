@@ -82,6 +82,7 @@ import {
 } from './holding-detail-spec';
 import ShareChanges from './share-changes';
 import UpcomingPayments from './upcoming-payments';
+import { useCloseWhenGone } from './use-close-when-gone';
 import OversizedSaleNotice from './oversized-sale-notice';
 import LotRowMenu, { type LotActions } from './lot-row-menu';
 import { useBondRegisterTerms } from './use-bond-register-terms';
@@ -748,12 +749,11 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
   // `holdingsRepo` exposes no single-row lookup, so the holding's own
   // currency (needed to render each transaction's signed MoneyText) comes
   // from filtering the full holdings list for this id.
-  const { data: holdings, isLoading: holdingsLoading } = useLiveQuery(
-    holdingsRepo.allQuery(),
-    ['holdings'],
-    true,
-    { cached: true },
-  );
+  const {
+    data: holdings,
+    isLoading: holdingsLoading,
+    isFresh: holdingsFresh,
+  } = useLiveQuery(holdingsRepo.allQuery(), ['holdings'], true, { cached: true });
   const { data: transactions, isLoading: transactionsLoading } = useLiveQuery(
     transactionsRepo.listByHoldingQuery(holdingId),
     ['transactions'],
@@ -803,6 +803,7 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
   const defaultCategoryKey = settingsRows.at(0)?.defaultCategoryKey ?? DEFAULT_CATEGORY_KEY;
 
   const holding = holdings.find((candidate) => candidate.id === holdingId);
+  useCloseWhenGone({ routeKey: route.key, isFresh: holdingsFresh, holding });
   // The loan detail's own "Linked payments" section: the transactions the
   // matcher (or a manual pick) linked to THIS loan, newest first — a loan
   // is ledgerless, so its own `transactions` query above never finds them

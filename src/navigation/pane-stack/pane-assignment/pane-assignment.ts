@@ -80,8 +80,8 @@ export const paneDefault = (config: PaneConfig, pane: Pane): PaneDefault | null 
 /**
  * Opens `next` in the pane opposite to the opener's: every route above the opener is closed first,
  * so a second row replaces the first instead of stacking beside it. An opener that is a default
- * route becomes a real route (the user acted on it). A static default stands in the stack right
- * above the root.
+ * route becomes a real route (the user acted on it), unless it is a placeholder, which stays a
+ * default. A static default stands in the stack right above the root.
  *
  * `panes` must name the opener's pane; an opener it cannot place leaves everything as it was.
  */
@@ -102,7 +102,9 @@ export const openFrom = <Route extends RouteLike>(
   const kept = routes
     .slice(0, Math.max(openerIndex, 0) + 1)
     .filter((route) => route.key !== next.key)
-    .map((route) => (route.key === openerKey ? withoutDefaultFlag(route) : route));
+    .map((route) =>
+      route.key === openerKey && route.isPlaceholder !== true ? withoutDefaultFlag(route) : route,
+    );
 
   return {
     routes: [...kept, next],

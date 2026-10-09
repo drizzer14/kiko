@@ -22,6 +22,23 @@ describe('useShowPaneDefault', () => {
     );
   });
 
+  it('tells the router when the default only stands for there being nothing to show', async () => {
+    const dispatch = jest.fn();
+    const { result } = await renderHook(() => useShowPaneDefault(), {
+      wrapper: ({ children }: { children: ReactNode }) => (
+        <OpenInPaneContext.Provider value={dispatch}>{children}</OpenInPaneContext.Provider>
+      ),
+    });
+
+    result.current('primary', 'AccountsEmptyPane', undefined, true);
+
+    expect(dispatch).toHaveBeenCalledWith(
+      expect.objectContaining({
+        payload: expect.objectContaining({ isPlaceholder: true }),
+      }),
+    );
+  });
+
   it('does nothing outside a pane stack, which has no pane to fill', async () => {
     const { result } = await renderHook(() => useShowPaneDefault());
 

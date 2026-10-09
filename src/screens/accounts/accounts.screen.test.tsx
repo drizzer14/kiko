@@ -2170,7 +2170,12 @@ describe('AccountsScreen — in one of two panes', () => {
       await renderInPane();
 
       expect(mockShowPaneDefault).toHaveBeenCalledTimes(1);
-      expect(mockShowPaneDefault).toHaveBeenCalledWith('primary', 'AccountDetail', MONOBANK_PARAMS);
+      expect(mockShowPaneDefault).toHaveBeenCalledWith(
+        'primary',
+        'AccountDetail',
+        MONOBANK_PARAMS,
+        false,
+      );
     });
 
     it('is the empty pane while there is no account', async () => {
@@ -2179,7 +2184,12 @@ describe('AccountsScreen — in one of two panes', () => {
       await renderInPane();
 
       expect(mockShowPaneDefault).toHaveBeenCalledTimes(1);
-      expect(mockShowPaneDefault).toHaveBeenCalledWith('primary', 'AccountsEmptyPane', undefined);
+      expect(mockShowPaneDefault).toHaveBeenCalledWith(
+        'primary',
+        'AccountsEmptyPane',
+        undefined,
+        true,
+      );
     });
 
     it('is replaced when the first account is no longer the one shown', async () => {
@@ -2191,7 +2201,12 @@ describe('AccountsScreen — in one of two panes', () => {
 
       await renderInPane();
 
-      expect(mockShowPaneDefault).toHaveBeenCalledWith('primary', 'AccountDetail', MONOBANK_PARAMS);
+      expect(mockShowPaneDefault).toHaveBeenCalledWith(
+        'primary',
+        'AccountDetail',
+        MONOBANK_PARAMS,
+        false,
+      );
     });
 
     it('is replaced by the account page once an account exists after the empty pane', async () => {
@@ -2199,7 +2214,12 @@ describe('AccountsScreen — in one of two panes', () => {
 
       await renderInPane();
 
-      expect(mockShowPaneDefault).toHaveBeenCalledWith('primary', 'AccountDetail', MONOBANK_PARAMS);
+      expect(mockShowPaneDefault).toHaveBeenCalledWith(
+        'primary',
+        'AccountDetail',
+        MONOBANK_PARAMS,
+        false,
+      );
     });
 
     it('is not dispatched again once it is the one shown', async () => {
@@ -2259,7 +2279,12 @@ describe('AccountsScreen — in one of two panes', () => {
         await rerender(element());
       });
 
-      expect(mockShowPaneDefault).toHaveBeenCalledWith('primary', 'AccountDetail', MONOBANK_PARAMS);
+      expect(mockShowPaneDefault).toHaveBeenCalledWith(
+        'primary',
+        'AccountDetail',
+        MONOBANK_PARAMS,
+        false,
+      );
     });
 
     it('is never dispatched on one pane', async () => {
@@ -2327,7 +2352,7 @@ describe('AccountsScreen — in one of two panes', () => {
 
     it.each([
       ['a default, which the list replaces on its own', { isDefault: true }],
-      ['another screen', { name: 'AccountsEmptyPane' }],
+      ['another screen', { name: 'HoldingForm' }],
     ])('is not closed for %s', async (_label, over) => {
       mockUsePrimaryPaneRoute.mockReturnValue({
         key: 'page-key',

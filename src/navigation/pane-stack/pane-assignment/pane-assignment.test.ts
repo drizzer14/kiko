@@ -303,6 +303,21 @@ describe('pane assignment', () => {
     });
   });
 
+  it('keeps the isDefault flag of an opener that is a placeholder', () => {
+    const opened = openFrom(
+      [
+        route('accounts'),
+        route('empty', 'AccountsEmptyPane', { isDefault: true, isPlaceholder: true }),
+      ],
+      { accounts: 'companion', empty: 'primary' },
+      'empty',
+      route('form'),
+    );
+
+    expect(opened.routes.map((entry) => entry.isDefault)).toEqual([undefined, true, undefined]);
+    expect(opened.panes.form).toBe('companion');
+  });
+
   it('opens from a route in the middle of the stack by popping everything above it', () => {
     const opened = openFrom(
       [route('accounts'), route('account'), route('form')],
