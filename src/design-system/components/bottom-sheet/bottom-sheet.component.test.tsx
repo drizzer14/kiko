@@ -5,6 +5,7 @@ import { fireEvent, render, within } from '@testing-library/react-native';
 import { fireGestureHandler, getByGestureTestId } from 'react-native-gesture-handler/jest-utils';
 import '@kiko/design-system/unistyles';
 import { darkTheme } from '@kiko/design-system/theme';
+import { ancestorWithStyle } from '@kiko/test-support/ancestor-with-style';
 import type { RenderedElement } from '@kiko/test-support/rendered-element';
 
 import { KEYBOARD_ACCESSORY_HEIGHT } from '../keyboard-done-accessory';
@@ -748,5 +749,93 @@ describe('BottomSheet', () => {
 
       expect(onDismiss).toHaveBeenCalledTimes(1);
     });
+  });
+});
+
+describe('BottomSheet layout styles', () => {
+  const OVERSCAN = 32;
+
+  it('pins the sheet to the bottom of a full-height overlay', async () => {
+    const { getByTestId } = await render(
+      <BottomSheet visible onDismiss={jest.fn()} backdropTestID="sheet-backdrop">
+        <Text>sheet body</Text>
+      </BottomSheet>,
+    );
+
+    const overlayStyle = StyleSheet.flatten(
+      ancestorWithStyle(getByTestId('sheet-backdrop').parent as RenderedElement, 'justifyContent')
+        .props.style,
+    );
+
+    expect(overlayStyle.flex).toBe(1);
+    expect(overlayStyle.justifyContent).toBe('flex-end');
+  });
+
+  it('fills the overlay with an absolutely positioned dismiss scrim', async () => {
+    const { getByTestId } = await render(
+      <BottomSheet visible onDismiss={jest.fn()} backdropTestID="sheet-backdrop">
+        <Text>sheet body</Text>
+      </BottomSheet>,
+    );
+
+    expect(StyleSheet.flatten(getByTestId('sheet-backdrop').props.style)).toEqual({
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+    });
+  });
+
+  it('overscans the scrim fill past every screen edge by a negative offset', async () => {
+    const { getByTestId } = await render(
+      <BottomSheet visible onDismiss={jest.fn()} backdropTestID="sheet-backdrop">
+        <Text>sheet body</Text>
+      </BottomSheet>,
+    );
+
+    const backdropChildren = getByTestId('sheet-backdrop').props.children;
+    const fill = Array.isArray(backdropChildren) ? backdropChildren[0] : backdropChildren;
+    const fillStyle = StyleSheet.flatten(fill.props.style);
+
+    expect(fillStyle.position).toBe('absolute');
+    expect(fillStyle.top).toBe(-OVERSCAN);
+    expect(fillStyle.left).toBe(-OVERSCAN);
+    expect(fillStyle.right).toBe(-OVERSCAN);
+    expect(fillStyle.bottom).toBe(-OVERSCAN);
+  });
+
+  it('draws the grabber as a centered 36x5 rounded pill', async () => {
+    const { getByTestId } = await render(
+      <BottomSheet visible onDismiss={jest.fn()} testID={SHEET_TEST_ID}>
+        <Text>sheet body</Text>
+      </BottomSheet>,
+    );
+
+    const region = getByTestId(`${SHEET_TEST_ID}-grabber`);
+    const pill = [region.props.children].flat()[0];
+
+    expect(StyleSheet.flatten(pill.props.style)).toEqual({
+      alignSelf: 'center',
+      width: 36,
+      height: 5,
+      borderRadius: 2.5,
+      backgroundColor: darkTheme.colors.textSecondary,
+    });
+  });
+
+  it('lets a non-scrollable body shrink and keeps the base bottom buffer', async () => {
+    const { getByText } = await render(
+      <BottomSheet visible onDismiss={jest.fn()} scrollable={false}>
+        <Text>sheet body</Text>
+      </BottomSheet>,
+    );
+
+    const boxStyle = StyleSheet.flatten(
+      ancestorWithStyle(getByText('sheet body'), 'flexShrink').props.style,
+    );
+
+    expect(boxStyle.flexShrink).toBe(1);
+    expect(boxStyle.paddingBottom).toBe(SHEET_BASE_PADDING);
   });
 });
