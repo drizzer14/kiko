@@ -1,7 +1,7 @@
-# Binance history: Pay, own-wallet transfers, Simple Earn, Convert (BTC)
+# Binance history: Pay, own-wallet transfers, Simple Earn (BTC)
 
-Date: 2026-10-09. Status: DRAFT rev 2. The user ruled on D1-D4 (2026-10-09). D5-D7
-are open. A green VERIFY gate (a live probe) is needed before merge.
+Date: 2026-10-09. Status: approved by the user 2026-10-09 (D1-D7). Rev 3. A green
+VERIFY gate (a live probe) is needed before merge.
 Base: main 073114fc. Branch: binance-pay-history.
 
 ## Problem
@@ -14,8 +14,8 @@ deposits and withdrawals (`/sapi/v1/capital/deposit/hisrec`,
 `/sapi/v1/capital/withdraw/history`, `coin=BTC`), and it attaches every row to Spot.
 
 A transfer by Binance ID is a Binance Pay order. Moves between the user's own
-wallets, Simple Earn subscriptions, redemptions and rewards, and Convert orders
-also change BTC balances without a row.
+wallets, and Simple Earn subscriptions, redemptions and rewards, also change BTC
+balances without a row. Convert orders do too, but they are deferred (D7).
 
 Evidence from the user report: the existing capital walk did NOT import the Pay
 transfers. So they do not appear in capital history as settled records (Q5).
@@ -27,8 +27,8 @@ Every Binance movement that changes one of the user's three BTC holdings (Spot
 that holding.
 
 - A movement between two of those holdings becomes two paired internal legs.
-- A movement to or from something Kiko does not track (another person, another
-  asset, a futures or margin wallet) becomes one leg.
+- A movement to or from something Kiko does not track (another person, or a
+  futures, margin, or options wallet) becomes one leg.
 - Every walk is idempotent and resumable, and never fails the balance sync.
 - The only counterparty data stored is the Pay nickname (D4).
 
@@ -37,9 +37,12 @@ that holding.
 | # | Ruling |
 |---|---|
 | D1 | A: every BTC Pay order type |
-| D2 | C: own-wallet transfers, Simple Earn (subscription, redemption, rewards), and Convert are all in this track |
+| D2 | C: own-wallet transfers, Simple Earn (subscription, redemption, rewards), and Convert are all in this track. D7 later deferred Convert |
 | D3 | A: NEW capital imports are placed by `walletType`. The probe counts old misplaced rows. If there are any, a follow-up moves them, with a review |
 | D4 | B: a Pay row's description is the counterparty nickname, and nothing else of the counterparty is stored |
+| D5 | A: a new nullable column `untracked_counterpart`. A row with it set is kept out of spending and gets a display label. The migration and its reviewer step are in task 3 |
+| D6 | B: one row per Earn reward record. The records have no id, so the key is built from the record's own fields (section 6) |
+| D7 | C: Convert is NOT imported for now. It is deferred because Convert history has no wallet field, so the holding a Convert moved cannot be known |
 
 ## Sources (official, checked 2026-10-09)
 
@@ -61,7 +64,7 @@ the docs. Docs pages:
 | S3 | `GET /api/v3/account` | (existing) | | | `uid` | `spot/.../types/get-account-response.ts` |
 | S4 | `GET /sapi/v1/asset/transfer` | IP 1 | "last 6 months only"; window cap NOT documented; no times means the last 7 days | `current`, `size` (max not documented) | `type` (required param), `asset`, `amount`, `type`, `status`, `tranId`, `timestamp`. No `asset` param | `wallet/src/rest-api/modules/asset-api.ts`, `.../query-user-universal-transfer-history-response*.ts` |
 | S5 | `GET /sapi/v1/simple-earn/{flexible,locked}/history/{subscriptionRecord,redemptionRecord,rewardsRecord}` (6 endpoints) | IP 150 each | max 30 days; depth NOT documented | `current` (from 1), `size` (max not documented), response `{rows,total}` | flexible sub: `amount, asset, time, purchaseId, productId, type, sourceAccount, amtFromSpot, amtFromFunding, status`. flexible redeem: `amount, asset, time, projectId, redeemId, destAccount, status`. flexible rewards: `asset, rewards, projectId, type, time` (no id). locked sub: `positionId, purchaseId, projectId, time, asset, amount, lockPeriod, type, sourceAccount, amtFromSpot, amtFromFunding, status`. locked redeem: `positionId, redeemId, time, asset, lockPeriod, amount, originalAmount, type, deliverDate, lossAmount, isComplete, rewardAsset, rewardAmt, extraRewardAsset, estExtraRewardAmt, status`. locked rewards: `positionId, time, asset, lockPeriod, amount, type` (no id). `asset` filter param exists | `simple-earn/src/rest-api/modules/flexible-locked-api.ts`, `.../types/get-{flexible,locked}-*-response-rows-inner.ts` |
-| S6 | `GET /sapi/v1/convert/tradeFlow` | UID 3000 | max 30 days; `startTime` and `endTime` required; depth NOT documented | `limit` (max not in SDK), response `{list, startTime, endTime, limit, moreData}` | `quoteId, orderId, orderStatus, fromAsset, fromAmount, toAsset, toAmount, createTime`. NO wallet field. Placing an order takes `walletType` `SPOT`/`FUNDING`/`EARN` | `convert/src/rest-api/modules/*.ts`, `.../types/get-convert-trade-history-response*.ts` |
+| S6 (deferred, D7) | `GET /sapi/v1/convert/tradeFlow` | UID 3000 | max 30 days; `startTime` and `endTime` required; depth NOT documented | `limit` (max not in SDK), response `{list, startTime, endTime, limit, moreData}` | `quoteId, orderId, orderStatus, fromAsset, fromAmount, toAsset, toAmount, createTime`. NO wallet field. Placing an order takes `walletType` `SPOT`/`FUNDING`/`EARN` | `convert/src/rest-api/modules/*.ts`, `.../types/get-convert-trade-history-response*.ts` |
 
 Facts the walks rely on:
 
@@ -84,20 +87,26 @@ Facts the walks rely on:
   `_MAIN` and `FUNDING_` / `_FUNDING` with UMFUTURE, CMFUTURE, MARGIN, OPTION, and
   for MAIN also PORTFOLIO_MARGIN, which gives 18 types. The rest of the enum (for
   example UMFUTURE_MARGIN) never touches Spot or Funding and is not read.
-- **S2/S5/S6 IP weight.** Unlike the Pay and Convert walks, these reads count
+- **S2/S4/S5 IP weight.** Unlike the Pay walk, these reads count
   against the IP weight. The SAPI per-minute IP ceiling and its header
   (`X-SAPI-USED-IP-WEIGHT-1M`) are not in the SDK. Both are unverified (Q15).
 
 ## Scope
 
-In: the five walks below (capital, which exists, plus Pay, Transfer, Earn, and
-Convert). Capital placement by `walletType` (D3). A new column for one-leg
-movements to something untracked (D5). Same-currency transfer labels. The
-history-pending caption covers every walk.
+In: four walks (capital, which exists, plus Pay, Transfer, and Earn). Capital
+placement by `walletType` (D3). A new column for one-leg movements to something
+untracked (D5). Same-currency transfer labels. The history-pending caption covers
+every walk.
 
-Out: trades (unchanged). Futures, margin, and options wallets are not synced as
-holdings: a move to them is one leg (D5). Non-BTC assets are not synced as
-holdings: Convert is one leg (D5).
+Out:
+- Trades (unchanged).
+- Futures, margin, and options wallets are not synced as holdings, so a move to
+  them is one leg (D5).
+- **Convert is deferred (D7).** Convert history (S6) has no wallet field, and an
+  order can pay from Spot, Funding, or Earn, so the holding a Convert moved cannot
+  be known. A later spec takes it up if Binance exposes the wallet. The S6 facts
+  stay in the source table for that spec. Until then, a Convert's BTC balance
+  change has no row.
 
 Not possible (API limits, not design choices): Pay orders older than 18 months and
 universal transfers older than 6 months are not returned. Those old rows are
@@ -112,8 +121,8 @@ missing. The balances stay correct.
   `BinanceRateLimitError` on 429/418. Each read returns
   `{ rows, usedUidWeight1m, usedIpWeight1m }`.
 - Reads: `fetchPayHistory` (S1), `fetchUniversalTransfers(type, ...)` (S4),
-  `fetchEarnRecords(kind, ...)` for the 6 Earn endpoints (S5, `asset=BTC`),
-  `fetchConvertHistory` (S6).
+  `fetchEarnRecords(kind, ...)` for the 6 Earn endpoints (S5, `asset=BTC`). No
+  Convert read (D7).
 - A parse error or an unknown envelope throws an error with a fixed message (no
   URL, no body). For Pay: a `code` other than `"000000"`, or no `data` array (A1).
 - Parsed types keep only the fields in the S-table. For Pay that means
@@ -147,11 +156,10 @@ withdraw budget moves into this object, with the same numbers and the same rule.
   | Pay | 20 |
   | Transfer | 60 |
   | Earn | 30 (4500 IP) |
-  | Convert | 20 |
 
   Each walk has its own cap so that a long backfill in one walk cannot starve the
   others.
-- Order: balance, then capital, Pay, Transfer, Earn, Convert. A walk that cannot
+- Order: balance, then capital, Pay, Transfer, Earn. A walk that cannot
   afford its next call stops with `complete: false` and resumes from its watermark
   on a later run. Nothing sleeps until the next minute, because the history import
   is awaited before the sync result returns.
@@ -163,7 +171,7 @@ withdraw budget moves into this object, with the same numbers and the same rule.
 
 - One watermark per walk. Each is a walk-owned key on the Spot holding's metadata:
   `binancePayHistoryCursor`, `binanceTransferHistoryCursor`,
-  `binanceEarnHistoryCursor`, `binanceConvertHistoryCursor`.
+  `binanceEarnHistoryCursor`.
 - All of them join `walkOwnedMetadataKeys` (`holding-metadata.ts`). The balance
   upsert carries them and the disconnect resets them to the floor, through the
   existing code paths.
@@ -193,14 +201,15 @@ withdraw budget moves into this object, with the same numbers and the same rule.
   - `exchangeLegDescription` gains a same-currency branch, "Transfer to/from
     {{name}}", because an own-wallet move is not an exchange (section 9).
 - **One leg to something untracked (D5-A):**
-  - a new nullable column `transactions.untracked_counterpart` holds a stable code:
-    `asset:<TICKER>` (Convert) or `wallet:<TYPE>` (UMFUTURE, CMFUTURE, MARGIN,
-    OPTION, PORTFOLIO_MARGIN);
+  - a new nullable column `transactions.untracked_counterpart` holds a stable code
+    `wallet:<TYPE>` (UMFUTURE, CMFUTURE, MARGIN, OPTION, PORTFOLIO_MARGIN). The
+    `wallet:` prefix leaves room for an `asset:<TICKER>` code if Convert is taken
+    up later; no code writes `asset:` now;
   - `exchange-exclusion` also excludes a row whose code is set;
-  - the label is resolved at render time: an `asset:` code gives
-    `exchangeTo/From` with the ticker; a `wallet:` code gives `transferTo/From`
-    with a code-side map of Binance product names (proper nouns, not catalogue
-    strings, kiko-translator `PROPER_NOUNS`).
+  - the label is resolved at render time: a `wallet:` code gives
+    `transferTo/From` with a code-side map of Binance product names (proper
+    nouns, not catalogue strings, kiko-translator `PROPER_NOUNS`). An unknown
+    code renders the default income/expense label.
 
 ### 4. Pay walk (`binance.pay-history.ts`)
 
@@ -254,9 +263,10 @@ withdraw budget moves into this object, with the same numbers and the same rule.
 
 ### 6. Earn walk (`binance.earn-history.ts`)
 
-- Six record kinds, each read with `asset=BTC`. Windows are calendar-month halves
-  in UTC (1st to 15th, 16th to month end), so no window passes 30 days and a month
-  is always whole for D6. Paging: `current`/`size=100` until `total` is covered.
+- Six record kinds, each read with `asset=BTC`. Windows of 30 days (the S5 cap).
+  Paging: `current`/`size=100` until the gathered rows cover `total`. If the
+  gathered count is not equal to `total` after a short page (the data shifted
+  while paging), stop the window (`earn-page-drift`).
 - Floor: 2022-01-01 UTC. That is before Simple Earn launched (assumption); the
   probe reports the earliest record (Q12). With the 30-call cap a first walk takes
   about 10 runs.
@@ -275,26 +285,32 @@ withdraw budget moves into this object, with the same numbers and the same rule.
   paired. For locked, `amount` is assumed to be the principal returned.
   `rewardAmt` is NOT imported here, because rewards come from the rewards records
   (Q14). Key: `redeemId`.
-- **Rewards:** per D6. Rewards are income on the Earn holding. They are not
-  internal and carry no marker. Description: the literal `'Binance Earn'`.
-  Placement on Earn is an assumption (Q14). The records have no id, so a per-record
-  key is `projectId|positionId + type + time`.
-- Keys: `` `${accountId}:earn:<kind>:<id>:${holdingKey}` ``.
+- **Rewards (D6-B): one row per reward record.**
+  - Each record is income on the Earn holding: +`rewards` (flexible) or
+    +`amount` (locked). Rewards are not internal and carry no marker.
+    Description: the literal `'Binance Earn'`. Placement on Earn is an
+    assumption (Q14).
+  - The records have no id. The group of a record is (kind, `projectId` for
+    flexible or `positionId` for locked, `type`, `time`). Within one fetched
+    window, the records of one group are sorted by amount in satoshis, ascending,
+    and numbered from 0. Key:
+    `` `${accountId}:earn:reward:<flexible|locked>:<projectId|positionId>:<type>:<time>:<n>` ``.
+  - The key is stable across re-reads as long as Binance returns the same set of
+    records for that group. `time` is in the group, so a group never spans two
+    windows. A record exactly on a window boundary that comes back in both windows
+    gets the same group and the same `n`, so the key dedupes it.
+  - **Two identical records** (every field equal) get `n` = 0 and 1. They are kept
+    as two rows, because Binance listed two credits and the Earn balance holds
+    both. If a later re-read returns only one, the second row stays: the walk
+    never deletes a synced row. The probe counts identical records (item 10). If
+    it finds any, the coordinator asks the user before merge whether they are real
+    double credits.
+  - A required field (`time`, the amount, the project or position id) that is
+    missing or not finite stops the window.
+- Keys for subscriptions and redemptions:
+  `` `${accountId}:earn:<kind>:<purchaseId|redeemId>:${holdingKey}` ``.
 
-### 7. Convert walk (`binance.convert-history.ts`)
-
-- Windows of 30 days. `startTime`/`endTime` are required. `limit` is 1000
-  (researcher, unverified in the SDK). While `moreData` is true, narrow the
-  `endTime` to the smallest `createTime` in the page, as Pay does.
-- Floor: `HISTORY_FLOOR_MS`, unless the probe shows a later depth (Q12). A first
-  walk is about 110 windows, spread over runs by the 20-call cap.
-- Filter: `orderStatus === 'SUCCESS'` (Q13), with `fromAsset === 'BTC'` (one leg,
-  -fromAmount) or `toAsset === 'BTC'` (one leg, +toAmount).
-  `untracked_counterpart = asset:<other asset>`.
-- Placement: history has no wallet field (S6). The holding follows D7.
-- Key: `` `${accountId}:convert:${orderId}` ``.
-
-### 8. Capital walk change (D3-A)
+### 7. Capital walk change (D3-A)
 
 New imports use `walletType` 0 for Spot and 1 for Funding. Rows already imported
 keep their holding, because the upsert `set` has no `holdingId`
@@ -302,14 +318,14 @@ keep their holding, because the upsert `set` has no `holdingId`
 walletType 1. If there are any, a follow-up task moves them, with a repo change or a
 migration and a `kiko:reviewer` step.
 
-### 9. Labels, caption, and i18n (en + uk, translator review before deploy)
+### 8. Labels, caption, and i18n (en + uk, translator review before deploy)
 
 - New `transactions.transferTo` / `transactions.transferFrom`: "Transfer to
   {{name}}" / "Transfer from {{name}}". Proposed uk: "Переказ на {{name}}" /
   "Переказ з {{name}}".
 - `exchangeLegDescription` chooses transfer or exchange by comparing the two
-  holdings' currencies (same currency means transfer). The untracked-code branch is
-  in section 3.
+  holdings' currencies (same currency means transfer). The `wallet:` code branch
+  is in section 3.
 - Changed `accountDetail.binanceHistoryPending` copy. en: "Some Binance
   transaction history is not imported yet. Kiko will keep importing on each sync."
   uk: "Частину історії транзакцій Binance ще не імпортовано. Кіко продовжить
@@ -319,7 +335,7 @@ migration and a `kiko:reviewer` step.
 - The stored literals `'Binance Pay'` and `'Binance Earn'` are data, not catalogue
   strings. They are proper nouns, so they are not translated.
 
-### 10. Privacy (kiko-compliance 5.1.1 / 5.1.5)
+### 9. Privacy (kiko-compliance 5.1.1 / 5.1.5)
 
 - No new data recipient, host, or SDK. The new endpoints use the same pinned host
   and the same key.
@@ -337,7 +353,7 @@ migration and a `kiko:reviewer` step.
   card number, and institution are never parsed.
 - Logs use only fixed tags and counts. No order id, amount, or name is logged.
 
-### 11. Migration (D5-A)
+### 10. Migration (D5-A)
 
 - One migration: `ALTER TABLE transactions ADD untracked_counterpart text`
   (nullable, no index, no backfill). Plus `schema.ts`.
@@ -401,23 +417,22 @@ Earn:
 | E4 | sub, no split fields, sourceAccount FUNDING | Funding -a, Earn +a |
 | E5 | flexible redeem, destAccount SPOT | Earn -a, Spot +a, paired |
 | E6 | locked redeem, rewardAmt > 0 | principal legs only; reward comes from E7 |
-| E7 | rewards | per D6, income on Earn, 'Binance Earn' |
-| E8 | status not settled | stop |
+| E7 | one flexible reward record | Earn +rewards, 'Binance Earn', key ends `:<time>:0` |
+| E8 | two rewards in one group, amounts 0.00000002 and 0.00000001 | two rows, `n` 0 = 0.00000001, `n` 1 = 0.00000002 |
+| E9 | two identical reward records | two rows (`n` 0 and 1) |
+| E10 | re-read returns the same group | same keys, no new rows |
+| E11 | reward on a window boundary, returned by both windows | one row (same key) |
+| E12 | reward with missing `time` or a non-finite amount | stop |
+| E13 | gathered rows are not equal to `total` | stop (`earn-page-drift`) |
+| E14 | status not settled | stop |
 
-Convert:
-
-| # | order | result |
-|---|---|---|
-| V1 | BTC -> USDT, SUCCESS | D7 holding -fromAmount, `asset:USDT`, excluded, label "Exchange to USDT" |
-| V2 | USDT -> BTC, SUCCESS | D7 holding +toAmount, `asset:USDT` |
-| V3 | status not SUCCESS | ignored if a final failure, stop if pending (Q13) |
-| V4 | neither side BTC | ignored |
+Convert: not imported (D7). No walk, no rows.
 
 ## Tests (Jest)
 
 - Fixtures are built from the S-table shapes. There is one case per matrix row,
   plus these mechanics:
-  - Pay and Convert: paging by narrowed `endTime`, and the stuck-page stop;
+  - Pay: paging by narrowed `endTime`, and the stuck-page stop;
   - Transfer and Earn: paging by `current`/`total`;
   - each walk: windows from its floor, and the re-sync overlap;
   - shared budget: UID and IP readings, per-walk caps, and a walk that stops when
@@ -428,7 +443,7 @@ Convert:
   - `run-crypto-sync`: one shared gate and budget, and a failure in each walk is
     isolated;
   - the caption with any walk behind;
-  - `exchangeLegDescription` transfer, asset, and wallet branches;
+  - `exchangeLegDescription` transfer and `wallet:` branches, and an unknown code;
   - `exchange-exclusion` with `untracked_counterpart`;
   - export back-compat.
 - Client tests: path, params, signing, envelope parse, a fixed-message error, PII
@@ -468,17 +483,17 @@ Probe items:
     values, how often `amtFromSpot` + `amtFromFunding` = `amount`, the earliest
     record date, the largest `size`, the rewards `type` values, and for locked
     redemptions how `amount` relates to `originalAmount`, `lossAmount`, and
-    `rewardAmt`.
-11. Convert: the `orderStatus` values, `moreData`, the largest `limit`, the
-    earliest record date, and the BTC-side count.
-12. Every SAPI response: whether `X-SAPI-USED-IP-WEIGHT-1M` and
+    `rewardAmt`. For rewards: the number of groups with more than one record, and
+    the number of fully identical records (E9). Any identical record goes to the
+    user before merge.
+11. Every SAPI response: whether `X-SAPI-USED-IP-WEIGHT-1M` and
     `X-SAPI-USED-UID-WEIGHT-1M` are present.
 
 ## Open questions (each has a safe default)
 
 | # | Question | Safe default | Probe |
 |---|---|---|---|
-| Q1 | Is a read-only key enough for each new endpoint? | Logged, no cooldown, the balance is unaffected, and the caption shows "behind" | 1, 9-11 |
+| Q1 | Is a read-only key enough for each new endpoint? | Logged, no cooldown, the balance is unaffected, and the caption shows "behind" | 1, 9, 10 |
 | Q2 | Is the Pay sign as the SDK states? | Sign is a cross-check only | 2 |
 | Q3 | Does the shape rule hold for every type (C2C_HOLDING* are not listed)? | All signals must agree, or stop | 2 |
 | Q4 | Is `transactionId` unique and stable? | orderType and walletType are in the key | 3 |
@@ -489,65 +504,48 @@ Probe items:
 | Q9 | Pay walletType 3/4/6 or combined payments? | Stop | 8 |
 | Q10 | Universal transfer window cap and `size` max? | 30-day windows, size 100 | 9 |
 | Q11 | Universal transfer settled status value? | Only `CONFIRMED`. Anything else stops | 9 |
-| Q12 | Earn and Convert history depth? | Earn floor 2022-01-01, Convert floor 2017. Older windows return empty | 10, 11 |
-| Q13 | Earn and Convert settled status values? | Only `SUCCESS`. A pending status stops, a final failure is ignored | 10, 11 |
+| Q12 | Earn history depth? | Floor 2022-01-01. Older windows return empty | 10 |
+| Q13 | Earn settled status values? | Only `SUCCESS`. A pending status stops, a final failure is ignored | 10 |
 | Q14 | Where do Earn rewards land, and what does a locked redemption's `amount` mean? | Rewards go to Earn. Redemption legs use `amount`. `rewardAmt` is not imported from redemptions | 10 (plus the user checks one reward in the Binance app) |
-| Q15 | The SAPI IP ceiling and the IP header? | `IP_BUDGET_1M` 6000 and the per-walk caps, which hold even without the header | 12 |
+| Q15 | The SAPI IP ceiling and the IP header? | `IP_BUDGET_1M` 6000 and the per-walk caps, which hold even without the header | 11 |
+| Q16 | Are there fully identical reward records? | Each one is kept as its own row (E9) | 10 |
 | A1 | The Pay success `code` is `"000000"` | A missing `data` array or an unknown code is an error | 1 |
 
-## NEW user decisions (recommendation first)
+## Still needing the user
 
-- **D5. A one-leg move to something Kiko does not track** (Convert to another
-  asset, or a transfer to futures, margin, or options).
-  - A (recommended): a new column `untracked_counterpart`. The row is excluded
-    from spending, and its label is resolved at render time ("Exchange to USDT",
-    "Transfer to Binance Futures"). This needs one migration and a reviewer step.
-  - B: an ordinary row that counts as spending or income, with a stable literal
-    description (`'Binance Convert'`, `'Binance Futures'`). No migration, but a
-    BTC sale shows as spending.
-  - C: B without a description, so the default income/expense label shows.
-- **D6. Earn rewards granularity.**
-  - A (recommended): one row per Earn product kind (flexible or locked) per UTC
-    month. The upsert refreshes the amount while the month is open. Key
-    `` `${accountId}:earn:reward:<kind>:<yyyy-mm>` ``. This avoids about 365 tiny
-    rows a year in the lists.
-  - B: one row per reward record, as Binance gives it (about daily).
-  - C: no rewards. The Earn balance still moves, so those changes stay
-    unexplained.
-- **D7. Convert holding.** Convert history has no wallet field, and an order can
-  pay from Spot, Funding, or Earn (S6).
-  - A (recommended): Spot, the main trading wallet. The probe cannot confirm this,
-    so it is stated as an assumption in the code header.
-  - B: Funding.
-  - C: do not import Convert until Binance exposes the wallet. The balance changes
-    from Convert would stay unexplained.
+- Run the probe script (task 7/7) and send back its output.
+- Before merge: if probe item 10 finds identical reward records (Q16), confirm
+  whether they are real double credits. Also check one Earn reward in the Binance
+  app and say which wallet it landed in (Q14).
 
-## Change sets (8 tasks, track `binance-history`)
+## Change sets (7 tasks, track `binance-history`)
 
 Each task touches at most 12 source files, which is far under the 30-file cap.
 Before each `make deep`, `KIKO_MUTATION_BASE=<task base sha> make mutable` gives
 the exact count. Each task gets its own `make deep` with its own base. `make verify`
 runs once at the end.
 
-- task 1/8: client reads (`binance.client.ts`, new `binance.history-client.ts`),
-  `uid` on `fetchAccount`, and their tests.
-- task 2/8: `binance.history-budget.ts` (shared gate, UID/IP budget, caps), the
+- task 1/7: client reads (`binance.client.ts`, new `binance.history-client.ts`):
+  Pay, universal transfer, and the 6 Earn reads. `uid` on `fetchAccount`. Tests.
+- task 2/7: `binance.history-budget.ts` (shared gate, UID/IP budget, caps), the
   capital walk moved onto it, C2 placement by walletType, generic
-  `setBinanceWalkCursor`, the new walk-owned keys, `run-crypto-sync` wiring of the
-  shared objects, and tests.
-- task 3/8: migration `untracked_counterpart`, `schema.ts`, `exchange-exclusion`,
-  the `exchangeLegDescription` transfer/asset/wallet branches, the
+  `setBinanceWalkCursor`, the three new walk-owned keys, `run-crypto-sync` wiring
+  of the shared objects, and tests.
+- task 3/7: migration `untracked_counterpart`, `schema.ts`, `exchange-exclusion`,
+  the `exchangeLegDescription` transfer and `wallet:` branches, the
   `transferTo/From` keys (en + uk), the export back-compat test, and a
-  `kiko:reviewer` step before BATCH READY. If D5 is B or C, this task shrinks to
-  the label keys only.
-- task 4/8: Pay walk (`binance.pay-history.ts`): direction, placement, the
+  `kiko:reviewer` step before BATCH READY (no index, so no EXPLAIN QUERY PLAN
+  test).
+- task 4/7: Pay walk (`binance.pay-history.ts`): direction, placement, the
   nickname description, the cap and guard, and tests.
-- task 5/8: Transfer walk (`binance.transfer-history.ts`) and tests.
-- task 6/8: Earn walk (`binance.earn-history.ts`), D6 rewards, and tests.
-- task 7/8: Convert walk (`binance.convert-history.ts`), D7 placement, the caption
-  logic and copy (en + uk), and tests.
-- task 8/8: the probe script (memory/refs, user run) as the VERIFY gate, and the
-  kiko-architecture "Binance transaction history" rewrite (via scribe).
+- task 5/7: Transfer walk (`binance.transfer-history.ts`) and tests.
+- task 6/7: Earn walk (`binance.earn-history.ts`), including per-record rewards
+  with the group-ordinal key. Also the caption logic (`isBinanceHistoryBehind`
+  over all cursors) and copy (en + uk), moved here from the dropped Convert task.
+  Tests.
+- task 7/7: the probe script (memory/refs, user run) as the VERIFY gate, and the
+  kiko-architecture "Binance transaction history" rewrite (via scribe). The
+  rewrite records that Convert is deferred and why.
 
-The probe (task 8/8) can run as soon as task 1/8 lands, because it needs no app
-code. Run it early, so that Q answers reach tasks 4-7 before they are reviewed.
+The probe (task 7/7) can run as soon as task 1/7 lands, because it needs no app
+code. Run it early, so that Q answers reach tasks 4-6 before they are reviewed.
