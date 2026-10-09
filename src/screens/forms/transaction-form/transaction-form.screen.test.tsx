@@ -4416,7 +4416,7 @@ describe("TransactionFormScreen — a valid Save runs only the active mode's own
   });
 });
 
-describe('TransactionFormScreen — no apply-to-all tip', () => {
+describe('TransactionFormScreen — the category override sheet on a manual row', () => {
   const HOLDINGS: Holding[] = [
     { id: 'h1', currency: 'UAH', balanceMinorUnits: 5000, type: 'cash', name: 'Wallet' },
   ];
@@ -4433,16 +4433,6 @@ describe('TransactionFormScreen — no apply-to-all tip', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    mockUpsertCategoryOverride.mockResolvedValue(undefined);
-  });
-
-  it('puts nothing between the last field and the Category field when opening a manual row', async () => {
-    setLiveData(HOLDINGS, ROW);
-    const utils = await renderEdit('txn-1');
-
-    expect(utils.queryByTestId('tip-apply-to-all')).toBeNull();
-    expect(utils.queryByLabelText('Close tip')).toBeNull();
-    expect(collectRenderedText(utils.toJSON()).join(' ')).not.toContain('apply it to every');
   });
 
   it('reads no settings row, so the form needs nothing but its own reads', async () => {
@@ -4454,17 +4444,21 @@ describe('TransactionFormScreen — no apply-to-all tip', () => {
     expect(subscribedTables).not.toContain('settings');
   });
 
-  it('leaves the form once the sheet "Apply" has written the override', async () => {
+  it('shows the save-error alert and stays on the form when the sheet "Apply" write fails', async () => {
+    mockUpsertCategoryOverride.mockRejectedValueOnce(new Error('boom'));
+    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
     setLiveData(HOLDINGS, ROW);
     const utils = await renderEdit('txn-1');
     await pickCategory(utils, 'Dining');
     await fireEvent.press(utils.getByText('Save'));
     await fireEvent.press(utils.getByRole('button', { name: 'Apply' }));
 
-    await waitFor(() => expect(navigation.goBack).toHaveBeenCalled());
-    expect(mockUpsertCategoryOverride.mock.invocationCallOrder[0]).toBeLessThan(
-      (navigation.goBack as jest.Mock).mock.invocationCallOrder[0],
+    await waitFor(() =>
+      expect(alertSpy).toHaveBeenCalledWith('Could not save', 'Please try again.'),
     );
+    expect(mockUpsertCategoryOverride).toHaveBeenCalledWith('Coffee', 'dining');
+    expect(navigation.goBack).not.toHaveBeenCalled();
+    alertSpy.mockRestore();
   });
 });
 

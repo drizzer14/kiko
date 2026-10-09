@@ -2536,7 +2536,7 @@ describe('AccountDetailScreen — an implicit account', () => {
   );
 });
 
-describe('AccountDetailScreen — no import statement tip', () => {
+describe('AccountDetailScreen — footer actions', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockButtonProps.length = 0;
@@ -2548,15 +2548,13 @@ describe('AccountDetailScreen — no import statement tip', () => {
     });
   });
 
-  it('shows only the Import statement and Add holding actions in the footer for a bank account with no transactions', async () => {
-    const { getByTestId, queryByTestId, queryByLabelText } = await renderScreen();
+  it('shows the Import statement and Add holding actions in the footer for a bank account with no transactions', async () => {
+    const { getByTestId } = await renderScreen();
 
     const footer = getByTestId('screen-footer');
 
     expect(within(footer).getByText('Import statement')).toBeTruthy();
     expect(within(footer).getByText('Add holding')).toBeTruthy();
-    expect(queryByTestId('tip-import-statement')).toBeNull();
-    expect(queryByLabelText('Close tip')).toBeNull();
   });
 });
 

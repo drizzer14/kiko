@@ -248,9 +248,9 @@ an entry (date + value) the moment the user approves a new visual.
   slot. The "All" row lines up under the glyph column:
   `filter-menu` reserves the icon slot when any option has an icon.
 - **Tips were removed by user ruling** (2026-10-09: "Hints still look bad, let's remove them
-  for now"). There is no `TipCard`, `useTip`, or `accentSubtle` token; do not bring back a hint
-  or callout, or its old look (tinted accent fill, lightbulb glyph, close button), without
-  asking the user first.
+  for now"). There is no `TipCard`, `useTip`, or `accentSubtle` token; do not bring back a
+  first-use tip, or its old look (tinted accent fill, lightbulb glyph, close button), without
+  asking the user first. `InfoHint` stays allowed.
 - **EmptyState action is primary + small** (2026-10-08). 34pt tall, 44pt
   tap via `SMALL_HIT_SLOP`, not full width, never the regular 50pt. Pinned
   by `empty-state.component.test.tsx`.
@@ -272,6 +272,9 @@ The established patterns grouped under this heading:
 - The capability-icon transparency principle — its own heading further
   down this file.
 - Field placeholder and error copy — below.
+- Content that APPEARS in response to a press (a banner, a confirmation) is silent to
+  VoiceOver: pair it with `AccessibilityInfo.announceForAccessibility(t(...))` using the same
+  i18n string as the visible text.
 - A filter never hides an active selection: a checkable filter's
   option list is scoped to the current data (e.g. the statistics
   category filter is scoped to the active date range), but a value

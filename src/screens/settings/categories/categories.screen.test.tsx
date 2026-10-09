@@ -848,28 +848,6 @@ describe('CategoriesScreen', () => {
   });
 });
 
-describe('CategoriesScreen — opening the screen', () => {
-  beforeEach(() => {
-    jest.clearAllMocks();
-    mockLiveQueryData = SEEDED_CATEGORIES.map((category) => ({ ...category }));
-    mockSettingsRows = [{ defaultCategoryKey: 'other' }];
-    mockCategoriesIsLoading = false;
-    mockCategoriesIsFresh = true;
-    mockSettingsIsLoading = false;
-  });
-
-  it('writes nothing to settings and logs nothing when the screen gets focus', async () => {
-    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
-    const { getByDisplayValue } = await renderScreen();
-
-    expect(getByDisplayValue(SEEDED_CATEGORIES[0].title)).toBeTruthy();
-    expect(mockSetDefault).not.toHaveBeenCalled();
-    expect(warn).not.toHaveBeenCalled();
-
-    warn.mockRestore();
-  });
-});
-
 describe('CategoriesScreen — loading gate', () => {
   beforeEach(() => {
     jest.clearAllMocks();

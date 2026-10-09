@@ -101,12 +101,4 @@ describe('HelpScreen', () => {
 
     expect(getByText('All your data stays on this device.')).toBeTruthy();
   });
-
-  it('has no "Show tips again" button and no tip confirmation', async () => {
-    const { queryByTestId, queryByText } = await renderScreen();
-
-    expect(queryByTestId('help-show-tips-again')).toBeNull();
-    expect(queryByText('Show tips again')).toBeNull();
-    expect(queryByTestId('help-tips-reset-tip')).toBeNull();
-  });
 });

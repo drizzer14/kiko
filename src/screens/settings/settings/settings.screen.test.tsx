@@ -550,13 +550,10 @@ describe('SettingsScreen — no tip', () => {
   });
 
   it('puts the Categories card straight after the base-currency card, with no tip between', async () => {
-    const { queryByTestId, getAllByTestId } = await renderScreen();
+    const { getAllByTestId } = await renderScreen();
 
-    const order = getAllByTestId(/^(tip-categories$|settings-card-)/).map(
-      (node) => node.props.testID as string,
-    );
+    const order = getAllByTestId(/^settings-card-/).map((node) => node.props.testID as string);
 
-    expect(queryByTestId('tip-categories')).toBeNull();
     expect(order).toEqual([
       'settings-card-system',
       'settings-card-reminders',

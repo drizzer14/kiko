@@ -856,7 +856,7 @@ have their own, older, pre-existing chunking — don't assume they use
 ## Help (the tips are removed)
 
 - The first-use tips were removed by user ruling ("Hints still look bad, let's remove them for
-  now"): no `src/tips/`, no `TipCard`, no `settingsRepo.dismissTip` / `resetTips`, and the Help
+  now"): no tips feature folder, no `TipCard`, no `settingsRepo.dismissTip` / `resetTips`, and the Help
   page has no "Show tips again" button. Do not bring a tip or hint back without asking the user.
 - `settings.dismissed_tips` (a JSON `string[]`, migration 0055, `src/db/schema.ts`) is kept but
   unused: no reader and no writer. Migration 0055 already shipped and migrations are

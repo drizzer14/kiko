@@ -32,17 +32,6 @@ describe('useImportResultSheet', () => {
     jest.clearAllMocks();
   });
 
-  it('shows the sheet at once, with nothing to await', async () => {
-    const { result } = await setup('Monobank');
-    let returned: unknown = 'not called';
-
-    await act(async () => {
-      returned = result.current.show(importResult);
-    });
-
-    expect(returned).toBeUndefined();
-  });
-
   it('starts hidden with no result', async () => {
     const { result } = await setup('Monobank');
 

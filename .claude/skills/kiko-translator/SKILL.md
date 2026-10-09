@@ -316,7 +316,8 @@ trailing punctuation is decided by its UI ROLE, not habit:
 
 Key families added with onboarding (read `en.ts` for the current
 strings in `src/i18n/locales/en.ts`): `emptyStates.*` title is sentence case with no final ".", its
-message is a full sentence with "."; there are no `tips.*` keys (the
+message is a full sentence with "."; `accountDetail.emptyHoldings` (title and message)
+follows the same rule; there are no `tips.*` keys (the
 tips were removed by user ruling); `help.title` and `help.rowLabel` read
 "Help" in en and «Довідка» in uk; `help.*`
 topic titles are Title Case and listed in `TITLE_KEYS`
