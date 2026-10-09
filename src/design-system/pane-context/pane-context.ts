@@ -3,13 +3,13 @@ import type { LayoutMode } from '@kiko/display-regions';
 
 type SplitMode = Exclude<LayoutMode, 'single'>;
 
-export type PaneName = 'companion' | 'primary';
+type PaneName = 'companion' | 'primary';
 
 // Which edges of the window a pane touches. A pane keeps a safe-area inset only on an edge it
 // shares with the window, and only a pane at the bottom edge sits above the tab bar.
-export type PaneEdges = { top: boolean; right: boolean; bottom: boolean; left: boolean };
+type PaneEdges = { top: boolean; right: boolean; bottom: boolean; left: boolean };
 
-export type PaneContextValue = { pane: PaneName; mode: SplitMode; edges: PaneEdges };
+type PaneContextValue = { pane: PaneName; mode: SplitMode; edges: PaneEdges };
 
 const edgesOf = (top: boolean, right: boolean, bottom: boolean, left: boolean): PaneEdges => ({
   top,

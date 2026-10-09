@@ -13,10 +13,11 @@ const PANES: readonly Pane[] = ['companion', 'primary'];
 
 const OPPOSITE: Record<Pane, Pane> = { companion: 'primary', primary: 'companion' };
 
-export const oppositePane = (pane: Pane): Pane => OPPOSITE[pane];
+const oppositePane = (pane: Pane): Pane => OPPOSITE[pane];
 
-// A default no route stands behind has no key of its own in the stack, so its pane lives in the
-// key; that lets a screen shown as a default name itself as the opener.
+// A default from the pane config is not in the stack, so it has no route key of its own. The key
+// it is shown under names its pane, which lets a screen shown as a default name itself as the
+// opener.
 export const defaultRouteKey = (pane: Pane): string => `pane-default:${pane}`;
 
 export const paneOfDefaultKey = (key: string): Pane | undefined =>

@@ -114,7 +114,7 @@ function PaneStackNavigator({
   );
 }
 
-export type PaneStackTypeBag<
+type PaneStackTypeBag<
   ParamList extends ParamListBase = ParamListBase,
   NavigatorID extends string | undefined = string | undefined,
 > = {

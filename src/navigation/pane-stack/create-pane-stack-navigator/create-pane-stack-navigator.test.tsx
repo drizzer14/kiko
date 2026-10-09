@@ -14,6 +14,7 @@ import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 
 import { useOpenInPane } from '../open-in-pane';
+import type { PaneConfig } from '../pane-assignment';
 import { useIsScreenVisible } from '../pane-visibility';
 import { SETTLE_DELAY_MS } from '../use-settled-layout-mode';
 
@@ -88,10 +89,10 @@ const StubScreen = () => {
 const PaneStack = createPaneStackNavigator<ParamListBase>();
 const ParentStack = createNativeStackNavigator<ParamListBase>();
 
-const CONFIG = {
+const CONFIG: PaneConfig = {
   rootPane: 'companion',
   primaryDefault: { name: 'Statement', isDefault: true },
-} as const;
+};
 
 const TabStack = () => (
   <PaneStack.Navigator

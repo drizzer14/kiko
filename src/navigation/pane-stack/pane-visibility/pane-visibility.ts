@@ -1,7 +1,7 @@
 import { createContext, useContext } from 'react';
 import { useIsFocused, useRoute } from '@react-navigation/native';
 
-export type PaneVisibility = {
+type PaneVisibility = {
   isTabFocused: boolean;
   // The route on top of each pane. Both are on screen at once, though only one is the focused
   // route of the stack.
