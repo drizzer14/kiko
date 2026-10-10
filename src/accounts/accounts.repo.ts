@@ -131,6 +131,17 @@ const newAccountValues = async (
   };
 };
 
+const isAccountStored = async (
+  databaseTransaction: typeof database,
+  accountId: string,
+): Promise<boolean> =>
+  (
+    await databaseTransaction
+      .select({ id: accounts.id })
+      .from(accounts)
+      .where(eq(accounts.id, accountId))
+  ).length > 0;
+
 type NewCashAccount = {
   name: string;
   currency: Currency;
@@ -199,17 +210,46 @@ export const accountsRepo = {
     }),
   /**
    * `create` for a caller whose id was pre-generated and may already be stored:
-   * the check and the insert are ONE statement, so a row another screen inserted
-   * under the same id first (a fold can leave its Connect running) is left as it
-   * is instead of failing on the primary key. Resolves to the id either way.
+   * the row is looked up inside the same write, and a stored one is left as it is
+   * with nothing else written (not even the sort-order shift a new row would run),
+   * so a row another screen inserted under the same id first (a fold can leave its
+   * Connect running) fails nothing. Resolves to the id either way.
    */
   createIfAbsent: (input: NewAccount & Required<Pick<NewAccount, 'id'>>): Promise<string> =>
     write(async (databaseTransaction) => {
+      if (await isAccountStored(databaseTransaction, input.id)) {
+        return input.id;
+      }
+
       const values = await newAccountValues(databaseTransaction, input);
+      // A backstop: the lookup above already found no row, so a clash is a row from outside this
+      // write queue.
       await databaseTransaction
         .insert(accounts)
         .values(values)
         .onConflictDoNothing({ target: accounts.id });
+
+      return values.id;
+    }),
+  /**
+   * The create form's Save, in ONE write: the row under the form's id is looked up in the
+   * transaction, so the write runs after any Connect insert queued before it and sees that row.
+   * A stored row takes the form's editable fields (never its kind, institution or sort order);
+   * a missing one (deleted elsewhere, or never created) is inserted as a new account.
+   */
+  saveFormAccount: (input: NewAccount & Required<Pick<NewAccount, 'id'>>): Promise<string> =>
+    write(async (databaseTransaction) => {
+      if (await isAccountStored(databaseTransaction, input.id)) {
+        await databaseTransaction
+          .update(accounts)
+          .set({ name: input.name, color: input.color, icon: input.icon, bankId: input.bankId })
+          .where(eq(accounts.id, input.id));
+
+        return input.id;
+      }
+
+      const values = await newAccountValues(databaseTransaction, input);
+      await databaseTransaction.insert(accounts).values(values);
 
       return values.id;
     }),

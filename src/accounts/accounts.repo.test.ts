@@ -62,23 +62,37 @@ const tableNameOf = (table: unknown): string => {
 // that has no debt rows, where the two are the same number anyway. Passing
 // `debtMin` explicitly builds the "an asset would collide with the debt
 // block" fixtures below; `update` captures a shift, if one is issued.
+// `storedIds` are the ids of the account rows already stored: a select of one row by id (the
+// `where` form) answers with the stored ones among them.
 const makeCreateDatabaseTransaction = (
   assetMax = -1,
   debtMin: number | null = null,
   allMax: number = assetMax,
+  storedIds: string[] = [],
 ): {
   databaseTransaction: unknown;
   inserts: Record<string, unknown>[];
   insertTables: string[];
   conflictTargets: unknown[];
-  updates: { set: Record<string, unknown>; whereCalled: boolean }[];
+  updates: { set: Record<string, unknown>; whereCalled: boolean; whereParams: unknown[] }[];
 } => {
   const inserts: Record<string, unknown>[] = [];
   const insertTables: string[] = [];
   const conflictTargets: unknown[] = [];
-  const updates: { set: Record<string, unknown>; whereCalled: boolean }[] = [];
+  const updates: { set: Record<string, unknown>; whereCalled: boolean; whereParams: unknown[] }[] =
+    [];
   const databaseTransaction = {
-    select: () => ({ from: () => Promise.resolve([{ assetMax, debtMin, allMax }]) }),
+    select: () => ({
+      from: () =>
+        Object.assign(Promise.resolve([{ assetMax, debtMin, allMax }]), {
+          where: (condition: unknown) =>
+            Promise.resolve(
+              storedIds
+                .filter((storedId) => renderCondition(condition).params.includes(storedId))
+                .map((storedId) => ({ id: storedId })),
+            ),
+        }),
+    }),
     insert: (table: unknown) => ({
       values: (values: Record<string, unknown>) => {
         inserts.push(values);
@@ -96,12 +110,13 @@ const makeCreateDatabaseTransaction = (
     }),
     update: () => ({
       set: (values: Record<string, unknown>) => {
-        const entry = { set: values, whereCalled: false };
+        const entry = { set: values, whereCalled: false, whereParams: [] as unknown[] };
         updates.push(entry);
 
         return {
-          where: () => {
+          where: (condition: unknown) => {
             entry.whereCalled = true;
+            entry.whereParams = renderCondition(condition).params;
 
             return Promise.resolve();
           },
@@ -377,6 +392,117 @@ describe('accountsRepo', () => {
 
       await expect(
         accountsRepo.createIfAbsent({ id: 'pending-id', name: 'Loan', kind: 'debt' }),
+      ).rejects.toThrow('implicit');
+      expect(inserts).toEqual([]);
+    });
+
+    it('writes nothing when the id is stored, so no debt account sort order moves', async () => {
+      // The asset slot would collide with the debt block, which a NEW row would shift.
+      const { databaseTransaction, inserts, updates } = makeCreateDatabaseTransaction(2, 2, 2, [
+        'pending-id',
+      ]);
+      mockDatabaseTransaction = databaseTransaction;
+
+      const result = await accountsRepo.createIfAbsent({
+        id: 'pending-id',
+        name: 'Cold',
+        kind: 'crypto',
+      });
+
+      expect(result).toBe('pending-id');
+      expect(updates).toEqual([]);
+      expect(inserts).toEqual([]);
+    });
+
+    it('shifts the debt accounts once for a row that is new', async () => {
+      const { databaseTransaction, inserts, updates } = makeCreateDatabaseTransaction(2, 2, 2);
+      mockDatabaseTransaction = databaseTransaction;
+
+      await accountsRepo.createIfAbsent({ id: 'pending-id', name: 'Cold', kind: 'crypto' });
+
+      expect(updates).toHaveLength(1);
+      expect(inserts[0]).toMatchObject({ id: 'pending-id', sortOrder: 3 });
+    });
+  });
+
+  // The create form's Save: one write that finds the row in the same transaction, so it runs
+  // after any insert a Connect queued before it and never decides from an earlier read.
+  describe('saveFormAccount', () => {
+    it('updates the form fields of the stored row and inserts nothing', async () => {
+      const { databaseTransaction, inserts, updates } = makeCreateDatabaseTransaction(2, 2, 2, [
+        'pending-id',
+      ]);
+      mockDatabaseTransaction = databaseTransaction;
+
+      const result = await accountsRepo.saveFormAccount({
+        id: 'pending-id',
+        name: 'Renamed',
+        kind: 'bank',
+        color: '#112233',
+        icon: 'bitcoinsign',
+        bankId: 'monobank',
+      });
+
+      expect(result).toBe('pending-id');
+      expect(inserts).toEqual([]);
+      expect(updates).toHaveLength(1);
+      expect(updates[0].set).toEqual({
+        name: 'Renamed',
+        color: '#112233',
+        icon: 'bitcoinsign',
+        bankId: 'monobank',
+      });
+      expect(updates[0].whereParams).toEqual(['pending-id']);
+    });
+
+    it('stores a cleared icon as null and leaves the kind and the sort order alone', async () => {
+      const { databaseTransaction, updates } = makeCreateDatabaseTransaction(2, 2, 2, [
+        'pending-id',
+      ]);
+      mockDatabaseTransaction = databaseTransaction;
+
+      await accountsRepo.saveFormAccount({
+        id: 'pending-id',
+        name: 'Renamed',
+        kind: 'crypto',
+        icon: null,
+      });
+
+      expect(updates).toHaveLength(1);
+      expect(updates[0].set).toEqual({ name: 'Renamed', icon: null });
+    });
+
+    it('creates the row when it is not stored, at the next free sort order', async () => {
+      const { databaseTransaction, inserts, updates } = makeCreateDatabaseTransaction(4);
+      mockDatabaseTransaction = databaseTransaction;
+
+      const result = await accountsRepo.saveFormAccount({
+        id: 'pending-id',
+        name: 'Cold',
+        kind: 'crypto',
+        color: '#112233',
+        icon: 'bitcoinsign',
+      });
+
+      expect(result).toBe('pending-id');
+      expect(updates).toEqual([]);
+      expect(inserts).toHaveLength(1);
+      expect(inserts[0]).toMatchObject({
+        id: 'pending-id',
+        name: 'Cold',
+        kind: 'crypto',
+        color: '#112233',
+        icon: 'bitcoinsign',
+        sortOrder: 5,
+      });
+    });
+
+    it('refuses an implicit kind for a row that is not stored, and inserts nothing', async () => {
+      const { databaseTransaction, inserts } = makeCreateDatabaseTransaction();
+      mockDatabaseTransaction = databaseTransaction;
+
+      await expect(
+        accountsRepo.saveFormAccount({ id: 'pending-id', name: 'Loan', kind: 'debt' }),
       ).rejects.toThrow('implicit');
       expect(inserts).toEqual([]);
     });
