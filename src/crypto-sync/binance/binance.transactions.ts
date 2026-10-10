@@ -8,16 +8,15 @@ import { createRequestGate, type RequestGate } from '@kiko/monobank/throttle';
 
 import {
   type BinanceDeposit,
-  BinanceRateLimitError,
   type BinanceWithdrawal,
-  type FetchAccountOptions,
   fetchDepositHistory,
   fetchWithdrawHistory,
   HISTORY_PAGE_LIMIT,
+  type HistoryPage,
   type HistoryWindow,
-  type WithdrawHistoryPage,
-} from './binance.client';
+} from './binance.history-client';
 import { type BinanceCredentials, readCredentials } from './binance.credentials';
+import { BinanceRateLimitError, type FetchAccountOptions } from './binance.client';
 import { isBinanceCoolingDown, setBinanceCooldownUntil } from './binance.cooldown';
 
 const BINANCE_ASSET = 'BTC';
@@ -127,13 +126,13 @@ export type BinanceTransactionSyncDeps = {
     secret: string,
     window: HistoryWindow,
     options?: FetchAccountOptions,
-  ) => Promise<BinanceDeposit[]>;
+  ) => Promise<HistoryPage<BinanceDeposit>>;
   fetchWithdrawHistory: (
     apiKey: string,
     secret: string,
     window: HistoryWindow,
     options?: FetchAccountOptions,
-  ) => Promise<WithdrawHistoryPage>;
+  ) => Promise<HistoryPage<BinanceWithdrawal>>;
 };
 
 const defaultBinanceTransactionDeps: BinanceTransactionSyncDeps = {
@@ -287,7 +286,7 @@ const buildWindows = (startTime: number, endTime: number): { start: number; end:
  */
 const fetchAllInWindow = async <Row>(
   gate: RequestGate,
-  fetchPage: (window: HistoryWindow) => Promise<Row[]>,
+  fetchPage: (window: HistoryWindow) => Promise<HistoryPage<Row>>,
   start: number,
   end: number,
 ): Promise<Row[]> => {
@@ -295,7 +294,7 @@ const fetchAllInWindow = async <Row>(
 
   for (let page = 0; page < MAX_PAGES_PER_WINDOW; page += 1) {
     await gate.wait();
-    const pageRows = await fetchPage({
+    const { rows: pageRows } = await fetchPage({
       startTime: start,
       endTime: end,
       offset: page * HISTORY_PAGE_LIMIT,

@@ -2,6 +2,7 @@ import { guard } from 'fnts';
 import { i18n } from '@kiko/i18n/init';
 import { BINANCE_API_ENDPOINT } from '@env';
 import maybe, { foldMap } from 'fnts/maybe';
+import { isRecord } from '@kiko/type-guards';
 import either, { bifoldr } from 'fnts/either';
 
 import { signQuery } from './binance.hmac';
@@ -9,8 +10,12 @@ import { signQuery } from './binance.hmac';
 /** One spot balance from `/api/v3/account` — decimal strings, per Binance. */
 export type BinanceBalance = { asset: string; free: string; locked: string };
 
-/** The `/api/v3/account` payload fields this client reads. */
-export type BinanceAccount = { balances: BinanceBalance[] };
+/**
+ * The `/api/v3/account` payload fields this client reads. `uid` is the user's own
+ * Binance id as a string, or `null` when the response carries none; it is used in
+ * memory for one run and never stored.
+ */
+export type BinanceAccount = { balances: BinanceBalance[]; uid: string | null };
 
 export type FetchAccountOptions = {
   fetchImpl?: typeof fetch;
@@ -90,10 +95,10 @@ const readBody = guard(
 );
 
 /** The single asset this milestone reads; every SAPI read filters to it. */
-const BINANCE_ASSET = 'BTC';
+export const BINANCE_ASSET = 'BTC';
 
 /** A signed request's parsed body alongside its response headers. */
-type SignedPage = { body: unknown; headers: Headers };
+export type SignedPage = { body: unknown; headers: Headers };
 
 /**
  * One signed Binance request. HMAC-SHA256 over the full query
@@ -110,7 +115,7 @@ type SignedPage = { body: unknown; headers: Headers };
  * produce for any other non-ok status (which is what lets a caller SKIP a
  * failing wallet).
  */
-const signedRequestPage = async (
+export const signedRequestPage = async (
   apiKey: string,
   secret: string,
   method: 'GET' | 'POST',
@@ -152,15 +157,34 @@ const signedRequest = async (
   (await signedRequestPage(apiKey, secret, method, path, params, options)).body;
 
 /**
+ * A Binance uid arrives as a JSON integer, or as a digit string. Anything else
+ * (missing, fractional, past 2^53, empty, non-digit) is no uid, so a caller that
+ * compares it never matches on a mangled value.
+ */
+const uidFrom = (value: unknown): string | null => {
+  if (typeof value === 'number') {
+    return Number.isSafeInteger(value) ? String(value) : null;
+  }
+
+  return typeof value === 'string' && /^\d+$/.test(value) ? value : null;
+};
+
+/**
  * `GET /api/v3/account` (Spot wallet). Read-only. The Spot balance is the one
- * wallet that MUST succeed — its failure fails the whole Binance sync.
+ * wallet that MUST succeed — its failure fails the whole Binance sync. Only
+ * `balances` and `uid` are picked off the body; `balances` is passed through
+ * unchecked because the provider rejects a body without a usable array.
  */
 export const fetchAccount = async (
   apiKey: string,
   secret: string,
   options: FetchAccountOptions = {},
-): Promise<BinanceAccount> =>
-  (await signedRequest(apiKey, secret, 'GET', '/api/v3/account', {}, options)) as BinanceAccount;
+): Promise<BinanceAccount> => {
+  const body = await signedRequest(apiKey, secret, 'GET', '/api/v3/account', {}, options);
+  const account: Record<string, unknown> = isRecord(body) ? body : {};
+
+  return { balances: account.balances as BinanceBalance[], uid: uidFrom(account.uid) };
+};
 
 /** One Funding-wallet balance from `/sapi/v1/asset/get-funding-asset` — decimal strings. */
 export type BinanceFundingAsset = {
@@ -289,116 +313,21 @@ export const fetchLockedPosition = async (
     options,
   );
 
-/**
- * Binance caps the deposit/withdraw history page at 1000 rows (the default too).
- * A page of exactly this many rows means "there may be more" — the caller pages
- * on `offset` until a short page. Exported so the offset-paging walk in
- * `binance.transactions.ts` uses the SAME limit the request sends.
- */
-export const HISTORY_PAGE_LIMIT = 1000;
-
-/**
- * One offset page of a ≤90-day history window. Both history endpoints share this
- * shape: `startTime`/`endTime` bound the window (the API rejects a span of 90
- * days or more), `offset` pages within it.
- */
-export type HistoryWindow = { startTime: number; endTime: number; offset: number };
-
-/** One deposit from `/sapi/v1/capital/deposit/hisrec`. `insertTime` is epoch ms. */
-export type BinanceDeposit = {
-  id: string;
-  amount: string;
-  coin: string;
-  txId: string;
-  insertTime: number;
-  status: number;
-};
-
-/**
- * `GET /sapi/v1/capital/deposit/hisrec` (deposit history), filtered to BTC, for
- * ONE offset page of ONE window. Signed, read-only. Returns the raw page; the
- * offset-paging and window walk live in `binance.transactions.ts`.
- */
-export const fetchDepositHistory = async (
-  apiKey: string,
-  secret: string,
-  window: HistoryWindow,
-  options: FetchAccountOptions = {},
-): Promise<BinanceDeposit[]> =>
-  (await signedRequest(
-    apiKey,
-    secret,
-    'GET',
-    '/sapi/v1/capital/deposit/hisrec',
-    {
-      coin: BINANCE_ASSET,
-      startTime: String(window.startTime),
-      endTime: String(window.endTime),
-      offset: String(window.offset),
-      limit: String(HISTORY_PAGE_LIMIT),
-    },
-    options,
-  )) as BinanceDeposit[];
-
-/**
- * One withdrawal from `/sapi/v1/capital/withdraw/history`. `applyTime` is a UTC
- * datetime STRING ("2019-10-12 11:12:02"), NOT epoch ms — see
- * `parseWithdrawTime` in `binance.transactions.ts`.
- */
-export type BinanceWithdrawal = {
-  id: string;
-  amount: string;
-  transactionFee: string;
-  coin: string;
-  txId: string;
-  applyTime: string;
-  status: number;
-};
-
-/**
- * One offset page of withdrawal history, plus the requesting minute's spent
- * SAPI weight (`X-SAPI-USED-UID-WEIGHT-1M`) when Binance reports it — the
- * signal the resumable history walk budgets its next call against.
- */
-export type WithdrawHistoryPage = {
-  rows: BinanceWithdrawal[];
-  usedUidWeight1m: number | undefined;
-};
-
-const usedUidWeight1mFromHeaders = (headers: Headers): number | undefined => {
-  const raw = foldMap(maybe(headers.get('X-SAPI-USED-UID-WEIGHT-1M')), Number);
+const weightFromHeader = (headers: Headers, name: string): number | undefined => {
+  const raw = foldMap(maybe(headers.get(name)), Number);
 
   return raw !== undefined && Number.isFinite(raw) ? raw : undefined;
 };
 
 /**
- * `GET /sapi/v1/capital/withdraw/history` (withdrawal history), filtered to BTC,
- * for ONE offset page of ONE window. Signed, read-only. Same window/paging
- * contract as `fetchDepositHistory`.
+ * The requesting minute's spent SAPI weight, per Binance's own headers, when it
+ * reports them: `X-SAPI-USED-UID-WEIGHT-1M` (per user) and
+ * `X-SAPI-USED-IP-WEIGHT-1M` (per IP). The signal a resumable history walk budgets
+ * its next call against. A missing or non-numeric header reads as `undefined`.
  */
-export const fetchWithdrawHistory = async (
-  apiKey: string,
-  secret: string,
-  window: HistoryWindow,
-  options: FetchAccountOptions = {},
-): Promise<WithdrawHistoryPage> => {
-  const { body, headers } = await signedRequestPage(
-    apiKey,
-    secret,
-    'GET',
-    '/sapi/v1/capital/withdraw/history',
-    {
-      coin: BINANCE_ASSET,
-      startTime: String(window.startTime),
-      endTime: String(window.endTime),
-      offset: String(window.offset),
-      limit: String(HISTORY_PAGE_LIMIT),
-    },
-    options,
-  );
-
-  return {
-    rows: body as BinanceWithdrawal[],
-    usedUidWeight1m: usedUidWeight1mFromHeaders(headers),
-  };
-};
+export const usedWeightsFromHeaders = (
+  headers: Headers,
+): { usedUidWeight1m: number | undefined; usedIpWeight1m: number | undefined } => ({
+  usedUidWeight1m: weightFromHeader(headers, 'X-SAPI-USED-UID-WEIGHT-1M'),
+  usedIpWeight1m: weightFromHeader(headers, 'X-SAPI-USED-IP-WEIGHT-1M'),
+});

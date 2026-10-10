@@ -148,13 +148,13 @@ const EXEMPTIONS = [
     reason: 'tx_count is the literal Esplora/Blockstream address-stats API field name',
   },
   {
-    suffix: 'src/crypto-sync/binance/binance.client.ts',
+    suffix: 'src/crypto-sync/binance/binance.history-client.ts',
     word: 'tx',
     name: 'txId',
     reason: 'txId is the literal field name on Binance’s deposit/withdraw history records',
   },
   {
-    suffix: 'src/crypto-sync/binance/binance.client.test.ts',
+    suffix: 'src/crypto-sync/binance/binance.history-client.test.ts',
     word: 'tx',
     name: 'txId',
     reason: 'txId is the literal field name on Binance’s deposit/withdraw history records',

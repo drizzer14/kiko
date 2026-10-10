@@ -2,12 +2,10 @@ import {
   BinanceRateLimitError,
   DEFAULT_RETRY_AFTER_MS,
   fetchAccount,
-  fetchDepositHistory,
   fetchFlexiblePosition,
   fetchFundingAsset,
   fetchLockedPosition,
-  fetchWithdrawHistory,
-  HISTORY_PAGE_LIMIT,
+  usedWeightsFromHeaders,
 } from './binance.client';
 
 const NOW = 1_704_326_400_000;
@@ -65,6 +63,55 @@ describe('fetchAccount', () => {
 
     expect(result.balances).toHaveLength(2);
     expect(result.balances[0]).toEqual({ asset: 'BTC', free: '0.50000000', locked: '0.25000000' });
+  });
+
+  it.each([
+    ['an integer number', 123, '123'],
+    ['a digit string', '123', '123'],
+    ['zero', 0, '0'],
+  ])('returns the uid of %s as a string', async (_label, uid, expected) => {
+    const result = await fetchAccount('api-key-fixture', 'secret-fixture', {
+      fetchImpl: makeFetch({ ...accountBody, uid }),
+      now: () => NOW,
+    });
+
+    expect(result.uid).toBe(expected);
+  });
+
+  it.each([
+    ['missing', undefined],
+    ['NaN', Number.NaN],
+    ['an empty string', ''],
+    ['a fraction', 1.5],
+    ['a non-digit string', '12a'],
+    ['an unsafe integer', 1e21],
+    ['null', null],
+    ['an object', { id: 1 }],
+  ])('returns a null uid when it is %s', async (_label, uid) => {
+    const result = await fetchAccount('api-key-fixture', 'secret-fixture', {
+      fetchImpl: makeFetch({ ...accountBody, uid }),
+      now: () => NOW,
+    });
+
+    expect(result.uid).toBeNull();
+  });
+
+  it('returns only the balances and the uid of the account body', async () => {
+    const result = await fetchAccount('api-key-fixture', 'secret-fixture', {
+      fetchImpl: makeFetch({ ...accountBody, uid: 7 }),
+      now: () => NOW,
+    });
+
+    expect(Object.keys(result).sort()).toEqual(['balances', 'uid']);
+  });
+
+  it('leaves the balances undefined for a body that is not an object, so the provider rejects it', async () => {
+    const result = await fetchAccount('api-key-fixture', 'secret-fixture', {
+      fetchImpl: makeFetch([]),
+      now: () => NOW,
+    });
+
+    expect(result).toEqual({ balances: undefined, uid: null });
   });
 
   it('throws with the status on a non-ok response without a Binance error body', async () => {
@@ -365,136 +412,40 @@ describe('fetchFlexiblePosition', () => {
   });
 });
 
-// A 90-day history window: deposit/withdraw history is offset-paged within a
-// single window, so each client call carries a startTime/endTime/offset.
-const WINDOW = { startTime: 1_700_000_000_000, endTime: NOW, offset: 0 };
-
-describe('fetchDepositHistory', () => {
-  it('GETs /sapi/v1/capital/deposit/hisrec filtered to BTC with the window, offset and limit, signed', async () => {
-    let sentUrl = '';
-    let sentInit: SpyInit = { headers: {} };
-    const spyFetch = (async (url: string, init: SpyInit) => {
-      sentUrl = url;
-      sentInit = init;
-
-      return { ok: true, json: async () => [], status: 200 };
-    }) as unknown as typeof fetch;
-
-    await fetchDepositHistory('api-key-fixture', 'secret-fixture', WINDOW, {
-      fetchImpl: spyFetch,
-      now: () => NOW,
+describe('usedWeightsFromHeaders', () => {
+  it('reads the UID and IP weight of the minute', () => {
+    const headers = new Headers({
+      'X-SAPI-USED-UID-WEIGHT-1M': '36000',
+      'X-SAPI-USED-IP-WEIGHT-1M': '420',
     });
 
-    const url = new URL(sentUrl);
-    expect(url.pathname).toBe('/sapi/v1/capital/deposit/hisrec');
-    expect(url.searchParams.get('coin')).toBe('BTC');
-    expect(url.searchParams.get('startTime')).toBe(String(WINDOW.startTime));
-    expect(url.searchParams.get('endTime')).toBe(String(WINDOW.endTime));
-    expect(url.searchParams.get('offset')).toBe('0');
-    expect(url.searchParams.get('limit')).toBe(String(HISTORY_PAGE_LIMIT));
-    expect(url.searchParams.get('recvWindow')).toBe('5000');
-    expect(url.searchParams.get('timestamp')).toBe(String(NOW));
-    expect(url.searchParams.get('signature')).toBeTruthy();
-    expect(sentInit.method).toBe('GET');
-    expect(sentInit.headers['X-MBX-APIKEY']).toBe('api-key-fixture');
+    expect(usedWeightsFromHeaders(headers)).toEqual({
+      usedUidWeight1m: 36_000,
+      usedIpWeight1m: 420,
+    });
   });
 
-  it('returns the parsed deposit array', async () => {
-    const body = [{ id: '1', amount: '0.5', coin: 'BTC', txId: 'abc', insertTime: NOW, status: 1 }];
+  it('reads a missing header as undefined, each on its own', () => {
+    expect(usedWeightsFromHeaders(new Headers())).toEqual({
+      usedUidWeight1m: undefined,
+      usedIpWeight1m: undefined,
+    });
+    expect(usedWeightsFromHeaders(new Headers({ 'X-SAPI-USED-IP-WEIGHT-1M': '5' }))).toEqual({
+      usedUidWeight1m: undefined,
+      usedIpWeight1m: 5,
+    });
+  });
 
-    const result = await fetchDepositHistory('api-key-fixture', 'secret-fixture', WINDOW, {
-      fetchImpl: makeFetch(body),
-      now: () => NOW,
+  it('reads a non-numeric header as undefined', () => {
+    const headers = new Headers({
+      'X-SAPI-USED-UID-WEIGHT-1M': 'abc',
+      'X-SAPI-USED-IP-WEIGHT-1M': 'Infinity',
     });
 
-    expect(result).toEqual(body);
-  });
-
-  it('rejects on a non-ok response so the caller can surface the failure', async () => {
-    const invalidBody = { code: -2015, msg: 'Invalid API-key, IP, or permissions for action.' };
-
-    await expect(
-      fetchDepositHistory('api-key-fixture', 'secret-fixture', WINDOW, {
-        fetchImpl: makeFetch(invalidBody, false, 401),
-      }),
-    ).rejects.toThrow('Invalid API-key, IP, or permissions for action.');
-  });
-});
-
-describe('fetchWithdrawHistory', () => {
-  it('GETs /sapi/v1/capital/withdraw/history filtered to BTC with the window, offset and limit, signed', async () => {
-    let sentUrl = '';
-    let sentInit: SpyInit = { headers: {} };
-    const spyFetch = (async (url: string, init: SpyInit) => {
-      sentUrl = url;
-      sentInit = init;
-
-      return { ok: true, json: async () => [], status: 200, headers: new Headers() };
-    }) as unknown as typeof fetch;
-
-    await fetchWithdrawHistory('api-key-fixture', 'secret-fixture', WINDOW, {
-      fetchImpl: spyFetch,
-      now: () => NOW,
+    expect(usedWeightsFromHeaders(headers)).toEqual({
+      usedUidWeight1m: undefined,
+      usedIpWeight1m: undefined,
     });
-
-    const url = new URL(sentUrl);
-    expect(url.pathname).toBe('/sapi/v1/capital/withdraw/history');
-    expect(url.searchParams.get('coin')).toBe('BTC');
-    expect(url.searchParams.get('startTime')).toBe(String(WINDOW.startTime));
-    expect(url.searchParams.get('endTime')).toBe(String(WINDOW.endTime));
-    expect(url.searchParams.get('offset')).toBe('0');
-    expect(url.searchParams.get('limit')).toBe(String(HISTORY_PAGE_LIMIT));
-    expect(url.searchParams.get('signature')).toBeTruthy();
-    expect(sentInit.method).toBe('GET');
-    expect(sentInit.headers['X-MBX-APIKEY']).toBe('api-key-fixture');
-  });
-
-  it('returns the parsed withdrawal rows, with no used-UID-weight when the header is absent', async () => {
-    const body = [
-      {
-        id: '9',
-        amount: '0.25',
-        transactionFee: '0.0001',
-        coin: 'BTC',
-        txId: 'def',
-        applyTime: '2023-11-15 08:30:00',
-        status: 6,
-      },
-    ];
-
-    const result = await fetchWithdrawHistory('api-key-fixture', 'secret-fixture', WINDOW, {
-      fetchImpl: makeFetch(body),
-      now: () => NOW,
-    });
-
-    expect(result).toEqual({ rows: body, usedUidWeight1m: undefined });
-  });
-
-  it('reports the used-UID-weight-1m header, so the caller can budget the next page', async () => {
-    const result = await fetchWithdrawHistory('api-key-fixture', 'secret-fixture', WINDOW, {
-      fetchImpl: makeFetch([], true, 200, new Headers({ 'X-SAPI-USED-UID-WEIGHT-1M': '36000' })),
-      now: () => NOW,
-    });
-
-    expect(result.usedUidWeight1m).toBe(36_000);
-  });
-
-  it('rejects with BinanceRateLimitError on a 429, honouring Retry-After', async () => {
-    await expect(
-      fetchWithdrawHistory('api-key-fixture', 'secret-fixture', WINDOW, {
-        fetchImpl: makeFetch({}, false, 429, new Headers({ 'Retry-After': '30' })),
-      }),
-    ).rejects.toMatchObject({ status: 429, retryAfterMs: 30_000 });
-  });
-
-  it('rejects on a non-rate-limit non-ok response so the caller can surface the failure', async () => {
-    const invalidBody = { code: -2015, msg: 'Invalid API-key, IP, or permissions for action.' };
-
-    await expect(
-      fetchWithdrawHistory('api-key-fixture', 'secret-fixture', WINDOW, {
-        fetchImpl: makeFetch(invalidBody, false, 401),
-      }),
-    ).rejects.toThrow('Invalid API-key, IP, or permissions for action.');
   });
 });
 

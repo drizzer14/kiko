@@ -383,7 +383,7 @@ verified usage, not dead weight:
   `val_code` and from `payments[].pay_val`) mirror the National Bank of
   Ukraine securities register's own external JSON fields; `src/crypto-sync/binance/binance.client.ts` +
   its test (`msg`) mirror Binance's own error-body shape `{code, msg}`;
-  those same two files plus `binance.transactions.ts`/`.test.ts` (`tx`,
+  `binance.history-client.ts`/`.test.ts` plus `binance.transactions.ts`/`.test.ts` (`tx`,
   from `txId`) mirror the literal field name on Binance's deposit/withdraw
   history records (`GET /sapi/v1/capital/deposit/hisrec` and
   `/withdraw/history`) — found only by reading the ACTUAL diff after an
