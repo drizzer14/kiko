@@ -958,7 +958,7 @@ describe('holdingsRepo.upsertMonobank (via the shared metadata-key helper)', () 
   });
 });
 
-describe('holdingsRepo.resetBinanceHistoryCursor', () => {
+describe('holdingsRepo.resetBinanceWalkCursors', () => {
   it('resets every walk cursor to the given floor on holdings that have it, and leaves every other metadata key untouched', async () => {
     const rows = [
       {
@@ -992,7 +992,7 @@ describe('holdingsRepo.resetBinanceHistoryCursor', () => {
       }),
     };
 
-    await holdingsRepo.resetBinanceHistoryCursor('acc-1', 100);
+    await holdingsRepo.resetBinanceWalkCursors('acc-1', 100);
 
     // Only the holding that actually carried the key is written, to the floor.
     expect(updates).toEqual([
@@ -1020,7 +1020,7 @@ describe('holdingsRepo.resetBinanceHistoryCursor', () => {
       update,
     };
 
-    await holdingsRepo.resetBinanceHistoryCursor('acc-1', 100);
+    await holdingsRepo.resetBinanceWalkCursors('acc-1', 100);
 
     expect(update).not.toHaveBeenCalled();
   });

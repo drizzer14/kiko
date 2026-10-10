@@ -26,7 +26,7 @@ import { holdingValue } from '@kiko/holdings/holding-value';
 import { holdingRegisterCoupons } from '@kiko/bonds/nbu-register';
 import { computeDedupKeyBase } from '@kiko/statement-import/mapping';
 import { rezoneImportTime } from '@kiko/statement-import/rezone-import-times';
-import { asBondMeta, binanceHistoryCursorOf } from '@kiko/holdings/holding-metadata';
+import { asBondMeta, binanceWalkCursorOf } from '@kiko/holdings/holding-metadata';
 
 import type { DataSnapshot } from './data-snapshot';
 import { restoreDataSnapshot } from './restore-snapshot';
@@ -1562,6 +1562,6 @@ describe('restoreDataSnapshot', () => {
 
     const [restored] = insertedRows.holdings as { metadata: unknown }[];
 
-    expect(binanceHistoryCursorOf(restored.metadata)).toBe(1_704_326_400_000);
+    expect(binanceWalkCursorOf('binanceHistoryCursor', restored.metadata)).toBe(1_704_326_400_000);
   });
 });

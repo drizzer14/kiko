@@ -106,7 +106,7 @@ describe("holdingsRepo.setBinanceWalkCursor — gated on the holding's account s
 
     // The disconnect itself, in its own real order: reset the cursor to the
     // floor FIRST, then clear the institution — see `disconnectCryptoAccount`.
-    await holdingsRepo.resetBinanceHistoryCursor('acc-1', 1);
+    await holdingsRepo.resetBinanceWalkCursors('acc-1', 1);
     rawDatabase.prepare("UPDATE accounts SET institution = NULL WHERE id = 'acc-1'").run();
 
     // A window commit from a walk that started BEFORE the disconnect, whose
@@ -128,7 +128,7 @@ describe("holdingsRepo.setBinanceWalkCursor — gated on the holding's account s
     for (const field of binanceWalkCursorFields) {
       await holdingsRepo.setBinanceWalkCursor('h-spot', field, 999_999);
     }
-    await holdingsRepo.resetBinanceHistoryCursor('acc-1', 1);
+    await holdingsRepo.resetBinanceWalkCursors('acc-1', 1);
 
     expect(storedMetadata(rawDatabase)).toEqual({
       binanceAsset: 'BTC',

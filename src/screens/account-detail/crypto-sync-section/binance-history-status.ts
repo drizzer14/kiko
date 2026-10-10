@@ -1,6 +1,6 @@
 import { DAY_MS } from '@kiko/dates';
 import type { HoldingRow } from '@kiko/db';
-import { binanceHistoryCursorOf } from '@kiko/holdings/holding-metadata';
+import { BINANCE_HISTORY_CURSOR_FIELD, binanceWalkCursorOf } from '@kiko/holdings/holding-metadata';
 
 /**
  * The Binance history-walk watermark among an account's holdings. Only the
@@ -10,7 +10,7 @@ import { binanceHistoryCursorOf } from '@kiko/holdings/holding-metadata';
  */
 export const historyCursorOf = (holdings: Pick<HoldingRow, 'metadata'>[]): number | null => {
   for (const holding of holdings) {
-    const cursor = binanceHistoryCursorOf(holding.metadata);
+    const cursor = binanceWalkCursorOf(BINANCE_HISTORY_CURSOR_FIELD, holding.metadata);
 
     if (cursor !== null) {
       return cursor;

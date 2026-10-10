@@ -14,8 +14,10 @@ export type BalanceChange = { name: string; currency: Currency; minorUnits: numb
 export type ExchangeRemoval =
   // The other legs are the user's rows and go with this one; `names` are the
   // holdings they sit on. `keptNames` are the holdings of a bank-owned leg of
-  // the same pair that stays, present only when there is one.
-  | { kind: 'deleted'; names: string[]; keptNames?: string[] }
+  // the same pair that stays, present only when there is one. `sameCurrency` is
+  // set when both legs hold one currency, which the row's own label calls a
+  // transfer, so the notice does too.
+  | { kind: 'deleted'; names: string[]; keptNames?: string[]; sameCurrency?: boolean }
   // The other leg is the bank's row and stays; `names` are the holdings it sits on.
   | { kind: 'syncedKept'; names: string[] }
   // The row names an exchange partner that cannot be proven: `name` is the
@@ -72,9 +74,16 @@ const splitExchangeSentences = (exchange: ExchangeRemoval, t: TFunction): string
 // the split's own wording.
 const exchangeSentence = (exchange: ExchangeRemoval, isSplit: boolean, t: TFunction): string =>
   match(exchange)
-    .with({ kind: 'deleted' }, ({ names, keptNames = [] }) =>
+    .with({ kind: 'deleted' }, ({ names, keptNames = [], sameCurrency = false }) =>
       [
-        t('transactions.deleteLinked.exchange', { name: listedNames(names, t) }),
+        t(
+          sameCurrency
+            ? 'transactions.deleteLinked.transfer'
+            : 'transactions.deleteLinked.exchange',
+          {
+            name: listedNames(names, t),
+          },
+        ),
         ...keptNames.map((name) => t('transactions.deleteLinked.exchangeAlsoKept', { name })),
       ].join(' '),
     )

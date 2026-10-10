@@ -139,6 +139,19 @@ describe('capital placement on real SQLite', () => {
     ]);
   });
 
+  it('a window with a new Spot row and a stored row read as Funding creates no Funding holding and keeps both on Spot', async () => {
+    await importOldSpotDeposit();
+
+    const result = await runWalk([deposit({ walletType: 1 }), deposit({ id: '8', walletType: 0 })]);
+
+    expect(result).toEqual({ imported: 1, complete: true });
+    expect(fundingHoldings()).toEqual([]);
+    expect(storedRows()).toEqual([
+      { external_id: 'acc-1:deposit:7', holding_id: 'h-spot', amount_minor_units: 50_000_000 },
+      { external_id: 'acc-1:deposit:8', holding_id: 'h-spot', amount_minor_units: 50_000_000 },
+    ]);
+  });
+
   it('a second identical run creates no second Funding holding and no second row', async () => {
     const deposits = [deposit({ walletType: 1 })];
 

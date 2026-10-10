@@ -29,7 +29,7 @@ export const disconnectCryptoAccount = async (
   providerId: BalanceProviderId,
 ): Promise<void> => {
   if (providerId === 'binance') {
-    await holdingsRepo.resetBinanceHistoryCursor(accountId, HISTORY_FLOOR_MS);
+    await holdingsRepo.resetBinanceWalkCursors(accountId, HISTORY_FLOOR_MS);
   }
 
   await accountsRepo.disconnect(accountId);

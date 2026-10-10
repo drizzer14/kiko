@@ -253,6 +253,29 @@ describe('deleting a leg of a manual Exchange', () => {
     });
   });
 
+  it('marks the plan same-currency, from either leg, when both holdings hold one currency', async () => {
+    await transactionsRepo.recordExchange({
+      sourceHoldingId: 'uah',
+      valueOutMinorUnits: 40_000,
+      destinationHoldingId: 'cash',
+      destinationType: 'cash',
+      valueInMinorUnits: 40_000,
+      time: MOVED,
+    });
+
+    expect(await linkageOf(idOfRowOn('uah'))).toEqual({
+      split: false,
+      exchange: { kind: 'deleted', names: ['Cash'], sameCurrency: true },
+    });
+    expect(await linkageOf(idOfRowOn('cash'))).toEqual({
+      split: false,
+      exchange: { kind: 'deleted', names: ['Hryvnia card'], sameCurrency: true },
+    });
+    expect(removeNotice(await transactionsRepo.removePlan(idOfRowOn('uah')), i18n.t)).toContain(
+      'This also deletes the other part of this transfer, in Cash.',
+    );
+  });
+
   it('reverses each leg by its own stored amount when the user edited one of them', async () => {
     const before = stateOf();
 

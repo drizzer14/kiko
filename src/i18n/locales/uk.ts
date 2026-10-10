@@ -826,6 +826,7 @@ export const uk: typeof en = {
     defaultDescriptionIncomePlain: 'Надходження',
     deleteLinked: {
       exchange: 'Також буде видалено другу частину цього обміну, у {{name}}.',
+      transfer: 'Також буде видалено другу частину цього переказу, у {{name}}.',
       exchangeSyncedKept:
         'Друга частина, у {{name}}, надійшла з банку й залишиться. Буде видалено лише цю частину.',
       exchangeUnlinked:

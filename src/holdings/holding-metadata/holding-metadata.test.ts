@@ -4,7 +4,6 @@ import {
   asMetalMeta,
   asPropertyMeta,
   asTermDepositMeta,
-  binanceHistoryCursorOf,
   binanceWalkCursorFields,
   binanceWalkCursorOf,
   loanKinds,
@@ -312,21 +311,6 @@ describe('syncedAtOf', () => {
     expect(syncedAtOf({ syncedAt: 'yesterday' })).toBeNull();
     expect(syncedAtOf({ syncedAt: Number.NaN })).toBeNull();
     expect(syncedAtOf(null)).toBeNull();
-  });
-});
-
-describe('binanceHistoryCursorOf', () => {
-  it('reads a finite binanceHistoryCursor timestamp', () => {
-    expect(
-      binanceHistoryCursorOf({ binanceAsset: 'BTC', binanceHistoryCursor: 1_704_326_400_000 }),
-    ).toBe(1_704_326_400_000);
-  });
-
-  it('returns null when absent, non-numeric, or not an object', () => {
-    expect(binanceHistoryCursorOf({ binanceAsset: 'BTC' })).toBeNull();
-    expect(binanceHistoryCursorOf({ binanceHistoryCursor: 'yesterday' })).toBeNull();
-    expect(binanceHistoryCursorOf({ binanceHistoryCursor: Number.NaN })).toBeNull();
-    expect(binanceHistoryCursorOf(null)).toBeNull();
   });
 });
 

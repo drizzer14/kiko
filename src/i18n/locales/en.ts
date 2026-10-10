@@ -982,6 +982,9 @@ export const en = {
     // (Hermes has no `Intl.ListFormat`).
     deleteLinked: {
       exchange: 'This also deletes the other part of this exchange, in {{name}}.',
+      // The same sentence when both legs hold one currency: the row reads
+      // "Transfer to/from", so its notice says transfer too.
+      transfer: 'This also deletes the other part of this transfer, in {{name}}.',
       exchangeSyncedKept:
         'The other part, in {{name}}, came from your bank and stays. Only this part is deleted.',
       exchangeUnlinked:

@@ -182,6 +182,13 @@ const BINANCE_TRANSFER_HISTORY_CURSOR_FIELD = 'binanceTransferHistoryCursor';
 
 const BINANCE_EARN_HISTORY_CURSOR_FIELD = 'binanceEarnHistoryCursor';
 
+/**
+ * The metadata keys a sync WALK owns, as opposed to a balance snapshot — today only
+ * the Binance walk cursors. `upsertByMetadataKey` (holdings.repo.ts) carries these
+ * over from the stored row on every balance-sync upsert, so a routine balance sync
+ * (which writes a fresh `{ syncedAt, ...}` metadata object every run) never wipes a
+ * walk's own progress marker.
+ */
 export const binanceWalkCursorFields = [
   BINANCE_HISTORY_CURSOR_FIELD,
   BINANCE_PAY_HISTORY_CURSOR_FIELD,
@@ -190,15 +197,6 @@ export const binanceWalkCursorFields = [
 ] as const;
 
 export type BinanceWalkCursorField = (typeof binanceWalkCursorFields)[number];
-
-/**
- * Metadata keys a sync WALK owns, as opposed to a balance snapshot — today
- * only the Binance walk cursors. `upsertByMetadataKey` (holdings.repo.ts)
- * carries these over from the stored row on every balance-sync upsert, so a
- * routine balance sync (which writes a fresh `{ syncedAt, ...}` metadata
- * object every run) never wipes a walk's own progress marker.
- */
-const walkOwnedMetadataKeys = binanceWalkCursorFields;
 
 /**
  * The two marks of a Monobank holding's close and reopen (see
@@ -213,12 +211,12 @@ export const SYNC_CLOSED_FROM_FIELD = 'syncClosedFromMs';
 export const STATEMENT_FROM_FIELD = 'statementFromMs';
 
 /**
- * `walkOwnedMetadataKeys` plus `statementFromMs`: what an upsert carries over
+ * `binanceWalkCursorFields` plus `statementFromMs`: what an upsert carries over
  * from the stored row. A separate list, because the Binance disconnect floor
  * reset (`withWalkOwnedMetadataResetToFloor`) must stay Binance-only and
  * never touch a Monobank card's or jar's statement cursor.
  */
-const carriedMetadataKeys = [...walkOwnedMetadataKeys, STATEMENT_FROM_FIELD] as const;
+const carriedMetadataKeys = [...binanceWalkCursorFields, STATEMENT_FROM_FIELD] as const;
 
 const numberFieldOf =
   (field: string) =>
@@ -231,8 +229,6 @@ const numberFieldOf =
 
     return isNumber(value) ? value : null;
   };
-
-export const binanceHistoryCursorOf = numberFieldOf(BINANCE_HISTORY_CURSOR_FIELD);
 
 export const binanceWalkCursorOf = (
   field: BinanceWalkCursorField,
@@ -266,7 +262,7 @@ export const withWalkOwnedMetadataCarried = (
 };
 
 /**
- * Resets every `walkOwnedMetadataKeys` entry already on `storedMetadata` to
+ * Resets every `binanceWalkCursorFields` entry already on `storedMetadata` to
  * `floorMs` — the disconnect-side counterpart of `withWalkOwnedMetadataCarried`,
  * so a disconnected Binance connection's watermark cannot leak into a
  * DIFFERENTLY-owned reconnect (`disconnectCryptoAccount`,
@@ -280,13 +276,13 @@ export const withWalkOwnedMetadataResetToFloor = (
   storedMetadata: unknown,
   floorMs: number,
 ): Record<string, unknown> | undefined => {
-  if (!isRecord(storedMetadata) || !walkOwnedMetadataKeys.some((key) => key in storedMetadata)) {
+  if (!isRecord(storedMetadata) || !binanceWalkCursorFields.some((key) => key in storedMetadata)) {
     return undefined;
   }
 
   const reset = { ...storedMetadata };
 
-  for (const key of walkOwnedMetadataKeys) {
+  for (const key of binanceWalkCursorFields) {
     if (key in storedMetadata) {
       reset[key] = floorMs;
     }

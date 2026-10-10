@@ -514,6 +514,17 @@ const viaSplitPairOf = (row: TransactionRow, linked: LinkedRows): LinkedRows['pa
   return { removed: reachedViaSplit(linked.pair.removed), kept: reachedViaSplit(linked.pair.kept) };
 };
 
+// The test the row's label applies (`transactionRowDescription`) to read "Transfer
+// to/from" instead of "Exchange to/from": both holdings known, one currency.
+const holdsSameCurrencyAsMarker = (
+  row: TransactionRow,
+  holdingsById: Map<string, NamedHolding>,
+): boolean => {
+  const own = holdingsById.get(row.holdingId);
+
+  return own !== undefined && own.currency === markerHoldingOf(row, holdingsById)?.currency;
+};
+
 const exchangeRemovalOf = (
   row: TransactionRow,
   linked: LinkedRows,
@@ -526,6 +537,7 @@ const exchangeRemovalOf = (
       kind: 'deleted',
       names: uniqueHoldingNamesOf(pair.removed, holdingsById),
       ...(pair.kept.length > 0 ? { keptNames: uniqueHoldingNamesOf(pair.kept, holdingsById) } : {}),
+      ...(holdsSameCurrencyAsMarker(row, holdingsById) ? { sameCurrency: true } : {}),
     };
   }
 
@@ -1896,7 +1908,7 @@ export const transactionsRepo = {
         database.select({ externalId: transactions.externalId }).from(transactions).where(where),
     );
 
-    return new Set(stored.flatMap((row) => foldMap(maybe(row.externalId), (key) => [key]) ?? []));
+    return new Set(stored.flatMap((row) => row.externalId ?? []));
   },
   /**
    * The DISTINCT holding ids that still carry an outstanding Monobank hold (a

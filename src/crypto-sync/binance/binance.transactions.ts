@@ -366,6 +366,9 @@ const placeRows = async (
     return [];
   }
 
+  // This lookup runs outside the `addManyDedup` write. A user delete of a stored row in
+  // that gap re-inserts it on the placeholder holding (`spot`), exactly as a row the
+  // walk had never imported would be: nothing is lost, only the user's delete is undone.
   const stored = await deps.storedExternalIds(planned.map((row) => row.externalId));
   const newRows = planned.filter((row) => !stored.has(row.externalId));
   const holdings = await resolveWalletHoldings({
@@ -385,29 +388,6 @@ const placeRows = async (
 
     return { ...row, holdingId: holding.id };
   });
-};
-
-/** The rows of one window's records, or the stop that keeps the window uncommitted. */
-const rowsOrStop = async (
-  deps: BinanceTransactionSyncDeps,
-  accountId: string,
-  spot: HoldingRow,
-  records: WindowRecords,
-): Promise<BinanceTransactionRow[] | BinanceWalkStop> => {
-  try {
-    const planned = [
-      ...records.deposits.map((record) => plannedDepositOf(accountId, record)),
-      ...records.withdrawals.map((record) => plannedWithdrawalOf(accountId, record)),
-    ].filter((row): row is PlannedRow => row !== null);
-
-    return await placeRows(deps, accountId, spot, planned);
-  } catch (error) {
-    if (error instanceof BinanceWalkStop) {
-      return error;
-    }
-
-    throw error;
-  }
 };
 
 /** One window's outcome: committed (rows durable, watermark advanced) or a clean stop. */
@@ -433,12 +413,23 @@ const runOneWindow = async (
     return { kind: 'stop' };
   }
 
-  const rows = await rowsOrStop(deps, accountId, spot, records);
+  let rows: BinanceTransactionRow[];
 
-  if (rows instanceof BinanceWalkStop) {
-    logWalkStop(rows.code);
+  try {
+    const planned = [
+      ...records.deposits.map((record) => plannedDepositOf(accountId, record)),
+      ...records.withdrawals.map((record) => plannedWithdrawalOf(accountId, record)),
+    ].filter((row): row is PlannedRow => row !== null);
 
-    return { kind: 'stop' };
+    rows = await placeRows(deps, accountId, spot, planned);
+  } catch (error) {
+    if (error instanceof BinanceWalkStop) {
+      logWalkStop(error.code);
+
+      return { kind: 'stop' };
+    }
+
+    throw error;
   }
 
   let imported = 0;

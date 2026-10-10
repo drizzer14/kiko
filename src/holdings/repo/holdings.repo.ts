@@ -161,17 +161,34 @@ const upsertManualPricePoint = (
       },
     });
 
+// The JSON path is bound as a parameter (json_extract takes any text expression),
+// so this one helper serves every synced field.
+const metadataKeyMatch = (metadataField: SyncedMetadataField, metadataKey: string) =>
+  sql`json_extract(${holdings.metadata}, ${`$.${metadataField}`}) = ${metadataKey}`;
+
+// Insert a synced holding at the end of its account's grid, with its source key merged
+// into `metadata`. Shared by the upsert's miss branch and `ensureExchangeHoldings`.
+const insertSyncedHolding = async (
+  databaseTransaction: typeof database,
+  merged: Record<string, unknown>,
+  rest: Omit<SyncedHolding, 'metadataField' | 'metadataKey' | 'metadata' | 'renameFromDefault'>,
+): Promise<void> => {
+  const sortOrder = rest.sortOrder ?? (await nextSortOrder(databaseTransaction, rest.accountId));
+  await databaseTransaction
+    .insert(holdings)
+    .values({ id: id(), ...rest, metadata: merged, sortOrder });
+};
+
 // Match on `json_extract(metadata, '$.<field>') = key`, scoped to the account;
 // update balance + metadata in place on a hit, insert with a fresh sortOrder on
-// a miss. The JSON path is bound as a parameter (json_extract takes any text
-// expression), so this one helper serves every synced field. The holding's
-// name is written on insert and otherwise preserved on update — a user rename
-// survives a re-sync — with ONE exception: the transition rename, applied only
-// when the stored name still equals `renameFromDefault` (see provider.ts).
+// a miss. The holding's name is written on insert and otherwise preserved on
+// update — a user rename survives a re-sync — with ONE exception: the transition
+// rename, applied only when the stored name still equals `renameFromDefault` (see
+// provider.ts).
 //
 // The update branch also reads the row's OWN stored metadata (not just
 // `id`/`name`) so `withWalkOwnedMetadataCarried` can carry a walk-owned key
-// (the Binance history cursor, a reopened card's or jar's `statementFromMs`) over the
+// (the Binance walk cursors, a reopened card's or jar's `statementFromMs`) over the
 // caller's `merged` object — a routine balance sync's `metadata: { syncedAt }`
 // would otherwise wipe it every run, since `merged` is built from the
 // CALLER-supplied `metadata` alone, never the stored row.
@@ -195,22 +212,6 @@ const upsertManualPricePoint = (
 //
 // The known limit (a holding closed before the mark existed stays closed) is
 // stated on `reconcileClosedHoldings` in the Monobank sync.
-const metadataKeyMatch = (metadataField: SyncedMetadataField, metadataKey: string) =>
-  sql`json_extract(${holdings.metadata}, ${`$.${metadataField}`}) = ${metadataKey}`;
-
-// Insert a synced holding at the end of its account's grid, with its source key merged
-// into `metadata`. Shared by the upsert's miss branch and `ensureExchangeHoldings`.
-const insertSyncedHolding = async (
-  databaseTransaction: typeof database,
-  merged: Record<string, unknown>,
-  rest: Omit<SyncedHolding, 'metadataField' | 'metadataKey' | 'metadata' | 'renameFromDefault'>,
-): Promise<void> => {
-  const sortOrder = rest.sortOrder ?? (await nextSortOrder(databaseTransaction, rest.accountId));
-  await databaseTransaction
-    .insert(holdings)
-    .values({ id: id(), ...rest, metadata: merged, sortOrder });
-};
-
 const upsertByMetadataKey = async (
   databaseTransaction: typeof database,
   { metadataField, metadataKey, metadata, renameFromDefault, ...rest }: SyncedHolding,
@@ -1092,7 +1093,7 @@ export const holdingsRepo = {
    * carried the key is skipped entirely — no redundant write, no reactive
    * `holdings` fire for it.
    */
-  resetBinanceHistoryCursor: (accountId: string, floorMs: number) =>
+  resetBinanceWalkCursors: (accountId: string, floorMs: number) =>
     write(async (databaseTransaction) => {
       const rows = await databaseTransaction
         .select({ id: holdings.id, metadata: holdings.metadata })
@@ -1123,7 +1124,7 @@ export const holdingsRepo = {
    * that the holding's account is STILL `institution = 'binance'` and is a
    * no-op otherwise — a late-arriving window commit from a walk started
    * before the disconnect must never resurrect a watermark on an
-   * already-disconnected account (undoing `resetBinanceHistoryCursor`'s own
+   * already-disconnected account (undoing `resetBinanceWalkCursors`'s own
    * floor write, which runs as part of that same disconnect).
    */
   setBinanceWalkCursor: (holdingId: string, field: BinanceWalkCursorField, cursorMs: number) =>
@@ -1241,16 +1242,23 @@ export const holdingsRepo = {
    * the walk's read and this write would be zeroed. Here a row of the same account
    * with the same key, open or closed, makes the entry a no-op, so a closed holding
    * stays closed and no second one is created. One write, so a batch lands whole.
+   * An entry whose account is disconnected from Binance is skipped, for the reason
+   * `setBinanceWalkCursor` states: a walk still in flight when the user disconnects
+   * must not create a holding on the disconnected account.
    */
-  ensureExchangeHoldings: (holdingsList: ExchangeHolding[]) =>
+  ensureExchangeHoldings: (holdingsList: Omit<ExchangeHolding, 'renameFromDefault'>[]) =>
     write(async (databaseTransaction) => {
-      for (const {
-        metadataField,
-        metadataKey,
-        metadata,
-        renameFromDefault,
-        ...rest
-      } of holdingsList) {
+      for (const { metadataField, metadataKey, metadata, ...rest } of holdingsList) {
+        const accountRows = await databaseTransaction
+          .select({ institution: accounts.institution })
+          .from(accounts)
+          .where(eq(accounts.id, rest.accountId))
+          .limit(1);
+
+        if (accountRows.at(0)?.institution !== 'binance') {
+          continue;
+        }
+
         const existing = await databaseTransaction
           .select({ id: holdings.id })
           .from(holdings)

@@ -20,17 +20,23 @@ import { applyAllMigrations, executingDrizzle } from '@kiko/test-support/real-sq
 
 import { holdingsRepo } from './holdings.repo';
 
-const openTestDatabase = (): { rawDatabase: DatabaseSync; drizzleDatabase: typeof database } => {
+const openTestDatabase = (
+  institution: string | null = 'binance',
+): { rawDatabase: DatabaseSync; drizzleDatabase: typeof database } => {
   const rawDatabase = new DatabaseSync(':memory:');
 
   applyAllMigrations(rawDatabase);
   rawDatabase.exec('PRAGMA foreign_keys = ON;');
   rawDatabase
-    .prepare("INSERT INTO accounts (id, name, kind) VALUES ('acc-1', 'Binance', 'crypto')")
-    .run();
+    .prepare(
+      "INSERT INTO accounts (id, name, kind, institution) VALUES ('acc-1', 'Binance', 'crypto', ?)",
+    )
+    .run(institution);
   rawDatabase
-    .prepare("INSERT INTO accounts (id, name, kind) VALUES ('acc-2', 'Binance 2', 'crypto')")
-    .run();
+    .prepare(
+      "INSERT INTO accounts (id, name, kind, institution) VALUES ('acc-2', 'Binance 2', 'crypto', ?)",
+    )
+    .run(institution);
   const drizzleDatabase = executingDrizzle<typeof database>(rawDatabase);
   mockWorkDatabase = drizzleDatabase;
 
@@ -80,8 +86,26 @@ describe('holdingsRepo.ensureExchangeHoldings', () => {
       currency: 'BTC',
       balanceMinorUnits: 0,
       closedAt: null,
-      metadata: { binanceAsset: 'BTC:funding' },
     });
+    expect(rows[0].metadata).toEqual({ binanceAsset: 'BTC:funding' });
+  });
+
+  it('is a no-op on a disconnected account: no holding is created', async () => {
+    const { drizzleDatabase } = openTestDatabase(null);
+
+    await holdingsRepo.ensureExchangeHoldings([FUNDING]);
+
+    expect(await drizzleDatabase.select().from(holdings)).toEqual([]);
+  });
+
+  it('skips a disconnected account but still creates the connected one in the same batch', async () => {
+    const { rawDatabase, drizzleDatabase } = openTestDatabase();
+    rawDatabase.prepare("UPDATE accounts SET institution = NULL WHERE id = 'acc-2'").run();
+
+    await holdingsRepo.ensureExchangeHoldings([FUNDING, { ...FUNDING, accountId: 'acc-2' }]);
+
+    const rows = await drizzleDatabase.select().from(holdings);
+    expect(rows.map((row) => row.accountId)).toEqual(['acc-1']);
   });
 
   it.each([
@@ -102,8 +126,8 @@ describe('holdingsRepo.ensureExchangeHoldings', () => {
         name: 'My Funding',
         balanceMinorUnits: balance,
         closedAt,
-        metadata: { binanceAsset: 'BTC:funding', syncedAt: 500 },
       });
+      expect(rows[0].metadata).toEqual({ binanceAsset: 'BTC:funding', syncedAt: 500 });
     },
   );
 

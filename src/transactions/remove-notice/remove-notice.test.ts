@@ -37,6 +37,47 @@ describe('removeNotice', () => {
     ).toBe('This also deletes the other part of this exchange, in Dollar card, Cash.');
   });
 
+  it('calls the other part a transfer, as the row is labelled, when both legs hold one currency', () => {
+    expect(
+      removeNotice(
+        {
+          split: false,
+          exchange: { kind: 'deleted', names: ['Binance Funding'], sameCurrency: true },
+        },
+        i18n.t,
+      ),
+    ).toBe('This also deletes the other part of this transfer, in Binance Funding.');
+  });
+
+  it('keeps the exchange wording when the legs hold different currencies', () => {
+    expect(
+      removeNotice(
+        {
+          split: false,
+          exchange: { kind: 'deleted', names: ['Dollar card'], sameCurrency: false },
+        },
+        i18n.t,
+      ),
+    ).toBe('This also deletes the other part of this exchange, in Dollar card.');
+  });
+
+  describe('in Ukrainian', () => {
+    beforeEach(async () => {
+      await i18n.changeLanguage('uk');
+    });
+
+    it('writes the transfer wording with the same name interpolation as the exchange one', () => {
+      const notice = (sameCurrency: boolean) =>
+        removeNotice(
+          { split: false, exchange: { kind: 'deleted', names: ['Cash'], sameCurrency } },
+          i18n.t,
+        );
+
+      expect(notice(true)).toBe('Також буде видалено другу частину цього переказу, у «Cash».');
+      expect(notice(false)).toBe('Також буде видалено другу частину цього обміну, у «Cash».');
+    });
+  });
+
   it('says a bank-owned other part stays, and that only this part goes', () => {
     expect(
       removeNotice(

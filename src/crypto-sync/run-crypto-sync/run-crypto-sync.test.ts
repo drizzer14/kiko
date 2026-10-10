@@ -15,8 +15,8 @@ jest.mock('react-native-keychain', () => ({
   ACCESSIBLE: { WHEN_UNLOCKED_THIS_DEVICE_ONLY: 'AccessibleWhenUnlockedThisDeviceOnly' },
 }));
 
-import { binanceProvider, defaultBinanceDeps } from '../binance';
 import { bitcoinWalletProvider, defaultBitcoinWalletDeps } from '../btc-wallet';
+import { BINANCE_REQUEST_INTERVAL_MS, binanceProvider, defaultBinanceDeps } from '../binance';
 
 import { type CryptoSyncRequest, runCryptoSync } from './run-crypto-sync';
 
@@ -79,6 +79,38 @@ describe('runCryptoSync', () => {
     );
     expect(firstRun).not.toBe(secondRun);
     expect(firstRun.budget).not.toBe(secondRun.budget);
+  });
+
+  it('paces the history run on the real clock and real timers: the second request waits out the interval', async () => {
+    jest.useFakeTimers();
+
+    try {
+      const settledAfter: Record<string, boolean> = {};
+      mockSyncBinanceTransactions.mockImplementation(async ({ run }) => {
+        const elapsedMs = 200;
+
+        await run.gate.wait();
+        await jest.advanceTimersByTimeAsync(elapsedMs);
+        let settled = false;
+        const second = run.gate.wait().then(() => {
+          settled = true;
+        });
+
+        await jest.advanceTimersByTimeAsync(BINANCE_REQUEST_INTERVAL_MS - elapsedMs - 1);
+        settledAfter.beforeInterval = settled;
+        await jest.advanceTimersByTimeAsync(1);
+        await second;
+        settledAfter.atInterval = settled;
+
+        return { imported: 0, complete: true };
+      });
+
+      await runCryptoSync({ providerId: 'binance', targetAccountId: 'acc-2' });
+
+      expect(settledAfter).toEqual({ beforeInterval: false, atInterval: true });
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it('still resolves with the balance result when the capital history walk fails', async () => {
