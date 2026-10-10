@@ -8,8 +8,8 @@ Quote measured history, never an agent's own guess. Two sources:
   `--since YYYY-MM-DD`, and `--repo kiko`: the slug is the origin remote's repo name, not
   `pff-ios`). `Minutes` runs from a step group's first logged verdict to its last: developer
   work before the first verdict is not counted and a one-event step shows 0; for a
-  dispatch-to-BATCH-READY time use run.json `startedAt` to summary.json `finishedAt`. Each row gives minutes, rounds to first approve,
-  check/test retries, stalls and human rounds (see `harness-workflow`'s "Run log").
+  dispatch-to-BATCH-READY time use run.json `startedAt` to summary.json `finishedAt`. Each row
+  gives minutes, rounds to first approve, check/test retries, stalls and human rounds (see `harness-workflow`'s "Run log").
 - The duration log at `memory/refs/duration-log.md` in the main checkout. It stays: it holds
   the mutation windows and the history from before the run log.
 Read both side by side.

@@ -1144,8 +1144,9 @@ const RUN_LOG_TEXT_FILES = [
 // The `$` is interpolated in so the shell's `${HARNESS_RUNS_DIR:-...}` never
 // reads as a mistyped template placeholder.
 const INSTALLED_COPY = `${'$'}{HARNESS_RUNS_DIR:-$HOME/.claude/harness-runs}/bin/run-log.mjs`;
-// The project's origin remote (`git remote get-url origin`); the workflow skill's own
-// `drizzer14/kiko.git` example is asserted against it below so the two cannot drift apart.
+// The project's origin remote (`git remote get-url origin`), hard-coded; the workflow
+// skill's `drizzer14/kiko.git` example is compared with this literal below, so the check
+// catches an edit to the skill, not a change of the real remote.
 const PROJECT_REMOTE = 'git@github.com:drizzer14/kiko.git';
 
 function skillText(path: string): string {

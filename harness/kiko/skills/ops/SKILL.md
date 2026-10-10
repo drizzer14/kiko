@@ -31,6 +31,8 @@ Rules:
   resolve are refused directly (exit 2), and no env var bypasses the cap.
   On that failure, split the run into smaller change sets — never raise
   the cap.
+- The coordinator who runs `make deep` logs the result per harness-workflow's "Run log"
+  (`--gate deep --verdict pass|fail|timeout` on the run id the BATCH READY names).
 - Run check:deep / check:mutation only through the wrapper
   (`npm run check:deep` / `npm run check:mutation`, or `make deep`); it is
   single-flighted and tears its own workers down. Never run

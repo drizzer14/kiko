@@ -106,14 +106,12 @@ call without knowing where the plugin lives.
   run.json `startedAt` to `summary.json` `finishedAt`. A run with no `summary.json` and no event
   for 24 hours shows as `abandoned`.
 
-BATCH READY's TIMES line is built from the run log, never from memory. Sources per field:
-dispatch time and estimate = the dispatch message (and the step's first event `--note`);
-developer done and fix round done = the `--gate commit --verdict pass --role developer` event
-`ts`; review times = the review events' `ts`; BATCH READY time = the `finish` time. Every `ts`
-is UTC ISO; the TIMES line uses local HH:MM.
+BATCH READY's TIMES line is built from the run log, never from memory. The source of each
+field is listed in `kiko:estimator` only.
 
-A project skill outside the plugin calls the installed copy and degrades to a no-op when it is
-missing. Start (prints the run id):
+A project skill outside the plugin calls the installed copy. When the copy is missing, the
+start snippet prints nothing and starts no run; the finish snippet prints
+`run-log: not installed, skipped`. Start (prints the run id):
 
 ```bash
 RUN_LOG="${HARNESS_RUNS_DIR:-$HOME/.claude/harness-runs}/bin/run-log.mjs"; [ -f "$RUN_LOG" ] && RUN_ID=$(node "$RUN_LOG" start --task "<track> task N/M" --shape build) && echo "$RUN_ID"

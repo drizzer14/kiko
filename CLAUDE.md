@@ -59,7 +59,8 @@ Composite scripts:
   bypasses the cap. There is no release-scope deep gate. **Who and when:**
   the coordinator runs `KIKO_MUTATION_BASE=<change set base sha> make
   deep`, detached, for each reviewed change set (<= 30 source files)
-  before its merge into next. Orchestrators never run it; a BATCH READY
+  before its merge into next (and logs the result per harness-workflow's
+  "Run log"). Orchestrators never run it; a BATCH READY
   names the change-set base sha, the run id, and the file count, counted
   with the gate's own filter, never by hand: `KIKO_MUTATION_BASE=<base sha>
   make mutable` (it runs `mutation.sh --list`) prints the files and

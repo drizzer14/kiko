@@ -127,6 +127,7 @@ BATCH READY — HARNESS SYNC <N>
 
 Base: <sha> (harness main, plugin <version>). Tip: <sha> (branch, <n> commits). Not pushed, not merged.
 Source range: pff-ios <from>..<to> (<n> commits), plus <extra shas>.
+Run: <runId>. TIMES: per harness-workflow "Run log" / kiko:estimator.
 
 GATE (run by the orchestrator at the tip, after wait-load):
 - npm test: exit 0, <pass>/<total> (<suites>).
@@ -160,6 +161,9 @@ Every count and exit code is the orchestrator's own measured result.
 - The source finish snippet prints "run-log: not installed, skipped" also when `node finish`
   exits 1 (unknown run) or 2 (empty RUN_ID), hiding a real failure; fix in the harness repo
   (keep the snippet as is here).
+- The source start snippet exits 1 with empty stdout when the installed copy is missing,
+  although its text says it "degrades to a no-op"; fix in the harness repo (keep the snippet
+  as is here).
 - The source harness-workflow "Run log" text says `--step <id>`, but the script needs an
   integer (`--step N`); fix it in the harness repo at sync 3.
 
