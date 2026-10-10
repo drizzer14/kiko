@@ -1865,6 +1865,11 @@ disk that git tracks or would track
 `existsSync`), so, as with the rooted `existsSync` check, a new
 uncommitted file resolves and a deleted one does not.
 
+A skill sentence that lists a guard's conditions, or a write-queue read's
+callers, drifts when one is added: point at the boolean's definition or at a
+`grep` that finds the callers, and grep the skills for a screen's boolean
+names when a hook joins it.
+
 ## Pre-write guard and merge-conflict files
 
 The guard reads the file on disk (BEFORE) and the proposed content

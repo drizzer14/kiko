@@ -919,7 +919,10 @@ not a class.
 - A decision that depends on whether a row exists, taken while another
   screen may have a queued insert, reads through `write()`
   (`accountsRepo.exists`), never through a plain query, which skips
-  op-sqlite's JS write queue.
+  op-sqlite's JS write queue. Find the callers with
+  `grep -rn accountsRepo.exists src`, never from a list here. A test that
+  mocks that read keeps the queue's order (FIFO): it answers only after the
+  writes registered before its call.
 
 ## Monobank sync pipeline (functional)
 
@@ -2517,8 +2520,8 @@ what a change must keep.
   and a rejection would show the save error and skip the re-plan. On the
   create form, a Binance connect that fails clears the key pair the
   field stored first only when row P does not exist, read through
-  `accountsRepo.exists` (the write queue; `connectBinance` in
-  `account-form.screen.tsx`, through `logOnFailure`), so no pair stays
+  `accountsRepo.exists` (the write queue rule in the repository section above;
+  `grep -rn accountsRepo.exists src` lists the callers), so no pair stays
   under an id with no account. A failed read keeps the keys. Save writes
   the picked icon in the same `saveFormAccount` write (a second write that
   failed after the row existed would read as no row).
