@@ -23,7 +23,7 @@ import { holdingInstrument, metalInstrument } from '@kiko/prices/instrument';
 import { readSeedCategoryColors } from '@kiko/db/__fixtures__/seed-category-colors';
 import { SEEDED_CATEGORIES, LOAN_INTEREST_CATEGORY } from '@kiko/db/__fixtures__/seeded-categories';
 
-import { ANCHOR, type ScreenshotDataset } from '../seed/screenshot-seed';
+import type { ScreenshotDataset } from '../seed/screenshot-seed';
 
 /**
  * The 10 default categories, sourced from the same fixture the repo tests
@@ -128,7 +128,7 @@ const holdingIdOf = (idsByKey: ReadonlyMap<string, string>, key: string): string
  * Flattens the dataset's nested accounts/holdings/transactions into
  * deterministically-ided rows: `acc-1..n` for accounts, `hold-1..n` numbered
  * across every account (not per-account), `txn-1..n` numbered across every
- * transaction. Every `createdAt` is the dataset's own fixed `ANCHOR`, never a
+ * transaction. Every `createdAt` is the dataset's own `anchor`, never a
  * clock, so the mapping never churns run to run. A transaction that pays a
  * loan is linked to it manually.
  */
@@ -156,7 +156,7 @@ const buildLedger = (dataset: ScreenshotDataset): BuiltLedger => {
       color: account.color,
       sortOrder: accountIndex,
       archivedAt: null,
-      createdAt: ANCHOR,
+      createdAt: dataset.anchor,
     });
 
     account.holdings.forEach((holding, holdingIndex) => {
@@ -182,7 +182,7 @@ const buildLedger = (dataset: ScreenshotDataset): BuiltLedger => {
         metadata: holding.metadata ?? null,
         sortOrder: holdingIndex,
         closedAt: null,
-        createdAt: ANCHOR,
+        createdAt: dataset.anchor,
       });
 
       for (const transaction of holding.transactions) {
@@ -211,7 +211,7 @@ const buildLedger = (dataset: ScreenshotDataset): BuiltLedger => {
           comment: null,
           source: 'manual',
           externalId: null,
-          createdAt: ANCHOR,
+          createdAt: dataset.anchor,
         });
       }
     });
@@ -252,11 +252,11 @@ const buildReminders = (dataset: ScreenshotDataset): ReminderRow[] =>
       schedule: reminder.schedule,
       pausedAt: null,
       pauseReason: null,
-      activeSince: ANCHOR,
+      activeSince: dataset.anchor,
       lastEngagedAt: null,
       lastSnoozedAt: null,
-      createdAt: ANCHOR,
-      updatedAt: ANCHOR,
+      createdAt: dataset.anchor,
+      updatedAt: dataset.anchor,
     }));
 
 export const buildDemoSnapshot = (dataset: ScreenshotDataset): DataSnapshot => {

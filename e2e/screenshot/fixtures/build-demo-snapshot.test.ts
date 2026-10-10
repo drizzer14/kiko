@@ -5,16 +5,40 @@ import { bankCatalog, isBankId, OTHER_BANK_ID } from '@kiko/bank-sync/bank-catal
 import { readSeedCategoryColors } from '@kiko/db/__fixtures__/seed-category-colors';
 import { SEEDED_CATEGORIES, LOAN_INTEREST_CATEGORY } from '@kiko/db/__fixtures__/seeded-categories';
 
-import { ANCHOR, buildScreenshotDataset } from '../seed/screenshot-seed';
+import { buildScreenshotDataset } from '../seed/screenshot-seed';
 
 import { buildDemoSnapshot } from './build-demo-snapshot';
 
+const ANCHOR = Date.UTC(2026, 8, 10, 9, 0, 0);
+
 describe('buildDemoSnapshot', () => {
-  const dataset = buildScreenshotDataset('uk');
+  const dataset = buildScreenshotDataset('uk', ANCHOR);
   const snapshot = buildDemoSnapshot(dataset);
 
   it('is deterministic: two builds of the same dataset are deeply equal', () => {
-    expect(buildDemoSnapshot(buildScreenshotDataset('uk'))).toEqual(snapshot);
+    expect(buildDemoSnapshot(buildScreenshotDataset('uk', ANCHOR))).toEqual(snapshot);
+  });
+
+  it('stamps every row it creates with the dataset anchor, never a clock', () => {
+    const stamps = [
+      ...snapshot.accounts.map((account) => account.createdAt),
+      ...snapshot.holdings.map((holding) => holding.createdAt),
+      ...snapshot.transactions.map((transaction) => transaction.createdAt),
+      ...snapshot.reminders.flatMap((reminder) => [
+        reminder.activeSince,
+        reminder.createdAt,
+        reminder.updatedAt,
+      ]),
+    ];
+
+    expect(stamps.length).toBeGreaterThan(0);
+    expect(new Set(stamps)).toEqual(new Set([ANCHOR]));
+  });
+
+  it('holds no Cyrillic letter anywhere in the English snapshot', () => {
+    const english = buildDemoSnapshot(buildScreenshotDataset('en', ANCHOR));
+
+    expect(JSON.stringify(english)).not.toMatch(/\p{Script=Cyrillic}/u);
   });
 
   it('carries an empty dismissed-tips list, the unused column at its default', () => {
@@ -195,6 +219,6 @@ describe('buildDemoSnapshot', () => {
   });
 
   it('applies the requested language to the settings row', () => {
-    expect(buildDemoSnapshot(buildScreenshotDataset('en')).settings[0].language).toBe('en');
+    expect(buildDemoSnapshot(buildScreenshotDataset('en', ANCHOR)).settings[0].language).toBe('en');
   });
 });
