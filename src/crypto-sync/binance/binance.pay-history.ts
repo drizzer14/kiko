@@ -21,13 +21,15 @@ import {
   advanceWalkMarks,
   BinanceWalkStop,
   btcSatoshis,
-  halfOf,
   logWalkStop,
-  nextSpanAfter,
   planWalkPasses,
   resolveWalletHoldings,
   runWalkPlan,
+  type SpanRead,
+  splitOrStop,
+  type WalkMarkFields,
   type WalkMarks,
+  walkSpans,
   type WalkPass,
   type WalkPlan,
   type WalkResult,
@@ -70,6 +72,11 @@ const PAY_FLOOR_MARGIN_MS = 10 * DAY_MS;
 
 /** Safety stop on the window walk: the 18 months are 7 windows. */
 const MAX_WINDOWS = 12;
+
+const PAY_MARK_FIELDS: WalkMarkFields = {
+  cursor: BINANCE_PAY_HISTORY_CURSOR_FIELD,
+  rescan: BINANCE_PAY_RESCAN_CURSOR_FIELD,
+};
 
 /** A proper noun, never a catalogue string: the stored description when no name is given. */
 const PAY_BRAND = 'Binance Pay';
@@ -155,61 +162,83 @@ const isBtcFunds = (entry: BinancePayOrder['fundsDetail'][number]): boolean =>
   entry.currency === BINANCE_ASSET;
 
 /**
- * An order paid from several wallets lists each wallet's cost per funds entry. The
- * costs must add up to the order amount to the satoshi, or the split is not trusted.
+ * What an order's BTC funds entries say each wallet paid: the wallets with a cost above
+ * zero and their satoshis, and whether the entries carry any cost at all.
  */
-const splitSharesOf = (order: BinancePayOrder, satoshis: number): WalletShare[] => {
+const costsOf = (order: BinancePayOrder): { carried: boolean; shares: WalletShare[] } => {
+  const costs = order.fundsDetail.filter(isBtcFunds).flatMap((entry) => entry.walletAssetCost);
   const satoshisByWallet = new Map<number, number>();
 
-  for (const entry of order.fundsDetail.filter(isBtcFunds)) {
-    for (const cost of entry.walletAssetCost) {
-      const costSatoshis = btcSatoshis(cost.amount);
+  for (const cost of costs) {
+    const costSatoshis = btcSatoshis(cost.amount);
 
-      if (costSatoshis === null || costSatoshis < 0) {
-        throw new BinanceWalkStop('pay-amount-invalid');
-      }
-
-      const stored = satoshisByWallet.get(cost.walletType) ?? 0;
-      satoshisByWallet.set(cost.walletType, stored + costSatoshis);
+    if (costSatoshis === null || costSatoshis < 0) {
+      throw new BinanceWalkStop('pay-amount-invalid');
     }
+
+    const stored = satoshisByWallet.get(cost.walletType) ?? 0;
+    satoshisByWallet.set(cost.walletType, stored + costSatoshis);
   }
 
   const shares = [...satoshisByWallet]
     .filter(([, costSatoshis]) => costSatoshis > 0)
     .map(([walletType, costSatoshis]) => ({ walletType, satoshis: costSatoshis }));
 
-  if (shares.reduce((total, share) => total + share.satoshis, 0) !== satoshis) {
-    throw new BinanceWalkStop('pay-split-mismatch');
-  }
-
-  return shares;
+  return { carried: costs.length > 0, shares };
 };
 
 /**
+ * The wallets an order names. Binance sends `walletType` as 1 even on a split order, so it
+ * is only the fallback for an order that sends no `walletTypes`.
+ */
+const namedWalletsOf = (order: BinancePayOrder): number[] => {
+  const declared = [...new Set(order.walletTypes ?? [])];
+
+  if (declared.length > 0 || order.walletType === undefined) {
+    return declared;
+  }
+
+  return [order.walletType];
+};
+
+const namesSameWallets = (shares: WalletShare[], wallets: number[]): boolean =>
+  shares.length === wallets.length &&
+  wallets.every((wallet) => shares.some((share) => share.walletType === wallet));
+
+/**
  * The wallets an order's satoshis land on. A funds detail that names no BTC at all
- * means the order did not move BTC, so no BTC row is guessed from it.
+ * means the order did not move BTC, so no BTC row is guessed from it. The wallets
+ * with a cost above zero must be exactly the wallets the order names, whether it
+ * names one or several: a cost on another wallet is an order this walk cannot place.
+ * Several wallets are split by those costs, which must add up to the order amount to
+ * the satoshi.
  */
 const sharesOf = (order: BinancePayOrder, satoshis: number): WalletShare[] => {
   if (order.fundsDetail.length > 0 && !order.fundsDetail.some(isBtcFunds)) {
     throw new BinanceWalkStop('pay-funds-not-btc');
   }
 
-  const declared = [...new Set(order.walletTypes ?? [])];
-
-  if (declared.length >= 2) {
-    return splitSharesOf(order, satoshis);
-  }
-
-  const only = declared.at(0);
-
-  if (order.walletType !== undefined && only !== undefined && only !== order.walletType) {
-    throw new BinanceWalkStop('pay-wallet-unknown');
-  }
-
-  const walletType = order.walletType ?? only;
+  const wallets = namedWalletsOf(order);
+  const [walletType] = wallets;
 
   if (walletType === undefined) {
     throw new BinanceWalkStop('pay-wallet-unknown');
+  }
+
+  const { carried, shares } = costsOf(order);
+
+  if (wallets.length >= 2) {
+    const total = shares.reduce((sum, share) => sum + share.satoshis, 0);
+
+    if (!namesSameWallets(shares, wallets) || total !== satoshis) {
+      throw new BinanceWalkStop('pay-split-mismatch');
+    }
+
+    return shares;
+  }
+
+  if (carried && !namesSameWallets(shares, wallets)) {
+    throw new BinanceWalkStop('pay-split-mismatch');
   }
 
   return [{ walletType, satoshis }];
@@ -440,12 +469,8 @@ const commitSpan = async (
     plan,
     marks,
     restartMs: HISTORY_FLOOR_MS,
-    write: (mark, cursorMs) =>
-      deps.writeWalkCursor(
-        spot.id,
-        mark === 'cursor' ? BINANCE_PAY_HISTORY_CURSOR_FIELD : BINANCE_PAY_RESCAN_CURSOR_FIELD,
-        cursorMs,
-      ),
+    fields: PAY_MARK_FIELDS,
+    write: (field, cursorMs) => deps.writeWalkCursor(spot.id, field, cursorMs),
   });
 
   return imported;
@@ -471,56 +496,25 @@ const commitOrStop = async (
   }
 };
 
-/** What a window yielded: the rows committed, and whether it reached its end. */
-type WindowOutcome = { imported: number; complete: boolean };
-
 /**
- * Walk one window with no cursor and no order to rely on: ask for the whole window, and
- * when the page comes back full (it may hold more than it shows) halve the span and ask
- * again, so a page that is not full is the whole of its span whatever order Binance
- * sorts in and whichever end of the range it leaves open. A non-full page commits and the
- * walk goes on from where it ended; the 1-millisecond boundary two spans share is read
- * twice and removed by the key. A span of one millisecond that is still full stops the
- * window rather than skip.
+ * Read one span. A full page (it may hold more than it shows) is answered with the half
+ * to read instead, so a page that is not full is the whole of its span whatever order
+ * Binance sorts in and whichever end of the range it leaves open. A span of one
+ * millisecond that is still full stops the walk rather than skip.
  */
-const runOneWindow = async (
+const readSpan = async (
   context: PayContext,
-  window: WalkWindow,
-  pass: WalkPass,
-): Promise<WindowOutcome> => {
-  let imported = 0;
-  let span = window;
+  span: WalkWindow,
+): Promise<SpanRead<PayHistoryPage> | undefined> => {
+  const page = await fetchSpan(context, span);
 
-  while (span.start < window.end) {
-    const page = await fetchSpan(context, span);
-
-    if (page === undefined) {
-      return { imported, complete: false };
-    }
-
-    if (page.gathered >= PAY_PAGE_LIMIT) {
-      const half = halfOf(span);
-
-      if (half === undefined) {
-        logWalkStop('pay-page-stuck');
-
-        return { imported, complete: false };
-      }
-
-      span = half;
-    } else {
-      const committed = await commitOrStop(context, span, page, pass);
-
-      if (committed === undefined) {
-        return { imported, complete: false };
-      }
-
-      imported += committed;
-      span = nextSpanAfter(span, window);
-    }
+  if (page === undefined) {
+    return undefined;
   }
 
-  return { imported, complete: true };
+  return page.gathered >= PAY_PAGE_LIMIT
+    ? splitOrStop(span, 'pay-page-stuck')
+    : { kind: 'page', page };
 };
 
 /** A walk without the user's uid has no direction for any order, so it stops. */
@@ -574,8 +568,8 @@ const runSync = async (
     return { imported: 0, complete: true };
   }
 
-  const payCursor = binanceWalkCursorOf(BINANCE_PAY_HISTORY_CURSOR_FIELD, spot.metadata);
-  const rescanCursor = binanceWalkCursorOf(BINANCE_PAY_RESCAN_CURSOR_FIELD, spot.metadata);
+  const payCursor = binanceWalkCursorOf(PAY_MARK_FIELDS.cursor, spot.metadata);
+  const rescanCursor = binanceWalkCursorOf(PAY_MARK_FIELDS.rescan, spot.metadata);
   const plan = planWalkPasses({
     cursor: payCursor,
     rescanCursor,
@@ -613,7 +607,12 @@ const runSync = async (
   return runWalkPlan({
     plan,
     canAfford: () => run.budget.canAfford('pay', COSTS.pay),
-    runWindow: (window, pass) => runOneWindow(context, window, pass),
+    runWindow: (window, pass) =>
+      walkSpans({
+        window,
+        read: (span) => readSpan(context, span),
+        commit: (span, page) => commitOrStop(context, span, page, pass),
+      }),
   });
 };
 

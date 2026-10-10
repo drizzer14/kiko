@@ -298,7 +298,7 @@ describe('used-weight headers', () => {
     expect(page).toEqual({ rows: [], usedUidWeight1m: 18_000, usedIpWeight1m: undefined });
   });
 
-  // The live probe (Q15): the withdraw history answers with a per-SECOND UID weight header
+  // The live withdraw history answers with a per-SECOND UID weight header
   // and no per-minute one. A second's reading must never stand in for the minute's, so the
   // page reports no reading and the lane's call cap alone bounds the run.
   it('does not read the per-second UID weight of the withdraw history as the minute weight', async () => {

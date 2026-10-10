@@ -1,8 +1,10 @@
+import { match } from 'ts-pattern';
 import type { HoldingRow } from '@kiko/db';
 import maybe, { foldMap } from 'fnts/maybe';
 import { Money } from '@kiko/currency/money';
 import { logFailure } from '@kiko/diagnostics';
 import type { ExchangeHolding } from '@kiko/holdings/repo';
+import type { BinanceWalkCursorField } from '@kiko/holdings/holding-metadata';
 
 import { BINANCE_ASSET } from './binance.client';
 import { type BinanceWalletKey, binanceKeyOf, WALLET_HOLDING_NAMES } from './binance.holding-keys';
@@ -34,12 +36,27 @@ export const buildWalkWindows = (
 export type WalkPass = 'forward' | 'rescan';
 
 /**
- * One run of a walk, as two passes. `forward` goes from the cursor minus the overlap to
- * the end and moves the walk's cursor. `rescan` goes back over the last window behind the
- * forward start, to catch a record that settles late, and never moves that cursor.
- * `rescanEnd` is where the re-scan ends, which is where the forward pass starts.
+ * One run of a walk, as two passes. `forward` goes from the cursor to the end and moves the
+ * walk's cursor. `rescan` goes back over the last window behind the forward start, to catch
+ * a record that settles late, and never moves that cursor. `rescanEnd` is where the re-scan
+ * ends, which is where the forward pass starts.
  */
 export type WalkPlan = { forward: WalkWindow[]; rescan: WalkWindow[]; rescanEnd: number };
+
+const forwardStartOf = (input: {
+  cursor: number | null;
+  floorMs: number;
+  windowStart: number;
+  overlapMs: number;
+}): number => {
+  const { cursor, floorMs, windowStart, overlapMs } = input;
+
+  if (cursor === null) {
+    return floorMs;
+  }
+
+  return cursor >= windowStart ? cursor : Math.max(floorMs, cursor - overlapMs);
+};
 
 /**
  * Plan a run so that new records always come first. A walk that re-scanned its last
@@ -50,6 +67,13 @@ export type WalkPlan = { forward: WalkWindow[]; rescan: WalkWindow[]; rescanEnd:
  * to a pass that finished or a window that has moved on, and starts a new pass at the
  * window start. Neither pass starts before the floor, which also bounds a cursor a
  * disconnect reset to an older floor than this walk may ask for.
+ *
+ * The forward pass starts AT the cursor when the cursor is inside the re-scan window, since
+ * the re-scan already covers the ground behind it. Starting the overlap behind the cursor
+ * instead would make a dense day there cost every run its whole budget, and the cursor,
+ * which only a span ending after it moves, would never advance. Only a cursor older than the
+ * window has no re-scan behind it, so only then does the forward pass reach back by the
+ * overlap.
  */
 export const planWalkPasses = (input: {
   cursor: number | null;
@@ -61,9 +85,9 @@ export const planWalkPasses = (input: {
   maxWindows: number;
 }): WalkPlan => {
   const { cursor, rescanCursor, floorMs, endTime, windowMs, overlapMs, maxWindows } = input;
-  const forwardStart = cursor === null ? floorMs : Math.max(floorMs, cursor - overlapMs);
-  const rescanEnd = Math.min(forwardStart, endTime);
   const windowStart = Math.max(floorMs, endTime - windowMs);
+  const forwardStart = forwardStartOf({ cursor, floorMs, windowStart, overlapMs });
+  const rescanEnd = Math.min(forwardStart, endTime);
   const rescanStart =
     rescanCursor !== null && rescanCursor >= windowStart && rescanCursor < rescanEnd
       ? rescanCursor
@@ -91,38 +115,53 @@ export const rescanCursorAfter = (input: {
 /** A walk's two marks, as the run found them and then as the run last wrote them. */
 export type WalkMarks = { cursor: number | null; rescanCursor: number | null };
 
-/**
- * Move the walk's mark once a span's rows are durable. A forward span moves the cursor to
- * its end, never back: the first spans of a pass start behind it, and the mark to compare
- * with is the one this run last wrote, not the one it found. A re-scan span moves only the
- * re-scan mark and leaves the cursor alone, so a re-scan can never undo the forward pass.
- * `write` gets which mark moved and its value.
- */
-export const advanceWalkMarks = async (input: {
-  pass: WalkPass;
+/** The metadata field each of a walk's two marks is stored under. */
+export type WalkMarkFields = Record<'cursor' | 'rescan', BinanceWalkCursorField>;
+
+type MarkAdvance = {
   span: WalkWindow;
   plan: WalkPlan;
   marks: WalkMarks;
   restartMs: number;
-  write: (mark: 'cursor' | 'rescan', cursorMs: number) => Promise<void>;
-}): Promise<void> => {
-  const { pass, span, plan, marks, restartMs, write } = input;
+  fields: WalkMarkFields;
+  write: (field: BinanceWalkCursorField, cursorMs: number) => Promise<void>;
+};
 
-  if (pass === 'forward') {
-    marks.cursor = Math.max(span.end, marks.cursor ?? span.end);
-    await write('cursor', marks.cursor);
+const advanceCursor = async ({ span, marks, fields, write }: MarkAdvance): Promise<void> => {
+  marks.cursor = Math.max(span.end, marks.cursor ?? span.end);
+  await write(fields.cursor, marks.cursor);
+};
 
-    return;
-  }
-
+const advanceRescan = async ({
+  span,
+  plan,
+  marks,
+  restartMs,
+  fields,
+  write,
+}: MarkAdvance): Promise<void> => {
   const rescanCursor = rescanCursorAfter({ span, plan, restartMs });
 
   // A finished pass that was never started has no mark to reset: skip the redundant write.
   if (rescanCursor !== (marks.rescanCursor ?? restartMs)) {
     marks.rescanCursor = rescanCursor;
-    await write('rescan', rescanCursor);
+    await write(fields.rescan, rescanCursor);
   }
 };
+
+/**
+ * Move the walk's mark once a span's rows are durable. A forward span moves the cursor to
+ * its end, never back: the first spans of a pass start behind it, and the mark to compare
+ * with is the one this run last wrote, not the one it found. A re-scan span moves only the
+ * re-scan mark and leaves the cursor alone, so a re-scan can never undo the forward pass.
+ * `write` gets the field of the mark that moved and its value.
+ */
+export const advanceWalkMarks = (input: MarkAdvance & { pass: WalkPass }): Promise<void> =>
+  match(input.pass)
+    .returnType<Promise<void>>()
+    .with('forward', () => advanceCursor(input))
+    .with('rescan', () => advanceRescan(input))
+    .exhaustive();
 
 /**
  * The first half of a span, or `undefined` for a span of one millisecond, which cannot be
@@ -216,6 +255,91 @@ export class BinanceWalkStop extends Error {
 
 export const logWalkStop = (code: string): void => {
   logFailure('[binance sync] history window stopped', new BinanceWalkStop(code));
+};
+
+/** What one span read gave: the page that fits it, or the half to read instead. */
+export type SpanRead<Page> = { kind: 'page'; page: Page } | { kind: 'split'; half: WalkWindow };
+
+/**
+ * The answer for a span the read found too full: its first half, to read instead. A span
+ * of one millisecond cannot be split, so it stops the walk (logged under `stuckCode`)
+ * rather than skip records it cannot see.
+ */
+export const splitOrStop = (span: WalkWindow, stuckCode: string): SpanRead<never> | undefined => {
+  const half = halfOf(span);
+
+  if (half === undefined) {
+    logWalkStop(stuckCode);
+
+    return undefined;
+  }
+
+  return { kind: 'split', half };
+};
+
+type SpanStep = { next: WalkWindow; imported: number };
+
+/**
+ * Handle what one read gave. A split moves to the half and imports nothing. A page is
+ * committed, and the walk goes on from where the span ended, twice as wide, because a
+ * stretch that fit one page is likely to fit a longer one. `undefined` is a commit that
+ * stopped the walk.
+ */
+const stepAfterRead = <Page>(input: {
+  read: SpanRead<Page>;
+  span: WalkWindow;
+  window: WalkWindow;
+  commit: (span: WalkWindow, page: Page) => Promise<number | undefined>;
+}): Promise<SpanStep | undefined> =>
+  match(input.read)
+    .returnType<Promise<SpanStep | undefined>>()
+    .with({ kind: 'split' }, async ({ half }) => ({ next: half, imported: 0 }))
+    .with({ kind: 'page' }, async ({ page }) =>
+      foldMap(maybe(await input.commit(input.span, page)), (imported) => ({
+        next: nextSpanAfter(input.span, input.window),
+        imported,
+      })),
+    )
+    .exhaustive();
+
+/**
+ * Walk one window with no cursor and no order to rely on: read the whole window, and when
+ * the read finds it too full (it may hold more than it shows) read its first half instead,
+ * so a span that is not too full is the whole of itself whatever order Binance sorts in. A
+ * span that fits is committed and the walk goes on from where it ended; the 1-millisecond
+ * boundary two spans share is read twice and removed by the row key. The walk supplies
+ * what differs: `read` (`undefined` is a clean stop, such as an unaffordable call) and
+ * `commit` (the rows it imported, or `undefined` for a stop, which leaves the span
+ * uncommitted). Either stop reports the window incomplete with what was committed, and the
+ * walk's marks, which only a commit moves, stay where the last committed span left them.
+ */
+export const walkSpans = async <Page>(input: {
+  window: WalkWindow;
+  read: (span: WalkWindow) => Promise<SpanRead<Page> | undefined>;
+  commit: (span: WalkWindow, page: Page) => Promise<number | undefined>;
+}): Promise<WalkResult> => {
+  const { window, read, commit } = input;
+  let imported = 0;
+  let span = window;
+
+  while (span.start < window.end) {
+    const spanRead = await read(span);
+
+    if (spanRead === undefined) {
+      return { imported, complete: false };
+    }
+
+    const step = await stepAfterRead({ read: spanRead, span, window, commit });
+
+    if (step === undefined) {
+      return { imported, complete: false };
+    }
+
+    imported += step.imported;
+    span = step.next;
+  }
+
+  return { imported, complete: true };
 };
 
 /**

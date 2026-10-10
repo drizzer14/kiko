@@ -291,16 +291,28 @@ describe('payRowsOf: wallet placement', () => {
     ]);
   });
 
-  it('P4: a zero cost on a wallet gives that wallet no row', () => {
-    const rows = rowsOf({
+  it('P5: a zero cost on a named wallet stops, since the costs name fewer wallets than walletTypes', () => {
+    const zeroOnOne = {
       walletTypes: [1, 2],
       fundsDetail: splitFunds([
         { walletType: 1, amount: '0' },
         { walletType: 2, amount: '0.001' },
       ]),
-    });
+    };
 
-    expect(rows.map((row) => row.wallet)).toEqual(['BTC']);
+    expect(stopCodeOf(() => rowsOf(zeroOnOne))).toBe('pay-split-mismatch');
+  });
+
+  it('P5: costs on a wallet that walletTypes does not name stop, even when they sum to the amount', () => {
+    const otherWallet = {
+      walletTypes: [1, 2],
+      fundsDetail: splitFunds([
+        { walletType: 1, amount: '0.0006' },
+        { walletType: 5, amount: '0.0004' },
+      ]),
+    };
+
+    expect(stopCodeOf(() => rowsOf(otherWallet))).toBe('pay-split-mismatch');
   });
 
   it('P5: costs that do not sum to the amount stop', () => {
@@ -373,10 +385,57 @@ describe('payRowsOf: wallet placement', () => {
     ]);
   });
 
-  it('stops when walletType and a single walletTypes entry disagree', () => {
-    expect(stopCodeOf(() => rowsOf({ walletType: 2, walletTypes: [1] }))).toBe(
-      'pay-wallet-unknown',
-    );
+  describe('a single wallet', () => {
+    const costOn = (...walletTypes: number[]) =>
+      splitFunds(walletTypes.map((walletType) => ({ walletType, amount: '0.001' })));
+
+    it('is the one walletTypes entry, whatever walletType says', () => {
+      const rows = rowsOf({ walletType: 1, walletTypes: [2], fundsDetail: costOn(2) });
+
+      expect(rows).toMatchObject([{ wallet: 'BTC', externalId: 'acc-1:pay:C2C:tx-1:2' }]);
+    });
+
+    it('is placed without a cost check when the order carries no cost at all', () => {
+      expect(rowsOf({ walletType: 1, walletTypes: [2] })).toMatchObject([{ wallet: 'BTC' }]);
+    });
+
+    it('is walletType when walletTypes is absent, checked against the cost', () => {
+      const funding = rowsOf({ walletType: 1, walletTypes: undefined, fundsDetail: costOn(1) });
+
+      expect(funding).toMatchObject([{ wallet: 'BTC:funding' }]);
+      expect(
+        stopCodeOf(() => rowsOf({ walletType: 1, walletTypes: undefined, fundsDetail: costOn(2) })),
+      ).toBe('pay-split-mismatch');
+    });
+
+    it('is Funding for the live probe shapes: walletType 1 beside [1], with or without a cost', () => {
+      expect(rowsOf({ walletType: 1, walletTypes: [1], fundsDetail: costOn(1) })).toMatchObject([
+        { wallet: 'BTC:funding' },
+      ]);
+      expect(rowsOf({ walletType: 1, walletTypes: [1] })).toMatchObject([
+        { wallet: 'BTC:funding' },
+      ]);
+    });
+
+    it('stops when the cost is on a wallet that walletTypes does not name', () => {
+      expect(
+        stopCodeOf(() => rowsOf({ walletType: 1, walletTypes: [1], fundsDetail: costOn(2) })),
+      ).toBe('pay-split-mismatch');
+    });
+
+    it('stops when the cost is on the named wallet and another one', () => {
+      expect(
+        stopCodeOf(() => rowsOf({ walletType: 1, walletTypes: [1], fundsDetail: costOn(1, 2) })),
+      ).toBe('pay-split-mismatch');
+    });
+
+    it('stops when the cost the order carries is zero on the named wallet', () => {
+      const zero = splitFunds([{ walletType: 1, amount: '0' }]);
+
+      expect(stopCodeOf(() => rowsOf({ walletType: 1, walletTypes: [1], fundsDetail: zero }))).toBe(
+        'pay-split-mismatch',
+      );
+    });
   });
 
   it('a repeated wallet in walletTypes is one wallet', () => {

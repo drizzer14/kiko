@@ -16,11 +16,13 @@ import {
   btcSatoshis,
   halfOf,
   logWalkStop,
-  nextSpanAfter,
   planWalkPasses,
   resolveWalletHoldings,
   runWalkPlan,
+  type SpanRead,
+  type WalkMarkFields,
   type WalkMarks,
+  walkSpans,
   type WalkPass,
   type WalkPlan,
   type WalkResult,
@@ -57,8 +59,9 @@ const WITHDRAW_STATUS_COMPLETED = 6;
 const WINDOW_MS = 89 * DAY_MS;
 
 /**
- * On a re-sync, the window start is widened this far behind the newest imported
- * record. A withdrawal's `applyTime` is when it was REQUESTED; it only becomes
+ * On a re-sync, the forward start is widened this far behind a cursor that is older than
+ * the re-scan window; a cursor inside the window needs none, since the re-scan covers the
+ * ground behind it. A withdrawal's `applyTime` is when it was REQUESTED; it only becomes
  * settled (status 6, importable) later, so its timestamp can sit slightly behind
  * the cursor. A small overlap re-scans that boundary; the `(source, external_id)`
  * upsert makes the re-scan idempotent. The Pay walk keeps the same slack.
@@ -71,6 +74,11 @@ export const RESYNC_OVERLAP_MS = DAY_MS;
  * to now; later syncs start from the cursor instead. Exported for the walk test.
  */
 export const HISTORY_FLOOR_MS = Date.UTC(2017, 6, 14);
+
+const CAPITAL_MARK_FIELDS: WalkMarkFields = {
+  cursor: BINANCE_HISTORY_CURSOR_FIELD,
+  rescan: BINANCE_HISTORY_RESCAN_CURSOR_FIELD,
+};
 
 /** Safety stop on the window walk, so a bad clock cannot spin an unbounded loop. */
 const MAX_WINDOWS = 80;
@@ -321,9 +329,6 @@ const fetchAllInWindow = async <Row>(
 
 type SpanRecords = { deposits: BinanceDeposit[]; withdrawals: BinanceWithdrawal[] };
 
-/** What one span read: its records, or the half to read instead of a span that is too full. */
-type SpanRead = { kind: 'records'; records: SpanRecords } | { kind: 'split'; half: WalkWindow };
-
 /**
  * Fetch one span's deposits and withdrawals. `undefined` is a clean stop: the budget ran
  * out, or Binance rate-limited (which also sets the account's cooldown). Any other error
@@ -332,7 +337,7 @@ type SpanRead = { kind: 'records'; records: SpanRecords } | { kind: 'split'; hal
 const readSpan = async (
   context: WindowContext,
   span: WalkWindow,
-): Promise<SpanRead | undefined> => {
+): Promise<SpanRead<SpanRecords> | undefined> => {
   const { deps, run, accountId, apiKey, secret, options } = context;
   const half = halfOf(span);
   const pageWindow = (offset: number): HistoryWindow => ({
@@ -363,8 +368,8 @@ const readSpan = async (
     }
 
     return {
-      kind: 'records',
-      records: { deposits: deposits.rows, withdrawals: withdrawals.rows },
+      kind: 'page',
+      page: { deposits: deposits.rows, withdrawals: withdrawals.rows },
     };
   } catch (error) {
     if (error instanceof BinanceRateLimitError) {
@@ -458,55 +463,11 @@ const commitSpan = async (
     plan,
     marks,
     restartMs: HISTORY_FLOOR_MS,
-    write: (mark, cursorMs) =>
-      deps.writeWalkCursor(
-        spot.id,
-        mark === 'cursor' ? BINANCE_HISTORY_CURSOR_FIELD : BINANCE_HISTORY_RESCAN_CURSOR_FIELD,
-        cursorMs,
-      ),
+    fields: CAPITAL_MARK_FIELDS,
+    write: (field, cursorMs) => deps.writeWalkCursor(spot.id, field, cursorMs),
   });
 
   return imported;
-};
-
-/**
- * Walk one window of a pass: ask for the whole window, and when a first page comes back
- * full halve the span and ask again (see `fetchAllInWindow`). A span that fits commits and
- * the walk goes on from where it ended, with a span twice as wide; the millisecond two
- * spans share is read twice and removed by the key. A stop or an unaffordable call leaves
- * the rest of the window for the next run, which resumes from the stored marks.
- */
-const runOneWindow = async (
-  context: WindowContext,
-  window: WalkWindow,
-  pass: WalkPass,
-): Promise<WalkResult> => {
-  let imported = 0;
-  let span = window;
-
-  while (span.start < window.end) {
-    const read = await readSpan(context, span);
-
-    if (read === undefined) {
-      // Not committed and not marked: the next run redoes this span from the SAME marks.
-      return { imported, complete: false };
-    }
-
-    if (read.kind === 'split') {
-      span = read.half;
-    } else {
-      const committed = await commitSpan(context, span, read.records, pass);
-
-      if (committed === undefined) {
-        return { imported, complete: false };
-      }
-
-      imported += committed;
-      span = nextSpanAfter(span, window);
-    }
-  }
-
-  return { imported, complete: true };
 };
 
 const runSync = async (
@@ -532,8 +493,8 @@ const runSync = async (
   const options: FetchAccountOptions = { fetchImpl: deps.fetchImpl, now: deps.now };
   // The watermark takes priority; a holding that never had one (legacy data,
   // or a first sync) falls back to the newest already-imported record.
-  const cursor = binanceWalkCursorOf(BINANCE_HISTORY_CURSOR_FIELD, spot.metadata);
-  const rescanCursor = binanceWalkCursorOf(BINANCE_HISTORY_RESCAN_CURSOR_FIELD, spot.metadata);
+  const cursor = binanceWalkCursorOf(CAPITAL_MARK_FIELDS.cursor, spot.metadata);
+  const rescanCursor = binanceWalkCursorOf(CAPITAL_MARK_FIELDS.rescan, spot.metadata);
   const latest = await deps.latestTransactionTime(spot.id);
   const plan = planWalkPasses({
     cursor: cursor ?? latest ?? null,
@@ -559,7 +520,12 @@ const runSync = async (
   return runWalkPlan({
     plan,
     canAfford: () => run.budget.canAfford('capitalWithdraw', COSTS.withdraw),
-    runWindow: (window, pass) => runOneWindow(context, window, pass),
+    runWindow: (window, pass) =>
+      walkSpans({
+        window,
+        read: (span) => readSpan(context, span),
+        commit: (span, records) => commitSpan(context, span, records, pass),
+      }),
   });
 };
 

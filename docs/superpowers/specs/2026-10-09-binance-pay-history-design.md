@@ -188,8 +188,9 @@ withdraw budget moves into this object, with the same numbers and the same rule.
   (`transactionsRepo.addManyDedup`) BEFORE its watermark advances. A crash between
   the two re-imports the window idempotently.
 - On a re-sync a run is two passes (`planWalkPasses`, `binance.history-walk.ts`): the
-  forward pass from `max(floor, cursor - RESYNC_OVERLAP_MS)` to the end, then a re-scan of
-  the last window behind it on the budget that is left (section 4).
+  forward pass from the cursor to the end (from `max(floor, cursor - RESYNC_OVERLAP_MS)` only
+  when the cursor is older than the re-scan window), then a re-scan of the last window behind
+  it on the budget that is left (section 4).
 - Each walk is wrapped in its own `logOnFailure` (`@kiko/diagnostics`, name and
   code only). A failure in one walk never fails the balance sync or another walk.
   A permission rejection does not set the cooldown.
@@ -233,14 +234,22 @@ withdraw budget moves into this object, with the same numbers and the same rule.
   the order of the response or on which end of the range is open, and no request has
   `startTime` equal to `endTime`. A span of 1 ms that is still full stops the window
   (`pay-page-stuck`).
-- Two passes per run (shared in `binance.history-walk.ts`, so the Transfer and Earn walks
-  inherit it). The forward pass goes first, from `max(floor, cursor - 1 day)` to now, in
-  windows of 89 days, and moves the Pay cursor. A backlog that needs more calls than one run's
-  cap resumes on the next run from the cursor of its last committed span; the cursor never
-  moves back and never passes now. The Pay walk does not read the capital cursor (R13/C1,
+- Two passes per run (shared in `binance.history-walk.ts`, with the span loop `walkSpans`
+  that halves a full span and commits the rest oldest first, so the Transfer and Earn walks
+  inherit both). The forward pass goes first, from the cursor to now, in windows of 89 days, and
+  moves the Pay cursor. When the cursor is older than the re-scan window (`end - 89 days`),
+  nothing re-scans the ground behind it, so the forward pass starts `max(floor, cursor - 1
+  day)`, one day behind it. A backlog that needs more calls than one run's cap resumes on the
+  next run from the cursor of its last committed span; the cursor never moves back and never
+  passes now. The forward pass must not restart a day behind a cursor that is inside the
+  re-scan window: a day there holding more orders than one run's calls reach would spend
+  every run on that day, a span ending before the cursor does not move it, and the newer
+  orders would never import (found in review: 900 Pay orders, or 4000 capital records, in
+  the last day before the cursor). The Pay walk does not read the capital cursor (R13/C1,
   below): a Spot holding with no capital cursor runs the Pay walk like any other. Then the
   re-scan runs on the call budget the forward pass left: it covers
-  `[max(floor, end - 89 days), forward start]`, which catches an order that settles late. A
+  `[max(floor, end - 89 days), forward start)`, which catches an order that settles late
+  and the day behind the cursor. A
   re-scan that was first in line would spend a busy account's whole budget on ground it already
   holds, and the newest orders would never import (found in review: 900 orders in the last 88
   days, none of the newest imported in 10 runs). The re-scan keeps its place in a walk-owned
@@ -283,9 +292,14 @@ withdraw budget moves into this object, with the same numbers and the same rule.
   `walletTypes` entry as a JSON integer or a digit string and gives numbers, so the walk
   compares wallets by value. Placement does not trust `walletType`: two or more wallets
   in `walletTypes` are split by `walletAssetCost` (the sums matched `abs(amount)` on 5 of
-  5); a single wallet is `walletTypes`' one entry, with `walletType` as the fallback when
-  `walletTypes` is absent. If both are given and name different wallets, the span stops
-  (`pay-wallet-unknown`).
+  5); a single wallet is `walletTypes`' one entry, with `walletType` used only when
+  `walletTypes` is absent. The key's wallet segment is that same wallet. `walletType` and a
+  single `walletTypes` entry that name different wallets are not a stop: `walletTypes`
+  wins. When the order's BTC `fundsDetail` entries carry `walletAssetCost`, the wallets with
+  a cost above zero must be exactly the wallets placement picked (for one wallet and for a
+  split alike), or the span stops (`pay-split-mismatch`). That includes a declared wallet
+  with a zero cost and a cost on a wallet the order does not name. An order that carries no
+  cost is placed without the check.
 - Amount: `abs(amount)` through `Money.fromMajor('BTC', ...)`, with the sign from
   the direction.
 - Key: `` `${accountId}:pay:${orderType}:${transactionId}:${walletType}` ``. An
@@ -477,11 +491,13 @@ Placement (the "was:" column shows today's result):
 
 | # | source | input | result | was: |
 |---|---|---|---|---|
-| P1 | Pay | walletType 2 | Spot | not imported |
-| P2 | Pay | walletType 1 (also with walletTypes [1], the live probe shape) | Funding | not imported |
+| P1 | Pay | walletType 2, walletTypes absent (or [2]) | Spot | not imported |
+| P1a | Pay | walletType 1, walletTypes [2], cost (if any) on wallet 2 | Spot (`walletTypes` wins, no stop) | not imported |
+| P2 | Pay | walletType 1 (also with walletTypes [1], the live probe shape; also digit strings) | Funding | not imported |
+| P2a | Pay | walletTypes [1], cost on wallet 2 (or on 1 and 2, or zero on 1) | stop (`pay-split-mismatch`) | not imported |
 | P3 | Pay | walletType 5 | Earn | not imported |
-| P4 | Pay | [1,2] (walletType 1, as the probe saw), walletAssetCost sums to abs(amount) | one row per wallet | not imported |
-| P5 | Pay | [1,2], sums do not match | stop | not imported |
+| P4 | Pay | [1,2] (walletType 1, as the probe saw), walletAssetCost on exactly wallets 1 and 2, sums to abs(amount) | one row per wallet | not imported |
+| P5 | Pay | [1,2], sums do not match, or the costs name other wallets than 1 and 2 (including a zero on one of them) | stop (`pay-split-mismatch`) | not imported |
 | P6 | Pay | 3, 4, 6 | stop (Q9) | not imported |
 | P7 | any | target holding missing | create it at 0, then place | n/a |
 | P8 | Pay | BTC order whose `fundsDetail` names no BTC | stop (`pay-funds-not-btc`) | n/a |
