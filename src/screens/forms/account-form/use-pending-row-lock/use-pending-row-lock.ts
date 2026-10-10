@@ -18,18 +18,12 @@ export const usePendingRowLock = (accountId: string, isRemounted: boolean): bool
       return;
     }
 
-    let isCurrent = true;
-
     // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function) never rejects
     either<unknown, boolean>(async () => accountsRepo.exists(accountId)).then((answer) => {
-      if (isCurrent && bifoldr(answer) === false) {
+      if (bifoldr(answer) === false) {
         setHasNoRow(true);
       }
     });
-
-    return () => {
-      isCurrent = false;
-    };
   }, [accountId, isRemounted]);
 
   return isRemounted && !hasNoRow;

@@ -93,9 +93,20 @@ const mockFetchAccount = jest.fn();
 // the hoisted factory may close over it; create-mode tests leave it empty.
 let mockAccounts: unknown[] = [];
 
-// Settles when the insert another screen has queued does; the mocked repo's `exists` waits for it,
-// as a read through the write queue does. Reset to settled before each test.
+// A write that was queued before the test began, held until it settles: the mocked repo's `exists`
+// waits for it as well. Reset to settled before each test.
 let mockQueueEnds: Promise<void> = Promise.resolve();
+
+// Every write the mocked repo has been handed, in call order. The write queue is first in, first
+// out: an `exists` answers after the writes registered BEFORE its own call and never waits for one
+// registered after it.
+let mockWrites: Promise<unknown>[] = [];
+
+const mockRegisterWrite = (write: unknown): unknown => {
+  mockWrites.push(Promise.resolve(write).catch(() => undefined));
+
+  return write;
+};
 
 // The ids the form asked `exists` about, and an answer that replaces the one read from
 // `mockAccounts`: the live query mock shows `mockAccounts` too, so a test that must tell the
@@ -105,6 +116,8 @@ let mockExistsAnswer: boolean | undefined;
 
 beforeEach(() => {
   mockQueueEnds = Promise.resolve();
+  mockWrites = [];
+  mockUsesRealMonobankField = false;
   mockExistsCalls = [];
   mockExistsAnswer = undefined;
 });
@@ -112,6 +125,15 @@ beforeEach(() => {
 // The Connect closure the Monobank field was last given: a test calls an unmounted form's own
 // closure to run a Connect that is still in flight when the form is folded.
 let mockMonobankConnect: ((token: string) => Promise<boolean>) | undefined;
+
+// Renders the real Monobank field, whose token check is `mockFetchClientInfo`, in place of the
+// mocked one below. Off before each test.
+let mockUsesRealMonobankField = false;
+const mockFetchClientInfo = jest.fn();
+
+jest.mock('@kiko/monobank/client', () => ({
+  fetchClientInfo: (...args: unknown[]) => mockFetchClientInfo(...args),
+}));
 
 jest.mock('@kiko/db/use-live-query', () => ({
   useLiveQuery: () => ({ data: mockAccounts }),
@@ -124,25 +146,28 @@ jest.mock('@kiko/accounts/accounts.repo', () => ({
         Promise.resolve(mockAccounts.filter((row) => (row as { id: string }).id === accountId)),
         { toSQL: () => ({ sql: '', params: [] }) },
       ),
-    // Asks the database whether a row exists through the write queue, so it waits behind an
-    // insert another screen still has queued (`mockQueueEnds`).
+    // Asks the database whether a row exists through the write queue, so it waits behind the
+    // writes queued before this call and no others.
     exists: async (accountId: string) => {
       mockExistsCalls.push(accountId);
+      const queuedBefore = [...mockWrites];
       await mockQueueEnds;
+      await Promise.all(queuedBefore);
 
       return (
         mockExistsAnswer ?? mockAccounts.some((row) => (row as { id: string }).id === accountId)
       );
     },
     // A Connect's insert of the account row (`mockCreate` records it): the form never reads first.
-    createIfAbsent: (...args: unknown[]) => mockCreate(...args),
+    createIfAbsent: (...args: unknown[]) => mockRegisterWrite(mockCreate(...args)),
     // The Save of a create form (`mockSaveFormAccount` records it): one write that finds the row
     // itself, so the form never reads it first either.
-    saveFormAccount: (...args: unknown[]) => mockSaveFormAccount(...args),
-    createCashAccount: (...args: unknown[]) => mockCreateCashAccount(...args),
-    createImplicitHolding: (...args: unknown[]) => mockCreateImplicitHolding(...args),
-    setIcon: (...args: unknown[]) => mockSetIcon(...args),
-    update: (...args: unknown[]) => mockUpdate(...args),
+    saveFormAccount: (...args: unknown[]) => mockRegisterWrite(mockSaveFormAccount(...args)),
+    createCashAccount: (...args: unknown[]) => mockRegisterWrite(mockCreateCashAccount(...args)),
+    createImplicitHolding: (...args: unknown[]) =>
+      mockRegisterWrite(mockCreateImplicitHolding(...args)),
+    setIcon: (...args: unknown[]) => mockRegisterWrite(mockSetIcon(...args)),
+    update: (...args: unknown[]) => mockRegisterWrite(mockUpdate(...args)),
   },
 }));
 jest.mock('@kiko/monobank/token', () => ({
@@ -277,60 +302,69 @@ jest.mock('@kiko/design-system/components/monobank-connect-field', () => {
   const { useEffect, useState } = require('react');
   const { Pressable, Text, TextInput, View } = require('react-native');
 
+  const RealField = jest.requireActual(
+    '@kiko/design-system/components/monobank-connect-field',
+  ).default;
+
+  // Unlike the wallet/binance mocks above, this one also surfaces the boolean
+  // `connectMonobank` resolves to (via a testID) — proving the screen's
+  // create -> saveToken -> sync chain actually propagates the sync outcome
+  // back to the caller, rather than a mutant swallowing it (e.g. hard-coding
+  // `true` or losing a rejection inside the try/catch).
+  const MockField = ({
+    onConnect,
+    reminder,
+  }: {
+    onConnect: (token: string) => Promise<boolean>;
+    reminder?: ConnectReminder;
+  }) => {
+    mockMonobankConnect = onConnect;
+    const [result, setResult] = useState('');
+    // Local state of the real field's token input: a remount loses it.
+    const [typedToken, setTypedToken] = useState('');
+    const onDraftChange = reminder?.onDraftChange;
+    useEffect(() => () => onDraftChange?.(false), [onDraftChange]);
+
+    return (
+      <View ref={reminder?.ref}>
+        <TextInput
+          testID="monobank-token-input"
+          value={typedToken}
+          onChangeText={(text: string) => {
+            setTypedToken(text);
+            reminder?.onDraftChange(text.trim() !== '');
+          }}
+        />
+
+        <Pressable
+          accessibilityLabel="monobank-field"
+          onPress={async () => {
+            reminder?.onConnectPress();
+            const connected = await onConnect('tok-123');
+            setResult(String(connected));
+
+            if (connected) {
+              reminder?.onDraftChange(false);
+            }
+          }}
+        >
+          <Text>monobank field</Text>
+          <Text testID="monobank-connect-result">{result}</Text>
+        </Pressable>
+
+        {reminder?.message !== undefined && (
+          <Text testID="monobank-reminder">{reminder.message}</Text>
+        )}
+      </View>
+    );
+  };
+
+  // A test about the token check a fold or a switch interrupts needs the real field, whose own
+  // unmount guard is what keeps a stale check from connecting.
   return {
     __esModule: true,
-    // Unlike the wallet/binance mocks above, this one also surfaces the boolean
-    // `connectMonobank` resolves to (via a testID) — proving the screen's
-    // create -> saveToken -> sync chain actually propagates the sync outcome
-    // back to the caller, rather than a mutant swallowing it (e.g. hard-coding
-    // `true` or losing a rejection inside the try/catch).
-    default: ({
-      onConnect,
-      reminder,
-    }: {
-      onConnect: (token: string) => Promise<boolean>;
-      reminder?: ConnectReminder;
-    }) => {
-      mockMonobankConnect = onConnect;
-      const [result, setResult] = useState('');
-      // Local state of the real field's token input: a remount loses it.
-      const [typedToken, setTypedToken] = useState('');
-      const onDraftChange = reminder?.onDraftChange;
-      useEffect(() => () => onDraftChange?.(false), [onDraftChange]);
-
-      return (
-        <View ref={reminder?.ref}>
-          <TextInput
-            testID="monobank-token-input"
-            value={typedToken}
-            onChangeText={(text: string) => {
-              setTypedToken(text);
-              reminder?.onDraftChange(text.trim() !== '');
-            }}
-          />
-
-          <Pressable
-            accessibilityLabel="monobank-field"
-            onPress={async () => {
-              reminder?.onConnectPress();
-              const connected = await onConnect('tok-123');
-              setResult(String(connected));
-
-              if (connected) {
-                reminder?.onDraftChange(false);
-              }
-            }}
-          >
-            <Text>monobank field</Text>
-            <Text testID="monobank-connect-result">{result}</Text>
-          </Pressable>
-
-          {reminder?.message !== undefined && (
-            <Text testID="monobank-reminder">{reminder.message}</Text>
-          )}
-        </View>
-      );
-    },
+    default: (props: ComponentProps<typeof MockField>) =>
+      mockUsesRealMonobankField ? <RealField {...props} /> : <MockField {...props} />,
   };
 });
 
@@ -340,7 +374,6 @@ jest.mock('@kiko/design-system/components/monobank-connect-field', () => {
 // stored row (`mockAccounts` then holds them) or inserts the row when none is stored. `ends` holds
 // an insert back until it settles.
 const storeCreatedRows = (ends: Promise<void> = Promise.resolve()): void => {
-  mockQueueEnds = ends;
   mockCreate.mockImplementation(async (input: { id: string }) => {
     await ends;
 
@@ -3593,13 +3626,15 @@ describe('AccountFormScreen — draft', () => {
         const connectOfFoldedForm = mockMonobankConnect as (token: string) => Promise<boolean>;
         await emitLayoutMode('columns');
         await first.unmount();
-        const second = await reopened(first);
+        // The write queue is first in, first out: the screen the fold replaced queued its insert
+        // before the new form opened, so the new form's read comes after it.
         let connected: Promise<boolean> = Promise.resolve(false);
         await act(async () => {
           connected = connectOfFoldedForm('tok-123');
         });
         await waitFor(() => expect(mockCreate).toHaveBeenCalledTimes(1));
         const createdId = (mockCreate.mock.calls[0][0] as { id: string }).id;
+        const second = await reopened(first);
 
         // The insert is still queued: the live query shows no row yet.
         expect(mockAccounts).toEqual([]);
@@ -3643,6 +3678,129 @@ describe('AccountFormScreen — draft', () => {
 
       expect(mockExistsCalls).toEqual([]);
       expect(isKindFieldDisabled(view.getByTestId)).toBe(true);
+    });
+  });
+
+  // A Connect field the screen replaced (a fold, or a kind or bank switch that removes it) never
+  // connects: its token check may resolve later, and the connect it ran would insert the pending
+  // row after the form already decided what to write. The real field is rendered here, because
+  // its own unmount guard is what is under test.
+  describe('a token check that a fold or a switch interrupts', () => {
+    const typeTokenAndConnect = async (view: View): Promise<void> => {
+      await fireEvent.changeText(
+        view.getByPlaceholderText(i18n.t('accountDetail.monobankTokenPlaceholder')),
+        'tok-123',
+      );
+      await act(async () => {
+        await fireEvent.press(view.getByText(i18n.t('accountDetail.connectMonobank')));
+      });
+    };
+
+    const holdTokenCheck = (): { finish: () => Promise<void> } => {
+      const check = { finish: async (): Promise<void> => undefined };
+      mockFetchClientInfo.mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            check.finish = () =>
+              act(async () => {
+                resolve({ name: 'Ada' });
+              });
+          }),
+      );
+
+      return check;
+    };
+
+    beforeEach(() => {
+      mockUsesRealMonobankField = true;
+      storeCreatedRows();
+    });
+
+    it('writes no row and saves one cash account when the kind is switched during the check', async () => {
+      const check = holdTokenCheck();
+      const view = await renderForm();
+      await fillMonobank(view, 'My Bank');
+      await typeTokenAndConnect(view);
+
+      await selectKind(view.getByTestId, 'cash');
+      await check.finish();
+
+      expect(mockCreate).not.toHaveBeenCalled();
+      expect(mockSaveToken).not.toHaveBeenCalled();
+      expect(mockMonobankSync).not.toHaveBeenCalled();
+
+      await fireEvent.changeText(view.getByLabelText('Initial value'), '100');
+      await fireEvent.press(view.getByText('Save'));
+
+      await waitFor(() => expect(view.navigation.goBack).toHaveBeenCalledTimes(1));
+      expect(mockCreateCashAccount).toHaveBeenCalledTimes(1);
+      expect(mockSaveFormAccount).not.toHaveBeenCalled();
+      expect(mockCreate).not.toHaveBeenCalled();
+    });
+
+    it('writes no row and saves no Monobank row when the bank is switched during the check', async () => {
+      const check = holdTokenCheck();
+      const view = await renderForm();
+      await fillMonobank(view, 'My Bank');
+      await typeTokenAndConnect(view);
+
+      await pickOtherBank(view.getByTestId);
+      await check.finish();
+
+      expect(mockCreate).not.toHaveBeenCalled();
+      expect(mockSaveToken).not.toHaveBeenCalled();
+
+      await fireEvent.press(view.getByText('Save'));
+
+      await waitFor(() => expect(view.navigation.goBack).toHaveBeenCalledTimes(1));
+      expect(mockSaveFormAccount).toHaveBeenCalledTimes(1);
+      expect(mockSaveFormAccount).toHaveBeenCalledWith(
+        expect.objectContaining({ kind: 'bank', bankId: 'other' }),
+      );
+      expect(mockCreate).not.toHaveBeenCalled();
+      expect(mockAccounts).toHaveLength(1);
+      expect(mockAccounts).not.toContainEqual(expect.objectContaining({ bankId: 'monobank' }));
+    });
+
+    it('lets the folded form unlock its picks and save one cash account, whatever the old check does', async () => {
+      const check = holdTokenCheck();
+      const first = await renderForm();
+      await fillMonobank(first, 'My Bank');
+      await typeTokenAndConnect(first);
+      await emitLayoutMode('columns');
+      await first.unmount();
+      const second = await reopened(first);
+
+      await waitFor(() => expect(isKindFieldDisabled(second.getByTestId)).toBe(false));
+      await check.finish();
+
+      expect(mockCreate).not.toHaveBeenCalled();
+      expect(mockSaveToken).not.toHaveBeenCalled();
+      expect(mockMonobankSync).not.toHaveBeenCalled();
+      expect(isKindFieldDisabled(second.getByTestId)).toBe(false);
+
+      await selectKind(second.getByTestId, 'cash');
+      await fireEvent.changeText(second.getByLabelText('Initial value'), '100');
+      await fireEvent.press(second.getByText('Save'));
+
+      await waitFor(() => expect(second.navigation.goBack).toHaveBeenCalledTimes(1));
+      expect(mockCreateCashAccount).toHaveBeenCalledTimes(1);
+      expect(mockSaveFormAccount).not.toHaveBeenCalled();
+      expect(mockCreate).not.toHaveBeenCalled();
+    });
+
+    it('still connects when the form stays mounted: one row, the token stored, the sync run', async () => {
+      const check = holdTokenCheck();
+      const view = await renderForm();
+      await fillMonobank(view, 'My Bank');
+      await typeTokenAndConnect(view);
+
+      await check.finish();
+
+      await waitFor(() => expect(mockMonobankSync).toHaveBeenCalledTimes(1));
+      expect(mockCreate).toHaveBeenCalledTimes(1);
+      expect(mockSaveToken).toHaveBeenCalledTimes(1);
+      expect(mockAccounts).toHaveLength(1);
     });
   });
 

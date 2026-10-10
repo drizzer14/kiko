@@ -2,6 +2,7 @@ import { useTranslation } from 'react-i18next';
 import { BINANCE_API_MANAGEMENT_URL } from '@env';
 import { type FC, useEffect, useState } from 'react';
 import { Linking, Pressable, View } from 'react-native';
+import { useIsMounted } from '@kiko/design-system/use-is-mounted';
 import { fetchAccount, saveCredentials } from '@kiko/crypto-sync/binance';
 import type { ConnectReminder } from '@kiko/design-system/connect-reminder';
 
@@ -30,6 +31,30 @@ type BinanceCredentialsFieldProps = {
 
 type Field = 'apiKey' | 'secret';
 
+type StoreOutcome = 'stored' | 'saveError' | 'unmounted';
+
+// Stores a verified pair unless the field is gone, and says whether the connect may go on. A fold
+// or a kind switch removes the field during the check or the write; storing then would leave a key
+// under an account id nothing connects, and connecting would insert the account row after the form
+// that replaced this one already decided what to write, so the user presses Connect again.
+const storePair = async (
+  accountId: string,
+  credentials: { apiKey: string; secret: string },
+  isMounted: () => boolean,
+): Promise<StoreOutcome> => {
+  if (!isMounted()) {
+    return 'unmounted';
+  }
+
+  try {
+    await saveCredentials(accountId, credentials);
+  } catch {
+    return 'saveError';
+  }
+
+  return isMounted() ? 'stored' : 'unmounted';
+};
+
 // The Binance counterpart of the Monobank token field: two secure inputs for a
 // read-only ("Enable Reading" only) key pair. Connect verifies the pair with one
 // account call BEFORE it is written to the biometric Keychain, then runs the
@@ -53,6 +78,7 @@ const BinanceCredentialsField: FC<BinanceCredentialsFieldProps> = ({
   const secretError =
     attemptedConnect && secret.trim() === '' ? t('accountDetail.secretRequiredError') : undefined;
   const onDraftChange = reminder?.onDraftChange;
+  const isMounted = useIsMounted();
 
   // The typed pair goes with the field, so a draft it reported must not outlive it.
   useEffect(() => () => onDraftChange?.(false), [onDraftChange]);
@@ -99,11 +125,15 @@ const BinanceCredentialsField: FC<BinanceCredentialsFieldProps> = ({
         return;
       }
 
-      try {
-        await saveCredentials(accountId, { apiKey, secret });
-      } catch {
+      const stored = await storePair(accountId, { apiKey, secret }, isMounted);
+
+      if (stored === 'saveError') {
         setStatus({ kind: 'saveError', message: t('accountDetail.couldNotSaveCredentials') });
 
+        return;
+      }
+
+      if (stored === 'unmounted') {
         return;
       }
 

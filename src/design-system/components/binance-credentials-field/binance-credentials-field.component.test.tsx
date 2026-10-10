@@ -215,6 +215,83 @@ describe('BinanceCredentialsField', () => {
     expect(await findByText('Could not connect Binance')).toBeTruthy();
   });
 
+  describe('once unmounted', () => {
+    const pendingFetch = (): { resolve: () => void } => {
+      const pending = { resolve: () => {} };
+      mockFetchAccount.mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            pending.resolve = () => resolve({ balances: [] });
+          }),
+      );
+
+      return pending;
+    };
+
+    // A field a fold or a kind switch replaced must not store the pair its check verified, nor
+    // run the screen's connect: that would insert the account row after the new form looked for it.
+    it('stores nothing and does not connect when the check resolves after the field unmounted', async () => {
+      const pending = pendingFetch();
+      const view = await render(
+        <BinanceCredentialsField accountId="acc-1" onConnect={onConnect} />,
+      );
+
+      await fillBoth(view.getByPlaceholderText);
+      await act(async () => {
+        await fireEvent.press(view.getByText('Connect Binance'));
+      });
+      await view.unmount();
+      await act(async () => {
+        pending.resolve();
+      });
+
+      expect(mockSaveCredentials).not.toHaveBeenCalled();
+      expect(onConnect).not.toHaveBeenCalled();
+    });
+
+    it('does not connect when the field unmounted while the pair was being stored', async () => {
+      let resolveSave: () => void = () => {};
+      mockSaveCredentials.mockImplementation(
+        () =>
+          new Promise<void>((resolve) => {
+            resolveSave = resolve;
+          }),
+      );
+      const view = await render(
+        <BinanceCredentialsField accountId="acc-1" onConnect={onConnect} />,
+      );
+
+      await fillBoth(view.getByPlaceholderText);
+      await act(async () => {
+        await fireEvent.press(view.getByText('Connect Binance'));
+      });
+      await view.unmount();
+      await act(async () => {
+        resolveSave();
+      });
+
+      expect(onConnect).not.toHaveBeenCalled();
+    });
+
+    it('still stores the pair and connects once when the field stays mounted', async () => {
+      const pending = pendingFetch();
+      const view = await render(
+        <BinanceCredentialsField accountId="acc-1" onConnect={onConnect} />,
+      );
+
+      await fillBoth(view.getByPlaceholderText);
+      await act(async () => {
+        await fireEvent.press(view.getByText('Connect Binance'));
+      });
+      await act(async () => {
+        pending.resolve();
+      });
+
+      expect(mockSaveCredentials).toHaveBeenCalledTimes(1);
+      expect(onConnect).toHaveBeenCalledTimes(1);
+    });
+  });
+
   it('shows the Keychain-only data-handling disclosure as a secondary caption', async () => {
     const { getByText } = await render(
       <BinanceCredentialsField accountId="acc-1" onConnect={onConnect} />,

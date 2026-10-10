@@ -154,6 +154,52 @@ it('disables Connect while validation is in flight, even with a filled token', a
   });
 });
 
+describe('once unmounted', () => {
+  // A field a fold or a kind switch replaced must not store the token its check validated: the
+  // screen's connect would insert the account row after the new form already looked for it.
+  it('does not call onConnect when the check resolves after the field unmounted', async () => {
+    let resolveFetch: (info: { name: string }) => void = () => {};
+    mockFetchClientInfo.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveFetch = resolve;
+        }),
+    );
+    const onConnect = jest.fn().mockResolvedValue(true);
+    const view = await render(<MonobankConnectField onConnect={onConnect} />);
+
+    await type(view, 'tok-123');
+    await pressConnect(view);
+    await view.unmount();
+    await act(async () => {
+      resolveFetch({ name: 'Ada' });
+    });
+
+    expect(onConnect).not.toHaveBeenCalled();
+  });
+
+  it('still calls onConnect once when the check resolves while the field is mounted', async () => {
+    let resolveFetch: (info: { name: string }) => void = () => {};
+    mockFetchClientInfo.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveFetch = resolve;
+        }),
+    );
+    const onConnect = jest.fn().mockResolvedValue(true);
+    const view = await render(<MonobankConnectField onConnect={onConnect} />);
+
+    await type(view, 'tok-123');
+    await pressConnect(view);
+    await act(async () => {
+      resolveFetch({ name: 'Ada' });
+    });
+
+    expect(onConnect).toHaveBeenCalledTimes(1);
+    expect(onConnect).toHaveBeenCalledWith('tok-123');
+  });
+});
+
 describe('connect reminder', () => {
   const makeReminder = (message?: string): ConnectReminder => ({
     ref: createRef<FieldInstance>(),
