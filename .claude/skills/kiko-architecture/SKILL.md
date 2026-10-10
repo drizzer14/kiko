@@ -2231,11 +2231,22 @@ shape, and hand-rolled `utf8/utf8.ts` + `base64/base64.ts` codecs.
   and derived on restore needs none, and neither does an idempotent data
   rewrite that the restore mirror re-applies to an older file (0049, 0050, 0051).
   The decision per migration is recorded in `VERSION_DECISIONS` in
-  `src/data-transfer/crypto/envelope.test.ts`, which is where to read it (0052's
-  `exchangePairId` is the first kind: a column riding inside a row). A new
+  `src/data-transfer/crypto/envelope.test.ts`, which is where to read it (see
+  `VERSION_DECISIONS` for the recorded kinds). A new
   table the file carries as an OPTIONAL snapshot key (0054's
   `deletedImportKeys`) needs none either: an older build drops the key and
   keeps its old rule, and this build restores an older file with the table empty.
+  A column riding inside an existing row that the restore leaves null (0056
+  `untrackedCounterpart`) or fills with its schema default (0055 `dismissedTips`)
+  because no older build ever wrote it needs none either. Known cost: a
+  downgrade round trip (new file -> older build -> export -> new build) drops the
+  value; accepted, since a bump would make an older build refuse every new file.
+  Any migration that changes the snapshot shape (a new table, a column on any
+  table, a changed default) must, in the same commit: regenerate the demo
+  `.kiko` (see kiko-compliance's demo fixture section for the command), add a
+  `VERSION_DECISIONS` comment and bump `migrationCount` in
+  `src/data-transfer/crypto/envelope.test.ts`; the scoped jest run must include
+  `e2e/screenshot` and `src/data-transfer/crypto`.
 
 ## Reminders (local notifications)
 

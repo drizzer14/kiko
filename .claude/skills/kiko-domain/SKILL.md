@@ -962,13 +962,25 @@ always, and the marker only when it is manual or imported and carries none; see
   rows — a null `mcc`, an empty description, and a cross-currency pair
   the matched-pair matcher rejects.
 - **The repository never writes a description for a leg.** The label is
-  resolved at render time through `t` from the marker plus the
-  counterpart's CURRENT name (a description the USER later types on that
-  row still wins — the resolver prefers a stored one) — `exchangeLegDescription`
-  (`src/transactions/`), applied by both
-  transaction lists via `transactionRowDescription` (`src/transactions/`). A
-  persisted sentence stayed English after a language switch and went
+  resolved at render time through `t`. `transactionRowDescription`
+  (`src/transactions/row-description/`) applies this order: (1) a stored
+  description wins; (2) a row with `exchangeCounterpartHoldingId` gets the
+  paired leg's label from `exchangeLegDescription` / `transferLegDescription`
+  (`src/transactions/exchange-description/`): 'Transfer to/from <name>' when
+  both holdings have the same currency, 'Exchange to/from <name>' otherwise or
+  when either currency is unknown; (3) a row with a known `untrackedCounterpart`
+  code (`wallet:<TYPE>`, `src/transactions/untracked-counterpart/`; wallet
+  names are proper nouns kept in code, not in i18n) gets 'Transfer to/from
+  <wallet>'; (4) otherwise `defaultTransactionDescription`. Same-currency legs,
+  including manual ones, read 'Transfer', not 'Exchange'. The caller supplies
+  `holdingNameById` and `holdingCurrencyById`, both built from the holdings live
+  query. A persisted sentence stayed English after a language switch and went
   stale after a rename; that is the bug the column exists to prevent.
+- `transactions.untrackedCounterpart` (0056, nullable `wallet:<TYPE>`) marks a
+  leg whose other side is an untracked wallet. The exchange-exclusion module
+  also excludes these rows from spending (read
+  `src/statistics/exchange-exclusion/`). The column is insert-only: it is not in
+  `BANK_OWNED_TRANSACTION_COLUMNS` (`src/transactions/repo/transactions.repo.ts`).
 - **`transactionRowDescription` is the ONE owner of a blank row's label.**
   Every surface that shows it calls it: both lists, `ExampleTransaction`,
   and the transaction form. On an edit, the form pre-fills a blank
@@ -978,7 +990,7 @@ always, and the marker only when it is manual or imported and carries none; see
   untouched leg keeps resolving at render time. A direct
   `defaultTransactionDescription(` call outside
   `src/transactions/row-description/` (or the helper's own folder)
-  skips the exchange branch and is denied by the
+  skips the exchange, transfer and untracked branches, and is denied by the
   `kiko-no-direct-default-transaction-description` Semgrep rule.
 - A repository input therefore carries holding IDs, never holding
   display names, for an exchange.
