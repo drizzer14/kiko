@@ -45,7 +45,7 @@ import { type BankId, isBankId, isSpecificBankId } from '@kiko/bank-sync/bank-ca
 import HoldingIdentityField from '@kiko/design-system/components/holding-identity-field';
 import MonobankConnectField from '@kiko/design-system/components/monobank-connect-field';
 import { type Currency, currencySymbol, fiatCurrencyOptions } from '@kiko/currency/currency';
-import { type BinanceCredentials, clearCredentialsIfStored } from '@kiko/crypto-sync/binance';
+import { type BinanceWriteToken, clearCredentialsIfWrittenBy } from '@kiko/crypto-sync/binance';
 import type { AccountFormDraft, AccountsStackParamList, FormDraft } from '@kiko/navigation/types';
 
 import { usePendingRowLock } from './use-pending-row-lock';
@@ -452,7 +452,8 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
   // against it. `CryptoSyncForm`/`BinanceCredentialsField` validate the
   // credential and write the Binance secret to the Keychain themselves, keyed by
   // the pre-generated id, before calling these — the secret never reaches this
-  // screen, the DB, or a log. A create failure is caught here (via
+  // screen, the DB, or a log (the Binance callbacks get only the token of the field's write). A
+  // create failure is caught here (via
   // `accountEnsured`) and surfaced to the field as a `false` (not-connected)
   // result, so the field shows its "could not connect" status instead of an
   // unhandled rejection that would leave it stuck on "checking".
@@ -468,27 +469,28 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
     });
   };
 
-  // A field stored `written` under the pre-generated account id, and no Connect of it will
-  // follow: connectBinance's Connect failed to ensure the row, or the field unmounted during the
-  // write and the form decides instead. Only when no row owns the id does nothing else ever clear
-  // the pair: a reject on an empty name leaves a row that is there with its keys, even one another
-  // screen's Connect has still queued (the read waits behind it), and a failed read of the row
-  // keeps them too. The clear removes `written` and no other pair: a remounted field saves its own
-  // pair outside the write queue, possibly after the read above answered. A failed clear is
-  // logged: the caller still reports its own outcome.
-  const clearPairIfRowMissing = async (written: BinanceCredentials): Promise<void> => {
+  // A field stored a pair under the pre-generated account id with the write `written`, and no
+  // Connect of it will follow: connectBinance's Connect failed to ensure the row, or the field
+  // unmounted during the write and the form decides instead. Only when no row owns the id does
+  // nothing else ever clear the pair: a reject on an empty name leaves a row that is there with its
+  // keys, even one another screen's Connect has still queued (the read waits behind it), and a
+  // failed read of the row keeps them too. The clear removes the pair `written` stored and no other
+  // write's, not even an equal pair: a remounted field saves its own pair outside the write queue,
+  // possibly after the read above answered. A failed clear is logged: the caller still reports its
+  // own outcome.
+  const clearPairIfRowMissing = async (written: BinanceWriteToken): Promise<void> => {
     const rowIsMissing =
       bifoldr(await either<unknown, boolean>(async () => accountsRepo.exists(pendingAccountId))) ===
       false;
 
     if (rowIsMissing) {
       await logOnFailure('[account-form] the Binance key pair could not be cleared', () =>
-        clearCredentialsIfStored(pendingAccountId, written),
+        clearCredentialsIfWrittenBy(pendingAccountId, written),
       );
     }
   };
 
-  const connectBinance = async (stored: BinanceCredentials): Promise<boolean> => {
+  const connectBinance = async (stored: BinanceWriteToken): Promise<boolean> => {
     if (!(await accountEnsured())) {
       await clearPairIfRowMissing(stored);
 

@@ -51,6 +51,9 @@ type OnStoredWhileUnmounted = ComponentProps<
 // What `fillBoth` types into the two inputs.
 const typedPair = { apiKey: 'api-key-fixture', secret: 'secret-fixture' };
 
+// What the mocked save resolves: the field hands this token on, never the pair it typed.
+const savedToken = Symbol('saved');
+
 const fillBoth = async (getByPlaceholderText: View['getByPlaceholderText']): Promise<void> => {
   await fireEvent.changeText(getByPlaceholderText('Binance API key'), 'api-key-fixture');
   await fireEvent.changeText(getByPlaceholderText('Binance API secret'), 'secret-fixture');
@@ -99,7 +102,7 @@ describe('BinanceCredentialsField', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockFetchAccount.mockResolvedValue({ balances: [] });
-    mockSaveCredentials.mockResolvedValue(undefined);
+    mockSaveCredentials.mockResolvedValue(savedToken);
     onConnect.mockResolvedValue(true);
   });
 
@@ -182,7 +185,7 @@ describe('BinanceCredentialsField', () => {
     expect(mockFetchAccount).toHaveBeenCalledWith('api-key-fixture', 'secret-fixture');
     expect(mockSaveCredentials).toHaveBeenCalledWith('acc-1', typedPair);
     expect(onConnect).toHaveBeenCalledTimes(1);
-    expect(onConnect).toHaveBeenCalledWith(typedPair);
+    expect(onConnect).toHaveBeenCalledWith(savedToken);
     expect(await findByText('Binance connected')).toBeTruthy();
   });
 
@@ -232,8 +235,8 @@ describe('BinanceCredentialsField', () => {
       const pending = { resolve: () => {} };
       mockSaveCredentials.mockImplementation(
         () =>
-          new Promise<void>((resolve) => {
-            pending.resolve = resolve;
+          new Promise<symbol>((resolve) => {
+            pending.resolve = () => resolve(savedToken);
           }),
       );
 
@@ -265,7 +268,7 @@ describe('BinanceCredentialsField', () => {
 
     // The pair is in the Keychain by then and the screen that owns the field decides what to do
     // with it; connecting would insert an account row after the form that replaced this one looked.
-    it('reports the stored pair instead of connecting when the field unmounted during the write', async () => {
+    it('reports the token of the write instead of connecting when the field unmounted during it', async () => {
       const pending = pendingSave();
       const view = await renderAndConnect(onConnect, onStoredWhileUnmounted);
 
@@ -275,7 +278,7 @@ describe('BinanceCredentialsField', () => {
       });
 
       expect(onStoredWhileUnmounted).toHaveBeenCalledTimes(1);
-      expect(onStoredWhileUnmounted).toHaveBeenCalledWith(typedPair);
+      expect(onStoredWhileUnmounted).toHaveBeenCalledWith(savedToken);
       expect(onConnect).not.toHaveBeenCalled();
     });
 
@@ -447,7 +450,7 @@ describe('BinanceCredentialsField — connect reminder', () => {
 
   it('reports no typed credential once a connect succeeds, and keeps it while one fails', async () => {
     mockFetchAccount.mockResolvedValue({ balances: [] });
-    mockSaveCredentials.mockResolvedValue(undefined);
+    mockSaveCredentials.mockResolvedValue(savedToken);
     const reminder = makeReminder();
     const onConnect = jest.fn<Promise<boolean>, []>().mockResolvedValueOnce(false);
     const view = await renderWithReminder(reminder, onConnect);

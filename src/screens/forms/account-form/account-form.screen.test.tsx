@@ -84,7 +84,7 @@ const mockSetIcon = jest.fn();
 const mockUpdate = jest.fn();
 const mockSaveToken = jest.fn();
 const mockSaveCredentials = jest.fn();
-const mockClearCredentialsIfStored = jest.fn();
+const mockClearCredentialsIfWrittenBy = jest.fn();
 const mockMonobankSync = jest.fn();
 const mockCryptoSync = jest.fn();
 const mockFetchAccount = jest.fn();
@@ -121,6 +121,8 @@ beforeEach(() => {
   mockExistsCalls = [];
   mockExistsAnswer = undefined;
   mockBinanceStoredWhileUnmounted = undefined;
+  mockFieldPair = defaultFieldPair;
+  mockKeychain = undefined;
 });
 
 // The Connect closure the Monobank field was last given: a test calls an unmounted form's own
@@ -129,16 +131,28 @@ let mockMonobankConnect: ((token: string) => Promise<boolean>) | undefined;
 
 type BinancePair = { apiKey: string; secret: string };
 
-// The pair the mocked Binance field says it stored when it connects.
-const mockFieldPair: BinancePair = { apiKey: 'field-key', secret: 'field-secret' };
+const defaultFieldPair: BinancePair = { apiKey: 'field-key', secret: 'field-secret' };
+
+// The pair the mocked Binance field stores when it connects.
+let mockFieldPair: BinancePair = defaultFieldPair;
 
 // What the Binance field was last given to run when it unmounted during the Keychain write that
-// stored its pair: a test calls it after the field is gone.
-let mockBinanceStoredWhileUnmounted: ((stored: BinancePair) => Promise<void>) | undefined;
+// stored its pair: a test calls it with the token of that write after the field is gone.
+let mockBinanceStoredWhileUnmounted: ((stored: symbol) => Promise<void>) | undefined;
 
-// The Keychain item of the account being created, for the tests that tell which pair a clear
+// The Keychain item of the account being created, as the real credentials module keeps it: the
+// pair and the token of the one write that stored it. For the tests that tell which write a clear
 // removes.
-let mockKeychainPair: BinancePair | undefined;
+let mockKeychain: { pair: BinancePair; token: symbol } | undefined;
+
+// A write of the item. Every write gets its own token, even for an equal pair.
+const mockWriteKeychain = (pair: BinancePair): symbol => {
+  const token = Symbol('write');
+
+  mockKeychain = { pair, token };
+
+  return token;
+};
 
 // Renders the real Monobank field, whose token check is `mockFetchClientInfo`, in place of the
 // mocked one below. Off before each test.
@@ -189,7 +203,7 @@ jest.mock('@kiko/monobank/token', () => ({
 }));
 jest.mock('@kiko/crypto-sync/binance/binance.credentials', () => ({
   saveCredentials: (...args: unknown[]) => mockSaveCredentials(...args),
-  clearCredentialsIfStored: (...args: unknown[]) => mockClearCredentialsIfStored(...args),
+  clearCredentialsIfWrittenBy: (...args: unknown[]) => mockClearCredentialsIfWrittenBy(...args),
 }));
 jest.mock('@kiko/crypto-sync/binance/binance.client', () => ({
   fetchAccount: (...args: unknown[]) => mockFetchAccount(...args),
@@ -273,9 +287,9 @@ jest.mock('@kiko/design-system/components/binance-credentials-field', () => {
       reminder,
       onStoredWhileUnmounted,
     }: {
-      onConnect: (stored: BinancePair) => Promise<boolean>;
+      onConnect: (stored: symbol) => Promise<boolean>;
       reminder?: ConnectReminder;
-      onStoredWhileUnmounted?: (stored: BinancePair) => Promise<void>;
+      onStoredWhileUnmounted?: (stored: symbol) => Promise<void>;
     }) => {
       mockBinanceStoredWhileUnmounted = onStoredWhileUnmounted;
       const onDraftChange = reminder?.onDraftChange;
@@ -293,7 +307,7 @@ jest.mock('@kiko/design-system/components/binance-credentials-field', () => {
             onPress={async () => {
               reminder?.onConnectPress();
 
-              if (await onConnect(mockFieldPair)) {
+              if (await onConnect(mockWriteKeychain(mockFieldPair))) {
                 reminder?.onDraftChange(false);
               }
             }}
@@ -2424,20 +2438,24 @@ describe('AccountFormScreen — sync credentials on create', () => {
   // so a connect that cannot create the row leaves a pair no account owns.
   describe('the key pair the Binance field stored before the connect', () => {
     it('is cleared when the empty name blocks the account row', async () => {
-      mockClearCredentialsIfStored.mockResolvedValue(undefined);
+      mockClearCredentialsIfWrittenBy.mockResolvedValue(undefined);
       const { getByLabelText, getByTestId, getByText } = await renderForm();
 
       await selectKind(getByTestId, 'crypto');
       await fireEvent.press(getByText('Binance'));
       await fireEvent.press(getByLabelText('binance-field'));
 
-      await waitFor(() => expect(mockClearCredentialsIfStored).toHaveBeenCalledTimes(1));
+      await waitFor(() => expect(mockClearCredentialsIfWrittenBy).toHaveBeenCalledTimes(1));
       expect(mockCreate).not.toHaveBeenCalled();
-      expect(mockClearCredentialsIfStored).toHaveBeenCalledWith(expect.any(String), mockFieldPair);
+      expect(mockKeychain).toBeDefined();
+      expect(mockClearCredentialsIfWrittenBy).toHaveBeenCalledWith(
+        expect.any(String),
+        mockKeychain?.token,
+      );
     });
 
     it('is cleared when the account row cannot be inserted', async () => {
-      mockClearCredentialsIfStored.mockResolvedValue(undefined);
+      mockClearCredentialsIfWrittenBy.mockResolvedValue(undefined);
       mockCreate.mockRejectedValueOnce(new Error('db locked'));
       const { getByLabelText, getByTestId, getByText } = await renderForm();
 
@@ -2446,10 +2464,10 @@ describe('AccountFormScreen — sync credentials on create', () => {
       await fireEvent.press(getByText('Binance'));
       await fireEvent.press(getByLabelText('binance-field'));
 
-      await waitFor(() => expect(mockClearCredentialsIfStored).toHaveBeenCalledTimes(1));
-      expect(mockClearCredentialsIfStored).toHaveBeenCalledWith(
+      await waitFor(() => expect(mockClearCredentialsIfWrittenBy).toHaveBeenCalledTimes(1));
+      expect(mockClearCredentialsIfWrittenBy).toHaveBeenCalledWith(
         (mockCreate.mock.calls[0][0] as { id: string }).id,
-        mockFieldPair,
+        mockKeychain?.token,
       );
       expect(mockCryptoSync).not.toHaveBeenCalled();
     });
@@ -2471,7 +2489,7 @@ describe('AccountFormScreen — sync credentials on create', () => {
 
       expect(queryByTestId('holding-identity-name-field-error')).toBeTruthy();
       expect(mockCryptoSync).toHaveBeenCalledTimes(1);
-      expect(mockClearCredentialsIfStored).not.toHaveBeenCalled();
+      expect(mockClearCredentialsIfWrittenBy).not.toHaveBeenCalled();
       expect(mockAccounts).toHaveLength(1);
     });
 
@@ -2505,7 +2523,7 @@ describe('AccountFormScreen — sync credentials on create', () => {
         await blockedConnect;
       });
 
-      expect(mockClearCredentialsIfStored).not.toHaveBeenCalled();
+      expect(mockClearCredentialsIfWrittenBy).not.toHaveBeenCalled();
       expect(mockAccounts).toHaveLength(1);
     });
 
@@ -2531,7 +2549,7 @@ describe('AccountFormScreen — sync credentials on create', () => {
         }),
       );
       expect(mockAccounts).toHaveLength(1);
-      expect(mockClearCredentialsIfStored).not.toHaveBeenCalled();
+      expect(mockClearCredentialsIfWrittenBy).not.toHaveBeenCalled();
     });
 
     it('stays once the row exists, even when the first sync fails', async () => {
@@ -2544,7 +2562,7 @@ describe('AccountFormScreen — sync credentials on create', () => {
       await fireEvent.press(getByLabelText('binance-field'));
 
       await waitFor(() => expect(mockCryptoSync).toHaveBeenCalledTimes(1));
-      expect(mockClearCredentialsIfStored).not.toHaveBeenCalled();
+      expect(mockClearCredentialsIfWrittenBy).not.toHaveBeenCalled();
     });
 
     it('stays when an icon write fails after the row exists, since the icon goes in the create', async () => {
@@ -2562,11 +2580,11 @@ describe('AccountFormScreen — sync credentials on create', () => {
         expect.objectContaining({ icon: accountKindSymbol.crypto }),
       );
       expect(mockSetIcon).not.toHaveBeenCalled();
-      expect(mockClearCredentialsIfStored).not.toHaveBeenCalled();
+      expect(mockClearCredentialsIfWrittenBy).not.toHaveBeenCalled();
     });
 
     it('does not fail the connect when the clear itself fails', async () => {
-      mockClearCredentialsIfStored.mockRejectedValueOnce(new Error('keychain delete failed'));
+      mockClearCredentialsIfWrittenBy.mockRejectedValueOnce(new Error('keychain delete failed'));
       const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
       const { getByLabelText, getByTestId, getByText } = await renderForm();
 
@@ -2574,7 +2592,7 @@ describe('AccountFormScreen — sync credentials on create', () => {
       await fireEvent.press(getByText('Binance'));
       await fireEvent.press(getByLabelText('binance-field'));
 
-      await waitFor(() => expect(mockClearCredentialsIfStored).toHaveBeenCalledTimes(1));
+      await waitFor(() => expect(mockClearCredentialsIfWrittenBy).toHaveBeenCalledTimes(1));
       await waitFor(() => expect(warn).toHaveBeenCalledTimes(1));
 
       warn.mockRestore();
@@ -2585,8 +2603,9 @@ describe('AccountFormScreen — sync credentials on create', () => {
   // during the Keychain write, so no Connect ever ran for it.
   describe('the key pair the Binance field stored while it unmounted', () => {
     const oldPair: BinancePair = { apiKey: 'old-key', secret: 'old-secret' };
+    const oldWrite = Symbol('write of the old pair');
 
-    const storedAfterKindSwitch = async (): Promise<(stored: BinancePair) => Promise<void>> => {
+    const storedAfterKindSwitch = async (): Promise<(stored: symbol) => Promise<void>> => {
       const { getByLabelText, getByTestId, getByText } = await renderForm();
 
       await fireEvent.changeText(getByLabelText('Name'), 'My Crypto');
@@ -2597,23 +2616,23 @@ describe('AccountFormScreen — sync credentials on create', () => {
       expect(stored).toBeDefined();
       await selectKind(getByTestId, 'bank');
 
-      return stored as (stored: BinancePair) => Promise<void>;
+      return stored as (stored: symbol) => Promise<void>;
     };
 
     it('is cleared when no row owns it', async () => {
-      mockClearCredentialsIfStored.mockResolvedValue(undefined);
+      mockClearCredentialsIfWrittenBy.mockResolvedValue(undefined);
       const stored = await storedAfterKindSwitch();
 
-      await act(async () => stored(oldPair));
+      await act(async () => stored(oldWrite));
 
       expect(mockExistsCalls).toHaveLength(1);
-      expect(mockClearCredentialsIfStored).toHaveBeenCalledTimes(1);
-      expect(mockClearCredentialsIfStored).toHaveBeenCalledWith(mockExistsCalls[0], oldPair);
+      expect(mockClearCredentialsIfWrittenBy).toHaveBeenCalledTimes(1);
+      expect(mockClearCredentialsIfWrittenBy).toHaveBeenCalledWith(mockExistsCalls[0], oldWrite);
       expect(mockCreate).not.toHaveBeenCalled();
     });
 
     it('is cleared after a fold when no row owns it', async () => {
-      mockClearCredentialsIfStored.mockResolvedValue(undefined);
+      mockClearCredentialsIfWrittenBy.mockResolvedValue(undefined);
       const { getByLabelText, getByTestId, getByText, unmount } = await renderForm();
 
       await fireEvent.changeText(getByLabelText('Name'), 'My Crypto');
@@ -2624,60 +2643,59 @@ describe('AccountFormScreen — sync credentials on create', () => {
       await unmount();
 
       expect(stored).toBeDefined();
-      await act(async () => stored?.(oldPair));
+      await act(async () => stored?.(oldWrite));
 
-      expect(mockClearCredentialsIfStored).toHaveBeenCalledTimes(1);
-      expect(mockClearCredentialsIfStored).toHaveBeenCalledWith(mockExistsCalls[0], oldPair);
+      expect(mockClearCredentialsIfWrittenBy).toHaveBeenCalledTimes(1);
+      expect(mockClearCredentialsIfWrittenBy).toHaveBeenCalledWith(mockExistsCalls[0], oldWrite);
     });
 
     it('stays when a row owns it', async () => {
       mockExistsAnswer = true;
       const stored = await storedAfterKindSwitch();
 
-      await act(async () => stored(oldPair));
+      await act(async () => stored(oldWrite));
 
       expect(mockExistsCalls).toHaveLength(1);
-      expect(mockClearCredentialsIfStored).not.toHaveBeenCalled();
+      expect(mockClearCredentialsIfWrittenBy).not.toHaveBeenCalled();
     });
 
     it('stays when the read of the row fails', async () => {
       const stored = await storedAfterKindSwitch();
       mockQueueEnds = Promise.reject(new Error('database is locked'));
 
-      await act(async () => stored(oldPair));
+      await act(async () => stored(oldWrite));
 
       expect(mockExistsCalls).toHaveLength(1);
-      expect(mockClearCredentialsIfStored).not.toHaveBeenCalled();
+      expect(mockClearCredentialsIfWrittenBy).not.toHaveBeenCalled();
     });
 
     // The Keychain item the clear acts on is tracked here: a clear removes the stored pair only
-    // when it is the one that was handed to it.
+    // when the token it is given names the write that stored it.
     describe('with the pair in the Keychain', () => {
       beforeEach(() => {
-        mockKeychainPair = oldPair;
-        mockClearCredentialsIfStored.mockImplementation(async (_accountId, expected) => {
-          if (JSON.stringify(mockKeychainPair) === JSON.stringify(expected)) {
-            mockKeychainPair = undefined;
+        mockKeychain = { pair: oldPair, token: oldWrite };
+        mockClearCredentialsIfWrittenBy.mockImplementation(async (_accountId, token) => {
+          if (mockKeychain?.token === token) {
+            mockKeychain = undefined;
           }
         });
       });
 
       afterEach(() => {
-        mockKeychainPair = undefined;
-        mockClearCredentialsIfStored.mockReset();
+        mockClearCredentialsIfWrittenBy.mockReset();
       });
 
       it('removes the pair that no new Connect replaced', async () => {
         const stored = await storedAfterKindSwitch();
 
-        await act(async () => stored(oldPair));
+        await act(async () => stored(oldWrite));
 
-        expect(mockKeychainPair).toBeUndefined();
+        expect(mockKeychain).toBeUndefined();
       });
 
       // The remounted field saves its own pair before its row insert is queued, so the existence
-      // check for the old pair can answer "no row" after that pair is already stored.
-      it('keeps a pair the remounted field saved while the check was queued behind a write', async () => {
+      // check for the old write can answer "no row" after that pair is already stored.
+      const checkOldWriteWhileRemountedFieldSaves = async (): Promise<void> => {
         const { getByLabelText, getByTestId, getByText } = await renderForm();
 
         await fireEvent.changeText(getByLabelText('Name'), 'My Crypto');
@@ -2692,20 +2710,35 @@ describe('AccountFormScreen — sync credentials on create', () => {
         mockExistsAnswer = false;
         let check: Promise<void> | undefined;
         await act(async () => {
-          check = stored?.(oldPair);
+          check = stored?.(oldWrite);
         });
 
         await selectKind(getByTestId, 'crypto');
         await fireEvent.press(getByText('Binance'));
-        mockKeychainPair = mockFieldPair;
         await fireEvent.press(getByLabelText('binance-field'));
         await act(async () => {
           finishQueuedWrite();
           await check;
         });
+      };
 
-        expect(mockKeychainPair).toEqual(mockFieldPair);
-        expect(mockClearCredentialsIfStored).toHaveBeenCalledWith(mockExistsCalls[0], oldPair);
+      it('keeps a pair the remounted field saved while the check was queued behind a write', async () => {
+        await checkOldWriteWhileRemountedFieldSaves();
+
+        expect(mockKeychain?.pair).toEqual(mockFieldPair);
+        expect(mockClearCredentialsIfWrittenBy).toHaveBeenCalledWith(mockExistsCalls[0], oldWrite);
+      });
+
+      // The user typed the same keys again: the old write must still not clear what the new one
+      // stored, so the row keeps its keys.
+      it('keeps an equal pair the remounted field saved while the check was queued', async () => {
+        mockFieldPair = oldPair;
+
+        await checkOldWriteWhileRemountedFieldSaves();
+
+        expect(mockKeychain?.pair).toEqual(oldPair);
+        expect(mockKeychain?.token).not.toBe(oldWrite);
+        expect(mockClearCredentialsIfWrittenBy).toHaveBeenCalledWith(mockExistsCalls[0], oldWrite);
       });
     });
   });

@@ -59,14 +59,28 @@ export const hardenedFor = (service: string): Keychain.SetOptions => ({
 let hasRepairedAccessPolicy = false;
 
 /**
- * The end of the last Keychain write queued for each account. A write that
- * checks the stored pair before it deletes it (`clearCredentialsIfStored`) is
- * only sound if no other write for the same account lands between its read and
- * its delete, and the form saves a new pair outside the database write queue, so
- * every write for an account waits here for the ones queued before it. The tail
- * never rejects, so a failed write does not block the next one.
+ * The end of the last Keychain write queued for each account. A write that checks which save
+ * stored the pair before it deletes it (`clearCredentialsIfWrittenBy`), or that re-reads the pair
+ * before it saves it again (the access-policy repair), is only sound if no other write for the
+ * same account lands between its check and its change, and the form saves a new pair outside the
+ * database write queue, so every write for an account waits here for the ones queued before it.
+ * The tail never rejects, so a failed write does not block the next one.
  */
 const writeTails = new Map<string, Promise<void>>();
+
+/**
+ * Names one `saveCredentials` write. Two saves of the same keys get two tokens, so a caller that
+ * clears "what I saved" can tell its own write from a later one that stored an equal pair.
+ */
+export type BinanceWriteToken = symbol;
+
+/**
+ * The token of the save that stored each account's pair, set only after that save's Keychain
+ * write resolved and dropped by a clear, so a failed save leaves the previous token naming the
+ * pair still stored. Memory only: a restart loses every token, then no token matches and nothing
+ * is cleared, which keeps a pair rather than deleting one by mistake.
+ */
+const storedTokens = new Map<string, BinanceWriteToken>();
 
 const serialized = <Result>(accountId: string, write: () => Promise<Result>): Promise<Result> => {
   const run = (writeTails.get(accountId) ?? Promise.resolve()).then(write);
@@ -82,28 +96,38 @@ const serialized = <Result>(accountId: string, write: () => Promise<Result>): Pr
   return run;
 };
 
+const writePair = async (accountId: string, credentials: BinanceCredentials): Promise<void> => {
+  await Keychain.setGenericPassword(
+    'binance',
+    JSON.stringify(credentials),
+    hardenedFor(serviceFor(accountId)),
+  );
+  hasRepairedAccessPolicy = true;
+};
+
 /**
  * Store the pair as ONE JSON Keychain item under the PER-ACCOUNT service for
  * `accountId`, hardened per above. Each connected account owns its own item, so
  * saving account A's pair never touches account B's. The pair goes ONLY to the
  * Keychain — never to SQLite, `sync_state`, `settings`, `holdings.metadata`, or a
- * log.
+ * log. Resolves the token naming this write, for `clearCredentialsIfWrittenBy`.
  */
 export const saveCredentials = (
   accountId: string,
   credentials: BinanceCredentials,
-): Promise<void> =>
+): Promise<BinanceWriteToken> =>
   serialized(accountId, async () => {
-    await Keychain.setGenericPassword(
-      'binance',
-      JSON.stringify(credentials),
-      hardenedFor(serviceFor(accountId)),
-    );
-    hasRepairedAccessPolicy = true;
+    await writePair(accountId, credentials);
+
+    const token = Symbol('binance-write');
+
+    storedTokens.set(accountId, token);
+
+    return token;
   });
 
-// Never repairs the access policy: it runs inside a serialized write, which a repair save would
-// wait on forever.
+// Never repairs the access policy: it runs inside a serialized write, which a repair would wait on
+// forever.
 const readStoredPair = async (accountId: string): Promise<BinanceCredentials | undefined> => {
   const stored = await Keychain.getGenericPassword({ service: serviceFor(accountId) });
 
@@ -116,6 +140,23 @@ const readStoredPair = async (accountId: string): Promise<BinanceCredentials | u
 
   return isCredentials(value) ? value : undefined;
 };
+
+// Re-saves `read` under the hardened policy as ONE serialized step: it re-reads inside the step and
+// saves only while the stored pair is still `read`, so a clear or a save that landed after the
+// caller's read is never undone with a stale copy. It writes the pair it just checked, so it is not
+// a new write and leaves every token as it is: a token that named this pair still names it.
+const repairAccessPolicy = (accountId: string, read: BinanceCredentials): Promise<void> =>
+  serialized(accountId, async () => {
+    const stored = await readStoredPair(accountId);
+
+    if (
+      !hasRepairedAccessPolicy &&
+      stored?.apiKey === read.apiKey &&
+      stored.secret === read.secret
+    ) {
+      await writePair(accountId, read);
+    }
+  });
 
 /**
  * Reads the pair for ONE account. The per-account service string is derived from
@@ -144,33 +185,35 @@ export const readCredentials = async (
   // could disturb stored credentials if a write failed partway. `readToken`
   // and `readDbKey` are pure; this now matches them after the first call.
   if (!hasRepairedAccessPolicy) {
-    await saveCredentials(accountId, value);
+    await repairAccessPolicy(accountId, value);
   }
 
   return value;
 };
 
+// The token goes with the pair, and only once the pair is gone: a failed reset leaves the pair
+// stored, and the token that names it must keep matching.
 const resetPair = async (accountId: string): Promise<void> => {
   await Keychain.resetGenericPassword({ service: serviceFor(accountId) });
+  storedTokens.delete(accountId);
 };
 
 export const clearCredentials = (accountId: string): Promise<void> =>
   serialized(accountId, () => resetPair(accountId));
 
 /**
- * Clears the account's pair only when it is still exactly `expected` (both parts), for a caller
- * that clears a pair it wrote itself and must never delete one a later save stored. The read and
- * the delete run as one serialized write, so no save lands between them. Nothing stored, or a
- * different pair stored, leaves the Keychain as it is.
+ * Clears the account's pair only when `token` names the save that stored it, for a caller that
+ * clears a pair it saved itself and must never delete one a later save stored, even a later save
+ * of the very same keys. The check and the delete run as one serialized write, so no save lands
+ * between them. A pair stored by a newer save, an already cleared pair, and a token this process
+ * never issued leave the Keychain as it is.
  */
-export const clearCredentialsIfStored = (
+export const clearCredentialsIfWrittenBy = (
   accountId: string,
-  expected: BinanceCredentials,
+  token: BinanceWriteToken,
 ): Promise<void> =>
   serialized(accountId, async () => {
-    const stored = await readStoredPair(accountId);
-
-    if (stored?.apiKey === expected.apiKey && stored.secret === expected.secret) {
+    if (storedTokens.get(accountId) === token) {
       await resetPair(accountId);
     }
   });

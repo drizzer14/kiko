@@ -1,7 +1,7 @@
 import {
   BINANCE_CREDENTIALS_SERVICE,
   clearCredentials,
-  clearCredentialsIfStored,
+  clearCredentialsIfWrittenBy,
   readCredentials,
   saveCredentials,
   serviceFor,
@@ -49,6 +49,7 @@ const fixture = { apiKey: 'api-key-fixture', secret: 'secret-fixture' };
 type CredentialsModule = typeof import('./binance.credentials');
 type KeychainMock = {
   setGenericPassword: jest.Mock<Promise<boolean>, [string, string, unknown]>;
+  getGenericPassword: jest.Mock<Promise<unknown>, [unknown]>;
 };
 
 /**
@@ -246,6 +247,27 @@ const holdNextWrite = (method: 'setGenericPassword' | 'resetGenericPassword'): H
   return { release, fail };
 };
 
+// Holds the answer of the next Keychain read, after the read itself ran, so a test can change what
+// is stored while the reader still holds the old answer.
+const holdNextReadAnswer = (target: KeychainMock): (() => void) => {
+  const mocked = target.getGenericPassword;
+  const original = mocked.getMockImplementation() as (...args: unknown[]) => Promise<unknown>;
+  let release = (): void => undefined;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+
+  mocked.mockImplementationOnce(async (...args: unknown[]) => {
+    const answer = await original(...args);
+
+    await gate;
+
+    return answer;
+  });
+
+  return release;
+};
+
 // Lets every write already allowed to start run to its next wait.
 const settle = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
 
@@ -320,52 +342,166 @@ describe('binance credential writes — one at a time per account', () => {
   });
 });
 
-describe('clearCredentialsIfStored', () => {
-  it('clears the pair when the stored pair is still the expected one', async () => {
-    await saveCredentials(ACCOUNT_A, fixture);
+// A clear for a write is judged by WHICH write stored the pair, never by the pair's value: the
+// same keys saved twice are two writes, and the first writer must not clear the second's.
+describe('clearCredentialsIfWrittenBy', () => {
+  it('clears the pair when the stored pair is still the one the token wrote', async () => {
+    const token = await saveCredentials(ACCOUNT_A, fixture);
 
-    await clearCredentialsIfStored(ACCOUNT_A, fixture);
+    await clearCredentialsIfWrittenBy(ACCOUNT_A, token);
 
     expect(await readCredentials(ACCOUNT_A)).toBeUndefined();
   });
 
-  it.each([
-    ['a newer pair', pairOf('newer')],
-    ['the same key with another secret', { ...fixture, secret: 'secret-newer' }],
-    ['another key with the same secret', { ...fixture, apiKey: 'api-key-newer' }],
-  ])('keeps the stored pair when it is %s', async (_name, newer) => {
-    await saveCredentials(ACCOUNT_A, newer);
+  it('gives every save its own token, even for the same pair', async () => {
+    const first = await saveCredentials(ACCOUNT_A, fixture);
+    const second = await saveCredentials(ACCOUNT_A, fixture);
 
-    await clearCredentialsIfStored(ACCOUNT_A, fixture);
-
-    expect(await readCredentials(ACCOUNT_A)).toEqual(newer);
+    expect(second).not.toBe(first);
   });
 
-  it('resolves without an error when nothing is stored', async () => {
-    await expect(clearCredentialsIfStored(ACCOUNT_A, fixture)).resolves.toBeUndefined();
+  it('keeps the same pair a second save stored, when the first save token clears', async () => {
+    const first = await saveCredentials(ACCOUNT_A, fixture);
+    const second = await saveCredentials(ACCOUNT_A, fixture);
+
+    await clearCredentialsIfWrittenBy(ACCOUNT_A, first);
+
+    expect(await readCredentials(ACCOUNT_A)).toEqual(fixture);
+
+    await clearCredentialsIfWrittenBy(ACCOUNT_A, second);
+
+    expect(await readCredentials(ACCOUNT_A)).toBeUndefined();
+  });
+
+  it('keeps a newer pair when an older save token clears', async () => {
+    const older = await saveCredentials(ACCOUNT_A, fixture);
+    await saveCredentials(ACCOUNT_A, pairOf('newer'));
+
+    await clearCredentialsIfWrittenBy(ACCOUNT_A, older);
+
+    expect(await readCredentials(ACCOUNT_A)).toEqual(pairOf('newer'));
+  });
+
+  it('resolves without an error when the pair was already cleared', async () => {
+    const token = await saveCredentials(ACCOUNT_A, fixture);
+    await clearCredentials(ACCOUNT_A);
+
+    await expect(clearCredentialsIfWrittenBy(ACCOUNT_A, token)).resolves.toBeUndefined();
+  });
+
+  it('keeps a pair saved after a clear when the token of the cleared pair clears', async () => {
+    const cleared = await saveCredentials(ACCOUNT_A, fixture);
+    await clearCredentials(ACCOUNT_A);
+    await saveCredentials(ACCOUNT_A, fixture);
+
+    await clearCredentialsIfWrittenBy(ACCOUNT_A, cleared);
+
+    expect(await readCredentials(ACCOUNT_A)).toEqual(fixture);
+  });
+
+  it('keeps matching the token of the stored pair after a later save failed', async () => {
+    const stored = await saveCredentials(ACCOUNT_A, fixture);
+    const failing = holdNextWrite('setGenericPassword');
+    const failed = expect(saveCredentials(ACCOUNT_A, pairOf('lost'))).rejects.toThrow(
+      'keychain write failed',
+    );
+
+    await settle();
+    failing.fail();
+    await failed;
+    await clearCredentialsIfWrittenBy(ACCOUNT_A, stored);
+
+    expect(await readCredentials(ACCOUNT_A)).toBeUndefined();
+  });
+
+  it('keeps matching the token after a clear that failed', async () => {
+    const token = await saveCredentials(ACCOUNT_A, fixture);
+    const failing = holdNextWrite('resetGenericPassword');
+    const failed = expect(clearCredentialsIfWrittenBy(ACCOUNT_A, token)).rejects.toThrow(
+      'keychain write failed',
+    );
+
+    await settle();
+    failing.fail();
+    await failed;
+    await clearCredentialsIfWrittenBy(ACCOUNT_A, token);
+
+    expect(await readCredentials(ACCOUNT_A)).toBeUndefined();
   });
 
   it('only touches the account it is given', async () => {
+    const tokenA = await saveCredentials(ACCOUNT_A, fixture);
     await saveCredentials(ACCOUNT_B, fixture);
 
-    await clearCredentialsIfStored(ACCOUNT_A, fixture);
+    await clearCredentialsIfWrittenBy(ACCOUNT_B, tokenA);
 
     expect(await readCredentials(ACCOUNT_B)).toEqual(fixture);
+    expect(await readCredentials(ACCOUNT_A)).toEqual(fixture);
   });
 
-  it('reads the stored pair only after a save for the account ends, so it keeps a newer pair', async () => {
-    await saveCredentials(ACCOUNT_A, fixture);
-    mockGet.mockClear();
+  it('judges the token only after a save for the account ends, so it keeps a newer pair', async () => {
+    const older = await saveCredentials(ACCOUNT_A, fixture);
     const save = holdNextWrite('setGenericPassword');
     const newer = saveCredentials(ACCOUNT_A, pairOf('newer'));
-    const clear = clearCredentialsIfStored(ACCOUNT_A, fixture);
+    const clear = clearCredentialsIfWrittenBy(ACCOUNT_A, older);
 
     await settle();
-    expect(mockGet).not.toHaveBeenCalled();
+    expect(keychain.resetGenericPassword).not.toHaveBeenCalled();
 
     save.release();
     await Promise.all([newer, clear]);
 
     expect(await readCredentials(ACCOUNT_A)).toEqual(pairOf('newer'));
+  });
+
+  // A process restart loses every token: nothing matches, so nothing is cleared.
+  it('clears nothing with a token no save of this process made', async () => {
+    const { mod: fresh, keychain: freshKeychain } = freshCredentials();
+    await freshKeychain.setGenericPassword('binance', JSON.stringify(fixture), {
+      service: serviceFor(ACCOUNT_A),
+    });
+    const token = await saveCredentials(ACCOUNT_A, fixture);
+
+    await fresh.clearCredentialsIfWrittenBy(ACCOUNT_A, token);
+
+    expect(await fresh.readCredentials(ACCOUNT_A)).toEqual(fixture);
+  });
+});
+
+describe('binance credentials — the access-policy repair is one serialized step', () => {
+  // A read of a pair stored under the old policy answers, then `between` runs before the repair
+  // can save, and the read ends.
+  const readLegacyPairWhile = async (
+    between: (fresh: CredentialsModule) => Promise<unknown>,
+  ): Promise<CredentialsModule> => {
+    const { mod: fresh, keychain: freshKeychain } = freshCredentials();
+    await freshKeychain.setGenericPassword('binance', JSON.stringify(fixture), {
+      service: serviceFor(ACCOUNT_A),
+      accessControl: 'BiometryCurrentSet',
+      accessible: 'AccessibleWhenUnlockedThisDeviceOnly',
+    });
+    const release = holdNextReadAnswer(freshKeychain);
+    const reading = fresh.readCredentials(ACCOUNT_A);
+
+    await settle();
+    await between(fresh);
+    release();
+    await reading;
+
+    return fresh;
+  };
+
+  it('leaves a pair that was cleared between its read and its save cleared', async () => {
+    const fresh = await readLegacyPairWhile((module) => module.clearCredentials(ACCOUNT_A));
+
+    expect(await fresh.readCredentials(ACCOUNT_A)).toBeUndefined();
+  });
+
+  it('keeps a pair saved between its read and its save', async () => {
+    const fresh = await readLegacyPairWhile((module) =>
+      module.saveCredentials(ACCOUNT_A, pairOf('newer')),
+    );
+
+    expect(await fresh.readCredentials(ACCOUNT_A)).toEqual(pairOf('newer'));
   });
 });

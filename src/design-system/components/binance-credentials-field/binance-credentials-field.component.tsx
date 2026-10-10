@@ -1,3 +1,9 @@
+import {
+  type BinanceCredentials,
+  type BinanceWriteToken,
+  fetchAccount,
+  saveCredentials,
+} from '@kiko/crypto-sync/binance';
 import { match } from 'ts-pattern';
 import { useTranslation } from 'react-i18next';
 import { BINANCE_API_MANAGEMENT_URL } from '@env';
@@ -5,7 +11,6 @@ import { type FC, useEffect, useState } from 'react';
 import { Linking, Pressable, View } from 'react-native';
 import { useIsMounted } from '@kiko/design-system/use-is-mounted';
 import type { ConnectReminder } from '@kiko/design-system/connect-reminder';
-import { type BinanceCredentials, fetchAccount, saveCredentials } from '@kiko/crypto-sync/binance';
 
 import Box from '../box';
 import Text from '../text';
@@ -23,53 +28,58 @@ type BinanceCredentialsFieldProps = {
   accountId: string;
   /**
    * Runs the Binance Connect sync once the pair is verified and stored; resolves whether it
-   * succeeded. Receives the pair it stored, so a caller that gives up can clear that pair and no
-   * other.
+   * succeeded. Receives the token of the write that stored the pair, so a caller that gives up can
+   * clear that write's pair and no other; the pair itself stays in this field.
    */
-  onConnect: (stored: BinanceCredentials) => Promise<boolean>;
+  onConnect: (stored: BinanceWriteToken) => Promise<boolean>;
   // Lets a form that saves without this connection remind the user to press Connect first.
   reminder?: ConnectReminder;
   /**
    * Runs instead of `onConnect` when the field unmounted during the Keychain write that stored the
    * verified pair, so the screen that owns the account decides what happens to the pair; it must
-   * not reject. It receives the pair this field stored, held in memory only for as long as it runs.
+   * not reject. It receives the token of that write, which clears that write's pair and no other.
    * Without it the pair stays where it was stored.
    */
-  onStoredWhileUnmounted?: (stored: BinanceCredentials) => Promise<void>;
+  onStoredWhileUnmounted?: (stored: BinanceWriteToken) => Promise<void>;
 };
 
 type Field = 'apiKey' | 'secret';
 
-type StoreOutcome = 'stored' | 'saveError' | 'unmounted' | 'storedWhileUnmounted';
+type StoreOutcome =
+  | { kind: 'saveError' }
+  | { kind: 'unmounted' }
+  | { kind: 'stored'; token: BinanceWriteToken }
+  | { kind: 'storedWhileUnmounted'; token: BinanceWriteToken };
 
 // Stores a verified pair unless the field is gone, and says whether the connect may go on. A fold
 // or a kind switch removes the field during the check or the write. Gone before the write, nothing
 // is stored: a key under an account id nothing connects would be left behind. Gone during the
-// write, the pair is stored and reported through onStoredWhileUnmounted, because the screen that
-// owns the account decides its fate. Either way connecting is skipped: it would insert the account
-// row after the form that replaced this one already decided what to write.
+// write, the pair is stored and its write token is reported through onStoredWhileUnmounted, because
+// the screen that owns the account decides its fate. Either way connecting is skipped: it would
+// insert the account row after the form that replaced this one already decided what to write.
 const storePair = async (
   accountId: string,
   credentials: BinanceCredentials,
   isMounted: () => boolean,
 ): Promise<StoreOutcome> => {
   if (!isMounted()) {
-    return 'unmounted';
+    return { kind: 'unmounted' };
   }
 
   try {
-    await saveCredentials(accountId, credentials);
-  } catch {
-    return 'saveError';
-  }
+    const token = await saveCredentials(accountId, credentials);
 
-  return isMounted() ? 'stored' : 'storedWhileUnmounted';
+    return isMounted() ? { kind: 'stored', token } : { kind: 'storedWhileUnmounted', token };
+  } catch {
+    return { kind: 'saveError' };
+  }
 };
 
 // The Binance counterpart of the Monobank token field: two secure inputs for a
 // read-only ("Enable Reading" only) key pair. Connect verifies the pair with one
 // account call BEFORE it is written to the biometric Keychain, then runs the
-// first sync. The pair never leaves this component except into `saveCredentials`.
+// first sync. The pair never leaves this component except into `saveCredentials`;
+// the callbacks get only the token of that write.
 const BinanceCredentialsField: FC<BinanceCredentialsFieldProps> = ({
   accountId,
   onConnect,
@@ -116,8 +126,8 @@ const BinanceCredentialsField: FC<BinanceCredentialsFieldProps> = ({
     Linking.openURL(BINANCE_API_MANAGEMENT_URL);
   };
 
-  const connectStoredPair = async (credentials: BinanceCredentials): Promise<void> => {
-    const connected = await onConnect(credentials);
+  const connectStoredPair = async (token: BinanceWriteToken): Promise<void> => {
+    const connected = await onConnect(token);
 
     if (connected) {
       // A connected pair is not an unsaved draft; editing it again makes it one.
@@ -152,16 +162,17 @@ const BinanceCredentialsField: FC<BinanceCredentialsFieldProps> = ({
         return;
       }
 
-      const credentials = { apiKey, secret };
-      const stored = await storePair(accountId, credentials, isMounted);
+      const stored = await storePair(accountId, { apiKey, secret }, isMounted);
 
       await match(stored)
-        .with('saveError', async () =>
+        .with({ kind: 'saveError' }, async () =>
           setStatus({ kind: 'saveError', message: t('accountDetail.couldNotSaveCredentials') }),
         )
-        .with('storedWhileUnmounted', async () => onStoredWhileUnmounted?.(credentials))
-        .with('unmounted', async () => undefined)
-        .with('stored', async () => connectStoredPair(credentials))
+        .with({ kind: 'storedWhileUnmounted' }, async ({ token }) =>
+          onStoredWhileUnmounted?.(token),
+        )
+        .with({ kind: 'unmounted' }, async () => undefined)
+        .with({ kind: 'stored' }, async ({ token }) => connectStoredPair(token))
         .exhaustive();
     })();
   };
