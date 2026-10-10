@@ -67,34 +67,50 @@ write only the flags it lists. Runs live under
 `${HARNESS_RUNS_DIR:-$HOME/.claude/harness-runs}/bin/run-log.mjs`, a copy a project skill can
 call without knowing where the plugin lives.
 
-- **start**: once per "<track> task N/M", when its shape is known: `start --task "<track> task
-  N/M" --shape build|fix|research|review [--jira <url>]`; an Orca worker adds `--orca-task <id>
-  --orca-dispatch <id>`. It prints the run id on stdout. Keep the id in the worktree handoff
-  file (`.superpowers/sdd/<track>/HANDOFF.md`), so a handed-over session writes to the same run.
-- **event**: one per verdict, as it happens: `event --run <id> --gate <gate> --verdict
-  <verdict> [--phase <text>] [--step N] [--group N] [--role <role>] [--attempt N] [--findings N]
-  [--mechanizable N] [--note <text>]`. `--step`, `--group` and `--attempt` take an integer
-  (`--step N` is "step N/M"). Log:
-  - a gate verdict: `check:all` as `--gate check`, `make verify` or the full jest as
-    `--gate test`, `make deep` as `--gate deep` (the coordinator who runs it logs it);
-  - a review verdict: `kiko:reviewer` APPROVE as `--gate review --verdict approve`, FIX FIRST
-    as `--verdict changes`, with `--findings N` and `--mechanizable N` counted from the
+- **start**: once per "<track> task N/M", when its shape is known (`--task`, `--shape`; an Orca
+  worker adds `--orca-task` and `--orca-dispatch`). It prints the run id on stdout. Keep the id
+  in the worktree handoff file (`.superpowers/sdd/<track>/HANDOFF.md`), so a handed-over session
+  writes to the same run.
+- **event**: one per verdict, as it happens. Pass `--step N` ("step N/M", an integer) on EVERY
+  event of a step, the human, stall and timeout events too: an event without it falls into a
+  separate `-` row and the step's chain row shows Stalls 0 and Human rounds 0. Kiko mappings:
+  - the developer's report: `--gate commit --verdict pass --role developer` (a fix round's
+    report too); put the dispatch time and the estimate in `--note` on the step's first event;
+  - `check:all`: `--gate check --verdict pass` or `--gate check --verdict fail`;
+  - `make verify` or the full jest: `--gate test --verdict pass` or `--gate test --verdict fail`;
+  - `make deep` (the coordinator who runs it logs it): `--gate deep --verdict pass` or
+    `--gate deep --verdict fail`;
+  - `kiko:reviewer` APPROVE: `--gate review --verdict approve`; FIX FIRST: `--gate review
+    --verdict changes`; both with `--findings N` and `--mechanizable N` counted from the
     "Classify every finding" tags;
-  - a human ruling relayed by the coordinator: `--gate human` (`approve` or `changes`);
+  - a human ruling relayed by the coordinator: `--gate human --verdict approve` or
+    `--gate human --verdict changes`;
   - a stall (an agent past its estimate with no report): `--gate stall --verdict stall`;
-  - a `wait-load.sh` timeout or an ops timeout: `--verdict timeout`; a gate that did not run:
-    `--verdict skipped`;
-  - the retrospect: `--gate retro`;
-  - any other verdict is `pass` or `fail`.
-- **finish**: at BATCH READY (`--outcome done`), or when the track is blocked or aborted:
-  `finish --run <id> --outcome done|blocked|aborted [--recorded N] [--gaps N] [--archive <dir>]`.
-  `--recorded` and `--gaps` come from the retrospect's report.
-- **stats**: `stats [--since YYYY-MM-DD] [--repo <slug>] [--format md|tsv|json]` prints one row
-  per review chain, with minutes, check/test retries, stalls and human rounds. A run with no
-  `summary.json` and no event for 24 hours shows as `abandoned`.
+  - a `wait-load.sh` or ops timeout: `--gate test --verdict timeout` or
+    `--gate deep --verdict timeout`; a gate that did not run: `--gate check --verdict skipped`
+    (or the gate that was skipped);
+  - the retrospect: `--gate retro --verdict pass`.
+- **finish**: at BATCH READY (`--outcome done`), or when the track is blocked or aborted
+  (`--outcome blocked` or `--outcome aborted`). `--recorded` and `--gaps` come from the
+  retrospect's report. `--archive <dir>` MOVES every regular file directly in `<dir>` into the
+  run's `artifacts/`; point it only at the session scratch folder, never a worktree root
+  (`--archive .` would move `package.json` and `CLAUDE.md`). Before the merge, the coordinator
+  checks that the run's `summary.json` exists; a run with no summary did not finish its
+  bookkeeping. A `deep` event logged after `finish` is expected: `stats` shows it, but
+  `summary.json` `totals` do not include it.
+- **stats**: `stats --repo kiko --format md` prints one row per review chain. The repo slug is
+  the origin remote's repo name (`drizzer14/kiko.git` -> `kiko`), not the checkout folder;
+  `--repo pff-ios` matches nothing and prints only the header. The `Minutes` column runs from a
+  step group's first logged verdict to its last: the developer's work before the first verdict
+  is not counted, and a one-event step shows 0. For a dispatch-to-BATCH-READY time use
+  run.json `startedAt` to `summary.json` `finishedAt`. A run with no `summary.json` and no event
+  for 24 hours shows as `abandoned`.
 
-BATCH READY's TIMES line is built from the run log: the run's `stats` row plus the event clock
-times in `events.jsonl`. Never write it from memory.
+BATCH READY's TIMES line is built from the run log, never from memory. Sources per field:
+dispatch time and estimate = the dispatch message (and the step's first event `--note`);
+developer done and fix round done = the `--gate commit --verdict pass --role developer` event
+`ts`; review times = the review events' `ts`; BATCH READY time = the `finish` time. Every `ts`
+is UTC ISO; the TIMES line uses local HH:MM.
 
 A project skill outside the plugin calls the installed copy and degrades to a no-op when it is
 missing. Start (prints the run id):
@@ -139,7 +155,8 @@ Who and when (coordinator ruling, 2026-09-27): the COORDINATOR runs
 reviewed change set (<= 30 source files), before its merge into next.
 Orchestrators never run it. The orchestrator's batch-ready report (the
 message that tells the coordinator a change set is reviewed and ready
-to merge) names the change set's base sha and confirms the file count
+to merge) names the change set's base sha and the run id (the coordinator works in the main
+checkout and cannot see the worktree's gitignored HANDOFF.md), and confirms the file count
 after excludes is within `MUTATION_FILE_CAP` (read it in
 `scripts/checks/mutation.sh`); a larger batch splits into change sets
 with their own bases. Count with the gate's own filter, never by hand:

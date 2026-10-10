@@ -21,11 +21,12 @@ Rules:
   judgment-only, with a one-line reason (`harness-workflow`'s "Classify
   every finding"). Hand the mechanizable ones to the scribe or developer
   as rule work (kiko-linter's "Adding a pre-write guard rule").
-- Read the run's `summary.json` and `events.jsonl` (under
-  `${HARNESS_RUNS_DIR:-$HOME/.claude/harness-runs}/<runId>/`) and its `stats` rows
-  (`node "${CLAUDE_PLUGIN_ROOT}/scripts/run-log.mjs" stats --format md`) as measured inputs:
-  rounds, retries, stalls, times. Flag every run showing `abandoned` (no `summary.json` and no
-  event for 24 h) in your report. Report how many lessons you recorded and how many gaps
+- The orchestrator passes you the run id. Read the current run's `events.jsonl` (under
+  `${HARNESS_RUNS_DIR:-$HOME/.claude/harness-runs}/<runId>/`; its `summary.json` does not exist
+  yet, `finish` runs after you) and the `stats` rows
+  (`node "${CLAUDE_PLUGIN_ROOT}/scripts/run-log.mjs" stats --repo kiko --since <date> --format md`)
+  as measured inputs: rounds, retries, stalls, times. Flag every EARLIER run in that window
+  showing `abandoned` (no `summary.json` and no event for 24 h) in your report. Report how many lessons you recorded and how many gaps
   remain open, so the orchestrator can pass them as `finish --recorded N --gaps N`.
 - Name the scribe's drift-fix commit sha (or "no drift found") in your
   report, per the standing rule.

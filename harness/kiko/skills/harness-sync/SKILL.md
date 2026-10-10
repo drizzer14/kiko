@@ -153,8 +153,13 @@ Every count and exit code is the orchestrator's own measured result.
 
 ## Carried follow-ups
 
-- `run-log.mjs` was ported harness -> pff-ios from `cc5cd0f` (`d761245`) and must stay
-  byte-identical in both repos.
+- `run-log.mjs` was ported harness -> pff-ios from `cc5cd0f` (`d761245`); the
+  byte-identical rule is in `harness-workflow`'s "Run log".
+- The script has no dispatch/step-start event, so per-step `Minutes` miss the work before the
+  first verdict; fix in the harness repo.
+- The source finish snippet prints "run-log: not installed, skipped" also when `node finish`
+  exits 1 (unknown run) or 2 (empty RUN_ID), hiding a real failure; fix in the harness repo
+  (keep the snippet as is here).
 - The source harness-workflow "Run log" text says `--step <id>`, but the script needs an
   integer (`--step N`); fix it in the harness repo at sync 3.
 
