@@ -2522,7 +2522,9 @@ what a change must keep.
   field stored first only when row P does not exist, read through
   `accountsRepo.exists` (the write queue rule in the repository section above;
   `grep -rn accountsRepo.exists src` lists the callers), so no pair stays
-  under an id with no account. A failed read keeps the keys. Save writes
+  under an id with no account. A failed read keeps the keys. The same helper
+  (`clearPairIfRowMissing` in `account-form.screen.tsx`) also clears a pair stored after
+  the field unmounted. Save writes
   the picked icon in the same `saveFormAccount` write (a second write that
   failed after the row existed would read as no row).
 - **Backup/restore.** `DataSnapshot.reminders` is read ordered by

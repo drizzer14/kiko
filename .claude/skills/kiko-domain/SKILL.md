@@ -101,10 +101,13 @@ absent** — this skill states the shape and non-enum facts only:
   `pendingAccountId` and nothing about the row; the remounted form asks the
   write queue (`usePendingRowLock`) before it unlocks the kind and bank
   picks. A Connect field (`MonobankConnectField`, `BinanceCredentialsField`)
-  never calls its connect callback, and never stores a credential, once it
-  is unmounted (`useIsMounted`): a token checked before a fold or a
-  kind/bank switch is not stored, and the user taps Connect again (user
-  ruling 2026-10-10). Known limit (R44): after a fold the Connect field
+  never calls its connect callback once it is unmounted (`useIsMounted`),
+  and stores nothing when it unmounts before the Keychain write: a token
+  checked before a fold or a kind/bank switch is not stored, and the user
+  taps Connect again. A pair stored during the write is reported through
+  `onStoredWhileUnmounted`; the account form uses it to clear the pair
+  when no row owns P, and account detail keeps it (user ruling
+  2026-10-10). Known limit (R44): after a fold the Connect field
   shows idle, and a second Connect re-syncs the same account. Re-picking the
   already-selected kind is a no-op (the bank/broker
   pick, custom icon and typed token stay); a switch to a different kind
