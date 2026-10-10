@@ -1134,20 +1134,146 @@ describe('stats', () => {
   });
 });
 
-describe('consumer line', () => {
-  // The `$` is interpolated in so the shell's `${HARNESS_RUNS_DIR:-...}` never
-  // reads as a mistyped template placeholder.
-  const consumer = (): string[] => [
-    '-c',
-    `RUN_LOG="${'$'}{HARNESS_RUNS_DIR:-$HOME/.claude/harness-runs}/bin/run-log.mjs"; [ -f "$RUN_LOG" ] && node "$RUN_LOG" finish --run "$RUN_ID" --outcome done || echo "run-log: not installed, skipped"`,
-  ];
+const WORKFLOW_SKILL = 'harness/kiko/skills/harness-workflow/SKILL.md';
+const RUN_LOG_TEXT_FILES = [
+  WORKFLOW_SKILL,
+  'harness/kiko/skills/estimator/SKILL.md',
+  'harness/kiko/skills/retrospect/SKILL.md',
+  'harness/kiko/agents/retrospect.md',
+];
+// The `$` is interpolated in so the shell's `${HARNESS_RUNS_DIR:-...}` never
+// reads as a mistyped template placeholder.
+const INSTALLED_COPY = `${'$'}{HARNESS_RUNS_DIR:-$HOME/.claude/harness-runs}/bin/run-log.mjs`;
+// The project's origin remote (`git remote get-url origin`); the workflow skill's own
+// `drizzer14/kiko.git` example is asserted against it below so the two cannot drift apart.
+const PROJECT_REMOTE = 'git@github.com:drizzer14/kiko.git';
 
-  function runLine(
+function skillText(path: string): string {
+  return readFileSync(join(__dirname, '..', path), 'utf8');
+}
+
+// Only the workflow skill has a "## Run log" section; the other files mention the script in
+// passing, so their whole text is read.
+function runLogText(markdown: string): string {
+  const start = markdown.indexOf('\n## Run log\n');
+
+  if (start === -1) return markdown;
+
+  const end = markdown.indexOf('\n## ', start + 1);
+
+  return markdown.slice(start, end === -1 ? markdown.length : end);
+}
+
+function allRunLogText(): string[] {
+  return RUN_LOG_TEXT_FILES.map((path) => runLogText(skillText(path)));
+}
+
+function gateVerdictPairs(text: string): string[] {
+  return [...text.matchAll(/--gate\s+(\w+)\s+--verdict\s+(\w+)/g)].map(
+    ([, gate, verdict]) => `${gate} ${verdict}`,
+  );
+}
+
+// A gate named with no verdict beside it, which the script would reject for the missing flag.
+function gatesWithoutVerdict(text: string): string[] {
+  return [...text.matchAll(/--gate\s+(\w+)\b(?!\s+--verdict\s+\w)/g)].map(([, gate]) => gate);
+}
+
+function pairsTheScriptRejects(pairs: string[]): string[] {
+  const { runs, repo, runId } = started();
+
+  return pairs.filter((pair) => {
+    const [gate, verdict] = pair.split(' ');
+
+    return (
+      run(runs, repo, 'event', '--run', runId, '--gate', gate, '--verdict', verdict, '--step', '1')
+        .status !== 0
+    );
+  });
+}
+
+// The skill prints a wrong slug on purpose as a counter-example ("`--repo pff-ios` matches
+// nothing"), which is not a command to run.
+function repoSlugs(text: string): string[] {
+  return [...text.matchAll(/--repo\s+([^\s`]+)(?![^\s`])(?!`\s+matches nothing)/g)].map(
+    ([, slugText]) => slugText,
+  );
+}
+
+function bashSnippets(markdown: string): string[] {
+  return [...runLogText(markdown).matchAll(/```bash\n([\s\S]*?)```/g)]
+    .map(([, snippet]) => snippet)
+    .filter((snippet) => snippet.includes(INSTALLED_COPY));
+}
+
+function snippetFor(markdown: string, command: string): string {
+  const matching = bashSnippets(markdown).filter((snippet) => snippet.includes(` ${command} `));
+
+  expect({ command, count: matching.length }).toEqual({ command, count: 1 });
+
+  return matching[0];
+}
+
+describe('run log skill text', () => {
+  const mutated = (text: string): string => `## Run log\n\n${text}\n`;
+
+  test('every gate/verdict pair the skills write is accepted by the script', () => {
+    const [workflow] = allRunLogText();
+    const pairs = [...new Set(allRunLogText().flatMap(gateVerdictPairs))];
+
+    expect(gateVerdictPairs(workflow).length).toBeGreaterThan(0);
+    expect(pairsTheScriptRejects(pairs)).toEqual([]);
+  });
+
+  test('every --gate the skills write has a --verdict beside it', () => {
+    expect(allRunLogText().flatMap(gatesWithoutVerdict)).toEqual([]);
+  });
+
+  test('a pair the script rejects is reported', () => {
+    const text = mutated('`--gate retro --verdict bogus` and `--gate review --verdict approve`');
+
+    expect(pairsTheScriptRejects(gateVerdictPairs(text))).toEqual(['retro bogus']);
+  });
+
+  test('a gate with no verdict is reported, across a line break too', () => {
+    const text = mutated(
+      'the retrospect: `--gate retro`; review `--gate review\n  --verdict changes`',
+    );
+
+    expect(gatesWithoutVerdict(text)).toEqual(['retro']);
+  });
+
+  test('--repo in the skills is the slug the script derives from the project remote', () => {
+    const runs = tempDirectory();
+    const repo = tempRepository({ name: 'checkout-folder', remote: PROJECT_REMOTE });
+    const derived = readJson<RunRecord>(join(runs, startRun(runs, repo), 'run.json')).repo;
+    const slugs = allRunLogText().flatMap(repoSlugs);
+
+    expect(skillText(WORKFLOW_SKILL)).toContain('drizzer14/kiko.git');
+    expect(slugs.length).toBeGreaterThan(0);
+    expect(slugs.filter((slugText) => slugText !== derived)).toEqual([]);
+  });
+
+  test('a --repo that is not the derived slug is reported, a counter-example is not', () => {
+    const text = mutated('`stats --repo pff-ios --format md`; `--repo pff-ios` matches nothing');
+
+    expect(repoSlugs(text)).toEqual(['pff-ios']);
+    expect(repoSlugs(mutated('`--repo pff-ios` matches nothing'))).toEqual([]);
+  });
+});
+
+describe('consumer line', () => {
+  const workflow = skillText(WORKFLOW_SKILL);
+  const startSnippet = snippetFor(workflow, 'start');
+  const finishSnippet = snippetFor(workflow, 'finish');
+
+  function runSnippet(
+    snippet: string,
     runs: string,
     cwd: string,
-    runId: string,
+    runId = '',
   ): { status: number | null; stdout: string } {
-    const result = spawnSync('sh', consumer(), {
+    const result = spawnSync('sh', ['-c', snippet], {
       cwd,
       env: { ...childEnvironment(runs), RUN_ID: runId },
       encoding: 'utf8',
@@ -1156,18 +1282,51 @@ describe('consumer line', () => {
     return { status: result.status, stdout: result.stdout.trim() };
   }
 
+  test('starts a run through the installed copy and prints its id', () => {
+    const { runs, repo } = started();
+    const result = runSnippet(startSnippet, runs, repo);
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toMatch(new RegExp(`^${RUN_ID_PATTERN}-demo-repo-main(-\\d+)?$`));
+    expect(readJson<RunRecord>(join(runs, result.stdout, 'run.json')).task).toBe(
+      '<track> task N/M',
+    );
+  });
+
   test('finishes the run through the installed copy', () => {
     const { runs, repo, runId } = started();
 
-    expect(runLine(runs, repo, runId).status).toBe(0);
+    expect(runSnippet(finishSnippet, runs, repo, runId).status).toBe(0);
     expect(readJson<Summary>(join(runs, runId, 'summary.json')).outcome).toBe('done');
   });
 
-  test('a missing copy is skipped without failing', () => {
+  test('a missing copy is skipped without failing the finish and starts nothing', () => {
     const runs = tempDirectory();
-    const result = runLine(runs, tempDirectory(), 'any');
+    const finished = runSnippet(finishSnippet, runs, tempDirectory(), 'any');
 
-    expect(result.status).toBe(0);
-    expect(result.stdout).toBe('run-log: not installed, skipped');
+    expect(finished.status).toBe(0);
+    expect(finished.stdout).toBe('run-log: not installed, skipped');
+    expect(runSnippet(startSnippet, runs, tempDirectory()).stdout).toBe('');
+    expect(runIds(runs)).toEqual([]);
+  });
+
+  test('a snippet that names the wrong file starts nothing', () => {
+    const { runs, repo } = started();
+    const broken = startSnippet.replace('bin/run-log.mjs', 'bin/runlog.mjs');
+
+    expect(runSnippet(broken, runs, repo).stdout).toBe('');
+    expect(runIds(runs)).toHaveLength(1);
+  });
+
+  test('a snippet with the wrong command does not finish the run', () => {
+    const { runs, repo, runId } = started();
+    const broken = finishSnippet.replace(' finish ', ' finnish ');
+
+    expect(runSnippet(broken, runs, repo, runId).stdout).not.toBe('');
+    expect(existsSync(join(runs, runId, 'summary.json'))).toBe(false);
+  });
+
+  test('the skill carries exactly one start and one finish snippet', () => {
+    expect(bashSnippets(workflow)).toHaveLength(2);
   });
 });
