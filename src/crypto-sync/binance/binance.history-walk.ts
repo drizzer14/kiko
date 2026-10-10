@@ -96,10 +96,14 @@ export const logWalkStop = (code: string): void => {
 
 /**
  * A row the walk left out on purpose, with the window still committed. Same shape as a
- * stop, a fixed tag and a fixed code, so nothing of the row can reach a log.
+ * stop, a fixed tag and a fixed code, so nothing of the row can reach a log. It carries
+ * its own error name, so a log reader never mistakes a committed window for a stopped one.
  */
 export const logWalkNotice = (code: string): void => {
-  logFailure('[binance sync] history row left out', new BinanceWalkStop(code));
+  logFailure(
+    '[binance sync] history row left out',
+    Object.assign(new Error(code), { name: 'BinanceWalkNotice', code }),
+  );
 };
 
 /**

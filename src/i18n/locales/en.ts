@@ -991,6 +991,12 @@ export const en = {
         'The other part of this exchange, in {{name}}, could not be found. Only this part is deleted, so check {{name}}.',
       exchangeUnlinkedPlain:
         'The other part of this exchange could not be found. Only this part is deleted.',
+      // The same two sentences when both holdings hold one currency: the row reads
+      // "Transfer to/from", so its notice says transfer too.
+      transferUnlinked:
+        'The other part of this transfer, in {{name}}, could not be found. Only this part is deleted, so check {{name}}.',
+      transferUnlinkedPlain:
+        'The other part of this transfer could not be found. Only this part is deleted.',
       deposit: 'This also removes its contribution to {{name}}.',
       depositKept:
         'Its contribution to {{name}} could not be matched and stays. Edit {{name}} to remove it.',

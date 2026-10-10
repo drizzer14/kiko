@@ -515,14 +515,23 @@ const viaSplitPairOf = (row: TransactionRow, linked: LinkedRows): LinkedRows['pa
 };
 
 // The test the row's label applies (`transactionRowDescription`) to read "Transfer
-// to/from" instead of "Exchange to/from": both holdings known, one currency.
-const holdsSameCurrencyAsMarker = (
+// to/from" instead of "Exchange to/from": the holdings are known and hold one currency.
+// The notice also names the other legs of the pair, which can differ from the marker's
+// holding when a leg was converted again, so each of them must hold that currency too.
+const holdsSameCurrencyAs = (
   row: TransactionRow,
+  otherLegs: TransactionRow[],
   holdingsById: Map<string, NamedHolding>,
 ): boolean => {
   const own = holdingsById.get(row.holdingId);
 
-  return own !== undefined && own.currency === markerHoldingOf(row, holdingsById)?.currency;
+  return (
+    own !== undefined &&
+    [
+      markerHoldingOf(row, holdingsById),
+      ...otherLegs.map((leg) => holdingsById.get(leg.holdingId)),
+    ].every((holding) => holding?.currency === own.currency)
+  );
 };
 
 const exchangeRemovalOf = (
@@ -537,7 +546,7 @@ const exchangeRemovalOf = (
       kind: 'deleted',
       names: uniqueHoldingNamesOf(pair.removed, holdingsById),
       ...(pair.kept.length > 0 ? { keptNames: uniqueHoldingNamesOf(pair.kept, holdingsById) } : {}),
-      ...(holdsSameCurrencyAsMarker(row, holdingsById) ? { sameCurrency: true } : {}),
+      ...(holdsSameCurrencyAs(row, pair.removed, holdingsById) ? { sameCurrency: true } : {}),
     };
   }
 
@@ -552,7 +561,11 @@ const exchangeRemovalOf = (
     return undefined;
   }
 
-  return { kind: 'missing', ...foldMap(maybe(marker), ({ name }) => ({ name })) };
+  return {
+    kind: 'missing',
+    ...foldMap(maybe(marker), ({ name }) => ({ name })),
+    ...(holdsSameCurrencyAs(row, [], holdingsById) ? { sameCurrency: true } : {}),
+  };
 };
 
 // What the delete does to the conversions it reaches only through the split: the

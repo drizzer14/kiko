@@ -1,4 +1,3 @@
-import { minOf } from '@kiko/numbers';
 import maybe, { foldMap } from 'fnts/maybe';
 import { isRecord } from '@kiko/type-guards';
 
@@ -310,27 +309,22 @@ const PAY_SUCCESS_CODE = '000000';
 /**
  * One Pay page. The history lists the orders of EVERY coin, but only a BTC order can
  * reach a row, so only `rows` (the BTC orders) are parsed strictly: an order of another
- * coin that is off-contract must not stall the BTC walk. The pager still needs the whole
- * page, so it reads these from every coin: `gathered`, a full page of `PAY_PAGE_LIMIT`
- * meaning more may follow, and `oldestTransactionTime`, the next `endTime`.
+ * coin that is off-contract must not stall the BTC walk. The window walk still needs the
+ * whole page, so it reads these from every coin: `gathered`, a full page of
+ * `PAY_PAGE_LIMIT` meaning the window holds more orders than one page returns.
  */
 export type PayHistoryPage = HistoryPage<BinancePayOrder> & {
   gathered: number;
-  oldestTransactionTime: number | undefined;
-  /** A non-BTC order was paid with BTC funds: counted by the walk, never imported. */
+  /** A non-BTC order was paid with BTC funds: the walk stops on it, never imports it. */
   hasBtcFundedOtherCoinOrder: boolean;
 };
 
 type PayItem = {
   btcOrder: BinancePayOrder | undefined;
-  transactionTime: number | undefined;
   paidWithBtc: boolean;
 };
 
 const readBtcPayOrder = recordReader(PAY_ORDER_FIELDS);
-
-const finiteNumberOrUndefined = (value: unknown): number | undefined =>
-  typeof value === 'number' && Number.isFinite(value) ? value : undefined;
 
 const paidWithBtc = (fundsDetail: unknown): boolean =>
   Array.isArray(fundsDetail) &&
@@ -342,28 +336,20 @@ const readPayItem: Reader<PayItem> = (value) => {
   }
 
   if (value.currency === BINANCE_ASSET) {
-    const btcOrder = readBtcPayOrder(value);
-
-    return { btcOrder, transactionTime: btcOrder.transactionTime, paidWithBtc: false };
+    return { btcOrder: readBtcPayOrder(value), paidWithBtc: false };
   }
 
-  return {
-    btcOrder: undefined,
-    transactionTime: finiteNumberOrUndefined(value.transactionTime),
-    paidWithBtc: paidWithBtc(value.fundsDetail),
-  };
+  return { btcOrder: undefined, paidWithBtc: paidWithBtc(value.fundsDetail) };
 };
 
 const payPage = ({ body, headers }: SignedPage): PayHistoryPage => {
   const items = listOf(readPayItem)(
     isRecord(body) && body.code === PAY_SUCCESS_CODE ? body.data : undefined,
   );
-  const times = items.flatMap((item) => item.transactionTime ?? []);
 
   return {
     rows: items.flatMap((item) => item.btcOrder ?? []),
     gathered: items.length,
-    oldestTransactionTime: times.length === 0 ? undefined : minOf(times),
     hasBtcFundedOtherCoinOrder: items.some((item) => item.paidWithBtc),
     ...usedWeightsFromHeaders(headers),
   };

@@ -177,6 +177,12 @@ const EXEMPTIONS = [
     name: 'txId',
     reason: 'fixtures mirror Binance’s literal txId field',
   },
+  {
+    suffix: 'src/crypto-sync/binance/binance.pay-history.real-sqlite.test.ts',
+    word: 'tx',
+    name: 'txId',
+    reason: 'fixtures mirror Binance’s literal txId field',
+  },
 ];
 
 const isExempt = (targetPath, word, name) => {

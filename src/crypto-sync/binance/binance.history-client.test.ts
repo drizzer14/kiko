@@ -472,20 +472,6 @@ describe('fetchPayHistory other coins', () => {
     await expect(pageOfOrders(order)).rejects.toThrow(PARSE_FAILURE);
   });
 
-  it('reads the oldest transactionTime across every coin, for the pager', async () => {
-    const page = await pageOfOrders(
-      { ...payOrderBody, transactionTime: 5_000 },
-      { ...usdtOrder, transactionTime: 3_000 },
-      { ...usdtOrder, transactionTime: 'soon' },
-    );
-
-    expect(page.oldestTransactionTime).toBe(3_000);
-  });
-
-  it('has no oldest transactionTime for an empty page', async () => {
-    expect((await pageOfOrders()).oldestTransactionTime).toBeUndefined();
-  });
-
   it('flags a non-BTC order that was paid with BTC funds', async () => {
     const paidWithBtc = {
       ...usdtOrder,

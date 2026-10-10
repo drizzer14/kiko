@@ -119,7 +119,7 @@ describe('logWalkNotice', () => {
 
     expect(warn).toHaveBeenCalledTimes(1);
     expect(warn).toHaveBeenCalledWith('[binance sync] history row left out', {
-      name: 'BinanceWalkStop',
+      name: 'BinanceWalkNotice',
       code: 'pay-overlap-skip',
     });
     warn.mockRestore();

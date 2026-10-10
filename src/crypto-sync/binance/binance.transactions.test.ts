@@ -83,6 +83,7 @@ const makeDeps = (over: Partial<BinanceTransactionSyncDeps> = {}): BinanceTransa
   ensureHoldings: jest.fn(async () => undefined),
   storedExternalIds: jest.fn(async () => new Set<string>()),
   latestTransactionTime: async () => undefined,
+  listHoldingTransactions: jest.fn(async () => []),
   addTransactions: jest.fn(async (rows: BinanceTransactionRow[]) => rows.length),
   writeWalkCursor: jest.fn(async () => undefined),
   fetchDepositHistory: jest.fn(async () => historyPage([])),
@@ -1075,5 +1076,132 @@ describe('resumable, budgeted walk', () => {
     // opposite of the all-or-nothing bug this walk replaces.
     expect(addTransactions).toHaveBeenCalledTimes(1);
     expect(addTransactions.mock.calls[0][0]).toHaveLength(1);
+  });
+});
+
+describe('a capital row that is the twin of a stored Pay row', () => {
+  const MINUTE_MS = 60_000;
+  const TIME = NOW - DAY_MS;
+  const HALF_BTC_SATOSHIS = 50_000_000;
+
+  type StoredRow = {
+    holdingId: string;
+    externalId: string | null;
+    amountMinorUnits: number;
+    time: number;
+  };
+
+  const payRow = (over: Partial<StoredRow> = {}): StoredRow => ({
+    holdingId: 'h-funding',
+    externalId: `${ACCOUNT_ID}:pay:C2C:p1:1`,
+    amountMinorUnits: HALF_BTC_SATOSHIS,
+    time: TIME + 9 * MINUTE_MS,
+    ...over,
+  });
+
+  const runWith = async (
+    stored: StoredRow[],
+    deposits: BinanceDeposit[] = [deposit({ insertTime: TIME })],
+    over: Partial<BinanceTransactionSyncDeps> = {},
+  ) => {
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const deps = makeDeps({
+      listHoldings: async () =>
+        [
+          { id: 'h-spot', metadata: { binanceAsset: 'BTC', binanceHistoryCursor: NOW - DAY_MS } },
+          fundingHolding,
+        ] as unknown as HoldingRow[],
+      fetchDepositHistory: jest.fn(async () => historyPage(deposits)),
+      listHoldingTransactions: jest.fn(async (holdingId: string) =>
+        stored.filter((row) => row.holdingId === holdingId),
+      ),
+      ...over,
+    });
+    const result = await sync(deps, ACCOUNT_ID);
+    const logged = warn.mock.calls;
+    warn.mockRestore();
+
+    return { deps, result, logged };
+  };
+
+  it('is left out, with the window still committed, and says so once with a fixed code', async () => {
+    const { deps, result, logged } = await runWith([payRow()]);
+
+    expect(result.complete).toBe(true);
+    expect(deps.addTransactions).not.toHaveBeenCalled();
+    expect(deps.writeWalkCursor).toHaveBeenCalled();
+    expect(logged).toEqual([
+      [
+        '[binance sync] history row left out',
+        { name: 'BinanceWalkNotice', code: 'capital-overlap-skip' },
+      ],
+    ]);
+  });
+
+  it('is kept 11 minutes from the Pay row, and when the size or sign differs', async () => {
+    const apart = await runWith([payRow({ time: TIME + 11 * MINUTE_MS })]);
+    const otherSize = await runWith([payRow({ amountMinorUnits: HALF_BTC_SATOSHIS + 1 })]);
+    const otherSign = await runWith([payRow({ amountMinorUnits: -HALF_BTC_SATOSHIS })]);
+
+    expect(addedRows(apart.deps)).toHaveLength(1);
+    expect(addedRows(otherSize.deps)).toHaveLength(1);
+    expect(addedRows(otherSign.deps)).toHaveLength(1);
+  });
+
+  it('pairs a withdrawal with an outgoing Pay row', async () => {
+    const { deps } = await runWith(
+      [payRow({ amountMinorUnits: -25_000_000, time: Date.UTC(2024, 0, 3, 0, 5) })],
+      [],
+      { fetchWithdrawHistory: jest.fn(async () => historyPage([withdrawal()])) },
+    );
+
+    expect(deps.addTransactions).not.toHaveBeenCalled();
+  });
+
+  it('is no match for a capital row of the same size, nor for another source', async () => {
+    const { deps } = await runWith([
+      payRow({ externalId: `${ACCOUNT_ID}:deposit:other` }),
+      payRow({ externalId: null }),
+    ]);
+
+    expect(addedRows(deps)).toHaveLength(1);
+  });
+
+  it('pairs only the closer of two same-size deposits beside one Pay row', async () => {
+    const near = deposit({ id: 'near', insertTime: TIME + 8 * MINUTE_MS });
+    const far = deposit({ id: 'far', insertTime: TIME });
+    const { deps } = await runWith([payRow()], [far, near]);
+
+    expect(addedRows(deps).map((row) => row.externalId)).toEqual([`${ACCOUNT_ID}:deposit:far`]);
+  });
+
+  it('never pairs a deposit that is stored already: the re-scan refreshes it', async () => {
+    const { deps, logged } = await runWith([payRow()], [deposit({ insertTime: TIME })], {
+      storedExternalIds: jest.fn(async () => new Set([`${ACCOUNT_ID}:deposit:1`])),
+    });
+
+    expect(addedRows(deps)).toHaveLength(1);
+    expect(logged).toEqual([]);
+  });
+
+  it('reads no stored row for a window whose rows are all stored already', async () => {
+    const { deps } = await runWith([], [deposit()], {
+      storedExternalIds: jest.fn(async () => new Set([`${ACCOUNT_ID}:deposit:1`])),
+    });
+
+    expect(deps.listHoldingTransactions).not.toHaveBeenCalled();
+  });
+
+  it('reads the stored rows of each wallet holding once for the whole run', async () => {
+    const account = makeStatefulSpotAccount();
+    const deps = makeFirstSyncDeps(account, {
+      fetchDepositHistory: jest.fn(async () => historyPage([deposit({ insertTime: TIME })])),
+      listHoldingTransactions: jest.fn(async () => []),
+    });
+
+    await sync(deps, ACCOUNT_ID);
+
+    expect((deps.writeWalkCursor as jest.Mock).mock.calls.length).toBeGreaterThan(1);
+    expect(deps.listHoldingTransactions).toHaveBeenCalledTimes(1);
   });
 });

@@ -276,6 +276,48 @@ describe('deleting a leg of a manual Exchange', () => {
     );
   });
 
+  it('keeps the exchange wording when a same-currency leg was converted again with another currency', async () => {
+    const original = await convertExpenseOfUah('deposit', 'term_deposit', 40_000);
+
+    await transactionsRepo.recordExchangeCounterpart({
+      direction: 'record-destination',
+      counterpartHoldingId: 'usd',
+      counterpartType: 'card',
+      amountMinorUnits: 1_000,
+      existingTransactionId: original,
+      existingHoldingId: 'uah',
+      time: MOVED,
+    });
+
+    expect(rowOf(original)?.marker).toBe('deposit');
+    expect(await linkageOf(original)).toEqual({
+      split: false,
+      exchange: { kind: 'deleted', names: ['Dollar card'] },
+      deposit: { name: 'Deposit', matched: true },
+    });
+    expect(removeNotice(await transactionsRepo.removePlan(original), i18n.t)).toContain(
+      'This also deletes the other part of this exchange, in Dollar card.',
+    );
+  });
+
+  it('marks the plan same-currency only when every other leg holds the row’s currency too', async () => {
+    const original = await convertExpenseOfUah('cash', 'card', 40_000);
+
+    await transactionsRepo.recordExchangeCounterpart({
+      direction: 'record-destination',
+      counterpartHoldingId: 'second',
+      counterpartType: 'card',
+      amountMinorUnits: 40_000,
+      existingTransactionId: original,
+      existingHoldingId: 'uah',
+      time: MOVED,
+    });
+
+    expect(await linkageOf(original)).toMatchObject({
+      exchange: { kind: 'deleted', sameCurrency: true },
+    });
+  });
+
   it('reverses each leg by its own stored amount when the user edited one of them', async () => {
     const before = stateOf();
 
@@ -1691,5 +1733,31 @@ describe('a legacy leg written before the pair id existed', () => {
 
     expect(rowIds()).toEqual([]);
     expect(balancesOf().uah).toBe(100_000);
+  });
+
+  it('marks a missing other part same-currency only when the marker holding holds the row’s currency', async () => {
+    migratedLegacyDatabase(() => {
+      insertRow({
+        id: 'to-cash',
+        holdingId: 'uah',
+        amountMinorUnits: -40_000,
+        exchangeCounterpartHoldingId: 'cash',
+      });
+      insertRow({
+        id: 'to-usd',
+        holdingId: 'uah',
+        amountMinorUnits: -10_000,
+        exchangeCounterpartHoldingId: 'usd',
+      });
+    });
+
+    expect(await linkageOf('to-cash')).toEqual({
+      split: false,
+      exchange: { kind: 'missing', name: 'Cash', sameCurrency: true },
+    });
+    expect(await linkageOf('to-usd')).toEqual({
+      split: false,
+      exchange: { kind: 'missing', name: 'Dollar card' },
+    });
   });
 });

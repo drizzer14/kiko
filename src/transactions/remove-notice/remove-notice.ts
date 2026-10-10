@@ -21,8 +21,9 @@ export type ExchangeRemoval =
   // The other leg is the bank's row and stays; `names` are the holdings it sits on.
   | { kind: 'syncedKept'; names: string[] }
   // The row names an exchange partner that cannot be proven: `name` is the
-  // holding the marker points at, absent when that holding is gone.
-  | { kind: 'missing'; name?: string };
+  // holding the marker points at, absent when that holding is gone. `sameCurrency`
+  // is set on the same terms as for a deleted pair.
+  | { kind: 'missing'; name?: string; sameCurrency?: boolean };
 
 export type DepositRemoval = {
   name: string;
@@ -69,6 +70,27 @@ const splitExchangeSentences = (exchange: ExchangeRemoval, t: TFunction): string
     )
     .exhaustive();
 
+// The other part cannot be found: a transfer when the row reads "Transfer to/from", an
+// exchange otherwise, and the holding named only when it still exists.
+const missingPartSentence = (
+  { name, sameCurrency }: { name: string | undefined; sameCurrency: boolean },
+  t: TFunction,
+): string =>
+  match({ named: name !== undefined, sameCurrency })
+    .with({ named: true, sameCurrency: true }, () =>
+      t('transactions.deleteLinked.transferUnlinked', { name }),
+    )
+    .with({ named: true, sameCurrency: false }, () =>
+      t('transactions.deleteLinked.exchangeUnlinked', { name }),
+    )
+    .with({ named: false, sameCurrency: true }, () =>
+      t('transactions.deleteLinked.transferUnlinkedPlain'),
+    )
+    .with({ named: false, sameCurrency: false }, () =>
+      t('transactions.deleteLinked.exchangeUnlinkedPlain'),
+    )
+    .exhaustive();
+
 // A bank-owned or missing other part says "only this part is deleted" in the
 // exchange sentences, which a split delete contradicts: with a split they take
 // the split's own wording.
@@ -92,14 +114,12 @@ const exchangeSentence = (exchange: ExchangeRemoval, isSplit: boolean, t: TFunct
         ? splitExchangeSentences(exchange, t)
         : t('transactions.deleteLinked.exchangeSyncedKept', { name: listedNames(names, t) }),
     )
-    .with({ kind: 'missing' }, ({ name }) => {
+    .with({ kind: 'missing' }, ({ name, sameCurrency = false }) => {
       if (isSplit) {
         return splitExchangeSentences(exchange, t);
       }
 
-      return name === undefined
-        ? t('transactions.deleteLinked.exchangeUnlinkedPlain')
-        : t('transactions.deleteLinked.exchangeUnlinked', { name });
+      return missingPartSentence({ name, sameCurrency }, t);
     })
     .exhaustive();
 

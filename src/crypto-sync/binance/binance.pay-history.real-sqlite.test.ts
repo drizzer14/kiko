@@ -18,11 +18,11 @@ import { applyAllMigrations } from '@kiko/test-support/real-sqlite';
 
 import { syncBinancePayHistory } from './binance.pay-history';
 import type { BinancePayOrder } from './binance.history-client';
+import { syncBinanceTransactions } from './binance.transactions';
 import { createBinanceHistoryRun } from './binance.history-budget';
+import { NOW, OTHER, OWN, party, payOrder } from './binance.pay-test-fixtures';
 
-const NOW = Date.UTC(2026, 9, 10);
 const ACCOUNT_ID = 'acc-1';
-const OWN = '1001';
 const MINUTE_MS = 60_000;
 const DEPOSIT_TIME = NOW - 10 * DAY_MS;
 
@@ -53,19 +53,15 @@ const openDatabase = (): DatabaseSync => {
   return rawDatabase;
 };
 
-const received = (over: Partial<BinancePayOrder>): BinancePayOrder => ({
-  orderType: 'C2C',
-  transactionId: 'pay-1',
-  transactionTime: DEPOSIT_TIME,
-  amount: '0.5',
-  currency: 'BTC',
-  walletType: 2,
-  walletTypes: undefined,
-  fundsDetail: [],
-  payerInfo: { name: 'Bob', binanceId: undefined },
-  receiverInfo: { name: 'Me', binanceId: OWN },
-  ...over,
-});
+const received = (over: Partial<BinancePayOrder>): BinancePayOrder =>
+  payOrder({
+    transactionId: 'pay-1',
+    transactionTime: DEPOSIT_TIME,
+    amount: '0.5',
+    payerInfo: party('Bob', undefined),
+    receiverInfo: party('Me', OWN),
+    ...over,
+  });
 
 const runWalk = (orders: BinancePayOrder[]) =>
   syncBinancePayHistory(
@@ -80,8 +76,36 @@ const runWalk = (orders: BinancePayOrder[]) =>
       fetchPayHistory: async () => ({
         rows: orders,
         gathered: orders.length,
-        oldestTransactionTime: undefined,
         hasBtcFundedOtherCoinOrder: false,
+        usedUidWeight1m: undefined,
+        usedIpWeight1m: undefined,
+      }),
+    },
+  );
+
+/** The capital walk over the real repos, with Binance answering one page of deposits. */
+const runCapitalWalk = (deposits: { id: string; amount: string; insertTime: number }[]) =>
+  syncBinanceTransactions(
+    {
+      targetAccountId: ACCOUNT_ID,
+      run: createBinanceHistoryRun({ now: () => NOW, sleep: async () => undefined }),
+    },
+    {
+      now: () => NOW,
+      readCredentials: async () => ({ apiKey: 'api-key', secret: 'secret' }),
+      fetchDepositHistory: async () => ({
+        rows: deposits.map((deposit) => ({
+          ...deposit,
+          coin: 'BTC',
+          txId: `tx-${deposit.id}`,
+          status: 1,
+          walletType: undefined,
+        })),
+        usedUidWeight1m: undefined,
+        usedIpWeight1m: undefined,
+      }),
+      fetchWithdrawHistory: async () => ({
+        rows: [],
         usedUidWeight1m: undefined,
         usedIpWeight1m: undefined,
       }),
@@ -150,8 +174,8 @@ describe('the Pay walk on real SQLite', () => {
   it('stores the counterparty nickname, signed, on Spot', async () => {
     const sent = received({
       amount: '-0.25',
-      payerInfo: { name: 'Me', binanceId: OWN },
-      receiverInfo: { name: 'Ann', binanceId: '2002' },
+      payerInfo: party('Me', OWN),
+      receiverInfo: party('Ann', OTHER),
     });
 
     await runWalk([sent]);
@@ -215,6 +239,40 @@ describe('the Pay walk on real SQLite', () => {
     expect(result.complete).toBe(false);
   });
 
+  it('skips a Funding Pay receive that repeats a capital deposit stored on Spot, and creates no Funding wallet', async () => {
+    await importCapitalDeposit('1', 50_000_000, DEPOSIT_TIME);
+
+    const result = await runWalk([
+      received({
+        transactionId: 'twin',
+        walletType: 1,
+        transactionTime: DEPOSIT_TIME + 3 * MINUTE_MS,
+      }),
+    ]);
+
+    expect(result).toEqual({ imported: 0, complete: true });
+    expect(storedRows().map((row) => row.external_id)).toEqual(['acc-1:deposit:1']);
+    expect(holdingByKey('BTC:funding')).toBeUndefined();
+  });
+
+  it('keeps one of two same-size Pay receives beside one stored capital twin: the closer pairs, the other stays', async () => {
+    await importCapitalDeposit('1', 50_000_000, DEPOSIT_TIME);
+    const orders = [
+      received({ transactionId: 'closer', transactionTime: DEPOSIT_TIME + MINUTE_MS }),
+      received({ transactionId: 'farther', transactionTime: DEPOSIT_TIME + 5 * MINUTE_MS }),
+    ];
+
+    const first = await runWalk(orders);
+    const second = await runWalk(orders);
+
+    expect(first.imported).toBe(1);
+    expect(second.imported).toBe(0);
+    expect(storedRows().map((row) => row.external_id)).toEqual([
+      'acc-1:deposit:1',
+      'acc-1:pay:C2C:farther:2',
+    ]);
+  });
+
   it('writes no Pay watermark on an account disconnected while the walk was running', async () => {
     mockDatabase.prepare("UPDATE accounts SET institution = NULL WHERE id = 'acc-1'").run();
 
@@ -224,5 +282,64 @@ describe('the Pay walk on real SQLite', () => {
       .prepare("SELECT metadata FROM holdings WHERE id = 'h-spot'")
       .get() as { metadata: string };
     expect(JSON.parse(stored.metadata).binancePayHistoryCursor).toBeUndefined();
+  });
+});
+
+describe('the capital walk beside stored Pay rows on real SQLite', () => {
+  let warn: jest.SpyInstance;
+  const twinDeposit = { id: '1', amount: '0.5', insertTime: DEPOSIT_TIME };
+
+  beforeEach(() => {
+    mockDatabase = openDatabase();
+    warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+  });
+
+  afterEach(() => {
+    warn.mockRestore();
+  });
+
+  it('leaves out a deposit that settles after its Pay twin was stored: one row, on every run', async () => {
+    await runWalk([
+      received({ transactionId: 'first', transactionTime: DEPOSIT_TIME + 3 * MINUTE_MS }),
+    ]);
+
+    const firstCapital = await runCapitalWalk([twinDeposit]);
+    const secondCapital = await runCapitalWalk([twinDeposit]);
+    const payAgain = await runWalk([
+      received({ transactionId: 'first', transactionTime: DEPOSIT_TIME + 3 * MINUTE_MS }),
+    ]);
+
+    expect(firstCapital).toEqual({ imported: 0, complete: true });
+    expect(secondCapital.imported).toBe(0);
+    expect(payAgain.imported).toBe(0);
+    expect(storedRows().map((row) => row.external_id)).toEqual(['acc-1:pay:C2C:first:2']);
+  });
+
+  it('imports a deposit with no Pay twin beside it', async () => {
+    await runWalk([received({ transactionTime: DEPOSIT_TIME + 11 * MINUTE_MS })]);
+
+    const result = await runCapitalWalk([twinDeposit]);
+
+    expect(result.imported).toBe(1);
+    expect(storedRows().map((row) => row.external_id)).toEqual([
+      'acc-1:deposit:1',
+      'acc-1:pay:C2C:pay-1:2',
+    ]);
+  });
+
+  it('pairs a late deposit with the closer of two stored Pay rows, and each row only once', async () => {
+    await runWalk([
+      received({ transactionId: 'closer', transactionTime: DEPOSIT_TIME + MINUTE_MS }),
+      received({ transactionId: 'farther', transactionTime: DEPOSIT_TIME + 5 * MINUTE_MS }),
+    ]);
+
+    const result = await runCapitalWalk([
+      twinDeposit,
+      { id: '2', amount: '0.5', insertTime: DEPOSIT_TIME + 4 * MINUTE_MS },
+    ]);
+
+    // The second deposit takes the farther Pay row, since the closer one is paired already.
+    expect(result.imported).toBe(0);
+    expect(storedRows()).toHaveLength(2);
   });
 });

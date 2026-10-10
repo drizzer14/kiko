@@ -2,28 +2,19 @@ import { DAY_MS } from '@kiko/dates';
 
 import { BinanceWalkStop } from './binance.history-walk';
 import type { BinancePayOrder } from './binance.history-client';
+import { NOW, OTHER, OWN, party, payOrder } from './binance.pay-test-fixtures';
 import { payDescription, payDirection, payRowsOf } from './binance.pay-history';
 
-const NOW = Date.UTC(2026, 9, 10);
 const ACCOUNT_ID = 'acc-1';
-const OWN = '1001';
-const OTHER = '2002';
 
-const party = (name: string | undefined, binanceId: string | undefined) => ({ name, binanceId });
-
-const order = (over: Partial<BinancePayOrder> = {}): BinancePayOrder => ({
-  orderType: 'C2C',
-  transactionId: 'tx-1',
-  transactionTime: NOW - DAY_MS,
-  amount: '-0.001',
-  currency: 'BTC',
-  walletType: 2,
-  walletTypes: undefined,
-  fundsDetail: [],
-  payerInfo: party(undefined, undefined),
-  receiverInfo: party(undefined, undefined),
-  ...over,
-});
+/** An order that names no party at all: each case adds the signals it is about. */
+const order = (over: Partial<BinancePayOrder> = {}): BinancePayOrder =>
+  payOrder({
+    transactionTime: NOW - DAY_MS,
+    payerInfo: party(undefined, undefined),
+    receiverInfo: party(undefined, undefined),
+    ...over,
+  });
 
 const stopCodeOf = (work: () => unknown): string | undefined => {
   try {

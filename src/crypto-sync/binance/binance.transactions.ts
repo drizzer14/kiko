@@ -14,12 +14,19 @@ import {
   BinanceWalkStop,
   btcSatoshis,
   buildWalkWindows,
+  logWalkNotice,
   logWalkStop,
   resolveWalkStart,
   resolveWalletHoldings,
   type WalkResult,
   type WalkWindow,
 } from './binance.history-walk';
+import {
+  createMovementLedger,
+  type MovementLedger,
+  type StoredMovementRow,
+  twinsOf,
+} from './binance.overlap-guard';
 import {
   type BinanceHistoryRun,
   type BudgetLane,
@@ -55,9 +62,9 @@ const WINDOW_MS = 89 * DAY_MS;
  * record. A withdrawal's `applyTime` is when it was REQUESTED; it only becomes
  * settled (status 6, importable) later, so its timestamp can sit slightly behind
  * the cursor. A small overlap re-scans that boundary; the `(source, external_id)`
- * upsert makes the re-scan idempotent.
+ * upsert makes the re-scan idempotent. The Pay walk keeps the same slack.
  */
-const RESYNC_OVERLAP_MS = DAY_MS;
+export const RESYNC_OVERLAP_MS = DAY_MS;
 
 /**
  * The first-sync floor: Binance opened to the public in July 2017, so no BTC
@@ -103,6 +110,8 @@ export type BinanceTransactionSyncDeps = {
   storedExternalIds: (externalIds: string[]) => Promise<Set<string>>;
   /** The legacy fallback cursor: only consulted when the holding carries no watermark yet. */
   latestTransactionTime: (holdingId: string) => Promise<number | undefined>;
+  /** The rows already on a holding, for the guard against a Pay row that repeats a record. */
+  listHoldingTransactions: (holdingId: string) => Promise<StoredMovementRow[]>;
   addTransactions: (rows: BinanceTransactionRow[]) => Promise<number>;
   /** Advances one walk's own watermark once a window's rows have committed. */
   writeWalkCursor: (
@@ -134,6 +143,7 @@ const defaultBinanceTransactionDeps: BinanceTransactionSyncDeps = {
     transactionsRepo.storedExternalIdsQuery('binance', externalIds),
   latestTransactionTime: async (holdingId) =>
     (await transactionsRepo.latestSyncedTimeQuery(holdingId, 'binance')).at(0)?.time,
+  listHoldingTransactions: async (holdingId) => transactionsRepo.listByHoldingQuery(holdingId),
   addTransactions: (rows) => transactionsRepo.addManyDedup(rows),
   writeWalkCursor: (holdingId, field, cursorMs) =>
     holdingsRepo.setBinanceWalkCursor(holdingId, field, cursorMs),
@@ -261,6 +271,7 @@ type WindowContext = {
   apiKey: string;
   secret: string;
   options: FetchAccountOptions;
+  ledger: MovementLedger;
 };
 
 /**
@@ -349,15 +360,40 @@ const fetchWindowRecords = async (
 };
 
 /**
+ * The new rows that are the twin of a Pay row already stored on any Binance BTC holding of
+ * the account. The Pay walk judges its rows against stored capital rows, but a capital
+ * record that settles late is imported behind the capital watermark after a Pay row for the
+ * same movement, so this walk checks the other way round. Nothing is read when no row is new.
+ */
+const twinsOfStoredPayRows = async (
+  ledger: MovementLedger,
+  newRows: PlannedRow[],
+): Promise<Set<string>> => {
+  if (newRows.length === 0) {
+    return new Set();
+  }
+
+  const stored = await ledger.read();
+
+  return twinsOf({
+    kind: 'capital',
+    candidates: newRows,
+    sameKind: stored.capital,
+    otherKind: stored.pay,
+  });
+};
+
+/**
  * Turn the planned rows into importable ones, creating a missing wallet holding at
  * zero first, but only for a wallet that receives a row whose key is new. A row
  * whose key is already stored keeps its stored holding (the upsert never moves it),
  * so it must not conjure an empty holding it will never sit on; if its wallet has
- * none it travels under `spot`, which the upsert ignores. A wallet that cannot be
- * resolved even after creation stops the window.
+ * none it travels under `spot`, which the upsert ignores. A new row that is the twin of a
+ * stored Pay row is left out. A wallet that cannot be resolved even after creation stops
+ * the window.
  */
 const placeRows = async (
-  deps: BinanceTransactionSyncDeps,
+  context: WindowContext,
   accountId: string,
   spot: HoldingRow,
   planned: PlannedRow[],
@@ -366,20 +402,31 @@ const placeRows = async (
     return [];
   }
 
+  const { deps, ledger } = context;
   // This lookup runs outside the `addManyDedup` write. A user delete of a stored row in
   // that gap re-inserts it on the placeholder holding (`spot`), exactly as a row the
   // walk had never imported would be: nothing is lost, only the user's delete is undone.
   const stored = await deps.storedExternalIds(planned.map((row) => row.externalId));
-  const newRows = planned.filter((row) => !stored.has(row.externalId));
+  const twins = await twinsOfStoredPayRows(
+    ledger,
+    planned.filter((row) => !stored.has(row.externalId)),
+  );
+
+  if (twins.size > 0) {
+    logWalkNotice('capital-overlap-skip');
+  }
+
+  const kept = planned.filter((row) => !twins.has(row.externalId));
+  const newRows = kept.filter((row) => !stored.has(row.externalId));
   const holdings = await resolveWalletHoldings({
     accountId,
-    keys: [...new Set(planned.map((row) => row.wallet))],
+    keys: [...new Set(kept.map((row) => row.wallet))],
     createKeys: [...new Set(newRows.map((row) => row.wallet))],
     listHoldings: deps.listHoldings,
     ensureHoldings: deps.ensureHoldings,
   });
 
-  return planned.map(({ wallet, ...row }) => {
+  return kept.map(({ wallet, ...row }) => {
     const holding = holdings.get(wallet) ?? (stored.has(row.externalId) ? spot : undefined);
 
     if (holding === undefined) {
@@ -421,7 +468,7 @@ const runOneWindow = async (
       ...records.withdrawals.map((record) => plannedWithdrawalOf(accountId, record)),
     ].filter((row): row is PlannedRow => row !== null);
 
-    rows = await placeRows(deps, accountId, spot, planned);
+    rows = await placeRows(context, accountId, spot, planned);
   } catch (error) {
     if (error instanceof BinanceWalkStop) {
       logWalkStop(error.code);
@@ -436,6 +483,7 @@ const runOneWindow = async (
 
   if (rows.length > 0) {
     imported = await deps.addTransactions(rows);
+    context.ledger.remember(rows);
   }
 
   await deps.writeWalkCursor(spot.id, BINANCE_HISTORY_CURSOR_FIELD, window.end);
@@ -480,7 +528,18 @@ const runSync = async (
     WINDOW_MS,
     MAX_WINDOWS,
   );
-  const context: WindowContext = { deps, run, apiKey, secret, options };
+  const context: WindowContext = {
+    deps,
+    run,
+    apiKey,
+    secret,
+    options,
+    ledger: createMovementLedger({
+      accountId,
+      listHoldings: deps.listHoldings,
+      listHoldingTransactions: deps.listHoldingTransactions,
+    }),
+  };
   let imported = 0;
 
   for (const window of windows) {

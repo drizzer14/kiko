@@ -6,8 +6,8 @@ import {
   binanceWalkCursorOf,
   type BinanceWalkCursorField,
 } from '@kiko/holdings/holding-metadata';
+import type { HoldingRow } from '@kiko/db';
 import { transactionsRepo } from '@kiko/transactions/repo';
-import type { HoldingRow, TransactionRow } from '@kiko/db';
 import { type ExchangeHolding, holdingsRepo } from '@kiko/holdings/repo';
 
 import {
@@ -36,6 +36,17 @@ import {
   SPOT_KEY,
 } from './binance.holding-keys';
 import {
+  type BinanceTransactionRow,
+  HISTORY_FLOOR_MS,
+  RESYNC_OVERLAP_MS,
+} from './binance.transactions';
+import {
+  createMovementLedger,
+  type MovementLedger,
+  type StoredMovementRow,
+  twinsOf,
+} from './binance.overlap-guard';
+import {
   type BinancePayOrder,
   fetchPayHistory,
   PAY_PAGE_LIMIT,
@@ -44,22 +55,19 @@ import {
 import { type BinanceHistoryRun, COSTS } from './binance.history-budget';
 import { type BinanceCredentials, readCredentials } from './binance.credentials';
 import { isBinanceCoolingDown, setBinanceCooldownUntil } from './binance.cooldown';
-import { type BinanceTransactionRow, HISTORY_FLOOR_MS } from './binance.transactions';
 
 /** Binance rejects a Pay `startTime`/`endTime` gap of 90 days or more. */
 export const PAY_WINDOW_MS = 89 * DAY_MS;
 
-/**
- * How far either side of a Pay row a capital row of the same size still reads as the
- * same movement. The two histories stamp one movement seconds apart, never minutes.
- */
-export const PAY_OVERLAP_GUARD_MS = 10 * 60_000;
-
 /** Binance serves the last 18 months of Pay history and nothing older. */
 const PAY_HISTORY_MONTHS = 18;
 
-/** Same slack as the capital walk: a row that settles late is still caught by a re-scan. */
-const RESYNC_OVERLAP_MS = DAY_MS;
+/**
+ * Binance's own count of the 18 months is not documented (calendar months, 540 days, or an
+ * overflow of the start time), so the first request stays this far inside the window it may
+ * ask for. A start that is too old is rejected on every run, and the walk never begins.
+ */
+const PAY_FLOOR_MARGIN_MS = 10 * DAY_MS;
 
 /** Safety stop on the window walk: the 18 months are 7 windows. */
 const MAX_WINDOWS = 12;
@@ -68,9 +76,9 @@ const MAX_WINDOWS = 12;
 const PAY_BRAND = 'Binance Pay';
 
 /**
- * The earliest `startTime` Binance accepts for Pay history: 18 calendar months back
- * (UTC, the day clamped to the target month's length) plus one day, so the request is
- * never older than the window it may ask for. Never before the shared history floor.
+ * The earliest `startTime` the walk asks Pay history for: 18 calendar months back (UTC,
+ * the day clamped to the target month's length) plus the margin, so the request is never
+ * older than the window Binance may serve. Never before the shared history floor.
  */
 export const payFloorMs = (now: number): number => {
   const date = new Date(now);
@@ -87,7 +95,7 @@ export const payFloorMs = (now: number): number => {
     date.getUTCMilliseconds(),
   );
 
-  return Math.max(HISTORY_FLOOR_MS, monthsAgo + DAY_MS);
+  return Math.max(HISTORY_FLOOR_MS, monthsAgo + PAY_FLOOR_MARGIN_MS);
 };
 
 type PayDirection = 'out' | 'in';
@@ -293,8 +301,6 @@ export const payRowsOf = (input: {
   }));
 };
 
-type CapitalRow = Pick<TransactionRow, 'externalId' | 'amountMinorUnits' | 'time'>;
-
 /**
  * The injectable seams of the Pay walk: the credential, holding and uid reads, the Pay
  * read, the insert-only holding creation, the deduping import, the cursor write, and
@@ -324,7 +330,7 @@ export type BinancePayHistoryDeps = {
     field: BinanceWalkCursorField,
     cursorMs: number,
   ) => Promise<void>;
-  listHoldingTransactions: (holdingId: string) => Promise<CapitalRow[]>;
+  listHoldingTransactions: (holdingId: string) => Promise<StoredMovementRow[]>;
 };
 
 const defaultPayHistoryDeps: BinancePayHistoryDeps = {
@@ -350,7 +356,9 @@ type PayContext = {
   secret: string;
   options: FetchAccountOptions;
   uid: string | null;
-  capitalRowsByHolding: Map<string, CapitalRow[]>;
+  /** The Pay watermark as the run found it. */
+  cursor: number | null;
+  ledger: MovementLedger;
   noticed: Set<string>;
 };
 
@@ -377,49 +385,31 @@ const stopOnRateLimit = (
 };
 
 /**
- * Page one window by narrowing `endTime` to the oldest order of a full page: the
- * history has no cursor and its order is not relied on. A full page that does not
- * move `endTime` strictly down (more than a page of orders in one millisecond, or an
- * order outside the window) cannot be paged, so the window stops rather than skip.
- * Returns `undefined` on a clean stop: the budget ran out, or Binance rate-limited.
+ * One request for the span. `undefined` is a clean stop: the call budget ran out (each
+ * request records a call on the lane, so its per-run cap ends the walk), or Binance
+ * rate-limited.
  */
-const fetchWindowOrders = async (
+const fetchSpan = async (
   context: PayContext,
-  window: WalkWindow,
-): Promise<BinancePayOrder[] | undefined> => {
+  span: WalkWindow,
+): Promise<PayHistoryPage | undefined> => {
   const { deps, run, apiKey, secret, options } = context;
-  const orders: BinancePayOrder[] = [];
-  let endTime = window.end;
+
+  if (!run.budget.canAfford('pay', COSTS.pay)) {
+    return undefined;
+  }
 
   try {
-    // Each pass records a call on the lane, so its per-run cap ends the loop.
-    while (run.budget.canAfford('pay', COSTS.pay)) {
-      await run.gate.wait();
-      const page = await deps.fetchPayHistory(
-        apiKey,
-        secret,
-        { startTime: window.start, endTime },
-        options,
-      );
-      run.budget.record('pay', page);
-      orders.push(...page.rows);
+    await run.gate.wait();
+    const page = await deps.fetchPayHistory(
+      apiKey,
+      secret,
+      { startTime: span.start, endTime: span.end },
+      options,
+    );
+    run.budget.record('pay', page);
 
-      if (page.hasBtcFundedOtherCoinOrder) {
-        noticeOnce(context, 'pay-non-btc-funds');
-      }
-
-      if (page.gathered < PAY_PAGE_LIMIT) {
-        return orders;
-      }
-
-      const oldest = page.oldestTransactionTime;
-
-      if (oldest === undefined || oldest >= endTime || oldest < window.start) {
-        throw new BinanceWalkStop('pay-page-stuck');
-      }
-
-      endTime = oldest;
-    }
+    return page;
   } catch (error) {
     if (stopOnRateLimit(context, error)) {
       return undefined;
@@ -427,11 +417,30 @@ const fetchWindowOrders = async (
 
     throw error;
   }
-
-  return undefined;
 };
 
-/** One row per key: an order on the boundary of two pages is read twice. */
+/**
+ * The first half of a span, or `undefined` for a span of one millisecond, which cannot be
+ * split. A half is at least one millisecond long, so no request has `startTime` equal to
+ * `endTime`.
+ */
+const halfOf = (span: WalkWindow): WalkWindow | undefined => {
+  const length = span.end - span.start;
+
+  return length < 2 ? undefined : { start: span.start, end: span.start + Math.floor(length / 2) };
+};
+
+/**
+ * BTC that paid for an order of another coin is a BTC movement with no row rule yet.
+ * Committing past it would lose the movement for good, so the span stays uncommitted.
+ */
+const assertNoBtcFundedOtherCoinOrder = (page: PayHistoryPage): void => {
+  if (page.hasBtcFundedOtherCoinOrder) {
+    throw new BinanceWalkStop('pay-btc-funded-other-coin');
+  }
+};
+
+/** One row per key: an order on the boundary of two spans is read twice. */
 const plannedRowsOf = (context: PayContext, orders: BinancePayOrder[]): PlannedPayRow[] => {
   const planned = orders.flatMap((order) =>
     payRowsOf({ accountId: context.accountId, order, uid: context.uid }),
@@ -440,42 +449,15 @@ const plannedRowsOf = (context: PayContext, orders: BinancePayOrder[]): PlannedP
   return [...new Map(planned.map((row) => [row.externalId, row])).values()];
 };
 
-const capitalRowsOf = async (context: PayContext, holdingId: string): Promise<CapitalRow[]> => {
-  const cached = context.capitalRowsByHolding.get(holdingId);
-
-  if (cached !== undefined) {
-    return cached;
-  }
-
-  const prefixes = [`${context.accountId}:deposit:`, `${context.accountId}:withdraw:`];
-  const rows = (await context.deps.listHoldingTransactions(holdingId)).filter((row) =>
-    prefixes.some((prefix) => row.externalId?.startsWith(prefix)),
-  );
-  context.capitalRowsByHolding.set(holdingId, rows);
-
-  return rows;
-};
-
-/** The same signed size, within the guard, as a capital row already on the holding. */
-const duplicatesCapitalRow = async (
-  context: PayContext,
-  holdingId: string,
-  row: PlannedPayRow,
-): Promise<boolean> =>
-  (await capitalRowsOf(context, holdingId)).some(
-    (capital) =>
-      capital.amountMinorUnits === row.amountMinorUnits &&
-      Math.abs(capital.time - row.time) <= PAY_OVERLAP_GUARD_MS,
-  );
-
 const walletsOf = (rows: PlannedPayRow[]): BinanceWalletKey[] => [
   ...new Set(rows.map((row) => row.wallet)),
 ];
 
 /**
- * Turn the planned rows into importable ones. A Pay row that repeats a capital
- * deposit or withdrawal is left out (the capital walk already holds it), and a missing
- * wallet holding is created at zero only for a wallet that still receives a row.
+ * Turn the planned rows into importable ones. A Pay row that is the twin of a stored
+ * capital deposit or withdrawal on any Binance BTC holding of the account is left out (the
+ * capital walk already holds it), and a missing wallet holding is created at zero only for
+ * a wallet that still receives a row.
  */
 const placeRows = async (
   context: PayContext,
@@ -485,26 +467,20 @@ const placeRows = async (
     return [];
   }
 
-  const { accountId, deps } = context;
-  const existing = await resolveWalletHoldings({
-    accountId,
-    keys: walletsOf(planned),
-    createKeys: [],
-    listHoldings: deps.listHoldings,
-    ensureHoldings: deps.ensureHoldings,
+  const { accountId, deps, ledger } = context;
+  const stored = await ledger.read();
+  const twins = twinsOf({
+    kind: 'pay',
+    candidates: planned,
+    sameKind: stored.pay,
+    otherKind: stored.capital,
   });
-  const kept: PlannedPayRow[] = [];
 
-  for (const row of planned) {
-    const holding = existing.get(row.wallet);
-
-    if (holding !== undefined && (await duplicatesCapitalRow(context, holding.id, row))) {
-      noticeOnce(context, 'pay-overlap-skip');
-    } else {
-      kept.push(row);
-    }
+  if (twins.size > 0) {
+    noticeOnce(context, 'pay-overlap-skip');
   }
 
+  const kept = planned.filter((row) => !twins.has(row.externalId));
   const holdings = await resolveWalletHoldings({
     accountId,
     keys: walletsOf(kept),
@@ -523,42 +499,110 @@ const placeRows = async (
   });
 };
 
-type WindowOutcome = { kind: 'committed'; imported: number } | { kind: 'stop' };
-
 /**
- * Run one window: read and plan it, then either commit (rows first, watermark second,
- * so a crash between the two just re-imports idempotently) or stop without committing.
+ * Commit one span's page: plan and place its rows, write them, then move the Pay watermark
+ * to the span's end (rows first, watermark second, so a crash between the two just
+ * re-imports idempotently). The watermark never moves back, because a re-scan can start
+ * behind it. A `BinanceWalkStop` leaves the span uncommitted. Returns the rows imported.
  */
-const runOneWindow = async (context: PayContext, window: WalkWindow): Promise<WindowOutcome> => {
-  let rows: BinanceTransactionRow[];
-
-  try {
-    const orders = await fetchWindowOrders(context, window);
-
-    if (orders === undefined) {
-      return { kind: 'stop' };
-    }
-
-    rows = await placeRows(context, plannedRowsOf(context, orders));
-  } catch (error) {
-    if (error instanceof BinanceWalkStop) {
-      logWalkStop(error.code);
-
-      return { kind: 'stop' };
-    }
-
-    throw error;
-  }
-
+const commitSpan = async (
+  context: PayContext,
+  span: WalkWindow,
+  page: PayHistoryPage,
+): Promise<number> => {
+  assertNoBtcFundedOtherCoinOrder(page);
+  const rows = await placeRows(context, plannedRowsOf(context, page.rows));
   let imported = 0;
 
   if (rows.length > 0) {
     imported = await context.deps.addTransactions(rows);
+    context.ledger.remember(rows);
   }
 
-  await context.deps.writeWalkCursor(context.spot.id, BINANCE_PAY_HISTORY_CURSOR_FIELD, window.end);
+  await context.deps.writeWalkCursor(
+    context.spot.id,
+    BINANCE_PAY_HISTORY_CURSOR_FIELD,
+    Math.max(span.end, context.cursor ?? span.end),
+  );
 
-  return { kind: 'committed', imported };
+  return imported;
+};
+
+/** `commitSpan`, with a row the walk cannot trust logged and answered as `undefined`. */
+const commitOrStop = async (
+  context: PayContext,
+  span: WalkWindow,
+  page: PayHistoryPage,
+): Promise<number | undefined> => {
+  try {
+    return await commitSpan(context, span, page);
+  } catch (error) {
+    if (error instanceof BinanceWalkStop) {
+      logWalkStop(error.code);
+
+      return undefined;
+    }
+
+    throw error;
+  }
+};
+
+/** What a window yielded: the rows committed, and whether it reached its end. */
+type WindowOutcome = { imported: number; complete: boolean };
+
+/**
+ * The span that follows a committed one. It starts where the committed one ended and is
+ * twice as wide, because a stretch that fit one page is likely to fit a longer one, and
+ * it never reaches past the window.
+ */
+const nextSpanAfter = (committed: WalkWindow, window: WalkWindow): WalkWindow => ({
+  start: committed.end,
+  end: Math.min(window.end, committed.end + 2 * (committed.end - committed.start)),
+});
+
+/**
+ * Walk one window with no cursor and no order to rely on: ask for the whole window, and
+ * when the page comes back full (it may hold more than it shows) halve the span and ask
+ * again, so a page that is not full is the whole of its span whatever order Binance
+ * sorts in and whichever end of the range it leaves open. A non-full page commits and the
+ * walk goes on from where it ended; the 1-millisecond boundary two spans share is read
+ * twice and removed by the key. A span of one millisecond that is still full stops the
+ * window rather than skip.
+ */
+const runOneWindow = async (context: PayContext, window: WalkWindow): Promise<WindowOutcome> => {
+  let imported = 0;
+  let span = window;
+
+  while (span.start < window.end) {
+    const page = await fetchSpan(context, span);
+
+    if (page === undefined) {
+      return { imported, complete: false };
+    }
+
+    if (page.gathered >= PAY_PAGE_LIMIT) {
+      const half = halfOf(span);
+
+      if (half === undefined) {
+        logWalkStop('pay-page-stuck');
+
+        return { imported, complete: false };
+      }
+
+      span = half;
+    } else {
+      const committed = await commitOrStop(context, span, page);
+
+      if (committed === undefined) {
+        return { imported, complete: false };
+      }
+
+      imported += committed;
+      span = nextSpanAfter(span, window);
+    }
+  }
+
+  return { imported, complete: true };
 };
 
 /**
@@ -611,18 +655,21 @@ const runSync = async (
     return { imported: 0, complete: true };
   }
 
-  // A Pay row is only judged against capital rows that are already stored, so a window
-  // never reaches past the capital walk's watermark.
+  // A Pay window never reaches past the capital walk's watermark: beyond it the capital
+  // rows are not stored yet, so a Pay row's twin could not be seen. A capital record that
+  // settles later and lands behind the watermark is caught by the capital walk's own check
+  // against the Pay row stored here.
   const capitalCursor = binanceWalkCursorOf(BINANCE_HISTORY_CURSOR_FIELD, spot.metadata);
 
   if (capitalCursor === null) {
     return { imported: 0, complete: false };
   }
 
+  const payCursor = binanceWalkCursorOf(BINANCE_PAY_HISTORY_CURSOR_FIELD, spot.metadata);
   const endTime = Math.min(now, capitalCursor);
   const windows = buildWalkWindows(
     resolveWalkStart({
-      cursor: binanceWalkCursorOf(BINANCE_PAY_HISTORY_CURSOR_FIELD, spot.metadata),
+      cursor: payCursor,
       floorMs: payFloorMs(now),
       endTime,
       windowMs: PAY_WINDOW_MS,
@@ -646,7 +693,12 @@ const runSync = async (
     apiKey,
     secret,
     options: { fetchImpl: deps.fetchImpl, now: deps.now },
-    capitalRowsByHolding: new Map<string, CapitalRow[]>(),
+    cursor: payCursor,
+    ledger: createMovementLedger({
+      accountId,
+      listHoldings: deps.listHoldings,
+      listHoldingTransactions: deps.listHoldingTransactions,
+    }),
     noticed: new Set<string>(),
   };
   const own = await readOwnUid(base);
@@ -664,12 +716,11 @@ const runSync = async (
     }
 
     const outcome = await runOneWindow(context, window);
+    imported += outcome.imported;
 
-    if (outcome.kind === 'stop') {
+    if (!outcome.complete) {
       return { imported, complete: false };
     }
-
-    imported += outcome.imported;
   }
 
   return { imported, complete: true };
