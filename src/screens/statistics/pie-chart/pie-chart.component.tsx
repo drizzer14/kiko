@@ -241,14 +241,16 @@ const PieChart: FC<PieChartProps> = ({
             pointerEvents="none"
             style={[styles.centerTotal, { width: size, height: size }]}
           >
-            <MoneyText
-              money={centerTotal}
-              context="balance"
-              style={styles.centerAmount}
-              numberOfLines={1}
-              adjustsFontSizeToFit
-              minimumFontScale={0.5}
-            />
+            {/* The text may use at most the hole's width, so a long total shrinks to fit. */}
+            <View style={{ maxWidth: size * innerRatio }}>
+              <MoneyText
+                money={centerTotal}
+                context="balance"
+                style={styles.centerAmount}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+              />
+            </View>
           </View>
         )}
       </View>

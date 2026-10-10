@@ -85,15 +85,13 @@ export const styles = StyleSheet.create((theme) => ({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  // The total figure itself: the section-title weight kept, but the size
-  // taken down to two-thirds of `title` (28 -> 19) so the center total sits
-  // quietly inside the ring's hole rather than crowding it. Explicit
-  // `fontSize`/`lineHeight` because no shared token lands on 19.
-  // `MoneyText` still owns the tone color, so this omits `color`.
+  // The total figure itself, at the section-title token. It sets no `lineHeight`: iOS shrinks
+  // an `adjustsFontSizeToFit` text only while both its width and height overflow, and a fixed
+  // line height equal to the font size never shrinks, so the text fell to the 4 pt floor. The
+  // component bounds its width to the hole. `MoneyText` still owns the tone color, so this
+  // omits `color`.
   centerAmount: {
     ...theme.typography.title,
-    fontSize: 19,
-    lineHeight: 19,
     textAlign: 'center',
   },
 }));

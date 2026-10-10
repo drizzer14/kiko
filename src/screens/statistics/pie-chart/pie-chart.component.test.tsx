@@ -1,5 +1,6 @@
 import { StyleSheet } from 'react-native';
 import { Money } from '@kiko/currency/money';
+import { darkTheme } from '@kiko/design-system/theme';
 import type { Currency } from '@kiko/currency/currency';
 import { fireEvent, render, within } from '@testing-library/react-native';
 import { ancestorWithStyle } from '@kiko/test-support/ancestor-with-style';
@@ -226,6 +227,74 @@ describe('PieChart', () => {
     expect(getByText(/\$1,000\.00/)).toBeTruthy();
     // ...but no "Total" caption sits beneath it.
     expect(queryByText('Total')).toBeNull();
+  });
+
+  // Jest cannot measure iOS font fitting, so these pin the style facts that decide it: a fixed
+  // lineHeight equal to the font size stopped iOS shrinking the text, which then fell to its
+  // 4 pt floor. Whether the total reads well is a simulator check.
+  describe('center total text', () => {
+    const centerTextOf = async (
+      props: { size?: number; innerRatio?: number },
+      centerTotal: Money,
+      matcher: RegExp,
+    ) => {
+      const { getByText } = await render(
+        <PieChart slices={slices} baseCurrency="USD" centerTotal={centerTotal} {...props} />,
+      );
+      const text = getByText(matcher);
+
+      return {
+        text,
+        style: StyleSheet.flatten(text.props.style),
+        // MoneyText's style takes no maxWidth, so the hole bound sits on the box around the text.
+        holeStyle: StyleSheet.flatten(text.parent?.props.style),
+      };
+    };
+
+    it.each([
+      ['a short total', Money.of('UAH', 222_00), /222\.00/],
+      ['a long total with a 3-letter code', Money.of('CHF', 1_234_567_89), /1,234,567\.89/],
+    ])('takes the title token and no fixed line height for %s', async (_name, total, matcher) => {
+      const { style } = await centerTextOf({}, total, matcher);
+
+      expect(style.fontSize).toBe(darkTheme.typography.title.fontSize);
+      expect(style.fontWeight).toBe(darkTheme.typography.title.fontWeight);
+      expect(style.lineHeight).toBeUndefined();
+    });
+
+    it.each([
+      ['a short total', Money.of('UAH', 222_00), /222\.00/],
+      ['a long total with a 3-letter code', Money.of('CHF', 1_234_567_89), /1,234,567\.89/],
+    ])(
+      'stays on one line, shrinking to fit, inside the hole for %s',
+      async (_name, total, matcher) => {
+        const { text, holeStyle } = await centerTextOf(
+          { size: 200, innerRatio: 0.78 },
+          total,
+          matcher,
+        );
+
+        expect(text.props.numberOfLines).toBe(1);
+        expect(text.props.adjustsFontSizeToFit).toBe(true);
+        expect(holeStyle.maxWidth).toBe(200 * 0.78);
+      },
+    );
+
+    it('bounds the text to the hole of any size and ring thickness', async () => {
+      const { holeStyle } = await centerTextOf(
+        { size: 240, innerRatio: 0.58 },
+        Money.of('UAH', 222_00),
+        /222\.00/,
+      );
+
+      expect(holeStyle.maxWidth).toBe(240 * 0.58);
+    });
+
+    it('leaves out minimumFontScale, which iOS ignores', async () => {
+      const { text } = await centerTextOf({}, Money.of('UAH', 222_00), /222\.00/);
+
+      expect(text.props.minimumFontScale).toBeUndefined();
+    });
   });
 
   // A set with two slices at or above 5% (a, b) and two below (c at exactly the
