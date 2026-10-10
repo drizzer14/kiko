@@ -16,6 +16,7 @@ jest.mock('react-i18next', () => ({
 }));
 
 import StatisticsStack from './statistics.stack';
+import { restoreDefaultAnimationOfSwappedForm } from '../swapped-form-options';
 
 type ScreenElement = ReactElement<{ name: string }>;
 
@@ -26,6 +27,28 @@ const screenNames = (): string[] => {
   const screens = [navigator.props.children].flat().filter(isValidElement) as ScreenElement[];
 
   return screens.map((screen) => screen.props.name);
+};
+
+type FormOptions = { title?: string; animation?: string };
+
+type FormScreenElement = ReactElement<{
+  name: string;
+  listeners?: unknown;
+  options?: FormOptions | ((args: { route: { params: unknown } }) => FormOptions);
+}>;
+
+const screenOf = (name: string): FormScreenElement | undefined => {
+  const navigator = StatisticsStack({}) as ReactElement<{ children: FormScreenElement[] }>;
+
+  return navigator.props.children
+    .filter(isValidElement)
+    .find((screen) => screen.props.name === name);
+};
+
+const optionsOf = (name: string, params: unknown): FormOptions | undefined => {
+  const options = screenOf(name)?.props.options;
+
+  return typeof options === 'function' ? options({ route: { params } }) : options;
 };
 
 describe('StatisticsStack', () => {
@@ -47,6 +70,50 @@ describe('StatisticsStack', () => {
 
     expect(statistics?.props.options).toEqual({ title: 'statistics.title' });
   });
+
+  it('titles the Transaction form with the translated add title', () => {
+    expect(screenOf('TransactionForm')?.props.options).toEqual({
+      title: 'forms.transaction.addTitle',
+    });
+  });
+
+  it.each([
+    ['AccountForm', 'forms.account.addTitle'],
+    ['HoldingForm', 'forms.holding.addTitle'],
+  ])('gives %s its add title and the default animation when no draft is carried', (name, title) => {
+    expect(optionsOf(name, { accountId: 'account-1' })).toEqual({ title, animation: 'default' });
+  });
+
+  it('titles the implicit holding form like an account and swaps it without an animation', () => {
+    const draft = { name: 'Flat', icon: null, color: null };
+
+    expect(optionsOf('HoldingForm', { implicitKind: 'property', draft })).toEqual({
+      title: 'forms.account.addTitle',
+      animation: 'none',
+    });
+  });
+
+  it('swaps the account form in without an animation when it carries a draft', () => {
+    const draft = { name: 'Flat', icon: null, color: null };
+
+    expect(optionsOf('AccountForm', { draft })?.animation).toBe('none');
+  });
+
+  it('keeps the default animation on a form that holds its own saved draft', () => {
+    const savedDraft = { saved: true, name: 'Flat', icon: null, color: null };
+
+    expect(optionsOf('AccountForm', { draft: savedDraft })?.animation).toBe('default');
+    expect(optionsOf('HoldingForm', { accountId: 'account-1', draft: savedDraft })?.animation).toBe(
+      'default',
+    );
+  });
+
+  it.each(['AccountForm', 'HoldingForm'])(
+    'restores the default animation of a swapped %s once it has appeared',
+    (name) => {
+      expect(screenOf(name)?.props.listeners).toBe(restoreDefaultAnimationOfSwappedForm);
+    },
+  );
 
   // Jest pins `isLiquidGlassSupported` to false (jest/setup.js), the iOS < 26
   // tier, where the scrolled bar needs the blur react-native-screens omits.

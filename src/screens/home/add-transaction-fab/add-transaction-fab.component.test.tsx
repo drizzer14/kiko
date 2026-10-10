@@ -188,6 +188,22 @@ describe('AddTransactionFab', () => {
       expect(flattened.bottom).toBe(16);
     });
 
+    it('moves to the other side when the bar edge changes on re-render', async () => {
+      mockUseVerticalBarEdge.mockReturnValue('leading');
+
+      const { getByLabelText, rerender } = await render(
+        <AddTransactionFab onPress={() => undefined} bottomOffset={0} />,
+      );
+
+      mockUseVerticalBarEdge.mockReturnValue('trailing');
+      await rerender(<AddTransactionFab onPress={() => undefined} bottomOffset={0} />);
+
+      const flattened = StyleSheet.flatten(getByLabelText('Add transaction').props.style);
+
+      expect(flattened.right).toBe(16);
+      expect(flattened.left).toBeUndefined();
+    });
+
     it('sits bottom-right with the clearance when there is no vertical bar', async () => {
       const flattened = await flattenedFab(100);
 
