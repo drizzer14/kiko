@@ -126,6 +126,39 @@ describe('AddTransactionFab', () => {
     expect(flattened.right).toBe(16);
   });
 
+  it('follows a new bottom clearance on re-render', async () => {
+    const { getByLabelText, rerender } = await render(
+      <AddTransactionFab onPress={() => undefined} bottomOffset={100} />,
+    );
+
+    await rerender(<AddTransactionFab onPress={() => undefined} bottomOffset={200} />);
+
+    expect(StyleSheet.flatten(getByLabelText('Add transaction').props.style).bottom).toBe(216);
+  });
+
+  it('does not dim while at rest', async () => {
+    const { getByLabelText } = await render(
+      <AddTransactionFab onPress={() => undefined} bottomOffset={0} />,
+    );
+
+    expect(
+      StyleSheet.flatten(getByLabelText('Add transaction').props.style).opacity,
+    ).toBeUndefined();
+  });
+
+  it('dims while pressed in', async () => {
+    const { getByLabelText } = await render(
+      <AddTransactionFab onPress={() => undefined} bottomOffset={0} />,
+    );
+
+    await fireEvent(getByLabelText('Add transaction'), 'responderGrant', {
+      nativeEvent: {},
+      persist: () => undefined,
+    });
+
+    expect(StyleSheet.flatten(getByLabelText('Add transaction').props.style).opacity).toBe(0.85);
+  });
+
   describe('follows the edge the system puts a vertical tab bar on', () => {
     const flattenedFab = async (bottomOffset: number) => {
       const { getByLabelText } = await render(
