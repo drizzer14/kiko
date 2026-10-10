@@ -318,6 +318,9 @@ export type StatisticsStackParamList = {
   Statistics: undefined;
   Home: undefined;
   TransactionForm: TransactionFormParams;
+  // The two create forms an empty holding picker's "Add holding" row opens, as in the Home stack.
+  AccountForm: AccountsStackParamList['AccountForm'];
+  HoldingForm: HoldingFormParams;
 };
 
 /**

@@ -33,6 +33,10 @@ describe('StatisticsStack', () => {
     expect(screenNames()).toContain('Statistics');
   });
 
+  it('registers the create forms the Transaction form opens from an empty holding picker', () => {
+    expect(screenNames()).toEqual(expect.arrayContaining(['AccountForm', 'HoldingForm']));
+  });
+
   it('titles the Statistics screen with the translated statistics.title', () => {
     const navigator = StatisticsStack({}) as ReactElement<{
       children: ReactElement<{ name: string; options: { title: string } }>[];

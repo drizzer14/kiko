@@ -37,23 +37,13 @@ jest.mock('@kiko/screens/accounts', () => {
   return { __esModule: true, default: AccountsScreenStub };
 });
 jest.mock('@kiko/db/use-live-query', () => ({
-  useLiveQuery: (query: { __kind?: string }, tables: string[]) => {
-    if (query.__kind === 'settings') {
-      return { data: [{ dismissedTips: [] }], isLoading: false };
-    }
-
+  useLiveQuery: (_query: unknown, tables: string[]) => {
     const dataByTable: Record<string, unknown[]> = {
       holdings: mockHoldings,
       categories: mockCategories,
     };
 
     return { data: dataByTable[tables[0]] ?? [], isLoading: false };
-  },
-}));
-jest.mock('@kiko/settings/settings.repo', () => ({
-  settingsRepo: {
-    getQuery: () => ({ __kind: 'settings', toSQL: () => ({ sql: '', params: [] }) }),
-    dismissTip: jest.fn().mockResolvedValue(undefined),
   },
 }));
 jest.mock('@kiko/transactions/repo', () => ({
