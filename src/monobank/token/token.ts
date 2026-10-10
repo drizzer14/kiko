@@ -2,8 +2,8 @@ import * as Keychain from 'react-native-keychain';
 
 /**
  * The single GLOBAL Monobank token service. Historically the app stored ONE
- * Monobank token per device under this service. The multi-account plan
- * (2026-09-11) moves the secret to a PER-ACCOUNT item (`serviceFor` below);
+ * Monobank token per device under this service. Multi-account support keeps the
+ * secret in a PER-ACCOUNT item (`serviceFor` below);
  * this global item is now transitional — it is what `migrate-credential.ts`
  * reads and clears once the token is bound to its connected account.
  */

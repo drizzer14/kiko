@@ -125,6 +125,24 @@ describe('ExchangeFields', () => {
     expect(getAllByText(title).length).toBe(before + 1);
   });
 
+  it('forwards onCreateDestination to the empty destination sheet', async () => {
+    const onCreateDestination = jest.fn();
+    const { getByLabelText, getByText } = await setup({ onCreateDestination });
+
+    await fireEvent.press(getByLabelText('To'));
+    await fireEvent.press(getByText('Add holding'));
+
+    expect(onCreateDestination).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows no "Add holding" row without onCreateDestination', async () => {
+    const { getByLabelText, queryByText } = await setup();
+
+    await fireEvent.press(getByLabelText('To'));
+
+    expect(queryByText('Add holding')).toBeNull();
+  });
+
   it('applies valueInError to the Value in field', async () => {
     const { getByLabelText, getByText } = await setup({
       valueInError: 'Enter a Value in greater than 0.',

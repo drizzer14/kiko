@@ -1,4 +1,4 @@
-import { holdingFormDraft, holdingFormTarget } from './holding-form-target';
+import { holdingFormDraft, holdingFormStart, holdingFormTarget } from './holding-form-target';
 
 describe('holdingFormTarget', () => {
   it('targets the named account when the route carries an accountId', () => {
@@ -28,6 +28,28 @@ describe('holdingFormTarget', () => {
     expect(holdingFormTarget({ accountId: 'account-1', holdingId: 'holding-1' })).toEqual({
       kind: 'account',
       accountId: 'account-1',
+    });
+  });
+});
+
+describe('holdingFormStart', () => {
+  it('reads the type and currency an account route carries', () => {
+    expect(
+      holdingFormStart({ accountId: 'account-1', initialType: 'cash', initialCurrency: 'USD' }),
+    ).toEqual({ type: 'cash', currency: 'USD' });
+  });
+
+  it('names no type and the default currency for an account route that carries neither', () => {
+    expect(holdingFormStart({ accountId: 'account-1' })).toEqual({
+      type: undefined,
+      currency: 'UAH',
+    });
+  });
+
+  it('names no type and the default currency for an implicit route', () => {
+    expect(holdingFormStart({ implicitKind: 'debt' })).toEqual({
+      type: undefined,
+      currency: 'UAH',
     });
   });
 });

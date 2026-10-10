@@ -39,6 +39,7 @@ const EmptyState: FC<EmptyStateProps> = ({ icon, title, message, action, testID 
         <View style={styles.action}>
           <Button
             variant="primary"
+            size="small"
             fullWidth={false}
             icon={resolved.icon}
             onPress={resolved.onPress}

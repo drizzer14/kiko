@@ -184,6 +184,7 @@ export const uk: typeof en = {
   },
   forms: {
     fields: {
+      addHolding: 'Додати актив',
       amount: 'Сума',
       color: 'Колір',
       currency: 'Валюта',
@@ -606,6 +607,10 @@ export const uk: typeof en = {
       binance: 'Акаунт буде відʼєднано, але ви можете й надалі керувати ним вручну.',
       wallet: 'Гаманець буде відʼєднано, але ви можете й надалі керувати ним вручну.',
     },
+    emptyHoldings: {
+      message: 'Додайте актив, щоб відстежувати баланс цього рахунку.',
+      title: 'Ще немає активів',
+    },
     holdingsHeading: 'Активи',
     importStatement: 'Імпортувати виписку',
     invalidApiKeyOrSecret: 'Недійсний API ключ або секрет',
@@ -739,22 +744,13 @@ export const uk: typeof en = {
       title: 'Почніть зі створення рахунку',
     },
   },
-  tips: {
-    applyToAll:
-      'Змініть категорію та збережіть: ви можете застосувати її до кожної транзакції з такою самою назвою, зараз і в майбутніх імпортах.',
-    categories: 'Створіть власні категорії та оберіть для них іконку й колір.',
-    close: 'Закрити підказку',
-    importStatement:
-      'Експортуйте виписку в застосунку свого банку як CSV або XLSX, а потім імпортуйте її сюди.',
-  },
   help: {
     actions: {
       openCategories: 'Відкрити категорії',
     },
     privacy: 'Усі ваші дані залишаються на цьому пристрої.',
-    rowLabel: 'Довідка та підказки',
-    showTipsAgain: 'Показати підказки знову',
-    title: 'Довідка та підказки',
+    rowLabel: 'Довідка',
+    title: 'Довідка',
     topics: {
       addAccount: {
         rowLabel: 'Додати рахунок',
@@ -812,7 +808,7 @@ export const uk: typeof en = {
       // i18next's uk plural rule: _one (1 категорія), _few (2-4 категорії),
       // _many (0, 5-20 категорій), _other (fractional, unreachable here).
       // uk is sentence case everywhere, so the noun stays lowercase even
-      // mid-string here (CASE track, 2026-09-24).
+      // mid-string here.
       button: {
         allCategories: 'Всі категорії',
         manual_one: '{{count}} категорія',
@@ -864,6 +860,8 @@ export const uk: typeof en = {
   },
   migrations: {
     error: 'Помилка міграції: {{message}}',
+    keyMissing:
+      'Кіко не може прочитати свій ключ шифрування, тому ваші дані залишаються заблокованими. Нічого не змінено. Закрийте й знову відкрийте Кіко. Не видаляйте застосунок: це стерло б ваші дані.',
     preparing: 'Підготовка бази даних…',
   },
   statementImport: {

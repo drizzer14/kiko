@@ -27,8 +27,10 @@
 // this test the moment it renders wrong, until it is added to `TITLE_KEYS`
 // on purpose. Every entry in `TITLE_KEYS` is verified by call site (a nav
 // `options.title`/`navigation.setOptions`, a `variant="heading"` `Text`, or
-// a `BottomSheet`/`ConfirmSheet` title/header prop) against its own real
-// call site.
+// a `BottomSheet`/`ConfirmSheet` title/header prop), except the three
+// Settings-root row labels (`help.rowLabel`, `settings.dataExport.rowLabel`,
+// `settings.dataImport.rowLabel`), which are listed by user ruling and are
+// not headings at any call site.
 //
 // `columnMapping.rawPreview` and `forms.transaction.applyCategoryToAll`
 // look like ordinary sentence-case keys by name, but both render through
@@ -187,6 +189,22 @@ describe('en catalog casing follows one rule per UI role', () => {
       .filter(([, , violations]) => violations.length > 0);
 
     expect(offenders).toEqual([]);
+  });
+
+  it('keeps every Help topic row label in sentence case, outside TITLE_KEYS', () => {
+    const topicRowLabels = flattenCatalog(en).filter(({ path }) =>
+      /^help\.topics\.[^.]+\.rowLabel$/.test(path),
+    );
+
+    expect(topicRowLabels.length).toBeGreaterThan(0);
+
+    const listedAsTitles = topicRowLabels.filter(({ path }) => TITLE_KEYS.has(path));
+    const notSentenceCase = topicRowLabels.filter(
+      ({ value }) => sentenceCaseViolations(value).length > 0,
+    );
+
+    expect(listedAsTitles).toEqual([]);
+    expect(notSentenceCase).toEqual([]);
   });
 
   it('renders every button, chip/segment, menu item, field label, caption, placeholder, error, and hint in sentence case', () => {

@@ -37,9 +37,11 @@ Rules:
   severity, and a one- or two-sentence proposed fix in words.
 - Be honest about coverage: state what you verified vs what you only estimated (performance
   claims you did not profile especially). Rank findings most-severe first.
-- Report your findings back in your return message the moment the audit is done, then
-  end the turn — no extra checks or silent waiting after. Run any long-running scan in
-  the background and wait only for its exit code; past 30 minutes on one step, report
-  "still running: <step>, <elapsed>" instead of going quiet. You persist nothing
-  yourself — the orchestrator hands a durable audit doc to the scribe, and hands fixes
-  to the developer.
+- Report back by calling the SubagentHandback tool with {message: <your full report>} as your LAST
+  action, in a turn with no prose before the call. Never write the report or the call as plain
+  text or XML; if you already did, call the tool anyway. Put pass/fail (and the exit code, where
+  there is one) first inside the message. Then include the ranked findings. No extra checks or
+  silent waiting after. Run any long-running scan in the background and wait only for its exit
+  code; past 30 minutes on one step, report "still running: <step>, <elapsed>" instead of going
+  quiet. You persist nothing yourself — the orchestrator hands a durable audit doc to the scribe,
+  and hands fixes to the developer.

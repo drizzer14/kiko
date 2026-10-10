@@ -1,4 +1,6 @@
 import { match, P } from 'ts-pattern';
+import type { Currency } from '@kiko/currency/currency';
+import type { HoldingType } from '@kiko/holdings/holding-type';
 import type { ImplicitAccountKind } from '@kiko/holdings/implicit-account';
 import type { AccountsStackParamList, FormDraft } from '@kiko/navigation/types';
 
@@ -27,6 +29,24 @@ export const holdingFormTarget = (
       }),
     )
     .exhaustive();
+
+type HoldingFormStart = { type: HoldingType | undefined; currency: Currency };
+
+const DEFAULT_CURRENCY: Currency = 'UAH';
+
+// The type and currency a create on a named account opens with, when the route
+// carries them; any other route leaves the type to the first the account offers
+// and the currency to the default.
+export const holdingFormStart = (params: AccountsStackParamList['HoldingForm']): HoldingFormStart =>
+  match(params)
+    .with(
+      { accountId: P.string },
+      ({ initialType, initialCurrency }): HoldingFormStart => ({
+        type: initialType,
+        currency: initialCurrency ?? DEFAULT_CURRENCY,
+      }),
+    )
+    .otherwise(() => ({ type: undefined, currency: DEFAULT_CURRENCY }));
 
 const EMPTY_DRAFT: FormDraft = { name: '', icon: null, color: null };
 

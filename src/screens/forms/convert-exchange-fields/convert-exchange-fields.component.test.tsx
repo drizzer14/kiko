@@ -24,6 +24,7 @@ const options: HoldingSelectOption[] = [
     color: '#3366FF',
     currency: 'USD',
     accountName: 'Wallet',
+    createdAt: 0,
   },
 ];
 
@@ -148,6 +149,32 @@ describe('ConvertExchangeFields', () => {
     await fireEvent.press(getByLabelText('Date'));
 
     expect(getByTestId('Date calendar').props.maxDate).toBe('2026-10-05');
+  });
+
+  it('forwards onCreateCounterpart to the empty counterpart sheet', async () => {
+    const onCreateCounterpart = jest.fn();
+    const { getByLabelText, getByText } = await render(
+      <ConvertExchangeFields
+        {...baseProps}
+        counterpartOptions={[]}
+        onCreateCounterpart={onCreateCounterpart}
+      />,
+    );
+
+    await fireEvent.press(getByLabelText('To'));
+    await fireEvent.press(getByText('Add holding'));
+
+    expect(onCreateCounterpart).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows no "Add holding" row without onCreateCounterpart', async () => {
+    const { getByLabelText, queryByText } = await render(
+      <ConvertExchangeFields {...baseProps} counterpartOptions={[]} />,
+    );
+
+    await fireEvent.press(getByLabelText('To'));
+
+    expect(queryByText('Add holding')).toBeNull();
   });
 
   it('applies counterpartAmountError to the counterpart amount field', async () => {

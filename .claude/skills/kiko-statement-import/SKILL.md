@@ -608,11 +608,9 @@ follow the same layout conventions as every other Kiko screen:
 - **The "import finished" sheet is `useImportResultSheet`**
   (`src/statement-import/use-import-result-sheet/`), shared by both
   screens: `useImportResultSheet({ navigation, accountId, accountName })`
-  returns `{ sheetProps, show }`. `show` is `(result) => Promise<void>`: it
-  opens the sheet, then dismisses the account-detail import-statement tip
-  through `settingsRepo.dismissTip` (a failed dismiss is only logged), so a
-  screen awaits it inside its import `try`. A screen calls
-  `await show(await import…())` after the import and spreads `sheetProps` onto `ImportResultSheet`.
+  returns `{ sheetProps, show }`. `show` is `(result) => void`: it
+  opens the sheet and writes nothing. A screen calls
+  `show(await import…())` after the import and spreads `sheetProps` onto `ImportResultSheet`.
   The hook owns the visible flag, the never-cleared result, the
   Done-closes-first rule, and the one `popTo('AccountDetail', …)` (or
   `goBack()` while `accountName` is `undefined`, i.e. the account row has

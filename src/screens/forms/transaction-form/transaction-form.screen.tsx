@@ -9,7 +9,6 @@ import {
   useState,
 } from 'react';
 import { match } from 'ts-pattern';
-import { useTip } from '@kiko/tips';
 import { maxOf } from '@kiko/numbers';
 import {
   canConvertToExchange,
@@ -31,12 +30,14 @@ import {
   isExchangeSourceType,
 } from '@kiko/holdings/exchange-destination';
 import { accountsRepo } from '@kiko/accounts';
-import { settingsRepo } from '@kiko/settings';
 import { useTranslation } from 'react-i18next';
-import { logOnFailure } from '@kiko/diagnostics';
 import HoldingSelectField, {
   type HoldingSelectOption,
 } from '@kiko/screens/forms/holding-select-field';
+import {
+  type CreateHoldingRoute,
+  resolveCreateHoldingTarget,
+} from '@kiko/screens/forms/create-holding-target';
 import { holdingsRepo } from '@kiko/holdings/repo';
 import { parseAmount } from '@kiko/currency/parse';
 import Box from '@kiko/design-system/components/box';
@@ -50,7 +51,6 @@ import { buildRateTable } from '@kiko/rates/net-worth-view';
 import DateTimeRow from '@kiko/screens/forms/date-time-row';
 import { type TextInputInstance, View } from 'react-native';
 import Divider from '@kiko/design-system/components/divider';
-import TipCard from '@kiko/design-system/components/tip-card';
 import SymbolIcon from '@kiko/design-system/components/symbol';
 import CategoryField from '@kiko/screens/forms/category-field';
 import ExchangeFields from '@kiko/screens/forms/exchange-fields';
@@ -83,15 +83,17 @@ import { useLiveQuery, type AccountRow, type HoldingRow, type TransactionRow } f
 
 // This screen is registered in BOTH the Home and Accounts stacks (Home lists
 // every transaction; Accounts reaches it from a holding), so it cannot bind its
-// props to a single stack's param list. It only needs the route params and two
-// navigation methods, so it declares exactly that minimal shape — structurally
-// satisfied by either stack's generated props.
+// props to a single stack's param list. It only needs the route params and a few
+// navigation methods (`navigate` for the create forms both stacks register), so
+// it declares exactly that minimal shape — structurally satisfied by either
+// stack's generated props.
 type TransactionFormScreenProps = {
   route: { params: TransactionFormParams };
   navigation: {
     goBack: () => void;
     setOptions: (options: { title: string }) => void;
     setParams: (params: { draft: TransactionFormDraft }) => void;
+    navigate: (...route: CreateHoldingRoute) => void;
   };
 };
 
@@ -820,6 +822,7 @@ const renderPrimaryHoldingField = (props: {
   options: readonly HoldingSelectOption[];
   selectedId: string | null;
   onSelect: (id: string) => void;
+  onCreateNew: () => void;
 }): ReactElement | null => {
   if (!props.visible) {
     return null;
@@ -833,6 +836,7 @@ const renderPrimaryHoldingField = (props: {
       options={props.options}
       selectedId={props.selectedId}
       onSelect={props.onSelect}
+      onCreateNew={props.onCreateNew}
       required
     />
   );
@@ -1039,6 +1043,14 @@ type ConvertView = {
   counterpartAmountLabel: string;
 };
 
+// The holding types the convert counterpart picker lists: an expense-sourced
+// convert picks a DESTINATION (wider: excludes bond/jar), an income-sourced one
+// picks a SOURCE (wider: cash/card only).
+const convertCounterpartType = (
+  direction: ExchangeConvertDirection | null,
+): ((type: HoldingRow['type']) => boolean) =>
+  direction === 'record-source' ? isExchangeSourceType : isExchangeDestinationType;
+
 const resolveConvertView = (
   existing: Pick<TransactionRow, 'amountMinorUnits'> | undefined,
   isEditing: boolean,
@@ -1062,8 +1074,7 @@ const resolveConvertView = (
     holding !== undefined &&
     canConvertToExchange(holding.type, existing.amountMinorUnits);
   const direction = existing ? exchangeConvertDirection(existing.amountMinorUnits) : null;
-  // An expense-sourced convert picks a DESTINATION (wider: excludes bond/jar);
-  // an income-sourced convert picks a SOURCE (wider: cash/card only). Excludes
+  // The counterpart picker's types are `convertCounterpartType`'s. Excludes
   // the existing holding, closed holdings, and a synced/syncable holding —
   // the counterpart is a NEW manual leg `save` writes, and a sync already
   // owns that holding's balance — and carries account names.
@@ -1073,7 +1084,7 @@ const resolveConvertView = (
     accountNameById,
     accountOrderById,
     holdingId,
-    direction === 'record-source' ? isExchangeSourceType : isExchangeDestinationType,
+    convertCounterpartType(direction),
   ).filter((option) => !syncableIds.has(option.id));
   // The fixed side's display value: the existing amount in the existing
   // holding's currency, formatted the same way the Amount input shows it.
@@ -1113,6 +1124,7 @@ type FieldGroupProps = {
   convertView: ConvertView;
   counterpartHoldingId: string | null;
   onSelectCounterpart: (id: string) => void;
+  onCreateCounterpart: () => void;
   counterpartAmount: string;
   onChangeCounterpartAmount: (text: string) => void;
   isExchange: boolean;
@@ -1124,6 +1136,7 @@ type FieldGroupProps = {
   destinationOptions: HoldingSelectOption[];
   destinationHoldingId: string | null;
   onSelectDestination: (id: string) => void;
+  onCreateDestination: () => void;
   valueIn: string;
   onChangeValueIn: (text: string) => void;
   // The destination holding's currency glyph, shown as the Value-In field's
@@ -1193,6 +1206,7 @@ const renderFieldGroup = (props: FieldGroupProps): ReactElement => {
         counterpartOptions={props.convertView.options}
         counterpartHoldingId={props.counterpartHoldingId}
         onSelectCounterpart={props.onSelectCounterpart}
+        onCreateCounterpart={props.onCreateCounterpart}
         counterpartAmountLabel={props.convertView.counterpartAmountLabel}
         counterpartAmount={props.counterpartAmount}
         onChangeCounterpartAmount={props.onChangeCounterpartAmount}
@@ -1217,6 +1231,7 @@ const renderFieldGroup = (props: FieldGroupProps): ReactElement => {
         destinationOptions={props.destinationOptions}
         destinationHoldingId={props.destinationHoldingId}
         onSelectDestination={props.onSelectDestination}
+        onCreateDestination={props.onCreateDestination}
         valueIn={props.valueIn}
         onChangeValueIn={props.onChangeValueIn}
         valueInSuffix={props.valueInSuffix}
@@ -1295,6 +1310,7 @@ type SplitReturnsProps = {
   returns: readonly ChangeReturnRow[];
   buildOptions: (index: number) => HoldingSelectOption[];
   onSelectHolding: (index: number, holdingId: string) => void;
+  onCreateHolding: () => void;
   onChangeAmount: (index: number, text: string) => void;
   onRemove: (index: number) => void;
   onAdd: () => void;
@@ -1352,6 +1368,7 @@ const renderSplitReturns = (props: SplitReturnsProps): ReactElement | null => {
               options={props.buildOptions(index)}
               selectedId={row.holdingId}
               onSelect={(holdingId) => props.onSelectHolding(index, holdingId)}
+              onCreateNew={props.onCreateHolding}
               required
               invalid={invalid}
             />
@@ -1476,8 +1493,6 @@ type ModeAndActionsProps = {
   convertEligible: boolean;
   onPressConvert: () => void;
   isEditing: boolean;
-  // The apply-to-all tip: one card directly above the category picker.
-  tip: { visible: boolean; dismiss: () => void };
   t: TFunction;
   // The category picker's own validation-failure message, or `undefined` when
   // valid — the `CategoryField` renders it under itself and turns its label
@@ -1504,15 +1519,6 @@ const renderModeAndActions = (props: ModeAndActionsProps): ReactElement | null =
         This helper owns only the category picker and the "Convert to
         exchange" action — everything below the field group except while
         converting. */}
-
-      {props.tip.visible && (
-        <TipCard
-          testID="tip-apply-to-all"
-          message={props.t('tips.applyToAll')}
-          closeLabel={props.t('tips.close')}
-          onClose={props.tip.dismiss}
-        />
-      )}
 
       {/* The category picker is ALWAYS editable on an income/expense row —
         even on a synced row — since a category edit propagates to every
@@ -1612,27 +1618,6 @@ const resolvePendingCategory = (
   };
 };
 
-// The tip points at the category picker of an existing income/expense row, and only until an
-// override rule exists: the first one is what the tip teaches. An exchange leg is excluded by its
-// row, not by the form mode: an edit never reaches the exchange mode, and an untouched leg's
-// category change writes that row only, so the tip's promise would be false. The rules read
-// returns an empty list until its first load, so the tip waits for it. Module-level so its `&&`
-// chain stays out of the screen's cognitive-complexity budget. A row with a blank name is excluded
-// too: `resolveCategoryOverrideRequest` never opens the sheet for one, so the tip could not be
-// dismissed by its own gesture.
-const isApplyToAllTipEligible = (input: {
-  existing: Pick<TransactionRow, 'exchangeCounterpartHoldingId' | 'description'> | undefined;
-  categoryCount: number;
-  overrideRuleCount: number;
-  overrideRulesLoading: boolean;
-}): boolean =>
-  input.existing !== undefined &&
-  input.existing.exchangeCounterpartHoldingId === null &&
-  normalizeTransactionName(input.existing.description) !== '' &&
-  input.categoryCount > 0 &&
-  !input.overrideRulesLoading &&
-  input.overrideRuleCount === 0;
-
 const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigation }) => {
   const { theme } = useUnistyles();
   const { t } = useTranslation();
@@ -1711,10 +1696,9 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   // name lookup map, so a create can pre-select a category from the settled
   // description on blur. Matching is JS-normalized (never SQL), mirroring the
   // sync insert path — see `ruleCategoryFor` and the description blur handler.
-  const { data: overrideRules, isLoading: overrideRulesLoading } = useLiveQuery(
-    categoryOverridesRepo.allQuery(),
-    ['category_overrides'],
-  );
+  const { data: overrideRules } = useLiveQuery(categoryOverridesRepo.allQuery(), [
+    'category_overrides',
+  ]);
   const categoryByNormalizedName = useMemo(
     () => new Map(overrideRules.map((rule) => [rule.normalizedName, rule.category])),
     [overrideRules],
@@ -1765,6 +1749,25 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   // leg (plain amount, Exchange Value Out, and the convert fixed leg) all read
   // the current holding's currency.
   const amountSuffix = holding ? currencySymbol[holding.currency] : '';
+  // An empty picker's "Add holding" row opens the create form with `navigate`,
+  // so this form stays mounted underneath with its draft. A picker tied to this
+  // form's own holding creates in that holding's account when that account can
+  // create a type the picker lists (`accepts`). A picker that lists one currency
+  // only (a return row, in the payer's) passes it on, so the form opens in it.
+  const openCreateHoldingIn =
+    (
+      anchorAccountId: string | undefined,
+      accepts: (type: HoldingRow['type']) => boolean,
+      pickerCurrency?: Currency,
+    ) =>
+    (): void => {
+      navigation.navigate(
+        ...resolveCreateHoldingTarget(
+          { anchorAccountId, accepts, currency: pickerCurrency },
+          accounts,
+        ),
+      );
+    };
 
   // The picker's eligible options (open, non-synced, transaction-eligible),
   // Accounts-ordered — also the fallback source when the user has no manual
@@ -1853,15 +1856,6 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   const [description, setDescription] = useState(opening.description);
   const [mode, setMode] = useState<FormMode>(opening.mode);
   const isExchange = mode === 'exchange';
-  const applyToAllTip = useTip(
-    'transaction.applyToAll',
-    isApplyToAllTipEligible({
-      existing,
-      categoryCount: categories.length,
-      overrideRuleCount: overrideRules.length,
-      overrideRulesLoading,
-    }),
-  );
   const isSplit = mode === 'split';
   const { scrollableRef, onContentSizeChange, scrollTo } = useScrollToField();
   // Per-field wrapper refs, one per validated field, passed to `scrollTo`
@@ -2272,11 +2266,6 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
         pendingOverride.name,
         pendingOverride.category,
       );
-      // Applying a rule answers the tip; a failed dismiss only shows the tip once more, so it is
-      // logged, not alerted, and never blocks leaving.
-      await logOnFailure('[tips] dismiss failed', () =>
-        settingsRepo.dismissTip('transaction.applyToAll'),
-      );
       navigation.goBack();
     } catch {
       showSaveErrorAlert();
@@ -2676,6 +2665,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
             options: primaryOptions,
             selectedId: primaryHoldingId,
             onSelect: setPrimaryHoldingId,
+            onCreateNew: openCreateHoldingIn(undefined, isTransactionEligibleType),
           })}
 
           {/* The transaction-TYPE selector, directly under the Holding select.
@@ -2698,6 +2688,10 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
             convertView,
             counterpartHoldingId,
             onSelectCounterpart: selectCounterpart,
+            onCreateCounterpart: openCreateHoldingIn(
+              holding?.accountId,
+              convertCounterpartType(convertView.direction),
+            ),
             counterpartAmount,
             onChangeCounterpartAmount: (text) => setCounterpartAmount(groupAmount(text)),
             isExchange,
@@ -2710,6 +2704,10 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
             destinationOptions,
             destinationHoldingId,
             onSelectDestination: setDestinationHoldingId,
+            onCreateDestination: openCreateHoldingIn(
+              holding?.accountId,
+              isExchangeCreateDestinationType,
+            ),
             valueIn,
             onChangeValueIn: (text) => setValueIn(groupAmount(text)),
             valueInSuffix: holdingSuffix(holdings, destinationHoldingId),
@@ -2783,6 +2781,11 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
               returns: changeReturns,
               buildOptions: returnOptionsFor,
               onSelectHolding: selectReturnHolding,
+              onCreateHolding: openCreateHoldingIn(
+                holding?.accountId,
+                isTransactionEligibleType,
+                holding?.currency,
+              ),
               onChangeAmount: changeReturnAmount,
               onRemove: removeReturn,
               onAdd: addReturn,
@@ -2808,7 +2811,6 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
             convertEligible: convertView.eligible,
             onPressConvert: () => setConverting(true),
             isEditing,
-            tip: applyToAllTip,
             t,
             categoryError: fieldError('selectedCategory'),
             categoryFieldRef,

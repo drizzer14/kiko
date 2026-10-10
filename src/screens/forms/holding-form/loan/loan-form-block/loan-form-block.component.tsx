@@ -18,6 +18,7 @@ const LoanFormBlock: FC<LoanFormBlockProps> = ({
   fields,
   attemptedSave,
   paymentHoldingOptions,
+  onCreatePaymentHolding,
 }) => {
   const { t } = useTranslation();
   const { fieldErrors, refs } = fields;
@@ -58,6 +59,7 @@ const LoanFormBlock: FC<LoanFormBlockProps> = ({
         paymentHoldingId={fields.paymentHoldingId}
         onSelectPaymentHoldingId={fields.setPaymentHoldingId}
         paymentHoldingOptions={paymentHoldingOptions}
+        onCreatePaymentHolding={onCreatePaymentHolding}
         lenderName={fields.lenderName}
         onChangeLenderName={fields.setLenderName}
         lenderIban={fields.lenderIban}

@@ -11,10 +11,10 @@ export type ClipboardTextFieldProps = {
   pasteAccessibilityLabel: string;
   secureTextEntry?: boolean;
   // The validation-failure message for this field, or `undefined` when it's
-  // currently valid — forwarded straight to the inner `TextField`'s own
-  // `error` prop (same REFLOW-not-reserve contract, see
-  // text-field.props.d.ts). Also tints this field's own `FieldLabel` negative,
-  // since the caption renders OUTSIDE `TextField` here (see this component's
-  // own doc comment).
+  // currently valid — rendered as a `FieldError` below the input/paste row
+  // (same REFLOW-not-reserve contract, see text-field.props.d.ts), not inside
+  // `TextField`, so the paste button stays centered on the input. Also tints
+  // this field's own `FieldLabel` negative, since the caption renders OUTSIDE
+  // `TextField` here (see this component's own doc comment).
   error?: string;
 };

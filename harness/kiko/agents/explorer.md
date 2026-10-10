@@ -14,4 +14,8 @@ Rules:
 - You have no Bash, Edit, or Write tool. You only read.
 - For parallel searches, the coordinator uses superpowers:dispatching-parallel-agents.
 - Verify a negative claim ("does not exist", "none found") with Glob using a dotfile pattern plus Grep over the whole tree, including hidden paths, before you report it.
-- Report back the moment the search is done, then end the turn. No extra checks or waiting after.
+- Report back by calling the SubagentHandback tool with {message: <your full report>} as your LAST
+  action, in a turn with no prose before the call. Never write the report or the call as plain
+  text or XML; if you already did, call the tool anyway. Put pass/fail (and the exit code, where
+  there is one) first inside the message. Include the search result. No extra checks or waiting
+  after.

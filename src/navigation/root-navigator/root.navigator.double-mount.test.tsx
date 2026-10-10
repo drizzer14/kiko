@@ -10,7 +10,6 @@ import {
   type ParamListBase,
 } from '@react-navigation/native';
 import { accountsRepo } from '@kiko/accounts';
-import { settingsRepo } from '@kiko/settings';
 import { holdingsRepo } from '@kiko/holdings/repo';
 import { remindersRepo } from '@kiko/reminders/repo';
 import { routeLatestResponse } from '@kiko/reminders/routing';
@@ -272,7 +271,7 @@ describe('the double-mount gate', () => {
 });
 
 // Categories is the Settings tab's default for the primary pane. It is on screen without being the
-// focused route, so the tip that points at it has to be answered by its visibility.
+// focused route, so its row is marked from the primary pane's route.
 describe('the Settings tab with Categories as its default', () => {
   beforeEach(() => {
     mockSubscriptions.clear();
@@ -281,13 +280,9 @@ describe('the Settings tab with Categories as its default', () => {
     mockLayoutMode = 'columns';
   });
 
-  it('answers the categories tip once the tab shows it, and marks its row', async () => {
-    const dismissTip = jest.spyOn(settingsRepo, 'dismissTip').mockResolvedValue(undefined);
+  it('marks the Categories row once the tab shows it', async () => {
     // The walk opens the Settings tab among the others and comes back to Home.
     const { getByTestId } = await walkTabs();
-
-    expect(dismissTip).toHaveBeenCalledTimes(1);
-    expect(dismissTip).toHaveBeenCalledWith('settings.categories');
 
     await goTo('SettingsTab');
 
@@ -295,8 +290,6 @@ describe('the Settings tab with Categories as its default', () => {
       selected: true,
     });
     expect(getByTestId('settings-row-help').props.accessibilityState).toEqual({ selected: false });
-
-    dismissTip.mockRestore();
   });
 });
 

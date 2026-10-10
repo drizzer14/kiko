@@ -78,7 +78,7 @@ export const SHEET_DRAG_GESTURE_TEST_ID = 'bottom-sheet-drag';
  *
  * The scrim itself is a frosted dim, not opaque black: a real Liquid Glass
  * blur (`LiquidGlassView`, `effect="regular"`, tinted with `theme.colors.scrim`)
- * on iOS 26+, a flat translucent-black `View` everywhere else, structurally
+ * on iOS 26+, a flat `scrimFallback` (0.55) black `View` everywhere else, structurally
  * branched on `isLiquidGlassSupported` the same way `GlassSurface` branches —
  * see `kiko-design-system`'s "GlassSurface `isLiquidGlassSupported` branch".
  * `LiquidGlassView` never blocks the dismiss tap: it is a non-interactive
@@ -103,8 +103,9 @@ export const SHEET_DRAG_GESTURE_TEST_ID = 'bottom-sheet-drag';
  * `GlassSurface`'s `material` variant rather than a fork of its layering — the
  * live see-through Liquid Glass on iOS 26+ (no backdrop under it, so it
  * samples the actual content behind the sheet for a true blur, not a
- * color-pinned near-opaque panel), the same themed flat TRANSLUCENT fallback
- * elsewhere. A modal sheet's backdrop is static while it is open, so the
+ * color-pinned near-opaque panel). Below iOS 26 there is no glass, so the card
+ * is a plain opaque `sheetBackground` `View` instead (`styles.sheetFallbackFill`).
+ * A modal sheet's backdrop is static while it is open, so the
  * lightness-drift concern that motivates `transparent`'s partial-pin backdrop
  * for a scrolling CARD does not apply here — `material` is `transparent`'s
  * sibling variant for exactly this static-backdrop case (see
@@ -349,14 +350,26 @@ const BottomSheet: FC<BottomSheetProps> = ({
           }}
           testID={testID}
         >
-          <GlassSurface
-            material
-            bloom
-            radius="lg"
-            padding={0}
-            style={styles.glassFill}
-            testID={testID && `${testID}-glass`}
-          />
+          {/* Below iOS 26 there is no glass to sample, and GlassSurface's
+              `material`/`bloom` fallback is a translucent fill, which reads as a
+              flat black dim on a sheet. The opaque fill is a plain View so the
+              sheet's fallback look does not depend on that shared primitive. */}
+          {isLiquidGlassSupported ? (
+            <GlassSurface
+              material
+              bloom
+              radius="lg"
+              padding={0}
+              style={styles.glassFill}
+              testID={testID && `${testID}-glass`}
+            />
+          ) : (
+            <View
+              style={[styles.glassFill, styles.sheetFallbackFill]}
+              pointerEvents="none"
+              testID={testID && `${testID}-fill`}
+            />
+          )}
 
           {/* The grabber pill AND an optional `header` node share this one
               draggable region, so a drag anywhere across the header — not just

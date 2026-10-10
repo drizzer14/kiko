@@ -1,9 +1,11 @@
+import { useTranslation } from 'react-i18next';
 import { type ReactElement, useState } from 'react';
 import Box from '@kiko/design-system/components/box';
 import Text from '@kiko/design-system/components/text';
 import BottomSheet from '@kiko/design-system/components/bottom-sheet';
 import FieldTrigger from '@kiko/design-system/components/field-trigger';
 import SelectableRow from '@kiko/design-system/components/selectable-row';
+import { useSelectCreatedHolding } from '@kiko/screens/forms/holding-select-field';
 
 import type { PaymentHoldingFieldProps } from './payment-holding-field.props';
 
@@ -21,7 +23,8 @@ const NONE_ICON = 'xmark.circle';
 // auto-link caption/Undo) so the loan form's own "Paid from" field — an
 // optional holding link with no auto-link state of its own — can reuse the
 // same picker chrome without carrying transaction-form-only props it would
-// never use. Purely presentational: the caller builds and filters `options`.
+// never use. The caller builds and filters `options`; an empty list shows an
+// "Add holding" row (when `onCreateNew` is set).
 const PaymentHoldingField = ({
   label,
   sheetTitle,
@@ -30,13 +33,22 @@ const PaymentHoldingField = ({
   selectedId,
   onSelect,
   testID,
+  onCreateNew,
 }: PaymentHoldingFieldProps): ReactElement => {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
+  const startCreateRoundTrip = useSelectCreatedHolding(options, onSelect);
 
   const selected = options.find((option) => option.id === selectedId) ?? null;
 
   const handleSelect = (id: string | null): void => {
     onSelect(id);
+    setOpen(false);
+  };
+
+  const handleCreateNew = (createNew: () => void): void => {
+    startCreateRoundTrip();
+    createNew();
     setOpen(false);
   };
 
@@ -87,6 +99,16 @@ const PaymentHoldingField = ({
             />
           );
         })}
+
+        {onCreateNew && options.length === 0 && (
+          <SelectableRow
+            selected={false}
+            onPress={() => handleCreateNew(onCreateNew)}
+            label={t('forms.fields.addHolding')}
+            icon="plus"
+            testID={testID ? `${testID}-create-new` : undefined}
+          />
+        )}
       </BottomSheet>
     </Box>
   );

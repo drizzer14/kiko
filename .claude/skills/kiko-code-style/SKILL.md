@@ -227,6 +227,11 @@ reason from the current code; never only swap the verb ("was" to
 describe behavior the code does not have. When you delete or rename a
 label inside a comment, grep for pointers to it ("see X's ... comment").
 
+A comment carries no date of a ruling, a finding, or a plan ("user-approved
+2026-10-08", "Device finding", "(multi-account plan, 2026-09-11)", a dated docs path):
+that is history too. The `kiko-no-history-date-comment` Semgrep rule (ERROR) mechanizes
+those shapes; a date that is data (a fixture day, a DST day) stays.
+
 A comment names no task, step, finding, or spec id (`item 6`, `DEVICE BUG`,
 `Bug A2`, `Feature 1`, `SEC-C1`, `(A1)`): it states the reason itself. The
 `kiko-no-task-id-comment` Semgrep rule (WARNING until its sweep lands)

@@ -43,6 +43,9 @@ export type LoanSectionProps = {
   paymentHoldingId: string | null;
   onSelectPaymentHoldingId: (id: string | null) => void;
   paymentHoldingOptions: readonly HoldingSelectOption[];
+  // Opens the create form from the "Paid from" sheet's "Add holding" row, which
+  // shows only while `paymentHoldingOptions` is empty. Omit it to show no row.
+  onCreatePaymentHolding?: () => void;
   lenderName: string;
   onChangeLenderName: (text: string) => void;
   lenderIban: string;

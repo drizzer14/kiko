@@ -37,6 +37,7 @@ const CARD_OPTION = {
   color: '#3366CC',
   currency: 'UAH' as const,
   accountName: 'Monobank',
+  createdAt: 0,
 };
 
 describe('LoanSection', () => {
@@ -200,6 +201,32 @@ describe('LoanSection', () => {
     await fireEvent.press(getByText('Everyday card'));
 
     expect(onSelectPaymentHoldingId).toHaveBeenCalledWith('h1');
+  });
+
+  it('forwards onCreatePaymentHolding to the empty Paid-from sheet', async () => {
+    const onCreatePaymentHolding = jest.fn();
+    const { getByLabelText, getByText } = await render(
+      <LoanSection {...baseProps} onCreatePaymentHolding={onCreatePaymentHolding} />,
+    );
+
+    await fireEvent.press(getByLabelText('Paid from'));
+    await fireEvent.press(getByText('Add holding'));
+
+    expect(onCreatePaymentHolding).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows no "Add holding" row once the Paid-from sheet has a holding', async () => {
+    const { getByLabelText, queryByText } = await render(
+      <LoanSection
+        {...baseProps}
+        paymentHoldingOptions={[CARD_OPTION]}
+        onCreatePaymentHolding={jest.fn()}
+      />,
+    );
+
+    await fireEvent.press(getByLabelText('Paid from'));
+
+    expect(queryByText('Add holding')).toBeNull();
   });
 
   it('reports the entered lender name and IBAN', async () => {

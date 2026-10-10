@@ -14,6 +14,7 @@ import ReminderFormScreen from '@kiko/screens/forms/reminder-form';
 import type { SettingsStackParamList } from '../types';
 import { createPaneStackNavigator } from '../pane-stack';
 import { resetTabStackOnBlur } from '../reset-tab-stack-on-blur';
+import { largeTitleScreenOptions } from '../large-title-screen-options';
 
 const Stack = createPaneStackNavigator<SettingsStackParamList>();
 
@@ -31,7 +32,7 @@ const SettingsStack: FC = () => {
   return (
     <Stack.Navigator
       paneConfig={PANE_CONFIG}
-      screenOptions={{ headerLargeTitle: true }}
+      screenOptions={largeTitleScreenOptions}
       screenListeners={resetTabStackOnBlur}
     >
       <Stack.Screen

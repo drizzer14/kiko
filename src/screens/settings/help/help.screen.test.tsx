@@ -17,14 +17,6 @@ import HelpScreen from './help.screen';
 
 type HelpProps = ComponentProps<typeof HelpScreen>;
 
-const mockResetTips = jest.fn((): Promise<void> => Promise.resolve());
-
-jest.mock('@kiko/settings/settings.repo', () => ({
-  settingsRepo: {
-    resetTips: () => mockResetTips(),
-  },
-}));
-
 const renderScreen = (navigation: NavigationSpy = navigationSpy()) =>
   render(
     <HelpScreen
@@ -93,17 +85,6 @@ describe('HelpScreen', () => {
     ).toEqual(expect.objectContaining({ textAlign: 'center' }));
   });
 
-  it('logs a failed tips reset under the help tag', async () => {
-    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
-    mockResetTips.mockRejectedValueOnce(new Error('boom'));
-    const { getByText } = await renderScreen();
-
-    await fireEvent.press(getByText('Show tips again'));
-
-    expect(warn).toHaveBeenCalledWith('[help] tips reset failed', expect.anything());
-    warn.mockRestore();
-  });
-
   it('opens a topic page with its id when a row is pressed', async () => {
     const navigation = navigationSpy();
     const { getByTestId } = await renderScreen(navigation);
@@ -113,20 +94,6 @@ describe('HelpScreen', () => {
     expect(navigation.navigate).toHaveBeenCalledWith('HelpTopic', {
       topicId: 'manageCategories',
     });
-  });
-
-  it('clears the dismissed tips once when "Show tips again" is pressed', async () => {
-    const { getByText } = await renderScreen();
-
-    await fireEvent.press(getByText('Show tips again'));
-
-    expect(mockResetTips).toHaveBeenCalledTimes(1);
-  });
-
-  it('does not clear the tips until the button is pressed', async () => {
-    await renderScreen();
-
-    expect(mockResetTips).not.toHaveBeenCalled();
   });
 
   it('shows the privacy line', async () => {

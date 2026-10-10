@@ -77,6 +77,18 @@ const titleByScreen = (): Record<string, string | undefined> =>
   );
 
 describe('AccountsStack', () => {
+  // Jest pins `isLiquidGlassSupported` to false (jest/setup.js), the iOS < 26
+  // tier, where the scrolled bar needs the blur react-native-screens omits.
+  it('uses the shared large-title options, with the scrolled-bar blur below iOS 26', () => {
+    const navigator = AccountsStack({}) as ReactElement<{ screenOptions: object }>;
+
+    expect(navigator.props.screenOptions).toEqual({
+      headerLargeTitle: true,
+      headerBlurEffect: 'systemChromeMaterialDark',
+      headerLargeStyle: { backgroundColor: 'transparent' },
+    });
+  });
+
   it('gives the tab-root Accounts list a static, localized title', () => {
     expect(titleByScreen().Accounts).toBe('Accounts');
   });

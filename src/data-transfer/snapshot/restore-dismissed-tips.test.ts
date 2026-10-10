@@ -1,3 +1,5 @@
+// The dismissed-tips column outlives the tips themselves (migration 0055 shipped it), so a
+// backup still carries it and a restore must keep it whole.
 let mockDatabase: DatabaseSync;
 
 jest.mock('@kiko/db/client', () => {
@@ -7,7 +9,6 @@ jest.mock('@kiko/db/client', () => {
 });
 
 import { DatabaseSync } from 'node:sqlite';
-import { dismissedTipIds } from '@kiko/tips';
 import { applyAllMigrations } from '@kiko/test-support/real-sqlite';
 
 import { readDataSnapshot } from './read-snapshot';
@@ -68,13 +69,12 @@ describe('restoring the dismissed tips', () => {
     expect(storedDismissedTips()).toEqual([]);
   });
 
-  it('restores an id this build does not know, and dismissedTipIds ignores it', async () => {
+  it('restores an id this build does not know', async () => {
     const backup = await exportWith(['future.tip']);
 
     await restoreOnto(backup);
 
     expect(storedDismissedTips()).toEqual(['future.tip']);
-    expect(dismissedTipIds(storedDismissedTips() as string[]).size).toBe(0);
   });
 
   it('restores an empty list from a file with an empty settings table', async () => {

@@ -5,7 +5,7 @@ import { BINANCE_CREDENTIALS_SERVICE, hardenedFor, serviceFor } from './binance.
 /**
  * Move the single GLOBAL Binance credentials (`kiko.binance.credentials`) to a
  * PER-ACCOUNT Keychain item keyed by the connected account id, so a second
- * Binance connection can bind its own key pair (multi-account plan, 2026-09-11).
+ * Binance connection can bind its own key pair.
  * Run once at app bootstrap AFTER the Monobank credential migrations and BEFORE
  * anything reads the per-account credentials.
  *

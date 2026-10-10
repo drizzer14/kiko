@@ -1,4 +1,3 @@
-import { TIP_IDS } from '@kiko/tips';
 import { buildPriceBook } from '@kiko/prices/price-book';
 import { holdingValue } from '@kiko/holdings/holding-value';
 import { isLedgerlessHoldingType } from '@kiko/holdings/holding-descriptor';
@@ -12,29 +11,14 @@ import { buildDemoSnapshot } from './build-demo-snapshot';
 
 describe('buildDemoSnapshot', () => {
   const dataset = buildScreenshotDataset('uk');
-  const snapshot = buildDemoSnapshot(dataset, { tips: 'shown' });
+  const snapshot = buildDemoSnapshot(dataset);
 
   it('is deterministic: two builds of the same dataset are deeply equal', () => {
-    expect(buildDemoSnapshot(buildScreenshotDataset('uk'), { tips: 'shown' })).toEqual(snapshot);
+    expect(buildDemoSnapshot(buildScreenshotDataset('uk'))).toEqual(snapshot);
   });
 
-  it('dismisses every tip when tips are hidden, for a marketing screenshot file', () => {
-    expect(buildDemoSnapshot(dataset, { tips: 'hidden' }).settings[0].dismissedTips).toEqual([
-      ...TIP_IDS,
-    ]);
-  });
-
-  it('dismisses no tip when tips are shown, so the App Store reviewer finds them', () => {
+  it('carries an empty dismissed-tips list, the unused column at its default', () => {
     expect(snapshot.settings[0].dismissedTips).toEqual([]);
-  });
-
-  it('changes nothing but the dismissed tips between the two options', () => {
-    const hidden = buildDemoSnapshot(dataset, { tips: 'hidden' });
-
-    expect({
-      ...hidden,
-      settings: [{ ...hidden.settings[0], dismissedTips: [] }],
-    }).toEqual(snapshot);
   });
 
   it('carries every account and holding the dataset describes', () => {
@@ -211,8 +195,6 @@ describe('buildDemoSnapshot', () => {
   });
 
   it('applies the requested language to the settings row', () => {
-    expect(
-      buildDemoSnapshot(buildScreenshotDataset('en'), { tips: 'shown' }).settings[0].language,
-    ).toBe('en');
+    expect(buildDemoSnapshot(buildScreenshotDataset('en')).settings[0].language).toBe('en');
   });
 });

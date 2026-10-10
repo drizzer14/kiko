@@ -70,7 +70,6 @@ const mockCreate = jest.fn();
 const mockDelete = jest.fn();
 const mockReorder = jest.fn();
 const mockSetDefault = jest.fn();
-const mockDismissTip = jest.fn((..._args: unknown[]): Promise<void> => Promise.resolve());
 let mockLiveQueryData: Array<{ key: string; title: string; icon: string; color?: string | null }> =
   [];
 let mockSettingsRows: Array<{ defaultCategoryKey: string }> = [];
@@ -95,14 +94,7 @@ jest.mock('@kiko/settings/settings.repo', () => ({
   settingsRepo: {
     getQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }),
     setDefaultCategoryKey: (...args: unknown[]) => mockSetDefault(...args),
-    dismissTip: (...args: unknown[]) => mockDismissTip(...args),
   },
-}));
-// Categories is the Settings tab's primary default on a wide window: on screen, never focused.
-// A standalone render has no pane navigator, so visibility is a switch the test flips.
-const mockUseIsScreenVisible = jest.fn(() => true);
-jest.mock('@kiko/navigation/pane-stack', () => ({
-  useIsScreenVisible: () => mockUseIsScreenVisible(),
 }));
 jest.mock('@kiko/db/use-live-query', () => ({
   useLiveQuery: (_query: unknown, keys: string[]) =>
@@ -853,62 +845,6 @@ describe('CategoriesScreen', () => {
 
       expect(mockUpdateTitle).toHaveBeenCalledWith('groceries', 'Овочі');
     });
-  });
-});
-
-describe('CategoriesScreen — the categories tip', () => {
-  beforeEach(() => {
-    jest.clearAllMocks();
-    mockLiveQueryData = SEEDED_CATEGORIES.map((category) => ({ ...category }));
-    mockSettingsRows = [{ defaultCategoryKey: 'other' }];
-    mockCategoriesIsLoading = false;
-    mockCategoriesIsFresh = true;
-    mockSettingsIsLoading = false;
-    mockUseIsScreenVisible.mockReturnValue(true);
-    mockDismissTip.mockResolvedValue(undefined);
-  });
-
-  it('dismisses the categories tip once when the screen is on screen', async () => {
-    const { rerender } = await renderScreen();
-
-    await act(async () => {
-      await rerender(screenElement());
-    });
-
-    expect(mockDismissTip).toHaveBeenCalledTimes(1);
-    expect(mockDismissTip).toHaveBeenCalledWith('settings.categories');
-  });
-
-  it('leaves the tip alone while the screen is not on screen, and dismisses it once it is', async () => {
-    mockUseIsScreenVisible.mockReturnValue(false);
-    const { rerender } = await renderScreen();
-
-    expect(mockDismissTip).not.toHaveBeenCalled();
-
-    mockUseIsScreenVisible.mockReturnValue(true);
-    await act(async () => {
-      await rerender(screenElement());
-    });
-
-    expect(mockDismissTip).toHaveBeenCalledTimes(1);
-  });
-
-  it('dismisses the tip even while the categories are still loading', async () => {
-    mockCategoriesIsLoading = true;
-    await renderScreen();
-
-    expect(mockDismissTip).toHaveBeenCalledWith('settings.categories');
-  });
-
-  it('keeps rendering the list when the dismissal write fails', async () => {
-    mockDismissTip.mockRejectedValue(new Error('write failed'));
-    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
-    const { getByDisplayValue } = await renderScreen();
-
-    expect(getByDisplayValue(SEEDED_CATEGORIES[0].title)).toBeTruthy();
-    expect(warn).toHaveBeenCalledWith('[tips] dismiss failed', expect.anything());
-
-    warn.mockRestore();
   });
 });
 

@@ -7,6 +7,7 @@ import TransactionFormScreen from '@kiko/screens/forms/transaction-form';
 import { createPaneStackNavigator } from '../pane-stack';
 import type { StatisticsStackParamList } from '../types';
 import { resetTabStackOnBlur } from '../reset-tab-stack-on-blur';
+import { largeTitleScreenOptions } from '../large-title-screen-options';
 
 const Stack = createPaneStackNavigator<StatisticsStackParamList>();
 
@@ -28,7 +29,7 @@ const StatisticsStack: FC = () => {
   return (
     <Stack.Navigator
       paneConfig={PANE_CONFIG}
-      screenOptions={{ headerLargeTitle: true }}
+      screenOptions={largeTitleScreenOptions}
       screenListeners={resetTabStackOnBlur}
     >
       <Stack.Screen

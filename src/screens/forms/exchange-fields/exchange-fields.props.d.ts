@@ -13,6 +13,9 @@ export type ExchangeFieldsProps = {
   destinationOptions: readonly HoldingSelectOption[];
   destinationHoldingId: string | null;
   onSelectDestination: (id: string) => void;
+  // Opens the create form from the destination sheet's "Add holding" row, which
+  // shows only while `destinationOptions` is empty. Omit it to show no row.
+  onCreateDestination?: () => void;
   // The incoming amount, in the destination holding's major currency units.
   valueIn: string;
   onChangeValueIn: (text: string) => void;

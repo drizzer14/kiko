@@ -160,7 +160,7 @@ export type GlassSurfaceProps = ViewProps & {
   // that knowingly accepts this drift even on a scrolling surface, not only
   // a static one. Defaults to `false`.
   //
-  // FIRST-PAINT RE-SAMPLE (device bug, confirmed 2026-09-12). The real glass
+  // FIRST-PAINT RE-SAMPLE (a device bug). The real glass
   // path's `LiquidGlassView` has NO backdrop under it when `bloom` is set
   // (see above) and runs with `effect="clear"` (see the component's
   // `glassEffect`) — a `'clear'`-effect glass samples its backdrop exactly

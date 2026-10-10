@@ -2,11 +2,19 @@ import type { FC } from 'react';
 import HomeScreen from '@kiko/screens/home';
 import { useTranslation } from 'react-i18next';
 import StatisticsScreen from '@kiko/screens/statistics';
+import AccountFormScreen from '@kiko/screens/forms/account-form';
+import HoldingFormScreen from '@kiko/screens/forms/holding-form';
 import TransactionFormScreen from '@kiko/screens/forms/transaction-form';
 
+import {
+  accountFormOptions,
+  holdingFormOptions,
+  restoreDefaultAnimationOfSwappedForm,
+} from '../swapped-form-options';
 import type { HomeStackParamList } from '../types';
 import { createPaneStackNavigator } from '../pane-stack';
 import { resetTabStackOnBlur } from '../reset-tab-stack-on-blur';
+import { largeTitleScreenOptions } from '../large-title-screen-options';
 
 const Stack = createPaneStackNavigator<HomeStackParamList>();
 
@@ -25,6 +33,10 @@ const PANE_CONFIG = {
  * `setOptions` (Add / Edit / read-only), so no static title is set here.
  * Statistics is registered for the companion pane of a wide window, where it
  * shows as a large-title screen.
+ *
+ * The account and holding create forms are registered here too: the transaction
+ * form's empty holding pickers open them, and a switch to the Accounts tab would
+ * reset this stack and drop the form's draft.
  */
 const HomeStack: FC = () => {
   const { t } = useTranslation();
@@ -40,13 +52,35 @@ const HomeStack: FC = () => {
       <Stack.Screen
         name="TransactionForm"
         component={TransactionFormScreen}
-        options={{ headerShown: true, headerLargeTitle: true }}
+        options={{ headerShown: true, ...largeTitleScreenOptions }}
       />
 
       <Stack.Screen
         name="Statistics"
         component={StatisticsScreen}
-        options={{ headerShown: true, headerLargeTitle: true, title: t('statistics.title') }}
+        options={{ headerShown: true, ...largeTitleScreenOptions, title: t('statistics.title') }}
+      />
+
+      <Stack.Screen
+        name="AccountForm"
+        component={AccountFormScreen}
+        listeners={restoreDefaultAnimationOfSwappedForm}
+        options={({ route }) => ({
+          ...accountFormOptions(t, route),
+          headerShown: true,
+          ...largeTitleScreenOptions,
+        })}
+      />
+
+      <Stack.Screen
+        name="HoldingForm"
+        component={HoldingFormScreen}
+        listeners={restoreDefaultAnimationOfSwappedForm}
+        options={({ route }) => ({
+          ...holdingFormOptions(t, route),
+          headerShown: true,
+          ...largeTitleScreenOptions,
+        })}
       />
     </Stack.Navigator>
   );

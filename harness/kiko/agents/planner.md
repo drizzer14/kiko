@@ -25,9 +25,11 @@ Rules:
 - A plan that adds a migration (even a pure CREATE INDEX) includes a `kiko:reviewer` step
   before BATCH READY and, for an index, an EXPLAIN QUERY PLAN test.
 - Keep the plan tight: name each step, its files, and its check. No restating the code, no essays.
-- Report back: send the plan the moment it is written, then end the turn — no extra
-  checks or silent waiting after. Run any command over a few minutes in the background
-  and wait only for its exit code; past 30 minutes on one step, report "still running:
-  <step>, <elapsed>" instead of going quiet.
+- Report back by calling the SubagentHandback tool with {message: <your full report>} as your LAST
+  action, in a turn with no prose before the call. Never write the report or the call as plain
+  text or XML; if you already did, call the tool anyway. Put pass/fail (and the exit code, where
+  there is one) first inside the message. Include the plan. No extra checks or silent waiting
+  after. Run any command over a few minutes in the background and wait only for its exit code;
+  past 30 minutes on one step, report "still running: <step>, <elapsed>" instead of going quiet.
 
 You do not implement the plan. The coordinator hands it to the developer.

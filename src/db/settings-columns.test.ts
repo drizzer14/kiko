@@ -45,6 +45,10 @@ const DOCUMENTED_READERLESS_COLUMNS = [
   // does not emit a DROP that diverges from the migration snapshots — see the
   // comment on the column in schema.ts.
   'quoteQuota',
+  // Legacy: the removed first-use tips. Nothing reads or writes it — migration 0055 already
+  // shipped, so it is deliberately not dropped (same additive-only class) — see the comment on
+  // the column in schema.ts.
+  'dismissedTips',
 ];
 
 // What a `.kiko` restore does with each column (`restoreDataSnapshot`): the

@@ -43,16 +43,13 @@ const KEY_PATH = join(FIXTURES_DIR, 'kiko-demo.key');
 type DemoFile = {
   language: AppLanguage;
   fileName: string;
-  snapshotOptions: Parameters<typeof buildDemoSnapshot>[1];
 };
 
-// Each file's tips choice follows its PURPOSE, never its language: a future English marketing
-// file takes 'hidden' at its own entry.
 const DEMO_FILES: DemoFile[] = [
-  // The user's own manual App Store marketing screenshots: no tip card in the shot.
-  { language: 'uk', fileName: 'kiko-demo-uk.kiko', snapshotOptions: { tips: 'hidden' } },
-  // Handed to the App Store reviewer: tips stay visible so App Review finds the feature.
-  { language: 'en', fileName: 'kiko-demo-en.kiko', snapshotOptions: { tips: 'shown' } },
+  // The user's own manual App Store marketing screenshots.
+  { language: 'uk', fileName: 'kiko-demo-uk.kiko' },
+  // Handed to the App Store reviewer.
+  { language: 'en', fileName: 'kiko-demo-en.kiko' },
 ];
 
 const readOrCreateKey = (): Uint8Array => {
@@ -69,7 +66,7 @@ const readOrCreateKey = (): Uint8Array => {
 
 describe('buildDemoEnvelopeJson (always runs — proves the encoder itself, not just the committed artefacts)', () => {
   it('round-trips a snapshot through the real export crypto with no drift', () => {
-    const snapshot = buildDemoSnapshot(buildScreenshotDataset('uk'), { tips: 'shown' });
+    const snapshot = buildDemoSnapshot(buildScreenshotDataset('uk'));
     const key = generateExportKey();
     const envelope: ExportEnvelope = JSON.parse(buildDemoEnvelopeJson(snapshot, key));
     const plaintext = decryptEnvelope(envelope, key);
@@ -86,9 +83,9 @@ describe('buildDemoEnvelopeJson (always runs — proves the encoder itself, not 
 // (Guideline 5.6), so an account kind, holding type, or reminder kind missing
 // from it is a feature the reviewer cannot see.
 describe('the demo dataset covers every account kind, holding type, and reminder kind', () => {
-  for (const { language, snapshotOptions } of DEMO_FILES) {
+  for (const { language } of DEMO_FILES) {
     it(`${language}: holds at least one account of every kind and one holding of every type`, () => {
-      const snapshot = buildDemoSnapshot(buildScreenshotDataset(language), snapshotOptions);
+      const snapshot = buildDemoSnapshot(buildScreenshotDataset(language));
 
       expect(new Set(snapshot.accounts.map((account) => account.kind))).toEqual(
         new Set(accounts.kind.enumValues),
@@ -101,7 +98,7 @@ describe('the demo dataset covers every account kind, holding type, and reminder
     // A reminder on an ineligible account is never scheduled and its page
     // shows it as not sent, so the reviewer would not see it work.
     it(`${language}: holds one reminder of every kind, each on an account eligible for it`, () => {
-      const snapshot = buildDemoSnapshot(buildScreenshotDataset(language), snapshotOptions);
+      const snapshot = buildDemoSnapshot(buildScreenshotDataset(language));
       const accountsById = new Map(snapshot.accounts.map((account) => [account.id, account]));
 
       expect(new Set(snapshot.reminders.map((reminder) => reminder.kind))).toEqual(
@@ -124,8 +121,8 @@ if (process.env.KIKO_REGEN_DEMO === '1') {
     it('writes kiko-demo.key (reusing it if already committed) and both .kiko files', () => {
       const key = readOrCreateKey();
 
-      for (const { language, fileName, snapshotOptions } of DEMO_FILES) {
-        const snapshot = buildDemoSnapshot(buildScreenshotDataset(language), snapshotOptions);
+      for (const { language, fileName } of DEMO_FILES) {
+        const snapshot = buildDemoSnapshot(buildScreenshotDataset(language));
 
         writeFileSync(join(FIXTURES_DIR, fileName), buildDemoEnvelopeJson(snapshot, key), 'utf8');
       }
@@ -145,8 +142,8 @@ describe('the committed demo .kiko fixtures decrypt back to the current dataset'
     key = decodeBase64ToBytes(readFileSync(KEY_PATH, 'utf8'));
   });
 
-  for (const { language, fileName, snapshotOptions } of DEMO_FILES) {
-    it(`${fileName} decrypts to buildDemoSnapshot(buildScreenshotDataset('${language}'), ${JSON.stringify(snapshotOptions)}), with no secrets block`, () => {
+  for (const { language, fileName } of DEMO_FILES) {
+    it(`${fileName} decrypts to buildDemoSnapshot(buildScreenshotDataset('${language}')), with no secrets block`, () => {
       const envelope: ExportEnvelope = JSON.parse(
         // The file name comes from the DEMO_FILES table, so the rule cannot see its extension.
         // nosemgrep: kiko-no-source-text-read-in-test OVERRIDE(.kiko fixture from a table)
@@ -158,9 +155,7 @@ describe('the committed demo .kiko fixtures decrypt back to the current dataset'
       expect(envelope.format).toBe(EXPORT_FORMAT);
       expect(envelope.version).toBe(EXPORT_VERSION);
       expect(payload.secrets).toBeUndefined();
-      expect(payload.tables).toEqual(
-        buildDemoSnapshot(buildScreenshotDataset(language), snapshotOptions),
-      );
+      expect(payload.tables).toEqual(buildDemoSnapshot(buildScreenshotDataset(language)));
     });
   }
 });

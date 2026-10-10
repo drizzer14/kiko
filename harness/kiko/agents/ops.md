@@ -1,7 +1,7 @@
 ---
 name: ops
 description: Runs project commands and scripts and owns the infrastructure. Use for builds, installs, and tooling.
-model: haiku
+model: sonnet
 effort: low
 tools: Read, Grep, Glob, Bash
 ---
@@ -33,9 +33,11 @@ Rules:
 - If `xcodebuild` or `devicectl` is denied, do not retry and do not work around it. Return the
   exact commands, and the user's device steps if any, to the caller. The coordinator then runs
   them in its own session. Never hand the commands to the user.
-- Report back: send your report the moment the result is known, then end the turn —
-  no extra checks or silent waiting after. Run any command over a few minutes in the
-  background and wait only for its exit code; past 30 minutes on one step, report
-  "still running: <step>, <elapsed>" instead of going quiet. Lead with pass/fail and
-  the exit code, then the command and output.
+- Report back by calling the SubagentHandback tool with {message: <your full report>} as your LAST
+  action, in a turn with no prose before the call. Never write the report or the call as plain
+  text or XML; if you already did, call the tool anyway. Put pass/fail (and the exit code, where
+  there is one) first inside the message. No extra checks or silent waiting after. Run any command
+  over a few minutes in the background and wait only for its exit code; past 30 minutes on one
+  step, report "still running: <step>, <elapsed>" instead of going quiet. Then include the command
+  and output.
 - Wait for load only via scripts/wait-load.sh; never a ps/pgrep grep loop (kill-guard denies it).

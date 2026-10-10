@@ -469,14 +469,15 @@ CREATE mode, picking Property or Debt calls
 far: `icon` is the user's own pick only (the form's `iconIsDirty` flag,
 reset by every switch to a different kind), null otherwise, so the holding form keeps
 following its own type default; `color` is null until picked. The
-`HoldingForm` route is `({ accountId } | { implicitKind }) & { draft?:
-FormDraft | HoldingFormDraft, holdingId?, debtAccount?, returnTo? }` (the
-`AccountForm` route's `draft?` is `FormDraft | AccountFormDraft`; read both
-in `src/navigation/types/types.d.ts`), resolved by
-`holdingFormTarget` (`holding-form/holding-form-target/`, a
-`ts-pattern` match to `{ kind: 'account', accountId } | { kind:
-'implicit', implicitKind }`; `holdingFormDraft` reads the draft, empty
-when absent; the form's own saved draft is read apart by `isSavedDraft`, see "Form drafts" below). In implicit mode the form: queries no account
+`HoldingForm` route is `HoldingFormParams` (`src/navigation/types/types.d.ts`; read it for the
+exact shape: its `draft?` is `FormDraft | HoldingFormDraft`, and the `AccountForm` route's is
+`FormDraft | AccountFormDraft`). The Accounts stack adds `returnTo`, so the Home stack, which has no
+import screen to pop back to, cannot pass one. It is `holdingFormTarget` (`{ kind: 'account',
+accountId } | { kind: 'implicit', implicitKind }`) plus `holdingFormStart` (the
+`initialType`/`initialCurrency` a create on a named account opens with, applied once on mount; the
+user can still change both) and `holdingFormDraft` (reads the draft, empty when absent), all in
+`holding-form/holding-form-target/`; the form's own saved draft is read apart by `isSavedDraft`, see
+"Form drafts" below. In implicit mode the form: queries no account
 (`byIdQuery('')`); takes its offered types from
 `creatableHoldingTypesForAccount(implicitKind, false, undefined)` (its
 own call, with `implicitKind` as the account kind and no account row;
@@ -509,8 +510,9 @@ pick, after the sheet has FINISHED closing, via `BottomSheet`'s
 the screen that owns the sheet's Modal. `setParams` is immediate. `replace`, never `navigate`: Back from either form
 leaves to the Accounts root instead of landing on a stale sibling
 (`accounts.stack.swap.navigator.test.tsx` proves it on the real
-router, not a spy). `accounts.stack.tsx` gives a route that carries a
-swap `draft` `animation: 'none'` (`carriesDraft` in `accounts.stack.tsx`;
+router, not a spy). The Accounts and Home stacks give a route that carries a
+swap `draft` `animation: 'none'` (`carriesDraft` in
+`src/navigation/swapped-form-options/swapped-form-options.ts`;
 a form's own saved draft, `saved: true`, is no swap and keeps the default
 animation), so the swap reads as one form whose fields
 change. native-stack pops a screen with the animation it carries then
@@ -823,7 +825,11 @@ owns the rule (`holdingCurrencyOptions` for a create picker,
 create a cash holding rejects a crypto currency: the holding form and
 cash-account form offer fiat only, and `holdingsRepo.create` and
 `accountsRepo.createCashAccount` throw. Statement import and the syncs
-never create a cash holding. An ALREADY-stored crypto cash holding (a
+never create a cash holding. `isCurrencyExpectedForHoldingType` is the currency a type is
+CREATED in (a `crypto_asset` is expected in a cryptocurrency, though a write also accepts fiat); a
+picker that needs a holding in a given currency uses it. `isCryptoHoldingType` is the type test the
+create form uses to list cryptocurrencies first (`src/holdings/holding-currency/holding-currency.ts`).
+An ALREADY-stored crypto cash holding (a
 1.0-era BTC/ETH/USDT `cash` holding) is migration `0044`'s job, not this
 rule's — `0044_move_crypto_cash_holdings.sql`'s doc comment is the full
 statement of the matching rule, including the archived-source carve-out.

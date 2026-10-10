@@ -62,6 +62,7 @@ const LoanSection: FC<LoanSectionProps> = ({
   paymentHoldingId,
   onSelectPaymentHoldingId,
   paymentHoldingOptions,
+  onCreatePaymentHolding,
   lenderName,
   onChangeLenderName,
   lenderIban,
@@ -147,6 +148,7 @@ const LoanSection: FC<LoanSectionProps> = ({
             options={paymentHoldingOptions}
             selectedId={paymentHoldingId}
             onSelect={onSelectPaymentHoldingId}
+            onCreateNew={onCreatePaymentHolding}
             testID="loan-payment-holding-field"
           />
 

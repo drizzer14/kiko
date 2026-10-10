@@ -5,11 +5,11 @@ import { settingsRepo } from '@kiko/settings';
 import { useTranslation } from 'react-i18next';
 import { logFailure } from '@kiko/diagnostics';
 import Box from '@kiko/design-system/components/box';
-import { initDatabase, runMigrations } from '@kiko/db';
 import Text from '@kiko/design-system/components/text';
 import { migrateLegacyToken } from '@kiko/monobank/token';
 import { type FC, type ReactNode, useEffect, useState } from 'react';
 import { rezoneImportTimes } from '@kiko/statement-import/rezone-import-times';
+import { DatabaseKeyMissingError, initDatabase, runMigrations } from '@kiko/db';
 import { migrateBinanceCredentialToPerAccount } from '@kiko/crypto-sync/binance';
 import { migrateSingleTokenToPerAccount } from '@kiko/monobank/migrate-credential';
 import { upgradeStoredDedupKeys } from '@kiko/statement-import/upgrade-stored-dedup-keys';
@@ -55,7 +55,7 @@ const applyPersistedLanguage = async (): Promise<void> => {
 
 /**
  * Move the single global Monobank token to a per-account Keychain item, bound to
- * the currently-connected Monobank account (multi-account plan, 2026-09-11). Runs
+ * the currently-connected Monobank account. Runs
  * in the boot chain AFTER `migrateLegacyToken` (which first brings a pre-`kiko`
  * token up to the global item) and BEFORE any per-account token read.
  *
@@ -74,7 +74,7 @@ const migratePerAccountMonobankToken = async (): Promise<void> => {
 
 /**
  * Move the single global Binance credentials to a per-account Keychain item, bound
- * to the currently-connected Binance account (multi-account plan, 2026-09-11). The
+ * to the currently-connected Binance account. The
  * exact counterpart of `migratePerAccountMonobankToken` above: it runs in the boot
  * chain AFTER that Monobank migration and BEFORE any per-account credential read.
  * There is at most one connected Binance account today (the one-connection
@@ -170,7 +170,9 @@ const MigrationsGate: FC<{ children: ReactNode }> = ({ children }) => {
     .with({ status: 'error' }, (errorState) => (
       <Box testID="migrations-gate-error" style={styles.fill}>
         <Text variant="body" tone="textSecondary">
-          {t('migrations.error', { message: errorState.error.message })}
+          {errorState.error instanceof DatabaseKeyMissingError
+            ? t('migrations.keyMissing')
+            : t('migrations.error', { message: errorState.error.message })}
         </Text>
       </Box>
     ))

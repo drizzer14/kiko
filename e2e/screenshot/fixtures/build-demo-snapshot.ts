@@ -14,7 +14,6 @@ import type {
   TransactionRow,
 } from '@kiko/db';
 import { match } from 'ts-pattern';
-import { TIP_IDS } from '@kiko/tips';
 import maybe, { foldMap } from 'fnts/maybe';
 import { SETTINGS_ID } from '@kiko/settings';
 import type { DataSnapshot } from '@kiko/data-transfer';
@@ -59,17 +58,8 @@ const buildCategories = (): CategoryRow[] => {
   ];
 };
 
-/**
- * Whether the imported app shows its first-use tips. The caller chooses per output file's
- * purpose, never per language: a marketing screenshot file hides them, the App Store
- * reviewer's file shows them.
- */
-type DemoTips = 'hidden' | 'shown';
-
-type DemoSnapshotOptions = { tips: DemoTips };
-
 /** The single settings row: the dataset's language/currency, lock always OFF. */
-const buildSettings = (dataset: ScreenshotDataset, tips: DemoTips): SettingsRow[] => [
+const buildSettings = (dataset: ScreenshotDataset): SettingsRow[] => [
   {
     id: SETTINGS_ID,
     baseCurrency: dataset.baseCurrency,
@@ -101,9 +91,8 @@ const buildSettings = (dataset: ScreenshotDataset, tips: DemoTips): SettingsRow[
     // Every demo lot list is one buy, so the one-time recost has nothing to
     // change: `true` skips it on import, the same as a recosted device.
     lotsRecosted: true,
-    // Marketing screenshots must not carry a tip card, so that file dismisses every tip. The
-    // App Store reviewer's file dismisses none, so App Review finds the tips feature.
-    dismissedTips: tips === 'hidden' ? [...TIP_IDS] : [],
+    // The column is unused, but a snapshot row still has to carry a value for it.
+    dismissedTips: [],
   },
 ];
 
@@ -269,10 +258,7 @@ const buildReminders = (dataset: ScreenshotDataset): ReminderRow[] =>
       updatedAt: ANCHOR,
     }));
 
-export const buildDemoSnapshot = (
-  dataset: ScreenshotDataset,
-  { tips }: DemoSnapshotOptions,
-): DataSnapshot => {
+export const buildDemoSnapshot = (dataset: ScreenshotDataset): DataSnapshot => {
   const ledger = buildLedger(dataset);
 
   return {
@@ -281,7 +267,7 @@ export const buildDemoSnapshot = (
     transactions: ledger.transactions,
     currencyRates: dataset.rates,
     currencyRateHistory: dataset.history,
-    settings: buildSettings(dataset, tips),
+    settings: buildSettings(dataset),
     syncState: [],
     categories: buildCategories(),
     categoryOverrides: [],

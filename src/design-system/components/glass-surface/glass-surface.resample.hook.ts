@@ -1,4 +1,4 @@
-// FIRST-PAINT RE-SAMPLE hook (device bug, confirmed 2026-09-12 on the
+// FIRST-PAINT RE-SAMPLE hook (a device bug seen on the
 // categories screen's `Sortable.Grid`-managed card). `bloom` on the real
 // glass path renders a backdrop-less `LiquidGlassView` with `effect="clear"`
 // (see `glassEffect`/`base` in `glass-surface.component.tsx`). A

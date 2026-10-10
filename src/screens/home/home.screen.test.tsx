@@ -117,14 +117,6 @@ const liquidGlass = jest.requireMock('@callstack/liquid-glass') as {
   isLiquidGlassSupported: boolean;
 };
 
-// A marker for the shared tip card, so a test can pin that Home renders none.
-jest.mock('@kiko/design-system/components/tip-card', () => {
-  const { View } = require('react-native');
-  const { createElement } = require('react');
-
-  return { __esModule: true, default: () => createElement(View, { testID: 'mock-tip-card' }) };
-});
-
 // Whether Home is on screen. A pane navigator's companion default is visible without being the
 // focused route, so `useIsFocused` would freeze it.
 const mockUseIsScreenVisible = jest.fn(() => true);
@@ -2534,14 +2526,6 @@ describe('HomeScreen — empty states', () => {
       expect(queryByTestId('home-empty')).toBeNull();
       expect(getByTestId('home-loading')).toBeTruthy();
     });
-
-    it('shows no tip beside the empty state', async () => {
-      setLiveData({ accounts: [], holdings: [] });
-
-      const { queryByTestId } = await renderHome();
-
-      expect(queryByTestId('mock-tip-card')).toBeNull();
-    });
   });
 
   it('does not show the empty state for a user with only an open flat', async () => {
@@ -2574,14 +2558,6 @@ describe('HomeScreen — empty states', () => {
 
       expect(getByText(i18n.t('home.emptyTransactions'))).toBeTruthy();
       expect(queryByText(i18n.t('home.emptyLedgerHint'))).toBeNull();
-    });
-
-    it('shows no tip', async () => {
-      seed({ transactions: [] });
-
-      const { queryByTestId } = await renderHome();
-
-      expect(queryByTestId('mock-tip-card')).toBeNull();
     });
   });
 });

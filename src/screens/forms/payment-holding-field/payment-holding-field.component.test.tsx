@@ -1,5 +1,6 @@
 import { fireEvent, render } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
+import '@kiko/i18n/init';
 import type { HoldingSelectOption } from '@kiko/screens/forms/holding-select-field';
 
 import PaymentHoldingField from '.';
@@ -13,6 +14,7 @@ const options: HoldingSelectOption[] = [
     color: '#3366CC',
     currency: 'UAH',
     accountName: 'Monobank',
+    createdAt: 0,
   },
 ];
 
@@ -44,7 +46,9 @@ describe('PaymentHoldingField', () => {
 
   it('reports the picked holding id at once', async () => {
     const onSelect = jest.fn();
-    const { getByLabelText, getByText } = await renderPaymentHoldingField({ onSelect });
+    const { getByLabelText, getByText } = await renderPaymentHoldingField({
+      onSelect,
+    });
 
     await fireEvent.press(getByLabelText('Paid from'));
     await fireEvent.press(getByText('Everyday card'));
@@ -73,5 +77,56 @@ describe('PaymentHoldingField', () => {
     await fireEvent.press(getAllByText('None')[0]);
 
     expect(onSelect).toHaveBeenCalledWith(null);
+  });
+
+  describe('"Add holding" row', () => {
+    const openSheet = async (overrides: Partial<PaymentHoldingFieldProps>) => {
+      const view = await renderPaymentHoldingField({
+        testID: 'paid-from',
+        ...overrides,
+      });
+
+      await fireEvent.press(view.getByLabelText('Paid from'));
+
+      return view;
+    };
+
+    it.each([
+      ['the field has no onCreateNew', { options: [] }],
+      ['the picker has a real option', { onCreateNew: jest.fn() }],
+    ])('is absent when %s', async (_reason, overrides) => {
+      const view = await openSheet(overrides);
+
+      expect(view.queryByTestId('paid-from-create-new')).toBeNull();
+    });
+
+    it('sits beside the lone "None" row, then reports once, closes the sheet and selects the new holding', async () => {
+      const onCreateNew = jest.fn();
+      const onSelect = jest.fn();
+      const view = await openSheet({ options: [], onCreateNew, onSelect });
+
+      expect(view.getByTestId('paid-from-option-none')).toBeTruthy();
+
+      await fireEvent.press(view.getByText('Add holding'));
+
+      expect(onCreateNew).toHaveBeenCalledTimes(1);
+      expect(view.queryByText('Paid From')).toBeNull();
+
+      const created = { ...options[0], id: 'created', createdAt: Date.now() };
+
+      await view.rerender(
+        <PaymentHoldingField
+          label="Paid from"
+          sheetTitle="Paid From"
+          noneLabel="None"
+          options={[created]}
+          selectedId={null}
+          onSelect={onSelect}
+          onCreateNew={onCreateNew}
+        />,
+      );
+
+      expect(onSelect.mock.calls).toEqual([['created']]);
+    });
   });
 });

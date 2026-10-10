@@ -14,5 +14,6 @@ export const toHoldingOption = (
   name: holding.name,
   currency: holding.currency,
   accountName: accountNameById.get(holding.accountId) ?? '',
+  createdAt: holding.createdAt,
   ...holdingIdentity(holding),
 });
