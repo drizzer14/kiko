@@ -40,11 +40,11 @@ points, rate history, reminders, `createdAt`, `exportedAt`) is measured from one
 **anchor**: 09:00 UTC on the day the files were regenerated. The app opens its
 Home list and charts on the last 30 days before the **device date**
 (`src/dates/default-range.ts`), and the newest demo row sits two days before the
-anchor. So the files fill Home and the charts from the anchor day onward, but they thin out as the device date moves past it: the
-default 30-day window holds about 13 rows on the anchor day, 10 seven days
-later, 7 after 14 days, 3 after 21, and 1 after 28, then none. The data
-thins from about the second week, so "until about 28 days" is an upper bound,
-not a safe age: a file anchored on a past day imports fine but shows a sparse,
+anchor. So the files fill Home and the charts from the anchor day onward, but
+they thin out as the device date moves past it: the default 30-day window
+holds about a dozen rows on the anchor day, fewer each week, and none after
+about four weeks (see `seed/screenshot-seed.ts`). The data thins from about
+the second week, so about four weeks is an upper bound, not a safe age: a file anchored on a past day imports fine but shows a sparse,
 then empty, Home list and spending charts.
 
 There is no date shifting at import time (Guideline 5.6): the app imports the

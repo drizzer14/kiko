@@ -70,6 +70,13 @@ After a merge that adds a migration or a snapshot key, regenerate the demo
 see e2e/screenshot/fixtures/README.md; example commit e764fb6f) and copy
 kiko-demo-en.kiko to the reviewer kit before the build bump.
 
+Freshness: the demo dates derive from an anchor set at regen time, so the
+files thin out within weeks and go empty. Regenerate both files on the
+upload day and again on EVERY resubmission, then refresh the kit
+(memory/refs/reviewer-kit/kiko-demo.kiko = the en file), and do the same
+before a screenshot session. Read "The anchor" in
+e2e/screenshot/fixtures/README.md for the mechanism and numbers.
+
 6. `kiko:ops` archives the `Release` configuration (signed with the
    KikoDistribution provisioning profile and the distribution
    certificate). Only Debug and Release configurations exist;
@@ -81,8 +88,9 @@ kiko-demo-en.kiko to the reviewer kit before the build bump.
      old `group.com.dmytro.pff` is absent.
    - `get-task-allow = false`.
    - The embedded provisioning profile is KikoDistribution.
-8. Hand off. First run the Privacy policy check below; hand off only
-   when it exits 0. The skill stops here. The user uploads the archive and
+8. Hand off. First confirm the demo .kiko files and the reviewer kit were
+   regenerated today (see the Freshness note above), then run the Privacy
+   policy check below; hand off only when it exits 0. The skill stops here. The user uploads the archive and
    the screenshots through the Xcode Organizer. State plainly that
    this skill does not upload to the App Store.
 

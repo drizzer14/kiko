@@ -70,6 +70,9 @@ column default. Regenerate in the same commit as the migration
 e2e/screenshot/fixtures/generate-demo-kiko.test.ts`). A new visible
 feature that is not a new kind or type (a new metadata option, a new
 linked-row flow) is still a judgment question: does the dataset show it?
+Dates also derive from a regen-time anchor, so the files go sparse, then
+empty, within weeks: regenerate both and refresh the reviewer kit for every
+submission and resubmission (see "The anchor" in the fixtures README).
 
 ## 2.1 completeness / 4.2 minimum functionality
 
