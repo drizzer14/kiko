@@ -1,6 +1,6 @@
 import { act, renderHook } from '@testing-library/react-native';
 
-import { useMetalFields } from './use-metal-fields';
+import { type MetalFieldsDraft, useMetalFields } from './use-metal-fields';
 
 describe('useMetalFields scrollTargets', () => {
   it('orders scrollTargets purity, quantity, cost, each on its own ref', async () => {
@@ -79,5 +79,61 @@ describe('useMetalFields purity in fineness per mille', () => {
     });
 
     expect(result.current.purity).toBe('999');
+  });
+});
+
+describe('useMetalFields draft', () => {
+  const filled: MetalFieldsDraft = {
+    metal: 'XAG',
+    form: 'coin',
+    unit: 'g',
+    purity: '925',
+    quantity: '31.1',
+    cost: '80 000',
+  };
+
+  it('holds a blank metal as it opens', async () => {
+    const { result } = await renderHook(() => useMetalFields({ isEdit: false }));
+
+    expect(result.current.draft).toEqual({
+      metal: 'XAU',
+      form: 'bar',
+      unit: 'oz',
+      purity: '999.9',
+      quantity: '',
+      cost: '',
+    });
+  });
+
+  it('brings back every field', async () => {
+    const { result } = await renderHook(() => useMetalFields({ isEdit: false }));
+
+    await act(async () => {
+      result.current.restore(filled);
+    });
+
+    expect(result.current.draft).toEqual(filled);
+    expect(result.current.metal).toBe('XAG');
+  });
+
+  it('leaves the stored lots of an edit alone: they are read again, not kept in a draft', async () => {
+    const { result } = await renderHook(() => useMetalFields({ isEdit: true }));
+
+    await act(async () => {
+      result.current.restore(filled);
+    });
+
+    expect(result.current.draft).not.toHaveProperty('lots');
+  });
+
+  it('keeps one restore across renders, so the screen effect that depends on it runs once', async () => {
+    const { result } = await renderHook(() => useMetalFields({ isEdit: false }));
+    const first = result.current.restore;
+
+    await act(async () => {
+      result.current.setQuantity('5');
+    });
+
+    expect(result.current.restore).toBe(first);
   });
 });

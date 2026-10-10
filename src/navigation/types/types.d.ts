@@ -9,6 +9,7 @@ import type { OwnershipInput } from '@kiko/holdings/holding-metadata';
 import type { NavigatorScreenParams } from '@react-navigation/native';
 import type { FormMode } from '@kiko/screens/forms/mode-select-field';
 import type { StatementFormatId } from '@kiko/statement-import/parser';
+import type { HoldingFormDraft } from '@kiko/screens/forms/holding-form';
 import type { ImplicitAccountKind } from '@kiko/holdings/implicit-account';
 
 /**
@@ -190,11 +191,10 @@ export type AccountsStackParamList = {
   // the plain `goBack()`.
   // `implicitKind` (instead of `accountId`) opens the form in implicit create
   // mode: the one property or debt account is found or created on Save, and
-  // `draft` seeds the identity the account form carried over.
-  HoldingForm: (
-    | { accountId: string }
-    | { implicitKind: ImplicitAccountKind; draft?: FormDraft }
-  ) & {
+  // `draft` seeds the identity the account form carried over; once the user has filled the form,
+  // it is the form's own saved fields instead (see `HoldingFormDraft`).
+  HoldingForm: ({ accountId: string } | { implicitKind: ImplicitAccountKind }) & {
+    draft?: FormDraft | HoldingFormDraft;
     holdingId?: string;
     // Edit only: whether the account holds only debts, so the title reads "Loan"
     // on the first frame; the form reads the account itself when this is absent.

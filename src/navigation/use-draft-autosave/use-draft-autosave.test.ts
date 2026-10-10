@@ -13,10 +13,10 @@ jest.mock('@kiko/display-regions', () => ({
 type Draft = { text: string };
 
 // A form in miniature: one typed field, a draft built from it, and the blur handler.
-const renderForm = async (saveDraft: jest.Mock) => {
+const renderForm = async (saveDraft: jest.Mock, restored?: Draft) => {
   const hook = await renderHook(() => {
     const [text, setText] = useState('a');
-    const onFieldBlur = useDraftAutosave<Draft>({ text }, saveDraft);
+    const onFieldBlur = useDraftAutosave<Draft>({ text }, saveDraft, restored);
 
     return { setText, onFieldBlur };
   });
@@ -103,6 +103,33 @@ describe('useDraftAutosave', () => {
     await act(async () => result.current.onFieldBlur());
 
     expect(saveDraft.mock.calls).toEqual([[{ text: 'ab' }], [{ text: 'a' }]]);
+  });
+
+  describe('a form that was restored from the draft the route holds', () => {
+    // The form opened blank and a moment later took the draft's values.
+    const restored: Draft = { text: 'ab' };
+
+    it('saves nothing for a blur once the draft is back as it was', async () => {
+      const saveDraft = jest.fn();
+      const { result } = await renderForm(saveDraft, restored);
+
+      await act(async () => result.current.setText('ab'));
+      await act(async () => result.current.onFieldBlur());
+
+      expect(saveDraft).not.toHaveBeenCalled();
+    });
+
+    it('saves a change back to what the form first opened as, as the route holds the restored draft', async () => {
+      const saveDraft = jest.fn();
+      const { result } = await renderForm(saveDraft, restored);
+
+      await act(async () => result.current.setText('ab'));
+      await act(async () => result.current.setText('a'));
+      await act(async () => result.current.onFieldBlur());
+
+      expect(saveDraft).toHaveBeenCalledTimes(1);
+      expect(saveDraft).toHaveBeenCalledWith({ text: 'a' });
+    });
   });
 
   it('saves a change once, however many blurs follow it', async () => {

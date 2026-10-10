@@ -845,3 +845,64 @@ describe('useBondFields scrollTargets', () => {
     expect(lastTarget?.ref).toBe(result.current.refs.maturityDateFieldRef);
   });
 });
+
+describe('useBondFields draft', () => {
+  const filled = {
+    quantity: '10',
+    faceValue: '1 000',
+    couponPct: '9',
+    purchasePrice: '990',
+    purchaseDate: new Date(2026, 0, 1).getTime(),
+    maturityDate: new Date(2028, 0, 1).getTime(),
+    bondKind: 'corporate',
+    couponFrequency: 'monthly',
+    isinMode: {
+      bondMode: 'manual',
+      isin: VALID_ISIN,
+      pickedCouponFrequency: null,
+      appliedIsin: null,
+      filledName: null,
+      storedIsin: null,
+    },
+  } as const;
+
+  it('holds a blank bond as it opens, in ISIN mode and dated today', async () => {
+    const { result } = await renderBondFields();
+
+    expect(result.current.draft).toEqual({
+      quantity: '',
+      faceValue: '',
+      couponPct: '',
+      purchasePrice: '',
+      purchaseDate: expect.any(Number),
+      maturityDate: null,
+      bondKind: 'government',
+      couponFrequency: 'semiannually',
+      isinMode: expect.objectContaining({ bondMode: 'isin', isin: '' }),
+    });
+  });
+
+  it('brings back every field, and the ISIN mode with them', async () => {
+    const { result } = await renderBondFields();
+
+    await act(async () => {
+      result.current.restore(filled);
+    });
+
+    expect(result.current.draft).toEqual(filled);
+    expect(result.current.quantity).toBe('10');
+    expect(result.current.bondMode).toBe('manual');
+    expect(result.current.isin).toBe(VALID_ISIN);
+  });
+
+  it('keeps one restore across renders, so the screen effect that depends on it runs once', async () => {
+    const { result } = await renderBondFields();
+    const first = result.current.restore;
+
+    await act(async () => {
+      result.current.setQuantity('5');
+    });
+
+    expect(result.current.restore).toBe(first);
+  });
+});
