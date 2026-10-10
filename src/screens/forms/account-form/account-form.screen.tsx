@@ -48,6 +48,7 @@ import MonobankConnectField from '@kiko/design-system/components/monobank-connec
 import { type Currency, currencySymbol, fiatCurrencyOptions } from '@kiko/currency/currency';
 import type { AccountFormDraft, AccountsStackParamList, FormDraft } from '@kiko/navigation/types';
 
+import { usePendingRowLock } from './use-pending-row-lock';
 import { useConnectReminder } from './use-connect-reminder';
 
 type AccountFormScreenProps = NativeStackScreenProps<AccountsStackParamList, 'AccountForm'>;
@@ -331,7 +332,12 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
     pendingAccountId,
   };
   const onFieldBlur = useDraftAutosave(draft, saveDraft);
-  const isPickLocked = isEdit || accountRowStarted || accounts.length > 0;
+  // A form that remounted from its saved draft does not know yet whether the screen a fold
+  // replaced still has the insert of the pending row queued, which the live query above shows
+  // only once it lands. Locked, a pick cannot send Save to a second account or clear that row's
+  // bank; the lock lifts only when the write queue says no such row is stored.
+  const isRowUnknown = usePendingRowLock(pendingAccountId, !isEdit && opening.isSaved);
+  const isPickLocked = isEdit || accountRowStarted || accounts.length > 0 || isRowUnknown;
   // ONE shared attempted-submit flag for every validated field on this form
   // (kiko-code-style's form validation model), set true by a blocked Connect
   // OR a blocked Save — never a per-field flag: each field's own error below
@@ -424,8 +430,7 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
   // token to the Keychain keyed by the pre-generated id, then runs the first
   // Monobank sync against it (the write-only-secret order).
   // Any failure BEFORE the sync returns false so the field shows its "could not
-  // connect" status rather than an unhandled rejection; the ensureAccount reset
-  // above lets the next Connect retry. The token goes ONLY to the Keychain —
+  // connect" status rather than an unhandled rejection. The token goes ONLY to the Keychain —
   // never to the database or a log.
   const connectMonobank = async (token: string): Promise<boolean> => {
     if (!(await accountEnsured())) {
@@ -450,8 +455,7 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
   // screen, the DB, or a log. A create failure is caught here (via
   // `accountEnsured`) and surfaced to the field as a `false` (not-connected)
   // result, so the field shows its "could not connect" status instead of an
-  // unhandled rejection that would leave it stuck on "checking"; the ref
-  // reset above lets the next Connect retry.
+  // unhandled rejection that would leave it stuck on "checking".
   const connectWallet = async (address: string): Promise<boolean> => {
     if (!(await accountEnsured())) {
       return false;

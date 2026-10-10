@@ -97,8 +97,16 @@ let mockAccounts: unknown[] = [];
 // as a read through the write queue does. Reset to settled before each test.
 let mockQueueEnds: Promise<void> = Promise.resolve();
 
+// The ids the form asked `exists` about, and an answer that replaces the one read from
+// `mockAccounts`: the live query mock shows `mockAccounts` too, so a test that must tell the
+// queue's answer from the live query's sets this one.
+let mockExistsCalls: string[] = [];
+let mockExistsAnswer: boolean | undefined;
+
 beforeEach(() => {
   mockQueueEnds = Promise.resolve();
+  mockExistsCalls = [];
+  mockExistsAnswer = undefined;
 });
 
 // The Connect closure the Monobank field was last given: a test calls an unmounted form's own
@@ -119,9 +127,12 @@ jest.mock('@kiko/accounts/accounts.repo', () => ({
     // Asks the database whether a row exists through the write queue, so it waits behind an
     // insert another screen still has queued (`mockQueueEnds`).
     exists: async (accountId: string) => {
+      mockExistsCalls.push(accountId);
       await mockQueueEnds;
 
-      return mockAccounts.some((row) => (row as { id: string }).id === accountId);
+      return (
+        mockExistsAnswer ?? mockAccounts.some((row) => (row as { id: string }).id === accountId)
+      );
     },
     // A Connect's insert of the account row (`mockCreate` records it): the form never reads first.
     createIfAbsent: (...args: unknown[]) => mockCreate(...args),
@@ -3488,6 +3499,151 @@ describe('AccountFormScreen — draft', () => {
       expect.objectContaining({ id: createdId, name: 'My Bank', bankId: 'monobank' }),
     );
     expect(mockUpdate).not.toHaveBeenCalled();
+  });
+
+  // The remounted form reads its draft at once, but the live query shows a row the screen a fold
+  // replaced has queued only once that insert lands. Until the write queue answers whether the
+  // pending row exists, the picks that send Save down another path stay locked.
+  describe('right after a fold, before the queue says whether the pending row exists', () => {
+    const bankDraft = {
+      ...savedDraft,
+      name: 'My Bank',
+      icon: accountKindSymbol.bank,
+      iconIsDirty: false,
+      color: null,
+      kind: 'bank',
+      currency: 'UAH',
+      initialValue: '',
+      bankId: 'monobank',
+    } as const;
+
+    const isBankFieldDisabled = (view: View): boolean =>
+      Boolean(view.getByTestId('account-bank-type-field').props.accessibilityState.disabled);
+
+    const holdQueue = (): { answer: () => void; fail: () => void } => {
+      const settle = { answer: (): void => undefined, fail: (): void => undefined };
+      mockQueueEnds = new Promise<void>((resolve, reject) => {
+        settle.answer = resolve;
+        settle.fail = () => reject(new Error('database is locked'));
+      });
+
+      return settle;
+    };
+
+    it('locks the kind and bank picks until the queue answers, then unlocks them when no row is stored', async () => {
+      const queue = holdQueue();
+
+      const view = await renderForm({ draft: bankDraft });
+
+      expect(mockExistsCalls).toEqual(['pending-1']);
+      expect(isKindFieldDisabled(view.getByTestId)).toBe(true);
+      expect(isBankFieldDisabled(view)).toBe(true);
+      await fireEvent.press(view.getByTestId('account-kind-field'));
+      expect(() => view.getByTestId('account-kind-field-option-cash')).toThrow();
+      await fireEvent.press(view.getByTestId('account-bank-type-field'));
+      expect(() => view.getByTestId('bank-type-option-other')).toThrow();
+
+      await act(async () => queue.answer());
+
+      expect(isKindFieldDisabled(view.getByTestId)).toBe(false);
+      expect(isBankFieldDisabled(view)).toBe(false);
+      await selectKind(view.getByTestId, 'cash');
+      expect(view.getByTestId('account-kind-field')).toHaveTextContent('Cash');
+    });
+
+    it('keeps them locked when the queue says the row is stored, before the live query shows it', async () => {
+      const queue = holdQueue();
+      mockExistsAnswer = true;
+      const view = await renderForm({ draft: bankDraft });
+
+      await act(async () => queue.answer());
+
+      expect(isKindFieldDisabled(view.getByTestId)).toBe(true);
+      expect(isBankFieldDisabled(view)).toBe(true);
+    });
+
+    it('keeps them locked when the read fails, and the form still saves as a bank', async () => {
+      const queue = holdQueue();
+      const view = await renderForm({ draft: bankDraft });
+
+      await act(async () => queue.fail());
+
+      expect(isKindFieldDisabled(view.getByTestId)).toBe(true);
+      expect(isBankFieldDisabled(view)).toBe(true);
+
+      await fireEvent.press(view.getByText('Save'));
+
+      await waitFor(() => expect(view.navigation.goBack).toHaveBeenCalledTimes(1));
+      expect(mockSaveFormAccount).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 'pending-1', kind: 'bank', bankId: 'monobank' }),
+      );
+    });
+
+    it.each(['cash', 'crypto'] as const)(
+      'cannot switch a Connect the fold interrupted to %s: one account, with its own kind and bank',
+      async (pickedKind) => {
+        let finishInsert = (): void => undefined;
+        storeCreatedRows(
+          new Promise<void>((resolve) => {
+            finishInsert = resolve;
+          }),
+        );
+        const first = await renderForm();
+        await fillMonobank(first, 'My Bank');
+        const connectOfFoldedForm = mockMonobankConnect as (token: string) => Promise<boolean>;
+        await emitLayoutMode('columns');
+        await first.unmount();
+        const second = await reopened(first);
+        let connected: Promise<boolean> = Promise.resolve(false);
+        await act(async () => {
+          connected = connectOfFoldedForm('tok-123');
+        });
+        await waitFor(() => expect(mockCreate).toHaveBeenCalledTimes(1));
+        const createdId = (mockCreate.mock.calls[0][0] as { id: string }).id;
+
+        // The insert is still queued: the live query shows no row yet.
+        expect(mockAccounts).toEqual([]);
+        await fireEvent.press(second.getByTestId('account-kind-field'));
+        expect(() => second.getByTestId(`account-kind-field-option-${pickedKind}`)).toThrow();
+        let savePress: Promise<unknown> = Promise.resolve();
+        await act(async () => {
+          savePress = fireEvent.press(second.getByText('Save'));
+        });
+        await act(async () => {
+          finishInsert();
+          await savePress;
+        });
+
+        expect(await connected).toBe(true);
+        expect(mockCreateCashAccount).not.toHaveBeenCalled();
+        expect(mockSaveFormAccount).toHaveBeenCalledTimes(1);
+        expect(mockSaveFormAccount).toHaveBeenCalledWith(
+          expect.objectContaining({ id: createdId, kind: 'bank', bankId: 'monobank' }),
+        );
+        expect(mockAccounts).toEqual([{ id: createdId, name: 'My Bank' }]);
+      },
+    );
+
+    it('asks nothing of a form that was not remounted from its own draft', async () => {
+      const fresh = await renderForm();
+      const swapped = await renderForm({
+        initialKind: 'cash',
+        draft: { name: 'Wallet', icon: 'giftcard', color: entityColors.violet },
+      });
+
+      expect(mockExistsCalls).toEqual([]);
+      expect(isKindFieldDisabled(fresh.getByTestId)).toBe(false);
+      expect(isKindFieldDisabled(swapped.getByTestId)).toBe(false);
+    });
+
+    it('asks nothing of an edit, which locks the kind by itself', async () => {
+      mockAccounts = [{ id: 'acc-1', name: 'Card', kind: 'bank', icon: null, color: null }];
+
+      const view = await renderForm({ accountId: 'acc-1', draft: bankDraft });
+
+      expect(mockExistsCalls).toEqual([]);
+      expect(isKindFieldDisabled(view.getByTestId)).toBe(true);
+    });
   });
 
   it('leaves no draft behind once saved: it goes back and writes nothing more', async () => {
