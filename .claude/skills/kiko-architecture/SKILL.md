@@ -1735,13 +1735,19 @@ Load-bearing rules, verified in `binance.transactions.test.ts` rather
 than restated here:
 
 - **Two signed reads.** `GET /sapi/v1/capital/deposit/hisrec` and
-  `GET /sapi/v1/capital/withdraw/history`, both `coin=BTC`, both signed
-  by the same `signedRequest` HMAC as the balance reads (read-only key).
+  `GET /sapi/v1/capital/withdraw/history`, both `coin=BTC`, both fetched
+  by `binance.history-client.ts` and signed through `signedRequestPage`
+  (`binance.client.ts`), the same HMAC as the balance reads (read-only key).
+  The history reads (`fetchDepositHistory`, `fetchWithdrawHistory`) live in
+  `binance.history-client.ts`, not `binance.client.ts`, and return a
+  `HistoryPage` of strictly parsed rows; a malformed record throws
+  `BinanceHistoryParseError`, so the window stops and the cursor stays (spec
+  section 7, "Strict capital parse").
   Each client call is ONE offset page of ONE window; the offset-paging
   and the window walk live in `binance.transactions.ts`, not the client.
 - **90-day windows, offset paging.** Binance rejects a `startTime`/
   `endTime` span of 90 days or more and caps a page at 1000 rows
-  (`HISTORY_PAGE_LIMIT`). The sync walks contiguous 89-day windows and
+  (`HISTORY_PAGE_LIMIT` in `binance.history-client.ts`). The sync walks contiguous 89-day windows and
   offset-pages each window until a short page. `MAX_WINDOWS` /
   `MAX_PAGES_PER_WINDOW` are the loop backstops.
 - **Per-invocation pacing gate.** A first sync fans out many 89-day
@@ -1807,8 +1813,9 @@ than restated here:
 - **A withdraw-history call budget, refreshed from Binance's own header.**
   At most `WITHDRAW_CALLS_PER_RUN_FALLBACK` (9) withdraw-history calls per
   run, or fewer once `X-SAPI-USED-UID-WEIGHT-1M` (parsed by
-  `fetchWithdrawHistory`, returned alongside `rows` as
-  `WithdrawHistoryPage`) shows the per-minute weight ceiling
+  `usedWeightsFromHeaders` in `binance.client.ts` and returned by
+  `fetchWithdrawHistory` in `binance.history-client.ts` as
+  `HistoryPage.usedUidWeight1m`) shows the per-minute weight ceiling
   (`UID_WEIGHT_BUDGET_1M`) is within one more call's weight
   (`WITHDRAW_UID_WEIGHT`) of being spent. Deposits page UNBOUNDED (only the
   withdraw endpoint is budgeted — it is the one that tripped the original
@@ -1817,6 +1824,10 @@ than restated here:
   from the same, unmoved watermark. `syncBinanceTransactions` returns
   `{ imported, complete }` — `complete: false` means history remains
   behind and a later run (or sync press) resumes from the watermark.
+- **A thrown error under `src/crypto-sync` is a named class with a fixed
+  message.** Semgrep `kiko-no-literal-sync-error` flags
+  `throw new Error(<literal>)`, and `logFailure` logs only the error's name.
+  Example: `BinanceHistoryParseError` in `binance.history-client.ts`.
 - **A 429/418 sets a per-account cooldown and stops cleanly, without
   failing the balance sync.** `signedRequestPage` (`binance.client.ts`)
   throws `BinanceRateLimitError(status, retryAfterMs)` for a 429 or 418,

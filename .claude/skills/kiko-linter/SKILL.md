@@ -1805,7 +1805,10 @@ verified external-format citation, the same standard as every other
 ignore-list exception in this repo — see
 `docs/harness/documented-exceptions.md` for the full, individually-cited
 list; read `EXEMPTIONS` in `scripts/checks/full-word-identifiers.js`
-for the current set.
+for the current set. Moving code that holds an exempted identifier moves its
+`EXEMPTIONS` entry (path suffix + exact name) in that file and its
+`docs/harness/documented-exceptions.md` citation in the same commit; the old
+suffix silently stops matching.
 
 ## Override forms and where each is honored
 
@@ -1842,6 +1845,9 @@ Each runs as `node scripts/checks/<name>.js <file>`, as a guard
 knip only through `knip.json`'s `ignore` (read the list there; it
 includes `feature-imports.js` and `specifier-scanner.js`). None has a
 report or JSON mode.
+
+Knip flags an exported type that no module imports; export a type in the
+commit that first imports it.
 
 Each `NODE_RULES` row names its own `projectCheck`, the gate a deny for
 a pre-existing finding points at. A Semgrep deny names
