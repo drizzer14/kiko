@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useState } from 'react';
 
 type DraftNavigation<Draft> = { setParams: (params: { draft: Draft }) => void };
 
@@ -27,23 +27,9 @@ export const useDraftParam = <Draft>(
   route: DraftRoute<Draft>,
 ): { initialDraft: Draft | undefined; saveDraft: (draft: Draft) => void } => {
   const [initialDraft] = useState(() => route.params?.draft);
-  // The text of the draft the route holds, so a save of the same values writes nothing.
-  const held = useRef(JSON.stringify(initialDraft));
   const { setParams } = navigation;
 
-  const saveDraft = useCallback(
-    (draft: Draft): void => {
-      const text = JSON.stringify(draft);
-
-      if (text === held.current) {
-        return;
-      }
-
-      held.current = text;
-      setParams({ draft });
-    },
-    [setParams],
-  );
+  const saveDraft = useCallback((draft: Draft): void => setParams({ draft }), [setParams]);
 
   return { initialDraft, saveDraft };
 };

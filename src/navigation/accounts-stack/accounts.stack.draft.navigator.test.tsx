@@ -243,6 +243,48 @@ describe('AccountsStack — form drafts across a fold and an unfold', () => {
       expect(screen.getByLabelText('Amount').props.value).toBe('99');
     });
 
+    it('saves what was typed before the fold when the pose change reports columns, rows, then one pane', async () => {
+      await renderStack();
+      await openTransactionForm();
+      await fillAmount('99');
+      const before = screen.getByTestId('transaction-form');
+
+      await emitLayoutMode('rows');
+      await emitLayoutMode('single');
+
+      // The fold waits for the burst to end; the draft is already on the route.
+      expect(routeNamed('TransactionForm')?.params?.draft?.amount).toBe('99');
+      expect(screen.getByTestId('transaction-form')).toBe(before);
+
+      await act(async () => {
+        jest.advanceTimersByTime(SETTLED);
+      });
+
+      expect(screen.getByTestId('transaction-form')).not.toBe(before);
+      expect(screen.getByLabelText('Amount').props.value).toBe('99');
+    });
+
+    it('saves what was typed before the unfold when the pose change reports one pane, rows, then columns', async () => {
+      await renderStack();
+      await openTransactionForm();
+      await changeWindow('single');
+      await fillAmount('55');
+      const before = screen.getByTestId('transaction-form');
+
+      await emitLayoutMode('rows');
+      await emitLayoutMode('columns');
+
+      expect(routeNamed('TransactionForm')?.params?.draft?.amount).toBe('55');
+      expect(screen.getByTestId('transaction-form')).toBe(before);
+
+      await act(async () => {
+        jest.advanceTimersByTime(SETTLED);
+      });
+
+      expect(screen.getByTestId('transaction-form')).not.toBe(before);
+      expect(screen.getByLabelText('Amount').props.value).toBe('55');
+    });
+
     it('remounts the form: it is a new screen with the same route', async () => {
       await renderStack();
       await openTransactionForm();

@@ -5,12 +5,12 @@ import type { Currency } from '@kiko/currency/currency';
 import type { ReminderDraft } from '@kiko/reminders/rules';
 import type { BankId } from '@kiko/bank-sync/bank-catalog';
 import type { ReminderKind } from '@kiko/reminders/schedule';
-import type { OwnershipInput } from '@kiko/holdings/holding-metadata';
 import type { NavigatorScreenParams } from '@react-navigation/native';
 import type { FormMode } from '@kiko/screens/forms/mode-select-field';
 import type { StatementFormatId } from '@kiko/statement-import/parser';
 import type { HoldingFormDraft } from '@kiko/screens/forms/holding-form';
 import type { ImplicitAccountKind } from '@kiko/holdings/implicit-account';
+import type { OwnershipEntry } from '@kiko/screens/forms/property-ownership';
 
 /**
  * Per-tab native-stack param lists. Each tab owns its own stack, so screens
@@ -29,7 +29,7 @@ import type { ImplicitAccountKind } from '@kiko/holdings/implicit-account';
  * can never pass more than one. It is registered in both the Home and Accounts
  * stacks (Home lists every transaction; Accounts reaches it from a holding), so
  * both param lists carry the same shape. The final member — an object with no
- * id — is the global-add entry (Bundle B): a create with NO holding fixed by
+ * id — is the global-add entry: a create with NO holding fixed by
  * navigation, so the form renders its own primary-leg holding picker. Every
  * member may also carry the form's own `draft` (see `TransactionFormDraft`).
  */
@@ -96,10 +96,9 @@ export type AccountFormDraft = {
   initialValue: string;
   bankId: BankId | null;
   brokerId: BrokerId | null;
-  // The id the form made for the account it may create, and whether a Connect already created
-  // that row: a remount must save onto it, not create a second account.
+  // The id the form made for the account it may create: a remount keeps it, so a row a Connect
+  // already created under it is saved onto, not created again.
   pendingAccountId: string;
-  accountRowStarted: boolean;
 };
 
 /**
@@ -112,7 +111,7 @@ export type ContributionFormDraft = { amount: string; date: number };
 export type PricePointFormDraft = { value: string; date: number };
 
 export type OwnershipChangeFormDraft = {
-  entry: { mode: OwnershipInput; percent: string; numerator: string; denominator: string };
+  entry: OwnershipEntry;
   effectiveDate: number;
 };
 

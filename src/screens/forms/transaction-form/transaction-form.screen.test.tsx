@@ -5029,4 +5029,19 @@ describe('TransactionFormScreen — draft', () => {
     await waitFor(() => expect(navigation.goBack).toHaveBeenCalledTimes(1));
     expect(navigation.setParams).not.toHaveBeenCalled();
   });
+
+  it('opens blank again once the user left without saving, as the draft went with the route', async () => {
+    const first = await renderAdd();
+    await fireEvent.changeText(first.getByLabelText('Amount'), '12.34');
+    await fireEvent(first.getByLabelText('Amount'), 'blur');
+
+    expect(navigation.setParams).toHaveBeenCalledTimes(1);
+
+    await first.unmount();
+
+    const second = await renderAdd();
+
+    expect(second.getByLabelText('Amount').props.value).toBe('');
+    expect(mockRecordManual).not.toHaveBeenCalled();
+  });
 });

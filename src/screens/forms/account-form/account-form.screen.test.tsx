@@ -92,12 +92,22 @@ const mockFetchAccount = jest.fn();
 // the hoisted factory may close over it; create-mode tests leave it empty.
 let mockAccounts: unknown[] = [];
 
+// The Connect closure the Monobank field was last given: a test calls an unmounted form's own
+// closure to run a Connect that is still in flight when the form is folded.
+let mockMonobankConnect: ((token: string) => Promise<boolean>) | undefined;
+
 jest.mock('@kiko/db/use-live-query', () => ({
   useLiveQuery: () => ({ data: mockAccounts }),
 }));
 jest.mock('@kiko/accounts/accounts.repo', () => ({
   accountsRepo: {
-    byIdQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }),
+    // Awaited by the form to ask the database whether a row exists, and handed to the (mocked)
+    // live query as a query object.
+    byIdQuery: (accountId: string) =>
+      Object.assign(
+        Promise.resolve(mockAccounts.filter((row) => (row as { id: string }).id === accountId)),
+        { toSQL: () => ({ sql: '', params: [] }) },
+      ),
     create: (...args: unknown[]) => mockCreate(...args),
     createCashAccount: (...args: unknown[]) => mockCreateCashAccount(...args),
     createImplicitHolding: (...args: unknown[]) => mockCreateImplicitHolding(...args),
@@ -251,6 +261,7 @@ jest.mock('@kiko/design-system/components/monobank-connect-field', () => {
       onConnect: (token: string) => Promise<boolean>;
       reminder?: ConnectReminder;
     }) => {
+      mockMonobankConnect = onConnect;
       const [result, setResult] = useState('');
       // Local state of the real field's token input: a remount loses it.
       const [typedToken, setTypedToken] = useState('');
@@ -2887,6 +2898,8 @@ describe('AccountFormScreen — draft', () => {
     mockCreateCashAccount.mockResolvedValue(undefined);
     mockSetIcon.mockResolvedValue(undefined);
     mockUpdate.mockResolvedValue(undefined);
+    mockSaveToken.mockResolvedValue(undefined);
+    mockMonobankSync.mockResolvedValue(true);
   });
 
   afterEach(() => {
@@ -2905,7 +2918,6 @@ describe('AccountFormScreen — draft', () => {
     bankId: null,
     brokerId: null,
     pendingAccountId: 'pending-1',
-    accountRowStarted: false,
   } as const;
 
   type View = Awaited<ReturnType<typeof renderForm>>;
@@ -2999,7 +3011,6 @@ describe('AccountFormScreen — draft', () => {
       bankId: null,
       brokerId: null,
       pendingAccountId: expect.any(String),
-      accountRowStarted: false,
     });
     expect(JSON.parse(JSON.stringify(draft))).toEqual(draft);
   });
@@ -3113,7 +3124,126 @@ describe('AccountFormScreen — draft', () => {
     });
   });
 
+  // The database is the only record of whether a Connect inserted the pending account: a created
+  // row joins the rows the mocked repo answers with, and a second insert under one id is refused
+  // like the primary key refuses it. `ends` holds an insert back until it settles.
+  const storeCreatedRows = (ends: Promise<void> = Promise.resolve()): void => {
+    mockCreate.mockImplementation(async (input: { id: string }) => {
+      await ends;
+
+      if (mockAccounts.some((row) => (row as { id: string }).id === input.id)) {
+        throw new Error('UNIQUE constraint failed: accounts.id');
+      }
+      mockAccounts = [...mockAccounts, { id: input.id }];
+
+      return input.id;
+    });
+  };
+
+  const fillMonobank = async (view: View, name: string): Promise<void> => {
+    await fireEvent.changeText(view.getByLabelText('Name'), name);
+    await fireEvent.press(view.getByLabelText('Bank type'));
+    await fireEvent.press(view.getByTestId('bank-type-option-monobank'));
+  };
+
+  it('saves onto the row a Connect inserts after the form was folded, never failing or creating a second', async () => {
+    let finishInsert = (): void => undefined;
+    storeCreatedRows(
+      new Promise<void>((resolve) => {
+        finishInsert = resolve;
+      }),
+    );
+    const first = await renderForm();
+    await fillMonobank(first, 'My Bank');
+    // The Connect was past its token check but before the insert when the form folded.
+    const connectOfFoldedForm = mockMonobankConnect as (token: string) => Promise<boolean>;
+    await emitLayoutMode('columns');
+    await first.unmount();
+    const second = await reopened(first);
+    let connected: Promise<boolean> = Promise.resolve(false);
+    await act(async () => {
+      connected = connectOfFoldedForm('tok-123');
+    });
+    await waitFor(() => expect(mockCreate).toHaveBeenCalledTimes(1));
+    const createdId = (mockCreate.mock.calls[0][0] as { id: string }).id;
+
+    await act(async () => finishInsert());
+
+    expect(await connected).toBe(true);
+
+    await fireEvent.press(second.getByText('Save'));
+
+    await waitFor(() => expect(second.navigation.goBack).toHaveBeenCalledTimes(1));
+    expect(mockCreate).toHaveBeenCalledTimes(1);
+    expect(mockUpdate).toHaveBeenCalledWith(
+      createdId,
+      expect.objectContaining({ name: 'My Bank', bankId: 'monobank' }),
+    );
+
+    await fireEvent.press(second.getByLabelText('monobank-field'));
+
+    await waitFor(() =>
+      expect(second.getByTestId('monobank-connect-result')).toHaveTextContent('true'),
+    );
+    expect(mockCreate).toHaveBeenCalledTimes(1);
+  });
+
+  it('connects again on the remounted form without inserting the row a second time', async () => {
+    storeCreatedRows();
+    const first = await renderForm();
+    await fillMonobank(first, 'My Bank');
+    await fireEvent.press(first.getByLabelText('monobank-field'));
+    await waitFor(() => expect(mockMonobankSync).toHaveBeenCalledTimes(1));
+    await emitLayoutMode('columns');
+    await first.unmount();
+    const second = await reopened(first);
+
+    await fireEvent.press(second.getByLabelText('monobank-field'));
+
+    await waitFor(() => expect(mockMonobankSync).toHaveBeenCalledTimes(2));
+    await waitFor(() =>
+      expect(second.getByTestId('monobank-connect-result')).toHaveTextContent('true'),
+    );
+    expect(mockCreate).toHaveBeenCalledTimes(1);
+  });
+
+  it('creates the row on Save when the insert a fold interrupted failed', async () => {
+    let failInsert = (): void => undefined;
+    mockCreate.mockImplementationOnce(
+      () =>
+        new Promise((_resolve, reject) => {
+          failInsert = () => reject(new Error('database is locked'));
+        }),
+    );
+    const first = await renderForm();
+    await fillMonobank(first, 'My Bank');
+    let connected: Promise<boolean> = Promise.resolve(true);
+    await act(async () => {
+      connected = (mockMonobankConnect as (token: string) => Promise<boolean>)('tok-123');
+    });
+    await waitFor(() => expect(mockCreate).toHaveBeenCalledTimes(1));
+    const pendingId = (mockCreate.mock.calls[0][0] as { id: string }).id;
+    await emitLayoutMode('columns');
+    await first.unmount();
+    const second = await reopened(first);
+    await act(async () => failInsert());
+
+    expect(await connected).toBe(false);
+
+    expect(isKindFieldDisabled(second.getByTestId)).toBe(false);
+
+    await fireEvent.press(second.getByText('Save'));
+
+    await waitFor(() => expect(second.navigation.goBack).toHaveBeenCalledTimes(1));
+    expect(mockCreate).toHaveBeenCalledTimes(2);
+    expect(mockCreate).toHaveBeenLastCalledWith(
+      expect.objectContaining({ id: pendingId, name: 'My Bank' }),
+    );
+    expect(mockUpdate).not.toHaveBeenCalled();
+  });
+
   it('keeps the row a Connect already created, so the remount saves onto it and never creates a second', async () => {
+    storeCreatedRows();
     mockMonobankSync.mockResolvedValue(true);
     const first = await renderForm();
     await fireEvent.changeText(first.getByLabelText('Name'), 'My Bank');
@@ -3149,5 +3279,21 @@ describe('AccountFormScreen — draft', () => {
 
     await waitFor(() => expect(view.navigation.goBack).toHaveBeenCalledTimes(1));
     expect(view.navigation.setParams).not.toHaveBeenCalled();
+  });
+
+  it('opens blank again once the user left without saving, as the draft went with the route', async () => {
+    const first = await renderForm();
+    await fireEvent.changeText(first.getByLabelText('Name'), 'Wallet');
+    await fireEvent(first.getByLabelText('Name'), 'blur');
+
+    expect(first.navigation.setParams).toHaveBeenCalledTimes(1);
+
+    await first.unmount();
+
+    const second = await renderForm();
+
+    expect(second.getByLabelText('Name').props.value).toBe('');
+    expect(mockCreate).not.toHaveBeenCalled();
+    expect(mockCreateCashAccount).not.toHaveBeenCalled();
   });
 });

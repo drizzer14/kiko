@@ -64,35 +64,6 @@ describe('useDraftParam', () => {
     expect(setParams).toHaveBeenCalledWith({ draft: FILLED });
   });
 
-  it('writes nothing when the draft is the one the route already holds', async () => {
-    const { result, setParams } = await renderDraftParam(FILLED);
-
-    await result.current.saveDraft({ ...FILLED });
-
-    expect(setParams).not.toHaveBeenCalled();
-  });
-
-  it('writes nothing when the same draft is saved twice', async () => {
-    const { result, setParams } = await renderDraftParam(undefined);
-
-    await result.current.saveDraft(FILLED);
-    await result.current.saveDraft({ ...FILLED });
-
-    expect(setParams).toHaveBeenCalledTimes(1);
-  });
-
-  it('writes again once the draft differs from the last one written', async () => {
-    const { result, setParams } = await renderDraftParam(undefined);
-
-    await result.current.saveDraft(FILLED);
-    await result.current.saveDraft({ ...FILLED, note: 'coffee' });
-
-    expect(setParams.mock.calls).toEqual([
-      [{ draft: FILLED }],
-      [{ draft: { amount: '12', note: 'coffee' } }],
-    ]);
-  });
-
   it('keeps one saveDraft across renders, so an effect that depends on it does not re-run', async () => {
     const { result, rerender } = await renderDraftParam(undefined);
     const first = result.current.saveDraft;

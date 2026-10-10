@@ -100,10 +100,8 @@ const createSeed = (
 };
 
 type Opening = CreateSeed & {
-  // The id the form made for the account it may create, and the promise of a row a Connect
-  // already created under it (a remount from a saved draft), else null.
+  // The id the form made for the account it may create, kept across a remount from a saved draft.
   pendingAccountId: string;
-  createdAccount: Promise<string> | null;
   // Whether it opens on the form's own saved draft, which an edit must not overwrite from the
   // stored account.
   isSaved: boolean;
@@ -118,17 +116,17 @@ const openingOf = (
 ): Opening => {
   const seed = createSeed(initialKind, draft);
   const isSaved = isSavedDraft(draft);
-  const pendingAccountId = isSavedDraft(draft) ? draft.pendingAccountId : id();
 
   return {
     ...seed,
     icon: isEdit && !isSaved ? null : seed.icon,
-    pendingAccountId,
-    createdAccount:
-      isSavedDraft(draft) && draft.accountRowStarted ? Promise.resolve(pendingAccountId) : null,
+    pendingAccountId: isSavedDraft(draft) ? draft.pendingAccountId : id(),
     isSaved,
   };
 };
+
+const accountRowExists = async (accountId: string): Promise<boolean> =>
+  (await accountsRepo.byIdQuery(accountId)).length > 0;
 
 // A stored `kind` can hold a value outside the CURRENT schema enum — the
 // schema's `enum` is TS-only (no DB CHECK constraint), so a row under a kind
@@ -313,8 +311,10 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
   // the footer Save) inserts the row exactly once; every later caller reuses the
   // same promise, so a field Connect followed by Save can never produce a
   // DUPLICATE account (connect-first). On a REJECTED create the ref is reset to null
-  // (see below) so a retry re-attempts and Save never silently no-ops.
-  const accountCreate = useRef<Promise<string> | null>(opening.createdAccount);
+  // (see below) so a retry re-attempts and Save never silently no-ops. A remount starts it null
+  // too: whether the row exists is asked of the database, because a fold can leave a Connect
+  // running in the old screen that inserts the row after this one opened.
+  const accountCreate = useRef<Promise<string> | null>(null);
   // A render-visible mirror of "the row has been (or is being) inserted", used
   // only to DISABLE the kind switch and the bank picker once a source is
   // connected — switching kind afterwards would route Save down a branch that
@@ -322,7 +322,12 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
   // would make the connect-first Save overwrite the connected row's bank id. It is
   // state (not just the ref) because the disable must re-render; it follows the
   // ref, reset to false on a failed create so both re-enable when no row exists.
-  const [accountRowStarted, setAccountRowStarted] = useState(opening.createdAccount !== null);
+  const [accountRowStarted, setAccountRowStarted] = useState(false);
+  // The account being edited, or in a create form the row a Connect inserted under the pending id,
+  // possibly from the screen a fold replaced.
+  const { data: accounts } = useLiveQuery(accountsRepo.byIdQuery(editId ?? pendingAccountId), [
+    'accounts',
+  ]);
   const draft: AccountFormDraft = {
     saved: true,
     name,
@@ -335,10 +340,9 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
     bankId,
     brokerId,
     pendingAccountId,
-    accountRowStarted,
   };
   const onFieldBlur = useDraftAutosave(draft, saveDraft);
-  const isPickLocked = isEdit || accountRowStarted;
+  const isPickLocked = isEdit || accountRowStarted || accounts.length > 0;
   // ONE shared attempted-submit flag for every validated field on this form
   // (kiko-code-style's form validation model), set true by a blocked Connect
   // OR a blocked Save — never a per-field flag: each field's own error below
@@ -396,16 +400,20 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
     // exists, and a Binance connect reads any failure here as "no row" and
     // clears the key pair of an account that is there.
     accountCreate.current ??= (async () => {
-      await accountsRepo.create({
-        id: pendingAccountId,
-        name: trimmedName,
-        // Neither cash (createCashAccount returns before this) nor property/debt
-        // (the swap to the holding form leaves this form first) reaches here.
-        kind,
-        color,
-        icon,
-        bankId: catalogId,
-      });
+      // A row under the pending id is another screen's Connect (this form was folded and
+      // remounted while it ran): inserting again would fail on the primary key.
+      if (!(await accountRowExists(pendingAccountId))) {
+        await accountsRepo.create({
+          id: pendingAccountId,
+          name: trimmedName,
+          // Neither cash (createCashAccount returns before this) nor property/debt
+          // (the swap to the holding form leaves this form first) reaches here.
+          kind,
+          color,
+          icon,
+          bankId: catalogId,
+        });
+      }
 
       return pendingAccountId;
     })().catch((error: unknown) => {
@@ -493,10 +501,8 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
     return syncCrypto({ providerId: 'binance', targetAccountId: pendingAccountId });
   };
 
-  // In edit mode, load the account being edited so its fields can seed the form.
-  // The query always runs (hooks can't be conditional); an empty id in create
-  // mode simply matches no row.
-  const { data: accounts } = useLiveQuery(accountsRepo.byIdQuery(editId ?? ''), ['accounts']);
+  // In edit mode, the account being edited seeds the form (the query above always runs: hooks
+  // can't be conditional).
   const editingAccount = isEdit ? accounts.at(0) : undefined;
 
   // Seed the form once from the loaded account. `useLiveQuery` resolves
@@ -624,7 +630,7 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
       // screen), and a metals account has no source to connect at all — it
       // always takes this branch. (Property and debt never get here: picking
       // either swaps to the holding form, which leaves this form first.)
-      if (accountCreate.current !== null) {
+      if (accountCreate.current !== null || (await accountRowExists(pendingAccountId))) {
         await accountsRepo.update(pendingAccountId, {
           name: trimmedName,
           color,

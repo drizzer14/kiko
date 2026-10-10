@@ -39,7 +39,7 @@ import type { AccountsStackParamList, LotFormDraft } from '@kiko/navigation/type
 
 type LotFormScreenProps = NativeStackScreenProps<AccountsStackParamList, 'LotForm'>;
 
-type LotDirection = 'buy' | 'sell';
+type LotDirection = LotFormDraft['direction'];
 
 const directions: readonly LotDirection[] = ['buy', 'sell'];
 

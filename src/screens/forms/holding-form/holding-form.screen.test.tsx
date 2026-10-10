@@ -5587,4 +5587,20 @@ describe('HoldingFormScreen — draft', () => {
     await waitFor(() => expect(navigation.goBack).toHaveBeenCalledTimes(1));
     expect(navigation.setParams).not.toHaveBeenCalled();
   });
+
+  it('opens blank again once the user left without saving, as the draft went with the route', async () => {
+    mockAccountKind = 'cash';
+    const first = await open({ accountId: 'acc-1' });
+    await fill(first, 'Name', 'Wallet');
+    await blur(first, 'Name');
+
+    expect(navigation.setParams).toHaveBeenCalledTimes(1);
+
+    await first.unmount();
+
+    const second = await open({ accountId: 'acc-1' });
+
+    expect(second.getByLabelText('Name').props.value).toBe('');
+    expect(createMock).not.toHaveBeenCalled();
+  });
 });
