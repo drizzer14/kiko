@@ -4,7 +4,7 @@ import type { NativeStackNavigationOptions } from '@react-navigation/native-stac
 /**
  * The `screenOptions` of every native stack that shows a large title.
  *
- * Below iOS 26, react-native-screens builds a transparent bar appearance with
+ * Below iOS 26, react-native-screens builds a transparent bar style with
  * no background effect, so once the large title collapses the bar is fully
  * see-through. `headerBlurEffect` gives the scrolled bar a dark blur;
  * `headerLargeStyle` keeps the at-rest large title transparent, so the blur
