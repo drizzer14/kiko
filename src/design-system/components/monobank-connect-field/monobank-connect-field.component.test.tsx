@@ -1,4 +1,4 @@
-import { createRef } from 'react';
+import { createRef, type ComponentProps } from 'react';
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
@@ -29,6 +29,19 @@ const pressConnect = async (view: View): Promise<void> => {
   await act(async () => {
     await fireEvent.press(view.getByText(connectLabel));
   });
+};
+
+// Holds the validation request open so a case decides when, and whether, it settles.
+const holdClientInfo = (): { resolve: () => void } => {
+  const held = { resolve: () => {} };
+  mockFetchClientInfo.mockImplementation(
+    () =>
+      new Promise((resolve) => {
+        held.resolve = () => resolve({ name: 'Ada' });
+      }),
+  );
+
+  return held;
 };
 
 it('shows the token-required error and calls no network when Connect is pressed blank', async () => {
@@ -131,13 +144,7 @@ it('shows couldNotConnectMonobank when a valid token fails to store/sync, keepin
 });
 
 it('disables Connect while validation is in flight, even with a filled token', async () => {
-  let resolveFetch: (info: { name: string }) => void = () => {};
-  mockFetchClientInfo.mockImplementation(
-    () =>
-      new Promise((resolve) => {
-        resolveFetch = resolve;
-      }),
-  );
+  const held = holdClientInfo();
   const view = await render(<MonobankConnectField onConnect={jest.fn()} />);
 
   await type(view, 'tok-123');
@@ -150,49 +157,44 @@ it('disables Connect while validation is in flight, even with a filled token', a
   expect(view.getByRole('button', { name: connectLabel })).toBeDisabled();
 
   await act(async () => {
-    resolveFetch({ name: 'Ada' });
+    held.resolve();
   });
 });
 
 describe('once unmounted', () => {
-  // A field a fold or a kind switch replaced must not store the token its check validated: the
-  // screen's connect would insert the account row after the new form already looked for it.
-  it('does not call onConnect when the check resolves after the field unmounted', async () => {
-    let resolveFetch: (info: { name: string }) => void = () => {};
-    mockFetchClientInfo.mockImplementation(
-      () =>
-        new Promise((resolve) => {
-          resolveFetch = resolve;
-        }),
-    );
+  const connectWhileChecking = async (): Promise<{
+    view: View;
+    held: { resolve: () => void };
+    onConnect: jest.Mock;
+  }> => {
+    const held = holdClientInfo();
     const onConnect = jest.fn().mockResolvedValue(true);
     const view = await render(<MonobankConnectField onConnect={onConnect} />);
 
     await type(view, 'tok-123');
     await pressConnect(view);
+
+    return { view, held, onConnect };
+  };
+
+  // A field a fold or a kind switch replaced must not store the token its check validated: the
+  // screen's connect would insert the account row after the new form already looked for it.
+  it('does not call onConnect when the check resolves after the field unmounted', async () => {
+    const { view, held, onConnect } = await connectWhileChecking();
+
     await view.unmount();
     await act(async () => {
-      resolveFetch({ name: 'Ada' });
+      held.resolve();
     });
 
     expect(onConnect).not.toHaveBeenCalled();
   });
 
   it('still calls onConnect once when the check resolves while the field is mounted', async () => {
-    let resolveFetch: (info: { name: string }) => void = () => {};
-    mockFetchClientInfo.mockImplementation(
-      () =>
-        new Promise((resolve) => {
-          resolveFetch = resolve;
-        }),
-    );
-    const onConnect = jest.fn().mockResolvedValue(true);
-    const view = await render(<MonobankConnectField onConnect={onConnect} />);
+    const { held, onConnect } = await connectWhileChecking();
 
-    await type(view, 'tok-123');
-    await pressConnect(view);
     await act(async () => {
-      resolveFetch({ name: 'Ada' });
+      held.resolve();
     });
 
     expect(onConnect).toHaveBeenCalledTimes(1);
@@ -208,9 +210,14 @@ describe('connect reminder', () => {
     onConnectPress: jest.fn(),
   });
 
+  const renderWithReminder = (
+    reminder: ConnectReminder,
+    onConnect: ComponentProps<typeof MonobankConnectField>['onConnect'] = jest.fn(),
+  ): Promise<View> => render(<MonobankConnectField onConnect={onConnect} reminder={reminder} />);
+
   it('shows the reminder message under the Connect button, and nothing without one', async () => {
     const reminder = makeReminder('Tap Connect first.');
-    const view = await render(<MonobankConnectField onConnect={jest.fn()} reminder={reminder} />);
+    const view = await renderWithReminder(reminder);
 
     expect(view.getByText('Tap Connect first.')).toBeTruthy();
     expect(view.getByLabelText('Tap Connect first.')).toBeTruthy();
@@ -228,14 +235,14 @@ describe('connect reminder', () => {
 
   it('attaches the reminder ref to the Connect row so a blocked Save can scroll to it', async () => {
     const reminder = makeReminder();
-    await render(<MonobankConnectField onConnect={jest.fn()} reminder={reminder} />);
+    await renderWithReminder(reminder);
 
     expect(reminder.ref.current).not.toBeNull();
   });
 
   it('reports whether a token is typed on every edit, a whitespace-only token counting as none', async () => {
     const reminder = makeReminder();
-    const view = await render(<MonobankConnectField onConnect={jest.fn()} reminder={reminder} />);
+    const view = await renderWithReminder(reminder);
 
     await type(view, 'tok');
     expect(reminder.onDraftChange).toHaveBeenLastCalledWith(true);
@@ -250,7 +257,7 @@ describe('connect reminder', () => {
 
   it('reports no typed token once it unmounts', async () => {
     const reminder = makeReminder();
-    const view = await render(<MonobankConnectField onConnect={jest.fn()} reminder={reminder} />);
+    const view = await renderWithReminder(reminder);
 
     await view.unmount();
 
@@ -259,7 +266,7 @@ describe('connect reminder', () => {
 
   it('does not report on a plain re-render', async () => {
     const reminder = makeReminder();
-    const view = await render(<MonobankConnectField onConnect={jest.fn()} reminder={reminder} />);
+    const view = await renderWithReminder(reminder);
 
     await view.rerender(<MonobankConnectField onConnect={jest.fn()} reminder={reminder} />);
 
@@ -269,9 +276,7 @@ describe('connect reminder', () => {
   it('reports the cleared token once a connect succeeds', async () => {
     mockFetchClientInfo.mockResolvedValue({ name: 'Ada' });
     const reminder = makeReminder();
-    const view = await render(
-      <MonobankConnectField onConnect={jest.fn().mockResolvedValue(true)} reminder={reminder} />,
-    );
+    const view = await renderWithReminder(reminder, jest.fn().mockResolvedValue(true));
 
     await type(view, 'tok');
     await pressConnect(view);
@@ -281,7 +286,7 @@ describe('connect reminder', () => {
 
   it('reports a Connect press, blank or not', async () => {
     const reminder = makeReminder();
-    const view = await render(<MonobankConnectField onConnect={jest.fn()} reminder={reminder} />);
+    const view = await renderWithReminder(reminder);
 
     await pressConnect(view);
 

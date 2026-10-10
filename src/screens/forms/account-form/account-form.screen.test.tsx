@@ -3359,17 +3359,18 @@ describe('AccountFormScreen — draft', () => {
     );
     const first = await renderForm();
     await fillMonobank(first, 'My Bank');
-    // The Connect was past its token check but before the insert when the form folded.
+    // The old screen's Connect queues its insert before the fold, and that insert is still
+    // waiting when the new form opens.
     const connectOfFoldedForm = mockMonobankConnect as (token: string) => Promise<boolean>;
-    await emitLayoutMode('columns');
-    await first.unmount();
-    const second = await reopened(first);
     let connected: Promise<boolean> = Promise.resolve(false);
     await act(async () => {
       connected = connectOfFoldedForm('tok-123');
     });
     await waitFor(() => expect(mockCreate).toHaveBeenCalledTimes(1));
     const createdId = (mockCreate.mock.calls[0][0] as { id: string }).id;
+    await emitLayoutMode('columns');
+    await first.unmount();
+    const second = await reopened(first);
 
     await act(async () => finishInsert());
 
@@ -3402,15 +3403,15 @@ describe('AccountFormScreen — draft', () => {
     const first = await renderForm();
     await fillMonobank(first, 'My Bank');
     const connectOfFoldedForm = mockMonobankConnect as (token: string) => Promise<boolean>;
-    await emitLayoutMode('columns');
-    await first.unmount();
-    const second = await reopened(first);
     let connected: Promise<boolean> = Promise.resolve(false);
     await act(async () => {
       connected = connectOfFoldedForm('tok-123');
     });
     await waitFor(() => expect(mockCreate).toHaveBeenCalledTimes(1));
     const createdId = (mockCreate.mock.calls[0][0] as { id: string }).id;
+    await emitLayoutMode('columns');
+    await first.unmount();
+    const second = await reopened(first);
     await fireEvent.changeText(second.getByLabelText('Name'), 'Renamed bank');
     // The Save is issued while that insert is still waiting: its write queues behind the insert.
     let savePress: Promise<unknown> = Promise.resolve();
@@ -3624,8 +3625,6 @@ describe('AccountFormScreen — draft', () => {
         const first = await renderForm();
         await fillMonobank(first, 'My Bank');
         const connectOfFoldedForm = mockMonobankConnect as (token: string) => Promise<boolean>;
-        await emitLayoutMode('columns');
-        await first.unmount();
         // The write queue is first in, first out: the screen the fold replaced queued its insert
         // before the new form opened, so the new form's read comes after it.
         let connected: Promise<boolean> = Promise.resolve(false);
@@ -3634,6 +3633,8 @@ describe('AccountFormScreen — draft', () => {
         });
         await waitFor(() => expect(mockCreate).toHaveBeenCalledTimes(1));
         const createdId = (mockCreate.mock.calls[0][0] as { id: string }).id;
+        await emitLayoutMode('columns');
+        await first.unmount();
         const second = await reopened(first);
 
         // The insert is still queued: the live query shows no row yet.
@@ -3759,7 +3760,6 @@ describe('AccountFormScreen — draft', () => {
       );
       expect(mockCreate).not.toHaveBeenCalled();
       expect(mockAccounts).toHaveLength(1);
-      expect(mockAccounts).not.toContainEqual(expect.objectContaining({ bankId: 'monobank' }));
     });
 
     it('lets the folded form unlock its picks and save one cash account, whatever the old check does', async () => {

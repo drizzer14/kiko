@@ -9,6 +9,19 @@ describe('useIsMounted', () => {
     expect(result.current()).toBe(true);
   });
 
+  it('answers false during the first render, before the mount effect ran', async () => {
+    const answers: boolean[] = [];
+
+    await renderHook(() => {
+      const isMounted = useIsMounted();
+      answers.push(isMounted());
+
+      return isMounted;
+    });
+
+    expect(answers[0]).toBe(false);
+  });
+
   it('answers false once the component unmounted', async () => {
     const { result, unmount } = await renderHook(() => useIsMounted());
 
