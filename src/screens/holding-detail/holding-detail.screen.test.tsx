@@ -549,12 +549,12 @@ describe('HoldingDetailScreen', () => {
   });
 
   describe('when its holding is deleted from the other pane', () => {
-    // The page is open for h-1, and a fresh read of the holdings has no such row.
-    const seedGone = (isLoading: Partial<Record<string, boolean>> = {}) =>
-      seed({ ...cashHolding, id: 'h-2' }, [], [], [], [], undefined, undefined, [], isLoading);
+    // The hook's own cases live in its test; this one pins that the screen wires the hook.
+    it('closes its own route in a pane', async () => {
+      // The page is open for h-1, and a fresh read of the holdings has no such row.
+      seed({ ...cashHolding, id: 'h-2' });
 
-    const renderInPane = () =>
-      render(
+      await render(
         <PaneContext.Provider value={paneContextOf('columns', 'companion')}>
           <HoldingDetailScreen
             navigation={asNavigationProp<HoldingDetailProps['navigation']>(navigation)}
@@ -564,36 +564,7 @@ describe('HoldingDetailScreen', () => {
         { wrapper: GestureRootWrapper },
       );
 
-    it('closes its own route in a pane', async () => {
-      seedGone();
-
-      await renderInPane();
-
       expect(mockClosePaneRoute).toHaveBeenCalledWith('HoldingDetail-test');
-    });
-
-    it('stays open on one pane', async () => {
-      seedGone();
-
-      await renderScreen();
-
-      expect(mockClosePaneRoute).not.toHaveBeenCalled();
-    });
-
-    it('stays open while its holdings are still loading', async () => {
-      seedGone({ holdings: true });
-
-      await renderInPane();
-
-      expect(mockClosePaneRoute).not.toHaveBeenCalled();
-    });
-
-    it('stays open while its holding is there', async () => {
-      seed(cashHolding);
-
-      await renderInPane();
-
-      expect(mockClosePaneRoute).not.toHaveBeenCalled();
     });
   });
 

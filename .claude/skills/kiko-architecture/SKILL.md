@@ -2596,7 +2596,7 @@ are built with `createPaneStackNavigator`.
   replaces it once an account exists, and `PANE_FOLD` drops it (`pane-assignment.ts`; R37).
   `PANE_CLOSE` (`useClosePaneRoute`, `pane-router.ts`) closes one route by key and is a no-op
   when it is gone; it serves a deleted entity: the Accounts list closes the primary page, and
-  `useCloseWhenGone` (`src/screens/holding-detail/use-close-when-gone.ts`) closes a companion
+  `useCloseWhenGone` (`src/screens/holding-detail/use-close-when-gone/use-close-when-gone.ts`) closes a companion
   `HoldingDetail`, in panes only, after a fresh read (R38).
 - **Row marking.** A list row that opens a page is marked `selected` when the primary pane shows
   that page: read `usePrimaryPaneRoute()` (`pane-visibility`; null in one pane or an empty

@@ -716,6 +716,13 @@ describe('PaneRouter', () => {
         expect(names(run(withForm(), PaneActions.fold()))).toEqual(['Accounts', 'AccountForm']);
       });
 
+      it('leaves only the list when Back is pressed on the form after a fold', () => {
+        const folded = run(withForm(), PaneActions.fold());
+        const back = run(folded, from(keyOf(folded, 'AccountForm'), CommonActions.goBack()));
+
+        expect(names(back)).toEqual(['Accounts']);
+      });
+
       it('is replaced by the default that content brings', () => {
         const saved = run(withForm(), CommonActions.goBack());
         const filled = run(

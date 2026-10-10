@@ -45,6 +45,7 @@ const SettingsRow: FC<SettingsRowProps> = ({
   // so it adds none of its own; either way its content reads on the accent.
   const isInSelectedSurface = useIsOnAccent();
   const rowStyle = withSelectedFill(style, selected && !isInSelectedSurface);
+  const isOnAccent = selected || isInSelectedSurface;
 
   const lead = (
     <Box direction="row" gap={3} style={styles.rowLead}>
@@ -111,7 +112,7 @@ const SettingsRow: FC<SettingsRowProps> = ({
         style={rowStyle}
         {...props}
       >
-        <OnAccentContext.Provider value={selected || isInSelectedSurface}>
+        <OnAccentContext.Provider value={isOnAccent}>
           <Box direction="row" style={styles.centeredEnd}>
             <Box gap={1} style={styles.body}>
               {lead}
@@ -134,9 +135,7 @@ const SettingsRow: FC<SettingsRowProps> = ({
       style={rowStyle}
       {...props}
     >
-      <OnAccentContext.Provider value={selected || isInSelectedSurface}>
-        {header}
-      </OnAccentContext.Provider>
+      <OnAccentContext.Provider value={isOnAccent}>{header}</OnAccentContext.Provider>
     </Pressable>
   );
 };

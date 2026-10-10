@@ -1174,15 +1174,24 @@ rules:
       - pattern: $NS.useFocusEffect(...)
       # The hook read off a namespace without a call, then called under another name, and the
       # same read as a destructure (`const { useIsFocused: focused } = Navigation`). Semgrep
-      # resolves an import alias, so a `typeof` of a type-only alias inside a `type` declaration
-      # would match the bare read too; that one position is left out.
+      # resolves an import alias, so a `typeof` of a type-only alias (an `import type` or an
+      # inline `type` specifier) would match the bare read too, and so would a test double's
+      # `as jest.Mock` cast, which calls nothing; those positions are left out.
       - patterns:
           - pattern-either:
               - pattern: $NS.useIsFocused
               - pattern: $NS.useFocusEffect
           - pattern-not-inside: "type $ALIAS = $TYPE"
+          - pattern-not-regex: \btypeof\s+[\w.]+
+          - pattern-not-inside: $MOCK as jest.Mock
       - pattern: "const { useIsFocused: $LOCAL, ... } = $NS"
       - pattern: "const { useFocusEffect: $LOCAL, ... } = $NS"
+      - pattern: "let { useIsFocused: $LOCAL, ... } = $NS"
+      - pattern: "let { useFocusEffect: $LOCAL, ... } = $NS"
+      - pattern: "var { useIsFocused: $LOCAL, ... } = $NS"
+      - pattern: "var { useFocusEffect: $LOCAL, ... } = $NS"
+      - pattern: "const { useIsFocused = $DEFAULT, ... } = $NS"
+      - pattern: "const { useFocusEffect = $DEFAULT, ... } = $NS"
       # Any value import or re-export that names either hook as a specifier of its own, which
       # covers an alias (`useIsFocused as focused`) and a local re-export file a screen then calls
       # by another name. The hook must open its specifier (right after `{` or `,`), so an inline

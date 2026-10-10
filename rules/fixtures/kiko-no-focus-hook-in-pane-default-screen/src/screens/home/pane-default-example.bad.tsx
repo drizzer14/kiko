@@ -71,6 +71,25 @@ const { useIsFocused: focusedHere } = Navigation;
 // EXPECT-FINDING
 const { useFocusEffect: effectHere, ...restOfNavigation } = Navigation;
 
+// The same destructure under `let` and `var`.
+// EXPECT-FINDING
+let { useIsFocused: focusedLet } = Navigation;
+
+// EXPECT-FINDING
+var { useFocusEffect: effectVar } = Navigation;
+
+// A destructure that keeps the hook's name and gives it a default; inside a function so the name
+// does not clash with the import above.
+export const hooksWithDefaults = () => {
+  // EXPECT-FINDING
+  const { useFocusEffect = () => undefined } = Navigation;
+
+  // EXPECT-FINDING
+  const { useIsFocused = () => false } = Navigation;
+
+  return [useFocusEffect, useIsFocused];
+};
+
 export const aliases = [
   focusedNow,
   onFocus,
@@ -78,4 +97,6 @@ export const aliases = [
   focusedHere,
   effectHere,
   restOfNavigation,
+  focusedLet,
+  effectVar,
 ];
