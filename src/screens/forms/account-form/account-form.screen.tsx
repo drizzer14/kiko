@@ -21,7 +21,6 @@ import Screen from '@kiko/design-system/components/screen';
 import { View, type TextInputInstance } from 'react-native';
 import { id, type AccountRow, useLiveQuery } from '@kiko/db';
 import Divider from '@kiko/design-system/components/divider';
-import { clearCredentials } from '@kiko/crypto-sync/binance';
 import BankTypeField from '@kiko/screens/forms/bank-type-field';
 import { groupAmount } from '@kiko/screens/forms/amount-format';
 import { alertOnCatch } from '@kiko/design-system/alert-on-catch';
@@ -46,6 +45,7 @@ import { type BankId, isBankId, isSpecificBankId } from '@kiko/bank-sync/bank-ca
 import HoldingIdentityField from '@kiko/design-system/components/holding-identity-field';
 import MonobankConnectField from '@kiko/design-system/components/monobank-connect-field';
 import { type Currency, currencySymbol, fiatCurrencyOptions } from '@kiko/currency/currency';
+import { type BinanceCredentials, clearCredentialsIfStored } from '@kiko/crypto-sync/binance';
 import type { AccountFormDraft, AccountsStackParamList, FormDraft } from '@kiko/navigation/types';
 
 import { usePendingRowLock } from './use-pending-row-lock';
@@ -468,27 +468,29 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
     });
   };
 
-  // The field stored its key pair under the pre-generated account id, and no Connect of it will
+  // A field stored `written` under the pre-generated account id, and no Connect of it will
   // follow: connectBinance's Connect failed to ensure the row, or the field unmounted during the
   // write and the form decides instead. Only when no row owns the id does nothing else ever clear
   // the pair: a reject on an empty name leaves a row that is there with its keys, even one another
   // screen's Connect has still queued (the read waits behind it), and a failed read of the row
-  // keeps them too. A failed clear is logged: the caller still reports its own outcome.
-  const clearPairIfRowMissing = async (): Promise<void> => {
+  // keeps them too. The clear removes `written` and no other pair: a remounted field saves its own
+  // pair outside the write queue, possibly after the read above answered. A failed clear is
+  // logged: the caller still reports its own outcome.
+  const clearPairIfRowMissing = async (written: BinanceCredentials): Promise<void> => {
     const rowIsMissing =
       bifoldr(await either<unknown, boolean>(async () => accountsRepo.exists(pendingAccountId))) ===
       false;
 
     if (rowIsMissing) {
       await logOnFailure('[account-form] the Binance key pair could not be cleared', () =>
-        clearCredentials(pendingAccountId),
+        clearCredentialsIfStored(pendingAccountId, written),
       );
     }
   };
 
-  const connectBinance = async (): Promise<boolean> => {
+  const connectBinance = async (stored: BinanceCredentials): Promise<boolean> => {
     if (!(await accountEnsured())) {
-      await clearPairIfRowMissing();
+      await clearPairIfRowMissing(stored);
 
       return false;
     }

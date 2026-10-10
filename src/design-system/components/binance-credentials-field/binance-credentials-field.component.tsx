@@ -4,8 +4,8 @@ import { BINANCE_API_MANAGEMENT_URL } from '@env';
 import { type FC, useEffect, useState } from 'react';
 import { Linking, Pressable, View } from 'react-native';
 import { useIsMounted } from '@kiko/design-system/use-is-mounted';
-import { fetchAccount, saveCredentials } from '@kiko/crypto-sync/binance';
 import type { ConnectReminder } from '@kiko/design-system/connect-reminder';
+import { type BinanceCredentials, fetchAccount, saveCredentials } from '@kiko/crypto-sync/binance';
 
 import Box from '../box';
 import Text from '../text';
@@ -23,17 +23,19 @@ type BinanceCredentialsFieldProps = {
   accountId: string;
   /**
    * Runs the Binance Connect sync once the pair is verified and stored; resolves whether it
-   * succeeded.
+   * succeeded. Receives the pair it stored, so a caller that gives up can clear that pair and no
+   * other.
    */
-  onConnect: () => Promise<boolean>;
+  onConnect: (stored: BinanceCredentials) => Promise<boolean>;
   // Lets a form that saves without this connection remind the user to press Connect first.
   reminder?: ConnectReminder;
   /**
    * Runs instead of `onConnect` when the field unmounted during the Keychain write that stored the
    * verified pair, so the screen that owns the account decides what happens to the pair; it must
-   * not reject. Without it the pair stays where it was stored.
+   * not reject. It receives the pair this field stored, held in memory only for as long as it runs.
+   * Without it the pair stays where it was stored.
    */
-  onStoredWhileUnmounted?: () => Promise<void>;
+  onStoredWhileUnmounted?: (stored: BinanceCredentials) => Promise<void>;
 };
 
 type Field = 'apiKey' | 'secret';
@@ -48,7 +50,7 @@ type StoreOutcome = 'stored' | 'saveError' | 'unmounted' | 'storedWhileUnmounted
 // row after the form that replaced this one already decided what to write.
 const storePair = async (
   accountId: string,
-  credentials: { apiKey: string; secret: string },
+  credentials: BinanceCredentials,
   isMounted: () => boolean,
 ): Promise<StoreOutcome> => {
   if (!isMounted()) {
@@ -114,8 +116,8 @@ const BinanceCredentialsField: FC<BinanceCredentialsFieldProps> = ({
     Linking.openURL(BINANCE_API_MANAGEMENT_URL);
   };
 
-  const connectStoredPair = async (): Promise<void> => {
-    const connected = await onConnect();
+  const connectStoredPair = async (credentials: BinanceCredentials): Promise<void> => {
+    const connected = await onConnect(credentials);
 
     if (connected) {
       // A connected pair is not an unsaved draft; editing it again makes it one.
@@ -150,15 +152,16 @@ const BinanceCredentialsField: FC<BinanceCredentialsFieldProps> = ({
         return;
       }
 
-      const stored = await storePair(accountId, { apiKey, secret }, isMounted);
+      const credentials = { apiKey, secret };
+      const stored = await storePair(accountId, credentials, isMounted);
 
       await match(stored)
         .with('saveError', async () =>
           setStatus({ kind: 'saveError', message: t('accountDetail.couldNotSaveCredentials') }),
         )
-        .with('storedWhileUnmounted', async () => onStoredWhileUnmounted?.())
+        .with('storedWhileUnmounted', async () => onStoredWhileUnmounted?.(credentials))
         .with('unmounted', async () => undefined)
-        .with('stored', connectStoredPair)
+        .with('stored', async () => connectStoredPair(credentials))
         .exhaustive();
     })();
   };

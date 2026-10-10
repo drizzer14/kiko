@@ -1,6 +1,7 @@
 import {
   BINANCE_CREDENTIALS_SERVICE,
   clearCredentials,
+  clearCredentialsIfStored,
   readCredentials,
   saveCredentials,
   serviceFor,
@@ -219,5 +220,152 @@ describe('binance credentials — once-per-process re-save latch', () => {
     // not re-save again.
     await fresh.readCredentials(ACCOUNT_A);
     expect(mockSet).toHaveBeenCalledTimes(1);
+  });
+});
+
+type HeldWrite = { release: () => void; fail: () => void };
+
+// Holds the next Keychain write of one kind until the test releases or fails it, so a test can
+// queue more writes behind it and see which of them start before it ends.
+const holdNextWrite = (method: 'setGenericPassword' | 'resetGenericPassword'): HeldWrite => {
+  const mocked = keychain[method] as jest.Mock<Promise<boolean>, unknown[]>;
+  const original = mocked.getMockImplementation() as (...args: unknown[]) => Promise<boolean>;
+  let release = (): void => undefined;
+  let fail = (): void => undefined;
+  const gate = new Promise<void>((resolve, reject) => {
+    release = resolve;
+    fail = () => reject(new Error('keychain write failed'));
+  });
+
+  mocked.mockImplementationOnce(async (...args: unknown[]) => {
+    await gate;
+
+    return original(...args);
+  });
+
+  return { release, fail };
+};
+
+// Lets every write already allowed to start run to its next wait.
+const settle = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
+
+const pairOf = (name: string): { apiKey: string; secret: string } => ({
+  apiKey: `ak-${name}`,
+  secret: `sk-${name}`,
+});
+
+describe('binance credential writes — one at a time per account', () => {
+  it('runs two saves for one account in call order, the second starting after the first ends', async () => {
+    const first = holdNextWrite('setGenericPassword');
+    const saves = Promise.all([
+      saveCredentials(ACCOUNT_A, pairOf('first')),
+      saveCredentials(ACCOUNT_A, pairOf('second')),
+    ]);
+
+    await settle();
+    expect(mockSet).not.toHaveBeenCalled();
+
+    first.release();
+    await saves;
+
+    expect(mockSet.mock.calls.map(([, password]) => password)).toEqual([
+      JSON.stringify(pairOf('first')),
+      JSON.stringify(pairOf('second')),
+    ]);
+    expect(await readCredentials(ACCOUNT_A)).toEqual(pairOf('second'));
+  });
+
+  it('does not interleave a clear with a save for the same account', async () => {
+    const save = holdNextWrite('setGenericPassword');
+    const writes = Promise.all([
+      saveCredentials(ACCOUNT_A, pairOf('first')),
+      clearCredentials(ACCOUNT_A),
+    ]);
+
+    await settle();
+    expect(keychain.resetGenericPassword).not.toHaveBeenCalled();
+
+    save.release();
+    await writes;
+
+    expect(await readCredentials(ACCOUNT_A)).toBeUndefined();
+  });
+
+  it('does not make one account wait for another', async () => {
+    const held = holdNextWrite('setGenericPassword');
+    const slow = saveCredentials(ACCOUNT_A, pairOf('a'));
+
+    await saveCredentials(ACCOUNT_B, pairOf('b'));
+    expect(await readCredentials(ACCOUNT_B)).toEqual(pairOf('b'));
+
+    held.release();
+    await slow;
+  });
+
+  it('starts the next write for the account after a failed one ends', async () => {
+    const failing = holdNextWrite('setGenericPassword');
+    const failed = expect(saveCredentials(ACCOUNT_A, pairOf('first'))).rejects.toThrow(
+      'keychain write failed',
+    );
+    const next = saveCredentials(ACCOUNT_A, pairOf('second'));
+
+    await settle();
+    expect(mockSet).not.toHaveBeenCalled();
+
+    failing.fail();
+    await failed;
+    await next;
+
+    expect(await readCredentials(ACCOUNT_A)).toEqual(pairOf('second'));
+  });
+});
+
+describe('clearCredentialsIfStored', () => {
+  it('clears the pair when the stored pair is still the expected one', async () => {
+    await saveCredentials(ACCOUNT_A, fixture);
+
+    await clearCredentialsIfStored(ACCOUNT_A, fixture);
+
+    expect(await readCredentials(ACCOUNT_A)).toBeUndefined();
+  });
+
+  it.each([
+    ['a newer pair', pairOf('newer')],
+    ['the same key with another secret', { ...fixture, secret: 'secret-newer' }],
+    ['another key with the same secret', { ...fixture, apiKey: 'api-key-newer' }],
+  ])('keeps the stored pair when it is %s', async (_name, newer) => {
+    await saveCredentials(ACCOUNT_A, newer);
+
+    await clearCredentialsIfStored(ACCOUNT_A, fixture);
+
+    expect(await readCredentials(ACCOUNT_A)).toEqual(newer);
+  });
+
+  it('resolves without an error when nothing is stored', async () => {
+    await expect(clearCredentialsIfStored(ACCOUNT_A, fixture)).resolves.toBeUndefined();
+  });
+
+  it('only touches the account it is given', async () => {
+    await saveCredentials(ACCOUNT_B, fixture);
+
+    await clearCredentialsIfStored(ACCOUNT_A, fixture);
+
+    expect(await readCredentials(ACCOUNT_B)).toEqual(fixture);
+  });
+
+  it('reads the stored pair only after a save for the account ends, so it keeps a newer pair', async () => {
+    await saveCredentials(ACCOUNT_A, fixture);
+    mockGet.mockClear();
+    const save = holdNextWrite('setGenericPassword');
+    const newer = saveCredentials(ACCOUNT_A, pairOf('newer'));
+    const clear = clearCredentialsIfStored(ACCOUNT_A, fixture);
+
+    await settle();
+    expect(mockGet).not.toHaveBeenCalled();
+
+    save.release();
+    await Promise.all([newer, clear]);
+
+    expect(await readCredentials(ACCOUNT_A)).toEqual(pairOf('newer'));
   });
 });

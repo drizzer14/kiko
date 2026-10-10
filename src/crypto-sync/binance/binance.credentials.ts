@@ -59,22 +59,62 @@ export const hardenedFor = (service: string): Keychain.SetOptions => ({
 let hasRepairedAccessPolicy = false;
 
 /**
+ * The end of the last Keychain write queued for each account. A write that
+ * checks the stored pair before it deletes it (`clearCredentialsIfStored`) is
+ * only sound if no other write for the same account lands between its read and
+ * its delete, and the form saves a new pair outside the database write queue, so
+ * every write for an account waits here for the ones queued before it. The tail
+ * never rejects, so a failed write does not block the next one.
+ */
+const writeTails = new Map<string, Promise<void>>();
+
+const serialized = <Result>(accountId: string, write: () => Promise<Result>): Promise<Result> => {
+  const run = (writeTails.get(accountId) ?? Promise.resolve()).then(write);
+
+  writeTails.set(
+    accountId,
+    run.then(
+      () => undefined,
+      () => undefined,
+    ),
+  );
+
+  return run;
+};
+
+/**
  * Store the pair as ONE JSON Keychain item under the PER-ACCOUNT service for
  * `accountId`, hardened per above. Each connected account owns its own item, so
  * saving account A's pair never touches account B's. The pair goes ONLY to the
  * Keychain — never to SQLite, `sync_state`, `settings`, `holdings.metadata`, or a
  * log.
  */
-export const saveCredentials = async (
+export const saveCredentials = (
   accountId: string,
   credentials: BinanceCredentials,
-): Promise<void> => {
-  await Keychain.setGenericPassword(
-    'binance',
-    JSON.stringify(credentials),
-    hardenedFor(serviceFor(accountId)),
-  );
-  hasRepairedAccessPolicy = true;
+): Promise<void> =>
+  serialized(accountId, async () => {
+    await Keychain.setGenericPassword(
+      'binance',
+      JSON.stringify(credentials),
+      hardenedFor(serviceFor(accountId)),
+    );
+    hasRepairedAccessPolicy = true;
+  });
+
+// Never repairs the access policy: it runs inside a serialized write, which a repair save would
+// wait on forever.
+const readStoredPair = async (accountId: string): Promise<BinanceCredentials | undefined> => {
+  const stored = await Keychain.getGenericPassword({ service: serviceFor(accountId) });
+
+  if (!stored) {
+    return undefined;
+  }
+
+  const parsed = eitherSync<unknown, unknown>(() => JSON.parse(stored.password));
+  const value = bifoldr(parsed);
+
+  return isCredentials(value) ? value : undefined;
 };
 
 /**
@@ -90,16 +130,9 @@ export const saveCredentials = async (
 export const readCredentials = async (
   accountId: string,
 ): Promise<BinanceCredentials | undefined> => {
-  const stored = await Keychain.getGenericPassword({ service: serviceFor(accountId) });
+  const value = await readStoredPair(accountId);
 
-  if (!stored) {
-    return undefined;
-  }
-
-  const parsed = eitherSync<unknown, unknown>(() => JSON.parse(stored.password));
-  const value = bifoldr(parsed);
-
-  if (!isCredentials(value)) {
+  if (value === undefined) {
     return undefined;
   }
 
@@ -117,6 +150,27 @@ export const readCredentials = async (
   return value;
 };
 
-export const clearCredentials = async (accountId: string): Promise<void> => {
+const resetPair = async (accountId: string): Promise<void> => {
   await Keychain.resetGenericPassword({ service: serviceFor(accountId) });
 };
+
+export const clearCredentials = (accountId: string): Promise<void> =>
+  serialized(accountId, () => resetPair(accountId));
+
+/**
+ * Clears the account's pair only when it is still exactly `expected` (both parts), for a caller
+ * that clears a pair it wrote itself and must never delete one a later save stored. The read and
+ * the delete run as one serialized write, so no save lands between them. Nothing stored, or a
+ * different pair stored, leaves the Keychain as it is.
+ */
+export const clearCredentialsIfStored = (
+  accountId: string,
+  expected: BinanceCredentials,
+): Promise<void> =>
+  serialized(accountId, async () => {
+    const stored = await readStoredPair(accountId);
+
+    if (stored?.apiKey === expected.apiKey && stored.secret === expected.secret) {
+      await resetPair(accountId);
+    }
+  });

@@ -48,6 +48,9 @@ type OnStoredWhileUnmounted = ComponentProps<
   typeof BinanceCredentialsField
 >['onStoredWhileUnmounted'];
 
+// What `fillBoth` types into the two inputs.
+const typedPair = { apiKey: 'api-key-fixture', secret: 'secret-fixture' };
+
 const fillBoth = async (getByPlaceholderText: View['getByPlaceholderText']): Promise<void> => {
   await fireEvent.changeText(getByPlaceholderText('Binance API key'), 'api-key-fixture');
   await fireEvent.changeText(getByPlaceholderText('Binance API secret'), 'secret-fixture');
@@ -177,11 +180,9 @@ describe('BinanceCredentialsField', () => {
 
     expect(mockFetchAccount).toHaveBeenCalledTimes(1);
     expect(mockFetchAccount).toHaveBeenCalledWith('api-key-fixture', 'secret-fixture');
-    expect(mockSaveCredentials).toHaveBeenCalledWith('acc-1', {
-      apiKey: 'api-key-fixture',
-      secret: 'secret-fixture',
-    });
+    expect(mockSaveCredentials).toHaveBeenCalledWith('acc-1', typedPair);
     expect(onConnect).toHaveBeenCalledTimes(1);
+    expect(onConnect).toHaveBeenCalledWith(typedPair);
     expect(await findByText('Binance connected')).toBeTruthy();
   });
 
@@ -239,7 +240,10 @@ describe('BinanceCredentialsField', () => {
       return pending;
     };
 
-    const onStoredWhileUnmounted = jest.fn<Promise<void>, []>();
+    const onStoredWhileUnmounted = jest.fn<
+      Promise<void>,
+      Parameters<NonNullable<OnStoredWhileUnmounted>>
+    >();
 
     beforeEach(() => {
       onStoredWhileUnmounted.mockResolvedValue(undefined);
@@ -271,6 +275,7 @@ describe('BinanceCredentialsField', () => {
       });
 
       expect(onStoredWhileUnmounted).toHaveBeenCalledTimes(1);
+      expect(onStoredWhileUnmounted).toHaveBeenCalledWith(typedPair);
       expect(onConnect).not.toHaveBeenCalled();
     });
 
