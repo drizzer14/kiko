@@ -784,7 +784,7 @@ const buildAccounts = (calendar: DemoCalendar, text: DemoText): SeedAccount[] =>
         },
         {
           key: PERSONAL_DEBT_KEY,
-          name: text.loanToAndrii,
+          name: text.owedToAndrii,
           type: 'loan',
           currency: 'UAH',
           color: entityColorsDark.orange,

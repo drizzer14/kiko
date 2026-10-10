@@ -7,8 +7,6 @@ import { DAY_MS } from '@kiko/dates';
 export type DemoCalendar = {
   /** The "now" the dataset is built for: 09:00 UTC on its anchor day. */
   anchor: number;
-  /** UTC midnight of the anchor day, the epoch `currency_rate_history.day` uses. */
-  anchorDay: number;
   /** 09:00 UTC, `daysAgo` days before the anchor. */
   at: (daysAgo: number) => number;
   /** 09:00 UTC, `daysAhead` days after the anchor. */
@@ -25,7 +23,6 @@ export const buildDemoCalendar = (anchor: number): DemoCalendar => {
 
   return {
     anchor,
-    anchorDay,
     at: (daysAgo) => anchor - daysAgo * DAY_MS,
     ahead: (daysAhead) => anchor + daysAhead * DAY_MS,
     dayKeyAt: (daysAgo) => anchorDay - daysAgo * DAY_MS,

@@ -10,8 +10,8 @@ argument (Guideline 5.6):
   names (Монобанк, Сільпо, Брокер, ...) and `language: 'uk'`, so it imports
   with the UI in Ukrainian.
 - **`kiko-demo-en.kiko`** — handed to the **App Store reviewer**. English
-  names for every user-visible text the file carries (Broker, US Dollars,
-  Government bonds (OVDP), Real estate, Loan to Andrii, ...) and
+  names for every user-visible text the file carries (Broker, US dollars,
+  Government bonds (OVDP), Real estate, Owed to Andrii, ...) and
   `language: 'en'`, so an English-reading reviewer is not dropped into a
   Ukrainian app (`restoreDataSnapshot` takes the `settings` row from the file
   except the columns in `KEPT_FROM_LIVE_ON_RESTORE`, see
@@ -33,23 +33,24 @@ argument (Guideline 5.6):
 | `demo-anchor.ts` | Picks the regen anchor: `KIKO_DEMO_ANCHOR` or the local day |
 | `generate-demo-kiko.test.ts` | REGEN (writes the fixtures) + GUARD (decrypts and diffs them against the current builder — this is what `make gate` runs on every future commit) |
 
-## The anchor: a file goes stale about four weeks after it is regenerated
+## The anchor: a file thins out within weeks of being regenerated
 
 Every date in the dataset (transactions, loan schedules, bond coupons, price
 points, rate history, reminders, `createdAt`, `exportedAt`) is measured from one
 **anchor**: 09:00 UTC on the day the files were regenerated. The app opens its
 Home list and charts on the last 30 days before the **device date**
 (`src/dates/default-range.ts`), and the newest demo row sits two days before the
-anchor. So the files fill Home and the charts from the anchor day until about 28
-days after it, then drift out of the default view: a file anchored on a past
-day imports fine but shows an empty Home list and empty spending charts.
+anchor. So the files fill Home and the charts from the anchor day onward, but they thin out as the device date moves past it: the
+default 30-day window holds about 13 rows on the anchor day, 10 seven days
+later, 7 after 14 days, 3 after 21, and 1 after 28, then none. The data
+thins from about the second week, so "until about 28 days" is an upper bound,
+not a safe age: a file anchored on a past day imports fine but shows a sparse,
+then empty, Home list and spending charts.
 
 There is no date shifting at import time (Guideline 5.6): the app imports the
-file as written. Keep the files fresh instead:
-
-- regenerate on the **App Store upload day** (the reviewer imports on a device
-  dated about then), and
-- regenerate **before a screenshot session**.
+file as written. Keep the files fresh instead: regenerate the files and refresh
+the reviewer kit for **every App Store submission and resubmission**, and
+before a screenshot session.
 
 The GUARD test never compares against the current date. It reads the anchor back
 from each decrypted file (its `exportedAt`) and rebuilds the dataset for that
@@ -78,7 +79,8 @@ above. Regenerate in the same commit as the migration:
 KIKO_REGEN_DEMO=1 npx jest e2e/screenshot/fixtures/generate-demo-kiko.test.ts
 ```
 
-The anchor is today's local date. To anchor another day, add
+The anchor is today's local date (under Jest, the Europe/Kyiv date, since
+`jest.config.js` pins `TZ`). To anchor another day, add
 `KIKO_DEMO_ANCHOR=YYYY-MM-DD` (a malformed value fails the run instead of
 falling back to today).
 
@@ -101,4 +103,4 @@ Settings → Import Data → pick the `.kiko` file → paste the key from
 relaunch the app** (kill it fully, then reopen) so `applyPersistedLanguage`
 (`src/migration/migrations-gate/migrations.gate.tsx`) picks up the imported
 language on the next launch. Leave the device clock on the real date; if the
-files are more than about four weeks old, regenerate them first.
+files are more than a week or two old, regenerate them first.

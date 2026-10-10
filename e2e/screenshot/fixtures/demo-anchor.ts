@@ -29,8 +29,9 @@ export const parseDemoAnchor = (text: string): number | undefined => {
 
 /**
  * The anchor for `KIKO_DEMO_ANCHOR` when it is set, else the local calendar day
- * of `now`. A malformed override throws, since quietly regenerating for another
- * day would ship a dataset the default view shows empty.
+ * of `now` (under Jest, the Europe/Kyiv day, since `jest.config.js` pins `TZ`).
+ * A malformed override throws, since quietly regenerating for another day would
+ * ship a dataset the default view shows empty.
  */
 export const resolveDemoAnchor = (override: string | undefined, now: Date): number => {
   if (override === undefined || override === '') {

@@ -43,10 +43,13 @@ App Store screenshots by hand, following this checklist.
    second required App Store display size (`screenshots/appstore/6.5-inch/`).
 2. **Clock.** Leave the simulator's clock on the real date and regenerate
    the demo files first (`e2e/screenshot/fixtures/README.md`, "Regenerating").
-   The dataset is anchored on the day it was regenerated and its 72
-   transactions span roughly the 6 months ending there. The app opens on
-   the last 30 days before the device date, so a file more than about four
-   weeks old shows an empty Home list and empty charts.
+   The dataset is anchored on the day it was regenerated and spans roughly
+   the 6 months ending there (see `e2e/screenshot/seed/screenshot-seed.ts`).
+   The app opens on the last 30 days before the device date, so the Home
+   list and charts thin out from about the second week after the anchor and
+   are empty after about four weeks. Regenerate the files and refresh the
+   reviewer kit for every App Store submission and resubmission, and before
+   a screenshot session.
 3. **Data.** Fresh install (or wipe existing data), launch the app, go to
    Settings → Import Data, pick `e2e/screenshot/fixtures/kiko-demo-uk.kiko`,
    paste the key from `e2e/screenshot/fixtures/kiko-demo.key`, confirm the

@@ -134,13 +134,13 @@ describe('buildScreenshotDataset (pure, deterministic)', () => {
       'PrivatBank',
       'Wise',
       'Binance',
-      'US Dollars',
+      'US dollars',
       'Government bonds (OVDP)',
       'Apartment',
       'Car',
       'Gold',
       'Car loan',
-      'Loan to Andrii',
+      'Owed to Andrii',
     ]);
   });
 
