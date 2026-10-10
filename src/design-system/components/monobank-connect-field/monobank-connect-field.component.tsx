@@ -2,6 +2,7 @@ import { View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { type FC, useEffect, useState } from 'react';
 import { fetchClientInfo } from '@kiko/monobank/client';
+import { useIsMounted } from '@kiko/design-system/use-is-mounted';
 import type { ConnectReminder } from '@kiko/design-system/connect-reminder';
 
 import Box from '../box';
@@ -39,6 +40,7 @@ const MonobankConnectField: FC<MonobankConnectFieldProps> = ({ onConnect, remind
   // the token-required reason on press rather than a standing disabled state.
   const [showTokenRequiredError, setShowTokenRequiredError] = useState(false);
   const onDraftChange = reminder?.onDraftChange;
+  const isMounted = useIsMounted();
 
   // The typed token goes with the field, so a draft it reported must not outlive it.
   useEffect(() => () => onDraftChange?.(false), [onDraftChange]);
@@ -73,6 +75,13 @@ const MonobankConnectField: FC<MonobankConnectFieldProps> = ({ onConnect, remind
       } catch {
         setStatus({ kind: 'invalid', message: t('accountDetail.invalidToken') });
 
+        return;
+      }
+
+      // A fold or a kind or bank switch removed the field during the check. Connecting now would
+      // insert the account row after the form that replaced this one already decided what to
+      // write, so the checked token is dropped and the user presses Connect again.
+      if (!isMounted()) {
         return;
       }
 

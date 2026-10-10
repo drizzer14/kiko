@@ -430,6 +430,11 @@ The established patterns grouped under this heading:
   (via the field's `error` prop) on a Connect press instead —
   `disabled` stays reserved for the field's own
   in-flight `status.kind === 'checking'`.
+  `BinanceCredentialsField` also takes an optional `onStoredWhileUnmounted`, called
+  instead of `onConnect` when the field unmounted after the Keychain write stored the pair.
+  Both callbacks receive the write's `BinanceWriteToken`; `CryptoSyncForm`'s `onConnectBinance`
+  and `onBinanceStoredWhileUnmounted` carry the same type. The pair leaves the field only into
+  `fetchAccount` (the check) and `saveCredentials`.
 - The "Connect first" reminder (user-approved 2026-10-08, create form only).
   Typed input in a Connect field that was not connected turns the FIRST
   Save press into a reminder: nothing saves, and the hint appears directly
@@ -1386,6 +1391,10 @@ new component can land between reviews of this skill:
   onContentSizeChange, scrollTo(fieldRef, onSettled?) }`), so no screen
   re-derives the header inset or the content height: two copies of that
   geometry drift apart.
+- **`useIsMounted()`** (`src/design-system/use-is-mounted/`) returns a stable
+  function that answers whether the component is still mounted. An async
+  handler asks it after an await and drops its result when it is unmounted
+  (the Connect fields do, so no credential is stored after a fold).
 - **FieldTrigger** (`src/design-system/components/field-trigger/`) —
   the shared "labeled field that opens a picker sheet" trigger: a
   caption above a bordered row showing the current icon (or leading

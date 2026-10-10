@@ -1,5 +1,5 @@
-import { createRef, type ReactNode } from 'react';
 import { act, fireEvent, render } from '@testing-library/react-native';
+import { createRef, type ComponentProps, type ReactElement, type ReactNode } from 'react';
 import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
 import type { FieldInstance } from '@kiko/design-system/scroll-to-field';
@@ -42,11 +42,58 @@ jest.mock('@kiko/design-system/components/text', () => {
   };
 });
 
-const fillBoth = async (
-  getByPlaceholderText: Awaited<ReturnType<typeof render>>['getByPlaceholderText'],
-): Promise<void> => {
+type View = Awaited<ReturnType<typeof render>>;
+type OnConnect = ComponentProps<typeof BinanceCredentialsField>['onConnect'];
+type OnStoredWhileUnmounted = ComponentProps<
+  typeof BinanceCredentialsField
+>['onStoredWhileUnmounted'];
+
+// What `fillBoth` types into the two inputs.
+const typedPair = { apiKey: 'api-key-fixture', secret: 'secret-fixture' };
+
+// What the mocked save resolves: the field hands this token on, never the pair it typed.
+const savedToken = Symbol('saved');
+
+const fillBoth = async (getByPlaceholderText: View['getByPlaceholderText']): Promise<void> => {
   await fireEvent.changeText(getByPlaceholderText('Binance API key'), 'api-key-fixture');
   await fireEvent.changeText(getByPlaceholderText('Binance API secret'), 'secret-fixture');
+};
+
+const fieldElement = (
+  onConnect: OnConnect,
+  reminder?: ConnectReminder,
+  onStoredWhileUnmounted?: OnStoredWhileUnmounted,
+): ReactElement => (
+  <BinanceCredentialsField
+    accountId="acc-1"
+    onConnect={onConnect}
+    reminder={reminder}
+    onStoredWhileUnmounted={onStoredWhileUnmounted}
+  />
+);
+
+const renderField = (
+  onConnect: OnConnect,
+  reminder?: ConnectReminder,
+  onStoredWhileUnmounted?: OnStoredWhileUnmounted,
+): Promise<View> => render(fieldElement(onConnect, reminder, onStoredWhileUnmounted));
+
+const pressConnect = async (view: View): Promise<void> => {
+  await act(async () => {
+    await fireEvent.press(view.getByText('Connect Binance'));
+  });
+};
+
+const renderAndConnect = async (
+  onConnect: OnConnect,
+  onStoredWhileUnmounted?: OnStoredWhileUnmounted,
+): Promise<View> => {
+  const view = await renderField(onConnect, undefined, onStoredWhileUnmounted);
+
+  await fillBoth(view.getByPlaceholderText);
+  await pressConnect(view);
+
+  return view;
 };
 
 describe('BinanceCredentialsField', () => {
@@ -55,14 +102,12 @@ describe('BinanceCredentialsField', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockFetchAccount.mockResolvedValue({ balances: [] });
-    mockSaveCredentials.mockResolvedValue(undefined);
+    mockSaveCredentials.mockResolvedValue(savedToken);
     onConnect.mockResolvedValue(true);
   });
 
   it('renders two secure inputs, a Binance link and a Connect Binance action', async () => {
-    const { getByPlaceholderText, getByText } = await render(
-      <BinanceCredentialsField accountId="acc-1" onConnect={onConnect} />,
-    );
+    const { getByPlaceholderText, getByText } = await renderField(onConnect);
 
     expect(getByPlaceholderText('Binance API key').props.secureTextEntry).toBe(true);
     expect(getByPlaceholderText('Binance API secret').props.secureTextEntry).toBe(true);
@@ -71,9 +116,7 @@ describe('BinanceCredentialsField', () => {
   });
 
   it('uses the lock glyph for Connect and the Kiko UI clipboard glyph for both Paste buttons', async () => {
-    const { root } = await render(
-      <BinanceCredentialsField accountId="acc-1" onConnect={onConnect} />,
-    );
+    const { root } = await renderField(onConnect);
 
     // Connect carries the `lock` glyph; both paste buttons (key + secret) carry
     // the Kiko UI `document.on.clipboard` spelling (SFSymbolView forwards `name`).
@@ -84,32 +127,24 @@ describe('BinanceCredentialsField', () => {
   });
 
   it('shows a required error per blank field and calls no network when Connect is pressed', async () => {
-    const { getByPlaceholderText, getByText, findByText, queryByText } = await render(
-      <BinanceCredentialsField accountId="acc-1" onConnect={onConnect} />,
-    );
+    const view = await renderField(onConnect);
 
     // Neither field entered.
-    await act(async () => {
-      await fireEvent.press(getByText('Connect Binance'));
-    });
-    expect(await findByText('Enter the API key.')).toBeTruthy();
-    expect(await findByText('Enter the secret key.')).toBeTruthy();
+    await pressConnect(view);
+    expect(await view.findByText('Enter the API key.')).toBeTruthy();
+    expect(await view.findByText('Enter the secret key.')).toBeTruthy();
     expect(mockFetchAccount).not.toHaveBeenCalled();
 
     // Only the API key entered — its own reason clears, the secret's stays.
-    await fireEvent.changeText(getByPlaceholderText('Binance API key'), 'api-key-fixture');
-    await act(async () => {
-      await fireEvent.press(getByText('Connect Binance'));
-    });
-    expect(queryByText('Enter the API key.')).toBeNull();
-    expect(await findByText('Enter the secret key.')).toBeTruthy();
+    await fireEvent.changeText(view.getByPlaceholderText('Binance API key'), 'api-key-fixture');
+    await pressConnect(view);
+    expect(view.queryByText('Enter the API key.')).toBeNull();
+    expect(await view.findByText('Enter the secret key.')).toBeTruthy();
     expect(mockFetchAccount).not.toHaveBeenCalled();
   });
 
   it('renders the Binance link through the shared Text primitive with the accent tone', async () => {
-    const { getByText } = await render(
-      <BinanceCredentialsField accountId="acc-1" onConnect={onConnect} />,
-    );
+    const { getByText } = await renderField(onConnect);
 
     // The link reads as a tappable inline label via the shared `Text` tone
     // token, matching the pie legend's "Show all" toggle, rather than an
@@ -118,9 +153,7 @@ describe('BinanceCredentialsField', () => {
   });
 
   it('opens the Binance API management page from the link', async () => {
-    const { getByText } = await render(
-      <BinanceCredentialsField accountId="acc-1" onConnect={onConnect} />,
-    );
+    const { getByText } = await renderField(onConnect);
 
     await fireEvent.press(getByText('Open Binance API management'));
 
@@ -130,9 +163,7 @@ describe('BinanceCredentialsField', () => {
   });
 
   it('pastes into the key and the secret fields separately, trimmed', async () => {
-    const { getByLabelText, getByPlaceholderText } = await render(
-      <BinanceCredentialsField accountId="acc-1" onConnect={onConnect} />,
-    );
+    const { getByLabelText, getByPlaceholderText } = await renderField(onConnect);
 
     mockGetString.mockResolvedValue(' api-key-fixture ');
     await act(async () => {
@@ -148,22 +179,13 @@ describe('BinanceCredentialsField', () => {
   });
 
   it('verifies the pair with one fetchAccount call, saves it, connects, and shows success', async () => {
-    const { getByPlaceholderText, getByText, findByText } = await render(
-      <BinanceCredentialsField accountId="acc-1" onConnect={onConnect} />,
-    );
-
-    await fillBoth(getByPlaceholderText);
-    await act(async () => {
-      await fireEvent.press(getByText('Connect Binance'));
-    });
+    const { findByText } = await renderAndConnect(onConnect);
 
     expect(mockFetchAccount).toHaveBeenCalledTimes(1);
     expect(mockFetchAccount).toHaveBeenCalledWith('api-key-fixture', 'secret-fixture');
-    expect(mockSaveCredentials).toHaveBeenCalledWith('acc-1', {
-      apiKey: 'api-key-fixture',
-      secret: 'secret-fixture',
-    });
+    expect(mockSaveCredentials).toHaveBeenCalledWith('acc-1', typedPair);
     expect(onConnect).toHaveBeenCalledTimes(1);
+    expect(onConnect).toHaveBeenCalledWith(savedToken);
     expect(await findByText('Binance connected')).toBeTruthy();
   });
 
@@ -171,14 +193,7 @@ describe('BinanceCredentialsField', () => {
     mockFetchAccount.mockRejectedValue(
       new Error('Binance request failed: 401: Invalid API-key, IP, or permissions for action.'),
     );
-    const { getByPlaceholderText, getByText, findByText } = await render(
-      <BinanceCredentialsField accountId="acc-1" onConnect={onConnect} />,
-    );
-
-    await fillBoth(getByPlaceholderText);
-    await act(async () => {
-      await fireEvent.press(getByText('Connect Binance'));
-    });
+    const { findByText } = await renderAndConnect(onConnect);
 
     expect(await findByText('Invalid API key or secret')).toBeTruthy();
     expect(mockSaveCredentials).not.toHaveBeenCalled();
@@ -187,14 +202,7 @@ describe('BinanceCredentialsField', () => {
 
   it('shows a distinct save error and does not connect when the Keychain write fails', async () => {
     mockSaveCredentials.mockRejectedValue(new Error('Keychain write failed'));
-    const { getByPlaceholderText, getByText, findByText, queryByText } = await render(
-      <BinanceCredentialsField accountId="acc-1" onConnect={onConnect} />,
-    );
-
-    await fillBoth(getByPlaceholderText);
-    await act(async () => {
-      await fireEvent.press(getByText('Connect Binance'));
-    });
+    const { findByText, queryByText } = await renderAndConnect(onConnect);
 
     expect(await findByText('Could not save credentials')).toBeTruthy();
     expect(queryByText('Invalid API key or secret')).toBeNull();
@@ -203,22 +211,106 @@ describe('BinanceCredentialsField', () => {
 
   it('shows a connect error when the pair saved but the sync failed', async () => {
     onConnect.mockResolvedValue(false);
-    const { getByPlaceholderText, getByText, findByText } = await render(
-      <BinanceCredentialsField accountId="acc-1" onConnect={onConnect} />,
-    );
-
-    await fillBoth(getByPlaceholderText);
-    await act(async () => {
-      await fireEvent.press(getByText('Connect Binance'));
-    });
+    const { findByText } = await renderAndConnect(onConnect);
 
     expect(await findByText('Could not connect Binance')).toBeTruthy();
   });
 
+  describe('once unmounted', () => {
+    const pendingFetch = (): { resolve: () => void } => {
+      const pending = { resolve: () => {} };
+      mockFetchAccount.mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            pending.resolve = () => resolve({ balances: [] });
+          }),
+      );
+
+      return pending;
+    };
+
+    // A field a fold or a kind switch replaced must not store the pair its check verified, nor
+    // run the screen's connect: that would insert the account row after the new form looked for it.
+    const pendingSave = (): { resolve: () => void } => {
+      const pending = { resolve: () => {} };
+      mockSaveCredentials.mockImplementation(
+        () =>
+          new Promise<symbol>((resolve) => {
+            pending.resolve = () => resolve(savedToken);
+          }),
+      );
+
+      return pending;
+    };
+
+    const onStoredWhileUnmounted = jest.fn<
+      Promise<void>,
+      Parameters<NonNullable<OnStoredWhileUnmounted>>
+    >();
+
+    beforeEach(() => {
+      onStoredWhileUnmounted.mockResolvedValue(undefined);
+    });
+
+    it('stores nothing and reports nothing when the check resolves after the field unmounted', async () => {
+      const pending = pendingFetch();
+      const view = await renderAndConnect(onConnect, onStoredWhileUnmounted);
+
+      await view.unmount();
+      await act(async () => {
+        pending.resolve();
+      });
+
+      expect(mockSaveCredentials).not.toHaveBeenCalled();
+      expect(onConnect).not.toHaveBeenCalled();
+      expect(onStoredWhileUnmounted).not.toHaveBeenCalled();
+    });
+
+    // The pair is in the Keychain by then and the screen that owns the field decides what to do
+    // with it; connecting would insert an account row after the form that replaced this one looked.
+    it('reports the token of the write instead of connecting when the field unmounted during it', async () => {
+      const pending = pendingSave();
+      const view = await renderAndConnect(onConnect, onStoredWhileUnmounted);
+
+      await view.unmount();
+      await act(async () => {
+        pending.resolve();
+      });
+
+      expect(onStoredWhileUnmounted).toHaveBeenCalledTimes(1);
+      expect(onStoredWhileUnmounted).toHaveBeenCalledWith(savedToken);
+      expect(onConnect).not.toHaveBeenCalled();
+    });
+
+    it('does nothing more when the field unmounted during the write and no screen listens', async () => {
+      const pending = pendingSave();
+      const view = await renderAndConnect(onConnect);
+
+      await view.unmount();
+      await act(async () => {
+        pending.resolve();
+      });
+
+      expect(mockSaveCredentials).toHaveBeenCalledTimes(1);
+      expect(onConnect).not.toHaveBeenCalled();
+    });
+
+    it('still stores the pair and connects once, reporting nothing, when the field stays mounted', async () => {
+      const pending = pendingFetch();
+
+      await renderAndConnect(onConnect, onStoredWhileUnmounted);
+      await act(async () => {
+        pending.resolve();
+      });
+
+      expect(mockSaveCredentials).toHaveBeenCalledTimes(1);
+      expect(onConnect).toHaveBeenCalledTimes(1);
+      expect(onStoredWhileUnmounted).not.toHaveBeenCalled();
+    });
+  });
+
   it('shows the Keychain-only data-handling disclosure as a secondary caption', async () => {
-    const { getByText } = await render(
-      <BinanceCredentialsField accountId="acc-1" onConnect={onConnect} />,
-    );
+    const { getByText } = await renderField(onConnect);
 
     const disclosure = getByText(
       "Your Binance API key is stored only in your device's Keychain, used only to fetch your own data directly from Binance, and is never sent to Kiko or any server.",
@@ -230,14 +322,8 @@ describe('BinanceCredentialsField', () => {
 
   it('clears a stale status when either field is edited afterward', async () => {
     mockFetchAccount.mockRejectedValue(new Error('Binance request failed: 401'));
-    const { getByPlaceholderText, getByText, findByText, queryByText } = await render(
-      <BinanceCredentialsField accountId="acc-1" onConnect={onConnect} />,
-    );
+    const { getByPlaceholderText, findByText, queryByText } = await renderAndConnect(onConnect);
 
-    await fillBoth(getByPlaceholderText);
-    await act(async () => {
-      await fireEvent.press(getByText('Connect Binance'));
-    });
     expect(await findByText('Invalid API key or secret')).toBeTruthy();
 
     await fireEvent.changeText(getByPlaceholderText('Binance API secret'), 'secret-fixture-2');
@@ -259,9 +345,7 @@ describe('BinanceCredentialsField — localization', () => {
       await i18n.changeLanguage('uk');
     });
 
-    const { getByPlaceholderText, getByText, queryByText } = await render(
-      <BinanceCredentialsField accountId="acc-1" onConnect={onConnect} />,
-    );
+    const { getByPlaceholderText, getByText, queryByText } = await renderField(onConnect);
 
     expect(getByPlaceholderText('API ключ Binance')).toBeTruthy();
     expect(getByPlaceholderText('API секрет Binance')).toBeTruthy();
@@ -279,6 +363,12 @@ describe('BinanceCredentialsField — connect reminder', () => {
     onConnectPress: jest.fn(),
   });
 
+  // The reminder is the subject of every case here, so most cases render it with a bare connect.
+  const renderWithReminder = (
+    reminder: ConnectReminder,
+    onConnect: OnConnect = jest.fn(),
+  ): Promise<View> => renderField(onConnect, reminder);
+
   const apiKeyPlaceholder = 'Binance API key';
   const secretPlaceholder = 'Binance API secret';
 
@@ -288,9 +378,7 @@ describe('BinanceCredentialsField — connect reminder', () => {
 
   it('shows the reminder message under the Connect button, and nothing without one', async () => {
     const reminder = makeReminder('Tap Connect first.');
-    const view = await render(
-      <BinanceCredentialsField accountId="acc-1" onConnect={jest.fn()} reminder={reminder} />,
-    );
+    const view = await renderWithReminder(reminder);
 
     expect(view.getByText('Tap Connect first.')).toBeTruthy();
     expect(view.getByLabelText('Tap Connect first.')).toBeTruthy();
@@ -298,13 +386,7 @@ describe('BinanceCredentialsField — connect reminder', () => {
       0,
     );
 
-    await view.rerender(
-      <BinanceCredentialsField
-        accountId="acc-1"
-        onConnect={jest.fn()}
-        reminder={{ ...reminder, message: undefined }}
-      />,
-    );
+    await view.rerender(fieldElement(jest.fn(), { ...reminder, message: undefined }));
 
     expect(view.queryByText('Tap Connect first.')).toBeNull();
     expect(view.root?.queryAll((node) => node.props.name === 'info.circle')).toHaveLength(0);
@@ -312,18 +394,14 @@ describe('BinanceCredentialsField — connect reminder', () => {
 
   it('attaches the reminder ref to the Connect row so a blocked Save can scroll to it', async () => {
     const reminder = makeReminder();
-    await render(
-      <BinanceCredentialsField accountId="acc-1" onConnect={jest.fn()} reminder={reminder} />,
-    );
+    await renderWithReminder(reminder);
 
     expect(reminder.ref.current).not.toBeNull();
   });
 
   it('reports a typed key or secret on every edit, until both are blank', async () => {
     const reminder = makeReminder();
-    const view = await render(
-      <BinanceCredentialsField accountId="acc-1" onConnect={jest.fn()} reminder={reminder} />,
-    );
+    const view = await renderWithReminder(reminder);
 
     await fireEvent.changeText(view.getByPlaceholderText(apiKeyPlaceholder), 'key');
     expect(reminder.onDraftChange).toHaveBeenLastCalledWith(true);
@@ -345,9 +423,7 @@ describe('BinanceCredentialsField — connect reminder', () => {
 
   it('counts a typed secret with a blank key as a draft', async () => {
     const reminder = makeReminder();
-    const view = await render(
-      <BinanceCredentialsField accountId="acc-1" onConnect={jest.fn()} reminder={reminder} />,
-    );
+    const view = await renderWithReminder(reminder);
 
     await fireEvent.changeText(view.getByPlaceholderText(secretPlaceholder), 'secret');
 
@@ -356,9 +432,7 @@ describe('BinanceCredentialsField — connect reminder', () => {
 
   it('reports no typed credential once it unmounts', async () => {
     const reminder = makeReminder();
-    const view = await render(
-      <BinanceCredentialsField accountId="acc-1" onConnect={jest.fn()} reminder={reminder} />,
-    );
+    const view = await renderWithReminder(reminder);
 
     await view.unmount();
 
@@ -367,38 +441,28 @@ describe('BinanceCredentialsField — connect reminder', () => {
 
   it('does not report on a plain re-render', async () => {
     const reminder = makeReminder();
-    const view = await render(
-      <BinanceCredentialsField accountId="acc-1" onConnect={jest.fn()} reminder={reminder} />,
-    );
+    const view = await renderWithReminder(reminder);
 
-    await view.rerender(
-      <BinanceCredentialsField accountId="acc-1" onConnect={jest.fn()} reminder={reminder} />,
-    );
+    await view.rerender(fieldElement(jest.fn(), reminder));
 
     expect(reminder.onDraftChange).not.toHaveBeenCalled();
   });
 
   it('reports no typed credential once a connect succeeds, and keeps it while one fails', async () => {
     mockFetchAccount.mockResolvedValue({ balances: [] });
-    mockSaveCredentials.mockResolvedValue(undefined);
+    mockSaveCredentials.mockResolvedValue(savedToken);
     const reminder = makeReminder();
     const onConnect = jest.fn<Promise<boolean>, []>().mockResolvedValueOnce(false);
-    const view = await render(
-      <BinanceCredentialsField accountId="acc-1" onConnect={onConnect} reminder={reminder} />,
-    );
+    const view = await renderWithReminder(reminder, onConnect);
     await fillBoth(view.getByPlaceholderText);
     const callsBeforeConnect = (reminder.onDraftChange as jest.Mock).mock.calls.length;
 
-    await act(async () => {
-      await fireEvent.press(view.getByText('Connect Binance'));
-    });
+    await pressConnect(view);
 
     expect(reminder.onDraftChange).toHaveBeenCalledTimes(callsBeforeConnect);
 
     onConnect.mockResolvedValueOnce(true);
-    await act(async () => {
-      await fireEvent.press(view.getByText('Connect Binance'));
-    });
+    await pressConnect(view);
 
     expect(reminder.onDraftChange).toHaveBeenCalledTimes(callsBeforeConnect + 1);
     expect(reminder.onDraftChange).toHaveBeenLastCalledWith(false);
@@ -406,13 +470,9 @@ describe('BinanceCredentialsField — connect reminder', () => {
 
   it('reports a Connect press, blank or not', async () => {
     const reminder = makeReminder();
-    const view = await render(
-      <BinanceCredentialsField accountId="acc-1" onConnect={jest.fn()} reminder={reminder} />,
-    );
+    const view = await renderWithReminder(reminder);
 
-    await act(async () => {
-      await fireEvent.press(view.getByText('Connect Binance'));
-    });
+    await pressConnect(view);
 
     expect(reminder.onConnectPress).toHaveBeenCalledTimes(1);
   });

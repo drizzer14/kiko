@@ -21,7 +21,6 @@ import Screen from '@kiko/design-system/components/screen';
 import { View, type TextInputInstance } from 'react-native';
 import { id, type AccountRow, useLiveQuery } from '@kiko/db';
 import Divider from '@kiko/design-system/components/divider';
-import { clearCredentials } from '@kiko/crypto-sync/binance';
 import BankTypeField from '@kiko/screens/forms/bank-type-field';
 import { groupAmount } from '@kiko/screens/forms/amount-format';
 import { alertOnCatch } from '@kiko/design-system/alert-on-catch';
@@ -45,8 +44,10 @@ import { type BankId, isBankId, isSpecificBankId } from '@kiko/bank-sync/bank-ca
 import HoldingIdentityField from '@kiko/design-system/components/holding-identity-field';
 import MonobankConnectField from '@kiko/design-system/components/monobank-connect-field';
 import { type Currency, currencySymbol, fiatCurrencyOptions } from '@kiko/currency/currency';
+import { type BinanceWriteToken, clearCredentialsIfWrittenBy } from '@kiko/crypto-sync/binance';
 import type { AccountFormDraft, AccountsStackParamList, FormDraft } from '@kiko/navigation/types';
 
+import { usePendingRowLock } from './use-pending-row-lock';
 import { useConnectReminder } from './use-connect-reminder';
 
 // This screen is registered in BOTH the Accounts and Home stacks (Home reaches it
@@ -342,7 +343,12 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
     pendingAccountId,
   };
   const onFieldBlur = useDraftAutosave(draft, saveDraft);
-  const isPickLocked = isEdit || accountRowStarted || accounts.length > 0;
+  // A form that remounted from its saved draft does not know yet whether the screen a fold
+  // replaced still has the insert of the pending row queued, which the live query above shows
+  // only once it lands. Locked, a pick cannot send Save to a second account or clear that row's
+  // bank; the lock lifts only when the write queue says no such row is stored.
+  const isRowUnknown = usePendingRowLock(pendingAccountId, !isEdit && opening.isSaved);
+  const isPickLocked = isEdit || accountRowStarted || accounts.length > 0 || isRowUnknown;
   // ONE shared attempted-submit flag for every validated field on this form
   // (kiko-code-style's form validation model), set true by a blocked Connect
   // OR a blocked Save — never a per-field flag: each field's own error below
@@ -435,8 +441,7 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
   // token to the Keychain keyed by the pre-generated id, then runs the first
   // Monobank sync against it (the write-only-secret order).
   // Any failure BEFORE the sync returns false so the field shows its "could not
-  // connect" status rather than an unhandled rejection; the ensureAccount reset
-  // above lets the next Connect retry. The token goes ONLY to the Keychain —
+  // connect" status rather than an unhandled rejection. The token goes ONLY to the Keychain —
   // never to the database or a log.
   const connectMonobank = async (token: string): Promise<boolean> => {
     if (!(await accountEnsured())) {
@@ -458,11 +463,11 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
   // against it. `CryptoSyncForm`/`BinanceCredentialsField` validate the
   // credential and write the Binance secret to the Keychain themselves, keyed by
   // the pre-generated id, before calling these — the secret never reaches this
-  // screen, the DB, or a log. A create failure is caught here (via
+  // screen, the DB, or a log (the Binance callbacks get only the token of the field's write). A
+  // create failure is caught here (via
   // `accountEnsured`) and surfaced to the field as a `false` (not-connected)
   // result, so the field shows its "could not connect" status instead of an
-  // unhandled rejection that would leave it stuck on "checking"; the ref
-  // reset above lets the next Connect retry.
+  // unhandled rejection that would leave it stuck on "checking".
   const connectWallet = async (address: string): Promise<boolean> => {
     if (!(await accountEnsured())) {
       return false;
@@ -475,24 +480,30 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
     });
   };
 
-  const connectBinance = async (): Promise<boolean> => {
-    if (!(await accountEnsured())) {
-      // The field stored its key pair under the pre-generated account id before
-      // this connect. Only when no row owns it does nothing else ever clear it: a
-      // reject on an empty name leaves a row that is there with its keys, even one
-      // another screen's Connect has still queued (the read waits behind it), and a
-      // failed read of the row keeps them too. A failed clear is logged: the
-      // connect still reports its own failure.
-      const rowIsMissing =
-        bifoldr(
-          await either<unknown, boolean>(async () => accountsRepo.exists(pendingAccountId)),
-        ) === false;
+  // A field stored a pair under the pre-generated account id with the write `written`, and no
+  // Connect of it will follow: connectBinance's Connect failed to ensure the row, or the field
+  // unmounted during the write and the form decides instead. Only when no row owns the id does
+  // nothing else ever clear the pair: a reject on an empty name leaves a row that is there with its
+  // keys, even one another screen's Connect has still queued (the read waits behind it), and a
+  // failed read of the row keeps them too. The clear removes the pair `written` stored and no other
+  // write's, not even an equal pair: a remounted field saves its own pair outside the write queue,
+  // possibly after the read above answered. A failed clear is logged: the caller still reports its
+  // own outcome.
+  const clearPairIfRowMissing = async (written: BinanceWriteToken): Promise<void> => {
+    const rowIsMissing =
+      bifoldr(await either<unknown, boolean>(async () => accountsRepo.exists(pendingAccountId))) ===
+      false;
 
-      if (rowIsMissing) {
-        await logOnFailure('[account-form] the Binance key pair could not be cleared', () =>
-          clearCredentials(pendingAccountId),
-        );
-      }
+    if (rowIsMissing) {
+      await logOnFailure('[account-form] the Binance key pair could not be cleared', () =>
+        clearCredentialsIfWrittenBy(pendingAccountId, written),
+      );
+    }
+  };
+
+  const connectBinance = async (stored: BinanceWriteToken): Promise<boolean> => {
+    if (!(await accountEnsured())) {
+      await clearPairIfRowMissing(stored);
 
       return false;
     }
@@ -870,6 +881,7 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
               onConnectBinance={connectBinance}
               walletReminder={reminderFor('wallet')}
               binanceReminder={reminderFor('binance')}
+              onBinanceStoredWhileUnmounted={clearPairIfRowMissing}
             />
           </Box>
         )}

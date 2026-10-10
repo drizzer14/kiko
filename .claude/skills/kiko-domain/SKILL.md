@@ -84,9 +84,14 @@ absent** — this skill states the shape and non-enum facts only:
   caption explains it), and an edit Save writes only the name, color and icon
   — never `kind`, `bankId` or `institution`. A wrong kind or bank therefore
   has no edit path; delete and recreate the account. In CREATE mode the
-  kind and bank pickers lock too once the account row exists (`isPickLocked`
-  in `account-form.screen.tsx`: edit, a Connect started, or the live query
-  of the pre-generated id finds the row). Every Connect creates the row with
+  kind and bank pickers lock too once the account row may exist (read the
+  `isPickLocked` boolean in `account-form.screen.tsx` for its conditions,
+  never a copy of them; a create form remounted from its own saved draft,
+  e.g. after a fold, stays locked until `usePendingRowLock`
+  (`src/screens/forms/account-form/use-pending-row-lock/`) gets a "no row"
+  answer from `accountsRepo.exists`; a rejected read keeps it locked
+  (user-confirmed 2026-10-10)). Every Connect
+  creates the row with
   `accountsRepo.createIfAbsent` (one write that selects the row and returns
   early when it exists, so it writes no sort order and no second writer can
   fail on the key), and Save is one `accountsRepo.saveFormAccount` call (one
@@ -94,9 +99,22 @@ absent** — this skill states the shape and non-enum facts only:
   inserts it, with the sort order only on insert), never a decision from a
   copy of component state. A fold remounts the screen but the OLD instance's
   in-flight Connect still runs, so the draft (`AccountFormDraft`) keeps
-  `pendingAccountId` and nothing about the row. Known limit (R44): after a
-  fold the Connect field shows idle, and a second Connect re-syncs the same
-  account. Re-picking the already-selected kind is a no-op (the bank/broker
+  `pendingAccountId` and nothing about the row; the remounted form asks the
+  write queue (`usePendingRowLock`) before it unlocks the kind and bank
+  picks. A Connect field (`MonobankConnectField`, `BinanceCredentialsField`)
+  never calls its connect callback once it is unmounted (`useIsMounted`),
+  and stores nothing when it unmounts before the Keychain write: a token
+  checked before a fold or a kind/bank switch is not stored, and the user
+  taps Connect again. A pair stored during the write is reported through
+  `onStoredWhileUnmounted`. `onConnect` and `onStoredWhileUnmounted` receive the
+  `BinanceWriteToken` of that write, not the pair. The account form's
+  `clearPairIfRowMissing(token)` calls `clearCredentialsIfWrittenBy`, which resets the pair only
+  when that token is still the account's latest recorded write, so a later save (even of the same
+  pair) is never deleted (`src/crypto-sync/binance/binance.credentials.ts`). The form clears
+  when no row owns P, and account detail keeps the pair (user ruling 2026-10-10).
+  Known limit (R44): after a fold the Connect field
+  shows idle, and a second Connect re-syncs the same account. Re-picking the
+  already-selected kind is a no-op (the bank/broker
   pick, custom icon and typed token stay); a switch to a different kind
   resets them. A wrongly picked bank
   stays (user decision 2026-10-05): the bank drives only the import parser
