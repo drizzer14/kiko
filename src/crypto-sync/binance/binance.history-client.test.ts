@@ -909,7 +909,8 @@ describe('capital reads', () => {
   it.each([
     ['a body that is not an array', null],
     ['a row without an applyTime', [without(withdrawalRow, 'applyTime')]],
-    ['a row with a non-finite applyTime', [{ ...withdrawalRow, applyTime: null }]],
+    ['a row with a null applyTime', [{ ...withdrawalRow, applyTime: null }]],
+    ['a row with a non-finite applyTime', [{ ...withdrawalRow, applyTime: Infinity }]],
     ['a row with a text status', [{ ...withdrawalRow, status: 'done' }]],
   ])('throws the fixed error for withdrawals with %s', async (_label, body) => {
     await expect(readWithdrawals(body)).rejects.toThrow(PARSE_FAILURE);

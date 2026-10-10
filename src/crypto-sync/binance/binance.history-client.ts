@@ -134,14 +134,6 @@ const totalPage =
     };
   };
 
-const getPage = (
-  apiKey: string,
-  secret: string,
-  path: string,
-  params: Record<string, string>,
-  options: FetchAccountOptions,
-): Promise<SignedPage> => signedRequestPage(apiKey, secret, 'GET', path, params, options);
-
 /**
  * Binance caps the deposit/withdraw history page at 1000 rows (the default too).
  * A page of exactly this many rows means "there may be more" — the caller pages
@@ -216,9 +208,10 @@ export const fetchDepositHistory = async (
   options: FetchAccountOptions = {},
 ): Promise<HistoryPage<BinanceDeposit>> =>
   depositPage(
-    await getPage(
+    await signedRequestPage(
       apiKey,
       secret,
+      'GET',
       '/sapi/v1/capital/deposit/hisrec',
       capitalParams(window),
       options,
@@ -238,9 +231,10 @@ export const fetchWithdrawHistory = async (
   options: FetchAccountOptions = {},
 ): Promise<HistoryPage<BinanceWithdrawal>> =>
   withdrawalPage(
-    await getPage(
+    await signedRequestPage(
       apiKey,
       secret,
+      'GET',
       '/sapi/v1/capital/withdraw/history',
       capitalParams(window),
       options,
@@ -331,9 +325,10 @@ export const fetchPayHistory = async (
   options: FetchAccountOptions = {},
 ): Promise<HistoryPage<BinancePayOrder>> =>
   payPage(
-    await getPage(
+    await signedRequestPage(
       apiKey,
       secret,
+      'GET',
       '/sapi/v1/pay/transactions',
       {
         startTime: String(query.startTime),
@@ -414,9 +409,10 @@ export const fetchUniversalTransfers = async (
   options: FetchAccountOptions = {},
 ): Promise<TotalPage<BinanceUniversalTransfer>> =>
   transferPage(
-    await getPage(
+    await signedRequestPage(
       apiKey,
       secret,
+      'GET',
       '/sapi/v1/asset/transfer',
       { type: query.type, ...totalParams(query) },
       options,
@@ -534,9 +530,10 @@ export const fetchEarnRecords = async <Kind extends EarnRecordKind>(
   options: FetchAccountOptions = {},
 ): Promise<TotalPage<EarnRecordByKind[Kind]>> => {
   const { path, extraParams, readRow } = EARN_READS[kind];
-  const page = await getPage(
+  const page = await signedRequestPage(
     apiKey,
     secret,
+    'GET',
     path,
     { asset: BINANCE_ASSET, ...extraParams, ...totalParams(query) },
     options,

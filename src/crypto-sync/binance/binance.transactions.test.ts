@@ -14,6 +14,7 @@ import {
 } from './binance.transactions';
 import {
   type BinanceDeposit,
+  BinanceHistoryParseError,
   type BinanceWithdrawal,
   HISTORY_PAGE_LIMIT,
   type HistoryPage,
@@ -62,14 +63,10 @@ const historyPage = <Row>(rows: Row[], usedUidWeight1m?: number): HistoryPage<Ro
   usedIpWeight1m: undefined,
 });
 
-const depositPage = (rows: BinanceDeposit[]) => historyPage(rows);
-
-const withdrawPage = (rows: BinanceWithdrawal[]) => historyPage(rows);
-
 // A typed, empty deposit-history mock. The explicit params type `mock.calls[n][2]`
 // as the HistoryWindow so the window-walk assertions read it without a cast.
 const emptyDepositFetch = () =>
-  jest.fn(async (_apiKey: string, _secret: string, _window: HistoryWindow) => depositPage([]));
+  jest.fn(async (_apiKey: string, _secret: string, _window: HistoryWindow) => historyPage([]));
 
 const makeDeps = (over: Partial<BinanceTransactionSyncDeps> = {}): BinanceTransactionSyncDeps => ({
   now: () => NOW,
@@ -80,8 +77,8 @@ const makeDeps = (over: Partial<BinanceTransactionSyncDeps> = {}): BinanceTransa
   latestTransactionTime: async () => undefined,
   addTransactions: jest.fn(async (rows: BinanceTransactionRow[]) => rows.length),
   writeHistoryCursor: jest.fn(async () => undefined),
-  fetchDepositHistory: jest.fn(async () => depositPage([])),
-  fetchWithdrawHistory: jest.fn(async () => withdrawPage([])),
+  fetchDepositHistory: jest.fn(async () => historyPage([])),
+  fetchWithdrawHistory: jest.fn(async () => historyPage([])),
   ...over,
 });
 
@@ -131,8 +128,8 @@ describe('syncBinanceTransactions', () => {
     // A recent cursor keeps the walk to a single 89-day window.
     const deps = makeDeps({
       latestTransactionTime: async () => NOW - 10 * DAY_MS,
-      fetchDepositHistory: jest.fn(async () => depositPage([deposit()])),
-      fetchWithdrawHistory: jest.fn(async () => withdrawPage([withdrawal()])),
+      fetchDepositHistory: jest.fn(async () => historyPage([deposit()])),
+      fetchWithdrawHistory: jest.fn(async () => historyPage([withdrawal()])),
     });
 
     const result = await syncBinanceTransactions({ targetAccountId: ACCOUNT_ID }, deps);
@@ -212,10 +209,10 @@ describe('syncBinanceTransactions', () => {
     const deps = makeDeps({
       latestTransactionTime: async () => NOW - 10 * DAY_MS,
       fetchDepositHistory: jest.fn(async () =>
-        depositPage([deposit({ id: '2', status: 0 }), deposit({ id: '3' })]),
+        historyPage([deposit({ id: '2', status: 0 }), deposit({ id: '3' })]),
       ),
       fetchWithdrawHistory: jest.fn(async () =>
-        withdrawPage([withdrawal({ id: '8', status: 3 }), withdrawal({ id: '7' })]),
+        historyPage([withdrawal({ id: '8', status: 3 }), withdrawal({ id: '7' })]),
       ),
     });
 
@@ -231,7 +228,7 @@ describe('syncBinanceTransactions', () => {
     );
     const fetchDepositHistory = jest.fn(
       async (_key: string, _secret: string, window: HistoryWindow) =>
-        depositPage(window.offset === 0 ? fullPage : [deposit({ id: 'last' })]),
+        historyPage(window.offset === 0 ? fullPage : [deposit({ id: 'last' })]),
     );
     const deps = makeDeps({
       latestTransactionTime: async () => NOW - 10 * DAY_MS,
@@ -355,7 +352,7 @@ describe('syncBinanceTransactions', () => {
   it('does nothing when the account has no Spot BTC holding', async () => {
     const deps = makeDeps({
       listHoldings: async () => [fundingHolding],
-      fetchDepositHistory: jest.fn(async () => depositPage([deposit()])),
+      fetchDepositHistory: jest.fn(async () => historyPage([deposit()])),
     });
 
     const result = await syncBinanceTransactions({ targetAccountId: ACCOUNT_ID }, deps);
@@ -368,7 +365,7 @@ describe('syncBinanceTransactions', () => {
   it('does nothing when no Binance credentials are stored', async () => {
     const deps = makeDeps({
       readCredentials: async () => undefined,
-      fetchDepositHistory: jest.fn(async () => depositPage([deposit()])),
+      fetchDepositHistory: jest.fn(async () => historyPage([deposit()])),
     });
 
     const result = await syncBinanceTransactions({ targetAccountId: ACCOUNT_ID }, deps);
@@ -390,10 +387,39 @@ describe('syncBinanceTransactions', () => {
     );
   });
 
+  // The capital client parses strictly: an off-contract body or row throws a
+  // BinanceHistoryParseError. The walk must let it through, so the earlier window
+  // stays committed, the cursor stays at that window's end, and the run rejects.
+  it('stops a walk on a capital parse error, keeping the earlier window and its cursor', async () => {
+    let depositCalls = 0;
+    const deps = makeDeps({
+      latestTransactionTime: async () => NOW - 200 * DAY_MS,
+      fetchDepositHistory: jest.fn(async () => {
+        depositCalls += 1;
+
+        if (depositCalls === 2) {
+          throw new BinanceHistoryParseError();
+        }
+
+        return historyPage([deposit({ id: 'window-1' })]);
+      }),
+    });
+
+    const outcome = syncBinanceTransactions({ targetAccountId: ACCOUNT_ID }, deps);
+
+    await expect(outcome).rejects.toBeInstanceOf(BinanceHistoryParseError);
+    expect(deps.addTransactions).toHaveBeenCalledTimes(1);
+    expect(deps.writeHistoryCursor).toHaveBeenCalledTimes(1);
+    expect(deps.writeHistoryCursor).toHaveBeenCalledWith(
+      'h-spot',
+      NOW - 201 * DAY_MS + 89 * DAY_MS,
+    );
+  });
+
   it('keys the same record identically across runs so a re-sync dedupes', async () => {
     const deps = makeDeps({
       latestTransactionTime: async () => NOW - 10 * DAY_MS,
-      fetchDepositHistory: jest.fn(async () => depositPage([deposit({ id: '42' })])),
+      fetchDepositHistory: jest.fn(async () => historyPage([deposit({ id: '42' })])),
     });
 
     await syncBinanceTransactions({ targetAccountId: ACCOUNT_ID }, deps);
@@ -415,11 +441,11 @@ describe('syncBinanceTransactions', () => {
   it('namespaces the external id per account so two connections cannot collide on one raw id', async () => {
     const depsA = makeDeps({
       latestTransactionTime: async () => NOW - 10 * DAY_MS,
-      fetchDepositHistory: jest.fn(async () => depositPage([deposit({ id: '7' })])),
+      fetchDepositHistory: jest.fn(async () => historyPage([deposit({ id: '7' })])),
     });
     const depsB = makeDeps({
       latestTransactionTime: async () => NOW - 10 * DAY_MS,
-      fetchDepositHistory: jest.fn(async () => depositPage([deposit({ id: '7' })])),
+      fetchDepositHistory: jest.fn(async () => historyPage([deposit({ id: '7' })])),
     });
 
     await syncBinanceTransactions({ targetAccountId: 'acc-a' }, depsA);
@@ -459,14 +485,14 @@ describe('resumable, budgeted walk', () => {
         throw new BinanceRateLimitError(429, 30_000);
       }
 
-      return withdrawPage([withdrawal({ id: `w-${bucket}-${callsThisMinute}` })]);
+      return historyPage([withdrawal({ id: `w-${bucket}-${callsThisMinute}` })]);
     });
     const deps = makeDeps({
       now: () => clock,
       listHoldings: account.listHoldings,
       writeHistoryCursor: account.writeHistoryCursor,
       latestTransactionTime: async () => undefined,
-      fetchDepositHistory: jest.fn(async () => depositPage([])),
+      fetchDepositHistory: jest.fn(async () => historyPage([])),
       fetchWithdrawHistory,
     });
 
@@ -497,12 +523,12 @@ describe('resumable, budgeted walk', () => {
 
   it('run 1 makes at most the fallback withdraw-call budget, one window per call', async () => {
     const account = makeStatefulSpotAccount();
-    const fetchWithdrawHistory = jest.fn(async () => withdrawPage([withdrawal()]));
+    const fetchWithdrawHistory = jest.fn(async () => historyPage([withdrawal()]));
     const deps = makeDeps({
       listHoldings: account.listHoldings,
       writeHistoryCursor: account.writeHistoryCursor,
       latestTransactionTime: async () => undefined,
-      fetchDepositHistory: jest.fn(async () => depositPage([])),
+      fetchDepositHistory: jest.fn(async () => historyPage([])),
       fetchWithdrawHistory,
     });
 
@@ -522,14 +548,14 @@ describe('resumable, budgeted walk', () => {
         throw new BinanceRateLimitError(429, 30_000);
       }
 
-      return withdrawPage([]);
+      return historyPage([]);
     });
     const depositWindows: HistoryWindow[] = [];
     const fetchDepositHistory = jest.fn(
       async (_key: string, _secret: string, window: HistoryWindow) => {
         depositWindows.push(window);
 
-        return depositPage([]);
+        return historyPage([]);
       },
     );
     let clock = NOW;
@@ -577,7 +603,7 @@ describe('resumable, budgeted walk', () => {
       listHoldings: account.listHoldings,
       writeHistoryCursor: account.writeHistoryCursor,
       latestTransactionTime: async () => undefined,
-      fetchDepositHistory: jest.fn(async () => depositPage([])),
+      fetchDepositHistory: jest.fn(async () => historyPage([])),
       fetchWithdrawHistory,
     });
 
@@ -604,7 +630,7 @@ describe('resumable, budgeted walk', () => {
       listHoldings: account.listHoldings,
       writeHistoryCursor: account.writeHistoryCursor,
       latestTransactionTime: async () => undefined,
-      fetchDepositHistory: jest.fn(async () => depositPage([])),
+      fetchDepositHistory: jest.fn(async () => historyPage([])),
       fetchWithdrawHistory,
     });
 
@@ -631,7 +657,7 @@ describe('resumable, budgeted walk', () => {
       listHoldings: account.listHoldings,
       writeHistoryCursor: account.writeHistoryCursor,
       latestTransactionTime: async () => undefined,
-      fetchDepositHistory: jest.fn(async () => depositPage([])),
+      fetchDepositHistory: jest.fn(async () => historyPage([])),
       fetchWithdrawHistory,
     });
 
@@ -654,16 +680,16 @@ describe('resumable, budgeted walk', () => {
       // The LAST call the budget can afford starts a window whose first page
       // is FULL — it needs a 2nd page, a call the budget does not allow.
       if (callCount === WITHDRAW_CALLS_PER_RUN_FALLBACK) {
-        return withdrawPage(fullPage);
+        return historyPage(fullPage);
       }
 
-      return withdrawPage([]);
+      return historyPage([]);
     });
     const deps = makeDeps({
       listHoldings: account.listHoldings,
       writeHistoryCursor: account.writeHistoryCursor,
       latestTransactionTime: async () => undefined,
-      fetchDepositHistory: jest.fn(async () => depositPage([])),
+      fetchDepositHistory: jest.fn(async () => historyPage([])),
       fetchWithdrawHistory,
     });
 
@@ -692,8 +718,8 @@ describe('resumable, budgeted walk', () => {
       writeHistoryCursor,
       addTransactions,
       latestTransactionTime: async () => NOW - 10 * DAY_MS,
-      fetchDepositHistory: jest.fn(async () => depositPage([deposit()])),
-      fetchWithdrawHistory: jest.fn(async () => withdrawPage([])),
+      fetchDepositHistory: jest.fn(async () => historyPage([deposit()])),
+      fetchWithdrawHistory: jest.fn(async () => historyPage([])),
     });
 
     await syncBinanceTransactions({ targetAccountId: 'acc-crash-order' }, deps);
@@ -711,7 +737,7 @@ describe('resumable, budgeted walk', () => {
         throw new BinanceRateLimitError(429, 30_000);
       }
 
-      return withdrawPage([withdrawal({ id: `w${callCount}` })]);
+      return historyPage([withdrawal({ id: `w${callCount}` })]);
     });
     const addTransactions = jest.fn(async (rows: BinanceTransactionRow[]) => rows.length);
     const deps = makeDeps({
@@ -719,7 +745,7 @@ describe('resumable, budgeted walk', () => {
       writeHistoryCursor: account.writeHistoryCursor,
       addTransactions,
       latestTransactionTime: async () => undefined,
-      fetchDepositHistory: jest.fn(async () => depositPage([])),
+      fetchDepositHistory: jest.fn(async () => historyPage([])),
       fetchWithdrawHistory,
     });
 

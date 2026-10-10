@@ -335,6 +335,15 @@ keep their holding, because the upsert `set` has no `holdingId`
 walletType 1. If there are any, a follow-up task moves them, with a repo change or a
 migration and a `kiko:reviewer` step.
 
+Strict capital parse. Capital rows parse strictly. An off-contract body or row
+(a non-array body, a non-object row, a missing, null, or non-string `amount`, a
+non-numeric `status`, a bad `insertTime` or `applyTime`, a non-integer `walletType`)
+throws `BinanceHistoryParseError`. The window stops, so its rows are not committed
+and the cursor stays at the last good window's end. The walk is logged by the error
+name, and the caption shows history behind. The cost: one off-contract row stalls
+capital history until an app update. The reason: a skipped row is silent loss, and
+`amount: null` used to import a 0-sat row.
+
 ### 8. Labels, caption, and i18n (en + uk, translator review before deploy)
 
 - New `transactions.transferTo` / `transactions.transferFrom`: "Transfer to
