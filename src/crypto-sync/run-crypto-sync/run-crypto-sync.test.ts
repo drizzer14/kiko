@@ -26,7 +26,7 @@ describe('runCryptoSync', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockRunBalanceSync.mockResolvedValue({ syncedHoldings: 1 });
-    mockSyncBinanceTransactions.mockResolvedValue({ imported: 0 });
+    mockSyncBinanceTransactions.mockResolvedValue({ imported: 0, complete: true });
   });
 
   it('runs the wallet provider with the connect-time address on a wallet request', async () => {
@@ -57,24 +57,38 @@ describe('runCryptoSync', () => {
     );
   });
 
-  it('runs the Binance balance sync then imports its transaction history', async () => {
+  it('runs the Binance balance sync then the capital history walk on the arm run', async () => {
     const result = await runCryptoSync({ providerId: 'binance', targetAccountId: 'acc-2' });
 
     expect(result).toEqual({ syncedHoldings: 1 });
     expect(mockRunBalanceSync).toHaveBeenCalledWith(binanceProvider, defaultBinanceDeps, {
       targetAccountId: 'acc-2',
     });
-    expect(mockSyncBinanceTransactions).toHaveBeenCalledWith({ targetAccountId: 'acc-2' });
+    expect(mockSyncBinanceTransactions).toHaveBeenCalledWith({
+      targetAccountId: 'acc-2',
+      run: { gate: expect.any(Object), budget: expect.any(Object) },
+    });
   });
 
-  it('still resolves with the balance result when the transaction import fails', async () => {
+  it('builds one history run per arm run, never sharing a budget across runs', async () => {
+    await runCryptoSync({ providerId: 'binance', targetAccountId: 'acc-2' });
+    await runCryptoSync({ providerId: 'binance', targetAccountId: 'acc-2' });
+
+    const [firstRun, secondRun] = mockSyncBinanceTransactions.mock.calls.map(
+      ([request]) => request.run,
+    );
+    expect(firstRun).not.toBe(secondRun);
+    expect(firstRun.budget).not.toBe(secondRun.budget);
+  });
+
+  it('still resolves with the balance result when the capital history walk fails', async () => {
     const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
     mockSyncBinanceTransactions.mockRejectedValue(new Error('Too much request weight used SECRET'));
 
     const result = await runCryptoSync({ providerId: 'binance', targetAccountId: 'acc-2' });
 
     expect(result).toEqual({ syncedHoldings: 1 });
-    expect(warn).toHaveBeenCalledWith('[binance sync] transaction history import failed', {
+    expect(warn).toHaveBeenCalledWith('[binance sync] capital history failed', {
       name: 'Error',
       code: undefined,
     });
@@ -110,8 +124,12 @@ describe('runCryptoSync', () => {
 
       expect(mockRunBalanceSync).toHaveBeenCalledTimes(2);
       expect(mockSyncBinanceTransactions).toHaveBeenCalledTimes(2);
-      expect(mockSyncBinanceTransactions).toHaveBeenCalledWith({ targetAccountId: 'acc-2' });
-      expect(mockSyncBinanceTransactions).toHaveBeenCalledWith({ targetAccountId: 'acc-3' });
+      expect(mockSyncBinanceTransactions).toHaveBeenCalledWith(
+        expect.objectContaining({ targetAccountId: 'acc-2' }),
+      );
+      expect(mockSyncBinanceTransactions).toHaveBeenCalledWith(
+        expect.objectContaining({ targetAccountId: 'acc-3' }),
+      );
     });
 
     it('releases the lock after settling so a later, non-overlapping sync runs fresh', async () => {

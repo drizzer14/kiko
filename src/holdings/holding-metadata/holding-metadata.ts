@@ -175,14 +175,30 @@ export const syncedAtOf = (metadata: unknown): number | null => {
  */
 export const BINANCE_HISTORY_CURSOR_FIELD = 'binanceHistoryCursor';
 
+/** The other three Binance walks each keep their own watermark next to the capital one. */
+const BINANCE_PAY_HISTORY_CURSOR_FIELD = 'binancePayHistoryCursor';
+
+const BINANCE_TRANSFER_HISTORY_CURSOR_FIELD = 'binanceTransferHistoryCursor';
+
+const BINANCE_EARN_HISTORY_CURSOR_FIELD = 'binanceEarnHistoryCursor';
+
+export const binanceWalkCursorFields = [
+  BINANCE_HISTORY_CURSOR_FIELD,
+  BINANCE_PAY_HISTORY_CURSOR_FIELD,
+  BINANCE_TRANSFER_HISTORY_CURSOR_FIELD,
+  BINANCE_EARN_HISTORY_CURSOR_FIELD,
+] as const;
+
+export type BinanceWalkCursorField = (typeof binanceWalkCursorFields)[number];
+
 /**
  * Metadata keys a sync WALK owns, as opposed to a balance snapshot — today
- * only the Binance history cursor. `upsertByMetadataKey` (holdings.repo.ts)
+ * only the Binance walk cursors. `upsertByMetadataKey` (holdings.repo.ts)
  * carries these over from the stored row on every balance-sync upsert, so a
  * routine balance sync (which writes a fresh `{ syncedAt, ...}` metadata
  * object every run) never wipes a walk's own progress marker.
  */
-const walkOwnedMetadataKeys = [BINANCE_HISTORY_CURSOR_FIELD] as const;
+const walkOwnedMetadataKeys = binanceWalkCursorFields;
 
 /**
  * The two marks of a Monobank holding's close and reopen (see
@@ -217,6 +233,11 @@ const numberFieldOf =
   };
 
 export const binanceHistoryCursorOf = numberFieldOf(BINANCE_HISTORY_CURSOR_FIELD);
+
+export const binanceWalkCursorOf = (
+  field: BinanceWalkCursorField,
+  metadata: unknown,
+): number | null => numberFieldOf(field)(metadata);
 
 export const syncClosedFromOf = numberFieldOf(SYNC_CLOSED_FROM_FIELD);
 

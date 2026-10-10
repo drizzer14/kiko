@@ -2,16 +2,19 @@ import { DAY_MS } from '@kiko/dates';
 import type { HoldingRow } from '@kiko/db';
 
 import {
-  BINANCE_REQUEST_INTERVAL_MS,
   type BinanceTransactionRow,
   type BinanceTransactionSyncDeps,
   HISTORY_FLOOR_MS,
   parseWithdrawTime,
   syncBinanceTransactions,
-  UID_WEIGHT_BUDGET_1M,
-  WITHDRAW_CALLS_PER_RUN_FALLBACK,
-  WITHDRAW_UID_WEIGHT,
 } from './binance.transactions';
+import {
+  BINANCE_REQUEST_INTERVAL_MS,
+  COSTS,
+  createBinanceHistoryRun,
+  LANE_CALL_CAPS,
+  UID_WEIGHT_BUDGET_1M,
+} from './binance.history-budget';
 import {
   type BinanceDeposit,
   BinanceHistoryParseError,
@@ -57,10 +60,14 @@ const withdrawal = (over: Partial<BinanceWithdrawal> = {}): BinanceWithdrawal =>
 });
 
 /** A history page with no weight reading in the fixture, unless one is given. */
-const historyPage = <Row>(rows: Row[], usedUidWeight1m?: number): HistoryPage<Row> => ({
+const historyPage = <Row>(
+  rows: Row[],
+  usedUidWeight1m?: number,
+  usedIpWeight1m?: number,
+): HistoryPage<Row> => ({
   rows,
   usedUidWeight1m,
-  usedIpWeight1m: undefined,
+  usedIpWeight1m,
 });
 
 // A typed, empty deposit-history mock. The explicit params type `mock.calls[n][2]`
@@ -70,26 +77,39 @@ const emptyDepositFetch = () =>
 
 const makeDeps = (over: Partial<BinanceTransactionSyncDeps> = {}): BinanceTransactionSyncDeps => ({
   now: () => NOW,
-  sleep: async () => undefined,
   fetchImpl: (async () => ({})) as unknown as typeof fetch,
   readCredentials: async () => ({ apiKey: 'api-key', secret: 'secret' }),
   listHoldings: async () => [spotHolding],
+  ensureHoldings: jest.fn(async () => undefined),
   latestTransactionTime: async () => undefined,
   addTransactions: jest.fn(async (rows: BinanceTransactionRow[]) => rows.length),
-  writeHistoryCursor: jest.fn(async () => undefined),
+  writeWalkCursor: jest.fn(async () => undefined),
   fetchDepositHistory: jest.fn(async () => historyPage([])),
   fetchWithdrawHistory: jest.fn(async () => historyPage([])),
   ...over,
 });
 
+/** The shared request gate and budget one Binance arm builds, fresh for each run. */
+const freshRun = (now: () => number = () => NOW, sleep = async (_milliseconds: number) => {}) =>
+  createBinanceHistoryRun({ now, sleep });
+
+const sync = (
+  deps: BinanceTransactionSyncDeps,
+  targetAccountId = ACCOUNT_ID,
+  run = freshRun(deps.now),
+) => syncBinanceTransactions({ targetAccountId, run }, deps);
+
+const addedRows = (deps: BinanceTransactionSyncDeps, call = 0): BinanceTransactionRow[] =>
+  (deps.addTransactions as jest.Mock).mock.calls[call][0] as BinanceTransactionRow[];
+
 /**
- * A stateful Spot holding + `writeHistoryCursor` pair for a multi-run test:
- * each run's `listHoldings` reads whatever the LAST run's `writeHistoryCursor`
+ * A stateful Spot holding + `writeWalkCursor` pair for a multi-run test:
+ * each run's `listHoldings` reads whatever the LAST run's `writeWalkCursor`
  * wrote, so a resumed run genuinely picks up from where the prior one left off.
  */
 const makeStatefulSpotAccount = (): {
   listHoldings: () => Promise<HoldingRow[]>;
-  writeHistoryCursor: jest.Mock<Promise<void>, [string, number]>;
+  writeWalkCursor: jest.Mock<Promise<void>, [string, string, number]>;
   cursor: () => number | null;
 } => {
   let cursor: number | null = null;
@@ -104,12 +124,33 @@ const makeStatefulSpotAccount = (): {
             : { binanceAsset: 'BTC', binanceHistoryCursor: cursor },
       } as unknown as HoldingRow,
     ],
-    writeHistoryCursor: jest.fn(async (_holdingId: string, cursorMs: number) => {
+    writeWalkCursor: jest.fn(async (_holdingId: string, _field: string, cursorMs: number) => {
       cursor = cursorMs;
     }),
     cursor: () => cursor,
   };
 };
+
+type StatefulSpotAccount = ReturnType<typeof makeStatefulSpotAccount>;
+
+/** Deps for a first sync (no cursor) over a stateful Spot account; reads are empty unless given. */
+const makeFirstSyncDeps = (
+  account: StatefulSpotAccount,
+  over: Partial<BinanceTransactionSyncDeps> = {},
+): BinanceTransactionSyncDeps =>
+  makeDeps({
+    listHoldings: account.listHoldings,
+    writeWalkCursor: account.writeWalkCursor,
+    latestTransactionTime: async () => undefined,
+    ...over,
+  });
+
+/** A full deposit page, the length at which the walk asks for the next page. */
+const fullDepositPage = (): BinanceDeposit[] =>
+  Array.from({ length: HISTORY_PAGE_LIMIT }, (_unused, index) => deposit({ id: `d${index}` }));
+
+/** The end of the first of the three 89-day windows a cursor 200 days back is walked in. */
+const FIRST_OF_THREE_WINDOWS_END = NOW - 201 * DAY_MS + 89 * DAY_MS;
 
 describe('parseWithdrawTime', () => {
   it('reads a Binance applyTime string as UTC, not the device local zone', () => {
@@ -132,11 +173,10 @@ describe('syncBinanceTransactions', () => {
       fetchWithdrawHistory: jest.fn(async () => historyPage([withdrawal()])),
     });
 
-    const result = await syncBinanceTransactions({ targetAccountId: ACCOUNT_ID }, deps);
+    const result = await sync(deps);
 
     expect(result).toEqual({ imported: 2, complete: true });
-    const rows = (deps.addTransactions as jest.Mock).mock.calls[0][0] as BinanceTransactionRow[];
-    expect(rows).toEqual([
+    expect(addedRows(deps)).toEqual([
       {
         holdingId: 'h-spot',
         amountMinorUnits: 50_000_000, // +0.5 BTC in satoshis
@@ -149,7 +189,7 @@ describe('syncBinanceTransactions', () => {
         externalId: 'acc-1:deposit:1',
         // A stable, non-localized asset ticker so the row's normalized name is
         // non-blank and the category-apply sheet appears (parity with a Monobank
-        // merchant row). See the item-12 fix.
+        // merchant row).
         description: 'BTC',
       },
       {
@@ -167,18 +207,27 @@ describe('syncBinanceTransactions', () => {
     const readCredentials = jest.fn(async () => ({ apiKey: 'api-key', secret: 'secret' }));
     const deps = makeDeps({ readCredentials });
 
-    await syncBinanceTransactions({ targetAccountId: ACCOUNT_ID }, deps);
+    await sync(deps);
 
     expect(readCredentials).toHaveBeenCalledWith(ACCOUNT_ID);
   });
 
-  it('paces the two endpoint requests in a window through a shared gate', async () => {
+  it('writes the window cursor through writeWalkCursor on the Spot holding, as the capital cursor', async () => {
+    const deps = makeDeps({ latestTransactionTime: async () => NOW - 10 * DAY_MS });
+
+    await sync(deps);
+
+    expect(deps.writeWalkCursor).toHaveBeenCalledTimes(1);
+    expect(deps.writeWalkCursor).toHaveBeenCalledWith('h-spot', 'binanceHistoryCursor', NOW);
+  });
+
+  it('paces the two endpoint requests in a window through the shared run gate', async () => {
     const sleep = jest.fn(async (_ms: number) => undefined);
     // A recent cursor keeps the walk to ONE 89-day window: a deposit request then
     // a withdraw request, two requests total.
-    const deps = makeDeps({ latestTransactionTime: async () => NOW - 10 * DAY_MS, sleep });
+    const deps = makeDeps({ latestTransactionTime: async () => NOW - 10 * DAY_MS });
 
-    await syncBinanceTransactions({ targetAccountId: ACCOUNT_ID }, deps);
+    await sync(deps, ACCOUNT_ID, freshRun(deps.now, sleep));
 
     // The first request fires immediately; the second waits the pacing interval,
     // so the two are not fired back-to-back.
@@ -191,9 +240,9 @@ describe('syncBinanceTransactions', () => {
     // A first sync (no cursor) walks from the 2017 floor to now: many 89-day
     // windows, two requests each — the case that otherwise fires ~dozens of
     // requests back-to-back and hits a Binance weight-429.
-    const deps = makeDeps({ latestTransactionTime: async () => undefined, sleep });
+    const deps = makeDeps({ latestTransactionTime: async () => undefined });
 
-    await syncBinanceTransactions({ targetAccountId: ACCOUNT_ID }, deps);
+    await sync(deps, ACCOUNT_ID, freshRun(deps.now, sleep));
 
     const requests =
       (deps.fetchDepositHistory as jest.Mock).mock.calls.length +
@@ -216,26 +265,25 @@ describe('syncBinanceTransactions', () => {
       ),
     });
 
-    await syncBinanceTransactions({ targetAccountId: ACCOUNT_ID }, deps);
+    await sync(deps);
 
-    const rows = (deps.addTransactions as jest.Mock).mock.calls[0][0] as BinanceTransactionRow[];
-    expect(rows.map((row) => row.externalId)).toEqual(['acc-1:deposit:3', 'acc-1:withdraw:7']);
+    expect(addedRows(deps).map((row) => row.externalId)).toEqual([
+      'acc-1:deposit:3',
+      'acc-1:withdraw:7',
+    ]);
   });
 
   it('offset-pages within a window until a short page, collecting every row', async () => {
-    const fullPage = Array.from({ length: HISTORY_PAGE_LIMIT }, (_unused, index) =>
-      deposit({ id: `d${index}` }),
-    );
     const fetchDepositHistory = jest.fn(
       async (_key: string, _secret: string, window: HistoryWindow) =>
-        historyPage(window.offset === 0 ? fullPage : [deposit({ id: 'last' })]),
+        historyPage(window.offset === 0 ? fullDepositPage() : [deposit({ id: 'last' })]),
     );
     const deps = makeDeps({
       latestTransactionTime: async () => NOW - 10 * DAY_MS,
       fetchDepositHistory,
     });
 
-    const result = await syncBinanceTransactions({ targetAccountId: ACCOUNT_ID }, deps);
+    const result = await sync(deps);
 
     expect(result).toEqual({ imported: HISTORY_PAGE_LIMIT + 1, complete: true });
     expect(fetchDepositHistory).toHaveBeenCalledTimes(2);
@@ -250,7 +298,7 @@ describe('syncBinanceTransactions', () => {
       fetchDepositHistory,
     });
 
-    await syncBinanceTransactions({ targetAccountId: ACCOUNT_ID }, deps);
+    await sync(deps);
 
     expect(fetchDepositHistory).toHaveBeenCalledTimes(1);
     const window = fetchDepositHistory.mock.calls[0][2];
@@ -267,7 +315,7 @@ describe('syncBinanceTransactions', () => {
       fetchDepositHistory,
     });
 
-    await syncBinanceTransactions({ targetAccountId: ACCOUNT_ID }, deps);
+    await sync(deps);
 
     const windows = fetchDepositHistory.mock.calls.map((call) => call[2]);
     expect(windows).toHaveLength(3);
@@ -282,7 +330,7 @@ describe('syncBinanceTransactions', () => {
       fetchDepositHistory,
     });
 
-    const result = await syncBinanceTransactions({ targetAccountId: ACCOUNT_ID }, deps);
+    const result = await sync(deps);
 
     const windows = fetchDepositHistory.mock.calls.map((call) => call[2]);
     expect(windows[0].startTime).toBe(HISTORY_FLOOR_MS);
@@ -294,9 +342,9 @@ describe('syncBinanceTransactions', () => {
   it('the watermark wins over a much older legacy latest — the headline "cursor beats latest" rule', async () => {
     // A holding whose watermark is nearly caught up (2 hours behind now), but
     // whose legacy `latestTransactionTime` (a pre-watermark imported row) is
-    // stuck in 2019. `resolveStartTime` must be fed the WATERMARK, never the
-    // stale `latest` — swapping `cursor ?? latest` for `latest ?? cursor`
-    // would walk from 2019 instead and fail this test.
+    // stuck in 2019. The start must be fed the WATERMARK, never the stale
+    // `latest` — swapping `cursor ?? latest` for `latest ?? cursor` would walk
+    // from 2019 instead and fail this test.
     const fetchDepositHistory = emptyDepositFetch();
     const cursor = NOW - 2 * 60 * 60 * 1000;
     const deps = makeDeps({
@@ -308,7 +356,7 @@ describe('syncBinanceTransactions', () => {
       fetchDepositHistory,
     });
 
-    await syncBinanceTransactions({ targetAccountId: ACCOUNT_ID }, deps);
+    await sync(deps);
 
     const windows = fetchDepositHistory.mock.calls.map((call) => call[2]);
     expect(windows).toHaveLength(1);
@@ -333,7 +381,7 @@ describe('syncBinanceTransactions', () => {
       fetchDepositHistory,
     });
 
-    await syncBinanceTransactions({ targetAccountId: ACCOUNT_ID }, deps);
+    await sync(deps);
 
     const windows = fetchDepositHistory.mock.calls.map((call) => call[2]);
     expect(windows[0].startTime).toBe(HISTORY_FLOOR_MS);
@@ -342,11 +390,11 @@ describe('syncBinanceTransactions', () => {
   it('imports nothing but still advances the watermark when the window holds no settled records', async () => {
     const deps = makeDeps({ latestTransactionTime: async () => NOW - 10 * DAY_MS });
 
-    const result = await syncBinanceTransactions({ targetAccountId: ACCOUNT_ID }, deps);
+    const result = await sync(deps);
 
     expect(result).toEqual({ imported: 0, complete: true });
     expect(deps.addTransactions).not.toHaveBeenCalled();
-    expect(deps.writeHistoryCursor).toHaveBeenCalledWith('h-spot', NOW);
+    expect(deps.writeWalkCursor).toHaveBeenCalledWith('h-spot', 'binanceHistoryCursor', NOW);
   });
 
   it('does nothing when the account has no Spot BTC holding', async () => {
@@ -355,7 +403,7 @@ describe('syncBinanceTransactions', () => {
       fetchDepositHistory: jest.fn(async () => historyPage([deposit()])),
     });
 
-    const result = await syncBinanceTransactions({ targetAccountId: ACCOUNT_ID }, deps);
+    const result = await sync(deps);
 
     expect(result).toEqual({ imported: 0, complete: true });
     expect(deps.fetchDepositHistory).not.toHaveBeenCalled();
@@ -368,7 +416,7 @@ describe('syncBinanceTransactions', () => {
       fetchDepositHistory: jest.fn(async () => historyPage([deposit()])),
     });
 
-    const result = await syncBinanceTransactions({ targetAccountId: ACCOUNT_ID }, deps);
+    const result = await sync(deps);
 
     expect(result).toEqual({ imported: 0, complete: true });
     expect(deps.fetchDepositHistory).not.toHaveBeenCalled();
@@ -382,9 +430,7 @@ describe('syncBinanceTransactions', () => {
       }),
     });
 
-    await expect(syncBinanceTransactions({ targetAccountId: ACCOUNT_ID }, deps)).rejects.toThrow(
-      'Too much request weight used',
-    );
+    await expect(sync(deps)).rejects.toThrow('Too much request weight used');
   });
 
   // The capital client parses strictly: an off-contract body or row throws a
@@ -405,14 +451,13 @@ describe('syncBinanceTransactions', () => {
       }),
     });
 
-    const outcome = syncBinanceTransactions({ targetAccountId: ACCOUNT_ID }, deps);
-
-    await expect(outcome).rejects.toBeInstanceOf(BinanceHistoryParseError);
+    await expect(sync(deps)).rejects.toBeInstanceOf(BinanceHistoryParseError);
     expect(deps.addTransactions).toHaveBeenCalledTimes(1);
-    expect(deps.writeHistoryCursor).toHaveBeenCalledTimes(1);
-    expect(deps.writeHistoryCursor).toHaveBeenCalledWith(
+    expect(deps.writeWalkCursor).toHaveBeenCalledTimes(1);
+    expect(deps.writeWalkCursor).toHaveBeenCalledWith(
       'h-spot',
-      NOW - 201 * DAY_MS + 89 * DAY_MS,
+      'binanceHistoryCursor',
+      FIRST_OF_THREE_WINDOWS_END,
     );
   });
 
@@ -422,15 +467,11 @@ describe('syncBinanceTransactions', () => {
       fetchDepositHistory: jest.fn(async () => historyPage([deposit({ id: '42' })])),
     });
 
-    await syncBinanceTransactions({ targetAccountId: ACCOUNT_ID }, deps);
-    await syncBinanceTransactions({ targetAccountId: ACCOUNT_ID }, deps);
+    await sync(deps);
+    await sync(deps);
 
-    const firstRun = (deps.addTransactions as jest.Mock).mock
-      .calls[0][0] as BinanceTransactionRow[];
-    const secondRun = (deps.addTransactions as jest.Mock).mock
-      .calls[1][0] as BinanceTransactionRow[];
-    expect(firstRun[0].externalId).toBe('acc-1:deposit:42');
-    expect(secondRun[0].externalId).toBe('acc-1:deposit:42');
+    expect(addedRows(deps, 0)[0].externalId).toBe('acc-1:deposit:42');
+    expect(addedRows(deps, 1)[0].externalId).toBe('acc-1:deposit:42');
   });
 
   // Binance deposit/withdrawal record ids are only
@@ -448,14 +489,238 @@ describe('syncBinanceTransactions', () => {
       fetchDepositHistory: jest.fn(async () => historyPage([deposit({ id: '7' })])),
     });
 
-    await syncBinanceTransactions({ targetAccountId: 'acc-a' }, depsA);
-    await syncBinanceTransactions({ targetAccountId: 'acc-b' }, depsB);
+    await sync(depsA, 'acc-a');
+    await sync(depsB, 'acc-b');
 
-    const rowA = (depsA.addTransactions as jest.Mock).mock.calls[0][0] as BinanceTransactionRow[];
-    const rowB = (depsB.addTransactions as jest.Mock).mock.calls[0][0] as BinanceTransactionRow[];
-    expect(rowA[0].externalId).toBe('acc-a:deposit:7');
-    expect(rowB[0].externalId).toBe('acc-b:deposit:7');
-    expect(rowA[0].externalId).not.toBe(rowB[0].externalId);
+    expect(addedRows(depsA)[0].externalId).toBe('acc-a:deposit:7');
+    expect(addedRows(depsB)[0].externalId).toBe('acc-b:deposit:7');
+  });
+});
+
+// A recent cursor keeps each case to one 89-day window.
+const RECENT_CURSOR = async () => NOW - 10 * DAY_MS;
+
+describe('wallet placement by walletType (C-matrix)', () => {
+  it.each([
+    ['C1', 0, 'h-spot'],
+    ['C2', 1, 'h-funding'],
+    ['C3', undefined, 'h-spot'],
+  ])('%s: a deposit with walletType %s lands on %s', async (_row, walletType, holdingId) => {
+    const deps = makeDeps({
+      listHoldings: async () => [spotHolding, fundingHolding],
+      latestTransactionTime: RECENT_CURSOR,
+      fetchDepositHistory: jest.fn(async () => historyPage([deposit({ walletType })])),
+    });
+
+    await sync(deps);
+
+    expect(addedRows(deps)).toHaveLength(1);
+    expect(addedRows(deps)[0].holdingId).toBe(holdingId);
+    expect(deps.ensureHoldings).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['C1w', 0, 'h-spot'],
+    ['C2w', 1, 'h-funding'],
+    ['C3w', undefined, 'h-spot'],
+  ])('%s: a withdrawal with walletType %s leaves from %s', async (_row, walletType, holdingId) => {
+    const deps = makeDeps({
+      listHoldings: async () => [spotHolding, fundingHolding],
+      latestTransactionTime: RECENT_CURSOR,
+      fetchWithdrawHistory: jest.fn(async () => historyPage([withdrawal({ walletType })])),
+    });
+
+    await sync(deps);
+
+    expect(addedRows(deps)).toEqual([
+      expect.objectContaining({ holdingId, amountMinorUnits: -25_000_000 }),
+    ]);
+  });
+
+  it('places one window across both wallets, each row on its own holding', async () => {
+    const deps = makeDeps({
+      listHoldings: async () => [spotHolding, fundingHolding],
+      latestTransactionTime: RECENT_CURSOR,
+      fetchDepositHistory: jest.fn(async () =>
+        historyPage([deposit({ id: 'a', walletType: 0 }), deposit({ id: 'b', walletType: 1 })]),
+      ),
+    });
+
+    await sync(deps);
+
+    expect(addedRows(deps).map((row) => [row.externalId, row.holdingId])).toEqual([
+      ['acc-1:deposit:a', 'h-spot'],
+      ['acc-1:deposit:b', 'h-funding'],
+    ]);
+  });
+
+  it('P7: creates the missing Funding holding at zero, then places the row on it', async () => {
+    let stored = [spotHolding];
+    const ensureHoldings = jest.fn(async (_holdings: unknown[]) => {
+      stored = [spotHolding, fundingHolding];
+    });
+    const deps = makeDeps({
+      listHoldings: async () => stored,
+      ensureHoldings,
+      latestTransactionTime: RECENT_CURSOR,
+      fetchDepositHistory: jest.fn(async () => historyPage([deposit({ walletType: 1 })])),
+    });
+
+    const result = await sync(deps);
+
+    expect(ensureHoldings).toHaveBeenCalledTimes(1);
+    expect(ensureHoldings).toHaveBeenCalledWith([
+      expect.objectContaining({
+        accountId: ACCOUNT_ID,
+        name: 'Binance Funding',
+        balanceMinorUnits: 0,
+        metadataField: 'binanceAsset',
+        metadataKey: 'BTC:funding',
+      }),
+    ]);
+    expect(addedRows(deps)[0].holdingId).toBe('h-funding');
+    expect(result).toEqual({ imported: 1, complete: true });
+  });
+
+  it('creates the Funding holding before the rows commit, and the rows before the cursor', async () => {
+    const order: string[] = [];
+    let stored = [spotHolding];
+    const deps = makeDeps({
+      listHoldings: async () => stored,
+      ensureHoldings: jest.fn(async () => {
+        order.push('ensureHoldings');
+        stored = [spotHolding, fundingHolding];
+      }),
+      addTransactions: jest.fn(async (rows: BinanceTransactionRow[]) => {
+        order.push('addTransactions');
+
+        return rows.length;
+      }),
+      writeWalkCursor: jest.fn(async () => {
+        order.push('writeWalkCursor');
+      }),
+      latestTransactionTime: RECENT_CURSOR,
+      fetchDepositHistory: jest.fn(async () => historyPage([deposit({ walletType: 1 })])),
+    });
+
+    await sync(deps);
+
+    expect(order).toEqual(['ensureHoldings', 'addTransactions', 'writeWalkCursor']);
+  });
+});
+
+// A SETTLED row the walk cannot place or trust stops its window: nothing of the
+// window commits and the cursor stays. A skipped row would be silent loss.
+describe('a settled capital row the walk cannot trust stops its window', () => {
+  const STOP_TAG = '[binance sync] history window stopped';
+  let warn: jest.SpyInstance;
+
+  beforeEach(() => {
+    warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+  });
+
+  afterEach(() => {
+    warn.mockRestore();
+  });
+
+  // A good row rides along in the deposit window, so the stop is proven to discard
+  // the whole window and not only the bad row.
+  const badDeposit = (over: Partial<BinanceDeposit>): Partial<BinanceTransactionSyncDeps> => ({
+    fetchDepositHistory: jest.fn(async () =>
+      historyPage([deposit(), deposit({ id: '2', ...over })]),
+    ),
+  });
+
+  const badWithdrawal = (
+    over: Partial<BinanceWithdrawal>,
+  ): Partial<BinanceTransactionSyncDeps> => ({
+    fetchWithdrawHistory: jest.fn(async () => historyPage([withdrawal({ id: '2', ...over })])),
+  });
+
+  const BAD_ROWS: [string, string, () => Partial<BinanceTransactionSyncDeps>][] = [
+    ['C4 deposit', 'capital-wallet-unknown', () => badDeposit({ walletType: 7 })],
+    ['C4w withdrawal', 'capital-wallet-unknown', () => badWithdrawal({ walletType: 7 })],
+    ['C5 deposit', 'capital-amount-invalid', () => badDeposit({ amount: 'abc' })],
+    ['C5w withdrawal', 'capital-amount-invalid', () => badWithdrawal({ amount: 'abc' })],
+    ['C5 blank deposit', 'capital-amount-invalid', () => badDeposit({ amount: '' })],
+    ['C5 blank withdrawal', 'capital-amount-invalid', () => badWithdrawal({ amount: '  ' })],
+    ['C6 deposit', 'capital-time-invalid', () => badDeposit({ insertTime: Number.NaN })],
+    ['C6w withdrawal', 'capital-time-invalid', () => badWithdrawal({ applyTime: 'not a date' })],
+    ['C7 deposit', 'capital-id-missing', () => badDeposit({ id: '', txId: '' })],
+    ['C7w withdrawal', 'capital-id-missing', () => badWithdrawal({ id: '', txId: '' })],
+  ];
+
+  it.each(BAD_ROWS)('%s: stops the window with %s', async (_row, code, reads) => {
+    const deps = makeDeps({ latestTransactionTime: RECENT_CURSOR, ...reads() });
+
+    const result = await sync(deps);
+
+    expect(result).toEqual({ imported: 0, complete: false });
+    expect(deps.addTransactions).not.toHaveBeenCalled();
+    expect(deps.writeWalkCursor).not.toHaveBeenCalled();
+    expect(warn.mock.calls).toEqual([[STOP_TAG, { name: 'BinanceWalkStop', code }]]);
+  });
+
+  it('ignores an UNSETTLED row with the same defects instead of stopping', async () => {
+    const deps = makeDeps({
+      latestTransactionTime: RECENT_CURSOR,
+      fetchDepositHistory: jest.fn(async () =>
+        historyPage([
+          deposit({ id: '', txId: '', amount: 'abc', status: 0, walletType: 7 }),
+          deposit({ id: '3' }),
+        ]),
+      ),
+      fetchWithdrawHistory: jest.fn(async () =>
+        historyPage([withdrawal({ id: '', txId: '', amount: 'abc', applyTime: 'x', status: 3 })]),
+      ),
+    });
+
+    const result = await sync(deps);
+
+    expect(result).toEqual({ imported: 1, complete: true });
+    expect(addedRows(deps).map((row) => row.externalId)).toEqual(['acc-1:deposit:3']);
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it('keeps the earlier window committed and its cursor when a later window stops', async () => {
+    let depositCalls = 0;
+    const deps = makeDeps({
+      latestTransactionTime: async () => NOW - 200 * DAY_MS,
+      fetchDepositHistory: jest.fn(async () => {
+        depositCalls += 1;
+
+        return historyPage(
+          depositCalls === 2 ? [deposit({ amount: 'abc' })] : [deposit({ id: `w${depositCalls}` })],
+        );
+      }),
+    });
+
+    const result = await sync(deps);
+
+    expect(result).toEqual({ imported: 1, complete: false });
+    expect(deps.addTransactions).toHaveBeenCalledTimes(1);
+    expect(deps.writeWalkCursor).toHaveBeenCalledTimes(1);
+    expect(deps.writeWalkCursor).toHaveBeenCalledWith(
+      'h-spot',
+      'binanceHistoryCursor',
+      FIRST_OF_THREE_WINDOWS_END,
+    );
+  });
+
+  it('stops when the placement holding is still absent after it was created', async () => {
+    const deps = makeDeps({
+      latestTransactionTime: RECENT_CURSOR,
+      fetchDepositHistory: jest.fn(async () => historyPage([deposit({ walletType: 1 })])),
+    });
+
+    const result = await sync(deps);
+
+    expect(deps.ensureHoldings).toHaveBeenCalledTimes(1);
+    expect(result).toEqual({ imported: 0, complete: false });
+    expect(deps.addTransactions).not.toHaveBeenCalled();
+    expect(warn.mock.calls).toEqual([
+      [STOP_TAG, { name: 'BinanceWalkStop', code: 'capital-holding-missing' }],
+    ]);
   });
 });
 
@@ -487,14 +752,7 @@ describe('resumable, budgeted walk', () => {
 
       return historyPage([withdrawal({ id: `w-${bucket}-${callsThisMinute}` })]);
     });
-    const deps = makeDeps({
-      now: () => clock,
-      listHoldings: account.listHoldings,
-      writeHistoryCursor: account.writeHistoryCursor,
-      latestTransactionTime: async () => undefined,
-      fetchDepositHistory: jest.fn(async () => historyPage([])),
-      fetchWithdrawHistory,
-    });
+    const deps = makeFirstSyncDeps(account, { now: () => clock, fetchWithdrawHistory });
 
     let complete = false;
     let totalImported = 0;
@@ -503,7 +761,7 @@ describe('resumable, budgeted walk', () => {
 
     while (!complete && runs < 10) {
       lastRunNow = clock;
-      const result = await syncBinanceTransactions({ targetAccountId: 'acc-first-sync' }, deps);
+      const result = await sync(deps, 'acc-first-sync');
       complete = result.complete;
       totalImported += result.imported;
       runs += 1;
@@ -521,21 +779,48 @@ describe('resumable, budgeted walk', () => {
     expect(fetchWithdrawHistory.mock.results.every((call) => call.type !== 'throw')).toBe(true);
   });
 
-  it('run 1 makes at most the fallback withdraw-call budget, one window per call', async () => {
+  it('run 1 makes at most the capital withdraw lane cap, one window per call', async () => {
     const account = makeStatefulSpotAccount();
     const fetchWithdrawHistory = jest.fn(async () => historyPage([withdrawal()]));
+    const deps = makeFirstSyncDeps(account, { fetchWithdrawHistory });
+
+    const result = await sync(deps, 'acc-budget');
+
+    expect(LANE_CALL_CAPS.capitalWithdraw).toBe(9);
+    expect(fetchWithdrawHistory).toHaveBeenCalledTimes(LANE_CALL_CAPS.capitalWithdraw);
+    expect(result.complete).toBe(false);
+  });
+
+  it('draws on the shared run: a withdraw lane already spent makes no request at all', async () => {
+    const run = freshRun();
+
+    for (let call = 0; call < LANE_CALL_CAPS.capitalWithdraw; call += 1) {
+      run.budget.record('capitalWithdraw', {
+        usedUidWeight1m: undefined,
+        usedIpWeight1m: undefined,
+      });
+    }
+
+    const deps = makeDeps({ latestTransactionTime: RECENT_CURSOR });
+
+    const result = await sync(deps, 'acc-spent-lane', run);
+
+    expect(result).toEqual({ imported: 0, complete: false });
+    expect(deps.fetchDepositHistory).not.toHaveBeenCalled();
+    expect(deps.fetchWithdrawHistory).not.toHaveBeenCalled();
+    expect(deps.writeWalkCursor).not.toHaveBeenCalled();
+  });
+
+  it('records what the walk spends on the shared run, so a later walk sees it', async () => {
+    const run = freshRun();
     const deps = makeDeps({
-      listHoldings: account.listHoldings,
-      writeHistoryCursor: account.writeHistoryCursor,
-      latestTransactionTime: async () => undefined,
-      fetchDepositHistory: jest.fn(async () => historyPage([])),
-      fetchWithdrawHistory,
+      latestTransactionTime: RECENT_CURSOR,
+      fetchWithdrawHistory: jest.fn(async () => historyPage([], 178_000, undefined)),
     });
 
-    const result = await syncBinanceTransactions({ targetAccountId: 'acc-budget' }, deps);
+    await sync(deps, 'acc-shared-reading', run);
 
-    expect(fetchWithdrawHistory).toHaveBeenCalledTimes(WITHDRAW_CALLS_PER_RUN_FALLBACK);
-    expect(result.complete).toBe(false);
+    expect(run.budget.canAfford('pay', COSTS.pay)).toBe(false);
   });
 
   it('a 429 stops the walk without rejecting, commits every EARLIER window, and cools down until Retry-After passes', async () => {
@@ -559,32 +844,29 @@ describe('resumable, budgeted walk', () => {
       },
     );
     let clock = NOW;
-    const deps = makeDeps({
+    const deps = makeFirstSyncDeps(account, {
       now: () => clock,
-      listHoldings: account.listHoldings,
-      writeHistoryCursor: account.writeHistoryCursor,
-      latestTransactionTime: async () => undefined,
       fetchDepositHistory,
       fetchWithdrawHistory,
     });
 
-    const run1 = await syncBinanceTransactions({ targetAccountId: 'acc-429' }, deps);
+    const run1 = await sync(deps, 'acc-429');
 
     expect(run1).toEqual({ imported: 0, complete: false });
     // 2 windows committed (withdraw calls 1 and 2 succeeded); the 3rd's window is not.
-    expect(account.writeHistoryCursor).toHaveBeenCalledTimes(2);
+    expect(account.writeWalkCursor).toHaveBeenCalledTimes(2);
 
     const callsAfterRun1 = fetchWithdrawHistory.mock.calls.length;
     const firstWindowStart = depositWindows[0].startTime;
 
     clock += 10_000;
-    const run2 = await syncBinanceTransactions({ targetAccountId: 'acc-429' }, deps);
+    const run2 = await sync(deps, 'acc-429');
 
     expect(run2).toEqual({ imported: 0, complete: false });
     expect(fetchWithdrawHistory.mock.calls.length).toBe(callsAfterRun1);
 
     clock += 21_000; // 31s total since the 429 — Retry-After has passed
-    await syncBinanceTransactions({ targetAccountId: 'acc-429' }, deps);
+    await sync(deps, 'acc-429');
 
     expect(fetchWithdrawHistory.mock.calls.length).toBeGreaterThan(callsAfterRun1);
     // Resumes from the cursor, not a re-walk from the floor.
@@ -592,56 +874,39 @@ describe('resumable, budgeted walk', () => {
     expect(resumedWindowStart).toBeGreaterThan(firstWindowStart);
   });
 
-  it('a 429 with no Retry-After header falls back to the default cooldown', async () => {
+  const RATE_LIMITS: [string, string, 418 | 429, number, number][] = [
+    [
+      'a 429 with no Retry-After header falls back to the default cooldown',
+      'acc-default-cooldown',
+      429,
+      60_000,
+      59_000,
+    ],
+    [
+      'a 418 IP ban is treated the same as a 429, with its own Retry-After',
+      'acc-418',
+      418,
+      45_000,
+      44_000,
+    ],
+  ];
+
+  it.each(RATE_LIMITS)('%s', async (_name, accountId, status, retryAfterMs, elapsedMs) => {
     const account = makeStatefulSpotAccount();
     let clock = NOW;
     const fetchWithdrawHistory = jest.fn(async () => {
-      throw new BinanceRateLimitError(429, 60_000);
+      throw new BinanceRateLimitError(status, retryAfterMs);
     });
-    const deps = makeDeps({
-      now: () => clock,
-      listHoldings: account.listHoldings,
-      writeHistoryCursor: account.writeHistoryCursor,
-      latestTransactionTime: async () => undefined,
-      fetchDepositHistory: jest.fn(async () => historyPage([])),
-      fetchWithdrawHistory,
-    });
+    const deps = makeFirstSyncDeps(account, { now: () => clock, fetchWithdrawHistory });
 
-    await syncBinanceTransactions({ targetAccountId: 'acc-default-cooldown' }, deps);
+    const firstRun = await sync(deps, accountId);
 
-    clock += 59_000;
-    const stillCoolingDown = await syncBinanceTransactions(
-      { targetAccountId: 'acc-default-cooldown' },
-      deps,
-    );
+    expect(firstRun).toEqual({ imported: 0, complete: false });
+
+    clock += elapsedMs;
+    const stillCoolingDown = await sync(deps, accountId);
 
     expect(stillCoolingDown).toEqual({ imported: 0, complete: false });
-    expect(fetchWithdrawHistory).toHaveBeenCalledTimes(1);
-  });
-
-  it('a 418 IP ban is treated the same as a 429, with its own Retry-After', async () => {
-    const account = makeStatefulSpotAccount();
-    let clock = NOW;
-    const fetchWithdrawHistory = jest.fn(async () => {
-      throw new BinanceRateLimitError(418, 45_000);
-    });
-    const deps = makeDeps({
-      now: () => clock,
-      listHoldings: account.listHoldings,
-      writeHistoryCursor: account.writeHistoryCursor,
-      latestTransactionTime: async () => undefined,
-      fetchDepositHistory: jest.fn(async () => historyPage([])),
-      fetchWithdrawHistory,
-    });
-
-    const run1 = await syncBinanceTransactions({ targetAccountId: 'acc-418' }, deps);
-
-    expect(run1).toEqual({ imported: 0, complete: false });
-
-    clock += 44_000;
-    const stillBanned = await syncBinanceTransactions({ targetAccountId: 'acc-418' }, deps);
-
-    expect(stillBanned).toEqual({ imported: 0, complete: false });
     expect(fetchWithdrawHistory).toHaveBeenCalledTimes(1);
   });
 
@@ -649,23 +914,45 @@ describe('resumable, budgeted walk', () => {
     const account = makeStatefulSpotAccount();
     // Leaves no room for another withdraw call (one more would exceed the
     // per-minute ceiling).
-    const reportedWeight = UID_WEIGHT_BUDGET_1M - WITHDRAW_UID_WEIGHT + 1;
+    const reportedWeight = UID_WEIGHT_BUDGET_1M - COSTS.withdraw.uid + 1;
     const fetchWithdrawHistory = jest.fn(async () =>
       historyPage<BinanceWithdrawal>([], reportedWeight),
     );
-    const deps = makeDeps({
-      listHoldings: account.listHoldings,
-      writeHistoryCursor: account.writeHistoryCursor,
-      latestTransactionTime: async () => undefined,
-      fetchDepositHistory: jest.fn(async () => historyPage([])),
-      fetchWithdrawHistory,
-    });
+    const deps = makeFirstSyncDeps(account, { fetchWithdrawHistory });
 
-    const result = await syncBinanceTransactions({ targetAccountId: 'acc-weight' }, deps);
+    const result = await sync(deps, 'acc-weight');
 
     expect(fetchWithdrawHistory).toHaveBeenCalledTimes(1);
     expect(result.complete).toBe(false);
-    expect(account.writeHistoryCursor).toHaveBeenCalledTimes(1);
+    expect(account.writeWalkCursor).toHaveBeenCalledTimes(1);
+  });
+
+  it('a deposit page that leaves no IP room stops the window before the next deposit call', async () => {
+    const fetchDepositHistory = jest.fn(async () =>
+      historyPage(fullDepositPage(), undefined, 6_000),
+    );
+    const deps = makeDeps({ latestTransactionTime: RECENT_CURSOR, fetchDepositHistory });
+
+    const result = await sync(deps, 'acc-ip-full');
+
+    expect(result).toEqual({ imported: 0, complete: false });
+    expect(fetchDepositHistory).toHaveBeenCalledTimes(1);
+    expect(deps.fetchWithdrawHistory).not.toHaveBeenCalled();
+    expect(deps.addTransactions).not.toHaveBeenCalled();
+    expect(deps.writeWalkCursor).not.toHaveBeenCalled();
+  });
+
+  it('a deposit page that leaves room for exactly one more IP weight lets the window continue', async () => {
+    const fetchDepositHistory = jest.fn(
+      async (_key: string, _secret: string, window: HistoryWindow) =>
+        window.offset === 0 ? historyPage(fullDepositPage(), undefined, 5_999) : historyPage([]),
+    );
+    const deps = makeDeps({ latestTransactionTime: RECENT_CURSOR, fetchDepositHistory });
+
+    const result = await sync(deps, 'acc-ip-room');
+
+    expect(fetchDepositHistory).toHaveBeenCalledTimes(2);
+    expect(result).toEqual({ imported: HISTORY_PAGE_LIMIT, complete: true });
   });
 
   it('a window needing a 2nd withdraw page when only 1 call is left is not committed and not marked', async () => {
@@ -679,26 +966,20 @@ describe('resumable, budgeted walk', () => {
 
       // The LAST call the budget can afford starts a window whose first page
       // is FULL — it needs a 2nd page, a call the budget does not allow.
-      if (callCount === WITHDRAW_CALLS_PER_RUN_FALLBACK) {
+      if (callCount === LANE_CALL_CAPS.capitalWithdraw) {
         return historyPage(fullPage);
       }
 
       return historyPage([]);
     });
-    const deps = makeDeps({
-      listHoldings: account.listHoldings,
-      writeHistoryCursor: account.writeHistoryCursor,
-      latestTransactionTime: async () => undefined,
-      fetchDepositHistory: jest.fn(async () => historyPage([])),
-      fetchWithdrawHistory,
-    });
+    const deps = makeFirstSyncDeps(account, { fetchWithdrawHistory });
 
-    const result = await syncBinanceTransactions({ targetAccountId: 'acc-partial-window' }, deps);
+    const result = await sync(deps, 'acc-partial-window');
 
     expect(result.complete).toBe(false);
-    expect(fetchWithdrawHistory).toHaveBeenCalledTimes(WITHDRAW_CALLS_PER_RUN_FALLBACK);
+    expect(fetchWithdrawHistory).toHaveBeenCalledTimes(LANE_CALL_CAPS.capitalWithdraw);
     // The 8 EARLIER windows committed; the 9th (the unfinished one) did not.
-    expect(account.writeHistoryCursor).toHaveBeenCalledTimes(WITHDRAW_CALLS_PER_RUN_FALLBACK - 1);
+    expect(account.writeWalkCursor).toHaveBeenCalledTimes(LANE_CALL_CAPS.capitalWithdraw - 1);
   });
 
   it('crash order: rows commit before the watermark advances, for the same window', async () => {
@@ -709,22 +990,22 @@ describe('resumable, budgeted walk', () => {
 
       return rows.length;
     });
-    const writeHistoryCursor = jest.fn(async (holdingId: string, cursorMs: number) => {
-      invocationCallOrder.push('writeHistoryCursor');
-      await account.writeHistoryCursor(holdingId, cursorMs);
+    const writeWalkCursor = jest.fn(async (holdingId: string, field: string, cursorMs: number) => {
+      invocationCallOrder.push('writeWalkCursor');
+      await account.writeWalkCursor(holdingId, field, cursorMs);
     });
     const deps = makeDeps({
       listHoldings: account.listHoldings,
-      writeHistoryCursor,
+      writeWalkCursor,
       addTransactions,
       latestTransactionTime: async () => NOW - 10 * DAY_MS,
       fetchDepositHistory: jest.fn(async () => historyPage([deposit()])),
       fetchWithdrawHistory: jest.fn(async () => historyPage([])),
     });
 
-    await syncBinanceTransactions({ targetAccountId: 'acc-crash-order' }, deps);
+    await sync(deps, 'acc-crash-order');
 
-    expect(invocationCallOrder).toEqual(['addTransactions', 'writeHistoryCursor']);
+    expect(invocationCallOrder).toEqual(['addTransactions', 'writeWalkCursor']);
   });
 
   it('regression: rows from an earlier, committed window ARE written despite a later 429 (inverse of the all-or-nothing bug)', async () => {
@@ -740,16 +1021,9 @@ describe('resumable, budgeted walk', () => {
       return historyPage([withdrawal({ id: `w${callCount}` })]);
     });
     const addTransactions = jest.fn(async (rows: BinanceTransactionRow[]) => rows.length);
-    const deps = makeDeps({
-      listHoldings: account.listHoldings,
-      writeHistoryCursor: account.writeHistoryCursor,
-      addTransactions,
-      latestTransactionTime: async () => undefined,
-      fetchDepositHistory: jest.fn(async () => historyPage([])),
-      fetchWithdrawHistory,
-    });
+    const deps = makeFirstSyncDeps(account, { addTransactions, fetchWithdrawHistory });
 
-    const result = await syncBinanceTransactions({ targetAccountId: 'acc-regression' }, deps);
+    const result = await sync(deps, 'acc-regression');
 
     expect(result.complete).toBe(false);
     // The 1st window's row WAS written before the 2nd window's 429 — the

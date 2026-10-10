@@ -1,10 +1,14 @@
 import { match } from 'ts-pattern';
-import { logFailure } from '@kiko/diagnostics';
-import either, { bifold, isLeft } from 'fnts/either';
+import { logOnFailure } from '@kiko/diagnostics';
 
+import {
+  binanceProvider,
+  createBinanceHistoryRun,
+  defaultBinanceDeps,
+  syncBinanceTransactions,
+} from '../binance';
 import { type BalanceSyncResult, runBalanceSync } from '../sync';
 import { bitcoinWalletProvider, defaultBitcoinWalletDeps } from '../btc-wallet';
-import { binanceProvider, defaultBinanceDeps, syncBinanceTransactions } from '../binance';
 
 /**
  * One user-triggered crypto sync. `address` is set only by the wallet Connect
@@ -14,17 +18,22 @@ export type CryptoSyncRequest =
   | { providerId: 'btc_wallet'; targetAccountId: string; address?: string }
   | { providerId: 'binance'; targetAccountId: string };
 
+const sleep = (milliseconds: number): Promise<void> =>
+  new Promise((resolve) => setTimeout(resolve, milliseconds));
+
 const runBinanceSyncAndImport = async (targetAccountId: string): Promise<BalanceSyncResult> => {
   const result = await runBalanceSync(binanceProvider, defaultBinanceDeps, { targetAccountId });
-  // The transaction-history import is SUPPLEMENTARY to the balance sync and
-  // runs after it (the Spot holding must exist first). Its failure — a 429,
-  // a permission gap — must NOT fail the balance sync, so it is captured as
-  // an Either and only logged. The balance result is returned regardless.
-  const imported = await either(() => syncBinanceTransactions({ targetAccountId }));
+  // One gate and one weight budget for every history walk of this run, so the walks
+  // together stay under Binance's per-minute limits.
+  const run = createBinanceHistoryRun({ now: () => Date.now(), sleep });
 
-  if (isLeft(imported)) {
-    logFailure('[binance sync] transaction history import failed', bifold(imported));
-  }
+  // The history walks are SUPPLEMENTARY to the balance sync and run after it (the
+  // Spot holding must exist first). A failure — a 429, a permission gap — must NOT
+  // fail the balance sync, so it is only logged. The balance result is returned
+  // regardless.
+  await logOnFailure('[binance sync] capital history failed', () =>
+    syncBinanceTransactions({ targetAccountId, run }),
+  );
 
   return result;
 };

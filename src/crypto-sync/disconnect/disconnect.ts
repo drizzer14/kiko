@@ -6,9 +6,9 @@ import { clearCredentials, HISTORY_FLOOR_MS } from '../binance';
 
 /**
  * Disconnect a wallet- or Binance-connected account, the required first step
- * before it can be deleted. Mirrors `monobank/disconnect.ts`: for Binance, the
- * history-walk cursor (`holdings.metadata.binanceHistoryCursor`) is RESET TO
- * THE FLOOR (`HISTORY_FLOOR_MS`) FIRST — never stripped: a stripped cursor
+ * before it can be deleted. Mirrors `monobank/disconnect.ts`: for Binance, every
+ * history-walk cursor (`binanceWalkCursorFields` in `holding-metadata.ts`) is RESET
+ * TO THE FLOOR (`HISTORY_FLOOR_MS`) FIRST — never stripped: a stripped cursor
  * falls back to `latestTransactionTime`, which a reconnected DIFFERENT
  * Binance account would inherit as if it were its own already-imported
  * history, silently skipping that account's own older records. A failure

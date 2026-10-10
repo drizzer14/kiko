@@ -5,6 +5,8 @@ import {
   asPropertyMeta,
   asTermDepositMeta,
   binanceHistoryCursorOf,
+  binanceWalkCursorFields,
+  binanceWalkCursorOf,
   loanKinds,
   loanKindOf,
   loanSchedules,
@@ -418,6 +420,68 @@ describe('withWalkOwnedMetadataResetToFloor', () => {
   it('returns undefined for null or non-object metadata', () => {
     expect(withWalkOwnedMetadataResetToFloor(null, 100)).toBeUndefined();
     expect(withWalkOwnedMetadataResetToFloor('not-an-object', 100)).toBeUndefined();
+  });
+});
+
+describe('the four Binance walk cursors', () => {
+  const allCursors = {
+    binanceHistoryCursor: 1_000,
+    binancePayHistoryCursor: 2_000,
+    binanceTransferHistoryCursor: 3_000,
+    binanceEarnHistoryCursor: 4_000,
+  };
+
+  it('lists the capital, Pay, Transfer, and Earn fields in walk order', () => {
+    expect(binanceWalkCursorFields).toEqual([
+      'binanceHistoryCursor',
+      'binancePayHistoryCursor',
+      'binanceTransferHistoryCursor',
+      'binanceEarnHistoryCursor',
+    ]);
+  });
+
+  it('reads each field on its own, null when absent or not a finite number', () => {
+    for (const field of binanceWalkCursorFields) {
+      expect(binanceWalkCursorOf(field, { [field]: 5_000 })).toBe(5_000);
+      expect(binanceWalkCursorOf(field, { [field]: 'soon' })).toBeNull();
+      expect(binanceWalkCursorOf(field, { [field]: Number.NaN })).toBeNull();
+      expect(binanceWalkCursorOf(field, { binanceAsset: 'BTC' })).toBeNull();
+      expect(binanceWalkCursorOf(field, null)).toBeNull();
+    }
+
+    expect(binanceWalkCursorOf('binancePayHistoryCursor', allCursors)).toBe(2_000);
+  });
+
+  it('are all carried over a balance-sync metadata write', () => {
+    const target = { binanceAsset: 'BTC', syncedAt: 9_000 };
+
+    expect(withWalkOwnedMetadataCarried(target, { binanceAsset: 'BTC', ...allCursors })).toEqual({
+      binanceAsset: 'BTC',
+      syncedAt: 9_000,
+      ...allCursors,
+    });
+  });
+
+  it('are all reset to the floor on disconnect, while statementFromMs is not', () => {
+    const stored = { binanceAsset: 'BTC', ...allCursors, statementFromMs: 700 };
+
+    expect(withWalkOwnedMetadataResetToFloor(stored, 100)).toEqual({
+      binanceAsset: 'BTC',
+      binanceHistoryCursor: 100,
+      binancePayHistoryCursor: 100,
+      binanceTransferHistoryCursor: 100,
+      binanceEarnHistoryCursor: 100,
+      statementFromMs: 700,
+    });
+  });
+
+  it('resets a cursor a holding carries even when it carries only one of the new ones', () => {
+    expect(
+      withWalkOwnedMetadataResetToFloor(
+        { binanceAsset: 'BTC', binanceEarnHistoryCursor: 4_000 },
+        100,
+      ),
+    ).toEqual({ binanceAsset: 'BTC', binanceEarnHistoryCursor: 100 });
   });
 });
 

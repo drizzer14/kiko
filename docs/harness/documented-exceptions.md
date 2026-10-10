@@ -373,7 +373,7 @@ verified usage, not dead weight:
   identifier chosen freely in the SAME file (`BinanceTxSyncDeps`, this
   codebase's own type name, since renamed to `BinanceTransactionSyncDeps`
   during the R1.d sweep — a word-only, file-wide exemption would have
-  silently skipped that one too). Each of the 20 entries is a real,
+  silently skipped that one too). Each of the 21 entries is a real,
   verified external-format mirror, not a style preference:
   `src/db/run-migrations.ts` + its test + the six
   `src/db/schema.*.test.ts` fixtures (`idx`) mirror drizzle-kit's own
@@ -383,7 +383,7 @@ verified usage, not dead weight:
   `val_code` and from `payments[].pay_val`) mirror the National Bank of
   Ukraine securities register's own external JSON fields; `src/crypto-sync/binance/binance.client.ts` +
   its test (`msg`) mirror Binance's own error-body shape `{code, msg}`;
-  `binance.history-client.ts`/`.test.ts` plus `binance.transactions.ts`/`.test.ts` (`tx`,
+  `binance.history-client.ts`/`.test.ts` plus `binance.transactions.ts`/`.test.ts`/`.placement.test.ts` (`tx`,
   from `txId`) mirror the literal field name on Binance's deposit/withdraw
   history records (`GET /sapi/v1/capital/deposit/hisrec` and
   `/withdraw/history`) — found only by reading the ACTUAL diff after an

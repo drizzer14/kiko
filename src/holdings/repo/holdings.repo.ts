@@ -37,7 +37,7 @@ import {
   STATEMENT_FROM_FIELD,
   SYNC_CLOSED_FROM_FIELD,
   withWalkOwnedMetadataCarried,
-  BINANCE_HISTORY_CURSOR_FIELD,
+  type BinanceWalkCursorField,
   withWalkOwnedMetadataResetToFloor,
 } from '../holding-metadata';
 import { isSyncedHolding } from '../deletable';
@@ -195,12 +195,28 @@ const upsertManualPricePoint = (
 //
 // The known limit (a holding closed before the mark existed stays closed) is
 // stated on `reconcileClosedHoldings` in the Monobank sync.
+const metadataKeyMatch = (metadataField: SyncedMetadataField, metadataKey: string) =>
+  sql`json_extract(${holdings.metadata}, ${`$.${metadataField}`}) = ${metadataKey}`;
+
+// Insert a synced holding at the end of its account's grid, with its source key merged
+// into `metadata`. Shared by the upsert's miss branch and `ensureExchangeHoldings`.
+const insertSyncedHolding = async (
+  databaseTransaction: typeof database,
+  merged: Record<string, unknown>,
+  rest: Omit<SyncedHolding, 'metadataField' | 'metadataKey' | 'metadata' | 'renameFromDefault'>,
+): Promise<void> => {
+  const sortOrder = rest.sortOrder ?? (await nextSortOrder(databaseTransaction, rest.accountId));
+  await databaseTransaction
+    .insert(holdings)
+    .values({ id: id(), ...rest, metadata: merged, sortOrder });
+};
+
 const upsertByMetadataKey = async (
   databaseTransaction: typeof database,
   { metadataField, metadataKey, metadata, renameFromDefault, ...rest }: SyncedHolding,
 ): Promise<void> => {
   const merged = { ...(metadata as Record<string, unknown> | null), [metadataField]: metadataKey };
-  const keyMatch = sql`json_extract(${holdings.metadata}, ${`$.${metadataField}`}) = ${metadataKey}`;
+  const keyMatch = metadataKeyMatch(metadataField, metadataKey);
   const existing = await databaseTransaction
     .select({
       id: holdings.id,
@@ -237,10 +253,7 @@ const upsertByMetadataKey = async (
     return;
   }
 
-  const sortOrder = rest.sortOrder ?? (await nextSortOrder(databaseTransaction, rest.accountId));
-  await databaseTransaction
-    .insert(holdings)
-    .values({ id: id(), ...rest, metadata: merged, sortOrder });
+  await insertSyncedHolding(databaseTransaction, merged, rest);
 };
 
 // Rewrites a deposit's metadata from the parsed `meta` with a new contribution
@@ -1069,7 +1082,7 @@ export const holdingsRepo = {
       }
     }),
   /**
-   * Reset the Binance history-walk cursor to `floorMs` on every holding of one
+   * Reset every Binance history-walk cursor to `floorMs` on every holding of one
    * account — called on a Binance disconnect so a stale, FORWARD watermark
    * cannot leak into a reconnected DIFFERENT Binance account's fresh walk
    * (which would otherwise fall back to `latestTransactionTime` and skip that
@@ -1100,7 +1113,7 @@ export const holdingsRepo = {
       }
     }),
   /**
-   * Advance the Binance history-walk cursor on one holding's metadata,
+   * Advance one Binance walk's cursor (`field`) on one holding's metadata,
    * merging it into whatever is currently stored rather than replacing the
    * whole object — the write-side counterpart of `withWalkOwnedMetadataCarried`,
    * which only stops a DIFFERENT write (a balance sync) from wiping this value;
@@ -1113,7 +1126,7 @@ export const holdingsRepo = {
    * already-disconnected account (undoing `resetBinanceHistoryCursor`'s own
    * floor write, which runs as part of that same disconnect).
    */
-  setBinanceHistoryCursor: (holdingId: string, cursorMs: number) =>
+  setBinanceWalkCursor: (holdingId: string, field: BinanceWalkCursorField, cursorMs: number) =>
     write(async (databaseTransaction) => {
       const rows = await databaseTransaction
         .select({ metadata: holdings.metadata, institution: accounts.institution })
@@ -1130,7 +1143,7 @@ export const holdingsRepo = {
 
       await databaseTransaction
         .update(holdings)
-        .set({ metadata: { ...stored, [BINANCE_HISTORY_CURSOR_FIELD]: cursorMs } })
+        .set({ metadata: { ...stored, [field]: cursorMs } })
         .where(eq(holdings.id, holdingId));
     }),
   /**
@@ -1219,6 +1232,43 @@ export const holdingsRepo = {
     write(async (databaseTransaction) => {
       for (const holding of holdingsList) {
         await upsertByMetadataKey(databaseTransaction, holding);
+      }
+    }),
+  /**
+   * Create the holdings a history walk needs to place a row on, WITHOUT ever
+   * touching one that exists. The upsert above is the wrong tool: on a key match
+   * it overwrites the balance with the given one, so a holding that appears between
+   * the walk's read and this write would be zeroed. Here a row of the same account
+   * with the same key, open or closed, makes the entry a no-op, so a closed holding
+   * stays closed and no second one is created. One write, so a batch lands whole.
+   */
+  ensureExchangeHoldings: (holdingsList: ExchangeHolding[]) =>
+    write(async (databaseTransaction) => {
+      for (const {
+        metadataField,
+        metadataKey,
+        metadata,
+        renameFromDefault,
+        ...rest
+      } of holdingsList) {
+        const existing = await databaseTransaction
+          .select({ id: holdings.id })
+          .from(holdings)
+          .where(
+            and(
+              eq(holdings.accountId, rest.accountId),
+              metadataKeyMatch(metadataField, metadataKey),
+            ),
+          )
+          .limit(1);
+
+        if (existing.length === 0) {
+          await insertSyncedHolding(
+            databaseTransaction,
+            { ...(metadata as Record<string, unknown> | null), [metadataField]: metadataKey },
+            rest,
+          );
+        }
       }
     }),
   /**
