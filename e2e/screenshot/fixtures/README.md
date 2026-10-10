@@ -6,13 +6,19 @@ in `../seed/screenshot-seed.ts` and used by two consumers, through the app's
 argument (Guideline 5.6):
 
 - **`kiko-demo-uk.kiko`** — the user's own manual marketing screenshots
-  (matches the shipped `screenshots/appstore/**/uk/` deliverables). Imports
+  (matches the shipped `screenshots/appstore/**/uk/` deliverables). Ukrainian
+  names (Монобанк, Сільпо, Брокер, ...) and `language: 'uk'`, so it imports
   with the UI in Ukrainian.
-- **`kiko-demo-en.kiko`** — handed to the **App Store reviewer**.
-  Imports with the UI in English, so an English-reading reviewer is not dropped into
-  a Ukrainian app (`restoreDataSnapshot` takes the `settings` row from the file except the
-  columns in `KEPT_FROM_LIVE_ON_RESTORE`, see
-  `src/db/kept-from-live-on-restore.ts`; `language` comes from the file).
+- **`kiko-demo-en.kiko`** — handed to the **App Store reviewer**. English
+  names for every user-visible text the file carries (Broker, US Dollars,
+  Government bonds (OVDP), Real estate, Loan to Andrii, ...) and
+  `language: 'en'`, so an English-reading reviewer is not dropped into a
+  Ukrainian app (`restoreDataSnapshot` takes the `settings` row from the file
+  except the columns in `KEPT_FROM_LIVE_ON_RESTORE`, see
+  `src/db/kept-from-live-on-restore.ts`; `language` comes from the file). Real
+  merchant and brand names stay (Uklon, Rozetka, Amazon, Booking.com, Wise, Binance). The names
+  live in `../seed/demo-text.ts`; numbers, dates, and structure are identical
+  in both files, and a test pins that the English file holds no Cyrillic letter.
 
 ## Files
 
@@ -20,11 +26,35 @@ argument (Guideline 5.6):
 |---|---|
 | `kiko-demo-uk.kiko` | AES-256-GCM `ExportEnvelope` JSON (`src/data-transfer/crypto/envelope.ts`), Ukrainian dataset |
 | `kiko-demo-en.kiko` | Same, English dataset |
-| `kiko-demo-en-1.1.kiko` | A frozen copy of the English file as release 1.1 wrote it (export version 1, none of 1.2's settings columns); never regenerated, read only by `src/data-transfer/import-data.back-compat.test.ts` |
+| `kiko-demo-en-1.1.kiko` | A frozen copy of the English file as release 1.1 wrote it (export version 1, none of 1.2's settings columns); never regenerated or edited, read only by `src/data-transfer/import-data.back-compat.test.ts` |
 | `kiko-demo.key` | The base64 AES-256 key, **shared by all the files** |
 | `build-demo-snapshot.ts` | Pure mapper: `ScreenshotDataset` -> `DataSnapshot` (all 10 logical tables) |
-| `generate-demo-kiko.ts` | Pure encoder: `DataSnapshot` + key -> the `.kiko` file's JSON, via the app's real `encryptEnvelope` |
+| `generate-demo-kiko.ts` | Pure encoder: `DataSnapshot` + key + anchor -> the `.kiko` file's JSON, via the app's real `encryptEnvelope` |
+| `demo-anchor.ts` | Picks the regen anchor: `KIKO_DEMO_ANCHOR` or the local day |
 | `generate-demo-kiko.test.ts` | REGEN (writes the fixtures) + GUARD (decrypts and diffs them against the current builder — this is what `make gate` runs on every future commit) |
+
+## The anchor: a file goes stale about four weeks after it is regenerated
+
+Every date in the dataset (transactions, loan schedules, bond coupons, price
+points, rate history, reminders, `createdAt`, `exportedAt`) is measured from one
+**anchor**: 09:00 UTC on the day the files were regenerated. The app opens its
+Home list and charts on the last 30 days before the **device date**
+(`src/dates/default-range.ts`), and the newest demo row sits two days before the
+anchor. So the files fill Home and the charts from the anchor day until about 28
+days after it, then drift out of the default view: a file anchored on a past
+day imports fine but shows an empty Home list and empty spending charts.
+
+There is no date shifting at import time (Guideline 5.6): the app imports the
+file as written. Keep the files fresh instead:
+
+- regenerate on the **App Store upload day** (the reviewer imports on a device
+  dated about then), and
+- regenerate **before a screenshot session**.
+
+The GUARD test never compares against the current date. It reads the anchor back
+from each decrypted file (its `exportedAt`) and rebuilds the dataset for that
+anchor, so a stale-by-calendar file still passes; only a file that differs from
+what the builder produces for its own anchor fails.
 
 ## `kiko-demo.key` is not a secret
 
@@ -39,20 +69,26 @@ Import UI a real export would use.
 
 ## Regenerating
 
-Run this after any change to `screenshot-seed.ts` or `build-demo-snapshot.ts`,
-or any change to the snapshot shape: a new table, a new `settings` column,
-or a changed column default. Regenerate in the same commit as the migration:
+Run this after any change to `screenshot-seed.ts`, `demo-text.ts`, or
+`build-demo-snapshot.ts`, after any change to the snapshot shape (a new table,
+a new `settings` column, or a changed column default), and on the days named
+above. Regenerate in the same commit as the migration:
 
 ```bash
 KIKO_REGEN_DEMO=1 npx jest e2e/screenshot/fixtures/generate-demo-kiko.test.ts
 ```
 
+The anchor is today's local date. To anchor another day, add
+`KIKO_DEMO_ANCHOR=YYYY-MM-DD` (a malformed value fails the run instead of
+falling back to today).
+
 `kiko-demo.key` is reused if already committed (a fresh key would make every
 old fixture unreadable); a first-time run generates one and writes it. Both
-`.kiko` files are always rewritten from the current dataset. The GUARD test
-then re-runs automatically inside the same file and confirms both files
-decrypt back to what the current builder produces — verify it passed before
-committing.
+`.kiko` files are always rewritten from the current dataset, with the same
+anchor. The GUARD test then re-runs automatically inside the same file and
+confirms both files decrypt back to what the current builder produces —
+verify it passed before committing. Never regenerate or edit
+`kiko-demo-en-1.1.kiko`.
 
 Note: `encryptEnvelope` uses a fresh random nonce every call, so the
 ciphertext bytes differ on every regen even when the underlying data is
@@ -64,4 +100,5 @@ Settings → Import Data → pick the `.kiko` file → paste the key from
 `kiko-demo.key` → Import → confirm the replace-everything warning → **cold
 relaunch the app** (kill it fully, then reopen) so `applyPersistedLanguage`
 (`src/migration/migrations-gate/migrations.gate.tsx`) picks up the imported
-language on the next launch.
+language on the next launch. Leave the device clock on the real date; if the
+files are more than about four weeks old, regenerate them first.
