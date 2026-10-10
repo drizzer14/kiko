@@ -77,6 +77,10 @@ describe('StatisticsStack', () => {
     });
   });
 
+  it('hides the header of the Home companion', () => {
+    expect(screenOf('Home')?.props.options).toEqual({ headerShown: false });
+  });
+
   it.each([
     ['AccountForm', 'forms.account.addTitle'],
     ['HoldingForm', 'forms.holding.addTitle'],

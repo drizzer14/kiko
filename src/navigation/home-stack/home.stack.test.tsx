@@ -73,6 +73,18 @@ describe('HomeStack', () => {
     });
   });
 
+  it('shows the Statistics header with the shared large-title options and the translated title', () => {
+    expect(optionsOf('Statistics', undefined)).toEqual({
+      headerShown: true,
+      ...sharedLargeTitleOptions,
+      title: 'Statistics',
+    });
+  });
+
+  it('leaves the Home root without options of its own', () => {
+    expect(optionsOf('Home', undefined)).toBeUndefined();
+  });
+
   it.each([
     ['AccountForm', 'Add Account'],
     ['HoldingForm', 'Add Holding'],

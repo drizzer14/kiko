@@ -2,6 +2,7 @@ import {
   createNavigationContainerRef,
   createNavigatorFactory,
   NavigationContainer,
+  NavigationMetaContext,
   type NavigationProp,
   type ParamListBase,
   TabRouter,
@@ -11,10 +12,10 @@ import {
 } from '@react-navigation/native';
 import { Pressable, Text, View } from 'react-native';
 import type { LayoutMode } from '@kiko/display-regions';
-import { type ReactNode, useContext, useEffect } from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { resetTabStackOnBlur } from '@kiko/navigation/reset-tab-stack-on-blur';
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
+import { type ComponentType, type ReactNode, useContext, useEffect, useState } from 'react';
 
 import '@kiko/design-system/unistyles';
 
@@ -132,6 +133,14 @@ const TabStack = () => (
 
 const navigationRef = createNavigationContainerRef<ParamListBase>();
 const dispatched: string[] = [];
+const dispatchedActions: { type: string; target?: string }[] = [];
+
+const recordDispatches = () => {
+  navigationRef.addListener('__unsafe_action__', ({ data }) => {
+    dispatched.push(data.action.type);
+    dispatchedActions.push(data.action);
+  });
+};
 
 const renderApp = async () => {
   await render(
@@ -143,9 +152,7 @@ const renderApp = async () => {
       </ParentStack.Navigator>
     </NavigationContainer>,
   );
-  navigationRef.addListener('__unsafe_action__', ({ data }) => {
-    dispatched.push(data.action.type);
-  });
+  recordDispatches();
 };
 
 const paneActions = () => dispatched.filter((type) => type.startsWith('PANE_'));
@@ -162,6 +169,7 @@ describe('createPaneStackNavigator', () => {
     jest.useFakeTimers();
     mockModeStore.mode = 'columns';
     dispatched.length = 0;
+    dispatchedActions.length = 0;
     navigatesWhenInTwoPanes.current = false;
 
     for (const name of Object.keys(mounts)) {
@@ -356,9 +364,10 @@ describe('createPaneStackNavigator', () => {
   });
 
   describe('tapping the focused tab again', () => {
-    let pressTab: (() => void) | undefined;
+    let pressTab: ((type?: 'tabPress' | 'tabLongPress') => void) | undefined;
 
-    // A tab navigator that hands the test a way to send the tab press.
+    // A tab navigator that hands the test a way to send the tab press. It renders every tab, so
+    // the first stays mounted when another one takes focus.
     const TabNavigator = ({ children }: { children: ReactNode }) => {
       const { state, descriptors, navigation, NavigationContent } = useNavigationBuilder(
         TabRouter,
@@ -366,22 +375,84 @@ describe('createPaneStackNavigator', () => {
       );
       const tabRouteKey = state.routes[0].key;
 
-      pressTab = () =>
-        navigation.emit({ type: 'tabPress', target: tabRouteKey, canPreventDefault: true });
+      pressTab = (type = 'tabPress') =>
+        navigation.emit({ type, target: tabRouteKey, canPreventDefault: true });
 
-      return <NavigationContent>{descriptors[tabRouteKey]?.render()}</NavigationContent>;
+      return (
+        <NavigationContent>
+          {state.routes.map((route) => (
+            <View key={route.key}>{descriptors[route.key]?.render()}</View>
+          ))}
+        </NavigationContent>
+      );
     };
     const Tabs = createNavigatorFactory(TabNavigator)();
 
-    const renderTabs = async () => {
+    const preventsTabPress = { current: false };
+    const initialMeta: { current: object | undefined } = { current: undefined };
+    const changeMeta: { current: ((meta: object | undefined) => void) | undefined } = {
+      current: undefined,
+    };
+    const hideStack: { current: (() => void) | undefined } = { current: undefined };
+
+    // The tab's stack as a parent tab navigator would hand it over: the meta is the test's, and
+    // the stack can be taken away while its tab stays. No `screenListeners`, so leaving the tab
+    // does not pop the stack on its own.
+    const ConfiguredTabStack = () => {
+      const [meta, setMeta] = useState(initialMeta.current);
+      const [isShown, setIsShown] = useState(true);
+
+      changeMeta.current = setMeta;
+      hideStack.current = () => setIsShown(false);
+
+      return (
+        <NavigationMetaContext.Provider value={meta}>
+          {isShown && (
+            <PaneStack.Navigator paneConfig={CONFIG} screenOptions={{ headerShown: false }}>
+              <PaneStack.Screen
+                name="Accounts"
+                component={StubScreen}
+                initialParams={{ opens: 'Detail' }}
+              />
+
+              <PaneStack.Screen name="Detail" component={StubScreen} />
+
+              <PaneStack.Screen name="Statement" component={StubScreen} />
+            </PaneStack.Navigator>
+          )}
+        </NavigationMetaContext.Provider>
+      );
+    };
+
+    const renderTabs = async (stack: ComponentType = TabStack, hasSecondTab = false) => {
       await render(
         <NavigationContainer ref={navigationRef}>
           <Tabs.Navigator>
-            <Tabs.Screen name="Tab" component={TabStack} />
+            <Tabs.Screen
+              name="Tab"
+              component={stack}
+              listeners={{
+                tabPress: (event: { preventDefault: () => void }) => {
+                  if (preventsTabPress.current) {
+                    event.preventDefault();
+                  }
+                },
+              }}
+            />
+
+            {hasSecondTab && <Tabs.Screen name="Second" component={StubScreen} />}
           </Tabs.Navigator>
         </NavigationContainer>,
       );
+      recordDispatches();
     };
+
+    beforeEach(() => {
+      preventsTabPress.current = false;
+      initialMeta.current = undefined;
+    });
+
+    const popsToTop = () => dispatchedActions.filter((action) => action.type === 'POP_TO_TOP');
 
     const stackKeys = (): (string | undefined)[] =>
       (navigationRef.getRootState()?.routes[0]?.state?.routes ?? []).map((route) => route.key);
@@ -424,6 +495,157 @@ describe('createPaneStackNavigator', () => {
       await tapTabAgain();
 
       expect(stackKeys()).toEqual(before);
+    });
+
+    it('pops to the root of this stack, and only once', async () => {
+      await renderTabs();
+      await press('open-Accounts');
+
+      await tapTabAgain();
+
+      expect(popsToTop().map((action) => action.target)).toEqual([
+        navigationRef.getRootState()?.routes[0]?.state?.key,
+      ]);
+    });
+
+    // A pop the stack cannot handle is not recorded as an action; React Navigation reports it.
+    it('pops nothing from a stack that holds only its root', async () => {
+      const reportedError = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+
+      await renderTabs();
+
+      await tapTabAgain();
+
+      expect(reportedError).not.toHaveBeenCalled();
+      expect(popsToTop()).toEqual([]);
+
+      reportedError.mockRestore();
+    });
+
+    it('dispatches no pop for a runtime default alone', async () => {
+      await renderTabs();
+      await showDefault();
+
+      await tapTabAgain();
+
+      expect(popsToTop()).toEqual([]);
+    });
+
+    it('does not pop when the tab is not the focused one', async () => {
+      await renderTabs(ConfiguredTabStack, true);
+      await press('open-Accounts');
+      await act(async () => navigationRef.navigate('Second'));
+
+      await tapTabAgain();
+
+      expect(popsToTop()).toEqual([]);
+      expect(stackRouteNames()).toEqual(['Accounts', 'Detail']);
+    });
+
+    it('does not pop when a tab press listener prevents the default', async () => {
+      preventsTabPress.current = true;
+      await renderTabs();
+      await press('open-Accounts');
+
+      await tapTabAgain();
+
+      expect(popsToTop()).toEqual([]);
+      expect(stackRouteNames()).toEqual(['Accounts', 'Detail']);
+    });
+
+    it('listens to the tab press only, not to another tab event', async () => {
+      await renderTabs();
+      await press('open-Accounts');
+
+      await act(async () => {
+        pressTab?.('tabLongPress');
+      });
+      await elapse(50);
+
+      expect(popsToTop()).toEqual([]);
+      expect(stackRouteNames()).toEqual(['Accounts', 'Detail']);
+    });
+
+    it('leaves the pop to native tabs, which pop to the root themselves', async () => {
+      initialMeta.current = { type: 'native-tabs' };
+      await renderTabs(ConfiguredTabStack);
+      await press('open-Accounts');
+
+      await tapTabAgain();
+
+      expect(popsToTop()).toEqual([]);
+      expect(stackRouteNames()).toEqual(['Accounts', 'Detail']);
+    });
+
+    it.each([[{ type: 'bottom-tabs' }], [{}]])(
+      'pops under navigation meta %j that is not native tabs',
+      async (meta) => {
+        initialMeta.current = meta;
+        await renderTabs(ConfiguredTabStack);
+        await press('open-Accounts');
+
+        await tapTabAgain();
+
+        expect(stackRouteNames()).toEqual(['Accounts']);
+      },
+    );
+
+    it('stops listening once the meta turns native tabs', async () => {
+      await renderTabs(ConfiguredTabStack);
+      await press('open-Accounts');
+      await act(async () => changeMeta.current?.({ type: 'native-tabs' }));
+
+      await tapTabAgain();
+
+      expect(popsToTop()).toEqual([]);
+      expect(stackRouteNames()).toEqual(['Accounts', 'Detail']);
+    });
+
+    it('starts listening once the meta stops being native tabs', async () => {
+      initialMeta.current = { type: 'native-tabs' };
+      await renderTabs(ConfiguredTabStack);
+      await press('open-Accounts');
+      await act(async () => changeMeta.current?.(undefined));
+
+      await tapTabAgain();
+
+      expect(stackRouteNames()).toEqual(['Accounts']);
+    });
+
+    it('cancels the pending pop when the stack goes away within the frame', async () => {
+      await renderTabs(ConfiguredTabStack);
+      await press('open-Accounts');
+
+      await act(async () => {
+        pressTab?.();
+      });
+      await act(async () => hideStack.current?.());
+      await elapse(50);
+
+      expect(popsToTop()).toEqual([]);
+    });
+
+    it('stops listening once the stack goes away', async () => {
+      await renderTabs(ConfiguredTabStack);
+      await press('open-Accounts');
+      await act(async () => hideStack.current?.());
+
+      await tapTabAgain();
+
+      expect(popsToTop()).toEqual([]);
+    });
+
+    it('pops once for two taps within one frame', async () => {
+      await renderTabs();
+      await press('open-Accounts');
+
+      await act(async () => {
+        pressTab?.();
+        pressTab?.();
+      });
+      await elapse(50);
+
+      expect(popsToTop()).toHaveLength(1);
     });
 
     it('pops a page the user opened above a runtime default too', async () => {
