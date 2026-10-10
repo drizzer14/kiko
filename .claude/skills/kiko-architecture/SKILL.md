@@ -916,6 +916,10 @@ not a class.
   for the canonical shape. Do not write each row's `sortOrder` in its
   own separate transaction; a partial write would leave the stored
   order inconsistent with what the grid showed.
+- A decision that depends on whether a row exists, taken while another
+  screen may have a queued insert, reads through `write()`
+  (`accountsRepo.exists`), never through a plain query, which skips
+  op-sqlite's JS write queue.
 
 ## Monobank sync pipeline (functional)
 
@@ -2511,12 +2515,13 @@ what a change must keep.
   account still reads as manual, so a deletable account can own one. The
   clear never rejects (a failed one is logged): the delete has committed,
   and a rejection would show the save error and skip the re-plan. On the
-  create form, a Binance connect that cannot create the account row
-  clears the key pair the field stored first (`connectBinance` in
+  create form, a Binance connect that fails clears the key pair the
+  field stored first only when row P does not exist, read through
+  `accountsRepo.exists` (the write queue; `connectBinance` in
   `account-form.screen.tsx`, through `logOnFailure`), so no pair stays
-  under an id with no account. The create inserts the picked icon in the
-  same write (a second write that failed after the row existed would
-  read as no row and clear the pair of an account that is there).
+  under an id with no account. A failed read keeps the keys. Save writes
+  the picked icon in the same `saveFormAccount` write (a second write that
+  failed after the row existed would read as no row).
 - **Backup/restore.** `DataSnapshot.reminders` is read ordered by
   `id`. `restoreDataSnapshot` deletes `reminders` before
   `holdings`/`accounts` and inserts them last, with `snapshot.reminders

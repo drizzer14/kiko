@@ -596,8 +596,8 @@ KEEP, not an oversight:
   of `try`/`finally` into a bare post-`await` call — see
   `requestOnce` (`src/monobank/client/monobank.client.ts`, a timeout
   classification tied to a `finally`-cleared abort timer) and
-  `account-form.screen.tsx`'s `accountCreate.current` insert
-  (`.catch((error) => { <reset the latch>; throw error; })`).
+  `account-form.screen.tsx`'s `ensureAccount`
+  (`.catch((error) => { setAccountRowStarted(false); throw error; })`).
 - **Loop control/retry.** A retry loop's own `try`/`catch` decides
   whether to `continue`/retry or give up — see `withRetry`
   (`rates-refresh.ts`) and the Monobank sync's per-card `try`/`catch`

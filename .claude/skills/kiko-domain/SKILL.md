@@ -86,11 +86,13 @@ absent** — this skill states the shape and non-enum facts only:
   has no edit path; delete and recreate the account. In CREATE mode the
   kind and bank pickers lock too once the account row exists (`isPickLocked`
   in `account-form.screen.tsx`: edit, a Connect started, or the live query
-  of the pre-generated id finds the row). The row is created with
-  `accountsRepo.createIfAbsent` (an insert that ignores an existing id: one
-  write, no second writer can fail on the key), and Save decides create vs
-  update from the database only (`accountRowExists`), never from a copy of
-  component state. A fold remounts the screen but the OLD instance's
+  of the pre-generated id finds the row). Every Connect creates the row with
+  `accountsRepo.createIfAbsent` (one write that selects the row and returns
+  early when it exists, so it writes no sort order and no second writer can
+  fail on the key), and Save is one `accountsRepo.saveFormAccount` call (one
+  write that selects the row and updates name, color, icon and bank, or
+  inserts it, with the sort order only on insert), never a decision from a
+  copy of component state. A fold remounts the screen but the OLD instance's
   in-flight Connect still runs, so the draft (`AccountFormDraft`) keeps
   `pendingAccountId` and nothing about the row. Known limit (R44): after a
   fold the Connect field shows idle, and a second Connect re-syncs the same
