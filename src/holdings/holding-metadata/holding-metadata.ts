@@ -176,7 +176,7 @@ export const syncedAtOf = (metadata: unknown): number | null => {
 export const BINANCE_HISTORY_CURSOR_FIELD = 'binanceHistoryCursor';
 
 /** The other three Binance walks each keep their own watermark next to the capital one. */
-const BINANCE_PAY_HISTORY_CURSOR_FIELD = 'binancePayHistoryCursor';
+export const BINANCE_PAY_HISTORY_CURSOR_FIELD = 'binancePayHistoryCursor';
 
 const BINANCE_TRANSFER_HISTORY_CURSOR_FIELD = 'binanceTransferHistoryCursor';
 

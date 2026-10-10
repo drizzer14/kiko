@@ -95,6 +95,14 @@ export const logWalkStop = (code: string): void => {
 };
 
 /**
+ * A row the walk left out on purpose, with the window still committed. Same shape as a
+ * stop, a fixed tag and a fixed code, so nothing of the row can reach a log.
+ */
+export const logWalkNotice = (code: string): void => {
+  logFailure('[binance sync] history row left out', new BinanceWalkStop(code));
+};
+
+/**
  * The holding of each wanted wallet key, creating a missing one at zero balance
  * first. A missing wallet holding is a wallet that was empty at the last balance
  * sync (a never-used wallet creates none). An absent and a zero holding both add 0

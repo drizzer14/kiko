@@ -1,3 +1,4 @@
+import { minOf } from '@kiko/numbers';
 import maybe, { foldMap } from 'fnts/maybe';
 import { isRecord } from '@kiko/type-guards';
 
@@ -299,18 +300,74 @@ const PAY_ORDER_FIELDS = {
  * One order from `/sapi/v1/pay/transactions`. `amount` is signed (positive is
  * income); `transactionId` may be empty, which the walk treats as a stop.
  */
-type BinancePayOrder = Parsed<typeof PAY_ORDER_FIELDS>;
+export type BinancePayOrder = Parsed<typeof PAY_ORDER_FIELDS>;
 
 /** Binance caps the Pay history page at 100 orders, and there is no cursor. */
 export const PAY_PAGE_LIMIT = 100;
 
 const PAY_SUCCESS_CODE = '000000';
 
-const payPage = ({ body, headers }: SignedPage): HistoryPage<BinancePayOrder> =>
-  arrayPage(recordReader(PAY_ORDER_FIELDS))({
-    body: isRecord(body) && body.code === PAY_SUCCESS_CODE ? body.data : undefined,
-    headers,
-  });
+/**
+ * One Pay page. The history lists the orders of EVERY coin, but only a BTC order can
+ * reach a row, so only `rows` (the BTC orders) are parsed strictly: an order of another
+ * coin that is off-contract must not stall the BTC walk. The pager still needs the whole
+ * page, so it reads these from every coin: `gathered`, a full page of `PAY_PAGE_LIMIT`
+ * meaning more may follow, and `oldestTransactionTime`, the next `endTime`.
+ */
+export type PayHistoryPage = HistoryPage<BinancePayOrder> & {
+  gathered: number;
+  oldestTransactionTime: number | undefined;
+  /** A non-BTC order was paid with BTC funds: counted by the walk, never imported. */
+  hasBtcFundedOtherCoinOrder: boolean;
+};
+
+type PayItem = {
+  btcOrder: BinancePayOrder | undefined;
+  transactionTime: number | undefined;
+  paidWithBtc: boolean;
+};
+
+const readBtcPayOrder = recordReader(PAY_ORDER_FIELDS);
+
+const finiteNumberOrUndefined = (value: unknown): number | undefined =>
+  typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+
+const paidWithBtc = (fundsDetail: unknown): boolean =>
+  Array.isArray(fundsDetail) &&
+  fundsDetail.some((entry) => isRecord(entry) && entry.currency === BINANCE_ASSET);
+
+const readPayItem: Reader<PayItem> = (value) => {
+  if (!isRecord(value) || typeof value.currency !== 'string') {
+    return parseFailure();
+  }
+
+  if (value.currency === BINANCE_ASSET) {
+    const btcOrder = readBtcPayOrder(value);
+
+    return { btcOrder, transactionTime: btcOrder.transactionTime, paidWithBtc: false };
+  }
+
+  return {
+    btcOrder: undefined,
+    transactionTime: finiteNumberOrUndefined(value.transactionTime),
+    paidWithBtc: paidWithBtc(value.fundsDetail),
+  };
+};
+
+const payPage = ({ body, headers }: SignedPage): PayHistoryPage => {
+  const items = listOf(readPayItem)(
+    isRecord(body) && body.code === PAY_SUCCESS_CODE ? body.data : undefined,
+  );
+  const times = items.flatMap((item) => item.transactionTime ?? []);
+
+  return {
+    rows: items.flatMap((item) => item.btcOrder ?? []),
+    gathered: items.length,
+    oldestTransactionTime: times.length === 0 ? undefined : minOf(times),
+    hasBtcFundedOtherCoinOrder: items.some((item) => item.paidWithBtc),
+    ...usedWeightsFromHeaders(headers),
+  };
+};
 
 /**
  * `GET /sapi/v1/pay/transactions` (Pay history) for ONE page of ONE window.
@@ -323,7 +380,7 @@ export const fetchPayHistory = async (
   secret: string,
   query: { startTime: number; endTime: number },
   options: FetchAccountOptions = {},
-): Promise<HistoryPage<BinancePayOrder>> =>
+): Promise<PayHistoryPage> =>
   payPage(
     await signedRequestPage(
       apiKey,

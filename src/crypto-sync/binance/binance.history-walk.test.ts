@@ -5,6 +5,7 @@ import {
   BinanceWalkStop,
   btcSatoshis,
   buildWalkWindows,
+  logWalkNotice,
   logWalkStop,
   resolveWalkStart,
   resolveWalletHoldings,
@@ -105,6 +106,21 @@ describe('logWalkStop', () => {
     expect(warn).toHaveBeenCalledWith('[binance sync] history window stopped', {
       name: 'BinanceWalkStop',
       code: 'capital-amount-invalid',
+    });
+    warn.mockRestore();
+  });
+});
+
+describe('logWalkNotice', () => {
+  it('logs only its own fixed tag and the notice code', () => {
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    logWalkNotice('pay-overlap-skip');
+
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn).toHaveBeenCalledWith('[binance sync] history row left out', {
+      name: 'BinanceWalkStop',
+      code: 'pay-overlap-skip',
     });
     warn.mockRestore();
   });

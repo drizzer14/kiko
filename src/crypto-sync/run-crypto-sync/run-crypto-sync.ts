@@ -5,6 +5,7 @@ import {
   binanceProvider,
   createBinanceHistoryRun,
   defaultBinanceDeps,
+  syncBinancePayHistory,
   syncBinanceTransactions,
 } from '../binance';
 import { type BalanceSyncResult, runBalanceSync } from '../sync';
@@ -33,6 +34,11 @@ const runBinanceSyncAndImport = async (targetAccountId: string): Promise<Balance
   // regardless.
   await logOnFailure('[binance sync] capital history failed', () =>
     syncBinanceTransactions({ targetAccountId, run }),
+  );
+  // After the capital walk, never before: the Pay walk stops at the capital watermark and
+  // compares each of its rows with the capital rows already stored.
+  await logOnFailure('[binance sync] pay history failed', () =>
+    syncBinancePayHistory({ targetAccountId, run }),
   );
 
   return result;

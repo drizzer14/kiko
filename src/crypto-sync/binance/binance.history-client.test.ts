@@ -424,6 +424,86 @@ describe('fetchPayHistory envelope', () => {
   });
 });
 
+// The Pay history lists every coin's orders. Only BTC orders reach a row, so only they
+// may fail the read: a malformed order of another coin must not stall the BTC walk.
+describe('fetchPayHistory other coins', () => {
+  const usdtOrder = {
+    ...payOrderBody,
+    transactionId: '10003',
+    currency: 'USDT',
+    fundsDetail: [{ currency: 'USDT', amount: '1' }],
+  };
+
+  const pageOfOrders = (...orders: unknown[]) => payRead({ code: '000000', data: orders }).run();
+
+  it('returns the BTC orders only, and counts every order of the page', async () => {
+    const page = await pageOfOrders(payOrderBody, usdtOrder, { ...usdtOrder, transactionId: '1' });
+
+    expect(page.rows).toEqual([parsedPayOrder]);
+    expect(page.gathered).toBe(3);
+  });
+
+  it.each([
+    ['an amount that is missing', without(usdtOrder, 'amount')],
+    ['a transactionTime that is a string', { ...usdtOrder, transactionTime: 'soon' }],
+    ['an orderType that is missing', without(usdtOrder, 'orderType')],
+    ['fundsDetail that is not an array', { ...usdtOrder, fundsDetail: 'x' }],
+    ['a payerInfo that is not an object', { ...usdtOrder, payerInfo: 'Me' }],
+    ['a walletType that is a string', { ...usdtOrder, walletType: 'x' }],
+  ])('does not fail the read for a non-BTC order with %s', async (_label, offContract) => {
+    const page = await pageOfOrders(payOrderBody, offContract);
+
+    expect(page.rows).toEqual([parsedPayOrder]);
+    expect(page.gathered).toBe(2);
+  });
+
+  it.each([
+    ['an amount that is missing', without(payOrderBody, 'amount')],
+    ['fundsDetail that is not an array', { ...payOrderBody, fundsDetail: 'x' }],
+  ])('still fails the read for a BTC order with %s', async (_label, offContract) => {
+    await expect(pageOfOrders(usdtOrder, offContract)).rejects.toThrow(PARSE_FAILURE);
+  });
+
+  it.each([
+    ['a missing currency', without(usdtOrder, 'currency')],
+    ['a currency that is not a string', { ...usdtOrder, currency: 7 }],
+    ['an order that is not an object', null],
+  ])('fails the read for %s, since the coin cannot be told', async (_label, order) => {
+    await expect(pageOfOrders(order)).rejects.toThrow(PARSE_FAILURE);
+  });
+
+  it('reads the oldest transactionTime across every coin, for the pager', async () => {
+    const page = await pageOfOrders(
+      { ...payOrderBody, transactionTime: 5_000 },
+      { ...usdtOrder, transactionTime: 3_000 },
+      { ...usdtOrder, transactionTime: 'soon' },
+    );
+
+    expect(page.oldestTransactionTime).toBe(3_000);
+  });
+
+  it('has no oldest transactionTime for an empty page', async () => {
+    expect((await pageOfOrders()).oldestTransactionTime).toBeUndefined();
+  });
+
+  it('flags a non-BTC order that was paid with BTC funds', async () => {
+    const paidWithBtc = {
+      ...usdtOrder,
+      fundsDetail: [{ currency: 'BTC', amount: '1' }],
+    };
+
+    expect((await pageOfOrders(paidWithBtc)).hasBtcFundedOtherCoinOrder).toBe(true);
+    expect((await pageOfOrders(usdtOrder)).hasBtcFundedOtherCoinOrder).toBe(false);
+    expect((await pageOfOrders(usdtOrder, payOrderBody)).hasBtcFundedOtherCoinOrder).toBe(false);
+  });
+
+  it('reads a malformed fundsDetail of a non-BTC order as no BTC funds, never an error', async () => {
+    const page = await pageOfOrders({ ...usdtOrder, fundsDetail: 'BTC' });
+
+    expect(page.hasBtcFundedOtherCoinOrder).toBe(false);
+  });
+});
+
 describe('fetchPayHistory walletAssetCost', () => {
   const orderWithCost = (walletAssetCost: unknown) => ({
     ...payOrderBody,

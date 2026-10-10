@@ -1,15 +1,20 @@
 const mockRunBalanceSync = jest.fn();
 const mockSyncBinanceTransactions = jest.fn();
+const mockSyncBinancePayHistory = jest.fn();
 
 // `./sync` pulls the repos (and so op-sqlite) into the graph; replacing the
 // whole module keeps this a pure dispatch test. `./binance/binance.transactions`
-// is replaced for the same reason. The Binance credentials module imports
-// react-native-keychain, whose native binding is absent under Jest.
+// and `./binance/binance.pay-history` are replaced for the same reason. The Binance
+// credentials module imports react-native-keychain, whose native binding is absent
+// under Jest.
 jest.mock('@kiko/crypto-sync/sync', () => ({
   runBalanceSync: (...args: unknown[]) => mockRunBalanceSync(...args),
 }));
 jest.mock('@kiko/crypto-sync/binance/binance.transactions', () => ({
   syncBinanceTransactions: (...args: unknown[]) => mockSyncBinanceTransactions(...args),
+}));
+jest.mock('@kiko/crypto-sync/binance/binance.pay-history', () => ({
+  syncBinancePayHistory: (...args: unknown[]) => mockSyncBinancePayHistory(...args),
 }));
 jest.mock('react-native-keychain', () => ({
   ACCESSIBLE: { WHEN_UNLOCKED_THIS_DEVICE_ONLY: 'AccessibleWhenUnlockedThisDeviceOnly' },
@@ -27,6 +32,7 @@ describe('runCryptoSync', () => {
     jest.clearAllMocks();
     mockRunBalanceSync.mockResolvedValue({ syncedHoldings: 1 });
     mockSyncBinanceTransactions.mockResolvedValue({ imported: 0, complete: true });
+    mockSyncBinancePayHistory.mockResolvedValue({ imported: 0, complete: true });
   });
 
   it('runs the wallet provider with the connect-time address on a wallet request', async () => {
@@ -68,6 +74,18 @@ describe('runCryptoSync', () => {
       targetAccountId: 'acc-2',
       run: { gate: expect.any(Object), budget: expect.any(Object) },
     });
+  });
+
+  it('runs the Pay walk after the capital walk, on the same run object', async () => {
+    await runCryptoSync({ providerId: 'binance', targetAccountId: 'acc-2' });
+
+    const [capitalCall] = mockSyncBinanceTransactions.mock.calls;
+    const [payCall] = mockSyncBinancePayHistory.mock.calls;
+    expect(payCall[0]).toEqual({ targetAccountId: 'acc-2', run: capitalCall[0].run });
+    expect(payCall[0].run).toBe(capitalCall[0].run);
+    expect(mockSyncBinanceTransactions.mock.invocationCallOrder[0]).toBeLessThan(
+      mockSyncBinancePayHistory.mock.invocationCallOrder[0],
+    );
   });
 
   it('builds one history run per arm run, never sharing a budget across runs', async () => {
@@ -128,6 +146,39 @@ describe('runCryptoSync', () => {
     warn.mockRestore();
   });
 
+  it('still resolves with the balance result when the Pay walk fails, logging only its name', async () => {
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    mockSyncBinancePayHistory.mockRejectedValue(new Error('Order 123 for Ann SECRET'));
+
+    const result = await runCryptoSync({ providerId: 'binance', targetAccountId: 'acc-2' });
+
+    expect(result).toEqual({ syncedHoldings: 1 });
+    expect(warn).toHaveBeenCalledWith('[binance sync] pay history failed', {
+      name: 'Error',
+      code: undefined,
+    });
+    expect(JSON.stringify(warn.mock.calls)).not.toContain('SECRET');
+    warn.mockRestore();
+  });
+
+  it('runs the Pay walk even when the capital walk failed: each walk logs its own failure', async () => {
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    mockSyncBinanceTransactions.mockRejectedValue(new Error('capital boom'));
+
+    await runCryptoSync({ providerId: 'binance', targetAccountId: 'acc-2' });
+
+    expect(mockSyncBinancePayHistory).toHaveBeenCalledTimes(1);
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn.mock.calls[0][0]).toBe('[binance sync] capital history failed');
+    warn.mockRestore();
+  });
+
+  it('does not run the Pay walk for a wallet request', async () => {
+    await runCryptoSync({ providerId: 'btc_wallet', targetAccountId: 'acc-1' });
+
+    expect(mockSyncBinancePayHistory).not.toHaveBeenCalled();
+  });
+
   // P2: an account-detail Connect overlapping a pull-to-refresh fan-out can
   // both trigger a Binance sync for the SAME account while the first is still
   // in flight. `runBalanceSync` is already per-account single-flight-locked
@@ -146,6 +197,7 @@ describe('runCryptoSync', () => {
       expect(a).toEqual(b);
       expect(mockRunBalanceSync).toHaveBeenCalledTimes(1);
       expect(mockSyncBinanceTransactions).toHaveBeenCalledTimes(1);
+      expect(mockSyncBinancePayHistory).toHaveBeenCalledTimes(1);
     });
 
     it('runs independently for two DIFFERENT Binance accounts', async () => {
