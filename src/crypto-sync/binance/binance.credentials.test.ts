@@ -399,7 +399,7 @@ describe('clearCredentialsIfWrittenBy', () => {
     expect(await readCredentials(ACCOUNT_A)).toEqual(fixture);
   });
 
-  it('keeps matching the token of the stored pair after a later save failed', async () => {
+  it('keeps the token of the earlier save after a later save failed', async () => {
     const stored = await saveCredentials(ACCOUNT_A, fixture);
     const failing = holdNextWrite('setGenericPassword');
     const failed = expect(saveCredentials(ACCOUNT_A, pairOf('lost'))).rejects.toThrow(

@@ -78,8 +78,8 @@ const storePair = async (
 // The Binance counterpart of the Monobank token field: two secure inputs for a
 // read-only ("Enable Reading" only) key pair. Connect verifies the pair with one
 // account call BEFORE it is written to the biometric Keychain, then runs the
-// first sync. The pair never leaves this component except into `saveCredentials`;
-// the callbacks get only the token of that write.
+// first sync. The pair never leaves this component except into `fetchAccount` (the check) and
+// `saveCredentials`; the callbacks get only the token of that write.
 const BinanceCredentialsField: FC<BinanceCredentialsFieldProps> = ({
   accountId,
   onConnect,

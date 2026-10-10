@@ -76,9 +76,11 @@ export type BinanceWriteToken = symbol;
 
 /**
  * The token of the save that stored each account's pair, set only after that save's Keychain
- * write resolved and dropped by a clear, so a failed save leaves the previous token naming the
- * pair still stored. Memory only: a restart loses every token, then no token matches and nothing
- * is cleared, which keeps a pair rather than deleting one by mistake.
+ * write resolved and dropped by a clear, so a failed save keeps the previous token. What the failed
+ * save left stored is that token's pair or nothing (the iOS Keychain deletes the old item before
+ * it inserts the new one), never another write's pair. Memory only: a restart loses every token,
+ * then no token matches and nothing is cleared, which keeps a pair rather than deleting one by
+ * mistake.
  */
 const storedTokens = new Map<string, BinanceWriteToken>();
 
