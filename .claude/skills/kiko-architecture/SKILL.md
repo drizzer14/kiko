@@ -2518,13 +2518,19 @@ what a change must keep.
   account still reads as manual, so a deletable account can own one. The
   clear never rejects (a failed one is logged): the delete has committed,
   and a rejection would show the save error and skip the re-plan. On the
-  create form, a Binance connect that fails clears the key pair the
-  field stored first only when row P does not exist, read through
+  create form, a Binance connect that fails clears only the write it made, and only
+  when row P does not exist, read through
   `accountsRepo.exists` (the write queue rule in the repository section above;
   `grep -rn accountsRepo.exists src` lists the callers), so no pair stays
   under an id with no account. A failed read keeps the keys. The same helper
-  (`clearPairIfRowMissing` in `account-form.screen.tsx`) also clears a pair stored after
-  the field unmounted. Save writes
+  (`clearPairIfRowMissing` in `account-form.screen.tsx`) also clears the write stored after
+  the field unmounted. Both go through `clearCredentialsIfWrittenBy`, which compares the
+  per-write token (in memory, recorded after `setGenericPassword` resolves, dropped after a
+  reset resolves; a restart loses tokens, so nothing is cleared: fail safe) inside the
+  per-account serialized Keychain write chain. The `readCredentials` access-policy repair is
+  one serialized compare-and-set step (re-read inside the step, re-save the same pair only if
+  unchanged; it records no new token). No step calls another serialized step (no re-entry).
+  Save writes
   the picked icon in the same `saveFormAccount` write (a second write that
   failed after the row existed would read as no row).
 - **Backup/restore.** `DataSnapshot.reminders` is read ordered by

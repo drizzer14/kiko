@@ -89,7 +89,8 @@ absent** — this skill states the shape and non-enum facts only:
   never a copy of them; a create form remounted from its own saved draft,
   e.g. after a fold, stays locked until `usePendingRowLock`
   (`src/screens/forms/account-form/use-pending-row-lock/`) gets a "no row"
-  answer from `accountsRepo.exists`; a rejected read keeps it locked). Every Connect
+  answer from `accountsRepo.exists`; a rejected read keeps it locked
+  (user-confirmed 2026-10-10)). Every Connect
   creates the row with
   `accountsRepo.createIfAbsent` (one write that selects the row and returns
   early when it exists, so it writes no sort order and no second writer can
@@ -105,9 +106,12 @@ absent** — this skill states the shape and non-enum facts only:
   and stores nothing when it unmounts before the Keychain write: a token
   checked before a fold or a kind/bank switch is not stored, and the user
   taps Connect again. A pair stored during the write is reported through
-  `onStoredWhileUnmounted`; the account form uses it to clear the pair
-  when no row owns P, and account detail keeps it (user ruling
-  2026-10-10). Known limit (R44): after a fold the Connect field
+  `onStoredWhileUnmounted`. `onConnect` and `onStoredWhileUnmounted` receive the
+  `BinanceWriteToken` of that write, not the pair. The account form's
+  `clearPairIfRowMissing(token)` calls `clearCredentialsIfWrittenBy`, which resets the pair only
+  when that token is still the account's latest recorded write, so a later save (even of the same
+  pair) is never deleted (`src/crypto-sync/binance/binance.credentials.ts`). The form clears
+  when no row owns P, and account detail keeps the pair (user ruling 2026-10-10). Known limit (R44): after a fold the Connect field
   shows idle, and a second Connect re-syncs the same account. Re-picking the
   already-selected kind is a no-op (the bank/broker
   pick, custom icon and typed token stay); a switch to a different kind

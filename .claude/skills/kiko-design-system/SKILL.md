@@ -400,8 +400,10 @@ The established patterns grouped under this heading:
   `disabled` stays reserved for the field's own
   in-flight `status.kind === 'checking'`.
   `BinanceCredentialsField` also takes an optional `onStoredWhileUnmounted`, called
-  instead of `onConnect` when the field unmounted after the Keychain write stored the pair;
-  `CryptoSyncForm` forwards it as `onBinanceStoredWhileUnmounted`.
+  instead of `onConnect` when the field unmounted after the Keychain write stored the pair.
+  Both callbacks receive the write's `BinanceWriteToken`; `CryptoSyncForm`'s `onConnectBinance`
+  and `onBinanceStoredWhileUnmounted` carry the same type. The pair leaves the field only into
+  `fetchAccount` (the check) and `saveCredentials`.
 - The "Connect first" reminder (user-approved 2026-10-08, create form only).
   Typed input in a Connect field that was not connected turns the FIRST
   Save press into a reminder: nothing saves, and the hint appears directly
