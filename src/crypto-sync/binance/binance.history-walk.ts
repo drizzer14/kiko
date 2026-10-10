@@ -37,25 +37,17 @@ export type WalkPass = 'forward' | 'rescan';
 
 /**
  * One run of a walk, as two passes. `forward` goes from the cursor to the end and moves the
- * walk's cursor. `rescan` goes back over the last window behind the forward start, to catch
- * a record that settles late, and never moves that cursor. `rescanEnd` is where the re-scan
- * ends, which is where the forward pass starts.
+ * walk's cursor. `rescan` goes back over the ground behind the forward start, to catch a
+ * record that settles late, and never moves that cursor. `rescanEnd` is where the re-scan
+ * ends, which is where the forward pass starts unless the re-scan resumes a leftover mark.
+ * `rescanPin` is the re-scan mark to store before the forward pass first moves the cursor
+ * (`null` for none), see `planWalkPasses`.
  */
-export type WalkPlan = { forward: WalkWindow[]; rescan: WalkWindow[]; rescanEnd: number };
-
-const forwardStartOf = (input: {
-  cursor: number | null;
-  floorMs: number;
-  windowStart: number;
-  overlapMs: number;
-}): number => {
-  const { cursor, floorMs, windowStart, overlapMs } = input;
-
-  if (cursor === null) {
-    return floorMs;
-  }
-
-  return cursor >= windowStart ? cursor : Math.max(floorMs, cursor - overlapMs);
+export type WalkPlan = {
+  forward: WalkWindow[];
+  rescan: WalkWindow[];
+  rescanEnd: number;
+  rescanPin: number | null;
 };
 
 /**
@@ -63,17 +55,25 @@ const forwardStartOf = (input: {
  * window before going forward would spend a busy account's whole call budget on ground it
  * already holds, and the newest records would never import. The re-scan resumes from the
  * walk's stored re-scan cursor, so a window too big for one run's leftover budget is
- * finished over later runs. A stored cursor outside [window start, forward start) belongs
- * to a pass that finished or a window that has moved on, and starts a new pass at the
- * window start. Neither pass starts before the floor, which also bounds a cursor a
- * disconnect reset to an older floor than this walk may ask for.
+ * finished over later runs. Neither pass starts before the floor, which also bounds a
+ * cursor a disconnect reset to an older floor than this walk may ask for.
  *
- * The forward pass starts AT the cursor when the cursor is inside the re-scan window, since
- * the re-scan already covers the ground behind it. Starting the overlap behind the cursor
- * instead would make a dense day there cost every run its whole budget, and the cursor,
- * which only a span ending after it moves, would never advance. Only a cursor older than the
- * window has no re-scan behind it, so only then does the forward pass reach back by the
- * overlap.
+ * The forward pass always starts AT the cursor. Starting the overlap behind it instead
+ * would make a dense day there cost every run its whole budget, and the cursor, which only
+ * a span ending after it moves, would never advance. The ground behind the cursor is the
+ * re-scan's: from the window start, or from the overlap behind the cursor when that is
+ * earlier, because a record pending at the last sync can settle up to the overlap before
+ * the cursor even when the walk was away for as long as the window.
+ *
+ * A catch-up from a cursor older than the window can take several runs, and by the run
+ * that re-scans, the cursor has moved on, so the overlap behind the OLD cursor cannot be
+ * derived from it. The first forward span of a run therefore stores the re-scan's start as
+ * the re-scan mark (`rescanPin`) whenever that start is behind the window, and a stored
+ * mark above the floor is resumed wherever it lies. A mark behind the start the cursor
+ * gives is what is left of such an old cursor's overlap, so it is resumed for one overlap
+ * only: re-reading everything from there to the cursor would cost more calls than a run
+ * has, over and over, since each run starts its first span as wide as the whole range. The
+ * floor itself is the restart mark of a finished pass, and starts a new one.
  */
 export const planWalkPasses = (input: {
   cursor: number | null;
@@ -86,17 +86,20 @@ export const planWalkPasses = (input: {
 }): WalkPlan => {
   const { cursor, rescanCursor, floorMs, endTime, windowMs, overlapMs, maxWindows } = input;
   const windowStart = Math.max(floorMs, endTime - windowMs);
-  const forwardStart = forwardStartOf({ cursor, floorMs, windowStart, overlapMs });
-  const rescanEnd = Math.min(forwardStart, endTime);
-  const rescanStart =
-    rescanCursor !== null && rescanCursor >= windowStart && rescanCursor < rescanEnd
-      ? rescanCursor
-      : windowStart;
+  const forwardStart = Math.max(floorMs, cursor ?? floorMs);
+  const behindEnd = Math.min(forwardStart, endTime);
+  const rescanBase = Math.max(floorMs, Math.min(windowStart, forwardStart - overlapMs));
+  const resumed = rescanCursor !== null && rescanCursor > floorMs && rescanCursor < behindEnd;
+  const leftover = resumed && rescanCursor < rescanBase;
+  const rescanStart = resumed ? rescanCursor : rescanBase;
+  const rescanEnd = leftover ? rescanCursor + overlapMs : behindEnd;
+  const rescan = buildWalkWindows(rescanStart, rescanEnd, windowMs, maxWindows);
 
   return {
     forward: buildWalkWindows(forwardStart, endTime, windowMs, maxWindows),
-    rescan: buildWalkWindows(rescanStart, rescanEnd, windowMs, maxWindows),
+    rescan,
     rescanEnd,
+    rescanPin: rescan.length > 0 && rescanStart < windowStart ? rescanStart : null,
   };
 };
 
@@ -127,7 +130,14 @@ type MarkAdvance = {
   write: (field: BinanceWalkCursorField, cursorMs: number) => Promise<void>;
 };
 
-const advanceCursor = async ({ span, marks, fields, write }: MarkAdvance): Promise<void> => {
+const advanceCursor = async ({ span, plan, marks, fields, write }: MarkAdvance): Promise<void> => {
+  // The pin goes first: a crash after it only leaves a mark the next run resumes from,
+  // while a crash after the cursor alone would leave the old cursor's overlap never re-read.
+  if (plan.rescanPin !== null && marks.rescanCursor !== plan.rescanPin) {
+    marks.rescanCursor = plan.rescanPin;
+    await write(fields.rescan, plan.rescanPin);
+  }
+
   marks.cursor = Math.max(span.end, marks.cursor ?? span.end);
   await write(fields.cursor, marks.cursor);
 };
@@ -152,7 +162,8 @@ const advanceRescan = async ({
 /**
  * Move the walk's mark once a span's rows are durable. A forward span moves the cursor to
  * its end, never back: the first spans of a pass start behind it, and the mark to compare
- * with is the one this run last wrote, not the one it found. A re-scan span moves only the
+ * with is the one this run last wrote, not the one it found. The first forward span also
+ * stores the re-scan pin, when there is one. A re-scan span moves only the
  * re-scan mark and leaves the cursor alone, so a re-scan can never undo the forward pass.
  * `write` gets the field of the mark that moved and its value.
  */

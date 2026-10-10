@@ -17,6 +17,7 @@ import {
   splitOrStop,
   type WalkMarks,
   walkSpans,
+  type WalkPlan,
   type WalkWindow,
 } from './binance.history-walk';
 import { EARN_KEY, FUNDING_KEY, SPOT_KEY } from './binance.holding-keys';
@@ -55,15 +56,32 @@ describe('planWalkPasses', () => {
     const plan = planWalkPasses({ ...input, cursor });
 
     expect(plan.forward[0].start).toBe(cursor);
-    expect(plan.rescan).toEqual([]);
+    expect(plan.rescan).toEqual([{ start: cursor - DAY_MS, end: cursor }]);
   });
 
-  it('starts the forward pass the overlap behind a cursor one millisecond before the re-scan window', () => {
+  it('starts the forward pass AT a cursor one millisecond before the re-scan window', () => {
     const cursor = END_MS - WINDOW_MS - 1;
     const plan = planWalkPasses({ ...input, cursor });
 
-    expect(plan.forward[0].start).toBe(cursor - DAY_MS);
-    expect(plan.rescan).toEqual([]);
+    expect(plan.forward[0].start).toBe(cursor);
+    expect(plan.rescan).toEqual([{ start: cursor - DAY_MS, end: cursor }]);
+  });
+
+  it('re-scans the overlap day behind a cursor older than the window, and starts forward at the cursor', () => {
+    const cursor = END_MS - 120 * DAY_MS;
+    const plan = planWalkPasses({ ...input, cursor });
+
+    expect(plan.forward[0].start).toBe(cursor);
+    expect(plan.rescan).toEqual([{ start: cursor - DAY_MS, end: cursor }]);
+    expect(plan.rescanEnd).toBe(cursor);
+  });
+
+  it('re-scans the whole overlap day behind a cursor that the window start cuts into', () => {
+    const cursor = END_MS - 88.5 * DAY_MS;
+    const plan = planWalkPasses({ ...input, cursor });
+
+    expect(plan.forward[0].start).toBe(cursor);
+    expect(plan.rescan).toEqual([{ start: cursor - DAY_MS, end: cursor }]);
   });
 
   it('re-scans the last window behind the forward pass, ending where the forward pass starts', () => {
@@ -82,13 +100,67 @@ describe('planWalkPasses', () => {
     expect(plan.rescan).toEqual([{ start: rescanCursor, end: cursor }]);
   });
 
-  it.each([
-    ['a cursor reset to the floor', FLOOR_MS],
-    ['a cursor older than the window', END_MS - 120 * DAY_MS],
-  ])('restarts the re-scan at the window start for %s', (_label, rescanCursor) => {
-    const plan = planWalkPasses({ ...input, cursor: END_MS - 2 * DAY_MS, rescanCursor });
+  it('restarts the re-scan at the window start for a cursor reset to the floor', () => {
+    const plan = planWalkPasses({
+      ...input,
+      cursor: END_MS - 2 * DAY_MS,
+      rescanCursor: FLOOR_MS,
+    });
 
     expect(plan.rescan[0].start).toBe(END_MS - WINDOW_MS);
+  });
+
+  it('resumes a stored cursor behind the re-scan start for one overlap day: what is left of an old cursor', () => {
+    const cursor = END_MS - 2 * DAY_MS;
+    const rescanCursor = END_MS - 120 * DAY_MS;
+    const plan = planWalkPasses({ ...input, cursor, rescanCursor });
+
+    expect(plan.rescan).toEqual([{ start: rescanCursor, end: rescanCursor + DAY_MS }]);
+    expect(plan.rescanEnd).toBe(rescanCursor + DAY_MS);
+  });
+
+  it('resumes a stored cursor at or after the re-scan start up to the forward start', () => {
+    const cursor = END_MS - 2 * DAY_MS;
+    const rescanCursor = END_MS - 40 * DAY_MS;
+    const plan = planWalkPasses({ ...input, cursor, rescanCursor });
+
+    expect(plan.rescan).toEqual([{ start: rescanCursor, end: cursor }]);
+    expect(plan.rescanEnd).toBe(cursor);
+  });
+
+  it('does not take the floor itself for a stored re-scan cursor, since a finished pass is reset to it', () => {
+    const plan = planWalkPasses({
+      ...input,
+      floorMs: FLOOR_MS,
+      cursor: END_MS - 2 * DAY_MS,
+      rescanCursor: FLOOR_MS,
+    });
+
+    expect(plan.rescan[0].start).toBe(END_MS - WINDOW_MS);
+  });
+
+  it('pins the re-scan at its start when it reaches behind the window, so a later run still re-reads it', () => {
+    const cursor = END_MS - 120 * DAY_MS;
+    const plan = planWalkPasses({ ...input, cursor });
+
+    expect(plan.rescanPin).toBe(cursor - DAY_MS);
+  });
+
+  it.each([
+    ['a cursor inside the window', END_MS - 2 * DAY_MS, null],
+    ['no cursor', null, null],
+    ['a cursor at the floor', FLOOR_MS, null],
+  ])('pins nothing for %s', (_label, cursor, rescanCursor) => {
+    const plan = planWalkPasses({ ...input, cursor, rescanCursor });
+
+    expect(plan.rescanPin).toBeNull();
+  });
+
+  it('pins the stored re-scan cursor it resumes when that is behind the window', () => {
+    const rescanCursor = END_MS - 120 * DAY_MS;
+    const plan = planWalkPasses({ ...input, cursor: END_MS - 2 * DAY_MS, rescanCursor });
+
+    expect(plan.rescanPin).toBe(rescanCursor);
   });
 
   it('restarts the re-scan at the window start for a cursor already at or past the forward start', () => {
@@ -96,14 +168,6 @@ describe('planWalkPasses', () => {
     const plan = planWalkPasses({ ...input, cursor, rescanCursor: cursor });
 
     expect(plan.rescan[0].start).toBe(END_MS - WINDOW_MS);
-  });
-
-  it('has no re-scan when the forward pass already reaches back past the window start', () => {
-    const cursor = END_MS - 120 * DAY_MS;
-    const plan = planWalkPasses({ ...input, cursor });
-
-    expect(plan.forward[0].start).toBe(cursor - DAY_MS);
-    expect(plan.rescan).toEqual([]);
   });
 
   it('never starts either pass before the floor', () => {
@@ -131,6 +195,7 @@ describe('rescanCursorAfter', () => {
     forward: [],
     rescan: [],
     rescanEnd: 1_000,
+    rescanPin: null,
   };
 
   it('is the span end while the re-scan has ground left', () => {
@@ -144,7 +209,12 @@ describe('rescanCursorAfter', () => {
 
 describe('runWalkPlan', () => {
   const window = (start: number): WalkWindow => ({ start, end: start + 1 });
-  const plan = { forward: [window(0), window(1)], rescan: [window(10)], rescanEnd: 11 };
+  const plan = {
+    forward: [window(0), window(1)],
+    rescan: [window(10)],
+    rescanEnd: 11,
+    rescanPin: null,
+  };
 
   it('runs the forward windows, then the re-scan windows, and adds up what they import', async () => {
     const seen: [number, string][] = [];
@@ -205,7 +275,7 @@ describe('runWalkPlan', () => {
 
   it('is complete when the plan has nothing to walk', async () => {
     const result = await runWalkPlan({
-      plan: { forward: [], rescan: [], rescanEnd: 0 },
+      plan: { forward: [], rescan: [], rescanEnd: 0, rescanPin: null },
       canAfford: () => true,
       runWindow: async () => ({ imported: 0, complete: true }),
     });
@@ -313,19 +383,24 @@ describe('nextSpanAfter', () => {
 });
 
 describe('advanceWalkMarks', () => {
-  const plan = { forward: [], rescan: [], rescanEnd: 1_000 };
+  const plan: WalkPlan = { forward: [], rescan: [], rescanEnd: 1_000, rescanPin: null };
   const RESTART_MS = 5;
 
   const FORWARD_FIELD = 'binancePayHistoryCursor';
   const RESCAN_FIELD = 'binancePayRescanCursor';
 
-  const advance = async (pass: 'forward' | 'rescan', span: WalkWindow, marks: WalkMarks) => {
+  const advance = async (
+    pass: 'forward' | 'rescan',
+    span: WalkWindow,
+    marks: WalkMarks,
+    walkPlan: WalkPlan = plan,
+  ) => {
     const writes: [string, number][] = [];
 
     await advanceWalkMarks({
       pass,
       span,
-      plan,
+      plan: walkPlan,
       marks,
       restartMs: RESTART_MS,
       fields: { cursor: FORWARD_FIELD, rescan: RESCAN_FIELD },
@@ -390,6 +465,45 @@ describe('advanceWalkMarks', () => {
     const marks = { cursor: 900, rescanCursor: RESTART_MS };
 
     expect(await advance('rescan', { start: 100, end: 1_000 }, marks)).toEqual([]);
+  });
+
+  describe('with a re-scan pinned behind the window', () => {
+    const pinned: WalkPlan = { ...plan, rescanPin: 70 };
+
+    it('stores the pin before it moves the cursor, so a crash between the two loses nothing', async () => {
+      const marks = { cursor: 100, rescanCursor: null };
+
+      expect(await advance('forward', { start: 100, end: 400 }, marks, pinned)).toEqual([
+        [RESCAN_FIELD, 70],
+        [FORWARD_FIELD, 400],
+      ]);
+      expect(marks).toEqual({ cursor: 400, rescanCursor: 70 });
+    });
+
+    it('stores the pin once: the next forward span moves only the cursor', async () => {
+      const marks = { cursor: 100, rescanCursor: null };
+      await advance('forward', { start: 100, end: 400 }, marks, pinned);
+
+      expect(await advance('forward', { start: 400, end: 700 }, marks, pinned)).toEqual([
+        [FORWARD_FIELD, 700],
+      ]);
+    });
+
+    it('stores nothing when the stored mark already is the pin', async () => {
+      const marks = { cursor: 100, rescanCursor: 70 };
+
+      expect(await advance('forward', { start: 100, end: 400 }, marks, pinned)).toEqual([
+        [FORWARD_FIELD, 400],
+      ]);
+    });
+
+    it('leaves a re-scan span to move the mark as usual', async () => {
+      const marks = { cursor: 900, rescanCursor: 70 };
+
+      expect(await advance('rescan', { start: 70, end: 400 }, marks, pinned)).toEqual([
+        [RESCAN_FIELD, 400],
+      ]);
+    });
   });
 });
 

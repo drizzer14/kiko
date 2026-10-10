@@ -97,8 +97,13 @@ type AddedRow = {
 const addedRows = (deps: BinancePayHistoryDeps, call = 0) =>
   (deps.addTransactions as jest.Mock).mock.calls[call][0] as AddedRow[];
 
+const FORWARD_CURSOR_FIELD = 'binancePayHistoryCursor';
+
+/** The values written to the forward cursor, in order; the re-scan mark is another field. */
 const cursorWritesOf = (deps: BinancePayHistoryDeps): number[] =>
-  (deps.writeWalkCursor as jest.Mock).mock.calls.map((call) => call[2] as number);
+  (deps.writeWalkCursor as jest.Mock).mock.calls
+    .filter((call) => call[1] === FORWARD_CURSOR_FIELD)
+    .map((call) => call[2] as number);
 
 /** The pages of a scripted history, in order; an empty page once they run out. */
 const scripted = (pages: PayHistoryPage[]) => jest.fn(async () => pages.shift() ?? payPage([]));
@@ -225,13 +230,15 @@ describe('the walk window range', () => {
     ]);
   });
 
-  it('walks forward from a day behind a cursor that is older than a window, which has no re-scan behind it', async () => {
+  it('walks forward from a cursor that is older than a window, then re-scans the overlap day behind it', async () => {
     const cursor = NOW - 120 * DAY_MS;
     const deps = makeDeps({ listHoldings: async () => [spotAt(cursor)] });
 
     await sync(deps);
 
-    expect(queriesOf(deps)[0].startTime).toBe(cursor - DAY_MS);
+    const queries = queriesOf(deps);
+    expect(queries[0].startTime).toBe(cursor);
+    expect(queries.at(-1)).toEqual({ startTime: cursor - DAY_MS, endTime: cursor });
   });
 
   it('writes the Pay cursor at each window end, on the Spot holding', async () => {
@@ -409,7 +416,7 @@ describe('importing the orders of a window', () => {
 
 describe('an adaptive window', () => {
   // The cursor sits at the start of the newest window, so the forward pass is exactly that
-  // one window and there is no ground behind it to re-scan.
+  // one window, and the only ground behind it to re-scan is the overlap day.
   const WINDOW_START = NOW - PAY_WINDOW_MS;
   const WINDOW_END = NOW;
   const oneWindow = { listHoldings: async () => [spotAt(WINDOW_START)] };
@@ -434,8 +441,10 @@ describe('an adaptive window', () => {
 
         return rows.length;
       }),
-      writeWalkCursor: jest.fn(async (_id: string, _field: string, cursorMs: number) => {
-        calls.push(`cursor ${cursorMs - WINDOW_START}`);
+      writeWalkCursor: jest.fn(async (_id: string, field: string, cursorMs: number) => {
+        if (field === FORWARD_CURSOR_FIELD) {
+          calls.push(`cursor ${cursorMs - WINDOW_START}`);
+        }
       }),
     });
 
@@ -445,6 +454,7 @@ describe('an adaptive window', () => {
       { startTime: WINDOW_START, endTime: WINDOW_END },
       { startTime: WINDOW_START, endTime: WINDOW_START + HALF },
       { startTime: WINDOW_START + HALF, endTime: WINDOW_END },
+      { startTime: WINDOW_START - DAY_MS, endTime: WINDOW_START },
     ]);
     expect(calls).toEqual([
       'fetch',
@@ -454,13 +464,13 @@ describe('an adaptive window', () => {
       'fetch',
       'add',
       `cursor ${PAY_WINDOW_MS}`,
+      'fetch',
     ]);
     expect(result).toEqual({ imported: 2, complete: true });
   });
 
-  it('never moves the watermark back when a sub-window of a cursor older than the window ends behind it', async () => {
-    // The forward pass starts a day behind such a cursor, and seven halvings of its window
-    // leave a first span that ends before the cursor.
+  it('halves a window from a cursor older than the window, and no forward span starts behind it', async () => {
+    // Seven halvings of the 89-day window the walk starts at the cursor.
     const cursor = NOW - 120 * DAY_MS;
     const deps = makeDeps({
       listHoldings: async () => [spotAt(cursor)],
@@ -470,7 +480,12 @@ describe('an adaptive window', () => {
     await sync(deps);
 
     const written = cursorWritesOf(deps);
-    expect(written[0]).toBe(cursor);
+    expect(
+      queriesOf(deps)
+        .slice(0, 8)
+        .every((query) => query.startTime >= cursor),
+    ).toBe(true);
+    expect(written[0]).toBeGreaterThan(cursor);
     expect(written.every((value, index) => index === 0 || value >= written[index - 1])).toBe(true);
   });
 
@@ -482,7 +497,8 @@ describe('an adaptive window', () => {
 
     const result = await sync(deps);
 
-    expect(deps.fetchPayHistory).toHaveBeenCalledTimes(3);
+    // Three requests walk the window; the fourth re-scans the overlap day behind it.
+    expect(deps.fetchPayHistory).toHaveBeenCalledTimes(4);
     expect(result.imported).toBe(1);
   });
 
@@ -607,9 +623,11 @@ describe('an adaptive window', () => {
 
           return rows.length;
         }),
-        writeWalkCursor: jest.fn(async (_id: string, _field: string, cursorMs: number) => {
-          payCursor = cursorMs;
-          written.push(cursorMs);
+        writeWalkCursor: jest.fn(async (_id: string, field: string, cursorMs: number) => {
+          if (field === FORWARD_CURSOR_FIELD) {
+            payCursor = cursorMs;
+            written.push(cursorMs);
+          }
         }),
       });
 
@@ -808,13 +826,13 @@ describe('forward progress on a busy account', () => {
     expect(writesTo(state, RESCAN_FIELD)).toEqual([]);
   });
 
-  it('leaves the re-scan alone while the forward pass is still going', async () => {
+  it('reads nothing behind the cursor while the forward pass is still going, and pins the re-scan', async () => {
     const state = freshState({ payCursor: NOW - 120 * DAY_MS });
 
-    const { deps } = await runOver(state, spreadOrders(2000, FLOOR + 1, 80 * DAY_MS));
+    const { deps } = await runOver(state, spreadOrders(2000, NOW - 119 * DAY_MS, 80 * DAY_MS));
 
-    expect(queriesOf(deps).every((query) => query.startTime >= NOW - 121 * DAY_MS)).toBe(true);
-    expect(writesTo(state, RESCAN_FIELD)).toEqual([]);
+    expect(queriesOf(deps).every((query) => query.startTime >= NOW - 120 * DAY_MS)).toBe(true);
+    expect(writesTo(state, RESCAN_FIELD)).toEqual([NOW - 121 * DAY_MS]);
   });
 
   it('does not re-scan at all after a disconnect reset every cursor to the floor', async () => {
@@ -881,6 +899,88 @@ describe('forward progress on a busy account', () => {
 
       expect(again.result.imported).toBe(0);
       expect(state.imported.size).toBe(denseOrders.length);
+    });
+  });
+
+  describe('with a cursor older than the re-scan window', () => {
+    const CURSOR = NOW - 120 * DAY_MS;
+    const keyOf = (state: WalkState, candidate: BinancePayOrder): string =>
+      `${state.accountId}:pay:C2C:${candidate.transactionId}:2`;
+
+    const runUntilComplete = async (
+      state: WalkState,
+      ordersOf: (attempt: number) => BinancePayOrder[],
+    ) => {
+      const runs: boolean[] = [];
+
+      for (let attempt = 0; attempt < 30 && runs.at(-1) !== true; attempt += 1) {
+        runs.push((await runOver(state, ordersOf(attempt))).result.complete);
+      }
+
+      return runs;
+    };
+
+    // 900 orders fill the day behind the cursor. A forward pass that restarted the overlap
+    // behind the cursor would spend every run on that day, and never reach the newer orders.
+    it('reaches now and imports every order once, with a dense day just behind the cursor', async () => {
+      const denseDay = spreadOrders(900, CURSOR - DAY_MS, DAY_MS);
+      const newer = [1, 2, 3].map((hours) =>
+        order({ transactionId: `newer-${hours}`, transactionTime: CURSOR + hours * 3_600_000 }),
+      );
+      const state = freshState({ payCursor: CURSOR });
+
+      const first = await runOver(state, [...denseDay, ...newer]);
+      const runs = [first.result.complete];
+
+      expect(state.payCursor).toBe(NOW);
+      expect(newer.every((candidate) => state.imported.has(keyOf(state, candidate)))).toBe(true);
+
+      for (let attempt = 0; attempt < 30 && runs.at(-1) !== true; attempt += 1) {
+        runs.push((await runOver(state, [...denseDay, ...newer])).result.complete);
+      }
+
+      expect(runs.at(-1)).toBe(true);
+      expect(runs.length).toBeLessThanOrEqual(6);
+      expect(state.imported.size).toBe(denseDay.length + newer.length);
+      expect(state.rescanCursor).toBe(HISTORY_FLOOR_MS);
+    });
+
+    // The order was pending at the last sync, so it was missing then and settles in the
+    // overlap day behind the cursor; the walk was away for 88.5 days, so the window start
+    // cuts that day in two.
+    it('imports an order that settled late in the overlap day, after an absence of 88.5 days', async () => {
+      const lateCursor = NOW - 88.5 * DAY_MS;
+      const late = order({ transactionId: 'late', transactionTime: lateCursor - 0.75 * DAY_MS });
+      const state = freshState({ payCursor: lateCursor });
+
+      await runOver(state, [late]);
+
+      expect(state.imported.has(keyOf(state, late))).toBe(true);
+    });
+
+    it('imports an order that settled late behind the old cursor, though the catch-up took several runs', async () => {
+      const late = order({ transactionId: 'late', transactionTime: CURSOR - 0.5 * DAY_MS });
+      const busy = spreadOrders(2000, CURSOR + 1, 80 * DAY_MS);
+      const state = freshState({ payCursor: CURSOR });
+
+      const runs = await runUntilComplete(state, (attempt) =>
+        attempt === 0 ? busy : [...busy, late],
+      );
+
+      expect(runs.length).toBeGreaterThan(2);
+      expect(runs.at(-1)).toBe(true);
+      expect(state.payCursor).toBe(NOW);
+      expect(state.imported.size).toBe(busy.length + 1);
+      expect(state.imported.has(keyOf(state, late))).toBe(true);
+    });
+
+    it('stores the re-scan mark at the overlap behind the old cursor on the first run', async () => {
+      const state = freshState({ payCursor: CURSOR });
+
+      await runOver(state, spreadOrders(2000, CURSOR + 1, 80 * DAY_MS));
+
+      expect(writesTo(state, RESCAN_FIELD)[0]).toBe(CURSOR - DAY_MS);
+      expect(state.writes[0]).toEqual([RESCAN_FIELD, CURSOR - DAY_MS]);
     });
   });
 });
