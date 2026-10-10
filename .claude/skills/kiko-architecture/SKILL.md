@@ -2711,7 +2711,13 @@ are built with `createPaneStackNavigator`.
   in-memory loan draft). Not saved: scroll, `attemptedSave`, open sheets, `pickedImplicitKind`,
   `leavingKind`. The "Add holding" round-trip
   auto-select (`use-select-created-holding`, a `useRef`) does not survive a fold: the user picks the
-  new holding by hand (known limit, pending the user). Proof on two panes: `accounts.stack.draft.navigator.test.tsx`.
+  new holding by hand (known limit, user-accepted 2026-10-10, no fix planned). Likewise a remounted
+  account form does not show the "Connected as <client name>" status of a Connect made before the
+  fold: the status is local state in `MonobankConnectField`
+  (`src/design-system/components/monobank-connect-field/`), the name comes from the token's
+  `fetchClientInfo`, and no name is stored. A re-tap of Connect re-syncs the same account (known
+  limit, user-accepted 2026-10-10, no fix planned). Proof on two panes:
+  `accounts.stack.draft.navigator.test.tsx`.
 - **`resetTabStackOnBlur`** (`src/navigation/reset-tab-stack-on-blur/`) is unchanged and every
   tab stack still passes it as `screenListeners`. It dispatches `popToTop` when the parent tab
   is not focused and the state's `index > 0`; in a split navigator that is the router's standard
