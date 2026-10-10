@@ -1725,8 +1725,8 @@ rows — the generic balance sync gives a live number, not a ledger. A
 SEPARATE step imports the ledger: `syncBinanceTransactions`
 (`src/crypto-sync/binance/binance.transactions.ts`), which
 `runCryptoSync`'s Binance arm runs AFTER the balance sync so the Spot
-holding already exists. It is SUPPLEMENTARY — the arm captures it in an
-`either` and only logs the failure through `logFailure`
+holding already exists. It is SUPPLEMENTARY — the arm runs it under
+`logOnFailure('[binance sync] capital history failed', …)`
 (`@kiko/diagnostics`, name and code only), so a 429 or a permission gap never
 fails the balance sync. TRADES are deliberately out of scope for this
 milestone; only DEPOSIT and WITHDRAWAL history is imported.
@@ -1744,21 +1744,23 @@ than restated here:
   `BinanceHistoryParseError`, so the window stops and the cursor stays (spec
   section 7, "Strict capital parse").
   Each client call is ONE offset page of ONE window; the offset-paging
-  and the window walk live in `binance.transactions.ts`, not the client.
+  and the window walk live in `binance.transactions.ts`, not the client
+  (window building, start resolution and satoshi parsing in
+  `binance.history-walk.ts`).
 - **90-day windows, offset paging.** Binance rejects a `startTime`/
   `endTime` span of 90 days or more and caps a page at 1000 rows
   (`HISTORY_PAGE_LIMIT` in `binance.history-client.ts`). The sync walks contiguous 89-day windows and
   offset-pages each window until a short page. `MAX_WINDOWS` /
   `MAX_PAGES_PER_WINDOW` are the loop backstops.
-- **Per-invocation pacing gate.** A first sync fans out many 89-day
-  windows × two endpoints; fired back-to-back they trip a Binance
-  weight-429. `runSync` builds ONE `createRequestGate` (the same helper
-  Monobank uses, `src/monobank/`) from the injected
-  `now`/`sleep` and threads it through EVERY deposit/withdraw page
-  request, spacing them by `BINANCE_REQUEST_INTERVAL_MS` (small — a
-  background import, not Monobank's 60s). `sleep` is a `BinanceTransactionSyncDeps`
-  seam so a test paces instantly; there is no `gate` seam (same rationale
-  as Monobank — the gate is built from `now`/`sleep`).
+- **One pacing gate per run.** `createBinanceHistoryRun`
+  (`binance.history-budget.ts`) builds ONE `createRequestGate` (the helper
+  Monobank uses, `src/monobank/`) plus the run budget; `runCryptoSync`'s
+  Binance arm passes that `run` to `syncBinanceTransactions`, which waits on
+  `run.gate` before EVERY history page, spacing them by
+  `BINANCE_REQUEST_INTERVAL_MS` (a background import, not Monobank's 60s).
+  The clock and `sleep` are inputs to `createBinanceHistoryRun`, not
+  `BinanceTransactionSyncDeps` seams, and there is no `gate` seam (same
+  rationale as Monobank).
 - **The watermark: a walk-owned key on the Spot holding's metadata, NOT
   `sync_state`.** `sync_state.last_sync_at` already means the Monobank
   statement-window cursor for a Monobank account (the table's own doc
@@ -1769,8 +1771,8 @@ than restated here:
   `holdings.metadata.binanceHistoryCursor` on the Spot holding (the one
   deposits/withdrawals attach to): "every window ending at or before this
   instant is imported." `binanceHistoryCursorOf` /
-  `holdingsRepo.setBinanceHistoryCursor` (`holding-metadata.ts`,
-  `holdings.repo.ts`) are the reader/writer; `resolveStartTime`'s window-start
+  `holdingsRepo.setBinanceWalkCursor` (`holding-metadata.ts`,
+  `holdings.repo.ts`) are the reader/writer; `resolveWalkStart`'s (`binance.history-walk.ts`) window-start
   formula is UNCHANGED from before this walk — it is now fed the watermark
   (falling back to the legacy `latestTransactionTime` cursor only when the
   holding has never carried one) instead of only ever reading the newest
@@ -1789,8 +1791,8 @@ than restated here:
   Binance arm always runs balance-then-history in the same invocation, so
   this bites on literally every subsequent sync). The upsert now reads the
   stored row's metadata inside the same write and carries over any
-  `carriedMetadataKeys` entry (the walk-owned keys, today only the history
-  cursor, plus a reopened Monobank card's `statementFromMs`):
+  `carriedMetadataKeys` entry (the walk-owned keys — today the four walk
+  cursors in `binanceWalkCursorFields` (`holding-metadata.ts`) — plus a reopened Monobank card's `statementFromMs`):
   `withWalkOwnedMetadataCarried` ALWAYS overwrites the target's own key
   with the stored value when the stored row has it, regardless of
   whether the caller's object also set that key; every other key is still
@@ -1800,29 +1802,28 @@ than restated here:
   wallet holding never carries either kind of key.
 - **Per-window commit order, crash-safe.** The walk goes oldest -> newest.
   A window's rows commit (`transactionsRepo.addManyDedup`) BEFORE its
-  watermark advances (`setBinanceHistoryCursor`) — two SEPARATE writes, not
+  watermark advances (`setBinanceWalkCursor`) — two SEPARATE writes, not
   one transaction, so a crash between them just re-imports that window
   idempotently on the next run rather than losing progress or re-marking
-  a window that never actually committed. `setBinanceHistoryCursor` also
+  a window that never actually committed. `setBinanceWalkCursor` also
   gates the write on the holding's OWN account still being
   `institution = 'binance'` (joined in the same query) and is a no-op
   otherwise — a walk holds the account's credentials for its whole run, so
   a disconnect can commit while a window write is still in flight; without
   the gate that late write would resurrect a forward watermark over the
   floor `resetBinanceHistoryCursor` just wrote (see below).
-- **A withdraw-history call budget, refreshed from Binance's own header.**
-  At most `WITHDRAW_CALLS_PER_RUN_FALLBACK` (9) withdraw-history calls per
-  run, or fewer once `X-SAPI-USED-UID-WEIGHT-1M` (parsed by
-  `usedWeightsFromHeaders` in `binance.client.ts` and returned by
-  `fetchWithdrawHistory` in `binance.history-client.ts` as
-  `HistoryPage.usedUidWeight1m`) shows the per-minute weight ceiling
-  (`UID_WEIGHT_BUDGET_1M`) is within one more call's weight
-  (`WITHDRAW_UID_WEIGHT`) of being spent. Deposits page UNBOUNDED (only the
-  withdraw endpoint is budgeted — it is the one that tripped the original
-  429). A window whose withdrawals cannot be FULLY paged within the
-  remaining budget is not committed and not marked; the next run redoes it
-  from the same, unmoved watermark. `syncBinanceTransactions` returns
-  `{ imported, complete }` — `complete: false` means history remains
+- **A per-lane call budget, refreshed from Binance's own headers.**
+  `createBinanceRunBudget` (`binance.history-budget.ts`) caps each
+  `BudgetLane` at its `LANE_CALL_CAPS` entry and charges `COSTS` per call.
+  The UID reading is `X-SAPI-USED-UID-WEIGHT-1M` (parsed by
+  `usedWeightsFromHeaders` in `binance.client.ts`, returned as
+  `HistoryPage.usedUidWeight1m`) against `UID_WEIGHT_BUDGET_1M`; the IP
+  reading is checked against `IP_BUDGET_1M`. Deposits are bounded by the IP
+  reading, not by a call cap. A window whose withdrawals cannot be FULLY
+  paged within the remaining budget is not committed and not marked; the
+  next run redoes it from the same, unmoved watermark.
+  `syncBinanceTransactions` returns the `WalkResult` `{ imported, complete }`
+  (`binance.history-walk.ts`) — `complete: false` means history remains
   behind and a later run (or sync press) resumes from the watermark.
 - **A thrown error under `src/crypto-sync` is a named class with a fixed
   message.** Semgrep `kiko-no-literal-sync-error` flags
@@ -1839,7 +1840,7 @@ than restated here:
   weight budget. The walk catches ONLY this error type, sets the cooldown
   to `now + retryAfterMs`, and returns `complete: false` without
   rethrowing — every EARLIER window's commit stays in place. Any OTHER
-  error still rethrows (unchanged: the Binance arm's own `either` wrapper
+  error still rethrows (unchanged: the Binance arm's `logOnFailure`
   logs it and never fails the balance sync). The balance sync
   (`binanceProvider.fetchBalances`) checks the SAME cooldown before its
   first request and makes ZERO Binance requests while it is active
@@ -1854,8 +1855,8 @@ than restated here:
   calls `holdingsRepo.resetBinanceHistoryCursor(accountId, HISTORY_FLOOR_MS)`
   (built on `withWalkOwnedMetadataResetToFloor`) BEFORE `accountsRepo.disconnect`
   — a failure after the reset only causes a harmless, idempotent re-walk
-  from the floor. It touches ONLY `binanceHistoryCursor`, setting it to
-  `HISTORY_FLOOR_MS` rather than deleting it: a DELETED cursor falls back
+  from the floor. It touches ONLY the walk cursors (`binanceWalkCursorFields`), setting each
+  one already present to `HISTORY_FLOOR_MS` rather than deleting it: a DELETED cursor falls back
   to the legacy `latestTransactionTime` cursor, which a reconnected
   DIFFERENT Binance account would inherit as if it were its own
   already-imported history, silently skipping that account's own older
@@ -1882,12 +1883,15 @@ than restated here:
   renders the `accountDetail.binanceHistoryPending` caption under the
   status line only when `connectedProvider === 'binance'`, so a wallet
   account never evaluates or shows it.
-- **Settled records only, on the Spot holding.** Only a credited deposit
-  (`status === 1`) and a completed withdrawal (`status === 6`) are
-  imported — a pending/rejected record never shows as a balance movement.
-  Deposits/withdrawals are account-level on-chain movements, so every row
-  attaches to the SPOT holding (match key `'BTC'`); Funding/Earn get no
-  transaction rows.
+- **Settled records only, on the wallet Binance names.** Only a credited
+  deposit (`status === 1`) and a completed withdrawal (`status === 6`) are
+  imported. `walletOf` in `binance.transactions.ts` places each row by
+  `walletType`: 0 or absent is Spot, 1 is Funding, any other value stops the
+  walk (`capital-wallet-unknown`; the other stop codes are the `capital-…`
+  ones in that file). The wallet holding is found by `binanceKeyOf`
+  (`binance.holding-keys.ts`) and, only for a row whose key is new, created
+  at zero by `holdingsRepo.ensureExchangeHoldings` (insert-only); a row
+  already stored keeps its holding. Earn gets no capital rows.
 - **Idempotent via `(source, external_id)`.** Each row is
   `source: 'binance'` with `externalId`
   `` `${accountId}:deposit:<id>` `` / `` `${accountId}:withdraw:<id>` ``
