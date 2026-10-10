@@ -64,6 +64,7 @@ the docs. Docs pages:
 | S3 | `GET /api/v3/account` | (existing) | | | `uid` | `spot/.../types/get-account-response.ts` |
 | S4 | `GET /sapi/v1/asset/transfer` | IP 1 | "last 6 months only"; window cap NOT documented; no times means the last 7 days | `current`, `size` (max not documented) | `type` (required param), `asset`, `amount`, `type`, `status`, `tranId`, `timestamp`. No `asset` param | `wallet/src/rest-api/modules/asset-api.ts`, `.../query-user-universal-transfer-history-response*.ts` |
 | S5 | `GET /sapi/v1/simple-earn/{flexible,locked}/history/{subscriptionRecord,redemptionRecord,rewardsRecord}` (6 endpoints) | IP 150 each | max 30 days; depth NOT documented | `current` (from 1), `size` (max not documented), response `{rows,total}` | flexible sub: `amount, asset, time, purchaseId, productId, type, sourceAccount, amtFromSpot, amtFromFunding, status`. flexible redeem: `amount, asset, time, projectId, redeemId, destAccount, status`. flexible rewards: `asset, rewards, projectId, type, time` (no id). locked sub: `positionId, purchaseId, projectId, time, asset, amount, lockPeriod, type, sourceAccount, amtFromSpot, amtFromFunding, status`. locked redeem: `positionId, redeemId, time, asset, lockPeriod, amount, originalAmount, type, deliverDate, lossAmount, isComplete, rewardAsset, rewardAmt, extraRewardAsset, estExtraRewardAmt, status`. locked rewards: `positionId, time, asset, lockPeriod, amount, type` (no id). `asset` filter param exists | `simple-earn/src/rest-api/modules/flexible-locked-api.ts`, `.../types/get-{flexible,locked}-*-response-rows-inner.ts` |
+| S1a | step 2/9 SDK facts (checked 2026-10-10) | | | | Pay `fundsDetail[].walletAssetCost` is a MAP `{ "<walletType>": "<amount>" }`, not an array; the client normalizes it to `{ walletType, amount }[]`. Flexible `rewardsRecord` `type` is optional (default ALL); the client always sends `type=ALL`, so there is one series. S4 and S5 page size max is 100 (docs) | `facts: .superpowers/sdd/binance-history/task1-sdk-facts.md` |
 | S6 (deferred, D7) | `GET /sapi/v1/convert/tradeFlow` | UID 3000 | max 30 days; `startTime` and `endTime` required; depth NOT documented | `limit` (max not in SDK), response `{list, startTime, endTime, limit, moreData}` | `quoteId, orderId, orderStatus, fromAsset, fromAmount, toAsset, toAmount, createTime`. NO wallet field. Placing an order takes `walletType` `SPOT`/`FUNDING`/`EARN` | `convert/src/rest-api/modules/*.ts`, `.../types/get-convert-trade-history-response*.ts` |
 
 Facts the walks rely on:
@@ -286,10 +287,26 @@ withdraw budget moves into this object, with the same numbers and the same rule.
   `rewardAmt` is NOT imported here, because rewards come from the rewards records
   (Q14). Key: `redeemId`.
 - **Rewards (D6-B): one row per reward record.**
-  - Each record is income on the Earn holding: +`rewards` (flexible) or
-    +`amount` (locked). Rewards are not internal and carry no marker.
-    Description: the literal `'Binance Earn'`. Placement on Earn is an
-    assumption (Q14).
+  - Each record is income: +`rewards` (flexible) or +`amount` (locked). Rewards
+    are not internal and carry no marker. Description: the literal
+    `'Binance Earn'`.
+  - **Placement (Q14, user ruling A, 2026-10-10).** A reward row has no wallet
+    field, so the wallet comes from the kind and the `type`:
+    flexible `REALTIME` -> Earn holding; flexible `BONUS` -> Spot holding;
+    locked (any `type`) -> Spot holding. Any other or unknown flexible `type`
+    (including `REWARDS`) stops the window with the fixed tag
+    `earn-reward-type-unknown`: no row is guessed, and the caption shows the walk
+    behind. A missing Spot holding is created at 0 (P7).
+  - **Known gap.** A locked product that pays its rewards at maturity to the
+    redeem destination (Spot, or the same-coin Flexible product = Earn, per
+    `redeemTo`) cannot be told apart from the locked reward row, so such a reward
+    is placed on Spot. The probe asks whether such rows exist (item 10).
+  - Sources (checked 2026-10-10): Binance FAQ, Simple Earn Flexible
+    (https://www.binance.com/en/support/faq/get-started-with-binance-simple-earn-flexible-products-3bd1a6eba20a445da1e94bf6cfa52e80):
+    REALTIME accrues in the Earn account, BONUS goes to Spot. Binance FAQ, Simple
+    Earn Locked
+    (https://www.binance.com/en/support/faq/get-started-with-binance-simple-earn-locked-products-af607a50de614350ae57be3e6f616699):
+    locked rewards go to Spot daily, with the maturity-paid exception.
   - The records have no id. The group of a record is (kind, `projectId` for
     flexible or `positionId` for locked, `type`, `time`). Within one fetched
     window, the records of one group are sorted by amount in satoshis, ascending,
@@ -417,7 +434,7 @@ Earn:
 | E4 | sub, no split fields, sourceAccount FUNDING | Funding -a, Earn +a |
 | E5 | flexible redeem, destAccount SPOT | Earn -a, Spot +a, paired |
 | E6 | locked redeem, rewardAmt > 0 | principal legs only; reward comes from E7 |
-| E7 | one flexible reward record | Earn +rewards, 'Binance Earn', key ends `:<time>:0` |
+| E7 | one flexible `REALTIME` reward record | Earn +rewards, 'Binance Earn', key ends `:<time>:0` |
 | E8 | two rewards in one group, amounts 0.00000002 and 0.00000001 | two rows, `n` 0 = 0.00000001, `n` 1 = 0.00000002 |
 | E9 | two identical reward records | two rows (`n` 0 and 1) |
 | E10 | re-read returns the same group | same keys, no new rows |
@@ -425,6 +442,10 @@ Earn:
 | E12 | reward with missing `time` or a non-finite amount | stop |
 | E13 | gathered rows are not equal to `total` | stop (`earn-page-drift`) |
 | E14 | status not settled | stop |
+| E15 | one flexible `BONUS` reward record | Spot +rewards, 'Binance Earn', no marker |
+| E16 | one locked reward record (any `type`) | Spot +amount, 'Binance Earn', no marker |
+| E17 | flexible reward with `type` `REWARDS` or an unknown value | stop (`earn-reward-type-unknown`), no row, cursor unmoved |
+| E18 | `BONUS` or locked reward, Spot holding missing | Spot created at 0 (P7), then the row |
 
 Convert: not imported (D7). No walk, no rows.
 
@@ -481,9 +502,12 @@ Probe items:
    window over 30 days, and the largest accepted `size`.
 10. Earn: per kind, the `status` values, the `sourceAccount`/`destAccount`
     values, how often `amtFromSpot` + `amtFromFunding` = `amount`, the earliest
-    record date, the largest `size`, the rewards `type` values, and for locked
-    redemptions how `amount` relates to `originalAmount`, `lossAmount`, and
-    `rewardAmt`. For rewards: the number of groups with more than one record, and
+    record date, the largest `size`, the count of rewards `type` values per kind
+    (before the merge, for Q14), and for locked redemptions how `amount` relates
+    to `originalAmount`, `lossAmount`, and `rewardAmt`. Maturity-paid question
+    (Q14 gap): whether locked reward rows exist that are paid at maturity to the
+    redeem destination, for example by comparing locked reward rows to locked
+    positions and redemptions with `redeemTo` FLEXIBLE. For rewards: the number of groups with more than one record, and
     the number of fully identical records (E9). Any identical record goes to the
     user before merge.
 11. Every SAPI response: whether `X-SAPI-USED-IP-WEIGHT-1M` and
@@ -506,7 +530,7 @@ Probe items:
 | Q11 | Universal transfer settled status value? | Only `CONFIRMED`. Anything else stops | 9 |
 | Q12 | Earn history depth? | Floor 2022-01-01. Older windows return empty | 10 |
 | Q13 | Earn settled status values? | Only `SUCCESS`. A pending status stops, a final failure is ignored | 10 |
-| Q14 | Where do Earn rewards land, and what does a locked redemption's `amount` mean? | Rewards go to Earn. Redemption legs use `amount`. `rewardAmt` is not imported from redemptions | 10 (plus the user checks one reward in the Binance app) |
+| Q14 | Where do Earn rewards land, and what does a locked redemption's `amount` mean? | ANSWERED, ruling A (user, 2026-10-10): flexible `REALTIME` -> Earn, flexible `BONUS` -> Spot, locked -> Spot, other flexible `type` stops (`earn-reward-type-unknown`); sources: the two FAQ URLs in section 6. Known gap: maturity-paid locked rewards. Redemption legs use `amount`. `rewardAmt` is not imported from redemptions | 10 (reward `type` counts per kind; maturity-paid question) |
 | Q15 | The SAPI IP ceiling and the IP header? | `IP_BUDGET_1M` 6000 and the per-walk caps, which hold even without the header | 11 |
 | Q16 | Are there fully identical reward records? | Each one is kept as its own row (E9) | 10 |
 | A1 | The Pay success `code` is `"000000"` | A missing `data` array or an unknown code is an error | 1 |
@@ -515,8 +539,9 @@ Probe items:
 
 - Run the probe script (task 7/7) and send back its output.
 - Before merge: if probe item 10 finds identical reward records (Q16), confirm
-  whether they are real double credits. Also check one Earn reward in the Binance
-  app and say which wallet it landed in (Q14).
+  whether they are real double credits.
+- Optional: check one BONUS or locked reward in the Binance app and say which
+  wallet it landed in. Q14 itself is ruled (A, 2026-10-10).
 
 ## Change sets (7 tasks, track `binance-history`)
 
