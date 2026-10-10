@@ -70,10 +70,12 @@ const makeCreateDatabaseTransaction = (
   databaseTransaction: unknown;
   inserts: Record<string, unknown>[];
   insertTables: string[];
+  conflictTargets: unknown[];
   updates: { set: Record<string, unknown>; whereCalled: boolean }[];
 } => {
   const inserts: Record<string, unknown>[] = [];
   const insertTables: string[] = [];
+  const conflictTargets: unknown[] = [];
   const updates: { set: Record<string, unknown>; whereCalled: boolean }[] = [];
   const databaseTransaction = {
     select: () => ({ from: () => Promise.resolve([{ assetMax, debtMin, allMax }]) }),
@@ -82,7 +84,14 @@ const makeCreateDatabaseTransaction = (
         inserts.push(values);
         insertTables.push(tableNameOf(table));
 
-        return Promise.resolve();
+        // A plain insert is awaited as it is; `onConflictDoNothing` records the column it names.
+        return Object.assign(Promise.resolve(), {
+          onConflictDoNothing: (config: { target: unknown }) => {
+            conflictTargets.push(config.target);
+
+            return Promise.resolve();
+          },
+        });
       },
     }),
     update: () => ({
@@ -101,7 +110,7 @@ const makeCreateDatabaseTransaction = (
     }),
   };
 
-  return { databaseTransaction, inserts, insertTables, updates };
+  return { databaseTransaction, inserts, insertTables, conflictTargets, updates };
 };
 
 describe('accountsRepo', () => {
@@ -315,6 +324,62 @@ describe('accountsRepo', () => {
 
     expect(result).toBe('pre-generated-id');
     expect(inserts[0]).toMatchObject({ id: 'pre-generated-id' });
+  });
+
+  it('create leaves a clash on the id to fail, as the one insert of a new account', async () => {
+    const { databaseTransaction, conflictTargets } = makeCreateDatabaseTransaction();
+    mockDatabaseTransaction = databaseTransaction;
+
+    await accountsRepo.create({ id: 'pre-generated-id', name: 'Cold', kind: 'crypto' });
+
+    expect(conflictTargets).toEqual([]);
+  });
+
+  describe('createIfAbsent', () => {
+    it('inserts the account under the given id and resolves to it', async () => {
+      const { databaseTransaction, inserts, insertTables } = makeCreateDatabaseTransaction(4);
+      mockDatabaseTransaction = databaseTransaction;
+
+      const result = await accountsRepo.createIfAbsent({
+        id: 'pending-id',
+        name: 'Cold',
+        kind: 'crypto',
+        color: '#112233',
+        icon: 'bitcoinsign',
+        bankId: null,
+      });
+
+      expect(result).toBe('pending-id');
+      expect(insertTables).toEqual(['accounts']);
+      expect(inserts[0]).toMatchObject({
+        id: 'pending-id',
+        name: 'Cold',
+        kind: 'crypto',
+        color: '#112233',
+        icon: 'bitcoinsign',
+        sortOrder: 5,
+      });
+    });
+
+    it('ignores a row already stored under the id, so a lost race fails nothing', async () => {
+      const { databaseTransaction, conflictTargets } = makeCreateDatabaseTransaction();
+      mockDatabaseTransaction = databaseTransaction;
+
+      await accountsRepo.createIfAbsent({ id: 'pending-id', name: 'Cold', kind: 'crypto' });
+
+      expect(conflictTargets).toHaveLength(1);
+      expect(conflictTargets[0] === accounts.id).toBe(true);
+    });
+
+    it('refuses an implicit kind like create, and inserts nothing', async () => {
+      const { databaseTransaction, inserts } = makeCreateDatabaseTransaction();
+      mockDatabaseTransaction = databaseTransaction;
+
+      await expect(
+        accountsRepo.createIfAbsent({ id: 'pending-id', name: 'Loan', kind: 'debt' }),
+      ).rejects.toThrow('implicit');
+      expect(inserts).toEqual([]);
+    });
   });
 
   it('create honors an explicitly provided sortOrder', async () => {

@@ -112,6 +112,25 @@ const insertImplicitAccount = async (
 type NewAccount = Pick<AccountRow, 'name' | 'kind'> &
   Partial<Pick<AccountRow, 'id' | 'institution' | 'bankId' | 'sortOrder' | 'color' | 'icon'>>;
 
+// The row both account creates insert: the id (the caller's, or a new one) and the next free grid
+// slot, after the implicit kinds are refused.
+const newAccountValues = async (
+  databaseTransaction: typeof database,
+  input: NewAccount,
+): Promise<NewAccount & Required<Pick<NewAccount, 'id' | 'sortOrder'>>> => {
+  if (isImplicitAccountKind(input.kind)) {
+    throw new Error(
+      'accountsRepo.create: a property/debt account is implicit; use createImplicitHolding',
+    );
+  }
+
+  return {
+    ...input,
+    id: input.id ?? id(),
+    sortOrder: input.sortOrder ?? (await nextSortOrder(databaseTransaction, input.kind)),
+  };
+};
+
 type NewCashAccount = {
   name: string;
   currency: Currency;
@@ -173,17 +192,26 @@ export const accountsRepo = {
    */
   create: (input: NewAccount): Promise<string> =>
     write(async (databaseTransaction) => {
-      if (isImplicitAccountKind(input.kind)) {
-        throw new Error(
-          'accountsRepo.create: a property/debt account is implicit; use createImplicitHolding',
-        );
-      }
+      const values = await newAccountValues(databaseTransaction, input);
+      await databaseTransaction.insert(accounts).values(values);
 
-      const accountId = input.id ?? id();
-      const sortOrder = input.sortOrder ?? (await nextSortOrder(databaseTransaction, input.kind));
-      await databaseTransaction.insert(accounts).values({ ...input, id: accountId, sortOrder });
+      return values.id;
+    }),
+  /**
+   * `create` for a caller whose id was pre-generated and may already be stored:
+   * the check and the insert are ONE statement, so a row another screen inserted
+   * under the same id first (a fold can leave its Connect running) is left as it
+   * is instead of failing on the primary key. Resolves to the id either way.
+   */
+  createIfAbsent: (input: NewAccount & Required<Pick<NewAccount, 'id'>>): Promise<string> =>
+    write(async (databaseTransaction) => {
+      const values = await newAccountValues(databaseTransaction, input);
+      await databaseTransaction
+        .insert(accounts)
+        .values(values)
+        .onConflictDoNothing({ target: accounts.id });
 
-      return accountId;
+      return values.id;
     }),
   /**
    * Insert a property or loan holding into the one live implicit account of its

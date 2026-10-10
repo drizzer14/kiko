@@ -380,6 +380,22 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
   // scrolls it into view; the error under it is the cue.
   const catalogFieldRef = useRef<FieldInstance>(null);
 
+  // The icon goes in the same insert: a second write could fail after the row exists, and a
+  // Binance connect reads any failure here as "no row" and clears the key pair of an account that
+  // is there. A row already stored under the pending id is another screen's Connect (this form was
+  // folded and remounted while it ran); the insert leaves it as it is rather than failing.
+  const insertAccountRow = (): Promise<string> =>
+    accountsRepo.createIfAbsent({
+      id: pendingAccountId,
+      name: trimmedName,
+      // Neither cash (createCashAccount returns before this) nor property/debt
+      // (the swap to the holding form leaves this form first) reaches here.
+      kind,
+      color,
+      icon,
+      bankId: catalogId,
+    });
+
   const ensureAccount = (): Promise<string> => {
     // Parity with the bank Save gate (`canSave = trimmedName !== ''`): a sync
     // form is always visible and a credential/address may be entered, but NO
@@ -396,27 +412,7 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
 
       return Promise.reject(new Error('name-required'));
     }
-    // The icon goes in the same insert: a second write could fail after the row
-    // exists, and a Binance connect reads any failure here as "no row" and
-    // clears the key pair of an account that is there.
-    accountCreate.current ??= (async () => {
-      // A row under the pending id is another screen's Connect (this form was folded and
-      // remounted while it ran): inserting again would fail on the primary key.
-      if (!(await accountRowExists(pendingAccountId))) {
-        await accountsRepo.create({
-          id: pendingAccountId,
-          name: trimmedName,
-          // Neither cash (createCashAccount returns before this) nor property/debt
-          // (the swap to the holding form leaves this form first) reaches here.
-          kind,
-          color,
-          icon,
-          bankId: catalogId,
-        });
-      }
-
-      return pendingAccountId;
-    })().catch((error: unknown) => {
+    accountCreate.current ??= insertAccountRow().catch((error: unknown) => {
       // A failed insert (DB locked, disk full) must not poison the session: clear
       // the latch so a retry — or the Save fallback — re-attempts, rather than
       // leaving the ref non-null and sending Save down the UPDATE branch, which
@@ -629,8 +625,10 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
       // account is valid (the user connects a source later from its detail
       // screen), and a metals account has no source to connect at all — it
       // always takes this branch. (Property and debt never get here: picking
-      // either swaps to the holding form, which leaves this form first.)
-      if (accountCreate.current !== null || (await accountRowExists(pendingAccountId))) {
+      // either swaps to the holding form, which leaves this form first.) Only the database
+      // says whether the row is there: a Connect's latch outlives a row deleted elsewhere, and
+      // updating a missing row would save nothing.
+      if (await accountRowExists(pendingAccountId)) {
         await accountsRepo.update(pendingAccountId, {
           name: trimmedName,
           color,
@@ -638,7 +636,7 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
         });
         await accountsRepo.setIcon(pendingAccountId, icon);
       } else {
-        await ensureAccount();
+        await insertAccountRow();
       }
       navigation.goBack();
     } catch {
