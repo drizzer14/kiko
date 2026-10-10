@@ -1945,6 +1945,31 @@ describe('HomeScreen', () => {
       expect(list.maxWidth).toBeUndefined();
     });
 
+    // UIKit insets a scroll indicator by the window's right safe-area inset; the left pane of
+    // columns does not reach that edge, so its lists stop UIKit doing it.
+    it.each([
+      ['columns', 'companion', false],
+      ['columns', 'primary', undefined],
+    ] as const)(
+      'stops UIKit insetting the list scroll indicator of the %s %s pane (%s)',
+      async (mode, pane, expected) => {
+        const view = await renderInPane(mode, pane);
+
+        expect(
+          view.getByTestId('home-transactions').props.automaticallyAdjustsScrollIndicatorInsets,
+        ).toBe(expected);
+      },
+    );
+
+    it('stops UIKit insetting the loading scroll indicator of the left pane', async () => {
+      setLiveData({ isLoading: { accounts: true } });
+      const view = await renderInPane('columns', 'companion');
+
+      expect(
+        view.getByTestId('home-loading-scroll').props.automaticallyAdjustsScrollIndicatorInsets,
+      ).toBe(false);
+    });
+
     it('caps and centres the fixed header above the list', async () => {
       const view = await renderInPane('rows', 'primary');
       const header = StyleSheet.flatten(view.getByTestId('home-header').props.style);

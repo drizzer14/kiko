@@ -13,6 +13,11 @@ import maybe, { foldMap } from 'fnts/maybe';
 import { ratesRepo } from '@kiko/rates/repo';
 import { accountsRepo } from '@kiko/accounts';
 import { settingsRepo } from '@kiko/settings';
+import Screen, {
+  useBottomClearance,
+  useContentCap,
+  useScrollIndicatorProps,
+} from '@kiko/design-system/components/screen';
 import { useTranslation } from 'react-i18next';
 import { holdingsRepo } from '@kiko/holdings/repo';
 import { useSyncAll } from '@kiko/sync/use-sync-all';
@@ -50,7 +55,6 @@ import { useDateRangeSelection } from '@kiko/design-system/use-date-range-select
 import { type FC, type ReactElement, useCallback, useMemo, useRef, useState } from 'react';
 import { useScrollToTopOnTabPress } from '@kiko/navigation/use-scroll-to-top-on-tab-press';
 import { buildRateTable, guardedBreakdown, guardedNetWorth } from '@kiko/rates/net-worth-view';
-import Screen, { useBottomClearance, useContentCap } from '@kiko/design-system/components/screen';
 
 import { styles } from './home.styles';
 import TransactionRow from './transaction-row';
@@ -120,6 +124,7 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
   // In a pane the list takes the whole pane, so its scroll indicator stays at the pane edge, and
   // only what sits in it is capped and centred: the fixed header and the list's content.
   const contentCap = useContentCap();
+  const scrollIndicatorProps = useScrollIndicatorProps();
 
   // Re-tapping the Home tab while already on it returns this transaction list to
   // the top (the standard iOS active-tab re-tap), driven off the native tab
@@ -556,6 +561,7 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
           <SyncProgressBar />
           <ScrollView
             testID="home-loading-scroll"
+            {...scrollIndicatorProps}
             style={styles.list}
             contentContainerStyle={[styles.listContent(listBottomClearance), contentCap]}
             // `syncAll` fans a job out over the `accounts` query's own data
@@ -686,6 +692,7 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
           renderItem={renderTransaction}
           renderSectionHeader={renderDayHeader}
           stickySectionHeadersEnabled={false}
+          {...scrollIndicatorProps}
           style={styles.list}
           contentContainerStyle={[styles.listContent(listBottomClearance), contentCap]}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}

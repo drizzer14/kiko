@@ -21,6 +21,17 @@ const LARGE_TITLE_EDGES: readonly Edge[] = ['left', 'right', 'bottom'];
  */
 export const useContentCap = () => foldMap(maybe(usePaneContext()), () => styles.paneCap);
 
+const STOP_INDICATOR_INSETS = { automaticallyAdjustsScrollIndicatorInsets: false } as const;
+
+/**
+ * The scroll view props that keep a scroll indicator at the edge of its own pane. UIKit insets the
+ * indicator by the window's right safe-area inset (the vertical tab bar), which put it inside the
+ * content of a pane that does not reach that edge. A pane at the window's right edge, and a screen
+ * outside a pane, keep UIKit's own inset. Spread it into every scroll view a screen renders.
+ */
+export const useScrollIndicatorProps = () =>
+  foldMap(maybe(usePaneContext()), (pane) => (pane.edges.right ? {} : STOP_INDICATOR_INSETS));
+
 /**
  * The edges a screen's SafeAreaView reserves when it is one of two panes. Outside a pane they are
  * what the screen has always used: the SafeAreaView's own default edges. In a pane the screen

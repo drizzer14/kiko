@@ -548,6 +548,30 @@ describe('HoldingDetailScreen', () => {
     expect(StyleSheet.flatten(list.props.style)?.maxWidth).toBeUndefined();
   });
 
+  it.each([
+    ['companion', false],
+    ['primary', undefined],
+  ] as const)(
+    'stops UIKit insetting the ledger scroll indicator only in the left %s pane of columns (%s)',
+    async (pane, expected) => {
+      seed(cashHolding);
+
+      const { getByTestId } = await render(
+        <PaneContext.Provider value={paneContextOf('columns', pane)}>
+          <HoldingDetailScreen
+            navigation={asNavigationProp<HoldingDetailProps['navigation']>(navigation)}
+            route={route}
+          />
+        </PaneContext.Provider>,
+        { wrapper: GestureRootWrapper },
+      );
+
+      expect(getByTestId('ledger-list').props.automaticallyAdjustsScrollIndicatorInsets).toBe(
+        expected,
+      );
+    },
+  );
+
   describe('when its holding is deleted from the other pane', () => {
     // The hook's own cases live in its test; these pin that the screen wires the hook, and what it
     // gives the hook as fresh.

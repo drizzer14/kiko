@@ -6,7 +6,7 @@ import { FieldBlurContext } from '@kiko/design-system/field-blur';
 import { styles } from './screen.styles';
 import type { ScreenProps } from './screen.props';
 import { useBottomClearance } from './use-bottom-clearance';
-import { useContentCap, usePaneScreen } from './use-pane-screen';
+import { useContentCap, usePaneScreen, useScrollIndicatorProps } from './use-pane-screen';
 
 const Screen: FC<ScreenProps> = ({
   children,
@@ -51,6 +51,7 @@ const Screen: FC<ScreenProps> = ({
   // since no tab bar is over it.
   const bottomClearance = useBottomClearance();
   const contentCap = useContentCap();
+  const scrollIndicatorProps = useScrollIndicatorProps();
   const { plainEdges, largeTitleEdges } = usePaneScreen();
   // The plain branch's `content` reserves the clearance itself only when it is
   // both the screen's true bottom edge AND has nothing else claiming that job:
@@ -67,6 +68,7 @@ const Screen: FC<ScreenProps> = ({
           ref={scrollableRef}
           testID="screen-scroll-view"
           contentInsetAdjustmentBehavior="automatic"
+          {...scrollIndicatorProps}
           // iOS-only: when the keyboard changes size, iOS adjusts this scroll
           // view's contentInset/scrollIndicatorInsets and scrolls the first
           // responder above the keyboard — the shared, app-wide auto-scroll so

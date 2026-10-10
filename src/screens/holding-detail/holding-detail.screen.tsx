@@ -24,6 +24,11 @@ import { Money } from '@kiko/currency/money';
 import { isRecord } from '@kiko/type-guards';
 import { accountsRepo } from '@kiko/accounts';
 import { settingsRepo } from '@kiko/settings';
+import Screen, {
+  useBottomClearance,
+  useContentCap,
+  useScrollIndicatorProps,
+} from '@kiko/design-system/components/screen';
 import { useTranslation } from 'react-i18next';
 import { holdingsRepo } from '@kiko/holdings/repo';
 import { FlatList, Pressable } from 'react-native';
@@ -72,7 +77,6 @@ import MoneyText, { type MoneyTextTone } from '@kiko/design-system/components/mo
 import { useDataReady, useLiveQuery, type HoldingRow, type TransactionRow } from '@kiko/db';
 import { type FC, type ReactElement, type ReactNode, useLayoutEffect, useMemo } from 'react';
 import { type HoldingValueBreakdown, holdingValueBreakdown } from '@kiko/holdings/holding-value';
-import Screen, { useBottomClearance, useContentCap } from '@kiko/design-system/components/screen';
 import { type DerivedEntry, derivedEntries, type EntryTone } from '@kiko/holdings/derived-entries';
 
 import {
@@ -948,6 +952,7 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
   const listBottomClearance = footerAction === 'none' ? bottomClearance : 0;
   // In a pane the list keeps the whole pane and its content is capped and centred.
   const contentCap = useContentCap();
+  const scrollIndicatorProps = useScrollIndicatorProps();
   // A term_deposit/bond event is day-granular (a contribution, coupon, or
   // redemption), so its ledger rows show the date only; every other holding
   // keeps the full date + HH:MM stamp.
@@ -1194,6 +1199,7 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
         // passes `bleedTop` above to drop the matching double top inset). Same
         // setting the shared `Screen` scroll branch applies to its ScrollView.
         contentInsetAdjustmentBehavior="automatic"
+        {...scrollIndicatorProps}
         style={styles.list}
         contentContainerStyle={[styles.listContent(listBottomClearance), contentCap]}
       />

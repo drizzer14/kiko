@@ -689,6 +689,32 @@ describe('Screen', () => {
       },
     );
 
+    // UIKit insets the indicator by the window's right safe-area inset (the vertical tab bar), even
+    // for a pane that does not reach that edge, which drew it inside the pane's content.
+    it.each([
+      ['columns', 'companion', false],
+      ['columns', 'primary', undefined],
+      ['rows', 'companion', undefined],
+      ['rows', 'primary', undefined],
+    ] as const)(
+      'stops UIKit insetting the scroll indicator of the %s %s pane (%s)',
+      async (mode, pane, expected) => {
+        const view = await renderInPane({ scroll: true }, mode, pane);
+
+        expect(
+          view.getByTestId(SCROLL_VIEW_TEST_ID).props.automaticallyAdjustsScrollIndicatorInsets,
+        ).toBe(expected);
+      },
+    );
+
+    it('leaves the scroll indicator insets to UIKit outside a pane', async () => {
+      const view = await renderScreen({ scroll: true });
+
+      expect(
+        view.getByTestId(SCROLL_VIEW_TEST_ID).props.automaticallyAdjustsScrollIndicatorInsets,
+      ).toBeUndefined();
+    });
+
     it('clears the tab bar in a pane that touches the window bottom', async () => {
       const { getByTestId } = await renderInPane({ footer: footerNode }, 'columns', 'companion');
 
