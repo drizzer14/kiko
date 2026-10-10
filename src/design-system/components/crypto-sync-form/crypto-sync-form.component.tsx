@@ -26,6 +26,8 @@ type CryptoSyncFormProps = {
   // Each source's field takes its own reminder: only the picked source's field is mounted.
   walletReminder?: ConnectReminder;
   binanceReminder?: ConnectReminder;
+  // Forwarded to the Binance field: runs when it unmounted during the write that stored its pair.
+  onBinanceStoredWhileUnmounted?: () => Promise<void>;
 };
 
 // A function (not a module-level constant) so its labels re-resolve against
@@ -47,6 +49,7 @@ const CryptoSyncForm: FC<CryptoSyncFormProps> = ({
   onConnectBinance,
   walletReminder,
   binanceReminder,
+  onBinanceStoredWhileUnmounted,
 }) => {
   const { t } = useTranslation();
   const [source, setSource] = useState<BalanceProviderId>('btc_wallet');
@@ -81,6 +84,7 @@ const CryptoSyncForm: FC<CryptoSyncFormProps> = ({
           accountId={accountId}
           onConnect={onConnectBinance}
           reminder={binanceReminder}
+          onStoredWhileUnmounted={onBinanceStoredWhileUnmounted}
         />
       )}
     </Box>

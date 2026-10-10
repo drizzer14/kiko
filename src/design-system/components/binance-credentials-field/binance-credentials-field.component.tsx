@@ -27,13 +27,20 @@ type BinanceCredentialsFieldProps = {
   onConnect: () => Promise<boolean>;
   // Lets a form that saves without this connection remind the user to press Connect first.
   reminder?: ConnectReminder;
+  /**
+   * Runs instead of `onConnect` when the field unmounted during the Keychain write that stored the
+   * verified pair, so the screen that owns the account decides what happens to the pair; it must
+   * not reject. Without it the pair stays where it was stored.
+   */
+  onStoredWhileUnmounted?: () => Promise<void>;
 };
 
 type Field = 'apiKey' | 'secret';
 
-type StoreOutcome = 'stored' | 'saveError' | 'unmounted';
+type StoreOutcome = 'stored' | 'saveError' | 'unmounted' | 'storedWhileUnmounted';
 
-// Stores a verified pair unless the field is gone, and says whether the connect may go on. A fold
+// Stores a verified pair unless the field is gone, and says whether the connect may go on. The pair
+// outlives the field only when the field unmounted during the write itself. A fold
 // or a kind switch removes the field during the check or the write; storing then would leave a key
 // under an account id nothing connects, and connecting would insert the account row after the form
 // that replaced this one already decided what to write, so the user presses Connect again.
@@ -52,7 +59,7 @@ const storePair = async (
     return 'saveError';
   }
 
-  return isMounted() ? 'stored' : 'unmounted';
+  return isMounted() ? 'stored' : 'storedWhileUnmounted';
 };
 
 // The Binance counterpart of the Monobank token field: two secure inputs for a
@@ -63,6 +70,7 @@ const BinanceCredentialsField: FC<BinanceCredentialsFieldProps> = ({
   accountId,
   onConnect,
   reminder,
+  onStoredWhileUnmounted,
 }) => {
   const { t } = useTranslation();
   const [apiKey, setAPIKey] = useState('');
@@ -104,6 +112,21 @@ const BinanceCredentialsField: FC<BinanceCredentialsFieldProps> = ({
     Linking.openURL(BINANCE_API_MANAGEMENT_URL);
   };
 
+  const connectStoredPair = async (): Promise<void> => {
+    const connected = await onConnect();
+
+    if (connected) {
+      // A connected pair is not an unsaved draft; editing it again makes it one.
+      onDraftChange?.(false);
+    }
+
+    setStatus(
+      connected
+        ? { kind: 'success', message: t('accountDetail.binanceConnected') }
+        : { kind: 'saveError', message: t('accountDetail.couldNotConnectBinance') },
+    );
+  };
+
   const handleConnect = (): void => {
     reminder?.onConnectPress();
 
@@ -133,22 +156,17 @@ const BinanceCredentialsField: FC<BinanceCredentialsFieldProps> = ({
         return;
       }
 
+      if (stored === 'storedWhileUnmounted') {
+        await onStoredWhileUnmounted?.();
+
+        return;
+      }
+
       if (stored === 'unmounted') {
         return;
       }
 
-      const connected = await onConnect();
-
-      if (connected) {
-        // A connected pair is not an unsaved draft; editing it again makes it one.
-        onDraftChange?.(false);
-      }
-
-      setStatus(
-        connected
-          ? { kind: 'success', message: t('accountDetail.binanceConnected') }
-          : { kind: 'saveError', message: t('accountDetail.couldNotConnectBinance') },
-      );
+      await connectStoredPair();
     })();
   };
 

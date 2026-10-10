@@ -468,24 +468,26 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
     });
   };
 
+  // The field stored its key pair under the pre-generated account id, and no Connect of it will
+  // follow. Only when no row owns it does nothing else ever clear it: a reject on an empty name
+  // leaves a row that is there with its keys, even one another screen's Connect has still queued
+  // (the read waits behind it), and a failed read of the row keeps them too. A failed clear is
+  // logged: the caller still reports its own outcome.
+  const clearPairIfRowMissing = async (): Promise<void> => {
+    const rowIsMissing =
+      bifoldr(await either<unknown, boolean>(async () => accountsRepo.exists(pendingAccountId))) ===
+      false;
+
+    if (rowIsMissing) {
+      await logOnFailure('[account-form] the Binance key pair could not be cleared', () =>
+        clearCredentials(pendingAccountId),
+      );
+    }
+  };
+
   const connectBinance = async (): Promise<boolean> => {
     if (!(await accountEnsured())) {
-      // The field stored its key pair under the pre-generated account id before
-      // this connect. Only when no row owns it does nothing else ever clear it: a
-      // reject on an empty name leaves a row that is there with its keys, even one
-      // another screen's Connect has still queued (the read waits behind it), and a
-      // failed read of the row keeps them too. A failed clear is logged: the
-      // connect still reports its own failure.
-      const rowIsMissing =
-        bifoldr(
-          await either<unknown, boolean>(async () => accountsRepo.exists(pendingAccountId)),
-        ) === false;
-
-      if (rowIsMissing) {
-        await logOnFailure('[account-form] the Binance key pair could not be cleared', () =>
-          clearCredentials(pendingAccountId),
-        );
-      }
+      await clearPairIfRowMissing();
 
       return false;
     }
@@ -863,6 +865,7 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
               onConnectBinance={connectBinance}
               walletReminder={reminderFor('wallet')}
               binanceReminder={reminderFor('binance')}
+              onBinanceStoredWhileUnmounted={clearPairIfRowMissing}
             />
           </Box>
         )}

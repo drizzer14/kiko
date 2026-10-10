@@ -44,18 +44,33 @@ jest.mock('@kiko/design-system/components/text', () => {
 
 type View = Awaited<ReturnType<typeof render>>;
 type OnConnect = ComponentProps<typeof BinanceCredentialsField>['onConnect'];
+type OnStoredWhileUnmounted = ComponentProps<
+  typeof BinanceCredentialsField
+>['onStoredWhileUnmounted'];
 
 const fillBoth = async (getByPlaceholderText: View['getByPlaceholderText']): Promise<void> => {
   await fireEvent.changeText(getByPlaceholderText('Binance API key'), 'api-key-fixture');
   await fireEvent.changeText(getByPlaceholderText('Binance API secret'), 'secret-fixture');
 };
 
-const fieldElement = (onConnect: OnConnect, reminder?: ConnectReminder): ReactElement => (
-  <BinanceCredentialsField accountId="acc-1" onConnect={onConnect} reminder={reminder} />
+const fieldElement = (
+  onConnect: OnConnect,
+  reminder?: ConnectReminder,
+  onStoredWhileUnmounted?: OnStoredWhileUnmounted,
+): ReactElement => (
+  <BinanceCredentialsField
+    accountId="acc-1"
+    onConnect={onConnect}
+    reminder={reminder}
+    onStoredWhileUnmounted={onStoredWhileUnmounted}
+  />
 );
 
-const renderField = (onConnect: OnConnect, reminder?: ConnectReminder): Promise<View> =>
-  render(fieldElement(onConnect, reminder));
+const renderField = (
+  onConnect: OnConnect,
+  reminder?: ConnectReminder,
+  onStoredWhileUnmounted?: OnStoredWhileUnmounted,
+): Promise<View> => render(fieldElement(onConnect, reminder, onStoredWhileUnmounted));
 
 const pressConnect = async (view: View): Promise<void> => {
   await act(async () => {
@@ -63,8 +78,11 @@ const pressConnect = async (view: View): Promise<void> => {
   });
 };
 
-const renderAndConnect = async (onConnect: OnConnect): Promise<View> => {
-  const view = await renderField(onConnect);
+const renderAndConnect = async (
+  onConnect: OnConnect,
+  onStoredWhileUnmounted?: OnStoredWhileUnmounted,
+): Promise<View> => {
+  const view = await renderField(onConnect, undefined, onStoredWhileUnmounted);
 
   await fillBoth(view.getByPlaceholderText);
   await pressConnect(view);
@@ -209,9 +227,27 @@ describe('BinanceCredentialsField', () => {
 
     // A field a fold or a kind switch replaced must not store the pair its check verified, nor
     // run the screen's connect: that would insert the account row after the new form looked for it.
-    it('stores nothing and does not connect when the check resolves after the field unmounted', async () => {
+    const pendingSave = (): { resolve: () => void } => {
+      const pending = { resolve: () => {} };
+      mockSaveCredentials.mockImplementation(
+        () =>
+          new Promise<void>((resolve) => {
+            pending.resolve = resolve;
+          }),
+      );
+
+      return pending;
+    };
+
+    const onStoredWhileUnmounted = jest.fn<Promise<void>, []>();
+
+    beforeEach(() => {
+      onStoredWhileUnmounted.mockResolvedValue(undefined);
+    });
+
+    it('stores nothing and reports nothing when the check resolves after the field unmounted', async () => {
       const pending = pendingFetch();
-      const view = await renderAndConnect(onConnect);
+      const view = await renderAndConnect(onConnect, onStoredWhileUnmounted);
 
       await view.unmount();
       await act(async () => {
@@ -220,36 +256,48 @@ describe('BinanceCredentialsField', () => {
 
       expect(mockSaveCredentials).not.toHaveBeenCalled();
       expect(onConnect).not.toHaveBeenCalled();
+      expect(onStoredWhileUnmounted).not.toHaveBeenCalled();
     });
 
-    it('does not connect when the field unmounted while the pair was being stored', async () => {
-      let resolveSave: () => void = () => {};
-      mockSaveCredentials.mockImplementation(
-        () =>
-          new Promise<void>((resolve) => {
-            resolveSave = resolve;
-          }),
-      );
+    // The pair is in the Keychain by then and the screen that owns the field decides what to do
+    // with it; connecting would insert an account row after the form that replaced this one looked.
+    it('reports the stored pair instead of connecting when the field unmounted during the write', async () => {
+      const pending = pendingSave();
+      const view = await renderAndConnect(onConnect, onStoredWhileUnmounted);
+
+      await view.unmount();
+      await act(async () => {
+        pending.resolve();
+      });
+
+      expect(onStoredWhileUnmounted).toHaveBeenCalledTimes(1);
+      expect(onConnect).not.toHaveBeenCalled();
+    });
+
+    it('does nothing more when the field unmounted during the write and no screen listens', async () => {
+      const pending = pendingSave();
       const view = await renderAndConnect(onConnect);
 
       await view.unmount();
       await act(async () => {
-        resolveSave();
+        pending.resolve();
       });
 
+      expect(mockSaveCredentials).toHaveBeenCalledTimes(1);
       expect(onConnect).not.toHaveBeenCalled();
     });
 
-    it('still stores the pair and connects once when the field stays mounted', async () => {
+    it('still stores the pair and connects once, reporting nothing, when the field stays mounted', async () => {
       const pending = pendingFetch();
 
-      await renderAndConnect(onConnect);
+      await renderAndConnect(onConnect, onStoredWhileUnmounted);
       await act(async () => {
         pending.resolve();
       });
 
       expect(mockSaveCredentials).toHaveBeenCalledTimes(1);
       expect(onConnect).toHaveBeenCalledTimes(1);
+      expect(onStoredWhileUnmounted).not.toHaveBeenCalled();
     });
   });
 

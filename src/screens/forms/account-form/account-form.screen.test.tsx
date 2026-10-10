@@ -120,11 +120,16 @@ beforeEach(() => {
   mockUsesRealMonobankField = false;
   mockExistsCalls = [];
   mockExistsAnswer = undefined;
+  mockBinanceStoredWhileUnmounted = undefined;
 });
 
 // The Connect closure the Monobank field was last given: a test calls an unmounted form's own
 // closure to run a Connect that is still in flight when the form is folded.
 let mockMonobankConnect: ((token: string) => Promise<boolean>) | undefined;
+
+// What the Binance field was last given to run when it unmounted during the Keychain write that
+// stored its pair: a test calls it after the field is gone.
+let mockBinanceStoredWhileUnmounted: (() => Promise<void>) | undefined;
 
 // Renders the real Monobank field, whose token check is `mockFetchClientInfo`, in place of the
 // mocked one below. Off before each test.
@@ -257,10 +262,13 @@ jest.mock('@kiko/design-system/components/binance-credentials-field', () => {
     default: ({
       onConnect,
       reminder,
+      onStoredWhileUnmounted,
     }: {
       onConnect: () => Promise<boolean>;
       reminder?: ConnectReminder;
+      onStoredWhileUnmounted?: () => Promise<void>;
     }) => {
+      mockBinanceStoredWhileUnmounted = onStoredWhileUnmounted;
       const onDraftChange = reminder?.onDraftChange;
       useEffect(() => () => onDraftChange?.(false), [onDraftChange]);
 
@@ -2560,6 +2568,74 @@ describe('AccountFormScreen — sync credentials on create', () => {
       await waitFor(() => expect(warn).toHaveBeenCalledTimes(1));
 
       warn.mockRestore();
+    });
+  });
+
+  // The field reports a pair it stored after it unmounted: a fold or a kind switch removed it
+  // during the Keychain write, so no Connect ever ran for it.
+  describe('the key pair the Binance field stored while it unmounted', () => {
+    const storedAfterKindSwitch = async (): Promise<() => Promise<void>> => {
+      const { getByLabelText, getByTestId, getByText } = await renderForm();
+
+      await fireEvent.changeText(getByLabelText('Name'), 'My Crypto');
+      await selectKind(getByTestId, 'crypto');
+      await fireEvent.press(getByText('Binance'));
+      const stored = mockBinanceStoredWhileUnmounted;
+
+      expect(stored).toBeDefined();
+      await selectKind(getByTestId, 'bank');
+
+      return stored as () => Promise<void>;
+    };
+
+    it('is cleared when no row owns it', async () => {
+      mockClearCredentials.mockResolvedValue(undefined);
+      const stored = await storedAfterKindSwitch();
+
+      await act(async () => stored());
+
+      expect(mockExistsCalls).toHaveLength(1);
+      expect(mockClearCredentials).toHaveBeenCalledTimes(1);
+      expect(mockClearCredentials).toHaveBeenCalledWith(mockExistsCalls[0]);
+      expect(mockCreate).not.toHaveBeenCalled();
+    });
+
+    it('is cleared after a fold when no row owns it', async () => {
+      mockClearCredentials.mockResolvedValue(undefined);
+      const { getByLabelText, getByTestId, getByText, unmount } = await renderForm();
+
+      await fireEvent.changeText(getByLabelText('Name'), 'My Crypto');
+      await selectKind(getByTestId, 'crypto');
+      await fireEvent.press(getByText('Binance'));
+      const stored = mockBinanceStoredWhileUnmounted;
+      await emitLayoutMode('columns');
+      await unmount();
+
+      expect(stored).toBeDefined();
+      await act(async () => stored?.());
+
+      expect(mockClearCredentials).toHaveBeenCalledTimes(1);
+      expect(mockClearCredentials).toHaveBeenCalledWith(mockExistsCalls[0]);
+    });
+
+    it('stays when a row owns it', async () => {
+      mockExistsAnswer = true;
+      const stored = await storedAfterKindSwitch();
+
+      await act(async () => stored());
+
+      expect(mockExistsCalls).toHaveLength(1);
+      expect(mockClearCredentials).not.toHaveBeenCalled();
+    });
+
+    it('stays when the read of the row fails', async () => {
+      const stored = await storedAfterKindSwitch();
+      mockQueueEnds = Promise.reject(new Error('database is locked'));
+
+      await act(async () => stored());
+
+      expect(mockExistsCalls).toHaveLength(1);
+      expect(mockClearCredentials).not.toHaveBeenCalled();
     });
   });
 
