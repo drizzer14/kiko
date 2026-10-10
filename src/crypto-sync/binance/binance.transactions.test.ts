@@ -83,7 +83,6 @@ const makeDeps = (over: Partial<BinanceTransactionSyncDeps> = {}): BinanceTransa
   ensureHoldings: jest.fn(async () => undefined),
   storedExternalIds: jest.fn(async () => new Set<string>()),
   latestTransactionTime: async () => undefined,
-  listHoldingTransactions: jest.fn(async () => []),
   addTransactions: jest.fn(async (rows: BinanceTransactionRow[]) => rows.length),
   writeWalkCursor: jest.fn(async () => undefined),
   fetchDepositHistory: jest.fn(async () => historyPage([])),
@@ -104,6 +103,24 @@ const sync = (
 const addedRows = (deps: BinanceTransactionSyncDeps, call = 0): BinanceTransactionRow[] =>
   (deps.addTransactions as jest.Mock).mock.calls[call][0] as BinanceTransactionRow[];
 
+/** The external id of every row any `addTransactions` call of the run was given. */
+const importedKeysOf = (deps: BinanceTransactionSyncDeps): string[] =>
+  (deps.addTransactions as jest.Mock).mock.calls.flatMap((call) =>
+    (call[0] as BinanceTransactionRow[]).map((row) => row.externalId),
+  );
+
+/** A Binance deposit history that answers as it does: the span's records, a page at a time. */
+const depositServer = (all: BinanceDeposit[]) =>
+  jest.fn(async (_apiKey: string, _secret: string, window: HistoryWindow) => {
+    const inRange = all
+      .filter(
+        (record) => record.insertTime >= window.startTime && record.insertTime <= window.endTime,
+      )
+      .sort((left, right) => right.insertTime - left.insertTime || left.id.localeCompare(right.id));
+
+    return historyPage(inRange.slice(window.offset, window.offset + HISTORY_PAGE_LIMIT));
+  });
+
 /**
  * A stateful Spot holding + `writeWalkCursor` pair for a multi-run test:
  * each run's `listHoldings` reads whatever the LAST run's `writeWalkCursor`
@@ -113,23 +130,19 @@ const makeStatefulSpotAccount = (): {
   listHoldings: () => Promise<HoldingRow[]>;
   writeWalkCursor: jest.Mock<Promise<void>, [string, string, number]>;
   cursor: () => number | null;
+  rescanCursor: () => number | null;
 } => {
-  let cursor: number | null = null;
+  const marks: Record<string, number> = {};
 
   return {
     listHoldings: async () => [
-      {
-        id: 'h-spot',
-        metadata:
-          cursor === null
-            ? { binanceAsset: 'BTC' }
-            : { binanceAsset: 'BTC', binanceHistoryCursor: cursor },
-      } as unknown as HoldingRow,
+      { id: 'h-spot', metadata: { binanceAsset: 'BTC', ...marks } } as unknown as HoldingRow,
     ],
-    writeWalkCursor: jest.fn(async (_holdingId: string, _field: string, cursorMs: number) => {
-      cursor = cursorMs;
+    writeWalkCursor: jest.fn(async (_holdingId: string, field: string, cursorMs: number) => {
+      marks[field] = cursorMs;
     }),
-    cursor: () => cursor,
+    cursor: () => marks.binanceHistoryCursor ?? null,
+    rescanCursor: () => marks.binanceHistoryRescanCursor ?? null,
   };
 };
 
@@ -170,7 +183,7 @@ describe('syncBinanceTransactions', () => {
   it('maps a settled deposit and withdrawal onto the Spot holding, signed, and imports them', async () => {
     // A recent cursor keeps the walk to a single 89-day window.
     const deps = makeDeps({
-      latestTransactionTime: async () => NOW - 10 * DAY_MS,
+      latestTransactionTime: async () => NOW - 88 * DAY_MS,
       fetchDepositHistory: jest.fn(async () => historyPage([deposit()])),
       fetchWithdrawHistory: jest.fn(async () => historyPage([withdrawal()])),
     });
@@ -215,7 +228,7 @@ describe('syncBinanceTransactions', () => {
   });
 
   it('writes the window cursor through writeWalkCursor on the Spot holding, as the capital cursor', async () => {
-    const deps = makeDeps({ latestTransactionTime: async () => NOW - 10 * DAY_MS });
+    const deps = makeDeps({ latestTransactionTime: async () => NOW - 88 * DAY_MS });
 
     await sync(deps);
 
@@ -227,7 +240,7 @@ describe('syncBinanceTransactions', () => {
     const sleep = jest.fn(async (_ms: number) => undefined);
     // A recent cursor keeps the walk to ONE 89-day window: a deposit request then
     // a withdraw request, two requests total.
-    const deps = makeDeps({ latestTransactionTime: async () => NOW - 10 * DAY_MS });
+    const deps = makeDeps({ latestTransactionTime: async () => NOW - 88 * DAY_MS });
 
     await sync(deps, ACCOUNT_ID, freshRun(deps.now, sleep));
 
@@ -258,7 +271,7 @@ describe('syncBinanceTransactions', () => {
 
   it('excludes a non-settled deposit (status !== 1) and withdrawal (status !== 6)', async () => {
     const deps = makeDeps({
-      latestTransactionTime: async () => NOW - 10 * DAY_MS,
+      latestTransactionTime: async () => NOW - 88 * DAY_MS,
       fetchDepositHistory: jest.fn(async () =>
         historyPage([deposit({ id: '2', status: 0 }), deposit({ id: '3' })]),
       ),
@@ -275,28 +288,54 @@ describe('syncBinanceTransactions', () => {
     ]);
   });
 
-  it('offset-pages within a window until a short page, collecting every row', async () => {
-    const fetchDepositHistory = jest.fn(
-      async (_key: string, _secret: string, window: HistoryWindow) =>
-        historyPage(window.offset === 0 ? fullDepositPage() : [deposit({ id: 'last' })]),
+  it('halves a span whose first page is full instead of paging through it, and imports every record once', async () => {
+    const records = Array.from({ length: HISTORY_PAGE_LIMIT + 1 }, (_unused, index) =>
+      deposit({ id: `d${index}`, insertTime: NOW - 80 * DAY_MS + index * 60_000 }),
     );
+    const fetchDepositHistory = depositServer(records);
     const deps = makeDeps({
-      latestTransactionTime: async () => NOW - 10 * DAY_MS,
+      latestTransactionTime: async () => NOW - 88 * DAY_MS,
       fetchDepositHistory,
     });
 
     const result = await sync(deps);
 
-    expect(result).toEqual({ imported: HISTORY_PAGE_LIMIT + 1, complete: true });
-    expect(fetchDepositHistory).toHaveBeenCalledTimes(2);
-    expect(fetchDepositHistory.mock.calls[0][2].offset).toBe(0);
-    expect(fetchDepositHistory.mock.calls[1][2].offset).toBe(HISTORY_PAGE_LIMIT);
+    const windows = fetchDepositHistory.mock.calls.map((call) => call[2]);
+    expect(windows[0]).toMatchObject({ startTime: NOW - 89 * DAY_MS, endTime: NOW, offset: 0 });
+    expect(windows[1].endTime - windows[1].startTime).toBe(Math.floor((89 * DAY_MS) / 2));
+    expect(windows.every((window) => window.offset === 0)).toBe(true);
+    expect(result.complete).toBe(true);
+    expect(new Set(importedKeysOf(deps)).size).toBe(HISTORY_PAGE_LIMIT + 1);
   });
 
-  it('re-sync from a recent cursor scans exactly the last 89-day window', async () => {
+  it('pages a span of one millisecond by offset until a short page, collecting every record', async () => {
+    const records = Array.from({ length: HISTORY_PAGE_LIMIT + 500 }, (_unused, index) =>
+      deposit({ id: `d${index}`, insertTime: NOW - 2 }),
+    );
+    const fetchDepositHistory = depositServer(records);
+    // A cursor a day after the start of a 2 ms window, so the forward pass is [NOW - 2, NOW].
+    const deps = makeDeps({
+      latestTransactionTime: async () => NOW - 2 + DAY_MS,
+      fetchDepositHistory,
+    });
+
+    await sync(deps);
+
+    // The first four requests are the forward pass; the re-scan behind it follows.
+    const forward = fetchDepositHistory.mock.calls.slice(0, 4).map((call) => call[2]);
+    expect(forward.map((span) => [span.startTime, span.endTime, span.offset])).toEqual([
+      [NOW - 2, NOW, 0],
+      [NOW - 2, NOW - 1, 0],
+      [NOW - 2, NOW - 1, HISTORY_PAGE_LIMIT],
+      [NOW - 1, NOW, 0],
+    ]);
+    expect(new Set(importedKeysOf(deps)).size).toBe(HISTORY_PAGE_LIMIT + 500);
+  });
+
+  it('re-sync from a cursor one window back scans exactly the last 89-day window', async () => {
     const fetchDepositHistory = emptyDepositFetch();
     const deps = makeDeps({
-      latestTransactionTime: async () => NOW - 10 * DAY_MS,
+      latestTransactionTime: async () => NOW - 88 * DAY_MS,
       fetchDepositHistory,
     });
 
@@ -306,6 +345,22 @@ describe('syncBinanceTransactions', () => {
     const window = fetchDepositHistory.mock.calls[0][2];
     expect(window.startTime).toBe(NOW - 89 * DAY_MS);
     expect(window.endTime).toBe(NOW);
+  });
+
+  it('re-sync from a recent cursor goes forward from the overlap, then re-scans the window behind it', async () => {
+    const fetchDepositHistory = emptyDepositFetch();
+    const deps = makeDeps({
+      latestTransactionTime: async () => NOW - 10 * DAY_MS,
+      fetchDepositHistory,
+    });
+
+    const result = await sync(deps);
+
+    expect(fetchDepositHistory.mock.calls.map((call) => call[2])).toEqual([
+      { startTime: NOW - 11 * DAY_MS, endTime: NOW, offset: 0 },
+      { startTime: NOW - 89 * DAY_MS, endTime: NOW - 11 * DAY_MS, offset: 0 },
+    ]);
+    expect(result).toEqual({ imported: 0, complete: true });
   });
 
   it('walks contiguous windows back to a cursor older than one window', async () => {
@@ -361,9 +416,10 @@ describe('syncBinanceTransactions', () => {
     await sync(deps);
 
     const windows = fetchDepositHistory.mock.calls.map((call) => call[2]);
-    expect(windows).toHaveLength(1);
-    expect(windows[0].startTime).toBe(NOW - 89 * DAY_MS);
-    expect(windows[0].endTime).toBe(NOW);
+    expect(windows.map((window) => [window.startTime, window.endTime])).toEqual([
+      [cursor - DAY_MS, NOW],
+      [NOW - 89 * DAY_MS, cursor - DAY_MS],
+    ]);
   });
 
   it('a same-account reconnect after a disconnect (watermark reset to the floor) walks from the floor, even with an old latest set', async () => {
@@ -379,7 +435,7 @@ describe('syncBinanceTransactions', () => {
             metadata: { binanceAsset: 'BTC', binanceHistoryCursor: HISTORY_FLOOR_MS },
           },
         ] as unknown as HoldingRow[],
-      latestTransactionTime: async () => NOW - 10 * DAY_MS,
+      latestTransactionTime: async () => NOW - 88 * DAY_MS,
       fetchDepositHistory,
     });
 
@@ -390,7 +446,7 @@ describe('syncBinanceTransactions', () => {
   });
 
   it('imports nothing but still advances the watermark when the window holds no settled records', async () => {
-    const deps = makeDeps({ latestTransactionTime: async () => NOW - 10 * DAY_MS });
+    const deps = makeDeps({ latestTransactionTime: async () => NOW - 88 * DAY_MS });
 
     const result = await sync(deps);
 
@@ -426,7 +482,7 @@ describe('syncBinanceTransactions', () => {
 
   it('rejects when a history request fails so the caller can surface it', async () => {
     const deps = makeDeps({
-      latestTransactionTime: async () => NOW - 10 * DAY_MS,
+      latestTransactionTime: async () => NOW - 88 * DAY_MS,
       fetchDepositHistory: jest.fn(async () => {
         throw new Error('Too much request weight used');
       }),
@@ -465,7 +521,7 @@ describe('syncBinanceTransactions', () => {
 
   it('keys the same record identically across runs so a re-sync dedupes', async () => {
     const deps = makeDeps({
-      latestTransactionTime: async () => NOW - 10 * DAY_MS,
+      latestTransactionTime: async () => NOW - 88 * DAY_MS,
       fetchDepositHistory: jest.fn(async () => historyPage([deposit({ id: '42' })])),
     });
 
@@ -483,11 +539,11 @@ describe('syncBinanceTransactions', () => {
   // connection's row.
   it('namespaces the external id per account so two connections cannot collide on one raw id', async () => {
     const depsA = makeDeps({
-      latestTransactionTime: async () => NOW - 10 * DAY_MS,
+      latestTransactionTime: async () => NOW - 88 * DAY_MS,
       fetchDepositHistory: jest.fn(async () => historyPage([deposit({ id: '7' })])),
     });
     const depsB = makeDeps({
-      latestTransactionTime: async () => NOW - 10 * DAY_MS,
+      latestTransactionTime: async () => NOW - 88 * DAY_MS,
       fetchDepositHistory: jest.fn(async () => historyPage([deposit({ id: '7' })])),
     });
 
@@ -500,7 +556,7 @@ describe('syncBinanceTransactions', () => {
 });
 
 // A recent cursor keeps each case to one 89-day window.
-const RECENT_CURSOR = async () => NOW - 10 * DAY_MS;
+const RECENT_CURSOR = async () => NOW - 88 * DAY_MS;
 
 describe('wallet placement by walletType (C-matrix)', () => {
   it.each([
@@ -988,17 +1044,19 @@ describe('resumable, budgeted walk', () => {
     expect(deps.writeWalkCursor).not.toHaveBeenCalled();
   });
 
-  it('a deposit page that leaves room for exactly one more IP weight lets the window continue', async () => {
+  it('a deposit page that leaves room for exactly one more IP weight lets the walk go on with the half', async () => {
     const fetchDepositHistory = jest.fn(
       async (_key: string, _secret: string, window: HistoryWindow) =>
-        window.offset === 0 ? historyPage(fullDepositPage(), undefined, 5_999) : historyPage([]),
+        window.endTime === NOW && window.startTime === NOW - 89 * DAY_MS
+          ? historyPage(fullDepositPage(), undefined, 5_999)
+          : historyPage([]),
     );
     const deps = makeDeps({ latestTransactionTime: RECENT_CURSOR, fetchDepositHistory });
 
     const result = await sync(deps, 'acc-ip-room');
 
-    expect(fetchDepositHistory).toHaveBeenCalledTimes(2);
-    expect(result).toEqual({ imported: HISTORY_PAGE_LIMIT, complete: true });
+    expect(fetchDepositHistory.mock.calls.length).toBeGreaterThan(1);
+    expect(result).toEqual({ imported: 0, complete: true });
   });
 
   it('a window needing a 2nd withdraw page when only 1 call is left is not committed and not marked', async () => {
@@ -1044,7 +1102,7 @@ describe('resumable, budgeted walk', () => {
       listHoldings: account.listHoldings,
       writeWalkCursor,
       addTransactions,
-      latestTransactionTime: async () => NOW - 10 * DAY_MS,
+      latestTransactionTime: async () => NOW - 88 * DAY_MS,
       fetchDepositHistory: jest.fn(async () => historyPage([deposit()])),
       fetchWithdrawHistory: jest.fn(async () => historyPage([])),
     });
@@ -1052,38 +1110,6 @@ describe('resumable, budgeted walk', () => {
     await sync(deps, 'acc-crash-order');
 
     expect(invocationCallOrder).toEqual(['addTransactions', 'writeWalkCursor']);
-  });
-
-  // PROBE, not a fix (reported to the orchestrator): the capital walk shares the Pay walk's
-  // stall shape. Once the cursor is inside the last 89 days its single window starts at
-  // `now - 89 days` every run, and a window with more withdrawals than one run's cap of pages
-  // never commits, so the newest records never import. The threshold is far higher here (9
-  // pages of 1000 withdrawals in 89 days), which is why it is the documented known limit in
-  // `fetchAllInWindow`. If the capital walk is moved onto the forward-first plan, this test
-  // changes with it.
-  it('probe: a window with more withdrawal pages than one run affords never commits, on any later run', async () => {
-    const account = makeStatefulSpotAccount();
-    const fullPage = Array.from({ length: HISTORY_PAGE_LIMIT }, (_unused, index) =>
-      withdrawal({ id: `w${index}` }),
-    );
-    const fetchWithdrawHistory = jest.fn(async () => historyPage(fullPage));
-    const addTransactions = jest.fn(async (rows: BinanceTransactionRow[]) => rows.length);
-    const deps = makeFirstSyncDeps(account, { fetchWithdrawHistory, addTransactions });
-    await account.writeWalkCursor('h-spot', 'binanceHistoryCursor', NOW - 2 * DAY_MS);
-    account.writeWalkCursor.mockClear();
-
-    const results = [];
-
-    for (let attempt = 0; attempt < 4; attempt += 1) {
-      fetchWithdrawHistory.mockClear();
-      results.push(await sync(deps, 'acc-probe-stall'));
-      expect(fetchWithdrawHistory).toHaveBeenCalledTimes(LANE_CALL_CAPS.capitalWithdraw);
-    }
-
-    expect(results.every((result) => !result.complete && result.imported === 0)).toBe(true);
-    expect(addTransactions).not.toHaveBeenCalled();
-    expect(account.writeWalkCursor).not.toHaveBeenCalled();
-    expect(account.cursor()).toBe(NOW - 2 * DAY_MS);
   });
 
   it('regression: rows from an earlier, committed window ARE written despite a later 429 (inverse of the all-or-nothing bug)', async () => {
@@ -1111,129 +1137,227 @@ describe('resumable, budgeted walk', () => {
   });
 });
 
-describe('a capital row that is the twin of a stored Pay row', () => {
-  const MINUTE_MS = 60_000;
-  const TIME = NOW - DAY_MS;
-  const HALF_BTC_SATOSHIS = 50_000_000;
+describe('the capital re-scan', () => {
+  const FORWARD_FIELD = 'binanceHistoryCursor';
+  const RESCAN_FIELD = 'binanceHistoryRescanCursor';
 
-  type StoredRow = {
-    holdingId: string;
-    externalId: string | null;
-    amountMinorUnits: number;
-    time: number;
+  const accountWith = async (marks: Record<string, number>) => {
+    const account = makeStatefulSpotAccount();
+
+    for (const [field, cursorMs] of Object.entries(marks)) {
+      await account.writeWalkCursor('h-spot', field, cursorMs);
+    }
+    account.writeWalkCursor.mockClear();
+
+    return account;
   };
 
-  const payRow = (over: Partial<StoredRow> = {}): StoredRow => ({
-    holdingId: 'h-funding',
-    externalId: `${ACCOUNT_ID}:pay:C2C:p1:1`,
-    amountMinorUnits: HALF_BTC_SATOSHIS,
-    time: TIME + 9 * MINUTE_MS,
-    ...over,
-  });
+  const writesTo = (account: StatefulSpotAccount, field: string): number[] =>
+    account.writeWalkCursor.mock.calls.filter((call) => call[1] === field).map((call) => call[2]);
 
-  const runWith = async (
-    stored: StoredRow[],
-    deposits: BinanceDeposit[] = [deposit({ insertTime: TIME })],
-    over: Partial<BinanceTransactionSyncDeps> = {},
-  ) => {
-    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
-    const deps = makeDeps({
-      listHoldings: async () =>
-        [
-          { id: 'h-spot', metadata: { binanceAsset: 'BTC', binanceHistoryCursor: NOW - DAY_MS } },
-          fundingHolding,
-        ] as unknown as HoldingRow[],
-      fetchDepositHistory: jest.fn(async () => historyPage(deposits)),
-      listHoldingTransactions: jest.fn(async (holdingId: string) =>
-        stored.filter((row) => row.holdingId === holdingId),
-      ),
-      ...over,
+  it('resumes from its stored cursor', async () => {
+    const account = await accountWith({
+      [FORWARD_FIELD]: NOW - 2 * DAY_MS,
+      [RESCAN_FIELD]: NOW - 40 * DAY_MS,
     });
-    const result = await sync(deps, ACCOUNT_ID);
-    const logged = warn.mock.calls;
-    warn.mockRestore();
+    const fetchDepositHistory = emptyDepositFetch();
+    const deps = makeFirstSyncDeps(account, { fetchDepositHistory });
 
-    return { deps, result, logged };
-  };
+    await sync(deps);
 
-  it('is left out, with the window still committed, and says so once with a fixed code', async () => {
-    const { deps, result, logged } = await runWith([payRow()]);
-
-    expect(result.complete).toBe(true);
-    expect(deps.addTransactions).not.toHaveBeenCalled();
-    expect(deps.writeWalkCursor).toHaveBeenCalled();
-    expect(logged).toEqual([
-      [
-        '[binance sync] history row left out',
-        { name: 'BinanceWalkNotice', code: 'capital-overlap-skip' },
-      ],
+    expect(fetchDepositHistory.mock.calls.map((call) => call[2])).toEqual([
+      { startTime: NOW - 3 * DAY_MS, endTime: NOW, offset: 0 },
+      { startTime: NOW - 40 * DAY_MS, endTime: NOW - 3 * DAY_MS, offset: 0 },
     ]);
   });
 
-  it('is kept 11 minutes from the Pay row, and when the size or sign differs', async () => {
-    const apart = await runWith([payRow({ time: TIME + 11 * MINUTE_MS })]);
-    const otherSize = await runWith([payRow({ amountMinorUnits: HALF_BTC_SATOSHIS + 1 })]);
-    const otherSign = await runWith([payRow({ amountMinorUnits: -HALF_BTC_SATOSHIS })]);
+  it('writes the capital cursor for the forward pass and the restart mark when the re-scan ends', async () => {
+    const account = await accountWith({
+      [FORWARD_FIELD]: NOW - 2 * DAY_MS,
+      [RESCAN_FIELD]: NOW - 40 * DAY_MS,
+    });
 
-    expect(addedRows(apart.deps)).toHaveLength(1);
-    expect(addedRows(otherSize.deps)).toHaveLength(1);
-    expect(addedRows(otherSign.deps)).toHaveLength(1);
+    const result = await sync(makeFirstSyncDeps(account));
+
+    expect(result).toEqual({ imported: 0, complete: true });
+    expect(writesTo(account, FORWARD_FIELD)).toEqual([NOW]);
+    expect(writesTo(account, RESCAN_FIELD)).toEqual([HISTORY_FLOOR_MS]);
   });
 
-  it('pairs a withdrawal with an outgoing Pay row', async () => {
-    const { deps } = await runWith(
-      [payRow({ amountMinorUnits: -25_000_000, time: Date.UTC(2024, 0, 3, 0, 5) })],
-      [],
-      { fetchWithdrawHistory: jest.fn(async () => historyPage([withdrawal()])) },
+  it('starts a new pass at the window start once the stored cursor is the restart mark', async () => {
+    const account = await accountWith({
+      [FORWARD_FIELD]: NOW - 2 * DAY_MS,
+      [RESCAN_FIELD]: HISTORY_FLOOR_MS,
+    });
+    const fetchDepositHistory = emptyDepositFetch();
+
+    const result = await sync(makeFirstSyncDeps(account, { fetchDepositHistory }));
+
+    expect(fetchDepositHistory.mock.calls[1][2].startTime).toBe(NOW - 89 * DAY_MS);
+    expect(result.complete).toBe(true);
+    expect(writesTo(account, RESCAN_FIELD)).toEqual([]);
+  });
+
+  it('writes no re-scan cursor on a light account that has no pass in progress', async () => {
+    const account = await accountWith({ [FORWARD_FIELD]: NOW - 3_600_000 });
+
+    const result = await sync(makeFirstSyncDeps(account));
+
+    expect(result).toEqual({ imported: 0, complete: true });
+    expect(writesTo(account, RESCAN_FIELD)).toEqual([]);
+  });
+
+  it('leaves the re-scan alone while the forward pass is still going', async () => {
+    const account = await accountWith({ [FORWARD_FIELD]: NOW - 60 * DAY_MS });
+    const records = Array.from({ length: 6_000 }, (_unused, index) =>
+      withdrawal({ id: `w${index}`, applyTime: NOW - 60 * DAY_MS + index * 60_000 }),
     );
 
-    expect(deps.addTransactions).not.toHaveBeenCalled();
+    const result = await sync(
+      makeFirstSyncDeps(account, { fetchWithdrawHistory: withdrawalServer(records) }),
+    );
+
+    expect(result.complete).toBe(false);
+    expect(writesTo(account, FORWARD_FIELD).length).toBeGreaterThan(0);
+    expect(writesTo(account, RESCAN_FIELD)).toEqual([]);
   });
 
-  it('is no match for a capital row of the same size, nor for another source', async () => {
-    const { deps } = await runWith([
-      payRow({ externalId: `${ACCOUNT_ID}:deposit:other` }),
-      payRow({ externalId: null }),
+  it('does not re-scan at all after a disconnect reset every cursor to the floor', async () => {
+    const account = await accountWith({
+      [FORWARD_FIELD]: HISTORY_FLOOR_MS,
+      [RESCAN_FIELD]: HISTORY_FLOOR_MS,
+    });
+    const fetchDepositHistory = emptyDepositFetch();
+
+    await sync(makeFirstSyncDeps(account, { fetchDepositHistory }));
+
+    expect(fetchDepositHistory.mock.calls[0][2].startTime).toBe(HISTORY_FLOOR_MS);
+    expect(writesTo(account, RESCAN_FIELD)).toEqual([]);
+  });
+
+  it('never moves the capital cursor back when a halved span ends behind it', async () => {
+    const account = await accountWith({ [FORWARD_FIELD]: NOW - 3_600_000 });
+    const fetchDepositHistory = depositServer([
+      ...fullDepositPage(),
+      deposit({ id: 'late', insertTime: NOW - 1_000 }),
     ]);
 
-    expect(addedRows(deps)).toHaveLength(1);
+    await sync(makeFirstSyncDeps(account, { fetchDepositHistory }));
+
+    const forward = writesTo(account, FORWARD_FIELD);
+    expect(forward.length).toBeGreaterThan(0);
+    expect(forward.every((cursor, index) => index === 0 || cursor >= forward[index - 1])).toBe(
+      true,
+    );
+    expect(forward.every((cursor) => cursor >= NOW - 3_600_000)).toBe(true);
+  });
+});
+
+/** A Binance withdraw history that answers as it does: the span's records, a page at a time. */
+const withdrawalServer = (all: BinanceWithdrawal[]) =>
+  jest.fn(async (_apiKey: string, _secret: string, window: HistoryWindow) => {
+    const inRange = all
+      .filter((record) => {
+        const time = parseWithdrawTime(record.applyTime);
+
+        return time >= window.startTime && time <= window.endTime;
+      })
+      .sort(
+        (left, right) =>
+          parseWithdrawTime(right.applyTime) - parseWithdrawTime(left.applyTime) ||
+          left.id.localeCompare(right.id),
+      );
+
+    return historyPage(inRange.slice(window.offset, window.offset + HISTORY_PAGE_LIMIT));
   });
 
-  it('pairs only the closer of two same-size deposits beside one Pay row', async () => {
-    const near = deposit({ id: 'near', insertTime: TIME + 8 * MINUTE_MS });
-    const far = deposit({ id: 'far', insertTime: TIME });
-    const { deps } = await runWith([payRow()], [far, near]);
+describe('forward progress on a heavy account', () => {
+  const ACCOUNT = 'acc-heavy';
+  const HEAVY_COUNT = 12_000;
+  const SPAN_MS = 88 * DAY_MS - 1_000;
+  // 12000 withdrawals in 88 days: the last 89 days need 13 pages, and one run affords 9.
+  const heavyWithdrawals = Array.from({ length: HEAVY_COUNT }, (_unused, index) =>
+    withdrawal({
+      id: `w${index}`,
+      applyTime: NOW - 88 * DAY_MS + Math.floor((index * SPAN_MS) / HEAVY_COUNT),
+    }),
+  );
+  const keyOf = (record: BinanceWithdrawal): string => `${ACCOUNT}:withdraw:${record.id}`;
 
-    expect(addedRows(deps).map((row) => row.externalId)).toEqual([`${ACCOUNT_ID}:deposit:far`]);
-  });
+  type HeavyState = {
+    account: ReturnType<typeof makeStatefulSpotAccount>;
+    imported: Set<string>;
+  };
 
-  it('never pairs a deposit that is stored already: the re-scan refreshes it', async () => {
-    const { deps, logged } = await runWith([payRow()], [deposit({ insertTime: TIME })], {
-      storedExternalIds: jest.fn(async () => new Set([`${ACCOUNT_ID}:deposit:1`])),
-    });
-
-    expect(addedRows(deps)).toHaveLength(1);
-    expect(logged).toEqual([]);
-  });
-
-  it('reads no stored row for a window whose rows are all stored already', async () => {
-    const { deps } = await runWith([], [deposit()], {
-      storedExternalIds: jest.fn(async () => new Set([`${ACCOUNT_ID}:deposit:1`])),
-    });
-
-    expect(deps.listHoldingTransactions).not.toHaveBeenCalled();
-  });
-
-  it('reads the stored rows of each wallet holding once for the whole run', async () => {
+  /** A heavy account whose capital cursor is 2 days behind. */
+  const heavyState = async (): Promise<HeavyState> => {
     const account = makeStatefulSpotAccount();
-    const deps = makeFirstSyncDeps(account, {
-      fetchDepositHistory: jest.fn(async () => historyPage([deposit({ insertTime: TIME })])),
-      listHoldingTransactions: jest.fn(async () => []),
+    await account.writeWalkCursor('h-spot', 'binanceHistoryCursor', NOW - 2 * DAY_MS);
+
+    return { account, imported: new Set() };
+  };
+
+  /** One run over the stored state; a key the state already holds is not imported again. */
+  const runOver = async (state: HeavyState) => {
+    const deps = makeFirstSyncDeps(state.account, {
+      fetchWithdrawHistory: withdrawalServer(heavyWithdrawals),
+      addTransactions: jest.fn(async (rows: BinanceTransactionRow[]) => {
+        const fresh = rows.filter((row) => !state.imported.has(row.externalId));
+
+        for (const row of fresh) {
+          state.imported.add(row.externalId);
+        }
+
+        return fresh.length;
+      }),
     });
 
-    await sync(deps, ACCOUNT_ID);
+    return sync(deps, ACCOUNT, freshRun());
+  };
 
-    expect((deps.writeWalkCursor as jest.Mock).mock.calls.length).toBeGreaterThan(1);
-    expect(deps.listHoldingTransactions).toHaveBeenCalledTimes(1);
+  const runsUntilComplete = async (state: HeavyState): Promise<boolean[]> => {
+    const runs: boolean[] = [];
+
+    for (let attempt = 0; attempt < 12 && runs.at(-1) !== true; attempt += 1) {
+      runs.push((await runOver(state)).complete);
+    }
+
+    return runs;
+  };
+
+  it('imports the newest records on the first run, and the forward cursor reaches the end', async () => {
+    const state = await heavyState();
+
+    const result = await runOver(state);
+
+    const newest = heavyWithdrawals.filter(
+      (record) => parseWithdrawTime(record.applyTime) >= NOW - 3 * DAY_MS,
+    );
+    expect(newest.length).toBeGreaterThan(0);
+    expect(newest.every((record) => state.imported.has(keyOf(record)))).toBe(true);
+    expect(state.account.cursor()).toBe(NOW);
+    expect(result.complete).toBe(false);
+  });
+
+  it('finishes the re-scan over later runs and imports every record once', async () => {
+    const state = await heavyState();
+
+    const runs = await runsUntilComplete(state);
+
+    expect(runs.length).toBeGreaterThan(1);
+    expect(runs.at(-1)).toBe(true);
+    expect(state.imported.size).toBe(HEAVY_COUNT);
+    expect(state.account.cursor()).toBe(NOW);
+    expect(state.account.rescanCursor()).toBe(HISTORY_FLOOR_MS);
+  });
+
+  it('imports nothing on a second identical run after the re-scan finished', async () => {
+    const state = await heavyState();
+    await runsUntilComplete(state);
+
+    const again = await runOver(state);
+
+    expect(again.imported).toBe(0);
+    expect(state.imported.size).toBe(HEAVY_COUNT);
   });
 });

@@ -410,15 +410,17 @@ describe('withWalkOwnedMetadataResetToFloor', () => {
 describe('the Binance walk cursors', () => {
   const allCursors = {
     binanceHistoryCursor: 1_000,
+    binanceHistoryRescanCursor: 1_500,
     binancePayHistoryCursor: 2_000,
     binancePayRescanCursor: 2_500,
     binanceTransferHistoryCursor: 3_000,
     binanceEarnHistoryCursor: 4_000,
   };
 
-  it('lists the capital, Pay, Pay re-scan, Transfer, and Earn fields in walk order', () => {
+  it('lists the capital, capital re-scan, Pay, Pay re-scan, Transfer, and Earn fields in walk order', () => {
     expect(binanceWalkCursorFields).toEqual([
       'binanceHistoryCursor',
+      'binanceHistoryRescanCursor',
       'binancePayHistoryCursor',
       'binancePayRescanCursor',
       'binanceTransferHistoryCursor',
@@ -454,6 +456,7 @@ describe('the Binance walk cursors', () => {
     expect(withWalkOwnedMetadataResetToFloor(stored, 100)).toEqual({
       binanceAsset: 'BTC',
       binanceHistoryCursor: 100,
+      binanceHistoryRescanCursor: 100,
       binancePayHistoryCursor: 100,
       binancePayRescanCursor: 100,
       binanceTransferHistoryCursor: 100,

@@ -966,6 +966,7 @@ describe('holdingsRepo.resetBinanceWalkCursors', () => {
         metadata: {
           binanceAsset: 'BTC',
           binanceHistoryCursor: 1_000,
+          binanceHistoryRescanCursor: 1_500,
           binancePayHistoryCursor: 2_000,
           binancePayRescanCursor: 2_500,
           binanceTransferHistoryCursor: 3_000,
@@ -1001,6 +1002,7 @@ describe('holdingsRepo.resetBinanceWalkCursors', () => {
         metadata: {
           binanceAsset: 'BTC',
           binanceHistoryCursor: 100,
+          binanceHistoryRescanCursor: 100,
           binancePayHistoryCursor: 100,
           binancePayRescanCursor: 100,
           binanceTransferHistoryCursor: 100,

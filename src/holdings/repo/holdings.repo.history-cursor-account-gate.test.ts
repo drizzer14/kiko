@@ -133,6 +133,7 @@ describe("holdingsRepo.setBinanceWalkCursor — gated on the holding's account s
     expect(storedMetadata(rawDatabase)).toEqual({
       binanceAsset: 'BTC',
       binanceHistoryCursor: 1,
+      binanceHistoryRescanCursor: 1,
       binancePayHistoryCursor: 1,
       binancePayRescanCursor: 1,
       binanceTransferHistoryCursor: 1,

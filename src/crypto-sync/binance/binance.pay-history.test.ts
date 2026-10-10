@@ -1,6 +1,5 @@
 import { DAY_MS } from '@kiko/dates';
 import type { HoldingRow } from '@kiko/db';
-import maybe, { foldMap } from 'fnts/maybe';
 
 import {
   type BinancePayHistoryDeps,
@@ -26,7 +25,6 @@ import { isBinanceCoolingDown, setBinanceCooldownUntil } from './binance.cooldow
 
 const order = payOrder;
 const WARN_TAG_STOP = '[binance sync] history window stopped';
-const WARN_TAG_NOTICE = '[binance sync] history row left out';
 const FLOOR = Date.UTC(2025, 3, 20);
 
 // `cooldownUntilByAccount` is module-level and has no exported reset, so every case
@@ -53,30 +51,30 @@ const fullPage = (over: Partial<PayHistoryPage> = {}): PayHistoryPage =>
 const holdingWith = (id: string, metadata: Record<string, unknown>): HoldingRow =>
   ({ id, metadata }) as unknown as HoldingRow;
 
-/** The Spot holding of a connected account whose capital walk is caught up to `capitalCursor`. */
-const spotAt = (
-  capitalCursor: number | null,
-  payCursor: number | null = null,
-  rescanCursor: number | null = null,
-): HoldingRow =>
+/**
+ * The Spot holding of a connected account. It carries no capital cursor: the Pay walk does
+ * not read one.
+ */
+const spotAt = (payCursor: number | null = null, rescanCursor: number | null = null): HoldingRow =>
   holdingWith('h-spot', {
     binanceAsset: 'BTC',
-    binanceHistoryCursor: capitalCursor ?? undefined,
     binancePayHistoryCursor: payCursor ?? undefined,
     binancePayRescanCursor: rescanCursor ?? undefined,
   });
+
+/** A Spot holding whose forward pass starts at `start`: the cursor sits one overlap after it. */
+const spotForwardFrom = (start: number): HoldingRow => spotAt(start + DAY_MS);
 
 const makeDeps = (over: Partial<BinancePayHistoryDeps> = {}): BinancePayHistoryDeps => ({
   now: () => NOW,
   fetchImpl: (async () => ({})) as unknown as typeof fetch,
   readCredentials: async () => ({ apiKey: 'api-key', secret: 'secret' }),
-  listHoldings: async () => [spotAt(NOW)],
+  listHoldings: async () => [spotAt()],
   fetchAccount: jest.fn(async () => ({ balances: [], uid: OWN })),
   fetchPayHistory: jest.fn(async () => payPage([])),
   ensureHoldings: jest.fn(async () => undefined),
   addTransactions: jest.fn(async (rows: unknown[]) => rows.length),
   writeWalkCursor: jest.fn(async () => undefined),
-  listHoldingTransactions: jest.fn(async () => []),
   ...over,
 });
 
@@ -187,7 +185,7 @@ describe('the walk window range', () => {
   });
 
   it('asks for the floor, not the 2017 cursor a disconnect left, on a reconnect', async () => {
-    const deps = makeDeps({ listHoldings: async () => [spotAt(NOW, HISTORY_FLOOR_MS)] });
+    const deps = makeDeps({ listHoldings: async () => [spotAt(HISTORY_FLOOR_MS)] });
 
     await sync(deps);
 
@@ -195,9 +193,32 @@ describe('the walk window range', () => {
     expect(Math.min(...queriesOf(deps).map((query) => query.startTime))).toBe(payFloorMs(NOW));
   });
 
+  // Binance answers a Pay startTime older than about 548 days with HTTP 400, code 403004
+  // (probe Q6), so no pass may send one, whatever the stored cursors say.
+  it.each([
+    ['no cursor at all', null, null],
+    ['both cursors reset to 2017 by a disconnect', HISTORY_FLOOR_MS, HISTORY_FLOOR_MS],
+    ['a forward cursor older than the floor', NOW - 600 * DAY_MS, null],
+    ['a re-scan cursor older than the floor', NOW - 2 * DAY_MS, NOW - 600 * DAY_MS],
+    ['a re-scan cursor of 2017 behind a recent forward cursor', NOW - 2 * DAY_MS, HISTORY_FLOOR_MS],
+    ['an old forward cursor and an old re-scan cursor', NOW - 520 * DAY_MS, NOW - 530 * DAY_MS],
+  ])(
+    'sends no startTime before the Pay floor, with %s',
+    async (_label, payCursor, rescanCursor) => {
+      const deps = makeDeps({ listHoldings: async () => [spotAt(payCursor, rescanCursor)] });
+
+      await sync(deps);
+
+      expect(queriesOf(deps).length).toBeGreaterThan(0);
+      expect(Math.min(...queriesOf(deps).map((query) => query.startTime))).toBeGreaterThanOrEqual(
+        payFloorMs(NOW),
+      );
+    },
+  );
+
   it('walks forward from a day behind a cursor that is nearly caught up, then re-scans the window behind that', async () => {
     const cursor = NOW - 3_600_000;
-    const deps = makeDeps({ listHoldings: async () => [spotAt(NOW, cursor)] });
+    const deps = makeDeps({ listHoldings: async () => [spotAt(cursor)] });
 
     await sync(deps);
 
@@ -209,7 +230,7 @@ describe('the walk window range', () => {
 
   it('re-scans a day behind a cursor that is older than a window', async () => {
     const cursor = NOW - 120 * DAY_MS;
-    const deps = makeDeps({ listHoldings: async () => [spotAt(NOW, cursor)] });
+    const deps = makeDeps({ listHoldings: async () => [spotAt(cursor)] });
 
     await sync(deps);
 
@@ -229,29 +250,33 @@ describe('the walk window range', () => {
   });
 });
 
-describe('the cap at the capital walk watermark', () => {
-  it('ends the newest window at the capital cursor, not at now, and commits it', async () => {
-    const capitalCursor = NOW - 5_000;
-    const deps = makeDeps({
-      listHoldings: async () => [spotAt(capitalCursor, capitalCursor - 3_600_000)],
-    });
+describe('the walk and the capital walk', () => {
+  it('ends the newest window at now and commits it', async () => {
+    const deps = makeDeps({ listHoldings: async () => [spotAt(NOW - 3_600_000)] });
 
     const result = await sync(deps);
 
     expect(result).toEqual({ imported: 0, complete: true });
-    expect(queriesOf(deps)[0].endTime).toBe(capitalCursor);
-    expect(deps.writeWalkCursor).toHaveBeenLastCalledWith(
-      'h-spot',
-      'binancePayHistoryCursor',
-      capitalCursor,
-    );
+    expect(queriesOf(deps)[0].endTime).toBe(NOW);
+    expect(deps.writeWalkCursor).toHaveBeenLastCalledWith('h-spot', 'binancePayHistoryCursor', NOW);
+  });
+
+  it('runs with a Spot holding that has no capital watermark, and reads none', async () => {
+    const spot = spotAt();
+    const deps = makeDeps({ listHoldings: async () => [spot] });
+
+    const result = await sync(deps);
+
+    expect(spot.metadata).not.toHaveProperty('binanceHistoryCursor');
+    expect(result).toEqual({ imported: 0, complete: true });
+    expect(deps.fetchAccount).toHaveBeenCalledTimes(1);
+    expect(deps.fetchPayHistory).toHaveBeenCalledTimes(7);
+    expect(queriesOf(deps).at(-1)?.endTime).toBe(NOW);
   });
 
   it('starts the next run from the cursor it left, one overlap behind', async () => {
-    const capitalCursor = NOW - 5_000;
     const written: number[] = [];
     const first = makeDeps({
-      listHoldings: async () => [spotAt(capitalCursor)],
       writeWalkCursor: jest.fn(async (_id: string, _field: string, cursorMs: number) => {
         written.push(cursorMs);
       }),
@@ -261,35 +286,15 @@ describe('the cap at the capital walk watermark', () => {
     const later = NOW + 2 * DAY_MS;
     const second = makeDeps({
       now: () => later,
-      listHoldings: async () => [spotAt(later - 1_000, written.at(-1))],
+      listHoldings: async () => [spotAt(written.at(-1))],
     });
     await sync(second);
 
-    expect(written.at(-1)).toBe(capitalCursor);
+    expect(written.at(-1)).toBe(NOW);
     expect(queriesOf(second)).toEqual([
-      { startTime: capitalCursor - DAY_MS, endTime: later - 1_000 },
-      { startTime: later - 1_000 - PAY_WINDOW_MS, endTime: capitalCursor - DAY_MS },
+      { startTime: NOW - DAY_MS, endTime: later },
+      { startTime: later - PAY_WINDOW_MS, endTime: NOW - DAY_MS },
     ]);
-  });
-
-  it('makes no request while the capital walk has no watermark', async () => {
-    const deps = makeDeps({ listHoldings: async () => [spotAt(null)] });
-
-    const result = await sync(deps);
-
-    expect(result).toEqual({ imported: 0, complete: false });
-    expect(deps.fetchAccount).not.toHaveBeenCalled();
-    expect(deps.fetchPayHistory).not.toHaveBeenCalled();
-  });
-
-  it('makes no request while the capital watermark is older than the Pay floor', async () => {
-    const deps = makeDeps({ listHoldings: async () => [spotAt(Date.UTC(2025, 0, 1))] });
-
-    const result = await sync(deps);
-
-    expect(result).toEqual({ imported: 0, complete: false });
-    expect(deps.fetchAccount).not.toHaveBeenCalled();
-    expect(deps.fetchPayHistory).not.toHaveBeenCalled();
   });
 
   it('does nothing, and is complete, with no Spot holding or no credentials', async () => {
@@ -304,7 +309,7 @@ describe('the cap at the capital walk watermark', () => {
 });
 
 describe('importing the orders of a window', () => {
-  const recent = { listHoldings: async () => [spotAt(NOW, NOW - 3_600_000)] };
+  const recent = { listHoldings: async () => [spotAt(NOW - 3_600_000)] };
 
   it('maps an outgoing order onto Spot, signed, with the nickname and the account-keyed id', async () => {
     const accountId = nextAccountId();
@@ -406,10 +411,11 @@ describe('importing the orders of a window', () => {
 });
 
 describe('an adaptive window', () => {
-  // The capital watermark sits one window above the floor, so the walk is exactly one window.
-  const WINDOW_START = FLOOR;
-  const WINDOW_END = FLOOR + PAY_WINDOW_MS;
-  const oneWindow = { listHoldings: async () => [spotAt(WINDOW_END)] };
+  // The cursor sits one overlap after the start of the newest window, so the forward pass is
+  // exactly that one window and there is no ground behind it to re-scan.
+  const WINDOW_START = NOW - PAY_WINDOW_MS;
+  const WINDOW_END = NOW;
+  const oneWindow = { listHoldings: async () => [spotForwardFrom(WINDOW_START)] };
   const HALF = Math.floor(PAY_WINDOW_MS / 2);
 
   it('halves a full window, commits the half that fits, then reads on from where it ended', async () => {
@@ -458,7 +464,7 @@ describe('an adaptive window', () => {
   it('never moves the watermark back while a re-scan commits a sub-window behind it', async () => {
     const cursor = NOW - 3_600_000;
     const deps = makeDeps({
-      listHoldings: async () => [spotAt(NOW, cursor)],
+      listHoldings: async () => [spotAt(cursor)],
       fetchPayHistory: scripted([fullPage(), payPage([]), payPage([])]),
     });
 
@@ -494,8 +500,8 @@ describe('an adaptive window', () => {
 
   it('sends no request whose startTime is not before its endTime', async () => {
     const deps = makeDeps({
-      listHoldings: async () => [spotAt(FLOOR + 8)],
-      fetchPayHistory: serverOf(spreadOrders(PAY_PAGE_LIMIT + 50, FLOOR + 5, 0), {
+      listHoldings: async () => [spotForwardFrom(NOW - 8)],
+      fetchPayHistory: serverOf(spreadOrders(PAY_PAGE_LIMIT + 50, NOW - 3, 0), {
         ascending: true,
         endExclusive: false,
       }),
@@ -509,8 +515,8 @@ describe('an adaptive window', () => {
 
   it('stops a one-millisecond window that is still full, with the cursor unmoved', async () => {
     const deps = makeDeps({
-      listHoldings: async () => [spotAt(FLOOR + 2)],
-      fetchPayHistory: serverOf(spreadOrders(PAY_PAGE_LIMIT + 50, FLOOR, 0), {
+      listHoldings: async () => [spotForwardFrom(NOW - 2)],
+      fetchPayHistory: serverOf(spreadOrders(PAY_PAGE_LIMIT + 50, NOW - 2, 0), {
         ascending: true,
         endExclusive: false,
       }),
@@ -519,8 +525,8 @@ describe('an adaptive window', () => {
     const result = await sync(deps);
 
     expect(queriesOf(deps)).toEqual([
-      { startTime: FLOOR, endTime: FLOOR + 2 },
-      { startTime: FLOOR, endTime: FLOOR + 1 },
+      { startTime: NOW - 2, endTime: NOW },
+      { startTime: NOW - 2, endTime: NOW - 1 },
     ]);
     expect(result).toEqual({ imported: 0, complete: false });
     expect(deps.addTransactions).not.toHaveBeenCalled();
@@ -531,9 +537,10 @@ describe('an adaptive window', () => {
   });
 
   it('keeps what committed before the sub-window that cannot be split', async () => {
+    const early = order({ transactionId: 'early', transactionTime: NOW - 7 });
     const deps = makeDeps({
-      listHoldings: async () => [spotAt(FLOOR + 8)],
-      fetchPayHistory: serverOf(spreadOrders(PAY_PAGE_LIMIT + 50, FLOOR + 5, 0), {
+      listHoldings: async () => [spotForwardFrom(NOW - 8)],
+      fetchPayHistory: serverOf([early, ...spreadOrders(PAY_PAGE_LIMIT + 50, NOW - 3, 0)], {
         ascending: false,
         endExclusive: false,
       }),
@@ -541,8 +548,9 @@ describe('an adaptive window', () => {
 
     const result = await sync(deps);
 
-    expect(result).toEqual({ imported: 0, complete: false });
-    expect(cursorWritesOf(deps)).toEqual([FLOOR + 4]);
+    expect(result).toEqual({ imported: 1, complete: false });
+    expect(storedKeysOf(deps)).toHaveLength(1);
+    expect(deps.writeWalkCursor).toHaveBeenCalledTimes(1);
     expect(warn.mock.calls).toEqual([
       [WARN_TAG_STOP, { name: 'BinanceWalkStop', code: 'pay-page-stuck' }],
     ]);
@@ -579,7 +587,7 @@ describe('an adaptive window', () => {
     });
   });
 
-  it('picks up on the next run when one run cannot get through the window, and never passes the capital cursor', async () => {
+  it('picks up on the next run when one run cannot get through the window, and never passes now', async () => {
     const accountId = nextAccountId();
     const orders = spreadOrders(2000, FLOOR + 1, 80 * DAY_MS);
     let payCursor: number | null = null;
@@ -589,7 +597,7 @@ describe('an adaptive window', () => {
 
     for (let attempt = 0; attempt < 12 && runs.at(-1) !== true; attempt += 1) {
       const deps = makeDeps({
-        listHoldings: async () => [spotAt(NOW, payCursor)],
+        listHoldings: async () => [spotAt(payCursor)],
         fetchPayHistory: serverOf(orders, { ascending: true, endExclusive: false }),
         addTransactions: jest.fn(async (rows: { externalId: string }[]) => {
           for (const row of rows) {
@@ -643,7 +651,7 @@ describe('forward progress on a busy account', () => {
   /** One run over the stored state; a key the state already holds is not imported again. */
   const runOver = async (state: WalkState, orders: BinancePayOrder[], run = freshRun()) => {
     const deps = makeDeps({
-      listHoldings: async () => [spotAt(NOW, state.payCursor, state.rescanCursor)],
+      listHoldings: async () => [spotAt(state.payCursor, state.rescanCursor)],
       fetchPayHistory: serverOf(orders, ASCENDING),
       addTransactions: jest.fn(async (rows: { externalId: string }[]) => {
         const fresh = rows.filter((row) => !state.imported.has(row.externalId));
@@ -747,30 +755,6 @@ describe('forward progress on a busy account', () => {
     expect(afterThat.result.imported).toBe(0);
   });
 
-  it('puts re-scan rows through the same overlap guard', async () => {
-    const state = busyState();
-    const stored = {
-      externalId: `${state.accountId}:withdraw:1`,
-      amountMinorUnits: -100_000,
-      time: NOW - 30 * DAY_MS,
-    };
-    const twin = order({ transactionId: 'twin', transactionTime: NOW - 30 * DAY_MS + 60_000 });
-    const deps = makeDeps({
-      listHoldings: async () => [spotAt(NOW, state.payCursor)],
-      listHoldingTransactions: jest.fn(async () => [stored]),
-      fetchPayHistory: serverOf([twin], ASCENDING),
-    });
-
-    const result = await sync(deps, state.accountId);
-
-    expect(result.imported).toBe(0);
-    expect(deps.addTransactions).not.toHaveBeenCalled();
-    expect(warn.mock.calls).toContainEqual([
-      WARN_TAG_NOTICE,
-      { name: 'BinanceWalkNotice', code: 'pay-overlap-skip' },
-    ]);
-  });
-
   it('resumes the re-scan from its stored cursor', async () => {
     const state = freshState({ payCursor: NOW - 2 * DAY_MS, rescanCursor: NOW - 40 * DAY_MS });
 
@@ -872,7 +856,7 @@ describe('the weight budget and the call cap', () => {
 
   it('counts the uid read against the same cap: 20 calls in all, none committed past it', async () => {
     const deps = makeDeps({
-      listHoldings: async () => [spotAt(NOW, NOW - 3_600_000)],
+      listHoldings: async () => [spotAt(NOW - 3_600_000)],
       fetchPayHistory: jest.fn(async () => fullPage()),
     });
 
@@ -904,7 +888,7 @@ describe('the weight budget and the call cap', () => {
 
   it('counts the rows of a sub-window committed before the budget ran out', async () => {
     const deps = makeDeps({
-      listHoldings: async () => [spotAt(NOW, NOW - 3_600_000)],
+      listHoldings: async () => [spotAt(NOW - 3_600_000)],
       fetchPayHistory: scripted([
         fullPage(),
         payPage([order()], { usedUidWeight1m: UID_WEIGHT_BUDGET_1M - COSTS.pay.uid + 1 }),
@@ -985,41 +969,39 @@ describe('rate limits and failures', () => {
     expect(isBinanceCoolingDown(accountId, NOW + 44_000)).toBe(true);
   });
 
-  it('goes on without a uid when the uid read fails for any other reason, and says so once', async () => {
-    const received = order({
-      amount: '0.002',
-      payerInfo: party('Bob', undefined),
-      receiverInfo: party('Me', OWN),
-    });
+  it('stops the window, cursor unmoved, when the uid read fails for any other reason', async () => {
     const deps = makeDeps({
-      listHoldings: async () => [spotAt(NOW, NOW - 3_600_000)],
+      listHoldings: async () => [spotAt(NOW - 3_600_000)],
       fetchAccount: jest.fn(async () => {
         throw new Error('SECRET-BODY');
       }),
-      fetchPayHistory: scripted([payPage([received])]),
-    });
-
-    const result = await sync(deps);
-
-    expect(result).toEqual({ imported: 1, complete: true });
-    expect(warn.mock.calls).toEqual([
-      [WARN_TAG_NOTICE, { name: 'BinanceWalkNotice', code: 'pay-uid-unavailable' }],
-    ]);
-    expect(JSON.stringify(warn.mock.calls)).not.toContain('SECRET-BODY');
-  });
-
-  it('without a uid, a send whose sign disagrees with its shape stops instead of guessing', async () => {
-    const odd = order({ amount: '0.001' });
-    const deps = makeDeps({
-      listHoldings: async () => [spotAt(NOW, NOW - 3_600_000)],
-      fetchAccount: jest.fn(async () => ({ balances: [], uid: null })),
-      fetchPayHistory: jest.fn(async () => payPage([odd])),
     });
 
     const result = await sync(deps);
 
     expect(result).toEqual({ imported: 0, complete: false });
+    expect(deps.fetchPayHistory).not.toHaveBeenCalled();
     expect(deps.writeWalkCursor).not.toHaveBeenCalled();
+    expect(warn.mock.calls).toEqual([
+      [WARN_TAG_STOP, { name: 'BinanceWalkStop', code: 'pay-uid-unavailable' }],
+    ]);
+    expect(JSON.stringify(warn.mock.calls)).not.toContain('SECRET-BODY');
+  });
+
+  it('stops the window, cursor unmoved, when the account has no uid, even with no order in it', async () => {
+    const deps = makeDeps({
+      listHoldings: async () => [spotAt(NOW - 3_600_000)],
+      fetchAccount: jest.fn(async () => ({ balances: [], uid: null })),
+    });
+
+    const result = await sync(deps);
+
+    expect(result).toEqual({ imported: 0, complete: false });
+    expect(deps.fetchPayHistory).not.toHaveBeenCalled();
+    expect(deps.writeWalkCursor).not.toHaveBeenCalled();
+    expect(warn.mock.calls).toEqual([
+      [WARN_TAG_STOP, { name: 'BinanceWalkStop', code: 'pay-uid-unavailable' }],
+    ]);
   });
 
   it('rejects, leaving earlier windows committed, on any other Pay failure', async () => {
@@ -1054,7 +1036,7 @@ describe('rate limits and failures', () => {
 });
 
 describe('an order the walk cannot trust stops its window', () => {
-  const recent = { listHoldings: async () => [spotAt(NOW, NOW - 3_600_000)] };
+  const recent = { listHoldings: async () => [spotAt(NOW - 3_600_000)] };
 
   const readsOf = (...orders: BinancePayOrder[]): Partial<BinancePayHistoryDeps> => ({
     ...recent,
@@ -1123,7 +1105,7 @@ describe('an order the walk cannot trust stops its window', () => {
 });
 
 describe('orders paid in other coins', () => {
-  const recent = { listHoldings: async () => [spotAt(NOW, NOW - 3_600_000)] };
+  const recent = { listHoldings: async () => [spotAt(NOW - 3_600_000)] };
 
   it('stops the window, cursor unmoved, on a non-BTC order paid with BTC funds', async () => {
     const deps = makeDeps({
@@ -1145,7 +1127,7 @@ describe('orders paid in other coins', () => {
 
   it('commits the part of a full window before the order, and stops at the part holding it', async () => {
     const deps = makeDeps({
-      listHoldings: async () => [spotAt(FLOOR + PAY_WINDOW_MS)],
+      listHoldings: async () => [spotForwardFrom(NOW - PAY_WINDOW_MS)],
       fetchPayHistory: scripted([
         fullPage({ hasBtcFundedOtherCoinOrder: true }),
         payPage([order({ transactionId: 'clean' })]),
@@ -1156,7 +1138,7 @@ describe('orders paid in other coins', () => {
     const result = await sync(deps);
 
     expect(result).toEqual({ imported: 1, complete: false });
-    expect(cursorWritesOf(deps)).toEqual([FLOOR + Math.floor(PAY_WINDOW_MS / 2)]);
+    expect(cursorWritesOf(deps)).toEqual([NOW - PAY_WINDOW_MS + Math.floor(PAY_WINDOW_MS / 2)]);
     expect(warn.mock.calls).toEqual([
       [WARN_TAG_STOP, { name: 'BinanceWalkStop', code: 'pay-btc-funded-other-coin' }],
     ]);
@@ -1171,7 +1153,7 @@ describe('wallet holdings (P7)', () => {
     const earn = holdingWith('h-earn', { binanceAsset: 'BTC:earn' });
     const deps = makeDeps({
       listHoldings: async () =>
-        created ? [spotAt(NOW, NOW - 3_600_000), earn] : [spotAt(NOW, NOW - 3_600_000)],
+        created ? [spotAt(NOW - 3_600_000), earn] : [spotAt(NOW - 3_600_000)],
       ensureHoldings: jest.fn(async () => {
         created = true;
       }),
@@ -1206,7 +1188,7 @@ describe('wallet holdings (P7)', () => {
 
   it('stops the window when the holding is still absent after it was created', async () => {
     const deps = makeDeps({
-      listHoldings: async () => [spotAt(NOW, NOW - 3_600_000)],
+      listHoldings: async () => [spotAt(NOW - 3_600_000)],
       fetchPayHistory: jest.fn(async () => payPage([earnOrder])),
     });
 
@@ -1234,7 +1216,7 @@ describe('wallet holdings (P7)', () => {
       ],
     });
     const deps = makeDeps({
-      listHoldings: async () => [spotAt(NOW, NOW - 3_600_000), funding],
+      listHoldings: async () => [spotAt(NOW - 3_600_000), funding],
       fetchPayHistory: jest.fn(async () => payPage([split])),
     });
 
@@ -1244,114 +1226,5 @@ describe('wallet holdings (P7)', () => {
       ['h-funding', -60_000],
       ['h-spot', -40_000],
     ]);
-  });
-});
-
-describe('the overlap guard against stored capital rows', () => {
-  const MINUTE_MS = 60_000;
-  const TIME = NOW - 10 * DAY_MS;
-
-  type StoredRow = {
-    holdingId: string;
-    suffix: string | null;
-    amountMinorUnits: number;
-    time: number;
-  };
-
-  const storedRow = (over: Partial<StoredRow>): StoredRow => ({
-    holdingId: 'h-spot',
-    suffix: 'deposit:9',
-    amountMinorUnits: -100_000,
-    time: TIME,
-    ...over,
-  });
-
-  const runWith = async (
-    stored: StoredRow[],
-    orders: BinancePayOrder[] = [order({ transactionTime: TIME })],
-  ) => {
-    const accountId = nextAccountId();
-    const deps = makeDeps({
-      listHoldings: async () => [
-        spotAt(NOW, NOW - 3_600_000),
-        holdingWith('h-funding', { binanceAsset: 'BTC:funding' }),
-      ],
-      fetchPayHistory: scripted([payPage(orders)]),
-      listHoldingTransactions: jest.fn(async (holdingId: string) =>
-        stored
-          .filter((row) => row.holdingId === holdingId)
-          .map((row) => ({
-            externalId: foldMap(maybe(row.suffix), (value) => `${accountId}:${value}`) ?? null,
-            amountMinorUnits: row.amountMinorUnits,
-            time: row.time,
-          })),
-      ),
-    });
-    const result = await sync(deps, accountId);
-
-    return { deps, result };
-  };
-
-  it('skips a Pay row that repeats a capital row of the same size 9 minutes apart, and still commits the window', async () => {
-    const { deps, result } = await runWith([storedRow({ time: TIME + 9 * MINUTE_MS })]);
-
-    expect(result).toEqual({ imported: 0, complete: true });
-    expect(deps.addTransactions).not.toHaveBeenCalled();
-    expect(deps.writeWalkCursor).toHaveBeenCalledTimes(1);
-    expect(warn.mock.calls).toEqual([
-      [WARN_TAG_NOTICE, { name: 'BinanceWalkNotice', code: 'pay-overlap-skip' }],
-    ]);
-  });
-
-  it('keeps a Pay row 11 minutes from a capital row', async () => {
-    const { deps } = await runWith([storedRow({ time: TIME + 11 * MINUTE_MS })]);
-
-    expect(addedRows(deps)).toHaveLength(1);
-  });
-
-  it('keeps a Pay row whose size or sign differs from the capital row', async () => {
-    const otherSize = await runWith([storedRow({ amountMinorUnits: -100_001 })]);
-    const otherSign = await runWith([storedRow({ amountMinorUnits: 100_000 })]);
-
-    expect(otherSize.deps.addTransactions).toHaveBeenCalledTimes(1);
-    expect(otherSign.deps.addTransactions).toHaveBeenCalledTimes(1);
-  });
-
-  it('matches a withdrawal as well as a deposit', async () => {
-    const { deps } = await runWith([storedRow({ suffix: 'withdraw:3' })]);
-
-    expect(deps.addTransactions).not.toHaveBeenCalled();
-  });
-
-  it('is no match for another source or for a Pay row of the same size', async () => {
-    const { deps } = await runWith([
-      storedRow({ suffix: null }),
-      storedRow({ suffix: 'pay:C2C:old:2' }),
-    ]);
-
-    expect(addedRows(deps)).toHaveLength(1);
-  });
-
-  it('finds the capital row on a wallet the Pay order does not land on', async () => {
-    const { deps } = await runWith([storedRow({ holdingId: 'h-funding' })]);
-
-    expect(deps.addTransactions).not.toHaveBeenCalled();
-  });
-
-  it('skips only the closer of two same-size Pay orders beside one capital row', async () => {
-    const near = order({ transactionId: 'near', transactionTime: TIME + MINUTE_MS });
-    const far = order({ transactionId: 'far', transactionTime: TIME + 5 * MINUTE_MS });
-    const { deps } = await runWith([storedRow({})], [far, near]);
-
-    expect(addedRows(deps).map((row) => row.externalId.split(':').at(-2))).toEqual(['far']);
-  });
-
-  it('reads the rows of each wallet holding once for the whole run', async () => {
-    const orders = [order({ transactionId: 'one' }), order({ transactionId: 'two' })];
-    const { deps } = await runWith([], orders);
-
-    expect(
-      (deps.listHoldingTransactions as jest.Mock).mock.calls.map((call) => call[0]).sort(),
-    ).toEqual(['h-funding', 'h-spot']);
   });
 });

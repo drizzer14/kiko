@@ -260,6 +260,14 @@ const payParty: Reader<BinancePayParty> = (value) => readPayParty(value ?? {});
 
 const WALLET_ID_PATTERN = /^\d+$/;
 
+/**
+ * A Pay wallet id, as a JSON integer or a digit string: the live probe could not match
+ * `walletType` against the entries of `walletTypes`, so one of the two is sent as text.
+ * Either reads as the number, so the walk compares wallets by value.
+ */
+const walletId: Reader<number> = (value) =>
+  integer(typeof value === 'string' && WALLET_ID_PATTERN.test(value) ? Number(value) : value);
+
 const walletAssetCostEntry = ([key, amount]: [string, unknown]) =>
   WALLET_ID_PATTERN.test(key) && typeof amount === 'string'
     ? { walletType: Number(key), amount }
@@ -288,8 +296,8 @@ const PAY_ORDER_FIELDS = {
   transactionTime: finiteNumber,
   amount: text,
   currency: text,
-  walletType: optional(integer),
-  walletTypes: optional(listOf(integer)),
+  walletType: optional(walletId),
+  walletTypes: optional(listOf(walletId)),
   fundsDetail: (value: unknown) => foldMap(maybe(value), listOf(readFundsDetailEntry)) ?? [],
   payerInfo: payParty,
   receiverInfo: payParty,

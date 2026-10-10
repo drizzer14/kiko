@@ -55,23 +55,36 @@ describe('payDirection: the spec matrix rows', () => {
     expect(payDescription(received, 'in')).toBe('Bob');
   });
 
-  it('row 4: a C2C receive with an unknown uid is incoming (shape and sign agree)', () => {
-    const received = order({ receiverInfo: party('Me', OWN), amount: '0.001' });
+  it('row 4: a C2C receive as the live probe saw it (payer has a Binance id) is incoming', () => {
+    const received = order({
+      payerInfo: party('Bob', OTHER),
+      receiverInfo: party('Me', OWN),
+      amount: '0.001',
+    });
 
-    expect(payDirection(received, null)).toBe('in');
+    expect(payDirection(received, OWN)).toBe('in');
+    expect(payDescription(received, 'in')).toBe('Bob');
   });
 
-  it('row 5: a send with an unknown uid and a positive sign stops', () => {
+  it('row 5: an unknown uid stops, whatever the shape and the sign say', () => {
+    const received = order({ receiverInfo: party('Me', OWN), amount: '0.001' });
+    const sent = order({ payerInfo: party('Me', OWN), receiverInfo: party('x', OTHER) });
+
+    expect(payDirection(received, null)).toBeNull();
+    expect(payDirection(sent, null)).toBeNull();
+  });
+
+  it('row 6: the uid is the payer but the sign is positive stops', () => {
     const odd = order({
       payerInfo: party('Me', OWN),
       receiverInfo: party('x', OTHER),
       amount: '0.001',
     });
 
-    expect(payDirection(odd, null)).toBeNull();
+    expect(payDirection(odd, OWN)).toBeNull();
   });
 
-  it('row 6: shape says out but the uid is the receiver stops', () => {
+  it('row 7: the uid is the receiver but the sign is negative stops', () => {
     const odd = order({
       payerInfo: party('x', OTHER),
       receiverInfo: party('Me', OWN),
@@ -81,8 +94,24 @@ describe('payDirection: the spec matrix rows', () => {
     expect(payDirection(odd, OWN)).toBeNull();
   });
 
-  it('row 7: no binanceId at all stops, even with a known uid', () => {
+  it('row 8: no binanceId at all stops, even with a known uid', () => {
     expect(payDirection(order({ amount: '-0.001' }), OWN)).toBeNull();
+  });
+
+  it('row 9: a uid that matches neither named party stops, even when shape and sign agree', () => {
+    const sent = order({
+      payerInfo: party('x', '7'),
+      receiverInfo: party('y', '8'),
+      amount: '-0.001',
+    });
+
+    expect(payDirection(sent, OWN)).toBeNull();
+  });
+
+  it('row 10: a uid equal to both parties stops', () => {
+    const self = order({ payerInfo: party('Me', OWN), receiverInfo: party('Me', OWN) });
+
+    expect(payDirection(self, OWN)).toBeNull();
   });
 
   const NO_PARTY = party(undefined, undefined);
@@ -97,7 +126,7 @@ describe('payDirection: the spec matrix rows', () => {
     ['PAYOUT', 'PAYOUT', party('Biz', undefined), party('Me', OWN), '0.001', 'in'],
     ['REMITTANCE', 'REMITTANCE', party('Me', OWN), party('Far', undefined), '-0.001', 'out'],
   ])(
-    'row 8/9: %s follows the shape',
+    'row 11: %s follows the uid',
     (_label, orderType, payerInfo, receiverInfo, amount, expected) => {
       const row = order({ orderType, payerInfo, receiverInfo, amount });
 
@@ -105,20 +134,20 @@ describe('payDirection: the spec matrix rows', () => {
     },
   );
 
-  it('row 10: an unknown orderType whose signals agree is read by shape', () => {
+  it('row 12: an unknown orderType is read by the uid like any other', () => {
     const unknown = order({ orderType: 'SOMETHING_NEW', payerInfo: party('Me', OWN) });
 
     expect(payDirection(unknown, OWN)).toBe('out');
   });
 
   it.each([['0'], ['0.0'], [''], ['  '], ['abc'], ['NaN'], ['Infinity'], ['-Infinity']])(
-    'row 11: the amount %p stops',
+    'row 13: the amount %p stops',
     (amount) => {
       expect(payDirection(order({ payerInfo: party('Me', OWN), amount }), OWN)).toBeNull();
     },
   );
 
-  it('row 12: a blank or missing name falls back to Binance Pay', () => {
+  it('row 14: a blank or missing name falls back to Binance Pay', () => {
     const blank = order({ payerInfo: party('Me', OWN), receiverInfo: party('   ', OTHER) });
     const missing = order({ payerInfo: party('Me', OWN), receiverInfo: party(undefined, OTHER) });
 
@@ -126,46 +155,10 @@ describe('payDirection: the spec matrix rows', () => {
     expect(payDescription(missing, 'out')).toBe('Binance Pay');
   });
 
-  it('row 12: a name is trimmed and otherwise stored as Binance gives it', () => {
+  it('row 14: a name is trimmed and otherwise stored as Binance gives it', () => {
     const named = order({ receiverInfo: party('  Ann  B. ', OTHER) });
 
     expect(payDescription(named, 'out')).toBe('Ann  B.');
-  });
-
-  it('row 13: a uid that matches neither party defers to shape and sign when they agree', () => {
-    const sent = order({
-      payerInfo: party('x', '7'),
-      receiverInfo: party('y', '8'),
-      amount: '-0.001',
-    });
-
-    expect(payDirection(sent, OWN)).toBe('out');
-  });
-
-  it('row 13: a uid that matches neither party still stops when shape and sign disagree', () => {
-    const odd = order({
-      payerInfo: party('x', '7'),
-      receiverInfo: party('y', '8'),
-      amount: '0.001',
-    });
-
-    expect(payDirection(odd, OWN)).toBeNull();
-  });
-
-  it('row 14: a uid equal to both parties stops', () => {
-    const self = order({ payerInfo: party('Me', OWN), receiverInfo: party('Me', OWN) });
-
-    expect(payDirection(self, OWN)).toBeNull();
-  });
-
-  it('reads the receiver as incoming only when no payer id is named', () => {
-    const named = order({
-      payerInfo: party('x', OTHER),
-      receiverInfo: party('Me', OWN),
-      amount: '-0.001',
-    });
-
-    expect(payDirection(named, null)).toBe('out');
   });
 });
 
@@ -191,6 +184,34 @@ describe('payRowsOf: wallet placement', () => {
   it('P2: walletType 1 is Funding, keyed by that wallet', () => {
     expect(rowsOf({ walletType: 1 })).toMatchObject([
       { wallet: 'BTC:funding', externalId: 'acc-1:pay:C2C:tx-1:1' },
+    ]);
+  });
+
+  it('P2: the live probe shape (walletType 1, walletTypes [1]) is Funding and stops nowhere', () => {
+    expect(rowsOf({ walletType: 1, walletTypes: [1] })).toMatchObject([
+      { wallet: 'BTC:funding', externalId: 'acc-1:pay:C2C:tx-1:1' },
+    ]);
+  });
+
+  it('P4: the live probe split (walletType 1, walletTypes [1, 2]) is placed by the costs, not by walletType', () => {
+    const rows = rowsOf({
+      walletType: 1,
+      walletTypes: [1, 2],
+      fundsDetail: [
+        {
+          currency: 'BTC',
+          amount: '0.001',
+          walletAssetCost: [
+            { walletType: 1, amount: '0.0006' },
+            { walletType: 2, amount: '0.0004' },
+          ],
+        },
+      ],
+    });
+
+    expect(rows.map((row) => [row.wallet, row.amountMinorUnits])).toEqual([
+      ['BTC:funding', -60_000],
+      ['BTC', -40_000],
     ]);
   });
 

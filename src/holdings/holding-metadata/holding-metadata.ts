@@ -175,15 +175,18 @@ export const syncedAtOf = (metadata: unknown): number | null => {
  */
 export const BINANCE_HISTORY_CURSOR_FIELD = 'binanceHistoryCursor';
 
-/** The other three Binance walks each keep their own watermark next to the capital one. */
-export const BINANCE_PAY_HISTORY_CURSOR_FIELD = 'binancePayHistoryCursor';
-
 /**
- * Where the Pay walk's re-scan of its last window has got to. The re-scan runs on what
+ * Where the capital walk's re-scan of its last window has got to. The re-scan runs on what
  * call budget the forward pass left, so on a busy account it takes several runs, and this
  * mark is how the next run resumes it. A walk-owned key like the cursors, so a balance sync
  * carries it and a disconnect resets it.
  */
+export const BINANCE_HISTORY_RESCAN_CURSOR_FIELD = 'binanceHistoryRescanCursor';
+
+/** The other three Binance walks each keep their own watermark next to the capital one. */
+export const BINANCE_PAY_HISTORY_CURSOR_FIELD = 'binancePayHistoryCursor';
+
+/** The Pay walk's re-scan mark, kept the same way as the capital walk's. */
 export const BINANCE_PAY_RESCAN_CURSOR_FIELD = 'binancePayRescanCursor';
 
 const BINANCE_TRANSFER_HISTORY_CURSOR_FIELD = 'binanceTransferHistoryCursor';
@@ -199,6 +202,7 @@ const BINANCE_EARN_HISTORY_CURSOR_FIELD = 'binanceEarnHistoryCursor';
  */
 export const binanceWalkCursorFields = [
   BINANCE_HISTORY_CURSOR_FIELD,
+  BINANCE_HISTORY_RESCAN_CURSOR_FIELD,
   BINANCE_PAY_HISTORY_CURSOR_FIELD,
   BINANCE_PAY_RESCAN_CURSOR_FIELD,
   BINANCE_TRANSFER_HISTORY_CURSOR_FIELD,

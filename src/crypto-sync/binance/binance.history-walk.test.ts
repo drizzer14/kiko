@@ -2,49 +2,24 @@ import { DAY_MS } from '@kiko/dates';
 import type { HoldingRow } from '@kiko/db';
 
 import {
+  advanceWalkMarks,
   BinanceWalkStop,
   btcSatoshis,
   buildWalkWindows,
-  logWalkNotice,
+  halfOf,
   logWalkStop,
+  nextSpanAfter,
   planWalkPasses,
   rescanCursorAfter,
-  resolveWalkStart,
   resolveWalletHoldings,
   runWalkPlan,
+  type WalkMarks,
   type WalkWindow,
 } from './binance.history-walk';
 import { EARN_KEY, FUNDING_KEY, SPOT_KEY } from './binance.holding-keys';
 
 const WINDOW_MS = 89 * DAY_MS;
 const FLOOR_MS = Date.UTC(2017, 6, 14);
-
-describe('resolveWalkStart', () => {
-  const END_MS = Date.UTC(2026, 9, 10);
-  const input = { floorMs: FLOOR_MS, endTime: END_MS, windowMs: WINDOW_MS, overlapMs: DAY_MS };
-
-  it('starts at the floor when the walk has no cursor yet', () => {
-    expect(resolveWalkStart({ ...input, cursor: null })).toBe(FLOOR_MS);
-  });
-
-  it('never starts before the floor, even for a cursor reset to an older floor', () => {
-    const payFloor = Date.UTC(2025, 3, 11);
-
-    expect(resolveWalkStart({ ...input, floorMs: payFloor, cursor: FLOOR_MS })).toBe(payFloor);
-  });
-
-  it('starts the overlap behind a cursor that is recent', () => {
-    const cursor = END_MS - 100 * DAY_MS;
-
-    expect(resolveWalkStart({ ...input, cursor })).toBe(cursor - DAY_MS);
-  });
-
-  it('re-scans at least the last window when the cursor is nearly caught up', () => {
-    const cursor = END_MS - 60_000;
-
-    expect(resolveWalkStart({ ...input, cursor })).toBe(END_MS - WINDOW_MS);
-  });
-});
 
 describe('planWalkPasses', () => {
   const END_MS = Date.UTC(2026, 9, 10);
@@ -289,18 +264,103 @@ describe('logWalkStop', () => {
   });
 });
 
-describe('logWalkNotice', () => {
-  it('logs only its own fixed tag and the notice code', () => {
-    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+describe('halfOf', () => {
+  it('is the first half of a span, rounded down', () => {
+    expect(halfOf({ start: 100, end: 110 })).toEqual({ start: 100, end: 105 });
+    expect(halfOf({ start: 100, end: 103 })).toEqual({ start: 100, end: 101 });
+  });
 
-    logWalkNotice('pay-overlap-skip');
+  it('is nothing for a span of one millisecond, which cannot be split', () => {
+    expect(halfOf({ start: 100, end: 101 })).toBeUndefined();
+  });
 
-    expect(warn).toHaveBeenCalledTimes(1);
-    expect(warn).toHaveBeenCalledWith('[binance sync] history row left out', {
-      name: 'BinanceWalkNotice',
-      code: 'pay-overlap-skip',
+  it('never gives a half whose start equals its end', () => {
+    const half = halfOf({ start: 100, end: 102 });
+
+    expect(half).toEqual({ start: 100, end: 101 });
+  });
+});
+
+describe('nextSpanAfter', () => {
+  const window = { start: 0, end: 100 };
+
+  it('starts where the committed span ended and is twice as wide', () => {
+    expect(nextSpanAfter({ start: 0, end: 10 }, window)).toEqual({ start: 10, end: 30 });
+  });
+
+  it('never reaches past the window', () => {
+    expect(nextSpanAfter({ start: 40, end: 70 }, window)).toEqual({ start: 70, end: 100 });
+  });
+});
+
+describe('advanceWalkMarks', () => {
+  const plan = { forward: [], rescan: [], rescanEnd: 1_000 };
+  const RESTART_MS = 5;
+
+  const advance = async (pass: 'forward' | 'rescan', span: WalkWindow, marks: WalkMarks) => {
+    const writes: [string, number][] = [];
+
+    await advanceWalkMarks({
+      pass,
+      span,
+      plan,
+      marks,
+      restartMs: RESTART_MS,
+      write: async (mark, cursorMs) => {
+        writes.push([mark, cursorMs]);
+      },
     });
-    warn.mockRestore();
+
+    return writes;
+  };
+
+  it('moves the cursor to the end of a forward span', async () => {
+    const marks = { cursor: 100, rescanCursor: null };
+
+    expect(await advance('forward', { start: 100, end: 400 }, marks)).toEqual([['cursor', 400]]);
+    expect(marks.cursor).toBe(400);
+  });
+
+  it('starts the cursor at the span end when the walk has none', async () => {
+    const marks = { cursor: null, rescanCursor: null };
+
+    expect(await advance('forward', { start: 100, end: 400 }, marks)).toEqual([['cursor', 400]]);
+  });
+
+  it('never moves the cursor back: a forward span behind it rewrites the cursor it has', async () => {
+    const marks = { cursor: 900, rescanCursor: null };
+
+    expect(await advance('forward', { start: 100, end: 400 }, marks)).toEqual([['cursor', 900]]);
+    expect(marks.cursor).toBe(900);
+  });
+
+  it('moves only the re-scan mark for a re-scan span with ground left', async () => {
+    const marks = { cursor: 900, rescanCursor: null };
+
+    expect(await advance('rescan', { start: 100, end: 400 }, marks)).toEqual([['rescan', 400]]);
+    expect(marks).toEqual({ cursor: 900, rescanCursor: 400 });
+  });
+
+  it('writes the restart mark once a re-scan span reaches the end of the re-scan', async () => {
+    const marks = { cursor: 900, rescanCursor: 400 };
+
+    expect(await advance('rescan', { start: 400, end: 1_000 }, marks)).toEqual([
+      ['rescan', RESTART_MS],
+    ]);
+    expect(marks.rescanCursor).toBe(RESTART_MS);
+  });
+
+  it('writes nothing for a finished re-scan that was never started', async () => {
+    const marks = { cursor: 900, rescanCursor: null };
+
+    expect(await advance('rescan', { start: 100, end: 1_000 }, marks)).toEqual([]);
+    expect(marks.rescanCursor).toBeNull();
+  });
+
+  it('writes nothing for a finished re-scan whose stored mark already is the restart mark', async () => {
+    const marks = { cursor: 900, rescanCursor: RESTART_MS };
+
+    expect(await advance('rescan', { start: 100, end: 1_000 }, marks)).toEqual([]);
   });
 });
 

@@ -31,29 +31,6 @@ export const buildWalkWindows = (
   return windows;
 };
 
-/**
- * The first window start of this run. A walk with no cursor starts at its floor; a
- * re-sync always re-scans at least the last window AND everything back to the
- * cursor minus the overlap, so a record that settles late is still caught. The
- * start never predates the floor, which also bounds a cursor a disconnect reset to
- * an older floor than this walk may ask for.
- */
-export const resolveWalkStart = (input: {
-  cursor: number | null;
-  floorMs: number;
-  endTime: number;
-  windowMs: number;
-  overlapMs: number;
-}): number => {
-  const { cursor, floorMs, endTime, windowMs, overlapMs } = input;
-
-  if (cursor === null) {
-    return floorMs;
-  }
-
-  return Math.max(floorMs, Math.min(cursor - overlapMs, endTime - windowMs));
-};
-
 export type WalkPass = 'forward' | 'rescan';
 
 /**
@@ -110,6 +87,63 @@ export const rescanCursorAfter = (input: {
   plan: WalkPlan;
   restartMs: number;
 }): number => (input.span.end >= input.plan.rescanEnd ? input.restartMs : input.span.end);
+
+/** A walk's two marks, as the run found them and then as the run last wrote them. */
+export type WalkMarks = { cursor: number | null; rescanCursor: number | null };
+
+/**
+ * Move the walk's mark once a span's rows are durable. A forward span moves the cursor to
+ * its end, never back: the first spans of a pass start behind it, and the mark to compare
+ * with is the one this run last wrote, not the one it found. A re-scan span moves only the
+ * re-scan mark and leaves the cursor alone, so a re-scan can never undo the forward pass.
+ * `write` gets which mark moved and its value.
+ */
+export const advanceWalkMarks = async (input: {
+  pass: WalkPass;
+  span: WalkWindow;
+  plan: WalkPlan;
+  marks: WalkMarks;
+  restartMs: number;
+  write: (mark: 'cursor' | 'rescan', cursorMs: number) => Promise<void>;
+}): Promise<void> => {
+  const { pass, span, plan, marks, restartMs, write } = input;
+
+  if (pass === 'forward') {
+    marks.cursor = Math.max(span.end, marks.cursor ?? span.end);
+    await write('cursor', marks.cursor);
+
+    return;
+  }
+
+  const rescanCursor = rescanCursorAfter({ span, plan, restartMs });
+
+  // A finished pass that was never started has no mark to reset: skip the redundant write.
+  if (rescanCursor !== (marks.rescanCursor ?? restartMs)) {
+    marks.rescanCursor = rescanCursor;
+    await write('rescan', rescanCursor);
+  }
+};
+
+/**
+ * The first half of a span, or `undefined` for a span of one millisecond, which cannot be
+ * split. A half is at least one millisecond long, so no request has `startTime` equal to
+ * `endTime`.
+ */
+export const halfOf = (span: WalkWindow): WalkWindow | undefined => {
+  const length = span.end - span.start;
+
+  return length < 2 ? undefined : { start: span.start, end: span.start + Math.floor(length / 2) };
+};
+
+/**
+ * The span that follows a committed one. It starts where the committed one ended and is
+ * twice as wide, because a stretch that fit one page is likely to fit a longer one, and
+ * it never reaches past the window.
+ */
+export const nextSpanAfter = (committed: WalkWindow, window: WalkWindow): WalkWindow => ({
+  start: committed.end,
+  end: Math.min(window.end, committed.end + 2 * (committed.end - committed.start)),
+});
 
 /**
  * Run a plan's windows, the forward pass first, then the re-scan on what budget is left.
@@ -182,18 +216,6 @@ export class BinanceWalkStop extends Error {
 
 export const logWalkStop = (code: string): void => {
   logFailure('[binance sync] history window stopped', new BinanceWalkStop(code));
-};
-
-/**
- * A row the walk left out on purpose, with the window still committed. Same shape as a
- * stop, a fixed tag and a fixed code, so nothing of the row can reach a log. It carries
- * its own error name, so a log reader never mistakes a committed window for a stopped one.
- */
-export const logWalkNotice = (code: string): void => {
-  logFailure(
-    '[binance sync] history row left out',
-    Object.assign(new Error(code), { name: 'BinanceWalkNotice', code }),
-  );
 };
 
 /**

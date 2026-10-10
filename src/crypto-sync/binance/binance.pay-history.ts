@@ -1,7 +1,6 @@
 import { match } from 'ts-pattern';
 import { DAY_MS } from '@kiko/dates';
 import {
-  BINANCE_HISTORY_CURSOR_FIELD,
   BINANCE_PAY_HISTORY_CURSOR_FIELD,
   BINANCE_PAY_RESCAN_CURSOR_FIELD,
   binanceWalkCursorOf,
@@ -19,14 +18,16 @@ import {
   type FetchAccountOptions,
 } from './binance.client';
 import {
+  advanceWalkMarks,
   BinanceWalkStop,
   btcSatoshis,
-  logWalkNotice,
+  halfOf,
   logWalkStop,
+  nextSpanAfter,
   planWalkPasses,
-  rescanCursorAfter,
   resolveWalletHoldings,
   runWalkPlan,
+  type WalkMarks,
   type WalkPass,
   type WalkPlan,
   type WalkResult,
@@ -44,12 +45,6 @@ import {
   HISTORY_FLOOR_MS,
   RESYNC_OVERLAP_MS,
 } from './binance.transactions';
-import {
-  createMovementLedger,
-  type MovementLedger,
-  type StoredMovementRow,
-  twinsOf,
-} from './binance.overlap-guard';
 import {
   type BinancePayOrder,
   fetchPayHistory,
@@ -114,63 +109,26 @@ const directionOfSign = (amount: string): PayDirection | undefined => {
   return value > 0 ? 'in' : 'out';
 };
 
-/** A named payer id means the user paid; failing that, a named receiver id means they received. */
-const directionOfShape = (order: BinancePayOrder): PayDirection | undefined => {
-  if (order.payerInfo.binanceId !== undefined) {
-    return 'out';
-  }
-
-  if (order.receiverInfo.binanceId !== undefined) {
-    return 'in';
-  }
-
-  return undefined;
-};
-
-const directionOfUid = (
-  order: BinancePayOrder,
-  uid: string | null,
-): PayDirection | 'both' | undefined => {
-  if (uid === null) {
-    return undefined;
-  }
-
-  const isPayer = order.payerInfo.binanceId === uid;
-  const isReceiver = order.receiverInfo.binanceId === uid;
-
-  if (isPayer && isReceiver) {
-    return 'both';
-  }
-
-  if (isPayer) {
-    return 'out';
-  }
-
-  if (isReceiver) {
-    return 'in';
-  }
-
-  return undefined;
-};
-
 /**
- * Whether the user paid or received an order. The sign of the amount is never trusted
- * alone: the shape of the parties (who has a Binance id) and the user's own uid are two
- * more signals, and every signal that exists must agree. At least one of those two must
- * exist, and a self-payment or an amount that is zero or not a number is no direction.
- * `null` means the window stops. The Binance ids are read here and nowhere else; they
- * never reach a row or a log.
+ * Whether the user paid or received an order, from the user's own uid alone: the payer's
+ * Binance id is the uid for an outgoing order, the receiver's for an incoming one. The
+ * shape of the parties is no signal (a real incoming C2C order names the counterparty as
+ * payer too), so an unknown uid, a uid that matches neither party or both, and a sign
+ * that disagrees with the uid are all no direction. `null` means the window stops. The
+ * Binance ids are read here and nowhere else; they never reach a row or a log.
  */
 export const payDirection = (order: BinancePayOrder, uid: string | null): PayDirection | null => {
   const sign = directionOfSign(order.amount);
-  const shape = directionOfShape(order);
-  const own = directionOfUid(order, uid);
+  const isPayer = uid !== null && order.payerInfo.binanceId === uid;
+  const isReceiver = uid !== null && order.receiverInfo.binanceId === uid;
 
-  if (sign === undefined || own === 'both' || (shape === undefined && own === undefined)) {
+  if (sign === undefined || isPayer === isReceiver) {
     return null;
   }
 
-  return [shape, own].every((signal) => signal === undefined || signal === sign) ? sign : null;
+  const own = isPayer ? 'out' : 'in';
+
+  return own === sign ? own : null;
 };
 
 /** The counterparty's trimmed nickname exactly as Binance gives it, or the brand name. */
@@ -307,9 +265,8 @@ export const payRowsOf = (input: {
 
 /**
  * The injectable seams of the Pay walk: the credential, holding and uid reads, the Pay
- * read, the insert-only holding creation, the deduping import, the cursor write, and
- * the rows already on a holding for the overlap guard. Pacing and the weight budget
- * come from the run.
+ * read, the insert-only holding creation, the deduping import, and the cursor write.
+ * Pacing and the weight budget come from the run.
  */
 export type BinancePayHistoryDeps = {
   now: () => number;
@@ -334,7 +291,6 @@ export type BinancePayHistoryDeps = {
     field: BinanceWalkCursorField,
     cursorMs: number,
   ) => Promise<void>;
-  listHoldingTransactions: (holdingId: string) => Promise<StoredMovementRow[]>;
 };
 
 const defaultPayHistoryDeps: BinancePayHistoryDeps = {
@@ -348,7 +304,6 @@ const defaultPayHistoryDeps: BinancePayHistoryDeps = {
   addTransactions: (rows) => transactionsRepo.addManyDedup(rows),
   writeWalkCursor: (holdingId, field, cursorMs) =>
     holdingsRepo.setBinanceWalkCursor(holdingId, field, cursorMs),
-  listHoldingTransactions: async (holdingId) => transactionsRepo.listByHoldingQuery(holdingId),
 };
 
 type PayContext = {
@@ -359,22 +314,9 @@ type PayContext = {
   apiKey: string;
   secret: string;
   options: FetchAccountOptions;
-  uid: string | null;
-  /** The Pay watermark, as the run found it and then as the run last wrote it. */
-  cursor: number | null;
-  /** The re-scan mark, as the run found it and then as the run last wrote it. */
-  rescanCursor: number | null;
+  uid: string;
+  marks: WalkMarks;
   plan: WalkPlan;
-  ledger: MovementLedger;
-  noticed: Set<string>;
-};
-
-/** Logged once per run, so a long backlog cannot flood the log with one fixed tag. */
-const noticeOnce = (context: PayContext, code: string): void => {
-  if (!context.noticed.has(code)) {
-    context.noticed.add(code);
-    logWalkNotice(code);
-  }
 };
 
 /** Whether `error` is Binance's rate limit, which also puts the account on its shared cooldown. */
@@ -426,17 +368,6 @@ const fetchSpan = async (
   }
 };
 
-/**
- * The first half of a span, or `undefined` for a span of one millisecond, which cannot be
- * split. A half is at least one millisecond long, so no request has `startTime` equal to
- * `endTime`.
- */
-const halfOf = (span: WalkWindow): WalkWindow | undefined => {
-  const length = span.end - span.start;
-
-  return length < 2 ? undefined : { start: span.start, end: span.start + Math.floor(length / 2) };
-};
-
 /** One row per key: an order on the boundary of two spans is read twice. */
 const plannedRowsOf = (context: PayContext, orders: BinancePayOrder[]): PlannedPayRow[] => {
   const planned = orders.flatMap((order) =>
@@ -450,12 +381,7 @@ const walletsOf = (rows: PlannedPayRow[]): BinanceWalletKey[] => [
   ...new Set(rows.map((row) => row.wallet)),
 ];
 
-/**
- * Turn the planned rows into importable ones. A Pay row that is the twin of a stored
- * capital deposit or withdrawal on any Binance BTC holding of the account is left out (the
- * capital walk already holds it), and a missing wallet holding is created at zero only for
- * a wallet that still receives a row.
- */
+/** Turn the planned rows into importable ones, creating a missing wallet holding at zero first. */
 const placeRows = async (
   context: PayContext,
   planned: PlannedPayRow[],
@@ -464,28 +390,15 @@ const placeRows = async (
     return [];
   }
 
-  const { accountId, deps, ledger } = context;
-  const stored = await ledger.read();
-  const twins = twinsOf({
-    kind: 'pay',
-    candidates: planned,
-    sameKind: stored.pay,
-    otherKind: stored.capital,
-  });
-
-  if (twins.size > 0) {
-    noticeOnce(context, 'pay-overlap-skip');
-  }
-
-  const kept = planned.filter((row) => !twins.has(row.externalId));
+  const { accountId, deps } = context;
   const holdings = await resolveWalletHoldings({
     accountId,
-    keys: walletsOf(kept),
+    keys: walletsOf(planned),
     listHoldings: deps.listHoldings,
     ensureHoldings: deps.ensureHoldings,
   });
 
-  return kept.map(({ wallet, ...row }) => {
+  return planned.map(({ wallet, ...row }) => {
     const holding = holdings.get(wallet);
 
     if (holding === undefined) {
@@ -494,35 +407,6 @@ const placeRows = async (
 
     return { ...row, holdingId: holding.id, source: 'binance' };
   });
-};
-
-/**
- * Move the walk's mark once a span's rows are durable. A forward span moves the Pay watermark
- * to its end, never back: the first spans of a pass start behind it, and the mark to compare
- * with is the one this run last wrote, not the one it found. A re-scan span moves only the
- * re-scan mark and leaves the watermark alone, so a re-scan can never undo the forward pass.
- */
-const advanceMark = async (
-  context: PayContext,
-  span: WalkWindow,
-  pass: WalkPass,
-): Promise<void> => {
-  const { deps, spot, plan } = context;
-
-  if (pass === 'forward') {
-    context.cursor = Math.max(span.end, context.cursor ?? span.end);
-    await deps.writeWalkCursor(spot.id, BINANCE_PAY_HISTORY_CURSOR_FIELD, context.cursor);
-
-    return;
-  }
-
-  const rescanCursor = rescanCursorAfter({ span, plan, restartMs: HISTORY_FLOOR_MS });
-
-  // A finished pass that was never started has no mark to reset: skip the redundant write.
-  if (rescanCursor !== (context.rescanCursor ?? HISTORY_FLOOR_MS)) {
-    context.rescanCursor = rescanCursor;
-    await deps.writeWalkCursor(spot.id, BINANCE_PAY_RESCAN_CURSOR_FIELD, rescanCursor);
-  }
 };
 
 /**
@@ -547,10 +431,22 @@ const commitSpan = async (
 
   if (rows.length > 0) {
     imported = await context.deps.addTransactions(rows);
-    context.ledger.remember(rows);
   }
 
-  await advanceMark(context, span, pass);
+  const { deps, spot, plan, marks } = context;
+  await advanceWalkMarks({
+    pass,
+    span,
+    plan,
+    marks,
+    restartMs: HISTORY_FLOOR_MS,
+    write: (mark, cursorMs) =>
+      deps.writeWalkCursor(
+        spot.id,
+        mark === 'cursor' ? BINANCE_PAY_HISTORY_CURSOR_FIELD : BINANCE_PAY_RESCAN_CURSOR_FIELD,
+        cursorMs,
+      ),
+  });
 
   return imported;
 };
@@ -577,16 +473,6 @@ const commitOrStop = async (
 
 /** What a window yielded: the rows committed, and whether it reached its end. */
 type WindowOutcome = { imported: number; complete: boolean };
-
-/**
- * The span that follows a committed one. It starts where the committed one ended and is
- * twice as wide, because a stretch that fit one page is likely to fit a longer one, and
- * it never reaches past the window.
- */
-const nextSpanAfter = (committed: WalkWindow, window: WalkWindow): WalkWindow => ({
-  start: committed.end,
-  end: Math.min(window.end, committed.end + 2 * (committed.end - committed.start)),
-});
 
 /**
  * Walk one window with no cursor and no order to rely on: ask for the whole window, and
@@ -637,14 +523,19 @@ const runOneWindow = async (
   return { imported, complete: true };
 };
 
+/** A walk without the user's uid has no direction for any order, so it stops. */
+const stopWithoutUid = (): undefined => {
+  logWalkStop('pay-uid-unavailable');
+
+  return undefined;
+};
+
 /**
- * The user's own uid, for the direction rule. Its failure is no walk failure: without
- * it that one signal is absent and the shape and the sign decide. `undefined` is a
- * clean stop: the budget ran out, or Binance rate-limited.
+ * The user's own uid, the only signal of the direction rule. `undefined` is a clean stop
+ * with the cursors unmoved: the budget ran out, Binance rate-limited, or the uid could
+ * not be read (a failed read, or an account that carries none).
  */
-const readOwnUid = async (
-  context: Omit<PayContext, 'uid'>,
-): Promise<{ uid: string | null } | undefined> => {
+const readOwnUid = async (context: Omit<PayContext, 'uid'>): Promise<string | undefined> => {
   const { deps, run, apiKey, secret, options } = context;
 
   if (!run.budget.canAfford('pay', COSTS.account)) {
@@ -654,15 +545,11 @@ const readOwnUid = async (
   await run.gate.wait();
 
   try {
-    return { uid: (await deps.fetchAccount(apiKey, secret, options)).uid };
+    const { uid } = await deps.fetchAccount(apiKey, secret, options);
+
+    return uid ?? stopWithoutUid();
   } catch (error) {
-    if (stopOnRateLimit(context, error)) {
-      return undefined;
-    }
-
-    logWalkNotice('pay-uid-unavailable');
-
-    return { uid: null };
+    return stopOnRateLimit(context, error) ? undefined : stopWithoutUid();
   } finally {
     run.budget.record('pay', { usedUidWeight1m: undefined, usedIpWeight1m: undefined });
   }
@@ -687,23 +574,13 @@ const runSync = async (
     return { imported: 0, complete: true };
   }
 
-  // A Pay window never reaches past the capital walk's watermark: beyond it the capital
-  // rows are not stored yet, so a Pay row's twin could not be seen. A capital record that
-  // settles later and lands behind the watermark is caught by the capital walk's own check
-  // against the Pay row stored here.
-  const capitalCursor = binanceWalkCursorOf(BINANCE_HISTORY_CURSOR_FIELD, spot.metadata);
-
-  if (capitalCursor === null) {
-    return { imported: 0, complete: false };
-  }
-
   const payCursor = binanceWalkCursorOf(BINANCE_PAY_HISTORY_CURSOR_FIELD, spot.metadata);
   const rescanCursor = binanceWalkCursorOf(BINANCE_PAY_RESCAN_CURSOR_FIELD, spot.metadata);
   const plan = planWalkPasses({
     cursor: payCursor,
     rescanCursor,
     floorMs: payFloorMs(now),
-    endTime: Math.min(now, capitalCursor),
+    endTime: now,
     windowMs: PAY_WINDOW_MS,
     overlapMs: RESYNC_OVERLAP_MS,
     maxWindows: MAX_WINDOWS,
@@ -722,23 +599,16 @@ const runSync = async (
     apiKey,
     secret,
     options: { fetchImpl: deps.fetchImpl, now: deps.now },
-    cursor: payCursor,
-    rescanCursor,
+    marks: { cursor: payCursor, rescanCursor },
     plan,
-    ledger: createMovementLedger({
-      accountId,
-      listHoldings: deps.listHoldings,
-      listHoldingTransactions: deps.listHoldingTransactions,
-    }),
-    noticed: new Set<string>(),
   };
-  const own = await readOwnUid(base);
+  const uid = await readOwnUid(base);
 
-  if (own === undefined) {
+  if (uid === undefined) {
     return { imported: 0, complete: false };
   }
 
-  const context: PayContext = { ...base, uid: own.uid };
+  const context: PayContext = { ...base, uid };
 
   return runWalkPlan({
     plan,
@@ -751,10 +621,10 @@ const runSync = async (
  * Import the user's BTC Binance Pay history as transactions on the wallet each order
  * names (Spot, Funding or Earn), committing a window's rows before advancing the mark
  * past it. A run goes forward from the watermark first, then re-scans the last window
- * behind it on what budget is left (see `planWalkPasses`). Runs after the capital walk
- * and never past its watermark. `complete: false` means history or the re-scan remains
- * and a later run resumes from the stored watermark and re-scan mark; a failure other
- * than a rate limit rejects, so the caller can log it without failing the balance sync.
+ * behind it on what budget is left (see `planWalkPasses`). `complete: false` means history
+ * or the re-scan remains and a later run resumes from the stored watermark and re-scan
+ * mark; a failure other than a rate limit rejects, so the caller can log it without
+ * failing the balance sync.
  */
 export const syncBinancePayHistory = (
   request: { targetAccountId: string; run: BinanceHistoryRun },

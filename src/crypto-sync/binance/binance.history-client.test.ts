@@ -297,6 +297,24 @@ describe('used-weight headers', () => {
 
     expect(page).toEqual({ rows: [], usedUidWeight1m: 18_000, usedIpWeight1m: undefined });
   });
+
+  // The live probe (Q15): the withdraw history answers with a per-SECOND UID weight header
+  // and no per-minute one. A second's reading must never stand in for the minute's, so the
+  // page reports no reading and the lane's call cap alone bounds the run.
+  it('does not read the per-second UID weight of the withdraw history as the minute weight', async () => {
+    const { fetchImpl } = recordingFetch([], {
+      headers: new Headers({ 'X-SAPI-USED-UID-WEIGHT-1S': '18000' }),
+    });
+
+    const page = await fetchWithdrawHistory(
+      API_KEY,
+      SECRET,
+      { startTime: START, endTime: NOW, offset: 0 },
+      optionsFor(fetchImpl),
+    );
+
+    expect(page).toEqual({ rows: [], usedUidWeight1m: undefined, usedIpWeight1m: undefined });
+  });
 });
 
 describe('rate limits and failures', () => {
@@ -410,11 +428,33 @@ describe('fetchPayHistory envelope', () => {
     });
   });
 
+  // Binance sends a wallet id as a JSON integer or as a digit string (the live probe could not
+  // match walletType 1 against walletTypes), and the walk compares the two as numbers.
   it.each([
-    ['a string walletType', { walletType: '1' }],
+    ['numbers', { walletType: 1, walletTypes: [1, 2] }],
+    ['digit strings', { walletType: '1', walletTypes: ['1', '2'] }],
+    ['a mix of both', { walletType: 1, walletTypes: ['1', 2] }],
+  ])(
+    'reads walletType and walletTypes as numbers when they come as %s',
+    async (_label, wallets) => {
+      const page = await payPageOf({ ...payOrderBody, ...wallets });
+
+      expect(page.rows[0].walletType).toBe(1);
+      expect(page.rows[0].walletTypes).toEqual([1, 2]);
+    },
+  );
+
+  it.each([
+    ['a walletType that is not digits', { walletType: 'x' }],
+    ['an empty walletType', { walletType: '' }],
+    ['a signed walletType', { walletType: '-1' }],
+    ['a decimal walletType string', { walletType: '1.5' }],
+    ['a walletType in exponent form', { walletType: '1e2' }],
+    ['a walletType past the safe integers', { walletType: '9007199254740993' }],
     ['a fractional walletType', { walletType: 1.5 }],
     ['walletTypes that is not an array', { walletTypes: 1 }],
     ['a non-integer walletTypes entry', { walletTypes: [1, 'x'] }],
+    ['a null walletTypes entry', { walletTypes: [1, null] }],
     ['fundsDetail that is not an array', { fundsDetail: {} }],
     ['a fundsDetail entry that is not an object', { fundsDetail: ['x'] }],
     ['a fundsDetail entry without an amount', { fundsDetail: [{ currency: 'BTC' }] }],

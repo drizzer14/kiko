@@ -63,6 +63,20 @@ describe('createBinanceRunBudget — per-lane call caps', () => {
     expect(budget.canAfford(lane, cost)).toBe(false);
   });
 
+  // The withdraw history reports a per-second UID weight only (probe Q15), so the walk never
+  // sees a per-minute reading for it; the cap alone must keep a run under the ceiling.
+  it('keeps the withdraw lane under the UID minute ceiling with no weight reading at all', () => {
+    const budget = createBinanceRunBudget();
+    let calls = 0;
+
+    while (budget.canAfford('capitalWithdraw', COSTS.withdraw)) {
+      spendCalls(budget, 'capitalWithdraw', 1);
+      calls += 1;
+    }
+
+    expect(calls * COSTS.withdraw.uid).toBeLessThanOrEqual(UID_WEIGHT_BUDGET_1M);
+  });
+
   it('leaves another lane affordable when one lane spent its cap', () => {
     const budget = createBinanceRunBudget();
 

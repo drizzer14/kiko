@@ -2,31 +2,30 @@ import { match } from 'ts-pattern';
 import { DAY_MS } from '@kiko/dates';
 import {
   BINANCE_HISTORY_CURSOR_FIELD,
+  BINANCE_HISTORY_RESCAN_CURSOR_FIELD,
   binanceWalkCursorOf,
   type BinanceWalkCursorField,
 } from '@kiko/holdings/holding-metadata';
 import type { HoldingRow } from '@kiko/db';
-import maybe, { foldMap } from 'fnts/maybe';
 import { transactionsRepo } from '@kiko/transactions/repo';
 import { type ExchangeHolding, holdingsRepo } from '@kiko/holdings/repo';
 
 import {
+  advanceWalkMarks,
   BinanceWalkStop,
   btcSatoshis,
-  buildWalkWindows,
-  logWalkNotice,
+  halfOf,
   logWalkStop,
-  resolveWalkStart,
+  nextSpanAfter,
+  planWalkPasses,
   resolveWalletHoldings,
+  runWalkPlan,
+  type WalkMarks,
+  type WalkPass,
+  type WalkPlan,
   type WalkResult,
   type WalkWindow,
 } from './binance.history-walk';
-import {
-  createMovementLedger,
-  type MovementLedger,
-  type StoredMovementRow,
-  twinsOf,
-} from './binance.overlap-guard';
 import {
   type BinanceHistoryRun,
   type BudgetLane,
@@ -76,7 +75,7 @@ export const HISTORY_FLOOR_MS = Date.UTC(2017, 6, 14);
 /** Safety stop on the window walk, so a bad clock cannot spin an unbounded loop. */
 const MAX_WINDOWS = 80;
 
-/** Safety stop on offset paging within one window (1000 rows/page × 50 = 50k). */
+/** Safety stop on offset paging within one span (1000 rows/page × 50 = 50k). */
 const MAX_PAGES_PER_WINDOW = 50;
 
 /**
@@ -110,10 +109,8 @@ export type BinanceTransactionSyncDeps = {
   storedExternalIds: (externalIds: string[]) => Promise<Set<string>>;
   /** The legacy fallback cursor: only consulted when the holding carries no watermark yet. */
   latestTransactionTime: (holdingId: string) => Promise<number | undefined>;
-  /** The rows already on a holding, for the guard against a Pay row that repeats a record. */
-  listHoldingTransactions: (holdingId: string) => Promise<StoredMovementRow[]>;
   addTransactions: (rows: BinanceTransactionRow[]) => Promise<number>;
-  /** Advances one walk's own watermark once a window's rows have committed. */
+  /** Advances one walk's own watermark once a span's rows have committed. */
   writeWalkCursor: (
     holdingId: string,
     field: BinanceWalkCursorField,
@@ -143,7 +140,6 @@ const defaultBinanceTransactionDeps: BinanceTransactionSyncDeps = {
     transactionsRepo.storedExternalIdsQuery('binance', externalIds),
   latestTransactionTime: async (holdingId) =>
     (await transactionsRepo.latestSyncedTimeQuery(holdingId, 'binance')).at(0)?.time,
-  listHoldingTransactions: async (holdingId) => transactionsRepo.listByHoldingQuery(holdingId),
   addTransactions: (rows) => transactionsRepo.addManyDedup(rows),
   writeWalkCursor: (holdingId, field, cursorMs) =>
     holdingsRepo.setBinanceWalkCursor(holdingId, field, cursorMs),
@@ -268,25 +264,37 @@ const plannedWithdrawalOf = (accountId: string, record: BinanceWithdrawal): Plan
 type WindowContext = {
   deps: BinanceTransactionSyncDeps;
   run: BinanceHistoryRun;
+  accountId: string;
+  spot: HoldingRow;
   apiKey: string;
   secret: string;
   options: FetchAccountOptions;
-  ledger: MovementLedger;
+  marks: WalkMarks;
+  plan: WalkPlan;
 };
 
+/** One endpoint's records for a span, or the half to ask for instead. */
+type Paged<Row> = { kind: 'rows'; rows: Row[] } | { kind: 'split'; half: WalkWindow };
+
 /**
- * Offset-page one window of one endpoint until a page shorter than the limit,
- * spending the run's shared budget one call at a time and refreshing it from each
- * response's own reported weight. Every request first passes the shared gate, so a
- * wide walk's requests are spaced rather than fired back-to-back. Returns
- * `undefined` the instant the NEXT page is unaffordable, rather than partial data
+ * Page one span of one endpoint, spending the run's shared budget one call at a time and
+ * refreshing it from each response's own reported weight. Every request first passes the
+ * shared gate, so a wide walk's requests are spaced rather than fired back-to-back.
+ *
+ * A first page that is full means the span may hold more records than it shows. A span
+ * that can be halved (`half`) is not paged through then: it is answered with its half, so
+ * a heavy span is cut down to pieces that fit one call each and commit one by one. That is
+ * what lets a run make progress on an account with more records in a span than one run's
+ * calls can page. Only a span of one millisecond is offset-paged until a short page.
+ *
+ * Returns `undefined` the instant the NEXT page is unaffordable, rather than partial data
  * the caller must not commit.
  */
 const fetchAllInWindow = async <Row>(
   run: BinanceHistoryRun,
-  budgeted: { lane: BudgetLane; cost: CallCost },
+  budgeted: { lane: BudgetLane; cost: CallCost; half: WalkWindow | undefined },
   fetchPage: (offset: number) => Promise<HistoryPage<Row>>,
-): Promise<Row[] | undefined> => {
+): Promise<Paged<Row> | undefined> => {
   const rows: Row[] = [];
 
   for (let pageIndex = 0; pageIndex < MAX_PAGES_PER_WINDOW; pageIndex += 1) {
@@ -295,59 +303,69 @@ const fetchAllInWindow = async <Row>(
     }
 
     await run.gate.wait();
-    // Known limit: the budget resets each RUN, not each window, so a window
-    // needing more pages than its lane cap (over 9,000 withdrawals in one 89-day
-    // span) would stop on every run and never complete — unrealistic for a
-    // personal account.
     const page = await fetchPage(pageIndex * HISTORY_PAGE_LIMIT);
     run.budget.record(budgeted.lane, page);
     rows.push(...page.rows);
 
     if (page.rows.length < HISTORY_PAGE_LIMIT) {
-      return rows;
+      return { kind: 'rows', rows };
+    }
+
+    if (budgeted.half !== undefined) {
+      return { kind: 'split', half: budgeted.half };
     }
   }
 
-  return rows;
+  return { kind: 'rows', rows };
 };
 
-type WindowRecords = { deposits: BinanceDeposit[]; withdrawals: BinanceWithdrawal[] };
+type SpanRecords = { deposits: BinanceDeposit[]; withdrawals: BinanceWithdrawal[] };
+
+/** What one span read: its records, or the half to read instead of a span that is too full. */
+type SpanRead = { kind: 'records'; records: SpanRecords } | { kind: 'split'; half: WalkWindow };
 
 /**
- * Fetch one window's deposits and withdrawals. `undefined` is a clean stop: the
- * budget ran out, or Binance rate-limited (which also sets the account's
- * cooldown). Any other error rethrows, leaving every EARLIER window's commit in place.
+ * Fetch one span's deposits and withdrawals. `undefined` is a clean stop: the budget ran
+ * out, or Binance rate-limited (which also sets the account's cooldown). Any other error
+ * rethrows, leaving every EARLIER span's commit in place.
  */
-const fetchWindowRecords = async (
+const readSpan = async (
   context: WindowContext,
-  accountId: string,
-  window: WalkWindow,
-): Promise<WindowRecords | undefined> => {
-  const { deps, run, apiKey, secret, options } = context;
+  span: WalkWindow,
+): Promise<SpanRead | undefined> => {
+  const { deps, run, accountId, apiKey, secret, options } = context;
+  const half = halfOf(span);
   const pageWindow = (offset: number): HistoryWindow => ({
-    startTime: window.start,
-    endTime: window.end,
+    startTime: span.start,
+    endTime: span.end,
     offset,
   });
 
   try {
     const deposits = await fetchAllInWindow(
       run,
-      { lane: 'capitalDeposit', cost: COSTS.deposit },
+      { lane: 'capitalDeposit', cost: COSTS.deposit, half },
       (offset) => deps.fetchDepositHistory(apiKey, secret, pageWindow(offset), options),
     );
 
-    if (deposits === undefined) {
-      return undefined;
+    if (deposits === undefined || deposits.kind === 'split') {
+      return deposits;
     }
 
     const withdrawals = await fetchAllInWindow(
       run,
-      { lane: 'capitalWithdraw', cost: COSTS.withdraw },
+      { lane: 'capitalWithdraw', cost: COSTS.withdraw, half },
       (offset) => deps.fetchWithdrawHistory(apiKey, secret, pageWindow(offset), options),
     );
 
-    return foldMap(maybe(withdrawals), (rows) => ({ deposits, withdrawals: rows }));
+    if (withdrawals === undefined || withdrawals.kind === 'split') {
+      return withdrawals;
+    }
+
+    return {
+      kind: 'records',
+      records: { deposits: deposits.rows, withdrawals: withdrawals.rows },
+    };
   } catch (error) {
     if (error instanceof BinanceRateLimitError) {
       setBinanceCooldownUntil(accountId, deps.now() + error.retryAfterMs);
@@ -360,73 +378,36 @@ const fetchWindowRecords = async (
 };
 
 /**
- * The new rows that are the twin of a Pay row already stored on any Binance BTC holding of
- * the account. The Pay walk judges its rows against stored capital rows, but a capital
- * record that settles late is imported behind the capital watermark after a Pay row for the
- * same movement, so this walk checks the other way round. Nothing is read when no row is new.
- */
-const twinsOfStoredPayRows = async (
-  ledger: MovementLedger,
-  newRows: PlannedRow[],
-): Promise<Set<string>> => {
-  if (newRows.length === 0) {
-    return new Set();
-  }
-
-  const stored = await ledger.read();
-
-  return twinsOf({
-    kind: 'capital',
-    candidates: newRows,
-    sameKind: stored.capital,
-    otherKind: stored.pay,
-  });
-};
-
-/**
  * Turn the planned rows into importable ones, creating a missing wallet holding at
  * zero first, but only for a wallet that receives a row whose key is new. A row
  * whose key is already stored keeps its stored holding (the upsert never moves it),
  * so it must not conjure an empty holding it will never sit on; if its wallet has
- * none it travels under `spot`, which the upsert ignores. A new row that is the twin of a
- * stored Pay row is left out. A wallet that cannot be resolved even after creation stops
- * the window.
+ * none it travels under `spot`, which the upsert ignores. A wallet that cannot be
+ * resolved even after creation stops the window.
  */
 const placeRows = async (
   context: WindowContext,
-  accountId: string,
-  spot: HoldingRow,
   planned: PlannedRow[],
 ): Promise<BinanceTransactionRow[]> => {
   if (planned.length === 0) {
     return [];
   }
 
-  const { deps, ledger } = context;
+  const { deps, accountId, spot } = context;
   // This lookup runs outside the `addManyDedup` write. A user delete of a stored row in
   // that gap re-inserts it on the placeholder holding (`spot`), exactly as a row the
   // walk had never imported would be: nothing is lost, only the user's delete is undone.
   const stored = await deps.storedExternalIds(planned.map((row) => row.externalId));
-  const twins = await twinsOfStoredPayRows(
-    ledger,
-    planned.filter((row) => !stored.has(row.externalId)),
-  );
-
-  if (twins.size > 0) {
-    logWalkNotice('capital-overlap-skip');
-  }
-
-  const kept = planned.filter((row) => !twins.has(row.externalId));
-  const newRows = kept.filter((row) => !stored.has(row.externalId));
+  const newRows = planned.filter((row) => !stored.has(row.externalId));
   const holdings = await resolveWalletHoldings({
     accountId,
-    keys: [...new Set(kept.map((row) => row.wallet))],
+    keys: [...new Set(planned.map((row) => row.wallet))],
     createKeys: [...new Set(newRows.map((row) => row.wallet))],
     listHoldings: deps.listHoldings,
     ensureHoldings: deps.ensureHoldings,
   });
 
-  return kept.map(({ wallet, ...row }) => {
+  return planned.map(({ wallet, ...row }) => {
     const holding = holdings.get(wallet) ?? (stored.has(row.externalId) ? spot : undefined);
 
     if (holding === undefined) {
@@ -437,29 +418,19 @@ const placeRows = async (
   });
 };
 
-/** One window's outcome: committed (rows durable, watermark advanced) or a clean stop. */
-type WindowOutcome = { kind: 'committed'; imported: number } | { kind: 'stop' };
-
 /**
- * Run one window: fetch deposits + withdrawals, then either commit (rows first,
- * watermark second — crash-safe: a crash between the two just re-imports
- * idempotently next run) or stop cleanly without committing.
+ * Commit one span: plan and place its rows, write them, then move the walk's mark (rows
+ * first, mark second, so a crash between the two just re-imports idempotently). A record
+ * the walk cannot trust is a `BinanceWalkStop`, logged and answered as `undefined`, which
+ * leaves the span uncommitted. Returns the rows imported.
  */
-const runOneWindow = async (
+const commitSpan = async (
   context: WindowContext,
-  accountId: string,
-  spot: HoldingRow,
-  window: WalkWindow,
-): Promise<WindowOutcome> => {
-  const { deps } = context;
-  const records = await fetchWindowRecords(context, accountId, window);
-
-  if (records === undefined) {
-    // Not committed and not marked — the next run redoes this window from the
-    // SAME (unmoved) cursor.
-    return { kind: 'stop' };
-  }
-
+  span: WalkWindow,
+  records: SpanRecords,
+  pass: WalkPass,
+): Promise<number | undefined> => {
+  const { deps, accountId, spot, plan, marks } = context;
   let rows: BinanceTransactionRow[];
 
   try {
@@ -468,27 +439,74 @@ const runOneWindow = async (
       ...records.withdrawals.map((record) => plannedWithdrawalOf(accountId, record)),
     ].filter((row): row is PlannedRow => row !== null);
 
-    rows = await placeRows(context, accountId, spot, planned);
+    rows = await placeRows(context, planned);
   } catch (error) {
     if (error instanceof BinanceWalkStop) {
       logWalkStop(error.code);
 
-      return { kind: 'stop' };
+      return undefined;
     }
 
     throw error;
   }
 
-  let imported = 0;
+  const imported = rows.length > 0 ? await deps.addTransactions(rows) : 0;
 
-  if (rows.length > 0) {
-    imported = await deps.addTransactions(rows);
-    context.ledger.remember(rows);
+  await advanceWalkMarks({
+    pass,
+    span,
+    plan,
+    marks,
+    restartMs: HISTORY_FLOOR_MS,
+    write: (mark, cursorMs) =>
+      deps.writeWalkCursor(
+        spot.id,
+        mark === 'cursor' ? BINANCE_HISTORY_CURSOR_FIELD : BINANCE_HISTORY_RESCAN_CURSOR_FIELD,
+        cursorMs,
+      ),
+  });
+
+  return imported;
+};
+
+/**
+ * Walk one window of a pass: ask for the whole window, and when a first page comes back
+ * full halve the span and ask again (see `fetchAllInWindow`). A span that fits commits and
+ * the walk goes on from where it ended, with a span twice as wide; the millisecond two
+ * spans share is read twice and removed by the key. A stop or an unaffordable call leaves
+ * the rest of the window for the next run, which resumes from the stored marks.
+ */
+const runOneWindow = async (
+  context: WindowContext,
+  window: WalkWindow,
+  pass: WalkPass,
+): Promise<WalkResult> => {
+  let imported = 0;
+  let span = window;
+
+  while (span.start < window.end) {
+    const read = await readSpan(context, span);
+
+    if (read === undefined) {
+      // Not committed and not marked: the next run redoes this span from the SAME marks.
+      return { imported, complete: false };
+    }
+
+    if (read.kind === 'split') {
+      span = read.half;
+    } else {
+      const committed = await commitSpan(context, span, read.records, pass);
+
+      if (committed === undefined) {
+        return { imported, complete: false };
+      }
+
+      imported += committed;
+      span = nextSpanAfter(span, window);
+    }
   }
 
-  await deps.writeWalkCursor(spot.id, BINANCE_HISTORY_CURSOR_FIELD, window.end);
-
-  return { kind: 'committed', imported };
+  return { imported, complete: true };
 };
 
 const runSync = async (
@@ -515,60 +533,47 @@ const runSync = async (
   // The watermark takes priority; a holding that never had one (legacy data,
   // or a first sync) falls back to the newest already-imported record.
   const cursor = binanceWalkCursorOf(BINANCE_HISTORY_CURSOR_FIELD, spot.metadata);
+  const rescanCursor = binanceWalkCursorOf(BINANCE_HISTORY_RESCAN_CURSOR_FIELD, spot.metadata);
   const latest = await deps.latestTransactionTime(spot.id);
-  const windows = buildWalkWindows(
-    resolveWalkStart({
-      cursor: cursor ?? latest ?? null,
-      floorMs: HISTORY_FLOOR_MS,
-      endTime: now,
-      windowMs: WINDOW_MS,
-      overlapMs: RESYNC_OVERLAP_MS,
-    }),
-    now,
-    WINDOW_MS,
-    MAX_WINDOWS,
-  );
+  const plan = planWalkPasses({
+    cursor: cursor ?? latest ?? null,
+    rescanCursor,
+    floorMs: HISTORY_FLOOR_MS,
+    endTime: now,
+    windowMs: WINDOW_MS,
+    overlapMs: RESYNC_OVERLAP_MS,
+    maxWindows: MAX_WINDOWS,
+  });
   const context: WindowContext = {
     deps,
     run,
+    accountId,
+    spot,
     apiKey,
     secret,
     options,
-    ledger: createMovementLedger({
-      accountId,
-      listHoldings: deps.listHoldings,
-      listHoldingTransactions: deps.listHoldingTransactions,
-    }),
+    marks: { cursor, rescanCursor },
+    plan,
   };
-  let imported = 0;
 
-  for (const window of windows) {
-    if (!run.budget.canAfford('capitalWithdraw', COSTS.withdraw)) {
-      return { imported, complete: false };
-    }
-
-    const outcome = await runOneWindow(context, accountId, spot, window);
-
-    if (outcome.kind === 'stop') {
-      return { imported, complete: false };
-    }
-
-    imported += outcome.imported;
-  }
-
-  return { imported, complete: true };
+  return runWalkPlan({
+    plan,
+    canAfford: () => run.budget.canAfford('capitalWithdraw', COSTS.withdraw),
+    runWindow: (window, pass) => runOneWindow(context, window, pass),
+  });
 };
 
 /**
  * Fetch BTC deposit + withdrawal history from Binance and import it as
  * transactions on the wallet holding each movement names (Spot, or Funding for
- * `walletType` 1), idempotently, walking oldest window first and committing each
- * window's rows before advancing the watermark past it. Runs AFTER the balance
+ * `walletType` 1), idempotently, committing each span's rows before advancing the
+ * mark past it. A run goes forward from the watermark first, then re-scans the last
+ * window behind it on what budget is left (see `planWalkPasses`). Runs AFTER the balance
  * sync (which creates/updates the Spot holding), so the Spot holding it anchors on
  * already exists. A missing Spot holding, missing credentials, or an active
- * post-429/418 cooldown is a no-op. `complete: false` means history remains behind
- * and a later run will resume from the watermark; a history request failure OTHER
- * than a rate limit rejects, so the caller can log it without failing the balance
+ * post-429/418 cooldown is a no-op. `complete: false` means history or the re-scan
+ * remains and a later run will resume from the stored marks; a history request failure
+ * OTHER than a rate limit rejects, so the caller can log it without failing the balance
  * sync.
  */
 export const syncBinanceTransactions = (
