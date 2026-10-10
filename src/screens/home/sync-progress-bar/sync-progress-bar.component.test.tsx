@@ -1,4 +1,6 @@
+import { darkTheme } from '@kiko/design-system/theme';
 import { render } from '@testing-library/react-native';
+import { type StyleProp, StyleSheet, type ViewStyle } from 'react-native';
 
 // Register the design-system theme so `useUnistyles()` resolves inside this
 // isolated render (the app entry imports it transitively; a lone component test
@@ -17,6 +19,20 @@ jest.mock('@kiko/monobank/sync-status', () => ({
   useSyncStatus: () => mockUseSyncStatus(),
   useSyncProgress: () => mockUseSyncProgress(),
 }));
+
+// Spy on `withTiming` only: the shared stub resolves it to its target and drops the
+// config, so the duration the bar asks for is otherwise invisible to a test.
+const mockWithTiming = jest.fn((target: number, _config?: { duration?: number }) => target);
+jest.mock('react-native-reanimated', () => {
+  const stub = require('../../../../jest/reanimated-mock');
+
+  return new Proxy(stub, {
+    get: (target, property) =>
+      property === 'withTiming'
+        ? (...parameters: [number, { duration?: number }]) => mockWithTiming(...parameters)
+        : target[property],
+  });
+});
 
 import SyncProgressBar from './sync-progress-bar.component';
 
@@ -90,5 +106,114 @@ describe('SyncProgressBar', () => {
     const { queryByTestId } = await render(<SyncProgressBar />);
 
     expect(queryByTestId('sync-progress-bar')).toBeNull();
+  });
+
+  const progress = (workCompleted: number, workTotal: number) => ({
+    completed: 1,
+    total: 2,
+    workCompleted,
+    workTotal,
+  });
+
+  const fillStyleOf = (bar: { children: unknown[] }): Record<string, unknown> => {
+    const fill = bar.children[0] as { props: { style: StyleProp<ViewStyle> } };
+
+    return { ...StyleSheet.flatten(fill.props.style) };
+  };
+
+  describe('fill target', () => {
+    it('animates to the work fraction plus the next-step creep, over the creep duration', async () => {
+      mockUseSyncProgress.mockReturnValue(progress(4, 10));
+
+      await render(<SyncProgressBar />);
+
+      expect(mockWithTiming).toHaveBeenCalledWith(expect.closeTo(0.49, 10), { duration: 55_000 });
+    });
+
+    it('caps the target at a full bar when the creep passes the last work unit', async () => {
+      mockUseSyncProgress.mockReturnValue(progress(10, 10));
+
+      await render(<SyncProgressBar />);
+
+      expect(mockWithTiming).toHaveBeenCalledWith(1, { duration: 55_000 });
+    });
+
+    it('animates to zero while no work is known', async () => {
+      mockUseSyncProgress.mockReturnValue(progress(0, 0));
+
+      await render(<SyncProgressBar />);
+
+      expect(mockWithTiming).toHaveBeenCalledWith(0, { duration: 55_000 });
+    });
+
+    it('retargets when the work completed changes on a later render', async () => {
+      mockUseSyncProgress.mockReturnValue(progress(2, 10));
+      const { rerender } = await render(<SyncProgressBar />);
+
+      mockUseSyncProgress.mockReturnValue(progress(6, 10));
+      await rerender(<SyncProgressBar />);
+
+      expect(mockWithTiming).toHaveBeenLastCalledWith(expect.closeTo(0.69, 10), {
+        duration: 55_000,
+      });
+    });
+
+    it('retargets when only the work total changes on a later render', async () => {
+      mockUseSyncProgress.mockReturnValue(progress(2, 10));
+      const { rerender } = await render(<SyncProgressBar />);
+
+      mockUseSyncProgress.mockReturnValue(progress(2, 5));
+      await rerender(<SyncProgressBar />);
+
+      expect(mockWithTiming).toHaveBeenLastCalledWith(expect.closeTo(0.58, 10), {
+        duration: 55_000,
+      });
+    });
+
+    it('does not retarget when the work progress is unchanged', async () => {
+      mockUseSyncProgress.mockReturnValue(progress(2, 10));
+      const { rerender } = await render(<SyncProgressBar />);
+
+      await rerender(<SyncProgressBar />);
+
+      expect(mockWithTiming).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('rendered bar', () => {
+    it('sizes the fill as the animated target percentage of the track', async () => {
+      mockUseSyncProgress.mockReturnValue(progress(4, 10));
+      const { getByTestId, rerender } = await render(<SyncProgressBar />);
+
+      await rerender(<SyncProgressBar />);
+
+      const width = String(fillStyleOf(getByTestId('sync-progress-bar')).width);
+
+      expect(Number.parseFloat(width)).toBeCloseTo(49, 5);
+      expect(width).toMatch(/%$/);
+    });
+
+    it('styles the track as a clipped rounded surface the height of one spacing step', async () => {
+      mockUseSyncProgress.mockReturnValue(progress(4, 10));
+
+      const { getByTestId } = await render(<SyncProgressBar />);
+
+      expect(StyleSheet.flatten(getByTestId('sync-progress-bar').props.style)).toEqual({
+        height: darkTheme.spacing(1),
+        borderRadius: darkTheme.radii.sm,
+        backgroundColor: darkTheme.colors.surfaceHigh,
+        overflow: 'hidden',
+      });
+    });
+
+    it('styles the fill as the accent colour at the full height of the track', async () => {
+      mockUseSyncProgress.mockReturnValue(progress(4, 10));
+      const { getByTestId } = await render(<SyncProgressBar />);
+
+      expect(fillStyleOf(getByTestId('sync-progress-bar'))).toMatchObject({
+        height: '100%',
+        backgroundColor: darkTheme.colors.accent,
+      });
+    });
   });
 });
