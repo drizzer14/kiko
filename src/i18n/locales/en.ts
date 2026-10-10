@@ -1008,6 +1008,10 @@ export const en = {
     },
     exchangeFrom: 'Exchange from {{name}}',
     exchangeTo: 'Exchange to {{name}}',
+    // The same movement when both sides hold one currency: an own-wallet move,
+    // not an exchange. Also names a wallet Kiko does not track.
+    transferFrom: 'Transfer from {{name}}',
+    transferTo: 'Transfer to {{name}}',
   },
   // Shared design-system components (src/design-system/components/*) that
   // carry their own hardcoded copy rather than taking it as a prop.

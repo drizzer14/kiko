@@ -115,7 +115,11 @@ const sync = (items: SyncItem[]): Promise<number> => transactionsRepo.addManyDed
 
 const excludedIds = (): Set<string> =>
   exchangeExcludedTransactionIds(
-    storedRows().map(({ id, marker }) => ({ id, exchangeCounterpartHoldingId: marker })),
+    storedRows().map(({ id, marker }) => ({
+      id,
+      exchangeCounterpartHoldingId: marker,
+      untrackedCounterpart: null,
+    })),
   );
 
 // An import row of -40 000 on the card, Converted to a manual USD leg while it

@@ -233,9 +233,11 @@ const signedMinorUnits = (currency: Currency, amount: string, sign: Sign): numbe
 // written through `recordManual` without one, so its source's marker is not
 // read here.
 const resolveDescriptionPlaceholder = (input: {
-  holding: Pick<HoldingRow, 'name'> | undefined;
-  existing: Pick<TransactionRow, 'exchangeCounterpartHoldingId'> | undefined;
-  holdings: readonly Pick<HoldingRow, 'id' | 'name'>[];
+  holding: Pick<HoldingRow, 'id' | 'name'> | undefined;
+  existing:
+    | Pick<TransactionRow, 'exchangeCounterpartHoldingId' | 'untrackedCounterpart'>
+    | undefined;
+  holdings: readonly Pick<HoldingRow, 'id' | 'name' | 'currency'>[];
   mode: FormMode;
   t: TFunction;
 }): string => {
@@ -247,12 +249,15 @@ const resolveDescriptionPlaceholder = (input: {
 
   return transactionRowDescription({
     transaction: {
+      holdingId: holding.id,
       description: '',
       amountMinorUnits: mode === 'expense' || mode === 'split' ? -1 : 0,
       exchangeCounterpartHoldingId: existing?.exchangeCounterpartHoldingId ?? null,
+      untrackedCounterpart: existing?.untrackedCounterpart ?? null,
     },
     holdingName: holding.name,
     holdingNameById: buildHoldingNameById(holdings),
+    holdingCurrencyById: buildHoldingCurrencyById(holdings),
     t,
   });
 };
@@ -262,6 +267,11 @@ const buildHoldingNameById = (
 ): ReadonlyMap<string, string> =>
   new Map(holdings.map((candidate) => [candidate.id, candidate.name]));
 
+const buildHoldingCurrencyById = (
+  holdings: readonly Pick<HoldingRow, 'id' | 'currency'>[],
+): ReadonlyMap<string, string> =>
+  new Map(holdings.map((candidate) => [candidate.id, candidate.currency]));
+
 // The text an edited row with a BLANK stored description opens with: the label
 // the transaction lists show for it (an exchange leg's "Exchange to/from
 // <counterpart>", else the holding-name default), so the field never reads
@@ -269,10 +279,17 @@ const buildHoldingNameById = (
 // edit, a description of the row's own, or a holding not yet resolved.
 const resolveBlankLabel = (input: {
   existing:
-    | Pick<TransactionRow, 'description' | 'amountMinorUnits' | 'exchangeCounterpartHoldingId'>
+    | Pick<
+        TransactionRow,
+        | 'holdingId'
+        | 'description'
+        | 'amountMinorUnits'
+        | 'exchangeCounterpartHoldingId'
+        | 'untrackedCounterpart'
+      >
     | undefined;
   holding: Pick<HoldingRow, 'name'> | undefined;
-  holdings: readonly Pick<HoldingRow, 'id' | 'name'>[];
+  holdings: readonly Pick<HoldingRow, 'id' | 'name' | 'currency'>[];
   t: TFunction;
 }): string | null => {
   const { existing, holding } = input;
@@ -285,6 +302,7 @@ const resolveBlankLabel = (input: {
     transaction: existing,
     holdingName: holding.name,
     holdingNameById: buildHoldingNameById(input.holdings),
+    holdingCurrencyById: buildHoldingCurrencyById(input.holdings),
     t: input.t,
   });
 };

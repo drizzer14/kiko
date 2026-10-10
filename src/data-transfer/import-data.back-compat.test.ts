@@ -245,6 +245,31 @@ describe('importing a version 1 file an earlier build wrote', () => {
     });
   });
 
+  describe('a file written before transactions carried an untracked counterpart', () => {
+    it('restores every transaction with a null untracked counterpart', async () => {
+      const payload = (await earlierBuildPayload(undefined, (database) => {
+        insertLegacyImportRow(database);
+        database
+          .prepare(
+            `INSERT INTO transactions (id, holding_id, amount_minor_units, time, source, untracked_counterpart)
+             VALUES ('t2', 'h1', -200, ?, 'manual', 'wallet:UMFUTURE')`,
+          )
+          .run(LEGACY_IMPORT_TIME);
+      })) as { tables: { transactions: Record<string, unknown>[] } };
+
+      for (const row of payload.tables.transactions) {
+        delete row.untrackedCounterpart;
+      }
+      mockDatabase = openDatabase();
+
+      await importVersionOne(payload);
+
+      expect(
+        mockDatabase.prepare('SELECT untracked_counterpart AS value FROM transactions').all(),
+      ).toEqual([{ value: null }, { value: null }]);
+    });
+  });
+
   describe('the demo file release 1.1 wrote', () => {
     // A frozen copy of the English demo file as 1.1 wrote it: export version 1,
     // none of the settings columns of 1.2. It shares the demo key.

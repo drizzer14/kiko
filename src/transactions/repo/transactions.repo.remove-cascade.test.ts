@@ -15,12 +15,20 @@ jest.mock('@kiko/db/client', () => {
 import { join } from 'node:path';
 import { readFileSync } from 'node:fs';
 import { i18n } from '@kiko/i18n/init';
+import {
+  applyAllMigrations,
+  applyMigrationsBetween,
+  applyMigrationsThrough,
+} from '@kiko/test-support/real-sqlite';
 import { DatabaseSync } from 'node:sqlite';
 import maybe, { foldMap } from 'fnts/maybe';
 import { removeNotice } from '@kiko/transactions/remove-notice';
-import { applyAllMigrations, applyMigrationsThrough } from '@kiko/test-support/real-sqlite';
 
 import { transactionsRepo } from './transactions.repo';
+
+// The newest migration the repository's own columns need: the last one that
+// added a column `transactions` is read with.
+const LAST_MIGRATION_TAG = '0056_add_untracked_counterpart';
 
 const MIGRATION_0052_SQL = readFileSync(
   join(__dirname, '..', '..', '..', 'drizzle', 'migrations', '0052_add_exchange_pair_id.sql'),
@@ -904,6 +912,9 @@ describe('deleting a part of a split payment that was converted', () => {
       for (const statement of MIGRATION_0052_SQL.split('--> statement-breakpoint')) {
         mockDatabase.exec(statement);
       }
+
+      // The repository reads every column of today's schema.
+      applyMigrationsBetween(mockDatabase, '0052_add_exchange_pair_id', LAST_MIGRATION_TAG);
     };
 
     it.each(['legacy-return', 'legacy-converted', 'legacy-payment'])(
@@ -1550,6 +1561,9 @@ describe('a legacy leg written before the pair id existed', () => {
     for (const statement of MIGRATION_0052_SQL.split('--> statement-breakpoint')) {
       mockDatabase.exec(statement);
     }
+
+    // The repository reads every column of today's schema.
+    applyMigrationsBetween(mockDatabase, '0052_add_exchange_pair_id', LAST_MIGRATION_TAG);
   };
 
   it('deletes both legs of a manual pair the backfill paired', async () => {

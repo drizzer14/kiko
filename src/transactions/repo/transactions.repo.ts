@@ -60,11 +60,23 @@ import { normalizeTransactionName } from '../normalize-name';
 import { balanceBoundaryOf, movesBalance } from '../balance-boundary';
 import { SYNC_MATCH_WINDOW_MILLISECONDS, pairSyncInputsWithImportRows } from '../sync-adoption';
 
+// The three movement markers are insert-only: the upsert's update set
+// (`BANK_OWNED_TRANSACTION_COLUMNS`) leaves them out, since the deterministic key
+// of a history row never changes the movement it names.
 type NewTransaction = Pick<TransactionRow, 'holdingId' | 'amountMinorUnits' | 'time' | 'source'> &
   Partial<
     Pick<
       TransactionRow,
-      'description' | 'category' | 'mcc' | 'hold' | 'counterIban' | 'comment' | 'externalId'
+      | 'description'
+      | 'category'
+      | 'mcc'
+      | 'hold'
+      | 'counterIban'
+      | 'comment'
+      | 'externalId'
+      | 'exchangeCounterpartHoldingId'
+      | 'exchangePairId'
+      | 'untrackedCounterpart'
     >
   >;
 
@@ -1814,6 +1826,11 @@ const contextRowsQuery = () =>
       // it to resolve an exchange leg's label, and Statistics reads it to
       // drop both legs from the spending pie.
       exchangeCounterpartHoldingId: transactions.exchangeCounterpartHoldingId,
+      // The untracked-wallet code travels with it, for the same two readers.
+      untrackedCounterpart: transactions.untrackedCounterpart,
+      // With the marker, what the row label needs to compare the leg's own
+      // currency to its counterpart's (`holdingCurrencyById`).
+      holdingId: transactions.holdingId,
       // The split-change group id travels too: the spending pie nets a
       // payment's linked returns into its category (statistics/category-breakdown).
       changeGroupId: transactions.changeGroupId,

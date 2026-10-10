@@ -1520,7 +1520,9 @@ describe('TransactionFormScreen — blank description pre-fill on edit', () => {
     [
       'the leg Convert recorded',
       leg({ holdingId: 'h-card', amountMinorUnits: -700, exchangeCounterpartHoldingId: 'h-uah' }),
-      'Exchange to Wallet UAH',
+      // Both holdings are UAH: a manual leg between two holdings of one currency
+      // reads as a transfer, like a synced one.
+      'Transfer to Wallet UAH',
     ],
   ];
 

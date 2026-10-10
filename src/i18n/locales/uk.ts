@@ -847,6 +847,8 @@ export const uk: typeof en = {
     },
     exchangeFrom: 'Обмін з {{name}}',
     exchangeTo: 'Обмін на {{name}}',
+    transferFrom: 'Переказ з {{name}}',
+    transferTo: 'Переказ на {{name}}',
   },
   components: {
     netWorthLine: {

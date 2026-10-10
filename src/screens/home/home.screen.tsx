@@ -291,6 +291,13 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
     [holdings],
   );
 
+  // With the names, what tells a same-currency leg ("Transfer to") from a
+  // cross-currency one ("Exchange to").
+  const holdingCurrencyById = useMemo(
+    () => new Map(holdings.map((holding) => [holding.id, holding.currency])),
+    [holdings],
+  );
+
   const active = activeHoldings(holdings, accounts);
   const total = guardedNetWorth(active, baseCurrency, rateTable, now, priceBook);
   const breakdown = guardedBreakdown(active, baseCurrency, rateTable, now, priceBook);
@@ -499,6 +506,7 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
           categoryByKey={categoryByKey}
           defaultCategoryKey={defaultCategoryKey}
           holdingNameById={holdingNameById}
+          holdingCurrencyById={holdingCurrencyById}
           categoryKeyForRow={categoryKeyForRow}
           onPress={handleRowPress}
           onDuplicate={handleRowDuplicate}
@@ -509,6 +517,7 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
       categoryByKey,
       defaultCategoryKey,
       holdingNameById,
+      holdingCurrencyById,
       categoryKeyForRow,
       handleRowPress,
       handleRowDuplicate,

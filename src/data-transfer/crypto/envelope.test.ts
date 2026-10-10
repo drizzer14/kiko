@@ -124,7 +124,12 @@ describe('the export version against the migration journal', () => {
     // (`dismissedTips`): an older build restoring a file that carries it drops
     // the key, and this build restores an older file without it as `[]` (the
     // schema default), so it needed no bump.
-    migrationCount: 56,
+    // Through 0056_add_untracked_counterpart, a nullable column riding inside the
+    // transaction row (`untrackedCounterpart`): an older build restoring a file
+    // that carries it drops the key, and this build restores an older file
+    // without it as null, so it needed no bump (a bump would make an older build
+    // refuse every new file).
+    migrationCount: 57,
   };
 
   it('has a version decision for every migration', () => {

@@ -205,6 +205,16 @@ export const transactions = sqliteTable(
     // partner for. Deleting a holding or an account follows the same ids to the
     // legs on OTHER holdings (`transactionsRepo.removeHolding`).
     exchangePairId: text('exchange_pair_id'),
+    // The one-leg counterpart of a Binance move to a wallet Kiko does not track
+    // (a Futures, Margin, Options or Portfolio Margin wallet), as the code
+    // `wallet:<TYPE>`. No second row exists to pair against, so this stored
+    // marker (like `exchangeCounterpartHoldingId`) keeps the leg out of spending
+    // (statistics/exchange-exclusion.ts). A code, not a sentence, so the label
+    // is resolved at render time through `t` and stays in the active language;
+    // the `wallet:` prefix leaves room for another kind of code later. Null on
+    // every other row, and `addManyDedup`'s upsert never refreshes it: the key
+    // that carries it never changes.
+    untrackedCounterpart: text('untracked_counterpart'),
     // The loan holding this payment counts against — null for an ordinary
     // transaction. A loan holding writes no ledger rows of its own
     // (`isLedgerlessHoldingType`), so every payment lives on the LINKED
