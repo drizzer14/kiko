@@ -273,7 +273,7 @@ skill that documents the release-publishing workflow and an
 `estimator` skill that states the duration-estimate rules, and a
 `harness-sync` skill for porting generic harness changes to the
 drizzer14/harness repo), one
-vendored review command, the `scripts/run-log.mjs` run log, and the tier hooks documented above.
+vendored review command, the `harness/kiko/scripts/run-log.mjs` run log, and the tier hooks documented above.
 
 A fresh checkout must run `npm install` before the harness hooks
 work — the check tools they call (Biome, jscpd, Knip, depcheck,
