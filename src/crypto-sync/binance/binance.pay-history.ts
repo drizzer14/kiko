@@ -3,6 +3,7 @@ import { DAY_MS } from '@kiko/dates';
 import {
   BINANCE_HISTORY_CURSOR_FIELD,
   BINANCE_PAY_HISTORY_CURSOR_FIELD,
+  BINANCE_PAY_RESCAN_CURSOR_FIELD,
   binanceWalkCursorOf,
   type BinanceWalkCursorField,
 } from '@kiko/holdings/holding-metadata';
@@ -20,11 +21,14 @@ import {
 import {
   BinanceWalkStop,
   btcSatoshis,
-  buildWalkWindows,
   logWalkNotice,
   logWalkStop,
-  resolveWalkStart,
+  planWalkPasses,
+  rescanCursorAfter,
   resolveWalletHoldings,
+  runWalkPlan,
+  type WalkPass,
+  type WalkPlan,
   type WalkResult,
   type WalkWindow,
 } from './binance.history-walk';
@@ -356,8 +360,11 @@ type PayContext = {
   secret: string;
   options: FetchAccountOptions;
   uid: string | null;
-  /** The Pay watermark as the run found it. */
+  /** The Pay watermark, as the run found it and then as the run last wrote it. */
   cursor: number | null;
+  /** The re-scan mark, as the run found it and then as the run last wrote it. */
+  rescanCursor: number | null;
+  plan: WalkPlan;
   ledger: MovementLedger;
   noticed: Set<string>;
 };
@@ -430,16 +437,6 @@ const halfOf = (span: WalkWindow): WalkWindow | undefined => {
   return length < 2 ? undefined : { start: span.start, end: span.start + Math.floor(length / 2) };
 };
 
-/**
- * BTC that paid for an order of another coin is a BTC movement with no row rule yet.
- * Committing past it would lose the movement for good, so the span stays uncommitted.
- */
-const assertNoBtcFundedOtherCoinOrder = (page: PayHistoryPage): void => {
-  if (page.hasBtcFundedOtherCoinOrder) {
-    throw new BinanceWalkStop('pay-btc-funded-other-coin');
-  }
-};
-
 /** One row per key: an order on the boundary of two spans is read twice. */
 const plannedRowsOf = (context: PayContext, orders: BinancePayOrder[]): PlannedPayRow[] => {
   const planned = orders.flatMap((order) =>
@@ -500,17 +497,51 @@ const placeRows = async (
 };
 
 /**
- * Commit one span's page: plan and place its rows, write them, then move the Pay watermark
- * to the span's end (rows first, watermark second, so a crash between the two just
- * re-imports idempotently). The watermark never moves back, because a re-scan can start
- * behind it. A `BinanceWalkStop` leaves the span uncommitted. Returns the rows imported.
+ * Move the walk's mark once a span's rows are durable. A forward span moves the Pay watermark
+ * to its end, never back: the first spans of a pass start behind it, and the mark to compare
+ * with is the one this run last wrote, not the one it found. A re-scan span moves only the
+ * re-scan mark and leaves the watermark alone, so a re-scan can never undo the forward pass.
+ */
+const advanceMark = async (
+  context: PayContext,
+  span: WalkWindow,
+  pass: WalkPass,
+): Promise<void> => {
+  const { deps, spot, plan } = context;
+
+  if (pass === 'forward') {
+    context.cursor = Math.max(span.end, context.cursor ?? span.end);
+    await deps.writeWalkCursor(spot.id, BINANCE_PAY_HISTORY_CURSOR_FIELD, context.cursor);
+
+    return;
+  }
+
+  const rescanCursor = rescanCursorAfter({ span, plan, restartMs: HISTORY_FLOOR_MS });
+
+  // A finished pass that was never started has no mark to reset: skip the redundant write.
+  if (rescanCursor !== (context.rescanCursor ?? HISTORY_FLOOR_MS)) {
+    context.rescanCursor = rescanCursor;
+    await deps.writeWalkCursor(spot.id, BINANCE_PAY_RESCAN_CURSOR_FIELD, rescanCursor);
+  }
+};
+
+/**
+ * Commit one span's page: plan and place its rows, write them, then move the walk's mark
+ * (rows first, mark second, so a crash between the two just re-imports idempotently). BTC
+ * that paid for an order of another coin is a BTC movement with no row rule yet, so
+ * committing past it would lose the movement for good: a `BinanceWalkStop` leaves the span
+ * uncommitted, as it does for any row the walk cannot trust. Returns the rows imported.
  */
 const commitSpan = async (
   context: PayContext,
   span: WalkWindow,
   page: PayHistoryPage,
+  pass: WalkPass,
 ): Promise<number> => {
-  assertNoBtcFundedOtherCoinOrder(page);
+  if (page.hasBtcFundedOtherCoinOrder) {
+    throw new BinanceWalkStop('pay-btc-funded-other-coin');
+  }
+
   const rows = await placeRows(context, plannedRowsOf(context, page.rows));
   let imported = 0;
 
@@ -519,11 +550,7 @@ const commitSpan = async (
     context.ledger.remember(rows);
   }
 
-  await context.deps.writeWalkCursor(
-    context.spot.id,
-    BINANCE_PAY_HISTORY_CURSOR_FIELD,
-    Math.max(span.end, context.cursor ?? span.end),
-  );
+  await advanceMark(context, span, pass);
 
   return imported;
 };
@@ -533,9 +560,10 @@ const commitOrStop = async (
   context: PayContext,
   span: WalkWindow,
   page: PayHistoryPage,
+  pass: WalkPass,
 ): Promise<number | undefined> => {
   try {
-    return await commitSpan(context, span, page);
+    return await commitSpan(context, span, page, pass);
   } catch (error) {
     if (error instanceof BinanceWalkStop) {
       logWalkStop(error.code);
@@ -569,7 +597,11 @@ const nextSpanAfter = (committed: WalkWindow, window: WalkWindow): WalkWindow =>
  * twice and removed by the key. A span of one millisecond that is still full stops the
  * window rather than skip.
  */
-const runOneWindow = async (context: PayContext, window: WalkWindow): Promise<WindowOutcome> => {
+const runOneWindow = async (
+  context: PayContext,
+  window: WalkWindow,
+  pass: WalkPass,
+): Promise<WindowOutcome> => {
   let imported = 0;
   let span = window;
 
@@ -591,7 +623,7 @@ const runOneWindow = async (context: PayContext, window: WalkWindow): Promise<Wi
 
       span = half;
     } else {
-      const committed = await commitOrStop(context, span, page);
+      const committed = await commitOrStop(context, span, page, pass);
 
       if (committed === undefined) {
         return { imported, complete: false };
@@ -666,21 +698,18 @@ const runSync = async (
   }
 
   const payCursor = binanceWalkCursorOf(BINANCE_PAY_HISTORY_CURSOR_FIELD, spot.metadata);
-  const endTime = Math.min(now, capitalCursor);
-  const windows = buildWalkWindows(
-    resolveWalkStart({
-      cursor: payCursor,
-      floorMs: payFloorMs(now),
-      endTime,
-      windowMs: PAY_WINDOW_MS,
-      overlapMs: RESYNC_OVERLAP_MS,
-    }),
-    endTime,
-    PAY_WINDOW_MS,
-    MAX_WINDOWS,
-  );
+  const rescanCursor = binanceWalkCursorOf(BINANCE_PAY_RESCAN_CURSOR_FIELD, spot.metadata);
+  const plan = planWalkPasses({
+    cursor: payCursor,
+    rescanCursor,
+    floorMs: payFloorMs(now),
+    endTime: Math.min(now, capitalCursor),
+    windowMs: PAY_WINDOW_MS,
+    overlapMs: RESYNC_OVERLAP_MS,
+    maxWindows: MAX_WINDOWS,
+  });
 
-  if (windows.length === 0) {
+  if (plan.forward.length === 0 && plan.rescan.length === 0) {
     return { imported: 0, complete: false };
   }
 
@@ -694,6 +723,8 @@ const runSync = async (
     secret,
     options: { fetchImpl: deps.fetchImpl, now: deps.now },
     cursor: payCursor,
+    rescanCursor,
+    plan,
     ledger: createMovementLedger({
       accountId,
       listHoldings: deps.listHoldings,
@@ -708,31 +739,22 @@ const runSync = async (
   }
 
   const context: PayContext = { ...base, uid: own.uid };
-  let imported = 0;
 
-  for (const window of windows) {
-    if (!run.budget.canAfford('pay', COSTS.pay)) {
-      return { imported, complete: false };
-    }
-
-    const outcome = await runOneWindow(context, window);
-    imported += outcome.imported;
-
-    if (!outcome.complete) {
-      return { imported, complete: false };
-    }
-  }
-
-  return { imported, complete: true };
+  return runWalkPlan({
+    plan,
+    canAfford: () => run.budget.canAfford('pay', COSTS.pay),
+    runWindow: (window, pass) => runOneWindow(context, window, pass),
+  });
 };
 
 /**
  * Import the user's BTC Binance Pay history as transactions on the wallet each order
- * names (Spot, Funding or Earn), oldest window first, committing a window's rows
- * before advancing the Pay watermark past it. Runs after the capital walk and never
- * past its watermark. `complete: false` means history remains behind and a later run
- * resumes from the watermark; a failure other than a rate limit rejects, so the caller
- * can log it without failing the balance sync.
+ * names (Spot, Funding or Earn), committing a window's rows before advancing the mark
+ * past it. A run goes forward from the watermark first, then re-scans the last window
+ * behind it on what budget is left (see `planWalkPasses`). Runs after the capital walk
+ * and never past its watermark. `complete: false` means history or the re-scan remains
+ * and a later run resumes from the stored watermark and re-scan mark; a failure other
+ * than a rate limit rejects, so the caller can log it without failing the balance sync.
  */
 export const syncBinancePayHistory = (
   request: { targetAccountId: string; run: BinanceHistoryRun },

@@ -134,6 +134,7 @@ describe("holdingsRepo.setBinanceWalkCursor — gated on the holding's account s
       binanceAsset: 'BTC',
       binanceHistoryCursor: 1,
       binancePayHistoryCursor: 1,
+      binancePayRescanCursor: 1,
       binanceTransferHistoryCursor: 1,
       binanceEarnHistoryCursor: 1,
       syncedAt: 500,

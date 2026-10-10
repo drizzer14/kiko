@@ -1054,6 +1054,38 @@ describe('resumable, budgeted walk', () => {
     expect(invocationCallOrder).toEqual(['addTransactions', 'writeWalkCursor']);
   });
 
+  // PROBE, not a fix (reported to the orchestrator): the capital walk shares the Pay walk's
+  // stall shape. Once the cursor is inside the last 89 days its single window starts at
+  // `now - 89 days` every run, and a window with more withdrawals than one run's cap of pages
+  // never commits, so the newest records never import. The threshold is far higher here (9
+  // pages of 1000 withdrawals in 89 days), which is why it is the documented known limit in
+  // `fetchAllInWindow`. If the capital walk is moved onto the forward-first plan, this test
+  // changes with it.
+  it('probe: a window with more withdrawal pages than one run affords never commits, on any later run', async () => {
+    const account = makeStatefulSpotAccount();
+    const fullPage = Array.from({ length: HISTORY_PAGE_LIMIT }, (_unused, index) =>
+      withdrawal({ id: `w${index}` }),
+    );
+    const fetchWithdrawHistory = jest.fn(async () => historyPage(fullPage));
+    const addTransactions = jest.fn(async (rows: BinanceTransactionRow[]) => rows.length);
+    const deps = makeFirstSyncDeps(account, { fetchWithdrawHistory, addTransactions });
+    await account.writeWalkCursor('h-spot', 'binanceHistoryCursor', NOW - 2 * DAY_MS);
+    account.writeWalkCursor.mockClear();
+
+    const results = [];
+
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      fetchWithdrawHistory.mockClear();
+      results.push(await sync(deps, 'acc-probe-stall'));
+      expect(fetchWithdrawHistory).toHaveBeenCalledTimes(LANE_CALL_CAPS.capitalWithdraw);
+    }
+
+    expect(results.every((result) => !result.complete && result.imported === 0)).toBe(true);
+    expect(addTransactions).not.toHaveBeenCalled();
+    expect(account.writeWalkCursor).not.toHaveBeenCalled();
+    expect(account.cursor()).toBe(NOW - 2 * DAY_MS);
+  });
+
   it('regression: rows from an earlier, committed window ARE written despite a later 429 (inverse of the all-or-nothing bug)', async () => {
     const account = makeStatefulSpotAccount();
     let callCount = 0;

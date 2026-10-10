@@ -7,8 +7,12 @@ import {
   buildWalkWindows,
   logWalkNotice,
   logWalkStop,
+  planWalkPasses,
+  rescanCursorAfter,
   resolveWalkStart,
   resolveWalletHoldings,
+  runWalkPlan,
+  type WalkWindow,
 } from './binance.history-walk';
 import { EARN_KEY, FUNDING_KEY, SPOT_KEY } from './binance.holding-keys';
 
@@ -39,6 +43,180 @@ describe('resolveWalkStart', () => {
     const cursor = END_MS - 60_000;
 
     expect(resolveWalkStart({ ...input, cursor })).toBe(END_MS - WINDOW_MS);
+  });
+});
+
+describe('planWalkPasses', () => {
+  const END_MS = Date.UTC(2026, 9, 10);
+  const input = {
+    floorMs: FLOOR_MS,
+    endTime: END_MS,
+    windowMs: WINDOW_MS,
+    overlapMs: DAY_MS,
+    maxWindows: 12,
+    rescanCursor: null,
+  };
+
+  it('walks the whole history forward from the floor when the walk has no cursor, with no re-scan', () => {
+    const plan = planWalkPasses({ ...input, maxWindows: 80, cursor: null });
+
+    expect(plan.forward[0].start).toBe(FLOOR_MS);
+    expect(plan.forward.at(-1)?.end).toBe(END_MS);
+    expect(plan.rescan).toEqual([]);
+  });
+
+  it('starts the forward pass the overlap behind the cursor, however recent the cursor is', () => {
+    const cursor = END_MS - 2 * DAY_MS;
+    const plan = planWalkPasses({ ...input, cursor });
+
+    expect(plan.forward).toEqual([{ start: cursor - DAY_MS, end: END_MS }]);
+  });
+
+  it('re-scans the last window behind the forward pass, ending where the forward pass starts', () => {
+    const cursor = END_MS - 2 * DAY_MS;
+    const plan = planWalkPasses({ ...input, cursor });
+
+    expect(plan.rescan).toEqual([{ start: END_MS - WINDOW_MS, end: cursor - DAY_MS }]);
+    expect(plan.rescanEnd).toBe(cursor - DAY_MS);
+  });
+
+  it('resumes the re-scan from its stored cursor', () => {
+    const cursor = END_MS - 2 * DAY_MS;
+    const rescanCursor = END_MS - 40 * DAY_MS;
+    const plan = planWalkPasses({ ...input, cursor, rescanCursor });
+
+    expect(plan.rescan).toEqual([{ start: rescanCursor, end: cursor - DAY_MS }]);
+  });
+
+  it.each([
+    ['a cursor reset to the floor', FLOOR_MS],
+    ['a cursor older than the window', END_MS - 120 * DAY_MS],
+  ])('restarts the re-scan at the window start for %s', (_label, rescanCursor) => {
+    const plan = planWalkPasses({ ...input, cursor: END_MS - 2 * DAY_MS, rescanCursor });
+
+    expect(plan.rescan[0].start).toBe(END_MS - WINDOW_MS);
+  });
+
+  it('restarts the re-scan at the window start for a cursor already at or past the forward start', () => {
+    const cursor = END_MS - 2 * DAY_MS;
+    const plan = planWalkPasses({ ...input, cursor, rescanCursor: cursor - DAY_MS });
+
+    expect(plan.rescan[0].start).toBe(END_MS - WINDOW_MS);
+  });
+
+  it('has no re-scan when the forward pass already reaches back past the window start', () => {
+    const cursor = END_MS - 120 * DAY_MS;
+    const plan = planWalkPasses({ ...input, cursor });
+
+    expect(plan.forward[0].start).toBe(cursor - DAY_MS);
+    expect(plan.rescan).toEqual([]);
+  });
+
+  it('never starts either pass before the floor', () => {
+    const floorMs = END_MS - 30 * DAY_MS;
+    const plan = planWalkPasses({
+      ...input,
+      floorMs,
+      cursor: END_MS - 2 * DAY_MS,
+      rescanCursor: FLOOR_MS,
+    });
+
+    expect(plan.rescan[0].start).toBe(floorMs);
+  });
+
+  it('never reaches past the end for a cursor ahead of it', () => {
+    const plan = planWalkPasses({ ...input, cursor: END_MS + 5 * DAY_MS });
+
+    expect(plan.forward).toEqual([]);
+    expect(plan.rescanEnd).toBe(END_MS);
+  });
+});
+
+describe('rescanCursorAfter', () => {
+  const plan = {
+    forward: [],
+    rescan: [],
+    rescanEnd: 1_000,
+  };
+
+  it('is the span end while the re-scan has ground left', () => {
+    expect(rescanCursorAfter({ span: { start: 100, end: 400 }, plan, restartMs: 5 })).toBe(400);
+  });
+
+  it('is the restart mark once the span reaches the end of the re-scan', () => {
+    expect(rescanCursorAfter({ span: { start: 400, end: 1_000 }, plan, restartMs: 5 })).toBe(5);
+  });
+});
+
+describe('runWalkPlan', () => {
+  const window = (start: number): WalkWindow => ({ start, end: start + 1 });
+  const plan = { forward: [window(0), window(1)], rescan: [window(10)], rescanEnd: 11 };
+
+  it('runs the forward windows, then the re-scan windows, and adds up what they import', async () => {
+    const seen: [number, string][] = [];
+
+    const result = await runWalkPlan({
+      plan,
+      canAfford: () => true,
+      runWindow: async (span, pass) => {
+        seen.push([span.start, pass]);
+
+        return { imported: 2, complete: true };
+      },
+    });
+
+    expect(seen).toEqual([
+      [0, 'forward'],
+      [1, 'forward'],
+      [10, 'rescan'],
+    ]);
+    expect(result).toEqual({ imported: 6, complete: true });
+  });
+
+  it('leaves the re-scan alone when a forward window does not complete', async () => {
+    const runWindow = jest.fn(async () => ({ imported: 1, complete: false }));
+
+    const result = await runWalkPlan({ plan, canAfford: () => true, runWindow });
+
+    expect(runWindow).toHaveBeenCalledTimes(1);
+    expect(result).toEqual({ imported: 1, complete: false });
+  });
+
+  it('runs the re-scan on what budget the forward pass left, and reports it incomplete when it runs out', async () => {
+    let calls = 3;
+    const runWindow = jest.fn(async () => ({ imported: 0, complete: true }));
+
+    const result = await runWalkPlan({
+      plan: { ...plan, rescan: [window(10), window(11)] },
+      canAfford: () => {
+        calls -= 1;
+
+        return calls >= 0;
+      },
+      runWindow,
+    });
+
+    expect(runWindow).toHaveBeenCalledTimes(3);
+    expect(result).toEqual({ imported: 0, complete: false });
+  });
+
+  it('never starts a window the budget cannot afford', async () => {
+    const runWindow = jest.fn(async () => ({ imported: 0, complete: true }));
+
+    const result = await runWalkPlan({ plan, canAfford: () => false, runWindow });
+
+    expect(runWindow).not.toHaveBeenCalled();
+    expect(result).toEqual({ imported: 0, complete: false });
+  });
+
+  it('is complete when the plan has nothing to walk', async () => {
+    const result = await runWalkPlan({
+      plan: { forward: [], rescan: [], rescanEnd: 0 },
+      canAfford: () => true,
+      runWindow: async () => ({ imported: 0, complete: true }),
+    });
+
+    expect(result).toEqual({ imported: 0, complete: true });
   });
 });
 

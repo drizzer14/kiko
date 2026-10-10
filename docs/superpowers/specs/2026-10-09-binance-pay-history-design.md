@@ -172,7 +172,9 @@ withdraw budget moves into this object, with the same numbers and the same rule.
 
 - One watermark per walk. Each is a walk-owned key on the Spot holding's metadata:
   `binancePayHistoryCursor`, `binanceTransferHistoryCursor`,
-  `binanceEarnHistoryCursor`.
+  `binanceEarnHistoryCursor`. A walk that re-scans its last window also keeps a
+  re-scan mark next to its cursor (`binancePayRescanCursor` for Pay; the Transfer and
+  Earn walks add theirs), see section 4.
 - All of them join `walkOwnedMetadataKeys` (`holding-metadata.ts`). The balance
   upsert carries them and the disconnect resets them to the floor, through the
   existing code paths.
@@ -225,9 +227,24 @@ withdraw budget moves into this object, with the same numbers and the same rule.
   by the key) and is twice as wide, up to the window's end. This does not depend on
   the order of the response or on which end of the range is open, and no request has
   `startTime` equal to `endTime`. A span of 1 ms that is still full stops the window
-  (`pay-page-stuck`). A window that needs more calls than one run's cap resumes on
-  the next run from the cursor of its last committed span; the cursor never moves
-  back and never passes the capital cursor.
+  (`pay-page-stuck`).
+- Two passes per run (shared in `binance.history-walk.ts`, so the Transfer and Earn walks
+  inherit it). The forward pass goes first, from `max(floor, cursor - 1 day)` to the end
+  (`min(now, capital cursor)`), in windows of 89 days, and moves the Pay cursor. A backlog that
+  needs more calls than one run's cap resumes on the next run from the cursor of its last
+  committed span; the cursor never moves back and never passes the capital cursor. Then the
+  re-scan runs on the call budget the forward pass left: it covers
+  `[max(floor, end - 89 days), forward start]`, which catches an order that settles late. A
+  re-scan that was first in line would spend a busy account's whole budget on ground it already
+  holds, and the newest orders would never import (found in review: 900 orders in the last 88
+  days, none of the newest imported in 10 runs). The re-scan keeps its place in a walk-owned
+  metadata key (`binancePayRescanCursor`, on the Spot holding with the other cursors, carried
+  over a balance sync, reset to the 2017 floor on disconnect). It commits span by span, moves
+  only that key, and never touches the Pay cursor. The next run resumes it from the stored key
+  until it reaches the forward start; then the key returns to the 2017 floor, which means "no
+  pass in progress", and the next run starts a new pass at `end - 89 days`. A stored key outside
+  `[end - 89 days, forward start)` also starts a new pass. Re-scan rows go through the same
+  overlap guard and keys, so a second identical run imports nothing.
 - Filter: `currency === 'BTC'`. A non-BTC order paid with BTC funds stops the span
   that holds it (`pay-btc-funded-other-coin`, cursor unmoved) (Q8). Until a rule
   exists the walk is blocked for that user rather than losing a BTC movement. User

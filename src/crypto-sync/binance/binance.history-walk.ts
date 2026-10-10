@@ -54,6 +54,96 @@ export const resolveWalkStart = (input: {
   return Math.max(floorMs, Math.min(cursor - overlapMs, endTime - windowMs));
 };
 
+export type WalkPass = 'forward' | 'rescan';
+
+/**
+ * One run of a walk, as two passes. `forward` goes from the cursor minus the overlap to
+ * the end and moves the walk's cursor. `rescan` goes back over the last window behind the
+ * forward start, to catch a record that settles late, and never moves that cursor.
+ * `rescanEnd` is where the re-scan ends, which is where the forward pass starts.
+ */
+export type WalkPlan = { forward: WalkWindow[]; rescan: WalkWindow[]; rescanEnd: number };
+
+/**
+ * Plan a run so that new records always come first. A walk that re-scanned its last
+ * window before going forward would spend a busy account's whole call budget on ground it
+ * already holds, and the newest records would never import. The re-scan resumes from the
+ * walk's stored re-scan cursor, so a window too big for one run's leftover budget is
+ * finished over later runs. A stored cursor outside [window start, forward start) belongs
+ * to a pass that finished or a window that has moved on, and starts a new pass at the
+ * window start. Neither pass starts before the floor, which also bounds a cursor a
+ * disconnect reset to an older floor than this walk may ask for.
+ */
+export const planWalkPasses = (input: {
+  cursor: number | null;
+  rescanCursor: number | null;
+  floorMs: number;
+  endTime: number;
+  windowMs: number;
+  overlapMs: number;
+  maxWindows: number;
+}): WalkPlan => {
+  const { cursor, rescanCursor, floorMs, endTime, windowMs, overlapMs, maxWindows } = input;
+  const forwardStart = cursor === null ? floorMs : Math.max(floorMs, cursor - overlapMs);
+  const rescanEnd = Math.min(forwardStart, endTime);
+  const windowStart = Math.max(floorMs, endTime - windowMs);
+  const rescanStart =
+    rescanCursor !== null && rescanCursor >= windowStart && rescanCursor < rescanEnd
+      ? rescanCursor
+      : windowStart;
+
+  return {
+    forward: buildWalkWindows(forwardStart, endTime, windowMs, maxWindows),
+    rescan: buildWalkWindows(rescanStart, rescanEnd, windowMs, maxWindows),
+    rescanEnd,
+  };
+};
+
+/**
+ * The re-scan cursor to store once `span` of the re-scan has committed: where the span
+ * ended, or `restartMs` once the re-scan has reached its end, so the next run starts a
+ * new pass. `restartMs` must be the value a disconnect resets every walk cursor to, so a
+ * reset and a finished pass mean the same thing.
+ */
+export const rescanCursorAfter = (input: {
+  span: WalkWindow;
+  plan: WalkPlan;
+  restartMs: number;
+}): number => (input.span.end >= input.plan.rescanEnd ? input.restartMs : input.span.end);
+
+/**
+ * Run a plan's windows, the forward pass first, then the re-scan on what budget is left.
+ * Stops at the first window that does not complete or that the budget cannot afford, and
+ * then reports the walk incomplete: a later run resumes from the stored cursors.
+ */
+export const runWalkPlan = async (input: {
+  plan: WalkPlan;
+  canAfford: () => boolean;
+  runWindow: (window: WalkWindow, pass: WalkPass) => Promise<WalkResult>;
+}): Promise<WalkResult> => {
+  const { plan, canAfford, runWindow } = input;
+  const steps = [
+    ...plan.forward.map((window) => ({ window, pass: 'forward' as const })),
+    ...plan.rescan.map((window) => ({ window, pass: 'rescan' as const })),
+  ];
+  let imported = 0;
+
+  for (const { window, pass } of steps) {
+    if (!canAfford()) {
+      return { imported, complete: false };
+    }
+
+    const outcome = await runWindow(window, pass);
+    imported += outcome.imported;
+
+    if (!outcome.complete) {
+      return { imported, complete: false };
+    }
+  }
+
+  return { imported, complete: true };
+};
+
 const isDecimalInput = (amount: unknown): amount is string | number =>
   typeof amount === 'number' || (typeof amount === 'string' && amount.trim() !== '');
 

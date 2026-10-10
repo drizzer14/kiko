@@ -13,14 +13,15 @@ jest.mock('@kiko/db/client', () => {
 
 import { DAY_MS } from '@kiko/dates';
 import { DatabaseSync } from 'node:sqlite';
+import { holdingsRepo } from '@kiko/holdings/repo';
 import { transactionsRepo } from '@kiko/transactions/repo';
 import { applyAllMigrations } from '@kiko/test-support/real-sqlite';
 
 import { syncBinancePayHistory } from './binance.pay-history';
 import type { BinancePayOrder } from './binance.history-client';
-import { syncBinanceTransactions } from './binance.transactions';
 import { createBinanceHistoryRun } from './binance.history-budget';
 import { NOW, OTHER, OWN, party, payOrder } from './binance.pay-test-fixtures';
+import { HISTORY_FLOOR_MS, syncBinanceTransactions } from './binance.transactions';
 
 const ACCOUNT_ID = 'acc-1';
 const MINUTE_MS = 60_000;
@@ -131,6 +132,14 @@ const importCapitalDeposit = (id: string, amountMinorUnits: number, time: number
     },
   ]);
 
+const spotMetadata = (): Record<string, unknown> => {
+  const stored = mockDatabase
+    .prepare("SELECT metadata FROM holdings WHERE id = 'h-spot'")
+    .get() as { metadata: string };
+
+  return JSON.parse(stored.metadata);
+};
+
 const holdingByKey = (key: string): { id: string; balance_minor_units: number } | undefined =>
   mockDatabase
     .prepare(
@@ -211,6 +220,37 @@ describe('the Pay walk on real SQLite', () => {
     expect(first.imported).toBe(1);
     expect(second).toEqual({ imported: 0, complete: true });
     expect(storedRows()).toHaveLength(1);
+  });
+
+  it('finishes a stored re-scan through the same keys: the order is imported once, the mark restarts, and a disconnect resets it', async () => {
+    const inProgress = {
+      binanceAsset: 'BTC',
+      binanceHistoryCursor: NOW,
+      binancePayHistoryCursor: NOW - 2 * DAY_MS,
+      binancePayRescanCursor: NOW - 40 * DAY_MS,
+    };
+    mockDatabase
+      .prepare("UPDATE holdings SET metadata = ? WHERE id = 'h-spot'")
+      .run(JSON.stringify(inProgress));
+    const orders = [received({ transactionId: 'late', transactionTime: NOW - 20 * DAY_MS })];
+
+    const first = await runWalk(orders);
+    const second = await runWalk(orders);
+
+    expect(first.imported).toBe(1);
+    expect(second.imported).toBe(0);
+    expect(storedRows().map((row) => row.external_id)).toEqual(['acc-1:pay:C2C:late:2']);
+    expect(spotMetadata()).toMatchObject({
+      binancePayHistoryCursor: NOW,
+      binancePayRescanCursor: HISTORY_FLOOR_MS,
+    });
+
+    mockDatabase
+      .prepare("UPDATE holdings SET metadata = json_set(metadata, '$.binancePayRescanCursor', ?)")
+      .run(NOW - 40 * DAY_MS);
+    await holdingsRepo.resetBinanceWalkCursors(ACCOUNT_ID, 1);
+
+    expect(spotMetadata()).toMatchObject({ binancePayHistoryCursor: 1, binancePayRescanCursor: 1 });
   });
 
   it('creates a missing Earn holding at zero for an Earn order, and never touches an existing balance', async () => {
