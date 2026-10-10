@@ -84,9 +84,17 @@ absent** — this skill states the shape and non-enum facts only:
   caption explains it), and an edit Save writes only the name, color and icon
   — never `kind`, `bankId` or `institution`. A wrong kind or bank therefore
   has no edit path; delete and recreate the account. In CREATE mode the
-  kind and bank pickers lock too once a Connect starts the account row
-  (`isPickLocked = isEdit || accountRowStarted`); a rejected insert unlocks
-  them. Re-picking the already-selected kind is a no-op (the bank/broker
+  kind and bank pickers lock too once the account row exists (`isPickLocked`
+  in `account-form.screen.tsx`: edit, a Connect started, or the live query
+  of the pre-generated id finds the row). The row is created with
+  `accountsRepo.createIfAbsent` (an insert that ignores an existing id: one
+  write, no second writer can fail on the key), and Save decides create vs
+  update from the database only (`accountRowExists`), never from a copy of
+  component state. A fold remounts the screen but the OLD instance's
+  in-flight Connect still runs, so the draft (`AccountFormDraft`) keeps
+  `pendingAccountId` and nothing about the row. Known limit (R44): after a
+  fold the Connect field shows idle, and a second Connect re-syncs the same
+  account. Re-picking the already-selected kind is a no-op (the bank/broker
   pick, custom icon and typed token stay); a switch to a different kind
   resets them. A wrongly picked bank
   stays (user decision 2026-10-05): the bank drives only the import parser
@@ -459,12 +467,14 @@ CREATE mode, picking Property or Debt calls
 far: `icon` is the user's own pick only (the form's `iconIsDirty` flag,
 reset by every switch to a different kind), null otherwise, so the holding form keeps
 following its own type default; `color` is null until picked. The
-`HoldingForm` route is `({ accountId } | { implicitKind, draft? }) & {
-holdingId?, debtAccount?, returnTo? }`, resolved by
+`HoldingForm` route is `({ accountId } | { implicitKind }) & { draft?:
+FormDraft | HoldingFormDraft, holdingId?, debtAccount?, returnTo? }` (the
+`AccountForm` route's `draft?` is `FormDraft | AccountFormDraft`; read both
+in `src/navigation/types/types.d.ts`), resolved by
 `holdingFormTarget` (`holding-form/holding-form-target/`, a
 `ts-pattern` match to `{ kind: 'account', accountId } | { kind:
 'implicit', implicitKind }`; `holdingFormDraft` reads the draft, empty
-when absent). In implicit mode the form: queries no account
+when absent; the form's own saved draft is read apart by `isSavedDraft`, see "Form drafts" below). In implicit mode the form: queries no account
 (`byIdQuery('')`); takes its offered types from
 `creatableHoldingTypesForAccount(implicitKind, false, undefined)` (its
 own call, with `implicitKind` as the account kind and no account row;
@@ -474,8 +484,9 @@ which resolves its own label, sheet title, kinds, texts and glyphs, so a
 form passes only `selected`, `onSelect`, `onSelectClosed` and `disabled`)
 in the account form's own slot, under the divider; keeps the title "Add
 Account" (the stack sets it statically for an `implicitKind` route too);
-seeds name, icon and color from the draft ONCE (`useState` initial
-values); and Save is `accountsRepo.createImplicitHolding(implicitKind, {
+seeds name, icon and color from the swap draft ONCE (`useState` initial
+values; a saved draft, `saved: true`, wins over the swap seed and over a
+stored row on an edit, and `useDraftParam` reads it once at mount); and Save is `accountsRepo.createImplicitHolding(implicitKind, {
 name, type, currency, color, icon, ...active.createPayload() })` (one
 write: it finds or creates the implicit account and stores the icon with
 the holding, never in a second write), then `refreshMarketData`,
@@ -497,7 +508,9 @@ the screen that owns the sheet's Modal. `setParams` is immediate. `replace`, nev
 leaves to the Accounts root instead of landing on a stale sibling
 (`accounts.stack.swap.navigator.test.tsx` proves it on the real
 router, not a spy). `accounts.stack.tsx` gives a route that carries a
-`draft` `animation: 'none'`, so the swap reads as one form whose fields
+swap `draft` `animation: 'none'` (`carriesDraft` in `accounts.stack.tsx`;
+a form's own saved draft, `saved: true`, is no swap and keeps the default
+animation), so the swap reads as one form whose fields
 change. native-stack pops a screen with the animation it carries then
 (react-native-screens `RNSScreenStack` reads `fromVC.screenView.stackAnimation`), so
 the same option would make Back unanimated: both routes carry a
@@ -1935,7 +1948,8 @@ recombine them:
   time-of-day onto a newly picked day (so a paired TimeField pick is
   never clobbered);
 - applies a found ISIN's terms once PER MATCH while in ISIN mode,
-  tracked by a REF (`lastAppliedIsinRef`, not the effect's own
+  tracked by a REF (`lastAppliedIsinRef`, which survives a fold through
+  `IsinModeDraft`; not the effect's own
   dependency array) rather than "since `bondMode` is still isin" — the
   register lookup itself is NOT gated on `bondMode` (a valid ISIN
   typed in Manual mode resolves just as readily), so a match resolved
@@ -2029,7 +2043,8 @@ changes to a new found bond.
 The register name fills the Name field only while the user has not
 typed one (USER FINDING D5): `useBondIsinMode` takes the current
 `name`; a match sets it only when it is blank or still equals the name
-the hook itself filled last (`filledNameRef`), so ISIN B replaces ISIN
+the hook itself filled last (`filledNameRef`, also kept in `IsinModeDraft`
+across a fold), so ISIN B replaces ISIN
 A's automatic name but never a typed one, in either mode, in create or
 edit (an edit seeds the saved name, which the hook never filled).
 
@@ -2834,3 +2849,15 @@ never an exchange source or destination — see
    in `holdingTypeName` (`src/holdings/holding-type-label/holding-type-label.ts`),
    an exhaustive `match` that tsc flags, so a new type needs its arm there;
    the statistics bar chart and `HoldingCard` both read it.
+
+## Form drafts
+
+A fold or unfold remounts the form. Each form keeps its fields in its own route's `draft` param
+(`FormDraft | HoldingFormDraft`, `FormDraft | AccountFormDraft`; `saved: true` marks the form's
+own draft), and the mount reads it back once. Read the draft types, not a copy of their fields:
+`src/screens/forms/holding-form/holding-form-draft/holding-form-draft.d.ts` and the
+`AccountFormDraft` type in `src/navigation/types/types.d.ts`. A draft holds what the form edits;
+what an edit reads from the stored row and does not edit (a metal's lots, a property's share
+changes) is read again from the database, so a draft cannot save an old copy over a newer one.
+What the form edits but a draft holds as its own copy (deposit contribution rows) can be stale.
+Never put a secret in a draft (see kiko-architecture "Fold and unfold").

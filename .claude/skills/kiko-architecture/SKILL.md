@@ -2622,6 +2622,16 @@ are built with `createPaneStackNavigator`.
   `isDefault` route. Screens remount when the mode crosses single/split (ruling 3A);
   `TwoPaneLayout` takes the
   settled mode through its `mode` prop instead of reading the live one.
+- **Form drafts.** A form restores what the user typed after the remount through its route's
+  `draft` param: `useDraftParam` / `isSavedDraft` (`src/navigation/use-draft-param/`) read it
+  once at mount. `useDraftAutosave(draft, saveDraft, restored?)`
+  (`src/navigation/use-draft-autosave/`) saves after a blur commit (`Screen`'s `onFieldBlur`) and
+  on the RAW `useLayoutMode` change, not the settled one; never per keystroke, and never when the
+  JSON text is unchanged. The save is `setParams` on the asking route: `SET_PARAMS` stays on its
+  source route and changes no router state (`pane-router.test.ts`). Params hold JSON only.
+  Secrets, tokens, wallet and Binance keys never go in a draft (a lender IBAN lives only in the
+  in-memory loan draft). Not saved: scroll, `attemptedSave`, open sheets, `pickedImplicitKind`,
+  `leavingKind`. Proof on two panes: `accounts.stack.draft.navigator.test.tsx`.
 - **`resetTabStackOnBlur`** (`src/navigation/reset-tab-stack-on-blur/`) is unchanged and every
   tab stack still passes it as `screenListeners`. It dispatches `popToTop` when the parent tab
   is not focused and the state's `index > 0`; in a split navigator that is the router's standard

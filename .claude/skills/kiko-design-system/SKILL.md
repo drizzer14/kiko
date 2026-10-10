@@ -564,6 +564,9 @@ new component can land between reviews of this skill:
   than tall (no window-size comparison); any other fold is flat (rotation
   transient). The rule is in `pane-geometry.ts`.
 - **Screen** — the top-level screen container: true-black background,
+  an optional `onFieldBlur` prop (`screen.props.d.ts`) that Screen hands to every text field
+  inside through `FieldBlurContext` (`src/design-system/field-blur/`): a form that keeps a draft
+  passes `onFieldBlur` to Screen and no blur handler to each field;
   safe-area handling per mode (`scroll` drops the top safe-area edge
   under a large-title header), and a footer slot that clears the
   native glass tab bar's measured height. A `bleedBottom` child that
@@ -1291,7 +1294,9 @@ new component can land between reviews of this skill:
   elsewhere in the row, and it must then get `accessibilityLabel` so
   VoiceOver names it.
 - **TextField** — a labeled text input wrapping RN's `TextInput` with
-  theme tokens. Its disabled chrome (border/background/opacity) comes
+  theme tokens. It calls `useFieldBlur(onBlur)`: the field's own `onBlur` runs first, then the
+  Screen's `onFieldBlur`. `HoldingIdentityField` calls `useFieldBlur(undefined)`; a text field
+  outside these two must call `useFieldBlur` itself. Its disabled chrome (border/background/opacity) comes
   from the shared `disabledFieldStyle(theme)` helper
   (`src/design-system/disabled-field-style/disabled-field-style.ts`); `DateField` and
   `TimeField` (`src/screens/forms/`) consume the SAME helper so a
