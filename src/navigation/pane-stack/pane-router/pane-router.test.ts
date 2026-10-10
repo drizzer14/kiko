@@ -372,6 +372,36 @@ describe('PaneRouter', () => {
       return run(holding, from(keyOf(holding, 'HoldingForm'), StackActions.push('ReminderForm')));
     };
 
+    // A form saves its draft with `setParams`, and the form beside the focused one is the one
+    // that asks: the params must stay on its own route and move nothing else.
+    it('sets the params of the route that asks, not those of the focused route', () => {
+      const state = accountsWithTwoForms();
+      const asking = keyOf(state, 'HoldingForm');
+
+      const next = run(state, from(asking, CommonActions.setParams({ draft: { name: 'Flat' } })));
+
+      expect(next.routes.find((route) => route.key === asking)?.params).toEqual({
+        draft: { name: 'Flat' },
+      });
+      expect(next.routes.at(-1)?.params).toBeUndefined();
+      expect(next.index).toBe(state.index);
+      expect(next.panes).toEqual(state.panes);
+      expect(next.routes.map((route) => route.key)).toEqual(state.routes.map((route) => route.key));
+    });
+
+    it('merges into the params the asking route already has', () => {
+      const state = accountsWithTwoForms();
+      const asking = keyOf(state, 'HoldingForm');
+      const first = run(state, from(asking, CommonActions.setParams({ holdingId: 'h-1' })));
+
+      const next = run(first, from(asking, CommonActions.setParams({ draft: { name: 'Flat' } })));
+
+      expect(next.routes.find((route) => route.key === asking)?.params).toEqual({
+        holdingId: 'h-1',
+        draft: { name: 'Flat' },
+      });
+    });
+
     it('opens the route beside the caller instead of changing the params of the focused route', () => {
       const root = homeOnlyRouter.getInitialState(CONFIG);
       const rowA = runHomeOnly(
