@@ -1,3 +1,4 @@
+import { match } from 'ts-pattern';
 import { useTranslation } from 'react-i18next';
 import { BINANCE_API_MANAGEMENT_URL } from '@env';
 import { type FC, useEffect, useState } from 'react';
@@ -39,11 +40,12 @@ type Field = 'apiKey' | 'secret';
 
 type StoreOutcome = 'stored' | 'saveError' | 'unmounted' | 'storedWhileUnmounted';
 
-// Stores a verified pair unless the field is gone, and says whether the connect may go on. The pair
-// outlives the field only when the field unmounted during the write itself. A fold
-// or a kind switch removes the field during the check or the write; storing then would leave a key
-// under an account id nothing connects, and connecting would insert the account row after the form
-// that replaced this one already decided what to write, so the user presses Connect again.
+// Stores a verified pair unless the field is gone, and says whether the connect may go on. A fold
+// or a kind switch removes the field during the check or the write. Gone before the write, nothing
+// is stored: a key under an account id nothing connects would be left behind. Gone during the
+// write, the pair is stored and reported through onStoredWhileUnmounted, because the screen that
+// owns the account decides its fate. Either way connecting is skipped: it would insert the account
+// row after the form that replaced this one already decided what to write.
 const storePair = async (
   accountId: string,
   credentials: { apiKey: string; secret: string },
@@ -150,23 +152,14 @@ const BinanceCredentialsField: FC<BinanceCredentialsFieldProps> = ({
 
       const stored = await storePair(accountId, { apiKey, secret }, isMounted);
 
-      if (stored === 'saveError') {
-        setStatus({ kind: 'saveError', message: t('accountDetail.couldNotSaveCredentials') });
-
-        return;
-      }
-
-      if (stored === 'storedWhileUnmounted') {
-        await onStoredWhileUnmounted?.();
-
-        return;
-      }
-
-      if (stored === 'unmounted') {
-        return;
-      }
-
-      await connectStoredPair();
+      await match(stored)
+        .with('saveError', async () =>
+          setStatus({ kind: 'saveError', message: t('accountDetail.couldNotSaveCredentials') }),
+        )
+        .with('storedWhileUnmounted', async () => onStoredWhileUnmounted?.())
+        .with('unmounted', async () => undefined)
+        .with('stored', connectStoredPair)
+        .exhaustive();
     })();
   };
 

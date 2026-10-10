@@ -469,10 +469,11 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
   };
 
   // The field stored its key pair under the pre-generated account id, and no Connect of it will
-  // follow. Only when no row owns it does nothing else ever clear it: a reject on an empty name
-  // leaves a row that is there with its keys, even one another screen's Connect has still queued
-  // (the read waits behind it), and a failed read of the row keeps them too. A failed clear is
-  // logged: the caller still reports its own outcome.
+  // follow: connectBinance's Connect failed to ensure the row, or the field unmounted during the
+  // write and the form decides instead. Only when no row owns the id does nothing else ever clear
+  // the pair: a reject on an empty name leaves a row that is there with its keys, even one another
+  // screen's Connect has still queued (the read waits behind it), and a failed read of the row
+  // keeps them too. A failed clear is logged: the caller still reports its own outcome.
   const clearPairIfRowMissing = async (): Promise<void> => {
     const rowIsMissing =
       bifoldr(await either<unknown, boolean>(async () => accountsRepo.exists(pendingAccountId))) ===
