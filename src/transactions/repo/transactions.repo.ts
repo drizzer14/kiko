@@ -1862,10 +1862,10 @@ const contextRowsQuery = () =>
 export const transactionsRepo = {
   listByHoldingQuery: (holdingId: string) =>
     database.select().from(transactions).where(eq(transactions.holdingId, holdingId)),
-  // Every transaction row, newest first, carrying its `holdingId` — the
-  // Statistics line chart groups the whole ledger by holding to reconstruct
-  // each holding's balance over time, which `listWithContextBetweenQuery` (a
-  // display projection without `holdingId`) cannot feed.
+  // Every transaction row, newest first, as stored — the Statistics line chart
+  // groups the whole ledger by holding to reconstruct each holding's balance
+  // over time. `listWithContextBetweenQuery` is a display projection joined to
+  // the holding and account for their names, which this read has no use for.
   listAllQuery: () => database.select().from(transactions).orderBy(desc(transactions.time)),
   getByIdQuery: (transactionId: string) =>
     database.select().from(transactions).where(eq(transactions.id, transactionId)).limit(1),

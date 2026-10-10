@@ -890,6 +890,42 @@ describe('HoldingDetailScreen', () => {
     expect(queryByText('Everyday card expense')).toBeNull();
   });
 
+  it('labels a leg to a holding of the same currency as a transfer, not an exchange', async () => {
+    // Nothing is converted between two holdings of one currency, so the screen
+    // must hand the row label both holdings' currencies for it to say "Transfer".
+    seed(
+      cardHolding,
+      [
+        {
+          id: 'x3',
+          holdingId: 'h-1',
+          amountMinorUnits: -5000,
+          time: 2,
+          description: '',
+          exchangeCounterpartHoldingId: 'h-2',
+          source: 'manual',
+        },
+        {
+          id: 'x4',
+          holdingId: 'h-1',
+          amountMinorUnits: 5000,
+          time: 1,
+          description: '',
+          exchangeCounterpartHoldingId: 'h-2',
+          source: 'manual',
+        },
+      ],
+      [],
+      [{ id: 'h-2', name: 'Savings', type: 'cash', currency: 'UAH', balanceMinorUnits: 0 }],
+    );
+
+    const { getByText, queryByText } = await renderScreen();
+
+    expect(getByText('Transfer to Savings')).toBeTruthy();
+    expect(getByText('Transfer from Savings')).toBeTruthy();
+    expect(queryByText('Exchange to Savings')).toBeNull();
+  });
+
   it('renders an existing exchange leg label on a crypto_asset holding, unchanged by the type', async () => {
     // A crypto_asset holding (e.g. one migration 0044 moved a cash holding
     // onto) keeps its OWN existing exchange leg — the label rendering reads

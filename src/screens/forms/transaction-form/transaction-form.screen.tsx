@@ -219,8 +219,9 @@ const signedMinorUnits = (currency: Currency, amount: string, sign: Sign): numbe
 // The description field's placeholder: a preview of the label the row would
 // carry if its description is left blank, resolved by the SAME
 // `transactionRowDescription` the Home and Holding-detail lists render — so an
-// edited exchange leg previews its "Exchange to/from <counterpart>" label
-// rather than a holding-name expense the list never shows. Only the polarity of
+// edited exchange leg previews its "Exchange to/from <counterpart>" label (or
+// "Transfer to/from" for a same-currency pair or an untracked wallet) rather
+// than a holding-name expense the list never shows. Only the polarity of
 // the sign matters to that helper, so the current `mode` maps to a
 // representative signed value (a negative for expense, non-negative
 // otherwise). Falls back to a concrete example ("Coffee") when no holding has
@@ -274,7 +275,8 @@ const buildHoldingCurrencyById = (
 
 // The text an edited row with a BLANK stored description opens with: the label
 // the transaction lists show for it (an exchange leg's "Exchange to/from
-// <counterpart>", else the holding-name default), so the field never reads
+// <counterpart>", "Transfer to/from <counterpart>" for a same-currency pair or
+// an untracked wallet, else the holding-name default), so the field never reads
 // empty while the list reads a label. Null when nothing is pre-filled — no
 // edit, a description of the row's own, or a holding not yet resolved.
 const resolveBlankLabel = (input: {

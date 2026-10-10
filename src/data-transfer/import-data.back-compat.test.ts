@@ -268,6 +268,27 @@ describe('importing a version 1 file an earlier build wrote', () => {
         mockDatabase.prepare('SELECT untracked_counterpart AS value FROM transactions').all(),
       ).toEqual([{ value: null }, { value: null }]);
     });
+
+    it('restores the untracked counterpart a file carries', async () => {
+      const payload = await earlierBuildPayload(undefined, (database) => {
+        insertLegacyImportRow(database);
+        database
+          .prepare(
+            `INSERT INTO transactions (id, holding_id, amount_minor_units, time, source, untracked_counterpart)
+             VALUES ('t2', 'h1', -200, ?, 'manual', 'wallet:UMFUTURE')`,
+          )
+          .run(LEGACY_IMPORT_TIME);
+      });
+      mockDatabase = openDatabase();
+
+      await importVersionOne(payload);
+
+      expect(
+        mockDatabase
+          .prepare('SELECT untracked_counterpart AS value FROM transactions ORDER BY id')
+          .all(),
+      ).toEqual([{ value: null }, { value: 'wallet:UMFUTURE' }]);
+    });
   });
 
   describe('the demo file release 1.1 wrote', () => {

@@ -174,6 +174,7 @@ type Transaction = {
   loanHoldingId?: string | null;
   loanLinkSource?: 'auto' | 'manual' | null;
   exchangeCounterpartHoldingId?: string | null;
+  untrackedCounterpart?: string | null;
   changeGroupId?: string | null;
   setsBalance?: boolean;
 };
@@ -1570,6 +1571,18 @@ describe('TransactionFormScreen — blank description pre-fill on edit', () => {
     await fireEvent.changeText(getByLabelText('Description'), '');
 
     expect(getByLabelText('Description').props.placeholder).toBe('Exchange to Savings USD');
+  });
+
+  it('previews the untracked-wallet transfer label as the placeholder once the pre-filled text is cleared', async () => {
+    setLiveData(holdings, leg({ untrackedCounterpart: 'wallet:UMFUTURE' }));
+
+    const { getByLabelText } = await renderEdit('txn-leg');
+
+    expect(getByLabelText('Description').props.value).toBe('Transfer to USDⓈ-M Futures');
+
+    await fireEvent.changeText(getByLabelText('Description'), '');
+
+    expect(getByLabelText('Description').props.placeholder).toBe('Transfer to USDⓈ-M Futures');
   });
 
   it('pre-fills an ordinary blank row with its holding-name label and saves it untouched as empty', async () => {
