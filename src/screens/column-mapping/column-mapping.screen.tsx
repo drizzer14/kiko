@@ -852,7 +852,7 @@ const ColumnMappingScreen: FC<ColumnMappingScreenProps> = ({ route, navigation }
     setImporting(true);
 
     try {
-      await showImportResult(await importParsedStatement(applyResult.statement, selectedHoldingId));
+      showImportResult(await importParsedStatement(applyResult.statement, selectedHoldingId));
 
       const fingerprint = headerFingerprint(rows[mapping.headerRowIndex] ?? []);
       const key = mappingKeyFor(account?.bankId, fingerprint);

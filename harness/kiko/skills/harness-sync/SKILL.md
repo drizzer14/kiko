@@ -40,7 +40,7 @@ Generic (ported in sync 2):
   `Stryker disable` needs OVERRIDE, scaffolding out of the mutate set, json reporter.
 - check:closure and the check-all-lists invariant (both manual, outside check:all).
 - Comment rules: history-word, task-id, early-exit pipe consumer, history-id comment,
-  comment-line-width.
+  comment-line-width, history-date, kiko-no-change-language-in-test-body (WARNING).
 - Invariants and small fixes: typecheck TS18003 notice pass, heading citations,
   cited-paths partial citations, no single-test `paths.exclude`, Biome formats good fixtures,
   style wrappers skip `rules/fixtures/`, specifier-scanner fix.

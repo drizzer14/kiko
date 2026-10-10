@@ -13,7 +13,6 @@ import {
   DELETE_CONFIRM_TEST_ID,
   HOLD_GESTURE_TEST_ID,
 } from '@kiko/design-system/components/card-context-menu';
-import { transactionsRepo } from '@kiko/transactions/repo';
 import { dropCard, liftCard } from '@kiko/test-support/lift-grid-card';
 import GestureRootWrapper from '@kiko/test-support/gesture-root-wrapper';
 import type { RemoveHoldingsPlan } from '@kiko/transactions/remove-notice';
@@ -49,6 +48,7 @@ const mockButtonProps: {
   children: ReactNode;
   icon?: string;
   fullWidth?: boolean;
+  testID?: string;
 }[] = [];
 
 jest.mock('@kiko/design-system/components/button', () => {
@@ -71,6 +71,7 @@ jest.mock('@kiko/design-system/components/button', () => {
         children: props.children,
         icon: props.icon,
         fullWidth: props.fullWidth,
+        testID: props.testID,
       });
 
       return (
@@ -111,7 +112,6 @@ const mockReorder = jest.fn();
 const mockAccountSetIcon = jest.fn();
 const mockAccountUpdate = jest.fn();
 const mockDisconnect = jest.fn();
-const mockDismissTip = jest.fn((..._args: unknown[]): Promise<void> => Promise.resolve());
 
 // HoldingCard (rendered inside this screen) subscribes to the native stack's
 // `transitionEnd` event via `useNavigation` to defer its Liquid Glass one-shot
@@ -203,7 +203,6 @@ jest.mock('@kiko/rates/repo', () => ({
 jest.mock('@kiko/settings/settings.repo', () => ({
   settingsRepo: {
     getQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }),
-    dismissTip: (...args: unknown[]) => mockDismissTip(...args),
   },
 }));
 jest.mock('@kiko/sync-state/sync-state.repo', () => ({
@@ -246,7 +245,7 @@ type Holding = {
   metadata?: Record<string, unknown> | null;
 };
 type Rate = { base: string; quote: string; rate: string };
-type Settings = { baseCurrency: string; dismissedTips?: string[] };
+type Settings = { baseCurrency: string };
 type SyncState = { lastSyncAt?: number | null; lastSyncDisplayAt?: number | null };
 
 // One mocked `useLiveQuery` result.
@@ -265,8 +264,6 @@ const setLiveData = (data: {
   rates?: Rate[];
   settings?: Settings[];
   syncState?: SyncState[];
-  // The rows of the "any transaction in this account" read, for the import tip.
-  transactions?: { id: string }[];
   // Every flag below defaults to `false` (an already-resolved query), so
   // every existing call site keeps behaving exactly as before; a test that
   // cares about the loading gate passes one or more explicitly.
@@ -274,7 +271,6 @@ const setLiveData = (data: {
   holdingsIsLoading?: boolean;
   ratesIsLoading?: boolean;
   settingsIsLoading?: boolean;
-  transactionsIsLoading?: boolean;
   pricePointsIsLoading?: boolean;
   // `true` = the holdings are still the cached rows (`isFresh: false`), for
   // the reorder-gate test only.
@@ -299,10 +295,7 @@ const setLiveData = (data: {
       isLoading: data.settingsIsLoading ?? false,
     },
     sync_state: { data: data.syncState ?? [] },
-    transactions: {
-      data: data.transactions ?? [],
-      isLoading: data.transactionsIsLoading ?? false,
-    },
+    transactions: { data: [], isLoading: false },
     price_points: { data: [], isLoading: data.pricePointsIsLoading ?? false },
   };
 
@@ -340,14 +333,11 @@ type AccountDetailProps = ComponentProps<typeof AccountDetailScreen>;
 type SqlQuery = { toSQL: () => { sql: string; params: unknown[] } };
 type LiveCall = [SqlQuery, string[], boolean | undefined, unknown];
 
-// The live reads over the transactions and holdings tables: the import tip's "any transaction"
-// read and the price book's linked loan payments. Told apart by their query, not by order.
+// The live reads over the transactions and holdings tables: the price book's linked loan payments.
 const transactionsReadCalls = (): LiveCall[] =>
   (mockUseLiveQuery.mock.calls as LiveCall[]).filter(
     (call) => call[1].join(',') === 'transactions,holdings',
   );
-const isAnyInAccountQuery = (query: SqlQuery): boolean =>
-  query.toSQL().sql === transactionsRepo.anyInAccountQuery('a').toSQL().sql;
 
 const route = asRouteProp<AccountDetailProps['route']>('AccountDetail', { accountId: 'a' });
 
@@ -1813,7 +1803,11 @@ describe('AccountDetailScreen — statement import (footer button + pickAndOpenS
     mockButtonProps.length = 0;
     mockSync.mockResolvedValue(undefined);
     mockUseSync.mockReturnValue({ isSyncing: false, error: undefined, sync: mockSync });
-    setLiveData({ accounts: [account({ bankId: 'monobank' })], holdings: [] });
+    // A holding keeps the footer's Add holding button; with none, the empty state carries it.
+    setLiveData({
+      accounts: [account({ bankId: 'monobank' })],
+      holdings: [{ id: 'h1', name: 'Black card', currency: 'UAH', balanceMinorUnits: 100000 }],
+    });
     mockKeepLocalCopy.mockResolvedValue([
       { status: 'success', localUri: 'file:///cache/statement.csv' },
     ]);
@@ -1832,7 +1826,7 @@ describe('AccountDetailScreen — statement import (footer button + pickAndOpenS
   it('offers no Import statement on an account a bank sync owns', async () => {
     setLiveData({
       accounts: [account({ bankId: 'monobank', institution: 'monobank' })],
-      holdings: [],
+      holdings: [{ id: 'h1', name: 'Black card', currency: 'UAH', balanceMinorUnits: 100000 }],
     });
     const { getByTestId } = await renderScreen();
 
@@ -2231,10 +2225,7 @@ describe('AccountDetailScreen — the price_points gate', () => {
   // Only a loan reads its linked payments, so a priced-only screen never
   // runs the linked-payments read.
   it('reads the linked loan payments only once a loan is present', async () => {
-    // The import tip's "any transaction" read subscribes to the same tables, so the
-    // linked-payments read is the one that is not that query.
-    const loanPaymentsCall = () =>
-      transactionsReadCalls().find((call) => !isAnyInAccountQuery(call[0]));
+    const loanPaymentsCall = () => transactionsReadCalls().at(0);
     const holdingOfType = (type: string) => ({
       id: 'h1',
       name: 'Holding',
@@ -2547,122 +2538,202 @@ describe('AccountDetailScreen — an implicit account', () => {
   );
 });
 
-describe('AccountDetailScreen — the import statement tip', () => {
-  const TIP_ID = 'accountDetail.importStatement';
+describe('AccountDetailScreen — footer actions', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockButtonProps.length = 0;
+    mockSync.mockResolvedValue(undefined);
+    mockUseSync.mockReturnValue({ isSyncing: false, error: undefined, sync: mockSync });
+    setLiveData({
+      accounts: [account({ bankId: 'monobank' })],
+      holdings: [{ id: 'h1', name: 'Black card', currency: 'UAH', balanceMinorUnits: 100000 }],
+    });
+  });
+
+  it('shows the Import statement and Add holding actions in the footer for a bank account with no transactions', async () => {
+    const { getByTestId } = await renderScreen();
+
+    const footer = getByTestId('screen-footer');
+
+    expect(within(footer).getByText('Import statement')).toBeTruthy();
+    expect(within(footer).getByText('Add holding')).toBeTruthy();
+  });
+});
+
+describe('AccountDetailScreen — the empty holdings state', () => {
+  const closedHolding = {
+    id: 'h-closed',
+    name: 'Closed jar',
+    currency: 'UAH',
+    balanceMinorUnits: 0,
+    closedAt: 1,
+  };
+  const openHolding = { id: 'h1', name: 'Black card', currency: 'UAH', balanceMinorUnits: 100000 };
 
   beforeEach(() => {
     jest.clearAllMocks();
     mockButtonProps.length = 0;
     mockSync.mockResolvedValue(undefined);
     mockUseSync.mockReturnValue({ isSyncing: false, error: undefined, sync: mockSync });
-    mockDismissTip.mockResolvedValue(undefined);
-    setLiveData({ accounts: [account({ bankId: 'monobank' })], holdings: [] });
   });
 
-  it('shows the tip in the footer, above the Import statement button, for a bank account with no sync and no transactions', async () => {
+  it('shows the empty state with its title, message and action when there is no holding', async () => {
+    setLiveData({ accounts: [account()], holdings: [] });
+
+    const { getByTestId, getByText, queryByTestId } = await renderScreen();
+
+    expect(getByTestId('account-detail-holdings-empty')).toBeTruthy();
+    expect(getByText('No holdings yet')).toBeTruthy();
+    expect(getByText('Add a holding to start tracking the balance of this account.')).toBeTruthy();
+    expect(
+      within(getByTestId('account-detail-holdings-empty')).getByText('Add holding'),
+    ).toBeTruthy();
+    expect(queryByTestId('holdings-grid')).toBeNull();
+  });
+
+  it('keeps the Holdings heading above the empty state', async () => {
+    setLiveData({ accounts: [account()], holdings: [] });
+
+    const { toJSON } = await renderScreen();
+    const tree = JSON.stringify(toJSON());
+
+    expect(tree).toContain('"Holdings"');
+    expect(tree.indexOf('"Holdings"')).toBeLessThan(tree.indexOf('"No holdings yet"'));
+  });
+
+  it('opens the holding form for the account from the empty state action', async () => {
+    setLiveData({ accounts: [account()], holdings: [] });
+
+    const { getByTestId, navigation } = await renderScreen();
+    await fireEvent.press(getByTestId('account-detail-holdings-empty-action'));
+
+    expect(navigation.navigate).toHaveBeenCalledWith('HoldingForm', { accountId: 'a' });
+  });
+
+  it('shows the generic holding glyph on the empty state and on its action', async () => {
+    setLiveData({ accounts: [account()], holdings: [] });
+
+    const { getByTestId } = await renderScreen();
+
+    expect(getByTestId('account-detail-holdings-empty-icon').props.name).toBe(
+      'list.bullet.rectangle',
+    );
+    expect(
+      mockButtonProps.find((props) => props.testID === 'account-detail-holdings-empty-action')
+        ?.icon,
+    ).toBe('list.bullet.rectangle');
+  });
+
+  it('swaps the footer Add holding for the empty state once the last holding closes', async () => {
+    setLiveData({ accounts: [account({ kind: 'cash' })], holdings: [openHolding] });
+    const view = await renderScreen();
+
+    expect(within(view.getByTestId('screen-footer')).getByText('Add holding')).toBeTruthy();
+    expect(view.queryByTestId('account-detail-holdings-empty')).toBeNull();
+
+    setLiveData({ accounts: [account({ kind: 'cash' })], holdings: [closedHolding] });
+    await act(async () => {
+      view.rerender(
+        <AccountDetailScreen
+          route={route}
+          navigation={asNavigationProp<AccountDetailProps['navigation']>(view.navigation)}
+        />,
+      );
+    });
+
+    expect(view.getByTestId('account-detail-holdings-empty')).toBeTruthy();
+    expect(view.queryByTestId('screen-footer')).toBeNull();
+    expect(view.queryByTestId('holdings-grid')).toBeNull();
+  });
+
+  it('shows the empty state when only closed holdings remain', async () => {
+    setLiveData({ accounts: [account()], holdings: [closedHolding] });
+
+    const { getByTestId, queryByText } = await renderScreen();
+
+    expect(getByTestId('account-detail-holdings-empty')).toBeTruthy();
+    expect(queryByText('Closed jar')).toBeNull();
+  });
+
+  it('shows the grid and no empty state when an active holding exists', async () => {
+    setLiveData({ accounts: [account()], holdings: [openHolding, closedHolding] });
+
+    const { getByTestId, getByText, queryByTestId } = await renderScreen();
+
+    expect(queryByTestId('account-detail-holdings-empty')).toBeNull();
+    expect(getByTestId('holdings-grid')).toBeTruthy();
+    expect(getByText('Black card')).toBeTruthy();
+  });
+
+  it.each(['bank', 'cash', 'crypto', 'property', 'debt'] as const)(
+    'shows the empty state on a %s account with no holding',
+    async (kind) => {
+      setLiveData({ accounts: [account({ kind })], holdings: [] });
+
+      const { getByTestId } = await renderScreen();
+
+      expect(getByTestId('account-detail-holdings-empty')).toBeTruthy();
+    },
+  );
+
+  it('hides the footer Add holding while the empty state shows it', async () => {
+    setLiveData({ accounts: [account({ kind: 'cash' })], holdings: [] });
+
+    const { getAllByText, queryByTestId } = await renderScreen();
+
+    expect(queryByTestId('screen-footer')).toBeNull();
+    expect(getAllByText('Add holding')).toHaveLength(1);
+  });
+
+  it('keeps Import statement in the footer for an unsynced bank, without Add holding there', async () => {
+    setLiveData({ accounts: [account({ bankId: 'monobank' })], holdings: [] });
+
     const { getByTestId } = await renderScreen();
 
     const footer = getByTestId('screen-footer');
-    const siblings = within(footer).getByTestId('tip-import-statement').parent?.children ?? [];
-    // The tip card carries a testID; the Import statement button is told apart by its label.
-    const order = siblings
-      .filter((sibling) => typeof sibling !== 'string')
-      .map(
-        (sibling) =>
-          sibling.props.testID ??
-          (within(sibling).queryByText('Import statement') ? 'import-statement' : 'other'),
-      );
-
-    expect(within(footer).getByText(i18n.t('tips.importStatement'))).toBeTruthy();
-    expect(order).toEqual(['tip-import-statement', 'import-statement', 'other']);
+    expect(within(footer).getByText('Import statement')).toBeTruthy();
+    expect(within(footer).queryByText('Add holding')).toBeNull();
   });
 
-  it('shows the tip with the close label of the tips catalogue', async () => {
-    const { getByLabelText } = await renderScreen();
+  it('brings the footer Add holding back once a holding exists', async () => {
+    setLiveData({ accounts: [account({ bankId: 'monobank' })], holdings: [openHolding] });
 
-    expect(getByLabelText(i18n.t('tips.close'))).toBeTruthy();
+    const { getByTestId } = await renderScreen();
+
+    const footer = getByTestId('screen-footer');
+    expect(within(footer).getByText('Add holding')).toBeTruthy();
+    expect(within(footer).getByText('Import statement')).toBeTruthy();
   });
 
-  it('hides the tip for an account a bank sync owns', async () => {
-    setLiveData({
-      accounts: [account({ bankId: 'monobank', institution: 'monobank' })],
-      holdings: [],
-    });
+  it('shows no empty state while the holdings are still loading', async () => {
+    setLiveData({ accounts: [account()], holdings: [], holdingsIsLoading: true });
+
     const { queryByTestId } = await renderScreen();
 
-    expect(queryByTestId('tip-import-statement')).toBeNull();
+    expect(queryByTestId('account-detail-holdings-empty')).toBeNull();
   });
 
-  it('hides the tip for an account that is not a bank account', async () => {
-    setLiveData({ accounts: [account({ kind: 'cash' })], holdings: [] });
-    const { queryByTestId } = await renderScreen();
-
-    expect(queryByTestId('tip-import-statement')).toBeNull();
-  });
-
-  it('hides the tip once the account has a transaction', async () => {
-    setLiveData({
-      accounts: [account({ bankId: 'monobank' })],
-      holdings: [],
-      transactions: [{ id: 't1' }],
-    });
-    const { queryByTestId } = await renderScreen();
-
-    expect(queryByTestId('tip-import-statement')).toBeNull();
-  });
-
-  it('hides the tip once its id is dismissed', async () => {
-    setLiveData({
-      accounts: [account({ bankId: 'monobank' })],
-      holdings: [],
-      settings: [{ baseCurrency: 'UAH', dismissedTips: [TIP_ID] }],
-    });
-    const { queryByTestId, queryByLabelText } = await renderScreen();
-
-    expect(queryByTestId('tip-import-statement')).toBeNull();
-    expect(queryByLabelText(i18n.t('tips.close'))).toBeNull();
-  });
-
-  it('keeps the tip hidden while the transactions read is still on its first load', async () => {
-    setLiveData({
-      accounts: [account({ bankId: 'monobank' })],
-      holdings: [],
-      transactionsIsLoading: true,
-    });
-    const { queryByTestId, getByTestId } = await renderScreen();
-
-    expect(getByTestId('account-detail-loading')).toBeTruthy();
-    expect(queryByTestId('tip-import-statement')).toBeNull();
-  });
-
-  it('keeps the tip hidden while the settings are still loading', async () => {
-    setLiveData({
-      accounts: [account({ bankId: 'monobank' })],
-      holdings: [],
-      settingsIsLoading: true,
-    });
-    const { queryByTestId } = await renderScreen();
-
-    expect(queryByTestId('tip-import-statement')).toBeNull();
-  });
-
-  it('reads whether the account has any transaction, over the transactions and holdings tables', async () => {
-    await renderScreen();
-
-    const anyCall = transactionsReadCalls().find((call) => isAnyInAccountQuery(call[0]));
-
-    expect(anyCall?.slice(1)).toEqual([['transactions', 'holdings'], true, { cached: true }]);
-    expect(anyCall?.[0].toSQL().params).toContain('a');
-  });
-
-  it('records the dismissal of the tip when its close button is pressed', async () => {
-    const { getByLabelText } = await renderScreen();
-
-    await act(async () => {
-      await fireEvent.press(getByLabelText(i18n.t('tips.close')));
+  describe('in Ukrainian', () => {
+    beforeEach(async () => {
+      await act(async () => {
+        await i18n.changeLanguage('uk');
+      });
     });
 
-    expect(mockDismissTip).toHaveBeenCalledTimes(1);
-    expect(mockDismissTip).toHaveBeenCalledWith(TIP_ID);
+    afterEach(async () => {
+      await act(async () => {
+        await i18n.changeLanguage('en');
+      });
+    });
+
+    it('renders the empty state from the Ukrainian catalog', async () => {
+      setLiveData({ accounts: [account()], holdings: [] });
+
+      const { getByText, queryByText } = await renderScreen();
+
+      expect(getByText('Ще немає активів')).toBeTruthy();
+      expect(getByText('Додайте актив, щоб відстежувати баланс цього рахунку.')).toBeTruthy();
+      expect(queryByText('No holdings yet')).toBeNull();
+    });
   });
 });

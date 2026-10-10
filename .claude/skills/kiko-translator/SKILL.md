@@ -233,15 +233,22 @@ string:
   Title Case for a screen title or a section heading the way English
   does; see the next section.
 
-A string used in TWO roles (e.g. a Settings row's own label, which is
-a menu item, doubling as that screen's nav-header title) needs TWO
-keys, one per role, not one key reused — `settings.dataExport.title`
-(the nav title, Title Case: "Export Data") vs
-`settings.dataExport.rowLabel` (the same screen's Settings-row label,
-sentence case: "Export data") is the pattern; see
-`accountDetail.addBankSheetTitle` vs `accountDetail.addBankAction`,
-and `statementImport.chooseHoldingSheetTitle` vs
-`statementImport.chooseHolding`, for the other two instances. An
+The exception is a CLOSED list: only the three Settings-tab ROOT rows
+(`help.rowLabel`, `settings.dataExport.rowLabel`,
+`settings.dataImport.rowLabel`, all listed in `TITLE_KEYS` in
+`src/i18n/locales/title-keys.ts`) are Title Case in en and read exactly
+like their nav titles, by user ruling 2026-10-08; uk stays sentence case
+with the row label equal to its title. Counter-example: the Help TOPIC
+rows (`help.topics.*.rowLabel`, `SettingsRows` in `help.screen.tsx` that
+also open a screen) stay sentence case ("Add an account" vs title "Add an
+Account"). It is not a rule for every row that opens a screen.
+
+A string used in TWO roles otherwise (a menu item or button doubling as
+a sheet title) still needs TWO keys, one per role, not one key reused —
+`accountDetail.addBankSheetTitle` (Title Case) vs
+`accountDetail.addBankAction` (sentence case), and
+`statementImport.chooseHoldingSheetTitle` vs
+`statementImport.chooseHolding`, are the instances. An
 `Alert.alert` title (a key ending `errorTitle`) is an ERROR, not a
 screen/sheet title, even though the key name ends in `Title` — it
 stays sentence case ("Export failed", not "Export Failed").
@@ -309,8 +316,10 @@ trailing punctuation is decided by its UI ROLE, not habit:
 
 Key families added with onboarding (read `en.ts` for the current
 strings in `src/i18n/locales/en.ts`): `emptyStates.*` title is sentence case with no final ".", its
-message is a full sentence with "."; `tips.*` messages are sentences
-with "."; `tips.close` (a button label) is sentence case; `help.*`
+message is a full sentence with "."; `accountDetail.emptyHoldings` (title and message)
+follows the same rule; there are no `tips.*` keys (the
+tips were removed by user ruling); `help.title` and `help.rowLabel` read
+"Help" in en and «Довідка» in uk; `help.*`
 topic titles are Title Case and listed in `TITLE_KEYS`
 (`src/i18n/locales/title-keys.ts`), the help steps are sentence case
 with ".". The numbered step keys are quoted (`'1'`..`'5'`) because
@@ -419,6 +428,38 @@ quotes in its own template (`«{{name}}»`). The `transactions.deleteLinked.spli
 passed in. `balanceChange`'s `{{amount}}` is the shared `formatMoney` text in the
 holding's own currency with a `+` put in front of a gain (`formatMoney` writes
 only the minus), never a hand-formatted number.
+
+## A test sets the language in a hook, never in an `it` body
+
+`i18n` is one shared instance, so a language a test switches to stays for every
+later test of the file until something switches it back. A `changeLanguage` call
+inside an `it`/`test` body (and a reset after the assertions in that body) leaks the
+language when an assertion throws first: the reset never runs and later tests fail
+for a reason unrelated to them. Switch the language in a `beforeEach` of the
+`describe` that needs it, inside `act`, and reset it to `en` in an `afterEach`
+(`beforeAll`/`afterAll` for a file-wide language). A test that needs both languages
+gets one `describe` per language.
+
+```ts
+describe('under the uk language', () => {
+  beforeEach(async () => {
+    await act(async () => {
+      await i18n.changeLanguage('uk');
+    });
+  });
+
+  afterEach(async () => {
+    await act(async () => {
+      await i18n.changeLanguage('en');
+    });
+  });
+});
+```
+
+Mechanized in `*.test.ts(x)` by the `kiko-no-change-language-in-test-body` Semgrep rule
+(WARNING until its sweep lands; see kiko-linter's section on it). A helper that wraps
+`changeLanguage` and is called from an `it` body leaks the same way and is not seen by
+the rule: call it from a hook too.
 
 ## Review new/changed keys before a shipping deploy
 

@@ -1406,6 +1406,37 @@ word in a comment fails `check:rules` ("must draw zero findings from
 every rule"): `kiko-no-undefined-nitro-prop.good.tsx` had to reword one
 "it replaces" comment when this rule landed.
 
+## `kiko-no-history-date-comment`
+
+The date half of kiko-code-style's "Comments: WHY only, never history": a
+date attached to a ruling, a finding, or a plan left in a `src/**` comment
+("user-approved 2026-10-08", "Device finding", "(multi-account plan,
+2026-09-11)"). The members are the two `pattern-regex` alternations in
+`kiko-no-history-date-comment` (`rules/semgrep-prewrite.yml`): `Device
+finding(s)`; `approved|ruled|ruling|decided|confirmed` then an ISO date; `plan|track|round|ruling|feedback|audit`,
+a comma, then an ISO date; a `docs/` path holding a dated file name; and a parenthesized
+date that opens the comment text (`* (2026-09-11) moves …`). The anchoring is the
+history rules': the string-skip `^(?:…)*` walk, `(?<!:)//`, the block arm that never
+crosses `*/`, the `\K` match shape, and the same `paths.exclude` scope. The pair is flat
+(`rules/fixtures/kiko-no-history-date-comment.{bad,good}.ts`).
+
+**Severity ERROR from the start.** A sweep of 12 sites in 11 files landed with the rule,
+so `check:security` reports 0 findings for the id.
+
+**A bare ISO date is NOT a member, by measurement.** Over `src` a bare
+`\d{4}-\d{2}-\d{2}` inside a comment hit 55 times; the 12 history hits were swept and the
+other 43 (27 files) are data, not history:
+a test's fixture day (`// 2026-01-15` after a `Date.UTC`), a DST day (`Europe/Kyiv falls back
+on 2026-10-25`), a leap day, a worked example, a date format sample, and provenance of a
+snapshot or a probe (`captured 2026-09-22` in `fiat-rate-seed.ts`, `checked 2026-09-26` in
+`week-start.ts`, `probed 2026-10-06` in `sync.ts`). A date records WHEN a value was
+captured, which the code cannot show, so provenance and fixture days stay, and
+`fiat-rate-seed.ts` keeps its documented exception in kiko-code-style. Only a date that
+follows a ruling, plan, or finding word counts. No exemption list exists, so there is
+nothing in `docs/harness/documented-exceptions.md` to update. Known misses: a date after
+another word ("signed off 2026-10-08"), a date with no word before it, and a dated
+history sentence that names no ruling word. Reword by hand when a review finds one.
+
 ## `kiko-no-task-id-comment`
 
 The id half of kiko-code-style's "Comments: WHY only, never history" that
@@ -1470,6 +1501,35 @@ Any other good fixture that carries one of these shapes in a comment fails
 `check:rules` ("must draw zero findings from every rule");
 `kiko-no-history-id-comment.good.ts` had to reword one `item 5's` when this
 rule landed.
+
+## `kiko-no-change-language-in-test-body`
+
+Mechanizes kiko-translator's "A test sets the language in a hook, never in an `it`
+body": a `$I18N.changeLanguage(...)` call inside an `it(...)`, `test(...)`, `it.only(...)`,
+`it.each(table)(...)`, or `test.each(table)(...)` callback. Six `pattern-inside` arms; the
+call may sit in an `act(...)` inside the body. `beforeEach`, `afterEach`, `beforeAll`, and
+`afterAll` are not test bodies, so the hook form never matches.
+
+**Severity WARNING (Class B), because the tree already holds findings.** The finding
+count is what `check:security` reports for this id (`semgrep --metrics off --quiet --config
+rules/semgrep-prewrite.yml src --json`); re-measure before quoting it. Most findings set `uk` in
+the body and reset in an `afterEach`, which is safe until an assertion throws between a
+body-level switch and its reset, and which the rule cannot tell apart from the unsafe form.
+Sweeping every site is far past one dispatch, so the rule landed with no gate, as step 4 of
+"Adding a pre-write guard rule" allows: `check:security` surfaces the findings without
+failing, and the pre-write guard denies a NEW `changeLanguage` call in a test body (the
+finding key is the call text, so a second `i18n.changeLanguage('uk')` in a file that
+already holds one counts as new). **Promotion condition:** flip to ERROR when
+`check:security` reports 0 findings for this rule id (never when a grep is empty).
+
+**Scope.** `paths.include` is `*.test.ts`, `*.test.tsx`, and `src/test-support/**`. The
+last entry is path-prefixed, so the fixture pair is NESTED under
+`rules/fixtures/kiko-no-change-language-in-test-body/src/test-support/`. Test-support
+helpers are in scope only so the fixture probe can reach the rule.
+
+**Known limits.** A helper that wraps `changeLanguage` and is called from an `it` body
+leaks the same way and is not seen. A `jest.spyOn(i18n, 'changeLanguage')` is not a call
+and stays silent. A `try`/`finally` reset inside the body still matches: use a hook.
 
 ## One exported component per `.tsx` — a Jest invariant and a guard rule
 

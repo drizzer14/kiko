@@ -110,12 +110,19 @@ data flows against `src/` and `ios/Kiko/Info.plist` (hosts, pinning,
 Keychain surviving uninstall) first. The host list lives in the code
 and the md, never copy it here.
 
-### Release notes standing lines
+### What's New format
 
-The App Store "What's New" text for 1.1.0 and later ends with
-"Requires iOS 18.2 or later." (uk: "Потрібна iOS 18.2 або новіша.").
-The notes live in App Store Connect, not in the repo; the changelog
-from step 2 is the draft, so add the line there.
+The App Store "What's New" text is one flat bullet list with no section
+headings. List only the major new features and behaviour changes a user
+notices, each as "Name: one sentence" or one short sentence; leave out
+small UI polish. All fixes collapse into the last line "Bug fixes and
+stability improvements." (uk: "Виправлення помилок і покращення
+стабільності."); never list individual fixes. The uk text mirrors the en
+list item by item (kiko-translator; screen names as in `uk.ts`). The
+full change list goes to the GitHub release notes instead. The minimum
+iOS is stated by the deployment target and the App Store listing, never
+repeated in the What's New text. The notes live in App Store Connect,
+not in the repo; the changelog from step 2 is the draft.
 
 ### Navigation reachability for review notes
 

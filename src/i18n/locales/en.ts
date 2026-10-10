@@ -90,11 +90,9 @@ export const en = {
       keyLabel: 'Encryption key',
       keyWarning:
         'Save this key somewhere safe — it will not be shown again, and it is the only way to unlock this file.',
-      // The Settings screen's own row label — a menu item, always sentence
-      // case — separate from `title` below, which is the nav header for the
-      // same screen (a screen title, Title Case); the two roles read the
-      // same string on the same screen otherwise, one casing wrong either way.
-      rowLabel: 'Export data',
+      // The Settings row that opens this screen. Title Case by user ruling, so it
+      // reads the same as `title` below (the nav header).
+      rowLabel: 'Export Data',
       shareFile: 'Share file',
       title: 'Export Data',
     },
@@ -115,8 +113,8 @@ export const en = {
       keyTooShortError: 'The key looks too short — paste the full key from your export.',
       noFileError: 'Choose a file to import.',
       pasteKey: 'Paste key from clipboard',
-      // See `dataExport.rowLabel` above — same Settings-row-vs-nav-title split.
-      rowLabel: 'Import data',
+      // See `dataExport.rowLabel` above — Title Case, matching `title`.
+      rowLabel: 'Import Data',
       successMessage: 'Import complete — {{count}} accounts restored.',
       title: 'Import Data',
       wrongFileTypeError: 'Choose a Kiko export file (.kiko).',
@@ -214,6 +212,7 @@ export const en = {
     // share one key instead of duplicating the same English/Ukrainian pair
     // per screen.
     fields: {
+      addHolding: 'Add holding',
       amount: 'Amount',
       color: 'Color',
       currency: 'Currency',
@@ -695,6 +694,10 @@ export const en = {
         'This clears the connection and the stored API key. Your BTC holding stays as a manual snapshot.',
       wallet: 'This clears the connection. Your BTC holding stays as a manual snapshot.',
     },
+    emptyHoldings: {
+      message: 'Add a holding to start tracking the balance of this account.',
+      title: 'No holdings yet',
+    },
     holdingsHeading: 'Holdings',
     importStatement: 'Import statement',
     invalidApiKeyOrSecret: 'Invalid API key or secret',
@@ -877,16 +880,7 @@ export const en = {
       title: 'Start by creating an account',
     },
   },
-  // One-time tips (`TipCard`, `src/tips/`): the close label is shared, each tip has its own
-  // message.
-  tips: {
-    applyToAll:
-      'Change the category and save: you can apply it to every transaction with the same name, now and in future imports.',
-    categories: 'Create your own categories and choose their icon and color.',
-    close: 'Close tip',
-    importStatement: 'Export a statement from your bank’s app as CSV or XLSX, then import it here.',
-  },
-  // The Help & Tips page (`src/help/`). Each topic has a nav title (Title Case) and a list-row
+  // The Help page (`src/help/`). Each topic has a nav title (Title Case) and a list-row
   // label (sentence case) as two keys, and numbered steps that each end with ".". The step keys
   // are quoted because i18next's typed keys skip a numeric property name.
   help: {
@@ -894,9 +888,8 @@ export const en = {
       openCategories: 'Open categories',
     },
     privacy: 'All your data stays on this device.',
-    rowLabel: 'Help & tips',
-    showTipsAgain: 'Show tips again',
-    title: 'Help & Tips',
+    rowLabel: 'Help',
+    title: 'Help',
     topics: {
       addAccount: {
         rowLabel: 'Add an account',
@@ -1033,6 +1026,8 @@ export const en = {
   // under `common` even though it renders no other chrome.
   migrations: {
     error: 'Migration error: {{message}}',
+    keyMissing:
+      'Kiko cannot read its encryption key, so your data stays locked. Nothing has been changed. Close and reopen Kiko. Do not delete the app: that would erase your data.',
     preparing: 'Preparing database…',
   },
   // The shared preview + target-holding screen

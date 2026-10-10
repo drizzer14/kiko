@@ -21,6 +21,9 @@ export type ConvertExchangeFieldsProps = {
   counterpartOptions: readonly HoldingSelectOption[];
   counterpartHoldingId: string | null;
   onSelectCounterpart: (id: string) => void;
+  // Opens the create form from the counterpart sheet's "Add holding" row, which
+  // shows only while `counterpartOptions` is empty. Omit it to show no row.
+  onCreateCounterpart?: () => void;
   counterpartAmountLabel: string;
   counterpartAmount: string;
   onChangeCounterpartAmount: (text: string) => void;

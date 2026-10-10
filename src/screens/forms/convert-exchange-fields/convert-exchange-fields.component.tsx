@@ -26,6 +26,7 @@ const ConvertExchangeFields: FC<ConvertExchangeFieldsProps> = ({
   counterpartOptions,
   counterpartHoldingId,
   onSelectCounterpart,
+  onCreateCounterpart,
   counterpartAmountLabel,
   counterpartAmount,
   onChangeCounterpartAmount,
@@ -59,6 +60,7 @@ const ConvertExchangeFields: FC<ConvertExchangeFieldsProps> = ({
           options={counterpartOptions}
           selectedId={counterpartHoldingId}
           onSelect={onSelectCounterpart}
+          onCreateNew={onCreateCounterpart}
           required
           error={counterpartError}
         />

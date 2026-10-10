@@ -1,5 +1,6 @@
 import { StyleSheet } from 'react-native';
-import { act, fireEvent, render } from '@testing-library/react-native';
+import type { RenderedElement } from '@kiko/test-support/rendered-element';
+import { act, fireEvent, render, within } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import '@kiko/i18n/init';
 
@@ -157,6 +158,38 @@ describe('ClipboardTextField', () => {
       />,
     );
 
+    expect(getByText('Enter your Monobank token.')).toBeTruthy();
+  });
+
+  // An error inside the inner TextField would grow the field's column, and the
+  // row's `alignItems: 'center'` would move the paste button down with it. The
+  // error must render OUTSIDE the [input, button] row so the button stays
+  // centered on the input alone.
+  it('renders the error outside the input/paste row so the paste button stays centered on the input', async () => {
+    const { getByText, getByLabelText } = await render(
+      <ClipboardTextField
+        label="Token"
+        value=""
+        onChangeText={jest.fn()}
+        placeholder="Monobank token"
+        pasteAccessibilityLabel="Paste from clipboard"
+        error="Enter your Monobank token."
+      />,
+    );
+
+    // The row is the nearest ancestor of the paste button carrying the 4pt gap.
+    let row: RenderedElement | null = getByLabelText('Paste from clipboard').parent;
+
+    while (row !== null && StyleSheet.flatten(row.props.style)?.gap !== 4) {
+      row = row.parent;
+    }
+
+    if (row === null) {
+      throw new Error('paste button has no 4pt-gap row ancestor');
+    }
+
+    expect(within(row).getByPlaceholderText('Monobank token')).toBeTruthy();
+    expect(within(row).queryByText('Enter your Monobank token.')).toBeNull();
     expect(getByText('Enter your Monobank token.')).toBeTruthy();
   });
 

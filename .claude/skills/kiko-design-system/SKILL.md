@@ -247,6 +247,34 @@ an entry (date + value) the moment the user approves a new visual.
   `accountKindSymbol` glyph in its resolved color, never an empty icon
   slot. The "All" row lines up under the glyph column:
   `filter-menu` reserves the icon slot when any option has an icon.
+- **iOS < 26 fallback look: the old solid chrome** (2026-10-08, user option
+  A). A device without Liquid Glass (`isLiquidGlassSupported === false`,
+  e.g. iOS 18.7) reads like the pre-glass app, and iOS 26/27 do not change
+  by a pixel. Three parts: (1) the `BottomSheet` card is the opaque
+  `theme.colors.sheetBackground` (#1C1C1E) through `sheetFallbackFill`, not
+  a `GlassSurface` (whose `material`/`bloom` fallback is a translucent
+  `surfaceTranslucent` fill, which reads as a flat black dim on a sheet;
+  the sheet's fallback look does not depend on that shared primitive);
+  (2) its scrim is
+  `theme.colors.scrimFallback` (black 0.55), while `scrim` (0.4) stays the
+  glass path's tint; (3) every large-title native stack takes
+  `screenOptions={largeTitleScreenOptions}`
+  (`src/navigation/large-title-screen-options/`), which on this tier adds
+  `headerBlurEffect: 'systemChromeMaterialDark'` plus `headerLargeStyle:
+  { backgroundColor: 'transparent' }` (the at-rest large title stays
+  transparent, only the scrolled bar blurs), because react-native-screens
+  builds a transparent appearance with no background effect there. On
+  iOS 26+ it passes neither option. A new large-title stack, or a screen
+  that sets `headerLargeTitle` itself, spreads that helper rather than
+  setting `headerLargeTitle: true` inline. Device-confirm on an iOS 18
+  device, not in the simulator or Jest.
+- **Tips were removed by user ruling** (2026-10-09: "Hints still look bad, let's remove them
+  for now"). There is no `TipCard`, `useTip`, or `accentSubtle` token; do not bring back a
+  first-use tip, or its old look (tinted accent fill, lightbulb glyph, close button), without
+  asking the user first. `InfoHint` stays allowed.
+- **EmptyState action is primary + small** (2026-10-08). 34pt tall, 44pt
+  tap via `SMALL_HIT_SLOP`, not full width, never the regular 50pt. Pinned
+  by `empty-state.component.test.tsx`.
 
 ## UX patterns
 
@@ -265,6 +293,9 @@ The established patterns grouped under this heading:
 - The capability-icon transparency principle — its own heading further
   down this file.
 - Field placeholder and error copy — below.
+- Content that APPEARS in response to a press (a banner, a confirmation) is silent to
+  VoiceOver: pair it with `AccessibilityInfo.announceForAccessibility(t(...))` using the same
+  i18n string as the visible text.
 - A filter never hides an active selection: a checkable filter's
   option list is scoped to the current data (e.g. the statistics
   category filter is scoped to the active date range), but a value
@@ -718,7 +749,9 @@ new component can land between reviews of this skill:
   `pasteButtonWrapper`) put the glyph 12pt from the input and 8pt from
   the row's end, while the `small` Button keeps its own 44pt-wide tap
   target (starting exactly at the input's edge, never overlapping it) —
-  the visual spacing shrinks, never the tap target.
+  the visual spacing shrinks, never the tap target. The `FieldError`
+  renders below the whole input/paste row, so the paste glyph stays
+  centered on the input (pinned by `clipboard-text-field.component.test.tsx`).
 - **Card** (`src/design-system/components/card/`) — the shared
   CONTENT-layer surface: a solid, opaque themed fill with a defined
   hairline border, no glass/blur material at all. Every content card,
@@ -735,7 +768,7 @@ new component can land between reviews of this skill:
   (an entity card, e.g. the FAB) paints an OPAQUE `surface` backdrop
   and an entity-color wash — see "Entity color and tint" below. A
   `transparent` variant paints a TRANSLUCENT
-  `surfaceTranslucent` backdrop and no wash, so the screen behind reads
+  `surfaceTranslucent` backdrop (iOS 26+; below it the BottomSheet bypasses GlassSurface) and no wash, so the screen behind reads
   through while the drift/pop-in stays softened; a `tint` always wins
   over it. `transparent`/`bloom`/`material` are NAV-LAYER variants now
   — a new CONTENT surface (a settings row, a chart card, a summary, a
@@ -753,7 +786,8 @@ new component can land between reviews of this skill:
   the touch-and-hold context menu. Neither prop keeps the fully-live see-through material (no
   backdrop). A fourth variant, `material`, is `transparent`'s sibling for a
   surface whose backdrop is STATIC while shown (BottomSheet is the first
-  consumer): it keeps the fully-live see-through glass on the glass path
+  consumer, on iOS 26+ only: below iOS 26 the sheet bypasses `GlassSurface`
+  for an opaque fill): it keeps the fully-live see-through glass on the glass path
   (no backdrop at all, so the material samples the real content behind it —
   a true blur, not `transparent`'s partially-pinned sample) but, unlike a
   plain surface, still takes a TRANSLUCENT (not opaque) fallback fill on the
@@ -806,10 +840,10 @@ new component can land between reviews of this skill:
   real translucent blur MATERIAL, reusing `GlassSurface`'s `material`
   variant — a live-sampling Liquid Glass on iOS 26+ (no color-pinning
   backdrop under it, so the sheet reads as an actual blur of the
-  content behind it, not a near-opaque flat panel), the same themed flat
-  translucent (`surfaceTranslucent`) fallback elsewhere — rather than
-  forking its layering — real glass/fallback branching, backdrop, and
-  base all stay owned by `GlassSurface` itself. `material` is
+  content behind it, not a near-opaque flat panel). Below iOS 26 the card
+  is instead the opaque `sheetBackground` (`sheetFallbackFill`, see "iOS <
+  26 fallback look" under Locked decisions) — real glass branching,
+  backdrop, and base stay owned by `GlassSurface` on the glass path. `material` is
   `transparent`'s sibling variant for a surface whose backdrop is STATIC
   while shown (a modal sheet): `transparent` instead pins a translucent
   backdrop under the glass to soften lightness drift on a scrolling
@@ -822,7 +856,7 @@ new component can land between reviews of this skill:
   absolutely-positioned first child of the sheet card
   (`bottom-sheet.styles.ts`'s `glassFill`), painted BEHIND the grabber
   and body that follow it in JSX. Since this is the ONE shared
-  primitive, every sheet in the app gets the glass background from this
+  primitive, every sheet in the app gets the glass background on iOS 26+ from this
   single change point. `GlassSurface` only exposes a single ALL-corner
   `radius` (there is no top-only variant); the sheet still needs to read
   as top-rounded / bottom-flush (anchored to the screen's bottom edge),
@@ -835,14 +869,13 @@ new component can land between reviews of this skill:
   corners. `GlassSurface`'s own `padding` prop is passed `0` on this
   layer — the card's EXISTING padding (`styles.sheet`'s
   `SHEET_PADDING_STEP`) stays the single inset, never stacked with a
-  second one. The sheet is still a GROUPED surface: this translucent
-  base (composited to ~rgb(17,17,18) over true-black — darker than
-  `surfaceHigh` #2C2C2E) sits one level BELOW the cards/controls on
+  second one. The sheet is a GROUPED surface: its base (the live glass
+  on iOS 26+, the opaque `sheetBackground` #1C1C1E below — both darker
+  than `surfaceHigh` #2C2C2E) sits one level BELOW the cards/controls on
   it, so a control reads as raised instead of blending into the sheet
   (a chip or segment on it uses the faint `neutralSubtle` fill — see
-  `ChipRow` and `SegmentedControl` below) — it used `surfaceHigh`
-  itself before, then a flat opaque `sheetBackground` token before this
-  glass pass. It caps
+  `ChipRow` and `SegmentedControl` below); a base at `surfaceHigh`
+  itself would swallow a selected pill. It caps
   its own height at a fixed 66%-of-window ceiling and takes an optional
   `maxHeight` prop that can only tighten that cap further, plus a
   `scrollable` prop (defaults `true`) that wraps `children` in a
@@ -873,8 +906,9 @@ new component can land between reviews of this skill:
   a sheet's test hooks.
 
   The full-bleed dismiss SCRIM (a sibling of the sheet card, not the
-  card's own `glassFill` above) is a SEPARATE Liquid Glass layer with a
-  DEVICE BUG fix of its own: Liquid Glass draws a native specular rim at
+  card's own `glassFill` above) is, on iOS 26+, a SEPARATE Liquid Glass layer with a
+  DEVICE BUG fix of its own (below iOS 26 the scrim is a plain `scrimFallback` View with no rim to hide;
+  it shares `styles.backdropFill`'s sizing, so the overscan is harmless there, not a fix): Liquid Glass draws a native specular rim at
   the edge of whatever bounds it is given (a `UIGlassEffect` property,
   not a border/inset this app draws), which at the scrim's original
   exact-screen-size bounds landed on the screen edge and read as a sharp
@@ -1083,23 +1117,18 @@ new component can land between reviews of this skill:
   `textSecondary` symbol, a semibold `body` `textPrimary` title (sentence
   case, no final "."; never the `heading` variant, which would pull its keys
   into `TITLE_KEYS`), a centered `caption` `textSecondary` message (one or
-  two sentences, final "."), then an optional `primary` non-full-width
-  `Button` from `action: { label, icon?, onPress }`. Strings come in as
+  two sentences, final "."), then an optional `primary` `small` (34pt
+  pill, 44pt tap via `SMALL_HIT_SLOP`; user ruling 2026-10-08, the regular 50pt
+  read as disproportionately tall) non-full-width `Button` from `action: { label, icon?, onPress }`. Strings come in as
   props. `testID` gives `<testID>-icon` and `<testID>-action`. Gate it on
-  `useDataReady`, never on `data.length === 0` alone.
-- **TipCard** (`src/design-system/components/tip-card/`) — a one-time,
-  dismissible hint, following the ReminderOfferCard precedent: inline and
-  non-modal, on the plain `Card` (solid `surface`, hairline border, `padding={3}`;
-  NOT `GlassSurface`, whatever "glass card" says elsewhere), never a warning
-  tone. A `body` `textPrimary` message, then a trailing icon-only `ghost`
-  `compact` `xmark` close `Button` (44pt tap) labelled by `closeLabel`. Strings
-  come in as props. **One `useTip` call per screen, from `@kiko/tips`**:
-  `const { visible, dismiss } = useTip(TIP_ID, condition)`, then
-  `{visible && <TipCard onClose={dismiss} … />}`. `useTip` takes one candidate
-  (`id: TipId`, `condition: boolean`); `visible` is `!isLoading && condition &&
-  not dismissed`, so it is false while settings load and follows the caller's
-  condition. Two `useTip` calls on one screen could show two tips (`pickTip` is
-  the single picker), so a screen has one. Never hand-roll the dismissed state.
+  `useDataReady`, never on `data.length === 0` alone. Call sites: Home
+  (`home-empty`), Statistics (`statistics-empty`) and Accounts (`accounts-empty`)
+  fill the screen when there is no account; `AccountDetail`
+  (`account-detail-holdings-empty`) shows it inside the Holdings section, under
+  the kept "Holdings" heading, when the account has no ACTIVE holding (every
+  account kind; closed holdings do not count). Its action is the footer's Add
+  holding, so the footer drops that button while the empty state shows (the
+  Import statement button stays), as Accounts drops its footer.
 - **NotificationPreAlertSheet**
   (`src/design-system/components/notification-pre-alert-sheet/`) — the
   HIG pre-alert shown before the iOS notification prompt. It has ONE
@@ -1323,6 +1352,13 @@ new component can land between reviews of this skill:
   outside `src/screens/`. Enforced by `kiko-no-cross-screen-import`
   (`scripts/checks/screen-imports.js`, the guard and
   `check:screen-imports`).
+- **Empty holding picker.** An EMPTY holding picker (`HoldingSelectField`, `PaymentHoldingField`;
+  prop `onCreateNew`) shows an "Add holding" row (key `forms.fields.addHolding`). Its target comes
+  from `resolveCreateHoldingTarget` (`src/screens/forms/create-holding-target/`): the picker passes
+  `accepts(type)`, an optional `currency`, and `anchorAccountId`; the target is the anchor's own
+  account or the first live account that can create an accepted type, opened on that type/currency,
+  else `AccountForm`. `useSelectCreatedHolding` (`use-select-created-holding.ts`) selects only the
+  holding created between the tap and the return focus (a `createdAt` window), never after a cancel.
 - **CurrencyBreakdown** — a two-column per-currency amount grid (code
   left, formatted `MoneyText` right), filled row-major.
 - **SummaryTable** (`src/design-system/components/summary-table/`) — the
