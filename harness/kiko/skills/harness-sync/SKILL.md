@@ -153,6 +153,11 @@ Every count and exit code is the orchestrator's own measured result.
 
 ## Carried follow-ups
 
+- `run-log.mjs` was ported harness -> pff-ios from `cc5cd0f` (`d761245`) and must stay
+  byte-identical in both repos.
+- The source harness-workflow "Run log" text says `--step <id>`, but the script needs an
+  integer (`--step N`); fix it in the harness repo at sync 3.
+
 From sync 2 and earlier:
 - Not yet ported: guard-replay, shipped-migrations, plural-count, the estimator skill; the
   `check:typecheck` scope for the harness's own JS.

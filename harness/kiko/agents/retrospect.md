@@ -26,6 +26,10 @@ Rules:
   enumerable data), and flag prose that only describes current usage
   instead of prescribing a rule. Name the scribe's drift-fix commit sha
   (or "no drift found") when you hand back.
+- Inputs: read the run's `summary.json` and `events.jsonl` (under
+  `${HARNESS_RUNS_DIR:-$HOME/.claude/harness-runs}/<runId>/`) and the `stats` rows from
+  `run-log.mjs stats --format md`. Flag every run showing `abandoned` (no `summary.json` and no
+  event for 24 h). Report your recorded and gaps counts for `finish --recorded N --gaps N`.
 - Standing job: classify every review finding and feedback item of the
   run as mechanizable now, mechanizable with a pinned value, or
   judgment-only, with a one-line reason (`harness-workflow`'s "Classify

@@ -3,20 +3,25 @@ name: estimator
 description: Use when giving the user a duration or ETA for any dispatched work (an orchestrator task, a review, a fix round, a mutation window, a build/deploy), and when a task or mutation window finishes (to log its real time).
 ---
 
-Quote measured history, never an agent's own guess. The source of truth is
-the duration log at
-`memory/refs/duration-log.md` in the main checkout.
+Quote measured history, never an agent's own guess. Two sources:
+- The run log: `node "${CLAUDE_PLUGIN_ROOT}/scripts/run-log.mjs" stats --format md` (add
+  `--since YYYY-MM-DD` or `--repo <slug>`). Each row gives minutes, rounds to first approve,
+  check/test retries, stalls and human rounds (see `harness-workflow`'s "Run log").
+- The duration log at `memory/refs/duration-log.md` in the main checkout. It stays: it holds
+  the mutation windows and the history from before the run log.
+Read both side by side.
 
 Rules:
-- Every dispatch states an estimate AND its source (which row(s) of the
-  log it came from, or "no similar row" plus a wide range).
+- Every dispatch states an estimate AND its source (which `stats` row(s) and/or
+  duration-log row(s) it came from, or "no similar row" plus a wide range).
 - The estimate comes from the most similar rows of the duration log (same
   item type, similar size) — never from an agent's own guess. An agent's
   own stated estimate ("60-90 min") is a data point for the log, not a
   number to relay to the user as the estimate.
 - If no similar row exists, say so explicitly and give a wide range rather
   than inventing precision.
-- Every BATCH READY carries a TIMES line: "developer dispatched HH:MM
+- Every BATCH READY carries a TIMES line, built from the run log (the run's `stats` row and
+  the event clock times), not hand-written: "developer dispatched HH:MM
   (estimate X-Y min), developer done HH:MM, review done HH:MM, fix round
   done HH:MM, re-review done HH:MM, BATCH READY HH:MM".
 - The coordinator appends one row per finished task and per mutation

@@ -1,6 +1,6 @@
 ---
 name: harness-workflow
-description: Use when coordinating Kiko work. States the delegation rule and points to the superpowers process skills.
+description: Use when coordinating Kiko work. States the delegation rule, the run log, and points to the superpowers process skills.
 ---
 
 The coordinator delegates all work to the harness agents. The coordinator never edits app files inline.
@@ -38,9 +38,9 @@ Rules:
 - When a planner's recommendation conflicts with a principle the user stated, the orchestrator
   overrules toward the principle and states why in its question to the coordinator.
 - User questions go through the coordinator. An orchestrator session never asks the user in its own terminal (no AskUserQuestion there). It sends each user question or blocker to the coordinator by SendMessage: the question, 2-4 options with a one-line consequence each, the recommended option, and the work it can do meanwhile. The coordinator asks the user and relays the answer in the user's own words.
-- Every duration or ETA given to the user, and every BATCH READY's TIMES
-  line, follows `kiko:estimator` — it owns the estimate-from-history and
-  duration-log rules.
+- Every duration or ETA given to the user follows `kiko:estimator` — it
+  owns the estimate-from-history rules. A BATCH READY's TIMES line comes
+  from the run log (see "Run log"), not from hand-written text.
 - Name a task or change set "<track> task N/M" (a number plus the total). Name a step inside a change set "step N/M". Never invent a letter id. Renumber M when the scope changes; a deferred item is not counted.
 - A fresh agent is the default for each task. Reuse an agent via SendMessage only for a same-task re-review or fix round by the SAME agent with a small context (never across tasks, never for a different diff, never after a large amount of work). Finished subagents cannot be removed from a session's list; `claude rm <id>` deletes a BACKGROUND SESSION and its worktree — never use it to tidy a finished agent.
 
@@ -54,6 +54,61 @@ Rules:
   `--mutate` on the named files and reads the per-file floor (60) from
   `reports/mutation/mutation.json`. This is a documented deviation until
   a `KIKO_MUTATION_FILES` option exists.
+
+## Run log
+
+Every orchestrator session keeps a run folder, written with `run-log.mjs` (plain Node, no
+dependencies; it must stay byte-identical to the harness repo's copy), called as
+`node "${CLAUDE_PLUGIN_ROOT}/scripts/run-log.mjs" <command> ...`. Run
+`node "${CLAUDE_PLUGIN_ROOT}/scripts/run-log.mjs"` with no arguments for the exact usage;
+write only the flags it lists. Runs live under
+`${HARNESS_RUNS_DIR:-$HOME/.claude/harness-runs}/<runId>/` (`run.json`, `events.jsonl`,
+`summary.json`), outside every worktree. Every command refreshes
+`${HARNESS_RUNS_DIR:-$HOME/.claude/harness-runs}/bin/run-log.mjs`, a copy a project skill can
+call without knowing where the plugin lives.
+
+- **start**: once per "<track> task N/M", when its shape is known: `start --task "<track> task
+  N/M" --shape build|fix|research|review [--jira <url>]`; an Orca worker adds `--orca-task <id>
+  --orca-dispatch <id>`. It prints the run id on stdout. Keep the id in the worktree handoff
+  file (`.superpowers/sdd/<track>/HANDOFF.md`), so a handed-over session writes to the same run.
+- **event**: one per verdict, as it happens: `event --run <id> --gate <gate> --verdict
+  <verdict> [--phase <text>] [--step N] [--group N] [--role <role>] [--attempt N] [--findings N]
+  [--mechanizable N] [--note <text>]`. `--step`, `--group` and `--attempt` take an integer
+  (`--step N` is "step N/M"). Log:
+  - a gate verdict: `check:all` as `--gate check`, `make verify` or the full jest as
+    `--gate test`, `make deep` as `--gate deep` (the coordinator who runs it logs it);
+  - a review verdict: `kiko:reviewer` APPROVE as `--gate review --verdict approve`, FIX FIRST
+    as `--verdict changes`, with `--findings N` and `--mechanizable N` counted from the
+    "Classify every finding" tags;
+  - a human ruling relayed by the coordinator: `--gate human` (`approve` or `changes`);
+  - a stall (an agent past its estimate with no report): `--gate stall --verdict stall`;
+  - a `wait-load.sh` timeout or an ops timeout: `--verdict timeout`; a gate that did not run:
+    `--verdict skipped`;
+  - the retrospect: `--gate retro`;
+  - any other verdict is `pass` or `fail`.
+- **finish**: at BATCH READY (`--outcome done`), or when the track is blocked or aborted:
+  `finish --run <id> --outcome done|blocked|aborted [--recorded N] [--gaps N] [--archive <dir>]`.
+  `--recorded` and `--gaps` come from the retrospect's report.
+- **stats**: `stats [--since YYYY-MM-DD] [--repo <slug>] [--format md|tsv|json]` prints one row
+  per review chain, with minutes, check/test retries, stalls and human rounds. A run with no
+  `summary.json` and no event for 24 hours shows as `abandoned`.
+
+BATCH READY's TIMES line is built from the run log: the run's `stats` row plus the event clock
+times in `events.jsonl`. Never write it from memory.
+
+A project skill outside the plugin calls the installed copy and degrades to a no-op when it is
+missing. Start (prints the run id):
+
+```bash
+RUN_LOG="${HARNESS_RUNS_DIR:-$HOME/.claude/harness-runs}/bin/run-log.mjs"; [ -f "$RUN_LOG" ] && RUN_ID=$(node "$RUN_LOG" start --task "<track> task N/M" --shape build) && echo "$RUN_ID"
+```
+
+Finish, in a later Bash call (shell variables do not survive between calls), prefixed with
+`RUN_ID=<printed id>;`:
+
+```bash
+RUN_LOG="${HARNESS_RUNS_DIR:-$HOME/.claude/harness-runs}/bin/run-log.mjs"; [ -f "$RUN_LOG" ] && node "$RUN_LOG" finish --run "$RUN_ID" --outcome done || echo "run-log: not installed, skipped"
+```
 
 ## Skill drift rule
 
