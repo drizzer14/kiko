@@ -7,13 +7,13 @@ import type { TFunction } from 'i18next';
 import { Money } from '@kiko/currency/money';
 import { useSync } from '@kiko/sync/use-sync';
 import { accountsRepo } from '@kiko/accounts';
-import either, { isRight } from 'fnts/either';
 import { useTranslation } from 'react-i18next';
 import { logOnFailure } from '@kiko/diagnostics';
 import { saveToken } from '@kiko/monobank/token';
 import { parseAmount } from '@kiko/currency/parse';
 import Box from '@kiko/design-system/components/box';
 import Text from '@kiko/design-system/components/text';
+import either, { bifoldr, isRight } from 'fnts/either';
 import { type BrokerId, isBrokerId } from '@kiko/brokers';
 import { useCryptoSync } from '@kiko/sync/use-crypto-sync';
 import Button from '@kiko/design-system/components/button';
@@ -301,27 +301,19 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
   // The account's id is pre-generated once for this create session so the
   // per-source fields — which bind to an EXISTING account id (a per-account
   // Keychain item and a `sync({ targetAccountId })`) — have a stable id to key
-  // against before the row exists. The row is inserted with this exact id by
-  // `ensureAccount` on the first Connect (or on Save), so a field's Keychain
-  // write and first sync land on the row that Save then persists. Shared by both
-  // the bank and crypto kinds — one create-first / one-shot-insert latch, not a
-  // second copy.
+  // against before the row exists. Every Connect inserts the row with this exact id (and leaves
+  // a stored one as it is), so a field's Keychain write and first sync land on a row that exists,
+  // and Save then writes to the same id. Shared by both the bank and crypto kinds. No ref
+  // remembers the insert: whether the row exists is the database's to say, because a fold can
+  // leave a Connect running in the old screen that inserts the row after this one opened, and a
+  // row can be deleted elsewhere after a Connect inserted it.
   const { pendingAccountId } = opening;
-  // A one-shot create promise: whichever fires first (a field's own Connect or
-  // the footer Save) inserts the row exactly once; every later caller reuses the
-  // same promise, so a field Connect followed by Save can never produce a
-  // DUPLICATE account (connect-first). On a REJECTED create the ref is reset to null
-  // (see below) so a retry re-attempts and Save never silently no-ops. A remount starts it null
-  // too: whether the row exists is asked of the database, because a fold can leave a Connect
-  // running in the old screen that inserts the row after this one opened.
-  const accountCreate = useRef<Promise<string> | null>(null);
-  // A render-visible mirror of "the row has been (or is being) inserted", used
-  // only to DISABLE the kind switch and the bank picker once a source is
-  // connected — switching kind afterwards would route Save down a branch that
-  // creates a SECOND account and orphans the started row, and re-picking the bank
-  // would make the connect-first Save overwrite the connected row's bank id. It is
-  // state (not just the ref) because the disable must re-render; it follows the
-  // ref, reset to false on a failed create so both re-enable when no row exists.
+  // A render-visible mirror of "a Connect has started inserting the row", used only to DISABLE
+  // the kind switch and the bank picker once a source is connected — switching kind afterwards
+  // would leave a started row of the old kind behind, and re-picking the bank would make Save
+  // overwrite the connected row's bank id. It is state because the disable must re-render; it is
+  // reset to false on a failed insert, and the live query below keeps the lock on while a row is
+  // stored.
   const [accountRowStarted, setAccountRowStarted] = useState(false);
   // The account being edited, or in a create form the row a Connect inserted under the pending id,
   // possibly from the screen a fold replaced.
@@ -380,21 +372,19 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
   // scrolls it into view; the error under it is the cue.
   const catalogFieldRef = useRef<FieldInstance>(null);
 
-  // The icon goes in the same insert: a second write could fail after the row exists, and a
-  // Binance connect reads any failure here as "no row" and clears the key pair of an account that
-  // is there. A row already stored under the pending id is another screen's Connect (this form was
-  // folded and remounted while it ran); the insert leaves it as it is rather than failing.
-  const insertAccountRow = (): Promise<string> =>
-    accountsRepo.createIfAbsent({
-      id: pendingAccountId,
-      name: trimmedName,
-      // Neither cash (createCashAccount returns before this) nor property/debt
-      // (the swap to the holding form leaves this form first) reaches here.
-      kind,
-      color,
-      icon,
-      bankId: catalogId,
-    });
+  // What both writes of the account row store. The icon goes in the same write as the rest: a
+  // second write could fail after the row exists, and a Binance connect would then clear the key
+  // pair of an account that is there.
+  const accountRow = (): Parameters<typeof accountsRepo.saveFormAccount>[0] => ({
+    id: pendingAccountId,
+    name: trimmedName,
+    // Neither cash (createCashAccount returns before this) nor property/debt
+    // (the swap to the holding form leaves this form first) reaches here.
+    kind,
+    color,
+    icon,
+    bankId: catalogId,
+  });
 
   const ensureAccount = (): Promise<string> => {
     // Parity with the bank Save gate (`canSave = trimmedName !== ''`): a sync
@@ -402,29 +392,24 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
     // account row is ever created without a name. A field's own Connect tapped
     // with an empty (whitespace-only) name rejects HERE before any insert — the
     // field surfaces its existing "could not connect" state and the name-required
-    // reason renders below the name field so the user understands why. The latch
-    // and the `accountRowStarted` kind-lock are left untouched (no row was
-    // started), so a retry after typing a name re-attempts cleanly. Save is
-    // separately blocked on `!canSave`, so this also guards the programmatic path.
+    // reason renders below the name field so the user understands why. The
+    // `accountRowStarted` kind-lock is left untouched (no row was started), so a
+    // retry after typing a name re-attempts cleanly. Save is separately blocked
+    // on `!canSave`, so this also guards the programmatic path.
     if (!canSave) {
       setAttemptedSave(true);
       scrollTo(nameFieldRef, () => nameInputRef.current?.focus());
 
       return Promise.reject(new Error('name-required'));
     }
-    accountCreate.current ??= insertAccountRow().catch((error: unknown) => {
-      // A failed insert (DB locked, disk full) must not poison the session: clear
-      // the latch so a retry — or the Save fallback — re-attempts, rather than
-      // leaving the ref non-null and sending Save down the UPDATE branch, which
-      // would match no row and silently no-op while the user believes they
-      // saved. Re-throw so the caller still sees the failure.
-      accountCreate.current = null;
+    setAccountRowStarted(true);
+
+    // A row already stored under the pending id (an earlier Connect, or another screen's after a
+    // fold) is left as it is, so every Connect can insert and none depends on an earlier one.
+    return accountsRepo.createIfAbsent(accountRow()).catch((error: unknown) => {
       setAccountRowStarted(false);
       throw error;
     });
-    setAccountRowStarted(true);
-
-    return accountCreate.current;
   };
 
   // Shared by every field's Connect handler below: `true` once the account row
@@ -485,11 +470,19 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
   const connectBinance = async (): Promise<boolean> => {
     if (!(await accountEnsured())) {
       // The field stored its key pair under the pre-generated account id before
-      // this connect, and no row owns it now, so nothing else would ever clear
-      // it. A failed clear is logged: the connect still reports its own failure.
-      await logOnFailure('[account-form] the Binance key pair could not be cleared', () =>
-        clearCredentials(pendingAccountId),
-      );
+      // this connect. Only when no row owns it does nothing else ever clear it: a
+      // reject on an empty name leaves a row that is there with its keys, and a
+      // failed read of the row keeps them too. A failed clear is logged: the
+      // connect still reports its own failure.
+      const rowIsMissing =
+        bifoldr(await either<unknown, boolean>(async () => accountRowExists(pendingAccountId))) ===
+        false;
+
+      if (rowIsMissing) {
+        await logOnFailure('[account-form] the Binance key pair could not be cleared', () =>
+          clearCredentials(pendingAccountId),
+        );
+      }
 
       return false;
     }
@@ -617,27 +610,17 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
       }
 
       // Every kind but cash (returned above) shares one create path. A field's
-      // own Connect may already have inserted the row via
-      // ensureAccount (connect-first); if so, persist any name/color/icon edited
-      // AFTER connecting rather than inserting a DUPLICATE account (the field
-      // already handled the credential + first sync). Otherwise this Save is
-      // the first write, so create the row now — an unconnected bank/crypto
-      // account is valid (the user connects a source later from its detail
-      // screen), and a metals account has no source to connect at all — it
-      // always takes this branch. (Property and debt never get here: picking
-      // either swaps to the holding form, which leaves this form first.) Only the database
-      // says whether the row is there: a Connect's latch outlives a row deleted elsewhere, and
-      // updating a missing row would save nothing.
-      if (await accountRowExists(pendingAccountId)) {
-        await accountsRepo.update(pendingAccountId, {
-          name: trimmedName,
-          color,
-          bankId: catalogId,
-        });
-        await accountsRepo.setIcon(pendingAccountId, icon);
-      } else {
-        await insertAccountRow();
-      }
+      // own Connect may already have inserted the row (connect-first): the one
+      // write below then stores any name/color/icon edited AFTER connecting on
+      // it, rather than inserting a DUPLICATE account (the field already handled
+      // the credential + first sync). With no row, this Save is the first write
+      // and creates it — an unconnected bank/crypto account is valid (the user
+      // connects a source later from its detail screen), and a metals account has
+      // no source to connect at all. (Property and debt never get here: picking
+      // either swaps to the holding form, which leaves this form first.) The write
+      // looks the row up itself, queued behind any Connect insert still waiting, so no earlier
+      // read can make it update a row that is missing or insert one that is there.
+      await accountsRepo.saveFormAccount(accountRow());
       navigation.goBack();
     } catch {
       // A DB write failure (disk full, locked) must not vanish silently — the

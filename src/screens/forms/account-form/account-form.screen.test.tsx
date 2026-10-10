@@ -77,6 +77,7 @@ const isKindFieldDisabled = (
 ): boolean => Boolean(getByTestId('account-kind-field').props.accessibilityState.disabled);
 
 const mockCreate = jest.fn();
+const mockSaveFormAccount = jest.fn();
 const mockCreateCashAccount = jest.fn();
 const mockCreateImplicitHolding = jest.fn();
 const mockSetIcon = jest.fn();
@@ -108,8 +109,11 @@ jest.mock('@kiko/accounts/accounts.repo', () => ({
         Promise.resolve(mockAccounts.filter((row) => (row as { id: string }).id === accountId)),
         { toSQL: () => ({ sql: '', params: [] }) },
       ),
-    // The one insert of the account row (`mockCreate` records it): the form never reads first.
+    // A Connect's insert of the account row (`mockCreate` records it): the form never reads first.
     createIfAbsent: (...args: unknown[]) => mockCreate(...args),
+    // The Save of a create form (`mockSaveFormAccount` records it): one write that finds the row
+    // itself, so the form never reads it first either.
+    saveFormAccount: (...args: unknown[]) => mockSaveFormAccount(...args),
     createCashAccount: (...args: unknown[]) => mockCreateCashAccount(...args),
     createImplicitHolding: (...args: unknown[]) => mockCreateImplicitHolding(...args),
     setIcon: (...args: unknown[]) => mockSetIcon(...args),
@@ -307,8 +311,9 @@ jest.mock('@kiko/design-system/components/monobank-connect-field', () => {
 
 // The database is the only record of whether a Connect inserted the pending account: a created
 // row joins the rows the mocked repo answers with, and a second insert under one id leaves the
-// stored row as it is, as the repo's insert-or-ignore does. `ends` holds an insert back until it
-// settles.
+// stored row as it is, as the repo's insert-or-ignore does. Save writes the form's fields onto a
+// stored row (`mockAccounts` then holds them) or inserts the row when none is stored. `ends` holds
+// an insert back until it settles.
 const storeCreatedRows = (ends: Promise<void> = Promise.resolve()): void => {
   mockCreate.mockImplementation(async (input: { id: string }) => {
     await ends;
@@ -316,6 +321,17 @@ const storeCreatedRows = (ends: Promise<void> = Promise.resolve()): void => {
     if (!mockAccounts.some((row) => (row as { id: string }).id === input.id)) {
       mockAccounts = [...mockAccounts, { id: input.id }];
     }
+
+    return input.id;
+  });
+  mockSaveFormAccount.mockImplementation(async (input: { id: string; name: string }) => {
+    await ends;
+
+    mockAccounts = mockAccounts.some((row) => (row as { id: string }).id === input.id)
+      ? mockAccounts.map((row) =>
+          (row as { id: string }).id === input.id ? { ...(row as object), name: input.name } : row,
+        )
+      : [...mockAccounts, { id: input.id, name: input.name }];
 
     return input.id;
   });
@@ -345,6 +361,7 @@ describe('AccountFormScreen', () => {
     mockAccounts = [];
     // create resolves to the new row's id so the form can set its icon on it.
     mockCreate.mockResolvedValue('new-account-id');
+    mockSaveFormAccount.mockResolvedValue('new-account-id');
     mockCreateImplicitHolding.mockResolvedValue({
       accountId: 'implicit-account-id',
       holdingId: 'new-holding-id',
@@ -481,10 +498,11 @@ describe('AccountFormScreen', () => {
 
     // The row is inserted with the screen's pre-generated id (so a field Connect
     // could have keyed a Keychain write to it); no source was connected here.
-    expect(mockCreate).toHaveBeenCalledWith(
+    expect(mockSaveFormAccount).toHaveBeenCalledWith(
       expect.objectContaining({ name: 'My Crypto', kind: 'crypto', color: null }),
     );
-    expect(mockCreate).toHaveBeenCalledTimes(1);
+    expect(mockSaveFormAccount).toHaveBeenCalledTimes(1);
+    expect(mockCreate).not.toHaveBeenCalled();
     expect(mockCreateCashAccount).not.toHaveBeenCalled();
     expect(navigation.goBack).toHaveBeenCalled();
   });
@@ -734,7 +752,7 @@ describe('AccountFormScreen', () => {
 
     await fireEvent.press(getByText('Save'));
 
-    expect(mockCreate).toHaveBeenCalledWith(
+    expect(mockSaveFormAccount).toHaveBeenCalledWith(
       expect.objectContaining({ name: 'My Gold', kind: 'metals', color: null }),
     );
     expect(mockCreateCashAccount).not.toHaveBeenCalled();
@@ -755,10 +773,12 @@ describe('AccountFormScreen', () => {
     await fireEvent.press(getByTestId('account-broker-type-field-option-trading212'));
     await fireEvent.press(getByText('Save'));
 
-    expect(mockCreate).toHaveBeenCalledWith(
+    expect(mockSaveFormAccount).toHaveBeenCalledWith(
       expect.objectContaining({ name: 'My Trading 212', kind: 'broker', bankId: 'trading212' }),
     );
-    expect((mockCreate.mock.calls[0][0] as { institution?: unknown }).institution).toBeUndefined();
+    expect(
+      (mockSaveFormAccount.mock.calls[0][0] as { institution?: unknown }).institution,
+    ).toBeUndefined();
     expect(mockCreateCashAccount).not.toHaveBeenCalled();
     expect(navigation.goBack).toHaveBeenCalled();
   });
@@ -774,7 +794,7 @@ describe('AccountFormScreen', () => {
 
     await fireEvent.press(getByText('Save'));
 
-    expect(mockCreate).not.toHaveBeenCalled();
+    expect(mockSaveFormAccount).not.toHaveBeenCalled();
     expect(navigation.goBack).not.toHaveBeenCalled();
     expect(getByText('Select a broker.')).toBeTruthy();
     expect(getByTestId('account-broker-type-field-error')).toBeTruthy();
@@ -790,7 +810,7 @@ describe('AccountFormScreen', () => {
 
     await fireEvent.press(getByText('Save'));
 
-    expect(mockCreate).not.toHaveBeenCalled();
+    expect(mockSaveFormAccount).not.toHaveBeenCalled();
     expect(navigation.goBack).not.toHaveBeenCalled();
     expect(getByText('Select a bank.')).toBeTruthy();
     expect(getByTestId('account-bank-type-field-error')).toBeTruthy();
@@ -855,7 +875,7 @@ describe('AccountFormScreen', () => {
 
     await fireEvent.press(getByText('Save'));
 
-    expect(mockCreate).toHaveBeenCalledWith(
+    expect(mockSaveFormAccount).toHaveBeenCalledWith(
       expect.objectContaining({ name: 'My bank', kind: 'bank', bankId: 'other' }),
     );
     expect(navigation.goBack).toHaveBeenCalled();
@@ -873,7 +893,7 @@ describe('AccountFormScreen', () => {
 
     // The broker pick is gone, so the bank pick is still missing: nothing is
     // created under the broker's id.
-    expect(mockCreate).not.toHaveBeenCalled();
+    expect(mockSaveFormAccount).not.toHaveBeenCalled();
     expect(getByText('Select a bank.')).toBeTruthy();
   });
 
@@ -893,7 +913,7 @@ describe('AccountFormScreen', () => {
 
     await fireEvent.press(getByText('Save'));
 
-    expect(mockCreate).not.toHaveBeenCalled();
+    expect(mockSaveFormAccount).not.toHaveBeenCalled();
     expect(getByText('Select a broker.')).toBeTruthy();
   });
 
@@ -950,7 +970,7 @@ describe('AccountFormScreen', () => {
     // The bank row now shares the crypto create path: it is inserted with the
     // screen's pre-generated id (so a field Connect could have keyed a Keychain
     // write to it), not a repo-assigned one.
-    expect(mockCreate).toHaveBeenCalledWith(
+    expect(mockSaveFormAccount).toHaveBeenCalledWith(
       expect.objectContaining({ name: 'My Bank', kind: 'bank', color: null }),
     );
     expect(mockCreateCashAccount).not.toHaveBeenCalled();
@@ -991,7 +1011,7 @@ describe('AccountFormScreen', () => {
     await fireEvent.press(getByLabelText('Choose icon banknote'));
     await fireEvent.press(getByText('Save'));
 
-    expect(mockCreate).toHaveBeenCalledWith(
+    expect(mockSaveFormAccount).toHaveBeenCalledWith(
       expect.objectContaining({ name: 'My Bank', kind: 'bank', color: null, icon: 'banknote' }),
     );
     expect(mockSetIcon).not.toHaveBeenCalled();
@@ -1043,7 +1063,7 @@ describe('AccountFormScreen', () => {
     await pickOtherBank(getByTestId);
     await fireEvent.press(getByText('Save'));
 
-    expect(mockCreate).toHaveBeenCalledWith(
+    expect(mockSaveFormAccount).toHaveBeenCalledWith(
       expect.objectContaining({
         name: 'My Bank',
         kind: 'bank',
@@ -1078,7 +1098,7 @@ describe('AccountFormScreen', () => {
     await fireEvent.press(getByText('Remove'));
     await fireEvent.press(getByText('Save'));
 
-    expect(mockCreate).toHaveBeenCalledWith(
+    expect(mockSaveFormAccount).toHaveBeenCalledWith(
       expect.objectContaining({ name: 'My Bank', kind: 'bank', color: null, icon: null }),
     );
     expect(mockSetIcon).not.toHaveBeenCalled();
@@ -1090,7 +1110,7 @@ describe('AccountFormScreen', () => {
     await fireEvent.changeText(getByLabelText('Name'), '   ');
     await fireEvent.press(getByText('Save'));
 
-    expect(mockCreate).not.toHaveBeenCalled();
+    expect(mockSaveFormAccount).not.toHaveBeenCalled();
     expect(mockCreateCashAccount).not.toHaveBeenCalled();
     expect(navigation.goBack).not.toHaveBeenCalled();
   });
@@ -1251,6 +1271,7 @@ describe('AccountFormScreen color follows kind until dirty', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockCreate.mockResolvedValue('new-account-id');
+    mockSaveFormAccount.mockResolvedValue('new-account-id');
   });
 
   it("selects the default kind's color before any pick (bank -> white)", async () => {
@@ -1291,7 +1312,7 @@ describe('AccountFormScreen color follows kind until dirty', () => {
     await fireEvent.press(getByLabelText('Color violet'));
     await fireEvent.press(getByText('Save'));
 
-    expect(mockCreate).toHaveBeenCalledWith(
+    expect(mockSaveFormAccount).toHaveBeenCalledWith(
       expect.objectContaining({
         name: 'My Bank',
         kind: 'bank',
@@ -1852,6 +1873,7 @@ describe('AccountFormScreen — sync credentials on create', () => {
     jest.clearAllMocks();
     mockAccounts = [];
     mockCreate.mockResolvedValue('new-account-id');
+    mockSaveFormAccount.mockResolvedValue('new-account-id');
     mockSetIcon.mockResolvedValue(undefined);
     mockSaveToken.mockResolvedValue(undefined);
     mockSaveCredentials.mockResolvedValue(undefined);
@@ -1929,7 +1951,7 @@ describe('AccountFormScreen — sync credentials on create', () => {
     await waitFor(() =>
       expect(view.getByTestId('monobank-connect-result')).toHaveTextContent('false'),
     );
-    // No row was actually inserted (the create latch was reset), so the kind
+    // No row was actually inserted (the started mark was reset), so the kind
     // switch must not lock.
     expect(isKindFieldDisabled(view.getByTestId)).toBe(false);
   });
@@ -1952,7 +1974,7 @@ describe('AccountFormScreen — sync credentials on create', () => {
       expect(view.getByTestId('monobank-connect-result')).toHaveTextContent('false'),
     );
     // Unlike a create failure, the row itself was created before saveToken
-    // threw, so the kind switch stays locked — the latch was never reset.
+    // threw, so the kind switch stays locked — the started mark was never reset.
     expect(mockCreate).toHaveBeenCalledTimes(1);
     expect(isKindFieldDisabled(view.getByTestId)).toBe(true);
   });
@@ -1977,10 +1999,9 @@ describe('AccountFormScreen — sync credentials on create', () => {
     expect(mockCreate).not.toHaveBeenCalled();
   });
 
-  it('connect then Save updates the same row — never a duplicate account', async () => {
-    // Connect-first: the field's Connect already inserted the row. A later Save must
-    // UPDATE that same row (persisting any name edit after connecting), never
-    // insert a second account.
+  it('connect then Save saves onto the same row — never a duplicate account', async () => {
+    // Connect-first: the field's Connect already inserted the row. A later Save is the one
+    // write that finds that row and stores the name edit on it, never a second account.
     storeCreatedRows();
     mockMonobankSync.mockResolvedValue(true);
     const view = await renderForm();
@@ -1994,10 +2015,38 @@ describe('AccountFormScreen — sync credentials on create', () => {
     await fireEvent.press(view.getByText('Save'));
 
     await waitFor(() => expect(view.navigation.goBack).toHaveBeenCalled());
-    expect(mockCreate).toHaveBeenCalledTimes(1); // still one — Save took the update branch
-    expect(mockUpdate).toHaveBeenCalledWith(
-      (mockCreate.mock.calls[0][0] as { id: string }).id,
-      expect.objectContaining({ name: 'My Bank' }),
+    expect(mockCreate).toHaveBeenCalledTimes(1); // still one — Save inserted nothing
+    expect(mockSaveFormAccount).toHaveBeenCalledTimes(1);
+    expect(mockSaveFormAccount).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: (mockCreate.mock.calls[0][0] as { id: string }).id,
+        name: 'My Bank',
+      }),
+    );
+    expect(mockUpdate).not.toHaveBeenCalled();
+    expect(mockSetIcon).not.toHaveBeenCalled();
+  });
+
+  it('inserts the row again on a Connect after it was deleted elsewhere, before the token is stored', async () => {
+    storeCreatedRows();
+    const view = await renderForm();
+
+    await fireEvent.changeText(view.getByLabelText('Name'), 'My Bank');
+    await fireEvent.press(view.getByLabelText('Bank type'));
+    await fireEvent.press(view.getByTestId('bank-type-option-monobank'));
+    await fireEvent.press(view.getByLabelText('monobank-field'));
+    await waitFor(() => expect(mockMonobankSync).toHaveBeenCalledTimes(1));
+    const pendingId = (mockCreate.mock.calls[0][0] as { id: string }).id;
+    mockAccounts = [];
+
+    await fireEvent.press(view.getByLabelText('monobank-field'));
+
+    await waitFor(() => expect(mockMonobankSync).toHaveBeenCalledTimes(2));
+    expect(mockCreate).toHaveBeenCalledTimes(2);
+    expect(mockCreate).toHaveBeenLastCalledWith(expect.objectContaining({ id: pendingId }));
+    expect(mockAccounts).toEqual([{ id: pendingId }]);
+    expect(mockCreate.mock.invocationCallOrder[1]).toBeLessThan(
+      mockSaveToken.mock.invocationCallOrder[1],
     );
   });
 
@@ -2010,8 +2059,9 @@ describe('AccountFormScreen — sync credentials on create', () => {
     await fireEvent.press(view.getByText('Save'));
 
     await waitFor(() => expect(view.navigation.goBack).toHaveBeenCalled());
-    expect(mockCreate).toHaveBeenCalledTimes(1);
-    expect(mockCreate).toHaveBeenCalledWith(
+    expect(mockSaveFormAccount).toHaveBeenCalledTimes(1);
+    expect(mockCreate).not.toHaveBeenCalled();
+    expect(mockSaveFormAccount).toHaveBeenCalledWith(
       expect.objectContaining({ kind: 'bank', name: 'Plain Bank', bankId: 'other' }),
     );
     expect(mockSaveToken).not.toHaveBeenCalled();
@@ -2081,7 +2131,7 @@ describe('AccountFormScreen — sync credentials on create', () => {
     await fireEvent.press(view.getByText('Save'));
 
     await waitFor(() => expect(view.navigation.goBack).toHaveBeenCalled());
-    expect(mockCreate).toHaveBeenCalledWith(
+    expect(mockSaveFormAccount).toHaveBeenCalledWith(
       expect.objectContaining({ name: 'My PrivatBank', kind: 'bank', bankId: 'privatbank' }),
     );
     expect(mockSaveToken).not.toHaveBeenCalled();
@@ -2089,8 +2139,8 @@ describe('AccountFormScreen — sync credentials on create', () => {
   });
 
   it('connecting a bank source locks the kind switch', async () => {
-    // Connecting inserts the bank row via the shared latch; switching to crypto
-    // afterwards would route Save to a SECOND create and orphan the bank row, so
+    // Connecting inserts the bank row; switching to crypto afterwards would leave
+    // that bank row behind and make Save write a crypto account onto its id, so
     // the kind field is disabled once connected.
     mockMonobankSync.mockResolvedValue(true);
     const view = await renderForm();
@@ -2130,9 +2180,8 @@ describe('AccountFormScreen — sync credentials on create', () => {
     await waitFor(() => expect(view.navigation.goBack).toHaveBeenCalled());
     const createdId = (mockCreate.mock.calls[0][0] as { id: string }).id;
 
-    expect(mockUpdate).toHaveBeenCalledWith(
-      createdId,
-      expect.objectContaining({ bankId: 'monobank' }),
+    expect(mockSaveFormAccount).toHaveBeenCalledWith(
+      expect.objectContaining({ id: createdId, bankId: 'monobank' }),
     );
   });
 
@@ -2328,6 +2377,27 @@ describe('AccountFormScreen — sync credentials on create', () => {
       expect(mockCryptoSync).not.toHaveBeenCalled();
     });
 
+    it('stays when the empty name blocks a second Connect while the row exists', async () => {
+      storeCreatedRows();
+      mockCryptoSync.mockResolvedValue(true);
+      const { getByLabelText, getByTestId, getByText, queryByTestId } = await renderForm();
+
+      await fireEvent.changeText(getByLabelText('Name'), 'My Crypto');
+      await selectKind(getByTestId, 'crypto');
+      await fireEvent.press(getByText('Binance'));
+      await fireEvent.press(getByLabelText('binance-field'));
+      await waitFor(() => expect(mockCryptoSync).toHaveBeenCalledTimes(1));
+
+      await fireEvent.changeText(getByLabelText('Name'), '');
+      await fireEvent.press(getByLabelText('binance-field'));
+      await act(async () => {});
+
+      expect(queryByTestId('holding-identity-name-field-error')).toBeTruthy();
+      expect(mockCryptoSync).toHaveBeenCalledTimes(1);
+      expect(mockClearCredentials).not.toHaveBeenCalled();
+      expect(mockAccounts).toHaveLength(1);
+    });
+
     it('stays when the screen a fold replaced inserted the row first, leaving one account', async () => {
       // The insert leaves that row as it is, so the Connect goes on to its sync.
       mockCreate.mockImplementation(async (input: { id: string }) => {
@@ -2417,8 +2487,8 @@ describe('AccountFormScreen — sync credentials on create', () => {
   });
 
   it('retries the crypto create after an empty-name reject, once a valid name is entered', async () => {
-    // The empty-name reject inside ensureAccount must leave no poisoned
-    // latch behind: a first Connect with no name creates nothing, and a SECOND
+    // The empty-name reject inside ensureAccount must leave no started mark
+    // behind: a first Connect with no name creates nothing, and a SECOND
     // Connect on the same field — after typing a valid name — must still succeed,
     // creating the account exactly once and running its sync.
     const { getByLabelText, getByTestId } = await renderForm();
@@ -2491,8 +2561,8 @@ describe('AccountFormScreen — sync credentials on create', () => {
 
   it('does not create a DUPLICATE crypto account when a field Connect is followed by Save', async () => {
     // Connect-first: the field's own Connect already inserted the row. A subsequent
-    // Save must UPDATE that same row (persisting any later name/color/icon edit),
-    // never insert a second account.
+    // Save is the one write that finds that row and stores any later name/color/icon
+    // edit on it, never a second account.
     storeCreatedRows();
     const { getByLabelText, getByTestId, getByText, navigation } = await renderForm();
 
@@ -2508,20 +2578,19 @@ describe('AccountFormScreen — sync credentials on create', () => {
     await fireEvent.press(getByText('Save'));
 
     await waitFor(() => expect(navigation.goBack).toHaveBeenCalled());
-    // Still exactly one create; the edited name persists through update.
+    // Still exactly one Connect insert; the edited name is saved onto the row under its id.
     expect(mockCreate).toHaveBeenCalledTimes(1);
-    expect(mockUpdate).toHaveBeenCalledWith(createdId, {
-      name: 'Renamed',
-      color: null,
-      bankId: null,
-    });
+    expect(mockSaveFormAccount).toHaveBeenCalledTimes(1);
+    expect(mockSaveFormAccount).toHaveBeenCalledWith(
+      expect.objectContaining({ id: createdId, name: 'Renamed', color: null, bankId: null }),
+    );
+    expect(mockUpdate).not.toHaveBeenCalled();
   });
 
-  it('clears the create latch when a field-Connect create rejects, so Save re-attempts (no silent no-op)', async () => {
-    // A rejected insert (DB locked/disk full) must not leave the one-shot
-    // latch set — otherwise Save would take the UPDATE branch, match no row, and
-    // silently goBack while no account exists. The first create rejects; the row
-    // was never inserted, so Save must run a fresh CREATE (not a no-op update).
+  it('saves with the form id when a field-Connect create rejected, so Save is never a silent no-op', async () => {
+    // A rejected insert (DB locked/disk full) leaves no row. Save is one write that creates the
+    // row when it finds none, so it never takes an update that matches nothing and goes back
+    // while no account exists.
     mockCreate.mockRejectedValueOnce(new Error('db locked'));
     const { getByLabelText, getByTestId, getByText, navigation } = await renderForm();
 
@@ -2534,12 +2603,16 @@ describe('AccountFormScreen — sync credentials on create', () => {
     await waitFor(() => expect(mockCreate).toHaveBeenCalledTimes(1));
     expect(navigation.goBack).not.toHaveBeenCalled();
 
-    // Save re-attempts the create because the latch was cleared — proof the ref
-    // was reset rather than pinned to the rejected promise.
     await fireEvent.press(getByText('Save'));
 
     await waitFor(() => expect(navigation.goBack).toHaveBeenCalled());
-    expect(mockCreate).toHaveBeenCalledTimes(2);
+    expect(mockSaveFormAccount).toHaveBeenCalledTimes(1);
+    expect(mockSaveFormAccount).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: (mockCreate.mock.calls[0][0] as { id: string }).id,
+        name: 'My Crypto',
+      }),
+    );
     expect(mockUpdate).not.toHaveBeenCalled();
   });
 
@@ -2566,10 +2639,15 @@ describe('AccountFormScreen — sync credentials on create', () => {
     await fireEvent.press(getByText('Save'));
 
     await waitFor(() => expect(navigation.goBack).toHaveBeenCalled());
-    // Still one create (crypto), no bank/cash create, and Save updated the row.
+    // Still one Connect insert (crypto), no cash create, and Save saved onto the crypto row.
     expect(mockCreate).toHaveBeenCalledTimes(1);
     expect(mockCreateCashAccount).not.toHaveBeenCalled();
-    expect(mockUpdate).toHaveBeenCalled();
+    expect(mockSaveFormAccount).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: (mockCreate.mock.calls[0][0] as { id: string }).id,
+        kind: 'crypto',
+      }),
+    );
   });
 
   it('creates an unconnected crypto account on Save when no source was connected', async () => {
@@ -2585,7 +2663,8 @@ describe('AccountFormScreen — sync credentials on create', () => {
     await fireEvent.press(getByText('Save'));
 
     await waitFor(() => expect(navigation.goBack).toHaveBeenCalled());
-    expect(mockCreate).toHaveBeenCalledTimes(1);
+    expect(mockSaveFormAccount).toHaveBeenCalledTimes(1);
+    expect(mockCreate).not.toHaveBeenCalled();
     expect(mockSaveCredentials).not.toHaveBeenCalled();
     expect(mockCryptoSync).not.toHaveBeenCalled();
     expect(mockSaveToken).not.toHaveBeenCalled();
@@ -2689,6 +2768,7 @@ describe('AccountFormScreen — reminder to Connect a typed credential', () => {
     jest.clearAllMocks();
     mockAccounts = [];
     mockCreate.mockResolvedValue('new-account-id');
+    mockSaveFormAccount.mockResolvedValue('new-account-id');
     mockSetIcon.mockResolvedValue(undefined);
     mockUpdate.mockResolvedValue(undefined);
     mockSaveToken.mockResolvedValue(undefined);
@@ -2715,7 +2795,7 @@ describe('AccountFormScreen — reminder to Connect a typed credential', () => {
       expect(view.getByTestId(sourceCase.reminderTestID)).toHaveTextContent(hint(sourceCase));
       expect(view.navigation.goBack).not.toHaveBeenCalled();
       expect(mockCreate).not.toHaveBeenCalled();
-      expect(mockUpdate).not.toHaveBeenCalled();
+      expect(mockSaveFormAccount).not.toHaveBeenCalled();
       expect(scrollToFieldMock).toHaveBeenCalledTimes(1);
       const [, reminderRef, , onSettled] = scrollToFieldMock.mock.calls[0];
       expect(reminderRef.current).not.toBeNull();
@@ -2737,12 +2817,12 @@ describe('AccountFormScreen — reminder to Connect a typed credential', () => {
       await pressSave(view);
 
       await waitFor(() => expect(view.navigation.goBack).toHaveBeenCalledTimes(1));
-      expect(mockCreate).toHaveBeenCalledTimes(1);
+      expect(mockSaveFormAccount).toHaveBeenCalledTimes(1);
       expect(scrollToFieldMock).not.toHaveBeenCalled();
       expect(mockSaveToken).not.toHaveBeenCalled();
       expect(mockMonobankSync).not.toHaveBeenCalled();
       expect(mockCryptoSync).not.toHaveBeenCalled();
-      expect(JSON.stringify(mockCreate.mock.calls)).not.toContain('typed-secret-text');
+      expect(JSON.stringify(mockSaveFormAccount.mock.calls)).not.toContain('typed-secret-text');
     });
 
     it('saves on the first Save when the input is empty', async () => {
@@ -2941,6 +3021,7 @@ describe('AccountFormScreen — draft', () => {
     jest.clearAllMocks();
     mockAccounts = [];
     mockCreate.mockResolvedValue('new-account-id');
+    mockSaveFormAccount.mockResolvedValue('new-account-id');
     mockCreateCashAccount.mockResolvedValue(undefined);
     mockSetIcon.mockResolvedValue(undefined);
     mockUpdate.mockResolvedValue(undefined);
@@ -3205,10 +3286,10 @@ describe('AccountFormScreen — draft', () => {
 
     await waitFor(() => expect(second.navigation.goBack).toHaveBeenCalledTimes(1));
     expect(mockCreate).toHaveBeenCalledTimes(1);
-    expect(mockUpdate).toHaveBeenCalledWith(
-      createdId,
-      expect.objectContaining({ name: 'My Bank', bankId: 'monobank' }),
+    expect(mockSaveFormAccount).toHaveBeenCalledWith(
+      expect.objectContaining({ id: createdId, name: 'My Bank', bankId: 'monobank' }),
     );
+    expect(mockUpdate).not.toHaveBeenCalled();
 
     await fireEvent.press(second.getByLabelText('monobank-field'));
 
@@ -3216,6 +3297,46 @@ describe('AccountFormScreen — draft', () => {
       expect(second.getByTestId('monobank-connect-result')).toHaveTextContent('true'),
     );
     expect(mockAccounts).toHaveLength(1);
+  });
+
+  it('keeps the rename a Save made while the Connect insert of the folded form was still queued', async () => {
+    let finishInsert = (): void => undefined;
+    storeCreatedRows(
+      new Promise<void>((resolve) => {
+        finishInsert = resolve;
+      }),
+    );
+    const first = await renderForm();
+    await fillMonobank(first, 'My Bank');
+    const connectOfFoldedForm = mockMonobankConnect as (token: string) => Promise<boolean>;
+    await emitLayoutMode('columns');
+    await first.unmount();
+    const second = await reopened(first);
+    let connected: Promise<boolean> = Promise.resolve(false);
+    await act(async () => {
+      connected = connectOfFoldedForm('tok-123');
+    });
+    await waitFor(() => expect(mockCreate).toHaveBeenCalledTimes(1));
+    const createdId = (mockCreate.mock.calls[0][0] as { id: string }).id;
+    await fireEvent.changeText(second.getByLabelText('Name'), 'Renamed bank');
+    // The Save is issued while that insert is still waiting: its write queues behind the insert.
+    let savePress: Promise<unknown> = Promise.resolve();
+    await act(async () => {
+      savePress = fireEvent.press(second.getByText('Save'));
+    });
+
+    await act(async () => {
+      finishInsert();
+      await savePress;
+    });
+
+    expect(await connected).toBe(true);
+    expect(second.navigation.goBack).toHaveBeenCalledTimes(1);
+    expect(mockSaveFormAccount).toHaveBeenCalledTimes(1);
+    expect(mockSaveFormAccount).toHaveBeenCalledWith(
+      expect.objectContaining({ id: createdId, name: 'Renamed bank' }),
+    );
+    expect(mockAccounts).toEqual([{ id: createdId, name: 'Renamed bank' }]);
   });
 
   it('connects again on the remounted form onto the row that is stored, adding no second', async () => {
@@ -3250,12 +3371,12 @@ describe('AccountFormScreen — draft', () => {
     await fireEvent.press(view.getByText('Save'));
 
     await waitFor(() => expect(view.navigation.goBack).toHaveBeenCalledTimes(1));
-    expect(mockCreate).toHaveBeenCalledTimes(2);
-    expect(mockCreate).toHaveBeenLastCalledWith(
+    expect(mockCreate).toHaveBeenCalledTimes(1);
+    expect(mockSaveFormAccount).toHaveBeenCalledWith(
       expect.objectContaining({ id: pendingId, name: 'My Bank' }),
     );
     expect(mockUpdate).not.toHaveBeenCalled();
-    expect(mockAccounts).toEqual([{ id: pendingId }]);
+    expect(mockAccounts).toEqual([{ id: pendingId, name: 'My Bank' }]);
   });
 
   it('creates the row on Save when the insert a fold interrupted failed', async () => {
@@ -3286,8 +3407,8 @@ describe('AccountFormScreen — draft', () => {
     await fireEvent.press(second.getByText('Save'));
 
     await waitFor(() => expect(second.navigation.goBack).toHaveBeenCalledTimes(1));
-    expect(mockCreate).toHaveBeenCalledTimes(2);
-    expect(mockCreate).toHaveBeenLastCalledWith(
+    expect(mockCreate).toHaveBeenCalledTimes(1);
+    expect(mockSaveFormAccount).toHaveBeenCalledWith(
       expect.objectContaining({ id: pendingId, name: 'My Bank' }),
     );
     expect(mockUpdate).not.toHaveBeenCalled();
@@ -3314,10 +3435,10 @@ describe('AccountFormScreen — draft', () => {
 
     await waitFor(() => expect(second.navigation.goBack).toHaveBeenCalledTimes(1));
     expect(mockCreate).toHaveBeenCalledTimes(1);
-    expect(mockUpdate).toHaveBeenCalledWith(
-      createdId,
-      expect.objectContaining({ name: 'My Bank', bankId: 'monobank' }),
+    expect(mockSaveFormAccount).toHaveBeenCalledWith(
+      expect.objectContaining({ id: createdId, name: 'My Bank', bankId: 'monobank' }),
     );
+    expect(mockUpdate).not.toHaveBeenCalled();
   });
 
   it('leaves no draft behind once saved: it goes back and writes nothing more', async () => {
