@@ -232,6 +232,9 @@ rules:
   # deliberately use the real `TextEncoder` as the byte-for-byte oracle the
   # hand-rolled encoder is tested against — banning it there would remove the
   # only independent check that `utf8Encode` is standard-conforming.
+  # `paths.include` is `src/**` because only the app bundle runs on Hermes: `e2e/`
+  # scripts run on Node, where both globals work. The include is path-prefixed, so
+  # the fixture pair is NESTED under `rules/fixtures/<rule-id>/src/data-transfer/`.
   - id: kiko-no-textdecoder-textencoder
     languages: [typescript]
     severity: ERROR
@@ -241,6 +244,8 @@ rules:
       produced unparseable output). Use `utf8Encode`/`utf8Decode`
       (`src/data-transfer/utf8`) instead.
     paths:
+      include:
+        - "src/**"
       exclude:
         - "*.test.ts"
         - "*.test.tsx"

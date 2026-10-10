@@ -163,10 +163,14 @@ dedup always runs in full.
   `check:plist`, `check:rules`.
 - Dedups only a single-file run (a path to an existing file; a
   whole-repo or directory target, as `check:all` runs it, always runs):
-  `check:lint`, `check:security`, `check:secrets`.
+  `check:lint`, `check:secrets`.
 - Dedups only a run given a file list (every argument an existing file,
   as the Stop tier passes the session's changed files; a no-argument run
-  such as `check:all` always runs): `check:dup`, `check:overrides`.
+  such as `check:all` always runs): `check:dup`, `check:overrides`,
+  `check:security`. For `check:security` the key names every file and the
+  fingerprint covers every file's content plus the two Semgrep rules files, so
+  a changed file or a different file set rescans; a skip prints
+  `security.sh: SKIPPED, not a fresh scan` on stderr.
 - Dedups both a single-file run and the project-wide run:
   `check:import-order`, `check:full-word-identifiers`,
   `check:screen-imports`, `check:feature-imports`,

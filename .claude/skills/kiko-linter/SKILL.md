@@ -960,6 +960,14 @@ findings-handling for the exact mechanism, not restated here):
   `error` or of type `Timeout` (Semgrep reports a timeout at warn level
   with exit 0) fails `check:security`. Other warn-level errors stay
   non-blocking. Read `scripts/checks/security.sh` for the exact test.
+- **Every argument is scanned.** `security.sh` takes any number of targets
+  (none means the whole repo), drops a `rules/fixtures/` file among them,
+  and hands the rest to ONE Semgrep call. A call whose targets are all
+  files dedups on every file's content plus both rules files; a skip prints
+  `SKIPPED, not a fresh scan` on stderr, so an exit 0 with no scan never
+  reads as one. A failure block always names its cause (Semgrep's stderr,
+  its `errors[]`, or the exit code) and a Class A/B block lists each
+  finding from the JSON already in hand, not from a second Semgrep run.
 - **Class B (WARNING)** — a pattern that is usually right but can have
   a legitimate exception (e.g. taint mode also flags a value merely
   *derived* from a secret, which is a judgment call, not a

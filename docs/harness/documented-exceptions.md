@@ -402,7 +402,8 @@ verified usage, not dead weight:
   the linter and assist off for the whole folder, so a good fixture is
   format-checked but never linted; `knip.json` `ignore`,
   `.jscpd.json` `ignore`, and
-  `--exclude 'fixtures'` in `scripts/checks/security.sh`)**: the
+  `--exclude 'fixtures'` in `scripts/checks/security.sh`, plus its drop of
+  any `rules/fixtures/` file among its arguments)**: the
   positive/negative fixture pair that
   proves each project Semgrep rule still fires. A positive fixture is
   deliberately non-conforming, never-imported code (a hidden Guideline 5.6
