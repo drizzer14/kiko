@@ -425,6 +425,20 @@ describe('accountsRepo', () => {
     });
   });
 
+  describe('exists', () => {
+    it('is true for a stored id and false for any other, read through the write', async () => {
+      const { databaseTransaction, inserts, updates } = makeCreateDatabaseTransaction(2, 2, 2, [
+        'pending-id',
+      ]);
+      mockDatabaseTransaction = databaseTransaction;
+
+      expect(await accountsRepo.exists('pending-id')).toBe(true);
+      expect(await accountsRepo.exists('other-id')).toBe(false);
+      expect(inserts).toEqual([]);
+      expect(updates).toEqual([]);
+    });
+  });
+
   // The create form's Save: one write that finds the row in the same transaction, so it runs
   // after any insert a Connect queued before it and never decides from an earlier read.
   describe('saveFormAccount', () => {

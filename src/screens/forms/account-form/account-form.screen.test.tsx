@@ -93,6 +93,14 @@ const mockFetchAccount = jest.fn();
 // the hoisted factory may close over it; create-mode tests leave it empty.
 let mockAccounts: unknown[] = [];
 
+// Settles when the insert another screen has queued does; the mocked repo's `exists` waits for it,
+// as a read through the write queue does. Reset to settled before each test.
+let mockQueueEnds: Promise<void> = Promise.resolve();
+
+beforeEach(() => {
+  mockQueueEnds = Promise.resolve();
+});
+
 // The Connect closure the Monobank field was last given: a test calls an unmounted form's own
 // closure to run a Connect that is still in flight when the form is folded.
 let mockMonobankConnect: ((token: string) => Promise<boolean>) | undefined;
@@ -102,13 +110,19 @@ jest.mock('@kiko/db/use-live-query', () => ({
 }));
 jest.mock('@kiko/accounts/accounts.repo', () => ({
   accountsRepo: {
-    // Awaited by the form to ask the database whether a row exists, and handed to the (mocked)
-    // live query as a query object.
+    // Handed to the (mocked) live query as a query object.
     byIdQuery: (accountId: string) =>
       Object.assign(
         Promise.resolve(mockAccounts.filter((row) => (row as { id: string }).id === accountId)),
         { toSQL: () => ({ sql: '', params: [] }) },
       ),
+    // Asks the database whether a row exists through the write queue, so it waits behind an
+    // insert another screen still has queued (`mockQueueEnds`).
+    exists: async (accountId: string) => {
+      await mockQueueEnds;
+
+      return mockAccounts.some((row) => (row as { id: string }).id === accountId);
+    },
     // A Connect's insert of the account row (`mockCreate` records it): the form never reads first.
     createIfAbsent: (...args: unknown[]) => mockCreate(...args),
     // The Save of a create form (`mockSaveFormAccount` records it): one write that finds the row
@@ -315,6 +329,7 @@ jest.mock('@kiko/design-system/components/monobank-connect-field', () => {
 // stored row (`mockAccounts` then holds them) or inserts the row when none is stored. `ends` holds
 // an insert back until it settles.
 const storeCreatedRows = (ends: Promise<void> = Promise.resolve()): void => {
+  mockQueueEnds = ends;
   mockCreate.mockImplementation(async (input: { id: string }) => {
     await ends;
 
@@ -2394,6 +2409,40 @@ describe('AccountFormScreen — sync credentials on create', () => {
 
       expect(queryByTestId('holding-identity-name-field-error')).toBeTruthy();
       expect(mockCryptoSync).toHaveBeenCalledTimes(1);
+      expect(mockClearCredentials).not.toHaveBeenCalled();
+      expect(mockAccounts).toHaveLength(1);
+    });
+
+    it('stays when an insert of the row is still queued as the empty name blocks a Connect', async () => {
+      let finishInsert = (): void => undefined;
+      storeCreatedRows(
+        new Promise<void>((resolve) => {
+          finishInsert = resolve;
+        }),
+      );
+      const { getByLabelText, getByTestId, getByText } = await renderForm();
+
+      await fireEvent.changeText(getByLabelText('Name'), 'My Crypto');
+      await selectKind(getByTestId, 'crypto');
+      await fireEvent.press(getByText('Binance'));
+      // This Connect's insert waits in the queue, as the one of the screen a fold replaced does.
+      let queuedConnect: Promise<unknown> = Promise.resolve();
+      await act(async () => {
+        queuedConnect = fireEvent.press(getByLabelText('binance-field'));
+      });
+      await waitFor(() => expect(mockCreate).toHaveBeenCalledTimes(1));
+      await fireEvent.changeText(getByLabelText('Name'), '');
+      let blockedConnect: Promise<unknown> = Promise.resolve();
+      await act(async () => {
+        blockedConnect = fireEvent.press(getByLabelText('binance-field'));
+      });
+
+      await act(async () => {
+        finishInsert();
+        await queuedConnect;
+        await blockedConnect;
+      });
+
       expect(mockClearCredentials).not.toHaveBeenCalled();
       expect(mockAccounts).toHaveLength(1);
     });

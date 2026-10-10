@@ -232,6 +232,13 @@ export const accountsRepo = {
       return values.id;
     }),
   /**
+   * Whether a row is stored under the id, read through the write queue: a plain read skips it
+   * and cannot see an insert still waiting there, while this one runs after every write queued
+   * before it. For a decision that must not act on a row that is about to appear.
+   */
+  exists: (accountId: string): Promise<boolean> =>
+    write((databaseTransaction) => isAccountStored(databaseTransaction, accountId)),
+  /**
    * The create form's Save, in ONE write: the row under the form's id is looked up in the
    * transaction, so the write runs after any Connect insert queued before it and sees that row.
    * A stored row takes the form's editable fields (never its kind, institution or sort order);
