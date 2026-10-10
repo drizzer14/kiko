@@ -44,6 +44,17 @@ Rules:
 - Name a task or change set "<track> task N/M" (a number plus the total). Name a step inside a change set "step N/M". Never invent a letter id. Renumber M when the scope changes; a deferred item is not counted.
 - A fresh agent is the default for each task. Reuse an agent via SendMessage only for a same-task re-review or fix round by the SAME agent with a small context (never across tasks, never for a different diff, never after a large amount of work). Finished subagents cannot be removed from a session's list; `claude rm <id>` deletes a BACKGROUND SESSION and its worktree — never use it to tidy a finished agent.
 
+- Run the FULL jest (`make verify`) before every BATCH READY. `check:all`
+  alone missed a fixture that broke two guard rules: the rule-inventory
+  and guard-rule jest suites run only in `make verify`.
+- Per-task deep gates: a per-file floor miss is fixed with tests only,
+  never an exclusion.
+- Re-gate of named files across a big merge: `mutation.sh` has no
+  file-list mode, so the coordinator runs Stryker directly with
+  `--mutate` on the named files and reads the per-file floor (60) from
+  `reports/mutation/mutation.json`. This is a documented deviation until
+  a `KIKO_MUTATION_FILES` option exists.
+
 ## Skill drift rule
 
 After every completed code iteration (a feature, phase, or fix that is

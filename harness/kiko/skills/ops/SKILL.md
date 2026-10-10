@@ -75,6 +75,14 @@ Rules:
   cannot be stopped mid-flight. WHEN it runs (per reviewed change set,
   before its merge into next) is in harness-workflow's "Mutation testing:
   small change sets only".
+- **Launch every `make deep` / gate under `caffeinate -i`.** Laptop sleep
+  voided two gates on 2026-10-09 (13 h, 78/151 timeouts).
+- **After a tests-only fix for module-scope (static) mutants, delete
+  `reports/stryker-incremental.json` and `.stryker-tmp` in the gating
+  checkout before the re-run.** Run 4 reused old Survived results (only
+  54/185 re-tested). Trade-off: a fresh run re-tests every mutant (4336
+  mutants, about 4.5 h), so choose the change-set base as the last gated
+  commit of the branch.
 - **Track the known CVEs with `bash scripts/checks/osv.sh` on its own.**
   `check:deep` can stop at the mutation cap before it reaches osv, so
   its exit code does not prove the osv result.
@@ -124,7 +132,9 @@ motivated it. Summary — every step is required, not optional:
    skipped" line and continues, so always pass one. Through
    `make deploy EXPECT=…` only: a value that contains a single quote is
    not supported (set `EXPECT_BUNDLE_STRING` directly for that), and
-   make expands a `$` in the value — write `$$`. Read `scripts/deploy-device.sh` for the exact
+   make expands a `$` in the value — write `$$`. A deploy marker must
+   not also appear in a shipped migration's SQL comment: migrations are
+   bundled, so it gives a false positive ("Show tips again" in 0055). Read `scripts/deploy-device.sh` for the exact
    exit behavior. Fallback for a hand-built bundle only:
    `node scripts/bundle-contains.js <bundle> '<str>'`.
 3. Install with `devicectl`, not `xcodebuild ... install -destination
@@ -163,9 +173,11 @@ before you rely on a hook.
 ## Device-test checkout
 
 Build device-test installs from the dedicated detached checkout
-`~/orca/workspaces/pff-ios/device-deploy` (move its HEAD with `git
-checkout --detach <sha>`; it keeps `node_modules`, Pods, and the build
-cache — never prune it), never from a worktree with work in progress.
+`~/orca/workspaces/pff-ios/device-deploy`. The COORDINATOR moves that
+checkout's HEAD (and the deep-gate checkout's HEAD) itself, then
+dispatches ops, which builds from it; ops never runs a checkout (see
+`agents/ops.md`). The checkout keeps `node_modules`, Pods, and the build
+cache — never prune it. Never build from from a worktree with work in progress.
 Installing over a database created by a NEWER branch is a downgrade:
 do a clean reinstall instead. After the checkout path changes, the
 first build is clean (`rm ios/build`, `pod install`). Also after any
