@@ -249,23 +249,77 @@ describe('payRowsOf: wallet placement', () => {
     ]);
   });
 
-  it('P4: an incoming split keeps the positive sign on every row', () => {
-    const rows = payRowsOf({
-      accountId: ACCOUNT_ID,
-      uid: OWN,
-      order: order({
-        payerInfo: party('Bob', undefined),
-        receiverInfo: party('Me', OWN),
-        amount: '0.001',
+  describe('a receive', () => {
+    const received = (over: Partial<BinancePayOrder> = {}) =>
+      payRowsOf({
+        accountId: ACCOUNT_ID,
+        uid: OWN,
+        order: order({
+          payerInfo: party('Bob', undefined),
+          receiverInfo: party('Me', OWN),
+          amount: '0.001',
+          fundsDetail: [],
+          ...over,
+        }),
+      });
+
+    it('is placed on the one walletTypes entry, signed positive, with no cost to check', () => {
+      expect(received({ walletType: 2, walletTypes: [1] })).toEqual([
+        expect.objectContaining({
+          wallet: 'BTC:funding',
+          amountMinorUnits: 100_000,
+          externalId: 'acc-1:pay:C2C:tx-1:1',
+        }),
+      ]);
+    });
+
+    it('is placed by walletTypes even when the payer cost names the other wallet', () => {
+      const fromSpotPayer = received({
+        walletType: 1,
+        walletTypes: [1],
+        fundsDetail: splitFunds([{ walletType: 2, amount: '0.001' }]),
+      });
+
+      expect(fromSpotPayer).toMatchObject([{ wallet: 'BTC:funding' }]);
+    });
+
+    it('is placed by walletType when walletTypes is absent', () => {
+      expect(received({ walletType: 5, walletTypes: undefined })).toMatchObject([
+        { wallet: 'BTC:earn', externalId: 'acc-1:pay:C2C:tx-1:5' },
+      ]);
+    });
+
+    it('is one wallet when walletTypes repeats it', () => {
+      expect(received({ walletTypes: [1, 1] })).toMatchObject([{ wallet: 'BTC:funding' }]);
+    });
+
+    it('stops when walletTypes lists two wallets, even when costs split the amount', () => {
+      const split = {
         walletTypes: [1, 2],
         fundsDetail: splitFunds([
           { walletType: 1, amount: '0.0006' },
           { walletType: 2, amount: '0.0004' },
         ]),
-      }),
+      };
+
+      expect(stopCodeOf(() => received(split))).toBe('pay-split-mismatch');
     });
 
-    expect(rows.map((row) => row.amountMinorUnits)).toEqual([60_000, 40_000]);
+    it('stops when walletTypes lists two wallets and there are no costs', () => {
+      expect(stopCodeOf(() => received({ walletTypes: [1, 2] }))).toBe('pay-split-mismatch');
+    });
+
+    it('stops when no wallet is named', () => {
+      expect(stopCodeOf(() => received({ walletType: undefined, walletTypes: undefined }))).toBe(
+        'pay-wallet-unknown',
+      );
+    });
+
+    it('stops on an untracked wallet', () => {
+      expect(stopCodeOf(() => received({ walletType: 4, walletTypes: undefined }))).toBe(
+        'pay-wallet-unknown',
+      );
+    });
   });
 
   it('P4: costs for one wallet spread over several funds entries are added up', () => {
@@ -291,7 +345,7 @@ describe('payRowsOf: wallet placement', () => {
     ]);
   });
 
-  it('P5: a zero cost on a named wallet stops, since the costs name fewer wallets than walletTypes', () => {
+  it('P4a: a zero cost on one named wallet leaves the whole amount on the wallet that was costed', () => {
     const zeroOnOne = {
       walletTypes: [1, 2],
       fundsDetail: splitFunds([
@@ -300,10 +354,23 @@ describe('payRowsOf: wallet placement', () => {
       ]),
     };
 
-    expect(stopCodeOf(() => rowsOf(zeroOnOne))).toBe('pay-split-mismatch');
+    expect(rowsOf(zeroOnOne)).toMatchObject([
+      { wallet: 'BTC', amountMinorUnits: -100_000, externalId: 'acc-1:pay:C2C:tx-1:2' },
+    ]);
   });
 
-  it('P5: costs on a wallet that walletTypes does not name stop, even when they sum to the amount', () => {
+  it('P4a: a cost on only one of the two named wallets places the whole amount there', () => {
+    const onlyFunding = {
+      walletTypes: [1, 2],
+      fundsDetail: splitFunds([{ walletType: 1, amount: '0.001' }]),
+    };
+
+    expect(rowsOf(onlyFunding)).toMatchObject([
+      { wallet: 'BTC:funding', amountMinorUnits: -100_000, externalId: 'acc-1:pay:C2C:tx-1:1' },
+    ]);
+  });
+
+  it('P5: a positive cost on a wallet that walletTypes does not name stops, even when the costs sum to the amount', () => {
     const otherWallet = {
       walletTypes: [1, 2],
       fundsDetail: splitFunds([
@@ -327,10 +394,34 @@ describe('payRowsOf: wallet placement', () => {
     expect(stopCodeOf(() => rowsOf(wrongSum))).toBe('pay-split-mismatch');
   });
 
+  it('P5: costs over the amount stop', () => {
+    const tooMuch = {
+      walletTypes: [1, 2],
+      fundsDetail: splitFunds([
+        { walletType: 1, amount: '0.0006' },
+        { walletType: 2, amount: '0.0005' },
+      ]),
+    };
+
+    expect(stopCodeOf(() => rowsOf(tooMuch))).toBe('pay-split-mismatch');
+  });
+
   it('P5: two wallets with no per-wallet cost at all stop', () => {
     expect(stopCodeOf(() => rowsOf({ walletTypes: [1, 2], fundsDetail: [] }))).toBe(
       'pay-split-mismatch',
     );
+  });
+
+  it('P5: two wallets whose costs are all zero stop', () => {
+    const allZero = {
+      walletTypes: [1, 2],
+      fundsDetail: splitFunds([
+        { walletType: 1, amount: '0' },
+        { walletType: 2, amount: '0' },
+      ]),
+    };
+
+    expect(stopCodeOf(() => rowsOf(allZero))).toBe('pay-split-mismatch');
   });
 
   it('P5: a cost that is not a number stops', () => {
@@ -395,8 +486,53 @@ describe('payRowsOf: wallet placement', () => {
       expect(rows).toMatchObject([{ wallet: 'BTC', externalId: 'acc-1:pay:C2C:tx-1:2' }]);
     });
 
-    it('is placed without a cost check when the order carries no cost at all', () => {
-      expect(rowsOf({ walletType: 1, walletTypes: [2] })).toMatchObject([{ wallet: 'BTC' }]);
+    it('stops when a send carries no cost at all', () => {
+      expect(stopCodeOf(() => rowsOf({ walletType: 1, walletTypes: [2], fundsDetail: [] }))).toBe(
+        'pay-split-mismatch',
+      );
+    });
+
+    it('stops when a send carries funds in BTC with no wallet cost list', () => {
+      const noCostList = splitFunds([]);
+
+      expect(
+        stopCodeOf(() => rowsOf({ walletType: 2, walletTypes: [2], fundsDetail: noCostList })),
+      ).toBe('pay-split-mismatch');
+    });
+
+    it('stops when the cost is below the amount', () => {
+      const below = splitFunds([{ walletType: 2, amount: '0.0009' }]);
+
+      expect(
+        stopCodeOf(() => rowsOf({ walletType: 2, walletTypes: [2], fundsDetail: below })),
+      ).toBe('pay-split-mismatch');
+    });
+
+    it('stops when the cost is above the amount', () => {
+      const above = splitFunds([{ walletType: 2, amount: '0.0011' }]);
+
+      expect(
+        stopCodeOf(() => rowsOf({ walletType: 2, walletTypes: [2], fundsDetail: above })),
+      ).toBe('pay-split-mismatch');
+    });
+
+    it('takes the costs of several funds entries together', () => {
+      const twoEntries = [
+        {
+          currency: 'BTC',
+          amount: '0.0004',
+          walletAssetCost: [{ walletType: 2, amount: '0.0004' }],
+        },
+        {
+          currency: 'BTC',
+          amount: '0.0006',
+          walletAssetCost: [{ walletType: 2, amount: '0.0006' }],
+        },
+      ];
+
+      expect(rowsOf({ walletType: 2, walletTypes: [2], fundsDetail: twoEntries })).toMatchObject([
+        { wallet: 'BTC', amountMinorUnits: -100_000 },
+      ]);
     });
 
     it('is walletType when walletTypes is absent, checked against the cost', () => {
@@ -408,11 +544,8 @@ describe('payRowsOf: wallet placement', () => {
       ).toBe('pay-split-mismatch');
     });
 
-    it('is Funding for the live probe shapes: walletType 1 beside [1], with or without a cost', () => {
+    it('is Funding for the live probe shape: walletType 1 beside [1], with its cost', () => {
       expect(rowsOf({ walletType: 1, walletTypes: [1], fundsDetail: costOn(1) })).toMatchObject([
-        { wallet: 'BTC:funding' },
-      ]);
-      expect(rowsOf({ walletType: 1, walletTypes: [1] })).toMatchObject([
         { wallet: 'BTC:funding' },
       ]);
     });
@@ -426,6 +559,17 @@ describe('payRowsOf: wallet placement', () => {
     it('stops when the cost is on the named wallet and another one', () => {
       expect(
         stopCodeOf(() => rowsOf({ walletType: 1, walletTypes: [1], fundsDetail: costOn(1, 2) })),
+      ).toBe('pay-split-mismatch');
+    });
+
+    it('stops when a split of the exact amount puts part of it on a wallet that is not named', () => {
+      const partOnSpot = splitFunds([
+        { walletType: 1, amount: '0.0006' },
+        { walletType: 2, amount: '0.0004' },
+      ]);
+
+      expect(
+        stopCodeOf(() => rowsOf({ walletType: 1, walletTypes: [1], fundsDetail: partOnSpot })),
       ).toBe('pay-split-mismatch');
     });
 

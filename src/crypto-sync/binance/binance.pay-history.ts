@@ -161,11 +161,8 @@ type WalletShare = { walletType: number; satoshis: number };
 const isBtcFunds = (entry: BinancePayOrder['fundsDetail'][number]): boolean =>
   entry.currency === BINANCE_ASSET;
 
-/**
- * What an order's BTC funds entries say each wallet paid: the wallets with a cost above
- * zero and their satoshis, and whether the entries carry any cost at all.
- */
-const costsOf = (order: BinancePayOrder): { carried: boolean; shares: WalletShare[] } => {
+/** What an order's BTC funds entries say each wallet paid: the wallets with a cost above zero. */
+const costsOf = (order: BinancePayOrder): WalletShare[] => {
   const costs = order.fundsDetail.filter(isBtcFunds).flatMap((entry) => entry.walletAssetCost);
   const satoshisByWallet = new Map<number, number>();
 
@@ -180,11 +177,9 @@ const costsOf = (order: BinancePayOrder): { carried: boolean; shares: WalletShar
     satoshisByWallet.set(cost.walletType, stored + costSatoshis);
   }
 
-  const shares = [...satoshisByWallet]
+  return [...satoshisByWallet]
     .filter(([, costSatoshis]) => costSatoshis > 0)
     .map(([walletType, costSatoshis]) => ({ walletType, satoshis: costSatoshis }));
-
-  return { carried: costs.length > 0, shares };
 };
 
 /**
@@ -201,47 +196,64 @@ const namedWalletsOf = (order: BinancePayOrder): number[] => {
   return [order.walletType];
 };
 
-const namesSameWallets = (shares: WalletShare[], wallets: number[]): boolean =>
-  shares.length === wallets.length &&
-  wallets.every((wallet) => shares.some((share) => share.walletType === wallet));
+/**
+ * What a send paid from: the wallets with a cost above zero. They must be among the
+ * wallets the order names and their costs must add up to the order amount to the satoshi,
+ * or the order is one this walk cannot place. A named wallet with no cost is left out: a
+ * send is paid from the wallets that were charged, and `walletTypes` can list one that was
+ * not.
+ */
+const sharesOfSend = (
+  order: BinancePayOrder,
+  wallets: number[],
+  satoshis: number,
+): WalletShare[] => {
+  const shares = costsOf(order);
+  const total = shares.reduce((sum, share) => sum + share.satoshis, 0);
+  const costedOnNamed = shares.every((share) => wallets.includes(share.walletType));
+
+  if (!costedOnNamed || total !== satoshis) {
+    throw new BinanceWalkStop('pay-split-mismatch');
+  }
+
+  return shares;
+};
+
+/**
+ * The wallet a receive lands on: the one `walletTypes` names. A receive's costs describe
+ * the payer's wallets, which need not be the receiver's, so no cost is read, and the
+ * receiver's split (two wallets) cannot be told from them.
+ */
+const shareOfReceive = (wallets: number[], satoshis: number): WalletShare[] => {
+  if (wallets.length >= 2) {
+    throw new BinanceWalkStop('pay-split-mismatch');
+  }
+
+  return wallets.map((walletType) => ({ walletType, satoshis }));
+};
 
 /**
  * The wallets an order's satoshis land on. A funds detail that names no BTC at all
- * means the order did not move BTC, so no BTC row is guessed from it. The wallets
- * with a cost above zero must be exactly the wallets the order names, whether it
- * names one or several: a cost on another wallet is an order this walk cannot place.
- * Several wallets are split by those costs, which must add up to the order amount to
- * the satoshi.
+ * means the order did not move BTC, so no BTC row is guessed from it.
  */
-const sharesOf = (order: BinancePayOrder, satoshis: number): WalletShare[] => {
+const sharesOf = (
+  order: BinancePayOrder,
+  direction: PayDirection,
+  satoshis: number,
+): WalletShare[] => {
   if (order.fundsDetail.length > 0 && !order.fundsDetail.some(isBtcFunds)) {
     throw new BinanceWalkStop('pay-funds-not-btc');
   }
 
   const wallets = namedWalletsOf(order);
-  const [walletType] = wallets;
 
-  if (walletType === undefined) {
+  if (wallets.length === 0) {
     throw new BinanceWalkStop('pay-wallet-unknown');
   }
 
-  const { carried, shares } = costsOf(order);
-
-  if (wallets.length >= 2) {
-    const total = shares.reduce((sum, share) => sum + share.satoshis, 0);
-
-    if (!namesSameWallets(shares, wallets) || total !== satoshis) {
-      throw new BinanceWalkStop('pay-split-mismatch');
-    }
-
-    return shares;
-  }
-
-  if (carried && !namesSameWallets(shares, wallets)) {
-    throw new BinanceWalkStop('pay-split-mismatch');
-  }
-
-  return [{ walletType, satoshis }];
+  return direction === 'out'
+    ? sharesOfSend(order, wallets, satoshis)
+    : shareOfReceive(wallets, satoshis);
 };
 
 /** A row mapped from an order, before its wallet is turned into a holding. */
@@ -283,7 +295,7 @@ export const payRowsOf = (input: {
 
   const description = payDescription(order, direction);
 
-  return sharesOf(order, satoshis).map((share) => ({
+  return sharesOf(order, direction, satoshis).map((share) => ({
     wallet: walletOf(share.walletType),
     amountMinorUnits: direction === 'out' ? -share.satoshis : share.satoshis,
     time: order.transactionTime,

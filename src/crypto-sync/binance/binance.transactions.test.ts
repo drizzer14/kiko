@@ -1576,6 +1576,10 @@ describe('a capital cursor older than the re-scan window', () => {
       RESCAN_FIELD,
       CURSOR - DAY_MS,
     ]);
-    expect(state.account.writeWalkCursor.mock.calls[1]).toEqual(['h-spot', FORWARD_FIELD, NOW]);
+    expect(state.account.writeWalkCursor.mock.calls[1]).toEqual([
+      'h-spot',
+      FORWARD_FIELD,
+      CURSOR + 89 * DAY_MS,
+    ]);
   });
 });

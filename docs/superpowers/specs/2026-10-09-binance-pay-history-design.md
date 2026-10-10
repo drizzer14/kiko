@@ -236,20 +236,22 @@ withdraw budget moves into this object, with the same numbers and the same rule.
   (`pay-page-stuck`).
 - Two passes per run (shared in `binance.history-walk.ts`, with the span loop `walkSpans`
   that halves a full span and commits the rest oldest first, so the Transfer and Earn walks
-  inherit both). The forward pass goes first, from the cursor to now, in windows of 89 days, and
-  moves the Pay cursor. When the cursor is older than the re-scan window (`end - 89 days`),
-  nothing re-scans the ground behind it, so the forward pass starts `max(floor, cursor - 1
-  day)`, one day behind it. A backlog that needs more calls than one run's cap resumes on the
-  next run from the cursor of its last committed span; the cursor never moves back and never
-  passes now. The forward pass must not restart a day behind a cursor that is inside the
-  re-scan window: a day there holding more orders than one run's calls reach would spend
-  every run on that day, a span ending before the cursor does not move it, and the newer
-  orders would never import (found in review: 900 Pay orders, or 4000 capital records, in
-  the last day before the cursor). The Pay walk does not read the capital cursor (R13/C1,
-  below): a Spot holding with no capital cursor runs the Pay walk like any other. Then the
-  re-scan runs on the call budget the forward pass left: it covers
-  `[max(floor, end - 89 days), forward start)`, which catches an order that settles late
-  and the day behind the cursor. A
+  inherit both). The forward pass goes first and always starts AT the cursor
+  (`max(floor, cursor ?? floor)`), in windows of 89 days to now, and moves the Pay cursor. A
+  backlog that needs more calls than one run's cap resumes on the next run from the cursor of
+  its last committed span; the cursor never moves back and never passes now. The forward pass
+  never restarts behind the cursor: a day there holding more orders than one run's calls reach
+  would spend every run on that day, a span ending before the cursor does not move it, and the
+  newer orders would never import (found in review: 900 Pay orders, or 4000 capital records, in
+  the last day before the cursor, whether the cursor is inside the re-scan window or older). The
+  Pay walk does not read the capital cursor (R13/C1, below): a Spot holding with no capital
+  cursor runs the Pay walk like any other. Then the re-scan runs on the call budget the forward
+  pass left. Its base is `max(floor, min(end - 89 days, forward start - overlap))`: the window
+  start, or the overlap behind the cursor when that is earlier, because an order pending at the
+  last sync can settle up to one overlap (1 day) before the cursor even when the walk was away
+  for as long as the window (found in review: an absence of 88.5 days left a gap between the
+  window start and the cursor). It covers `[base, forward start)`, which catches an order that
+  settles late and the day behind the cursor. A
   re-scan that was first in line would spend a busy account's whole budget on ground it already
   holds, and the newest orders would never import (found in review: 900 orders in the last 88
   days, none of the newest imported in 10 runs). The re-scan keeps its place in a walk-owned
@@ -257,9 +259,16 @@ withdraw budget moves into this object, with the same numbers and the same rule.
   over a balance sync, reset to the 2017 floor on disconnect). It commits span by span, moves
   only that key, and never touches the Pay cursor. The next run resumes it from the stored key
   until it reaches the forward start; then the key returns to the 2017 floor, which means "no
-  pass in progress", and the next run starts a new pass at `end - 89 days`. A stored key outside
-  `[end - 89 days, forward start)` also starts a new pass. Re-scan rows go through the same
-  keys, so a second identical run imports nothing.
+  pass in progress", and the next run starts a new pass at the base. A catch-up from a cursor
+  older than the window takes several runs, and by the run that re-scans, the cursor has moved
+  on, so the overlap behind the OLD cursor cannot be derived from it. The first forward span of
+  a run therefore stores the re-scan's start as the mark (the first-run pin), before it moves
+  the cursor, whenever that start is behind the window. A stored mark above the floor and
+  before the forward start is resumed: at or after the base, over `[mark, forward start)`; behind
+  the base (what is left of an old cursor's overlap), for one overlap only, `[mark, mark +
+  overlap)`, because re-reading all of `[mark, cursor)` would cost more calls than a run has,
+  over and over. A mark at the floor or at or after the forward start starts a new pass.
+  Re-scan rows go through the same keys, so a second identical run imports nothing.
 - Filter: `currency === 'BTC'`. A non-BTC order paid with BTC funds stops the span
   that holds it (`pay-btc-funded-other-coin`, cursor unmoved) (Q8). Until a rule
   exists the walk is blocked for that user rather than losing a BTC movement. User
@@ -290,16 +299,25 @@ withdraw budget moves into this object, with the same numbers and the same rule.
   `[1, 2]` split, and could not match `walletType` against the entries of `walletTypes`
   (the entries are probably sent as text). The client reads `walletType` and every
   `walletTypes` entry as a JSON integer or a digit string and gives numbers, so the walk
-  compares wallets by value. Placement does not trust `walletType`: two or more wallets
-  in `walletTypes` are split by `walletAssetCost` (the sums matched `abs(amount)` on 5 of
-  5); a single wallet is `walletTypes`' one entry, with `walletType` used only when
-  `walletTypes` is absent. The key's wallet segment is that same wallet. `walletType` and a
+  compares wallets by value. Placement does not trust `walletType`; it reads
+  `walletTypes`, with `walletType` used only when `walletTypes` is absent. `walletType` and a
   single `walletTypes` entry that name different wallets are not a stop: `walletTypes`
-  wins. When the order's BTC `fundsDetail` entries carry `walletAssetCost`, the wallets with
-  a cost above zero must be exactly the wallets placement picked (for one wallet and for a
-  split alike), or the span stops (`pay-split-mismatch`). That includes a declared wallet
-  with a zero cost and a cost on a wallet the order does not name. An order that carries no
-  cost is placed without the check.
+  wins. The cost check and the cost-based placement apply to OUTGOING orders only (R20/R21):
+  - An outgoing order is placed by its costs (the subset rule, R20). The wallets with a
+    cost above zero (the BTC `fundsDetail` entries' `walletAssetCost`, added per wallet) must
+    be a non-empty set, contained in the named wallets, and the costs must add up to
+    `abs(amount)` to the satoshi; the rows follow the costed wallets, one per wallet, each
+    with its own key. Otherwise the span stops (`pay-split-mismatch`): a positive cost on
+    a wallet the order does not name, costs that do not add up, and no cost above zero at
+    all (including an order that carries no cost). A named wallet with no cost is left out,
+    not a stop (`walletTypes` can list a wallet that was not charged; the totals are still
+    the order amount). The equality rule that stopped it would never clear and becomes a
+    loss once the floor passes the order (about 548 days).
+  - A receive is placed by `walletTypes` alone (R21): the single entry, or `walletType` when
+    `walletTypes` is absent, with no cost check, because a receive's `walletAssetCost` may
+    describe the payer's wallets (the probe saw only Funding receives, so what a receive from
+    a Spot payer carries is open: plan task 7/7 probe item). A receive that lists two wallets
+    stops (`pay-split-mismatch`): the receiver's split cannot be read from the payer's costs.
 - Amount: `abs(amount)` through `Money.fromMajor('BTC', ...)`, with the sign from
   the direction.
 - Key: `` `${accountId}:pay:${orderType}:${transactionId}:${walletType}` ``. An
@@ -491,13 +509,16 @@ Placement (the "was:" column shows today's result):
 
 | # | source | input | result | was: |
 |---|---|---|---|---|
-| P1 | Pay | walletType 2, walletTypes absent (or [2]) | Spot | not imported |
-| P1a | Pay | walletType 1, walletTypes [2], cost (if any) on wallet 2 | Spot (`walletTypes` wins, no stop) | not imported |
-| P2 | Pay | walletType 1 (also with walletTypes [1], the live probe shape; also digit strings) | Funding | not imported |
-| P2a | Pay | walletTypes [1], cost on wallet 2 (or on 1 and 2, or zero on 1) | stop (`pay-split-mismatch`) | not imported |
-| P3 | Pay | walletType 5 | Earn | not imported |
-| P4 | Pay | [1,2] (walletType 1, as the probe saw), walletAssetCost on exactly wallets 1 and 2, sums to abs(amount) | one row per wallet | not imported |
-| P5 | Pay | [1,2], sums do not match, or the costs name other wallets than 1 and 2 (including a zero on one of them) | stop (`pay-split-mismatch`) | not imported |
+| P1 | Pay, out | walletType 2, walletTypes absent (or [2]), cost on wallet 2 summing to abs(amount) | Spot | not imported |
+| P1a | Pay, out | walletType 1, walletTypes [2], cost on wallet 2 | Spot (`walletTypes` wins, no stop) | not imported |
+| P2 | Pay, out | walletType 1 (also with walletTypes [1], the live probe shape; also digit strings), cost on wallet 1 | Funding | not imported |
+| P2a | Pay, out | walletTypes [1], positive cost on wallet 2 (or on 1 and 2), or no cost above zero on 1 | stop (`pay-split-mismatch`) | not imported |
+| P3 | Pay, out | walletType 5, cost on wallet 5 | Earn | not imported |
+| P4 | Pay, out | [1,2] (walletType 1, as the probe saw), walletAssetCost on wallets 1 and 2, sums to abs(amount) | one row per wallet | not imported |
+| P4a | Pay, out | [1,2], cost above zero on one of them only (the other zero or absent), sums to abs(amount) | one row, on the costed wallet | not imported |
+| P5 | Pay, out | costs do not sum to abs(amount) (any wallet count), a positive cost on a wallet not in walletTypes, or no cost above zero (including no cost at all) | stop (`pay-split-mismatch`) | not imported |
+| P5a | Pay, in | walletTypes [1] (or walletType 1 with walletTypes absent), any cost or none, even a cost keyed to wallet 2 | Funding, no cost check (R21) | not imported |
+| P5b | Pay, in | walletTypes [1,2] | stop (`pay-split-mismatch`) | not imported |
 | P6 | Pay | 3, 4, 6 | stop (Q9) | not imported |
 | P7 | any | target holding missing | create it at 0, then place | n/a |
 | P8 | Pay | BTC order whose `fundsDetail` names no BTC | stop (`pay-funds-not-btc`) | n/a |
