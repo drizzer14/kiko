@@ -2363,6 +2363,11 @@ what a change must keep.
   transaction form's draft; both take options from `src/navigation/swapped-form-options/`. A form
   that stays mounted underneath uses `navigate`, but a `HoldingForm` opening another `HoldingForm`
   uses `push` (navigate to its own name only changes params).
+  The Statistics stack (`src/navigation/statistics-stack/statistics.stack.tsx`) registers both too,
+  because its `TransactionForm` opens them from an empty holding picker. The type-level
+  `MissingCreateForms` assertion in `src/navigation/types/types.test.ts` requires `AccountForm` and
+  `HoldingForm` in every stack param list that has `TransactionForm`; add a new stack to that
+  test's union.
   `ReminderForm` is registered in BOTH the Accounts and Settings
   stacks, so its props type is structural (`route.params:
   ReminderFormParams` plus the `goBack`/`setOptions` it reads), not
@@ -2704,7 +2709,9 @@ are built with `createPaneStackNavigator`.
   source route and changes no router state (`pane-router.test.ts`). Params hold JSON only.
   Secrets, tokens, wallet and Binance keys never go in a draft (a lender IBAN lives only in the
   in-memory loan draft). Not saved: scroll, `attemptedSave`, open sheets, `pickedImplicitKind`,
-  `leavingKind`. Proof on two panes: `accounts.stack.draft.navigator.test.tsx`.
+  `leavingKind`. The "Add holding" round-trip
+  auto-select (`use-select-created-holding`, a `useRef`) does not survive a fold: the user picks the
+  new holding by hand (known limit, pending the user). Proof on two panes: `accounts.stack.draft.navigator.test.tsx`.
 - **`resetTabStackOnBlur`** (`src/navigation/reset-tab-stack-on-blur/`) is unchanged and every
   tab stack still passes it as `screenListeners`. It dispatches `popToTop` when the parent tab
   is not focused and the state's `index > 0`; in a split navigator that is the router's standard
