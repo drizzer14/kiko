@@ -1542,7 +1542,77 @@ the kind of thing that can still change:
   one-time plaintext -> SQLCipher export. Its crash-safety ordering is
   the load-bearing fact: export first, persist the key second, delete
   the plaintext file last — a crash at any point leaves a resumable
-  state rather than data loss.
+  state rather than data loss. A missing Keychain key with an encrypted
+  file already on disk and no populated `kiko.db` beside it is never
+  "fresh install": a new key would not open that file and would brick it,
+  so `establishKey` probes both files BEFORE `migrateLegacyDatabase()`
+  (which would rebuild a populated `kiko.db` from a surviving `pff.db`
+  and hide the loss) and throws `DatabaseKeyMissingError` (no key
+  generated or stored, no file created or deleted); `MigrationsGate`
+  shows `migrations.keyMissing` and the next launch retries. "Encrypted
+  file exists" is a `react-native-fs` path check on op-sqlite's base
+  directory OR a keyless open, because a failed open cannot tell an
+  absent file from an unopenable one. The only delete of an existing
+  encrypted file is in the populated-`kiko.db` branch: `kiko.db` is
+  removed only after the copy is verified (and a new key stored), and
+  the app opens the encrypted file only after that, so a populated
+  `kiko.db` (and ONLY `kiko.db`) means the encrypted file beside it
+  never served the app. It is a partial, empty, or keyless leftover of
+  an interrupted export (a kill after `ATTACH` leaves an empty file
+  that even the stored key opens), never to be trusted, so the build
+  path deletes it and re-exports. That holds with or without a stored
+  key: `resolveDbKey` rebuilds whenever the encrypted file is gone OR
+  `kiko.db` holds user tables, an UNREADABLE `kiko.db` count counting
+  as "holds data" there (the rebuild then fails safely, before any
+  delete; the no-key guard counts it as "no data" and refuses)
+  (`buildEncryptedDatabase(storedKey)`, the first-launch path under the
+  EXISTING key, which is never stored again): `migrateLegacyDatabase()`,
+  export, verify (the key opens the copy, it holds tables; its own
+  error text names the export, not the stored key), then delete the
+  plaintext. An empty plaintext yields a fresh encrypted database.
+  `pff.db` never decides this: it is the OLDER safety net, so beside a
+  present encrypted file it now comes only from the OLD delete order
+  (kiko.db first, before this branch) or from a pff.db delete that
+  throws, and rebuilding from it would replace newer data.
+  `removeLeftoverPlaintext` therefore deletes `pff.db` BEFORE `kiko.db`,
+  and throws if either file is still on disk afterwards (op-sqlite's
+  remove ignores failures, and a surviving populated `kiko.db` would
+  make a later launch delete an encrypted database already in use).
+  With a key present, the file on disk, and no populated `kiko.db`, the
+  key just has to open that file (first read, opened with
+  `failOnCreate` so the proof can never create an empty keyed file)
+  before the plaintext residue is scrubbed; a 0-table file is accepted
+  there, because a fresh install killed before its migrations is
+  legitimately empty. A failure's message carries the cause's own
+  message, because `MigrationsGate` shows only `error.message`.
+  Known limits (reviewed 2026-10-09), each as state; consequence; why
+  not fixed:
+  1. Keychain key really gone (access-group or signing change,
+     Keychain reset); `DatabaseKeyMissingError` every launch, no in-app
+     recovery, data stays on disk; a new key cannot open the file, so
+     stopping is the only safe action.
+  2. op-sqlite base folder moves (App Group added later) and the keyless
+     open fails on a present file; the no-key path treats the file as
+     absent and stores a new key over it; unreachable without a config
+     change (comment at `encrypted-database.ts` ~:50-57).
+  3. Spurious "item not found" read in the key-store crash window, then
+     `setGenericPassword` fails to delete K1; the proof fails every
+     launch, plaintext kept, generic error until the key matches; no
+     data lost; native Keychain behaviour.
+  4. Encrypted file with no tables (or 0 bytes) and no plaintext data is
+     accepted; a truncated real file cannot be told apart from a fresh
+     install killed before schema migrations; the loss already happened
+     and nothing recoverable is deleted.
+  5. `kiko.db` table count stays unreadable while a key is present;
+     launch blocked with a generic error until it reads; deliberate
+     fail-closed.
+  6. iCloud restore of an old backup (the encrypted file is excluded
+     from backup); rebuilt from the restored plaintext, data as of the
+     backup; newer data was never in the backup.
+  7. Plaintext file that exists but cannot be opened, or survives its
+     delete; launch throws "could not be removed" until the delete
+     succeeds; deliberate, so a surviving `kiko.db` can never trigger
+     deletion of a database in use.
 - `src/db/keys/db-key.ts` — the Keychain-backed SQLCipher key (service
   `'kiko.db.key'`), generated from SQLite's `randomblob()` rather than
   `Math.random` or a WebCrypto call Hermes doesn't have.
