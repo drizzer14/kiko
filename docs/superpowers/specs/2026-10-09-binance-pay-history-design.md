@@ -148,7 +148,10 @@ withdraw budget moves into this object, with the same numbers and the same rule.
     (UID cost);
   - the last-seen `X-SAPI-USED-IP-WEIGHT-1M` plus the cost is at most
     `IP_BUDGET_1M` (IP cost; default 6000, half of the assumed 12000 ceiling, Q15).
-- Every response refreshes both readings.
+- Every response refreshes both readings. The withdraw history reports only a
+  per-second UID header (`X-SAPI-USED-UID-WEIGHT-1S`, probe Q15), which is never read
+  as the minute's weight: it gives no reading, and the lane's cap of 9 calls
+  (9 x 18,000 = 162,000 of 180,000) is what bounds the run.
 - Per-run call caps:
 
   | Walk | Cap |
@@ -172,9 +175,10 @@ withdraw budget moves into this object, with the same numbers and the same rule.
 
 - One watermark per walk. Each is a walk-owned key on the Spot holding's metadata:
   `binancePayHistoryCursor`, `binanceTransferHistoryCursor`,
-  `binanceEarnHistoryCursor`. A walk that re-scans its last window also keeps a
-  re-scan mark next to its cursor (`binancePayRescanCursor` for Pay; the Transfer and
-  Earn walks add theirs), see section 4.
+  `binanceEarnHistoryCursor` (and `binanceHistoryCursor` for the capital walk). A walk
+  that re-scans its last window also keeps a re-scan mark next to its cursor
+  (`binanceHistoryRescanCursor` for capital, `binancePayRescanCursor` for Pay; the
+  Transfer and Earn walks add theirs), see sections 4 and 7.
 - All of them join `walkOwnedMetadataKeys` (`holding-metadata.ts`). The balance
   upsert carries them and the disconnect resets them to the floor, through the
   existing code paths.
@@ -183,8 +187,9 @@ withdraw budget moves into this object, with the same numbers and the same rule.
 - Windows go oldest first. The rows of a window are written
   (`transactionsRepo.addManyDedup`) BEFORE its watermark advances. A crash between
   the two re-imports the window idempotently.
-- On a re-sync the start is `min(cursor - RESYNC_OVERLAP_MS, end - WINDOW)`, the
-  same formula as `resolveStartTime`.
+- On a re-sync a run is two passes (`planWalkPasses`, `binance.history-walk.ts`): the
+  forward pass from `max(floor, cursor - RESYNC_OVERLAP_MS)` to the end, then a re-scan of
+  the last window behind it on the budget that is left (section 4).
 - Each walk is wrapped in its own `logOnFailure` (`@kiko/diagnostics`, name and
   code only). A failure in one walk never fails the balance sync or another walk.
   A permission rejection does not set the cooldown.
@@ -229,10 +234,11 @@ withdraw budget moves into this object, with the same numbers and the same rule.
   `startTime` equal to `endTime`. A span of 1 ms that is still full stops the window
   (`pay-page-stuck`).
 - Two passes per run (shared in `binance.history-walk.ts`, so the Transfer and Earn walks
-  inherit it). The forward pass goes first, from `max(floor, cursor - 1 day)` to the end
-  (`min(now, capital cursor)`), in windows of 89 days, and moves the Pay cursor. A backlog that
-  needs more calls than one run's cap resumes on the next run from the cursor of its last
-  committed span; the cursor never moves back and never passes the capital cursor. Then the
+  inherit it). The forward pass goes first, from `max(floor, cursor - 1 day)` to now, in
+  windows of 89 days, and moves the Pay cursor. A backlog that needs more calls than one run's
+  cap resumes on the next run from the cursor of its last committed span; the cursor never
+  moves back and never passes now. The Pay walk does not read the capital cursor (R13/C1,
+  below): a Spot holding with no capital cursor runs the Pay walk like any other. Then the
   re-scan runs on the call budget the forward pass left: it covers
   `[max(floor, end - 89 days), forward start]`, which catches an order that settles late. A
   re-scan that was first in line would spend a busy account's whole budget on ground it already
@@ -244,33 +250,42 @@ withdraw budget moves into this object, with the same numbers and the same rule.
   until it reaches the forward start; then the key returns to the 2017 floor, which means "no
   pass in progress", and the next run starts a new pass at `end - 89 days`. A stored key outside
   `[end - 89 days, forward start)` also starts a new pass. Re-scan rows go through the same
-  overlap guard and keys, so a second identical run imports nothing.
+  keys, so a second identical run imports nothing.
 - Filter: `currency === 'BTC'`. A non-BTC order paid with BTC funds stops the span
   that holds it (`pay-btc-funded-other-coin`, cursor unmoved) (Q8). Until a rule
   exists the walk is blocked for that user rather than losing a BTC movement. User
-  ruling (I5): option A. Once probe item 7 confirms the `fundsDetail` shape, import
-  the BTC part of such an order as an outgoing BTC row on the wallet that paid.
-  This is not built yet; the stop stays until then.
-- Cross-source cap (until Q5 is answered): a Pay window is committed only when its
-  end is at or before `binanceHistoryCursor` (the capital walk). An overlap guard
-  skips a row, logged as `pay-overlap-skip` (Pay) or `capital-overlap-skip`
-  (capital), when it is the twin of a stored row of the other walk: the same signed
-  satoshis and a time within 10 minutes. The guard reads the capital and Pay rows
-  of every Binance BTC holding of the account (Spot, Funding, Earn), not only the
-  holding the row lands on. It is symmetric, because a capital record that settles
-  late is imported behind the capital cursor after its Pay row: the capital walk
-  also skips a new capital row that pairs with a stored Pay row. It is one to one:
-  each row pairs with at most one row of the other walk, the closest in time, ties
-  by external id (capital id first, then Pay id), the same on every run. If the
-  probe shows no overlap, both walks drop the guard.
-- **Direction.** It does not depend on the sign. There are three signals:
-  1. Shape: a non-empty `payerInfo.binanceId` means outgoing. Otherwise a
-     non-empty `receiverInfo.binanceId` means incoming.
-  2. The user's own `uid` matches the payer or the receiver.
-  3. The sign.
-
-  Every available signal must agree, and signal 1 or 2 must be present. Otherwise
-  stop the window (`pay-direction-ambiguous`).
+  ruling (I5, after the probe, 2026-10-10): A2. The stop stays unchanged. Option A,
+  importing the BTC part of such an order as an outgoing BTC row on the wallet that
+  paid, is built only when a real BTC-funded non-BTC order is seen (the probe saw 0
+  of 41 non-BTC orders paid with BTC).
+- **No cross-source cap and no overlap guard (user ruling C1, 2026-10-10).** The
+  probe found 0 of 5 Pay BTC rows that match a capital row (Q5), so both are removed:
+  the Pay window end is `now` (a null capital cursor no longer blocks the Pay walk),
+  and neither walk skips a row because of a row of the other walk. The log codes
+  `pay-overlap-skip` and `capital-overlap-skip`, `binance.overlap-guard.ts` and the
+  `listHoldingTransactions` seam are gone. No migration. The sample is small (5 Pay
+  BTC rows, 2 withdrawals, 0 deposits); if a later account shows a Pay row that
+  repeats a capital row, the rule comes back with a persisted pairing (a migration).
+- **Direction (R13, 2026-10-10).** It comes from the user's own `uid` alone; the
+  shape of the parties is no signal. The probe showed a real incoming C2C order names
+  the counterparty as payer too (shape said outgoing on 4 of 4 receives; uid and sign
+  said incoming). `payer.binanceId` equal to the uid is outgoing;
+  `receiver.binanceId` equal to the uid is incoming. The sign of the amount must
+  agree (Q2: it did on 5 of 5). The window stops (`pay-direction-ambiguous`) when the
+  sign is zero or not a number, when the uid matches neither party or both, or when
+  the sign disagrees with the uid. An unknown uid (the account read failed, or the
+  account carries none) stops the window before any request
+  (`pay-uid-unavailable`, cursors unmoved). The Binance ids are read by the
+  direction function and nowhere else.
+- **Wallet ids (Q9).** The probe saw `walletType` 1 on 5 of 5 orders, even for the one
+  `[1, 2]` split, and could not match `walletType` against the entries of `walletTypes`
+  (the entries are probably sent as text). The client reads `walletType` and every
+  `walletTypes` entry as a JSON integer or a digit string and gives numbers, so the walk
+  compares wallets by value. Placement does not trust `walletType`: two or more wallets
+  in `walletTypes` are split by `walletAssetCost` (the sums matched `abs(amount)` on 5 of
+  5); a single wallet is `walletTypes`' one entry, with `walletType` as the fallback when
+  `walletTypes` is absent. If both are given and name different wallets, the span stops
+  (`pay-wallet-unknown`).
 - Amount: `abs(amount)` through `Money.fromMajor('BTC', ...)`, with the sign from
   the direction.
 - Key: `` `${accountId}:pay:${orderType}:${transactionId}:${walletType}` ``. An
@@ -371,6 +386,19 @@ keep their holding, because the upsert `set` has no `holdingId`
 walletType 1. If there are any, a follow-up task moves them, with a repo change or a
 migration and a `kiko:reviewer` step.
 
+Two passes, adaptive spans (R14, 2026-10-10). The capital walk runs on the shared
+`planWalkPasses` / `runWalkPlan` of section 4, with its own re-scan mark
+`binanceHistoryRescanCursor` (walk-owned like the cursors: carried over a balance sync, reset
+to the 2017 floor on disconnect). It used to start every run at `now - 89 days`, so an account
+with more withdrawals in 89 days than one run's 9 withdraw calls can page (about 9000)
+never committed that window and its newest records never imported. Now the forward pass
+goes first and the newest records import on run 1. The re-scan commits span by span too: a
+span whose first page is full (1000 records) is not paged through; it is halved and asked
+again, as in the Pay walk, so every committed span fits one call per endpoint and a heavy
+window is finished over later runs from the re-scan mark. Only a span of 1 ms that is still
+full is offset-paged until a short page. The legacy fallback cursor (the newest imported
+record, for a holding with no cursor yet) still feeds the plan, but never the stored marks.
+
 Strict capital parse. Capital rows parse strictly. An off-contract body or row
 (a non-array body, a non-object row, a missing, null, or non-string `amount`, a
 non-numeric `status`, a bad `insertTime` or `applyTime`, a non-integer `walletType`)
@@ -432,25 +460,27 @@ Pay direction:
 |---|---|---|---|---|---|---|
 | 1 | C2C send by Binance ID | own | counterparty | own | -0.001 | out -100000 sat; description = receiver.name |
 | 2 | C2C send by email/phone | own | absent | own | -0.001 | out |
-| 3 | C2C receive | absent | own | own | +0.001 | in; description = payer.name |
-| 4 | C2C receive, uid unknown | absent | own | null | +0.001 | in |
-| 5 | send, uid unknown, positive sign | own | x | null | +0.001 | stop |
-| 6 | shape out, uid in | x | own | own | -0.001 | stop |
-| 7 | no binanceId at all | absent | absent | own | -0.001 | stop |
-| 8 | C2C_HOLDING send / C2C_HOLDING_RF | own / absent | x / own | own | - / + | out / in |
-| 9 | PAY, PAY_REFUND, CRYPTO_BOX(_RF), PAYOUT, REMITTANCE | per S1 | per S1 | own | -/+ | per shape |
-| 10 | unknown orderType, signals agree | own | absent | own | -0.001 | out |
-| 11 | amount 0 or not finite | own | x | own | 0 | stop |
-| 12 | name blank or missing | own | x | own | -0.001 | description 'Binance Pay' |
+| 3 | C2C receive, payer unnamed | absent | own | own | +0.001 | in; description = payer.name |
+| 4 | C2C receive as the live probe saw it (R13) | counterparty | own | own | +0.001 | in; description = payer.name |
+| 5 | uid unknown, any shape | own / absent | x / own | null | -/+ | stop |
+| 6 | uid is the payer, sign positive | own | x | own | +0.001 | stop |
+| 7 | uid is the receiver, sign negative | x | own | own | -0.001 | stop |
+| 8 | no binanceId at all | absent | absent | own | -0.001 | stop |
+| 9 | uid matches neither named party | x | y | own | -0.001 | stop |
+| 10 | uid is both parties | own | own | own | -0.001 | stop |
+| 11 | C2C_HOLDING send / C2C_HOLDING_RF, PAY, PAY_REFUND, CRYPTO_BOX(_RF), PAYOUT, REMITTANCE | per S1 | per S1 | own | -/+ | per uid |
+| 12 | unknown orderType | own | absent | own | -0.001 | out |
+| 13 | amount 0 or not finite | own | x | own | 0 | stop |
+| 14 | name blank or missing | own | x | own | -0.001 | description 'Binance Pay' |
 
 Placement (the "was:" column shows today's result):
 
 | # | source | input | result | was: |
 |---|---|---|---|---|
 | P1 | Pay | walletType 2 | Spot | not imported |
-| P2 | Pay | walletType 1 | Funding | not imported |
+| P2 | Pay | walletType 1 (also with walletTypes [1], the live probe shape) | Funding | not imported |
 | P3 | Pay | walletType 5 | Earn | not imported |
-| P4 | Pay | [1,2], walletAssetCost sums to abs(amount) | one row per wallet | not imported |
+| P4 | Pay | [1,2] (walletType 1, as the probe saw), walletAssetCost sums to abs(amount) | one row per wallet | not imported |
 | P5 | Pay | [1,2], sums do not match | stop | not imported |
 | P6 | Pay | 3, 4, 6 | stop (Q9) | not imported |
 | P7 | any | target holding missing | create it at 0, then place | n/a |
@@ -503,15 +533,21 @@ Convert: not imported (D7). No walk, no rows.
   - Pay: the adaptive window (an oldest-first page, a same-millisecond tie across
     a full page, a window that needs more calls than one run's cap, no request with
     `startTime` equal to `endTime`), and the stuck-page stop;
-  - Pay and capital: the one-to-one guard in both directions (a Pay row stored
-    first with its capital twin later, two same-size Pay rows beside one capital
-    row, a capital row on another wallet than the Pay row);
+  - Pay: no request with a `startTime` before the Pay floor, in either pass, after a
+    disconnect reset to 2017, or with an old cursor (Q6); a Pay walk on a Spot
+    holding with no capital cursor; a Pay row beside a capital row of the same size
+    (both stay);
+  - capital: the forward pass first and the re-scan after it on a heavy account
+    (12,000 withdrawals in 88 days: the newest import on run 1, the cursor reaches
+    the end, the re-scan finishes over later runs, a second run imports 0), a span
+    whose first page is full halved, a 1 ms span offset-paged, the re-scan mark
+    written and reset;
   - Transfer and Earn: paging by `current`/`total`;
   - each walk: windows from its floor, and the re-sync overlap;
   - shared budget: UID and IP readings, per-walk caps, and a walk that stops when
     the budget runs out while the next walk still runs;
   - cooldown set and skip, and commit order;
-  - idempotent re-sync, and the Pay cap and overlap guard;
+  - idempotent re-sync;
   - the new metadata keys are carried and reset;
   - `run-crypto-sync`: one shared gate and budget, and a failure in each walk is
     isolated;
@@ -567,25 +603,30 @@ Probe items:
 
 ## Open questions (each has a safe default)
 
-| # | Question | Safe default | Probe |
-|---|---|---|---|
-| Q1 | Is a read-only key enough for each new endpoint? | Logged, no cooldown, the balance is unaffected, and the caption shows "behind" | 1, 9, 10 |
-| Q2 | Is the Pay sign as the SDK states? | Sign is a cross-check only | 2 |
-| Q3 | Does the shape rule hold for every type (C2C_HOLDING* are not listed)? | All signals must agree, or stop | 2 |
-| Q4 | Is `transactionId` unique and stable? | orderType and walletType are in the key | 3 |
-| Q5 | Do Pay transfers also appear in capital history? | Cap plus the symmetric one-to-one 10-minute guard. Remove both if there is no overlap | 4 |
-| Q6 | Pay `startTime` older than 18 months? | The floor is 18 months plus 10 days | 5 |
-| Q7 | Pay response order? | None relied on: the adaptive window | 6 |
-| Q8 | Can BTC fund a non-BTC Pay order? | Stop `pay-btc-funded-other-coin`. If any are found, import the BTC part (I5, option A) | 7 |
-| Q9 | Pay walletType 3/4/6 or combined payments? | Stop | 8 |
-| Q10 | Universal transfer window cap and `size` max? | 30-day windows, size 100 | 9 |
-| Q11 | Universal transfer settled status value? | Only `CONFIRMED`. Anything else stops | 9 |
-| Q12 | Earn history depth? | Floor 2022-01-01. Older windows return empty | 10 |
-| Q13 | Earn settled status values? | Only `SUCCESS`. A pending status stops, a final failure is ignored | 10 |
-| Q14 | Where do Earn rewards land, and what does a locked redemption's `amount` mean? | ANSWERED, ruling A (user, 2026-10-10): flexible `REALTIME` -> Earn, flexible `BONUS` -> Spot, locked -> Spot, other flexible `type` stops (`earn-reward-type-unknown`); sources: the two FAQ URLs in section 6. Known gap: maturity-paid locked rewards. Redemption legs use `amount`. `rewardAmt` is not imported from redemptions | 10 (reward `type` counts per kind; maturity-paid question) |
-| Q15 | The SAPI IP ceiling and the IP header? | `IP_BUDGET_1M` 6000 and the per-walk caps, which hold even without the header | 11 |
-| Q16 | Are there fully identical reward records? | Each one is kept as its own row (E9) | 10 |
-| A1 | The Pay success `code` is `"000000"` | A missing `data` array or an unknown code is an error | 1 |
+The probe ran on the user's own account on 2026-10-10. The sample is small: 46 Pay rows
+(5 BTC, all C2C; 41 in one other ticker), 0 deposits, 2 withdrawals, 0 transfer rows, 0
+Earn rows. An answer drawn from that sample says so; a question the sample cannot answer
+keeps its rule.
+
+| # | Question | Safe default | Answer (probe 2026-10-10) | Probe |
+|---|---|---|---|---|
+| Q1 | Is a read-only key enough for each new endpoint? | Logged, no cooldown, the balance is unaffected, and the caption shows "behind" | Yes. Pay, capital, 20 transfer types, 6 Earn kinds, and locked position all answered HTTP 200. As built | 1, 9, 10 |
+| Q2 | Is the Pay sign as the SDK states? | Sign is a cross-check only | Yes: the sign agreed with the uid on 5 of 5 (in/in 4, out/out 1). It stays a required cross-check (R13) | 2 |
+| Q3 | Does the shape rule hold for every type (C2C_HOLDING* are not listed)? | All signals must agree, or stop | No. On 4 of 4 C2C receives the shape said outgoing (the payer carries a Binance id) while the uid and the sign said incoming. R13: the direction comes from the uid alone, the sign must agree, the shape is dropped | 2 |
+| Q4 | Is `transactionId` unique and stable? | orderType and walletType are in the key | Yes: 0 empty ids, 0 duplicates within or across orderType, 0 key collisions in 46 rows. As built | 3 |
+| Q5 | Do Pay transfers also appear in capital history? | Cap plus the symmetric one-to-one 10-minute guard. Remove both if there is no overlap | No: 0 of 5 Pay BTC rows match a capital row (10 minutes, with the fee, or 24 hours). User ruling C1: guard and cap removed; no migration. Small sample | 4 |
+| Q6 | Pay `startTime` older than 18 months? | The floor is 18 months plus 10 days | HTTP 400, code 403004, from about 548 days back (also when only the start is older). The floor of 18 months plus 10 days stays; no request may go below it | 5 |
+| Q7 | Pay response order? | None relied on: the adaptive window | Descending on 5 pages, ascending on 0. No full page, so the `endTime` semantics were not exercised. The adaptive window stays, as it relies on neither | 6 |
+| Q8 | Can BTC fund a non-BTC Pay order? | Stop `pay-btc-funded-other-coin`. If any are found, import the BTC part (I5, option A) | Not seen: 0 of 41 non-BTC orders paid with BTC; each of the 5 BTC orders has a BTC `fundsDetail` entry and none is mixed. User ruling A2: keep the stop; build option A when a real case is seen | 7 |
+| Q9 | Pay walletType 3/4/6 or combined payments? | Stop | `walletType` 1 on 5 of 5; `walletTypes` [1] on 4 and [1,2] on 1; no 3, 4, or 6. `walletType` was 1 even for the [1,2] split, so placement uses `walletTypes` and `walletAssetCost` (sums matched `abs(amount)` on 5 of 5). `walletTypes` entries probably come as text: the client reads an integer or a digit string. `fundsDetail` entry: `amount` string, `currency` string, `walletAssetCost` object keyed by wallet id | 8 |
+| Q10 | Universal transfer window cap and `size` max? | 30-day windows, size 100 | `size` 101 is rejected (-1102), 100 is the max. The 31, 60, 90 day, and whole-depth windows answered HTTP 200 with 0 rows, so the window cap is not proven. No data in the probe account for the rest; rule unchanged (30 days) | 9 |
+| Q11 | Universal transfer settled status value? | Only `CONFIRMED`. Anything else stops | No data in the probe account (0 transfer rows), rule unchanged | 9 |
+| Q12 | Earn history depth? | Floor 2022-01-01. Older windows return empty | The samples before the 2022 floor returned total 0; there are no Earn rows at all. No data in the probe account, rule unchanged | 10 |
+| Q13 | Earn settled status values? | Only `SUCCESS`. A pending status stops, a final failure is ignored | `size` max is 100. No Earn rows, so no status values. No data in the probe account, rule unchanged | 10 |
+| Q14 | Where do Earn rewards land, and what does a locked redemption's `amount` mean? | ANSWERED, ruling A (user, 2026-10-10): flexible `REALTIME` -> Earn, flexible `BONUS` -> Spot, locked -> Spot, other flexible `type` stops (`earn-reward-type-unknown`); sources: the two FAQ URLs in section 6. Known gap: maturity-paid locked rewards. Redemption legs use `amount`. `rewardAmt` is not imported from redemptions | No data in the probe account (no reward rows, no locked positions), rule unchanged; ruling A stands and the maturity-paid gap stays open | 10 (reward `type` counts per kind; maturity-paid question) |
+| Q15 | The SAPI IP ceiling and the IP header? | `IP_BUDGET_1M` 6000 and the per-walk caps, which hold even without the header | The header is not the same everywhere. Pay: `X-SAPI-USED-UID-WEIGHT-1M` (peak 21000 after 9 calls). Capital deposit, transfer, Earn: `X-SAPI-USED-IP-WEIGHT-1M`. Withdraw history: `X-SAPI-USED-UID-WEIGHT-1S`, per second, no minute reading (it gives none; the cap of 9 calls bounds it). Account: `X-MBX-USED-WEIGHT-1M`. The IP ceiling could not be measured, so `IP_BUDGET_1M` stays | 11 |
+| Q16 | Are there fully identical reward records? | Each one is kept as its own row (E9) | No data in the probe account (no reward rows), rule unchanged | 10 |
+| A1 | The Pay success `code` is `"000000"` | A missing `data` array or an unknown code is an error | Yes: code `"000000"` and a `data` array on 7 of 7 Pay calls. As built | 1 |
 
 ## Still needing the user
 
