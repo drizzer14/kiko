@@ -1552,7 +1552,8 @@ would stop including "today". `applyDateRange`/`clearDateRange` only write
 never to a frozen "30 days as of Clear" snapshot. A screen must not hold
 its own `dateFrom`/`dateTo` state: call the hook with its own `now`.
 Statistics' own `now`
-already refreshes on focus (`useFocusRefreshedNow`); Home's `now` is a
+already refreshes on visibility (`useVisibleRefreshedNow(isVisible)`,
+`src/design-system/use-visible-refreshed-now/`; a pane default is never focused); Home's `now` is a
 plain `Date.now()` read fresh every render. Deriving `dateFrom`/`dateTo`
 this way still needs care downstream: a memo that depends on them should
 key on their NUMERIC bounds (`dateRangeBounds(...)`'s own `{from, to}`

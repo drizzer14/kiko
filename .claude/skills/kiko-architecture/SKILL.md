@@ -404,11 +404,10 @@ one for the other:
   read if the query went dirty while paused, zero if it did not; the
   MOUNT read always runs regardless of `paused`, since a screen can be
   mounted unfocused (a deep link, a restore) and still needs its first
-  real data. Toggling `paused` never re-subscribes. `statistics.screen.tsx`,
-  `home.screen.tsx` and `accounts.screen.tsx` pass `paused: !isFocused`
-  (`useIsFocused` from `@react-navigation/native`) to every one of their own
-  `useLiveQuery`/price-book calls; each screen's test pins that no call
-  skips the flag and that a write made while hidden shows only once the tab
+  real data. Toggling `paused` never re-subscribes. A tab screen passes `paused: !isVisible`
+  (`useIsScreenVisible`; see
+  "Pane navigation") to every one of its own `useLiveQuery`/price-book calls; each screen's test
+  pins that no call skips the flag and that a write made while hidden shows only once the tab
   regains focus. `enabled: false` unsubscribes and
   returns `[]`, the wrong contract for a tab that stays mounted and must
   show its last rows the instant it regains focus — use `paused`, not
@@ -2480,8 +2479,9 @@ what a change must keep.
   A reminder NOTIFICATION never names its account (its title and body are
   generic catalogue text), so the planner needs no display name. The
   navigate is ONE `navigate('AccountsTab', { state })` carrying the whole
-  Accounts stack: the routes it has now (or `Accounts` while the tab has
-  not mounted), then the new ones. Two nested navigates back to back lose
+  Accounts stack: the routes it has now, minus any `isDefault` route
+  (`accountsStackRoutes`, `src/reminders/routing/route-response.ts`), or `Accounts` while the tab
+  has not mounted, then the new ones. Two nested navigates back to back lose
   the first, because the second replaces the tab's nested params before
   the stack reads them (`route-response.navigator.test.tsx`, on the real
   routers). The tapped account's page, when already on top, takes the new
@@ -2552,11 +2552,11 @@ what a change must keep.
 
 On a wide window (a `LayoutMode` other than `single`, from `@kiko/display-regions`) a tab's
 stack shows two panes (`companion`, `primary`); on a narrow one it is one native stack. The code is
-the `src/navigation/pane-stack/` feature; its barrel (`index.ts`) exports `useOpenInPane`,
-`useIsScreenVisible` and `createPaneStackNavigator`, and nothing else is public. Units, one folder
-each: `pane-assignment` (pure pane maths), `pane-router` (`PaneRouter`, a `StackRouter` wrapper),
-`create-pane-stack-navigator`, `pane-stack-view`, `open-in-pane`, `pane-visibility`,
-`use-pane-fold`, `use-settled-layout-mode`. The four tab stacks (`src/navigation/*-stack/*.stack.tsx`)
+the `src/navigation/pane-stack/` feature; its barrel (`src/navigation/pane-stack/index.ts`) is
+the whole public surface, so read it for the exports. The units are one folder each under
+`src/navigation/pane-stack/` (`pane-assignment` is the pure pane maths, `pane-router` is
+`PaneRouter`, a `StackRouter` wrapper); list the folder for the rest. The four tab stacks
+(`src/navigation/*-stack/*.stack.tsx`)
 are built with `createPaneStackNavigator`.
 
 - **The one rule: open a screen in the pane opposite its opener** (`useOpenInPane`, or a plain
@@ -2567,10 +2567,10 @@ are built with `createPaneStackNavigator`.
   "the route below" (a fold drops it, and routes above it must not change pane). `retainPanes`
   drops the entry of every closed route; the router calls it after every action.
 - **Per-tab config.** Each stack file declares its own `PANE_CONFIG` (`rootPane`, and optionally
-  `companionDefault` / `primaryDefault` as `{ name, isDefault: true }`). Read it there, not here;
-  at the time of writing Home and Statistics are root `primary` with a `companion` default
-  (Statistics, Home), Settings is root `companion` with a `primary` default (Categories), and
-  Accounts is root `companion` with none.
+  `companionDefault` / `primaryDefault` as `{ name, isDefault: true }`). Read the four
+  `src/navigation/*-stack/*.stack.tsx` `PANE_CONFIG`s for the current defaults, not this skill.
+  A config with no default can still get a RUNTIME default (below): the Accounts stack's config
+  declares none, and `use-accounts-pane.ts` shows one through `useShowPaneDefault`.
 - **Static defaults are not in the state.** An empty pane shows its config default as a synthetic
   route keyed `pane-default:<pane>` that `pane-slice.ts` describes without materializing it.
   React Navigation hands such a screen one shared per-navigator placeholder navigation whose
@@ -2580,32 +2580,54 @@ are built with `createPaneStackNavigator`.
   pin React Navigation assumptions (the two `PINS React Navigation` cases in
   `src/navigation/root-navigator/default-pane-navigation.test.tsx`); re-check them on every React
   Navigation upgrade.
-- **Screen rule for anything that can be a default.** In a default `useIsFocused()` is false and
+- **Screen rule for anything that can be a default** (Home, Statistics, Settings Categories and
+  the Accounts list, as the rule's path globs say). In a default `useIsFocused()` is false and
   `useFocusEffect` never runs, so such a screen uses `useIsScreenVisible()` (two panes: the top
-  route of either pane while the tab is focused; one pane: `useIsFocused`). The "paused vs
-  enabled" rule above is written in terms of `useIsFocused`; this hook is what a screen shown in
-  a pane passes to `paused`.
-- **Runtime defaults.** `PANE_SHOW_DEFAULT` inserts a route flagged `isDefault` right above the
-  root and moves `index`; it is a no-op when the pane already holds a tapped route. `PANE_OPEN`
-  from an `isDefault` route clears the flag (materializes it).
+  route of either pane while the tab is focused; one pane: `useIsFocused`) and passes
+  `paused: !isVisible` to its live queries (the "paused vs enabled" rule above). Semgrep rule
+  `kiko-no-focus-hook-in-pane-default-screen` (`rules/semgrep-prewrite.yml`) bans
+  `useIsFocused` / `useFocusEffect` under
+  `src/screens/{home,accounts,statistics,settings/categories}/X
+- **Runtime defaults.** `PANE_SHOW_DEFAULT` (`useShowPaneDefault`, its 4th argument is
+  `isPlaceholder`; `PaneActions.showDefault`) inserts a route flagged `isDefault` right above the
+  root and moves `index`; it is a no-op when not `isSplit`, and it replaces a default already
+  shown. `PANE_OPEN` from an `isDefault` route clears the flag (materializes it), except for a
+  placeholder (`isPlaceholder`, e.g. `AccountsEmptyPane`): that keeps `isDefault`, the pane hook
+  replaces it once an account exists, and `PANE_FOLD` drops it (`pane-assignment.ts`; R37).
+  `PANE_CLOSE` (`useClosePaneRoute`, `pane-router.ts`) closes one route by key and is a no-op
+  when it is gone; it serves a deleted entity: the Accounts list closes the primary page, and
+  `useCloseWhenGone` (`src/screens/holding-detail/use-close-when-gone.ts`) closes a companion
+  `HoldingDetail`, in panes only, after a fresh read (R38).
+- **Row marking.** A list row that opens a page is marked `selected` when the primary pane shows
+  that page: read `usePrimaryPaneRoute()` (`pane-visibility`; null in one pane or an empty
+  primary) and compare, for every row kind that opens a page (account card, holding card,
+  property/debt section row). See the design-system `selected` rule (R32).
 - **While split, the action's source is not the focused route.** The router reads `isSplit` from
   a ref that `createPaneStackNavigator` sets in `useInsertionEffect` (current before any child's
-  effect). With a source route present and not on top: `NAVIGATE`/`PUSH` = `PANE_OPEN` from the
-  source; `GO_BACK`/`POP`/`POP_TO`/`REPLACE` act on the source (REPLACE keeps the replaced
-  route's pane); `POP_TO_TOP` is standard; a `POP` with count above 1 closes that many routes of
-  the source pane's own stack (a pane keeps its first). In single mode, or with a focused or
-  absent source, it is the plain `StackRouter`.
+  effect). `isSplit` also gates `PANE_SHOW_DEFAULT`. With a source route present and not on top, or
+  an `isDefault` source even on top (a bystander, `pane-router.ts` `fromBystander`):
+  `NAVIGATE`/`PUSH` = `PANE_OPEN` from the source; `GO_BACK`/`POP`/`POP_TO`/`REPLACE` act on the
+  source (REPLACE keeps the replaced route's pane); from an `isDefault` source `GO_BACK`/`POP` are
+  handled no-ops; `POP_TO_TOP` is standard; a `POP` with count above 1 closes that many routes of
+  the source pane's own stack (a pane keeps its first). In single mode, or with a focused
+  non-default or absent source, it is the plain `StackRouter`.
 - **Fold and unfold.** `useSettledLayoutMode` delays a change between `single` and split by
   `SETTLE_DELAY_MS` (a pose change reports a burst of snapshots) and applies a rotation between
   split modes at once. `usePaneFold` dispatches `PANE_FOLD` / `PANE_UNFOLD` when `isSplit`
-  changes (nothing on mount). `PANE_FOLD` drops `isDefault` routes and keeps every tapped route's
-  pane. Screens remount when the mode crosses single/split (ruling 3A); `TwoPaneLayout` takes the
+  changes (nothing on mount). `PANE_FOLD` drops `isDefault` routes (placeholders too) and keeps
+  every tapped route's
+  pane. A tab re-tap pops a page only when the stack holds one (`hasPageToPop` in
+  `create-pane-stack-navigator.tsx`), so it skips a runtime default. The reminder route rebuild
+  (`accountsStackRoutes`, `src/reminders/routing/route-response.ts`) likewise drops every
+  `isDefault` route. Screens remount when the mode crosses single/split (ruling 3A);
+  `TwoPaneLayout` takes the
   settled mode through its `mode` prop instead of reading the live one.
 - **`resetTabStackOnBlur`** (`src/navigation/reset-tab-stack-on-blur/`) is unchanged and every
   tab stack still passes it as `screenListeners`. It dispatches `popToTop` when the parent tab
   is not focused and the state's `index > 0`; in a split navigator that is the router's standard
-  `POP_TO_TOP`, and `retainPanes` then clears the closed routes' panes. A default does not
-  count: a static one is not in the state.
+  `POP_TO_TOP`, and `retainPanes` then clears the closed routes' panes. A static default is not
+  in the state, but a runtime default is (`index > 0`), so a blur pops it and the Accounts pane
+  hook inserts it again.
 - **Cost.** Home and Statistics are each mounted in two tabs on a wide window (a root in one, a
   default in the other), so their live queries run twice.
 

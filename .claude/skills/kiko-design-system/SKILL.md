@@ -162,6 +162,12 @@ selected. A new accent-filled control
 follows the same rule: read `theme.ts`'s own `onAccent` doc comment,
 then one of these call sites, rather than reinventing the check.
 
+**The shared selected surface** (`src/design-system/selected-surface/`): `OnAccentContext`,
+`useIsOnAccent` and `selectedSurfaceStyles.fill` (the accent fill plus border). `Text` and
+`SymbolIcon` switch to `onAccent` inside it by themselves. A selected list row sets `selected` on
+`Card`, `SettingsRow` or `HoldingCard`; it never hand-sets a fill or an `onAccent` color.
+`EntityIconTile` keeps its identity color on the fill (pending the user's live check, R34).
+
 ## Styling layer: react-native-unistyles v3
 
 `react-native-unistyles` (^3.3.0) is the styling layer. A single
@@ -298,7 +304,9 @@ The established patterns grouped under this heading:
   directly; a stored selection of a left-out account is pruned to All (that
   account holds nothing). A value that only fell out of scope (a category outside the date range)
   is still unioned back, never pruned (the rule above).
-- **SettingsRow** (`src/screens/settings/settings-row/`): `onPress`
+- **SettingsRow** (`src/screens/settings/settings-row/`): `selected?: boolean` marks the row
+  with the shared selected surface (`accessibilityState.selected`; it keeps a caller's radius);
+  `onPress`
   makes the row a `Pressable` (with a chevron). `trailing` pins an
   inline control to the label's line. The two can be combined
   (`ReminderRow`: tap opens the form, the trailing Switch pauses).
@@ -758,13 +766,15 @@ new component can land between reviews of this skill:
   the visual spacing shrinks, never the tap target.
 - **Card** (`src/design-system/components/card/`) — the shared
   CONTENT-layer surface: a solid, opaque themed fill with a defined
-  hairline border, no glass/blur material at all. Every content card,
+  hairline border, no glass/blur material at all. `selected?: boolean` (`card.props.d.ts`)
+  paints the shared selected surface (accent fill, `onAccent` content) on a list row whose page
+  the detail pane shows. Every content card,
   list row, and chart container that used to be a neutral (non-tint)
   `GlassSurface` now renders through this component instead — read
   its header comment (`card.component.tsx`) for the HIG rationale
   (Liquid Glass is reserved for the NAVIGATION layer, not content).
 - **GlassSurface** — the shared NAV-LAYER surface only: the tab bar,
-  bottom sheets, the FAB, and the keyboard-done accessory (grep
+  bottom sheets, the FAB (its edge: see "FAB edge" below), and the keyboard-done accessory (grep
   `<GlassSurface` for the current consumer list; content cards use
   `Card` above instead). Real Liquid Glass on iOS 26+, a themed flat
   fallback everywhere else, an optional `bordered` edge, and
@@ -1210,7 +1220,8 @@ new component can land between reviews of this skill:
   with no descriptor shows no line), the holding's computed value (as of
   `now`) on the right, a smaller base-currency line for a holding in another currency,
   and the owned share of a part-owned property. A plain tap calls
-  `onOpen`; it carries no long-press of its own, so a grid wraps it in
+  `onOpen`; `selected` marks it (the Card's selected surface, `accessibilityState.selected`); it
+  carries no long-press of its own, so a grid wraps it in
   `CardContextMenu` and `Sortable.Grid`. Consumers: the account-detail
   holding grid and the Accounts screen's Property and Debts grids.
 - **CloseHoldingSheet** and `useCloseHoldingAction`
@@ -1779,6 +1790,13 @@ item and the Reminders bell, the tab bar, and every quoted literal in
 reach). Raising the target again is one edit to `DEPLOYMENT_TARGET` plus the
 build files, then `pod install`; lowering it needs every symbol re-checked
 by the same guard.
+
+## FAB edge
+
+The add-transaction FAB sits on the window's vertical-bar side: `FAB_SIDE` in
+`src/screens/home/add-transaction-fab/add-transaction-fab.styles.ts` maps `useVerticalBarEdge()`
+(`leading` to left, `trailing` to right, `none` to right). In a companion pane the side is the fold
+side. Read the file for the current map (R33).
 
 ## GlassSurface `isLiquidGlassSupported` branch
 
