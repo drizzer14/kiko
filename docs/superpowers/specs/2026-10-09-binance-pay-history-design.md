@@ -214,19 +214,38 @@ withdraw budget moves into this object, with the same numbers and the same rule.
 
 ### 4. Pay walk (`binance.pay-history.ts`)
 
-- Floor: `max(HISTORY_FLOOR_MS, now - 18 calendar months + 1 day)` (Q6). Windows of
-  89 days.
-- Paging with no cursor: a full page of 100 sets the next `endTime` to the smallest
-  `transactionTime` in that page. Paging does not rely on the response order (Q7).
-  The overlap is removed by the key. If a full page makes no progress, stop the
-  window (`pay-page-stuck`).
-- Filter: `currency === 'BTC'`. A non-BTC order with a BTC `fundsDetail` entry is
-  counted and logged as `pay-non-btc-funds` and not imported (Q8).
+- Floor: `max(HISTORY_FLOOR_MS, now - 18 calendar months + 10 days)` (Q6). The
+  10-day margin keeps the first request inside the window however Binance counts
+  the 18 months; probe item 5 may narrow it. Windows of 89 days.
+- Paging with no cursor and no response order (Q7): a window is requested whole. A
+  full page (`gathered` of 100, counted over every coin) halves the span
+  (`end = start + floor((end - start) / 2)`) and asks again. A page that is not full
+  is the whole of its span: its rows commit, and the Pay cursor moves to the span's
+  end. The next span starts at that end (the 1 ms boundary is read twice and removed
+  by the key) and is twice as wide, up to the window's end. This does not depend on
+  the order of the response or on which end of the range is open, and no request has
+  `startTime` equal to `endTime`. A span of 1 ms that is still full stops the window
+  (`pay-page-stuck`). A window that needs more calls than one run's cap resumes on
+  the next run from the cursor of its last committed span; the cursor never moves
+  back and never passes the capital cursor.
+- Filter: `currency === 'BTC'`. A non-BTC order paid with BTC funds stops the span
+  that holds it (`pay-btc-funded-other-coin`, cursor unmoved) (Q8). Until a rule
+  exists the walk is blocked for that user rather than losing a BTC movement. User
+  ruling (I5): option A. Once probe item 7 confirms the `fundsDetail` shape, import
+  the BTC part of such an order as an outgoing BTC row on the wallet that paid.
+  This is not built yet; the stop stays until then.
 - Cross-source cap (until Q5 is answered): a Pay window is committed only when its
   end is at or before `binanceHistoryCursor` (the capital walk). An overlap guard
-  skips a Pay row, logged as `pay-overlap-skip`, when a committed capital row on
-  the same holding has the same signed satoshis and a time within 10 minutes. If
-  the probe shows no overlap, both are removed.
+  skips a row, logged as `pay-overlap-skip` (Pay) or `capital-overlap-skip`
+  (capital), when it is the twin of a stored row of the other walk: the same signed
+  satoshis and a time within 10 minutes. The guard reads the capital and Pay rows
+  of every Binance BTC holding of the account (Spot, Funding, Earn), not only the
+  holding the row lands on. It is symmetric, because a capital record that settles
+  late is imported behind the capital cursor after its Pay row: the capital walk
+  also skips a new capital row that pairs with a stored Pay row. It is one to one:
+  each row pairs with at most one row of the other walk, the closest in time, ties
+  by external id (capital id first, then Pay id), the same on every run. If the
+  probe shows no overlap, both walks drop the guard.
 - **Direction.** It does not depend on the sign. There are three signals:
   1. Shape: a non-empty `payerInfo.binanceId` means outgoing. Otherwise a
      non-empty `receiverInfo.binanceId` means incoming.
@@ -418,6 +437,8 @@ Placement (the "was:" column shows today's result):
 | P5 | Pay | [1,2], sums do not match | stop | not imported |
 | P6 | Pay | 3, 4, 6 | stop (Q9) | not imported |
 | P7 | any | target holding missing | create it at 0, then place | n/a |
+| P8 | Pay | BTC order whose `fundsDetail` names no BTC | stop (`pay-funds-not-btc`) | n/a |
+| P9 | Pay | non-BTC order paid with BTC funds | stop (`pay-btc-funded-other-coin`), cursor unmoved | n/a |
 | C1 | capital | walletType 0 | Spot | Spot |
 | C2 | capital | walletType 1 | Funding | Spot |
 
@@ -462,7 +483,12 @@ Convert: not imported (D7). No walk, no rows.
 
 - Fixtures are built from the S-table shapes. There is one case per matrix row,
   plus these mechanics:
-  - Pay: paging by narrowed `endTime`, and the stuck-page stop;
+  - Pay: the adaptive window (an oldest-first page, a same-millisecond tie across
+    a full page, a window that needs more calls than one run's cap, no request with
+    `startTime` equal to `endTime`), and the stuck-page stop;
+  - Pay and capital: the one-to-one guard in both directions (a Pay row stored
+    first with its capital twin later, two same-size Pay rows beside one capital
+    row, a capital row on another wallet than the Pay row);
   - Transfer and Earn: paging by `current`/`total`;
   - each walk: windows from its floor, and the re-sync overlap;
   - shared budget: UID and IP readings, per-walk caps, and a walk that stops when
@@ -530,10 +556,10 @@ Probe items:
 | Q2 | Is the Pay sign as the SDK states? | Sign is a cross-check only | 2 |
 | Q3 | Does the shape rule hold for every type (C2C_HOLDING* are not listed)? | All signals must agree, or stop | 2 |
 | Q4 | Is `transactionId` unique and stable? | orderType and walletType are in the key | 3 |
-| Q5 | Do Pay transfers also appear in capital history? | Cap plus the 10-minute guard. Remove both if there is no overlap | 4 |
-| Q6 | Pay `startTime` older than 18 months? | The floor is 18 months plus 1 day | 5 |
-| Q7 | Pay response order? | Page by the minimum time | 6 |
-| Q8 | Can BTC fund a non-BTC Pay order? | Logged, not imported. If any are found, the spec gets a rule before merge | 7 |
+| Q5 | Do Pay transfers also appear in capital history? | Cap plus the symmetric one-to-one 10-minute guard. Remove both if there is no overlap | 4 |
+| Q6 | Pay `startTime` older than 18 months? | The floor is 18 months plus 10 days | 5 |
+| Q7 | Pay response order? | None relied on: the adaptive window | 6 |
+| Q8 | Can BTC fund a non-BTC Pay order? | Stop `pay-btc-funded-other-coin`. If any are found, import the BTC part (I5, option A) | 7 |
 | Q9 | Pay walletType 3/4/6 or combined payments? | Stop | 8 |
 | Q10 | Universal transfer window cap and `size` max? | 30-day windows, size 100 | 9 |
 | Q11 | Universal transfer settled status value? | Only `CONFIRMED`. Anything else stops | 9 |
