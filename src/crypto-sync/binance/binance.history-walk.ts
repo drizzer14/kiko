@@ -100,16 +100,21 @@ export const logWalkStop = (code: string): void => {
  * sync (a never-used wallet creates none). An absent and a zero holding both add 0
  * to net worth, and the next good balance read overwrites the zero. The write is
  * insert-only, so a holding that appeared since the read is never overwritten.
+ * `createKeys` (default: every key) limits which missing keys are created: a wallet
+ * that receives only rows already stored elsewhere must not appear as an empty holding.
  */
 export const resolveWalletHoldings = async (input: {
   accountId: string;
   keys: BinanceWalletKey[];
+  createKeys?: BinanceWalletKey[];
   listHoldings: (accountId: string) => Promise<HoldingRow[]>;
   ensureHoldings: (holdings: ExchangeHolding[]) => Promise<void>;
 }): Promise<Map<BinanceWalletKey, HoldingRow>> => {
-  const { accountId, keys, listHoldings, ensureHoldings } = input;
+  const { accountId, keys, createKeys = keys, listHoldings, ensureHoldings } = input;
   let current = await listHoldings(accountId);
-  const missing = keys.filter((key) => !current.some((holding) => binanceKeyOf(holding) === key));
+  const missing = keys.filter(
+    (key) => createKeys.includes(key) && !current.some((holding) => binanceKeyOf(holding) === key),
+  );
 
   if (missing.length > 0) {
     await ensureHoldings(

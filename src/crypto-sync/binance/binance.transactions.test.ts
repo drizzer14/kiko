@@ -81,6 +81,7 @@ const makeDeps = (over: Partial<BinanceTransactionSyncDeps> = {}): BinanceTransa
   readCredentials: async () => ({ apiKey: 'api-key', secret: 'secret' }),
   listHoldings: async () => [spotHolding],
   ensureHoldings: jest.fn(async () => undefined),
+  storedExternalIds: jest.fn(async () => new Set<string>()),
   latestTransactionTime: async () => undefined,
   addTransactions: jest.fn(async (rows: BinanceTransactionRow[]) => rows.length),
   writeWalkCursor: jest.fn(async () => undefined),
@@ -580,6 +581,50 @@ describe('wallet placement by walletType (C-matrix)', () => {
     ]);
     expect(addedRows(deps)[0].holdingId).toBe('h-funding');
     expect(result).toEqual({ imported: 1, complete: true });
+  });
+
+  it('P7: creates no wallet holding when every row planned for it already exists', async () => {
+    const deps = makeDeps({
+      storedExternalIds: jest.fn(async () => new Set(['acc-1:deposit:1'])),
+      latestTransactionTime: RECENT_CURSOR,
+      fetchDepositHistory: jest.fn(async () => historyPage([deposit({ walletType: 1 })])),
+    });
+
+    const result = await sync(deps);
+
+    expect(deps.storedExternalIds).toHaveBeenCalledTimes(1);
+    expect(deps.storedExternalIds).toHaveBeenCalledWith(['acc-1:deposit:1']);
+    expect(deps.ensureHoldings).not.toHaveBeenCalled();
+    expect(addedRows(deps).map((row) => [row.externalId, row.holdingId])).toEqual([
+      ['acc-1:deposit:1', 'h-spot'],
+    ]);
+    expect(result).toEqual({ imported: 1, complete: true });
+  });
+
+  it('P7: creates the wallet holding once when one of its rows is new', async () => {
+    let stored = [spotHolding];
+    const ensureHoldings = jest.fn(async (_holdings: unknown[]) => {
+      stored = [spotHolding, fundingHolding];
+    });
+    const deps = makeDeps({
+      listHoldings: async () => stored,
+      ensureHoldings,
+      storedExternalIds: jest.fn(async () => new Set(['acc-1:deposit:1'])),
+      latestTransactionTime: RECENT_CURSOR,
+      fetchDepositHistory: jest.fn(async () =>
+        historyPage([deposit({ walletType: 1 }), deposit({ id: '8', walletType: 1 })]),
+      ),
+    });
+
+    await sync(deps);
+
+    expect(deps.storedExternalIds).toHaveBeenCalledTimes(1);
+    expect(ensureHoldings).toHaveBeenCalledTimes(1);
+    expect(addedRows(deps).map((row) => row.externalId)).toEqual([
+      'acc-1:deposit:1',
+      'acc-1:deposit:8',
+    ]);
+    expect(addedRows(deps)[1].holdingId).toBe('h-funding');
   });
 
   it('creates the Funding holding before the rows commit, and the rows before the cursor', async () => {

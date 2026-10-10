@@ -99,6 +99,8 @@ export type BinanceTransactionSyncDeps = {
   listHoldings: (accountId: string) => Promise<HoldingRow[]>;
   /** Creates a wallet holding the walk needs at zero; never touches an existing one. */
   ensureHoldings: (holdings: ExchangeHolding[]) => Promise<void>;
+  /** Which of these external ids a stored Binance row already holds, on any holding. */
+  storedExternalIds: (externalIds: string[]) => Promise<Set<string>>;
   /** The legacy fallback cursor: only consulted when the holding carries no watermark yet. */
   latestTransactionTime: (holdingId: string) => Promise<number | undefined>;
   addTransactions: (rows: BinanceTransactionRow[]) => Promise<number>;
@@ -128,6 +130,8 @@ const defaultBinanceTransactionDeps: BinanceTransactionSyncDeps = {
   readCredentials,
   listHoldings: async (accountId) => holdingsRepo.listByAccountQuery(accountId),
   ensureHoldings: (holdings) => holdingsRepo.ensureExchangeHoldings(holdings),
+  storedExternalIds: (externalIds) =>
+    transactionsRepo.storedExternalIdsQuery('binance', externalIds),
   latestTransactionTime: async (holdingId) =>
     (await transactionsRepo.latestSyncedTimeQuery(holdingId, 'binance')).at(0)?.time,
   addTransactions: (rows) => transactionsRepo.addManyDedup(rows),
@@ -346,26 +350,34 @@ const fetchWindowRecords = async (
 
 /**
  * Turn the planned rows into importable ones, creating a missing wallet holding at
- * zero first. A wallet that cannot be resolved even then stops the window.
+ * zero first, but only for a wallet that receives a row whose key is new. A row
+ * whose key is already stored keeps its stored holding (the upsert never moves it),
+ * so it must not conjure an empty holding it will never sit on; if its wallet has
+ * none it travels under `spot`, which the upsert ignores. A wallet that cannot be
+ * resolved even after creation stops the window.
  */
 const placeRows = async (
   deps: BinanceTransactionSyncDeps,
   accountId: string,
+  spot: HoldingRow,
   planned: PlannedRow[],
 ): Promise<BinanceTransactionRow[]> => {
   if (planned.length === 0) {
     return [];
   }
 
+  const stored = await deps.storedExternalIds(planned.map((row) => row.externalId));
+  const newRows = planned.filter((row) => !stored.has(row.externalId));
   const holdings = await resolveWalletHoldings({
     accountId,
     keys: [...new Set(planned.map((row) => row.wallet))],
+    createKeys: [...new Set(newRows.map((row) => row.wallet))],
     listHoldings: deps.listHoldings,
     ensureHoldings: deps.ensureHoldings,
   });
 
   return planned.map(({ wallet, ...row }) => {
-    const holding = holdings.get(wallet);
+    const holding = holdings.get(wallet) ?? (stored.has(row.externalId) ? spot : undefined);
 
     if (holding === undefined) {
       throw new BinanceWalkStop('capital-holding-missing');
@@ -379,6 +391,7 @@ const placeRows = async (
 const rowsOrStop = async (
   deps: BinanceTransactionSyncDeps,
   accountId: string,
+  spot: HoldingRow,
   records: WindowRecords,
 ): Promise<BinanceTransactionRow[] | BinanceWalkStop> => {
   try {
@@ -387,7 +400,7 @@ const rowsOrStop = async (
       ...records.withdrawals.map((record) => plannedWithdrawalOf(accountId, record)),
     ].filter((row): row is PlannedRow => row !== null);
 
-    return await placeRows(deps, accountId, planned);
+    return await placeRows(deps, accountId, spot, planned);
   } catch (error) {
     if (error instanceof BinanceWalkStop) {
       return error;
@@ -420,7 +433,7 @@ const runOneWindow = async (
     return { kind: 'stop' };
   }
 
-  const rows = await rowsOrStop(deps, accountId, records);
+  const rows = await rowsOrStop(deps, accountId, spot, records);
 
   if (rows instanceof BinanceWalkStop) {
     logWalkStop(rows.code);

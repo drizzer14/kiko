@@ -88,6 +88,11 @@ const fundingHoldings = (): { id: string; balance_minor_units: number }[] =>
     )
     .all() as { id: string; balance_minor_units: number }[];
 
+const holdingIds = (): string[] =>
+  (mockDatabase.prepare('SELECT id FROM holdings ORDER BY id').all() as { id: string }[]).map(
+    (holding) => holding.id,
+  );
+
 const importOldSpotDeposit = (): Promise<number> =>
   transactionsRepo.addManyDedup([
     {
@@ -108,9 +113,13 @@ describe('capital placement on real SQLite', () => {
   it('an old Spot deposit read again with walletType 1 stays on Spot: no second row, same count', async () => {
     await importOldSpotDeposit();
 
+    const holdingsBefore = holdingIds();
+
     const result = await runWalk([deposit({ walletType: 1 })]);
 
     expect(result).toEqual({ imported: 0, complete: true });
+    expect(holdingIds()).toEqual(holdingsBefore);
+    expect(fundingHoldings()).toEqual([]);
     expect(storedRows()).toEqual([
       { external_id: 'acc-1:deposit:7', holding_id: 'h-spot', amount_minor_units: 50_000_000 },
     ]);

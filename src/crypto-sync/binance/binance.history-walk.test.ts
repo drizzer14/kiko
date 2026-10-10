@@ -183,6 +183,39 @@ describe('resolveWalletHoldings', () => {
     ]);
   });
 
+  it('creates only the missing keys named in createKeys and still returns the existing ones', async () => {
+    const listHoldings = jest.fn(async (_accountId: string) => [holdingOf(SPOT_KEY)]);
+    const ensureHoldings = jest.fn(async (_holdings: unknown[]) => undefined);
+
+    const resolved = await resolveWalletHoldings({
+      accountId: 'acc-1',
+      keys: [SPOT_KEY, FUNDING_KEY, EARN_KEY],
+      createKeys: [EARN_KEY],
+      listHoldings,
+      ensureHoldings,
+    });
+
+    const created = ensureHoldings.mock.calls[0][0] as { metadataKey: string }[];
+    expect(created.map((holding) => holding.metadataKey)).toEqual([EARN_KEY]);
+    expect([...resolved.keys()]).toEqual([SPOT_KEY]);
+  });
+
+  it('writes nothing when createKeys is empty', async () => {
+    const listHoldings = jest.fn(async (_accountId: string) => [holdingOf(SPOT_KEY)]);
+    const ensureHoldings = jest.fn(async (_holdings: unknown[]) => undefined);
+
+    await resolveWalletHoldings({
+      accountId: 'acc-1',
+      keys: [FUNDING_KEY],
+      createKeys: [],
+      listHoldings,
+      ensureHoldings,
+    });
+
+    expect(ensureHoldings).not.toHaveBeenCalled();
+    expect(listHoldings).toHaveBeenCalledTimes(1);
+  });
+
   it('leaves a key out of the result when the holding is still absent after the write', async () => {
     const listHoldings = jest.fn(async (_accountId: string) => [holdingOf(SPOT_KEY)]);
     const ensureHoldings = jest.fn(async (_holdings: unknown[]) => undefined);

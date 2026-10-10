@@ -1866,6 +1866,22 @@ export const transactionsRepo = {
       .orderBy(desc(transactions.time))
       .limit(1),
   /**
+   * Which of `externalIds` a stored row of `source` already holds, on any holding —
+   * the same `(source, external_id)` lookup `addManyDedup` counts new rows with.
+   */
+  storedExternalIdsQuery: async (
+    source: TransactionRow['source'],
+    externalIds: string[],
+  ): Promise<Set<string>> => {
+    const stored = await readStoredConflictRows(
+      externalIds.map((externalId) => ({ source, externalId })),
+      (where) =>
+        database.select({ externalId: transactions.externalId }).from(transactions).where(where),
+    );
+
+    return new Set(stored.flatMap((row) => foldMap(maybe(row.externalId), (key) => [key]) ?? []));
+  },
+  /**
    * The DISTINCT holding ids that still carry an outstanding Monobank hold (a
    * pending authorization: `source = 'monobank'` AND `hold = true`). The sync
    * fetches these cards even when their /client-info balance is unchanged,
