@@ -1,10 +1,8 @@
 import { join } from 'node:path';
 import { readFileSync } from 'node:fs';
 
-// A Node rule shipped (kiko-component-i18n-namespace) with no bullet in
-// kiko-linter's "Node checkers" section, so the skill that lists every Node
-// checker silently lacked one. This makes a NODE_RULES row whose ruleId the
-// section never names fail `make verify`.
+// The "Node checkers" section of kiko-linter must name every NODE_RULES rule; a
+// row with no bullet there fails this test.
 //
 // `NODE_RULES` is not exported and `pre-write-guard.js` is a script, so the
 // ids are read from the array's own text: bounded to the `const NODE_RULES`
