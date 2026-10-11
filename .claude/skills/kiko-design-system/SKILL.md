@@ -151,9 +151,9 @@ itself, not only to `Button` — `chip-row.component.tsx` and
 trend-filter sheet's selected manual-category row
 (`trend-filter-field.component.tsx`'s `ManualCategoryRow`): its
 selected row paints the same filled `accent` background with
-`onAccent` text/icon/checkmark, REPLACING an earlier `surfaceHigh`
-selected-row treatment — the same filled-accent selection vocabulary
-as `ChipRow`, not a one-off. An UNCHECKED trend-filter
+`onAccent` text/icon/checkmark — the same filled-accent selection
+vocabulary as `ChipRow`, not a one-off; `TransactionCard`'s category
+glyph takes `onAccent` when the card is `selected`. An UNCHECKED trend-filter
 row keeps its own category's identity color instead: `SymbolIcon`
 resolves an explicit `color` prop over its `tone` prop, so the row
 passes `color={checked ? undefined : option.color}` — clearing
@@ -626,7 +626,10 @@ new component can land between reviews of this skill:
   caps its root. The vertical-bar signal it consumes is
   `useVerticalBarEdge` from `@kiko/display-regions`
   (`src/display-regions/`); `scroll-to-field` reads it through
-  `@kiko/display-regions` too. Its `scroll`
+  `@kiko/display-regions` too. `useScrollIndicatorProps()` (`use-pane-screen.ts`, exported by
+  the Screen barrel) is spread into every ScrollView or list a screen renders: it turns off
+  UIKit's automatic indicator insets only for a pane that does not reach the window's right edge.
+  Its `scroll`
   ScrollView is also the tab-root scroll container an active-tab
   re-tap returns to the top, where `HeaderHeightContext` is the LIVE
   header height — see
@@ -930,7 +933,12 @@ new component can land between reviews of this skill:
   it, so a control reads as raised instead of blending into the sheet
   (a chip or segment on it uses the faint `neutralSubtle` fill — see
   `ChipRow` and `SegmentedControl` below); a base at `surfaceHigh`
-  itself would swallow a selected pill. It caps
+  itself would swallow a selected pill. The scrim stays full-bleed. The card is full width on
+  one pane; on two panes it is narrowed to `theme.layout.sheetMaxWidth` and centred, and with a
+  fold reported it is centred inside the primary pane, so it never straddles the hinge; with
+  rows and a fold its height is capped to the primary pane (`resolveSheetFrame` in
+  `bottom-sheet.layout.ts`, applied in `bottom-sheet.component.tsx`; read the width in
+  `theme.ts`). It caps
   its own height at a fixed 66%-of-window ceiling and takes an optional
   `maxHeight` prop that can only tighten that cap further, plus a
   `scrollable` prop (defaults `true`) that wraps `children` in a
@@ -1560,10 +1568,9 @@ new component can land between reviews of this skill:
   carries no `accessibilityLabel`). The day number is `numberOfLines={1}`
   with `adjustsFontSizeToFit` (`minimumFontScale` 0.7, as
   `SegmentedControl`), so "31" never splits at accessibility text sizes.
-  **Layout traps:** the cell width is `'14.28%'`, never `100 / 7` —
-  Yoga resolves percentages in 32-bit float and wraps on a strict `>`, so
-  seven exact sevenths overshoot on 390pt/414pt rows and the grid drops
-  to six columns (the component test replays that float math). The
+  **Layout traps:** the cell width is `SEVEN_COLUMN_WIDTH`
+  (`src/design-system/seven-column-width/`, shared with `ColorPicker`), never `100 / 7`; the
+  Yoga float reason is documented in that file. The
   chip inset (`CHIP_TAP_INSET` in `chip-geometry.ts`, half of the
   44pt cell minus the 34pt chip; read the value there) is the cell's
   vertical padding, not a fixed cell height, so a chip grown by Dynamic Type keeps the inset the grid's
@@ -1690,8 +1697,20 @@ new component can land between reviews of this skill:
   visualization components; see the dedicated `kiko-charts` skill for
   their coordinate-space and testID conventions before touching any
   of the three. `PieChart` additionally supports `innerRatio` (ring
-  thickness) and `centerTotal` (an amount centered in the donut hole)
-  — see `kiko-charts`.
+  thickness) and `centerTotal` (an amount centered in the donut hole;
+  its sizing rule is in `kiko-charts`).
+- **ColorPicker** (`src/design-system/components/color-picker/`) — a seven-column swatch grid
+  whose cell width is `SEVEN_COLUMN_WIDTH` (`src/design-system/seven-column-width/`, shared with
+  `DayOfMonthGrid`) with a theme `rowGap`, so the swatches fill whole rows; read
+  `color-picker.styles.ts` and the palette for the current count.
+- **TransactionCard** (`src/design-system/components/transaction-card/`) — `selected` sets the
+  `Card` selected surface, and a category glyph with no colour of its own then takes `onAccent`.
+  Home marks a `TransactionRow` selected through `useDetailPaneRoute` and `detailParamOf`
+  (`kiko-architecture`, "Row marking").
+- **Form header** (`useFormHeaderItems`, `src/screens/forms/use-form-header-items/`) — the
+  nav-bar pair of a form: Cancel leading, only where the pane's own stack draws no back button,
+  and a prominent Save trailing; `hasSave` false keeps only Cancel. A form that uses it has no
+  footer Save. Read the folder for the current consumers.
 
 ## Capability icons — the transparency principle
 
@@ -1900,8 +1919,8 @@ project-wide rule this follows.
 **Percentage widths.** Yoga resolves `%` widths in 32-bit float and
 wraps on a strict `>`, so N equal columns of `100 / N`% can drop the
 last column on some row widths. Always use a slightly smaller rounded
-percentage (see `DayOfMonthGrid`'s `'14.28%'`) and pin it with a test
-that replays the float math.
+percentage (see `SEVEN_COLUMN_WIDTH` in `src/design-system/seven-column-width/`) and pin it
+with a test that replays the float math.
 
 Separate sibling React nodes in JSX with a blank line, the same way
 sibling statements are separated in `kiko-code-style`'s "Blank lines

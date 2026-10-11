@@ -2648,18 +2648,24 @@ the whole public surface, so read it for the exports. The units are one folder e
 (`src/navigation/*-stack/*.stack.tsx`)
 are built with `createPaneStackNavigator`.
 
-- **The one rule: open a screen in the pane opposite its opener** (`useOpenInPane`, or a plain
-  `navigate` from a screen; both become `PANE_OPEN`). `openFrom` in `pane-assignment.ts` first
-  pops every route above the opener, so a second tap replaces the first instead of stacking.
-- **`state.panes` is keyed by route key.** A stored pane wins; otherwise `resolvePanes` gives a
-  route the pane opposite the route below it, and the root takes `rootPane`. A default is never
-  "the route below" (a fold drops it, and routes above it must not change pane). `retainPanes`
-  drops the entry of every closed route; the router calls it after every action.
+- **The one rule: route 0 shows in the list pane (`rootPane`); every other route shows in the
+  detail pane (the pane opposite `rootPane`), whichever pane its opener is in** (`useOpenInPane`,
+  or a plain `navigate` from a screen; both become `PANE_OPEN`). `openFrom` in
+  `pane-assignment.ts` first pops every route above the opener, so a tap in the list replaces
+  the detail stack and a tap in the detail pane goes one step deeper there.
+- **`state.panes` is keyed by route key.** A stored pane wins; otherwise `resolvePanes` decides
+  by position alone: index 0 takes `rootPane`, every other route, a default included, takes the
+  detail pane (so a route pushed while folded, or a reminder rebuild, never lands in the list
+  pane). `retainPanes` drops the entry of every closed route; the router calls it after every
+  action.
 - **Per-tab config.** Each stack file declares its own `PANE_CONFIG` (`rootPane`, and optionally
   `companionDefault` / `primaryDefault` as `{ name, isDefault: true }`). Read the four
   `src/navigation/*-stack/*.stack.tsx` `PANE_CONFIG`s for the current defaults, not this skill.
   A config with no default can still get a RUNTIME default (below): the Accounts stack's config
-  declares none, and `use-accounts-pane.ts` shows one through `useShowPaneDefault`.
+  declares none, and `use-accounts-pane.ts` shows one through `useShowPaneDefault`. A config
+  default is a stand-in, not a tapped page: a fold drops it, a form opened above it replaces it,
+  and closing that form brings the stand-in back (it is not a real Back target, and the
+  stand-in screen's own state, a scroll position say, is lost).
 - **Static defaults are not in the state.** An empty pane shows its config default as a synthetic
   route keyed `pane-default:<pane>` that `pane-slice.ts` describes without materializing it.
   React Navigation hands such a screen one shared per-navigator placeholder navigation whose
@@ -2677,20 +2683,26 @@ are built with `createPaneStackNavigator`.
   `kiko-no-focus-hook-in-pane-default-screen` (`rules/semgrep-prewrite.yml`) bans
   `useIsFocused` / `useFocusEffect` under
   `src/screens/{home,accounts,statistics,settings/categories}/X
-- **Runtime defaults.** `PANE_SHOW_DEFAULT` (`useShowPaneDefault`, its 4th argument is
-  `isPlaceholder`; `PaneActions.showDefault`) inserts a route flagged `isDefault` right above the
-  root and moves `index`; it is a no-op when not `isSplit`, and it replaces a default already
-  shown. `PANE_OPEN` from an `isDefault` route clears the flag (materializes it), except for a
-  placeholder (`isPlaceholder`, e.g. `AccountsEmptyPane`): that keeps `isDefault`, the pane hook
-  replaces it once an account exists, and `PANE_FOLD` drops it (`pane-assignment.ts`; R37).
-  `PANE_CLOSE` (`useClosePaneRoute`, `pane-router.ts`) closes one route by key and is a no-op
-  when it is gone; it serves a deleted entity: the Accounts list closes the primary page, and
-  `useCloseWhenGone` (`src/screens/holding-detail/use-close-when-gone/use-close-when-gone.ts`) closes a companion
-  `HoldingDetail`, in panes only, after a fresh read (R38).
-- **Row marking.** A list row that opens a page is marked `selected` when the primary pane shows
-  that page: read `usePrimaryPaneRoute()` (`pane-visibility`; null in one pane or an empty
-  primary) and compare, for every row kind that opens a page (account card, holding card,
-  property/debt section row). See the design-system `selected` rule (R32).
+- **Runtime defaults.** `useShowPaneDefault` (`show-pane-default.ts`; it takes no pane
+  argument) dispatches `PANE_SHOW_DEFAULT`, handled by `showDefault` in `pane-router.ts`. It
+  fills the detail pane only, is a no-op when not `isSplit`, returns the state unchanged when the
+  detail pane's floor is a tapped page, and otherwise replaces the shown default in place,
+  keeping a page opened from a placeholder on top of it. `PANE_OPEN` from an `isDefault` route
+  clears the flag (materializes it), except for a placeholder (`isPlaceholder`, e.g.
+  `AccountsEmptyPane`): that keeps `isDefault`, the pane hook replaces it once an account
+  exists, and `PANE_FOLD` drops it (`pane-assignment.ts`; R37). `PANE_CLOSE`
+  (`useClosePaneRoute`, `pane-router.ts` `close`) closes a route by key AND every route opened
+  above it, and is a no-op once the key is gone; the stack router pops the root. It serves a
+  deleted entity: the Accounts list closes the detail pane's first page, and `useCloseWhenGone`
+  (`src/screens/holding-detail/use-close-when-gone/use-close-when-gone.ts`) closes this page and
+  the steps opened from it, in panes only, after a fresh read (R38).
+- **Row marking.** A list row that opens a page is marked `selected` when the detail pane's
+  first page is that page: read `useDetailPaneRoute()` (`pane-visibility`; null in one pane or
+  an empty detail pane) and compare with `detailParamOf(route, name, param)`, which reads a
+  string param, for every row kind that opens a page. The mark persists while deeper steps cover
+  the page. The markers are in `use-accounts-pane.ts`, the Settings menu and the Home
+  transaction row (`home.screen.tsx`, `TransactionRow` `selected`). Read the exports in the
+  `pane-stack` barrel. See the design-system `selected` rule (R32).
 - **While split, the action's source is not the focused route.** The router reads `isSplit` from
   a ref that `createPaneStackNavigator` sets in `useInsertionEffect` (current before any child's
   effect). `isSplit` also gates `PANE_SHOW_DEFAULT`. With a source route present and not on top, or

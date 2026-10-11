@@ -112,8 +112,7 @@ absent** — this skill states the shape and non-enum facts only:
   when that token is still the account's latest recorded write, so a later save (even of the same
   pair) is never deleted (`src/crypto-sync/binance/binance.credentials.ts`). The form clears
   when no row owns P, and account detail keeps the pair (user ruling 2026-10-10).
-  Known limit (R44): after a fold the Connect field
-  shows idle, and a second Connect re-syncs the same account. Re-picking the
+  Known limit after a fold: see kiko-architecture, "Form drafts". Re-picking the
   already-selected kind is a no-op (the bank/broker
   pick, custom icon and typed token stay); a switch to a different kind
   resets them. A wrongly picked bank
