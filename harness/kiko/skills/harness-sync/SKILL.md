@@ -24,6 +24,15 @@ BATCH READY, and a coordinator-run merge and push after the user's OK.
   `git -C <pff-ios> log --oneline <last point>..main -- harness scripts/checks scripts/wait-load.sh rules docs/harness CLAUDE.md __tests__`.
   Re-verify the sync point against the harness `git log` and CHANGELOG before you use it.
 
+Pending for the next sync (landed in pff-ios 2026-10-11 on branch loan-schedule-cards, not yet
+in the harness repo):
+- The generic Node rule `kiko-component-i18n-namespace` (pff-ios `99a6f0bc`, fixed in
+  `0fb10efc`): a `NODE_RULES` row with `overridable: false`,
+  `component-i18n-namespace.js`/`.sh`, `check:component-i18n-namespace` in `check:all`, exit 2
+  on a missing scan root. Portable only to a repo that uses the
+  `src/design-system/components/<name>/` convention.
+- Capitalization-tolerant history-word phrases in the history-word comment rule (`0fb10efc`).
+
 ## Classification
 
 Build a table FIRST: every pff-ios commit in the range, marked generic (port) or Kiko-only
@@ -39,12 +48,7 @@ Generic (ported in sync 2):
 - Mutation gate: change-set scoring (`mutation-score`), comment-only-changes filter,
   `Stryker disable` needs OVERRIDE, scaffolding out of the mutate set, json reporter.
 - check:closure and the check-all-lists invariant (both manual, outside check:all).
-- The generic Node rule `kiko-component-i18n-namespace` (a `NODE_RULES` row with
-  `overridable: false`, `component-i18n-namespace.js`/`.sh`,
-  `check:component-i18n-namespace` in `check:all`, exit 2 on a missing scan root);
-  portable only to a repo that uses the `src/design-system/components/<name>/`
-  convention.
-- Comment rules: capitalization-tolerant history-word phrases, task-id, early-exit pipe consumer, history-id comment,
+- Comment rules: task-id, early-exit pipe consumer, history-id comment,
   comment-line-width, history-date, kiko-no-change-language-in-test-body (WARNING).
 - Invariants and small fixes: typecheck TS18003 notice pass, heading citations,
   cited-paths partial citations, no single-test `paths.exclude`, Biome formats good fixtures,
