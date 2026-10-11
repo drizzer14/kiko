@@ -960,12 +960,19 @@ The sync pipeline is deliberately functional, not OOP — see
      (`src/transactions/sync-adoption/`) and in kiko-statement-import.
    - Re-syncing an existing external id **refreshes** the row's
      bank-owned columns (the settled amount and `hold` among them)
-     and **never** its `category` or `comment` — the category may be
-     the user's own override or a name-rule rewrite. Read
-     `addManyDedup`'s `onConflictDoUpdate` set for the exact
-     refreshable columns, and `transactions.hold` in
+     and **never** its `comment`. It writes `category` only for an
+     unflagged (`category_set_by_hand = 0`), non-structural row (no
+     `exchange_pair_id` / `exchange_counterpart_holding_id`,
+     `sets_balance = 0`, no `change_group_id`) whose amount changed and a
+     category rule wins (`ruleWonTransactionSet` in `transactions.repo.ts`);
+     every other row keeps the stored category, which may be the user's
+     own pick. Read `addManyDedup`'s `onConflictDoUpdate` set
+     (`bankOwnedTransactionSet`, or `ruleWonTransactionSet` for a rule-won
+     row) for the exact refreshable columns, and `transactions.hold` in
      `src/db/schema.ts` for why a pending item is imported at all.
-     Its `setWhere` is DERIVED from that same `set` list
+     Its `setWhere` (`bankOwnedTransactionSetWhere`, shared by the rule-won
+     branch, whose extra `category` write is gated on the amount, itself in
+     the list) is DERIVED from the bank-owned `set` list
      (`BANK_OWNED_TRANSACTION_COLUMNS`), never a second hand-typed
      column list — see `transactions.repo.ts`'s own doc comment — so
      the UPDATE is skipped entirely when a re-fetched row is

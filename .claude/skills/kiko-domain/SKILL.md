@@ -246,8 +246,11 @@ implemented, and callers must skip it rather than assume every id resolves.
 
   Re-syncing an existing `externalId` **refreshes** that row's
   bank-owned columns — the settled `amountMinorUnits` and `hold`
-  among them — and **never** its `category` (the user's override, or
-  a name rule's rewrite) or `comment`. Read `addManyDedup` in
+  among them — and **never** its `comment`; its `category` is written
+  only for an unflagged (`category_set_by_hand = 0`), non-structural row
+  (no exchange pair or counterpart holding, `sets_balance = 0`, no
+  `change_group_id`) whose amount changed and a category rule wins
+  (`ruleWonTransactionSet`, `src/transactions/repo/transactions.repo.ts`). Read `addManyDedup` in
   `src/transactions/` for the exact refreshable
   set, and `transactions.hold` in `src/db/schema.ts` for why a
   pending item is imported at its provisional amount at all, rather
@@ -318,6 +321,11 @@ A SYNC-owned balance is the exception and writes no ledger row: the
 provider owns that number (`upsertByMetadataKey` in
 `src/holdings/`), and the form hides the balance field for a synced
 holding entirely.
+
+A manual create carries `ManualTransaction.categorySetByHand` (true when the
+user picked the category by hand), stored in `transactions.category_set_by_hand`;
+`recordManual` returns the new row id and `recordManualWithReturns` the payment
+row id; rules and rewrites never touch a flagged row.
 
 **Every transaction updates its balance (user rule 2026-10-05).** A manual
 write (`recordManual`, each exchange or change-return leg), its edit (`update`,
@@ -2495,8 +2503,9 @@ MANUAL action may ever move `loanLinkRejected`.
 conflict path both the Monobank sync and statement import share) never
 refreshes any of the three loan-link columns on a re-sync — its
 `onConflictDoUpdate` `set` names only the bank-owned columns, the same
-exclusion `category`/`comment` already rely on (see that function's own
-existing doc comment). Its `setWhere` is derived from that SAME `set`
+exclusion `comment` relies on (`category` is excluded except in
+`ruleWonTransactionSet`'s guarded CASE; see the sync paragraph above) (see
+that function's own existing doc comment). Its `setWhere` is derived from that SAME `set`
 column list (`BANK_OWNED_TRANSACTION_COLUMNS`), so the UPDATE — and the
 `transactions` reactive-query fire it would otherwise trigger — is skipped
 entirely when a re-fetched row is unchanged; the loan-link columns are
