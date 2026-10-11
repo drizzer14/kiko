@@ -94,7 +94,7 @@ const exchangeUahIntoDeposit = (): Promise<void> =>
     time: MOVED,
   });
 
-const splitPayment = (): Promise<void> =>
+const splitPayment = (): Promise<string> =>
   transactionsRepo.recordManualWithReturns({
     payment: { holdingId: 'uah', amountMinorUnits: -50_000, time: MOVED, category: 'groceries' },
     returns: [

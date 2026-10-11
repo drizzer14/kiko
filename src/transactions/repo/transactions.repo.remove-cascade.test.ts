@@ -709,7 +709,7 @@ describe('deleting a leg of a Convert', () => {
 });
 
 describe('deleting a row of a split payment', () => {
-  const splitPayment = (): Promise<void> =>
+  const splitPayment = (): Promise<string> =>
     transactionsRepo.recordManualWithReturns({
       payment: { holdingId: 'uah', amountMinorUnits: -50_000, time: MOVED, category: 'groceries' },
       returns: [

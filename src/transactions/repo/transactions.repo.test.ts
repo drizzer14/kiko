@@ -614,9 +614,15 @@ describe('transactionsRepo.addManyDedup category rules', () => {
     ]);
 
     const inserted = captured.inserted ?? [];
-    expect(inserted[0]).toMatchObject({ description: 'ATB Market', category: 'groceries' });
-    // no rule for Coffee — its mapped category is left untouched
-    expect(inserted[1]).toMatchObject({ description: 'Coffee', category: 'dining' });
+    // The rows a rule won and the others are inserted apart, so the order is not asserted.
+    expect(inserted).toHaveLength(2);
+    expect(inserted).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ description: 'ATB Market', category: 'groceries' }),
+        // no rule for Coffee — its mapped category is left untouched
+        expect.objectContaining({ description: 'Coffee', category: 'dining' }),
+      ]),
+    );
   });
 
   it('matches a Cyrillic case-variant name against its rule', async () => {

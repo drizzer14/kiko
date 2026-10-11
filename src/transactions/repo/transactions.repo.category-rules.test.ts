@@ -1,7 +1,8 @@
 // A rule reaches a row at insert: a synced row, a statement-import row and a sync row that adopts
-// its import twin. What the rule replaces, what it never touches (an adopted twin's own pick, a
-// refreshed row), the currency it reads from the holding and how many statements it costs are SQL
-// over the stored ledger, so only a real engine shows them.
+// its import twin, and at a refresh that changes the amount. What the rule replaces, what it never
+// touches (an adopted twin's own pick, a row picked by hand), the currency it reads from the
+// holding and how many statements it costs are SQL over the stored ledger, so only a real engine
+// shows them.
 let mockDatabase: DatabaseSync;
 
 jest.mock('@kiko/db/client', () => {
@@ -203,11 +204,11 @@ describe('a rule at insert', () => {
     expect(categoryOf('amount')).toBe('groceries');
   });
 
-  it('never writes the category of a row it already stored', async () => {
+  it('never writes the category of a row it already stored at the same amount', async () => {
     await transactionsRepo.addManyDedup([syncItem('k1')]);
     insertRule('silpo', 'food', [nameIs('silpo')]);
 
-    await transactionsRepo.addManyDedup([syncItem('k1', { amountMinorUnits: -6_000 })]);
+    await transactionsRepo.addManyDedup([syncItem('k1', { mcc: 5499 })]);
 
     expect(categoryOf('k1')).toBe('groceries');
   });
@@ -296,6 +297,169 @@ describe('reading the rules at insert', () => {
 
     expect(rulesReadsOf(statements)).toBe(1);
     expect(currencyReadsOf(statements)).toBe(0);
+  });
+});
+
+describe('a rule at a refresh', () => {
+  const largeAmount: CategoryRuleMatcher = {
+    type: 'amount',
+    operator: 'gt',
+    minorUnits: 50_000,
+    currency: 'UAH',
+  };
+
+  const flagByHand = (externalId: string): void => {
+    run('UPDATE transactions SET category_set_by_hand = 1 WHERE external_id = ?', externalId);
+  };
+
+  it('gives an unflagged row the category of the rule that wins at the new amount', async () => {
+    insertRule('large', 'rent', [largeAmount]);
+    await transactionsRepo.addManyDedup([syncItem('k1')]);
+
+    await transactionsRepo.addManyDedup([syncItem('k1', { amountMinorUnits: -60_000 })]);
+
+    expect(categoryOf('k1')).toBe('rent');
+  });
+
+  it('leaves a row picked by hand alone when a rule wins at the new amount', async () => {
+    insertRule('large', 'rent', [largeAmount]);
+    await transactionsRepo.addManyDedup([syncItem('k1')]);
+    flagByHand('k1');
+
+    await transactionsRepo.addManyDedup([syncItem('k1', { amountMinorUnits: -60_000 })]);
+
+    expect(storedRows()).toMatchObject([{ externalId: 'k1', category: 'groceries', flag: 1 }]);
+  });
+
+  it('keeps the rule category instead of writing the bank category back when no rule wins', async () => {
+    insertRule('large', 'rent', [largeAmount]);
+    await transactionsRepo.addManyDedup([syncItem('k1', { amountMinorUnits: -60_000 })]);
+
+    await transactionsRepo.addManyDedup([syncItem('k1', { amountMinorUnits: -1_000 })]);
+
+    expect(categoryOf('k1')).toBe('rent');
+  });
+
+  it('keeps a category set outside the rules when no rule wins at the new amount', async () => {
+    insertRule('large', 'rent', [largeAmount]);
+    await transactionsRepo.addManyDedup([syncItem('k1')]);
+    run("UPDATE transactions SET category = 'shops' WHERE external_id = 'k1'");
+
+    await transactionsRepo.addManyDedup([syncItem('k1', { amountMinorUnits: -1_000 })]);
+
+    expect(categoryOf('k1')).toBe('shops');
+  });
+
+  it('keeps the category when only the description changed, though a rule wins', async () => {
+    insertRule('silpo', 'food', [nameIs('silpo')]);
+    await transactionsRepo.addManyDedup([syncItem('k1', { description: 'Atb' })]);
+
+    await transactionsRepo.addManyDedup([syncItem('k1', { description: 'Silpo' })]);
+
+    expect(storedRows()).toMatchObject([{ externalId: 'k1', category: 'groceries' }]);
+  });
+
+  it('writes nothing when no bank-owned column changed', async () => {
+    insertRule('large', 'rent', [largeAmount]);
+    await transactionsRepo.addManyDedup([syncItem('k1', { amountMinorUnits: -60_000 })]);
+    run('CREATE TABLE update_log (id TEXT)');
+    run(
+      `CREATE TRIGGER log_update AFTER UPDATE ON transactions
+       BEGIN INSERT INTO update_log (id) VALUES (NEW.id); END`,
+    );
+
+    await transactionsRepo.addManyDedup([syncItem('k1', { amountMinorUnits: -60_000 })]);
+
+    expect(mockDatabase.prepare('SELECT COUNT(*) AS total FROM update_log').get()).toEqual({
+      total: 0,
+    });
+  });
+
+  it('re-categorises a hold that settles above the amount a rule needs', async () => {
+    insertRule('large', 'rent', [largeAmount]);
+    await transactionsRepo.addManyDedup([
+      syncItem('k1', { amountMinorUnits: -49_900, hold: true }),
+    ]);
+
+    await transactionsRepo.addManyDedup([
+      syncItem('k1', { amountMinorUnits: -50_100, hold: false }),
+    ]);
+
+    expect(categoryOf('k1')).toBe('rent');
+  });
+
+  it('decides each row of one batch on its own flag, new rows included', async () => {
+    insertRule('large', 'rent', [largeAmount]);
+    await transactionsRepo.addManyDedup([syncItem('k1'), syncItem('k2')]);
+    flagByHand('k1');
+
+    await transactionsRepo.addManyDedup([
+      syncItem('k1', { amountMinorUnits: -60_000 }),
+      syncItem('k2', { amountMinorUnits: -60_000 }),
+      syncItem('k3', { amountMinorUnits: -60_000 }),
+    ]);
+
+    expect(storedRows().map((row) => [row.externalId, row.category])).toEqual([
+      ['k1', 'groceries'],
+      ['k2', 'rent'],
+      ['k3', 'rent'],
+    ]);
+  });
+});
+
+describe('the manual-save flag', () => {
+  const flagOf = (id: string): number | undefined =>
+    (
+      mockDatabase
+        .prepare('SELECT category_set_by_hand AS flag FROM transactions WHERE id = ?')
+        .get(id) as { flag: number } | undefined
+    )?.flag;
+
+  const manualInput = { holdingId: 'card', amountMinorUnits: -100, time: T, category: 'food' };
+
+  it('stores a hand pick and returns the new row id', async () => {
+    const rowId = await transactionsRepo.recordManual({ ...manualInput, categorySetByHand: true });
+
+    expect(flagOf(rowId)).toBe(1);
+  });
+
+  it('stores no flag when the category was not picked by hand', async () => {
+    const rowId = await transactionsRepo.recordManual(manualInput);
+
+    expect(flagOf(rowId)).toBe(0);
+  });
+
+  it('flags the payment row of a split, not its returns, and returns the payment id', async () => {
+    const paymentId = await transactionsRepo.recordManualWithReturns({
+      payment: { ...manualInput, amountMinorUnits: -10_000, categorySetByHand: true },
+      returns: [{ holdingId: 'usd', amountMinorUnits: 2_000 }],
+    });
+    const rows = mockDatabase
+      .prepare(
+        'SELECT id, amount_minor_units AS amount, category_set_by_hand AS flag FROM transactions',
+      )
+      .all();
+
+    expect(rows).toHaveLength(2);
+    expect(rows).toEqual(
+      expect.arrayContaining([
+        { id: paymentId, amount: -10_000, flag: 1 },
+        expect.objectContaining({ amount: 2_000, flag: 0 }),
+      ]),
+    );
+  });
+
+  it('stores no flag on either leg of an exchange', async () => {
+    await transactionsRepo.recordExchange({
+      sourceHoldingId: 'card',
+      valueOutMinorUnits: 4_000,
+      destinationHoldingId: 'usd',
+      destinationType: 'card',
+      valueInMinorUnits: 100,
+      time: T,
+    });
+
+    expect(storedRows().map((row) => row.flag)).toEqual([0, 0]);
   });
 });
 
