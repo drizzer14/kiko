@@ -24,6 +24,24 @@ Rules:
   subagent-driven-development, dispatching-parallel-agents, verification-before-completion,
   finishing-a-development-branch.
 - On completion, an orchestrator or role agent SendMessages the coordinator session that dispatched the work with the result (the final commit sha and a one-line summary). This is the standing default, so an orchestrator brief does not need to restate it.
+- Every session-to-session message (report, question, BATCH READY, handover) uses Claude Code
+  SendMessage, which lands in the receiving session's inbox. A session NEVER messages another
+  session through Orca (no `orca orchestration send/ask/reply`, no `orca terminal send` into a
+  session someone types in): Orca types it into the terminal input and interrupts the user's
+  typing (seen on the user's other laptop, where Claude had to block them). `orca terminal send`
+  is only for starting a fresh session, its first brief pointer, and slash commands
+  (`/reload-plugins`, `/clear`) sent by the coordinator.
+- Do it yourself first. Before you hand the user a command or a click, check whether your own
+  tools can do it (Bash, `orca terminal send` for a slash command in another session, an agent
+  dispatch, a file edit). If they can, do it and report the result. Hand the user only what
+  truly needs them: slash commands in the user's OWN session, GUI-only steps (App Store
+  Connect, Device Hub poses, the physical device), entering the user's secrets, or a step a hook
+  or the permission system denied (report it, never bypass). This does not lift the user's
+  explicit gates (pushes and publishes that need the user's OK, destructive or hard-to-reverse
+  actions). Example: after a merge that bumps the kiko plugin, the coordinator runs
+  `claude plugin update kiko@kiko-marketplace` itself from the main checkout and sends
+  `/reload-plugins` to every Orca session (read each for "Reloaded:"); only the user's own
+  session reload is the user's step.
 - Every dispatch names an expected duration. When that time passes with no report,
   the orchestrator checks the agent itself (its output so far, its worktree state) —
   it does not keep waiting silently. The coordinator is not the watchdog for role
@@ -186,6 +204,10 @@ from it. Then fast-forward main. Run exactly
 `git -C /Users/drizzer14/Developer/Projects/pff-ios merge --ff-only <sha>`.
 Any added option (-q, --quiet, --no-edit, -v) is denied. Read the result
 with `git -C /Users/drizzer14/Developer/Projects/pff-ios log -1 --oneline`.
+
+A track that regenerates shared binary fixtures (the demo .kiko files)
+merges main first and regenerates on the merged builder; never
+hand-merge a binary.
 
 ## Read-only agents return their report
 
@@ -359,7 +381,8 @@ kiko-linter's "Pre-write guard replay on the Stop tier".
 Run a verbose or long-running command inside an Orca terminal instead
 of the coordinator's own shell, so its full output stays out of the
 coordinator's context — only what you choose to read comes back.
-Mechanism: `orca terminal send --text "<cmd>" --enter --json`, then
+This is for running commands, never for messaging a session (see the
+SendMessage bullet above). Mechanism: `orca terminal send --text "<cmd>" --enter --json`, then
 read just the tail with `orca terminal read`. Full CLI usage:
 `orca skills get orca-cli` (do not copy that guide's content here).
 
@@ -402,8 +425,10 @@ that reads the handoff file.
 - Agents and skills load from the versioned plugin CACHE
   (`~/.claude/plugins/cache/kiko-marketplace/kiko/<version>`). A text
   change to an agent or skill is live only after: bump the
-  `plugin.json` version, the user runs
-  `claude plugin update kiko@kiko-marketplace`, then `/reload-plugins`.
+  `plugin.json` version, the coordinator runs
+  `claude plugin update kiko@kiko-marketplace` from the main checkout,
+  then `/reload-plugins` goes to every Orca session (the user reloads
+  their own session).
 - Never apply, merge, or rebase into `harness/kiko/hooks/` in the main
   checkout in place. Build the new file in scratch, run `bash -n`, grep
   it for conflict markers, then install it with one `mv`.
@@ -508,6 +533,18 @@ without independent verification. Also spot-check that a skill
 section a report cites actually exists at the stated path/heading
 before trusting a claim built on it.
 
+The orchestrator quotes the jest summary lines itself ("Test Suites: N
+passed", "Tests: N passed") in every BATCH READY, and never relays an
+agent's "passed" verdict (ops misreported a failed `make verify` as
+passing twice on 2026-10-10).
+
+## Probe a live API before building on its shape
+
+Before building code that depends on an API's response shape, probe it
+with real read-only calls (2026-10-10: the probe showed Binance
+walletTypes are strings and the Pay direction-by-shape rule false on
+all C2C receives).
+
 ## Deferred-to-scribe items must be named explicitly
 
 A "deferred to the scribe step" item that is not a skill edit (plan
@@ -543,4 +580,6 @@ never raise a timeout. See memory `check-security-timeout-under-load`.
 
 A long orchestrator brief lives in `memory/refs/brief-<task>.md` in the
 main checkout (untracked); the terminal message only names that path;
-never paste a long brief or backticks into `orca terminal send`.
+never paste a long brief or backticks into `orca terminal send`. The
+pointer is the first message of a fresh session only; later messages go
+by SendMessage.

@@ -31,6 +31,12 @@ Rules:
   resolve are refused directly (exit 2), and no env var bypasses the cap.
   On that failure, split the run into smaller change sets — never raise
   the cap.
+- A running gate can be paused with `kill -STOP` on its own pids (the
+  stryker parent plus its `child-process-proxy-worker` children) and
+  resumed with `kill -CONT` (verified 2026-10-10/11: kill-guard allows it
+  for own pids). Cost: at most one extra timeout per worker at the pause
+  point. Use it for battery mode or a simulator session instead of
+  killing the run.
 - The coordinator who runs `make deep` logs the result per harness-workflow's "Run log"
   (`--gate deep --verdict pass|fail|timeout` on the run id the BATCH READY names).
 - Run check:deep / check:mutation only through the wrapper
@@ -168,7 +174,7 @@ install, so compare it with the prior one to prove a fresh install
 actually landed.
 
 A change under `harness/kiko/` (hooks, scripts it calls) is live only
-after a plugin update — see `harness-workflow`'s "Harness hook changes
+after the coordinator's plugin update and reload — see `harness-workflow`'s "Harness hook changes
 go live only after a plugin update". Verify with a harmless probe
 before you rely on a hook.
 
@@ -238,5 +244,12 @@ runs (kiko-linter "WAIT-LOOP deny"); a `ps -p <pid>` or `kill -0 <pid>` wait
 stays allowed. At most ONE jest-heavy agent per track; Semgrep or jest
 timeouts at high load are environment, not code: re-run at low load,
 never raise a timeout. See memory `check-security-timeout-under-load`.
+A Semgrep timeout at high load is environment: re-run at low load (a
+`check:all` on 2026-10-11 failed `check:security` on a Timeout at load ~33).
+
+Known limit: the macOS load average counts disk waits, so `wait-load.sh`
+can block for nothing (2026-10-11: load5 31 with idle CPU blocked agents
+35+ min). Workaround: check real CPU use (`top -l 2`, idle column) and
+pass a higher threshold, or skip the wait when the coordinator says so.
 
 Background Claude sessions export FORCE_COLOR=3; run checks as `env -u FORCE_COLOR <command>`.
