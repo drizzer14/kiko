@@ -54,7 +54,11 @@ export const COSTS = {
 } as const satisfies Record<string, CallCost>;
 
 export type BinanceRunBudget = {
-  canAfford: (lane: BudgetLane, cost: CallCost) => boolean;
+  /**
+   * Whether the lane can make this call and still `keep` more of the same cost, so a pass
+   * that comes later in a run keeps the calls it needs.
+   */
+  canAfford: (lane: BudgetLane, cost: CallCost, keep?: number) => boolean;
   record: (
     lane: BudgetLane,
     page: { usedUidWeight1m: number | undefined; usedIpWeight1m: number | undefined },
@@ -77,16 +81,19 @@ export const createBinanceRunBudget = (): BinanceRunBudget => {
   let usedIpWeight: number | undefined;
 
   return {
-    canAfford: (lane, cost) => {
-      if (callsByLane[lane] >= LANE_CALL_CAPS[lane]) {
+    canAfford: (lane, cost, keep = 0) => {
+      if (callsByLane[lane] + keep >= LANE_CALL_CAPS[lane]) {
         return false;
       }
 
       if ('uid' in cost) {
-        return usedUidWeight === undefined || usedUidWeight + cost.uid <= UID_WEIGHT_BUDGET_1M;
+        return (
+          usedUidWeight === undefined ||
+          usedUidWeight + cost.uid * (keep + 1) <= UID_WEIGHT_BUDGET_1M
+        );
       }
 
-      return usedIpWeight === undefined || usedIpWeight + cost.ip <= IP_BUDGET_1M;
+      return usedIpWeight === undefined || usedIpWeight + cost.ip * (keep + 1) <= IP_BUDGET_1M;
     },
     record: (lane, page) => {
       callsByLane[lane] += 1;

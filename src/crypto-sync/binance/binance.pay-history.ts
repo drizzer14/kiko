@@ -465,15 +465,16 @@ const stopOnRateLimit = (
 /**
  * One request for the span. `undefined` is a clean stop: the call budget ran out (each
  * request records a call on the lane, so its per-run cap ends the walk), or Binance
- * rate-limited.
+ * rate-limited. `keep` calls stay unspent for the passes that come later in the run.
  */
 const fetchSpan = async (
   context: PayContext,
   span: WalkWindow,
+  keep: number,
 ): Promise<PayHistoryPage | undefined> => {
   const { deps, run, apiKey, secret, options } = context;
 
-  if (!run.budget.canAfford('pay', COSTS.pay)) {
+  if (!run.budget.canAfford('pay', COSTS.pay, keep)) {
     return undefined;
   }
 
@@ -614,8 +615,9 @@ const commitOrStop = async (
 const readSpan = async (
   context: PayContext,
   span: WalkWindow,
+  keep: number,
 ): Promise<SpanRead<PayHistoryPage> | undefined> => {
-  const page = await fetchSpan(context, span);
+  const page = await fetchSpan(context, span, keep);
 
   if (page === undefined) {
     return undefined;
@@ -723,14 +725,15 @@ const runSync = async (
 
   return runWalkPlan({
     plan,
-    canAfford: () =>
-      run.budget.canAfford('pay', COSTS.pay) && !isBinanceCoolingDown(accountId, deps.now()),
-    runWindow: (window, pass) =>
+    canAfford: (keep) =>
+      run.budget.canAfford('pay', COSTS.pay, keep) && !isBinanceCoolingDown(accountId, deps.now()),
+    runWindow: (window, pass, keep) =>
       walkSpans({
         window,
-        read: (span) => readSpan(context, span),
+        read: (span, keepCalls) => readSpan(context, span, keepCalls),
         commit: (span, page) => commitOrStop(context, span, page, pass),
         pass,
+        keep,
       }),
   });
 };

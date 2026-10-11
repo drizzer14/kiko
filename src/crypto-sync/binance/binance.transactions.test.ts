@@ -1947,11 +1947,11 @@ describe('the pending overlap days of the capital walk', () => {
     it('imports an unrelated owed day that a merge past the twelve-range cap put beside the stuck range, and keeps only a small span of the stuck range owed', async () => {
       const unrelatedDay = { start: BASE + 2.5 * DAY_MS, end: BASE + 3.5 * DAY_MS };
       const unrelated = withdrawal({ id: 'unrelated', applyTime: unrelatedDay.start });
-      const others = Array.from({ length: 10 }, (_unused, index) => ({
-        start: BASE + (20 + index * 10) * DAY_MS,
-        end: BASE + (21 + index * 10) * DAY_MS,
+      const others = Array.from({ length: 11 }, (_unused, index) => ({
+        start: BASE - (10 + index * 10) * DAY_MS,
+        end: BASE - (9 + index * 10) * DAY_MS,
       }));
-      const state = await stateOf(NOW - 2 * DAY_MS, [stuckDay, unrelatedDay, ...others]);
+      const state = await stateOf(NOW - 2 * DAY_MS, [...others, stuckDay, unrelatedDay]);
 
       for (let attempt = 0; attempt < 3; attempt += 1) {
         await runOver(state, [stuckRecord(), unrelated]);
@@ -1973,34 +1973,85 @@ describe('the pending overlap days of the capital walk', () => {
       expect(owed.at(-1)?.end).toBeGreaterThanOrEqual(stuckAt);
     });
 
-    it('reads a new owed range on the first run, behind six stuck ranges that are older', async () => {
-      const stuckRanges = Array.from({ length: 6 }, (_unused, index) => ({
+    describe('with a new owed range behind stuck ranges that are older', () => {
+      const stuckRangesOf = (count: number): WalkWindow[] =>
+        Array.from({ length: count }, (_unused, index) => ({
+          start: BASE + index * 10 * DAY_MS,
+          end: BASE + index * 10 * DAY_MS + DAY_MS,
+        }));
+      const newDay = { start: BASE + 150 * DAY_MS, end: BASE + 151 * DAY_MS };
+      const stuckRecordsOf = (ranges: WalkWindow[]) =>
+        ranges.map((range, index) =>
+          withdrawal({ id: '', txId: '', applyTime: range.start + 1_000 + index }),
+        );
+      const fresh = () => withdrawal({ id: 'new-day', applyTime: newDay.start + 1_000 });
+
+      it('reads it on the first run behind two of them: the calls kept for halving leave three reads for owed windows', async () => {
+        const stuckRanges = stuckRangesOf(2);
+        const state = await stateOf(NOW - 2 * DAY_MS, [...stuckRanges, newDay]);
+
+        await runOver(state, [...stuckRecordsOf(stuckRanges), fresh()]);
+
+        expect(state.imported.has(keyOf(fresh()))).toBe(true);
+      });
+
+      it('reads it within 60 runs behind six of them, and reads the re-scan every run meanwhile', async () => {
+        const stuckRanges = stuckRangesOf(6);
+        const state = await stateOf(NOW - 2 * DAY_MS, [...stuckRanges, newDay]);
+        let runs = 0;
+
+        while (!state.imported.has(keyOf(fresh())) && runs < 60) {
+          const { deps } = await runOver(state, [...stuckRecordsOf(stuckRanges), fresh()]);
+
+          expect(withdrawStartsOf(deps)).toContain(NOW - 89 * DAY_MS);
+          runs += 1;
+        }
+
+        expect(state.imported.has(keyOf(fresh()))).toBe(true);
+      });
+    });
+
+    describe('with ten spans that cannot be halved any further, left by isolating ten stuck days', () => {
+      const stuckDays = Array.from({ length: 10 }, (_unused, index) => ({
         start: BASE + index * 10 * DAY_MS,
         end: BASE + index * 10 * DAY_MS + DAY_MS,
       }));
-      const newDay = { start: BASE + 150 * DAY_MS, end: BASE + 151 * DAY_MS };
-      const stuckRecords = stuckRanges.map((range, index) =>
-        withdrawal({ id: '', txId: '', applyTime: range.start + 1_000 + index }),
-      );
-      const fresh = withdrawal({ id: 'new-day', applyTime: newDay.start + 1_000 });
-      const state = await stateOf(NOW - 2 * DAY_MS, [...stuckRanges, newDay]);
-
-      await runOver(state, [...stuckRecords, fresh]);
-
-      expect(state.imported.has(keyOf(fresh))).toBe(true);
-    });
-
-    describe('with ten spans that cannot be halved any further', () => {
-      const isolatedAt = Array.from({ length: 10 }, (_unused, index) => BASE + index * 10 * DAY_MS);
-      const isolatedSpans = isolatedAt.map((start) => ({ start, end: start + 1 }));
+      const stuckTimes = stuckDays.map((day, index) => day.start + 3_600_000 + index);
       const stuckRecords = () =>
-        isolatedAt.map((applyTime) => withdrawal({ id: '', txId: '', applyTime }));
+        stuckTimes.map((applyTime) => withdrawal({ id: '', txId: '', applyTime }));
       const fixedRecords = () =>
-        isolatedAt.map((applyTime, index) => withdrawal({ id: `fixed-${index}`, applyTime }));
+        stuckTimes.map((applyTime, index) => withdrawal({ id: `fixed-${index}`, applyTime }));
       const newDay = { start: BASE + 150 * DAY_MS, end: BASE + 151 * DAY_MS };
       const fresh = () => withdrawal({ id: 'new-day', applyTime: newDay.start + 1_000 });
       const late = () => withdrawal({ id: 'late', applyTime: NOW - 50 * DAY_MS });
+      const isolatedOwed = (state: PendingState): WalkWindow[] =>
+        beyondWindow(state.account.pending()).filter((range) => range.end - range.start <= 2);
+      let isolatedSpans: WalkWindow[] = [];
+
+      beforeAll(async () => {
+        const state = await stateOf(NOW - 2 * DAY_MS, stuckDays);
+        const isolated = () => isolatedOwed(state).length === 10;
+
+        for (let attempt = 0; attempt < 200 && !isolated(); attempt += 1) {
+          await runOver(state, stuckRecords());
+        }
+
+        isolatedSpans = beyondWindow(state.account.pending());
+      });
+
       const stateWithIsolated = () => stateOf(NOW - 2 * DAY_MS, [...isolatedSpans, newDay]);
+
+      it('has isolated each stuck day to a span of 2 ms or less around its record', () => {
+        expect(isolatedSpans).toHaveLength(10);
+        expect(
+          isolatedSpans.every(
+            (span, index) =>
+              span.end - span.start <= 2 &&
+              span.start <= stuckTimes[index] &&
+              stuckTimes[index] <= span.end,
+          ),
+        ).toBe(true);
+      });
 
       it('imports the new owed day and the late record of the window on the next run, and keeps the spans owed', async () => {
         const state = await stateWithIsolated();
@@ -2010,9 +2061,10 @@ describe('the pending overlap days of the capital walk', () => {
         expect(state.imported.has(keyOf(fresh()))).toBe(true);
         expect(state.imported.has(keyOf(late()))).toBe(true);
         expect(state.imported.size).toBe(2);
-        const owed = beyondWindow(state.account.pending());
-        expect(owed.filter((range) => range.end - range.start === 1)).toHaveLength(10);
-        expect(owed.some((range) => range.start === newDay.start)).toBe(false);
+        expect(isolatedOwed(state)).toHaveLength(10);
+        expect(
+          beyondWindow(state.account.pending()).some((range) => range.start === newDay.start),
+        ).toBe(false);
       });
 
       it('reads the new owed day and the re-scan before any of the spans, in one run', async () => {
@@ -2022,8 +2074,10 @@ describe('the pending overlap days of the capital walk', () => {
 
         const starts = withdrawStartsOf(deps);
         expect(starts.indexOf(newDay.start)).toBeGreaterThan(0);
-        expect(starts.indexOf(newDay.start)).toBeLessThan(starts.indexOf(isolatedAt[0]));
-        expect(starts.indexOf(NOW - 89 * DAY_MS)).toBeLessThan(starts.indexOf(isolatedAt[0]));
+        expect(starts.indexOf(newDay.start)).toBeLessThan(starts.indexOf(isolatedSpans[0].start));
+        expect(starts.indexOf(NOW - 89 * DAY_MS)).toBeLessThan(
+          starts.indexOf(isolatedSpans[0].start),
+        );
       });
 
       it('imports a span that became readable on a later run once budget is left, and nothing twice', async () => {
@@ -2050,9 +2104,7 @@ describe('the pending overlap days of the capital walk', () => {
 
         expect(second.result).toEqual({ imported: 0, complete: false });
         expect(state.imported.size).toBe(2);
-        expect(
-          beyondWindow(state.account.pending()).filter((range) => range.end - range.start === 1),
-        ).toHaveLength(10);
+        expect(isolatedOwed(state)).toHaveLength(10);
       });
     });
 

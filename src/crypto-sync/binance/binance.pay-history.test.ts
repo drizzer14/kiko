@@ -1359,13 +1359,13 @@ describe('the pending overlap days of a walk', () => {
     it('imports an unrelated owed day that a merge past the twelve-range cap put beside the stuck range, and keeps only a small span of the stuck range owed', async () => {
       const unrelatedDay = { start: BASE + 2.5 * DAY_MS, end: BASE + 3.5 * DAY_MS };
       const unrelated = order({ transactionId: 'unrelated', transactionTime: unrelatedDay.start });
-      const others = Array.from({ length: 10 }, (_unused, index) => ({
-        start: BASE + (20 + index * 10) * DAY_MS,
-        end: BASE + (21 + index * 10) * DAY_MS,
+      const others = Array.from({ length: 11 }, (_unused, index) => ({
+        start: BASE - (10 + index * 10) * DAY_MS,
+        end: BASE - (9 + index * 10) * DAY_MS,
       }));
       const state = stateOf({
         payCursor: NOW - 2 * DAY_MS,
-        pending: [stuckDay, unrelatedDay, ...others],
+        pending: [...others, stuckDay, unrelatedDay],
       });
 
       await runOver(state, [stuckOrder(), unrelated]);
@@ -1407,29 +1407,50 @@ describe('the pending overlap days of a walk', () => {
       expect(state.imported.has(keyOf(state, fresh))).toBe(true);
     });
 
-    describe('with ten spans that cannot be halved any further', () => {
-      const isolatedAt = Array.from({ length: 10 }, (_unused, index) => BASE + index * 10 * DAY_MS);
-      const isolatedSpans = isolatedAt.map((start) => ({ start, end: start + 1 }));
+    describe('with ten spans that cannot be halved any further, left by isolating ten stuck days', () => {
+      const stuckDays = Array.from({ length: 10 }, (_unused, index) => ({
+        start: BASE + index * 10 * DAY_MS,
+        end: BASE + index * 10 * DAY_MS + DAY_MS,
+      }));
+      const stuckTimes = stuckDays.map((day, index) => day.start + 3_600_000 + index);
       const stuckOrders = () =>
-        isolatedAt.map((transactionTime) => order({ transactionId: '', transactionTime }));
+        stuckTimes.map((transactionTime) => order({ transactionId: '', transactionTime }));
       const fixedOrders = () =>
-        isolatedAt.map((transactionTime, index) =>
+        stuckTimes.map((transactionTime, index) =>
           order({ transactionId: `fixed-${index}`, transactionTime }),
         );
       const newDay = { start: BASE + 150 * DAY_MS, end: BASE + 151 * DAY_MS };
       const fresh = () =>
         order({ transactionId: 'new-day', transactionTime: newDay.start + 1_000 });
       const late = () => order({ transactionId: 'late', transactionTime: NOW - 50 * DAY_MS });
-      // The twelfth range, a day in the window, lets the overlap day behind the cursor merge
-      // with it when the list is cut to its cap, so no span here is merged with another.
-      const inWindowDay = { start: NOW - 10 * DAY_MS, end: NOW - 9 * DAY_MS };
-      const stateWithIsolated = () =>
-        stateOf({
-          payCursor: NOW - 2 * DAY_MS,
-          pending: [...isolatedSpans, newDay, inWindowDay],
-        });
       const isolatedOwed = (state: PendingState): WalkWindow[] =>
-        beyondWindow(state.pending).filter((range) => range.end - range.start === 1);
+        beyondWindow(state.pending).filter((range) => range.end - range.start <= 2);
+      let isolatedSpans: WalkWindow[] = [];
+
+      beforeAll(async () => {
+        const state = stateOf({ payCursor: NOW - 2 * DAY_MS, pending: stuckDays });
+
+        for (let attempt = 0; attempt < 200 && isolatedOwed(state).length < 10; attempt += 1) {
+          await runOver(state, stuckOrders());
+        }
+
+        isolatedSpans = beyondWindow(state.pending);
+      });
+
+      const stateWithIsolated = () =>
+        stateOf({ payCursor: NOW - 2 * DAY_MS, pending: [...isolatedSpans, newDay] });
+
+      it('has isolated each stuck day to a span of 2 ms or less around its order', () => {
+        expect(isolatedSpans).toHaveLength(10);
+        expect(
+          isolatedSpans.every(
+            (span, index) =>
+              span.end - span.start <= 2 &&
+              span.start <= stuckTimes[index] &&
+              stuckTimes[index] <= span.end,
+          ),
+        ).toBe(true);
+      });
 
       it('imports the new owed day and the late order of the window on the next run, and keeps the spans owed', async () => {
         const state = stateWithIsolated();
@@ -1450,8 +1471,10 @@ describe('the pending overlap days of a walk', () => {
 
         const starts = queriesOf(deps).map((query) => query.startTime);
         expect(starts.indexOf(newDay.start)).toBeGreaterThan(0);
-        expect(starts.indexOf(newDay.start)).toBeLessThan(starts.indexOf(isolatedAt[0]));
-        expect(starts.indexOf(NOW - PAY_WINDOW_MS)).toBeLessThan(starts.indexOf(isolatedAt[0]));
+        expect(starts.indexOf(newDay.start)).toBeLessThan(starts.indexOf(isolatedSpans[0].start));
+        expect(starts.indexOf(NOW - PAY_WINDOW_MS)).toBeLessThan(
+          starts.indexOf(isolatedSpans[0].start),
+        );
       });
 
       it('imports a span that became readable on a later run once budget is left, and nothing twice', async () => {

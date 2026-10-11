@@ -312,13 +312,13 @@ type Paged<Row> = { kind: 'rows'; rows: Row[] } | { kind: 'split'; half: WalkWin
  */
 const fetchAllInWindow = async <Row>(
   run: BinanceHistoryRun,
-  budgeted: { lane: BudgetLane; cost: CallCost; half: WalkWindow | undefined },
+  budgeted: { lane: BudgetLane; cost: CallCost; half: WalkWindow | undefined; keep?: number },
   fetchPage: (offset: number) => Promise<HistoryPage<Row>>,
 ): Promise<Paged<Row> | undefined> => {
   const rows: Row[] = [];
 
   for (let pageIndex = 0; pageIndex < MAX_PAGES_PER_WINDOW; pageIndex += 1) {
-    if (!run.budget.canAfford(budgeted.lane, budgeted.cost)) {
+    if (!run.budget.canAfford(budgeted.lane, budgeted.cost, budgeted.keep)) {
       return undefined;
     }
 
@@ -349,6 +349,7 @@ type SpanRecords = { deposits: BinanceDeposit[]; withdrawals: BinanceWithdrawal[
 const readSpan = async (
   context: WindowContext,
   span: WalkWindow,
+  keep: number,
 ): Promise<SpanRead<SpanRecords> | undefined> => {
   const { deps, run, accountId, apiKey, secret, options } = context;
   const half = halfOf(span);
@@ -371,7 +372,7 @@ const readSpan = async (
 
     const withdrawals = await fetchAllInWindow(
       run,
-      { lane: 'capitalWithdraw', cost: COSTS.withdraw, half },
+      { lane: 'capitalWithdraw', cost: COSTS.withdraw, half, keep },
       (offset) => deps.fetchWithdrawHistory(apiKey, secret, pageWindow(offset), options),
     );
 
@@ -540,15 +541,16 @@ const runSync = async (
 
   return runWalkPlan({
     plan,
-    canAfford: () =>
-      run.budget.canAfford('capitalWithdraw', COSTS.withdraw) &&
+    canAfford: (keep) =>
+      run.budget.canAfford('capitalWithdraw', COSTS.withdraw, keep) &&
       !isBinanceCoolingDown(accountId, deps.now()),
-    runWindow: (window, pass) =>
+    runWindow: (window, pass, keep) =>
       walkSpans({
         window,
-        read: (span) => readSpan(context, span),
+        read: (span, keepCalls) => readSpan(context, span, keepCalls),
         commit: (span, records) => commitSpan(context, span, records, pass),
         pass,
+        keep,
       }),
   });
 };

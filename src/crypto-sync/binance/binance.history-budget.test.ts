@@ -88,6 +88,38 @@ describe('createBinanceRunBudget — per-lane call caps', () => {
   });
 });
 
+describe('createBinanceRunBudget — calls kept for later', () => {
+  it('refuses a call that would leave fewer than the calls to keep under the lane cap', () => {
+    const budget = createBinanceRunBudget();
+
+    spendCalls(budget, 'capitalWithdraw', 6);
+
+    expect(budget.canAfford('capitalWithdraw', COSTS.withdraw, 2)).toBe(true);
+
+    spendCalls(budget, 'capitalWithdraw', 1);
+
+    expect(budget.canAfford('capitalWithdraw', COSTS.withdraw, 2)).toBe(false);
+    expect(budget.canAfford('capitalWithdraw', COSTS.withdraw, 1)).toBe(true);
+    expect(budget.canAfford('capitalWithdraw', COSTS.withdraw)).toBe(true);
+  });
+
+  it('counts the calls to keep in the weight of a UID call too', () => {
+    const budget = createBinanceRunBudget();
+    budget.record('pay', { ...NO_READING, usedUidWeight1m: 171_001 });
+
+    expect(budget.canAfford('pay', COSTS.pay, 2)).toBe(false);
+    expect(budget.canAfford('pay', COSTS.pay, 1)).toBe(true);
+  });
+
+  it('counts the calls to keep in the weight of an IP call too', () => {
+    const budget = createBinanceRunBudget();
+    budget.record('earn', { ...NO_READING, usedIpWeight1m: 5_701 });
+
+    expect(budget.canAfford('earn', COSTS.earn, 1)).toBe(false);
+    expect(budget.canAfford('earn', COSTS.earn, 0)).toBe(true);
+  });
+});
+
 describe('createBinanceRunBudget — weight readings', () => {
   it('holds the Binance ceilings and per-call costs of the old withdraw rule', () => {
     expect(UID_WEIGHT_BUDGET_1M).toBe(180_000);

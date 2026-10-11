@@ -298,30 +298,71 @@ withdraw budget moves into this object, with the same numbers and the same rule.
     re-scan and a budget that cannot afford the next window still end the run. A rate limit ends
     the run too (the account cooldown is part of the budget check). Ranges inside the re-scan's
     own range are read by the re-scan, and leave the list as its mark passes them.
-  - **Isolating a stop (pending pass only, fix round 8).** A stop in an owed range must not hold
-    back the unrelated ground in it: past 12 ranges two ranges merge into a hull, and a hull whose
-    one commit stops would never read the days the merge put beside the stuck range. In the
-    pending pass a span whose commit stops is therefore reported to the run (`WindowOutcome.stopped`)
-    and the walk reads on past it. After every owed window has been read once, and before the
-    re-scan, the run halves each stopped span (oldest first, a level at a time) and reads the
-    halves as owed windows of their own: the halves that commit leave the list, the ones that stop
-    are halved again, and only the smallest stuck span stays owed (down to a span of 1 ms). Halving
-    costs two reads a level, so one run reads at most 4 such halves (`ISOLATION_PARTS_PER_RUN`);
-    a longer isolation goes on over later runs, each starting from the smaller stuck span the
-    last one left, and the run's budget still reaches the other owed windows and the re-scan.
-    A span that cannot be halved any more (1 ms) still costs one read a run, and many of them
-    would take the whole budget of a run (the capital withdraw lane has 9 calls) from the owed
-    days and the re-scan that can still commit. Such an owed span is therefore read LAST in a
-    run, after the re-scan, on the budget that is left (fix round 9). The order of a run is:
-    forward, the owed windows that can still be halved, the isolation halves, the re-scan, the
-    isolated spans. A span the budget skips stays owed (only the floor drops one), and one that
-    becomes readable imports on a later run once budget is left.
-    The forward pass and the window re-scan keep their rule (`STOP_ENDS_RUN`): a stop there ends
-    the run, because the mark they move is moved only by a commit.
-  - **Bound.** The list holds at most 12 ranges. Each range costs at least one call of a run's
-    leftover budget, so a longer list could not be served in one run; past the limit the two
-    nearest ranges merge into their hull, which reads the gap between them too and loses no
-    ground. Touching ranges merge on every store, so frequent syncs do not grow it.
+  - **Isolating a stop (pending pass only).** A stop in an owed range must not hold back the
+    unrelated ground in it: past 12 ranges two ranges merge into a hull, and a hull whose one
+    commit stops would never read the days the merge put beside the stuck range. In the pending
+    pass a span whose commit stops is therefore reported to the run (`WindowOutcome.stopped`) and
+    the walk reads on past it. After every owed window has been read once, and before the
+    re-scan, the run cuts each stopped span (oldest first) and reads the parts as owed windows of
+    their own: the parts that commit leave the list, so only the ground around the stop stays
+    owed. Binance reads both ends of a span, so a span longer than 4 ms is halved at the middle,
+    and the two halves share the middle millisecond, where a record stops both. A halving reads
+    the first half and stops there when it commits (the stop lies in the second half, which is
+    not read in this step and is cut later); when the first half stops, it reads the second half
+    too. If neither half committed, nothing shrank, and the two halves are cut next, before any
+    other span, so a run never spends its calls on the first levels of many spans and leaves the
+    list as it was. A span of 2 to 4 ms is trimmed at its ends instead: it reads `[start, start +
+    1]`, and the span a millisecond shorter goes on to be cut again when that commits; when it
+    stopped, it reads `[end - 1, end]` and does the same. One stuck record cannot lie in both end
+    milliseconds of a span longer than 2 ms, so one of the two commits and a stuck record always
+    ends in an owed span of 2 ms or less: a read holds both its ends, so no read tells the record
+    from the millisecond on either side of it. A part of 2 ms that a halving made is trimmed too.
+    A cut reads at most 2 spans, and each commit is kept whatever the run reads after it.
+    A span of 2 ms or less is isolated (`MAX_ISOLATED_MS`): it is not cut, and costs exactly
+    one read a run. Many of them would take the whole budget of a run (the capital withdraw lane
+    has 9 calls) from the owed days and the re-scan that can still commit, so they are read LAST
+    in a run, after the re-scan, on the budget that is left. A span the budget skips stays owed
+    (only the floor drops one), and one that becomes readable imports on a later run.
+    The order of a run is: forward, the owed windows longer than 2 ms, the isolation cuts, the
+    re-scan, the isolated spans. The forward pass and the window re-scan keep their rule
+    (`STOP_ENDS_RUN`): a stop there ends the run, because the mark they move is moved only by a
+    commit.
+    **Reserved calls.** Every read of the owed windows and of the isolation leaves the lane's
+    last call for the re-scan (`RESCAN_KEEP`, 1, when the plan has a re-scan), and the owed
+    windows read after one of them has stopped also leave 4 for the isolation (`ISOLATION_KEEP`:
+    the two reads of a halving and the two of the trim of the part after it, the most a record on
+    the middle millisecond costs before the first commit), so a list of stuck ranges cannot spend
+    a run on re-reading them whole. `BinanceRunBudget.canAfford` takes the number of calls to
+    keep. The forward pass keeps none: new records come first.
+    **Properties** (pinned by `binance.history-walk.properties.test.ts`, which drives the walk's
+    own functions run after run on the Pay lane, 19 reads a run, and the capital withdraw lane,
+    9 reads, with K = 1 to 12 stuck records at random interior points and at midpoints, a list
+    past 12 ranges, and every position of one or two stuck records in ranges of 3 to 10 ms):
+    P1 every owed row other than the stuck ones, and every re-scan row, imports; P2 each stuck
+    span reaches 2 ms or less; P3 once it has, each stuck record costs at most one read a run
+    (structural: an isolated span is read once, last); P4 the re-scan gets a read and a commit in
+    every run in which the forward pass did not end it (structural: the reserved call). The
+    bounds P1 and P2 are measured in runs, not derived: Pay 8K + 4 runs to isolate and 5K to
+    import an unrelated day (worst measured, K = 12: 82 and 53), capital 12K + 8 and 12K + 4
+    (worst measured, K = 12: 149 and 134).
+    **Stuck records close together.** Two stuck records 1 or 2 ms apart leave a span of 3 or 4 ms
+    in which every read holds one of them: it is not shrunk, nothing of it is lost, and it costs
+    its whole read and the two reads of its ends, 3 reads a run, until a record can be placed.
+    The tests pin it (one pair in a day with up to 10 other stuck records on the Pay lane, and
+    with 1 on the capital lane).
+    **Known limit.** A halving in which every part holds a stuck record commits nothing, so the
+    next run starts again from the top. Records packed in ONE owed span need more reads before
+    the first commit than the capital lane has once more than 3 of them lie in it, so that span
+    may not shrink there, and its other rows stay owed (nothing is lost). The Pay lane isolates 12
+    of them in one day within the bound above; the tests pin that, and up to 3 on capital.
+  - **Bound.** The list holds at most 12 ranges longer than 2 ms, plus the isolated spans, which
+    are never merged (merged with a neighbour a found stuck record would have to be found
+    again, every run), plus this run's own overlap day, which the re-scan reads in the same run.
+    Each range costs at least one call of a run's leftover budget, so a longer list could not be
+    served in one run; past the limit the two nearest ranges of the newest ones merge into their
+    hull, which reads the gap between them too and loses no ground; the oldest 11 (12 with this
+    run's overlap day) are the ones a run is cutting and are never merged back into a hull.
+    Touching ranges merge on every store, so frequent syncs do not grow it.
   - **Parse.** A stored value that is not a list of `{ start, end }` ranges with finite
     `start < end` says nothing about which days were owed, and an empty list would let the next
     write drop them. It is read as one owed range `[floor, cursor)` instead (the cursor the walk
