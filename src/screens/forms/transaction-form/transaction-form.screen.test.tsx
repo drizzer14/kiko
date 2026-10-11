@@ -722,7 +722,7 @@ describe('TransactionFormScreen — category pre-select from name rules (A1)', (
   // The nav-bar Save does not end editing, so the description is still focused (no blur has fired)
   // when it is pressed: Save itself must settle the rule category for the live description.
   it('saves the rule category for a description that never blurred', async () => {
-    const { getByLabelText } = await renderAdd();
+    const { getByLabelText, getByTestId } = await renderAdd();
     await fireEvent.changeText(getByLabelText('Amount'), '12.34');
     await fireEvent.changeText(getByLabelText('Description'), 'Silpo');
     await pressSave(navigation.setOptions);
@@ -730,6 +730,8 @@ describe('TransactionFormScreen — category pre-select from name rules (A1)', (
     expect(mockRecordManual).toHaveBeenCalledWith(
       expect.objectContaining({ description: 'Silpo', category: 'groceries' }),
     );
+    // The picker shows what Save wrote, as a blur would have left it.
+    expect(getByTestId('transaction-category-field')).toHaveTextContent('Groceries');
   });
 
   it('saves the new rule category when the description changes after a blur and Save is pressed while focused', async () => {
@@ -746,7 +748,7 @@ describe('TransactionFormScreen — category pre-select from name rules (A1)', (
   });
 
   it('blocks Save and clears the stale auto-pick when the focused description matches no rule', async () => {
-    const { getByLabelText, getByText } = await renderAdd();
+    const { getByLabelText, getByText, getByTestId } = await renderAdd();
     await fireEvent.changeText(getByLabelText('Amount'), '12.34');
     await fireEvent.changeText(getByLabelText('Description'), 'Silpo');
     await fireEvent(getByLabelText('Description'), 'blur');
@@ -755,6 +757,9 @@ describe('TransactionFormScreen — category pre-select from name rules (A1)', (
 
     expect(mockRecordManual).not.toHaveBeenCalled();
     expect(getByText('Select a category.')).toBeTruthy();
+    // The stale Groceries is gone from the picker, which shows its empty placeholder.
+    expect(getByTestId('transaction-category-field')).toHaveTextContent('Select category');
+    expect(getByTestId('transaction-category-field')).not.toHaveTextContent('Groceries');
   });
 
   it('never replaces an explicit picker choice when Save settles the category', async () => {
