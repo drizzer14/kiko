@@ -26,7 +26,7 @@ import {
 } from '@kiko/db/__fixtures__/seeded-categories';
 import { SQLiteSyncDialect } from 'drizzle-orm/sqlite-core';
 
-import { categories, categoryOverrides, transactions } from '@kiko/db';
+import { categories, categoryRules, transactions } from '@kiko/db';
 
 import { categoriesRepo } from './categories.repo';
 
@@ -221,17 +221,16 @@ describe('categoriesRepo.reorder', () => {
 
 describe('categoriesRepo.delete', () => {
   // Fake transaction: read the single settings row (for the current default key), then
-  // the two category reassign updates (transactions + overrides) and the
-  // category-row delete, each captured so the test can assert the whole
-  // transaction without a real database.
+  // the transaction reassign update, the rule delete and the category-row delete, each
+  // captured (with the order they ran in) so the test can assert the whole transaction
+  // without a real database.
   const makeDatabaseTransaction = (settingsRows: { defaultCategoryKey: string }[]) => {
     const captured: {
       transactionUpdate?: Record<string, unknown>;
       transactionWhere?: unknown;
-      overrideUpdate?: Record<string, unknown>;
-      overrideWhere?: unknown;
-      deletedTable?: unknown;
-    } = {};
+      ruleWhere?: unknown;
+      deletedTables: unknown[];
+    } = { deletedTables: [] };
     const databaseTransaction = {
       select: () => ({ from: () => Promise.resolve(settingsRows) }),
       update: (table: unknown) => ({
@@ -242,18 +241,17 @@ describe('categoriesRepo.delete', () => {
               captured.transactionWhere = predicate;
             }
 
-            if (table === categoryOverrides) {
-              captured.overrideUpdate = values;
-              captured.overrideWhere = predicate;
-            }
-
             return Promise.resolve();
           },
         }),
       }),
       delete: (table: unknown) => ({
-        where: () => {
-          captured.deletedTable = table;
+        where: (predicate: unknown) => {
+          captured.deletedTables.push(table);
+
+          if (table === categoryRules) {
+            captured.ruleWhere = predicate;
+          }
 
           return Promise.resolve();
         },
@@ -263,7 +261,7 @@ describe('categoriesRepo.delete', () => {
     return { databaseTransaction, captured };
   };
 
-  it('reassigns matching transactions and overrides to the default, then removes the category row', async () => {
+  it('moves matching transactions to the default and frees them from a by-hand pick', async () => {
     const { databaseTransaction, captured } = makeDatabaseTransaction([
       { defaultCategoryKey: 'other' },
     ]);
@@ -271,9 +269,18 @@ describe('categoriesRepo.delete', () => {
 
     await categoriesRepo.delete('groceries');
 
-    expect(captured.transactionUpdate).toEqual({ category: 'other' });
-    expect(captured.overrideUpdate).toEqual({ category: 'other' });
-    expect(captured.deletedTable).toBe(categories);
+    expect(captured.transactionUpdate).toEqual({ category: 'other', categorySetByHand: false });
+  });
+
+  it('deletes the rules of the category before it removes the category row', async () => {
+    const { databaseTransaction, captured } = makeDatabaseTransaction([
+      { defaultCategoryKey: 'other' },
+    ]);
+    mockDatabaseTransaction = databaseTransaction;
+
+    await categoriesRepo.delete('groceries');
+
+    expect(captured.deletedTables).toEqual([categoryRules, categories]);
   });
 
   // The reassign predicates are the thing under test here, and this suite
@@ -305,7 +312,7 @@ describe('categoriesRepo.delete', () => {
     });
   });
 
-  it('reassigns a capitalized legacy override on delete', async () => {
+  it('deletes the rules of a capitalized legacy category on delete', async () => {
     const { databaseTransaction, captured } = makeDatabaseTransaction([
       { defaultCategoryKey: 'other' },
     ]);
@@ -313,8 +320,8 @@ describe('categoriesRepo.delete', () => {
 
     await categoriesRepo.delete('groceries');
 
-    expect(renderPredicate(captured.overrideWhere)).toEqual({
-      sql: 'lower("category_overrides"."category") = ?',
+    expect(renderPredicate(captured.ruleWhere)).toEqual({
+      sql: 'lower("category_rules"."category") = ?',
       params: ['groceries'],
     });
   });
@@ -328,7 +335,7 @@ describe('categoriesRepo.delete', () => {
     await categoriesRepo.delete('Groceries');
 
     expect(renderPredicate(captured.transactionWhere).params).toEqual(['groceries']);
-    expect(renderPredicate(captured.overrideWhere).params).toEqual(['groceries']);
+    expect(renderPredicate(captured.ruleWhere).params).toEqual(['groceries']);
   });
 
   it('reassigns to the CURRENT (configurable) default, not a hardcoded one', async () => {
@@ -339,8 +346,7 @@ describe('categoriesRepo.delete', () => {
 
     await categoriesRepo.delete('groceries');
 
-    expect(captured.transactionUpdate).toEqual({ category: 'shopping' });
-    expect(captured.overrideUpdate).toEqual({ category: 'shopping' });
+    expect(captured.transactionUpdate).toEqual({ category: 'shopping', categorySetByHand: false });
   });
 
   it('refuses to delete the default category and writes nothing', async () => {
@@ -352,8 +358,7 @@ describe('categoriesRepo.delete', () => {
     await expect(categoriesRepo.delete('other')).rejects.toThrow(/default/i);
 
     expect(captured.transactionUpdate).toBeUndefined();
-    expect(captured.overrideUpdate).toBeUndefined();
-    expect(captured.deletedTable).toBeUndefined();
+    expect(captured.deletedTables).toEqual([]);
   });
 });
 

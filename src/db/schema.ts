@@ -135,6 +135,11 @@ export const transactions = sqliteTable(
     time: integer('time').notNull(),
     description: text('description').notNull().default(''),
     category: text('category'),
+    // True once the user picked this row's category by hand, so no rule and no rewrite replaces
+    // it. The insert path never sets it, and a re-sync never touches it.
+    categorySetByHand: integer('category_set_by_hand', { mode: 'boolean' })
+      .notNull()
+      .default(false),
     mcc: integer('mcc'),
     // Monobank's `hold` flag: the item is a PENDING authorization whose final
     // settled amount can still change (a restaurant tip, a fuel pre-auth). The
@@ -588,21 +593,21 @@ export const categories = sqliteTable('categories', {
 export type CategoryRow = typeof categories.$inferSelect;
 
 /**
- * A name→category override rule. Editing any transaction's category upserts a
- * rule keyed by the JS-normalized name (see normalizeTransactionName), which
- * (1) rewrites every existing same-name transaction and (2) is re-applied to
- * every future synced insert with that name. `category` is a categories.key
- * (slug); `displayName` is the last-seen human name, shown to the user.
+ * A category rule: when every matcher of `matchers` matches a transaction, the rule's `category`
+ * (a categories.key slug) applies to it, at insert and in the form, and the user can apply it to
+ * the rows that already exist. `matchers` is a JSON list kept as plain text on purpose: the
+ * read-time guard in `@kiko/categories/category-rules` parses it, so a row a bad restore or a
+ * future build wrote is skipped as unreadable instead of failing a whole query.
  */
-export const categoryOverrides = sqliteTable('category_overrides', {
-  normalizedName: text('normalized_name').primaryKey(),
+export const categoryRules = sqliteTable('category_rules', {
+  id: text('id').primaryKey(),
   category: text('category').notNull(),
-  displayName: text('display_name').notNull(),
+  matchers: text('matchers').notNull(),
   createdAt: integer('created_at').notNull().default(sql`(unixepoch() * 1000)`),
   updatedAt: integer('updated_at').notNull().default(sql`(unixepoch() * 1000)`),
 });
 
-export type CategoryOverrideRow = typeof categoryOverrides.$inferSelect;
+export type CategoryRuleRow = typeof categoryRules.$inferSelect;
 
 /**
  * One priced point for a metal/holding on a given day. Keyed the
