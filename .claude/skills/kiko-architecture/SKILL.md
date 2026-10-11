@@ -2360,7 +2360,8 @@ what a change must keep.
 - **Screens.** `ReminderForm` (`src/screens/forms/reminder-form/`,
   params `{ reminderId } | { accountId, kind }`) and `AccountReminders`
   (`src/screens/settings/account-reminders/`, params `{ accountId }`) — `AccountReminders` is registered in the Accounts stack.
-  The Home stack registers `HoldingForm` (`HoldingFormParams`, no `returnTo`) and `AccountForm` as
+  The Home AND Settings stacks register `TransactionForm`, `AccountForm` and `HoldingForm`
+  (`HoldingFormParams`, no `returnTo`; neither stack passes `returnTo`) as
   well as the Accounts stack, because leaving the tab resets its stack and would lose the
   transaction form's draft; both take options from `src/navigation/swapped-form-options/`. A form
   that stays mounted underneath uses `navigate`, but a `HoldingForm` opening another `HoldingForm`
@@ -2376,7 +2377,8 @@ what a change must keep.
   reads the account's `kind`, `icon`, and `color` too. It uses the
   same `ReminderRow` and has no Add (reminders are created from an account's
   page). It opens from its own Settings card directly below System
-  (`settings-row-reminders`). The account page is reached from a
+  (`settings-row-reminders`). Transaction templates and Categories share one group card
+  (`settings-card-templates-and-categories`). The account page is reached from a
   native `bell` bar item in `AccountDetail`'s
   `unstable_headerRightItems`, left of Edit in its own glass capsule
   (see kiko-design-system's "Header bar items"), shown on every account
@@ -2620,6 +2622,23 @@ what a change must keep.
   argument is NULL; for "latest of a column and a value" use
   `coalesce(max(col, v), col, v)` (see `latest()` in
   `reminders.repo.ts`).
+
+## Transaction form: holding change and template seeding
+
+Every user primary-holding pick goes through ONE path: `pickPrimaryHolding` in
+`src/screens/forms/transaction-form/transaction-form.screen.tsx` calls `applyHoldingChange`
+(`holding-change/`). It settles the mode to one the new holding offers (`settleMode` /
+`DEFAULT_MODE`, `mode-options/`) and empties a split return row whose holding is in another
+currency (`emptyReturnsInOtherCurrency`; the amount stays). Hydration (`hydration/`) reuses
+the same helpers for a template seed. A holding-dependent invariant lives in that one
+function; when a review finds hidden state on one holding path, grep every
+`setPrimaryHoldingId` caller and every seed path, share one helper, and pin one red test per
+path.
+
+Field visibility is sticky: on Add-from-holding the holding field shows once a template seats
+a different holding (`revealsHoldingField` / `resolveHoldingField`, `route-entry/`) and stays
+shown, showing the holding Save writes. One state set in the seed branch holds it; it is
+never derived per render.
 
 ## Native iOS shell
 

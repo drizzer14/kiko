@@ -4,7 +4,7 @@
 
 **Goal:** A template stores every field of a transaction except its date. The Add form fills from it in one pick, and Add, Duplicate and Edit can save their content as a new template.
 
-**Architecture:** First, split the 2852-line `transaction-form.screen.tsx` into unit folders. The split moves code only, and category-rules builds on it. Then a new feature container `src/transaction-templates/` adds three units: `draft/` (the `TemplateDraft` type and its guard), `template-name/` (the name key and the taken check) and `repo/`. They store templates in one new table (`transaction_templates`, migration 0057) with no foreign keys. The holding, account and category deletes clear the references in the same write. The form fills from a template through the existing Duplicate hydration plan (one fill path). A `.kiko` file carries the templates as an optional key. A new Settings card holds Transaction templates and Categories.
+**Architecture:** First, split the 2852-line `transaction-form.screen.tsx` into unit folders. The split moves code only, and category-rules builds on it. Then a new feature container `src/transaction-templates/` adds three units: `draft/` (the `TemplateDraft` type and its guard), `template-name/` (the name key and the taken check) and `repo/`. They store templates in one new table (`transaction_templates`, migration 0056) with no foreign keys. The holding, account and category deletes clear the references in the same write. The form fills from a template through the existing Duplicate hydration plan (one fill path). A `.kiko` file carries the templates as an optional key. A new Settings card holds Transaction templates and Categories.
 
 **Tech Stack:** React Native 0.87, op-sqlite + Drizzle, react-navigation 7 (native stack), react-i18next, unistyles v3, Jest/RNTL with `node:sqlite` (`@kiko/test-support/real-sqlite`).
 
@@ -18,7 +18,7 @@ Read these before task 1/18. Each line says what the code shows and what this pl
 2. **`FormMode` is declared in a screen file** (`src/screens/forms/mode-select-field/mode-select-field.props.d.ts:6`), and a feature must not import a screen. `draft/` declares `TEMPLATE_MODES = ['income', 'expense', 'exchange', 'split'] as const`. The form assigns `TemplateMode` to `FormMode` and back (in `draft-from-form/` and `hydration/`), so `tsc` fails if the two unions drift.
 3. **SQLite `lower()` folds only ASCII.** "Оренда" and "оренда" would both pass a SQL `lower(name) = ?` check. The case-insensitive name check therefore runs in JS (`templateNameKey = name.trim().toLowerCase()`). Inside the write it reads `selectDistinct({ id, name })`, which is the form `kiko-no-full-table-select-in-write` itself names as the fix. Review Focus 1.
 4. **SQL prefilter text.** The spec writes `instr(draft, '"' || ? || '"') > 0`. The plan binds `JSON.stringify(id)` to `instr(draft, ?) > 0`, so the needle is the exact JSON encoding, even for a key that JSON escapes. The intent is the same: the prefilter can match too many rows, and `draftReferences` makes the exact decision.
-5. **Migration 0056 is `0056_add_untracked_counterpart` on branch `binance-pay-history`** (ab08cda7). It is on neither `main` nor `next` (both end at 0055). category-rules reserves 0058. Task 4/18 follows the spec's numbering rule: if 0056 is not in the task base, generate the migration at the next free idx and renumber it to 0057 at merge, after 0056. `migrationCount` in `envelope.test.ts` is 56 today. It becomes "journal length after this migration".
+5. **This branch ships migration 0056** (`0056_add_transaction_templates`). The first branch to reach `next` keeps the number; a later branch renumbers at merge. `migrationCount` in `envelope.test.ts` is 56 today. It becomes "journal length after this migration".
 6. **`settings-card-categories` is pinned by `settings.screen.test.tsx`** (lines 160, 193 and 562: the card order). The new two-row card gets `settings-card-templates-and-categories`. Task 15/18 updates those order assertions. The Categories row keeps `settings-row-categories`.
 7. **The split table leaves out some module-level items.** The plan places them as follows. `Sign` and `ChangeReturnRow` go to `row-labels/` (their first user), `SplitReturn` and `TransactionFieldErrors` go to `validation/`, and `buildLoanOptions` and `compareByAccountThenHolding` (inside 600–803) go to `holding-options/`. `SpecialSaves` goes with `ModeBehavior`. `PendingCategoryView` goes with `resolvePendingCategory`. The module `styles` object (screen:2826) is split: each extracted component takes the entries it uses into its own `<unit>.styles.ts`, and the screen keeps the rest.
 8. **O7 and the coordinator's brief.** The brief says to plan the confirm line as a step that applies only if this track merges second. Spec §2 and decision 6 also cover the first-merge case: "If templates is first, it adds a `message` to today's `ConfirmSheet`". Task 16/18 plans both branches and runs exactly one of them, chosen by the merge order at that time. Without the first branch, decision 6 would ship unmet on a first merge.
@@ -36,7 +36,7 @@ Read these before task 1/18. Each line says what the code shows and what this pl
 - No loan field and no comment in any template path (O5, O11). `isLoanFieldVisible` stays as it is.
 - A template category is a hand pick: it sets `userPickedCategory` (O12). This track adds no manual-pick column.
 - Writes to `src/`, `__tests__/` and `rules/` go through Edit/Write only (the kill-guard SHELL-WRITE deny). Rename with `git mv`.
-- Migration 0057 is never edited once it ships (`check:shipped-migrations`).
+- Migration 0056 is never edited once it ships (`check:shipped-migrations`).
 - The worktree has no `node_modules`. The developer runs `npm ci` once in this worktree before task 1/18, when the machine is on power (BATTERY MODE pauses gates). Never share the main checkout's `node_modules`.
 
 ## Review Focus
@@ -142,15 +142,15 @@ export const isTemplateNameTaken: (name: string, templates: readonly { id: strin
 - [ ] **step 4/5:** Run `npx jest src/transaction-templates && npx tsc --noEmit && npm run check:feature-imports`. Expected: PASS.
 - [ ] **step 5/5:** Commit `feat(transaction-templates): draft type, guard and name key`.
 
-### transaction-templates task 4/18: migration 0057, schema table and `.kiko` carry (developer)
+### transaction-templates task 4/18: migration 0056, schema table and `.kiko` carry (developer)
 
 The data transfer is part of this task, because the tip would not be green without it. `snapshot-covers-every-table.test.ts` calls the real `readDataSnapshot()` and fails for a schema table that has no snapshot key. `envelope.test.ts` pins `migrationCount`.
 
 **Estimate:** 45–70 min. Source: duration log "guard task 1/5 (check:shipped-migrations + 0036 restore), 36 min", plus the onboarding 0055 and restore tasks.
 
 **Files:**
-- Create: `drizzle/migrations/0057_add_transaction_templates.sql`, `drizzle/migrations/meta/0057_snapshot.json` (generated), `drizzle/migrations/0057-add-transaction-templates.test.ts`, `src/data-transfer/snapshot/restore-transaction-templates.test.ts` (real SQLite, shaped like `restore-deleted-import-keys.test.ts`)
-- Modify: `drizzle/migrations/meta/_journal.json`, `drizzle/migrations/migrations.js` (generated; check its layout again), `src/db/schema.ts` (the new table after `deletedImportKeys`, and `TransactionTemplateRow` beside `DeletedImportKeyRow`), `src/data-transfer/snapshot/data-snapshot.d.ts` (`transactionTemplates?: TransactionTemplateRow[]`), `read-snapshot.ts` (select all, ordered by `id`), `restore-snapshot.ts` (`deleteAllTables` deletes `transactionTemplates`; the insert of `snapshot.transactionTemplates ?? []` goes through `chunkForTable`, as exported), `src/data-transfer/crypto/envelope.test.ts` (one `VERSION_DECISIONS` sentence for 0057, and `migrationCount` = the journal length)
+- Create: `drizzle/migrations/0056_add_transaction_templates.sql`, `drizzle/migrations/meta/0056_snapshot.json` (generated), `drizzle/migrations/0056-add-transaction-templates.test.ts`, `src/data-transfer/snapshot/restore-transaction-templates.test.ts` (real SQLite, shaped like `restore-deleted-import-keys.test.ts`)
+- Modify: `drizzle/migrations/meta/_journal.json`, `drizzle/migrations/migrations.js` (generated; check its layout again), `src/db/schema.ts` (the new table after `deletedImportKeys`, and `TransactionTemplateRow` beside `DeletedImportKeyRow`), `src/data-transfer/snapshot/data-snapshot.d.ts` (`transactionTemplates?: TransactionTemplateRow[]`), `read-snapshot.ts` (select all, ordered by `id`), `restore-snapshot.ts` (`deleteAllTables` deletes `transactionTemplates`; the insert of `snapshot.transactionTemplates ?? []` goes through `chunkForTable`, as exported), `src/data-transfer/crypto/envelope.test.ts` (one `VERSION_DECISIONS` sentence for 0056, and `migrationCount` = the journal length)
 - Not modified: `import-data.ts` (`REQUIRED_TABLE_KEYS` stays as it is) and `EXPORT_VERSION`.
 
 **Interfaces (produces):**
@@ -165,20 +165,20 @@ export const transactionTemplates = sqliteTable('transaction_templates', {
 export type TransactionTemplateRow = typeof transactionTemplates.$inferSelect;
 ```
 
-- [ ] **step 1/6:** Write `0057-add-transaction-templates.test.ts` in the shape of `0054-add-deleted-import-keys.test.ts`, starting from `applyMigrationsThrough(database, '<previous tag>')`. Assert: (1) no table before the migration; (2) after it, `pragma_table_info` gives exactly the five columns with their types, `notnull` values and the `pk` on `id`; (3) an insert of `(id, name, draft)` reads `created_at` and `updated_at` close to `unixepoch()*1000`; (4) a NULL `name` or `draft` throws; (5) `pragma_foreign_key_list('transaction_templates')` is empty, and `pragma_index_list` lists only the PK's autoindex (no index, so no EXPLAIN QUERY PLAN test).
-- [ ] **step 2/6:** Write `restore-transaction-templates.test.ts`: a round trip keeps the templates (ids, names, drafts, timestamps). A file without the key restores an empty table and imports. A draft such as `{"version":9}` restores verbatim. A restore over existing templates replaces them. Update `envelope.test.ts` with the 0057 sentence ("a new table carried as an optional key, like 0054; no version bump").
-- [ ] **step 3/6:** Run `npx jest drizzle/migrations/0057-add-transaction-templates.test.ts src/data-transfer`. Expected: FAIL.
+- [ ] **step 1/6:** Write `0056-add-transaction-templates.test.ts` in the shape of `0054-add-deleted-import-keys.test.ts`, starting from `applyMigrationsThrough(database, '<previous tag>')`. Assert: (1) no table before the migration; (2) after it, `pragma_table_info` gives exactly the five columns with their types, `notnull` values and the `pk` on `id`; (3) an insert of `(id, name, draft)` reads `created_at` and `updated_at` close to `unixepoch()*1000`; (4) a NULL `name` or `draft` throws; (5) `pragma_foreign_key_list('transaction_templates')` is empty, and `pragma_index_list` lists only the PK's autoindex (no index, so no EXPLAIN QUERY PLAN test).
+- [ ] **step 2/6:** Write `restore-transaction-templates.test.ts`: a round trip keeps the templates (ids, names, drafts, timestamps). A file without the key restores an empty table and imports. A draft such as `{"version":9}` restores verbatim. A restore over existing templates replaces them. Update `envelope.test.ts` with the 0056 sentence ("a new table carried as an optional key, like 0054; no version bump").
+- [ ] **step 3/6:** Run `npx jest drizzle/migrations/0056-add-transaction-templates.test.ts src/data-transfer`. Expected: FAIL.
 - [ ] **step 4/6:** Add the table to `schema.ts` with a WHY comment: no FK because the references live in `draft` and a delete clears them; no index because the table is small and read by PK or in full. Run `npx drizzle-kit generate --name add_transaction_templates`, then `./node_modules/.bin/biome check --write drizzle/migrations`. The `.sql` must be one `CREATE TABLE`. Prepend a `/* */` header in the 0054 style: additive only, so a crash leaves the database at the previous idx and it retries whole; no data step; no restore mirror (an older file restores an empty table). Numbering: see mismatch 5. Then add the snapshot key, the read and the restore.
 - [ ] **step 5/6:** Run `npx jest drizzle/migrations src/db src/data-transfer && npx tsc --noEmit`. Expected: PASS (`snapshot-covers-every-table.test.ts` and the two-path restore tests included).
-- [ ] **step 6/6:** Commit `feat(db): migration 0057 transaction_templates and its .kiko carry`.
+- [ ] **step 6/6:** Commit `feat(db): migration 0056 transaction_templates and its .kiko carry`.
 
-### transaction-templates task 5/18: migration 0057 review (reviewer)
+### transaction-templates task 5/18: migration 0056 review (reviewer)
 
 **Estimate:** 10–20 min. Source: duration log "mutation-gate review, 11 min".
 
 **Files:** none (read-only).
 - [ ] **step 1/2:** Dispatch `kiko:reviewer` on the task 4/18 diff. The brief asks: (1) Is the SQL one additive `CREATE TABLE` that matches the snapshot and the schema? (2) Which existing queries touch the new table (`readDataSnapshot`, `restoreDataSnapshot`, `deleteAllTables`), and does any of them break on a database at the previous idx or on an old `.kiko` without the key? (3) Is the journal idx free on `next` and on `binance-pay-history`, and is the renumber rule written down? (4) Does the header state the crash-safe order? (5) There is no index, so no EXPLAIN QUERY PLAN test. The reviewer confirms that.
-- [ ] **step 2/2:** The developer fixes Critical and Important findings before task 6/18. The CS2 BATCH READY names "migration 0057".
+- [ ] **step 2/2:** The developer fixes Critical and Important findings before task 6/18. The CS2 BATCH READY names "migration 0056".
 
 ### transaction-templates task 6/18: templates repo (developer)
 
@@ -258,7 +258,7 @@ Every insert or update stores `name.trim()`. The name check inside the write rea
 **Estimate:** 60–90 min. Source: duration log "TX-C3 16 mutable dev 58 min". This task has many pure tests.
 
 **Files:**
-- Modify: `src/navigation/types/types.d.ts` (`TransactionFormParams` += `{ templateId: string } | { editTemplateId: string } | { newTemplate: true }`), `src/screens/forms/transaction-form/route-entry/route-entry.ts` (returns `templateId`, `editTemplateId`, `isNewTemplate` and `templateSeat: 'keepPage' | 'clear'`), `hydration/hydration.ts`, `transaction-form.screen.tsx` (the live query for the picked template, `pickedDraft` state, the effect applying the new fields with their existing setters)
+- Modify: `src/navigation/types/types.d.ts` (`TransactionFormParams` += `{ templateId: string } | { editTemplateId: string } | { newTemplate: true }`), `src/screens/forms/transaction-form/route-entry/route-entry.ts` (returns `templateId`, `editTemplateId`, `isNewTemplate`, and no seat field; the screen fallback `holdingParamId` restores the page holding on `{ holdingId }`), `hydration/hydration.ts`, `transaction-form.screen.tsx` (the live query for the picked template, `pickedDraft` state, the effect applying the new fields with their existing setters)
 - Create: `src/screens/forms/transaction-form/template-references/template-references.ts`, `template-references.test.ts`, `index.ts`. Create `hydration/hydration.test.ts`. Create `src/screens/forms/transaction-form/transaction-form.templates.test.tsx`.
 
 **Interfaces (produces):**
@@ -268,19 +268,19 @@ export const resolveDraftReferences: (draft: TemplateDraft, options: {
 }) => TemplateDraft; // the id sets come from buildPrimaryOptions / buildExchangeOptions / buildReturnOptions and the categories list
 // hydration: seedFields replaces `sign: Sign` with `mode: FormMode` and gains optional
 // destinationHoldingId, valueIn, returns, templateName and clearsHolding; resolveHydration gains
-// templateDraft: TemplateDraft | null, templateName: string | null, templateSeat: 'keepPage' | 'clear'
+// templateDraft: TemplateDraft | null, templateName: string | null
 ```
 The plan rules:
 - The template branch runs before the default-holding branch.
 - A resolved `draft.holdingId` that differs from the seam gives `seedHolding(draft.holdingId, final: false)`. After that, `seedFields` runs once the holding has loaded.
-- A null `draft.holdingId` gives `seedFields` at once, with `clearsHolding = templateSeat === 'clear'`.
+- A null `draft.holdingId` gives `seedFields` at once, with `clearsHolding = true`: a null template holding always clears the seam (`setPrimaryHoldingId(null)`).
 - Amounts become text with `groupAmount(majorAmountText(draft.currency, minor))`, and Value in uses `exchange.destinationCurrency`. A null amount or currency gives `''`. `time` is always null.
 - A non-null category also sets `userPickedCategory` (O12).
 - A pick is an event: `setPickedDraft(...)` plus `setHydrated(false)`. There is no second effect.
 
 - [ ] **step 1/6:** Write the failing pure tests:
   - `resolveDraftReferences`: a deleted, closed or synced holding becomes null in each slot. A missing category becomes null.
-  - `resolveHydration`: the two steps for a resolved holding. One step for a null holding, with `clearsHolding` set per `templateSeat`. Exact text for UAH 105000 ("1 050"), JPY 1050 and BTC 12345678. A re-pick to a different holding seeds that holding first.
+  - `resolveHydration`: the two steps for a resolved holding. One step for a null holding, with `clearsHolding` true. Exact text for UAH 105000 ("1 050"), JPY 1050 and BTC 12345678. A re-pick to a different holding seeds that holding first.
   - The Duplicate and Edit plans `toEqual` today's values, with `mode` in place of `sign`, no destination, `valueIn: ''` and one empty return (Review Focus 2).
 - [ ] **step 2/6:** Write the failing screen tests in `transaction-form.templates.test.tsx`. Each mounts the form with `{ templateId }` (the tabs come in task 12/18) and mocks `transactionTemplatesRepo.getByIdQuery` in the existing `useLiveQuery` mock pattern. Cover: each mode fills with the date at now; on `{}`, a null holding leaves the holding picker empty; a seeded category is not replaced by the description pre-select (`userPickedCategory`); a dangling destination leaves Destination empty.
 - [ ] **step 3/6:** Run `npx jest src/screens/forms/transaction-form`. Expected: FAIL.

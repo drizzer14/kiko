@@ -2749,6 +2749,8 @@ name is unique case-insensitively, with Unicode folding done in JS. A save from 
 transaction form rides `alongside(databaseTransaction)` on `transactionsRepo.recordManual`
 / `recordExchange` / `recordManualWithReturns` / `update` (runs last inside the same
 write); the transactions feature never imports templates on that save path.
+The form's template units live in `src/screens/forms/transaction-form/` (list them with
+`ls`); the Template list screen is `src/screens/settings/transaction-templates/`.
 
 ## Adding a holding type
 

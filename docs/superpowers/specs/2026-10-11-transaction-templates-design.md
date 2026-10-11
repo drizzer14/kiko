@@ -146,12 +146,12 @@ Each id `O<n>` keeps the number of the open point it closed.
   (`envelope.test.ts:99`) records the decision for each migration
   (`migrationCount: 56`). `REQUIRED_TABLE_KEYS` in
   `src/data-transfer/import-data.ts` lists the keys that every file must carry.
-- Migrations: the journal ends at idx 55 (`0055_add_dismissed_tips`). Another
-  track takes 0056.
+- Migrations: the journal ends at idx 55 (`0055_add_dismissed_tips`) before this
+  branch, which ships 0056.
 
 ## 1. Data model
 
-### Table `transaction_templates` (migration 0057)
+### Table `transaction_templates` (migration 0056)
 
 | Column | Type | Notes |
 |---|---|---|
@@ -169,10 +169,9 @@ Each id `O<n>` keeps the number of the open point it closed.
 - The migration is additive only: one `CREATE TABLE`. It needs no data step and no
   restore mirror (kiko-architecture "A new table with no backfill is the table, in
   order, on both paths").
-- **Number:** 0057 needs 0056 in the journal, because the runner counts
-  migrations (`journal.entries.slice(COUNT(*))`, kiko-architecture "Storage"). If
-  the 0056 track has not reached this branch's base when the migration task
-  starts, generate the migration as the next free idx and renumber it at merge.
+- **Number:** this branch ships 0056. The runner counts migrations
+  (`journal.entries.slice(COUNT(*))`, kiko-architecture "Storage"), so the journal holds no
+  gap. The first branch to reach `next` keeps the number; a later branch renumbers at merge.
   Never ship two migrations at one idx.
 
 ### `TemplateDraft` (refinement of the proposed "Duplicate seed shape")
@@ -525,7 +524,7 @@ Add new `SaveDisabledField` keys: `templateName` and `holding`.
   must still import. The result counts stay unchanged (decision O10).
 - **Version:** no `EXPORT_VERSION` bump. This is a new table carried as an
   optional key, the same case as 0054: an older build drops the key, and this
-  build restores an older file with the table empty. Add a 0057 sentence to
+  build restores an older file with the table empty. Add a 0056 sentence to
   `VERSION_DECISIONS` and raise `migrationCount` by one.
 - `snapshot-covers-every-table.test.ts` passes once the key is added.
 
@@ -561,7 +560,7 @@ Add new `SaveDisabledField` keys: `templateName` and `holding`.
   templates; the counts; `alongside` atomicity in both directions (a forced
   failure in the template insert rolls the transaction back, and the reverse). The
   precedent is `holdings.repo.create-icon.test.ts`.
-- **Migration:** `drizzle/migrations/0057-add-transaction-templates.test.ts`
+- **Migration:** `drizzle/migrations/0056-add-transaction-templates.test.ts`
   checks the table, its columns and its defaults. No index is added, so there is
   no `EXPLAIN QUERY PLAN` test. If the plan adds an index, it adds that test.
 - **Form:** new test files next to the units, plus a new
@@ -593,7 +592,7 @@ Add new `SaveDisabledField` keys: `templateName` and `holding`.
   first with `make mutable`. The split task is one change set of its own. Expect a
   long Stryker run, because it re-homes about 1600 lines that the 178 KB test file
   covers.
-- **Migration review:** a `kiko:reviewer` step on the 0057 migration before BATCH
+- **Migration review:** a `kiko:reviewer` step on the 0056 migration before BATCH
   READY.
 
 ## 8. Strings (en / uk; every uk text is marked for review)
@@ -668,8 +667,8 @@ account-specific twin key.
      into `next` second rebases onto the first and adds its own line to the
      confirm (decision O7). No shared edit to the confirm happens in parallel.
   4. `validation/`: each track adds only its own keys to `SaveDisabledField`.
-  5. Migrations: this track uses 0057, category-rules uses 0058 and later. Both
-     can be renumbered at merge.
+  5. Migrations: this branch ships 0056; the first branch to reach `next` keeps the number, and
+     the other renumbers at merge (see the migration folder).
   6. Catalogues: the keys are in separate subtrees (`forms.transaction.template*`,
      `transactionTemplates.*`). Only `categories.deleteTemplates_*` sits in the
      category subtree.
