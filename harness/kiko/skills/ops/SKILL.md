@@ -253,9 +253,11 @@ stays allowed. At most ONE jest-heavy agent per track; Semgrep or jest
 timeouts at high load are environment, not code: re-run at low load,
 never raise a timeout. See memory `check-security-timeout-under-load`.
 
+`make verify` and a mutation gate each take the shared one-at-a-time lock; until track H5 moves the queue into scripts/, queue them via memory/refs/verify-queue.sh (coordinator-owned); never start a second heavy job. Keep `wait-load.sh` for the load wait only.
+
 Known limit: load5 can stay high while the CPU is idle, so `wait-load.sh` can block for nothing (2026-10-11: load5 31 with
 idle CPU blocked agents 35+ min). Workaround: check real CPU use
 (`top -l 2`, idle column) and pass a higher threshold, or skip the wait
-when the coordinator says so.
+when the coordinator says so. When verify timeouts come from load, the queue (not raised thresholds or a skipped wait) is the fix.
 
 Background Claude sessions export FORCE_COLOR=3; run checks as `env -u FORCE_COLOR <command>`.
