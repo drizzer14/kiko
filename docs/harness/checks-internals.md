@@ -166,11 +166,14 @@ dedup always runs in full.
   `check:lint`, `check:secrets`.
 - Dedups only a run given a file list (every argument an existing file,
   as the Stop tier passes the session's changed files; a no-argument run
-  such as `check:all` always runs): `check:dup`, `check:overrides`,
-  `check:security`. For `check:security` the key names every file and the
-  fingerprint covers every file's content plus the two Semgrep rules files, so
-  a changed file or a different file set rescans; a skip prints
-  `security.sh: SKIPPED, not a fresh scan` on stderr.
+  such as `check:all` always runs): `check:dup`, `check:overrides`.
+- Dedups a single file or a manual file list, never the Stop tier:
+  `check:security` (`medium.sh` does not call `security.sh`; the fast tier
+  passes one file, and a person may pass several). The key names every file
+  and the fingerprint covers every file's content plus the two Semgrep rules
+  files, so a changed file or a different file set rescans; a skip prints
+  `security.sh: SKIPPED, not a fresh scan` on stderr. A directory or
+  no-argument run always scans.
 - Dedups both a single-file run and the project-wide run:
   `check:import-order`, `check:full-word-identifiers`,
   `check:screen-imports`, `check:feature-imports`,

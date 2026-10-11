@@ -83,6 +83,7 @@ function createHarness(): Harness {
     run: (targets, extraEnvironment = {}) =>
       spawnSync('bash', [SCRIPT, ...targets], {
         encoding: 'utf8',
+        cwd: REPOSITORY_ROOT,
         env: {
           ...process.env,
           PATH: `${stubDirectory}:${process.env.PATH}`,
@@ -142,6 +143,19 @@ describe('scripts/checks/security.sh with several targets', () => {
     expect(harness.invocations()).toHaveLength(1);
     expect(harness.invocations()[0]).toContain(real);
     expect(harness.invocations()[0]).not.toContain('rules/fixtures');
+  });
+
+  it.each([
+    ['absolute', `${REPOSITORY_ROOT}/rules/fixtures/../../package.json`],
+    ['relative', 'rules/fixtures/../../package.json'],
+  ])('scans a %s path that only starts under rules/fixtures/ and climbs out', (_form, target) => {
+    const harness = createHarness();
+
+    const result = harness.run([target]);
+
+    expect(result.status).toBe(0);
+    expect(harness.invocations()).toHaveLength(1);
+    expect(harness.invocations()[0]).toContain('package.json');
   });
 
   it('does not call Semgrep when every argument is a positive fixture', () => {

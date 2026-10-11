@@ -2,7 +2,11 @@
 
 This project uses a Biome-adapted, LLM-guarding quality harness. Every
 check runs through a wrapper in `scripts/checks/` that prints a
-structured failure block on failure and stays silent on success.
+structured failure block on failure and stays silent on success. Two
+stated exceptions, both in `scripts/checks/security.sh`, write to stderr
+with exit 0: the dedup-skip notice (so a skip never reads as a fresh scan)
+and the Class B WARNING block (a finding that does not block still has to
+be seen).
 
 **Standing rule: fix the underlying issue. Never weaken a check to get
 green.** No `|| true`. No global auto-suppress. An ignore-list entry

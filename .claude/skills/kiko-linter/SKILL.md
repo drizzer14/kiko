@@ -46,7 +46,13 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   (`__tests__/mutation-stream.test.ts`); the seam defaults to the pinned
   `node_modules` binary, so production and the pinned-version guarantee
   are unchanged. A fast, hook-wired wrapper must still be silent on
-  success.
+  success, with two stated exceptions, both in `security.sh`, that write to
+  stderr and exit 0: (a) the dedup-skip notice (`SKIPPED, not a fresh
+  scan`), because a skip exits 0 without scanning and must never read as a
+  fresh scan; and (b) the Class B WARNING block, because a non-blocking
+  finding is override-eligible and still has to be seen. A hook that exits 0
+  does not feed stderr back to the agent, so both are for a human or a
+  manual `check:security` run, not a hook signal.
 
   A SECOND exception, of a different shape: `scripts/checks/kill-guard.sh`
   (+ its sibling `scripts/checks/kill-guard.js`) is a `PreToolUse` hook on
@@ -968,6 +974,13 @@ findings-handling for the exact mechanism, not restated here):
   reads as one. A failure block always names its cause (Semgrep's stderr,
   its `errors[]`, or the exit code) and a Class A/B block lists each
   finding from the JSON already in hand, not from a second Semgrep run.
+  The `rules/fixtures/` drop is a prefix match and skips an argument with a
+  `..` segment, so a path that starts under the fixtures folder and climbs
+  back out of it is scanned.
+- **Known limit: `src/**` includes need a root-relative path.** A rule whose
+  `paths.include` is `src/**` does not match a path given relative to a
+  working directory inside `src/`; `fast.sh` passes absolute paths and npm
+  runs from the repo root, so neither shape hits this.
 - **Class B (WARNING)** — a pattern that is usually right but can have
   a legitimate exception (e.g. taint mode also flags a value merely
   *derived* from a secret, which is a judgment call, not a

@@ -34,7 +34,14 @@ function ruleFindings(project: string, target: string): string[] {
     ['--quiet', '--metrics', 'off', '--json', '--config', MOBILE_RULES, target],
     { encoding: 'utf8', cwd: project },
   );
-  const parsed = JSON.parse(result.stdout) as { results: { check_id: string }[] };
+  const parsed = JSON.parse(result.stdout) as {
+    results: { check_id: string }[];
+    errors: unknown[];
+  };
+
+  // A Semgrep error would leave no findings and let the e2e case pass vacuously.
+  expect(result.status).toBe(0);
+  expect(parsed.errors).toEqual([]);
 
   return parsed.results
     .map((finding) => finding.check_id)

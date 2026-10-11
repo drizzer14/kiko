@@ -17,25 +17,26 @@ if ! command -v semgrep >/dev/null 2>&1; then
 fi
 
 # Every argument is a scan target (no argument means the whole repo), and all
-# of them go to ONE Semgrep call. `rules/fixtures/` holds the positive/negative
-# fixture pair for each project rule. A positive fixture is deliberately
-# vulnerable code, so it must not fail the real scan;
+# of them go to ONE Semgrep call; an empty-string argument is passed on, so
+# Semgrep rejects it and the scan fails closed. `rules/fixtures/` holds the
+# positive/negative fixture pair for each project rule. A positive fixture is
+# deliberately vulnerable code, so it must not fail the real scan;
 # `scripts/checks/semgrep-rules.sh` is what scans it on purpose.
 # `--exclude 'fixtures'` below only prunes that directory while WALKING a
 # tree — semgrep still scans a fixture file passed as a direct, single-file
 # TARGET (the fast-tier hook's own shape), so such a target is dropped here
-# explicitly instead.
+# explicitly instead. The drop is a prefix match, so a path with a `..` segment
+# is never dropped: `rules/fixtures/../../src/x.ts` would otherwise leave
+# `src/x.ts` unscanned.
 TARGETS=()
-given=0
 for argument in "$@"; do
-  [ -n "$argument" ] || continue
-  given=$((given + 1))
   case "$argument" in
+    */../* | */..) TARGETS+=("$argument") ;;
     "$ROOT/rules/fixtures/"* | rules/fixtures/*) ;;
     *) TARGETS+=("$argument") ;;
   esac
 done
-if [ "$given" -eq 0 ]; then
+if [ "$#" -eq 0 ]; then
   TARGETS=("$ROOT")
 fi
 if [ "${#TARGETS[@]}" -eq 0 ]; then
@@ -75,15 +76,18 @@ stderr_out="$(cat /tmp/kiko-security-stderr.$$ 2>/dev/null)"
 rm -f /tmp/kiko-security-stderr.$$
 
 # What Semgrep says went wrong. --quiet keeps its log off stderr, so the reason
-# lives in the JSON's errors[] (or, when the output is not JSON, in the text).
+# lives in the JSON's errors[]: every entry for "any", only an "error"-level or
+# Timeout entry for "blocking". Output that is not JSON cannot prove zero
+# findings, so it is reported as a problem either way.
 semgrep_error_text() {
   printf '%s' "$out" | node -e '
 let text="";process.stdin.on("data",(chunk)=>text+=chunk).on("end",()=>{
-  let lines=[];
-  try{lines=(JSON.parse(text).errors||[]).map((entry)=>entry.long_msg||entry.message||JSON.stringify(entry))}
-  catch{if(text.trim()!=="")lines=["Semgrep stdout (not JSON): "+text.trim().slice(0,500)]}
-  process.stdout.write(lines.join("\n"));
-})'
+  let parsed;
+  try{parsed=JSON.parse(text)}
+  catch{process.stdout.write("Semgrep output was not valid JSON"+(text.trim()===""?".":": "+text.trim().slice(0,500)));return}
+  const entries=(parsed.errors||[]).filter((entry)=>process.argv[1]==="any"||entry.level==="error"||entry.type==="Timeout");
+  process.stdout.write(entries.map((entry)=>entry.long_msg||entry.message||JSON.stringify(entry)).join("\n"));
+})' "$1"
 }
 
 # The findings of one severity from the JSON already in hand, one block each:
@@ -103,11 +107,8 @@ let text="";process.stdin.on("data",(chunk)=>text+=chunk).on("end",()=>{
 }
 
 if [ "$semgrep_code" -ne 0 ] && [ "$semgrep_code" -ne 1 ]; then
-  details="$stderr_out"
-  error_text="$(semgrep_error_text)"
   newline=$'\n'
-  [ -n "$error_text" ] && details="${details:+$details$newline}$error_text"
-  [ -n "$details" ] || details="Semgrep printed nothing on stderr or stdout (exit $semgrep_code); --quiet hides its log."
+  details="Semgrep exit $semgrep_code.${stderr_out:+$newline$stderr_out}$newline$(semgrep_error_text any)"
   print_block \
     "Semgrep (mobile security rules)" \
     "Semgrep itself failed to run (exit $semgrep_code)." \
@@ -123,13 +124,7 @@ fi
 # "error"-level entry fails closed, the same as semgrep-rules.sh treats a
 # Semgrep error as a failed proof. Unparseable output fails too, since it
 # cannot prove zero findings. Other warn-level entries stay non-blocking.
-scan_problems="$(printf '%s' "$out" | node -e '
-let text="";process.stdin.on("data",(chunk)=>text+=chunk).on("end",()=>{
-  let parsed;
-  try{parsed=JSON.parse(text)}catch{process.stdout.write("Semgrep output was not valid JSON.");return}
-  const blocking=(parsed.errors||[]).filter((entry)=>entry.level==="error"||entry.type==="Timeout");
-  process.stdout.write(blocking.map((entry)=>entry.long_msg||entry.message||JSON.stringify(entry)).join("\n"));
-})')"
+scan_problems="$(semgrep_error_text blocking)"
 
 if [ -n "$scan_problems" ]; then
   print_block \
