@@ -216,12 +216,12 @@ const headerTitle = (
     .with({ debtAccount: true }, () => t('forms.holding.addLoanTitle'))
     .otherwise(() => undefined);
 
-// This screen is registered in BOTH the Accounts and Home stacks (Home reaches it
-// from the transaction form's empty pickers), so it cannot bind its props to one
-// stack's param list. Its route params take the Accounts stack's shape, of which
-// the Home stack's is a subset (no `returnTo`), and it declares exactly the
-// navigation methods it calls. `popTo` is only reached when a `returnTo` is
-// present, which the Home stack's params cannot carry.
+// This screen is registered in the Accounts, Home, and Settings stacks (Home and Settings
+// reach it from the transaction form's empty pickers), so it cannot bind its props to one
+// stack's param list. Its route params take the Accounts stack's shape, of which the Home
+// and Settings stacks' are subsets (no `returnTo`), and it declares exactly the navigation
+// methods it calls. `popTo` is only reached when a `returnTo` is present, which those
+// stacks' params cannot carry.
 type HoldingFormScreenProps = {
   route: { params: AccountsStackParamList['HoldingForm'] };
   navigation: {

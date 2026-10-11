@@ -261,7 +261,7 @@ describe('SettingsScreen', () => {
     const marginRight = StyleSheet.flatten(divider.props.style).marginRight;
 
     // The card's own padding is 0 (each row carries its own
-    // `paddingHorizontal`, see `dataTransferRowStyle`), so the row's padding
+    // `paddingHorizontal`, see `groupedRowStyle`), so the row's padding
     // alone is not the whole story: the divider must also cross the
     // trailing whitespace inside the (resized) chevron's own render frame,
     // so it visually terminates at the ">" glyph's right edge rather than

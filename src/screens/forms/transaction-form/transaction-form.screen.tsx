@@ -107,11 +107,11 @@ import { alongsideArguments, writeTemplate } from './template-save';
 import SaveAsTemplate, { resolveTemplateSwitch } from './save-as-template';
 import { convertCounterpartType, resolveConvertView } from './convert-view';
 
-// This screen is registered in BOTH the Home and Accounts stacks (Home lists
-// every transaction; Accounts reaches it from a holding), so it cannot bind its
-// props to a single stack's param list. It only needs the route params and a few
-// navigation methods (`navigate` for the create forms both stacks register), so
-// it declares exactly that minimal shape — structurally satisfied by either
+// This screen is registered in the Home, Accounts, and Settings stacks (Home lists every
+// transaction; Accounts reaches it from a holding; Settings reaches it from the templates
+// list), so it cannot bind its props to a single stack's param list. It only needs the route
+// params and a few navigation methods (`navigate` for the create forms every stack
+// registers), so it declares exactly that minimal shape — structurally satisfied by any
 // stack's generated props.
 type TransactionFormScreenProps = {
   route: { params: TransactionFormParams };

@@ -140,11 +140,7 @@ describe('SettingsStack', () => {
   it('uses the shared large-title options, with the scrolled-bar blur below iOS 26', () => {
     const navigator = SettingsStack({}) as ReactElement<{ screenOptions: object }>;
 
-    expect(navigator.props.screenOptions).toEqual({
-      headerLargeTitle: true,
-      headerBlurEffect: 'systemChromeMaterialDark',
-      headerLargeStyle: { backgroundColor: 'transparent' },
-    });
+    expect(navigator.props.screenOptions).toEqual(sharedLargeTitleOptions);
   });
 
   // The Help pages inherit the stack's header options, so their own options

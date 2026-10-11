@@ -67,7 +67,6 @@ const seed = ({ templates = [], isLoading = {} }: Seed = {}): void => {
     transaction_templates: templates,
     holdings: [{ id: 'h-wallet', name: 'Wallet', type: 'cash', currency: 'UAH' }],
     categories: [{ key: 'groceries', title: 'Groceries', icon: 'cart', color: '#FFCC00' }],
-    settings: [{ defaultCategoryKey: 'other' }],
   };
 
   mockUseLiveQuery.mockImplementation((_query: unknown, tables: string[]) => ({
@@ -110,7 +109,7 @@ describe('TransactionTemplatesScreen — loading and empty', () => {
     );
   });
 
-  it.each(['transaction_templates', 'holdings', 'categories', 'settings'])(
+  it.each(['transaction_templates', 'holdings', 'categories'])(
     'shows no empty state, and no footer, while the %s read has not settled',
     async (table) => {
       seed({ isLoading: { [table]: true } });
@@ -165,8 +164,29 @@ describe('TransactionTemplatesScreen — list', () => {
     const { getAllByTestId } = await renderScreen();
     const [rent, salary] = getAllByTestId('transaction-template-card');
 
-    expect(rent).toHaveTextContent(/12,500\.00 ₴/);
+    expect(rent).toHaveTextContent(/-12,500\.00 ₴/);
     expect(salary).not.toHaveTextContent(/\d/);
+  });
+
+  it.each([
+    ['expense', /-12,500\.00 ₴/],
+    ['exchange', /-12,500\.00 ₴/],
+    ['split', /-12,500\.00 ₴/],
+    ['income', /(?<!-)12,500\.00 ₴/],
+  ] as const)('signs the amount of the %s template by its mode', async (mode, amount) => {
+    seed({
+      templates: [
+        templateRow(
+          't-signed',
+          'Signed',
+          draftOf({ mode, currency: 'UAH', amountMinorUnits: 1250000 }),
+        ),
+      ],
+    });
+
+    const { getByTestId } = await renderScreen();
+
+    expect(getByTestId('transaction-template-card')).toHaveTextContent(amount);
   });
 
   it('shows the holding and the type as the caption, and the type alone with no holding', async () => {
@@ -184,6 +204,14 @@ describe('TransactionTemplatesScreen — list', () => {
     const { getByLabelText } = await renderScreen();
 
     expect(getByLabelText('Groceries')).toBeTruthy();
+    expect(getByLabelText('Uncategorized')).toBeTruthy();
+  });
+
+  it('shows the neutral icon for a category the table does not hold', async () => {
+    seed({ templates: [templateRow('t-ghost', 'Ghost', draftOf({ category: 'vanished' }))] });
+
+    const { getByLabelText } = await renderScreen();
+
     expect(getByLabelText('Uncategorized')).toBeTruthy();
   });
 

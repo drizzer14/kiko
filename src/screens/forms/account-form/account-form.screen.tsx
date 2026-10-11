@@ -47,10 +47,10 @@ import { type Currency, currencySymbol, fiatCurrencyOptions } from '@kiko/curren
 
 import { useConnectReminder } from './use-connect-reminder';
 
-// This screen is registered in BOTH the Accounts and Home stacks (Home reaches it
-// from the transaction form's empty pickers), so it cannot bind its props to one
-// stack's param list. It declares exactly the navigation methods it calls,
-// structurally satisfied by either stack.
+// This screen is registered in the Accounts, Home, and Settings stacks (Home and Settings
+// reach it from the transaction form's empty pickers), so it cannot bind its props to one
+// stack's param list. It declares exactly the navigation methods it calls, structurally
+// satisfied by any of the stacks.
 type AccountFormScreenProps = {
   route: { params: AccountsStackParamList['AccountForm'] };
   navigation: {

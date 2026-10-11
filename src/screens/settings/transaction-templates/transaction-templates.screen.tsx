@@ -5,16 +5,8 @@ import {
   toTransactionTemplate,
   transactionTemplatesRepo,
 } from '@kiko/transaction-templates/repo';
-import {
-  buildCategoryDisplayMap,
-  DEFAULT_CATEGORY_KEY,
-  neutralCategory,
-  resolveCategoryDisplay,
-  resolveCategoryKey,
-} from '@kiko/categories/category-display';
 import maybe, { foldMap } from 'fnts/maybe';
 import { Money } from '@kiko/currency/money';
-import { settingsRepo } from '@kiko/settings';
 import { useTranslation } from 'react-i18next';
 import { holdingsRepo } from '@kiko/holdings/repo';
 import Box from '@kiko/design-system/components/box';
@@ -26,11 +18,13 @@ import Screen from '@kiko/design-system/components/screen';
 import { genericEntitySymbol } from '@kiko/holdings/entity-symbols';
 import EmptyState from '@kiko/design-system/components/empty-state';
 import type { SettingsStackParamList } from '@kiko/navigation/types';
+import type { TemplateMode } from '@kiko/transaction-templates/draft';
 import LoadingState from '@kiko/design-system/components/loading-state';
 import { resolveCategoryColor } from '@kiko/statistics/category-breakdown';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import TransactionCard from '@kiko/design-system/components/transaction-card';
 import CardContextMenu from '@kiko/design-system/components/card-context-menu';
+import { buildCategoryDisplayMap, neutralCategory } from '@kiko/categories/category-display';
 
 import { styles } from './transaction-templates.styles';
 
@@ -39,11 +33,22 @@ type TransactionTemplatesScreenProps = NativeStackScreenProps<
   'TransactionTemplates'
 >;
 
+// A draft stores its amount as a positive number whatever the mode, but the card colors an
+// amount by its sign: an expense, exchange, or split reads as money out, as Home's rows do.
+const AMOUNT_SIGN: Record<TemplateMode, 1 | -1> = {
+  income: 1,
+  expense: -1,
+  exchange: -1,
+  split: -1,
+};
+
 // A template shows an amount only when it stores both the amount and its currency; an amount
 // alone has no currency to read it in.
 const storedMoney = ({ draft }: TransactionTemplate): Money | undefined =>
   foldMap(maybe(draft.currency), (currency) =>
-    foldMap(maybe(draft.amountMinorUnits), (minorUnits) => Money.of(currency, minorUnits)),
+    foldMap(maybe(draft.amountMinorUnits), (minorUnits) =>
+      Money.of(currency, minorUnits * AMOUNT_SIGN[draft.mode]),
+    ),
   );
 
 const TransactionTemplatesScreen: FC<TransactionTemplatesScreenProps> = ({ navigation }) => {
@@ -68,21 +73,10 @@ const TransactionTemplatesScreen: FC<TransactionTemplatesScreenProps> = ({ navig
     true,
     liveOptions,
   );
-  const { data: settingsRows, isLoading: settingsLoading } = useLiveQuery(
-    settingsRepo.getQuery(),
-    ['settings'],
-    true,
-    liveOptions,
-  );
   // The empty state must never show while any of these reads is on its first load
   // (kiko-architecture's useLiveQuery consumer rule): `rows.length === 0` alone is also what a
   // read that has not landed yet looks like.
-  const isReady = useDataReady(
-    templatesLoading,
-    holdingsLoading,
-    categoriesLoading,
-    settingsLoading,
-  );
+  const isReady = useDataReady(templatesLoading, holdingsLoading, categoriesLoading);
 
   if (!isReady) {
     return (
@@ -95,7 +89,6 @@ const TransactionTemplatesScreen: FC<TransactionTemplatesScreenProps> = ({ navig
   const templates = rows.map(toTransactionTemplate);
   const holdingNameById = new Map(holdings.map((holding) => [holding.id, holding.name]));
   const categoryByKey = buildCategoryDisplayMap(categories);
-  const defaultCategoryKey = settingsRows.at(0)?.defaultCategoryKey ?? DEFAULT_CATEGORY_KEY;
   const isEmpty = templates.length === 0;
 
   const addTemplate = (): void => navigation.navigate('TransactionForm', { newTemplate: true });
@@ -104,17 +97,12 @@ const TransactionTemplatesScreen: FC<TransactionTemplatesScreenProps> = ({ navig
     const { draft } = template;
     // A template with no category shows the neutral tile, not the default category's: it has
     // none, and the default is what a transaction with none is filed under.
-    const category =
-      draft.category === null
-        ? neutralCategory()
-        : resolveCategoryDisplay(draft.category, categoryByKey, defaultCategoryKey);
-    const categoryColor =
-      draft.category === null
-        ? theme.colors.textSecondary
-        : resolveCategoryColor(
-            category.color,
-            resolveCategoryKey(draft.category, categoryByKey, defaultCategoryKey),
-          );
+    const { category, categoryColor } = foldMap(maybe(draft.category), (key) =>
+      foldMap(maybe(categoryByKey.get(key)), (display) => ({
+        category: display,
+        categoryColor: resolveCategoryColor(display.color, key),
+      })),
+    ) ?? { category: neutralCategory(), categoryColor: theme.colors.textSecondary };
     const typeLabel = t(`forms.transaction.${draft.mode}`);
     const holdingName = foldMap(maybe(draft.holdingId), (holdingId) =>
       holdingNameById.get(holdingId),
