@@ -44,6 +44,24 @@ export const buildWalkWindows = (
 export type WalkPass = 'forward' | 'pending' | 'rescan';
 
 /**
+ * Whether a span that cannot be committed ends the run in that pass. The forward pass and
+ * the re-scan move a mark that only a commit moves, so they cannot read past a stop. An
+ * owed range is not read in order, so a stop in it leaves the range owed and the run reads
+ * on past it.
+ */
+const STOP_ENDS_RUN: Record<WalkPass, boolean> = {
+  forward: true,
+  pending: false,
+  rescan: true,
+};
+
+/**
+ * What one window gave: `stopped` holds the spans of an owed range whose commit gave up
+ * (always empty for a pass in which a stop ends the run).
+ */
+export type WindowOutcome = WalkResult & { stopped: WalkWindow[] };
+
+/**
  * One run of a walk, as three passes. `forward` goes from the cursor to the end and moves the
  * walk's cursor. `pending` reads the ground earlier runs left owed (`pending` holds its
  * windows) and moves no mark. `rescan` goes back over the ground behind the forward start, to
@@ -128,21 +146,35 @@ const normalizePending = (
   return merged;
 };
 
-const logMalformedPending = (): WalkWindow[] => {
+/**
+ * The stored pending ranges of one walk. A value that is not a well-formed list says nothing
+ * about which days were owed, and reading it as empty would let the next write drop them, so
+ * all the ground before the cursor (`owedIfUnreadable`) is owed instead, once: it is stored
+ * at once, so the repaired list is what every later run reads and moves forward. The failure
+ * is logged under one fixed code: a corrupt list must not fail a balance sync.
+ */
+export const readPendingMark = async (input: {
+  field: BinanceWalkPendingField;
+  metadata: unknown;
+  owedIfUnreadable: WalkWindow;
+  write: (field: BinanceWalkPendingField, ranges: WalkWindow[]) => Promise<void>;
+}): Promise<WalkWindow[]> => {
+  const { field, metadata, owedIfUnreadable, write } = input;
+  const stored = binanceWalkPendingOf(field, metadata);
+
+  if (stored !== undefined) {
+    return stored;
+  }
+
   logFailure(
     '[binance sync] pending overlap ranges unreadable',
     new BinanceWalkStop('pending-malformed'),
   );
+  const owed = owedIfUnreadable.start < owedIfUnreadable.end ? [owedIfUnreadable] : [];
+  await write(field, owed);
 
-  return [];
+  return owed;
 };
-
-/**
- * The stored pending ranges of one walk. A value that is not a well-formed list is read as
- * an empty one under one fixed log code: a corrupt list must not fail a balance sync.
- */
-export const storedPendingOf = (field: BinanceWalkPendingField, metadata: unknown): WalkWindow[] =>
-  binanceWalkPendingOf(field, metadata) ?? logMalformedPending();
 
 /**
  * Plan a run so that new records always come first. A walk that re-scanned its last
@@ -338,43 +370,100 @@ export const nextSpanAfter = (committed: WalkWindow, window: WalkWindow): WalkWi
 });
 
 /**
+ * The most parts of stopped spans one run reads to isolate a stop. A stop is found by
+ * halving, which costs two reads a level, so a run that halved without a limit would spend
+ * its whole call budget on one stuck range and leave the other owed ranges and the re-scan
+ * unread; the limit makes each run shrink the stuck span a few levels and the next run go on.
+ */
+const ISOLATION_PARTS_PER_RUN = 4;
+
+/** The two parts a span halves into, or none for a span of one millisecond. */
+const partsOf = (span: WalkWindow): WalkWindow[] =>
+  foldMap(maybe(halfOf(span)), (half) => [half, { start: half.end, end: span.end }]) ?? [];
+
+/**
+ * Halve the spans that stopped, oldest first and a level at a time, and read the halves as
+ * owed ground: the halves that commit leave the owed list, so only the part around the stop
+ * stays owed. A span of one millisecond cannot be halved and stays owed whole. Returns the
+ * rows imported.
+ */
+const isolateStops = async (input: {
+  stopped: WalkWindow[];
+  canAfford: () => boolean;
+  runWindow: (window: WalkWindow, pass: WalkPass) => Promise<WindowOutcome>;
+}): Promise<number> => {
+  const { stopped, canAfford, runWindow } = input;
+  let imported = 0;
+  let partsLeft = ISOLATION_PARTS_PER_RUN;
+
+  for (let span = stopped.shift(); span !== undefined; span = stopped.shift()) {
+    for (const part of partsOf(span)) {
+      if (partsLeft === 0 || !canAfford()) {
+        return imported;
+      }
+
+      partsLeft -= 1;
+      const outcome = await runWindow(part, 'pending');
+      imported += outcome.imported;
+      stopped.push(...outcome.stopped);
+    }
+  }
+
+  return imported;
+};
+
+/**
  * Run a plan's windows: the forward pass first, then the owed ground (oldest first), then the
  * re-scan, each on what budget is left. A forward or re-scan window that does not complete,
  * and any window the budget cannot afford, ends the run: a later run resumes from the stored
  * marks. A pending window that does not complete stays owed and the run goes on to the next
- * one and to the re-scan, so one stuck day starves neither. `canAfford` must also say no
- * once Binance has rate limited the account, or the run would go on asking after a 429.
- * Either way the walk is reported incomplete.
+ * one and to the re-scan, so one stuck day starves neither. Once every owed window has been
+ * read, the spans of them that stopped are halved to isolate the stop (see `isolateStops`),
+ * before the re-scan. `canAfford` must also say no once Binance has rate limited the
+ * account, or the run would go on asking after a 429. Either way the walk is reported
+ * incomplete.
  */
 export const runWalkPlan = async (input: {
   plan: WalkPlan;
   canAfford: () => boolean;
-  runWindow: (window: WalkWindow, pass: WalkPass) => Promise<WalkResult>;
+  runWindow: (window: WalkWindow, pass: WalkPass) => Promise<WindowOutcome>;
 }): Promise<WalkResult> => {
   const { plan, canAfford, runWindow } = input;
-  const steps = [
-    ...plan.forward.map((window) => ({ window, pass: 'forward' as const })),
-    ...plan.pending.map((window) => ({ window, pass: 'pending' as const })),
-    ...plan.rescan.map((window) => ({ window, pass: 'rescan' as const })),
-  ];
+  const stopped: WalkWindow[] = [];
   let imported = 0;
   let complete = true;
 
-  for (const { window, pass } of steps) {
-    if (!canAfford()) {
-      return { imported, complete: false };
-    }
-
-    const outcome = await runWindow(window, pass);
-    imported += outcome.imported;
-
-    if (!outcome.complete) {
-      if (pass !== 'pending') {
-        return { imported, complete: false };
+  /** Whether the run ends here: a window the budget cannot afford, or a stop that ends it. */
+  const readPass = async (windows: WalkWindow[], pass: WalkPass): Promise<boolean> => {
+    for (const window of windows) {
+      if (!canAfford()) {
+        return true;
       }
 
-      complete = false;
+      const outcome = await runWindow(window, pass);
+      imported += outcome.imported;
+      stopped.push(...outcome.stopped);
+
+      if (!outcome.complete) {
+        complete = false;
+
+        if (STOP_ENDS_RUN[pass]) {
+          return true;
+        }
+      }
     }
+
+    return false;
+  };
+
+  if ((await readPass(plan.forward, 'forward')) || (await readPass(plan.pending, 'pending'))) {
+    return { imported, complete: false };
+  }
+
+  imported += await isolateStops({ stopped, canAfford, runWindow });
+
+  if (await readPass(plan.rescan, 'rescan')) {
+    return { imported, complete: false };
   }
 
   return { imported, complete };
@@ -475,13 +564,18 @@ const stepAfterRead = <Page>(input: {
  * `commit` (the rows it imported, or `undefined` for a stop, which leaves the span
  * uncommitted). Either stop reports the window incomplete with what was committed, and the
  * walk's marks, which only a commit moves, stay where the last committed span left them.
+ * In a pass where a stop does not end the run (an owed range) the walk reads on past the
+ * span that stopped, so one bad record cannot hold back the rest of the window, and reports
+ * the span in `stopped` for the run to halve.
  */
 export const walkSpans = async <Page>(input: {
   window: WalkWindow;
   read: (span: WalkWindow) => Promise<SpanRead<Page> | undefined>;
   commit: (span: WalkWindow, page: Page) => Promise<number | undefined>;
-}): Promise<WalkResult> => {
-  const { window, read, commit } = input;
+  pass: WalkPass;
+}): Promise<WindowOutcome> => {
+  const { window, read, commit, pass } = input;
+  const stopped: WalkWindow[] = [];
   let imported = 0;
   let span = window;
 
@@ -489,20 +583,25 @@ export const walkSpans = async <Page>(input: {
     const spanRead = await read(span);
 
     if (spanRead === undefined) {
-      return { imported, complete: false };
+      return { imported, complete: false, stopped };
     }
 
     const step = await stepAfterRead({ read: spanRead, span, window, commit });
 
     if (step === undefined) {
-      return { imported, complete: false };
-    }
+      if (STOP_ENDS_RUN[pass]) {
+        return { imported, complete: false, stopped };
+      }
 
-    imported += step.imported;
-    span = step.next;
+      stopped.push(span);
+      span = nextSpanAfter(span, window);
+    } else {
+      imported += step.imported;
+      span = step.next;
+    }
   }
 
-  return { imported, complete: true };
+  return { imported, complete: stopped.length === 0, stopped };
 };
 
 /**

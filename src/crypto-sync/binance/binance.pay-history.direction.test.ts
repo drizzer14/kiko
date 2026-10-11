@@ -499,16 +499,10 @@ describe('payRowsOf: wallet placement', () => {
       expect(rows).toMatchObject([{ wallet: 'BTC', externalId: 'acc-1:pay:C2C:tx-1:2' }]);
     });
 
-    it('places a send with no cost at all on the one wallet walletTypes names', () => {
-      const rows = rowsOf({ walletType: 1, walletTypes: [2], fundsDetail: [] });
-
-      expect(rows).toEqual([
-        expect.objectContaining({
-          wallet: 'BTC',
-          amountMinorUnits: -100_000,
-          externalId: 'acc-1:pay:C2C:tx-1:2',
-        }),
-      ]);
+    it('stops a send with an empty funds detail, whatever the one wallet walletTypes names', () => {
+      expect(stopCodeOf(() => rowsOf({ walletType: 1, walletTypes: [2], fundsDetail: [] }))).toBe(
+        'pay-split-mismatch',
+      );
     });
 
     it('places a send whose BTC funds carry no wallet cost list on the one wallet named', () => {
@@ -592,7 +586,7 @@ describe('payRowsOf: wallet placement', () => {
     });
 
     it('stops a send with no cost on one wallet that is untracked', () => {
-      expect(stopCodeOf(() => rowsOf({ walletTypes: [4], fundsDetail: [] }))).toBe(
+      expect(stopCodeOf(() => rowsOf({ walletTypes: [4], fundsDetail: splitFunds([]) }))).toBe(
         'pay-wallet-unknown',
       );
     });

@@ -19,10 +19,10 @@ import {
   halfOf,
   logWalkStop,
   planWalkPasses,
+  readPendingMark,
   resolveWalletHoldings,
   runWalkPlan,
   type SpanRead,
-  storedPendingOf,
   type WalkMarkFields,
   type WalkMarks,
   walkSpans,
@@ -508,10 +508,16 @@ const runSync = async (
   // or a first sync) falls back to the newest already-imported record.
   const cursor = binanceWalkCursorOf(CAPITAL_MARK_FIELDS.cursor, spot.metadata);
   const rescanCursor = binanceWalkCursorOf(CAPITAL_MARK_FIELDS.rescan, spot.metadata);
-  const pending = storedPendingOf(CAPITAL_MARK_FIELDS.pending, spot.metadata);
   const latest = await deps.latestTransactionTime(spot.id);
+  const planCursor = cursor ?? latest ?? null;
+  const pending = await readPendingMark({
+    field: CAPITAL_MARK_FIELDS.pending,
+    metadata: spot.metadata,
+    owedIfUnreadable: { start: HISTORY_FLOOR_MS, end: planCursor ?? HISTORY_FLOOR_MS },
+    write: (field, ranges) => deps.writeWalkPending(spot.id, field, ranges),
+  });
   const plan = planWalkPasses({
-    cursor: cursor ?? latest ?? null,
+    cursor: planCursor,
     rescanCursor,
     pending,
     floorMs: HISTORY_FLOOR_MS,
@@ -542,6 +548,7 @@ const runSync = async (
         window,
         read: (span) => readSpan(context, span),
         commit: (span, records) => commitSpan(context, span, records, pass),
+        pass,
       }),
   });
 };

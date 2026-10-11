@@ -298,13 +298,30 @@ withdraw budget moves into this object, with the same numbers and the same rule.
     re-scan and a budget that cannot afford the next window still end the run. A rate limit ends
     the run too (the account cooldown is part of the budget check). Ranges inside the re-scan's
     own range are read by the re-scan, and leave the list as its mark passes them.
+  - **Isolating a stop (pending pass only, fix round 8).** A stop in an owed range must not hold
+    back the unrelated ground in it: past 12 ranges two ranges merge into a hull, and a hull whose
+    one commit stops would never read the days the merge put beside the stuck range. In the
+    pending pass a span whose commit stops is therefore reported to the run (`WindowOutcome.stopped`)
+    and the walk reads on past it. After every owed window has been read once, and before the
+    re-scan, the run halves each stopped span (oldest first, a level at a time) and reads the
+    halves as owed windows of their own: the halves that commit leave the list, the ones that stop
+    are halved again, and only the smallest stuck span stays owed (down to a span of 1 ms). Halving
+    costs two reads a level, so one run reads at most 4 such halves (`ISOLATION_PARTS_PER_RUN`);
+    a longer isolation goes on over later runs, each starting from the smaller stuck span the
+    last one left, and the run's budget still reaches the other owed windows and the re-scan.
+    The forward pass and the window re-scan keep their rule (`STOP_ENDS_RUN`): a stop there ends
+    the run, because the mark they move is moved only by a commit.
   - **Bound.** The list holds at most 12 ranges. Each range costs at least one call of a run's
     leftover budget, so a longer list could not be served in one run; past the limit the two
     nearest ranges merge into their hull, which reads the gap between them too and loses no
     ground. Touching ranges merge on every store, so frequent syncs do not grow it.
   - **Parse.** A stored value that is not a list of `{ start, end }` ranges with finite
-    `start < end` is read as an empty list under one fixed log code (`pending-malformed`),
-    never a throw: a corrupt value must not fail a balance sync.
+    `start < end` says nothing about which days were owed, and an empty list would let the next
+    write drop them. It is read as one owed range `[floor, cursor)` instead (the cursor the walk
+    plans from; no range when the cursor is null or not after the floor), stored at once so the
+    repaired list is what later runs read, under one fixed log code (`pending-malformed`), never
+    a throw: a corrupt value must not fail a balance sync. The overlap day behind the forward
+    start lies inside that range and merges into it.
   A range inside the re-scan's own range waits for the re-scan mark to reach it, so a stop inside
   the window re-scan delays such a range. It is never dropped: it stays in the list and is read
   once the window has slid past the stop and a new pass starts, at most one window later.
@@ -357,13 +374,18 @@ withdraw budget moves into this object, with the same numbers and the same rule.
     loss once the floor passes the order (about 548 days).
   - **B5.** An outgoing order with no BTC `walletAssetCost` entry at all, and an explicit
     `walletTypes` naming exactly one wallet, is placed whole on that wallet when its BTC
-    `fundsDetail` entries, added together, equal `abs(amount)` to the satoshi (an order that lists
-    no funds at all carries nothing to compare and is placed). A cost-less BTC entry below the
+    `fundsDetail` entries, added together, equal `abs(amount)` to the satoshi (B7, ruling of fix
+    round 8: an order with an EMPTY `fundsDetail` stops, `pay-split-mismatch`: it carries nothing
+    that shows the whole amount was BTC, and a send part-funded in another coin that lists no
+    funds would be placed as BTC the user never spent). A cost-less BTC entry below the
     amount, with the rest paid in another coin, stops (`pay-split-mismatch`): placing it whole
     would invent BTC the user never spent. An order whose `fundsDetail` names no BTC entry but
     lists funds in another coin stops as `pay-funds-not-btc` (B4), before this rule. The stop
     stays for: `walletTypes` absent (`walletType` alone is not trusted), `walletTypes` with two
-    wallets and no costs, and a cost list that is zero or does not add up.
+    wallets and no costs, and a cost list that is zero or does not add up. The sum is signed: if
+    Binance signs the funds amounts of a send negative, no B5 order matches and every one stops
+    (fail-safe; the probe checks the sign). B7 is an overnight default and needs user
+    confirmation (plan, OVERNIGHT 16).
   - **B4.** The funds checks apply to OUTGOING orders only. `pay-funds-not-btc` (a BTC order
     whose `fundsDetail` names no BTC) stops a send; on a receive the funds are the payer's, in
     whatever coin, and say nothing of what the user received.
@@ -577,7 +599,8 @@ Placement (the "was:" column shows today's result):
 | P5 | Pay, out | costs do not sum to abs(amount) (any wallet count), a positive cost on a wallet not in walletTypes, a cost list that is all zero, or no cost entry with walletTypes absent or naming two wallets | stop (`pay-split-mismatch`) | not imported |
 | P5a | Pay, in | `transactionTime` before 2026-09-29T00:00:00Z, whatever walletType, walletTypes (one wallet, two, or none), costs and funds say | Funding (R22, by date) | not imported |
 | P5b | Pay, in | `transactionTime` at or after 2026-09-29T00:00:00Z, whatever the wallet fields say (including walletTypes [1,2]: no stop) | Spot (R22, by date) | not imported |
-| P5c | Pay, out | no BTC walletAssetCost entry at all (no `fundsDetail`, or BTC funds with an empty cost list) and walletTypes naming exactly one wallet (B5) | that wallet, the whole amount | not imported |
+| P5c | Pay, out | no BTC walletAssetCost entry at all (BTC funds with an empty cost list), the BTC funds entries added together equal to abs(amount), and walletTypes naming exactly one wallet (B5) | that wallet, the whole amount | not imported |
+| P5d | Pay, out | an empty `fundsDetail` (B7), whatever walletTypes says | stop (`pay-split-mismatch`) | not imported |
 | P6 | Pay, out | 3, 4, 6 | stop (Q9) | not imported |
 | P7 | any | target holding missing | create it at 0, then place | n/a |
 | P8 | Pay, out | BTC order whose `fundsDetail` names no BTC (B4: a receive is imported, its funds are the payer's) | stop (`pay-funds-not-btc`) | n/a |

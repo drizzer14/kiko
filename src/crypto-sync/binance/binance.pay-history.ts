@@ -25,11 +25,11 @@ import {
   btcSatoshis,
   logWalkStop,
   planWalkPasses,
+  readPendingMark,
   resolveWalletHoldings,
   runWalkPlan,
   type SpanRead,
   splitOrStop,
-  storedPendingOf,
   type WalkMarkFields,
   type WalkMarks,
   walkSpans,
@@ -278,15 +278,16 @@ const btcFundsSatoshisOf = (order: BinancePayOrder): number =>
 
 /**
  * A send with no wallet cost anywhere, placed whole on the one wallet `walletTypes` names.
- * Binance lists no funds at all on some orders, which carry nothing to compare with; where
- * BTC funds entries are listed they must add up to the amount.
+ * Its BTC funds entries must add up to the amount. An empty funds detail adds up to nothing:
+ * it cannot show that the whole amount was BTC, and a send part-funded in another coin that
+ * lists no funds would be placed as BTC the user never spent.
  */
 const wholeOnSoleWallet = (
   order: BinancePayOrder,
   walletType: number,
   satoshis: number,
 ): WalletShare[] => {
-  if (order.fundsDetail.length > 0 && btcFundsSatoshisOf(order) !== satoshis) {
+  if (btcFundsSatoshisOf(order) !== satoshis) {
     throw new BinanceWalkStop('pay-split-mismatch');
   }
 
@@ -678,12 +679,18 @@ const runSync = async (
 
   const payCursor = binanceWalkCursorOf(PAY_MARK_FIELDS.cursor, spot.metadata);
   const rescanCursor = binanceWalkCursorOf(PAY_MARK_FIELDS.rescan, spot.metadata);
-  const pending = storedPendingOf(PAY_MARK_FIELDS.pending, spot.metadata);
+  const floorMs = payFloorMs(now);
+  const pending = await readPendingMark({
+    field: PAY_MARK_FIELDS.pending,
+    metadata: spot.metadata,
+    owedIfUnreadable: { start: floorMs, end: payCursor ?? floorMs },
+    write: (field, ranges) => deps.writeWalkPending(spot.id, field, ranges),
+  });
   const plan = planWalkPasses({
     cursor: payCursor,
     rescanCursor,
     pending,
-    floorMs: payFloorMs(now),
+    floorMs,
     endTime: now,
     windowMs: PAY_WINDOW_MS,
     overlapMs: RESYNC_OVERLAP_MS,
@@ -723,6 +730,7 @@ const runSync = async (
         window,
         read: (span) => readSpan(context, span),
         commit: (span, page) => commitOrStop(context, span, page, pass),
+        pass,
       }),
   });
 };
