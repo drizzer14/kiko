@@ -1383,7 +1383,7 @@ bond.
 loop-invariant per holding (not per bucket) must be computed ONCE, outside
 the per-bucket loop, not re-derived at every point. `createHoldingValuer`
 (`src/statistics/holding-value-at/`) is the ONLY holding-valuation entry
-point now — there is no separate single-call `holdingValueAt` anymore, it
+point now — there is no separate single-call holding-value-at function anymore, it
 was deleted from production (its old body survives only as a local,
 un-exported `referenceHoldingValueAt` oracle inside
 `holding-value-at.test.ts`, the same "kept only as the parity oracle"
@@ -1391,7 +1391,7 @@ pattern `internal-transfers.test.ts` uses for the algorithm IT replaced).
 Every call site — including a single-instant read like
 `holdingsRepo.updateWithBalanceDelta`'s own regression test — calls
 `createHoldingValuer(holding, transactions)(t)` instead; for a one-off read
-this pays the same per-holding setup cost `holdingValueAt` used to pay
+this pays the same per-holding setup cost that single-call function used to pay
 per call, which is negligible for a single call.
 
 `buildNetWorthSeries` also decides whether a holding's value counts at
@@ -2717,7 +2717,7 @@ currency — the same "a filter never hides an active selection" rule
 `buildLoanOptions` (below) already follows on the transaction form's own
 loan-payment field, or the picker would resolve no match for a link that
 still exists in the metadata and silently show "None". `isLoanFieldVisible`
-(`transaction-form.screen.tsx`) shows that field whenever the row already
+(`src/screens/forms/transaction-form/mode-and-actions/mode-and-actions.ts`) shows that field whenever the row already
 carries `selectedLoanHoldingId`, regardless of the row's own amount
 sign — a linked row later edited from debit to credit must still reach the
 field where None/Undo live.

@@ -152,7 +152,7 @@ Mechanized for a literal key in the component's own folder tree by
 `npm run check:component-i18n-namespace`, no override). The scope includes the
 component's test files, so a component test that reads a composed child's key
 is flagged too: move that assertion to the child's own test. Still manual
-review: a computed namespace, `keyPrefix`/`returnObjects`, an imported key
+review: a computed namespace, i18next's key-prefix and object-return options, an imported key
 constant, string concatenation, and a design-system component reading a
 SCREEN namespace.
 
@@ -254,7 +254,7 @@ The exception is a CLOSED list: only the three Settings-tab ROOT rows
 `src/i18n/locales/title-keys.ts`) are Title Case in en and read exactly
 like their nav titles, by user ruling 2026-10-08; uk stays sentence case
 with the row label equal to its title. Counter-example: the Help TOPIC
-rows (`help.topics.*.rowLabel`, `SettingsRows` in `help.screen.tsx` that
+rows (`help.topics.*.rowLabel`, `SettingsRow` in `help.screen.tsx` that
 also open a screen) stay sentence case ("Add an account" vs title "Add an
 Account"). It is not a rule for every row that opens a screen.
 

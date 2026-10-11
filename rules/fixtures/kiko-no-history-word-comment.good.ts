@@ -65,3 +65,11 @@ export const purposeBlock = true;
 export const wordStringAfterBlock = /* a plain note */ 'it no longer exists';
 // A plain note.
 export const wordStringBelowLine = 'previously stored';
+
+// 8. The old-value label needs the colon and a word boundary: the word in prose, the "wasm:"
+// prefix, an object key, and a string are not a label narrating a previous value.
+// The cap was derived from the row count.
+// wasm: the module loads lazily.
+export const wasKey = { was: 1 };
+export const wasString = 'was: 30';
+export const wasStringBeforeComment = 'was: 30'; // The cap holds the row count.

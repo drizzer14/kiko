@@ -218,7 +218,8 @@ kiko-linter skill's own section on it for the rule's design.
 The "changed because …" narrative words are mechanized too, by the
 `kiko-no-history-word-comment` Semgrep rule (WARNING until its sweep
 lands): read the phrases in that rule's `pattern-regex` and `message` in
-`rules/semgrep-prewrite.yml`. Write
+`rules/semgrep-prewrite.yml` (they include a `was:` label before an old value,
+`// was: 30`). Write
 how the code works today and why ("matches the holding", "a card absent
 from the snapshot"), never what it did before.
 
@@ -323,7 +324,7 @@ flag such as `converting`) goes into ONE typed table
 the override first: `converting ? 'converting' : mode`) — not parallel
 `if`-chains over the `isX` booleans. A new mode is then a compile error
 in one table. See `MODE_BEHAVIOR` in
-`src/screens/forms/transaction-form/transaction-form.screen.tsx`; this
+`src/screens/forms/transaction-form/validation/validation.ts`; this
 closes the open note of finding U5 in
 `docs/reviews/2026-09-codebase-review.md` that this section did not cover
 booleans derived from a union. A judgment rule, not mechanized.
@@ -659,11 +660,14 @@ one validation model — don't hand-roll a different one:
   component (`src/design-system/components/field-error/`), not a
   hand-rolled `Box`+`Text` caption — see that component's own doc
   comment for the rationale.
-- The error's visibility is its own piece of state (e.g.
-  `showNameError`), set true only after a failed submit attempt, so a
+- The shared attempted-submit flag is its own piece of state (`attemptedSave` in the forms under
+  `src/screens/forms/`; the connect fields and the import screens keep their own, for example `showTokenRequiredError`
+  in `monobank-connect-field.component.tsx`, `attemptedConnect` in
+  `binance-credentials-field.component.tsx`, `attemptedImport` in `column-mapping.screen.tsx` and
+  `statement-import.screen.tsx`), set true only after a failed submit attempt, so a
   fresh form shows no error before the user has tried to save.
 - Every field's error is computed from ONLY that field's own inputs,
-  gated by the shared attempted-submit flag — never by comparing
+  gated by that form's attempted-submit flag — never by comparing
   against a single shared "first failing field" reason. That shape
   hides every error but one until the fields ahead of it are fixed one
   at a time, and un-hides the next one instead of clearing once fixed.
@@ -849,10 +853,7 @@ acronym rule.
 
 This applies inside a compound name too, not just standalone —
 `isBTCEntry` (`src/crypto-sync/binance/binance.provider.ts`), not
-`isBtcEntry`, is a live example. (History: `fetchBtcPrice` was renamed
-`fetchBTCPrice` during review for the same reason; that function no
-longer exists — read the current tree for a live example rather than
-assuming this name still does.)
+`isBtcEntry`, is a live example.
 
 Note: the Drizzle schema's own column names (`externalId`, `mcc`)
 follow ordinary camelCase per Drizzle/SQL convention, not this rule
@@ -1035,6 +1036,11 @@ it**. Never scatter a thing's implementation, test, and styles as
 loose siblings in a shared flat folder; a folder that is a flat dump
 of many unrelated files is hard to read and navigate (user directive).
 
+The transaction-form screen follows this: `transaction-form.screen.tsx` keeps
+the state, the hydrate effect, the save handlers and the layout; its helpers,
+components and hooks live in unit folders under
+`src/screens/forms/transaction-form/`.
+
 Two shapes this takes today:
 
 - A design-system **component** folder (see "One component per file"
@@ -1092,8 +1098,8 @@ To move or rename a file (into a unit folder, for example), use
 Edit/Write, so the pre-write guard checks the change. `git mv` leaves
 the content unchanged, and guard-replay follows the rename, so the
 file's pre-existing findings keep their baseline. Never use a plain
-`mv`/`cp` (the kill-guard denies it into `src/`, `__tests__/`, and
-`rules/`, and a plain move reads as a new file whose every finding
+`mv`/`cp` (the kill-guard denies it into `src/`, `__tests__/`, `rules/`, and
+`e2e/`, and a plain move reads as a new file whose every finding
 looks new), and never edit the moved file with sed or another Bash
 write.
 
@@ -1202,6 +1208,22 @@ automatically by Jest with no `jest.mock()` call needed. Read
 assuming a package is already covered — a package added to
 `package.json` without also being added there will fail its first
 test with an unhelpful parse error, not an obviously-related one.
+
+## A jest.requireActual call takes no type argument
+
+Write `jest.requireActual('module') as { ... }`, or bind the result to an annotated const
+(`const actual: Shape = jest.requireActual('module')`); never `jest.requireActual<Shape>('module')`,
+and the same for `jest.requireMock`, `jest.createMockFromModule` and `jest.genMockFromModule`.
+Jest finds the tests to run for a changed file
+(`--findRelatedTests`, which Stryker's per-test coverage also uses) by a regex over each file's
+text. jest-haste-map's dependency extractor reads only those four names with optional
+whitespace, then a string literal. A type argument between the name and the `(` hides the module,
+so a change to that module does not select the test. The rule covers every
+file that calls it (a test, a `__mocks__` file, a test-support helper): a typed call in a helper cuts
+the chain from the test through the helper to the real module too.
+
+Semgrep `kiko-no-typed-jest-require-actual` (`rules/semgrep-prewrite.yml`) denies the typed form at
+write time; a comment or a string that spells the typed form is flagged too (a test builds the text at runtime or keeps it under `rules/fixtures/`); its known limits are in kiko-linter's "`kiko-no-typed-jest-require-actual`".
 
 ## Tests read a module, never a source file's text
 
