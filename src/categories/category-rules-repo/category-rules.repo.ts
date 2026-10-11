@@ -108,8 +108,9 @@ const rowIdsForNamedRule = async (
   return rowIds;
 };
 
-// A rule with no name matcher can win any row, so every rewritable row is read, a page of ids at
-// a time (an id-keyset page, so a page never re-reads or skips a row).
+// A rule with no name matcher can win any row, so every row is read; planRuleRewrite picks the
+// rewritable ones. A page of ids at a time (an id-keyset page, so a page never re-reads or skips a
+// row).
 const rowIdsForUnnamedRule = async (
   databaseTransaction: typeof database,
   prepared: PreparedRules,

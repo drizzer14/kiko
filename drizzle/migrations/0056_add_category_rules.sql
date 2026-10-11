@@ -9,8 +9,8 @@
  unreadable, so no override is lost here. Every existing transaction gets 0 in the new column.
 
  Crash-safe: the order is create, COPY, then DROP, and the runner applies every statement and its
- bookkeeping row in ONE transaction, so a crash leaves the database at the previous migration with the overrides
- intact to retry whole on the next launch. Never move the DROP before the copy.
+ bookkeeping row in ONE transaction, so a crash leaves the database at the previous migration with
+ the overrides intact to retry whole on the next launch. Never move the DROP before the copy.
 */
 CREATE TABLE `category_rules` (
 	`id` text PRIMARY KEY NOT NULL,

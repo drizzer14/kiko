@@ -429,6 +429,21 @@ describe('categoryRulesRepo.applyNameRule', () => {
     expect(categoriesOf()).toEqual({ source: 'food' });
   });
 
+  it('counts only the rewrite when the source row no longer exists', async () => {
+    insertTransaction({ id: 'plain', description: 'Silpo', category: 'groceries' });
+    insertTransaction({ id: 'other', description: 'Atb', category: 'groceries' });
+
+    const updated = await categoryRulesRepo.applyNameRule({
+      name: 'Silpo',
+      category: 'food',
+      sourceTransactionId: 'deleted',
+    });
+
+    expect(updated).toBe(1);
+    expect(categoriesOf()).toEqual({ other: 'groceries', plain: 'food' });
+    expect(storedRules()).toHaveLength(1);
+  });
+
   it('writes nothing for a blank name', async () => {
     insertTransaction({ id: 'plain', description: '', category: 'groceries' });
 
