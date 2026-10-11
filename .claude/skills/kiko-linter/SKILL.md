@@ -225,7 +225,7 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   SHELL-WRITE deny (why: the pre-write guard sees only Edit/Write/
   MultiEdit, so a file a Bash command writes lands unchecked until
   guard-replay at Stop). Rule: deny a Bash write into `src/`,
-  `__tests__/`, `rules/`, or `e2e/` (`WRITE_GUARDED_TREES`; `e2e/` joined
+  `__tests__/`, `rules/`, or `e2e/` (`WRITE_GUARDED_TREES` in `scripts/checks/kill-guard.js`; `e2e/` joined
   on 2026-10-11 after a python write broke
   `e2e/screenshot/seed/demo-text.ts`; the pre-write guard and guard-replay
   read any `.ts`/`.tsx` outside `EXCLUDED_PREFIXES`, so `e2e/*.ts` is in
@@ -820,6 +820,13 @@ reasoning.
   `switch ($X) { case $C: ... }` (`kiko-no-switch`) — verified
   empirically: the bare form gave 0 findings against a real `switch`
   fixture with three `case` arms; the clause-anchored form matched.
+
+## Semgrep facts verified on 2026-10-11 (`kiko-no-typed-jest-require-actual`)
+
+- An AST pattern `jest.requireActual<$T>(...)` also matches the UNTYPED call (1.175), so a
+  type-argument ban uses `pattern-regex`.
+- When a regex rule widens, probe the adjacent forms in the same commit and list each miss in the
+  known limits (the node-print rule's `-r ./setup.js -p` miss was found only after landing).
 
 ## Semgrep facts verified on 2026-09-25 (pre-write guard build-out)
 
@@ -1618,8 +1625,9 @@ to that module. Proven on the Duo native specs (fixed in 21425bd1 and e015e334).
 **Shape.** One `pattern-regex` (`\bjest\s*(?:\?\.|\.)\s*require(?:Actual|Mock)\s*<`), not an AST
 pattern: Semgrep reads an absent type argument as matching `<$T>`, so the AST form also matched
 `jest.requireActual('m') as T` and `const x: T = jest.requireActual('m')` (probed on 1.175). The
-regex reads across a line break; a comment that spells the typed form is flagged too, so reword
-it. ERROR, flat fixture pair `rules/fixtures/kiko-no-typed-jest-require-actual.{bad,good}.ts`.
+regex reads across a line break; a comment or a string that spells the typed form is flagged too, so reword
+it. A harness test that quotes the typed form in a string is denied by the guard: build the text at
+runtime, or keep it under `rules/fixtures/` (the only exempt folder). ERROR, flat fixture pair `rules/fixtures/kiko-no-typed-jest-require-actual.{bad,good}.ts`.
 
 **Scope: no `paths.include`.** Any file that calls `jest.requireActual` is test code (a test, a
 `__mocks__` file, a test-support helper), and a typed call in a helper also cuts the chain test,
@@ -2314,7 +2322,8 @@ mechanizable (see harness-workflow's "Classify every finding").
    for i in $(seq 20); do CLAUDE_PROJECT_DIR=$PWD /usr/bin/time -p bash scripts/checks/pre-write-guard.sh < "$S/b.json" 2>&1 >/dev/null | awk '/^real/{print $2}'; done | sort -n | sed -n '10p;19p'
    ```
 
-   It prints p50, then p95. A pattern that can go quadratic (a
+   It prints p50, then p95. A p95 taken while the load is above about 10 is not valid: wait with
+   `scripts/wait-load.sh`, or interleave runs with and without the rule and compare. A pattern that can go quadratic (a
    statement-sequence `pattern-inside` with a weak prefilter) must
    exclude files where it cannot apply; a Semgrep timeout becomes a
    "could not check" deny.
@@ -2464,7 +2473,8 @@ flags `node`, then any options, then a single-dash option cluster holding `p` or
 including in a comment or a string, so reword text that spells the flag. `-p"1"` (no space after
 the flag) and an option before the flag (`node --no-warnings -p`) are caught; a literal path such
 as `/usr/bin/node -p` is caught too. Known limit: node reached through a variable or command
-substitution (`"$NODE" -p`, `$(command -v node) -p`). A test that must prove a script survives a colored
+substitution (`"$NODE" -p`, `$(command -v node) -p`), and an option that takes a separate value stops the match
+(`node -r ./setup.js -p`, `node --require ./x -p`, `node -C production -p`, `node -e "x" -p`). A test that must prove a script survives a colored
 environment sets `FORCE_COLOR: '3'` itself (`__tests__/dup-large-files.test.ts` does).
 
 ## Shipped migrations are never edited — check:shipped-migrations

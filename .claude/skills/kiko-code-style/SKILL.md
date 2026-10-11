@@ -1215,7 +1215,7 @@ file that calls it (a test, a `__mocks__` file, a test-support helper): a typed 
 the chain from the test through the helper to the real module too.
 
 Semgrep `kiko-no-typed-jest-require-actual` (`rules/semgrep-prewrite.yml`) denies the typed form at
-write time; its known limits are in kiko-linter's "`kiko-no-typed-jest-require-actual`".
+write time; a comment or a string that spells the typed form is flagged too (a test builds the text at runtime or keeps it under `rules/fixtures/`); its known limits are in kiko-linter's "`kiko-no-typed-jest-require-actual`".
 
 ## Tests read a module, never a source file's text
 
