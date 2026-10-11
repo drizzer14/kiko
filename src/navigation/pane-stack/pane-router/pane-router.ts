@@ -209,27 +209,15 @@ export const PaneRouter = ({
   // would be left alone in the pane, with nothing to go back to. A caller may send it after the
   // route has already gone (the page and the list both notice a deleted entity, and a list and a
   // page can both close the same one), which must not close whatever is on top.
-  const close = (
-    state: PaneStackState,
-    routeKey: string,
-    config: RouterConfigOptions,
-  ): PaneStackState | null => {
+  const close = (state: PaneStackState, routeKey: string): PaneStackState | null => {
     const at = state.routes.findIndex((route) => route.key === routeKey);
 
-    if (at === -1) {
-      return state;
+    // A stack never closes its root, so the action is not handled there.
+    if (at <= 0) {
+      return at === 0 ? null : state;
     }
 
     const panes = unfoldAssignment(state.routes, state.panes, paneConfig);
-
-    // The stack router answers for the root, which a stack never closes.
-    if (at === 0) {
-      return standard(
-        { ...state, panes },
-        { ...StackActions.pop(), source: routeKey, target: state.key },
-        config,
-      );
-    }
 
     const kept: PaneStackState = {
       ...state,
@@ -393,7 +381,7 @@ export const PaneRouter = ({
         .with({ type: 'PANE_FOLD' }, () => fold(state))
         .with({ type: 'PANE_UNFOLD' }, () => unfold(state))
         .with({ type: 'PANE_SHOW_DEFAULT' }, ({ payload }) => showDefault(state, payload, config))
-        .with({ type: 'PANE_CLOSE' }, ({ payload }) => close(state, payload.routeKey, config))
+        .with({ type: 'PANE_CLOSE' }, ({ payload }) => close(state, payload.routeKey))
         .otherwise((standard) => delegate(state, standard, config)),
 
     actionCreators: { ...stack.actionCreators, ...PaneActions },
