@@ -1409,7 +1409,8 @@ found. Reword any of these.
 The change-narrative half of kiko-code-style's "Comments: WHY only, never
 history". `kiko-no-history-id-comment` catches an id or a citation; this
 rule catches the words a comment uses to narrate a change: `it replaces`,
-`no longer`, `used to`, and `previously`. A comment states how the code
+`no longer`, `used to`, `previously`, and a `was:` label before an old value
+(`// was: 30`, ` * was: the old cap`). A comment states how the code
 works today and why, never how it worked before. The members are the
 `pattern-regex` alternation in `kiko-no-history-word-comment`
 (`rules/semgrep-prewrite.yml`); the fixture pair shows each shape.
@@ -1473,6 +1474,16 @@ of other text in its comment), and the same `paths.exclude` scope (`__tests__/**
   rejected", "previously stored rates") held 14 of the 34 hits. A hyphenated
   `previously-<participle>` was 8 of 11 data-state, but it also held 2
   true history hits, so it is not narrowed either.
+- `was:`: a label, not a word, so it needs the colon and the `\b` before it, and sits beside the
+  other members as `(?:\b(?:…)\b|\b[Ww]as:)` (the closing `\b` of the word members cannot follow
+  a colon). `wasm:` (no boundary after `was`), the word `was` in prose, an object key
+  `{ was: 1 }` and a string `'was: 30'` stay silent (pinned in `.good.ts`; the string and the key
+  are not comment text, and the line arm's string-skip walk never opens on them). Measured on
+  2026-10-11: 0 hits over `src`, `App.tsx` and the repo (`semgrep … . --json`, 1839 paths
+  scanned; a plain `grep -rE '\b[Ww]as:'` over `src` finds no occurrence in code or comments
+  either), so the member lands with no false-positive class and nothing to sweep. Its only hits
+  are the four pins in `.bad.ts`. A scan of the whole repo hits the 3 per-rule timeouts on
+  `holding-form.screen.test.tsx` under load; scan that file alone to read its hits.
 - `it replaces`: 2 of the 6 hits were a behavior description ("while
   locked it replaces the whole app with a prompt"); the other 4 named the
   old code ("the scan it replaces"). Not narrowed.

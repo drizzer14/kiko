@@ -217,7 +217,8 @@ kiko-linter skill's own section on it for the rule's design.
 
 The "changed because …" narrative words are mechanized too, by the
 `kiko-no-history-word-comment` Semgrep rule (WARNING until its sweep
-lands): `it replaces`, `no longer`, `used to`, and `previously`. Write
+lands): `it replaces`, `no longer`, `used to`, `previously`, and a `was:` label
+before an old value (`// was: 30`). Write
 how the code works today and why ("matches the holding", "a card absent
 from the snapshot"), never what it did before.
 
