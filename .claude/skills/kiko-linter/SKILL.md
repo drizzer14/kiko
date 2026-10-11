@@ -2423,9 +2423,11 @@ setting touches, and test the captured text is a plain number before comparing i
 The guard is the Semgrep rule `kiko-no-node-print-in-shell` in `rules/semgrep-mobile.yml` (fixture
 pair `rules/fixtures/kiko-no-node-print-in-shell.{bad,good}.sh`). Like the pipe rule above, it is
 a `generic` regex over `*.sh`, run by `check:security` and `check:rules`, not at write time. It
-flags `node` followed by a single-dash option cluster holding `p` or by `--print`, including in a
-comment or a string, so reword text that spells the flag. Known limits (a literal path such as
-`/usr/bin/node -p` IS caught): node reached through a variable or command substitution (`"$NODE" -p`, `$(command -v node) -p`), `-p"1"` with no space after the flag, and an option placed before the flag (`node --no-warnings -p`). A test that must prove a script survives a colored
+flags `node`, then any options, then a single-dash option cluster holding `p` or `--print`,
+including in a comment or a string, so reword text that spells the flag. `-p"1"` (no space after
+the flag) and an option before the flag (`node --no-warnings -p`) are caught; a literal path such
+as `/usr/bin/node -p` is caught too. Known limit: node reached through a variable or command
+substitution (`"$NODE" -p`, `$(command -v node) -p`). A test that must prove a script survives a colored
 environment sets `FORCE_COLOR: '3'` itself (`__tests__/dup-large-files.test.ts` does).
 
 ## Shipped migrations are never edited — check:shipped-migrations

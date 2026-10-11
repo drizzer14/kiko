@@ -420,4 +420,4 @@ rules:
     metadata:
       fix: "node -e 'process.stdout.write(String(expression))'"
       skill: "kiko-linter › Never use the print flag of node in a shell script"
-    pattern-regex: '\bnode[ \t]+(?:-[a-zA-Z]*p[a-zA-Z]*|--print)(?=[\s=]|$)'
+    pattern-regex: '\bnode(?:[ \t]+-[^\s]*)*[ \t]+(?:-[a-zA-Z]*p[a-zA-Z]*|--print)(?=[\s="'']|$)'

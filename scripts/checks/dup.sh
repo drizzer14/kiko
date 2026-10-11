@@ -59,7 +59,6 @@ if [ "$blocking_unchanged" -eq 0 ]; then
   [ -n "$dkey" ] && harness_mark_pass "$ROOT" "$dkey" "$fp"
 fi
 
-
 # Second, NON-blocking pass. jscpd skips a file over maxLines (1000) or maxSize (100kb) without a
 # word, so the blocking run above never measured those files. Its file selection (the config's
 # ignore list, .gitignore, the format filter) is the only thing that knows which files are in
@@ -158,24 +157,33 @@ measure_combined() {
   if [ "$status" -ne 0 ]; then
     printf 'WARNING: check:dup could not measure the combined run (every file in scope, size limits raised).\n' > "$report_dir/combined.warning"
   elif over_threshold "$measured"; then
-    printf 'WARNING: check:dup combined run (every file in scope, size limits raised) is %s%% duplicated (threshold %s%%); a clone between a large file and another file counts only here. See the tracked-debt list in docs/harness/documented-exceptions.md; a figure above its recorded baseline is a new regression.\n' \
+    printf 'WARNING: check:dup combined run (every file in scope, size limits raised) is %s%% duplicated (threshold %s%%); a clone between a large file and another file counts only here. See the tracked-debt list in docs/harness/documented-exceptions.md; the recorded baseline there applies to the no-argument (whole-repo) run only, and a whole-repo figure above it is a new regression.\n' \
       "$measured" "$threshold" > "$report_dir/combined.warning"
   fi
 }
 
 # Four measurements at a time: one jscpd start costs about half a second, and a whole-repo run
 # has dozens of large files. The warnings print in file order afterwards, so the output does not
-# depend on which measurement finishes first. The combined run starts first, beside the batches.
+# depend on which measurement finishes first. The combined run starts first, beside the batches;
+# a batch waits only for its own process ids, so a long combined run never stalls batch 2 and on.
+combined_pid=''
 if [ "$(printf '%s\n' "$raised_list" | wc -l)" -gt 1 ]; then
   measure_combined &
+  combined_pid=$!
 fi
 n=0
+batch_pids=()
 while IFS= read -r file; do
   n=$((n + 1))
   measure_one "$n" "$file" &
-  [ $((n % 4)) -eq 0 ] && wait
+  batch_pids+=("$!")
+  if [ $((n % 4)) -eq 0 ]; then
+    wait "${batch_pids[@]}"
+    batch_pids=()
+  fi
 done <<< "$skipped"
-wait
+[ "${#batch_pids[@]}" -gt 0 ] && wait "${batch_pids[@]}"
+[ -n "$combined_pid" ] && wait "$combined_pid"
 for ((i = 1; i <= n; i++)); do
   [ -f "$report_dir/$i.warning" ] && cat "$report_dir/$i.warning" >&2
 done

@@ -11,3 +11,8 @@ count="$(node scripts/count.js --prefix 1)"
 
 # An option that merely starts with a p is not --print.
 node --preserve-symlinks scripts/run.js
+
+# An option before a script file is not a print flag either.
+node --no-warnings scripts/run.js
+
+node --no-warnings -e 'process.stdout.write(String(1))'

@@ -53,7 +53,8 @@ function unique(lineCount: number): string {
 interface RunOptions {
   // 'measure-fail' / 'measure-empty': the calls that measure (they carry --silent) exit 3 or
   // write no report. 'list-fail': the calls that list files (they carry --debug) exit 3.
-  stub?: 'measure-fail' | 'measure-empty' | 'list-fail';
+  // 'slow-combined': the combined measurement sleeps, then logs 'combined-done'.
+  stub?: 'measure-fail' | 'measure-empty' | 'list-fail' | 'slow-combined';
   environment?: Record<string, string>;
 }
 
@@ -85,6 +86,9 @@ function createProject(): Project {
       '  *" --silent "*)',
       '    [ "$STUB_MODE" = measure-fail ] && exit 3',
       '    [ "$STUB_MODE" = measure-empty ] && exit 0',
+      '    case "$*" in',
+      `      *"/combined"*) [ "$STUB_MODE" = slow-combined ] && { sleep 3; printf 'combined-done\\n' >> "${logPath}"; } ;;`,
+      '    esac',
       '    ;;',
       '  *" --debug "*)',
       '    [ "$STUB_MODE" = list-fail ] && exit 3',
@@ -279,6 +283,26 @@ describe('scripts/checks/dup.sh large files', () => {
     expect(result.status).toBe(0);
     expect(result.stderr).not.toMatch(/WARNING: check:dup src\//);
     expect(measuredPercentage(result.stderr, 'combined run')).toBeGreaterThan(30);
+  });
+
+  it('starts the second batch of file measurements while the combined run is still going', () => {
+    const project = createProject();
+
+    for (const name of ['a', 'b', 'c', 'd', 'e', 'f']) {
+      project.file(`src/${name}.ts`, duplicated(120));
+    }
+
+    const result = project.run([], { stub: 'slow-combined' });
+
+    const calls = project.invocations();
+    const combinedDone = calls.indexOf('combined-done');
+    const fifthFileStart = calls.findIndex(
+      (call) => call.includes('--silent') && call.includes('/5 ') && !call.includes('/combined'),
+    );
+    expect(result.status).toBe(0);
+    expect(combinedDone).toBeGreaterThan(-1);
+    expect(fifthFileStart).toBeGreaterThan(-1);
+    expect(fifthFileStart).toBeLessThan(combinedDone);
   });
 
   it('runs no combined measurement when no file in scope is over the size limits', () => {

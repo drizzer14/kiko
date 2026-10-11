@@ -12,3 +12,12 @@ percentage="$(node -pe 'JSON.parse(process.argv[1]).percentage' "$report")"
 
 # EXPECT-FINDING
 count=$(node -p '1 + 1')
+
+# EXPECT-FINDING
+quoted="$(node -p"1 + 1")"
+
+# EXPECT-FINDING
+warned="$(node --no-warnings -p 'Date.now()')"
+
+# EXPECT-FINDING
+chained="$(node --no-warnings --preserve-symlinks --print 'Date.now()')"
