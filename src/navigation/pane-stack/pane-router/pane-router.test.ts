@@ -17,6 +17,8 @@ const ROUTE_NAMES = [
   'System',
   'Reminders',
   'ReminderForm',
+  'HoldingDetail',
+  'LotForm',
 ];
 const CONFIG = { routeNames: ROUTE_NAMES, routeParamList: {}, routeGetIdList: {} };
 
@@ -69,7 +71,7 @@ describe('PaneRouter', () => {
   });
 
   describe('PANE_OPEN', () => {
-    it('pushes the route into the pane opposite to the opener and stores both panes', () => {
+    it('pushes the route into the detail pane and stores both panes', () => {
       const state = withDetail();
 
       expect(names(state)).toEqual(['Accounts', 'AccountDetail']);
@@ -94,7 +96,6 @@ describe('PaneRouter', () => {
       expect(second.panes[first.routes[1].key]).toBeUndefined();
     });
 
-    // was: the form opened in the companion, covering the list.
     it('opens from the detail on top of it, in the detail pane, without covering the list', () => {
       const detail = withDetail();
       const form = run(detail, PaneActions.open(keyOf(detail, 'AccountDetail'), 'HoldingForm'));
@@ -139,7 +140,6 @@ describe('PaneRouter', () => {
       );
 
       expect(names(opened)).toEqual(['Accounts', 'HoldingForm']);
-      // was: primary, the root's own pane.
       expect(opened.panes[opened.routes[1].key]).toBe('companion');
     });
 
@@ -194,7 +194,6 @@ describe('PaneRouter', () => {
       );
       const unfolded = run(pushed, PaneActions.unfold());
 
-      // was: the form in the companion (it alternated from the detail).
       expect(unfolded.panes).toEqual({
         [pushed.routes[0].key]: 'companion',
         [pushed.routes[1].key]: 'primary',
@@ -213,9 +212,8 @@ describe('PaneRouter', () => {
   });
 
   describe('PANE_SHOW_DEFAULT', () => {
-    // was: the default also stood below a route tapped in the other pane; now the detail pane
-    // holds either a default or what the user tapped, so a placeholder is the one default that a
-    // tapped route can sit above.
+    // The detail pane holds either a default or what the user tapped, so a placeholder is the one
+    // default that a tapped route can sit above.
     it('stands the default right above the root, in the detail pane', () => {
       const shown = runHome(
         homeRouter.getInitialState(CONFIG),
@@ -285,16 +283,29 @@ describe('PaneRouter', () => {
   });
 
   describe('PANE_CLOSE', () => {
-    it('closes the route named and leaves every other route in its pane', () => {
+    it('closes the route named and every route opened above it', () => {
       const detail = withDetail();
       const form = run(detail, PaneActions.open(keyOf(detail, 'AccountDetail'), 'HoldingForm'));
       const closed = run(form, PaneActions.close(keyOf(form, 'AccountDetail')));
 
-      expect(names(closed)).toEqual(['Accounts', 'HoldingForm']);
-      // was: HoldingForm in the companion.
+      expect(names(closed)).toEqual(['Accounts']);
+      expect(closed.panes).toEqual({ [keyOf(closed, 'Accounts')]: 'companion' });
+      expect(closed.index).toBe(0);
+    });
+
+    it('closes a page two deep with the form above it, and keeps the pages below in their panes', () => {
+      const detail = withDetail();
+      const holding = run(
+        detail,
+        PaneActions.open(keyOf(detail, 'AccountDetail'), 'HoldingDetail'),
+      );
+      const form = run(holding, PaneActions.open(keyOf(holding, 'HoldingDetail'), 'LotForm'));
+      const closed = run(form, PaneActions.close(keyOf(form, 'HoldingDetail')));
+
+      expect(names(closed)).toEqual(['Accounts', 'AccountDetail']);
       expect(closed.panes).toEqual({
         [keyOf(closed, 'Accounts')]: 'companion',
-        [keyOf(closed, 'HoldingForm')]: 'primary',
+        [keyOf(closed, 'AccountDetail')]: 'primary',
       });
       expect(closed.index).toBe(1);
     });
@@ -471,7 +482,6 @@ describe('PaneRouter', () => {
       expect(names(second)).toEqual(['Settings', 'Reminders', 'ReminderForm']);
       expect(second.routes[2].params).toEqual({ id: '2' });
       expect(second.routes[2].key).not.toBe(first.routes[2].key);
-      // was: companion [Settings, ReminderForm], primary [Reminders].
       expect(paneNames(second, 'companion')).toEqual(['Settings']);
       expect(paneNames(second, 'primary')).toEqual(['Reminders', 'ReminderForm']);
     });
@@ -514,7 +524,6 @@ describe('PaneRouter', () => {
       const state = accountsWithTwoForms();
       const back = run(state, from(keyOf(state, 'HoldingForm'), CommonActions.goBack()));
 
-      // was: primary [AccountDetail, ReminderForm]: the form between them was in the companion.
       expect(paneNames(state, 'primary')).toEqual(['AccountDetail', 'HoldingForm', 'ReminderForm']);
       expect(paneNames(back, 'primary')).toEqual(['AccountDetail', 'ReminderForm']);
       expect(paneNames(back, 'companion')).toEqual(['Accounts']);
@@ -542,7 +551,6 @@ describe('PaneRouter', () => {
       );
 
       expect(names(replaced)).toEqual(['Accounts', 'AccountDetail', 'Statement', 'ReminderForm']);
-      // was: companion [Accounts, Statement], primary [AccountDetail, ReminderForm].
       expect(paneNames(replaced, 'companion')).toEqual(['Accounts']);
       expect(paneNames(replaced, 'primary')).toEqual([
         'AccountDetail',
@@ -568,7 +576,6 @@ describe('PaneRouter', () => {
       const state = fiveRoutes();
       const dismissed = run(state, from(keyOf(state, 'Statement'), StackActions.pop(2)));
 
-      // was: [Accounts, AccountDetail, ReminderForm], with the list pane holding HoldingForm.
       expect(names(dismissed)).toEqual(['Accounts', 'AccountDetail', 'HoldingForm']);
       expect(paneNames(dismissed, 'companion')).toEqual(['Accounts']);
       expect(paneNames(dismissed, 'primary')).toEqual(['AccountDetail', 'HoldingForm']);
@@ -579,7 +586,6 @@ describe('PaneRouter', () => {
       const state = fiveRoutes();
       const dismissed = run(state, from(keyOf(state, 'Statement'), StackActions.pop(9)));
 
-      // was: [Accounts, AccountDetail, ReminderForm].
       expect(names(dismissed)).toEqual(['Accounts', 'AccountDetail']);
     });
 
@@ -587,7 +593,6 @@ describe('PaneRouter', () => {
       const state = fiveRoutes();
       const dismissed = run(state, from(keyOf(state, 'ReminderForm'), StackActions.pop(2)));
 
-      // was: [Accounts, AccountDetail, HoldingForm, Statement].
       expect(names(dismissed)).toEqual(['Accounts', 'AccountDetail', 'Statement']);
     });
 
@@ -691,7 +696,6 @@ describe('PaneRouter', () => {
           undefined,
           undefined,
         ]);
-        // was: companion [Accounts, HoldingForm], primary [AccountDetail].
         expect(paneNames(form, 'companion')).toEqual(['Accounts']);
         expect(paneNames(form, 'primary')).toEqual(['AccountDetail', 'HoldingForm']);
       });
@@ -703,7 +707,6 @@ describe('PaneRouter', () => {
           from(keyOf(shown, 'AccountDetail'), StackActions.push('HoldingForm')),
         );
 
-        // was: companion [Accounts, HoldingForm], primary [AccountDetail].
         expect(paneNames(form, 'companion')).toEqual(['Accounts']);
         expect(paneNames(form, 'primary')).toEqual(['AccountDetail', 'HoldingForm']);
       });
@@ -755,7 +758,6 @@ describe('PaneRouter', () => {
 
         expect(names(form)).toEqual(['Accounts', 'AccountsEmptyPane', 'AccountForm']);
         expect(form.routes[1].isDefault).toBe(true);
-        // was: companion [Accounts, AccountForm], primary [AccountsEmptyPane].
         expect(paneNames(form, 'companion')).toEqual(['Accounts']);
         expect(paneNames(form, 'primary')).toEqual(['AccountsEmptyPane', 'AccountForm']);
       });
@@ -814,7 +816,6 @@ describe('PaneRouter', () => {
       (_label, subject, listPane, detailPane) => {
         const runSubject = runWith(subject);
         const root = subject.getInitialState(CONFIG);
-        // was: [Accounts, AccountDetail, HoldingForm] in [list, detail, list].
         const navigated = runSubject(
           root,
           from(root, CommonActions.navigate('AccountDetail', { accountId: 'a' })),

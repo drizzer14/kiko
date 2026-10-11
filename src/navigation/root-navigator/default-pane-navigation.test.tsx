@@ -69,8 +69,7 @@ type StackCase = {
   // The route keys the stack stands in as a default, and where a screen it opens lands.
   defaults: string[];
   target: string;
-  // The pane the list takes and the pane every step above it takes, defaults included.
-  listPane: 'companion' | 'primary';
+  // The pane every step above the list takes, defaults included.
   detailPane: 'companion' | 'primary';
   // Two steps, the second opened from the first.
   walk: [Step, Step];
@@ -82,7 +81,6 @@ const STACKS: StackCase[] = [
     Stack: HomeStack,
     defaults: ['pane-default:companion'],
     target: 'TransactionForm',
-    listPane: 'primary',
     detailPane: 'companion',
     walk: [
       { name: 'TransactionForm', params: { transactionId: 't1' } },
@@ -94,7 +92,6 @@ const STACKS: StackCase[] = [
     Stack: StatisticsStack,
     defaults: ['pane-default:companion'],
     target: 'TransactionForm',
-    listPane: 'primary',
     detailPane: 'companion',
     walk: [
       { name: 'TransactionForm', params: { transactionId: 't1' } },
@@ -106,7 +103,6 @@ const STACKS: StackCase[] = [
     Stack: AccountsStack,
     defaults: [],
     target: 'AccountDetail',
-    listPane: 'companion',
     detailPane: 'primary',
     walk: [
       { name: 'AccountDetail', params: { accountId: 'a', name: 'Monobank', kind: 'bank' } },
@@ -118,7 +114,6 @@ const STACKS: StackCase[] = [
     Stack: SettingsStack,
     defaults: ['pane-default:primary'],
     target: 'System',
-    listPane: 'companion',
     detailPane: 'primary',
     walk: [{ name: 'Help' }, { name: 'HelpTopic', params: { topicId: 'addAccount' } }],
   },
@@ -193,8 +188,6 @@ describe.each(STACKS)('the $name stack in two panes', ({ Stack, defaults, target
     }
   });
 
-  // was: the pane opposite the default, which on Home and Statistics was the list (primary) and on
-  // Settings the menu (companion).
   it('opens what a default screen navigates to in the detail pane, where the default is', async () => {
     for (const navigation of Object.values(defaultNavigations())) {
       await act(async () => {
@@ -468,6 +461,45 @@ describe.each(STACKS)('the $name stack: only the root is in the list pane', ({ S
   });
 });
 
+// The list closes an account's page when the account is deleted: a step opened from that page
+// goes with it, as it would be left in the pane with nothing to go back to.
+describe('the Accounts stack: closing an account page', () => {
+  const open = async (openerKey: string, step: Step) => {
+    await act(async () => {
+      navigationRef.dispatch({ type: 'PANE_OPEN', payload: { openerKey, route: step } });
+    });
+  };
+
+  beforeEach(async () => {
+    await renderStack(AccountsStack);
+  });
+
+  it('closes the steps opened from the page with it', async () => {
+    await open(stackState().routes[0].key, {
+      name: 'AccountDetail',
+      params: { accountId: 'a', name: 'Monobank', kind: 'bank' },
+    });
+    await open(stackState().routes.at(-1)?.key ?? '', {
+      name: 'ReminderForm',
+      params: { accountId: 'a' },
+    });
+
+    expect(stackState().routes.map((route) => route.name)).toEqual([
+      'Accounts',
+      'AccountDetail',
+      'ReminderForm',
+    ]);
+
+    const pageKey = stackState().routes[1].key;
+
+    await act(async () => {
+      navigationRef.dispatch({ type: 'PANE_CLOSE', payload: { routeKey: pageKey } });
+    });
+
+    expect(stackState().routes.map((route) => route.name)).toEqual(['Accounts']);
+  });
+});
+
 describe.each(STACKS.filter(({ defaults }) => defaults.length > 0))(
   'the $name stack: the steps above its default',
   ({ Stack, walk }) => {
@@ -537,7 +569,6 @@ describe('the Accounts stack rebuilt by a reminder tap', () => {
     });
 
     expect(nestedState()?.panes).toEqual({});
-    // was: the form in the companion, covering the Accounts list.
     expect(renderedPanes(nestedState()?.routes[0].key ?? '')).toEqual({
       list: ['Accounts'],
       detail: ['AccountDetail', 'TransactionForm'],
@@ -576,7 +607,6 @@ describe('the Settings stack across a fold and an unfold', () => {
 
     await settleTo('columns');
 
-    // was: HelpTopic in the companion, covering the Settings menu.
     expect(panesOfRoutes()).toEqual([
       ['Settings', 'companion'],
       ['Help', 'primary'],

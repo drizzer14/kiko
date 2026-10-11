@@ -2179,7 +2179,6 @@ describe('AccountsScreen — in one of two panes', () => {
       await renderInPane();
 
       expect(mockShowPaneDefault).toHaveBeenCalledTimes(1);
-      // was: the call also named the pane (`'primary'`) as its first argument.
       expect(mockShowPaneDefault).toHaveBeenCalledWith('AccountsEmptyPane', undefined, true);
     });
 

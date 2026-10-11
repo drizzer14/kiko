@@ -14,7 +14,6 @@ const renderInPaneStack = async (dispatch: jest.Mock) =>
   });
 
 describe('useShowPaneDefault', () => {
-  // was: the caller named the pane (`'primary'`); the detail pane is the only one a default fills.
   it('dispatches the default for the detail pane, which the caller does not name', async () => {
     const dispatch = jest.fn();
     const { result } = await renderInPaneStack(dispatch);

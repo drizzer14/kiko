@@ -65,7 +65,6 @@ describe('pane assignment', () => {
     expect(paneDefault(HOME_TAB, 'companion')).toBe(STATISTICS_DEFAULT);
   });
 
-  // was: the transaction opened in primary, covering the Statistics list.
   it('(c) opens a transaction from the Home companion (Statistics tab) in the companion, in place of the Home default', () => {
     const opened = openFrom(
       [route('statistics', 'Statistics')],
@@ -110,7 +109,6 @@ describe('pane assignment', () => {
     expect(keys(second.routes)).toEqual(['accounts', 'detail-2']);
   });
 
-  // was: the holding form opened in the companion, covering the Accounts list.
   it('(e) opens a holding form from the account page (primary) in primary, on top of the account', () => {
     const opened = openFrom(
       [route('accounts', 'Accounts'), route('account', 'AccountDetail')],
@@ -137,7 +135,6 @@ describe('pane assignment', () => {
     });
   });
 
-  // was: form in the companion and nested in primary: the list pane held the form.
   it('(f) keeps the routes below the top of the detail pane, in stack order', () => {
     const routes = [route('accounts'), route('account'), route('form'), route('nested')];
     const panes: PaneMap = {
@@ -161,7 +158,6 @@ describe('pane assignment', () => {
       { accounts: 'companion', account: 'primary', form: 'primary' },
     );
 
-    // was: form in the companion.
     expect(keys(folded.routes)).toEqual(['accounts', 'form']);
     expect(folded.panes).toEqual({ accounts: 'companion', form: 'primary' });
   });
@@ -195,7 +191,6 @@ describe('pane assignment', () => {
     });
   });
 
-  // was: the form unfolded into primary, covering Statistics, with the Home default beside it.
   it('(j) folds the Statistics tab to [Statistics, Form], and unfolds with Form in the companion and Statistics in primary', () => {
     const opened = openFrom(
       [route('statistics', 'Statistics')],
@@ -249,8 +244,6 @@ describe('pane assignment', () => {
     expect(paneDefault(config, 'primary')).toBe(config.primaryDefault);
   });
 
-  // was: [a, b, c] unfolded to [list, detail, list] (companion root) and the mirror for a primary
-  // root: the route above the detail covered the list.
   it('(m) unfolds a state without a pane map with the root in its pane and every other route in the other', () => {
     const routes = [route('a'), route('b'), route('c')];
 
@@ -269,7 +262,6 @@ describe('pane assignment', () => {
   it('keeps a stored pane, and puts a route without one in the detail pane', () => {
     const routes = [route('a'), route('b'), route('c')];
 
-    // was: { a: companion, b: companion, c: primary }: c alternated from the stored b.
     expect(unfoldAssignment(routes, { b: 'companion' }, ACCOUNTS_TAB)).toEqual({
       a: 'companion',
       b: 'companion',
@@ -292,14 +284,12 @@ describe('pane assignment', () => {
     const withDefault = unfoldAssignment(routes, { first: 'primary' }, ACCOUNTS_TAB);
     const folded = foldAssignment(routes, withDefault);
 
-    // was: nested in the companion (it alternated from form).
     expect(withDefault).toEqual({
       accounts: 'companion',
       first: 'primary',
       form: 'primary',
       nested: 'primary',
     });
-    // was: nested in the companion.
     expect(unfoldAssignment(folded.routes, {}, ACCOUNTS_TAB)).toEqual({
       accounts: 'companion',
       form: 'primary',
@@ -327,7 +317,6 @@ describe('pane assignment', () => {
       undefined,
       undefined,
     ]);
-    // was: holdingForm in the companion.
     expect(opened.panes).toEqual({
       accounts: 'companion',
       first: 'primary',
@@ -348,7 +337,6 @@ describe('pane assignment', () => {
     );
 
     expect(opened.routes.map((entry) => entry.isDefault)).toEqual([undefined, true, undefined]);
-    // was: the form in the companion.
     expect(opened.panes.form).toBe('primary');
   });
 
@@ -362,7 +350,6 @@ describe('pane assignment', () => {
     );
 
     expect(keys(opened.routes)).toEqual(['accounts', 'account', 'form2']);
-    // was: form2 in the companion.
     expect(opened.panes).toEqual({ accounts: 'companion', account: 'primary', form2: 'primary' });
   });
 
@@ -376,7 +363,6 @@ describe('pane assignment', () => {
     );
 
     expect(keys(opened.routes)).toEqual(['statistics', 'transaction2']);
-    // was: transaction2 in primary, over the Statistics list.
     expect(opened.panes.transaction2).toBe('companion');
   });
 

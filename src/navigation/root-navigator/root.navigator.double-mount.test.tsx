@@ -402,7 +402,6 @@ describe('the Accounts tab with a runtime default in its primary pane', () => {
         ['HoldingForm', undefined],
       ]);
       expect(paneOf('AccountDetail')).toBe('primary');
-      // was: companion, covering the Accounts list.
       expect(paneOf('HoldingForm')).toBe('primary');
       expect(paneOf('Accounts')).toBe('companion');
     });
@@ -465,7 +464,6 @@ describe('the Accounts tab with a runtime default in its primary pane', () => {
           ['AccountsEmptyPane', true],
           ['AccountForm', undefined],
         ]);
-        // was: companion, covering the Accounts list.
         expect(paneOf('AccountForm')).toBe('primary');
         expect(paneOf('AccountsEmptyPane')).toBe('primary');
       });

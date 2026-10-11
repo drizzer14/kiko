@@ -1,6 +1,7 @@
 import type { Pane } from './pane-assignment';
 
-// A pane for each route key. A key without an entry takes the pane opposite to the route below it.
+// A pane for each route key. A key without an entry takes the root pane when its route is the
+// root, and the detail pane (the root pane's opposite) for any other route.
 export type PaneMap = Readonly<Record<string, Pane | undefined>>;
 
 export type RouteLike = {

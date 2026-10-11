@@ -57,7 +57,7 @@ describe('standInNavigation', () => {
       'a dispatched push',
       (navigation: Navigation) => navigation.dispatch(StackActions.push('Form', { id: 'a' })),
     ],
-  ])('opens the route in the pane opposite the default on %s', (_label, call) => {
+  ])('opens the route in the detail pane on %s', (_label, call) => {
     call(standIn());
 
     expect(dispatch).toHaveBeenCalledTimes(1);

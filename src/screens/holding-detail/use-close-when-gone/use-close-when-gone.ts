@@ -13,11 +13,11 @@ type CloseWhenGoneInput = {
 };
 
 /**
- * Closes this page when its holding is deleted while another screen (the account page's grid or
- * the Accounts list, say) is still on screen to delete it. The Accounts list only watches the
- * first page of the detail pane, so a page opened above it would otherwise stay on a holding that
- * is gone. On one pane the page is the whole screen and its own delete leads back, so nothing
- * closes.
+ * Closes this page, and the steps opened from it, when its holding is deleted while another
+ * screen (the account page's grid or the Accounts list, say) is still on screen to delete it. The
+ * Accounts list only watches the first page of the detail pane, so a page opened above it would
+ * otherwise stay on a holding that is gone. On one pane the page is the whole screen and its own
+ * delete leads back, so nothing closes.
  */
 export const useCloseWhenGone = ({ routeKey, isFresh, holding }: CloseWhenGoneInput): void => {
   const isInPane = usePaneContext() !== null;

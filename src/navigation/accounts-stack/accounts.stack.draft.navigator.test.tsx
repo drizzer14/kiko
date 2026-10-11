@@ -157,9 +157,7 @@ describe('AccountsStack — form drafts across a fold and an unfold', () => {
       expect(screen.getByTestId('accounts-screen')).toBeTruthy();
     });
 
-    // was: the account form opened in the other pane, so the transaction form stayed on screen
-    // beside it and was filled in while the account form had the focus. Both forms are in the
-    // detail pane now, and the one that is covered cannot be typed in.
+    // Both forms are in the detail pane, and the one that is covered cannot be typed in.
     it('keeps a blur on the route of the form it came from when a deeper step covers the form', async () => {
       await renderStack();
       await openTransactionForm();

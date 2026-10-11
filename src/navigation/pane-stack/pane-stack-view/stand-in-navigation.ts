@@ -20,9 +20,9 @@ const doNothing = () => undefined;
  * Lets a screen shown as a default navigate. React Navigation gives every screen it renders
  * without a route in the state one shared navigation object whose every helper throws, and a
  * tap in a default screen would reach it. Here a navigate or push of a route of this navigator
- * opens it in the pane opposite the default, one of any other name goes on to the navigator
- * unchanged so a parent can take it (a tab, say), and everything else is ignored: a default has
- * nothing to go back to.
+ * opens it in the detail pane, where the default is, one of any other name goes on to the
+ * navigator unchanged so a parent can take it (a tab, say), and everything else is ignored: a
+ * default has nothing to go back to.
  *
  * The object is changed in place because the rendered screen already holds it. At most one
  * default is on screen at a time, since the pane that holds the root is never empty.

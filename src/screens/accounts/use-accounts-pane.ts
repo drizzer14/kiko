@@ -71,9 +71,9 @@ const isGone = (
  * What the Accounts list does on a wide window, where an account page fills the other pane. Until
  * the user taps a row that pane shows the first row of the list (or the empty pane while there is
  * no account), and the list marks the row of the page the pane opened with, which stays marked
- * while a step opened from that page covers it. A page the user opened closes once its
- * account or holding is deleted, which leaves the pane to the default again. On one pane there is
- * nothing to fill, mark or close.
+ * while a step opened from that page covers it. A page the user opened closes, with every step
+ * opened from it, once its account or holding is deleted, which leaves the pane to the default
+ * again. On one pane there is nothing to fill, mark or close.
  */
 export const useAccountsPane = ({
   isReady,

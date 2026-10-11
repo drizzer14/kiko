@@ -119,7 +119,6 @@ describe('PaneStackView', () => {
   it.each(['columns', 'rows'] as const)(
     'renders one native stack for each pane, with that pane’s routes, in %s',
     async (mode) => {
-      // was: form in the companion, so the companion stack was accounts+form.
       const state = stackState([route('accounts'), route('account'), route('form')], {
         accounts: 'companion',
         account: 'primary',
@@ -188,7 +187,6 @@ describe('PaneStackView', () => {
 
       for (const [, visibility, dispatch] of mockNativeStackView.mock.calls) {
         expect(visibility.isTabFocused).toBe(true);
-        // was: account and form (the form was the companion's top).
         expect([...visibility.visibleKeys].sort()).toEqual(['accounts', 'form']);
         expect(dispatch).toBe(navigation.dispatch);
       }

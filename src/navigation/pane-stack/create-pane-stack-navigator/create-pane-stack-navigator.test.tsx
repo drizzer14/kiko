@@ -201,7 +201,6 @@ describe('createPaneStackNavigator', () => {
       expect(screen.queryByTestId('screen-Statement')).toBeNull();
     });
 
-    // was: the list was the screen the form covered, and the page beside the form stayed visible.
     it('keeps the list beside the focused one visible, and not the page the form covers', async () => {
       await renderApp();
 
@@ -232,8 +231,7 @@ describe('createPaneStackNavigator', () => {
       expect(stackRouteNames()).toEqual(['Accounts', 'Form']);
     });
 
-    // was: a covered page went back while the form beside it stayed; the list is the only screen
-    // beside the focused one now, and it has nothing to go back to.
+    // The list is the only screen beside the focused one, and it has nothing to go back to.
     it('goes back from the focused screen of the detail pane, and the list stays', async () => {
       await renderApp();
 

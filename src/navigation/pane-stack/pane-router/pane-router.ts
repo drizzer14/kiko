@@ -205,21 +205,41 @@ export const PaneRouter = ({
     };
   };
 
-  // Closes one route and no other. A caller may send it after the route has already gone (the
-  // page and the list both notice a deleted entity, and a list and a page can both close the same
-  // one), which must not close whatever is on top.
+  // Closes a route and every route opened above it: a step opened from a page whose entity is gone
+  // would be left alone in the pane, with nothing to go back to. A caller may send it after the
+  // route has already gone (the page and the list both notice a deleted entity, and a list and a
+  // page can both close the same one), which must not close whatever is on top.
   const close = (
     state: PaneStackState,
     routeKey: string,
     config: RouterConfigOptions,
-  ): PaneStackState | null =>
-    state.routes.some((route) => route.key === routeKey)
-      ? standard(
-          { ...state, panes: unfoldAssignment(state.routes, state.panes, paneConfig) },
-          { ...StackActions.pop(), source: routeKey, target: state.key },
-          config,
-        )
-      : state;
+  ): PaneStackState | null => {
+    const at = state.routes.findIndex((route) => route.key === routeKey);
+
+    if (at === -1) {
+      return state;
+    }
+
+    const panes = unfoldAssignment(state.routes, state.panes, paneConfig);
+
+    // The stack router answers for the root, which a stack never closes.
+    if (at === 0) {
+      return standard(
+        { ...state, panes },
+        { ...StackActions.pop(), source: routeKey, target: state.key },
+        config,
+      );
+    }
+
+    const kept: PaneStackState = {
+      ...state,
+      routes: state.routes.slice(0, at),
+      index: at - 1,
+      panes,
+    };
+
+    return settle(kept, state);
+  };
 
   const fold = (state: PaneStackState): PaneStackState => {
     const folded = foldAssignment(state.routes, state.panes);
@@ -326,8 +346,8 @@ export const PaneRouter = ({
       return standard(state, action, config);
     }
 
-    // A default is on top, yet the user never acted on it: what it opens goes opposite it, and it
-    // is the pane's floor, so there is nothing for it to go back to.
+    // A default is on top, yet the user never acted on it: what it opens goes in the detail pane,
+    // where it stands, and it is the pane's floor, so there is nothing for it to go back to.
     if (isDefaultRoute(state, source)) {
       return action.type === 'GO_BACK' || action.type === 'POP'
         ? state
