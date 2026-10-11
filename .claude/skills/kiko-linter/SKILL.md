@@ -1024,6 +1024,9 @@ belongs in the SAME commit as the feature that triggered the check, so
 `git log` shows one coherent change rather than a drive-by refactor
 with no test-behavior delta.
 
+The non-blocking large-file pass runs on every call, a dedup skip included: see "`check:dup`
+measures the files jscpd skips for size" below.
+
 ## `check:dup` measures the files jscpd skips for size
 
 jscpd 4.3.0 skips a file over `maxLines` (1000, counted as `content.split('\n')`) or `maxSize`
@@ -1040,6 +1043,8 @@ second, NON-blocking pass:
   nothing written into the repo). Alone, not in one combined run: a combined run credits a clone to
   whichever file jscpd stores first, so a file's percentage would depend on its neighbours. The
   alone figures are the ones the debt entry in `docs/harness/documented-exceptions.md` records.
+  A per-file alone figure differs from a combined run (jscpd credits a clone to the first-stored
+  file), so per-file debt needs the combined total too, and a baseline names its scope.
 - One more run measures the WHOLE scope together with the limits raised, because a clone between a
   large file and another file is invisible to the alone runs (two 1100-line copies of one file
   show 0% alone and about 50% together). It runs only when the scope holds a size-skipped file and
@@ -2419,8 +2424,8 @@ The guard is the Semgrep rule `kiko-no-node-print-in-shell` in `rules/semgrep-mo
 pair `rules/fixtures/kiko-no-node-print-in-shell.{bad,good}.sh`). Like the pipe rule above, it is
 a `generic` regex over `*.sh`, run by `check:security` and `check:rules`, not at write time. It
 flags `node` followed by a single-dash option cluster holding `p` or by `--print`, including in a
-comment or a string, so reword text that spells the flag. Known limit: an option placed between
-`node` and the flag (`node --no-warnings -p`). A test that must prove a script survives a colored
+comment or a string, so reword text that spells the flag. Known limits (a literal path such as
+`/usr/bin/node -p` IS caught): node reached through a variable or command substitution (`"$NODE" -p`, `$(command -v node) -p`), `-p"1"` with no space after the flag, and an option placed before the flag (`node --no-warnings -p`). A test that must prove a script survives a colored
 environment sets `FORCE_COLOR: '3'` itself (`__tests__/dup-large-files.test.ts` does).
 
 ## Shipped migrations are never edited — check:shipped-migrations

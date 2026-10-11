@@ -165,8 +165,8 @@ verified usage, not dead weight:
   large files. `dup.sh` now runs a second, NON-blocking pass: it measures each
   skipped file ALONE with the limits raised and prints a `WARNING` on stderr
   (exit code unchanged) for every file over the 5% threshold. No file is
-  allowlisted and the threshold is not raised: the 13 files below are measured
-  debt that each warning names. Measured 2026-10-11 at base `7fc680a5`:
+  allowlisted and the threshold is not raised: the files listed below are measured
+  debt that each warning names (the `dup.sh` warning output is the live list). Measured 2026-10-11 at base `7fc680a5`:
   `home.screen.test.tsx` 38.24%, `accounts.screen.test.tsx` 23.87%,
   `statement-import.screen.test.tsx` 14.72%, `transactions.repo.test.ts`
   10.14%, `sync.test.ts` 7.67%, `statistics.screen.test.tsx` 7.38%,
@@ -178,7 +178,8 @@ verified usage, not dead weight:
   one more run measures the whole scope TOGETHER with the limits raised,
   because a clone between a large file and another file is invisible to the
   alone runs. Its baseline on 2026-10-11 is 7.33% of lines, against 3.24% for
-  the blocking run with the default limits; a warning for a combined total
+  the blocking run with the default limits, and it applies to the no-argument
+  (whole-repo) run only: a scoped run's combined figure is not comparable; a warning for a combined total
   above the threshold is expected until the sweep lands, and a figure above
   7.33% is a new regression. **Flip condition:** a separate sweep track makes
   every large file 5% or less alone AND the combined raised total 5% or less;

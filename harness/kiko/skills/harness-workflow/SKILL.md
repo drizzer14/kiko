@@ -494,8 +494,11 @@ this is the same wrapper `check:dup` calls, `scripts/checks/dup.sh`,
 which accepts file args and falls back to the whole repo with none).
 Each touched test file must also pass the check alone, not only as
 part of the whole changed-file set. A `WARNING` on exit 0 means a large
-file (or the combined large-file run) is over 5%: it does not block, but
-do not grow it.
+file (or the combined large-file run) is over 5%, or that the pass could not
+measure (a could-not-measure, could-not-list, or mktemp WARNING carries no
+figure): it does not block, but do not grow a figure. The non-blocking
+large-file pass runs on every call, a dedup skip included; see kiko-linter
+"`check:dup` measures the files jscpd skips for size".
 
 ## Relay-verify subagent claims
 
