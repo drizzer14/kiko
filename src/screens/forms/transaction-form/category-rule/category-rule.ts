@@ -1,23 +1,27 @@
 import { normalizeTransactionName } from '@kiko/transactions/normalize-name';
 import { DEFAULT_CATEGORY_KEY, resolveCategoryDisplay } from '@kiko/categories/category-display';
+import { type PreparedRules, type RuleSubject, winningRule } from '@kiko/categories/category-rules';
 
-// The rule-matched category for a typed description, or null when no rule
-// matches or the normalized name is blank. Matching is JS-normalized (never
-// SQL), the same normalize-then-match the sync insert path uses. Kept module-
-// level and pure so the description-blur branch stays out of the screen
-// component's cognitive-complexity budget.
-export const ruleCategoryFor = (
-  description: string,
-  categoryByNormalizedName: ReadonlyMap<string, string>,
-): string | null => {
-  const key = normalizeTransactionName(description);
+// A subject that knows only the typed description: every other field is unknown, so a rule with
+// any condition beyond the name never matches it and only a rule that is a name alone can.
+export const nameOnlySubject = (description: string): RuleSubject => ({
+  normalizedName: normalizeTransactionName(description),
+  absoluteMinorUnits: null,
+  currency: null,
+  direction: null,
+  minuteOfDay: null,
+});
 
-  return key === '' ? null : (categoryByNormalizedName.get(key) ?? null);
-};
+// The category of the rule that wins for `subject`, or null when no rule matches. Matching is
+// JS-normalized (never SQL), the same evaluation the sync insert path uses. Kept module-level
+// and pure so the description-blur branch stays out of the screen component's
+// cognitive-complexity budget.
+export const ruleCategoryFor = (subject: RuleSubject, prepared: PreparedRules): string | null =>
+  winningRule(prepared, subject)?.category ?? null;
 
 // Whether `save` needs to raise the propagation-confirm sheet, and with what
 // payload: only when the category actually changed AND the affected name is
-// non-blank. `upsertCategoryOverride` refuses to write a rule for a blank
+// non-blank. `applyNameRule` refuses to write a rule for a blank
 // normalized name (it must not become a catch-all), so confirming propagation
 // for one asked `Apply "Groceries" to all transactions named ""?` and then
 // wrote nothing — the row's own category is already persisted by `writeManual`

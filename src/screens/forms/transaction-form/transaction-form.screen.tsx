@@ -37,7 +37,6 @@ import { resolveCategoryColor } from '@kiko/statistics/category-breakdown';
 import { useScrollToField } from '@kiko/design-system/use-scroll-to-field';
 import { seedCounterpartMinorUnits } from '@kiko/holdings/exchange-prefill';
 import { buildCategoryDisplayMap } from '@kiko/categories/category-display';
-import { categoryOverridesRepo } from '@kiko/categories/category-overrides-repo';
 import DescriptionSuggestions from '@kiko/screens/forms/description-suggestions';
 import { groupAmount, majorAmountText } from '@kiko/screens/forms/amount-format';
 import type { HoldingSelectOption } from '@kiko/screens/forms/holding-select-field';
@@ -176,17 +175,6 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   // display title through the same map every screen uses.
   const { data: categories } = useLiveQuery(categoriesRepo.allQuery(), ['categories']);
   const categoryByKey = buildCategoryDisplayMap(categories);
-  // The name→category rules: subscribed once and reduced to a normalized-
-  // name lookup map, so a create can pre-select a category from the settled
-  // description on blur. Matching is JS-normalized (never SQL), mirroring the
-  // sync insert path — see `ruleCategoryFor` and the description blur handler.
-  const { data: overrideRules } = useLiveQuery(categoryOverridesRepo.allQuery(), [
-    'category_overrides',
-  ]);
-  const categoryByNormalizedName = useMemo(
-    () => new Map(overrideRules.map((rule) => [rule.normalizedName, rule.category])),
-    [overrideRules],
-  );
   // The distinct past MANUAL descriptions (newest-first), reduced to a plain
   // string list the inline suggestion row matches against as the user types.
   // Reactive on `'transactions'`, so a freshly saved manual row feeds the next
@@ -406,7 +394,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     selectCategory,
     onDescriptionBlur,
     pickSuggestion,
-  } = useCategoryPick({ description, setDescription, isEditing, categoryByNormalizedName });
+  } = useCategoryPick({ description, setDescription, isEditing });
   const [hydrated, setHydrated] = useState(false);
   // Held from the seed rather than re-resolved at Save, so a counterpart
   // renamed mid-edit cannot turn the untouched label into stored text.
@@ -947,7 +935,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
       // the picked category straight onto THIS row by id via the ungated
       // `setCategory`, so a category change on an existing row is never dropped.
       // This is the single-row writer only; the blank-name guard on the name RULE
-      // path (`resolveCategoryOverrideRequest` -> `upsertCategoryOverride`) stays
+      // path (`resolveCategoryOverrideRequest` -> `applyNameRule`) stays
       // intact, so a catch-all rule is still refused. A create (no `editingId`)
       // already carries its category from `recordManual`, so it is excluded.
       if (editingId !== null && categoryChanged && selectedCategory !== null) {

@@ -11,6 +11,7 @@ import { isLabelInvalid } from '@kiko/test-support/field-label-spy';
 import type { TransactionFormParams } from '@kiko/navigation/types';
 import { defaultHoldingSymbol } from '@kiko/holdings/entity-symbols';
 import { makeFocusNavigation } from '@kiko/test-support/focus-navigation';
+import type { CategoryRuleMatcher } from '@kiko/categories/category-rules';
 import { isLedgerlessHoldingType } from '@kiko/holdings/holding-descriptor';
 import { scrollToField, useHeaderInset } from '@kiko/design-system/scroll-to-field';
 import { glyphNamesWithin, glyphTintsWithin } from '@kiko/test-support/glyphs-within';
@@ -71,7 +72,7 @@ const mockRecordExchange = jest.fn();
 const mockRecordExchangeCounterpart = jest.fn();
 const mockUpdate = jest.fn();
 const mockRemove = jest.fn();
-const mockUpsertCategoryOverride = jest.fn();
+const mockApplyNameRule = jest.fn();
 const mockSetCategory = jest.fn();
 const mockSetLoanPayment = jest.fn();
 const mockUndoAutoLoanLink = jest.fn();
@@ -122,9 +123,9 @@ jest.mock('@kiko/categories/repo', () => ({
     allQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }),
   },
 }));
-jest.mock('@kiko/categories/category-overrides-repo', () => ({
-  categoryOverridesRepo: {
-    upsertCategoryOverride: (...args: unknown[]) => mockUpsertCategoryOverride(...args),
+jest.mock('@kiko/categories/category-rules-repo', () => ({
+  categoryRulesRepo: {
+    applyNameRule: (...args: unknown[]) => mockApplyNameRule(...args),
     allQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }),
   },
 }));
@@ -186,7 +187,24 @@ const CATEGORIES: Category[] = [
 ];
 
 type Rate = { base: string; quote: string; rate: string };
-type OverrideRule = { normalizedName: string; category: string };
+type StoredRule = {
+  id: string;
+  category: string;
+  matchers: string;
+  createdAt: number;
+  updatedAt: number;
+};
+
+// A stored rule row as the rules table holds it: its matchers as a JSON list.
+const storedRule = (
+  id: string,
+  category: string,
+  matchers: CategoryRuleMatcher[],
+  updatedAt = 1,
+): StoredRule => ({ id, category, matchers: JSON.stringify(matchers), createdAt: 1, updatedAt });
+
+const nameRule = (text: string, category: string): StoredRule =>
+  storedRule(`name-${text}`, category, [{ type: 'nameIs', text }]);
 
 const setLiveData = (
   holdings: Holding[],
@@ -194,7 +212,7 @@ const setLiveData = (
   categories: Category[] = CATEGORIES,
   accounts: Account[] = [],
   rates: Rate[] = [],
-  overrideRules: OverrideRule[] = [],
+  categoryRules: StoredRule[] = [],
   pastDescriptions: string[] = [],
   latestManualHoldingId: string | null = null,
 ): void => {
@@ -204,7 +222,7 @@ const setLiveData = (
     categories,
     accounts,
     currency_rates: rates,
-    category_overrides: overrideRules,
+    category_rules: categoryRules,
   };
 
   mockUseLiveQuery.mockImplementation((query: unknown, tables: string[]) => {
@@ -656,7 +674,7 @@ describe('TransactionFormScreen — add mode', () => {
     await fireEvent.press(getByText('Save'));
 
     expect(queryByText(/Apply/)).toBeNull();
-    expect(mockUpsertCategoryOverride).not.toHaveBeenCalled();
+    expect(mockApplyNameRule).not.toHaveBeenCalled();
     expect(navigation.goBack).toHaveBeenCalled();
   });
 
@@ -672,7 +690,7 @@ describe('TransactionFormScreen — add mode', () => {
     expect(mockRecordManual).toHaveBeenCalledWith(
       expect.objectContaining({ category: 'groceries' }),
     );
-    expect(mockUpsertCategoryOverride).not.toHaveBeenCalled();
+    expect(mockApplyNameRule).not.toHaveBeenCalled();
   });
 
   it('renders the type selector directly under the Holding select, above Amount: Type, Amount, Description, Date, Time, Category', async () => {
@@ -713,7 +731,7 @@ describe('TransactionFormScreen — add mode', () => {
 describe('TransactionFormScreen — category pre-select from name rules (A1)', () => {
   // A single rule mapping the normalized description "coffee" to the Dining
   // category, so a create whose description settles to "Coffee" auto-picks it.
-  const COFFEE_RULE: OverrideRule = { normalizedName: 'coffee', category: 'dining' };
+  const COFFEE_RULE = nameRule('coffee', 'dining');
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -758,6 +776,72 @@ describe('TransactionFormScreen — category pre-select from name rules (A1)', (
     );
   });
 
+  it('pre-selects from a rule that is a name alone and never from one with another condition', async () => {
+    setLiveData(
+      [{ id: 'h1', currency: 'UAH', balanceMinorUnits: 0, type: 'cash' }],
+      undefined,
+      CATEGORIES,
+      [],
+      [],
+      [
+        storedRule('coffee-expense', 'dining', [
+          { type: 'nameIs', text: 'coffee' },
+          { type: 'direction', direction: 'expense' },
+        ]),
+      ],
+    );
+
+    const { getByLabelText, getByText } = await renderAdd();
+    await fireEvent.changeText(getByLabelText('Amount'), '12.34');
+    await fireEvent.changeText(getByLabelText('Description'), 'Coffee');
+    await fireEvent(getByLabelText('Description'), 'blur');
+    await fireEvent.press(getByText('Save'));
+
+    expect(mockRecordManual).not.toHaveBeenCalled();
+    expect(getByText('Select a category.')).toBeTruthy();
+  });
+
+  it('pre-selects from the strongest of two name rules on the same name', async () => {
+    setLiveData(
+      [{ id: 'h1', currency: 'UAH', balanceMinorUnits: 0, type: 'cash' }],
+      undefined,
+      CATEGORIES,
+      [],
+      [],
+      [
+        storedRule('older', 'groceries', [{ type: 'nameIs', text: 'coffee' }], 1),
+        storedRule('newer', 'dining', [{ type: 'nameIs', text: 'Coffee' }], 2),
+      ],
+    );
+
+    const { getByLabelText, getByText } = await renderAdd();
+    await fireEvent.changeText(getByLabelText('Amount'), '12.34');
+    await fireEvent.changeText(getByLabelText('Description'), 'COFFEE');
+    await fireEvent(getByLabelText('Description'), 'blur');
+    await fireEvent.press(getByText('Save'));
+
+    expect(mockRecordManual).toHaveBeenCalledWith(expect.objectContaining({ category: 'dining' }));
+  });
+
+  it('creates the name rule for a created row with no source row to free', async () => {
+    mockApplyNameRule.mockResolvedValue(undefined);
+
+    const utils = await renderAdd();
+    await fireEvent.changeText(utils.getByLabelText('Amount'), '12.34');
+    await fireEvent.changeText(utils.getByLabelText('Description'), 'Coffee');
+    await pickCategory(utils, 'Groceries');
+    await fireEvent.press(utils.getByText('Save'));
+    await fireEvent.press(utils.getByText('Apply'));
+
+    await waitFor(() =>
+      expect(mockApplyNameRule).toHaveBeenCalledWith({
+        name: 'Coffee',
+        category: 'groceries',
+        sourceTransactionId: null,
+      }),
+    );
+  });
+
   it('re-nulls the auto-pick so the category reason reappears when the name settles to a non-match', async () => {
     const utils = await renderAdd();
     const { getByLabelText, getByText, queryByText } = utils;
@@ -783,7 +867,7 @@ describe('TransactionFormScreen — description suggestions', () => {
   // One name rule ("coffee" -> Dining) plus a pool of past MANUAL descriptions,
   // so a tapped suggestion can be shown to BOTH fill the field and re-seat A1's
   // rule category through the ONE shared description-handling surface.
-  const COFFEE_RULE: OverrideRule = { normalizedName: 'coffee', category: 'dining' };
+  const COFFEE_RULE = nameRule('coffee', 'dining');
   const PAST = ['Coffee', 'Groceries run'];
 
   const seed = (transaction?: Transaction): void =>
@@ -1596,7 +1680,7 @@ describe('TransactionFormScreen — blank description pre-fill on edit', () => {
         category: 'dining',
       }),
     );
-    expect(mockUpsertCategoryOverride).not.toHaveBeenCalled();
+    expect(mockApplyNameRule).not.toHaveBeenCalled();
   });
 });
 
@@ -1833,7 +1917,7 @@ describe('TransactionFormScreen — synced (binance) row', () => {
     // A blank description opens no propagation sheet, writes no name rule, and
     // never touches a bank-owned field.
     expect(utils.queryByText('Apply Category to All')).toBeNull();
-    expect(mockUpsertCategoryOverride).not.toHaveBeenCalled();
+    expect(mockApplyNameRule).not.toHaveBeenCalled();
     expect(mockUpdate).not.toHaveBeenCalled();
     expect(mockRecordManual).not.toHaveBeenCalled();
     expect(navigation.goBack).toHaveBeenCalled();
@@ -1867,7 +1951,7 @@ describe('TransactionFormScreen — category editing', () => {
     jest.clearAllMocks();
   });
 
-  it('propagates a MANUAL row category change through upsertCategoryOverride after confirming', async () => {
+  it('creates a name rule for a MANUAL row category change through applyNameRule after confirming', async () => {
     setLiveData([{ id: 'h1', currency: 'UAH', balanceMinorUnits: 5000, type: 'term_deposit' }], {
       id: 'txn-1',
       holdingId: 'h1',
@@ -1877,7 +1961,7 @@ describe('TransactionFormScreen — category editing', () => {
       source: 'manual',
       category: 'groceries',
     });
-    mockUpsertCategoryOverride.mockResolvedValue(undefined);
+    mockApplyNameRule.mockResolvedValue(undefined);
 
     const utils = await renderEdit('txn-1');
     await pickCategory(utils, 'Dining');
@@ -1893,7 +1977,11 @@ describe('TransactionFormScreen — category editing', () => {
     // The manual edit still runs, and the override propagates the category.
     expect(mockUpdate).toHaveBeenCalledWith(expect.objectContaining({ transactionId: 'txn-1' }));
     await waitFor(() =>
-      expect(mockUpsertCategoryOverride).toHaveBeenCalledWith('Coffee', 'dining'),
+      expect(mockApplyNameRule).toHaveBeenCalledWith({
+        name: 'Coffee',
+        category: 'dining',
+        sourceTransactionId: 'txn-1',
+      }),
     );
     expect(navigation.goBack).toHaveBeenCalled();
   });
@@ -1926,7 +2014,7 @@ describe('TransactionFormScreen — category editing', () => {
         category: 'dining',
       }),
     );
-    expect(mockUpsertCategoryOverride).not.toHaveBeenCalled();
+    expect(mockApplyNameRule).not.toHaveBeenCalled();
     expect(navigation.goBack).toHaveBeenCalled();
   });
 
@@ -1957,7 +2045,7 @@ describe('TransactionFormScreen — category editing', () => {
         category: 'dining',
       }),
     );
-    expect(mockUpsertCategoryOverride).not.toHaveBeenCalled();
+    expect(mockApplyNameRule).not.toHaveBeenCalled();
     expect(navigation.goBack).toHaveBeenCalled();
   });
 
@@ -2027,7 +2115,7 @@ describe('TransactionFormScreen — category editing', () => {
     // one transaction for a double-tapped Save" above for why the two
     // presses are awaited sequentially instead of fired back to back.
     let resolveWrite: () => void = () => {};
-    mockUpsertCategoryOverride.mockImplementation(
+    mockApplyNameRule.mockImplementation(
       () =>
         new Promise<void>((resolve) => {
           resolveWrite = resolve;
@@ -2043,26 +2131,26 @@ describe('TransactionFormScreen — category editing', () => {
     await fireEvent.press(apply);
     await fireEvent.press(apply);
 
-    expect(mockUpsertCategoryOverride).toHaveBeenCalledTimes(1);
+    expect(mockApplyNameRule).toHaveBeenCalledTimes(1);
 
     await act(async () => {
       resolveWrite();
     });
     await waitFor(() => expect(navigation.goBack).toHaveBeenCalled());
-    expect(mockUpsertCategoryOverride).toHaveBeenCalledTimes(1);
+    expect(mockApplyNameRule).toHaveBeenCalledTimes(1);
     expect(navigation.goBack).toHaveBeenCalledTimes(1);
 
     // jest.clearAllMocks() (this describe's beforeEach) clears call history
     // but not a custom mockImplementation — reset it explicitly so it does
     // not leak this test's never-auto-resolving write into the next test.
-    mockUpsertCategoryOverride.mockReset();
+    mockApplyNameRule.mockReset();
   });
 
   // Both sheet writes can take a moment (Apply rewrites every same-name row):
   // the pressed action shows a spinner, and the sheet stays up — a scrim/back
   // dismiss or Cancel mid-write closes nothing — until the write is done.
   it.each([
-    ['Apply', () => mockUpsertCategoryOverride],
+    ['Apply', () => mockApplyNameRule],
     ['Just for this one', () => mockSetCategory],
   ])(
     'shows "%s" loading and keeps the sheet open until its write is done',
@@ -2143,7 +2231,7 @@ describe('TransactionFormScreen — category editing', () => {
       source: 'monobank',
       category: 'groceries',
     });
-    mockUpsertCategoryOverride.mockResolvedValue(undefined);
+    mockApplyNameRule.mockResolvedValue(undefined);
 
     const utils = await renderEdit('txn-9');
     // No Save until the category actually changes on a synced row.
@@ -2154,7 +2242,11 @@ describe('TransactionFormScreen — category editing', () => {
     await fireEvent.press(utils.getByText('Apply'));
 
     await waitFor(() =>
-      expect(mockUpsertCategoryOverride).toHaveBeenCalledWith('Monobank Merchant', 'dining'),
+      expect(mockApplyNameRule).toHaveBeenCalledWith({
+        name: 'Monobank Merchant',
+        category: 'dining',
+        sourceTransactionId: 'txn-9',
+      }),
     );
     // The bank-owned fields are never written on a synced row.
     expect(mockUpdate).not.toHaveBeenCalled();
@@ -2176,7 +2268,7 @@ describe('TransactionFormScreen — category editing', () => {
     await fireEvent.press(getByText('Save'));
 
     expect(queryByText('Apply Category to All')).toBeNull();
-    expect(mockUpsertCategoryOverride).not.toHaveBeenCalled();
+    expect(mockApplyNameRule).not.toHaveBeenCalled();
     expect(mockUpdate).toHaveBeenCalled();
     expect(navigation.goBack).toHaveBeenCalled();
   });
@@ -2199,7 +2291,7 @@ describe('TransactionFormScreen — category editing', () => {
 
     // The manual edit from step 1 still stands, but no rule is written.
     expect(mockUpdate).toHaveBeenCalled();
-    expect(mockUpsertCategoryOverride).not.toHaveBeenCalled();
+    expect(mockApplyNameRule).not.toHaveBeenCalled();
     expect(navigation.goBack).toHaveBeenCalled();
   });
 });
@@ -4379,7 +4471,7 @@ describe('TransactionFormScreen — the category override sheet on a manual row'
   });
 
   it('shows the save-error alert and stays on the form when the sheet "Apply" write fails', async () => {
-    mockUpsertCategoryOverride.mockRejectedValueOnce(new Error('boom'));
+    mockApplyNameRule.mockRejectedValueOnce(new Error('boom'));
     const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
     setLiveData(HOLDINGS, ROW);
     const utils = await renderEdit('txn-1');
@@ -4390,7 +4482,11 @@ describe('TransactionFormScreen — the category override sheet on a manual row'
     await waitFor(() =>
       expect(alertSpy).toHaveBeenCalledWith('Could not save', 'Please try again.'),
     );
-    expect(mockUpsertCategoryOverride).toHaveBeenCalledWith('Coffee', 'dining');
+    expect(mockApplyNameRule).toHaveBeenCalledWith({
+      name: 'Coffee',
+      category: 'dining',
+      sourceTransactionId: 'txn-1',
+    });
     expect(navigation.goBack).not.toHaveBeenCalled();
     alertSpy.mockRestore();
   });

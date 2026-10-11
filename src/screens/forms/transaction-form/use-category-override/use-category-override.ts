@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { transactionsRepo } from '@kiko/transactions/repo';
 import { useSubmitOnce } from '@kiko/design-system/use-submit-once';
-import { categoryOverridesRepo } from '@kiko/categories/category-overrides-repo';
+import { categoryRulesRepo } from '@kiko/categories/category-rules-repo';
 
 import { resolvePendingCategory } from '../category-rule';
 
@@ -32,17 +32,18 @@ export const useCategoryOverride = ({
   // Editing a category ALWAYS propagates to every same-name transaction (and to
   // future imports), so surface the blast radius in a themed confirm modal
   // before writing the rule. Both paths return to the list (the manual edit, if
-  // any, has already been written); only "Apply" also writes the override rule.
+  // any, has already been written); only "Apply" also writes the name rule.
   const applyOverride = async (): Promise<void> => {
     if (pendingOverride === null) {
       return;
     }
 
     try {
-      await categoryOverridesRepo.upsertCategoryOverride(
-        pendingOverride.name,
-        pendingOverride.category,
-      );
+      await categoryRulesRepo.applyNameRule({
+        name: pendingOverride.name,
+        category: pendingOverride.category,
+        sourceTransactionId: editingId,
+      });
       navigation.goBack();
     } catch {
       showSaveErrorAlert();
