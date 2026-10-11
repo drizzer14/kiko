@@ -76,27 +76,20 @@ type TabNavigationRef = NavigationContainerRef<TabParamList>;
 
 type StackRoute = { key?: string; name: string; params?: object };
 
-// The first two routes of the Accounts stack as it is now (none while the tab has not mounted):
-// the list and the page right above it. On a wide window that page can be the one the list fills
-// its primary pane with, flagged `isDefault`, which the user never opened.
-const accountsStackHead = (
-  navigationRef: TabNavigationRef,
-): (StackRoute & { isDefault?: boolean })[] => {
-  const tabs = navigationRef.getRootState()?.routes ?? [];
-
-  return (tabs.find(({ name }) => name === 'AccountsTab')?.state?.routes ?? []).slice(
-    0,
-    2,
-  ) as (StackRoute & { isDefault?: boolean })[];
-};
-
 // The stack the tap leaves: the list, the tapped account's page, and the screen above it, and
 // nothing a user opened earlier. An earlier page left below the account's would close the account's
 // with it (its entity deleted, say), and the list marks the first page of the detail pane. The list
 // and a page of the tapped account the user opened right above it keep their keys, so neither is
-// mounted again and the page takes the new params in place.
+// mounted again and the page takes the new params in place. A page right above the list may be the
+// one a wide window fills the primary pane with, flagged `isDefault`, which the user never opened.
+// A form open above the list is discarded with its draft: keeping it would let the close of an
+// earlier account's page close the reminder's page too.
 const rebuiltStack = (route: ReminderRoute, navigationRef: TabNavigationRef): StackRoute[] => {
-  const [list, page] = accountsStackHead(navigationRef);
+  const tabs = navigationRef.getRootState()?.routes ?? [];
+  const [list, page] = (tabs.find(({ name }) => name === 'AccountsTab')?.state?.routes ?? []).slice(
+    0,
+    2,
+  ) as (StackRoute & { isDefault?: boolean })[];
   const isPageOpen =
     page?.isDefault !== true &&
     isMatching(

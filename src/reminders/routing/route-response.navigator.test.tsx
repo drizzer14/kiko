@@ -342,6 +342,70 @@ describe('reminder tap routing (real router)', () => {
     expect(accountsStack()).toEqual([LIST, CASH_PAGE]);
   });
 
+  // A runtime default is a page the user never opened, so even one of the tapped account's own is
+  // not kept: the rebuilt page is a new one, not the default taken over.
+  it('gives the page of the tapped account a new key when the page right above the list is the runtime default', async () => {
+    await renderApp();
+    await act(async () => {
+      navigationRef.navigate('AccountsTab', {
+        state: {
+          routes: [
+            { name: 'Accounts' },
+            { name: 'AccountDetail', params: { accountId: 'cash', name: 'Cash' }, isDefault: true },
+          ],
+          index: 1,
+        },
+      } as never);
+    });
+    const [, defaultPage] = accountsStack();
+
+    await route([tap('add-cash')]);
+
+    expect(accountsStack()).toEqual([LIST, CASH_PAGE]);
+    expect(accountsStack()[1]?.key).not.toBe(defaultPage?.key);
+  });
+
+  const openTransactionFormWithDraft = async (): Promise<void> => {
+    await act(async () => {
+      navigationRef.navigate('AccountsTab', {
+        screen: 'TransactionForm',
+        params: { holdingId: 'wallet', draft: { amount: '42' } as never },
+      });
+    });
+  };
+
+  // The form is dropped with its draft because keeping it above the list would let the close of an
+  // earlier account's page close the reminder's page: the stack is rebuilt, with nothing opened
+  // before. The tap asks no confirmation.
+  it('discards an open form of the tapped account, and its draft, for a tap on its reminder', async () => {
+    seedHolding('wallet', 'cash');
+    await renderApp();
+    await openAccount('cash', 'Cash');
+    await openTransactionFormWithDraft();
+    const [, pageBefore, formBefore] = accountsStack();
+    expect(formBefore?.params).toHaveProperty('draft');
+
+    await route([tap('add-cash')]);
+
+    const [, page, form] = accountsStack();
+
+    expect(accountsStack()).toEqual([LIST, CASH_PAGE, WALLET_FORM]);
+    expect(page?.key).toBe(pageBefore?.key);
+    expect(form?.key).not.toBe(formBefore?.key);
+    expect(form?.params).not.toHaveProperty('draft');
+  });
+
+  it('discards an open form of another account, and its draft, for a tap on a reminder', async () => {
+    seedHolding('wallet', 'cash');
+    await renderApp();
+    await openAccount('cash', 'Cash');
+    await openTransactionFormWithDraft();
+
+    await route([tap('import-bank')]);
+
+    expect(accountsStack()).toEqual([LIST, BANK_IMPORT_PAGE]);
+  });
+
   it('closes the pages above the page of the tapped account, which stays in place', async () => {
     await renderApp();
     await openAccount('bank', 'Mono');
