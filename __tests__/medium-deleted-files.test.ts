@@ -1,14 +1,21 @@
+import {
+  chmodSync,
+  cpSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { chmodSync, cpSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 
-// medium.sh builds the session's changed-file list from `git diff --name-only HEAD`, which also
-// lists a DELETED file. The wrappers that read file contents (jscpd, override-guard) then got a
-// path that is not on disk, and jscpd's ENOENT surfaced as a "duplicated code above the
-// threshold" block. Every test runs COPIES of medium.sh and _lib.sh in a throwaway repository;
-// the other wrappers are stubs that log their arguments and fail the way jscpd does on a path
-// that is not on disk, so the test proves what medium.sh passes them.
+// git lists a deleted file in the session's changed files, and jscpd fails with ENOENT on a path
+// that is not on disk, so the content-reading wrappers (jscpd, override-guard) must get only
+// files still on disk. Every test runs COPIES of medium.sh and _lib.sh in a throwaway
+// repository; the other wrappers are stubs that log their arguments and fail the way jscpd does
+// on a missing path, so the test proves what medium.sh passes them.
 const CHECKS = join(__dirname, '../scripts/checks');
 
 const FILE_ARGUMENT_WRAPPERS = ['dup.sh', 'override-guard.sh'];
@@ -40,9 +47,24 @@ const writeExecutable = (root: string, relativePath: string, body: string): void
 
 const logFor = (project: Project, wrapper: string): string => join(project.state, `${wrapper}.log`);
 
+const temporaryDirectories: string[] = [];
+
+const makeTemporaryDirectory = (prefix: string): string => {
+  const directory = mkdtempSync(join(tmpdir(), prefix));
+  temporaryDirectories.push(directory);
+
+  return directory;
+};
+
+afterEach(() => {
+  for (const directory of temporaryDirectories.splice(0)) {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 const buildProject = (committedFiles: Record<string, string>): Project => {
-  const root = mkdtempSync(join(tmpdir(), 'kiko-medium-deleted-'));
-  const state = mkdtempSync(join(tmpdir(), 'kiko-medium-deleted-state-'));
+  const root = makeTemporaryDirectory('kiko-medium-deleted-');
+  const state = makeTemporaryDirectory('kiko-medium-deleted-state-');
   git(root, 'init', '-q', '-b', 'main');
   git(root, 'config', 'user.email', 'test@example.com');
   git(root, 'config', 'user.name', 'Test');
@@ -127,31 +149,35 @@ describe('medium.sh changed-file list', () => {
     // A deleted file can break an import elsewhere, so the session must not be silent.
     expect(ran(project, 'typecheck.sh')).toBe(true);
     expect(ran(project, 'knip.sh')).toBe(true);
+    expect(ran(project, 'guard-replay.sh')).toBe(true);
+    expect(ran(project, 'shipped-migrations.sh')).toBe(true);
   });
 
   it('hands a renamed file to the wrappers under its new path only', () => {
     const project = buildProject({ 'src/old.ts': 'export const moved = 1;\n' });
+    // With rename detection off git lists the old path as deleted, the case only the
+    // existence test covers.
+    git(project.root, 'config', 'diff.renames', 'false');
     git(project.root, 'mv', 'src/old.ts', 'src/new.ts');
 
     expect(runMedium(project)).toEqual({ code: 0, stderr: '' });
     expect(argumentsSeenBy(project, 'dup.sh')).toEqual(['src/new.ts']);
   });
 
-  it('keeps the replay and the shipped-migrations check on a deletion-only session', () => {
-    const project = buildProject({ 'src/gone.ts': 'export const gone = 1;\n' });
-    execFileSync('rm', [join(project.root, 'src/gone.ts')]);
+  it('hands an untracked file whose name holds a quote to the wrappers', () => {
+    const project = buildProject({ 'src/kept.ts': 'export const kept = 1;\n' });
+    writeFile(project.root, 'src/we"ird.ts', 'export const weird = 1;\n');
 
-    runMedium(project);
-
-    expect(ran(project, 'guard-replay.sh')).toBe(true);
-    expect(ran(project, 'shipped-migrations.sh')).toBe(true);
+    expect(runMedium(project)).toEqual({ code: 0, stderr: '' });
+    expect(argumentsSeenBy(project, 'dup.sh')).toEqual(['src/we"ird.ts']);
+    expect(argumentsSeenBy(project, 'override-guard.sh')).toEqual(['src/we"ird.ts']);
   });
 });
 
 describe('dup.sh with a path that is not on disk', () => {
   const buildDupProject = (): Project => {
-    const root = mkdtempSync(join(tmpdir(), 'kiko-dup-missing-'));
-    const state = mkdtempSync(join(tmpdir(), 'kiko-dup-missing-state-'));
+    const root = makeTemporaryDirectory('kiko-dup-missing-');
+    const state = makeTemporaryDirectory('kiko-dup-missing-state-');
     cpSync(join(CHECKS, 'dup.sh'), join(root, 'scripts/checks/dup.sh'));
     cpSync(join(CHECKS, '_lib.sh'), join(root, 'scripts/checks/_lib.sh'));
     writeExecutable(

@@ -9,37 +9,19 @@ source "$DIR/_lib.sh"
 ROOT="$(cd "$DIR/../.." && pwd)"
 cd "$ROOT"
 
-# Session changed files: tracked changes + untracked.
+# Session changed files: tracked changes + untracked. NUL-delimited because git
+# quotes a name holding a `"`, `\` or control character even with core.quotePath
+# off, and a quoted name fails the `-f` test below.
 # (Portable form of `mapfile -t`: the macOS system bash is 3.2 and has no
 # mapfile/readarray builtin.)
-touched="$(
-  { git -c core.quotePath=false diff --name-only HEAD
-    git -c core.quotePath=false ls-files --others --exclude-standard
-  } | sort -u
-)"
-
-# App source drives the changed-file-scoped checks (jscpd, override-guard).
-changed=()
-while IFS= read -r f; do
-  [ -n "$f" ] && changed+=("$f")
+touched=()
+while IFS= read -r -d '' f; do
+  touched+=("$f")
 done < <(
-  printf '%s\n' "$touched" \
-    | grep -E '\.(ts|tsx|js)$' \
-    | grep -vE '^(ios/|node_modules/)'
+  { git diff --name-only -z HEAD
+    git ls-files -z --others --exclude-standard
+  } | sort -zu
 )
-
-# The subset still on disk. `git diff --name-only HEAD` lists a deleted file, and
-# jscpd fails on a path it cannot lstat (ENOENT), which dup.sh reported as duplicated
-# code. `changed` keeps the deleted path: it decides whether the session is silent, and
-# a deleted file can break an import elsewhere, so knip and tsc must still run. An
-# existence test, not `--diff-filter=d`, because it also covers a path git lists after
-# the file was removed by hand, and a rename under any diff.renames setting (a rename
-# with detection off lists the old path as deleted); the guard replay plans its own
-# file set from git history and does not read this list.
-present=()
-for f in "${changed[@]+"${changed[@]}"}"; do
-  [ -f "$f" ] && present+=("$f")
-done
 
 # Harness inputs: the Semgrep rule file, its fixtures, the check wrappers, and
 # every iOS file plist.sh asserts on (the Info.plist, the localized
@@ -55,13 +37,26 @@ done
 # migration's .sql, snapshot or journal is guarded by shipped-migrations.sh, and
 # the pre-write guard never sees a .sql edit, so a session that touched only
 # one must not be silent.
+harness_input_pattern='^(rules/.*\.ya?ml|rules/fixtures/.*|scripts/checks/.*|ios/Kiko/Info\.plist|ios/Kiko\.xcodeproj/project\.pbxproj|ios/Kiko/[a-z]+\.lproj/InfoPlist\.strings|ios/Kiko/PrivacyInfo\.xcprivacy|drizzle/migrations/.*)$'
+
+# App source drives the changed-file-scoped checks (jscpd, override-guard).
+changed=()
 harness_changed=()
-while IFS= read -r f; do
-  [ -n "$f" ] && harness_changed+=("$f")
-done < <(
-  printf '%s\n' "$touched" \
-    | grep -E '^(rules/.*\.ya?ml|rules/fixtures/.*|scripts/checks/.*|ios/Kiko/Info\.plist|ios/Kiko\.xcodeproj/project\.pbxproj|ios/Kiko/[a-z]+\.lproj/InfoPlist\.strings|ios/Kiko/PrivacyInfo\.xcprivacy|drizzle/migrations/.*)$'
-)
+for f in "${touched[@]+"${touched[@]}"}"; do
+  if [[ "$f" =~ \.(ts|tsx|js)$ ]] && ! [[ "$f" =~ ^(ios/|node_modules/) ]]; then
+    changed+=("$f")
+  fi
+  if [[ "$f" =~ $harness_input_pattern ]]; then
+    harness_changed+=("$f")
+  fi
+done
+
+# `changed` keeps a deleted path (it can break an import, so knip and tsc must still run); the
+# existence test, not `--diff-filter=d`, also drops a hand-removed path and a rename's old path.
+present=()
+for f in "${changed[@]+"${changed[@]}"}"; do
+  [ -f "$f" ] && present+=("$f")
+done
 
 # The guard replay also checks commits made in this worktree, so a turn that
 # only committed (a clean tree) must still run it: it is pending while HEAD
@@ -94,7 +89,7 @@ if harness_lock "$lock" 240; then
 fi
 
 # Changed-file scope: jscpd and override-guard on the changed source files only.
-# Guarded because `"${changed[@]}"` on an empty array is an unbound-variable
+# Guarded because `"${present[@]}"` on an empty array is an unbound-variable
 # error under `set -u` in bash 3.2.
 if [ ${#present[@]} -gt 0 ]; then
   "$DIR/dup.sh" "${present[@]}" || exit 2

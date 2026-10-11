@@ -97,6 +97,21 @@ export const wasLabelBlock = 60;
  */
 export const wasLabelLaterBlockLine = 60;
 
+// Known false positives of the label member, pinned as findings: it keys on the word and its
+// colon alone, so prose, a URL path segment and a JSDoc example read as a label too. Reword such
+// a comment, or drop the colon.
+// EXPECT-FINDING
+// The open question was: does the row hold a balance?
+export const wasProse = true;
+
+// EXPECT-FINDING
+// see http://example.com/was:thing
+export const wasInUrl = true;
+
+// EXPECT-FINDING
+/** Example: `{ was: 1 }` is the shape. */
+export const wasInJsdocExample = true;
+
 // Known limits, pinned as findings: the lookbehind sees only the word right before the phrase,
 // so a purpose sentence with another word in between, or a line break after the verb, still
 // reads as history. Reword such a comment to name the purpose.

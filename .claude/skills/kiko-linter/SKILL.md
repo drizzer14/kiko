@@ -1481,8 +1481,10 @@ of other text in its comment), and the same `paths.exclude` scope (`__tests__/**
   are not comment text, and the line arm's string-skip walk never opens on them). Measured on
   2026-10-11: 0 hits over `src`, `App.tsx` and the repo (`semgrep … . --json`, 1839 paths
   scanned; a plain `grep -rE '\b[Ww]as:'` over `src` finds no occurrence in code or comments
-  either), so the member lands with no false-positive class and nothing to sweep. Its only hits
-  are the four pins in `.bad.ts`. A scan of the whole repo hits the 3 per-rule timeouts on
+  either): 0 hits in the tree, nothing to sweep. The colon is the only key, so three false
+  positives are known and pinned in `.bad.ts` (prose such as "the question was: …", a URL path
+  segment `…/was:thing`, a JSDoc example holding `{ was: 1 }`); reword such a comment. Its only
+  hits are the seven pins in `.bad.ts`. A scan of the whole repo hits the 3 per-rule timeouts on
   `holding-form.screen.test.tsx` under load; scan that file alone to read its hits.
 - `it replaces`: 2 of the 6 hits were a behavior description ("while
   locked it replaces the whole app with a prompt"); the other 4 named the
