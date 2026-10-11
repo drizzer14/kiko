@@ -2693,7 +2693,7 @@ currency — the same "a filter never hides an active selection" rule
 `buildLoanOptions` (below) already follows on the transaction form's own
 loan-payment field, or the picker would resolve no match for a link that
 still exists in the metadata and silently show "None". `isLoanFieldVisible`
-(`transaction-form.screen.tsx`) shows that field whenever the row already
+(`src/screens/forms/transaction-form/mode-and-actions/mode-and-actions.ts`) shows that field whenever the row already
 carries `selectedLoanHoldingId`, regardless of the row's own amount
 sign — a linked row later edited from debit to credit must still reach the
 field where None/Undo live.

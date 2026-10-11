@@ -774,7 +774,7 @@ follow the same layout conventions as every other Kiko screen:
   (`target-holding-sheet.component.tsx`'s `SelectableRow` rows and
   `target-holding-field.component.tsx`'s `FieldTrigger`), the same
   `icon ?? defaultHoldingSymbol(holding)` / `resolveEntityColor` pair
-  `transaction-form.screen.tsx`'s exchange `HoldingSelectField` resolves
+  the transaction-form `HoldingSelectField` (`primary-holding-field/`, `split-returns/`) resolves
   — `useTargetHoldingOptions` (shared by both statement-import screens)
   now resolves `icon`/`color` onto every `TargetHoldingOption` it
   returns.

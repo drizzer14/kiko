@@ -322,7 +322,7 @@ flag such as `converting`) goes into ONE typed table
 the override first: `converting ? 'converting' : mode`) — not parallel
 `if`-chains over the `isX` booleans. A new mode is then a compile error
 in one table. See `MODE_BEHAVIOR` in
-`src/screens/forms/transaction-form/transaction-form.screen.tsx`; this
+`src/screens/forms/transaction-form/validation/validation.ts`; this
 closes the open note of finding U5 in
 `docs/reviews/2026-09-codebase-review.md` that this section did not cover
 booleans derived from a union. A judgment rule, not mechanized.
@@ -1035,6 +1035,11 @@ every file that belongs to it together in **one folder named after
 it**. Never scatter a thing's implementation, test, and styles as
 loose siblings in a shared flat folder; a folder that is a flat dump
 of many unrelated files is hard to read and navigate (user directive).
+
+The transaction-form screen follows this: `transaction-form.screen.tsx` keeps
+the state, the hydrate effect, the save handlers and the layout; its helpers,
+components and hooks live in unit folders under
+`src/screens/forms/transaction-form/`.
 
 Two shapes this takes today:
 
