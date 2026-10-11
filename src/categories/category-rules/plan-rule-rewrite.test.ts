@@ -1,0 +1,159 @@
+import { prepareRules } from './prepare-rules';
+import { ruleRow } from './__fixtures__/rule-row';
+import { isRewriteEligible, planRuleRewrite } from './plan-rule-rewrite';
+import type { CategoryRuleMatcher, RewriteCandidate } from './category-rules.d';
+
+const nameIs = (text: string): CategoryRuleMatcher => ({ type: 'nameIs', text });
+
+const candidate = (overrides: Partial<RewriteCandidate> = {}): RewriteCandidate => ({
+  id: 'row-1',
+  description: 'Silpo',
+  amountMinorUnits: -10000,
+  time: new Date(2026, 5, 1, 12, 0).getTime(),
+  currency: 'UAH',
+  category: 'groceries',
+  categorySetByHand: false,
+  exchangePairId: null,
+  exchangeCounterpartHoldingId: null,
+  setsBalance: false,
+  changeGroupId: null,
+  ...overrides,
+});
+
+const savedFood = ruleRow({ id: 'saved', category: 'food', matchers: [nameIs('silpo')] });
+
+describe('isRewriteEligible', () => {
+  it('accepts a plain row', () => {
+    expect(isRewriteEligible(candidate())).toBe(true);
+  });
+
+  it.each([
+    ['a hand-picked category', { categorySetByHand: true }],
+    ['an exchange pair', { exchangePairId: 'pair-1' }],
+    ['an exchange counterpart holding', { exchangeCounterpartHoldingId: 'holding-2' }],
+    ['a balance-setting row', { setsBalance: true }],
+    ['a split-change row', { changeGroupId: 'group-1' }],
+  ])('refuses %s', (_label, overrides) => {
+    expect(isRewriteEligible(candidate(overrides))).toBe(false);
+  });
+});
+
+describe('planRuleRewrite', () => {
+  it('P10 leaves a flagged row alone', () => {
+    const plan = planRuleRewrite(prepareRules([savedFood]), 'saved', [
+      candidate({ id: 'flagged', categorySetByHand: true }),
+    ]);
+
+    expect(plan).toEqual([]);
+  });
+
+  it('P11 plans a row the saved rule wins when its category differs', () => {
+    const plan = planRuleRewrite(prepareRules([savedFood]), 'saved', [
+      candidate({ id: 'differs', category: 'groceries' }),
+      candidate({ id: 'uncategorized', category: null }),
+    ]);
+
+    expect(plan).toEqual(['differs', 'uncategorized']);
+  });
+
+  it('P12 skips a row that already has the saved rule category', () => {
+    const plan = planRuleRewrite(prepareRules([savedFood]), 'saved', [
+      candidate({ id: 'same', category: 'food' }),
+    ]);
+
+    expect(plan).toEqual([]);
+  });
+
+  it('P13 skips a row a stronger rule wins', () => {
+    const stronger = ruleRow({
+      id: 'stronger',
+      category: 'shops',
+      matchers: [nameIs('silpo'), { type: 'direction', direction: 'expense' }],
+    });
+    const prepared = prepareRules([savedFood, stronger]);
+
+    expect(planRuleRewrite(prepared, 'saved', [candidate()])).toEqual([]);
+    expect(planRuleRewrite(prepared, 'stronger', [candidate()])).toEqual(['row-1']);
+  });
+
+  it('P13 skips a row a newer rule of equal strength wins', () => {
+    const newer = ruleRow({
+      id: 'newer',
+      category: 'shops',
+      matchers: [nameIs('silpo')],
+      updatedAt: 50,
+    });
+
+    expect(planRuleRewrite(prepareRules([savedFood, newer]), 'saved', [candidate()])).toEqual([]);
+  });
+
+  it('P14 does not plan a row the narrowed rule no longer matches', () => {
+    const narrowed = ruleRow({
+      id: 'saved',
+      category: 'food',
+      matchers: [
+        nameIs('silpo'),
+        { type: 'amount', operator: 'gt', minorUnits: 50000, currency: 'UAH' },
+      ],
+    });
+
+    const plan = planRuleRewrite(prepareRules([narrowed]), 'saved', [
+      candidate({ id: 'previously-set', category: 'food', amountMinorUnits: -10000 }),
+      candidate({ id: 'still-matches', category: 'groceries', amountMinorUnits: -60000 }),
+      candidate({ id: 'set-by-it-once', category: 'groceries', amountMinorUnits: -10000 }),
+    ]);
+
+    expect(plan).toEqual(['still-matches']);
+  });
+
+  it('P15 returns nothing when the saved rule is absent', () => {
+    const plan = planRuleRewrite(prepareRules([savedFood]), 'deleted', [candidate()]);
+
+    expect(plan).toEqual([]);
+  });
+
+  it('returns nothing when the saved rule is unreadable', () => {
+    const unreadable = { ...savedFood, matchers: 'not json' };
+
+    expect(planRuleRewrite(prepareRules([unreadable]), 'saved', [candidate()])).toEqual([]);
+  });
+
+  it.each([
+    ['an exchange pair', { exchangePairId: 'pair-1' }],
+    ['an exchange counterpart holding', { exchangeCounterpartHoldingId: 'holding-2' }],
+    ['a balance-setting row', { setsBalance: true }],
+    ['a split-change row', { changeGroupId: 'group-1' }],
+  ])('P21 skips %s', (_label, overrides) => {
+    const plan = planRuleRewrite(prepareRules([savedFood]), 'saved', [candidate(overrides)]);
+
+    expect(plan).toEqual([]);
+  });
+
+  it('keeps the order of the rows it plans and skips the others', () => {
+    const plan = planRuleRewrite(prepareRules([savedFood]), 'saved', [
+      candidate({ id: 'a' }),
+      candidate({ id: 'other-name', description: 'ATB' }),
+      candidate({ id: 'b' }),
+      candidate({ id: 'already', category: 'food' }),
+      candidate({ id: 'c' }),
+    ]);
+
+    expect(plan).toEqual(['a', 'b', 'c']);
+  });
+
+  it('evaluates a row with the currency of its holding', () => {
+    const usdRule = ruleRow({
+      id: 'saved',
+      category: 'food',
+      matchers: [{ type: 'amount', operator: 'eq', minorUnits: 10000, currency: 'USD' }],
+    });
+
+    const plan = planRuleRewrite(prepareRules([usdRule]), 'saved', [
+      candidate({ id: 'uah', currency: 'UAH' }),
+      candidate({ id: 'usd', currency: 'USD' }),
+      candidate({ id: 'none', currency: null }),
+    ]);
+
+    expect(plan).toEqual(['usd']);
+  });
+});
