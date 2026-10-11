@@ -18,7 +18,9 @@ const UpcomingPaymentRow: FC<UpcomingPaymentRowProps> = ({ installment, currency
   const { t } = useTranslation();
   const dueDate = formatDate(installment.dueDate);
   const title = t('holdingDetail.loanPayment');
-  const payment = Money.of(currency, installment.paymentMinorUnits);
+  // Signed like a Linked Payments row: money leaving the user is negative, so MoneyText draws
+  // it red with the minus and the label below reads it the same way.
+  const payment = Money.of(currency, installment.paymentMinorUnits).negate();
   const marker = t('holdingDetail.scheduled');
   const split = t('holdingDetail.paymentSplit', {
     principal: formatMoney(Money.of(currency, installment.principalMinorUnits), activeLocale()),
@@ -42,7 +44,7 @@ const UpcomingPaymentRow: FC<UpcomingPaymentRowProps> = ({ installment, currency
       <EntryCard
         testID={`upcoming-payment-${installment.index}`}
         label={title}
-        amount={<MoneyText money={payment} tone="negative" />}
+        amount={<MoneyText money={payment} context="transaction" />}
         footerLines={[marker, split]}
       />
     </Box>

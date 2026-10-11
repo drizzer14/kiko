@@ -55,7 +55,7 @@ describe('UpcomingPayments', () => {
     const card = within(getByTestId(`upcoming-payment-${first.index}`));
 
     expect(card.getByText('Loan payment')).toBeTruthy();
-    expect(card.getByText(money(first.paymentMinorUnits))).toBeTruthy();
+    expect(card.getByText(money(-first.paymentMinorUnits))).toBeTruthy();
     expect(card.getByText('Scheduled')).toBeTruthy();
     expect(
       card.getByText(
@@ -133,19 +133,19 @@ describe('UpcomingPayments', () => {
     }
   });
 
-  it('reads each amount in the negative (red) tone, whatever its sign', async () => {
+  it('draws each amount signed and in the negative (red) tone, like a Linked Payments row', async () => {
     const [first] = installments;
     const { getByTestId } = await render(
       <UpcomingPayments installments={installments.slice(0, 1)} currency="UAH" />,
     );
     const amount = within(getByTestId(`upcoming-payment-${first.index}`)).getByText(
-      money(first.paymentMinorUnits),
+      money(-first.paymentMinorUnits),
     );
 
     expect(layoutOf(amount)).toEqual({
       variant: 'body',
       tone: 'negative',
-      children: [money(first.paymentMinorUnits)],
+      children: [money(-first.paymentMinorUnits)],
     });
   });
 

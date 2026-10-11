@@ -38,7 +38,7 @@ describe('UpcomingPaymentRow', () => {
 
     expect(getByText(formatDate(installment.dueDate))).toBeTruthy();
     expect(within(card).getByText('Loan payment')).toBeTruthy();
-    expect(within(card).getByText(money(installment.paymentMinorUnits))).toBeTruthy();
+    expect(within(card).getByText(money(-installment.paymentMinorUnits))).toBeTruthy();
     expect(within(card).getByText('Scheduled')).toBeTruthy();
     expect(within(card).getByText(split)).toBeTruthy();
   });
@@ -53,7 +53,7 @@ describe('UpcomingPaymentRow', () => {
         [
           formatDate(installment.dueDate),
           'Loan payment',
-          money(installment.paymentMinorUnits),
+          money(-installment.paymentMinorUnits),
           'Scheduled',
           split,
         ].join(', '),

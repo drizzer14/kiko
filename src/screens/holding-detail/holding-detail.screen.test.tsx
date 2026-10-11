@@ -1984,7 +1984,7 @@ describe('HoldingDetailScreen', () => {
     // Scoped per card: a swapped principal/interest would fail here, unlike a
     // bare `getByText` search over the whole screen.
     expect(getByTestId(`upcoming-payment-${next.index}`)).toHaveTextContent(
-      formatMoney(Money.of('UAH', next.paymentMinorUnits)),
+      formatMoney(Money.of('UAH', -next.paymentMinorUnits)),
       { exact: false },
     );
     expect(getByTestId(`upcoming-payment-${next.index}`)).toHaveTextContent(
