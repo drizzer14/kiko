@@ -2,8 +2,8 @@
 import type {
   AccountRow,
   BondRegisterRow,
-  CategoryOverrideRow,
   CategoryRow,
+  CategoryRuleRow,
   CurrencyRateHistoryRow,
   CurrencyRateRow,
   DeletedImportKeyRow,
@@ -30,7 +30,7 @@ export type DataSnapshot = {
   settings: SettingsRow[];
   syncState: SyncStateRow[];
   categories: CategoryRow[];
-  categoryOverrides: CategoryOverrideRow[];
+  categoryRules: CategoryRuleRow[];
   pricePoints: PricePointRow[];
   bondRegister: BondRegisterRow[];
   reminders: ReminderRow[];

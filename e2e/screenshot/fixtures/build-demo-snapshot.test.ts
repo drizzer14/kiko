@@ -178,7 +178,7 @@ describe('buildDemoSnapshot', () => {
       LOAN_INTEREST_CATEGORY.key,
     ]);
     expect(snapshot.syncState).toEqual([]);
-    expect(snapshot.categoryOverrides).toEqual([]);
+    expect(snapshot.categoryRules).toEqual([]);
   });
 
   it('seeds every category color from the branded-colors migration, matching a real fresh install', () => {
