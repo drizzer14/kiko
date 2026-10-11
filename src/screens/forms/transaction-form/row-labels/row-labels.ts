@@ -27,16 +27,26 @@ export const readOnlyNoticeKey = (
 ): 'forms.transaction.importedNotice' | 'forms.transaction.syncedNotice' =>
   source === 'import' ? 'forms.transaction.importedNotice' : 'forms.transaction.syncedNotice';
 
-// The header title reflects the mode: a synced row is a plain read-only view, an
-// existing manual row is an edit, and no id at all is a fresh add. The three
-// candidate titles are catalog-resolved strings, passed in as a labels object
-// rather than read from a module-level constant, so the helper stays
-// translation-agnostic.
+// The header title reflects the mode: a template mode names itself, a synced row is a plain
+// read-only view, an existing manual row is an edit, and no id at all is a fresh add. The
+// candidate titles are catalog-resolved strings, passed in as a labels object rather than read
+// from a module-level constant, so the helper stays translation-agnostic.
 export const headerTitle = (
   isReadOnly: boolean,
   isEditing: boolean,
-  labels: { readOnly: string; editing: string; adding: string },
+  templateEntry: 'add' | 'edit' | null,
+  labels: {
+    readOnly: string;
+    editing: string;
+    adding: string;
+    addingTemplate: string;
+    editingTemplate: string;
+  },
 ): string => {
+  if (templateEntry !== null) {
+    return templateEntry === 'edit' ? labels.editingTemplate : labels.addingTemplate;
+  }
+
   if (isReadOnly) {
     return labels.readOnly;
   }

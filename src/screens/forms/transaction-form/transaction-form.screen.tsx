@@ -8,6 +8,7 @@ import {
   useState,
 } from 'react';
 import { match } from 'ts-pattern';
+import maybe, { foldMap } from 'fnts/maybe';
 import { ratesRepo } from '@kiko/rates/repo';
 import { Money } from '@kiko/currency/money';
 import { accountsRepo } from '@kiko/accounts';
@@ -22,7 +23,6 @@ import { StyleSheet } from 'react-native-unistyles';
 import Box from '@kiko/design-system/components/box';
 import { categoriesRepo } from '@kiko/categories/repo';
 import { transactionsRepo } from '@kiko/transactions/repo';
-import Button from '@kiko/design-system/components/button';
 import Screen from '@kiko/design-system/components/screen';
 import { buildRateTable } from '@kiko/rates/net-worth-view';
 import { type TextInputInstance, View } from 'react-native';
@@ -54,6 +54,8 @@ import {
   isSplitAmountInvalid,
   MODE_BEHAVIOR,
   resolveActiveMode,
+  resolveFieldErrors,
+  resolveFieldOrder,
 } from './validation';
 import {
   type ChangeReturnRow,
@@ -81,9 +83,13 @@ import ModeAndActions, {
 } from './mode-and-actions';
 import CommentRow from './comment-row';
 import FieldGroup from './field-group';
+import FormFooter from './form-footer';
 import SplitReturns from './split-returns';
 import { readRouteEntry } from './route-entry';
+import { writeTemplate } from './template-save';
 import ReadOnlyNotice from './read-only-notice';
+import { draftFromForm } from './draft-from-form';
+import TemplateNameField from './template-name-field';
 import { useCategoryPick } from './use-category-pick';
 import PrimaryHoldingField from './primary-holding-field';
 import { resolveTemplateSeed } from './template-references';
@@ -106,6 +112,9 @@ type TransactionFormScreenProps = {
     goBack: () => void;
     setOptions: (options: { title: string }) => void;
     navigate: (...route: CreateHoldingRoute) => void;
+    // A template's "Create transaction" opens this same route from the template's own form, so it
+    // must push a second entry: a `navigate` to the current route would only swap its params.
+    push: (name: 'TransactionForm', params: TransactionFormParams) => void;
   };
 };
 
@@ -126,6 +135,8 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     readOnly: t('forms.transaction.title'),
     editing: t('forms.transaction.editTitle'),
     adding: t('forms.transaction.addTitle'),
+    addingTemplate: t('forms.transaction.addTemplateTitle'),
+    editingTemplate: t('forms.transaction.editTemplateTitle'),
   };
   const buildApplyCategoryMessage = (category: string, name: string): string =>
     t('forms.transaction.applyCategoryMessage', { category, name });
@@ -168,10 +179,14 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     duplicateOfId,
     holdingParamId,
     templateQueryId,
+    editTemplateId,
+    templateEntry,
     isEmptyCreate,
     seedsDefaultHolding,
     templateSeat,
   } = readRouteEntry(route.params);
+  // Adding or editing a template: the form saves a template, not a transaction.
+  const isTemplateMode = templateEntry !== null;
   // ONE by-id subscription serves both the edit source and the duplicate source
   // (never both at once — the union keeps the params mutually exclusive).
   const { data: matchedTransactions } = useLiveQuery(
@@ -190,6 +205,10 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     transactionTemplatesRepo.getByIdQuery(templateQueryId),
     ['transaction_templates'],
   );
+  // Every stored template, for the name field's case-insensitive "taken" check.
+  const { data: storedTemplates } = useLiveQuery(transactionTemplatesRepo.listQuery(), [
+    'transaction_templates',
+  ]);
 
   // The category picker's options come from the categories live query (a rename
   // flows straight through), and the confirm copy resolves the picked key to its
@@ -391,10 +410,18 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   // no keyboard, or is owned by ExchangeFields/ConvertExchangeFields, which
   // have no matching focus ref of their own yet).
   const amountInputRef = useRef<TextInputInstance>(null);
+  // The template name field's wrapper and inner input, like the Amount field's pair, and the
+  // primary holding picker's wrapper (a picker has no keyboard to focus).
+  const templateNameFieldRef = useRef<FieldInstance>(null);
+  const templateNameInputRef = useRef<TextInputInstance>(null);
+  const holdingFieldRef = useRef<FieldInstance>(null);
   const focusByKey: Partial<Record<SaveDisabledField, () => void>> = {
     amount: () => amountInputRef.current?.focus(),
+    templateName: () => templateNameInputRef.current?.focus(),
   };
   const fieldRefsByKey: Record<SaveDisabledField, RefObject<FieldInstance | null>> = {
+    templateName: templateNameFieldRef,
+    holding: holdingFieldRef,
     counterpartHolding: counterpartHoldingFieldRef,
     counterpartAmount: counterpartAmountFieldRef,
     destinationHolding: destinationFieldRef,
@@ -434,6 +461,14 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   // Held from the seed rather than re-resolved at Save, so a counterpart
   // renamed mid-edit cannot turn the untouched label into stored text.
   const [prefilledLabel, setPrefilledLabel] = useState<string | null>(null);
+  // The template name field: filled by an Edit template, typed in an Add template. The write's own
+  // name check can refuse a name the live list did not show as taken yet (a template saved in
+  // between); those names are kept here, beside the list's own, so the field shows the taken error
+  // without waiting for the list to catch up.
+  const [templateName, setTemplateName] = useState('');
+  const [refusedTemplateNames, setRefusedTemplateNames] = useState<{ id: string; name: string }[]>(
+    [],
+  );
   const blankLabel = resolveBlankLabel({ existing, holding, holdings, t });
   // The template the entry fills from, its references resolved against the live holdings and
   // categories. Held back until all of those reads settle, so nothing resolves against a list that
@@ -444,10 +479,11 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     categoriesLoading,
     templateLoading,
   );
-  const { templateDraft, templateName } = resolveTemplateSeed({
+  const { templateDraft, templateName: seededTemplateName } = resolveTemplateSeed({
     row: templateRows.at(0),
     isReady: isTemplateReady,
     isHydrated: hydrated,
+    carriesName: editTemplateId !== null,
     source: {
       holdings,
       accountNameById,
@@ -485,7 +521,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
       defaultPrimaryHoldingId,
       blankLabel,
       templateDraft,
-      templateName,
+      templateName: seededTemplateName,
       templateSeat,
     });
 
@@ -512,6 +548,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
             setValueIn,
             setChangeReturns,
             setPrimaryHoldingId,
+            setTemplateName,
           },
           () => nextReturnId.current++,
         );
@@ -532,7 +569,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     defaultPrimaryHoldingId,
     blankLabel,
     templateDraft,
-    templateName,
+    seededTemplateName,
     templateSeat,
     setSelectedCategory,
     setUserPickedCategory,
@@ -612,20 +649,30 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     selectedCategory,
     changeReturns,
     currency,
+    primaryHoldingId: holdingId ?? null,
+    templateName,
+    templateNameRequired: isTemplateMode,
+    isTemplateMode,
+    templateNames: [...storedTemplates, ...refusedTemplateNames],
+    editTemplateId,
   };
   // Every field's OWN independent error (see `TransactionFieldErrors`'s own
   // doc comment) — `fieldError` just applies the shared `attemptedSave` gate
-  // once here instead of at each of the eight call sites below.
-  const activeFieldErrors = modeBehavior.fieldErrors(saveDisabledParams, t);
+  // once here instead of at each of the call sites below.
+  const activeMode = resolveActiveMode(converting, mode);
+  const activeFieldErrors = resolveFieldErrors(activeMode, saveDisabledParams, t);
   const fieldError = (key: SaveDisabledField): string | undefined =>
     attemptedSave ? activeFieldErrors[key] : undefined;
   // The first still-blocking field, in the active mode's own priority order
   // — both the Save-block gate AND the scroll-to-first-invalid target, so
   // the two can never disagree about which field is blocking.
-  const disableSaveField = firstInvalidField(modeBehavior.fieldOrder, activeFieldErrors);
+  const disableSaveField = firstInvalidField(
+    resolveFieldOrder(activeMode, saveDisabledParams),
+    activeFieldErrors,
+  );
   const disableSave = disableSaveField !== null;
 
-  const title = headerTitle(isReadOnly, isEditing, titleLabels);
+  const title = headerTitle(isReadOnly, isEditing, templateEntry, titleLabels);
   useLayoutEffect(() => {
     navigation.setOptions({ title });
   }, [navigation, title]);
@@ -922,6 +969,13 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   const dispatchSpecialSave = async (): Promise<boolean> => {
     const { save: saveSpecial } = modeBehavior;
 
+    // A template mode saves its draft whichever mode is selected, so it goes first.
+    if (isTemplateMode) {
+      await saveTemplate();
+
+      return true;
+    }
+
     if (saveSpecial === null) {
       return false;
     }
@@ -955,6 +1009,36 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     }
 
     await performSave();
+  };
+
+  // The template modes' save: the draft built from the form, written as a new template or over the
+  // one being edited. No transaction is written and the category override sheet never opens. A name
+  // the write refuses (taken since the list was read) goes back to the name field as its error.
+  const saveTemplate = async (): Promise<void> => {
+    const destination = holdings.find((candidate) => candidate.id === destinationHoldingId);
+    const draft = draftFromForm({
+      mode,
+      primaryHoldingId: holdingId ?? null,
+      currency: holding?.currency ?? null,
+      amount,
+      description,
+      prefilledLabel,
+      selectedCategory,
+      destinationHoldingId,
+      destinationCurrency: destination?.currency ?? null,
+      valueIn,
+      changeReturns,
+    });
+
+    if ((await writeTemplate({ editTemplateId, name: templateName, draft })) === 'taken') {
+      setRefusedTemplateNames((refused) => [...refused, { id: '', name: templateName }]);
+      setAttemptedSave(true);
+      scrollTo(templateNameFieldRef, focusByKey.templateName);
+
+      return;
+    }
+
+    navigation.goBack();
   };
 
   const performSave = async (): Promise<void> => {
@@ -1040,14 +1124,30 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
         onContentSizeChange={onContentSizeChange}
         footer={
           showsSaveButton(isReadOnly, categoryChanged, converting) ? (
-            <Button onPress={onSave} disabled={isSubmitting}>
-              {t('common.save')}
-            </Button>
+            <FormFooter
+              onSave={onSave}
+              isSubmitting={isSubmitting}
+              // Create transaction opens the template as it is STORED: the unsaved edits on this
+              // form are neither used nor saved.
+              onCreateTransaction={foldMap(maybe(editTemplateId), (templateId) => () => {
+                navigation.push('TransactionForm', { templateId });
+              })}
+            />
           ) : undefined
         }
       >
         <Box gap={4} testID="transaction-form">
           <ReadOnlyNotice isReadOnly={isReadOnly} noticeText={readOnlyNotice} />
+
+          {/* A template mode's name field goes on top, above the holding picker. */}
+          <TemplateNameField
+            visible={isTemplateMode}
+            value={templateName}
+            onChangeText={setTemplateName}
+            error={fieldError('templateName')}
+            fieldRef={templateNameFieldRef}
+            inputRef={templateNameInputRef}
+          />
 
           {/* B: the primary-leg holding picker, shown ONLY when no holding was
             fixed by navigation (the global-add entry). It drives the shared
@@ -1062,6 +1162,8 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
             selectedId={primaryHoldingId}
             onSelect={setPrimaryHoldingId}
             onCreateNew={openCreateHoldingIn(undefined, isTransactionEligibleType)}
+            error={fieldError('holding')}
+            fieldRef={holdingFieldRef}
           />
 
           {/* The transaction-TYPE selector, directly under the Holding select.
@@ -1127,6 +1229,8 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
             time={time}
             onChangeTime={setTime}
             maxDate={Date.now()}
+            showsDate={!isTemplateMode}
+            required={!isTemplateMode}
             t={t}
             amountError={fieldError('amount')}
             amountInvalid={isSplitAmountInvalid(saveDisabledParams, attemptedSave)}
@@ -1206,7 +1310,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
             onSelectCategory={selectCategory}
             convertEligible={convertView.eligible}
             onPressConvert={() => setConverting(true)}
-            isEditing={isEditing}
+            categoryRequired={!(isEditing || isTemplateMode)}
             t={t}
             categoryError={fieldError('selectedCategory')}
             categoryFieldRef={categoryFieldRef}

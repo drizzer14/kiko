@@ -4,6 +4,7 @@ const NO_TEMPLATE = {
   templateId: null,
   editTemplateId: null,
   isNewTemplate: false,
+  templateEntry: null,
   templateQueryId: '',
 };
 
@@ -62,6 +63,7 @@ describe('readRouteEntry', () => {
       templateQueryId: 'tpl1',
       editTemplateId: 'tpl1',
       isNewTemplate: false,
+      templateEntry: 'edit',
       isEmptyCreate: true,
       seedsDefaultHolding: false,
       templateSeat: 'clear',
@@ -73,6 +75,7 @@ describe('readRouteEntry', () => {
       templateId: null,
       editTemplateId: null,
       isNewTemplate: true,
+      templateEntry: 'add',
       isEmptyCreate: true,
       seedsDefaultHolding: true,
       templateSeat: 'clear',

@@ -95,14 +95,17 @@ export const resolveDraftReferences = (
 // The draft the hydration plan fills from, and the name it carries. References resolve against the
 // holdings, accounts and categories, so nothing seeds until every one of those reads has settled
 // (a draft resolved against a list still loading would drop every reference), and nothing seeds
-// once the form is filled, so a live refresh of the template never costs a resolve.
+// once the form is filled, so a live refresh of the template never costs a resolve. The name is
+// carried only when the entry edits the template (`carriesName`): a transaction made from one has
+// no name of its own to fill.
 export const resolveTemplateSeed = (args: {
   row: TransactionTemplateRow | undefined;
   isReady: boolean;
   isHydrated: boolean;
+  carriesName: boolean;
   source: ReferenceSource;
 }): { templateDraft: TemplateDraft | null; templateName: string | null } => {
-  const { row, isReady, isHydrated, source } = args;
+  const { row, isReady, isHydrated, carriesName, source } = args;
 
   if (!isReady || isHydrated || row === undefined) {
     return { templateDraft: null, templateName: null };
@@ -112,6 +115,6 @@ export const resolveTemplateSeed = (args: {
 
   return {
     templateDraft: resolveDraftReferences(draft, buildReferenceOptions(draft, source)),
-    templateName: name,
+    templateName: carriesName ? name : null,
   };
 };

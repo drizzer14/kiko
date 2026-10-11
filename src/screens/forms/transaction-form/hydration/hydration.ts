@@ -85,6 +85,7 @@ type SeedFieldsSetters = {
   setValueIn: (valueIn: string) => void;
   setChangeReturns: (rows: ChangeReturnRow[]) => void;
   setPrimaryHoldingId: (holdingId: string | null) => void;
+  setTemplateName: (name: string) => void;
 };
 
 // Applies a `seedFields` plan with the form's own setters, for every entry that fills (Edit,
@@ -122,6 +123,11 @@ export const applySeedFields = (
 
   if (plan.clearsHolding) {
     setters.setPrimaryHoldingId(null);
+  }
+
+  // Only an Edit template carries its name in; every other entry leaves the name field empty.
+  if (typeof plan.templateName === 'string') {
+    setters.setTemplateName(plan.templateName);
   }
 };
 

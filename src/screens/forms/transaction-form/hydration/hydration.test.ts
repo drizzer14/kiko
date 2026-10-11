@@ -354,6 +354,7 @@ describe('applySeedFields', () => {
     setValueIn: jest.fn(),
     setChangeReturns: jest.fn(),
     setPrimaryHoldingId: jest.fn(),
+    setTemplateName: jest.fn(),
   });
   const planOf = (overrides: Partial<SeedFieldsPlan> = {}): SeedFieldsPlan => ({
     kind: 'seedFields',
@@ -425,6 +426,20 @@ describe('applySeedFields', () => {
     expect(clears.setPrimaryHoldingId).toHaveBeenCalledWith(null);
     expect(keeps.setPrimaryHoldingId).not.toHaveBeenCalled();
     expect(unset.setPrimaryHoldingId).not.toHaveBeenCalled();
+  });
+
+  it('seeds the template name only when the plan carries one', () => {
+    const named = setters();
+    const unnamed = setters();
+    const unset = setters();
+
+    applySeedFields(planOf({ templateName: 'Rent' }), named, () => 1);
+    applySeedFields(planOf({ templateName: null }), unnamed, () => 1);
+    applySeedFields(planOf(), unset, () => 1);
+
+    expect(named.setTemplateName).toHaveBeenCalledWith('Rent');
+    expect(unnamed.setTemplateName).not.toHaveBeenCalled();
+    expect(unset.setTemplateName).not.toHaveBeenCalled();
   });
 });
 

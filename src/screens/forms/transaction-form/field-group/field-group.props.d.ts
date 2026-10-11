@@ -51,6 +51,11 @@ export type FieldGroupProps = {
   // The latest day the Date calendar offers: today, because a future-dated row
   // makes Home and the Statistics line disagree until that day arrives.
   maxDate: number;
+  // Whether the Date and Time row renders. Defaults to true; a template has no date.
+  showsDate?: boolean;
+  // Whether the amount fields carry the required marker. Defaults to true; a template asks for
+  // none of them.
+  required?: boolean;
   t: TFunction;
   // Per-field validation-failure messages and wrapper refs, threaded straight
   // into `ExchangeFields`/`ConvertExchangeFields`'s own props or onto

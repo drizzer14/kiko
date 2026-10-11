@@ -193,13 +193,24 @@ describe('resolveTemplateSeed', () => {
     updatedAt: 1,
   });
   const stored = draftOf({ holdingId: 'payer', category: 'gone', description: 'Rent' });
-  const seedOf = (row: TransactionTemplateRow | undefined, isReady = true, isHydrated = false) =>
-    resolveTemplateSeed({ row, isReady, isHydrated, source });
+  const seedOf = (
+    row: TransactionTemplateRow | undefined,
+    isReady = true,
+    isHydrated = false,
+    carriesName = true,
+  ) => resolveTemplateSeed({ row, isReady, isHydrated, carriesName, source });
 
   it('resolves the stored draft against the live options and carries the template name', () => {
     expect(seedOf(rowOf(stored))).toEqual({
       templateDraft: { ...stored, category: null },
       templateName: 'Rent',
+    });
+  });
+
+  it('leaves the name out when the entry does not edit the template', () => {
+    expect(seedOf(rowOf(stored), true, false, false)).toEqual({
+      templateDraft: { ...stored, category: null },
+      templateName: null,
     });
   });
 
