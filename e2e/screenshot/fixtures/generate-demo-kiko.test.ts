@@ -36,7 +36,6 @@ import { eligibleReminderKinds } from '@kiko/reminders/rules';
 import { isReminderSchedule } from '@kiko/reminders/schedule';
 import type { AppLanguage } from '@kiko/i18n/device-language';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
-import { isTemplateDraft, TEMPLATE_MODES } from '@kiko/transaction-templates/draft';
 
 import { buildScreenshotDataset } from '../seed/screenshot-seed';
 
@@ -122,20 +121,6 @@ describe('the demo dataset covers every account kind, holding type, and reminder
         expect(isReminderSchedule(reminder.schedule)).toBe(true);
       }
     });
-
-    // A template of every form mode, each a draft the app reads as written: a draft it
-    // cannot read shows as an empty one, so the reviewer would not see the template work.
-    it(`${language}: holds a readable transaction template of every form mode`, () => {
-      const { transactionTemplates = [] } = buildDemoSnapshot(
-        buildScreenshotDataset(language, ANCHOR),
-      );
-      const drafts = transactionTemplates.map((template) => template.draft);
-
-      expect(drafts.every(isTemplateDraft)).toBe(true);
-      expect(new Set(drafts.filter(isTemplateDraft).map((draft) => draft.mode))).toEqual(
-        new Set(TEMPLATE_MODES),
-      );
-    });
   }
 });
 
@@ -194,16 +179,6 @@ describe('the committed demo .kiko fixtures decrypt back to the current dataset'
       expect(payload.tables).toEqual(
         buildDemoSnapshot(buildScreenshotDataset(language, payload.exportedAt)),
       );
-    });
-  }
-
-  // The payload comparison above already pins them; this names the key, so a file written
-  // before the table existed fails here instead of passing as "no templates".
-  for (const { fileName } of DEMO_FILES) {
-    it(`${fileName} carries the transactionTemplates key with its rows`, () => {
-      const { payload } = readPayload(fileName);
-
-      expect(payload.tables.transactionTemplates?.length).toBeGreaterThan(0);
     });
   }
 

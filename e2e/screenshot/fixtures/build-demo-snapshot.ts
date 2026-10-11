@@ -1,8 +1,8 @@
 // Pure mapper: `ScreenshotDataset` (`../seed/screenshot-seed.ts`) ->
 // `DataSnapshot` (`src/data-transfer/snapshot/data-snapshot.d.ts`). No DB, no
 // `Date.now()`. `restoreDataSnapshot` (`src/data-transfer/snapshot/
-// restore-snapshot.ts`) REPLACES every row in all 9 logical tables on
-// import, so this populates every one of them — an incomplete snapshot would
+// restore-snapshot.ts`) REPLACES every row in every table of `DataSnapshot` on
+// import, so this populates every key of it — an incomplete snapshot would
 // leave the imported app with no categories and no settings row.
 import type {
   AccountRow,

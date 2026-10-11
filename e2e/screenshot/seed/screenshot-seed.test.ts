@@ -3,6 +3,7 @@ import { validateIsin } from '@kiko/bonds/isin';
 import { DAY_MS, defaultDateRange } from '@kiko/dates';
 import { holdingValue } from '@kiko/holdings/holding-value';
 import { holdingRegisterCoupons } from '@kiko/bonds/nbu-register';
+import { templateNameKey } from '@kiko/transaction-templates/template-name';
 import { buildRateTable, guardedNetWorth } from '@kiko/rates/net-worth-view';
 import { EMPTY_DRAFT, isTemplateDraft, TEMPLATE_MODES } from '@kiko/transaction-templates/draft';
 
@@ -299,7 +300,7 @@ describe('buildScreenshotDataset (pure, deterministic)', () => {
     });
 
     it('names every template once, ignoring case', () => {
-      const names = templates.map((template) => template.name.trim().toLowerCase());
+      const names = templates.map((template) => templateNameKey(template.name));
 
       expect(names.every((name) => name !== '')).toBe(true);
       expect(new Set(names).size).toBe(names.length);
