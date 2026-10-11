@@ -16,6 +16,10 @@ import {
   type CreateHoldingRoute,
   resolveCreateHoldingTarget,
 } from '@kiko/screens/forms/create-holding-target';
+import {
+  type FormHeaderItemsOptions,
+  useFormHeaderItems,
+} from '@kiko/screens/forms/use-form-header-items';
 import { holdingsRepo } from '@kiko/holdings/repo';
 import { parseAmount } from '@kiko/currency/parse';
 import { StyleSheet } from 'react-native-unistyles';
@@ -23,7 +27,6 @@ import Box from '@kiko/design-system/components/box';
 import { categoriesRepo } from '@kiko/categories/repo';
 import { useLiveQuery, type HoldingRow } from '@kiko/db';
 import { transactionsRepo } from '@kiko/transactions/repo';
-import Button from '@kiko/design-system/components/button';
 import Screen from '@kiko/design-system/components/screen';
 import { buildRateTable } from '@kiko/rates/net-worth-view';
 import { type TextInputInstance, View } from 'react-native';
@@ -102,7 +105,7 @@ type TransactionFormScreenProps = {
   route: { params: TransactionFormParams };
   navigation: {
     goBack: () => void;
-    setOptions: (options: { title: string }) => void;
+    setOptions: (options: { title: string } | FormHeaderItemsOptions) => void;
     navigate: (...route: CreateHoldingRoute) => void;
   };
 };
@@ -969,6 +972,13 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
 
   const { onPress: onSave, isSubmitting } = useSubmitOnce(save);
 
+  useFormHeaderItems({
+    navigation,
+    onSave,
+    hasSave: showsSaveButton(isReadOnly, categoryChanged, converting),
+    isSaving: isSubmitting,
+  });
+
   // The transaction-TYPE selector, built here so the label/mode copy stays with
   // the component's live translations. It renders directly UNDER the Holding
   // select field (not while converting, which has no mode toggle). Uses the
@@ -991,18 +1001,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
 
   return (
     <>
-      <Screen
-        scroll
-        scrollableRef={scrollableRef}
-        onContentSizeChange={onContentSizeChange}
-        footer={
-          showsSaveButton(isReadOnly, categoryChanged, converting) ? (
-            <Button onPress={onSave} disabled={isSubmitting}>
-              {t('common.save')}
-            </Button>
-          ) : undefined
-        }
-      >
+      <Screen scroll scrollableRef={scrollableRef} onContentSizeChange={onContentSizeChange}>
         <Box gap={4} testID="transaction-form">
           <ReadOnlyNotice isReadOnly={isReadOnly} noticeText={readOnlyNotice} />
 

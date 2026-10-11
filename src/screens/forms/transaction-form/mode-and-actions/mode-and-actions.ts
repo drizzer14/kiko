@@ -1,9 +1,9 @@
 import type { TransactionRow } from '@kiko/db';
 
-// Whether the footer's Save button renders: a manual row always, a synced row
+// Whether the nav bar's Save shows: a manual row always, a synced row
 // only once its category has changed, and a converting row always (its Save
 // writes the counterpart leg and only the existing row's pair id). Kept module-level and
-// pure so the footer's boolean expression does not add its own operator count
+// pure so the boolean expression does not add its own operator count
 // to the screen component's cognitive-complexity budget.
 export const showsSaveButton = (
   isReadOnly: boolean,

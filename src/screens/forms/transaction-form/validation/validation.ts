@@ -10,7 +10,7 @@ import type { FormMode } from '@kiko/screens/forms/mode-select-field';
 // every rejected case (the same idiom as `contribution-form`'s `canSave`).
 const isPositiveAmountText = (text: string): boolean => parseAmount(text) > 0;
 
-// Whether the footer's Save button is disabled, per mode — each branch mirrors
+// Whether the nav bar's Save is disabled, per mode — each branch mirrors
 // exactly what that mode's `save` path validates before it writes:
 // - convert: a counterpart holding picked AND a positive counterpart amount.
 // - exchange: a destination picked AND a positive Value Out AND Value In.
