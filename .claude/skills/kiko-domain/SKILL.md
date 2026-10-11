@@ -2379,13 +2379,19 @@ scheduled payment under an "Upcoming Payments" heading (the loan entry's
 own `upcomingInstallments` — every `loanInstallments` row due on or after
 today's local day, in schedule order; its first row is the next
 installment). `UpcomingPayments`
-(`src/screens/holding-detail/upcoming-payments/`, memoized) renders them as
-ONE shared `SummaryTable`, one row per installment: the due date as the
-label, the payment as the value, and a `holdingDetail.paymentSplit`
-caption ("Principal X · interest Y") beneath it; row testID
-`upcoming-payment-<index>`. A 30-year mortgage lists all 360 rows (the
-screen memoizes the list on the local day, so it is not rebuilt on every
-render). A `'none'` schedule and every other holding type render nothing
+(`src/screens/holding-detail/upcoming-payments/`, memoized) draws them as
+ledger cards: one `UpcomingPaymentRow` (`upcoming-payment-row/`) per
+installment, built on the shared `EntryCard` under an `EntryDateHeader`. The
+title is `holdingDetail.loanPayment`, the amount is the payment, and the
+footer is the `holdingDetail.scheduled` caption, then the
+`holdingDetail.paymentSplit` caption. Read `upcoming-payment-row.component.tsx`
+for the exact row testIDs. Only the first `UPCOMING_PAYMENT_PREVIEW_COUNT`
+installments render (see `upcoming-payments.component.tsx`). A shared
+`ExpandToggle` (testID `upcoming-payments-toggle`) shows only when more
+exist, and reveals or re-hides the rest. A 30-year mortgage still has 360
+installments in the list, but only the preview count mounts until expanded.
+The screen memoizes the list on the local day, so it is not rebuilt on every
+render. A `'none'` schedule and every other holding type render nothing
 there. The list is also empty once `loanLedgerOutstandingMinorAt` reads 0
 (`upcomingInstallments`' own `<= 0` guard) — a loan fully repaid by its
 linked payments, or overpaid/over-corrected, lists nothing even while

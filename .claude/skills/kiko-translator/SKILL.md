@@ -141,6 +141,12 @@ loads a fresh i18n; add a case there for a new plural key or language, and
 never assert device plural behavior with `new Intl.PluralRules(...)` in a
 test (the shipped-locales test uses Node's only as the CLDR oracle).
 
+### A string moved into a shared component changes namespace
+
+A string moved into a shared design-system component moves to that
+component's own `components.<component>.*` namespace in en and uk in the
+same commit, never left under another component's namespace.
+
 ### A plural key is always called with `count`
 
 i18next picks the `_one` / `_few` / `_many` / `_other` form from the
