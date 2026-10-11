@@ -340,6 +340,26 @@ describe('a rule at a refresh', () => {
     expect(categoryOf('k1')).toBe('rent');
   });
 
+  it.each([
+    ['an exchange leg', "exchange_pair_id = 'pair'"],
+    ['an exchange counterpart', "exchange_counterpart_holding_id = 'usd'"],
+    ['a balance-setting row', 'sets_balance = 1'],
+    ['a split-change row', "change_group_id = 'group'"],
+  ])('leaves %s alone when it settles at an amount a rule wins', async (_label, assignment) => {
+    insertRule('large', 'rent', [largeAmount]);
+    await transactionsRepo.addManyDedup([
+      syncItem('k1', { amountMinorUnits: -49_900, hold: true }),
+    ]);
+    run(`UPDATE transactions SET ${assignment} WHERE external_id = 'k1'`);
+
+    await transactionsRepo.addManyDedup([syncItem('k1', { amountMinorUnits: -50_100 })]);
+
+    expect(storedRows()).toMatchObject([{ externalId: 'k1', category: 'groceries' }]);
+    expect(
+      mockDatabase.prepare('SELECT amount_minor_units AS amount FROM transactions').get(),
+    ).toEqual({ amount: -50_100 });
+  });
+
   it('keeps a category set outside the rules when no rule wins at the new amount', async () => {
     insertRule('large', 'rent', [largeAmount]);
     await transactionsRepo.addManyDedup([syncItem('k1')]);

@@ -1362,13 +1362,19 @@ export const bankOwnedTransactionSetWhere = sql.join(
 );
 
 // The refresh of a row a rule won at this batch: the bank-owned columns, and the rule's category
-// only when the row was not picked by hand AND its amount changed, since the amount is what the
-// rules judge again. The CASE reads the OLD row (SQLite evaluates every SET expression against it),
-// so a flagged row, or a refresh with the same amount, keeps the category it has. A row no rule
-// won never reaches this set, so the bank's category is never written back.
+// only when the row was not picked by hand, is not structural (an exchange leg, a balance-setting
+// row or a split-change row: the same rows `isRewriteEligible` leaves alone) AND its amount
+// changed, since the amount is what the rules judge again. The CASE reads the OLD row (SQLite
+// evaluates every SET expression against it), so such a row, or a refresh with the same amount,
+// keeps the category it has. A row no rule won never reaches this set, so the bank's category is
+// never written back.
 const ruleWonTransactionSet = {
   ...bankOwnedTransactionSet,
   category: sql`CASE WHEN ${transactions.categorySetByHand} = 0
+    AND ${transactions.exchangePairId} IS NULL
+    AND ${transactions.exchangeCounterpartHoldingId} IS NULL
+    AND ${transactions.setsBalance} = 0
+    AND ${transactions.changeGroupId} IS NULL
     AND ${transactions.amountMinorUnits} IS NOT ${sql.raw(`excluded.${transactions.amountMinorUnits.name}`)}
     THEN ${sql.raw(`excluded.${transactions.category.name}`)}
     ELSE ${transactions.category} END`,
@@ -1587,7 +1593,10 @@ const upsertDedupRowsDatabaseTransaction = async (
   // two chunks can ever target the same conflict key — each chunk's
   // ON CONFLICT resolves independently, with identical semantics to the
   // old single-statement insert. A row sits in exactly one of the two
-  // inserts below, so their conflict keys stay disjoint too.
+  // inserts below, so their conflict keys stay disjoint too. The rows a rule
+  // won are inserted after the others, so rows with an identical time (a
+  // date-only import) can change their relative order; tie order is not a
+  // contract.
   const toInsertRow = (input: NewTransaction) => ({ id: id(), ...input });
   const partitions = [
     {

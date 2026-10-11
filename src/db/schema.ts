@@ -146,9 +146,10 @@ export const transactions = sqliteTable(
     // row is imported anyway, so a pending charge shows in the ledger
     // immediately; `addManyDedup` (transactions/transactions.repo.ts) then
     // upserts on (source, external_id), so the settled re-fetch REFRESHES the
-    // amount and clears this flag — without ever touching `category`, which may
-    // hold the user's own override. Null on manual rows and on rows synced
-    // before this column existed.
+    // amount and clears this flag. `category` may hold the user's own pick, so a
+    // refresh writes it only for an unflagged, non-structural row whose amount
+    // changed and a rule wins (`ruleWonTransactionSet` in the transactions
+    // repo). Null on manual rows and on rows synced before this column existed.
     hold: integer('hold', { mode: 'boolean' }),
     // The counterparty's IBAN on a synced Monobank transfer (null for manual
     // rows, for non-transfer merchants, and for rows synced before this column
