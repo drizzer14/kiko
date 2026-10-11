@@ -232,6 +232,10 @@ an entry (date + value) the moment the user approves a new visual.
   upcoming payments' dates) are not this pattern. The Accounts screen's
   Property and Debts section headings are user data (the implicit
   account's name) and DO follow it (`ImplicitAccountHeading`).
+  `TransactionCard`'s `money` prop is optional (a transaction template's
+  amount is optional): omitted, the `rowAmount` box and its `MoneyText`
+  do not render and the title cluster keeps its `flex: 1` row; with
+  `money` the output is unchanged.
   Pinned per family by a style-contract test (`ancestorWithStyle`: the
   title's own box is `flex: 1` with no row direction, no
   `numberOfLines`). The two card tests also pin the amount's box
