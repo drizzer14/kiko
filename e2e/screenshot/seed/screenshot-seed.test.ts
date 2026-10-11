@@ -4,6 +4,7 @@ import { DAY_MS, defaultDateRange } from '@kiko/dates';
 import { holdingValue } from '@kiko/holdings/holding-value';
 import { holdingRegisterCoupons } from '@kiko/bonds/nbu-register';
 import { buildRateTable, guardedNetWorth } from '@kiko/rates/net-worth-view';
+import { EMPTY_DRAFT, isTemplateDraft, TEMPLATE_MODES } from '@kiko/transaction-templates/draft';
 
 import { buildScreenshotDataset } from './screenshot-seed';
 
@@ -271,6 +272,63 @@ describe('buildScreenshotDataset (pure, deterministic)', () => {
     }
   });
 
+  // The reviewer reaches the Templates screen and the form's template modes only through
+  // this dataset (Guideline 5.6), so it holds a template of every mode.
+  describe.each(['uk', 'en'] as const)('the %s transaction templates', (language) => {
+    const { accounts, templates } = buildScreenshotDataset(language, ANCHOR);
+    const holdingKeys = new Set(
+      accounts
+        .flatMap((account) => account.holdings)
+        .map((holding) => holding.key)
+        .filter((key): key is string => key !== undefined),
+    );
+
+    it('holds a template of every form mode', () => {
+      expect(new Set(templates.map((template) => template.draft.mode))).toEqual(
+        new Set(TEMPLATE_MODES),
+      );
+    });
+
+    it('gives every template a draft the app accepts, with the fields a draft has and no more', () => {
+      expect(templates.length).toBeGreaterThan(0);
+
+      for (const template of templates) {
+        expect(isTemplateDraft(template.draft)).toBe(true);
+        expect(Object.keys(template.draft).sort()).toEqual(Object.keys(EMPTY_DRAFT).sort());
+      }
+    });
+
+    it('names every template once, ignoring case', () => {
+      const names = templates.map((template) => template.name.trim().toLowerCase());
+
+      expect(names.every((name) => name !== '')).toBe(true);
+      expect(new Set(names).size).toBe(names.length);
+    });
+
+    it('leaves the amount empty on at least one template, and fills it on another', () => {
+      const amounts = templates.map((template) => template.draft.amountMinorUnits);
+
+      expect(amounts).toContain(null);
+      expect(amounts.some((amount) => amount !== null)).toBe(true);
+    });
+
+    it('points every holding slot at a keyed holding of the dataset', () => {
+      const slots = templates.flatMap(({ draft }) => [
+        draft.holdingId,
+        draft.exchange?.destinationHoldingId ?? null,
+        ...draft.returns.map((row) => row.holdingId),
+      ]);
+
+      expect(slots.some((slot) => slot !== null)).toBe(true);
+
+      for (const slot of slots) {
+        if (slot !== null) {
+          expect(holdingKeys.has(slot)).toBe(true);
+        }
+      }
+    });
+  });
+
   it('exposes no scenario or lock dimension — one dataset, parameterized only by language and anchor', () => {
     const dataset = buildScreenshotDataset('uk', ANCHOR);
     expect(Object.keys(dataset).sort()).toEqual([
@@ -282,6 +340,7 @@ describe('buildScreenshotDataset (pure, deterministic)', () => {
       'language',
       'pricePoints',
       'rates',
+      'templates',
     ]);
   });
 
