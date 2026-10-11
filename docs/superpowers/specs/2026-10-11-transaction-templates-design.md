@@ -32,13 +32,50 @@ Success: a repeat transaction takes the Template tab, one pick, then Save.
    a tap on a template card opens its edit form. The edit form has a **Create
    transaction** button that opens the Add form, filled from that template.
 5. A template stores ALL fields of EVERY type: income, expense, exchange and split
-   (holdings, amounts, category, description, split parts, loan link, returns, as
-   they apply). The amount is OPTIONAL: when it is empty, the form asks for it.
-   The date is never stored.
+   (holdings, amounts, category, description, split parts, returns, as they
+   apply). The loan link is excluded (user ruling 2026-10-11, decision O5). The
+   amount is OPTIONAL: when it is empty, the form asks for it. The date is never
+   stored.
 6. When the user deletes a holding or a category that a template uses, the
    template stays and that field becomes empty. The form asks for the field when
    the template is used. The delete confirm says how many templates change.
 7. Templates go into the `.kiko` export and restore.
+
+### Rulings on the former open points (2026-10-11)
+
+Each id `O<n>` keeps the number of the open point it closed.
+
+- **O1 — Tabs on both Add entries** (user ruling 2026-10-11). The tabs show on
+  the global entry `{}` and on the holding entry `{ holdingId }`.
+  - On `{ holdingId }`, the page's holding stays unless the template names
+    another one. A template with a resolved `holdingId` replaces it. A template
+    whose `holdingId` is null (empty or dangling) keeps the page's holding.
+  - On `{}`, a template whose `holdingId` is null clears the default holding, so
+    the form asks for it (orchestrator ruling). Reason: the global default holding
+    is not a holding the user chose for this page, so a template must not silently
+    inherit it. Cost if wrong: one more tap on the global entry.
+- **O2 — A tab switch keeps the field values** (default, no user objection).
+- **O3 — Name unique, holding required** (user ruling 2026-10-11). The template
+  name is trimmed and unique case-insensitively. In the template modes the name
+  and the primary holding are required. All other fields are optional there.
+- **O4 — The toggle is hidden on an Edit of a synced or imported row** (default,
+  no user objection).
+- **O5 — The loan link is not stored** (user ruling 2026-10-11). No loan field
+  exists anywhere in the template flow, and the Manual form stays unchanged. A
+  template made from an Edit of a row with a loan link does not carry the link.
+- **O6 — "Create transaction" uses the template as stored** (default, no user
+  objection). Unsaved edits on the edit form are not used.
+- **O7 — Category-delete confirm** (default, no user objection). The track that
+  merges into `next` SECOND rebases onto the first and adds its own line to the
+  confirm. The two tracks make no shared edit to it in parallel.
+- **O8 — List order is `created_at` ascending** (default, no user objection).
+- **O9 — The list card is `TransactionCard` with an optional amount** (default, no
+  user objection). The designer owns that change.
+- **O10 — Import result counts stay unchanged** (default, no user objection).
+- **O11 — The comment is left out of the draft** (user ruling 2026-10-11).
+- **O12 — A category from a template counts as a hand pick** (default, no user
+  objection). It sets `userPickedCategory` and the manual-pick flag of the
+  category-rules track, so a rule does not replace it.
 
 ## Current state (verified)
 
@@ -66,7 +103,7 @@ Success: a repeat transaction takes the Template tab, one pick, then Save.
 - The loan link is edit-only and is saved at once: `isLoanFieldVisible`
   (screen:1418) requires an `existing` row, and `selectLoanPayment` calls
   `transactionsRepo.setLoanPayment` (repo:2458) straight away. A create has no
-  loan field.
+  loan field. Templates do not change this (decision O5).
 - The comment is read-only. `renderCommentRow(existing?.comment, …)`
   (screen:165) only shows a bank or statement comment. No manual write path takes
   a comment: `ManualTransaction` (`src/transactions/repo/transactions.repo.ts:71`)
@@ -119,7 +156,7 @@ Success: a repeat transaction takes the Template tab, one pick, then Save.
 | Column | Type | Notes |
 |---|---|---|
 | `id` | text PK | `id()`, as other tables use |
-| `name` | text NOT NULL | trimmed; unique case-insensitively (see Open point 3), checked in JS |
+| `name` | text NOT NULL | trimmed; unique case-insensitively (decision O3), checked in JS |
 | `draft` | text NOT NULL, `mode: 'json'`, `.$type<TemplateDraft>()` | the form content; see below |
 | `created_at` | integer NOT NULL default `(unixepoch() * 1000)` | list order |
 | `updated_at` | integer NOT NULL default `(unixepoch() * 1000)` | set on every update |
@@ -151,8 +188,10 @@ The core of the draft maps one-to-one to what the Duplicate seed reads from a
    stored minor units still need a scale before they can be formatted exactly
    (`majorAmountText(currency, minor)`). Without the currency, a 1050 that was
    saved as USD would read as ¥1050 after the user picks a JPY holding.
-3. **Mode-specific parts** (exchange, split returns, loan link). The Duplicate
-   seed has nowhere to put them today.
+3. **Mode-specific parts** (exchange, split returns). The Duplicate seed has
+   nowhere to put them today.
+
+The draft has no loan field and no comment (decisions O5 and O11).
 
 ```ts
 type TemplateDraft = {
@@ -164,7 +203,6 @@ type TemplateDraft = {
   amountMinorUnits: number | null;      // unsigned; exchange: Value out; split: payment
   description: string;                  // as stored on a create (storedDescription rule)
   category: string | null;              // lowercase key; always null for exchange
-  loanHoldingId: string | null;         // expense only; see Open point 5
   exchange: {                           // mode 'exchange' only, else null
     destinationHoldingId: string | null;
     destinationCurrency: Currency | null;
@@ -179,14 +217,16 @@ What each type stores:
 
 | Mode | Stored fields |
 |---|---|
-| income / expense | holdingId, currency, amountMinorUnits, description, category, loanHoldingId (expense) |
+| income / expense | holdingId, currency, amountMinorUnits, description, category |
 | exchange | holdingId (source), currency, amountMinorUnits (Value out), exchange.{destinationHoldingId, destinationCurrency, valueInMinorUnits} |
 | split | holdingId (payer), currency, amountMinorUnits (payment), description, category, returns[] |
 
 A template made from an Edit form is always income or expense, because an edit
 opens no other mode (screen:516). An edited exchange leg or split payment saves as
 a plain income or expense template. The leg's exchange marker is not stored, the
-same as Duplicate (screen:226–233).
+same as Duplicate (screen:226–233). A template made from an Edit of a row with a
+loan link does not carry the link (decision O5): the row's link stays on the row,
+and the template has no slot for it.
 
 ### Type guard and the read rule
 
@@ -203,7 +243,7 @@ same as Duplicate (screen:226–233).
   `resolveDraftReferences(draft, options)` sets each id to null when the picker
   for that field does not list it: `buildPrimaryOptions` for `holdingId`,
   `buildExchangeOptions` for the destination, `buildReturnOptions` for each
-  return, `buildLoanOptions` for the loan, and the categories list for
+  return, and the categories list for
   `category`. This covers a deleted id, and also a holding that is now closed or
   synced. The form then asks for that field (section 3). The delete paths also
   clear deleted ids (section 2), so a dangling id only remains from an outside
@@ -213,9 +253,8 @@ same as Duplicate (screen:226–233).
 
 | Reference | Draft slot | Cleared on delete by |
 |---|---|---|
-| holding | `holdingId`, `exchange.destinationHoldingId`, `returns[].holdingId`, `loanHoldingId` | holding delete, account delete |
+| holding | `holdingId`, `exchange.destinationHoldingId`, `returns[].holdingId` | holding delete, account delete |
 | category | `category` | category delete |
-| loan | `loanHoldingId` (a loan is a holding) | holding delete, account delete |
 
 ### Code home
 
@@ -264,7 +303,12 @@ SQL first and then decide in JS. This follows the rule
 - **Confirm count, category:** `countReferencingCategory(key)` together with the
   sentence `categories.deleteTemplates` (plural). The categories screen confirm
   shows it as the `ConfirmSheet` body. The categories screen belongs to
-  category-rules. See "Boundary with category-rules" and Open point 7.
+  category-rules. Who adds the line (decision O7): the track that merges into
+  `next` second rebases onto the first and adds its own line to the confirm. If
+  templates is second, it adds the count line to whatever confirm category-rules
+  shipped. If templates is first, it adds a `message` to today's `ConfirmSheet`,
+  and category-rules keeps that line when it rebases. The two tracks never edit
+  the confirm in parallel. See "Boundary with category-rules".
 - A template delete (context menu) has no links. It is a title-only confirm
   (`common.deleteNamed`).
 
@@ -278,7 +322,8 @@ returns JSX into a `<X />` component, which "One component per file" requires.
 The tests stay unchanged, with one exception: the `canSaveSplit` import
 (test:23) moves to `validation/` and its `describe` block moves with it. The
 `jest.mock` paths in the test target repo modules, so they still apply. This task
-lands on main before both tracks continue, because category-rules depends on it.
+lands in `next` first, as its own change set, so category-rules can build on it.
+No merge into main or `next` happens in overnight mode.
 
 Proposed units, each a folder with an `index.ts` under
 `src/screens/forms/transaction-form/`:
@@ -296,7 +341,7 @@ Proposed units, each a folder with an `index.ts` under
 | `read-only-notice/`, `comment-row/`, `primary-holding-field/` | the matching `render*` (123–183, 813–839) | — |
 | `field-group/` | `FieldGroupProps`, `renderFieldGroup` (1084–1258) | templates (adds `showsDate`) |
 | `split-returns/` | `renderSplitReturns` (1267–1384) | — |
-| `mode-and-actions/` | `showsSaveButton`, `isLoanFieldVisible`, `resolveLoanLinkState`, `renderModeAndActions` (1391–1547) | shared (loan field; Open point 5) |
+| `mode-and-actions/` | `showsSaveButton`, `isLoanFieldVisible`, `resolveLoanLinkState`, `renderModeAndActions` (1391–1547) | — (the loan field stays unchanged, decision O5) |
 | `category-override-sheet/` | the override `BottomSheet` JSX (screen:2735–2805) | **category-rules** |
 | `use-category-override/` | `pendingOverride` state, `applyOverride`, `applyOverrideOne`, `cancelOverride`, their `useSubmitOnce` instances, `pendingCategory` | **category-rules** |
 | `use-category-pick/` | `selectedCategory`, `userPickedCategory`, `selectCategory`, `reseatCategoryFromName`, `onDescriptionBlur`, `pickSuggestion` | **category-rules** |
@@ -310,8 +355,8 @@ with `make mutable` against the task base.
 - A `SegmentedControl` with **Manual** and **Template** goes at the top of the
   form. Each tab shows different fields, so this follows the tabs-vs-chips rule
   (kiko-design-system "SegmentedControl"). Manual is the default.
-- It shows on the create entries `{}` (global add) and `{ holdingId }` (Open
-  point 1), and on `{ templateId }`. It does not show on Duplicate, Edit,
+- It shows on both create entries, `{}` (global add) and `{ holdingId }`
+  (decision O1), and on `{ templateId }`. It does not show on Duplicate, Edit,
   Add-template or Edit-template.
 - **Template tab before a pick:** only the template `SelectField` (label
   "Template", placeholder "Select a template", sheet title "Template"). There are
@@ -321,7 +366,7 @@ with `make mutable` against the task base.
   template, with the date at now. A new pick fills every field again from the new
   template.
 - A tab switch keeps the field values (no data loss). The tab only changes whether
-  the select shows and whether the form waits for a pick (Open point 2).
+  the select shows and whether the form waits for a pick (decision O2).
 - With `{ templateId }`, the form opens on the Template tab with that template
   already picked.
 
@@ -331,21 +376,25 @@ with `make mutable` against the task base.
   `resolveDraftReferences`). It uses the same two steps as Duplicate:
   `seedHolding` (set `primaryHoldingId` from `draft.holdingId`, not final), then
   `seedFields` once the holding resolves, with `time: null`.
-- When `draft.holdingId` is null (dangling or empty), the plan skips `seedHolding`.
-  It clears the seam to null (the default holding from `{}` is replaced, so the
-  form asks), then runs `seedFields` at once.
+- When `draft.holdingId` is null (dangling or empty), the plan skips `seedHolding`
+  and runs `seedFields` at once. What happens to the seam depends on the entry
+  (decision O1):
+  - `{ holdingId }`: the seam keeps the page's holding.
+  - `{}`, `{ templateId }`, Edit-template: the seam is cleared to null (the
+    default holding is not a page choice), so the form asks.
+  A resolved `draft.holdingId` always replaces the seam, on every entry.
 - `seedFields` grows optional mode fields: `mode` (it replaces `sign`, which is
-  `Sign` today), `destinationHoldingId`, `valueIn`, `returns`, and
-  `loanHoldingId`. The Duplicate and Edit plans fill them with today's values
-  (the sign, no destination, one empty return, no loan), so their behavior does
-  not change. The effect sets each one with its existing setter.
+  `Sign` today), `destinationHoldingId`, `valueIn` and `returns`. The Duplicate
+  and Edit plans fill them with today's values (the sign, no destination, one
+  empty return), so their behavior does not change. The effect sets each one with
+  its existing setter. There is no loan slot (decision O5).
 - Amounts become text through `groupAmount(majorAmountText(draft.currency, minor))`.
   This uses the stored currency and never `holding?.currency ?? 'UAH'`, so the
   scale is exact even when the holding is gone. Value in uses
   `exchange.destinationCurrency`. A null amount leaves the field empty.
-- A seeded non-null category sets `userPickedCategory`, the same as Duplicate
-  (screen:1949). The category pre-select from category-rules must not overwrite
-  it.
+- A seeded non-null category counts as a hand pick (decision O12). It sets
+  `userPickedCategory`, the same as Duplicate (screen:1949), and the manual-pick
+  flag of category-rules, so neither the pre-select nor a rule replaces it.
 - A template pick is an event. It sets the picked draft and opens the `hydrated`
   latch again (`setHydrated(false)`). The same effect then applies the plan. There
   is no second effect and no second fill path.
@@ -357,8 +406,10 @@ with `make mutable` against the task base.
   off by default. When it is on, a `TextField` **Template name** (required) shows
   directly below it.
 - It shows on: Add (both tabs), Duplicate, and an Edit of a manual row. It is
-  hidden on a read-only (synced or imported) row and while converting (Open
-  point 4).
+  hidden on an Edit of a read-only (synced or imported) row (decision O4) and
+  while converting.
+- On an Edit of a row with a loan link, the template does not carry the link
+  (decision O5). The loan field itself is unchanged.
 - On Save, a `TemplateDraft` is built from the form state by a pure
   `draftFromForm(...)`, which follows the save rules: `descriptionToStore`, the
   lowercase category, minor units through `Money.fromMajor` with the holding's
@@ -376,7 +427,9 @@ with `make mutable` against the task base.
   on `FieldGroup`). The toggle is hidden, because a template is always written.
 - The modes are the same as on a create (`resolveModeOptions(false, holding)`),
   so exchange and split are offered for a cash source.
-- The loan field: see Open point 5.
+- No loan field shows (decision O5): `isLoanFieldVisible` needs an `existing`
+  transaction row, and a template mode has none. No code change is needed for
+  this.
 - Save calls `transactionTemplatesRepo.create({ name, draft })` (its own write),
   then `goBack`. No transaction is written. The category-override sheet never
   opens in a template mode.
@@ -389,7 +442,8 @@ with `make mutable` against the task base.
   `goBack`) and **Create transaction** (secondary). Create transaction pushes
   `TransactionForm` with `{ templateId }`, using `navigation.push`, because a
   `navigate` to the current route name would only change this route's params.
-  It uses the template as stored (Open point 6). After that transaction is saved,
+  It uses the template as stored (decision O6): unsaved edits on the edit form
+  are not used and not saved. After that transaction is saved,
   `goBack` returns to the edit form.
 
 ### 3.6 Validation
@@ -399,17 +453,19 @@ Add new `SaveDisabledField` keys: `templateName` and `holding`.
 | Field | Add / Duplicate / Edit (toggle off) | toggle on | Add-template / Edit-template |
 |---|---|---|---|
 | Template name | — | required, and not taken | required, and not taken (the edit's own row is excluded) |
-| Holding (primary) | required (new error, needed once a template can leave it empty) | same | required (Open point 3b) |
+| Holding (primary) | required (new error, needed once a template can leave it empty) | same | required (decision O3) |
 | Amount / Value out / payment | required > 0 (today) | same | optional; when filled, > 0 |
 | Value in, return amounts | required (today) | same | optional; when filled, > 0 |
 | Category | required on create (today) | same | optional |
 | Destination, return holding | required (today) | same | optional |
 
+- In the template modes only the name and the primary holding are required; every
+  other field is optional (decision O3).
 - Every error is computed from its own field and gated by `attemptedSave`
   (kiko-code-style "Form validation model"). The field order puts `templateName`
   first in the template modes and last when the toggle is on.
-- The name is trimmed. "Taken" means equal to another template's name,
-  compared case-insensitively. The form checks it against the live list. The repo
+- The name is trimmed and must be unique (decision O3). "Taken" means equal to
+  another template's trimmed name, compared case-insensitively. The form checks it against the live list. The repo
   checks it again inside the write and throws a typed error, which the shared
   save-error alert shows.
 
@@ -433,14 +489,15 @@ Add new `SaveDisabledField` keys: `templateName` and `holding`.
   (settings.screen.tsx:205–224). It sits where the Categories card is now.
 - **Templates list screen** (`src/screens/settings/transaction-templates/`):
   - `useLiveQuery(transactionTemplatesRepo.listQuery(), ['transaction_templates'])`,
-    gated on `useDataReady`, ordered by `created_at` (Open point 8).
+    gated on `useDataReady`, ordered by `created_at` ascending (decision O8).
   - Each template is a card wrapped in `CardContextMenu`: `name` is the template
     name, `deletable`, `onEdit` opens the edit form, and there is no
     `deleteMessage`. A tap on the card opens `TransactionForm` with
     `{ editTemplateId }`.
   - Card content: the template name, the category icon tile (or a neutral tile
     when there is none), a caption with the holding name and the type, and the
-    amount when one is stored (Open point 9).
+    amount when one is stored. The card is `TransactionCard` with its `money`
+    made optional (decision O9); the designer owns that change.
   - Footer: an "Add template" primary button that opens `TransactionForm` with
     `{ newTemplate: true }`. The precedent is `accounts.screen.tsx:419–431`.
   - Empty: `EmptyState` (icon `genericEntitySymbol.template`, title, message, and
@@ -465,7 +522,7 @@ Add new `SaveDisabledField` keys: `templateName` and `holding`.
   `withCryptoCashHoldingsMoved` and `withImplicitAccountsMerged` both keep holding
   ids.
 - `import-data.ts`: do **not** add the key to `REQUIRED_TABLE_KEYS`. An older file
-  must still import. The result counts stay unchanged (Open point 10).
+  must still import. The result counts stay unchanged (decision O10).
 - **Version:** no `EXPORT_VERSION` bump. This is a new table carried as an
   optional key, the same case as 0054: an older build drops the key, and this
   build restores an older file with the table empty. Add a 0057 sentence to
@@ -510,10 +567,18 @@ Add new `SaveDisabledField` keys: `templateName` and `holding`.
 - **Form:** new test files next to the units, plus a new
   `transaction-form.templates.test.tsx`, so the 178 KB file does not grow. Cover:
   tabs on each entry; a pick fills each type with the date at now; a second pick
-  fills again; the toggle on Add, Duplicate and Edit writes both, and with the
-  toggle off only the transaction is written; the name error and the taken error;
-  Add-template (no date, no toggle, optional amount); Edit-template Save and
-  Create transaction (`push`).
+  fills again; a tab switch keeps the values; on `{ holdingId }` a template with
+  a resolved holding replaces the page's holding and one with a null holding
+  keeps it; on `{}` a template with a null holding clears the default holding;
+  a template category is a hand pick (`userPickedCategory` and the category-rules
+  manual-pick flag set, no rule replaces it); the toggle on Add, Duplicate and
+  Edit writes both, and with the toggle off only the transaction is written; the
+  toggle is hidden on a synced or imported Edit; an Edit of a row with a loan
+  link writes a template with no loan link and leaves the row's link as it was;
+  the name error and the taken error (case and surrounding spaces ignored);
+  Add-template (no date, no toggle, no loan field, holding required, every other
+  field optional); Edit-template Save and Create transaction (`push`, the stored
+  template, not the unsaved form).
 - **Screens:** the Settings group (both rows, navigation); the templates list (the
   empty state gated on readiness, the cards, Edit and Delete in the context menu,
   the footer).
@@ -565,6 +630,10 @@ Add new `SaveDisabledField` keys: `templateName` and `holding`.
 | `categories.deleteTemplates_many` | This also clears it in {{count}} templates. | Також її буде очищено в {{count}} шаблонах. | |
 | `categories.deleteTemplates_other` | This also clears it in {{count}} templates. | Також її буде очищено в {{count}} шаблону. | |
 
+Checked against the 2026-10-11 rulings: no key served a removed item (loan link,
+comment), so no key is removed. Every key has en and uk text, and every uk text
+stays marked for review.
+
 The uk text uses the ’ apostrophe and «» quotes (kiko-translator "Ukrainian
 catalogue rules"). For an account delete, the `holdings.deleteLinked.templates`
 text says "it". The account notice is built from the same plan, so if the
@@ -573,7 +642,8 @@ account-specific twin key.
 
 ## Boundary with category-rules
 
-- **This track owns:** the split (task 1, which lands first and alone), the tabs,
+- **This track owns:** the split (task 1, which lands in `next` first, as its own
+  change set, so category-rules can build on it), the tabs,
   the template select, the toggle and the name field, both template modes, the
   `route-entry/`, `hydration/` and `row-labels/` changes, the `templateName` and
   `holding` validation keys, the Settings group card (it moves the Categories row
@@ -594,57 +664,32 @@ account-specific twin key.
      The pre-select from category-rules respects that flag.
   3. Category delete: this track adds `categoriesRepo.delete`'s clearing step,
      `countReferencingCategory` and the `categories.deleteTemplates` keys. The
-     confirm body is rendered on the Categories screen (Open point 7).
+     confirm body is rendered on the Categories screen. The track that merges
+     into `next` second rebases onto the first and adds its own line to the
+     confirm (decision O7). No shared edit to the confirm happens in parallel.
   4. `validation/`: each track adds only its own keys to `SaveDisabledField`.
   5. Migrations: this track uses 0057, category-rules uses 0058 and later. Both
      can be renumbered at merge.
   6. Catalogues: the keys are in separate subtrees (`forms.transaction.template*`,
      `transactionTemplates.*`). Only `categories.deleteTemplates_*` sits in the
      category subtree.
+  7. A category that comes from a template counts as a hand pick (decision O12):
+     it sets `userPickedCategory` and the manual-pick flag of category-rules, so
+     a category rule does not replace it. Whichever track merges into `next`
+     second wires the template seed to that flag.
 
 ## Out of scope
 
 - Reordering templates by drag, template icons or colors, and template folders.
 - A template that stores a date or time, or a recurring schedule (Reminders
   covers recurrence).
-- A template from a synced or imported row (Open point 4), and a template made
+- A template from a synced or imported row (decision O4), and a template made
   from Convert.
 - Template quick actions outside the form (Home shortcuts, widgets, Siri).
-- A comment input on manual rows (Open point 11).
+- A comment in a template, and a comment input on manual rows (decision O11).
+- A loan link in a template, and any loan field on a create (decision O5).
 
 ## Open points
 
-1. **Tabs on the `{ holdingId }` entry** (holding detail Add). (a) Tabs on both
-   create entries. A pick sets the template's holding through the seam and shows
-   the holding picker. (b) Tabs on the global add only. Recommendation: (a).
-2. **A tab switch after editing.** (a) Keep the values. (b) Reset to blank on
-   Manual. Recommendation: (a).
-3. **Name uniqueness and required fields in a template mode.** (3a) The name is
-   unique case-insensitively, or (3b) duplicates are allowed. Required fields: name
-   and holding, or name only. Recommendation: unique, with name and holding
-   required.
-4. **Toggle on a read-only (synced or imported) Edit.** (a) Hidden. (b) Shown, and
-   the holding is cleared because synced holdings are not pickable. Recommendation:
-   (a).
-5. **Loan link.** (a) Store it, and show `LoanPaymentField` as draft state on
-   every create debit (the same visibility rule as edit, from the typed sign).
-   Save writes the link in the same write (`ManualTransaction` gets
-   `loanHoldingId`). (b) Store it, and show the field only in the template modes
-   and after a template pick. (c) Do not store it and let the matcher link it
-   later, which contradicts ruling 5. Recommendation: (a).
-6. **Create transaction with unsaved edits.** (a) Use the template as stored.
-   (b) Save first, then open. (c) Fill from the current form state without saving.
-   Recommendation: (a).
-7. **Who renders the category-delete count.** (a) category-rules renders it in
-   its redesigned confirm, using this track's count and keys. (b) This track adds
-   a `message` to today's `ConfirmSheet` and category-rules keeps it.
-   Recommendation: (a) if category-rules lands first, otherwise (b).
-8. **List order.** (a) `created_at` ascending. (b) Name A–Z. (c) Last used first.
-   Recommendation: (a).
-9. **The card.** (a) Make `TransactionCard`'s `money` optional (designer owns
-   this). (b) A new `TemplateCard`. Recommendation: (a).
-10. **Import result counts.** (a) Unchanged. (b) Add `templatesRestored` to the
-    import outcome text. Recommendation: (a).
-11. **Comment.** The ruling lists "comment", but no manual path writes one, and
-    the field is read-only display. (a) Leave it out of the draft. (b) Add a
-    comment input to manual creates (a new feature). Recommendation: (a).
+None. Every former open point is now a decision (see "Rulings on the former open
+points (2026-10-11)").
