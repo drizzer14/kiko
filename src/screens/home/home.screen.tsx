@@ -1,4 +1,10 @@
 import {
+  type DetailPaneRoute,
+  useDetailPaneRoute,
+  useIsScreenVisible,
+  useOpenInPane,
+} from '@kiko/navigation/pane-stack';
+import {
   accountDisplayName,
   accountsForFilter,
   hasNoAccounts,
@@ -48,7 +54,6 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { type DaySection, groupByDay } from '@kiko/transactions/group-by-day';
 import type { FilterOption } from '@kiko/design-system/components/filter-menu';
 import type { HomeStackParamList, TabParamList } from '@kiko/navigation/types';
-import { useIsScreenVisible, useOpenInPane } from '@kiko/navigation/pane-stack';
 import type { NativeBottomTabScreenProps } from '@bottom-tabs/react-navigation';
 import CurrencyBreakdown from '@kiko/design-system/components/currency-breakdown';
 import { useDateRangeSelection } from '@kiko/design-system/use-date-range-selection';
@@ -76,6 +81,17 @@ type HomeScreenProps = CompositeScreenProps<
 type DateRangeBounds = { from: number | undefined; to: number | undefined };
 
 const NO_SECTIONS: DaySection<HomeTransactionRow>[] = [];
+
+// The transaction the detail pane edits. The create and duplicate forms carry no `transactionId`
+// (a duplicate is a new transaction, whatever it was copied from), so they mark no row.
+const transactionIdOf = (route: DetailPaneRoute | null): string | undefined => {
+  const transactionId =
+    route?.name === 'TransactionForm'
+      ? (route.params as Record<string, unknown> | undefined)?.transactionId
+      : undefined;
+
+  return typeof transactionId === 'string' ? transactionId : undefined;
+};
 
 /**
  * The (inclusive) date-range bounds as raw instants, resolved ONCE per range
@@ -471,6 +487,7 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
   // stable across renders (`openInPane` is memoized on the route and the navigator), so the
   // memoized rows below never re-render just because a new press handler identity was created.
   const openInPane = useOpenInPane();
+  const editedTransactionId = transactionIdOf(useDetailPaneRoute());
   const handleRowPress = useCallback(
     (transactionId: string): void => {
       openInPane('TransactionForm', { transactionId });
@@ -511,6 +528,7 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
           categoryKeyForRow={categoryKeyForRow}
           onPress={handleRowPress}
           onDuplicate={handleRowDuplicate}
+          selected={item.id === editedTransactionId}
         />
       );
     },
@@ -521,6 +539,7 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
       categoryKeyForRow,
       handleRowPress,
       handleRowDuplicate,
+      editedTransactionId,
     ],
   );
 

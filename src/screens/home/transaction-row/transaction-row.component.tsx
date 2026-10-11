@@ -25,6 +25,7 @@ const TransactionRow: FC<TransactionRowProps> = ({
   categoryKeyForRow,
   onPress,
   onDuplicate,
+  selected,
 }) => {
   const { t } = useTranslation();
   const clock = useTimeClock();
@@ -80,7 +81,11 @@ const TransactionRow: FC<TransactionRowProps> = ({
       onDuplicate={isSynced ? undefined : () => onDuplicate(item.id)}
       liftOnHold
     >
-      <Pressable accessibilityRole="button" onPress={() => onPress(item.id)}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityState={{ selected }}
+        onPress={() => onPress(item.id)}
+      >
         <TransactionCard
           title={description}
           categoryIcon={category.icon}
@@ -97,6 +102,7 @@ const TransactionRow: FC<TransactionRowProps> = ({
             isTimeExemptHoldingType(item.holdingType) ? undefined : formatTime(item.time, clock)
           }
           loanLinked={item.loanHoldingId !== null}
+          selected={selected}
           style={styles.rowCard}
           testID="transaction-row"
         />

@@ -28,6 +28,7 @@ const TransactionCard: FC<TransactionCardProps> = ({
   footerMeta,
   footerTrailing,
   loanLinked,
+  selected,
   style,
   testID,
 }) => {
@@ -35,7 +36,7 @@ const TransactionCard: FC<TransactionCardProps> = ({
   const hasFooter = footerMeta !== undefined || footerTrailing !== undefined || loanLinked === true;
 
   return (
-    <Card padding={3} testID={testID} style={style}>
+    <Card padding={3} testID={testID} style={style} selected={selected}>
       <Box gap={2}>
         <Box direction="row" style={styles.rowMain}>
           <Box direction="row" gap={2} style={styles.rowLead}>

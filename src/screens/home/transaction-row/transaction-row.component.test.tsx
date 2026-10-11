@@ -10,6 +10,7 @@ import '@kiko/design-system/unistyles';
 // Initialize i18next so the row's and CardContextMenu's `t()` labels resolve
 // to the real catalogue instead of the raw key.
 import '@kiko/i18n/init';
+import { darkTheme } from '@kiko/design-system/theme';
 import { holdCard } from '@kiko/test-support/hold-card';
 import {
   DELETE_ACTION_TEST_ID,
@@ -50,7 +51,12 @@ const baseItem: HomeTransactionRow = {
   loanHoldingId: null,
 };
 
-const renderRow = (item: HomeTransactionRow, onPress = jest.fn(), onDuplicate = jest.fn()) =>
+const renderRow = (
+  item: HomeTransactionRow,
+  onPress = jest.fn(),
+  onDuplicate = jest.fn(),
+  selected = false,
+) =>
   render(
     <TransactionRow
       item={item}
@@ -60,6 +66,7 @@ const renderRow = (item: HomeTransactionRow, onPress = jest.fn(), onDuplicate = 
       categoryKeyForRow={(raw) => raw ?? 'other'}
       onPress={onPress}
       onDuplicate={onDuplicate}
+      selected={selected}
     />,
     { wrapper: GestureRootWrapper },
   );
@@ -68,6 +75,34 @@ describe('TransactionRow', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     jest.mocked(transactionsRepo.removePlan).mockResolvedValue({ split: false });
+  });
+
+  describe('the selected look', () => {
+    it('fills the card with the accent, as the Settings rows and Accounts cards do', async () => {
+      const { getByTestId } = await renderRow(baseItem, jest.fn(), jest.fn(), true);
+
+      expect(StyleSheet.flatten(getByTestId('transaction-row').props.style).backgroundColor).toBe(
+        darkTheme.colors.accent,
+      );
+    });
+
+    it('keeps the plain card fill when not selected', async () => {
+      const { getByTestId } = await renderRow(baseItem);
+
+      expect(
+        StyleSheet.flatten(getByTestId('transaction-row').props.style).backgroundColor,
+      ).not.toBe(darkTheme.colors.accent);
+    });
+
+    it('tells a screen reader which state the row is in', async () => {
+      const selectedRow = await renderRow(baseItem, jest.fn(), jest.fn(), true);
+
+      expect(selectedRow.getByRole('button').props.accessibilityState).toEqual({ selected: true });
+
+      const plainRow = await renderRow(baseItem);
+
+      expect(plainRow.getByRole('button').props.accessibilityState).toEqual({ selected: false });
+    });
   });
 
   it('shows the loan-link marker when the row carries a loan link', async () => {

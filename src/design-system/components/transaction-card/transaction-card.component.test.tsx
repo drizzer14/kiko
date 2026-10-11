@@ -1,6 +1,8 @@
+import { StyleSheet } from 'react-native';
 import { render } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { Money } from '@kiko/currency/money';
+import { darkTheme } from '@kiko/design-system/theme';
 
 import TransactionCard from '.';
 
@@ -93,6 +95,27 @@ describe('TransactionCard', () => {
     );
 
     expect(JSON.stringify(toJSON())).toContain('link');
+  });
+
+  it('takes the accent fill only when selected', async () => {
+    const fillOf = async (selected?: boolean) => {
+      const { getByTestId } = await render(
+        <TransactionCard
+          title="Coffee"
+          categoryIcon="cup.and.saucer"
+          categoryIconColor="#8E44AD"
+          categoryAccessibilityLabel="Dining"
+          money={Money.of('UAH', -1_000)}
+          selected={selected}
+          testID="card"
+        />,
+      );
+
+      return StyleSheet.flatten(getByTestId('card').props.style).backgroundColor;
+    };
+
+    expect(await fillOf(true)).toBe(darkTheme.colors.accent);
+    expect(await fillOf()).not.toBe(darkTheme.colors.accent);
   });
 
   it('renders no loan-link marker when loanLinked is omitted', async () => {

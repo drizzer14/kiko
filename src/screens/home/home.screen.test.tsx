@@ -123,10 +123,31 @@ const mockUseIsScreenVisible = jest.fn(() => true);
 // The form opens in the pane opposite Home's own; outside a pane navigator the real helper falls
 // back to `navigate` (its own test pins that).
 const mockOpenInPane = jest.fn();
+// The first route of the detail pane; null on one pane (the real hook's answer there) and while
+// the pane shows nothing.
+const mockUseDetailPaneRoute = jest.fn((): object | null => null);
 jest.mock('@kiko/navigation/pane-stack', () => ({
+  useDetailPaneRoute: () => mockUseDetailPaneRoute(),
   useIsScreenVisible: () => mockUseIsScreenVisible(),
   useOpenInPane: () => mockOpenInPane,
 }));
+
+// The real card behind a render counter, to read which rows a change of the detail route
+// re-renders.
+const mockTransactionCardRender = jest.fn();
+jest.mock('@kiko/design-system/components/transaction-card', () => {
+  const actual = jest.requireActual('@kiko/design-system/components/transaction-card');
+  const { createElement } = jest.requireActual('react');
+
+  return {
+    __esModule: true,
+    default: (props: { title: string }) => {
+      mockTransactionCardRender(props.title);
+
+      return createElement(actual.default, props);
+    },
+  };
+});
 
 // Never focused: Home is a companion default here, so only its visibility may decide a pause.
 jest.mock('@react-navigation/native', () => ({
@@ -1712,6 +1733,147 @@ describe('HomeScreen', () => {
     expect(mockOpenInPane).toHaveBeenCalledTimes(1);
     expect(mockOpenInPane).toHaveBeenCalledWith('TransactionForm', {});
     expect(navigation.navigate).not.toHaveBeenCalled();
+  });
+
+  describe('the selected transaction row', () => {
+    const formRoute = (params: object) => ({
+      key: 'form-page',
+      name: 'TransactionForm',
+      params,
+      isDefault: false,
+    });
+
+    const inTwoPanes = () => (
+      <PaneContext.Provider value={paneContextOf('columns', 'primary')}>
+        <HomeScreen
+          navigation={asNavigationProp<HomeProps['navigation']>(navigation)}
+          route={asRouteProp<HomeProps['route']>('Home')}
+        />
+      </PaneContext.Provider>
+    );
+
+    const renderTwoPanes = () => render(inTwoPanes());
+
+    const rerenderTwoPanes = (view: Awaited<ReturnType<typeof renderTwoPanes>>) =>
+      act(async () => {
+        await view.rerender(inTwoPanes());
+      });
+
+    const selectedRows = (view: Awaited<ReturnType<typeof renderTwoPanes>>) =>
+      view
+        .getAllByTestId('transaction-row')
+        .filter(
+          (row) => StyleSheet.flatten(row.props.style).backgroundColor === darkTheme.colors.accent,
+        );
+
+    beforeEach(() => {
+      seed({
+        transactions: [
+          transaction({ id: 't-1', description: 'Coffee' }),
+          transaction({ id: 't-2', description: 'Lunch' }),
+          transaction({ id: 't-3', description: 'Taxi' }),
+        ],
+      });
+    });
+
+    afterEach(() => {
+      mockUseDetailPaneRoute.mockReturnValue(null);
+    });
+
+    it('is the row of the transaction the detail pane edits, and only that row', async () => {
+      mockUseDetailPaneRoute.mockReturnValue(formRoute({ transactionId: 't-2' }));
+
+      const view = await renderTwoPanes();
+      const selected = selectedRows(view);
+
+      expect(selected).toHaveLength(1);
+      expect(within(selected[0]).getByText('Lunch')).toBeTruthy();
+      expect(
+        view
+          .getAllByRole('button')
+          .filter((row) => row.props.accessibilityState?.selected === true),
+      ).toHaveLength(1);
+    });
+
+    it('is none for the form that adds a transaction', async () => {
+      mockUseDetailPaneRoute.mockReturnValue(formRoute({}));
+
+      expect(selectedRows(await renderTwoPanes())).toHaveLength(0);
+    });
+
+    it('is none for the form that adds a transaction to a holding', async () => {
+      mockUseDetailPaneRoute.mockReturnValue(formRoute({ holdingId: 'h-1' }));
+
+      expect(selectedRows(await renderTwoPanes())).toHaveLength(0);
+    });
+
+    it('is none for the form that duplicates a transaction, which is a new one', async () => {
+      mockUseDetailPaneRoute.mockReturnValue(formRoute({ duplicateOfTransactionId: 't-2' }));
+
+      expect(selectedRows(await renderTwoPanes())).toHaveLength(0);
+    });
+
+    it('is none for a page that is not the transaction form', async () => {
+      mockUseDetailPaneRoute.mockReturnValue({
+        key: 'other-page',
+        name: 'HoldingDetail',
+        params: { transactionId: 't-2' },
+        isDefault: false,
+      });
+
+      expect(selectedRows(await renderTwoPanes())).toHaveLength(0);
+    });
+
+    it('is none while the detail pane has no page, or no params', async () => {
+      mockUseDetailPaneRoute.mockReturnValue({ ...formRoute({}), params: undefined });
+
+      expect(selectedRows(await renderTwoPanes())).toHaveLength(0);
+    });
+
+    it('is none on one pane, where the hook reports no detail pane', async () => {
+      const view = await renderHome();
+
+      expect(selectedRows(view)).toHaveLength(0);
+      expect(
+        view
+          .getAllByRole('button')
+          .filter((row) => row.props.accessibilityState?.selected === true),
+      ).toHaveLength(0);
+    });
+
+    it('follows the detail pane and clears when it no longer shows that form', async () => {
+      mockUseDetailPaneRoute.mockReturnValue(formRoute({ transactionId: 't-2' }));
+      const view = await renderTwoPanes();
+
+      mockUseDetailPaneRoute.mockReturnValue(formRoute({ transactionId: 't-1' }));
+      await rerenderTwoPanes(view);
+
+      expect(within(selectedRows(view)[0]).getByText('Coffee')).toBeTruthy();
+      expect(selectedRows(view)).toHaveLength(1);
+
+      mockUseDetailPaneRoute.mockReturnValue({
+        key: 'another-page',
+        name: 'Categories',
+        params: undefined,
+        isDefault: false,
+      });
+      await rerenderTwoPanes(view);
+
+      expect(selectedRows(view)).toHaveLength(0);
+    });
+
+    it('re-renders only the rows whose mark changed when the detail pane moves', async () => {
+      mockUseDetailPaneRoute.mockReturnValue(formRoute({ transactionId: 't-2' }));
+      const view = await renderTwoPanes();
+
+      mockTransactionCardRender.mockClear();
+      mockUseDetailPaneRoute.mockReturnValue(formRoute({ transactionId: 't-1' }));
+      await rerenderTwoPanes(view);
+
+      expect(
+        [...new Set(mockTransactionCardRender.mock.calls.map(([title]) => title))].sort(),
+      ).toEqual(['Coffee', 'Lunch']);
+    });
   });
 
   it('groups the list by day with Today/Yesterday separators, newest day first', async () => {

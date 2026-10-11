@@ -25,6 +25,9 @@ export type TransactionCardProps = {
   // row) resolves whether the row is linked; omitted/false renders nothing,
   // matching every other optional footer prop's "no prop -> no output" shape.
   loanLinked?: boolean;
+  // The shared selected look, forwarded to the underlying Card: Home marks the row whose form the
+  // detail pane shows.
+  selected?: boolean;
   // Forwarded to the underlying Card — e.g. Home's own inter-row spacing.
   style?: StyleProp<ViewStyle>;
   testID?: string;
