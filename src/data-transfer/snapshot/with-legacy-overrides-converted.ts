@@ -11,9 +11,9 @@ export type LegacyCategoryOverrideRow = {
 };
 
 /**
- * The restore mirror of migration 0056's copy of every override into a rule: one rule per
- * override, with the same category and timestamps, one `nameIs` matcher whose text is the
- * display name, and a fresh id. A blank display name is converted too, into a rule that fails
+ * The restore mirror of the category-rules migration's copy of every override into a rule: one
+ * rule per override, with the same category and timestamps, one `nameIs` matcher whose text is
+ * the display name, and a fresh id. A blank display name is converted too, into a rule that fails
  * the read-time guard (it is stored, never matches and shows as unreadable), exactly as the
  * migration stores it, so no override of a file is dropped.
  */

@@ -1,6 +1,7 @@
-// The pure mirror of migration 0056's copy of every override into a rule. The migration's own
-// test (`drizzle/migrations/0056-add-category-rules.test.ts`) holds the same cases against the
-// real SQL, and `restore-category-rules.two-path.test.ts` proves both agree on one database.
+// The pure mirror of the category-rules migration's copy of every override into a rule. The
+// migration's own test (`drizzle/migrations/0056-add-category-rules.test.ts`) holds the same cases
+// against the real SQL, and `restore-category-rules.two-path.test.ts` proves both agree on one
+// database.
 import { parseRuleMatchers } from '@kiko/categories/category-rules';
 
 import { withLegacyOverridesConverted } from './with-legacy-overrides-converted';

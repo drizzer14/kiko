@@ -1,6 +1,6 @@
 // The rewrite and the rule write are SQL over the stored ledger: which rows are candidates, which
-// the P21 columns and the by-hand flag exclude, and how the statements are chunked can only be
-// shown against a real engine.
+// the exchange, balance-setting and split-change columns and the by-hand flag exclude, and how the
+// statements are chunked can only be shown against a real engine.
 let mockDatabase: DatabaseSync;
 
 jest.mock('@kiko/db/client', () => {
@@ -10,12 +10,17 @@ jest.mock('@kiko/db/client', () => {
   return { database: client.database, write: client.write };
 });
 
-import { write } from '@kiko/db';
+import { database, write } from '@kiko/db';
 import { DatabaseSync } from 'node:sqlite';
 import { applyAllMigrations } from '@kiko/test-support/real-sqlite';
 import { parseRuleMatchers, type CategoryRuleMatcher } from '@kiko/categories/category-rules';
 
-import { categoryRulesRepo, rewriteForRuleDatabaseTransaction } from './category-rules.repo';
+import {
+  categoryRulesRepo,
+  rewriteDescriptionRowsQuery,
+  rewriteForRuleDatabaseTransaction,
+  rewritePageQuery,
+} from './category-rules.repo';
 
 type TransactionSeed = {
   id: string;
@@ -338,6 +343,92 @@ describe('categoryRulesRepo.applyNameRule', () => {
     expect(flagOf('source')).toBe(0);
   });
 
+  it('gives a split-change source row the picked category, while other split-change rows keep theirs', async () => {
+    insertTransaction({
+      id: 'source',
+      description: 'Silpo',
+      category: 'groceries',
+      changeGroupId: 'group',
+      categorySetByHand: true,
+    });
+    insertTransaction({
+      id: 'other-change',
+      description: 'Silpo',
+      category: 'groceries',
+      changeGroupId: 'group',
+    });
+    insertTransaction({ id: 'plain', description: 'Silpo', category: 'groceries' });
+
+    const updated = await categoryRulesRepo.applyNameRule({
+      name: 'Silpo',
+      category: 'food',
+      sourceTransactionId: 'source',
+    });
+
+    expect(updated).toBe(2);
+    expect(categoriesOf()).toEqual({
+      'other-change': 'groceries',
+      plain: 'food',
+      source: 'food',
+    });
+    expect(flagOf('source')).toBe(0);
+  });
+
+  it('gives an exchange-leg source row the picked category, while other exchange legs keep theirs', async () => {
+    insertTransaction({
+      id: 'source',
+      description: 'Silpo',
+      category: 'groceries',
+      exchangePairId: 'pair',
+      categorySetByHand: true,
+    });
+    insertTransaction({
+      id: 'other-leg',
+      description: 'Silpo',
+      category: 'groceries',
+      exchangeCounterpartHoldingId: 'usd-card',
+    });
+
+    await categoryRulesRepo.applyNameRule({
+      name: 'Silpo',
+      category: 'food',
+      sourceTransactionId: 'source',
+    });
+
+    expect(categoriesOf()).toEqual({ 'other-leg': 'groceries', source: 'food' });
+    expect(flagOf('source')).toBe(0);
+  });
+
+  it('gives a balance-setting source row the picked category', async () => {
+    insertTransaction({
+      id: 'source',
+      description: 'Silpo',
+      category: 'groceries',
+      setsBalance: true,
+    });
+
+    await categoryRulesRepo.applyNameRule({
+      name: 'Silpo',
+      category: 'food',
+      sourceTransactionId: 'source',
+    });
+
+    expect(categoriesOf()).toEqual({ source: 'food' });
+  });
+
+  it('gives a source row whose description is not the rule name the picked category too', async () => {
+    insertTransaction({ id: 'source', description: 'Silpo Market', category: 'groceries' });
+
+    const updated = await categoryRulesRepo.applyNameRule({
+      name: 'Silpo',
+      category: 'food',
+      sourceTransactionId: 'source',
+    });
+
+    expect(updated).toBe(1);
+    expect(categoriesOf()).toEqual({ source: 'food' });
+  });
+
   it('writes nothing for a blank name', async () => {
     insertTransaction({ id: 'plain', description: '', category: 'groceries' });
 
@@ -443,5 +534,36 @@ describe('rewriteForRuleDatabaseTransaction', () => {
 
     expect(await rewriteFor('missing')).toBe(0);
     expect(categoriesOf()).toEqual({ plain: 'groceries' });
+  });
+});
+
+describe('the rewrite queries', () => {
+  const planOf = (query: { toSQL: () => { sql: string; params: unknown[] } }): string[] => {
+    const { sql, params } = query.toSQL();
+
+    return (
+      mockDatabase.prepare(`EXPLAIN QUERY PLAN ${sql}`).all(...(params as (string | number)[])) as {
+        detail: string;
+      }[]
+    ).map((step) => step.detail);
+  };
+
+  it('pages the ledger by its primary key, with no sort step', () => {
+    const plan = planOf(rewritePageQuery(database, 'some-id'));
+
+    expect(plan).toContainEqual(
+      expect.stringContaining(
+        'SEARCH transactions USING INDEX sqlite_autoindex_transactions_1 (id>?)',
+      ),
+    );
+    expect(plan.join('\n')).not.toMatch(/TEMP B-TREE/);
+    expect(plan.join('\n')).not.toMatch(/transactions_exchange_pair_id/);
+  });
+
+  it('reads the rows of a description list with a plain scan, never through an exchange index', () => {
+    const plan = planOf(rewriteDescriptionRowsQuery(database, ['silpo', 'atb']));
+
+    expect(plan).toContainEqual(expect.stringContaining('SCAN transactions'));
+    expect(plan.join('\n')).not.toMatch(/transactions_exchange_pair_id/);
   });
 });

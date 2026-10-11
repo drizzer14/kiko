@@ -12,26 +12,19 @@ import {
 } from '@kiko/db';
 import {
   type CategoryRuleMatcher,
-  type MatcherOfType,
+  type PreparedRule,
   matcherSetKey,
+  matchesRule,
   planRuleRewrite,
   prepareRules,
 } from '@kiko/categories/category-rules';
-import { and, asc, eq, gt, inArray, isNull } from 'drizzle-orm';
+import { and, asc, eq, gt, inArray } from 'drizzle-orm';
 import { normalizeTransactionName } from '@kiko/transactions/normalize-name';
 
 const REWRITE_PAGE_SIZE = 2000;
 
-type NameMatcher = MatcherOfType<'nameIs' | 'nameStartsWith'>;
-
-const isNameMatcher = (matcher: CategoryRuleMatcher): matcher is NameMatcher =>
+const isNameMatcher = (matcher: CategoryRuleMatcher): boolean =>
   matcher.type === 'nameIs' || matcher.type === 'nameStartsWith';
-
-// Rule texts are already normalized in a prepared rule, so only the description is normalized.
-const NAME_ACCEPTS: Record<NameMatcher['type'], (text: string, name: string) => boolean> = {
-  nameIs: (text, name) => name === text,
-  nameStartsWith: (text, name) => name.startsWith(text),
-};
 
 // Every reader of the rules (the insert path, the rewrite, the rule write) needs every rule, so
 // the read has no `where` and no cap: a rule dropped from it would be a category silently not
@@ -54,47 +47,60 @@ const candidateColumns = {
   changeGroupId: transactions.changeGroupId,
 };
 
-// The rows a rule may rewrite: not picked by hand, and not an exchange leg, a balance-setting row
-// or a split-change row. `planRuleRewrite` checks the same again, so a row this filter let
-// through by mistake still never changes.
-const rewritableRows = and(
-  eq(transactions.categorySetByHand, false),
-  isNull(transactions.exchangePairId),
-  isNull(transactions.exchangeCounterpartHoldingId),
-  eq(transactions.setsBalance, false),
-  isNull(transactions.changeGroupId),
-);
+// The two candidate reads below filter on nothing but the description list or the id keyset:
+// `planRuleRewrite` leaves out the rows a rule may not touch (picked by hand, exchange legs,
+// balance-setting and split-change rows). An `IS NULL` on the exchange column in the SQL would
+// make the planner walk the full `transactions_exchange_pair_id` index and sort the page, instead
+// of reading the primary key in order.
+export const rewriteDescriptionRowsQuery = (
+  databaseTransaction: typeof database,
+  descriptions: string[],
+) =>
+  databaseTransaction
+    .select(candidateColumns)
+    .from(transactions)
+    .innerJoin(holdings, eq(holdings.id, transactions.holdingId))
+    .where(inArray(transactions.description, descriptions));
+
+export const rewritePageQuery = (databaseTransaction: typeof database, afterId: string) =>
+  databaseTransaction
+    .select(candidateColumns)
+    .from(transactions)
+    .innerJoin(holdings, eq(holdings.id, transactions.holdingId))
+    .where(gt(transactions.id, afterId))
+    .orderBy(asc(transactions.id))
+    .limit(REWRITE_PAGE_SIZE);
 
 type PreparedRules = ReturnType<typeof prepareRules>;
 
 // A saved rule with a name matcher can only win rows whose description normalizes to what that
-// matcher accepts, so only those descriptions are read as rows.
+// matcher accepts, so only those descriptions are read as rows. The pure module judges the name,
+// on a subject that knows nothing else, so this narrowing never differs from the rule itself.
 const rowIdsForNamedRule = async (
   databaseTransaction: typeof database,
   prepared: PreparedRules,
-  savedRuleId: string,
-  nameMatchers: readonly NameMatcher[],
+  nameOnlyRule: PreparedRule,
 ): Promise<string[]> => {
   const descriptionRows = await databaseTransaction
     .selectDistinct({ description: transactions.description })
     .from(transactions);
   const descriptions = descriptionRows
     .map((row) => row.description)
-    .filter((description) => {
-      const name = normalizeTransactionName(description);
-
-      return nameMatchers.every((matcher) => NAME_ACCEPTS[matcher.type](matcher.text, name));
-    });
+    .filter((description) =>
+      matchesRule(nameOnlyRule, {
+        normalizedName: normalizeTransactionName(description),
+        absoluteMinorUnits: null,
+        currency: null,
+        direction: null,
+        minuteOfDay: null,
+      }),
+    );
   const rowIds: string[] = [];
 
   for (const descriptionChunk of chunkRows(descriptions, IN_CLAUSE_CHUNK_SIZE)) {
-    const rows = await databaseTransaction
-      .select(candidateColumns)
-      .from(transactions)
-      .innerJoin(holdings, eq(holdings.id, transactions.holdingId))
-      .where(and(rewritableRows, inArray(transactions.description, descriptionChunk)));
+    const rows = await rewriteDescriptionRowsQuery(databaseTransaction, descriptionChunk);
 
-    for (const rowId of planRuleRewrite(prepared, savedRuleId, rows)) {
+    for (const rowId of planRuleRewrite(prepared, nameOnlyRule.id, rows)) {
       rowIds.push(rowId);
     }
   }
@@ -114,13 +120,7 @@ const rowIdsForUnnamedRule = async (
   let pageLength = REWRITE_PAGE_SIZE;
 
   while (pageLength === REWRITE_PAGE_SIZE) {
-    const page = await databaseTransaction
-      .select(candidateColumns)
-      .from(transactions)
-      .innerJoin(holdings, eq(holdings.id, transactions.holdingId))
-      .where(and(rewritableRows, gt(transactions.id, lastId)))
-      .orderBy(asc(transactions.id))
-      .limit(REWRITE_PAGE_SIZE);
+    const page = await rewritePageQuery(databaseTransaction, lastId);
 
     for (const rowId of planRuleRewrite(prepared, savedRuleId, page)) {
       rowIds.push(rowId);
@@ -153,7 +153,10 @@ export const rewriteForRuleDatabaseTransaction = async (
   const nameMatchers = savedRule.matchers.filter(isNameMatcher);
   const rowIds =
     nameMatchers.length > 0
-      ? await rowIdsForNamedRule(databaseTransaction, prepared, savedRuleId, nameMatchers)
+      ? await rowIdsForNamedRule(databaseTransaction, prepared, {
+          ...savedRule,
+          matchers: nameMatchers,
+        })
       : await rowIdsForUnnamedRule(databaseTransaction, prepared, savedRuleId);
 
   for (const rowIdChunk of chunkRows(rowIds, IN_CLAUSE_CHUNK_SIZE)) {
@@ -164,6 +167,28 @@ export const rewriteForRuleDatabaseTransaction = async (
   }
 
   return rowIds.length;
+};
+
+// The row the user is editing always ends in the category they picked, whatever kind of row it is:
+// the rewrite never touches an exchange leg, a balance-setting row or a split-change row, so the
+// category cannot arrive through it. Returns 1 when the category changed, because the rewrite
+// skips a row that already holds the picked category and would not count this one.
+const giveSourceRowCategory = async (
+  databaseTransaction: typeof database,
+  sourceTransactionId: string,
+  category: string,
+): Promise<number> => {
+  const [source] = await databaseTransaction
+    .select({ category: transactions.category })
+    .from(transactions)
+    .where(eq(transactions.id, sourceTransactionId));
+
+  await databaseTransaction
+    .update(transactions)
+    .set({ category, categorySetByHand: false })
+    .where(eq(transactions.id, sourceTransactionId));
+
+  return source !== undefined && source.category !== category ? 1 : 0;
 };
 
 export const categoryRulesRepo = {
@@ -177,9 +202,9 @@ export const categoryRulesRepo = {
    * write so a partial failure can never leave the rule and the ledger disagreeing. A rule that
    * is already exactly this name moves to the new category (it keeps its id and is now the newest
    * rule, so the user's latest choice wins a tie); a rule with other conditions beside this name
-   * is a different rule and is left alone. The row the user is editing is freed from its
-   * by-hand mark, because it now follows the rule. A blank name is a no-op: it must not become a
-   * catch-all.
+   * is a different rule and is left alone. The row the user is editing gets the picked category
+   * and is freed from its by-hand mark, because it now follows the rule. A blank name is a no-op:
+   * it must not become a catch-all.
    *
    * Categories are keyed by a stable slug, so a later category rename only changes its title.
    */
@@ -213,13 +238,17 @@ export const categoryRulesRepo = {
           .where(eq(categoryRules.id, savedRuleId));
       }
 
-      if (input.sourceTransactionId !== null) {
-        await databaseTransaction
-          .update(transactions)
-          .set({ categorySetByHand: false })
-          .where(eq(transactions.id, input.sourceTransactionId));
-      }
+      const sourceMoved =
+        input.sourceTransactionId === null
+          ? 0
+          : await giveSourceRowCategory(
+              databaseTransaction,
+              input.sourceTransactionId,
+              input.category,
+            );
 
-      return rewriteForRuleDatabaseTransaction(databaseTransaction, savedRuleId);
+      return (
+        sourceMoved + (await rewriteForRuleDatabaseTransaction(databaseTransaction, savedRuleId))
+      );
     }),
 } satisfies Repository;

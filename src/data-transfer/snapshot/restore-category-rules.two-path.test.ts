@@ -2,9 +2,9 @@
 //
 // A `.kiko` file written before category rules existed carries `categoryOverrides` and no
 // by-hand mark on its rows. It must restore to the same rules and the same marks as a live
-// device's own migration 0056 upgrade. Path 1 runs the real migration SQL on a real engine; path 2
-// reads an identically seeded pre-0056 database the way that older build's export did, writes it
-// as a version 2 file and imports it through `importData`.
+// device's own category-rules migration. Path 1 runs the real migration SQL on a real engine;
+// path 2 reads an identically seeded database from before that migration the way that older
+// build's export did, writes it as a version 2 file and imports it through `importData`.
 let mockDatabase: DatabaseSync;
 
 jest.mock('@kiko/db/client', () => {
@@ -196,7 +196,7 @@ const flagsOf = (target: DatabaseSync): { id: string; flag: number }[] =>
   }[];
 
 describe('restoring a .kiko file exported before category rules existed', () => {
-  it('ends with the rules and the marks the live migration 0056 upgrade makes', async () => {
+  it('ends with the rules and the marks the live category-rules migration makes', async () => {
     const live = preMigrationDatabase();
 
     live.exec(MIGRATION_0056_SQL.split('--> statement-breakpoint').join('\n'));
@@ -264,5 +264,28 @@ describe('restoring a .kiko file this build exported', () => {
       { id: 'picked', flag: 1 },
       { id: 'plain', flag: 0 },
     ]);
+  });
+
+  it('restores the unreadable rule a migrated blank override left, so the app can read back its own file', async () => {
+    const exported = preMigrationDatabase();
+
+    exported.exec(MIGRATION_0056_SQL.split('--> statement-breakpoint').join('\n'));
+    mockDatabase = exported;
+
+    const tables = JSON.parse(JSON.stringify(await readDataSnapshot()));
+    const key = generateExportKey();
+    const envelope = encryptEnvelope(
+      utf8ToBytes(JSON.stringify({ exportedAt: 1, appVersion: '1.2.0', tables })),
+      key,
+    );
+
+    mockReadFile.mockResolvedValue(JSON.stringify(envelope));
+    mockDatabase = freshDatabase();
+    await importData({ fileUri: '/tmp/current.kiko', keyBase64: encodeBytesToBase64(key) });
+
+    expect(rulesOf(mockDatabase)).toEqual(rulesOf(exported));
+    expect(
+      rulesOf(mockDatabase).filter((rule) => parseRuleMatchers(rule.matchers) === null),
+    ).toHaveLength(1);
   });
 });

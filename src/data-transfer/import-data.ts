@@ -4,7 +4,6 @@ import { bifold, eitherSync, isLeft } from 'fnts/either';
 import { recostStoredLots } from '@kiko/holdings/lot-recost';
 import { runLoanAutoLink } from '@kiko/loans/use-loan-auto-link';
 import { refreshMarketData } from '@kiko/sync/refresh-market-data';
-import { parseRuleMatchers } from '@kiko/categories/category-rules';
 import { replanRestoredReminders } from '@kiko/reminders/use-reminder-scheduler';
 
 import {
@@ -77,16 +76,24 @@ type LegacyExportPayload = Omit<ExportPayload, 'tables'> & {
 const restoredAccountIds = (accountRows: readonly { id?: unknown }[]): ReadonlySet<string> =>
   new Set(accountRows.flatMap(({ id }) => (typeof id === 'string' ? [id] : [])));
 
-// A rule a restore inserts must read back: a rule the guard rejects would be stored as an
-// unreadable row, which only a file written by hand or damaged can hold.
+// Only the shape of a rule is checked, never whether its matchers read back: the app itself stores
+// a rule it cannot read (a migrated override with a blank name) and exports it, and a restore must
+// take its own file back. A rule that does not read never matches and shows as unreadable.
 const isStoredCategoryRule = (value: unknown): boolean =>
   isRecord(value) &&
   typeof value.id === 'string' &&
   typeof value.category === 'string' &&
   typeof value.matchers === 'string' &&
-  parseRuleMatchers(value.matchers) !== null &&
   typeof value.createdAt === 'number' &&
   typeof value.updatedAt === 'number';
+
+// An override row as an earlier build exported it: its timestamps may be missing, its text never.
+const isLegacyCategoryOverride = (value: unknown): boolean =>
+  isRecord(value) &&
+  typeof value.category === 'string' &&
+  typeof value.displayName === 'string' &&
+  (value.createdAt === undefined || typeof value.createdAt === 'number') &&
+  (value.updatedAt === undefined || typeof value.updatedAt === 'number');
 
 const hasPayloadShape = (value: unknown, tableKeys: readonly string[]): boolean => {
   if (!isRecord(value) || typeof value.exportedAt !== 'number') {
@@ -110,11 +117,13 @@ const isExportPayload = (value: unknown): value is ExportPayload =>
   (value as ExportPayload).tables.categoryRules.every(isStoredCategoryRule);
 
 const isLegacyExportPayload = (value: unknown): value is LegacyExportPayload =>
-  hasPayloadShape(value, [...REQUIRED_TABLE_KEYS, 'categoryOverrides']);
+  hasPayloadShape(value, [...REQUIRED_TABLE_KEYS, 'categoryOverrides']) &&
+  (value as LegacyExportPayload).tables.categoryOverrides.every(isLegacyCategoryOverride);
 
 // The payload as this build restores it, or undefined when the file is not a valid export of its
-// own version. An older file's overrides become rules before the restore, as migration 0056 makes
-// them; no rewrite runs, because the rows of the file already carry the categories they have.
+// own version. An older file's overrides become rules before the restore, as the category-rules
+// migration makes them; no rewrite runs, because the rows of the file already carry the
+// categories they have.
 const payloadToRestore = (value: unknown, version: number): ExportPayload | undefined => {
   if (version >= FIRST_RULES_EXPORT_VERSION) {
     return isExportPayload(value) ? value : undefined;

@@ -548,6 +548,32 @@ describe('importData', () => {
       },
     );
 
+    it.each([
+      ['null', null],
+      ['a string', 'silpo'],
+      ['a number', 7],
+      ['an object without a display name', { normalizedName: 'silpo', category: 'food' }],
+      ['an object without a category', { normalizedName: 'silpo', displayName: 'Silpo' }],
+      [
+        'an object with a created time that is not a number',
+        { normalizedName: 'silpo', category: 'food', displayName: 'Silpo', createdAt: '10' },
+      ],
+    ])(
+      'refuses a version 2 file whose override entry is %s, never a raw error',
+      async (_name, entry) => {
+        const { fileText, keyBase64 } = encryptedWith(2, {
+          categoryRules: undefined,
+          categoryOverrides: [entry],
+        });
+        mockReadFile.mockResolvedValue(fileText);
+
+        await expect(importData({ fileUri: '/tmp/x.kiko', keyBase64 })).rejects.toThrow(
+          'data-transfer/import: not a valid Kiko export file',
+        );
+        expect(mockRestoreDataSnapshot).not.toHaveBeenCalled();
+      },
+    );
+
     it('requires the overrides, not the rules, of a version 2 file', async () => {
       const { fileText, keyBase64 } = encryptedWith(2, { categoryRules: [goodRule] });
       mockReadFile.mockResolvedValue(fileText);
@@ -583,12 +609,39 @@ describe('importData', () => {
     });
 
     it.each([
-      ['matchers that fail the guard', { ...goodRule, matchers: '[{"type":"nameIs","text":" "}]' }],
-      ['matchers that are not JSON', { ...goodRule, matchers: 'nope' }],
+      [
+        'matchers that fail the guard',
+        { ...goodRule, id: 'blank', matchers: '[{"type":"nameIs","text":" "}]' },
+      ],
+      ['matchers that are not JSON', { ...goodRule, id: 'broken', matchers: 'nope' }],
+    ])(
+      'restores a version 3 rule with %s as the unreadable rule it is, unchanged',
+      async (_name, unreadableRule) => {
+        const { fileText, keyBase64 } = encryptedWith(3, {
+          categoryRules: [goodRule, unreadableRule],
+        });
+        mockReadFile.mockResolvedValue(fileText);
+
+        await importData({ fileUri: '/tmp/x.kiko', keyBase64 });
+
+        expect(mockRestoreDataSnapshot).toHaveBeenCalledWith(
+          expect.objectContaining({ categoryRules: [goodRule, unreadableRule] }),
+        );
+      },
+    );
+
+    it.each([
+      ['a matchers value that is not a string', { ...goodRule, matchers: [] }],
+      [
+        'a missing matchers value',
+        { id: 'rule-2', category: 'food', createdAt: 10, updatedAt: 20 },
+      ],
       ['an id that is not a string', { ...goodRule, id: 7 }],
       ['a category that is not a string', { ...goodRule, category: null }],
       ['a created time that is not a number', { ...goodRule, createdAt: '10' }],
+      ['an updated time that is not a number', { ...goodRule, updatedAt: null }],
       ['an entry that is not an object', 'rule'],
+      ['an entry that is null', null],
     ])(
       'refuses a version 3 file with %s before the restore touches the data',
       async (_name, rule) => {
