@@ -155,8 +155,8 @@ not hardcode the list here — it drifts with every added screen; always
 re-run the grep at submission time.
 
 App Review reviews each submitted version, an update included
-(Guideline 2.1(a) asks for a complete, final build with demo access or a
-working backend; App Store Connect Help ties App Review information to
+(Guideline 2.1(a) asks for a complete, final build and, for an app with a
+login, demo account information and the back end turned on; App Store Connect Help ties App Review information to
 each version). Update notes keep the demo-access steps and add a "what
 changed in X.Y and where to find it" list; cut the tour of unchanged
 features. A new screen recording is recommended (not required) when new

@@ -29,11 +29,13 @@ Rules:
   session through Orca (no `orca orchestration send/ask/reply`, no `orca terminal send` into a
   session someone types in): Orca types it into the terminal input and interrupts the user's
   typing. `orca terminal send` is only for starting a fresh session, its first brief pointer,
-  and slash commands (`/reload-plugins`, `/clear`); only the coordinator sends a slash command
-  into another session.
+  slash commands (`/reload-plugins`, `/clear`), and running a verbose command in a
+  command-runner terminal (never one someone types in); only the coordinator sends a slash
+  command into another session.
 - Do it yourself first. Before you hand the user a command or a click, check whether your own
   tools can do it (Bash, an agent dispatch, a file edit; the coordinator also has `orca terminal
-  send` for a slash command in another session). If they can, do it and report the result. Hand the user only what
+  send` for a slash command in another session). If they can, do it and report the result.
+  Hand the user only what
   truly needs them: slash commands in the user's OWN session, GUI-only steps (App Store
   Connect, Device Hub poses, the physical device), entering the user's secrets, or a step a hook
   or the permission system denied (report it, never bypass). This does not lift the user's
@@ -510,7 +512,7 @@ each side-effect import's predecessors.
 ## The Stop-hook dup check is scoped
 
 `medium.sh`'s Stop/SubagentStop hook runs jscpd scoped to the
-session's own changed files (`scripts/checks/dup.sh <changed files>`)
+session's own changed files (`scripts/checks/dup.sh <changed files still on disk>`)
 — the project-wide `npm run check:dup` (no args, scans the whole
 repo) can be green while this scoped run fails, or vice versa. Run the
 same scoped command yourself before reporting done:

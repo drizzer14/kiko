@@ -1065,7 +1065,8 @@ second, NON-blocking pass:
   large file and another file is invisible to the alone runs (two 1100-line copies of one file
   show 0% alone and about 50% together). It runs only when the scope holds a size-skipped file and
   more than one file, so a scope with no large file runs no combined run and a one-file scope does
-  not repeat its alone figure. The pass itself still costs the two file listings (about 1 s). Its total over the threshold prints one `WARNING` naming the figure.
+  not repeat its alone figure. The pass itself still costs the two file listings (about 1 s). Its
+  total over the threshold prints one `WARNING` naming the figure.
   Baseline on 2026-10-11: 7.33% of lines combined, against 3.24% for the blocking run.
 - A file over the threshold read from `.jscpd.json`, a file jscpd fails on, a file with no
   figure, a combined total over the threshold, a failed file listing, and a failed `mktemp` each

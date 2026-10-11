@@ -81,8 +81,9 @@ fi
 # Serialize the tier per worktree so those runs do not launch concurrent
 # knip/deps/jscpd on the same tree. Most sub-checks below skip on their own
 # when their inputs are unchanged; dup.sh's large-file pass never skips (it
-# lists files with jscpd twice, about 1 s per Stop, more for a changed file
-# over 1000 lines). On a lock timeout, proceed unlocked rather than hang the hook.
+# lists files with jscpd twice, about 1 s per Stop that runs dup.sh (a
+# non-empty present list), more for a changed file over 1000 lines). On a lock timeout, proceed unlocked rather than hang the
+# hook.
 state="$(harness_state_dir "$ROOT")"
 mkdir -p "$state" 2>/dev/null || true
 lock="$state/medium.lock"
