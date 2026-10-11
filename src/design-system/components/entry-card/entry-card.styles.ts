@@ -34,4 +34,10 @@ export const styles = StyleSheet.create((theme) => ({
     alignSelf: 'flex-end',
     alignItems: 'flex-end',
   },
+  // A footer line that wraps: the box above only right-flushes each Text's frame, so without
+  // this the continuation line would start at the frame's left edge instead of staying flush
+  // with the amount column.
+  rowFooterLine: {
+    textAlign: 'right',
+  },
 }));

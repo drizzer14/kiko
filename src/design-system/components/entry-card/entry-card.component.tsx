@@ -46,7 +46,7 @@ const EntryCard: FC<EntryCardProps> = ({
         {footerLines.length > 0 && (
           <Box style={styles.rowFooter}>
             {footerLines.map((line) => (
-              <Text key={line} variant="caption" tone="textSecondary">
+              <Text key={line} variant="caption" tone="textSecondary" style={styles.rowFooterLine}>
                 {line}
               </Text>
             ))}

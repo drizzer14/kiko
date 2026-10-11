@@ -1,17 +1,31 @@
+import type { ReactNode } from 'react';
 import { render } from '@testing-library/react-native';
-import { StyleSheet, Text as RNText } from 'react-native';
+import { type StyleProp, StyleSheet, Text as RNText, type TextStyle } from 'react-native';
 import '@kiko/design-system/unistyles';
 import { darkTheme } from '@kiko/design-system/theme';
 import { type LayoutNode, layoutOf } from '@kiko/test-support/layout-of';
-import mockTextVariantTone from '@kiko/test-support/mock-text-variant-tone';
 
 import EntryCard from '.';
 
-// A getter, so `mockTextVariantTone` is read when `Text` is first used, after the import ran.
+// Like the shared `mock-text-variant-tone` Text mock, but it also forwards `style` as a host
+// prop, because this file pins a footer line's `textAlign`. A getter, so the mock is read when
+// `Text` is first used, after its declaration ran.
+const mockTextWithStyle = ({
+  variant = 'body',
+  tone = 'textPrimary',
+  style,
+  children,
+}: {
+  variant?: string;
+  tone?: string;
+  style?: StyleProp<TextStyle>;
+  children: ReactNode;
+}) => <RNText {...{ variant, tone, style }}>{children}</RNText>;
+
 jest.mock('@kiko/design-system/components/text', () => ({
   __esModule: true,
   get default() {
-    return mockTextVariantTone;
+    return mockTextWithStyle;
   },
 }));
 
@@ -34,7 +48,12 @@ const mainRowLayout = (children: LayoutNode[]): LayoutNode => ({
 
 const footerLayout = (lines: string[]): LayoutNode => ({
   style: { alignSelf: 'flex-end', alignItems: 'flex-end' },
-  children: lines.map((line) => ({ variant: 'caption', tone: 'textSecondary', children: [line] })),
+  children: lines.map((line) => ({
+    style: { textAlign: 'right' },
+    variant: 'caption',
+    tone: 'textSecondary',
+    children: [line],
+  })),
 });
 
 const cardLayout = (children: LayoutNode[], testID = 'entry'): LayoutNode => ({

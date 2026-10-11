@@ -2638,7 +2638,7 @@ const categoryIconLayout: LayoutNode = {
 // losing the right-flush `alignSelf` the row look depends on.
 const footerLayout = (caption: string): LayoutNode => ({
   style: expect.objectContaining({ alignSelf: 'flex-end' }),
-  children: [textLayout(caption)],
+  children: [{ style: { textAlign: 'right' }, children: [caption] }],
 });
 
 const cardLayout = (children: LayoutNode[]): LayoutNode => ({
