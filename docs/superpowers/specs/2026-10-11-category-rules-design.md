@@ -87,7 +87,7 @@ type CategoryRuleMatcher =
 
 `transactionsRepo.setCategory` gains the flag write. `update` (manual edit of amount/time/description) does not touch category or flag.
 
-## 4. Migration 0058 (`0058_add_category_rules.sql`; number may be renumbered at merge)
+## 4. Migration 0058 (`0058_add_category_rules.sql`; the number is the next free idx on `next` at merge; the migration is regenerated on top of `next`'s journal)
 One migration, statements in this order:
 1. `CREATE TABLE category_rules (...)`.
 2. `INSERT INTO category_rules (id, category, matchers, created_at, updated_at) SELECT lower(hex(randomblob(16))), category, json_array(json_object('type', 'nameIs', 'text', display_name)), created_at, updated_at FROM category_overrides;` (single-quoted literals, per `SQLITE_DQS=0`).
@@ -305,12 +305,12 @@ Method: a Jest test on real `node:sqlite` (`@kiko/test-support/real-sqlite`) wit
 - Delete confirm (coordination point B, agreed): both tracks edit `categoriesRepo.delete` (one write: templates clears template category ids, this track deletes rules, then the existing reassign and row delete) and the confirm (`categories.screen.tsx:330-341` today; this track's redesign moves it). The track that merges into `next` second rebases onto the first and adds its own line to the confirm (`categories.deleteTemplates_*` for templates, `categories.deleteRulesNotice_*` here).
 - Settings stack (coordination point C): both tracks add routes to `src/navigation/settings-stack/settings.stack.tsx` and `types.d.ts`; transaction-templates also moves the Categories row. This track adds `CategoryDetail`, `CategoryForm`, `CategoryRuleForm` only.
 - Templates (coordination point D): a template's category is a hand pick, flag 1; a template without a category gets the pre-select, flag 0 (decision 13). Confirmed: a template transaction saves through the normal form path (`recordManual` for income / expense, `recordManualWithReturns` for split, `recordExchange` for exchange, no category); `transaction_templates` stores no flag.
-- Migration numbers: 0058 here, after 0056 and 0057; renumber at merge against the destination's journal tail.
+- Migration numbers: 0058 here, after 0056 and 0057; the first branch to reach `next` keeps the next free number; a later branch merges `next` in and regenerates its migration on top of `next`'s journal.
 
 ## 14. Risks
 - R1: Existing rows have no flag (ruling 6), so an old "Just for this one" pick can be overwritten by a later rewrite, as today's same-name rewrite already does. No change proposed; the user may want a backfill (not proposed: the old picks are not knowable exactly).
 - R2: A rewrite holds op-sqlite's one queue for its write. Mitigated by the fast path and measured (section 11).
-- R3: Shared migration-number namespace: never deploy a build with 0058 before 0056/0057 are fixed in the merge order.
+- R3: Shared migration-number namespace: two branches generated from the same snapshot share a `prevId`, and a later `drizzle-kit generate` re-adds the other branch's columns ("duplicate column name" at launch). The first branch to reach `next` keeps the next free number; every later branch regenerates its migration on top of `next`'s journal, and proves it with `npx drizzle-kit check` plus a no-op second `npx drizzle-kit generate`.
 - R4: The form file is 2852 lines and being split; the form task must start from the split, not from main.
 - R5: A rule with only amount / direction / time matchers can rewrite many rows at once; N in the sheet is the guard.
 
