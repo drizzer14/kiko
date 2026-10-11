@@ -62,8 +62,8 @@ export type FormDraft = { name: string; icon: string | null; color: string | nul
  * account form carried over. `initialType` and `initialCurrency` seed a create
  * on a named account, once on mount, for an "Add holding" row whose picker lists
  * only some holdings; the user can still change both. Without the Accounts
- * stack's `returnTo`, so the Home stack, which has no import screen to pop back
- * to, cannot pass one.
+ * stack's `returnTo`, so the Home and Settings stacks, which have no import
+ * screen to pop back to, cannot pass one.
  */
 type HoldingFormParams = (
   | { accountId: string; initialType?: HoldingType; initialCurrency?: Currency }

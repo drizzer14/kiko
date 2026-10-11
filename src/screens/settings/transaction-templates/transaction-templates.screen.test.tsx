@@ -60,13 +60,17 @@ const SALARY = templateRow('t-salary', 'Salary', draftOf({ mode: 'income' }), 2)
 type Seed = {
   templates?: ReturnType<typeof templateRow>[];
   isLoading?: Partial<Record<string, boolean>>;
+  extraCategories?: { key: string; title: string; icon: string; color: string }[];
 };
 
-const seed = ({ templates = [], isLoading = {} }: Seed = {}): void => {
+const seed = ({ templates = [], isLoading = {}, extraCategories = [] }: Seed = {}): void => {
   const byTable: Record<string, unknown[]> = {
     transaction_templates: templates,
     holdings: [{ id: 'h-wallet', name: 'Wallet', type: 'cash', currency: 'UAH' }],
-    categories: [{ key: 'groceries', title: 'Groceries', icon: 'cart', color: '#FFCC00' }],
+    categories: [
+      { key: 'groceries', title: 'Groceries', icon: 'cart', color: '#FFCC00' },
+      ...extraCategories,
+    ],
   };
 
   mockUseLiveQuery.mockImplementation((_query: unknown, tables: string[]) => ({
@@ -207,12 +211,16 @@ describe('TransactionTemplatesScreen — list', () => {
     expect(getByLabelText('Uncategorized')).toBeTruthy();
   });
 
-  it('shows the neutral icon for a category the table does not hold', async () => {
-    seed({ templates: [templateRow('t-ghost', 'Ghost', draftOf({ category: 'vanished' }))] });
+  it('shows the neutral icon, not the default category, for an unknown category', async () => {
+    seed({
+      templates: [templateRow('t-ghost', 'Ghost', draftOf({ category: 'vanished' }))],
+      extraCategories: [{ key: 'other', title: 'Other', icon: 'ellipsis', color: '#8E8E93' }],
+    });
 
-    const { getByLabelText } = await renderScreen();
+    const { getByLabelText, queryByLabelText } = await renderScreen();
 
     expect(getByLabelText('Uncategorized')).toBeTruthy();
+    expect(queryByLabelText('Other')).toBeNull();
   });
 
   it('opens the template for editing on a tap', async () => {
