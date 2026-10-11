@@ -702,6 +702,7 @@ describe('TransactionFormScreen — category pre-select from name rules (A1)', (
   // A single rule mapping the normalized description "coffee" to the Dining
   // category, so a create whose description settles to "Coffee" auto-picks it.
   const COFFEE_RULE: OverrideRule = { normalizedName: 'coffee', category: 'dining' };
+  const SILPO_RULE: OverrideRule = { normalizedName: 'silpo', category: 'groceries' };
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -711,7 +712,58 @@ describe('TransactionFormScreen — category pre-select from name rules (A1)', (
       CATEGORIES,
       [],
       [],
-      [COFFEE_RULE],
+      [COFFEE_RULE, SILPO_RULE],
+    );
+  });
+
+  // The nav-bar Save does not end editing, so the description is still focused (no blur has fired)
+  // when it is pressed: Save itself must settle the rule category for the live description.
+  it('saves the rule category for a description that never blurred', async () => {
+    const { getByLabelText } = await renderAdd();
+    await fireEvent.changeText(getByLabelText('Amount'), '12.34');
+    await fireEvent.changeText(getByLabelText('Description'), 'Silpo');
+    await pressSave(navigation.setOptions);
+
+    expect(mockRecordManual).toHaveBeenCalledWith(
+      expect.objectContaining({ description: 'Silpo', category: 'groceries' }),
+    );
+  });
+
+  it('saves the new rule category when the description changes after a blur and Save is pressed while focused', async () => {
+    const { getByLabelText } = await renderAdd();
+    await fireEvent.changeText(getByLabelText('Amount'), '12.34');
+    await fireEvent.changeText(getByLabelText('Description'), 'Silpo');
+    await fireEvent(getByLabelText('Description'), 'blur');
+    await fireEvent.changeText(getByLabelText('Description'), 'Coffee');
+    await pressSave(navigation.setOptions);
+
+    expect(mockRecordManual).toHaveBeenCalledWith(
+      expect.objectContaining({ description: 'Coffee', category: 'dining' }),
+    );
+  });
+
+  it('blocks Save and clears the stale auto-pick when the focused description matches no rule', async () => {
+    const { getByLabelText, getByText } = await renderAdd();
+    await fireEvent.changeText(getByLabelText('Amount'), '12.34');
+    await fireEvent.changeText(getByLabelText('Description'), 'Silpo');
+    await fireEvent(getByLabelText('Description'), 'blur');
+    await fireEvent.changeText(getByLabelText('Description'), 'Unmatched name');
+    await pressSave(navigation.setOptions);
+
+    expect(mockRecordManual).not.toHaveBeenCalled();
+    expect(getByText('Select a category.')).toBeTruthy();
+  });
+
+  it('never replaces an explicit picker choice when Save settles the category', async () => {
+    const utils = await renderAdd();
+    const { getByLabelText } = utils;
+    await fireEvent.changeText(getByLabelText('Amount'), '12.34');
+    await pickCategory(utils, 'Dining');
+    await fireEvent.changeText(getByLabelText('Description'), 'Silpo');
+    await pressSave(navigation.setOptions);
+
+    expect(mockRecordManual).toHaveBeenCalledWith(
+      expect.objectContaining({ description: 'Silpo', category: 'dining' }),
     );
   });
 

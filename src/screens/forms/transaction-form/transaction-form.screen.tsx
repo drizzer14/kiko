@@ -404,6 +404,8 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   const [time, setTime] = useState<number>(() => Date.now());
   const {
     selectedCategory,
+    effectiveCategory,
+    settleCategory,
     setSelectedCategory,
     setUserPickedCategory,
     selectCategory,
@@ -538,7 +540,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   // Derived (not stored) so it always reflects the persisted value even before
   // the hydration latch closes.
   const originalCategoryKey = existing?.category ? existing.category.toLowerCase() : null;
-  const categoryChanged = selectedCategory !== null && selectedCategory !== originalCategoryKey;
+  const categoryChanged = effectiveCategory !== null && effectiveCategory !== originalCategoryKey;
 
   const loanFieldVisible = isLoanFieldVisible(
     existing?.amountMinorUnits,
@@ -569,7 +571,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     counterpartAmount,
     destinationHoldingId,
     counterpartHoldingId,
-    selectedCategory,
+    selectedCategory: effectiveCategory,
     changeReturns,
     currency,
   };
@@ -626,7 +628,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
         // blank-description row (and any row whose override the user
         // cancelled) would be written uncategorised despite
         // `plainFieldErrors` forcing a pick on create.
-        category: selectedCategory,
+        category: effectiveCategory,
       });
     }
   };
@@ -764,7 +766,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
         amountMinorUnits: -paymentMinor,
         time,
         description,
-        category: selectedCategory,
+        category: effectiveCategory,
       },
       returns: changeReturns.map((change) => ({
         holdingId: change.holdingId as string,
@@ -904,6 +906,10 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   // into `performSave` itself pushes that function's cognitive complexity
   // over Biome's ceiling.
   const save = async (): Promise<void> => {
+    // The nav-bar Save does not end editing, so the description may never have blurred; commit
+    // its rule category to the picker, which `effectiveCategory` below already acts on.
+    settleCategory();
+
     if (disableSave) {
       setAttemptedSave(true);
 
@@ -934,7 +940,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
       const name = isReadOnly ? (existing?.description ?? '') : descriptionToStore;
       const overrideRequest = resolveCategoryOverrideRequest(
         categoryChanged,
-        selectedCategory,
+        effectiveCategory,
         name,
       );
 
@@ -953,10 +959,10 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
       // path (`resolveCategoryOverrideRequest` -> `upsertCategoryOverride`) stays
       // intact, so a catch-all rule is still refused. A create (no `editingId`)
       // already carries its category from `recordManual`, so it is excluded.
-      if (editingId !== null && categoryChanged && selectedCategory !== null) {
+      if (editingId !== null && categoryChanged && effectiveCategory !== null) {
         await transactionsRepo.setCategory({
           transactionId: editingId,
-          category: selectedCategory,
+          category: effectiveCategory,
         });
       }
 
