@@ -96,7 +96,7 @@ const pickKind = async (view: View, kind: string): Promise<void> => {
   await act(async () => sheet.props.onDismiss());
 };
 
-type HeaderItem = { title: string; buttonId: string };
+type HeaderItem = { title: string; buttonId: string; disabled?: boolean };
 
 type HeaderConfigProps = {
   headerRightBarButtonItems?: HeaderItem[];
@@ -105,6 +105,8 @@ type HeaderConfigProps = {
 
 type RenderedNode = { type: string; props: object; children: (RenderedNode | string)[] | null };
 
+// RNTL v14 dropped `UNSAFE_root` and its `findAll`, and its host `root` has no tree search, so the
+// header configs are collected from the rendered JSON.
 const headerConfigsOf = (node: RenderedNode | string | null): HeaderConfigProps[] => {
   if (node === null || typeof node === 'string') {
     return [];
@@ -117,7 +119,8 @@ const headerConfigsOf = (node: RenderedNode | string | null): HeaderConfigProps[
 };
 
 // A form's Save lives in the native nav bar, so it is pressed the way the native bar reports a
-// press: through the header config native-stack hands to the native side.
+// press: through the header config native-stack hands to the native side. A disabled item is never
+// pressed, as the native bar would not deliver it.
 const pressNavBarSave = async (view: View): Promise<void> => {
   const tree = view.toJSON() as RenderedNode | RenderedNode[] | null;
   const roots = Array.isArray(tree) ? tree : [tree];
@@ -128,6 +131,7 @@ const pressNavBarSave = async (view: View): Promise<void> => {
   const save = config?.headerRightBarButtonItems?.find(isSave);
 
   expect(save).toBeDefined();
+  expect(save?.disabled).not.toBe(true);
   await act(async () => {
     config?.onPressHeaderBarButtonItem?.({ nativeEvent: { buttonId: save?.buttonId ?? '' } });
   });

@@ -550,8 +550,8 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   );
 
   // The description field's placeholder previews the label the row would carry
-  // if left blank (see `resolveDescriptionPlaceholder`), and the Save button is
-  // disabled for a create still missing its amount or category (see
+  // if left blank (see `resolveDescriptionPlaceholder`), and Save is
+  // blocked for a create still missing its amount or category (see
   // `MODE_BEHAVIOR`). Both are module-level pure helpers so their
   // branches stay out of this component's cognitive-complexity budget.
   const descriptionPlaceholder = resolveDescriptionPlaceholder({

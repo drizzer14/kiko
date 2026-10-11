@@ -45,6 +45,12 @@ export const pressSave = async (setOptions: jest.Mock, label = 'Save'): Promise<
   const item = saveItem(setOptions, label);
 
   expect(item).toBeDefined();
+  // The native bar never delivers a press to a disabled item; a test that wants the raw handler
+  // calls `saveItem(...)?.onPress()` itself.
+  if (item?.disabled === true) {
+    throw new Error(`The ${label} item is disabled, so the native bar would not press it.`);
+  }
+
   await act(async () => {
     item?.onPress();
   });

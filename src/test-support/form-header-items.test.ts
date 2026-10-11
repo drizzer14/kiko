@@ -75,6 +75,16 @@ describe('form header items test helper', () => {
     expect(onPress).toHaveBeenCalledTimes(1);
   });
 
+  it('refuses to press a disabled Save item, as the native bar would', async () => {
+    const onPress = jest.fn();
+    const setOptions = jest.fn();
+
+    setOptions({ unstable_headerRightItems: () => [{ label: 'Save', onPress, disabled: true }] });
+
+    await expect(pressSave(setOptions)).rejects.toThrow('Save item is disabled');
+    expect(onPress).not.toHaveBeenCalled();
+  });
+
   it('fails the test when there is no Save item to press', async () => {
     await expect(pressSave(jest.fn())).rejects.toThrow();
   });

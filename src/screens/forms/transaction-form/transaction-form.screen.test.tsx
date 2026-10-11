@@ -395,7 +395,10 @@ describe('TransactionFormScreen — add mode', () => {
     await pickCategory(utils, 'Groceries');
 
     await pressSave(navigation.setOptions);
-    await pressSave(navigation.setOptions);
+    // The item is disabled while the first write is pending, so the second tap is the raw handler.
+    await act(async () => {
+      saveItem(navigation.setOptions)?.onPress();
+    });
 
     expect(mockRecordManual).toHaveBeenCalledTimes(1);
 

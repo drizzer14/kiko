@@ -140,7 +140,10 @@ describe('ContributionFormScreen', () => {
     await fireEvent.changeText(utils.getByLabelText('Amount'), '1000');
 
     await pressSave(navigation.setOptions);
-    await pressSave(navigation.setOptions);
+    // The item is disabled while the first write is pending, so the second tap is the raw handler.
+    await act(async () => {
+      saveItem(navigation.setOptions)?.onPress();
+    });
 
     expect(holdingsRepo.appendDepositContribution).toHaveBeenCalledTimes(1);
 

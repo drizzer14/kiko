@@ -268,7 +268,7 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
   // second copy.
   const pendingAccountId = useMemo(() => id(), []);
   // A one-shot create promise: whichever fires first (a field's own Connect or
-  // the footer Save) inserts the row exactly once; every later caller reuses the
+  // the nav-bar Save) inserts the row exactly once; every later caller reuses the
   // same promise, so a field Connect followed by Save can never produce a
   // DUPLICATE account (connect-first). On a REJECTED create the ref is reset to null
   // (see below) so a retry re-attempts and Save never silently no-ops.

@@ -176,9 +176,12 @@ describe('PricePointFormScreen', () => {
 
     await renderScreen();
 
-    expect(navigation.setOptions).not.toHaveBeenCalledWith(
-      expect.objectContaining({ title: expect.anything() }),
+    // `expect.anything()` would let a `title: undefined` slip through, so check the key itself.
+    const optionsWithTitle = navigation.setOptions.mock.calls.filter(([options]) =>
+      Object.hasOwn(options, 'title'),
     );
+
+    expect(optionsWithTitle).toEqual([]);
   });
 
   // A loan can be recorded as fully repaid — its
