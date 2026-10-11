@@ -109,6 +109,16 @@ export const loanInstallments = (meta: LoanMeta): LoanInstallment[] => {
 };
 
 /**
+ * Whether a schedule row is an actual payment to make. A tiny loan paid off
+ * before its term ends keeps its row count (`installmentIndexOf` and the
+ * ledger count rows), so its trailing rows are zero-payment: not a payment to
+ * match a debit against or to list as upcoming.
+ */
+export const isScheduledPayment = (
+  installment: Pick<LoanInstallment, 'paymentMinorUnits'>,
+): boolean => installment.paymentMinorUnits > 0;
+
+/**
  * A loan's installment table with each row's due-date day key alongside it.
  * Build it once per loan and pass it to every read below that repeats for
  * the same loan (each net-worth bucket, each linked payment): building the

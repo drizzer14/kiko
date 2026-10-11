@@ -5,6 +5,7 @@ import { addMonths } from '../interest';
 import type { LoanMeta } from '../holding-metadata';
 
 import {
+  isScheduledPayment,
   loanInstallments,
   loanOutstandingMinorAt,
   loanPaymentSplitsMinor,
@@ -204,6 +205,21 @@ describe('loanInstallments — balance never goes negative', () => {
     expect(rows.map((row) => row.principalMinorUnits)).toEqual([1, 1, 1, 1, 1, 0, 0, 0]);
     expect(rows.map((row) => row.balanceMinorUnits)).toEqual([4, 3, 2, 1, 0, 0, 0, 0]);
     expect(rows[7].paymentMinorUnits).toBe(0);
+  });
+
+  it('counts only the rows that pay something as scheduled payments', () => {
+    const rows = loanInstallments(metaOf(5, 8, 0, 'differentiated'));
+
+    expect(rows.map(isScheduledPayment)).toEqual([
+      true,
+      true,
+      true,
+      true,
+      true,
+      false,
+      false,
+      false,
+    ]);
   });
 });
 
