@@ -38,6 +38,10 @@ import {
   type CreateHoldingRoute,
   resolveCreateHoldingTarget,
 } from '@kiko/screens/forms/create-holding-target';
+import {
+  type FormHeaderItemsOptions,
+  useFormHeaderItems,
+} from '@kiko/screens/forms/use-form-header-items';
 import { holdingsRepo } from '@kiko/holdings/repo';
 import { parseAmount } from '@kiko/currency/parse';
 import Box from '@kiko/design-system/components/box';
@@ -91,7 +95,7 @@ type TransactionFormScreenProps = {
   route: { params: TransactionFormParams };
   navigation: {
     goBack: () => void;
-    setOptions: (options: { title: string }) => void;
+    setOptions: (options: { title: string } | FormHeaderItemsOptions) => void;
     setParams: (params: { draft: TransactionFormDraft }) => void;
     navigate: (...route: CreateHoldingRoute) => void;
   };
@@ -319,7 +323,7 @@ const ruleCategoryFor = (
   return key === '' ? null : (categoryByNormalizedName.get(key) ?? null);
 };
 
-// Whether the footer's Save button is disabled, per mode — each branch mirrors
+// Whether the Save button is disabled, per mode — each branch mirrors
 // exactly what that mode's `save` path validates before it writes:
 // - convert: a counterpart holding picked AND a positive counterpart amount.
 // - exchange: a destination picked AND a positive Value Out AND Value In.
@@ -1421,10 +1425,10 @@ const renderSplitReturns = (props: SplitReturnsProps): ReactElement | null => {
   );
 };
 
-// Whether the footer's Save button renders: a manual row always, a synced row
+// Whether the nav bar's Save shows: a manual row always, a synced row
 // only once its category has changed, and a converting row always (its Save
 // writes the counterpart leg and only the existing row's pair id). Kept module-level and
-// pure so the footer's boolean expression does not add its own operator count
+// pure so the boolean expression does not add its own operator count
 // to the screen component's cognitive-complexity budget.
 const showsSaveButton = (
   isReadOnly: boolean,
@@ -2615,6 +2619,13 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
 
   const { onPress: onSave, isSubmitting } = useSubmitOnce(save);
 
+  useFormHeaderItems({
+    navigation,
+    onSave,
+    hasSave: showsSaveButton(isReadOnly, categoryChanged, converting),
+    isSaving: isSubmitting,
+  });
+
   // The transaction-TYPE selector, built here so the label/mode copy stays with
   // the component's live translations. It renders directly UNDER the Holding
   // select field (not while converting, which has no mode toggle). Uses the
@@ -2642,13 +2653,6 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
         scrollableRef={scrollableRef}
         onContentSizeChange={onContentSizeChange}
         onFieldBlur={onFieldBlur}
-        footer={
-          showsSaveButton(isReadOnly, categoryChanged, converting) ? (
-            <Button onPress={onSave} disabled={isSubmitting}>
-              {t('common.save')}
-            </Button>
-          ) : undefined
-        }
       >
         <Box gap={4} testID="transaction-form">
           {renderReadOnlyNotice(isReadOnly, theme.colors.surfaceHigh, readOnlyNotice)}
