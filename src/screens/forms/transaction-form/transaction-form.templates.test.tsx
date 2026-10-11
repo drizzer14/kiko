@@ -1256,6 +1256,11 @@ describe('TransactionFormScreen — Manual and Template tabs', () => {
     await fireEvent.press(utils.getByTestId(`template-field-option-${id}`));
   };
 
+  const pickHolding = async (utils: Utils, optionLabel: string): Promise<void> => {
+    await fireEvent.press(utils.getByLabelText('Holding'));
+    await fireEvent.press(utils.getByLabelText(optionLabel));
+  };
+
   beforeEach(() => {
     jest.clearAllMocks();
     jest.spyOn(Date, 'now').mockReturnValue(NOW);
@@ -1501,6 +1506,118 @@ describe('TransactionFormScreen — Manual and Template tabs', () => {
     });
   });
 
+  describe('on an add from a holding, once a template seats another holding', () => {
+    // An exchange from the wallet, so a card picked in the shown field cannot keep it.
+    const WALLET_EXCHANGE = {
+      id: 't5',
+      name: 'Swap',
+      draft: draftOf({
+        mode: 'exchange',
+        holdingId: 'h1',
+        currency: 'UAH',
+        amountMinorUnits: 10000,
+        category: 'groceries',
+        exchange: {
+          destinationHoldingId: 'usd',
+          destinationCurrency: 'USD',
+          valueInMinorUnits: 250,
+        },
+      }),
+    };
+
+    const openOnTemplate = async (templateId: string): Promise<Utils> => {
+      setLiveData({ draft: EXPENSE, templateList: [...TEMPLATES, WALLET_EXCHANGE] });
+
+      const utils = await render(templateScreen({ holdingId: 'usd' }));
+
+      await fireEvent.press(within(utils.getByTestId('entry-tabs')).getByText('Template'));
+      await pickTemplate(utils, templateId);
+
+      return utils;
+    };
+
+    it('shows the holding field with the template holding, and writes to it', async () => {
+      const utils = await openOnTemplate('t1');
+
+      expect(utils.getByLabelText('Holding')).toHaveTextContent('Wallet UAHHome');
+
+      await fireEvent.press(utils.getByText('Save'));
+
+      expect(mockRecordManual).toHaveBeenCalledWith(expect.objectContaining({ holdingId: 'h1' }));
+    });
+
+    it('writes to the holding picked in the field instead', async () => {
+      const utils = await openOnTemplate('t1');
+
+      await pickHolding(utils, 'Alice, Home');
+
+      expect(utils.getByLabelText('Holding')).toHaveTextContent('AliceHome');
+
+      await fireEvent.press(utils.getByText('Save'));
+
+      expect(mockRecordManual).toHaveBeenCalledWith(
+        expect.objectContaining({ holdingId: 'friend' }),
+      );
+    });
+
+    it('settles an exchange to Expense when the field picks a card, and writes it from the card', async () => {
+      const utils = await openOnTemplate('t5');
+
+      expect(utils.getByLabelText('Type')).toHaveTextContent('Exchange');
+
+      await pickHolding(utils, 'Card UAH, Home');
+
+      expect(utils.getByLabelText('Type')).toHaveTextContent('Expense');
+
+      await fireEvent.press(utils.getByText('Save'));
+
+      expect(mockRecordExchange).not.toHaveBeenCalled();
+      expect(mockRecordManual).toHaveBeenCalledWith(
+        expect.objectContaining({ holdingId: 'card', amountMinorUnits: -10000 }),
+      );
+    });
+
+    it('keeps the field, showing the page holding, after a re-pick of a template with none', async () => {
+      const utils = await openOnTemplate('t1');
+
+      await pickTemplate(utils, 't3');
+
+      expect(utils.getByLabelText('Holding')).toHaveTextContent('Wallet USDHome');
+
+      await fireEvent.changeText(utils.getByLabelText('Amount'), '5');
+      await fireEvent.press(utils.getByText('Save'));
+
+      expect(mockRecordManual).toHaveBeenCalledWith(
+        expect.objectContaining({ holdingId: 'usd', description: 'Coffee' }),
+      );
+    });
+
+    it('keeps the field, showing the page holding, after a re-pick of a template holding it', async () => {
+      const utils = await openOnTemplate('t1');
+
+      await pickTemplate(utils, 't2');
+
+      expect(utils.getByLabelText('Holding')).toHaveTextContent('Wallet USDHome');
+    });
+
+    it.each([
+      ['holds the page holding', 't2'],
+      ['holds no holding', 't3'],
+    ])('keeps the field hidden for a template that %s', async (_name, templateId) => {
+      const utils = await openOnTemplate(templateId);
+
+      expect(utils.queryByLabelText('Holding')).toBeNull();
+    });
+
+    it('shows no holding field on the Manual tab', async () => {
+      setLiveData({ draft: EXPENSE, templateList: TEMPLATES });
+
+      const utils = await render(templateScreen({ holdingId: 'usd' }));
+
+      expect(utils.queryByLabelText('Holding')).toBeNull();
+    });
+  });
+
   describe('where the seated holding offers fewer modes', () => {
     // An exchange whose own source holding was deleted, so the template holds none.
     const EXCHANGE = {
@@ -1567,11 +1684,6 @@ describe('TransactionFormScreen — Manual and Template tabs', () => {
       category: 'groceries',
       returns: [{ holdingId: 'friend', amountMinorUnits: 500 }],
     });
-
-    const pickHolding = async (utils: Utils, optionLabel: string): Promise<void> => {
-      await fireEvent.press(utils.getByLabelText('Holding'));
-      await fireEvent.press(utils.getByLabelText(optionLabel));
-    };
 
     const openTemplate = async (
       entry: 'the Template tab' | 'a template to create from',

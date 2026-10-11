@@ -1,4 +1,4 @@
-import { readRouteEntry } from './route-entry';
+import { readRouteEntry, resolveHoldingField, revealsHoldingField } from './route-entry';
 
 const NO_TEMPLATE = {
   editTemplateId: null,
@@ -86,5 +86,45 @@ describe('readRouteEntry', () => {
       isEmptyCreate: true,
       seedsDefaultHolding: true,
     });
+  });
+});
+
+describe('resolveHoldingField', () => {
+  it.each([
+    ['an empty create', true, false, true],
+    ['a revealed field', false, true, true],
+    ['neither', false, false, false],
+  ])('is visible for %s: %s', (_name, isEmptyCreate, isRevealed, visible) => {
+    expect(resolveHoldingField({ isEmptyCreate, isRevealed, holdingId: 'h1' }).visible).toBe(
+      visible,
+    );
+  });
+
+  it('shows the holding the form writes to, or none', () => {
+    expect(
+      resolveHoldingField({ isEmptyCreate: true, isRevealed: false, holdingId: 'h1' }).selectedId,
+    ).toBe('h1');
+    expect(
+      resolveHoldingField({ isEmptyCreate: true, isRevealed: false, holdingId: undefined })
+        .selectedId,
+    ).toBeNull();
+  });
+});
+
+describe('revealsHoldingField', () => {
+  it('reveals it once a holding other than the page holding is seated', () => {
+    expect(revealsHoldingField(false, 'h1', 'card')).toBe(true);
+  });
+
+  it('keeps it hidden while the seated holding is the page holding', () => {
+    expect(revealsHoldingField(false, 'h1', 'h1')).toBe(false);
+  });
+
+  it('keeps it shown once revealed, even when the page holding is seated again', () => {
+    expect(revealsHoldingField(true, 'h1', 'h1')).toBe(true);
+  });
+
+  it('never reveals it on an entry with no page holding', () => {
+    expect(revealsHoldingField(false, null, 'card')).toBe(false);
   });
 });

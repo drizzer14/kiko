@@ -17,6 +17,28 @@ const resolveTemplateEntry = (
   return editTemplateId === null ? null : 'edit';
 };
 
+// Whether the holding field shows on an add from a holding: once a template has seated a holding
+// other than the page's, and then for the rest of the form's life, so a field the user picked the
+// page holding in does not vanish. Any other entry has no page holding (`null`) and never reveals
+// it: the global add shows the field already, and the rest fix their holding.
+export const revealsHoldingField = (
+  isRevealed: boolean,
+  holdingParamId: string | null,
+  seatedHoldingId: string,
+): boolean => isRevealed || (holdingParamId !== null && seatedHoldingId !== holdingParamId);
+
+// The holding field's visibility and the holding it shows. It shows the holding the form writes to,
+// which is the page's once a template with none empties the seam (an add from a holding), not the
+// seam itself.
+export const resolveHoldingField = (args: {
+  isEmptyCreate: boolean;
+  isRevealed: boolean;
+  holdingId: string | undefined;
+}): { visible: boolean; selectedId: string | null } => ({
+  visible: args.isEmptyCreate || args.isRevealed,
+  selectedId: args.holdingId ?? null,
+});
+
 // The mutually-exclusive entry ids read once from the route params, so
 // the component body spends no `in`-check branch on any of them (the union
 // keeps at most one non-null). `holdingParamId` is the plain-add holding;

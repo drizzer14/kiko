@@ -91,7 +91,6 @@ import CommentRow from './comment-row';
 import FieldGroup from './field-group';
 import FormFooter from './form-footer';
 import SplitReturns from './split-returns';
-import { readRouteEntry } from './route-entry';
 import ReadOnlyNotice from './read-only-notice';
 import { draftFromForm } from './draft-from-form';
 import TemplateNameField from './template-name-field';
@@ -107,6 +106,7 @@ import { alongsideArguments, writeTemplate } from './template-save';
 import SaveAsTemplate, { resolveTemplateSwitch } from './save-as-template';
 import { convertCounterpartType, resolveConvertView } from './convert-view';
 import { DEFAULT_MODE, MODE_ICONS, resolveModeOptions } from './mode-options';
+import { readRouteEntry, resolveHoldingField, revealsHoldingField } from './route-entry';
 
 // This screen is registered in the Home, Accounts, and Settings stacks (Home lists every
 // transaction; Accounts reaches it from a holding; Settings reaches it from the templates
@@ -282,6 +282,14 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   // The holding an add from a holding names, which stays the form's holding whenever the seam is
   // empty again: a template with none of its own falls back to it.
   const pageHolding = holdings.find((candidate) => candidate.id === holdingParamId);
+  // Set once a template seats a holding other than the page's, and never cleared (see
+  // `revealsHoldingField`): an add from a holding then shows its holding field.
+  const [isHoldingFieldRevealed, setHoldingFieldRevealed] = useState(false);
+  const holdingField = resolveHoldingField({
+    isEmptyCreate,
+    isRevealed: isHoldingFieldRevealed,
+    holdingId,
+  });
   const currency: Currency = holding?.currency ?? 'UAH';
   // Each money field's trailing currency glyph, keyed off the holding that owns
   // that leg. Empty when the owning holding hasn't resolved/been picked yet, so
@@ -568,6 +576,9 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     match(plan)
       .with({ kind: 'seedHolding' }, (seedHoldingPlan) => {
         setPrimaryHoldingId(seedHoldingPlan.holdingId);
+        setHoldingFieldRevealed((revealed) =>
+          revealsHoldingField(revealed, holdingParamId, seedHoldingPlan.holdingId),
+        );
         // Close the latch only for a FINAL seed (empty-create): `false` is a
         // no-op on the duplicate step (the latch is already open), so this stays
         // a single flat statement rather than another branch.
@@ -611,6 +622,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     templateDraft,
     seededTemplateName,
     pageHolding,
+    holdingParamId,
     setSelectedCategory,
     setUserPickedCategory,
   ]);
@@ -1240,17 +1252,18 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
               inputRef={templateNameInputRef}
             />
 
-            {/* B: the primary-leg holding picker, shown ONLY when no holding was
-            fixed by navigation (the global-add entry). It drives the shared
-            `primaryHoldingId` seam, so the currency/category/exchange derivation
-            below follows the pick automatically. Null on every other path. */}
+            {/* B: the primary-leg holding picker, shown when no holding was fixed by
+            navigation (the global-add entry), and on an add from a holding once a
+            template has seated another one. It drives the shared `primaryHoldingId`
+            seam, so the currency/category/exchange derivation below follows the pick
+            automatically. Null on every other path. */}
             <PrimaryHoldingField
-              visible={isEmptyCreate}
+              visible={holdingField.visible}
               label={t('forms.transaction.holding')}
               sheetTitle={t('forms.transaction.holdingSheetTitle')}
               placeholder={t('forms.transaction.selectHolding')}
               options={primaryOptions}
-              selectedId={primaryHoldingId}
+              selectedId={holdingField.selectedId}
               onSelect={pickPrimaryHolding}
               onCreateNew={openCreateHoldingIn(undefined, isTransactionEligibleType)}
               error={fieldError('holding')}
