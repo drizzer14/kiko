@@ -1,8 +1,16 @@
 import type { Currency } from '@kiko/currency/currency';
 import type { HoldingRow, TransactionRow } from '@kiko/db';
+import type { FormMode } from '@kiko/screens/forms/mode-select-field';
 import { groupAmount, majorAmountText } from '@kiko/screens/forms/amount-format';
+import type { TemplateDraft, TemplateMode } from '@kiko/transaction-templates/draft';
 
-import type { Sign } from '../row-labels';
+import type { ChangeReturnRow, Sign } from '../row-labels';
+
+// The template's own mode union lives in a feature, which must not import this screen's, so each
+// is assigned to the other here: `tsc` fails if either union gains a member the other lacks.
+const toFormMode = (mode: TemplateMode): FormMode => mode;
+
+export const toTemplateMode = (mode: FormMode): TemplateMode => mode;
 
 // Present a stored (signed) minor-units amount as the unsigned major string the
 // Amount input shows, pairing it with the sign chip the amount's polarity maps
@@ -31,20 +39,98 @@ export const toAmountFields = (
 // hydrate, so it closes the `hydrated` latch immediately (`true`) — stopping the
 // effect from re-running every render (which otherwise raised overlapping-act
 // churn) without adding a branch to the effect.
+//
+// A template fills through this same plan (one fill path): its fields ride the same two steps,
+// with `time: null` so the date stays at now. `mode`, `destinationHoldingId`, `valueIn` and
+// `returns` are what a template can set beyond a transaction row, and a row's plan carries
+// today's values for them (its sign, no destination, no Value in, one empty return), so a
+// Duplicate and an Edit seed what they always did. `templateName` and `clearsHolding` ride only
+// a template's plan: `clearsHolding` empties the seam when the template holds no holding on an
+// entry whose seam was not a page choice.
+type ReturnSeed = { holdingId: string | null; amount: string };
+
+export type SeedFieldsPlan = {
+  kind: 'seedFields';
+  amount: string;
+  mode: FormMode;
+  description: string;
+  // The list label seeded in place of a blank stored description (see
+  // `resolveBlankLabel`), or null when the row's own description was seeded.
+  prefilledLabel: string | null;
+  category: string | null;
+  time: number | null;
+  destinationHoldingId: string | null;
+  valueIn: string;
+  returns: ReturnSeed[];
+  templateName?: string | null;
+  clearsHolding?: boolean;
+};
+
 type HydrationPlan =
   | { kind: 'wait' }
   | { kind: 'seedHolding'; holdingId: string; final: boolean }
-  | {
-      kind: 'seedFields';
-      amount: string;
-      sign: Sign;
-      description: string;
-      // The list label seeded in place of a blank stored description (see
-      // `resolveBlankLabel`), or null when the row's own description was seeded.
-      prefilledLabel: string | null;
-      category: string | null;
-      time: number | null;
-    };
+  | SeedFieldsPlan;
+
+type TemplateSeat = 'keepPage' | 'clear';
+
+type SeedFieldsSetters = {
+  setAmount: (amount: string) => void;
+  setMode: (mode: FormMode) => void;
+  setDescription: (description: string) => void;
+  setPrefilledLabel: (prefilledLabel: string | null) => void;
+  setSelectedCategory: (category: string | null) => void;
+  setUserPickedCategory: (picked: boolean) => void;
+  setTime: (time: number) => void;
+  setDestinationHoldingId: (holdingId: string | null) => void;
+  setValueIn: (valueIn: string) => void;
+  setChangeReturns: (rows: ChangeReturnRow[]) => void;
+  setPrimaryHoldingId: (holdingId: string | null) => void;
+};
+
+// Applies a `seedFields` plan with the form's own setters, for every entry that fills (Edit,
+// Duplicate, a template). Kept out of the screen's effect so its branches stay out of the
+// screen's cognitive-complexity budget.
+export const applySeedFields = (
+  plan: SeedFieldsPlan,
+  setters: SeedFieldsSetters,
+  takeReturnId: () => number,
+): void => {
+  setters.setAmount(plan.amount);
+  setters.setMode(plan.mode);
+  setters.setDescription(plan.description);
+  setters.setPrefilledLabel(plan.prefilledLabel);
+  setters.setSelectedCategory(plan.category);
+  // A seeded non-null category counts as a user pick, so a later description blur (A1's
+  // `reseatCategoryFromName`) can never clobber it: the "duplicate a row, tweak the note" flow
+  // keeps the copied category when the retyped description matches no name rule, and a
+  // template's category is a hand pick the same way. An edit already guards its stored category
+  // via `isEditing`, so this is a harmless no-op there; a null category leaves the flag alone,
+  // so A1's create-blur auto-seat is unaffected.
+  if (plan.category !== null) {
+    setters.setUserPickedCategory(true);
+  }
+
+  // A null `time` keeps the field at NOW — a Duplicate and a template never copy a timestamp;
+  // the edit path carries the stored time.
+  if (plan.time !== null) {
+    setters.setTime(plan.time);
+  }
+
+  setters.setDestinationHoldingId(plan.destinationHoldingId);
+  setters.setValueIn(plan.valueIn);
+  setters.setChangeReturns(plan.returns.map((row) => ({ id: takeReturnId(), ...row })));
+
+  if (plan.clearsHolding) {
+    setters.setPrimaryHoldingId(null);
+  }
+};
+
+const emptyReturns = (): ReturnSeed[] => [{ holdingId: null, amount: '' }];
+
+// Lowercase the stored value to a slug key — the same normalization the display resolver
+// applies — so it lines up with the picker's option keys.
+const categoryKey = (category: string | null): string | null =>
+  category ? category.toLowerCase() : null;
 
 const seedFieldsFrom = (
   currency: Currency,
@@ -57,14 +143,74 @@ const seedFieldsFrom = (
   return {
     kind: 'seedFields',
     amount: groupAmount(fields.amount),
-    sign: fields.sign,
+    mode: fields.sign,
     description: prefilledLabel ?? row.description,
     prefilledLabel,
-    // Lowercase the stored value to a slug key — the same normalization the
-    // display resolver applies — so it lines up with the picker's option keys.
-    category: row.category ? row.category.toLowerCase() : null,
+    category: categoryKey(row.category),
     time,
+    destinationHoldingId: null,
+    valueIn: '',
+    returns: emptyReturns(),
   };
+};
+
+// The stored scale, never the picked holding's: the holding may be gone, and a fallback currency
+// would put the point in the wrong place (a JPY 1050 read as UAH is 10.50).
+const storedAmountText = (currency: Currency | null, minorUnits: number | null): string =>
+  currency === null || minorUnits === null
+    ? ''
+    : groupAmount(majorAmountText(currency, minorUnits));
+
+const seedFieldsFromTemplate = (
+  draft: TemplateDraft,
+  templateName: string | null,
+  clearsHolding: boolean,
+): HydrationPlan => ({
+  kind: 'seedFields',
+  amount: storedAmountText(draft.currency, draft.amountMinorUnits),
+  mode: toFormMode(draft.mode),
+  description: draft.description,
+  prefilledLabel: null,
+  category: categoryKey(draft.category),
+  time: null,
+  destinationHoldingId: draft.exchange?.destinationHoldingId ?? null,
+  valueIn: storedAmountText(
+    draft.exchange?.destinationCurrency ?? null,
+    draft.exchange?.valueInMinorUnits ?? null,
+  ),
+  returns:
+    draft.returns.length === 0
+      ? emptyReturns()
+      : draft.returns.map((row) => ({
+          holdingId: row.holdingId,
+          amount: storedAmountText(draft.currency, row.amountMinorUnits),
+        })),
+  templateName,
+  clearsHolding,
+});
+
+// A template with a holding takes the Duplicate's two steps: seat the seam from it (unless it
+// already is), then seed once that holding has loaded. A template with none seeds at once, and
+// whether that empties the seam depends on the entry: a plain add from a holding keeps the page's
+// holding, every other entry clears it so the form asks.
+const resolveTemplateHydration = (args: {
+  templateDraft: TemplateDraft;
+  templateName: string | null;
+  templateSeat: TemplateSeat;
+  primaryHoldingId: string | null;
+  holding: HoldingRow | undefined;
+}): HydrationPlan => {
+  const { templateDraft, templateName, templateSeat, primaryHoldingId, holding } = args;
+
+  if (templateDraft.holdingId === null) {
+    return seedFieldsFromTemplate(templateDraft, templateName, templateSeat === 'clear');
+  }
+
+  if (templateDraft.holdingId !== primaryHoldingId) {
+    return { kind: 'seedHolding', holdingId: templateDraft.holdingId, final: false };
+  }
+
+  return holding ? seedFieldsFromTemplate(templateDraft, templateName, false) : { kind: 'wait' };
 };
 
 export const resolveHydration = (args: {
@@ -80,6 +226,12 @@ export const resolveHydration = (args: {
   // default rides the effect's own one-shot latch with no second effect.
   defaultPrimaryHoldingId: string | null;
   blankLabel: string | null;
+  // The picked template's draft, its references already resolved against the live holdings and
+  // categories (`resolveDraftReferences`). Null on every entry that fills from none, and while
+  // what it resolves against is still loading.
+  templateDraft: TemplateDraft | null;
+  templateName: string | null;
+  templateSeat: TemplateSeat;
 }): HydrationPlan => {
   const {
     existing,
@@ -89,6 +241,9 @@ export const resolveHydration = (args: {
     currency,
     defaultPrimaryHoldingId,
     blankLabel,
+    templateDraft,
+    templateName,
+    templateSeat,
   } = args;
 
   // Edit: seed once both the row and its holding have loaded, carrying the
@@ -109,6 +264,18 @@ export const resolveHydration = (args: {
     if (holding) {
       return seedFieldsFrom(currency, duplicateSource, null, null);
     }
+  }
+
+  // A picked template runs before the default holding: it seats its own holding, or clears the
+  // seam, so a default seated first would only be overwritten.
+  if (templateDraft) {
+    return resolveTemplateHydration({
+      templateDraft,
+      templateName,
+      templateSeat,
+      primaryHoldingId,
+      holding,
+    });
   }
 
   // Empty-create (B): seat the primary seam from the most-recent-manual default

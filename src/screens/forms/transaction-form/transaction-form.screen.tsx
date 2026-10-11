@@ -21,7 +21,6 @@ import { parseAmount } from '@kiko/currency/parse';
 import { StyleSheet } from 'react-native-unistyles';
 import Box from '@kiko/design-system/components/box';
 import { categoriesRepo } from '@kiko/categories/repo';
-import { useLiveQuery, type HoldingRow } from '@kiko/db';
 import { transactionsRepo } from '@kiko/transactions/repo';
 import Button from '@kiko/design-system/components/button';
 import Screen from '@kiko/design-system/components/screen';
@@ -31,12 +30,14 @@ import { alertOnCatch } from '@kiko/design-system/alert-on-catch';
 import { useSubmitOnce } from '@kiko/design-system/use-submit-once';
 import type { TransactionFormParams } from '@kiko/navigation/types';
 import { accountDisplayName } from '@kiko/holdings/implicit-account';
+import { useDataReady, useLiveQuery, type HoldingRow } from '@kiko/db';
 import { type Currency, currencySymbol } from '@kiko/currency/currency';
 import type { FieldInstance } from '@kiko/design-system/scroll-to-field';
 import { resolveCategoryColor } from '@kiko/statistics/category-breakdown';
 import { useScrollToField } from '@kiko/design-system/use-scroll-to-field';
 import { seedCounterpartMinorUnits } from '@kiko/holdings/exchange-prefill';
 import { buildCategoryDisplayMap } from '@kiko/categories/category-display';
+import { transactionTemplatesRepo } from '@kiko/transaction-templates/repo';
 import { categoryOverridesRepo } from '@kiko/categories/category-overrides-repo';
 import DescriptionSuggestions from '@kiko/screens/forms/description-suggestions';
 import { groupAmount, majorAmountText } from '@kiko/screens/forms/amount-format';
@@ -82,13 +83,14 @@ import CommentRow from './comment-row';
 import FieldGroup from './field-group';
 import SplitReturns from './split-returns';
 import { readRouteEntry } from './route-entry';
-import { resolveHydration } from './hydration';
 import ReadOnlyNotice from './read-only-notice';
 import { useCategoryPick } from './use-category-pick';
 import PrimaryHoldingField from './primary-holding-field';
+import { resolveTemplateSeed } from './template-references';
 import CategoryOverrideSheet from './category-override-sheet';
 import { useCategoryOverride } from './use-category-override';
 import { MODE_ICONS, resolveModeOptions } from './mode-options';
+import { applySeedFields, resolveHydration } from './hydration';
 import { resolveCategoryOverrideRequest } from './category-rule';
 import { convertCounterpartType, resolveConvertView } from './convert-view';
 
@@ -130,12 +132,16 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   // `holdingsRepo` exposes no single-row lookup, so the holding's own currency
   // (needed to convert the entered major amount to minor units) comes from
   // filtering the full holdings list — the same approach the detail screen uses.
-  const { data: holdings } = useLiveQuery(holdingsRepo.allQuery(), ['holdings']);
+  const { data: holdings, isLoading: holdingsLoading } = useLiveQuery(holdingsRepo.allQuery(), [
+    'holdings',
+  ]);
   // The Exchange destination picker's account-name caption:
   // every account, reduced to an id -> name map so `buildExchangeOptions` can
   // thread a plain string onto each holding option without a per-row lookup
   // query.
-  const { data: accounts } = useLiveQuery(accountsRepo.listQuery(), ['accounts']);
+  const { data: accounts, isLoading: accountsLoading } = useLiveQuery(accountsRepo.listQuery(), [
+    'accounts',
+  ]);
   // The display name, not the stored one: a loan option sits under the implicit
   // debt account, whose stored name is an English sentinel.
   const accountNameById = new Map(
@@ -157,7 +163,15 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   // helper so the component body spends no `in`-check branch on any of them. In
   // add mode the by-id query runs against an empty id and returns nothing,
   // keeping the hook order stable without a conditional call.
-  const { editingId, duplicateOfId, holdingParamId, isEmptyCreate } = readRouteEntry(route.params);
+  const {
+    editingId,
+    duplicateOfId,
+    holdingParamId,
+    templateQueryId,
+    isEmptyCreate,
+    seedsDefaultHolding,
+    templateSeat,
+  } = readRouteEntry(route.params);
   // ONE by-id subscription serves both the edit source and the duplicate source
   // (never both at once — the union keeps the params mutually exclusive).
   const { data: matchedTransactions } = useLiveQuery(
@@ -170,11 +184,20 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   // the form as editing the source row.
   const existing = editingId ? matchedTransactions.at(0) : undefined;
   const duplicateSource = duplicateOfId ? matchedTransactions.at(0) : undefined;
+  // The template the route names (to fill from, or to edit), by its own by-id subscription. An
+  // entry with no template reads an empty id and gets nothing, like the transaction read above.
+  const { data: templateRows, isLoading: templateLoading } = useLiveQuery(
+    transactionTemplatesRepo.getByIdQuery(templateQueryId),
+    ['transaction_templates'],
+  );
 
   // The category picker's options come from the categories live query (a rename
   // flows straight through), and the confirm copy resolves the picked key to its
   // display title through the same map every screen uses.
-  const { data: categories } = useLiveQuery(categoriesRepo.allQuery(), ['categories']);
+  const { data: categories, isLoading: categoriesLoading } = useLiveQuery(
+    categoriesRepo.allQuery(),
+    ['categories'],
+  );
   const categoryByKey = buildCategoryDisplayMap(categories);
   // The name→category rules: subscribed once and reduced to a normalized-
   // name lookup map, so a create can pre-select a category from the settled
@@ -277,7 +300,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   // The hydrate effect below feeds it to `resolveHydration`, which seeds it
   // through the SAME `seedHolding` step the duplicate path uses.
   const defaultPrimaryHoldingId = resolveDefaultPrimaryHolding({
-    isEmptyCreate,
+    isEmptyCreate: seedsDefaultHolding,
     primaryHoldingId,
     latestManualLoading,
     latestManualHoldingId,
@@ -412,6 +435,27 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   // renamed mid-edit cannot turn the untouched label into stored text.
   const [prefilledLabel, setPrefilledLabel] = useState<string | null>(null);
   const blankLabel = resolveBlankLabel({ existing, holding, holdings, t });
+  // The template the entry fills from, its references resolved against the live holdings and
+  // categories. Held back until all of those reads settle, so nothing resolves against a list that
+  // is still loading.
+  const isTemplateReady = useDataReady(
+    holdingsLoading,
+    accountsLoading,
+    categoriesLoading,
+    templateLoading,
+  );
+  const { templateDraft, templateName } = resolveTemplateSeed({
+    row: templateRows.at(0),
+    isReady: isTemplateReady,
+    isHydrated: hydrated,
+    source: {
+      holdings,
+      accountNameById,
+      accountOrderById,
+      accountById,
+      categoryKeys: categories.map((category) => category.key),
+    },
+  });
   // Whether the user has pressed Save at least once. Save is always enabled;
   // this latches the inline reason on so it only ever appears after a press
   // that `disableSave` blocked, never live while the user is still filling
@@ -440,6 +484,9 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
       currency,
       defaultPrimaryHoldingId,
       blankLabel,
+      templateDraft,
+      templateName,
+      templateSeat,
     });
 
     match(plan)
@@ -451,30 +498,23 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
         setHydrated(seedHoldingPlan.final);
       })
       .with({ kind: 'seedFields' }, (seedFieldsPlan) => {
-        setAmount(seedFieldsPlan.amount);
-        setMode(seedFieldsPlan.sign);
-        setDescription(seedFieldsPlan.description);
-        setPrefilledLabel(seedFieldsPlan.prefilledLabel);
-        setSelectedCategory(seedFieldsPlan.category);
-        // A seeded non-null category counts as a user pick, so a later
-        // description blur (A1's `reseatCategoryFromName`) can never clobber it.
-        // This matters for the DUPLICATE path (`isEditing` is false there): the
-        // "duplicate a row, tweak the note" flow must keep the copied category
-        // when the retyped description matches no name rule. The edit path already
-        // guards its stored category via `isEditing`, so this is a harmless no-op
-        // there; the empty-create/fixed-holding paths seed a null category, so
-        // `userPickedCategory` stays false and A1's normal create-blur auto-seat
-        // is unaffected.
-        if (seedFieldsPlan.category !== null) {
-          setUserPickedCategory(true);
-        }
-
-        // A null `time` keeps the field at NOW — the duplicate never copies the
-        // source timestamp; the edit path carries the stored time.
-        if (seedFieldsPlan.time !== null) {
-          setTime(seedFieldsPlan.time);
-        }
-
+        applySeedFields(
+          seedFieldsPlan,
+          {
+            setAmount,
+            setMode,
+            setDescription,
+            setPrefilledLabel,
+            setSelectedCategory,
+            setUserPickedCategory,
+            setTime,
+            setDestinationHoldingId,
+            setValueIn,
+            setChangeReturns,
+            setPrimaryHoldingId,
+          },
+          () => nextReturnId.current++,
+        );
         setHydrated(true);
       })
       // Neither the source row's holding nor a default primary holding has
@@ -491,6 +531,9 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     currency,
     defaultPrimaryHoldingId,
     blankLabel,
+    templateDraft,
+    templateName,
+    templateSeat,
     setSelectedCategory,
     setUserPickedCategory,
   ]);

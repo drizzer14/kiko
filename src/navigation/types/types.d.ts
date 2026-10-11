@@ -28,11 +28,16 @@ import type { ImplicitAccountKind } from '@kiko/holdings/implicit-account';
  * NO holding fixed by navigation, so the form renders its own primary-leg
  * holding picker. `Record<string, never>` admits `{}` alone, keeping every
  * member mutually exclusive (a caller can pass exactly one id, or none at all).
+ * The three template members open the same form for a template: `templateId` creates a
+ * transaction filled from that template, `editTemplateId` edits it, and `newTemplate` adds one.
  */
 export type TransactionFormParams =
   | { holdingId: string }
   | { transactionId: string }
   | { duplicateOfTransactionId: string }
+  | { templateId: string }
+  | { editTemplateId: string }
+  | { newTemplate: true }
   | Record<string, never>;
 
 /**
