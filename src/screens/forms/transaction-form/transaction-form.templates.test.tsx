@@ -1550,6 +1550,127 @@ describe('TransactionFormScreen — Manual and Template tabs', () => {
     });
   });
 
+  describe('where a holding picked after the fill offers fewer modes', () => {
+    // A null holding leaves the picker empty, so the mode stays as stored until a holding is
+    // picked.
+    const EXCHANGE_WITHOUT_HOLDING = draftOf({
+      mode: 'exchange',
+      currency: 'UAH',
+      amountMinorUnits: 10000,
+      category: 'groceries',
+      exchange: { destinationHoldingId: 'usd', destinationCurrency: 'USD', valueInMinorUnits: 250 },
+    });
+    const SPLIT_WITHOUT_HOLDING = draftOf({
+      mode: 'split',
+      currency: 'UAH',
+      amountMinorUnits: 10000,
+      category: 'groceries',
+      returns: [{ holdingId: 'friend', amountMinorUnits: 500 }],
+    });
+
+    const pickHolding = async (utils: Utils, optionLabel: string): Promise<void> => {
+      await fireEvent.press(utils.getByLabelText('Holding'));
+      await fireEvent.press(utils.getByLabelText(optionLabel));
+    };
+
+    const openTemplate = async (
+      entry: 'the Template tab' | 'a template to create from',
+      draft: TemplateDraft,
+    ): Promise<Utils> => {
+      setLiveData({ draft, templateList: [{ id: 'tpl', name: 'Swap', draft }] });
+
+      if (entry === 'a template to create from') {
+        return render(templateScreen({ templateId: 'tpl' }));
+      }
+
+      const utils = await render(templateScreen({}));
+
+      await fireEvent.press(within(utils.getByTestId('entry-tabs')).getByText('Template'));
+      await pickTemplate(utils, 'tpl');
+
+      return utils;
+    };
+
+    describe.each([['the Template tab'], ['a template to create from']] as const)(
+      'on %s',
+      (entry) => {
+        it('settles an exchange to Expense for a card', async () => {
+          const utils = await openTemplate(entry, EXCHANGE_WITHOUT_HOLDING);
+
+          expect(utils.getByLabelText('Type')).toHaveTextContent('Exchange');
+
+          await pickHolding(utils, 'Card UAH, Home');
+
+          expect(utils.getByLabelText('Type')).toHaveTextContent('Expense');
+        });
+
+        it('writes the expense, not an exchange, from the card', async () => {
+          const utils = await openTemplate(entry, EXCHANGE_WITHOUT_HOLDING);
+
+          await pickHolding(utils, 'Card UAH, Home');
+          await fireEvent.press(utils.getByText('Save'));
+
+          expect(mockRecordExchange).not.toHaveBeenCalled();
+          expect(mockRecordManual).toHaveBeenCalledWith(
+            expect.objectContaining({
+              holdingId: 'card',
+              amountMinorUnits: -10000,
+              category: 'groceries',
+            }),
+          );
+        });
+
+        it('settles a split to Expense for a card', async () => {
+          const utils = await openTemplate(entry, SPLIT_WITHOUT_HOLDING);
+
+          expect(utils.getByLabelText('Type')).toHaveTextContent('Split');
+
+          await pickHolding(utils, 'Card UAH, Home');
+
+          expect(utils.getByLabelText('Type')).toHaveTextContent('Expense');
+        });
+
+        it('writes the expense, not a split, from the card', async () => {
+          const utils = await openTemplate(entry, SPLIT_WITHOUT_HOLDING);
+
+          await pickHolding(utils, 'Card UAH, Home');
+          await fireEvent.press(utils.getByText('Save'));
+
+          expect(mockRecordManualWithReturns).not.toHaveBeenCalled();
+          expect(mockRecordManual).toHaveBeenCalledWith(
+            expect.objectContaining({ holdingId: 'card', amountMinorUnits: -10000 }),
+          );
+        });
+
+        it('keeps the exchange for a cash holding', async () => {
+          const utils = await openTemplate(entry, EXCHANGE_WITHOUT_HOLDING);
+
+          await pickHolding(utils, 'Wallet UAH, Home');
+
+          expect(utils.getByLabelText('Type')).toHaveTextContent('Exchange');
+          expect(utils.getByLabelText('Value in').props.value).toBe('2.5');
+
+          await fireEvent.press(utils.getByText('Save'));
+
+          expect(mockRecordExchange).toHaveBeenCalledWith(
+            expect.objectContaining({ sourceHoldingId: 'h1', destinationHoldingId: 'usd' }),
+          );
+        });
+
+        it('drops the destination, and its Value in, when the pick is that holding', async () => {
+          const utils = await openTemplate(entry, EXCHANGE_WITHOUT_HOLDING);
+
+          await pickHolding(utils, 'Wallet USD, Home');
+
+          expect(utils.getByLabelText('Type')).toHaveTextContent('Exchange');
+          expect(utils.getByLabelText('To')).toHaveTextContent('Select holding');
+          expect(utils.getByLabelText('Value in').props.value).toBe('');
+          expect(utils.getByLabelText('Value out').props.value).toBe('100');
+        });
+      },
+    );
+  });
+
   describe('on a template to create from', () => {
     const TEMPLATE_ROW = { id: 'tpl', name: 'Rent', draft: EXPENSE };
 

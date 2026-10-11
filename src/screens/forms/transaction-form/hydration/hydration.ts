@@ -4,7 +4,7 @@ import type { FormMode } from '@kiko/screens/forms/mode-select-field';
 import { groupAmount, majorAmountText } from '@kiko/screens/forms/amount-format';
 import type { TemplateDraft, TemplateMode } from '@kiko/transaction-templates/draft';
 
-import { resolveModeOptions } from '../mode-options';
+import { settleMode } from '../mode-options';
 import type { ChangeReturnRow, Sign } from '../row-labels';
 
 // The template's own mode union lives in a feature, which must not import this screen's, so each
@@ -170,9 +170,7 @@ const storedAmountText = (currency: Currency | null, minorUnits: number | null):
 const modeFor = (mode: TemplateMode, seated: HoldingRow | undefined): FormMode => {
   const formMode = toFormMode(mode);
 
-  return seated === undefined || resolveModeOptions(false, seated).includes(formMode)
-    ? formMode
-    : 'expense';
+  return seated === undefined ? formMode : settleMode(formMode, seated);
 };
 
 // The seated holding cannot be its own destination, or the write would refuse it: the form asks.

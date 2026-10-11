@@ -96,16 +96,17 @@ import ReadOnlyNotice from './read-only-notice';
 import { draftFromForm } from './draft-from-form';
 import TemplateNameField from './template-name-field';
 import { useCategoryPick } from './use-category-pick';
+import { applyHoldingChange } from './holding-change';
 import PrimaryHoldingField from './primary-holding-field';
 import { resolveTemplateSeed } from './template-references';
 import CategoryOverrideSheet from './category-override-sheet';
 import { useCategoryOverride } from './use-category-override';
-import { MODE_ICONS, resolveModeOptions } from './mode-options';
 import { applySeedFields, resolveHydration } from './hydration';
 import { resolveCategoryOverrideRequest } from './category-rule';
 import { alongsideArguments, writeTemplate } from './template-save';
 import SaveAsTemplate, { resolveTemplateSwitch } from './save-as-template';
 import { convertCounterpartType, resolveConvertView } from './convert-view';
+import { DEFAULT_MODE, MODE_ICONS, resolveModeOptions } from './mode-options';
 
 // This screen is registered in the Home, Accounts, and Settings stacks (Home lists every
 // transaction; Accounts reaches it from a holding; Settings reaches it from the templates
@@ -393,7 +394,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
 
   const [amount, setAmount] = useState('');
   const [description, setDescription] = useState('');
-  const [mode, setMode] = useState<FormMode>('expense');
+  const [mode, setMode] = useState<FormMode>(DEFAULT_MODE);
   const isExchange = mode === 'exchange';
   const isSplit = mode === 'split';
   const { scrollableRef, onContentSizeChange, scrollTo } = useScrollToField();
@@ -648,6 +649,22 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     }
 
     setCounterpartAmount(groupAmount(majorAmountText(counterpart.currency, seeded)));
+  };
+
+  // The picker is the one place a user changes the primary holding, so a mode the new holding does
+  // not offer is settled here, with the same rule the template seed uses.
+  const pickPrimaryHolding = (pickedId: string): void => {
+    setPrimaryHoldingId(pickedId);
+
+    const picked = holdings.find((candidate) => candidate.id === pickedId);
+
+    if (picked !== undefined) {
+      applyHoldingChange(
+        picked,
+        { mode, destinationHoldingId },
+        { setMode, setDestinationHoldingId, setValueIn },
+      );
+    }
   };
 
   // The row's category at open, keyed the same way, so an edit is detectable.
@@ -1234,7 +1251,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
               placeholder={t('forms.transaction.selectHolding')}
               options={primaryOptions}
               selectedId={primaryHoldingId}
-              onSelect={setPrimaryHoldingId}
+              onSelect={pickPrimaryHolding}
               onCreateNew={openCreateHoldingIn(undefined, isTransactionEligibleType)}
               error={fieldError('holding')}
               fieldRef={holdingFieldRef}
