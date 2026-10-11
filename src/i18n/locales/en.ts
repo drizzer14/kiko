@@ -1368,6 +1368,14 @@ export const en = {
       interval_other: 'Every {{count}} days at {{time}}',
     },
   },
+  transactionTemplates: {
+    addTemplate: 'Add template',
+    empty: {
+      message: 'Save a transaction you enter often as a template, then add it again in a few taps.',
+      title: 'No templates yet',
+    },
+    title: 'Transaction Templates',
+  },
   // The human-readable display name per ISO currency code, shown alongside the
   // code in the searchable CurrencyField (trigger label, rows, accessibility
   // label) and matched against the search query. Keyed by letter code so a

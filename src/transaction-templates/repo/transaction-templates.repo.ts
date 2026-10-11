@@ -19,7 +19,7 @@ import { isTemplateNameTaken } from '@kiko/transaction-templates/template-name';
 
 import { TemplateNameTakenError } from './template-name-taken-error';
 
-type TransactionTemplate = {
+export type TransactionTemplate = {
   id: string;
   name: string;
   draft: TemplateDraft;

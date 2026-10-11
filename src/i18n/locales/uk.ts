@@ -1099,6 +1099,15 @@ export const uk: typeof en = {
       interval_other: 'Кожні {{count}} дня {{at}} {{time}}',
     },
   },
+  transactionTemplates: {
+    addTemplate: 'Додати шаблон',
+    empty: {
+      message:
+        'Збережіть транзакцію, яку вводите часто, як шаблон, і додавайте її знову кількома дотиками.',
+      title: 'Шаблонів ще немає',
+    },
+    title: 'Шаблони транзакцій',
+  },
   // Ukrainian currency display names, keyed by ISO letter code (mirrors
   // en.currencyNames). Official NBU names where the NBU exchange feed quotes the
   // currency; authored Ukrainian names for the codes NBU does not quote. UAH and

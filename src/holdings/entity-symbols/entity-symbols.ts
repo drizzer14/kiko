@@ -125,4 +125,5 @@ export const genericEntitySymbol = {
   holding: 'list.bullet.rectangle',
   transaction: 'arrow.up.arrow.down',
   category: 'tag',
+  template: 'doc.on.doc',
 } as const;

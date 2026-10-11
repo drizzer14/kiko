@@ -148,6 +148,7 @@ describe('genericEntitySymbol', () => {
     expect(genericEntitySymbol.holding).toBe('list.bullet.rectangle');
     expect(genericEntitySymbol.transaction).toBe('arrow.up.arrow.down');
     expect(genericEntitySymbol.category).toBe('tag');
+    expect(genericEntitySymbol.template).toBe('doc.on.doc');
   });
 
   it('maps every generic entity to a non-empty SF Symbol name', () => {

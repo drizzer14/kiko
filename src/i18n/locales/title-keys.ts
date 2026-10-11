@@ -136,4 +136,5 @@ export const TITLE_KEYS = new Set([
   'statistics.spendingTrendByCategory',
   'statistics.title',
   'statistics.trendFilter.title',
+  'transactionTemplates.title',
 ]);
