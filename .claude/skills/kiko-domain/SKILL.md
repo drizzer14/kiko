@@ -2382,8 +2382,11 @@ installment). `UpcomingPayments`
 (`src/screens/holding-detail/upcoming-payments/`, memoized) draws them as
 ledger cards: one `UpcomingPaymentRow` (`upcoming-payment-row/`) per
 installment, built on the shared `EntryCard` under an `EntryDateHeader`. The
-title is `holdingDetail.loanPayment`, the amount is the payment, and the
-footer is the `holdingDetail.scheduled` caption, then the
+title is `holdingDetail.loanPayment`, the amount is the payment read signed
+and red like a Linked Payments row (display-only negation through
+`MoneyText` with `context="transaction"`, the same call; the accessibility
+label reads the signed amount; the principal / interest split stays
+unsigned), and the footer is the `holdingDetail.scheduled` caption, then the
 `holdingDetail.paymentSplit` caption. Read `upcoming-payment-row.component.tsx`
 for the exact row testIDs. Only the first `UPCOMING_PAYMENT_PREVIEW_COUNT`
 installments render (see `upcoming-payments.component.tsx`). A shared
