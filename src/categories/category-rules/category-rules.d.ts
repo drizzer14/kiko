@@ -4,12 +4,19 @@ export type AmountOperator = 'eq' | 'gt' | 'gte' | 'lt' | 'lte';
 
 export type RuleDirection = 'expense' | 'income';
 
+export type TimeOperator = 'before' | 'after';
+
 export type CategoryRuleMatcher =
   | { type: 'nameIs'; text: string }
   | { type: 'nameStartsWith'; text: string }
   | { type: 'amount'; operator: AmountOperator; minorUnits: number; currency: Currency }
   | { type: 'direction'; direction: RuleDirection }
-  | { type: 'time'; operator: 'before' | 'after'; minuteOfDay: number };
+  | { type: 'time'; operator: TimeOperator; minuteOfDay: number };
+
+export type MatcherOfType<Type extends CategoryRuleMatcher['type']> = Extract<
+  CategoryRuleMatcher,
+  { type: Type }
+>;
 
 // Structurally equal to the schema's category rule row, so this folder needs no db import.
 export type StoredCategoryRule = {
@@ -25,8 +32,11 @@ export type PreparedRule = {
   category: string;
   createdAt: number;
   updatedAt: number;
-  // Name texts are already normalized, so evaluating a row compares them as they are.
+  // For matching only: name texts are already normalized, so evaluating a row compares them as
+  // they are. Never show or store these; the text is lowercased.
   matchers: readonly CategoryRuleMatcher[];
+  // For display and for writing the rule back: the matchers exactly as the user typed them.
+  displayMatchers: readonly CategoryRuleMatcher[];
   // Position in priority order, 0 = strongest.
   rank: number;
 };

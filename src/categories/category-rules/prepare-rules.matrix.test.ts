@@ -139,9 +139,12 @@ describe('draft subjects', () => {
       ...overrides,
     });
 
-  it('M16 an amount rule refuses a draft without a holding (no currency)', () => {
-    expect(matches([amountRule('eq', 500)], draft({ currency: null }))).toBe(false);
-  });
+  it.each(['eq', 'gt', 'gte', 'lt', 'lte'] as const)(
+    'M16 an amount %s rule refuses a draft without a holding (no currency)',
+    (operator) => {
+      expect(matches([amountRule(operator, 500)], draft({ currency: null }))).toBe(false);
+    },
+  );
 
   it('M17 a name rule matches a draft without a holding', () => {
     expect(
@@ -152,9 +155,12 @@ describe('draft subjects', () => {
     ).toBe(true);
   });
 
-  it('M18 an amount rule refuses a draft with a blank amount', () => {
-    expect(matches([amountRule('eq', 500)], draft({ absoluteMinorUnits: null }))).toBe(false);
-  });
+  it.each(['eq', 'gt', 'gte', 'lt', 'lte'] as const)(
+    'M18 an amount %s rule refuses a draft with a blank amount',
+    (operator) => {
+      expect(matches([amountRule(operator, 500)], draft({ absoluteMinorUnits: null }))).toBe(false);
+    },
+  );
 
   it('M19 a direction rule matches a draft in that mode with a blank amount', () => {
     expect(
@@ -204,6 +210,19 @@ describe('time matcher', () => {
     ['the spring-forward day', at(2027, 2, 28, 18, 30)],
   ])('M22 after 18:00 matches 18:30 on %s', (_label, time) => {
     expect(matches([timeAfter(18, 0)], storedSubject(-10, 'UAH', 'Silpo', time))).toBe(true);
+  });
+});
+
+describe('a time matcher against a subject with no time', () => {
+  const unknownTime = { ...storedSubject(-10), minuteOfDay: null };
+
+  it.each([
+    ['before', 0],
+    ['before', 1439],
+    ['after', 0],
+    ['after', 1439],
+  ] as const)('refuses %s %i', (operator, minuteOfDay) => {
+    expect(matches([{ type: 'time', operator, minuteOfDay }], unknownTime)).toBe(false);
   });
 });
 

@@ -19,7 +19,7 @@ describe('minuteOfDayOf', () => {
     ['the last minute of the day', at(2026, 0, 1, 23, 59), 1439],
     ['18:30 on the fall-back day', at(2026, 9, 25, 18, 30), 1110],
     ['18:30 on the spring-forward day', at(2027, 2, 28, 18, 30), 1110],
-    ['01:00 after the spring-forward gap', at(2027, 2, 28, 5, 0), 300],
+    ['05:00 after the spring-forward gap', at(2027, 2, 28, 5, 0), 300],
   ])('reads %s as the wall clock minute', (_label, time, expected) => {
     expect(minuteOfDayOf(time)).toBe(expected);
   });

@@ -2,16 +2,18 @@ import { match } from 'ts-pattern';
 import maybe, { foldMap } from 'fnts/maybe';
 import { normalizeTransactionName } from '@kiko/transactions/normalize-name';
 
-import type { CategoryRuleMatcher, PreparedRule, RuleValidation } from './category-rules.d';
-
-type MatcherOfType<Type extends CategoryRuleMatcher['type']> = Extract<
+import type {
   CategoryRuleMatcher,
-  { type: Type }
->;
+  MatcherOfType,
+  PreparedRule,
+  RuleValidation,
+  TimeOperator,
+} from './category-rules.d';
+import { distinctMatcherKeys } from './matcher-key';
+import { LAST_MINUTE_OF_DAY } from './rule-constants';
 
 type IntegerRange = { lowest: number; highest: number };
 
-const LAST_MINUTE_OF_DAY = 1439;
 const KEY_SEPARATOR = '\u0000';
 
 const ofType = <Type extends CategoryRuleMatcher['type']>(
@@ -38,13 +40,18 @@ const narrowAmountRange = (
     .with('lte', () => ({ ...range, highest: Math.min(range.highest, minorUnits) }))
     .exhaustive();
 
+const NARROW_TIME: Record<
+  TimeOperator,
+  (range: IntegerRange, minuteOfDay: number) => IntegerRange
+> = {
+  before: (range, minuteOfDay) => ({ ...range, highest: Math.min(range.highest, minuteOfDay - 1) }),
+  after: (range, minuteOfDay) => ({ ...range, lowest: Math.max(range.lowest, minuteOfDay) }),
+};
+
 const narrowTimeRange = (
   range: IntegerRange,
   { operator, minuteOfDay }: MatcherOfType<'time'>,
-): IntegerRange =>
-  operator === 'before'
-    ? { ...range, highest: Math.min(range.highest, minuteOfDay - 1) }
-    : { ...range, lowest: Math.max(range.lowest, minuteOfDay) };
+): IntegerRange => NARROW_TIME[operator](range, minuteOfDay);
 
 const directionsCanMatch = (matchers: readonly CategoryRuleMatcher[]): boolean =>
   new Set(ofType(matchers, 'direction').map(({ direction }) => direction)).size <= 1;
@@ -100,24 +107,10 @@ export const canEverMatch = (matchers: readonly CategoryRuleMatcher[]): boolean 
   timesCanMatch(matchers) &&
   namesCanMatch(matchers);
 
-const keyOfMatcher = (matcher: CategoryRuleMatcher): string =>
-  match(matcher)
-    .with(
-      { type: 'nameIs' },
-      { type: 'nameStartsWith' },
-      ({ type, text }) => `${type}:${normalizeTransactionName(text)}`,
-    )
-    .with(
-      { type: 'amount' },
-      ({ operator, minorUnits, currency }) => `amount:${operator}:${minorUnits}:${currency}`,
-    )
-    .with({ type: 'direction' }, ({ direction }) => `direction:${direction}`)
-    .with({ type: 'time' }, ({ operator, minuteOfDay }) => `time:${operator}:${minuteOfDay}`)
-    .exhaustive();
-
-// Sorted, so the same matchers in another order are the same set.
+// Sorted and deduplicated, so the same matchers in another order, or with one written twice, are
+// the same set.
 export const matcherSetKey = (matchers: readonly CategoryRuleMatcher[]): string =>
-  matchers.map(keyOfMatcher).sort().join(KEY_SEPARATOR);
+  distinctMatcherKeys(matchers).join(KEY_SEPARATOR);
 
 export const validateRule = (
   matchers: readonly CategoryRuleMatcher[],

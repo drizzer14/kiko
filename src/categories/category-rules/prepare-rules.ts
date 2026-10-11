@@ -1,14 +1,18 @@
+import { match } from 'ts-pattern';
 import maybe, { foldMap } from 'fnts/maybe';
 import { normalizeTransactionName } from '@kiko/transactions/normalize-name';
 
 import type {
   AmountOperator,
   CategoryRuleMatcher,
+  MatcherOfType,
   PreparedRule,
   PreparedRules,
   RuleSubject,
   StoredCategoryRule,
+  TimeOperator,
 } from './category-rules.d';
+import { distinctMatcherKeys } from './matcher-key';
 import { parseRuleMatchers } from './parse-rule-matchers';
 
 /**
@@ -22,11 +26,14 @@ import { parseRuleMatchers } from './parse-rule-matchers';
  * - `before X` is a minute strictly earlier than X; `after X` is X or later, so the two split the
  *   day with no gap and no overlap.
  *
- * Priority (a total order, so the first match always wins the same way): more matchers first,
- * then the later `updatedAt`, then the later `createdAt`, then the larger id.
+ * Priority (a total order, so the first match always wins the same way): more DISTINCT matchers
+ * first (a matcher written twice counts once), then the later `updatedAt`, then the later
+ * `createdAt`, then the larger id.
  */
 
 type ParsedRule = Omit<PreparedRule, 'rank'>;
+
+type RankedCandidate = { rule: ParsedRule; strength: number };
 
 const compareText = (first: string, second: string): number => {
   if (first < second) {
@@ -40,20 +47,21 @@ const compareText = (first: string, second: string): number => {
   return 0;
 };
 
-const byPriority = (first: ParsedRule, second: ParsedRule): number =>
-  second.matchers.length - first.matchers.length ||
-  second.updatedAt - first.updatedAt ||
-  second.createdAt - first.createdAt ||
-  compareText(second.id, first.id);
+const byPriority = (first: RankedCandidate, second: RankedCandidate): number =>
+  second.strength - first.strength ||
+  second.rule.updatedAt - first.rule.updatedAt ||
+  second.rule.createdAt - first.rule.createdAt ||
+  compareText(second.rule.id, first.rule.id);
 
 // Texts are normalized once here so evaluating a row never normalizes a rule again.
-const withNormalizedText = (matcher: CategoryRuleMatcher): CategoryRuleMatcher => {
-  if (matcher.type === 'nameIs' || matcher.type === 'nameStartsWith') {
-    return { ...matcher, text: normalizeTransactionName(matcher.text) };
-  }
-
-  return matcher;
-};
+const withNormalizedText = (matcher: CategoryRuleMatcher): CategoryRuleMatcher =>
+  match(matcher)
+    .with({ type: 'nameIs' }, { type: 'nameStartsWith' }, (named) => ({
+      ...named,
+      text: normalizeTransactionName(named.text),
+    }))
+    .with({ type: 'amount' }, { type: 'direction' }, { type: 'time' }, (other) => other)
+    .exhaustive();
 
 const isNameIs = (
   matcher: CategoryRuleMatcher,
@@ -77,20 +85,23 @@ const indexByName = (ordered: readonly PreparedRule[]): Map<string, PreparedRule
 };
 
 export const prepareRules = (rows: readonly StoredCategoryRule[]): PreparedRules => {
-  const readable: ParsedRule[] = [];
+  const readable: RankedCandidate[] = [];
   const unreadable: StoredCategoryRule[] = [];
 
   for (const row of rows) {
-    const matchers = parseRuleMatchers(row.matchers);
+    const displayMatchers = parseRuleMatchers(row.matchers);
 
-    if (matchers === null) {
+    if (displayMatchers === null) {
       unreadable.push(row);
     } else {
-      readable.push({ ...row, matchers: matchers.map(withNormalizedText) });
+      readable.push({
+        rule: { ...row, displayMatchers, matchers: displayMatchers.map(withNormalizedText) },
+        strength: distinctMatcherKeys(displayMatchers).length,
+      });
     }
   }
 
-  const ordered = readable.sort(byPriority).map((rule, rank) => ({ ...rule, rank }));
+  const ordered = readable.sort(byPriority).map(({ rule }, rank) => ({ ...rule, rank }));
 
   return {
     ordered,
@@ -130,11 +141,6 @@ export const candidateRules = (
 ): readonly PreparedRule[] =>
   mergeByRank(prepared.byName.get(subject.normalizedName) ?? [], prepared.withoutName);
 
-type MatcherOfType<Type extends CategoryRuleMatcher['type']> = Extract<
-  CategoryRuleMatcher,
-  { type: Type }
->;
-
 // Plain tables instead of `match(...)`: the insert path evaluates every rule against every row
 // of a batch, and building a pattern match per matcher dominated that loop.
 const AMOUNT_HOLDS: Record<AmountOperator, (actual: number, expected: number) => boolean> = {
@@ -143,6 +149,11 @@ const AMOUNT_HOLDS: Record<AmountOperator, (actual: number, expected: number) =>
   gte: (actual, expected) => actual >= expected,
   lt: (actual, expected) => actual < expected,
   lte: (actual, expected) => actual <= expected,
+};
+
+const TIME_HOLDS: Record<TimeOperator, (actual: number, expected: number) => boolean> = {
+  before: (actual, expected) => actual < expected,
+  after: (actual, expected) => actual >= expected,
 };
 
 const MATCHER_MATCHES: {
@@ -159,10 +170,7 @@ const MATCHER_MATCHES: {
     AMOUNT_HOLDS[operator](subject.absoluteMinorUnits, minorUnits),
   direction: ({ direction }, subject) => subject.direction === direction,
   time: ({ operator, minuteOfDay }, subject) =>
-    subject.minuteOfDay !== null &&
-    (operator === 'before'
-      ? subject.minuteOfDay < minuteOfDay
-      : subject.minuteOfDay >= minuteOfDay),
+    subject.minuteOfDay !== null && TIME_HOLDS[operator](subject.minuteOfDay, minuteOfDay),
 };
 
 const matcherMatches = (matcher: CategoryRuleMatcher, subject: RuleSubject): boolean =>

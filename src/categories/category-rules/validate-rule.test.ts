@@ -119,6 +119,12 @@ describe('matcherSetKey', () => {
     expect(matcherSetKey(first)).not.toBe(matcherSetKey(second));
   });
 
+  it('keeps a repeated matcher once', () => {
+    expect(matcherSetKey([nameIs('silpo'), nameIs('  SILPO '), direction('expense')])).toBe(
+      matcherSetKey([direction('expense'), nameIs('silpo')]),
+    );
+  });
+
   it('joins one entry per matcher with a NUL character', () => {
     expect(matcherSetKey([nameIs('a'), nameIs('b')]).split('\u0000')).toHaveLength(2);
   });
@@ -159,6 +165,28 @@ describe('validateRule', () => {
     });
 
     expect(validateRule([direction('expense'), nameIs('  SILPO ')], others, null)).toEqual({
+      kind: 'duplicate',
+      category: 'shops',
+    });
+  });
+
+  it('names the category of a rule whose only difference is a repeated matcher', () => {
+    const others = preparedOf({ id: 'food', category: 'food', matchers: [nameIs('Silpo')] });
+
+    expect(validateRule([nameIs('silpo'), nameIs('SILPO')], others, null)).toEqual({
+      kind: 'duplicate',
+      category: 'food',
+    });
+  });
+
+  it('finds the duplicate when the other rule is the one with the repeated matcher', () => {
+    const others = preparedOf({
+      id: 'repeated',
+      category: 'shops',
+      matchers: [nameIs('Silpo'), nameIs('silpo')],
+    });
+
+    expect(validateRule([nameIs('silpo')], others, null)).toEqual({
       kind: 'duplicate',
       category: 'shops',
     });

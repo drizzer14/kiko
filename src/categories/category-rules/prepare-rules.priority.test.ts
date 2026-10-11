@@ -61,6 +61,56 @@ describe('rule priority', () => {
     expect(winnerIdOf([...rows].reverse())).toBe('newer');
   });
 
+  it('P2 updatedAt outranks createdAt when the two disagree', () => {
+    const rows = [
+      ruleRow({
+        id: 'created-later',
+        category: 'food',
+        matchers: [nameIs('silpo')],
+        createdAt: 300,
+        updatedAt: 100,
+      }),
+      ruleRow({
+        id: 'updated-later',
+        category: 'shops',
+        matchers: [nameIs('silpo')],
+        createdAt: 200,
+        updatedAt: 500,
+      }),
+    ];
+
+    expect(winnerIdOf(rows)).toBe('updated-later');
+    expect(winnerIdOf([...rows].reverse())).toBe('updated-later');
+  });
+
+  it('ranks a stored rule with a repeated matcher by its distinct matchers', () => {
+    const rows = [
+      ruleRow({
+        id: 'repeated',
+        category: 'shops',
+        matchers: [nameIs('silpo'), nameIs(' SILPO ')],
+        updatedAt: 100,
+      }),
+      ruleRow({ id: 'single', category: 'food', matchers: [nameIs('silpo')], updatedAt: 200 }),
+    ];
+
+    expect(winnerIdOf(rows)).toBe('single');
+    expect(winnerIdOf([...rows].reverse())).toBe('single');
+  });
+
+  it('counts two different matchers of one kind as two', () => {
+    const rows = [
+      ruleRow({
+        id: 'two-prefixes',
+        matchers: [nameStartsWith('sil'), nameStartsWith('silp')],
+        updatedAt: 100,
+      }),
+      ruleRow({ id: 'single', matchers: [nameIs('silpo')], updatedAt: 200 }),
+    ];
+
+    expect(winnerIdOf(rows)).toBe('two-prefixes');
+  });
+
   it('P3 with equal updatedAt the later createdAt wins', () => {
     const rows = [
       ruleRow({
@@ -170,6 +220,23 @@ describe('unreadable rules', () => {
     };
 
     expect(winnerIdOf([strongest, ruleRow({ id: 'a', matchers: [nameIs('silpo')] })])).toBe('a');
+  });
+});
+
+describe('prepared matchers', () => {
+  it('keeps the typed text for display and storage beside the normalized one for matching', () => {
+    const [rule] = prepareRules([
+      ruleRow({ matchers: [nameIs('  Сільпо  Market '), nameStartsWith('SILPO')] }),
+    ]).ordered;
+
+    expect(rule?.displayMatchers).toEqual([
+      { type: 'nameIs', text: '  Сільпо  Market ' },
+      { type: 'nameStartsWith', text: 'SILPO' },
+    ]);
+    expect(rule?.matchers).toEqual([
+      { type: 'nameIs', text: 'сільпо market' },
+      { type: 'nameStartsWith', text: 'silpo' },
+    ]);
   });
 });
 
