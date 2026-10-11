@@ -197,7 +197,7 @@ verified usage, not dead weight:
   kill-guard.js`) to tokenize a Bash-tool command and deny pkill/killall,
   pattern/process-group kills, any `git stash`, an unquoted heredoc
   delimiter, a git history change on the main checkout, a shell write
-  into `src/`, `__tests__/`, or `rules/`, and a while/until process-scan
+  into `src/`, `__tests__/`, `rules/`, or `e2e/`, and a while/until process-scan
   wait loop (see CLAUDE.md's "Automatic wiring" and
   `.claude/skills/kiko-linter/SKILL.md`). It is reached only from a sibling
   `.sh` wrapper's `node` invocation — never a static `import`/`require` from

@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { type SpawnSyncReturns, spawnSync } from 'node:child_process';
 
 // The shell-write deny of scripts/checks/kill-guard.js: a Bash command that
-// writes into src/, __tests__/, or rules/ of any worktree of this repository
+// writes into src/, __tests__/, rules/, or e2e/ of any worktree of this repository
 // (`sed -i`, `perl -i`, a `>`/`>>` redirect, `tee`, a python or node
 // one-liner) skips the pre-write guard, which sees only Edit/Write/MultiEdit,
 // so the hook denies it and points at Edit/Write.
@@ -361,7 +361,45 @@ const ALLOWED: string[] = [
   "sed -i 's/a/b/' /tmp/src.txt",
 ];
 
+// e2e/ holds TypeScript (Maestro seeds, the screenshot helpers) that the pre-write guard reads
+// like src/; a python write into e2e/screenshot/seed/demo-text.ts broke it on 2026-10-10.
+const DENIED_E2E: string[] = [
+  'echo x > e2e/screenshot/seed/demo-text.ts',
+  'echo x >> e2e/x.ts',
+  "sed -i 's/a/b/' e2e/x.ts",
+  'cp /tmp/x.ts e2e/x.ts',
+  'mv /tmp/x.ts e2e/',
+  'echo x | tee e2e/x.ts',
+  `python3 -c "open('e2e/screenshot/seed/demo-text.ts', 'w').write('x')"`,
+  "python3 - <<'EOF'\nfrom pathlib import Path\nPath('e2e/x.ts').write_text('x')\nEOF",
+  `echo x > ${WORKTREE}/e2e/x.ts`,
+  'cd e2e && echo x > y.ts',
+  'echo x > E2E/x.ts',
+];
+
+const ALLOWED_E2E: string[] = [
+  'cat e2e/x.ts',
+  'cat e2e/x.ts > /tmp/out.txt',
+  "sed -n '1p' e2e/x.ts",
+  "grep -rn seed e2e | sed 's/a/b/' > /tmp/out.txt",
+  'git mv e2e/a.ts e2e/b.ts',
+  'echo x > /tmp/e2e-like/x.ts',
+  "sed -i 's/a/b/' /tmp/e2e.txt",
+  'echo x > docs/e2e/x.md',
+  'echo x > scripts/e2e.sh',
+  `echo x > ${OTHER}/e2e/x.ts`,
+  `echo x > ${PLAIN}/e2e/x.ts`,
+];
+
 describe('kill-guard shell-write deny (parser only, fake repository)', () => {
+  it.each(DENIED_E2E)('denies a write into e2e/: %s', (command) => {
+    expect(decideInMain(command)).toBe('shellWrite');
+  });
+
+  it.each(ALLOWED_E2E)('allows a read of e2e/ or a write outside the trees: %s', (command) => {
+    expect(decideInMain(command)).toBe('allow');
+  });
+
   it.each([
     ...DENIED_SED_AND_PERL,
     ...DENIED_REDIRECTS,

@@ -1091,8 +1091,8 @@ To move or rename a file (into a unit folder, for example), use
 Edit/Write, so the pre-write guard checks the change. `git mv` leaves
 the content unchanged, and guard-replay follows the rename, so the
 file's pre-existing findings keep their baseline. Never use a plain
-`mv`/`cp` (the kill-guard denies it into `src/`, `__tests__/`, and
-`rules/`, and a plain move reads as a new file whose every finding
+`mv`/`cp` (the kill-guard denies it into `src/`, `__tests__/`, `rules/`, and
+`e2e/`, and a plain move reads as a new file whose every finding
 looks new), and never edit the moved file with sed or another Bash
 write.
 

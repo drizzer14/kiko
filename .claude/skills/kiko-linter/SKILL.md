@@ -225,7 +225,11 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   SHELL-WRITE deny (why: the pre-write guard sees only Edit/Write/
   MultiEdit, so a file a Bash command writes lands unchecked until
   guard-replay at Stop). Rule: deny a Bash write into `src/`,
-  `__tests__/`, or `rules/` (`WRITE_GUARDED_TREES`) — a writing redirect,
+  `__tests__/`, `rules/`, or `e2e/` (`WRITE_GUARDED_TREES`; `e2e/` joined
+  on 2026-10-11 after a python write broke
+  `e2e/screenshot/seed/demo-text.ts`; the pre-write guard and guard-replay
+  read any `.ts`/`.tsx` outside `EXCLUDED_PREFIXES`, so `e2e/*.ts` is in
+  their scope) — a writing redirect,
   an in-place `sed`/`perl`, `tee`, a `cp`/`mv` (also `gcp`/`gmv`) whose
   destination lands in a tree, a python/node write call (a
   `-c`/`-e` one-liner, or a script the interpreter reads from a heredoc
@@ -450,7 +454,7 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
     with neither `-t` nor a placeholder (`xargs cp x /tmp/y/`: the input
     is appended last, so the text cannot pin the destination), or whose
     destination holds the placeholder; a `$VAR`/glob path that
-    names a folder `src`, `__tests__`, or `rules` anywhere
+    names a folder `src`, `__tests__`, `rules`, or `e2e` anywhere
     (`> "$TMPDIR/src/x"`); a relative tree path when the payload has no
     `cwd`; an interpreter one-liner or stdin script that writes through a
     BARE variable, or through an expression with no string literal of
@@ -2025,7 +2029,7 @@ a new tree. See `conflictSides`, `afterTreesFor`, and
 
 The pre-write guard sees only `Edit`/`Write`/`MultiEdit`. The
 kill-guard's SHELL-WRITE deny (above) blocks the common Bash write
-forms into `src/`, `__tests__/`, and `rules/`. It allows the `--write`
+forms into `src/`, `__tests__/`, `rules/`, and `e2e/`. It allows the `--write`
 fixers and git itself, which write source legitimately. What it does
 not see still reaches disk unchecked: a script file that writes,
 `find -exec`, a path held in a variable, and a commit of any
