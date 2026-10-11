@@ -371,7 +371,8 @@ The established patterns grouped under this heading:
   action is a native `type: 'button'` item in `unstable_headerRightItems`,
   listed left to right: `icon: { type: 'sfSymbol' }`, `label` and
   `accessibilityLabel` from the same i18n key, `tintColor:
-  theme.colors.textPrimary`, `sharesBackground: false`. Never a
+  theme.colors.textPrimary` (a form's Save is the exception: prominent and
+  accent, see "Form Save and Cancel" below), `sharesBackground: false`. Never a
   `type: 'custom'` item or `headerRight` with a React view for a header
   action: UIKit sizes a native item's glyph, capsule, and 44pt target;
   a React view inside a custom item gets a different glyph size and
@@ -387,6 +388,21 @@ The established patterns grouped under this heading:
   read of the options are not header values) and a `type: 'custom'` item
   in either header item list, and `kiko-no-header-spacing-item` denies a `type: 'spacing'` item in either
   list (`rules/semgrep-prewrite.yml`).
+- **Form Save and Cancel live in the native nav bar.** Every form under
+  `src/screens/forms/` calls `useFormHeaderItems`
+  (`src/screens/forms/use-form-header-items/`). Save is the trailing
+  item: a prominent, accent-tinted `type: 'button'` with the label
+  `common.save` (no per-form Save label key). Cancel is the leading
+  plain `textPrimary` item and shows only when native-stack's
+  `canGoBack` is false (the form is the first screen of its stack or
+  pane); when a back button shows, the back button is the cancel. Save
+  is never in a form's `Screen` footer. A secondary action (ruling
+  2026-10-11: the Edit template form's "Create transaction") may stay
+  in the footer as a lone secondary button. A native bar button does not
+  end editing, so a value derived on blur is settled in the save path
+  (see `kiko-code-style`'s "Form validation model"). Tests use the
+  helpers in `src/test-support/form-header-items.ts`, never
+  `getByText('Save')`.
 - **Edit is an icon-only native bar item** (2026-09-30, locked). The
   user: "One last thing before LGTM: remove 'Edit' label from
   account/holding edit button", then, on device: "'Edit' button
@@ -1289,8 +1305,8 @@ new component can land between reviews of this skill:
 - **FieldError** (`src/design-system/components/field-error/`) — the
   one inline validation-failure line a form renders DIRECTLY UNDER its
   own field (`Text variant="caption" tone="negative"`, the same tone
-  `FieldLabel`'s required asterisk uses) — never next to a footer Save
-  button, and never a reserved-height slot: it fades in on failure and
+  `FieldLabel`'s required asterisk uses) — never next to the nav-bar Save
+  item, and never a reserved-height slot: it fades in on failure and
   the layout reflows, so a valid field shows no error node at all.
   Every
   invalid field shows its OWN error at the same Save/Import press —
