@@ -102,7 +102,7 @@ import CategoryOverrideSheet from './category-override-sheet';
 import { useCategoryOverride } from './use-category-override';
 import { applySeedFields, resolveHydration } from './hydration';
 import { resolveCategoryOverrideRequest } from './category-rule';
-import { alongsideArguments, writeTemplate } from './template-save';
+import { alongsideInsert, writeTemplate } from './template-save';
 import SaveAsTemplate, { resolveTemplateSwitch } from './save-as-template';
 import { convertCounterpartType, resolveConvertView } from './convert-view';
 import { DEFAULT_MODE, MODE_ICONS, resolveModeOptions } from './mode-options';
@@ -208,14 +208,10 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   // the form as editing the source row.
   const existing = editingId ? matchedTransactions.at(0) : undefined;
   const duplicateSource = duplicateOfId ? matchedTransactions.at(0) : undefined;
-  // The template the route names (to fill from, or to edit), by its own by-id subscription. An
-  // entry with no template reads an empty id and gets nothing, like the transaction read above.
-  const { data: templateRows, isLoading: templateLoading } = useLiveQuery(
-    transactionTemplatesRepo.getByIdQuery(templateQueryId),
-    ['transaction_templates'],
-  );
-  // Every stored template, for the name field's case-insensitive "taken" check and the Template
-  // tab's select, whose empty-list hint waits for this read to settle.
+  // Every stored template, for the name field's case-insensitive "taken" check, the Template tab's
+  // select (whose empty-list hint waits for this read to settle), and the one template the route
+  // names (to fill from, or to edit), found in it by id. An entry that names none reads an empty id
+  // and finds nothing.
   const { data: storedTemplates, isLoading: storedTemplatesLoading } = useLiveQuery(
     transactionTemplatesRepo.listQuery(),
     ['transaction_templates'],
@@ -499,13 +495,13 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   const { template: selectedTemplate, id: selectedTemplateId } = resolveSelectedTemplate({
     pickedId: pickedTemplateId,
     templates: storedTemplates,
-    entryTemplate: templateRows.at(0),
+    entryTemplate: storedTemplates.find((template) => template.id === templateQueryId),
   });
   const awaitsPick = awaitsTemplatePick({
     hasEntryTabs,
     tab,
     selectedTemplateId,
-    isEntryTemplateLoading: templateLoading,
+    isEntryTemplateLoading: storedTemplatesLoading,
   });
   // A pick is ONE event: it names the template and opens the hydration latch again, and the one
   // hydrate effect below applies the plan. There is no second effect and no second fill path. The
@@ -520,13 +516,9 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   };
   // The template the entry fills from, its references resolved against the live holdings and
   // categories. Held back until all of those reads settle, so nothing resolves against a list that
-  // is still loading.
-  const isTemplateReady = useDataReady(
-    holdingsLoading,
-    accountsLoading,
-    categoriesLoading,
-    templateLoading,
-  );
+  // is still loading. The template list needs no gate of its own here: it holds no row until its
+  // read settles, so there is no template to resolve.
+  const isTemplateReady = useDataReady(holdingsLoading, accountsLoading, categoriesLoading);
   const { templateDraft, templateName: seededTemplateName } = resolveTemplateSeed({
     row: selectedTemplate,
     isReady: isTemplateReady,
@@ -770,10 +762,10 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     });
   };
 
-  // The extra argument every transaction write below takes while the switch is on: it saves the
-  // template inside that one write. Empty while it is off.
+  // The step every transaction write below takes while the switch is on: it saves the template
+  // inside that one write. Undefined while it is off.
   const templateAlongside = () =>
-    alongsideArguments({
+    alongsideInsert({
       enabled: templateSwitch.saves,
       name: templateName,
       draft: buildTemplateDraft(),
@@ -797,7 +789,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
           time,
           description: descriptionToStore,
         },
-        ...templateAlongside(),
+        templateAlongside(),
       );
 
       return;
@@ -819,7 +811,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
           // `plainFieldErrors` forcing a pick on create.
           category: selectedCategory,
         },
-        ...templateAlongside(),
+        templateAlongside(),
       );
     }
   };
@@ -966,7 +958,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
             .minorUnits,
         })),
       },
-      ...templateAlongside(),
+      templateAlongside(),
     );
 
     navigation.goBack();
@@ -1006,7 +998,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
         valueInMinorUnits: valueInMoney.minorUnits,
         time,
       },
-      ...templateAlongside(),
+      templateAlongside(),
     );
 
     navigation.goBack();

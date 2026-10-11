@@ -1,7 +1,7 @@
 import { EMPTY_DRAFT } from '@kiko/transaction-templates/draft';
 import { TemplateNameTakenError } from '@kiko/transaction-templates/repo';
 
-import { alongsideArguments, writeTemplate } from './template-save';
+import { alongsideInsert, writeTemplate } from './template-save';
 
 const mockCreate = jest.fn();
 const mockUpdate = jest.fn();
@@ -57,27 +57,23 @@ describe('writeTemplate', () => {
   });
 });
 
-describe('alongsideArguments', () => {
+describe('alongsideInsert', () => {
   const databaseTransaction = { marker: 'inside the write' } as never;
 
   beforeEach(() => {
     jest.clearAllMocks();
   });
 
-  it('is no argument at all while the switch is off, so the write gets none', () => {
-    expect(alongsideArguments({ enabled: false, name: 'Rent', draft: EMPTY_DRAFT })).toEqual([]);
+  it('is undefined while the switch is off, so the write takes its own default', () => {
+    expect(alongsideInsert({ enabled: false, name: 'Rent', draft: EMPTY_DRAFT })).toBeUndefined();
   });
 
-  it('is one step that inserts the template through the write it runs in', async () => {
+  it('is a step that inserts the template through the write it runs in', async () => {
     mockInsert.mockResolvedValue('new');
 
-    const [alongside, ...rest] = alongsideArguments({
-      enabled: true,
-      name: 'Rent',
-      draft: EMPTY_DRAFT,
-    });
+    const alongside = alongsideInsert({ enabled: true, name: 'Rent', draft: EMPTY_DRAFT });
 
-    expect(rest).toEqual([]);
+    expect(alongside).toEqual(expect.any(Function));
     expect(mockInsert).not.toHaveBeenCalled();
 
     await expect(alongside?.(databaseTransaction)).resolves.toBeUndefined();
@@ -92,7 +88,7 @@ describe('alongsideArguments', () => {
 
     mockInsert.mockRejectedValue(failure);
 
-    const [alongside] = alongsideArguments({ enabled: true, name: 'Rent', draft: EMPTY_DRAFT });
+    const alongside = alongsideInsert({ enabled: true, name: 'Rent', draft: EMPTY_DRAFT });
 
     await expect(alongside?.(databaseTransaction)).rejects.toBe(failure);
   });

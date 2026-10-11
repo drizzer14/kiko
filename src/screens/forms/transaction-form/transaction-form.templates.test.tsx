@@ -12,6 +12,7 @@ import { TemplateNameTakenError } from '@kiko/transaction-templates/repo';
 import { mockReanimatedScrollToEnd } from '@kiko/test-support/mock-reanimated-scroll-to-end';
 import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support/navigation-props';
 
+import { readRouteEntry } from './route-entry';
 import TransactionFormScreen from './transaction-form.screen';
 
 const mockScrollToEnd = jest.fn();
@@ -27,12 +28,17 @@ const mockSetLoanPayment = jest.fn();
 const mockUndoAutoLoanLink = jest.fn();
 const mockUseLiveQuery = jest.fn();
 
+// A write takes its optional template step last, and an undefined one is the same call as none.
+const mockWithoutUndefinedTail = (args: unknown[]): unknown[] =>
+  args.at(-1) === undefined ? args.slice(0, -1) : args;
+
 jest.mock('@kiko/transactions/repo', () => ({
   transactionsRepo: {
-    recordManual: (...args: unknown[]) => mockRecordManual(...args),
-    recordManualWithReturns: (...args: unknown[]) => mockRecordManualWithReturns(...args),
-    recordExchange: (...args: unknown[]) => mockRecordExchange(...args),
-    update: (...args: unknown[]) => mockUpdateTransaction(...args),
+    recordManual: (...args: unknown[]) => mockRecordManual(...mockWithoutUndefinedTail(args)),
+    recordManualWithReturns: (...args: unknown[]) =>
+      mockRecordManualWithReturns(...mockWithoutUndefinedTail(args)),
+    recordExchange: (...args: unknown[]) => mockRecordExchange(...mockWithoutUndefinedTail(args)),
+    update: (...args: unknown[]) => mockUpdateTransaction(...mockWithoutUndefinedTail(args)),
     setLoanPayment: (...args: unknown[]) => mockSetLoanPayment(...args),
     undoAutoLoanLink: (...args: unknown[]) => mockUndoAutoLoanLink(...args),
     getByIdQuery: (transactionId: string) => ({
@@ -58,10 +64,6 @@ const mockInsertTemplate = jest.fn();
 jest.mock('@kiko/transaction-templates/repo', () => ({
   ...jest.requireActual('@kiko/transaction-templates/repo'),
   transactionTemplatesRepo: {
-    getByIdQuery: (templateId: string) => ({
-      __kind: 'templateById',
-      toSQL: () => ({ sql: '', params: [templateId] }),
-    }),
     listQuery: () => ({ __kind: 'templateList', toSQL: () => ({ sql: '', params: [] }) }),
     create: (...args: unknown[]) => mockCreateTemplate(...args),
     update: (...args: unknown[]) => mockUpdateTemplate(...args),
@@ -141,33 +143,28 @@ type LiveData = {
   draft: TemplateDraft;
   overrideRules?: { normalizedName: string; category: string }[];
   latestManualHoldingId?: string | null;
-  isTemplateLoading?: boolean;
   templateName?: string;
   // Every stored template, as the name check and the template select read them. Empty unless a
-  // test needs a taken name or a template to pick; a row with no draft reads as an empty one.
+  // test needs a taken name or a template to pick; a row with no draft reads as an empty one. The
+  // template that `draft` and `templateName` describe joins this list when the route names `tpl`.
   templateList?: { id: string; name: string; draft?: TemplateDraft }[];
   // The list read of every stored template has not settled yet.
   isTemplateListLoading?: boolean;
-  // The template the route names does not exist (deleted since the link was made).
-  isTemplateMissing?: boolean;
   // The transaction row the route names (to edit, or to duplicate). Absent on an add.
   transactionRow?: TransactionRowFixture;
 };
 
-const queryParams = (query: unknown): unknown[] =>
-  (query as { toSQL: () => { params: unknown[] } }).toSQL().params;
+// The template id of the route the screen was last built for: the stored list holds the route's
+// template, which the screen finds in it by this id.
+let routeTemplateId = '';
 
-// The by-id template read shares its `['transaction_templates']` key with the list read, so the
-// list is told apart by its tag, like the two tagged `['transactions']` reads.
 const setLiveData = ({
   draft,
   overrideRules = [],
   latestManualHoldingId = null,
-  isTemplateLoading = false,
   templateName = 'Rent',
   templateList = [],
   isTemplateListLoading = false,
-  isTemplateMissing = false,
   transactionRow,
 }: LiveData) => {
   const template = { id: 'tpl', name: templateName, draft, createdAt: 1, updatedAt: 1 };
@@ -177,38 +174,43 @@ const setLiveData = ({
     categories: CATEGORIES,
     category_overrides: overrideRules,
   };
-  const dataByKind: Record<string, unknown[]> = {
-    latestManualHolding: latestManualHoldingId ? [{ holdingId: latestManualHoldingId }] : [],
-    distinctDescriptions: [],
-    templateList: templateList.map((item) => ({ createdAt: 1, updatedAt: 1, draft: {}, ...item })),
-    transactionById: transactionRow ? [transactionRow] : [],
-    // An entry that names no template reads an empty id, which the real query matches to no row.
-    templateById: [template],
+  const storedTemplates = (): unknown[] => {
+    const rows = templateList.map((item) => ({ createdAt: 1, updatedAt: 1, draft: {}, ...item }));
+
+    if (routeTemplateId !== template.id) {
+      return rows;
+    }
+
+    return rows.some((row) => row.id === template.id)
+      ? rows.map((row) => (row.id === template.id ? template : row))
+      : [...rows, template];
+  };
+  const dataByKind: Record<string, () => unknown[]> = {
+    latestManualHolding: () =>
+      latestManualHoldingId ? [{ holdingId: latestManualHoldingId }] : [],
+    distinctDescriptions: () => [],
+    templateList: storedTemplates,
+    transactionById: () => (transactionRow ? [transactionRow] : []),
   };
 
+  // The template list shares its `['transaction_templates']` key with no other read, but it is
+  // tagged like the two `['transactions']` reads so every read here is told apart the same way.
   mockUseLiveQuery.mockImplementation((query: unknown, tables: string[]) => {
     const kind = (query as { __kind?: string })?.__kind ?? '';
-
-    if (kind === 'templateById') {
-      const isEmptyId = queryParams(query).at(0) === '';
-
-      return {
-        data: isEmptyId || isTemplateLoading || isTemplateMissing ? [] : dataByKind.templateById,
-        isLoading: isTemplateLoading && !isEmptyId,
-      };
-    }
 
     if (kind === 'templateList' && isTemplateListLoading) {
       return { data: [], isLoading: true };
     }
 
-    return { data: dataByKind[kind] ?? dataByTable[tables[0]] ?? [], isLoading: false };
+    return { data: dataByKind[kind]?.() ?? dataByTable[tables[0]] ?? [], isLoading: false };
   });
 };
 
 const navigation = navigationSpy();
 
 const templateScreen = (params: TransactionFormParams = { templateId: 'tpl' }) => {
+  routeTemplateId = readRouteEntry(params).templateQueryId;
+
   return (
     <TransactionFormScreen
       route={asRouteProp<TransactionFormProps['route']>('TransactionForm', params)}
@@ -402,12 +404,13 @@ describe('TransactionFormScreen — filled from a template', () => {
     expect(getByText('Dining')).toBeTruthy();
   });
 
-  it('waits for the template to load, seating no default holding before the fill', async () => {
-    setLiveData({ draft: EXPENSE, latestManualHoldingId: 'usd', isTemplateLoading: true });
+  it('waits for the list of templates to load, seating no default holding before the fill', async () => {
+    setLiveData({ draft: EXPENSE, latestManualHoldingId: 'usd', isTemplateListLoading: true });
 
     const { getByLabelText, rerender } = await render(templateScreen());
 
     expect(getByLabelText('Holding')).toHaveTextContent('Select holding');
+    expect(getByLabelText('Amount').props.value).toBe('');
 
     setLiveData({ draft: EXPENSE, latestManualHoldingId: 'usd' });
     await rerender(templateScreen());
@@ -866,7 +869,7 @@ describe('TransactionFormScreen — Save as a new template', () => {
       await fireEvent.press(utils.getByText('Save'));
 
       expect(mockRecordManual).toHaveBeenCalledTimes(1);
-      expect(mockRecordManual.mock.calls[0]).toHaveLength(1);
+      expect(mockRecordManual.mock.calls[0].at(1)).toBeUndefined();
       expect(mockInsertTemplate).not.toHaveBeenCalled();
     });
 
@@ -933,7 +936,7 @@ describe('TransactionFormScreen — Save as a new template', () => {
       await fireEvent(utils.getByRole('switch'), 'valueChange', false);
       await fireEvent.press(utils.getByText('Save'));
 
-      expect(mockRecordManual.mock.calls[0]).toHaveLength(1);
+      expect(mockRecordManual.mock.calls[0].at(1)).toBeUndefined();
       expect(utils.queryByLabelText('Template name')).toBeNull();
     });
 
@@ -1054,7 +1057,7 @@ describe('TransactionFormScreen — Save as a new template', () => {
 
       await fireEvent.press(utils.getByText('Save'));
 
-      expect(mockRecordManual.mock.calls[0]).toHaveLength(1);
+      expect(mockRecordManual.mock.calls[0].at(1)).toBeUndefined();
     });
   });
 
@@ -1096,7 +1099,7 @@ describe('TransactionFormScreen — Save as a new template', () => {
       await fireEvent.press(utils.getByText('Save'));
 
       expect(mockUpdateTransaction).toHaveBeenCalledTimes(1);
-      expect(mockUpdateTransaction.mock.calls[0]).toHaveLength(1);
+      expect(mockUpdateTransaction.mock.calls[0].at(1)).toBeUndefined();
     });
 
     it('writes a draft with no loan for a loan-linked row, and leaves the row its link', async () => {
@@ -1942,7 +1945,7 @@ describe('TransactionFormScreen — Manual and Template tabs', () => {
     });
 
     it('shows the select with nothing picked, and no form, when the template is gone', async () => {
-      setLiveData({ draft: EXPENSE, templateList: TEMPLATES, isTemplateMissing: true });
+      setLiveData({ draft: EXPENSE, templateList: TEMPLATES });
 
       const utils = await render(templateScreen({ templateId: 'gone' }));
 

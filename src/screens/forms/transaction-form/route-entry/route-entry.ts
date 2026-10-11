@@ -61,8 +61,8 @@ export const readRouteEntry = (
   // new template. A template to fill from or edit seeds its own holding, so a
   // default seated first would close the hydration latch before the template loads.
   seedsDefaultHolding: boolean;
-  // The id the by-id template read is keyed on: the template to fill from or to edit, and an empty
-  // id for an entry that names none, which reads nothing without a conditional hook.
+  // The id of the template to fill from or to edit, looked up in the stored list, and an empty id
+  // for an entry that names none, which matches no template.
   templateQueryId: string;
   // Whether the Manual and Template tabs show: on the entries that create a transaction (a global
   // add, an add from a holding, a template to fill from), never on an Edit, a Duplicate or a
