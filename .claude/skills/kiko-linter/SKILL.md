@@ -34,7 +34,7 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   DO-NOT block) to stderr, then `exit 2`.
 - On success: **silent**, `exit 0`. A wrapper that prints anything on
   success breaks the "stays silent on success" contract every other
-  wrapper and every hook relies on. The ONE exception is the deep,
+  wrapper and every hook relies on. One exception is the deep,
   manual tier that is NOT hook-wired (`scripts/checks/mutation.sh`):
   `check:deep` is run by hand, never on `Stop`/`SubagentStop`, so the
   hook contract does not apply and it STREAMS Stryker's output to stdout
@@ -46,9 +46,21 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   (`__tests__/mutation-stream.test.ts`); the seam defaults to the pinned
   `node_modules` binary, so production and the pinned-version guarantee
   are unchanged. A fast, hook-wired wrapper must still be silent on
-  success.
+  success, with stated exceptions in `security.sh` that write to
+  stderr and exit 0, namely (a) the dedup-skip notice (`SKIPPED, not a fresh
+  scan`), because a skip exits 0 without scanning and must never read as a
+  fresh scan; and (b) the Class B WARNING block, because a non-blocking
+  finding is override-eligible and still has to be seen. `dup.sh` states
+  its own exception: its large-file `WARNING` lines (see "`check:dup`
+  measures the files jscpd skips for size" below), because a non-blocking
+  measurement of tracked debt still has to be seen. A hook that exits 0
+  does not feed its stderr back to the agent, unless a later check in the
+  same tier fails: the tier's whole stderr is then shown, so a `dup.sh`
+  WARNING or a `security.sh` SKIPPED notice can appear beside an unrelated
+  failure. It is tracked debt, not that failure; otherwise these are for a
+  human or a manual `check:security`/`check:dup` run.
 
-  A SECOND exception, of a different shape: `scripts/checks/kill-guard.sh`
+  Another exception, of a different shape: `scripts/checks/kill-guard.sh`
   (+ its sibling `scripts/checks/kill-guard.js`) is a `PreToolUse` hook on
   the Bash tool, not a check wrapper — it has no fail/pass, only allow/deny
   a command before Bash ever runs it, so it does not follow the
@@ -60,7 +72,9 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   call by design, and skipping one because "nothing changed" would mean
   skipping the one call the guard exists to catch. See CLAUDE.md's
   "Automatic wiring" and `harness/kiko/hooks/hooks.json`'s `PreToolUse`
-  entry for the wiring, and `kill-guard.js` for the tokenizer.
+  entry for the wiring, and `kill-guard.js` for the tokenizer. The other
+  hook guard, `pre-write-guard.sh`, prints the same deny JSON on stdout but
+  exits 2; its paragraph below starts "Another exception, of yet another shape".
 
   The same tokenizer (user-approved; it binds the user's own sessions
   too) also denies a `git stash` subcommand in command position — `git`
@@ -216,7 +230,11 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   SHELL-WRITE deny (why: the pre-write guard sees only Edit/Write/
   MultiEdit, so a file a Bash command writes lands unchecked until
   guard-replay at Stop). Rule: deny a Bash write into `src/`,
-  `__tests__/`, or `rules/` (`WRITE_GUARDED_TREES`) — a writing redirect,
+  `__tests__/`, `rules/`, or `e2e/` (`WRITE_GUARDED_TREES` in `scripts/checks/kill-guard.js`; `e2e/` joined
+  on 2026-10-11 after a python write broke
+  `e2e/screenshot/seed/demo-text.ts`; the pre-write guard and guard-replay
+  read any `.ts`/`.tsx` outside `EXCLUDED_PREFIXES`, so `e2e/*.ts` is in
+  their scope) — a writing redirect,
   an in-place `sed`/`perl`, `tee`, a `cp`/`mv` (also `gcp`/`gmv`) whose
   destination lands in a tree, a python/node write call (a
   `-c`/`-e` one-liner, or a script the interpreter reads from a heredoc
@@ -441,7 +459,7 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
     with neither `-t` nor a placeholder (`xargs cp x /tmp/y/`: the input
     is appended last, so the text cannot pin the destination), or whose
     destination holds the placeholder; a `$VAR`/glob path that
-    names a folder `src`, `__tests__`, or `rules` anywhere
+    names a folder `src`, `__tests__`, `rules`, or `e2e` anywhere
     (`> "$TMPDIR/src/x"`); a relative tree path when the payload has no
     `cwd`; an interpreter one-liner or stdin script that writes through a
     BARE variable, or through an expression with no string literal of
@@ -492,7 +510,7 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
     (`$(printf '…\141…')`); real git stays reachable by a PATH edit or
     `/usr/bin/git` (it runs in the empty scratch folder).
 
-  A THIRD exception, of yet another shape: `scripts/checks/pre-write-guard.sh`
+  Another exception, of yet another shape: `scripts/checks/pre-write-guard.sh`
   (+ `pre-write-guard.js`) is the `PreToolUse` hook on `Edit|Write|MultiEdit` —
   it denies a write BEFORE it lands, rather than checking a file already on
   disk. It DENIES (exit 2, plus the `permissionDecision: "deny"` JSON on
@@ -808,6 +826,13 @@ reasoning.
   empirically: the bare form gave 0 findings against a real `switch`
   fixture with three `case` arms; the clause-anchored form matched.
 
+## Semgrep facts verified on 2026-10-11 (`kiko-no-typed-jest-require-actual`)
+
+- An AST pattern `jest.requireActual<$T>(...)` also matches the UNTYPED call (1.175), so a
+  type-argument ban uses `pattern-regex`.
+- When a regex rule widens, probe the adjacent forms in the same commit and list each miss in the
+  known limits (the node-print rule's `-r ./setup.js -p` miss was found only after landing).
+
 ## Semgrep facts verified on 2026-09-25 (pre-write guard build-out)
 
 - An unanchored `paths.include`/`paths.exclude` glob (e.g. `src/screens/**`,
@@ -960,6 +985,21 @@ findings-handling for the exact mechanism, not restated here):
   `error` or of type `Timeout` (Semgrep reports a timeout at warn level
   with exit 0) fails `check:security`. Other warn-level errors stay
   non-blocking. Read `scripts/checks/security.sh` for the exact test.
+- **Every argument is scanned.** `security.sh` takes any number of targets
+  (none means the whole repo), drops a `rules/fixtures/` file among them,
+  and hands the rest to ONE Semgrep call. A call whose targets are all
+  files dedups on every file's content plus both rules files; a skip prints
+  `SKIPPED, not a fresh scan` on stderr, so an exit 0 with no scan never
+  reads as one. A failure block always names its cause (Semgrep's stderr,
+  its `errors[]`, or the exit code) and a Class A/B block lists each
+  finding from the JSON already in hand, not from a second Semgrep run.
+  The `rules/fixtures/` drop is a prefix match and skips an argument with a
+  `..` segment, so a path that starts under the fixtures folder and climbs
+  back out of it is scanned.
+- **Known limit: `src/**` includes need a root-relative path.** A rule whose
+  `paths.include` is `src/**` does not match a path given relative to a
+  working directory inside `src/`; `fast.sh` passes absolute paths and npm
+  runs from the repo root, so neither shape hits this.
 - **Class B (WARNING)** — a pattern that is usually right but can have
   a legitimate exception (e.g. taint mode also flags a value merely
   *derived* from a secret, which is a judgment call, not a
@@ -999,6 +1039,51 @@ correctly; the duplication is real, just older than the diff) — and it
 belongs in the SAME commit as the feature that triggered the check, so
 `git log` shows one coherent change rather than a drive-by refactor
 with no test-behavior delta.
+
+The non-blocking large-file pass runs on every call, a dedup skip included: see "`check:dup`
+measures the files jscpd skips for size" below.
+
+## `check:dup` measures the files jscpd skips for size
+
+jscpd 4.3.0 skips a file over `maxLines` (1000, counted as `content.split('\n')`) or `maxSize`
+(100kb) without a word, so a blocking run alone passes a project whose largest files were never
+measured. `scripts/checks/dup.sh` keeps that blocking run exactly as it was (same config, same
+default limits, same 5% threshold, same exit code, a jscpd crash still fails closed) and adds a
+second, NON-blocking pass:
+
+- It asks jscpd itself which files are in scope: `--debug` lists the selected files and runs no
+  detection. The files listed with the limits raised but not with the defaults are the ones the
+  blocking run skipped, so the config's `ignore`, `.gitignore`, and the args (the Stop tier's
+  changed files) apply to both lists by construction.
+- It measures each skipped file ALONE with the limits raised (JSON reporter into a temp dir,
+  nothing written into the repo). Alone, not in one combined run: a combined run credits a clone to
+  whichever file jscpd stores first, so a file's percentage would depend on its neighbours. The
+  alone figures are the ones the debt entry in `docs/harness/documented-exceptions.md` records.
+  A per-file alone figure differs from a combined run (jscpd credits a clone to the first-stored
+  file), so per-file debt needs the combined total too, and a baseline names its scope.
+- One more run measures the WHOLE scope together with the limits raised, because a clone between a
+  large file and another file is invisible to the alone runs (two 1100-line copies of one file
+  show 0% alone and about 50% together). It runs only when the scope holds a size-skipped file and
+  more than one file, so a scope with no large file runs no combined run and a one-file scope does
+  not repeat its alone figure. The pass itself still costs the two file listings (about 1 s). Its
+  total over the threshold prints one `WARNING` naming the figure.
+  Baseline on 2026-10-11: 7.33% of lines combined, against 3.24% for the blocking run.
+- A file over the threshold read from `.jscpd.json`, a file jscpd fails on, a file with no
+  figure, a combined total over the threshold, a failed file listing, and a failed `mktemp` each
+  print one `WARNING` line on stderr and the exit code stays 0. A number a tool printed is used only
+  after `is_number` accepts it. The Stop tier's scoped run therefore warns only about changed
+  large files (and the combined figure of the changed set); a whole-repo run warns about all of
+  them. An unchanged dedup fingerprint skips only the blocking run: the large-file pass runs every
+  time, so a repeated scoped run prints the same warning again.
+- The per-file warning says a file not on the tracked-debt list in
+  `docs/harness/documented-exceptions.md` is a new regression; a hook that exits 0 does not show
+  stderr to the agent, so a person or a manual `check:dup` run is the reader.
+- The warning is tracked debt, not an allowlist. The sweep track flips it to an `exit 2` failure
+  through `print_block` once every large file is 5% or less alone AND the combined raised total is
+  5% or less.
+- `__tests__/dup-large-files.test.ts` runs a copy of `dup.sh` in a throwaway project against the
+  real jscpd, under `FORCE_COLOR=3` too. A file over about two billion lines or 1gb is not listed
+  under the raised limits, so it would still pass unseen; no file of that size exists in this repo.
 
 ## Implemented: a rule for a plain function called inside a worklet
 
@@ -1330,7 +1415,8 @@ found. Reword any of these.
 The change-narrative half of kiko-code-style's "Comments: WHY only, never
 history". `kiko-no-history-id-comment` catches an id or a citation; this
 rule catches the words a comment uses to narrate a change: `it replaces`,
-`no longer`, `used to`, and `previously`. A comment states how the code
+`no longer`, `used to`, `previously`, and a `was:` label before an old value
+(`// was: 30`, ` * was: the old cap`). A comment states how the code
 works today and why, never how it worked before. The members are the
 `pattern-regex` alternation in `kiko-no-history-word-comment`
 (`rules/semgrep-prewrite.yml`); the fixture pair shows each shape.
@@ -1394,6 +1480,18 @@ of other text in its comment), and the same `paths.exclude` scope (`__tests__/**
   rejected", "previously stored rates") held 14 of the 34 hits. A hyphenated
   `previously-<participle>` was 8 of 11 data-state, but it also held 2
   true history hits, so it is not narrowed either.
+- `was:`: a label, not a word, so it needs the colon and the `\b` before it, and sits beside the
+  other members as `(?:\b(?:…)\b|\b[Ww]as:)` (the closing `\b` of the word members cannot follow
+  a colon). `wasm:` (no boundary after `was`), the word `was` in prose, an object key
+  `{ was: 1 }` and a string `'was: 30'` stay silent (pinned in `.good.ts`; the string and the key
+  are not comment text, and the line arm's string-skip walk never opens on them). Measured on
+  2026-10-11: 0 hits over `src`, `App.tsx` and the repo (`semgrep … . --json`, 1839 paths
+  scanned; a plain `grep -rE '\b[Ww]as:'` over `src` finds no occurrence in code or comments
+  either): 0 hits in the tree, nothing to sweep. The colon is the only key, so three false
+  positives are known and pinned in `.bad.ts` (prose such as "the question was: …", a URL path
+  segment `…/was:thing`, a JSDoc example holding `{ was: 1 }`); reword such a comment. Its only
+  hits are the `was:` pins in the bad fixture. A scan of the whole repo hits the 3 per-rule timeouts on
+  `holding-form.screen.test.tsx` under load; scan that file alone to read its hits.
 - `it replaces`: 2 of the 6 hits were a behavior description ("while
   locked it replaces the whole app with a prompt"); the other 4 named the
   old code ("the scan it replaces"). Not narrowed.
@@ -1531,6 +1629,43 @@ helpers are in scope only so the fixture probe can reach the rule.
 leaks the same way and is not seen. A `jest.spyOn(i18n, 'changeLanguage')` is not a call
 and stays silent. A `try`/`finally` reset inside the body still matches: use a hook.
 
+## `kiko-no-typed-jest-require-actual`
+
+Mechanizes kiko-code-style's "A jest.requireActual call takes no type argument": a type argument
+on `jest.requireActual`, `jest.requireMock`, `jest.createMockFromModule` or
+`jest.genMockFromModule` (`jest.requireActual<{ ... }>('m')`), including a
+multi-line generic. **Why:** jest-haste-map's dependency extractor (`JEST_EXTENSIONS_RE` in
+`node_modules/jest-haste-map/build/lib/dependencyExtractor.js`, which lists exactly those four
+names) matches only
+`jest.<name>(`, optional whitespace, then a string literal. A typed call yields no
+dependency (probed through the module's `extractor.extract`: the typed text gives `[]`, the
+untyped one `["m"]`), so `--findRelatedTests` and Stryker's per-test coverage never relate the test
+to that module. Proven on the Duo native specs (fixed in 21425bd1 and e015e334). **Fix:**
+`jest.requireActual('m') as { ... }`, or a typed const annotation.
+
+**Shape.** One `pattern-regex` (`\bjest\s*(?:\?\.|\.)\s*(?:require(?:Actual|Mock)|createMockFromModule|genMockFromModule)\s*<`), not an AST
+pattern: Semgrep reads an absent type argument as matching `<$T>`, so the AST form also matched
+`jest.requireActual('m') as T` and `const x: T = jest.requireActual('m')` (probed on 1.175). The
+regex reads across a line break; a comment or a string that spells the typed form is flagged too, so reword
+it. A harness test that quotes the typed form in a string is denied by the guard: build the text at
+runtime, or keep it under `rules/fixtures/` (the only exempt folder). ERROR, flat fixture pair `rules/fixtures/kiko-no-typed-jest-require-actual.{bad,good}.ts`.
+
+**Scope: no `paths.include`.** Any file that calls `jest.requireActual` is test code (a test, a
+`__mocks__` file, a test-support helper), and a typed call in a helper also cuts the chain test,
+helper, real module. The one hit at landing was `src/test-support/field-label-spy.ts`, rewritten
+untyped in the same commit. Measured with `npx jest --listTests --findRelatedTests` on the
+field-label source before and after: 82 related tests both times, because every consumer of the
+spy also reaches FieldLabel through a real import. The typed helper cost nothing there yet; it is
+fixed because the next consumer that only reaches it through the spy would lose its test.
+
+**Known limits (each probed).** Not caught, because the regex wants `jest` then `.requireActual`
+then `<` with only whitespace between: `jest['requireActual']<T>(`, `(jest.requireActual)<T>(`, a
+comment between the callee and `<`, a destructured `const { requireActual } = jest` called with a
+type argument, and `jest.requireActual as <T>(m: string) => T`. The bracket and destructured
+forms hide the module even untyped, which is a separate gap this rule does not close. A generic
+through a type alias IS caught (`jest.requireActual<Alias>(`): any `<` after the callee counts.
+The same limits hold for `createMockFromModule` and `genMockFromModule` (one shared regex).
+
 ## One exported component per `.tsx` — a Jest invariant and a guard rule
 
 The pre-write guard also runs it in-process as the Node rule
@@ -1590,8 +1725,7 @@ mechanizes kiko-code-style's "Import ordering" rule — see that
 section for the exact rule (3 blank-line-separated groups, sort
 ascending by ending-physical-line length, value-before-type as an
 equal-length tiebreak, a bare side-effect import as a barrier). Wired
-at the **fast tier** (`fast.sh`, alongside `lint.sh`/`security.sh`/
-`secrets.sh`): the rule is purely per-file with no cross-file
+at the **fast tier** (`fast.sh`; read it for the tool list): the rule is purely per-file with no cross-file
 dependency, so per-edit feedback catches drift immediately instead of
 waiting for `Stop`. It is ALSO wired project-wide
 (`npm run check:import-order`, part of `check:all`) — `import-order.sh`
@@ -1744,7 +1878,7 @@ caller-supplied op) has no such stale-data path and stays genuinely
 
 `scripts/checks/full-word-identifiers.js` (+ its wrapper `.sh`) mechanizes
 kiko-code-style's "Full words in identifiers" rule. Wired at the fast tier
-(`fast.sh`, alongside `lint.sh`/`security.sh`/`import-order.sh`) — every
+(`fast.sh`; read it for the tool list) — every
 `.ts`/`.tsx` is in scope, and a `.js`/`.mjs`/`.cjs` is in scope only under
 a `scripts/` directory (the fast tier's own harness-tooling files, the
 only place today's tree mixes CommonJS/ESM with TypeScript) — the rule is
@@ -1920,9 +2054,47 @@ A partial citation that drops the root (`design-system/entity-tint/`,
 of a cited root; it fails only when no file or folder outside
 `rules/fixtures/` ends with it. The partial check reads the files on
 disk that git tracks or would track
-(`git ls-files --cached --others --exclude-standard`, kept when
+(the file listing in `__tests__/test-support/repository-files.ts`, kept when
 `existsSync`), so, as with the rooted `existsSync` check, a new
 uncommitted file resolves and a deleted one does not.
+
+A second Jest invariant, `__tests__/skill-identifiers.test.ts`, does the
+same for names: it fails when an inline code span in a skill
+(`.claude/skills`, `harness/kiko/skills`) or an agent file
+(`harness/kiko/agents`) is exactly an identifier, a dotted member path
+or either with `()`, and any dotted part is not a whole word anywhere in
+the code corpus (so a `repo.method` path fails when either half is
+gone). A span that ends in a file extension (`ts`, `tsx`, `js`, `mm`,
+`swift`, `json`, `sh`, `md`, `yml`, and the like in the test's
+file-extension pattern) is a file name instead: it resolves only when a
+tracked file has that exact base name, since the words of its parts
+(`schema`, `ts`) occur in nearly every file. The corpus is the files under `src/`, `__tests__/`,
+`__mocks__/`, `jest/`, `e2e/`, `scripts/`, `rules/`, `ios/` (so a Swift,
+Obj-C or plist name resolves) and `harness/kiko/scripts/`, plus the root
+config files, minus the test file itself. It shares the span reader
+with cited-paths (`__tests__/test-support/markdown-code-spans.ts`, so a
+fenced block is skipped). A path, command, flag, call with arguments,
+rule id and a commit sha (7 to 40 hex digits with a digit) are not
+identifier spans. A span with `()` is never a file name
+(`response.json()` is a member path). Known limits: a name that survives
+only in a comment or a string still resolves, so the check catches a name
+that left the tree entirely, not a dead one; and a file name matches any
+tracked file with that base name in any folder (`index.ts` always resolves,
+and a deleted file still resolves while another folder has one with the same
+base name). To fix a failure: when the symbol was renamed, name the new
+one; when it is gone, write the sentence without backticks (the cited-paths
+rule). A stale-name sweep chooses per sentence: rename to
+the live symbol, delete the sentence, or keep it. Never rewrite a gone
+symbol into vague prose, because that can hide a stale rule. The test
+proves a name exists, not that it means the same thing, so a reviewer
+checks the meaning of every rename (a real but wrong symbol passes).
+An entry in the test's two exemption lists (non-project names, and
+bad-name examples exempt per skill file and name) is only for a
+name that is not this repository's code (a library, Apple, shell or
+other-repo name) or a deliberate bad-name example, each group with its
+one-line reason, and it is listed in
+`docs/harness/documented-exceptions.md`. A listed name that is no longer
+cited or now resolves fails the test, so the lists only shrink.
 
 ## Pre-write guard and merge-conflict files
 
@@ -1958,7 +2130,7 @@ a new tree. See `conflictSides`, `afterTreesFor`, and
 
 The pre-write guard sees only `Edit`/`Write`/`MultiEdit`. The
 kill-guard's SHELL-WRITE deny (above) blocks the common Bash write
-forms into `src/`, `__tests__/`, and `rules/`. It allows the `--write`
+forms into `src/`, `__tests__/`, `rules/`, and `e2e/`. It allows the `--write`
 fixers and git itself, which write source legitimately. What it does
 not see still reaches disk unchecked: a script file that writes,
 `find -exec`, a path held in a variable, and a commit of any
@@ -2111,6 +2283,9 @@ breaks every session's tool calls.
 Use this for every review finding or user feedback item classified as
 mechanizable (see harness-workflow's "Classify every finding").
 
+0. When a rule's scope widens to sibling APIs, update the rule, its
+   fixtures, the skill rule text, and the
+   `docs/harness/review-to-biome-inventory.md` row in the same commit.
 1. **Choose the engine.**
    - Semgrep: a syntactic pattern in one file. Add it to
      `rules/semgrep-prewrite.yml`, never `rules/semgrep-mobile.yml`.
@@ -2210,7 +2385,8 @@ mechanizable (see harness-workflow's "Classify every finding").
    for i in $(seq 20); do CLAUDE_PROJECT_DIR=$PWD /usr/bin/time -p bash scripts/checks/pre-write-guard.sh < "$S/b.json" 2>&1 >/dev/null | awk '/^real/{print $2}'; done | sort -n | sed -n '10p;19p'
    ```
 
-   It prints p50, then p95. A pattern that can go quadratic (a
+   It prints p50, then p95. A p95 taken while the load is above about 10 is not valid: wait with
+   `scripts/wait-load.sh`, or interleave runs with and without the rule and compare. A pattern that can go quadratic (a
    statement-sequence `pattern-inside` with a weak prefilter) must
    exclude files where it cannot apply; a Semgrep timeout becomes a
    "could not check" deny.
@@ -2291,6 +2467,19 @@ session that edits only that file never triggers the new check on
 adding a new triggering path; extend it, don't bypass the early-exit
 guard itself (a session that changed nothing must stay silent).
 
+**A deleted file triggers the tier but is never handed to a content reader.** `medium.sh`'s
+`changed` list comes from `git diff --name-only HEAD`, which lists a deleted file. It keeps
+that path for the trigger (a deleted file can break an import elsewhere, so knip and tsc must
+run), and builds a second list, `present` (an `-f` test per path), for `dup.sh` and
+`override-guard.sh`. The invariant: a path that is not on disk never reaches jscpd (it fails with
+`ENOENT lstat`, `dup.sh` would print its "duplicated code above the configured threshold" block,
+and the dedup, which needs every path to be a file, would be off for the run). The existence test
+runs after `changed` is built because `changed` must keep the deleted path for the trigger; a
+`--diff-filter=d` on the one list would drop the trigger too. `guard-replay.js` plans its own file
+set from git history and does not read the list. `dup.sh` itself fails closed on a path argument
+that is not on disk, naming the path (exit 2, "does not exist"), and never starts jscpd.
+`__tests__/medium-deleted-files.test.ts` pins both.
+
 ## Never pipe into grep -q or head under pipefail
 
 Every script under `scripts/` and `harness/` runs with `set -o pipefail` (or is sourced by one
@@ -2342,6 +2531,27 @@ closed (a lost match aborts the script) or run only in a deploy.
 Prove a fix with a test that feeds the script a value over 64 KB with the match on the FIRST line:
 `__tests__/mutation-gate.test.ts`, `__tests__/plist-credential-detect.test.ts`,
 `__tests__/lint-fixtures-scope.test.ts`, and `__tests__/deploy-device.test.ts` each carry one.
+
+## Never use the print flag of node in a shell script
+
+`node -p` (and `--print`) prints its result through `console.log`, which wraps a number in ANSI
+color codes when `FORCE_COLOR` is set, and background Claude sessions export `FORCE_COLOR=3` even
+into a pipe. A figure captured with `$(node -p ...)` then fails a numeric test or compares as a
+string: `dup.sh` once printed no warning for a file at 10% to 49.99%, because `awk` read the colored
+text as a string. Print with `node -e 'process.stdout.write(String(value))'`, which no color
+setting touches, and test the captured text is a plain number before comparing it (`dup.sh`'s
+`is_number`); a value that is not a number is a "could not measure" outcome, never a pass.
+
+The guard is the Semgrep rule `kiko-no-node-print-in-shell` in `rules/semgrep-mobile.yml` (fixture
+pair `rules/fixtures/kiko-no-node-print-in-shell.{bad,good}.sh`). Like the pipe rule above, it is
+a `generic` regex over `*.sh`, run by `check:security` and `check:rules`, not at write time. It
+flags `node`, then any options, then a single-dash option cluster holding `p` or `--print`,
+including in a comment or a string, so reword text that spells the flag. `-p"1"` (no space after
+the flag) and an option before the flag (`node --no-warnings -p`) are caught; a literal path such
+as `/usr/bin/node -p` is caught too. Known limit: node reached through a variable or command
+substitution (`"$NODE" -p`, `$(command -v node) -p`), and an option that takes a separate value stops the match
+(`node -r ./setup.js -p`, `node --require ./x -p`, `node -C production -p`, `node -e "x" -p`). A test that must prove a script survives a colored
+environment sets `FORCE_COLOR: '3'` itself (`__tests__/dup-large-files.test.ts` does).
 
 ## Shipped migrations are never edited — check:shipped-migrations
 

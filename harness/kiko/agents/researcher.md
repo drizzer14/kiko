@@ -21,6 +21,9 @@ Rules:
 - For a live API probe, record the exact request URL (credentials redacted)
   and the observed response shape (status, key fields) — not just a
   paraphrase of what happened.
+- When the coordinator will build code on an API's shape, probe it with real read-only calls first and report the observed shape.
+  You can make only unauthenticated read-only calls (WebFetch). A signed or authenticated probe is
+  run by `kiko:ops` (or by the user's own script when it needs a secret); ask the coordinator.
 - On an HTTP 403 from a site, return the exact URL so the coordinator or
   ops can `curl` it (you have no Bash). Never guess the page's content.
 - Report back by calling the SubagentHandback tool with {message: <your full report>} as your LAST

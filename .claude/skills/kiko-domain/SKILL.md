@@ -1392,7 +1392,7 @@ bond.
 loop-invariant per holding (not per bucket) must be computed ONCE, outside
 the per-bucket loop, not re-derived at every point. `createHoldingValuer`
 (`src/statistics/holding-value-at/`) is the ONLY holding-valuation entry
-point now — there is no separate single-call `holdingValueAt` anymore, it
+point now — there is no separate single-call holding-value-at function anymore, it
 was deleted from production (its old body survives only as a local,
 un-exported `referenceHoldingValueAt` oracle inside
 `holding-value-at.test.ts`, the same "kept only as the parity oracle"
@@ -1400,7 +1400,7 @@ pattern `internal-transfers.test.ts` uses for the algorithm IT replaced).
 Every call site — including a single-instant read like
 `holdingsRepo.updateWithBalanceDelta`'s own regression test — calls
 `createHoldingValuer(holding, transactions)(t)` instead; for a one-off read
-this pays the same per-holding setup cost `holdingValueAt` used to pay
+this pays the same per-holding setup cost that single-call function used to pay
 per call, which is negligible for a single call.
 
 `buildNetWorthSeries` also decides whether a holding's value counts at
