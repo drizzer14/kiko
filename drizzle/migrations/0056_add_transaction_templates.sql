@@ -3,10 +3,6 @@
  transaction form. `draft` is the JSON of the fields the form fills from the
  template; the repo narrows it on read.
 
- Numbering: this file was generated as 0056 because the other track's 0056 is not
- yet merged, and it is renumbered to 0057 (file, snapshot, journal idx and test)
- at merge, after that 0056.
-
  No foreign key and no index: the holding and category ids live inside
  `draft` and a delete clears them there, and the table is small and read by its
  primary key or in full, so no named index joins the shared index namespace.

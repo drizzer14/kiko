@@ -2,8 +2,7 @@
 //
 // Runs the shipped SQL on a real `node:sqlite` engine seeded as a device's
 // database stood before it, so the table, its defaults and the absence of a
-// foreign key and an index are proven on the real engine. The file is renumbered
-// to 0057 at merge (see the SQL header).
+// foreign key and an index are proven on the real engine.
 import { join } from 'node:path';
 import { readFileSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
@@ -58,7 +57,7 @@ const tableNames = (database: DatabaseSync): string[] =>
     }[]
   ).map((table) => table.name);
 
-describe('migration 0056 (0057 once merged): the table of transaction templates', () => {
+describe('migration 0056: the table of transaction templates', () => {
   it('adds the table', () => {
     const database = databaseThrough0055();
 

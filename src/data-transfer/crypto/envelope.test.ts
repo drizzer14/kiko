@@ -124,7 +124,7 @@ describe('the export version against the migration journal', () => {
     // (`dismissedTips`): an older build restoring a file that carries it drops
     // the key, and this build restores an older file without it as `[]` (the
     // schema default), so it needed no bump.
-    // Through 0056_add_transaction_templates (0057 once merged), a new table
+    // Through 0056_add_transaction_templates, a new table
     // carried as an optional key (`transactionTemplates`), like 0054: an older
     // build restoring such a file drops the key, and this build restores an older
     // file with the table empty, so it needed no bump.

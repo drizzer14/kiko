@@ -1,7 +1,7 @@
 // src/data-transfer/snapshot/restore-transaction-templates.test.ts
 //
 // The transaction templates travel in the backup as an optional key
-// (`transactionTemplates`, migration 0057): a file exported with templates and
+// (`transactionTemplates`, migration 0056): a file exported with templates and
 // restored on another device brings them back whole, a file from before the table
 // restores with none, and the draft of a template is carried verbatim, whatever
 // its shape, because the repo (not the restore) narrows it on read.
