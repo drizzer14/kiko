@@ -34,6 +34,7 @@ const argsOf = (overrides: Partial<Args> = {}): Args => ({
   templateDraft: null,
   templateName: null,
   pageHolding: undefined,
+  holdings: [],
   ...overrides,
 });
 
@@ -412,6 +413,39 @@ describe('resolveHydration — a template', () => {
         ],
       });
       expect(returnsOf([])).toMatchObject({ returns: EMPTY_RETURNS });
+    });
+
+    describe('where the seated holding is in another currency than the returns', () => {
+      const split = draftOf({
+        mode: 'split',
+        currency: 'UAH',
+        returns: [{ holdingId: 'friend', amountMinorUnits: 500 }],
+      });
+      const holdings = [{ id: 'friend', currency: 'UAH' }] as HoldingRow[];
+
+      it('empties the return holding, keeping its amount', () => {
+        const plan = resolveHydration(
+          argsOf({
+            templateDraft: split,
+            pageHolding: { id: 'usd', currency: 'USD', type: 'cash' } as HoldingRow,
+            holdings,
+          }),
+        );
+
+        expect(plan).toMatchObject({ returns: [{ holdingId: null, amount: '5' }] });
+      });
+
+      it('keeps the return holding for a seated holding in the same currency', () => {
+        const plan = resolveHydration(
+          argsOf({
+            templateDraft: split,
+            pageHolding: { id: 'h1', currency: 'UAH', type: 'cash' } as HoldingRow,
+            holdings,
+          }),
+        );
+
+        expect(plan).toMatchObject({ returns: [{ holdingId: 'friend', amount: '5' }] });
+      });
     });
   });
 });

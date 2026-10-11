@@ -1,6 +1,6 @@
 import { Alert } from 'react-native';
 import type { ComponentProps } from 'react';
-import { fireEvent, render, within } from '@testing-library/react-native';
+import { act, fireEvent, render, within } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { DAY_MS } from '@kiko/dates';
 import { scrollToField } from '@kiko/design-system/scroll-to-field';
@@ -748,6 +748,49 @@ describe('TransactionFormScreen — Edit template', () => {
     expect(mockUpdateTemplate).not.toHaveBeenCalled();
     expect(mockCreateTemplate).not.toHaveBeenCalled();
     expect(navigation.goBack).not.toHaveBeenCalled();
+  });
+});
+
+describe('TransactionFormScreen — a holding change in a template entry settles the mode', () => {
+  const SWAP = draftOf({
+    mode: 'exchange',
+    holdingId: 'h1',
+    currency: 'UAH',
+    amountMinorUnits: 10000,
+    exchange: { destinationHoldingId: 'usd', destinationCurrency: 'USD', valueInMinorUnits: 250 },
+  });
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    jest.spyOn(Date, 'now').mockReturnValue(NOW);
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  it.each([
+    ['an Add template', { newTemplate: true }],
+    ['an Edit template', { editTemplateId: 'tpl' }],
+  ] as const)('settles an exchange to Expense when %s picks a card', async (_name, params) => {
+    setLiveData({ draft: SWAP, latestManualHoldingId: 'h1' });
+
+    const utils = await render(templateScreen(params));
+
+    if ('newTemplate' in params) {
+      await fireEvent.press(utils.getByLabelText('Type'));
+      await fireEvent.press(utils.getByTestId('transaction-type-field-option-exchange'));
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+    }
+
+    expect(utils.getByLabelText('Type')).toHaveTextContent('Exchange');
+
+    await fireEvent.press(utils.getByLabelText('Holding'));
+    await fireEvent.press(utils.getByLabelText('Card UAH, Home'));
+
+    expect(utils.getByLabelText('Type')).toHaveTextContent('Expense');
   });
 });
 
@@ -1667,6 +1710,55 @@ describe('TransactionFormScreen — Manual and Template tabs', () => {
     });
   });
 
+  describe('where the seated holding is in another currency than the split returns', () => {
+    const splitWithoutPayer = (holdingId: string | null) => ({
+      id: 't6',
+      name: 'Dinner',
+      draft: draftOf({
+        mode: 'split',
+        holdingId,
+        currency: 'UAH',
+        amountMinorUnits: 10000,
+        category: 'groceries',
+        returns: [{ holdingId: 'friend', amountMinorUnits: 500 }],
+      }),
+    });
+
+    it.each([
+      ['holds no holding', null],
+      ['holds a holding that is gone', 'gone'],
+    ])(
+      'asks for the return holding, keeping its amount, for a template that %s',
+      async (_name, payerId) => {
+        setLiveData({ draft: EXPENSE, templateList: [splitWithoutPayer(payerId)] });
+
+        const utils = await render(templateScreen({ holdingId: 'usd' }));
+
+        await fireEvent.press(within(utils.getByTestId('entry-tabs')).getByText('Template'));
+        await pickTemplate(utils, 't6');
+
+        expect(utils.getByLabelText('Type')).toHaveTextContent('Split');
+        expect(utils.getByLabelText('Return to 1')).toHaveTextContent('Select holding');
+        expect(utils.getByLabelText('Return 1').props.value).toBe('5');
+
+        await fireEvent.press(utils.getByText('Save'));
+
+        expect(mockRecordManualWithReturns).not.toHaveBeenCalled();
+      },
+    );
+
+    it('keeps the return holding when the seated holding shares its currency', async () => {
+      setLiveData({ draft: EXPENSE, templateList: [splitWithoutPayer(null)] });
+
+      const utils = await render(templateScreen({ holdingId: 'h1' }));
+
+      await fireEvent.press(within(utils.getByTestId('entry-tabs')).getByText('Template'));
+      await pickTemplate(utils, 't6');
+
+      expect(utils.getByLabelText('Return to 1')).toHaveTextContent('AliceHome');
+    });
+  });
+
   describe('where a holding picked after the fill offers fewer modes', () => {
     // A null holding leaves the picker empty, so the mode stays as stored until a holding is
     // picked.
@@ -1684,6 +1776,7 @@ describe('TransactionFormScreen — Manual and Template tabs', () => {
       category: 'groceries',
       returns: [{ holdingId: 'friend', amountMinorUnits: 500 }],
     });
+    const SPLIT_FROM_WALLET = { ...SPLIT_WITHOUT_HOLDING, holdingId: 'h1' };
 
     const openTemplate = async (
       entry: 'the Template tab' | 'a template to create from',
@@ -1752,6 +1845,36 @@ describe('TransactionFormScreen — Manual and Template tabs', () => {
           expect(mockRecordManual).toHaveBeenCalledWith(
             expect.objectContaining({ holdingId: 'card', amountMinorUnits: -10000 }),
           );
+        });
+
+        it('empties a return holding in another currency than the picked holding, keeping its amount', async () => {
+          const utils = await openTemplate(entry, SPLIT_FROM_WALLET);
+
+          expect(utils.getByLabelText('Return to 1')).toHaveTextContent('AliceHome');
+
+          await pickHolding(utils, 'Wallet USD, Home');
+
+          expect(utils.getByLabelText('Type')).toHaveTextContent('Split');
+          expect(utils.getByLabelText('Return to 1')).toHaveTextContent('Select holding');
+          expect(utils.getByLabelText('Return 1').props.value).toBe('5');
+        });
+
+        it('writes no split with the return holding left in the old currency', async () => {
+          const utils = await openTemplate(entry, SPLIT_FROM_WALLET);
+
+          await pickHolding(utils, 'Wallet USD, Home');
+          await fireEvent.press(utils.getByText('Save'));
+
+          expect(mockRecordManualWithReturns).not.toHaveBeenCalled();
+        });
+
+        it('keeps a return holding when the picked holding shares its currency', async () => {
+          const utils = await openTemplate(entry, SPLIT_FROM_WALLET);
+
+          await pickHolding(utils, 'Wallet UAH, Home');
+
+          expect(utils.getByLabelText('Return to 1')).toHaveTextContent('AliceHome');
+          expect(utils.getByLabelText('Return 1').props.value).toBe('5');
         });
 
         it('keeps the exchange for a cash holding', async () => {

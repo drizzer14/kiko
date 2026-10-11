@@ -571,6 +571,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
       templateDraft,
       templateName: seededTemplateName,
       pageHolding,
+      holdings,
     });
 
     match(plan)
@@ -622,6 +623,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     templateDraft,
     seededTemplateName,
     pageHolding,
+    holdings,
     holdingParamId,
     setSelectedCategory,
     setUserPickedCategory,
@@ -673,8 +675,8 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     if (picked !== undefined) {
       applyHoldingChange(
         picked,
-        { mode, destinationHoldingId },
-        { setMode, setDestinationHoldingId, setValueIn },
+        { mode, destinationHoldingId, holdings },
+        { setMode, setDestinationHoldingId, setValueIn, setChangeReturns },
       );
     }
   };

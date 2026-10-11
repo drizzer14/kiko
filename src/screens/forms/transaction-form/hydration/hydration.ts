@@ -6,6 +6,7 @@ import type { TemplateDraft, TemplateMode } from '@kiko/transaction-templates/dr
 
 import { settleMode } from '../mode-options';
 import type { ChangeReturnRow, Sign } from '../row-labels';
+import { emptyReturnsInOtherCurrency } from '../holding-change';
 
 // The template's own mode union lives in a feature, which must not import this screen's, so each
 // is assigned to the other here: `tsc` fails if either union gains a member the other lacks.
@@ -180,10 +181,30 @@ const destinationFor = (draft: TemplateDraft, seated: HoldingRow | undefined): s
   return destination === seated?.id ? null : destination;
 };
 
+// The return rows a template fills. A return holding is in the template's payer currency, but a
+// template whose own holding is gone is seated on the page's, which may be in another one: that
+// row loses its holding, with the same rule a holding pick applies, and the form asks.
+const returnsFor = (
+  draft: TemplateDraft,
+  seated: HoldingRow | undefined,
+  holdings: readonly HoldingRow[],
+): ReturnSeed[] => {
+  const rows =
+    draft.returns.length === 0
+      ? emptyReturns()
+      : draft.returns.map((row) => ({
+          holdingId: row.holdingId,
+          amount: storedAmountText(draft.currency, row.amountMinorUnits),
+        }));
+
+  return seated === undefined ? rows : emptyReturnsInOtherCurrency(rows, seated.currency, holdings);
+};
+
 const seedFieldsFromTemplate = (
   draft: TemplateDraft,
   templateName: string | null,
   seated: HoldingRow | undefined,
+  holdings: readonly HoldingRow[],
 ): HydrationPlan => {
   const destinationHoldingId = destinationFor(draft, seated);
 
@@ -204,13 +225,7 @@ const seedFieldsFromTemplate = (
             draft.exchange?.destinationCurrency ?? null,
             draft.exchange?.valueInMinorUnits ?? null,
           ),
-    returns:
-      draft.returns.length === 0
-        ? emptyReturns()
-        : draft.returns.map((row) => ({
-            holdingId: row.holdingId,
-            amount: storedAmountText(draft.currency, row.amountMinorUnits),
-          })),
+    returns: returnsFor(draft, seated, holdings),
     templateName,
     clearsHolding: draft.holdingId === null,
   };
@@ -226,18 +241,21 @@ const resolveTemplateHydration = (args: {
   primaryHoldingId: string | null;
   holding: HoldingRow | undefined;
   pageHolding: HoldingRow | undefined;
+  holdings: readonly HoldingRow[];
 }): HydrationPlan => {
-  const { templateDraft, templateName, primaryHoldingId, holding, pageHolding } = args;
+  const { templateDraft, templateName, primaryHoldingId, holding, pageHolding, holdings } = args;
 
   if (templateDraft.holdingId === null) {
-    return seedFieldsFromTemplate(templateDraft, templateName, pageHolding);
+    return seedFieldsFromTemplate(templateDraft, templateName, pageHolding, holdings);
   }
 
   if (templateDraft.holdingId !== primaryHoldingId) {
     return { kind: 'seedHolding', holdingId: templateDraft.holdingId, final: false };
   }
 
-  return holding ? seedFieldsFromTemplate(templateDraft, templateName, holding) : { kind: 'wait' };
+  return holding
+    ? seedFieldsFromTemplate(templateDraft, templateName, holding, holdings)
+    : { kind: 'wait' };
 };
 
 export const resolveHydration = (args: {
@@ -261,6 +279,8 @@ export const resolveHydration = (args: {
   // The holding an add from a holding names, which a template with no holding of its own falls
   // back to. Undefined on every other entry.
   pageHolding: HoldingRow | undefined;
+  // Every holding the form reads, for the currency of a return holding.
+  holdings: readonly HoldingRow[];
 }): HydrationPlan => {
   const {
     existing,
@@ -273,6 +293,7 @@ export const resolveHydration = (args: {
     templateDraft,
     templateName,
     pageHolding,
+    holdings,
   } = args;
 
   // Edit: seed once both the row and its holding have loaded, carrying the
@@ -304,6 +325,7 @@ export const resolveHydration = (args: {
       primaryHoldingId,
       holding,
       pageHolding,
+      holdings,
     });
   }
 

@@ -4708,6 +4708,8 @@ describe('TransactionFormScreen — a holding change settles the mode', () => {
     holdingOf('cash-usd', 'Dollars', 'cash', 'USD', 1),
     holdingOf('cash-eur', 'Euros', 'cash', 'EUR', 2),
     holdingOf('card-uah', 'Card', 'card', 'UAH', 3),
+    holdingOf('cash-uah-pocket', 'Pocket', 'cash', 'UAH', 4),
+    holdingOf('cash-uah-jar', 'Jar', 'cash', 'UAH', 5),
   ];
   const ACCOUNTS: Account[] = [
     { id: 'a1', name: 'Cash' },
@@ -4788,6 +4790,57 @@ describe('TransactionFormScreen — a holding change settles the mode', () => {
 
     expect(utils.getByLabelText('Type')).toHaveTextContent('Expense');
     expect(utils.queryByLabelText('Return to 1')).toBeNull();
+  });
+
+  // A split from the Wallet with a 5.00 return to the Pocket, both in UAH.
+  const startSplitWithReturn = async (): Promise<Awaited<ReturnType<typeof render>>> => {
+    mockRecordManualWithReturns.mockResolvedValue(undefined);
+    setLiveData(HOLDINGS, undefined, CATEGORIES, ACCOUNTS, [], [], [], 'cash-uah');
+
+    const utils = await renderEmptyCreate();
+
+    await pickType(utils, 'split');
+    await fireEvent.press(utils.getByLabelText('Return to 1'));
+    await fireEvent.press(utils.getByText('Pocket'));
+    await fireEvent.changeText(utils.getByLabelText('Return 1'), '5.00');
+    await fireEvent.changeText(utils.getByLabelText('Amount'), '100');
+    await pickCategory(utils, 'Groceries');
+
+    return utils;
+  };
+
+  it('empties a split return holding in another currency than the new holding, keeping its amount', async () => {
+    const utils = await startSplitWithReturn();
+
+    await pickHolding(utils, 'Dollars, Cash');
+
+    expect(utils.getByLabelText('Type')).toHaveTextContent('Split');
+    expect(utils.getByLabelText('Return to 1')).toHaveTextContent('Select holding');
+    expect(utils.getByLabelText('Return 1').props.value).toBe('5.00');
+  });
+
+  it('writes no split with the return holding left in the old currency', async () => {
+    const utils = await startSplitWithReturn();
+
+    await pickHolding(utils, 'Dollars, Cash');
+    await fireEvent.press(utils.getByText('Save'));
+
+    expect(mockRecordManualWithReturns).not.toHaveBeenCalled();
+  });
+
+  it('keeps a split return holding when the new holding shares its currency', async () => {
+    const utils = await startSplitWithReturn();
+
+    await pickHolding(utils, 'Jar, Cash');
+    await fireEvent.press(utils.getByText('Save'));
+
+    expect(utils.getByLabelText('Return to 1')).toHaveTextContent('PocketCash');
+    expect(mockRecordManualWithReturns).toHaveBeenCalledWith(
+      expect.objectContaining({
+        payment: expect.objectContaining({ holdingId: 'cash-uah-jar' }),
+        returns: [{ holdingId: 'cash-uah-pocket', amountMinorUnits: 500 }],
+      }),
+    );
   });
 
   it('keeps the exchange and every field when the new holding is a cash holding', async () => {
