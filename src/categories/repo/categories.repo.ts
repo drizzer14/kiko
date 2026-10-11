@@ -40,17 +40,22 @@ export const categoriesRepo = {
     database.select().from(categories).orderBy(asc(categories.sortOrder), asc(categories.key)),
   // A user-added category gets a generated key, distinct from the seeded MCC
   // slugs, so it never collides with the canonical categories. It appends to the
-  // end of the list via `sortOrder = max + 1`.
+  // end of the list via `sortOrder = max + 1`. Returns the new key so the caller can open the
+  // category it just made.
   create: (category: { title: string; icon: string; color?: string | null }) =>
     write(async (databaseTransaction) => {
       const sortOrder = await nextSortOrder(databaseTransaction);
+      const key = id();
+
       await databaseTransaction.insert(categories).values({
-        key: id(),
+        key,
         title: category.title,
         icon: category.icon,
         color: category.color ?? null,
         sortOrder,
       });
+
+      return key;
     }),
   updateTitle: (key: string, title: string) =>
     write((databaseTransaction) =>

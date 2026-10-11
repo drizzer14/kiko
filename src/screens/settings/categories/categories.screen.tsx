@@ -1,490 +1,118 @@
+import { type FC, useMemo } from 'react';
 import Sortable from 'react-native-sortables';
 import { settingsRepo } from '@kiko/settings';
 import { useTranslation } from 'react-i18next';
 import Box from '@kiko/design-system/components/box';
 import { categoriesRepo } from '@kiko/categories/repo';
-import Card from '@kiko/design-system/components/card';
 import type { ScrollViewInstance } from 'react-native';
 import { useAnimatedRef } from 'react-native-reanimated';
 import Button from '@kiko/design-system/components/button';
 import Screen from '@kiko/design-system/components/screen';
-import { type FC, useCallback, useRef, useState } from 'react';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { genericEntitySymbol } from '@kiko/holdings/entity-symbols';
 import { onGridDragEnd } from '@kiko/design-system/grid-interaction';
 import type { SettingsStackParamList } from '@kiko/navigation/types';
-import ColorPicker from '@kiko/design-system/components/color-picker';
-import { type CategoryRow, useDataReady, useLiveQuery } from '@kiko/db';
 import LoadingState from '@kiko/design-system/components/loading-state';
-import ConfirmSheet from '@kiko/design-system/components/confirm-sheet';
+import { categoryDeleteNoticeOf } from '@kiko/categories/delete-notice';
 import { DEFAULT_CATEGORY_KEY } from '@kiko/categories/category-display';
+import { categoryRulesRepo } from '@kiko/categories/category-rules-repo';
 import { resolveCategoryColor } from '@kiko/statistics/category-breakdown';
+import { useGridLiftGuard } from '@kiko/design-system/use-grid-lift-guard';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import CardContextMenu from '@kiko/design-system/components/card-context-menu';
 import { resolveDefaultCategoryTitle } from '@kiko/i18n/default-category-title';
-import { KIKO_CATEGORIES_ICONS } from '@kiko/design-system/components/icon-pools';
-import HoldingIdentityField from '@kiko/design-system/components/holding-identity-field';
+import { type CategoryRow, type CategoryRuleRow, useDataReady, useLiveQuery } from '@kiko/db';
 
-import AddCategoryRow from './add-category-row';
+import CategoryCard from './category-card';
 
 type CategoriesScreenProps = NativeStackScreenProps<SettingsStackParamList, 'Categories'>;
 
 const styles = StyleSheet.create(() => ({
-  // The card's top row: the identity field (icon + rename) stretches, and the
-  // trailing slot (the "set as default" star, or the default-category filled
-  // star on the default card) sits at its right edge, vertically centered
-  // against it.
-  header: {
-    alignItems: 'center',
-  },
-  // Bounds the identity field to the space left of the trailing control so a
-  // long title wraps within the card instead of pushing the control off-screen.
-  identity: {
-    flex: 1,
-  },
-  // The card's bottom row: the labelled Delete (left, disabled on the default
-  // card) and the reorder cluster (right), split by `space-between` and centered
-  // against each other. The controls themselves are the shared compact ghost
-  // Button, which owns its own 44pt touch target, so this row sets only the
-  // layout.
-  bottomRow: {
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  // The move-to-top / move-to-bottom reorder cluster, sharing the bottom row
-  // with the Delete control. `marginLeft: 'auto'` pins it to the row's right
-  // edge; the Delete now renders on every card (disabled on the default), so the
-  // row's layout is identical across all cards.
-  reorderButtons: {
-    marginLeft: 'auto',
-  },
-  // The footer's "Add category" button spans the full footer width (not
-  // `alignSelf: 'flex-start'`) so it reads as the row's dominant action and
-  // keeps a comfortable, easy-to-hit tap target — mirrors accounts.styles.ts's
-  // addAccountButton.
+  // The footer's "Add category" button spans the full footer width so it reads as the row's
+  // dominant action and keeps an easy-to-hit tap target, as the Accounts footer does.
   addCategoryButton: {
     width: '100%',
   },
 }));
 
-// One category, rendered as its own `Card` — the same solid content-layer
-// surface (padding, defined border) the account and holding cards use, so
-// the categories list reads as a vertical stack of cards rather than rows
-// inside one shared surface. Inside the card, the shared identity field pairs
-// the leading icon (which doubles as the picker toggle) with an inline
-// title-rename field, in its caption-free (dense list) mode. The default
-// category's card shows a filled star marker in the header's trailing slot
-// (SF Symbol `star.fill`, tinted white via `textPrimary`) as a DISABLED
-// secondaryTonal Button at the `compact` size — the SAME control shape as the
-// "Set as default" star every other card shows (this one is the catch-all —
-// it is already the default), so the two stars line up. Both stars use `compact` (44pt visible
-// height) so they align with the fixed 44pt name input beside them
-// (HoldingIdentityField's nameField), rather than the shorter 34pt `small`.
-// Every other card puts an icon-only "Set as default" affordance
-// in that same header slot (a bare OUTLINE `star`, so a non-default card
-// previews what picking it will fill in). The labelled destructive delete at the
-// card's bottom (a trash icon beside a "Delete" label, confirmed via the shared
-// themed ConfirmSheet since it moves this category's transactions to the default)
-// renders on EVERY card, but is DISABLED on the default card — the default can
-// never be deleted, and the disabled control keeps the bottom row's layout
-// identical across all cards. Local title state follows the row so keystrokes
-// show immediately, while the persisted value flows back through the live query.
-const CategoryListRow: FC<{
-  category: CategoryRow;
-  isDefault: boolean;
-  onMoveToTop: () => void;
-  onMoveToBottom: () => void;
-}> = ({ category, isDefault, onMoveToTop, onMoveToBottom }) => {
-  const { t } = useTranslation();
-  const { theme } = useUnistyles();
-  // Local edit state is the RAW stored title, never the translated display —
-  // this is the source of truth `commitTitle` diffs against and persists, so
-  // the translated string it is shown as (see `displayTitle` below) can never
-  // itself be saved as a rename.
-  const [title, setTitle] = useState(category.title);
-  // The stored title `title` last took. The row is keyed by category.key, so it
-  // never remounts when a fresh row replaces the cached one (kiko-architecture:
-  // a cached display mount can be one read old); a stored title that changed
-  // while the field is not being edited — a rename made elsewhere, such as a
-  // .kiko restore — replaces the local one. Syncing on a CHANGE, not rendering
-  // `category.title` directly, keeps a just-committed rename on screen until
-  // its write flows back, instead of flashing the old title.
-  const [syncedTitle, setSyncedTitle] = useState(category.title);
-  // Tracks whether the field currently has focus. While unfocused, an
-  // un-renamed default shows its translated label (`resolveDefaultCategoryTitle`
-  // is a no-op for a renamed/custom row, so those always show `title`
-  // verbatim); the instant the field gains focus — before any keystroke can
-  // land — it swaps back to the raw `title` so the user edits (and the field's
-  // controlled `value` stays in sync with) the real stored text, not the
-  // translated one.
-  const [isEditing, setIsEditing] = useState(false);
-
-  if (!isEditing && category.title !== syncedTitle) {
-    setSyncedTitle(category.title);
-    setTitle(category.title);
-  }
-  // Whether the themed delete confirm (`ConfirmSheet`) is up; a scrim/back
-  // dismiss behaves like Cancel.
-  const [deletePending, setDeletePending] = useState(false);
-  const displayTitle = isEditing ? title : resolveDefaultCategoryTitle(category.key, title);
-  // The committed name as the user sees it (translated for an un-renamed
-  // default): every accessibility label and the delete sheet title name the
-  // category this way, never by its raw stored seed title.
-  const displayName = resolveDefaultCategoryTitle(category.key, category.title);
-  // The category's EFFECTIVE color: its stored hex when picked, else the
-  // stable per-key palette hash — computed once and shared by the row icon
-  // and the color picker's ringed swatch, so both always agree on what "this
-  // category's color" means.
-  const color = resolveCategoryColor(category.color, category.key);
-
-  const startEditingTitle = (): void => setIsEditing(true);
-
-  const commitTitle = (): void => {
-    const trimmed = title.trim();
-    // An edit that began on a cached title and ends after the fresh one arrived
-    // still holds the cached text; only text the user actually changed is a
-    // rename, so the cached title is never written back over the fresh one.
-    const isRename = trimmed !== syncedTitle && trimmed !== category.title;
-
-    if (trimmed !== '' && isRename) {
-      categoriesRepo.updateTitle(category.key, trimmed);
-    }
-
-    setIsEditing(false);
-  };
-
-  const selectIcon = (icon: string): void => {
-    if (icon !== category.icon) {
-      categoriesRepo.updateIcon(category.key, icon);
-    }
-  };
-
-  const selectColor = (hex: string): void => {
-    if (hex !== category.color) {
-      categoriesRepo.updateColor(category.key, hex);
-    }
-  };
-
-  // Delete moves this category's transactions (and any name→category overrides)
-  // onto the default category, so it confirms first via the shared, themed
-  // `ConfirmSheet` — the same destructive confirm the deletable grid cards use,
-  // not a native `ActionSheetIOS`. Only its destructive confirm removes the
-  // category; Cancel and a scrim/back dismiss delete nothing.
-  const openDeleteConfirm = (): void => {
-    setDeletePending(true);
-  };
-
-  const cancelDelete = (): void => {
-    setDeletePending(false);
-  };
-
-  const removeCategory = (): void => {
-    setDeletePending(false);
-    categoriesRepo.delete(category.key);
-  };
-
-  const setAsDefault = (): void => {
-    settingsRepo.setDefaultCategoryKey(category.key);
-  };
-
-  return (
-    <Card testID="category-card" padding={4}>
-      <Box gap={2}>
-        <Box direction="row" gap={2} style={styles.header}>
-          <Box style={styles.identity}>
-            <HoldingIdentityField
-              icons={KIKO_CATEGORIES_ICONS}
-              captioned={false}
-              icon={category.icon}
-              fallbackIcon={category.icon}
-              // The row icon carries the category's effective color: its stored hex
-              // when picked, else the stable per-key palette hash — so a colored
-              // category reads its color at a glance, and an uncolored category's icon
-              // still gets a hue (the same stable hash the chart already uses for it)
-              // rather than staying neutral.
-              iconColor={color}
-              iconAccessibilityLabel={t('categories.changeIconLabel', { title: displayName })}
-              onSelectIcon={selectIcon}
-              name={displayTitle}
-              onChangeName={setTitle}
-              nameAccessibilityLabel={t('categories.titleFieldLabel', { title: displayName })}
-              // Swap to the raw stored title the instant the field gains focus —
-              // before any keystroke can land — so what the user actually edits
-              // (and what `commitTitle` diffs and persists) is always the raw
-              // title, never the translated `displayTitle` above.
-              onFocus={startEditingTitle}
-              // Commit once on end-of-editing only. `onEndEditing` fires on both a
-              // return-key submit and a blur, so a rename that loses focus without
-              // pressing return still saves — and it never double-writes the way
-              // wiring both `onSubmitEditing` and `onEndEditing` would. It also
-              // ends the "editing" window opened by `onFocus` above, so the field
-              // reverts to showing the translated `displayTitle` once blurred.
-              onEndEditingName={commitTitle}
-            />
-          </Box>
-
-          {isDefault ? (
-            // The default marker is the SAME faint-tint compact Button shape as
-            // the set-default star below, but filled (`star.fill`) and disabled so
-            // it reads as a static "this is the default" marker while keeping the
-            // identical geometry — unifying the two stars into one faint-tinted
-            // control. The `compact` size gives it a 44pt visible height that
-            // lines up with the fixed 44pt name input beside it.
-            <Button
-              variant="secondaryTonal"
-              size="compact"
-              fullWidth={false}
-              disabled
-              icon="star.fill"
-              accessibilityLabel={t('categories.isDefaultLabel', { title: displayName })}
-              // A permanently-disabled static marker: the press never fires, so
-              // it carries an inert no-op rather than the dead `setAsDefault`.
-              onPress={() => {}}
-            />
-          ) : (
-            <Button
-              variant="secondaryTonal"
-              size="compact"
-              fullWidth={false}
-              icon="star"
-              accessibilityLabel={t('categories.setAsDefaultLabel', { title: displayName })}
-              onPress={setAsDefault}
-            />
-          )}
-        </Box>
-
-        {/* Ring the swatch of the category's EFFECTIVE color — its stored hex when
-            picked, else the stable per-key palette hash (always a real entityColors
-            swatch, same hue the row icon and chart already use) —
-            so the color the category actually renders in reads as selected, rather
-            than nothing being ringed for a default-colored category. Picking a
-            swatch still stores the chosen hex via onSelect. The per-row prefix
-            scopes each swatch's a11y label to its category, so many pickers on one
-            screen never collide (e.g. "Groceries color yellow"). */}
-        <ColorPicker
-          value={color}
-          onSelect={selectColor}
-          accessibilityLabelPrefix={t('categories.rowColorPrefix', { title: displayName })}
-        />
-
-        {/* The card's bottom row: the labelled destructive Delete on the left
-            and the move-to-top / move-to-bottom reorder cluster on the right,
-            split by `space-between`. The Delete renders on EVERY card, but is
-            disabled on the default card — the default can never be deleted, and
-            the disabled control keeps the bottom row's layout identical across
-            all cards rather than shifting when the Delete is absent. */}
-        <Box direction="row" style={styles.bottomRow}>
-          {/* The category Delete REUSES the contributions "Remove" treatment
-              (holding-form.screen.tsx): the same tinted-destructive variant, the
-              same small size, and the same trash glyph. The destructiveTonal
-              variant supplies the red `negative` label itself, so no textColor
-              override is needed. Disabled on the default card (it can never be
-              deleted) for layout parity across cards. */}
-          <Button
-            variant="destructiveTonal"
-            size="small"
-            fullWidth={false}
-            disabled={isDefault}
-            icon="trash"
-            accessibilityLabel={t('categories.deleteLabel', { title: displayName })}
-            onPress={openDeleteConfirm}
-          >
-            {t('common.delete')}
-          </Button>
-
-          {/* Move-to-top / move-to-bottom: bare (transparent ghost) icon buttons
-              at the row's right edge, kept muted `textSecondary` so they read as
-              minor utilities beside the tinted Delete rather than competing with
-              it. Each immediately rewrites the whole list order (the parent
-              computes the new key array and persists it via
-              categoriesRepo.reorder); because the list is a live query, the write
-              re-renders it with this card at its new position. These are a
-              keyboard-free alternative to the drag-to-reorder gesture the
-              enclosing Sortable.Grid provides. `arrow.up.to.line` /
-              `arrow.down.to.line` are long-standing SF Symbols (iOS 13+). The
-              small size makes them the same height as the small Delete beside
-              them; the 44pt tap target is restored via hitSlop. */}
-          <Box direction="row" gap={1} style={styles.reorderButtons}>
-            <Button
-              variant="ghost"
-              size="small"
-              fullWidth={false}
-              icon="arrow.up.to.line"
-              textColor={theme.colors.textSecondary}
-              accessibilityLabel={t('categories.moveToTopLabel', { title: displayName })}
-              onPress={onMoveToTop}
-            />
-
-            <Button
-              variant="ghost"
-              size="small"
-              fullWidth={false}
-              icon="arrow.down.to.line"
-              textColor={theme.colors.textSecondary}
-              accessibilityLabel={t('categories.moveToBottomLabel', { title: displayName })}
-              onPress={onMoveToBottom}
-            />
-          </Box>
-        </Box>
-      </Box>
-
-      {/* The category delete confirmation — the same shared themed
-          `ConfirmSheet` the grid-card long-press delete uses (title
-          `Delete "<name>"`, a bare destructive `Delete`, no body), not a
-          native `ActionSheetIOS`. A scrim/back dismiss behaves like Cancel. */}
-      <ConfirmSheet
-        visible={deletePending}
-        title={t('common.deleteNamed', { name: displayName })}
-        confirmLabel={t('common.delete')}
-        onConfirm={removeCategory}
-        onCancel={cancelDelete}
-        destructive
-        confirmTestID="category-delete-confirm"
-      />
-    </Card>
-  );
-};
-
-// Above iOS's text-selection hold threshold, so a long-press inside a card's
-// rename TextInput belongs to the text field, not to the grid's drag. Retune
-// on-device (see kiko-gestures: gesture thresholds are tuned on hardware, not
-// guessed).
-const CATEGORY_DRAG_ACTIVATION_MS = 600;
-
-// A pure projection with no closure, hoisted to module scope per
-// kiko-code-style's "Helper placement" rule. This ALSO fixes the root cause of
-// the flaky category-card backgrounds: `Sortable.Grid`'s underlying item store
-// (`react-native-sortables`' `ItemsProvider`/`createItemsStore`) invalidates
-// and RE-RENDERS EVERY row — not just the one whose data changed — the moment
-// either `keyExtractor` or `renderItem` is a NEW function reference, regardless
-// of whether any row's actual data changed (its `apply()` sets
-// `rendererChanged = renderItem !== currentRenderer` and treats that alone as
-// "every row changed"). An inline arrow literal
-// (`keyExtractor={(category) => category.key}`) is a fresh reference on every
-// render of `CategoriesScreen` — and this screen re-renders on every category
-// mutation anywhere in the list (a rename, an icon pick, a color pick, a
-// reorder, a delete — each writes the `categories` table, which re-fires this
-// screen's `useLiveQuery`). So editing ONE category's color would force
-// every OTHER unaffected card through a full node recompute too — a real cost
-// even though each card is a plain solid `Card` (no Liquid Glass material to
-// resample). Hoisting this extractor (it closes over nothing) makes it
-// referentially stable forever, the same fix class `renderCategoryRow` below
-// applies to `renderItem`.
 const categoryKeyExtractor = (category: CategoryRow): string => category.key;
 
-// The Categories settings sub-screen: a live-queried vertical stack of every
-// category, each rendered as its own card (matching the account/holding card
-// treatment) so it renames its title and re-picks its icon in place. The
-// current default category (read from settings) is marked and shielded from
-// deletion. The inline add-category affordance renders as the final card.
-const CategoriesScreen: FC<CategoriesScreenProps> = () => {
+// Counted case-insensitively, the way a category delete removes the rules, so the number on a
+// card is the number the delete confirm names.
+const ruleCountsByCategory = (rules: readonly CategoryRuleRow[]): Map<string, number> => {
+  const counts = new Map<string, number>();
+
+  for (const rule of rules) {
+    const key = rule.category.toLowerCase();
+
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+
+  return counts;
+};
+
+// The Categories settings sub-screen: a single-column, drag-to-reorder list of category cards laid
+// out like the Accounts list. A tap opens the category's page, a still hold offers the delete (not
+// on the default category, which is the catch-all), and the footer adds a category.
+const CategoriesScreen: FC<CategoriesScreenProps> = ({ navigation }) => {
   const { t } = useTranslation();
   const { theme } = useUnistyles();
-  // Whether the "Add category" form is mounted: the screen owns this, not
-  // AddCategoryRow — the footer's own "Add category" action is the only way
-  // in, and the form's Save/Cancel are the only ways out (both call
-  // `collapseAddCategoryForm` below).
-  const [addCategoryExpanded, setAddCategoryExpanded] = useState(false);
   const {
     data: categories,
     isLoading: categoriesLoading,
     isFresh: categoriesFresh,
   } = useLiveQuery(categoriesRepo.allQuery(), ['categories'], true, { cached: true });
+  const { data: rules, isLoading: rulesLoading } = useLiveQuery(
+    categoryRulesRepo.allQuery(),
+    ['category_rules'],
+    true,
+    { cached: true },
+  );
   const { data: settingsRows, isLoading: settingsLoading } = useLiveQuery(
     settingsRepo.getQuery(),
     ['settings'],
     true,
     { cached: true },
   );
-  // The blank list must never render while either query is still on its own
+  // The blank list, and a "No rules" caption, must never render while a query is still on its own
   // first load (kiko-architecture's useLiveQuery consumer rule).
-  const isReady = useDataReady(categoriesLoading, settingsLoading);
+  const isReady = useDataReady(categoriesLoading, rulesLoading, settingsLoading);
   const defaultCategoryKey = settingsRows.at(0)?.defaultCategoryKey ?? DEFAULT_CATEGORY_KEY;
-
-  // The full current top-to-bottom order, the basis for both reorder buttons.
-  // Moving a category to the top (or bottom) rebuilds this array with that key
-  // relocated and every other key kept in its existing relative order, then
-  // persists it in one write — the live query re-renders the list with the card
-  // at its new position, which is the "immediately jump" behavior.
-  const orderedKeys = categories.map((category) => category.key);
-
-  // `orderedKeys` is a plain render-scoped value — a fresh array on every
-  // render, since `categories` itself is a fresh array on every live-query fire
-  // (a write to any one row re-executes the whole `SELECT`, and every row comes
-  // back as a brand-new object; see `useLiveQuery`). `moveToTop`/`moveToBottom`
-  // read it through this ref rather than closing over it directly, so the two
-  // callbacks below can stay referentially STABLE (see `categoryKeyExtractor`'s
-  // doc above for why a stable identity here is the actual fix, not a
-  // micro-optimization) while still always reordering against the CURRENT
-  // list, not a stale snapshot captured at some earlier render.
-  const orderedKeysRef = useRef(orderedKeys);
-  orderedKeysRef.current = orderedKeys;
-  // Both buttons persist the WHOLE order, so neither acts until the categories
-  // query's own fresh read has applied — never on the cached (possibly
-  // one-read-old) order of a reopened screen (kiko-architecture). Read through
-  // a ref for the same stable-callback reason as `orderedKeysRef`.
-  const categoriesFreshRef = useRef(categoriesFresh);
-  categoriesFreshRef.current = categoriesFresh;
-
-  const moveToTop = useCallback((key: string): void => {
-    if (categoriesFreshRef.current) {
-      categoriesRepo.reorder([key, ...orderedKeysRef.current.filter((other) => other !== key)]);
-    }
-  }, []);
-
-  const moveToBottom = useCallback((key: string): void => {
-    if (categoriesFreshRef.current) {
-      categoriesRepo.reorder([...orderedKeysRef.current.filter((other) => other !== key), key]);
-    }
-  }, []);
-
-  // Memoized on the same principle as `categoryKeyExtractor` above: with
-  // `moveToTop`/`moveToBottom` now stable and `defaultCategoryKey` changing
-  // only when the actual default changes, this function is a stable reference
-  // across every render this screen does NOT need to rebuild every card for —
-  // so `Sortable.Grid`'s item store only recomputes a row when that row's own
-  // data actually changed, instead of on every unrelated edit anywhere in the
-  // list.
-  const renderCategoryRow = useCallback(
-    ({ item }: { item: CategoryRow }) => (
-      <CategoryListRow
-        category={item}
-        isDefault={item.key === defaultCategoryKey}
-        onMoveToTop={() => moveToTop(item.key)}
-        onMoveToBottom={() => moveToBottom(item.key)}
-      />
-    ),
-    [defaultCategoryKey, moveToTop, moveToBottom],
-  );
-
-  // The scroll-mode ScrollView's ref, so expanding the inline add-category form
-  // (appended below the last category card) can bring its revealed fields into
-  // view.
+  const ruleCounts = useMemo(() => ruleCountsByCategory(rules), [rules]);
+  // A card keeps its own key, so only the card a hold lifted skips its page on release.
+  const { onDragStart, onActiveItemDropped, openUnlessLifted } = useGridLiftGuard();
+  // The scroll view's ref, shared with the grid so a drag near an edge scrolls the list.
   const scrollableRef = useAnimatedRef<ScrollViewInstance>();
 
-  // Scroll to the form once it expands. The icon/name/color fields and the
-  // Save/Cancel pair are only measured after this render commits, so defer the
-  // scroll to the next frame — otherwise `scrollToEnd` targets the pre-expand
-  // (shorter) content size and stops short of the freshly revealed, auto-focused
-  // name field.
-  const scrollToAddCategoryForm = (): void => {
-    requestAnimationFrame(() => {
-      scrollableRef.current?.scrollToEnd({ animated: true });
-    });
-  };
+  const renderCategoryCard = ({ item }: { item: CategoryRow }) => {
+    const isDefault = item.key === defaultCategoryKey;
+    // A seeded default is named by its translated title everywhere, the menu's confirm included.
+    const displayName = resolveDefaultCategoryTitle(item.key, item.title);
 
-  const expandAddCategoryForm = (): void => {
-    setAddCategoryExpanded(true);
-    scrollToAddCategoryForm();
-  };
-
-  const collapseAddCategoryForm = (): void => {
-    setAddCategoryExpanded(false);
+    return (
+      <CardContextMenu
+        name={displayName}
+        deletable={!isDefault}
+        deleteMessage={() => categoryDeleteNoticeOf(item.key, t)}
+        onDelete={() => categoriesRepo.delete(item.key)}
+      >
+        <CategoryCard
+          title={displayName}
+          icon={item.icon}
+          color={resolveCategoryColor(item.color, item.key)}
+          ruleCount={ruleCounts.get(item.key.toLowerCase()) ?? 0}
+          isDefault={isDefault}
+          onPress={openUnlessLifted(item.key, () =>
+            navigation.navigate('CategoryDetail', { categoryKey: item.key }),
+          )}
+        />
+      </CardContextMenu>
+    );
   };
 
   if (!isReady) {
-    // The SAME Screen mode/props as the ready branch below — the first
-    // scroll view iOS walks to drive the large-title collapse exists from
-    // the very first render.
+    // The SAME Screen mode/props as the ready branch below, so the scroll view iOS walks to drive
+    // the large-title collapse exists from the very first render.
     return (
       <Screen scroll scrollableRef={scrollableRef}>
         <LoadingState testID="categories-loading" />
@@ -497,58 +125,38 @@ const CategoriesScreen: FC<CategoriesScreenProps> = () => {
       scroll
       scrollableRef={scrollableRef}
       footer={
-        addCategoryExpanded ? undefined : (
-          <Box testID="add-category-footer" style={styles.addCategoryButton}>
-            <Button
-              variant="primary"
-              onPress={expandAddCategoryForm}
-              icon={genericEntitySymbol.category}
-            >
-              {t('categories.addCategory')}
-            </Button>
-          </Box>
-        )
+        <Box testID="add-category-footer" style={styles.addCategoryButton}>
+          <Button
+            variant="primary"
+            onPress={() => navigation.navigate('CategoryForm', {})}
+            icon={genericEntitySymbol.category}
+          >
+            {t('categories.addCategory')}
+          </Button>
+        </Box>
       }
     >
-      <Box gap={4}>
-        {/* A single-column drag-and-drop stack of category cards, mirroring the
-            accounts/holdings grids: a hold-and-move reorders (routed through the
-            shared `onGridDragEnd`, which persists only a real move), while a
-            quick tap still falls through to a card's own fields. `overDrag`
-            keeps a dragged card on its vertical axis; `scrollableRef` +
-            `autoScrollActivationOffset` let a drag near an edge scroll the parent
-            ScrollView; `sortEnabled` is off with a single category (nothing to
-            reorder), and until the categories query's own fresh read has
-            applied (never a drag from the cached order). Each card also
-            carries move-to-top/bottom buttons for a gesture-free reorder. */}
-        <Sortable.Grid
-          data={categories}
-          sortEnabled={categoriesFresh && categories.length > 1}
-          activeItemScale={1.03}
-          columns={1}
-          overDrag="vertical"
-          // Unlike the accounts and holdings grids, EVERY card here contains a
-          // live TextInput (the rename field). react-native-sortables' default
-          // 200 ms activation is shorter than iOS's own text-selection hold,
-          // so a hold meant to place the cursor or open Paste started a card
-          // drag instead. A longer delay is preferred over `customHandle`
-          // because the other two grids deliberately expose no handle
-          // (kiko-gestures) and diverging one screen's interaction model for
-          // this would be worse; the cards also already offer gesture-free
-          // move-to-top / move-to-bottom buttons.
-          dragActivationDelay={CATEGORY_DRAG_ACTIVATION_MS}
-          rowGap={theme.spacing(4)}
-          scrollableRef={scrollableRef}
-          autoScrollActivationOffset={75}
-          keyExtractor={categoryKeyExtractor}
-          renderItem={renderCategoryRow}
-          onDragEnd={({ fromIndex, toIndex, indexToKey }) =>
-            onGridDragEnd({ fromIndex, toIndex, indexToKey }, categoriesRepo.reorder)
-          }
-        />
-
-        {addCategoryExpanded && <AddCategoryRow onCollapse={collapseAddCategoryForm} />}
-      </Box>
+      {/* A hold that moves reorders (through the shared `onGridDragEnd`, which persists only a
+          real move); a hold that stays still opens the delete menu; a quick tap opens the page.
+          A drag persists the whole order from the rows on screen, so it never starts from the
+          cached, possibly one-read-old order. */}
+      <Sortable.Grid
+        data={categories}
+        sortEnabled={categoriesFresh && categories.length > 1}
+        activeItemScale={1.03}
+        columns={1}
+        overDrag="vertical"
+        rowGap={theme.spacing(4)}
+        scrollableRef={scrollableRef}
+        autoScrollActivationOffset={75}
+        keyExtractor={categoryKeyExtractor}
+        renderItem={renderCategoryCard}
+        onDragStart={onDragStart}
+        onActiveItemDropped={onActiveItemDropped}
+        onDragEnd={({ fromIndex, toIndex, indexToKey }) =>
+          onGridDragEnd({ fromIndex, toIndex, indexToKey }, categoriesRepo.reorder)
+        }
+      />
     </Screen>
   );
 };

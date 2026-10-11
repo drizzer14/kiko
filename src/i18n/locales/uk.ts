@@ -162,25 +162,47 @@ export const uk: typeof en = {
     // later migration (0039) — the interest portion of a linked loan
     // payment (never its principal) files under this key.
     loan_interest: 'Відсотки за кредитом',
-    // Categories screen and inline add-category-row UI copy (distinct from the
+    // Categories screen, category form and icon picker UI copy (distinct from the
     // seeded default-category display names above).
     addCategory: 'Додати категорію',
     changeIconLabel: 'Змінити іконку {{title}}',
     chooseIconHeading: 'Іконка',
-    chooseNewIconLabel: 'Обрати іконку нової категорії',
-    colorLabel: 'Колір',
     deleteLabel: 'Видалити {{title}}',
     dismissIconPicker: 'Закрити вибір іконки',
     iconOptionLabel: 'Обрати іконку {{icon}}',
-    isDefaultLabel: '{{title}} — категорія за замовчуванням',
-    moveToBottomLabel: 'Перемістити {{title}} вниз',
-    moveToTopLabel: 'Перемістити {{title}} нагору',
     namePlaceholder: 'Продукти',
-    newColorPrefix: 'Колір нової категорії',
-    rowColorPrefix: 'Колір {{title}}',
-    setAsDefaultLabel: 'Зробити {{title}} категорією за замовчуванням',
-    titleFieldLabel: 'Назва {{title}}',
     uncategorized: 'Без категорії',
+    rulesCount_one: '{{count}} правило',
+    rulesCount_few: '{{count}} правила',
+    rulesCount_many: '{{count}} правил',
+    rulesCount_other: '{{count}} правила',
+    noRules: 'Немає правил',
+    default: 'Типова',
+    deleteRulesNotice_one: 'Його {{count}} правило теж буде видалено.',
+    deleteRulesNotice_few: 'Його {{count}} правила теж буде видалено.',
+    deleteRulesNotice_many: 'Його {{count}} правил теж буде видалено.',
+    deleteRulesNotice_other: 'Його {{count}} правила теж буде видалено.',
+  },
+  categoryPage: {
+    rulesHeading: 'Правила',
+    setAsDefault: 'Зробити типовою',
+    quotedName: '«{{name}}»',
+    unreadableRule: 'Це правило неможливо прочитати',
+  },
+  categoryForm: {
+    addTitle: 'Нова категорія',
+    editTitle: 'Редагування категорії',
+  },
+  ruleForm: {
+    nameIs: 'Назва дорівнює',
+    nameStartsWith: 'Назва починається з',
+    equal: 'Дорівнює',
+    more: 'Більше ніж',
+    atLeast: 'Щонайменше',
+    less: 'Менше ніж',
+    atMost: 'Щонайбільше',
+    before: 'До',
+    after: 'Після',
   },
   forms: {
     fields: {

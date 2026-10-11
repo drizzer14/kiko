@@ -18,7 +18,7 @@ import {
   planRuleRewrite,
   prepareRules,
 } from '@kiko/categories/category-rules';
-import { and, asc, eq, gt, inArray } from 'drizzle-orm';
+import { and, asc, eq, gt, inArray, sql } from 'drizzle-orm';
 import { normalizeTransactionName } from '@kiko/transactions/normalize-name';
 
 const REWRITE_PAGE_SIZE = 2000;
@@ -198,6 +198,24 @@ export const categoryRulesRepo = {
    * form can prepare the rules once and pre-select a category from the typed description.
    */
   allQuery: () => database.select().from(categoryRules),
+  /**
+   * How many rules a category delete takes with it. Every stored rule counts, a rule that can no
+   * longer be read included, and the key matches case-insensitively, exactly as the delete does,
+   * so the confirm never reports fewer rules than the delete removes.
+   */
+  countRulesOfCategory: async (key: string): Promise<number> => {
+    const [row] = await database
+      .select({ value: sql<number>`count(*)` })
+      .from(categoryRules)
+      .where(sql`lower(${categoryRules.category}) = ${key.toLowerCase()}`);
+
+    return row?.value ?? 0;
+  },
+  // Removes the rule alone: a rule never owns a transaction's category, so no row changes.
+  deleteRule: (ruleId: string) =>
+    write((databaseTransaction) =>
+      databaseTransaction.delete(categoryRules).where(eq(categoryRules.id, ruleId)),
+    ),
   /**
    * Makes `name` -> `category` a rule and rewrites every existing row that rule wins, all in ONE
    * write so a partial failure can never leave the rule and the ledger disagreeing. A rule that

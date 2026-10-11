@@ -182,29 +182,53 @@ export const en = {
     // later migration (0039) — the interest portion of a linked loan
     // payment (never its principal) files under this key.
     loan_interest: 'Loan interest',
-    // Categories screen and inline add-category-row UI copy (distinct from the
+    // Categories screen, category form and icon picker UI copy (distinct from the
     // seeded default-category display names above).
     addCategory: 'Add category',
     changeIconLabel: 'Change {{title}} icon',
     chooseIconHeading: 'Icon',
-    chooseNewIconLabel: 'Choose new category icon',
-    colorLabel: 'Color',
     deleteLabel: 'Delete {{title}}',
     dismissIconPicker: 'Dismiss icon picker',
     iconOptionLabel: 'Choose icon {{icon}}',
-    isDefaultLabel: '{{title}} is the default category',
-    moveToBottomLabel: 'Move {{title}} to bottom',
-    moveToTopLabel: 'Move {{title}} to top',
     namePlaceholder: 'Groceries',
-    newColorPrefix: 'New category color',
-    rowColorPrefix: '{{title}} color',
-    setAsDefaultLabel: 'Set {{title}} as default',
-    titleFieldLabel: '{{title}} title',
     // The ultimate fallback display (src/categories/category-display.ts
     // NEUTRAL_CATEGORY) shown only when a category cannot be resolved AND
     // the default-category row itself is missing (e.g. before the seed
     // migration runs) — not the ordinary "Other" bucket above.
     uncategorized: 'Uncategorized',
+    // The rule count on a category card; English defines every plural form so both catalogues
+    // carry the same keys (Ukrainian selects all four).
+    rulesCount_one: '{{count}} rule',
+    rulesCount_few: '{{count}} rules',
+    rulesCount_many: '{{count}} rules',
+    rulesCount_other: '{{count}} rules',
+    noRules: 'No rules',
+    default: 'Default',
+    deleteRulesNotice_one: 'Its {{count}} rule will be deleted too.',
+    deleteRulesNotice_few: 'Its {{count}} rules will be deleted too.',
+    deleteRulesNotice_many: 'Its {{count}} rules will be deleted too.',
+    deleteRulesNotice_other: 'Its {{count}} rules will be deleted too.',
+  },
+  categoryPage: {
+    rulesHeading: 'Rules',
+    setAsDefault: 'Set as default',
+    quotedName: '"{{name}}"',
+    unreadableRule: "This rule can't be read",
+  },
+  categoryForm: {
+    addTitle: 'New Category',
+    editTitle: 'Edit Category',
+  },
+  ruleForm: {
+    nameIs: 'Name is',
+    nameStartsWith: 'Name starts with',
+    equal: 'Equal to',
+    more: 'More than',
+    atLeast: 'At least',
+    less: 'Less than',
+    atMost: 'At most',
+    before: 'Before',
+    after: 'After',
   },
   forms: {
     // Field labels reused across two or more of the forms below (the account,

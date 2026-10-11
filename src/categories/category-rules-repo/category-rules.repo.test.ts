@@ -164,6 +164,64 @@ describe('categoryRulesRepo.allQuery', () => {
   });
 });
 
+describe('categoryRulesRepo.countRulesOfCategory', () => {
+  it('counts the rules of a category whatever the case of the stored key', async () => {
+    insertRule({ id: 'lower', category: 'food', matchers: [{ type: 'nameIs', text: 'Silpo' }] });
+    insertRule({ id: 'capital', category: 'Food', matchers: [{ type: 'nameIs', text: 'Atb' }] });
+    insertRule({ id: 'upper', category: 'FOOD', matchers: [{ type: 'nameIs', text: 'Novus' }] });
+    insertRule({ id: 'other', category: 'shops', matchers: [{ type: 'nameIs', text: 'Rozetka' }] });
+
+    expect(await categoryRulesRepo.countRulesOfCategory('food')).toBe(3);
+    expect(await categoryRulesRepo.countRulesOfCategory('Food')).toBe(3);
+  });
+
+  it('counts a rule that can no longer be read, because deleting the category removes it too', async () => {
+    insertRule({ id: 'readable', category: 'food', matchers: [{ type: 'nameIs', text: 'Silpo' }] });
+    mockDatabase
+      .prepare(
+        'INSERT INTO category_rules (id, category, matchers, created_at, updated_at) VALUES (?, ?, ?, 1, 1)',
+      )
+      .run('broken', 'food', 'not json');
+
+    expect(await categoryRulesRepo.countRulesOfCategory('food')).toBe(2);
+  });
+
+  it('counts nothing for a category without rules', async () => {
+    insertRule({ id: 'other', category: 'shops', matchers: [{ type: 'nameIs', text: 'Rozetka' }] });
+
+    expect(await categoryRulesRepo.countRulesOfCategory('food')).toBe(0);
+  });
+});
+
+describe('categoryRulesRepo.deleteRule', () => {
+  it('deletes only the rule it is given and changes no transaction', async () => {
+    insertRule({ id: 'gone', category: 'food', matchers: [{ type: 'nameIs', text: 'Silpo' }] });
+    insertRule({ id: 'kept', category: 'food', matchers: [{ type: 'nameIs', text: 'Atb' }] });
+    insertTransaction({ id: 'row-1', description: 'Silpo', category: 'food' });
+    insertTransaction({
+      id: 'row-2',
+      description: 'Silpo',
+      category: 'groceries',
+      categorySetByHand: true,
+    });
+
+    await categoryRulesRepo.deleteRule('gone');
+
+    expect(storedRules().map((rule) => rule.id)).toEqual(['kept']);
+    expect(categoriesOf()).toEqual({ 'row-1': 'food', 'row-2': 'groceries' });
+    expect(flagOf('row-1')).toBe(0);
+    expect(flagOf('row-2')).toBe(1);
+  });
+
+  it('does nothing for a rule that is not stored', async () => {
+    insertRule({ id: 'kept', category: 'food', matchers: [{ type: 'nameIs', text: 'Atb' }] });
+
+    await categoryRulesRepo.deleteRule('missing');
+
+    expect(storedRules().map((rule) => rule.id)).toEqual(['kept']);
+  });
+});
+
 describe('categoryRulesRepo.applyNameRule', () => {
   it('changes exactly the rows whose normalized name matches, and leaves the other names alone', async () => {
     insertRule({ id: 'atb-rule', category: 'shops', matchers: [{ type: 'nameIs', text: 'Atb' }] });

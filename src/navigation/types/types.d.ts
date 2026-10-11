@@ -225,6 +225,9 @@ export type SettingsStackParamList = {
   Settings: undefined;
   System: undefined;
   Categories: undefined;
+  CategoryDetail: { categoryKey: string };
+  // No key: a new category.
+  CategoryForm: { categoryKey?: string };
   ExportData: undefined;
   ImportData: undefined;
   Reminders: undefined;

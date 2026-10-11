@@ -10,6 +10,8 @@ import CategoriesScreen from '@kiko/screens/settings/categories';
 import ExportDataScreen from '@kiko/screens/settings/export-data';
 import ImportDataScreen from '@kiko/screens/settings/import-data';
 import ReminderFormScreen from '@kiko/screens/forms/reminder-form';
+import CategoryFormScreen from '@kiko/screens/forms/category-form';
+import CategoryDetailScreen from '@kiko/screens/settings/category-detail';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 
 import type { SettingsStackParamList } from '../types';
@@ -40,6 +42,20 @@ const SettingsStack: FC = () => {
         name="Categories"
         component={CategoriesScreen}
         options={{ title: t('settings.categories') }}
+      />
+
+      {/* The page sets its own title from the category's name, so it starts empty: the raw route
+          name never shows while the category is still being read. */}
+      <Stack.Screen
+        name="CategoryDetail"
+        component={CategoryDetailScreen}
+        options={{ title: '' }}
+      />
+
+      <Stack.Screen
+        name="CategoryForm"
+        component={CategoryFormScreen}
+        options={{ title: t('categoryForm.addTitle') }}
       />
 
       <Stack.Screen

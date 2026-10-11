@@ -107,6 +107,16 @@ describe('categoriesRepo', () => {
     expect((generatedKey as string).length).toBeGreaterThan(0);
   });
 
+  it('create returns the generated key of the new category', async () => {
+    const { databaseTransaction, captured } = makeCreateDatabaseTransaction();
+    mockDatabaseTransaction = databaseTransaction;
+
+    const key = await categoriesRepo.create({ title: 'Travel', icon: 'airplane' });
+
+    expect(key).toBe(captured.values?.key);
+    expect(key).toEqual(expect.any(String));
+  });
+
   it('create appends the category at the global sortOrder = max + 1', async () => {
     const { databaseTransaction, captured } = makeCreateDatabaseTransaction(4);
     mockDatabaseTransaction = databaseTransaction;
