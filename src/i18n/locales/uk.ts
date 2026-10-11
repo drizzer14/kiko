@@ -109,6 +109,7 @@ export const uk: typeof en = {
     language: 'Мова',
     system: 'Системні',
     title: 'Налаштування',
+    transactionTemplates: 'Шаблони транзакцій',
   },
   language: {
     en: '🇬🇧 English',

@@ -249,12 +249,28 @@ const SettingsScreen: FC<SettingsScreenProps> = ({ navigation }) => {
           </SettingsRow>
         </Card>
 
-        <Card testID="settings-card-categories" padding={3}>
+        {/* Same grouped-card treatment as Import/Export above (card padding 0,
+            `dataTransferRowStyle` rows, inset divider). */}
+        <Card testID="settings-card-templates-and-categories" padding={0}>
+          <SettingsRow
+            testID="settings-row-transaction-templates"
+            icon={genericEntitySymbol.template}
+            label={t('settings.transactionTemplates')}
+            onPress={() => navigation.navigate('TransactionTemplates')}
+            style={dataTransferRowStyle}
+          />
+
+          <Divider
+            testID="settings-divider-templates-and-categories"
+            style={dataTransferDividerStyle}
+          />
+
           <SettingsRow
             testID="settings-row-categories"
             icon={genericEntitySymbol.category}
             label={t('settings.categories')}
             onPress={() => navigation.navigate('Categories')}
+            style={dataTransferRowStyle}
           />
         </Card>
 

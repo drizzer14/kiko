@@ -128,6 +128,7 @@ export const en = {
     language: 'Language',
     system: 'System',
     title: 'Settings',
+    transactionTemplates: 'Transaction templates',
   },
   language: {
     en: '🇬🇧 English',
