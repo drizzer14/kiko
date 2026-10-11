@@ -133,7 +133,7 @@ describe('UpcomingPayments', () => {
     }
   });
 
-  it('reads each amount in the plain white tone, never red or green', async () => {
+  it('reads each amount in the negative (red) tone, whatever its sign', async () => {
     const [first] = installments;
     const { getByTestId } = await render(
       <UpcomingPayments installments={installments.slice(0, 1)} currency="UAH" />,
@@ -144,7 +144,7 @@ describe('UpcomingPayments', () => {
 
     expect(layoutOf(amount)).toEqual({
       variant: 'body',
-      tone: 'textPrimary',
+      tone: 'negative',
       children: [money(first.paymentMinorUnits)],
     });
   });

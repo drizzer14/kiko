@@ -42,7 +42,7 @@ const UpcomingPaymentRow: FC<UpcomingPaymentRowProps> = ({ installment, currency
       <EntryCard
         testID={`upcoming-payment-${installment.index}`}
         label={title}
-        amount={<MoneyText money={payment} />}
+        amount={<MoneyText money={payment} tone="negative" />}
         footerLines={[marker, split]}
       />
     </Box>
