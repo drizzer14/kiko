@@ -77,6 +77,10 @@ jest.mock('react-native-bottom-tabs', () => ({
 const mockUseVerticalBarEdge = jest.fn((): 'leading' | 'trailing' | 'none' => 'none');
 jest.mock('@kiko/display-regions', () => ({
   useVerticalBarEdge: () => mockUseVerticalBarEdge(),
+  // The Home filter sheet is a BottomSheet, which reads the layout mode and the fold: a
+  // single flat window, as on an iPhone.
+  useLayoutMode: () => 'single',
+  useFoldRegion: () => null,
 }));
 
 const MOCK_BOTTOM_INSET = 34;
