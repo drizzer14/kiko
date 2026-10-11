@@ -69,6 +69,11 @@ import {
   signedMinorUnits,
   storedDescription,
 } from './row-labels';
+import EntryTabs, {
+  type EntryTab,
+  awaitsTemplatePick,
+  resolveSelectedTemplate,
+} from './entry-tabs';
 import {
   buildExchangeOptions,
   buildLoanOptions,
@@ -186,6 +191,8 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     isEmptyCreate,
     seedsDefaultHolding,
     templateSeat,
+    hasEntryTabs,
+    initialTab,
   } = readRouteEntry(route.params);
   // Adding or editing a template: the form saves a template, not a transaction.
   const isTemplateMode = templateEntry !== null;
@@ -479,6 +486,26 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     isTemplateMode,
   });
   const blankLabel = resolveBlankLabel({ existing, holding, holdings, t });
+  const [tab, setTab] = useState<EntryTab>(initialTab);
+  const [pickedTemplateId, setPickedTemplateId] = useState<string | null>(null);
+  // The template the Template tab has picked: the select's pick, else the one the route names.
+  const { template: selectedTemplate, id: selectedTemplateId } = resolveSelectedTemplate({
+    pickedId: pickedTemplateId,
+    templates: storedTemplates,
+    entryTemplate: templateRows.at(0),
+  });
+  const awaitsPick = awaitsTemplatePick({
+    hasEntryTabs,
+    tab,
+    selectedTemplateId,
+    isEntryTemplateLoading: templateLoading,
+  });
+  // A pick is ONE event: it names the template and opens the hydration latch again, and the one
+  // hydrate effect below applies the plan. There is no second effect and no second fill path.
+  const pickTemplate = (templateId: string): void => {
+    setPickedTemplateId(templateId);
+    setHydrated(false);
+  };
   // The template the entry fills from, its references resolved against the live holdings and
   // categories. Held back until all of those reads settle, so nothing resolves against a list that
   // is still loading.
@@ -489,7 +516,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     templateLoading,
   );
   const { templateDraft, templateName: seededTemplateName } = resolveTemplateSeed({
-    row: templateRows.at(0),
+    row: selectedTemplate,
     isReady: isTemplateReady,
     isHydrated: hydrated,
     carriesName: editTemplateId !== null,
@@ -1162,7 +1189,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
         scrollableRef={scrollableRef}
         onContentSizeChange={onContentSizeChange}
         footer={
-          showsSaveButton(isReadOnly, categoryChanged, converting) ? (
+          showsSaveButton(isReadOnly, categoryChanged, converting, awaitsPick) ? (
             <FormFooter
               onSave={onSave}
               isSubmitting={isSubmitting}
@@ -1176,42 +1203,54 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
         }
       >
         <Box gap={4} testID="transaction-form">
-          <ReadOnlyNotice isReadOnly={isReadOnly} noticeText={readOnlyNotice} />
+          {/* The Manual and Template tabs sit on top of the form, which they gate: the Template
+            tab holds the whole form back until a template is picked. A tab switch only shows or
+            hides it, so no value (all of it lives in this screen's state) is lost. */}
+          <EntryTabs
+            visible={hasEntryTabs}
+            tab={tab}
+            onSelectTab={setTab}
+            awaitsPick={awaitsPick}
+            templates={storedTemplates}
+            selectedTemplateId={selectedTemplateId}
+            onSelectTemplate={pickTemplate}
+          >
+            <ReadOnlyNotice isReadOnly={isReadOnly} noticeText={readOnlyNotice} />
 
-          {/* A template mode's name field goes on top, above the holding picker. */}
-          <TemplateNameField
-            visible={isTemplateMode}
-            value={templateName}
-            onChangeText={setTemplateName}
-            error={fieldError('templateName')}
-            fieldRef={templateNameFieldRef}
-            inputRef={templateNameInputRef}
-          />
+            {/* A template mode's name field goes on top, above the holding picker. */}
+            <TemplateNameField
+              visible={isTemplateMode}
+              value={templateName}
+              onChangeText={setTemplateName}
+              error={fieldError('templateName')}
+              fieldRef={templateNameFieldRef}
+              inputRef={templateNameInputRef}
+            />
 
-          {/* B: the primary-leg holding picker, shown ONLY when no holding was
+            {/* B: the primary-leg holding picker, shown ONLY when no holding was
             fixed by navigation (the global-add entry). It drives the shared
             `primaryHoldingId` seam, so the currency/category/exchange derivation
             below follows the pick automatically. Null on every other path. */}
-          <PrimaryHoldingField
-            visible={isEmptyCreate}
-            label={t('forms.transaction.holding')}
-            sheetTitle={t('forms.transaction.holdingSheetTitle')}
-            placeholder={t('forms.transaction.selectHolding')}
-            options={primaryOptions}
-            selectedId={primaryHoldingId}
-            onSelect={setPrimaryHoldingId}
-            onCreateNew={openCreateHoldingIn(undefined, isTransactionEligibleType)}
-            error={fieldError('holding')}
-            fieldRef={holdingFieldRef}
-          />
+            <PrimaryHoldingField
+              visible={isEmptyCreate}
+              label={t('forms.transaction.holding')}
+              sheetTitle={t('forms.transaction.holdingSheetTitle')}
+              placeholder={t('forms.transaction.selectHolding')}
+              options={primaryOptions}
+              selectedId={primaryHoldingId}
+              onSelect={setPrimaryHoldingId}
+              onCreateNew={openCreateHoldingIn(undefined, isTransactionEligibleType)}
+              error={fieldError('holding')}
+              fieldRef={holdingFieldRef}
+            />
 
-          {/* The transaction-TYPE selector, directly under the Holding select.
+            {/* The transaction-TYPE selector, directly under the Holding select.
             Built with `visible={!converting}` (a convert has no mode toggle),
             so it is rendered unconditionally here — the field itself carries
             both that gate and the read-only dimming for a synced row. */}
-          {typeSelectField}
+            {typeSelectField}
 
-          {/* Convert-mode replaces the entire income/expense/exchange field
+            {/* Convert-mode replaces the entire income/expense/exchange field
             group with the single-counterpart convert group — no mode toggle,
             no category, just the fixed existing leg plus the one leg being
             recorded. Exchange gets its own field group (Value Out, To, Value
@@ -1220,74 +1259,74 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
             literally inline here, unchanged from before Exchange existed.
             The three-way switch lives in `FieldGroup` rather than a nested
             ternary here. */}
-          <FieldGroup
-            converting={converting}
-            convertView={convertView}
-            counterpartHoldingId={counterpartHoldingId}
-            onSelectCounterpart={selectCounterpart}
-            onCreateCounterpart={openCreateHoldingIn(
-              holding?.accountId,
-              convertCounterpartType(convertView.direction),
-            )}
-            counterpartAmount={counterpartAmount}
-            onChangeCounterpartAmount={(text) => setCounterpartAmount(groupAmount(text))}
-            isExchange={isExchange}
-            amount={amount}
-            onChangeAmount={(text) => setAmount(groupAmount(text))}
-            amountSuffix={amountSuffix}
-            // The fixed convert leg is the existing transaction's own holding,
-            // so it shares the source holding's currency glyph.
-            fixedSuffix={amountSuffix}
-            destinationOptions={destinationOptions}
-            destinationHoldingId={destinationHoldingId}
-            onSelectDestination={setDestinationHoldingId}
-            onCreateDestination={openCreateHoldingIn(
-              holding?.accountId,
-              isExchangeCreateDestinationType,
-            )}
-            valueIn={valueIn}
-            onChangeValueIn={(text) => setValueIn(groupAmount(text))}
-            valueInSuffix={holdingSuffix(holdings, destinationHoldingId)}
-            counterpartSuffix={holdingSuffix(holdings, counterpartHoldingId)}
-            description={description}
-            onChangeDescription={setDescription}
-            onBlurDescription={onDescriptionBlur}
-            // The inline suggestion row. Its pool is already empty on an
-            // edit (see the `pastDescriptions` memo), and the component itself
-            // hides when there is no match or the field already equals a
-            // suggestion, so it is passed unconditionally here.
-            descriptionSuggestions={
-              <DescriptionSuggestions
-                descriptions={pastDescriptions}
-                value={description}
-                onPick={pickSuggestion}
-              />
-            }
-            descriptionPlaceholder={descriptionPlaceholder}
-            isReadOnly={isReadOnly}
-            time={time}
-            onChangeTime={setTime}
-            maxDate={Date.now()}
-            showsDate={!isTemplateMode}
-            required={!isTemplateMode}
-            t={t}
-            amountError={fieldError('amount')}
-            amountInvalid={isSplitAmountInvalid(saveDisabledParams, attemptedSave)}
-            amountFieldRef={amountFieldRef}
-            amountInputRef={amountInputRef}
-            valueOutError={fieldError('valueOut')}
-            destinationError={fieldError('destinationHolding')}
-            valueInError={fieldError('valueIn')}
-            valueOutFieldRef={valueOutFieldRef}
-            destinationFieldRef={destinationFieldRef}
-            valueInFieldRef={valueInFieldRef}
-            counterpartError={fieldError('counterpartHolding')}
-            counterpartAmountError={fieldError('counterpartAmount')}
-            counterpartFieldRef={counterpartHoldingFieldRef}
-            counterpartAmountFieldRef={counterpartAmountFieldRef}
-          />
+            <FieldGroup
+              converting={converting}
+              convertView={convertView}
+              counterpartHoldingId={counterpartHoldingId}
+              onSelectCounterpart={selectCounterpart}
+              onCreateCounterpart={openCreateHoldingIn(
+                holding?.accountId,
+                convertCounterpartType(convertView.direction),
+              )}
+              counterpartAmount={counterpartAmount}
+              onChangeCounterpartAmount={(text) => setCounterpartAmount(groupAmount(text))}
+              isExchange={isExchange}
+              amount={amount}
+              onChangeAmount={(text) => setAmount(groupAmount(text))}
+              amountSuffix={amountSuffix}
+              // The fixed convert leg is the existing transaction's own holding,
+              // so it shares the source holding's currency glyph.
+              fixedSuffix={amountSuffix}
+              destinationOptions={destinationOptions}
+              destinationHoldingId={destinationHoldingId}
+              onSelectDestination={setDestinationHoldingId}
+              onCreateDestination={openCreateHoldingIn(
+                holding?.accountId,
+                isExchangeCreateDestinationType,
+              )}
+              valueIn={valueIn}
+              onChangeValueIn={(text) => setValueIn(groupAmount(text))}
+              valueInSuffix={holdingSuffix(holdings, destinationHoldingId)}
+              counterpartSuffix={holdingSuffix(holdings, counterpartHoldingId)}
+              description={description}
+              onChangeDescription={setDescription}
+              onBlurDescription={onDescriptionBlur}
+              // The inline suggestion row. Its pool is already empty on an
+              // edit (see the `pastDescriptions` memo), and the component itself
+              // hides when there is no match or the field already equals a
+              // suggestion, so it is passed unconditionally here.
+              descriptionSuggestions={
+                <DescriptionSuggestions
+                  descriptions={pastDescriptions}
+                  value={description}
+                  onPick={pickSuggestion}
+                />
+              }
+              descriptionPlaceholder={descriptionPlaceholder}
+              isReadOnly={isReadOnly}
+              time={time}
+              onChangeTime={setTime}
+              maxDate={Date.now()}
+              showsDate={!isTemplateMode}
+              required={!isTemplateMode}
+              t={t}
+              amountError={fieldError('amount')}
+              amountInvalid={isSplitAmountInvalid(saveDisabledParams, attemptedSave)}
+              amountFieldRef={amountFieldRef}
+              amountInputRef={amountInputRef}
+              valueOutError={fieldError('valueOut')}
+              destinationError={fieldError('destinationHolding')}
+              valueInError={fieldError('valueIn')}
+              valueOutFieldRef={valueOutFieldRef}
+              destinationFieldRef={destinationFieldRef}
+              valueInFieldRef={valueInFieldRef}
+              counterpartError={fieldError('counterpartHolding')}
+              counterpartAmountError={fieldError('counterpartAmount')}
+              counterpartFieldRef={counterpartHoldingFieldRef}
+              counterpartAmountFieldRef={counterpartAmountFieldRef}
+            />
 
-          {/* Split-change only: the dynamic return rows + "Add return" action,
+            {/* Split-change only: the dynamic return rows + "Add return" action,
             rendered below the reused Amount/Description/Date/Time group. The
             `visible` gate and the `.map` live in `SplitReturns`, so this stays
             a single element. Wrapped in `splitReturnsFieldRef` here (the CALL
@@ -1310,73 +1349,74 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
             (not `Box`) is required here: `Box` is a non-forwarding function
             component, so `ref={splitReturnsFieldRef}` on it would never
             resolve for `measureLayout`. */}
-          <View
-            ref={splitReturnsFieldRef}
-            style={[styles.splitReturnsGap, !isSplit && styles.hidden]}
-            testID="split-returns-wrapper"
-          >
-            <SplitReturns
-              visible={isSplit}
-              returns={changeReturns}
-              buildOptions={returnOptionsFor}
-              onSelectHolding={selectReturnHolding}
-              onCreateHolding={openCreateHoldingIn(
-                holding?.accountId,
-                isTransactionEligibleType,
-                holding?.currency,
-              )}
-              onChangeAmount={changeReturnAmount}
-              onRemove={removeReturn}
-              onAdd={addReturn}
-              suffix={amountSuffix}
-              selectHoldingPlaceholder={t('forms.transaction.selectHolding')}
-              t={t}
-              error={fieldError('splitReturns')}
-              lastRowRef={lastReturnFieldRef}
-            />
-          </View>
+            <View
+              ref={splitReturnsFieldRef}
+              style={[styles.splitReturnsGap, !isSplit && styles.hidden]}
+              testID="split-returns-wrapper"
+            >
+              <SplitReturns
+                visible={isSplit}
+                returns={changeReturns}
+                buildOptions={returnOptionsFor}
+                onSelectHolding={selectReturnHolding}
+                onCreateHolding={openCreateHoldingIn(
+                  holding?.accountId,
+                  isTransactionEligibleType,
+                  holding?.currency,
+                )}
+                onChangeAmount={changeReturnAmount}
+                onRemove={removeReturn}
+                onAdd={addReturn}
+                suffix={amountSuffix}
+                selectHoldingPlaceholder={t('forms.transaction.selectHolding')}
+                t={t}
+                error={fieldError('splitReturns')}
+                lastRowRef={lastReturnFieldRef}
+              />
+            </View>
 
-          {/* The mode chip row, category picker, and "Convert to exchange"
+            {/* The mode chip row, category picker, and "Convert to exchange"
             action — everything below the main field group EXCEPT while
             converting. The `!converting` gate and every `&&`-conditional
             live in `ModeAndActions`. */}
-          <ModeAndActions
-            converting={converting}
-            isReadOnly={isReadOnly}
-            isExchange={isExchange}
-            categoryOptions={categoryOptions}
-            selectedCategory={selectedCategory}
-            onSelectCategory={selectCategory}
-            convertEligible={convertView.eligible}
-            onPressConvert={() => setConverting(true)}
-            categoryRequired={!(isEditing || isTemplateMode)}
-            t={t}
-            categoryError={fieldError('selectedCategory')}
-            categoryFieldRef={categoryFieldRef}
-            loanFieldVisible={loanFieldVisible}
-            loanOptions={loanOptions}
-            {...loanLinkState}
-            onSelectLoanPayment={selectLoanPayment}
-            onUndoLoanLink={undoLoanLink}
-          />
+            <ModeAndActions
+              converting={converting}
+              isReadOnly={isReadOnly}
+              isExchange={isExchange}
+              categoryOptions={categoryOptions}
+              selectedCategory={selectedCategory}
+              onSelectCategory={selectCategory}
+              convertEligible={convertView.eligible}
+              onPressConvert={() => setConverting(true)}
+              categoryRequired={!(isEditing || isTemplateMode)}
+              t={t}
+              categoryError={fieldError('selectedCategory')}
+              categoryFieldRef={categoryFieldRef}
+              loanFieldVisible={loanFieldVisible}
+              loanOptions={loanOptions}
+              {...loanLinkState}
+              onSelectLoanPayment={selectLoanPayment}
+              onUndoLoanLink={undoLoanLink}
+            />
 
-          {/* After description AND category — the top of the form (above
+            {/* After description AND category — the top of the form (above
               holding/type/amount) reads wrong for a supplementary,
               often-empty field. */}
-          <CommentRow comment={existing?.comment} label={t('forms.transaction.comment')} />
+            <CommentRow comment={existing?.comment} label={t('forms.transaction.comment')} />
 
-          {/* The last thing in the form body, so a native Save in the nav bar can take the
+            {/* The last thing in the form body, so a native Save in the nav bar can take the
               footer's place without moving it. Its name field shows right below it while on. */}
-          <SaveAsTemplate
-            visible={templateSwitch.visible}
-            isOn={saveAsTemplate}
-            onToggle={setSaveAsTemplate}
-            name={templateName}
-            onChangeName={setTemplateName}
-            error={fieldError('templateName')}
-            nameFieldRef={templateNameFieldRef}
-            nameInputRef={templateNameInputRef}
-          />
+            <SaveAsTemplate
+              visible={templateSwitch.visible}
+              isOn={saveAsTemplate}
+              onToggle={setSaveAsTemplate}
+              name={templateName}
+              onChangeName={setTemplateName}
+              error={fieldError('templateName')}
+              nameFieldRef={templateNameFieldRef}
+              nameInputRef={templateNameInputRef}
+            />
+          </EntryTabs>
         </Box>
       </Screen>
 

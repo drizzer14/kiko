@@ -2,14 +2,16 @@ import type { TransactionRow } from '@kiko/db';
 
 // Whether the footer's Save button renders: a manual row always, a synced row
 // only once its category has changed, and a converting row always (its Save
-// writes the counterpart leg and only the existing row's pair id). Kept module-level and
+// writes the counterpart leg and only the existing row's pair id), and never while the Template
+// tab waits for a pick (`awaitsPick`: there is no form to save yet). Kept module-level and
 // pure so the footer's boolean expression does not add its own operator count
 // to the screen component's cognitive-complexity budget.
 export const showsSaveButton = (
   isReadOnly: boolean,
   categoryChanged: boolean,
   converting: boolean,
-): boolean => !isReadOnly || categoryChanged || converting;
+  awaitsPick: boolean,
+): boolean => !awaitsPick && (!isReadOnly || categoryChanged || converting);
 
 // Whether the loan-payment field renders: an EXISTING debit row only (manual
 // or synced alike — `setLoanPayment`/`undoAutoLoanLink` carry no source

@@ -89,6 +89,7 @@ export const TITLE_KEYS = new Set([
   'forms.transaction.loanPaymentSheetTitle',
   'forms.transaction.returnToSheetTitle',
   'forms.transaction.returnsHeading',
+  'forms.transaction.templateSheetTitle',
   'forms.transaction.title',
   'forms.transaction.toSheetTitle',
   'forms.transaction.typeSheetTitle',

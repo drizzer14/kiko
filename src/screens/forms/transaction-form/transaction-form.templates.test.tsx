@@ -142,8 +142,11 @@ type LiveData = {
   latestManualHoldingId?: string | null;
   isTemplateLoading?: boolean;
   templateName?: string;
-  // Every stored template, as the name check reads them. Empty unless a test needs a taken name.
-  templateList?: { id: string; name: string }[];
+  // Every stored template, as the name check and the template select read them. Empty unless a
+  // test needs a taken name or a template to pick; a row with no draft reads as an empty one.
+  templateList?: { id: string; name: string; draft?: TemplateDraft }[];
+  // The template the route names does not exist (deleted since the link was made).
+  isTemplateMissing?: boolean;
   // The transaction row the route names (to edit, or to duplicate). Absent on an add.
   transactionRow?: TransactionRowFixture;
 };
@@ -160,6 +163,7 @@ const setLiveData = ({
   isTemplateLoading = false,
   templateName = 'Rent',
   templateList = [],
+  isTemplateMissing = false,
   transactionRow,
 }: LiveData) => {
   const template = { id: 'tpl', name: templateName, draft, createdAt: 1, updatedAt: 1 };
@@ -172,7 +176,7 @@ const setLiveData = ({
   const dataByKind: Record<string, unknown[]> = {
     latestManualHolding: latestManualHoldingId ? [{ holdingId: latestManualHoldingId }] : [],
     distinctDescriptions: [],
-    templateList,
+    templateList: templateList.map((item) => ({ createdAt: 1, updatedAt: 1, draft: {}, ...item })),
     transactionById: transactionRow ? [transactionRow] : [],
     // An entry that names no template reads an empty id, which the real query matches to no row.
     templateById: [template],
@@ -185,7 +189,7 @@ const setLiveData = ({
       const isEmptyId = queryParams(query).at(0) === '';
 
       return {
-        data: isEmptyId || isTemplateLoading ? [] : dataByKind.templateById,
+        data: isEmptyId || isTemplateLoading || isTemplateMissing ? [] : dataByKind.templateById,
         isLoading: isTemplateLoading && !isEmptyId,
       };
     }
@@ -1194,6 +1198,281 @@ describe('TransactionFormScreen — Save as a new template', () => {
       expect(alertSpy).toHaveBeenCalledTimes(1);
       expect(mockInsertTemplate).not.toHaveBeenCalled();
       expect(navigation.goBack).not.toHaveBeenCalled();
+    });
+  });
+});
+
+describe('TransactionFormScreen — Manual and Template tabs', () => {
+  type Utils = Awaited<ReturnType<typeof render>>;
+
+  const RENT = { id: 't1', name: 'Rent', draft: EXPENSE };
+  const LUNCH = {
+    id: 't2',
+    name: 'Lunch',
+    draft: draftOf({
+      holdingId: 'usd',
+      currency: 'USD',
+      amountMinorUnits: 2500,
+      description: 'Lunch',
+      category: 'dining',
+    }),
+  };
+  // No holding and no amount: only a description and a category.
+  const COFFEE = {
+    id: 't3',
+    name: 'Coffee',
+    draft: draftOf({ description: 'Coffee', category: 'dining' }),
+  };
+  const TEMPLATES = [RENT, LUNCH, COFFEE];
+
+  const pickTemplate = async (utils: Utils, id: string): Promise<void> => {
+    await fireEvent.press(utils.getByTestId('template-field'));
+    await fireEvent.press(utils.getByTestId(`template-field-option-${id}`));
+  };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    jest.spyOn(Date, 'now').mockReturnValue(NOW);
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  describe.each([
+    ['a global add', {}],
+    ['an add from a holding', { holdingId: 'h1' }],
+  ] as const)('on %s', (_name, params) => {
+    it('shows the tabs, opening on Manual with the whole form and no select', async () => {
+      setLiveData({ draft: EXPENSE, templateList: TEMPLATES });
+
+      const utils = await render(templateScreen(params));
+      const tabs = within(utils.getByTestId('entry-tabs'));
+
+      expect(tabs.getByText('Manual')).toBeTruthy();
+      expect(tabs.getByText('Template')).toBeTruthy();
+      expect(utils.getByLabelText('Amount')).toBeTruthy();
+      expect(utils.getByText('Save')).toBeTruthy();
+      expect(utils.queryByTestId('template-field')).toBeNull();
+    });
+
+    it('shows only the select on the Template tab before a pick, with no fields and no Save', async () => {
+      setLiveData({ draft: EXPENSE, templateList: TEMPLATES });
+
+      const utils = await render(templateScreen(params));
+
+      await fireEvent.press(within(utils.getByTestId('entry-tabs')).getByText('Template'));
+
+      expect(utils.getByTestId('template-field')).toHaveTextContent('Select a template');
+      expect(utils.queryByLabelText('Amount')).toBeNull();
+      expect(utils.queryByLabelText('Description')).toBeNull();
+      expect(utils.queryByLabelText('Holding')).toBeNull();
+      expect(utils.queryByText('Save')).toBeNull();
+      expect(utils.queryByText('Save as a new template')).toBeNull();
+    });
+
+    it('shows the select with the hint when there are no templates', async () => {
+      setLiveData({ draft: EXPENSE });
+
+      const utils = await render(templateScreen(params));
+
+      await fireEvent.press(within(utils.getByTestId('entry-tabs')).getByText('Template'));
+
+      expect(utils.getByTestId('template-field')).toHaveTextContent('Select a template');
+      expect(
+        utils.getByText(
+          'No templates yet. Turn on "Save as a new template" when you save a transaction.',
+        ),
+      ).toBeTruthy();
+      expect(utils.queryByText('Save')).toBeNull();
+    });
+
+    it('fills the whole form from a pick, then again from a second pick', async () => {
+      setLiveData({ draft: EXPENSE, templateList: TEMPLATES });
+
+      const utils = await render(templateScreen(params));
+
+      await fireEvent.press(within(utils.getByTestId('entry-tabs')).getByText('Template'));
+      await pickTemplate(utils, 't1');
+
+      expect(utils.getByTestId('template-field')).toHaveTextContent('Rent');
+      expect(utils.getByLabelText('Amount').props.value).toBe('1 050');
+      expect(utils.getByLabelText('Description').props.value).toBe('Rent');
+
+      await pickTemplate(utils, 't2');
+
+      expect(utils.getByTestId('template-field')).toHaveTextContent('Lunch');
+      expect(utils.getByLabelText('Amount').props.value).toBe('25');
+      expect(utils.getByLabelText('Description').props.value).toBe('Lunch');
+
+      await fireEvent.press(utils.getByText('Save'));
+
+      expect(mockRecordManual).toHaveBeenCalledWith({
+        holdingId: 'usd',
+        amountMinorUnits: -2500,
+        time: NOW,
+        description: 'Lunch',
+        category: 'dining',
+      });
+    });
+
+    it('keeps the values when switching back to Manual, and again on Template', async () => {
+      setLiveData({ draft: EXPENSE, templateList: TEMPLATES });
+
+      const utils = await render(templateScreen(params));
+      const tabs = within(utils.getByTestId('entry-tabs'));
+
+      await fireEvent.press(tabs.getByText('Template'));
+      await pickTemplate(utils, 't1');
+      await fireEvent.changeText(utils.getByLabelText('Amount'), '77');
+      await fireEvent.press(tabs.getByText('Manual'));
+
+      expect(utils.queryByTestId('template-field')).toBeNull();
+      expect(utils.getByLabelText('Amount').props.value).toBe('77');
+      expect(utils.getByLabelText('Description').props.value).toBe('Rent');
+
+      await fireEvent.press(tabs.getByText('Template'));
+
+      expect(utils.getByTestId('template-field')).toHaveTextContent('Rent');
+      expect(utils.getByLabelText('Amount').props.value).toBe('77');
+    });
+
+    it('keeps what was typed on Manual while the Template tab waits for a pick', async () => {
+      setLiveData({ draft: EXPENSE, templateList: TEMPLATES });
+
+      const utils = await render(templateScreen(params));
+      const tabs = within(utils.getByTestId('entry-tabs'));
+
+      await fireEvent.changeText(utils.getByLabelText('Amount'), '42');
+      await fireEvent.press(tabs.getByText('Template'));
+      await fireEvent.press(tabs.getByText('Manual'));
+
+      expect(utils.getByLabelText('Amount').props.value).toBe('42');
+    });
+  });
+
+  describe('on a global add', () => {
+    it('clears the default holding for a template with no holding, leaving the picker empty', async () => {
+      setLiveData({ draft: EXPENSE, templateList: TEMPLATES, latestManualHoldingId: 'h1' });
+
+      const utils = await render(templateScreen({}));
+
+      expect(utils.getByLabelText('Holding')).toHaveTextContent('Wallet UAHHome');
+
+      await fireEvent.press(within(utils.getByTestId('entry-tabs')).getByText('Template'));
+      await pickTemplate(utils, 't3');
+
+      expect(utils.getByLabelText('Holding')).toHaveTextContent('Select holding');
+      expect(utils.getByLabelText('Description').props.value).toBe('Coffee');
+    });
+
+    it("seats a resolved template's holding over the default", async () => {
+      setLiveData({ draft: EXPENSE, templateList: TEMPLATES, latestManualHoldingId: 'h1' });
+
+      const utils = await render(templateScreen({}));
+
+      await fireEvent.press(within(utils.getByTestId('entry-tabs')).getByText('Template'));
+      await pickTemplate(utils, 't2');
+
+      expect(utils.getByLabelText('Holding')).toHaveTextContent('Wallet USDHome');
+    });
+  });
+
+  describe('on an add from a holding', () => {
+    it('replaces the page holding with the holding of a resolved template', async () => {
+      setLiveData({ draft: EXPENSE, templateList: TEMPLATES });
+
+      const utils = await render(templateScreen({ holdingId: 'usd' }));
+
+      await fireEvent.press(within(utils.getByTestId('entry-tabs')).getByText('Template'));
+      await pickTemplate(utils, 't1');
+      await fireEvent.press(utils.getByText('Save'));
+
+      expect(mockRecordManual).toHaveBeenCalledWith(expect.objectContaining({ holdingId: 'h1' }));
+    });
+
+    it('keeps the page holding for a template with none', async () => {
+      setLiveData({ draft: EXPENSE, templateList: TEMPLATES });
+
+      const utils = await render(templateScreen({ holdingId: 'usd' }));
+
+      await fireEvent.press(within(utils.getByTestId('entry-tabs')).getByText('Template'));
+      await pickTemplate(utils, 't3');
+      await fireEvent.changeText(utils.getByLabelText('Amount'), '5');
+      await fireEvent.press(utils.getByText('Save'));
+
+      expect(mockRecordManual).toHaveBeenCalledWith(
+        expect.objectContaining({ holdingId: 'usd', description: 'Coffee', category: 'dining' }),
+      );
+    });
+  });
+
+  describe('on a template to create from', () => {
+    const TEMPLATE_ROW = { id: 'tpl', name: 'Rent', draft: EXPENSE };
+
+    it('opens on the Template tab with that template picked and the form filled', async () => {
+      setLiveData({ draft: EXPENSE, templateList: [TEMPLATE_ROW, LUNCH] });
+
+      const utils = await render(templateScreen({ templateId: 'tpl' }));
+
+      expect(utils.getByTestId('template-field')).toHaveTextContent('Rent');
+      expect(utils.getByLabelText('Amount').props.value).toBe('1 050');
+      expect(utils.getByText('Save')).toBeTruthy();
+    });
+
+    it('fills again from another template picked after it', async () => {
+      setLiveData({ draft: EXPENSE, templateList: [TEMPLATE_ROW, LUNCH] });
+
+      const utils = await render(templateScreen({ templateId: 'tpl' }));
+
+      await pickTemplate(utils, 't2');
+
+      expect(utils.getByTestId('template-field')).toHaveTextContent('Lunch');
+      expect(utils.getByLabelText('Amount').props.value).toBe('25');
+      expect(utils.getByLabelText('Holding')).toHaveTextContent('Wallet USDHome');
+    });
+
+    it('keeps the values on Manual, and shows the tabs', async () => {
+      setLiveData({ draft: EXPENSE, templateList: [TEMPLATE_ROW] });
+
+      const utils = await render(templateScreen({ templateId: 'tpl' }));
+
+      await fireEvent.press(within(utils.getByTestId('entry-tabs')).getByText('Manual'));
+
+      expect(utils.getByLabelText('Amount').props.value).toBe('1 050');
+    });
+
+    it('shows the select with nothing picked, and no form, when the template is gone', async () => {
+      setLiveData({ draft: EXPENSE, templateList: TEMPLATES, isTemplateMissing: true });
+
+      const utils = await render(templateScreen({ templateId: 'gone' }));
+
+      expect(utils.getByTestId('template-field')).toHaveTextContent('Select a template');
+      expect(utils.queryByLabelText('Amount')).toBeNull();
+      expect(utils.queryByText('Save')).toBeNull();
+
+      await pickTemplate(utils, 't1');
+
+      expect(utils.getByTestId('template-field')).toHaveTextContent('Rent');
+      expect(utils.getByLabelText('Amount').props.value).toBe('1 050');
+      expect(utils.getByText('Save')).toBeTruthy();
+    });
+  });
+
+  describe('where there are no tabs', () => {
+    it.each([
+      ['a Duplicate', { duplicateOfTransactionId: 'txn-1' }],
+      ['an Edit', { transactionId: 'txn-1' }],
+      ['an Add template', { newTemplate: true }],
+      ['an Edit template', { editTemplateId: 'tpl' }],
+    ] as const)('shows neither tabs nor select on %s', async (_name, params) => {
+      setLiveData({ draft: EXPENSE, transactionRow: MANUAL_ROW, templateList: TEMPLATES });
+
+      const utils = await render(templateScreen(params));
+
+      expect(utils.queryByTestId('entry-tabs')).toBeNull();
+      expect(utils.queryByTestId('template-field')).toBeNull();
+      expect(utils.getByLabelText('Amount')).toBeTruthy();
     });
   });
 });

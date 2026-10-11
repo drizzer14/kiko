@@ -1,5 +1,7 @@
 import type { TransactionFormParams } from '@kiko/navigation/types';
 
+import type { EntryTab } from '../entry-tabs';
+
 type TemplateEntry = 'add' | 'edit';
 
 // The template mode this entry opens, if any: the form that adds a template or edits one.
@@ -45,6 +47,12 @@ export const readRouteEntry = (
   // What a template with no holding does to the seam: a plain add from a holding
   // keeps that page holding, every other entry clears it so the form asks.
   templateSeat: 'keepPage' | 'clear';
+  // Whether the Manual and Template tabs show: on the entries that create a transaction (a global
+  // add, an add from a holding, a template to fill from), never on an Edit, a Duplicate or a
+  // template mode.
+  hasEntryTabs: boolean;
+  // The tab the form opens on: a template to fill from opens on Template, with it picked.
+  initialTab: EntryTab;
 } => {
   const editingId = 'transactionId' in params ? params.transactionId : null;
   const duplicateOfId =
@@ -55,6 +63,8 @@ export const readRouteEntry = (
   const isNewTemplate = 'newTemplate' in params;
   const isEmptyCreate = editingId === null && duplicateOfId === null && holdingParamId === null;
 
+  const templateEntry = resolveTemplateEntry(isNewTemplate, editTemplateId);
+
   return {
     editingId,
     duplicateOfId,
@@ -62,10 +72,12 @@ export const readRouteEntry = (
     templateId,
     editTemplateId,
     isNewTemplate,
-    templateEntry: resolveTemplateEntry(isNewTemplate, editTemplateId),
+    templateEntry,
     isEmptyCreate,
     templateQueryId: templateId ?? editTemplateId ?? '',
     seedsDefaultHolding: isEmptyCreate && templateId === null && editTemplateId === null,
     templateSeat: holdingParamId === null ? 'clear' : 'keepPage',
+    hasEntryTabs: editingId === null && duplicateOfId === null && templateEntry === null,
+    initialTab: templateId === null ? 'manual' : 'template',
   };
 };

@@ -6,6 +6,8 @@ const NO_TEMPLATE = {
   isNewTemplate: false,
   templateEntry: null,
   templateQueryId: '',
+  hasEntryTabs: true,
+  initialTab: 'manual',
 };
 
 describe('readRouteEntry', () => {
@@ -43,6 +45,25 @@ describe('readRouteEntry', () => {
       seedsDefaultHolding: true,
       templateSeat: 'clear',
     });
+  });
+
+  it.each([
+    ['a global add', {}, true],
+    ['an add from a holding', { holdingId: 'h1' }, true],
+    ['a template to create from', { templateId: 'tpl1' }, true],
+    ['an edit', { transactionId: 't1' }, false],
+    ['a duplicate', { duplicateOfTransactionId: 't1' }, false],
+    ['a template to edit', { editTemplateId: 'tpl1' }, false],
+    ['a new template', { newTemplate: true }, false],
+  ] as const)('reads %s with entry tabs: %s', (_name, params, hasEntryTabs) => {
+    expect(readRouteEntry(params).hasEntryTabs).toBe(hasEntryTabs);
+  });
+
+  it('opens on the Template tab only for a template to create from', () => {
+    expect(readRouteEntry({ templateId: 'tpl1' }).initialTab).toBe('template');
+    expect(readRouteEntry({}).initialTab).toBe('manual');
+    expect(readRouteEntry({ holdingId: 'h1' }).initialTab).toBe('manual');
+    expect(readRouteEntry({ editTemplateId: 'tpl1' }).initialTab).toBe('manual');
   });
 
   it('reads a template to create from: the holding is not fixed, and no default seeds before the fill', () => {
