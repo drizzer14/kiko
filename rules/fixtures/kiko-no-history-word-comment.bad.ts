@@ -79,6 +79,39 @@ export const noLongerLaterBlockLine = true;
 // The sheet never used to flicker before the redesign.
 export const neverUsedToHistory = true;
 
+// EXPECT-FINDING
+// was: 30
+export const wasLabelLine = 60;
+
+// EXPECT-FINDING
+export const wasLabelAfterCode = 60; // was: 30 before the cap moved
+
+// EXPECT-FINDING
+/* was: the old cap */
+export const wasLabelBlock = 60;
+
+/**
+ * A multi-line block comment that names the label only on a later line:
+// EXPECT-FINDING
+ * was: the old cap.
+ */
+export const wasLabelLaterBlockLine = 60;
+
+// Known false positives of the label member, pinned as findings: it keys on the word and its
+// colon alone, so prose, a URL path segment and a JSDoc example read as a label too. Reword such
+// a comment, or drop the colon.
+// EXPECT-FINDING
+// The open question was: does the row hold a balance?
+export const wasProse = true;
+
+// EXPECT-FINDING
+// see http://example.com/was:thing
+export const wasInUrl = true;
+
+// EXPECT-FINDING
+/** Example: `{ was: 1 }` is the shape. */
+export const wasInJsdocExample = true;
+
 // Known limits, pinned as findings: the lookbehind sees only the word right before the phrase,
 // so a purpose sentence with another word in between, or a line break after the verb, still
 // reads as history. Reword such a comment to name the purpose.

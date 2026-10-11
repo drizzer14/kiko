@@ -6,7 +6,7 @@ description: Use when coordinating Kiko work. States the delegation rule, the ru
 The coordinator delegates all work to the harness agents. The coordinator never edits app files inline.
 
 Rules:
-- Split complex or parallel work into separate Orca worktrees (orca-cli).
+- Split complex or parallel work into separate Orca worktrees (orca-cli). A fresh worktree has no `node_modules`: the first developer runs `npm ci`, and only ONE agent runs it (parallel installs race).
 - An orchestrator working in another repo (one with no kiko role agents, for
   example `drizzer14/harness`) starts with
   `claude --model opus --plugin-dir <that repo's plugin dir>` — never a
@@ -17,12 +17,33 @@ Rules:
 - Route web research and live API checks to `kiko:researcher` (read-only,
   cites a source URL + check date per claim); it writes no files, so the
   caller persists any durable finding via `kiko:scribe`.
+- A measurement that needs a script (corpus counts, a tool run with raised limits) goes to `kiko:ops` with the script in the scratchpad; `kiko:explorer` has only Read/Grep/Glob.
 - For a device-test request, copy `kiko:ops`'s "Device verification
   checklist" section into the request to the user.
 - Use these superpowers skills directly: brainstorming, writing-plans, executing-plans,
   subagent-driven-development, dispatching-parallel-agents, verification-before-completion,
   finishing-a-development-branch.
 - On completion, an orchestrator or role agent SendMessages the coordinator session that dispatched the work with the result (the final commit sha and a one-line summary). This is the standing default, so an orchestrator brief does not need to restate it.
+- Every session-to-session message (report, question, BATCH READY, handover) uses Claude Code
+  SendMessage, which lands in the receiving session's inbox. A session NEVER messages another
+  session through Orca (no `orca orchestration send/ask/reply`, no `orca terminal send` into a
+  session someone types in): Orca types it into the terminal input and interrupts the user's
+  typing. `orca terminal send` is only for starting a fresh session, its first brief pointer,
+  slash commands (`/reload-plugins`, `/clear`), and running a verbose command in a
+  command-runner terminal (never one someone types in); only the coordinator sends a slash
+  command into another session.
+- Do it yourself first. Before you hand the user a command or a click, check whether your own
+  tools can do it (Bash, an agent dispatch, a file edit; the coordinator also has `orca terminal
+  send` for a slash command in another session). If they can, do it and report the result.
+  Hand the user only what
+  truly needs them: slash commands in the user's OWN session, GUI-only steps (App Store
+  Connect, Device Hub poses, the physical device), entering the user's secrets, or a step a hook
+  or the permission system denied (report it, never bypass). This does not lift the user's
+  explicit gates (pushes and publishes that need the user's OK, destructive or hard-to-reverse
+  actions). Example: after a merge that bumps the kiko plugin, the coordinator runs
+  `claude plugin update kiko@kiko-marketplace` itself from the main checkout and sends
+  `/reload-plugins` to every Orca session except the user's own (read each for "Reloaded:");
+  only the user's own session reload is the user's step.
 - Every dispatch names an expected duration. When that time passes with no report,
   the orchestrator checks the agent itself (its output so far, its worktree state) —
   it does not keep waiting silently. The coordinator is not the watchdog for role
@@ -42,7 +63,7 @@ Rules:
   owns the estimate-from-history rules. A BATCH READY's TIMES line comes
   from the run log (see "Run log"), not from hand-written text.
 - Name a task or change set "<track> task N/M" (a number plus the total). Name a step inside a change set "step N/M". Never invent a letter id. Renumber M when the scope changes; a deferred item is not counted.
-- A fresh agent is the default for each task. Reuse an agent via SendMessage only for a same-task re-review or fix round by the SAME agent with a small context (never across tasks, never for a different diff, never after a large amount of work). Finished subagents cannot be removed from a session's list; `claude rm <id>` deletes a BACKGROUND SESSION and its worktree — never use it to tidy a finished agent.
+- A fresh agent is the default for each task. Reuse an agent via SendMessage only for a same-task re-review or fix round by the SAME agent with a small context (never across tasks, never for a different diff, never after a large amount of work). A resumed agent's later report is read from its transcript, not awaited (SubagentHandback delivers one report per agent). Finished subagents cannot be removed from a session's list; `claude rm <id>` deletes a BACKGROUND SESSION and its worktree — never use it to tidy a finished agent.
 
 - Run the FULL jest (`make verify`) before every BATCH READY. `check:all`
   alone missed a fixture that broke two guard rules: the rule-inventory
@@ -53,7 +74,7 @@ Rules:
   file-list mode, so the coordinator runs Stryker directly with
   `--mutate` on the named files and reads the per-file floor (60) from
   `reports/mutation/mutation.json`. This is a documented deviation until
-  a `KIKO_MUTATION_FILES` option exists.
+  a file-list option exists.
 
 ## Run log
 
@@ -185,6 +206,10 @@ from it. Then fast-forward main. Run exactly
 `git -C /Users/drizzer14/Developer/Projects/pff-ios merge --ff-only <sha>`.
 Any added option (-q, --quiet, --no-edit, -v) is denied. Read the result
 with `git -C /Users/drizzer14/Developer/Projects/pff-ios log -1 --oneline`.
+
+A track that regenerates shared binary fixtures (the demo .kiko files)
+merges main first and regenerates on the merged builder; never
+hand-merge a binary.
 
 ## Read-only agents return their report
 
@@ -334,8 +359,8 @@ merge-conflict files".
 
 ## The Stop tier replays the pre-write guard
 
-The kill-guard denies Bash writes into `src/`, `__tests__/`, and
-`rules/`; the denied forms and the known limits are listed in
+The kill-guard denies Bash writes into `src/`, `__tests__/`, `rules/`,
+and `e2e/`; the denied forms and the known limits are listed in
 kiko-linter's "SHELL-WRITE deny". Move
 or rename a file with `git mv` (`git add` a new file first), then edit
 it with Edit/Write; see kiko-code-style's "Folder-per-thing
@@ -358,7 +383,8 @@ kiko-linter's "Pre-write guard replay on the Stop tier".
 Run a verbose or long-running command inside an Orca terminal instead
 of the coordinator's own shell, so its full output stays out of the
 coordinator's context — only what you choose to read comes back.
-Mechanism: `orca terminal send --text "<cmd>" --enter --json`, then
+This is for running commands, never for messaging a session (see the
+SendMessage bullet above). Mechanism: `orca terminal send --text "<cmd>" --enter --json`, then
 read just the tail with `orca terminal read`. Full CLI usage:
 `orca skills get orca-cli` (do not copy that guide's content here).
 
@@ -401,8 +427,10 @@ that reads the handoff file.
 - Agents and skills load from the versioned plugin CACHE
   (`~/.claude/plugins/cache/kiko-marketplace/kiko/<version>`). A text
   change to an agent or skill is live only after: bump the
-  `plugin.json` version, the user runs
-  `claude plugin update kiko@kiko-marketplace`, then `/reload-plugins`.
+  `plugin.json` version, the coordinator runs
+  `claude plugin update kiko@kiko-marketplace` from the main checkout,
+  then the coordinator sends `/reload-plugins` to every Orca session
+  except the user's own (the user reloads their own session).
 - Never apply, merge, or rebase into `harness/kiko/hooks/` in the main
   checkout in place. Build the new file in scratch, run `bash -n`, grep
   it for conflict markers, then install it with one `mv`.
@@ -484,15 +512,20 @@ each side-effect import's predecessors.
 ## The Stop-hook dup check is scoped
 
 `medium.sh`'s Stop/SubagentStop hook runs jscpd scoped to the
-session's own changed files (`scripts/checks/dup.sh <changed files>`)
+session's own changed files (`scripts/checks/dup.sh <changed files still on disk>`)
 — the project-wide `npm run check:dup` (no args, scans the whole
 repo) can be green while this scoped run fails, or vice versa. Run the
 same scoped command yourself before reporting done:
-`bash scripts/checks/dup.sh <changed files>` (space-separated paths;
+`bash scripts/checks/dup.sh <changed files still on disk>` (space-separated paths;
 this is the same wrapper `check:dup` calls, `scripts/checks/dup.sh`,
 which accepts file args and falls back to the whole repo with none).
 Each touched test file must also pass the check alone, not only as
-part of the whole changed-file set.
+part of the whole changed-file set. A `WARNING` on exit 0 means a large
+file (or the combined large-file run) is over 5%, or that the pass could not
+measure (a could-not-measure, could-not-list, or mktemp WARNING carries no
+figure): it does not block, but do not grow a figure. The non-blocking
+large-file pass runs on every call, a dedup skip included; see kiko-linter
+"`check:dup` measures the files jscpd skips for size".
 
 ## Relay-verify subagent claims
 
@@ -501,6 +534,18 @@ check a subagent claims already passed — do not relay a "green" claim
 without independent verification. Also spot-check that a skill
 section a report cites actually exists at the stated path/heading
 before trusting a claim built on it.
+
+The orchestrator quotes the jest summary lines itself ("Test Suites: N
+passed", "Tests: N passed") in every BATCH READY, and never relays an
+agent's "passed" verdict (ops misreported a failed `make verify` as
+passing twice on 2026-10-10).
+
+## Probe a live API before building on its shape
+
+Before building code that depends on an API's response shape, probe it
+with real read-only calls (2026-10-10: the probe showed Binance
+walletTypes are strings and the Pay direction-by-shape rule false on
+all C2C receives).
 
 ## Deferred-to-scribe items must be named explicitly
 
@@ -537,4 +582,6 @@ never raise a timeout. See memory `check-security-timeout-under-load`.
 
 A long orchestrator brief lives in `memory/refs/brief-<task>.md` in the
 main checkout (untracked); the terminal message only names that path;
-never paste a long brief or backticks into `orca terminal send`.
+never paste a long brief or backticks into `orca terminal send`. The
+pointer is the first message of a fresh session only; later messages go
+by SendMessage.

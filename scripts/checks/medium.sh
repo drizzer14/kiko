@@ -9,23 +9,18 @@ source "$DIR/_lib.sh"
 ROOT="$(cd "$DIR/../.." && pwd)"
 cd "$ROOT"
 
-# Session changed files: tracked changes + untracked.
+# Session changed files: tracked changes + untracked. NUL-delimited because git
+# quotes a name holding a `"`, `\` or control character even with core.quotePath
+# off, and a quoted name fails the `-f` test below.
 # (Portable form of `mapfile -t`: the macOS system bash is 3.2 and has no
 # mapfile/readarray builtin.)
-touched="$(
-  { git -c core.quotePath=false diff --name-only HEAD
-    git -c core.quotePath=false ls-files --others --exclude-standard
-  } | sort -u
-)"
-
-# App source drives the changed-file-scoped checks (jscpd, override-guard).
-changed=()
-while IFS= read -r f; do
-  [ -n "$f" ] && changed+=("$f")
+touched=()
+while IFS= read -r -d '' f; do
+  touched+=("$f")
 done < <(
-  printf '%s\n' "$touched" \
-    | grep -E '\.(ts|tsx|js)$' \
-    | grep -vE '^(ios/|node_modules/)'
+  { git diff --name-only -z HEAD
+    git ls-files -z --others --exclude-standard
+  } | sort -zu
 )
 
 # Harness inputs: the Semgrep rule file, its fixtures, the check wrappers, and
@@ -42,13 +37,27 @@ done < <(
 # migration's .sql, snapshot or journal is guarded by shipped-migrations.sh, and
 # the pre-write guard never sees a .sql edit, so a session that touched only
 # one must not be silent.
+harness_input_pattern='^(rules/.*\.ya?ml|rules/fixtures/.*|scripts/checks/.*|ios/Kiko/Info\.plist|ios/Kiko\.xcodeproj/project\.pbxproj|ios/Kiko/[a-z]+\.lproj/InfoPlist\.strings|ios/Kiko/PrivacyInfo\.xcprivacy|drizzle/migrations/.*)$'
+
+# App source drives the changed-file-scoped checks (jscpd, override-guard).
+changed=()
 harness_changed=()
-while IFS= read -r f; do
-  [ -n "$f" ] && harness_changed+=("$f")
-done < <(
-  printf '%s\n' "$touched" \
-    | grep -E '^(rules/.*\.ya?ml|rules/fixtures/.*|scripts/checks/.*|ios/Kiko/Info\.plist|ios/Kiko\.xcodeproj/project\.pbxproj|ios/Kiko/[a-z]+\.lproj/InfoPlist\.strings|ios/Kiko/PrivacyInfo\.xcprivacy|drizzle/migrations/.*)$'
-)
+for f in "${touched[@]+"${touched[@]}"}"; do
+  if [[ "$f" =~ \.(ts|tsx|js)$ ]] && ! [[ "$f" =~ ^(ios/|node_modules/) ]]; then
+    changed+=("$f")
+  fi
+  if [[ "$f" =~ $harness_input_pattern ]]; then
+    harness_changed+=("$f")
+  fi
+done
+
+# One list, `changed`, must keep a deleted path: it is the trigger (a deletion can break an
+# import, so knip and tsc must still run). The existence test is therefore applied afterwards,
+# to build `present`, the list handed to the wrappers that read file contents.
+present=()
+for f in "${changed[@]+"${changed[@]}"}"; do
+  [ -f "$f" ] && present+=("$f")
+done
 
 # The guard replay also checks commits made in this worktree, so a turn that
 # only committed (a clean tree) must still run it: it is pending while HEAD
@@ -70,9 +79,11 @@ fi
 # session runs the medium tier one time per finished subagent, plus one
 # more time for the coordinator, and parallel subagents fire near-together.
 # Serialize the tier per worktree so those runs do not launch concurrent
-# knip/deps/jscpd on the same tree. Each sub-check below skips on its own
-# when its inputs are unchanged, so a repeat run with no change is
-# near-instant. On a lock timeout, proceed unlocked rather than hang the hook.
+# knip/deps/jscpd on the same tree. Most sub-checks below skip on their own
+# when their inputs are unchanged; dup.sh's large-file pass never skips (it
+# lists files with jscpd twice, about 1 s per Stop that runs dup.sh (a
+# non-empty present list), more for a changed file over 1000 lines). On a lock timeout, proceed unlocked rather than hang the
+# hook.
 state="$(harness_state_dir "$ROOT")"
 mkdir -p "$state" 2>/dev/null || true
 lock="$state/medium.lock"
@@ -81,11 +92,11 @@ if harness_lock "$lock" 240; then
 fi
 
 # Changed-file scope: jscpd and override-guard on the changed source files only.
-# Guarded because `"${changed[@]}"` on an empty array is an unbound-variable
+# Guarded because `"${present[@]}"` on an empty array is an unbound-variable
 # error under `set -u` in bash 3.2.
-if [ ${#changed[@]} -gt 0 ]; then
-  "$DIR/dup.sh" "${changed[@]}" || exit 2
-  "$DIR/override-guard.sh" "${changed[@]}" || exit 2
+if [ ${#present[@]} -gt 0 ]; then
+  "$DIR/dup.sh" "${present[@]}" || exit 2
+  "$DIR/override-guard.sh" "${present[@]}" || exit 2
 fi
 # Compares the working tree with the shipped baseline, so it also catches a
 # commit that edited a shipped migration; it runs before the early exit below

@@ -11,6 +11,14 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 
+import {
+  type Paragraph,
+  lineCountBefore,
+  INLINE_CODE_PATTERN,
+  paragraphsOutsideFences,
+} from './test-support/markdown-code-spans';
+import { repositoryFiles } from './test-support/repository-files';
+
 // A unit move leaves the skills and harness docs citing the old path, and a
 // drift pass had to re-list those by hand three times running. This makes a
 // stale citation fail `make verify` instead.
@@ -49,17 +57,8 @@ const PARTIAL_EXTENSIONS = ['', '.ts', '.tsx', '.js'];
 
 const PLACEHOLDER_PATTERN = /[*?{}[\]<>$…]|\.\.\./;
 
-// Tracked plus untracked-but-not-ignored files, kept only when on disk, so a
-// partial citation resolves against the same files existsSync gives the
-// rooted check: a new file resolves, a deleted one does not.
-const repositoryFiles = (root: string): string[] =>
-  execFileSync('git', ['ls-files', '--cached', '--others', '--exclude-standard'], {
-    cwd: root,
-    encoding: 'utf8',
-  })
-    .split('\n')
-    .filter((file) => file !== '' && existsSync(join(root, file)));
-
+// A partial citation resolves against the files `repositoryFiles` lists, the same ones existsSync
+// gives the rooted check.
 const presentFiles = repositoryFiles(REPOSITORY_ROOT);
 
 const CHILD_FOLDERS_OF_ROOTS = new Set(
@@ -79,67 +78,12 @@ const RESOLUTION_TARGETS = [
   ),
 ];
 
-const INLINE_CODE_PATTERN = /(?<!`)(`+)(?!`)([\s\S]+?)(?<!`)\1(?!`)/g;
-
-const FENCE_PATTERN = /^\s*(`{3,}|~{3,})/;
-
 // Stale citations the test tolerates. Empty: a stale citation is fixed in
 // the skill or doc text, never added here. An entry whose citation is not
 // stale fails the test, so the list can only shrink.
 const KNOWN_STALE_CITATIONS: ReadonlyArray<{ file: string; path: string }> = [];
 
 type Citation = { line: number; path: string };
-
-type Paragraph = { firstLine: number; text: string };
-
-const paragraphsOutsideFences = (markdown: string): Paragraph[] => {
-  const paragraphs: Paragraph[] = [];
-  let fence: string | undefined;
-  let current: { firstLine: number; lines: string[] } | undefined;
-
-  const closeParagraph = () => {
-    if (current !== undefined) {
-      paragraphs.push({ firstLine: current.firstLine, text: current.lines.join('\n') });
-    }
-
-    current = undefined;
-  };
-
-  markdown.split('\n').forEach((lineText, lineIndex) => {
-    const fenceMatch = FENCE_PATTERN.exec(lineText);
-
-    if (fence !== undefined) {
-      if (fenceMatch?.[1].startsWith(fence)) {
-        fence = undefined;
-      }
-
-      return;
-    }
-
-    if (fenceMatch !== null) {
-      closeParagraph();
-      fence = fenceMatch[1];
-
-      return;
-    }
-
-    if (lineText.trim() === '') {
-      closeParagraph();
-
-      return;
-    }
-
-    current = current ?? { firstLine: lineIndex + 1, lines: [] };
-    current.lines.push(lineText);
-  });
-
-  closeParagraph();
-
-  return paragraphs;
-};
-
-const lineCountBefore = (text: string, offset: number): number =>
-  text.slice(0, offset).split('\n').length - 1;
 
 const citationsInParagraph =
   (pattern: RegExp) =>
