@@ -26,7 +26,7 @@ describe('writeTemplate', () => {
 
     await expect(
       writeTemplate({ editTemplateId: null, name: 'Rent', draft: EMPTY_DRAFT }),
-    ).resolves.toBe('saved');
+    ).resolves.toBeUndefined();
     expect(mockCreate).toHaveBeenCalledWith({ name: 'Rent', draft: EMPTY_DRAFT });
     expect(mockUpdate).not.toHaveBeenCalled();
   });
@@ -36,30 +36,23 @@ describe('writeTemplate', () => {
 
     await expect(
       writeTemplate({ editTemplateId: 'tpl', name: 'Rent', draft: EMPTY_DRAFT }),
-    ).resolves.toBe('saved');
+    ).resolves.toBeUndefined();
     expect(mockUpdate).toHaveBeenCalledWith({ id: 'tpl', name: 'Rent', draft: EMPTY_DRAFT });
     expect(mockCreate).not.toHaveBeenCalled();
   });
 
-  it('reports a name the write itself refused as taken', async () => {
-    mockCreate.mockRejectedValue(new TemplateNameTakenError());
-    mockUpdate.mockRejectedValue(new TemplateNameTakenError());
-
-    await expect(
-      writeTemplate({ editTemplateId: null, name: 'Rent', draft: EMPTY_DRAFT }),
-    ).resolves.toBe('taken');
-    await expect(
-      writeTemplate({ editTemplateId: 'tpl', name: 'Rent', draft: EMPTY_DRAFT }),
-    ).resolves.toBe('taken');
-  });
-
-  it('rethrows any other failure for the form to alert on', async () => {
+  it('lets any failure reject, a name the write itself refused included, for the form to alert on', async () => {
+    const refusal = new TemplateNameTakenError();
     const failure = new Error('disk full');
 
-    mockCreate.mockRejectedValue(failure);
+    mockCreate.mockRejectedValue(refusal);
+    mockUpdate.mockRejectedValue(failure);
 
     await expect(
       writeTemplate({ editTemplateId: null, name: 'Rent', draft: EMPTY_DRAFT }),
+    ).rejects.toBe(refusal);
+    await expect(
+      writeTemplate({ editTemplateId: 'tpl', name: 'Rent', draft: EMPTY_DRAFT }),
     ).rejects.toBe(failure);
   });
 });

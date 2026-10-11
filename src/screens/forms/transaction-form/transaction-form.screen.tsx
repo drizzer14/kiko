@@ -190,7 +190,6 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     templateEntry,
     isEmptyCreate,
     seedsDefaultHolding,
-    templateSeat,
     hasEntryTabs,
     initialTab,
   } = readRouteEntry(route.params);
@@ -214,10 +213,12 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     transactionTemplatesRepo.getByIdQuery(templateQueryId),
     ['transaction_templates'],
   );
-  // Every stored template, for the name field's case-insensitive "taken" check.
-  const { data: storedTemplates } = useLiveQuery(transactionTemplatesRepo.listQuery(), [
-    'transaction_templates',
-  ]);
+  // Every stored template, for the name field's case-insensitive "taken" check and the Template
+  // tab's select, whose empty-list hint waits for this read to settle.
+  const { data: storedTemplates, isLoading: storedTemplatesLoading } = useLiveQuery(
+    transactionTemplatesRepo.listQuery(),
+    ['transaction_templates'],
+  );
 
   // The category picker's options come from the categories live query (a rename
   // flows straight through), and the confirm copy resolves the picked key to its
@@ -277,6 +278,9 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   const [primaryHoldingId, setPrimaryHoldingId] = useState<string | null>(null);
   const holdingId = existing?.holdingId ?? primaryHoldingId ?? holdingParamId ?? undefined;
   const holding = holdings.find((candidate) => candidate.id === holdingId);
+  // The holding an add from a holding names, which stays the form's holding whenever the seam is
+  // empty again: a template with none of its own falls back to it.
+  const pageHolding = holdings.find((candidate) => candidate.id === holdingParamId);
   const currency: Currency = holding?.currency ?? 'UAH';
   // Each money field's trailing currency glyph, keyed off the holding that owns
   // that leg. Empty when the owning holding hasn't resolved/been picked yet, so
@@ -470,14 +474,8 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   // Held from the seed rather than re-resolved at Save, so a counterpart
   // renamed mid-edit cannot turn the untouched label into stored text.
   const [prefilledLabel, setPrefilledLabel] = useState<string | null>(null);
-  // The template name field: filled by an Edit template, typed in an Add template. The write's own
-  // name check can refuse a name the live list did not show as taken yet (a template saved in
-  // between); those names are kept here, beside the list's own, so the field shows the taken error
-  // without waiting for the list to catch up.
+  // The template name field: filled by an Edit template, typed in an Add template.
   const [templateName, setTemplateName] = useState('');
-  const [refusedTemplateNames, setRefusedTemplateNames] = useState<{ id: string; name: string }[]>(
-    [],
-  );
   const [saveAsTemplate, setSaveAsTemplate] = useState(false);
   const templateSwitch = resolveTemplateSwitch({
     isOn: saveAsTemplate,
@@ -501,8 +499,13 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     isEntryTemplateLoading: templateLoading,
   });
   // A pick is ONE event: it names the template and opens the hydration latch again, and the one
-  // hydrate effect below applies the plan. There is no second effect and no second fill path.
+  // hydrate effect below applies the plan. There is no second effect and no second fill path. The
+  // template already picked is a no-op, so a stray tap in the sheet costs no edit.
   const pickTemplate = (templateId: string): void => {
+    if (templateId === selectedTemplateId) {
+      return;
+    }
+
     setPickedTemplateId(templateId);
     setHydrated(false);
   };
@@ -558,7 +561,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
       blankLabel,
       templateDraft,
       templateName: seededTemplateName,
-      templateSeat,
+      pageHolding,
     });
 
     match(plan)
@@ -606,7 +609,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     blankLabel,
     templateDraft,
     seededTemplateName,
-    templateSeat,
+    pageHolding,
     setSelectedCategory,
     setUserPickedCategory,
   ]);
@@ -689,7 +692,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     templateName,
     templateNameRequired: templateSwitch.nameRequired,
     isTemplateMode,
-    templateNames: [...storedTemplates, ...refusedTemplateNames],
+    templateNames: storedTemplates,
     editTemplateId,
   };
   // Every field's OWN independent error (see `TransactionFieldErrors`'s own
@@ -1091,18 +1094,10 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   };
 
   // The template modes' save: the draft built from the form, written as a new template or over the
-  // one being edited. No transaction is written and the category override sheet never opens. A name
-  // the write refuses (taken since the list was read) goes back to the name field as its error.
+  // one being edited. No transaction is written and the category override sheet never opens. A
+  // failed write rejects into `performSave`'s catch, like every other write here.
   const saveTemplate = async (): Promise<void> => {
-    const draft = buildTemplateDraft();
-
-    if ((await writeTemplate({ editTemplateId, name: templateName, draft })) === 'taken') {
-      setRefusedTemplateNames((refused) => [...refused, { id: '', name: templateName }]);
-      setAttemptedSave(true);
-      scrollTo(templateNameFieldRef, focusByKey.templateName);
-
-      return;
-    }
+    await writeTemplate({ editTemplateId, name: templateName, draft: buildTemplateDraft() });
 
     navigation.goBack();
   };
@@ -1212,6 +1207,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
             onSelectTab={setTab}
             awaitsPick={awaitsPick}
             templates={storedTemplates}
+            templatesLoading={storedTemplatesLoading}
             selectedTemplateId={selectedTemplateId}
             onSelectTemplate={pickTemplate}
           >
@@ -1369,6 +1365,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
                 onAdd={addReturn}
                 suffix={amountSuffix}
                 selectHoldingPlaceholder={t('forms.transaction.selectHolding')}
+                required={!isTemplateMode}
                 t={t}
                 error={fieldError('splitReturns')}
                 lastRowRef={lastReturnFieldRef}

@@ -29,9 +29,7 @@ export const readRouteEntry = (
   editingId: string | null;
   duplicateOfId: string | null;
   holdingParamId: string | null;
-  templateId: string | null;
   editTemplateId: string | null;
-  isNewTemplate: boolean;
   templateEntry: TemplateEntry | null;
   // No holding is fixed by navigation, so the form renders its own primary-leg
   // picker: the global add (B), and every template entry. Derived here, in the
@@ -44,9 +42,6 @@ export const readRouteEntry = (
   // The id the by-id template read is keyed on: the template to fill from or to edit, and an empty
   // id for an entry that names none, which reads nothing without a conditional hook.
   templateQueryId: string;
-  // What a template with no holding does to the seam: a plain add from a holding
-  // keeps that page holding, every other entry clears it so the form asks.
-  templateSeat: 'keepPage' | 'clear';
   // Whether the Manual and Template tabs show: on the entries that create a transaction (a global
   // add, an add from a holding, a template to fill from), never on an Edit, a Duplicate or a
   // template mode.
@@ -69,14 +64,11 @@ export const readRouteEntry = (
     editingId,
     duplicateOfId,
     holdingParamId,
-    templateId,
     editTemplateId,
-    isNewTemplate,
     templateEntry,
     isEmptyCreate,
     templateQueryId: templateId ?? editTemplateId ?? '',
     seedsDefaultHolding: isEmptyCreate && templateId === null && editTemplateId === null,
-    templateSeat: holdingParamId === null ? 'clear' : 'keepPage',
     hasEntryTabs: editingId === null && duplicateOfId === null && templateEntry === null,
     initialTab: templateId === null ? 'manual' : 'template',
   };

@@ -44,7 +44,12 @@ export const headerTitle = (
   },
 ): string => {
   if (templateEntry !== null) {
-    return templateEntry === 'edit' ? labels.editingTemplate : labels.addingTemplate;
+    const templateTitles: Record<'add' | 'edit', string> = {
+      add: labels.addingTemplate,
+      edit: labels.editingTemplate,
+    };
+
+    return templateTitles[templateEntry];
   }
 
   if (isReadOnly) {

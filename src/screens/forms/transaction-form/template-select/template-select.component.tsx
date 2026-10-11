@@ -8,8 +8,14 @@ import type { TemplateSelectProps } from './template-select.props';
 
 // The Template tab's picker: a thin wrapper over the shared `SelectField`, like `ModeSelectField`.
 // Its options are the template ids, shown by name. With no template stored it still shows, with a
-// hint under it saying how one is made, so the tab is never a dead end.
-const TemplateSelect = ({ templates, selectedId, onSelect }: TemplateSelectProps): ReactElement => {
+// hint under it saying how one is made, so the tab is never a dead end. The hint waits for the
+// list read to settle, so it never flashes while that read is still queued.
+const TemplateSelect = ({
+  templates,
+  isLoading,
+  selectedId,
+  onSelect,
+}: TemplateSelectProps): ReactElement => {
   const { t } = useTranslation();
   const labels = Object.fromEntries(templates.map((template) => [template.id, template.name]));
 
@@ -26,7 +32,7 @@ const TemplateSelect = ({ templates, selectedId, onSelect }: TemplateSelectProps
         testID="template-field"
       />
 
-      {templates.length === 0 ? (
+      {!isLoading && templates.length === 0 ? (
         <InfoHint message={t('forms.transaction.noTemplatesHint')} />
       ) : null}
     </Box>

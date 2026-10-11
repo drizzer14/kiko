@@ -4,6 +4,7 @@ import type { FormMode } from '@kiko/screens/forms/mode-select-field';
 import { groupAmount, majorAmountText } from '@kiko/screens/forms/amount-format';
 import type { TemplateDraft, TemplateMode } from '@kiko/transaction-templates/draft';
 
+import { resolveModeOptions } from '../mode-options';
 import type { ChangeReturnRow, Sign } from '../row-labels';
 
 // The template's own mode union lives in a feature, which must not import this screen's, so each
@@ -45,8 +46,8 @@ export const toAmountFields = (
 // `returns` are what a template can set beyond a transaction row, and a row's plan carries
 // today's values for them (its sign, no destination, no Value in, one empty return), so a
 // Duplicate and an Edit seed what they always did. `templateName` and `clearsHolding` ride only
-// a template's plan: `clearsHolding` empties the seam when the template holds no holding on an
-// entry whose seam was not a page choice.
+// a template's plan: `clearsHolding` empties the seam whenever the template holds no holding, so
+// the holding the form falls back to is the page's (an add from a holding) or none (the form asks).
 type ReturnSeed = { holdingId: string | null; amount: string };
 
 export type SeedFieldsPlan = {
@@ -70,8 +71,6 @@ type HydrationPlan =
   | { kind: 'wait' }
   | { kind: 'seedHolding'; holdingId: string; final: boolean }
   | SeedFieldsPlan;
-
-type TemplateSeat = 'keepPage' | 'clear';
 
 type SeedFieldsSetters = {
   setAmount: (amount: string) => void;
@@ -105,11 +104,9 @@ export const applySeedFields = (
   // `reseatCategoryFromName`) can never clobber it: the "duplicate a row, tweak the note" flow
   // keeps the copied category when the retyped description matches no name rule, and a
   // template's category is a hand pick the same way. An edit already guards its stored category
-  // via `isEditing`, so this is a harmless no-op there; a null category leaves the flag alone,
-  // so A1's create-blur auto-seat is unaffected.
-  if (plan.category !== null) {
-    setters.setUserPickedCategory(true);
-  }
+  // via `isEditing`, so this is a harmless no-op there. A seed without a category clears the flag,
+  // so a template picked after a hand pick leaves A1's create-blur auto-seat free to run.
+  setters.setUserPickedCategory(plan.category !== null);
 
   // A null `time` keeps the field at NOW — a Duplicate and a template never copy a timestamp;
   // the edit path carries the stored time.
@@ -167,19 +164,37 @@ const storedAmountText = (currency: Currency | null, minorUnits: number | null):
     ? ''
     : groupAmount(majorAmountText(currency, minorUnits));
 
+// The mode the seated holding offers: a stored one it does not (an exchange or a split from a
+// card, which cannot be one) falls back to an expense, which both of them are. Nothing seated
+// leaves the mode as stored, for the form to settle once a holding is picked.
+const modeFor = (mode: TemplateMode, seated: HoldingRow | undefined): FormMode => {
+  const formMode = toFormMode(mode);
+
+  return seated === undefined || resolveModeOptions(false, seated).includes(formMode)
+    ? formMode
+    : 'expense';
+};
+
+// The seated holding cannot be its own destination, or the write would refuse it: the form asks.
+const destinationFor = (draft: TemplateDraft, seated: HoldingRow | undefined): string | null => {
+  const destination = draft.exchange?.destinationHoldingId ?? null;
+
+  return destination === seated?.id ? null : destination;
+};
+
 const seedFieldsFromTemplate = (
   draft: TemplateDraft,
   templateName: string | null,
-  clearsHolding: boolean,
+  seated: HoldingRow | undefined,
 ): HydrationPlan => ({
   kind: 'seedFields',
   amount: storedAmountText(draft.currency, draft.amountMinorUnits),
-  mode: toFormMode(draft.mode),
+  mode: modeFor(draft.mode, seated),
   description: draft.description,
   prefilledLabel: null,
   category: categoryKey(draft.category),
   time: null,
-  destinationHoldingId: draft.exchange?.destinationHoldingId ?? null,
+  destinationHoldingId: destinationFor(draft, seated),
   valueIn: storedAmountText(
     draft.exchange?.destinationCurrency ?? null,
     draft.exchange?.valueInMinorUnits ?? null,
@@ -192,31 +207,31 @@ const seedFieldsFromTemplate = (
           amount: storedAmountText(draft.currency, row.amountMinorUnits),
         })),
   templateName,
-  clearsHolding,
+  clearsHolding: draft.holdingId === null,
 });
 
 // A template with a holding takes the Duplicate's two steps: seat the seam from it (unless it
-// already is), then seed once that holding has loaded. A template with none seeds at once, and
-// whether that empties the seam depends on the entry: a plain add from a holding keeps the page's
-// holding, every other entry clears it so the form asks.
+// already is), then seed once that holding has loaded. A template with none seeds at once and
+// empties the seam, so the holding is the page's (`pageHolding`, an add from a holding) or none,
+// and the form asks.
 const resolveTemplateHydration = (args: {
   templateDraft: TemplateDraft;
   templateName: string | null;
-  templateSeat: TemplateSeat;
   primaryHoldingId: string | null;
   holding: HoldingRow | undefined;
+  pageHolding: HoldingRow | undefined;
 }): HydrationPlan => {
-  const { templateDraft, templateName, templateSeat, primaryHoldingId, holding } = args;
+  const { templateDraft, templateName, primaryHoldingId, holding, pageHolding } = args;
 
   if (templateDraft.holdingId === null) {
-    return seedFieldsFromTemplate(templateDraft, templateName, templateSeat === 'clear');
+    return seedFieldsFromTemplate(templateDraft, templateName, pageHolding);
   }
 
   if (templateDraft.holdingId !== primaryHoldingId) {
     return { kind: 'seedHolding', holdingId: templateDraft.holdingId, final: false };
   }
 
-  return holding ? seedFieldsFromTemplate(templateDraft, templateName, false) : { kind: 'wait' };
+  return holding ? seedFieldsFromTemplate(templateDraft, templateName, holding) : { kind: 'wait' };
 };
 
 export const resolveHydration = (args: {
@@ -237,7 +252,9 @@ export const resolveHydration = (args: {
   // what it resolves against is still loading.
   templateDraft: TemplateDraft | null;
   templateName: string | null;
-  templateSeat: TemplateSeat;
+  // The holding an add from a holding names, which a template with no holding of its own falls
+  // back to. Undefined on every other entry.
+  pageHolding: HoldingRow | undefined;
 }): HydrationPlan => {
   const {
     existing,
@@ -249,7 +266,7 @@ export const resolveHydration = (args: {
     blankLabel,
     templateDraft,
     templateName,
-    templateSeat,
+    pageHolding,
   } = args;
 
   // Edit: seed once both the row and its holding have loaded, carrying the
@@ -278,9 +295,9 @@ export const resolveHydration = (args: {
     return resolveTemplateHydration({
       templateDraft,
       templateName,
-      templateSeat,
       primaryHoldingId,
       holding,
+      pageHolding,
     });
   }
 

@@ -73,7 +73,8 @@ const holdingError = (params: SaveDisabledParams, t: TFunction): string | undefi
   params.primaryHoldingId === null ? t('forms.transaction.selectHoldingError') : undefined;
 
 // The name field's own error, in a template mode and beside a transaction alike. A taken name is
-// judged here against the live list; the write checks it again, for a template saved in between.
+// judged here against the live list alone; a name taken since that list was read is refused by the
+// write, which the shared save-error alert reports.
 const templateNameError = (params: SaveDisabledParams, t: TFunction): string | undefined => {
   if (params.templateName.trim() === '') {
     return t('forms.transaction.templateNameError');

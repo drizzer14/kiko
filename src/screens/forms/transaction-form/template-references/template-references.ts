@@ -49,18 +49,18 @@ export const buildReferenceOptions = (
       ),
     ),
     returnIds:
-      currency === null
-        ? new Set()
-        : idsOf(
-            buildReturnOptions(
-              holdings,
-              accountNameById,
-              accountOrderById,
-              accountById,
-              currency,
-              new Set(),
-            ),
+      foldMap(maybe(currency), (payerCurrency) =>
+        idsOf(
+          buildReturnOptions(
+            holdings,
+            accountNameById,
+            accountOrderById,
+            accountById,
+            payerCurrency,
+            new Set(),
           ),
+        ),
+      ) ?? new Set(),
     categoryKeys: new Set(categoryKeys),
   };
 };

@@ -18,6 +18,7 @@ const EntryTabs = ({
   onSelectTab,
   awaitsPick,
   templates,
+  templatesLoading,
   selectedTemplateId,
   onSelectTemplate,
   children,
@@ -47,6 +48,7 @@ const EntryTabs = ({
       {tab === 'template' ? (
         <TemplateSelect
           templates={templates}
+          isLoading={templatesLoading}
           selectedId={selectedTemplateId}
           onSelect={onSelectTemplate}
         />

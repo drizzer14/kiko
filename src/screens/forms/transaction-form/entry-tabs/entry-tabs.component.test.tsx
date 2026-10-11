@@ -19,6 +19,7 @@ const setup = async (overrides: Partial<EntryTabsProps> = {}) => {
       onSelectTab={onSelectTab}
       awaitsPick={false}
       templates={TEMPLATES}
+      templatesLoading={false}
       selectedTemplateId={null}
       onSelectTemplate={onSelectTemplate}
       {...overrides}

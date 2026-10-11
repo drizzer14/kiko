@@ -10,6 +10,8 @@ export type EntryTabsProps = {
   // True while the Template tab waits for a pick: the select shows alone, without the children.
   awaitsPick: boolean;
   templates: readonly { id: string; name: string }[];
+  // The read of those templates has not settled yet.
+  templatesLoading: boolean;
   selectedTemplateId: string | null;
   onSelectTemplate: (templateId: string) => void;
   // The form itself, which the tabs sit above and gate.

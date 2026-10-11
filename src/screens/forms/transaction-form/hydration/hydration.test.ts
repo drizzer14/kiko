@@ -33,7 +33,7 @@ const argsOf = (overrides: Partial<Args> = {}): Args => ({
   blankLabel: null,
   templateDraft: null,
   templateName: null,
-  templateSeat: 'clear',
+  pageHolding: undefined,
   ...overrides,
 });
 
@@ -199,23 +199,85 @@ describe('resolveHydration — a template', () => {
     });
   });
 
-  it.each([
-    ['clear', true],
-    ['keepPage', false],
-  ] as const)(
-    'seeds a null holding at once, and with the seat %s clearsHolding is %s',
-    (templateSeat, clearsHolding) => {
+  it.each([null, 'earlier'])(
+    'seeds a null holding at once and always empties the seam, which held %s',
+    (primaryHoldingId) => {
+      const plan = resolveHydration(
+        argsOf({ templateDraft: draftOf({ description: 'Coffee' }), primaryHoldingId }),
+      );
+
+      expect(plan).toMatchObject({
+        kind: 'seedFields',
+        description: 'Coffee',
+        clearsHolding: true,
+      });
+    },
+  );
+
+  describe('against the seated holding', () => {
+    const typed = (type: string, id = 'seated'): HoldingRow =>
+      ({ id, currency: 'UAH', type }) as HoldingRow;
+    const exchange = (destinationHoldingId: string | null): TemplateDraft['exchange'] => ({
+      destinationHoldingId,
+      destinationCurrency: 'UAH',
+      valueInMinorUnits: 100,
+    });
+
+    it.each(['exchange', 'split'] as const)(
+      'falls a %s back to expense when a card is seated from the page',
+      (mode) => {
+        const plan = resolveHydration(
+          argsOf({
+            templateDraft: draftOf({ mode, exchange: mode === 'exchange' ? exchange(null) : null }),
+            pageHolding: typed('card'),
+          }),
+        );
+
+        expect(plan).toMatchObject({ kind: 'seedFields', mode: 'expense' });
+      },
+    );
+
+    it('falls back for a card holding the template itself names', () => {
       const plan = resolveHydration(
         argsOf({
-          templateDraft: draftOf({ description: 'Coffee' }),
-          templateSeat,
-          primaryHoldingId: 'page',
+          templateDraft: draftOf({ mode: 'split', holdingId: 'h1' }),
+          primaryHoldingId: 'h1',
+          holding: typed('card', 'h1'),
         }),
       );
 
-      expect(plan).toMatchObject({ kind: 'seedFields', description: 'Coffee', clearsHolding });
-    },
-  );
+      expect(plan).toMatchObject({ kind: 'seedFields', mode: 'expense' });
+    });
+
+    it('keeps the mode a cash holding offers, and an income', () => {
+      const modeOf = (mode: TemplateDraft['mode'], pageHolding: HoldingRow | undefined) =>
+        resolveHydration(argsOf({ templateDraft: draftOf({ mode, exchange: null }), pageHolding }));
+
+      expect(modeOf('split', typed('cash'))).toMatchObject({ mode: 'split' });
+      expect(modeOf('income', typed('card'))).toMatchObject({ mode: 'income' });
+    });
+
+    it('keeps the mode while no holding is seated', () => {
+      const plan = resolveHydration(
+        argsOf({ templateDraft: draftOf({ mode: 'exchange', exchange: exchange('usd') }) }),
+      );
+
+      expect(plan).toMatchObject({ mode: 'exchange', destinationHoldingId: 'usd' });
+    });
+
+    it('drops a destination equal to the seated holding, and keeps another', () => {
+      const destinationOf = (destinationHoldingId: string) =>
+        resolveHydration(
+          argsOf({
+            templateDraft: draftOf({ mode: 'exchange', exchange: exchange(destinationHoldingId) }),
+            pageHolding: typed('cash', 'usd'),
+          }),
+        );
+
+      expect(destinationOf('usd')).toMatchObject({ mode: 'exchange', destinationHoldingId: null });
+      expect(destinationOf('eur')).toMatchObject({ destinationHoldingId: 'eur' });
+    });
+  });
 
   it('runs before the default-holding step', () => {
     expect(
@@ -392,7 +454,7 @@ describe('applySeedFields', () => {
     ]);
   });
 
-  it('counts a seeded category as a hand pick, and no category as none', () => {
+  it('counts a seeded category as a hand pick, and a seed without one as none', () => {
     const picked = setters();
     const none = setters();
 
@@ -400,7 +462,7 @@ describe('applySeedFields', () => {
     applySeedFields(planOf({ category: null }), none, () => 1);
 
     expect(picked.setUserPickedCategory).toHaveBeenCalledWith(true);
-    expect(none.setUserPickedCategory).not.toHaveBeenCalled();
+    expect(none.setUserPickedCategory).toHaveBeenCalledWith(false);
   });
 
   it('keeps the date at now for a null time, and carries a stored one', () => {

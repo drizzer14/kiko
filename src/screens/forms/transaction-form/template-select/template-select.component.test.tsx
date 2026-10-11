@@ -14,7 +14,13 @@ const setup = async (overrides: Partial<TemplateSelectProps> = {}) => {
   const onSelect = jest.fn();
 
   const utils = await render(
-    <TemplateSelect templates={TEMPLATES} selectedId={null} onSelect={onSelect} {...overrides} />,
+    <TemplateSelect
+      templates={TEMPLATES}
+      isLoading={false}
+      selectedId={null}
+      onSelect={onSelect}
+      {...overrides}
+    />,
   );
 
   return { onSelect, ...utils };
@@ -52,6 +58,13 @@ describe('TemplateSelect', () => {
   it('shows no hint while there are templates', async () => {
     const { queryByText } = await setup();
 
+    expect(queryByText(/No templates yet/)).toBeNull();
+  });
+
+  it('shows no hint while the list is still loading', async () => {
+    const { getByTestId, queryByText } = await setup({ templates: [], isLoading: true });
+
+    expect(getByTestId('template-field')).toHaveTextContent('Select a template');
     expect(queryByText(/No templates yet/)).toBeNull();
   });
 
