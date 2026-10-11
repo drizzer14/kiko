@@ -1952,13 +1952,14 @@ rules:
     languages: [typescript]
     severity: ERROR
     message: >
-      `jest.requireActual<T>(...)` and `jest.requireMock<T>(...)` hide the module from
-      jest-haste-map's dependency extractor, which reads only `jest.requireActual(` followed by a
-      string literal. `jest --findRelatedTests` (and Stryker's per-test coverage) then never
-      relates the test to that module. Drop the type argument and type the result instead:
+      `jest.requireActual<T>(...)`, `jest.requireMock<T>(...)`, `jest.createMockFromModule<T>(...)`
+      and `jest.genMockFromModule<T>(...)` hide the module from jest-haste-map's dependency
+      extractor, which reads only `jest.<name>(` followed by a string literal. `jest
+      --findRelatedTests` (and Stryker's per-test coverage) then never relates the test to that
+      module. Drop the type argument and type the result instead:
       `jest.requireActual('m') as { ... }`, or a typed const annotation — see kiko-code-style's
       "A jest.requireActual call takes no type argument".
     metadata:
-      fix: "jest.requireActual('module') as { ... }  (or `const actual: Shape = jest.requireActual('module')`), no `<T>` on the call."
+      fix: "jest.requireActual('module') as { ... }  (or `const actual: Shape = jest.requireActual('module')`), no `<T>` on the call; the same for requireMock, createMockFromModule and genMockFromModule."
       skill: "kiko-code-style › A jest.requireActual call takes no type argument"
-    pattern-regex: '\bjest\s*(?:\?\.|\.)\s*require(?:Actual|Mock)\s*<'
+    pattern-regex: '\bjest\s*(?:\?\.|\.)\s*(?:require(?:Actual|Mock)|createMockFromModule|genMockFromModule)\s*<'

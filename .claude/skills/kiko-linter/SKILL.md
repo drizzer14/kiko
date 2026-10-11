@@ -1613,16 +1613,18 @@ and stays silent. A `try`/`finally` reset inside the body still matches: use a h
 ## `kiko-no-typed-jest-require-actual`
 
 Mechanizes kiko-code-style's "A jest.requireActual call takes no type argument": a type argument
-on `jest.requireActual` or `jest.requireMock` (`jest.requireActual<{ ... }>('m')`), including a
+on `jest.requireActual`, `jest.requireMock`, `jest.createMockFromModule` or
+`jest.genMockFromModule` (`jest.requireActual<{ ... }>('m')`), including a
 multi-line generic. **Why:** jest-haste-map's dependency extractor (`JEST_EXTENSIONS_RE` in
-`node_modules/jest-haste-map/build/lib/dependencyExtractor.js`) matches only
-`jest.requireActual(`, optional whitespace, then a string literal. A typed call yields no
+`node_modules/jest-haste-map/build/lib/dependencyExtractor.js`, which lists exactly those four
+names) matches only
+`jest.<name>(`, optional whitespace, then a string literal. A typed call yields no
 dependency (probed through the module's `extractor.extract`: the typed text gives `[]`, the
 untyped one `["m"]`), so `--findRelatedTests` and Stryker's per-test coverage never relate the test
 to that module. Proven on the Duo native specs (fixed in 21425bd1 and e015e334). **Fix:**
 `jest.requireActual('m') as { ... }`, or a typed const annotation.
 
-**Shape.** One `pattern-regex` (`\bjest\s*(?:\?\.|\.)\s*require(?:Actual|Mock)\s*<`), not an AST
+**Shape.** One `pattern-regex` (`\bjest\s*(?:\?\.|\.)\s*(?:require(?:Actual|Mock)|createMockFromModule|genMockFromModule)\s*<`), not an AST
 pattern: Semgrep reads an absent type argument as matching `<$T>`, so the AST form also matched
 `jest.requireActual('m') as T` and `const x: T = jest.requireActual('m')` (probed on 1.175). The
 regex reads across a line break; a comment or a string that spells the typed form is flagged too, so reword
@@ -1643,6 +1645,7 @@ comment between the callee and `<`, a destructured `const { requireActual } = je
 type argument, and `jest.requireActual as <T>(m: string) => T`. The bracket and destructured
 forms hide the module even untyped, which is a separate gap this rule does not close. A generic
 through a type alias IS caught (`jest.requireActual<Alias>(`): any `<` after the callee counts.
+The same limits hold for `createMockFromModule` and `genMockFromModule` (one shared regex).
 
 ## One exported component per `.tsx` — a Jest invariant and a guard rule
 

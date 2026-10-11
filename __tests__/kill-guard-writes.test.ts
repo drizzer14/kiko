@@ -361,8 +361,7 @@ const ALLOWED: string[] = [
   "sed -i 's/a/b/' /tmp/src.txt",
 ];
 
-// e2e/ holds TypeScript (Maestro seeds, the screenshot helpers) that the pre-write guard reads
-// like src/; a python write into e2e/screenshot/seed/demo-text.ts broke it on 2026-10-10.
+// e2e/ holds TypeScript the pre-write guard reads like src/.
 const DENIED_E2E: string[] = [
   'echo x > e2e/screenshot/seed/demo-text.ts',
   'echo x >> e2e/x.ts',

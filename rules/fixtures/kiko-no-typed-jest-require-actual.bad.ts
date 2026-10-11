@@ -29,4 +29,20 @@ const brokenAcrossLines = jest
 // EXPECT-FINDING
 const typedModule = jest.requireActual<typeof import('react-native')>('react-native');
 
-export { brokenAcrossLines, multiLine, typedActual, typedMock, typedModule, viaAlias };
+// The extractor reads the other two module-taking names the same way.
+// EXPECT-FINDING
+const typedCreated = jest.createMockFromModule<Shape>('react-native');
+
+// EXPECT-FINDING
+const typedGenerated = jest.genMockFromModule<Shape>('react-native');
+
+export {
+  brokenAcrossLines,
+  multiLine,
+  typedActual,
+  typedCreated,
+  typedGenerated,
+  typedMock,
+  typedModule,
+  viaAlias,
+};
