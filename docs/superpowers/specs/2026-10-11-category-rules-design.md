@@ -1,5 +1,5 @@
 # Category rules — design, 1.2
-Status: SPEC, awaiting user review (track category-rules, base main 1f7a26a4). No plan, no code yet.
+Status: SPEC, rulings recorded 2026-10-11; awaiting the user's spec approval (track category-rules, base main 1f7a26a4). No plan, no code yet.
 
 ## User rulings (approved 2026-10-11, unchanged here)
 1. A category has MANY rules. A rule has ONE OR MORE matchers. ALL matchers of a rule must match (AND). An OR is a second rule for the same category.
@@ -67,7 +67,7 @@ type CategoryRuleMatcher =
 - `text` is the name as the user typed it (trimmed). It is normalized at evaluation time with `normalizeTransactionName`, so one normalization stays the only one. A migrated override's `text` is its `display_name` (by construction `normalize(display_name) === normalized_name`, `category-overrides.repo.ts:31-43`; the migration test pins it).
 - `minorUnits` is a non-negative integer in the currency's own scale. `minuteOfDay` is an integer 0-1439.
 - Read-time type guard `parseRuleMatchers(json): CategoryRuleMatcher[] | null`: rejects bad JSON, an empty list, an unknown `type`, a bad operator, a non-integer or negative amount, an unknown currency, an out-of-range minute, a blank normalized `text`. A rule that fails the guard never matches and is skipped by every reader; the category page shows it as unreadable with only Delete. The same guard runs on restore input.
-- Editor validation (save refused, inline error): at least one matcher; a valid value per matcher; no two rules with the same matcher set (see OPEN POINT 9); no rule that can never match (see OPEN POINT 8).
+- Editor validation (save refused, inline error): at least one matcher; a valid value per matcher; no two rules with the same matcher set (the error names the other rule's category; decision 9); no rule that can never match: two directions, two currencies, an empty amount range, or after >= before, with the hint to use two rules for a window over midnight (decision 8).
 
 ### 3.2 The manual-pick flag
 `transactions.category_set_by_hand` integer (boolean) NOT NULL DEFAULT 0. Every existing row gets 0 (ruling 6).
@@ -76,13 +76,13 @@ type CategoryRuleMatcher =
 |---|---|
 | "Just for this one" (`applyOverrideOne` -> `setCategory`) | set 1 |
 | A manual edit of a row's category that writes by id (the blank-name fallback `setCategory`, `performSave`) | set 1 |
-| "Apply" on the change-category sheet (rule created) | the source row: set 0 (it follows the rule, OPEN POINT 4) |
-| A manual create whose category the user picked (`userPickedCategory` true) | set 1 (OPEN POINT 4) |
+| "Apply" on the change-category sheet (rule created) | the source row: set 0 (it follows the rule; decision 4) |
+| A manual create or Duplicate whose category the user picked (`userPickedCategory` true), or an edit that writes a hand-picked category | set 1 (decision 4) |
 | A manual create whose category came from the rule pre-select, or no category | 0 |
-| A transaction from a template that carries a category | OPEN POINT 13 |
+| A transaction from a template that carries a category | set 1; a template without a category gets the pre-select and 0 (decision 13) |
 | Insert path (sync, import, adoption) | never set; an adopted import twin keeps its own flag (the column is not in `adoptedValuesOf`) |
 | Re-sync refresh | never touched (not a bank-owned column) |
-| Category delete (rows moved to the default) | OPEN POINT 12 |
+| Category delete (rows moved to the default) | cleared to 0 on the moved rows (decision 12) |
 | Restore | as exported; a file without the key restores 0 |
 
 `transactionsRepo.setCategory` gains the flag write. `update` (manual edit of amount/time/description) does not touch category or flag.
@@ -121,9 +121,9 @@ winningRule(prepared, subject): PreparedRule | undefined // first match in prior
 - AND: a rule matches when every matcher matches. A matcher whose subject field is null does not match.
 - `nameIs`: `normalizedName === normalize(text)`. `nameStartsWith`: `normalizedName.startsWith(normalize(text))`. A blank `normalizedName` matches no name matcher.
 - `amount`: `currency === matcher.currency` AND the operator holds on `absoluteMinorUnits` vs `minorUnits`. Integer compare, no floats.
-- `direction`: `amount < 0` -> expense, `> 0` -> income, `0` -> neither (OPEN POINT 7).
+- `direction`: `amount < 0` -> expense, `> 0` -> income, `0` -> neither (decision 7).
 - `time`: `minuteOfDay = getHours() * 60 + getMinutes()` of `new Date(time)` in the device zone. `before` = strictly earlier than the value; `after` = at or later than the value, so "before X" and "after X" split the day with no gap and no overlap. A wall-clock read is DST-safe: 18:30 on a 23- or 25-hour day is 1110. The zone is the device zone at evaluation time (insert, rewrite or form).
-- Priority sort (total order, deterministic): matcher count DESC, then `updated_at` DESC, then `created_at` DESC, then `id` DESC (string compare). "Newest" = `updated_at` (OPEN POINT 1). The first matching rule in that order wins; rules of the same category tie harmlessly.
+- Priority sort (total order, deterministic): matcher count DESC, then `updated_at` DESC, then `created_at` DESC, then `id` DESC (string compare). "Newest" = `updated_at` (decisions 1 and 2). The first matching rule in that order wins; rules of the same category tie harmlessly.
 - `prepareRules` is called once per batch / per rewrite / per form rule-set change, never per row.
 
 ## 6. Scenario matrix (each row becomes a test before the code)
@@ -142,7 +142,7 @@ Amounts in major units; a row is a stored transaction unless marked "draft". "wa
 | M8 | amount <= 500 UAH | -500.00 / -500.01 UAH | match / no | new |
 | M9 | amount = 0 UAH | 0.00 UAH | match | new |
 | M10 | amount < 500 UAH | 0.00 UAH | match | new |
-| M11 | direction expense / income | 0.00 UAH | no / no (OPEN POINT 7) | new |
+| M11 | direction expense / income | 0.00 UAH | no / no (decision 7) | new |
 | M12 | direction expense | -1.00 / +1.00 | match / no | new |
 | M13 | direction income + amount >= 1000 UAH | +1000.00 UAH | match | new |
 | M14 | direction expense + amount >= 1000 UAH | +1000.00 UAH | no (sign vs direction) | new |
@@ -154,7 +154,7 @@ Amounts in major units; a row is a stored transaction unless marked "draft". "wa
 | M20 | time before 09:00 | 08:59 / 09:00 local | match / no | new |
 | M21 | time after 18:00 | 17:59 / 18:00 local | no / match | new |
 | M22 | time after 18:00 | 18:30 local on the DST switch day | match (minute 1110) | new |
-| M23 | after 22:00 + before 06:00 | 23:00 | no: AND of the two never holds (OPEN POINT 8) | new |
+| M23 | after 22:00 + before 06:00 | 23:00 | the editor refuses to save it (never matches); the user makes two rules (decision 8) | new |
 | M24 | nameIs "silpo" | "  SILPO  " / "Сільпо" vs rule "СІЛЬПО" | match / match | match / match |
 | M25 | nameStartsWith "silpo" | "Silpo Market 12" / "Mega Silpo" | match / no | new |
 | M26 | nameIs "x" | blank description | no | no |
@@ -171,29 +171,29 @@ Amounts in major units; a row is a stored transaction unless marked "draft". "wa
 | P5 | Monobank insert, MCC 5411 (bank: groceries), R (nameIs "silpo" -> food) matches | food | food (override) |
 | P6 | Monobank insert, no rule matches | bank category (groceries) | same |
 | P7 | Binance insert, rule matches | rule category (bank gives none) | same for a name override |
-| P8 | Re-sync refresh of an existing row | category unchanged (except OPEN POINT 6) | unchanged |
+| P8 | Re-sync refresh of an existing row | category unchanged, except a refresh that changes the amount of an unflagged row: re-evaluated, written only when a rule wins (decision 6) | unchanged |
 | P9 | Sync adopts an import twin with a category | twin's category and flag kept | twin's category kept |
 | P10 | Rewrite, row flagged | untouched | was: same-name rewrite overwrote it |
 | P11 | Rewrite, saved rule wins, row category differs | changed, counted in N | — |
 | P12 | Rewrite, saved rule wins, row already has its category | unchanged, not counted | — |
 | P13 | Rewrite, saved rule matches but a stronger rule wins | unchanged, not counted | — |
-| P14 | Edited rule no longer matches a row it set before | unchanged (as a delete, OPEN POINT 3) | — |
+| P14 | Edited rule no longer matches a row it set before | unchanged (never revert; decision 3) | — |
 | P15 | Rule deleted | no row changes | was: override deletion n/a (no UI) |
 | P16 | Form create, rule matches, user has not picked | pre-selected | pre-selected (name only, on blur) |
 | P17 | Form create, user picked a category, then a rule starts to match | user's pick stays | same |
 | P18 | Form create, pre-selected, then the draft stops matching | cleared to none | same (`reseatCategoryFromName`) |
 | P19 | Form edit of an existing row | no pre-select | same |
 | P20 | Suggestion "Apply" on name "Silpo" -> food; today's data (no flags, one-matcher rules) | same rows change as today | rows named "silpo" |
-| P21 | Rewrite, row is an exchange leg / balance-setting row / split-change row | untouched (OPEN POINT 5) | name rewrite could touch it |
-| P22 | Category deleted that has rules | rules deleted (OPEN POINT 12) | was: overrides moved to the default |
+| P21 | Rewrite, row is an exchange leg / balance-setting row / split-change row | untouched (decision 5) | name rewrite could touch it |
+| P22 | Category deleted that has rules | rules deleted; rows move to the default with the flag cleared (decision 12) | was: overrides moved to the default |
 
 ## 7. Application points
 
 ### 7.1 Insert path
 `withCategoryOverrides` becomes `withCategoryRules(databaseTransaction, batch)`, same two callers.
-- Reads all rules once per batch (one full read of `category_rules`, a documented `nosemgrep` exception with `OVERRIDE(...)` and an entry in `docs/harness/documented-exceptions.md`; OPEN POINT 10) and the currencies of the batch's distinct `holdingId`s (one `WHERE id IN (...)` read).
+- Reads all rules once per batch (one full read of `category_rules`, a documented `nosemgrep` exception with `OVERRIDE(...)` and an entry in `docs/harness/documented-exceptions.md`; decision 10, no rule cap) and the currencies of the batch's distinct `holdingId`s (one `WHERE id IN (...)` read).
 - For each row: build the `RuleSubject`; a winner replaces `category`. No winner keeps the bank category. The flag is never set here.
-- Applies to every row the upsert inserts; a conflict refresh never writes `category` (unchanged contract, `transactions.repo.ts:1526-1534`), except OPEN POINT 6.
+- Applies to every row the upsert inserts; a conflict refresh never writes `category` (unchanged contract, `transactions.repo.ts:1526-1534`), except one case: a refresh that changes the amount of an unflagged row re-evaluates it, and writes `category` only when a rule wins (decision 6).
 
 ### 7.2 Form pre-select (LAST task, on top of the split)
 After the split merges; the unit layout is fixed only then. Unit names from the transaction-templates spec (5a1a65ed, not yet approved): `category-rule/` (`ruleCategoryFor`, `resolveCategoryOverrideRequest`, `resolvePendingCategory`), `use-category-pick/` (`selectedCategory`, `userPickedCategory`, `selectCategory`, `reseatCategoryFromName`, `onDescriptionBlur`, `pickSuggestion`), `use-category-override/` (`pendingOverride`, `applyOverride`, `applyOverrideOne`, `cancelOverride`, `pendingCategory`), `category-override-sheet/` (the sheet JSX). `validation/` is shared: this track adds only its own `SaveDisabledField` keys there (none planned).
@@ -204,17 +204,17 @@ After the split merges; the unit layout is fixed only then. Unit names from the 
 
 ### 7.3 Retroactive rewrite
 - Trigger: Save in the rule editor of a NEW rule, or of a rule whose matchers or category changed. A save that changes nothing writes nothing.
-- One shared function `planRuleRewrite(rules, savedRule, rows)` returns the ids to change: eligible rows (flag 0, not structural per OPEN POINT 5) where `winningRule` over ALL rules (the saved one included, as saved) is the saved rule AND the row's category differs from the rule's category.
-- N = the length of that list. The sheet: "This changes N transactions" / "Apply to existing" / "New transactions only" / Cancel (returns to the editor, nothing saved). N = 0 -> no sheet, save directly (OPEN POINT 11).
+- One shared function `planRuleRewrite(rules, savedRule, rows)` returns the ids to change: eligible rows (flag 0; not an exchange leg, a balance-setting row or a split-change row, decision 5) where `winningRule` over ALL rules (the saved one included, as saved) is the saved rule AND the row's category differs from the rule's category.
+- N = the length of that list. The sheet: "This changes N transactions" / "Apply to existing" / "New transactions only" / Cancel (returns to the editor, nothing saved). N = 0 -> no sheet, save directly (decision 11).
 - "Apply to existing": ONE `write`: save the rule, re-plan on the rows as they are inside the write (so the result is exact even if a sync landed between the count and the tap), `UPDATE transactions SET category = ? WHERE id IN (chunk) AND category_set_by_hand = 0` per `IN_CLAUSE_CHUNK_SIZE` chunk. A test pins: on unchanged data the updated-row count equals N.
 - "New transactions only": save the rule only.
-- What it can and cannot recompute: it only writes the saved rule's category onto rows that rule wins. It never reverts a row (a narrowed, deleted or out-ranked rule's rows keep their category). So it needs no stored original category; OPEN POINT 3 covers the alternative.
+- What it can and cannot recompute: it only writes the saved rule's category onto rows that rule wins. It never reverts a row (a narrowed, deleted or out-ranked rule's rows keep their category). So it needs no stored original category (decision 3).
 - Candidate narrowing (fast path): if the saved rule has a name matcher, read `selectDistinct(description)`, filter in JS, then read only rows `WHERE description IN (chunk)`. Otherwise read all eligible rows in id-keyset pages. Rows read: `id, description, amount_minor_units, time, category, holdings.currency` (join on `holding_id`).
 
 ## 8. The suggestion flow (change-category sheet)
 Form units after the split: `use-category-override/` (`applyOverride`, `applyOverrideOne`) and `category-override-sheet/` (no JSX change planned).
 - The sheet, its title, message and buttons stay as today (ruling 7).
-- "Apply": `categoryRulesRepo.applyNameRule(name, category)` in one write: find a rule whose matchers are exactly one `nameIs` with the same normalized text. If found, move it to the new category, set `text` to the typed name, bump `updated_at` (it becomes the newest, so the user's latest choice wins ties). If not found, insert one. A rule that has `nameIs` plus other matchers is a different rule and is not touched. Then run the 7.3 rewrite for that rule (no second sheet; today's sheet already asked). On today's data this changes the same rows as today (P20). The source row's flag goes to 0 (OPEN POINT 4).
+- "Apply": `categoryRulesRepo.applyNameRule(name, category)` in one write: find a rule whose matchers are exactly one `nameIs` with the same normalized text. If found, move it to the new category, set `text` to the typed name, bump `updated_at` (it becomes the newest, so the user's latest choice wins ties). If not found, insert one. A rule that has `nameIs` plus other matchers is a different rule and is not touched. Then run the 7.3 rewrite for that rule (no second sheet; today's sheet already asked). On today's data this changes the same rows as today (P20). The source row's flag goes to 0 (decision 4).
 - A blank normalized name: no sheet, no rule (unchanged guard, `:488-507`).
 - "Just for this one": `setCategory` + flag 1.
 - Cancel: unchanged (on a create the row keeps its picked category; on an edit nothing is written).
@@ -226,7 +226,7 @@ Form units after the split: `use-category-override/` (`applyOverride`, `applyOve
 - One-column `Sortable.Grid` of cards built like `renderAccountCard`: `EntityIconTile` (category icon + resolved colour), title (wraps, per the locked "Card titles wrap" rule), caption "N rules" / "No rules" plus "Default" on the default category.
 - Tap -> category page. Hold -> `CardContextMenu` delete (not on the default). Drag -> reorder (`categoriesRepo.reorder`).
 - Footer "Add category" (leading symbol) -> category edit form in create mode; after save, the new category page.
-- Where "Set as default" and move top/bottom go: OPEN POINT 14.
+- "Set as default" moves to the category page (a row under the rules); move top/bottom goes away, reorder is by drag only, like Accounts (decision 14).
 
 ### 9.2 Category page (`CategoryDetail`, new route)
 - Header title = category name; header Edit -> category edit form.
@@ -296,15 +296,15 @@ Design choices that serve them:
 Method: a Jest test on real `node:sqlite` (`@kiko/test-support/real-sqlite`) with a seeded fixture: 50 000 transactions over 20 holdings in 5 currencies (UAH, USD, EUR, GBP, BTC), 3 years of times, 2 000 distinct descriptions (Cyrillic and Latin), 10% flagged, plus 200 rules: 120 `nameIs`, 40 `nameStartsWith`, 40 with 2-3 matchers (amount, direction, time). Time with `performance.now()`, median of 5 runs: (a) `prepareRules` + evaluation of a 10 000-row batch; (b) the full insert of that batch with and without rules; (c) rewrite count and apply for a name rule and for a no-name rule. The test asserts generous ceilings (5x the measured median) so it does not flake; the plan records the measured numbers in the run log. Hermes is slower than Node's JIT: the user's live device check of "Apply to existing" on the real database is the final check. Run outside battery mode only.
 
 ## 12. Category delete
-- `categoriesRepo.delete` (`categories.repo.ts:81-113`) gets a rule-deletion step in its SAME write: `DELETE FROM category_rules WHERE lower(category) = ?` (the same case-insensitive key match it uses for transactions), beside transaction-templates' template-clearing step, before the category row goes (recommended, OPEN POINT 12). A count read for the confirm: `countRulesOfCategory(key)` (beside templates' `countReferencingCategory(key)`).
+- `categoriesRepo.delete` (`categories.repo.ts:81-113`) gets a rule-deletion step in its SAME write: `DELETE FROM category_rules WHERE lower(category) = ?` (the same case-insensitive key match it uses for transactions), beside transaction-templates' template-clearing step, before the category row goes (decision 12). The rows moved to the default get `category_set_by_hand = 0` in the same write. A count read for the confirm: `countRulesOfCategory(key)` (beside templates' `countReferencingCategory(key)`).
 - The confirm names the count: "Its N rules will be deleted too" (`categories.deleteRulesNotice_*`), one line beside templates' `categories.deleteTemplates_*` line.
 - The confirm today is the title-only `ConfirmSheet` at `categories.screen.tsx:330-341` (handlers `:167-183`), on this track's screen, which the redesign rewrites: it moves into the card context menu and the category edit form.
 
 ## 13. Coordination with transaction-templates
-- Form: transaction-templates splits `transaction-form.screen.tsx` first. This track's form work (7.2 pre-select, section 8 sheet changes, the flag on create/edit) is the LAST task, written on top of the split once it is in `next`. Data, repo, insert path, rewrite and screens come first and do not touch the form file, except: the form reads `category_overrides` today (`:1652-1662`, `:2203`), so dropping the table in 0058 forces a minimal form change in the SAME task as the migration (swap the live query in `use-category-pick/` and `applyOverride` in `use-category-override/` to the rules repo, same behavior; unit names fixed only once the split merges). That task must land after the split or rebase on it (coordination point A; the task order is OPEN POINT 16).
+- Form: transaction-templates splits `transaction-form.screen.tsx` first. This track's form work (7.2 pre-select, section 8 sheet changes, the flag on create/edit) is the LAST task, written on top of the split once it is in `next`. Data, repo, insert path, rewrite and screens come first and do not touch the form file, except: the form reads `category_overrides` today (`:1652-1662`, `:2203`), so dropping the table in 0058 forces a minimal form change in the SAME task as the migration (swap the live query in `use-category-pick/` and `applyOverride` in `use-category-override/` to the rules repo, same behavior; unit names fixed only once the split merges). That task must land after the split or rebase on it (coordination point A; decision 16: the migration + repo task lands on top of the split once it is in `next`; before that the track does only the pure rule module, the scenario-matrix tests and the performance fixture).
 - Delete confirm (coordination point B, agreed): both tracks edit `categoriesRepo.delete` (one write: templates clears template category ids, this track deletes rules, then the existing reassign and row delete) and the confirm (`categories.screen.tsx:330-341` today; this track's redesign moves it). The track that merges into `next` second rebases onto the first and adds its own line to the confirm (`categories.deleteTemplates_*` for templates, `categories.deleteRulesNotice_*` here).
 - Settings stack (coordination point C): both tracks add routes to `src/navigation/settings-stack/settings.stack.tsx` and `types.d.ts`; transaction-templates also moves the Categories row. This track adds `CategoryDetail`, `CategoryForm`, `CategoryRuleForm` only.
-- Templates (coordination point D): OPEN POINT 13.
+- Templates (coordination point D): a template's category is a hand pick, flag 1; a template without a category gets the pre-select, flag 0 (decision 13). To confirm with the transaction-templates orchestrator that the template insert is `recordManual`.
 - Migration numbers: 0058 here, after 0056 and 0057; renumber at merge against the destination's journal tail.
 
 ## 14. Risks
@@ -314,20 +314,21 @@ Method: a Jest test on real `node:sqlite` (`@kiko/test-support/real-sqlite`) wit
 - R4: The form file is 2852 lines and being split; the form task must start from the split, not from main.
 - R5: A rule with only amount / direction / time matchers can rewrite many rows at once; N in the sheet is the guard.
 
-## 15. Open points (each needs a user or orchestrator decision)
-1. "Newest" for the tie: (a) `updated_at` — an edited rule and a suggestion re-apply win ties, matching the user's latest intent; (b) `created_at` — ranks never move on edit, but the suggestion flow's updated rule could lose to an older-created rival. Recommend (a).
-2. Identical timestamps: tie-break by `created_at` DESC, then `id` DESC. Only option offered (deterministic, invisible). Recommend as written.
-3. "As if from the start" for rows a rule no longer wins: (a) never revert (ruling 5 literal; no new column); (b) revert to the next winner or the bank category, recomputing the bank category from `categoryForMcc(mcc)` (no column; drifts if the MCC table changes in a later build); (c) store `original_category` at insert (exact; a new column, migration backfill from MCC, export field). Recommend (a): it matches "a deleted rule changes no row" and needs no stored original.
-4. Flag on a manual create and on "Apply": (a) create with a hand-picked category sets the flag; "Apply" clears it on the source row; (b) creates never set it (only edits); (c) both set it. Recommend (a): a hand pick is protected, and "Apply" means "follow the rule".
-5. Structural rows in the rewrite: (a) skip exchange legs, balance-setting rows and split-change rows; (b) treat them like any row. Recommend (a): they are not purchases, and an amount/direction rule would relabel an opening balance or an exchange leg.
-6. Hold refresh: a pending row is evaluated at its provisional amount; the settled amount can cross an amount boundary. (a) Re-evaluate on a refresh that changes the amount, unflagged rows only, writing only when a rule wins; (b) never re-evaluate (today's contract). Recommend (a) per no-known-limit-for-data-correctness.
-7. Zero amount and direction: (a) 0 matches neither expense nor income; (b) 0 counts as income (as `signedMinorUnits` would treat a non-expense). Recommend (a).
-8. Time window over midnight and never-matching rules: (a) refuse to save a rule that cannot match (two directions, two currencies, an empty amount range, after >= before) with "These conditions can never match together", and the hint to use two rules; (b) allow it silently; (c) let "after 22:00 + before 06:00" wrap midnight (breaks the AND ruling). Recommend (a).
-9. Duplicate rules (same matcher set): (a) refuse in the editor, naming the other category; the suggestion flow updates the existing one-matcher rule in place; (b) allow (the older one is dead). Recommend (a).
-10. Reading all rules inside the insert write trips `kiko-no-full-table-select-in-write`: (a) a cap of MAX_RULES enforced at EVERY rule writer (the editor, suggestion "Apply", a v3 restore, an old file's overrides converted on restore, and migration 0058), plus a read with `.limit(MAX_RULES + 1)` that fails loudly on overflow. Gap: the migration cannot refuse rows, and an old restore should not refuse a file the user made, so a user with more than MAX_RULES overrides breaks (a); a bounded read that silently stopped at the cap would drop rules (a data-correctness limit, memory no-known-limit-for-data-correctness); (b) read rules before the write and pass them in (a rule saved in between misses that batch: a data gap); (c) a documented exception: `nosemgrep` with `OVERRIDE(...)` on the one read, plus an entry in `docs/harness/documented-exceptions.md` (the table is user-authored and small, and every reader needs every row by design). Recommend (c): it adds no product limit and no silent drop. Orchestrator ruling: this overrules the planner's first recommendation (a), toward the no-known-limit principle.
-11. N = 0: (a) no sheet, save directly; (b) show "This changes 0 transactions". Recommend (a).
-12. Category delete: (a) delete its rules, show the count in the confirm, and clear the flag on the rows moved to the default (they no longer hold the user's pick); (b) move the rules to the default (today's override behavior: rules would then force the default over bank categories); (c) delete rules, keep flags. Recommend (a). "was:" overrides moved to the default.
-13. Template with a category (transaction-templates): its save goes through the manual create path (`recordManual`), where rules never apply. (a) A template's category counts as a hand pick: flag 1; a template without a category gets the pre-select evaluation on its draft (name, amount, holding, time, direction), flag 0; (b) no flag, ever (later rewrites may relabel template rows); (c) rules override the template's category. Recommend (a): the user set the category on the template on purpose; transaction-templates recommends the same, and its design already sets `userPickedCategory` for a template or Duplicate category, so with OPEN POINT 4 (a) the flag follows from the same create path (a Duplicate with a category is flagged too). To confirm with the transaction-templates orchestrator that the template insert is `recordManual` in their code.
-14. Where "Set as default" and move top/bottom go after the card redesign: (a) "Set as default" on the category page (a row under the rules), reorder by drag only (like Accounts); (b) keep both in a context menu on the list card. Recommend (a).
-15. Date-only statement rows have no real time of day; their stored instant decides the time matcher. (a) Evaluate as stored and say so in the time matcher's hint; (b) skip time matchers on import rows (loses real times). Recommend (a). Needs a check of the current date-only mapping at plan time.
-16. Task order vs the form split (coordination point A). Dropping `category_overrides` in 0058 forces a form change in the same task, the form is split first by transaction-templates, and each task tip must ship alone. (a) The migration + repo task lands on top of the split once it is in `next`; before that, the track does only work that touches neither the form nor the schema: the pure rule module with the scenario-matrix tests and the performance fixture. Consequence: the DB and screen work waits for the split merge. (b) A minimal form swap on the unsplit file now; the track that merges second resolves the conflict. Consequence: a conflict on exactly the lines the split moves. (c) Keep `category_overrides` in 0058 and drop it in the last task. Consequence: two sources of truth between tasks; the suggestion "Apply" writes overrides the insert path no longer reads, a data gap at an intermediate tip. Recommend (a).
+## 15. Decisions (2026-10-11)
+Source: USER = the user's ruling, relayed by the coordinator; DEFAULT = the coordinator-recommended option, no user objection; ORCHESTRATOR = an orchestrator ruling.
+1. "Newest" for the priority tie = `updated_at`; an edited rule and a suggestion re-apply win ties. Not chosen: `created_at`. DEFAULT.
+2. Identical `updated_at`: then `created_at` DESC, then `id` DESC, so the order is total. DEFAULT.
+3. A row a rule no longer wins is never reverted (a narrowed, deleted or out-ranked rule's rows keep their category); no `original_category` column. Not chosen: reverting via `categoryForMcc`; storing `original_category`. USER.
+4. ANY hand-picked category sets the flag: on create, Duplicate, edit, and from a template. "Apply" to all clears the flag on the source row (it follows the rule). USER.
+5. The rewrite skips exchange legs, balance-setting rows and split-change rows. DEFAULT.
+6. A re-sync refresh that changes the amount of an unflagged row re-evaluates it; `category` is written only when a rule wins. DEFAULT.
+7. A zero amount matches neither expense nor income. DEFAULT.
+8. The editor refuses a rule that can never match (two directions, two currencies, an empty amount range, after >= before), with the hint to use two rules for a window over midnight. DEFAULT.
+9. The editor refuses a second rule with the same matcher set and names the other category; the suggestion flow updates the existing one-matcher rule in place. DEFAULT.
+10. The insert path reads every rule inside its write under a documented guard exception: `nosemgrep` with `OVERRIDE(...)` on that one read, plus an entry in `docs/harness/documented-exceptions.md` (the table is user-authored and small; every reader needs every row by design). No rule cap, no silent drop. Not chosen: a cap at every writer with a `.limit(MAX_RULES + 1)` read (migration 0058 and an old restore cannot refuse rows); reading rules before the write (a rule saved in between misses that batch). DEFAULT (ORCHESTRATOR ruling toward no-known-limit-for-data-correctness).
+11. N = 0: no sheet, save directly. DEFAULT.
+12. Deleting a category deletes its rules in the same `categoriesRepo.delete` write; the confirm shows "N rules"; its rows move to the default as today, with the flag cleared on the moved rows. Was: overrides moved to the default. USER.
+13. A template's category counts as a hand pick (flag 1); a template without a category gets the pre-select on its draft, flag 0. The template insert is the manual create path (`recordManual`), where rules never apply; to confirm with the transaction-templates orchestrator. DEFAULT.
+14. "Set as default" moves to the category page; reorder is by drag only, like Accounts. DEFAULT.
+15. A date-only statement row's stored instant decides the time matcher; the time matcher's hint says so. The plan checks the current date-only mapping. DEFAULT.
+16. Task order: the migration + repo task lands on top of the transaction-templates split once it is in `next`. Before that, the track does only work that touches neither the form nor the schema: the pure rule module with the scenario-matrix tests and the performance fixture. Not chosen: a form swap on the unsplit file (conflicts on the moved lines); keeping `category_overrides` until the last task (a data gap at an intermediate tip). DEFAULT.
