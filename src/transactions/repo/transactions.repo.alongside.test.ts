@@ -243,7 +243,7 @@ describe('a write that fails before its alongside step', () => {
         { transactionId: 'edited', amountMinorUnits: -900, time: EDITED_TIME },
         alongside,
       ),
-    ).rejects.toThrow('Failed query: update "transactions"');
+    ).rejects.toMatchObject({ cause: expect.objectContaining({ message: 'update failed' }) });
 
     expect(alongside).not.toHaveBeenCalled();
     expect(snapshot()).toEqual(before);
