@@ -208,8 +208,8 @@ project-level pointer to this section.
   statement of the matching rule, including the archived-source
   carve-out) moves a 1.0-era `cash` holding in a crypto currency onto a
   `crypto_asset` holding under a crypto account, keeping the holding's own
-  `id` so every transaction, exchange leg, loan link, `price_points` row,
-  and category override attached to it stays attached. Crash-safe,
+  `id` so every transaction, exchange leg, loan link, `price_points` row
+  attached to it stays attached. Crash-safe,
   additive-then-mutate order (no delete): a TEMP table snapshots the
   affected holdings, a TEMP table captures the reuse target BEFORE any
   account is created (so a just-created account is never mistaken for a
@@ -296,7 +296,14 @@ project-level pointer to this section.
   unshipped `.sql` and snapshot and re-run `generate` until it reports no schema
   changes. Pointer: migration 0053 is the partial index
   `transactions_loan_holding_id`
-  (`drizzle/migrations/0053-add-loan-holding-id-index.test.ts`).
+  (`drizzle/migrations/0053-add-loan-holding-id-index.test.ts`). The same planner
+  choice hijacks a primary-key keyset page: `exchange_pair_id IS NULL` in a page
+  WHERE picked `transactions_exchange_pair_id` plus a temp B-tree for ORDER BY
+  (200 000 rows: 6.6 s against 0.7 s on the PK). Keep indexable NULL predicates
+  out of a keyset page's SQL, re-check eligibility in JS, and pin the page with
+  an EXPLAIN QUERY PLAN test built from the repo's own query builder
+  (`sqlite_autoindex_transactions_1 (id>?)`, no temp B-tree) — see
+  `rewritePageQuery` in `src/categories/category-rules-repo/category-rules.repo.ts`.
 - **A flag whose work SQL cannot do follows the flag-plus-launch-step
   shape.** `0048_add_lots_recosted` only adds `settings.lots_recosted`
   (`false`): re-costing a sale needs the BigInt decimal helpers, so the
@@ -337,7 +344,8 @@ ONE worker thread" below) until it commits. A where-less
 `select().from(<table>)` inside it reads the whole table and then filters in
 JS while every other read and write waits. Filter in SQL (`.where(...)`),
 read only the column you need (`selectDistinct`, as
-`upsertCategoryOverride` does for descriptions), or bound it with
+`rowIdsForNamedRule` in
+`src/categories/category-rules-repo/category-rules.repo.ts` does for descriptions), or bound it with
 `.limit(...)`. The one-row `settings` table is exempt. Mechanized as
 `kiko-no-full-table-select-in-write` (ERROR, `rules/semgrep-prewrite.yml`).
 A full scan hidden behind a repo helper called inside the write is not
@@ -845,7 +853,7 @@ shared `upsertDedupRowsDatabaseTransaction`
 `transactionsRepo.addManyDedup` and, through
 `insertDedupRowsDatabaseTransaction`, `importRows`) — two shared helpers
 also chunk a per-row `inArray(...)` select directly at a safe item-count
-margin (the category-override rule lookup in `withCategoryOverrides`, the
+margin (the category-rule lookup in `withCategoryRules`, the
 existing-key lookup in `partitionNewRows`), since a one-column `inArray`
 list has no table to derive a column count from.
 
@@ -1973,6 +1981,14 @@ shape, and hand-rolled `utf8/utf8.ts` + `base64/base64.ts` codecs.
   one side but not the other. Read that file for the current field list and
   its (currently empty) documented-exclusion array — do not copy the table
   list here.
+- **Export version 3 carries `categoryRules`.** Versions 1 and 2 carry
+  `categoryOverrides`; `snapshot/with-legacy-overrides-converted.ts` converts
+  them to rules on import (`import-data.ts`). The v3 restore guard checks SHAPE
+  only (id, category and matchers are strings; createdAt and updatedAt are
+  numbers). A rule whose `matchers` fail `parseRuleMatchers` restores as an
+  unreadable rule, because the migration and the legacy conversion store such
+  rules and the app exports every rule: a restore guard never rejects a state
+  the app itself writes.
 - **Every Keychain secret class the export carries is read and restored.**
   Read `payload.d.ts`'s `ExportSecrets` for the classes it carries: the
   per-account `monobankTokens` and `binanceCredentials`. The

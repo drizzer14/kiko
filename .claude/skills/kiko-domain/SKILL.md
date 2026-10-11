@@ -884,12 +884,13 @@ Writers hold up the other end: a category value is persisted only as
 the lowercase `categories.key` slug. `categoryForMcc`
 (`src/monobank/`) emits the slug, not a display title,
 and migration `0014_lowercase_categories` lowercased the legacy rows a
-capitalized-title era had already written. Because neither
-`transactions.category` nor `category_overrides.category` is COLLATE
-NOCASE, `categoriesRepo.delete`'s reassignment additionally compares
-case-insensitively on both sides (`lower(column) = lower(key)`), so an
-un-migrated row from an older build still gets folded onto the default
-instead of being orphaned on a deleted slug.
+capitalized-title era had already written. Neither
+`transactions.category` nor `category_rules.category` is COLLATE NOCASE;
+`categoriesRepo.delete`'s reassignment compares case-insensitively on both
+sides (`lower(column) = lower(key)`), so an un-migrated transaction row from
+an older build is folded onto the default instead of orphaned on a deleted
+slug; the category's rules are deleted in the same write, and the moved rows
+lose the by-hand flag.
 
 ## Spending-exclusion pipeline
 
