@@ -265,12 +265,24 @@ withdraw budget moves into this object, with the same numbers and the same rule.
   a run therefore stores the re-scan's start as the mark (the first-run pin), before it moves
   the cursor, whenever that start is behind the window. A stored mark above the floor and
   before the forward start is resumed: at or after the base, over `[mark, forward start)`; behind
-  the base (what is left of an old cursor's overlap), for one overlap only, `[mark, mark +
-  overlap)`, because re-reading all of `[mark, cursor)` would cost more calls than a run has,
-  over and over. A mark at the floor or at or after the forward start starts a new pass.
-  Re-scan rows go through the same keys, so a second identical run imports nothing.
-- Filter: `currency === 'BTC'`. A non-BTC order paid with BTC funds stops the span
-  that holds it (`pay-btc-funded-other-coin`, cursor unmoved) (Q8). Until a rule
+  the base, for one overlap only, `[mark, mark + overlap)`, because re-reading all of `[mark,
+  cursor)` would cost more calls than a run has, over and over. A mark behind the base is
+  either what is left of an old cursor's overlap or an in-window mark the sliding window has
+  outrun, and it is resumed only while `mark >= window start - 89 days`: a re-scan that
+  stops on a record inside that overlap never moves the mark, and without the bound the
+  leftover would be re-read every run and starve the window re-scan behind it (found in
+  review: a late deposit never imported in 400 simulated runs). Once the window has slid a
+  whole window past the mark, the run starts a new pass at the base. A mark at the floor or at
+  or after the forward start starts a new pass. Re-scan rows go through the same keys, so a
+  second identical run imports nothing.
+  **Known limit:** two absences longer than the 89-day window in a row, with the app suspended
+  between the forward pass and the re-scan, can skip the second cursor's overlap day (review
+  I-1): one mark cannot hold two pending overlaps.
+- Filter: `currency === 'BTC'`. A non-BTC order paid with BTC funds BY THE USER stops the
+  span that holds it (`pay-btc-funded-other-coin`, cursor unmoved) (Q8); one the user
+  received (the user is the receiver and not the payer) is ignored, because the BTC left
+  the payer's wallet, not the user's (B4). An order whose parties do not settle it (no
+  ids, neither party the user, the user both) still stops. Until a rule
   exists the walk is blocked for that user rather than losing a BTC movement. User
   ruling (I5, after the probe, 2026-10-10): A2. The stop stays unchanged. Option A,
   importing the BTC part of such an order as an outgoing BTC row on the wallet that
@@ -302,22 +314,33 @@ withdraw budget moves into this object, with the same numbers and the same rule.
   compares wallets by value. Placement does not trust `walletType`; it reads
   `walletTypes`, with `walletType` used only when `walletTypes` is absent. `walletType` and a
   single `walletTypes` entry that name different wallets are not a stop: `walletTypes`
-  wins. The cost check and the cost-based placement apply to OUTGOING orders only (R20/R21):
+  wins. The cost check and the cost-based placement apply to OUTGOING orders only (R20/R22):
   - An outgoing order is placed by its costs (the subset rule, R20). The wallets with a
     cost above zero (the BTC `fundsDetail` entries' `walletAssetCost`, added per wallet) must
     be a non-empty set, contained in the named wallets, and the costs must add up to
     `abs(amount)` to the satoshi; the rows follow the costed wallets, one per wallet, each
     with its own key. Otherwise the span stops (`pay-split-mismatch`): a positive cost on
     a wallet the order does not name, costs that do not add up, and no cost above zero at
-    all (including an order that carries no cost). A named wallet with no cost is left out,
+    all. A named wallet with no cost is left out,
     not a stop (`walletTypes` can list a wallet that was not charged; the totals are still
     the order amount). The equality rule that stopped it would never clear and becomes a
     loss once the floor passes the order (about 548 days).
-  - A receive is placed by `walletTypes` alone (R21): the single entry, or `walletType` when
-    `walletTypes` is absent, with no cost check, because a receive's `walletAssetCost` may
-    describe the payer's wallets (the probe saw only Funding receives, so what a receive from
-    a Spot payer carries is open: plan task 7/7 probe item). A receive that lists two wallets
-    stops (`pay-split-mismatch`): the receiver's split cannot be read from the payer's costs.
+  - **B5.** An outgoing order with no BTC `walletAssetCost` entry at all, and an explicit
+    `walletTypes` naming exactly one wallet, is placed whole on that wallet. The stop stays
+    for: `walletTypes` absent (`walletType` alone is not trusted), `walletTypes` with two
+    wallets and no costs, and a cost list that is zero or does not add up.
+  - **B4.** The funds checks apply to OUTGOING orders only. `pay-funds-not-btc` (a BTC order
+    whose `fundsDetail` names no BTC) stops a send; on a receive the funds are the payer's, in
+    whatever coin, and say nothing of what the user received.
+  - **A receive is placed by DATE (R22, replaces R21).** `transactionTime` before
+    2026-09-29T00:00:00Z (UTC midnight; the time zone is not documented) is Funding
+    (`BTC:funding`, key suffix `:1`); at or after it is Spot (`BTC`, suffix `:2`). Binance
+    announced that Pay receipts are credited to Spot from 2026-09-29 (announcement
+    01cbe42ead1e4f1a9382363754d2eb5a, 2026-09-23); before that they went to Funding. A
+    receive does not read `walletType`, `walletTypes` or `walletAssetCost`, and a receive that
+    lists two wallets no longer stops. The cost if the rule is wrong: a receive near the cutover,
+    or an order type the announcement does not cover (a Crypto Box claim, a merchant refund),
+    lands on the other wallet of the same account; the totals stay right.
 - Amount: `abs(amount)` through `Money.fromMajor('BTC', ...)`, with the sign from
   the direction.
 - Key: `` `${accountId}:pay:${orderType}:${transactionId}:${walletType}` ``. An
@@ -512,17 +535,18 @@ Placement (the "was:" column shows today's result):
 | P1 | Pay, out | walletType 2, walletTypes absent (or [2]), cost on wallet 2 summing to abs(amount) | Spot | not imported |
 | P1a | Pay, out | walletType 1, walletTypes [2], cost on wallet 2 | Spot (`walletTypes` wins, no stop) | not imported |
 | P2 | Pay, out | walletType 1 (also with walletTypes [1], the live probe shape; also digit strings), cost on wallet 1 | Funding | not imported |
-| P2a | Pay, out | walletTypes [1], positive cost on wallet 2 (or on 1 and 2), or no cost above zero on 1 | stop (`pay-split-mismatch`) | not imported |
+| P2a | Pay, out | walletTypes [1], positive cost on wallet 2 (or on 1 and 2), or a cost entry on 1 that is zero | stop (`pay-split-mismatch`) | not imported |
 | P3 | Pay, out | walletType 5, cost on wallet 5 | Earn | not imported |
 | P4 | Pay, out | [1,2] (walletType 1, as the probe saw), walletAssetCost on wallets 1 and 2, sums to abs(amount) | one row per wallet | not imported |
 | P4a | Pay, out | [1,2], cost above zero on one of them only (the other zero or absent), sums to abs(amount) | one row, on the costed wallet | not imported |
-| P5 | Pay, out | costs do not sum to abs(amount) (any wallet count), a positive cost on a wallet not in walletTypes, or no cost above zero (including no cost at all) | stop (`pay-split-mismatch`) | not imported |
-| P5a | Pay, in | walletTypes [1] (or walletType 1 with walletTypes absent), any cost or none, even a cost keyed to wallet 2 | Funding, no cost check (R21) | not imported |
-| P5b | Pay, in | walletTypes [1,2] | stop (`pay-split-mismatch`) | not imported |
-| P6 | Pay | 3, 4, 6 | stop (Q9) | not imported |
+| P5 | Pay, out | costs do not sum to abs(amount) (any wallet count), a positive cost on a wallet not in walletTypes, a cost list that is all zero, or no cost entry with walletTypes absent or naming two wallets | stop (`pay-split-mismatch`) | not imported |
+| P5a | Pay, in | `transactionTime` before 2026-09-29T00:00:00Z, whatever walletType, walletTypes (one wallet, two, or none), costs and funds say | Funding (R22, by date) | not imported |
+| P5b | Pay, in | `transactionTime` at or after 2026-09-29T00:00:00Z, whatever the wallet fields say (including walletTypes [1,2]: no stop) | Spot (R22, by date) | not imported |
+| P5c | Pay, out | no BTC walletAssetCost entry at all (no `fundsDetail`, or BTC funds with an empty cost list) and walletTypes naming exactly one wallet (B5) | that wallet, the whole amount | not imported |
+| P6 | Pay, out | 3, 4, 6 | stop (Q9) | not imported |
 | P7 | any | target holding missing | create it at 0, then place | n/a |
-| P8 | Pay | BTC order whose `fundsDetail` names no BTC | stop (`pay-funds-not-btc`) | n/a |
-| P9 | Pay | non-BTC order paid with BTC funds | stop (`pay-btc-funded-other-coin`), cursor unmoved | n/a |
+| P8 | Pay, out | BTC order whose `fundsDetail` names no BTC (B4: a receive is imported, its funds are the payer's) | stop (`pay-funds-not-btc`) | n/a |
+| P9 | Pay, out | non-BTC order paid with BTC funds by the user (B4: one the user received, the user the receiver and not the payer, is ignored; an order whose parties do not settle it stops) | stop (`pay-btc-funded-other-coin`), cursor unmoved | n/a |
 | C1 | capital | walletType 0 | Spot | Spot |
 | C2 | capital | walletType 1 | Funding | Spot |
 

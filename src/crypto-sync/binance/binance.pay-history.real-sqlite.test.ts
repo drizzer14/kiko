@@ -20,12 +20,14 @@ import { applyAllMigrations } from '@kiko/test-support/real-sqlite';
 import { syncBinancePayHistory } from './binance.pay-history';
 import type { BinancePayOrder } from './binance.history-client';
 import { createBinanceHistoryRun } from './binance.history-budget';
-import { NOW, OTHER, OWN, party, payOrder } from './binance.pay-test-fixtures';
 import { HISTORY_FLOOR_MS, syncBinanceTransactions } from './binance.transactions';
+import { costOn, NOW, OTHER, OWN, party, payOrder } from './binance.pay-test-fixtures';
 
 const ACCOUNT_ID = 'acc-1';
 const MINUTE_MS = 60_000;
 const DEPOSIT_TIME = NOW - 10 * DAY_MS;
+/** A receive before this lands on Funding, one after it on Spot (2026-09-29). */
+const BEFORE_SPOT_RECEIPTS_TIME = Date.UTC(2026, 8, 28, 12);
 
 type StoredRow = {
   external_id: string;
@@ -77,7 +79,7 @@ const runWalk = (orders: BinancePayOrder[]) =>
       fetchPayHistory: async () => ({
         rows: orders,
         gathered: orders.length,
-        hasBtcFundedOtherCoinOrder: false,
+        btcFundedOtherCoinOrders: [],
         usedUidWeight1m: undefined,
         usedIpWeight1m: undefined,
       }),
@@ -187,6 +189,7 @@ describe('the Pay walk on real SQLite', () => {
   it('stores the counterparty nickname, signed, on Spot', async () => {
     const sent = received({
       amount: '-0.25',
+      fundsDetail: costOn(2, '0.25'),
       payerInfo: party('Me', OWN),
       receiverInfo: party('Ann', OTHER),
     });
@@ -236,7 +239,7 @@ describe('the Pay walk on real SQLite', () => {
     mockDatabase
       .prepare("UPDATE holdings SET metadata = ? WHERE id = 'h-spot'")
       .run(JSON.stringify(inProgress));
-    const orders = [received({ transactionId: 'late', transactionTime: NOW - 20 * DAY_MS })];
+    const orders = [received({ transactionId: 'late', transactionTime: NOW - 5 * DAY_MS })];
 
     const first = await runWalk(orders);
     const second = await runWalk(orders);
@@ -258,7 +261,10 @@ describe('the Pay walk on real SQLite', () => {
   });
 
   it('creates a missing Earn holding at zero for an Earn order, and never touches an existing balance', async () => {
-    await runWalk([received({ transactionId: 'earn-order', walletType: 5 })]);
+    const earnSend = (transactionId: string) =>
+      payOrder({ transactionId, walletType: 5, fundsDetail: costOn(5) });
+
+    await runWalk([earnSend('earn-order')]);
 
     const earn = holdingByKey('BTC:earn');
     expect(earn?.balance_minor_units).toBe(0);
@@ -269,7 +275,7 @@ describe('the Pay walk on real SQLite', () => {
     mockDatabase
       .prepare('UPDATE holdings SET balance_minor_units = 777 WHERE id = ?')
       .run(earn?.id ?? '');
-    await runWalk([received({ transactionId: 'earn-again', walletType: 5 })]);
+    await runWalk([earnSend('earn-again')]);
 
     expect(holdingByKey('BTC:earn')?.balance_minor_units).toBe(777);
   });
@@ -277,20 +283,19 @@ describe('the Pay walk on real SQLite', () => {
   it('creates no holding on an account disconnected while the walk was running', async () => {
     mockDatabase.prepare("UPDATE accounts SET institution = NULL WHERE id = 'acc-1'").run();
 
-    const result = await runWalk([received({ walletType: 1 })]);
+    const result = await runWalk([received({ transactionTime: BEFORE_SPOT_RECEIPTS_TIME })]);
 
     expect(holdingByKey('BTC:funding')).toBeUndefined();
     expect(result.complete).toBe(false);
   });
 
   it('creates the Funding wallet for a Funding Pay receive beside a capital deposit stored on Spot', async () => {
-    await importCapitalDeposit('1', 50_000_000, DEPOSIT_TIME);
+    await importCapitalDeposit('1', 50_000_000, BEFORE_SPOT_RECEIPTS_TIME);
 
     const result = await runWalk([
       received({
         transactionId: 'beside',
-        walletType: 1,
-        transactionTime: DEPOSIT_TIME + 3 * MINUTE_MS,
+        transactionTime: BEFORE_SPOT_RECEIPTS_TIME + 3 * MINUTE_MS,
       }),
     ]);
 

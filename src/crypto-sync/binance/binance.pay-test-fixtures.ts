@@ -13,48 +13,29 @@ export const party = (name: string | undefined, binanceId: string | undefined) =
   binanceId,
 });
 
-/** The wallet an order names when it names exactly one, else `undefined`. */
-const soleWalletOf = (order: BinancePayOrder): number | undefined => {
-  const declared = [...new Set(order.walletTypes ?? [])];
-
-  if (declared.length === 0) {
-    return order.walletType;
-  }
-
-  return declared.length === 1 ? declared[0] : undefined;
-};
+/**
+ * The BTC funds of a send that was paid whole from `walletType`: one entry whose per-wallet
+ * cost is `amount` on that wallet. A test passes it on purpose, so the cost an order carries
+ * is never worked out from its other fields.
+ */
+export const costOn = (walletType: number, amount = '0.001'): BinancePayOrder['fundsDetail'] => [
+  { currency: 'BTC', amount, walletAssetCost: [{ walletType, amount }] },
+];
 
 /**
- * A BTC C2C send from the user to a counterparty, 10 days before `NOW`, from Spot. An
- * order that names one wallet and gives no `fundsDetail` carries the whole amount as the
- * cost of that wallet, as Binance does for a send; pass `fundsDetail` to say otherwise.
+ * A BTC C2C send from the user to a counterparty, 10 days before `NOW`, of 0.001 BTC paid
+ * from Spot (wallet 2).
  */
-export const payOrder = (over: Partial<BinancePayOrder> = {}): BinancePayOrder => {
-  const order: BinancePayOrder = {
-    orderType: 'C2C',
-    transactionId: 'tx-1',
-    transactionTime: NOW - 10 * DAY_MS,
-    amount: '-0.001',
-    currency: 'BTC',
-    walletType: 2,
-    walletTypes: undefined,
-    fundsDetail: [],
-    payerInfo: party('Me', OWN),
-    receiverInfo: party('Ann', OTHER),
-    ...over,
-  };
-  const wallet = soleWalletOf(order);
-
-  if (over.fundsDetail !== undefined || wallet === undefined) {
-    return order;
-  }
-
-  const cost = order.amount.replace('-', '');
-
-  return {
-    ...order,
-    fundsDetail: [
-      { currency: 'BTC', amount: cost, walletAssetCost: [{ walletType: wallet, amount: cost }] },
-    ],
-  };
-};
+export const payOrder = (over: Partial<BinancePayOrder> = {}): BinancePayOrder => ({
+  orderType: 'C2C',
+  transactionId: 'tx-1',
+  transactionTime: NOW - 10 * DAY_MS,
+  amount: '-0.001',
+  currency: 'BTC',
+  walletType: 2,
+  walletTypes: undefined,
+  fundsDetail: costOn(2),
+  payerInfo: party('Me', OWN),
+  receiverInfo: party('Ann', OTHER),
+  ...over,
+});

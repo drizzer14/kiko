@@ -512,21 +512,38 @@ describe('fetchPayHistory other coins', () => {
     await expect(pageOfOrders(order)).rejects.toThrow(PARSE_FAILURE);
   });
 
-  it('flags a non-BTC order that was paid with BTC funds', async () => {
+  it('lists the Binance ids of the parties of a non-BTC order that was paid with BTC funds', async () => {
     const paidWithBtc = {
       ...usdtOrder,
       fundsDetail: [{ currency: 'BTC', amount: '1' }],
+      payerInfo: { name: 'Me', binanceId: '1001' },
+      receiverInfo: { name: 'Ann', binanceId: 2002 },
     };
 
-    expect((await pageOfOrders(paidWithBtc)).hasBtcFundedOtherCoinOrder).toBe(true);
-    expect((await pageOfOrders(usdtOrder)).hasBtcFundedOtherCoinOrder).toBe(false);
-    expect((await pageOfOrders(usdtOrder, payOrderBody)).hasBtcFundedOtherCoinOrder).toBe(false);
+    expect((await pageOfOrders(paidWithBtc)).btcFundedOtherCoinOrders).toEqual([
+      { payerId: '1001', receiverId: '2002' },
+    ]);
+    expect((await pageOfOrders(usdtOrder)).btcFundedOtherCoinOrders).toEqual([]);
+    expect((await pageOfOrders(usdtOrder, payOrderBody)).btcFundedOtherCoinOrders).toEqual([]);
+  });
+
+  it('lists a party with no usable id as no id, whatever shape the party has', async () => {
+    const paidWithBtc = { ...usdtOrder, fundsDetail: [{ currency: 'BTC', amount: '1' }] };
+
+    expect(
+      (await pageOfOrders({ ...paidWithBtc, payerInfo: 'Me', receiverInfo: { binanceId: '' } }))
+        .btcFundedOtherCoinOrders,
+    ).toEqual([{ payerId: undefined, receiverId: undefined }]);
+    expect(
+      (await pageOfOrders({ ...paidWithBtc, payerInfo: undefined, receiverInfo: {} }))
+        .btcFundedOtherCoinOrders,
+    ).toEqual([{ payerId: undefined, receiverId: undefined }]);
   });
 
   it('reads a malformed fundsDetail of a non-BTC order as no BTC funds, never an error', async () => {
     const page = await pageOfOrders({ ...usdtOrder, fundsDetail: 'BTC' });
 
-    expect(page.hasBtcFundedOtherCoinOrder).toBe(false);
+    expect(page.btcFundedOtherCoinOrders).toEqual([]);
   });
 });
 

@@ -1478,9 +1478,10 @@ describe('a capital cursor older than the re-scan window', () => {
   type OldCursorState = Awaited<ReturnType<typeof oldCursorState>>;
 
   /** One run over the stored state; a key the state already holds is not imported again. */
-  const runOver = (state: OldCursorState, records: BinanceWithdrawal[]) =>
+  const runOver = (state: OldCursorState, records: BinanceWithdrawal[], at = NOW) =>
     sync(
       makeFirstSyncDeps(state.account, {
+        now: () => at,
         fetchWithdrawHistory: withdrawalServer(records),
         addTransactions: jest.fn(async (rows: BinanceTransactionRow[]) => {
           const fresh = rows.filter((row) => !state.imported.has(row.externalId));
@@ -1493,7 +1494,7 @@ describe('a capital cursor older than the re-scan window', () => {
         }),
       }),
       ACCOUNT,
-      freshRun(),
+      freshRun(() => at),
     );
 
   const runUntilComplete = async (
@@ -1581,5 +1582,27 @@ describe('a capital cursor older than the re-scan window', () => {
       FORWARD_FIELD,
       CURSOR + 89 * DAY_MS,
     ]);
+  });
+
+  // The mark is what a stop at a record in the overlap day behind it leaves: the window
+  // moves on every run, so the mark must drop out of the re-scan once it is far enough
+  // behind, or the window behind the cursor is never re-read.
+  it('re-scans the window again once a stopped leftover mark falls out of reach', async () => {
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const stuck = withdrawal({ id: '', txId: '', applyTime: CURSOR + 3_600_000 });
+    const late = withdrawal({ id: 'late', applyTime: NOW - 5 * DAY_MS });
+    const state = await oldCursorState(NOW);
+    await state.account.writeWalkCursor('h-spot', RESCAN_FIELD, CURSOR);
+
+    await runOver(state, [stuck, late]);
+
+    expect(state.imported.has(keyOf(late))).toBe(false);
+
+    for (let attempt = 1; attempt <= 8; attempt += 1) {
+      await runOver(state, [stuck, late], NOW + attempt * 10 * DAY_MS);
+    }
+
+    warn.mockRestore();
+    expect(state.imported.has(keyOf(late))).toBe(true);
   });
 });

@@ -20,8 +20,8 @@ import {
 } from './binance.history-client';
 import { BinanceRateLimitError } from './binance.client';
 import { HISTORY_FLOOR_MS } from './binance.transactions';
-import { NOW, OTHER, OWN, party, payOrder } from './binance.pay-test-fixtures';
 import { isBinanceCoolingDown, setBinanceCooldownUntil } from './binance.cooldown';
+import { costOn, NOW, OTHER, OWN, party, payOrder } from './binance.pay-test-fixtures';
 
 const order = payOrder;
 const WARN_TAG_STOP = '[binance sync] history window stopped';
@@ -39,7 +39,7 @@ const nextAccountId = (): string => {
 const payPage = (rows: BinancePayOrder[], over: Partial<PayHistoryPage> = {}): PayHistoryPage => ({
   rows,
   gathered: rows.length,
-  hasBtcFundedOtherCoinOrder: false,
+  btcFundedOtherCoinOrders: [],
   usedUidWeight1m: undefined,
   usedIpWeight1m: undefined,
   ...over,
@@ -668,8 +668,14 @@ describe('forward progress on a busy account', () => {
   });
 
   /** One run over the stored state; a key the state already holds is not imported again. */
-  const runOver = async (state: WalkState, orders: BinancePayOrder[], run = freshRun()) => {
+  const runOver = async (
+    state: WalkState,
+    orders: BinancePayOrder[],
+    run = freshRun(),
+    at = NOW,
+  ) => {
     const deps = makeDeps({
+      now: () => at,
       listHoldings: async () => [spotAt(state.payCursor, state.rescanCursor)],
       fetchPayHistory: serverOf(orders, ASCENDING),
       addTransactions: jest.fn(async (rows: { externalId: string }[]) => {
@@ -982,6 +988,25 @@ describe('forward progress on a busy account', () => {
       expect(writesTo(state, RESCAN_FIELD)[0]).toBe(CURSOR - DAY_MS);
       expect(state.writes[0]).toEqual([RESCAN_FIELD, CURSOR - DAY_MS]);
     });
+
+    // The mark is what a stop at an order in the overlap day behind it leaves: the window
+    // moves on every run, so the mark must drop out of the re-scan once it is far enough
+    // behind, or the window behind the cursor is never re-read.
+    it('re-scans the window again once a stopped leftover mark falls out of reach', async () => {
+      const stuck = order({ transactionId: '', transactionTime: CURSOR + 3_600_000 });
+      const late = order({ transactionId: 'late', transactionTime: NOW - 5 * DAY_MS });
+      const state = freshState({ payCursor: NOW, rescanCursor: CURSOR });
+
+      await runOver(state, [stuck, late]);
+
+      expect(state.imported.has(keyOf(state, late))).toBe(false);
+
+      for (let attempt = 1; attempt <= 8; attempt += 1) {
+        await runOver(state, [stuck, late], freshRun(), NOW + attempt * 10 * DAY_MS);
+      }
+
+      expect(state.imported.has(keyOf(state, late))).toBe(true);
+    });
   });
 });
 
@@ -1249,7 +1274,7 @@ describe('an order the walk cannot trust stops its window', () => {
       fetchPayHistory: jest.fn(async () => {
         calls += 1;
 
-        return payPage(calls === 2 ? [order({ walletType: 4 })] : []);
+        return payPage(calls === 2 ? [order({ walletType: 4, fundsDetail: costOn(4) })] : []);
       }),
     });
 
@@ -1265,12 +1290,14 @@ describe('an order the walk cannot trust stops its window', () => {
 
 describe('orders paid in other coins', () => {
   const recent = { listHoldings: async () => [spotAt(NOW - 3_600_000)] };
+  const sentByUser = { payerId: OWN, receiverId: OTHER };
+  const receivedByUser = { payerId: OTHER, receiverId: OWN };
 
-  it('stops the window, cursor unmoved, on a non-BTC order paid with BTC funds', async () => {
+  it('stops the window, cursor unmoved, on a non-BTC order the user paid with BTC funds', async () => {
     const deps = makeDeps({
       ...recent,
       fetchPayHistory: jest.fn(async () =>
-        payPage([order()], { hasBtcFundedOtherCoinOrder: true }),
+        payPage([order()], { btcFundedOtherCoinOrders: [sentByUser] }),
       ),
     });
 
@@ -1284,13 +1311,49 @@ describe('orders paid in other coins', () => {
     ]);
   });
 
+  it('ignores a non-BTC order the user received though the payer paid with BTC funds', async () => {
+    const deps = makeDeps({
+      ...recent,
+      fetchPayHistory: jest.fn(async () =>
+        payPage([order()], { btcFundedOtherCoinOrders: [receivedByUser] }),
+      ),
+    });
+
+    const result = await sync(deps);
+
+    expect(result.complete).toBe(true);
+    expect(deps.addTransactions).toHaveBeenCalled();
+    expect(cursorWritesOf(deps)).toEqual([NOW]);
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['no party is the user', { payerId: '7', receiverId: '8' }],
+    ['the parties name no id', { payerId: undefined, receiverId: undefined }],
+    ['the user is both parties', { payerId: OWN, receiverId: OWN }],
+  ])('stops on a non-BTC order paid with BTC funds when %s', async (_label, unsettled) => {
+    const deps = makeDeps({
+      ...recent,
+      fetchPayHistory: jest.fn(async () =>
+        payPage([], { btcFundedOtherCoinOrders: [receivedByUser, unsettled] }),
+      ),
+    });
+
+    const result = await sync(deps);
+
+    expect(result).toEqual({ imported: 0, complete: false });
+    expect(warn.mock.calls).toEqual([
+      [WARN_TAG_STOP, { name: 'BinanceWalkStop', code: 'pay-btc-funded-other-coin' }],
+    ]);
+  });
+
   it('commits the part of a full window before the order, and stops at the part holding it', async () => {
     const deps = makeDeps({
       listHoldings: async () => [spotAt(NOW - PAY_WINDOW_MS)],
       fetchPayHistory: scripted([
-        fullPage({ hasBtcFundedOtherCoinOrder: true }),
+        fullPage({ btcFundedOtherCoinOrders: [sentByUser] }),
         payPage([order({ transactionId: 'clean' })]),
-        payPage([], { hasBtcFundedOtherCoinOrder: true }),
+        payPage([], { btcFundedOtherCoinOrders: [sentByUser] }),
       ]),
     });
 
@@ -1305,7 +1368,7 @@ describe('orders paid in other coins', () => {
 });
 
 describe('wallet holdings (P7)', () => {
-  const earnOrder = order({ walletType: 5 });
+  const earnOrder = order({ walletType: 5, fundsDetail: costOn(5) });
 
   it('creates a missing Earn holding at zero, then places the row on it', async () => {
     let created = false;

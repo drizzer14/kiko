@@ -323,13 +323,26 @@ const PAY_SUCCESS_CODE = '000000';
  */
 export type PayHistoryPage = HistoryPage<BinancePayOrder> & {
   gathered: number;
-  /** A non-BTC order was paid with BTC funds: the walk stops on it, never imports it. */
-  hasBtcFundedOtherCoinOrder: boolean;
+  /**
+   * The non-BTC orders that were paid with BTC funds, by the Binance ids of their parties.
+   * Whether BTC left the user's wallet depends on who paid, which only the walk, holding
+   * the user's uid, can tell, so the client reports the parties and leaves the decision.
+   */
+  btcFundedOtherCoinOrders: BtcFundedOtherCoinOrder[];
+};
+
+/**
+ * The Binance ids of a non-BTC order's payer and receiver; a party that names none has
+ * `undefined`.
+ */
+export type BtcFundedOtherCoinOrder = {
+  payerId: string | undefined;
+  receiverId: string | undefined;
 };
 
 type PayItem = {
   btcOrder: BinancePayOrder | undefined;
-  paidWithBtc: boolean;
+  btcFunded: BtcFundedOtherCoinOrder | undefined;
 };
 
 const readBtcPayOrder = recordReader(PAY_ORDER_FIELDS);
@@ -338,16 +351,30 @@ const paidWithBtc = (fundsDetail: unknown): boolean =>
   Array.isArray(fundsDetail) &&
   fundsDetail.some((entry) => isRecord(entry) && entry.currency === BINANCE_ASSET);
 
+/**
+ * A malformed party reads as no id, never an error: an order of another coin must not
+ * stall the walk.
+ */
+const partyIdOf = (party: unknown): string | undefined =>
+  isRecord(party) ? optionalIdentifier(party.binanceId) : undefined;
+
+const readOtherCoinItem = (order: Record<string, unknown>): PayItem => ({
+  btcOrder: undefined,
+  btcFunded: paidWithBtc(order.fundsDetail)
+    ? { payerId: partyIdOf(order.payerInfo), receiverId: partyIdOf(order.receiverInfo) }
+    : undefined,
+});
+
 const readPayItem: Reader<PayItem> = (value) => {
   if (!isRecord(value) || typeof value.currency !== 'string') {
     return parseFailure();
   }
 
   if (value.currency === BINANCE_ASSET) {
-    return { btcOrder: readBtcPayOrder(value), paidWithBtc: false };
+    return { btcOrder: readBtcPayOrder(value), btcFunded: undefined };
   }
 
-  return { btcOrder: undefined, paidWithBtc: paidWithBtc(value.fundsDetail) };
+  return readOtherCoinItem(value);
 };
 
 const payPage = ({ body, headers }: SignedPage): PayHistoryPage => {
@@ -358,7 +385,7 @@ const payPage = ({ body, headers }: SignedPage): PayHistoryPage => {
   return {
     rows: items.flatMap((item) => item.btcOrder ?? []),
     gathered: items.length,
-    hasBtcFundedOtherCoinOrder: items.some((item) => item.paidWithBtc),
+    btcFundedOtherCoinOrders: items.flatMap((item) => item.btcFunded ?? []),
     ...usedWeightsFromHeaders(headers),
   };
 };

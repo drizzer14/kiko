@@ -70,10 +70,15 @@ export type WalkPlan = {
  * derived from it. The first forward span of a run therefore stores the re-scan's start as
  * the re-scan mark (`rescanPin`) whenever that start is behind the window, and a stored
  * mark above the floor is resumed wherever it lies. A mark behind the start the cursor
- * gives is what is left of such an old cursor's overlap, so it is resumed for one overlap
- * only: re-reading everything from there to the cursor would cost more calls than a run
- * has, over and over, since each run starts its first span as wide as the whole range. The
- * floor itself is the restart mark of a finished pass, and starts a new one.
+ * gives is either what is left of such an old cursor's overlap, or an in-window mark the
+ * window has outrun. It is resumed for one overlap only: re-reading everything from
+ * there to the cursor would cost more calls than a run has, over and over, since each run
+ * starts its first span as wide as the whole range. It is also resumed only while it lies
+ * within one window behind the window start. A re-scan that stops on a record inside that
+ * overlap never moves the mark, and the window slides on every run, so a mark kept for good
+ * would starve the window re-scan behind it; once the window has slid a whole window past
+ * the mark, the run starts a new pass at the start the cursor gives instead. The floor
+ * itself is the restart mark of a finished pass, and starts a new one.
  */
 export const planWalkPasses = (input: {
   cursor: number | null;
@@ -89,7 +94,11 @@ export const planWalkPasses = (input: {
   const forwardStart = Math.max(floorMs, cursor ?? floorMs);
   const behindEnd = Math.min(forwardStart, endTime);
   const rescanBase = Math.max(floorMs, Math.min(windowStart, forwardStart - overlapMs));
-  const resumed = rescanCursor !== null && rescanCursor > floorMs && rescanCursor < behindEnd;
+  const resumed =
+    rescanCursor !== null &&
+    rescanCursor > floorMs &&
+    rescanCursor < behindEnd &&
+    (rescanCursor >= rescanBase || rescanCursor >= windowStart - windowMs);
   const leftover = resumed && rescanCursor < rescanBase;
   const rescanStart = resumed ? rescanCursor : rescanBase;
   const rescanEnd = leftover ? rescanCursor + overlapMs : behindEnd;

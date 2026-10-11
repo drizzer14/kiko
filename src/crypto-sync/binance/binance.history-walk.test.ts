@@ -119,6 +119,23 @@ describe('planWalkPasses', () => {
     expect(plan.rescanEnd).toBe(rescanCursor + DAY_MS);
   });
 
+  it('resumes a mark that lies a whole window behind the window start, and no further back', () => {
+    const cursor = END_MS - 2 * DAY_MS;
+    const rescanCursor = END_MS - 2 * WINDOW_MS;
+    const plan = planWalkPasses({ ...input, cursor, rescanCursor });
+
+    expect(plan.rescan[0].start).toBe(rescanCursor);
+  });
+
+  it('starts a new pass at the window start for a mark more than a window behind the window start', () => {
+    const cursor = END_MS - 2 * DAY_MS;
+    const plan = planWalkPasses({ ...input, cursor, rescanCursor: END_MS - 2 * WINDOW_MS - 1 });
+
+    expect(plan.rescan).toEqual([{ start: END_MS - WINDOW_MS, end: cursor }]);
+    expect(plan.rescanEnd).toBe(cursor);
+    expect(plan.rescanPin).toBeNull();
+  });
+
   it('resumes a stored cursor at or after the re-scan start up to the forward start', () => {
     const cursor = END_MS - 2 * DAY_MS;
     const rescanCursor = END_MS - 40 * DAY_MS;

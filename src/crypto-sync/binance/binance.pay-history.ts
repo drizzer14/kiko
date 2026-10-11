@@ -49,6 +49,7 @@ import {
 } from './binance.transactions';
 import {
   type BinancePayOrder,
+  type BtcFundedOtherCoinOrder,
   fetchPayHistory,
   PAY_PAGE_LIMIT,
   type PayHistoryPage,
@@ -145,13 +146,28 @@ export const payDescription = (order: BinancePayOrder, direction: PayDirection):
   return counterparty.name?.trim() || PAY_BRAND;
 };
 
+const FUNDING_WALLET_TYPE = 1;
+
+const SPOT_WALLET_TYPE = 2;
+
+const EARN_WALLET_TYPE = 5;
+
+/**
+ * Binance's announcement says assets received through Pay are credited to Spot from
+ * 2026-09-29, and to Funding before that. The instant is UTC midnight because the
+ * announcement names the date and no time zone. A receive carries no field that says which
+ * wallet took it (`walletType` and `walletTypes` on a receive may describe the payer), so
+ * the order's own time decides.
+ */
+const PAY_RECEIPTS_TO_SPOT_FROM_MS = Date.UTC(2026, 8, 29);
+
 /** Binance's wallet ids for a Pay order: 2 Spot, 1 Funding, 5 Earn. Any other is untracked. */
 const walletOf = (walletType: number): BinanceWalletKey =>
   match(walletType)
     .returnType<BinanceWalletKey>()
-    .with(2, () => SPOT_KEY)
-    .with(1, () => FUNDING_KEY)
-    .with(5, () => EARN_KEY)
+    .with(SPOT_WALLET_TYPE, () => SPOT_KEY)
+    .with(FUNDING_WALLET_TYPE, () => FUNDING_KEY)
+    .with(EARN_WALLET_TYPE, () => EARN_KEY)
     .otherwise(() => {
       throw new BinanceWalkStop('pay-wallet-unknown');
     });
@@ -161,12 +177,14 @@ type WalletShare = { walletType: number; satoshis: number };
 const isBtcFunds = (entry: BinancePayOrder['fundsDetail'][number]): boolean =>
   entry.currency === BINANCE_ASSET;
 
+const costEntriesOf = (order: BinancePayOrder) =>
+  order.fundsDetail.filter(isBtcFunds).flatMap((entry) => entry.walletAssetCost);
+
 /** What an order's BTC funds entries say each wallet paid: the wallets with a cost above zero. */
 const costsOf = (order: BinancePayOrder): WalletShare[] => {
-  const costs = order.fundsDetail.filter(isBtcFunds).flatMap((entry) => entry.walletAssetCost);
   const satoshisByWallet = new Map<number, number>();
 
-  for (const cost of costs) {
+  for (const cost of costEntriesOf(order)) {
     const costSatoshis = btcSatoshis(cost.amount);
 
     if (costSatoshis === null || costSatoshis < 0) {
@@ -182,12 +200,16 @@ const costsOf = (order: BinancePayOrder): WalletShare[] => {
     .map(([walletType, costSatoshis]) => ({ walletType, satoshis: costSatoshis }));
 };
 
+const declaredWalletsOf = (order: BinancePayOrder): number[] => [
+  ...new Set(order.walletTypes ?? []),
+];
+
 /**
  * The wallets an order names. Binance sends `walletType` as 1 even on a split order, so it
  * is only the fallback for an order that sends no `walletTypes`.
  */
 const namedWalletsOf = (order: BinancePayOrder): number[] => {
-  const declared = [...new Set(order.walletTypes ?? [])];
+  const declared = declaredWalletsOf(order);
 
   if (declared.length > 0 || order.walletType === undefined) {
     return declared;
@@ -203,7 +225,7 @@ const namedWalletsOf = (order: BinancePayOrder): number[] => {
  * send is paid from the wallets that were charged, and `walletTypes` can list one that was
  * not.
  */
-const sharesOfSend = (
+const sharesFromCosts = (
   order: BinancePayOrder,
   wallets: number[],
   satoshis: number,
@@ -220,41 +242,51 @@ const sharesOfSend = (
 };
 
 /**
- * The wallet a receive lands on: the one `walletTypes` names. A receive's costs describe
- * the payer's wallets, which need not be the receiver's, so no cost is read, and the
- * receiver's split (two wallets) cannot be told from them.
+ * The wallet a receive lands on, by the order's time alone (see
+ * `PAY_RECEIPTS_TO_SPOT_FROM_MS`). No wallet field and no cost is read: they describe the
+ * payer's side, and a receive that names two wallets is placed like any other.
  */
-const shareOfReceive = (wallets: number[], satoshis: number): WalletShare[] => {
-  if (wallets.length >= 2) {
-    throw new BinanceWalkStop('pay-split-mismatch');
-  }
-
-  return wallets.map((walletType) => ({ walletType, satoshis }));
-};
+const shareOfReceive = (order: BinancePayOrder, satoshis: number): WalletShare[] => [
+  {
+    walletType:
+      order.transactionTime < PAY_RECEIPTS_TO_SPOT_FROM_MS ? FUNDING_WALLET_TYPE : SPOT_WALLET_TYPE,
+    satoshis,
+  },
+];
 
 /**
- * The wallets an order's satoshis land on. A funds detail that names no BTC at all
- * means the order did not move BTC, so no BTC row is guessed from it.
+ * The wallets a send's satoshis come from. A funds detail that names no BTC at all
+ * means the send did not move BTC, so no BTC row is guessed from it. (A receive's funds
+ * are the payer's, whatever coin they are in; they say nothing of what the user received.)
+ * An order that carries no BTC cost entry at all, with `walletTypes` naming exactly one
+ * wallet, was paid whole from that wallet; without a cost entry, any other shape leaves
+ * the wallet unknown.
  */
-const sharesOf = (
-  order: BinancePayOrder,
-  direction: PayDirection,
-  satoshis: number,
-): WalletShare[] => {
+const sharesOfSend = (order: BinancePayOrder, satoshis: number): WalletShare[] => {
   if (order.fundsDetail.length > 0 && !order.fundsDetail.some(isBtcFunds)) {
     throw new BinanceWalkStop('pay-funds-not-btc');
   }
 
   const wallets = namedWalletsOf(order);
+  const declared = declaredWalletsOf(order);
 
   if (wallets.length === 0) {
     throw new BinanceWalkStop('pay-wallet-unknown');
   }
 
-  return direction === 'out'
-    ? sharesOfSend(order, wallets, satoshis)
-    : shareOfReceive(wallets, satoshis);
+  if (costEntriesOf(order).length === 0 && declared.length === 1) {
+    return [{ walletType: declared[0], satoshis }];
+  }
+
+  return sharesFromCosts(order, wallets, satoshis);
 };
+
+const sharesOf = (
+  order: BinancePayOrder,
+  direction: PayDirection,
+  satoshis: number,
+): WalletShare[] =>
+  direction === 'out' ? sharesOfSend(order, satoshis) : shareOfReceive(order, satoshis);
 
 /** A row mapped from an order, before its wallet is turned into a holding. */
 type PlannedPayRow = {
@@ -451,11 +483,19 @@ const placeRows = async (
 };
 
 /**
+ * Whether the user is the receiver of an order of another coin and not its payer. Only
+ * then did the BTC funds of that order leave someone else's wallet; an order the user paid,
+ * or one whose parties do not settle it, may have moved the user's own BTC.
+ */
+const isReceivedBy = (uid: string, funded: BtcFundedOtherCoinOrder): boolean =>
+  funded.receiverId === uid && funded.payerId !== uid;
+
+/**
  * Commit one span's page: plan and place its rows, write them, then move the walk's mark
  * (rows first, mark second, so a crash between the two just re-imports idempotently). BTC
- * that paid for an order of another coin is a BTC movement with no row rule yet, so
- * committing past it would lose the movement for good: a `BinanceWalkStop` leaves the span
- * uncommitted, as it does for any row the walk cannot trust. Returns the rows imported.
+ * that the user paid for an order of another coin is a BTC movement with no row rule yet,
+ * so committing past it would lose the movement for good: a `BinanceWalkStop` leaves the
+ * span uncommitted, as it does for any row the walk cannot trust. Returns the rows imported.
  */
 const commitSpan = async (
   context: PayContext,
@@ -463,7 +503,7 @@ const commitSpan = async (
   page: PayHistoryPage,
   pass: WalkPass,
 ): Promise<number> => {
-  if (page.hasBtcFundedOtherCoinOrder) {
+  if (page.btcFundedOtherCoinOrders.some((funded) => !isReceivedBy(context.uid, funded))) {
     throw new BinanceWalkStop('pay-btc-funded-other-coin');
   }
 
