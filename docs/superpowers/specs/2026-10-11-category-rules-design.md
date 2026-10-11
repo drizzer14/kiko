@@ -76,7 +76,7 @@ type CategoryRuleMatcher =
 |---|---|
 | "Just for this one" (`applyOverrideOne` -> `setCategory`) | set 1 |
 | A manual edit of a row's category that writes by id (the blank-name fallback `setCategory`, `performSave`) | set 1 |
-| "Apply" on the change-category sheet (rule created) | the source row: set 0 (it follows the rule; decision 4) |
+| "Apply" on the change-category sheet (rule created) | the source row: set 0 (it follows the rule; decision 4); on an edit where a stronger rule of another category out-ranks the new rule on that row, set 1 so the pick stays (decision 17) |
 | A manual create or Duplicate whose category the user picked (`userPickedCategory` true), or an edit that writes a hand-picked category | set 1 (decision 4) |
 | A manual create whose category came from the rule pre-select, or no category | 0 |
 | A transaction from a template that carries a category | set 1; a template without a category gets the pre-select and 0 (decision 13) |
@@ -214,7 +214,7 @@ After the split merges; the unit layout is fixed only then. Unit names from the 
 ## 8. The suggestion flow (change-category sheet)
 Form units after the split: `use-category-override/` (`applyOverride`, `applyOverrideOne`) and `category-override-sheet/` (no JSX change planned).
 - The sheet, its title, message and buttons stay as today (ruling 7).
-- "Apply": `categoryRulesRepo.applyNameRule(name, category)` in one write: find a rule whose matchers are exactly one `nameIs` with the same normalized text. If found, move it to the new category, set `text` to the typed name, bump `updated_at` (it becomes the newest, so the user's latest choice wins ties). If not found, insert one. A rule that has `nameIs` plus other matchers is a different rule and is not touched. Then run the 7.3 rewrite for that rule (no second sheet; today's sheet already asked). On today's data this changes the same rows as today (P20). The source row's flag goes to 0 (decision 4).
+- "Apply": `categoryRulesRepo.applyNameRule(name, category)` in one write: find a rule whose matchers are exactly one `nameIs` with the same normalized text. If found, move it to the new category, set `text` to the typed name, bump `updated_at` (it becomes the newest, so the user's latest choice wins ties). If not found, insert one. A rule that has `nameIs` plus other matchers is a different rule and is not touched. Then run the 7.3 rewrite for that rule (no second sheet; today's sheet already asked). On today's data this changes the same rows as today (P20). The source row's flag goes to 0 (decision 4); on an edit, when a stronger rule of another category out-ranks the new rule on the source row, the source row still gets the picked category and the flag goes to 1 so the pick stays (decision 17).
 - A blank normalized name: no sheet, no rule (unchanged guard, `:488-507`).
 - "Just for this one": `setCategory` + flag 1.
 - Cancel: unchanged (on a create the row keeps its picked category; on an edit nothing is written).
@@ -332,3 +332,4 @@ Source: USER = the user's ruling, relayed by the coordinator; DEFAULT = the coor
 14. "Set as default" moves to the category page; reorder is by drag only, like Accounts. DEFAULT.
 15. A date-only statement row's stored instant decides the time matcher; the time matcher's hint says so. The plan checks the current date-only mapping. DEFAULT.
 16. Task order: the migration + repo task lands on top of the transaction-templates split once it is in `next`. Before that, the track does only work that touches neither the form nor the schema: the pure rule module with the scenario-matrix tests and the performance fixture. Not chosen: a form swap on the unsplit file (conflicts on the moved lines); keeping `category_overrides` until the last task (a data gap at an intermediate tip). DEFAULT.
+17. "Apply" (to all) on an EDIT, when a stronger rule of another category out-ranks the new name rule on the source row: the source row always gets the picked category. It gets the manual-pick flag (1) only when a stronger rule out-ranks the new rule on that row, so the pick stays. Otherwise "Apply" clears the flag as decision 4 says. Not chosen: (b) the row keeps the stronger rule's category; (c) the picked category with the flag cleared (a later "Apply to existing" on the stronger rule would change it back). USER, 2026-10-11 12:20, relayed by the coordinator.
