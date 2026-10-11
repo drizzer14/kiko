@@ -13,7 +13,7 @@
 ## Global Constraints
 
 - Rules never touch a row with `category_set_by_hand = 1`. Existing rows get 0 (ruling 6).
-- Priority: matcher count DESC, then `updated_at` DESC, `created_at` DESC, `id` DESC (decisions 1, 2). The first match wins.
+- Priority: distinct matcher count DESC (repeats counted once), then `updated_at` DESC, `created_at` DESC, `id` DESC (decisions 1, 2). The first match wins.
 - Amount matcher: ABSOLUTE minor units, integer compare, same currency only. Zero amount: no direction (decision 7).
 - Time matcher: `getHours() * 60 + getMinutes()` of `new Date(time)` (device zone). `before X` = minute < X; `after X` = minute >= X.
 - Names: always `normalizeTransactionName` in JS, never SQL. `text` is stored as typed (trimmed).
@@ -471,7 +471,7 @@ export const fromMatcherDrafts: (drafts: readonly MatcherDraft[]) =>
 
   | Case | Expected | was: |
   |---|---|---|
-  | count | `countRuleRewrite` of an unsaved rule = `planRuleRewrite` over all rules with the draft added as the newest (rank by its own matcher count and `now`) | — |
+  | count | `countRuleRewrite` of an unsaved rule = `planRuleRewrite` over all rules with the draft added as the newest (rank by its own distinct matcher count, via `prepareRules`/`distinctMatcherKeys`, never `matchers.length`, and `now`) | — |
   | P11, P12, P13 | apply: changed / unchanged-not-counted / out-ranked-not-counted | — |
   | P10, P21 | flagged and P21 rows untouched | was: overwritten |
   | N equals changed | on unchanged data, `saveRule({ applyToExisting: true }).changed` equals `countRuleRewrite` | — |

@@ -4,7 +4,7 @@ Status: SPEC, APPROVED by the user 2026-10-11 ~05:05 (track category-rules, base
 ## User rulings (approved 2026-10-11, unchanged here)
 1. A category has MANY rules. A rule has ONE OR MORE matchers. ALL matchers of a rule must match (AND). An OR is a second rule for the same category.
 2. Matchers: name is exactly; name starts with (both on `normalizeTransactionName`); amount `=`, `>`, `>=`, `<`, `<=` as an ABSOLUTE amount WITH a currency (500 UAH never matches 500 USD); direction expense / income; time of day before / after (device time zone, DST-safe).
-3. Priority between rules of different categories: MORE matchers wins; a tie -> the NEWEST rule wins. No manual ordering.
+3. Priority between rules of different categories: MORE DISTINCT matchers wins (a repeated matcher counts once); a tie -> the NEWEST rule wins. No manual ordering.
 4. Rules apply (a) at the insert of every synced / imported row, where a matching rule REPLACES the bank (MCC) category, and (b) in the manual transaction form as a pre-select from the draft (name, amount, time, direction). A category the user chose by hand is never replaced.
 5. Saving a NEW or CHANGED rule shows "This changes N transactions" with "Apply to existing" / "New transactions only". The rewrite changes ONLY rows where this rule wins under ruling 3, and NEVER a row whose category the user chose by hand. A deleted rule changes no row.
 6. A manual-pick flag on transactions marks a category chosen by hand ("Apply to this one" / a manual edit). Rules and rewrites never touch a flagged row. Existing rows get no flag.
@@ -123,7 +123,7 @@ winningRule(prepared, subject): PreparedRule | undefined // first match in prior
 - `amount`: `currency === matcher.currency` AND the operator holds on `absoluteMinorUnits` vs `minorUnits`. Integer compare, no floats.
 - `direction`: `amount < 0` -> expense, `> 0` -> income, `0` -> neither (decision 7).
 - `time`: `minuteOfDay = getHours() * 60 + getMinutes()` of `new Date(time)` in the device zone. `before` = strictly earlier than the value; `after` = at or later than the value, so "before X" and "after X" split the day with no gap and no overlap. A wall-clock read is DST-safe: 18:30 on a 23- or 25-hour day is 1110. The zone is the device zone at evaluation time (insert, rewrite or form).
-- Priority sort (total order, deterministic): matcher count DESC, then `updated_at` DESC, then `created_at` DESC, then `id` DESC (string compare). "Newest" = `updated_at` (decisions 1 and 2). The first matching rule in that order wins; rules of the same category tie harmlessly.
+- Priority sort (total order, deterministic): distinct matcher count DESC (a repeated matcher counts once; a rule repeating a matcher is a `duplicate` of the same set), then `updated_at` DESC, then `created_at` DESC, then `id` DESC (string compare). "Newest" = `updated_at` (decisions 1 and 2). The first matching rule in that order wins; rules of the same category tie harmlessly.
 - `prepareRules` is called once per batch / per rewrite / per form rule-set change, never per row.
 
 ## 6. Scenario matrix (each row becomes a test before the code)
