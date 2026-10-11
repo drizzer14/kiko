@@ -130,6 +130,83 @@ describe('loanInstallments — none', () => {
   });
 });
 
+describe('loanInstallments — balance never goes negative', () => {
+  const PRINCIPALS = [1, 2, 3, 5, 7, 8, 9, 10, 99, 100, 101, 1_000, 12_345, 100_000, 100_000_000];
+  const TERMS = [1, 2, 3, 5, 7, 8, 12, 13, 60, 120, 360, 600];
+  const RATES = [0, 0.01, 1, 5, 12, 20, 100, 1_000];
+  const SCHEDULES = ['annuity', 'differentiated'] as const;
+
+  const metaOf = (
+    principalMinorUnits: number,
+    termMonths: number,
+    annualRatePct: number,
+    schedule: (typeof SCHEDULES)[number],
+  ): LoanMeta => ({
+    kind: 'personal',
+    principalMinorUnits,
+    startDate: local(2020, 0, 15),
+    annualRatePct,
+    termMonths,
+    schedule,
+  });
+
+  // Every way a table can break the closing invariants, named by the input.
+  const violationsOf = (meta: LoanMeta): string[] => {
+    const rows = loanInstallments(meta);
+    const label = `${meta.schedule} ${meta.principalMinorUnits}/${meta.termMonths}/${meta.annualRatePct}%`;
+    const found: string[] = [];
+
+    if (rows.length !== meta.termMonths) {
+      found.push(`${label}: ${rows.length} rows`);
+    }
+
+    for (const row of rows) {
+      const negative = [
+        row.interestMinorUnits,
+        row.principalMinorUnits,
+        row.paymentMinorUnits,
+        row.balanceMinorUnits,
+      ].some((amount) => amount < 0);
+
+      if (negative) {
+        found.push(`${label}: negative amount in row ${row.index} ${JSON.stringify(row)}`);
+      }
+    }
+
+    const totalPrincipal = rows.reduce((sum, row) => sum + row.principalMinorUnits, 0);
+
+    if (totalPrincipal !== meta.principalMinorUnits) {
+      found.push(`${label}: principal sums to ${totalPrincipal}`);
+    }
+
+    if (rows[rows.length - 1].balanceMinorUnits !== 0) {
+      found.push(`${label}: last balance ${rows[rows.length - 1].balanceMinorUnits}`);
+    }
+
+    return found;
+  };
+
+  it('keeps every amount non-negative and closes to exactly 0 for every principal, term and rate', () => {
+    const violations = SCHEDULES.flatMap((schedule) =>
+      PRINCIPALS.flatMap((principal) =>
+        TERMS.flatMap((term) =>
+          RATES.flatMap((rate) => violationsOf(metaOf(principal, term, rate, schedule))),
+        ),
+      ),
+    );
+
+    expect(violations).toEqual([]);
+  });
+
+  it('pays a 5-unit, 8-month, 0% differentiated loan off without a negative last row', () => {
+    const rows = loanInstallments(metaOf(5, 8, 0, 'differentiated'));
+
+    expect(rows.map((row) => row.principalMinorUnits)).toEqual([1, 1, 1, 1, 1, 0, 0, 0]);
+    expect(rows.map((row) => row.balanceMinorUnits)).toEqual([4, 3, 2, 1, 0, 0, 0, 0]);
+    expect(rows[7].paymentMinorUnits).toBe(0);
+  });
+});
+
 describe('loanOutstandingMinorAt', () => {
   it('reads the manual price-point series for a none-schedule (informal) loan', () => {
     const point = { day: dayKeyOf(local(2021, 0, 1)), price: '30000.00', currency: 'UAH' as const };

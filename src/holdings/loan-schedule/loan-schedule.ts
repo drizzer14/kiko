@@ -43,7 +43,10 @@ export type LoanInstallment = {
  * formula), computed once and rounded; every period but the last derives its
  * principal as `roundedPayment - interest`. `differentiated`: a constant
  * PRINCIPAL per period (`round(principal / termMonths)`); the payment varies
- * as the shrinking balance's interest falls.
+ * as the shrinking balance's interest falls. Either way a period's principal
+ * is capped at the balance still owed, so a tiny loan that the rounded
+ * constant pays off before the term ends keeps its row count, with zero
+ * principal, interest and payment on the remaining rows.
  */
 export const loanInstallments = (meta: LoanMeta): LoanInstallment[] => {
   const { schedule, annualRatePct, termMonths, principalMinorUnits: principal, startDate } = meta;
@@ -66,10 +69,18 @@ export const loanInstallments = (meta: LoanMeta): LoanInstallment[] => {
 
   // The principal portion of a NON-last installment: `annuity` derives it
   // from the constant payment above; `differentiated` holds it at the
-  // constant `basePrincipal`. Extracted so the loop below never nests a
-  // ternary inside the last-installment one.
-  const nonLastPrincipalMinorUnits = (interestMinorUnits: number): number =>
-    schedule === 'annuity' ? roundedAnnuityPayment - interestMinorUnits : basePrincipal;
+  // constant `basePrincipal`. Capped at what is still owed: the rounded
+  // constant can overshoot a tiny balance, and a balance below 0 would turn
+  // the last installment negative. No floor is needed: the balance never
+  // exceeds the principal, so the interest never exceeds the first period's,
+  // which the annuity payment (>= principal * monthlyRate) always covers.
+  // Extracted so the loop below never nests a ternary inside the
+  // last-installment one.
+  const nonLastPrincipalMinorUnits = (interestMinorUnits: number, owedMinorUnits: number): number =>
+    Math.min(
+      schedule === 'annuity' ? roundedAnnuityPayment - interestMinorUnits : basePrincipal,
+      owedMinorUnits,
+    );
 
   const installments: LoanInstallment[] = [];
   let balance = principal;
@@ -77,7 +88,9 @@ export const loanInstallments = (meta: LoanMeta): LoanInstallment[] => {
   for (let k = 1; k <= termMonths; k += 1) {
     const isLast = k === termMonths;
     const interestMinorUnits = Math.round(balance * monthlyRate);
-    const principalMinorUnits = isLast ? balance : nonLastPrincipalMinorUnits(interestMinorUnits);
+    const principalMinorUnits = isLast
+      ? balance
+      : nonLastPrincipalMinorUnits(interestMinorUnits, balance);
     const paymentMinorUnits = principalMinorUnits + interestMinorUnits;
 
     balance -= principalMinorUnits;
