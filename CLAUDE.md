@@ -2,11 +2,12 @@
 
 This project uses a Biome-adapted, LLM-guarding quality harness. Every
 check runs through a wrapper in `scripts/checks/` that prints a
-structured failure block on failure and stays silent on success. Two
-stated exceptions, both in `scripts/checks/security.sh`, write to stderr
-with exit 0: the dedup-skip notice (so a skip never reads as a fresh scan)
-and the Class B WARNING block (a finding that does not block still has to
-be seen).
+structured failure block on failure and stays silent on success.
+`scripts/checks/security.sh` is a stated exception: it writes the
+dedup-skip notice (so a skip never reads as a fresh scan) and the Class B
+WARNING block (a finding that does not block still has to be seen) to
+stderr with exit 0. The other exceptions (the deep tier's streaming, the
+hook guards' JSON) are listed in kiko-linter's "The wrapper contract".
 
 **Standing rule: fix the underlying issue. Never weaken a check to get
 green.** No `|| true`. No global auto-suppress. An ignore-list entry

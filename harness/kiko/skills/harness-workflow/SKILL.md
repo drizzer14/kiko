@@ -6,7 +6,7 @@ description: Use when coordinating Kiko work. States the delegation rule, the ru
 The coordinator delegates all work to the harness agents. The coordinator never edits app files inline.
 
 Rules:
-- Split complex or parallel work into separate Orca worktrees (orca-cli).
+- Split complex or parallel work into separate Orca worktrees (orca-cli). A fresh worktree has no `node_modules`: the first developer runs `npm ci`, and only ONE agent runs it (parallel installs race).
 - An orchestrator working in another repo (one with no kiko role agents, for
   example `drizzer14/harness`) starts with
   `claude --model opus --plugin-dir <that repo's plugin dir>` — never a
@@ -17,6 +17,7 @@ Rules:
 - Route web research and live API checks to `kiko:researcher` (read-only,
   cites a source URL + check date per claim); it writes no files, so the
   caller persists any durable finding via `kiko:scribe`.
+- A measurement that needs a script (corpus counts, a tool run with raised limits) goes to `kiko:ops` with the script in the scratchpad; `kiko:explorer` has only Read/Grep/Glob.
 - For a device-test request, copy `kiko:ops`'s "Device verification
   checklist" section into the request to the user.
 - Use these superpowers skills directly: brainstorming, writing-plans, executing-plans,
@@ -42,7 +43,7 @@ Rules:
   owns the estimate-from-history rules. A BATCH READY's TIMES line comes
   from the run log (see "Run log"), not from hand-written text.
 - Name a task or change set "<track> task N/M" (a number plus the total). Name a step inside a change set "step N/M". Never invent a letter id. Renumber M when the scope changes; a deferred item is not counted.
-- A fresh agent is the default for each task. Reuse an agent via SendMessage only for a same-task re-review or fix round by the SAME agent with a small context (never across tasks, never for a different diff, never after a large amount of work). Finished subagents cannot be removed from a session's list; `claude rm <id>` deletes a BACKGROUND SESSION and its worktree — never use it to tidy a finished agent.
+- A fresh agent is the default for each task. Reuse an agent via SendMessage only for a same-task re-review or fix round by the SAME agent with a small context (never across tasks, never for a different diff, never after a large amount of work). A resumed agent's later report is read from its transcript, not awaited (SubagentHandback delivers one report per agent). Finished subagents cannot be removed from a session's list; `claude rm <id>` deletes a BACKGROUND SESSION and its worktree — never use it to tidy a finished agent.
 
 - Run the FULL jest (`make verify`) before every BATCH READY. `check:all`
   alone missed a fixture that broke two guard rules: the rule-inventory

@@ -34,7 +34,7 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   DO-NOT block) to stderr, then `exit 2`.
 - On success: **silent**, `exit 0`. A wrapper that prints anything on
   success breaks the "stays silent on success" contract every other
-  wrapper and every hook relies on. The ONE exception is the deep,
+  wrapper and every hook relies on. One exception is the deep,
   manual tier that is NOT hook-wired (`scripts/checks/mutation.sh`):
   `check:deep` is run by hand, never on `Stop`/`SubagentStop`, so the
   hook contract does not apply and it STREAMS Stryker's output to stdout
@@ -46,15 +46,15 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   (`__tests__/mutation-stream.test.ts`); the seam defaults to the pinned
   `node_modules` binary, so production and the pinned-version guarantee
   are unchanged. A fast, hook-wired wrapper must still be silent on
-  success, with two stated exceptions, both in `security.sh`, that write to
-  stderr and exit 0: (a) the dedup-skip notice (`SKIPPED, not a fresh
+  success, with stated exceptions in `security.sh` that write to
+  stderr and exit 0, namely (a) the dedup-skip notice (`SKIPPED, not a fresh
   scan`), because a skip exits 0 without scanning and must never read as a
   fresh scan; and (b) the Class B WARNING block, because a non-blocking
   finding is override-eligible and still has to be seen. A hook that exits 0
-  does not feed stderr back to the agent, so both are for a human or a
+  does not feed stderr back to the agent, so these are for a human or a
   manual `check:security` run, not a hook signal.
 
-  A SECOND exception, of a different shape: `scripts/checks/kill-guard.sh`
+  Another exception, of a different shape: `scripts/checks/kill-guard.sh`
   (+ its sibling `scripts/checks/kill-guard.js`) is a `PreToolUse` hook on
   the Bash tool, not a check wrapper — it has no fail/pass, only allow/deny
   a command before Bash ever runs it, so it does not follow the
@@ -498,7 +498,7 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
     (`$(printf '…\141…')`); real git stays reachable by a PATH edit or
     `/usr/bin/git` (it runs in the empty scratch folder).
 
-  A THIRD exception, of yet another shape: `scripts/checks/pre-write-guard.sh`
+  Another exception, of yet another shape: `scripts/checks/pre-write-guard.sh`
   (+ `pre-write-guard.js`) is the `PreToolUse` hook on `Edit|Write|MultiEdit` —
   it denies a write BEFORE it lands, rather than checking a file already on
   disk. It DENIES (exit 2, plus the `permissionDecision: "deny"` JSON on
@@ -1611,8 +1611,7 @@ mechanizes kiko-code-style's "Import ordering" rule — see that
 section for the exact rule (3 blank-line-separated groups, sort
 ascending by ending-physical-line length, value-before-type as an
 equal-length tiebreak, a bare side-effect import as a barrier). Wired
-at the **fast tier** (`fast.sh`, alongside `lint.sh`/`security.sh`/
-`secrets.sh`): the rule is purely per-file with no cross-file
+at the **fast tier** (`fast.sh`; read it for the tool list): the rule is purely per-file with no cross-file
 dependency, so per-edit feedback catches drift immediately instead of
 waiting for `Stop`. It is ALSO wired project-wide
 (`npm run check:import-order`, part of `check:all`) — `import-order.sh`
@@ -1765,7 +1764,7 @@ caller-supplied op) has no such stale-data path and stays genuinely
 
 `scripts/checks/full-word-identifiers.js` (+ its wrapper `.sh`) mechanizes
 kiko-code-style's "Full words in identifiers" rule. Wired at the fast tier
-(`fast.sh`, alongside `lint.sh`/`security.sh`/`import-order.sh`) — every
+(`fast.sh`; read it for the tool list) — every
 `.ts`/`.tsx` is in scope, and a `.js`/`.mjs`/`.cjs` is in scope only under
 a `scripts/` directory (the fast tier's own harness-tooling files, the
 only place today's tree mixes CommonJS/ESM with TypeScript) — the rule is
