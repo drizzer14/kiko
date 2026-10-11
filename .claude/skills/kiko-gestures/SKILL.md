@@ -45,7 +45,7 @@ used to say.
 ### A hold lifts the card, and a lifted card never opens its page
 
 `Sortable.Grid` lifts a card (`activeItemScale`) once a hold passes its
-`dragActivationDelay` — the library default, 200 ms, which is BEFORE the
+drag activation delay — the library default, 200 ms, which is BEFORE the
 `CardContextMenu` long-press (450 ms) — so every hold on a sortable card
 lifts it first. Two rules follow, shared by all three card grids
 (Accounts' main grid and its Property/Debts holding grids, and the
@@ -231,7 +231,7 @@ section opens nothing.
   rather than calling the repo's `reorder()` inline, so the
   release-in-place guard lives in exactly one place.
 - **A grid whose cards contain a live text input needs a longer
-  `dragActivationDelay`, not a `customHandle`.** The library's default
+  activation delay, not a drag handle.** The library's default
   200ms activation is shorter than iOS's own text-selection hold, so a
   hold meant to place the cursor or open Paste starts a card drag
   instead. Raise the delay above that threshold rather than adding a
