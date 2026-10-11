@@ -272,9 +272,9 @@ rather than trusting a restated number here.
 
 It also supports an opt-in `legendMinShare` prop: when set, the LEGEND
 (never the ring) crops to slices whose `share` is at or above that
-fraction, with a `${testID}-legend-toggle` Pressable that flips local
-`useState` to reveal or re-hide the cropped rows ("Show all" /
-"Show less", `components.pieChart.showAll`/`showLess`). The ring always
+fraction, with a shared `ExpandToggle` (testID `${testID}-legend-toggle`; see
+kiko-design-system) driven by local `useState` that reveals or re-hides the
+cropped rows ("Show all" / "Show less"). The ring always
 draws every arc, and `allocatePercents` still runs over the whole set,
 so a kept row keeps its full-set percent. The toggle renders only when
 cropping actually hides a row — at least one slice below the threshold

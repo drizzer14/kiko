@@ -391,6 +391,27 @@ describe('matchLoanPayments', () => {
       { transactionId: 'txn-1', loanHoldingId: 'loan-1', dueDate: thirdInstallment.dueDate },
     ]);
   });
+
+  // 5 minor units over 8 months at 0% pays off by row 5 (1 each); rows 6-8
+  // stay on the schedule with a zero payment. The 1.00 tolerance floor would
+  // otherwise accept a real small debit against a payment that does not exist.
+  it('never links a debit within the 1.00 floor to a zero-payment installment of a degenerate loan', () => {
+    const degenerate: Partial<LoanMeta> = {
+      principalMinorUnits: 5,
+      termMonths: 8,
+      schedule: 'differentiated',
+    };
+    const loan = loanHolding({ ...degenerate, paymentHoldingId: 'payer-1' });
+    const sixthInstallment = loanInstallments(baseLoanMeta(degenerate))[5];
+    const transaction = baseTransaction({
+      holdingId: 'payer-1',
+      amountMinorUnits: -50,
+      time: sixthInstallment.dueDate,
+    });
+
+    expect(sixthInstallment.paymentMinorUnits).toBe(0);
+    expect(matchLoanPayments({ transactions: [transaction], loans: [loan], now: NOW })).toEqual([]);
+  });
 });
 
 // `loanMatchCandidatesQuery` (the real caller) drops an already-linked row

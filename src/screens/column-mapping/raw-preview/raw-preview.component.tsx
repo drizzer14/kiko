@@ -1,10 +1,8 @@
 import { type FC, useState } from 'react';
-import { useTranslation } from 'react-i18next';
 import { Pressable, ScrollView } from 'react-native';
 import Box from '@kiko/design-system/components/box';
-import { useUnistyles } from 'react-native-unistyles';
 import Text from '@kiko/design-system/components/text';
-import SymbolIcon from '@kiko/design-system/components/symbol';
+import ExpandToggle from '@kiko/design-system/components/expand-toggle';
 import { HEADER_SCAN_ROW_COUNT } from '@kiko/statement-import/column-mapping';
 
 import { styles } from './raw-preview.styles';
@@ -15,9 +13,6 @@ const PREVIEW_ROW_COUNT = 5;
 // The raw preview shows at most this many columns per row — every
 // `ColumnSelectField` option list still derives from the FULL header row.
 const PREVIEW_COLUMN_COUNT = 5;
-// The toggle's caption line plus its own padding sits below the 44pt floor;
-// it has no neighbouring target within reach, so vertical hitSlop restores it.
-const TOGGLE_HIT_SLOP = { top: 10, bottom: 10 } as const;
 
 /**
  * The column-mapping screen's own raw-table preview: `PREVIEW_ROW_COUNT` rows
@@ -40,8 +35,6 @@ const TOGGLE_HIT_SLOP = { top: 10, bottom: 10 } as const;
  * from every other previewed row, not just differently colored.
  */
 const RawPreview: FC<RawPreviewProps> = ({ rows, headerRowIndex, onSelectHeaderRow, testID }) => {
-  const { t } = useTranslation();
-  const { theme } = useUnistyles();
   const [expanded, setExpanded] = useState(false);
 
   const headerStart = headerRowIndex ?? 0;
@@ -113,26 +106,11 @@ const RawPreview: FC<RawPreviewProps> = ({ rows, headerRowIndex, onSelectHeaderR
       </ScrollView>
 
       {canExpand && (
-        <Pressable
-          accessibilityRole="button"
-          hitSlop={TOGGLE_HIT_SLOP}
+        <ExpandToggle
+          expanded={expanded}
           onPress={() => setExpanded((isExpanded) => !isExpanded)}
-          style={styles.toggle}
           testID="raw-preview-toggle"
-        >
-          <Box direction="row" gap={1} style={styles.toggleContent}>
-            <Text variant="caption" tone="accent">
-              {expanded ? t('components.pieChart.showLess') : t('components.pieChart.showAll')}
-            </Text>
-
-            <SymbolIcon
-              testID="raw-preview-toggle-chevron"
-              name={expanded ? 'chevron.up' : 'chevron.down'}
-              tone="accent"
-              size={theme.iconSizes.caption}
-            />
-          </Box>
-        </Pressable>
+        />
       )}
     </Box>
   );

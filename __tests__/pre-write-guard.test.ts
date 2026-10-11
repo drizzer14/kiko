@@ -2109,6 +2109,83 @@ describe('runNodeChecks (comment-line-width)', () => {
   });
 });
 
+// The REAL component-i18n-namespace.js checker against the mirrored tree — only Semgrep is
+// stubbed clean, the same convention as the blocks above. The checker reads the component folder
+// from the mirrored path, which keeps the `src/design-system/components/<name>/` segment.
+describe('runNodeChecks (component-i18n-namespace)', () => {
+  const targetPath = ['src', 'design-system', 'components', 'expand-toggle', 'probe.tsx'];
+
+  function runNamespaceProbe(content: string): SpawnSyncReturns<string> {
+    const project = createTempDirectory('kiko-prewrite-project-');
+    const stub = writeSemgrepStub(project);
+    const rules = writeRulesStub(project);
+
+    return runGuard(
+      payloadFor('Write', { file_path: join(project, ...targetPath), content }),
+      baseEnv({
+        CLAUDE_PROJECT_DIR: project,
+        KIKO_PREWRITE_SEMGREP_BIN: stub,
+        KIKO_PREWRITE_RULES: rules,
+      }),
+    );
+  }
+
+  it('denies a component reading another namespace (kiko-component-i18n-namespace)', () => {
+    const result = runNamespaceProbe("export const label = t('components.pieChart.showAll');\n");
+
+    expect(result.status).toBe(2);
+    const reason = JSON.parse(result.stdout).hookSpecificOutput.permissionDecisionReason;
+    expect(reason).toContain('kiko-component-i18n-namespace');
+    expect(reason).toContain('components.pieChart.showAll (expected components.expandToggle)');
+    expect(reason).toContain('check:component-i18n-namespace');
+  });
+
+  it.each([
+    [
+      'an interpolated template key',
+      `export const label = t(\`components.pieChart.\${expanded ? 'showLess' : 'showAll'}\`);\n`,
+      'components.pieChart. (expected components.expandToggle)',
+    ],
+    [
+      'a multi-line template key',
+      'export const label = t(`components.pieChart.show\n  Less`);\n',
+      'components.pieChart.show (expected components.expandToggle)',
+    ],
+  ])('names the finding, never "could not check", for %s', (_name, content, finding) => {
+    const result = runNamespaceProbe(content);
+
+    expect(result.status).toBe(2);
+    const reason = JSON.parse(result.stdout).hookSpecificOutput.permissionDecisionReason;
+    expect(reason).toContain('kiko-component-i18n-namespace');
+    expect(reason).toContain(finding);
+    expect(reason).not.toContain('could not check');
+  });
+
+  it('denies a foreign read under a justified override comment: the rule has no override', () => {
+    const result = runNamespaceProbe(
+      [
+        '// kiko-override: kiko-component-i18n-namespace OVERRIDE(composed child) reads its key',
+        "export const label = t('components.pieChart.showAll');",
+        '',
+      ].join('\n'),
+    );
+
+    expect(result.status).toBe(2);
+    const reason = JSON.parse(result.stdout).hookSpecificOutput.permissionDecisionReason;
+    expect(reason).toContain('kiko-component-i18n-namespace');
+    expect(reason).toContain('has no override');
+  });
+
+  it('allows the component own namespace', () => {
+    const result = runNamespaceProbe(
+      "export const label = t('components.expandToggle.showAll');\n",
+    );
+
+    expect(result.stdout).toBe('');
+    expect(result.status).toBe(0);
+  });
+});
+
 // The override protocol: a rule-id-specific comment naming the rule and
 // carrying OVERRIDE(<reason>) — `nosemgrep: <id> OVERRIDE(reason) why` for
 // Semgrep rules, `kiko-override: <id> OVERRIDE(reason) why` for Node-checked

@@ -697,9 +697,7 @@ follow the same layout conventions as every other Kiko screen:
   doubles as this section's own heading. The grid STARTS AT the header
   row (guessed or tapped; row 0 before one is known) and shows
   `PREVIEW_ROW_COUNT` (5) rows from there. A "Show all" toggle below the
-  grid (the pie legend's link look: caption `tone="accent"` + chevron,
-  reusing the `components.pieChart.showAll`/`showLess` keys, a 44pt tap
-  target via vertical `hitSlop`) expands to every row
+  grid (the shared `ExpandToggle`, see kiko-design-system) expands to every row
   `guessHeaderRowIndex` scans (`HEADER_SCAN_ROW_COUNT`, 10, exported from
   `table-rows.ts` so the two never drift) — never fewer than the
   collapsed window — INCLUDING the rows above the header, so the user can

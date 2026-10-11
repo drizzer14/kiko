@@ -2187,9 +2187,18 @@ decimal-string rule.
   period via the standard formula and rounds it ONCE; every period but
   the last derives its principal as `roundedPayment - interest`.
   `differentiated` instead holds a constant PRINCIPAL per period
-  (`round(principal / termMonths)`). Either way the LAST installment's
-  principal is simply whatever balance remains, so the schedule always
-  reduces to EXACTLY 0, never a stray rounding kopeck.
+  (`round(principal / termMonths)`). Either way every non-last principal is
+  capped at the remaining balance, so the balance never goes negative. A
+  tiny loan paid off before its term keeps its row count
+  (`installmentIndexOf` and the ledger count rows) and its trailing rows
+  are zero-payment rows. The LAST principal is whatever balance remains, so
+  the principals sum exactly to the loan principal and the schedule ends at
+  exactly 0. Read `loanInstallments` and `isScheduledPayment` in
+  `src/holdings/loan-schedule/loan-schedule.ts`; its test
+  (`loan-schedule.test.ts`) pins the invariants.
+  A fix to shared money math ships with a property test of the invariant AND
+  a before/after sweep showing normal inputs unchanged. It never changes the
+  row count of the schedule (indexes and the ledger count rows).
 - `loanOutstandingMinorAt(meta, holdingId, book, instant)`: `none` reads the manual
   `holding:<id>` price-point series directly (the same mechanism
   Property's "Update value" uses), clamped to never go below 0.
@@ -2376,20 +2385,32 @@ Principal repaid / Outstanding (`loanLedgerSummary`, above; testIDs
 number as the Value header, the card, and net worth.
 An `'annuity'`/`'differentiated'` loan additionally lists EVERY remaining
 scheduled payment under an "Upcoming Payments" heading (the loan entry's
-own `upcomingInstallments` — every `loanInstallments` row due on or after
-today's local day, in schedule order; its first row is the next
+own `upcomingInstallments` — every `loanInstallments` row that
+`isScheduledPayment` accepts and that is due on or after today's local day
+(zero-payment rows after an early payoff are skipped), in schedule order; its first row is the next
 installment). `UpcomingPayments`
-(`src/screens/holding-detail/upcoming-payments/`, memoized) renders them as
-ONE shared `SummaryTable`, one row per installment: the due date as the
-label, the payment as the value, and a `holdingDetail.paymentSplit`
-caption ("Principal X · interest Y") beneath it; row testID
-`upcoming-payment-<index>`. A 30-year mortgage lists all 360 rows (the
-screen memoizes the list on the local day, so it is not rebuilt on every
-render). A `'none'` schedule and every other holding type render nothing
+(`src/screens/holding-detail/upcoming-payments/`, memoized) draws them as
+ledger cards: one `UpcomingPaymentRow` (`upcoming-payment-row/`) per
+installment, built on the shared `EntryCard` under an `EntryDateHeader`. The
+title is `holdingDetail.loanPayment`, the amount is the payment read signed
+and red like a Linked Payments row (display-only negation through
+`MoneyText` with `context="transaction"`, the same call; the accessibility
+label reads the signed amount; the principal / interest split stays
+unsigned), and the footer is the `holdingDetail.scheduled` caption, then the
+`holdingDetail.paymentSplit` caption. Read `upcoming-payment-row.component.tsx`
+for the exact row testIDs. Only the first `UPCOMING_PAYMENT_PREVIEW_COUNT`
+installments render (see `upcoming-payments.component.tsx`). A shared
+`ExpandToggle` (testID `upcoming-payments-toggle`) shows only when more
+exist, and reveals or re-hides the rest. A 30-year mortgage still has 360
+installments in the list, but only the preview count mounts until expanded.
+The screen memoizes the list on the local day, so it is not rebuilt on every
+render. A `'none'` schedule and every other holding type render nothing
 there. The list is also empty once `loanLedgerOutstandingMinorAt` reads 0
 (`upcomingInstallments`' own `<= 0` guard) — a loan fully repaid by its
 linked payments, or overpaid/over-corrected, lists nothing even while
 `loanInstallments` still has future rows on the loan's ORIGINAL schedule.
+Zero-payment rows are skipped too; the filter lives in
+`src/screens/holding-detail/holding-detail-spec/holding-detail-spec.ts`.
 
 A loan correction (the "Update outstanding" `PricePointForm` write
 above) accepts **0**, unlike every other holding type's "Update
@@ -2591,6 +2612,9 @@ re-checks the four eligibility conditions itself, so it stays correct when
 unit-tested directly. An informal (`'none'`-schedule) loan is never
 matched: `loanInstallments` already returns `[]` for it, so it contributes
 no candidate installment at all — no separate schedule check is needed.
+A zero-payment row is never a matcher candidate
+(`src/loans/payment-matcher/payment-matcher.ts`), because the matcher's 1.00
+tolerance floor would otherwise match a debit of up to 1.00.
 `now` bounds installments to `dueDate <= now + 3 days` (the window's own
 before-margin) — a cheap UPPER bound only, never a lower one, so a freshly
 created/edited loan backfills its WHOLE past history the first time this

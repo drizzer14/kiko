@@ -47,13 +47,4 @@ export const styles = StyleSheet.create((theme) => ({
   selectedCellText: {
     fontWeight: '600',
   },
-  // The pie legend's "Show all" toggle shape (`pie-chart.styles.ts`'s
-  // `legendToggle`), so both expand/collapse links read as one control.
-  toggle: {
-    alignSelf: 'flex-start',
-    paddingVertical: theme.spacing(1),
-  },
-  toggleContent: {
-    alignItems: 'center',
-  },
 }));

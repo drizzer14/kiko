@@ -141,6 +141,21 @@ loads a fresh i18n; add a case there for a new plural key or language, and
 never assert device plural behavior with `new Intl.PluralRules(...)` in a
 test (the shipped-locales test uses Node's only as the CLDR oracle).
 
+### A string moved into a shared component changes namespace
+
+A string moved into a shared design-system component moves to that
+component's own `components.<component>.*` namespace in en and uk in the
+same commit, never left under another component's namespace.
+
+Mechanized for a literal key in the component's own folder tree by
+`kiko-component-i18n-namespace` (`scripts/checks/component-i18n-namespace.js`,
+`npm run check:component-i18n-namespace`, no override). The scope includes the
+component's test files, so a component test that reads a composed child's key
+is flagged too: move that assertion to the child's own test. Still manual
+review: a computed namespace, i18next's key-prefix and object-return options, an imported key
+constant, string concatenation, and a design-system component reading a
+SCREEN namespace.
+
 ### A plural key is always called with `count`
 
 i18next picks the `_one` / `_few` / `_many` / `_other` form from the
