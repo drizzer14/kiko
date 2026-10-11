@@ -54,4 +54,76 @@ if [ "$code" -ne 0 ]; then
   exit 2
 fi
 [ -n "$dkey" ] && harness_mark_pass "$ROOT" "$dkey" "$fp"
+
+# Second, NON-blocking pass. jscpd skips a file over maxLines (1000) or maxSize (100kb) without a
+# word, so the blocking run above never measured those files. Its file selection (the config's
+# ignore list, .gitignore, the format filter) is the only thing that knows which files are in
+# scope, so ask it: `--debug` lists the selected files and runs no detection. The files in the
+# list made with the limits raised but not in the default list are exactly the ones the blocking
+# run skipped for size. Each is measured ALONE with the limits raised, because a run of the whole
+# set attributes a clone to whichever file jscpd stores first, which makes a file's percentage
+# depend on its neighbours. Over the threshold is a WARNING on stderr and the exit code stays 0:
+# the sweep of those files is tracked debt (docs/harness/documented-exceptions.md), and it flips
+# this pass to a failure. This runs after the dedup mark on purpose: warnings never decide
+# the pass, and a dedup skip above (same file contents, same config) prints nothing again.
+RAISED_LIMITS=(--max-lines 2147483647 --max-size 1gb)
+
+# listed_files <extra jscpd option>... : one in-scope file path per line, sorted. A jscpd failure
+# returns non-zero; an empty scope is a valid empty list.
+listed_files() {
+  local listing
+  listing="$("$BIN" "${paths[@]}" --debug --no-colors "$@" 2>/dev/null)" || return 1
+  printf '%s\n' "$listing" | while IFS= read -r line; do
+    if [ -f "$line" ]; then printf '%s\n' "$line"; fi
+  done | sort -u
+}
+
+# A failure to LIST warns and never silences: the blocking pass already failed closed on a real
+# jscpd crash, but the large files must not go unmeasured without a trace.
+if ! default_list="$(listed_files)" || ! raised_list="$(listed_files "${RAISED_LIMITS[@]}")"; then
+  printf 'WARNING: check:dup could not list the files it skipped for size: jscpd --debug failed.\n' >&2
+  exit 0
+fi
+skipped="$(comm -13 <(printf '%s\n' "$default_list") <(printf '%s\n' "$raised_list"))"
+[ -z "$skipped" ] && exit 0
+
+threshold="$(node -p "require('$ROOT/.jscpd.json').threshold" 2>/dev/null)"
+[ -z "$threshold" ] && threshold=5
+report_dir="$(mktemp -d "${TMPDIR:-/tmp}/kiko-dup-large.XXXXXX")"
+trap 'rm -rf "$report_dir"' EXIT
+
+# measure_one <number> <file> : writes the file's WARNING line, if any, to
+# "$report_dir/<number>.warning".
+measure_one() {
+  local number="$1" file="$2" shown measured
+  shown="${file#"$ROOT"/}"
+  # --threshold 100 keeps jscpd's own threshold reporter from exiting non-zero on a big
+  # percentage, so a non-zero exit here means jscpd itself failed.
+  if ! "$BIN" "$file" --silent --no-colors -r json -o "$report_dir/$number" -t 100 \
+    "${RAISED_LIMITS[@]}" >/dev/null 2>&1; then
+    printf 'WARNING: check:dup could not measure %s: jscpd failed on it.\n' "$shown" > "$report_dir/$number.warning"
+    return
+  fi
+  measured="$(node -p "const t = require('$report_dir/$number/jscpd-report.json').statistics.total; t.lines > 0 ? t.percentage : ''" 2>/dev/null)"
+  if [ -z "$measured" ]; then
+    printf 'WARNING: check:dup could not measure %s: jscpd produced no figure for it.\n' "$shown" > "$report_dir/$number.warning"
+  elif awk -v p="$measured" -v t="$threshold" 'BEGIN { exit !(p > t) }'; then
+    printf 'WARNING: check:dup %s is over jscpd'\''s size limit (1000 lines or 100kb), so the blocking run skipped it; measured alone it is %s%% duplicated (threshold %s%%). Tracked debt: docs/harness/documented-exceptions.md\n' \
+      "$shown" "$measured" "$threshold" > "$report_dir/$number.warning"
+  fi
+}
+
+# Four measurements at a time: one jscpd start costs about half a second, and a whole-repo run
+# has dozens of large files. The warnings print in file order afterwards, so the output does not
+# depend on which measurement finishes first.
+n=0
+while IFS= read -r file; do
+  n=$((n + 1))
+  measure_one "$n" "$file" &
+  [ $((n % 4)) -eq 0 ] && wait
+done <<< "$skipped"
+wait
+for ((i = 1; i <= n; i++)); do
+  [ -f "$report_dir/$i.warning" ] && cat "$report_dir/$i.warning" >&2
+done
 exit 0

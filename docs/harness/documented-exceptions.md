@@ -159,6 +159,27 @@ verified usage, not dead weight:
   scope. Revisit or remove this exception if the two charts' structure
   ever diverges enough that the duplication is no longer a deliberate
   mirror.
+- **Tracked debt, not an ignore: `check:dup` size-limit warning**
+  (`scripts/checks/dup.sh`, dated 2026-10-11). jscpd 4.3.0 skips a file over
+  1000 lines or 100kb without a word, so the blocking run never measured the
+  large files. `dup.sh` now runs a second, NON-blocking pass: it measures each
+  skipped file ALONE with the limits raised and prints a `WARNING` on stderr
+  (exit code unchanged) for every file over the 5% threshold. No file is
+  allowlisted and the threshold is not raised: the 13 files below are measured
+  debt that each warning names. Measured 2026-10-11 at base `7fc680a5`:
+  `home.screen.test.tsx` 38.24%, `accounts.screen.test.tsx` 23.87%,
+  `statement-import.screen.test.tsx` 14.72%, `transactions.repo.test.ts`
+  10.14%, `sync.test.ts` 7.67%, `statistics.screen.test.tsx` 7.38%,
+  `net-worth-series.test.ts` 7.25%, `restore-snapshot.test.ts` 7.21%,
+  `import-statement.test.ts` 7.09%, `account-form.screen.test.tsx` 6.88%,
+  `transactions.repo.remove-cascade.test.ts` 5.91%, `holdings.repo.test.ts`
+  5.75%, `holding-form.screen.test.tsx` 5.63% (every non-test source file over
+  the limit is under 2%). With the limits raised the whole-project total is
+  7.33%, against 3.24% with the default limits. **Flip condition:** a separate
+  sweep track makes every large file 5% or less; then this warning becomes a
+  failure (`exit 2` through `print_block`) and this entry is deleted. The
+  warning is a stated exception to the "silent on success" wrapper contract
+  (kiko-linter's "The wrapper contract").
 - **`knip.json` `entry`** (an entry point, not an ignore):
   `scripts/bundle-contains.js` — the bundle freshness checker that only
   `scripts/deploy-device.sh` runs (`node scripts/bundle-contains.js`), so

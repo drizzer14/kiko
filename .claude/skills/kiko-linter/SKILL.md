@@ -50,9 +50,12 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   stderr and exit 0, namely (a) the dedup-skip notice (`SKIPPED, not a fresh
   scan`), because a skip exits 0 without scanning and must never read as a
   fresh scan; and (b) the Class B WARNING block, because a non-blocking
-  finding is override-eligible and still has to be seen. A hook that exits 0
+  finding is override-eligible and still has to be seen. `dup.sh` has one
+  more: (c) its large-file `WARNING` lines (see "`check:dup` measures the
+  files jscpd skips for size" below), because a non-blocking measurement of
+  tracked debt still has to be seen. A hook that exits 0
   does not feed stderr back to the agent, so these are for a human or a
-  manual `check:security` run, not a hook signal.
+  manual `check:security`/`check:dup` run, not a hook signal.
 
   Another exception, of a different shape: `scripts/checks/kill-guard.sh`
   (+ its sibling `scripts/checks/kill-guard.js`) is a `PreToolUse` hook on
@@ -1020,6 +1023,31 @@ correctly; the duplication is real, just older than the diff) — and it
 belongs in the SAME commit as the feature that triggered the check, so
 `git log` shows one coherent change rather than a drive-by refactor
 with no test-behavior delta.
+
+## `check:dup` measures the files jscpd skips for size
+
+jscpd 4.3.0 skips a file over `maxLines` (1000, counted as `content.split('\n')`) or `maxSize`
+(100kb) without a word, so a blocking run alone passes a project whose largest files were never
+measured. `scripts/checks/dup.sh` keeps that blocking run exactly as it was (same config, same
+default limits, same 5% threshold, same exit code, a jscpd crash still fails closed) and adds a
+second, NON-blocking pass:
+
+- It asks jscpd itself which files are in scope: `--debug` lists the selected files and runs no
+  detection. The files listed with the limits raised but not with the defaults are the ones the
+  blocking run skipped, so the config's `ignore`, `.gitignore`, and the args (the Stop tier's
+  changed files) apply to both lists by construction.
+- It measures each skipped file ALONE with the limits raised (JSON reporter into a temp dir,
+  nothing written into the repo). Alone, not in one combined run: a combined run credits a clone to
+  whichever file jscpd stores first, so a file's percentage would depend on its neighbours. The
+  alone figures are the ones the debt entry in `docs/harness/documented-exceptions.md` records.
+- A file over the threshold read from `.jscpd.json`, a file jscpd fails on, and a file with no
+  figure each print one `WARNING` line on stderr and the exit code stays 0. The Stop tier's scoped
+  run therefore warns only about changed large files; a whole-repo run warns about all of them.
+- The warning is tracked debt, not an allowlist. The sweep track that brings every large file to
+  5% or less flips it to an `exit 2` failure through `print_block`.
+- `__tests__/dup-large-files.test.ts` runs a copy of `dup.sh` in a throwaway project against the
+  real jscpd. A file over about two billion lines or 1gb is not listed under the raised limits, so
+  it would still pass unseen; no file of that size exists in this repo.
 
 ## Implemented: a rule for a plain function called inside a worklet
 

@@ -167,6 +167,12 @@ dedup always runs in full.
 - Dedups only a run given a file list (every argument an existing file,
   as the Stop tier passes the session's changed files; a no-argument run
   such as `check:all` always runs): `check:dup`, `check:overrides`.
+  `check:dup`'s large-file WARNING pass (files over jscpd's 1000-line or
+  100kb limit, measured alone) is a pure function of the same file contents
+  and `.jscpd.json`, so the fingerprint is unchanged and does not include the
+  pass: a dedup skip prints no warning (the run that recorded the pass
+  already printed it), and a no-argument run never dedups, so it prints every
+  warning each time.
 - Dedups a single file or a manual file list, never the Stop tier:
   `check:security` (`medium.sh` does not call `security.sh`; the fast tier
   passes one file, and a person may pass several). The key names every file
