@@ -33,7 +33,7 @@ Non-goals (owned by transaction-templates): the transaction form SPLIT, its tabs
 - Transfers: no transfer row type. Own-account transfers are excluded from spending by MCC / counter IBAN, NOT by category (`src/statistics/transfer-exclusion/transfer-exclusion.ts:19-20`). Exchange legs carry `exchange_pair_id` / `exchange_counterpart_holding_id`; split-change rows carry `change_group_id`; balance-setting rows carry `sets_balance`.
 - Dates: device-zone wall clock is read with local `Date` getters (`src/dates/local-day.ts`); the hand-rolled zone rules (`src/dates/zone-wall-clock.ts`) serve SOURCE zones (Kyiv imports), not the device. Reminders store a time of day as `minuteOfDay` 0-1439 (`src/reminders/schedule/reminder-schedule.ts:15-22`); `TimeField` is `src/screens/forms/time-field/`.
 - Categories (`schema.ts:572-588`): slug `key` PK, `title`, `icon`, `color`, `sort_order`; user categories get an `id()` key (`src/categories/repo/categories.repo.ts:44-55`). `categoriesRepo.delete` (`categories.repo.ts:81-113`) refuses the default, moves every transaction AND every override of the key to the default key, then deletes the row.
-- Categories screen: `src/screens/settings/categories/categories.screen.tsx` (556 lines): a `Sortable.Grid` (`:524`) of inline-edit cards (icon, title, colour, Set as default, move top/bottom, Delete). Delete confirm: `openDeleteConfirm` / `removeCategory` (`:167-183`) and the `ConfirmSheet` (`:330-341`). Route `Categories` in `src/navigation/settings-stack/settings.stack.tsx:40-41`, type at `src/navigation/types/types.d.ts:227`.
+- Categories screen (before this track): `src/screens/settings/categories/categories.screen.tsx` (556 lines): a `Sortable.Grid` (`:524`) of inline-edit cards (icon, title, colour, Set as default, move top/bottom, Delete). Delete confirm: `openDeleteConfirm` / `removeCategory` (`:167-183`) and the `ConfirmSheet` (`:330-341`). Route `Categories` in `src/navigation/settings-stack/settings.stack.tsx:40-41`, type at `src/navigation/types/types.d.ts:227`.
 - Accounts list (target look): `renderAccountCard` (`src/screens/accounts/accounts.screen.tsx:231-292`): `CardContextMenu` (hold = delete menu) around a `Card` with `EntityIconTile`, title + caption, tap navigates; `Sortable.Grid` single column (`:455-500`).
 - Form (`src/screens/forms/transaction-form/transaction-form.screen.tsx`, 2852 lines): `ruleCategoryFor` (`:304-316`); the overrides live query (`:1652-1662`); `userPickedCategory` (`:1883`); `selectCategory` (`:2066-2069`); `reseatCategoryFromName` (create only, on description blur and suggestion tap, `:2081-2101`); `writeManual` (create writes `category: selectedCategory`, edit never writes category, `:2114-2150`); `applyOverride` ("Apply", `:2197-2212`); `applyOverrideOne` ("Just for this one", edit only, `:2232-2245`); `resolveCategoryOverrideRequest` (`:488-507`); `performSave` blank-name fallback `setCategory` (`:2501-2549`); the sheet (`:2775-2820`); strings `forms.transaction.applyCategoryToAll` / `applyCategoryMessage` / `applyToThisOne` (`src/i18n/locales/en.ts:524-528`).
 - Export (`src/data-transfer/`): `EXPORT_VERSION = 2`, readable `[1, 2]` (`crypto/envelope.ts:13-22`); `envelope.test.ts:94-132` forces a version decision per migration. `DataSnapshot.categoryOverrides` (`snapshot/data-snapshot.d.ts:33`), read at `read-snapshot.ts:48-51`, restored at `restore-snapshot.ts:825, 891-892`; `REQUIRED_TABLE_KEYS` includes `categoryOverrides` (`import-data.ts:51-61`). `snapshot-covers-every-table.test.ts` fails on a table missing from the snapshot.
@@ -235,7 +235,7 @@ Form units after the split: `use-category-override/` (`applyOverride`, `applyOve
 - Unreadable rule card (failed guard): "This rule can't be read" + Delete.
 
 ### 9.3 Category edit form (`CategoryForm`, new route)
-Name, icon, colour (the existing inline controls moved here), Delete at the bottom (not on the default). Create mode: the same fields.
+Name, icon, colour (the existing inline controls moved here), Create mode: the same fields. The form has no Delete: a category is deleted from its list card's hold menu (not offered on the default).
 
 ### 9.4 Rule editor (`CategoryRuleForm`, new route)
 - A list of matcher rows; each row: a type select (Name is / Name starts with / Amount / Type / Time) and its input:
@@ -275,7 +275,11 @@ Name, icon, colour (the existing inline controls moved here), Delete at the bott
 | ruleRewrite.message_one/few/many/other | This changes {{count}} transaction(s). | Це змінить {{count}} транзакцію / транзакції / транзакцій / транзакції. |
 | ruleRewrite.applyToExisting | Apply to existing | Застосувати до наявних |
 | ruleRewrite.newOnly | New transactions only | Лише нові транзакції |
-| categories.deleteRulesNotice_one/few/many/other | Its {{count}} rule(s) will be deleted too. | Його {{count}} правило / правила / правил / правила теж буде видалено. |
+| categories.deleteRulesNotice_one/few/many/other | Its {{count}} rule(s) will be deleted too. | Її {{count}} правило / правила / правил / правила теж буде видалено. |
+| categories.deleteRulesNoticeUnknown | Its rules will be deleted too. (shown when the count read fails) | Її правила теж буде видалено. |
+| categoryPage.deleteRuleTitle | Delete Rule (Title Case; the rule card's confirm title; `ruleForm.deleteRule` stays the editor's sentence-case button) | Видалити правило |
+| categoryPage.setAsDefault | Set as default | Зробити типовою |
+| categoryPage.quotedName | "{{name}}" | «{{name}}» |
 Expense / Income, Edit, Delete, Cancel reuse existing keys. "Matcher" in the UI reads "condition" ("умова"); the user confirms the wording.
 
 ## 10. Export / restore
@@ -298,7 +302,7 @@ Method: a Jest test on real `node:sqlite` (`@kiko/test-support/real-sqlite`) wit
 ## 12. Category delete
 - `categoriesRepo.delete` (`categories.repo.ts:81-113`) gets a rule-deletion step in its SAME write: `DELETE FROM category_rules WHERE lower(category) = ?` (the same case-insensitive key match it uses for transactions), beside transaction-templates' template-clearing step, before the category row goes (decision 12). The rows moved to the default get `category_set_by_hand = 0` in the same write. A count read for the confirm: `countRulesOfCategory(key)` (beside templates' `countReferencingCategory(key)`).
 - The confirm names the count: "Its N rules will be deleted too" (`categories.deleteRulesNotice_*`), one line beside templates' `categories.deleteTemplates_*` line.
-- The confirm today is the title-only `ConfirmSheet` at `categories.screen.tsx:330-341` (handlers `:167-183`), on this track's screen, which the redesign rewrites: it moves into the card context menu and the category edit form.
+- The confirm today is the title-only `ConfirmSheet` at `categories.screen.tsx:330-341` (handlers `:167-183`), on this track's screen, which the redesign rewrites: it moved into the card context menu on the list (the category form has no Delete).
 
 ## 13. Coordination with transaction-templates
 - Form: transaction-templates splits `transaction-form.screen.tsx` first. This track's form work (7.2 pre-select, section 8 sheet changes, the flag on create/edit) is the LAST task, written on top of the split once it is in `next`. Data, repo, insert path, rewrite and screens come first and do not touch the form file, except: the form reads `category_overrides` today (`:1652-1662`, `:2203`), so dropping the table in 0058 forces a minimal form change in the SAME task as the migration (swap the live query in `use-category-pick/` and `applyOverride` in `use-category-override/` to the rules repo, same behavior; unit names fixed only once the split merges). That task must land after the split or rebase on it (coordination point A; decision 16: the migration + repo task lands on top of the split once it is in `next`; before that the track does only the pure rule module, the scenario-matrix tests and the performance fixture).

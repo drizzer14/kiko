@@ -561,7 +561,7 @@ The fix is one shared mechanism, not a per-screen ad hoc guard:
   `holding-detail`, `home` (net-worth headline + transaction list),
   `statistics` (every chart), `accounts` (the accounts-list empty
   state), `settings/system`, `settings/settings`,
-  `settings/categories`, statement-import's `example-transaction` (a
+  `settings/categories`, `settings/category-detail`, statement-import's `example-transaction` (a
   single row inside an already-loaded parent, gated on its OWN
   categories/settings queries rather than the whole parent screen) —
   grep `useDataReady` for the current call-site list rather than
@@ -670,9 +670,8 @@ detail — a holding id plus a share change's day key;
 `editOwnershipChange` is ID-shaped the same way but starts from the
 uncached `OwnershipChangeForm`), or is gated on `isFresh`. The drag reorders (Accounts' three
 grids, Account detail's holdings grid, Categories) set
-`sortEnabled={isFresh}` (only Categories adds `&& categories.length > 1`), and Categories' move-to-top/bottom
-buttons ignore a press until `isFresh` — each persists the WHOLE order
-of the rows on screen. A new write from a display screen picks one of
+`sortEnabled={isFresh}` with no item-count condition (a lone card must
+lift) — each persists the WHOLE order of the rows on screen. A new write from a display screen picks one of
 the two, never neither. Tests call `clearLiveQueryCache()` in
 `beforeEach` so one `it`'s rows never seed the next.
 
@@ -680,18 +679,36 @@ the two, never neither. Tests call `clearLiveQueryCache()` in
 seeded once.** A list row keyed by its ID never remounts when the fresh
 row replaces the cached one, so a `useState(row.field)` seed keeps the
 cached value, and a later write can put it back over a change made
-elsewhere (a `.kiko` restore). Categories' rename field syncs its local
-title from `category.title` whenever the stored title changes while the
-field is not being edited, and commits only text the user changed (not
-the title the edit started from). Syncing on a change, rather than
-rendering the row field directly, keeps a just-committed rename on
-screen until its write flows back. An effect that writes from rows and
+elsewhere (a `.kiko` restore). A form seeds once from the stored
+row (`src/screens/forms/category-form/category-form.screen.tsx` holds a
+hydrated ref); a display row follows the row. An effect that writes from rows and
 records what it covered in a ref waits for `isFresh` too: Statistics'
 history backfill does not start until `transactions` and
 `currency_rate_history` are both fresh, because its
 `backfillRanForSpanRef` marks the span covered for the rest of the
 mount, so a run planned from a cached resume point would stop the fresh
 read's own run from ever starting.
+
+## Category screens and the delete path
+
+Read these units before touching category UI: the Categories list
+(`src/screens/settings/categories/`), the CategoryDetail route
+(`src/screens/settings/category-detail/`, with `rule-card/` and
+`rule-summary/`), the CategoryForm route
+(`src/screens/forms/category-form/`), and the delete notice
+(`src/categories/delete-notice/`). Invariants:
+
+- One delete path: `categoriesRepo.delete` deletes the category's rules
+  in the same write. The confirm count and the delete use the same
+  case-insensitive `lower(category)` predicate and both count unreadable
+  rules.
+- The confirm line comes only from `categoryDeleteNoticeOf`; a failed
+  count read still gives a numberless line, so the confirm always warns.
+  A second track that adds a delete-time line appends it there.
+- The category form has no Delete (kiko-design-system "A form has no
+  in-form Delete"; pre-write rule `kiko-no-confirm-sheet-in-form`). A
+  category is deleted only from its list card's hold menu, which is not
+  offered on the default.
 
 ## App-open and refresh work is gated on data presence
 

@@ -295,7 +295,10 @@ template) fails until it is listed in exactly one allowlist:
 `sheetTitle` prop, which needs no `HEADING_PROPS` entry), or
 `UNCHECKED_HEADING_SITES` (a reason: user-entered names, a month/year, a
 bank brand name). A new component that renders a prop as a heading goes
-into `HEADING_PROPS`. Every picker sheet (`SelectField` and its wrappers,
+into `HEADING_PROPS`. A component prop that forwards a heading into a
+`ConfirmSheet` title (`CardContextMenu` `deleteTitle`) goes into both
+`HEADING_PROPS` and `FORWARDED_HEADING_SITES` of that test, and its key
+into `TITLE_KEYS`; read the test for the current entries. Every picker sheet (`SelectField` and its wrappers,
 `DateField`, `TimeField`, `CategoryField`, `BankTypeField`,
 `HoldingSelectField`, `PaymentHoldingField`/`LoanPaymentField`,
 `CurrencyField`, `FilterMenu`, `ColumnSelectField`) takes a REQUIRED

@@ -625,16 +625,16 @@ new component can land between reviews of this skill:
   `rules/semgrep-prewrite.yml`). `destructiveTonal` is the iOS "tinted
   destructive" pattern — a translucent `negativeSubtle` fill under a
   red `negative` label (a lower-emphasis dangerous action, e.g. the
-  deposit form's per-row Remove and the categories screen's per-card
-  Delete — the two now share the IDENTICAL treatment: `destructiveTonal`
-  + `size="small"` + a leading trash icon, so Delete reads as the same
-  control as Remove everywhere it appears), NOT the solid bright
+  deposit form's per-row Remove in
+  `src/screens/forms/holding-form/term-deposit/`: `destructiveTonal` +
+  `size="small"` + a leading trash icon, so a lower-emphasis Remove/Delete
+  reads as the same control everywhere it appears), NOT the solid bright
   `negative` fill of `destructive`. `secondaryTonal` is its NEUTRAL
   counterpart — a faint neutral tint from the `neutralSubtle` theme
   token (`theme.ts`, sibling of `negativeSubtle`) under an ordinary
   `textPrimary` label — the standard treatment for a lower-emphasis
-  inline/standalone secondary action (e.g. the categories screen's
-  "Set as default" star), replacing a plain `secondary` `surfaceHigh`
+  inline/standalone secondary action (e.g. the category page's
+  "Set as default" star, `src/screens/settings/category-detail/`), replacing a plain `secondary` `surfaceHigh`
   pill for that class of control. Both tonal variants are the exception
   to the `onAccent` rule below: a same-hue (or neutral) label on a
   same-hue tint is the tinted-button convention, so the label stays
@@ -667,11 +667,9 @@ new component can land between reviews of this skill:
   so `<Button icon="star" onPress={...} />` with no label is a COMPILE error,
   and a `__DEV__` runtime invariant in the component throws on the same shape
   for any untyped call path. This is the shared icon-only control pattern
-  — the categories screen's move-to-top/move-to-bottom reorder actions
-  (`variant="ghost"` + `size="small"`) and its "Set as default" star
-  (`variant="secondaryTonal"` + `size="small"`, `src/screens/settings/
-  categories/`) both build an icon-only control this way, plus
-  `fullWidth={false}`, rather than a raw `Pressable` + `SymbolIcon`.
+  — an icon-only control is built with `Button` (an `icon`, an
+  `accessibilityLabel`, `fullWidth={false}`), never a raw `Pressable` +
+  `SymbolIcon`.
   (There is no separate icon-button primitive; the old one at
   src/design-system/components/icon-button/ was deleted when its only
   consumer went away.)
@@ -722,9 +720,7 @@ new component can land between reviews of this skill:
   restored 44pt tap target, by design, not as a shortcut.** Pick
   `compact` when the visible pill itself should still read close to
   full HIG height; pick `small` for the tightest inline/secondary
-  actions, typically paired with `secondaryTonal` or `destructiveTonal`
-  (the categories screen's Delete, "Set as default", and reorder
-  controls above are all `size="small"`). Read `button.styles.ts` and
+  actions, typically paired with `secondaryTonal` or `destructiveTonal`. Read `button.styles.ts` and
   `button.component.tsx` directly for the current height/hitSlop
   values rather than trusting a copy of the numbers here if they ever
   drift.
@@ -1175,6 +1171,15 @@ new component can land between reviews of this skill:
   deleted only from its page's `CardContextMenu`, so nothing under
   `src/screens/forms/` imports `ConfirmSheet`
   (`kiko-no-confirm-sheet-in-form`, `rules/semgrep-prewrite.yml`).
+  `deleteTitle` is an optional string that replaces the default
+  `common.deleteNamed` confirm title, for a card whose `name` is a
+  descriptive line rather than an entity name (the category page's rule
+  card passes `t('categoryPage.deleteRuleTitle')`), so the title never
+  nests quotes around a sentence. The key is Title Case in `TITLE_KEYS`
+  and the forwarded heading is registered in
+  `src/i18n/locales/title-keys.call-sites.test.ts`. `liftOnHold` is
+  passed only by a card in a plain (non-sortable) list; a grid card gets
+  its lift from the grid.
   `deleteMessage` is an optional async function (`() => Promise<string |
   undefined>`, never a plain string): the menu awaits it when the hold asks for
   the confirm, so the text names what is stored now. A read that fails opens the

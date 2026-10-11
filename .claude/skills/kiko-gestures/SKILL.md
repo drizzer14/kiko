@@ -177,9 +177,10 @@ accounts main grid gates `sortEnabled` on the ACCOUNTS query's
 `isFresh` (a drag persists the rows on screen, so it never starts from
 a cached read), with no item-count condition — see "A hold lifts the
 card" above. (The categories grid,
-`src/screens/settings/categories/`, is a FIFTH grid with a
-deliberately different `dragActivationDelay` — see its own entry below
-— it is not part of this shared-tuning claim.)
+`src/screens/settings/categories/`, is a fifth grid built like
+Accounts: `liftOnHold` cards, a lone card lifts
+(`sortEnabled={categoriesFresh}`, no item-count condition), and the
+default activation delay, since its cards hold no text input.)
 
 ### Section-scoped grids must persist the FULL order
 
@@ -230,16 +231,12 @@ section opens nothing.
   rather than calling the repo's `reorder()` inline, so the
   release-in-place guard lives in exactly one place.
 - **A grid whose cards contain a live text input needs a longer
-  `dragActivationDelay`, not a `customHandle`.** The categories grid
-  (`src/screens/settings/categories/`) is the one grid where every card wraps an
-  editable rename `TextInput`; the library's default 200ms activation is
-  shorter than iOS's own text-selection hold, so a hold meant to place the
-  cursor or open Paste started a card drag instead. It sets
-  `dragActivationDelay={CATEGORY_DRAG_ACTIVATION_MS}` (600ms, above that
-  threshold) rather than adding a handle, so it does not diverge from the
-  accounts/holdings grids' handle-free interaction model. Retune the
-  constant on-device if 600ms ever feels sluggish for a reorder — do not
-  guess a replacement value.
+  `dragActivationDelay`, not a `customHandle`.** The library's default
+  200ms activation is shorter than iOS's own text-selection hold, so a
+  hold meant to place the cursor or open Paste starts a card drag
+  instead. Raise the delay above that threshold rather than adding a
+  handle, so the grid keeps the handle-free interaction model of the
+  accounts/holdings grids; tune the value on-device, never guess one.
 
 ## "Synced entity renders no gesture" rule
 
