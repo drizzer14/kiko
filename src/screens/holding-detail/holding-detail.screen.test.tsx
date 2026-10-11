@@ -1963,7 +1963,7 @@ describe('HoldingDetailScreen', () => {
     );
   });
 
-  it('lists every remaining payment of an annuity loan, starting at the next installment', async () => {
+  it('lists the next payments of an annuity loan as cards, starting at the next installment', async () => {
     seed(annuityLoanHolding);
 
     const { getByText, getByTestId, getAllByTestId } = await renderScreen();
@@ -1978,24 +1978,68 @@ describe('HoldingDetailScreen', () => {
     }
 
     expect(getByText('Upcoming Payments')).toBeTruthy();
-    expect(getAllByTestId(/^upcoming-payment-/)).toHaveLength(upcoming.length);
-    // Scoped per row: a swapped principal/interest would fail here, unlike a
+    // Bounded to the next year: the rest sits behind "Show all".
+    expect(upcoming.length).toBeGreaterThan(12);
+    expect(getAllByTestId(/^upcoming-payment-/)).toHaveLength(12);
+    // Scoped per card: a swapped principal/interest would fail here, unlike a
     // bare `getByText` search over the whole screen.
     expect(getByTestId(`upcoming-payment-${next.index}`)).toHaveTextContent(
-      formatMoney(Money.of('UAH', next.paymentMinorUnits)).concat(
-        `Principal ${formatMoney(Money.of('UAH', next.principalMinorUnits))}`,
+      formatMoney(Money.of('UAH', next.paymentMinorUnits)),
+      { exact: false },
+    );
+    expect(getByTestId(`upcoming-payment-${next.index}`)).toHaveTextContent(
+      `Principal ${formatMoney(Money.of('UAH', next.principalMinorUnits))}`.concat(
         ` · interest ${formatMoney(Money.of('UAH', next.interestMinorUnits))}`,
       ),
+      { exact: false },
     );
   });
 
-  it('renders every remaining payment of a 30-year mortgage', async () => {
+  it('draws the upcoming payments between the breakdown and the linked payments', async () => {
+    seed(
+      annuityLoanHolding,
+      [],
+      [],
+      [{ id: 'payer-1', name: 'Everyday card', type: 'card', currency: 'UAH' }],
+      [],
+      [{ baseCurrency: 'UAH' }],
+      undefined,
+      [],
+      {},
+      [
+        {
+          id: 'txn-linked',
+          holdingId: 'payer-1',
+          amountMinorUnits: -100_000,
+          time: 1_000,
+          description: 'First installment',
+          source: 'manual',
+          loanHoldingId: 'h-1',
+          loanLinkSource: 'manual',
+        },
+      ],
+    );
+
+    const { getAllByText } = await renderScreen();
+
+    expect(
+      getAllByText(/^(Interest paid|Upcoming Payments|Linked Payments)$/).map((node) =>
+        String(node.children),
+      ),
+    ).toEqual(['Interest paid', 'Upcoming Payments', 'Linked Payments']);
+  });
+
+  it('bounds a 30-year mortgage to its next 12 cards, and Show all reveals all 360', async () => {
     seed({
       ...annuityLoanHolding,
       metadata: { ...annuityLoanMeta, startDate: startMonthsAgo(0), termMonths: 360 },
     });
 
-    const { getAllByTestId } = await renderScreen();
+    const { getAllByTestId, getByTestId } = await renderScreen();
+
+    expect(getAllByTestId(/^upcoming-payment-/)).toHaveLength(12);
+
+    await fireEvent.press(getByTestId('upcoming-payments-toggle'));
 
     expect(getAllByTestId(/^upcoming-payment-/)).toHaveLength(360);
   });
