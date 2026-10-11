@@ -2559,13 +2559,12 @@ what a change must keep.
   A reminder NOTIFICATION never names its account (its title and body are
   generic catalogue text), so the planner needs no display name. The
   navigate is ONE `navigate('AccountsTab', { state })` carrying the whole
-  Accounts stack: the routes it has now, minus any `isDefault` route
-  (`accountsStackRoutes`, `src/reminders/routing/route-response.ts`), or `Accounts` while the tab
-  has not mounted, then the new ones. Two nested navigates back to back lose
+  Accounts stack, rebuilt from the root (`rebuiltStack`,
+  `src/reminders/routing/route-response.ts`; the rule and its known limit are in "Pane
+  navigation" below). Two nested navigates back to back lose
   the first, because the second replaces the tab's nested params before
   the stack reads them (`route-response.navigator.test.tsx`, on the real
-  routers). The tapped account's page, when already on top, takes the new
-  params in place. Before `navigationRef.isReady()` (a tap that launched
+  routers). Before `navigationRef.isReady()` (a tap that launched
   the app) the route waits for the container's `ready` event. Routes that
   waited all navigate in the same tick, so the newest one's stack wins.
   `navigationRef` (`src/navigation/navigation-ref/`) is the
@@ -2718,11 +2717,25 @@ are built with `createPaneStackNavigator`.
   changes (nothing on mount). `PANE_FOLD` drops `isDefault` routes (placeholders too) and keeps
   every tapped route's
   pane. A tab re-tap pops a page only when the stack holds one (`hasPageToPop` in
-  `create-pane-stack-navigator.tsx`), so it skips a runtime default. The reminder route rebuild
-  (`accountsStackRoutes`, `src/reminders/routing/route-response.ts`) likewise drops every
-  `isDefault` route. Screens remount when the mode crosses single/split (ruling 3A);
+  `create-pane-stack-navigator.tsx`), so it skips a runtime default. Screens remount when the mode crosses single/split (ruling 3A);
   `TwoPaneLayout` takes the
   settled mode through its `mode` prop instead of reading the live one.
+- **Reminder tap rebuilds the Accounts stack from the root.** Rule (user ruling option B): a
+  reminder notification tap sets the Accounts stack to `[Accounts, AccountDetail <tapped account>,
+  next screen?]` (`rebuiltStack`, `src/reminders/routing/route-response.ts`); nothing opened
+  earlier stays. The list route keeps its key (no remount). A page of the tapped account the user
+  opened right above the list (index 1, not flagged `isDefault`) keeps its key and takes the new
+  params in place; an `isDefault` page is never reused. Why: an earlier page left below would
+  close the reminder's page with it when its entity is deleted, and the list marks the detail
+  pane's FIRST route. In single mode, Back from the reminder's page goes to the Accounts list
+  (accepted trade-off). Known limit (user ruling D): the rebuild discards an open form
+  (`TransactionForm`, `AccountForm`, `HoldingForm`, `ReminderForm`, ...) in the Accounts stack
+  together with its draft, with no confirm. Keeping the form on the stack would let the close of
+  an earlier account's page close the reminder's page (the pane router's close slices every route
+  above the closed one). A `beforeRemove` / `usePreventRemove` guard does not fire on this path:
+  the nested `state` param is applied as a reset, not a dispatched action. Pinned by the tests
+  "discards an open form of the tapped account, and its draft, ..." and "... of another
+  account ..." in `route-response.navigator.test.tsx`.
 - **Form drafts.** A form restores what the user typed after the remount through its route's
   `draft` param: `useDraftParam` / `isSavedDraft` (`src/navigation/use-draft-param/`) read it
   once at mount. `useDraftAutosave(draft, saveDraft, restored?)`
