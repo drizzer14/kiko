@@ -822,8 +822,8 @@ export const en = {
   holdings: {
     // The delete confirm's body for a holding, or an account's holdings, whose
     // transactions are one part of a movement with another holding. Only `rows`
-    // takes a count; the other parts list holding names, joined by the caller
-    // (Hermes has no `Intl.ListFormat`).
+    // and `templates` take a count; the other parts list holding names, joined by
+    // the caller (Hermes has no `Intl.ListFormat`).
     deleteLinked: {
       rows_one: 'This also deletes {{count}} linked transaction in {{names}}.',
       rows_few: 'This also deletes {{count}} linked transactions in {{names}}.',
@@ -836,6 +836,10 @@ export const en = {
       unlinked:
         'Some exchange parts in {{names}} could not be found and stay. Check them after deleting.',
       unlinkedPlain: 'Some exchange parts could not be found and stay.',
+      templates_one: 'This also clears it in {{count}} template.',
+      templates_few: 'This also clears it in {{count}} templates.',
+      templates_many: 'This also clears it in {{count}} templates.',
+      templates_other: 'This also clears it in {{count}} templates.',
     },
   },
   home: {

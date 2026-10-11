@@ -15,6 +15,17 @@ jest.mock('@kiko/db/client', () => {
   };
 });
 
+// The delete clears the category in the templates inside its own write; the fake handle here
+// cannot run that query, so the real one is proved in
+// `transaction-templates.delete-paths.test.ts` and this suite pins the call and its order.
+const mockClearCategoryDatabaseTransaction = jest.fn();
+jest.mock('@kiko/transaction-templates/repo', () => ({
+  transactionTemplatesRepo: {
+    clearCategoryDatabaseTransaction: (...args: unknown[]) =>
+      mockClearCategoryDatabaseTransaction(...args),
+  },
+}));
+
 // CANONICAL_SEED is the canonical seed the migration must insert: one stable
 // slug per MCC category (src/monobank/mcc-category.ts) plus `other`. The
 // MCC -> display-key mapping must produce these exact keys. Shared with the
@@ -220,6 +231,10 @@ describe('categoriesRepo.reorder', () => {
 });
 
 describe('categoriesRepo.delete', () => {
+  beforeEach(() => {
+    mockClearCategoryDatabaseTransaction.mockReset();
+  });
+
   // Fake transaction: read the single settings row (for the current default key), then
   // the two category reassign updates (transactions + overrides) and the
   // category-row delete, each captured so the test can assert the whole
@@ -274,6 +289,34 @@ describe('categoriesRepo.delete', () => {
     expect(captured.transactionUpdate).toEqual({ category: 'other' });
     expect(captured.overrideUpdate).toEqual({ category: 'other' });
     expect(captured.deletedTable).toBe(categories);
+  });
+
+  it('clears the category in the templates, on the same handle, before the row goes', async () => {
+    const { databaseTransaction, captured } = makeDatabaseTransaction([
+      { defaultCategoryKey: 'other' },
+    ]);
+    mockDatabaseTransaction = databaseTransaction;
+    let deletedWhenCleared: unknown;
+    mockClearCategoryDatabaseTransaction.mockImplementation(() => {
+      deletedWhenCleared = captured.deletedTable;
+    });
+
+    await categoriesRepo.delete('groceries');
+
+    expect(mockClearCategoryDatabaseTransaction).toHaveBeenCalledWith(
+      databaseTransaction,
+      'groceries',
+    );
+    expect(deletedWhenCleared).toBeUndefined();
+  });
+
+  it('writes nothing to the templates when it refuses the default category', async () => {
+    const { databaseTransaction } = makeDatabaseTransaction([{ defaultCategoryKey: 'other' }]);
+    mockDatabaseTransaction = databaseTransaction;
+
+    await expect(categoriesRepo.delete('other')).rejects.toThrow();
+
+    expect(mockClearCategoryDatabaseTransaction).not.toHaveBeenCalled();
   });
 
   // The reassign predicates are the thing under test here, and this suite

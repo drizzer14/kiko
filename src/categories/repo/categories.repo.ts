@@ -9,6 +9,7 @@ import {
   transactions,
 } from '@kiko/db';
 import { asc, eq, sql } from 'drizzle-orm';
+import { transactionTemplatesRepo } from '@kiko/transaction-templates/repo';
 
 import { DEFAULT_CATEGORY_KEY } from '../category-display';
 
@@ -105,6 +106,8 @@ export const categoriesRepo = {
         .update(categoryOverrides)
         .set({ category: defaultKey })
         .where(sql`lower(${categoryOverrides.category}) = ${lowercaseKey}`);
+      // A template does not move to the default: the field stays in it, empty.
+      await transactionTemplatesRepo.clearCategoryDatabaseTransaction(databaseTransaction, key);
       await databaseTransaction.delete(categories).where(eq(categories.key, key));
     }),
   /**

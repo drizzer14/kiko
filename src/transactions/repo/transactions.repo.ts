@@ -44,6 +44,7 @@ import { maxOf, minOf } from '@kiko/numbers';
 import type { Currency } from '@kiko/currency/currency';
 import { exchangeReceivePath } from '@kiko/holdings/exchange-destination';
 import type { DepositContribution } from '@kiko/holdings/holding-metadata';
+import { transactionTemplatesRepo } from '@kiko/transaction-templates/repo';
 import { isLedgerlessHoldingType } from '@kiko/holdings/holding-descriptor';
 import type { ExchangeConvertDirection } from '@kiko/holdings/exchange-convert';
 import type { ClosingBalance, TimeReading } from '@kiko/statement-import/parser';
@@ -947,6 +948,10 @@ const planLinkedRowsDatabaseTransaction = async (
     keptSynced: sortedHoldingNamesOf(kept, holdingsById),
     unlinked: unlinked.names,
     unlinkedPlain: unlinked.plain,
+    templatesChanged: await transactionTemplatesRepo.countReferencingHoldingsDatabaseTransaction(
+      databaseTransaction,
+      holdingIds,
+    ),
     balanceChanges: balanceChangesOf(removed, holdingsById),
   };
 };

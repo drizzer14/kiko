@@ -29,6 +29,7 @@ import type { Currency } from '@kiko/currency/currency';
 import { clearCredentials } from '@kiko/crypto-sync/binance';
 import { SYNCED_AT_FIELD } from '@kiko/holdings/holding-metadata';
 import { holdingTypesForAccountKind } from '@kiko/holdings/holding-type';
+import { transactionTemplatesRepo } from '@kiko/transaction-templates/repo';
 import { cascadeLinkedRowsDatabaseTransaction } from '@kiko/transactions/repo';
 import { isCurrencyAllowedForHoldingType } from '@kiko/holdings/holding-currency';
 import { isSyncedAccount, type SyncedInstitution } from '@kiko/holdings/deletable';
@@ -456,6 +457,12 @@ export const accountsRepo = {
       // `reminders.account_id` is the same kind of NO ACTION foreign key.
       await databaseTransaction.delete(reminders).where(eq(reminders.accountId, accountId));
       await clearLoanLinksForHoldingsDatabaseTransaction(
+        databaseTransaction,
+        accountHoldings.map((holding) => holding.id),
+      );
+      // One call for every holding of the account, so a template that names two of them is
+      // rewritten once.
+      await transactionTemplatesRepo.clearHoldingsDatabaseTransaction(
         databaseTransaction,
         accountHoldings.map((holding) => holding.id),
       );
