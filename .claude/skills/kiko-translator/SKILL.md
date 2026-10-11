@@ -239,7 +239,7 @@ The exception is a CLOSED list: only the three Settings-tab ROOT rows
 `src/i18n/locales/title-keys.ts`) are Title Case in en and read exactly
 like their nav titles, by user ruling 2026-10-08; uk stays sentence case
 with the row label equal to its title. Counter-example: the Help TOPIC
-rows (`help.topics.*.rowLabel`, `SettingsRows` in `help.screen.tsx` that
+rows (`help.topics.*.rowLabel`, `SettingsRow` in `help.screen.tsx` that
 also open a screen) stay sentence case ("Add an account" vs title "Add an
 Account"). It is not a rule for every row that opens a screen.
 

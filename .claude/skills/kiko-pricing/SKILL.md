@@ -247,7 +247,7 @@ own (it has no stored day at all, so `resolveResumeCursor` treats it
 as maximally behind), so there is nothing this override needs to force.
 
 The screen's own effect must guard its async settle against a REAL unmount only (an
-`isMounted`-style ref flipped inside its own unmount-only effect) — a
+is-mounted-style ref flipped inside its own unmount-only effect) — a
 dep-change cleanup (a refocus advancing `now`, the same trigger that
 drives the retry above) fires the identical cleanup lifecycle event and
 must not drop a still-pending run's eventual settle, or the line gets
@@ -653,7 +653,7 @@ its computed value, never a caption naming the date of the underlying
 price point — this was removed from the holding card, the holding
 detail Value header, and `property_item`'s (which has no feed — a
 user-entered price) descriptor alike; `PricedSpec` carries no
-`captionInstrument`/`captionKey` any longer. Behavior instead: each
+caption-instrument or caption-key field any longer. Behavior instead: each
 refresh fetches today's price/rate for the held set only (see
 kiko-architecture's gate rule); if today's value cannot be fetched,
 the newest known value is used silently, with no caption surfacing

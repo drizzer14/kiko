@@ -659,7 +659,7 @@ one validation model — don't hand-roll a different one:
   hand-rolled `Box`+`Text` caption — see that component's own doc
   comment for the rationale.
 - The error's visibility is its own piece of state (e.g.
-  `showNameError`), set true only after a failed submit attempt, so a
+  `showTokenRequiredError`), set true only after a failed submit attempt, so a
   fresh form shows no error before the user has tried to save.
 - Every field's error is computed from ONLY that field's own inputs,
   gated by the shared attempted-submit flag — never by comparing
@@ -848,8 +848,8 @@ acronym rule.
 
 This applies inside a compound name too, not just standalone —
 `isBTCEntry` (`src/crypto-sync/binance/binance.provider.ts`), not
-`isBtcEntry`, is a live example. (History: `fetchBtcPrice` was renamed
-`fetchBTCPrice` during review for the same reason; that function no
+`isBtcEntry`, is a live example. (History: a price fetcher was renamed
+from `fetchBtcPrice` to fetchBTCPrice during review for the same reason; that function no
 longer exists — read the current tree for a live example rather than
 assuming this name still does.)
 

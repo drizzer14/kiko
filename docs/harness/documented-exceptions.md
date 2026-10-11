@@ -853,3 +853,27 @@ verified usage, not dead weight:
   `sf-symbol-catalogue.test.ts` and `deployment-target.test.ts` loudly, never silently. If a dependant
   stops installing it, add it to `package.json` as an exact-pinned
   devDependency instead.
+
+- **`__tests__/skill-identifiers.test.ts`'s two exemption lists (non-project
+  names, and bad-name examples per skill file).** The test fails when an inline code span in a
+  skill or agent file names an identifier that no word of the code corpus
+  matches (see kiko-linter's paragraph on this test, next to the one on
+  `__tests__/cited-paths.test.ts`), so a name that is not this repository's own code must be listed. Each
+  entry is a name the skills cite on purpose that the repository never
+  contains, by category (a category's reason is verified when it is added):
+  library and runtime internals cited to explain a behavior (react-native,
+  react-native-sortables, RNGH, Unistyles, drizzle, a clipboard hook,
+  jest-haste-map), Apple names `ios/` does not use (UIKit; the built
+  Info.plist's `UIDeviceFamily`, which the source plist lacks), the
+  `Intl.Locale` week getter, fnts exports and type parameters, a TypeScript
+  option left at its default, a SQL keyword, shell and OS tools plus a
+  python module and a node API named in the kill-guard limits, Semgrep
+  taint and `--time` keys, a conventional-commit scope word, a Claude Code
+  tool and a devicectl field, and the drizzer14/harness repo's own config
+  keys and env var. A deliberate bad-name or bad-id example is exempt per
+  `(skill file, name)` pair, not by name alone, like the
+  `full-word-identifiers` `EXEMPTIONS` above: the same name cited as a real
+  symbol in another skill must still resolve. The test also fails on an
+  entry that is no longer cited or now resolves, so the lists only shrink.
+  A name that left the code is fixed in the skill text (renamed, or written
+  without backticks), never added here.

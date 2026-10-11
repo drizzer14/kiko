@@ -750,7 +750,7 @@ follow the same layout conventions as every other Kiko screen:
   child's own margin ON TOP OF the parent's `gap`, same as CSS flexbox,
   so the two stack rather than dedupe, breaking the uniform spacing.
   `column-mapping-form.styles.ts`
-  (`column-mapping-form/`) has no `sectionHeading` style at
+  (`column-mapping-form/`) has no section-heading style at
   all. `MappingResult` renders its
   own `columnMapping.result` heading UNCONDITIONALLY, in BOTH the
   `stats === undefined` and `stats !== undefined` branches, passing NO

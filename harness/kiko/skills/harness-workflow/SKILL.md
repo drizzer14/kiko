@@ -54,7 +54,7 @@ Rules:
   file-list mode, so the coordinator runs Stryker directly with
   `--mutate` on the named files and reads the per-file floor (60) from
   `reports/mutation/mutation.json`. This is a documented deviation until
-  a `KIKO_MUTATION_FILES` option exists.
+  a file-list option exists.
 
 ## Run log
 
