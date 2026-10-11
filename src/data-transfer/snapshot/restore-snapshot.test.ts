@@ -20,6 +20,7 @@ import {
   settings,
   syncState,
   transactions,
+  transactionTemplates,
 } from '@kiko/db';
 import { getTableColumns } from 'drizzle-orm';
 import { holdingValue } from '@kiko/holdings/holding-value';
@@ -57,6 +58,8 @@ const tableNameOf = (table: unknown): string => {
   if (table === reminders) return 'reminders';
 
   if (table === deletedImportKeys) return 'deletedImportKeys';
+
+  if (table === transactionTemplates) return 'transactionTemplates';
   throw new Error('unknown table');
 };
 
@@ -139,6 +142,7 @@ describe('restoreDataSnapshot', () => {
     });
 
     expect(deletedTables).toEqual([
+      'transactionTemplates',
       'deletedImportKeys',
       'transactions',
       'syncState',
@@ -602,6 +606,7 @@ describe('restoreDataSnapshot', () => {
     });
 
     expect(deletedTables).toEqual([
+      'transactionTemplates',
       'deletedImportKeys',
       'transactions',
       'syncState',

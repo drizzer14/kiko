@@ -18,6 +18,7 @@ import {
   syncState,
   type TransactionRow,
   transactions,
+  transactionTemplates,
   write,
   type database,
   chunkForTable,
@@ -816,6 +817,7 @@ export const restoreDataSnapshot = (
     });
 
     const deleteAllTables = async (): Promise<void> => {
+      await databaseTransaction.delete(transactionTemplates);
       await databaseTransaction.delete(deletedImportKeys);
       await databaseTransaction.delete(transactions);
       await databaseTransaction.delete(syncState);
@@ -985,6 +987,15 @@ export const restoreDataSnapshot = (
       }
     };
 
+    // `?? []`: an export from before the table carries no `transactionTemplates`
+    // key and restores with none. No other table is referenced, so the order among
+    // the inserts does not matter.
+    const insertTransactionTemplates = async (): Promise<void> => {
+      for (const part of chunkForTable(transactionTemplates, snapshot.transactionTemplates ?? [])) {
+        await databaseTransaction.insert(transactionTemplates).values(part);
+      }
+    };
+
     const liveDeviceSettings = await readLiveDeviceSettings(databaseTransaction);
 
     await deleteAllTables();
@@ -994,6 +1005,7 @@ export const restoreDataSnapshot = (
     await insertRatesAndSettings();
     await insertBondRegister();
     await insertReminders();
+    await insertTransactionTemplates();
 
     return { accountsRestored: accountsToInsert.length };
   });

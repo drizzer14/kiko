@@ -13,6 +13,7 @@ import {
   settings,
   syncState,
   transactions,
+  transactionTemplates,
   database,
 } from '@kiko/db';
 import { asc } from 'drizzle-orm';
@@ -60,4 +61,8 @@ export const readDataSnapshot = async (): Promise<DataSnapshot> => ({
     .select()
     .from(deletedImportKeys)
     .orderBy(asc(deletedImportKeys.holdingId), asc(deletedImportKeys.externalId)),
+  transactionTemplates: await database
+    .select()
+    .from(transactionTemplates)
+    .orderBy(asc(transactionTemplates.id)),
 });

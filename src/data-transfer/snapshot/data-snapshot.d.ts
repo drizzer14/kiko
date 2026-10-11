@@ -13,6 +13,7 @@ import type {
   SettingsRow,
   SyncStateRow,
   TransactionRow,
+  TransactionTemplateRow,
 } from '@kiko/db';
 
 /**
@@ -37,4 +38,5 @@ export type DataSnapshot = {
   // Optional, unlike the tables above: an older file never had the key, and a
   // restore reads it defensively (`restoreDataSnapshot`) without a version bump.
   deletedImportKeys?: DeletedImportKeyRow[];
+  transactionTemplates?: TransactionTemplateRow[];
 };

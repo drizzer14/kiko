@@ -323,6 +323,22 @@ export const deletedImportKeys = sqliteTable(
 
 export type DeletedImportKeyRow = typeof deletedImportKeys.$inferSelect;
 
+// A saved transaction form: a name and the fields the form fills from it. No
+// foreign key, because the account, holding and category ids live inside `draft`
+// and a delete of one clears them there; no index, because the table is small and
+// read by primary key or in full. `draft` is typed `unknown` here (this layer must
+// not import a feature): the templates repo narrows it on read, and a draft it
+// cannot read reads as an empty one.
+export const transactionTemplates = sqliteTable('transaction_templates', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  draft: text('draft', { mode: 'json' }).$type<unknown>().notNull(),
+  createdAt: integer('created_at').notNull().default(sql`(unixepoch() * 1000)`),
+  updatedAt: integer('updated_at').notNull().default(sql`(unixepoch() * 1000)`),
+});
+
+export type TransactionTemplateRow = typeof transactionTemplates.$inferSelect;
+
 export const currencyRates = sqliteTable(
   'currency_rates',
   {
