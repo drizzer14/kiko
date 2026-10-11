@@ -19,11 +19,13 @@ import { repositoryFiles } from './test-support/repository-files';
 // a digit). A pure ALL_CAPS token is NOT skipped: a stale constant or env var is a stale name, and
 // the ones that are not ours (a plist key, a SQL keyword) sit in the exemption lists below.
 //
-// It resolves when the last dotted part is a whole word somewhere in the code corpus: every file
+// It resolves when every dotted part is a whole word somewhere in the code corpus: every file
 // under CODE_FOLDERS (ios/ included, so an Apple or native name resolves from the Swift, Obj-C,
 // plist or pbxproj that uses it) plus the root config files, as `repositoryFiles` lists them. A
-// name in a comment or a string counts as present; the check catches a name that left the tree
-// altogether, not one that survives only in a comment.
+// span with no `()` that ends in a file extension (`schema.ts`) is a file name instead: it
+// resolves when a tracked file has that base name, in any folder. A name in a comment or a string
+// counts as present; the check catches a name that left the tree altogether, not one that
+// survives only in a comment.
 //
 // A doc that names a thing that is gone writes it without backticks, so it is not a citation.
 const REPOSITORY_ROOT = join(__dirname, '..');
@@ -64,8 +66,8 @@ type ExemptionGroup = { reason: string; names: readonly string[] };
 const NON_PROJECT_NAMES: readonly ExemptionGroup[] = [
   {
     reason:
-      'react-native, react-native-sortables, RNGH, Unistyles, drizzle, a clipboard hook and ' +
-      'jest-haste-map internals (symbols and source file names) that the skill cites to explain a ' +
+      'symbols and source file names of react-native, react-native-sortables, RNGH, Unistyles, ' +
+      'drizzle, a clipboard hook and jest-haste-map internals that the skill cites to explain a ' +
       'behavior; the code never calls them',
     names: [
       'RCTModalHostViewComponentView.mm',
@@ -229,10 +231,11 @@ const corpusWords = new Set(
     .flatMap((file) => readFileSync(join(REPOSITORY_ROOT, file), 'utf8').match(/[\w$]+/g) ?? []),
 );
 
+// A call such as `response.json()` ends in an extension too, but a method is not a file.
 const resolves = (name: string): boolean => {
   const bare = name.replace(/\(\)$/, '');
 
-  return FILE_EXTENSION.test(bare)
+  return bare === name && FILE_EXTENSION.test(bare)
     ? trackedFileNames.has(bare)
     : bare.split('.').every((part) => corpusWords.has(part));
 };
@@ -306,6 +309,11 @@ describe('resolves', () => {
     expect(resolves('schema.ts')).toBe(true);
     expect(resolves('RCTKikoReminders.mm')).toBe(true);
     expect(resolves('jest.config.js')).toBe(true);
+  });
+
+  it('resolves a method call as a dotted identifier path, not a file name (POSITIVE)', () => {
+    expect(resolves('response.json()')).toBe(true);
+    expect(resolves('response.json')).toBe(false);
   });
 
   it('does not resolve a file name from the words of its parts (NEGATIVE)', () => {

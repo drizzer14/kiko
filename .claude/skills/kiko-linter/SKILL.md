@@ -2056,9 +2056,13 @@ config files, minus the test file itself. It shares the span reader
 with cited-paths (`__tests__/test-support/markdown-code-spans.ts`, so a
 fenced block is skipped). A path, command, flag, call with arguments,
 rule id and a commit sha (7 to 40 hex digits with a digit) are not
-identifier spans. Known limit: a name that survives only in a comment or a
-string still resolves, so the check catches a name that left the tree
-entirely, not a dead one. To fix a failure: when the symbol was renamed, name the new
+identifier spans. A span with `()` is never a file name
+(`response.json()` is a member path). Known limits: a name that survives
+only in a comment or a string still resolves, so the check catches a name
+that left the tree entirely, not a dead one; and a file name matches any
+tracked file with that base name in any folder (`index.ts` always resolves,
+and a deleted file still resolves while another folder has one with the same
+base name). To fix a failure: when the symbol was renamed, name the new
 one; when it is gone, write the sentence without backticks (the cited-paths
 rule). An entry in the test's two exemption lists (non-project names, and
 bad-name examples exempt per skill file and name) is only for a

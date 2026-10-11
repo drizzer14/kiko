@@ -1947,7 +1947,8 @@ NBU → bundled fiat seed), the `price_points` table, and `PriceBook`.
 - BTC price: CoinGecko free API, quoted in USD; derive other pairs
   from it. No offline seed for crypto; an unrated crypto holding is
   excluded until a live CoinGecko price lands.
-- Store live results in `CurrencyRate`. Refresh on sync, throttled to
+- Store live results in the `currencyRates` table (row type `CurrencyRateRow`,
+  `src/db/schema.ts`). Refresh on sync, throttled to
   respect each provider's own cache window — do not poll faster than
   the upstream cache refreshes.
 

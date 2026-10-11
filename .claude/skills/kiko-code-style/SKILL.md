@@ -658,11 +658,14 @@ one validation model — don't hand-roll a different one:
   component (`src/design-system/components/field-error/`), not a
   hand-rolled `Box`+`Text` caption — see that component's own doc
   comment for the rationale.
-- The shared attempted-submit flag is its own piece of state (`attemptedSave` in every
-  Kiko form), set true only after a failed submit attempt, so a
+- The shared attempted-submit flag is its own piece of state (`attemptedSave` in the forms under
+  `src/screens/forms/`; the connect fields and the import screens keep their own: `showTokenRequiredError`
+  in `monobank-connect-field.component.tsx`, `attemptedConnect` in
+  `binance-credentials-field.component.tsx`, `attemptedImport` in `column-mapping.screen.tsx` and
+  `statement-import.screen.tsx`), set true only after a failed submit attempt, so a
   fresh form shows no error before the user has tried to save.
 - Every field's error is computed from ONLY that field's own inputs,
-  gated by the shared attempted-submit flag — never by comparing
+  gated by that form's attempted-submit flag — never by comparing
   against a single shared "first failing field" reason. That shape
   hides every error but one until the fields ahead of it are fixed one
   at a time, and un-hides the next one instead of clearing once fixed.
