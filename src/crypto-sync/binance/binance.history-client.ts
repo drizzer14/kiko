@@ -45,6 +45,9 @@ const optionalText: Reader<string | undefined> = (value) =>
 const finiteNumber: Reader<number> = (value) =>
   typeof value === 'number' && Number.isFinite(value) ? value : parseFailure();
 
+const optionalFiniteNumber: Reader<number | undefined> = (value) =>
+  typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+
 const integer: Reader<number> = (value) =>
   typeof value === 'number' && Number.isSafeInteger(value) ? value : parseFailure();
 
@@ -333,12 +336,13 @@ export type PayHistoryPage = HistoryPage<BinancePayOrder> & {
 };
 
 /**
- * The Binance ids of a non-BTC order's payer and receiver; a party that names none has
- * `undefined`.
+ * The Binance ids of a non-BTC order's payer and receiver, and its time, which says where it
+ * lies in a span; a party that names none, or a time that is no finite number, has `undefined`.
  */
 export type BtcFundedOtherCoinOrder = {
   payerId: string | undefined;
   receiverId: string | undefined;
+  transactionTime: number | undefined;
 };
 
 type PayItem = {
@@ -362,7 +366,11 @@ const partyIdOf = (party: unknown): string | undefined =>
 const readOtherCoinItem = (order: Record<string, unknown>): PayItem => ({
   btcOrder: undefined,
   btcFunded: paidWithBtc(order.fundsDetail)
-    ? { payerId: partyIdOf(order.payerInfo), receiverId: partyIdOf(order.receiverInfo) }
+    ? {
+        payerId: partyIdOf(order.payerInfo),
+        receiverId: partyIdOf(order.receiverInfo),
+        transactionTime: optionalFiniteNumber(order.transactionTime),
+      }
     : undefined,
 });
 

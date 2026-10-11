@@ -17,11 +17,11 @@ import {
   BinanceWalkStop,
   btcSatoshis,
   halfOf,
-  logWalkStop,
   planWalkPasses,
   readPendingMark,
   resolveWalletHoldings,
   runWalkPlan,
+  type SpanCommit,
   type SpanRead,
   type WalkMarkFields,
   type WalkMarks,
@@ -48,6 +48,7 @@ import {
 } from './binance.history-client';
 import { type BinanceCredentials, readCredentials } from './binance.credentials';
 import { isBinanceCoolingDown, setBinanceCooldownUntil } from './binance.cooldown';
+import { commitSettledSpan, instantAt, settleRecords } from './binance.history-records';
 import { BINANCE_ASSET, BinanceRateLimitError, type FetchAccountOptions } from './binance.client';
 import { type BinanceWalletKey, binanceKeyOf, FUNDING_KEY, SPOT_KEY } from './binance.holding-keys';
 
@@ -437,51 +438,76 @@ const placeRows = async (
 };
 
 /**
- * Commit one span: plan and place its rows, write them, then move the walk's mark (rows
- * first, mark second, so a crash between the two just re-imports idempotently). A record
- * the walk cannot trust is a `BinanceWalkStop`, logged and answered as `undefined`, which
- * leaves the span uncommitted. Returns the rows imported.
+ * A withdrawal's `applyTime` has a precision of one second: the record sits somewhere in the
+ * second its time starts, which is the ground one stuck withdrawal owes.
  */
-const commitSpan = async (
+const APPLY_TIME_PRECISION_MS = 1_000;
+
+type SpanRecord =
+  | { kind: 'deposit'; record: BinanceDeposit }
+  | { kind: 'withdraw'; record: BinanceWithdrawal };
+
+const plannedOf = (accountId: string, entry: SpanRecord): PlannedRow[] =>
+  match(entry)
+    .returnType<(PlannedRow | null)[]>()
+    .with({ kind: 'deposit' }, ({ record }) => [plannedDepositOf(accountId, record)])
+    .with({ kind: 'withdraw' }, ({ record }) => [plannedWithdrawalOf(accountId, record)])
+    .exhaustive()
+    .filter((row): row is PlannedRow => row !== null);
+
+/** The milliseconds a record may sit in: its time, or the whole second of a withdrawal's. */
+const extentOf = (entry: SpanRecord): WalkWindow | undefined =>
+  match(entry)
+    .returnType<WalkWindow | undefined>()
+    .with({ kind: 'deposit' }, ({ record }) => instantAt(record.insertTime))
+    .with({ kind: 'withdraw' }, ({ record }) => {
+      const time = parseWithdrawTime(record.applyTime);
+
+      return { start: time, end: time + APPLY_TIME_PRECISION_MS - 1 };
+    })
+    .exhaustive();
+
+/**
+ * Commit one span: place and write the rows of the records the walk can trust, then move the
+ * walk's marks (see `commitSettledSpan`: rows first, marks second, so a crash between the two
+ * just re-imports idempotently, and a record the walk cannot trust stays owed at its own point,
+ * or stops the forward pass).
+ */
+const commitSpan = (
   context: WindowContext,
   span: WalkWindow,
   records: SpanRecords,
   pass: WalkPass,
-): Promise<number | undefined> => {
+): Promise<SpanCommit | undefined> => {
   const { deps, accountId, spot, plan, marks } = context;
-  let rows: BinanceTransactionRow[];
 
-  try {
-    const planned = [
-      ...records.deposits.map((record) => plannedDepositOf(accountId, record)),
-      ...records.withdrawals.map((record) => plannedWithdrawalOf(accountId, record)),
-    ].filter((row): row is PlannedRow => row !== null);
-
-    rows = await placeRows(context, planned);
-  } catch (error) {
-    if (error instanceof BinanceWalkStop) {
-      logWalkStop(error.code);
-
-      return undefined;
-    }
-
-    throw error;
-  }
-
-  const imported = rows.length > 0 ? await deps.addTransactions(rows) : 0;
-
-  await advanceWalkMarks({
+  return commitSettledSpan({
     pass,
     span,
-    plan,
-    marks,
-    restartMs: HISTORY_FLOOR_MS,
-    fields: CAPITAL_MARK_FIELDS,
-    write: (field, cursorMs) => deps.writeWalkCursor(spot.id, field, cursorMs),
-    writePending: (field, ranges) => deps.writeWalkPending(spot.id, field, ranges),
+    settled: settleRecords({
+      span,
+      records: [
+        ...records.deposits.map((record): SpanRecord => ({ kind: 'deposit', record })),
+        ...records.withdrawals.map((record): SpanRecord => ({ kind: 'withdraw', record })),
+      ],
+      rowsOf: (entry) => plannedOf(accountId, entry),
+      extentOf,
+    }),
+    place: (planned) => placeRows(context, planned),
+    add: deps.addTransactions,
+    advance: (owed) =>
+      advanceWalkMarks({
+        pass,
+        span,
+        owed,
+        plan,
+        marks,
+        restartMs: HISTORY_FLOOR_MS,
+        fields: CAPITAL_MARK_FIELDS,
+        write: (field, cursorMs) => deps.writeWalkCursor(spot.id, field, cursorMs),
+        writePending: (field, ranges) => deps.writeWalkPending(spot.id, field, ranges),
+      }),
   });
-
-  return imported;
 };
 
 const runSync = async (
@@ -549,7 +575,6 @@ const runSync = async (
         window,
         read: (span, keepCalls) => readSpan(context, span, keepCalls),
         commit: (span, records) => commitSpan(context, span, records, pass),
-        pass,
         keep,
       }),
   });

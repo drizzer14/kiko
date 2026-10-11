@@ -23,13 +23,14 @@ import {
   advanceWalkMarks,
   BinanceWalkStop,
   btcSatoshis,
+  halfOf,
   logWalkStop,
   planWalkPasses,
   readPendingMark,
   resolveWalletHoldings,
   runWalkPlan,
+  type SpanCommit,
   type SpanRead,
-  splitOrStop,
   type WalkMarkFields,
   type WalkMarks,
   walkSpans,
@@ -57,6 +58,13 @@ import {
   PAY_PAGE_LIMIT,
   type PayHistoryPage,
 } from './binance.history-client';
+import {
+  commitSettledSpan,
+  instantAt,
+  joinSettled,
+  settleRecords,
+  stuckSpanOf,
+} from './binance.history-records';
 import { type BinanceHistoryRun, COSTS } from './binance.history-budget';
 import { type BinanceCredentials, readCredentials } from './binance.credentials';
 import { isBinanceCoolingDown, setBinanceCooldownUntil } from './binance.cooldown';
@@ -498,14 +506,9 @@ const fetchSpan = async (
   }
 };
 
-/** One row per key: an order on the boundary of two spans is read twice. */
-const plannedRowsOf = (context: PayContext, orders: BinancePayOrder[]): PlannedPayRow[] => {
-  const planned = orders.flatMap((order) =>
-    payRowsOf({ accountId: context.accountId, order, uid: context.uid }),
-  );
-
-  return [...new Map(planned.map((row) => [row.externalId, row])).values()];
-};
+const uniqueRowsOf = (planned: PlannedPayRow[]): PlannedPayRow[] => [
+  ...new Map(planned.map((row) => [row.externalId, row])).values(),
+];
 
 const walletsOf = (rows: PlannedPayRow[]): BinanceWalletKey[] => [
   ...new Set(rows.map((row) => row.wallet)),
@@ -548,62 +551,76 @@ const isReceivedBy = (uid: string, funded: BtcFundedOtherCoinOrder): boolean =>
   funded.receiverId === uid && funded.payerId !== uid;
 
 /**
- * Commit one span's page: plan and place its rows, write them, then move the walk's mark
- * (rows first, mark second, so a crash between the two just re-imports idempotently). BTC
- * that the user paid for an order of another coin is a BTC movement with no row rule yet,
- * so committing past it would lose the movement for good: a `BinanceWalkStop` leaves the
- * span uncommitted, as it does for any row the walk cannot trust. Returns the rows imported.
+ * The order of another coin that the user paid with BTC funds is a BTC movement with no row
+ * rule yet (user ruling A2), so it is a stop that owes the order's own point: the BTC rows of
+ * the span still import, and the forward pass, which cannot pass it, stops.
  */
-const commitSpan = async (
-  context: PayContext,
-  span: WalkWindow,
-  page: PayHistoryPage,
-  pass: WalkPass,
-): Promise<number> => {
-  if (page.btcFundedOtherCoinOrders.some((funded) => !isReceivedBy(context.uid, funded))) {
-    throw new BinanceWalkStop('pay-btc-funded-other-coin');
+const stopOnBtcPaidOrder = (uid: string, funded: BtcFundedOtherCoinOrder): PlannedPayRow[] => {
+  if (isReceivedBy(uid, funded)) {
+    return [];
   }
 
-  const rows = await placeRows(context, plannedRowsOf(context, page.rows));
-  let imported = 0;
-
-  if (rows.length > 0) {
-    imported = await context.deps.addTransactions(rows);
-  }
-
-  const { deps, spot, plan, marks } = context;
-  await advanceWalkMarks({
-    pass,
-    span,
-    plan,
-    marks,
-    restartMs: HISTORY_FLOOR_MS,
-    fields: PAY_MARK_FIELDS,
-    write: (field, cursorMs) => deps.writeWalkCursor(spot.id, field, cursorMs),
-    writePending: (field, ranges) => deps.writeWalkPending(spot.id, field, ranges),
-  });
-
-  return imported;
+  throw new BinanceWalkStop('pay-btc-funded-other-coin');
 };
 
-/** `commitSpan`, with a row the walk cannot trust logged and answered as `undefined`. */
-const commitOrStop = async (
+/**
+ * The orders of one page, each on its own (see `settleRecords`). A page that is still full once
+ * its span cannot be halved (one millisecond) may hold more orders than it shows: that is no one
+ * order's stop, so the whole span is owed.
+ */
+const settledOrdersOf = (context: PayContext, span: WalkWindow, page: PayHistoryPage) =>
+  joinSettled(span, [
+    ...(page.gathered >= PAY_PAGE_LIMIT
+      ? [stuckSpanOf<PlannedPayRow>(span, 'pay-page-stuck')]
+      : []),
+    settleRecords({
+      span,
+      records: page.rows,
+      rowsOf: (order) => payRowsOf({ accountId: context.accountId, order, uid: context.uid }),
+      extentOf: (order) => instantAt(order.transactionTime),
+    }),
+    settleRecords({
+      span,
+      records: page.btcFundedOtherCoinOrders,
+      rowsOf: (funded) => stopOnBtcPaidOrder(context.uid, funded),
+      extentOf: (funded) => instantAt(funded.transactionTime),
+    }),
+  ]);
+
+/**
+ * Commit one span's page: place and write the rows of the orders the walk can trust, then move
+ * the walk's marks (see `commitSettledSpan`: rows first, marks second, so a crash between the
+ * two just re-imports idempotently, and an order the walk cannot trust stays owed at its own
+ * point, or stops the forward pass). One row per key: an order on the boundary of two spans is
+ * read twice.
+ */
+const commitSpan = (
   context: PayContext,
   span: WalkWindow,
   page: PayHistoryPage,
   pass: WalkPass,
-): Promise<number | undefined> => {
-  try {
-    return await commitSpan(context, span, page, pass);
-  } catch (error) {
-    if (error instanceof BinanceWalkStop) {
-      logWalkStop(error.code);
+): Promise<SpanCommit | undefined> => {
+  const { deps, spot, plan, marks } = context;
 
-      return undefined;
-    }
-
-    throw error;
-  }
+  return commitSettledSpan({
+    pass,
+    span,
+    settled: settledOrdersOf(context, span, page),
+    place: (planned) => placeRows(context, uniqueRowsOf(planned)),
+    add: deps.addTransactions,
+    advance: (owed) =>
+      advanceWalkMarks({
+        pass,
+        span,
+        owed,
+        plan,
+        marks,
+        restartMs: HISTORY_FLOOR_MS,
+        fields: PAY_MARK_FIELDS,
+        write: (field, cursorMs) => deps.writeWalkCursor(spot.id, field, cursorMs),
+        writePending: (field, ranges) => deps.writeWalkPending(spot.id, field, ranges),
+      }),
+  });
 };
 
 /**
@@ -623,8 +640,10 @@ const readSpan = async (
     return undefined;
   }
 
-  return page.gathered >= PAY_PAGE_LIMIT
-    ? splitOrStop(span, 'pay-page-stuck')
+  const half = halfOf(span);
+
+  return page.gathered >= PAY_PAGE_LIMIT && half !== undefined
+    ? { kind: 'split', half }
     : { kind: 'page', page };
 };
 
@@ -731,8 +750,7 @@ const runSync = async (
       walkSpans({
         window,
         read: (span, keepCalls) => readSpan(context, span, keepCalls),
-        commit: (span, page) => commitOrStop(context, span, page, pass),
-        pass,
+        commit: (span, page) => commitSpan(context, span, page, pass),
         keep,
       }),
   });

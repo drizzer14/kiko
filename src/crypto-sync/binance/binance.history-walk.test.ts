@@ -14,8 +14,8 @@ import {
   rescanCursorAfter,
   resolveWalletHoldings,
   runWalkPlan,
+  type SpanCommit,
   type SpanRead,
-  splitOrStop,
   type WalkMarks,
   type WalkResult,
   walkSpans,
@@ -231,58 +231,162 @@ describe('planWalkPasses', () => {
       expect(pendingRanges).toEqual([...stored, day]);
     });
 
-    it('merges the two nearest of the newest ranges past twelve, so no ground is lost and the oldest stay as they are', () => {
-      const stored = storedRanges(13);
+    it('merges the two nearest ranges past twelve into their hull, so no ground is lost', () => {
+      const stored = storedRanges(13).map((range, index) =>
+        index >= 7 ? { start: range.start - 5 * DAY_MS, end: range.end - 5 * DAY_MS } : range,
+      );
 
       const { pendingRanges } = planWalkPasses({ ...input, cursor, pending: stored });
 
       expect(pendingRanges).toEqual([
-        ...stored.slice(0, 11),
-        { start: stored[11].start, end: stored[12].end },
+        ...stored.slice(0, 6),
+        { start: stored[6].start, end: stored[7].end },
+        ...stored.slice(8),
         day,
       ]);
     });
 
-    it('never merges a span of 2 ms or less, and does not count it against the twelve', () => {
-      const stored = storedRanges(12);
-      const isolated = Array.from({ length: 5 }, (_unused, index) => {
-        const start = stored[index].end + 3 * DAY_MS;
+    describe('with points, the ground of one record each', () => {
+      const pointAt = (time: number): WalkWindow => ({ start: time, end: time + 1 });
+      const secondAt = (time: number): WalkWindow => ({ start: time, end: time + 999 });
+      const pointsAmong = (ranges: WalkWindow[]): WalkWindow[] =>
+        ranges.filter((range) => range.end - range.start <= 1_000);
 
-        return { start, end: start + 2 };
+      it('never merges a point, and does not count it against the twelve', () => {
+        const stored = storedRanges(12);
+        const points = Array.from({ length: 5 }, (_unused, index) =>
+          pointAt(stored[index].end + 3 * DAY_MS),
+        );
+
+        const { pendingRanges } = planWalkPasses({
+          ...input,
+          cursor,
+          pending: [...stored, ...points],
+        });
+
+        expect(pendingRanges).toHaveLength(12 + 5 + 1);
+        expect(pointsAmong(pendingRanges)).toEqual(points);
       });
 
-      const { pendingRanges } = planWalkPasses({
-        ...input,
-        cursor,
-        pending: [...stored, ...isolated],
+      it('keeps a point that lies between two ranges that must merge, beside their hull', () => {
+        const stored = storedRanges(13).map((range, index) =>
+          index === 12 ? { start: range.start - 6 * DAY_MS, end: range.end - 6 * DAY_MS } : range,
+        );
+        const between = pointAt(stored[11].end + DAY_MS);
+
+        const { pendingRanges } = planWalkPasses({
+          ...input,
+          cursor,
+          pending: [...stored, between],
+        });
+
+        expect(pendingRanges).toEqual([
+          ...stored.slice(0, 11),
+          { start: stored[11].start, end: stored[12].end },
+          between,
+          day,
+        ]);
       });
 
-      expect(pendingRanges).toHaveLength(12 + 5 + 1);
-      expect(
-        isolated.every((span) =>
-          pendingRanges.some(
-            (range) => range === span || (range.start === span.start && range.end === span.end),
-          ),
-        ),
-      ).toBe(true);
-    });
+      it('keeps a point of a second, as a withdrawal owes, and not as a range', () => {
+        const stored = storedRanges(12);
+        const second = secondAt(stored[0].end + 3 * DAY_MS);
 
-    it('takes an isolated span into the hull when it lies between two ranges that must merge', () => {
-      const stored = storedRanges(13);
-      const between = { start: stored[11].end + 3 * DAY_MS, end: stored[11].end + 3 * DAY_MS + 1 };
+        const { pendingRanges } = planWalkPasses({
+          ...input,
+          cursor,
+          pending: [...stored, second, pointAt(stored[1].end + 3 * DAY_MS)],
+        });
 
-      const { pendingRanges } = planWalkPasses({
-        ...input,
-        cursor,
-        pending: [...stored, between],
+        expect(pendingRanges).toHaveLength(12 + 2 + 1);
+        expect(pendingRanges).toContainEqual(second);
       });
 
-      expect(
-        pendingRanges.some((range) => range.start === between.start && range.end === between.end),
-      ).toBe(false);
-      expect(
-        pendingRanges.some((range) => range.start === stored[11].start && range.end >= between.end),
-      ).toBe(true);
+      it('drops a point a range holds, and a point that repeats one', () => {
+        const stored = { start: END_MS - 150 * DAY_MS, end: END_MS - 149 * DAY_MS };
+        const inside = pointAt(stored.start + 1_000);
+        const outside = pointAt(stored.end + DAY_MS);
+
+        const { pendingRanges } = planWalkPasses({
+          ...input,
+          cursor,
+          pending: [stored, inside, outside, outside],
+        });
+
+        expect(pendingRanges).toEqual([stored, outside, day]);
+      });
+
+      it('leaves a point the re-scan covers to the re-scan, and plans no read for it', () => {
+        const inside = pointAt(END_MS - 30 * DAY_MS);
+
+        const plan = planWalkPasses({ ...input, cursor, pending: [inside] });
+
+        expect(plan.points).toEqual([]);
+        expect(plan.pending).toEqual([]);
+        expect(plan.pendingRanges).toContainEqual(inside);
+      });
+
+      it('plans a point outside the re-scan as a point to read, not as a range', () => {
+        const old = pointAt(END_MS - 150 * DAY_MS);
+
+        const plan = planWalkPasses({ ...input, cursor, pending: [old] });
+
+        expect(plan.points).toEqual([old]);
+        expect(plan.pending).toEqual([]);
+      });
+
+      it('cuts a point the floor has passed, and one past the end', () => {
+        const floorMs = END_MS - 100 * DAY_MS;
+
+        const plan = planWalkPasses({
+          ...input,
+          floorMs,
+          cursor,
+          pending: [pointAt(floorMs - 10), pointAt(END_MS + 10)],
+        });
+
+        expect(plan.points).toEqual([]);
+        expect(pointsAmong(plan.pendingRanges)).toEqual([]);
+      });
+
+      describe('read last, from a place that changes with the run', () => {
+        const points = Array.from({ length: 7 }, (_unused, index) =>
+          pointAt(END_MS - 150 * DAY_MS + index * 10 * DAY_MS),
+        );
+        const planAt = (endTime: number) =>
+          planWalkPasses({ ...input, endTime, cursor: endTime - 2 * DAY_MS, pending: points });
+
+        it('plans every point, in the stored order from one place, wrapping around', () => {
+          const plan = planAt(END_MS);
+          const first = points.findIndex((point) => point.start === plan.points[0].start);
+
+          expect(plan.points).toEqual([...points.slice(first), ...points.slice(0, first)]);
+        });
+
+        it('starts at each point in turn over runs an hour or a day apart', () => {
+          const starts = (step: number) =>
+            new Set(
+              Array.from({ length: 80 }, (_unused, run) => planAt(END_MS + run * step)).map(
+                (plan) => plan.points[0]?.start,
+              ),
+            );
+
+          expect(starts(3_600_000).size).toBe(7);
+          expect(starts(DAY_MS).size).toBe(7);
+        });
+
+        it('reads every point at the head of the order within 60 runs of any spacing', () => {
+          for (const step of [60_000, 3_600_000, DAY_MS, 7 * DAY_MS]) {
+            const seen = new Set(
+              Array.from({ length: 60 }, (_unused, run) => planAt(END_MS + run * step)).flatMap(
+                (plan) => plan.points.slice(0, 2).map((point) => point.start),
+              ),
+            );
+
+            expect(seen.size).toBe(7);
+          }
+        });
+      });
     });
 
     it('leaves a stored range the re-scan covers to the re-scan, and reads no window for it', () => {
@@ -363,6 +467,7 @@ describe('planWalkPasses', () => {
 const planOf = (over: Partial<WalkPlan> = {}): WalkPlan => ({
   forward: [],
   pending: [],
+  points: [],
   rescan: [],
   rescanEnd: 0,
   pendingRanges: [],
@@ -390,10 +495,10 @@ describe('runWalkPlan', () => {
     rescan: [window(10)],
     rescanEnd: 11,
   });
-  const ran = (imported: number, complete: boolean, stopped: WalkWindow[] = []): WindowOutcome => ({
+  const ran = (imported: number, complete: boolean, owed = false): WindowOutcome => ({
     imported,
     complete,
-    stopped,
+    owed,
   });
 
   it('runs the forward windows, then the pending windows oldest first, then the re-scan windows, and adds up what they import', async () => {
@@ -517,411 +622,165 @@ describe('runWalkPlan', () => {
     expect(result).toEqual({ imported: 0, complete: true });
   });
 
-  describe('isolating a stop in an owed range', () => {
-    const owed = { start: 0, end: 100 };
-    const STUCK_AT = 37;
-    const isolationPlan = planOf({
-      pending: [owed],
-      rescan: [{ start: 200, end: 300 }],
-      rescanEnd: 300,
-    });
-    /** Spans are read inclusive at both ends: a record on a shared millisecond is in both. */
-    const holdsStuck = (span: WalkWindow, at = STUCK_AT): boolean =>
-      span.start <= at && at <= span.end;
-
-    /** A walk whose pending spans holding the stuck record stop, as the pending pass reports. */
-    const stuckWalk = (seen: [WalkWindow, WalkPass][] = [], at = STUCK_AT) =>
-      jest.fn(async (span: WalkWindow, pass: WalkPass) => {
-        seen.push([span, pass]);
-
-        return pass === 'pending' && holdsStuck(span, at) ? ran(0, false, [span]) : ran(1, true);
-      });
-
-    const pendingSpans = (seen: [WalkWindow, WalkPass][]): WalkWindow[] =>
-      seen.filter(([, pass]) => pass === 'pending').map(([span]) => span);
-
-    it('halves a span that stopped, reading the first half and then the second, as pending windows', async () => {
-      const seen: [WalkWindow, WalkPass][] = [];
-
-      await runWalkPlan({
-        plan: isolationPlan,
-        canAfford: () => true,
-        runWindow: stuckWalk(seen),
-      });
-
-      expect(pendingSpans(seen).slice(0, 3)).toEqual([
-        { start: 0, end: 100 },
-        { start: 0, end: 50 },
-        { start: 50, end: 100 },
-      ]);
+  describe('a window that leaves ground owed', () => {
+    const rescanWindow = { start: 200, end: 300 };
+    const owedOutcome = (imported: number): WindowOutcome => ({
+      imported,
+      complete: true,
+      owed: true,
     });
 
-    it('goes on from the half that stopped, a level at a time, and leaves the half that committed', async () => {
-      const seen: [WalkWindow, WalkPass][] = [];
-
-      await runWalkPlan({
-        plan: isolationPlan,
+    it('reports the run incomplete, though every window was read to its end', async () => {
+      const result = await runWalkPlan({
+        plan: planOf({ pending: [owedWindow(5)] }),
         canAfford: () => true,
-        runWindow: stuckWalk(seen, 30),
+        runWindow: async () => owedOutcome(2),
       });
 
-      expect(pendingSpans(seen).slice(3, 7)).toEqual([
-        { start: 0, end: 25 },
-        { start: 25, end: 37 },
-        { start: 37, end: 50 },
-        { start: 25, end: 31 },
-      ]);
+      expect(result).toEqual({ imported: 2, complete: false });
     });
 
-    it('does not read the second half when the first half committed: the stop lies in the second', async () => {
+    it('goes on to the next owed window, the re-scan and the points after it', async () => {
       const seen: [WalkWindow, WalkPass][] = [];
 
-      await runWalkPlan({
-        plan: planOf({ pending: [owed] }),
+      const result = await runWalkPlan({
+        plan: planOf({
+          pending: [owedWindow(5), owedWindow(20)],
+          points: [{ start: 500, end: 501 }],
+          rescan: [rescanWindow],
+          rescanEnd: 300,
+        }),
         canAfford: () => true,
-        runWindow: stuckWalk(seen, 80),
-      });
-
-      expect(pendingSpans(seen).slice(0, 3)).toEqual([
-        { start: 0, end: 100 },
-        { start: 0, end: 50 },
-        { start: 50, end: 75 },
-      ]);
-    });
-
-    it('halves the two halves, before any other span, when both stopped: a record on the shared millisecond', async () => {
-      const seen: [WalkWindow, WalkPass][] = [];
-
-      await runWalkPlan({
-        plan: planOf({ pending: [owed, { start: 500, end: 600 }] }),
-        canAfford: () => true,
-        runWindow: stuckWalk(seen, 50),
-      });
-
-      expect(pendingSpans(seen).slice(0, 6)).toEqual([
-        { start: 0, end: 100 },
-        { start: 500, end: 600 },
-        { start: 0, end: 50 },
-        { start: 50, end: 100 },
-        { start: 0, end: 25 },
-        { start: 50, end: 75 },
-      ]);
-    });
-
-    it('trims a span of 4 ms or less from its ends, a millisecond at a time, instead of halving it', async () => {
-      const seen: [WalkWindow, WalkPass][] = [];
-
-      await runWalkPlan({
-        plan: planOf({ pending: [{ start: 0, end: 4 }] }),
-        canAfford: () => true,
-        runWindow: stuckWalk(seen, 2),
-      });
-
-      expect(pendingSpans(seen)).toEqual([
-        { start: 0, end: 4 },
-        { start: 0, end: 1 },
-        { start: 1, end: 2 },
-        { start: 3, end: 4 },
-        { start: 1, end: 2 },
-        { start: 2, end: 3 },
-      ]);
-    });
-
-    it('leaves a span of 4 ms or less as it is when both its ends hold a stuck record', async () => {
-      const seen: [WalkWindow, WalkPass][] = [];
-
-      await runWalkPlan({
-        plan: planOf({ pending: [{ start: 0, end: 4 }] }),
-        canAfford: () => true,
-        runWindow: jest.fn(async (span: WalkWindow, pass: WalkPass) => {
+        runWindow: async (span, pass) => {
           seen.push([span, pass]);
 
-          return pass === 'pending' && (holdsStuck(span, 0) || holdsStuck(span, 4))
-            ? ran(0, false, [span])
-            : ran(1, true);
-        }),
-      });
-
-      expect(pendingSpans(seen)).toEqual([
-        { start: 0, end: 4 },
-        { start: 0, end: 1 },
-        { start: 3, end: 4 },
-      ]);
-    });
-
-    it('gives every stopped span one level before any of them gets a second', async () => {
-      const seen: [WalkWindow, WalkPass][] = [];
-
-      await runWalkPlan({
-        plan: planOf({ pending: [owed, { start: 500, end: 600 }] }),
-        canAfford: () => true,
-        runWindow: jest.fn(async (span: WalkWindow, pass: WalkPass) => {
-          seen.push([span, pass]);
-
-          return pass === 'pending' && (holdsStuck(span) || holdsStuck(span, 537))
-            ? ran(0, false, [span])
-            : ran(1, true);
-        }),
-      });
-
-      expect(pendingSpans(seen).slice(0, 7)).toEqual([
-        { start: 0, end: 100 },
-        { start: 500, end: 600 },
-        { start: 0, end: 50 },
-        { start: 50, end: 100 },
-        { start: 500, end: 550 },
-        { start: 550, end: 600 },
-        { start: 0, end: 25 },
-      ]);
-    });
-
-    it('shrinks a stuck span to 2 ms or less around its record, whichever millisecond it is in', async () => {
-      const isolatedAfter = async (at: number): Promise<WalkWindow[]> => {
-        let owedRanges = [{ start: 0, end: 100 }];
-
-        for (let attempt = 0; attempt < 12; attempt += 1) {
-          await runWalkPlan({
-            plan: planOf({ pending: owedRanges }),
-            canAfford: () => true,
-            runWindow: async (span, pass) => {
-              const stopped = pass === 'pending' && holdsStuck(span, at);
-
-              owedRanges = stopped ? owedRanges : withoutRead(owedRanges, span);
-
-              return stopped ? ran(0, false, [span]) : ran(1, true);
-            },
-          });
-        }
-
-        return owedRanges;
-      };
-
-      for (const at of [0, 1, 37, 49, 50, 51, 98, 99, 100]) {
-        const left = await isolatedAfter(at);
-
-        expect(left.length).toBeGreaterThan(0);
-        expect(left.every((range) => range.end - range.start <= 2)).toBe(true);
-        expect(left.some((range) => holdsStuck(range, at))).toBe(true);
-      }
-    });
-
-    it('goes on to the re-scan once the isolation is done, and reports the run incomplete', async () => {
-      const seen: [WalkWindow, WalkPass][] = [];
-
-      const result = await runWalkPlan({
-        plan: isolationPlan,
-        canAfford: () => true,
-        runWindow: stuckWalk(seen),
-      });
-
-      expect(seen.at(-1)).toEqual([{ start: 200, end: 300 }, 'rescan']);
-      expect(result.complete).toBe(false);
-    });
-
-    it('reads every owed window once before it isolates a stop in any of them', async () => {
-      const seen: [WalkWindow, WalkPass][] = [];
-
-      await runWalkPlan({
-        plan: planOf({ pending: [owed, { start: 500, end: 600 }] }),
-        canAfford: () => true,
-        runWindow: stuckWalk(seen),
-      });
-
-      expect(pendingSpans(seen).slice(0, 3)).toEqual([
-        { start: 0, end: 100 },
-        { start: 500, end: 600 },
-        { start: 0, end: 50 },
-      ]);
-    });
-
-    it('adds up what the isolated parts import', async () => {
-      const seen: [WalkWindow, WalkPass][] = [];
-
-      const result = await runWalkPlan({
-        plan: planOf({ pending: [owed] }),
-        canAfford: () => true,
-        runWindow: stuckWalk(seen),
-      });
-
-      const committed = pendingSpans(seen).filter((span) => !holdsStuck(span));
-      expect(committed.length).toBeGreaterThan(0);
-      expect(result.imported).toBe(committed.length);
-    });
-
-    it.each([1, 2])('leaves a stopped span of %i ms alone: it cannot be halved', async (length) => {
-      const runWindow = jest.fn(async (span: WalkWindow) => ran(0, false, [span]));
-
-      const result = await runWalkPlan({
-        plan: planOf({ pending: [{ start: 37, end: 37 + length }] }),
-        canAfford: () => true,
-        runWindow,
-      });
-
-      expect(runWindow).toHaveBeenCalledTimes(1);
-      expect(result.complete).toBe(false);
-    });
-
-    it('reads no part the budget cannot afford, and goes no further', async () => {
-      let calls = 3;
-      const runWindow = stuckWalk();
-
-      const result = await runWalkPlan({
-        plan: isolationPlan,
-        canAfford: () => {
-          calls -= 1;
-
-          return calls >= 0;
+          return owedOutcome(1);
         },
-        runWindow,
       });
 
-      expect(runWindow).toHaveBeenCalledTimes(3);
-      expect(result.complete).toBe(false);
-    });
-
-    it('leaves a span as it is when the budget ends in the middle of its halving', async () => {
-      const seen: [WalkWindow, WalkPass][] = [];
-      let calls = 2;
-
-      await runWalkPlan({
-        plan: planOf({ pending: [owed] }),
-        canAfford: () => {
-          calls -= 1;
-
-          return calls >= 0;
-        },
-        runWindow: stuckWalk(seen),
-      });
-
-      expect(pendingSpans(seen)).toEqual([
-        { start: 0, end: 100 },
-        { start: 0, end: 50 },
+      expect(seen).toEqual([
+        [owedWindow(5), 'pending'],
+        [owedWindow(20), 'pending'],
+        [rescanWindow, 'rescan'],
+        [{ start: 500, end: 501 }, 'pending'],
       ]);
+      expect(result).toEqual({ imported: 4, complete: false });
     });
 
-    it('does not isolate a stop in the forward pass or the re-scan: they end the run', async () => {
-      const runWindow = jest.fn(async (span: WalkWindow) => ran(0, false, [span]));
+    it('goes on to the rest of the re-scan, which a stuck record does not end', async () => {
+      const seen: number[] = [];
 
       await runWalkPlan({
-        plan: planOf({ forward: [{ start: 0, end: 100 }] }),
+        plan: planOf({ rescan: [window(10), window(11), window(12)], rescanEnd: 13 }),
         canAfford: () => true,
-        runWindow,
+        runWindow: async (span) => {
+          seen.push(span.start);
+
+          return owedOutcome(0);
+        },
       });
 
-      expect(runWindow).toHaveBeenCalledTimes(1);
+      expect(seen).toEqual([10, 11, 12]);
     });
   });
 
-  describe('with an owed span that cannot be halved', () => {
-    /** The longest span a run leaves whole: 2 ms. */
-    const isolated = (start: number): WalkWindow => ({ start, end: start + 2 });
-    const isIsolated = (span: WalkWindow): boolean => span.end - span.start <= 2;
+  describe('with owed points', () => {
+    const pointAt = (start: number): WalkWindow => ({ start, end: start + 1 });
+    const rescanWindow = { start: 200, end: 300 };
 
-    /** A walk whose owed spans of 2 ms or less stop, and whose other windows commit. */
-    const isolatedStuckWalk = (seen: [WalkWindow, WalkPass][] = []) =>
+    /** A walk whose points stop, and whose other windows commit. */
+    const stuckPointWalk = (seen: [WalkWindow, WalkPass][] = []) =>
       jest.fn(async (span: WalkWindow, pass: WalkPass) => {
         seen.push([span, pass]);
 
-        return pass === 'pending' && isIsolated(span) ? ran(0, false, [span]) : ran(1, true);
+        return span.end - span.start === 1 ? ran(0, true, true) : ran(1, true);
       });
 
-    it('reads it after the re-scan, behind the owed windows that are not stuck', async () => {
+    it('reads them after the re-scan, behind the owed windows', async () => {
       const seen: [WalkWindow, WalkPass][] = [];
 
       await runWalkPlan({
         plan: planOf({
-          pending: [isolated(5), owedWindow(20)],
-          rescan: [{ start: 200, end: 300 }],
+          pending: [owedWindow(20)],
+          points: [pointAt(5)],
+          rescan: [rescanWindow],
           rescanEnd: 300,
         }),
         canAfford: () => true,
-        runWindow: isolatedStuckWalk(seen),
+        runWindow: stuckPointWalk(seen),
       });
 
       expect(seen).toEqual([
         [owedWindow(20), 'pending'],
-        [{ start: 200, end: 300 }, 'rescan'],
-        [isolated(5), 'pending'],
+        [rescanWindow, 'rescan'],
+        [pointAt(5), 'pending'],
       ]);
     });
 
-    it('reads the spans of a run in the order: forward, owed windows, isolation halves, re-scan, isolated spans', async () => {
+    it('reads them in the order the plan gives, each as one window', async () => {
       const seen: [WalkWindow, WalkPass][] = [];
-      const stuck = (span: WalkWindow): boolean => span.start <= 37 && 37 <= span.end;
 
       await runWalkPlan({
-        plan: planOf({
-          forward: [{ start: 1_000, end: 1_100 }],
-          pending: [{ start: 0, end: 100 }, isolated(500), { start: 600, end: 700 }],
-          rescan: [{ start: 200, end: 300 }],
-          rescanEnd: 300,
-        }),
+        plan: planOf({ points: [pointAt(9), pointAt(3), pointAt(7)] }),
         canAfford: () => true,
-        runWindow: jest.fn(async (span: WalkWindow, pass: WalkPass) => {
-          seen.push([span, pass]);
-
-          return pass === 'pending' && (stuck(span) || isIsolated(span))
-            ? ran(0, false, [span])
-            : ran(1, true);
-        }),
-      });
-
-      const rescanAt = seen.findIndex(([, pass]) => pass === 'rescan');
-      const halves = seen.slice(3, rescanAt);
-      expect(seen.slice(0, 3)).toEqual([
-        [{ start: 1_000, end: 1_100 }, 'forward'],
-        [{ start: 0, end: 100 }, 'pending'],
-        [{ start: 600, end: 700 }, 'pending'],
-      ]);
-      expect(halves.length).toBeGreaterThan(0);
-      expect(halves.every(([span, pass]) => pass === 'pending' && span.end <= 100)).toBe(true);
-      expect(seen.slice(rescanAt)).toEqual([
-        [{ start: 200, end: 300 }, 'rescan'],
-        [isolated(500), 'pending'],
-      ]);
-    });
-
-    it('goes on to the next isolated span after one that stopped, and reports the run incomplete', async () => {
-      const seen: [WalkWindow, WalkPass][] = [];
-
-      const result = await runWalkPlan({
-        plan: planOf({ pending: [isolated(5), isolated(9)] }),
-        canAfford: () => true,
-        runWindow: isolatedStuckWalk(seen),
+        runWindow: stuckPointWalk(seen),
       });
 
       expect(seen).toEqual([
-        [isolated(5), 'pending'],
-        [isolated(9), 'pending'],
+        [pointAt(9), 'pending'],
+        [pointAt(3), 'pending'],
+        [pointAt(7), 'pending'],
       ]);
+    });
+
+    it('goes on to the next point after one that is still stuck, and reports the run incomplete', async () => {
+      const result = await runWalkPlan({
+        plan: planOf({ points: [pointAt(5), pointAt(9)] }),
+        canAfford: () => true,
+        runWindow: stuckPointWalk(),
+      });
+
       expect(result).toEqual({ imported: 0, complete: false });
     });
 
-    it('reads no isolated span once the re-scan has used the budget, and reports the run incomplete', async () => {
+    it('reads no point once the re-scan has used the budget, and reports the run incomplete', async () => {
       let calls = 1;
       const seen: [WalkWindow, WalkPass][] = [];
 
       const result = await runWalkPlan({
-        plan: planOf({
-          pending: [isolated(5)],
-          rescan: [{ start: 200, end: 300 }],
-          rescanEnd: 300,
-        }),
+        plan: planOf({ points: [pointAt(5)], rescan: [rescanWindow], rescanEnd: 300 }),
         canAfford: () => {
           calls -= 1;
 
           return calls >= 0;
         },
-        runWindow: isolatedStuckWalk(seen),
+        runWindow: stuckPointWalk(seen),
       });
 
-      expect(seen).toEqual([[{ start: 200, end: 300 }, 'rescan']]);
+      expect(seen).toEqual([[rescanWindow, 'rescan']]);
       expect(result.complete).toBe(false);
     });
 
-    it('imports an isolated span that has become readable and reports the run complete', async () => {
+    it('reads as many points as the calls that are left allow, and no more', async () => {
+      let calls = 2;
+      const seen: [WalkWindow, WalkPass][] = [];
+
+      await runWalkPlan({
+        plan: planOf({ points: [pointAt(1), pointAt(2), pointAt(3)] }),
+        canAfford: () => {
+          calls -= 1;
+
+          return calls >= 0;
+        },
+        runWindow: stuckPointWalk(seen),
+      });
+
+      expect(seen.map(([span]) => span.start)).toEqual([1, 2]);
+    });
+
+    it('imports a point that has become readable and reports the run complete', async () => {
       const result = await runWalkPlan({
-        plan: planOf({ pending: [isolated(5)] }),
+        plan: planOf({ points: [pointAt(5)] }),
         canAfford: () => true,
         runWindow: async () => ran(1, true),
       });
@@ -929,15 +788,11 @@ describe('runWalkPlan', () => {
       expect(result).toEqual({ imported: 1, complete: true });
     });
 
-    it('still reads the isolated spans after a re-scan window that stopped', async () => {
+    it('still reads the points after a re-scan window that did not finish', async () => {
       const seen: [WalkWindow, WalkPass][] = [];
 
       await runWalkPlan({
-        plan: planOf({
-          pending: [isolated(5)],
-          rescan: [{ start: 200, end: 300 }],
-          rescanEnd: 300,
-        }),
+        plan: planOf({ points: [pointAt(5)], rescan: [rescanWindow], rescanEnd: 300 }),
         canAfford: () => true,
         runWindow: jest.fn(async (span: WalkWindow, pass: WalkPass) => {
           seen.push([span, pass]);
@@ -946,13 +801,13 @@ describe('runWalkPlan', () => {
         }),
       });
 
-      expect(seen.at(-1)).toEqual([isolated(5), 'pending']);
+      expect(seen.at(-1)).toEqual([pointAt(5), 'pending']);
     });
   });
 
   describe('the calls a run keeps for later', () => {
     const owedAt = (start: number): WalkWindow => ({ start, end: start + 100 });
-    const isolatedAt = (start: number): WalkWindow => ({ start, end: start + 2 });
+    const pointAt = (start: number): WalkWindow => ({ start, end: start + 1 });
     const rescanWindow = { start: 200, end: 300 };
 
     /** A lane budget of `calls` reads: a read is affordable when `keep` more would still fit. */
@@ -971,7 +826,6 @@ describe('runWalkPlan', () => {
     const keepsOf = async (
       walkPlan: WalkPlan,
       calls: number,
-      stops: (span: WalkWindow) => boolean,
     ): Promise<{ seen: [WalkWindow, WalkPass, number][]; result: WalkResult }> => {
       const budget = budgetOf(calls);
       const seen: [WalkWindow, WalkPass, number][] = [];
@@ -983,85 +837,55 @@ describe('runWalkPlan', () => {
           budget.spend();
           seen.push([span, pass, keep]);
 
-          return pass === 'pending' && stops(span) ? ran(0, false, [span]) : ran(1, true);
+          return ran(1, true);
         },
       });
 
       return { seen, result };
     };
 
-    it('keeps no call in the forward pass, one for the re-scan in the owed windows, and none in the re-scan', async () => {
+    it('keeps no call in the forward pass, one for the re-scan in the owed windows, and none in the re-scan or the points', async () => {
       const { seen } = await keepsOf(
         planOf({
           forward: [window(0)],
           pending: [owedAt(500)],
+          points: [pointAt(900)],
           rescan: [rescanWindow],
           rescanEnd: 300,
         }),
         20,
-        () => false,
       );
 
       expect(seen).toEqual([
         [window(0), 'forward', 0],
         [owedAt(500), 'pending', 1],
         [rescanWindow, 'rescan', 0],
+        [pointAt(900), 'pending', 0],
       ]);
     });
 
     it('keeps no call for a re-scan the plan does not have', async () => {
-      const { seen } = await keepsOf(planOf({ pending: [owedAt(500)] }), 20, () => false);
+      const { seen } = await keepsOf(planOf({ pending: [owedAt(500)] }), 20);
 
       expect(seen).toEqual([[owedAt(500), 'pending', 0]]);
     });
 
-    it('keeps four more calls for halving once an owed window has stopped', async () => {
-      const { seen } = await keepsOf(
-        planOf({ pending: [owedAt(500), owedAt(700)], rescan: [rescanWindow], rescanEnd: 300 }),
-        40,
-        (span) => span.start === 500,
-      );
-
-      expect(seen.slice(0, 2)).toEqual([
-        [owedAt(500), 'pending', 1],
-        [owedAt(700), 'pending', 5],
-      ]);
-    });
-
-    it('halves with the calls above the one the re-scan keeps, and reads the isolated spans with none', async () => {
-      const { seen } = await keepsOf(
-        planOf({ pending: [owedAt(500), isolatedAt(900)], rescan: [rescanWindow], rescanEnd: 300 }),
-        40,
-        (span) => span.start === 500 || span.end - span.start <= 2,
-      );
-
-      const halves = seen.filter(
-        ([span, pass]) => pass === 'pending' && span.start >= 500 && span.end <= 600,
-      );
-      expect(halves.length).toBeGreaterThan(1);
-      expect(halves.slice(1).every(([, , keep]) => keep === 1)).toBe(true);
-      expect(seen.at(-1)).toEqual([isolatedAt(900), 'pending', 0]);
-    });
-
-    it('leaves the owed windows unread that the calls it keeps do not allow, and still halves and reads the re-scan', async () => {
-      const stuckStarts = [0, 500, 700, 900];
-
+    it('leaves the owed windows unread that the call it keeps does not allow, and reads the re-scan', async () => {
       const { seen, result } = await keepsOf(
         planOf({
-          pending: stuckStarts.map(owedAt),
+          pending: [0, 500, 700, 900].map(owedAt),
+          points: [pointAt(1_100)],
           rescan: [rescanWindow],
           rescanEnd: 300,
         }),
-        7,
-        (span) => stuckStarts.includes(span.start) && span.end - span.start === 100,
+        3,
       );
 
-      const firstReads = seen
-        .filter(([span, pass]) => pass === 'pending' && span.end - span.start === 100)
-        .map(([span]) => span.start);
-      expect(firstReads).toEqual([0, 500]);
-      expect(seen.filter(([, pass]) => pass === 'rescan')).toHaveLength(1);
-      expect(seen.some(([span]) => span.end - span.start === 50)).toBe(true);
+      expect(seen.map(([span, pass]) => [span.start, pass])).toEqual([
+        [0, 'pending'],
+        [500, 'pending'],
+        [200, 'rescan'],
+      ]);
       expect(result.complete).toBe(false);
     });
   });
@@ -1187,12 +1011,14 @@ describe('advanceWalkMarks', () => {
     span: WalkWindow,
     marks: WalkMarks,
     walkPlan: WalkPlan = plan,
+    owed: WalkWindow[] = [],
   ) => {
     const writes: Write[] = [];
 
     await advanceWalkMarks({
       pass,
       span,
+      owed,
       plan: walkPlan,
       marks,
       restartMs: RESTART_MS,
@@ -1294,12 +1120,12 @@ describe('advanceWalkMarks', () => {
       ]);
     });
 
-    it('takes the read ground out of the list when a re-scan span commits, after the mark', async () => {
+    it('takes the read ground out of the list when a re-scan span commits, before the mark', async () => {
       const marks = markOf({ cursor: 900, rescanCursor: 50, pending: [day] });
 
       expect(await advance('rescan', { start: 50, end: 85 }, marks, planned)).toEqual([
-        [RESCAN_FIELD, 85],
         [PENDING_FIELD, [{ start: 85, end: 100 }]],
+        [RESCAN_FIELD, 85],
       ]);
       expect(marks.pending).toEqual([{ start: 85, end: 100 }]);
     });
@@ -1308,9 +1134,67 @@ describe('advanceWalkMarks', () => {
       const marks = markOf({ cursor: 900, rescanCursor: 85, pending: [{ start: 85, end: 100 }] });
 
       expect(await advance('rescan', { start: 85, end: 1_000 }, marks, planned)).toEqual([
-        [RESCAN_FIELD, RESTART_MS],
         [PENDING_FIELD, []],
+        [RESCAN_FIELD, RESTART_MS],
       ]);
+    });
+
+    describe('with ground the span could not commit', () => {
+      const point = { start: 80, end: 81 };
+
+      it('puts the points back in the same write that takes the read ground out, in a pending span', async () => {
+        const marks = markOf({ cursor: 900, pending: [day] });
+
+        expect(await advance('pending', { start: 70, end: 100 }, marks, planned, [point])).toEqual([
+          [PENDING_FIELD, [point]],
+        ]);
+        expect(marks.pending).toEqual([point]);
+      });
+
+      it('writes no list when the span owes exactly the ground it read', async () => {
+        const marks = markOf({ cursor: 900, pending: [point] });
+
+        expect(await advance('pending', point, marks, planned, [point])).toEqual([]);
+      });
+
+      it('puts the points back before the mark moves in a re-scan span, so a stuck record is never passed unowed', async () => {
+        const marks = markOf({ cursor: 900, rescanCursor: 50, pending: [] });
+
+        expect(await advance('rescan', { start: 50, end: 90 }, marks, planned, [point])).toEqual([
+          [PENDING_FIELD, [point]],
+          [RESCAN_FIELD, 90],
+        ]);
+      });
+
+      describe('beside a range that is longer than a point', () => {
+        const range = { start: 10_000, end: 50_000 };
+        const span = { start: 10_000, end: 30_000 };
+
+        it('keeps a point beside what is left of the range, and never merges the two', async () => {
+          const marks = markOf({ cursor: 90_000, pending: [range] });
+          const inSpan = { start: 20_000, end: 20_001 };
+
+          await advance('pending', span, marks, planned, [inSpan]);
+
+          expect(marks.pending).toEqual([inSpan, { start: 30_000, end: 50_000 }]);
+        });
+
+        it('puts the whole span back, joined to what is left, when that is what is owed', async () => {
+          const marks = markOf({ cursor: 90_000, pending: [range] });
+
+          await advance('pending', span, marks, planned, [span]);
+
+          expect(marks.pending).toEqual([range]);
+        });
+      });
+
+      it('owes nothing for a forward span, whose cursor a stuck record stops instead', async () => {
+        const marks = markOf({ cursor: 100 });
+
+        expect(await advance('forward', { start: 100, end: 400 }, marks, plan, [point])).toEqual([
+          [FORWARD_FIELD, 400],
+        ]);
+      });
     });
 
     it('takes the ground a pending span reads out of the list and moves no mark', async () => {
@@ -1453,26 +1337,6 @@ describe('readPendingMark', () => {
   });
 });
 
-describe('splitOrStop', () => {
-  it('is the first half of a span as the span to read instead', () => {
-    expect(splitOrStop({ start: 100, end: 110 }, 'test-page-stuck')).toEqual({
-      kind: 'split',
-      half: { start: 100, end: 105 },
-    });
-  });
-
-  it('logs the stuck code and gives nothing for a span of one millisecond, which cannot be split', () => {
-    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
-
-    expect(splitOrStop({ start: 100, end: 101 }, 'test-page-stuck')).toBeUndefined();
-    expect(warn).toHaveBeenCalledWith('[binance sync] history window stopped', {
-      name: 'BinanceWalkStop',
-      code: 'test-page-stuck',
-    });
-    warn.mockRestore();
-  });
-});
-
 describe('walkSpans', () => {
   const window = { start: 0, end: 100 };
   const WIDEST_PAGE = 25;
@@ -1482,21 +1346,21 @@ describe('walkSpans', () => {
     jest.fn(
       async (span: WalkWindow, _keep?: number): Promise<SpanRead<WalkWindow> | undefined> =>
         span.end - span.start > WIDEST_PAGE
-          ? splitOrStop(span, 'test-page-stuck')
+          ? { kind: 'split', half: halfOf(span) as WalkWindow }
           : { kind: 'page', page: span },
     );
 
-  const commitCount = (count: number, committed: WalkWindow[] = []) =>
-    jest.fn(async (span: WalkWindow, _page: WalkWindow): Promise<number | undefined> => {
+  const commitCount = (count: number, committed: WalkWindow[] = [], owed = false) =>
+    jest.fn(async (span: WalkWindow, _page: WalkWindow): Promise<SpanCommit | undefined> => {
       committed.push(span);
 
-      return count;
+      return { imported: count, owed };
     });
 
   it('halves a span the read finds too full, then reads on from where the commit ended, twice as wide', async () => {
     const read = readByWidth();
 
-    await walkSpans({ window, read, commit: commitCount(1), pass: 'forward' });
+    await walkSpans({ window, read, commit: commitCount(1) });
 
     expect(read.mock.calls.slice(0, 4).map(([span]) => span)).toEqual([
       { start: 0, end: 100 },
@@ -1510,8 +1374,8 @@ describe('walkSpans', () => {
     const kept = readByWidth();
     const byDefault = readByWidth();
 
-    await walkSpans({ window, read: kept, commit: commitCount(1), pass: 'pending', keep: 3 });
-    await walkSpans({ window, read: byDefault, commit: commitCount(1), pass: 'pending' });
+    await walkSpans({ window, read: kept, commit: commitCount(1), keep: 3 });
+    await walkSpans({ window, read: byDefault, commit: commitCount(1) });
 
     expect(kept.mock.calls.length).toBeGreaterThan(1);
     expect(kept.mock.calls.every(([, keep]) => keep === 3)).toBe(true);
@@ -1525,7 +1389,6 @@ describe('walkSpans', () => {
       window,
       read: readByWidth(),
       commit: commitCount(2, committed),
-      pass: 'forward',
     });
 
     expect(committed).toEqual([
@@ -1534,17 +1397,21 @@ describe('walkSpans', () => {
       { start: 50, end: 75 },
       { start: 75, end: 100 },
     ]);
-    expect(result).toEqual({ imported: 8, complete: true, stopped: [] });
+    expect(result).toEqual({ imported: 8, complete: true, owed: false });
   });
 
   it('hands the commit the page the read gave for that span', async () => {
-    const commit = jest.fn(async (_span: WalkWindow, _page: string) => 0);
+    const commit = jest.fn(
+      async (_span: WalkWindow, _page: string): Promise<SpanCommit> => ({
+        imported: 0,
+        owed: false,
+      }),
+    );
 
     await walkSpans({
       window: { start: 0, end: 10 },
       read: async () => ({ kind: 'page', page: 'the page' }),
       commit,
-      pass: 'forward',
     });
 
     expect(commit).toHaveBeenCalledWith({ start: 0, end: 10 }, 'the page');
@@ -1564,122 +1431,61 @@ describe('walkSpans', () => {
       window,
       read,
       commit: commitCount(3, committed),
-      pass: 'forward',
     });
 
     expect(read).toHaveBeenCalledTimes(3);
     expect(committed).toEqual([half]);
-    expect(result).toEqual({ imported: 3, complete: false, stopped: [] });
+    expect(result).toEqual({ imported: 3, complete: false, owed: false });
   });
 
-  it.each(['forward', 'rescan'] as const)(
-    'stops the %s pass, reading no further span, when the commit gives up',
-    async (pass) => {
-      const read = readByWidth();
-      const commit = jest.fn(async () => undefined);
+  it('stops, reading no further span, when the commit gives up', async () => {
+    const read = readByWidth();
+    const commit = jest.fn(async () => undefined);
 
-      const result = await walkSpans({ window, read, commit, pass });
+    const result = await walkSpans({ window, read, commit });
 
-      expect(commit).toHaveBeenCalledTimes(1);
-      expect(read).toHaveBeenCalledTimes(3);
-      expect(result).toEqual({ imported: 0, complete: false, stopped: [] });
-    },
-  );
+    expect(commit).toHaveBeenCalledTimes(1);
+    expect(read).toHaveBeenCalledTimes(3);
+    expect(result).toEqual({ imported: 0, complete: false, owed: false });
+  });
 
-  describe('in the pending pass', () => {
-    const STUCK_AT = 37;
-    const holdsStuck = (span: WalkWindow): boolean => span.start <= STUCK_AT && STUCK_AT < span.end;
-
-    /** A commit that gives up on any span holding the stuck record, as a row it cannot place. */
-    const commitUnlessStuck = (committed: WalkWindow[] = []) =>
-      jest.fn(async (span: WalkWindow, _page: WalkWindow): Promise<number | undefined> => {
-        if (holdsStuck(span)) {
-          return undefined;
-        }
-
+  describe('with a span that left ground owed', () => {
+    it('goes on to the next span, and reports the window as one that left ground owed', async () => {
+      const committed: WalkWindow[] = [];
+      const commit = jest.fn(async (span: WalkWindow, _page: WalkWindow): Promise<SpanCommit> => {
         committed.push(span);
 
-        return 1;
+        return { imported: 1, owed: span.start === 25 };
       });
 
-    it('goes on past a span whose commit gives up, and reports the span as stopped', async () => {
-      const committed: WalkWindow[] = [];
+      const result = await walkSpans({ window, read: readByWidth(), commit });
 
-      const result = await walkSpans({
-        window,
-        read: readByWidth(),
-        commit: commitUnlessStuck(committed),
-        pass: 'pending',
-      });
-
-      expect(committed).toEqual([
-        { start: 0, end: 25 },
-        { start: 50, end: 75 },
-        { start: 75, end: 100 },
-      ]);
-      expect(result).toEqual({ imported: 3, complete: false, stopped: [{ start: 25, end: 50 }] });
+      expect(committed).toHaveLength(4);
+      expect(result).toEqual({ imported: 4, complete: true, owed: true });
     });
 
-    it('reports every span that gave up, oldest first', async () => {
-      const result = await walkSpans({
-        window,
-        read: readByWidth(),
-        commit: jest.fn(async (span: WalkWindow) => (span.start >= 50 ? undefined : 1)),
-        pass: 'pending',
-      });
+    it('is not owed when no span left ground owed', async () => {
+      const result = await walkSpans({ window, read: readByWidth(), commit: commitCount(1) });
 
-      expect(result.stopped).toEqual([
-        { start: 50, end: 75 },
-        { start: 75, end: 100 },
-      ]);
+      expect(result.owed).toBe(false);
     });
 
-    it('is complete with nothing stopped when every commit goes through', async () => {
-      const result = await walkSpans({
-        window,
-        read: readByWidth(),
-        commit: commitCount(1),
-        pass: 'pending',
-      });
-
-      expect(result).toEqual({ imported: 4, complete: true, stopped: [] });
-    });
-
-    it('keeps the stopped spans it found when the read gives up after them', async () => {
+    it('keeps what it found owed when the read gives up after it', async () => {
       const half = { start: 0, end: 50 };
       const reads = [
         { kind: 'split' as const, half },
         { kind: 'page' as const, page: half },
         undefined,
       ];
-      const read = jest.fn(async () => reads.shift());
 
       const result = await walkSpans({
         window,
-        read,
-        commit: jest.fn(async () => undefined),
-        pass: 'pending',
+        read: jest.fn(async () => reads.shift()),
+        commit: commitCount(2, [], true),
       });
 
-      expect(result).toEqual({ imported: 0, complete: false, stopped: [half] });
+      expect(result).toEqual({ imported: 2, complete: false, owed: true });
     });
-  });
-
-  it('stops a span of one millisecond that is still too full, committing nothing', async () => {
-    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
-    const commit = commitCount(1);
-
-    const result = await walkSpans({
-      window: { start: 100, end: 101 },
-      read: async (span) => splitOrStop(span, 'test-page-stuck'),
-      commit,
-      pass: 'forward',
-    });
-
-    expect(commit).not.toHaveBeenCalled();
-    expect(result).toEqual({ imported: 0, complete: false, stopped: [] });
-    expect(warn).toHaveBeenCalledTimes(1);
-    warn.mockRestore();
   });
 
   it('is complete, reading nothing, for a window with no width', async () => {
@@ -1689,11 +1495,10 @@ describe('walkSpans', () => {
       window: { start: 5, end: 5 },
       read,
       commit: commitCount(1),
-      pass: 'forward',
     });
 
     expect(read).not.toHaveBeenCalled();
-    expect(result).toEqual({ imported: 0, complete: true, stopped: [] });
+    expect(result).toEqual({ imported: 0, complete: true, owed: false });
   });
 });
 

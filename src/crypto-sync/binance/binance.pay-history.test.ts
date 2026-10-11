@@ -1169,6 +1169,34 @@ describe('the pending overlap days of a walk', () => {
     expect(state.pending).toEqual([]);
   });
 
+  it('goes on past a one-millisecond span of the re-scan that is still full, owing that span', async () => {
+    // The re-scan resumes 200 ms behind the cursor, so the halving reaches one millisecond within
+    // the calls of one run.
+    const cursor = NOW - 2 * DAY_MS;
+    const crowdedAt = cursor - 100;
+    const earlier = order({ transactionId: 'earlier', transactionTime: crowdedAt - 80 });
+    const later = order({ transactionId: 'later', transactionTime: crowdedAt + 80 });
+    const state = stateOf({ payCursor: cursor, rescanCursor: cursor - 200 });
+    const orders = [earlier, later, ...spreadOrders(PAY_PAGE_LIMIT + 50, crowdedAt, 0)];
+
+    // Runs at the cursor's own time, so no forward window moves the re-scan's end.
+    await runOver(state, [], cursor, { fetchPayHistory: serverOf(orders, ASCENDING) });
+    const { result } = await runOver(state, [], cursor, {
+      fetchPayHistory: serverOf(orders, ASCENDING),
+    });
+
+    expect(state.imported.has(keyOf(state, earlier))).toBe(true);
+    expect(state.imported.has(keyOf(state, later))).toBe(true);
+    expect(state.pending.length).toBeGreaterThan(0);
+    expect(
+      state.pending.every(
+        (range) =>
+          range.end - range.start === 1 && range.start <= crowdedAt && crowdedAt <= range.end,
+      ),
+    ).toBe(true);
+    expect(result.complete).toBe(false);
+  });
+
   it('keeps a stopped day owed, and still reads the other owed days and the window re-scan', async () => {
     const stuckDay = { start: NOW - 300 * DAY_MS, end: NOW - 299 * DAY_MS };
     const readableDay = { start: NOW - 200 * DAY_MS, end: NOW - 199 * DAY_MS };
@@ -1184,28 +1212,31 @@ describe('the pending overlap days of a walk', () => {
     expect(state.imported.has(keyOf(state, readable))).toBe(true);
     expect(state.imported.has(keyOf(state, inWindow))).toBe(true);
     expect(state.imported.has(keyOf(state, stuck))).toBe(false);
-    expect(state.pending).toHaveLength(1);
-    expect(state.pending[0].start).toBeLessThanOrEqual(stuck.transactionTime);
-    expect(state.pending[0].end).toBeGreaterThanOrEqual(stuck.transactionTime);
-    expect(state.pending[0].end - state.pending[0].start).toBeLessThan(DAY_MS);
+    expect(state.pending).toEqual([
+      { start: stuck.transactionTime, end: stuck.transactionTime + 1 },
+    ]);
     expect(second.result.complete).toBe(false);
   });
 
-  it('asks for the owed days oldest first, after the forward pass, then isolates the stop, before the window', async () => {
+  it('asks for the owed days oldest first, after the forward pass, then the window, and reads the stuck order alone on the next run', async () => {
     const stuckDay = { start: NOW - 300 * DAY_MS, end: NOW - 299 * DAY_MS };
     const readableDay = { start: NOW - 200 * DAY_MS, end: NOW - 199 * DAY_MS };
     const stuck = order({ transactionId: '', transactionTime: stuckDay.start + 3_600_000 });
     const state = stateOf({ payCursor: NOW - 2 * DAY_MS, pending: [readableDay, stuckDay] });
 
-    const { deps } = await runOver(state, [stuck]);
+    const first = await runOver(state, [stuck]);
+    const second = await runOver(state, [stuck]);
 
-    const starts = queriesOf(deps).map((query) => query.startTime);
-    expect(starts.slice(0, 3)).toEqual([NOW - 2 * DAY_MS, stuckDay.start, readableDay.start]);
-    expect(starts.at(-1)).toBe(NOW - PAY_WINDOW_MS);
-    expect(starts.slice(3, -1).length).toBeGreaterThan(0);
-    expect(
-      starts.slice(3, -1).every((start) => start >= stuckDay.start && start < stuckDay.end),
-    ).toBe(true);
+    expect(queriesOf(first.deps).map((query) => query.startTime)).toEqual([
+      NOW - 2 * DAY_MS,
+      stuckDay.start,
+      readableDay.start,
+      NOW - PAY_WINDOW_MS,
+    ]);
+    expect(queriesOf(second.deps).at(-1)).toEqual({
+      startTime: stuck.transactionTime,
+      endTime: stuck.transactionTime + 1,
+    });
   });
 
   // The mark is the pass the window left behind: an absence longer than the window leaves the
@@ -1349,14 +1380,13 @@ describe('the pending overlap days of a walk', () => {
     const stuckAt = stuckDay.start + 3_600_000;
     const stuckOrder = () => order({ transactionId: '', transactionTime: stuckAt });
     const fixedOrder = () => order({ transactionId: 'fixed', transactionTime: stuckAt });
-    const widthOf = (ranges: WalkWindow[]): number =>
-      ranges.reduce((sum, range) => sum + (range.end - range.start), 0);
+    const pointAt = (time: number): WalkWindow => ({ start: time, end: time + 1 });
     // The overlap day behind the cursor lies in the window the re-scan reads; only the ground
     // older than that window is the pending pass's.
     const beyondWindow = (ranges: WalkWindow[]): WalkWindow[] =>
       ranges.filter((range) => range.end <= NOW - PAY_WINDOW_MS);
 
-    it('imports an unrelated owed day that a merge past the twelve-range cap put beside the stuck range, and keeps only a small span of the stuck range owed', async () => {
+    it('imports an unrelated owed day that a merge past the twelve-range cap put beside the stuck range, and keeps only the stuck order owed at its point', async () => {
       const unrelatedDay = { start: BASE + 2.5 * DAY_MS, end: BASE + 3.5 * DAY_MS };
       const unrelated = order({ transactionId: 'unrelated', transactionTime: unrelatedDay.start });
       const others = Array.from({ length: 11 }, (_unused, index) => ({
@@ -1372,19 +1402,111 @@ describe('the pending overlap days of a walk', () => {
 
       expect(state.imported.has(keyOf(state, unrelated))).toBe(true);
       expect(state.imported.size).toBe(1);
-      expect(beyondWindow(state.pending).every((range) => range.end <= unrelatedDay.start)).toBe(
-        true,
+      expect(beyondWindow(state.pending)).toEqual([pointAt(stuckAt)]);
+    });
+
+    it('imports a good order in the same millisecond as the stuck one, and keeps only the stuck one owed', async () => {
+      const state = stateOf({ payCursor: NOW - 2 * DAY_MS, pending: [stuckDay] });
+
+      await runOver(state, [stuckOrder(), fixedOrder()]);
+
+      expect(state.imported).toEqual(new Set([keyOf(state, fixedOrder())]));
+      expect(beyondWindow(state.pending)).toEqual([pointAt(stuckAt)]);
+    });
+
+    it('writes the rows of a read before the list that owes its stuck order', async () => {
+      const state = stateOf({ payCursor: NOW - 2 * DAY_MS, pending: [stuckDay] });
+
+      const { deps } = await runOver(state, [stuckOrder(), fixedOrder()]);
+
+      const adds = deps.addTransactions as jest.Mock;
+      const listWrites = deps.writeWalkPending as jest.Mock;
+      const addedAt = adds.mock.invocationCallOrder[0];
+      const owedAt = listWrites.mock.calls.findIndex((call) =>
+        (call[2] as WalkWindow[]).some((range) => range.start === stuckAt),
       );
-      expect(state.pending[0].start).toBe(stuckDay.start);
+      expect(addedAt).toBeLessThan(listWrites.mock.invocationCallOrder[owedAt]);
+    });
 
-      for (let attempt = 0; attempt < 30; attempt += 1) {
-        await runOver(state, [stuckOrder(), unrelated]);
-      }
+    it('re-scans the orders after a stuck one in the same run, and owes the stuck order at its point', async () => {
+      const stuckInWindow = order({ transactionId: '', transactionTime: NOW - 10 * DAY_MS });
+      const later = order({ transactionId: 'later', transactionTime: NOW - 5 * DAY_MS });
+      const earlier = order({ transactionId: 'earlier', transactionTime: NOW - 20 * DAY_MS });
+      const state = stateOf({ payCursor: NOW - 2 * DAY_MS });
 
-      const owed = beyondWindow(state.pending);
-      expect(widthOf(owed)).toBeLessThan(1_000);
-      expect(owed[0].start).toBeLessThanOrEqual(stuckAt);
-      expect(owed.at(-1)?.end).toBeGreaterThanOrEqual(stuckAt);
+      const { result } = await runOver(state, [earlier, stuckInWindow, later]);
+
+      expect(state.imported).toEqual(new Set([keyOf(state, earlier), keyOf(state, later)]));
+      expect(state.pending).toEqual([pointAt(stuckInWindow.transactionTime)]);
+      expect(result.complete).toBe(false);
+    });
+
+    describe('with an order of another coin that the user paid with BTC funds', () => {
+      const PAID_AT = stuckAt;
+      const funded = { payerId: OWN, receiverId: OTHER, transactionTime: PAID_AT };
+      const serverWith = (orders: BinancePayOrder[], fundedOrders: unknown[]) =>
+        jest.fn(async (_apiKey: string, _secret: string, query: PayQuery) =>
+          payPage(
+            orders.filter(
+              (candidate) =>
+                candidate.transactionTime >= query.startTime &&
+                candidate.transactionTime <= query.endTime,
+            ),
+            {
+              btcFundedOtherCoinOrders: fundedOrders.filter(
+                (entry) =>
+                  (entry as typeof funded).transactionTime >= query.startTime &&
+                  (entry as typeof funded).transactionTime <= query.endTime,
+              ) as PayHistoryPage['btcFundedOtherCoinOrders'],
+            },
+          ),
+        );
+
+      it('imports the other orders of the owed day and keeps only that order owed, at its point', async () => {
+        const state = stateOf({ payCursor: NOW - 2 * DAY_MS, pending: [stuckDay] });
+        const beside = order({ transactionId: 'beside', transactionTime: stuckAt + 10 });
+
+        const { result } = await runOver(state, [], NOW, {
+          fetchPayHistory: serverWith([beside], [funded]),
+        });
+
+        expect(state.imported).toEqual(new Set([keyOf(state, beside)]));
+        expect(beyondWindow(state.pending)).toEqual([pointAt(PAID_AT)]);
+        expect(result.complete).toBe(false);
+        expect(warn.mock.calls).toEqual([
+          [WARN_TAG_STOP, { name: 'BinanceWalkStop', code: 'pay-btc-funded-other-coin' }],
+        ]);
+      });
+
+      it('owes the whole day when the order carries no time', async () => {
+        const state = stateOf({ payCursor: NOW - 2 * DAY_MS, pending: [stuckDay] });
+        const timeless = { ...funded, transactionTime: undefined };
+        const beside = order({ transactionId: 'beside', transactionTime: stuckAt + 10 });
+        const inOwedDay = jest.fn(async (_apiKey: string, _secret: string, query: PayQuery) =>
+          query.startTime < NOW - PAY_WINDOW_MS
+            ? payPage([beside], { btcFundedOtherCoinOrders: [timeless] })
+            : payPage([]),
+        );
+
+        await runOver(state, [], NOW, { fetchPayHistory: inOwedDay });
+
+        expect(state.imported).toEqual(new Set([keyOf(state, beside)]));
+        expect(beyondWindow(state.pending)).toEqual([stuckDay]);
+      });
+
+      it('still stops the forward pass, cursor unmoved, and imports nothing of that window', async () => {
+        const state = stateOf({ payCursor: NOW - 2 * DAY_MS });
+        const beside = order({ transactionId: 'beside', transactionTime: NOW - DAY_MS });
+        const paid = { ...funded, transactionTime: NOW - DAY_MS + 5 };
+
+        const { result } = await runOver(state, [], NOW, {
+          fetchPayHistory: serverWith([beside], [paid]),
+        });
+
+        expect(result).toEqual({ imported: 0, complete: false });
+        expect(state.imported.size).toBe(0);
+        expect(state.payCursor).toBe(NOW - 2 * DAY_MS);
+      });
     });
 
     it('reads a new owed range on the first run, behind eleven stuck ranges that are older', async () => {
@@ -1407,7 +1529,7 @@ describe('the pending overlap days of a walk', () => {
       expect(state.imported.has(keyOf(state, fresh))).toBe(true);
     });
 
-    describe('with ten spans that cannot be halved any further, left by isolating ten stuck days', () => {
+    describe('with ten owed points, one for each of ten stuck days', () => {
       const stuckDays = Array.from({ length: 10 }, (_unused, index) => ({
         start: BASE + index * 10 * DAY_MS,
         end: BASE + index * 10 * DAY_MS + DAY_MS,
@@ -1425,31 +1547,18 @@ describe('the pending overlap days of a walk', () => {
       const late = () => order({ transactionId: 'late', transactionTime: NOW - 50 * DAY_MS });
       const isolatedOwed = (state: PendingState): WalkWindow[] =>
         beyondWindow(state.pending).filter((range) => range.end - range.start <= 2);
-      let isolatedSpans: WalkWindow[] = [];
-
-      beforeAll(async () => {
-        const state = stateOf({ payCursor: NOW - 2 * DAY_MS, pending: stuckDays });
-
-        for (let attempt = 0; attempt < 200 && isolatedOwed(state).length < 10; attempt += 1) {
-          await runOver(state, stuckOrders());
-        }
-
-        isolatedSpans = beyondWindow(state.pending);
-      });
+      const isolatedSpans = stuckTimes.map(pointAt);
 
       const stateWithIsolated = () =>
         stateOf({ payCursor: NOW - 2 * DAY_MS, pending: [...isolatedSpans, newDay] });
 
-      it('has isolated each stuck day to a span of 2 ms or less around its order', () => {
-        expect(isolatedSpans).toHaveLength(10);
-        expect(
-          isolatedSpans.every(
-            (span, index) =>
-              span.end - span.start <= 2 &&
-              span.start <= stuckTimes[index] &&
-              stuckTimes[index] <= span.end,
-          ),
-        ).toBe(true);
+      it('owes each stuck day at its order alone after one run over the days', async () => {
+        const state = stateOf({ payCursor: NOW - 2 * DAY_MS, pending: stuckDays });
+
+        await runOver(state, [...stuckOrders(), ...fixedOrders()]);
+
+        expect(beyondWindow(state.pending)).toEqual(isolatedSpans);
+        expect(state.imported.size).toBe(10);
       });
 
       it('imports the new owed day and the late order of the window on the next run, and keeps the spans owed', async () => {
@@ -1505,21 +1614,19 @@ describe('the pending overlap days of a walk', () => {
       });
     });
 
-    it('shrinks each run the span of a stuck range that stays owed, and never loses its record', async () => {
+    it('owes the stuck range at its order alone after the first run, and reads only that point from then on', async () => {
       const state = stateOf({ payCursor: NOW - 2 * DAY_MS, pending: [stuckDay] });
-      const widths: number[] = [];
 
-      for (let attempt = 0; attempt < 30; attempt += 1) {
-        await runOver(state, [stuckOrder()]);
-        widths.push(widthOf(state.pending));
-      }
+      await runOver(state, [stuckOrder()]);
+      const owedAfterFirst = beyondWindow(state.pending);
 
-      expect(widths[0]).toBeLessThan(DAY_MS);
-      expect(widths.every((width, index) => index === 0 || width <= widths[index - 1])).toBe(true);
-      expect(widths.at(-1)).toBeLessThan(1_000);
-      expect(state.pending.some((range) => range.start <= stuckAt && stuckAt <= range.end)).toBe(
-        true,
-      );
+      const second = await runOver(state, [stuckOrder()]);
+
+      expect(owedAfterFirst).toEqual([pointAt(stuckAt)]);
+      expect(beyondWindow(state.pending)).toEqual(owedAfterFirst);
+      expect(
+        queriesOf(second.deps).filter((query) => query.startTime < NOW - PAY_WINDOW_MS),
+      ).toEqual([{ startTime: stuckAt, endTime: stuckAt + 1 }]);
     });
 
     it('imports the stuck record once it can be placed, and a later identical run imports nothing', async () => {
@@ -1842,8 +1949,9 @@ describe('an order the walk cannot trust stops its window', () => {
 
 describe('orders paid in other coins', () => {
   const recent = { listHoldings: async () => [spotAt(NOW - 3_600_000)] };
-  const sentByUser = { payerId: OWN, receiverId: OTHER };
-  const receivedByUser = { payerId: OTHER, receiverId: OWN };
+  const PAID_AT = NOW - 1_800_000;
+  const sentByUser = { payerId: OWN, receiverId: OTHER, transactionTime: PAID_AT };
+  const receivedByUser = { payerId: OTHER, receiverId: OWN, transactionTime: PAID_AT };
 
   it('stops the window, cursor unmoved, on a non-BTC order the user paid with BTC funds', async () => {
     const deps = makeDeps({
@@ -1883,7 +1991,9 @@ describe('orders paid in other coins', () => {
     ['no party is the user', { payerId: '7', receiverId: '8' }],
     ['the parties name no id', { payerId: undefined, receiverId: undefined }],
     ['the user is both parties', { payerId: OWN, receiverId: OWN }],
-  ])('stops on a non-BTC order paid with BTC funds when %s', async (_label, unsettled) => {
+  ])('stops on a non-BTC order paid with BTC funds when %s', async (_label, parties) => {
+    const unsettled = { ...parties, transactionTime: PAID_AT };
+
     const deps = makeDeps({
       ...recent,
       fetchPayHistory: jest.fn(async () =>

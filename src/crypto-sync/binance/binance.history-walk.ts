@@ -39,15 +39,15 @@ export const buildWalkWindows = (
 
 /**
  * `pending` is a stretch of ground earlier runs left owed (see `planWalkPasses`): read on its
- * own, so a stop in one of them leaves the others and the re-scan to run.
+ * own, so the other owed ground and the re-scan are read in the same run.
  */
 export type WalkPass = 'forward' | 'pending' | 'rescan';
 
 /**
- * Whether a span that cannot be committed ends the run in that pass. The forward pass and
- * the re-scan move a mark that only a commit moves, so they cannot read past a stop. An
- * owed range is not read in order, so a stop in it leaves the range owed and the run reads
- * on past it.
+ * Whether a window that does not finish (the budget cannot afford the next read, or Binance
+ * rate-limits) ends the run in that pass. The forward pass and the re-scan move a mark that
+ * only a commit moves, so they cannot read past it. An owed range is not read in order, so the
+ * run reads on to the next one.
  */
 const STOP_ENDS_RUN: Record<WalkPass, boolean> = {
   forward: true,
@@ -56,47 +56,53 @@ const STOP_ENDS_RUN: Record<WalkPass, boolean> = {
 };
 
 /**
- * What one window gave: `stopped` holds the spans of an owed range whose commit gave up
- * (always empty for a pass in which a stop ends the run).
+ * What a committed span gave: the rows it imported, and whether it left ground owed: a record
+ * it could not trust, which a later run reads again (see `settleRecords`).
  */
-export type WindowOutcome = WalkResult & { stopped: WalkWindow[] };
+export type SpanCommit = { imported: number; owed: boolean };
+
+/**
+ * What one window gave: the rows imported, whether it was read to its end, and whether any of
+ * its spans left ground owed.
+ */
+export type WindowOutcome = { imported: number; complete: boolean; owed: boolean };
 
 /**
  * One run of a walk, as three passes. `forward` goes from the cursor to the end and moves the
- * walk's cursor. `pending` reads the ground earlier runs left owed (`pending` holds its
- * windows) and moves no mark. `rescan` goes back over the ground behind the forward start, to
- * catch a record that settles late, and never moves that cursor. `rescanEnd` is where the
- * re-scan ends. `pendingRanges` is the list of owed ground as it stands once this run's own
- * overlap day is in it: what to store before the forward pass first moves the cursor.
+ * walk's cursor. `pending` reads the ground earlier runs left owed (`pending` holds the
+ * windows of its ranges, `points` those of its points) and moves no mark. `rescan` goes back
+ * over the ground behind the forward start, to catch a record that settles late, and never
+ * moves that cursor. `rescanEnd` is where the re-scan ends. `pendingRanges` is the list of owed
+ * ground as it stands once this run's own overlap day is in it: what to store before the
+ * forward pass first moves the cursor.
  */
 export type WalkPlan = {
   forward: WalkWindow[];
   pending: WalkWindow[];
+  points: WalkWindow[];
   rescan: WalkWindow[];
   rescanEnd: number;
   pendingRanges: WalkWindow[];
 };
 
 /**
- * A walk's owed ground cannot hold more ranges that can still be halved than this between
- * runs. Each such range costs at least one call of a run's leftover budget, so a longer list
- * could not be served in one run; past the limit the two nearest ranges merge, which only
- * has the run read the gap between them too. A run's own overlap day is the one range beyond
- * it (`planWalkPasses`): the re-scan reads that day in the same run, and counting it against
- * the limit would merge two stuck ranges back into a hull, and have the run isolate them
- * again, every run.
+ * A walk's owed ground cannot hold more ranges than this between runs. Each costs at least one
+ * call of a run's leftover budget, so a longer list could not be served in one run; past the
+ * limit the two nearest ranges merge, which only has the run read the gap between them too. A
+ * run's own overlap day is the one range beyond it (`planWalkPasses`): the re-scan reads that
+ * day in the same run. Points (`POINT_MAX_MS`) are not ranges, and are never merged.
  */
 const MAX_PENDING_RANGES = 12;
 
 /**
- * The longest owed span a run does not cut, in milliseconds: an isolated span. A read holds
- * both its ends, so no read tells a stuck record from the millisecond on each side of it, and
- * what is left owed of one stuck record is 2 ms. An isolated span costs one call a run, read
- * last (see `runWalkPlan`), and nothing until its record can be placed.
+ * The longest owed range that is a point, in milliseconds: the ground one record the walk
+ * could not trust owes (one second for a withdrawal, whose time has a precision of one
+ * second). A point is read on its own, last in a run, one call each, and starts a run at a
+ * place that changes with the run's time (`planWalkPasses`).
  */
-const MAX_ISOLATED_MS = 2;
+const POINT_MAX_MS = 1_000;
 
-const isIsolated = (window: WalkWindow): boolean => window.end - window.start <= MAX_ISOLATED_MS;
+const isPoint = (window: WalkWindow): boolean => window.end - window.start <= POINT_MAX_MS;
 
 /** The ranges of `ranges` that `read` leaves: a read in a range's middle splits it in two. */
 export const withoutRead = (ranges: WalkWindow[], read: WalkWindow): WalkWindow[] =>
@@ -123,70 +129,57 @@ const mergeTouching = (sorted: WalkWindow[]): WalkWindow[] => {
   return merged;
 };
 
-/**
- * Where the tail of the list starts: after the first `keep` ranges that can still be halved.
- * A run reads the owed ranges oldest first, so the oldest ones are those it is halving, and
- * the tail is what it has not reached.
- */
-const tailStartOf = (ranges: WalkWindow[], keep: number): number => {
-  let halvable = 0;
-
-  for (const [index, range] of ranges.entries()) {
-    halvable += isIsolated(range) ? 0 : 1;
-
-    if (halvable === keep) {
-      return index + 1;
-    }
-  }
-
-  return 0;
-};
-
-/**
- * The index of the first of the two neighbours with the smallest gap between them, among the
- * pairs from `from` on that hold a range that can still be halved: merging two isolated spans
- * would only make a hull to isolate again.
- */
-const nearestGapIndexOf = (ranges: WalkWindow[], from: number): number =>
+/** The index of the first of the two neighbours with the smallest gap between them. */
+const nearestGapIndexOf = (ranges: WalkWindow[]): number =>
   ranges.slice(1).reduce(
     (nearest, range, index) => {
       const gap = range.start - ranges[index].end;
-      const halvable = !isIsolated(range) || !isIsolated(ranges[index]);
 
-      return index >= from && halvable && gap < nearest.gap ? { index, gap } : nearest;
+      return gap < nearest.gap ? { index, gap } : nearest;
     },
-    { index: from, gap: Number.POSITIVE_INFINITY },
+    { index: 0, gap: Number.POSITIVE_INFINITY },
   ).index;
+
+const byStart = (left: WalkWindow, right: WalkWindow): number => left.start - right.start;
+
+/** The points of `ranges` once, and none that a range already holds. */
+const pointsOutside = (points: WalkWindow[], ranges: WalkWindow[]): WalkWindow[] =>
+  points.filter(
+    (point, index) =>
+      points.findIndex((other) => other.start === point.start && other.end === point.end) ===
+        index && !ranges.some((range) => range.start <= point.start && point.end <= range.end),
+  );
 
 /**
  * Owed ground in its stored form: cut to what the walk can still ask for (not before the
- * floor, not after the end), oldest first, touching ranges merged, at most `limit` ranges
- * that can still be halved. Past the limit the two nearest ranges of the tail merge: the ones
- * the run halves are never merged back into a hull, which would undo what the run isolated
- * and have it isolate them again, every run. An isolated span is a stuck record already
- * found, and is never merged away for the same reason.
+ * floor, not after the end), oldest first. Ranges that touch are merged, and past `limit` the
+ * two nearest merge into their hull, which reads the gap between them too and loses no
+ * ground. A point (`POINT_MAX_MS`) is a record already found: it is never merged with
+ * anything, so it is read alone and last. It is dropped only where a range already holds it
+ * (before the merge past `limit`, so a hull that two ranges merged into never takes one in), or
+ * where it repeats one.
  */
 const normalizePending = (
   ranges: WalkWindow[],
   bounds: { floorMs: number; endTime: number },
   limit = MAX_PENDING_RANGES,
 ): WalkWindow[] => {
-  const merged = mergeTouching(
-    ranges
-      .map((range) => ({
-        start: Math.max(range.start, bounds.floorMs),
-        end: Math.min(range.end, bounds.endTime),
-      }))
-      .filter((range) => range.start < range.end)
-      .sort((left, right) => left.start - right.start),
-  );
+  const cut = ranges
+    .map((range) => ({
+      start: Math.max(range.start, bounds.floorMs),
+      end: Math.min(range.end, bounds.endTime),
+    }))
+    .filter((range) => range.start < range.end)
+    .sort(byStart);
+  const merged = mergeTouching(cut.filter((range) => !isPoint(range)));
+  const points = pointsOutside(cut.filter(isPoint), merged);
 
-  while (merged.filter((range) => !isIsolated(range)).length > limit) {
-    const index = nearestGapIndexOf(merged, tailStartOf(merged, limit - 1));
+  while (merged.length > limit) {
+    const index = nearestGapIndexOf(merged);
     merged.splice(index, 2, { start: merged[index].start, end: merged[index + 1].end });
   }
 
-  return merged;
+  return [...merged, ...points].sort(byStart);
 };
 
 /**
@@ -217,6 +210,36 @@ export const readPendingMark = async (input: {
   await write(field, owed);
 
   return owed;
+};
+
+const TWO_POWER_32 = 2 ** 32;
+
+const MIX_MULTIPLIER = 0x45d9f3b;
+
+/**
+ * A 32-bit mix of a time, so that runs spaced at a regular interval (every hour, every day)
+ * still land on unrelated numbers: a plain remainder of the time would repeat itself for a
+ * count that divides the interval.
+ */
+const mixedFrom = (time: number): number => {
+  const folded = time % TWO_POWER_32;
+  const once = Math.imul(folded ^ (folded >>> 16), MIX_MULTIPLIER);
+  const twice = Math.imul(once ^ (once >>> 16), MIX_MULTIPLIER);
+
+  return (twice ^ (twice >>> 16)) >>> 0;
+};
+
+/**
+ * `windows` starting at a place that depends on `time` alone, in the same order from there and
+ * wrapping around. The points are read last, on the calls the run has left, and a run that
+ * always started at the oldest would read the same few every time and never reach a newer one.
+ * No state is stored: each run's own end time picks the place, so every point has the same
+ * chance of being among the ones a run reads.
+ */
+const rotatedAt = (windows: WalkWindow[], time: number): WalkWindow[] => {
+  const offset = windows.length === 0 ? 0 : mixedFrom(time) % windows.length;
+
+  return [...windows.slice(offset), ...windows.slice(0, offset)];
 };
 
 /**
@@ -276,21 +299,28 @@ export const planWalkPasses = (input: {
     maxWindows,
   );
   const bounds = { floorMs, endTime };
-  const pendingRanges = normalizePending(
-    [...normalizePending(pending, bounds), { start: behindEnd - overlapMs, end: behindEnd }],
+  const stored = normalizePending(pending, bounds);
+  const withDay = normalizePending(
+    [
+      ...stored.filter((range) => !isPoint(range)),
+      { start: behindEnd - overlapMs, end: behindEnd },
+    ],
     bounds,
     MAX_PENDING_RANGES + 1,
   );
+  const pendingRanges = [...withDay, ...stored.filter(isPoint)].sort(byStart);
   const rescanned = {
     start: rescan.at(0)?.start ?? behindEnd,
     end: rescan.at(-1)?.end ?? behindEnd,
   };
+  const owed = withoutRead(pendingRanges, rescanned).flatMap((range) =>
+    buildWalkWindows(range.start, range.end, windowMs, maxWindows),
+  );
 
   return {
     forward: buildWalkWindows(forwardStart, endTime, windowMs, maxWindows),
-    pending: withoutRead(pendingRanges, rescanned).flatMap((range) =>
-      buildWalkWindows(range.start, range.end, windowMs, maxWindows),
-    ),
+    pending: owed.filter((window) => !isPoint(window)),
+    points: rotatedAt(owed.filter(isPoint), endTime),
     rescan,
     rescanEnd: behindEnd,
     pendingRanges,
@@ -326,6 +356,8 @@ export type WalkMarkFields = Record<'cursor' | 'rescan', BinanceWalkCursorField>
 
 type MarkAdvance = {
   span: WalkWindow;
+  /** The ground of `span` the walk could not commit, which stays owed (a point, or the span). */
+  owed?: WalkWindow[];
   plan: WalkPlan;
   marks: WalkMarks;
   restartMs: number;
@@ -333,6 +365,9 @@ type MarkAdvance = {
   write: (field: BinanceWalkCursorField, cursorMs: number) => Promise<void>;
   writePending: (field: BinanceWalkPendingField, ranges: WalkWindow[]) => Promise<void>;
 };
+
+/** Stored lists are cut to nothing and merged to no limit: only a run's plan bounds a list. */
+const UNBOUNDED = { floorMs: Number.NEGATIVE_INFINITY, endTime: Number.POSITIVE_INFINITY };
 
 const sameRanges = (left: WalkWindow[], right: WalkWindow[]): boolean =>
   left.length === right.length &&
@@ -359,20 +394,33 @@ const advanceCursor = async (input: MarkAdvance): Promise<void> => {
   await write(fields.cursor, marks.cursor);
 };
 
+/**
+ * The list without the ground the span read, and with the ground of it that stays owed: one
+ * write, so a crash leaves either the list as it was or the list with the stuck records in it.
+ */
 const advancePending = (input: MarkAdvance): Promise<void> =>
-  storePending(input, withoutRead(input.marks.pending, input.span));
+  storePending(
+    input,
+    normalizePending(
+      [...withoutRead(input.marks.pending, input.span), ...(input.owed ?? [])],
+      UNBOUNDED,
+      Number.POSITIVE_INFINITY,
+    ),
+  );
 
 const advanceRescan = async (input: MarkAdvance): Promise<void> => {
   const { span, plan, marks, restartMs, fields, write } = input;
   const rescanCursor = rescanCursorAfter({ span, plan, restartMs });
+
+  // The list goes before the mark: a crash after the mark alone would pass a stuck record
+  // that no list holds, while a crash after the list only has the re-scan read the span again.
+  await advancePending(input);
 
   // A finished pass that was never started has no mark to reset: skip the redundant write.
   if (rescanCursor !== (marks.rescanCursor ?? restartMs)) {
     marks.rescanCursor = rescanCursor;
     await write(fields.rescan, rescanCursor);
   }
-
-  await advancePending(input);
 };
 
 /**
@@ -382,8 +430,9 @@ const advanceRescan = async (input: MarkAdvance): Promise<void> => {
  * stores the list of owed ground, which holds this run's overlap day. A re-scan span moves
  * only the re-scan mark and leaves the cursor alone, so a re-scan can never undo the
  * forward pass. A re-scan span and a pending span take the ground they read out of the
- * list, and an entry leaves it only by being read. `write` gets the field of the cursor that
- * moved and its value; `writePending` the field of the list and its new content.
+ * list, put `owed` (the part of it the walk could not commit: its stuck records) back, and an
+ * entry leaves the list only by being read. `write` gets the field of the cursor that moved
+ * and its value; `writePending` the field of the list and its new content.
  */
 export const advanceWalkMarks = (input: MarkAdvance & { pass: WalkPass }): Promise<void> =>
   match(input.pass)
@@ -422,192 +471,24 @@ export const nextSpanAfter = (committed: WalkWindow, window: WalkWindow): WalkWi
 const RESCAN_KEEP = 1;
 
 /**
- * The calls a run keeps for isolating the stops once an owed window has stopped, while it still
- * reads the other owed windows: four, the two reads of a halving and the two of the trim of the
- * part that follows it (see `stopsInHalves`), the most a stuck record on the middle millisecond
- * costs before the first commit. A halving that ends before it leaves the owed list as it was,
- * and the next run starts again from the top. Without them, owed ranges that stop would take the
- * whole budget in re-reads of the whole range, and no stuck span would shrink.
- */
-const ISOLATION_KEEP = 4;
-
-type ReadPart = (part: WalkWindow) => Promise<WindowOutcome | undefined>;
-
-type Halving = { stopped: WalkWindow[]; committed: boolean };
-
-/** Whether the part stopped as a whole: nothing in it committed. */
-const stoppedAsWhole = (outcome: WindowOutcome, part: WalkWindow): boolean =>
-  outcome.stopped.length === 1 &&
-  outcome.stopped[0].start === part.start &&
-  outcome.stopped[0].end === part.end;
-
-/**
- * Read `[start, middle]` of a span and, unless it committed, `[middle, end]` too. When the
- * first part commits whatever stopped the span lies in the rest, which is returned unread.
- * `undefined` once the budget cannot afford a read.
- */
-const halveAt = async (
-  span: WalkWindow,
-  middle: number,
-  readPart: ReadPart,
-): Promise<Halving | undefined> => {
-  const first = { start: span.start, end: middle };
-  const second = { start: middle, end: span.end };
-  const firstOutcome = await readPart(first);
-
-  if (firstOutcome === undefined) {
-    return undefined;
-  }
-
-  if (firstOutcome.complete) {
-    return { stopped: [second], committed: true };
-  }
-
-  const secondOutcome = await readPart(second);
-
-  return foldMap(maybe(secondOutcome), (outcome) => ({
-    stopped: [...firstOutcome.stopped, ...outcome.stopped],
-    committed:
-      outcome.complete || !stoppedAsWhole(outcome, second) || !stoppedAsWhole(firstOutcome, first),
-  }));
-};
-
-/**
- * The longest owed span that is trimmed at its ends rather than halved, in milliseconds. A
- * halving cuts at the middle, and a record on that millisecond stops both parts, so it commits
- * nothing, which leaves a span of 4 ms or less owed as it was. Trimming commits whenever one
- * stuck record is in the span, and a commit is kept whatever the run reads after it.
- */
-const MAX_TRIMMED_MS = 4;
-
-/**
- * Trim a span of 2 to 4 ms: read `[start, start + 1]` and, when it stopped, `[end - 1, end]`.
- * One stuck record cannot lie in both ends of a span longer than 2 ms, so one of the two
- * commits (a span of 2 ms with the record in its middle commits neither, and is as short as a
- * span with a record in it gets) and the span is a millisecond shorter; a later step trims it
- * again. Both stop for stuck records near both ends, which no read inside can split further: the
- * span stays owed as it is and is not queued again. At most two reads.
- */
-const trimEnds = async (span: WalkWindow, readPart: ReadPart): Promise<Halving | undefined> => {
-  const first = { start: span.start, end: span.start + 1 };
-  const last = { start: span.end - 1, end: span.end };
-  const firstOutcome = await readPart(first);
-
-  if (firstOutcome === undefined) {
-    return undefined;
-  }
-
-  if (firstOutcome.complete) {
-    return { stopped: [{ start: first.end, end: span.end }], committed: true };
-  }
-
-  const lastOutcome = await readPart(last);
-
-  return foldMap(maybe(lastOutcome), (outcome) => ({
-    stopped: outcome.complete ? [{ start: span.start, end: last.start }] : [],
-    committed: true,
-  }));
-};
-
-/**
- * The spans of `span` that stopped. A span longer than 4 ms is halved at the middle: both halves
- * stop when the record sits in the middle millisecond they share (or when records lie in both),
- * nothing commits, and the halves are cut in their turn, which ends in a commit. A span of 2 to 4
- * ms is trimmed (see `trimEnds`): a part of 2 ms that a halving made is trimmed too, so a record
- * on the middle millisecond leaves 2 ms owed, and not the 4 around it. A span of 1 ms is as short
- * as it gets. At most two reads. `undefined` once the budget cannot afford a read, which leaves
- * the span owed as it is.
- */
-const stopsInHalves = async (
-  span: WalkWindow,
-  readPart: ReadPart,
-): Promise<Halving | undefined> => {
-  const half = halfOf(span);
-
-  if (half === undefined) {
-    return { stopped: [], committed: true };
-  }
-
-  return span.end - span.start <= MAX_TRIMMED_MS
-    ? trimEnds(span, readPart)
-    : halveAt(span, half.end, readPart);
-};
-
-/**
- * Halve the spans that stopped, oldest first and a level at a time, and read the halves as
- * owed ground: the halves that commit leave the owed list, so only the part around the stop
- * stays owed, and each run goes on from the smaller span the last one left. A halving in which
- * nothing committed shrinks nothing, so its halves are halved next, before any other span: the
- * run must not spend its calls on the first levels of many spans and leave the owed list as it
- * found it. It spends what the run has left above `keep` calls, which the re-scan needs. A
- * span that is already isolated stays owed whole. Returns the rows imported.
- */
-const isolateStops = async (input: {
-  stopped: WalkWindow[];
-  keep: number;
-  canAfford: (keep: number) => boolean;
-  runWindow: (window: WalkWindow, pass: WalkPass, keep: number) => Promise<WindowOutcome>;
-}): Promise<number> => {
-  const { stopped, keep, canAfford, runWindow } = input;
-  let imported = 0;
-
-  const readPart: ReadPart = async (part) => {
-    if (!canAfford(keep)) {
-      return undefined;
-    }
-
-    const outcome = await runWindow(part, 'pending', keep);
-    imported += outcome.imported;
-
-    return outcome;
-  };
-
-  for (let span = stopped.shift(); span !== undefined; span = stopped.shift()) {
-    const found = await stopsInHalves(span, readPart);
-
-    if (found === undefined) {
-      return imported;
-    }
-
-    if (found.committed) {
-      stopped.push(...found.stopped);
-    } else {
-      stopped.unshift(...found.stopped);
-    }
-  }
-
-  return imported;
-};
-
-/** The owed windows that can still be halved, and those that are already isolated. */
-const groupPending = (pending: WalkWindow[]): Record<'halvable' | 'isolated', WalkWindow[]> =>
-  pending.reduce<Record<'halvable' | 'isolated', WalkWindow[]>>(
-    (groups, window) => {
-      groups[isIsolated(window) ? 'isolated' : 'halvable'].push(window);
-
-      return groups;
-    },
-    { halvable: [], isolated: [] },
-  );
-
-/**
- * Run a plan's windows: the forward pass first, then the owed ground (oldest first), then the
- * re-scan, each on what budget is left. A forward or re-scan window that does not complete,
- * and any window the budget cannot afford, ends the run: a later run resumes from the stored
- * marks. A pending window that does not complete stays owed and the run goes on to the next
- * one and to the re-scan, so one stuck day starves neither.
+ * Run a plan's windows: the forward pass first, then the owed ranges (oldest first), then the
+ * re-scan, then the owed points, each on what budget is left. A forward or re-scan window that
+ * does not finish, and any window the budget cannot afford, ends the run: a later run resumes
+ * from the stored marks. An owed window that does not finish stays owed and the run goes on to
+ * the next one and to the re-scan.
  *
- * The owed windows that can still be halved are read first, but never into the calls the
- * re-scan needs (`RESCAN_KEEP`), nor, once one of them has stopped, into those that halving
- * it needs (`ISOLATION_KEEP`): a stuck range is read whole every run, and enough of them would
- * otherwise leave no call to shrink one. The spans of them that stopped are then halved to
- * isolate the stop (see `isolateStops`) on what is left above the re-scan's call. An owed span
- * that is already isolated is read after the re-scan, on the budget that is left: reading it
- * first would let many such spans take the whole budget of every run from the owed days and
- * the re-scan that can still commit. One that the budget skips stays owed. `canAfford` takes
- * the number of calls to keep after the one it asks about, and must also say no once Binance
- * has rate limited the account, or the run would go on asking after a 429. Whatever is left
- * unread, the walk is reported incomplete.
+ * A read commits every record it can trust and leaves the ground of the others owed (see
+ * `settleRecords`), so a stuck record never holds back the rest of a span, a range or the
+ * re-scan. The owed ranges are read before the re-scan, but never into the call it needs
+ * (`RESCAN_KEEP`): a range that is read whole every run would otherwise leave the re-scan
+ * nothing. The owed points are read after the re-scan, on the budget that is left, one call
+ * each: reading them first would let many of them take the whole budget of every run from the
+ * owed days and the re-scan. One that the budget skips stays owed; the plan puts them in an
+ * order that changes with the run's time, so each is among those a run reads (see
+ * `planWalkPasses`). `canAfford` takes the number of calls to keep after the one it asks about,
+ * and must also say no once Binance has rate limited the account, or the run would go on asking
+ * after a 429. The walk is reported complete only when every window was read to its end and no
+ * record is left owed.
  */
 export const runWalkPlan = async (input: {
   plan: WalkPlan;
@@ -615,20 +496,17 @@ export const runWalkPlan = async (input: {
   runWindow: (window: WalkWindow, pass: WalkPass, keep: number) => Promise<WindowOutcome>;
 }): Promise<WalkResult> => {
   const { plan, canAfford, runWindow } = input;
-  const stopped: WalkWindow[] = [];
   const rescanKeep = plan.rescan.length > 0 ? RESCAN_KEEP : 0;
   let imported = 0;
   let complete = true;
 
-  /** Whether the pass ends early: a window the budget cannot afford, or a stop that ends it. */
+  /** Whether the pass ends early: a window the budget cannot afford, or one that ends it. */
   const readPass = async (
     windows: WalkWindow[],
     pass: WalkPass,
-    keepOf: () => number,
+    keep: number,
   ): Promise<boolean> => {
     for (const window of windows) {
-      const keep = keepOf();
-
       if (!canAfford(keep)) {
         complete = false;
 
@@ -637,30 +515,23 @@ export const runWalkPlan = async (input: {
 
       const outcome = await runWindow(window, pass, keep);
       imported += outcome.imported;
-      stopped.push(...outcome.stopped);
+      complete = complete && outcome.complete && !outcome.owed;
 
-      if (!outcome.complete) {
-        complete = false;
-
-        if (STOP_ENDS_RUN[pass]) {
-          return true;
-        }
+      if (!outcome.complete && STOP_ENDS_RUN[pass]) {
+        return true;
       }
     }
 
     return false;
   };
 
-  const { halvable, isolated } = groupPending(plan.pending);
-
-  if (await readPass(plan.forward, 'forward', () => 0)) {
+  if (await readPass(plan.forward, 'forward', 0)) {
     return { imported, complete: false };
   }
 
-  await readPass(halvable, 'pending', () => rescanKeep + (stopped.length > 0 ? ISOLATION_KEEP : 0));
-  imported += await isolateStops({ stopped, keep: rescanKeep, canAfford, runWindow });
-  await readPass(plan.rescan, 'rescan', () => 0);
-  await readPass(isolated, 'pending', () => 0);
+  await readPass(plan.pending, 'pending', rescanKeep);
+  await readPass(plan.rescan, 'rescan', 0);
+  await readPass(plan.points, 'pending', 0);
 
   return { imported, complete };
 };
@@ -708,27 +579,12 @@ export const logWalkStop = (code: string): void => {
 /** What one span read gave: the page that fits it, or the half to read instead. */
 export type SpanRead<Page> = { kind: 'page'; page: Page } | { kind: 'split'; half: WalkWindow };
 
-/**
- * The answer for a span the read found too full: its first half, to read instead. A span
- * of one millisecond cannot be split, so it stops the walk (logged under `stuckCode`)
- * rather than skip records it cannot see.
- */
-export const splitOrStop = (span: WalkWindow, stuckCode: string): SpanRead<never> | undefined => {
-  const half = halfOf(span);
+type SpanStep = { next: WalkWindow; commit: SpanCommit };
 
-  if (half === undefined) {
-    logWalkStop(stuckCode);
-
-    return undefined;
-  }
-
-  return { kind: 'split', half };
-};
-
-type SpanStep = { next: WalkWindow; imported: number };
+const NOTHING_COMMITTED: SpanCommit = { imported: 0, owed: false };
 
 /**
- * Handle what one read gave. A split moves to the half and imports nothing. A page is
+ * Handle what one read gave. A split moves to the half and commits nothing. A page is
  * committed, and the walk goes on from where the span ended, twice as wide, because a
  * stretch that fit one page is likely to fit a longer one. `undefined` is a commit that
  * stopped the walk.
@@ -737,15 +593,15 @@ const stepAfterRead = <Page>(input: {
   read: SpanRead<Page>;
   span: WalkWindow;
   window: WalkWindow;
-  commit: (span: WalkWindow, page: Page) => Promise<number | undefined>;
+  commit: (span: WalkWindow, page: Page) => Promise<SpanCommit | undefined>;
 }): Promise<SpanStep | undefined> =>
   match(input.read)
     .returnType<Promise<SpanStep | undefined>>()
-    .with({ kind: 'split' }, async ({ half }) => ({ next: half, imported: 0 }))
+    .with({ kind: 'split' }, async ({ half }) => ({ next: half, commit: NOTHING_COMMITTED }))
     .with({ kind: 'page' }, async ({ page }) =>
-      foldMap(maybe(await input.commit(input.span, page)), (imported) => ({
+      foldMap(maybe(await input.commit(input.span, page)), (committed) => ({
         next: nextSpanAfter(input.span, input.window),
-        imported,
+        commit: committed,
       })),
     )
     .exhaustive();
@@ -757,50 +613,42 @@ const stepAfterRead = <Page>(input: {
  * span that fits is committed and the walk goes on from where it ended; the 1-millisecond
  * boundary two spans share is read twice and removed by the row key. The walk supplies
  * what differs: `read` (`undefined` is a clean stop, such as an unaffordable call) and
- * `commit` (the rows it imported, or `undefined` for a stop, which leaves the span
- * uncommitted). Either stop reports the window incomplete with what was committed, and the
- * walk's marks, which only a commit moves, stay where the last committed span left them.
- * In a pass where a stop does not end the run (an owed range) the walk reads on past the
- * span that stopped, so one bad record cannot hold back the rest of the window, and reports
- * the span in `stopped` for the run to halve. `keep` is the number of calls the run holds
- * back for later passes, which every `read` of the window leaves unspent: a dense window must
- * not read its way into them.
+ * `commit` (what it imported and whether it left ground owed, or `undefined` for a stop, which
+ * leaves the span uncommitted: only the forward pass stops, see `commitSettledSpan`). Either
+ * stop reports the window incomplete with what was committed, and the walk's marks, which
+ * only a commit moves, stay where the last committed span left them. `keep` is the number of
+ * calls the run holds back for later passes, which every `read` of the window leaves
+ * unspent: a dense window must not read its way into them.
  */
 export const walkSpans = async <Page>(input: {
   window: WalkWindow;
   read: (span: WalkWindow, keep: number) => Promise<SpanRead<Page> | undefined>;
-  commit: (span: WalkWindow, page: Page) => Promise<number | undefined>;
-  pass: WalkPass;
+  commit: (span: WalkWindow, page: Page) => Promise<SpanCommit | undefined>;
   keep?: number;
 }): Promise<WindowOutcome> => {
-  const { window, read, commit, pass, keep = 0 } = input;
-  const stopped: WalkWindow[] = [];
-  let imported = 0;
+  const { window, read, commit, keep = 0 } = input;
+  const outcome: WindowOutcome = { imported: 0, complete: false, owed: false };
   let span = window;
 
   while (span.start < window.end) {
     const spanRead = await read(span, keep);
 
     if (spanRead === undefined) {
-      return { imported, complete: false, stopped };
+      return outcome;
     }
 
     const step = await stepAfterRead({ read: spanRead, span, window, commit });
 
     if (step === undefined) {
-      if (STOP_ENDS_RUN[pass]) {
-        return { imported, complete: false, stopped };
-      }
-
-      stopped.push(span);
-      span = nextSpanAfter(span, window);
-    } else {
-      imported += step.imported;
-      span = step.next;
+      return outcome;
     }
+
+    outcome.imported += step.commit.imported;
+    outcome.owed = outcome.owed || step.commit.owed;
+    span = step.next;
   }
 
-  return { imported, complete: stopped.length === 0, stopped };
+  return { ...outcome, complete: true };
 };
 
 /**

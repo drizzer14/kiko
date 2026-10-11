@@ -521,7 +521,7 @@ describe('fetchPayHistory other coins', () => {
     };
 
     expect((await pageOfOrders(paidWithBtc)).btcFundedOtherCoinOrders).toEqual([
-      { payerId: '1001', receiverId: '2002' },
+      { payerId: '1001', receiverId: '2002', transactionTime: 1_700_000_001_000 },
     ]);
     expect((await pageOfOrders(usdtOrder)).btcFundedOtherCoinOrders).toEqual([]);
     expect((await pageOfOrders(usdtOrder, payOrderBody)).btcFundedOtherCoinOrders).toEqual([]);
@@ -533,12 +533,31 @@ describe('fetchPayHistory other coins', () => {
     expect(
       (await pageOfOrders({ ...paidWithBtc, payerInfo: 'Me', receiverInfo: { binanceId: '' } }))
         .btcFundedOtherCoinOrders,
-    ).toEqual([{ payerId: undefined, receiverId: undefined }]);
+    ).toEqual([{ payerId: undefined, receiverId: undefined, transactionTime: 1_700_000_001_000 }]);
     expect(
       (await pageOfOrders({ ...paidWithBtc, payerInfo: undefined, receiverInfo: {} }))
         .btcFundedOtherCoinOrders,
-    ).toEqual([{ payerId: undefined, receiverId: undefined }]);
+    ).toEqual([{ payerId: undefined, receiverId: undefined, transactionTime: 1_700_000_001_000 }]);
   });
+
+  it.each([
+    ['a string', 'soon'],
+    ['missing', undefined],
+    ['not finite', Number.POSITIVE_INFINITY],
+  ])(
+    'lists a non-BTC order whose time is %s with no time, never an error',
+    async (_label, time) => {
+      const paidWithBtc = {
+        ...usdtOrder,
+        fundsDetail: [{ currency: 'BTC', amount: '1' }],
+        transactionTime: time,
+      };
+
+      expect((await pageOfOrders(paidWithBtc)).btcFundedOtherCoinOrders).toEqual([
+        expect.objectContaining({ transactionTime: undefined }),
+      ]);
+    },
+  );
 
   it('reads a malformed fundsDetail of a non-BTC order as no BTC funds, never an error', async () => {
     const page = await pageOfOrders({ ...usdtOrder, fundsDetail: 'BTC' });
