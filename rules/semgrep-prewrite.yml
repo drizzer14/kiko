@@ -1941,3 +1941,24 @@ rules:
         - "*.test.ts"
         - "*.test.tsx"
     pattern: removeHoldingDatabaseTransaction
+  # kiko-code-style's "A jest.requireActual call takes no type argument". A regex,
+  # not an AST pattern: Semgrep reads an absent type argument as matching `<$T>`, so
+  # `jest.requireActual('m') as T` would match too. The `<` right after the callee is
+  # the whole signal, and the regex reads across a line break. No `paths.include`:
+  # any file that calls jest.requireActual is test code (a test, a __mocks__ file, a
+  # test-support helper), and a typed call in a helper cuts the chain test -> helper
+  # -> real module as well. Known limits: this rule's section in kiko-linter.
+  - id: kiko-no-typed-jest-require-actual
+    languages: [typescript]
+    severity: ERROR
+    message: >
+      `jest.requireActual<T>(...)` and `jest.requireMock<T>(...)` hide the module from
+      jest-haste-map's dependency extractor, which reads only `jest.requireActual(` followed by a
+      string literal. `jest --findRelatedTests` (and Stryker's per-test coverage) then never
+      relates the test to that module. Drop the type argument and type the result instead:
+      `jest.requireActual('m') as { ... }`, or a typed const annotation — see kiko-code-style's
+      "A jest.requireActual call takes no type argument".
+    metadata:
+      fix: "jest.requireActual('module') as { ... }  (or `const actual: Shape = jest.requireActual('module')`), no `<T>` on the call."
+      skill: "kiko-code-style › A jest.requireActual call takes no type argument"
+    pattern-regex: '\bjest\s*(?:\?\.|\.)\s*require(?:Actual|Mock)\s*<'

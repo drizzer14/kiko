@@ -1603,6 +1603,39 @@ helpers are in scope only so the fixture probe can reach the rule.
 leaks the same way and is not seen. A `jest.spyOn(i18n, 'changeLanguage')` is not a call
 and stays silent. A `try`/`finally` reset inside the body still matches: use a hook.
 
+## `kiko-no-typed-jest-require-actual`
+
+Mechanizes kiko-code-style's "A jest.requireActual call takes no type argument": a type argument
+on `jest.requireActual` or `jest.requireMock` (`jest.requireActual<{ ... }>('m')`), including a
+multi-line generic. **Why:** jest-haste-map's dependency extractor (`JEST_EXTENSIONS_RE` in
+`node_modules/jest-haste-map/build/lib/dependencyExtractor.js`) matches only
+`jest.requireActual(`, optional whitespace, then a string literal. A typed call yields no
+dependency (probed through the module's `extractor.extract`: the typed text gives `[]`, the
+untyped one `["m"]`), so `--findRelatedTests` and Stryker's per-test coverage never relate the test
+to that module. Proven on the Duo native specs (fixed in 21425bd1 and e015e334). **Fix:**
+`jest.requireActual('m') as { ... }`, or a typed const annotation.
+
+**Shape.** One `pattern-regex` (`\bjest\s*(?:\?\.|\.)\s*require(?:Actual|Mock)\s*<`), not an AST
+pattern: Semgrep reads an absent type argument as matching `<$T>`, so the AST form also matched
+`jest.requireActual('m') as T` and `const x: T = jest.requireActual('m')` (probed on 1.175). The
+regex reads across a line break; a comment that spells the typed form is flagged too, so reword
+it. ERROR, flat fixture pair `rules/fixtures/kiko-no-typed-jest-require-actual.{bad,good}.ts`.
+
+**Scope: no `paths.include`.** Any file that calls `jest.requireActual` is test code (a test, a
+`__mocks__` file, a test-support helper), and a typed call in a helper also cuts the chain test,
+helper, real module. The one hit at landing was `src/test-support/field-label-spy.ts`, rewritten
+untyped in the same commit. Measured with `npx jest --listTests --findRelatedTests` on the
+field-label source before and after: 82 related tests both times, because every consumer of the
+spy also reaches FieldLabel through a real import. The typed helper cost nothing there yet; it is
+fixed because the next consumer that only reaches it through the spy would lose its test.
+
+**Known limits (each probed).** Not caught, because the regex wants `jest` then `.requireActual`
+then `<` with only whitespace between: `jest['requireActual']<T>(`, `(jest.requireActual)<T>(`, a
+comment between the callee and `<`, a destructured `const { requireActual } = jest` called with a
+type argument, and `jest.requireActual as <T>(m: string) => T`. The bracket and destructured
+forms hide the module even untyped, which is a separate gap this rule does not close. A generic
+through a type alias IS caught (`jest.requireActual<Alias>(`): any `<` after the callee counts.
+
 ## One exported component per `.tsx` — a Jest invariant and a guard rule
 
 The pre-write guard also runs it in-process as the Node rule

@@ -1202,6 +1202,21 @@ assuming a package is already covered — a package added to
 `package.json` without also being added there will fail its first
 test with an unhelpful parse error, not an obviously-related one.
 
+## A jest.requireActual call takes no type argument
+
+Write `jest.requireActual('module') as { ... }`, or bind the result to an annotated const
+(`const actual: Shape = jest.requireActual('module')`); never `jest.requireActual<Shape>('module')`,
+and the same for `jest.requireMock`. Jest finds the tests to run for a changed file
+(`--findRelatedTests`, which Stryker's per-test coverage also uses) by a regex over each file's
+text. jest-haste-map's dependency extractor reads only `jest.requireActual(` with optional
+whitespace, then a string literal. A type argument between the name and the `(` hides the module,
+so a change to that module does not select the test. The rule covers every
+file that calls it (a test, a `__mocks__` file, a test-support helper): a typed call in a helper cuts
+the chain from the test through the helper to the real module too.
+
+Semgrep `kiko-no-typed-jest-require-actual` (`rules/semgrep-prewrite.yml`) denies the typed form at
+write time; its known limits are in kiko-linter's "`kiko-no-typed-jest-require-actual`".
+
 ## Tests read a module, never a source file's text
 
 A test never reads a `.ts`/`.tsx` source file's text to derive what it
