@@ -23,23 +23,30 @@ fail() {
 # one directory, used only by __tests__/component-i18n-namespace.test.ts to point this mode at a
 # disposable temp tree; dedup is skipped in that case, since the code fingerprint below reads the
 # real repo's git state, not the temp tree's content.
-if [ -n "${COMPONENT_I18N_NAMESPACE_SOURCE_ROOT:-}" ]; then
-  roots=("$COMPONENT_I18N_NAMESPACE_SOURCE_ROOT")
-else
-  roots=("$ROOT/src/design-system/components")
+root="${COMPONENT_I18N_NAMESPACE_SOURCE_ROOT:-$ROOT/src/design-system/components}"
+if [ -z "${COMPONENT_I18N_NAMESPACE_SOURCE_ROOT:-}" ]; then
   fp="$(harness_code_fingerprint "$ROOT")"
   if harness_unchanged "$ROOT" "component-i18n-namespace" "$fp"; then
     exit 0
   fi
 fi
 
+# A moved or renamed components folder would otherwise leave the check passing on an empty scan.
+if [ ! -d "$root" ]; then
+  print_block \
+    "Component i18n namespace" \
+    "The directory this check scans does not exist, so nothing was checked." \
+    "$root" \
+    "A check that finds no files to scan passes silently, so a moved or renamed src/design-system/components would switch the namespace rule off without a trace." \
+    "Point the check at the real folder: update scripts/checks/component-i18n-namespace.sh and COMPONENT_FOLDER in component-i18n-namespace.js to the new location. Re-run: npm run check:component-i18n-namespace" \
+    "Do not create an empty folder to make the check pass."
+  exit 2
+fi
+
 files=()
-for root in "${roots[@]}"; do
-  [ -e "$root" ] || continue
-  while IFS= read -r file; do
-    [ -n "$file" ] && files+=("$file")
-  done < <(find "$root" -type f \( -name '*.ts' -o -name '*.tsx' \) 2>/dev/null | sort)
-done
+while IFS= read -r file; do
+  [ -n "$file" ] && files+=("$file")
+done < <(find "$root" -type f \( -name '*.ts' -o -name '*.tsx' \) 2>/dev/null | sort)
 
 if [ ${#files[@]} -eq 0 ]; then
   exit 0

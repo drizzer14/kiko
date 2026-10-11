@@ -111,6 +111,34 @@ describe('scripts/checks/component-i18n-namespace.js', () => {
     ]);
   });
 
+  it('prints a template key up to its interpolation, on one line', () => {
+    const file = writeFixture(
+      'src/design-system/components/expand-toggle/expand-toggle.component.tsx',
+      `const label = t(\`components.pieChart.\${expanded ? 'showLess' : 'showAll'}\`);\n`,
+    );
+
+    const result = runAnalyzer(file);
+
+    expect(result.status).toBe(1);
+    expect(result.stdout).toBe(
+      `${file}:1: components.pieChart. (expected components.expandToggle)\n`,
+    );
+  });
+
+  it('prints a template key that runs onto the next line on one line', () => {
+    const file = writeFixture(
+      'src/design-system/components/expand-toggle/expand-toggle.component.tsx',
+      'const label = t(`components.pieChart.show\n  Less`);\n',
+    );
+
+    const result = runAnalyzer(file);
+
+    expect(result.status).toBe(1);
+    expect(result.stdout).toBe(
+      `${file}:1: components.pieChart.show (expected components.expandToggle)\n`,
+    );
+  });
+
   it('ignores a key mentioned inside a comment', () => {
     const file = writeFixture(
       'src/design-system/components/expand-toggle/expand-toggle.component.tsx',
@@ -157,6 +185,16 @@ describe('scripts/checks/component-i18n-namespace.sh', () => {
     );
 
     expect(runProjectCheck().status).toBe(0);
+  });
+
+  it('exits 2 with the structured block when the scanned root does not exist', () => {
+    rmSync(directory, { recursive: true, force: true });
+
+    const result = runProjectCheck();
+
+    expect(result.status).toBe(2);
+    expect(result.stderr).toContain('Component i18n namespace');
+    expect(result.stderr).toContain('src/design-system/components');
   });
 
   it('exits 2 with the structured block when the scanned root holds one', () => {

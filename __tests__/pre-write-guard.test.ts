@@ -2140,6 +2140,42 @@ describe('runNodeChecks (component-i18n-namespace)', () => {
     expect(reason).toContain('check:component-i18n-namespace');
   });
 
+  it.each([
+    [
+      'an interpolated template key',
+      `export const label = t(\`components.pieChart.\${expanded ? 'showLess' : 'showAll'}\`);\n`,
+      'components.pieChart. (expected components.expandToggle)',
+    ],
+    [
+      'a multi-line template key',
+      'export const label = t(`components.pieChart.show\n  Less`);\n',
+      'components.pieChart.show (expected components.expandToggle)',
+    ],
+  ])('names the finding, never "could not check", for %s', (_name, content, finding) => {
+    const result = runNamespaceProbe(content);
+
+    expect(result.status).toBe(2);
+    const reason = JSON.parse(result.stdout).hookSpecificOutput.permissionDecisionReason;
+    expect(reason).toContain('kiko-component-i18n-namespace');
+    expect(reason).toContain(finding);
+    expect(reason).not.toContain('could not check');
+  });
+
+  it('denies a foreign read under a justified override comment: the rule has no override', () => {
+    const result = runNamespaceProbe(
+      [
+        '// kiko-override: kiko-component-i18n-namespace OVERRIDE(composed child) reads its key',
+        "export const label = t('components.pieChart.showAll');",
+        '',
+      ].join('\n'),
+    );
+
+    expect(result.status).toBe(2);
+    const reason = JSON.parse(result.stdout).hookSpecificOutput.permissionDecisionReason;
+    expect(reason).toContain('kiko-component-i18n-namespace');
+    expect(reason).toContain('has no override');
+  });
+
   it('allows the component own namespace', () => {
     const result = runNamespaceProbe(
       "export const label = t('components.expandToggle.showAll');\n",

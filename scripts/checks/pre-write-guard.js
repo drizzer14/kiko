@@ -902,6 +902,9 @@ const NODE_RULES = [
     fix: "move the key to the component's own components.<name>.* namespace in en.ts and uk.ts, then read it from there",
     skill: 'kiko-translator › A string moved into a shared component changes namespace',
     projectCheck: 'check:component-i18n-namespace',
+    // check:all fails on a `kiko-override:` line (the project-wide Node checkers have no inline
+    // override), so a pass here would only defer the failure to the gate.
+    overridable: false,
     run: (filePath) =>
       runSpawnedNodeChecker(
         'component-i18n-namespace.js',

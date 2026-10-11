@@ -130,6 +130,55 @@ export const throughTheirExtraction = true;
 // The rows keep their layout through the extraction into a card.
 export const throughTheExtraction = true;
 
+// The same phrases at the start of a sentence, and the three the first pass left unpinned.
+// EXPECT-FINDING
+// Kept green while the rows were reshaped into a card.
+export const keptGreenCapital = true;
+
+// EXPECT-FINDING
+// As drawn today, the toggle sits flush with the label.
+export const asDrawnTodayCapital = true;
+
+// EXPECT-FINDING
+// As rendered today, the rows keep their order.
+export const asRenderedTodayCapital = true;
+
+// EXPECT-FINDING
+// The rows keep their layout as written today.
+export const asWrittenToday = true;
+
+// EXPECT-FINDING
+// As written today, the label reads on its own.
+export const asWrittenTodayCapital = true;
+
+// EXPECT-FINDING
+// The rows keep their layout as built today.
+export const asBuiltToday = true;
+
+// EXPECT-FINDING
+// As built today, the rows keep their order.
+export const asBuiltTodayCapital = true;
+
+// EXPECT-FINDING
+// The move onto the shared toggle changes no pixel.
+export const moveOntoCapital = true;
+
+// EXPECT-FINDING
+// The move into the shared card changes no pixel.
+export const moveIntoCapital = true;
+
+// EXPECT-FINDING
+// The rows keep their layout through its extraction into a card.
+export const throughItsExtraction = true;
+
+// EXPECT-FINDING
+// Through their extraction into a card the rows keep their layout.
+export const throughTheirExtractionCapital = true;
+
+// EXPECT-FINDING
+// Through the extraction into a card the rows keep their layout.
+export const throughTheExtractionCapital = true;
+
 // A second word on the same line is reported too (one pin covers the line, since a pin
 // names a line, not a member).
 // EXPECT-FINDING

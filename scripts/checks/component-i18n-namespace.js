@@ -22,17 +22,13 @@ const { commentSpans, lineNumberAt } = require('./specifier-scanner');
 // directly in `components/` out.
 const COMPONENT_FOLDER = /(?:^|\/)src\/design-system\/components\/([^/]+)\//;
 
-const COMPONENT_KEY = /(['"`])components\.([A-Za-z0-9_$]+)\./g;
+// Group 1 is the key as printed: it stops at the closing quote, whitespace, or a `${` interpolation,
+// so one finding is always one line with no space in the key, which pre-write-guard.js parses.
+const COMPONENT_KEY = /['"`](components\.([A-Za-z0-9_]+)\.[^'"`\s$]*)/g;
 
 // `expand-toggle` reads `components.expandToggle.*`.
 function namespaceOf(folderName) {
   return folderName.replace(/-([a-z0-9])/g, (_match, character) => character.toUpperCase());
-}
-
-function keyAt(source, start) {
-  const end = source.slice(start).search(/['"`]/);
-
-  return source.slice(start, end === -1 ? source.length : start + end);
 }
 
 // Every foreign-namespace key literal in `source`, in file order, or an empty list when
@@ -48,16 +44,14 @@ function findViolations(filePath, source) {
   const comments = commentSpans(source);
   const violations = [];
 
-  COMPONENT_KEY.lastIndex = 0;
-
-  for (let match = COMPONENT_KEY.exec(source); match !== null; match = COMPONENT_KEY.exec(source)) {
+  for (const match of source.matchAll(COMPONENT_KEY)) {
     const start = match.index + 1;
     const inComment = comments.some((span) => start >= span.start && start < span.end);
 
     if (!inComment && match[2] !== expected) {
       violations.push({
         line: lineNumberAt(source, start),
-        key: keyAt(source, start),
+        key: match[1],
         expected: `components.${expected}`,
       });
     }
