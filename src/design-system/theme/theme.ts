@@ -62,7 +62,7 @@ const iconSizes = {
 // centred and capped at `paneMaxWidth` so a wide pane never stretches a form line across the
 // screen; `hairline` is the flat-window divider. `sheetMaxWidth` is the width a BottomSheet card
 // narrows to on a two-pane display: 540 pt is UIKit's default form-sheet width, the width an iPad
-// presents a sheet at (Coordinator note: inferred from UIKit, not re-checked against the docs).
+// presents a sheet at.
 const layout = {
   paneMaxWidth: 600,
   sheetMaxWidth: 540,

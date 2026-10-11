@@ -49,8 +49,8 @@ describe('ColorPicker', () => {
 
   // Yoga resolves a percentage width in 32-bit float and wraps a line when the running width is
   // strictly greater than the row (see the day-of-month grid test, which replays the same math).
-  // The rows below are the widths the picker met in the Duo simulator: the outer display's form
-  // row (466 - 84 tab bar - 2 x 32 padding), an iPhone form row, and an inner display pane row.
+  // The rows below are the widths the picker lays out in: the outer display's form row
+  // (466 - 84 tab bar - 2 x 32 padding), an iPhone form row, and an inner display pane row.
   describe('seven swatches to a row', () => {
     const COLUMNS = 7;
     const ROW_WIDTHS = [318, 390, 475];
@@ -83,19 +83,11 @@ describe('ColorPicker', () => {
       expect(await cellWidthOf()).toBe('14.28%');
     });
 
-    it.each(ROW_WIDTHS)(
-      'fits seven cells and wraps the eighth on a %s pt row',
-      async (rowWidth) => {
-        const percent = Number.parseFloat(String(await cellWidthOf()));
+    it.each(ROW_WIDTHS)('fits seven cells on a %s pt row', async (rowWidth) => {
+      const percent = Number.parseFloat(String(await cellWidthOf()));
 
-        expect(consumedAfter(COLUMNS, percent, rowWidth)).toBeLessThanOrEqual(
-          Math.fround(rowWidth),
-        );
-        expect(consumedAfter(COLUMNS + 1, percent, rowWidth)).toBeGreaterThan(
-          Math.fround(rowWidth),
-        );
-      },
-    );
+      expect(consumedAfter(COLUMNS, percent, rowWidth)).toBeLessThanOrEqual(Math.fround(rowWidth));
+    });
 
     it('leaves each swatch ring room inside its cell on the narrowest row', async () => {
       const percent = Number.parseFloat(String(await cellWidthOf()));

@@ -118,6 +118,26 @@ describe('TransactionCard', () => {
     expect(await fillOf()).not.toBe(darkTheme.colors.accent);
   });
 
+  it('keeps the category colour on the glyph, and gives it onAccent on the accent fill', async () => {
+    const glyphTintOf = async (selected?: boolean) => {
+      const { getByLabelText } = await render(
+        <TransactionCard
+          title="Coffee"
+          categoryIcon="cup.and.saucer"
+          categoryIconColor="#0A84FF"
+          categoryAccessibilityLabel="Dining"
+          money={Money.of('UAH', -1_000)}
+          selected={selected}
+        />,
+      );
+
+      return getByLabelText('Dining').props.tintColor;
+    };
+
+    expect(await glyphTintOf()).toBe('#0A84FF');
+    expect(await glyphTintOf(true)).toBe(darkTheme.colors.onAccent);
+  });
+
   it('renders no loan-link marker when loanLinked is omitted', async () => {
     const { toJSON } = await render(
       <TransactionCard

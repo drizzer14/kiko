@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { renderHook } from '@testing-library/react-native';
 
-import { PaneVisibilityContext, useIsScreenVisible, useDetailPaneRoute } from '.';
+import { PaneVisibilityContext, detailParamOf, useIsScreenVisible, useDetailPaneRoute } from '.';
 
 let mockRouteKey = 'companion-route';
 let mockIsFocused = false;
@@ -96,5 +96,31 @@ describe('useDetailPaneRoute', () => {
     const { result } = await renderHook(() => useDetailPaneRoute());
 
     expect(result.current).toBeNull();
+  });
+});
+
+describe('detailParamOf', () => {
+  it('reads a string param of the named route', () => {
+    expect(detailParamOf(DETAIL_ROUTE, 'AccountDetail', 'accountId')).toBe('a');
+  });
+
+  it.each([
+    ['no route', null, 'AccountDetail', 'accountId'],
+    ['another route', DETAIL_ROUTE, 'HoldingDetail', 'accountId'],
+    ['a param the route lacks', DETAIL_ROUTE, 'AccountDetail', 'holdingId'],
+    [
+      'a route with no params',
+      { ...DETAIL_ROUTE, params: undefined },
+      'AccountDetail',
+      'accountId',
+    ],
+    [
+      'a param that is not a string',
+      { ...DETAIL_ROUTE, params: { accountId: 7 } },
+      'AccountDetail',
+      'accountId',
+    ],
+  ])('is undefined for %s', (_name, route, name, param) => {
+    expect(detailParamOf(route, name, param)).toBeUndefined();
   });
 });

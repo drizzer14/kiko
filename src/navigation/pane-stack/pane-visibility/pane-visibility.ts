@@ -46,3 +46,20 @@ export const useIsScreenVisible = (): boolean => {
  */
 export const useDetailPaneRoute = (): DetailPaneRoute | null =>
   useContext(PaneVisibilityContext)?.detailRoute ?? null;
+
+/**
+ * A string param of a route, when the route is the one named: what a list reads off the detail
+ * pane's first route to know which row it shows.
+ */
+export const detailParamOf = (
+  route: Pick<DetailPaneRoute, 'name' | 'params'> | null,
+  name: string,
+  param: string,
+): string | undefined => {
+  const value =
+    route?.name === name
+      ? (route.params as Record<string, unknown> | undefined)?.[param]
+      : undefined;
+
+  return typeof value === 'string' ? value : undefined;
+};

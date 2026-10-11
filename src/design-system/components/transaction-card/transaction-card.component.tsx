@@ -44,7 +44,9 @@ const TransactionCard: FC<TransactionCardProps> = ({
               name={categoryIcon}
               size={theme.iconSizes.body}
               tone="textSecondary"
-              color={categoryIconColor}
+              // A glyph with no colour of its own reads as onAccent on the selected fill, where
+              // the category colour (the accent blue, say) would vanish into it.
+              color={selected === true ? undefined : categoryIconColor}
               accessibilityLabel={categoryAccessibilityLabel}
             />
             <Box style={styles.rowDescription}>

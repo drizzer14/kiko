@@ -131,6 +131,7 @@ const mockOpenInPane = jest.fn();
 // the pane shows nothing.
 const mockUseDetailPaneRoute = jest.fn((): object | null => null);
 jest.mock('@kiko/navigation/pane-stack', () => ({
+  detailParamOf: jest.requireActual('@kiko/navigation/pane-stack/pane-visibility').detailParamOf,
   useDetailPaneRoute: () => mockUseDetailPaneRoute(),
   useIsScreenVisible: () => mockUseIsScreenVisible(),
   useOpenInPane: () => mockOpenInPane,

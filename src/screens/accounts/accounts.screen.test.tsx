@@ -82,6 +82,7 @@ const mockUseDetailPaneRoute = jest.fn(
   (): { key?: string; name: string; params?: object; isDefault: boolean } | null => null,
 );
 jest.mock('@kiko/navigation/pane-stack', () => ({
+  detailParamOf: jest.requireActual('@kiko/navigation/pane-stack/pane-visibility').detailParamOf,
   useIsScreenVisible: () => mockUseIsScreenVisible(),
   useOpenInPane: () => mockOpenInPane,
   useShowPaneDefault: () => mockShowPaneDefault,

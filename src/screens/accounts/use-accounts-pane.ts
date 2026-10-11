@@ -1,5 +1,6 @@
 import {
   type DetailPaneRoute,
+  detailParamOf,
   useClosePaneRoute,
   useDetailPaneRoute,
   useShowPaneDefault,
@@ -28,24 +29,11 @@ type AccountsPaneInput = {
   holdings: HoldingRow[];
 };
 
-const paramOf = (
-  route: PaneDefault | DetailPaneRoute | null,
-  name: string,
-  param: string,
-): string | undefined => {
-  const value =
-    route?.name === name
-      ? (route.params as Record<string, unknown> | undefined)?.[param]
-      : undefined;
-
-  return typeof value === 'string' ? value : undefined;
-};
-
 const accountIdOf = (route: PaneDefault | DetailPaneRoute | null) =>
-  paramOf(route, 'AccountDetail', 'accountId');
+  detailParamOf(route, 'AccountDetail', 'accountId');
 
 const holdingIdOf = (route: PaneDefault | DetailPaneRoute | null) =>
-  paramOf(route, 'HoldingDetail', 'holdingId');
+  detailParamOf(route, 'HoldingDetail', 'holdingId');
 
 // Whether the pane already shows what the list would put there.
 const isShown = (route: DetailPaneRoute, wanted: PaneDefault): boolean =>

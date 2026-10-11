@@ -230,8 +230,8 @@ describe('PieChart', () => {
   });
 
   // Jest cannot measure iOS font fitting, so these pin the style facts that decide it: a fixed
-  // lineHeight equal to the font size stopped iOS shrinking the text, which then fell to its
-  // 4 pt floor. Whether the total reads well is a simulator check.
+  // lineHeight equal to the font size stops iOS shrinking the text. Whether the total reads well
+  // is a simulator check.
   describe('center total text', () => {
     const centerTextOf = async (
       props: { size?: number; innerRatio?: number },
@@ -263,32 +263,29 @@ describe('PieChart', () => {
     });
 
     it.each([
-      ['a short total', Money.of('UAH', 222_00), /222\.00/],
-      ['a long total with a 3-letter code', Money.of('CHF', 1_234_567_89), /1,234,567\.89/],
+      ['a short total', Money.of('UAH', 222_00), /222\.00/, { size: 200, innerRatio: 0.78 }],
+      [
+        'a long total with a 3-letter code',
+        Money.of('CHF', 1_234_567_89),
+        /1,234,567\.89/,
+        { size: 200, innerRatio: 0.78 },
+      ],
+      [
+        'a short total in a larger chart with a thicker ring',
+        Money.of('UAH', 222_00),
+        /222\.00/,
+        { size: 240, innerRatio: 0.58 },
+      ],
     ])(
       'stays on one line, shrinking to fit, inside the hole for %s',
-      async (_name, total, matcher) => {
-        const { text, holeStyle } = await centerTextOf(
-          { size: 200, innerRatio: 0.78 },
-          total,
-          matcher,
-        );
+      async (_name, total, matcher, dimensions) => {
+        const { text, holeStyle } = await centerTextOf(dimensions, total, matcher);
 
         expect(text.props.numberOfLines).toBe(1);
         expect(text.props.adjustsFontSizeToFit).toBe(true);
-        expect(holeStyle.maxWidth).toBe(200 * 0.78);
+        expect(holeStyle.maxWidth).toBe(dimensions.size * dimensions.innerRatio);
       },
     );
-
-    it('bounds the text to the hole of any size and ring thickness', async () => {
-      const { holeStyle } = await centerTextOf(
-        { size: 240, innerRatio: 0.58 },
-        Money.of('UAH', 222_00),
-        /222\.00/,
-      );
-
-      expect(holeStyle.maxWidth).toBe(240 * 0.58);
-    });
 
     it('leaves out minimumFontScale, which iOS ignores', async () => {
       const { text } = await centerTextOf({}, Money.of('UAH', 222_00), /222\.00/);
