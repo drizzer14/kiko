@@ -1,6 +1,5 @@
 import {
   type FC,
-  type ReactElement,
   type RefObject,
   useEffect,
   useLayoutEffect,
@@ -9,53 +8,39 @@ import {
   useState,
 } from 'react';
 import { match } from 'ts-pattern';
-import type { TFunction } from 'i18next';
 import { ratesRepo } from '@kiko/rates/repo';
 import { Money } from '@kiko/currency/money';
 import { accountsRepo } from '@kiko/accounts';
 import { useTranslation } from 'react-i18next';
-import HoldingSelectField, {
-  type HoldingSelectOption,
-} from '@kiko/screens/forms/holding-select-field';
 import {
   type CreateHoldingRoute,
   resolveCreateHoldingTarget,
 } from '@kiko/screens/forms/create-holding-target';
 import { holdingsRepo } from '@kiko/holdings/repo';
 import { parseAmount } from '@kiko/currency/parse';
+import { StyleSheet } from 'react-native-unistyles';
 import Box from '@kiko/design-system/components/box';
 import { categoriesRepo } from '@kiko/categories/repo';
-import Text from '@kiko/design-system/components/text';
+import { useLiveQuery, type HoldingRow } from '@kiko/db';
 import { transactionsRepo } from '@kiko/transactions/repo';
 import Button from '@kiko/design-system/components/button';
 import Screen from '@kiko/design-system/components/screen';
 import { buildRateTable } from '@kiko/rates/net-worth-view';
-import DateTimeRow from '@kiko/screens/forms/date-time-row';
 import { type TextInputInstance, View } from 'react-native';
-import Divider from '@kiko/design-system/components/divider';
-import SymbolIcon from '@kiko/design-system/components/symbol';
-import CategoryField from '@kiko/screens/forms/category-field';
-import ExchangeFields from '@kiko/screens/forms/exchange-fields';
-import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { alertOnCatch } from '@kiko/design-system/alert-on-catch';
-import TextField from '@kiko/design-system/components/text-field';
 import { useSubmitOnce } from '@kiko/design-system/use-submit-once';
-import FieldError from '@kiko/design-system/components/field-error';
 import type { TransactionFormParams } from '@kiko/navigation/types';
 import { accountDisplayName } from '@kiko/holdings/implicit-account';
-import BottomSheet from '@kiko/design-system/components/bottom-sheet';
-import LoanPaymentField from '@kiko/screens/forms/loan-payment-field';
 import { type Currency, currencySymbol } from '@kiko/currency/currency';
 import type { FieldInstance } from '@kiko/design-system/scroll-to-field';
 import { resolveCategoryColor } from '@kiko/statistics/category-breakdown';
 import { useScrollToField } from '@kiko/design-system/use-scroll-to-field';
 import { seedCounterpartMinorUnits } from '@kiko/holdings/exchange-prefill';
 import { buildCategoryDisplayMap } from '@kiko/categories/category-display';
-import { useLiveQuery, type HoldingRow, type TransactionRow } from '@kiko/db';
-import ConvertExchangeFields from '@kiko/screens/forms/convert-exchange-fields';
 import { categoryOverridesRepo } from '@kiko/categories/category-overrides-repo';
 import DescriptionSuggestions from '@kiko/screens/forms/description-suggestions';
 import { groupAmount, majorAmountText } from '@kiko/screens/forms/amount-format';
+import type { HoldingSelectOption } from '@kiko/screens/forms/holding-select-field';
 import { isExchangeCreateDestinationType } from '@kiko/holdings/exchange-destination';
 import ModeSelectField, { type FormMode } from '@kiko/screens/forms/mode-select-field';
 
@@ -81,11 +66,6 @@ import {
   storedDescription,
 } from './row-labels';
 import {
-  resolveCategoryOverrideRequest,
-  resolvePendingCategory,
-  ruleCategoryFor,
-} from './category-rule';
-import {
   buildExchangeOptions,
   buildLoanOptions,
   buildPrimaryOptions,
@@ -93,10 +73,24 @@ import {
   isTransactionEligibleType,
   resolveDefaultPrimaryHolding,
 } from './holding-options';
+import ModeAndActions, {
+  isLoanFieldVisible,
+  resolveLoanLinkState,
+  showsSaveButton,
+} from './mode-and-actions';
+import CommentRow from './comment-row';
+import FieldGroup from './field-group';
+import SplitReturns from './split-returns';
 import { readRouteEntry } from './route-entry';
 import { resolveHydration } from './hydration';
+import ReadOnlyNotice from './read-only-notice';
+import { useCategoryPick } from './use-category-pick';
+import PrimaryHoldingField from './primary-holding-field';
+import CategoryOverrideSheet from './category-override-sheet';
+import { useCategoryOverride } from './use-category-override';
 import { MODE_ICONS, resolveModeOptions } from './mode-options';
-import { type ConvertView, convertCounterpartType, resolveConvertView } from './convert-view';
+import { resolveCategoryOverrideRequest } from './category-rule';
+import { convertCounterpartType, resolveConvertView } from './convert-view';
 
 // This screen is registered in BOTH the Home and Accounts stacks (Home lists
 // every transaction; Accounts reaches it from a holding), so it cannot bind its
@@ -113,584 +107,7 @@ type TransactionFormScreenProps = {
   };
 };
 
-// The read-only row's explanatory notice, or nothing on a manual/add row. Kept
-// module-level (returns `ReactElement | null`) for the same cognitive-
-// complexity-budget reason as `resolvePendingCategory` below: it moves this
-// branch into the helper's own scope, out of the screen's returned JSX. The
-// notice text is a catalog-resolved string, passed in rather than read from a
-// module-level constant, so the helper stays translation-agnostic.
-const renderReadOnlyNotice = (
-  isReadOnly: boolean,
-  surfaceHighColor: string,
-  noticeText: string,
-): ReactElement | null => {
-  if (!isReadOnly) {
-    return null;
-  }
-
-  return (
-    <Box padding={3} style={[styles.notice, { backgroundColor: surfaceHighColor }]}>
-      <Text variant="caption" tone="textSecondary">
-        {noticeText}
-      </Text>
-    </Box>
-  );
-};
-
-// The counterparty->comment column writes a real value no screen ever
-// surfaced, shown whenever the loaded row carries a non-blank comment.
-// Not gated by `isReadOnly`:
-// `mapParsedTransaction`/Monobank sync can write `comment` onto any
-// imported row regardless of `source`, and a Monobank-synced row is exactly
-// the read-only case this must still cover — so this renders for
-// both. Module-level for the same cognitive-complexity-budget reason as
-// `renderReadOnlyNotice` above.
-//
-// This does NOT reuse `SummaryTable`
-// (the app's shared "label left, value right" ROW layout) — `SummaryTable`
-// was built for short values (money, counts, dates); Comment is free text
-// that can run to a full sentence. `SummaryTable` wraps a row's `value` in
-// its OWN `Box` (`summary-table.component.tsx`'s `<Box
-// testID={row.testID}>{row.value}</Box>`), one level BELOW the row's own
-// flex-row layout — a `flexShrink`/`textAlign` set on the VALUE node I pass
-// in (a grandchild of the row, not a direct flex child of it) has no effect
-// on that row's own layout pass in Yoga; only the WRAPPING `Box` itself
-// (which `SummaryTable` owns, not a caller) would need `flexShrink` — and
-// `SummaryTable`'s shared row must not change for one
-// caller. Stacking the label ABOVE the value instead — a plain `Box`
-// column, not a flex row — sidesteps the problem entirely: the value
-// `Text` gets the row's FULL width to itself and wraps normally, with no
-// label competing for horizontal space on the same line.
-const renderCommentRow = (
-  comment: string | null | undefined,
-  label: string,
-): ReactElement | null => {
-  const trimmed = comment?.trim();
-
-  if (!trimmed) {
-    return null;
-  }
-
-  return (
-    <Box gap={1} testID="transaction-comment">
-      <Text variant="caption" tone="textSecondary">
-        {label}
-      </Text>
-      <Text variant="body">{trimmed}</Text>
-    </Box>
-  );
-};
-
-// The primary-leg holding picker, rendered ONLY in the empty-create (global-add,
-// B) case — the one mode where no holding is fixed by navigation, so the user
-// picks the leg here (its currency/category/exchange eligibility then flow
-// automatically through the shared `primaryHoldingId` seam). Returns null on
-// every other path. Extracted to a module-level function (returns
-// `ReactElement | null`) so the screen's JSX gates on a single call rather than
-// its own `isEmptyCreate &&`, keeping that branch out of the component's
-// cognitive-complexity budget — the same shape as `renderReadOnlyNotice`.
-const renderPrimaryHoldingField = (props: {
-  visible: boolean;
-  label: string;
-  sheetTitle: string;
-  placeholder: string;
-  options: readonly HoldingSelectOption[];
-  selectedId: string | null;
-  onSelect: (id: string) => void;
-  onCreateNew: () => void;
-}): ReactElement | null => {
-  if (!props.visible) {
-    return null;
-  }
-
-  return (
-    <HoldingSelectField
-      label={props.label}
-      sheetTitle={props.sheetTitle}
-      placeholder={props.placeholder}
-      options={props.options}
-      selectedId={props.selectedId}
-      onSelect={props.onSelect}
-      onCreateNew={props.onCreateNew}
-      required
-    />
-  );
-};
-
-// The screen's main field group: convert-mode's single-counterpart group,
-// Exchange's two-leg group, or income/expense's plain Amount/Description/Date
-// group — exactly one of the three renders at a time. Extracted to its own
-// module-level function (if/return rather than a nested ternary inline in the
-// screen's JSX) so `noNestedTernary` stays satisfied and the screen
-// component's own cognitive-complexity budget is spent on state and
-// save/derive logic, not this three-way render switch.
-type FieldGroupProps = {
-  converting: boolean;
-  convertView: ConvertView;
-  counterpartHoldingId: string | null;
-  onSelectCounterpart: (id: string) => void;
-  onCreateCounterpart: () => void;
-  counterpartAmount: string;
-  onChangeCounterpartAmount: (text: string) => void;
-  isExchange: boolean;
-  amount: string;
-  onChangeAmount: (text: string) => void;
-  // The source holding's currency glyph, shown as the amount/Value-Out field's
-  // suffix. Empty when no holding has resolved yet, so no wrong symbol shows.
-  amountSuffix: string;
-  destinationOptions: HoldingSelectOption[];
-  destinationHoldingId: string | null;
-  onSelectDestination: (id: string) => void;
-  onCreateDestination: () => void;
-  valueIn: string;
-  onChangeValueIn: (text: string) => void;
-  // The destination holding's currency glyph, shown as the Value-In field's
-  // suffix. Empty until a destination is picked.
-  valueInSuffix: string;
-  // The convert group's two currency glyphs: the read-only fixed leg's own
-  // currency, and the counterpart leg's currency (empty until one is picked).
-  fixedSuffix: string;
-  counterpartSuffix: string;
-  description: string;
-  onChangeDescription: (text: string) => void;
-  // Fires when the description field loses focus — the A1 category auto-pick
-  // (see `onDescriptionBlur` in the screen). Kept off `onChangeDescription`
-  // (which stays a bare setter) so the lookup never runs on a keystroke.
-  onBlurDescription: () => void;
-  descriptionPlaceholder: string;
-  // The inline description-suggestion row, rendered directly under the description field.
-  // Null on an edit (an edit already has its description) or whenever there is
-  // nothing to suggest — the component hides itself, so this is `ReactElement |
-  // null` rather than a boolean gate here.
-  descriptionSuggestions: ReactElement | null;
-  isReadOnly: boolean;
-  time: number;
-  onChangeTime: (timestamp: number) => void;
-  // The latest day the Date calendar offers: today, because a future-dated row
-  // makes Home and the Statistics line disagree until that day arrives.
-  maxDate: number;
-  t: TFunction;
-  // Per-field validation-failure messages and wrapper refs, threaded straight
-  // into `ExchangeFields`/`ConvertExchangeFields`'s own props or onto
-  // the plain Amount `TextField` — see `fieldError`/`fieldRefsByKey` in the
-  // screen component. `undefined` everywhere on a read-only row, where no
-  // field ever gates Save.
-  amountError?: string;
-  // A split payment judged by the returns error, which renders under the
-  // return rows instead.
-  amountInvalid?: boolean;
-  amountFieldRef?: RefObject<FieldInstance | null>;
-  // The plain Amount TextField's own inner input, so a blocked Save can
-  // focus it imperatively once it has scrolled into view — see `save`'s
-  // `onSettled` callback in the screen component. Only the plain (non-
-  // exchange, non-converting) Amount field has one; the Exchange/Convert
-  // legs are owned by their own sub-components.
-  amountInputRef?: RefObject<TextInputInstance | null>;
-  valueOutError?: string;
-  destinationError?: string;
-  valueInError?: string;
-  valueOutFieldRef?: RefObject<FieldInstance | null>;
-  destinationFieldRef?: RefObject<FieldInstance | null>;
-  valueInFieldRef?: RefObject<FieldInstance | null>;
-  counterpartError?: string;
-  counterpartAmountError?: string;
-  counterpartFieldRef?: RefObject<FieldInstance | null>;
-  counterpartAmountFieldRef?: RefObject<FieldInstance | null>;
-};
-
-const renderFieldGroup = (props: FieldGroupProps): ReactElement => {
-  if (props.converting) {
-    return (
-      <ConvertExchangeFields
-        fixedLabel={props.convertView.fixedLabel}
-        fixedValue={props.convertView.fixedValue}
-        fixedSuffix={props.fixedSuffix}
-        counterpartLabel={props.convertView.counterpartLabel}
-        counterpartSheetTitle={props.convertView.counterpartSheetTitle}
-        counterpartPlaceholder={props.t('forms.transaction.selectHolding')}
-        counterpartOptions={props.convertView.options}
-        counterpartHoldingId={props.counterpartHoldingId}
-        onSelectCounterpart={props.onSelectCounterpart}
-        onCreateCounterpart={props.onCreateCounterpart}
-        counterpartAmountLabel={props.convertView.counterpartAmountLabel}
-        counterpartAmount={props.counterpartAmount}
-        onChangeCounterpartAmount={props.onChangeCounterpartAmount}
-        counterpartSuffix={props.counterpartSuffix}
-        time={props.time}
-        onChangeTime={props.onChangeTime}
-        maxDate={props.maxDate}
-        counterpartError={props.counterpartError}
-        counterpartAmountError={props.counterpartAmountError}
-        counterpartFieldRef={props.counterpartFieldRef}
-        counterpartAmountFieldRef={props.counterpartAmountFieldRef}
-      />
-    );
-  }
-
-  if (props.isExchange) {
-    return (
-      <ExchangeFields
-        valueOut={props.amount}
-        onChangeValueOut={props.onChangeAmount}
-        valueOutSuffix={props.amountSuffix}
-        destinationOptions={props.destinationOptions}
-        destinationHoldingId={props.destinationHoldingId}
-        onSelectDestination={props.onSelectDestination}
-        onCreateDestination={props.onCreateDestination}
-        valueIn={props.valueIn}
-        onChangeValueIn={props.onChangeValueIn}
-        valueInSuffix={props.valueInSuffix}
-        time={props.time}
-        onChangeTime={props.onChangeTime}
-        maxDate={props.maxDate}
-        valueOutError={props.valueOutError}
-        destinationError={props.destinationError}
-        valueInError={props.valueInError}
-        valueOutFieldRef={props.valueOutFieldRef}
-        destinationFieldRef={props.destinationFieldRef}
-        valueInFieldRef={props.valueInFieldRef}
-      />
-    );
-  }
-
-  return (
-    <>
-      <View ref={props.amountFieldRef}>
-        <TextField
-          label={props.t('forms.fields.amount')}
-          value={props.amount}
-          onChangeText={props.onChangeAmount}
-          editable={!props.isReadOnly}
-          keyboardType="decimal-pad"
-          placeholder={props.t('forms.transaction.amountPlaceholder')}
-          suffix={props.amountSuffix}
-          // A read-only (synced) row's amount never gates save, so it carries
-          // no required marker; a manual add/edit always needs a positive
-          // amount.
-          required={!props.isReadOnly}
-          error={props.amountError}
-          invalid={props.amountInvalid}
-          inputRef={props.amountInputRef}
-        />
-      </View>
-
-      <TextField
-        label={props.t('forms.transaction.description')}
-        value={props.description}
-        onChangeText={props.onChangeDescription}
-        onBlur={props.onBlurDescription}
-        editable={!props.isReadOnly}
-        placeholder={props.descriptionPlaceholder}
-      />
-
-      {/* The inline tap-to-fill suggestion row, directly under the
-        description field. It hides itself when there is nothing to offer, so it
-        is rendered unconditionally here. */}
-      {props.descriptionSuggestions}
-
-      <DateTimeRow
-        time={props.time}
-        onChangeTime={props.onChangeTime}
-        maxDate={props.maxDate}
-        disabled={props.isReadOnly}
-        dateTestID="transaction-date-field"
-        timeTestID="transaction-time-field"
-      />
-    </>
-  );
-};
-
-// Split-change mode's dynamic section, rendered BELOW the reused Amount/
-// Description/Date/Time group (income/expense's own field group already renders
-// for split, since split is neither exchange nor converting): one row per
-// change-return — a holding picker + a payer-currency amount field + a tonal
-// Remove button — followed by an "Add return" action. Extracted to its own
-// module-level function (a props object, not a positional list) for the same
-// cognitive-complexity-budget reason as `renderFieldGroup` above.
-type SplitReturnsProps = {
-  // Whether the split section renders at all — false collapses it to null, so
-  // the screen's JSX gates on a single call (not its own `isSplit &&`), keeping
-  // that branch out of the component's cognitive-complexity budget.
-  visible: boolean;
-  returns: readonly ChangeReturnRow[];
-  buildOptions: (index: number) => HoldingSelectOption[];
-  onSelectHolding: (index: number, holdingId: string) => void;
-  onCreateHolding: () => void;
-  onChangeAmount: (index: number, text: string) => void;
-  onRemove: (index: number) => void;
-  onAdd: () => void;
-  // The payer holding's currency glyph, shown as every return amount's suffix
-  // (v1 returns are payer-currency only).
-  suffix: string;
-  selectHoldingPlaceholder: string;
-  t: TFunction;
-  // The combined payment+returns validation-failure message, or `undefined`
-  // when valid — rendered right after the mapped return rows, before the "Add
-  // return" action, mirroring `TextField`'s own `error` contract even though
-  // this reason covers the whole return list rather than one field. Every
-  // return row's labels turn red with it, since it judges every row.
-  error?: string;
-  // The LAST return row's own wrapper ref — a SEPARATE ref from
-  // `splitReturnsFieldRef` (the CALL SITE's own wrapper, anchoring the whole
-  // section for scroll-to-invalid) — so `addReturn` can scroll to whichever
-  // row is newest, via the SAME occlusion-aware `scrollToField` helper,
-  // rather than an unconditional `scrollToEnd` that would fire even when
-  // the new row was already fully visible. `undefined` is a valid value
-  // (never passed while not split).
-  lastRowRef?: RefObject<FieldInstance | null>;
-};
-
-const renderSplitReturns = (props: SplitReturnsProps): ReactElement | null => {
-  if (!props.visible) {
-    return null;
-  }
-
-  const invalid = props.error !== undefined;
-
-  return (
-    <>
-      {/* A divider + title-case section heading mark where the change-returns
-        list begins, the same shared Divider + `variant="heading"` Text
-        the term-deposit contributions section uses. */}
-      <Divider testID="returns-divider" />
-
-      <Text variant="heading">{props.t('forms.transaction.returnsHeading')}</Text>
-
-      {props.returns.map((row, index) => (
-        <View
-          key={row.id}
-          // Only the LAST row anchors `lastRowRef` (the
-          // add-row scroll target) — `undefined` on every earlier row, the
-          // same single-target-ref shape `contributionsFieldRef`'s own
-          // index-gated assignment uses in holding-form.
-          ref={index === props.returns.length - 1 ? props.lastRowRef : undefined}
-        >
-          <Box gap={2}>
-            <HoldingSelectField
-              label={props.t('forms.transaction.returnTo', { index: index + 1 })}
-              sheetTitle={props.t('forms.transaction.returnToSheetTitle', { index: index + 1 })}
-              placeholder={props.selectHoldingPlaceholder}
-              options={props.buildOptions(index)}
-              selectedId={row.holdingId}
-              onSelect={(holdingId) => props.onSelectHolding(index, holdingId)}
-              onCreateNew={props.onCreateHolding}
-              required
-              invalid={invalid}
-            />
-
-            <TextField
-              label={props.t('forms.transaction.returnAmount', { index: index + 1 })}
-              value={row.amount}
-              onChangeText={(text) => props.onChangeAmount(index, text)}
-              keyboardType="decimal-pad"
-              placeholder={props.t('forms.transaction.amountPlaceholder')}
-              suffix={props.suffix}
-              required
-              invalid={invalid}
-            />
-
-            {/* The delete-return control reuses the SAME shared Button the deposit
-              (term-deposit contributions) form uses for its remove action — a
-              destructiveTonal small button WITH a text label, never a hand-rolled
-              icon-only button. Gated on more than one return, mirroring the
-              contributions list's own guard, so the last remaining split return
-              cannot be deleted. */}
-            {props.returns.length > 1 && (
-              <Button
-                variant="destructiveTonal"
-                size="small"
-                fullWidth={false}
-                icon="trash"
-                accessibilityLabel={props.t('forms.transaction.removeReturn', { index: index + 1 })}
-                onPress={() => props.onRemove(index)}
-              >
-                {props.t('forms.transaction.remove')}
-              </Button>
-            )}
-          </Box>
-        </View>
-      ))}
-
-      {props.error !== undefined && <FieldError message={props.error} />}
-
-      <Button
-        variant="secondaryTonal"
-        size="small"
-        fullWidth={false}
-        icon="plus"
-        onPress={props.onAdd}
-      >
-        {props.t('forms.transaction.addReturn')}
-      </Button>
-    </>
-  );
-};
-
-// Whether the footer's Save button renders: a manual row always, a synced row
-// only once its category has changed, and a converting row always (its Save
-// writes the counterpart leg and only the existing row's pair id). Kept module-level and
-// pure so the footer's boolean expression does not add its own operator count
-// to the screen component's cognitive-complexity budget.
-const showsSaveButton = (
-  isReadOnly: boolean,
-  categoryChanged: boolean,
-  converting: boolean,
-): boolean => !isReadOnly || categoryChanged || converting;
-
-// Whether the loan-payment field renders: an EXISTING debit row only (manual
-// or synced alike — `setLoanPayment`/`undoAutoLoanLink` carry no source
-// gate, same as the category field), data-driven on `loanOptions` rather
-// than a flag (a currency with no open loan holding at all simply never
-// offers the field — Guideline 5.6), and never while converting (that swaps
-// the whole field group for the convert-only inputs). Keyed off the
-// PERSISTED amount, not the live in-progress `mode` toggle, so the link's
-// own visibility never flip-flops before Save. Kept module-level and pure
-// for the same cognitive-complexity-budget reason as `showsSaveButton`
-// above.
-//
-// Also visible whenever the row already carries a link
-// (`selectedLoanHoldingId`), even with zero open loan options AND even when
-// the row is not a debit (a linked row later edited from debit
-// to credit must not hide the field where None/Undo live) — a filter never
-// hides an active selection: the row stays linked whose loan closed, moved
-// currency, or whose own amount sign changed, and the user must be able to
-// reach the field to see that link, Undo it, or pick "None", not just a
-// currently-open loan on a currently-eligible debit. `buildLoanOptions`
-// already unions that same loan back into `loanOptions`, so this is a
-// belt-and-suspenders direct check, not the only guard.
-const isLoanFieldVisible = (
-  existingAmountMinorUnits: number | undefined,
-  loanOptionCount: number,
-  converting: boolean,
-  selectedLoanHoldingId: string | null,
-): boolean =>
-  existingAmountMinorUnits !== undefined &&
-  !converting &&
-  (selectedLoanHoldingId !== null || (existingAmountMinorUnits < 0 && loanOptionCount > 0));
-
-// The current loan link's own two pieces, resolved together so the screen
-// body reads one call instead of two separate `?? null` chains — kept
-// module-level for the same cognitive-complexity-budget reason as
-// `isLoanFieldVisible` above.
-const resolveLoanLinkState = (
-  existing: Pick<TransactionRow, 'loanHoldingId' | 'loanLinkSource'> | undefined,
-): { selectedLoanHoldingId: string | null; loanLinkSource: 'auto' | 'manual' | null } => ({
-  selectedLoanHoldingId: existing?.loanHoldingId ?? null,
-  loanLinkSource: existing?.loanLinkSource ?? null,
-});
-
-// The category picker and "Convert to exchange" action: everything below the
-// main field group EXCEPT while converting (a convert has no category — just
-// the convert group and Save). Deleting a transaction is offered only through
-// the row's touch-and-hold context menu (`CardContextMenu`), not from this
-// form. The transaction-TYPE selector is NOT here; it renders above the field
-// group, under the Holding select. Extracted to its own module-level function
-// for the same cognitive-complexity-budget reason as `renderFieldGroup`
-// above: several independent `&&`-gated conditions, kept out of the screen
-// component's own branch count.
-type ModeAndActionsProps = {
-  converting: boolean;
-  isReadOnly: boolean;
-  isExchange: boolean;
-  categoryOptions: { key: string; title: string; icon: string; color: string }[];
-  selectedCategory: string | null;
-  onSelectCategory: (key: string) => void;
-  convertEligible: boolean;
-  onPressConvert: () => void;
-  isEditing: boolean;
-  t: TFunction;
-  // The category picker's own validation-failure message, or `undefined` when
-  // valid — the `CategoryField` renders it under itself and turns its label
-  // red; the field is wrapped in `categoryFieldRef` for scroll-to-invalid.
-  categoryError?: string;
-  categoryFieldRef?: RefObject<FieldInstance | null>;
-  loanFieldVisible: boolean;
-  loanOptions: readonly HoldingSelectOption[];
-  selectedLoanHoldingId: string | null;
-  onSelectLoanPayment: (loanHoldingId: string | null) => void;
-  loanLinkSource: 'auto' | 'manual' | null;
-  onUndoLoanLink: () => void;
-};
-
-const renderModeAndActions = (props: ModeAndActionsProps): ReactElement | null => {
-  if (props.converting) {
-    return null;
-  }
-
-  return (
-    <>
-      {/* The transaction-TYPE selector does not live here: it renders as a
-        select field directly under the Holding select, above the field group.
-        This helper owns only the category picker and the "Convert to
-        exchange" action — everything below the field group except while
-        converting. */}
-
-      {/* The category picker is ALWAYS editable on an income/expense row —
-        even on a synced row — since a category edit propagates to every
-        same-name transaction and to future imports, unlike the bank-owned
-        amount/sign. Exchange has no category: both legs' descriptions are
-        fixed, auto-generated copy. */}
-      {!props.isExchange && (
-        <View ref={props.categoryFieldRef}>
-          <CategoryField
-            label={props.t('forms.transaction.category')}
-            sheetTitle={props.t('forms.transaction.categorySheetTitle')}
-            testID="transaction-category-field"
-            options={props.categoryOptions}
-            selectedKey={props.selectedCategory}
-            onSelect={props.onSelectCategory}
-            // A category is required only on a fresh add (`plainFieldErrors`
-            // gates a create on it); an edit leaves the category optional.
-            required={!props.isEditing}
-            error={props.categoryError}
-          />
-        </View>
-      )}
-
-      {/* Shown for BOTH a manual and a synced row — an existing debit's own
-        loan link is user state, not a mutation of bank-owned ledger data
-        (`transactionsRepo.setLoanPayment`/`undoAutoLoanLink` carry no source
-        gate, same as the category field above), so a read-only synced row
-        stays writable here too. Data-driven visibility, not a flag: hidden
-        outright whenever `loanOptions` is empty — see `isLoanFieldVisible`'s
-        own doc comment. */}
-      {props.loanFieldVisible && (
-        <LoanPaymentField
-          label={props.t('forms.transaction.loanPayment')}
-          sheetTitle={props.t('forms.transaction.loanPaymentSheetTitle')}
-          noneLabel={props.t('forms.transaction.loanPaymentNone')}
-          testID="transaction-loan-payment-field"
-          options={props.loanOptions}
-          selectedId={props.selectedLoanHoldingId}
-          onSelect={props.onSelectLoanPayment}
-          linkSource={props.loanLinkSource}
-          autoLinkedCaption={props.t('forms.transaction.loanLinkedAuto')}
-          undoLabel={props.t('forms.transaction.loanLinkUndo')}
-          onUndo={props.onUndoLoanLink}
-        />
-      )}
-
-      {/* Shown for BOTH a manual and a synced row — the existing row gets only
-        the pair id (plus the marker when it is manual or imported), so a
-        read-only synced row stays safe to convert.
-        Not gated by `!isReadOnly` for that reason. */}
-      {props.convertEligible && (
-        <Button
-          variant="secondaryTonal"
-          size="small"
-          fullWidth={false}
-          icon="arrow.left.arrow.right"
-          onPress={props.onPressConvert}
-        >
-          {props.t('forms.transaction.convertToExchange')}
-        </Button>
-      )}
-    </>
-  );
-};
-
 const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigation }) => {
-  const { theme } = useUnistyles();
   const { t } = useTranslation();
   // The mode row's display labels, resolved from the catalog inside the
   // component (rather than a module-level constant) so they always reflect
@@ -982,14 +399,14 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   // can be BACKDATED via the DateField below. Edit mode hydrates the existing
   // time; picking a day sets it to that day's local midnight.
   const [time, setTime] = useState<number>(() => Date.now());
-  // The picked category key (a categories.key slug, lowercase). Null = no
-  // category yet. Editing it ALWAYS propagates to every same-name transaction
-  // via the override rule — there is no single-row-only category edit.
-  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
-  // Whether the user has explicitly picked a category through the picker. Gates
-  // the description-blur auto-pick: once the user chooses, a later matching
-  // blur must never overwrite that choice.
-  const [userPickedCategory, setUserPickedCategory] = useState(false);
+  const {
+    selectedCategory,
+    setSelectedCategory,
+    setUserPickedCategory,
+    selectCategory,
+    onDescriptionBlur,
+    pickSuggestion,
+  } = useCategoryPick({ description, setDescription, isEditing, categoryByNormalizedName });
   const [hydrated, setHydrated] = useState(false);
   // Held from the seed rather than re-resolved at Save, so a counterpart
   // renamed mid-edit cannot turn the untouched label into stored text.
@@ -1000,13 +417,6 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   // that `disableSave` blocked, never live while the user is still filling
   // the form in.
   const [attemptedSave, setAttemptedSave] = useState(false);
-  // The pending category-override confirmation. Non-null while the themed
-  // confirm modal is up (carrying the affected name + picked category key);
-  // null when no confirmation is in flight.
-  const [pendingOverride, setPendingOverride] = useState<{
-    name: string;
-    category: string;
-  } | null>(null);
   // Seed the fields once, when the source row (edit OR duplicate) and its
   // holding have loaded (the holding's currency scale is needed to render the
   // amount). The `hydrated` latch keeps a later live-query refresh from
@@ -1081,6 +491,8 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     currency,
     defaultPrimaryHoldingId,
     blankLabel,
+    setSelectedCategory,
+    setUserPickedCategory,
   ]);
 
   // Seed the counterpart (cash) amount from the latest cached rate at
@@ -1169,46 +581,6 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   // the two can never disagree about which field is blocking.
   const disableSaveField = firstInvalidField(modeBehavior.fieldOrder, activeFieldErrors);
   const disableSave = disableSaveField !== null;
-
-  // An explicit category pick: record the choice AND flag it, so a later
-  // description blur (the A1 auto-pick) never overwrites what the user chose.
-  const selectCategory = (key: string): void => {
-    setSelectedCategory(key);
-    setUserPickedCategory(true);
-  };
-
-  // A1's category auto-pick, factored into ONE surface both the description
-  // blur AND the suggestion tap route through, so the two never stack a
-  // second independent description effect. Given a settled name and no explicit
-  // user pick, pre-select the category the existing name rules map that name to;
-  // a name matching no rule yields null, which clears any prior auto-pick so
-  // Save's create-time category requirement re-engages honestly. Only fires on a
-  // create — an edit hydrates its own stored category and must not be re-derived
-  // from the name. Takes the name explicitly (not the `description` state) so the
-  // suggestion tap can seat from the just-picked value before its `setDescription`
-  // has flushed.
-  const reseatCategoryFromName = (name: string): void => {
-    if (userPickedCategory || isEditing) {
-      return;
-    }
-
-    setSelectedCategory(ruleCategoryFor(name, categoryByNormalizedName));
-  };
-
-  // A1: when the description SETTLES (blur, never a keystroke), re-seat the
-  // category from the current field value through the shared surface above.
-  const onDescriptionBlur = (): void => {
-    reseatCategoryFromName(description);
-  };
-
-  // Tapping an inline suggestion fills the description verbatim AND re-fires
-  // A1's rule lookup on that same value, so picking a known merchant name seats
-  // its category exactly as a blur would — ONE coherent description-handling
-  // surface, not two competing effects.
-  const pickSuggestion = (suggestion: string): void => {
-    setDescription(suggestion);
-    reseatCategoryFromName(suggestion);
-  };
 
   const title = headerTitle(isReadOnly, isEditing, titleLabels);
   useLayoutEffect(() => {
@@ -1299,89 +671,24 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     }
   };
 
-  // Editing a category ALWAYS propagates to every same-name transaction (and to
-  // future imports), so surface the blast radius in a themed confirm modal
-  // before writing the rule. Both paths return to the list (the manual edit, if
-  // any, has already been written); only "Apply" also writes the override rule.
-  const applyOverride = async (): Promise<void> => {
-    if (pendingOverride === null) {
-      return;
-    }
-
-    try {
-      await categoryOverridesRepo.upsertCategoryOverride(
-        pendingOverride.name,
-        pendingOverride.category,
-      );
-      navigation.goBack();
-    } catch {
-      showSaveErrorAlert();
-    }
-  };
-
-  // A second `useSubmitOnce` instance, not the Save button's: this guards the
-  // sheet's "Apply" write, an independent action reachable only once `save()`
-  // has already returned (its own guard is idle again by then) and the sheet
-  // is showing. Sharing one instance would conflate two different actions'
-  // in-flight state under a single boolean — either action could wrongly
-  // block the other — for no benefit, since neither button is ever pressed
-  // while the other's write is in flight.
-  const { onPress: onApplyOverride, isSubmitting: isApplyingOverride } =
-    useSubmitOnce(applyOverride);
-
-  // The "just for this one" path: persist the picked category on THIS row ONLY,
-  // by id, then return to the list. Unlike `applyOverride` (the all-similar name
-  // rule), nothing propagates to other same-name rows or to future imports —
-  // `transactionsRepo.setCategory` rewrites the single target row's category and
-  // nothing else. Only reachable in EDIT mode: `editingId` targets an existing
-  // row, so the branch is guarded on it and the button is offered only when it
-  // is present. A brand-new unsaved row has no id to target — and already
-  // carries its category from `recordManual` — so this action is not offered
-  // there.
-  const applyOverrideOne = async (): Promise<void> => {
-    if (pendingOverride === null || editingId === null) {
-      return;
-    }
-
-    try {
-      await transactionsRepo.setCategory({
-        transactionId: editingId,
-        category: pendingOverride.category,
-      });
-      navigation.goBack();
-    } catch {
-      showSaveErrorAlert();
-    }
-  };
-
-  // A third independent `useSubmitOnce` instance, for the same reason
-  // `onApplyOverride` has its own (see above): each sheet action's in-flight
-  // state must stay separate so one never wrongly blocks another.
-  const { onPress: onApplyOverrideOne, isSubmitting: isApplyingOverrideOne } =
-    useSubmitOnce(applyOverrideOne);
-
-  // Either sheet write in flight: the sheet stays up (a scrim/back dismiss or
-  // Cancel closes nothing) until the write is done and its own `goBack` runs.
-  const isOverrideWriting = [isApplyingOverride, isApplyingOverrideOne].includes(true);
-
-  const cancelOverride = (): void => {
-    if (isOverrideWriting) {
-      return;
-    }
-
-    navigation.goBack();
-  };
-
-  // The picked category's resolved icon name + confirm copy for the sheet. The
-  // sheet renders the glyph white (textPrimary), not its category color, by
-  // design. Bundled by a module-level helper so the JSX gates on a single
-  // nullable and the branch stays out of the component body.
-  const pendingCategory = resolvePendingCategory(
+  const {
     pendingOverride,
+    setPendingOverride,
+    onApplyOverride,
+    isApplyingOverride,
+    onApplyOverrideOne,
+    isApplyingOverrideOne,
+    isOverrideWriting,
+    cancelOverride,
+    pendingCategory,
+    overrideMessage,
+  } = useCategoryOverride({
+    navigation,
+    editingId,
     categoryByKey,
     buildApplyCategoryMessage,
-  );
-  const overrideMessage = pendingCategory?.message ?? '';
+    showSaveErrorAlert,
+  });
 
   // Append an empty return row; `nextReturnId` keeps its React key stable.
   const addReturn = (): void => {
@@ -1697,22 +1004,22 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
         }
       >
         <Box gap={4} testID="transaction-form">
-          {renderReadOnlyNotice(isReadOnly, theme.colors.surfaceHigh, readOnlyNotice)}
+          <ReadOnlyNotice isReadOnly={isReadOnly} noticeText={readOnlyNotice} />
 
           {/* B: the primary-leg holding picker, shown ONLY when no holding was
             fixed by navigation (the global-add entry). It drives the shared
             `primaryHoldingId` seam, so the currency/category/exchange derivation
             below follows the pick automatically. Null on every other path. */}
-          {renderPrimaryHoldingField({
-            visible: isEmptyCreate,
-            label: t('forms.transaction.holding'),
-            sheetTitle: t('forms.transaction.holdingSheetTitle'),
-            placeholder: t('forms.transaction.selectHolding'),
-            options: primaryOptions,
-            selectedId: primaryHoldingId,
-            onSelect: setPrimaryHoldingId,
-            onCreateNew: openCreateHoldingIn(undefined, isTransactionEligibleType),
-          })}
+          <PrimaryHoldingField
+            visible={isEmptyCreate}
+            label={t('forms.transaction.holding')}
+            sheetTitle={t('forms.transaction.holdingSheetTitle')}
+            placeholder={t('forms.transaction.selectHolding')}
+            options={primaryOptions}
+            selectedId={primaryHoldingId}
+            onSelect={setPrimaryHoldingId}
+            onCreateNew={openCreateHoldingIn(undefined, isTransactionEligibleType)}
+          />
 
           {/* The transaction-TYPE selector, directly under the Holding select.
             Built with `visible={!converting}` (a convert has no mode toggle),
@@ -1727,86 +1034,86 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
             In, Date — see `src/screens/forms/exchange-fields`); income/expense
             keeps its ORIGINAL field order (Amount, Description, Date)
             literally inline here, unchanged from before Exchange existed.
-            The three-way switch lives in the module-level `renderFieldGroup`
-            (see above) rather than a nested ternary here. */}
-          {renderFieldGroup({
-            converting,
-            convertView,
-            counterpartHoldingId,
-            onSelectCounterpart: selectCounterpart,
-            onCreateCounterpart: openCreateHoldingIn(
+            The three-way switch lives in `FieldGroup` rather than a nested
+            ternary here. */}
+          <FieldGroup
+            converting={converting}
+            convertView={convertView}
+            counterpartHoldingId={counterpartHoldingId}
+            onSelectCounterpart={selectCounterpart}
+            onCreateCounterpart={openCreateHoldingIn(
               holding?.accountId,
               convertCounterpartType(convertView.direction),
-            ),
-            counterpartAmount,
-            onChangeCounterpartAmount: (text) => setCounterpartAmount(groupAmount(text)),
-            isExchange,
-            amount,
-            onChangeAmount: (text) => setAmount(groupAmount(text)),
-            amountSuffix,
+            )}
+            counterpartAmount={counterpartAmount}
+            onChangeCounterpartAmount={(text) => setCounterpartAmount(groupAmount(text))}
+            isExchange={isExchange}
+            amount={amount}
+            onChangeAmount={(text) => setAmount(groupAmount(text))}
+            amountSuffix={amountSuffix}
             // The fixed convert leg is the existing transaction's own holding,
             // so it shares the source holding's currency glyph.
-            fixedSuffix: amountSuffix,
-            destinationOptions,
-            destinationHoldingId,
-            onSelectDestination: setDestinationHoldingId,
-            onCreateDestination: openCreateHoldingIn(
+            fixedSuffix={amountSuffix}
+            destinationOptions={destinationOptions}
+            destinationHoldingId={destinationHoldingId}
+            onSelectDestination={setDestinationHoldingId}
+            onCreateDestination={openCreateHoldingIn(
               holding?.accountId,
               isExchangeCreateDestinationType,
-            ),
-            valueIn,
-            onChangeValueIn: (text) => setValueIn(groupAmount(text)),
-            valueInSuffix: holdingSuffix(holdings, destinationHoldingId),
-            counterpartSuffix: holdingSuffix(holdings, counterpartHoldingId),
-            description,
-            onChangeDescription: setDescription,
-            onBlurDescription: onDescriptionBlur,
+            )}
+            valueIn={valueIn}
+            onChangeValueIn={(text) => setValueIn(groupAmount(text))}
+            valueInSuffix={holdingSuffix(holdings, destinationHoldingId)}
+            counterpartSuffix={holdingSuffix(holdings, counterpartHoldingId)}
+            description={description}
+            onChangeDescription={setDescription}
+            onBlurDescription={onDescriptionBlur}
             // The inline suggestion row. Its pool is already empty on an
             // edit (see the `pastDescriptions` memo), and the component itself
             // hides when there is no match or the field already equals a
             // suggestion, so it is passed unconditionally here.
-            descriptionSuggestions: (
+            descriptionSuggestions={
               <DescriptionSuggestions
                 descriptions={pastDescriptions}
                 value={description}
                 onPick={pickSuggestion}
               />
-            ),
-            descriptionPlaceholder,
-            isReadOnly,
-            time,
-            onChangeTime: setTime,
-            maxDate: Date.now(),
-            t,
-            amountError: fieldError('amount'),
-            amountInvalid: isSplitAmountInvalid(saveDisabledParams, attemptedSave),
-            amountFieldRef,
-            amountInputRef,
-            valueOutError: fieldError('valueOut'),
-            destinationError: fieldError('destinationHolding'),
-            valueInError: fieldError('valueIn'),
-            valueOutFieldRef,
-            destinationFieldRef,
-            valueInFieldRef,
-            counterpartError: fieldError('counterpartHolding'),
-            counterpartAmountError: fieldError('counterpartAmount'),
-            counterpartFieldRef: counterpartHoldingFieldRef,
-            counterpartAmountFieldRef,
-          })}
+            }
+            descriptionPlaceholder={descriptionPlaceholder}
+            isReadOnly={isReadOnly}
+            time={time}
+            onChangeTime={setTime}
+            maxDate={Date.now()}
+            t={t}
+            amountError={fieldError('amount')}
+            amountInvalid={isSplitAmountInvalid(saveDisabledParams, attemptedSave)}
+            amountFieldRef={amountFieldRef}
+            amountInputRef={amountInputRef}
+            valueOutError={fieldError('valueOut')}
+            destinationError={fieldError('destinationHolding')}
+            valueInError={fieldError('valueIn')}
+            valueOutFieldRef={valueOutFieldRef}
+            destinationFieldRef={destinationFieldRef}
+            valueInFieldRef={valueInFieldRef}
+            counterpartError={fieldError('counterpartHolding')}
+            counterpartAmountError={fieldError('counterpartAmount')}
+            counterpartFieldRef={counterpartHoldingFieldRef}
+            counterpartAmountFieldRef={counterpartAmountFieldRef}
+          />
 
           {/* Split-change only: the dynamic return rows + "Add return" action,
             rendered below the reused Amount/Description/Date/Time group. The
-            `visible` gate and the `.map` live in the module-level
-            `renderSplitReturns`, so this stays a single call. Wrapped in
-            `splitReturnsFieldRef` here (the CALL SITE) rather than inside the
-            helper, so the ref anchors the whole section for scroll-to-invalid.
-            `renderSplitReturns` renders `null` in every non-split mode, but
+            `visible` gate and the `.map` live in `SplitReturns`, so this stays
+            a single element. Wrapped in `splitReturnsFieldRef` here (the CALL
+            SITE) rather than inside the component, so the ref anchors the whole
+            section for scroll-to-invalid.
+            `SplitReturns` renders `null` in every non-split mode, but
             this wrapper `View` still counts as a flex item in the parent
             `Box`'s `gap` layout — `styles.hidden` (`display: 'none'`) keeps a
             hidden wrapper out of that gap slot while the mode is not split,
             without unmounting it (so the ref stays usable the moment split
             mode is selected).
-            This wrapper stands in place of `renderSplitReturns`'s Fragment as
+            This wrapper stands in place of `SplitReturns`'s Fragment as
             a DIRECT child of the parent `Box gap={4}`: its
             divider/heading/rows/error/button are wrapped in this one `View`
             as ONE child, with nothing supplying a gap between them the way
@@ -1822,127 +1129,77 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
             style={[styles.splitReturnsGap, !isSplit && styles.hidden]}
             testID="split-returns-wrapper"
           >
-            {renderSplitReturns({
-              visible: isSplit,
-              returns: changeReturns,
-              buildOptions: returnOptionsFor,
-              onSelectHolding: selectReturnHolding,
-              onCreateHolding: openCreateHoldingIn(
+            <SplitReturns
+              visible={isSplit}
+              returns={changeReturns}
+              buildOptions={returnOptionsFor}
+              onSelectHolding={selectReturnHolding}
+              onCreateHolding={openCreateHoldingIn(
                 holding?.accountId,
                 isTransactionEligibleType,
                 holding?.currency,
-              ),
-              onChangeAmount: changeReturnAmount,
-              onRemove: removeReturn,
-              onAdd: addReturn,
-              suffix: amountSuffix,
-              selectHoldingPlaceholder: t('forms.transaction.selectHolding'),
-              t,
-              error: fieldError('splitReturns'),
-              lastRowRef: lastReturnFieldRef,
-            })}
+              )}
+              onChangeAmount={changeReturnAmount}
+              onRemove={removeReturn}
+              onAdd={addReturn}
+              suffix={amountSuffix}
+              selectHoldingPlaceholder={t('forms.transaction.selectHolding')}
+              t={t}
+              error={fieldError('splitReturns')}
+              lastRowRef={lastReturnFieldRef}
+            />
           </View>
 
           {/* The mode chip row, category picker, and "Convert to exchange"
             action — everything below the main field group EXCEPT while
             converting. The `!converting` gate and every `&&`-conditional
-            live in the module-level `renderModeAndActions` (see above). */}
-          {renderModeAndActions({
-            converting,
-            isReadOnly,
-            isExchange,
-            categoryOptions,
-            selectedCategory,
-            onSelectCategory: selectCategory,
-            convertEligible: convertView.eligible,
-            onPressConvert: () => setConverting(true),
-            isEditing,
-            t,
-            categoryError: fieldError('selectedCategory'),
-            categoryFieldRef,
-            loanFieldVisible,
-            loanOptions,
-            ...loanLinkState,
-            onSelectLoanPayment: selectLoanPayment,
-            onUndoLoanLink: undoLoanLink,
-          })}
+            live in `ModeAndActions`. */}
+          <ModeAndActions
+            converting={converting}
+            isReadOnly={isReadOnly}
+            isExchange={isExchange}
+            categoryOptions={categoryOptions}
+            selectedCategory={selectedCategory}
+            onSelectCategory={selectCategory}
+            convertEligible={convertView.eligible}
+            onPressConvert={() => setConverting(true)}
+            isEditing={isEditing}
+            t={t}
+            categoryError={fieldError('selectedCategory')}
+            categoryFieldRef={categoryFieldRef}
+            loanFieldVisible={loanFieldVisible}
+            loanOptions={loanOptions}
+            {...loanLinkState}
+            onSelectLoanPayment={selectLoanPayment}
+            onUndoLoanLink={undoLoanLink}
+          />
 
           {/* After description AND category — the top of the form (above
               holding/type/amount) reads wrong for a supplementary,
               often-empty field. */}
-          {renderCommentRow(existing?.comment, t('forms.transaction.comment'))}
+          <CommentRow comment={existing?.comment} label={t('forms.transaction.comment')} />
         </Box>
       </Screen>
 
-      {/* The category-override confirmation, as a themed sheet rather than a
-          native Alert (which cannot be styled). "Apply" is the accent-filled
-          primary all-similar name rule; "Just for this one" (edit mode only) is
-          the secondary single-row override; "Cancel" is a transparent ghost with
-          a red label. Dismissing the sheet (scrim/back) behaves like Cancel — it
-          returns to the list. While either write runs, its button shows a
-          spinner and the sheet stays open until the write is done. */}
-      <BottomSheet
+      <CategoryOverrideSheet
         visible={pendingOverride !== null}
         onDismiss={cancelOverride}
-        gap={3}
-        header={
-          <Box direction="row" gap={2} style={styles.confirmHeader}>
-            {pendingCategory !== null && (
-              <SymbolIcon name={pendingCategory.icon} size={22} tone="textPrimary" />
-            )}
-
-            <Text variant="heading">{t('forms.transaction.applyCategoryToAll')}</Text>
-          </Box>
-        }
-        testID="category-override-sheet"
-      >
-        <Text variant="body" tone="textSecondary">
-          {overrideMessage}
-        </Text>
-
-        <Button
-          onPress={onApplyOverride}
-          loading={isApplyingOverride}
-          disabled={isApplyingOverrideOne}
-        >
-          {t('forms.transaction.apply')}
-        </Button>
-
-        {editingId !== null && (
-          <Button
-            variant="secondary"
-            onPress={onApplyOverrideOne}
-            loading={isApplyingOverrideOne}
-            disabled={isApplyingOverride}
-          >
-            {t('forms.transaction.applyToThisOne')}
-          </Button>
-        )}
-
-        <Button
-          variant="ghost"
-          textColor={theme.colors.negative}
-          onPress={cancelOverride}
-          disabled={isOverrideWriting}
-        >
-          {t('common.cancel')}
-        </Button>
-      </BottomSheet>
+        categoryIcon={pendingCategory?.icon ?? null}
+        message={overrideMessage}
+        canApplyToOne={editingId !== null}
+        onApply={onApplyOverride}
+        isApplying={isApplyingOverride}
+        onApplyOne={onApplyOverrideOne}
+        isApplyingOne={isApplyingOverrideOne}
+        isWriting={isOverrideWriting}
+      />
     </>
   );
 };
 
 const styles = StyleSheet.create((theme) => ({
-  notice: {
-    borderRadius: theme.radii.sm,
-  },
-  // Vertically centers the category glyph against the sheet's heading, so the
-  // colored icon reads on the same baseline as "Apply Category to All".
-  confirmHeader: {
-    alignItems: 'center',
-  },
   // Keeps the split-returns wrapper out of the parent `Box`'s `gap` layout
-  // while `renderSplitReturns` renders `null` (every non-split mode) — RN
+  // while `SplitReturns` renders `null` (every non-split mode) — RN
   // excludes a `display: 'none'` view from flex/gap layout entirely, unlike
   // an empty rendered child, which still counts as a flex item and doubles
   // the gap on both sides of it. The node (and its ref) stay mounted, so
@@ -1952,7 +1209,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   // The wrapper's own gap, matching the
   // parent form `Box`'s `gap={4}` rhythm — see the CALL SITE comment above
-  // for why this wrapper (not `renderSplitReturns` itself) owns it.
+  // for why this wrapper (not `SplitReturns` itself) owns it.
   splitReturnsGap: {
     gap: theme.spacing(4),
   },
