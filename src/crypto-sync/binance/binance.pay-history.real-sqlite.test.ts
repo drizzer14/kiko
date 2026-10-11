@@ -26,7 +26,10 @@ import { costOn, NOW, OTHER, OWN, party, payOrder } from './binance.pay-test-fix
 const ACCOUNT_ID = 'acc-1';
 const MINUTE_MS = 60_000;
 const DEPOSIT_TIME = NOW - 10 * DAY_MS;
-/** A receive before this lands on Funding, one after it on Spot (2026-09-29). */
+/**
+ * 12 hours before the instant Pay receipts go to Spot (2026-09-29T00:00Z), so a receive at
+ * this time lands on Funding.
+ */
 const BEFORE_SPOT_RECEIPTS_TIME = Date.UTC(2026, 8, 28, 12);
 
 type StoredRow = {
@@ -258,6 +261,78 @@ describe('the Pay walk on real SQLite', () => {
     await holdingsRepo.resetBinanceWalkCursors(ACCOUNT_ID, 1);
 
     expect(spotMetadata()).toMatchObject({ binancePayHistoryCursor: 1, binancePayRescanCursor: 1 });
+  });
+
+  it('keeps the overlap day behind a stale cursor on the Spot holding until a run has read it, and a disconnect empties the list', async () => {
+    const cursor = NOW - 120 * DAY_MS;
+    mockDatabase
+      .prepare("UPDATE holdings SET metadata = ? WHERE id = 'h-spot'")
+      .run(JSON.stringify({ binanceAsset: 'BTC', binancePayHistoryCursor: cursor }));
+    const late = received({ transactionId: 'late', transactionTime: cursor - DAY_MS / 2 });
+    const answerByRange = (cutAfter: number) => {
+      let calls = 0;
+
+      return async (
+        _apiKey: string,
+        _secret: string,
+        query: { startTime: number; endTime: number },
+      ) => {
+        calls += 1;
+
+        if (calls > cutAfter) {
+          throw new Error('run suspended');
+        }
+
+        const rows = [late].filter(
+          (order) =>
+            order.transactionTime >= query.startTime && order.transactionTime <= query.endTime,
+        );
+
+        return {
+          rows,
+          gathered: rows.length,
+          btcFundedOtherCoinOrders: [],
+          usedUidWeight1m: undefined,
+          usedIpWeight1m: undefined,
+        };
+      };
+    };
+    const walkWith = (cutAfter: number) =>
+      syncBinancePayHistory(
+        {
+          targetAccountId: ACCOUNT_ID,
+          run: createBinanceHistoryRun({ now: () => NOW, sleep: async () => undefined }),
+        },
+        {
+          now: () => NOW,
+          readCredentials: async () => ({ apiKey: 'api-key', secret: 'secret' }),
+          fetchAccount: async () => ({ balances: [], uid: OWN }),
+          fetchPayHistory: answerByRange(cutAfter),
+        },
+      );
+
+    await expect(walkWith(2)).rejects.toThrow('run suspended');
+
+    expect(spotMetadata()).toMatchObject({
+      binancePayHistoryCursor: NOW,
+      binancePayPendingOverlap: [{ start: cursor - DAY_MS, end: cursor }],
+    });
+    expect(storedRows()).toEqual([]);
+
+    const resumed = await walkWith(10);
+
+    expect(resumed.imported).toBe(1);
+    expect(spotMetadata()).toMatchObject({ binancePayPendingOverlap: [] });
+    expect(storedRows().map((row) => row.external_id)).toEqual(['acc-1:pay:C2C:late:1']);
+
+    mockDatabase
+      .prepare(
+        "UPDATE holdings SET metadata = json_set(metadata, '$.binancePayPendingOverlap', json(?))",
+      )
+      .run(JSON.stringify([{ start: 1, end: 2 }]));
+    await holdingsRepo.resetBinanceWalkCursors(ACCOUNT_ID, 1);
+
+    expect(spotMetadata()).toMatchObject({ binancePayPendingOverlap: [] });
   });
 
   it('creates a missing Earn holding at zero for an Earn order, and never touches an existing balance', async () => {

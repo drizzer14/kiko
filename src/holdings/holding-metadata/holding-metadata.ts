@@ -212,6 +212,31 @@ export const binanceWalkCursorFields = [
 export type BinanceWalkCursorField = (typeof binanceWalkCursorFields)[number];
 
 /**
+ * The ground behind a past forward start that no run has read yet, one list per walk: a late
+ * record can settle up to one overlap before the cursor, so that stretch must be read by a run
+ * after the cursor moved on, however long the app was away. Each entry is a `{ start, end }`
+ * range (not a bare day start) so a stretch too dense for one run can keep its progress. A
+ * separate key from the re-scan mark, so a stop in one stretch starves neither the other
+ * stretches nor the window re-scan.
+ */
+export const BINANCE_HISTORY_PENDING_OVERLAP_FIELD = 'binanceHistoryPendingOverlap';
+
+export const BINANCE_PAY_PENDING_OVERLAP_FIELD = 'binancePayPendingOverlap';
+
+/**
+ * The walk-owned keys that hold a list of ranges, not a cursor. A balance sync carries them
+ * with the cursors, and a disconnect resets them to an empty list.
+ */
+export const binanceWalkPendingFields = [
+  BINANCE_HISTORY_PENDING_OVERLAP_FIELD,
+  BINANCE_PAY_PENDING_OVERLAP_FIELD,
+] as const;
+
+export type BinanceWalkPendingField = (typeof binanceWalkPendingFields)[number];
+
+export type BinancePendingRange = { start: number; end: number };
+
+/**
  * The two marks of a Monobank holding's close and reopen (see
  * `reconcileClosedHoldings` in monobank/sync.ts). Each key has one role:
  * `syncClosedFromMs` says the SYNC closed this holding (the user's own close
@@ -229,7 +254,11 @@ export const STATEMENT_FROM_FIELD = 'statementFromMs';
  * reset (`withWalkOwnedMetadataResetToFloor`) must stay Binance-only and
  * never touch a Monobank card's or jar's statement cursor.
  */
-const carriedMetadataKeys = [...binanceWalkCursorFields, STATEMENT_FROM_FIELD] as const;
+const carriedMetadataKeys = [
+  ...binanceWalkCursorFields,
+  ...binanceWalkPendingFields,
+  STATEMENT_FROM_FIELD,
+] as const;
 
 const numberFieldOf =
   (field: string) =>
@@ -247,6 +276,42 @@ export const binanceWalkCursorOf = (
   field: BinanceWalkCursorField,
   metadata: unknown,
 ): number | null => numberFieldOf(field)(metadata);
+
+const asPendingRange = (value: unknown): BinancePendingRange | undefined => {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+
+  const { start, end } = value;
+
+  return isNumber(start) && isNumber(end) && start < end ? { start, end } : undefined;
+};
+
+/**
+ * One walk's stored pending ranges, `[]` when none is stored, `undefined` when a value is
+ * stored but is not a list of well-formed ranges (the caller logs a fixed code and goes on
+ * with an empty list; a parse failure must never fail a balance sync).
+ */
+export const binanceWalkPendingOf = (
+  field: BinanceWalkPendingField,
+  metadata: unknown,
+): BinancePendingRange[] | undefined => {
+  const stored = isRecord(metadata) ? metadata[field] : undefined;
+
+  if (stored === undefined) {
+    return [];
+  }
+
+  if (!Array.isArray(stored)) {
+    return undefined;
+  }
+
+  const ranges = stored.map(asPendingRange);
+
+  return ranges.every((range): range is BinancePendingRange => range !== undefined)
+    ? ranges
+    : undefined;
+};
 
 export const syncClosedFromOf = numberFieldOf(SYNC_CLOSED_FROM_FIELD);
 
@@ -276,7 +341,9 @@ export const withWalkOwnedMetadataCarried = (
 
 /**
  * Resets every `binanceWalkCursorFields` entry already on `storedMetadata` to
- * `floorMs` — the disconnect-side counterpart of `withWalkOwnedMetadataCarried`,
+ * `floorMs`, and every `binanceWalkPendingFields` entry to an empty list (a stale list
+ * would otherwise have a reconnected different account read ranges of the old one's
+ * history) — the disconnect-side counterpart of `withWalkOwnedMetadataCarried`,
  * so a disconnected Binance connection's watermark cannot leak into a
  * DIFFERENTLY-owned reconnect (`disconnectCryptoAccount`,
  * crypto-sync/disconnect.ts). Setting the floor rather than deleting the key
@@ -289,19 +356,22 @@ export const withWalkOwnedMetadataResetToFloor = (
   storedMetadata: unknown,
   floorMs: number,
 ): Record<string, unknown> | undefined => {
-  if (!isRecord(storedMetadata) || !binanceWalkCursorFields.some((key) => key in storedMetadata)) {
+  const walkOwnedKeys: readonly string[] = [
+    ...binanceWalkCursorFields,
+    ...binanceWalkPendingFields,
+  ];
+
+  if (!isRecord(storedMetadata) || !walkOwnedKeys.some((key) => key in storedMetadata)) {
     return undefined;
   }
 
-  const reset = { ...storedMetadata };
+  const storedKeys = (keys: readonly string[]) => keys.filter((key) => key in storedMetadata);
 
-  for (const key of binanceWalkCursorFields) {
-    if (key in storedMetadata) {
-      reset[key] = floorMs;
-    }
-  }
-
-  return reset;
+  return {
+    ...storedMetadata,
+    ...Object.fromEntries(storedKeys(binanceWalkCursorFields).map((key) => [key, floorMs])),
+    ...Object.fromEntries(storedKeys(binanceWalkPendingFields).map((key) => [key, []])),
+  };
 };
 
 const asContribution = (value: unknown): DepositContribution | null => {

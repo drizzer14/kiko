@@ -2,9 +2,11 @@ import { match } from 'ts-pattern';
 import { DAY_MS } from '@kiko/dates';
 import {
   BINANCE_HISTORY_CURSOR_FIELD,
+  BINANCE_HISTORY_PENDING_OVERLAP_FIELD,
   BINANCE_HISTORY_RESCAN_CURSOR_FIELD,
   binanceWalkCursorOf,
   type BinanceWalkCursorField,
+  type BinanceWalkPendingField,
 } from '@kiko/holdings/holding-metadata';
 import type { HoldingRow } from '@kiko/db';
 import { transactionsRepo } from '@kiko/transactions/repo';
@@ -20,6 +22,7 @@ import {
   resolveWalletHoldings,
   runWalkPlan,
   type SpanRead,
+  storedPendingOf,
   type WalkMarkFields,
   type WalkMarks,
   walkSpans,
@@ -59,12 +62,12 @@ const WITHDRAW_STATUS_COMPLETED = 6;
 const WINDOW_MS = 89 * DAY_MS;
 
 /**
- * On a re-sync, the forward start is widened this far behind a cursor that is older than
- * the re-scan window; a cursor inside the window needs none, since the re-scan covers the
- * ground behind it. A withdrawal's `applyTime` is when it was REQUESTED; it only becomes
- * settled (status 6, importable) later, so its timestamp can sit slightly behind
- * the cursor. A small overlap re-scans that boundary; the `(source, external_id)`
- * upsert makes the re-scan idempotent. The Pay walk keeps the same slack.
+ * How far behind a cursor a record can still settle. A withdrawal's `applyTime` is when it
+ * was REQUESTED; it only becomes settled (status 6, importable) later, so its timestamp can
+ * sit slightly behind the cursor. The ground this far behind each forward start is read
+ * again after the cursor has moved on (by the re-scan, or from the pending overlap list when
+ * the window does not reach it); the `(source, external_id)` upsert makes that idempotent.
+ * The Pay walk keeps the same slack.
  */
 export const RESYNC_OVERLAP_MS = DAY_MS;
 
@@ -78,6 +81,7 @@ export const HISTORY_FLOOR_MS = Date.UTC(2017, 6, 14);
 const CAPITAL_MARK_FIELDS: WalkMarkFields = {
   cursor: BINANCE_HISTORY_CURSOR_FIELD,
   rescan: BINANCE_HISTORY_RESCAN_CURSOR_FIELD,
+  pending: BINANCE_HISTORY_PENDING_OVERLAP_FIELD,
 };
 
 /** Safety stop on the window walk, so a bad clock cannot spin an unbounded loop. */
@@ -124,6 +128,12 @@ export type BinanceTransactionSyncDeps = {
     field: BinanceWalkCursorField,
     cursorMs: number,
   ) => Promise<void>;
+  /** Stores one walk's list of ground still owed, once a span has committed or the cursor moves. */
+  writeWalkPending: (
+    holdingId: string,
+    field: BinanceWalkPendingField,
+    ranges: WalkWindow[],
+  ) => Promise<void>;
   fetchDepositHistory: (
     apiKey: string,
     secret: string,
@@ -151,6 +161,8 @@ const defaultBinanceTransactionDeps: BinanceTransactionSyncDeps = {
   addTransactions: (rows) => transactionsRepo.addManyDedup(rows),
   writeWalkCursor: (holdingId, field, cursorMs) =>
     holdingsRepo.setBinanceWalkCursor(holdingId, field, cursorMs),
+  writeWalkPending: (holdingId, field, ranges) =>
+    holdingsRepo.setBinanceWalkPending(holdingId, field, ranges),
   fetchDepositHistory,
   fetchWithdrawHistory,
 };
@@ -465,6 +477,7 @@ const commitSpan = async (
     restartMs: HISTORY_FLOOR_MS,
     fields: CAPITAL_MARK_FIELDS,
     write: (field, cursorMs) => deps.writeWalkCursor(spot.id, field, cursorMs),
+    writePending: (field, ranges) => deps.writeWalkPending(spot.id, field, ranges),
   });
 
   return imported;
@@ -495,10 +508,12 @@ const runSync = async (
   // or a first sync) falls back to the newest already-imported record.
   const cursor = binanceWalkCursorOf(CAPITAL_MARK_FIELDS.cursor, spot.metadata);
   const rescanCursor = binanceWalkCursorOf(CAPITAL_MARK_FIELDS.rescan, spot.metadata);
+  const pending = storedPendingOf(CAPITAL_MARK_FIELDS.pending, spot.metadata);
   const latest = await deps.latestTransactionTime(spot.id);
   const plan = planWalkPasses({
     cursor: cursor ?? latest ?? null,
     rescanCursor,
+    pending,
     floorMs: HISTORY_FLOOR_MS,
     endTime: now,
     windowMs: WINDOW_MS,
@@ -513,13 +528,15 @@ const runSync = async (
     apiKey,
     secret,
     options,
-    marks: { cursor, rescanCursor },
+    marks: { cursor, rescanCursor, pending },
     plan,
   };
 
   return runWalkPlan({
     plan,
-    canAfford: () => run.budget.canAfford('capitalWithdraw', COSTS.withdraw),
+    canAfford: () =>
+      run.budget.canAfford('capitalWithdraw', COSTS.withdraw) &&
+      !isBinanceCoolingDown(accountId, deps.now()),
     runWindow: (window, pass) =>
       walkSpans({
         window,
@@ -533,12 +550,13 @@ const runSync = async (
  * Fetch BTC deposit + withdrawal history from Binance and import it as
  * transactions on the wallet holding each movement names (Spot, or Funding for
  * `walletType` 1), idempotently, committing each span's rows before advancing the
- * mark past it. A run goes forward from the watermark first, then re-scans the last
- * window behind it on what budget is left (see `planWalkPasses`). Runs AFTER the balance
+ * mark past it. A run goes forward from the watermark first, then reads the overlap ground
+ * earlier runs left owed, then re-scans the last window behind the watermark, each on what
+ * budget is left (see `planWalkPasses`). Runs AFTER the balance
  * sync (which creates/updates the Spot holding), so the Spot holding it anchors on
  * already exists. A missing Spot holding, missing credentials, or an active
- * post-429/418 cooldown is a no-op. `complete: false` means history or the re-scan
- * remains and a later run will resume from the stored marks; a history request failure
+ * post-429/418 cooldown is a no-op. `complete: false` means history, owed ground or the
+ * re-scan remains and a later run will resume from the stored marks; a history request failure
  * OTHER than a rate limit rejects, so the caller can log it without failing the balance
  * sync.
  */

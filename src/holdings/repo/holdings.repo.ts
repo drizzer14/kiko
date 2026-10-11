@@ -38,6 +38,8 @@ import {
   SYNC_CLOSED_FROM_FIELD,
   withWalkOwnedMetadataCarried,
   type BinanceWalkCursorField,
+  type BinanceWalkPendingField,
+  type BinancePendingRange,
   withWalkOwnedMetadataResetToFloor,
 } from '../holding-metadata';
 import { isSyncedHolding } from '../deletable';
@@ -165,6 +167,29 @@ const upsertManualPricePoint = (
 // so this one helper serves every synced field.
 const metadataKeyMatch = (metadataField: SyncedMetadataField, metadataKey: string) =>
   sql`json_extract(${holdings.metadata}, ${`$.${metadataField}`}) = ${metadataKey}`;
+
+// Merge one walk-owned field into a holding's stored metadata, only while the holding's
+// account is still `institution = 'binance'` (see `setBinanceWalkCursor`).
+const setBinanceWalkField = (holdingId: string, field: string, value: unknown) =>
+  write(async (databaseTransaction) => {
+    const rows = await databaseTransaction
+      .select({ metadata: holdings.metadata, institution: accounts.institution })
+      .from(holdings)
+      .innerJoin(accounts, eq(holdings.accountId, accounts.id))
+      .where(eq(holdings.id, holdingId));
+    const row = rows.at(0);
+
+    if (row === undefined || row.institution !== 'binance') {
+      return;
+    }
+
+    const stored = (row.metadata as Record<string, unknown> | null) ?? {};
+
+    await databaseTransaction
+      .update(holdings)
+      .set({ metadata: { ...stored, [field]: value } })
+      .where(eq(holdings.id, holdingId));
+  });
 
 // Insert a synced holding at the end of its account's grid, with its source key merged
 // into `metadata`. Shared by the upsert's miss branch and `ensureExchangeHoldings`.
@@ -1128,25 +1153,18 @@ export const holdingsRepo = {
    * floor write, which runs as part of that same disconnect).
    */
   setBinanceWalkCursor: (holdingId: string, field: BinanceWalkCursorField, cursorMs: number) =>
-    write(async (databaseTransaction) => {
-      const rows = await databaseTransaction
-        .select({ metadata: holdings.metadata, institution: accounts.institution })
-        .from(holdings)
-        .innerJoin(accounts, eq(holdings.accountId, accounts.id))
-        .where(eq(holdings.id, holdingId));
-      const row = rows.at(0);
-
-      if (row === undefined || row.institution !== 'binance') {
-        return;
-      }
-
-      const stored = (row.metadata as Record<string, unknown> | null) ?? {};
-
-      await databaseTransaction
-        .update(holdings)
-        .set({ metadata: { ...stored, [field]: cursorMs } })
-        .where(eq(holdings.id, holdingId));
-    }),
+    setBinanceWalkField(holdingId, field, cursorMs),
+  /**
+   * Store one Binance walk's list of pending overlap ranges (`field`) on one holding's
+   * metadata, under the same account gate and merge as `setBinanceWalkCursor`: a late write
+   * from a walk started before a disconnect must not bring back a range the disconnect reset
+   * to an empty list.
+   */
+  setBinanceWalkPending: (
+    holdingId: string,
+    field: BinanceWalkPendingField,
+    ranges: BinancePendingRange[],
+  ) => setBinanceWalkField(holdingId, field, ranges),
   /**
    * Advance the crash-safe statement-import marker (`syncedBalanceMinorUnits`,
    * see db/schema.ts) for one Monobank card to the balance whose statements the

@@ -242,9 +242,10 @@ export const fetchWithdrawHistory = async (
   );
 
 /**
- * Only the nickname and the Binance id are read off a counterparty. The id is for
- * the direction rule alone and is never stored; email, phone, account id, country,
- * card number, institution and digital-wallet id are never parsed.
+ * Only the nickname and the Binance id are read off a counterparty. The id is read for the
+ * direction rule and the receiver check of an order paid in another coin, and is never
+ * stored or logged; email, phone, account id, country, card number, institution and
+ * digital-wallet id are never parsed.
  */
 const PAY_PARTY_FIELDS = {
   name: optionalText,

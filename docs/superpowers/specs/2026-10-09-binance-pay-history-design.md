@@ -178,19 +178,22 @@ withdraw budget moves into this object, with the same numbers and the same rule.
   `binanceEarnHistoryCursor` (and `binanceHistoryCursor` for the capital walk). A walk
   that re-scans its last window also keeps a re-scan mark next to its cursor
   (`binanceHistoryRescanCursor` for capital, `binancePayRescanCursor` for Pay; the
-  Transfer and Earn walks add theirs), see sections 4 and 7.
-- All of them join `walkOwnedMetadataKeys` (`holding-metadata.ts`). The balance
-  upsert carries them and the disconnect resets them to the floor, through the
-  existing code paths.
-- One generic `holdingsRepo.setBinanceWalkCursor(holdingId, key, ms)` keeps the
-  existing `institution = 'binance'` gate.
+  Transfer and Earn walks add theirs), see sections 4 and 7. It also keeps a list of
+  pending overlap ranges (`binanceHistoryPendingOverlap`, `binancePayPendingOverlap`), see
+  section 4.
+- All of them join the walk-owned keys of `holding-metadata.ts` (`binanceWalkCursorFields`
+  and `binanceWalkPendingFields`). The balance upsert carries them and the disconnect resets
+  the cursors to the floor and the lists to an empty list, through the existing code paths.
+- One generic `holdingsRepo.setBinanceWalkCursor(holdingId, key, ms)` (and
+  `setBinanceWalkPending(holdingId, key, ranges)` for a list) keeps the existing
+  `institution = 'binance'` gate.
 - Windows go oldest first. The rows of a window are written
   (`transactionsRepo.addManyDedup`) BEFORE its watermark advances. A crash between
   the two re-imports the window idempotently.
-- On a re-sync a run is two passes (`planWalkPasses`, `binance.history-walk.ts`): the
-  forward pass from the cursor to the end (from `max(floor, cursor - RESYNC_OVERLAP_MS)` only
-  when the cursor is older than the re-scan window), then a re-scan of the last window behind
-  it on the budget that is left (section 4).
+- On a re-sync a run is three passes (`planWalkPasses`, `binance.history-walk.ts`): the
+  forward pass from the cursor to the end, then the owed overlap ground of earlier runs that
+  the re-scan will not read, then a re-scan of the last window behind the cursor, each on the
+  budget that is left (section 4).
 - Each walk is wrapped in its own `logOnFailure` (`@kiko/diagnostics`, name and
   code only). A failure in one walk never fails the balance sync or another walk.
   A permission rejection does not set the cooldown.
@@ -234,7 +237,7 @@ withdraw budget moves into this object, with the same numbers and the same rule.
   the order of the response or on which end of the range is open, and no request has
   `startTime` equal to `endTime`. A span of 1 ms that is still full stops the window
   (`pay-page-stuck`).
-- Two passes per run (shared in `binance.history-walk.ts`, with the span loop `walkSpans`
+- Three passes per run (shared in `binance.history-walk.ts`, with the span loop `walkSpans`
   that halves a full span and commits the rest oldest first, so the Transfer and Earn walks
   inherit both). The forward pass goes first and always starts AT the cursor
   (`max(floor, cursor ?? floor)`), in windows of 89 days to now, and moves the Pay cursor. A
@@ -259,25 +262,52 @@ withdraw budget moves into this object, with the same numbers and the same rule.
   over a balance sync, reset to the 2017 floor on disconnect). It commits span by span, moves
   only that key, and never touches the Pay cursor. The next run resumes it from the stored key
   until it reaches the forward start; then the key returns to the 2017 floor, which means "no
-  pass in progress", and the next run starts a new pass at the base. A catch-up from a cursor
-  older than the window takes several runs, and by the run that re-scans, the cursor has moved
-  on, so the overlap behind the OLD cursor cannot be derived from it. The first forward span of
-  a run therefore stores the re-scan's start as the mark (the first-run pin), before it moves
-  the cursor, whenever that start is behind the window. A stored mark above the floor and
-  before the forward start is resumed: at or after the base, over `[mark, forward start)`; behind
-  the base, for one overlap only, `[mark, mark + overlap)`, because re-reading all of `[mark,
-  cursor)` would cost more calls than a run has, over and over. A mark behind the base is
-  either what is left of an old cursor's overlap or an in-window mark the sliding window has
-  outrun, and it is resumed only while `mark >= window start - 89 days`: a re-scan that
-  stops on a record inside that overlap never moves the mark, and without the bound the
-  leftover would be re-read every run and starve the window re-scan behind it (found in
-  review: a late deposit never imported in 400 simulated runs). Once the window has slid a
-  whole window past the mark, the run starts a new pass at the base. A mark at the floor or at
-  or after the forward start starts a new pass. Re-scan rows go through the same keys, so a
-  second identical run imports nothing.
-  **Known limit:** two absences longer than the 89-day window in a row, with the app suspended
-  between the forward pass and the re-scan, can skip the second cursor's overlap day (review
-  I-1): one mark cannot hold two pending overlaps.
+  pass in progress", and the next run starts a new pass at the base. A stored mark above the
+  floor, at or after the base and before the forward start is resumed over `[mark, forward
+  start)`. A mark behind the base is a pass the sliding window has outrun: it is dropped and a
+  new pass starts at the base, however far behind the mark lies (the ground it left owes
+  nothing but its overlap day, which the pending list below holds). A mark at the floor or at
+  or after the forward start also starts a new pass. Re-scan rows go through the same keys, so
+  a second identical run imports nothing.
+- **Pending overlap days (review of fix rounds 5 and 6: chained absences, stale cursors, a
+  stop inside a leftover overlap, an outrun mark).** A record pending at a sync can settle up
+  to one overlap before the cursor that sync set, so the overlap day `[cursor - overlap,
+  cursor)` behind every forward start must be read by some run AFTER that cursor was set, however
+  long the app is away, and a lost day is a missing row in the user's own data. The re-scan of
+  the same run may never get to it (the run can end first, and a window that slid past the day
+  in a long absence does not reach it), so each walk (Pay and capital) keeps its own walk-owned
+  list of owed ground next to its cursors: `binancePayPendingOverlap` (capital:
+  `binanceHistoryPendingOverlap`), on the Spot holding, carried over a balance sync like the
+  cursors, reset to an empty list on disconnect. Its value is a list of `{ start, end }` ranges
+  in milliseconds, oldest first, never touching or overlapping; a range (rather than a bare day
+  start) keeps its progress, because a day too dense for one run's calls would otherwise be
+  re-read from its start every run and never finish.
+  - **Add.** Before the first forward span of a run moves the cursor, the run stores the list
+    with the overlap day behind the forward start added (`planWalkPasses`'s `pendingRanges`),
+    pending list first, cursor second: a crash after the first only leaves a range the next
+    run reads again. No day is added for a cursor that is null or at the floor.
+  - **Remove.** A range, or the part of one, leaves the list only when a committed span has read
+    it: a re-scan span or a pending span takes `[span start, span end)` out of the list after its
+    rows are durable (a span in a range's middle splits it). The floor passing a range drops it
+    (the part of a range the floor crosses is cut to the floor); nothing else does.
+  - **Order of a run.** Forward pass first (a stop there ends the run, as before), then the owed
+    ranges the window re-scan will not read this run, oldest first, as windows of their own
+    (`WalkPass` `pending`), then the window re-scan, each on the budget the earlier ones left.
+    A pending window that stops (a record the walk cannot trust) stays owed and the run goes on
+    to the next owed range and to the re-scan, so one stuck day starves neither; the window
+    re-scan and a budget that cannot afford the next window still end the run. A rate limit ends
+    the run too (the account cooldown is part of the budget check). Ranges inside the re-scan's
+    own range are read by the re-scan, and leave the list as its mark passes them.
+  - **Bound.** The list holds at most 12 ranges. Each range costs at least one call of a run's
+    leftover budget, so a longer list could not be served in one run; past the limit the two
+    nearest ranges merge into their hull, which reads the gap between them too and loses no
+    ground. Touching ranges merge on every store, so frequent syncs do not grow it.
+  - **Parse.** A stored value that is not a list of `{ start, end }` ranges with finite
+    `start < end` is read as an empty list under one fixed log code (`pending-malformed`),
+    never a throw: a corrupt value must not fail a balance sync.
+  A range inside the re-scan's own range waits for the re-scan mark to reach it, so a stop inside
+  the window re-scan delays such a range. It is never dropped: it stays in the list and is read
+  once the window has slid past the stop and a new pass starts, at most one window later.
 - Filter: `currency === 'BTC'`. A non-BTC order paid with BTC funds BY THE USER stops the
   span that holds it (`pay-btc-funded-other-coin`, cursor unmoved) (Q8); one the user
   received (the user is the receiver and not the payer) is ignored, because the BTC left
@@ -305,8 +335,8 @@ withdraw budget moves into this object, with the same numbers and the same rule.
   sign is zero or not a number, when the uid matches neither party or both, or when
   the sign disagrees with the uid. An unknown uid (the account read failed, or the
   account carries none) stops the window before any request
-  (`pay-uid-unavailable`, cursors unmoved). The Binance ids are read by the
-  direction function and nowhere else.
+  (`pay-uid-unavailable`, cursors unmoved). The party ids are read for the direction rule
+  and the B4 receiver check; they are never stored or logged.
 - **Wallet ids (Q9).** The probe saw `walletType` 1 on 5 of 5 orders, even for the one
   `[1, 2]` split, and could not match `walletType` against the entries of `walletTypes`
   (the entries are probably sent as text). The client reads `walletType` and every
@@ -326,8 +356,13 @@ withdraw budget moves into this object, with the same numbers and the same rule.
     the order amount). The equality rule that stopped it would never clear and becomes a
     loss once the floor passes the order (about 548 days).
   - **B5.** An outgoing order with no BTC `walletAssetCost` entry at all, and an explicit
-    `walletTypes` naming exactly one wallet, is placed whole on that wallet. The stop stays
-    for: `walletTypes` absent (`walletType` alone is not trusted), `walletTypes` with two
+    `walletTypes` naming exactly one wallet, is placed whole on that wallet when its BTC
+    `fundsDetail` entries, added together, equal `abs(amount)` to the satoshi (an order that lists
+    no funds at all carries nothing to compare and is placed). A cost-less BTC entry below the
+    amount, with the rest paid in another coin, stops (`pay-split-mismatch`): placing it whole
+    would invent BTC the user never spent. An order whose `fundsDetail` names no BTC entry but
+    lists funds in another coin stops as `pay-funds-not-btc` (B4), before this rule. The stop
+    stays for: `walletTypes` absent (`walletType` alone is not trusted), `walletTypes` with two
     wallets and no costs, and a cost list that is zero or does not add up.
   - **B4.** The funds checks apply to OUTGOING orders only. `pay-funds-not-btc` (a BTC order
     whose `fundsDetail` names no BTC) stops a send; on a receive the funds are the payer's, in

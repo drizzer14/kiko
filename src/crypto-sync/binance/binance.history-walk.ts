@@ -1,10 +1,14 @@
 import { match } from 'ts-pattern';
+import {
+  type BinanceWalkCursorField,
+  type BinanceWalkPendingField,
+  binanceWalkPendingOf,
+} from '@kiko/holdings/holding-metadata';
 import type { HoldingRow } from '@kiko/db';
 import maybe, { foldMap } from 'fnts/maybe';
 import { Money } from '@kiko/currency/money';
 import { logFailure } from '@kiko/diagnostics';
 import type { ExchangeHolding } from '@kiko/holdings/repo';
-import type { BinanceWalkCursorField } from '@kiko/holdings/holding-metadata';
 
 import { BINANCE_ASSET } from './binance.client';
 import { type BinanceWalletKey, binanceKeyOf, WALLET_HOLDING_NAMES } from './binance.holding-keys';
@@ -33,22 +37,112 @@ export const buildWalkWindows = (
   return windows;
 };
 
-export type WalkPass = 'forward' | 'rescan';
+/**
+ * `pending` is a stretch of ground earlier runs left owed (see `planWalkPasses`): read on its
+ * own, so a stop in one of them leaves the others and the re-scan to run.
+ */
+export type WalkPass = 'forward' | 'pending' | 'rescan';
 
 /**
- * One run of a walk, as two passes. `forward` goes from the cursor to the end and moves the
- * walk's cursor. `rescan` goes back over the ground behind the forward start, to catch a
- * record that settles late, and never moves that cursor. `rescanEnd` is where the re-scan
- * ends, which is where the forward pass starts unless the re-scan resumes a leftover mark.
- * `rescanPin` is the re-scan mark to store before the forward pass first moves the cursor
- * (`null` for none), see `planWalkPasses`.
+ * One run of a walk, as three passes. `forward` goes from the cursor to the end and moves the
+ * walk's cursor. `pending` reads the ground earlier runs left owed (`pending` holds its
+ * windows) and moves no mark. `rescan` goes back over the ground behind the forward start, to
+ * catch a record that settles late, and never moves that cursor. `rescanEnd` is where the
+ * re-scan ends. `pendingRanges` is the list of owed ground as it stands once this run's own
+ * overlap day is in it: what to store before the forward pass first moves the cursor.
  */
 export type WalkPlan = {
   forward: WalkWindow[];
+  pending: WalkWindow[];
   rescan: WalkWindow[];
   rescanEnd: number;
-  rescanPin: number | null;
+  pendingRanges: WalkWindow[];
 };
+
+/**
+ * A walk's owed ground cannot hold more ranges than this. Each range costs at least one call
+ * of a run's leftover budget, so a longer list could not be served in one run; past the
+ * limit the two nearest ranges merge, which only has the run read the gap between them too.
+ */
+const MAX_PENDING_RANGES = 12;
+
+/** The ranges of `ranges` that `read` leaves: a read in a range's middle splits it in two. */
+export const withoutRead = (ranges: WalkWindow[], read: WalkWindow): WalkWindow[] =>
+  ranges.flatMap((range) => [
+    ...(range.start < read.start
+      ? [{ start: range.start, end: Math.min(range.end, read.start) }]
+      : []),
+    ...(range.end > read.end ? [{ start: Math.max(range.start, read.end), end: range.end }] : []),
+  ]);
+
+const mergeTouching = (sorted: WalkWindow[]): WalkWindow[] => {
+  const merged: WalkWindow[] = [];
+
+  for (const range of sorted) {
+    const last = merged.at(-1);
+
+    if (last !== undefined && range.start <= last.end) {
+      last.end = Math.max(last.end, range.end);
+    } else {
+      merged.push({ ...range });
+    }
+  }
+
+  return merged;
+};
+
+const nearestGapIndexOf = (ranges: WalkWindow[]): number =>
+  ranges.slice(1).reduce(
+    (nearest, range, index) => {
+      const gap = range.start - ranges[index].end;
+
+      return gap < nearest.gap ? { index, gap } : nearest;
+    },
+    { index: 0, gap: Number.POSITIVE_INFINITY },
+  ).index;
+
+/**
+ * Owed ground in its stored form: cut to what the walk can still ask for (not before the
+ * floor, not after the end), oldest first, touching ranges merged, at most
+ * `MAX_PENDING_RANGES` of them.
+ */
+const normalizePending = (
+  ranges: WalkWindow[],
+  bounds: { floorMs: number; endTime: number },
+): WalkWindow[] => {
+  const merged = mergeTouching(
+    ranges
+      .map((range) => ({
+        start: Math.max(range.start, bounds.floorMs),
+        end: Math.min(range.end, bounds.endTime),
+      }))
+      .filter((range) => range.start < range.end)
+      .sort((left, right) => left.start - right.start),
+  );
+
+  while (merged.length > MAX_PENDING_RANGES) {
+    const index = nearestGapIndexOf(merged);
+    merged.splice(index, 2, { start: merged[index].start, end: merged[index + 1].end });
+  }
+
+  return merged;
+};
+
+const logMalformedPending = (): WalkWindow[] => {
+  logFailure(
+    '[binance sync] pending overlap ranges unreadable',
+    new BinanceWalkStop('pending-malformed'),
+  );
+
+  return [];
+};
+
+/**
+ * The stored pending ranges of one walk. A value that is not a well-formed list is read as
+ * an empty one under one fixed log code: a corrupt list must not fail a balance sync.
+ */
+export const storedPendingOf = (field: BinanceWalkPendingField, metadata: unknown): WalkWindow[] =>
+  binanceWalkPendingOf(field, metadata) ?? logMalformedPending();
 
 /**
  * Plan a run so that new records always come first. A walk that re-scanned its last
@@ -63,33 +157,34 @@ export type WalkPlan = {
  * a span ending after it moves, would never advance. The ground behind the cursor is the
  * re-scan's: from the window start, or from the overlap behind the cursor when that is
  * earlier, because a record pending at the last sync can settle up to the overlap before
- * the cursor even when the walk was away for as long as the window.
+ * the cursor even when the walk was away for as long as the window. A stored re-scan mark
+ * is resumed while it is no older than that start; an older one is a pass the window has
+ * outrun, and the run starts a new pass at the start the cursor gives. The floor itself is
+ * the restart mark of a finished pass, and starts a new one.
  *
- * A catch-up from a cursor older than the window can take several runs, and by the run
- * that re-scans, the cursor has moved on, so the overlap behind the OLD cursor cannot be
- * derived from it. The first forward span of a run therefore stores the re-scan's start as
- * the re-scan mark (`rescanPin`) whenever that start is behind the window, and a stored
- * mark above the floor is resumed wherever it lies. A mark behind the start the cursor
- * gives is either what is left of such an old cursor's overlap, or an in-window mark the
- * window has outrun. It is resumed for one overlap only: re-reading everything from
- * there to the cursor would cost more calls than a run has, over and over, since each run
- * starts its first span as wide as the whole range. It is also resumed only while it lies
- * within one window behind the window start. A re-scan that stops on a record inside that
- * overlap never moves the mark, and the window slides on every run, so a mark kept for good
- * would starve the window re-scan behind it; once the window has slid a whole window past
- * the mark, the run starts a new pass at the start the cursor gives instead. The floor
- * itself is the restart mark of a finished pass, and starts a new one.
+ * The overlap day behind the forward start is owed from the moment the forward pass moves
+ * the cursor past it, and the re-scan of THIS run may never get to it: the run can end
+ * first, and the next run, after a long absence, finds a window that stops short of that
+ * day. So the day goes into `pendingRanges` before the cursor moves, and stays there until a
+ * committed span has read it (`advanceWalkMarks`); only the floor passing it drops it
+ * unread. Each run reads, after the forward pass and before the re-scan, the owed ground
+ * the re-scan will not read (oldest first), so a catch-up from a cursor of any age, a long
+ * absence, or a window that outran an unfinished pass loses no day. The list is separate
+ * from the re-scan mark: a stop inside one range leaves the other ranges and the re-scan to
+ * run.
  */
 export const planWalkPasses = (input: {
   cursor: number | null;
   rescanCursor: number | null;
+  pending: WalkWindow[];
   floorMs: number;
   endTime: number;
   windowMs: number;
   overlapMs: number;
   maxWindows: number;
 }): WalkPlan => {
-  const { cursor, rescanCursor, floorMs, endTime, windowMs, overlapMs, maxWindows } = input;
+  const { cursor, rescanCursor, pending, floorMs, endTime, windowMs, overlapMs, maxWindows } =
+    input;
   const windowStart = Math.max(floorMs, endTime - windowMs);
   const forwardStart = Math.max(floorMs, cursor ?? floorMs);
   const behindEnd = Math.min(forwardStart, endTime);
@@ -97,18 +192,31 @@ export const planWalkPasses = (input: {
   const resumed =
     rescanCursor !== null &&
     rescanCursor > floorMs &&
-    rescanCursor < behindEnd &&
-    (rescanCursor >= rescanBase || rescanCursor >= windowStart - windowMs);
-  const leftover = resumed && rescanCursor < rescanBase;
-  const rescanStart = resumed ? rescanCursor : rescanBase;
-  const rescanEnd = leftover ? rescanCursor + overlapMs : behindEnd;
-  const rescan = buildWalkWindows(rescanStart, rescanEnd, windowMs, maxWindows);
+    rescanCursor >= rescanBase &&
+    rescanCursor < behindEnd;
+  const rescan = buildWalkWindows(
+    resumed ? rescanCursor : rescanBase,
+    behindEnd,
+    windowMs,
+    maxWindows,
+  );
+  const pendingRanges = normalizePending(
+    [...pending, { start: behindEnd - overlapMs, end: behindEnd }],
+    { floorMs, endTime },
+  );
+  const rescanned = {
+    start: rescan.at(0)?.start ?? behindEnd,
+    end: rescan.at(-1)?.end ?? behindEnd,
+  };
 
   return {
     forward: buildWalkWindows(forwardStart, endTime, windowMs, maxWindows),
+    pending: withoutRead(pendingRanges, rescanned).flatMap((range) =>
+      buildWalkWindows(range.start, range.end, windowMs, maxWindows),
+    ),
     rescan,
-    rescanEnd,
-    rescanPin: rescan.length > 0 && rescanStart < windowStart ? rescanStart : null,
+    rescanEnd: behindEnd,
+    pendingRanges,
   };
 };
 
@@ -124,11 +232,20 @@ export const rescanCursorAfter = (input: {
   restartMs: number;
 }): number => (input.span.end >= input.plan.rescanEnd ? input.restartMs : input.span.end);
 
-/** A walk's two marks, as the run found them and then as the run last wrote them. */
-export type WalkMarks = { cursor: number | null; rescanCursor: number | null };
+/**
+ * A walk's marks, as the run found them and then as the run last wrote them: the forward
+ * cursor, the re-scan mark, and the list of owed ground.
+ */
+export type WalkMarks = {
+  cursor: number | null;
+  rescanCursor: number | null;
+  pending: WalkWindow[];
+};
 
-/** The metadata field each of a walk's two marks is stored under. */
-export type WalkMarkFields = Record<'cursor' | 'rescan', BinanceWalkCursorField>;
+/** The metadata field each of a walk's marks is stored under. */
+export type WalkMarkFields = Record<'cursor' | 'rescan', BinanceWalkCursorField> & {
+  pending: BinanceWalkPendingField;
+};
 
 type MarkAdvance = {
   span: WalkWindow;
@@ -137,28 +254,39 @@ type MarkAdvance = {
   restartMs: number;
   fields: WalkMarkFields;
   write: (field: BinanceWalkCursorField, cursorMs: number) => Promise<void>;
+  writePending: (field: BinanceWalkPendingField, ranges: WalkWindow[]) => Promise<void>;
 };
 
-const advanceCursor = async ({ span, plan, marks, fields, write }: MarkAdvance): Promise<void> => {
-  // The pin goes first: a crash after it only leaves a mark the next run resumes from,
-  // while a crash after the cursor alone would leave the old cursor's overlap never re-read.
-  if (plan.rescanPin !== null && marks.rescanCursor !== plan.rescanPin) {
-    marks.rescanCursor = plan.rescanPin;
-    await write(fields.rescan, plan.rescanPin);
+const sameRanges = (left: WalkWindow[], right: WalkWindow[]): boolean =>
+  left.length === right.length &&
+  left.every(
+    (range, index) => range.start === right[index].start && range.end === right[index].end,
+  );
+
+const storePending = async (input: MarkAdvance, next: WalkWindow[]): Promise<void> => {
+  if (!sameRanges(next, input.marks.pending)) {
+    input.marks.pending = next;
+    await input.writePending(input.fields.pending, next);
   }
+};
+
+const advanceCursor = async (input: MarkAdvance): Promise<void> => {
+  const { span, plan, marks, fields, write } = input;
+
+  // The owed ground goes first: a crash after it only leaves a range the next run reads
+  // again, while a crash after the cursor alone would leave the overlap behind the old
+  // cursor owed to no run.
+  await storePending(input, plan.pendingRanges);
 
   marks.cursor = Math.max(span.end, marks.cursor ?? span.end);
   await write(fields.cursor, marks.cursor);
 };
 
-const advanceRescan = async ({
-  span,
-  plan,
-  marks,
-  restartMs,
-  fields,
-  write,
-}: MarkAdvance): Promise<void> => {
+const advancePending = (input: MarkAdvance): Promise<void> =>
+  storePending(input, withoutRead(input.marks.pending, input.span));
+
+const advanceRescan = async (input: MarkAdvance): Promise<void> => {
+  const { span, plan, marks, restartMs, fields, write } = input;
   const rescanCursor = rescanCursorAfter({ span, plan, restartMs });
 
   // A finished pass that was never started has no mark to reset: skip the redundant write.
@@ -166,20 +294,25 @@ const advanceRescan = async ({
     marks.rescanCursor = rescanCursor;
     await write(fields.rescan, rescanCursor);
   }
+
+  await advancePending(input);
 };
 
 /**
- * Move the walk's mark once a span's rows are durable. A forward span moves the cursor to
+ * Move the walk's marks once a span's rows are durable. A forward span moves the cursor to
  * its end, never back: the first spans of a pass start behind it, and the mark to compare
  * with is the one this run last wrote, not the one it found. The first forward span also
- * stores the re-scan pin, when there is one. A re-scan span moves only the
- * re-scan mark and leaves the cursor alone, so a re-scan can never undo the forward pass.
- * `write` gets the field of the mark that moved and its value.
+ * stores the list of owed ground, which holds this run's overlap day. A re-scan span moves
+ * only the re-scan mark and leaves the cursor alone, so a re-scan can never undo the
+ * forward pass. A re-scan span and a pending span take the ground they read out of the
+ * list, and an entry leaves it only by being read. `write` gets the field of the cursor that
+ * moved and its value; `writePending` the field of the list and its new content.
  */
 export const advanceWalkMarks = (input: MarkAdvance & { pass: WalkPass }): Promise<void> =>
   match(input.pass)
     .returnType<Promise<void>>()
     .with('forward', () => advanceCursor(input))
+    .with('pending', () => advancePending(input))
     .with('rescan', () => advanceRescan(input))
     .exhaustive();
 
@@ -205,9 +338,13 @@ export const nextSpanAfter = (committed: WalkWindow, window: WalkWindow): WalkWi
 });
 
 /**
- * Run a plan's windows, the forward pass first, then the re-scan on what budget is left.
- * Stops at the first window that does not complete or that the budget cannot afford, and
- * then reports the walk incomplete: a later run resumes from the stored cursors.
+ * Run a plan's windows: the forward pass first, then the owed ground (oldest first), then the
+ * re-scan, each on what budget is left. A forward or re-scan window that does not complete,
+ * and any window the budget cannot afford, ends the run: a later run resumes from the stored
+ * marks. A pending window that does not complete stays owed and the run goes on to the next
+ * one and to the re-scan, so one stuck day starves neither. `canAfford` must also say no
+ * once Binance has rate limited the account, or the run would go on asking after a 429.
+ * Either way the walk is reported incomplete.
  */
 export const runWalkPlan = async (input: {
   plan: WalkPlan;
@@ -217,9 +354,11 @@ export const runWalkPlan = async (input: {
   const { plan, canAfford, runWindow } = input;
   const steps = [
     ...plan.forward.map((window) => ({ window, pass: 'forward' as const })),
+    ...plan.pending.map((window) => ({ window, pass: 'pending' as const })),
     ...plan.rescan.map((window) => ({ window, pass: 'rescan' as const })),
   ];
   let imported = 0;
+  let complete = true;
 
   for (const { window, pass } of steps) {
     if (!canAfford()) {
@@ -230,11 +369,15 @@ export const runWalkPlan = async (input: {
     imported += outcome.imported;
 
     if (!outcome.complete) {
-      return { imported, complete: false };
+      if (pass !== 'pending') {
+        return { imported, complete: false };
+      }
+
+      complete = false;
     }
   }
 
-  return { imported, complete: true };
+  return { imported, complete };
 };
 
 const isDecimalInput = (amount: unknown): amount is string | number =>

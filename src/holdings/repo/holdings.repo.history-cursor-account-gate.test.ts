@@ -19,8 +19,8 @@ jest.mock('@kiko/db/client', () => {
 
 import type { database } from '@kiko/db';
 import { DatabaseSync } from 'node:sqlite';
-import { binanceWalkCursorFields } from '@kiko/holdings/holding-metadata';
 import { applyAllMigrations, executingDrizzle } from '@kiko/test-support/real-sqlite';
+import { binanceWalkCursorFields, binanceWalkPendingFields } from '@kiko/holdings/holding-metadata';
 
 import { holdingsRepo } from './holdings.repo';
 
@@ -138,6 +138,75 @@ describe("holdingsRepo.setBinanceWalkCursor — gated on the holding's account s
       binancePayRescanCursor: 1,
       binanceTransferHistoryCursor: 1,
       binanceEarnHistoryCursor: 1,
+      syncedAt: 500,
+    });
+  });
+});
+
+describe("holdingsRepo.setBinanceWalkPending — gated on the holding's account still being connected to Binance", () => {
+  const ranges = [{ start: 100, end: 200 }];
+
+  it.each(binanceWalkPendingFields)(
+    'writes %s when the account is connected to Binance, keeping every other key',
+    async (field) => {
+      const rawDatabase = openTestDatabase('binance');
+      mockWorkDatabase = executingDrizzle<typeof database>(rawDatabase);
+
+      await holdingsRepo.setBinanceWalkPending('h-spot', field, ranges);
+
+      expect(storedMetadata(rawDatabase)).toEqual({
+        binanceAsset: 'BTC',
+        binanceHistoryCursor: 500,
+        syncedAt: 500,
+        [field]: ranges,
+      });
+    },
+  );
+
+  it('is a no-op on a disconnected account', async () => {
+    const rawDatabase = openTestDatabase(null);
+    mockWorkDatabase = executingDrizzle<typeof database>(rawDatabase);
+
+    await holdingsRepo.setBinanceWalkPending('h-spot', 'binancePayPendingOverlap', ranges);
+
+    expect(storedMetadata(rawDatabase)).toEqual({
+      binanceAsset: 'BTC',
+      binanceHistoryCursor: 500,
+      syncedAt: 500,
+    });
+  });
+
+  it('a disconnect resets every list the Spot holding carries to an empty list', async () => {
+    const rawDatabase = openTestDatabase('binance');
+    mockWorkDatabase = executingDrizzle<typeof database>(rawDatabase);
+
+    for (const field of binanceWalkPendingFields) {
+      await holdingsRepo.setBinanceWalkPending('h-spot', field, ranges);
+    }
+    await holdingsRepo.resetBinanceWalkCursors('acc-1', 1);
+
+    expect(storedMetadata(rawDatabase)).toEqual({
+      binanceAsset: 'BTC',
+      binanceHistoryCursor: 1,
+      binanceHistoryPendingOverlap: [],
+      binancePayPendingOverlap: [],
+      syncedAt: 500,
+    });
+  });
+
+  it("a disconnect's reset is not undone by a walk's late-arriving write", async () => {
+    const rawDatabase = openTestDatabase('binance');
+    mockWorkDatabase = executingDrizzle<typeof database>(rawDatabase);
+    await holdingsRepo.setBinanceWalkPending('h-spot', 'binancePayPendingOverlap', ranges);
+
+    await holdingsRepo.resetBinanceWalkCursors('acc-1', 1);
+    rawDatabase.prepare("UPDATE accounts SET institution = NULL WHERE id = 'acc-1'").run();
+    await holdingsRepo.setBinanceWalkPending('h-spot', 'binancePayPendingOverlap', ranges);
+
+    expect(storedMetadata(rawDatabase)).toEqual({
+      binanceAsset: 'BTC',
+      binanceHistoryCursor: 1,
+      binancePayPendingOverlap: [],
       syncedAt: 500,
     });
   });

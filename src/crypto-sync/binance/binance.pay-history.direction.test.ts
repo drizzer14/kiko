@@ -519,6 +519,60 @@ describe('payRowsOf: wallet placement', () => {
       ]);
     });
 
+    it('places a send whose cost-less BTC funds entry equals the amount, besides an entry of no cost', () => {
+      const equal = [{ currency: 'BTC', amount: '0.001', walletAssetCost: [] }];
+
+      expect(rowsOf({ walletType: 2, walletTypes: [2], fundsDetail: equal })).toMatchObject([
+        { wallet: 'BTC', amountMinorUnits: -100_000, externalId: 'acc-1:pay:C2C:tx-1:2' },
+      ]);
+    });
+
+    it('stops a send whose cost-less BTC funds entry is below the amount, the rest paid in another coin', () => {
+      const partFunded = [
+        { currency: 'BTC', amount: '0.0004', walletAssetCost: [] },
+        { currency: 'USDT', amount: '40', walletAssetCost: [] },
+      ];
+
+      expect(
+        stopCodeOf(() => rowsOf({ walletType: 2, walletTypes: [2], fundsDetail: partFunded })),
+      ).toBe('pay-split-mismatch');
+    });
+
+    it('stops a send whose cost-less BTC funds entry is below the amount, with no other coin listed', () => {
+      const below = [{ currency: 'BTC', amount: '0.0004', walletAssetCost: [] }];
+
+      expect(
+        stopCodeOf(() => rowsOf({ walletType: 2, walletTypes: [2], fundsDetail: below })),
+      ).toBe('pay-split-mismatch');
+    });
+
+    it('takes the cost-less BTC funds entries together before it compares them with the amount', () => {
+      const twoEntries = [
+        { currency: 'BTC', amount: '0.0004', walletAssetCost: [] },
+        { currency: 'BTC', amount: '0.0006', walletAssetCost: [] },
+      ];
+
+      expect(rowsOf({ walletType: 2, walletTypes: [2], fundsDetail: twoEntries })).toMatchObject([
+        { wallet: 'BTC', amountMinorUnits: -100_000 },
+      ]);
+    });
+
+    it('stops a send whose cost-less BTC funds entry is not a number', () => {
+      const unreadable = [{ currency: 'BTC', amount: 'lots', walletAssetCost: [] }];
+
+      expect(
+        stopCodeOf(() => rowsOf({ walletType: 2, walletTypes: [2], fundsDetail: unreadable })),
+      ).toBe('pay-amount-invalid');
+    });
+
+    it('stops a send with no BTC funds entry at all and funds in another coin', () => {
+      const otherCoin = [{ currency: 'USDT', amount: '100', walletAssetCost: [] }];
+
+      expect(
+        stopCodeOf(() => rowsOf({ walletType: 2, walletTypes: [2], fundsDetail: otherCoin })),
+      ).toBe('pay-funds-not-btc');
+    });
+
     it('stops a send with no cost when walletTypes is absent, whatever walletType says', () => {
       expect(
         stopCodeOf(() => rowsOf({ walletType: 2, walletTypes: undefined, fundsDetail: [] })),

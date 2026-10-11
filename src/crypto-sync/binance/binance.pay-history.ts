@@ -2,9 +2,11 @@ import { match } from 'ts-pattern';
 import { DAY_MS } from '@kiko/dates';
 import {
   BINANCE_PAY_HISTORY_CURSOR_FIELD,
+  BINANCE_PAY_PENDING_OVERLAP_FIELD,
   BINANCE_PAY_RESCAN_CURSOR_FIELD,
   binanceWalkCursorOf,
   type BinanceWalkCursorField,
+  type BinanceWalkPendingField,
 } from '@kiko/holdings/holding-metadata';
 import type { HoldingRow } from '@kiko/db';
 import { transactionsRepo } from '@kiko/transactions/repo';
@@ -27,6 +29,7 @@ import {
   runWalkPlan,
   type SpanRead,
   splitOrStop,
+  storedPendingOf,
   type WalkMarkFields,
   type WalkMarks,
   walkSpans,
@@ -77,6 +80,7 @@ const MAX_WINDOWS = 12;
 const PAY_MARK_FIELDS: WalkMarkFields = {
   cursor: BINANCE_PAY_HISTORY_CURSOR_FIELD,
   rescan: BINANCE_PAY_RESCAN_CURSOR_FIELD,
+  pending: BINANCE_PAY_PENDING_OVERLAP_FIELD,
 };
 
 /** A proper noun, never a catalogue string: the stored description when no name is given. */
@@ -123,7 +127,8 @@ const directionOfSign = (amount: string): PayDirection | undefined => {
  * shape of the parties is no signal (a real incoming C2C order names the counterparty as
  * payer too), so an unknown uid, a uid that matches neither party or both, and a sign
  * that disagrees with the uid are all no direction. `null` means the window stops. The
- * Binance ids are read here and nowhere else; they never reach a row or a log.
+ * party ids are read for this rule and for the receiver check of an order paid in another
+ * coin (`isReceivedBy`); they are never stored or logged.
  */
 export const payDirection = (order: BinancePayOrder, uid: string | null): PayDirection | null => {
   const sign = directionOfSign(order.amount);
@@ -141,7 +146,10 @@ export const payDirection = (order: BinancePayOrder, uid: string | null): PayDir
 
 /** The counterparty's trimmed nickname exactly as Binance gives it, or the brand name. */
 export const payDescription = (order: BinancePayOrder, direction: PayDirection): string => {
-  const counterparty = direction === 'out' ? order.receiverInfo : order.payerInfo;
+  const counterparty = match(direction)
+    .with('out', () => order.receiverInfo)
+    .with('in', () => order.payerInfo)
+    .exhaustive();
 
   return counterparty.name?.trim() || PAY_BRAND;
 };
@@ -153,11 +161,9 @@ const SPOT_WALLET_TYPE = 2;
 const EARN_WALLET_TYPE = 5;
 
 /**
- * Binance's announcement says assets received through Pay are credited to Spot from
- * 2026-09-29, and to Funding before that. The instant is UTC midnight because the
- * announcement names the date and no time zone. A receive carries no field that says which
- * wallet took it (`walletType` and `walletTypes` on a receive may describe the payer), so
- * the order's own time decides.
+ * A receive carries no field that says which wallet took it (`walletType` and `walletTypes`
+ * may describe the payer), so its time decides: Spot from this UTC midnight, Funding before.
+ * Where the date comes from: kiko-architecture, the Binance Pay section.
  */
 const PAY_RECEIPTS_TO_SPOT_FROM_MS = Date.UTC(2026, 8, 29);
 
@@ -255,12 +261,45 @@ const shareOfReceive = (order: BinancePayOrder, satoshis: number): WalletShare[]
 ];
 
 /**
+ * The satoshis the BTC funds entries of an order say were paid, together. A send part-funded
+ * in another coin lists less BTC than its amount, and placing it whole on one wallet would
+ * invent BTC the user never spent.
+ */
+const btcFundsSatoshisOf = (order: BinancePayOrder): number =>
+  order.fundsDetail.filter(isBtcFunds).reduce((sum, entry) => {
+    const entrySatoshis = btcSatoshis(entry.amount);
+
+    if (entrySatoshis === null) {
+      throw new BinanceWalkStop('pay-amount-invalid');
+    }
+
+    return sum + entrySatoshis;
+  }, 0);
+
+/**
+ * A send with no wallet cost anywhere, placed whole on the one wallet `walletTypes` names.
+ * Binance lists no funds at all on some orders, which carry nothing to compare with; where
+ * BTC funds entries are listed they must add up to the amount.
+ */
+const wholeOnSoleWallet = (
+  order: BinancePayOrder,
+  walletType: number,
+  satoshis: number,
+): WalletShare[] => {
+  if (order.fundsDetail.length > 0 && btcFundsSatoshisOf(order) !== satoshis) {
+    throw new BinanceWalkStop('pay-split-mismatch');
+  }
+
+  return [{ walletType, satoshis }];
+};
+
+/**
  * The wallets a send's satoshis come from. A funds detail that names no BTC at all
  * means the send did not move BTC, so no BTC row is guessed from it. (A receive's funds
  * are the payer's, whatever coin they are in; they say nothing of what the user received.)
  * An order that carries no BTC cost entry at all, with `walletTypes` naming exactly one
- * wallet, was paid whole from that wallet; without a cost entry, any other shape leaves
- * the wallet unknown.
+ * wallet, was paid whole from that wallet when its BTC funds add up to the amount; without
+ * a cost entry, any other shape leaves the wallet unknown.
  */
 const sharesOfSend = (order: BinancePayOrder, satoshis: number): WalletShare[] => {
   if (order.fundsDetail.length > 0 && !order.fundsDetail.some(isBtcFunds)) {
@@ -275,7 +314,7 @@ const sharesOfSend = (order: BinancePayOrder, satoshis: number): WalletShare[] =
   }
 
   if (costEntriesOf(order).length === 0 && declared.length === 1) {
-    return [{ walletType: declared[0], satoshis }];
+    return wholeOnSoleWallet(order, declared[0], satoshis);
   }
 
   return sharesFromCosts(order, wallets, satoshis);
@@ -286,7 +325,16 @@ const sharesOf = (
   direction: PayDirection,
   satoshis: number,
 ): WalletShare[] =>
-  direction === 'out' ? sharesOfSend(order, satoshis) : shareOfReceive(order, satoshis);
+  match(direction)
+    .with('out', () => sharesOfSend(order, satoshis))
+    .with('in', () => shareOfReceive(order, satoshis))
+    .exhaustive();
+
+const signedSatoshis = (direction: PayDirection, satoshis: number): number =>
+  match(direction)
+    .with('out', () => -satoshis)
+    .with('in', () => satoshis)
+    .exhaustive();
 
 /** A row mapped from an order, before its wallet is turned into a holding. */
 type PlannedPayRow = {
@@ -329,7 +377,7 @@ export const payRowsOf = (input: {
 
   return sharesOf(order, direction, satoshis).map((share) => ({
     wallet: walletOf(share.walletType),
-    amountMinorUnits: direction === 'out' ? -share.satoshis : share.satoshis,
+    amountMinorUnits: signedSatoshis(direction, share.satoshis),
     time: order.transactionTime,
     externalId: `${accountId}:pay:${order.orderType}:${order.transactionId}:${share.walletType}`,
     description,
@@ -364,6 +412,11 @@ export type BinancePayHistoryDeps = {
     field: BinanceWalkCursorField,
     cursorMs: number,
   ) => Promise<void>;
+  writeWalkPending: (
+    holdingId: string,
+    field: BinanceWalkPendingField,
+    ranges: WalkWindow[],
+  ) => Promise<void>;
 };
 
 const defaultPayHistoryDeps: BinancePayHistoryDeps = {
@@ -377,6 +430,8 @@ const defaultPayHistoryDeps: BinancePayHistoryDeps = {
   addTransactions: (rows) => transactionsRepo.addManyDedup(rows),
   writeWalkCursor: (holdingId, field, cursorMs) =>
     holdingsRepo.setBinanceWalkCursor(holdingId, field, cursorMs),
+  writeWalkPending: (holdingId, field, ranges) =>
+    holdingsRepo.setBinanceWalkPending(holdingId, field, ranges),
 };
 
 type PayContext = {
@@ -523,6 +578,7 @@ const commitSpan = async (
     restartMs: HISTORY_FLOOR_MS,
     fields: PAY_MARK_FIELDS,
     write: (field, cursorMs) => deps.writeWalkCursor(spot.id, field, cursorMs),
+    writePending: (field, ranges) => deps.writeWalkPending(spot.id, field, ranges),
   });
 
   return imported;
@@ -622,9 +678,11 @@ const runSync = async (
 
   const payCursor = binanceWalkCursorOf(PAY_MARK_FIELDS.cursor, spot.metadata);
   const rescanCursor = binanceWalkCursorOf(PAY_MARK_FIELDS.rescan, spot.metadata);
+  const pending = storedPendingOf(PAY_MARK_FIELDS.pending, spot.metadata);
   const plan = planWalkPasses({
     cursor: payCursor,
     rescanCursor,
+    pending,
     floorMs: payFloorMs(now),
     endTime: now,
     windowMs: PAY_WINDOW_MS,
@@ -645,7 +703,7 @@ const runSync = async (
     apiKey,
     secret,
     options: { fetchImpl: deps.fetchImpl, now: deps.now },
-    marks: { cursor: payCursor, rescanCursor },
+    marks: { cursor: payCursor, rescanCursor, pending },
     plan,
   };
   const uid = await readOwnUid(base);
@@ -658,7 +716,8 @@ const runSync = async (
 
   return runWalkPlan({
     plan,
-    canAfford: () => run.budget.canAfford('pay', COSTS.pay),
+    canAfford: () =>
+      run.budget.canAfford('pay', COSTS.pay) && !isBinanceCoolingDown(accountId, deps.now()),
     runWindow: (window, pass) =>
       walkSpans({
         window,
@@ -671,11 +730,12 @@ const runSync = async (
 /**
  * Import the user's BTC Binance Pay history as transactions on the wallet each order
  * names (Spot, Funding or Earn), committing a window's rows before advancing the mark
- * past it. A run goes forward from the watermark first, then re-scans the last window
- * behind it on what budget is left (see `planWalkPasses`). `complete: false` means history
- * or the re-scan remains and a later run resumes from the stored watermark and re-scan
- * mark; a failure other than a rate limit rejects, so the caller can log it without
- * failing the balance sync.
+ * past it. A run goes forward from the watermark first, then reads the overlap ground
+ * earlier runs left owed, then re-scans the last window behind the watermark, each on what
+ * budget is left (see `planWalkPasses`). `complete: false` means history, owed ground or
+ * the re-scan remains and a later run resumes from the stored watermark, owed ranges and
+ * re-scan mark; a failure other than a rate limit rejects, so the caller can log it
+ * without failing the balance sync.
  */
 export const syncBinancePayHistory = (
   request: { targetAccountId: string; run: BinanceHistoryRun },

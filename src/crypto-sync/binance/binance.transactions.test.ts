@@ -1,4 +1,8 @@
 import { DAY_MS } from '@kiko/dates';
+import {
+  binanceWalkPendingOf,
+  withWalkOwnedMetadataResetToFloor,
+} from '@kiko/holdings/holding-metadata';
 import type { HoldingRow } from '@kiko/db';
 
 import {
@@ -24,6 +28,7 @@ import {
   type HistoryWindow,
 } from './binance.history-client';
 import { BinanceRateLimitError } from './binance.client';
+import type { WalkWindow } from './binance.history-walk';
 
 const NOW = 1_704_326_400_000; // 2024-01-04T00:00:00Z
 const ACCOUNT_ID = 'acc-1';
@@ -85,6 +90,7 @@ const makeDeps = (over: Partial<BinanceTransactionSyncDeps> = {}): BinanceTransa
   latestTransactionTime: async () => undefined,
   addTransactions: jest.fn(async (rows: BinanceTransactionRow[]) => rows.length),
   writeWalkCursor: jest.fn(async () => undefined),
+  writeWalkPending: jest.fn(async () => undefined),
   fetchDepositHistory: jest.fn(async () => historyPage([])),
   fetchWithdrawHistory: jest.fn(async () => historyPage([])),
   ...over,
@@ -135,20 +141,30 @@ const depositServer = (all: BinanceDeposit[]) =>
 const makeStatefulSpotAccount = (): {
   listHoldings: () => Promise<HoldingRow[]>;
   writeWalkCursor: jest.Mock<Promise<void>, [string, string, number]>;
+  writeWalkPending: jest.Mock<Promise<void>, [string, string, WalkWindow[]]>;
   cursor: () => number | null;
   rescanCursor: () => number | null;
+  pending: () => WalkWindow[];
 } => {
   const marks: Record<string, number> = {};
+  let pending: WalkWindow[] = [];
 
   return {
     listHoldings: async () => [
-      { id: 'h-spot', metadata: { binanceAsset: 'BTC', ...marks } } as unknown as HoldingRow,
+      {
+        id: 'h-spot',
+        metadata: { binanceAsset: 'BTC', ...marks, binanceHistoryPendingOverlap: pending },
+      } as unknown as HoldingRow,
     ],
     writeWalkCursor: jest.fn(async (_holdingId: string, field: string, cursorMs: number) => {
       marks[field] = cursorMs;
     }),
+    writeWalkPending: jest.fn(async (_holdingId: string, _field: string, ranges: WalkWindow[]) => {
+      pending = ranges;
+    }),
     cursor: () => marks.binanceHistoryCursor ?? null,
     rescanCursor: () => marks.binanceHistoryRescanCursor ?? null,
+    pending: () => pending,
   };
 };
 
@@ -162,6 +178,7 @@ const makeFirstSyncDeps = (
   makeDeps({
     listHoldings: account.listHoldings,
     writeWalkCursor: account.writeWalkCursor,
+    writeWalkPending: account.writeWalkPending,
     latestTransactionTime: async () => undefined,
     ...over,
   });
@@ -1109,9 +1126,16 @@ describe('resumable, budgeted walk', () => {
       invocationCallOrder.push('writeWalkCursor');
       await account.writeWalkCursor(holdingId, field, cursorMs);
     });
+    const writeWalkPending = jest.fn(
+      async (holdingId: string, field: string, ranges: WalkWindow[]) => {
+        invocationCallOrder.push('writeWalkPending');
+        await account.writeWalkPending(holdingId, field, ranges);
+      },
+    );
     const deps = makeDeps({
       listHoldings: account.listHoldings,
       writeWalkCursor,
+      writeWalkPending,
       addTransactions,
       latestTransactionTime: async () => NOW - 89 * DAY_MS,
       fetchDepositHistory: rowsAtNow([deposit()]),
@@ -1120,12 +1144,13 @@ describe('resumable, budgeted walk', () => {
 
     await sync(deps, 'acc-crash-order');
 
-    // The first write is the re-scan pin, then the cursor, then the re-scan's restart mark.
+    // The owed overlap day is stored before the cursor moves, and leaves the list once the
+    // re-scan has read it.
     expect(invocationCallOrder).toEqual([
       'addTransactions',
+      'writeWalkPending',
       'writeWalkCursor',
-      'writeWalkCursor',
-      'writeWalkCursor',
+      'writeWalkPending',
     ]);
   });
 
@@ -1567,42 +1592,333 @@ describe('a capital cursor older than the re-scan window', () => {
     expect(state.imported.has(keyOf(late))).toBe(true);
   });
 
-  it('stores the re-scan mark at the overlap behind the old cursor before it moves the cursor', async () => {
+  it('stores the owed overlap day behind the old cursor before it moves the cursor', async () => {
     const state = await oldCursorState();
+    const writes: string[] = [];
+    state.account.writeWalkCursor.mockImplementation(async (_id, field) => {
+      writes.push(field);
+    });
+    state.account.writeWalkPending.mockImplementation(async (_id, field) => {
+      writes.push(field);
+    });
 
     await runOver(state, []);
 
-    expect(state.account.writeWalkCursor.mock.calls[0]).toEqual([
+    expect(writes.slice(0, 2)).toEqual(['binanceHistoryPendingOverlap', FORWARD_FIELD]);
+    expect(state.account.writeWalkPending.mock.calls[0]).toEqual([
       'h-spot',
-      RESCAN_FIELD,
-      CURSOR - DAY_MS,
-    ]);
-    expect(state.account.writeWalkCursor.mock.calls[1]).toEqual([
-      'h-spot',
-      FORWARD_FIELD,
-      CURSOR + 89 * DAY_MS,
+      'binanceHistoryPendingOverlap',
+      [{ start: CURSOR - DAY_MS, end: CURSOR }],
     ]);
   });
 
-  // The mark is what a stop at a record in the overlap day behind it leaves: the window
-  // moves on every run, so the mark must drop out of the re-scan once it is far enough
-  // behind, or the window behind the cursor is never re-read.
-  it('re-scans the window again once a stopped leftover mark falls out of reach', async () => {
-    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
-    const stuck = withdrawal({ id: '', txId: '', applyTime: CURSOR + 3_600_000 });
+  // A re-scan mark the sliding window has outrun is a pass the window does not reach any
+  // more: the run starts a new pass at the window start, so a record in the window behind
+  // the cursor is read at once, wherever the old mark lay.
+  it('starts a new pass at the window start for a mark the window outran, whatever the distance', async () => {
     const late = withdrawal({ id: 'late', applyTime: NOW - 5 * DAY_MS });
     const state = await oldCursorState(NOW);
     await state.account.writeWalkCursor('h-spot', RESCAN_FIELD, CURSOR);
 
-    await runOver(state, [stuck, late]);
+    await runOver(state, [late]);
 
-    expect(state.imported.has(keyOf(late))).toBe(false);
+    expect(state.imported.has(keyOf(late))).toBe(true);
+  });
+});
 
-    for (let attempt = 1; attempt <= 8; attempt += 1) {
-      await runOver(state, [stuck, late], NOW + attempt * 10 * DAY_MS);
+describe('the pending overlap days of the capital walk', () => {
+  const ACCOUNT = 'acc-pending';
+  const FORWARD_FIELD = 'binanceHistoryCursor';
+  const SUSPENDED = 'run suspended';
+  const keyOf = (record: BinanceWithdrawal): string => `${ACCOUNT}:withdraw:${record.id}`;
+
+  const stateOf = async (cursor: number | null, pending: WalkWindow[] = []) => {
+    const account = makeStatefulSpotAccount();
+
+    if (cursor !== null) {
+      await account.writeWalkCursor('h-spot', FORWARD_FIELD, cursor);
+    }
+    await account.writeWalkPending('h-spot', 'binanceHistoryPendingOverlap', pending);
+
+    return { account, imported: new Set<string>() };
+  };
+
+  type PendingState = Awaited<ReturnType<typeof stateOf>>;
+
+  /** A withdraw history that answers `after` calls, then fails like a run that was killed. */
+  const suspendedAfter = (after: number, records: BinanceWithdrawal[]) => {
+    const inner = withdrawalServer(records);
+    let calls = 0;
+
+    return jest.fn(async (apiKey: string, secret: string, window: HistoryWindow) => {
+      calls += 1;
+
+      if (calls > after) {
+        throw new Error(SUSPENDED);
+      }
+
+      return inner(apiKey, secret, window);
+    });
+  };
+
+  const runOver = (
+    state: PendingState,
+    records: BinanceWithdrawal[],
+    at = NOW,
+    over: Partial<BinanceTransactionSyncDeps> = {},
+  ) => {
+    const deps = makeFirstSyncDeps(state.account, {
+      now: () => at,
+      fetchWithdrawHistory: withdrawalServer(records),
+      addTransactions: jest.fn(async (rows: BinanceTransactionRow[]) => {
+        const fresh = rows.filter((row) => !state.imported.has(row.externalId));
+
+        for (const row of fresh) {
+          state.imported.add(row.externalId);
+        }
+
+        return fresh.length;
+      }),
+      ...over,
+    });
+
+    return sync(
+      deps,
+      ACCOUNT,
+      freshRun(() => at),
+    ).then((result) => ({ deps, result }));
+  };
+
+  const withdrawStartsOf = (deps: BinanceTransactionSyncDeps): number[] =>
+    (deps.fetchWithdrawHistory as jest.Mock).mock.calls.map(
+      (call) => (call[2] as HistoryWindow).startTime,
+    );
+
+  const runUntilComplete = async (
+    state: PendingState,
+    recordsOf: (attempt: number) => BinanceWithdrawal[],
+  ) => {
+    const runs: boolean[] = [];
+
+    for (let attempt = 0; attempt < 40 && runs.at(-1) !== true; attempt += 1) {
+      runs.push((await runOver(state, recordsOf(attempt))).result.complete);
     }
 
-    warn.mockRestore();
+    return runs;
+  };
+
+  beforeEach(() => {
+    jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  it('reads the overlap day of each of two cursors after two absences longer than the window, the first run cut after its forward pass', async () => {
+    const firstRunAt = NOW - 95 * DAY_MS;
+    const firstCursor = firstRunAt - 95 * DAY_MS;
+    const lateBehindFirst = withdrawal({ id: 'late-first', applyTime: firstCursor - 0.5 * DAY_MS });
+    const lateBehindSecond = withdrawal({
+      id: 'late-second',
+      applyTime: firstRunAt - 0.5 * DAY_MS,
+    });
+    const state = await stateOf(firstCursor);
+
+    await expect(
+      runOver(state, [], firstRunAt, { fetchWithdrawHistory: suspendedAfter(2, []) }),
+    ).rejects.toThrow(SUSPENDED);
+    expect(state.account.cursor()).toBe(firstRunAt);
+
+    await runOver(state, [lateBehindFirst, lateBehindSecond]);
+
+    expect(state.imported.has(keyOf(lateBehindFirst))).toBe(true);
+    expect(state.imported.has(keyOf(lateBehindSecond))).toBe(true);
+  });
+
+  it('reads the overlap day of a cursor 250 days stale on an account too dense to catch up in one run', async () => {
+    const cursor = NOW - 250 * DAY_MS;
+    const late = withdrawal({ id: 'late', applyTime: cursor - 0.5 * DAY_MS });
+    const busy = Array.from({ length: 12_000 }, (_unused, index) =>
+      withdrawal({ id: `busy-${index}`, applyTime: cursor + 1 + index * 1_800_000 }),
+    );
+    const state = await stateOf(cursor);
+
+    const runs = await runUntilComplete(state, (attempt) =>
+      attempt === 0 ? busy : [...busy, late],
+    );
+
+    expect(runs.length).toBeGreaterThan(2);
+    expect(runs.at(-1)).toBe(true);
+    expect(state.account.cursor()).toBe(NOW);
     expect(state.imported.has(keyOf(late))).toBe(true);
+    expect(state.imported.size).toBe(busy.length + 1);
+    expect(state.account.pending()).toEqual([]);
+  });
+
+  it('keeps a stopped day owed, and still reads the other owed days and the window re-scan', async () => {
+    const stuckDay = { start: NOW - 300 * DAY_MS, end: NOW - 299 * DAY_MS };
+    const readableDay = { start: NOW - 200 * DAY_MS, end: NOW - 199 * DAY_MS };
+    const stuck = withdrawal({ id: '', txId: '', applyTime: stuckDay.start + 3_600_000 });
+    const readable = withdrawal({ id: 'readable', applyTime: readableDay.start + 1 });
+    const inWindow = withdrawal({ id: 'in-window', applyTime: NOW - 5 * DAY_MS });
+    const state = await stateOf(NOW - 2 * DAY_MS, [stuckDay, readableDay]);
+
+    const first = await runOver(state, [stuck, readable, inWindow]);
+    const second = await runOver(state, [stuck, readable, inWindow]);
+
+    expect(first.result.complete).toBe(false);
+    expect(state.imported.has(keyOf(readable))).toBe(true);
+    expect(state.imported.has(keyOf(inWindow))).toBe(true);
+    expect(state.account.pending()).toEqual([stuckDay]);
+    expect(second.result.complete).toBe(false);
+  });
+
+  it('asks for the owed days oldest first, after the forward pass and before the window', async () => {
+    const stuckDay = { start: NOW - 300 * DAY_MS, end: NOW - 299 * DAY_MS };
+    const readableDay = { start: NOW - 200 * DAY_MS, end: NOW - 199 * DAY_MS };
+    const stuck = withdrawal({ id: '', txId: '', applyTime: stuckDay.start + 3_600_000 });
+    const state = await stateOf(NOW - 2 * DAY_MS, [readableDay, stuckDay]);
+
+    const { deps } = await runOver(state, [stuck]);
+
+    expect(withdrawStartsOf(deps)).toEqual([
+      NOW - 2 * DAY_MS,
+      stuckDay.start,
+      readableDay.start,
+      NOW - 89 * DAY_MS,
+    ]);
+  });
+
+  it('reads the overlap day behind an in-window re-scan mark that an absence of more than the window outran', async () => {
+    const firstRunAt = NOW - 100 * DAY_MS;
+    const firstCursor = firstRunAt - 2 * DAY_MS;
+    const dense = Array.from({ length: 12_000 }, (_unused, index) =>
+      withdrawal({
+        id: `dense-${index}`,
+        applyTime: firstRunAt - 88 * DAY_MS + Math.floor((index * 86 * DAY_MS) / 12_000),
+      }),
+    );
+    const late = withdrawal({ id: 'late', applyTime: firstCursor - 0.5 * DAY_MS });
+    const state = await stateOf(firstCursor);
+
+    await runOver(state, [...dense, late], firstRunAt);
+
+    expect(state.imported.has(keyOf(late))).toBe(false);
+    expect(state.account.rescanCursor()).not.toBeNull();
+
+    await runOver(state, [...dense, late]);
+
+    expect(state.imported.has(keyOf(late))).toBe(true);
+  });
+
+  it('empties the list and walks from the floor after a disconnect reset the walk', async () => {
+    const owed = { start: NOW - 300 * DAY_MS, end: NOW - 299 * DAY_MS };
+    const reset = withWalkOwnedMetadataResetToFloor(
+      {
+        binanceAsset: 'BTC',
+        binanceHistoryCursor: NOW,
+        binanceHistoryPendingOverlap: [owed],
+      },
+      HISTORY_FLOOR_MS,
+    );
+    const state = await stateOf(
+      HISTORY_FLOOR_MS,
+      binanceWalkPendingOf('binanceHistoryPendingOverlap', reset),
+    );
+
+    const { deps } = await runOver(state, []);
+
+    expect(reset?.binanceHistoryPendingOverlap).toEqual([]);
+    expect(withdrawStartsOf(deps)[0]).toBe(HISTORY_FLOOR_MS);
+    expect(state.account.pending()).toEqual([]);
+  });
+
+  it('drops an owed day the floor has passed, cuts one it crosses, and reads the rest', async () => {
+    const passed = { start: HISTORY_FLOOR_MS - 3 * DAY_MS, end: HISTORY_FLOOR_MS - 2 * DAY_MS };
+    const crossed = {
+      start: HISTORY_FLOOR_MS - 0.5 * DAY_MS,
+      end: HISTORY_FLOOR_MS + 0.5 * DAY_MS,
+    };
+    const beyond = { start: HISTORY_FLOOR_MS + 10 * DAY_MS, end: HISTORY_FLOOR_MS + 11 * DAY_MS };
+    const crossedRecord = withdrawal({ id: 'crossed', applyTime: HISTORY_FLOOR_MS + 1_000 });
+    const beyondRecord = withdrawal({ id: 'beyond', applyTime: beyond.start + 1_000 });
+    const state = await stateOf(NOW - 2 * DAY_MS, [passed, crossed, beyond]);
+
+    const { deps } = await runOver(state, [crossedRecord, beyondRecord]);
+
+    expect(withdrawStartsOf(deps).every((start) => start >= HISTORY_FLOOR_MS)).toBe(true);
+    expect(withdrawStartsOf(deps)).toContain(HISTORY_FLOOR_MS);
+    expect(state.imported.has(keyOf(crossedRecord))).toBe(true);
+    expect(state.imported.has(keyOf(beyondRecord))).toBe(true);
+    expect(state.account.pending()).toEqual([]);
+  });
+
+  it('keeps a stopped day while the floor has not passed it', async () => {
+    const stuckDay = { start: HISTORY_FLOOR_MS + DAY_MS, end: HISTORY_FLOOR_MS + 2 * DAY_MS };
+    const stuck = withdrawal({ id: '', txId: '', applyTime: stuckDay.start + 1_000 });
+    const state = await stateOf(NOW - 2 * DAY_MS, [stuckDay]);
+
+    await runOver(state, [stuck]);
+
+    expect(state.account.pending()).toEqual([stuckDay]);
+  });
+
+  it('imports nothing on a second identical run once every owed day has been read', async () => {
+    const cursor = NOW - 120 * DAY_MS;
+    const late = withdrawal({ id: 'late', applyTime: cursor - 0.5 * DAY_MS });
+    const newer = withdrawal({ id: 'newer', applyTime: cursor + 3_600_000 });
+    const state = await stateOf(cursor);
+    await runUntilComplete(state, () => [late, newer]);
+
+    const again = await runOver(state, [late, newer]);
+
+    expect(state.imported.size).toBe(2);
+    expect(again.result).toEqual({ imported: 0, complete: true });
+    expect(state.account.pending()).toEqual([]);
+  });
+
+  it('reads a corrupt stored list as an empty one, logs one fixed code, and does not fail the walk', async () => {
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const deps = makeDeps({
+      listHoldings: async () => [
+        {
+          id: 'h-spot',
+          metadata: {
+            binanceAsset: 'BTC',
+            binanceHistoryCursor: NOW - 3_600_000,
+            binanceHistoryPendingOverlap: 'not a list',
+          },
+        } as unknown as HoldingRow,
+      ],
+    });
+
+    const result = await sync(deps);
+
+    expect(result.complete).toBe(true);
+    expect(warn).toHaveBeenCalledWith('[binance sync] pending overlap ranges unreadable', {
+      name: 'BinanceWalkStop',
+      code: 'pending-malformed',
+    });
+  });
+
+  it('asks for nothing more after a rate limit hit in an owed day', async () => {
+    const owed = { start: NOW - 300 * DAY_MS, end: NOW - 299 * DAY_MS };
+    const another = { start: NOW - 200 * DAY_MS, end: NOW - 199 * DAY_MS };
+    const state = await stateOf(NOW - 2 * DAY_MS, [owed, another]);
+    const fetchWithdrawHistory = jest
+      .fn()
+      .mockResolvedValueOnce(historyPage([]))
+      .mockRejectedValue(new BinanceRateLimitError(429, 60_000));
+
+    const { result } = await runOver(state, [], NOW, { fetchWithdrawHistory });
+
+    expect(result.complete).toBe(false);
+    expect(fetchWithdrawHistory).toHaveBeenCalledTimes(2);
+    expect(state.account.pending()).toEqual([
+      owed,
+      another,
+      { start: NOW - 3 * DAY_MS, end: NOW - 2 * DAY_MS },
+    ]);
   });
 });

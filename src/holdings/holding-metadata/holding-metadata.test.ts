@@ -6,6 +6,8 @@ import {
   asTermDepositMeta,
   binanceWalkCursorFields,
   binanceWalkCursorOf,
+  binanceWalkPendingFields,
+  binanceWalkPendingOf,
   loanKinds,
   loanKindOf,
   loanSchedules,
@@ -472,6 +474,93 @@ describe('the Binance walk cursors', () => {
         100,
       ),
     ).toEqual({ binanceAsset: 'BTC', binanceEarnHistoryCursor: 100 });
+  });
+});
+
+describe('the Binance pending overlap lists', () => {
+  const range = { start: 1_000, end: 2_000 };
+
+  it('lists the capital and Pay fields', () => {
+    expect(binanceWalkPendingFields).toEqual([
+      'binanceHistoryPendingOverlap',
+      'binancePayPendingOverlap',
+    ]);
+  });
+
+  it('reads each stored list on its own', () => {
+    for (const field of binanceWalkPendingFields) {
+      expect(binanceWalkPendingOf(field, { [field]: [range, { start: 5, end: 9 }] })).toEqual([
+        range,
+        { start: 5, end: 9 },
+      ]);
+      expect(binanceWalkPendingOf(field, { [field]: [] })).toEqual([]);
+    }
+
+    expect(
+      binanceWalkPendingOf('binancePayPendingOverlap', { binanceHistoryPendingOverlap: [range] }),
+    ).toEqual([]);
+  });
+
+  it('is an empty list when the key is absent or the metadata is not an object', () => {
+    expect(binanceWalkPendingOf('binancePayPendingOverlap', { binanceAsset: 'BTC' })).toEqual([]);
+    expect(binanceWalkPendingOf('binancePayPendingOverlap', null)).toEqual([]);
+    expect(binanceWalkPendingOf('binancePayPendingOverlap', 'not-an-object')).toEqual([]);
+  });
+
+  it.each([
+    ['not a list', { start: 1, end: 2 }],
+    ['a list of numbers', [1_000, 2_000]],
+    ['an entry with a missing end', [{ start: 1_000 }]],
+    ['a text bound', [{ start: '1000', end: 2_000 }]],
+    ['a non-finite bound', [{ start: Number.NaN, end: 2_000 }]],
+    ['an empty range', [{ start: 2_000, end: 2_000 }]],
+    ['a backwards range', [{ start: 3_000, end: 2_000 }]],
+    ['one good and one bad entry', [range, { start: 'x', end: 1 }]],
+  ])('is undefined for a stored value that is %s', (_label, value) => {
+    expect(
+      binanceWalkPendingOf('binancePayPendingOverlap', { binancePayPendingOverlap: value }),
+    ).toBe(undefined);
+  });
+
+  it('are carried over a balance-sync metadata write', () => {
+    const target = { binanceAsset: 'BTC', syncedAt: 9_000 };
+    const stored = {
+      binanceAsset: 'BTC',
+      binanceHistoryPendingOverlap: [range],
+      binancePayPendingOverlap: [],
+    };
+
+    expect(withWalkOwnedMetadataCarried(target, stored)).toEqual({
+      binanceAsset: 'BTC',
+      syncedAt: 9_000,
+      binanceHistoryPendingOverlap: [range],
+      binancePayPendingOverlap: [],
+    });
+  });
+
+  it('are reset to an empty list on disconnect, beside the cursors reset to the floor', () => {
+    const stored = {
+      binanceAsset: 'BTC',
+      binancePayHistoryCursor: 2_000,
+      binancePayPendingOverlap: [range],
+      binanceHistoryPendingOverlap: [range],
+    };
+
+    expect(withWalkOwnedMetadataResetToFloor(stored, 100)).toEqual({
+      binanceAsset: 'BTC',
+      binancePayHistoryCursor: 100,
+      binancePayPendingOverlap: [],
+      binanceHistoryPendingOverlap: [],
+    });
+  });
+
+  it('are reset when a holding carries a list and no cursor', () => {
+    expect(
+      withWalkOwnedMetadataResetToFloor(
+        { binanceAsset: 'BTC', binanceHistoryPendingOverlap: [range] },
+        100,
+      ),
+    ).toEqual({ binanceAsset: 'BTC', binanceHistoryPendingOverlap: [] });
   });
 });
 
