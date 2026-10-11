@@ -413,14 +413,24 @@ const isolateStops = async (input: {
 };
 
 /**
+ * Whether an owed window is already as small as isolation makes a span: a stuck span that
+ * cannot be halved again. Reading it costs a call every run and gives nothing until its record
+ * can be placed, so the run reads it last (see `runWalkPlan`).
+ */
+const isIsolated = (window: WalkWindow): boolean => halfOf(window) === undefined;
+
+/**
  * Run a plan's windows: the forward pass first, then the owed ground (oldest first), then the
  * re-scan, each on what budget is left. A forward or re-scan window that does not complete,
  * and any window the budget cannot afford, ends the run: a later run resumes from the stored
  * marks. A pending window that does not complete stays owed and the run goes on to the next
  * one and to the re-scan, so one stuck day starves neither. Once every owed window has been
  * read, the spans of them that stopped are halved to isolate the stop (see `isolateStops`),
- * before the re-scan. `canAfford` must also say no once Binance has rate limited the
- * account, or the run would go on asking after a 429. Either way the walk is reported
+ * before the re-scan. An owed span that cannot be halved any more is read after the re-scan,
+ * on the budget that is left: reading it first would let many such spans take the whole
+ * budget of every run from the owed days and the re-scan that can still commit. One that
+ * the budget skips stays owed. `canAfford` must also say no once Binance has rate limited
+ * the account, or the run would go on asking after a 429. Either way the walk is reported
  * incomplete.
  */
 export const runWalkPlan = async (input: {
@@ -456,17 +466,19 @@ export const runWalkPlan = async (input: {
     return false;
   };
 
-  if ((await readPass(plan.forward, 'forward')) || (await readPass(plan.pending, 'pending'))) {
+  const isolated = plan.pending.filter(isIsolated);
+  const halvable = plan.pending.filter((window) => !isIsolated(window));
+
+  if ((await readPass(plan.forward, 'forward')) || (await readPass(halvable, 'pending'))) {
     return { imported, complete: false };
   }
 
   imported += await isolateStops({ stopped, canAfford, runWindow });
 
-  if (await readPass(plan.rescan, 'rescan')) {
-    return { imported, complete: false };
-  }
+  const rescanEnded = await readPass(plan.rescan, 'rescan');
+  const isolatedEnded = await readPass(isolated, 'pending');
 
-  return { imported, complete };
+  return { imported, complete: complete && !rescanEnded && !isolatedEnded };
 };
 
 const isDecimalInput = (amount: unknown): amount is string | number =>

@@ -309,6 +309,13 @@ withdraw budget moves into this object, with the same numbers and the same rule.
     costs two reads a level, so one run reads at most 4 such halves (`ISOLATION_PARTS_PER_RUN`);
     a longer isolation goes on over later runs, each starting from the smaller stuck span the
     last one left, and the run's budget still reaches the other owed windows and the re-scan.
+    A span that cannot be halved any more (1 ms) still costs one read a run, and many of them
+    would take the whole budget of a run (the capital withdraw lane has 9 calls) from the owed
+    days and the re-scan that can still commit. Such an owed span is therefore read LAST in a
+    run, after the re-scan, on the budget that is left (fix round 9). The order of a run is:
+    forward, the owed windows that can still be halved, the isolation halves, the re-scan, the
+    isolated spans. A span the budget skips stays owed (only the floor drops one), and one that
+    becomes readable imports on a later run once budget is left.
     The forward pass and the window re-scan keep their rule (`STOP_ENDS_RUN`): a stop there ends
     the run, because the mark they move is moved only by a commit.
   - **Bound.** The list holds at most 12 ranges. Each range costs at least one call of a run's

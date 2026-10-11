@@ -1407,6 +1407,81 @@ describe('the pending overlap days of a walk', () => {
       expect(state.imported.has(keyOf(state, fresh))).toBe(true);
     });
 
+    describe('with ten spans that cannot be halved any further', () => {
+      const isolatedAt = Array.from({ length: 10 }, (_unused, index) => BASE + index * 10 * DAY_MS);
+      const isolatedSpans = isolatedAt.map((start) => ({ start, end: start + 1 }));
+      const stuckOrders = () =>
+        isolatedAt.map((transactionTime) => order({ transactionId: '', transactionTime }));
+      const fixedOrders = () =>
+        isolatedAt.map((transactionTime, index) =>
+          order({ transactionId: `fixed-${index}`, transactionTime }),
+        );
+      const newDay = { start: BASE + 150 * DAY_MS, end: BASE + 151 * DAY_MS };
+      const fresh = () =>
+        order({ transactionId: 'new-day', transactionTime: newDay.start + 1_000 });
+      const late = () => order({ transactionId: 'late', transactionTime: NOW - 50 * DAY_MS });
+      // The twelfth range, a day in the window, lets the overlap day behind the cursor merge
+      // with it when the list is cut to its cap, so no span here is merged with another.
+      const inWindowDay = { start: NOW - 10 * DAY_MS, end: NOW - 9 * DAY_MS };
+      const stateWithIsolated = () =>
+        stateOf({
+          payCursor: NOW - 2 * DAY_MS,
+          pending: [...isolatedSpans, newDay, inWindowDay],
+        });
+      const isolatedOwed = (state: PendingState): WalkWindow[] =>
+        beyondWindow(state.pending).filter((range) => range.end - range.start === 1);
+
+      it('imports the new owed day and the late order of the window on the next run, and keeps the spans owed', async () => {
+        const state = stateWithIsolated();
+
+        await runOver(state, [...stuckOrders(), fresh(), late()]);
+
+        expect(state.imported.has(keyOf(state, fresh()))).toBe(true);
+        expect(state.imported.has(keyOf(state, late()))).toBe(true);
+        expect(state.imported.size).toBe(2);
+        expect(isolatedOwed(state)).toHaveLength(10);
+        expect(state.pending.some((range) => range.start === newDay.start)).toBe(false);
+      });
+
+      it('reads the new owed day and the re-scan before any of the spans, in one run', async () => {
+        const state = stateWithIsolated();
+
+        const { deps } = await runOver(state, [...stuckOrders(), fresh(), late()]);
+
+        const starts = queriesOf(deps).map((query) => query.startTime);
+        expect(starts.indexOf(newDay.start)).toBeGreaterThan(0);
+        expect(starts.indexOf(newDay.start)).toBeLessThan(starts.indexOf(isolatedAt[0]));
+        expect(starts.indexOf(NOW - PAY_WINDOW_MS)).toBeLessThan(starts.indexOf(isolatedAt[0]));
+      });
+
+      it('imports a span that became readable on a later run once budget is left, and nothing twice', async () => {
+        const state = stateWithIsolated();
+        await runOver(state, [...stuckOrders(), fresh(), late()]);
+
+        for (let attempt = 0; attempt < 10; attempt += 1) {
+          await runOver(state, [...fixedOrders(), fresh(), late()]);
+        }
+
+        expect(state.imported.size).toBe(12);
+        expect(beyondWindow(state.pending)).toEqual([]);
+
+        const again = await runOver(state, [...fixedOrders(), fresh(), late()]);
+
+        expect(again.result).toEqual({ imported: 0, complete: true });
+      });
+
+      it('imports nothing on a second run over the same stuck orders', async () => {
+        const state = stateWithIsolated();
+        await runOver(state, [...stuckOrders(), fresh(), late()]);
+
+        const second = await runOver(state, [...stuckOrders(), fresh(), late()]);
+
+        expect(second.result).toEqual({ imported: 0, complete: false });
+        expect(state.imported.size).toBe(2);
+        expect(isolatedOwed(state)).toHaveLength(10);
+      });
+    });
+
     it('shrinks each run the span of a stuck range that stays owed, and never loses its record', async () => {
       const state = stateOf({ payCursor: NOW - 2 * DAY_MS, pending: [stuckDay] });
       const widths: number[] = [];
