@@ -1,6 +1,11 @@
+import {
+  REWRITE_GUARD_FIELDS,
+  type RewriteGuardField,
+  isRewriteEligible,
+  planRuleRewrite,
+} from './plan-rule-rewrite';
 import { prepareRules } from './prepare-rules';
 import { ruleRow } from './__fixtures__/rule-row';
-import { isRewriteEligible, planRuleRewrite } from './plan-rule-rewrite';
 import type { CategoryRuleMatcher, RewriteCandidate } from './category-rules.d';
 
 const nameIs = (text: string): CategoryRuleMatcher => ({ type: 'nameIs', text });
@@ -35,6 +40,37 @@ describe('isRewriteEligible', () => {
     ['a split-change row', { changeGroupId: 'group-1' }],
   ])('refuses %s', (_label, overrides) => {
     expect(isRewriteEligible(candidate(overrides))).toBe(false);
+  });
+});
+
+// The refresh at insert (`transactions.repo.ts`) builds its SQL from this same list, so the list is
+// the one definition of "a row a rule may not rewrite".
+describe('REWRITE_GUARD_FIELDS', () => {
+  const SET_VALUE: Record<RewriteGuardField, Partial<RewriteCandidate>> = {
+    categorySetByHand: { categorySetByHand: true },
+    exchangePairId: { exchangePairId: 'pair-1' },
+    exchangeCounterpartHoldingId: { exchangeCounterpartHoldingId: 'holding-2' },
+    setsBalance: { setsBalance: true },
+    changeGroupId: { changeGroupId: 'group-1' },
+  };
+
+  it.each(REWRITE_GUARD_FIELDS)('keeps a row out of a rewrite once %s is set', (field) => {
+    expect(isRewriteEligible(candidate(SET_VALUE[field]))).toBe(false);
+  });
+
+  it('is every field the eligibility reads, and nothing else', () => {
+    const readFields = new Set<string | symbol>();
+    const watched = new Proxy(candidate(), {
+      get: (target, field: keyof RewriteCandidate) => {
+        readFields.add(field);
+
+        return target[field];
+      },
+    });
+
+    isRewriteEligible(watched);
+
+    expect([...readFields].sort()).toEqual([...REWRITE_GUARD_FIELDS].sort());
   });
 });
 

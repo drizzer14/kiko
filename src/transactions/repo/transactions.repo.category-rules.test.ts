@@ -13,9 +13,13 @@ jest.mock('@kiko/db/client', () => {
 });
 
 import { DAY_MS } from '@kiko/dates';
+import {
+  type CategoryRuleMatcher,
+  type RewriteGuardField,
+  REWRITE_GUARD_FIELDS,
+} from '@kiko/categories/category-rules';
 import { DatabaseSync } from 'node:sqlite';
 import { applyAllMigrations } from '@kiko/test-support/real-sqlite';
-import type { CategoryRuleMatcher } from '@kiko/categories/category-rules';
 import { isMccExcludedTransfer } from '@kiko/statistics/transfer-exclusion';
 
 import { transactionsRepo } from './transactions.repo';
@@ -340,25 +344,33 @@ describe('a rule at a refresh', () => {
     expect(categoryOf('k1')).toBe('rent');
   });
 
-  it.each([
-    ['an exchange leg', "exchange_pair_id = 'pair'"],
-    ['an exchange counterpart', "exchange_counterpart_holding_id = 'usd'"],
-    ['a balance-setting row', 'sets_balance = 1'],
-    ['a split-change row', "change_group_id = 'group'"],
-  ])('leaves %s alone when it settles at an amount a rule wins', async (_label, assignment) => {
-    insertRule('large', 'rent', [largeAmount]);
-    await transactionsRepo.addManyDedup([
-      syncItem('k1', { amountMinorUnits: -49_900, hold: true }),
-    ]);
-    run(`UPDATE transactions SET ${assignment} WHERE external_id = 'k1'`);
+  // Typed over the list `isRewriteEligible` reads, so a field added to or dropped from it fails to
+  // compile here until the refresh is proven to follow.
+  const SET_FIELD: Record<RewriteGuardField, string> = {
+    categorySetByHand: 'category_set_by_hand = 1',
+    exchangePairId: "exchange_pair_id = 'pair'",
+    exchangeCounterpartHoldingId: "exchange_counterpart_holding_id = 'usd'",
+    setsBalance: 'sets_balance = 1',
+    changeGroupId: "change_group_id = 'group'",
+  };
 
-    await transactionsRepo.addManyDedup([syncItem('k1', { amountMinorUnits: -50_100 })]);
+  it.each(REWRITE_GUARD_FIELDS)(
+    'leaves a row with %s set alone when it settles at an amount a rule wins',
+    async (field) => {
+      insertRule('large', 'rent', [largeAmount]);
+      await transactionsRepo.addManyDedup([
+        syncItem('k1', { amountMinorUnits: -49_900, hold: true }),
+      ]);
+      run(`UPDATE transactions SET ${SET_FIELD[field]} WHERE external_id = 'k1'`);
 
-    expect(storedRows()).toMatchObject([{ externalId: 'k1', category: 'groceries' }]);
-    expect(
-      mockDatabase.prepare('SELECT amount_minor_units AS amount FROM transactions').get(),
-    ).toEqual({ amount: -50_100 });
-  });
+      await transactionsRepo.addManyDedup([syncItem('k1', { amountMinorUnits: -50_100 })]);
+
+      expect(storedRows()).toMatchObject([{ externalId: 'k1', category: 'groceries' }]);
+      expect(
+        mockDatabase.prepare('SELECT amount_minor_units AS amount FROM transactions').get(),
+      ).toEqual({ amount: -50_100 });
+    },
+  );
 
   it('keeps a category set outside the rules when no rule wins at the new amount', async () => {
     insertRule('large', 'rent', [largeAmount]);

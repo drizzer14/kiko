@@ -315,6 +315,7 @@ describe('CategoriesScreen', () => {
 
       await holdCard();
 
+      expect(mockCountRules).toHaveBeenCalledWith('groceries');
       expect(getByText('Its 2 rules will be deleted too.')).toBeTruthy();
     });
 

@@ -39,6 +39,13 @@ import {
   removeHoldingDatabaseTransaction,
 } from '@kiko/holdings/repo';
 import { match } from 'ts-pattern';
+import {
+  type RewriteGuardField,
+  REWRITE_GUARD_FIELDS,
+  prepareRules,
+  subjectOfStoredRow,
+  winningRule,
+} from '@kiko/categories/category-rules';
 import maybe, { foldMap } from 'fnts/maybe';
 import { maxOf, minOf } from '@kiko/numbers';
 import type { Currency } from '@kiko/currency/currency';
@@ -48,7 +55,6 @@ import { isLedgerlessHoldingType } from '@kiko/holdings/holding-descriptor';
 import type { ExchangeConvertDirection } from '@kiko/holdings/exchange-convert';
 import type { ClosingBalance, TimeReading } from '@kiko/statement-import/parser';
 import { readAllRulesDatabaseTransaction } from '@kiko/categories/category-rules-repo';
-import { prepareRules, subjectOfStoredRow, winningRule } from '@kiko/categories/category-rules';
 import { isSyncedAccount, isSyncedHolding, isDeletableTransaction } from '@kiko/holdings/deletable';
 
 import type {
@@ -1361,20 +1367,29 @@ export const bankOwnedTransactionSetWhere = sql.join(
   sql` OR `,
 );
 
+// One SQL condition per field of `REWRITE_GUARD_FIELDS`, typed over that list: a field added to or
+// dropped from it fails to compile here, so the refresh below and `isRewriteEligible` always name
+// the same rows.
+const GUARD_FIELD_IS_UNSET: Record<RewriteGuardField, SQL> = {
+  categorySetByHand: sql`${transactions.categorySetByHand} = 0`,
+  exchangePairId: sql`${transactions.exchangePairId} IS NULL`,
+  exchangeCounterpartHoldingId: sql`${transactions.exchangeCounterpartHoldingId} IS NULL`,
+  setsBalance: sql`${transactions.setsBalance} = 0`,
+  changeGroupId: sql`${transactions.changeGroupId} IS NULL`,
+};
+
 // The refresh of a row a rule won at this batch: the bank-owned columns, and the rule's category
-// only when the row was not picked by hand, is not structural (an exchange leg, a balance-setting
-// row or a split-change row: the same rows `isRewriteEligible` leaves alone) AND its amount
-// changed, since the amount is what the rules judge again. The CASE reads the OLD row (SQLite
-// evaluates every SET expression against it), so such a row, or a refresh with the same amount,
-// keeps the category it has. A row no rule won never reaches this set, so the bank's category is
-// never written back.
+// only when the row is one a rule may rewrite (`REWRITE_GUARD_FIELDS`: not picked by hand, not an
+// exchange leg, a balance-setting row or a split-change row) AND its amount changed, since the
+// amount is what the rules judge again. The CASE reads the OLD row (SQLite evaluates every SET
+// expression against it), so such a row, or a refresh with the same amount, keeps the category it
+// has. A row no rule won never reaches this set, so the bank's category is never written back.
 const ruleWonTransactionSet = {
   ...bankOwnedTransactionSet,
-  category: sql`CASE WHEN ${transactions.categorySetByHand} = 0
-    AND ${transactions.exchangePairId} IS NULL
-    AND ${transactions.exchangeCounterpartHoldingId} IS NULL
-    AND ${transactions.setsBalance} = 0
-    AND ${transactions.changeGroupId} IS NULL
+  category: sql`CASE WHEN ${sql.join(
+    REWRITE_GUARD_FIELDS.map((field) => GUARD_FIELD_IS_UNSET[field]),
+    sql` AND `,
+  )}
     AND ${transactions.amountMinorUnits} IS NOT ${sql.raw(`excluded.${transactions.amountMinorUnits.name}`)}
     THEN ${sql.raw(`excluded.${transactions.category.name}`)}
     ELSE ${transactions.category} END`,
