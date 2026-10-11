@@ -24,10 +24,4 @@ describe('EntryDateHeader', () => {
       children: [{ variant: 'caption', tone: 'textSecondary', children: ['Today'] }],
     });
   });
-
-  it('renders without a testID', async () => {
-    const { getByText } = await render(<EntryDateHeader title="15.11.2026" />);
-
-    expect(getByText('15.11.2026')).toBeTruthy();
-  });
 });

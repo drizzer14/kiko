@@ -304,14 +304,15 @@ rules:
     severity: WARNING
     message: >
       A comment narrates a change ("it replaces", "no longer", "used to",
-      "previously"). kiko-code-style's "Comments: WHY only, never history":
+      "previously", "as drawn today", "kept green", "the move onto",
+      "through their extraction"). kiko-code-style's "Comments: WHY only, never history":
       a comment states how the code works today and why, never how it worked
       before. Drop the narrative and keep the WHY; if nothing but history
       remains, delete the comment. If the sentence describes a runtime state
       (a stored row the app no longer knows, a token no longer valid), reword
       it so it names the state, not the change.
     metadata:
-      fix: "State how the code works today and why; drop the 'no longer'/'used to'/'previously'/'it replaces' narrative, or delete the comment."
+      fix: "State how the code works today and why; drop the 'no longer'/'used to'/'previously'/'it replaces'/'as drawn today'/'kept green'/'the move onto' narrative, or delete the comment. A test comment says what the test pins (for example 'Pins the toggle's approved look on this screen.')."
       skill: "kiko-code-style › Comments: WHY only, never history"
     paths:
       exclude:
@@ -323,8 +324,8 @@ rules:
         - "drizzle.config.ts"
     patterns:
       - pattern-either:
-          - pattern-regex: '(?:^(?:[^''"`\n]|''[^''\n]*''|"[^"\n]*"|`[^`\n]*`)*(?<!:)//|(?!\A)\G)[^\n]*?\K\b(?:[Ii]t\sreplaces|[Nn]o\slonger|(?<!\bis\snever\s|\bare\snever\s|\bwas\snever\s|\bwere\snever\s|\bis\s|\bare\s|\bwas\s|\bwere\s|\bbe\s|\bbeen\s|\bbeing\s|\bget\s|\bgets\s|\bgot\s)used\sto|[Pp]reviously)\b'
-          - pattern-regex: '(?:^(?:[^''"`\n]|''[^''\n]*''|"[^"\n]*"|`[^`\n]*`)*/\*|(?!\A)\G)(?:(?!\*/)[\s\S])*?\K\b(?:[Ii]t\sreplaces|[Nn]o\slonger|(?<!\bis\snever\s|\bare\snever\s|\bwas\snever\s|\bwere\snever\s|\bis\s|\bare\s|\bwas\s|\bwere\s|\bbe\s|\bbeen\s|\bbeing\s|\bget\s|\bgets\s|\bgot\s)used\sto|[Pp]reviously)\b(?=(?:(?!\*/)[\s\S])*?\*/)'
+          - pattern-regex: '(?:^(?:[^''"`\n]|''[^''\n]*''|"[^"\n]*"|`[^`\n]*`)*(?<!:)//|(?!\A)\G)[^\n]*?\K\b(?:[Ii]t\sreplaces|[Nn]o\slonger|(?<!\bis\snever\s|\bare\snever\s|\bwas\snever\s|\bwere\snever\s|\bis\s|\bare\s|\bwas\s|\bwere\s|\bbe\s|\bbeen\s|\bbeing\s|\bget\s|\bgets\s|\bgot\s)used\sto|[Pp]reviously|kept\sgreen|as\s(?:drawn|rendered|written|built)\stoday|the\smove\s(?:onto|into)|through\s(?:their|its|the)\sextraction)\b'
+          - pattern-regex: '(?:^(?:[^''"`\n]|''[^''\n]*''|"[^"\n]*"|`[^`\n]*`)*/\*|(?!\A)\G)(?:(?!\*/)[\s\S])*?\K\b(?:[Ii]t\sreplaces|[Nn]o\slonger|(?<!\bis\snever\s|\bare\snever\s|\bwas\snever\s|\bwere\snever\s|\bis\s|\bare\s|\bwas\s|\bwere\s|\bbe\s|\bbeen\s|\bbeing\s|\bget\s|\bgets\s|\bgot\s)used\sto|[Pp]reviously|kept\sgreen|as\s(?:drawn|rendered|written|built)\stoday|the\smove\s(?:onto|into)|through\s(?:their|its|the)\sextraction)\b(?=(?:(?!\*/)[\s\S])*?\*/)'
   # ERROR: the tree holds 0 findings for this id (the sweep landed with the rule).
   # See kiko-linter's "kiko-no-history-date-comment" section for the members, the
   # false-positive classes that kept a bare ISO date out, and the scope.

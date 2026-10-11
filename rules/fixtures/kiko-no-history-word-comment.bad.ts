@@ -100,6 +100,36 @@ export const splitUsedToPurpose = true;
  */
 export const secondWordInBlock = true;
 
+// The refactor-narrative phrases of a test comment: a look "as drawn today", a test "kept green"
+// through an extraction, "the move onto" a shared component.
+// EXPECT-FINDING
+// The toggle as drawn today, pinned so a later change draws no pixel differently.
+export const asDrawnToday = true;
+
+// EXPECT-FINDING
+// The rows as rendered today keep their order.
+export const asRenderedToday = true;
+
+// EXPECT-FINDING
+// Written against the inline rows and kept green while they were reshaped.
+export const keptGreen = true;
+
+// EXPECT-FINDING
+// Pinned so the move onto the shared toggle changes no pixel.
+export const moveOnto = true;
+
+// EXPECT-FINDING
+// The look carries over the move into the shared card unchanged.
+export const moveInto = true;
+
+// EXPECT-FINDING
+// The rows keep their layout through their extraction into a card.
+export const throughTheirExtraction = true;
+
+// EXPECT-FINDING
+// The rows keep their layout through the extraction into a card.
+export const throughTheExtraction = true;
+
 // A second word on the same line is reported too (one pin covers the line, since a pin
 // names a line, not a member).
 // EXPECT-FINDING

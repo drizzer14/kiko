@@ -1,6 +1,5 @@
 import type { FC } from 'react';
 import { Pressable } from 'react-native';
-import maybe, { foldMap } from 'fnts/maybe';
 import { useTranslation } from 'react-i18next';
 import { useUnistyles } from 'react-native-unistyles';
 
@@ -34,11 +33,11 @@ const ExpandToggle: FC<ExpandToggleProps> = ({ expanded, onPress, testID }) => {
     >
       <Box direction="row" gap={1} style={styles.toggleContent}>
         <Text variant="caption" tone="accent">
-          {expanded ? t('components.pieChart.showLess') : t('components.pieChart.showAll')}
+          {expanded ? t('components.expandToggle.showLess') : t('components.expandToggle.showAll')}
         </Text>
 
         <SymbolIcon
-          testID={foldMap(maybe(testID), (id) => `${id}-chevron`)}
+          testID={`${testID}-chevron`}
           name={expanded ? 'chevron.up' : 'chevron.down'}
           tone="accent"
           size={theme.iconSizes.caption}

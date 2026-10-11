@@ -20,8 +20,8 @@ const slices: AccountSlice[] = [
   { accountId: 'd', name: 'Delta', amount: 30, share: 0.03, color: '#FF9F0A' },
 ];
 
-// The legend's expand/collapse link as drawn today, pinned so the move onto the shared
-// `ExpandToggle` provably changes no pixel.
+// Pins the approved look of the legend's expand/collapse link, which the shared `ExpandToggle`
+// draws.
 describe('PieChart legend toggle look', () => {
   it('draws a self-aligned caption accent label beside a caption-sized accent chevron', async () => {
     const { getByTestId } = await render(

@@ -1018,13 +1018,15 @@ export const en = {
   // Shared design-system components (src/design-system/components/*) that
   // carry their own hardcoded copy rather than taking it as a prop.
   components: {
+    expandToggle: {
+      showAll: 'Show all',
+      showLess: 'Show less',
+    },
     netWorthLine: {
       loadingHistory: 'Loading history',
     },
     pieChart: {
       emptyDefault: 'No accounts to show',
-      showAll: 'Show all',
-      showLess: 'Show less',
     },
   },
   // The app-boot gate (src/migration/migrations.gate.tsx) — its own UI is the very

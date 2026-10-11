@@ -324,10 +324,23 @@ verified usage, not dead weight:
   columns". Exercised by `__tests__/comment-line-width.test.ts`, which
   spawns the checker and the wrapper as subprocesses, and by
   `__tests__/pre-write-guard.test.ts`'s `comment-line-width` case.
+- **`knip.json` `ignore`**: `scripts/checks/component-i18n-namespace.js` — the
+  same shape as `comment-line-width.js` above.
+  `scripts/checks/component-i18n-namespace.sh` reaches it only via a `node`
+  invocation (its project-wide mode, `npm run check:component-i18n-namespace`;
+  it has no per-file mode), and `scripts/checks/pre-write-guard.js` reaches it
+  only via `runSpawnedNodeChecker`'s own `spawnSync` (the
+  `kiko-component-i18n-namespace` `NODE_RULES` row) — never a static
+  `import`/`require`. The project-wide mode is part of `check:all`. The
+  checker has no allowlist. Exercised by
+  `__tests__/component-i18n-namespace.test.ts`, which spawns the checker and
+  the wrapper as subprocesses, and by `__tests__/pre-write-guard.test.ts`'s
+  `component-i18n-namespace` case.
 - **`knip.json` `ignore`**: `scripts/checks/specifier-scanner.js` — the
   shared specifier scanner. Its only importers are the checkers
-  `feature-imports.js`, `screen-imports.js`, `plural-count.js`, and
-  `comment-line-width.js` (a static `require`), and all four are themselves
+  `feature-imports.js`, `screen-imports.js`, `plural-count.js`,
+  `comment-line-width.js`, and `component-i18n-namespace.js` (a static
+  `require`), and all five are themselves
   in `ignore` above, so Knip never walks into it and reports it as an
   unused file. It is reached exactly as far as those checkers are, and
   exercised through their tests.

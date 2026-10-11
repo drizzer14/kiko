@@ -42,7 +42,7 @@ describe('ExpandToggle', () => {
     );
 
     expect(layoutOf(getByTestId('toggle'))).toEqual(
-      toggleLayout(i18n.t('components.pieChart.showAll'), 'chevron.down', 'toggle'),
+      toggleLayout(i18n.t('components.expandToggle.showAll'), 'chevron.down', 'toggle'),
     );
   });
 
@@ -52,7 +52,7 @@ describe('ExpandToggle', () => {
     );
 
     expect(layoutOf(getByTestId('toggle'))).toEqual(
-      toggleLayout(i18n.t('components.pieChart.showLess'), 'chevron.up', 'toggle'),
+      toggleLayout(i18n.t('components.expandToggle.showLess'), 'chevron.up', 'toggle'),
     );
   });
 

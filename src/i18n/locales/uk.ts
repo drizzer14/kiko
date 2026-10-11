@@ -851,13 +851,15 @@ export const uk: typeof en = {
     exchangeTo: 'Обмін на {{name}}',
   },
   components: {
+    expandToggle: {
+      showAll: 'Показати всі',
+      showLess: 'Згорнути',
+    },
     netWorthLine: {
       loadingHistory: 'Завантаження історії',
     },
     pieChart: {
       emptyDefault: 'Створіть рахунок аби побачити його тут',
-      showAll: 'Показати всі',
-      showLess: 'Згорнути',
     },
   },
   migrations: {

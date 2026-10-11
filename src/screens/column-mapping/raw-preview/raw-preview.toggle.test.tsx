@@ -38,8 +38,8 @@ const toggleLayout = (label: string, chevron: string) => ({
   ],
 });
 
-// The raw-preview expand/collapse link as drawn today, pinned so the move onto the shared
-// `ExpandToggle` provably changes no pixel.
+// Pins the approved look of the raw-preview expand/collapse link, which the shared
+// `ExpandToggle` draws.
 describe('RawPreview toggle look', () => {
   it('draws a self-aligned caption accent label beside a caption-sized accent chevron', async () => {
     const { getByTestId } = await render(
@@ -48,7 +48,7 @@ describe('RawPreview toggle look', () => {
     const toggle = getByTestId('raw-preview-toggle');
 
     expect(layoutOf(toggle)).toEqual(
-      toggleLayout(i18n.t('components.pieChart.showAll'), 'chevron.down'),
+      toggleLayout(i18n.t('components.expandToggle.showAll'), 'chevron.down'),
     );
     expect(toggle.props.accessibilityRole).toBe('button');
     expect(toggle.props.hitSlop).toEqual({ top: 10, bottom: 10 });
@@ -62,7 +62,7 @@ describe('RawPreview toggle look', () => {
     await fireEvent.press(getByTestId('raw-preview-toggle'));
 
     expect(layoutOf(getByTestId('raw-preview-toggle'))).toEqual(
-      toggleLayout(i18n.t('components.pieChart.showLess'), 'chevron.up'),
+      toggleLayout(i18n.t('components.expandToggle.showLess'), 'chevron.up'),
     );
   });
 });

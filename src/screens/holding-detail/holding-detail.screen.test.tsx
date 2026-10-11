@@ -2650,9 +2650,8 @@ const cardLayout = (children: LayoutNode[]): LayoutNode => ({
   children: [{ style: { gap: darkTheme.spacing(1) }, children }],
 });
 
-// The characterized look of the ledger rows and their day header. Written
-// against the inline rows and kept green through their extraction into the
-// shared EntryCard / EntryDateHeader.
+// Pins the approved look of the ledger rows and their day header, which the shared
+// EntryCard / EntryDateHeader draw.
 describe('HoldingDetailScreen — ledger row look', () => {
   it('draws a settled derived row as a card: label left, amount right, a right-aligned caption', async () => {
     seed(depositHolding);
