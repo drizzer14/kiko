@@ -246,6 +246,28 @@ describe('PaneRouter', () => {
       expect(run(detail, PaneActions.showDefault('Statement'))).toBe(detail);
     });
 
+    // The account form opened from the empty pane sits above the placeholder in the same pane; the
+    // list fills the pane with the new account's page while the form is still open.
+    it('replaces a placeholder in place when a page opened from it stays above', () => {
+      const placeholder = run(
+        initial(),
+        PaneActions.showDefault('AccountsEmptyPane', undefined, true),
+      );
+      const form = run(
+        placeholder,
+        PaneActions.open(keyOf(placeholder, 'AccountsEmptyPane'), 'AccountForm'),
+      );
+      const filled = run(form, PaneActions.showDefault('AccountDetail', { accountId: 'a' }));
+
+      expect(names(filled)).toEqual(['Accounts', 'AccountDetail', 'AccountForm']);
+      expect(filled.routes[1].isDefault).toBe(true);
+      expect(filled.routes[1].params).toEqual({ accountId: 'a' });
+      expect(filled.panes[filled.routes[1].key]).toBe('primary');
+      expect(filled.panes[filled.routes[2].key]).toBe('primary');
+      expect(filled.index).toBe(2);
+      expect(Object.keys(filled.panes)).toHaveLength(3);
+    });
+
     it('is not handled for a route the navigator does not have', () => {
       expect(
         router.getStateForAction(initial(), PaneActions.showDefault('Nowhere'), CONFIG),

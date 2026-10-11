@@ -1,7 +1,7 @@
 import {
-  type PrimaryPaneRoute,
+  type DetailPaneRoute,
   useClosePaneRoute,
-  usePrimaryPaneRoute,
+  useDetailPaneRoute,
   useShowPaneDefault,
 } from '@kiko/navigation/pane-stack';
 import { useEffect, useMemo } from 'react';
@@ -22,14 +22,14 @@ type AccountsPaneInput = {
   isFresh: boolean;
   isVisible: boolean;
   isEmpty: boolean;
-  // The account the list shows first: the page the primary pane starts with.
+  // The account the list shows first: the page the detail pane starts with.
   firstAccount: AccountRow | undefined;
   accounts: AccountRow[];
   holdings: HoldingRow[];
 };
 
 const paramOf = (
-  route: PaneDefault | PrimaryPaneRoute | null,
+  route: PaneDefault | DetailPaneRoute | null,
   name: string,
   param: string,
 ): string | undefined => {
@@ -41,20 +41,20 @@ const paramOf = (
   return typeof value === 'string' ? value : undefined;
 };
 
-const accountIdOf = (route: PaneDefault | PrimaryPaneRoute | null) =>
+const accountIdOf = (route: PaneDefault | DetailPaneRoute | null) =>
   paramOf(route, 'AccountDetail', 'accountId');
 
-const holdingIdOf = (route: PaneDefault | PrimaryPaneRoute | null) =>
+const holdingIdOf = (route: PaneDefault | DetailPaneRoute | null) =>
   paramOf(route, 'HoldingDetail', 'holdingId');
 
 // Whether the pane already shows what the list would put there.
-const isShown = (route: PrimaryPaneRoute, wanted: PaneDefault): boolean =>
+const isShown = (route: DetailPaneRoute, wanted: PaneDefault): boolean =>
   route.name === wanted.name && accountIdOf(route) === accountIdOf(wanted);
 
 // A page about an account or a holding that no row has any more. An archived account and a closed
 // holding are still rows.
 const isGone = (
-  route: PrimaryPaneRoute,
+  route: DetailPaneRoute,
   accounts: AccountRow[],
   holdings: HoldingRow[],
 ): boolean => {
@@ -70,7 +70,8 @@ const isGone = (
 /**
  * What the Accounts list does on a wide window, where an account page fills the other pane. Until
  * the user taps a row that pane shows the first row of the list (or the empty pane while there is
- * no account), and the list marks the row the pane shows. A page the user opened closes once its
+ * no account), and the list marks the row of the page the pane opened with, which stays marked
+ * while a step opened from that page covers it. A page the user opened closes once its
  * account or holding is deleted, which leaves the pane to the default again. On one pane there is
  * nothing to fill, mark or close.
  */
@@ -88,7 +89,7 @@ export const useAccountsPane = ({
 } => {
   const { t } = useTranslation();
   const isInPane = usePaneContext() !== null;
-  const primaryRoute = usePrimaryPaneRoute();
+  const detailRoute = useDetailPaneRoute();
   const showPaneDefault = useShowPaneDefault();
   const closePaneRoute = useClosePaneRoute();
   const paneDefault = useMemo<PaneDefault | undefined>(
@@ -113,17 +114,17 @@ export const useAccountsPane = ({
     isVisible &&
     isReady &&
     paneDefault !== undefined &&
-    (primaryRoute === null || (primaryRoute.isDefault && !isShown(primaryRoute, paneDefault)));
+    (detailRoute === null || (detailRoute.isDefault && !isShown(detailRoute, paneDefault)));
   // A default whose account is gone is replaced above; only a page the user opened is closed.
   const goneKey =
     isInPane &&
     isVisible &&
     isReady &&
     isFresh &&
-    primaryRoute !== null &&
-    !primaryRoute.isDefault &&
-    isGone(primaryRoute, accounts, holdings)
-      ? primaryRoute.key
+    detailRoute !== null &&
+    !detailRoute.isDefault &&
+    isGone(detailRoute, accounts, holdings)
+      ? detailRoute.key
       : undefined;
 
   useEffect(() => {
@@ -139,7 +140,7 @@ export const useAccountsPane = ({
   }, [goneKey, closePaneRoute]);
 
   return {
-    selectedAccountId: accountIdOf(primaryRoute),
-    selectedHoldingId: holdingIdOf(primaryRoute),
+    selectedAccountId: accountIdOf(detailRoute),
+    selectedHoldingId: holdingIdOf(detailRoute),
   };
 };

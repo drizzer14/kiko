@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { renderHook } from '@testing-library/react-native';
 
-import { PaneVisibilityContext, useIsScreenVisible, usePrimaryPaneRoute } from '.';
+import { PaneVisibilityContext, useIsScreenVisible, useDetailPaneRoute } from '.';
 
 let mockRouteKey = 'companion-route';
 let mockIsFocused = false;
@@ -13,7 +13,7 @@ jest.mock('@react-navigation/native', () => ({
 }));
 
 const VISIBLE_KEYS = new Set(['companion-route', 'primary-route']);
-const PRIMARY_ROUTE = {
+const DETAIL_ROUTE = {
   key: 'primary-route',
   name: 'AccountDetail',
   params: { accountId: 'a' },
@@ -24,7 +24,7 @@ const renderInPanesWith = <Result,>(hook: () => Result, isTabFocused = true) =>
   renderHook(hook, {
     wrapper: ({ children }: { children: ReactNode }) => (
       <PaneVisibilityContext.Provider
-        value={{ isTabFocused, visibleKeys: VISIBLE_KEYS, primaryRoute: PRIMARY_ROUTE }}
+        value={{ isTabFocused, visibleKeys: VISIBLE_KEYS, detailRoute: DETAIL_ROUTE }}
       >
         {children}
       </PaneVisibilityContext.Provider>
@@ -85,15 +85,15 @@ describe('useIsScreenVisible', () => {
   });
 });
 
-describe('usePrimaryPaneRoute', () => {
-  it('hands over the route on top of the primary pane', async () => {
-    const { result } = await renderInPanesWith(() => usePrimaryPaneRoute());
+describe('useDetailPaneRoute', () => {
+  it('hands over the first route of the detail pane', async () => {
+    const { result } = await renderInPanesWith(() => useDetailPaneRoute());
 
-    expect(result.current).toBe(PRIMARY_ROUTE);
+    expect(result.current).toBe(DETAIL_ROUTE);
   });
 
-  it('is null in one pane, where there is no primary pane', async () => {
-    const { result } = await renderHook(() => usePrimaryPaneRoute());
+  it('is null in one pane, where there is no detail pane', async () => {
+    const { result } = await renderHook(() => useDetailPaneRoute());
 
     expect(result.current).toBeNull();
   });

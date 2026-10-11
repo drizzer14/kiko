@@ -67,21 +67,21 @@ jest.mock('@kiko/navigation/use-scroll-to-top-on-tab-press', () => ({
     mockUseScrollToTopOnTabPress(ref, scrollOffset),
 }));
 
-// A row opens its page in the pane opposite the menu's (on one pane, a plain navigate), and on a
-// wide window the menu marks the row whose page the primary pane shows.
+// A row opens its page in the detail pane (on one pane, a plain navigate), and on a wide window
+// the menu marks the row whose page the detail pane opened with.
 const mockOpenInPane = jest.fn();
-const mockUsePrimaryPaneRoute = jest.fn(
+const mockUseDetailPaneRoute = jest.fn(
   (): { name: string; params?: object; isDefault: boolean } | null => null,
 );
 jest.mock('@kiko/navigation/pane-stack', () => ({
   useOpenInPane: () => mockOpenInPane,
-  usePrimaryPaneRoute: () => mockUsePrimaryPaneRoute(),
+  useDetailPaneRoute: () => mockUseDetailPaneRoute(),
 }));
 
 describe('SettingsScreen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    mockUsePrimaryPaneRoute.mockReturnValue(null);
+    mockUseDetailPaneRoute.mockReturnValue(null);
     mockLiveQueryData = [{ baseCurrency: 'UAH' }];
     mockLiveQueryIsLoading = false;
   });
@@ -556,7 +556,7 @@ describe('SettingsScreen — loading gate', () => {
 });
 
 // On a wide window the menu is one pane and the page of a row the other: the row whose page the
-// primary pane shows (Categories until another is opened) is marked. On one pane nothing is.
+// detail pane opened with (Categories until another is opened) is marked. On one pane nothing is.
 describe('SettingsScreen — the selected row', () => {
   // Import and Export share one card, so there the row is marked and the card is not.
   const ROWS = [
@@ -580,7 +580,7 @@ describe('SettingsScreen — the selected row', () => {
     jest.clearAllMocks();
     mockLiveQueryData = [{ baseCurrency: 'UAH' }];
     mockLiveQueryIsLoading = false;
-    mockUsePrimaryPaneRoute.mockReturnValue(null);
+    mockUseDetailPaneRoute.mockReturnValue(null);
   });
 
   it('is none on one pane, where the primary pane is not shown', async () => {
@@ -588,13 +588,13 @@ describe('SettingsScreen — the selected row', () => {
   });
 
   it('is Categories while the pane shows it as its default', async () => {
-    mockUsePrimaryPaneRoute.mockReturnValue({ name: 'Categories', isDefault: true });
+    mockUseDetailPaneRoute.mockReturnValue({ name: 'Categories', isDefault: true });
 
     expect(await selectedRows()).toEqual(['Categories']);
   });
 
   it.each(ROWS)('follows the primary pane to %s', async (route, cardId, rowId, marksCard) => {
-    mockUsePrimaryPaneRoute.mockReturnValue({ name: route, isDefault: false });
+    mockUseDetailPaneRoute.mockReturnValue({ name: route, isDefault: false });
     const { getByTestId } = await renderScreen();
     const card = StyleSheet.flatten(getByTestId(cardId).props.style);
     const row = StyleSheet.flatten(getByTestId(rowId).props.style);
@@ -606,7 +606,7 @@ describe('SettingsScreen — the selected row', () => {
   });
 
   it('marks the Categories card, and no other card, while its default shows', async () => {
-    mockUsePrimaryPaneRoute.mockReturnValue({ name: 'Categories', isDefault: true });
+    mockUseDetailPaneRoute.mockReturnValue({ name: 'Categories', isDefault: true });
     const { getByTestId } = await renderScreen();
     const fillOf = (cardId: string) =>
       StyleSheet.flatten(getByTestId(cardId).props.style).backgroundColor;
@@ -617,7 +617,7 @@ describe('SettingsScreen — the selected row', () => {
   });
 
   it('marks nothing for a page the menu has no row for', async () => {
-    mockUsePrimaryPaneRoute.mockReturnValue({ name: 'HelpTopic', isDefault: false });
+    mockUseDetailPaneRoute.mockReturnValue({ name: 'HelpTopic', isDefault: false });
 
     expect(await selectedRows()).toEqual([]);
   });

@@ -119,24 +119,25 @@ describe('PaneStackView', () => {
   it.each(['columns', 'rows'] as const)(
     'renders one native stack for each pane, with that pane’s routes, in %s',
     async (mode) => {
+      // was: form in the companion, so the companion stack was accounts+form.
       const state = stackState([route('accounts'), route('account'), route('form')], {
         accounts: 'companion',
         account: 'primary',
-        form: 'companion',
+        form: 'primary',
       });
 
       await renderView(state, ACCOUNTS, mode);
 
       expect(screen.getByTestId('two-pane-companion')).toBeTruthy();
-      expect(screen.getByTestId('stack-accounts+form')).toBeTruthy();
-      expect(screen.getByTestId('stack-account')).toBeTruthy();
+      expect(screen.getByTestId('stack-accounts')).toBeTruthy();
+      expect(screen.getByTestId('stack-account+form')).toBeTruthy();
 
       const [companion, primary] = renderedProps();
 
-      expect(companion.state.routes.map((entry) => entry.key)).toEqual(['accounts', 'form']);
-      expect(companion.state.index).toBe(1);
-      expect(primary.state.routes.map((entry) => entry.key)).toEqual(['account']);
-      expect(primary.state.index).toBe(0);
+      expect(companion.state.routes.map((entry) => entry.key)).toEqual(['accounts']);
+      expect(companion.state.index).toBe(0);
+      expect(primary.state.routes.map((entry) => entry.key)).toEqual(['account', 'form']);
+      expect(primary.state.index).toBe(1);
     },
   );
 
@@ -180,14 +181,15 @@ describe('PaneStackView', () => {
       const state = stackState([route('accounts'), route('account'), route('form')], {
         accounts: 'companion',
         account: 'primary',
-        form: 'companion',
+        form: 'primary',
       });
 
       await renderView(state, ACCOUNTS);
 
       for (const [, visibility, dispatch] of mockNativeStackView.mock.calls) {
         expect(visibility.isTabFocused).toBe(true);
-        expect([...visibility.visibleKeys].sort()).toEqual(['account', 'form']);
+        // was: account and form (the form was the companion's top).
+        expect([...visibility.visibleKeys].sort()).toEqual(['accounts', 'form']);
         expect(dispatch).toBe(navigation.dispatch);
       }
     });
@@ -200,13 +202,13 @@ describe('PaneStackView', () => {
       expect([...visibility.visibleKeys].sort()).toEqual(['home', 'pane-default:companion']);
     });
 
-    describe('the route on top of the primary pane', () => {
+    describe('the first route of the detail pane', () => {
       const SETTINGS: PaneConfig = {
         rootPane: 'companion',
         primaryDefault: { name: 'Categories', isDefault: true },
       };
 
-      const primaryRouteOf = () => mockNativeStackView.mock.calls[0][1].primaryRoute;
+      const detailRouteOf = () => mockNativeStackView.mock.calls[0][1].detailRoute;
 
       it('is the tapped route, with its params', async () => {
         const state = stackState(
@@ -216,7 +218,7 @@ describe('PaneStackView', () => {
 
         await renderView(state, ACCOUNTS);
 
-        expect(primaryRouteOf()).toEqual({
+        expect(detailRouteOf()).toEqual({
           key: 'account',
           name: 'AccountDetail',
           params: { accountId: 'a' },
@@ -224,10 +226,50 @@ describe('PaneStackView', () => {
         });
       });
 
+      it('stays the first page of the detail pane while a deeper step covers it', async () => {
+        const state = stackState(
+          [
+            route('accounts'),
+            route('account', 'AccountDetail', { params: { accountId: 'a' } }),
+            route('form', 'HoldingForm'),
+          ],
+          { accounts: 'companion', account: 'primary', form: 'primary' },
+        );
+
+        await renderView(state, ACCOUNTS);
+
+        expect(detailRouteOf()).toEqual({
+          key: 'account',
+          name: 'AccountDetail',
+          params: { accountId: 'a' },
+          isDefault: false,
+        });
+      });
+
+      it('is the companion route, not the list, when the list is the primary pane', async () => {
+        const state = stackState(
+          [
+            route('home', 'Home'),
+            route('form', 'TransactionForm'),
+            route('holding', 'HoldingForm'),
+          ],
+          { home: 'primary', form: 'companion', holding: 'companion' },
+        );
+
+        await renderView(state, HOME);
+
+        expect(detailRouteOf()).toEqual({
+          key: 'form',
+          name: 'TransactionForm',
+          params: undefined,
+          isDefault: false,
+        });
+      });
+
       it('is the config default while the pane holds no route', async () => {
         await renderView(stackState([route('settings')], { settings: 'companion' }), SETTINGS);
 
-        expect(primaryRouteOf()).toEqual({
+        expect(detailRouteOf()).toEqual({
           key: 'pane-default:primary',
           name: 'Categories',
           params: undefined,
@@ -246,20 +288,20 @@ describe('PaneStackView', () => {
 
         await renderView(state, ACCOUNTS);
 
-        expect(primaryRouteOf().isDefault).toBe(true);
-        expect(primaryRouteOf().name).toBe('AccountDetail');
+        expect(detailRouteOf().isDefault).toBe(true);
+        expect(detailRouteOf().name).toBe('AccountDetail');
       });
 
       it('is null while the pane has neither a route nor a default', async () => {
         await renderView(stackState([route('accounts')], { accounts: 'companion' }), ACCOUNTS);
 
-        expect(primaryRouteOf()).toBeNull();
+        expect(detailRouteOf()).toBeNull();
       });
 
       it('keeps one value while the route stays the same', async () => {
         const state = stackState([route('accounts')], { accounts: 'companion' });
         const view = await renderView(state, SETTINGS);
-        const first = primaryRouteOf();
+        const first = detailRouteOf();
 
         await view.rerender(
           <PaneStackView
@@ -272,7 +314,7 @@ describe('PaneStackView', () => {
           />,
         );
 
-        expect(mockNativeStackView.mock.calls.at(-1)?.[1].primaryRoute).toBe(first);
+        expect(mockNativeStackView.mock.calls.at(-1)?.[1].detailRoute).toBe(first);
       });
     });
 

@@ -181,12 +181,15 @@ export const PaneRouter = ({
     const panes = unfoldAssignment(state.routes, state.panes, paneConfig);
     const inPane = routesOfPane(state.routes, panes, paneConfig, detailPane);
 
-    // The user already tapped something in this pane.
-    if (inPane.some((route) => route.isDefault !== true)) {
+    const [floor] = inPane;
+
+    // The user already tapped the page this pane starts with. A placeholder is the one default a
+    // tapped page can sit above, so it is replaced in place and the page stays on top of it.
+    if (floor !== undefined && floor.isDefault !== true) {
       return state;
     }
 
-    const others = state.routes.filter((route) => !inPane.includes(route));
+    const others = state.routes.filter((route) => route !== floor);
     const shown = {
       ...next.route,
       isDefault: true,

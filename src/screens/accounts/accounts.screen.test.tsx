@@ -71,14 +71,14 @@ jest.mock('@kiko/design-system/use-visible-refreshed-now/use-visible-refreshed-n
 // Whether the list is on screen. While a runtime default shows, the stack's focused route is that
 // default, so `useIsFocused` is mocked false for the whole file: only visibility may decide.
 const mockUseIsScreenVisible = jest.fn(() => true);
-// A detail opens in the pane opposite the list's own; outside a pane navigator the real helper
-// falls back to `navigate` (its own test pins that). `mockUsePrimaryPaneRoute` is what the
-// primary pane shows, `mockShowPaneDefault` what the list fills it with, and `mockClosePaneRoute`
+// A detail opens in the detail pane; outside a pane navigator the real helper falls back to
+// `navigate` (its own test pins that). `mockUseDetailPaneRoute` is what the detail pane opened
+// with, `mockShowPaneDefault` what the list fills it with, and `mockClosePaneRoute`
 // how it closes the page of an entity that is gone.
 const mockOpenInPane = jest.fn();
 const mockShowPaneDefault = jest.fn();
 const mockClosePaneRoute = jest.fn();
-const mockUsePrimaryPaneRoute = jest.fn(
+const mockUseDetailPaneRoute = jest.fn(
   (): { key?: string; name: string; params?: object; isDefault: boolean } | null => null,
 );
 jest.mock('@kiko/navigation/pane-stack', () => ({
@@ -86,7 +86,7 @@ jest.mock('@kiko/navigation/pane-stack', () => ({
   useOpenInPane: () => mockOpenInPane,
   useShowPaneDefault: () => mockShowPaneDefault,
   useClosePaneRoute: () => mockClosePaneRoute,
-  usePrimaryPaneRoute: () => mockUsePrimaryPaneRoute(),
+  useDetailPaneRoute: () => mockUseDetailPaneRoute(),
 }));
 jest.mock('@react-navigation/native', () => ({
   ...jest.requireActual('@react-navigation/native'),
@@ -2158,7 +2158,7 @@ describe('AccountsScreen — in one of two panes', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockUseIsScreenVisible.mockReturnValue(true);
-    mockUsePrimaryPaneRoute.mockReturnValue(null);
+    mockUseDetailPaneRoute.mockReturnValue(null);
     setLiveData({
       accounts: [MONOBANK, SAVINGS],
       holdings: [{ accountId: 'a', currency: 'UAH', balanceMinorUnits: 100000 }],
@@ -2184,7 +2184,7 @@ describe('AccountsScreen — in one of two panes', () => {
     });
 
     it('is replaced when the first account is no longer the one shown', async () => {
-      mockUsePrimaryPaneRoute.mockReturnValue({
+      mockUseDetailPaneRoute.mockReturnValue({
         name: 'AccountDetail',
         params: { accountId: 'c', name: 'Savings', kind: 'cash' },
         isDefault: true,
@@ -2196,7 +2196,7 @@ describe('AccountsScreen — in one of two panes', () => {
     });
 
     it('is replaced by the account page once an account exists after the empty pane', async () => {
-      mockUsePrimaryPaneRoute.mockReturnValue({ name: 'AccountsEmptyPane', isDefault: true });
+      mockUseDetailPaneRoute.mockReturnValue({ name: 'AccountsEmptyPane', isDefault: true });
 
       await renderInPane();
 
@@ -2204,7 +2204,7 @@ describe('AccountsScreen — in one of two panes', () => {
     });
 
     it('is not dispatched again once it is the one shown', async () => {
-      mockUsePrimaryPaneRoute.mockReturnValue({
+      mockUseDetailPaneRoute.mockReturnValue({
         name: 'AccountDetail',
         params: MONOBANK_PARAMS,
         isDefault: true,
@@ -2216,7 +2216,7 @@ describe('AccountsScreen — in one of two panes', () => {
     });
 
     it('leaves an account the user tapped in the pane', async () => {
-      mockUsePrimaryPaneRoute.mockReturnValue({
+      mockUseDetailPaneRoute.mockReturnValue({
         name: 'AccountDetail',
         params: { accountId: 'c', name: 'Savings', kind: 'cash' },
         isDefault: false,
@@ -2274,7 +2274,7 @@ describe('AccountsScreen — in one of two panes', () => {
   // default (the list fills it again once the page is closed).
   describe('the page of an entity that is gone', () => {
     const tapped = (name: string, params: object) =>
-      mockUsePrimaryPaneRoute.mockReturnValue({ key: 'page-key', name, params, isDefault: false });
+      mockUseDetailPaneRoute.mockReturnValue({ key: 'page-key', name, params, isDefault: false });
 
     it('is closed once its account is no longer in the list', async () => {
       tapped('AccountDetail', { accountId: 'deleted' });
@@ -2330,7 +2330,7 @@ describe('AccountsScreen — in one of two panes', () => {
       ['a default, which the list replaces on its own', { isDefault: true }],
       ['another screen', { name: 'HoldingForm' }],
     ])('is not closed for %s', async (_label, over) => {
-      mockUsePrimaryPaneRoute.mockReturnValue({
+      mockUseDetailPaneRoute.mockReturnValue({
         key: 'page-key',
         name: 'AccountDetail',
         params: { accountId: 'deleted' },
@@ -2376,7 +2376,7 @@ describe('AccountsScreen — in one of two panes', () => {
 
   describe('the selected row', () => {
     it('is the account whose page the primary pane shows', async () => {
-      mockUsePrimaryPaneRoute.mockReturnValue({
+      mockUseDetailPaneRoute.mockReturnValue({
         name: 'AccountDetail',
         params: { accountId: 'c', name: 'Savings', kind: 'cash' },
         isDefault: false,
@@ -2390,7 +2390,7 @@ describe('AccountsScreen — in one of two panes', () => {
     });
 
     it('is also the default account the list put there', async () => {
-      mockUsePrimaryPaneRoute.mockReturnValue({
+      mockUseDetailPaneRoute.mockReturnValue({
         name: 'AccountDetail',
         params: MONOBANK_PARAMS,
         isDefault: true,
@@ -2403,13 +2403,13 @@ describe('AccountsScreen — in one of two panes', () => {
     });
 
     it('is none while the primary pane shows another screen', async () => {
-      mockUsePrimaryPaneRoute.mockReturnValue({ name: 'AccountsEmptyPane', isDefault: true });
+      mockUseDetailPaneRoute.mockReturnValue({ name: 'AccountsEmptyPane', isDefault: true });
 
       expect(selectedCards(await renderInPane())).toHaveLength(0);
     });
 
     it('tells a screen reader which row is selected', async () => {
-      mockUsePrimaryPaneRoute.mockReturnValue({
+      mockUseDetailPaneRoute.mockReturnValue({
         name: 'AccountDetail',
         params: MONOBANK_PARAMS,
         isDefault: false,
@@ -2427,7 +2427,7 @@ describe('AccountsScreen — in one of two panes', () => {
     // Every row that opens a page is marked when the primary pane shows that page.
     describe('on every kind of row that opens a page', () => {
       const shown = (name: string, params: object) =>
-        mockUsePrimaryPaneRoute.mockReturnValue({ name, params, isDefault: false });
+        mockUseDetailPaneRoute.mockReturnValue({ name, params, isDefault: false });
       const fillOf = (node: { props: { style?: unknown } }) =>
         StyleSheet.flatten(node.props.style as never)?.backgroundColor;
       const isFilled = (node: { props: { style?: unknown } }) =>

@@ -4,6 +4,7 @@ import { useIsFocused } from '@react-navigation/native';
 import { NativeStackView } from '@react-navigation/native-stack';
 import TwoPaneLayout from '@kiko/design-system/components/two-pane-layout';
 
+import { oppositePane } from '../pane-assignment';
 import { OpenInPaneContext } from '../open-in-pane';
 import { PaneVisibilityContext } from '../pane-visibility';
 
@@ -32,29 +33,33 @@ const PaneStackView: FC<PaneStackViewProps> = ({
     ? paneSlice(state, paneConfig, 'primary', descriptors, describe, dispatch)
     : null;
   const companionTopKey = companion?.state.routes.at(-1)?.key ?? '';
-  const primaryTop = primary?.state.routes.at(-1);
-  const primaryTopKey = primaryTop?.key ?? '';
-  const primaryName = primaryTop?.name;
-  const primaryParams = primaryTop?.params;
-  const isPrimaryDefault = primaryTop?.isDefault === true;
+  const primaryTopKey = primary?.state.routes.at(-1)?.key ?? '';
+  // What the list marks is the page it opened, not whatever deeper step covers it.
+  const detailSlice = oppositePane(paneConfig.rootPane) === 'primary' ? primary : companion;
+  const detailFirst = detailSlice?.state.routes[0];
+  const detailKey = detailFirst?.key ?? '';
+  const detailName = detailFirst?.name;
+  const detailParams = detailFirst?.params;
+  const isDetailDefault = detailFirst?.isDefault === true;
 
-  // The slices are new objects on every render; the context changes only when a top route does.
-  const primaryRoute = useMemo(
+  // The slices are new objects on every render; the context changes only when the detail pane's
+  // first route or a pane's top route does.
+  const detailRoute = useMemo(
     () =>
-      foldMap(maybe(primaryName), (name) => ({
-        key: primaryTopKey,
+      foldMap(maybe(detailName), (name) => ({
+        key: detailKey,
         name,
-        params: primaryParams,
-        isDefault: isPrimaryDefault,
+        params: detailParams,
+        isDefault: isDetailDefault,
       })) ?? null,
-    [primaryTopKey, primaryName, primaryParams, isPrimaryDefault],
+    [detailKey, detailName, detailParams, isDetailDefault],
   );
   const visibility = useMemo(
     () =>
       isSplit
-        ? { isTabFocused, visibleKeys: new Set([companionTopKey, primaryTopKey]), primaryRoute }
+        ? { isTabFocused, visibleKeys: new Set([companionTopKey, primaryTopKey]), detailRoute }
         : null,
-    [isSplit, isTabFocused, companionTopKey, primaryTopKey, primaryRoute],
+    [isSplit, isTabFocused, companionTopKey, primaryTopKey, detailRoute],
   );
 
   return (

@@ -15,8 +15,9 @@ type DispatchPaneAction = (action: PaneActionType) => void;
 export const OpenInPaneContext = createContext<DispatchPaneAction | null>(null);
 
 /**
- * Opens a screen in the pane opposite to the calling screen's. Outside a pane navigator it is a
- * plain navigate.
+ * Opens a screen in the detail pane, on top of the calling screen when that is in the detail pane
+ * too, and in place of what the detail pane showed when it is the list. Outside a pane navigator
+ * it is a plain navigate.
  */
 export const useOpenInPane = (): ((name: string, params?: object) => void) => {
   const { key } = useRoute();

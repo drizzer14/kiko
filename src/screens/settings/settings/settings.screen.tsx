@@ -22,7 +22,7 @@ import CurrencyField from '@kiko/design-system/components/currency-field';
 import { Linking, Pressable, type ScrollViewInstance } from 'react-native';
 import { type Currency, fiatCurrencyOptions } from '@kiko/currency/currency';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { useOpenInPane, usePrimaryPaneRoute } from '@kiko/navigation/pane-stack';
+import { useDetailPaneRoute, useOpenInPane } from '@kiko/navigation/pane-stack';
 import { useScrollToTopOnTabPress } from '@kiko/navigation/use-scroll-to-top-on-tab-press';
 
 import pkg from '../../../../package.json';
@@ -53,11 +53,12 @@ const styles = StyleSheet.create(() => ({
 }));
 
 const SettingsScreen: FC<SettingsScreenProps> = () => {
-  // Each row opens its page in the pane opposite the menu's (on one pane, a plain navigate), and
-  // the menu marks the row whose page the primary pane shows: Categories until another is opened.
+  // Each row opens its page in the detail pane (on one pane, a plain navigate), and the menu marks
+  // the row whose page the detail pane opened with: Categories until another is opened, and still
+  // that page while a step opened from it covers it.
   const openInPane = useOpenInPane();
-  const primaryRoute = usePrimaryPaneRoute();
-  const isShown = (routeName: string): boolean => primaryRoute?.name === routeName;
+  const detailRoute = useDetailPaneRoute();
+  const isShown = (routeName: string): boolean => detailRoute?.name === routeName;
 
   // Re-tapping the Settings tab while already on it returns this scrolling page
   // to the top (the standard iOS active-tab re-tap), driven off the native tab
