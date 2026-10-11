@@ -1854,6 +1854,14 @@ knip only through `knip.json`'s `ignore` (read the list there; it
 includes `feature-imports.js` and `specifier-scanner.js`). None has a
 report or JSON mode.
 
+Every `NODE_RULES` row's `ruleId` must be named in this section. The
+Jest invariant `__tests__/node-rules-skill-coverage.test.ts` fails,
+naming the missing ids, when a row has no bullet here (it matches the
+id as a whole token, so `kiko-a-longer` does not cover `kiko-a`, and
+reads only from this heading to the next `##` heading, ignoring `#`
+lines inside fenced blocks). Add the bullet in the same commit as the
+row.
+
 Each `NODE_RULES` row names its own `projectCheck`, the gate a deny for
 a pre-existing finding points at. A Semgrep deny names
 `check:security`.
@@ -2209,7 +2217,9 @@ mechanizable (see harness-workflow's "Classify every finding").
    - Add one `NODE_RULES` row: `ruleId`, `extensions`, `fix`, `skill`,
      `projectCheck` (the project-wide gate the deny reason names for a
      pre-existing finding, e.g. `check:<name>`), and `run`.
-     `pre-write-guard.sh` needs no change.
+     `pre-write-guard.sh` needs no change. Name the `ruleId` in the
+     "Node checkers" section in the same commit (a Jest invariant
+     enforces it, see that section).
    - The checker prints one finding per line with no whitespace in the key
      field, because the guard's line parser splits on it. Add a test with a
      template-literal input, and run the rule's own output through the
