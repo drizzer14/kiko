@@ -498,6 +498,7 @@ export const uk: typeof en = {
       returnsHeading: 'Повернення решти',
       returnTo: 'Повернути до {{index}}',
       returnToSheetTitle: 'Повернути до {{index}}',
+      saveAsTemplate: 'Зберегти як новий шаблон',
       selectCategoryError: 'Оберіть категорію.',
       selectCounterpartError: 'Оберіть рахунок для конвертації.',
       selectDestinationError: 'Оберіть рахунок призначення.',

@@ -31,6 +31,7 @@ import { useSubmitOnce } from '@kiko/design-system/use-submit-once';
 import type { TransactionFormParams } from '@kiko/navigation/types';
 import { accountDisplayName } from '@kiko/holdings/implicit-account';
 import { useDataReady, useLiveQuery, type HoldingRow } from '@kiko/db';
+import type { TemplateDraft } from '@kiko/transaction-templates/draft';
 import { type Currency, currencySymbol } from '@kiko/currency/currency';
 import type { FieldInstance } from '@kiko/design-system/scroll-to-field';
 import { resolveCategoryColor } from '@kiko/statistics/category-breakdown';
@@ -86,7 +87,6 @@ import FieldGroup from './field-group';
 import FormFooter from './form-footer';
 import SplitReturns from './split-returns';
 import { readRouteEntry } from './route-entry';
-import { writeTemplate } from './template-save';
 import ReadOnlyNotice from './read-only-notice';
 import { draftFromForm } from './draft-from-form';
 import TemplateNameField from './template-name-field';
@@ -98,6 +98,8 @@ import { useCategoryOverride } from './use-category-override';
 import { MODE_ICONS, resolveModeOptions } from './mode-options';
 import { applySeedFields, resolveHydration } from './hydration';
 import { resolveCategoryOverrideRequest } from './category-rule';
+import { alongsideArguments, writeTemplate } from './template-save';
+import SaveAsTemplate, { resolveTemplateSwitch } from './save-as-template';
 import { convertCounterpartType, resolveConvertView } from './convert-view';
 
 // This screen is registered in BOTH the Home and Accounts stacks (Home lists
@@ -469,6 +471,13 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   const [refusedTemplateNames, setRefusedTemplateNames] = useState<{ id: string; name: string }[]>(
     [],
   );
+  const [saveAsTemplate, setSaveAsTemplate] = useState(false);
+  const templateSwitch = resolveTemplateSwitch({
+    isOn: saveAsTemplate,
+    isReadOnly,
+    converting,
+    isTemplateMode,
+  });
   const blankLabel = resolveBlankLabel({ existing, holding, holdings, t });
   // The template the entry fills from, its references resolved against the live holdings and
   // categories. Held back until all of those reads settle, so nothing resolves against a list that
@@ -651,7 +660,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     currency,
     primaryHoldingId: holdingId ?? null,
     templateName,
-    templateNameRequired: isTemplateMode,
+    templateNameRequired: templateSwitch.nameRequired,
     isTemplateMode,
     templateNames: [...storedTemplates, ...refusedTemplateNames],
     editTemplateId,
@@ -679,6 +688,36 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
 
   const descriptionToStore = storedDescription(description, prefilledLabel);
 
+  // The template the form's fields make, by the same rules a transaction saves by (see
+  // `draftFromForm`): saved on its own by a template mode, and along with the transaction by the
+  // "save as a new template" switch.
+  const buildTemplateDraft = (): TemplateDraft => {
+    const destination = holdings.find((candidate) => candidate.id === destinationHoldingId);
+
+    return draftFromForm({
+      mode,
+      primaryHoldingId: holdingId ?? null,
+      currency: holding?.currency ?? null,
+      amount,
+      description,
+      prefilledLabel,
+      selectedCategory,
+      destinationHoldingId,
+      destinationCurrency: destination?.currency ?? null,
+      valueIn,
+      changeReturns,
+    });
+  };
+
+  // The extra argument every transaction write below takes while the switch is on: it saves the
+  // template inside that one write. Empty while it is off.
+  const templateAlongside = () =>
+    alongsideArguments({
+      enabled: templateSwitch.saves,
+      name: templateName,
+      draft: buildTemplateDraft(),
+    });
+
   // Persist the amount/description edit on a manual row (edit vs. add). Only
   // ever called from the income/expense path (`save` branches Exchange off to
   // `saveExchange` before reaching here), so `mode` is guaranteed a `Sign`.
@@ -690,31 +729,37 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
       // `transactionsRepo.update` deliberately handles only amount/time/
       // description with its own balance-delta logic, and an edit's category
       // change still routes through the override rule.
-      await transactionsRepo.update({
-        transactionId: editingId,
-        amountMinorUnits,
-        time,
-        description: descriptionToStore,
-      });
+      await transactionsRepo.update(
+        {
+          transactionId: editingId,
+          amountMinorUnits,
+          time,
+          description: descriptionToStore,
+        },
+        ...templateAlongside(),
+      );
 
       return;
     }
 
     if (holdingId) {
-      await transactionsRepo.recordManual({
-        holdingId,
-        amountMinorUnits,
-        time,
-        description,
-        // The row carries its OWN category. The override sheet below governs
-        // only whether the pick ALSO propagates to every same-name row; it is
-        // not what categorises this row. The override rule alone cannot
-        // persist the pick: it returns early on a blank normalized name, so a
-        // blank-description row (and any row whose override the user
-        // cancelled) would be written uncategorised despite
-        // `plainFieldErrors` forcing a pick on create.
-        category: selectedCategory,
-      });
+      await transactionsRepo.recordManual(
+        {
+          holdingId,
+          amountMinorUnits,
+          time,
+          description,
+          // The row carries its OWN category. The override sheet below governs
+          // only whether the pick ALSO propagates to every same-name row; it is
+          // not what categorises this row. The override rule alone cannot
+          // persist the pick: it returns early on a blank normalized name, so a
+          // blank-description row (and any row whose override the user
+          // cancelled) would be written uncategorised despite
+          // `plainFieldErrors` forcing a pick on create.
+          category: selectedCategory,
+        },
+        ...templateAlongside(),
+      );
     }
   };
 
@@ -845,19 +890,23 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
 
     const paymentMinor = Money.fromMajor(holding.currency, parseAmount(amount)).minorUnits;
 
-    await transactionsRepo.recordManualWithReturns({
-      payment: {
-        holdingId: holding.id,
-        amountMinorUnits: -paymentMinor,
-        time,
-        description,
-        category: selectedCategory,
+    await transactionsRepo.recordManualWithReturns(
+      {
+        payment: {
+          holdingId: holding.id,
+          amountMinorUnits: -paymentMinor,
+          time,
+          description,
+          category: selectedCategory,
+        },
+        returns: changeReturns.map((change) => ({
+          holdingId: change.holdingId as string,
+          amountMinorUnits: Money.fromMajor(holding.currency, parseAmount(change.amount))
+            .minorUnits,
+        })),
       },
-      returns: changeReturns.map((change) => ({
-        holdingId: change.holdingId as string,
-        amountMinorUnits: Money.fromMajor(holding.currency, parseAmount(change.amount)).minorUnits,
-      })),
-    });
+      ...templateAlongside(),
+    );
 
     navigation.goBack();
   };
@@ -887,14 +936,17 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     const valueOut = Money.fromMajor(holding.currency, valueOutMajor);
     const valueInMoney = Money.fromMajor(destination.currency, valueInMajor);
 
-    await transactionsRepo.recordExchange({
-      sourceHoldingId: holding.id,
-      valueOutMinorUnits: valueOut.minorUnits,
-      destinationHoldingId: destination.id,
-      destinationType: destination.type,
-      valueInMinorUnits: valueInMoney.minorUnits,
-      time,
-    });
+    await transactionsRepo.recordExchange(
+      {
+        sourceHoldingId: holding.id,
+        valueOutMinorUnits: valueOut.minorUnits,
+        destinationHoldingId: destination.id,
+        destinationType: destination.type,
+        valueInMinorUnits: valueInMoney.minorUnits,
+        time,
+      },
+      ...templateAlongside(),
+    );
 
     navigation.goBack();
   };
@@ -1015,20 +1067,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   // one being edited. No transaction is written and the category override sheet never opens. A name
   // the write refuses (taken since the list was read) goes back to the name field as its error.
   const saveTemplate = async (): Promise<void> => {
-    const destination = holdings.find((candidate) => candidate.id === destinationHoldingId);
-    const draft = draftFromForm({
-      mode,
-      primaryHoldingId: holdingId ?? null,
-      currency: holding?.currency ?? null,
-      amount,
-      description,
-      prefilledLabel,
-      selectedCategory,
-      destinationHoldingId,
-      destinationCurrency: destination?.currency ?? null,
-      valueIn,
-      changeReturns,
-    });
+    const draft = buildTemplateDraft();
 
     if ((await writeTemplate({ editTemplateId, name: templateName, draft })) === 'taken') {
       setRefusedTemplateNames((refused) => [...refused, { id: '', name: templateName }]);
@@ -1325,6 +1364,19 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
               holding/type/amount) reads wrong for a supplementary,
               often-empty field. */}
           <CommentRow comment={existing?.comment} label={t('forms.transaction.comment')} />
+
+          {/* The last thing in the form body, so a native Save in the nav bar can take the
+              footer's place without moving it. Its name field shows right below it while on. */}
+          <SaveAsTemplate
+            visible={templateSwitch.visible}
+            isOn={saveAsTemplate}
+            onToggle={setSaveAsTemplate}
+            name={templateName}
+            onChangeName={setTemplateName}
+            error={fieldError('templateName')}
+            nameFieldRef={templateNameFieldRef}
+            nameInputRef={templateNameInputRef}
+          />
         </Box>
       </Screen>
 

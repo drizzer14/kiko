@@ -565,6 +565,7 @@ export const en = {
       returnsHeading: 'Change Returns',
       returnTo: 'Return to {{index}}',
       returnToSheetTitle: 'Return to {{index}}',
+      saveAsTemplate: 'Save as a new template',
       selectCategoryError: 'Select a category.',
       selectCounterpartError: 'Select an account to convert into.',
       selectDestinationError: 'Select a destination account.',

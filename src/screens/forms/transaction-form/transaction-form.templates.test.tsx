@@ -1,7 +1,9 @@
 import { Alert } from 'react-native';
 import type { ComponentProps } from 'react';
-import { fireEvent, render } from '@testing-library/react-native';
+import { fireEvent, render, within } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
+import { DAY_MS } from '@kiko/dates';
+import { scrollToField } from '@kiko/design-system/scroll-to-field';
 import type { TransactionFormParams } from '@kiko/navigation/types';
 import type { TemplateDraft } from '@kiko/transaction-templates/draft';
 import { TemplateNameTakenError } from '@kiko/transaction-templates/repo';
@@ -20,6 +22,9 @@ jest.mock('@kiko/design-system/scroll-to-field/scroll-to-field');
 const mockRecordManual = jest.fn();
 const mockRecordManualWithReturns = jest.fn();
 const mockRecordExchange = jest.fn();
+const mockUpdateTransaction = jest.fn();
+const mockSetLoanPayment = jest.fn();
+const mockUndoAutoLoanLink = jest.fn();
 const mockUseLiveQuery = jest.fn();
 
 jest.mock('@kiko/transactions/repo', () => ({
@@ -27,7 +32,11 @@ jest.mock('@kiko/transactions/repo', () => ({
     recordManual: (...args: unknown[]) => mockRecordManual(...args),
     recordManualWithReturns: (...args: unknown[]) => mockRecordManualWithReturns(...args),
     recordExchange: (...args: unknown[]) => mockRecordExchange(...args),
+    update: (...args: unknown[]) => mockUpdateTransaction(...args),
+    setLoanPayment: (...args: unknown[]) => mockSetLoanPayment(...args),
+    undoAutoLoanLink: (...args: unknown[]) => mockUndoAutoLoanLink(...args),
     getByIdQuery: (transactionId: string) => ({
+      __kind: 'transactionById',
       toSQL: () => ({ sql: '', params: [transactionId] }),
     }),
     distinctDescriptionsQuery: () => ({
@@ -42,6 +51,7 @@ jest.mock('@kiko/transactions/repo', () => ({
 }));
 const mockCreateTemplate = jest.fn();
 const mockUpdateTemplate = jest.fn();
+const mockInsertTemplate = jest.fn();
 
 // The real `toTransactionTemplate` narrows the stored draft; only the queries and the writes are
 // replaced.
@@ -55,6 +65,7 @@ jest.mock('@kiko/transaction-templates/repo', () => ({
     listQuery: () => ({ __kind: 'templateList', toSQL: () => ({ sql: '', params: [] }) }),
     create: (...args: unknown[]) => mockCreateTemplate(...args),
     update: (...args: unknown[]) => mockUpdateTemplate(...args),
+    insertDatabaseTransaction: (...args: unknown[]) => mockInsertTemplate(...args),
   },
 }));
 jest.mock('@kiko/holdings/repo', () => ({
@@ -112,6 +123,19 @@ const EXPENSE = draftOf({
   category: 'groceries',
 });
 
+type TransactionRowFixture = {
+  id: string;
+  holdingId: string;
+  amountMinorUnits: number;
+  time: number;
+  description: string;
+  source: 'manual' | 'monobank' | 'binance' | 'import' | 'btc_wallet';
+  category: string | null;
+  comment: string | null;
+  loanHoldingId: string | null;
+  loanLinkSource: 'auto' | 'manual' | null;
+};
+
 type LiveData = {
   draft: TemplateDraft;
   overrideRules?: { normalizedName: string; category: string }[];
@@ -120,6 +144,8 @@ type LiveData = {
   templateName?: string;
   // Every stored template, as the name check reads them. Empty unless a test needs a taken name.
   templateList?: { id: string; name: string }[];
+  // The transaction row the route names (to edit, or to duplicate). Absent on an add.
+  transactionRow?: TransactionRowFixture;
 };
 
 const queryParams = (query: unknown): unknown[] =>
@@ -134,6 +160,7 @@ const setLiveData = ({
   isTemplateLoading = false,
   templateName = 'Rent',
   templateList = [],
+  transactionRow,
 }: LiveData) => {
   const template = { id: 'tpl', name: templateName, draft, createdAt: 1, updatedAt: 1 };
   const dataByTable: Record<string, unknown[]> = {
@@ -146,6 +173,7 @@ const setLiveData = ({
     latestManualHolding: latestManualHoldingId ? [{ holdingId: latestManualHoldingId }] : [],
     distinctDescriptions: [],
     templateList,
+    transactionById: transactionRow ? [transactionRow] : [],
     // An entry that names no template reads an empty id, which the real query matches to no row.
     templateById: [template],
   };
@@ -690,5 +718,482 @@ describe('TransactionFormScreen — Edit template', () => {
     expect(mockUpdateTemplate).not.toHaveBeenCalled();
     expect(mockCreateTemplate).not.toHaveBeenCalled();
     expect(navigation.goBack).not.toHaveBeenCalled();
+  });
+});
+
+const SWITCH_LABEL = 'Save as a new template';
+const NAME_REQUIRED_MESSAGE = 'Enter a template name.';
+
+// Stands in for the write's own database transaction: the form hands its `alongside` step to the
+// repo, which would run it inside the one `write()`.
+const DATABASE_TRANSACTION = { marker: 'inside the write' };
+
+const MANUAL_ROW: TransactionRowFixture = {
+  id: 'txn-1',
+  holdingId: 'h1',
+  amountMinorUnits: -5000,
+  time: NOW - DAY_MS,
+  description: 'Lunch',
+  source: 'manual',
+  category: 'groceries',
+  comment: null,
+  loanHoldingId: null,
+  loanLinkSource: null,
+};
+
+const LUNCH_DRAFT = draftOf({
+  holdingId: 'h1',
+  currency: 'UAH',
+  amountMinorUnits: 5000,
+  description: 'Lunch',
+  category: 'groceries',
+});
+
+// The write's own `alongside` step, run the way the repo runs it inside its database transaction.
+const runAlongside = async (writeMock: jest.Mock): Promise<void> => {
+  const alongside = writeMock.mock.calls.at(0)?.at(1) as (
+    databaseTransaction: unknown,
+  ) => Promise<void>;
+
+  await alongside(DATABASE_TRANSACTION);
+};
+
+describe('TransactionFormScreen — Save as a new template', () => {
+  type Utils = Awaited<ReturnType<typeof render>>;
+
+  const pickCategory = async (utils: Utils, title: string): Promise<void> => {
+    await fireEvent.press(utils.getByText('Category'));
+    await fireEvent.press(utils.getByText(title));
+  };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    jest.spyOn(Date, 'now').mockReturnValue(NOW);
+    // Reset, not just cleared: the write-failure tests below install their own implementations.
+    mockUpdateTransaction.mockReset();
+    mockInsertTemplate.mockReset().mockResolvedValue('new');
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  describe('on an Add', () => {
+    it('is off by default, with no name field, and writes with no alongside step', async () => {
+      setLiveData({ draft: EXPENSE });
+
+      const utils = await render(templateScreen({ holdingId: 'h1' }));
+
+      expect(utils.getByText(SWITCH_LABEL)).toBeTruthy();
+      expect(utils.getByRole('switch').props.value).toBe(false);
+      expect(utils.queryByLabelText('Template name')).toBeNull();
+
+      await fireEvent.changeText(utils.getByLabelText('Amount'), '250');
+      await pickCategory(utils, 'Groceries');
+      await fireEvent.press(utils.getByText('Save'));
+
+      expect(mockRecordManual).toHaveBeenCalledTimes(1);
+      expect(mockRecordManual.mock.calls[0]).toHaveLength(1);
+      expect(mockInsertTemplate).not.toHaveBeenCalled();
+    });
+
+    it('sits after the comment row, in the body and not in the footer', async () => {
+      setLiveData({ draft: EXPENSE, transactionRow: { ...MANUAL_ROW, comment: 'Paid cash' } });
+
+      const utils = await render(templateScreen({ transactionId: 'txn-1' }));
+      const tree = JSON.stringify(utils.toJSON());
+
+      expect(tree.indexOf('Paid cash')).toBeGreaterThan(-1);
+      expect(tree.indexOf(SWITCH_LABEL)).toBeGreaterThan(tree.indexOf('Paid cash'));
+      expect(tree.indexOf(SWITCH_LABEL)).toBeGreaterThan(tree.indexOf('Description'));
+      expect(within(utils.getByTestId('screen-footer')).queryByText(SWITCH_LABEL)).toBeNull();
+      expect(within(utils.getByTestId('transaction-form')).getByText(SWITCH_LABEL)).toBeTruthy();
+    });
+
+    it('shows the name field when turned on, and saves the transaction with the template', async () => {
+      setLiveData({ draft: EXPENSE });
+
+      const utils = await render(templateScreen({ holdingId: 'h1' }));
+
+      await fireEvent.changeText(utils.getByLabelText('Amount'), '250');
+      await fireEvent.changeText(utils.getByLabelText('Description'), 'Flat');
+      await pickCategory(utils, 'Groceries');
+      await fireEvent(utils.getByRole('switch'), 'valueChange', true);
+      await fireEvent.changeText(utils.getByLabelText('Template name'), 'Rent');
+      await fireEvent.press(utils.getByText('Save'));
+
+      expect(mockRecordManual).toHaveBeenCalledTimes(1);
+      expect(mockRecordManual).toHaveBeenCalledWith(
+        {
+          holdingId: 'h1',
+          amountMinorUnits: -25000,
+          time: NOW,
+          description: 'Flat',
+          category: 'groceries',
+        },
+        expect.any(Function),
+      );
+
+      await runAlongside(mockRecordManual);
+
+      expect(mockInsertTemplate).toHaveBeenCalledWith(DATABASE_TRANSACTION, {
+        name: 'Rent',
+        draft: draftOf({
+          holdingId: 'h1',
+          currency: 'UAH',
+          amountMinorUnits: 25000,
+          description: 'Flat',
+          category: 'groceries',
+        }),
+      });
+      expect(mockCreateTemplate).not.toHaveBeenCalled();
+    });
+
+    it('passes no alongside step again once the switch is turned back off', async () => {
+      setLiveData({ draft: EXPENSE });
+
+      const utils = await render(templateScreen({ holdingId: 'h1' }));
+
+      await fireEvent.changeText(utils.getByLabelText('Amount'), '250');
+      await pickCategory(utils, 'Groceries');
+      await fireEvent(utils.getByRole('switch'), 'valueChange', true);
+      await fireEvent(utils.getByRole('switch'), 'valueChange', false);
+      await fireEvent.press(utils.getByText('Save'));
+
+      expect(mockRecordManual.mock.calls[0]).toHaveLength(1);
+      expect(utils.queryByLabelText('Template name')).toBeNull();
+    });
+
+    it('hands a split its alongside step', async () => {
+      setLiveData({
+        draft: draftOf({
+          mode: 'split',
+          holdingId: 'h1',
+          currency: 'UAH',
+          amountMinorUnits: 10000,
+          description: 'Dinner',
+          category: 'dining',
+          returns: [{ holdingId: 'friend', amountMinorUnits: 500 }],
+        }),
+      });
+
+      const utils = await render(templateScreen());
+
+      await fireEvent(utils.getByRole('switch'), 'valueChange', true);
+      await fireEvent.changeText(utils.getByLabelText('Template name'), 'Dinner out');
+      await fireEvent.press(utils.getByText('Save'));
+
+      expect(mockRecordManualWithReturns).toHaveBeenCalledWith(
+        expect.objectContaining({ returns: [{ holdingId: 'friend', amountMinorUnits: 500 }] }),
+        expect.any(Function),
+      );
+
+      await runAlongside(mockRecordManualWithReturns);
+
+      expect(mockInsertTemplate).toHaveBeenCalledWith(DATABASE_TRANSACTION, {
+        name: 'Dinner out',
+        draft: draftOf({
+          mode: 'split',
+          holdingId: 'h1',
+          currency: 'UAH',
+          amountMinorUnits: 10000,
+          description: 'Dinner',
+          category: 'dining',
+          returns: [{ holdingId: 'friend', amountMinorUnits: 500 }],
+        }),
+      });
+    });
+
+    it('hands an exchange its alongside step, with no category or description', async () => {
+      setLiveData({
+        draft: draftOf({
+          mode: 'exchange',
+          holdingId: 'h1',
+          currency: 'UAH',
+          amountMinorUnits: 10000,
+          exchange: {
+            destinationHoldingId: 'usd',
+            destinationCurrency: 'USD',
+            valueInMinorUnits: 250,
+          },
+        }),
+      });
+
+      const utils = await render(templateScreen());
+
+      await fireEvent(utils.getByRole('switch'), 'valueChange', true);
+      await fireEvent.changeText(utils.getByLabelText('Template name'), 'Dollars');
+      await fireEvent.press(utils.getByText('Save'));
+
+      expect(mockRecordExchange).toHaveBeenCalledWith(
+        expect.objectContaining({ sourceHoldingId: 'h1', destinationHoldingId: 'usd' }),
+        expect.any(Function),
+      );
+
+      await runAlongside(mockRecordExchange);
+
+      expect(mockInsertTemplate).toHaveBeenCalledWith(DATABASE_TRANSACTION, {
+        name: 'Dollars',
+        draft: draftOf({
+          mode: 'exchange',
+          holdingId: 'h1',
+          currency: 'UAH',
+          amountMinorUnits: 10000,
+          exchange: {
+            destinationHoldingId: 'usd',
+            destinationCurrency: 'USD',
+            valueInMinorUnits: 250,
+          },
+        }),
+      });
+    });
+  });
+
+  describe('on a Duplicate', () => {
+    it('saves the copy with a template of the copied fields', async () => {
+      setLiveData({ draft: EXPENSE, transactionRow: MANUAL_ROW });
+
+      const utils = await render(templateScreen({ duplicateOfTransactionId: 'txn-1' }));
+
+      await fireEvent(utils.getByRole('switch'), 'valueChange', true);
+      await fireEvent.changeText(utils.getByLabelText('Template name'), 'Lunch again');
+      await fireEvent.press(utils.getByText('Save'));
+
+      expect(mockRecordManual).toHaveBeenCalledWith(
+        expect.objectContaining({ holdingId: 'h1', amountMinorUnits: -5000, time: NOW }),
+        expect.any(Function),
+      );
+
+      await runAlongside(mockRecordManual);
+
+      expect(mockInsertTemplate).toHaveBeenCalledWith(DATABASE_TRANSACTION, {
+        name: 'Lunch again',
+        draft: LUNCH_DRAFT,
+      });
+    });
+
+    it('is off by default and passes no alongside step', async () => {
+      setLiveData({ draft: EXPENSE, transactionRow: MANUAL_ROW });
+
+      const utils = await render(templateScreen({ duplicateOfTransactionId: 'txn-1' }));
+
+      expect(utils.getByRole('switch').props.value).toBe(false);
+
+      await fireEvent.press(utils.getByText('Save'));
+
+      expect(mockRecordManual.mock.calls[0]).toHaveLength(1);
+    });
+  });
+
+  describe('on an Edit of a manual row', () => {
+    it('saves the edit through update with the template as its alongside step', async () => {
+      setLiveData({ draft: EXPENSE, transactionRow: MANUAL_ROW });
+
+      const utils = await render(templateScreen({ transactionId: 'txn-1' }));
+
+      await fireEvent.changeText(utils.getByLabelText('Amount'), '75');
+      await fireEvent(utils.getByRole('switch'), 'valueChange', true);
+      await fireEvent.changeText(utils.getByLabelText('Template name'), 'Lunch');
+      await fireEvent.press(utils.getByText('Save'));
+
+      expect(mockUpdateTransaction).toHaveBeenCalledWith(
+        {
+          transactionId: 'txn-1',
+          amountMinorUnits: -7500,
+          time: MANUAL_ROW.time,
+          description: 'Lunch',
+        },
+        expect.any(Function),
+      );
+
+      await runAlongside(mockUpdateTransaction);
+
+      expect(mockInsertTemplate).toHaveBeenCalledWith(DATABASE_TRANSACTION, {
+        name: 'Lunch',
+        draft: { ...LUNCH_DRAFT, amountMinorUnits: 7500 },
+      });
+      expect(navigation.goBack).toHaveBeenCalledTimes(1);
+    });
+
+    it('passes no alongside step with the switch off', async () => {
+      setLiveData({ draft: EXPENSE, transactionRow: MANUAL_ROW });
+
+      const utils = await render(templateScreen({ transactionId: 'txn-1' }));
+
+      await fireEvent.press(utils.getByText('Save'));
+
+      expect(mockUpdateTransaction).toHaveBeenCalledTimes(1);
+      expect(mockUpdateTransaction.mock.calls[0]).toHaveLength(1);
+    });
+
+    it('writes a draft with no loan for a loan-linked row, and leaves the row its link', async () => {
+      setLiveData({
+        draft: EXPENSE,
+        transactionRow: { ...MANUAL_ROW, loanHoldingId: 'loan-1', loanLinkSource: 'manual' },
+      });
+
+      const utils = await render(templateScreen({ transactionId: 'txn-1' }));
+
+      await fireEvent(utils.getByRole('switch'), 'valueChange', true);
+      await fireEvent.changeText(utils.getByLabelText('Template name'), 'Loan payment');
+      await fireEvent.press(utils.getByText('Save'));
+      await runAlongside(mockUpdateTransaction);
+
+      const [, input] = mockInsertTemplate.mock.calls[0] as [unknown, { draft: TemplateDraft }];
+
+      expect(Object.keys(input.draft).sort()).toEqual(Object.keys(LUNCH_DRAFT).sort());
+      expect(input.draft).not.toHaveProperty('loanHoldingId');
+      expect(mockUpdateTransaction.mock.calls[0][0]).not.toHaveProperty('loanHoldingId');
+      expect(mockSetLoanPayment).not.toHaveBeenCalled();
+      expect(mockUndoAutoLoanLink).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('where the template would be dropped', () => {
+    it.each(['monobank', 'import', 'btc_wallet', 'binance'] as const)(
+      'is hidden on a %s row, which update never writes alongside',
+      async (source) => {
+        setLiveData({ draft: EXPENSE, transactionRow: { ...MANUAL_ROW, source } });
+
+        const utils = await render(templateScreen({ transactionId: 'txn-1' }));
+
+        expect(utils.queryByText(SWITCH_LABEL)).toBeNull();
+        expect(utils.queryByRole('switch')).toBeNull();
+        expect(utils.queryByLabelText('Template name')).toBeNull();
+      },
+    );
+
+    it('is hidden while converting a manual row to an exchange, even when it was on', async () => {
+      setLiveData({ draft: EXPENSE, transactionRow: MANUAL_ROW });
+
+      const utils = await render(templateScreen({ transactionId: 'txn-1' }));
+
+      await fireEvent(utils.getByRole('switch'), 'valueChange', true);
+      await fireEvent.press(utils.getByText('Exchange'));
+
+      expect(utils.queryByText(SWITCH_LABEL)).toBeNull();
+      expect(utils.queryByLabelText('Template name')).toBeNull();
+    });
+
+    it('does not ask for a name on a convert it was turned on before', async () => {
+      setLiveData({ draft: EXPENSE, transactionRow: MANUAL_ROW });
+
+      const utils = await render(templateScreen({ transactionId: 'txn-1' }));
+
+      await fireEvent(utils.getByRole('switch'), 'valueChange', true);
+      await fireEvent.press(utils.getByText('Exchange'));
+      await fireEvent.press(utils.getByText('Save'));
+
+      expect(utils.queryByText(NAME_REQUIRED_MESSAGE)).toBeNull();
+    });
+  });
+
+  describe('its name', () => {
+    it('blocks Save on an empty name, showing its error and writing nothing', async () => {
+      setLiveData({ draft: EXPENSE, transactionRow: MANUAL_ROW });
+
+      const utils = await render(templateScreen({ transactionId: 'txn-1' }));
+
+      await fireEvent(utils.getByRole('switch'), 'valueChange', true);
+
+      expect(utils.queryByText(NAME_REQUIRED_MESSAGE)).toBeNull();
+
+      await fireEvent.press(utils.getByText('Save'));
+
+      expect(utils.getByText(NAME_REQUIRED_MESSAGE)).toBeTruthy();
+      expect(mockUpdateTransaction).not.toHaveBeenCalled();
+      expect(navigation.goBack).not.toHaveBeenCalled();
+    });
+
+    it('blocks Save on a taken name, ignoring case and spaces', async () => {
+      setLiveData({
+        draft: EXPENSE,
+        transactionRow: MANUAL_ROW,
+        templateList: [{ id: 'other', name: 'Оренда' }],
+      });
+
+      const utils = await render(templateScreen({ transactionId: 'txn-1' }));
+
+      await fireEvent(utils.getByRole('switch'), 'valueChange', true);
+      await fireEvent.changeText(utils.getByLabelText('Template name'), ' оренда ');
+      await fireEvent.press(utils.getByText('Save'));
+
+      expect(utils.getByText(TAKEN_MESSAGE)).toBeTruthy();
+      expect(mockUpdateTransaction).not.toHaveBeenCalled();
+    });
+
+    it('is the last field the blocked Save scrolls to', async () => {
+      setLiveData({ draft: EXPENSE });
+
+      const scrollToFieldMock = scrollToField as jest.Mock;
+      const utils = await render(templateScreen({ holdingId: 'h1' }));
+      const blockedTarget = async (): Promise<unknown> => {
+        scrollToFieldMock.mockClear();
+        await fireEvent.press(utils.getByText('Save'));
+
+        expect(scrollToFieldMock).toHaveBeenCalledTimes(1);
+
+        return scrollToFieldMock.mock.calls[0][1];
+      };
+      // Compared as booleans: a failing `toBe` on two refs would serialize their fiber graphs.
+      const same = (first: unknown, second: unknown): boolean => first === second;
+
+      await fireEvent(utils.getByRole('switch'), 'valueChange', true);
+
+      const amountFirst = await blockedTarget();
+
+      await fireEvent.changeText(utils.getByLabelText('Amount'), '250');
+
+      const categoryNext = await blockedTarget();
+
+      await pickCategory(utils, 'Groceries');
+
+      const nameLast = await blockedTarget();
+
+      expect(same(amountFirst, categoryNext)).toBe(false);
+      expect(same(categoryNext, nameLast)).toBe(false);
+      expect(same(amountFirst, nameLast)).toBe(false);
+      expect(mockRecordManual).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('when a write fails', () => {
+    it('shows the shared save-error alert and stays open when the template step rejects', async () => {
+      setLiveData({ draft: EXPENSE, transactionRow: MANUAL_ROW });
+      mockInsertTemplate.mockRejectedValue(new Error('disk full'));
+      // The repo's write runs the step inside itself, so a rejected step rejects the whole write.
+      mockUpdateTransaction.mockImplementation(
+        async (_input: unknown, alongside: (databaseTransaction: unknown) => Promise<void>) => {
+          await alongside(DATABASE_TRANSACTION);
+        },
+      );
+
+      const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
+      const utils = await render(templateScreen({ transactionId: 'txn-1' }));
+
+      await fireEvent(utils.getByRole('switch'), 'valueChange', true);
+      await fireEvent.changeText(utils.getByLabelText('Template name'), 'Lunch');
+      await fireEvent.press(utils.getByText('Save'));
+
+      expect(alertSpy).toHaveBeenCalledTimes(1);
+      expect(navigation.goBack).not.toHaveBeenCalled();
+      expect(utils.getByLabelText('Template name').props.value).toBe('Lunch');
+    });
+
+    it('shows the same alert, and inserts no template, when the transaction write rejects', async () => {
+      setLiveData({ draft: EXPENSE, transactionRow: MANUAL_ROW });
+      mockUpdateTransaction.mockRejectedValue(new Error('disk full'));
+
+      const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
+      const utils = await render(templateScreen({ transactionId: 'txn-1' }));
+
+      await fireEvent(utils.getByRole('switch'), 'valueChange', true);
+      await fireEvent.changeText(utils.getByLabelText('Template name'), 'Lunch');
+      await fireEvent.press(utils.getByText('Save'));
+
+      expect(alertSpy).toHaveBeenCalledTimes(1);
+      expect(mockInsertTemplate).not.toHaveBeenCalled();
+      expect(navigation.goBack).not.toHaveBeenCalled();
+    });
   });
 });
