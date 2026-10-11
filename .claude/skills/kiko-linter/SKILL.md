@@ -2043,17 +2043,22 @@ A second Jest invariant, `__tests__/skill-identifiers.test.ts`, does the
 same for names: it fails when an inline code span in a skill
 (`.claude/skills`, `harness/kiko/skills`) or an agent file
 (`harness/kiko/agents`) is exactly an identifier, a dotted member path
-or either with `()`, and the last part is not a whole word anywhere in
-the code corpus. The corpus is the files under `src/`, `__tests__/`,
+or either with `()`, and any dotted part is not a whole word anywhere in
+the code corpus (so a `repo.method` path fails when either half is
+gone). A span that ends in a file extension (`ts`, `tsx`, `js`, `mm`,
+`swift`, `json`, `sh`, `md`, `yml`, and the like in the test's
+file-extension pattern) is a file name instead: it resolves only when a
+tracked file has that exact base name, since the words of its parts
+(`schema`, `ts`) occur in nearly every file. The corpus is the files under `src/`, `__tests__/`,
 `__mocks__/`, `jest/`, `e2e/`, `scripts/`, `rules/`, `ios/` (so a Swift,
 Obj-C or plist name resolves) and `harness/kiko/scripts/`, plus the root
 config files, minus the test file itself. It shares the span reader
 with cited-paths (`__tests__/test-support/markdown-code-spans.ts`, so a
 fenced block is skipped). A path, command, flag, call with arguments,
 rule id and a commit sha (7 to 40 hex digits with a digit) are not
-identifier spans. A name that survives only in a comment still
-resolves, so the check catches a name that left the tree entirely, not a
-dead one. To fix a failure: when the symbol was renamed, name the new
+identifier spans. Known limit: a name that survives only in a comment or a
+string still resolves, so the check catches a name that left the tree
+entirely, not a dead one. To fix a failure: when the symbol was renamed, name the new
 one; when it is gone, write the sentence without backticks (the cited-paths
 rule). An entry in the test's two exemption lists (non-project names, and
 bad-name examples exempt per skill file and name) is only for a

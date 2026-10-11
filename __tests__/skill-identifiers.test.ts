@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs';
-import { join, relative } from 'node:path';
+import { join, basename, relative } from 'node:path';
 
 import {
   lineCountBefore,
@@ -51,6 +51,11 @@ const CODE_FILE_EXCLUDED = /(?:^package-lock\.json|\.(?:png|jpe?g|gif|ttf|otf|wo
 
 const ROOT_CODE_FILE = /^[^/]+\.(?:[cm]?[jt]sx?|json)$/;
 
+// A span ending in one of these is a file name (`schema.ts`), resolved against the tracked file
+// names: the words of its parts (`schema`, `ts`) occur in nearly every file.
+const FILE_EXTENSION =
+  /\.(?:[cm]?[jt]sx?|mm?|h|swift|json|sh|md|ya?ml|plist|strings|xcprivacy|pbxproj|sql|rb|entitlements|storyboard)$/;
+
 // Names of a skill's inline code spans that are not in this repository's code, by category. Each
 // name must still be cited in a skill and still be unresolved, or the list test fails, so the lists
 // only shrink. A name that left the tree is fixed in the skill text, never added here.
@@ -60,8 +65,11 @@ const NON_PROJECT_NAMES: readonly ExemptionGroup[] = [
   {
     reason:
       'react-native, react-native-sortables, RNGH, Unistyles, drizzle, a clipboard hook and ' +
-      'jest-haste-map internals that the skill cites to explain a behavior; the code never calls them',
+      'jest-haste-map internals (symbols and source file names) that the skill cites to explain a ' +
+      'behavior; the code never calls them',
     names: [
+      'RCTModalHostViewComponentView.mm',
+      'DragProvider.ts',
       'PlatformColor',
       'UnistylesRuntime.setTheme',
       'useClipboard()',
@@ -91,7 +99,8 @@ const NON_PROJECT_NAMES: readonly ExemptionGroup[] = [
   },
   {
     reason:
-      'a TypeScript compiler option the repo leaves at its default, so tsconfig.json omits it',
+      'a TypeScript compiler option that @react-native/typescript-config sets; tsconfig.json ' +
+      'extends it and never spells the option',
     names: ['isolatedModules'],
   },
   {
@@ -102,22 +111,23 @@ const NON_PROJECT_NAMES: readonly ExemptionGroup[] = [
     reason:
       'shell and OS tools, a python module and a node API that the kill-guard text lists as ' +
       'writers or process scanners it does not see; no repo file invokes them',
-    names: [
-      '$CMD',
-      'rsync',
-      'ditto',
-      'truncate',
-      'shutil',
-      'fs.writeSync',
-      'pidof',
-      'lsof',
-      'du',
-      'curl',
-    ],
+    names: ['$CMD', 'rsync', 'ditto', 'truncate', 'shutil', 'fs.writeSync', 'pidof', 'lsof'],
+  },
+  {
+    reason:
+      'shell tools the auditor and researcher agent files name for read-only inspection (' +
+      'harness/kiko/agents/auditor.md, researcher.md); no repo file invokes them',
+    names: ['du', 'curl'],
   },
   {
     reason: 'Semgrep taint-mode and --time JSON keys, written in prose about a Semgrep behavior',
     names: ['propagator', 'match_times'],
+  },
+  {
+    reason:
+      'files the run log writes under ~/.claude/harness-runs, outside the repository ' +
+      '(harness/kiko/scripts/run-log.mjs)',
+    names: ['summary.json', 'run.json'],
   },
   {
     reason: 'a conventional-commit scope word in the release skill',
@@ -129,9 +139,12 @@ const NON_PROJECT_NAMES: readonly ExemptionGroup[] = [
   },
   {
     reason:
-      'the drizzer14/harness repo (a different repository): its harness.config.json keys and its ' +
-      'wait-load env var, which harness-sync ports',
+      'the drizzer14/harness repo (a different repository): its harness.config.json file and ' +
+      'keys and its wait-load env var, which harness-sync ports',
     names: [
+      'harness.config.json',
+      'killGuard.mainCheckout',
+      'checkAllLists.docs',
       'killGuard.denyStash',
       'killGuard.denyUnquotedHeredoc',
       'killGuard.protectedDirs',
@@ -141,23 +154,26 @@ const NON_PROJECT_NAMES: readonly ExemptionGroup[] = [
   },
 ];
 
-// A deliberate bad-name or bad-id example, exempt per (skill file, name) like
-// full-word-identifiers' EXEMPTIONS: the same name cited as a real symbol in another skill
-// still has to resolve.
+// A deliberate bad-name or bad-id example, a placeholder or a runtime label, exempt per
+// (skill file, name) like full-word-identifiers' EXEMPTIONS: the same name cited as a real symbol
+// in another skill still has to resolve.
 type ExampleGroup = { file: string; reason: string; names: readonly string[] };
 
 const EXAMPLE_NAMES: readonly ExampleGroup[] = [
   {
     file: '.claude/skills/kiko-code-style/SKILL.md',
     reason: 'a deliberately wrong name shown beside the rule it breaks',
-    names: [
-      'isX',
-      'counterIBAN',
-      'isBtcEntry',
-      'fetchBtcPrice',
-      'makeCreateTransaction',
-      'Anonymous',
-    ],
+    names: ['counterIBAN', 'isBtcEntry', 'makeCreateTransaction'],
+  },
+  {
+    file: '.claude/skills/kiko-code-style/SKILL.md',
+    reason: 'a placeholder standing for any is-prefixed boolean, not a symbol',
+    names: ['isX'],
+  },
+  {
+    file: '.claude/skills/kiko-code-style/SKILL.md',
+    reason: 'the label React DevTools shows for an unnamed component, not a symbol',
+    names: ['Anonymous'],
   },
   {
     file: '.claude/skills/kiko-code-style/SKILL.md',
@@ -168,6 +184,11 @@ const EXAMPLE_NAMES: readonly ExampleGroup[] = [
     file: '.claude/skills/kiko-linter/SKILL.md',
     reason: 'a task id and a mis-split name, quoted as input of the history-id and full-word rules',
     names: ['T32', 'PANValue'],
+  },
+  {
+    file: 'harness/kiko/skills/release/SKILL.md',
+    reason: 'a placeholder for the release version tag, not a symbol',
+    names: ['vX.Y.Z'],
   },
 ];
 
@@ -190,9 +211,9 @@ const identifierCitations = (markdown: string): Citation[] =>
     )
     .filter(({ name }) => IDENTIFIER_SPAN.test(name) && !COMMIT_SHA.test(name));
 
-const lastPart = (name: string): string => name.replace(/\(\)$/, '').split('.').pop() ?? name;
-
 const presentFiles = repositoryFiles(REPOSITORY_ROOT);
+
+const trackedFileNames = new Set(presentFiles.map((file) => basename(file)));
 
 // This file is left out of the corpus: it spells every exempt name, so it would resolve them all.
 const THIS_FILE = relative(REPOSITORY_ROOT, __filename);
@@ -208,7 +229,13 @@ const corpusWords = new Set(
     .flatMap((file) => readFileSync(join(REPOSITORY_ROOT, file), 'utf8').match(/[\w$]+/g) ?? []),
 );
 
-const resolves = (name: string): boolean => corpusWords.has(lastPart(name));
+const resolves = (name: string): boolean => {
+  const bare = name.replace(/\(\)$/, '');
+
+  return FILE_EXTENSION.test(bare)
+    ? trackedFileNames.has(bare)
+    : bare.split('.').every((part) => corpusWords.has(part));
+};
 
 const scopeFiles = presentFiles.filter((file) => SCOPE_FILE.test(file));
 
@@ -217,8 +244,8 @@ const citedUnresolved = (file: string): Citation[] =>
     ({ name }) => !resolves(name),
   );
 
-const isExempt = (file: string, name: string): boolean =>
-  EXEMPTIONS.some((exemption) => exemption.name === name && (exemption.file ?? file) === file);
+const exempts = (exemption: Exemption, file: string, name: string): boolean =>
+  exemption.name === name && (exemption.file === undefined || exemption.file === file);
 
 describe('identifierCitations', () => {
   it('finds an identifier, a dotted member path and a call with empty parentheses (POSITIVE)', () => {
@@ -262,16 +289,28 @@ describe('identifierCitations', () => {
 });
 
 describe('resolves', () => {
-  it('matches the last dotted part as a whole word in the code corpus (POSITIVE)', () => {
+  it('matches every dotted part as a whole word in the code corpus (POSITIVE)', () => {
     expect(resolves('useLiveQuery')).toBe(true);
-    expect(resolves('Anything.useLiveQuery')).toBe(true);
+    expect(resolves('holdingsRepo.updateWithBalanceDelta')).toBe(true);
     expect(resolves('useLiveQuery()')).toBe(true);
     expect(resolves('TARGETED_DEVICE_FAMILY')).toBe(true);
   });
 
-  it('does not match a substring or a first dotted part (NEGATIVE)', () => {
+  it('does not match a substring, or a dotted path with any unknown part (NEGATIVE)', () => {
     expect(resolves('useLiveQuer')).toBe(false);
-    expect(resolves(`useLiveQuery.${['zzz', 'Unknown', 'Member'].join('')}`)).toBe(false);
+    expect(resolves('useLiveQuery.zzzUnknownMember')).toBe(false);
+    expect(resolves('zzzUnknownHolder.useLiveQuery')).toBe(false);
+  });
+
+  it('resolves a name ending in a file extension against tracked file names (POSITIVE)', () => {
+    expect(resolves('schema.ts')).toBe(true);
+    expect(resolves('RCTKikoReminders.mm')).toBe(true);
+    expect(resolves('jest.config.js')).toBe(true);
+  });
+
+  it('does not resolve a file name from the words of its parts (NEGATIVE)', () => {
+    expect(resolves('useLiveQuery.ts')).toBe(false);
+    expect(resolves('zzzGone.tsx')).toBe(false);
   });
 });
 
@@ -290,7 +329,7 @@ describe('identifiers named in skills, agents and harness skills', () => {
     expect(
       scopeFiles.flatMap((file) =>
         citedUnresolved(file)
-          .filter(({ name }) => !isExempt(file, name))
+          .filter(({ name }) => !EXEMPTIONS.some((exemption) => exempts(exemption, file, name)))
           .map(({ line, name }) => `${file}:${line} ${name}`),
       ),
     ).toEqual([]);
@@ -303,11 +342,7 @@ describe('identifiers named in skills, agents and harness skills', () => {
 
     expect(
       EXEMPTIONS.filter(
-        (exemption) =>
-          !stillUnresolved.some(
-            ({ file, name }) =>
-              name === exemption.name && (exemption.file === undefined || exemption.file === file),
-          ),
+        (exemption) => !stillUnresolved.some(({ file, name }) => exempts(exemption, file, name)),
       ),
     ).toEqual([]);
   });

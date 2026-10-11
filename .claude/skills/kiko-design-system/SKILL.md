@@ -1704,26 +1704,19 @@ where they can drift. The pipeline is:
   `isLightEntityColor` (`entity-tint.ts`, a real WCAG contrast-ratio
   check, not a naive brightness average) picks a white or dark glyph
   tint so the SF Symbol on top stays legible on every palette swatch.
-  An entity-card background function and an entity-tint background function do not exist in
-  the current module — read `entity-tint.ts` directly for the live
-  exported function set (it changes; do not restate it here) rather
-  than assuming either one.
 
 **One hue, several renderings.** An entity has exactly one color, but
 that color is rendered several different ways depending on context —
-a flat translucent tint behind a card, an opaque SF Symbol tint, a
-chart fill. Never introduce a second, parallel way to derive one of
+the icon tile's two-stop gradient, an opaque SF Symbol tint, a
+chart fill (a card itself stays neutral and untinted). Never introduce a second, parallel way to derive one of
 these renderings from a hex, and never add a second hex parser either
 — `entity-tint.ts` owns the one unexported `parseHex`. Extend
 `entity-tint.ts` with a new named function instead, so every
 rendering of an entity's color still traces back to the same
 `resolveEntityColor` call. Read `entity-tint.ts` directly for its
 current exported functions rather than trusting a list restated here
-— a duplicated `parseHex` (and, at one point, a since-removed
-pastel-over-white blend helper) were once added
-under `money-text/` and had to be moved back into `entity-tint.ts`
-for exactly this reason; do not assume either helper still exists
-there today.
+— a duplicated `parseHex` was once added under `money-text/` and had to
+be moved back into `entity-tint.ts` for exactly this reason.
 
 ## SF Symbol `tintColor` gotcha
 

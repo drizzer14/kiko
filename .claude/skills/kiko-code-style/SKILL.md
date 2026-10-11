@@ -658,8 +658,8 @@ one validation model — don't hand-roll a different one:
   component (`src/design-system/components/field-error/`), not a
   hand-rolled `Box`+`Text` caption — see that component's own doc
   comment for the rationale.
-- The error's visibility is its own piece of state (e.g.
-  `showTokenRequiredError`), set true only after a failed submit attempt, so a
+- The shared attempted-submit flag is its own piece of state (`attemptedSave` in every
+  Kiko form), set true only after a failed submit attempt, so a
   fresh form shows no error before the user has tried to save.
 - Every field's error is computed from ONLY that field's own inputs,
   gated by the shared attempted-submit flag — never by comparing
@@ -848,10 +848,7 @@ acronym rule.
 
 This applies inside a compound name too, not just standalone —
 `isBTCEntry` (`src/crypto-sync/binance/binance.provider.ts`), not
-`isBtcEntry`, is a live example. (History: a price fetcher was renamed
-from `fetchBtcPrice` to fetchBTCPrice during review for the same reason; that function no
-longer exists — read the current tree for a live example rather than
-assuming this name still does.)
+`isBtcEntry`, is a live example.
 
 Note: the Drizzle schema's own column names (`externalId`, `mcc`)
 follow ordinary camelCase per Drizzle/SQL convention, not this rule
@@ -1209,8 +1206,7 @@ Write `jest.requireActual('module') as { ... }`, or bind the result to an annota
 and the same for `jest.requireMock`, `jest.createMockFromModule` and `jest.genMockFromModule`.
 Jest finds the tests to run for a changed file
 (`--findRelatedTests`, which Stryker's per-test coverage also uses) by a regex over each file's
-text. jest-haste-map's dependency extractor reads only those four names (`jest.requireActual(` is the
-one the rule is named for) with optional
+text. jest-haste-map's dependency extractor reads only those four names with optional
 whitespace, then a string literal. A type argument between the name and the `(` hides the module,
 so a change to that module does not select the test. The rule covers every
 file that calls it (a test, a `__mocks__` file, a test-support helper): a typed call in a helper cuts

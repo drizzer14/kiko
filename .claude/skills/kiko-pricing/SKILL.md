@@ -50,7 +50,7 @@ non-currency `price_points` store.
   `source = 'coingecko'`; no fiat anchor that run (both fiat providers
   failed) means no crypto row at all, exactly as before, until a run
   with a fiat anchor lands. `ETH`/`USDT` derive the same way.
-- Store live results in `CurrencyRate`, one `X:UAH` row per priced
+- Store live results in `currencyRates`, one `X:UAH` row per priced
   currency (`buildUahRows`, `rates-refresh.ts`) — never a cross row
   between two non-UAH currencies, since a cross rate resolves at READ
   TIME through `rateBetween` (below). A full Monobank sync writes
@@ -78,7 +78,7 @@ non-currency `price_points` store.
 
 `src/rates/rate-history-repo/rate-history.repo.ts` keeps
 `currencyRateHistory`, one row per `(base, quote, day)`, separate from
-the latest-only `CurrencyRate` cache — this is what backs the
+the latest-only `currencyRates` cache — this is what backs the
 historical net-worth chart. `rateHistoryRepo.upsertMany` chunks at
 2000 rows (10000 bound params, under SQLite's
 `SQLITE_MAX_VARIABLE_NUMBER`) and upserts on the `(base, quote, day)`
@@ -246,8 +246,8 @@ per-currency window already widens for the newly-held currency on its
 own (it has no stored day at all, so `resolveResumeCursor` treats it
 as maximally behind), so there is nothing this override needs to force.
 
-The screen's own effect must guard its async settle against a REAL unmount only (an
-is-mounted-style ref flipped inside its own unmount-only effect) — a
+The screen's own effect must guard its async settle against a REAL unmount only (the
+`isMountedRef` flag flipped inside its own unmount-only effect) — a
 dep-change cleanup (a refocus advancing `now`, the same trigger that
 drives the retry above) fires the identical cleanup lifecycle event and
 must not drop a still-pending run's eventual settle, or the line gets
@@ -283,7 +283,7 @@ effect's own write echoing back through `historyRows` cannot.
 ## `price_points` table and `PriceBook`
 
 `price_points` (migration `0035`) is a SEPARATE, non-currency price
-store — it does not touch `CurrencyRate`/`currencyRateHistory` at all.
+store — it does not touch `currencyRates`/`currencyRateHistory` at all.
 It prices one instrument (a metal, or one specific holding priced
 directly — the `metal:`/`holding:` namespaces in
 `src/prices/instrument/`) per `(instrument, day)` row:
@@ -721,7 +721,7 @@ single sync, not just a genuine gap.
 `nbu-history.ts`'s pattern (fetch + `guard`-based validation + recorded
 JSON fixtures, no network in tests) but living under `src/prices/`
 rather than `src/rates/`, since it feeds `price_points`, not
-`CurrencyRate`. Both functions read `bank.gov.ua` — no new host, no
+`currencyRates`. Both functions read `bank.gov.ua` — no new host, no
 new pinning (kiko-compliance: this host stays keyless and unpinned).
 
 - `fetchNbuMetalsCurrent(fetchImpl)` reads the SAME current-exchange

@@ -866,11 +866,16 @@ verified usage, not dead weight:
   jest-haste-map), Apple names `ios/` does not use (UIKit; the built
   Info.plist's `UIDeviceFamily`, which the source plist lacks), the
   `Intl.Locale` week getter, fnts exports and type parameters, a TypeScript
-  option left at its default, a SQL keyword, shell and OS tools plus a
-  python module and a node API named in the kill-guard limits, Semgrep
-  taint and `--time` keys, a conventional-commit scope word, a Claude Code
+  option that `@react-native/typescript-config` sets (`isolatedModules`;
+  `tsconfig.json` extends it and never spells it), a SQL keyword, shell and OS
+  tools plus a python module and a node API named in the kill-guard limits,
+  `du` and `curl` as the auditor and researcher agent files name them, Semgrep
+  taint and `--time` keys, the run log's `summary.json` and `run.json`
+  (written under `~/.claude/harness-runs`, outside the repository), a
+  conventional-commit scope word, a Claude Code
   tool and a devicectl field, and the drizzer14/harness repo's own config
-  keys and env var. A deliberate bad-name or bad-id example is exempt per
+  file, keys and env var. A deliberate bad-name or bad-id example, a placeholder (`isX`,
+  `vX.Y.Z`) and a React DevTools label (`Anonymous`) are exempt per
   `(skill file, name)` pair, not by name alone, like the
   `full-word-identifiers` `EXEMPTIONS` above: the same name cited as a real
   symbol in another skill must still resolve. The test also fails on an
