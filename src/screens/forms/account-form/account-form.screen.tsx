@@ -12,11 +12,14 @@ import { useTranslation } from 'react-i18next';
 import { logOnFailure } from '@kiko/diagnostics';
 import { saveToken } from '@kiko/monobank/token';
 import { parseAmount } from '@kiko/currency/parse';
+import {
+  type FormHeaderItemsOptions,
+  useFormHeaderItems,
+} from '@kiko/screens/forms/use-form-header-items';
 import Box from '@kiko/design-system/components/box';
 import Text from '@kiko/design-system/components/text';
 import { type BrokerId, isBrokerId } from '@kiko/brokers';
 import { useCryptoSync } from '@kiko/sync/use-crypto-sync';
-import Button from '@kiko/design-system/components/button';
 import Screen from '@kiko/design-system/components/screen';
 import { View, type TextInputInstance } from 'react-native';
 import { id, type AccountRow, useLiveQuery } from '@kiko/db';
@@ -55,7 +58,7 @@ type AccountFormScreenProps = {
   route: { params: AccountsStackParamList['AccountForm'] };
   navigation: {
     goBack: () => void;
-    setOptions: (options: { title: string }) => void;
+    setOptions: (options: { title: string } | FormHeaderItemsOptions) => void;
     replace: (name: 'HoldingForm', params: AccountsStackParamList['HoldingForm']) => void;
   };
 };
@@ -584,6 +587,8 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
 
   const { onPress: onSave, isSubmitting } = useSubmitOnce(save);
 
+  useFormHeaderItems({ navigation, onSave, hasSave: true, isSaving: isSubmitting });
+
   // Selecting an account type re-seeds the icon field with that type's default
   // glyph; the user can still override it in the picker afterward, and picking
   // a different type resets the icon to the new type's default. Only reachable
@@ -644,11 +649,6 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
       scrollableRef={scrollableRef}
       automaticallyAdjustKeyboardInsets={!isCurrencySheetOpen}
       onContentSizeChange={onContentSizeChange}
-      footer={
-        <Button onPress={onSave} disabled={isSubmitting}>
-          {t('common.save')}
-        </Button>
-      }
     >
       <Box gap={4} testID="account-form">
         {/* One shared icon+name block for every kind, cash included: the icon

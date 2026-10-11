@@ -24,9 +24,12 @@ import {
   resolveCreateHoldingTarget,
 } from '@kiko/screens/forms/create-holding-target';
 import { holdingsRepo } from '@kiko/holdings/repo';
+import {
+  type FormHeaderItemsOptions,
+  useFormHeaderItems,
+} from '@kiko/screens/forms/use-form-header-items';
 import Box from '@kiko/design-system/components/box';
 import type { Currency } from '@kiko/currency/currency';
-import Button from '@kiko/design-system/components/button';
 import Screen from '@kiko/design-system/components/screen';
 import { type TextInputInstance, View } from 'react-native';
 import { needsPriceBook } from '@kiko/holdings/priced-value';
@@ -216,6 +219,11 @@ const headerTitle = (
     .with({ debtAccount: true }, () => t('forms.holding.addLoanTitle'))
     .otherwise(() => undefined);
 
+// An edit waits for the price book, since its save values the holding against it. Kept
+// module-level so its operators stay out of the screen component's complexity budget.
+const isSaveBlocked = (isSubmitting: boolean, isEdit: boolean, isPriceBookLoading: boolean) =>
+  isSubmitting || (isEdit && isPriceBookLoading);
+
 // This screen is registered in BOTH the Accounts and Home stacks (Home reaches it
 // from the transaction form's empty pickers), so it cannot bind its props to one
 // stack's param list. Its route params take the Accounts stack's shape, of which
@@ -226,7 +234,7 @@ type HoldingFormScreenProps = {
   route: { params: AccountsStackParamList['HoldingForm'] };
   navigation: {
     goBack: () => void;
-    setOptions: (options: { title: string }) => void;
+    setOptions: (options: { title: string } | FormHeaderItemsOptions) => void;
     setParams: (params: { implicitKind: ImplicitAccountKind }) => void;
     replace: (name: 'AccountForm', params: AccountsStackParamList['AccountForm']) => void;
     push: (...route: CreateHoldingRoute) => void;
@@ -744,17 +752,19 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
 
   const { onPress: onSave, isSubmitting } = useSubmitOnce(save);
 
+  useFormHeaderItems({
+    navigation,
+    onSave,
+    hasSave: true,
+    isSaving: isSaveBlocked(isSubmitting, isEdit, isPriceBookLoading),
+  });
+
   return (
     <Screen
       scroll
       scrollableRef={scrollableRef}
       automaticallyAdjustKeyboardInsets={!isSearchSheetOpen}
       onContentSizeChange={onContentSizeChange}
-      footer={
-        <Button onPress={onSave} disabled={isSubmitting || (isEdit && isPriceBookLoading)}>
-          {t('common.save')}
-        </Button>
-      }
     >
       <Box gap={4} testID="holding-form">
         <View ref={nameFieldRef}>

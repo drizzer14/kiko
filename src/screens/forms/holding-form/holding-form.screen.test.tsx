@@ -20,6 +20,7 @@ import type { Metal } from '@kiko/holdings/holding-metadata';
 import { fieldSuffix } from '@kiko/test-support/field-suffix';
 import { defaultHoldingColor } from '@kiko/holdings/entity-colors';
 import { isLabelInvalid } from '@kiko/test-support/field-label-spy';
+import { pressSave, saveItem } from '@kiko/test-support/form-header-items';
 import { refreshBondRegisterIfStale } from '@kiko/bonds/bond-register-repo';
 import { type HoldingType, holdingTypes } from '@kiko/holdings/holding-type';
 import { scrollToField, useHeaderInset } from '@kiko/design-system/scroll-to-field';
@@ -362,6 +363,14 @@ describe('HoldingFormScreen term deposit', () => {
     expect(queryByText('Add Holding')).toBeNull();
   });
 
+  it('offers Save only as the prominent nav-bar item, never as a body button', async () => {
+    const { queryByText, queryByTestId } = await renderScreen();
+
+    expect(saveItem(navigation.setOptions)).toMatchObject({ label: 'Save', variant: 'prominent' });
+    expect(queryByText('Save')).toBeNull();
+    expect(queryByTestId('screen-footer')).toBeNull();
+  });
+
   it('renders a visible text label above every simple-holding field', async () => {
     // A simple (cash) holding takes an opening balance, so Name, Type, Currency,
     // Balance are all present. A bank create defaults to a term deposit instead
@@ -521,7 +530,7 @@ describe('HoldingFormScreen term deposit', () => {
     await fill(screen, 'Annual rate', '12');
     await fill(screen, 'Term', '12');
 
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     const metadata = metadataOfFirstCreate();
     expect(metadata.principalMinorUnits).toBeUndefined();
@@ -548,7 +557,7 @@ describe('HoldingFormScreen term deposit', () => {
     await fill(screen, 'Annual rate', '12');
     await fill(screen, 'Term', '12');
 
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     const metadata = metadataOfFirstCreate();
     expect(metadata.contributions).toHaveLength(2);
@@ -633,7 +642,7 @@ describe('HoldingFormScreen term deposit', () => {
     // Add a second row but leave it blank.
     await fireEvent.press(screen.getByText('Add contribution'));
 
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     // The blank second row blocks save entirely — it must not be silently
     // dropped, taking only the first (filled) row with it.
@@ -654,7 +663,7 @@ describe('HoldingFormScreen term deposit', () => {
     await pickDate(screen, 'Contribution 1 date', 2026, 1, 1);
     await fireEvent.press(screen.getByText('Add contribution'));
 
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(isLabelInvalid(mockFieldLabel, 'Contribution 1 amount')).toBe(false);
     expect(isLabelInvalid(mockFieldLabel, 'Contribution 1 date')).toBe(false);
@@ -677,7 +686,7 @@ describe('HoldingFormScreen term deposit', () => {
     expect(isLabelInvalid(mockFieldLabel, 'Contribution 1 amount')).toBe(false);
     expect(isLabelInvalid(mockFieldLabel, 'Contribution 1 date')).toBe(false);
 
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(
       screen.getByText('Add at least one contribution with an amount and a date.'),
@@ -700,7 +709,7 @@ describe('HoldingFormScreen term deposit', () => {
     // Partially filled: an amount but no picked date.
     await fill(screen, 'Contribution 2 amount', '500');
 
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(createMock).not.toHaveBeenCalled();
     expect(
@@ -718,7 +727,7 @@ describe('HoldingFormScreen term deposit', () => {
     await fill(screen, 'Annual rate', '12');
     await fill(screen, 'Term', '12');
     await fireEvent.press(screen.getByText('Add contribution'));
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(
       screen.getByText("Fill in this contribution's amount and date, or remove it."),
@@ -731,7 +740,7 @@ describe('HoldingFormScreen term deposit', () => {
       screen.queryByText("Fill in this contribution's amount and date, or remove it."),
     ).toBeNull();
 
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(metadataOfFirstCreate().contributions).toEqual([
       { amountMinorUnits: 100_000, date: localDay(2026, 1, 1) },
@@ -749,12 +758,12 @@ describe('HoldingFormScreen term deposit', () => {
     await fill(screen, 'Annual rate', '12');
     await fill(screen, 'Term', '12');
     await fireEvent.press(screen.getByText('Add contribution'));
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(createMock).not.toHaveBeenCalled();
 
     await fireEvent.press(screen.getByLabelText('Remove contribution 2'));
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(metadataOfFirstCreate().contributions).toEqual([
       { amountMinorUnits: 100_000, date: localDay(2026, 1, 1) },
@@ -769,7 +778,7 @@ describe('HoldingFormScreen term deposit', () => {
     await fill(screen, 'Annual rate', '12');
     await fill(screen, 'Term', '12');
 
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(createMock).not.toHaveBeenCalled();
   });
@@ -792,7 +801,7 @@ describe('HoldingFormScreen term deposit', () => {
 
     await fillBondFields(screen);
 
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(metadataOfFirstCreate()).toEqual(
       expect.objectContaining({
@@ -813,7 +822,7 @@ describe('HoldingFormScreen term deposit', () => {
     const screen = await renderScreen();
 
     await fillBondFields(screen);
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(metadataOfFirstCreate()).not.toHaveProperty('purchasePriceMinorUnits');
   });
@@ -824,7 +833,7 @@ describe('HoldingFormScreen term deposit', () => {
     await fillBondFields(screen);
     await fill(screen, 'Quantity', '98');
     await fill(screen, 'Purchase price per bond', '1 076,72');
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(metadataOfFirstCreate().purchasePriceMinorUnits).toBe(10_551_856);
   });
@@ -835,7 +844,7 @@ describe('HoldingFormScreen term deposit', () => {
     await fillBondFields(screen);
     await fill(screen, 'Purchase price per bond', '950');
     await fill(screen, 'Quantity', '12');
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(metadataOfFirstCreate().purchasePriceMinorUnits).toBe(1_140_000);
   });
@@ -847,7 +856,7 @@ describe('HoldingFormScreen term deposit', () => {
 
     await fireEvent.press(screen.getByText('Corporate'));
 
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(metadataOfFirstCreate().bondKind).toBe('corporate');
   });
@@ -857,7 +866,7 @@ describe('HoldingFormScreen term deposit', () => {
 
     await fillTermDepositFields(screen);
 
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(metadataOfFirstCreate().recapitalization).toBe(false);
   });
@@ -868,7 +877,7 @@ describe('HoldingFormScreen term deposit', () => {
     await fillTermDepositFields(screen);
     await fireEvent(screen.getByRole('switch'), 'valueChange', true);
 
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(metadataOfFirstCreate().recapitalization).toBe(true);
   });
@@ -880,7 +889,7 @@ describe('HoldingFormScreen term deposit', () => {
 
     expect(screen.getByText('Coupon frequency')).toBeTruthy();
 
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(metadataOfFirstCreate().couponFrequency).toBe('semiannually');
   });
@@ -896,7 +905,7 @@ describe('HoldingFormScreen term deposit', () => {
       screen.getByTestId('manual-bond-coupon-frequency-field-option-quarterly'),
     );
 
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(metadataOfFirstCreate().couponFrequency).toBe('quarterly');
   });
@@ -954,7 +963,7 @@ describe('HoldingFormScreen bond ISIN mode', () => {
     // The read-only summary reflects the found terms.
     expect(within(screen.getByTestId('bond-isin-summary')).getByText(/9\.5/)).toBeTruthy();
 
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     await waitFor(() => expect(createMock).toHaveBeenCalledTimes(1));
     const call = createMock.mock.calls[0][0];
@@ -1000,7 +1009,7 @@ describe('HoldingFormScreen bond ISIN mode', () => {
     // A valid-shaped ISIN with a wrong check digit.
     await fireEvent.changeText(isinInput(screen), 'UA4000227046');
 
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(screen.getByText('ISIN check digit is wrong.')).toBeTruthy();
     expect(createMock).not.toHaveBeenCalled();
@@ -1051,7 +1060,7 @@ describe('HoldingFormScreen bond ISIN mode', () => {
     expect(isinInput(screen).props.value).toBe('UA4000234215');
 
     await fireEvent.changeText(isinInput(screen), 'XS2895055981');
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(savedBondMetadata(bondHolding.metadata).isin).toBe('XS2895055981');
   });
@@ -1108,9 +1117,9 @@ describe('HoldingFormScreen bond ISIN mode', () => {
 
   it('saves a Manual edit of the demo bond, against a register without its ISIN, with its stored values', async () => {
     mockBondRegisterRows = [foundRegisterRow];
-    const screen = await renderEdit(demoBond);
+    await renderEdit(demoBond);
 
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(updateFromStoredMock).toHaveBeenCalledTimes(1);
     expect(updateFromStoredMock.mock.calls[0][1]).toMatchObject({ name: 'ОВДП' });
@@ -1127,7 +1136,7 @@ describe('HoldingFormScreen bond ISIN mode', () => {
 
     expect(screen.getByText('Not in the NBU register.')).toBeTruthy();
 
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(updateFromStoredMock.mock.calls[0][1]).toMatchObject({ name: 'ОВДП' });
     expect(savedBondMetadata(holding.metadata)).toEqual(holding.metadata);
@@ -1150,7 +1159,7 @@ describe('HoldingFormScreen bond ISIN mode', () => {
     await fill(screen, 'Name', 'War bond 2029');
     await pickDate(screen, 'Purchase date', 2026, 1, 1);
 
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     await waitFor(() => expect(createMock).toHaveBeenCalledTimes(1));
     expect(createMock.mock.calls[0][0].name).toBe('War bond 2029');
@@ -1181,7 +1190,7 @@ describe('HoldingFormScreen bond ISIN mode', () => {
     });
 
     await fireEvent.press(screen.getByTestId('bond-isin-mode-control-option-isin'));
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(updateFromStoredMock.mock.calls[0][1]).toMatchObject({ name: 'Gov bond' });
     expect(savedBondMetadata(bondHolding.metadata)).toMatchObject({ couponPct: 9 });
@@ -1207,7 +1216,7 @@ describe('HoldingFormScreen bond ISIN mode', () => {
 
     expect(within(screen.getByTestId('bond-isin-summary')).getByText(/9\.5/)).toBeTruthy();
 
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     await waitFor(() => expect(createMock).toHaveBeenCalledTimes(1));
     const call = createMock.mock.calls[0][0];
@@ -1242,14 +1251,14 @@ describe('HoldingFormScreen bond ISIN mode', () => {
     ).toBe(true);
 
     await fireEvent.press(screen.getByTestId('bond-isin-mode-control-option-isin'));
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(screen.getByText('No coupon frequency selected.')).toBeTruthy();
     expect(createMock).not.toHaveBeenCalled();
 
     await fireEvent.press(screen.getByTestId('bond-coupon-frequency-field'));
     await fireEvent.press(screen.getByTestId('bond-coupon-frequency-field-option-quarterly'));
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     await waitFor(() => expect(createMock).toHaveBeenCalledTimes(1));
     expect(createMock.mock.calls[0][0].metadata.couponFrequency).toBe('quarterly');
@@ -1272,7 +1281,7 @@ describe('HoldingFormScreen bond ISIN mode', () => {
     await fireEvent.changeText(isinInput(screen), 'UA4000234215');
     await fill(screen, 'Quantity', '10');
 
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(screen.getByText('Maturity date must be after the purchase date.')).toBeTruthy();
     expect(createMock).not.toHaveBeenCalled();
@@ -1290,7 +1299,7 @@ describe('HoldingFormScreen bond ISIN mode', () => {
     await fill(screen, 'Quantity', '10');
     await fill(screen, 'Purchase price per bond', '10 000');
 
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(screen.queryByText('No purchase date selected.')).toBeNull();
     await waitFor(() => expect(createMock).toHaveBeenCalledTimes(1));
@@ -1306,13 +1315,13 @@ describe('HoldingFormScreen bond ISIN mode', () => {
     await fireEvent.changeText(isinInput(screen), 'UA4000234215');
     await fill(screen, 'Quantity', '10');
 
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(screen.getByText('Enter the purchase price.')).toBeTruthy();
     expect(createMock).not.toHaveBeenCalled();
 
     await fill(screen, 'Purchase price per bond', '1 076,72');
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     await waitFor(() => expect(createMock).toHaveBeenCalledTimes(1));
     expect(createMock.mock.calls[0][0].metadata.purchasePriceMinorUnits).toBe(1_076_720);
@@ -1323,7 +1332,7 @@ describe('HoldingFormScreen bond ISIN mode', () => {
 
     await selectHoldingType(screen, 'bond');
     await fireEvent.press(screen.getByText('Manual'));
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(screen.queryByText('Enter the purchase price.')).toBeNull();
   });
@@ -1342,7 +1351,7 @@ describe('HoldingFormScreen bond ISIN mode', () => {
 
     expect(screen.queryByDisplayValue('Register Bond UA4000234215')).toBeNull();
 
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(
       screen.getByText("This ISIN's currency doesn't match the holding's currency."),
@@ -1467,7 +1476,7 @@ describe('HoldingFormScreen save validation', () => {
     await selectHoldingType(screen, 'term_deposit');
     await fill(screen, 'Name', 'My deposit');
 
-    expect(screen.getByText('Save')).not.toBeDisabled();
+    expect(saveItem(navigation.setOptions)?.disabled).toBe(false);
   });
 
   it('does not create and shows no reason before Save is pressed, for an incomplete term deposit', async () => {
@@ -1487,7 +1496,7 @@ describe('HoldingFormScreen save validation', () => {
 
     await selectHoldingType(screen, 'term_deposit');
     await fill(screen, 'Name', 'My deposit');
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(
       screen.getByText('Add at least one contribution with an amount and a date.'),
@@ -1502,7 +1511,7 @@ describe('HoldingFormScreen save validation', () => {
     await fill(screen, 'Name', 'My deposit');
     await fill(screen, 'Contribution 1 amount', '1000');
     await pickDate(screen, 'Contribution 1 date', 2026, 1, 1);
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(screen.getByText('Enter a rate of 0 or higher.')).toBeTruthy();
     const flatStyle = StyleSheet.flatten(screen.getByLabelText('Annual rate').props.style);
@@ -1517,7 +1526,7 @@ describe('HoldingFormScreen save validation', () => {
     await fill(screen, 'Contribution 1 amount', '1000');
     await pickDate(screen, 'Contribution 1 date', 2026, 1, 1);
     await fill(screen, 'Annual rate', '12');
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(screen.getByText('Enter a whole number of months greater than 0.')).toBeTruthy();
     const flatStyle = StyleSheet.flatten(screen.getByLabelText('Term').props.style);
@@ -1530,7 +1539,7 @@ describe('HoldingFormScreen save validation', () => {
     await fillTermDepositFields(screen);
     await fill(screen, 'Term', '2');
     await fireEvent.press(screen.getByText('Years'));
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(metadataOfFirstCreate().termMonths).toBe(24);
   });
@@ -1541,7 +1550,7 @@ describe('HoldingFormScreen save validation', () => {
     await fillTermDepositFields(screen);
     await fill(screen, 'Term', '1.5');
     await fireEvent.press(screen.getByText('Years'));
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(screen.getByText('Enter a whole number of years greater than 0.')).toBeTruthy();
     expect(createMock).not.toHaveBeenCalled();
@@ -1553,7 +1562,7 @@ describe('HoldingFormScreen save validation', () => {
     await fillTermDepositFields(screen);
     await fill(screen, 'Term', '60');
     await fireEvent.press(screen.getByText('Years'));
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(screen.getByText('Enter a whole number of years from 1 to 50.')).toBeTruthy();
     expect(createMock).not.toHaveBeenCalled();
@@ -1563,7 +1572,7 @@ describe('HoldingFormScreen save validation', () => {
     expect(screen.getByLabelText('Term').props.value).toBe('60');
     expect(screen.queryByText('Enter a whole number of years from 1 to 50.')).toBeNull();
 
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(metadataOfFirstCreate().termMonths).toBe(60);
   });
@@ -1587,7 +1596,7 @@ describe('HoldingFormScreen save validation', () => {
     await pickDate(screen, 'Contribution 1 date', 2026, 1, 1);
     await fill(screen, 'Annual rate', '12');
     await fill(screen, 'Term', String(MAX_TERM_MONTHS + 1));
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(
       screen.getByText(`Enter a whole number of months from 1 to ${MAX_TERM_MONTHS}.`),
@@ -1599,7 +1608,7 @@ describe('HoldingFormScreen save validation', () => {
 
     await selectHoldingType(screen, 'term_deposit');
     await fill(screen, 'Name', 'My deposit');
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(
       within(screen.getByTestId('contributions-group')).getByText(
@@ -1613,7 +1622,7 @@ describe('HoldingFormScreen save validation', () => {
 
     await selectHoldingType(screen, 'term_deposit');
     await fill(screen, 'Name', 'My deposit');
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
     expect(
       screen.getByText('Add at least one contribution with an amount and a date.'),
     ).toBeTruthy();
@@ -1637,7 +1646,7 @@ describe('HoldingFormScreen save validation', () => {
     await fill(screen, 'Name', 'My deposit');
     await fill(screen, 'Contribution 1 amount', '1000');
     await pickDate(screen, 'Contribution 1 date', 2026, 1, 1);
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(screen.getByText('Enter a rate of 0 or higher.')).toBeTruthy();
     expect(screen.getByText('Enter a whole number of months greater than 0.')).toBeTruthy();
@@ -1658,7 +1667,7 @@ describe('HoldingFormScreen save validation', () => {
     await selectHoldingType(screen, 'bond');
     await fill(screen, 'Name', 'My bond');
 
-    expect(screen.getByText('Save')).not.toBeDisabled();
+    expect(saveItem(navigation.setOptions)?.disabled).toBe(false);
   });
 
   it('does not create a bond whose maturity is not after its purchase date, and shows the reason directly under the maturity date field', async () => {
@@ -1672,7 +1681,7 @@ describe('HoldingFormScreen save validation', () => {
     await fill(screen, 'Coupon', '9');
     await pickDate(screen, 'Purchase date', 2026, 1, 1);
     await pickDate(screen, 'Maturity date', 2026, 1, 1);
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(
       within(screen.getByTestId('maturity-date-field')).getByText(
@@ -1686,7 +1695,7 @@ describe('HoldingFormScreen save validation', () => {
     const screen = await renderScreen();
 
     await fillBondFields(screen);
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     await waitFor(() => expect(createMock).toHaveBeenCalledTimes(1));
   });
@@ -1699,7 +1708,7 @@ describe('HoldingFormScreen save validation', () => {
 
     expect(screen.queryByText('Enter a quantity greater than 0.')).toBeNull();
 
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(screen.getByText('Enter a quantity greater than 0.')).toBeTruthy();
     const flatStyle = StyleSheet.flatten(screen.getByLabelText('Quantity').props.style);
@@ -1713,7 +1722,7 @@ describe('HoldingFormScreen save validation', () => {
     await fireEvent.press(screen.getByText('Manual'));
     await fill(screen, 'Name', 'My bond');
     await fill(screen, 'Quantity', '10');
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(screen.getByText('Enter a face value greater than 0.')).toBeTruthy();
     const flatStyle = StyleSheet.flatten(screen.getByLabelText('Face value').props.style);
@@ -1728,7 +1737,7 @@ describe('HoldingFormScreen save validation', () => {
     await fill(screen, 'Name', 'My bond');
     await fill(screen, 'Quantity', '10');
     await fill(screen, 'Face value', '1000');
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(screen.getByText('Enter a coupon of 0 or higher.')).toBeTruthy();
     const flatStyle = StyleSheet.flatten(screen.getByLabelText('Coupon').props.style);
@@ -1739,7 +1748,7 @@ describe('HoldingFormScreen save validation', () => {
     const screen = await renderScreen();
 
     await fillBondFields(screen);
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(screen.queryByText('Enter a quantity greater than 0.')).toBeNull();
     expect(screen.queryByText('Enter a face value greater than 0.')).toBeNull();
@@ -1753,7 +1762,7 @@ describe('HoldingFormScreen save validation', () => {
     await selectHoldingType(screen, 'bond');
     await fireEvent.press(screen.getByText('Manual'));
     await fill(screen, 'Name', 'My bond');
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(screen.getByText('Enter a quantity greater than 0.')).toBeTruthy();
     expect(screen.getByText('Enter a face value greater than 0.')).toBeTruthy();
@@ -1785,29 +1794,29 @@ describe('HoldingFormScreen save validation', () => {
     await fill(screen, 'Coupon', '9');
     await pickDate(screen, 'Purchase date', 2026, 1, 1);
 
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(screen.getByText('No maturity date selected.')).toBeTruthy();
     expect(createMock).not.toHaveBeenCalled();
   });
 
   it('keeps Save always enabled when the holding name is blank, and pressing it neither creates nor navigates', async () => {
-    const { getByText } = await renderScreen();
+    await renderScreen();
 
-    expect(getByText('Save')).not.toBeDisabled();
+    expect(saveItem(navigation.setOptions)?.disabled).toBe(false);
 
-    await fireEvent.press(getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(createMock).not.toHaveBeenCalled();
     expect(navigation.goBack).not.toHaveBeenCalled();
   });
 
   it('shows the name-required reason only after a failed Save, for a blank holding name', async () => {
-    const { getByText, queryByTestId } = await renderScreen();
+    const { queryByTestId } = await renderScreen();
 
     expect(queryByTestId('holding-name-error')).toBeNull();
 
-    await fireEvent.press(getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(queryByTestId('holding-name-error')).toBeTruthy();
   });
@@ -1819,18 +1828,18 @@ describe('HoldingFormScreen save validation', () => {
 
     await selectHoldingType(screen, 'term_deposit');
     await fill(screen, 'Name', 'My deposit');
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
     const [, contributionsRef] = scrollToFieldMock.mock.calls[0];
 
     await fill(screen, 'Contribution 1 amount', '1000');
     await pickDate(screen, 'Contribution 1 date', 2026, 1, 1);
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
     const [, annualRateRef] = scrollToFieldMock.mock.calls[1];
 
     expect(annualRateRef).not.toBe(contributionsRef);
 
     await fill(screen, 'Annual rate', '12');
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
     const [, termMonthsRef] = scrollToFieldMock.mock.calls[2];
 
     expect(termMonthsRef).not.toBe(annualRateRef);
@@ -1843,7 +1852,7 @@ describe('HoldingFormScreen save validation', () => {
 
     const screen = await renderScreen();
     await fillTermDepositFields(screen);
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     await waitFor(() =>
       expect(alertSpy).toHaveBeenCalledWith('Could not save', 'Please try again.'),
@@ -1868,7 +1877,7 @@ describe('HoldingFormScreen property', () => {
 
     await fill(screen, 'Name', 'Apartment');
     await fill(screen, 'Cost', '5000');
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(createMock).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -1963,7 +1972,7 @@ describe('HoldingFormScreen property', () => {
     await fireEvent.press(screen.getByTestId('property-category-field'));
     await fireEvent.press(screen.getByTestId('property-category-field-option-vehicle'));
     await fill(screen, 'Cost', '5000');
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(createMock).toHaveBeenCalledWith(
       expect.objectContaining({ metadata: expect.objectContaining({ category: 'vehicle' }) }),
@@ -1974,7 +1983,7 @@ describe('HoldingFormScreen property', () => {
     const screen = await renderScreen();
 
     await fill(screen, 'Name', 'Apartment');
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(screen.getByText('Enter a cost greater than 0.')).toBeTruthy();
     expect(createMock).not.toHaveBeenCalled();
@@ -1999,7 +2008,7 @@ describe('HoldingFormScreen property', () => {
 
     expect(screen.queryByLabelText('Cost')).toBeNull();
 
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(updateDeltaMock).toHaveBeenCalledWith(
       'h1',
@@ -2032,7 +2041,7 @@ describe('HoldingFormScreen property', () => {
 
     await fireEvent.press(screen.getByTestId('property-category-field'));
     await fireEvent.press(screen.getByTestId('property-category-field-option-vehicle'));
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(updateDeltaMock).toHaveBeenCalledWith(
       'h1',
@@ -2088,7 +2097,7 @@ describe('HoldingFormScreen property ownership', () => {
 
     await fillNewProperty(screen);
     await fill(screen, 'Share', '50');
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     const metadata = createdMetadata() as { lots: { day: number }[] };
     expect(metadata).toEqual(
@@ -2106,7 +2115,7 @@ describe('HoldingFormScreen property ownership', () => {
     await fireEvent.press(screen.getByText('Fraction'));
     await fill(screen, 'Share', '1');
     await fill(screen, 'Out of', '3');
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(createdMetadata()).toEqual(
       expect.objectContaining({
@@ -2122,7 +2131,7 @@ describe('HoldingFormScreen property ownership', () => {
     expect(screen.getByLabelText('Share').props.value).toBe('100');
 
     await fillNewProperty(screen);
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(createdMetadata()).not.toHaveProperty('ownership');
     expect(createdMetadata()).not.toHaveProperty('ownershipInput');
@@ -2142,7 +2151,7 @@ describe('HoldingFormScreen property ownership', () => {
       await fill(screen, 'Out of', outOf);
     }
     await fill(screen, 'Share', share);
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(screen.getByText('Enter a share above 0 and up to 100%.')).toBeTruthy();
     expect(createMock).not.toHaveBeenCalled();
@@ -2157,9 +2166,9 @@ describe('HoldingFormScreen property ownership', () => {
   });
 
   it('keeps the stored list unchanged when the share is saved as it was', async () => {
-    const screen = await renderEdit(sharedApartment());
+    await renderEdit(sharedApartment());
 
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(savedMetadata()).toEqual({
       category: 'real_estate',
@@ -2174,7 +2183,7 @@ describe('HoldingFormScreen property ownership', () => {
 
     await fill(screen, 'Out of', '2');
     await pickDate(screen, 'Effective from', 2025, 6, 1);
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(savedMetadata()).toEqual(
       expect.objectContaining({
@@ -2196,7 +2205,7 @@ describe('HoldingFormScreen property ownership', () => {
     expect(screen.queryByText('Ownership')).toBeNull();
 
     await fillNewProperty(screen);
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(createdMetadata()).not.toHaveProperty('ownership');
   });
@@ -2209,7 +2218,7 @@ describe('HoldingFormScreen property ownership', () => {
 
     expect(screen.queryByLabelText('Share')).toBeNull();
 
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(savedMetadata()).toEqual({
       category: 'loan_given',
@@ -2256,7 +2265,7 @@ describe('HoldingFormScreen create-and-return', () => {
 
     await fill(screen, 'Name', 'Apartment');
     await fill(screen, 'Cost', '5000');
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     await waitFor(() => expect(createMock).toHaveBeenCalled());
 
@@ -2284,7 +2293,7 @@ describe('HoldingFormScreen create-and-return', () => {
 
     await fill(screen, 'Name', 'Apartment');
     await fill(screen, 'Cost', '5000');
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     await waitFor(() => expect(createMock).toHaveBeenCalled());
 
@@ -2315,7 +2324,7 @@ describe('HoldingFormScreen metal', () => {
     await fill(screen, 'Name', 'Gold bar');
     await fill(screen, 'Quantity', '31.1');
     await fill(screen, 'Total cost', '80000');
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(createMock).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -2364,7 +2373,7 @@ describe('HoldingFormScreen metal', () => {
     await fill(screen, 'Name', 'Gold bar');
     await fill(screen, 'Quantity', '1');
     await fill(screen, 'Total cost', '80000');
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(createMock).toHaveBeenCalledWith(expect.objectContaining({ currency: 'UAH' }));
   });
@@ -2385,7 +2394,7 @@ describe('HoldingFormScreen metal', () => {
     const screen = await renderScreen();
 
     await fill(screen, 'Name', 'Gold bar');
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(screen.getByText('Enter a quantity greater than 0.')).toBeTruthy();
     expect(createMock).not.toHaveBeenCalled();
@@ -2396,7 +2405,7 @@ describe('HoldingFormScreen metal', () => {
     const screen = await renderScreen();
 
     await fill(screen, 'Name', 'Gold bar');
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(screen.getByText('Enter a quantity greater than 0.')).toBeTruthy();
     expect(screen.getByText('Total cost must be greater than 0.')).toBeTruthy();
@@ -2425,7 +2434,7 @@ describe('HoldingFormScreen metal', () => {
     await fill(screen, 'Purity', fineness);
     await fill(screen, 'Quantity', '31.1');
     await fill(screen, 'Total cost', '80000');
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(createMock).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -2446,7 +2455,7 @@ describe('HoldingFormScreen metal', () => {
       await fill(screen, 'Purity', purity);
       await fill(screen, 'Quantity', '31.1');
       await fill(screen, 'Total cost', '80000');
-      await fireEvent.press(screen.getByText('Save'));
+      await pressSave(navigation.setOptions);
 
       expect(screen.getByText('Enter a fineness above 0 and up to 1000 ‰.')).toBeTruthy();
       expect(createMock).not.toHaveBeenCalled();
@@ -2475,7 +2484,7 @@ describe('HoldingFormScreen metal', () => {
     expect(screen.queryByLabelText('Quantity')).toBeNull();
     expect(screen.queryByLabelText('Total cost')).toBeNull();
 
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(updateDeltaMock).toHaveBeenCalledWith(
       'h1',
@@ -2518,7 +2527,7 @@ describe('HoldingFormScreen metal', () => {
     expect(screen.getByLabelText('Purity').props.value).toBe('999.9');
 
     await fill(screen, 'Purity', '750');
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(updateDeltaMock).toHaveBeenCalledWith(
       'h1',
@@ -2552,7 +2561,7 @@ describe('HoldingFormScreen metal', () => {
     });
 
     await fill(screen, 'Purity', '1000.1');
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(screen.getByText('Enter a fineness above 0 and up to 1000 ‰.')).toBeTruthy();
     expect(updateDeltaMock).not.toHaveBeenCalled();
@@ -2584,7 +2593,7 @@ describe('HoldingFormScreen metal', () => {
     expect(typeOptionIds(screen)).toEqual(metalOptionIds);
 
     await selectHoldingTypeOption(screen, 'XAG');
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(updateDeltaMock).toHaveBeenCalledWith(
       'h1',
@@ -2699,7 +2708,7 @@ describe('HoldingFormScreen loan', () => {
     await fillLoanFields(screen);
     await fill(screen, 'Annual rate', '12');
     await fill(screen, 'Term', '24');
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(createMock).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -2741,7 +2750,7 @@ describe('HoldingFormScreen loan', () => {
     await fireEvent.press(screen.getByText('Everyday card'));
     await fill(screen, 'Lender name', 'PrivatBank');
     await fill(screen, 'Lender IBAN', 'UA123456789012345678901234567');
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(createMock).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -3091,7 +3100,7 @@ describe('HoldingFormScreen loan', () => {
       );
 
       await fill(pushedForm, 'Name', 'Dollar cash');
-      await fireEvent.press(pushedForm.getByText('Save'));
+      await pressSave(navigation.setOptions);
 
       expect(createMock).toHaveBeenCalledWith(
         expect.objectContaining({ accountId: 'brk', type: 'cash', currency: 'USD' }),
@@ -3184,7 +3193,7 @@ describe('HoldingFormScreen loan', () => {
     await fillLoanFields(screen);
     await fill(screen, 'Annual rate', '9');
     await fill(screen, 'Term', '36');
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(createMock).toHaveBeenCalledWith(
       expect.objectContaining({ metadata: expect.objectContaining({ kind: 'car_loan' }) }),
@@ -3230,7 +3239,7 @@ describe('HoldingFormScreen loan', () => {
       await fireEvent.press(screen.getByTestId('loan-kind-field-option-personal'));
       await fillLoanFields(screen);
       await fireEvent.press(screen.getByText('No schedule'));
-      await fireEvent.press(screen.getByText('Save'));
+      await pressSave(navigation.setOptions);
 
       expect(createMock).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -3267,7 +3276,7 @@ describe('HoldingFormScreen loan', () => {
       await fillLoanFields(screen);
       await fill(screen, 'Annual rate', '9');
       await fill(screen, 'Term', '36');
-      await fireEvent.press(screen.getByText('Save'));
+      await pressSave(navigation.setOptions);
 
       expect(createMock).toHaveBeenCalledWith(expect.objectContaining({ icon: null }));
     });
@@ -3284,7 +3293,7 @@ describe('HoldingFormScreen loan', () => {
 
       await fireEvent.press(screen.getByTestId('loan-kind-field'));
       await fireEvent.press(screen.getByTestId('loan-kind-field-option-personal'));
-      await fireEvent.press(screen.getByText('Save'));
+      await pressSave(navigation.setOptions);
 
       expect(updateLoanMock).toHaveBeenCalledWith(
         'h1',
@@ -3316,7 +3325,7 @@ describe('HoldingFormScreen loan', () => {
 
     await fillLoanFields(screen);
     await fireEvent.press(screen.getByText('No schedule'));
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(createMock).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -3348,7 +3357,7 @@ describe('HoldingFormScreen loan', () => {
     expect(screen.queryByLabelText('Term')).toBeNull();
 
     await fillLoanFields(screen);
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(createMock).toHaveBeenCalled();
   });
@@ -3359,7 +3368,7 @@ describe('HoldingFormScreen loan', () => {
     await fill(screen, 'Name', 'Car loan');
     expect(screen.queryByText('Principal must be greater than 0.')).toBeNull();
 
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(screen.getByText('Principal must be greater than 0.')).toBeTruthy();
     expect(createMock).not.toHaveBeenCalled();
@@ -3371,7 +3380,7 @@ describe('HoldingFormScreen loan', () => {
 
     await fill(screen, 'Name', 'Car loan');
     await fill(screen, 'Principal', '500000');
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(screen.getByText('No start date selected.')).toBeTruthy();
     expect(createMock).not.toHaveBeenCalled();
@@ -3382,7 +3391,7 @@ describe('HoldingFormScreen loan', () => {
 
     await fill(screen, 'Name', 'Car loan');
     await fireEvent.press(screen.getByText('No schedule'));
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(screen.getByText('Principal must be greater than 0.')).toBeTruthy();
     expect(screen.getByText('No start date selected.')).toBeTruthy();
@@ -3404,7 +3413,7 @@ describe('HoldingFormScreen loan', () => {
     await fillLoanFields(screen);
     await fill(screen, 'Annual rate', '12');
     await fill(screen, 'Term', '0');
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(screen.getByText('Enter a whole number of months greater than 0.')).toBeTruthy();
     expect(createMock).not.toHaveBeenCalled();
@@ -3417,7 +3426,7 @@ describe('HoldingFormScreen loan', () => {
     await fill(screen, 'Annual rate', '12');
     await fill(screen, 'Term', '51');
     await fireEvent.press(screen.getByText('Years'));
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(screen.getByText('Enter a whole number of years from 1 to 50.')).toBeTruthy();
     expect(createMock).not.toHaveBeenCalled();
@@ -3453,7 +3462,7 @@ describe('HoldingFormScreen loan', () => {
     await fillLoanFields(screen);
     await fill(screen, 'Annual rate', '12');
     await fill(screen, 'Term', String(MAX_TERM_MONTHS + 1));
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(
       screen.getByText(`Enter a whole number of months from 1 to ${MAX_TERM_MONTHS}.`),
@@ -3501,7 +3510,7 @@ describe('HoldingFormScreen loan', () => {
     expect(unitChipSelected(screen, 'Years')).toBe(true);
 
     await fill(screen, 'Principal', '600000');
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     // Staying `annuity` end to end (none of the schedule-change cases below
     // apply): a scheduled loan's principal edit takes effect through the
@@ -3550,7 +3559,7 @@ describe('HoldingFormScreen loan', () => {
     expect(screen.queryByLabelText('Annual rate')).toBeNull();
     expect(screen.queryByLabelText('Term')).toBeNull();
 
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     // (c)'s catch-all, with nothing actually changed: principal/startDate are
     // untouched, so `buildLoanPricePointOp` writes no price point.
@@ -3607,7 +3616,7 @@ describe('HoldingFormScreen loan', () => {
     });
 
     await fireEvent.press(screen.getByText('No schedule'));
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     // The seeded correction anchors the outstanding: no installment can fall
     // strictly after `today` and on or before `today`, so the preserved
@@ -3649,7 +3658,7 @@ describe('HoldingFormScreen loan', () => {
     });
 
     await fireEvent.press(screen.getByText('No schedule'));
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(updateLoanMock).toHaveBeenCalledWith(
       'h1',
@@ -3687,7 +3696,7 @@ describe('HoldingFormScreen loan', () => {
     });
 
     await fill(screen, 'Principal', '15000');
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(updateLoanMock).toHaveBeenCalledWith(
       'h1',
@@ -3732,7 +3741,7 @@ describe('HoldingFormScreen loan', () => {
     await fireEvent.press(screen.getByText('Annuity'));
     await fill(screen, 'Annual rate', '10');
     await fill(screen, 'Term', '12');
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(updateLoanMock).toHaveBeenCalledWith(
       'h1',
@@ -3755,14 +3764,14 @@ describe('HoldingFormScreen loan', () => {
     await fillLoanFields(screen);
     await fill(screen, 'Annual rate', '12');
     await fill(screen, 'Term', '24');
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(mockRunLoanAutoLink).toHaveBeenCalled();
   });
 
   it('runs the loan auto-link matcher after a loan EDIT too', async () => {
     mockRunLoanAutoLink.mockClear();
-    const screen = await renderEdit({
+    await renderEdit({
       id: 'h1',
       accountId: 'acc-1',
       name: 'Car loan',
@@ -3781,7 +3790,7 @@ describe('HoldingFormScreen loan', () => {
       },
     });
 
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(mockRunLoanAutoLink).toHaveBeenCalled();
   });
@@ -3804,7 +3813,7 @@ describe('HoldingFormScreen icon', () => {
     await fill(screen, 'Name', 'My cash');
     await fireEvent.press(screen.getByLabelText('Change Icon'));
     await fireEvent.press(screen.getByLabelText('Choose icon banknote'));
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(createMock).toHaveBeenCalledTimes(1);
     expect(createMock).toHaveBeenCalledWith(expect.objectContaining({ icon: 'banknote' }));
@@ -3825,12 +3834,12 @@ describe('HoldingFormScreen icon', () => {
     await fill(screen, 'Name', 'My cash');
     await fireEvent.press(screen.getByLabelText('Change Icon'));
     await fireEvent.press(screen.getByLabelText('Choose icon banknote'));
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(alertSpy).toHaveBeenCalledTimes(1);
     expect(navigation.goBack).not.toHaveBeenCalled();
 
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(createMock).toHaveBeenCalledTimes(2);
     expect(createMock).toHaveBeenLastCalledWith(expect.objectContaining({ icon: 'banknote' }));
@@ -3845,7 +3854,7 @@ describe('HoldingFormScreen icon', () => {
 
     await fill(screen, 'Name', 'My cash');
     await fill(screen, 'Balance', '500');
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     // The form writes the opening balance through `create` and nothing else:
     // `create` seeds the matching `manual` opening row inside its own
@@ -3867,7 +3876,7 @@ describe('HoldingFormScreen icon', () => {
     const screen = await renderScreen();
 
     await fill(screen, 'Name', 'My cash');
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(createMock).toHaveBeenCalledWith(expect.objectContaining({ icon: null }));
     expect(setIconMock).not.toHaveBeenCalled();
@@ -3900,10 +3909,8 @@ describe('HoldingFormScreen icon', () => {
 
     await fill(screen, 'Name', 'My cash');
 
-    const save = screen.getByText('Save');
-
-    await fireEvent.press(save);
-    await fireEvent.press(save);
+    await pressSave(navigation.setOptions);
+    await pressSave(navigation.setOptions);
 
     expect(createMock).toHaveBeenCalledTimes(1);
 
@@ -3930,7 +3937,7 @@ describe('HoldingFormScreen create-mode hidden opening balance', () => {
 
     await fill(screen, 'Balance', '100');
     await fillTermDepositFields(screen);
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(createMock.mock.calls[0][0]).not.toHaveProperty('openingBalance');
   });
@@ -3940,7 +3947,7 @@ describe('HoldingFormScreen create-mode hidden opening balance', () => {
 
     await fill(screen, 'Balance', '100');
     await fillBondFields(screen);
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(createMock.mock.calls[0][0]).not.toHaveProperty('openingBalance');
   });
@@ -3950,7 +3957,7 @@ describe('HoldingFormScreen create-mode hidden opening balance', () => {
 
     await fill(screen, 'Name', 'My card');
     await fill(screen, 'Balance', '100');
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(createMock).toHaveBeenCalledWith(
       expect.objectContaining({ openingBalance: Money.of('UAH', 100_00) }),
@@ -4146,7 +4153,7 @@ describe('HoldingFormScreen type options are constrained by the account kind', (
     await fill(screen, 'Name', 'Silver bar');
     await fill(screen, 'Quantity', '1');
     await fill(screen, 'Total cost', '100');
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(createMock).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -4213,7 +4220,7 @@ describe('HoldingFormScreen color follows type until dirty', () => {
 
     await fill(screen, 'Name', 'My cash');
     await fireEvent.press(screen.getByLabelText('Color violet'));
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(createMock.mock.calls[0][0].color).toBe(entityColors.violet);
   });
@@ -4223,7 +4230,7 @@ describe('HoldingFormScreen color follows type until dirty', () => {
     const screen = await renderScreen();
 
     await fill(screen, 'Name', 'My cash');
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(createMock.mock.calls[0][0].color).toBeNull();
   });
@@ -4374,7 +4381,7 @@ describe('HoldingFormScreen edit mode', () => {
     await fill(screen, 'Name', 'Renamed card');
     await fill(screen, 'Balance', '300');
     await fireEvent.press(screen.getByLabelText('Color teal'));
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(updateDeltaMock).toHaveBeenCalledWith(
       'h-1',
@@ -4394,7 +4401,7 @@ describe('HoldingFormScreen edit mode', () => {
     // stays derivable from its ledger (kiko-domain) and the past net-worth
     // series does not shift under the edit.
     await fill(screen, 'Balance', '500');
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(updateDeltaMock).toHaveBeenCalledWith(
       'h-1',
@@ -4411,7 +4418,7 @@ describe('HoldingFormScreen edit mode', () => {
     // the removal (an explicit null), not silently keep the old glyph.
     await fireEvent.press(screen.getByLabelText('Change Icon'));
     await fireEvent.press(screen.getByText('Remove'));
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(setIconMock).toHaveBeenCalledWith('h-1', null);
   });
@@ -4440,7 +4447,7 @@ describe('HoldingFormScreen edit mode', () => {
     const screen = await renderEdit(syncedCardHolding);
 
     await fill(screen, 'Name', 'Renamed monobank');
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     const patch = updateDeltaMock.mock.calls[0][1];
     expect(patch.name).toBe('Renamed monobank');
@@ -4457,7 +4464,7 @@ describe('HoldingFormScreen edit mode', () => {
     expect(screen.getByLabelText('Term').props.value).toBe('2');
 
     await fill(screen, 'Annual rate', '15');
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     const patch = updateDeltaMock.mock.calls[0][1];
     expect(patch.name).toBe('My deposit');
@@ -4479,7 +4486,7 @@ describe('HoldingFormScreen edit mode', () => {
     expect(screen.getByText('Corporate').parent?.props.accessibilityState.selected).toBe(true);
 
     await fill(screen, 'Coupon', '11');
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(updateFromStoredMock.mock.calls[0][1]).toEqual({
       name: bondHolding.name,
@@ -4509,7 +4516,7 @@ describe('HoldingFormScreen edit mode', () => {
 
     expect(screen.getByLabelText('Purchase price per bond').props.value).toBe('3 333.33');
 
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(savedBondMetadata(metadata).purchasePriceMinorUnits).toBe(1_000_000);
   });
@@ -4520,7 +4527,7 @@ describe('HoldingFormScreen edit mode', () => {
 
     expect(screen.getByLabelText('Purchase price per bond').props.value).toBe('');
 
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(savedBondMetadata(unpricedMetadata)).not.toHaveProperty('purchasePriceMinorUnits');
   });
@@ -4629,7 +4636,7 @@ describe('HoldingFormScreen — the icon picker offers the default glyph of ever
 
     await fireEvent.press(screen.getByLabelText('Change Icon'));
     await fireEvent.press(screen.getByLabelText(`Choose icon ${holdingTypeSymbol.card}`));
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(setIconMock).toHaveBeenCalledWith('h1', holdingTypeSymbol.card);
   });
@@ -4659,7 +4666,7 @@ describe('HoldingFormScreen — localization', () => {
     expect(getByText('Валюта')).toBeTruthy();
     expect(getByLabelText('Баланс')).toBeTruthy();
     expect(getByText('Готівка')).toBeTruthy();
-    expect(getByText('Зберегти')).toBeTruthy();
+    expect(saveItem(navigation.setOptions, 'Зберегти')).toBeDefined();
     expect(queryByText('Balance')).toBeNull();
   });
 
@@ -4778,7 +4785,7 @@ describe('HoldingFormScreen — the price_points gate', () => {
     mockPricePointsLoading = true;
     const screen = await renderEdit(loan);
 
-    expect(screen.getByText('Save')).toBeDisabled();
+    expect(saveItem(navigation.setOptions)?.disabled).toBe(true);
 
     mockPricePointsLoading = false;
     await screen.rerender(
@@ -4791,7 +4798,8 @@ describe('HoldingFormScreen — the price_points gate', () => {
       />,
     );
 
-    expect(screen.getByText('Save')).not.toBeDisabled();
+    expect(saveItem(navigation.setOptions)).toBeDefined();
+    expect(saveItem(navigation.setOptions)?.disabled).toBeFalsy();
   });
 });
 
@@ -4811,7 +4819,7 @@ describe('HoldingFormScreen — the first-add refresh trigger', () => {
     const screen = await renderScreen();
 
     await fill(screen, 'Name', 'My cash');
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(mockRefreshMarketData).toHaveBeenCalledWith({
       throttled: false,
@@ -4834,7 +4842,7 @@ describe('HoldingFormScreen — the first-add refresh trigger', () => {
 
     const screen = await renderScreen();
     await fill(screen, 'Name', 'My cash');
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(navigation.goBack).toHaveBeenCalled();
 
@@ -4854,7 +4862,7 @@ describe('HoldingFormScreen — the first-add refresh trigger', () => {
     });
 
     await fill(screen, 'Name', 'Renamed card');
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(mockRefreshMarketData).not.toHaveBeenCalled();
     expect(mockRunLoanAutoLink).not.toHaveBeenCalled();
@@ -4868,7 +4876,7 @@ describe('HoldingFormScreen — the first-add refresh trigger', () => {
     const screen = await renderScreen();
 
     await fill(screen, 'Name', 'My cash');
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(mockRunLoanAutoLink).not.toHaveBeenCalled();
   });
@@ -5030,7 +5038,7 @@ describe('HoldingFormScreen implicit create', () => {
 
       await fill(screen, 'Name', 'Apartment');
       await fill(screen, 'Cost', '5000');
-      await fireEvent.press(screen.getByText('Save'));
+      await pressSave(navigation.setOptions);
 
       expect(createImplicitHoldingMock).toHaveBeenCalledTimes(1);
       expect(createImplicitHoldingMock).toHaveBeenCalledWith(
@@ -5063,7 +5071,7 @@ describe('HoldingFormScreen implicit create', () => {
       await pickDate(screen, 'Start date', 2026, 1, 1);
       await fill(screen, 'Annual rate', '12');
       await fill(screen, 'Term', '24');
-      await fireEvent.press(screen.getByText('Save'));
+      await pressSave(navigation.setOptions);
 
       expect(createImplicitHoldingMock).toHaveBeenCalledTimes(1);
       expect(createImplicitHoldingMock).toHaveBeenCalledWith(
@@ -5082,7 +5090,7 @@ describe('HoldingFormScreen implicit create', () => {
       await fill(screen, 'Cost', '5000');
       await fireEvent.press(screen.getByLabelText('Change Icon'));
       await fireEvent.press(screen.getByLabelText('Choose icon giftcard'));
-      await fireEvent.press(screen.getByText('Save'));
+      await pressSave(navigation.setOptions);
 
       expect(createImplicitHoldingMock).toHaveBeenCalledTimes(1);
       expect(createImplicitHoldingMock).toHaveBeenCalledWith(
@@ -5101,8 +5109,8 @@ describe('HoldingFormScreen implicit create', () => {
       await fill(screen, 'Cost', '5000');
       await fireEvent.press(screen.getByLabelText('Change Icon'));
       await fireEvent.press(screen.getByLabelText('Choose icon giftcard'));
-      await fireEvent.press(screen.getByText('Save'));
-      await fireEvent.press(screen.getByText('Save'));
+      await pressSave(navigation.setOptions);
+      await pressSave(navigation.setOptions);
 
       expect(createImplicitHoldingMock).toHaveBeenCalledTimes(2);
       expect(createImplicitHoldingMock).toHaveBeenLastCalledWith(
@@ -5115,9 +5123,9 @@ describe('HoldingFormScreen implicit create', () => {
     });
 
     it('blocks a nameless Save, scrolling to the name', async () => {
-      const screen = await renderImplicit({ implicitKind: 'property' });
+      await renderImplicit({ implicitKind: 'property' });
 
-      await fireEvent.press(screen.getByText('Save'));
+      await pressSave(navigation.setOptions);
 
       expect(createImplicitHoldingMock).not.toHaveBeenCalled();
       expect(scrollToField).toHaveBeenCalled();
@@ -5130,7 +5138,7 @@ describe('HoldingFormScreen implicit create', () => {
 
       await fireEvent(screen.getByTestId('screen-scroll-view'), 'contentSizeChange', 0, 640);
       (scrollToField as jest.Mock).mockClear();
-      await fireEvent.press(screen.getByText('Save'));
+      await pressSave(navigation.setOptions);
 
       expect(scrollToField).toHaveBeenCalledTimes(1);
       const [scrollableRef, fieldRef, geometry, onSettled] = (scrollToField as jest.Mock).mock
@@ -5148,7 +5156,7 @@ describe('HoldingFormScreen implicit create', () => {
 
       await fill(screen, 'Name', 'Apartment');
       await fill(screen, 'Cost', '5000');
-      await fireEvent.press(screen.getByText('Save'));
+      await pressSave(navigation.setOptions);
 
       expect(alertSpy).toHaveBeenCalledTimes(1);
       expect(navigation.goBack).not.toHaveBeenCalled();
@@ -5173,7 +5181,7 @@ describe('HoldingFormScreen implicit create', () => {
       const screen = await renderImplicit({ implicitKind: 'property', draft });
 
       await fill(screen, 'Cost', '5000');
-      await fireEvent.press(screen.getByText('Save'));
+      await pressSave(navigation.setOptions);
 
       expect(createImplicitHoldingMock).toHaveBeenCalledWith(
         'property',
@@ -5191,7 +5199,7 @@ describe('HoldingFormScreen implicit create', () => {
       expect(screen.getByLabelText('Icon house.fill')).toBeTruthy();
 
       await fill(screen, 'Cost', '5000');
-      await fireEvent.press(screen.getByText('Save'));
+      await pressSave(navigation.setOptions);
 
       expect(createImplicitHoldingMock).toHaveBeenCalledWith(
         'property',
@@ -5339,7 +5347,7 @@ describe('HoldingFormScreen implicit create', () => {
       await pickDate(screen, 'Start date', 2026, 1, 1);
       await fill(screen, 'Annual rate', '12');
       await fill(screen, 'Term', '24');
-      await fireEvent.press(screen.getByText('Save'));
+      await pressSave(navigation.setOptions);
 
       expect(createImplicitHoldingMock).toHaveBeenCalledWith(
         'debt',
