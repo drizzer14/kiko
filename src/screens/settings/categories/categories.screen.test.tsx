@@ -291,7 +291,7 @@ describe('CategoriesScreen', () => {
       expect(queryByText(/will be deleted too/)).toBeNull();
     });
 
-    it('still opens the confirm when the rule count cannot be read', async () => {
+    it('still says the rules go too when the rule count cannot be read', async () => {
       mockCategories = [GROCERIES];
       mockCountRules.mockRejectedValue(new Error('read failed'));
 
@@ -300,7 +300,22 @@ describe('CategoriesScreen', () => {
       await holdCard();
 
       expect(getByText('Delete "Groceries"')).toBeTruthy();
+      expect(getByText('Its rules will be deleted too.')).toBeTruthy();
       expect(getByTestId(DELETE_CONFIRM_TEST_ID)).toBeTruthy();
+    });
+
+    it('gives the card caption and the confirm the same count for a stored key of another case', async () => {
+      mockCategories = [GROCERIES];
+      mockRules = [ruleOf('r1', 'groceries'), ruleOf('r2', 'GROCERIES')];
+      mockCountRules.mockResolvedValue(2);
+
+      const { getByText, getByTestId } = await renderScreen();
+
+      expect(getByTestId('category-card')).toHaveTextContent(/2 rules/);
+
+      await holdCard();
+
+      expect(getByText('Its 2 rules will be deleted too.')).toBeTruthy();
     });
 
     it('deletes the category only when the confirm is pressed', async () => {
@@ -359,7 +374,7 @@ describe('CategoriesScreen', () => {
       expect(mockReorder).not.toHaveBeenCalled();
     });
 
-    it('allows a drag only once the fresh read applied and more than one category exists', async () => {
+    it('allows a drag only once the fresh read applied, a lone card included', async () => {
       const fresh = await renderScreen();
 
       expect(fresh.getByTestId('sortable-grid').props.sortEnabled).toBe(true);
@@ -375,7 +390,7 @@ describe('CategoriesScreen', () => {
       mockCategories = [GROCERIES];
       const single = await renderScreen();
 
-      expect(single.getByTestId('sortable-grid').props.sortEnabled).toBe(false);
+      expect(single.getByTestId('sortable-grid').props.sortEnabled).toBe(true);
     });
 
     it('lays the cards out as one column, like the Accounts list', async () => {

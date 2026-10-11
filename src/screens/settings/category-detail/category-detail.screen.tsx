@@ -114,7 +114,7 @@ const CategoryDetailScreen: FC<CategoryDetailScreenProps> = ({ navigation, route
   }, [navigation, displayName, categoryKey, t, theme.colors.textPrimary]);
 
   // A category deleted elsewhere (a restore) leaves nothing to show. Only the fresh read can say
-  // so: a cached one may be a read old and not hold a category that was just created.
+  // so: a cached one may be one read old and not hold a category that was just created.
   useEffect(() => {
     if (isReady && categoriesFresh && category === undefined) {
       navigation.goBack();

@@ -16,6 +16,7 @@ const SOURCE_ROOT = join(__dirname, '..', '..');
 // `t('...')` passed to that prop is a heading key. `sheetTitle` is a sheet
 // title on any component, because SelectField wrappers pass it on.
 const HEADING_PROPS: Record<string, readonly string[]> = {
+  CardContextMenu: ['deleteTitle'],
   ConfirmSheet: ['title'],
   EntityAmountHeader: ['label'],
   LinkedPaymentsSection: ['title'],
@@ -55,6 +56,8 @@ const DYNAMIC_HEADING_KEYS: Record<string, readonly string[]> = {
 // A heading slot inside a component that renders its own prop there: the keys
 // are checked at that component's call sites through HEADING_PROPS instead.
 const FORWARDED_HEADING_SITES: Record<string, `${string}.${string}`> = {
+  'design-system/components/card-context-menu/card-context-menu.component.tsx#deleteTitle':
+    'CardContextMenu.deleteTitle',
   'design-system/components/confirm-sheet/confirm-sheet.component.tsx#title': 'ConfirmSheet.title',
   'design-system/components/currency-field/currency-field.component.tsx#sheetTitle':
     'CurrencyField.sheetTitle',

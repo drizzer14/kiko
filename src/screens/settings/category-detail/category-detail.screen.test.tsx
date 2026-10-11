@@ -315,14 +315,14 @@ describe('CategoryDetailScreen', () => {
   });
 
   describe('deleting a rule', () => {
-    it('asks first, named by the rule, and deletes only that rule once confirmed', async () => {
+    it('asks first, under a title of its own, and deletes only that rule once confirmed', async () => {
       mockRules = [ruleOf('silpo', 'groceries', [{ type: 'nameIs', text: 'Silpo' }])];
 
       const { getByText, getByTestId } = await renderScreen();
 
       await holdCard();
 
-      expect(getByText('Delete "Name is "Silpo""')).toBeTruthy();
+      expect(getByText('Delete Rule')).toBeTruthy();
       expect(mockDeleteRule).not.toHaveBeenCalled();
 
       await fireEvent.press(getByTestId(DELETE_CONFIRM_TEST_ID));
@@ -337,7 +337,7 @@ describe('CategoryDetailScreen', () => {
 
       await holdCard();
 
-      expect(getByText('Delete "This rule can\'t be read"')).toBeTruthy();
+      expect(getByText('Delete Rule')).toBeTruthy();
 
       await fireEvent.press(getByTestId(DELETE_CONFIRM_TEST_ID));
 

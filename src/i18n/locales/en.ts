@@ -185,9 +185,7 @@ export const en = {
     // Categories screen, category form and icon picker UI copy (distinct from the
     // seeded default-category display names above).
     addCategory: 'Add category',
-    changeIconLabel: 'Change {{title}} icon',
     chooseIconHeading: 'Icon',
-    deleteLabel: 'Delete {{title}}',
     dismissIconPicker: 'Dismiss icon picker',
     iconOptionLabel: 'Choose icon {{icon}}',
     namePlaceholder: 'Groceries',
@@ -208,12 +206,14 @@ export const en = {
     deleteRulesNotice_few: 'Its {{count}} rules will be deleted too.',
     deleteRulesNotice_many: 'Its {{count}} rules will be deleted too.',
     deleteRulesNotice_other: 'Its {{count}} rules will be deleted too.',
+    deleteRulesNoticeUnknown: 'Its rules will be deleted too.',
   },
   categoryPage: {
     rulesHeading: 'Rules',
     setAsDefault: 'Set as default',
     quotedName: '"{{name}}"',
     unreadableRule: "This rule can't be read",
+    deleteRuleTitle: 'Delete Rule',
   },
   categoryForm: {
     addTitle: 'New Category',

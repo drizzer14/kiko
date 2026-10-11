@@ -142,7 +142,7 @@ const CategoriesScreen: FC<CategoriesScreenProps> = ({ navigation }) => {
           cached, possibly one-read-old order. */}
       <Sortable.Grid
         data={categories}
-        sortEnabled={categoriesFresh && categories.length > 1}
+        sortEnabled={categoriesFresh}
         activeItemScale={1.03}
         columns={1}
         overDrag="vertical"

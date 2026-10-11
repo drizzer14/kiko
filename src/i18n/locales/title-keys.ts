@@ -31,6 +31,7 @@ export const TITLE_KEYS = new Set([
   'categories.chooseIconHeading',
   'categoryForm.addTitle',
   'categoryForm.editTitle',
+  'categoryPage.deleteRuleTitle',
   'categoryPage.rulesHeading',
   'columnMapping.amountColumnSheetTitle',
   'columnMapping.balanceColumnSheetTitle',

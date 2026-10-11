@@ -39,6 +39,14 @@ describe('categoryDeleteNoticeOf', () => {
     );
   });
 
+  it('still says the rules go too when their count cannot be read', async () => {
+    mockCountRulesOfCategory.mockRejectedValue(new Error('read failed'));
+
+    expect(await categoryDeleteNoticeOf('groceries', i18n.t)).toBe(
+      'Its rules will be deleted too.',
+    );
+  });
+
   describe('under the uk language', () => {
     beforeEach(async () => {
       await act(async () => {
@@ -53,14 +61,22 @@ describe('categoryDeleteNoticeOf', () => {
     });
 
     it.each([
-      [1, 'Його 1 правило теж буде видалено.'],
-      [2, 'Його 2 правила теж буде видалено.'],
-      [5, 'Його 5 правил теж буде видалено.'],
-      [21, 'Його 21 правило теж буде видалено.'],
+      [1, 'Її 1 правило теж буде видалено.'],
+      [2, 'Її 2 правила теж буде видалено.'],
+      [5, 'Її 5 правил теж буде видалено.'],
+      [21, 'Її 21 правило теж буде видалено.'],
     ])('says %i rules in the right plural form', async (count, expected) => {
       mockCountRulesOfCategory.mockResolvedValue(count);
 
       expect(await categoryDeleteNoticeOf('groceries', i18n.t)).toBe(expected);
+    });
+
+    it('still says the rules go too when their count cannot be read', async () => {
+      mockCountRulesOfCategory.mockRejectedValue(new Error('read failed'));
+
+      expect(await categoryDeleteNoticeOf('groceries', i18n.t)).toBe(
+        'Її правила теж буде видалено.',
+      );
     });
   });
 });

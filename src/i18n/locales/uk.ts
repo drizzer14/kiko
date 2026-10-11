@@ -165,9 +165,7 @@ export const uk: typeof en = {
     // Categories screen, category form and icon picker UI copy (distinct from the
     // seeded default-category display names above).
     addCategory: 'Додати категорію',
-    changeIconLabel: 'Змінити іконку {{title}}',
     chooseIconHeading: 'Іконка',
-    deleteLabel: 'Видалити {{title}}',
     dismissIconPicker: 'Закрити вибір іконки',
     iconOptionLabel: 'Обрати іконку {{icon}}',
     namePlaceholder: 'Продукти',
@@ -178,16 +176,18 @@ export const uk: typeof en = {
     rulesCount_other: '{{count}} правила',
     noRules: 'Немає правил',
     default: 'Типова',
-    deleteRulesNotice_one: 'Його {{count}} правило теж буде видалено.',
-    deleteRulesNotice_few: 'Його {{count}} правила теж буде видалено.',
-    deleteRulesNotice_many: 'Його {{count}} правил теж буде видалено.',
-    deleteRulesNotice_other: 'Його {{count}} правила теж буде видалено.',
+    deleteRulesNotice_one: 'Її {{count}} правило теж буде видалено.',
+    deleteRulesNotice_few: 'Її {{count}} правила теж буде видалено.',
+    deleteRulesNotice_many: 'Її {{count}} правил теж буде видалено.',
+    deleteRulesNotice_other: 'Її {{count}} правила теж буде видалено.',
+    deleteRulesNoticeUnknown: 'Її правила теж буде видалено.',
   },
   categoryPage: {
     rulesHeading: 'Правила',
     setAsDefault: 'Зробити типовою',
     quotedName: '«{{name}}»',
     unreadableRule: 'Це правило неможливо прочитати',
+    deleteRuleTitle: 'Видалити правило',
   },
   categoryForm: {
     addTitle: 'Нова категорія',

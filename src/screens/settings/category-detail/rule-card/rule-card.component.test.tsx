@@ -1,6 +1,11 @@
+import { StyleSheet } from 'react-native';
+import {
+  createGestureController,
+  fireGestureHandler,
+  getByGestureTestId,
+} from 'react-native-gesture-handler/jest-utils';
 import { State } from 'react-native-gesture-handler';
 import { act, fireEvent, render } from '@testing-library/react-native';
-import { fireGestureHandler, getByGestureTestId } from 'react-native-gesture-handler/jest-utils';
 import '@kiko/design-system/unistyles';
 import '@kiko/i18n/init';
 import {
@@ -34,14 +39,32 @@ describe('RuleCard', () => {
     expect(getByText(SUMMARY).props.numberOfLines).toBeUndefined();
   });
 
-  it('asks before deleting, named by the line, on a hold', async () => {
+  it('asks before deleting on a hold, under a title that does not repeat the line in quotes', async () => {
     const onDelete = jest.fn();
-    const { getByText } = await renderCard(onDelete);
+    const { getByText, queryByText } = await renderCard(onDelete);
 
     await hold();
 
-    expect(getByText(`Delete "${SUMMARY}"`)).toBeTruthy();
+    expect(getByText('Delete Rule')).toBeTruthy();
+    expect(queryByText(new RegExp(`Delete ".*${SUMMARY}`))).toBeNull();
     expect(onDelete).not.toHaveBeenCalled();
+  });
+
+  it('lifts to ~1.03 while a hold is active, as a card in a plain list does', async () => {
+    const { getByTestId } = await renderCard();
+    const scaleOf = (): number | undefined =>
+      StyleSheet.flatten(getByTestId('card-context-menu').props.style).transform?.[0]?.scale;
+
+    expect(scaleOf()).toBe(1);
+
+    const holdGesture = createGestureController(HOLD_GESTURE_TEST_ID);
+
+    await act(async () => {
+      holdGesture.begin();
+      holdGesture.activate();
+    });
+
+    expect(scaleOf()).toBeCloseTo(1.03);
   });
 
   it('deletes only once the confirm is pressed', async () => {
