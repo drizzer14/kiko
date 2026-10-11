@@ -36,7 +36,7 @@ export type FieldGroupProps = {
   description: string;
   onChangeDescription: (text: string) => void;
   // Fires when the description field loses focus — the A1 category auto-pick
-  // (see `onDescriptionBlur` in the screen). Kept off `onChangeDescription`
+  // (see `onDescriptionBlur` in use-category-pick). Kept off `onChangeDescription`
   // (which stays a bare setter) so the lookup never runs on a keystroke.
   onBlurDescription: () => void;
   descriptionPlaceholder: string;

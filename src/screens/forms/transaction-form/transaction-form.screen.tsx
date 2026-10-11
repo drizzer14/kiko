@@ -119,7 +119,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     split: t('forms.transaction.split'),
   };
   // The header's three candidate titles — resolved once per render and handed
-  // to the module-level helper above so it stays translation-agnostic.
+  // to `headerTitle` (row-labels/) so it stays translation-agnostic.
   const titleLabels = {
     readOnly: t('forms.transaction.title'),
     editing: t('forms.transaction.editTitle'),
