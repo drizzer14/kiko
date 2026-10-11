@@ -3,6 +3,14 @@
 This project uses a Biome-adapted, LLM-guarding quality harness. Every
 check runs through a wrapper in `scripts/checks/` that prints a
 structured failure block on failure and stays silent on success.
+`scripts/checks/security.sh` is a stated exception: it writes the
+dedup-skip notice (so a skip never reads as a fresh scan) and the Class B
+WARNING block (a finding that does not block still has to be seen) to
+stderr with exit 0. So is `scripts/checks/dup.sh`, whose large-file
+WARNING lines (tracked debt that does not block) go to stderr with exit 0.
+The other exceptions (the deep tier's streaming, the hook guards' JSON) are
+listed in kiko-linter's "The wrapper contract" (the JSON ones are `kill-guard.sh` and
+`pre-write-guard.sh`).
 
 **Standing rule: fix the underlying issue. Never weaken a check to get
 green.** No `|| true`. No global auto-suppress. An ignore-list entry
@@ -14,10 +22,10 @@ below).
 | Command | Tool | Threshold | Tier |
 |---|---|---|---|
 | `npm run check:lint` | Biome | any lint/format violation fails (Biome skips only the bad fixtures `rules/fixtures/**/*.bad.*`; a good fixture is format-checked, never linted — see `docs/harness/documented-exceptions.md`) | fast (PostToolUse) |
-| `npm run check:dup` | jscpd | >5% duplicated lines/tokens fails | medium (Stop/SubagentStop) |
+| `npm run check:dup` | jscpd (`scripts/checks/dup.sh`) | >5% duplicated lines/tokens fails. jscpd skips a file over 1000 lines or 100kb without a word, so a second NON-blocking pass (it runs on every call, a dedup skip included) measures each such file alone with the limits raised, plus one combined run of the whole scope, and prints a `WARNING` on stderr (file and percentage; exit code unchanged) for every figure over 5% or one it cannot measure. A scoped run covers only the files it was given. A warning on exit 0 is shown by a hook only when the tier fails for another reason (the tier's whole stderr is shown then); it is tracked debt, not that failure. A person or a manual `check:dup` run is its usual reader. Tracked debt, not an allowlist: it becomes a failure once the sweep track brings every large file, and the combined total, to 5% or less (see `docs/harness/documented-exceptions.md`) | medium (Stop/SubagentStop) |
 | `npm run check:knip` | Knip | any unused file/export/dependency fails | medium |
 | `npm run check:deps` | depcheck + `npm ci --dry-run` + `deps-ranges.js` (exact-pin allowlist) + `npm ls --all` | any unused/missing dep, or broken lockfile, fails; any non-exact-semver spec in dependencies/devDependencies/optionalDependencies/peerDependencies/overrides fails; any `npm ls --all` ELSPROBLEMS (an unsatisfied resolved-tree requirement) fails; a changed dependency block is surfaced for confirmation; a `node_modules/node_modules` link or folder fails before npm ls runs; the fix is `rm node_modules/node_modules` for a link and `npm ci` for a folder, never `rm -r node_modules` | medium |
-| `npm run check:security` | Semgrep (`p/typescript`, `p/react`, `p/secrets`, `rules/semgrep-mobile.yml`, `rules/semgrep-prewrite.yml`) | any Class A (ERROR) finding fails; Class B (WARNING) findings are surfaced, override-eligible, non-blocking; a Semgrep error, timeout, bad exit code, or invalid JSON output also fails (see `security.sh`) | fast |
+| `npm run check:security` | Semgrep (`p/typescript`, `p/react`, `p/secrets`, `rules/semgrep-mobile.yml`, `rules/semgrep-prewrite.yml`) | any Class A (ERROR) finding fails; Class B (WARNING) findings are surfaced, override-eligible, non-blocking; a Semgrep error, timeout, bad exit code, or invalid JSON output also fails (see `security.sh`); every argument is scanned in one call, and a dedup skip says so on stderr | fast |
 | `npm run check:rules` | `scripts/checks/semgrep-rules.sh` — Semgrep (`rules/semgrep-mobile.yml` and `rules/semgrep-prewrite.yml`) against `rules/fixtures/` | for every fixture present: a rule that reports nothing on its positive fixture, misses a line pinned there by an `EXPECT-FINDING` comment, or matches its negative one fails; so does a fixture id with only one half of its pair present, and a scan that proved nothing (no fixtures, a fixture semgrep never opened, a semgrep error, or a semgrep/verifier crash). A rule with no fixture at all is not detected here — the fixture set is the input | medium |
 | (PreToolUse hook) | `scripts/checks/pre-write-guard.sh` + `.js` — Semgrep (`rules/semgrep-prewrite.yml`) plus the Node-checker rules in `pre-write-guard.js`'s own `NODE_RULES` (see that file for the closed rule set) against the proposed post-edit content of an `Edit`/`Write`/`MultiEdit` target | any NEW finding from a Semgrep rule in `rules/semgrep-prewrite.yml` or a Node rule in `pre-write-guard.js`'s `NODE_RULES` denies the write before it lands; a "could not check" failure (Semgrep/Node crash, malformed input) denies too — fail-closed, never bypass | PreToolUse (pre-write) |
 | `npm run check:plist` | plist.sh (`plutil`) | any Info.plist security invariant violation fails; a credential client (a credential header or the api_token parameter) without a Cache-Control: no-store request header fails; so does a localized app-name table (`ios/Kiko/*.lproj/InfoPlist.strings`) missing from the Resources build phase, or a missing DiskSpace required-reason entry in `PrivacyInfo.xcprivacy` while any dependency on check 5's linked list in `scripts/checks/plist.sh` ships (fail-closed; see `plist.sh`) | medium |
@@ -143,7 +151,7 @@ See kiko-linter's "MAIN-CHECKOUT deny" for the full rule and limits.
 The same hook also denies a shell write (`sed -i`, `perl -i`, a `>`/`>>`
 redirect, `tee`, `cp`/`mv` (also `gcp`/`gmv`), a python/node one-liner or stdin heredoc
 script (ruby/perl code — `-e` or a stdin script — is a known limit))
-into `src/`, `__tests__/`, or `rules/` of any worktree of this
+into `src/`, `__tests__/`, `rules/`, or `e2e/` of any worktree of this
 repository, because the pre-write guard sees only Edit/Write/MultiEdit:
 use Edit or Write. Move or rename a file with `git mv` (`git add` a new
 file first), then edit it with Edit/Write. Reads, git itself, and a

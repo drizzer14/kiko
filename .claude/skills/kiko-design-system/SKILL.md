@@ -269,7 +269,7 @@ an entry (date + value) the moment the user approves a new visual.
   setting `headerLargeTitle: true` inline. Device-confirm on an iOS 18
   device, not in the simulator or Jest.
 - **Tips were removed by user ruling** (2026-10-09: "Hints still look bad, let's remove them
-  for now"). There is no `TipCard`, `useTip`, or `accentSubtle` token; do not bring back a
+  for now"). There is no tip card, tip hook, or subtle-accent token; do not bring back a
   first-use tip, or its old look (tinted accent fill, lightbulb glyph, close button), without
   asking the user first. `InfoHint` stays allowed.
 - **EmptyState action is primary + small** (2026-10-08). 34pt tall, 44pt
@@ -672,7 +672,7 @@ new component can land between reviews of this skill:
   (`variant="secondaryTonal"` + `size="small"`, `src/screens/settings/
   categories/`) both build an icon-only control this way, plus
   `fullWidth={false}`, rather than a raw `Pressable` + `SymbolIcon`.
-  (There is no separate `IconButton` primitive; the old one at
+  (There is no separate icon-button primitive; the old one at
   src/design-system/components/icon-button/ was deleted when its only
   consumer went away.)
 
@@ -1260,7 +1260,7 @@ new component can land between reviews of this skill:
   is `sectionHeadingRow` (row, space-between, centred, `minHeight` 44, so
   the touch target sits inside the row's own bounds). A tap navigates to
   `AccountDetail { accountId, name: accountDisplayName(account, t) }`.
-  The fix-5 edit pencil (`accounts-*-edit`, its 44pt `sectionEditRegion`
+  The fix-5 edit pencil (`accounts-*-edit`, its 44pt section edit region
   box) is gone: the account is edited from AccountDetail's Edit item.
 - **Switch** — a toggle that wraps RN's `Switch` with theme track/thumb
   colors. With `label` it renders a labeled row (label left, toggle
@@ -1704,26 +1704,19 @@ where they can drift. The pipeline is:
   `isLightEntityColor` (`entity-tint.ts`, a real WCAG contrast-ratio
   check, not a naive brightness average) picks a white or dark glyph
   tint so the SF Symbol on top stays legible on every palette swatch.
-  `entityCardBackground`/`entityTintBackground` do not exist in the
-  current module — read `entity-tint.ts` directly for the live
-  exported function set (it changes; do not restate it here) rather
-  than assuming either name.
 
 **One hue, several renderings.** An entity has exactly one color, but
 that color is rendered several different ways depending on context —
-a flat translucent tint behind a card, an opaque SF Symbol tint, a
-chart fill. Never introduce a second, parallel way to derive one of
+the icon tile's two-stop gradient, an opaque SF Symbol tint, a
+chart fill (a card itself stays neutral and untinted). Never introduce a second, parallel way to derive one of
 these renderings from a hex, and never add a second hex parser either
 — `entity-tint.ts` owns the one unexported `parseHex`. Extend
 `entity-tint.ts` with a new named function instead, so every
 rendering of an entity's color still traces back to the same
 `resolveEntityColor` call. Read `entity-tint.ts` directly for its
 current exported functions rather than trusting a list restated here
-— a duplicated `parseHex` (and, at one point, a since-removed
-`blendOverWhite` pastel-over-white blend helper) were once added
-under `money-text/` and had to be moved back into `entity-tint.ts`
-for exactly this reason; do not assume either name still exists
-there today.
+— a duplicated `parseHex` was once added under `money-text/` and had to
+be moved back into `entity-tint.ts` for exactly this reason.
 
 ## SF Symbol `tintColor` gotcha
 

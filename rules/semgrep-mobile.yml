@@ -232,6 +232,9 @@ rules:
   # deliberately use the real `TextEncoder` as the byte-for-byte oracle the
   # hand-rolled encoder is tested against — banning it there would remove the
   # only independent check that `utf8Encode` is standard-conforming.
+  # `paths.include` is `src/**` because only the app bundle runs on Hermes: `e2e/`
+  # scripts run on Node, where both globals work. The include is path-prefixed, so
+  # the fixture pair is NESTED under `rules/fixtures/<rule-id>/src/data-transfer/`.
   - id: kiko-no-textdecoder-textencoder
     languages: [typescript]
     severity: ERROR
@@ -241,6 +244,8 @@ rules:
       produced unparseable output). Use `utf8Encode`/`utf8Decode`
       (`src/data-transfer/utf8`) instead.
     paths:
+      include:
+        - "src/**"
       exclude:
         - "*.test.ts"
         - "*.test.tsx"
@@ -398,3 +403,21 @@ rules:
       fix: "grep -q 'x' <<<\"$value\"  (or case \"$value\" in *x*) ...)"
       skill: "kiko-linter › Never pipe into grep -q or head under pipefail"
     pattern-regex: '(?<!\|)\|(?!\|)[ \t]*(?:\\?\n[ \t]*)?(?:(?:e|f)?grep(?:(?:[ \t]+(?:''[^'']*''|"[^"]*"|[^\s|;&)<>''"]+))*?[ \t]+(?:-[a-zA-Z]*[qm][a-zA-Z0-9]*|--quiet|--silent|--max-count)(?=[\s=;&|)<>]|$))|head\b)'
+  # Scans .sh, which the pre-write guard never reads. Why `generic` and the limits:
+  # kiko-linter > Never use the print flag of node in a shell script.
+  - id: kiko-no-node-print-in-shell
+    languages: [generic]
+    paths:
+      include:
+        - "*.sh"
+    severity: ERROR
+    message: >
+      `node -p` / `node --print` prints its result through console.log, which wraps a number in
+      ANSI color codes when FORCE_COLOR is set (background Claude sessions export FORCE_COLOR=3).
+      The value then fails a numeric test or reads as a different string: a percentage above 10
+      compared as a string, a NaN timestamp. Print with `node -e 'process.stdout.write(String(x))'`,
+      which no color setting touches, and test that the value is a number before using it.
+    metadata:
+      fix: "node -e 'process.stdout.write(String(expression))'"
+      skill: "kiko-linter › Never use the print flag of node in a shell script"
+    pattern-regex: '\bnode(?:[ \t]+-[^\s]*)*[ \t]+(?:-[a-zA-Z]*p[a-zA-Z]*|--print)(?=[\s="'']|$)'

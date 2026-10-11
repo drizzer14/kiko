@@ -9,9 +9,9 @@ type FieldLabelProps = ComponentProps<typeof FieldLabel>;
 // hands every render's props to `record`, so `isLabelInvalid` can tell which
 // labels turned red.
 export const fieldLabelSpyModule = (record: (props: FieldLabelProps) => void) => {
-  const { default: RealFieldLabel } = jest.requireActual<{ default: typeof FieldLabel }>(
+  const { default: RealFieldLabel } = jest.requireActual(
     '@kiko/design-system/components/field-label',
-  );
+  ) as { default: typeof FieldLabel };
 
   return {
     __esModule: true,
