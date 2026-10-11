@@ -1415,9 +1415,9 @@ new component can land between reviews of this skill:
   the date heading drawn above an `EntryCard`. Read
   `entry-date-header.props.d.ts` for the props.
 - **ExpandToggle** (`src/design-system/components/expand-toggle/`) — the
-  shared "Show all" / "Show less" link with a chevron. Its chevron testID is
-  derived from the toggle testID, see the component and
-  `expand-toggle.props.d.ts`. Never inline a second Show all / Show less
+  shared "Show all" / "Show less" link with a chevron. `testID` is required
+  (`expand-toggle.props.d.ts`); the chevron takes `${testID}-chevron`. Its
+  copy reads `components.expandToggle.*` (en, uk). Never inline a second Show all / Show less
   copy.
 - Characterization first: before extracting a shared component, pin the
   current rendered tree with `layoutOf` BEFORE moving any JSX, and keep that
