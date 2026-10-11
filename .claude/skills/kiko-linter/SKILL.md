@@ -886,7 +886,7 @@ reasoning.
 - A `pattern-inside` that opens with `...` before a common statement
   (`...` / `const $F = $INITIALIZER;` / `...`) is quadratic on a large
   file: each `const` opens a range on both sides. It ran 63 s on
-  `transaction-form.screen.tsx` (2818 lines) and the guard denied
+  the transaction-form screen (then one 2818-line file, since split) and the guard denied
   "could not check" on every write to it. Even the rarer
   `async function $F` arm with a leading `...` cost 0.15-0.26 s of rule
   match time per large file, and under `check:security`'s full-tree
@@ -2204,7 +2204,7 @@ mechanizable (see harness-workflow's "Classify every finding").
    time:
 
    ```bash
-   F=$PWD/src/screens/forms/transaction-form/transaction-form.screen.tsx
+   F=$PWD/src/screens/forms/transaction-form/transaction-form.screen.tsx # the screen is now split; pick any large file if it is small
    S=<your scratchpad>
    node -e 'const fs=require("fs");const f=process.argv[1];const line=fs.readFileSync(f,"utf8").split("\n").find(l=>/^\s*const \w+ = /.test(l));process.stdout.write(JSON.stringify({tool_name:"Edit",tool_input:{file_path:f,old_string:line,new_string:line}}))' "$F" > "$S/b.json"
    for i in $(seq 20); do CLAUDE_PROJECT_DIR=$PWD /usr/bin/time -p bash scripts/checks/pre-write-guard.sh < "$S/b.json" 2>&1 >/dev/null | awk '/^real/{print $2}'; done | sort -n | sed -n '10p;19p'
