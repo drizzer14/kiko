@@ -3,10 +3,10 @@ import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 
-// kiko-no-textdecoder-textencoder's message says the ban is "under src/", but
-// the rule once had no `paths.include`, so a single-file scan of an e2e/ file
-// (the fast-tier hook's own shape) failed Class A. This runs the REAL semgrep
-// binary against the REAL rules file on a throwaway project tree.
+// kiko-no-textdecoder-textencoder's message says the ban is "under src/", so its `paths.include`
+// must keep a single-file scan of an e2e/ file (the fast-tier hook's own shape) from failing
+// Class A. This runs the REAL semgrep binary against the REAL rules file on a throwaway project
+// tree.
 const MOBILE_RULES = join(__dirname, '../rules/semgrep-mobile.yml');
 const RULE_ID_SUFFIX = 'kiko-no-textdecoder-textencoder';
 const SOURCE = 'export const decoded = new TextDecoder().decode(new Uint8Array());\n';

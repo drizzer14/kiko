@@ -51,8 +51,9 @@ for f in "${touched[@]+"${touched[@]}"}"; do
   fi
 done
 
-# `changed` keeps a deleted path (it can break an import, so knip and tsc must still run); the
-# existence test, not `--diff-filter=d`, also drops a hand-removed path and a rename's old path.
+# One list, `changed`, must keep a deleted path: it is the trigger (a deletion can break an
+# import, so knip and tsc must still run). The existence test is therefore applied afterwards,
+# to build `present`, the list handed to the wrappers that read file contents.
 present=()
 for f in "${changed[@]+"${changed[@]}"}"; do
   [ -f "$f" ] && present+=("$f")
@@ -78,9 +79,10 @@ fi
 # session runs the medium tier one time per finished subagent, plus one
 # more time for the coordinator, and parallel subagents fire near-together.
 # Serialize the tier per worktree so those runs do not launch concurrent
-# knip/deps/jscpd on the same tree. Each sub-check below skips on its own
-# when its inputs are unchanged, so a repeat run with no change is
-# near-instant. On a lock timeout, proceed unlocked rather than hang the hook.
+# knip/deps/jscpd on the same tree. Most sub-checks below skip on their own
+# when their inputs are unchanged; dup.sh's large-file pass never skips (it
+# lists files with jscpd twice, about 1 s per Stop, more for a changed file
+# over 1000 lines). On a lock timeout, proceed unlocked rather than hang the hook.
 state="$(harness_state_dir "$ROOT")"
 mkdir -p "$state" 2>/dev/null || true
 lock="$state/medium.lock"

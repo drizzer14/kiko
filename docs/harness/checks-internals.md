@@ -171,8 +171,9 @@ dedup always runs in full.
   100kb limit, measured alone, plus one combined run) is never deduped: the
   fingerprint covers only the blocking run, and a matching fingerprint skips
   only that run. The pass runs on every call, so a repeated scoped run prints
-  the same warning again (a Stop hook's stderr is read by nobody, so a skip
-  that hid the warning would hide it for good). A scope with no large file
+  the same warning again (a Stop hook shows a warning on exit 0 only when
+  the tier fails for another reason, so a skip that hid the warning would hide
+  it for good). A scope with no large file
   pays only the two `--debug` file listings (about 1 s on the whole repo).
 - Dedups a single file or a manual file list, never the Stop tier:
   `check:security` (`medium.sh` does not call `security.sh`; the fast tier

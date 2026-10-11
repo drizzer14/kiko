@@ -155,8 +155,9 @@ describe('medium.sh changed-file list', () => {
 
   it('hands a renamed file to the wrappers under its new path only', () => {
     const project = buildProject({ 'src/old.ts': 'export const moved = 1;\n' });
-    // With rename detection off git lists the old path as deleted, the case only the
-    // existence test covers.
+    // With rename detection off git lists the old path as deleted. medium.sh keeps it in the
+    // trigger list (a deletion can break an import) and applies the existence test afterwards,
+    // so the wrappers that read file contents get the new path only.
     git(project.root, 'config', 'diff.renames', 'false');
     git(project.root, 'mv', 'src/old.ts', 'src/new.ts');
 

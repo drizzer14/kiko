@@ -34,9 +34,16 @@ Rules:
 - A running gate can be paused with `kill -STOP` on its own pids (the
   stryker parent plus its `child-process-proxy-worker` children) and
   resumed with `kill -CONT` (verified 2026-10-10/11: kill-guard allows it
-  for own pids). Cost: at most one extra timeout per worker at the pause
-  point. Use it for battery mode or a simulator session instead of
-  killing the run.
+  for own pids). A pause is NOT only a time cost: after the resume,
+  Stryker's wall-clock timer fires for each in-flight mutant, so each is
+  recorded as Timeout; `scripts/checks/mutation-score.js` counts Timeout
+  as detected, and `stryker.conf.json` `"incremental": true` keeps it in
+  `reports/stryker-incremental.json`. A pause can therefore credit up to
+  one in-flight mutant per worker and turn a FAIL into a PASS. Before
+  trusting a paused run, re-check its Timeout mutants, or delete the
+  incremental report and re-run. When the score is near the floor, let
+  the run finish or re-run it instead of pausing. Use a pause for battery
+  mode or a simulator session only when the score has headroom.
 - The coordinator who runs `make deep` logs the result per harness-workflow's "Run log"
   (`--gate deep --verdict pass|fail|timeout` on the run id the BATCH READY names).
 - Run check:deep / check:mutation only through the wrapper
@@ -244,12 +251,11 @@ runs (kiko-linter "WAIT-LOOP deny"); a `ps -p <pid>` or `kill -0 <pid>` wait
 stays allowed. At most ONE jest-heavy agent per track; Semgrep or jest
 timeouts at high load are environment, not code: re-run at low load,
 never raise a timeout. See memory `check-security-timeout-under-load`.
-A Semgrep timeout at high load is environment: re-run at low load (a
-`check:all` on 2026-10-11 failed `check:security` on a Timeout at load ~33).
 
-Known limit: the macOS load average counts disk waits, so `wait-load.sh`
-can block for nothing (2026-10-11: load5 31 with idle CPU blocked agents
-35+ min). Workaround: check real CPU use (`top -l 2`, idle column) and
-pass a higher threshold, or skip the wait when the coordinator says so.
+Known limit: load5 can stay high while the CPU is idle (it lags real CPU
+use), so `wait-load.sh` can block for nothing (2026-10-11: load5 31 with
+idle CPU blocked agents 35+ min). Workaround: check real CPU use
+(`top -l 2`, idle column) and pass a higher threshold, or skip the wait
+when the coordinator says so.
 
 Background Claude sessions export FORCE_COLOR=3; run checks as `env -u FORCE_COLOR <command>`.

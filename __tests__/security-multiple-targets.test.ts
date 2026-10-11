@@ -11,12 +11,11 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { type SpawnSyncReturns, spawnSync } from 'node:child_process';
 
-// scripts/checks/security.sh once read only its first argument, so a call
-// with several files scanned the first and passed the rest unseen; its
-// failure block was empty when Semgrep (run with --quiet) failed with the
-// reason only in its JSON; and a dedup skip exited 0 silently, which read as a
-// fresh scan. A stub `semgrep` first on PATH stands in for the binary: it
-// records every invocation's arguments and answers from the files it is given.
+// Invariants of scripts/checks/security.sh: a call with several files scans every one of them;
+// its failure block names the reason even when Semgrep (run with --quiet) puts it only in its
+// JSON; and a dedup skip says so, so an exit 0 never reads as a fresh scan. A stub `semgrep`
+// first on PATH stands in for the binary: it records every invocation's arguments and answers
+// from the files it is given.
 const SCRIPT = join(__dirname, '../scripts/checks/security.sh');
 const REPOSITORY_ROOT = join(__dirname, '..');
 

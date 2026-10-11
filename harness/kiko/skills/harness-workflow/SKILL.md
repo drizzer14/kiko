@@ -28,20 +28,20 @@ Rules:
   SendMessage, which lands in the receiving session's inbox. A session NEVER messages another
   session through Orca (no `orca orchestration send/ask/reply`, no `orca terminal send` into a
   session someone types in): Orca types it into the terminal input and interrupts the user's
-  typing (seen on the user's other laptop, where Claude had to block them). `orca terminal send`
-  is only for starting a fresh session, its first brief pointer, and slash commands
-  (`/reload-plugins`, `/clear`) sent by the coordinator.
+  typing. `orca terminal send` is only for starting a fresh session, its first brief pointer,
+  and slash commands (`/reload-plugins`, `/clear`); only the coordinator sends a slash command
+  into another session.
 - Do it yourself first. Before you hand the user a command or a click, check whether your own
-  tools can do it (Bash, `orca terminal send` for a slash command in another session, an agent
-  dispatch, a file edit). If they can, do it and report the result. Hand the user only what
+  tools can do it (Bash, an agent dispatch, a file edit; the coordinator also has `orca terminal
+  send` for a slash command in another session). If they can, do it and report the result. Hand the user only what
   truly needs them: slash commands in the user's OWN session, GUI-only steps (App Store
   Connect, Device Hub poses, the physical device), entering the user's secrets, or a step a hook
   or the permission system denied (report it, never bypass). This does not lift the user's
   explicit gates (pushes and publishes that need the user's OK, destructive or hard-to-reverse
   actions). Example: after a merge that bumps the kiko plugin, the coordinator runs
   `claude plugin update kiko@kiko-marketplace` itself from the main checkout and sends
-  `/reload-plugins` to every Orca session (read each for "Reloaded:"); only the user's own
-  session reload is the user's step.
+  `/reload-plugins` to every Orca session except the user's own (read each for "Reloaded:");
+  only the user's own session reload is the user's step.
 - Every dispatch names an expected duration. When that time passes with no report,
   the orchestrator checks the agent itself (its output so far, its worktree state) —
   it does not keep waiting silently. The coordinator is not the watchdog for role
@@ -427,8 +427,8 @@ that reads the handoff file.
   change to an agent or skill is live only after: bump the
   `plugin.json` version, the coordinator runs
   `claude plugin update kiko@kiko-marketplace` from the main checkout,
-  then `/reload-plugins` goes to every Orca session (the user reloads
-  their own session).
+  then the coordinator sends `/reload-plugins` to every Orca session
+  except the user's own (the user reloads their own session).
 - Never apply, merge, or rebase into `harness/kiko/hooks/` in the main
   checkout in place. Build the new file in scratch, run `bash -n`, grep
   it for conflict markers, then install it with one `mv`.
@@ -514,7 +514,7 @@ session's own changed files (`scripts/checks/dup.sh <changed files>`)
 — the project-wide `npm run check:dup` (no args, scans the whole
 repo) can be green while this scoped run fails, or vice versa. Run the
 same scoped command yourself before reporting done:
-`bash scripts/checks/dup.sh <changed files>` (space-separated paths;
+`bash scripts/checks/dup.sh <changed files still on disk>` (space-separated paths;
 this is the same wrapper `check:dup` calls, `scripts/checks/dup.sh`,
 which accepts file args and falls back to the whole repo with none).
 Each touched test file must also pass the check alone, not only as

@@ -54,8 +54,11 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   its own exception: its large-file `WARNING` lines (see "`check:dup`
   measures the files jscpd skips for size" below), because a non-blocking
   measurement of tracked debt still has to be seen. A hook that exits 0
-  does not feed stderr back to the agent, so these are for a human or a
-  manual `check:security`/`check:dup` run, not a hook signal.
+  does not feed its stderr back to the agent, unless a later check in the
+  same tier fails: the tier's whole stderr is then shown, so a `dup.sh`
+  WARNING or a `security.sh` SKIPPED notice can appear beside an unrelated
+  failure. It is tracked debt, not that failure; otherwise these are for a
+  human or a manual `check:security`/`check:dup` run.
 
   Another exception, of a different shape: `scripts/checks/kill-guard.sh`
   (+ its sibling `scripts/checks/kill-guard.js`) is a `PreToolUse` hook on
@@ -69,7 +72,9 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   call by design, and skipping one because "nothing changed" would mean
   skipping the one call the guard exists to catch. See CLAUDE.md's
   "Automatic wiring" and `harness/kiko/hooks/hooks.json`'s `PreToolUse`
-  entry for the wiring, and `kill-guard.js` for the tokenizer.
+  entry for the wiring, and `kill-guard.js` for the tokenizer. The other
+  hook guard, `pre-write-guard.sh`, prints the same deny JSON on stdout but
+  exits 2; its paragraph below starts "Another exception, of yet another shape".
 
   The same tokenizer (user-approved; it binds the user's own sessions
   too) also denies a `git stash` subcommand in command position — `git`
@@ -1059,8 +1064,8 @@ second, NON-blocking pass:
 - One more run measures the WHOLE scope together with the limits raised, because a clone between a
   large file and another file is invisible to the alone runs (two 1100-line copies of one file
   show 0% alone and about 50% together). It runs only when the scope holds a size-skipped file and
-  more than one file, so a scope with no large file pays nothing and a one-file scope does not
-  repeat its alone figure. Its total over the threshold prints one `WARNING` naming the figure.
+  more than one file, so a scope with no large file runs no combined run and a one-file scope does
+  not repeat its alone figure. The pass itself still costs the two file listings (about 1 s). Its total over the threshold prints one `WARNING` naming the figure.
   Baseline on 2026-10-11: 7.33% of lines combined, against 3.24% for the blocking run.
 - A file over the threshold read from `.jscpd.json`, a file jscpd fails on, a file with no
   figure, a combined total over the threshold, a failed file listing, and a failed `mktemp` each
@@ -1484,7 +1489,7 @@ of other text in its comment), and the same `paths.exclude` scope (`__tests__/**
   either): 0 hits in the tree, nothing to sweep. The colon is the only key, so three false
   positives are known and pinned in `.bad.ts` (prose such as "the question was: …", a URL path
   segment `…/was:thing`, a JSDoc example holding `{ was: 1 }`); reword such a comment. Its only
-  hits are the seven pins in `.bad.ts`. A scan of the whole repo hits the 3 per-rule timeouts on
+  hits are the `was:` pins in the bad fixture. A scan of the whole repo hits the 3 per-rule timeouts on
   `holding-form.screen.test.tsx` under load; scan that file alone to read its hits.
 - `it replaces`: 2 of the 6 hits were a behavior description ("while
   locked it replaces the whole app with a prompt"); the other 4 named the
@@ -2465,10 +2470,11 @@ guard itself (a session that changed nothing must stay silent).
 `changed` list comes from `git diff --name-only HEAD`, which lists a deleted file. It keeps
 that path for the trigger (a deleted file can break an import elsewhere, so knip and tsc must
 run), and builds a second list, `present` (an `-f` test per path), for `dup.sh` and
-`override-guard.sh`. Before this, jscpd failed with `ENOENT lstat`, `dup.sh` printed its
-"duplicated code above the configured threshold" block, and the dedup (which needs every path to
-be a file) was off for the run. An existence test, not `--diff-filter=d`, because it also covers
-a path removed by hand and a rename with `diff.renames` off. `guard-replay.js` plans its own file
+`override-guard.sh`. The invariant: a path that is not on disk never reaches jscpd (it fails with
+`ENOENT lstat`, `dup.sh` would print its "duplicated code above the configured threshold" block,
+and the dedup, which needs every path to be a file, would be off for the run). The existence test
+runs after `changed` is built because `changed` must keep the deleted path for the trigger; a
+`--diff-filter=d` on the one list would drop the trigger too. `guard-replay.js` plans its own file
 set from git history and does not read the list. `dup.sh` itself fails closed on a path argument
 that is not on disk, naming the path (exit 2, "does not exist"), and never starts jscpd.
 `__tests__/medium-deleted-files.test.ts` pins both.
