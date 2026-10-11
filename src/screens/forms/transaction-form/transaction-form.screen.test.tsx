@@ -11,7 +11,6 @@ import { isLabelInvalid } from '@kiko/test-support/field-label-spy';
 import type { TransactionFormParams } from '@kiko/navigation/types';
 import { defaultHoldingSymbol } from '@kiko/holdings/entity-symbols';
 import { makeFocusNavigation } from '@kiko/test-support/focus-navigation';
-import { pressSave, saveItem } from '@kiko/test-support/form-header-items';
 import { isLedgerlessHoldingType } from '@kiko/holdings/holding-descriptor';
 import { scrollToField, useHeaderInset } from '@kiko/design-system/scroll-to-field';
 import { glyphNamesWithin, glyphTintsWithin } from '@kiko/test-support/glyphs-within';
@@ -19,6 +18,7 @@ import { resolveCreateHoldingTarget } from '@kiko/screens/forms/create-holding-t
 // Prefixed `mock*` so Jest's hoisted mock factory may reference it. Overrides
 // ONLY `useAnimatedRef` — see the module for the full rationale.
 import { mockReanimatedScrollToEnd } from '@kiko/test-support/mock-reanimated-scroll-to-end';
+import { expectNavBarSaveOnly, pressSave, saveItem } from '@kiko/test-support/form-header-items';
 import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support/navigation-props';
 
 import TransactionFormScreen from './transaction-form.screen';
@@ -621,13 +621,7 @@ describe('TransactionFormScreen — add mode', () => {
     const utils = await renderAdd();
     await pressSave(navigation.setOptions);
 
-    expect(saveItem(navigation.setOptions)).toMatchObject({
-      type: 'button',
-      label: 'Save',
-      variant: 'prominent',
-    });
-    expect(utils.queryByText('Save')).toBeNull();
-    expect(utils.queryByTestId('screen-footer')).toBeNull();
+    expectNavBarSaveOnly(navigation.setOptions, utils);
   });
 
   it('writes the picked category onto the row even with a blank description', async () => {

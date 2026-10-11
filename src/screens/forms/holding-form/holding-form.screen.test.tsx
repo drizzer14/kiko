@@ -20,12 +20,12 @@ import type { Metal } from '@kiko/holdings/holding-metadata';
 import { fieldSuffix } from '@kiko/test-support/field-suffix';
 import { defaultHoldingColor } from '@kiko/holdings/entity-colors';
 import { isLabelInvalid } from '@kiko/test-support/field-label-spy';
-import { pressSave, saveItem } from '@kiko/test-support/form-header-items';
 import { refreshBondRegisterIfStale } from '@kiko/bonds/bond-register-repo';
 import { type HoldingType, holdingTypes } from '@kiko/holdings/holding-type';
 import { scrollToField, useHeaderInset } from '@kiko/design-system/scroll-to-field';
 import { spyOnModalAnimationPerTest } from '@kiko/test-support/modal-animation-spy';
 import { glyphNamesWithin, glyphTintsWithin } from '@kiko/test-support/glyphs-within';
+import { expectNavBarSaveOnly, pressSave, saveItem } from '@kiko/test-support/form-header-items';
 import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support/navigation-props';
 
 import HoldingFormScreen from './holding-form.screen';
@@ -364,11 +364,7 @@ describe('HoldingFormScreen term deposit', () => {
   });
 
   it('offers Save only as the prominent nav-bar item, never as a body button', async () => {
-    const { queryByText, queryByTestId } = await renderScreen();
-
-    expect(saveItem(navigation.setOptions)).toMatchObject({ label: 'Save', variant: 'prominent' });
-    expect(queryByText('Save')).toBeNull();
-    expect(queryByTestId('screen-footer')).toBeNull();
+    expectNavBarSaveOnly(navigation.setOptions, await renderScreen());
   });
 
   it('renders a visible text label above every simple-holding field', async () => {

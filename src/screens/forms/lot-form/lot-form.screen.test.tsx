@@ -8,6 +8,7 @@ import { dayKeyOf } from '@kiko/prices/price-book';
 import { fieldSuffix } from '@kiko/test-support/field-suffix';
 import { SaleExceedsHoldingError } from '@kiko/holdings/lots';
 import { scrollToField, useHeaderInset } from '@kiko/design-system/scroll-to-field';
+import { expectNavBarSaveOnly, pressSave } from '@kiko/test-support/form-header-items';
 import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support/navigation-props';
 
 import LotFormScreen from './lot-form.screen';
@@ -136,13 +137,17 @@ describe('LotFormScreen', () => {
     expect(queryByLabelText('Total cost')).toBeNull();
   });
 
+  it('offers Save only as the prominent nav-bar item, never as a body button', async () => {
+    expectNavBarSaveOnly(navigation.setOptions, await renderScreen());
+  });
+
   it('adds a buy lot and navigates back', async () => {
     const utils = await renderScreen();
 
     await fireEvent.changeText(utils.getByLabelText('Quantity'), '5');
     await fireEvent.changeText(utils.getByLabelText('Total cost'), '250000');
     await pickDate(utils, 2025, 2, 10);
-    await fireEvent.press(utils.getByText('Save lot'));
+    await pressSave(navigation.setOptions);
 
     expect(changeLotsMock).toHaveBeenCalledWith('h-1', {
       kind: 'add',
@@ -160,7 +165,7 @@ describe('LotFormScreen', () => {
 
     await fireEvent.changeText(utils.getByLabelText('Quantity'), '30');
     await fireEvent.changeText(utils.getByLabelText('Total cost'), '0');
-    await fireEvent.press(utils.getByText('Save lot'));
+    await pressSave(navigation.setOptions);
 
     expect(changeLotsMock).toHaveBeenCalledWith('h-1', {
       kind: 'add',
@@ -172,7 +177,7 @@ describe('LotFormScreen', () => {
     const utils = await renderScreen();
 
     await fireEvent.changeText(utils.getByLabelText('Quantity'), '5');
-    await fireEvent.press(utils.getByText('Save lot'));
+    await pressSave(navigation.setOptions);
 
     expect(utils.getByText('Enter a total cost of 0 or more.')).toBeTruthy();
     expect(changeLotsMock).not.toHaveBeenCalled();
@@ -182,7 +187,7 @@ describe('LotFormScreen', () => {
   it('blocks save and shows an error for an empty quantity', async () => {
     const utils = await renderScreen();
 
-    await fireEvent.press(utils.getByText('Save lot'));
+    await pressSave(navigation.setOptions);
 
     expect(utils.getByText('Enter a quantity greater than 0.')).toBeTruthy();
     expect(changeLotsMock).not.toHaveBeenCalled();
@@ -193,7 +198,7 @@ describe('LotFormScreen', () => {
     const utils = await renderScreen();
 
     await fireEvent(utils.getByTestId('screen-scroll-view'), 'contentSizeChange', 0, 640);
-    await fireEvent.press(utils.getByText('Save lot'));
+    await pressSave(navigation.setOptions);
 
     expect(scrollToField).toHaveBeenCalledTimes(1);
     const [scrollableRef, fieldRef, geometry, onSettled] = (scrollToField as jest.Mock).mock
@@ -208,12 +213,12 @@ describe('LotFormScreen', () => {
     const scrollToFieldMock = scrollToField as jest.Mock;
     const utils = await renderScreen();
 
-    await fireEvent.press(utils.getByText('Save lot'));
+    await pressSave(navigation.setOptions);
     const [, quantityFieldRef] = scrollToFieldMock.mock.calls[0];
 
     await fireEvent.changeText(utils.getByLabelText('Quantity'), '5');
     scrollToFieldMock.mockClear();
-    await fireEvent.press(utils.getByText('Save lot'));
+    await pressSave(navigation.setOptions);
 
     expect(scrollToFieldMock).toHaveBeenCalledTimes(1);
     const [, costFieldRef] = scrollToFieldMock.mock.calls[0];
@@ -226,7 +231,7 @@ describe('LotFormScreen', () => {
 
     await fireEvent.changeText(utils.getByLabelText('Quantity'), '5');
     await fireEvent.changeText(utils.getByLabelText('Total cost'), '100');
-    await fireEvent.press(utils.getByText('Save lot'));
+    await pressSave(navigation.setOptions);
 
     expect(scrollToField).not.toHaveBeenCalled();
   });
@@ -238,7 +243,7 @@ describe('LotFormScreen', () => {
     await fireEvent.press(utils.getByText('Sell'));
     await fireEvent.changeText(utils.getByLabelText('Quantity'), '4');
     await pickDate(utils, 2025, 6, 1);
-    await fireEvent.press(utils.getByText('Save lot'));
+    await pressSave(navigation.setOptions);
 
     expect(changeLotsMock).toHaveBeenCalledWith('h-1', {
       kind: 'add',
@@ -257,7 +262,7 @@ describe('LotFormScreen', () => {
     await fireEvent.press(utils.getByText('Sell'));
     await fireEvent.changeText(utils.getByLabelText('Quantity'), '11');
     await pickDate(utils, 2025, 5, 1);
-    await fireEvent.press(utils.getByText('Save lot'));
+    await pressSave(navigation.setOptions);
 
     expect(utils.getByText(SELL_EXCEEDS)).toBeTruthy();
     expect(changeLotsMock).not.toHaveBeenCalled();
@@ -282,7 +287,7 @@ describe('LotFormScreen', () => {
     await fireEvent.press(utils.getByText('Sell'));
     await fireEvent.changeText(utils.getByLabelText('Quantity'), '8');
     await pickDate(utils, 2025, 2, 1);
-    await fireEvent.press(utils.getByText('Save lot'));
+    await pressSave(navigation.setOptions);
 
     expect(utils.getByText(SELL_EXCEEDS)).toBeTruthy();
     expect(changeLotsMock).not.toHaveBeenCalled();
@@ -296,7 +301,7 @@ describe('LotFormScreen', () => {
     await fireEvent.press(utils.getByText('Sell'));
     await fireEvent.changeText(utils.getByLabelText('Quantity'), '3.5');
     await pickDate(utils, 2025, 6, 1);
-    await fireEvent.press(utils.getByText('Save lot'));
+    await pressSave(navigation.setOptions);
 
     expect(utils.getByText(SELL_EXCEEDS)).toBeTruthy();
     expect(changeLotsMock).not.toHaveBeenCalled();
@@ -307,7 +312,7 @@ describe('LotFormScreen', () => {
 
     await fireEvent.changeText(utils.getByLabelText('Quantity'), '1');
     await fireEvent.changeText(utils.getByLabelText('Total cost'), '100');
-    await fireEvent.press(utils.getByText('Save lot'));
+    await pressSave(navigation.setOptions);
 
     expect(changeLotsMock).toHaveBeenCalledWith(
       'h-1',
@@ -321,7 +326,7 @@ describe('LotFormScreen', () => {
 
       await fireEvent.changeText(utils.getByLabelText('Quantity'), '1');
       await fireEvent.changeText(utils.getByLabelText('Total cost'), '100');
-      await fireEvent.press(utils.getByText('Save lot'));
+      await pressSave(navigation.setOptions);
     };
 
     // A lot dated before the stored prices needs their history.
@@ -371,7 +376,7 @@ describe('LotFormScreen', () => {
       expect(utils.getByLabelText('Total cost').props.value).toBe('500 000');
 
       await fireEvent.changeText(utils.getByLabelText('Total cost'), '600000');
-      await fireEvent.press(utils.getByText('Save lot'));
+      await pressSave(navigation.setOptions);
 
       expect(changeLotsMock).toHaveBeenCalledWith('h-1', {
         kind: 'edit',
@@ -392,7 +397,7 @@ describe('LotFormScreen', () => {
       expect(utils.getByLabelText('Quantity').props.value).toBe('4');
       expect(utils.queryByLabelText('Total cost')).toBeNull();
 
-      await fireEvent.press(utils.getByText('Save lot'));
+      await pressSave(navigation.setOptions);
 
       expect(changeLotsMock).toHaveBeenCalledWith('h-1', {
         kind: 'edit',
@@ -406,7 +411,7 @@ describe('LotFormScreen', () => {
       const utils = await renderScreen({ holdingId: 'h-1', lotIndex: 0 });
 
       await fireEvent.changeText(utils.getByLabelText('Quantity'), '3');
-      await fireEvent.press(utils.getByText('Save lot'));
+      await pressSave(navigation.setOptions);
 
       expect(
         utils.getByText('A later sale needs this quantity. Change or delete that sale first.'),
@@ -419,7 +424,7 @@ describe('LotFormScreen', () => {
       const utils = await renderScreen({ holdingId: 'h-1', lotIndex: 1 });
 
       await fireEvent.changeText(utils.getByLabelText('Quantity'), '10');
-      await fireEvent.press(utils.getByText('Save lot'));
+      await pressSave(navigation.setOptions);
 
       expect(changeLotsMock).toHaveBeenCalledWith(
         'h-1',

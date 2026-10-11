@@ -1,4 +1,4 @@
-import { pressSave, saveItem } from './form-header-items';
+import { expectNavBarSaveOnly, pressSave, saveItem } from './form-header-items';
 
 describe('form header items test helper', () => {
   it('reads the Save item of the last registration that has the trailing slot', () => {
@@ -47,6 +47,21 @@ describe('form header items test helper', () => {
 
     expect(saveItem(setOptions)).toBeUndefined();
     expect(saveItem(jest.fn())).toBeUndefined();
+  });
+
+  it('passes a body with no Save text and no footer, and fails one that has either', () => {
+    const setOptions = jest.fn();
+    const body = (saveText: unknown, footer: unknown) => ({
+      queryByText: () => saveText,
+      queryByTestId: () => footer,
+    });
+
+    setOptions({ unstable_headerRightItems: () => [{ label: 'Save', variant: 'prominent' }] });
+
+    expectNavBarSaveOnly(setOptions, body(null, null));
+    expect(() => expectNavBarSaveOnly(setOptions, body({}, null))).toThrow();
+    expect(() => expectNavBarSaveOnly(setOptions, body(null, {}))).toThrow();
+    expect(() => expectNavBarSaveOnly(jest.fn(), body(null, null))).toThrow();
   });
 
   it('presses the Save item', async () => {

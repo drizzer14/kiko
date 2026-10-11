@@ -11,11 +11,11 @@ import {
   navigationSpy,
 } from '@kiko/test-support/navigation-props';
 import { darkTheme } from '@kiko/design-system/theme';
-import { pressSave, saveItem } from '@kiko/test-support/form-header-items';
 import type { ConnectReminder } from '@kiko/design-system/connect-reminder';
 import { scrollToField, useHeaderInset } from '@kiko/design-system/scroll-to-field';
 import { spyOnModalAnimationPerTest } from '@kiko/test-support/modal-animation-spy';
 import { accountKindSymbol, genericEntitySymbol } from '@kiko/holdings/entity-symbols';
+import { expectNavBarSaveOnly, pressSave, saveItem } from '@kiko/test-support/form-header-items';
 
 import AccountFormScreen from './account-form.screen';
 
@@ -335,11 +335,9 @@ describe('AccountFormScreen', () => {
   });
 
   it('offers Save only as the prominent nav-bar item, never as a body button', async () => {
-    const { navigation, queryByText, queryByTestId } = await renderForm();
+    const form = await renderForm();
 
-    expect(saveItem(navigation.setOptions)).toMatchObject({ label: 'Save', variant: 'prominent' });
-    expect(queryByText('Save')).toBeNull();
-    expect(queryByTestId('screen-footer')).toBeNull();
+    expectNavBarSaveOnly(form.navigation.setOptions, form);
   });
 
   // The currency sheet's search field lives inside a Modal above this

@@ -26,6 +26,21 @@ export const saveItem = (setOptions: jest.Mock, label = 'Save'): HeaderItem | un
     .find((item) => item.label === label);
 };
 
+/**
+ * A form offers Save only as the prominent nav-bar item: no Save text and no footer in its body.
+ */
+export const expectNavBarSaveOnly = (
+  setOptions: jest.Mock,
+  {
+    queryByText,
+    queryByTestId,
+  }: { queryByText: (text: string) => unknown; queryByTestId: (testId: string) => unknown },
+): void => {
+  expect(saveItem(setOptions)).toMatchObject({ label: 'Save', variant: 'prominent' });
+  expect(queryByText('Save')).toBeNull();
+  expect(queryByTestId('screen-footer')).toBeNull();
+};
+
 export const pressSave = async (setOptions: jest.Mock, label = 'Save'): Promise<void> => {
   const item = saveItem(setOptions, label);
 
