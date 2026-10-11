@@ -28,6 +28,19 @@ done < <(
     | grep -vE '^(ios/|node_modules/)'
 )
 
+# The subset still on disk. `git diff --name-only HEAD` lists a deleted file, and
+# jscpd fails on a path it cannot lstat (ENOENT), which dup.sh reported as duplicated
+# code. `changed` keeps the deleted path: it decides whether the session is silent, and
+# a deleted file can break an import elsewhere, so knip and tsc must still run. An
+# existence test, not `--diff-filter=d`, because it also covers a path git lists after
+# the file was removed by hand, and a rename under any diff.renames setting (a rename
+# with detection off lists the old path as deleted); the guard replay plans its own
+# file set from git history and does not read this list.
+present=()
+for f in "${changed[@]+"${changed[@]}"}"; do
+  [ -f "$f" ] && present+=("$f")
+done
+
 # Harness inputs: the Semgrep rule file, its fixtures, the check wrappers, and
 # every iOS file plist.sh asserts on (the Info.plist, the localized
 # InfoPlist.strings name tables, the privacy manifest, and the Xcode project,
@@ -83,9 +96,9 @@ fi
 # Changed-file scope: jscpd and override-guard on the changed source files only.
 # Guarded because `"${changed[@]}"` on an empty array is an unbound-variable
 # error under `set -u` in bash 3.2.
-if [ ${#changed[@]} -gt 0 ]; then
-  "$DIR/dup.sh" "${changed[@]}" || exit 2
-  "$DIR/override-guard.sh" "${changed[@]}" || exit 2
+if [ ${#present[@]} -gt 0 ]; then
+  "$DIR/dup.sh" "${present[@]}" || exit 2
+  "$DIR/override-guard.sh" "${present[@]}" || exit 2
 fi
 # Compares the working tree with the shipped baseline, so it also catches a
 # commit that edited a shipped migration; it runs before the early exit below

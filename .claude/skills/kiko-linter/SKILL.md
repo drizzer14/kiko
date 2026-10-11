@@ -2448,6 +2448,18 @@ session that edits only that file never triggers the new check on
 adding a new triggering path; extend it, don't bypass the early-exit
 guard itself (a session that changed nothing must stay silent).
 
+**A deleted file triggers the tier but is never handed to a content reader.** `medium.sh`'s
+`changed` list comes from `git diff --name-only HEAD`, which lists a deleted file. It keeps
+that path for the trigger (a deleted file can break an import elsewhere, so knip and tsc must
+run), and builds a second list, `present` (an `-f` test per path), for `dup.sh` and
+`override-guard.sh`. Before this, jscpd failed with `ENOENT lstat`, `dup.sh` printed its
+"duplicated code above the configured threshold" block, and the dedup (which needs every path to
+be a file) was off for the run. An existence test, not `--diff-filter=d`, because it also covers
+a path removed by hand and a rename with `diff.renames` off. `guard-replay.js` plans its own file
+set from git history and does not read the list. `dup.sh` itself fails closed on a path argument
+that is not on disk, naming the path (exit 2, "does not exist"), and never starts jscpd.
+`__tests__/medium-deleted-files.test.ts` pins both.
+
 ## Never pipe into grep -q or head under pipefail
 
 Every script under `scripts/` and `harness/` runs with `set -o pipefail` (or is sourced by one
