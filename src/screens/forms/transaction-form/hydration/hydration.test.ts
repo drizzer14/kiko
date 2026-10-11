@@ -277,6 +277,19 @@ describe('resolveHydration — a template', () => {
       expect(destinationOf('usd')).toMatchObject({ mode: 'exchange', destinationHoldingId: null });
       expect(destinationOf('eur')).toMatchObject({ destinationHoldingId: 'eur' });
     });
+
+    it('clears the Value in with a dropped destination, and keeps it with another', () => {
+      const valueInOf = (destinationHoldingId: string) =>
+        resolveHydration(
+          argsOf({
+            templateDraft: draftOf({ mode: 'exchange', exchange: exchange(destinationHoldingId) }),
+            pageHolding: typed('cash', 'usd'),
+          }),
+        );
+
+      expect(valueInOf('usd')).toMatchObject({ destinationHoldingId: null, valueIn: '' });
+      expect(valueInOf('eur')).toMatchObject({ destinationHoldingId: 'eur', valueIn: '1' });
+    });
   });
 
   it('runs before the default-holding step', () => {

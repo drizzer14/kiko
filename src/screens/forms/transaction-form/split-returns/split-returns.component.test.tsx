@@ -1,5 +1,6 @@
 import type { TFunction } from 'i18next';
 import { render } from '@testing-library/react-native';
+import '@kiko/i18n/init';
 import '@kiko/design-system/unistyles';
 
 import SplitReturns from './split-returns.component';

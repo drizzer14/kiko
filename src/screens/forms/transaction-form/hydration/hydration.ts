@@ -186,29 +186,37 @@ const seedFieldsFromTemplate = (
   draft: TemplateDraft,
   templateName: string | null,
   seated: HoldingRow | undefined,
-): HydrationPlan => ({
-  kind: 'seedFields',
-  amount: storedAmountText(draft.currency, draft.amountMinorUnits),
-  mode: modeFor(draft.mode, seated),
-  description: draft.description,
-  prefilledLabel: null,
-  category: categoryKey(draft.category),
-  time: null,
-  destinationHoldingId: destinationFor(draft, seated),
-  valueIn: storedAmountText(
-    draft.exchange?.destinationCurrency ?? null,
-    draft.exchange?.valueInMinorUnits ?? null,
-  ),
-  returns:
-    draft.returns.length === 0
-      ? emptyReturns()
-      : draft.returns.map((row) => ({
-          holdingId: row.holdingId,
-          amount: storedAmountText(draft.currency, row.amountMinorUnits),
-        })),
-  templateName,
-  clearsHolding: draft.holdingId === null,
-});
+): HydrationPlan => {
+  const destinationHoldingId = destinationFor(draft, seated);
+
+  return {
+    kind: 'seedFields',
+    amount: storedAmountText(draft.currency, draft.amountMinorUnits),
+    mode: modeFor(draft.mode, seated),
+    description: draft.description,
+    prefilledLabel: null,
+    category: categoryKey(draft.category),
+    time: null,
+    destinationHoldingId,
+    // The Value in was typed in the dropped destination's currency, so it goes with it.
+    valueIn:
+      destinationHoldingId !== (draft.exchange?.destinationHoldingId ?? null)
+        ? ''
+        : storedAmountText(
+            draft.exchange?.destinationCurrency ?? null,
+            draft.exchange?.valueInMinorUnits ?? null,
+          ),
+    returns:
+      draft.returns.length === 0
+        ? emptyReturns()
+        : draft.returns.map((row) => ({
+            holdingId: row.holdingId,
+            amount: storedAmountText(draft.currency, row.amountMinorUnits),
+          })),
+    templateName,
+    clearsHolding: draft.holdingId === null,
+  };
+};
 
 // A template with a holding takes the Duplicate's two steps: seat the seam from it (unless it
 // already is), then seed once that holding has loaded. A template with none seeds at once and
