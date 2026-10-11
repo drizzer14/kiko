@@ -168,11 +168,12 @@ dedup always runs in full.
   as the Stop tier passes the session's changed files; a no-argument run
   such as `check:all` always runs): `check:dup`, `check:overrides`.
   `check:dup`'s large-file WARNING pass (files over jscpd's 1000-line or
-  100kb limit, measured alone) is a pure function of the same file contents
-  and `.jscpd.json`, so the fingerprint is unchanged and does not include the
-  pass: a dedup skip prints no warning (the run that recorded the pass
-  already printed it), and a no-argument run never dedups, so it prints every
-  warning each time.
+  100kb limit, measured alone, plus one combined run) is never deduped: the
+  fingerprint covers only the blocking run, and a matching fingerprint skips
+  only that run. The pass runs on every call, so a repeated scoped run prints
+  the same warning again (a Stop hook's stderr is read by nobody, so a skip
+  that hid the warning would hide it for good). A scope with no large file
+  pays only the two `--debug` file listings (about 1 s on the whole repo).
 - Dedups a single file or a manual file list, never the Stop tier:
   `check:security` (`medium.sh` does not call `security.sh`; the fast tier
   passes one file, and a person may pass several). The key names every file

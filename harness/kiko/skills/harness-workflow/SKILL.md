@@ -493,7 +493,9 @@ same scoped command yourself before reporting done:
 this is the same wrapper `check:dup` calls, `scripts/checks/dup.sh`,
 which accepts file args and falls back to the whole repo with none).
 Each touched test file must also pass the check alone, not only as
-part of the whole changed-file set.
+part of the whole changed-file set. A `WARNING` on exit 0 means a large
+file (or the combined large-file run) is over 5%: it does not block, but
+do not grow it.
 
 ## Relay-verify subagent claims
 

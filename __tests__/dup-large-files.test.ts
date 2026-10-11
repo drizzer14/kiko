@@ -1,13 +1,20 @@
+import {
+  chmodSync,
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { type SpawnSyncReturns, spawnSync } from 'node:child_process';
-import { chmodSync, copyFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 
-// jscpd skips a file over 1000 lines or 100kb without a word, so scripts/checks/dup.sh once
-// passed a project whose largest files were never measured. The blocking run is unchanged; a
-// second, non-blocking pass measures every skipped file alone and prints a WARNING per file over
-// the threshold. Each test builds a throwaway project with a copy of dup.sh, the repository's
-// .jscpd.json, and a wrapper around the repository's jscpd binary.
+// Each test builds a throwaway project with a copy of scripts/checks/dup.sh, the repository's
+// .jscpd.json, and a wrapper around the repository's jscpd binary, so the real jscpd measures
+// real files and the wrapper can fail or log the calls the large-file pass makes.
 const REPOSITORY_ROOT = join(__dirname, '..');
 
 const createdPaths: string[] = [];
@@ -43,14 +50,23 @@ function unique(lineCount: number): string {
   ).join('\n');
 }
 
+interface RunOptions {
+  // 'measure-fail' / 'measure-empty': the calls that measure (they carry --silent) exit 3 or
+  // write no report. 'list-fail': the calls that list files (they carry --debug) exit 3.
+  stub?: 'measure-fail' | 'measure-empty' | 'list-fail';
+  environment?: Record<string, string>;
+}
+
 interface Project {
-  run: (targets?: string[], measure?: 'fail' | 'empty') => SpawnSyncReturns<string>;
+  run: (targets?: string[], options?: RunOptions) => SpawnSyncReturns<string>;
   file: (name: string, content: string) => string;
+  invocations: () => string[];
 }
 
 function createProject(): Project {
   const root = createTempDirectory('kiko-dup-large-');
   const stateDirectory = createTempDirectory('kiko-dup-large-state-');
+  const logPath = join(stateDirectory, 'invocations.log');
   mkdirSync(join(root, 'scripts/checks'), { recursive: true });
   copyFileSync(join(REPOSITORY_ROOT, 'scripts/checks/dup.sh'), join(root, 'scripts/checks/dup.sh'));
   copyFileSync(
@@ -58,18 +74,20 @@ function createProject(): Project {
     join(root, 'scripts/checks/_lib.sh'),
   );
   copyFileSync(join(REPOSITORY_ROOT, '.jscpd.json'), join(root, '.jscpd.json'));
-  // The wrapper runs the repository's jscpd, except that the per-file measuring call of the
-  // large-file pass (the only call with --silent) fails or writes no report when asked to.
   const binary = join(root, 'node_modules/.bin/jscpd');
   mkdirSync(join(root, 'node_modules/.bin'), { recursive: true });
   writeFileSync(
     binary,
     [
       '#!/usr/bin/env bash',
+      `printf '%s\\n' "$*" >> "${logPath}"`,
       'case " $* " in',
       '  *" --silent "*)',
-      '    [ "$STUB_MEASURE" = fail ] && exit 3',
-      '    [ "$STUB_MEASURE" = empty ] && exit 0',
+      '    [ "$STUB_MODE" = measure-fail ] && exit 3',
+      '    [ "$STUB_MODE" = measure-empty ] && exit 0',
+      '    ;;',
+      '  *" --debug "*)',
+      '    [ "$STUB_MODE" = list-fail ] && exit 3',
       '    ;;',
       'esac',
       `exec "${join(REPOSITORY_ROOT, 'node_modules/.bin/jscpd')}" "$@"`,
@@ -79,11 +97,16 @@ function createProject(): Project {
   chmodSync(binary, 0o755);
 
   return {
-    run: (targets = [], measure) =>
+    run: (targets = [], options = {}) =>
       spawnSync('bash', [join(root, 'scripts/checks/dup.sh'), ...targets], {
         encoding: 'utf8',
         cwd: root,
-        env: { ...process.env, TMPDIR: stateDirectory, STUB_MEASURE: measure ?? '' },
+        env: {
+          ...process.env,
+          TMPDIR: stateDirectory,
+          STUB_MODE: options.stub ?? '',
+          ...options.environment,
+        },
       }),
     file: (name, content) => {
       const path = join(root, name);
@@ -92,7 +115,19 @@ function createProject(): Project {
 
       return path;
     },
+    invocations: () =>
+      existsSync(logPath)
+        ? readFileSync(logPath, 'utf8')
+            .split('\n')
+            .filter((line) => line !== '')
+        : [],
   };
+}
+
+function measuredPercentage(stderr: string, fileName: string): number {
+  const figure = new RegExp(`${fileName}[^\\n]*?(\\d+(?:\\.\\d+)?)% duplicated`).exec(stderr)?.[1];
+
+  return Number(figure);
 }
 
 afterEach(() => {
@@ -104,7 +139,7 @@ afterEach(() => {
 });
 
 describe('scripts/checks/dup.sh large files', () => {
-  it('warns about a file over 1000 lines that is over the threshold, and still exits 0', () => {
+  it('warns about a file over 1000 lines that is over the threshold, naming its percentage', () => {
     const project = createProject();
     project.file('src/big.ts', duplicated(120));
 
@@ -112,16 +147,19 @@ describe('scripts/checks/dup.sh large files', () => {
 
     expect(result.status).toBe(0);
     expect(result.stderr).toMatch(/WARNING[^\n]*src\/big\.ts[^\n]*\b\d+(\.\d+)?%/);
+    expect(measuredPercentage(result.stderr, 'big\\.ts')).toBeGreaterThan(90);
   });
 
-  it('names the measured percentage', () => {
+  it('warns about a file between 10% and 50% when FORCE_COLOR colors every node number', () => {
     const project = createProject();
-    project.file('src/big.ts', duplicated(120));
+    project.file('src/middling.ts', `${unique(1100)}\n${duplicated(30)}`);
 
-    const result = project.run();
+    const result = project.run([], { environment: { FORCE_COLOR: '3' } });
 
-    const percentage = Number(/big\.ts[^\n]*?(\d+(?:\.\d+)?)% duplicated/.exec(result.stderr)?.[1]);
-    expect(percentage).toBeGreaterThan(90);
+    const percentage = measuredPercentage(result.stderr, 'middling\\.ts');
+    expect(result.status).toBe(0);
+    expect(percentage).toBeGreaterThan(10);
+    expect(percentage).toBeLessThan(50);
   });
 
   it('prints no warning for a large file that is not duplicated', () => {
@@ -153,6 +191,19 @@ describe('scripts/checks/dup.sh large files', () => {
 
     expect(result.status).toBe(0);
     expect(result.stderr).toMatch(/WARNING[^\n]*src\/wide\.ts/);
+  });
+
+  it('prints no warning for a large file that .gitignore or the jscpd config ignores', () => {
+    const project = createProject();
+    project.file('.gitignore', 'ignored/\n');
+    project.file('ignored/big.ts', duplicated(120));
+    project.file('ios/big.ts', duplicated(120));
+    project.file('src/small.ts', unique(40));
+
+    const result = project.run();
+
+    expect(result.status).toBe(0);
+    expect(result.stderr).toBe('');
   });
 
   it('still fails on a small duplicated file', () => {
@@ -188,11 +239,63 @@ describe('scripts/checks/dup.sh large files', () => {
     expect(result.stderr).not.toContain('untouched.ts');
   });
 
+  it('prints the warning again on a repeated scoped run whose blocking pass dedup skips', () => {
+    const project = createProject();
+    const changed = project.file('src/changed.ts', duplicated(120));
+    const blockingCalls = () => project.invocations().filter((call) => !call.includes(' --'));
+
+    const first = project.run([changed]);
+    const blockingCallsAfterFirst = blockingCalls().length;
+    const second = project.run([changed]);
+
+    expect(first.stderr).toContain('WARNING');
+    expect(second.status).toBe(0);
+    expect(second.stderr).toMatch(/WARNING[^\n]*changed\.ts/);
+    expect(blockingCalls()).toHaveLength(blockingCallsAfterFirst);
+  });
+
+  it('warns about every large file, in path order, when there are more than four', () => {
+    const project = createProject();
+
+    for (const name of ['f', 'e', 'd', 'c', 'b', 'a']) {
+      project.file(`src/${name}.ts`, duplicated(120));
+    }
+
+    const result = project.run();
+
+    const warned = [...result.stderr.matchAll(/WARNING: check:dup src\/(\w)\.ts/g)].map(
+      (match) => match[1],
+    );
+    expect(warned).toEqual(['a', 'b', 'c', 'd', 'e', 'f']);
+  });
+
+  it('warns on the combined run when two large files copy each other', () => {
+    const project = createProject();
+    project.file('src/first.ts', unique(1100));
+    project.file('src/second.ts', unique(1100));
+
+    const result = project.run();
+
+    expect(result.status).toBe(0);
+    expect(result.stderr).not.toMatch(/WARNING: check:dup src\//);
+    expect(measuredPercentage(result.stderr, 'combined run')).toBeGreaterThan(30);
+  });
+
+  it('runs no combined measurement when no file in scope is over the size limits', () => {
+    const project = createProject();
+    project.file('src/small.ts', unique(40));
+
+    const result = project.run();
+
+    expect(result.status).toBe(0);
+    expect(project.invocations().filter((call) => call.includes('--silent'))).toHaveLength(0);
+  });
+
   it('warns, never stays silent, when jscpd fails on a large file', () => {
     const project = createProject();
     project.file('src/big.ts', duplicated(120));
 
-    const result = project.run([], 'fail');
+    const result = project.run([], { stub: 'measure-fail' });
 
     expect(result.status).toBe(0);
     expect(result.stderr).toMatch(/WARNING[^\n]*could not measure[^\n]*src\/big\.ts/);
@@ -202,10 +305,20 @@ describe('scripts/checks/dup.sh large files', () => {
     const project = createProject();
     project.file('src/big.ts', duplicated(120));
 
-    const result = project.run([], 'empty');
+    const result = project.run([], { stub: 'measure-empty' });
 
     expect(result.status).toBe(0);
     expect(result.stderr).toMatch(/WARNING[^\n]*could not measure[^\n]*src\/big\.ts/);
+  });
+
+  it('warns, never stays silent, when jscpd cannot list the files it skipped', () => {
+    const project = createProject();
+    project.file('src/big.ts', duplicated(120));
+
+    const result = project.run([], { stub: 'list-fail' });
+
+    expect(result.status).toBe(0);
+    expect(result.stderr).toMatch(/WARNING[^\n]*could not list/);
   });
 
   it('stays silent when no file is over the size limits', () => {

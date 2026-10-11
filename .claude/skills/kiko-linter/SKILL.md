@@ -50,10 +50,10 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   stderr and exit 0, namely (a) the dedup-skip notice (`SKIPPED, not a fresh
   scan`), because a skip exits 0 without scanning and must never read as a
   fresh scan; and (b) the Class B WARNING block, because a non-blocking
-  finding is override-eligible and still has to be seen. `dup.sh` has one
-  more: (c) its large-file `WARNING` lines (see "`check:dup` measures the
-  files jscpd skips for size" below), because a non-blocking measurement of
-  tracked debt still has to be seen. A hook that exits 0
+  finding is override-eligible and still has to be seen. `dup.sh` states
+  its own exception: its large-file `WARNING` lines (see "`check:dup`
+  measures the files jscpd skips for size" below), because a non-blocking
+  measurement of tracked debt still has to be seen. A hook that exits 0
   does not feed stderr back to the agent, so these are for a human or a
   manual `check:security`/`check:dup` run, not a hook signal.
 
@@ -1040,14 +1040,28 @@ second, NON-blocking pass:
   nothing written into the repo). Alone, not in one combined run: a combined run credits a clone to
   whichever file jscpd stores first, so a file's percentage would depend on its neighbours. The
   alone figures are the ones the debt entry in `docs/harness/documented-exceptions.md` records.
-- A file over the threshold read from `.jscpd.json`, a file jscpd fails on, and a file with no
-  figure each print one `WARNING` line on stderr and the exit code stays 0. The Stop tier's scoped
-  run therefore warns only about changed large files; a whole-repo run warns about all of them.
-- The warning is tracked debt, not an allowlist. The sweep track that brings every large file to
-  5% or less flips it to an `exit 2` failure through `print_block`.
+- One more run measures the WHOLE scope together with the limits raised, because a clone between a
+  large file and another file is invisible to the alone runs (two 1100-line copies of one file
+  show 0% alone and about 50% together). It runs only when the scope holds a size-skipped file and
+  more than one file, so a scope with no large file pays nothing and a one-file scope does not
+  repeat its alone figure. Its total over the threshold prints one `WARNING` naming the figure.
+  Baseline on 2026-10-11: 7.33% of lines combined, against 3.24% for the blocking run.
+- A file over the threshold read from `.jscpd.json`, a file jscpd fails on, a file with no
+  figure, a combined total over the threshold, a failed file listing, and a failed `mktemp` each
+  print one `WARNING` line on stderr and the exit code stays 0. A number a tool printed is used only
+  after `is_number` accepts it. The Stop tier's scoped run therefore warns only about changed
+  large files (and the combined figure of the changed set); a whole-repo run warns about all of
+  them. An unchanged dedup fingerprint skips only the blocking run: the large-file pass runs every
+  time, so a repeated scoped run prints the same warning again.
+- The per-file warning says a file not on the tracked-debt list in
+  `docs/harness/documented-exceptions.md` is a new regression; a hook that exits 0 does not show
+  stderr to the agent, so a person or a manual `check:dup` run is the reader.
+- The warning is tracked debt, not an allowlist. The sweep track flips it to an `exit 2` failure
+  through `print_block` once every large file is 5% or less alone AND the combined raised total is
+  5% or less.
 - `__tests__/dup-large-files.test.ts` runs a copy of `dup.sh` in a throwaway project against the
-  real jscpd. A file over about two billion lines or 1gb is not listed under the raised limits, so
-  it would still pass unseen; no file of that size exists in this repo.
+  real jscpd, under `FORCE_COLOR=3` too. A file over about two billion lines or 1gb is not listed
+  under the raised limits, so it would still pass unseen; no file of that size exists in this repo.
 
 ## Implemented: a rule for a plain function called inside a worklet
 
@@ -2390,6 +2404,24 @@ closed (a lost match aborts the script) or run only in a deploy.
 Prove a fix with a test that feeds the script a value over 64 KB with the match on the FIRST line:
 `__tests__/mutation-gate.test.ts`, `__tests__/plist-credential-detect.test.ts`,
 `__tests__/lint-fixtures-scope.test.ts`, and `__tests__/deploy-device.test.ts` each carry one.
+
+## Never use the print flag of node in a shell script
+
+`node -p` (and `--print`) prints its result through `console.log`, which wraps a number in ANSI
+color codes when `FORCE_COLOR` is set, and background Claude sessions export `FORCE_COLOR=3` even
+into a pipe. A figure captured with `$(node -p ...)` then fails a numeric test or compares as a
+string: `dup.sh` once printed no warning for a file at 10% to 49.99%, because `awk` read the colored
+text as a string. Print with `node -e 'process.stdout.write(String(value))'`, which no color
+setting touches, and test the captured text is a plain number before comparing it (`dup.sh`'s
+`is_number`); a value that is not a number is a "could not measure" outcome, never a pass.
+
+The guard is the Semgrep rule `kiko-no-node-print-in-shell` in `rules/semgrep-mobile.yml` (fixture
+pair `rules/fixtures/kiko-no-node-print-in-shell.{bad,good}.sh`). Like the pipe rule above, it is
+a `generic` regex over `*.sh`, run by `check:security` and `check:rules`, not at write time. It
+flags `node` followed by a single-dash option cluster holding `p` or by `--print`, including in a
+comment or a string, so reword text that spells the flag. Known limit: an option placed between
+`node` and the flag (`node --no-warnings -p`). A test that must prove a script survives a colored
+environment sets `FORCE_COLOR: '3'` itself (`__tests__/dup-large-files.test.ts` does).
 
 ## Shipped migrations are never edited — check:shipped-migrations
 

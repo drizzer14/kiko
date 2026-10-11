@@ -174,10 +174,16 @@ verified usage, not dead weight:
   `import-statement.test.ts` 7.09%, `account-form.screen.test.tsx` 6.88%,
   `transactions.repo.remove-cascade.test.ts` 5.91%, `holdings.repo.test.ts`
   5.75%, `holding-form.screen.test.tsx` 5.63% (every non-test source file over
-  the limit is under 2%). With the limits raised the whole-project total is
-  7.33%, against 3.24% with the default limits. **Flip condition:** a separate
-  sweep track makes every large file 5% or less; then this warning becomes a
-  failure (`exit 2` through `print_block`) and this entry is deleted. The
+  the limit is under 2%). A second figure is tracked beside the per-file ones:
+  one more run measures the whole scope TOGETHER with the limits raised,
+  because a clone between a large file and another file is invisible to the
+  alone runs. Its baseline on 2026-10-11 is 7.33% of lines, against 3.24% for
+  the blocking run with the default limits; a warning for a combined total
+  above the threshold is expected until the sweep lands, and a figure above
+  7.33% is a new regression. **Flip condition:** a separate sweep track makes
+  every large file 5% or less alone AND the combined raised total 5% or less;
+  then this warning becomes a failure (`exit 2` through `print_block`) and
+  this entry is deleted. The
   warning is a stated exception to the "silent on success" wrapper contract
   (kiko-linter's "The wrapper contract").
 - **`knip.json` `entry`** (an entry point, not an ignore):
