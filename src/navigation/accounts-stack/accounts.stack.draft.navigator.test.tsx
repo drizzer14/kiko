@@ -120,7 +120,7 @@ const openTransactionForm = async (): Promise<void> => {
   await act(async () => navigationRef.navigate('TransactionForm', { holdingId: 'h1' }));
 };
 
-// What a screen asking to open another one does: the new screen goes beside the asking form.
+// What a screen asking to open another one does: the new screen goes on top of the asking form.
 const openAccountFormFrom = async (formKey: string): Promise<void> => {
   await act(async () => {
     navigationRef.dispatch({ ...CommonActions.navigate('AccountForm', {}), source: formKey });
@@ -157,39 +157,36 @@ describe('AccountsStack — form drafts across a fold and an unfold', () => {
       expect(screen.getByTestId('accounts-screen')).toBeTruthy();
     });
 
-    it('writes a blur onto the route of the form it came from while another pane has the focus', async () => {
+    // was: the account form opened in the other pane, so the transaction form stayed on screen
+    // beside it and was filled in while the account form had the focus. Both forms are in the
+    // detail pane now, and the one that is covered cannot be typed in.
+    it('keeps a blur on the route of the form it came from when a deeper step covers the form', async () => {
       await renderStack();
       await openTransactionForm();
       const formKey = routeNamed('TransactionForm')?.key ?? '';
+
+      await fillAmount('12.34');
+      await blurAmount();
       await openAccountFormFrom(formKey);
 
-      // The account form is the focused route; the transaction form is the other pane's.
       expect(routes().map((route) => route.name)).toEqual([
         'Accounts',
         'TransactionForm',
         'AccountForm',
       ]);
-
-      await fillAmount('12.34');
-      await blurAmount();
-
       expect(routeNamed('TransactionForm')?.params?.draft?.amount).toBe('12.34');
       expect(routeNamed('AccountForm')?.params?.draft).toBeUndefined();
       expect(routeNamed('Accounts')?.params).toBeUndefined();
-      expect(routes().map((route) => route.name)).toEqual([
-        'Accounts',
-        'TransactionForm',
-        'AccountForm',
-      ]);
     });
 
-    it('keeps the values of the form beside the focused one through a fold and the way back to it', async () => {
+    it('keeps the values of the form beneath a deeper step through a fold and the way back to it', async () => {
       await renderStack();
       await openTransactionForm();
       const formKey = routeNamed('TransactionForm')?.key ?? '';
-      await openAccountFormFrom(formKey);
+
       await fillAmount('12.34');
       await blurAmount();
+      await openAccountFormFrom(formKey);
 
       await changeWindow('single');
       await act(async () => navigationRef.goBack());

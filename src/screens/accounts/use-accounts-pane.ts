@@ -128,7 +128,7 @@ export const useAccountsPane = ({
 
   useEffect(() => {
     if (needsDefault && paneDefault !== undefined) {
-      showPaneDefault('primary', paneDefault.name, paneDefault.params, paneDefault.isPlaceholder);
+      showPaneDefault(paneDefault.name, paneDefault.params, paneDefault.isPlaceholder);
     }
   }, [needsDefault, paneDefault, showPaneDefault]);
 

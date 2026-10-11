@@ -13,7 +13,9 @@ const DEFAULT_OF: Record<Pane, 'companionDefault' | 'primaryDefault'> = {
   primary: 'primaryDefault',
 };
 
-const oppositePane = (pane: Pane): Pane => OPPOSITE[pane];
+// The pane of every route above the root: the list stays where it is, and a page opens, goes
+// deeper and closes in this one.
+export const oppositePane = (pane: Pane): Pane => OPPOSITE[pane];
 
 // A default from the pane config is not in the stack, so it has no route key of its own. The key
 // it is shown under names its pane, which lets a screen shown as a default name itself as the
@@ -23,25 +25,13 @@ export const defaultRouteKey = (pane: Pane): string => `pane-default:${pane}`;
 export const paneOfDefaultKey = (key: string): Pane | undefined =>
   PANES.find((pane) => defaultRouteKey(pane) === key);
 
-// A stored pane wins; otherwise a route takes the pane opposite to the route below it, and the
-// root takes the root pane. A default is never "the route below": a fold drops it, and the routes
-// above it must not change pane.
-const resolvePanes = (routes: readonly RouteLike[], panes: PaneMap, rootPane: Pane): Pane[] => {
-  const resolved: Pane[] = [];
-  let below: Pane | undefined;
-
-  for (const route of routes) {
-    const pane = panes[route.key] ?? foldMap(maybe(below), oppositePane) ?? rootPane;
-
-    resolved.push(pane);
-
-    if (route.isDefault !== true) {
-      below = pane;
-    }
-  }
-
-  return resolved;
-};
+// A stored pane wins; otherwise the root takes the root pane and every other route, a default
+// included, takes the other one. Position alone decides, so a state without a pane map (a route
+// pushed while folded, a reminder rebuild) never puts a deeper route in the list pane.
+const resolvePanes = (routes: readonly RouteLike[], panes: PaneMap, rootPane: Pane): Pane[] =>
+  routes.map(
+    (route, index) => panes[route.key] ?? (index === 0 ? rootPane : oppositePane(rootPane)),
+  );
 
 // The keys the routes still hold, so a closed route never leaves its pane behind.
 export const retainPanes = (panes: PaneMap, routes: readonly RouteLike[]): PaneMap =>
@@ -78,8 +68,9 @@ export const paneDefault = (config: PaneConfig, pane: Pane): PaneDefault | null 
   config[DEFAULT_OF[pane]] ?? null;
 
 /**
- * Opens `next` in the pane opposite to the opener's: every route above the opener is closed first,
- * so a second row replaces the first instead of stacking beside it. An opener that is a default
+ * Opens `next` in the detail pane, the one that is not the list's, whichever pane the opener is
+ * in: every route above the opener is closed first, so a tap in the list replaces the detail
+ * stack and a tap in the detail pane goes one step deeper in it. An opener that is a default
  * route becomes a real route (the user acted on it), unless it is a placeholder, which stays a
  * default. A static default stands in the stack right above the root.
  *
@@ -90,6 +81,7 @@ export const openFrom = <Route extends RouteLike>(
   panes: PaneMap,
   openerKey: string,
   next: Route,
+  config: PaneConfig,
 ): { routes: Route[]; panes: PaneMap } => {
   const openerIndex = routes.findIndex((route) => route.key === openerKey);
   const openerPane = panes[openerKey] ?? paneOfDefaultKey(openerKey);
@@ -108,7 +100,7 @@ export const openFrom = <Route extends RouteLike>(
 
   return {
     routes: [...kept, next],
-    panes: { ...retainPanes(panes, kept), [next.key]: oppositePane(openerPane) },
+    panes: { ...retainPanes(panes, kept), [next.key]: oppositePane(config.rootPane) },
   };
 };
 
@@ -126,8 +118,9 @@ export const foldAssignment = <Route extends RouteLike>(
 };
 
 /**
- * A pane for every route: a stored one is kept, a route pushed while folded takes the pane
- * opposite to the route below it, and the root takes the root pane.
+ * A pane for every route: a stored one is kept, and a route pushed while folded takes the detail
+ * pane, so the unfolded detail pane shows the last route of the folded stack with a way back to
+ * the one below it, and the list shows the root.
  */
 export const unfoldAssignment = (
   routes: readonly RouteLike[],

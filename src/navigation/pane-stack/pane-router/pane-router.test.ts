@@ -1,6 +1,6 @@
 import { CommonActions, StackActions } from '@react-navigation/native';
 
-import { routesOfPane } from '../pane-assignment';
+import { type Pane, routesOfPane } from '../pane-assignment';
 
 import { PaneActions, PaneRouter, type PaneRouterAction, type PaneStackState } from '.';
 
@@ -94,18 +94,19 @@ describe('PaneRouter', () => {
       expect(second.panes[first.routes[1].key]).toBeUndefined();
     });
 
-    it('opens from the detail into the companion without closing the list', () => {
+    // was: the form opened in the companion, covering the list.
+    it('opens from the detail on top of it, in the detail pane, without covering the list', () => {
       const detail = withDetail();
       const form = run(detail, PaneActions.open(keyOf(detail, 'AccountDetail'), 'HoldingForm'));
 
       expect(names(form)).toEqual(['Accounts', 'AccountDetail', 'HoldingForm']);
-      expect(form.panes[keyOf(form, 'HoldingForm')]).toBe('companion');
+      expect(form.panes[keyOf(form, 'HoldingForm')]).toBe('primary');
     });
 
     it('opens from a default that stands in the stack, and makes it a real route', () => {
       const shown = run(
         initial(),
-        PaneActions.showDefault('primary', 'AccountDetail', { accountId: 'first' }),
+        PaneActions.showDefault('AccountDetail', { accountId: 'first' }),
       );
       const form = run(shown, PaneActions.open(keyOf(shown, 'AccountDetail'), 'HoldingForm'));
 
@@ -120,7 +121,7 @@ describe('PaneRouter', () => {
     it('leads Back from the form opened on a default to that now-real page, after a fold', () => {
       const shown = run(
         initial(),
-        PaneActions.showDefault('primary', 'AccountDetail', { accountId: 'first' }),
+        PaneActions.showDefault('AccountDetail', { accountId: 'first' }),
       );
       const form = run(shown, PaneActions.open(keyOf(shown, 'AccountDetail'), 'HoldingForm'));
       const folded = run(form, PaneActions.fold());
@@ -138,7 +139,8 @@ describe('PaneRouter', () => {
       );
 
       expect(names(opened)).toEqual(['Accounts', 'HoldingForm']);
-      expect(opened.panes[opened.routes[1].key]).toBe('primary');
+      // was: primary, the root's own pane.
+      expect(opened.panes[opened.routes[1].key]).toBe('companion');
     });
 
     it('is not handled when the opener is unknown', () => {
@@ -157,14 +159,25 @@ describe('PaneRouter', () => {
   });
 
   describe('PANE_FOLD and PANE_UNFOLD', () => {
+    // A placeholder is the one default a tapped route can sit above in the detail pane.
     it('drops the default routes and keeps the pane of every tapped route', () => {
-      const detail = withDetail();
-      const shown = run(detail, PaneActions.showDefault('companion', 'Statement'));
-      const folded = run(shown, PaneActions.fold());
+      const placeholder = run(
+        initial(),
+        PaneActions.showDefault('AccountsEmptyPane', undefined, true),
+      );
+      const form = run(
+        placeholder,
+        PaneActions.open(keyOf(placeholder, 'AccountsEmptyPane'), 'AccountForm'),
+      );
+      const folded = run(form, PaneActions.fold());
 
-      expect(names(folded)).toEqual(['Accounts', 'AccountDetail']);
+      expect(names(form)).toEqual(['Accounts', 'AccountsEmptyPane', 'AccountForm']);
+      expect(names(folded)).toEqual(['Accounts', 'AccountForm']);
       expect(folded.index).toBe(1);
-      expect(folded.panes).toEqual(detail.panes);
+      expect(folded.panes).toEqual({
+        [keyOf(folded, 'Accounts')]: 'companion',
+        [keyOf(folded, 'AccountForm')]: 'primary',
+      });
     });
 
     it('leaves a state with no default routes as it is', () => {
@@ -173,7 +186,7 @@ describe('PaneRouter', () => {
       expect(run(detail, PaneActions.fold())).toBe(detail);
     });
 
-    it('stores a pane for every route on unfold, alternating from the root pane', () => {
+    it('stores a pane for every route on unfold: the root in its pane, every other route in the detail pane', () => {
       const state = initial();
       const pushed = run(
         run(state, StackActions.push('AccountDetail')),
@@ -181,10 +194,11 @@ describe('PaneRouter', () => {
       );
       const unfolded = run(pushed, PaneActions.unfold());
 
+      // was: the form in the companion (it alternated from the detail).
       expect(unfolded.panes).toEqual({
         [pushed.routes[0].key]: 'companion',
         [pushed.routes[1].key]: 'primary',
-        [pushed.routes[2].key]: 'companion',
+        [pushed.routes[2].key]: 'primary',
       });
       expect(run(unfolded, PaneActions.unfold())).toBe(unfolded);
     });
@@ -199,27 +213,27 @@ describe('PaneRouter', () => {
   });
 
   describe('PANE_SHOW_DEFAULT', () => {
-    it('stands the default right above the root, in its pane', () => {
-      const root = homeRouter.getInitialState(CONFIG);
-      const tapped = runHome(root, PaneActions.open('pane-default:companion', 'HoldingForm'));
-      const shown = runHome(tapped, PaneActions.showDefault('companion', 'Statement'));
+    // was: the default also stood below a route tapped in the other pane; now the detail pane
+    // holds either a default or what the user tapped, so a placeholder is the one default that a
+    // tapped route can sit above.
+    it('stands the default right above the root, in the detail pane', () => {
+      const shown = runHome(
+        homeRouter.getInitialState(CONFIG),
+        PaneActions.showDefault('Statement', undefined, true),
+      );
+      const tapped = runHome(shown, PaneActions.open(shown.routes[1].key, 'HoldingForm'));
 
-      expect(names(shown)).toEqual(['Accounts', 'Statement', 'HoldingForm']);
-      expect(shown.index).toBe(2);
+      expect(names(shown)).toEqual(['Accounts', 'Statement']);
+      expect(shown.index).toBe(1);
       expect(shown.routes[1].isDefault).toBe(true);
       expect(shown.panes[shown.routes[1].key]).toBe('companion');
-      expect(shown.panes[shown.routes[2].key]).toBe('primary');
+      expect(names(tapped)).toEqual(['Accounts', 'Statement', 'HoldingForm']);
+      expect(tapped.panes[tapped.routes[2].key]).toBe('companion');
     });
 
     it('replaces the default the pane already shows', () => {
-      const first = run(
-        initial(),
-        PaneActions.showDefault('primary', 'AccountDetail', { accountId: 'a' }),
-      );
-      const second = run(
-        first,
-        PaneActions.showDefault('primary', 'AccountDetail', { accountId: 'b' }),
-      );
+      const first = run(initial(), PaneActions.showDefault('AccountDetail', { accountId: 'a' }));
+      const second = run(first, PaneActions.showDefault('AccountDetail', { accountId: 'b' }));
 
       expect(names(second)).toEqual(['Accounts', 'AccountDetail']);
       expect(second.routes[1].params).toEqual({ accountId: 'b' });
@@ -229,12 +243,12 @@ describe('PaneRouter', () => {
     it('leaves a pane alone when the user already tapped a route there', () => {
       const detail = withDetail();
 
-      expect(run(detail, PaneActions.showDefault('primary', 'Statement'))).toBe(detail);
+      expect(run(detail, PaneActions.showDefault('Statement'))).toBe(detail);
     });
 
     it('is not handled for a route the navigator does not have', () => {
       expect(
-        router.getStateForAction(initial(), PaneActions.showDefault('primary', 'Nowhere'), CONFIG),
+        router.getStateForAction(initial(), PaneActions.showDefault('Nowhere'), CONFIG),
       ).toBeNull();
     });
 
@@ -244,9 +258,7 @@ describe('PaneRouter', () => {
       const single = PaneRouter({ paneConfig: { rootPane: 'companion' }, isSplit: SINGLE });
       const state = single.getInitialState(CONFIG);
 
-      expect(runWith(single)(state, PaneActions.showDefault('primary', 'AccountDetail'))).toBe(
-        state,
-      );
+      expect(runWith(single)(state, PaneActions.showDefault('AccountDetail'))).toBe(state);
     });
   });
 
@@ -257,9 +269,10 @@ describe('PaneRouter', () => {
       const closed = run(form, PaneActions.close(keyOf(form, 'AccountDetail')));
 
       expect(names(closed)).toEqual(['Accounts', 'HoldingForm']);
+      // was: HoldingForm in the companion.
       expect(closed.panes).toEqual({
         [keyOf(closed, 'Accounts')]: 'companion',
-        [keyOf(closed, 'HoldingForm')]: 'companion',
+        [keyOf(closed, 'HoldingForm')]: 'primary',
       });
       expect(closed.index).toBe(1);
     });
@@ -305,7 +318,7 @@ describe('PaneRouter', () => {
       expect(Object.keys(popped.panes)).toEqual([keyOf(popped, 'Accounts')]);
     });
 
-    it('leaves a plain push without a stored pane, so it takes the pane opposite the route below', () => {
+    it('leaves a plain push without a stored pane, so it takes the detail pane', () => {
       const pushed = run(initial(), StackActions.push('AccountDetail'));
 
       expect(pushed.panes).toEqual({});
@@ -421,7 +434,7 @@ describe('PaneRouter', () => {
       expect(paneNames(rowB, 'primary', 'primary')).toEqual(['Home']);
     });
 
-    it('opens a second reminder in place of the first, beside the list', () => {
+    it('opens a second reminder in place of the first, on top of the reminders in the detail pane', () => {
       const menu = settingsRouter.getInitialState(CONFIG);
       const reminders = runSettings(menu, from(menu.routes[0].key, StackActions.push('Reminders')));
       const first = runSettings(
@@ -436,11 +449,12 @@ describe('PaneRouter', () => {
       expect(names(second)).toEqual(['Settings', 'Reminders', 'ReminderForm']);
       expect(second.routes[2].params).toEqual({ id: '2' });
       expect(second.routes[2].key).not.toBe(first.routes[2].key);
-      expect(paneNames(second, 'companion')).toEqual(['Settings', 'ReminderForm']);
-      expect(paneNames(second, 'primary')).toEqual(['Reminders']);
+      // was: companion [Settings, ReminderForm], primary [Reminders].
+      expect(paneNames(second, 'companion')).toEqual(['Settings']);
+      expect(paneNames(second, 'primary')).toEqual(['Reminders', 'ReminderForm']);
     });
 
-    it('opens what the Settings menu taps in the pane of the screen it replaces', () => {
+    it('opens what the Settings menu taps in the detail pane, in place of the page it showed', () => {
       const menu = settingsRouter.getInitialState(CONFIG);
       const system = runSettings(menu, from(menu.routes[0].key, StackActions.push('System')));
       const reminders = runSettings(
@@ -478,7 +492,8 @@ describe('PaneRouter', () => {
       const state = accountsWithTwoForms();
       const back = run(state, from(keyOf(state, 'HoldingForm'), CommonActions.goBack()));
 
-      expect(paneNames(state, 'primary')).toEqual(['AccountDetail', 'ReminderForm']);
+      // was: primary [AccountDetail, ReminderForm]: the form between them was in the companion.
+      expect(paneNames(state, 'primary')).toEqual(['AccountDetail', 'HoldingForm', 'ReminderForm']);
       expect(paneNames(back, 'primary')).toEqual(['AccountDetail', 'ReminderForm']);
       expect(paneNames(back, 'companion')).toEqual(['Accounts']);
     });
@@ -505,11 +520,16 @@ describe('PaneRouter', () => {
       );
 
       expect(names(replaced)).toEqual(['Accounts', 'AccountDetail', 'Statement', 'ReminderForm']);
-      expect(paneNames(replaced, 'companion')).toEqual(['Accounts', 'Statement']);
-      expect(paneNames(replaced, 'primary')).toEqual(['AccountDetail', 'ReminderForm']);
+      // was: companion [Accounts, Statement], primary [AccountDetail, ReminderForm].
+      expect(paneNames(replaced, 'companion')).toEqual(['Accounts']);
+      expect(paneNames(replaced, 'primary')).toEqual([
+        'AccountDetail',
+        'Statement',
+        'ReminderForm',
+      ]);
     });
 
-    // [Accounts(c), AccountDetail(p), HoldingForm(c), ReminderForm(p), Statement(c)]
+    // [Accounts(c), AccountDetail(p), HoldingForm(p), ReminderForm(p), Statement(p)]
     const fiveRoutes = (): PaneStackState => {
       const list = initial();
       const detail = run(list, PaneActions.open(list.routes[0].key, 'AccountDetail'));
@@ -526,9 +546,10 @@ describe('PaneRouter', () => {
       const state = fiveRoutes();
       const dismissed = run(state, from(keyOf(state, 'Statement'), StackActions.pop(2)));
 
-      expect(names(dismissed)).toEqual(['Accounts', 'AccountDetail', 'ReminderForm']);
+      // was: [Accounts, AccountDetail, ReminderForm], with the list pane holding HoldingForm.
+      expect(names(dismissed)).toEqual(['Accounts', 'AccountDetail', 'HoldingForm']);
       expect(paneNames(dismissed, 'companion')).toEqual(['Accounts']);
-      expect(paneNames(dismissed, 'primary')).toEqual(['AccountDetail', 'ReminderForm']);
+      expect(paneNames(dismissed, 'primary')).toEqual(['AccountDetail', 'HoldingForm']);
       expect(dismissed.index).toBe(2);
     });
 
@@ -536,14 +557,16 @@ describe('PaneRouter', () => {
       const state = fiveRoutes();
       const dismissed = run(state, from(keyOf(state, 'Statement'), StackActions.pop(9)));
 
-      expect(names(dismissed)).toEqual(['Accounts', 'AccountDetail', 'ReminderForm']);
+      // was: [Accounts, AccountDetail, ReminderForm].
+      expect(names(dismissed)).toEqual(['Accounts', 'AccountDetail']);
     });
 
     it('closes the routes of the pane of a route that is not the focused one', () => {
       const state = fiveRoutes();
       const dismissed = run(state, from(keyOf(state, 'ReminderForm'), StackActions.pop(2)));
 
-      expect(names(dismissed)).toEqual(['Accounts', 'AccountDetail', 'HoldingForm', 'Statement']);
+      // was: [Accounts, AccountDetail, HoldingForm, Statement].
+      expect(names(dismissed)).toEqual(['Accounts', 'AccountDetail', 'Statement']);
     });
 
     it('closes the routes in stack order while the navigator shows one pane', () => {
@@ -631,9 +654,9 @@ describe('PaneRouter', () => {
       // [Accounts(c), AccountDetail(p, default)]: the default is on top, so the stack router would
       // take it for the focused caller and open the next screen in its own pane.
       const withDefault = (): PaneStackState =>
-        run(initial(), PaneActions.showDefault('primary', 'AccountDetail', { accountId: 'first' }));
+        run(initial(), PaneActions.showDefault('AccountDetail', { accountId: 'first' }));
 
-      it('opens a navigate beside it and makes the default a real route in its pane', () => {
+      it('opens a navigate on top of it and makes the default a real route in its pane', () => {
         const shown = withDefault();
         const form = run(
           shown,
@@ -646,19 +669,21 @@ describe('PaneRouter', () => {
           undefined,
           undefined,
         ]);
-        expect(paneNames(form, 'companion')).toEqual(['Accounts', 'HoldingForm']);
-        expect(paneNames(form, 'primary')).toEqual(['AccountDetail']);
+        // was: companion [Accounts, HoldingForm], primary [AccountDetail].
+        expect(paneNames(form, 'companion')).toEqual(['Accounts']);
+        expect(paneNames(form, 'primary')).toEqual(['AccountDetail', 'HoldingForm']);
       });
 
-      it('opens a push beside it too', () => {
+      it('opens a push on top of it too', () => {
         const shown = withDefault();
         const form = run(
           shown,
           from(keyOf(shown, 'AccountDetail'), StackActions.push('HoldingForm')),
         );
 
-        expect(paneNames(form, 'companion')).toEqual(['Accounts', 'HoldingForm']);
-        expect(paneNames(form, 'primary')).toEqual(['AccountDetail']);
+        // was: companion [Accounts, HoldingForm], primary [AccountDetail].
+        expect(paneNames(form, 'companion')).toEqual(['Accounts']);
+        expect(paneNames(form, 'primary')).toEqual(['AccountDetail', 'HoldingForm']);
       });
 
       it('keeps the page it opened from through a fold, and Back leads to it', () => {
@@ -692,7 +717,7 @@ describe('PaneRouter', () => {
     // acting on it must not turn it into a page the pane keeps once the content exists.
     describe('from a default that is a placeholder', () => {
       const withPlaceholder = (): PaneStackState =>
-        run(initial(), PaneActions.showDefault('primary', 'AccountsEmptyPane', undefined, true));
+        run(initial(), PaneActions.showDefault('AccountsEmptyPane', undefined, true));
 
       const withForm = (): PaneStackState => {
         const shown = withPlaceholder();
@@ -703,13 +728,14 @@ describe('PaneRouter', () => {
         );
       };
 
-      it('opens a navigate opposite it and keeps it a default', () => {
+      it('opens a navigate on top of it and keeps it a default', () => {
         const form = withForm();
 
         expect(names(form)).toEqual(['Accounts', 'AccountsEmptyPane', 'AccountForm']);
         expect(form.routes[1].isDefault).toBe(true);
-        expect(paneNames(form, 'companion')).toEqual(['Accounts', 'AccountForm']);
-        expect(paneNames(form, 'primary')).toEqual(['AccountsEmptyPane']);
+        // was: companion [Accounts, AccountForm], primary [AccountsEmptyPane].
+        expect(paneNames(form, 'companion')).toEqual(['Accounts']);
+        expect(paneNames(form, 'primary')).toEqual(['AccountsEmptyPane', 'AccountForm']);
       });
 
       it('is dropped by a fold, so nothing is left behind it', () => {
@@ -725,10 +751,7 @@ describe('PaneRouter', () => {
 
       it('is replaced by the default that content brings', () => {
         const saved = run(withForm(), CommonActions.goBack());
-        const filled = run(
-          saved,
-          PaneActions.showDefault('primary', 'AccountDetail', { accountId: 'first' }),
-        );
+        const filled = run(saved, PaneActions.showDefault('AccountDetail', { accountId: 'first' }));
 
         expect(names(filled)).toEqual(['Accounts', 'AccountDetail']);
         expect(filled.routes[1].isDefault).toBe(true);
@@ -746,6 +769,70 @@ describe('PaneRouter', () => {
         ).toBe(shown);
       });
     });
+  });
+
+  // The actions a screen sends from the route that is focused (a navigate, a push, a replace)
+  // never go through `openFrom`, so the router's own fallback has to put the route in the detail
+  // pane.
+  describe('a route above the root is in the detail pane', () => {
+    const SUBJECTS = [
+      ['a companion root', router, 'companion', 'primary'],
+      ['a primary root', homeRouter, 'primary', 'companion'],
+    ] as const;
+
+    const from = <Action extends PaneRouterAction>(state: PaneStackState, action: Action) => ({
+      ...action,
+      source: state.routes[state.index].key,
+    });
+    const namesIn = (state: PaneStackState, rootPane: Pane, pane: Pane) =>
+      routesOfPane(state.routes, state.panes, { rootPane }, pane).map((route) => route.name);
+
+    it.each(SUBJECTS)(
+      'keeps only the root in the list pane through %s navigate, push and replace from the top',
+      (_label, subject, listPane, detailPane) => {
+        const runSubject = runWith(subject);
+        const root = subject.getInitialState(CONFIG);
+        // was: [Accounts, AccountDetail, HoldingForm] in [list, detail, list].
+        const navigated = runSubject(
+          root,
+          from(root, CommonActions.navigate('AccountDetail', { accountId: 'a' })),
+        );
+        const pushed = runSubject(navigated, from(navigated, StackActions.push('HoldingForm')));
+        const deeper = runSubject(pushed, from(pushed, StackActions.push('ReminderForm')));
+        const replaced = runSubject(deeper, from(deeper, StackActions.replace('Statement')));
+
+        for (const state of [navigated, pushed, deeper, replaced]) {
+          expect(namesIn(state, listPane, listPane)).toEqual(['Accounts']);
+        }
+
+        expect(namesIn(pushed, listPane, detailPane)).toEqual(['AccountDetail', 'HoldingForm']);
+        expect(namesIn(deeper, listPane, detailPane)).toEqual([
+          'AccountDetail',
+          'HoldingForm',
+          'ReminderForm',
+        ]);
+        expect(namesIn(replaced, listPane, detailPane)).toEqual([
+          'AccountDetail',
+          'HoldingForm',
+          'Statement',
+        ]);
+      },
+    );
+
+    it.each(SUBJECTS)(
+      'puts the default %s shows in the detail pane, whatever else the stack holds',
+      (_label, subject, listPane, detailPane) => {
+        const shown = runWith(subject)(
+          subject.getInitialState(CONFIG),
+          PaneActions.showDefault('AccountDetail', { accountId: 'first' }),
+        );
+
+        expect(shown.routes[1].isDefault).toBe(true);
+        expect(shown.panes[shown.routes[1].key]).toBe(detailPane);
+        expect(namesIn(shown, listPane, listPane)).toEqual(['Accounts']);
+        expect(namesIn(shown, listPane, detailPane)).toEqual(['AccountDetail']);
+      },
+    );
   });
 
   describe('rehydration', () => {

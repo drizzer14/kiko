@@ -7,7 +7,8 @@ import { OpenInPaneContext } from '../open-in-pane';
 import { useShowPaneDefault } from '.';
 
 describe('useShowPaneDefault', () => {
-  it('dispatches the pane default for the pane named', async () => {
+  // was: the caller named the pane (`'primary'`); the detail pane is the only one a default fills.
+  it('dispatches the default for the detail pane, which the caller does not name', async () => {
     const dispatch = jest.fn();
     const { result } = await renderHook(() => useShowPaneDefault(), {
       wrapper: ({ children }: { children: ReactNode }) => (
@@ -15,10 +16,10 @@ describe('useShowPaneDefault', () => {
       ),
     });
 
-    result.current('primary', 'AccountDetail', { accountId: 'a' });
+    result.current('AccountDetail', { accountId: 'a' });
 
     expect(dispatch).toHaveBeenCalledWith(
-      PaneActions.showDefault('primary', 'AccountDetail', { accountId: 'a' }),
+      PaneActions.showDefault('AccountDetail', { accountId: 'a' }),
     );
   });
 
@@ -30,7 +31,7 @@ describe('useShowPaneDefault', () => {
       ),
     });
 
-    result.current('primary', 'AccountsEmptyPane', undefined, true);
+    result.current('AccountsEmptyPane', undefined, true);
 
     expect(dispatch).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -42,7 +43,7 @@ describe('useShowPaneDefault', () => {
   it('does nothing outside a pane stack, which has no pane to fill', async () => {
     const { result } = await renderHook(() => useShowPaneDefault());
 
-    expect(() => result.current('primary', 'AccountDetail')).not.toThrow();
+    expect(() => result.current('AccountDetail')).not.toThrow();
   });
 
   it('keeps one function while the dispatcher stays the same', async () => {

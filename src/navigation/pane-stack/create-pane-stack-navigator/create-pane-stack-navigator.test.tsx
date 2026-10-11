@@ -201,16 +201,17 @@ describe('createPaneStackNavigator', () => {
       expect(screen.queryByTestId('screen-Statement')).toBeNull();
     });
 
-    it('keeps the screen beside the focused one visible, and not the one it covers', async () => {
+    // was: the list was the screen the form covered, and the page beside the form stayed visible.
+    it('keeps the list beside the focused one visible, and not the page the form covers', async () => {
       await renderApp();
 
       await press('open-Accounts');
       await press('open-Detail');
 
       expect(stackRouteNames()).toEqual(['Accounts', 'Detail', 'Form']);
-      expect(screen.getByTestId('visible-Detail').children).toEqual(['true']);
+      expect(screen.getByTestId('visible-Accounts').children).toEqual(['true']);
       expect(screen.getByTestId('visible-Form').children).toEqual(['true']);
-      expect(screen.queryByTestId('screen-Accounts')).toBeNull();
+      expect(screen.queryByTestId('screen-Detail')).toBeNull();
     });
 
     it('opens the second row in place of the first instead of beneath it', async () => {
@@ -222,7 +223,7 @@ describe('createPaneStackNavigator', () => {
       expect(stackRouteNames()).toEqual(['Accounts', 'Detail']);
     });
 
-    it('opens what a plain navigate from the screen beside the focused one asks for in the pane opposite it', async () => {
+    it('opens what a plain navigate from the list asks for in the detail pane, in place of the page it shows', async () => {
       await renderApp();
 
       await press('open-Accounts');
@@ -231,14 +232,17 @@ describe('createPaneStackNavigator', () => {
       expect(stackRouteNames()).toEqual(['Accounts', 'Form']);
     });
 
-    it('goes back from the screen that asks, not from the focused one', async () => {
+    // was: a covered page went back while the form beside it stayed; the list is the only screen
+    // beside the focused one now, and it has nothing to go back to.
+    it('goes back from the focused screen of the detail pane, and the list stays', async () => {
       await renderApp();
 
       await press('open-Accounts');
       await press('open-Detail');
-      await press('go-back-Detail');
+      await press('go-back-Form');
 
-      expect(stackRouteNames()).toEqual(['Accounts', 'Form']);
+      expect(stackRouteNames()).toEqual(['Accounts', 'Detail']);
+      expect(screen.getByTestId('screen-Accounts')).toBeTruthy();
     });
   });
 

@@ -387,7 +387,7 @@ describe('the Accounts tab with a runtime default in its primary pane', () => {
   });
 
   describe('what the default page opens', () => {
-    it('opens the holding form in the companion pane and keeps the account page in the primary', async () => {
+    it('opens the holding form on top of the account page, in the primary pane, and leaves the list alone', async () => {
       mockRows = { accounts: [accountRow('a', 'Monobank', 'bank')] };
       const { getByText } = await walkTabs();
       await goTo('AccountsTab');
@@ -402,7 +402,9 @@ describe('the Accounts tab with a runtime default in its primary pane', () => {
         ['HoldingForm', undefined],
       ]);
       expect(paneOf('AccountDetail')).toBe('primary');
-      expect(paneOf('HoldingForm')).toBe('companion');
+      // was: companion, covering the Accounts list.
+      expect(paneOf('HoldingForm')).toBe('primary');
+      expect(paneOf('Accounts')).toBe('companion');
     });
 
     it('leads Back from the form to the account page after a fold', async () => {
@@ -455,7 +457,7 @@ describe('the Accounts tab with a runtime default in its primary pane', () => {
         });
       };
 
-      it('opens the account form in the companion pane and stays the primary default', async () => {
+      it('opens the account form on top of the empty pane, in the primary pane, and stays the default', async () => {
         await openAccountForm();
 
         expect(accountsRoutes().map(({ name, isDefault }) => [name, isDefault])).toEqual([
@@ -463,7 +465,8 @@ describe('the Accounts tab with a runtime default in its primary pane', () => {
           ['AccountsEmptyPane', true],
           ['AccountForm', undefined],
         ]);
-        expect(paneOf('AccountForm')).toBe('companion');
+        // was: companion, covering the Accounts list.
+        expect(paneOf('AccountForm')).toBe('primary');
         expect(paneOf('AccountsEmptyPane')).toBe('primary');
       });
 

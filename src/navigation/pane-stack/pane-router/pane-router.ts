@@ -16,7 +16,7 @@ import maybe, { foldMap } from 'fnts/maybe';
 import {
   foldAssignment,
   openFrom,
-  type Pane,
+  oppositePane,
   type PaneConfig,
   type PaneMap,
   retainPanes,
@@ -37,7 +37,7 @@ export type PaneActionType =
   | { type: 'PANE_UNFOLD'; source?: string; target?: string }
   | {
       type: 'PANE_SHOW_DEFAULT';
-      payload: { pane: Pane; route: PaneRoute; isPlaceholder: boolean };
+      payload: { route: PaneRoute; isPlaceholder: boolean };
       source?: string;
       target?: string;
     }
@@ -48,10 +48,10 @@ export const PaneActions = {
     ({ type: 'PANE_OPEN', payload: { openerKey, route: { name, params } } }) as const,
   fold: () => ({ type: 'PANE_FOLD' }) as const,
   unfold: () => ({ type: 'PANE_UNFOLD' }) as const,
-  showDefault: (pane: Pane, name: string, params?: object, isPlaceholder = false) =>
+  showDefault: (name: string, params?: object, isPlaceholder = false) =>
     ({
       type: 'PANE_SHOW_DEFAULT',
-      payload: { pane, route: { name, params }, isPlaceholder },
+      payload: { route: { name, params }, isPlaceholder },
     }) as const,
   close: (routeKey: string) => ({ type: 'PANE_CLOSE', payload: { routeKey } }) as const,
 } satisfies Record<string, (...args: never[]) => PaneActionType>;
@@ -143,6 +143,7 @@ export const PaneRouter = ({
       unfoldAssignment(state.routes, state.panes, paneConfig),
       payload.openerKey,
       next.route,
+      paneConfig,
     );
 
     // An opener that is neither a route nor a static default changed nothing.
@@ -160,7 +161,7 @@ export const PaneRouter = ({
 
   const showDefault = (
     state: PaneStackState,
-    payload: { pane: Pane; route: PaneRoute; isPlaceholder: boolean },
+    payload: { route: PaneRoute; isPlaceholder: boolean },
     config: RouterConfigOptions,
   ): PaneStackState | null => {
     // With one pane there is nothing to fill, and a default would sit on top of what the user
@@ -175,8 +176,10 @@ export const PaneRouter = ({
       return null;
     }
 
+    // A default fills the detail pane only: the list pane always holds the root.
+    const detailPane = oppositePane(paneConfig.rootPane);
     const panes = unfoldAssignment(state.routes, state.panes, paneConfig);
-    const inPane = routesOfPane(state.routes, panes, paneConfig, payload.pane);
+    const inPane = routesOfPane(state.routes, panes, paneConfig, detailPane);
 
     // The user already tapped something in this pane.
     if (inPane.some((route) => route.isDefault !== true)) {
@@ -195,7 +198,7 @@ export const PaneRouter = ({
       ...next.pushed,
       routes,
       index: routes.length - 1,
-      panes: { ...retainPanes(panes, others), [next.route.key]: payload.pane },
+      panes: { ...retainPanes(panes, others), [next.route.key]: detailPane },
     };
   };
 

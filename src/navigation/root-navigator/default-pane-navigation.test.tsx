@@ -44,7 +44,10 @@ jest.mock('@kiko/display-regions', () => {
 });
 
 type Navigation = Record<string, (...args: unknown[]) => unknown>;
-type CapturedViewProps = { descriptors: Record<string, { navigation: Navigation }> };
+type CapturedViewProps = {
+  descriptors: Record<string, { navigation: Navigation }>;
+  state: { routes: { key: string; name: string }[] };
+};
 
 // A native stack that only records what the navigator hands it: the default screen's navigation
 // is the descriptor's own, the one the screen is rendered with.
@@ -58,13 +61,19 @@ jest.mock('@react-navigation/native-stack', () => ({
   },
 }));
 
+type Step = { name: string; params?: object };
+
 type StackCase = {
   name: string;
   Stack: ComponentType;
   // The route keys the stack stands in as a default, and where a screen it opens lands.
   defaults: string[];
   target: string;
-  opensIn: 'companion' | 'primary';
+  // The pane the list takes and the pane every step above it takes, defaults included.
+  listPane: 'companion' | 'primary';
+  detailPane: 'companion' | 'primary';
+  // Two steps, the second opened from the first.
+  walk: [Step, Step];
 };
 
 const STACKS: StackCase[] = [
@@ -73,28 +82,45 @@ const STACKS: StackCase[] = [
     Stack: HomeStack,
     defaults: ['pane-default:companion'],
     target: 'TransactionForm',
-    opensIn: 'primary',
+    listPane: 'primary',
+    detailPane: 'companion',
+    walk: [
+      { name: 'TransactionForm', params: { transactionId: 't1' } },
+      { name: 'HoldingForm', params: {} },
+    ],
   },
   {
     name: 'Statistics',
     Stack: StatisticsStack,
     defaults: ['pane-default:companion'],
     target: 'TransactionForm',
-    opensIn: 'primary',
+    listPane: 'primary',
+    detailPane: 'companion',
+    walk: [
+      { name: 'TransactionForm', params: { transactionId: 't1' } },
+      { name: 'HoldingForm', params: {} },
+    ],
   },
   {
     name: 'Accounts',
     Stack: AccountsStack,
     defaults: [],
     target: 'AccountDetail',
-    opensIn: 'primary',
+    listPane: 'companion',
+    detailPane: 'primary',
+    walk: [
+      { name: 'AccountDetail', params: { accountId: 'a', name: 'Monobank', kind: 'bank' } },
+      { name: 'HoldingDetail', params: { holdingId: 'h', name: 'Wallet' } },
+    ],
   },
   {
     name: 'Settings',
     Stack: SettingsStack,
     defaults: ['pane-default:primary'],
     target: 'System',
-    opensIn: 'companion',
+    listPane: 'companion',
+    detailPane: 'primary',
+    walk: [{ name: 'Help' }, { name: 'HelpTopic', params: { topicId: 'addAccount' } }],
   },
 ];
 
@@ -125,13 +151,19 @@ const stackState = () =>
     panes: Record<string, string | undefined>;
   };
 
-describe.each(STACKS)('the $name stack in two panes', ({ Stack, defaults, target, opensIn }) => {
+describe.each(STACKS)('the $name stack in two panes', ({ Stack, defaults, target, detailPane }) => {
   beforeEach(async () => {
     await renderStack(Stack);
   });
 
   it('shows a default only where its config names one', () => {
     expect(Object.keys(defaultNavigations())).toEqual(defaults);
+  });
+
+  it('shows a default in the detail pane, never in the list pane', () => {
+    expect(
+      Object.keys(defaultNavigations()).every((key) => key === `pane-default:${detailPane}`),
+    ).toBe(true);
   });
 
   it('INVARIANT: no navigation call from a default screen throws', async () => {
@@ -161,7 +193,9 @@ describe.each(STACKS)('the $name stack in two panes', ({ Stack, defaults, target
     }
   });
 
-  it('opens what a default screen navigates to in the pane opposite the default', async () => {
+  // was: the pane opposite the default, which on Home and Statistics was the list (primary) and on
+  // Settings the menu (companion).
+  it('opens what a default screen navigates to in the detail pane, where the default is', async () => {
     for (const navigation of Object.values(defaultNavigations())) {
       await act(async () => {
         navigation.navigate(target, { id: 'x' });
@@ -172,7 +206,7 @@ describe.each(STACKS)('the $name stack in two panes', ({ Stack, defaults, target
 
       expect(opened?.name).toBe(target);
       expect(opened?.isDefault).toBeUndefined();
-      expect(panes[opened?.key ?? '']).toBe(opensIn);
+      expect(panes[opened?.key ?? '']).toBe(detailPane);
       expect(routes.filter((route) => route.isDefault === true)).toEqual([]);
     }
   });
@@ -318,31 +352,38 @@ describe.each(STACKS.filter(({ defaults }) => defaults.length > 0))(
   },
 );
 
-// A page the user opened keeps its pane through a fold and an unfold; the pane assignment tests
-// pin the rule, and this is the Settings stack it is for: Help in the primary pane, and the topic
-// opened from it in the pane opposite.
-describe('the Settings stack across a fold and an unfold', () => {
-  const panesOfRoutes = () => {
-    const { routes, panes } = stackState();
+// The window settles on one pane and back, as it does when the device folds and unfolds; the
+// navigator folds and unfolds itself (usePaneFold) once the mode has settled.
+const settleTo = async (mode: LayoutMode): Promise<void> => {
+  await act(async () => {
+    mockLayout.mode = mode;
 
-    return routes.map((route) => [route.name, panes[route.key]]);
+    for (const listener of mockLayout.listeners) {
+      listener();
+    }
+  });
+  await act(async () => {
+    jest.advanceTimersByTime(1000);
+  });
+};
+
+// The routes each pane was last given, by name: the slice that holds the root is the list pane's,
+// the other one is the detail pane's. Read it while the window shows two panes.
+const renderedPanes = (rootKey: string) => {
+  const slices = [...mockCapturedViews].reverse();
+  const namesOf = (slice: CapturedViewProps | undefined) =>
+    slice?.state.routes.map((route) => route.name);
+  const holdsRoot = ({ state }: CapturedViewProps) =>
+    state.routes.some((route) => route.key === rootKey);
+
+  return {
+    list: namesOf(slices.find(holdsRoot)),
+    detail: namesOf(slices.find((slice) => !holdsRoot(slice))),
   };
+};
 
-  // The window settles on one pane and back, as it does when the device folds and unfolds; the
-  // navigator folds and unfolds itself (usePaneFold) once the mode has settled.
-  const settleTo = async (mode: LayoutMode): Promise<void> => {
-    await act(async () => {
-      mockLayout.mode = mode;
-
-      for (const listener of mockLayout.listeners) {
-        listener();
-      }
-    });
-    await act(async () => {
-      jest.advanceTimersByTime(1000);
-    });
-  };
-
+// A fold and an unfold wait for the window to settle, which takes timers the test controls.
+const useSettlingTimers = (): void => {
   beforeEach(() => {
     jest.useFakeTimers();
     mockLayout.mode = 'columns';
@@ -352,6 +393,169 @@ describe('the Settings stack across a fold and an unfold', () => {
     jest.useRealTimers();
     mockLayout.mode = 'columns';
   });
+};
+
+// The list never moves: every step above the root is in the detail pane, whoever opened it, and
+// a fold and an unfold put each of them back where it was.
+describe.each(STACKS)('the $name stack: only the root is in the list pane', ({ Stack, walk }) => {
+  const [first, second] = walk;
+  const rootKey = () => stackState().routes[0].key;
+  const rootName = () => stackState().routes[0].name;
+  const detail = [first.name, second.name];
+
+  const open = async (openerKey: string, step: Step) => {
+    await act(async () => {
+      navigationRef.dispatch({ type: 'PANE_OPEN', payload: { openerKey, route: step } });
+    });
+  };
+
+  const ownNavigation = (key: string): Navigation | undefined =>
+    [...mockCapturedViews]
+      .reverse()
+      .map(({ descriptors }) => descriptors[key]?.navigation)
+      .find((navigation) => navigation !== undefined);
+
+  const expectDetailPaneHoldsTheSteps = async () => {
+    expect(renderedPanes(rootKey())).toEqual({ list: [rootName()], detail });
+
+    await settleTo('single');
+
+    expect(stackState().routes.map((route) => route.name)).toEqual([rootName(), ...detail]);
+
+    await settleTo('columns');
+
+    expect(renderedPanes(rootKey())).toEqual({ list: [rootName()], detail });
+  };
+
+  useSettlingTimers();
+
+  beforeEach(async () => {
+    await renderStack(Stack);
+  });
+
+  it('puts a step opened from the list, and the one opened from it, in the detail pane', async () => {
+    await open(rootKey(), first);
+    await open(stackState().routes.at(-1)?.key ?? '', second);
+
+    await expectDetailPaneHoldsTheSteps();
+  });
+
+  // A screen that asks its own navigation for the next one is not opened through `openFrom`.
+  it('puts what the page asks its own navigation for in the detail pane', async () => {
+    await open(rootKey(), first);
+    await act(async () => {
+      ownNavigation(stackState().routes.at(-1)?.key ?? '')?.navigate(second.name, second.params);
+    });
+
+    await expectDetailPaneHoldsTheSteps();
+  });
+
+  it('puts what a navigate with no source asks for in the detail pane', async () => {
+    await open(rootKey(), first);
+    await act(async () => {
+      navigationRef.navigate(second.name, second.params);
+    });
+
+    await expectDetailPaneHoldsTheSteps();
+  });
+
+  it('puts a second tap in the list in the detail pane, in place of the steps', async () => {
+    await open(rootKey(), first);
+    await open(stackState().routes.at(-1)?.key ?? '', second);
+    await open(rootKey(), first);
+
+    expect(renderedPanes(rootKey())).toEqual({ list: [rootName()], detail: [first.name] });
+  });
+});
+
+describe.each(STACKS.filter(({ defaults }) => defaults.length > 0))(
+  'the $name stack: the steps above its default',
+  ({ Stack, walk }) => {
+    const [first, second] = walk;
+
+    beforeEach(async () => {
+      await renderStack(Stack);
+    });
+
+    it('puts the screen the default opens, and the one opened from it, in the detail pane', async () => {
+      await act(async () => {
+        Object.values(defaultNavigations())[0].navigate(first.name, first.params);
+      });
+
+      const firstKey = stackState().routes.at(-1)?.key ?? '';
+      const rootKey = stackState().routes[0].key;
+
+      await act(async () => {
+        const own = [...mockCapturedViews]
+          .reverse()
+          .map(({ descriptors }) => descriptors[firstKey]?.navigation)
+          .find((navigation) => navigation !== undefined);
+
+        own?.navigate(second.name, second.params);
+      });
+
+      expect(renderedPanes(rootKey)).toEqual({
+        list: [stackState().routes[0].name],
+        detail: [first.name, second.name],
+      });
+    });
+  },
+);
+
+// A reminder tap rebuilds the Accounts stack with one navigate that carries the whole state, so
+// no pane is stored and no `openFrom` runs: the position in the stack is all the router has.
+describe('the Accounts stack rebuilt by a reminder tap', () => {
+  const nestedState = () =>
+    (
+      navigationRef.getRootState() as unknown as {
+        routes: { state?: { routes: { key: string }[]; panes: Record<string, string> } }[];
+      }
+    ).routes[0].state;
+
+  beforeEach(async () => {
+    mockCapturedViews.length = 0;
+
+    await render(
+      <NavigationContainer ref={navigationRef}>
+        <Tabs.Navigator>
+          <Tabs.Screen name="AccountsTab" component={AccountsStack} />
+        </Tabs.Navigator>
+      </NavigationContainer>,
+    );
+    await waitFor(() => expect(navigationRef.isReady()).toBe(true));
+  });
+
+  it('puts the account page and the screen above it in the detail pane', async () => {
+    const routes = [
+      { name: 'Accounts' },
+      { name: 'AccountDetail', params: { accountId: 'a', name: 'Monobank', kind: 'bank' } },
+      { name: 'TransactionForm', params: { holdingId: 'h' } },
+    ];
+
+    await act(async () => {
+      navigationRef.navigate('AccountsTab', { state: { routes, index: routes.length - 1 } });
+    });
+
+    expect(nestedState()?.panes).toEqual({});
+    // was: the form in the companion, covering the Accounts list.
+    expect(renderedPanes(nestedState()?.routes[0].key ?? '')).toEqual({
+      list: ['Accounts'],
+      detail: ['AccountDetail', 'TransactionForm'],
+    });
+  });
+});
+
+// A page the user opened keeps its pane through a fold and an unfold; the pane assignment tests
+// pin the rule, and this is the Settings stack it is for: Help and the topic opened from it, both
+// in the detail pane.
+describe('the Settings stack across a fold and an unfold', () => {
+  const panesOfRoutes = () => {
+    const { routes, panes } = stackState();
+
+    return routes.map((route) => [route.name, panes[route.key]]);
+  };
+
+  useSettlingTimers();
 
   it('keeps Help and the topic opened from it where they were', async () => {
     await renderStack(SettingsStack);
@@ -372,10 +576,11 @@ describe('the Settings stack across a fold and an unfold', () => {
 
     await settleTo('columns');
 
+    // was: HelpTopic in the companion, covering the Settings menu.
     expect(panesOfRoutes()).toEqual([
       ['Settings', 'companion'],
       ['Help', 'primary'],
-      ['HelpTopic', 'companion'],
+      ['HelpTopic', 'primary'],
     ]);
   });
 
