@@ -1,6 +1,6 @@
 ---
 name: kiko-design-system
-description: Invoke when touching theme tokens, react-native-unistyles styles, any shared design-system component (Screen, LoadingState, Box, Text, MoneyText, Button, Card, GlassSurface, BottomSheet, SymbolIcon, Switch, TextField, FieldError, FieldLabel, FieldTrigger, CurrencyBreakdown, CurrencyField, SummaryTable, EntityIconTile, CardContextMenu, ConfirmSheet, ChipRow, DayOfMonthGrid, SelectField, SelectableRow, SegmentedControl, Divider — full current set at `src/design-system/components/`), the app-lock screen/gate UI, an entity/account/holding color, or an SF Symbol tintColor. Read before adding a color, spacing, typography, or radius value, before styling a new screen, and before wiring an entity color into a card, icon, or chart.
+description: Invoke when touching theme tokens, react-native-unistyles styles, any shared design-system component (Screen, LoadingState, Box, Text, MoneyText, Button, Card, GlassSurface, BottomSheet, SymbolIcon, Switch, TextField, FieldError, FieldLabel, FieldTrigger, CurrencyBreakdown, CurrencyField, SummaryTable, EntryCard, EntryDateHeader, ExpandToggle, EntityIconTile, CardContextMenu, ConfirmSheet, ChipRow, DayOfMonthGrid, SelectField, SelectableRow, SegmentedControl, Divider — full current set at `src/design-system/components/`), the app-lock screen/gate UI, an entity/account/holding color, or an SF Symbol tintColor. Read before adding a color, spacing, typography, or radius value, before styling a new screen, and before wiring an entity color into a card, icon, or chart.
 ---
 
 # Kiko design system
@@ -1035,7 +1035,11 @@ new component can land between reviews of this skill:
   hook defined there): it registers its own beforeEach spy and afterEach
   restore, so a caller has nothing to restore and cannot leak the spy into a
   later test. Read a row's SF Symbols in a test with `glyphNamesWithin` and
-  `glyphTintsWithin` (`src/test-support/glyphs-within.ts`). `AccountKindField` and
+  `glyphTintsWithin` (`src/test-support/glyphs-within.ts`). The Jest `Text`
+  mock strips `variant` and `tone`; a layout pin that needs them imports
+  `src/test-support/mock-text-variant-tone.tsx` and reads the tree with
+  `layoutOf` (`src/test-support/layout-of.ts`); `src/test-support/mock-text-tone.tsx`
+  is the tone-only variant. `AccountKindField` and
   `ModeSelectField` (`src/screens/forms/`) are now thin wrappers over
   `SelectField` — `ModeSelectField` keeps its own caller-side `visible`
   gate (a convert has no mode toggle at all) ahead of it. `BankTypeField`
@@ -1381,10 +1385,9 @@ new component can land between reviews of this skill:
   column-mapping result section (`MappingResult`) reuse the SAME row
   layout/alignment/styling for their own summary rows (transaction count,
   currency, date span) — never the deposit table's value/percent/tax
-  COLUMNS, only its layout. The loan detail's ledger breakdown and its
-  "Upcoming Payments" list (`UpcomingPayments`, one row per installment:
-  date label, payment over a principal / interest caption) are
-  `SummaryTable`s too. A property owned in part swaps the priced
+  COLUMNS, only its layout. The loan detail's ledger breakdown is a
+  `SummaryTable` too; its "Upcoming Payments" list is NOT (it is
+  `EntryCard` rows, see **EntryCard**). A property owned in part swaps the priced
   Cost / Value / Gain rows for Whole value / Your share / Your value /
   Cost (your share) / Gain (`sharedPropertyBreakdownRows`,
   `holding-detail.screen.tsx`; testIDs `ownership-whole-value`,
@@ -1405,6 +1408,20 @@ new component can land between reviews of this skill:
   alone — RNTL's `toHaveTextContent` matcher requires an EXACT match by
   default (unlike jest-dom's substring default on web), so a testID
   spanning both label and value would break every such assertion.
+- **EntryCard** (`src/design-system/components/entry-card/`) — the shared
+  ledger card: a label, an amount, and footer lines. Read
+  `entry-card.props.d.ts` for the props.
+- **EntryDateHeader** (`src/design-system/components/entry-date-header/`) —
+  the date heading drawn above an `EntryCard`. Read
+  `entry-date-header.props.d.ts` for the props.
+- **ExpandToggle** (`src/design-system/components/expand-toggle/`) — the
+  shared "Show all" / "Show less" link with a chevron. `testID` is required
+  (`expand-toggle.props.d.ts`); the chevron takes `${testID}-chevron`. Its
+  copy reads `components.expandToggle.*` (en, uk). Never inline a second Show all / Show less
+  copy.
+- Characterization first: before extracting a shared component, pin the
+  current rendered tree with `layoutOf` BEFORE moving any JSX, and keep that
+  pin as a consumer test when the visual is locked.
 - **CurrencyField** (`src/design-system/components/currency-field/`) —
   the shared currency-picker trigger + `BottomSheet`: a labeled trigger
   showing the current selection (or a placeholder) that opens a sheet

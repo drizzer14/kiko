@@ -76,7 +76,9 @@ Rules:
 - Never edit or loosen an existing expectation to make new code pass.
   If a new requirement genuinely conflicts with an existing assertion,
   stop and report both expectations for a human to rule on — do not
-  pick a resolution unilaterally.
+  pick a resolution unilaterally. Edit only assertions that pin the
+  section under change, and name the approved default that forces the edit
+  in the commit message (example: loan-schedule-cards `ec2e196d`).
 - An assertion that reads back a fixture literal instead of a value the
   code under test actually wrote or computed is not a test of the code
   — it only proves the fixture equals itself.

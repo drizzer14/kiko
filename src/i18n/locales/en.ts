@@ -796,6 +796,9 @@ export const en = {
     // transactions the auto-link matcher (or a manual pick) linked to this
     // loan, newest first.
     linkedPayments: 'Linked Payments',
+    // The title of each upcoming loan payment's card: the schedule lists only
+    // loan payments, so one fixed label names them all.
+    loanPayment: 'Loan payment',
     militaryLevy: 'Military levy {{pct}}%',
     openingDeposit: 'Opening deposit',
     outstanding: 'Outstanding',
@@ -815,6 +818,9 @@ export const en = {
     purchase: 'Purchase',
     redemption: 'Redemption',
     sale: 'Sale',
+    // The marker under each upcoming loan payment: the payment is on the loan's
+    // contractual schedule, so it is not an estimate and not "Projected".
+    scheduled: 'Scheduled',
     shareChanges: 'Share Changes',
     // After the share ("1/3 · 33.33% since 01.06.2025"): the day it took effect.
     shareSince: 'since {{date}}',
@@ -1036,13 +1042,15 @@ export const en = {
   // Shared design-system components (src/design-system/components/*) that
   // carry their own hardcoded copy rather than taking it as a prop.
   components: {
+    expandToggle: {
+      showAll: 'Show all',
+      showLess: 'Show less',
+    },
     netWorthLine: {
       loadingHistory: 'Loading history',
     },
     pieChart: {
       emptyDefault: 'No accounts to show',
-      showAll: 'Show all',
-      showLess: 'Show less',
     },
   },
   // The app-boot gate (src/migration/migrations.gate.tsx) — its own UI is the very

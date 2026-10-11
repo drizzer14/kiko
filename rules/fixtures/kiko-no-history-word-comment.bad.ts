@@ -133,6 +133,85 @@ export const splitUsedToPurpose = true;
  */
 export const secondWordInBlock = true;
 
+// The refactor-narrative phrases of a test comment: a look "as drawn today", a test "kept green"
+// through an extraction, "the move onto" a shared component.
+// EXPECT-FINDING
+// The toggle as drawn today, pinned so a later change draws no pixel differently.
+export const asDrawnToday = true;
+
+// EXPECT-FINDING
+// The rows as rendered today keep their order.
+export const asRenderedToday = true;
+
+// EXPECT-FINDING
+// Written against the inline rows and kept green while they were reshaped.
+export const keptGreen = true;
+
+// EXPECT-FINDING
+// Pinned so the move onto the shared toggle changes no pixel.
+export const moveOnto = true;
+
+// EXPECT-FINDING
+// The look carries over the move into the shared card unchanged.
+export const moveInto = true;
+
+// EXPECT-FINDING
+// The rows keep their layout through their extraction into a card.
+export const throughTheirExtraction = true;
+
+// EXPECT-FINDING
+// The rows keep their layout through the extraction into a card.
+export const throughTheExtraction = true;
+
+// The same phrases at the start of a sentence, and the three the first pass left unpinned.
+// EXPECT-FINDING
+// Kept green while the rows were reshaped into a card.
+export const keptGreenCapital = true;
+
+// EXPECT-FINDING
+// As drawn today, the toggle sits flush with the label.
+export const asDrawnTodayCapital = true;
+
+// EXPECT-FINDING
+// As rendered today, the rows keep their order.
+export const asRenderedTodayCapital = true;
+
+// EXPECT-FINDING
+// The rows keep their layout as written today.
+export const asWrittenToday = true;
+
+// EXPECT-FINDING
+// As written today, the label reads on its own.
+export const asWrittenTodayCapital = true;
+
+// EXPECT-FINDING
+// The rows keep their layout as built today.
+export const asBuiltToday = true;
+
+// EXPECT-FINDING
+// As built today, the rows keep their order.
+export const asBuiltTodayCapital = true;
+
+// EXPECT-FINDING
+// The move onto the shared toggle changes no pixel.
+export const moveOntoCapital = true;
+
+// EXPECT-FINDING
+// The move into the shared card changes no pixel.
+export const moveIntoCapital = true;
+
+// EXPECT-FINDING
+// The rows keep their layout through its extraction into a card.
+export const throughItsExtraction = true;
+
+// EXPECT-FINDING
+// Through their extraction into a card the rows keep their layout.
+export const throughTheirExtractionCapital = true;
+
+// EXPECT-FINDING
+// Through the extraction into a card the rows keep their layout.
+export const throughTheExtractionCapital = true;
+
 // A second word on the same line is reported too (one pin covers the line, since a pin
 // names a line, not a member).
 // EXPECT-FINDING

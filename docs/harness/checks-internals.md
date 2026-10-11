@@ -188,7 +188,8 @@ dedup always runs in full.
   `check:blank-line-separation`. The project-wide run does not dedup when
   its test-seam source-root variable is set.
 - Dedups every run (project-wide only, no per-file mode): `check:knip`,
-  `check:deps`, `check:comment-line-width` (not when its test-seam
+  `check:deps`, `check:comment-line-width` and
+  `check:component-i18n-namespace` (neither when its test-seam
   source-root variable is set), `check:shipped-migrations`,
   `check:guard-replay`, `check:mutation` (the fingerprint includes its
   scope: merge-base and file list).

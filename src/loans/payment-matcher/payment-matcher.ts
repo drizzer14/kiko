@@ -1,10 +1,14 @@
 import { DAY_MS } from '@kiko/dates';
+import {
+  isScheduledPayment,
+  loanInstallments,
+  withinInstallmentTolerance,
+} from '@kiko/holdings/loan-schedule';
 import type { HoldingRow } from '@kiko/db';
 import maybe, { foldMap } from 'fnts/maybe';
 import { dayKeyOf } from '@kiko/prices/price-book';
 import type { Currency } from '@kiko/currency/currency';
 import { asLoanMeta, type LoanMeta } from '@kiko/holdings/holding-metadata';
-import { loanInstallments, withinInstallmentTolerance } from '@kiko/holdings/loan-schedule';
 
 // Exported so `use-loan-auto-link.ts` can derive its own SQL-level lower
 // bound ("earliest loan start minus the window's own before-margin") from
@@ -199,6 +203,7 @@ const candidateInstallmentsFor = (
   const cutoffDayKey = dayKeyOf(now) + WINDOW_BEFORE_DAYS * DAY_MS;
 
   return loanInstallments(meta)
+    .filter(isScheduledPayment)
     .filter((installment) => dayKeyOf(installment.dueDate) <= cutoffDayKey)
     .map((installment) => ({
       loanHoldingId: loan.id,

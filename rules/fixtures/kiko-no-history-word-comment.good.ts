@@ -39,6 +39,19 @@ export const urlNote = 'see https://example.test // previously';
 // An unused to-do list stays as it is.
 // A used today counter stays as it is.
 
+// 5b. Near misses of the refactor-narrative members: "as of today" is a date, not a look drawn
+// before a change; a bare "move onto" names an action; "keeps ... green" is a present state.
+// The value defaults to the day as of today.
+// A move onto the next row advances the cursor.
+// Each case keeps the suite green.
+
+// 5c. The phrases name a refactor only with their full shape: a drag animation moves "into place",
+// and a data "extraction" is a pipeline step, not an extracted component.
+// Animate the move into place when the drag ends.
+// Carry the booking date through the extraction so the parser keeps it.
+// The move onto the next row advances the cursor.
+// Through the extraction step the parser keeps the booking date.
+
 // 6. A multi-line block comment holding only the excluded purpose shape:
 /**
  * The cursor is used to resume the page after a failed run, so the retry

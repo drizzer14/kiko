@@ -1414,12 +1414,13 @@ found. Reword any of these.
 
 The change-narrative half of kiko-code-style's "Comments: WHY only, never
 history". `kiko-no-history-id-comment` catches an id or a citation; this
-rule catches the words a comment uses to narrate a change: `it replaces`,
-`no longer`, `used to`, `previously`, and a `was:` label before an old value
-(`// was: 30`, ` * was: the old cap`). A comment states how the code
-works today and why, never how it worked before. The members are the
-`pattern-regex` alternation in `kiko-no-history-word-comment`
-(`rules/semgrep-prewrite.yml`); the fixture pair shows each shape.
+rule catches the phrases a comment uses to narrate a change, among them a
+`was:` label before an old value (`// was: 30`, ` * was: the old cap`). A
+comment states how the code works today and why, never how it worked before.
+The members are the `pattern-regex` alternation and the `message` of
+`kiko-no-history-word-comment` in `rules/semgrep-prewrite.yml`; read the
+phrases there, never copy them. The match is capitalization-tolerant, and
+the fixture pair shows each shape.
 
 **A separate rule id, severity WARNING (Class B).** Severity is per rule,
 so the words could not ride on the ERROR id rule. Count the live findings with
@@ -1448,7 +1449,8 @@ of other text in its comment), and the same `paths.exclude` scope (`__tests__/**
 `e2e/**`, `scripts/**`, `harness/**`, `App.tsx`, `drizzle.config.ts`;
 `__mocks__/**` and co-located test files stay in scope).
 
-**Measured false-positive classes.** Every word was counted over `src`
+**Measured false-positive classes.** Counts below are the hits measured at the
+time, not live counts. Every phrase was counted over `src`
 (`semgrep --metrics off --quiet --config rules/semgrep-prewrite.yml src
 --json`, `paths.scanned` read first), and a hand read classified each hit:
 
@@ -1463,7 +1465,8 @@ of other text in its comment), and the same `paths.exclude` scope (`__tests__/**
   stays a finding: "The sheet never used to flicker" is history. The member
   keeps a lowercase `used to` only. A noun-then-participle purpose sentence
   ("the key used to match") has no regex separator from "the wrapper used to
-  own", so about 10 purpose hits remain among the 98 (a comma or em dash
+  own", so about 10 purpose hits remained among the hits measured at the
+  time (a comma or em dash
   before `used to` held 6 purpose and 2 history hits, too mixed to narrow).
   The lookbehind sees only the word right before the phrase, so "is only
   used to resume" and an `is` at the end of one comment line with `used to`
@@ -1472,7 +1475,7 @@ of other text in its comment), and the same `paths.exclude` scope (`__tests__/**
   holding") instead of "used to".
 - `no longer`: the runtime-state sense ("a kind the app no longer knows",
   "a card the snapshot no longer returns", "once it no longer
-  corresponds") is common: about 40 of the 98 hits. No regex separates it
+  corresponds") is common: a large share of the hits measured at the time. No regex separates it
   from "the sync no longer writes it", so the member is not narrowed. A
   runtime-state sentence gets reworded to name the state ("a kind outside
   the current list", "a card absent from the snapshot").
@@ -1495,6 +1498,10 @@ of other text in its comment), and the same `paths.exclude` scope (`__tests__/**
 - `it replaces`: 2 of the 6 hits were a behavior description ("while
   locked it replaces the whole app with a prompt"); the other 4 named the
   old code ("the scan it replaces"). Not narrowed.
+
+A NEW phrase is tested against legitimate comments (the good fixture) before
+it ships, narrowed with a following noun or preposition so a bare verb does
+not match, made capitalization-tolerant, and pinned in both fixtures.
 
 Narrowing a member needs its own measured false-positive class and a
 fixture pin on each side (an excluded shape in `.good.ts`, a caught
@@ -1953,14 +1960,18 @@ for the current set.
   whose `NODE_RULES` row sets `overridable: false`. Such a rule has no
   override at all: the guard never reads an override comment for it, the
   finding still denies, and its deny text does not mention an override.
-  `kiko-comment-line-width` is the one such row today; guard-replay runs
-  the unchanged guard, so it inherits the same refusal.
+  Read `overridable: false` in `NODE_RULES` in
+  `scripts/checks/pre-write-guard.js` for the current rows (at the time of
+  writing: `kiko-comment-line-width` and `kiko-component-i18n-namespace`);
+  guard-replay runs the unchanged guard, so it inherits the same refusal.
 - `check:security` honors only Semgrep's own `nosemgrep`.
-- `check:comment-line-width` and its guard rule have no override of any
-  kind (see the `overridable: false` bullet above).
+- The project-wide check of every `overridable: false` rule and its guard
+  rule have no override of any kind (see the `overridable: false` bullet
+  above).
 - The other project-wide Node checkers (`check:import-order`,
   `check:full-word-identifiers`, `check:screen-imports`,
-  `check:feature-imports`, `check:blank-line-separation`) have NO inline
+  `check:feature-imports`, `check:blank-line-separation`,
+  `check:component-i18n-namespace`) have NO inline
   override either. A
   `kiko-override:` gets a write past the guard, and `check:all` still
   fails on that line. A Node-rule exception needs a checker-level
@@ -1976,6 +1987,14 @@ Each runs as `node scripts/checks/<name>.js <file>`, as a guard
 knip only through `knip.json`'s `ignore` (read the list there; it
 includes `feature-imports.js` and `specifier-scanner.js`). None has a
 report or JSON mode.
+
+Every `NODE_RULES` row's `ruleId` must be named in this section. The
+Jest invariant `__tests__/node-rules-skill-coverage.test.ts` fails,
+naming the missing ids, when a row has no bullet here (it matches the
+id as a whole token, so `kiko-a-longer` does not cover `kiko-a`, and
+reads only from this heading to the next `##` heading, ignoring `#`
+lines inside fenced blocks). Add the bullet in the same commit as the
+row.
 
 Each `NODE_RULES` row names its own `projectCheck`, the gate a deny for
 a pre-existing finding points at. A Semgrep deny names
@@ -2022,6 +2041,33 @@ a pre-existing finding points at. A Semgrep deny names
   `full-word-identifiers.sh` except `rules/fixtures/`, and is part of
   `check:all` (the tree holds no comment line over 100 columns). No
   `--write`. Tests: `__tests__/comment-line-width.test.ts`.
+- `component-i18n-namespace.js` (`kiko-component-i18n-namespace`) enforces
+  kiko-translator's "A string moved into a shared component changes
+  namespace" for a literal key in the component's own folder tree: a file
+  under `src/design-system/components/<name>/` (its tests too) reads only
+  `components.<camelCase(name)>.*`. A key in a comment is not a read. The
+  finding prints the key as captured, stopping at the closing quote,
+  whitespace or `${`, so one finding is one line with no space in the key
+  and the guard's line parser reads it. The row sets `overridable: false`.
+  `component-i18n-namespace.sh` is project-wide only
+  (`npm run check:component-i18n-namespace`, in `check:all`): it has no
+  per-file mode, and it exits 2 when its scan root is missing instead of
+  passing with nothing checked. No `--write`, no exemption list. Tests:
+  `__tests__/component-i18n-namespace.test.ts`.
+- `import-order.js` (`kiko-import-order`) enforces kiko-code-style's
+  "Import ordering and `import type`". `import-order.sh` is the
+  project-wide gate (`npm run check:import-order`, in `check:all`);
+  `--write` fixes what it safely can. Tests: `__tests__/import-order.test.ts`.
+- `full-word-identifiers.js` (`kiko-full-word-identifiers`) enforces
+  kiko-code-style's "Full words in identifiers". `full-word-identifiers.sh`
+  is the project-wide gate (`npm run check:full-word-identifiers`, in
+  `check:all`); its denylist and `EXEMPTIONS` live in the checker. Tests:
+  `__tests__/full-word-identifiers.test.ts`.
+- `one-component-per-file.ts` (`kiko-one-component-per-file`) enforces
+  kiko-code-style's "One component per file, each in its own folder". It is
+  a TypeScript module the guard loads in a worker, with no `.sh` wrapper
+  and no `check:*` gate: its project-wide check is the Jest invariant
+  `__tests__/one-component-per-file.test.ts`.
 - `plural-count.js` (`kiko-plural-key-needs-count`) enforces kiko-translator's
   "A plural key is always called with `count`". It has no `.sh` wrapper
   and no `check:*` gate: its project-wide check is the Jest invariant
@@ -2346,7 +2392,15 @@ mechanizable (see harness-workflow's "Classify every finding").
    - Add one `NODE_RULES` row: `ruleId`, `extensions`, `fix`, `skill`,
      `projectCheck` (the project-wide gate the deny reason names for a
      pre-existing finding, e.g. `check:<name>`), and `run`.
-     `pre-write-guard.sh` needs no change.
+     `pre-write-guard.sh` needs no change. Name the `ruleId` in the
+     "Node checkers" section in the same commit (a Jest invariant
+     enforces it, see that section).
+   - The checker prints one finding per line with no whitespace in the key
+     field, because the guard's line parser splits on it. Add a test with a
+     template-literal input, and run the rule's own output through the
+     guard's line parser.
+   - A project-wide wrapper that walks a scan root exits 2 when the root is
+     missing, never passes on an empty scan.
    - Node rules have no `rules/fixtures/` pair. Prove them with
      `__tests__/<name>.test.ts` and a case in
      `__tests__/pre-write-guard.test.ts`.
