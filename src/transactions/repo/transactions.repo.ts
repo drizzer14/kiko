@@ -61,6 +61,11 @@ import { normalizeTransactionName } from '../normalize-name';
 import { balanceBoundaryOf, movesBalance } from '../balance-boundary';
 import { SYNC_MATCH_WINDOW_MILLISECONDS, pairSyncInputsWithImportRows } from '../sync-adoption';
 
+// A step the caller runs in the SAME write, after the rows are written, so a failure in either
+// part rolls both back. It lets the transaction form save a template with its transaction without
+// this feature importing the templates one.
+type Alongside = (databaseTransaction: typeof database) => Promise<void>;
+
 type NewTransaction = Pick<TransactionRow, 'holdingId' | 'amountMinorUnits' | 'time' | 'source'> &
   Partial<
     Pick<
@@ -2066,8 +2071,11 @@ export const transactionsRepo = {
    * on a partial failure. The balance moves by the row's full amount whatever
    * its date, a back-dated row included: every transaction updates the balance.
    */
-  recordManual: (input: ManualTransaction) =>
-    write((databaseTransaction) => recordManualTransaction(databaseTransaction, input)),
+  recordManual: (input: ManualTransaction, alongside?: Alongside) =>
+    write(async (databaseTransaction) => {
+      await recordManualTransaction(databaseTransaction, input);
+      await alongside?.(databaseTransaction);
+    }),
   /**
    * Record an Exchange as two INDEPENDENT ledger rows in ONE transaction, tied
    * by the structural `exchangeCounterpartHoldingId` marker — each leg stores
@@ -2080,7 +2088,7 @@ export const transactionsRepo = {
    * can never desync. Balances are read INSIDE the transaction, never from a
    * render snapshot, exactly as `recordManual` does.
    */
-  recordExchange: (input: ExchangeInput) =>
+  recordExchange: (input: ExchangeInput, alongside?: Alongside) =>
     write(async (databaseTransaction) => {
       if (input.destinationHoldingId === input.sourceHoldingId) {
         throw new Error('recordExchange: destination equals source');
@@ -2129,6 +2137,8 @@ export const transactionsRepo = {
           throw new Error(`recordExchange: ${input.destinationType} is not a valid destination`);
         })
         .exhaustive();
+
+      await alongside?.(databaseTransaction);
     }),
   /**
    * Convert-mode (spec "Convert an existing transaction"): record the ONE
@@ -2265,7 +2275,7 @@ export const transactionsRepo = {
    * the transaction, never from a render snapshot, exactly as `recordManual`
    * does.
    */
-  recordManualWithReturns: (input: ManualWithReturnsInput) =>
+  recordManualWithReturns: (input: ManualWithReturnsInput, alongside?: Alongside) =>
     write(async (databaseTransaction) => {
       const changeGroupId = id();
 
@@ -2279,6 +2289,8 @@ export const transactionsRepo = {
           changeGroupId,
         });
       }
+
+      await alongside?.(databaseTransaction);
     }),
   /**
    * Edit an existing MANUAL transaction and keep its holding's stored balance
@@ -2291,7 +2303,10 @@ export const transactionsRepo = {
    * never mutated by this path — its amount is owned by the bank import — and a
    * missing id is a no-op rather than an error.
    */
-  update: ({ transactionId, amountMinorUnits, time, description }: TransactionEdit) =>
+  update: (
+    { transactionId, amountMinorUnits, time, description }: TransactionEdit,
+    alongside?: Alongside,
+  ) =>
     write(async (databaseTransaction) => {
       const existingRows = await databaseTransaction
         .select()
@@ -2313,6 +2328,7 @@ export const transactionsRepo = {
         existing.holdingId,
         amountMinorUnits - existing.amountMinorUnits,
       );
+      await alongside?.(databaseTransaction);
     }),
   /**
    * Delete a MANUAL or IMPORTED transaction and reverse its effect on the
