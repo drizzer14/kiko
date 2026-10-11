@@ -3,6 +3,7 @@ import { holdingValue } from '@kiko/holdings/holding-value';
 import { isLedgerlessHoldingType } from '@kiko/holdings/holding-descriptor';
 import { bankCatalog, isBankId, OTHER_BANK_ID } from '@kiko/bank-sync/bank-catalog';
 import { readSeedCategoryColors } from '@kiko/db/__fixtures__/seed-category-colors';
+import { draftReferences, isTemplateDraft } from '@kiko/transaction-templates/draft';
 import { SEEDED_CATEGORIES, LOAN_INTEREST_CATEGORY } from '@kiko/db/__fixtures__/seeded-categories';
 
 import { buildScreenshotDataset } from '../seed/screenshot-seed';
@@ -14,6 +15,7 @@ const ANCHOR = Date.UTC(2026, 8, 10, 9, 0, 0);
 describe('buildDemoSnapshot', () => {
   const dataset = buildScreenshotDataset('uk', ANCHOR);
   const snapshot = buildDemoSnapshot(dataset);
+  const templates = snapshot.transactionTemplates ?? [];
 
   it('is deterministic: two builds of the same dataset are deeply equal', () => {
     expect(buildDemoSnapshot(buildScreenshotDataset('uk', ANCHOR))).toEqual(snapshot);
@@ -29,6 +31,7 @@ describe('buildDemoSnapshot', () => {
         reminder.createdAt,
         reminder.updatedAt,
       ]),
+      ...templates.flatMap((template) => [template.createdAt, template.updatedAt]),
     ];
 
     expect(stamps.length).toBeGreaterThan(0);
@@ -50,6 +53,51 @@ describe('buildDemoSnapshot', () => {
     expect(snapshot.holdings).toHaveLength(
       dataset.accounts.reduce((total, account) => total + account.holdings.length, 0),
     );
+  });
+
+  it('carries every template the dataset describes, ided tpl-1..n in dataset order', () => {
+    expect(templates.map((template) => template.id)).toEqual(
+      dataset.templates.map((_template, index) => `tpl-${index + 1}`),
+    );
+    expect(templates.map((template) => template.name)).toEqual(
+      dataset.templates.map((template) => template.name),
+    );
+  });
+
+  // The app narrows a draft on read and shows a draft it cannot read as an empty one, so a
+  // template that fails the guard would hide what the reviewer is meant to see.
+  it('gives every template a draft the app accepts, whose holdings and category exist in the snapshot', () => {
+    const holdingIds = new Set(snapshot.holdings.map((holding) => holding.id));
+    const categoryKeys = new Set(snapshot.categories.map((category) => category.key));
+    const drafts = templates.map((template) => template.draft).filter(isTemplateDraft);
+
+    expect(drafts.length).toBeGreaterThan(0);
+    expect(drafts).toHaveLength(templates.length);
+
+    for (const draft of drafts) {
+      const { holdingIds: referenced, categoryKey } = draftReferences(draft);
+
+      expect(referenced.length).toBeGreaterThan(0);
+      expect(referenced.every((holdingId) => holdingIds.has(holdingId))).toBe(true);
+      expect(categoryKey === null || categoryKeys.has(categoryKey)).toBe(true);
+    }
+  });
+
+  it('gives a template the currency of the holding it pays from and of the one an exchange lands in', () => {
+    const currencyOf = new Map(snapshot.holdings.map((holding) => [holding.id, holding.currency]));
+    const drafts = templates.map((template) => template.draft).filter(isTemplateDraft);
+
+    expect(drafts.some((draft) => draft.exchange !== null)).toBe(true);
+
+    for (const draft of drafts) {
+      expect(draft.currency).toBe(currencyOf.get(draft.holdingId ?? ''));
+
+      if (draft.exchange !== null) {
+        expect(draft.exchange.destinationCurrency).toBe(
+          currencyOf.get(draft.exchange.destinationHoldingId ?? ''),
+        );
+      }
+    }
   });
 
   it('gives every bank account a catalog bank id, as a post-0049 device stores it, and no other kind a bank id', () => {

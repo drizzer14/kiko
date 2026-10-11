@@ -839,6 +839,11 @@ the SAME `db.transaction()`/`write()` call. Never hand-roll a fixed
 row-count chunk; the safe size depends on the table's column count,
 which only `chunkForTable` knows.
 
+A long `a or b or ...` chain has a SECOND limit: SQLite refuses an expression tree
+deeper than 1000 ("Expression tree is too large"), separate from bound parameters.
+Chunk such a chain by term count (`MAX_OR_TERMS` in
+`src/transaction-templates/repo/transaction-templates.repo.ts`).
+
 Examples: `ratesRepo.upsertMany` (`src/rates/repo/rates.repo.ts`) and the
 shared `upsertDedupRowsDatabaseTransaction`
 (`src/transactions/repo/transactions.repo.ts`, called by both
@@ -2058,7 +2063,8 @@ shape, and hand-rolled `utf8/utf8.ts` + `base64/base64.ts` codecs.
   deletes are unknowable, so there is no data step and no derived mirror. Its
   foreign key to `holdings` is NO ACTION, so the order carries it: a holding
   or account delete removes the keys first (`removeHoldingDatabaseTransaction`,
-  `accountsRepo.remove`). A write that moves a holding's balance anchor (a
+  `accountsRepo.remove`); a table with no FK (`transaction_templates`) has no
+  delete-order constraint. A write that moves a holding's balance anchor (a
   closing balance that applies, a hand-set balance, the bank figure of a sync)
   clears all its keys in the same write
   (`clearDeletedImportKeysDatabaseTransaction`): the sync clears but never
@@ -2215,12 +2221,11 @@ shape, and hand-rolled `utf8/utf8.ts` + `base64/base64.ts` codecs.
   with the reason no bump is needed: a column riding inside an existing row
   and derived on restore needs none, and neither does an idempotent data
   rewrite that the restore mirror re-applies to an older file (0049, 0050, 0051).
-  The decision per migration is recorded in `VERSION_DECISIONS` in
-  `src/data-transfer/crypto/envelope.test.ts`, which is where to read it (0052's
-  `exchangePairId` is the first kind: a column riding inside a row). A new
-  table the file carries as an OPTIONAL snapshot key (0054's
-  `deletedImportKeys`) needs none either: an older build drops the key and
-  keeps its old rule, and this build restores an older file with the table empty.
+  The decision per migration, each optional snapshot key included, is recorded in
+  `VERSION_DECISIONS` in `src/data-transfer/crypto/envelope.test.ts`: read it there.
+  A new table the file carries as an OPTIONAL key needs no bump: an older build
+  drops the key, and this build restores an older file with the table empty
+  (`?? []`).
 
 ## Reminders (local notifications)
 

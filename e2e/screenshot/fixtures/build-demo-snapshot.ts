@@ -12,6 +12,7 @@ import type {
   SettingsRow,
   PricePointRow,
   TransactionRow,
+  TransactionTemplateRow,
 } from '@kiko/db';
 import { match } from 'ts-pattern';
 import maybe, { foldMap } from 'fnts/maybe';
@@ -258,6 +259,30 @@ const buildReminders = (dataset: ScreenshotDataset): ReminderRow[] =>
       updatedAt: dataset.anchor,
     }));
 
+// `tpl-1..n`, each draft's holding keys swapped for the `hold-n` ids of the ledger above.
+const buildTemplates = (dataset: ScreenshotDataset): TransactionTemplateRow[] => {
+  const idsByKey = holdingIdsByKey(dataset);
+  const idOf = (key: string | null): string | null =>
+    foldMap(maybe(key), (holdingKey) => holdingIdOf(idsByKey, holdingKey)) ?? null;
+
+  return dataset.templates.map(({ name, draft }, index) => ({
+    id: `tpl-${index + 1}`,
+    name,
+    draft: {
+      ...draft,
+      holdingId: idOf(draft.holdingId),
+      exchange:
+        foldMap(maybe(draft.exchange), (exchange) => ({
+          ...exchange,
+          destinationHoldingId: idOf(exchange.destinationHoldingId),
+        })) ?? null,
+      returns: draft.returns.map((row) => ({ ...row, holdingId: idOf(row.holdingId) })),
+    },
+    createdAt: dataset.anchor,
+    updatedAt: dataset.anchor,
+  }));
+};
+
 export const buildDemoSnapshot = (dataset: ScreenshotDataset): DataSnapshot => {
   const ledger = buildLedger(dataset);
 
@@ -274,5 +299,6 @@ export const buildDemoSnapshot = (dataset: ScreenshotDataset): DataSnapshot => {
     pricePoints: buildPricePoints(dataset),
     bondRegister: dataset.bondRegister,
     reminders: buildReminders(dataset),
+    transactionTemplates: buildTemplates(dataset),
   };
 };
