@@ -175,10 +175,25 @@ const modeFor = (mode: TemplateMode, seated: HoldingRow | undefined): FormMode =
 };
 
 // The seated holding cannot be its own destination, or the write would refuse it: the form asks.
-const destinationFor = (draft: TemplateDraft, seated: HoldingRow | undefined): string | null => {
+// A destination with none left (dropped here, or nulled because it was closed or deleted) takes
+// the Value in with it, which was typed in that destination's currency.
+const exchangeFor = (
+  draft: TemplateDraft,
+  seated: HoldingRow | undefined,
+): { destinationHoldingId: string | null; valueIn: string } => {
   const destination = draft.exchange?.destinationHoldingId ?? null;
 
-  return destination === seated?.id ? null : destination;
+  if (destination === null || destination === seated?.id) {
+    return { destinationHoldingId: null, valueIn: '' };
+  }
+
+  return {
+    destinationHoldingId: destination,
+    valueIn: storedAmountText(
+      draft.exchange?.destinationCurrency ?? null,
+      draft.exchange?.valueInMinorUnits ?? null,
+    ),
+  };
 };
 
 // The return rows a template fills. A return holding is in the template's payer currency, but a
@@ -206,8 +221,6 @@ const seedFieldsFromTemplate = (
   seated: HoldingRow | undefined,
   holdings: readonly HoldingRow[],
 ): HydrationPlan => {
-  const destinationHoldingId = destinationFor(draft, seated);
-
   return {
     kind: 'seedFields',
     amount: storedAmountText(draft.currency, draft.amountMinorUnits),
@@ -216,15 +229,7 @@ const seedFieldsFromTemplate = (
     prefilledLabel: null,
     category: categoryKey(draft.category),
     time: null,
-    destinationHoldingId,
-    // The Value in was typed in the dropped destination's currency, so it goes with it.
-    valueIn:
-      destinationHoldingId !== (draft.exchange?.destinationHoldingId ?? null)
-        ? ''
-        : storedAmountText(
-            draft.exchange?.destinationCurrency ?? null,
-            draft.exchange?.valueInMinorUnits ?? null,
-          ),
+    ...exchangeFor(draft, seated),
     returns: returnsFor(draft, seated, holdings),
     templateName,
     clearsHolding: draft.holdingId === null,

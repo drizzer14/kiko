@@ -349,7 +349,7 @@ describe('TransactionFormScreen — filled from a template', () => {
     expect(getByLabelText('Amount').props.value).toBe('1 050');
   });
 
-  it('leaves Destination empty for a dangling destination, keeping the rest of the fill', async () => {
+  it('leaves Destination and Value in empty for a dangling destination, keeping the rest of the fill', async () => {
     setLiveData({
       draft: draftOf({
         mode: 'exchange',
@@ -367,7 +367,7 @@ describe('TransactionFormScreen — filled from a template', () => {
     const { getByLabelText, getByText } = await render(templateScreen());
 
     expect(getByLabelText('To')).toHaveTextContent('Select holding');
-    expect(getByLabelText('Value in').props.value).toBe('2.5');
+    expect(getByLabelText('Value in').props.value).toBe('');
 
     await fireEvent.press(getByText('Save'));
 

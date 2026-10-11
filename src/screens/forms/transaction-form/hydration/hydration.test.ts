@@ -373,6 +373,24 @@ describe('resolveHydration — a template', () => {
       });
     });
 
+    it('drops the Value in with a destination that is closed or deleted, a null once resolved', () => {
+      const plan = resolveHydration(
+        argsOf({
+          templateDraft: draftOf({
+            mode: 'exchange',
+            currency: 'UAH',
+            exchange: {
+              destinationHoldingId: null,
+              destinationCurrency: 'USD',
+              valueInMinorUnits: 10000,
+            },
+          }),
+        }),
+      );
+
+      expect(plan).toMatchObject({ destinationHoldingId: null, valueIn: '' });
+    });
+
     it('leaves Value in empty without a destination currency or a value', () => {
       const valueInOf = (exchange: TemplateDraft['exchange']) =>
         resolveHydration(argsOf({ templateDraft: draftOf({ mode: 'exchange', exchange }) }));
