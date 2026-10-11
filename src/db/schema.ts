@@ -324,7 +324,7 @@ export const deletedImportKeys = sqliteTable(
 export type DeletedImportKeyRow = typeof deletedImportKeys.$inferSelect;
 
 // A saved transaction form: a name and the fields the form fills from it. No
-// foreign key, because the account, holding and category ids live inside `draft`
+// foreign key, because the holding and category ids live inside `draft`
 // and a delete of one clears them there; no index, because the table is small and
 // read by primary key or in full. `draft` is typed `unknown` here (this layer must
 // not import a feature): the templates repo narrows it on read, and a draft it

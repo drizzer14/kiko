@@ -14,8 +14,8 @@ jest.mock('@kiko/db/client', () => {
 import { DatabaseSync } from 'node:sqlite';
 import { EMPTY_DRAFT } from '@kiko/transaction-templates/draft';
 import { applyAllMigrations } from '@kiko/test-support/real-sqlite';
-import { transactionTemplatesRepo } from '@kiko/transaction-templates/repo';
 import { deleteCascadeFixture } from '@kiko/test-support/delete-cascade-fixture';
+import { TemplateNameTakenError, transactionTemplatesRepo } from '@kiko/transaction-templates/repo';
 
 import { transactionsRepo } from './transactions.repo';
 
@@ -173,7 +173,7 @@ describe.each(CASES)('$name with an alongside step', ({ prepare, run }) => {
     await transactionTemplatesRepo.create({ name: ' rent ', draft: EMPTY_DRAFT });
     const before = snapshot();
 
-    await expect(run(saveTemplate)).rejects.toThrow();
+    await expect(run(saveTemplate)).rejects.toThrow(TemplateNameTakenError);
 
     expect(snapshot()).toEqual(before);
   });
@@ -243,7 +243,7 @@ describe('a write that fails before its alongside step', () => {
         { transactionId: 'edited', amountMinorUnits: -900, time: EDITED_TIME },
         alongside,
       ),
-    ).rejects.toThrow();
+    ).rejects.toThrow('Failed query: update "transactions"');
 
     expect(alongside).not.toHaveBeenCalled();
     expect(snapshot()).toEqual(before);

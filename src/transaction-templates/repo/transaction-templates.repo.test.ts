@@ -303,8 +303,11 @@ describe('transactionTemplatesRepo.clearHoldingsDatabaseTransaction', () => {
     expect(storedTemplate('a')).toMatchObject({ created_at: 1000, updated_at: 1000 });
   });
 
-  it('leaves a template that only names the id inside its description byte-equal', async () => {
-    const raw = JSON.stringify(draftWith({ holdingId: 'h2', description: 'paid from "h1" today' }));
+  // The description is the whole id, so its JSON form holds the prefilter's needle and only the
+  // exact decision can reject the row. The indented text is not what a rewrite writes, so a
+  // wrongly accepted row would change bytes.
+  it('leaves a template that only names the id as its description byte-equal', async () => {
+    const raw = JSON.stringify(draftWith({ holdingId: 'h2', description: 'h1' }), null, 2);
 
     seedTemplate('a', 'Mentions', raw);
 
@@ -364,8 +367,15 @@ describe('transactionTemplatesRepo.clearCategoryDatabaseTransaction', () => {
     expect(storedTemplate('a').updated_at).toBe(1000);
   });
 
-  it('leaves a template that only names the key inside its description byte-equal', async () => {
-    const raw = JSON.stringify(draftWith({ category: 'transport', description: '"groceries"' }));
+  // The description is the whole key, so its JSON form holds the prefilter's needle and only the
+  // exact decision can reject the row. The indented text is not what a rewrite writes, so a
+  // wrongly accepted row would change bytes.
+  it('leaves a template that only names the key as its description byte-equal', async () => {
+    const raw = JSON.stringify(
+      draftWith({ category: 'transport', description: 'groceries' }),
+      null,
+      2,
+    );
 
     seedTemplate('a', 'Mentions', raw);
 
@@ -408,6 +418,23 @@ describe('transactionTemplatesRepo: the counts', () => {
     expect(await countHoldings(['h1', 'h2'])).toBe(1);
   });
 
+  it('counts a template once when its ids sit in two different chunks of a long id list', async () => {
+    seedDraft(
+      'a',
+      draftWith({
+        holdingId: 'h-0',
+        exchange: {
+          destinationHoldingId: 'h-39999',
+          destinationCurrency: null,
+          valueInMinorUnits: null,
+        },
+      }),
+    );
+    const manyIds = Array.from({ length: 40000 }, (_, index) => `h-${index}`);
+
+    expect(await countHoldings(manyIds)).toBe(1);
+  });
+
   it('counts each referencing template', async () => {
     seedDraft('a', draftWith({ holdingId: 'h1' }));
     seedDraft('b', draftWith({ returns: [{ holdingId: 'h2', amountMinorUnits: 5 }] }));
@@ -417,7 +444,7 @@ describe('transactionTemplatesRepo: the counts', () => {
   });
 
   it('counts 0 for a description-only hit', async () => {
-    seedDraft('a', draftWith({ description: '"h1"' }));
+    seedDraft('a', draftWith({ description: 'h1' }));
 
     expect(await countHoldings(['h1'])).toBe(0);
   });
@@ -431,7 +458,7 @@ describe('transactionTemplatesRepo: the counts', () => {
   it('countReferencingCategory counts templates that carry the key, not a description hit', async () => {
     seedDraft('a', draftWith({ category: 'groceries' }));
     seedDraft('b', draftWith({ category: 'groceries' }));
-    seedDraft('c', draftWith({ category: 'transport', description: '"groceries"' }));
+    seedDraft('c', draftWith({ category: 'transport', description: 'groceries' }));
 
     expect(await transactionTemplatesRepo.countReferencingCategory('groceries')).toBe(2);
     expect(await transactionTemplatesRepo.countReferencingCategory('Groceries')).toBe(2);

@@ -7,7 +7,7 @@
  yet merged, and it is renumbered to 0057 (file, snapshot, journal idx and test)
  at merge, after that 0056.
 
- No foreign key and no index: the account, holding and category ids live inside
+ No foreign key and no index: the holding and category ids live inside
  `draft` and a delete clears them there, and the table is small and read by its
  primary key or in full, so no named index joins the shared index namespace.
 

@@ -1,6 +1,5 @@
 import {
   id as newId,
-  chunkForTable,
   chunkRows,
   database,
   type Repository,
@@ -58,7 +57,7 @@ const assertNameFree = async (
 };
 
 // SQLite parses `a or b or ...` as a left-deep tree and refuses one deeper than 1000, a limit
-// reached long before the bound-parameter one that `chunkForTable` keeps.
+// reached long before the bound-parameter one (about 32000 here).
 const MAX_OR_TERMS = 500;
 
 // The prefilter can match more rows than really reference an id (a description may hold the
@@ -70,11 +69,7 @@ const prefilteredRows = async (
 ): Promise<{ id: string; draft: unknown }[]> => {
   const rowsById = new Map<string, { id: string; draft: unknown }>();
 
-  const chunks = chunkForTable(transactionTemplates, [...needleSources]).flatMap((parameterChunk) =>
-    chunkRows(parameterChunk, MAX_OR_TERMS),
-  );
-
-  for (const chunk of chunks) {
+  for (const chunk of chunkRows([...needleSources], MAX_OR_TERMS)) {
     const rows = await databaseTransaction
       .select({ id: transactionTemplates.id, draft: transactionTemplates.draft })
       .from(transactionTemplates)
