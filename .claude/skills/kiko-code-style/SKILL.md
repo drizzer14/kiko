@@ -659,7 +659,7 @@ one validation model — don't hand-roll a different one:
   hand-rolled `Box`+`Text` caption — see that component's own doc
   comment for the rationale.
 - The shared attempted-submit flag is its own piece of state (`attemptedSave` in the forms under
-  `src/screens/forms/`; the connect fields and the import screens keep their own: `showTokenRequiredError`
+  `src/screens/forms/`; the connect fields and the import screens keep their own, for example `showTokenRequiredError`
   in `monobank-connect-field.component.tsx`, `attemptedConnect` in
   `binance-credentials-field.component.tsx`, `attemptedImport` in `column-mapping.screen.tsx` and
   `statement-import.screen.tsx`), set true only after a failed submit attempt, so a

@@ -2035,7 +2035,7 @@ A partial citation that drops the root (`design-system/entity-tint/`,
 of a cited root; it fails only when no file or folder outside
 `rules/fixtures/` ends with it. The partial check reads the files on
 disk that git tracks or would track
-(`git ls-files --cached --others --exclude-standard`, kept when
+(the file listing in `__tests__/test-support/repository-files.ts`, kept when
 `existsSync`), so, as with the rooted `existsSync` check, a new
 uncommitted file resolves and a deleted one does not.
 
@@ -2064,7 +2064,12 @@ tracked file with that base name in any folder (`index.ts` always resolves,
 and a deleted file still resolves while another folder has one with the same
 base name). To fix a failure: when the symbol was renamed, name the new
 one; when it is gone, write the sentence without backticks (the cited-paths
-rule). An entry in the test's two exemption lists (non-project names, and
+rule). A stale-name sweep chooses per sentence: rename to
+the live symbol, delete the sentence, or keep it. Never rewrite a gone
+symbol into vague prose, because that can hide a stale rule. The test
+proves a name exists, not that it means the same thing, so a reviewer
+checks the meaning of every rename (a real but wrong symbol passes).
+An entry in the test's two exemption lists (non-project names, and
 bad-name examples exempt per skill file and name) is only for a
 name that is not this repository's code (a library, Apple, shell or
 other-repo name) or a deliberate bad-name example, each group with its
@@ -2259,6 +2264,9 @@ breaks every session's tool calls.
 Use this for every review finding or user feedback item classified as
 mechanizable (see harness-workflow's "Classify every finding").
 
+0. When a rule's scope widens to sibling APIs, update the rule, its
+   fixtures, the skill rule text, and the
+   `docs/harness/review-to-biome-inventory.md` row in the same commit.
 1. **Choose the engine.**
    - Semgrep: a syntactic pattern in one file. Add it to
      `rules/semgrep-prewrite.yml`, never `rules/semgrep-mobile.yml`.
