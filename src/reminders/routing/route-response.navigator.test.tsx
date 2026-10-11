@@ -88,6 +88,21 @@ const route = async (responses: NotificationResponse[]): Promise<void> => {
   });
 };
 
+const LIST = onStack('Accounts');
+const CASH_PAGE = onStack('AccountDetail', { accountId: 'cash', name: 'Cash', kind: 'cash' });
+const WALLET_FORM = onStack('TransactionForm', { holdingId: 'wallet' });
+const BANK_IMPORT_PAGE = onStack('AccountDetail', {
+  accountId: 'bank',
+  name: 'Mono',
+  kind: 'bank',
+  intent: 'importStatement',
+});
+const PROPERTIES_PAGE = onStack('AccountDetail', {
+  accountId: 'properties',
+  name: 'Properties',
+  kind: 'property',
+});
+
 beforeEach(() => {
   mockDatabase = new DatabaseSync(':memory:');
   applyAllMigrations(mockDatabase);
@@ -125,11 +140,7 @@ describe('reminder tap routing (real router)', () => {
       await routeTap([tap('add-cash')]);
 
       expect(focusedTab()).toBe('AccountsTab');
-      expect(accountsStack()).toEqual([
-        onStack('Accounts'),
-        onStack('AccountDetail', { accountId: 'cash', name: 'Cash', kind: 'cash' }),
-        onStack('TransactionForm', { holdingId: 'wallet' }),
-      ]);
+      expect(accountsStack()).toEqual([LIST, CASH_PAGE, WALLET_FORM]);
     });
 
     it('opens only the account with two open holdings', async () => {
@@ -138,32 +149,21 @@ describe('reminder tap routing (real router)', () => {
 
       await routeTap([tap('add-cash')]);
 
-      expect(accountsStack()).toEqual([
-        onStack('Accounts'),
-        onStack('AccountDetail', { accountId: 'cash', name: 'Cash', kind: 'cash' }),
-      ]);
+      expect(accountsStack()).toEqual([LIST, CASH_PAGE]);
     });
 
     it('opens the account with the file picker intent for an import reminder', async () => {
       await routeTap([tap('import-bank')]);
 
-      expect(accountsStack()).toEqual([
-        onStack('Accounts'),
-        onStack('AccountDetail', {
-          accountId: 'bank',
-          name: 'Mono',
-          kind: 'bank',
-          intent: 'importStatement',
-        }),
-      ]);
+      expect(accountsStack()).toEqual([LIST, BANK_IMPORT_PAGE]);
     });
 
     it('opens the account reminders page above the account for the paused notice', async () => {
       await routeTap([tap('add-cash', { requestIdentifier: 'kiko.reminder.add-cash.paused' })]);
 
       expect(accountsStack()).toEqual([
-        onStack('Accounts'),
-        onStack('AccountDetail', { accountId: 'cash', name: 'Cash', kind: 'cash' }),
+        LIST,
+        CASH_PAGE,
         onStack('AccountReminders', { accountId: 'cash' }),
       ]);
     });
@@ -176,14 +176,7 @@ describe('reminder tap routing (real router)', () => {
       await routeTap([tap('add-properties')]);
 
       expect(focusedTab()).toBe('AccountsTab');
-      expect(accountsStack()).toEqual([
-        onStack('Accounts'),
-        onStack('AccountDetail', {
-          accountId: 'properties',
-          name: 'Properties',
-          kind: 'property',
-        }),
-      ]);
+      expect(accountsStack()).toEqual([LIST, PROPERTIES_PAGE]);
     });
 
     it('opens the account reminders page above its AccountDetail for its paused notice', async () => {
@@ -193,12 +186,8 @@ describe('reminder tap routing (real router)', () => {
 
       expect(focusedTab()).toBe('AccountsTab');
       expect(accountsStack()).toEqual([
-        onStack('Accounts'),
-        onStack('AccountDetail', {
-          accountId: 'properties',
-          name: 'Properties',
-          kind: 'property',
-        }),
+        LIST,
+        PROPERTIES_PAGE,
         onStack('AccountReminders', { accountId: 'properties' }),
       ]);
     });
@@ -209,15 +198,7 @@ describe('reminder tap routing (real router)', () => {
         tap('import-bank', { respondedAt: 2000 }),
       ]);
 
-      expect(accountsStack()).toEqual([
-        onStack('Accounts'),
-        onStack('AccountDetail', {
-          accountId: 'bank',
-          name: 'Mono',
-          kind: 'bank',
-          intent: 'importStatement',
-        }),
-      ]);
+      expect(accountsStack()).toEqual([LIST, BANK_IMPORT_PAGE]);
     });
 
     it('stays put, without an error, for a reminder deleted with its account', async () => {
@@ -234,10 +215,7 @@ describe('reminder tap routing (real router)', () => {
 
     await route([tap('add-cash')]);
 
-    expect(accountsStack()).toEqual([
-      onStack('Accounts'),
-      onStack('AccountDetail', { accountId: 'cash', name: 'Cash', kind: 'cash' }),
-    ]);
+    expect(accountsStack()).toEqual([LIST, CASH_PAGE]);
   });
 
   const openAccount = async (accountId: string, name: string): Promise<void> => {
@@ -250,28 +228,51 @@ describe('reminder tap routing (real router)', () => {
     });
   };
 
-  it('opens the tapped account above the pages the Accounts tab already shows, keeping them', async () => {
-    seedHolding('wallet', 'cash');
-    seedHolding('jar', 'cash');
-    await renderApp();
-    await openAccount('bank', 'Mono');
+  const openHoldingCard = async (): Promise<void> => {
     await act(async () => {
       navigationRef.navigate('AccountsTab', {
         screen: 'HoldingDetail',
         params: { holdingId: 'card', name: 'Card' },
       });
     });
-    const keysBefore = accountsStack().map(({ key }) => key);
+  };
+
+  // The tap rebuilds the stack from its root, so a page the user opened earlier never stays below
+  // the tapped account's: closing or deleting that earlier account cannot close the new page.
+  it('rebuilds the stack as the list and the tapped account, dropping the pages open before', async () => {
+    seedHolding('wallet', 'cash');
+    seedHolding('jar', 'cash');
+    await renderApp();
+    await openAccount('bank', 'Mono');
+    await openHoldingCard();
+    const [listBefore] = accountsStack();
 
     await route([tap('add-cash')]);
 
-    expect(accountsStack()).toEqual([
-      onStack('Accounts'),
-      onStack('AccountDetail', { accountId: 'bank', name: 'Mono' }),
-      onStack('HoldingDetail'),
-      onStack('AccountDetail', { accountId: 'cash', name: 'Cash', kind: 'cash' }),
-    ]);
-    expect(accountsStack().map(({ key }) => key)).toEqual([...keysBefore, expect.any(String)]);
+    expect(accountsStack()).toEqual([LIST, CASH_PAGE]);
+    expect(accountsStack()[0]?.key).toBe(listBefore?.key);
+  });
+
+  it('opens the next screen right above the tapped account, with no earlier account below it', async () => {
+    seedHolding('wallet', 'cash');
+    await renderApp();
+    await openAccount('bank', 'Mono');
+
+    await route([tap('add-cash')]);
+
+    expect(accountsStack()).toEqual([LIST, CASH_PAGE, WALLET_FORM]);
+  });
+
+  it('leads Back from the tapped account to the list, with nothing of the earlier page between', async () => {
+    await renderApp();
+    await openAccount('bank', 'Mono');
+
+    await route([tap('add-cash')]);
+    await act(async () => {
+      navigationRef.goBack();
+    });
+
+    expect(accountsStack()).toEqual([LIST]);
   });
 
   it('gives the page of the tapped account, already on top, the new params in place', async () => {
@@ -281,15 +282,7 @@ describe('reminder tap routing (real router)', () => {
 
     await route([tap('import-bank')]);
 
-    expect(accountsStack()).toEqual([
-      onStack('Accounts'),
-      onStack('AccountDetail', {
-        accountId: 'bank',
-        name: 'Mono',
-        kind: 'bank',
-        intent: 'importStatement',
-      }),
-    ]);
+    expect(accountsStack()).toEqual([LIST, BANK_IMPORT_PAGE]);
     expect(accountsStack()[1]?.key).toBe(pageBefore?.key);
   });
 
@@ -318,27 +311,13 @@ describe('reminder tap routing (real router)', () => {
     navigate.mockRestore();
   });
 
-  it('keeps the pages the tab shows and adds the implicit account’s page above them, for its tap', async () => {
+  it('replaces the page the tab shows with the implicit account’s page, for its tap', async () => {
     await renderApp();
     await openAccount('bank', 'Mono');
-    const keysBefore = accountsStack().map(({ key }) => key);
 
     await route([tap('add-properties')]);
 
-    expect(accountsStack()).toEqual([
-      onStack('Accounts'),
-      onStack('AccountDetail', { accountId: 'bank', name: 'Mono' }),
-      onStack('AccountDetail', {
-        accountId: 'properties',
-        name: 'Properties',
-        kind: 'property',
-      }),
-    ]);
-    expect(
-      accountsStack()
-        .map(({ key }) => key)
-        .slice(0, keysBefore.length),
-    ).toEqual(keysBefore);
+    expect(accountsStack()).toEqual([LIST, PROPERTIES_PAGE]);
   });
 
   // On a wide window the Accounts list fills its primary pane with a page flagged `isDefault`. The
@@ -360,10 +339,19 @@ describe('reminder tap routing (real router)', () => {
 
     await route([tap('add-cash')]);
 
-    expect(accountsStack()).toEqual([
-      onStack('Accounts'),
-      onStack('AccountDetail', { accountId: 'cash', name: 'Cash', kind: 'cash' }),
-    ]);
+    expect(accountsStack()).toEqual([LIST, CASH_PAGE]);
+  });
+
+  it('closes the pages above the page of the tapped account, which stays in place', async () => {
+    await renderApp();
+    await openAccount('bank', 'Mono');
+    await openHoldingCard();
+    const [, pageBefore] = accountsStack();
+
+    await route([tap('import-bank')]);
+
+    expect(accountsStack()).toEqual([LIST, BANK_IMPORT_PAGE]);
+    expect(accountsStack()[1]?.key).toBe(pageBefore?.key);
   });
 
   it('gives the implicit account’s page, already on top, the new params in place', async () => {
@@ -373,14 +361,7 @@ describe('reminder tap routing (real router)', () => {
 
     await route([tap('add-properties')]);
 
-    expect(accountsStack()).toEqual([
-      onStack('Accounts'),
-      onStack('AccountDetail', {
-        accountId: 'properties',
-        name: 'Properties',
-        kind: 'property',
-      }),
-    ]);
+    expect(accountsStack()).toEqual([LIST, PROPERTIES_PAGE]);
     expect(accountsStack()[1]?.key).toBe(pageBefore?.key);
   });
 
@@ -391,11 +372,7 @@ describe('reminder tap routing (real router)', () => {
 
     await route([tap('add-cash')]);
 
-    expect(accountsStack()).toEqual([
-      onStack('Accounts'),
-      onStack('AccountDetail', { accountId: 'cash', name: 'Cash', kind: 'cash' }),
-      onStack('TransactionForm', { holdingId: 'wallet' }),
-    ]);
+    expect(accountsStack()).toEqual([LIST, CASH_PAGE, WALLET_FORM]);
   });
 
   it('opens only the newer of two routes that waited for the navigator', async () => {
@@ -403,14 +380,6 @@ describe('reminder tap routing (real router)', () => {
     await route([tap('import-bank')]);
     await renderApp();
 
-    expect(accountsStack()).toEqual([
-      onStack('Accounts'),
-      onStack('AccountDetail', {
-        accountId: 'bank',
-        name: 'Mono',
-        kind: 'bank',
-        intent: 'importStatement',
-      }),
-    ]);
+    expect(accountsStack()).toEqual([LIST, BANK_IMPORT_PAGE]);
   });
 });

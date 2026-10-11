@@ -515,22 +515,35 @@ describe('the Accounts tab with a runtime default in its primary pane', () => {
   // not the user's, so it must not come through that rebuild as a page the user opened.
   describe('when a reminder tap opens another account', () => {
     const SAVINGS = accountRow('c', 'Savings', 'cash');
+    const MONOBANK = accountRow('a', 'Monobank', 'bank');
+    const WALLET = {
+      id: 'h1',
+      name: 'Wallet',
+      icon: null,
+      color: null,
+      accountId: 'c',
+      currency: 'UAH',
+      balanceMinorUnits: 0,
+      type: 'cash',
+      closedAt: null,
+      metadata: null,
+    };
 
     afterEach(() => {
       jest.restoreAllMocks();
     });
 
-    it('replaces the default with the account of the reminder, beside the list', async () => {
+    // A tap on the "add transactions" reminder of Savings, whose open holdings are the given ones.
+    const tapReminderOfSavings = async (openHoldings: { id: string; type: string }[]) => {
       jest
         .spyOn(remindersRepo, 'byIdQuery')
         .mockResolvedValue([{ id: 'r', accountId: 'c', kind: 'add_transactions' }] as never);
       jest.spyOn(accountsRepo, 'byIdQuery').mockResolvedValue([SAVINGS] as never);
-      jest.spyOn(holdingsRepo, 'listByAccountQuery').mockResolvedValue([]);
-      mockRows = { accounts: [accountRow('a', 'Monobank', 'bank'), SAVINGS] };
-      const { getAllByRole } = await walkTabs();
-      await goTo('AccountsTab');
-
-      expect(accountsRoutes().at(-1)).toMatchObject({ isDefault: true });
+      jest
+        .spyOn(holdingsRepo, 'listByAccountQuery')
+        .mockResolvedValue(
+          openHoldings.map((holding) => ({ ...holding, closedAt: null })) as never,
+        );
 
       await act(async () => {
         await routeLatestResponse(
@@ -538,21 +551,77 @@ describe('the Accounts tab with a runtime default in its primary pane', () => {
           navigationRef as unknown as Parameters<typeof routeLatestResponse>[1],
         );
       });
+    };
+
+    // The pane assignment is derived, not stored: the list marks the row of the primary pane's
+    // first route.
+    const expectMarkedRow = (
+      getAllByRole: Awaited<ReturnType<typeof walkTabs>>['getAllByRole'],
+      name: string,
+    ) => {
+      const selected = getAllByRole('button').filter(
+        (row) => row.props.accessibilityState?.selected === true,
+      );
+
+      expect(selected).toHaveLength(1);
+      expect(within(selected[0]).getByText(name)).toBeTruthy();
+    };
+
+    it('replaces the default with the account of the reminder, beside the list', async () => {
+      mockRows = { accounts: [MONOBANK, SAVINGS] };
+      const { getAllByRole } = await walkTabs();
+      await goTo('AccountsTab');
+
+      expect(accountsRoutes().at(-1)).toMatchObject({ isDefault: true });
+
+      await tapReminderOfSavings([]);
 
       expect(accountsRoutes().map(({ name, isDefault }) => [name, isDefault])).toEqual([
         ['Accounts', undefined],
         ['AccountDetail', undefined],
       ]);
       expect(accountsRoutes().at(-1)?.params).toMatchObject({ accountId: 'c' });
+      expectMarkedRow(getAllByRole, 'Savings');
+    });
 
-      // The pane assignment is derived, not stored: the list marks the row of the primary pane's
-      // top route, so Savings is there and the list is still the companion's.
-      const selected = getAllByRole('button').filter(
-        (row) => row.props.accessibilityState?.selected === true,
-      );
+    // The tap rebuilds the stack from its root, so the page the user had open before is gone and
+    // the list marks the tapped account: the primary pane's first route is the account's own.
+    describe('while the page of another account is open', () => {
+      const openMonobank = async (
+        getByTestId: Awaited<ReturnType<typeof walkTabs>>['getByTestId'],
+      ) => {
+        await goTo('AccountsTab');
+        await fireEvent.press(within(getByTestId('accounts-grid')).getByText('Monobank'));
+      };
 
-      expect(selected).toHaveLength(1);
-      expect(within(selected[0]).getByText('Savings')).toBeTruthy();
+      it('marks the row of the tapped account, not the one of the page that was open', async () => {
+        mockRows = { accounts: [MONOBANK, SAVINGS], holdings: [WALLET] };
+        const { getAllByRole, getByTestId } = await walkTabs();
+        await openMonobank(getByTestId);
+
+        await tapReminderOfSavings([WALLET]);
+
+        expectMarkedRow(getAllByRole, 'Savings');
+      });
+
+      it('keeps the page of the tapped account and its form when the earlier account is deleted', async () => {
+        mockRows = { accounts: [MONOBANK, SAVINGS], holdings: [WALLET] };
+        const { getByTestId } = await walkTabs();
+        await openMonobank(getByTestId);
+        await tapReminderOfSavings([WALLET]);
+
+        mockRows = { accounts: [SAVINGS], holdings: [WALLET] };
+        await act(async () => {
+          mockWrite('accounts');
+        });
+
+        expect(accountsRoutes().map(({ name }) => name)).toEqual([
+          'Accounts',
+          'AccountDetail',
+          'TransactionForm',
+        ]);
+        expect(accountsRoutes()[1]?.params).toMatchObject({ accountId: 'c' });
+      });
     });
   });
 
