@@ -4,12 +4,16 @@ import { i18n } from '@kiko/i18n/init';
 import { darkTheme } from '@kiko/design-system/theme';
 import { layoutOf } from '@kiko/test-support/layout-of';
 import type { TableCell } from '@kiko/statement-import/column-mapping';
+import mockTextVariantTone from '@kiko/test-support/mock-text-variant-tone';
 
 import RawPreview from './raw-preview.component';
 
+// A getter, so `mockTextVariantTone` is read when `Text` is first used, after the import ran.
 jest.mock('@kiko/design-system/components/text', () => ({
   __esModule: true,
-  default: jest.requireActual('@kiko/test-support/mock-text-variant-tone').default,
+  get default() {
+    return mockTextVariantTone;
+  },
 }));
 
 const manyRows: TableCell[][] = Array.from({ length: 15 }, (_, index) => [`row-${index}`]);

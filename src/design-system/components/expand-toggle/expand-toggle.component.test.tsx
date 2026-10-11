@@ -3,12 +3,16 @@ import { fireEvent, render } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { darkTheme } from '@kiko/design-system/theme';
 import { layoutOf } from '@kiko/test-support/layout-of';
+import mockTextVariantTone from '@kiko/test-support/mock-text-variant-tone';
 
 import ExpandToggle from '.';
 
+// A getter, so `mockTextVariantTone` is read when `Text` is first used, after the import ran.
 jest.mock('@kiko/design-system/components/text', () => ({
   __esModule: true,
-  default: jest.requireActual('@kiko/test-support/mock-text-variant-tone').default,
+  get default() {
+    return mockTextVariantTone;
+  },
 }));
 
 const toggleLayout = (label: string, chevron: string, testID: string) => ({
