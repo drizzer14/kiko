@@ -369,6 +369,7 @@ const CAR_KEY = 'car';
 const MAIN_CARD_KEY = 'main-card';
 const PRIVAT_CARD_KEY = 'privat-card';
 const CASH_KEY = 'cash';
+const USD_CASH_KEY = 'usd-cash';
 
 // A fabricated government bond: 1,000.00 nominal, a 16.2% coupon paid twice a
 // year (81.00 per bond each time). Its ISIN carries a valid check digit, so a
@@ -682,6 +683,7 @@ const buildAccounts = (calendar: DemoCalendar, text: DemoText): SeedAccount[] =>
       color: entityColorsDark.violet,
       holdings: [
         {
+          key: USD_CASH_KEY,
           name: text.usDollars,
           type: 'cash',
           currency: 'USD',
@@ -906,9 +908,10 @@ const buildTemplates = (text: DemoText): SeedTemplate[] => {
       draft: {
         ...draft,
         mode: 'exchange',
+        holdingId: CASH_KEY,
         amountMinorUnits: 410_000,
         exchange: {
-          destinationHoldingId: PRIVAT_CARD_KEY,
+          destinationHoldingId: USD_CASH_KEY,
           destinationCurrency: 'USD',
           valueInMinorUnits: 10_000,
         },
@@ -919,10 +922,11 @@ const buildTemplates = (text: DemoText): SeedTemplate[] => {
       draft: {
         ...draft,
         mode: 'split',
+        holdingId: CASH_KEY,
         amountMinorUnits: 120_000,
         description: text.restaurant,
         category: 'dining',
-        returns: [{ holdingId: CASH_KEY, amountMinorUnits: 40_000 }],
+        returns: [{ holdingId: MAIN_CARD_KEY, amountMinorUnits: 40_000 }],
       },
     },
   ];
