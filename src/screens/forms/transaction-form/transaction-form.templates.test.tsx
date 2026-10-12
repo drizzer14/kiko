@@ -790,6 +790,16 @@ describe('TransactionFormScreen — Edit template', () => {
     });
   });
 
+  it('shows Save in the nav bar and Create transaction in the footer', async () => {
+    setLiveData({ draft: EXPENSE });
+
+    const { getByTestId, queryByText } = await render(templateScreen({ editTemplateId: 'tpl' }));
+
+    expect(saveItem(navigation.setOptions)).toMatchObject({ label: 'Save', variant: 'prominent' });
+    expect(queryByText('Save')).toBeNull();
+    expect(within(getByTestId('screen-footer')).getByText('Create transaction')).toBeTruthy();
+  });
+
   it('does not count its own name as taken', async () => {
     setLiveData({
       draft: EXPENSE,

@@ -28,9 +28,11 @@ import Box from '@kiko/design-system/components/box';
 import { categoriesRepo } from '@kiko/categories/repo';
 import { transactionsRepo } from '@kiko/transactions/repo';
 import Screen from '@kiko/design-system/components/screen';
+import Button from '@kiko/design-system/components/button';
 import { buildRateTable } from '@kiko/rates/net-worth-view';
 import { type TextInputInstance, View } from 'react-native';
 import { alertOnCatch } from '@kiko/design-system/alert-on-catch';
+import { genericEntitySymbol } from '@kiko/holdings/entity-symbols';
 import { useSubmitOnce } from '@kiko/design-system/use-submit-once';
 import type { TransactionFormParams } from '@kiko/navigation/types';
 import { accountDisplayName } from '@kiko/holdings/implicit-account';
@@ -92,7 +94,6 @@ import ModeAndActions, {
 } from './mode-and-actions';
 import CommentRow from './comment-row';
 import FieldGroup from './field-group';
-import FormFooter from './form-footer';
 import SplitReturns from './split-returns';
 import ReadOnlyNotice from './read-only-notice';
 import { draftFromForm } from './draft-from-form';
@@ -1239,12 +1240,17 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
         onContentSizeChange={onContentSizeChange}
         footer={foldMap(maybe(editTemplateId), (templateId) => (
           // Create transaction opens the template as it is STORED: the unsaved edits on this
-          // form are neither used nor saved.
-          <FormFooter
-            onCreateTransaction={() => {
+          // form are neither used nor saved. Save is the nav bar's, like every other form's, so
+          // this lone secondary action is the whole footer.
+          <Button
+            variant="secondaryTonal"
+            onPress={() => {
               navigation.push('TransactionForm', { templateId });
             }}
-          />
+            icon={genericEntitySymbol.transaction}
+          >
+            {t('forms.transaction.createTransaction')}
+          </Button>
         ))}
       >
         <Box gap={4} testID="transaction-form">
