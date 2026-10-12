@@ -327,7 +327,7 @@ user picked the category by hand), stored in `transactions.category_set_by_hand`
 `recordManual` returns the new row id and `recordManualWithReturns` the payment
 row id; rules and rewrites never touch a flagged row.
 The flag on save (a hand pick or a seed with a category saves true; a pre-select
-saves false; an edit never pre-selects; "Apply" on create passes the created row
+saves false (and opens no name-rule sheet); an edit never pre-selects; "Apply" on create passes the created row
 id): see `src/screens/forms/transaction-form/use-category-pick/` and decisions 13
 and 17 of `docs/superpowers/specs/2026-10-11-category-rules-design.md`.
 

@@ -349,7 +349,9 @@ read only the column you need (`selectDistinct`, as
 `.limit(...)`. The one-row `settings` table is exempt. Mechanized as
 `kiko-no-full-table-select-in-write` (ERROR, `rules/semgrep-prewrite.yml`).
 A full scan hidden behind a repo helper called inside the write is not
-caught; that stays a review item.
+caught; that stays a review item. The rule cannot see a select inside a
+helper (for example `readAllRulesDatabaseTransaction`); such a read needs a
+`docs/harness/documented-exceptions.md` entry.
 
 ## The `useLiveQuery` pattern
 
@@ -729,8 +731,14 @@ short-circuit (`isStoredAsGiven`), so the count shown never differs from
 the write. `REWRITE_GUARD_FIELDS` (`src/categories/category-rules/`) is the
 one list of rows a rule never rewrites; `isRewriteEligible` and the
 refresh CASE in `src/transactions/repo/transactions.repo.ts` both derive
-from it. Compare category keys with `isSameCategory`
-(`src/categories/category-rules/same-category.ts`), never `===`.
+from it. `saveRule`, `countRuleRewrite` and `applyNameRule` go through one
+`stageDraft` (the stored rule, the row it becomes, every rule prepared with
+that row in place), so the rules are read once per write; `storeRule` is the
+one insert-or-update. `prepareRules` lowercases a rule's category once, so
+every consumer (insert, refresh, form picker) gets the key form. Compare with
+`isSameCategory` and key a map with `categoryKeyOf`
+(`src/categories/category-rules/same-category.ts`), never `===` or a
+hand-written `toLowerCase()` in a screen.
 
 ### Transaction form pre-select
 
@@ -739,7 +747,13 @@ from it. Compare category keys with `isSameCategory`
 derived from the whole draft. Seed a loaded draft only through `seedCategory`
 (one call sets the category, the hand-pick flag and the settled description);
 the nav-bar Save settles the description first. Rule: coupled state is set by
-one seed function, never by a pair of exported setters.
+one seed function, never by a pair of exported setters. On a create, the
+name-rule sheet ("Apply to all transactions named X?") is offered only when the
+user picked the category by hand or a Duplicate/template seed carries one; a
+category the rules pre-selected saves flag 0 with no sheet; an edit is
+unchanged. Otherwise Apply rewrites every same-name row to a category the user
+never chose (`resolveCategoryOverrideRequest` in
+`src/screens/forms/transaction-form/category-rule/category-rule.ts`).
 
 ## App-open and refresh work is gated on data presence
 
