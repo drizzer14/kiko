@@ -35,9 +35,9 @@ export type FieldGroupProps = {
   counterpartSuffix: string;
   description: string;
   onChangeDescription: (text: string) => void;
-  // Fires when the description field loses focus — the A1 category auto-pick
-  // (see `onDescriptionBlur` in use-category-pick). Kept off `onChangeDescription`
-  // (which stays a bare setter) so the lookup never runs on a keystroke.
+  // Fires when the description field loses focus — the moment the category pre-select
+  // takes the description (see `onDescriptionBlur` in use-category-pick). Kept off
+  // `onChangeDescription` (which stays a bare setter) so the lookup never runs on a keystroke.
   onBlurDescription: () => void;
   descriptionPlaceholder: string;
   // The inline description-suggestion row, rendered directly under the description field.

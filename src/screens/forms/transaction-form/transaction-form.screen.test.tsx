@@ -719,7 +719,7 @@ describe('TransactionFormScreen — add mode', () => {
   });
 });
 
-describe('TransactionFormScreen — category pre-select from name rules (A1)', () => {
+describe('TransactionFormScreen — category pre-select from name rules', () => {
   // A single rule mapping the normalized description "coffee" to the Dining
   // category, so a create whose description settles to "Coffee" auto-picks it.
   const COFFEE_RULE = nameRule('coffee', 'dining');
@@ -824,7 +824,7 @@ describe('TransactionFormScreen — category pre-select from name rules (A1)', (
     );
   });
 
-  it('pre-selects from a rule that is a name alone and never from one with another condition', async () => {
+  it('never pre-selects from a rule whose other condition the draft does not meet', async () => {
     setLiveData(
       [{ id: 'h1', currency: 'UAH', balanceMinorUnits: 0, type: 'cash' }],
       undefined,
@@ -832,9 +832,9 @@ describe('TransactionFormScreen — category pre-select from name rules (A1)', (
       [],
       [],
       [
-        storedRule('coffee-expense', 'dining', [
+        storedRule('coffee-income', 'dining', [
           { type: 'nameIs', text: 'coffee' },
-          { type: 'direction', direction: 'expense' },
+          { type: 'direction', direction: 'income' },
         ]),
       ],
     );
@@ -871,8 +871,9 @@ describe('TransactionFormScreen — category pre-select from name rules (A1)', (
     expect(mockRecordManual).toHaveBeenCalledWith(expect.objectContaining({ category: 'dining' }));
   });
 
-  it('creates the name rule for a created row with no source row to free', async () => {
+  it('creates the name rule and hands it the row the create just wrote, so that row follows it', async () => {
     mockApplyNameRule.mockResolvedValue(undefined);
+    mockRecordManual.mockResolvedValue('created-row');
 
     const utils = await renderAdd();
     await fireEvent.changeText(utils.getByLabelText('Amount'), '12.34');
@@ -885,7 +886,7 @@ describe('TransactionFormScreen — category pre-select from name rules (A1)', (
       expect(mockApplyNameRule).toHaveBeenCalledWith({
         name: 'Coffee',
         category: 'groceries',
-        sourceTransactionId: null,
+        sourceTransactionId: 'created-row',
       }),
     );
   });
@@ -4812,5 +4813,262 @@ describe('TransactionFormScreen — "Add holding" row in an empty holding picker
     );
 
     expect(utils.getByLabelText('To')).toHaveTextContent('Select holding');
+  });
+});
+
+describe('TransactionFormScreen — category pre-select from the whole draft', () => {
+  const NOON = new Date(2026, 9, 12, 12, 0).getTime();
+  const LARGE_EXPENSE_RULE = storedRule('large-expense', 'dining', [
+    { type: 'amount', operator: 'gt', minorUnits: 100_000, currency: 'UAH' },
+    { type: 'direction', direction: 'expense' },
+  ]);
+  const MORNING_RULE = storedRule('morning', 'dining', [
+    { type: 'time', operator: 'before', minuteOfDay: 9 * 60 },
+  ]);
+  const DOLLAR_RULE = storedRule('dollar', 'dining', [
+    { type: 'amount', operator: 'eq', minorUnits: 1200, currency: 'USD' },
+  ]);
+  const UAH_CASH: Holding = { id: 'h1', currency: 'UAH', balanceMinorUnits: 0, type: 'cash' };
+  const field = (utils: Awaited<ReturnType<typeof render>>) =>
+    utils.getByTestId('transaction-category-field');
+  let nowSpy: jest.SpyInstance;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    nowSpy = jest.spyOn(Date, 'now').mockReturnValue(NOON);
+  });
+
+  afterEach(() => {
+    nowSpy.mockRestore();
+  });
+
+  it('pre-selects once the amount makes a rule on amount and direction match', async () => {
+    setLiveData([UAH_CASH], undefined, CATEGORIES, [], [], [LARGE_EXPENSE_RULE]);
+    const utils = await renderAdd();
+
+    expect(field(utils)).toHaveTextContent('Select category');
+
+    await fireEvent.changeText(utils.getByLabelText('Amount'), '1500');
+
+    expect(field(utils)).toHaveTextContent('Dining');
+
+    await pressSave(navigation.setOptions);
+
+    expect(mockRecordManual).toHaveBeenCalledWith(expect.objectContaining({ category: 'dining' }));
+  });
+
+  it('pre-selects once the time moves into the range of a time rule', async () => {
+    setLiveData([UAH_CASH], undefined, CATEGORIES, [], [], [MORNING_RULE]);
+    const utils = await renderAdd();
+
+    expect(field(utils)).toHaveTextContent('Select category');
+
+    await fireEvent.press(utils.getByLabelText('Time'));
+    await fireEvent(
+      utils.getByTestId('Time picker'),
+      'change',
+      { type: 'set' },
+      new Date(2000, 0, 1, 8, 15),
+    );
+
+    expect(field(utils)).toHaveTextContent('Dining');
+  });
+
+  it('pre-selects once the type changes to the direction of a rule', async () => {
+    setLiveData([UAH_CASH], undefined, CATEGORIES, [], [], [LARGE_EXPENSE_RULE]);
+    const utils = await renderAdd();
+    await pickType(utils, 'income');
+    await fireEvent.changeText(utils.getByLabelText('Amount'), '1500');
+
+    expect(field(utils)).toHaveTextContent('Select category');
+
+    await pickType(utils, 'expense');
+
+    expect(field(utils)).toHaveTextContent('Dining');
+  });
+
+  it('pre-selects once the holding changes to the currency of a rule', async () => {
+    const holdings: Holding[] = [
+      {
+        id: 'h1',
+        currency: 'UAH',
+        balanceMinorUnits: 0,
+        type: 'cash',
+        name: 'Wallet',
+        accountId: 'a1',
+        sortOrder: 0,
+        createdAt: 1,
+      },
+      {
+        id: 'h2',
+        currency: 'USD',
+        balanceMinorUnits: 0,
+        type: 'card',
+        name: 'Card',
+        accountId: 'a2',
+        sortOrder: 0,
+        createdAt: 2,
+      },
+    ];
+    const accounts: Account[] = [
+      { id: 'a1', name: 'Cash' },
+      { id: 'a2', name: 'Bank' },
+    ];
+    setLiveData(holdings, undefined, CATEGORIES, accounts, [], [DOLLAR_RULE], [], 'h1');
+    const utils = await renderEmptyCreate();
+    await fireEvent.changeText(utils.getByLabelText('Amount'), '12.00');
+
+    expect(field(utils)).toHaveTextContent('Select category');
+
+    await fireEvent.press(utils.getByLabelText('Holding'));
+    await fireEvent.press(utils.getByLabelText('Card, Bank'));
+
+    expect(field(utils)).toHaveTextContent('Dining');
+  });
+
+  it('clears the pre-selection once the draft stops matching', async () => {
+    setLiveData([UAH_CASH], undefined, CATEGORIES, [], [], [LARGE_EXPENSE_RULE]);
+    const utils = await renderAdd();
+    await fireEvent.changeText(utils.getByLabelText('Amount'), '1500');
+
+    expect(field(utils)).toHaveTextContent('Dining');
+
+    await fireEvent.changeText(utils.getByLabelText('Amount'), '15');
+
+    expect(field(utils)).toHaveTextContent('Select category');
+  });
+
+  it('keeps a category picked by hand when a rule starts to match', async () => {
+    setLiveData([UAH_CASH], undefined, CATEGORIES, [], [], [LARGE_EXPENSE_RULE]);
+    const utils = await renderAdd();
+    await pickCategory(utils, 'Groceries');
+    await fireEvent.changeText(utils.getByLabelText('Amount'), '1500');
+
+    expect(field(utils)).toHaveTextContent('Groceries');
+
+    await pressSave(navigation.setOptions);
+
+    expect(mockRecordManual).toHaveBeenCalledWith(
+      expect.objectContaining({ category: 'groceries' }),
+    );
+  });
+
+  it('never pre-selects on an edit', async () => {
+    setLiveData(
+      [UAH_CASH],
+      {
+        id: 'txn-1',
+        holdingId: 'h1',
+        amountMinorUnits: -1234,
+        time: NOON,
+        description: 'Coffee',
+        category: null,
+        source: 'manual',
+      },
+      CATEGORIES,
+      [],
+      [],
+      [LARGE_EXPENSE_RULE],
+    );
+    const utils = await renderEdit('txn-1');
+    await fireEvent.changeText(utils.getByLabelText('Amount'), '1500');
+
+    expect(field(utils)).toHaveTextContent('Select category');
+  });
+});
+
+describe('TransactionFormScreen — the manual-pick flag on save', () => {
+  const UAH_CASH: Holding = { id: 'h1', currency: 'UAH', balanceMinorUnits: 0, type: 'cash' };
+  const COFFEE_RULE = nameRule('coffee', 'dining');
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockRecordManual.mockResolvedValue('created-row');
+    mockRecordManualWithReturns.mockResolvedValue('created-row');
+  });
+
+  it('flags a category picked by hand on a create', async () => {
+    setLiveData([UAH_CASH], undefined, CATEGORIES, [], [], [COFFEE_RULE]);
+    const utils = await renderAdd();
+    await fireEvent.changeText(utils.getByLabelText('Amount'), '12.34');
+    await fireEvent.changeText(utils.getByLabelText('Description'), 'Coffee');
+    await pickCategory(utils, 'Groceries');
+    await pressSave(navigation.setOptions);
+
+    expect(mockRecordManual).toHaveBeenCalledWith(
+      expect.objectContaining({ category: 'groceries', categorySetByHand: true }),
+    );
+  });
+
+  it('flags nothing for a category the rules pre-selected', async () => {
+    setLiveData([UAH_CASH], undefined, CATEGORIES, [], [], [COFFEE_RULE]);
+    const utils = await renderAdd();
+    await fireEvent.changeText(utils.getByLabelText('Amount'), '12.34');
+    await fireEvent.changeText(utils.getByLabelText('Description'), 'Coffee');
+    await fireEvent(utils.getByLabelText('Description'), 'blur');
+    await pressSave(navigation.setOptions);
+
+    expect(mockRecordManual).toHaveBeenCalledWith(
+      expect.objectContaining({ category: 'dining', categorySetByHand: false }),
+    );
+  });
+
+  it('flags the category a Duplicate seeds, as a pick', async () => {
+    setLiveData([UAH_CASH], {
+      id: 'txn-src',
+      holdingId: 'h1',
+      amountMinorUnits: -1234,
+      time: 42,
+      description: 'Coffee',
+      category: 'groceries',
+      source: 'manual',
+    });
+    await renderDuplicate('txn-src');
+    await pressSave(navigation.setOptions);
+
+    expect(mockRecordManual).toHaveBeenCalledWith(
+      expect.objectContaining({ category: 'groceries', categorySetByHand: true }),
+    );
+  });
+
+  describe('on a split', () => {
+    const fillSplit = async (utils: Awaited<ReturnType<typeof render>>): Promise<void> => {
+      await pickType(utils, 'split');
+      await fireEvent.press(utils.getByLabelText('Return to 1'));
+      await fireEvent.press(utils.getByText('Alice'));
+      await fireEvent.changeText(utils.getByLabelText('Return 1'), '0.20');
+      await fireEvent.changeText(utils.getByLabelText('Amount'), '212.00');
+      await fireEvent.changeText(utils.getByLabelText('Description'), 'Coffee');
+    };
+
+    beforeEach(() => {
+      setLiveData(SPLIT_HOLDINGS, undefined, CATEGORIES, SPLIT_ACCOUNTS, [], [COFFEE_RULE]);
+    });
+
+    it('flags a category picked by hand on the payment', async () => {
+      const utils = await renderAddFromHolding('payer');
+      await fillSplit(utils);
+      await pickCategory(utils, 'Groceries');
+      await pressSave(navigation.setOptions);
+
+      expect(mockRecordManualWithReturns).toHaveBeenCalledWith(
+        expect.objectContaining({
+          payment: expect.objectContaining({ category: 'groceries', categorySetByHand: true }),
+        }),
+      );
+    });
+
+    it('flags nothing for a category the rules pre-selected', async () => {
+      const utils = await renderAddFromHolding('payer');
+      await fillSplit(utils);
+      await fireEvent(utils.getByLabelText('Description'), 'blur');
+      await pressSave(navigation.setOptions);
+
+      expect(mockRecordManualWithReturns).toHaveBeenCalledWith(
+        expect.objectContaining({
+          payment: expect.objectContaining({ category: 'dining', categorySetByHand: false }),
+        }),
+      );
+    });
   });
 });

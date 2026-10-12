@@ -393,13 +393,22 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   const {
     selectedCategory,
     effectiveCategory,
+    userPickedCategory,
     settleCategory,
-    setSelectedCategory,
+    setStoredCategory,
     setUserPickedCategory,
     selectCategory,
     onDescriptionBlur,
     pickSuggestion,
-  } = useCategoryPick({ description, setDescription, isEditing });
+  } = useCategoryPick({
+    description,
+    setDescription,
+    isEditing,
+    amount,
+    time,
+    mode,
+    currency: holding?.currency ?? null,
+  });
   const [hydrated, setHydrated] = useState(false);
   // Held from the seed rather than re-resolved at Save, so a counterpart
   // renamed mid-edit cannot turn the untouched label into stored text.
@@ -448,16 +457,15 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
         setMode(seedFieldsPlan.sign);
         setDescription(seedFieldsPlan.description);
         setPrefilledLabel(seedFieldsPlan.prefilledLabel);
-        setSelectedCategory(seedFieldsPlan.category);
-        // A seeded non-null category counts as a user pick, so a later
-        // description blur (A1's `reseatCategoryFromName`) can never clobber it.
-        // This matters for the DUPLICATE path (`isEditing` is false there): the
-        // "duplicate a row, tweak the note" flow must keep the copied category
-        // when the retyped description matches no name rule. The edit path already
-        // guards its stored category via `isEditing`, so this is a harmless no-op
-        // there; the empty-create/fixed-holding paths seed a null category, so
-        // `userPickedCategory` stays false and A1's normal create-blur auto-seat
-        // is unaffected.
+        setStoredCategory(seedFieldsPlan.category);
+        // A seeded non-null category counts as a user pick, so the rule pre-select
+        // can never replace it, and it saves as a hand pick. This matters for the
+        // DUPLICATE path (`isEditing` is false there): the "duplicate a row, tweak
+        // the note" flow must keep the copied category when the retyped description
+        // matches no name rule. The edit path already guards its stored category
+        // via `isEditing`, so this is a harmless no-op there; the empty-create and
+        // fixed-holding paths seed a null category, so `userPickedCategory` stays
+        // false and the pre-select applies as usual.
         if (seedFieldsPlan.category !== null) {
           setUserPickedCategory(true);
         }
@@ -484,7 +492,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     currency,
     defaultPrimaryHoldingId,
     blankLabel,
-    setSelectedCategory,
+    setStoredCategory,
     setUserPickedCategory,
   ]);
 
@@ -585,11 +593,13 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   // Persist the amount/description edit on a manual row (edit vs. add). Only
   // ever called from the income/expense path (`save` branches Exchange off to
   // `saveExchange` before reaching here), so `mode` is guaranteed a `Sign`.
-  const writeManual = async (): Promise<void> => {
+  // Returns the id of the row it wrote: the edited row's, the created row's, or
+  // null when a create had no holding to write to.
+  const writeManual = async (): Promise<string | null> => {
     const amountMinorUnits = signedMinorUnits(currency, amount, mode as Sign);
 
     if (editingId) {
-      // Leave the category to the always-propagating override path below:
+      // Leave the category to the override path below:
       // `transactionsRepo.update` deliberately handles only amount/time/
       // description with its own balance-delta logic, and an edit's category
       // change still routes through the override rule.
@@ -600,11 +610,11 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
         description: descriptionToStore,
       });
 
-      return;
+      return editingId;
     }
 
     if (holdingId) {
-      await transactionsRepo.recordManual({
+      return transactionsRepo.recordManual({
         holdingId,
         amountMinorUnits,
         time,
@@ -617,8 +627,13 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
         // cancelled) would be written uncategorised despite
         // `plainFieldErrors` forcing a pick on create.
         category: effectiveCategory,
+        // Only a pick by hand is flagged: a category the rules pre-selected stays
+        // free for a later rule rewrite to move.
+        categorySetByHand: userPickedCategory,
       });
     }
+
+    return null;
   };
 
   // The shared failure alert for every write this screen makes: `save`,
@@ -755,6 +770,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
         time,
         description,
         category: effectiveCategory,
+        categorySetByHand: userPickedCategory,
       },
       returns: changeReturns.map((change) => ({
         holdingId: change.holdingId as string,
@@ -844,25 +860,29 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   };
 
   // Guard: reject an empty, non-numeric, or NON-POSITIVE amount, then write
-  // the manual edit. Returns whether the write happened, so `save` can abort
-  // the whole flow (including the category confirm below) on a bad amount
-  // without its own nested branch.
+  // the manual edit. Returns the written row's id, or null when the amount was
+  // rejected, so `save` can abort the whole flow (including the category confirm
+  // below) on a bad amount without its own nested branch. A synced row is
+  // bank-owned: only its category may change, so it skips the amount write
+  // entirely and hands back its own id for the category confirm.
   //
   // The magnitude test is the same `<= 0` rejection `saveExchange` and
   // `saveConvert` already apply. Testing only empty/NaN let `"0"` through and
   // created a 0.00 row, contradicting this guard's own "no zero-amount row"
   // claim. The user's income/expense chip carries the sign, so the typed
   // magnitude is always non-negative here — `<= 0` means "zero".
-  const tryWriteManual = async (): Promise<boolean> => {
+  const tryWriteManual = async (): Promise<{ rowId: string | null } | null> => {
+    if (isReadOnly) {
+      return { rowId: editingId };
+    }
+
     const magnitude = parseAmount(amount);
 
     if (amount.trim() === '' || Number.isNaN(magnitude) || magnitude <= 0) {
-      return false;
+      return null;
     }
 
-    await writeManual();
-
-    return true;
+    return { rowId: await writeManual() };
   };
 
   // The three non-manual save modes, dispatched ahead of the income/expense
@@ -917,9 +937,9 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
         return;
       }
 
-      // A synced row is bank-owned: only its category may change, so skip the
-      // amount write entirely and fall through to the category confirm below.
-      if (!isReadOnly && !(await tryWriteManual())) {
+      const written = await tryWriteManual();
+
+      if (written === null) {
         return;
       }
 
@@ -930,6 +950,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
         categoryChanged,
         effectiveCategory,
         name,
+        written.rowId,
       );
 
       if (overrideRequest) {
