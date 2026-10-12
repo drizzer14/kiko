@@ -709,6 +709,28 @@ Read these units before touching category UI: the Categories list
   in-form Delete"; pre-write rule `kiko-no-confirm-sheet-in-form`). A
   category is deleted only from its list card's hold menu, which is not
   offered on the default.
+- The rule editor is the CategoryRuleForm route
+  (`src/navigation/types/types.d.ts`), in
+  `src/screens/forms/category-rule-form/` (`matcher-row/`, `rule-draft/`,
+  `use-save-rule/`, `rule-rewrite-sheet/`). It has no Delete either; a
+  rule is deleted from its rule card's hold menu on the category page.
+  The rewrite confirm is a `BottomSheet` with buttons, opened from
+  `use-save-rule/`, not a `ConfirmSheet`; a save that would rewrite
+  zero rows saves with no sheet.
+
+### Category rules repo
+
+`src/categories/category-rules-repo/category-rules.repo.ts`:
+`saveRule` runs `validateRule` and reads the rule back through
+`parseRuleMatchers` inside the write, before any insert.
+`countRuleRewrite` and the apply share one plan function
+(`rowIdsRewrittenBy` over `planRuleRewrite`) and one unchanged-save
+short-circuit (`isStoredAsGiven`), so the count shown never differs from
+the write. `REWRITE_GUARD_FIELDS` (`src/categories/category-rules/`) is the
+one list of rows a rule never rewrites; `isRewriteEligible` and the
+refresh CASE in `src/transactions/repo/transactions.repo.ts` both derive
+from it. Compare category keys with `isSameCategory`
+(`src/categories/category-rules/same-category.ts`), never `===`.
 
 ## App-open and refresh work is gated on data presence
 

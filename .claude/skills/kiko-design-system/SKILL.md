@@ -628,7 +628,10 @@ new component can land between reviews of this skill:
   deposit form's per-row Remove in
   `src/screens/forms/holding-form/term-deposit/`: `destructiveTonal` +
   `size="small"` + a leading trash icon, so a lower-emphasis Remove/Delete
-  reads as the same control everywhere it appears), NOT the solid bright
+  reads as the same control everywhere it appears; the rule editor's
+  matcher row in `src/screens/forms/category-rule-form/matcher-row/` is
+  the same control with the `ruleForm.removeCondition` accessibility
+  label carrying the row index), NOT the solid bright
   `negative` fill of `destructive`. `secondaryTonal` is its NEUTRAL
   counterpart — a faint neutral tint from the `neutralSubtle` theme
   token (`theme.ts`, sibling of `negativeSubtle`) under an ordinary
@@ -695,6 +698,7 @@ new component can land between reviews of this skill:
   there is no "Add loan" footer: a loan is added through the implicit
   account's create flow, and account detail's footer is always "Add
   holding" with `genericEntitySymbol.holding`;
+  Add rule → `genericEntitySymbol.rule` (category page's footer);
   Add lot → the holding's OWN type glyph (`holdingTypeSymbol[holding.type]`),
   never a fixed type's; Add contribution →
   `calendar.badge.plus` (the one call-site literal). "Update value" /

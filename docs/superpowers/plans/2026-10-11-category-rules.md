@@ -443,7 +443,7 @@ transactionsRepo.recordManualWithReturns(input: ManualWithReturnsInput /*, along
 **Starts only after the transaction-templates split is merged into `next`; rebase onto it first.**
 
 **Files:**
-- Modify: `src/categories/category-rules-repo/category-rules.repo.ts` (`countRuleRewrite(rule)`, `saveRule({ rule, applyToExisting })`, `readRule(id)` query)
+- Modify: `src/categories/category-rules-repo/category-rules.repo.ts` (`countRuleRewrite(rule)`, `saveRule({ rule, applyToExisting })`) (the editor seeds from the all-rules live read; no single-rule read)
 - Create: `src/screens/forms/category-rule-form/category-rule-form.screen.tsx` (+ index, test)
 - Create: `src/screens/forms/category-rule-form/matcher-row/matcher-row.component.tsx` (+ props, styles, index, test)
 - Create: `src/screens/forms/category-rule-form/rule-draft/rule-draft.ts` (+ index, test): draft rows <-> matchers
@@ -451,7 +451,7 @@ transactionsRepo.recordManualWithReturns(input: ManualWithReturnsInput /*, along
 - Create: `src/screens/forms/category-rule-form/rule-rewrite-sheet/rule-rewrite-sheet.component.tsx` (+ props, index, test; the `BottomSheet` + buttons pattern of `category-override-sheet/`)
 - Modify: `src/screens/settings/category-detail/category-detail.screen.tsx` ("Add rule" button with a leading symbol; tap on a rule card opens the editor; empty-state hint `categoryPage.emptyRules`)
 - Modify: `settings.stack.tsx`, `types.d.ts` (`CategoryRuleForm: { categoryKey: string; ruleId?: string }`)
-- Modify: `en.ts`, `uk.ts`: `categoryPage.addRule`, `categoryPage.emptyRules`, `ruleForm.addTitle/editTitle/addMatcher/allMustMatch/amount/direction/time/deleteRule/errorNoMatchers/errorName/errorAmount/errorNeverMatches/errorDuplicate`, `ruleRewrite.title/message_one/few/many/other/applyToExisting/newOnly`, and NEW `ruleForm.timeHint` (decision 15; proposed en "Statement rows without a time count as 12:00 in the statement’s time zone." / uk "Рядки виписки без часу рахуються як 12:00 у часовому поясі виписки."; the user confirms the wording). "Matcher" reads "condition" / "умова" (the user confirms).
+- Modify: `en.ts`, `uk.ts`: `categoryPage.addRule`, `categoryPage.emptyRules`, `ruleForm.addTitle/editTitle/addMatcher/allMustMatch/amount/direction/time/errorNoMatchers/errorName/errorAmount/errorNeverMatches/errorDuplicate`, `ruleRewrite.title/message_one/few/many/other/applyToExisting/newOnly`, and NEW `ruleForm.timeHint` (decision 15; shipped en/uk texts in `src/i18n/locales/en.ts` and `uk.ts` say the rows count as noon; the user confirms the wording). "Matcher" reads "condition" / "умова" (the user confirms).
 - Mutable count: about 8.
 
 **Interfaces (produces):**
@@ -461,7 +461,7 @@ categoryRulesRepo.saveRule(input: {
   id: string | null; category: string; matchers: readonly CategoryRuleMatcher[]; applyToExisting: boolean;
 }): Promise<{ id: string; changed: number }>;
 // rule-draft.ts
-type MatcherDraft = { type: CategoryRuleMatcher['type']; text: string; operator: string; amountText: string;
+type MatcherDraft = { type: CategoryRuleMatcher['type']; text: string; amountOperator: string; timeOperator: string; amountText: string;
   currency: Currency; direction: RuleDirection; minuteOfDay: number };
 export const toMatcherDrafts: (matchers: readonly CategoryRuleMatcher[], baseCurrency: Currency) => MatcherDraft[];
 export const fromMatcherDrafts: (drafts: readonly MatcherDraft[]) =>
@@ -487,15 +487,15 @@ export const fromMatcherDrafts: (drafts: readonly MatcherDraft[]) =>
   Run: `npx jest src/categories/category-rules-repo` -> FAIL. Implement (`saveRule`: one `write`: insert or update with `updated_at = now`, then `rewriteForRuleDatabaseTransaction` when `applyToExisting`). Run -> PASS.
 - [ ] **Step 2/7: Apply-on-edit source row case (decision 17).** Add a test for "Apply" on an edit where a stronger rule wins the source row: with a 2-matcher rule of category A that wins the row, "Apply" with category B creates/updates the one-matcher nameIs rule for B, the source row gets B with category_set_by_hand = 1, and the other same-name rows that the A rule wins keep A; a same-name row where no stronger rule wins gets B with flag 0.
 - [ ] **Step 3/7: `rule-draft` tests first:** each type round-trips; amount text through `Money.fromMajor` with the draft currency, exact; more decimals than `currencyScale` -> `errorAmount` (Review Focus 5); negative or blank amount -> `errorAmount`; blank name -> `errorName`; default currency = base currency. Run -> FAIL; implement; PASS.
-- [ ] **Step 4/7: Editor tests first** (`category-rule-form.screen.test.tsx`, `use-save-rule.test.ts`): starts with one matcher row (create) or the rule's rows (edit); type select switches the input (name field / operator + amount + currency select / Expense-Income segment / Before-After segment + `TimeField` with `ruleForm.timeHint`); "Add matcher" adds a row; remove control on every row but the last; hint `ruleForm.allMustMatch`; Save: `noMatchers` / `neverMatches` (M23) / `duplicate` (names the other category) errors inline, nothing saved; N = 0 -> saves directly, no sheet (decision 11); N > 0 -> sheet "This changes N transactions" with "Apply to existing" (`applyToExisting: true`), "New transactions only" (`false`), Cancel (back to the editor, nothing saved); Delete rule (edit only) -> confirm -> `deleteRule`, no rewrite; a double tap saves once (`useSubmitOnce`). Run -> FAIL; implement; PASS.
+- [ ] **Step 4/7: Editor tests first** (`category-rule-form.screen.test.tsx`, `use-save-rule.test.ts`): starts with one matcher row (create) or the rule's rows (edit); type select switches the input (name field / operator + amount + currency select / Expense-Income segment / Before-After segment + `TimeField` with `ruleForm.timeHint`); "Add matcher" adds a row; remove control on every row but the last; hint `ruleForm.allMustMatch`; Save: `noMatchers` / `neverMatches` (M23) / `duplicate` (names the other category) errors inline, nothing saved; N = 0 -> saves directly, no sheet (decision 11); N > 0 -> sheet "This changes N transactions" with "Apply to existing" (`applyToExisting: true`), "New transactions only" (`false`), Cancel (back to the editor, nothing saved); the editor has no Delete (a rule is deleted from its card's hold menu, spec §9.4); a double tap saves once (`useSubmitOnce`). Run -> FAIL; implement; PASS.
 - [ ] **Step 5/7: Category page tests** (extend): "Add rule" opens the editor in create mode; a tap on a readable rule card opens it in edit mode; the empty state shows `categoryPage.emptyRules`. Run -> FAIL; implement; PASS.
 - [ ] **Step 6/7: Commit:** `feat(categories): rule editor with the retroactive rewrite`.
 - [ ] **Step 7/7: Close.** Per-task close. Reviewer top question: "Can the count in the sheet ever differ from what 'Apply to existing' writes on unchanged data, and can any save path skip `validateRule`?" Then the user's live device check. The user checks:
   - "Add rule" -> editor; each condition type; "Add condition"; remove; the "must match every condition" hint.
-  - Each inline error: no condition, blank name, bad amount (also too many decimals), never-match pair (after 22:00 + before 06:00), a duplicate of another category's rule.
+  - Each inline error (the UI always keeps one condition row): blank name, bad amount (also too many decimals), never-match pair (after 22:00 + before 06:00), a duplicate of another category's rule.
   - Save with matching rows: the sheet's N; "Apply to existing" changes those rows (spot-check Home); "New transactions only" changes none; Cancel keeps the editor.
   - Save with no matching rows: no sheet.
-  - Edit a rule and change its category: rows follow; a row picked "Just for this one" stays.
+  - Edit a rule's conditions: the editor has no category select (spec §9.4); the category is the page's.
   - "Apply to existing" on the real database feels fast (Hermes; spec §11 final check).
   - The time hint text; times in the user's 12/24-hour setting; uk texts and plurals.
 

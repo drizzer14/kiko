@@ -67,7 +67,7 @@ type CategoryRuleMatcher =
 - `text` is the name as the user typed it (trimmed). It is normalized at evaluation time with `normalizeTransactionName`, so one normalization stays the only one. A migrated override's `text` is its `display_name` (by construction `normalize(display_name) === normalized_name`, `category-overrides.repo.ts:31-43`; the migration test pins it).
 - `minorUnits` is a non-negative integer in the currency's own scale. `minuteOfDay` is an integer 0-1439.
 - Read-time type guard `parseRuleMatchers(json): CategoryRuleMatcher[] | null`: rejects bad JSON, an empty list, an unknown `type`, a bad operator, a non-integer or negative amount, an unknown currency, an out-of-range minute, a blank normalized `text`. A rule that fails the guard never matches and is skipped by every reader; the category page shows it as unreadable with only Delete. The same guard runs on restore input.
-- Editor validation (save refused, inline error): at least one matcher; a valid value per matcher; no two rules with the same matcher set (the error names the other rule's category; decision 9); no rule that can never match: two directions, two currencies, an empty amount range, or after >= before, with the hint to use two rules for a window over midnight (decision 8).
+- Editor validation (save refused, inline error): at least one matcher; a valid value per matcher; no two rules with the same matcher set (the error names the other rule's category; decision 9); no rule that can never match: two directions, two currencies, an empty amount range, or after >= before, with a hint to use two rules for a window over midnight on the time conflict only (decision 8). `validateRule` (`src/categories/category-rules/validate-rule.ts`) returns `neverMatches` with `conflict: 'time' | 'other'`; the midnight hint belongs to `'time'`.
 
 ### 3.2 The manual-pick flag
 `transactions.category_set_by_hand` integer (boolean) NOT NULL DEFAULT 0. Every existing row gets 0 (ruling 6).
@@ -244,7 +244,7 @@ Name, icon, colour (the existing inline controls moved here), Create mode: the s
   - type: Expense / Income segment;
   - time: Before / After segment + `TimeField`.
 - "Add matcher" adds a row; each row has a remove control (not on the last row). Hint: "A transaction must match every condition."
-- Save validates (section 3.1), then runs 7.3. Delete rule (edit mode): a confirm, then delete; no row changes.
+- Save validates (section 3.1), then runs 7.3. The editor has no Delete (kiko-design-system "A form has no in-form Delete"; pre-write rule `kiko-no-confirm-sheet-in-form`); a rule is deleted from its rule card's hold menu on the category page.
 
 ### 9.5 Strings (en / uk; sentence case except titles; reviewed by the user at BATCH READY)
 | key (proposed) | en | uk |
@@ -258,18 +258,25 @@ Name, icon, colour (the existing inline controls moved here), Create mode: the s
 | categoryPage.unreadableRule | This rule can't be read | Це правило неможливо прочитати |
 | categoryForm.addTitle / editTitle | New Category / Edit Category | Нова категорія / Редагування категорії |
 | ruleForm.addTitle / editTitle | New Rule / Edit Rule | Нове правило / Редагування правила |
-| ruleForm.addMatcher | Add matcher | Додати умову |
+| ruleForm.addMatcher | Add condition | Додати умову |
 | ruleForm.allMustMatch | A transaction must match every condition. | Транзакція має відповідати всім умовам. |
 | ruleForm.nameIs / nameStartsWith | Name is / Name starts with | Назва дорівнює / Назва починається з |
 | ruleForm.amount | Amount | Сума |
 | ruleForm.equal / more / atLeast / less / atMost | Equal to / More than / At least / Less than / At most | Дорівнює / Більше ніж / Щонайменше / Менше ніж / Щонайбільше |
 | ruleForm.direction | Type | Тип |
 | ruleForm.time / before / after | Time / Before / After | Час / До / Після |
-| ruleForm.deleteRule | Delete rule | Видалити правило |
 | ruleForm.errorNoMatchers | Add at least one condition. | Додайте хоча б одну умову. |
 | ruleForm.errorName | Enter a name. | Введіть назву. |
-| ruleForm.errorAmount | Enter an amount of 0 or more. | Введіть суму від 0. |
+| ruleForm.errorAmount (pending the user's review; overnight default) | Enter an amount of 0 or more, with no more decimals than the currency allows. | Введіть суму від 0, не більше знаків після коми, ніж має валюта. |
 | ruleForm.errorNeverMatches | These conditions can never match together. | Ці умови не можуть збігтися разом. |
+| ruleForm.errorNeverMatchesTime (pending the user's review; overnight default) | These times can never match together. For a window over midnight, use two rules. | Ці значення часу не можуть збігтися разом. Для проміжку через північ створіть два правила. |
+| ruleForm.timeHint (pending the user's review; overnight default) | Statement rows without a time count as noon in the statement's time zone. | Рядки виписки без часу рахуються як полудень у часовому поясі виписки. |
+| ruleForm.condition / conditionSheetTitle (pending the user's review; overnight default) | Condition / Condition | Умова / Умова |
+| ruleForm.selectCondition | Select a condition | Оберіть умову |
+| ruleForm.operator / operatorSheetTitle | Comparison / Comparison | Порівняння / Порівняння |
+| ruleForm.selectOperator | Select a comparison | Оберіть порівняння |
+| ruleForm.remove | Remove | Видалити |
+| ruleForm.removeCondition | Remove condition {{index}} | Видалити умову {{index}} |
 | ruleForm.errorDuplicate | A rule with these conditions already exists in {{category}}. | Правило з такими умовами вже є в категорії {{category}}. |
 | ruleRewrite.title | Apply Rule | Застосувати правило |
 | ruleRewrite.message_one/few/many/other | This changes {{count}} transaction(s). | Це змінить {{count}} транзакцію / транзакції / транзакцій / транзакції. |
@@ -277,7 +284,7 @@ Name, icon, colour (the existing inline controls moved here), Create mode: the s
 | ruleRewrite.newOnly | New transactions only | Лише нові транзакції |
 | categories.deleteRulesNotice_one/few/many/other | Its {{count}} rule(s) will be deleted too. | Її {{count}} правило / правила / правил / правила теж буде видалено. |
 | categories.deleteRulesNoticeUnknown | Its rules will be deleted too. (shown when the count read fails) | Її правила теж буде видалено. |
-| categoryPage.deleteRuleTitle | Delete Rule (Title Case; the rule card's confirm title; `ruleForm.deleteRule` stays the editor's sentence-case button) | Видалити правило |
+| categoryPage.deleteRuleTitle | Delete Rule (Title Case; the rule card's confirm title; the only rule-delete title, the editor has none) | Видалити правило |
 | categoryPage.setAsDefault | Set as default | Зробити типовою |
 | categoryPage.quotedName | "{{name}}" | «{{name}}» |
 Expense / Income, Edit, Delete, Cancel reuse existing keys. "Matcher" in the UI reads "condition" ("умова"); the user confirms the wording.
@@ -327,7 +334,7 @@ Source: USER = the user's ruling, relayed by the coordinator; DEFAULT = the coor
 5. The rewrite skips exchange legs, balance-setting rows and split-change rows. DEFAULT.
 6. A re-sync refresh that changes the amount of an unflagged row re-evaluates it; `category` is written only when a rule wins. DEFAULT.
 7. A zero amount matches neither expense nor income. DEFAULT.
-8. The editor refuses a rule that can never match (two directions, two currencies, an empty amount range, after >= before), with the hint to use two rules for a window over midnight. DEFAULT.
+8. The editor refuses a rule that can never match (two directions, two currencies, an empty amount range, after >= before), with the midnight hint on the time conflict only (`ruleForm.errorNeverMatchesTime`). DEFAULT.
 9. The editor refuses a second rule with the same matcher set and names the other category; the suggestion flow updates the existing one-matcher rule in place. DEFAULT.
 10. The insert path reads every rule inside its write under a documented guard exception: `nosemgrep` with `OVERRIDE(...)` on that one read, plus an entry in `docs/harness/documented-exceptions.md` (the table is user-authored and small; every reader needs every row by design). No rule cap, no silent drop. Not chosen: a cap at every writer with a `.limit(MAX_RULES + 1)` read (migration 0058 and an old restore cannot refuse rows); reading rules before the write (a rule saved in between misses that batch). DEFAULT (ORCHESTRATOR ruling toward no-known-limit-for-data-correctness).
 11. N = 0: no sheet, save directly. DEFAULT.

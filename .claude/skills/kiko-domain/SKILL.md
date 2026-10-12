@@ -900,6 +900,14 @@ an older build is folded onto the default instead of orphaned on a deleted
 slug; the category's rules are deleted in the same write, and the moved rows
 lose the by-hand flag.
 
+**Rule validation.** `src/categories/category-rules/validate-rule.ts`
+owns it; a `neverMatches` result carries `conflict: 'time' | 'other'`
+(read the `RuleValidation` type in `category-rules.d.ts`), and only the
+time conflict gets the midnight hint. The editor's matcher option lists
+come from `src/categories/category-rules/matcher-options.ts`. The
+editor's amount draft converts through `Money.fromMajor` exactly; a
+draft with too many decimals for the currency is refused.
+
 ## Spending-exclusion pipeline
 
 An internal money movement (cash-out, own-account transfer, one leg of
