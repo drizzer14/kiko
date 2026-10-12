@@ -6,8 +6,7 @@ export type DescriptionSuggestionsProps = {
   // The description the user is currently typing. An empty value, no match, or a
   // value that already equals a suggestion collapses the row to nothing.
   value: string;
-  // Fill the field with the tapped past description verbatim. The form pairs this
-  // with A1's rule lookup so picking a known merchant name also re-seats its
-  // category.
+  // Fill the field with the tapped past description verbatim. The form also settles that
+  // description, so picking a known merchant name pre-selects the category its rules give it.
   onPick: (description: string) => void;
 };

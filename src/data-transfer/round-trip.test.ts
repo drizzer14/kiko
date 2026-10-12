@@ -48,6 +48,7 @@ const fixturePayload = (): ExportPayload => ({
         time: 1700000000000,
         description: 'Coffee',
         category: 'food',
+        categorySetByHand: true,
         mcc: null,
         hold: null,
         counterIban: null,
@@ -104,14 +105,17 @@ const fixturePayload = (): ExportPayload => ({
     categories: [
       { key: 'food', title: 'Food', icon: 'fork.knife', color: null, sortOrder: 0 } as never,
     ],
-    categoryOverrides: [
+    categoryRules: [
       {
-        normalizedName: 'starbucks',
+        id: 'rule-1',
         category: 'food',
-        displayName: 'Starbucks',
+        matchers: JSON.stringify([
+          { type: 'nameIs', text: 'Starbucks' },
+          { type: 'direction', direction: 'expense' },
+        ]),
         createdAt: 1700000000000,
         updatedAt: 1700000000000,
-      } as never,
+      },
     ],
     pricePoints: [
       {
@@ -168,6 +172,15 @@ describe('data-transfer full-pipeline round trip', () => {
     const roundTripped = JSON.parse(utf8Decode(decryptEnvelope(envelope, key))) as ExportPayload;
 
     expect(roundTripped).toEqual(payload);
+  });
+
+  it('keeps the rules and the by-hand mark of a row through encrypt -> decrypt', () => {
+    const key = generateExportKey();
+    const envelope = encryptEnvelope(utf8ToBytes(JSON.stringify(fixturePayload())), key);
+    const { tables } = JSON.parse(utf8Decode(decryptEnvelope(envelope, key))) as ExportPayload;
+
+    expect(tables.categoryRules).toEqual(fixturePayload().tables.categoryRules);
+    expect(tables.transactions[0].categorySetByHand).toBe(true);
   });
 
   it('round-trips the base64 key through the same display/paste path the UI uses', () => {

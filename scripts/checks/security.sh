@@ -4,7 +4,6 @@ DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=/dev/null
 source "$DIR/_lib.sh"
 ROOT="$(cd "$DIR/../.." && pwd)"
-TARGET="${1:-$ROOT}"
 
 if ! command -v semgrep >/dev/null 2>&1; then
   print_block \
@@ -17,28 +16,51 @@ if ! command -v semgrep >/dev/null 2>&1; then
   exit 2
 fi
 
-# `rules/fixtures/` holds the positive/negative fixture pair for each project
-# rule. A positive fixture is deliberately vulnerable code, so it must not fail
-# the real scan; `scripts/checks/semgrep-rules.sh` is what scans it on purpose.
+# Every argument is a scan target (no argument means the whole repo), and all
+# of them go to ONE Semgrep call; an empty-string argument is passed on, so
+# Semgrep rejects it and the scan fails closed. `rules/fixtures/` holds the
+# positive/negative fixture pair for each project rule. A positive fixture is
+# deliberately vulnerable code, so it must not fail the real scan;
+# `scripts/checks/semgrep-rules.sh` is what scans it on purpose.
 # `--exclude 'fixtures'` below only prunes that directory while WALKING a
 # tree — semgrep still scans a fixture file passed as a direct, single-file
-# TARGET (the fast-tier hook's own shape), so a single-file target under
-# rules/fixtures/ is skipped here explicitly instead.
-case "$TARGET" in
-  "$ROOT/rules/fixtures/"* | rules/fixtures/*) exit 0 ;;
-esac
+# TARGET (the fast-tier hook's own shape), so such a target is dropped here
+# explicitly instead. The drop is a prefix match, so a path with a `..` segment
+# is never dropped: `rules/fixtures/../../src/x.ts` would otherwise leave
+# `src/x.ts` unscanned.
+TARGETS=()
+for argument in "$@"; do
+  case "$argument" in
+    */../* | */..) TARGETS+=("$argument") ;;
+    "$ROOT/rules/fixtures/"* | rules/fixtures/*) ;;
+    *) TARGETS+=("$argument") ;;
+  esac
+done
+if [ "$#" -eq 0 ]; then
+  TARGETS=("$ROOT")
+fi
+if [ "${#TARGETS[@]}" -eq 0 ]; then
+  exit 0
+fi
 
-# Dedup a single-file target on its content plus the mobile rules file. The
-# external p/ rulesets are pinned to the installed semgrep and do not change
-# within a session, so they are not part of the fingerprint. A whole-repo or
-# directory target always runs.
+# Dedup a call whose targets are all files on their content plus the mobile
+# rules files; the key names every target, so a changed file or a different
+# file set is never vouched for by an earlier pass. The external p/ rulesets
+# are pinned to the installed semgrep and do not change within a session, so
+# they are not part of the fingerprint. A whole-repo or directory target always
+# runs. A skip says so on stderr: an exit 0 with no scan must not read as one.
 dkey=""; fp=""
-if [ -f "$TARGET" ]; then
-  dkey="security:$(printf '%s' "$TARGET" | harness_hash)"
-  fp="$( { shasum "$TARGET" 2>/dev/null
+all_files=1
+for target in "${TARGETS[@]}"; do
+  [ -f "$target" ] || all_files=0
+done
+if [ "$all_files" -eq 1 ]; then
+  dkey="security:$(printf '%s\n' "${TARGETS[@]}" | harness_hash)"
+  fp="$( { shasum "${TARGETS[@]}" 2>/dev/null
           shasum "$ROOT/rules/semgrep-mobile.yml" 2>/dev/null
           shasum "$ROOT/rules/semgrep-prewrite.yml" 2>/dev/null; } | harness_hash )"
   if harness_unchanged "$ROOT" "$dkey" "$fp"; then
+    printf 'security.sh: SKIPPED, not a fresh scan: %s target(s) are unchanged since their last passing scan (same file content, same rules files). Run npm run check:security with no argument for a full scan.\n' "${#TARGETS[@]}" >&2
     exit 0
   fi
 fi
@@ -48,16 +70,49 @@ out="$(semgrep --quiet --error --json \
   --config "$ROOT/rules/semgrep-mobile.yml" \
   --config "$ROOT/rules/semgrep-prewrite.yml" \
   --exclude 'fixtures' \
-  "$TARGET" 2>/tmp/kiko-security-stderr.$$)"
+  "${TARGETS[@]}" 2>/tmp/kiko-security-stderr.$$)"
 semgrep_code=$?
 stderr_out="$(cat /tmp/kiko-security-stderr.$$ 2>/dev/null)"
 rm -f /tmp/kiko-security-stderr.$$
 
+# What Semgrep says went wrong. --quiet keeps its log off stderr, so the reason
+# lives in the JSON's errors[]: every entry for "any", only an "error"-level or
+# Timeout entry for "blocking". Output that is not JSON cannot prove zero
+# findings, so it is reported as a problem either way.
+semgrep_error_text() {
+  printf '%s' "$out" | node -e '
+let text="";process.stdin.on("data",(chunk)=>text+=chunk).on("end",()=>{
+  let parsed;
+  try{parsed=JSON.parse(text)}
+  catch{process.stdout.write("Semgrep output was not valid JSON"+(text.trim()===""?".":": "+text.trim().slice(0,500)));return}
+  const entries=(parsed.errors||[]).filter((entry)=>process.argv[1]==="any"||entry.level==="error"||entry.type==="Timeout");
+  process.stdout.write(entries.map((entry)=>entry.long_msg||entry.message||JSON.stringify(entry)).join("\n"));
+})' "$1"
+}
+
+# The findings of one severity from the JSON already in hand, one block each:
+# location and rule id, then the rule message. Reading the JSON (not running
+# Semgrep a second time) means the block always names what the count counted.
+semgrep_findings_text() {
+  printf '%s' "$out" | node -e '
+let text="";process.stdin.on("data",(chunk)=>text+=chunk).on("end",()=>{
+  let blocks=[];
+  try{
+    blocks=(JSON.parse(text).results||[])
+      .filter((entry)=>(entry.extra&&entry.extra.severity)===process.argv[1])
+      .map((entry)=>entry.path+":"+(entry.start&&entry.start.line)+"  "+entry.check_id+"\n    "+((entry.extra&&entry.extra.message)||"").trim().replace(/\s+/g," "));
+  }catch{}
+  process.stdout.write(blocks.join("\n"));
+})' "$1"
+}
+
 if [ "$semgrep_code" -ne 0 ] && [ "$semgrep_code" -ne 1 ]; then
+  newline=$'\n'
+  details="Semgrep exit $semgrep_code.${stderr_out:+$newline$stderr_out}$newline$(semgrep_error_text any)"
   print_block \
     "Semgrep (mobile security rules)" \
     "Semgrep itself failed to run (exit $semgrep_code)." \
-    "$stderr_out" \
+    "$details" \
     "The security scan could not complete, so no security signal is available for this change." \
     "Fix the Semgrep invocation or configuration error above and re-run: npm run check:security" \
     "Do not treat a broken scan as a pass. Fix the scanner, then re-run."
@@ -69,13 +124,7 @@ fi
 # "error"-level entry fails closed, the same as semgrep-rules.sh treats a
 # Semgrep error as a failed proof. Unparseable output fails too, since it
 # cannot prove zero findings. Other warn-level entries stay non-blocking.
-scan_problems="$(printf '%s' "$out" | node -e '
-let text="";process.stdin.on("data",(chunk)=>text+=chunk).on("end",()=>{
-  let parsed;
-  try{parsed=JSON.parse(text)}catch{process.stdout.write("Semgrep output was not valid JSON.");return}
-  const blocking=(parsed.errors||[]).filter((entry)=>entry.level==="error"||entry.type==="Timeout");
-  process.stdout.write(blocking.map((entry)=>entry.long_msg||entry.message||JSON.stringify(entry)).join("\n"));
-})')"
+scan_problems="$(semgrep_error_text blocking)"
 
 if [ -n "$scan_problems" ]; then
   print_block \
@@ -108,12 +157,7 @@ let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{
 })')"
 
 if [ "${error_count:-0}" -gt 0 ]; then
-  readable="$(semgrep --quiet \
-    --config p/typescript --config p/react --config p/secrets \
-    --config "$ROOT/rules/semgrep-mobile.yml" \
-    --config "$ROOT/rules/semgrep-prewrite.yml" \
-    --exclude 'fixtures' \
-    "$TARGET" 2>&1)"
+  readable="$(semgrep_findings_text ERROR)"
   print_block \
     "Semgrep (mobile security rules) — Class A hard-fail" \
     "Semgrep found $error_count Class A (ERROR) security finding(s)." \
@@ -125,12 +169,7 @@ if [ "${error_count:-0}" -gt 0 ]; then
 fi
 
 if [ "${warning_count:-0}" -gt 0 ]; then
-  readable="$(semgrep --quiet \
-    --config p/typescript --config p/react --config p/secrets \
-    --config "$ROOT/rules/semgrep-mobile.yml" \
-    --config "$ROOT/rules/semgrep-prewrite.yml" \
-    --exclude 'fixtures' \
-    "$TARGET" 2>&1)"
+  readable="$(semgrep_findings_text WARNING)"
   {
     printf '────────────────────────────────────────────────────────\n'
     printf 'ⓘ CLASS B FINDING (override-eligible): Semgrep (mobile security rules)\n'
@@ -144,6 +183,6 @@ if [ "${warning_count:-0}" -gt 0 ]; then
   } >&2
 fi
 
-# No Class A finding: record the pass so an unchanged file skips next time.
+# No Class A finding: record the pass so an unchanged file set skips next time.
 [ -n "$dkey" ] && harness_mark_pass "$ROOT" "$dkey" "$fp"
 exit 0

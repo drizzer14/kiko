@@ -16,6 +16,10 @@ import {
   type CreateHoldingRoute,
   resolveCreateHoldingTarget,
 } from '@kiko/screens/forms/create-holding-target';
+import {
+  type FormHeaderItemsOptions,
+  useFormHeaderItems,
+} from '@kiko/screens/forms/use-form-header-items';
 import { holdingsRepo } from '@kiko/holdings/repo';
 import { parseAmount } from '@kiko/currency/parse';
 import { StyleSheet } from 'react-native-unistyles';
@@ -23,7 +27,6 @@ import Box from '@kiko/design-system/components/box';
 import { categoriesRepo } from '@kiko/categories/repo';
 import { useLiveQuery, type HoldingRow } from '@kiko/db';
 import { transactionsRepo } from '@kiko/transactions/repo';
-import Button from '@kiko/design-system/components/button';
 import Screen from '@kiko/design-system/components/screen';
 import { buildRateTable } from '@kiko/rates/net-worth-view';
 import { type TextInputInstance, View } from 'react-native';
@@ -37,7 +40,6 @@ import { resolveCategoryColor } from '@kiko/statistics/category-breakdown';
 import { useScrollToField } from '@kiko/design-system/use-scroll-to-field';
 import { seedCounterpartMinorUnits } from '@kiko/holdings/exchange-prefill';
 import { buildCategoryDisplayMap } from '@kiko/categories/category-display';
-import { categoryOverridesRepo } from '@kiko/categories/category-overrides-repo';
 import DescriptionSuggestions from '@kiko/screens/forms/description-suggestions';
 import { groupAmount, majorAmountText } from '@kiko/screens/forms/amount-format';
 import type { HoldingSelectOption } from '@kiko/screens/forms/holding-select-field';
@@ -102,7 +104,7 @@ type TransactionFormScreenProps = {
   route: { params: TransactionFormParams };
   navigation: {
     goBack: () => void;
-    setOptions: (options: { title: string }) => void;
+    setOptions: (options: { title: string } | FormHeaderItemsOptions) => void;
     navigate: (...route: CreateHoldingRoute) => void;
   };
 };
@@ -176,17 +178,6 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   // display title through the same map every screen uses.
   const { data: categories } = useLiveQuery(categoriesRepo.allQuery(), ['categories']);
   const categoryByKey = buildCategoryDisplayMap(categories);
-  // The name→category rules: subscribed once and reduced to a normalized-
-  // name lookup map, so a create can pre-select a category from the settled
-  // description on blur. Matching is JS-normalized (never SQL), mirroring the
-  // sync insert path — see `ruleCategoryFor` and the description blur handler.
-  const { data: overrideRules } = useLiveQuery(categoryOverridesRepo.allQuery(), [
-    'category_overrides',
-  ]);
-  const categoryByNormalizedName = useMemo(
-    () => new Map(overrideRules.map((rule) => [rule.normalizedName, rule.category])),
-    [overrideRules],
-  );
   // The distinct past MANUAL descriptions (newest-first), reduced to a plain
   // string list the inline suggestion row matches against as the user types.
   // Reactive on `'transactions'`, so a freshly saved manual row feeds the next
@@ -401,12 +392,21 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   const [time, setTime] = useState<number>(() => Date.now());
   const {
     selectedCategory,
-    setSelectedCategory,
-    setUserPickedCategory,
+    effectiveCategory,
+    userPickedCategory,
+    seedCategory,
     selectCategory,
-    onDescriptionBlur,
+    settleDescription,
     pickSuggestion,
-  } = useCategoryPick({ description, setDescription, isEditing, categoryByNormalizedName });
+  } = useCategoryPick({
+    description,
+    setDescription,
+    isEditing,
+    amount,
+    time,
+    mode,
+    currency: holding?.currency ?? null,
+  });
   const [hydrated, setHydrated] = useState(false);
   // Held from the seed rather than re-resolved at Save, so a counterpart
   // renamed mid-edit cannot turn the untouched label into stored text.
@@ -455,19 +455,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
         setMode(seedFieldsPlan.sign);
         setDescription(seedFieldsPlan.description);
         setPrefilledLabel(seedFieldsPlan.prefilledLabel);
-        setSelectedCategory(seedFieldsPlan.category);
-        // A seeded non-null category counts as a user pick, so a later
-        // description blur (A1's `reseatCategoryFromName`) can never clobber it.
-        // This matters for the DUPLICATE path (`isEditing` is false there): the
-        // "duplicate a row, tweak the note" flow must keep the copied category
-        // when the retyped description matches no name rule. The edit path already
-        // guards its stored category via `isEditing`, so this is a harmless no-op
-        // there; the empty-create/fixed-holding paths seed a null category, so
-        // `userPickedCategory` stays false and A1's normal create-blur auto-seat
-        // is unaffected.
-        if (seedFieldsPlan.category !== null) {
-          setUserPickedCategory(true);
-        }
+        seedCategory(seedFieldsPlan.category, seedFieldsPlan.description);
 
         // A null `time` keeps the field at NOW — the duplicate never copies the
         // source timestamp; the edit path carries the stored time.
@@ -491,8 +479,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     currency,
     defaultPrimaryHoldingId,
     blankLabel,
-    setSelectedCategory,
-    setUserPickedCategory,
+    seedCategory,
   ]);
 
   // Seed the counterpart (cash) amount from the latest cached rate at
@@ -535,7 +522,11 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   // Derived (not stored) so it always reflects the persisted value even before
   // the hydration latch closes.
   const originalCategoryKey = existing?.category ? existing.category.toLowerCase() : null;
-  const categoryChanged = selectedCategory !== null && selectedCategory !== originalCategoryKey;
+  const categoryChanged = effectiveCategory !== null && effectiveCategory !== originalCategoryKey;
+  // A create offers the name rule only for a category the user chose (a pick, or a seed a
+  // Duplicate carries): applying one the rules pre-selected would rewrite every same-name row to
+  // a category nobody chose.
+  const offersNameRule = categoryChanged && (isEditing || userPickedCategory);
 
   const loanFieldVisible = isLoanFieldVisible(
     existing?.amountMinorUnits,
@@ -545,8 +536,8 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   );
 
   // The description field's placeholder previews the label the row would carry
-  // if left blank (see `resolveDescriptionPlaceholder`), and the Save button is
-  // disabled for a create still missing its amount or category (see
+  // if left blank (see `resolveDescriptionPlaceholder`), and Save is
+  // blocked for a create still missing its amount or category (see
   // `MODE_BEHAVIOR`). Both are module-level pure helpers so their
   // branches stay out of this component's cognitive-complexity budget.
   const descriptionPlaceholder = resolveDescriptionPlaceholder({
@@ -566,7 +557,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     counterpartAmount,
     destinationHoldingId,
     counterpartHoldingId,
-    selectedCategory,
+    selectedCategory: effectiveCategory,
     changeReturns,
     currency,
   };
@@ -592,11 +583,13 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   // Persist the amount/description edit on a manual row (edit vs. add). Only
   // ever called from the income/expense path (`save` branches Exchange off to
   // `saveExchange` before reaching here), so `mode` is guaranteed a `Sign`.
-  const writeManual = async (): Promise<void> => {
+  // Returns the id of the row it wrote: the edited row's, the created row's, or
+  // null when a create had no holding to write to.
+  const writeManual = async (): Promise<string | null> => {
     const amountMinorUnits = signedMinorUnits(currency, amount, mode as Sign);
 
     if (editingId) {
-      // Leave the category to the always-propagating override path below:
+      // Leave the category to the override path below:
       // `transactionsRepo.update` deliberately handles only amount/time/
       // description with its own balance-delta logic, and an edit's category
       // change still routes through the override rule.
@@ -607,11 +600,11 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
         description: descriptionToStore,
       });
 
-      return;
+      return editingId;
     }
 
     if (holdingId) {
-      await transactionsRepo.recordManual({
+      return transactionsRepo.recordManual({
         holdingId,
         amountMinorUnits,
         time,
@@ -623,9 +616,14 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
         // blank-description row (and any row whose override the user
         // cancelled) would be written uncategorised despite
         // `plainFieldErrors` forcing a pick on create.
-        category: selectedCategory,
+        category: effectiveCategory,
+        // Only a pick by hand is flagged: a category the rules pre-selected stays
+        // free for a later rule rewrite to move.
+        categorySetByHand: userPickedCategory,
       });
     }
+
+    return null;
   };
 
   // The shared failure alert for every write this screen makes: `save`,
@@ -761,7 +759,8 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
         amountMinorUnits: -paymentMinor,
         time,
         description,
-        category: selectedCategory,
+        category: effectiveCategory,
+        categorySetByHand: userPickedCategory,
       },
       returns: changeReturns.map((change) => ({
         holdingId: change.holdingId as string,
@@ -851,25 +850,29 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   };
 
   // Guard: reject an empty, non-numeric, or NON-POSITIVE amount, then write
-  // the manual edit. Returns whether the write happened, so `save` can abort
-  // the whole flow (including the category confirm below) on a bad amount
-  // without its own nested branch.
+  // the manual edit. Returns the written row's id, or null when the amount was
+  // rejected, so `save` can abort the whole flow (including the category confirm
+  // below) on a bad amount without its own nested branch. A synced row is
+  // bank-owned: only its category may change, so it skips the amount write
+  // entirely and hands back its own id for the category confirm.
   //
   // The magnitude test is the same `<= 0` rejection `saveExchange` and
   // `saveConvert` already apply. Testing only empty/NaN let `"0"` through and
   // created a 0.00 row, contradicting this guard's own "no zero-amount row"
   // claim. The user's income/expense chip carries the sign, so the typed
   // magnitude is always non-negative here — `<= 0` means "zero".
-  const tryWriteManual = async (): Promise<boolean> => {
+  const tryWriteManual = async (): Promise<{ rowId: string | null } | null> => {
+    if (isReadOnly) {
+      return { rowId: editingId };
+    }
+
     const magnitude = parseAmount(amount);
 
     if (amount.trim() === '' || Number.isNaN(magnitude) || magnitude <= 0) {
-      return false;
+      return null;
     }
 
-    await writeManual();
-
-    return true;
+    return { rowId: await writeManual() };
   };
 
   // The three non-manual save modes, dispatched ahead of the income/expense
@@ -901,6 +904,10 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   // into `performSave` itself pushes that function's cognitive complexity
   // over Biome's ceiling.
   const save = async (): Promise<void> => {
+    // The nav-bar Save does not end editing, so the description may never have blurred; commit
+    // its rule category to the picker, which `effectiveCategory` below already acts on.
+    settleDescription();
+
     if (disableSave) {
       setAttemptedSave(true);
 
@@ -920,9 +927,9 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
         return;
       }
 
-      // A synced row is bank-owned: only its category may change, so skip the
-      // amount write entirely and fall through to the category confirm below.
-      if (!isReadOnly && !(await tryWriteManual())) {
+      const written = await tryWriteManual();
+
+      if (written === null) {
         return;
       }
 
@@ -930,9 +937,10 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
       // just-saved manual description.
       const name = isReadOnly ? (existing?.description ?? '') : descriptionToStore;
       const overrideRequest = resolveCategoryOverrideRequest(
-        categoryChanged,
-        selectedCategory,
+        offersNameRule,
+        effectiveCategory,
         name,
+        written.rowId,
       );
 
       if (overrideRequest) {
@@ -947,13 +955,13 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
       // the picked category straight onto THIS row by id via the ungated
       // `setCategory`, so a category change on an existing row is never dropped.
       // This is the single-row writer only; the blank-name guard on the name RULE
-      // path (`resolveCategoryOverrideRequest` -> `upsertCategoryOverride`) stays
+      // path (`resolveCategoryOverrideRequest` -> `applyNameRule`) stays
       // intact, so a catch-all rule is still refused. A create (no `editingId`)
       // already carries its category from `recordManual`, so it is excluded.
-      if (editingId !== null && categoryChanged && selectedCategory !== null) {
+      if (editingId !== null && categoryChanged && effectiveCategory !== null) {
         await transactionsRepo.setCategory({
           transactionId: editingId,
-          category: selectedCategory,
+          category: effectiveCategory,
         });
       }
 
@@ -968,6 +976,13 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   };
 
   const { onPress: onSave, isSubmitting } = useSubmitOnce(save);
+
+  useFormHeaderItems({
+    navigation,
+    onSave,
+    hasSave: showsSaveButton(isReadOnly, categoryChanged, converting),
+    isSaving: isSubmitting,
+  });
 
   // The transaction-TYPE selector, built here so the label/mode copy stays with
   // the component's live translations. It renders directly UNDER the Holding
@@ -991,18 +1006,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
 
   return (
     <>
-      <Screen
-        scroll
-        scrollableRef={scrollableRef}
-        onContentSizeChange={onContentSizeChange}
-        footer={
-          showsSaveButton(isReadOnly, categoryChanged, converting) ? (
-            <Button onPress={onSave} disabled={isSubmitting}>
-              {t('common.save')}
-            </Button>
-          ) : undefined
-        }
-      >
+      <Screen scroll scrollableRef={scrollableRef} onContentSizeChange={onContentSizeChange}>
         <Box gap={4} testID="transaction-form">
           <ReadOnlyNotice isReadOnly={isReadOnly} noticeText={readOnlyNotice} />
 
@@ -1067,7 +1071,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
             counterpartSuffix={holdingSuffix(holdings, counterpartHoldingId)}
             description={description}
             onChangeDescription={setDescription}
-            onBlurDescription={onDescriptionBlur}
+            onBlurDescription={settleDescription}
             // The inline suggestion row. Its pool is already empty on an
             // edit (see the `pastDescriptions` memo), and the component itself
             // hides when there is no match or the field already equals a

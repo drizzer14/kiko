@@ -1,6 +1,6 @@
 ---
 name: kiko-design-system
-description: Invoke when touching theme tokens, react-native-unistyles styles, any shared design-system component (Screen, LoadingState, Box, Text, MoneyText, Button, Card, GlassSurface, BottomSheet, SymbolIcon, Switch, TextField, FieldError, FieldLabel, FieldTrigger, CurrencyBreakdown, CurrencyField, SummaryTable, EntityIconTile, CardContextMenu, ConfirmSheet, ChipRow, DayOfMonthGrid, SelectField, SelectableRow, SegmentedControl, Divider — full current set at `src/design-system/components/`), the app-lock screen/gate UI, an entity/account/holding color, or an SF Symbol tintColor. Read before adding a color, spacing, typography, or radius value, before styling a new screen, and before wiring an entity color into a card, icon, or chart.
+description: Invoke when touching theme tokens, react-native-unistyles styles, any shared design-system component (Screen, LoadingState, Box, Text, MoneyText, Button, Card, GlassSurface, BottomSheet, SymbolIcon, Switch, TextField, FieldError, FieldLabel, FieldTrigger, CurrencyBreakdown, CurrencyField, SummaryTable, EntryCard, EntryDateHeader, ExpandToggle, EntityIconTile, CardContextMenu, ConfirmSheet, ChipRow, DayOfMonthGrid, SelectField, SelectableRow, SegmentedControl, Divider — full current set at `src/design-system/components/`), the app-lock screen/gate UI, an entity/account/holding color, or an SF Symbol tintColor. Read before adding a color, spacing, typography, or radius value, before styling a new screen, and before wiring an entity color into a card, icon, or chart.
 ---
 
 # Kiko design system
@@ -269,7 +269,7 @@ an entry (date + value) the moment the user approves a new visual.
   setting `headerLargeTitle: true` inline. Device-confirm on an iOS 18
   device, not in the simulator or Jest.
 - **Tips were removed by user ruling** (2026-10-09: "Hints still look bad, let's remove them
-  for now"). There is no `TipCard`, `useTip`, or `accentSubtle` token; do not bring back a
+  for now"). There is no tip card, tip hook, or subtle-accent token; do not bring back a
   first-use tip, or its old look (tinted accent fill, lightbulb glyph, close button), without
   asking the user first. `InfoHint` stays allowed.
 - **EmptyState action is primary + small** (2026-10-08). 34pt tall, 44pt
@@ -371,7 +371,8 @@ The established patterns grouped under this heading:
   action is a native `type: 'button'` item in `unstable_headerRightItems`,
   listed left to right: `icon: { type: 'sfSymbol' }`, `label` and
   `accessibilityLabel` from the same i18n key, `tintColor:
-  theme.colors.textPrimary`, `sharesBackground: false`. Never a
+  theme.colors.textPrimary` (a form's Save is the exception: prominent and
+  accent, see "Form Save and Cancel" below), `sharesBackground: false`. Never a
   `type: 'custom'` item or `headerRight` with a React view for a header
   action: UIKit sizes a native item's glyph, capsule, and 44pt target;
   a React view inside a custom item gets a different glyph size and
@@ -387,6 +388,21 @@ The established patterns grouped under this heading:
   read of the options are not header values) and a `type: 'custom'` item
   in either header item list, and `kiko-no-header-spacing-item` denies a `type: 'spacing'` item in either
   list (`rules/semgrep-prewrite.yml`).
+- **Form Save and Cancel live in the native nav bar.** Every form under
+  `src/screens/forms/` calls `useFormHeaderItems`
+  (`src/screens/forms/use-form-header-items/`). Save is the trailing
+  item: a prominent, accent-tinted `type: 'button'` with the label
+  `common.save` (no per-form Save label key). Cancel is the leading
+  plain `textPrimary` item and shows only when native-stack's
+  `canGoBack` is false (the form is the first screen of its stack or
+  pane); when a back button shows, the back button is the cancel. Save
+  is never in a form's `Screen` footer. A secondary action (ruling
+  2026-10-11: the Edit template form's "Create transaction") may stay
+  in the footer as a lone secondary button. A native bar button does not
+  end editing, so a value derived on blur is settled in the save path
+  (see `kiko-code-style`'s "Form validation model"). Tests use the
+  helpers in `src/test-support/form-header-items.ts`, never
+  `getByText('Save')`.
 - **Edit is an icon-only native bar item** (2026-09-30, locked). The
   user: "One last thing before LGTM: remove 'Edit' label from
   account/holding edit button", then, on device: "'Edit' button
@@ -625,16 +641,19 @@ new component can land between reviews of this skill:
   `rules/semgrep-prewrite.yml`). `destructiveTonal` is the iOS "tinted
   destructive" pattern — a translucent `negativeSubtle` fill under a
   red `negative` label (a lower-emphasis dangerous action, e.g. the
-  deposit form's per-row Remove and the categories screen's per-card
-  Delete — the two now share the IDENTICAL treatment: `destructiveTonal`
-  + `size="small"` + a leading trash icon, so Delete reads as the same
-  control as Remove everywhere it appears), NOT the solid bright
+  deposit form's per-row Remove in
+  `src/screens/forms/holding-form/term-deposit/`: `destructiveTonal` +
+  `size="small"` + a leading trash icon, so a lower-emphasis Remove/Delete
+  reads as the same control everywhere it appears; the rule editor's
+  matcher row in `src/screens/forms/category-rule-form/matcher-row/` is
+  the same control with the `ruleForm.removeCondition` accessibility
+  label carrying the row index), NOT the solid bright
   `negative` fill of `destructive`. `secondaryTonal` is its NEUTRAL
   counterpart — a faint neutral tint from the `neutralSubtle` theme
   token (`theme.ts`, sibling of `negativeSubtle`) under an ordinary
   `textPrimary` label — the standard treatment for a lower-emphasis
-  inline/standalone secondary action (e.g. the categories screen's
-  "Set as default" star), replacing a plain `secondary` `surfaceHigh`
+  inline/standalone secondary action (e.g. the category page's
+  "Set as default" star, `src/screens/settings/category-detail/`), replacing a plain `secondary` `surfaceHigh`
   pill for that class of control. Both tonal variants are the exception
   to the `onAccent` rule below: a same-hue (or neutral) label on a
   same-hue tint is the tinted-button convention, so the label stays
@@ -667,12 +686,10 @@ new component can land between reviews of this skill:
   so `<Button icon="star" onPress={...} />` with no label is a COMPILE error,
   and a `__DEV__` runtime invariant in the component throws on the same shape
   for any untyped call path. This is the shared icon-only control pattern
-  — the categories screen's move-to-top/move-to-bottom reorder actions
-  (`variant="ghost"` + `size="small"`) and its "Set as default" star
-  (`variant="secondaryTonal"` + `size="small"`, `src/screens/settings/
-  categories/`) both build an icon-only control this way, plus
-  `fullWidth={false}`, rather than a raw `Pressable` + `SymbolIcon`.
-  (There is no separate `IconButton` primitive; the old one at
+  — an icon-only control is built with `Button` (an `icon`, an
+  `accessibilityLabel`, `fullWidth={false}`), never a raw `Pressable` +
+  `SymbolIcon`.
+  (There is no separate icon-button primitive; the old one at
   src/design-system/components/icon-button/ was deleted when its only
   consumer went away.)
 
@@ -697,6 +714,7 @@ new component can land between reviews of this skill:
   there is no "Add loan" footer: a loan is added through the implicit
   account's create flow, and account detail's footer is always "Add
   holding" with `genericEntitySymbol.holding`;
+  Add rule → `genericEntitySymbol.rule` (category page's footer);
   Add lot → the holding's OWN type glyph (`holdingTypeSymbol[holding.type]`),
   never a fixed type's; Add contribution →
   `calendar.badge.plus` (the one call-site literal). "Update value" /
@@ -722,9 +740,7 @@ new component can land between reviews of this skill:
   restored 44pt tap target, by design, not as a shortcut.** Pick
   `compact` when the visible pill itself should still read close to
   full HIG height; pick `small` for the tightest inline/secondary
-  actions, typically paired with `secondaryTonal` or `destructiveTonal`
-  (the categories screen's Delete, "Set as default", and reorder
-  controls above are all `size="small"`). Read `button.styles.ts` and
+  actions, typically paired with `secondaryTonal` or `destructiveTonal`. Read `button.styles.ts` and
   `button.component.tsx` directly for the current height/hitSlop
   values rather than trusting a copy of the numbers here if they ever
   drift.
@@ -1035,7 +1051,11 @@ new component can land between reviews of this skill:
   hook defined there): it registers its own beforeEach spy and afterEach
   restore, so a caller has nothing to restore and cannot leak the spy into a
   later test. Read a row's SF Symbols in a test with `glyphNamesWithin` and
-  `glyphTintsWithin` (`src/test-support/glyphs-within.ts`). `AccountKindField` and
+  `glyphTintsWithin` (`src/test-support/glyphs-within.ts`). The Jest `Text`
+  mock strips `variant` and `tone`; a layout pin that needs them imports
+  `src/test-support/mock-text-variant-tone.tsx` and reads the tree with
+  `layoutOf` (`src/test-support/layout-of.ts`); `src/test-support/mock-text-tone.tsx`
+  is the tone-only variant. `AccountKindField` and
   `ModeSelectField` (`src/screens/forms/`) are now thin wrappers over
   `SelectField` — `ModeSelectField` keeps its own caller-side `visible`
   gate (a convert has no mode toggle at all) ahead of it. `BankTypeField`
@@ -1171,6 +1191,15 @@ new component can land between reviews of this skill:
   deleted only from its page's `CardContextMenu`, so nothing under
   `src/screens/forms/` imports `ConfirmSheet`
   (`kiko-no-confirm-sheet-in-form`, `rules/semgrep-prewrite.yml`).
+  `deleteTitle` is an optional string that replaces the default
+  `common.deleteNamed` confirm title, for a card whose `name` is a
+  descriptive line rather than an entity name (the category page's rule
+  card passes `t('categoryPage.deleteRuleTitle')`), so the title never
+  nests quotes around a sentence. The key is Title Case in `TITLE_KEYS`
+  and the forwarded heading is registered in
+  `src/i18n/locales/title-keys.call-sites.test.ts`. `liftOnHold` is
+  passed only by a card in a plain (non-sortable) list; a grid card gets
+  its lift from the grid.
   `deleteMessage` is an optional async function (`() => Promise<string |
   undefined>`, never a plain string): the menu awaits it when the hold asks for
   the confirm, so the text names what is stored now. A read that fails opens the
@@ -1260,7 +1289,7 @@ new component can land between reviews of this skill:
   is `sectionHeadingRow` (row, space-between, centred, `minHeight` 44, so
   the touch target sits inside the row's own bounds). A tap navigates to
   `AccountDetail { accountId, name: accountDisplayName(account, t) }`.
-  The fix-5 edit pencil (`accounts-*-edit`, its 44pt `sectionEditRegion`
+  The fix-5 edit pencil (`accounts-*-edit`, its 44pt section edit region
   box) is gone: the account is edited from AccountDetail's Edit item.
 - **Switch** — a toggle that wraps RN's `Switch` with theme track/thumb
   colors. With `label` it renders a labeled row (label left, toggle
@@ -1289,8 +1318,8 @@ new component can land between reviews of this skill:
 - **FieldError** (`src/design-system/components/field-error/`) — the
   one inline validation-failure line a form renders DIRECTLY UNDER its
   own field (`Text variant="caption" tone="negative"`, the same tone
-  `FieldLabel`'s required asterisk uses) — never next to a footer Save
-  button, and never a reserved-height slot: it fades in on failure and
+  `FieldLabel`'s required asterisk uses) — never next to the nav-bar Save
+  item, and never a reserved-height slot: it fades in on failure and
   the layout reflows, so a valid field shows no error node at all.
   Every
   invalid field shows its OWN error at the same Save/Import press —
@@ -1381,10 +1410,9 @@ new component can land between reviews of this skill:
   column-mapping result section (`MappingResult`) reuse the SAME row
   layout/alignment/styling for their own summary rows (transaction count,
   currency, date span) — never the deposit table's value/percent/tax
-  COLUMNS, only its layout. The loan detail's ledger breakdown and its
-  "Upcoming Payments" list (`UpcomingPayments`, one row per installment:
-  date label, payment over a principal / interest caption) are
-  `SummaryTable`s too. A property owned in part swaps the priced
+  COLUMNS, only its layout. The loan detail's ledger breakdown is a
+  `SummaryTable` too; its "Upcoming Payments" list is NOT (it is
+  `EntryCard` rows, see **EntryCard**). A property owned in part swaps the priced
   Cost / Value / Gain rows for Whole value / Your share / Your value /
   Cost (your share) / Gain (`sharedPropertyBreakdownRows`,
   `holding-detail.screen.tsx`; testIDs `ownership-whole-value`,
@@ -1405,6 +1433,20 @@ new component can land between reviews of this skill:
   alone — RNTL's `toHaveTextContent` matcher requires an EXACT match by
   default (unlike jest-dom's substring default on web), so a testID
   spanning both label and value would break every such assertion.
+- **EntryCard** (`src/design-system/components/entry-card/`) — the shared
+  ledger card: a label, an amount, and footer lines. Read
+  `entry-card.props.d.ts` for the props.
+- **EntryDateHeader** (`src/design-system/components/entry-date-header/`) —
+  the date heading drawn above an `EntryCard`. Read
+  `entry-date-header.props.d.ts` for the props.
+- **ExpandToggle** (`src/design-system/components/expand-toggle/`) — the
+  shared "Show all" / "Show less" link with a chevron. `testID` is required
+  (`expand-toggle.props.d.ts`); the chevron takes `${testID}-chevron`. Its
+  copy reads `components.expandToggle.*` (en, uk). Never inline a second Show all / Show less
+  copy.
+- Characterization first: before extracting a shared component, pin the
+  current rendered tree with `layoutOf` BEFORE moving any JSX, and keep that
+  pin as a consumer test when the visual is locked.
 - **CurrencyField** (`src/design-system/components/currency-field/`) —
   the shared currency-picker trigger + `BottomSheet`: a labeled trigger
   showing the current selection (or a placeholder) that opens a sheet
@@ -1704,26 +1746,19 @@ where they can drift. The pipeline is:
   `isLightEntityColor` (`entity-tint.ts`, a real WCAG contrast-ratio
   check, not a naive brightness average) picks a white or dark glyph
   tint so the SF Symbol on top stays legible on every palette swatch.
-  `entityCardBackground`/`entityTintBackground` do not exist in the
-  current module — read `entity-tint.ts` directly for the live
-  exported function set (it changes; do not restate it here) rather
-  than assuming either name.
 
 **One hue, several renderings.** An entity has exactly one color, but
 that color is rendered several different ways depending on context —
-a flat translucent tint behind a card, an opaque SF Symbol tint, a
-chart fill. Never introduce a second, parallel way to derive one of
+the icon tile's two-stop gradient, an opaque SF Symbol tint, a
+chart fill (a card itself stays neutral and untinted). Never introduce a second, parallel way to derive one of
 these renderings from a hex, and never add a second hex parser either
 — `entity-tint.ts` owns the one unexported `parseHex`. Extend
 `entity-tint.ts` with a new named function instead, so every
 rendering of an entity's color still traces back to the same
 `resolveEntityColor` call. Read `entity-tint.ts` directly for its
 current exported functions rather than trusting a list restated here
-— a duplicated `parseHex` (and, at one point, a since-removed
-`blendOverWhite` pastel-over-white blend helper) were once added
-under `money-text/` and had to be moved back into `entity-tint.ts`
-for exactly this reason; do not assume either name still exists
-there today.
+— a duplicated `parseHex` was once added under `money-text/` and had to
+be moved back into `entity-tint.ts` for exactly this reason.
 
 ## SF Symbol `tintColor` gotcha
 

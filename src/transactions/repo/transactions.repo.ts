@@ -1,7 +1,6 @@
 import {
   type Repository,
   accounts,
-  categoryOverrides,
   deletedImportKeys,
   type HoldingRow,
   holdings,
@@ -12,6 +11,7 @@ import {
   write,
   chunkForTable,
   chunkRows,
+  IN_CLAUSE_CHUNK_SIZE,
 } from '@kiko/db';
 import {
   type SQL,
@@ -39,6 +39,13 @@ import {
   removeHoldingDatabaseTransaction,
 } from '@kiko/holdings/repo';
 import { match } from 'ts-pattern';
+import {
+  type RewriteGuardField,
+  REWRITE_GUARD_FIELDS,
+  prepareRules,
+  subjectOfStoredRow,
+  winningRule,
+} from '@kiko/categories/category-rules';
 import maybe, { foldMap } from 'fnts/maybe';
 import { maxOf, minOf } from '@kiko/numbers';
 import type { Currency } from '@kiko/currency/currency';
@@ -48,6 +55,7 @@ import { transactionTemplatesRepo } from '@kiko/transaction-templates/repo';
 import { isLedgerlessHoldingType } from '@kiko/holdings/holding-descriptor';
 import type { ExchangeConvertDirection } from '@kiko/holdings/exchange-convert';
 import type { ClosingBalance, TimeReading } from '@kiko/statement-import/parser';
+import { readAllRulesDatabaseTransaction } from '@kiko/categories/category-rules-repo';
 import { isSyncedAccount, isSyncedHolding, isDeletableTransaction } from '@kiko/holdings/deletable';
 
 import type {
@@ -57,7 +65,6 @@ import type {
   RemoveHoldingsPlan,
   RemovePlan,
 } from '../remove-notice';
-import { normalizeTransactionName } from '../normalize-name';
 import { balanceBoundaryOf, movesBalance } from '../balance-boundary';
 import { SYNC_MATCH_WINDOW_MILLISECONDS, pairSyncInputsWithImportRows } from '../sync-adoption';
 
@@ -83,6 +90,7 @@ type ManualTransaction = Pick<TransactionRow, 'holdingId' | 'amountMinorUnits' |
       | 'exchangeCounterpartHoldingId'
       | 'exchangePairId'
       | 'changeGroupId'
+      | 'categorySetByHand'
     >
   >;
 
@@ -216,10 +224,10 @@ const moveBalanceDatabaseTransaction = async (
 // plain destination leg, keeping both legs in one transaction.
 //
 // The row carries its OWN category here — a picked category is never lost to
-// a blank description or a cancelled override sheet. `upsertCategoryOverride`
-// (category-overrides.repo.ts) governs a SEPARATE concern: propagating that
-// pick to every OTHER same-name row, not whether this row itself is
-// categorised.
+// a blank description or a cancelled override sheet. `applyNameRule`
+// (category-rules.repo.ts) governs a SEPARATE concern: propagating that
+// pick to every same-name row (and, when the form names this row as the rule's source, writes
+// this row's own category and by-hand flag as well), not whether this row itself is categorised.
 const recordManualTransaction = async (
   databaseTransaction: typeof database,
   {
@@ -231,8 +239,9 @@ const recordManualTransaction = async (
     exchangeCounterpartHoldingId,
     exchangePairId,
     changeGroupId,
+    categorySetByHand,
   }: ManualTransaction,
-): Promise<void> => {
+): Promise<string> => {
   // Read BEFORE the insert so a ledgerless target is refused before anything is
   // written: its value derives from its metadata, so a row here would show in
   // the Home list and the category breakdown yet never reach net worth. The
@@ -244,13 +253,16 @@ const recordManualTransaction = async (
     throw new Error('transactions/ledgerless-holding');
   }
 
+  const rowId = id();
+
   await databaseTransaction.insert(transactions).values({
-    id: id(),
+    id: rowId,
     holdingId,
     amountMinorUnits,
     time,
     description: description ?? '',
     category: category ?? null,
+    categorySetByHand: categorySetByHand ?? false,
     exchangeCounterpartHoldingId: exchangeCounterpartHoldingId ?? null,
     exchangePairId: exchangePairId ?? null,
     changeGroupId: changeGroupId ?? null,
@@ -260,6 +272,8 @@ const recordManualTransaction = async (
   if (holding !== undefined) {
     await writeBalanceDeltaDatabaseTransaction(databaseTransaction, holding, amountMinorUnits);
   }
+
+  return rowId;
 };
 
 // Mark the EXISTING row of a Convert as the other leg of the same movement, on
@@ -995,13 +1009,6 @@ const dedupByConflictKey = (inputs: NewTransaction[]): NewTransaction[] => {
   });
 };
 
-// A one-column `inArray(...)` predicate binds one parameter per item — the
-// same SQLITE_MAX_VARIABLE_NUMBER (32766) ceiling `chunkForTable`
-// (`src/db/chunk-for-table.ts`) guards the multi-column insert below
-// against, chunked directly at its own safe margin rather than derived from
-// a table's column count, which a plain scalar list has none of.
-const IN_CLAUSE_CHUNK_SIZE = 32_000;
-
 /** Every stored row whose `conflictKeyOf` value is among `inputs`, read by
  * `readChunk` (one call per chunk) inside the caller's own transaction. */
 const readStoredConflictRows = async <Row>(
@@ -1370,6 +1377,34 @@ export const bankOwnedTransactionSetWhere = sql.join(
   sql` OR `,
 );
 
+// One SQL condition per field of `REWRITE_GUARD_FIELDS`, typed over that list: a field added to or
+// dropped from it fails to compile here, so the refresh below and `isRewriteEligible` always name
+// the same rows.
+const GUARD_FIELD_IS_UNSET: Record<RewriteGuardField, SQL> = {
+  categorySetByHand: sql`${transactions.categorySetByHand} = 0`,
+  exchangePairId: sql`${transactions.exchangePairId} IS NULL`,
+  exchangeCounterpartHoldingId: sql`${transactions.exchangeCounterpartHoldingId} IS NULL`,
+  setsBalance: sql`${transactions.setsBalance} = 0`,
+  changeGroupId: sql`${transactions.changeGroupId} IS NULL`,
+};
+
+// The refresh of a row a rule won at this batch: the bank-owned columns, and the rule's category
+// only when the row is one a rule may rewrite (`REWRITE_GUARD_FIELDS`: not picked by hand, not an
+// exchange leg, a balance-setting row or a split-change row) AND its amount changed, since the
+// amount is what the rules judge again. The CASE reads the OLD row (SQLite evaluates every SET
+// expression against it), so such a row, or a refresh with the same amount, keeps the category it
+// has. A row no rule won never reaches this set, so the bank's category is never written back.
+const ruleWonTransactionSet = {
+  ...bankOwnedTransactionSet,
+  category: sql`CASE WHEN ${sql.join(
+    REWRITE_GUARD_FIELDS.map((field) => GUARD_FIELD_IS_UNSET[field]),
+    sql` AND `,
+  )}
+    AND ${transactions.amountMinorUnits} IS NOT ${sql.raw(`excluded.${transactions.amountMinorUnits.name}`)}
+    THEN ${sql.raw(`excluded.${transactions.category.name}`)}
+    ELSE ${transactions.category} END`,
+};
+
 // The WHERE clause for `importRows`'s existing-rows-on-top-of-the-closing read,
 // exported so a real-SQLite test can prove the exact predicate — the `holdingId`
 // scope and the STRICT `gt` boundary — rather than a hand-transcribed copy of
@@ -1385,35 +1420,70 @@ export const postClosingRowsWhere = (holdingId: string, asOfMilliseconds: number
     eq(transactions.setsBalance, false),
   );
 
-// Apply name→category override rules at insert time. Normalize each
-// incoming description in JS (never SQL) and look the rules up by exact
-// equality on the already-normalized key. Chunked over `keys` (a large
-// import can carry tens of thousands of distinct descriptions) — see
-// `IN_CLAUSE_CHUNK_SIZE` above.
-const withCategoryOverrides = async (
+type RuledBatch = {
+  rows: NewTransaction[];
+  // The rows whose category is a rule's, so the upsert can tell them from the bank's.
+  ruleWon: ReadonlySet<NewTransaction>;
+};
+
+// Apply the category rules at insert time: the winning rule of a row replaces its category, and a
+// row no rule wins keeps the bank's. The rules are read once per call and prepared once, and the
+// currencies of the batch's holdings are read only when some rule is readable (an amount matcher
+// compares the holding's currency). A row whose holding is not found has no currency, so only
+// the rules that need none can match it. Chunked over the holding ids (a large import can span
+// many holdings) — see `IN_CLAUSE_CHUNK_SIZE`.
+const withCategoryRules = async (
   databaseTransaction: typeof database,
   batch: NewTransaction[],
-): Promise<NewTransaction[]> => {
-  const keys = Array.from(
-    new Set(batch.map((input) => normalizeTransactionName(input.description ?? ''))),
-  ).filter((key) => key !== '');
-  const rules: { normalizedName: string; category: string }[] = [];
-
-  for (const keyChunk of chunkRows(keys, IN_CLAUSE_CHUNK_SIZE)) {
-    rules.push(
-      ...(await databaseTransaction
-        .select()
-        .from(categoryOverrides)
-        .where(inArray(categoryOverrides.normalizedName, keyChunk))),
-    );
+): Promise<RuledBatch> => {
+  if (batch.length === 0) {
+    return { rows: batch, ruleWon: new Set() };
   }
-  const categoryByName = new Map(rules.map((rule) => [rule.normalizedName, rule.category]));
 
-  return batch.map((input) => {
-    const override = categoryByName.get(normalizeTransactionName(input.description ?? ''));
+  const prepared = prepareRules(await readAllRulesDatabaseTransaction(databaseTransaction));
 
-    return override ? { ...input, category: override } : input;
+  if (prepared.ordered.length === 0) {
+    return { rows: batch, ruleWon: new Set() };
+  }
+
+  const currencyByHoldingId = new Map<string, Currency>();
+
+  for (const holdingIdChunk of chunkRows(
+    Array.from(new Set(batch.map((input) => input.holdingId))),
+    IN_CLAUSE_CHUNK_SIZE,
+  )) {
+    for (const holding of await databaseTransaction
+      .select({ id: holdings.id, currency: holdings.currency })
+      .from(holdings)
+      .where(inArray(holdings.id, holdingIdChunk))) {
+      currencyByHoldingId.set(holding.id, holding.currency);
+    }
+  }
+
+  const ruleWon = new Set<NewTransaction>();
+  const rows = batch.map((input) => {
+    const winner = winningRule(
+      prepared,
+      subjectOfStoredRow({
+        description: input.description ?? '',
+        amountMinorUnits: input.amountMinorUnits,
+        time: input.time,
+        currency: currencyByHoldingId.get(input.holdingId) ?? null,
+      }),
+    );
+
+    if (winner === undefined) {
+      return input;
+    }
+
+    const ruled = { ...input, category: winner.category };
+
+    ruleWon.add(ruled);
+
+    return ruled;
   });
+
+  return { rows, ruleWon };
 };
 
 /** A stored statement-import row a sync input can adopt. */
@@ -1496,7 +1566,7 @@ const adoptImportTwinsDatabaseTransaction = async (
     newRows,
     await readImportTwinsDatabaseTransaction(databaseTransaction, newRows),
   );
-  const withOverrides = await withCategoryOverrides(
+  const { rows: withRules } = await withCategoryRules(
     databaseTransaction,
     adoptions.map(({ input }) => input),
   );
@@ -1504,7 +1574,7 @@ const adoptImportTwinsDatabaseTransaction = async (
   for (const [index, { candidate }] of adoptions.entries()) {
     await databaseTransaction
       .update(transactions)
-      .set(adoptedValuesOf(candidate, withOverrides[index]))
+      .set(adoptedValuesOf(candidate, withRules[index]))
       .where(eq(transactions.id, candidate.id));
   }
 
@@ -1512,7 +1582,7 @@ const adoptImportTwinsDatabaseTransaction = async (
 };
 
 /**
- * Apply name->category override rules and upsert a batch already folded onto
+ * Apply the category rules and upsert a batch already folded onto
  * one row per conflict key (`dedupByConflictKey`) on the `(source, external_id)`
  * unique index.
  */
@@ -1520,7 +1590,7 @@ const upsertDedupRowsDatabaseTransaction = async (
   databaseTransaction: typeof database,
   batch: NewTransaction[],
 ): Promise<void> => {
-  const withOverrides = await withCategoryOverrides(databaseTransaction, batch);
+  const { rows: withRules, ruleWon } = await withCategoryRules(databaseTransaction, batch);
   // Upsert on the `(source, external_id)` unique index: a re-fetched
   // Monobank item is REFRESHED, not dropped. A `hold: true` authorization
   // imports at its PROVISIONAL amount and re-syncs at the settled one, which
@@ -1528,10 +1598,12 @@ const upsertDedupRowsDatabaseTransaction = async (
   // forever. `excluded` is SQLite's alias for the row that would have been
   // inserted.
   //
-  // The update set names only the BANK-owned columns. `category` (which may
-  // be the user's own override, or a name rule's rewrite) and `comment` (the
-  // user's note) are deliberately absent, as is every structural column
-  // (`id`, `holding_id`, `exchange_counterpart_holding_id`).
+  // The update set names the BANK-owned columns. `comment` (the user's note)
+  // is deliberately absent, as is every structural column (`id`, `holding_id`,
+  // `exchange_counterpart_holding_id`). `category` (which may be the user's
+  // own pick, or a rule's rewrite) is absent from the set of a row no rule
+  // won; for a row a rule won it is written only by `ruleWonTransactionSet`'s
+  // guarded CASE.
   //
   // Manual rows are untouched either way: they carry a null `external_id`,
   // and SQLite treats each NULL in a unique index as distinct, so two of
@@ -1541,22 +1613,38 @@ const upsertDedupRowsDatabaseTransaction = async (
   // parameter per PRESENT key per row and SQLite
   // rejects a statement over its 32766 bound-parameter ceiling — a whole
   // statement-import file failed past ~2980 rows, a Monobank sync past
-  // ~2731. `dedupByConflictKey` already collapsed `withOverrides` to at
+  // ~2731. `dedupByConflictKey` already collapsed `withRules` to at
   // most one row per `(source, external_id)` key BEFORE this split, so no
   // two chunks can ever target the same conflict key — each chunk's
   // ON CONFLICT resolves independently, with identical semantics to the
-  // old single-statement insert.
-  const rows = withOverrides.map((input) => ({ id: id(), ...input }));
+  // old single-statement insert. A row sits in exactly one of the two
+  // inserts below, so their conflict keys stay disjoint too. The rows a rule
+  // won are inserted after the others, so rows with an identical time (a
+  // date-only import) can change their relative order; tie order is not a
+  // contract.
+  const toInsertRow = (input: NewTransaction) => ({ id: id(), ...input });
+  const partitions = [
+    {
+      rows: withRules.filter((input) => !ruleWon.has(input)).map(toInsertRow),
+      set: bankOwnedTransactionSet,
+    },
+    {
+      rows: withRules.filter((input) => ruleWon.has(input)).map(toInsertRow),
+      set: ruleWonTransactionSet,
+    },
+  ];
 
-  for (const part of chunkForTable(transactions, rows)) {
-    await databaseTransaction
-      .insert(transactions)
-      .values(part)
-      .onConflictDoUpdate({
-        target: [transactions.source, transactions.externalId],
-        set: bankOwnedTransactionSet,
-        setWhere: bankOwnedTransactionSetWhere,
-      });
+  for (const { rows, set } of partitions) {
+    for (const part of chunkForTable(transactions, rows)) {
+      await databaseTransaction
+        .insert(transactions)
+        .values(part)
+        .onConflictDoUpdate({
+          target: [transactions.source, transactions.externalId],
+          set,
+          setWhere: bankOwnedTransactionSetWhere,
+        });
+    }
   }
 };
 
@@ -2069,12 +2157,16 @@ export const transactionsRepo = {
    * Record a manual transaction and adjust its holding's balance in ONE
    * op-sqlite transaction, so the ledger and the balance can never desync
    * on a partial failure. The balance moves by the row's full amount whatever
-   * its date, a back-dated row included: every transaction updates the balance.
+   * its date, a back-dated row included: every transaction updates the balance. Returns the new
+   * row's id; `categorySetByHand` marks a category the user picked, which no rule replaces.
    */
   recordManual: (input: ManualTransaction, alongside?: Alongside) =>
     write(async (databaseTransaction) => {
-      await recordManualTransaction(databaseTransaction, input);
+      const rowId = await recordManualTransaction(databaseTransaction, input);
+
       await alongside?.(databaseTransaction);
+
+      return rowId;
     }),
   /**
    * Record an Exchange as two INDEPENDENT ledger rows in ONE transaction, tied
@@ -2273,13 +2365,17 @@ export const transactionsRepo = {
    * category (statistics/category-breakdown). Any failure rolls back every row,
    * so the ledger and every balance can never desync. Balances are read INSIDE
    * the transaction, never from a render snapshot, exactly as `recordManual`
-   * does.
+   * does. Returns the payment row's id; the payment's `categorySetByHand` lands on that row
+   * only, since a return has no category.
    */
   recordManualWithReturns: (input: ManualWithReturnsInput, alongside?: Alongside) =>
     write(async (databaseTransaction) => {
       const changeGroupId = id();
 
-      await recordManualTransaction(databaseTransaction, { ...input.payment, changeGroupId });
+      const paymentId = await recordManualTransaction(databaseTransaction, {
+        ...input.payment,
+        changeGroupId,
+      });
 
       for (const change of input.returns) {
         await recordManualTransaction(databaseTransaction, {
@@ -2291,6 +2387,8 @@ export const transactionsRepo = {
       }
 
       await alongside?.(databaseTransaction);
+
+      return paymentId;
     }),
   /**
    * Edit an existing MANUAL transaction and keep its holding's stored balance
@@ -2422,24 +2520,26 @@ export const transactionsRepo = {
   /**
    * Override the category of ONE transaction, by id, inside a single op-sqlite
    * transaction. This is the "just for this one" path: it rewrites only the
-   * target row's `category` and touches nothing else — no balance, no other row.
+   * target row's `category` and its by-hand flag and touches nothing else — no balance, no other
+   * row.
    *
    * It is DELIBERATELY different from
-   * `categoryOverridesRepo.upsertCategoryOverride` (category-overrides.repo.ts),
-   * the "apply to all similar" name rule, which writes a name→category rule that
-   * rewrites every same-name row AND every future import. Here nothing
-   * propagates beyond this single row.
+   * `categoryRulesRepo.applyNameRule` (category-rules.repo.ts), the "apply to
+   * all similar" name rule, which writes a name→category rule that rewrites
+   * every same-name row AND every future import. Here nothing propagates
+   * beyond this single row, and the row is marked as picked by hand so no rule
+   * and no rewrite ever replaces the pick.
    *
    * There is NO `source` gate: a synced (bank-owned) row is still freely
    * categorizable — the category is the user's, not the bank's. A later re-sync
-   * never clobbers the pick, because `addManyDedup`'s `onConflictDoUpdate` set
-   * names only the bank-owned columns and deliberately excludes `category`.
+   * never clobbers the pick: the refresh may write `category` when a rule wins at a new amount,
+   * but only on a row the by-hand flag set here does not guard.
    */
   setCategory: ({ transactionId, category }: { transactionId: string; category: string }) =>
     write((databaseTransaction) =>
       databaseTransaction
         .update(transactions)
-        .set({ category })
+        .set({ category, categorySetByHand: true })
         .where(eq(transactions.id, transactionId)),
     ),
   /**

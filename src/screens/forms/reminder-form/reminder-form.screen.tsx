@@ -17,11 +17,14 @@ import { match } from 'ts-pattern';
 import { useLiveQuery } from '@kiko/db';
 import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
+import {
+  type FormHeaderItemsOptions,
+  useFormHeaderItems,
+} from '@kiko/screens/forms/use-form-header-items';
 import { remindersRepo } from '@kiko/reminders/repo';
 import Box from '@kiko/design-system/components/box';
 import Text from '@kiko/design-system/components/text';
 import TimeField from '@kiko/screens/forms/time-field';
-import Button from '@kiko/design-system/components/button';
 import Screen from '@kiko/design-system/components/screen';
 import { View, type TextInputInstance } from 'react-native';
 import WeekdayField from '@kiko/screens/forms/weekday-field';
@@ -43,7 +46,10 @@ import NotificationPreAlertSheet from '@kiko/design-system/components/notificati
 // what the form reads, which either stack's props satisfy.
 type ReminderFormScreenProps = {
   route: { params: ReminderFormParams };
-  navigation: { goBack: () => void; setOptions: (options: { title: string }) => void };
+  navigation: {
+    goBack: () => void;
+    setOptions: (options: { title: string } | FormHeaderItemsOptions) => void;
+  };
 };
 
 type ReminderFrequency = ReminderSchedule['frequency'];
@@ -185,6 +191,8 @@ const ReminderFormScreen: FC<ReminderFormScreenProps> = ({ route, navigation }) 
 
   const { onPress: onSave, isSubmitting } = useSubmitOnce(save);
 
+  useFormHeaderItems({ navigation, onSave, hasSave: true, isSaving: isSubmitting });
+
   const frequencyField = match(draft.frequency)
     .with('daily', () => null)
     .with('weekly', () => (
@@ -230,16 +238,7 @@ const ReminderFormScreen: FC<ReminderFormScreenProps> = ({ route, navigation }) 
 
   return (
     <>
-      <Screen
-        scroll
-        scrollableRef={scrollableRef}
-        onContentSizeChange={onContentSizeChange}
-        footer={
-          <Button onPress={onSave} disabled={isSubmitting}>
-            {t('common.save')}
-          </Button>
-        }
-      >
+      <Screen scroll scrollableRef={scrollableRef} onContentSizeChange={onContentSizeChange}>
         <Box gap={4}>
           {kind !== undefined && (
             <Text variant="body" tone="textSecondary">

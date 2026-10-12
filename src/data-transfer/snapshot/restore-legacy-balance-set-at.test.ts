@@ -20,7 +20,7 @@ jest.mock('@kiko/db/client', () => {
 });
 
 import { transactionsRepo } from '@kiko/transactions/repo';
-import { accounts, categoryOverrides, holdings, transactions } from '@kiko/db';
+import { accounts, categoryRules, holdings, transactions } from '@kiko/db';
 
 import type { DataSnapshot } from './data-snapshot';
 import { restoreDataSnapshot } from './restore-snapshot';
@@ -50,10 +50,6 @@ const makeRestoreThenImportDatabaseTransaction = (store: {
     table: unknown,
     fields: Record<string, unknown> | undefined,
   ): unknown[] => {
-    if (table === categoryOverrides) {
-      return [];
-    }
-
     if (table === holdings) {
       return store.holdings;
     }
@@ -76,9 +72,11 @@ const makeRestoreThenImportDatabaseTransaction = (store: {
   const databaseTransaction = {
     delete: () => Promise.resolve(),
     select: (fields?: Record<string, unknown>) => ({
-      from: (table: unknown) => ({
-        where: () => resolveRows(resolveSelect(table, fields)),
-      }),
+      // The read of every rule has no `where`, and no rule is seeded for this test.
+      from: (table: unknown) =>
+        table === categoryRules
+          ? Promise.resolve([])
+          : { where: () => resolveRows(resolveSelect(table, fields)) },
     }),
     insert: (table: unknown) => ({
       values: (rows: Row[]) => {
@@ -119,7 +117,7 @@ const emptySnapshot: DataSnapshot = {
   settings: [],
   syncState: [],
   categories: [],
-  categoryOverrides: [],
+  categoryRules: [],
   pricePoints: [],
   bondRegister: [],
   reminders: [],

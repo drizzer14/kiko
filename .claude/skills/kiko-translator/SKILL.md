@@ -141,6 +141,21 @@ loads a fresh i18n; add a case there for a new plural key or language, and
 never assert device plural behavior with `new Intl.PluralRules(...)` in a
 test (the shipped-locales test uses Node's only as the CLDR oracle).
 
+### A string moved into a shared component changes namespace
+
+A string moved into a shared design-system component moves to that
+component's own `components.<component>.*` namespace in en and uk in the
+same commit, never left under another component's namespace.
+
+Mechanized for a literal key in the component's own folder tree by
+`kiko-component-i18n-namespace` (`scripts/checks/component-i18n-namespace.js`,
+`npm run check:component-i18n-namespace`, no override). The scope includes the
+component's test files, so a component test that reads a composed child's key
+is flagged too: move that assertion to the child's own test. Still manual
+review: a computed namespace, i18next's key-prefix and object-return options, an imported key
+constant, string concatenation, and a design-system component reading a
+SCREEN namespace.
+
 ### A plural key is always called with `count`
 
 i18next picks the `_one` / `_few` / `_many` / `_other` form from the
@@ -239,7 +254,7 @@ The exception is a CLOSED list: only the three Settings-tab ROOT rows
 `src/i18n/locales/title-keys.ts`) are Title Case in en and read exactly
 like their nav titles, by user ruling 2026-10-08; uk stays sentence case
 with the row label equal to its title. Counter-example: the Help TOPIC
-rows (`help.topics.*.rowLabel`, `SettingsRows` in `help.screen.tsx` that
+rows (`help.topics.*.rowLabel`, `SettingsRow` in `help.screen.tsx` that
 also open a screen) stay sentence case ("Add an account" vs title "Add an
 Account"). It is not a rule for every row that opens a screen.
 
@@ -280,7 +295,10 @@ template) fails until it is listed in exactly one allowlist:
 `sheetTitle` prop, which needs no `HEADING_PROPS` entry), or
 `UNCHECKED_HEADING_SITES` (a reason: user-entered names, a month/year, a
 bank brand name). A new component that renders a prop as a heading goes
-into `HEADING_PROPS`. Every picker sheet (`SelectField` and its wrappers,
+into `HEADING_PROPS`. A component prop that forwards a heading into a
+`ConfirmSheet` title (`CardContextMenu` `deleteTitle`) goes into both
+`HEADING_PROPS` and `FORWARDED_HEADING_SITES` of that test, and its key
+into `TITLE_KEYS`; read the test for the current entries. Every picker sheet (`SelectField` and its wrappers,
 `DateField`, `TimeField`, `CategoryField`, `BankTypeField`,
 `HoldingSelectField`, `PaymentHoldingField`/`LoanPaymentField`,
 `CurrencyField`, `FilterMenu`, `ColumnSelectField`) takes a REQUIRED

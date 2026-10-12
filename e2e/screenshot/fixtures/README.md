@@ -96,6 +96,10 @@ Note: `encryptEnvelope` uses a fresh random nonce every call, so the
 ciphertext bytes differ on every regen even when the underlying data is
 unchanged — that is expected, not a bug.
 
+The demo carries category rules; the contract is in `build-demo-snapshot.test.ts`
+(rule-vs-ledger agreement over en and uk). Regenerating moves the anchor to the
+regeneration day.
+
 ## Importing on a device
 
 Settings → Import Data → pick the `.kiko` file → paste the key from

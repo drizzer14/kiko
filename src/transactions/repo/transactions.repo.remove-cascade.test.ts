@@ -27,6 +27,14 @@ const MIGRATION_0052_SQL = readFileSync(
   'utf8',
 );
 
+// The remove reads every `transactions` column the schema has today, so a database migrated only
+// through 0052 gets the column added since.
+const addCategorySetByHandColumn = (): void => {
+  mockDatabase.exec(
+    'ALTER TABLE transactions ADD category_set_by_hand integer DEFAULT false NOT NULL;',
+  );
+};
+
 const OPENED = Date.UTC(2026, 8, 1, 9);
 const MOVED = Date.UTC(2026, 9, 1, 9);
 
@@ -701,7 +709,7 @@ describe('deleting a leg of a Convert', () => {
 });
 
 describe('deleting a row of a split payment', () => {
-  const splitPayment = (): Promise<void> =>
+  const splitPayment = (): Promise<string> =>
     transactionsRepo.recordManualWithReturns({
       payment: { holdingId: 'uah', amountMinorUnits: -50_000, time: MOVED, category: 'groceries' },
       returns: [
@@ -904,6 +912,8 @@ describe('deleting a part of a split payment that was converted', () => {
       for (const statement of MIGRATION_0052_SQL.split('--> statement-breakpoint')) {
         mockDatabase.exec(statement);
       }
+
+      addCategorySetByHandColumn();
     };
 
     it.each(['legacy-return', 'legacy-converted', 'legacy-payment'])(
@@ -1550,6 +1560,8 @@ describe('a legacy leg written before the pair id existed', () => {
     for (const statement of MIGRATION_0052_SQL.split('--> statement-breakpoint')) {
       mockDatabase.exec(statement);
     }
+
+    addCategorySetByHandColumn();
   };
 
   it('deletes both legs of a manual pair the backfill paired', async () => {

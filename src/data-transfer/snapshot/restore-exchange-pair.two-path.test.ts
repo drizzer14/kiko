@@ -46,7 +46,7 @@ const emptySnapshot: DataSnapshot = {
   settings: [],
   syncState: [],
   categories: [],
-  categoryOverrides: [],
+  categoryRules: [],
   pricePoints: [],
   bondRegister: [],
   reminders: [],
@@ -240,7 +240,7 @@ const pairIds = (target: DatabaseSync): Record<string, string | null> =>
 const readPreFeatureSnapshot = async (source: DatabaseSync): Promise<DataSnapshot> => {
   const sourceDrizzle = executingDrizzle<typeof database>(source);
   const preFeatureTransactions = await sourceDrizzle
-    .select(columnsWithout(getTableColumns(transactions), 'exchangePairId'))
+    .select(columnsWithout(getTableColumns(transactions), 'exchangePairId', 'categorySetByHand'))
     .from(transactions)
     .orderBy(asc(transactions.id));
 

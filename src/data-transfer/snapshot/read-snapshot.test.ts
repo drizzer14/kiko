@@ -24,7 +24,7 @@ describe('readDataSnapshot', () => {
       [{ id: 1 }], // settings
       [{ accountId: 'a1' }], // syncState
       [{ key: 'food' }], // categories
-      [{ normalizedName: 'x' }], // categoryOverrides
+      [{ id: 'rule-1' }], // categoryRules
       [{ instrument: 'metal:XAU', day: 1 }], // pricePoints
       [{ isin: 'UA4000234215' }], // bondRegister
       [{ id: 'reminder-1' }], // reminders
@@ -42,7 +42,7 @@ describe('readDataSnapshot', () => {
     expect(snapshot.settings).toEqual([{ id: 1 }]);
     expect(snapshot.syncState).toEqual([{ accountId: 'a1' }]);
     expect(snapshot.categories).toEqual([{ key: 'food' }]);
-    expect(snapshot.categoryOverrides).toEqual([{ normalizedName: 'x' }]);
+    expect(snapshot.categoryRules).toEqual([{ id: 'rule-1' }]);
     expect(snapshot.pricePoints).toEqual([{ instrument: 'metal:XAU', day: 1 }]);
     expect(snapshot.bondRegister).toEqual([{ isin: 'UA4000234215' }]);
     expect(snapshot.reminders).toEqual([{ id: 'reminder-1' }]);

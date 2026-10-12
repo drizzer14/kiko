@@ -97,7 +97,7 @@ describe('encryptEnvelope / decryptEnvelope', () => {
 // record the new length alone with the reason beside it.
 describe('the export version against the migration journal', () => {
   const VERSION_DECISIONS = {
-    version: 2,
+    version: 3,
     // Through 0050_implicit_property_debt_accounts, which merges each kind's
     // live property/debt accounts into one: a file that carries the merged rows
     // is an ordinary set of accounts to an older build (one property account
@@ -124,11 +124,16 @@ describe('the export version against the migration journal', () => {
     // (`dismissedTips`): an older build restoring a file that carries it drops
     // the key, and this build restores an older file without it as `[]` (the
     // schema default), so it needed no bump.
-    // Through 0056_add_transaction_templates, a new table
+    // Through 0056_add_category_rules, which replaces `category_overrides` with
+    // `category_rules`: a file now carries `categoryRules` and no `categoryOverrides`,
+    // and a version 2 build requires `categoryOverrides`, so it has to refuse such a
+    // file by its version instead of calling it invalid. This build restores an older
+    // file by turning its overrides into rules.
+    // Through 0057_add_transaction_templates, a new table
     // carried as an optional key (`transactionTemplates`), like 0054: an older
     // build restoring such a file drops the key, and this build restores an older
     // file with the table empty, so it needed no bump.
-    migrationCount: 57,
+    migrationCount: 58,
   };
 
   it('has a version decision for every migration', () => {

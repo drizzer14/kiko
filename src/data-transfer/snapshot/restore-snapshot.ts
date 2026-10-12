@@ -5,7 +5,7 @@ import {
   bondRegister,
   type CategoryRow,
   categories,
-  categoryOverrides,
+  categoryRules,
   currencyRateHistory,
   currencyRates,
   deletedImportKeys,
@@ -824,7 +824,7 @@ export const restoreDataSnapshot = (
       await databaseTransaction.delete(reminders);
       await databaseTransaction.delete(holdings);
       await databaseTransaction.delete(accounts);
-      await databaseTransaction.delete(categoryOverrides);
+      await databaseTransaction.delete(categoryRules);
       await databaseTransaction.delete(categories);
       await databaseTransaction.delete(currencyRateHistory);
       await databaseTransaction.delete(currencyRates);
@@ -889,9 +889,9 @@ export const restoreDataSnapshot = (
       }
     };
 
-    const insertOverridesTransactionsSyncState = async (): Promise<void> => {
-      for (const part of chunkForTable(categoryOverrides, snapshot.categoryOverrides)) {
-        await databaseTransaction.insert(categoryOverrides).values(part);
+    const insertRulesTransactionsSyncState = async (): Promise<void> => {
+      for (const part of chunkForTable(categoryRules, snapshot.categoryRules)) {
+        await databaseTransaction.insert(categoryRules).values(part);
       }
 
       for (const part of chunkForTable(transactions, transactionsToInsert)) {
@@ -1001,7 +1001,7 @@ export const restoreDataSnapshot = (
     await deleteAllTables();
     await insertAccountsHoldingsCategories();
     await insertDeletedImportKeys();
-    await insertOverridesTransactionsSyncState();
+    await insertRulesTransactionsSyncState();
     await insertRatesAndSettings();
     await insertBondRegister();
     await insertReminders();

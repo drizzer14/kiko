@@ -208,8 +208,8 @@ project-level pointer to this section.
   statement of the matching rule, including the archived-source
   carve-out) moves a 1.0-era `cash` holding in a crypto currency onto a
   `crypto_asset` holding under a crypto account, keeping the holding's own
-  `id` so every transaction, exchange leg, loan link, `price_points` row,
-  and category override attached to it stays attached. Crash-safe,
+  `id` so every transaction, exchange leg, loan link, `price_points` row
+  attached to it stays attached. Crash-safe,
   additive-then-mutate order (no delete): a TEMP table snapshots the
   affected holdings, a TEMP table captures the reuse target BEFORE any
   account is created (so a just-created account is never mistaken for a
@@ -296,7 +296,14 @@ project-level pointer to this section.
   unshipped `.sql` and snapshot and re-run `generate` until it reports no schema
   changes. Pointer: migration 0053 is the partial index
   `transactions_loan_holding_id`
-  (`drizzle/migrations/0053-add-loan-holding-id-index.test.ts`).
+  (`drizzle/migrations/0053-add-loan-holding-id-index.test.ts`). The same planner
+  choice hijacks a primary-key keyset page: `exchange_pair_id IS NULL` in a page
+  WHERE picked `transactions_exchange_pair_id` plus a temp B-tree for ORDER BY
+  (200 000 rows: 6.6 s against 0.7 s on the PK). Keep indexable NULL predicates
+  out of a keyset page's SQL, re-check eligibility in JS, and pin the page with
+  an EXPLAIN QUERY PLAN test built from the repo's own query builder
+  (`sqlite_autoindex_transactions_1 (id>?)`, no temp B-tree) — see
+  `rewritePageQuery` in `src/categories/category-rules-repo/category-rules.repo.ts`.
 - **A flag whose work SQL cannot do follows the flag-plus-launch-step
   shape.** `0048_add_lots_recosted` only adds `settings.lots_recosted`
   (`false`): re-costing a sale needs the BigInt decimal helpers, so the
@@ -337,11 +344,14 @@ ONE worker thread" below) until it commits. A where-less
 `select().from(<table>)` inside it reads the whole table and then filters in
 JS while every other read and write waits. Filter in SQL (`.where(...)`),
 read only the column you need (`selectDistinct`, as
-`upsertCategoryOverride` does for descriptions), or bound it with
+`rowIdsForNamedRule` in
+`src/categories/category-rules-repo/category-rules.repo.ts` does for descriptions), or bound it with
 `.limit(...)`. The one-row `settings` table is exempt. Mechanized as
 `kiko-no-full-table-select-in-write` (ERROR, `rules/semgrep-prewrite.yml`).
 A full scan hidden behind a repo helper called inside the write is not
-caught; that stays a review item.
+caught; that stays a review item. The rule cannot see a select inside a
+helper (for example `readAllRulesDatabaseTransaction`); such a read needs a
+`docs/harness/documented-exceptions.md` entry.
 
 ## The `useLiveQuery` pattern
 
@@ -350,19 +360,19 @@ Drizzle's own `useLiveQuery` hook only supports `expo-sqlite`, not
 op-sqlite's reactive primitive:
 
 ```ts
-useLiveQuery(drizzleQuery, tables)
+useLiveQuery(query, tables)
 ```
 
 It:
 
 1. Registers `db.reactiveExecute({ query: 'SELECT 1', arguments: [],
    fireOn: tables, callback })` — a CONSTANT trigger, never the real
-   `drizzleQuery`/its params, on the same `fireOn` tables. op-sqlite
+   `query`/its params, on the same `fireOn` tables. op-sqlite
    would otherwise execute the real query on its worker and build a
    native HostObject per row on EVERY fire, purely to hand `callback`
    a result it never reads (see step 2) — a constant trigger still
    fires on the same writes for a fraction of the cost.
-2. Awaits `drizzleQuery` itself (a thenable, mapped to the typed
+2. Awaits `query` itself (a thenable, mapped to the typed
    result shape Drizzle would have produced) once on mount and again
    on every `callback` fire — this is the ONLY place the real rows
    come from.
@@ -553,7 +563,7 @@ The fix is one shared mechanism, not a per-screen ad hoc guard:
   `holding-detail`, `home` (net-worth headline + transaction list),
   `statistics` (every chart), `accounts` (the accounts-list empty
   state), `settings/system`, `settings/settings`,
-  `settings/categories`, statement-import's `example-transaction` (a
+  `settings/categories`, `settings/category-detail`, statement-import's `example-transaction` (a
   single row inside an already-loaded parent, gated on its OWN
   categories/settings queries rather than the whole parent screen) —
   grep `useDataReady` for the current call-site list rather than
@@ -662,9 +672,8 @@ detail — a holding id plus a share change's day key;
 `editOwnershipChange` is ID-shaped the same way but starts from the
 uncached `OwnershipChangeForm`), or is gated on `isFresh`. The drag reorders (Accounts' three
 grids, Account detail's holdings grid, Categories) set
-`sortEnabled={isFresh}` (only Categories adds `&& categories.length > 1`), and Categories' move-to-top/bottom
-buttons ignore a press until `isFresh` — each persists the WHOLE order
-of the rows on screen. A new write from a display screen picks one of
+`sortEnabled={isFresh}` with no item-count condition (a lone card must
+lift) — each persists the WHOLE order of the rows on screen. A new write from a display screen picks one of
 the two, never neither. Tests call `clearLiveQueryCache()` in
 `beforeEach` so one `it`'s rows never seed the next.
 
@@ -672,18 +681,79 @@ the two, never neither. Tests call `clearLiveQueryCache()` in
 seeded once.** A list row keyed by its ID never remounts when the fresh
 row replaces the cached one, so a `useState(row.field)` seed keeps the
 cached value, and a later write can put it back over a change made
-elsewhere (a `.kiko` restore). Categories' rename field syncs its local
-title from `category.title` whenever the stored title changes while the
-field is not being edited, and commits only text the user changed (not
-the title the edit started from). Syncing on a change, rather than
-rendering the row field directly, keeps a just-committed rename on
-screen until its write flows back. An effect that writes from rows and
+elsewhere (a `.kiko` restore). A form seeds once from the stored
+row (`src/screens/forms/category-form/category-form.screen.tsx` holds a
+hydrated ref); a display row follows the row. An effect that writes from rows and
 records what it covered in a ref waits for `isFresh` too: Statistics'
 history backfill does not start until `transactions` and
 `currency_rate_history` are both fresh, because its
 `backfillRanForSpanRef` marks the span covered for the rest of the
 mount, so a run planned from a cached resume point would stop the fresh
 read's own run from ever starting.
+
+## Category screens and the delete path
+
+Read these units before touching category UI: the Categories list
+(`src/screens/settings/categories/`), the CategoryDetail route
+(`src/screens/settings/category-detail/`, with `rule-card/` and
+`rule-summary/`), the CategoryForm route
+(`src/screens/forms/category-form/`), and the delete notice
+(`src/categories/delete-notice/`). Invariants:
+
+- One delete path: `categoriesRepo.delete` deletes the category's rules
+  in the same write. The confirm count and the delete use the same
+  case-insensitive `lower(category)` predicate and both count unreadable
+  rules.
+- The confirm line comes only from `categoryDeleteNoticeOf`; a failed
+  count read still gives a numberless line, so the confirm always warns.
+  A second track that adds a delete-time line appends it there.
+- The category form has no Delete (kiko-design-system "A form has no
+  in-form Delete"; pre-write rule `kiko-no-confirm-sheet-in-form`). A
+  category is deleted only from its list card's hold menu, which is not
+  offered on the default.
+- The rule editor is the CategoryRuleForm route
+  (`src/navigation/types/types.d.ts`), in
+  `src/screens/forms/category-rule-form/` (`matcher-row/`, `rule-draft/`,
+  `use-save-rule/`, `rule-rewrite-sheet/`). It has no Delete either; a
+  rule is deleted from its rule card's hold menu on the category page.
+  The rewrite confirm is a `BottomSheet` with buttons, opened from
+  `use-save-rule/`, not a `ConfirmSheet`; a save that would rewrite
+  zero rows saves with no sheet.
+
+### Category rules repo
+
+`src/categories/category-rules-repo/category-rules.repo.ts`:
+`saveRule` runs `validateRule` and reads the rule back through
+`parseRuleMatchers` inside the write, before any insert.
+`countRuleRewrite` and the apply share one plan function
+(`rowIdsRewrittenBy` over `planRuleRewrite`) and one unchanged-save
+short-circuit (`isStoredAsGiven`), so the count shown never differs from
+the write. `REWRITE_GUARD_FIELDS` (`src/categories/category-rules/`) is the
+one list of rows a rule never rewrites; `isRewriteEligible` and the
+refresh CASE in `src/transactions/repo/transactions.repo.ts` both derive
+from it. `saveRule`, `countRuleRewrite` and `applyNameRule` go through one
+`stageDraft` (the stored rule, the row it becomes, every rule prepared with
+that row in place), so the rules are read once per write; `storeRule` is the
+one insert-or-update. `prepareRules` lowercases a rule's category once, so
+every consumer (insert, refresh, form picker) gets the key form. Compare with
+`isSameCategory` and key a map with `categoryKeyOf`
+(`src/categories/category-rules/same-category.ts`), never `===` or a
+hand-written `toLowerCase()` in a screen.
+
+### Transaction form pre-select
+
+`src/screens/forms/transaction-form/category-rule/` and `use-category-pick/`
+(read the hook's comments). A held category wins; otherwise the category is
+derived from the whole draft. Seed a loaded draft only through `seedCategory`
+(one call sets the category, the hand-pick flag and the settled description);
+the nav-bar Save settles the description first. Rule: coupled state is set by
+one seed function, never by a pair of exported setters. On a create, the
+name-rule sheet ("Apply to all transactions named X?") is offered only when the
+user picked the category by hand or a Duplicate/template seed carries one; a
+category the rules pre-selected saves flag 0 with no sheet; an edit is
+unchanged. Otherwise Apply rewrites every same-name row to a category the user
+never chose (`resolveCategoryOverrideRequest` in
+`src/screens/forms/transaction-form/category-rule/category-rule.ts`).
 
 ## App-open and refresh work is gated on data presence
 
@@ -850,7 +920,7 @@ shared `upsertDedupRowsDatabaseTransaction`
 `transactionsRepo.addManyDedup` and, through
 `insertDedupRowsDatabaseTransaction`, `importRows`) — two shared helpers
 also chunk a per-row `inArray(...)` select directly at a safe item-count
-margin (the category-override rule lookup in `withCategoryOverrides`, the
+margin (the category-rule lookup in `withCategoryRules`, the
 existing-key lookup in `partitionNewRows`), since a one-column `inArray`
 list has no table to derive a column count from.
 
@@ -861,7 +931,7 @@ have their own, older, pre-existing chunking — don't assume they use
 ## Help (the tips are removed)
 
 - The first-use tips were removed by user ruling ("Hints still look bad, let's remove them for
-  now"): no tips feature folder, no `TipCard`, no `settingsRepo.dismissTip` / `resetTips`, and the Help
+  now"): no tips feature folder, no tip card component, no dismiss-tip or reset-tips settings function, and the Help
   page has no "Show tips again" button. Do not bring a tip or hint back without asking the user.
 - `settings.dismissed_tips` (a JSON `string[]`, migration 0055, `src/db/schema.ts`) is kept but
   unused: no reader and no writer. Migration 0055 already shipped and migrations are
@@ -957,12 +1027,19 @@ The sync pipeline is deliberately functional, not OOP — see
      (`src/transactions/sync-adoption/`) and in kiko-statement-import.
    - Re-syncing an existing external id **refreshes** the row's
      bank-owned columns (the settled amount and `hold` among them)
-     and **never** its `category` or `comment` — the category may be
-     the user's own override or a name-rule rewrite. Read
-     `addManyDedup`'s `onConflictDoUpdate` set for the exact
-     refreshable columns, and `transactions.hold` in
+     and **never** its `comment`. It writes `category` only for an
+     unflagged (`category_set_by_hand = 0`), non-structural row (no
+     `exchange_pair_id` / `exchange_counterpart_holding_id`,
+     `sets_balance = 0`, no `change_group_id`) whose amount changed and a
+     category rule wins (`ruleWonTransactionSet` in `transactions.repo.ts`);
+     every other row keeps the stored category, which may be the user's
+     own pick. Read `addManyDedup`'s `onConflictDoUpdate` set
+     (`bankOwnedTransactionSet`, or `ruleWonTransactionSet` for a rule-won
+     row) for the exact refreshable columns, and `transactions.hold` in
      `src/db/schema.ts` for why a pending item is imported at all.
-     Its `setWhere` is DERIVED from that same `set` list
+     Its `setWhere` (`bankOwnedTransactionSetWhere`, shared by the rule-won
+     branch, whose extra `category` write is gated on the amount, itself in
+     the list) is DERIVED from the bank-owned `set` list
      (`BANK_OWNED_TRANSACTION_COLUMNS`), never a second hand-typed
      column list — see `transactions.repo.ts`'s own doc comment — so
      the UPDATE is skipped entirely when a re-fetched row is
@@ -1426,7 +1503,7 @@ Do NOT collapse them — each drives a different affordance:
    fetches and `commitHolding(count)` as each holding finishes — see
    `src/monobank/`. A path that registers ZERO work publishes
    nothing, so the bar never appears for a run that fetches nothing (the no-op
-   guard, spanning the fan-out). There is NO whole-app `countActiveHoldings`
+   guard, spanning the fan-out). There is NO whole-app active-holdings count
    denominator any more — `total` is the syncing holdings only.
 
    The WORK sources ("weight by real work", the user's decision; confirm on
@@ -1451,7 +1528,7 @@ Do NOT collapse them — each drives a different affordance:
 Read `runSync`/`runSyncInner` (`src/monobank/`) for the exact
 call sites rather than restating the lines here.
 
-The custom `SyncingIndicator` component was REMOVED. There are now TWO
+The custom syncing-indicator component was REMOVED. There are now TWO
 distinct Monobank-sync affordances on Home, DECOUPLED from each other:
 
 1. The native `RefreshControl` spinner — the PULL GESTURE indicator ALONE.
@@ -1952,7 +2029,8 @@ NBU → bundled fiat seed), the `price_points` table, and `PriceBook`.
 - BTC price: CoinGecko free API, quoted in USD; derive other pairs
   from it. No offline seed for crypto; an unrated crypto holding is
   excluded until a live CoinGecko price lands.
-- Store live results in `CurrencyRate`. Refresh on sync, throttled to
+- Store live results in the `currencyRates` table (row type `CurrencyRateRow`,
+  `src/db/schema.ts`). Refresh on sync, throttled to
   respect each provider's own cache window — do not poll faster than
   the upstream cache refreshes.
 
@@ -1978,6 +2056,14 @@ shape, and hand-rolled `utf8/utf8.ts` + `base64/base64.ts` codecs.
   one side but not the other. Read that file for the current field list and
   its (currently empty) documented-exclusion array — do not copy the table
   list here.
+- **Export version 3 carries `categoryRules`.** Versions 1 and 2 carry
+  `categoryOverrides`; `snapshot/with-legacy-overrides-converted.ts` converts
+  them to rules on import (`import-data.ts`). The v3 restore guard checks SHAPE
+  only (id, category and matchers are strings; createdAt and updatedAt are
+  numbers). A rule whose `matchers` fail `parseRuleMatchers` restores as an
+  unreadable rule, because the migration and the legacy conversion store such
+  rules and the app exports every rule: a restore guard never rejects a state
+  the app itself writes.
 - **Every Keychain secret class the export carries is read and restored.**
   Read `payload.d.ts`'s `ExportSecrets` for the classes it carries: the
   per-account `monobankTokens` and `binanceCredentials`. The

@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "27c706bd-c34e-4a89-850f-8665be664580",
+  "id": "781ad54f-5896-4ede-8d77-d7e0b429f2b3",
   "prevId": "b2cc376f-aa36-44d3-8b2b-a8c7f6cfd59d",
   "tables": {
     "accounts": {
@@ -170,11 +170,11 @@
       "uniqueConstraints": {},
       "checkConstraints": {}
     },
-    "category_overrides": {
-      "name": "category_overrides",
+    "category_rules": {
+      "name": "category_rules",
       "columns": {
-        "normalized_name": {
-          "name": "normalized_name",
+        "id": {
+          "name": "id",
           "type": "text",
           "primaryKey": true,
           "notNull": true,
@@ -187,8 +187,8 @@
           "notNull": true,
           "autoincrement": false
         },
-        "display_name": {
-          "name": "display_name",
+        "matchers": {
+          "name": "matchers",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
@@ -871,53 +871,6 @@
       "uniqueConstraints": {},
       "checkConstraints": {}
     },
-    "transaction_templates": {
-      "name": "transaction_templates",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "name": {
-          "name": "name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "draft": {
-          "name": "draft",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "(unixepoch() * 1000)"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "(unixepoch() * 1000)"
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {}
-    },
     "transactions": {
       "name": "transactions",
       "columns": {
@@ -963,6 +916,14 @@
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
+        },
+        "category_set_by_hand": {
+          "name": "category_set_by_hand",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": false
         },
         "mcc": {
           "name": "mcc",

@@ -182,29 +182,91 @@ export const en = {
     // later migration (0039) — the interest portion of a linked loan
     // payment (never its principal) files under this key.
     loan_interest: 'Loan interest',
-    // Categories screen and inline add-category-row UI copy (distinct from the
+    // Categories screen, category form and icon picker UI copy (distinct from the
     // seeded default-category display names above).
     addCategory: 'Add category',
-    changeIconLabel: 'Change {{title}} icon',
     chooseIconHeading: 'Icon',
-    chooseNewIconLabel: 'Choose new category icon',
-    colorLabel: 'Color',
-    deleteLabel: 'Delete {{title}}',
     dismissIconPicker: 'Dismiss icon picker',
     iconOptionLabel: 'Choose icon {{icon}}',
-    isDefaultLabel: '{{title}} is the default category',
-    moveToBottomLabel: 'Move {{title}} to bottom',
-    moveToTopLabel: 'Move {{title}} to top',
     namePlaceholder: 'Groceries',
-    newColorPrefix: 'New category color',
-    rowColorPrefix: '{{title}} color',
-    setAsDefaultLabel: 'Set {{title}} as default',
-    titleFieldLabel: '{{title}} title',
     // The ultimate fallback display (src/categories/category-display.ts
     // NEUTRAL_CATEGORY) shown only when a category cannot be resolved AND
     // the default-category row itself is missing (e.g. before the seed
     // migration runs) — not the ordinary "Other" bucket above.
     uncategorized: 'Uncategorized',
+    // The rule count on a category card; English defines every plural form so both catalogues
+    // carry the same keys (Ukrainian selects all four).
+    rulesCount_one: '{{count}} rule',
+    rulesCount_few: '{{count}} rules',
+    rulesCount_many: '{{count}} rules',
+    rulesCount_other: '{{count}} rules',
+    noRules: 'No rules',
+    default: 'Default',
+    deleteRulesNotice_one: 'Its {{count}} rule will be deleted too.',
+    deleteRulesNotice_few: 'Its {{count}} rules will be deleted too.',
+    deleteRulesNotice_many: 'Its {{count}} rules will be deleted too.',
+    deleteRulesNotice_other: 'Its {{count}} rules will be deleted too.',
+    deleteRulesNoticeUnknown: 'Its rules will be deleted too.',
+  },
+  categoryPage: {
+    rulesHeading: 'Rules',
+    setAsDefault: 'Set as default',
+    quotedName: '"{{name}}"',
+    unreadableRule: "This rule can't be read",
+    deleteRuleTitle: 'Delete Rule',
+    addRule: 'Add rule',
+    emptyRules: 'Add a rule to set this category on matching transactions.',
+  },
+  categoryForm: {
+    addTitle: 'New Category',
+    editTitle: 'Edit Category',
+  },
+  ruleForm: {
+    addTitle: 'New Rule',
+    editTitle: 'Edit Rule',
+    // A condition is what the model calls a matcher: one test a transaction must pass.
+    addMatcher: 'Add condition',
+    allMustMatch: 'A transaction must match every condition.',
+    condition: 'Condition',
+    conditionSheetTitle: 'Condition',
+    selectCondition: 'Select a condition',
+    nameIs: 'Name is',
+    nameStartsWith: 'Name starts with',
+    amount: 'Amount',
+    direction: 'Type',
+    time: 'Time',
+    operator: 'Comparison',
+    operatorSheetTitle: 'Comparison',
+    selectOperator: 'Select a comparison',
+    equal: 'Equal to',
+    more: 'More than',
+    atLeast: 'At least',
+    less: 'Less than',
+    atMost: 'At most',
+    before: 'Before',
+    after: 'After',
+    // A statement row can carry a date and no time; it is read as noon in the statement's zone.
+    timeHint: "Statement rows without a time count as noon in the statement's time zone.",
+    remove: 'Remove',
+    removeCondition: 'Remove condition {{index}}',
+    errorNoMatchers: 'Add at least one condition.',
+    errorName: 'Enter a name.',
+    errorAmount: 'Enter an amount of 0 or more, with no more decimals than the currency allows.',
+    errorNeverMatches: 'These conditions can never match together.',
+    errorNeverMatchesTime:
+      'These times can never match together. For a window over midnight, use two rules.',
+    errorDuplicate: 'A rule with these conditions already exists in {{category}}.',
+  },
+  ruleRewrite: {
+    title: 'Apply Rule',
+    // How many existing transactions saving the rule changes; English defines every plural form so
+    // both catalogues carry the same keys (Ukrainian selects all four).
+    message_one: 'This changes {{count}} transaction.',
+    message_few: 'This changes {{count}} transactions.',
+    message_many: 'This changes {{count}} transactions.',
+    message_other: 'This changes {{count}} transactions.',
+    applyToExisting: 'Apply to existing',
+    newOnly: 'New transactions only',
   },
   forms: {
     // Field labels reused across two or more of the forms below (the account,
@@ -295,7 +357,6 @@ export const en = {
       amountPlaceholder: '500.00',
       errorMessage: 'Please try again.',
       errorTitle: 'Could not add contribution',
-      save: 'Save contribution',
     },
     holding: {
       addContribution: 'Add contribution',
@@ -491,7 +552,6 @@ export const en = {
       quantity: 'Quantity',
       quantityError: 'Enter a quantity greater than 0.',
       quantityPlaceholder: '10',
-      save: 'Save lot',
       sell: 'Sell',
       sellExceedsError: "You can't sell more than you currently hold.",
       totalCost: 'Total cost',
@@ -504,13 +564,11 @@ export const en = {
       title: 'Edit Share Change',
     },
     pricePoint: {
-      // Loan-specific title/field/button/error `PricePointFormScreen` applies
+      // Loan-specific title/field/error `PricePointFormScreen` applies
       // once the holding loads as a loan; `loanValueError` also accepts 0.
-      loanSave: 'Save outstanding',
       loanTitle: 'Update Outstanding',
       loanValue: 'Outstanding',
       loanValueError: 'Outstanding must be 0 or greater.',
-      save: 'Save value',
       title: 'Update Value',
       value: 'Value',
       valueError: 'Value must be greater than 0.',
@@ -772,6 +830,9 @@ export const en = {
     // transactions the auto-link matcher (or a manual pick) linked to this
     // loan, newest first.
     linkedPayments: 'Linked Payments',
+    // The title of each upcoming loan payment's card: the schedule lists only
+    // loan payments, so one fixed label names them all.
+    loanPayment: 'Loan payment',
     militaryLevy: 'Military levy {{pct}}%',
     openingDeposit: 'Opening deposit',
     outstanding: 'Outstanding',
@@ -791,6 +852,9 @@ export const en = {
     purchase: 'Purchase',
     redemption: 'Redemption',
     sale: 'Sale',
+    // The marker under each upcoming loan payment: the payment is on the loan's
+    // contractual schedule, so it is not an estimate and not "Projected".
+    scheduled: 'Scheduled',
     shareChanges: 'Share Changes',
     // After the share ("1/3 · 33.33% since 01.06.2025"): the day it took effect.
     shareSince: 'since {{date}}',
@@ -1016,13 +1080,15 @@ export const en = {
   // Shared design-system components (src/design-system/components/*) that
   // carry their own hardcoded copy rather than taking it as a prop.
   components: {
+    expandToggle: {
+      showAll: 'Show all',
+      showLess: 'Show less',
+    },
     netWorthLine: {
       loadingHistory: 'Loading history',
     },
     pieChart: {
       emptyDefault: 'No accounts to show',
-      showAll: 'Show all',
-      showLess: 'Show less',
     },
   },
   // The app-boot gate (src/migration/migrations.gate.tsx) — its own UI is the very

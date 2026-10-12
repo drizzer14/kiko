@@ -45,7 +45,7 @@ import {
   sensebankFixtureInput,
   procreditBusinessFixtureInput,
 } from '@kiko/statement-import/formats/format-test-fixtures';
-import { accounts, categoryOverrides, holdings, transactions } from '@kiko/db';
+import { accounts, categoryRules, holdings, transactions } from '@kiko/db';
 import { monobankCsvFormat } from '@kiko/statement-import/formats/monobank-csv';
 import { sensebankCsvFormat } from '@kiko/statement-import/formats/sensebank-csv';
 import { privatbankXlsxFormat } from '@kiko/statement-import/formats/privatbank-xlsx';
@@ -108,10 +108,6 @@ const resolveParitySelect = (
   table: unknown,
   fields: Record<string, unknown> | undefined,
 ): unknown[] => {
-  if (table === categoryOverrides) {
-    return [];
-  }
-
   if (table === holdings) {
     return [fakeHolding];
   }
@@ -145,9 +141,11 @@ const makeFakeDatabaseTransaction = (store: { transactions: StoredRow[] }) => {
 
   return {
     select: (fields?: Record<string, unknown>) => ({
-      from: (table: unknown) => ({
-        where: () => resolveRows(resolveParitySelect(store, table, fields)),
-      }),
+      // The read of every rule has no `where`, and no rule is seeded for this test.
+      from: (table: unknown) =>
+        table === categoryRules
+          ? Promise.resolve([])
+          : { where: () => resolveRows(resolveParitySelect(store, table, fields)) },
     }),
     insert: (table: unknown) => ({
       values: (rows: Record<string, unknown>[]) => ({

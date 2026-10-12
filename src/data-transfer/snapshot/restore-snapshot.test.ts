@@ -10,7 +10,7 @@ import {
   accounts,
   bondRegister,
   categories,
-  categoryOverrides,
+  categoryRules,
   currencyRateHistory,
   currencyRates,
   deletedImportKeys,
@@ -49,7 +49,7 @@ const tableNameOf = (table: unknown): string => {
 
   if (table === categories) return 'categories';
 
-  if (table === categoryOverrides) return 'categoryOverrides';
+  if (table === categoryRules) return 'categoryRules';
 
   if (table === pricePoints) return 'pricePoints';
 
@@ -104,7 +104,7 @@ const emptySnapshot: DataSnapshot = {
   settings: [],
   syncState: [],
   categories: [],
-  categoryOverrides: [],
+  categoryRules: [],
   pricePoints: [],
   bondRegister: [],
   reminders: [],
@@ -149,7 +149,7 @@ describe('restoreDataSnapshot', () => {
       'reminders',
       'holdings',
       'accounts',
-      'categoryOverrides',
+      'categoryRules',
       'categories',
       'currencyRateHistory',
       'currencyRates',
@@ -281,7 +281,7 @@ describe('restoreDataSnapshot', () => {
       settings: legacySettings,
       syncState: legacySyncState,
       categories: legacyCategories,
-      categoryOverrides: legacyCategoryOverrides,
+      categoryRules: legacyCategoryRules,
     } = emptySnapshot;
     const legacySnapshot = {
       accounts: legacyAccounts,
@@ -292,7 +292,7 @@ describe('restoreDataSnapshot', () => {
       settings: legacySettings,
       syncState: legacySyncState,
       categories: legacyCategories,
-      categoryOverrides: legacyCategoryOverrides,
+      categoryRules: legacyCategoryRules,
     } as unknown as DataSnapshot;
 
     await restoreDataSnapshot(legacySnapshot);
@@ -613,7 +613,7 @@ describe('restoreDataSnapshot', () => {
       'reminders',
       'holdings',
       'accounts',
-      'categoryOverrides',
+      'categoryRules',
       'categories',
       'currencyRateHistory',
       'currencyRates',

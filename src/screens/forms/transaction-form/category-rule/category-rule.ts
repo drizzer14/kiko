@@ -1,39 +1,97 @@
+import { match } from 'ts-pattern';
+import {
+  type PreparedRules,
+  type RuleDirection,
+  type RuleSubject,
+  subjectOfDraft,
+  winningRule,
+} from '@kiko/categories/category-rules';
+import maybe, { foldMap } from 'fnts/maybe';
+import { Money } from '@kiko/currency/money';
+import { parseAmount } from '@kiko/currency/parse';
+import type { Currency } from '@kiko/currency/currency';
+import type { FormMode } from '@kiko/screens/forms/mode-select-field';
 import { normalizeTransactionName } from '@kiko/transactions/normalize-name';
 import { DEFAULT_CATEGORY_KEY, resolveCategoryDisplay } from '@kiko/categories/category-display';
 
-// The rule-matched category for a typed description, or null when no rule
-// matches or the normalized name is blank. Matching is JS-normalized (never
-// SQL), the same normalize-then-match the sync insert path uses. Kept module-
-// level and pure so the description-blur branch stays out of the screen
-// component's cognitive-complexity budget.
-export const ruleCategoryFor = (
-  description: string,
-  categoryByNormalizedName: ReadonlyMap<string, string>,
-): string | null => {
-  const key = normalizeTransactionName(description);
-
-  return key === '' ? null : (categoryByNormalizedName.get(key) ?? null);
+// What the form holds of a transaction while it is filled in, as far as a rule can read it.
+// `currency` is the picked holding's, null while no holding is picked.
+export type CategoryDraft = {
+  description: string;
+  amount: string;
+  time: number;
+  mode: FormMode;
+  currency: Currency | null;
 };
 
+// A blank or unreadable amount, or one with no holding to give it a currency, is unknown, so a
+// rule on the amount never matches it.
+const absoluteMinorUnitsOf = (amount: string, currency: Currency | null): number | null => {
+  const major = parseAmount(amount);
+
+  if (currency === null || Number.isNaN(major)) {
+    return null;
+  }
+
+  return Money.fromMajor(currency, major).minorUnits;
+};
+
+const subjectInDirection = (draft: CategoryDraft, direction: RuleDirection): RuleSubject =>
+  subjectOfDraft({
+    description: draft.description,
+    absoluteMinorUnits: absoluteMinorUnitsOf(draft.amount, draft.currency),
+    currency: draft.currency,
+    direction,
+    time: draft.time,
+  });
+
+// The subject the rules see for a draft, or null in exchange mode, which carries no category. A
+// split's payment is stored as an expense, so it reads as one.
+export const subjectOfFormDraft = (draft: CategoryDraft): RuleSubject | null =>
+  match(draft.mode)
+    .with('exchange', () => null)
+    .with('income', () => subjectInDirection(draft, 'income'))
+    .with('expense', 'split', () => subjectInDirection(draft, 'expense'))
+    .exhaustive();
+
+// The category of the rule that wins for `subject`, or null when no rule matches. Matching is
+// JS-normalized (never SQL), the same evaluation the sync insert path uses.
+const ruleCategoryFor = (subject: RuleSubject, prepared: PreparedRules): string | null =>
+  winningRule(prepared, subject)?.category ?? null;
+
+// The category the rules give the whole draft, or null when none matches. Kept module-level and
+// pure so the draft branches stay out of the screen component's cognitive-complexity budget.
+export const categoryForDraft = (draft: CategoryDraft, prepared: PreparedRules): string | null =>
+  foldMap(maybe(subjectOfFormDraft(draft)), (subject) => ruleCategoryFor(subject, prepared)) ??
+  null;
+
 // Whether `save` needs to raise the propagation-confirm sheet, and with what
-// payload: only when the category actually changed AND the affected name is
-// non-blank. `upsertCategoryOverride` refuses to write a rule for a blank
-// normalized name (it must not become a catch-all), so confirming propagation
+// payload: only when the form offers a name rule (`offersNameRule`: the category changed to one
+// the user chose) AND the affected name is non-blank. `applyNameRule` refuses to write a rule
+// for a blank normalized name (it must not become a catch-all), so confirming propagation
 // for one asked `Apply "Groceries" to all transactions named ""?` and then
 // wrote nothing — the row's own category is already persisted by `writeManual`
 // regardless, so `save` just returns to the list instead. Kept module-level
 // and pure for the same cognitive-complexity-budget reason as
-// `MODE_BEHAVIOR`'s field-error functions.
+// `MODE_BEHAVIOR`'s field-error functions. The request names the row the save wrote (or edited),
+// so "Apply" can hand it to the rule: that row follows the new rule instead of staying a hand pick.
+export type CategoryOverrideRequest = {
+  name: string;
+  category: string;
+  sourceTransactionId: string | null;
+};
+
 export const resolveCategoryOverrideRequest = (
-  categoryChanged: boolean,
+  offersNameRule: boolean,
   selectedCategory: string | null,
   name: string,
-): { name: string; category: string } | null => {
-  if (!categoryChanged || selectedCategory === null || normalizeTransactionName(name) === '') {
+  sourceTransactionId: string | null,
+): CategoryOverrideRequest | null => {
+  if (!offersNameRule || selectedCategory === null || normalizeTransactionName(name) === '') {
     return null;
   }
 
-  return { name, category: selectedCategory };
+  return { name, category: selectedCategory, sourceTransactionId };
 };
 
 // Resolve the pending override's category into the icon name and the confirm

@@ -108,8 +108,8 @@ describe('resolveFieldScrollTarget', () => {
   // "content top visible right below the header" is `-headerInset`, NOT 0 —
   // so flooring at 0 forces MORE scroll than a near-top field needs, landing
   // it back UNDER the header whenever the user was already scrolled down
-  // (the common case: Save is a pinned footer button reachable from any
-  // scroll position — see holding-form's `footer` — so a field near the TOP
+  // (the common case: Save is a pinned nav-bar button reachable from any
+  // scroll position, so a field near the TOP
   // of a long form is very often invalid while `currentOffset` is deep into
   // the form). This is a pure reference-frame/floor bug, not a
   // currentOffset-double-count bug.
