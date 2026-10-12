@@ -565,7 +565,10 @@ describe('TransactionFormScreen — Add template', () => {
     expect(queryByText('Just for this one')).toBeNull();
   });
 
-  it('stores no category for a rule pre-select, with no blur before Save', async () => {
+  it.each([
+    ['with no blur', false],
+    ['once a blur has settled', true],
+  ] as const)('stores no category for a rule pre-select, %s', async (_name, blurs) => {
     setLiveData({
       draft: EXPENSE,
       latestManualHoldingId: 'h1',
@@ -577,27 +580,11 @@ describe('TransactionFormScreen — Add template', () => {
 
     await fireEvent.changeText(getByLabelText('Template name'), 'Morning');
     await fireEvent.changeText(getByLabelText('Description'), 'Coffee');
-    await pressSave(navigation.setOptions);
 
-    expect(mockCreateTemplate).toHaveBeenCalledWith({
-      name: 'Morning',
-      draft: draftOf({ holdingId: 'h1', currency: 'UAH', description: 'Coffee', category: null }),
-    });
-  });
+    if (blurs) {
+      await fireEvent(getByLabelText('Description'), 'blur');
+    }
 
-  it('stores no category for a rule pre-select a blur has already settled', async () => {
-    setLiveData({
-      draft: EXPENSE,
-      latestManualHoldingId: 'h1',
-      categoryRules: [nameRule('coffee', 'dining')],
-    });
-    mockCreateTemplate.mockResolvedValue('new');
-
-    const { getByLabelText } = await render(templateScreen({ newTemplate: true }));
-
-    await fireEvent.changeText(getByLabelText('Template name'), 'Morning');
-    await fireEvent.changeText(getByLabelText('Description'), 'Coffee');
-    await fireEvent(getByLabelText('Description'), 'blur');
     await pressSave(navigation.setOptions);
 
     expect(mockCreateTemplate).toHaveBeenCalledWith({
@@ -1011,6 +998,30 @@ describe('TransactionFormScreen — Save as a new template', () => {
     await fireEvent.press(utils.getByText(title));
   };
 
+  const saveWithTemplate = async (
+    utils: Utils,
+    steps: { description: string; blur?: boolean; pick?: string; retype?: string },
+  ): Promise<void> => {
+    await fireEvent.changeText(utils.getByLabelText('Amount'), '250');
+    await fireEvent.changeText(utils.getByLabelText('Description'), steps.description);
+
+    if (steps.blur) {
+      await fireEvent(utils.getByLabelText('Description'), 'blur');
+    }
+
+    if (steps.pick !== undefined) {
+      await pickCategory(utils, steps.pick);
+    }
+
+    if (steps.retype !== undefined) {
+      await fireEvent.changeText(utils.getByLabelText('Description'), steps.retype);
+    }
+
+    await fireEvent(utils.getByRole('switch'), 'valueChange', true);
+    await fireEvent.changeText(utils.getByLabelText('Template name'), 'Morning');
+    await pressSave(navigation.setOptions);
+  };
+
   beforeEach(() => {
     jest.clearAllMocks();
     jest.spyOn(Date, 'now').mockReturnValue(NOW);
@@ -1095,72 +1106,44 @@ describe('TransactionFormScreen — Save as a new template', () => {
       expect(mockCreateTemplate).not.toHaveBeenCalled();
     });
 
-    it('writes a rule pre-select as no pick and stores no category in the template', async () => {
-      setLiveData({ draft: EXPENSE, categoryRules: [nameRule('coffee', 'dining')] });
+    it.each([
+      ['with no blur', false],
+      ['once a blur has settled', true],
+    ] as const)(
+      'writes a rule pre-select as no pick and stores no category in the template, %s',
+      async (_name, blur) => {
+        setLiveData({ draft: EXPENSE, categoryRules: [nameRule('coffee', 'dining')] });
 
-      const utils = await render(templateScreen({ holdingId: 'h1' }));
+        const utils = await render(templateScreen({ holdingId: 'h1' }));
 
-      await fireEvent.changeText(utils.getByLabelText('Amount'), '250');
-      await fireEvent.changeText(utils.getByLabelText('Description'), 'Coffee');
-      await fireEvent(utils.getByRole('switch'), 'valueChange', true);
-      await fireEvent.changeText(utils.getByLabelText('Template name'), 'Morning');
-      await pressSave(navigation.setOptions);
+        await saveWithTemplate(utils, { description: 'Coffee', blur });
 
-      expect(mockRecordManual).toHaveBeenCalledWith(
-        expect.objectContaining({ category: 'dining', categorySetByHand: false }),
-        expect.any(Function),
-      );
+        expect(mockRecordManual).toHaveBeenCalledWith(
+          expect.objectContaining({ category: 'dining', categorySetByHand: false }),
+          expect.any(Function),
+        );
 
-      await runAlongside(mockRecordManual);
+        await runAlongside(mockRecordManual);
 
-      expect(mockInsertTemplate).toHaveBeenCalledWith(DATABASE_TRANSACTION, {
-        name: 'Morning',
-        draft: draftOf({
-          holdingId: 'h1',
-          currency: 'UAH',
-          amountMinorUnits: 25000,
-          description: 'Coffee',
-          category: null,
-        }),
-      });
-    });
-
-    it('stores no category in the template for a rule pre-select a blur has settled', async () => {
-      setLiveData({ draft: EXPENSE, categoryRules: [nameRule('coffee', 'dining')] });
-
-      const utils = await render(templateScreen({ holdingId: 'h1' }));
-
-      await fireEvent.changeText(utils.getByLabelText('Amount'), '250');
-      await fireEvent.changeText(utils.getByLabelText('Description'), 'Coffee');
-      await fireEvent(utils.getByLabelText('Description'), 'blur');
-      await fireEvent(utils.getByRole('switch'), 'valueChange', true);
-      await fireEvent.changeText(utils.getByLabelText('Template name'), 'Morning');
-      await pressSave(navigation.setOptions);
-
-      expect(mockRecordManual).toHaveBeenCalledWith(
-        expect.objectContaining({ category: 'dining', categorySetByHand: false }),
-        expect.any(Function),
-      );
-
-      await runAlongside(mockRecordManual);
-
-      expect(mockInsertTemplate).toHaveBeenCalledWith(
-        DATABASE_TRANSACTION,
-        expect.objectContaining({ draft: expect.objectContaining({ category: null }) }),
-      );
-    });
+        expect(mockInsertTemplate).toHaveBeenCalledWith(DATABASE_TRANSACTION, {
+          name: 'Morning',
+          draft: draftOf({
+            holdingId: 'h1',
+            currency: 'UAH',
+            amountMinorUnits: 25000,
+            description: 'Coffee',
+            category: null,
+          }),
+        });
+      },
+    );
 
     it('writes a hand pick and stores it in the template, whichever rule matches', async () => {
       setLiveData({ draft: EXPENSE, categoryRules: [nameRule('coffee', 'dining')] });
 
       const utils = await render(templateScreen({ holdingId: 'h1' }));
 
-      await fireEvent.changeText(utils.getByLabelText('Amount'), '250');
-      await fireEvent.changeText(utils.getByLabelText('Description'), 'Coffee');
-      await pickCategory(utils, 'Groceries');
-      await fireEvent(utils.getByRole('switch'), 'valueChange', true);
-      await fireEvent.changeText(utils.getByLabelText('Template name'), 'Morning');
-      await pressSave(navigation.setOptions);
+      await saveWithTemplate(utils, { description: 'Coffee', pick: 'Groceries' });
 
       expect(mockRecordManual).toHaveBeenCalledWith(
         expect.objectContaining({ category: 'groceries', categorySetByHand: true }),
@@ -1189,13 +1172,7 @@ describe('TransactionFormScreen — Save as a new template', () => {
 
       const utils = await render(templateScreen({ holdingId: 'h1' }));
 
-      await fireEvent.changeText(utils.getByLabelText('Amount'), '250');
-      await fireEvent.changeText(utils.getByLabelText('Description'), 'Coffee');
-      await fireEvent(utils.getByLabelText('Description'), 'blur');
-      await fireEvent.changeText(utils.getByLabelText('Description'), 'Tea');
-      await fireEvent(utils.getByRole('switch'), 'valueChange', true);
-      await fireEvent.changeText(utils.getByLabelText('Template name'), 'Morning');
-      await pressSave(navigation.setOptions);
+      await saveWithTemplate(utils, { description: 'Coffee', blur: true, retype: 'Tea' });
 
       expect(mockRecordManual).toHaveBeenCalledWith(
         expect.objectContaining({ category: 'groceries', categorySetByHand: false }),
