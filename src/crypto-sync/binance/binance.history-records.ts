@@ -3,8 +3,9 @@ import { bifoldMap, type Either, eitherSync } from 'fnts/either';
 
 import {
   BinanceWalkStop,
-  holdsAll,
   logWalkStop,
+  type OwedGround,
+  sameGround,
   type SpanCommit,
   type WalkPass,
   type WalkWindow,
@@ -12,23 +13,30 @@ import {
 
 /**
  * One span's records told apart: the rows of those the walk can trust, the codes of the stops
- * of those it cannot, the ground the stuck records owe, and how many records the read returned.
+ * of those it cannot, the ground the stuck records owe, and the point of every record the read
+ * returned, trusted or not (`returned`): the walk takes a point off its list only for one of
+ * those.
  */
-type SettledSpan<Row> = { rows: Row[]; codes: string[]; owed: WalkWindow[]; records: number };
+type SettledSpan<Row> = {
+  rows: Row[];
+  codes: string[];
+  owed: OwedGround[];
+  returned: WalkWindow[];
+};
 
 /** The one millisecond a record with a time to the millisecond sits in, if it has a time. */
 export const instantAt = (time: number | undefined): WalkWindow | undefined =>
   foldMap(maybe(time), (instant) => ({ start: instant, end: instant }));
 
 /**
- * The point a stuck record owes: the milliseconds it may sit in (`extent`, with `start <= end`)
- * and one more on each side, whatever the span it was read in. Binance may leave either end of
- * a range out, and a request needs `start < end`; with the extra millisecond on both sides a
- * request for the point returns the record under any of them, and a record on the boundary of
- * two spans owes one point. A record with no time, one whose extent is not finite, or one
- * outside the span says nothing of where in the span it is, and owes the whole span.
+ * The point a record read in `span` owes: the milliseconds it may sit in (`extent`, with
+ * `start <= end`) and one more on each side, whatever the span it was read in. A request needs
+ * `start < end`, and Binance may leave either end of a range out; with the extra millisecond on
+ * both sides a request for the point returns the record under any of them, and a record on the
+ * boundary of two spans owes one point. A record with no time, one whose extent is not finite,
+ * or one outside the span says nothing of where in the span it is: it has no point.
  */
-const owedBy = (span: WalkWindow, extent: WalkWindow | undefined): WalkWindow => {
+const pointOf = (span: WalkWindow, extent: WalkWindow | undefined): WalkWindow | undefined => {
   if (
     extent === undefined ||
     !Number.isFinite(extent.start) ||
@@ -36,52 +44,54 @@ const owedBy = (span: WalkWindow, extent: WalkWindow | undefined): WalkWindow =>
     extent.end < span.start ||
     extent.start > span.end
   ) {
-    return span;
+    return undefined;
   }
 
   return { start: extent.start - 1, end: extent.end + 1 };
 };
 
-const settledRecord = <Row>(attempt: Either<unknown, Row[]>, owed: () => WalkWindow) =>
-  bifoldMap(
+/** The ground a stuck record owes: its own point, or the whole span (a range) without one. */
+const owedBy = (span: WalkWindow, point: WalkWindow | undefined): OwedGround =>
+  foldMap(maybe(point), (found): OwedGround => ({ ...found, kind: 'point' })) ?? span;
+
+const settledRecord = <Row>(
+  attempt: Either<unknown, Row[]>,
+  span: WalkWindow,
+  point: WalkWindow | undefined,
+) => {
+  const returned = foldMap(maybe(point), (found) => [found]) ?? [];
+
+  return bifoldMap(
     attempt,
     (error): SettledSpan<Row> => {
       if (!(error instanceof BinanceWalkStop)) {
         throw error;
       }
 
-      return { rows: [], codes: [error.code], owed: [owed()], records: 1 };
+      return { rows: [], codes: [error.code], owed: [owedBy(span, point)], returned };
     },
-    (rows): SettledSpan<Row> => ({ rows, codes: [], owed: [], records: 1 }),
+    (rows): SettledSpan<Row> => ({ rows, codes: [], owed: [], returned }),
   );
+};
 
-const sameWindow = (left: WalkWindow, right: WalkWindow): boolean =>
-  left.start === right.start && left.end === right.end;
+const distinctGround = (ground: OwedGround[]): OwedGround[] =>
+  ground.filter((entry, index) => ground.findIndex((other) => sameGround(other, entry)) === index);
 
 /**
- * The settled parts of one span as one. When the whole span is owed, it is owed once and the
- * ground the span holds goes with it (a read of the span returns those records, whatever end
- * Binance leaves out); a point that reaches past the span stays, and the same point is owed
- * once.
+ * The settled parts of one span as one. The same ground is owed once; a point is never taken
+ * into a range that holds it, and a range never into another entry, so the whole span owed
+ * beside the point of a record in it is two entries.
  */
-export const joinSettled = <Row>(span: WalkWindow, parts: SettledSpan<Row>[]): SettledSpan<Row> => {
-  const owed = parts.flatMap((part) => part.owed);
-  const wholeSpan = owed.some((window) => sameWindow(window, span));
-  const rest = wholeSpan ? owed.filter((window) => !holdsAll(span, window)) : owed;
-
-  return {
-    rows: parts.flatMap((part) => part.rows),
-    codes: parts.flatMap((part) => part.codes),
-    owed: [...(wholeSpan ? [span] : []), ...rest].filter(
-      (window, index, all) => all.findIndex((other) => sameWindow(other, window)) === index,
-    ),
-    records: parts.reduce((sum, part) => sum + part.records, 0),
-  };
-};
+export const joinSettled = <Row>(parts: SettledSpan<Row>[]): SettledSpan<Row> => ({
+  rows: parts.flatMap((part) => part.rows),
+  codes: parts.flatMap((part) => part.codes),
+  owed: distinctGround(parts.flatMap((part) => part.owed)),
+  returned: parts.flatMap((part) => part.returned),
+});
 
 /**
  * The records of one span, each on its own: a record the walk cannot trust (its `rowsOf` throws
- * a `BinanceWalkStop`) owes only the ground it sits in (`extentOf`, see `owedBy`) and holds
+ * a `BinanceWalkStop`) owes only the ground it sits in (`extentOf`, see `pointOf`) and holds
  * back nothing else, so the rows of the others are still imported.
  */
 export const settleRecords = <Record, Row>(input: {
@@ -93,11 +103,11 @@ export const settleRecords = <Record, Row>(input: {
   const { span, records, rowsOf, extentOf } = input;
 
   return joinSettled(
-    span,
     records.map((record) =>
       settledRecord(
         eitherSync<unknown, Row[]>(() => rowsOf(record)),
-        () => owedBy(span, extentOf(record)),
+        span,
+        pointOf(span, extentOf(record)),
       ),
     ),
   );
@@ -112,7 +122,7 @@ const logCodes = (codes: string[]): void => {
 /**
  * Place the rows of a settled span. Rows that cannot be placed (a wallet holding that cannot
  * be found) are not one record's stop: nothing of the span is committed and the whole span is
- * owed.
+ * owed, beside the points of the records that were stuck.
  */
 const placed = async <Planned, Row>(input: {
   span: WalkWindow;
@@ -128,18 +138,24 @@ const placed = async <Planned, Row>(input: {
       throw error;
     }
 
-    return { ...settled, rows: [], codes: [...settled.codes, error.code], owed: [span] };
+    return {
+      ...settled,
+      rows: [],
+      codes: [...settled.codes, error.code],
+      owed: distinctGround([...settled.owed, span]),
+    };
   }
 };
 
 /**
  * Commit one span: place and write the rows of the records the walk can trust, then move the
- * walk's marks (`advance` gets the ground that stays owed, and whether the read returned any
- * record: a point is only taken off the list by a read that did). Rows first, marks second, so a
- * crash between the two only has the next run read the span again, which imports nothing new.
- * The forward pass moves a cursor that must not pass a record it could not trust, so a stop of
- * any kind leaves its span uncommitted (`undefined`, before anything is written); in the other
- * passes the stuck records stay owed and everything else commits.
+ * walk's marks (`advance` gets the ground that stays owed, and the point of every record the
+ * read returned: a point is only taken off the list by a read that returned a record owing
+ * exactly it). Rows first, marks second, so a crash between the two only has the next run read
+ * the span again, which imports nothing new. The forward pass moves a cursor that must not pass
+ * a record it could not trust, so a stop of any kind leaves its span uncommitted (`undefined`,
+ * before anything is written); in the other passes the stuck records stay owed and everything
+ * else commits.
  */
 export const commitSettledSpan = async <Planned, Row>(input: {
   pass: WalkPass;
@@ -147,7 +163,7 @@ export const commitSettledSpan = async <Planned, Row>(input: {
   settled: SettledSpan<Planned>;
   place: (planned: Planned[]) => Promise<Row[]>;
   add: (rows: Row[]) => Promise<number>;
-  advance: (result: { owed: WalkWindow[]; returnedRecords: boolean }) => Promise<void>;
+  advance: (result: { owed: OwedGround[]; returned: WalkWindow[] }) => Promise<void>;
 }): Promise<SpanCommit | undefined> => {
   const { pass, span, settled, add, advance } = input;
   const stopsRun = pass === 'forward';
@@ -168,7 +184,7 @@ export const commitSettledSpan = async <Planned, Row>(input: {
 
   const imported = ready.rows.length > 0 ? await add(ready.rows) : 0;
 
-  await advance({ owed: ready.owed, returnedRecords: ready.records > 0 });
+  await advance({ owed: ready.owed, returned: ready.returned });
 
   return { imported, owed: ready.owed.length > 0 };
 };

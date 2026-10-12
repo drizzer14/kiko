@@ -18,6 +18,7 @@ import {
   BinanceWalkStop,
   btcSatoshis,
   halfOf,
+  type OwedGround,
   planWalkPasses,
   readPendingMark,
   readPointCursor,
@@ -137,7 +138,7 @@ export type BinanceTransactionSyncDeps = {
   writeWalkPending: (
     holdingId: string,
     field: BinanceWalkPendingField,
-    ranges: WalkWindow[],
+    ranges: OwedGround[],
   ) => Promise<void>;
   fetchDepositHistory: (
     apiKey: string,
@@ -442,8 +443,10 @@ const placeRows = async (
 };
 
 /**
- * A withdrawal's `applyTime` has a precision of one second: the record sits somewhere in the
- * second its time starts, which is the ground one stuck withdrawal owes.
+ * A withdrawal's `applyTime` has a precision of one second, and is cut or rounded to it: the
+ * record sits in the second before its time or in the second after it, so the ground one stuck
+ * withdrawal owes reaches a second either way (with the millisecond the point adds, 1000 ms each
+ * side of the time).
  */
 const APPLY_TIME_PRECISION_MS = 1_000;
 
@@ -459,7 +462,10 @@ const plannedOf = (accountId: string, entry: SpanRecord): PlannedRow[] =>
     .exhaustive()
     .filter((row): row is PlannedRow => row !== null);
 
-/** The milliseconds a record may sit in: its time, or the whole second of a withdrawal's time. */
+/**
+ * The milliseconds a record may sit in: its time, or every millisecond a second either side of a
+ * withdrawal's time (which Binance may have cut or rounded to the second).
+ */
 const extentOf = (entry: SpanRecord): WalkWindow | undefined =>
   match(entry)
     .returnType<WalkWindow | undefined>()
@@ -467,7 +473,10 @@ const extentOf = (entry: SpanRecord): WalkWindow | undefined =>
     .with({ kind: 'withdraw' }, ({ record }) => {
       const time = parseWithdrawTime(record.applyTime);
 
-      return { start: time, end: time + APPLY_TIME_PRECISION_MS - 1 };
+      return {
+        start: time - (APPLY_TIME_PRECISION_MS - 1),
+        end: time + (APPLY_TIME_PRECISION_MS - 1),
+      };
     })
     .exhaustive();
 
@@ -499,12 +508,12 @@ const commitSpan = (
     }),
     place: (planned) => placeRows(context, planned),
     add: deps.addTransactions,
-    advance: ({ owed, returnedRecords }) =>
+    advance: ({ owed, returned }) =>
       advanceWalkMarks({
         pass,
         span,
         owed,
-        returnedRecords,
+        returned,
         plan,
         marks,
         restartMs: HISTORY_FLOOR_MS,
@@ -540,7 +549,11 @@ const runSync = async (
   // or a first sync) falls back to the newest already-imported record.
   const cursor = binanceWalkCursorOf(CAPITAL_MARK_FIELDS.cursor, spot.metadata);
   const rescanCursor = binanceWalkCursorOf(CAPITAL_MARK_FIELDS.rescan, spot.metadata);
-  const pointCursor = readPointCursor(CAPITAL_MARK_FIELDS.point, spot.metadata);
+  const pointCursor = await readPointCursor({
+    field: CAPITAL_MARK_FIELDS.point,
+    metadata: spot.metadata,
+    write: (field, cursorMs) => deps.writeWalkCursor(spot.id, field, cursorMs),
+  });
   const latest = await deps.latestTransactionTime(spot.id);
   const planCursor = cursor ?? latest ?? null;
   const pending = await readPendingMark({

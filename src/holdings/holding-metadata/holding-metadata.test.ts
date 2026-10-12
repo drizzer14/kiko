@@ -503,6 +503,24 @@ describe('the Binance pending overlap lists', () => {
     ).toEqual([]);
   });
 
+  it('reads an entry with no kind as a range, and one tagged "point" as a point', () => {
+    const point = { start: 999, end: 1_001, kind: 'point' };
+
+    expect(
+      binanceWalkPendingOf('binancePayPendingOverlap', {
+        binancePayPendingOverlap: [range, point],
+      }),
+    ).toEqual([range, point]);
+  });
+
+  it('reads a short entry with no kind as a range: only the tag makes a point', () => {
+    const sliver = { start: 1_000, end: 1_002 };
+
+    expect(
+      binanceWalkPendingOf('binancePayPendingOverlap', { binancePayPendingOverlap: [sliver] }),
+    ).toEqual([sliver]);
+  });
+
   it('is an empty list when the key is absent or the metadata is not an object', () => {
     expect(binanceWalkPendingOf('binancePayPendingOverlap', { binanceAsset: 'BTC' })).toEqual([]);
     expect(binanceWalkPendingOf('binancePayPendingOverlap', null)).toEqual([]);
@@ -518,6 +536,9 @@ describe('the Binance pending overlap lists', () => {
     ['an empty range', [{ start: 2_000, end: 2_000 }]],
     ['a backwards range', [{ start: 3_000, end: 2_000 }]],
     ['one good and one bad entry', [range, { start: 'x', end: 1 }]],
+    ['an entry of an unknown kind', [{ start: 1_000, end: 2_000, kind: 'range' }]],
+    ['an entry whose kind is not text', [{ start: 1_000, end: 2_000, kind: 1 }]],
+    ['a point that is empty', [{ start: 2_000, end: 2_000, kind: 'point' }]],
   ])('is undefined for a stored value that is %s', (_label, value) => {
     expect(
       binanceWalkPendingOf('binancePayPendingOverlap', { binancePayPendingOverlap: value }),

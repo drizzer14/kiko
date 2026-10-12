@@ -26,6 +26,7 @@ import {
   btcSatoshis,
   halfOf,
   logWalkStop,
+  type OwedGround,
   planWalkPasses,
   readPendingMark,
   readPointCursor,
@@ -427,7 +428,7 @@ export type BinancePayHistoryDeps = {
   writeWalkPending: (
     holdingId: string,
     field: BinanceWalkPendingField,
-    ranges: WalkWindow[],
+    ranges: OwedGround[],
   ) => Promise<void>;
 };
 
@@ -572,9 +573,9 @@ const stopOnBtcPaidOrder = (uid: string, funded: BtcFundedOtherCoinOrder): Plann
  * order's stop, so the whole span is owed.
  */
 const settledOrdersOf = (context: PayContext, span: WalkWindow, page: PayHistoryPage) =>
-  joinSettled<PlannedPayRow>(span, [
+  joinSettled<PlannedPayRow>([
     ...(page.gathered >= PAY_PAGE_LIMIT
-      ? [{ rows: [], codes: ['pay-page-stuck'], owed: [span], records: 0 }]
+      ? [{ rows: [], codes: ['pay-page-stuck'], owed: [span], returned: [] }]
       : []),
     settleRecords({
       span,
@@ -611,12 +612,12 @@ const commitSpan = (
     settled: settledOrdersOf(context, span, page),
     place: (planned) => placeRows(context, uniqueRowsOf(planned)),
     add: deps.addTransactions,
-    advance: ({ owed, returnedRecords }) =>
+    advance: ({ owed, returned }) =>
       advanceWalkMarks({
         pass,
         span,
         owed,
-        returnedRecords,
+        returned,
         plan,
         marks,
         restartMs: HISTORY_FLOOR_MS,
@@ -704,7 +705,11 @@ const runSync = async (
 
   const payCursor = binanceWalkCursorOf(PAY_MARK_FIELDS.cursor, spot.metadata);
   const rescanCursor = binanceWalkCursorOf(PAY_MARK_FIELDS.rescan, spot.metadata);
-  const pointCursor = readPointCursor(PAY_MARK_FIELDS.point, spot.metadata);
+  const pointCursor = await readPointCursor({
+    field: PAY_MARK_FIELDS.point,
+    metadata: spot.metadata,
+    write: (field, cursorMs) => deps.writeWalkCursor(spot.id, field, cursorMs),
+  });
   const floorMs = payFloorMs(now);
   const pending = await readPendingMark({
     field: PAY_MARK_FIELDS.pending,

@@ -234,7 +234,13 @@ export const binanceWalkPendingFields = [
 
 export type BinanceWalkPendingField = (typeof binanceWalkPendingFields)[number];
 
-export type BinancePendingRange = { start: number; end: number };
+/**
+ * One entry of a walk's list of owed ground: a range, or a point when tagged `kind: 'point'`. A
+ * point is the ground one record the walk could not trust owes; it is never told from a range by
+ * its length, and an entry with no tag is a range, which is how a list stored before the tag
+ * existed reads.
+ */
+export type BinancePendingRange = { start: number; end: number; kind?: 'point' };
 
 /**
  * Where a walk's round-robin over its owed points stands: the start of the point it read last.
@@ -303,9 +309,17 @@ const asPendingRange = (value: unknown): BinancePendingRange | undefined => {
     return undefined;
   }
 
-  const { start, end } = value;
+  const { start, end, kind } = value;
 
-  return isNumber(start) && isNumber(end) && start < end ? { start, end } : undefined;
+  if (!isNumber(start) || !isNumber(end) || start >= end) {
+    return undefined;
+  }
+
+  if (kind === undefined) {
+    return { start, end };
+  }
+
+  return kind === 'point' ? { start, end, kind } : undefined;
 };
 
 /**

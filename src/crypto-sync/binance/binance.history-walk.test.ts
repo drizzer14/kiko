@@ -9,6 +9,7 @@ import {
   halfOf,
   logWalkStop,
   nextSpanAfter,
+  type OwedGround,
   planWalkPasses,
   readPendingMark,
   readPointCursor,
@@ -250,10 +251,19 @@ describe('planWalkPasses', () => {
     });
 
     describe('with points, the ground of one record each', () => {
-      const pointAt = (time: number): WalkWindow => ({ start: time - 1, end: time + 1 });
-      const secondAt = (time: number): WalkWindow => ({ start: time - 1, end: time + 1_000 });
-      const pointsAmong = (ranges: WalkWindow[]): WalkWindow[] =>
-        ranges.filter((range) => range.end - range.start <= 1_001);
+      const pointAt = (time: number): OwedGround => ({
+        start: time - 1,
+        end: time + 1,
+        kind: 'point',
+      });
+      const secondAt = (time: number): OwedGround => ({
+        start: time - 1_000,
+        end: time + 1_000,
+        kind: 'point',
+      });
+      const pointsAmong = (ranges: OwedGround[]): OwedGround[] =>
+        ranges.filter((range) => range.kind === 'point');
+      const windowOf = ({ start, end }: OwedGround): WalkWindow => ({ start, end });
 
       it('never merges a point, and does not count it against the twelve', () => {
         const stored = storedRanges(12);
@@ -305,7 +315,7 @@ describe('planWalkPasses', () => {
         expect(pendingRanges).toContainEqual(second);
       });
 
-      it('drops a point a range holds, and a point that repeats one', () => {
+      it('keeps a point a range holds beside the range, and drops only a point that repeats one', () => {
         const stored = { start: END_MS - 150 * DAY_MS, end: END_MS - 149 * DAY_MS };
         const inside = pointAt(stored.start + 1_000);
         const outside = pointAt(stored.end + DAY_MS);
@@ -316,19 +326,53 @@ describe('planWalkPasses', () => {
           pending: [stored, inside, outside, outside],
         });
 
-        expect(pendingRanges).toEqual([stored, outside, day]);
+        expect(pendingRanges).toEqual([stored, inside, outside, day]);
       });
 
-      it('keeps one point for two that start together, the wider one, which holds both', () => {
+      it('keeps both of two points that start together and differ, the narrower first', () => {
         const time = END_MS - 150 * DAY_MS;
+        const narrow = pointAt(time - 999);
+        const wide = secondAt(time);
 
         const { pendingRanges } = planWalkPasses({
           ...input,
           cursor,
-          pending: [pointAt(time), secondAt(time), pointAt(time)],
+          pending: [wide, narrow, narrow, wide],
         });
 
-        expect(pointsAmong(pendingRanges)).toEqual([secondAt(time)]);
+        expect(narrow.start).toBe(wide.start);
+        expect(pointsAmong(pendingRanges)).toEqual([narrow, wide]);
+      });
+
+      it('reads one window for points that start together, the wider, which holds the other', () => {
+        const time = END_MS - 150 * DAY_MS;
+        const narrow = pointAt(time - 999);
+        const wide = secondAt(time);
+
+        const { points } = planWalkPasses({ ...input, cursor, pending: [narrow, wide] });
+
+        expect(points).toEqual([windowOf(wide)]);
+      });
+
+      it('keeps a short range a range, and reads it among the ranges, never among the points', () => {
+        const sliver = { start: END_MS - 150 * DAY_MS, end: END_MS - 150 * DAY_MS + 3 };
+
+        const plan = planWalkPasses({ ...input, cursor, pending: [sliver] });
+
+        expect(plan.pending).toEqual([sliver]);
+        expect(plan.points).toEqual([]);
+        expect(plan.pendingRanges).toEqual([sliver, day]);
+      });
+
+      it('keeps a range and a point of one window, each as its own entry', () => {
+        const window = { start: END_MS - 150 * DAY_MS, end: END_MS - 150 * DAY_MS + 2 };
+        const point = { ...window, kind: 'point' as const };
+
+        const plan = planWalkPasses({ ...input, cursor, pending: [window, point] });
+
+        expect(plan.pendingRanges).toEqual([window, point, day]);
+        expect(plan.pending).toEqual([window]);
+        expect(plan.points).toEqual([window]);
       });
 
       it('leaves a point beside the range that only reaches into it, and never shortens either', () => {
@@ -344,12 +388,12 @@ describe('planWalkPasses', () => {
         expect(pendingRanges).toEqual([stored, across, day]);
       });
 
-      it('leaves a point the re-scan covers to the re-scan, and plans no read for it', () => {
+      it('plans a read for a point the re-scan covers: only its own record takes it off the list', () => {
         const inside = pointAt(END_MS - 30 * DAY_MS);
 
         const plan = planWalkPasses({ ...input, cursor, pending: [inside] });
 
-        expect(plan.points).toEqual([]);
+        expect(plan.points).toEqual([windowOf(inside)]);
         expect(plan.pending).toEqual([]);
         expect(plan.pendingRanges).toContainEqual(inside);
       });
@@ -359,18 +403,18 @@ describe('planWalkPasses', () => {
 
         const plan = planWalkPasses({ ...input, cursor, pending: [old] });
 
-        expect(plan.points).toEqual([old]);
+        expect(plan.points).toEqual([windowOf(old)]);
         expect(plan.pending).toEqual([]);
       });
 
-      it('drops a point the floor has passed, and one past the end', () => {
+      it('drops a point the floor has passed', () => {
         const floorMs = END_MS - 100 * DAY_MS;
 
         const plan = planWalkPasses({
           ...input,
           floorMs,
           cursor,
-          pending: [pointAt(floorMs - 10), pointAt(END_MS + 10)],
+          pending: [pointAt(floorMs - 10)],
         });
 
         expect(plan.points).toEqual([]);
@@ -382,17 +426,26 @@ describe('planWalkPasses', () => {
 
         const plan = planWalkPasses({ ...input, floorMs, cursor, pending: [pointAt(floorMs)] });
 
-        expect(plan.points).toEqual([pointAt(floorMs)]);
+        expect(plan.points).toEqual([windowOf(pointAt(floorMs))]);
+        expect(pointsAmong(plan.pendingRanges)).toEqual([pointAt(floorMs)]);
       });
 
-      it('cuts a point that reaches past the end at the end, and keeps its start', () => {
-        const plan = planWalkPasses({
-          ...input,
-          cursor: END_MS,
-          pending: [pointAt(END_MS - 150 * DAY_MS), pointAt(END_MS)],
-        });
+      it('keeps a point the end has not reached in the list, and plans no read for it yet', () => {
+        const ahead = pointAt(END_MS + 10);
 
-        expect(pointsAmong(plan.pendingRanges).at(-1)).toEqual({ start: END_MS - 1, end: END_MS });
+        const plan = planWalkPasses({ ...input, cursor: END_MS, pending: [ahead] });
+
+        expect(pointsAmong(plan.pendingRanges)).toEqual([ahead]);
+        expect(plan.points).toEqual([]);
+      });
+
+      it('keeps a point that reaches past the end whole, and cuts only the window it reads', () => {
+        const atEnd = pointAt(END_MS);
+
+        const plan = planWalkPasses({ ...input, cursor: END_MS, pending: [atEnd] });
+
+        expect(pointsAmong(plan.pendingRanges)).toEqual([atEnd]);
+        expect(plan.points).toEqual([{ start: END_MS - 1, end: END_MS }]);
       });
 
       it('plans a point the re-scan covers only in part as the whole point, never a remnant', () => {
@@ -401,17 +454,18 @@ describe('planWalkPasses', () => {
 
         const plan = planWalkPasses({ ...input, cursor, pending: [straddling] });
 
-        expect(plan.points).toEqual([straddling]);
+        expect(plan.points).toEqual([windowOf(straddling)]);
       });
 
-      it('leaves a point that a pending range holds to the range, and plans no read for it', () => {
+      it('plans a read for a point a pending range holds, beside the read of the range', () => {
         const stored = { start: END_MS - 150 * DAY_MS, end: END_MS - 149 * DAY_MS };
         const inside = pointAt(stored.start + 5_000);
 
         const plan = planWalkPasses({ ...input, cursor, pending: [stored, inside] });
 
-        expect(plan.points).toEqual([]);
+        expect(plan.points).toEqual([windowOf(inside)]);
         expect(plan.pending).toEqual([stored]);
+        expect(plan.pendingRanges).toEqual([stored, inside, day]);
       });
 
       describe('read last, in a round-robin that the point cursor moves on', () => {
@@ -427,27 +481,30 @@ describe('planWalkPasses', () => {
             pending: points,
           });
 
+        const windows = points.map(windowOf);
+
         it('plans every point oldest first when there is no point cursor', () => {
-          expect(planAfter(null).points).toEqual(points);
+          expect(planAfter(null).points).toEqual(windows);
         });
 
         it('starts at the first point after the cursor, and wraps around to the ones before', () => {
           const plan = planAfter(points[2].start);
 
-          expect(plan.points).toEqual([...points.slice(3), ...points.slice(0, 3)]);
+          expect(plan.points).toEqual([...windows.slice(3), ...windows.slice(0, 3)]);
         });
 
         it('reads the point the cursor stands on last', () => {
-          expect(planAfter(points[4].start).points.at(-1)).toEqual(points[4]);
+          expect(planAfter(points[4].start).points.at(-1)).toEqual(windows[4]);
         });
 
         it('wraps to the oldest point when the cursor is past the newest', () => {
-          expect(planAfter(points[6].start).points).toEqual(points);
-          expect(planAfter(points[6].start + 1).points).toEqual(points);
+          expect(planAfter(points[6].start).points).toEqual(windows);
+          expect(planAfter(points[6].start + 1).points).toEqual(windows);
         });
 
         it('starts at the oldest point when the cursor is before every point', () => {
-          expect(planAfter(points[0].start - 1).points).toEqual(points);
+          expect(planAfter(points[0].start - 1).points).toEqual(windows);
+          expect(planAfter(Number.MIN_SAFE_INTEGER).points).toEqual(windows);
         });
 
         it('does not depend on the end time of the run', () => {
@@ -586,10 +643,16 @@ describe('runWalkPlan', () => {
     rescan: [window(10)],
     rescanEnd: 11,
   });
-  const ran = (imported: number, complete: boolean, owed = false): WindowOutcome => ({
+  const ran = (
+    imported: number,
+    complete: boolean,
+    owed = false,
+    started = true,
+  ): WindowOutcome => ({
     imported,
     complete,
     owed,
+    started,
   });
 
   it('runs the forward windows, then the pending windows oldest first, then the re-scan windows, and adds up what they import', async () => {
@@ -755,6 +818,7 @@ describe('runWalkPlan', () => {
       imported,
       complete: true,
       owed: true,
+      started: true,
     });
 
     it('reports the run incomplete, though every window was read to its end', async () => {
@@ -978,7 +1042,7 @@ describe('runWalkPlan', () => {
         expect(marked).toEqual([5]);
       });
 
-      it('marks no point whose window did not finish, and none the budget skipped', async () => {
+      it('marks a point whose window split and did not finish once its read had started, and none the budget skipped', async () => {
         let calls = 2;
         const marked: number[] = [];
 
@@ -995,7 +1059,38 @@ describe('runWalkPlan', () => {
           },
         });
 
+        expect(marked).toEqual([1, 2]);
+      });
+
+      it('marks no point whose read never started: the budget or a rate limit stopped its first call', async () => {
+        const marked: number[] = [];
+
+        await runWalkPlan({
+          plan: planOf({ points: [pointAt(1), pointAt(2)] }),
+          canAfford: () => true,
+          runWindow: async (span) => ran(0, false, false, span.start === 1),
+          markPointRead: async (span) => {
+            marked.push(span.start);
+          },
+        });
+
         expect(marked).toEqual([1]);
+      });
+
+      it('goes on to the next point after one whose window did not finish', async () => {
+        const seen: number[] = [];
+
+        await runWalkPlan({
+          plan: planOf({ points: [pointAt(1), pointAt(2)] }),
+          canAfford: () => true,
+          runWindow: async (span) => {
+            seen.push(span.start);
+
+            return ran(0, false);
+          },
+        });
+
+        expect(seen).toEqual([1, 2]);
       });
     });
   });
@@ -1218,7 +1313,7 @@ describe('advanceWalkMarks', () => {
   const PENDING_FIELD = 'binancePayPendingOverlap';
   const POINT_FIELD = 'binancePayPointCursor';
 
-  type Write = [string, number | WalkWindow[]];
+  type Write = [string, number | OwedGround[]];
 
   const markOf = (over: Partial<WalkMarks> = {}): WalkMarks => ({
     cursor: null,
@@ -1228,13 +1323,15 @@ describe('advanceWalkMarks', () => {
     ...over,
   });
 
+  const pointOf = (start: number, end: number): OwedGround => ({ start, end, kind: 'point' });
+
   const advance = async (
     pass: WalkPass,
     span: WalkWindow,
     marks: WalkMarks,
     walkPlan: WalkPlan = plan,
-    owed: WalkWindow[] = [],
-    returnedRecords = true,
+    owed: OwedGround[] = [],
+    returned: WalkWindow[] = [],
   ) => {
     const writes: Write[] = [];
 
@@ -1242,7 +1339,7 @@ describe('advanceWalkMarks', () => {
       pass,
       span,
       owed,
-      returnedRecords,
+      returned,
       plan: walkPlan,
       marks,
       restartMs: RESTART_MS,
@@ -1378,7 +1475,7 @@ describe('advanceWalkMarks', () => {
     });
 
     describe('with ground the span could not commit', () => {
-      const point = { start: 79_999, end: 80_001 };
+      const point = pointOf(79_999, 80_001);
 
       it('puts the points back in the same write that takes the read ground out, in a pending span', async () => {
         const marks = markOf({ cursor: 900, pending: [day] });
@@ -1412,7 +1509,7 @@ describe('advanceWalkMarks', () => {
 
         it('keeps a point beside what is left of the range, and never merges the two', async () => {
           const marks = markOf({ cursor: 90_000, pending: [range] });
-          const inSpan = { start: 19_999, end: 20_001 };
+          const inSpan = pointOf(19_999, 20_001);
 
           await advance('pending', span, marks, planned, [inSpan]);
 
@@ -1468,53 +1565,167 @@ describe('advanceWalkMarks', () => {
     });
 
     describe('with a point on the list', () => {
-      const point = { start: 79_999, end: 80_001 };
+      const point = pointOf(79_999, 80_001);
       const whole = { start: 70_000, end: 90_000 };
+      const ownedBy = (...windows: WalkWindow[]) => windows;
 
-      it('takes a point off the list when a span that holds it whole returned records', async () => {
+      it('takes a point off the list when the read returned a record that owes exactly it', async () => {
         const marks = markOf({ cursor: 900, pending: [point] });
 
-        expect(await advance('pending', whole, marks, planned)).toEqual([[PENDING_FIELD, []]]);
+        expect(await advance('pending', whole, marks, planned, [], ownedBy(point))).toEqual([
+          [PENDING_FIELD, []],
+        ]);
       });
 
-      it('keeps a point when the read of a span that holds it returned no record: it fails closed', async () => {
+      it('keeps a point when the read returned no record at all: it fails closed', async () => {
         const marks = markOf({ cursor: 900, pending: [point] });
 
-        expect(await advance('pending', whole, marks, planned, [], false)).toEqual([]);
+        expect(await advance('pending', whole, marks, planned)).toEqual([]);
         expect(marks.pending).toEqual([point]);
       });
 
-      it('keeps a point beside what is left of a range when the read returned no record', async () => {
-        const marks = markOf({ cursor: 900, pending: [day, point] });
+      it.each([
+        ['a neighbour a few ms away', { start: 80_099, end: 80_101 }],
+        ['a record whose point is wider', { start: 79_999, end: 81_000 }],
+        ['a record whose point is narrower', { start: 79_999, end: 80_000 }],
+        ['a record whose point starts later', { start: 80_000, end: 80_002 }],
+      ])(
+        'keeps a point when the read returned only %s: Binance may filter on another field',
+        async (_label, other) => {
+          const marks = markOf({ cursor: 900, pending: [point] });
 
-        await advance('pending', whole, marks, planned, [], false);
+          expect(await advance('pending', whole, marks, planned, [], ownedBy(other))).toEqual([]);
+          expect(marks.pending).toEqual([point]);
+        },
+      );
 
-        expect(marks.pending).toEqual([point, { start: 90_000, end: 100_000 }]);
+      it('keeps every point the read did not return a record for, and takes off only the one it did', async () => {
+        const other = pointOf(75_000, 75_002);
+        const marks = markOf({ cursor: 900, pending: [other, point] });
+
+        await advance('pending', whole, marks, planned, [], ownedBy(point));
+
+        expect(marks.pending).toEqual([other]);
       });
 
       it.each([
         ['its start', { start: 70_000, end: 80_000 }],
         ['its end', { start: 80_000, end: 90_000 }],
-      ])('leaves a point whole that a span only reaches into at %s', async (_label, span) => {
+      ])(
+        'keeps a point whole that a span only reaches into at %s, though a returned record owes it: the rest of its second is unread',
+        async (_label, span) => {
+          const marks = markOf({ cursor: 900, pending: [point] });
+
+          expect(await advance('pending', span, marks, planned, [], ownedBy(point))).toEqual([]);
+          expect(marks.pending).toEqual([point]);
+        },
+      );
+
+      it('keeps a point beside what is left of a range when the read returned no record for it', async () => {
+        const marks = markOf({ cursor: 900, pending: [day, point] });
+
+        await advance('pending', whole, marks, planned);
+
+        expect(marks.pending).toEqual([point, { start: 90_000, end: 100_000 }]);
+      });
+
+      it('leaves a point whole that a span only reaches into when the read returned nothing for it', async () => {
         const marks = markOf({ cursor: 900, pending: [point] });
 
-        expect(await advance('pending', span, marks, planned)).toEqual([]);
+        expect(await advance('pending', { start: 70_000, end: 80_000 }, marks, planned)).toEqual(
+          [],
+        );
         expect(marks.pending).toEqual([point]);
       });
 
       it('writes no list when a read of the point finds its record stuck again', async () => {
         const marks = markOf({ cursor: 900, pending: [point] });
 
-        expect(await advance('pending', point, marks, planned, [point])).toEqual([]);
+        expect(await advance('pending', point, marks, planned, [point], ownedBy(point))).toEqual(
+          [],
+        );
       });
 
       it('takes a point off the list as a re-scan span passes it, before the mark moves', async () => {
         const marks = markOf({ cursor: 900, rescanCursor: 50_000, pending: [point] });
 
-        expect(await advance('rescan', { start: 50_000, end: 90_000 }, marks, planned)).toEqual([
+        expect(
+          await advance(
+            'rescan',
+            { start: 50_000, end: 90_000 },
+            marks,
+            planned,
+            [],
+            ownedBy(point),
+          ),
+        ).toEqual([
           [PENDING_FIELD, []],
           [RESCAN_FIELD, 90_000],
         ]);
+      });
+
+      it('keeps a point a re-scan span passes when the read returned nothing for it', async () => {
+        const marks = markOf({ cursor: 900, rescanCursor: 50_000, pending: [point] });
+
+        expect(await advance('rescan', { start: 50_000, end: 90_000 }, marks, planned)).toEqual([
+          [RESCAN_FIELD, 90_000],
+        ]);
+        expect(marks.pending).toEqual([point]);
+      });
+
+      it('keeps two points that start together, each until a record owes exactly it', async () => {
+        const narrow = pointOf(79_999, 80_001);
+        const wide = pointOf(79_999, 81_000);
+        const marks = markOf({ cursor: 900, pending: [narrow, wide] });
+
+        await advance('pending', whole, marks, planned, [], ownedBy(narrow));
+
+        expect(marks.pending).toEqual([wide]);
+      });
+    });
+
+    describe('with a short range on the list: a sliver is a range, never a point', () => {
+      const sliver = { start: 79_990, end: 79_995 };
+      const whole = { start: 70_000, end: 90_000 };
+
+      it('takes a range off the list once a read holds all of it, though the read returned no record', async () => {
+        const marks = markOf({ cursor: 900, pending: [sliver] });
+
+        expect(await advance('pending', whole, marks, planned)).toEqual([[PENDING_FIELD, []]]);
+      });
+
+      it('takes a range as short as a point off the list on a re-scan read that returned nothing', async () => {
+        const marks = markOf({
+          cursor: 900,
+          rescanCursor: 50_000,
+          pending: [{ start: 1, end: 3 }],
+        });
+
+        expect(await advance('rescan', { start: 0, end: 90_000 }, marks, planned)).toEqual([
+          [PENDING_FIELD, []],
+          [RESCAN_FIELD, 90_000],
+        ]);
+      });
+
+      it('leaves the point beside a range of the same window, and the range goes', async () => {
+        const range = { start: 79_999, end: 80_001 };
+        const point = pointOf(79_999, 80_001);
+        const marks = markOf({ cursor: 900, pending: [range, point] });
+
+        await advance('pending', whole, marks, planned);
+
+        expect(marks.pending).toEqual([point]);
+      });
+
+      it('leaves a point that lies inside a range the read took off, never dropping it with the range', async () => {
+        const marks = markOf({
+          cursor: 900,
+          pending: [{ start: 70_000, end: 90_000 }, pointOf(80_000, 80_002)],
+        });
+
+        await advance('pending', whole, marks, planned);
+
+        expect(marks.pending).toEqual([pointOf(80_000, 80_002)]);
       });
     });
   });
@@ -1640,34 +1851,78 @@ describe('readPointCursor', () => {
     warn.mockRestore();
   });
 
-  it('reads the stored cursor of one walk', () => {
-    expect(readPointCursor(FIELD, { [FIELD]: 5_000 })).toBe(5_000);
+  const readCursor = (metadata: unknown) => {
+    const write = jest.fn(async (_field: string, _cursorMs: number) => undefined);
+
+    return { write, cursor: readPointCursor({ field: FIELD, metadata, write }) };
+  };
+
+  it('reads the stored cursor of one walk, and writes nothing', async () => {
+    const { cursor, write } = readCursor({ [FIELD]: 5_000 });
+
+    expect(await cursor).toBe(5_000);
+    expect(write).not.toHaveBeenCalled();
     expect(warn).not.toHaveBeenCalled();
   });
 
-  it('starts at the oldest point (null) with nothing stored, and logs nothing', () => {
-    expect(readPointCursor(FIELD, { binanceAsset: 'BTC' })).toBeNull();
-    expect(readPointCursor(FIELD, null)).toBeNull();
+  it('starts at the oldest point (null) with nothing stored, and logs and writes nothing', async () => {
+    const first = readCursor({ binanceAsset: 'BTC' });
+    const second = readCursor(null);
+
+    expect(await first.cursor).toBeNull();
+    expect(await second.cursor).toBeNull();
+    expect(first.write).not.toHaveBeenCalled();
+    expect(second.write).not.toHaveBeenCalled();
     expect(warn).not.toHaveBeenCalled();
   });
 
-  it.each([
-    ['text', '5000'],
-    ['not a finite number', Number.NaN],
-    ['null', null],
-    ['a list', [1]],
-  ])(
-    'starts at the oldest point for a stored value that is %s, logging one fixed code and never throwing',
-    (_label, value) => {
-      expect(readPointCursor(FIELD, { [FIELD]: value })).toBeNull();
-      expect(warn.mock.calls).toEqual([
-        [
-          '[binance sync] point cursor unreadable',
-          { name: 'BinanceWalkStop', code: 'point-cursor-malformed' },
-        ],
-      ]);
-    },
-  );
+  describe('for a stored value that is no number', () => {
+    const malformed = [
+      ['text', '5000'],
+      ['not a finite number', Number.NaN],
+      ['null', null],
+      ['a list', [1]],
+    ] as const;
+
+    it.each(malformed)(
+      'starts before every point, logging one fixed code and never throwing, for %s',
+      async (_label, value) => {
+        const { cursor } = readCursor({ [FIELD]: value });
+
+        expect(await cursor).toBe(Number.MIN_SAFE_INTEGER);
+        expect(warn.mock.calls).toEqual([
+          [
+            '[binance sync] point cursor unreadable',
+            { name: 'BinanceWalkStop', code: 'point-cursor-malformed' },
+          ],
+        ]);
+      },
+    );
+
+    it.each(malformed)(
+      'repairs it at once, storing that start, so the next run reads a number: %s',
+      async (_label, value) => {
+        const { cursor, write } = readCursor({ [FIELD]: value });
+
+        await cursor;
+
+        expect(write).toHaveBeenCalledTimes(1);
+        expect(write).toHaveBeenCalledWith(FIELD, Number.MIN_SAFE_INTEGER);
+      },
+    );
+
+    it('is read as a number by the next run, which logs nothing', async () => {
+      const first = readCursor({ [FIELD]: 'x' });
+      const stored = await first.cursor;
+      warn.mockClear();
+
+      const next = readCursor({ [FIELD]: stored });
+
+      expect(await next.cursor).toBe(Number.MIN_SAFE_INTEGER);
+      expect(next.write).not.toHaveBeenCalled();
+      expect(warn).not.toHaveBeenCalled();
+    });
+  });
 });
 
 describe('storePointCursor', () => {
@@ -1763,7 +2018,7 @@ describe('walkSpans', () => {
       { start: 50, end: 75 },
       { start: 75, end: 100 },
     ]);
-    expect(result).toEqual({ imported: 8, complete: true, owed: false });
+    expect(result).toEqual({ imported: 8, complete: true, owed: false, started: true });
   });
 
   it('hands the commit the page the read gave for that span', async () => {
@@ -1801,7 +2056,7 @@ describe('walkSpans', () => {
 
     expect(read).toHaveBeenCalledTimes(3);
     expect(committed).toEqual([half]);
-    expect(result).toEqual({ imported: 3, complete: false, owed: false });
+    expect(result).toEqual({ imported: 3, complete: false, owed: false, started: true });
   });
 
   it('stops, reading no further span, when the commit gives up', async () => {
@@ -1812,7 +2067,7 @@ describe('walkSpans', () => {
 
     expect(commit).toHaveBeenCalledTimes(1);
     expect(read).toHaveBeenCalledTimes(3);
-    expect(result).toEqual({ imported: 0, complete: false, owed: false });
+    expect(result).toEqual({ imported: 0, complete: false, owed: false, started: true });
   });
 
   describe('with a span that left ground owed', () => {
@@ -1827,7 +2082,7 @@ describe('walkSpans', () => {
       const result = await walkSpans({ window, read: readByWidth(), commit });
 
       expect(committed).toHaveLength(4);
-      expect(result).toEqual({ imported: 4, complete: true, owed: true });
+      expect(result).toEqual({ imported: 4, complete: true, owed: true, started: true });
     });
 
     it('is not owed when no span left ground owed', async () => {
@@ -1850,7 +2105,7 @@ describe('walkSpans', () => {
         commit: commitCount(2, [], true),
       });
 
-      expect(result).toEqual({ imported: 2, complete: false, owed: true });
+      expect(result).toEqual({ imported: 2, complete: false, owed: true, started: true });
     });
   });
 
@@ -1864,7 +2119,40 @@ describe('walkSpans', () => {
     });
 
     expect(read).not.toHaveBeenCalled();
-    expect(result).toEqual({ imported: 0, complete: true, owed: false });
+    expect(result).toEqual({ imported: 0, complete: true, owed: false, started: false });
+  });
+
+  describe('whether the window was started', () => {
+    it('is started once a read returned a page', async () => {
+      const result = await walkSpans({ window, read: readByWidth(), commit: commitCount(1) });
+
+      expect(result.started).toBe(true);
+    });
+
+    it('is started by a read that returned only the half to read instead, though nothing committed', async () => {
+      const half = { start: 0, end: 50 };
+      const reads = [{ kind: 'split' as const, half }, undefined];
+      const commit = commitCount(1);
+
+      const result = await walkSpans({
+        window,
+        read: jest.fn(async () => reads.shift()),
+        commit,
+      });
+
+      expect(commit).not.toHaveBeenCalled();
+      expect(result).toEqual({ imported: 0, complete: false, owed: false, started: true });
+    });
+
+    it('is not started when the first read gives up', async () => {
+      const result = await walkSpans({
+        window,
+        read: jest.fn(async () => undefined),
+        commit: commitCount(1),
+      });
+
+      expect(result).toEqual({ imported: 0, complete: false, owed: false, started: false });
+    });
   });
 });
 

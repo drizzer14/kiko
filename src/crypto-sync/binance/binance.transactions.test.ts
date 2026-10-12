@@ -28,7 +28,7 @@ import {
   type HistoryWindow,
 } from './binance.history-client';
 import { BinanceRateLimitError } from './binance.client';
-import type { WalkWindow } from './binance.history-walk';
+import type { OwedGround, WalkWindow } from './binance.history-walk';
 
 const NOW = 1_704_326_400_000; // 2024-01-04T00:00:00Z
 const ACCOUNT_ID = 'acc-1';
@@ -150,14 +150,14 @@ const depositServer = (all: BinanceDeposit[]) =>
 const makeStatefulSpotAccount = (): {
   listHoldings: () => Promise<HoldingRow[]>;
   writeWalkCursor: jest.Mock<Promise<void>, [string, string, number]>;
-  writeWalkPending: jest.Mock<Promise<void>, [string, string, WalkWindow[]]>;
+  writeWalkPending: jest.Mock<Promise<void>, [string, string, OwedGround[]]>;
   cursor: () => number | null;
   rescanCursor: () => number | null;
   pointCursor: () => number | null;
-  pending: () => WalkWindow[];
+  pending: () => OwedGround[];
 } => {
   const marks: Record<string, number> = {};
-  let pending: WalkWindow[] = [];
+  let pending: OwedGround[] = [];
 
   return {
     listHoldings: async () => [
@@ -169,7 +169,7 @@ const makeStatefulSpotAccount = (): {
     writeWalkCursor: jest.fn(async (_holdingId: string, field: string, cursorMs: number) => {
       marks[field] = cursorMs;
     }),
-    writeWalkPending: jest.fn(async (_holdingId: string, _field: string, ranges: WalkWindow[]) => {
+    writeWalkPending: jest.fn(async (_holdingId: string, _field: string, ranges: OwedGround[]) => {
       pending = ranges;
     }),
     cursor: () => marks.binanceHistoryCursor ?? null,
@@ -847,6 +847,17 @@ describe('a settled capital row the walk cannot trust stops its window', () => {
     expect(result).toEqual({ imported: 2, complete: false });
     expect(deps.addTransactions).toHaveBeenCalledTimes(2);
     expect(cursorWritesOf(deps)).toEqual([FIRST_OF_THREE_WINDOWS_END]);
+    // The two forward windows, then the re-scan: the overlap day behind the cursor it started at.
+    expect(
+      (deps.fetchDepositHistory as jest.Mock).mock.calls.map((call) => [
+        (call[2] as HistoryWindow).startTime,
+        (call[2] as HistoryWindow).endTime,
+      ]),
+    ).toEqual([
+      [NOW - 200 * DAY_MS, FIRST_OF_THREE_WINDOWS_END],
+      [FIRST_OF_THREE_WINDOWS_END, FIRST_OF_THREE_WINDOWS_END + 89 * DAY_MS],
+      [NOW - 200 * DAY_MS - DAY_MS, NOW - 200 * DAY_MS],
+    ]);
   });
 
   it('stops when the placement holding is still absent after it was created', async () => {
@@ -1644,7 +1655,7 @@ describe('the pending overlap days of the capital walk', () => {
   const SUSPENDED = 'run suspended';
   const keyOf = (record: BinanceWithdrawal): string => `${ACCOUNT}:withdraw:${record.id}`;
 
-  const stateOf = async (cursor: number | null, pending: WalkWindow[] = []) => {
+  const stateOf = async (cursor: number | null, pending: OwedGround[] = []) => {
     const account = makeStatefulSpotAccount();
 
     if (cursor !== null) {
@@ -1783,7 +1794,7 @@ describe('the pending overlap days of the capital walk', () => {
     expect(state.imported.has(keyOf(readable))).toBe(true);
     expect(state.imported.has(keyOf(inWindow))).toBe(true);
     const t = stuckDay.start + 3_600_000;
-    expect(state.account.pending()).toEqual([{ start: t - 1, end: t + 1_000 }]);
+    expect(state.account.pending()).toEqual([{ start: t - 1_000, end: t + 1_000, kind: 'point' }]);
     expect(second.result.complete).toBe(false);
   });
 
@@ -1803,7 +1814,7 @@ describe('the pending overlap days of the capital walk', () => {
       NOW - 89 * DAY_MS,
     ]);
     expect((second.deps.fetchWithdrawHistory as jest.Mock).mock.calls.at(-1)?.[2]).toMatchObject({
-      startTime: (stuck.applyTime as number) - 1,
+      startTime: (stuck.applyTime as number) - 1_000,
       endTime: (stuck.applyTime as number) + 1_000,
     });
   });
@@ -1950,12 +1961,16 @@ describe('the pending overlap days of the capital walk', () => {
     const stuckAt = stuckDay.start + 3_600_000;
     const stuckRecord = () => withdrawal({ id: '', txId: '', applyTime: stuckAt });
     const fixedRecord = () => withdrawal({ id: 'fixed', applyTime: stuckAt });
-    // A withdrawal's time has a precision of one second: its point is that second and a
-    // millisecond on each side.
-    const pointAt = (time: number): WalkWindow => ({ start: time - 1, end: time + 1_000 });
+    // A withdrawal's time has a precision of one second, cut or rounded: its point is the second
+    // before it, the second after it and a millisecond on each side.
+    const pointAt = (time: number): OwedGround => ({
+      start: time - 1_000,
+      end: time + 1_000,
+      kind: 'point',
+    });
     // The overlap day behind the cursor lies in the window the re-scan reads; only the ground
     // older than that window is the pending pass's.
-    const beyondWindow = (ranges: WalkWindow[]): WalkWindow[] =>
+    const beyondWindow = (ranges: OwedGround[]): OwedGround[] =>
       ranges.filter((range) => range.end <= NOW - 89 * DAY_MS);
 
     it('imports an unrelated owed day that a merge past the twelve-range cap put beside the stuck range, and keeps only the stuck record owed at its point', async () => {
@@ -1993,7 +2008,7 @@ describe('the pending overlap days of the capital walk', () => {
       const adds = deps.addTransactions as jest.Mock;
       const listWrites = (deps.writeWalkPending as jest.Mock).mock;
       const owedAt = listWrites.calls.findIndex((call) =>
-        (call[2] as WalkWindow[]).some((range) => range.start === stuckAt - 1),
+        (call[2] as WalkWindow[]).some((range) => range.start === stuckAt - 1_000),
       );
       expect(adds.mock.invocationCallOrder[0]).toBeLessThan(listWrites.invocationCallOrder[owedAt]);
     });
@@ -2051,8 +2066,8 @@ describe('the pending overlap days of the capital walk', () => {
       const newDay = { start: BASE + 150 * DAY_MS, end: BASE + 151 * DAY_MS };
       const fresh = () => withdrawal({ id: 'new-day', applyTime: newDay.start + 1_000 });
       const late = () => withdrawal({ id: 'late', applyTime: NOW - 50 * DAY_MS });
-      const isolatedOwed = (state: PendingState): WalkWindow[] =>
-        beyondWindow(state.account.pending()).filter((range) => range.end - range.start <= 1_001);
+      const isolatedOwed = (state: PendingState): OwedGround[] =>
+        beyondWindow(state.account.pending()).filter((range) => range.kind === 'point');
       const isolatedSpans = stuckTimes.map(pointAt);
 
       const stateWithIsolated = () => stateOf(NOW - 2 * DAY_MS, [...isolatedSpans, newDay]);
@@ -2135,7 +2150,7 @@ describe('the pending overlap days of the capital walk', () => {
       expect(owedAfterFirst).toEqual([pointAt(stuckAt)]);
       expect(beyondWindow(state.account.pending())).toEqual(owedAfterFirst);
       expect(withdrawStartsOf(second.deps).filter((start) => start < NOW - 89 * DAY_MS)).toEqual([
-        stuckAt - 1,
+        stuckAt - 1_000,
       ]);
     });
 
@@ -2169,7 +2184,7 @@ describe('the pending overlap days of the capital walk', () => {
       expect(state.imported).toEqual(new Set([`${ACCOUNT}:deposit:fixed-deposit`]));
       expect(beyondWindow(state.account.pending())).toEqual([
         pointAt(stuckAt),
-        { start: stuckAt + 4_999, end: stuckAt + 5_001 },
+        { start: stuckAt + 4_999, end: stuckAt + 5_001, kind: 'point' },
       ]);
     });
 
@@ -2201,7 +2216,7 @@ describe('the pending overlap days of the capital walk', () => {
         const second = await runOver(state, [forwardStuck(), repaired()]);
 
         expect(state.imported).toEqual(new Set([keyOf(repaired())]));
-        expect(withdrawStartsOf(second.deps)).toContain(stuckAt - 1);
+        expect(withdrawStartsOf(second.deps)).toContain(stuckAt - 1_000);
         expect(withdrawStartsOf(second.deps)).toContain(NOW - 89 * DAY_MS);
         expect(beyondWindow(state.account.pending())).toEqual([]);
         expect(state.account.cursor()).toBe(CURSOR);
@@ -2234,9 +2249,9 @@ describe('the pending overlap days of the capital walk', () => {
         const lastListWrite = Math.max(
           ...(deps.writeWalkPending as jest.Mock).mock.invocationCallOrder,
         );
-        expect(cursorWrites.mock.calls[pointWriteAt][2]).toBe(stuckAt - 1);
+        expect(cursorWrites.mock.calls[pointWriteAt][2]).toBe(stuckAt - 1_000);
         expect(cursorWrites.mock.invocationCallOrder[pointWriteAt]).toBeGreaterThan(lastListWrite);
-        expect(state.account.pointCursor()).toBe(stuckAt - 1);
+        expect(state.account.pointCursor()).toBe(stuckAt - 1_000);
       });
 
       it('reads the points after the stored cursor first, then wraps around to the ones before', async () => {

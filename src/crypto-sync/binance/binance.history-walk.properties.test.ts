@@ -5,6 +5,7 @@ import {
   BINANCE_PAY_POINT_CURSOR_FIELD,
   BINANCE_PAY_RESCAN_CURSOR_FIELD,
 } from '@kiko/holdings/holding-metadata';
+import maybe, { foldMap } from 'fnts/maybe';
 
 import {
   advanceWalkMarks,
@@ -12,6 +13,7 @@ import {
   halfOf,
   planWalkPasses,
   runWalkPlan,
+  type OwedGround,
   type SpanRead,
   storePointCursor,
   walkSpans,
@@ -28,7 +30,8 @@ import { commitSettledSpan, instantAt, settleRecords } from './binance.history-r
  * whose time lies in the span, under one of three readings of which end Binance leaves out (both
  * included, the start left out, the end left out), and each property must hold under all three.
  * A stuck record owes its own point and holds nothing else back, so every other record of the
- * span commits.
+ * span commits. The properties tell a point by the window its record owes (never by a tag or a
+ * length), so they hold for any list the walk stores.
  */
 
 const HOUR_MS = 3_600_000;
@@ -37,24 +40,39 @@ const FLOOR_MS = Date.UTC(2017, 6, 14);
 const START_MS = Date.UTC(2026, 9, 1);
 const BASE_MS = Date.UTC(2025, 6, 1);
 const WINDOW_MS = 89 * DAY_MS;
-const POINT_MAX_MS = SECOND_MS + 1;
 const TWO_POWER_32_MS = 2 ** 32;
 const NEVER = Number.POSITIVE_INFINITY;
+/** The calls a forward pass must leave a run for it to read both the re-scan and a point. */
+const RESCAN_AND_POINT_CALLS = 2;
+/** The forward window, the re-scan and one read of a point: no call left for a half of it. */
+const LEAST_READS_WITH_A_POINT = 3;
 const SEEDS = [11, 23, 37];
 const COUNTS = Array.from({ length: 12 }, (_unused, index) => index + 1);
 
 /**
  * `precision` is the precision of the time a lane sees: a Pay order has its millisecond, a
- * capital withdrawal only its second, so it sits somewhere in the second its time starts. A
- * `mixed` lane alternates records of that precision with records of a millisecond (a capital
- * deposit).
+ * capital withdrawal only its second, so it sits somewhere in the second its time starts, or
+ * (`rounded`) in the half second on either side of it. A `mixed` lane alternates records of that
+ * precision with records of a millisecond (a capital deposit).
  */
-type Lane = { name: string; reads: number; precision: number; mixed?: boolean };
+type Lane = {
+  name: string;
+  reads: number;
+  precision: number;
+  mixed?: boolean;
+  rounded?: boolean;
+};
 
 /** Pay spends one of its calls on the uid, so a run has one read fewer than the lane cap. */
 const LANES: Lane[] = [
   { name: 'Pay', reads: LANE_CALL_CAPS.pay - 1, precision: 1 },
   { name: 'capital withdrawals', reads: LANE_CALL_CAPS.capitalWithdraw, precision: SECOND_MS },
+  {
+    name: 'capital withdrawals with a rounded applyTime',
+    reads: LANE_CALL_CAPS.capitalWithdraw,
+    precision: SECOND_MS,
+    rounded: true,
+  },
   {
     name: 'capital withdrawals and deposits',
     reads: LANE_CALL_CAPS.capitalWithdraw,
@@ -94,7 +112,7 @@ type SimRecord = {
   inForward?: boolean;
 };
 
-type Scenario = { owed: WalkWindow[]; records: SimRecord[] };
+type Scenario = { owed: OwedGround[]; records: SimRecord[] };
 
 type Simulation = {
   lane: Lane;
@@ -105,19 +123,28 @@ type Simulation = {
   gapMs?: number;
   /** A span longer than `spanMs` that overlaps `range` comes back full, so it is read in halves. */
   dense?: { range: WalkWindow; spanMs: number };
+  /**
+   * Binance filters on a field other than the one the point was derived from: a read of a point
+   * returns the records near it that can be trusted, and never a record that is stuck for good.
+   */
+  mismatch?: boolean;
+  /** The first `runs` runs come `gapMs` after the one before them: a forward pass to catch up. */
+  catchUp?: { runs: number; gapMs: number };
 };
 
 type RunRecord = {
   /** The list of owed ground as the run left it. */
-  owed: WalkWindow[];
+  owed: OwedGround[];
   cursor: number | null;
   rescanReads: number;
   rescanCommits: number;
   /** The most reads one owed point had in the run. */
   readsOfAPoint: number;
-  /** The starts of the points the plan gave the run, in order, and of those it read. */
+  /** The starts of the points the plan gave the run, in order, and of those whose read started. */
   plannedPoints: number[];
   pointsRead: number[];
+  /** The calls the forward pass left the run: with none, no later pass reads anything. */
+  callsAfterForward: number;
 };
 
 type Outcome = { runs: RunRecord[]; importedAt: Map<number, number> };
@@ -131,7 +158,8 @@ const holds = (range: WalkWindow, millisecond: number, reading: Reading): boolea
 const surelyHolds = (range: WalkWindow, millisecond: number): boolean =>
   range.start < millisecond && millisecond < range.end;
 
-const isPoint = (range: WalkWindow): boolean => range.end - range.start <= POINT_MAX_MS;
+const sameWindow = (left: WalkWindow, right: WalkWindow): boolean =>
+  left.start === right.start && left.end === right.end;
 
 const isDense = (dense: Simulation['dense'], span: WalkWindow): boolean =>
   dense !== undefined &&
@@ -139,17 +167,29 @@ const isDense = (dense: Simulation['dense'], span: WalkWindow): boolean =>
   span.start < dense.range.end &&
   span.end > dense.range.start;
 
-/** What a stuck record owes: the milliseconds it may sit in (a withdrawal: its whole second). */
+/**
+ * What a stuck record may sit in, as far as the lane can tell: its millisecond, or for a
+ * withdrawal every millisecond a second either side of its time (Binance cuts or rounds the time
+ * to the second).
+ */
 const extentOf = (record: SimRecord): WalkWindow | undefined =>
   record.precision === 1
     ? instantAt(record.time)
-    : { start: record.time, end: record.time + record.precision - 1 };
+    : {
+        start: record.time - (record.precision - 1),
+        end: record.time + (record.precision - 1),
+      };
 
 /** The point a record that was found stuck is owed as: its extent and a millisecond each side. */
-const pointOf = (record: SimRecord): WalkWindow => ({
-  start: record.time - 1,
-  end: record.time + (record.precision === 1 ? 1 : record.precision),
+const pointOf = (record: SimRecord): OwedGround => ({
+  start: record.time - record.precision,
+  end: record.time + record.precision,
+  kind: 'point',
 });
+
+/** Whether the list holds the very ground `record` owes: the point it was found at. */
+const holdsPointOf = (owed: OwedGround[], record: SimRecord): boolean =>
+  owed.some((ground) => sameWindow(ground, pointOf(record)));
 
 const MARK_FIELDS: WalkMarkFields = {
   cursor: BINANCE_PAY_HISTORY_CURSOR_FIELD,
@@ -167,27 +207,41 @@ const rowsOf = (entry: SimRecord, run: number): number[] => {
   return [entry.id];
 };
 
-/** What a read of `span` gives: the records in it, or the half to read when it is too full. */
-const pageOf = (input: Simulation, span: WalkWindow): SpanRead<SimRecord[]> => {
+/**
+ * What a read of `span` gives: the records in it, or the half to read when it is too full. A
+ * read of a point, where Binance filters on another field (`mismatch`), gives the records that
+ * can be trusted and lie in it (both ends included), never one that is stuck for good.
+ */
+const pageOf = (
+  input: Simulation,
+  span: WalkWindow,
+  isPointRead: boolean,
+): SpanRead<SimRecord[]> => {
   const half = halfOf(span);
 
-  return isDense(input.dense, span) && half !== undefined
-    ? { kind: 'split', half }
-    : {
-        kind: 'page',
-        page: input.scenario.records.filter((entry) => holds(span, entry.at, input.reading)),
-      };
+  if (isDense(input.dense, span) && half !== undefined) {
+    return { kind: 'split', half };
+  }
+
+  const returned =
+    input.mismatch === true && isPointRead
+      ? (entry: SimRecord) =>
+          entry.stuckUntil !== NEVER && holds(span, entry.at, 'both ends included')
+      : (entry: SimRecord) => holds(span, entry.at, input.reading);
+
+  return { kind: 'page', page: input.scenario.records.filter(returned) };
 };
 
-const countPointRead = (pointReads: Map<string, number>, span: WalkWindow): void => {
-  if (isPoint(span)) {
-    const key = `${span.start}:${span.end}`;
-    pointReads.set(key, (pointReads.get(key) ?? 0) + 1);
-  }
+/** When run number `run` happens: `gapMs` after the one before it, or `catchUp.gapMs` at first. */
+const endTimeOf = (input: Simulation, run: number): number => {
+  const { gapMs = HOUR_MS, catchUp } = input;
+  const early = Math.min(run, catchUp?.runs ?? 0);
+
+  return START_MS + early * (catchUp?.gapMs ?? 0) + (run - early) * gapMs;
 };
 
 const simulate = async (input: Simulation): Promise<Outcome> => {
-  const { lane, scenario, runs, gapMs = HOUR_MS } = input;
+  const { lane, scenario, runs } = input;
   const importedAt = new Map<number, number>();
   let marks: WalkMarks = {
     cursor: START_MS,
@@ -207,6 +261,7 @@ const simulate = async (input: Simulation): Promise<Outcome> => {
       readsOfAPoint: 0,
       plannedPoints: [],
       pointsRead: [],
+      callsAfterForward: lane.reads,
     };
     const pointReads = new Map<string, number>();
     const plan = planWalkPasses({
@@ -215,12 +270,15 @@ const simulate = async (input: Simulation): Promise<Outcome> => {
       pointCursor: marks.pointCursor,
       pending: marks.pending,
       floorMs: FLOOR_MS,
-      endTime: START_MS + run * gapMs,
+      endTime: endTimeOf(input, run),
       windowMs: WINDOW_MS,
       overlapMs: DAY_MS,
       maxWindows: 80,
     });
     let reads = 0;
+    let pastForward = false;
+    const isPointWindow = (span: WalkWindow): boolean =>
+      plan.points.some((point) => sameWindow(point, span));
 
     record.plannedPoints = plan.points.map((point) => point.start);
 
@@ -235,8 +293,9 @@ const simulate = async (input: Simulation): Promise<Outcome> => {
           write: async () => undefined,
         }),
       runWindow: (window, pass, keep) => {
-        if (pass === 'pending' && isPoint(window)) {
-          record.pointsRead.push(window.start);
+        if (pass !== 'forward' && !pastForward) {
+          pastForward = true;
+          record.callsAfterForward = lane.reads - reads;
         }
 
         return walkSpans<SimRecord[]>({
@@ -249,9 +308,14 @@ const simulate = async (input: Simulation): Promise<Outcome> => {
 
             reads += 1;
             record.rescanReads += pass === 'rescan' ? 1 : 0;
-            countPointRead(pointReads, span);
 
-            return pageOf(input, span);
+            if (isPointWindow(span)) {
+              const key = `${span.start}:${span.end}`;
+              pointReads.set(key, (pointReads.get(key) ?? 0) + 1);
+              record.pointsRead.push(span.start);
+            }
+
+            return pageOf(input, span, isPointWindow(span));
           },
           commit: async (span, page) => {
             const committed = await commitSettledSpan({
@@ -271,12 +335,12 @@ const simulate = async (input: Simulation): Promise<Outcome> => {
 
                 return ids.length;
               },
-              advance: ({ owed, returnedRecords }) =>
+              advance: ({ owed, returned }) =>
                 advanceWalkMarks({
                   pass,
                   span,
                   owed,
-                  returnedRecords,
+                  returned,
                   plan,
                   marks: live,
                   restartMs: FLOOR_MS,
@@ -297,6 +361,7 @@ const simulate = async (input: Simulation): Promise<Outcome> => {
     marks = live;
     record.owed = live.pending;
     record.cursor = live.cursor;
+    record.callsAfterForward = pastForward ? record.callsAfterForward : lane.reads - reads;
     record.readsOfAPoint = Math.max(0, ...pointReads.values());
     records.push(record);
   }
@@ -319,10 +384,13 @@ type Bounds = {
   pointed: number;
   /** The points are read in a round-robin: see `roundRobinViolations`. */
   roundRobin?: boolean;
-  /** A stuck record is held by a range for a while (a point inside a merged range). */
-  rederived?: boolean;
   /** Each stuck record is held by exactly one point (it sits where two spans meet). */
   onePoint?: boolean;
+  /**
+   * No record is stuck and none holds any entry: from this run on the list is empty, and no
+   * point is in it in any run.
+   */
+  drained?: number;
 };
 
 /** The runs, from the first in which `held` is true, in which it stops being true. */
@@ -335,12 +403,15 @@ const lostAfterHeld = (runs: RunRecord[], held: (run: RunRecord) => boolean): nu
 };
 
 /**
- * Round-robin of the points. Every run that plans a point reads at least one (`reads` is the
- * least a run read), and with the points of the plan staying the same, each is read within
- * `ceil(points / reads)` runs of any run: the runs read the points one after the other from the
- * point cursor, wrapping around. The bound is derived from the reads, not sampled.
+ * Round-robin of the points. Every run whose forward pass leaves a call and that plans a point
+ * reads at least one (`reads` is the least such a run read; a read is counted once it started,
+ * whether or not its window finished), and with the points of the plan staying the same, each
+ * is read within `ceil(points / reads)` of those runs: the runs read the points one after the
+ * other from the point cursor, wrapping around. The bound is derived from the reads, not
+ * sampled. A run whose forward pass spent every call reads nothing, and is not one of them.
  */
-const roundRobinViolations = (runs: RunRecord[]): string[] => {
+const roundRobinViolations = (allRuns: RunRecord[]): string[] => {
+  const runs = allRuns.filter((run) => run.callsAfterForward > 0);
   const withPoints = runs.filter((run) => run.plannedPoints.length > 0);
   const reads = Math.min(...withPoints.map((run) => run.pointsRead.length));
   const points = Math.max(...runs.map((run) => run.plannedPoints.length));
@@ -353,7 +424,7 @@ const roundRobinViolations = (runs: RunRecord[]): string[] => {
   const unread = runs.slice(0, Math.max(0, runs.length - span + 1)).flatMap((run, index) =>
     run.plannedPoints.filter((start) => {
       const window = runs.slice(index, index + span);
-      const gone = !window.at(-1)?.owed.some((range) => isPoint(range) && range.start === start);
+      const gone = !window.at(-1)?.owed.some((ground) => ground.start === start);
 
       return !gone && !window.some((other) => other.pointsRead.includes(start));
     }),
@@ -380,43 +451,47 @@ const violationsOf = (outcome: Outcome, scenario: Scenario, bounds: Bounds): str
     .filter((entry) => entry.stuckUntil !== NEVER)
     .filter((entry) => (importedAt.get(entry.id) ?? NEVER) >= entry.stuckUntil + bounds.imported);
   const notPointed = stuck.filter(
-    (entry) =>
-      firstRun(runs, (run) =>
-        run.owed.some((range) => isPoint(range) && surelyHolds(range, entry.at)),
-      ) >= bounds.pointed,
+    (entry) => firstRun(runs, (run) => holdsPointOf(run.owed, entry)) >= bounds.pointed,
   );
   const dropped = stuck.flatMap((entry) => [
-    ...lostAfterHeld(runs, (run) => run.owed.some((range) => surelyHolds(range, entry.at))),
-    ...(bounds.rederived
-      ? []
-      : lostAfterHeld(runs, (run) =>
-          run.owed.some((range) => isPoint(range) && surelyHolds(range, entry.at)),
-        )),
+    ...lostAfterHeld(runs, (run) => run.owed.some((range) => surelyHolds(range, entry.at))).map(
+      (index) => `record ${entry.id} (at ${entry.at}) left every entry at run ${index}`,
+    ),
+    ...lostAfterHeld(runs, (run) => holdsPointOf(run.owed, entry)).map(
+      (index) => `record ${entry.id} (time ${entry.time}) lost its own point at run ${index}`,
+    ),
   ]);
-  const notRederived = bounds.rederived
-    ? stuck.filter(
-        (entry) =>
-          !runs.at(-1)?.owed.some((range) => isPoint(range) && surelyHolds(range, entry.at)),
-      )
-    : [];
   const manyPoints = bounds.onePoint
     ? stuck.filter((entry) =>
         runs.some(
-          (run) =>
-            run.owed.filter(
-              (range) => isPoint(range) && holds(range, entry.at, 'both ends included'),
-            ).length > 1,
+          (run) => run.owed.filter((ground) => sameWindow(ground, pointOf(entry))).length > 1,
         ),
       )
     : [];
   const passed = stuckInForward.filter((entry) =>
     runs.some((run) => run.cursor !== null && run.cursor > entry.time),
   );
-  const noRescanRead = runs.filter((run) => run.rescanReads === 0);
-  const noRescanCommit = runs.filter((run) => run.rescanCommits === 0);
+  const noRescanRead = runs.filter(
+    (run) => run.rescanReads === 0 && run.callsAfterForward >= RESCAN_AND_POINT_CALLS,
+  );
+  const noRescanCommit = runs.filter(
+    (run) => run.rescanCommits === 0 && run.callsAfterForward >= RESCAN_AND_POINT_CALLS,
+  );
   const overReads = runs.filter((run) => run.readsOfAPoint > 1);
+  const lingering =
+    foldMap(maybe(bounds.drained), (drained) =>
+      runs.flatMap((run, index) => (index >= drained && run.owed.length > 0 ? [index] : [])),
+    ) ?? [];
+  const phantoms =
+    foldMap(maybe(bounds.drained), () =>
+      runs.flatMap((run, index) => (run.owed.some((g) => g.kind === 'point') ? [index] : [])),
+    ) ?? [];
 
   return [
+    ...(lingering.length > 0
+      ? [`SL: entries no record holds are still in the list at runs ${lingering}`]
+      : []),
+    ...(phantoms.length > 0 ? [`SL: a point no record owes appeared at runs ${phantoms}`] : []),
     ...(late.length > 0
       ? [`P1: ${late.length} records imported later than ${bounds.imported} runs after placeable`]
       : []),
@@ -424,10 +499,7 @@ const violationsOf = (outcome: Outcome, scenario: Scenario, bounds: Bounds): str
       ? [`P2: ${notPointed.length} stuck records not owed as a point within ${bounds.pointed} runs`]
       : []),
     ...(dropped.length > 0
-      ? [`a stuck record left the list, or was merged out of its point, at runs ${dropped}`]
-      : []),
-    ...(notRederived.length > 0
-      ? [`${notRederived.length} stuck records not owed as a point again after their range`]
+      ? [`a stuck record left the list, or lost its own point: ${dropped.join('; ')}`]
       : []),
     ...(manyPoints.length > 0
       ? [`${manyPoints.length} stuck records on a boundary are held by more than one point`]
@@ -465,10 +537,15 @@ const builderOf = (lane: Lane, seed: number) => {
 
   /**
    * Where in its precision a record sits: on the first millisecond, on the last, or anywhere. A
-   * withdrawal on either edge of its second is the one a point that stops short would miss.
+   * withdrawal on either edge of its second is the one a point that stops short would miss. With
+   * a rounded time the record sits within half a second either side of `time`.
    */
-  const atOf = (id: number, time: number, precision: number): number =>
-    time + [0, precision - 1, Math.floor(random() * precision)][id % 3];
+  const atOf = (id: number, time: number, precision: number): number => {
+    const offsets = [0, precision - 1, Math.floor(random() * precision)];
+    const shift = lane.rounded === true && precision > 1 ? Math.floor(precision / 2) : 0;
+
+    return time + offsets[id % 3] - shift;
+  };
 
   /** A record at the time `millisecond` has for the lane, anywhere in its own precision. */
   const record = (millisecond: number, stuckUntil = 0): SimRecord => {
@@ -477,6 +554,28 @@ const builderOf = (lane: Lane, seed: number) => {
     const time = alignedTo(millisecond, precision);
 
     return { id: lastId, time, at: atOf(lastId, time, precision), precision, stuckUntil };
+  };
+
+  /** A record of the given precision (a deposit has one millisecond), at its own `time`. */
+  const typed = (precision: number, millisecond: number, stuckUntil = 0): SimRecord => {
+    lastId += 1;
+    const time = alignedTo(millisecond, precision);
+
+    return { id: lastId, time, at: atOf(lastId, time, precision), precision, stuckUntil };
+  };
+
+  /**
+   * A record that can be trusted, one step of the lane's precision before or after `stuck`, whose
+   * own time lies inside the point `stuck` owes, on its very edge: a read of that point returns it.
+   */
+  const neighbourOf = (stuck: SimRecord, side: 'before' | 'after'): SimRecord => {
+    lastId += 1;
+    const shift =
+      lane.rounded === true && stuck.precision > 1 ? Math.floor(stuck.precision / 2) : 0;
+    const time = stuck.time + (side === 'after' ? stuck.precision : -stuck.precision);
+    const at = side === 'after' ? time - shift : time + stuck.precision - 1 - shift;
+
+    return { id: lastId, time, at, precision: stuck.precision, stuckUntil: 0 };
   };
 
   /** A record at the very time of `other`: the same millisecond, or the same second. */
@@ -503,7 +602,7 @@ const builderOf = (lane: Lane, seed: number) => {
     return { start, end: start + 3 * HOUR_MS + Math.floor(random() * 21 * HOUR_MS) };
   };
 
-  return { record, twinOf, interiorOf, rangeAt };
+  return { record, typed, twinOf, neighbourOf, interiorOf, rangeAt };
 };
 
 /** An owed day far behind every other range, with two records that can be trusted in it. */
@@ -690,7 +789,7 @@ const beyondTwelveScenario = (lane: Lane, count: number): Scenario => {
 /**
  * Fourteen owed ranges, two of them a day apart, so those two are the nearest and merge into a
  * hull; a stuck record, already found as a point, lies between them: inside the hull. The point
- * is not read while the hull is owed, and the read of the hull owes it again.
+ * is never merged into the hull and never leaves with it: it stays as its record owes it.
  */
 const insideMergedRangeScenario = (lane: Lane, seed: number): Scenario => {
   const builder = builderOf(lane, seed);
@@ -746,6 +845,95 @@ const denseRescanPointsScenario = (lane: Lane, count: number): Scenario => {
 };
 
 /**
+ * `count` stuck records ten days apart, behind the window, each with a record that can be trusted
+ * a step before it and one a step after it, on the very edge of its point (and none at its own
+ * time). Read with `mismatch`, a read of a point returns those neighbours and never the stuck
+ * record. With `found`, the stuck records sit in an owed day each and the walk finds the points
+ * itself; otherwise their points are in the list already.
+ */
+const neighboursScenario = (lane: Lane, count: number, found: boolean): Scenario => {
+  const builder = builderOf(lane, 41);
+  const days = found ? Array.from({ length: count }, (_u, index) => builder.rangeAt(index)) : [];
+  const stuck = Array.from({ length: count }, (_unused, index) =>
+    builder.record(
+      found ? builder.interiorOf(days[index]) : BASE_MS + index * 10 * DAY_MS + HOUR_MS,
+      NEVER,
+    ),
+  );
+
+  return {
+    owed: found ? days : stuck.map(pointOf),
+    records: [
+      ...stuck,
+      ...stuck.flatMap((entry) => [
+        builder.neighbourOf(entry, 'before'),
+        builder.neighbourOf(entry, 'after'),
+      ]),
+    ],
+  };
+};
+
+/**
+ * Owed ranges that hold no record: one that starts 500 ms behind the start of the re-scan (what
+ * a long range leaves once the re-scan has taken the rest of it), and ranges of 1 ms up to 5 s,
+ * with lengths on either side of 1000 ms. A range is read once and leaves, whatever its length.
+ */
+const SLIVER_LENGTHS_MS = [1, 2, 3, 500, 1_000, 1_001, 1_002, 1_500, 2_000, 5_000];
+
+const sliversScenario = (): Scenario => {
+  const behindRescan = { start: START_MS - WINDOW_MS - 500, end: START_MS - WINDOW_MS + DAY_MS };
+  const slivers = SLIVER_LENGTHS_MS.map((length, index) => {
+    const start = BASE_MS + index * 10 * DAY_MS + 123_456;
+
+    return { start, end: start + length };
+  });
+
+  return { owed: [behindRescan, ...slivers], records: [] };
+};
+
+/**
+ * `count` stuck records found as points, ten days apart, behind the window; the newest becomes
+ * trustworthy once the walk has caught up (see `CATCH_UP_PLACEABLE_AT`), and is the one to
+ * import.
+ */
+const CATCH_UP_PLACEABLE_AT = 8;
+
+const catchUpScenario = (lane: Lane, count: number): Scenario => {
+  const builder = builderOf(lane, 47);
+  const stuck = Array.from({ length: count }, (_unused, index) =>
+    builder.record(
+      BASE_MS + index * 10 * DAY_MS + HOUR_MS,
+      index === count - 1 ? CATCH_UP_PLACEABLE_AT : NEVER,
+    ),
+  );
+
+  return { owed: stuck.map(pointOf), records: stuck };
+};
+
+/**
+ * `count` owed days that each hold two stuck records whose points start together: a withdrawal at
+ * a second, and a deposit 999 ms before it (the point of a deposit is 1 ms either side of its
+ * time, that of a withdrawal 1000 ms either side), beside a deposit that can be trusted at the
+ * very start of the withdrawal's second. With `found` the days are owed and the walk finds the
+ * points; otherwise both points are in the list already. Only a mixed lane has deposits.
+ */
+const sharedStartScenario = (lane: Lane, count: number, found: boolean): Scenario => {
+  const builder = builderOf(lane, 61);
+  const days = Array.from({ length: count }, (_unused, index) => builder.rangeAt(index));
+  const withdrawals = days.map((day) => builder.typed(SECOND_MS, builder.interiorOf(day), NEVER));
+  const deposits = withdrawals.map((entry) => builder.typed(1, entry.time - 999, NEVER));
+
+  return {
+    owed: found ? days : [...withdrawals, ...deposits].map(pointOf),
+    records: [
+      ...withdrawals,
+      ...deposits,
+      ...withdrawals.map((entry) => builder.typed(1, entry.time)),
+    ],
+  };
+};
+
+/**
  * The runs the properties allow, linear in the owed ranges: each is read once, oldest first, on
  * the reads a run has beside the forward pass and the two the re-scan and the points keep.
  * Measured worst cases over the scenarios below sit under these.
@@ -792,13 +980,19 @@ describe.each(LANES)('owed ground that never commits, $name lane', (lane) => {
     const seeds = reading === 'both ends included' ? SEEDS : SEEDS.slice(0, 1);
 
     const check = async (
-      input: Pick<Simulation, 'scenario' | 'gapMs' | 'dense'>,
+      input: Pick<Simulation, 'scenario' | 'gapMs' | 'dense' | 'mismatch' | 'catchUp'> & {
+        /** The reads of a run, when the scenario fixes them instead of the lane. */
+        reads?: number;
+      },
       bounds: Bounds,
       runs: number,
     ) => {
-      const outcome = await simulate({ lane, reading, runs, ...input });
+      const { reads = lane.reads, ...rest } = input;
+      const outcome = await simulate({ lane: { ...lane, reads }, reading, runs, ...rest });
 
       expect(violationsOf(outcome, input.scenario, bounds)).toEqual([]);
+
+      return outcome;
     };
 
     const rows = (counts: number[], rowSeeds = seeds) =>
@@ -973,11 +1167,11 @@ describe.each(LANES)('owed ground that never commits, $name lane', (lane) => {
     );
 
     it.each(seeds.map((seed) => ({ seed, bound: rangeRuns(lane, 14) + 6 })))(
-      'P1-P4: 14 owed days, two of them a day apart, and a stuck record found as a point between them, inside the hull they merge into (seed $seed): the read of the hull owes the point again, and every record is imported within $bound runs',
+      'P1-P4: 14 owed days, two of them a day apart, and a stuck record found as a point between them, inside the hull they merge into (seed $seed): the point is never merged into the hull nor dropped with it, and every record is imported within $bound runs',
       async ({ seed, bound }) => {
         await check(
           { scenario: insideMergedRangeScenario(lane, seed) },
-          { imported: bound, pointed: 1, rederived: true },
+          { imported: bound, pointed: 1 },
           bound + 5,
         );
       },
@@ -993,6 +1187,91 @@ describe.each(LANES)('owed ground that never commits, $name lane', (lane) => {
         );
       },
     );
+
+    it.each(
+      [1, 3, 12].flatMap((count) =>
+        [true, false].map((found) => ({
+          count,
+          found,
+          bound: found ? rangeRuns(lane, count + 1) : pointRuns(count, lane.reads - 2) + 1,
+        })),
+      ),
+    )(
+      'P1-P4 with Binance filtering on another field: $count stuck records (found in an owed day: $found) that a read of their point never returns, only the neighbours on its edges: every point stays as its record owes it, and the neighbours import within $bound runs',
+      async ({ count, found, bound }) => {
+        await check(
+          { scenario: neighboursScenario(lane, count, found), mismatch: true },
+          { imported: bound, pointed: found ? bound : 1 },
+          bound + 8,
+        );
+      },
+    );
+
+    it('SL: ranges of 1 ms to 5 s that hold no record, one 500 ms behind the start of the re-scan: each leaves once it is read, whatever its length, and no point appears', async () => {
+      const drained = rangeRuns(lane, SLIVER_LENGTHS_MS.length + 1) + 1;
+
+      await check(
+        { scenario: sliversScenario() },
+        { imported: drained, pointed: drained, drained },
+        drained + 4,
+      );
+    });
+
+    it.each([2, 3, 5].map((count) => ({ count })))(
+      'P5: $count points whose window comes back full, on a run with one call left for the points: the point cursor moves on once a read has started, so each is read within $count runs',
+      async ({ count }) => {
+        await check(
+          {
+            scenario: denseRescanPointsScenario(lane, count),
+            reads: LEAST_READS_WITH_A_POINT,
+            dense: {
+              range: { start: BASE_MS - DAY_MS, end: BASE_MS + 10 * count * DAY_MS },
+              spanMs: 1,
+            },
+          },
+          { imported: count, pointed: 1, roundRobin: true },
+          count + 4,
+        );
+      },
+    );
+
+    it.each([2, 5, 8].map((count) => ({ count, bound: pointRuns(count, lane.reads - 2) + 1 })))(
+      'P1-P5: the forward pass spends every call of the first runs catching up on a gap of 3000 days, so those runs read no point; the runs after them read the $count points in a round-robin, and the newest imports within $bound runs of becoming placeable',
+      async ({ count, bound }) => {
+        const outcome = await check(
+          {
+            scenario: catchUpScenario(lane, count),
+            catchUp: { runs: 1, gapMs: 3_000 * DAY_MS },
+          },
+          { imported: bound, pointed: 1, roundRobin: true },
+          CATCH_UP_PLACEABLE_AT + bound + count + 5,
+        );
+
+        expect(outcome.runs.some((run) => run.callsAfterForward === 0)).toBe(true);
+        expect(outcome.runs.at(-1)?.callsAfterForward).toBeGreaterThan(0);
+      },
+    );
+
+    if (lane.mixed === true) {
+      it.each(
+        [1, 3, 6].flatMap((count) =>
+          [true, false].map((found) => ({
+            count,
+            found,
+            bound: found ? rangeRuns(lane, count + 1) : pointRuns(count, lane.reads - 2) + 1,
+          })),
+        ),
+      )(
+        'P1-P5: $count withdrawals and a deposit 999 ms before each, whose points start together, beside a deposit that can be trusted at the start of the withdrawal second (found in an owed day: $found): both points stay, as their records owe them, and every other record imports within $bound runs',
+        async ({ count, found, bound }) => {
+          await check(
+            { scenario: sharedStartScenario(lane, count, found) },
+            { imported: bound, pointed: found ? bound : 1, roundRobin: true },
+            bound + 8,
+          );
+        },
+      );
+    }
 
     it('P4: a dense owed day that needs many reads leaves the re-scan a read and a commit every run of 30', async () => {
       const dense = dayAt(30);

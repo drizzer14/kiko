@@ -23,8 +23,8 @@ import {
   type PayHistoryPage,
 } from './binance.history-client';
 import { BinanceRateLimitError } from './binance.client';
-import type { WalkWindow } from './binance.history-walk';
 import { HISTORY_FLOOR_MS } from './binance.transactions';
+import type { OwedGround, WalkWindow } from './binance.history-walk';
 import { isBinanceCoolingDown, setBinanceCooldownUntil } from './binance.cooldown';
 import { costOn, NOW, OTHER, OWN, party, payOrder } from './binance.pay-test-fixtures';
 
@@ -1067,7 +1067,7 @@ describe('the pending overlap days of a walk', () => {
     payCursor: number | null;
     rescanCursor: number | null;
     pointCursor: number | null;
-    pending: WalkWindow[];
+    pending: OwedGround[];
     imported: Set<string>;
   };
 
@@ -1130,7 +1130,7 @@ describe('the pending overlap days of a walk', () => {
           state.pointCursor = cursorMs;
         }
       }),
-      writeWalkPending: jest.fn(async (_id: string, _field: string, ranges: WalkWindow[]) => {
+      writeWalkPending: jest.fn(async (_id: string, _field: string, ranges: OwedGround[]) => {
         state.pending = ranges;
       }),
       ...over,
@@ -1217,11 +1217,15 @@ describe('the pending overlap days of a walk', () => {
 
     expect(state.imported.has(keyOf(state, earlier))).toBe(true);
     expect(state.imported.has(keyOf(state, later))).toBe(true);
+    // The spans a read left whole are ranges, and two that touch are one range.
     expect(state.pending.length).toBeGreaterThan(0);
     expect(
       state.pending.every(
         (range) =>
-          range.end - range.start === 1 && range.start <= crowdedAt && crowdedAt <= range.end,
+          range.kind === undefined &&
+          range.end - range.start <= 2 &&
+          range.start <= crowdedAt &&
+          crowdedAt <= range.end,
       ),
     ).toBe(true);
     expect(result.complete).toBe(false);
@@ -1243,7 +1247,7 @@ describe('the pending overlap days of a walk', () => {
     expect(state.imported.has(keyOf(state, inWindow))).toBe(true);
     expect(state.imported.has(keyOf(state, stuck))).toBe(false);
     expect(state.pending).toEqual([
-      { start: stuck.transactionTime - 1, end: stuck.transactionTime + 1 },
+      { start: stuck.transactionTime - 1, end: stuck.transactionTime + 1, kind: 'point' },
     ]);
     expect(second.result.complete).toBe(false);
   });
@@ -1410,7 +1414,11 @@ describe('the pending overlap days of a walk', () => {
     const stuckAt = stuckDay.start + 3_600_000;
     const stuckOrder = () => order({ transactionId: '', transactionTime: stuckAt });
     const fixedOrder = () => order({ transactionId: 'fixed', transactionTime: stuckAt });
-    const pointAt = (time: number): WalkWindow => ({ start: time - 1, end: time + 1 });
+    const pointAt = (time: number): OwedGround => ({
+      start: time - 1,
+      end: time + 1,
+      kind: 'point',
+    });
     // The overlap day behind the cursor lies in the window the re-scan reads; only the ground
     // older than that window is the pending pass's.
     const beyondWindow = (ranges: WalkWindow[]): WalkWindow[] =>
@@ -1812,6 +1820,26 @@ describe('the pending overlap days of a walk', () => {
           '[binance sync] point cursor unreadable',
           { name: 'BinanceWalkStop', code: 'point-cursor-malformed' },
         ]);
+      });
+
+      it('repairs a stored cursor that is no number on the first run, which logs it once: the next run logs nothing', async () => {
+        const state = stateOf({
+          payCursor: CURSOR,
+          pending: points,
+          pointCursor: 'soon' as unknown as number,
+        });
+
+        const first = await runOver(state, stuckAtEach());
+        const written = (first.deps.writeWalkCursor as jest.Mock).mock.calls
+          .filter((call) => call[1] === POINT_FIELD)
+          .map((call) => call[2]);
+        await runOver(state, stuckAtEach());
+
+        expect(written[0]).toBe(Number.MIN_SAFE_INTEGER);
+        expect(typeof state.pointCursor).toBe('number');
+        expect(
+          warn.mock.calls.filter(([tag]) => tag === '[binance sync] point cursor unreadable'),
+        ).toHaveLength(1);
       });
     });
   });

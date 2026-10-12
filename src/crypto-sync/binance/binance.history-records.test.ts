@@ -4,7 +4,7 @@ import {
   joinSettled,
   settleRecords,
 } from './binance.history-records';
-import { BinanceWalkStop, type WalkWindow } from './binance.history-walk';
+import { BinanceWalkStop, type OwedGround, type WalkWindow } from './binance.history-walk';
 
 const SPAN = { start: 1_000, end: 5_000 };
 
@@ -32,6 +32,8 @@ const settle = (records: Entry[], extentOf: (record: Entry) => WalkWindow | unde
 
 const atTime = (record: Entry) => instantAt(record.time);
 
+const pointOf = (start: number, end: number): OwedGround => ({ start, end, kind: 'point' });
+
 describe('instantAt', () => {
   it('is the one millisecond of a time', () => {
     expect(instantAt(7)).toEqual({ start: 7, end: 7 });
@@ -48,21 +50,41 @@ describe('settleRecords', () => {
       rows: ['a', 'b'],
       codes: [],
       owed: [],
-      records: 2,
+      returned: [
+        { start: 1_999, end: 2_001 },
+        { start: 2_999, end: 3_001 },
+      ],
     });
   });
 
-  it('counts the records the read returned, the stuck ones too', () => {
-    expect(settle([entry('a', 2_000), entry('s', 3_000, true)], atTime).records).toBe(2);
-    expect(settle([], atTime).records).toBe(0);
+  it('gives the point of every record the read returned, the stuck ones too', () => {
+    expect(settle([entry('a', 2_000), entry('s', 3_000, true)], atTime).returned).toEqual([
+      { start: 1_999, end: 2_001 },
+      { start: 2_999, end: 3_001 },
+    ]);
+    expect(settle([], atTime).returned).toEqual([]);
+  });
+
+  it('gives no point for a record with no time, one outside the span or one with no finite extent', () => {
+    const records = [
+      entry('none', undefined),
+      entry('before', 10),
+      entry('after', 90_000),
+      entry('nan', Number.NaN),
+    ];
+
+    expect(settle(records, atTime).returned).toEqual([]);
   });
 
   it('owes only the point of a stuck record: its millisecond and one on each side', () => {
     expect(settle([entry('a', 2_000), entry('s', 3_000, true)], atTime)).toEqual({
       rows: ['a'],
       codes: ['stuck-s'],
-      owed: [{ start: 2_999, end: 3_001 }],
-      records: 2,
+      owed: [pointOf(2_999, 3_001)],
+      returned: [
+        { start: 1_999, end: 2_001 },
+        { start: 2_999, end: 3_001 },
+      ],
     });
   });
 
@@ -72,9 +94,7 @@ describe('settleRecords', () => {
   ])(
     'owes the same point, uncut, for a record on the %s millisecond of the span',
     (_label, time) => {
-      expect(settle([entry('s', time, true)], atTime).owed).toEqual([
-        { start: time - 1, end: time + 1 },
-      ]);
+      expect(settle([entry('s', time, true)], atTime).owed).toEqual([pointOf(time - 1, time + 1)]);
     },
   );
 
@@ -96,13 +116,13 @@ describe('settleRecords', () => {
   it('owes the whole extent of a record that has one, and one millisecond on each side', () => {
     const second = () => ({ start: 3_000, end: 3_999 });
 
-    expect(settle([entry('s', 3_000, true)], second).owed).toEqual([{ start: 2_999, end: 4_000 }]);
+    expect(settle([entry('s', 3_000, true)], second).owed).toEqual([pointOf(2_999, 4_000)]);
   });
 
   it('does not cut the point to the span', () => {
     const wide = () => ({ start: 500, end: 9_000 });
 
-    expect(settle([entry('s', 3_000, true)], wide).owed).toEqual([{ start: 499, end: 9_001 }]);
+    expect(settle([entry('s', 3_000, true)], wide).owed).toEqual([pointOf(499, 9_001)]);
   });
 
   it.each([
@@ -111,7 +131,7 @@ describe('settleRecords', () => {
     ['a time after the span', 90_000],
     ['a time that is no number', Number.NaN],
     ['a time that is not finite', Number.POSITIVE_INFINITY],
-  ])('owes the whole span for a stuck record with %s', (_label, time) => {
+  ])('owes the whole span, as a range, for a stuck record with %s', (_label, time) => {
     expect(settle([entry('s', time, true)], atTime).owed).toEqual([SPAN]);
   });
 
@@ -124,27 +144,27 @@ describe('settleRecords', () => {
   it('owes a point once for two stuck records at the same time', () => {
     const settled = settle([entry('s', 3_000, true), entry('t', 3_000, true)], atTime);
 
-    expect(settled.owed).toEqual([{ start: 2_999, end: 3_001 }]);
+    expect(settled.owed).toEqual([pointOf(2_999, 3_001)]);
     expect(settled.codes).toEqual(['stuck-s', 'stuck-t']);
   });
 
   it('owes two points for two stuck records one millisecond apart, and never merges them', () => {
     expect(settle([entry('s', 3_000, true), entry('t', 3_001, true)], atTime).owed).toEqual([
-      { start: 2_999, end: 3_001 },
-      { start: 3_000, end: 3_002 },
+      pointOf(2_999, 3_001),
+      pointOf(3_000, 3_002),
     ]);
   });
 
-  it('owes the whole span once when a record that has no time is stuck beside one that has', () => {
+  it('owes the whole span once, and the point of the record that has a time, side by side', () => {
     const settled = settle([entry('s', 3_000, true), entry('t', undefined, true)], atTime);
 
-    expect(settled.owed).toEqual([SPAN]);
+    expect(settled.owed).toEqual([pointOf(2_999, 3_001), SPAN]);
   });
 
   it('keeps a point that reaches past the span beside the whole span', () => {
     const settled = settle([entry('s', SPAN.start, true), entry('t', undefined, true)], atTime);
 
-    expect(settled.owed).toEqual([SPAN, { start: SPAN.start - 1, end: SPAN.start + 1 }]);
+    expect(settled.owed).toEqual([pointOf(SPAN.start - 1, SPAN.start + 1), SPAN]);
   });
 
   it("keeps a one-millisecond span's record as its own point, not as the span it sits in", () => {
@@ -158,7 +178,7 @@ describe('settleRecords', () => {
       extentOf: atTime,
     });
 
-    expect(settled.owed).toEqual([{ start: 3_000, end: 3_002 }]);
+    expect(settled.owed).toEqual([pointOf(3_000, 3_002)]);
   });
 
   it('rethrows a failure that is not a stop', () => {
@@ -177,28 +197,47 @@ describe('settleRecords', () => {
 
 describe('joinSettled', () => {
   it('is empty for no parts', () => {
-    expect(joinSettled(SPAN, [])).toEqual({ rows: [], codes: [], owed: [], records: 0 });
+    expect(joinSettled([])).toEqual({ rows: [], codes: [], owed: [], returned: [] });
   });
 
-  it('puts the rows, the codes and the record counts of the parts together', () => {
-    const joined = joinSettled(SPAN, [
-      { rows: [1], codes: ['a'], owed: [], records: 1 },
-      { rows: [2], codes: ['b'], owed: [], records: 3 },
+  it('puts the rows, the codes and the returned points of the parts together', () => {
+    const first = { start: 1, end: 3 };
+    const second = { start: 5, end: 7 };
+
+    const joined = joinSettled([
+      { rows: [1], codes: ['a'], owed: [], returned: [first] },
+      { rows: [2], codes: ['b'], owed: [], returned: [second] },
     ]);
 
-    expect(joined).toEqual({ rows: [1, 2], codes: ['a', 'b'], owed: [], records: 4 });
+    expect(joined).toEqual({
+      rows: [1, 2],
+      codes: ['a', 'b'],
+      owed: [],
+      returned: [first, second],
+    });
   });
 
-  it('owes a span that a part owes whole once, with the ground inside it gone and a point beside it kept', () => {
-    const inside = { start: 2_000, end: 2_002 };
-    const reaching = { start: SPAN.end - 1, end: SPAN.end + 1 };
+  it('owes the whole span and the points inside it as separate entries, a point never absorbed', () => {
+    const inside = pointOf(1_999, 2_001);
+    const reaching = pointOf(SPAN.end - 1, SPAN.end + 1);
 
-    const joined = joinSettled(SPAN, [
-      { rows: [], codes: ['page'], owed: [SPAN], records: 0 },
-      { rows: [], codes: ['one'], owed: [inside, reaching, reaching], records: 2 },
+    const joined = joinSettled([
+      { rows: [], codes: ['page'], owed: [SPAN], returned: [] },
+      { rows: [], codes: ['one'], owed: [inside, reaching, reaching], returned: [] },
     ]);
 
-    expect(joined.owed).toEqual([SPAN, reaching]);
+    expect(joined.owed).toEqual([SPAN, inside, reaching]);
+  });
+
+  it('keeps a range and a point of one window as two entries, and the same entry once', () => {
+    const window = { start: 3_000, end: 3_002 };
+
+    const joined = joinSettled([
+      { rows: [], codes: [], owed: [window, { ...window, kind: 'point' }], returned: [] },
+      { rows: [], codes: [], owed: [window], returned: [] },
+    ]);
+
+    expect(joined.owed).toEqual([window, { ...window, kind: 'point' }]);
   });
 });
 
@@ -210,9 +249,11 @@ describe('commitSettledSpan', () => {
 
     return rows.length;
   });
-  const advance = jest.fn(async ({ owed }: { owed: WalkWindow[]; returnedRecords: boolean }) => {
-    calls.push(`advance:${owed.length}`);
-  });
+  const advance = jest.fn(
+    async ({ owed }: { owed: OwedGround[]; returned: WalkWindow[] }): Promise<void> => {
+      calls.push(`advance:${owed.length}`);
+    },
+  );
 
   beforeEach(() => {
     warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
@@ -227,13 +268,18 @@ describe('commitSettledSpan', () => {
 
   const commit = (
     pass: 'forward' | 'pending' | 'rescan',
-    settled: { rows: string[]; codes: string[]; owed: WalkWindow[]; records?: number },
+    settled: {
+      rows: string[];
+      codes: string[];
+      owed: OwedGround[];
+      returned?: WalkWindow[];
+    },
     place: (planned: string[]) => Promise<string[]> = async (planned) => planned,
   ) =>
     commitSettledSpan({
       pass,
       span: SPAN,
-      settled: { records: 1, ...settled },
+      settled: { returned: [], ...settled },
       place,
       add,
       advance,
@@ -242,29 +288,32 @@ describe('commitSettledSpan', () => {
   it.each(['pending', 'rescan'] as const)(
     'writes the rows before it moves the marks, in the %s pass, and says what is owed',
     async (pass) => {
-      const owed = [{ start: 3_000, end: 3_001 }];
+      const owed = [pointOf(3_000, 3_001)];
+      const returned = [{ start: 3_000, end: 3_001 }];
 
-      const committed = await commit(pass, { rows: ['a', 'b'], codes: ['stuck'], owed });
+      const committed = await commit(pass, { rows: ['a', 'b'], codes: ['stuck'], owed, returned });
 
       expect(calls).toEqual(['add:a,b', 'advance:1']);
-      expect(advance).toHaveBeenCalledWith({ owed, returnedRecords: true });
+      expect(advance).toHaveBeenCalledWith({ owed, returned });
       expect(committed).toEqual({ imported: 2, owed: true });
     },
   );
 
   it('writes no rows when there are none, and still moves the marks', async () => {
-    const committed = await commit('rescan', { rows: [], codes: [], owed: [], records: 0 });
+    const committed = await commit('rescan', { rows: [], codes: [], owed: [] });
 
     expect(add).not.toHaveBeenCalled();
-    expect(advance).toHaveBeenCalledWith({ owed: [], returnedRecords: false });
+    expect(advance).toHaveBeenCalledWith({ owed: [], returned: [] });
     expect(committed).toEqual({ imported: 0, owed: false });
   });
 
-  it('says whether the read returned any record, so a point stays after a read that found none', async () => {
-    await commit('pending', { rows: [], codes: [], owed: [], records: 3 });
-    await commit('pending', { rows: [], codes: [], owed: [], records: 0 });
+  it('hands the points of the returned records on, so a point stays after a read that found none', async () => {
+    const found = { start: 2_999, end: 3_001 };
 
-    expect(advance.mock.calls.map(([result]) => result.returnedRecords)).toEqual([true, false]);
+    await commit('pending', { rows: [], codes: [], owed: [], returned: [found] });
+    await commit('pending', { rows: [], codes: [], owed: [] });
+
+    expect(advance.mock.calls.map(([result]) => result.returned)).toEqual([[found], []]);
   });
 
   it('logs each code once', async () => {
@@ -281,7 +330,7 @@ describe('commitSettledSpan', () => {
 
     const committed = await commit(
       'forward',
-      { rows: ['a'], codes: ['stuck'], owed: [{ start: 3_000, end: 3_001 }] },
+      { rows: ['a'], codes: ['stuck'], owed: [pointOf(3_000, 3_001)] },
       place,
     );
 
@@ -305,16 +354,19 @@ describe('commitSettledSpan', () => {
     };
 
     it.each(['pending', 'rescan'] as const)(
-      'writes no row and owes the whole span, in the %s pass',
+      'writes no row and owes the whole span beside the points of the stuck records, in the %s pass',
       async (pass) => {
+        const point = pointOf(3_000, 3_001);
+        const returned = [{ start: 3_000, end: 3_001 }];
+
         const committed = await commit(
           pass,
-          { rows: ['a'], codes: ['stuck'], owed: [{ start: 3_000, end: 3_001 }] },
+          { rows: ['a'], codes: ['stuck'], owed: [point], returned },
           unplaceable,
         );
 
         expect(add).not.toHaveBeenCalled();
-        expect(advance).toHaveBeenCalledWith({ owed: [SPAN], returnedRecords: true });
+        expect(advance).toHaveBeenCalledWith({ owed: [point, SPAN], returned });
         expect(committed).toEqual({ imported: 0, owed: true });
         expect(warn.mock.calls.map(([, detail]) => detail.code)).toEqual([
           'stuck',
@@ -322,6 +374,12 @@ describe('commitSettledSpan', () => {
         ]);
       },
     );
+
+    it('owes the span once when it is owed already', async () => {
+      await commit('pending', { rows: ['a'], codes: [], owed: [SPAN] }, unplaceable);
+
+      expect(advance).toHaveBeenCalledWith({ owed: [SPAN], returned: [] });
+    });
 
     it('stops the forward pass, writing nothing', async () => {
       const committed = await commit('forward', { rows: ['a'], codes: [], owed: [] }, unplaceable);
