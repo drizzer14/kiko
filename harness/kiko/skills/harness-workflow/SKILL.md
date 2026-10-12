@@ -70,11 +70,15 @@ Rules:
   and guard-rule jest suites run only in `make verify`.
 - Per-task deep gates: a per-file floor miss is fixed with tests only,
   never an exclusion.
-- Re-gate of named files across a big merge: copy the entries
-  `make mutable` prints (one `path:start-end` per changed-line range) into
-  `--mutate`, and never pass a plain path and a range for the same file
-  (Stryker reads that as "do not mutate"). Read the per-file floor (60)
-  from `reports/mutation/mutation.json`.
+- Re-gate of named files across a big merge: `make mutable` prints one
+  line per file. For `<path> a-b,c-d (N changed lines)` pass one `--mutate`
+  entry per range (`<path>:a-b`, `<path>:c-d`), never the comma list
+  (Stryker splits on the comma, so the later ranges are never mutated).
+  For `<path> whole file (N lines)` pass the plain path. Never pass a
+  plain path and a range for the same file (Stryker reads that as "do not
+  mutate"). The source of truth is the `entries` variable in
+  `scripts/checks/mutation.sh`. Read the per-file floor (60) from
+  `reports/mutation/mutation.json`.
 
 ## Run log
 
