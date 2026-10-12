@@ -135,7 +135,7 @@ describe('validateRule', () => {
     expect(validateRule([], [], null)).toEqual({ kind: 'noMatchers' });
   });
 
-  it('M23 refuses a window over midnight written as one rule, as a clash of times', () => {
+  it('refuses a window over midnight written as one rule, as a clash of times', () => {
     expect(validateRule([clockAfter(22), clockBefore(6)], [], null)).toEqual({
       kind: 'neverMatches',
       conflict: 'time',
@@ -161,7 +161,7 @@ describe('validateRule', () => {
     ).toEqual({ kind: 'neverMatches', conflict: 'time' });
   });
 
-  it('M23 accepts each half of that window as its own rule', () => {
+  it('accepts each half of that window as its own rule', () => {
     expect(validateRule([clockAfter(22)], [], null)).toEqual({ kind: 'valid' });
     expect(validateRule([clockBefore(6)], [], null)).toEqual({ kind: 'valid' });
   });

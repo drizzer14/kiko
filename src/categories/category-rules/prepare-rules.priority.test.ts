@@ -19,7 +19,7 @@ const winnerIdOf = (rows: readonly StoredCategoryRule[], description = 'Silpo') 
   winningRule(prepareRules(rows), silpoSubject(description))?.id;
 
 describe('rule priority', () => {
-  it('P1 two matchers beat one, though the rule with two is older', () => {
+  it('two matchers beat one, though the rule with two is older', () => {
     const rows = [
       ruleRow({ id: 'one', category: 'food', matchers: [nameIs('silpo')], updatedAt: 900 }),
       ruleRow({
@@ -51,7 +51,7 @@ describe('rule priority', () => {
     expect(winnerIdOf(rows)).toBe('three');
   });
 
-  it('P2 with equal matcher counts the later updatedAt wins', () => {
+  it('with equal matcher counts the later updatedAt wins', () => {
     const rows = [
       ruleRow({ id: 'older', category: 'food', matchers: [nameIs('silpo')], updatedAt: 100 }),
       ruleRow({ id: 'newer', category: 'shops', matchers: [nameIs('silpo')], updatedAt: 200 }),
@@ -61,7 +61,7 @@ describe('rule priority', () => {
     expect(winnerIdOf([...rows].reverse())).toBe('newer');
   });
 
-  it('P2 updatedAt outranks createdAt when the two disagree', () => {
+  it('updatedAt outranks createdAt when the two disagree', () => {
     const rows = [
       ruleRow({
         id: 'created-later',
@@ -111,7 +111,7 @@ describe('rule priority', () => {
     expect(winnerIdOf(rows)).toBe('two-prefixes');
   });
 
-  it('P3 with equal updatedAt the later createdAt wins', () => {
+  it('with equal updatedAt the later createdAt wins', () => {
     const rows = [
       ruleRow({
         id: 'first',
@@ -133,7 +133,7 @@ describe('rule priority', () => {
     expect(winnerIdOf([...rows].reverse())).toBe('first');
   });
 
-  it('P4 with every timestamp equal the larger id string wins', () => {
+  it('with every timestamp equal the larger id string wins', () => {
     const rows = [
       ruleRow({ id: 'rule-a', category: 'food', matchers: [nameIs('silpo')] }),
       ruleRow({ id: 'rule-b', category: 'shops', matchers: [nameIs('silpo')] }),

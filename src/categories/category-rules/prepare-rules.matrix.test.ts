@@ -49,20 +49,20 @@ const directionRule = (direction: RuleDirection): CategoryRuleMatcher => ({
 
 describe('amount matcher', () => {
   it.each([
-    ['M1 eq matches an expense of the same size', 'eq', 500, -500, true],
-    ['M2 eq matches an income of the same size (absolute)', 'eq', 500, 500, true],
-    ['M4 eq refuses one minor unit more', 'eq', 500, -500.01, false],
-    ['M4 eq refuses one minor unit less', 'eq', 500, -499.99, false],
-    ['M5 gt refuses the boundary', 'gt', 500, -500, false],
-    ['M5 gt accepts one minor unit above', 'gt', 500, -500.01, true],
-    ['M6 gte accepts the boundary', 'gte', 500, -500, true],
-    ['M6 gte refuses one minor unit below', 'gte', 500, -499.99, false],
-    ['M7 lt refuses the boundary', 'lt', 500, -500, false],
-    ['M7 lt accepts one minor unit below', 'lt', 500, -499.99, true],
-    ['M8 lte accepts the boundary', 'lte', 500, -500, true],
-    ['M8 lte refuses one minor unit above', 'lte', 500, -500.01, false],
-    ['M9 eq 0 matches a zero amount', 'eq', 0, 0, true],
-    ['M10 lt 500 matches a zero amount', 'lt', 500, 0, true],
+    ['eq matches an expense of the same size', 'eq', 500, -500, true],
+    ['eq matches an income of the same size (absolute)', 'eq', 500, 500, true],
+    ['eq refuses one minor unit more', 'eq', 500, -500.01, false],
+    ['eq refuses one minor unit less', 'eq', 500, -499.99, false],
+    ['gt refuses the boundary', 'gt', 500, -500, false],
+    ['gt accepts one minor unit above', 'gt', 500, -500.01, true],
+    ['gte accepts the boundary', 'gte', 500, -500, true],
+    ['gte refuses one minor unit below', 'gte', 500, -499.99, false],
+    ['lt refuses the boundary', 'lt', 500, -500, false],
+    ['lt accepts one minor unit below', 'lt', 500, -499.99, true],
+    ['lte accepts the boundary', 'lte', 500, -500, true],
+    ['lte refuses one minor unit above', 'lte', 500, -500.01, false],
+    ['eq 0 matches a zero amount', 'eq', 0, 0, true],
+    ['lt 500 matches a zero amount', 'lt', 500, 0, true],
     ['gt compares the absolute size of an income', 'gt', 500, 500.01, true],
     ['lt compares the absolute size of an income', 'lt', 500, 499.99, true],
     ['lt refuses a larger income', 'lt', 500, 600, false],
@@ -70,11 +70,11 @@ describe('amount matcher', () => {
     expect(matches([amountRule(operator, ruleMajor)], storedSubject(amountMajor))).toBe(expected);
   });
 
-  it('M3 never matches another currency of the same number', () => {
+  it('never matches another currency of the same number', () => {
     expect(matches([amountRule('eq', 500)], storedSubject(-500, 'USD'))).toBe(false);
   });
 
-  it('M15 reads a BTC rule in satoshi', () => {
+  it('reads a BTC rule in satoshi', () => {
     const satoshi = 100_000;
 
     expect(
@@ -90,30 +90,30 @@ describe('amount matcher', () => {
     ).toBe(true);
   });
 
-  it('M15 scales the BTC fixture to 100 000 sats', () => {
+  it('scales the BTC fixture to 100 000 sats', () => {
     expect(minorUnitsOf(0.001, 'BTC')).toBe(100_000);
   });
 });
 
 describe('direction matcher', () => {
   it.each([
-    ['M11 expense refuses a zero amount', 'expense', 0, false],
-    ['M11 income refuses a zero amount', 'income', 0, false],
-    ['M12 expense matches a negative amount', 'expense', -1, true],
-    ['M12 expense refuses a positive amount', 'expense', 1, false],
+    ['expense refuses a zero amount', 'expense', 0, false],
+    ['income refuses a zero amount', 'income', 0, false],
+    ['expense matches a negative amount', 'expense', -1, true],
+    ['expense refuses a positive amount', 'expense', 1, false],
     ['income matches a positive amount', 'income', 1, true],
     ['income refuses a negative amount', 'income', -1, false],
   ] as const)('%s', (_label, direction, amountMajor, expected) => {
     expect(matches([directionRule(direction)], storedSubject(amountMajor))).toBe(expected);
   });
 
-  it('M13 income with amount >= 1000 matches a +1000.00 row', () => {
+  it('income with amount >= 1000 matches a +1000.00 row', () => {
     expect(matches([directionRule('income'), amountRule('gte', 1000)], storedSubject(1000))).toBe(
       true,
     );
   });
 
-  it('M14 expense with amount >= 1000 refuses a +1000.00 row (sign against direction)', () => {
+  it('expense with amount >= 1000 refuses a +1000.00 row (sign against direction)', () => {
     expect(matches([directionRule('expense'), amountRule('gte', 1000)], storedSubject(1000))).toBe(
       false,
     );
@@ -140,13 +140,13 @@ describe('draft subjects', () => {
     });
 
   it.each(['eq', 'gt', 'gte', 'lt', 'lte'] as const)(
-    'M16 an amount %s rule refuses a draft without a holding (no currency)',
+    'an amount %s rule refuses a draft without a holding (no currency)',
     (operator) => {
       expect(matches([amountRule(operator, 500)], draft({ currency: null }))).toBe(false);
     },
   );
 
-  it('M17 a name rule matches a draft without a holding', () => {
+  it('a name rule matches a draft without a holding', () => {
     expect(
       matches(
         [{ type: 'nameIs', text: 'Silpo' }],
@@ -156,13 +156,13 @@ describe('draft subjects', () => {
   });
 
   it.each(['eq', 'gt', 'gte', 'lt', 'lte'] as const)(
-    'M18 an amount %s rule refuses a draft with a blank amount',
+    'an amount %s rule refuses a draft with a blank amount',
     (operator) => {
       expect(matches([amountRule(operator, 500)], draft({ absoluteMinorUnits: null }))).toBe(false);
     },
   );
 
-  it('M19 a direction rule matches a draft in that mode with a blank amount', () => {
+  it('a direction rule matches a draft in that mode with a blank amount', () => {
     expect(
       matches(
         [directionRule('expense')],
@@ -195,10 +195,10 @@ describe('time matcher', () => {
     storedSubject(-10, 'UAH', 'Silpo', at(2026, 5, 1, hour, minute));
 
   it.each([
-    ['M20 before 09:00 matches 08:59', timeBefore(9, 0), 8, 59, true],
-    ['M20 before 09:00 refuses 09:00', timeBefore(9, 0), 9, 0, false],
-    ['M21 after 18:00 refuses 17:59', timeAfter(18, 0), 17, 59, false],
-    ['M21 after 18:00 matches 18:00', timeAfter(18, 0), 18, 0, true],
+    ['before 09:00 matches 08:59', timeBefore(9, 0), 8, 59, true],
+    ['before 09:00 refuses 09:00', timeBefore(9, 0), 9, 0, false],
+    ['after 18:00 refuses 17:59', timeAfter(18, 0), 17, 59, false],
+    ['after 18:00 matches 18:00', timeAfter(18, 0), 18, 0, true],
     ['before 00:01 matches 00:00', timeBefore(0, 1), 0, 0, true],
     ['after 23:59 matches 23:59', timeAfter(23, 59), 23, 59, true],
   ])('%s', (_label, matcher, hour, minute, expected) => {
@@ -208,7 +208,7 @@ describe('time matcher', () => {
   it.each([
     ['the fall-back day', at(2026, 9, 25, 18, 30)],
     ['the spring-forward day', at(2027, 2, 28, 18, 30)],
-  ])('M22 after 18:00 matches 18:30 on %s', (_label, time) => {
+  ])('after 18:00 matches 18:30 on %s', (_label, time) => {
     expect(matches([timeAfter(18, 0)], storedSubject(-10, 'UAH', 'Silpo', time))).toBe(true);
   });
 });
@@ -232,22 +232,17 @@ describe('name matchers', () => {
   const named = (description: string | null) => storedSubject(-10, 'UAH', description);
 
   it.each([
-    ['M24 surrounding spaces and case', nameIs('silpo'), '  SILPO  ', true],
-    ['M24 Cyrillic case', nameIs('СІЛЬПО'), 'Сільпо', true],
-    ['M24 inner whitespace runs', nameIs('silpo market'), 'Silpo   Market', true],
-    ['M24b a decomposed description against a composed rule', nameIs('Café'), 'Café', true],
-    ['M24b a composed description against a decomposed rule', nameIs('Café'), 'Café', true],
+    ['surrounding spaces and case', nameIs('silpo'), '  SILPO  ', true],
+    ['Cyrillic case', nameIs('СІЛЬПО'), 'Сільпо', true],
+    ['inner whitespace runs', nameIs('silpo market'), 'Silpo   Market', true],
+    ['a decomposed description against a composed rule', nameIs('Café'), 'Café', true],
+    ['a composed description against a decomposed rule', nameIs('Café'), 'Café', true],
     ['nameIs refuses a longer name', nameIs('silpo'), 'Silpo Market', false],
-    ['M25 starts with matches a longer name', startsWith('silpo'), 'Silpo Market 12', true],
-    [
-      'M25 starts with refuses a name that only contains it',
-      startsWith('silpo'),
-      'Mega Silpo',
-      false,
-    ],
+    ['starts with matches a longer name', startsWith('silpo'), 'Silpo Market 12', true],
+    ['starts with refuses a name that only contains it', startsWith('silpo'), 'Mega Silpo', false],
     ['starts with matches the exact name', startsWith('silpo'), 'SILPO', true],
-    ['M26 nameIs refuses a blank description', nameIs('x'), '', false],
-    ['M26 nameIs refuses a null description', nameIs('x'), null, false],
+    ['nameIs refuses a blank description', nameIs('x'), '', false],
+    ['nameIs refuses a null description', nameIs('x'), null, false],
     ['starts with refuses a blank description', startsWith('x'), '   ', false],
   ])('%s', (_label, matcher, description, expected) => {
     expect(matches([matcher], named(description))).toBe(expected);

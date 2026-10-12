@@ -7,7 +7,7 @@ import type {
 
 // Each list is built from a Record keyed by its union, so a new member in the types is a compile
 // error here instead of a value the guard or the editor silently misses.
-const optionsOf = <Option extends string>(flags: Record<Option, true>): Option[] =>
+const optionsOf = <Option extends string>(flags: Record<Option, true>): readonly Option[] =>
   Object.keys(flags) as Option[];
 
 export const MATCHER_TYPES = optionsOf<CategoryRuleMatcher['type']>({

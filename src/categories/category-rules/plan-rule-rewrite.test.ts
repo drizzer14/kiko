@@ -75,7 +75,7 @@ describe('REWRITE_GUARD_FIELDS', () => {
 });
 
 describe('planRuleRewrite', () => {
-  it('P10 leaves a flagged row alone', () => {
+  it('leaves a flagged row alone', () => {
     const plan = planRuleRewrite(prepareRules([savedFood]), 'saved', [
       candidate({ id: 'flagged', categorySetByHand: true }),
     ]);
@@ -83,7 +83,7 @@ describe('planRuleRewrite', () => {
     expect(plan).toEqual([]);
   });
 
-  it('P11 plans a row the saved rule wins when its category differs', () => {
+  it('plans a row the saved rule wins when its category differs', () => {
     const plan = planRuleRewrite(prepareRules([savedFood]), 'saved', [
       candidate({ id: 'differs', category: 'groceries' }),
       candidate({ id: 'uncategorized', category: null }),
@@ -92,7 +92,7 @@ describe('planRuleRewrite', () => {
     expect(plan).toEqual(['differs', 'uncategorized']);
   });
 
-  it('P12 skips a row that already has the saved rule category', () => {
+  it('skips a row that already has the saved rule category', () => {
     const plan = planRuleRewrite(prepareRules([savedFood]), 'saved', [
       candidate({ id: 'same', category: 'food' }),
     ]);
@@ -108,7 +108,7 @@ describe('planRuleRewrite', () => {
     expect(plan).toEqual([]);
   });
 
-  it('P13 skips a row a stronger rule wins', () => {
+  it('skips a row a stronger rule wins', () => {
     const stronger = ruleRow({
       id: 'stronger',
       category: 'shops',
@@ -120,7 +120,7 @@ describe('planRuleRewrite', () => {
     expect(planRuleRewrite(prepared, 'stronger', [candidate()])).toEqual(['row-1']);
   });
 
-  it('P13 skips a row a newer rule of equal strength wins', () => {
+  it('skips a row a newer rule of equal strength wins', () => {
     const newer = ruleRow({
       id: 'newer',
       category: 'shops',
@@ -131,7 +131,7 @@ describe('planRuleRewrite', () => {
     expect(planRuleRewrite(prepareRules([savedFood, newer]), 'saved', [candidate()])).toEqual([]);
   });
 
-  it('P14 does not plan a row the narrowed rule no longer matches', () => {
+  it('does not plan a row the narrowed rule no longer matches', () => {
     const narrowed = ruleRow({
       id: 'saved',
       category: 'food',
@@ -150,7 +150,7 @@ describe('planRuleRewrite', () => {
     expect(plan).toEqual(['still-matches']);
   });
 
-  it('P15 returns nothing when the saved rule is absent', () => {
+  it('returns nothing when the saved rule is absent', () => {
     const plan = planRuleRewrite(prepareRules([savedFood]), 'deleted', [candidate()]);
 
     expect(plan).toEqual([]);
@@ -167,7 +167,7 @@ describe('planRuleRewrite', () => {
     ['an exchange counterpart holding', { exchangeCounterpartHoldingId: 'holding-2' }],
     ['a balance-setting row', { setsBalance: true }],
     ['a split-change row', { changeGroupId: 'group-1' }],
-  ])('P21 skips %s', (_label, overrides) => {
+  ])('skips %s', (_label, overrides) => {
     const plan = planRuleRewrite(prepareRules([savedFood]), 'saved', [candidate(overrides)]);
 
     expect(plan).toEqual([]);
