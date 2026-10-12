@@ -25,10 +25,17 @@ const freshProject = (): { temporaryDirectory: string; root: string } => {
   return { temporaryDirectory, root };
 };
 
-const reportOf = (statuses: string[], scope: string[] = ['src/changed.ts']): string =>
+const reportOf = (statuses: string[], scope: string[] = ['src/changed.ts:1-1']): string =>
   JSON.stringify({
     config: { mutate: scope },
-    files: { 'src/changed.ts': { mutants: statuses.map((status) => ({ status })) } },
+    files: {
+      'src/changed.ts': {
+        mutants: statuses.map((status) => ({
+          status,
+          location: { start: { line: 1, column: 1 }, end: { line: 1, column: 2 } },
+        })),
+      },
+    },
   });
 
 const stubWritingReport = (report: string): string =>
