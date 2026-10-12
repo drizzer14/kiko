@@ -10,13 +10,18 @@ import {
   chunkRows,
   IN_CLAUSE_CHUNK_SIZE,
 } from '@kiko/db';
+import { guard } from 'fnts';
 import {
   type CategoryRuleMatcher,
   type PreparedRule,
   matcherSetKey,
   matchesRule,
+  parseRuleMatchers,
   planRuleRewrite,
   prepareRules,
+  subjectOfStoredRow,
+  validateRule,
+  winningRule,
 } from '@kiko/categories/category-rules';
 import { and, asc, eq, gt, inArray, sql } from 'drizzle-orm';
 import { normalizeTransactionName } from '@kiko/transactions/normalize-name';
@@ -70,6 +75,61 @@ export const rewritePageQuery = (databaseTransaction: typeof database, afterId: 
     .where(gt(transactions.id, afterId))
     .orderBy(asc(transactions.id))
     .limit(REWRITE_PAGE_SIZE);
+
+// A rule as the editor holds it: no id yet for a new rule.
+type RuleDraft = {
+  id: string | null;
+  category: string;
+  matchers: readonly CategoryRuleMatcher[];
+};
+
+// A rule saved again exactly as it is stored has nothing to write and nothing to rewrite, so
+// neither the count nor the save looks at the ledger for it.
+const isStoredAsGiven = (stored: CategoryRuleRow | undefined, draft: RuleDraft): boolean =>
+  stored !== undefined &&
+  stored.category === draft.category &&
+  JSON.stringify(parseRuleMatchers(stored.matchers)) === JSON.stringify(draft.matchers);
+
+// The row the draft becomes: a new rule is created now, an edited one keeps its creation time, and
+// either way it is the newest of its strength, which is what decides a tie.
+const rowOfDraft = (
+  stored: CategoryRuleRow | undefined,
+  draft: RuleDraft,
+  now: number,
+): CategoryRuleRow => ({
+  id: stored?.id ?? draft.id ?? id(),
+  category: draft.category,
+  matchers: JSON.stringify(draft.matchers),
+  createdAt: stored?.createdAt ?? now,
+  updatedAt: now,
+});
+
+const withRow = (rows: readonly CategoryRuleRow[], row: CategoryRuleRow): CategoryRuleRow[] => [
+  ...rows.filter((existing) => existing.id !== row.id),
+  row,
+];
+
+// Why a rule may not be saved, or undefined when it may. A rule that could not be read back (a
+// blank name, a negative amount) would be stored but never match, so it is refused too.
+const refusalOf = (draft: RuleDraft, otherRules: readonly PreparedRule[]): string | undefined => {
+  const validation = validateRule(draft.matchers, otherRules, draft.id);
+
+  if (validation.kind !== 'valid') {
+    return validation.kind;
+  }
+
+  return parseRuleMatchers(JSON.stringify(draft.matchers)) === null ? 'unreadable' : undefined;
+};
+
+const assertSavable = guard(
+  [
+    (refusal: string | undefined) => refusal !== undefined,
+    (refusal: string | undefined): never => {
+      throw new Error(`categoryRulesRepo.saveRule: ${refusal}`);
+    },
+  ],
+  (_refusal: string | undefined): void => undefined,
+);
 
 type PreparedRules = ReturnType<typeof prepareRules>;
 
@@ -134,31 +194,39 @@ const rowIdsForUnnamedRule = async (
   return rowIds;
 };
 
-/**
- * Writes the saved rule's category onto every row that rule wins today, on the caller's own
- * transaction, and returns how many rows changed. Rows are planned from the rows as they stand
- * inside the write, so the count is exact even when a sync landed after the user saw a number.
- * It never reverts a row: a row the rule does not win keeps the category it has.
- */
-export const rewriteForRuleDatabaseTransaction = async (
+// The rows a rule would change, from the rules as they are given: the count in the confirm sheet
+// and the write behind "Apply to existing" both ask this one question, so the number promised is
+// the number written whenever the ledger has not moved between them.
+const rowIdsRewrittenBy = async (
   databaseTransaction: typeof database,
+  prepared: PreparedRules,
+  savedRuleId: string,
+): Promise<string[]> => {
+  const savedRule = prepared.ordered.find((rule) => rule.id === savedRuleId);
+
+  if (savedRule === undefined) {
+    return [];
+  }
+
+  const nameMatchers = savedRule.matchers.filter(isNameMatcher);
+
+  return nameMatchers.length > 0
+    ? rowIdsForNamedRule(databaseTransaction, prepared, { ...savedRule, matchers: nameMatchers })
+    : rowIdsForUnnamedRule(databaseTransaction, prepared, savedRuleId);
+};
+
+const rewriteWithPreparedRules = async (
+  databaseTransaction: typeof database,
+  prepared: PreparedRules,
   savedRuleId: string,
 ): Promise<number> => {
-  const prepared = prepareRules(await readAllRulesDatabaseTransaction(databaseTransaction));
   const savedRule = prepared.ordered.find((rule) => rule.id === savedRuleId);
 
   if (savedRule === undefined) {
     return 0;
   }
 
-  const nameMatchers = savedRule.matchers.filter(isNameMatcher);
-  const rowIds =
-    nameMatchers.length > 0
-      ? await rowIdsForNamedRule(databaseTransaction, prepared, {
-          ...savedRule,
-          matchers: nameMatchers,
-        })
-      : await rowIdsForUnnamedRule(databaseTransaction, prepared, savedRuleId);
+  const rowIds = await rowIdsRewrittenBy(databaseTransaction, prepared, savedRuleId);
 
   for (const rowIdChunk of chunkRows(rowIds, IN_CLAUSE_CHUNK_SIZE)) {
     await databaseTransaction
@@ -170,26 +238,60 @@ export const rewriteForRuleDatabaseTransaction = async (
   return rowIds.length;
 };
 
+/**
+ * Writes the saved rule's category onto every row that rule wins today, on the caller's own
+ * transaction, and returns how many rows changed. Rows are planned from the rows as they stand
+ * inside the write, so the count is exact even when a sync landed after the user saw a number.
+ * It never reverts a row: a row the rule does not win keeps the category it has.
+ */
+export const rewriteForRuleDatabaseTransaction = async (
+  databaseTransaction: typeof database,
+  savedRuleId: string,
+): Promise<number> =>
+  rewriteWithPreparedRules(
+    databaseTransaction,
+    prepareRules(await readAllRulesDatabaseTransaction(databaseTransaction)),
+    savedRuleId,
+  );
+
 // The row the user is editing always ends in the category they picked, whatever kind of row it is:
 // the rewrite never touches an exchange leg, a balance-setting row or a split-change row, so the
-// category cannot arrive through it. Returns 1 when the category changed, because the rewrite
-// skips a row that already holds the picked category and would not count this one.
+// category cannot arrive through it. The row follows the new rule (by-hand mark cleared), unless a
+// stronger rule of another category still wins it: then the mark is set, so the pick stays and a
+// later rewrite of that stronger rule cannot take it back. Returns 1 when the category changed,
+// because the rewrite skips a row that already holds the picked category and would not count it.
 const giveSourceRowCategory = async (
   databaseTransaction: typeof database,
+  prepared: PreparedRules,
   sourceTransactionId: string,
-  category: string,
+  savedRule: { id: string; category: string },
 ): Promise<number> => {
   const [source] = await databaseTransaction
-    .select({ category: transactions.category })
+    .select({
+      category: transactions.category,
+      description: transactions.description,
+      amountMinorUnits: transactions.amountMinorUnits,
+      time: transactions.time,
+      currency: holdings.currency,
+    })
     .from(transactions)
+    .innerJoin(holdings, eq(holdings.id, transactions.holdingId))
     .where(eq(transactions.id, sourceTransactionId));
+
+  if (source === undefined) {
+    return 0;
+  }
+
+  const winner = winningRule(prepared, subjectOfStoredRow(source));
+  const isOutRanked =
+    winner !== undefined && winner.id !== savedRule.id && winner.category !== savedRule.category;
 
   await databaseTransaction
     .update(transactions)
-    .set({ category, categorySetByHand: false })
+    .set({ category: savedRule.category, categorySetByHand: isOutRanked })
     .where(eq(transactions.id, sourceTransactionId));
 
-  return source !== undefined && source.category !== category ? 1 : 0;
+  return source.category !== savedRule.category ? 1 : 0;
 };
 
 export const categoryRulesRepo = {
@@ -216,6 +318,64 @@ export const categoryRulesRepo = {
     write((databaseTransaction) =>
       databaseTransaction.delete(categoryRules).where(eq(categoryRules.id, ruleId)),
     ),
+  /**
+   * How many rows saving this rule with "Apply to existing" would change, judged over every rule
+   * with the draft in place of its stored self (or added, for a new rule) and ranked as the newest
+   * of its strength. Reads only. A rule that is saved again as it is stored changes nothing, so
+   * it counts none.
+   */
+  countRuleRewrite: async (draft: RuleDraft): Promise<number> => {
+    const rows = await readAllRulesDatabaseTransaction(database);
+    const stored = rows.find((row) => row.id === draft.id);
+
+    if (isStoredAsGiven(stored, draft)) {
+      return 0;
+    }
+
+    const row = rowOfDraft(stored, draft, Date.now());
+
+    return (await rowIdsRewrittenBy(database, prepareRules(withRow(rows, row)), row.id)).length;
+  },
+  /**
+   * Saves the rule and, when asked, rewrites every existing row it wins, all in ONE write, so the
+   * rule and the ledger cannot disagree and the rewrite is planned on the rows as they stand
+   * inside the write. A rule that fails the editor's validation, or could not be read back, is
+   * refused by throwing before anything is written, so a bad rule never lands whatever the
+   * caller did. A rule saved as it is stored writes nothing. `changed` is the number of rows whose
+   * category moved.
+   */
+  saveRule: (input: RuleDraft & { applyToExisting: boolean }) =>
+    write(async (databaseTransaction): Promise<{ id: string; changed: number }> => {
+      const rows = await readAllRulesDatabaseTransaction(databaseTransaction);
+
+      assertSavable(refusalOf(input, prepareRules(rows).ordered));
+
+      const stored = rows.find((row) => row.id === input.id);
+      const row = rowOfDraft(stored, input, Date.now());
+
+      if (isStoredAsGiven(stored, input)) {
+        return { id: row.id, changed: 0 };
+      }
+
+      if (stored === undefined) {
+        await databaseTransaction.insert(categoryRules).values(row);
+      } else {
+        await databaseTransaction
+          .update(categoryRules)
+          .set({ category: row.category, matchers: row.matchers, updatedAt: row.updatedAt })
+          .where(eq(categoryRules.id, row.id));
+      }
+
+      const changed = input.applyToExisting
+        ? await rewriteWithPreparedRules(
+            databaseTransaction,
+            prepareRules(withRow(rows, row)),
+            row.id,
+          )
+        : 0;
+
+      return { id: row.id, changed };
+    }),
   /**
    * Makes `name` -> `category` a rule and rewrites every existing row that rule wins, all in ONE
    * write so a partial failure can never leave the rule and the ledger disagreeing. A rule that
@@ -257,17 +417,22 @@ export const categoryRulesRepo = {
           .where(eq(categoryRules.id, savedRuleId));
       }
 
+      const savedRules = prepareRules(await readAllRulesDatabaseTransaction(databaseTransaction));
       const sourceMoved =
         input.sourceTransactionId === null
           ? 0
           : await giveSourceRowCategory(
               databaseTransaction,
+              savedRules,
               input.sourceTransactionId,
-              input.category,
+              {
+                id: savedRuleId,
+                category: input.category,
+              },
             );
 
       return (
-        sourceMoved + (await rewriteForRuleDatabaseTransaction(databaseTransaction, savedRuleId))
+        sourceMoved + (await rewriteWithPreparedRules(databaseTransaction, savedRules, savedRuleId))
       );
     }),
 } satisfies Repository;
