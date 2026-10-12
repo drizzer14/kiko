@@ -72,7 +72,7 @@ compares the SET of entries with `config.mutate`, and the scorer exits 2 when on
 both as a plain path and as a range (Stryker reads that as "do not mutate"). A comment-only file
 kept because its colocated test changed goes in as its plain path (whole file). A kept path with
 `[ ( * ? {` is refused after the lock in a run, with no lock in `--list`, always before Stryker.
-The diff uses `--find-renames --inter-hunk-context=0`.
+The diff uses `--find-renames --inter-hunk-context=0 --text --no-textconv`, so a user's diff attributes or textconv driver cannot change the hunks.
 
 User ruling 2026-10-12, no edge-straddling mutant: Stryker 8.7.1 creates a mutant only when its
 whole node lies inside a range (instrumenter `syntax-helpers.js` `locationIncluded`), and the

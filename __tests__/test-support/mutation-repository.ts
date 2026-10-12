@@ -194,6 +194,10 @@ export const buildMutationRepository = (
   return { root, script };
 };
 
+// A 12-line source file; `edits` replaces the given 1-based lines.
+export const twelveLines = (edits: Record<number, string> = {}): string =>
+  `${Array.from({ length: 12 }, (_, index) => edits[index + 1] ?? `export const line${index + 1} = ${index + 1};`).join('\n')}\n`;
+
 export type ArgumentStubRun = {
   code: number | null;
   stdout: string;

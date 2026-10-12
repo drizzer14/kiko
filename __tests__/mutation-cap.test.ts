@@ -7,6 +7,7 @@ import {
   writeFile,
   commitAll,
   mutatedFiles,
+  twelveLines,
   writeExecutable,
   REAL_NODE_MODULES,
   type ArgumentStubRun,
@@ -252,8 +253,6 @@ describe('scripts/checks/mutation.sh file cap', () => {
   });
 
   it('--list prints the ranges of a modified file, a new file, and a whole kept file, then the sums', () => {
-    const twelveLines = (edits: Record<number, string>): string =>
-      `${Array.from({ length: 12 }, (_, index) => edits[index + 1] ?? `export const line${index + 1} = ${index + 1};`).join('\n')}\n`;
     const { script } = buildMutationRepository(
       mkdtempSync(join(tmpdir(), 'kiko-mutation-cap-')),
       {

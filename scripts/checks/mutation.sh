@@ -260,8 +260,8 @@ fi
 # Never hand Stryker a plain path and a range for the same file: it reads that as "do not mutate".
 # So a file is either its plain path (a comment-only file kept for a changed colocated test) or
 # its ranges. A file with no added line (a pure deletion or a pure move) has nothing to mutate and
-# leaves the list, like a comment-only one. A path with a glob character cannot be a range entry
-# (Stryker's validation refuses it), and a plain path with one matches nothing, so it is refused.
+# leaves the list, like a comment-only one. A path with a glob character is refused: Stryker can read it as a
+# pattern, not as a literal file.
 # A diff or a script that fails is a block and exit 2: never fall back to whole files.
 # --inter-hunk-context=0 keeps a user's diff.interHunkContext from merging hunks, which would add
 # unchanged context lines to a hunk.
@@ -270,6 +270,7 @@ entries=""
 list_report=""
 changed_lines=0
 if [ -n "$changed" ]; then
+  range_paths=()
   while IFS= read -r candidate; do
     [ -n "$candidate" ] || continue
     case "$candidate" in
@@ -277,16 +278,20 @@ if [ -n "$changed" ]; then
         print_block \
           "Stryker (mutation testing)" \
           "A changed source file has a glob character in its path: $candidate" \
-          "Stryker reads a --mutate entry as a glob: a path with one of [ ( * ? { matches nothing, and a changed-line range entry (path:start-end) with one fails its validation." \
+          "Stryker checks each --mutate entry with new Minimatch(entry).hasMagic() (options-validator.js) and can read a path with one of [ ( * ? { as a pattern, not a literal file or a path:start-end range. The gate refuses these characters up front rather than guess how Stryker will read one." \
           "A file Stryker cannot resolve would be graded n/a and the gate would pass without any mutant run on it." \
           "Rename the file, or exclude it in mutable_source_files in mutation.sh when it needs no mutation, then re-run: npm run check:mutation" \
           "Do not pass the path anyway, and do not drop it from the list by hand."
         exit 2
         ;;
     esac
+    range_paths+=("$candidate")
   done < <(printf '%s\n' "$changed")
 
-  if ! line_diff="$(git -C "$ROOT" -c core.quotePath=false diff -U0 --inter-hunk-context=0 --find-renames --no-color --no-ext-diff --src-prefix=a/ --dst-prefix=b/ "$merge_base" HEAD -- '*.ts' '*.tsx' 2>/dev/null)"; then
+  # --text and --no-textconv: a file git reads as binary (a NUL byte, or a -diff/binary attribute)
+  # prints no hunk, and a textconv driver numbers the hunks of the converted text, so neither may
+  # decide which lines changed.
+  if ! line_diff="$(git -C "$ROOT" -c core.quotePath=false diff -U0 --text --no-textconv --inter-hunk-context=0 --find-renames --no-color --no-ext-diff --src-prefix=a/ --dst-prefix=b/ "$merge_base" HEAD -- '*.ts' '*.tsx' 2>/dev/null)"; then
     print_block \
       "Stryker (mutation testing)" \
       "Could not read the changed lines since the merge-base with $base." \
@@ -297,21 +302,31 @@ if [ -n "$changed" ]; then
     exit 2
   fi
 
-  range_paths=()
-  while IFS= read -r candidate; do
-    [ -n "$candidate" ] && range_paths+=("$candidate")
-  done < <(printf '%s\n' "$changed")
-
-  if ! range_lines="$(printf '%s\n' "$line_diff" | node "$DIR/mutation-ranges.js" "${range_paths[@]}" 2>&1)"; then
+  # The script's stderr goes to its own file and is shown only in the failure block: a warning on
+  # stderr (a Node deprecation, say) beside an exit 0 must not read as a path line of its stdout.
+  if ! ranges_stderr="$(mktemp "${TMPDIR:-/tmp}/kiko-mutation-ranges.XXXXXX")"; then
+    print_block \
+      "Stryker (mutation testing)" \
+      "Could not create a temporary file for the changed-line reader." \
+      "mktemp failed under ${TMPDIR:-/tmp}." \
+      "Without the reader's output the gate cannot say what to mutate, and it must never fall back to whole files or to nothing." \
+      "Free space or fix the permissions of ${TMPDIR:-/tmp}, then re-run: npm run check:mutation" \
+      "Do not start Stryker directly to skip the cap."
+    exit 2
+  fi
+  if ! range_lines="$(printf '%s\n' "$line_diff" | node "$DIR/mutation-ranges.js" "${range_paths[@]}" 2>"$ranges_stderr")"; then
+    ranges_error="$(cat "$ranges_stderr")"
+    rm -f "$ranges_stderr"
     print_block \
       "Stryker (mutation testing)" \
       "mutation-ranges.js could not read the changed lines of the changed source files." \
-      "$range_lines" \
+      "$ranges_error" \
       "A changed file must appear in the diff it came from; one that does not means the diff or the parse is broken, and guessing its lines would mutate the wrong code or none." \
       "Read the output above, fix the cause, and re-run: npm run check:mutation" \
       "Do not fall back to mutating whole files."
     exit 2
   fi
+  rm -f "$ranges_stderr"
 
   tab=$'\t'
   ranged=""

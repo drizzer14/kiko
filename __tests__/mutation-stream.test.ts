@@ -1,12 +1,15 @@
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync } from 'node:fs';
+import { execFileSync, spawnSync } from 'node:child_process';
+import { existsSync, mkdtempSync, readFileSync, appendFileSync, writeFileSync } from 'node:fs';
 
 import {
+  writeFile,
   runWithStub,
   mutatedFiles,
+  twelveLines,
   mutateEntries,
+  writeExecutable,
   writeStrykerStub,
   runWithArgumentStub,
   buildMutationRepository,
@@ -373,14 +376,13 @@ describe('scripts/checks/mutation.sh diff scoping', () => {
 // the branch added (git diff -U0), never the whole file.
 // ---------------------------------------------------------------------------
 
-// A 12-line source file; `edits` replaces the given 1-based lines.
-const twelveLines = (edits: Record<number, string> = {}): string =>
-  `${Array.from({ length: 12 }, (_, index) => edits[index + 1] ?? `export const line${index + 1} = ${index + 1};`).join('\n')}\n`;
-
+// `prepare` runs after the repository is committed and before the wrapper starts, so it can set
+// the user-level git state (config, attributes) the wrapper's own git calls must not trust.
 const runOnChangedLines = (
   featureFiles: Record<string, string | null>,
   baseFiles: Record<string, string>,
-  gitConfig: string[] = [],
+  prepare: (root: string) => void = () => undefined,
+  environment: Record<string, string> = {},
 ) => {
   const { root, script } = buildMutationRepository(
     mkdtempSync(join(tmpdir(), 'kiko-mutrepo-')),
@@ -388,12 +390,22 @@ const runOnChangedLines = (
     baseFiles,
   );
 
-  if (gitConfig.length > 0) {
-    spawnSync('git', ['config', ...gitConfig], { cwd: root });
-  }
+  prepare(root);
 
-  return runWithArgumentStub(script, { KIKO_MUTATION_BASE: 'main' });
+  return runWithArgumentStub(script, { KIKO_MUTATION_BASE: 'main', ...environment });
 };
+
+const gitConfig =
+  (...configArguments: string[]) =>
+  (root: string): void => {
+    spawnSync('git', ['config', ...configArguments], { cwd: root });
+  };
+
+const writeAttributes =
+  (body: string) =>
+  (root: string): void => {
+    appendFileSync(join(root, '.git/info/attributes'), body);
+  };
 
 describe('scripts/checks/mutation.sh changed lines', () => {
   it('hands Stryker one range per hunk of a modified file, never the plain path', () => {
@@ -471,9 +483,121 @@ describe('scripts/checks/mutation.sh changed lines', () => {
     const result = runOnChangedLines(
       { 'src/old.ts': null, 'src/moved.ts': twelveLines({ 6: 'export const edited = 0;' }) },
       { 'src/old.ts': twelveLines() },
-      ['diff.renames', 'false'],
+      gitConfig('diff.renames', 'false'),
     );
 
     expect(mutateEntries(result.stubArguments)).toEqual(['src/moved.ts:6-6']);
+  });
+
+  it('keeps two hunks separate when the user config sets diff.interHunkContext', () => {
+    const result = runOnChangedLines(
+      {
+        'src/x.ts': twelveLines({
+          3: 'export const changed3 = 0;',
+          6: 'export const changed6 = 0;',
+        }),
+      },
+      { 'src/x.ts': twelveLines() },
+      gitConfig('diff.interHunkContext', '3'),
+    );
+
+    expect(mutateEntries(result.stubArguments)).toEqual(['src/x.ts:3-3', 'src/x.ts:6-6']);
+  });
+
+  it('still reads the edited lines of a file the user attributes mark as binary', () => {
+    const result = runOnChangedLines(
+      { 'src/x.ts': twelveLines({ 6: 'export const edited = 0;' }) },
+      { 'src/x.ts': twelveLines() },
+      writeAttributes('*.ts -diff\n'),
+    );
+
+    expect(result.code).toBe(0);
+    expect(mutateEntries(result.stubArguments)).toEqual(['src/x.ts:6-6']);
+  });
+
+  it('still reads the real edited lines when a diff driver converts the text', () => {
+    // The driver drops the first two lines, so a converted diff would number line 6 as line 4.
+    const result = runOnChangedLines(
+      { 'src/x.ts': twelveLines({ 6: 'export const edited = 0;' }) },
+      { 'src/x.ts': twelveLines() },
+      (root) => {
+        writeAttributes('*.ts diff=dropper\n')(root);
+        gitConfig('diff.dropper.textconv', 'sed 1,2d')(root);
+      },
+    );
+
+    expect(mutateEntries(result.stubArguments)).toEqual(['src/x.ts:6-6']);
+  });
+
+  it('builds the entries when mutation-ranges.js prints a warning to stderr and exits 0', () => {
+    const preload = join(mkdtempSync(join(tmpdir(), 'kiko-preload-')), 'warn.js');
+    writeFileSync(preload, "process.stderr.write('(node) a warning on stderr\\n');\n");
+
+    const result = runOnChangedLines(
+      { 'src/x.ts': twelveLines({ 6: 'export const edited = 0;' }) },
+      { 'src/x.ts': twelveLines() },
+      undefined,
+      { NODE_OPTIONS: `--require=${preload}` },
+    );
+
+    expect(result.code).toBe(0);
+    expect(mutateEntries(result.stubArguments)).toEqual(['src/x.ts:6-6']);
+  });
+
+  it('refuses with a block and never starts Stryker when the changed-line diff fails', () => {
+    // A git wrapper that fails only for the -U0 diff, so the file-name lists before it succeed.
+    const shimDirectory = mkdtempSync(join(tmpdir(), 'kiko-git-shim-'));
+    const realGit = execFileSync('which', ['git'], { encoding: 'utf8' }).trim();
+    writeExecutable(
+      join(shimDirectory, 'git'),
+      `#!/bin/sh\ncase "$*" in *-U0*) exit 1 ;; esac\nexec "${realGit}" "$@"\n`,
+    );
+
+    const result = runOnChangedLines(
+      { 'src/x.ts': twelveLines({ 6: 'export const edited = 0;' }) },
+      { 'src/x.ts': twelveLines() },
+      undefined,
+      { PATH: `${shimDirectory}:${process.env.PATH}` },
+    );
+
+    expect(result.code).toBe(2);
+    expect(result.stderr).toContain('Could not read the changed lines');
+    expect(result.stubArguments).toBeNull();
+  });
+
+  it('refuses with a block when it cannot create the temporary file for the reader', () => {
+    const { script } = buildMutationRepository(
+      mkdtempSync(join(tmpdir(), 'kiko-mutrepo-')),
+      { 'src/x.ts': twelveLines({ 6: 'export const edited = 0;' }) },
+      { 'src/x.ts': twelveLines() },
+    );
+
+    const result = runWithArgumentStub(
+      script,
+      { KIKO_MUTATION_BASE: 'main', TMPDIR: join(tmpdir(), 'kiko-missing-directory') },
+      ['--list'],
+    );
+
+    expect(result.code).toBe(2);
+    expect(result.stderr).toContain('Could not create a temporary file');
+  });
+
+  it('refuses with a block, showing its stderr, when mutation-ranges.js fails', () => {
+    const result = runOnChangedLines(
+      { 'src/x.ts': twelveLines({ 6: 'export const edited = 0;' }) },
+      { 'src/x.ts': twelveLines() },
+      (root) => {
+        writeFile(
+          root,
+          'scripts/checks/mutation-ranges.js',
+          "process.stderr.write('RANGES-SCRIPT-BROKE\\n');\nprocess.exit(3);\n",
+        );
+      },
+    );
+
+    expect(result.code).toBe(2);
+    expect(result.stderr).toContain('mutation-ranges.js could not read the changed lines');
+    expect(result.stderr).toContain('RANGES-SCRIPT-BROKE');
+    expect(result.stubArguments).toBeNull();
   });
 });
