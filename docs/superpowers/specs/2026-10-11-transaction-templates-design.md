@@ -144,10 +144,11 @@ Each id `O<n>` keeps the number of the open point it closed.
   for an optional key on a new table. `EXPORT_VERSION = 2`
   (`src/data-transfer/crypto/envelope.ts:13`). `VERSION_DECISIONS`
   (`envelope.test.ts:99`) records the decision for each migration
-  (`migrationCount: 58`). `REQUIRED_TABLE_KEYS` in
+  (`migrationCount`: 57 before this branch; 58 with it). `REQUIRED_TABLE_KEYS` in
   `src/data-transfer/import-data.ts` lists the keys that every file must carry.
 - Migrations: the journal ends at idx 56 (`0056_add_category_rules`) before this
-  branch, which ships 0057.
+  branch, which ships 0057. The first branch to reach `next` keeps the number; a
+  later branch renumbers at merge.
 
 ## 1. Data model
 
@@ -226,6 +227,13 @@ a plain income or expense template. The leg's exchange marker is not stored, the
 same as Duplicate (screen:226–233). A template made from an Edit of a row with a
 loan link does not carry the link (decision O5): the row's link stays on the row,
 and the template has no slot for it.
+
+The category (user ruling, 2026-10-12): a template stores a category only when the
+user picked it by hand, so `category` is null for a rule pre-select and each use of
+the template gets the current rule pre-select. A template being edited or filled in
+that already carries a category keeps it (decision O12). The form's draft builder
+is the one place that applies this rule, and it reads the live category, not the
+picker's settled one.
 
 ### Type guard and the read rule
 
