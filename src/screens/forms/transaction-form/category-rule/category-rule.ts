@@ -65,6 +65,21 @@ export const categoryForDraft = (draft: CategoryDraft, prepared: PreparedRules):
   foldMap(maybe(subjectOfFormDraft(draft)), (subject) => ruleCategoryFor(subject, prepared)) ??
   null;
 
+// Whether the form offers the name rule at all: an edit that changed the category always does; a
+// create does only for a category the user chose (a pick, or a seed a Duplicate or a template
+// carries), because applying one the rules pre-selected would rewrite every same-name row to a
+// category nobody chose. Kept module-level so its operators stay out of the screen component's
+// cognitive-complexity budget.
+export const offersCategoryNameRule = ({
+  categoryChanged,
+  isEditing,
+  userPickedCategory,
+}: {
+  categoryChanged: boolean;
+  isEditing: boolean;
+  userPickedCategory: boolean;
+}): boolean => categoryChanged && (isEditing || userPickedCategory);
+
 // Whether `save` needs to raise the propagation-confirm sheet, and with what
 // payload: only when the form offers a name rule (`offersNameRule`: the category changed to one
 // the user chose) AND the affected name is non-blank. `applyNameRule` refuses to write a rule

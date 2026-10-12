@@ -232,6 +232,10 @@ an entry (date + value) the moment the user approves a new visual.
   upcoming payments' dates) are not this pattern. The Accounts screen's
   Property and Debts section headings are user data (the implicit
   account's name) and DO follow it (`ImplicitAccountHeading`).
+  `TransactionCard`'s `money` prop is optional (a transaction template's
+  amount is optional): omitted, the `rowAmount` box and its `MoneyText`
+  do not render and the title cluster keeps its `flex: 1` row; with
+  `money` the output is unchanged.
   Pinned per family by a style-contract test (`ancestorWithStyle`: the
   title's own box is `flex: 1` with no row direction, no
   `numberOfLines`). The two card tests also pin the amount's box
@@ -440,10 +444,12 @@ The established patterns grouped under this heading:
   shared `InfoHint` (`src/design-system/components/info-hint/`): the icon is a `SymbolIcon` at the caption icon-size token,
   top-left, the text takes the rest of the row so it wraps beside the icon,
   and the row is one accessible element labelled by the message (the icon is
-  decorative). `InfoHint` is used ONLY for this reminder; the plain hint
-  (`forms.account.importOnlyBankHint`) stays a bare caption `Text`. A
-  Connect reminder uses InfoHint; any other informational hint with no
-  action stays a bare caption Text. A
+  decorative). `InfoHint` serves two hints: this reminder and the Template tab's
+  no-templates hint under the template select
+  (`src/screens/forms/transaction-form/template-select/template-select.component.tsx`);
+  the plain hint (`forms.account.importOnlyBankHint`) stays a bare caption
+  `Text`. Any other informational hint with no action stays a bare caption
+  Text. A
   SECOND Save press saves the account unconnected, storing nothing typed.
   Editing the input, pressing Connect, or the field unmounting starts over;
   a successful connect reports the input as no longer typed, so an empty or
@@ -1104,8 +1110,9 @@ new component can land between reviews of this skill:
 - **InfoHint** (`src/design-system/components/info-hint/`) — a caption
   `textSecondary` message led by an `info.circle` `SymbolIcon` (caption
   icon-size token), top-left aligned, text wrapping beside the icon, one
-  accessible element labelled by the message. Used only for the Connect
-  reminder in the three Connect fields.
+  accessible element labelled by the message. Used for the Connect
+  reminder in the three Connect fields and for the Template tab's
+  no-templates hint (`template-select`).
 - **NoticeBanner** (`src/design-system/components/notice-banner/`) — an
   inline, non-modal notice for a state the user can keep working
   around (never an alert or sheet): a `surfaceHigh` box, a `caption`
@@ -1148,7 +1155,11 @@ new component can land between reviews of this skill:
   the kept "Holdings" heading, when the account has no ACTIVE holding (every
   account kind; closed holdings do not count). Its action is the footer's Add
   holding, so the footer drops that button while the empty state shows (the
-  Import statement button stays), as Accounts drops its footer.
+  Import statement button stays), as Accounts drops its footer. The
+  Transaction templates list (`transaction-templates-empty`, Settings stack,
+  `src/screens/settings/transaction-templates/transaction-templates.screen.tsx`)
+  shows it with Add template as its action, and its footer button hides
+  while it shows.
 - **NotificationPreAlertSheet**
   (`src/design-system/components/notification-pre-alert-sheet/`) — the
   HIG pre-alert shown before the iOS notification prompt. It has ONE

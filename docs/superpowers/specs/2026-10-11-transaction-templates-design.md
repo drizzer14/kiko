@@ -144,10 +144,10 @@ Each id `O<n>` keeps the number of the open point it closed.
   for an optional key on a new table. `EXPORT_VERSION = 2`
   (`src/data-transfer/crypto/envelope.ts:13`). `VERSION_DECISIONS`
   (`envelope.test.ts:99`) records the decision for each migration
-  (`migrationCount: 56`). `REQUIRED_TABLE_KEYS` in
+  (`migrationCount: 58`). `REQUIRED_TABLE_KEYS` in
   `src/data-transfer/import-data.ts` lists the keys that every file must carry.
-- Migrations: the journal ends at idx 55 (`0055_add_dismissed_tips`). Another
-  track takes 0056.
+- Migrations: the journal ends at idx 56 (`0056_add_category_rules`) before this
+  branch, which ships 0057.
 
 ## 1. Data model
 
@@ -169,10 +169,9 @@ Each id `O<n>` keeps the number of the open point it closed.
 - The migration is additive only: one `CREATE TABLE`. It needs no data step and no
   restore mirror (kiko-architecture "A new table with no backfill is the table, in
   order, on both paths").
-- **Number:** 0057 needs 0056 in the journal, because the runner counts
-  migrations (`journal.entries.slice(COUNT(*))`, kiko-architecture "Storage"). If
-  the 0056 track has not reached this branch's base when the migration task
-  starts, generate the migration as the next free idx and renumber it at merge.
+- **Number:** this branch ships 0057. The runner counts migrations
+  (`journal.entries.slice(COUNT(*))`, kiko-architecture "Storage"), so the journal holds no
+  gap. The first branch to reach `next` keeps the number; a later branch renumbers at merge.
   Never ship two migrations at one idx.
 
 ### `TemplateDraft` (refinement of the proposed "Duplicate seed shape")
@@ -344,7 +343,7 @@ Proposed units, each a folder with an `index.ts` under
 | `mode-and-actions/` | `showsSaveButton`, `isLoanFieldVisible`, `resolveLoanLinkState`, `renderModeAndActions` (1391–1547) | — (the loan field stays unchanged, decision O5) |
 | `category-override-sheet/` | the override `BottomSheet` JSX (screen:2735–2805) | **category-rules** |
 | `use-category-override/` | `pendingOverride` state, `applyOverride`, `applyOverrideOne`, `cancelOverride`, their `useSubmitOnce` instances, `pendingCategory` | **category-rules** |
-| `use-category-pick/` | `selectedCategory`, `userPickedCategory`, `selectCategory`, `reseatCategoryFromName`, `onDescriptionBlur`, `pickSuggestion` | **category-rules** |
+| `use-category-pick/` | `selectedCategory`, `userPickedCategory`, `selectCategory`, `seedCategory`, `settleDescription`, `pickSuggestion` (and `effectiveCategory`) | **category-rules** |
 
 The screen keeps state, the hydrate effect, the save handlers and the layout. The
 file count is about 17 units, which is under the 30-file mutation cap. Count it
@@ -668,8 +667,8 @@ account-specific twin key.
      into `next` second rebases onto the first and adds its own line to the
      confirm (decision O7). No shared edit to the confirm happens in parallel.
   4. `validation/`: each track adds only its own keys to `SaveDisabledField`.
-  5. Migrations: this track uses 0057, category-rules uses 0058 and later. Both
-     can be renumbered at merge.
+  5. Migrations: this branch ships 0057; the first branch to reach `next` keeps the number, and
+     the other renumbers at merge (see the migration folder).
   6. Catalogues: the keys are in separate subtrees (`forms.transaction.template*`,
      `transactionTemplates.*`). Only `categories.deleteTemplates_*` sits in the
      category subtree.

@@ -18,7 +18,7 @@ Read these before task 1/18. Each line says what the code shows and what this pl
 2. **`FormMode` is declared in a screen file** (`src/screens/forms/mode-select-field/mode-select-field.props.d.ts:6`), and a feature must not import a screen. `draft/` declares `TEMPLATE_MODES = ['income', 'expense', 'exchange', 'split'] as const`. The form assigns `TemplateMode` to `FormMode` and back (in `draft-from-form/` and `hydration/`), so `tsc` fails if the two unions drift.
 3. **SQLite `lower()` folds only ASCII.** "Оренда" and "оренда" would both pass a SQL `lower(name) = ?` check. The case-insensitive name check therefore runs in JS (`templateNameKey = name.trim().toLowerCase()`). Inside the write it reads `selectDistinct({ id, name })`, which is the form `kiko-no-full-table-select-in-write` itself names as the fix. Review Focus 1.
 4. **SQL prefilter text.** The spec writes `instr(draft, '"' || ? || '"') > 0`. The plan binds `JSON.stringify(id)` to `instr(draft, ?) > 0`, so the needle is the exact JSON encoding, even for a key that JSON escapes. The intent is the same: the prefilter can match too many rows, and `draftReferences` makes the exact decision.
-5. **Migration 0056 is `0056_add_untracked_counterpart` on branch `binance-pay-history`** (ab08cda7). It is on neither `main` nor `next` (both end at 0055). category-rules reserves 0058. Task 4/18 follows the spec's numbering rule: if 0056 is not in the task base, generate the migration at the next free idx and renumber it to 0057 at merge, after 0056. `migrationCount` in `envelope.test.ts` is 56 today. It becomes "journal length after this migration".
+5. **This branch ships migration 0057** (`0057_add_transaction_templates`). The first branch to reach `next` keeps the number; a later branch renumbers at merge. `migrationCount` in `envelope.test.ts` is 58, the journal length with this migration (category-rules ships 0056).
 6. **`settings-card-categories` is pinned by `settings.screen.test.tsx`** (lines 160, 193 and 562: the card order). The new two-row card gets `settings-card-templates-and-categories`. Task 15/18 updates those order assertions. The Categories row keeps `settings-row-categories`.
 7. **The split table leaves out some module-level items.** The plan places them as follows. `Sign` and `ChangeReturnRow` go to `row-labels/` (their first user), `SplitReturn` and `TransactionFieldErrors` go to `validation/`, and `buildLoanOptions` and `compareByAccountThenHolding` (inside 600–803) go to `holding-options/`. `SpecialSaves` goes with `ModeBehavior`. `PendingCategoryView` goes with `resolvePendingCategory`. The module `styles` object (screen:2826) is split: each extracted component takes the entries it uses into its own `<unit>.styles.ts`, and the screen keeps the rest.
 8. **O7 and the coordinator's brief.** The brief says to plan the confirm line as a step that applies only if this track merges second. Spec §2 and decision 6 also cover the first-merge case: "If templates is first, it adds a `message` to today's `ConfirmSheet`". Task 16/18 plans both branches and runs exactly one of them, chosen by the merge order at that time. Without the first branch, decision 6 would ship unmet on a first merge.
@@ -94,10 +94,10 @@ Mutation time, from `memory/refs/duration-log.md` (main checkout): `transaction-
 
 **Files** (folders under `src/screens/forms/transaction-form/`):
 - Create components (`<unit>.component.tsx`, `<unit>.props.d.ts`, `<unit>.styles.ts` when it has styles, `index.ts`): `read-only-notice/` (`renderReadOnlyNotice` becomes `<ReadOnlyNotice />`), `comment-row/` (`<CommentRow />`), `primary-holding-field/` (`<PrimaryHoldingField />`), `field-group/` (`FieldGroupProps` becomes `field-group.props.d.ts`, plus `<FieldGroup />`), `split-returns/` (`<SplitReturns />`), `mode-and-actions/` (`<ModeAndActions />`, plus `mode-and-actions.ts` for `showsSaveButton`, `isLoanFieldVisible` and `resolveLoanLinkState`), `category-override-sheet/` (the override `BottomSheet` JSX, screen:2735–2805, as `<CategoryOverrideSheet />`)
-- Create hooks (`<unit>.ts`, `index.ts`): `use-category-pick/` (`useCategoryPick` owns `selectedCategory`, `userPickedCategory`, `selectCategory`, `reseatCategoryFromName`, `onDescriptionBlur`, `pickSuggestion`), `use-category-override/` (`useCategoryOverride` owns `pendingOverride`, `applyOverride`, `applyOverrideOne`, `cancelOverride`, their `useSubmitOnce` instances, `pendingCategory`)
+- Create hooks (`<unit>.ts`, `index.ts`): `use-category-pick/` (`useCategoryPick` owns `selectedCategory`, `effectiveCategory`, `userPickedCategory`, `selectCategory`, `seedCategory`, `settleDescription`, `pickSuggestion`), `use-category-override/` (`useCategoryOverride` owns `pendingOverride`, `applyOverride`, `applyOverrideOne`, `cancelOverride`, their `useSubmitOnce` instances, `pendingCategory`)
 - Modify: `transaction-form.screen.tsx` (render `<X />` where it called `renderX(...)`, call the two hooks, and move the style entries into the components)
 
-**Interfaces:** Each component's props are the old function's argument object, unchanged. Each hook takes the values it closed over as one argument object and returns the same names the body used, plus the setters the hydrate effect and `performSave` call (`setSelectedCategory`, `setUserPickedCategory`). The screen keeps the state, the hydrate effect, the save handlers and the layout.
+**Interfaces:** Each component's props are the old function's argument object, unchanged. Each hook takes the values it closed over as one argument object and returns the same names the body used, plus the one setter the hydrate effect calls, `seedCategory(category, seededDescription)`, which holds the category, flags a non-null one as a hand pick and settles the description in one step. The screen keeps the state, the hydrate effect, the save handlers and the layout.
 
 - [ ] **step 1/6:** Run `npx jest src/screens/forms/transaction-form` on the task base and record the pass count. That suite is this task's failing-first guard: every step below keeps it green.
 - [ ] **step 2/6:** Extract the seven components one at a time. Each reads the theme through `useUnistyles()` and uses an explicit `return`. Re-run the step 1/6 command after each one.
@@ -258,7 +258,7 @@ Every insert or update stores `name.trim()`. The name check inside the write rea
 **Estimate:** 60–90 min. Source: duration log "TX-C3 16 mutable dev 58 min". This task has many pure tests.
 
 **Files:**
-- Modify: `src/navigation/types/types.d.ts` (`TransactionFormParams` += `{ templateId: string } | { editTemplateId: string } | { newTemplate: true }`), `src/screens/forms/transaction-form/route-entry/route-entry.ts` (returns `templateId`, `editTemplateId`, `isNewTemplate` and `templateSeat: 'keepPage' | 'clear'`), `hydration/hydration.ts`, `transaction-form.screen.tsx` (the live query for the picked template, `pickedDraft` state, the effect applying the new fields with their existing setters)
+- Modify: `src/navigation/types/types.d.ts` (`TransactionFormParams` += `{ templateId: string } | { editTemplateId: string } | { newTemplate: true }`), `src/screens/forms/transaction-form/route-entry/route-entry.ts` (returns `templateId`, `editTemplateId`, `isNewTemplate`, and no seat field; the screen fallback `holdingParamId` restores the page holding on `{ holdingId }`), `hydration/hydration.ts`, `transaction-form.screen.tsx` (the live query for the picked template, `pickedDraft` state, the effect applying the new fields with their existing setters)
 - Create: `src/screens/forms/transaction-form/template-references/template-references.ts`, `template-references.test.ts`, `index.ts`. Create `hydration/hydration.test.ts`. Create `src/screens/forms/transaction-form/transaction-form.templates.test.tsx`.
 
 **Interfaces (produces):**
@@ -268,19 +268,19 @@ export const resolveDraftReferences: (draft: TemplateDraft, options: {
 }) => TemplateDraft; // the id sets come from buildPrimaryOptions / buildExchangeOptions / buildReturnOptions and the categories list
 // hydration: seedFields replaces `sign: Sign` with `mode: FormMode` and gains optional
 // destinationHoldingId, valueIn, returns, templateName and clearsHolding; resolveHydration gains
-// templateDraft: TemplateDraft | null, templateName: string | null, templateSeat: 'keepPage' | 'clear'
+// templateDraft: TemplateDraft | null, templateName: string | null
 ```
 The plan rules:
 - The template branch runs before the default-holding branch.
 - A resolved `draft.holdingId` that differs from the seam gives `seedHolding(draft.holdingId, final: false)`. After that, `seedFields` runs once the holding has loaded.
-- A null `draft.holdingId` gives `seedFields` at once, with `clearsHolding = templateSeat === 'clear'`.
+- A null `draft.holdingId` gives `seedFields` at once, with `clearsHolding = true`: a null template holding always clears the seam (`setPrimaryHoldingId(null)`).
 - Amounts become text with `groupAmount(majorAmountText(draft.currency, minor))`, and Value in uses `exchange.destinationCurrency`. A null amount or currency gives `''`. `time` is always null.
 - A non-null category also sets `userPickedCategory` (O12).
 - A pick is an event: `setPickedDraft(...)` plus `setHydrated(false)`. There is no second effect.
 
 - [ ] **step 1/6:** Write the failing pure tests:
   - `resolveDraftReferences`: a deleted, closed or synced holding becomes null in each slot. A missing category becomes null.
-  - `resolveHydration`: the two steps for a resolved holding. One step for a null holding, with `clearsHolding` set per `templateSeat`. Exact text for UAH 105000 ("1 050"), JPY 1050 and BTC 12345678. A re-pick to a different holding seeds that holding first.
+  - `resolveHydration`: the two steps for a resolved holding. One step for a null holding, with `clearsHolding` true. Exact text for UAH 105000 ("1 050"), JPY 1050 and BTC 12345678. A re-pick to a different holding seeds that holding first.
   - The Duplicate and Edit plans `toEqual` today's values, with `mode` in place of `sign`, no destination, `valueIn: ''` and one empty return (Review Focus 2).
 - [ ] **step 2/6:** Write the failing screen tests in `transaction-form.templates.test.tsx`. Each mounts the form with `{ templateId }` (the tabs come in task 12/18) and mocks `transactionTemplatesRepo.getByIdQuery` in the existing `useLiveQuery` mock pattern. Cover: each mode fills with the date at now; on `{}`, a null holding leaves the holding picker empty; a seeded category is not replaced by the description pre-select (`userPickedCategory`); a dangling destination leaves Destination empty.
 - [ ] **step 3/6:** Run `npx jest src/screens/forms/transaction-form`. Expected: FAIL.

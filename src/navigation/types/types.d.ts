@@ -21,18 +21,23 @@ import type { ImplicitAccountKind } from '@kiko/holdings/implicit-account';
  * CREATE form pre-filled from an existing manual row (its amount, description,
  * category, and holding), dated to now — a new row on save, never an edit of
  * the source. The union makes the entry points mutually exclusive so a caller
- * can never pass more than one. It is registered in both the Home and Accounts
- * stacks (Home lists every transaction; Accounts reaches it from a holding), so
- * both param lists carry the same shape. The final member — an EMPTY object
- * (`Record<string, never>`) — is the global-add entry (Bundle B): a create with
- * NO holding fixed by navigation, so the form renders its own primary-leg
- * holding picker. `Record<string, never>` admits `{}` alone, keeping every
+ * can never pass more than one. It is registered in the Home, Accounts, and Settings
+ * stacks (Home lists every transaction; Accounts reaches it from a holding; Settings
+ * reaches it from the templates list), so all three param lists carry the same shape.
+ * The final member — an EMPTY object (`Record<string, never>`) — is the global-add entry
+ * (Bundle B): a create with NO holding fixed by navigation, so the form renders its own
+ * primary-leg holding picker. `Record<string, never>` admits `{}` alone, keeping every
  * member mutually exclusive (a caller can pass exactly one id, or none at all).
+ * The three template members open the same form for a template: `templateId` creates a
+ * transaction filled from that template, `editTemplateId` edits it, and `newTemplate` adds one.
  */
 export type TransactionFormParams =
   | { holdingId: string }
   | { transactionId: string }
   | { duplicateOfTransactionId: string }
+  | { templateId: string }
+  | { editTemplateId: string }
+  | { newTemplate: true }
   | Record<string, never>;
 
 /**
@@ -57,8 +62,8 @@ export type FormDraft = { name: string; icon: string | null; color: string | nul
  * account form carried over. `initialType` and `initialCurrency` seed a create
  * on a named account, once on mount, for an "Add holding" row whose picker lists
  * only some holdings; the user can still change both. Without the Accounts
- * stack's `returnTo`, so the Home stack, which has no import screen to pop back
- * to, cannot pass one.
+ * stack's `returnTo`, so the Home and Settings stacks, which have no import
+ * screen to pop back to, cannot pass one.
  */
 type HoldingFormParams = (
   | { accountId: string; initialType?: HoldingType; initialCurrency?: Currency }
@@ -236,6 +241,13 @@ export type SettingsStackParamList = {
   ReminderForm: ReminderFormParams;
   Help: undefined;
   HelpTopic: { topicId: HelpTopicId };
+  TransactionTemplates: undefined;
+  // The template forms, and the create forms their empty holding picker's "Add holding" row
+  // opens, sit in this stack for the reason they sit in Home's: a switch to the Accounts tab
+  // would reset this stack and drop the form's draft.
+  TransactionForm: TransactionFormParams;
+  AccountForm: AccountsStackParamList['AccountForm'];
+  HoldingForm: HoldingFormParams;
 };
 
 export type StatisticsStackParamList = {

@@ -7,6 +7,7 @@ import {
 import {
   type CategoryDraft,
   categoryForDraft,
+  offersCategoryNameRule,
   resolveCategoryOverrideRequest,
   subjectOfFormDraft,
 } from './category-rule';
@@ -93,6 +94,27 @@ describe('categoryForDraft', () => {
 
   it('gives none in exchange mode even for a name a rule matches', () => {
     expect(categoryForDraft(draftOf({ mode: 'exchange' }), prepared)).toBeNull();
+  });
+});
+
+describe('offersCategoryNameRule', () => {
+  it.each([
+    ['an edit that changed the category', { categoryChanged: true, isEditing: true }, false, true],
+    [
+      'a create whose category the user picked',
+      { categoryChanged: true, isEditing: false },
+      true,
+      true,
+    ],
+    [
+      'a create whose category the rules pre-selected',
+      { categoryChanged: true, isEditing: false },
+      false,
+      false,
+    ],
+    ['an edit that kept its category', { categoryChanged: false, isEditing: true }, true, false],
+  ])('for %s', (_label, flags, userPickedCategory, expected) => {
+    expect(offersCategoryNameRule({ ...flags, userPickedCategory })).toBe(expected);
   });
 });
 

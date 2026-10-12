@@ -19,7 +19,7 @@ import { isTemplateNameTaken } from '@kiko/transaction-templates/template-name';
 
 import { TemplateNameTakenError } from './template-name-taken-error';
 
-type TransactionTemplate = {
+export type TransactionTemplate = {
   id: string;
   name: string;
   draft: TemplateDraft;
@@ -134,8 +134,6 @@ export const transactionTemplatesRepo = {
       .select()
       .from(transactionTemplates)
       .orderBy(asc(transactionTemplates.createdAt), asc(transactionTemplates.id)),
-  getByIdQuery: (id: string) =>
-    database.select().from(transactionTemplates).where(eq(transactionTemplates.id, id)).limit(1),
   create: (input: TemplateInput): Promise<string> =>
     write((databaseTransaction) =>
       transactionTemplatesRepo.insertDatabaseTransaction(databaseTransaction, input),

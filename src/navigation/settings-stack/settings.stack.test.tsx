@@ -34,7 +34,21 @@ jest.mock('react-i18next', () => ({
 
 import SettingsStack from './settings.stack';
 
-type ScreenOptions = { title?: string };
+type ScreenOptions = {
+  title?: string;
+  animation?: string;
+  headerShown?: boolean;
+  headerLargeTitle?: boolean;
+  headerBlurEffect?: string;
+  headerLargeStyle?: object;
+};
+
+// Jest pins `isLiquidGlassSupported` to false (jest/setup.js), the iOS < 26 tier.
+const sharedLargeTitleOptions = {
+  headerLargeTitle: true,
+  headerBlurEffect: 'systemChromeMaterialDark',
+  headerLargeStyle: { backgroundColor: 'transparent' },
+};
 
 type ScreenElement = ReactElement<{
   name: string;
@@ -94,16 +108,51 @@ describe('SettingsStack', () => {
     expect(titles.ReminderForm).toBe('New Reminder');
   });
 
+  it('registers the templates list with its title', () => {
+    expect(titleByScreen().TransactionTemplates).toBe('Transaction Templates');
+  });
+
+  // The list opens the Transaction form, and an empty picker's "Add holding" row opens the
+  // account and holding forms, so all three live in this stack, with Home's options.
+  it('registers the Transaction, Account and Holding forms the way the Home stack does', () => {
+    const names = screenElements().map((screen) => screen.props.name);
+
+    expect(names).toEqual(
+      expect.arrayContaining(['TransactionForm', 'AccountForm', 'HoldingForm']),
+    );
+    expect(optionsOf('TransactionForm')).toEqual({
+      headerShown: true,
+      ...sharedLargeTitleOptions,
+    });
+    expect(optionsOf('AccountForm', { accountId: 'account-1' })).toEqual({
+      title: 'Add Account',
+      animation: 'default',
+      headerShown: true,
+      ...sharedLargeTitleOptions,
+    });
+    expect(optionsOf('HoldingForm', { accountId: 'account-1' })).toEqual({
+      title: 'Add Holding',
+      animation: 'default',
+      headerShown: true,
+      ...sharedLargeTitleOptions,
+    });
+  });
+
+  it('swaps the implicit holding form without an animation, as Home does', () => {
+    const draft = { name: 'Flat', icon: null, color: null };
+
+    expect(optionsOf('HoldingForm', { implicitKind: 'property', draft })).toMatchObject({
+      title: 'Add Account',
+      animation: 'none',
+    });
+  });
+
   // Jest pins `isLiquidGlassSupported` to false (jest/setup.js), the iOS < 26
   // tier, where the scrolled bar needs the blur react-native-screens omits.
   it('uses the shared large-title options, with the scrolled-bar blur below iOS 26', () => {
     const navigator = SettingsStack({}) as ReactElement<{ screenOptions: object }>;
 
-    expect(navigator.props.screenOptions).toEqual({
-      headerLargeTitle: true,
-      headerBlurEffect: 'systemChromeMaterialDark',
-      headerLargeStyle: { backgroundColor: 'transparent' },
-    });
+    expect(navigator.props.screenOptions).toEqual(sharedLargeTitleOptions);
   });
 
   // The Help pages inherit the stack's header options, so their own options

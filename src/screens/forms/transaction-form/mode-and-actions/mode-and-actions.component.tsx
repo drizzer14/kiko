@@ -42,8 +42,8 @@ const ModeAndActions = (props: ModeAndActionsProps): ReactElement | null => {
             selectedKey={props.selectedCategory}
             onSelect={props.onSelectCategory}
             // A category is required only on a fresh add (`plainFieldErrors`
-            // gates a create on it); an edit leaves the category optional.
-            required={!props.isEditing}
+            // gates a create on it); an edit and a template leave it optional.
+            required={props.categoryRequired}
             error={props.categoryError}
           />
         </View>

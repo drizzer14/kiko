@@ -73,18 +73,18 @@ afterEach(() => {
 });
 
 describe('transactionTemplatesRepo: create, list, get, update, remove', () => {
-  it('creates a template and reads it back by id', async () => {
+  it('creates a template and reads it back from the list', async () => {
     const draft = draftWith({ mode: 'income', description: 'Salary', category: 'salary' });
 
     const id = await transactionTemplatesRepo.create({ name: 'Salary', draft });
-    const [row] = await transactionTemplatesRepo.getByIdQuery(id);
+    const [template] = await listed();
 
-    expect(toTransactionTemplate(row)).toEqual({
+    expect(template).toEqual({
       id,
       name: 'Salary',
       draft,
-      createdAt: row.createdAt,
-      updatedAt: row.updatedAt,
+      createdAt: template.createdAt,
+      updatedAt: template.updatedAt,
     });
   });
 
@@ -94,10 +94,6 @@ describe('transactionTemplatesRepo: create, list, get, update, remove', () => {
     seedDraft('a', EMPTY_DRAFT, 3000);
 
     expect((await listed()).map((template) => template.id)).toEqual(['b', 'a', 'c']);
-  });
-
-  it('finds no row for an unknown id', async () => {
-    expect(await transactionTemplatesRepo.getByIdQuery('missing')).toEqual([]);
   });
 
   it('update changes name and draft, moves updated_at, and keeps created_at', async () => {
