@@ -3,7 +3,7 @@ import { normalizeTransactionName } from '@kiko/transactions/normalize-name';
 
 import type { RuleDirection, RuleSubject } from './category-rules.d';
 
-const MINUTES_PER_HOUR = 60;
+export const MINUTES_PER_HOUR = 60;
 
 // The wall clock of the device zone, read with local getters: a day with 23 or 25 hours still
 // puts 18:30 at minute 1110.
@@ -12,6 +12,9 @@ export const minuteOfDayOf = (time: number): number => {
 
   return date.getHours() * MINUTES_PER_HOUR + date.getMinutes();
 };
+
+// A day with no clock change, so every minute of the day exists as a wall-clock time.
+export const wallClockOf = (minuteOfDay: number): Date => new Date(2000, 0, 1, 0, minuteOfDay);
 
 // A zero amount is neither: a rule for expenses or incomes never claims a row that moved nothing.
 const directionOf = (amountMinorUnits: number): RuleDirection | null => {

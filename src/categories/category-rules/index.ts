@@ -1,4 +1,5 @@
 export * from './category-rules.d';
+export * from './matcher-labels';
 export * from './matcher-options';
 export * from './parse-rule-matchers';
 export * from './rule-subject';

@@ -1,10 +1,12 @@
 import { match } from 'ts-pattern';
-import type { TFunction } from 'i18next';
-import type {
-  AmountOperator,
-  CategoryRuleMatcher,
-  TimeOperator,
+import {
+  type CategoryRuleMatcher,
+  AMOUNT_OPERATOR_LABEL_KEYS,
+  DIRECTION_LABEL_KEYS,
+  TIME_OPERATOR_LABEL_KEYS,
+  wallClockOf,
 } from '@kiko/categories/category-rules';
+import type { TFunction } from 'i18next';
 import type { Currency } from '@kiko/currency/currency';
 import { type TimeClock, formatTime } from '@kiko/dates';
 
@@ -15,24 +17,6 @@ type RuleSummaryOptions = {
 };
 
 const SEPARATOR = ' · ';
-
-const amountOperatorLabel = (operator: AmountOperator, t: TFunction): string =>
-  match(operator)
-    .with('eq', () => t('ruleForm.equal'))
-    .with('gt', () => t('ruleForm.more'))
-    .with('gte', () => t('ruleForm.atLeast'))
-    .with('lt', () => t('ruleForm.less'))
-    .with('lte', () => t('ruleForm.atMost'))
-    .exhaustive();
-
-const timeOperatorLabel = (operator: TimeOperator, t: TFunction): string =>
-  match(operator)
-    .with('before', () => t('ruleForm.before'))
-    .with('after', () => t('ruleForm.after'))
-    .exhaustive();
-
-// A day with no clock change, so every minute of the day exists as a wall-clock time.
-const wallClockOf = (minuteOfDay: number): Date => new Date(2000, 0, 1, 0, minuteOfDay);
 
 const describeMatcher = (
   matcher: CategoryRuleMatcher,
@@ -51,18 +35,13 @@ const describeMatcher = (
     .with(
       { type: 'amount' },
       ({ operator, minorUnits, currency }) =>
-        `${amountOperatorLabel(operator, t)} ${formatAmount(minorUnits, currency)}`,
+        `${t(AMOUNT_OPERATOR_LABEL_KEYS[operator])} ${formatAmount(minorUnits, currency)}`,
     )
-    .with({ type: 'direction' }, ({ direction }) =>
-      match(direction)
-        .with('expense', () => t('forms.transaction.expense'))
-        .with('income', () => t('forms.transaction.income'))
-        .exhaustive(),
-    )
+    .with({ type: 'direction' }, ({ direction }) => t(DIRECTION_LABEL_KEYS[direction]))
     .with(
       { type: 'time' },
       ({ operator, minuteOfDay }) =>
-        `${timeOperatorLabel(operator, t)} ${formatTime(wallClockOf(minuteOfDay), clock)}`,
+        `${t(TIME_OPERATOR_LABEL_KEYS[operator])} ${formatTime(wallClockOf(minuteOfDay), clock)}`,
     )
     .exhaustive();
 

@@ -2,13 +2,11 @@ import { match } from 'ts-pattern';
 import { parseAmount } from '@kiko/currency/parse';
 import { Money, toMajor } from '@kiko/currency/money';
 import type { Currency } from '@kiko/currency/currency';
-import type { CategoryRuleMatcher } from '@kiko/categories/category-rules';
 import { normalizeTransactionName } from '@kiko/transactions/normalize-name';
 import { groupAmount, majorAmountText } from '@kiko/screens/forms/amount-format';
+import { type CategoryRuleMatcher, MINUTES_PER_HOUR } from '@kiko/categories/category-rules';
 
 import type { DraftConversion, MatcherDraft, MatcherDraftError } from './rule-draft.types';
-
-const MINUTES_PER_HOUR = 60;
 
 // Noon: a time condition a user adds opens on a time in the middle of the day, not on midnight.
 const DEFAULT_MINUTE_OF_DAY = 12 * MINUTES_PER_HOUR;

@@ -3,7 +3,6 @@ import { id, type CategoryRuleRow } from '@kiko/db';
 
 /** A name rule as a file from before category rules wrote it. A timestamp may be missing. */
 export type LegacyCategoryOverrideRow = {
-  normalizedName: string;
   category: string;
   displayName: string;
   createdAt?: number;

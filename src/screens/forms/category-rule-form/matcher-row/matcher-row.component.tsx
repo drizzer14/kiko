@@ -6,10 +6,15 @@ import {
   type RuleDirection,
   type TimeOperator,
   AMOUNT_OPERATORS,
+  AMOUNT_OPERATOR_LABEL_KEYS,
   DIRECTIONS,
+  DIRECTION_LABEL_KEYS,
   MATCHER_TYPES,
   TIME_OPERATORS,
+  TIME_OPERATOR_LABEL_KEYS,
+  labelsOf,
   minuteOfDayOf,
+  wallClockOf,
 } from '@kiko/categories/category-rules';
 import { useTranslation } from 'react-i18next';
 import Box from '@kiko/design-system/components/box';
@@ -26,9 +31,6 @@ import SegmentedControl from '@kiko/design-system/components/segmented-control';
 import type { MatcherRowProps } from './matcher-row.props';
 
 type MatcherType = CategoryRuleMatcher['type'];
-
-// A day with no clock change, so every minute of the day exists as a wall-clock time for the field.
-const wallClockOf = (minuteOfDay: number): number => new Date(2000, 0, 1, 0, minuteOfDay).getTime();
 
 // One condition of a rule: a select for its type and the inputs that type needs. The row keeps no
 // state of its own; the editor holds every draft, so a row can change type and back without
@@ -69,13 +71,7 @@ const MatcherRow: FC<MatcherRowProps> = ({
           options={AMOUNT_OPERATORS}
           selected={draft.amountOperator}
           onSelect={(amountOperator) => onChange({ amountOperator })}
-          labels={{
-            eq: t('ruleForm.equal'),
-            gt: t('ruleForm.more'),
-            gte: t('ruleForm.atLeast'),
-            lt: t('ruleForm.less'),
-            lte: t('ruleForm.atMost'),
-          }}
+          labels={labelsOf(AMOUNT_OPERATOR_LABEL_KEYS, t)}
           placeholder={t('ruleForm.selectOperator')}
           testID={`matcher-operator-${position}`}
         />
@@ -104,7 +100,7 @@ const MatcherRow: FC<MatcherRowProps> = ({
         options={DIRECTIONS}
         selected={draft.direction}
         onSelect={(direction) => onChange({ direction })}
-        labels={{ expense: t('forms.transaction.expense'), income: t('forms.transaction.income') }}
+        labels={labelsOf(DIRECTION_LABEL_KEYS, t)}
         accessibilityLabel={t('ruleForm.direction')}
       />
     ))
@@ -114,14 +110,14 @@ const MatcherRow: FC<MatcherRowProps> = ({
           options={TIME_OPERATORS}
           selected={draft.timeOperator}
           onSelect={(timeOperator) => onChange({ timeOperator })}
-          labels={{ before: t('ruleForm.before'), after: t('ruleForm.after') }}
+          labels={labelsOf(TIME_OPERATOR_LABEL_KEYS, t)}
           accessibilityLabel={t('ruleForm.time')}
         />
 
         <TimeField
           label={t('forms.fields.time')}
           sheetTitle={t('forms.fields.timeSheetTitle')}
-          value={wallClockOf(draft.minuteOfDay)}
+          value={wallClockOf(draft.minuteOfDay).getTime()}
           onChange={(timestamp) => onChange({ minuteOfDay: minuteOfDayOf(timestamp) })}
           placeholder={t('forms.fields.selectTimePlaceholder')}
         />

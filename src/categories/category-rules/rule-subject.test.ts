@@ -1,4 +1,4 @@
-import { minuteOfDayOf, subjectOfDraft, subjectOfStoredRow } from './rule-subject';
+import { minuteOfDayOf, subjectOfDraft, subjectOfStoredRow, wallClockOf } from './rule-subject';
 
 const at = (year: number, month: number, day: number, hour: number, minute: number): number =>
   new Date(year, month, day, hour, minute).getTime();
@@ -22,6 +22,12 @@ describe('minuteOfDayOf', () => {
     ['05:00 after the spring-forward gap', at(2027, 2, 28, 5, 0), 300],
   ])('reads %s as the wall clock minute', (_label, time, expected) => {
     expect(minuteOfDayOf(time)).toBe(expected);
+  });
+});
+
+describe('wallClockOf', () => {
+  it.each([0, 300, 1110, 1439])('gives a time that reads back as minute %i', (minuteOfDay) => {
+    expect(minuteOfDayOf(wallClockOf(minuteOfDay).getTime())).toBe(minuteOfDay);
   });
 });
 

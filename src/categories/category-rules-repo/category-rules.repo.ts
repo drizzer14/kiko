@@ -110,6 +110,31 @@ const withRow = (rows: readonly CategoryRuleRow[], row: CategoryRuleRow): Catego
   row,
 ];
 
+// The draft against the stored rules: its stored self (if any), the row it becomes, and every rule
+// prepared with that row in place of the stored one (or added), so the rewrite is judged on the
+// rules as they will stand.
+const stageDraft = (rows: readonly CategoryRuleRow[], draft: RuleDraft) => {
+  const stored = rows.find((existing) => existing.id === draft.id);
+  const row = rowOfDraft(stored, draft, Date.now());
+
+  return { stored, row, prepared: prepareRules(withRow(rows, row)) };
+};
+
+const storeRule = async (
+  databaseTransaction: typeof database,
+  stored: CategoryRuleRow | undefined,
+  row: CategoryRuleRow,
+): Promise<void> => {
+  if (stored === undefined) {
+    await databaseTransaction.insert(categoryRules).values(row);
+  } else {
+    await databaseTransaction
+      .update(categoryRules)
+      .set({ category: row.category, matchers: row.matchers, updatedAt: row.updatedAt })
+      .where(eq(categoryRules.id, row.id));
+  }
+};
+
 // Why a rule may not be saved, or undefined when it may. A rule that could not be read back (a
 // blank name, a negative amount) would be stored but never match, so it is refused too.
 const refusalOf = (draft: RuleDraft, otherRules: readonly PreparedRule[]): string | undefined => {
@@ -308,15 +333,15 @@ export const categoryRulesRepo = {
    * it counts none.
    */
   countRuleRewrite: async (draft: RuleDraft): Promise<number> => {
-    const rows = await readAllRulesDatabaseTransaction(database);
-    const stored = rows.find((row) => row.id === draft.id);
+    const { stored, row, prepared } = stageDraft(
+      await readAllRulesDatabaseTransaction(database),
+      draft,
+    );
 
     if (isStoredAsGiven(stored, draft)) {
       return 0;
     }
 
-    const row = rowOfDraft(stored, draft, Date.now());
-    const prepared = prepareRules(withRow(rows, row));
     const savedRule = preparedRuleOf(prepared, row.id);
 
     return savedRule === undefined
@@ -337,28 +362,16 @@ export const categoryRulesRepo = {
 
       assertSavable(refusalOf(input, prepareRules(rows).ordered));
 
-      const stored = rows.find((row) => row.id === input.id);
-      const row = rowOfDraft(stored, input, Date.now());
+      const { stored, row, prepared } = stageDraft(rows, input);
 
       if (isStoredAsGiven(stored, input)) {
         return { id: row.id, changed: 0 };
       }
 
-      if (stored === undefined) {
-        await databaseTransaction.insert(categoryRules).values(row);
-      } else {
-        await databaseTransaction
-          .update(categoryRules)
-          .set({ category: row.category, matchers: row.matchers, updatedAt: row.updatedAt })
-          .where(eq(categoryRules.id, row.id));
-      }
+      await storeRule(databaseTransaction, stored, row);
 
       const changed = input.applyToExisting
-        ? await rewriteWithPreparedRules(
-            databaseTransaction,
-            prepareRules(withRow(rows, row)),
-            row.id,
-          )
+        ? await rewriteWithPreparedRules(databaseTransaction, prepared, row.id)
         : 0;
 
       return { id: row.id, changed };
@@ -382,45 +395,27 @@ export const categoryRulesRepo = {
       }
 
       const matchers: CategoryRuleMatcher[] = [{ type: 'nameIs', text: input.name.trim() }];
-      const prepared = prepareRules(await readAllRulesDatabaseTransaction(databaseTransaction));
+      const rows = await readAllRulesDatabaseTransaction(databaseTransaction);
       const wantedKey = matcherSetKey(matchers);
-      const existingRule = prepared.ordered.find(
+      const existingRule = prepareRules(rows).ordered.find(
         (rule) => matcherSetKey(rule.matchers) === wantedKey,
       );
-      const savedRuleId = existingRule?.id ?? id();
-      const now = Date.now();
+      const { stored, row, prepared } = stageDraft(rows, {
+        id: existingRule?.id ?? null,
+        category: input.category,
+        matchers,
+      });
 
-      if (existingRule === undefined) {
-        await databaseTransaction.insert(categoryRules).values({
-          id: savedRuleId,
-          category: input.category,
-          matchers: JSON.stringify(matchers),
-          createdAt: now,
-          updatedAt: now,
-        });
-      } else {
-        await databaseTransaction
-          .update(categoryRules)
-          .set({ category: input.category, matchers: JSON.stringify(matchers), updatedAt: now })
-          .where(eq(categoryRules.id, savedRuleId));
-      }
+      await storeRule(databaseTransaction, stored, row);
 
-      const savedRules = prepareRules(await readAllRulesDatabaseTransaction(databaseTransaction));
       const sourceMoved =
         input.sourceTransactionId === null
           ? 0
-          : await giveSourceRowCategory(
-              databaseTransaction,
-              savedRules,
-              input.sourceTransactionId,
-              {
-                id: savedRuleId,
-                category: input.category,
-              },
-            );
+          : await giveSourceRowCategory(databaseTransaction, prepared, input.sourceTransactionId, {
+              id: row.id,
+              category: input.category,
+            });
 
-      return (
-        sourceMoved + (await rewriteWithPreparedRules(databaseTransaction, savedRules, savedRuleId))
-      );
+      return sourceMoved + (await rewriteWithPreparedRules(databaseTransaction, prepared, row.id));
     }),
 } satisfies Repository;

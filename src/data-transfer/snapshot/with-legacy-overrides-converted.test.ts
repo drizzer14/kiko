@@ -9,7 +9,6 @@ import { withLegacyOverridesConverted } from './with-legacy-overrides-converted'
 const NOW = 9_000;
 
 const override = (displayName: string, extra: { createdAt?: number; updatedAt?: number } = {}) => ({
-  normalizedName: displayName.trim().toLowerCase(),
   category: 'food',
   displayName,
   ...extra,
