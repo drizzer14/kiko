@@ -2795,6 +2795,12 @@ name is unique case-insensitively, with Unicode folding done in JS. A save from 
 transaction form rides `alongside(databaseTransaction)` on `transactionsRepo.recordManual`
 / `recordExchange` / `recordManualWithReturns` / `update` (runs last inside the same
 write); the transactions feature never imports templates on that save path.
+A template stores a category ONLY when the user picked it by hand (`userPickedCategory`);
+otherwise it stores none, and each use gets the CURRENT category-rule pre-select (user
+ruling 2026-10-12). On Duplicate and Edit, the source category counts as a hand pick, so
+the template keeps it. The save path reads `userPickedCategory ? effectiveCategory : null`,
+never `selectedCategory` (settled only on blur). Pin it with a red test that presses Save
+WITHOUT a blur.
 The form's template units live in `src/screens/forms/transaction-form/` (list them with
 `ls`); the Template list screen is `src/screens/settings/transaction-templates/`.
 

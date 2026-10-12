@@ -706,10 +706,16 @@ Read these units before touching category UI: the Categories list
 - One delete path: `categoriesRepo.delete` deletes the category's rules
   in the same write. The confirm count and the delete use the same
   case-insensitive `lower(category)` predicate and both count unreadable
-  rules.
-- The confirm line comes only from `categoryDeleteNoticeOf`; a failed
-  count read still gives a numberless line, so the confirm always warns.
-  A second track that adds a delete-time line appends it there.
+  rules. `categoriesRepo.delete` also clears the category in every
+  template that names it in that same write.
+- The confirm text comes only from `categoryDeleteNoticeOf`: one line per kind of
+  thing the delete touches, the rules line first, then the templates line
+  (`categories.deleteTemplates` plural). A count of zero adds no line. A FAILED count
+  read (rules or templates) still adds that kind's numberless line
+  (`categories.deleteRulesNoticeUnknown`, `categories.deleteTemplatesUnknown`), because
+  the delete removes or clears them whatever the read did, so the confirm always warns.
+  Never pin a failed read as silent. A second track that adds a delete-time line appends
+  it there.
 - The category form has no Delete (kiko-design-system "A form has no
   in-form Delete"; pre-write rule `kiko-no-confirm-sheet-in-form`). A
   category is deleted only from its list card's hold menu, which is not
@@ -752,7 +758,8 @@ derived from the whole draft. Seed a loaded draft only through `seedCategory`
 the nav-bar Save settles the description first. Rule: coupled state is set by
 one seed function, never by a pair of exported setters. On a create, the
 name-rule sheet ("Apply to all transactions named X?") is offered only when the
-user picked the category by hand or a Duplicate/template seed carries one; a
+user picked the category by hand or a Duplicate/template seed carries one
+(what a template stores is kiko-domain "Transaction templates"); a
 category the rules pre-selected saves flag 0 with no sheet; an edit is
 unchanged. Otherwise Apply rewrites every same-name row to a category the user
 never chose (`resolveCategoryOverrideRequest` in
