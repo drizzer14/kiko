@@ -2106,7 +2106,7 @@ const rangeRoundRobinViolations = (allRuns: RunRecord[]): string[] => {
     : [];
 };
 
-describe.each(LANES)('R31: the round-robin over the owed ranges, $name lane', (lane) => {
+describe.each(LANES)('the round-robin over the owed windows, $name lane', (lane) => {
   let warn: jest.SpyInstance;
 
   beforeEach(() => {
@@ -2201,7 +2201,7 @@ describe.each(LANES)('R31: the round-robin over the owed ranges, $name lane', (l
 const halvedLength = (length: number, times: number): number =>
   times === 0 ? length : halvedLength(Math.floor(length / 2), times - 1);
 
-describe.each(LANES)('R32: a split window resumes in the next run, $name lane', (lane) => {
+describe.each(LANES)('a split window resumes in the next run, $name lane', (lane) => {
   let warn: jest.SpyInstance;
 
   beforeEach(() => {

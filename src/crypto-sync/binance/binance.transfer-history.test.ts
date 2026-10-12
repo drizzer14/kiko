@@ -906,7 +906,7 @@ describe('a transfer the walk cannot trust', () => {
     expect(world.added).toEqual([]);
   });
 
-  it('R30/T12: in the re-scan, an unreadable row with a time is owed at its point in its type, and the settled row of another type imports', async () => {
+  it('in the re-scan, an unreadable row with a time is owed at its point in its type, and the settled row of another type imports', async () => {
     const world = worldOf(caughtUp);
 
     const { result } = await walkOnce({
@@ -920,7 +920,7 @@ describe('a transfer the walk cannot trust', () => {
     expect(result.complete).toBe(false);
   });
 
-  it('R30/T12: an unreadable row with no finite timestamp owes the span, in every type', async () => {
+  it('an unreadable row with no finite timestamp owes the span, in every type', async () => {
     const world = worldOf(caughtUp);
 
     await walkOnce({ world, entries: [unreadableOf('FUNDING_MAIN', undefined), other] });
@@ -929,7 +929,7 @@ describe('a transfer the walk cannot trust', () => {
     expect(listOf(world)).toEqual([{ start: agoMs(30), end: agoMs(5) }]);
   });
 
-  it('R30/T12: in the forward pass, an unreadable row leaves the span uncommitted and the cursor unmoved, and the run goes on', async () => {
+  it('in the forward pass, an unreadable row leaves the span uncommitted and the cursor unmoved, and the run goes on', async () => {
     const world = worldOf({ [SPOT_FIELDS.cursor]: agoMs(20) });
 
     const { requests } = await walkOnce({

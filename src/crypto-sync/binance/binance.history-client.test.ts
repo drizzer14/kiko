@@ -417,7 +417,7 @@ describe('fetchPayHistory envelope', () => {
     });
   });
 
-  it('reports an order that is not an object as unreadable, with no time (was: throws the fixed error)', async () => {
+  it('reports an order that is not an object as unreadable, with no time', async () => {
     const page = await payRead({ code: '000000', data: ['x'] }).run();
 
     expect(page).toMatchObject(onlyUnreadable(undefined));
@@ -425,7 +425,7 @@ describe('fetchPayHistory envelope', () => {
   });
 
   it.each(['orderType', 'amount', 'currency'])(
-    'reports an order whose %s is missing as unreadable, with its time (was: throws the fixed error)',
+    'reports an order whose %s is missing as unreadable, with its time',
     async (field) => {
       const page = await payPageOf(without(payOrderBody, field));
 
@@ -433,7 +433,7 @@ describe('fetchPayHistory envelope', () => {
     },
   );
 
-  it('reports an order whose transactionTime is missing as unreadable, with no time (was: throws the fixed error)', async () => {
+  it('reports an order whose transactionTime is missing as unreadable, with no time', async () => {
     const page = await payPageOf(without(payOrderBody, 'transactionTime'));
 
     expect(page).toMatchObject(onlyUnreadable(undefined));
@@ -512,14 +512,11 @@ describe('fetchPayHistory envelope', () => {
     ['a fundsDetail entry that is not an object', { fundsDetail: ['x'] }],
     ['a fundsDetail entry without an amount', { fundsDetail: [{ currency: 'BTC' }] }],
     ['payerInfo that is not an object', { payerInfo: 'Me' }],
-  ])(
-    'reports an order with %s as unreadable, with its time (was: throws)',
-    async (_label, over) => {
-      const page = await payPageOf({ ...payOrderBody, ...over });
+  ])('reports an order with %s as unreadable, with its time', async (_label, over) => {
+    const page = await payPageOf({ ...payOrderBody, ...over });
 
-      expect(page).toMatchObject(onlyUnreadable(payOrderBody.transactionTime));
-    },
-  );
+    expect(page).toMatchObject(onlyUnreadable(payOrderBody.transactionTime));
+  });
 });
 
 // The Pay history lists every coin's orders. Only BTC orders reach a row, so only they
@@ -558,16 +555,13 @@ describe('fetchPayHistory other coins', () => {
   it.each([
     ['an amount that is missing', without(payOrderBody, 'amount')],
     ['fundsDetail that is not an array', { ...payOrderBody, fundsDetail: 'x' }],
-  ])(
-    'reports a BTC order with %s as unreadable (was: fails the read)',
-    async (_label, offContract) => {
-      const page = await pageOfOrders(usdtOrder, offContract);
+  ])('reports a BTC order with %s as unreadable', async (_label, offContract) => {
+    const page = await pageOfOrders(usdtOrder, offContract);
 
-      expect(page.rows).toEqual([]);
-      expect(page.unreadable).toEqual([{ time: payOrderBody.transactionTime }]);
-      expect(page.gathered).toBe(2);
-    },
-  );
+    expect(page.rows).toEqual([]);
+    expect(page.unreadable).toEqual([{ time: payOrderBody.transactionTime }]);
+    expect(page.gathered).toBe(2);
+  });
 
   it.each([
     ['a missing currency', without(usdtOrder, 'currency'), payOrderBody.transactionTime],
@@ -577,14 +571,11 @@ describe('fetchPayHistory other coins', () => {
       payOrderBody.transactionTime,
     ],
     ['an order that is not an object', null, undefined],
-  ])(
-    'reports %s as unreadable, since the coin cannot be told (was: fails the read)',
-    async (_label, order, time) => {
-      const page = await pageOfOrders(order);
+  ])('reports %s as unreadable, since the coin cannot be told', async (_label, order, time) => {
+    const page = await pageOfOrders(order);
 
-      expect(page).toMatchObject(onlyUnreadable(time));
-    },
-  );
+    expect(page).toMatchObject(onlyUnreadable(time));
+  });
 
   it('lists the Binance ids of the parties of a non-BTC order that was paid with BTC funds', async () => {
     const paidWithBtc = {
@@ -666,7 +657,7 @@ describe('fetchPayHistory walletAssetCost', () => {
   });
 
   it.each([['x'], ['-1'], ['1.5'], ['1e2'], ['']])(
-    'reports the order as unreadable for the key %p (was: throws)',
+    'reports the order as unreadable for the key %p',
     async (key) => {
       const page = await payPageOf(orderWithCost({ [key]: '0.6' }));
 
@@ -675,7 +666,7 @@ describe('fetchPayHistory walletAssetCost', () => {
   );
 
   it.each([[0.6], [null], [{ amount: '0.6' }]])(
-    'reports the order as unreadable for the value %p (was: throws)',
+    'reports the order as unreadable for the value %p',
     async (value) => {
       const page = await payPageOf(orderWithCost({ '1': value }));
 
@@ -687,7 +678,7 @@ describe('fetchPayHistory walletAssetCost', () => {
     ['an array', [['1', '0.6']]],
     ['a string', '1:0.6'],
     ['a number', 1],
-  ])('reports the order as unreadable when the cost is %s (was: throws)', async (_label, cost) => {
+  ])('reports the order as unreadable when the cost is %s', async (_label, cost) => {
     const page = await payPageOf(orderWithCost(cost));
 
     expect(page).toMatchObject(onlyUnreadable(payOrderBody.transactionTime));
@@ -813,7 +804,7 @@ describe('fetchUniversalTransfers', () => {
     await expect(transferRead(body).run()).rejects.toThrow(PARSE_FAILURE);
   });
 
-  describe('a row it cannot read (was: throws the fixed error)', () => {
+  describe('a row it cannot read', () => {
     const at = transferRow.timestamp;
 
     it.each([
@@ -1106,7 +1097,7 @@ describe('fetchEarnRecords', () => {
     expect(page.unreadable).toEqual([]);
   });
 
-  describe('a row it cannot read (was: throws the fixed error)', () => {
+  describe('a row it cannot read', () => {
     it.each([
       ['flexibleSubscription', { amount: '1', asset: 'BTC', time: 1, status: 'SUCCESS' }, 1],
       ['flexibleRedemption', { amount: '1', asset: 'BTC', time: 2, status: 'SUCCESS' }, 2],
@@ -1252,7 +1243,7 @@ describe('capital reads', () => {
       depositRow.insertTime,
     ],
   ])(
-    'reports a deposit row with %s as unreadable, with its insertTime when usable (was: throws)',
+    'reports a deposit row with %s as unreadable, with its insertTime when usable',
     async (_label, body, time) => {
       const page = await readDeposits(body);
 
@@ -1272,7 +1263,7 @@ describe('capital reads', () => {
     ],
     ['a row that is not an object', [null], undefined],
   ])(
-    'reports a withdrawal row with %s as unreadable, with its applyTime as given when usable (was: throws)',
+    'reports a withdrawal row with %s as unreadable, with its applyTime as given when usable',
     async (_label, body, time) => {
       const page = await readWithdrawals(body);
 

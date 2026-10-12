@@ -1758,7 +1758,7 @@ describe('the pending overlap days of a walk', () => {
       });
     });
 
-    describe('with an item the client could not read (R30)', () => {
+    describe('with an item the client could not read', () => {
       const UNREADABLE_CODE = 'pay-row-unreadable';
       const goodOrder = () => order({ transactionId: 'good', transactionTime: stuckAt });
 

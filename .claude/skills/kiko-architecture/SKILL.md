@@ -1957,7 +1957,11 @@ stop codes and scenario rows.
 - **The point-leave rule.** A point leaves only when a span holding ALL of it
   was read and returned a record whose own point equals it, or by the floor.
   A read that returned nothing, only neighbours, or a span holding part of it
-  keeps it. A range with no record leaves once read.
+  keeps it. A range with no record leaves once read. A record is told by its
+  point, not an id: a trusted twin at the same millisecond lets the point
+  leave though the stuck record was never returned (a filter mismatch); spec
+  VERIFY 14 is a merge blocker for it (the point would have to carry the
+  stuck record's identity).
 - **Round-robin over points.** One point cursor per walk
   (`binanceWalkPointCursorFields`) holds the start of the point read last; it
   moves once a point read starts, finished or not. Each of P points is read

@@ -2242,7 +2242,7 @@ describe('the pending overlap days of the capital walk', () => {
       });
     });
 
-    describe('with a row the client could not read (R30)', () => {
+    describe('with a row the client could not read', () => {
       const STOP_TAG = '[binance sync] history window stopped';
       const UNREADABLE_CODE = 'capital-row-unreadable';
       const goodDeposit = () => deposit({ id: 'good', insertTime: stuckAt });

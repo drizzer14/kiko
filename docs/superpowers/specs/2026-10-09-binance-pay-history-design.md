@@ -341,13 +341,19 @@ withdraw budget moves into this object, with the same numbers and the same rule.
     record counts, the ones the walk can trust and the ones it cannot), or by the floor: one list
     write, after the window's last span. A point that a record of the window left owed again
     (the twin of a trusted record, still stuck) stays. A window that returns no such record
-    cannot be shown to have held the point's record, so the point stays: the walk fails closed.
-    That covers a window that returns nothing, one that returns only the neighbours of the stuck
-    record (Binance filters on another field, or rounds the time), a window that holds only part
-    of the point (a re-scan that starts inside the second), and a window that the budget cut
-    before its last span (a window that came back too full is read in halves, and the point
-    leaves only once both halves were read): none of them takes the point off, and no span
-    alone does.
+    cannot be shown to have held the point's record, so the point stays. That covers a window
+    that returns nothing, one that returns only the neighbours of the stuck record (Binance
+    filters on another field, or rounds the time), a window that holds only part of the point (a
+    re-scan that starts inside the second), and a window that the budget cut before its last span
+    (a window that came back too full is read in halves, and the point leaves only once both
+    halves were read): none of them takes the point off, and no span alone does. The rule
+    identifies a record by its point (its window and series), not by an id of its own, so it
+    cannot tell a stuck record from a trusted twin at the same millisecond: with a trusted twin
+    returned and the stuck record not returned (Binance filters on another field, so a read never
+    returns the stuck record), the point LEAVES, and the stuck record is never returned either
+    way. Without a twin the point stays. Probe VERIFY 14 decides the filter field and is a MERGE
+    BLOCKER for this case: if a filter mismatch is possible, the point has to carry the stuck
+    record's identity (its id), not only its window.
   - **Order of a run.** Forward pass first, then the owed ranges the window re-scan will not
     read this run, in a round-robin (the next bullet), as windows of their own (`WalkPass`
     `pending`), then the window
@@ -1049,8 +1055,10 @@ Probe items:
     a `tranId` repeats across types, the status values (Q11; for the record only, no rule
     waits on them: a `FAILED` transfer stays owed, user ruling 2026-10-12), and the answer to a
     `startTime` older than 6 months. The owed point of a transfer rests on the first two;
-    a wrong filter field keeps the point owed (fail closed), and the record starves once it
-    can be placed. The probe account had no transfer row: one small Spot -> Funding
+    a wrong filter field keeps the point owed only while no trusted record sits at the same
+    millisecond (with a twin the point leaves, and the stuck record is never returned either
+    way), and the record starves once it can be placed. This item is a MERGE BLOCKER for that
+    case: if a filter mismatch is possible, the point must carry the stuck record's identity. The probe account had no transfer row: one small Spot -> Funding
     transfer of any coin first (Still needing the user).
 15. Simple Earn, per kind: which field `startTime` and `endTime` filter on (`time`?), its
     precision, the range ends (item 12), and whether every member of a reward group comes
