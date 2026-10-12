@@ -182,6 +182,10 @@ export const uk: typeof en = {
     deleteRulesNotice_many: 'Її {{count}} правил теж буде видалено.',
     deleteRulesNotice_other: 'Її {{count}} правила теж буде видалено.',
     deleteRulesNoticeUnknown: 'Її правила теж буде видалено.',
+    deleteTemplates_one: 'Також її буде очищено в {{count}} шаблоні.',
+    deleteTemplates_few: 'Також її буде очищено в {{count}} шаблонах.',
+    deleteTemplates_many: 'Також її буде очищено в {{count}} шаблонах.',
+    deleteTemplates_other: 'Також її буде очищено в {{count}} шаблону.',
   },
   categoryPage: {
     rulesHeading: 'Правила',

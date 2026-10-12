@@ -208,6 +208,10 @@ export const en = {
     deleteRulesNotice_many: 'Its {{count}} rules will be deleted too.',
     deleteRulesNotice_other: 'Its {{count}} rules will be deleted too.',
     deleteRulesNoticeUnknown: 'Its rules will be deleted too.',
+    deleteTemplates_one: 'This also clears it in {{count}} template.',
+    deleteTemplates_few: 'This also clears it in {{count}} templates.',
+    deleteTemplates_many: 'This also clears it in {{count}} templates.',
+    deleteTemplates_other: 'This also clears it in {{count}} templates.',
   },
   categoryPage: {
     rulesHeading: 'Rules',
