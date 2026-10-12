@@ -87,6 +87,7 @@ const makeDeps = (over: Partial<BinancePayHistoryDeps> = {}): BinancePayHistoryD
   addTransactions: jest.fn(async (rows: unknown[]) => rows.length),
   writeWalkCursor: jest.fn(async () => undefined),
   writeWalkPending: jest.fn(async () => undefined),
+  writeWalkHints: jest.fn(async () => undefined),
   ...over,
 });
 
@@ -2460,5 +2461,122 @@ describe('wallet holdings (P7)', () => {
       ['h-funding', -60_000],
       ['h-spot', -40_000],
     ]);
+  });
+});
+
+describe('the range cursor and the span hints of the round-robin', () => {
+  const CURSOR = NOW - 2 * DAY_MS;
+  const dayAt = (index: number): OwedGround => ({
+    start: NOW - 150 * DAY_MS + index * 10 * DAY_MS,
+    end: NOW - 150 * DAY_MS + index * 10 * DAY_MS + DAY_MS,
+  });
+  const days = [dayAt(0), dayAt(1), dayAt(2)];
+  const RANGE_FIELD = 'binancePayRangeCursor';
+  const HINTS_FIELD = 'binancePaySpanHints';
+  const metadataOf = (extra: Record<string, unknown> = {}) =>
+    holdingWith('h-spot', {
+      binanceAsset: 'BTC',
+      binancePayHistoryCursor: CURSOR,
+      binancePayPendingOverlap: days,
+      ...extra,
+    });
+  const dayStartsOf = (deps: BinancePayHistoryDeps): number[] =>
+    queriesOf(deps)
+      .map((query) => query.startTime)
+      .filter((start) => days.some((day) => day.start === start));
+  const depsWith = (
+    extra: Record<string, unknown> = {},
+    over: Partial<BinancePayHistoryDeps> = {},
+  ) => makeDeps({ listHoldings: async () => [metadataOf(extra)], ...over });
+  const writesTo = (deps: BinancePayHistoryDeps, field: string) =>
+    (deps.writeWalkCursor as jest.Mock).mock.calls
+      .filter((call) => call[1] === field)
+      .map((call) => call[2] as number);
+
+  it('reads the owed days that start after the stored range cursor first, then wraps around', async () => {
+    const deps = depsWith({ [RANGE_FIELD]: days[0].end });
+
+    await sync(deps);
+
+    expect(dayStartsOf(deps)).toEqual([days[1].start, days[2].start, days[0].start]);
+  });
+
+  it('stores the end of the window of each day it read, once its read has started', async () => {
+    const deps = depsWith();
+
+    await sync(deps);
+
+    expect(writesTo(deps, RANGE_FIELD)).toEqual(days.map((day) => day.end));
+  });
+
+  it('starts at the oldest day, with one fixed log code, and stores that start, when the stored cursor is no number', async () => {
+    const deps = depsWith({ [RANGE_FIELD]: 'soon' });
+
+    await sync(deps);
+
+    expect(dayStartsOf(deps)).toEqual(days.map((day) => day.start));
+    expect(warn.mock.calls).toContainEqual([
+      '[binance sync] range cursor unreadable',
+      { name: 'BinanceWalkStop', code: 'range-cursor-malformed' },
+    ]);
+    expect(writesTo(deps, RANGE_FIELD)[0]).toBe(Number.MIN_SAFE_INTEGER);
+  });
+
+  it('stores the span a day was left at when its halving chain is cut short, and begins with it in the next run', async () => {
+    const day = days[0];
+    const dense = () =>
+      jest.fn(async (_apiKey: string, _secret: string, query: PayQuery) =>
+        query.startTime === day.start && query.endTime - query.startTime > DAY_MS / 4
+          ? fullPage()
+          : payPage([]),
+      );
+    const requests = dense();
+    const first = depsWith(
+      { binancePayPendingOverlap: [day] },
+      { fetchPayHistory: requests as unknown as BinancePayHistoryDeps['fetchPayHistory'] },
+    );
+    // The forward window, then the day (too full), then its half (too full): no request is left
+    // for the half of that.
+    const run = {
+      gate: freshRun().gate,
+      budget: { canAfford: () => requests.mock.calls.length < 3, record: () => undefined },
+    };
+
+    await sync(first, nextAccountId(), run);
+
+    const stored = (first.writeWalkHints as jest.Mock).mock.calls.at(-1)?.[2];
+    expect(stored.pending).toEqual([{ start: day.start, end: day.start + DAY_MS / 4 }]);
+
+    const second = depsWith(
+      { binancePayPendingOverlap: [day], [HINTS_FIELD]: stored },
+      { fetchPayHistory: dense() as unknown as BinancePayHistoryDeps['fetchPayHistory'] },
+    );
+
+    await sync(second);
+
+    expect(queriesOf(second).find((query) => query.startTime === day.start)?.endTime).toBe(
+      day.start + DAY_MS / 4,
+    );
+    expect((second.writeWalkHints as jest.Mock).mock.calls.at(-1)?.[2].pending).toEqual([]);
+  });
+
+  it('stores a malformed hint over with none, logging one fixed code, and reads the whole window', async () => {
+    const deps = depsWith({ binancePayPendingOverlap: [days[0]], [HINTS_FIELD]: 'soon' });
+
+    await sync(deps);
+
+    expect(warn.mock.calls).toContainEqual([
+      '[binance sync] span hints unreadable',
+      { name: 'BinanceWalkStop', code: 'span-hints-malformed' },
+    ]);
+    expect(deps.writeWalkHints).toHaveBeenCalledWith('h-spot', HINTS_FIELD, {
+      forward: [],
+      pending: [],
+      rescan: [],
+      point: [],
+    });
+    expect(queriesOf(deps).find((query) => query.startTime === days[0].start)?.endTime).toBe(
+      days[0].end,
+    );
   });
 });

@@ -1761,7 +1761,8 @@ than restated here:
   writes the forward cursor). The capital, Pay, Transfer and Earn walks all
   run it. `WalkPass` is `'forward' | 'pending' | 'rescan'` (read it in
   `binance.history-walk.ts`); a run reads the forward pass, the owed
-  ranges (`pending`, oldest first), the re-scan, then the owed points last.
+  ranges (`pending`, in a round-robin from the range cursor), the re-scan,
+  then the owed points last.
 - **One pacing gate per run.** `createBinanceHistoryRun`
   (`binance.history-budget.ts`) builds ONE `createRequestGate` (the helper
   Monobank uses, `src/monobank/`) plus the run budget; `runCryptoSync`'s
@@ -1805,7 +1806,9 @@ than restated here:
   stored row's metadata inside the same write and carries over any
   `carriedMetadataKeys` entry (read it in `holding-metadata.ts`: the walk
   cursors `binanceWalkCursorFields`, the owed lists `binanceWalkPendingFields`
-  and the point cursors `binanceWalkPointCursorFields`, plus a reopened
+  the point cursors `binanceWalkPointCursorFields`, the range cursors
+  `binanceWalkRangeCursorFields` and the span hints
+  `binanceWalkSpanHintFields`, plus a reopened
   Monobank card's `statementFromMs`):
   `withWalkOwnedMetadataCarried` ALWAYS overwrites the target's own key
   with the stored value when the stored row has it, regardless of
@@ -1879,8 +1882,9 @@ than restated here:
   from the floor. It touches ONLY the walk keys: each cursor in
   `binanceWalkCursorFields` already present is set to `HISTORY_FLOOR_MS`, each
   owed list in `binanceWalkPendingFields` to `[]`, and each point cursor in
-  `binanceWalkPointCursorFields` is DELETED (no key = before the oldest
-  point). A cursor is never deleted: a DELETED cursor falls back
+  `binanceWalkPointCursorFields`, `binanceWalkRangeCursorFields` and
+  `binanceWalkSpanHintFields` is DELETED (no key = before the oldest point
+  or range, no span to resume). A cursor is never deleted: a DELETED cursor falls back
   to the legacy `latestTransactionTime` cursor, which a reconnected
   DIFFERENT Binance account would inherit as if it were its own
   already-imported history, silently skipping that account's own older
@@ -1961,6 +1965,22 @@ stop codes and scenario rows.
   points such a run reads). A malformed cursor is repaired at once and logged
   (`point-cursor-malformed`). The rotation is deterministic and bounded; a
   random or fail-closed-by-length rotation has no testable bound.
+- **Round-robin over owed ranges (R31) and span hints (R32).** One range
+  cursor per walk (`binanceWalkRangeCursorFields`) holds the END of the window
+  of the range read last (a read cuts a range, so a start would put what is
+  left of it ahead of the cursor again); the pending pass reads the ranges
+  that start after it first, then wraps, and the cursor moves once a window's
+  read has started, finished or not. Each of R ranges is read within
+  `ceil(R / L)` runs that enter the pending pass (L >= 1); a range owed whole
+  every run cannot starve the ones behind it. A malformed cursor is repaired
+  at once and logged (`range-cursor-malformed`). One hints key per walk
+  (`binanceWalkSpanHintFields`) holds, per pass (forward, pending, re-scan,
+  point), the narrowest span a window was left at when `walkSpans` stopped
+  before any span committed; a window that starts there begins with it (never
+  wider than the window), and it drops when a span from that start commits or
+  no window of the pass starts there. A window that needs h halvings commits
+  its first span within h + 1 runs of one read each. A malformed value is
+  ignored, stored over at once and logged (`span-hints-malformed`).
 - **STOP_ENDS_PASS and R28: user ruling of 2026-10-12, kept** (plan
   OVERNIGHT item 17). `STOP_ENDS_PASS` (`binance.history-walk.ts`) says a stop
   in the forward pass ends only that pass, so the run goes on to the owed
@@ -1987,7 +2007,8 @@ stop codes and scenario rows.
   history shape): the spec's "VERIFY gate" and the plan's probe items list
   them.
 - **Disconnect and carry** are the capital rules above: the balance sync
-  carries the cursors, lists and point cursors; disconnect resets them.
+  carries the cursors, lists, point cursors, range cursors and span hints;
+  disconnect resets them.
 - **Delete notice.** A same-currency linked transfer's confirm uses
   `transactions.deleteLinked.transfer`, `.transferUnlinked` and
   `.transferUnlinkedPlain` (`src/transactions/remove-notice/remove-notice.ts`).

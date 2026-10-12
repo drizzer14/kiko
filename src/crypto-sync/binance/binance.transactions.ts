@@ -4,10 +4,10 @@ import {
   BINANCE_HISTORY_CURSOR_FIELD,
   BINANCE_HISTORY_PENDING_OVERLAP_FIELD,
   BINANCE_HISTORY_POINT_CURSOR_FIELD,
+  BINANCE_HISTORY_RANGE_CURSOR_FIELD,
   BINANCE_HISTORY_RESCAN_CURSOR_FIELD,
+  BINANCE_HISTORY_SPAN_HINTS_FIELD,
   binanceWalkCursorOf,
-  type BinanceWalkNumberField,
-  type BinanceWalkPendingField,
 } from '@kiko/holdings/holding-metadata';
 import type { HoldingRow } from '@kiko/db';
 import maybe, { foldMap } from 'fnts/maybe';
@@ -20,21 +20,21 @@ import {
   btcSatoshis,
   dropReadPoints,
   halfOf,
-  type OwedGround,
   planWalkPasses,
   readPendingMark,
-  readPointCursor,
+  readWalkRoundRobins,
   resolveWalletHoldings,
+  roundRobinHooksOf,
   runWalkPlan,
   type SpanCommit,
   type SpanRead,
-  storePointCursor,
   type WalkMarkFields,
   type WalkMarks,
   walkSpans,
   type WalkPass,
   type WalkPlan,
   type WalkResult,
+  walkWritersOf,
   type WalkWindow,
 } from './binance.history-walk';
 import {
@@ -62,6 +62,7 @@ import {
 } from './binance.history-records';
 import { type BinanceCredentials, readCredentials } from './binance.credentials';
 import { isBinanceCoolingDown, setBinanceCooldownUntil } from './binance.cooldown';
+import { type BinanceWalkWriteDeps, defaultWalkWriteDeps } from './binance.walk-write-deps';
 import { BINANCE_ASSET, BinanceRateLimitError, type FetchAccountOptions } from './binance.client';
 import { type BinanceWalletKey, binanceKeyOf, FUNDING_KEY, SPOT_KEY } from './binance.holding-keys';
 
@@ -99,6 +100,8 @@ const CAPITAL_MARK_FIELDS: WalkMarkFields = {
   cursor: BINANCE_HISTORY_CURSOR_FIELD,
   rescan: BINANCE_HISTORY_RESCAN_CURSOR_FIELD,
   point: BINANCE_HISTORY_POINT_CURSOR_FIELD,
+  range: BINANCE_HISTORY_RANGE_CURSOR_FIELD,
+  hints: BINANCE_HISTORY_SPAN_HINTS_FIELD,
   pending: BINANCE_HISTORY_PENDING_OVERLAP_FIELD,
 };
 
@@ -128,7 +131,7 @@ export type BinanceTransactionRow = {
  * newest-imported-time cursor read, and the deduping import. Mirrors `BinanceDeps`
  * in `binance.provider.ts`. Pacing and the weight budget come from the run.
  */
-export type BinanceTransactionSyncDeps = {
+export type BinanceTransactionSyncDeps = BinanceWalkWriteDeps & {
   now: () => number;
   fetchImpl: typeof fetch;
   readCredentials: (accountId: string) => Promise<BinanceCredentials | undefined>;
@@ -140,18 +143,6 @@ export type BinanceTransactionSyncDeps = {
   /** The legacy fallback cursor: only consulted when the holding carries no watermark yet. */
   latestTransactionTime: (holdingId: string) => Promise<number | undefined>;
   addTransactions: (rows: BinanceTransactionRow[]) => Promise<number>;
-  /** Advances one walk's own watermark once a span's rows have committed. */
-  writeWalkCursor: (
-    holdingId: string,
-    field: BinanceWalkNumberField,
-    cursorMs: number,
-  ) => Promise<void>;
-  /** Stores one walk's list of ground still owed, once a span has committed or the cursor moves. */
-  writeWalkPending: (
-    holdingId: string,
-    field: BinanceWalkPendingField,
-    ranges: OwedGround[],
-  ) => Promise<void>;
   fetchDepositHistory: (
     apiKey: string,
     secret: string,
@@ -167,6 +158,7 @@ export type BinanceTransactionSyncDeps = {
 };
 
 const defaultBinanceTransactionDeps: BinanceTransactionSyncDeps = {
+  ...defaultWalkWriteDeps,
   now: () => Date.now(),
   fetchImpl: fetch,
   readCredentials,
@@ -177,10 +169,6 @@ const defaultBinanceTransactionDeps: BinanceTransactionSyncDeps = {
   latestTransactionTime: async (holdingId) =>
     (await transactionsRepo.latestSyncedTimeQuery(holdingId, 'binance')).at(0)?.time,
   addTransactions: (rows) => transactionsRepo.addManyDedup(rows),
-  writeWalkCursor: (holdingId, field, cursorMs) =>
-    holdingsRepo.setBinanceWalkCursor(holdingId, field, cursorMs),
-  writeWalkPending: (holdingId, field, ranges) =>
-    holdingsRepo.setBinanceWalkPending(holdingId, field, ranges),
   fetchDepositHistory,
   fetchWithdrawHistory,
 };
@@ -606,10 +594,11 @@ const runSync = async (
   // or a first sync) falls back to the newest already-imported record.
   const cursor = binanceWalkCursorOf(CAPITAL_MARK_FIELDS.cursor, spot.metadata);
   const rescanCursor = binanceWalkCursorOf(CAPITAL_MARK_FIELDS.rescan, spot.metadata);
-  const pointCursor = await readPointCursor({
-    field: CAPITAL_MARK_FIELDS.point,
+  const writers = walkWritersOf(spot.id, deps);
+  const roundRobins = await readWalkRoundRobins({
+    fields: CAPITAL_MARK_FIELDS,
     metadata: spot.metadata,
-    write: (field, cursorMs) => deps.writeWalkCursor(spot.id, field, cursorMs),
+    ...writers,
   });
   const latest = await deps.latestTransactionTime(spot.id);
   const planCursor = cursor ?? latest ?? null;
@@ -622,7 +611,8 @@ const runSync = async (
   const plan = planWalkPasses({
     cursor: planCursor,
     rescanCursor,
-    pointCursor,
+    pointCursor: roundRobins.pointCursor,
+    rangeCursor: roundRobins.rangeCursor,
     pending,
     floorMs: HISTORY_FLOOR_MS,
     endTime: now,
@@ -638,7 +628,7 @@ const runSync = async (
     apiKey,
     secret,
     options,
-    marks: { cursor, rescanCursor, pointCursor, pending },
+    marks: { cursor, rescanCursor, ...roundRobins, pending },
     plan,
   };
 
@@ -647,12 +637,13 @@ const runSync = async (
     canAfford: (keep) =>
       run.budget.canAfford('capitalWithdraw', COSTS.withdraw, keep) &&
       !isBinanceCoolingDown(accountId, deps.now()),
-    runWindow: (window, pass, keep) =>
+    runWindow: (window, pass, keep, hint) =>
       walkSpans({
         window,
         read: (span, keepCalls) => readSpan(context, span, keepCalls),
         commit: (span, records) => commitSpan(context, span, records, pass),
         keep,
+        hint,
         onComplete: (read) =>
           dropReadPoints({
             pass,
@@ -663,13 +654,7 @@ const runSync = async (
             writePending: (field, ranges) => deps.writeWalkPending(spot.id, field, ranges),
           }),
       }),
-    markPointRead: (window) =>
-      storePointCursor({
-        window,
-        marks: context.marks,
-        field: CAPITAL_MARK_FIELDS.point,
-        write: (field, cursorMs) => deps.writeWalkCursor(spot.id, field, cursorMs),
-      }),
+    ...roundRobinHooksOf({ marks: context.marks, fields: CAPITAL_MARK_FIELDS, ...writers }),
   });
 };
 

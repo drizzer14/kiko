@@ -3,7 +3,11 @@ import {
   BINANCE_PAY_HISTORY_CURSOR_FIELD,
   BINANCE_PAY_PENDING_OVERLAP_FIELD,
   BINANCE_PAY_POINT_CURSOR_FIELD,
+  BINANCE_PAY_RANGE_CURSOR_FIELD,
   BINANCE_PAY_RESCAN_CURSOR_FIELD,
+  BINANCE_PAY_SPAN_HINTS_FIELD,
+  type BinanceSpanHintPass,
+  type BinanceSpanHints,
 } from '@kiko/holdings/holding-metadata';
 import maybe, { foldMap } from 'fnts/maybe';
 
@@ -12,12 +16,15 @@ import {
   BinanceWalkStop,
   dropReadPoints,
   halfOf,
+  NO_HINTS,
   planWalkPasses,
   runWalkPlan,
   type OwedGround,
   type OwedWindow,
   type SpanRead,
   storePointCursor,
+  storeRangeCursor,
+  storeSpanHints,
   walkSpans,
   type WalkMarkFields,
   type WalkMarks,
@@ -192,6 +199,9 @@ type SimRecord = {
 
 type Scenario = { owed: OwedGround[]; records: SimRecord[] };
 
+/** A span longer than `spanMs` that overlaps `range` comes back full, so it is read in halves. */
+type DenseRange = { range: WalkWindow; spanMs: number };
+
 type Simulation = {
   lane: Lane;
   reading: Reading;
@@ -200,7 +210,7 @@ type Simulation = {
   /** The time between two runs. */
   gapMs?: number;
   /** A span longer than `spanMs` that overlaps `range` comes back full, so it is read in halves. */
-  dense?: { range: WalkWindow; spanMs: number };
+  dense?: DenseRange | DenseRange[];
   /**
    * Binance filters on a field other than the one the point was derived from: a read of a point
    * returns the records near it that can be trusted, and never a record that is stuck for good.
@@ -230,6 +240,13 @@ type RunRecord = {
   callsAfterForward: number;
   /** The reads that spent some of their calls and then gave up: calls paid for nothing. */
   partialReads: number;
+  /** The starts of the windows of the owed ranges the plan gave the run, and of those it read. */
+  plannedRanges: number[];
+  rangesRead: number[];
+  /** The spans that committed in the run, with the pass they were read in. */
+  commits: { kind: BinanceSpanHintPass; start: number; end: number }[];
+  /** The span hints as the run left them. */
+  hints: BinanceSpanHints;
 };
 
 type Outcome = { runs: RunRecord[]; importedAt: Map<number, number> };
@@ -251,10 +268,14 @@ const isDrifting = (drift: Simulation['drift'], span: WalkWindow, run: number): 
   drift !== undefined && run < drift.until && span.start < START_MS;
 
 const isDense = (dense: Simulation['dense'], span: WalkWindow): boolean =>
-  dense !== undefined &&
-  span.end - span.start > dense.spanMs &&
-  span.start < dense.range.end &&
-  span.end > dense.range.start;
+  [dense ?? []]
+    .flat()
+    .some(
+      (entry) =>
+        span.end - span.start > entry.spanMs &&
+        span.start < entry.range.end &&
+        span.end > entry.range.start,
+    );
 
 /**
  * What a stuck record may sit in, as far as the lane can tell: its millisecond, or for a
@@ -288,6 +309,8 @@ const MARK_FIELDS: WalkMarkFields = {
   cursor: BINANCE_PAY_HISTORY_CURSOR_FIELD,
   rescan: BINANCE_PAY_RESCAN_CURSOR_FIELD,
   point: BINANCE_PAY_POINT_CURSOR_FIELD,
+  range: BINANCE_PAY_RANGE_CURSOR_FIELD,
+  hints: BINANCE_PAY_SPAN_HINTS_FIELD,
   pending: BINANCE_PAY_PENDING_OVERLAP_FIELD,
 };
 
@@ -485,6 +508,8 @@ const simulate = async (input: Simulation): Promise<Outcome> => {
     cursor: START_MS,
     rescanCursor: null,
     pointCursor: null,
+    rangeCursor: null,
+    hints: NO_HINTS,
     pending: scenario.owed,
   };
   const records: RunRecord[] = [];
@@ -501,12 +526,17 @@ const simulate = async (input: Simulation): Promise<Outcome> => {
       pointsRead: [],
       callsAfterForward: lane.reads,
       partialReads: 0,
+      plannedRanges: [],
+      rangesRead: [],
+      commits: [],
+      hints: NO_HINTS,
     };
     const pointReads = new Map<string, number>();
     const plan = planWalkPasses({
       cursor: marks.cursor,
       rescanCursor: marks.rescanCursor,
       pointCursor: marks.pointCursor,
+      rangeCursor: marks.rangeCursor,
       pending: marks.pending,
       floorMs: FLOOR_MS,
       endTime: endTimeOf(input, run),
@@ -516,20 +546,21 @@ const simulate = async (input: Simulation): Promise<Outcome> => {
     });
     let reads = 0;
     let pastForward = false;
-    const isPointWindow = (span: WalkWindow): boolean =>
-      plan.points.some((point) => sameWindow(point, span));
+    // By identity: an owed range can be the very window of a point, and is not a read of it.
+    const isPointWindow = (window: OwedWindow): boolean => plan.points.includes(window);
 
     record.plannedPoints = plan.points.map((point) => point.start);
+    record.plannedRanges = plan.pending.map((window) => window.start);
 
     /** The calls one read of a window costs: one for each series it asks. */
     const callsOf = (window: OwedWindow): number => window.series?.length ?? lane.rangeCalls;
-    const noteRead = (span: WalkWindow, isRescan: boolean): void => {
+    const noteRead = (window: WalkWindow, isRescan: boolean, isPointRead: boolean): void => {
       record.rescanReads += isRescan ? 1 : 0;
 
-      if (isPointWindow(span)) {
-        const key = `${span.start}:${span.end}`;
+      if (isPointRead) {
+        const key = `${window.start}:${window.end}`;
         pointReads.set(key, (pointReads.get(key) ?? 0) + 1);
-        record.pointsRead.push(span.start);
+        record.pointsRead.push(window.start);
       }
     };
 
@@ -544,7 +575,26 @@ const simulate = async (input: Simulation): Promise<Outcome> => {
           field: MARK_FIELDS.point,
           write: async () => undefined,
         }),
-      runWindow: (window, pass, keep) => {
+      markRangeRead: async (window) => {
+        record.rangesRead.push(window.start);
+        await storeRangeCursor({
+          window,
+          marks: live,
+          field: MARK_FIELDS.range,
+          write: async () => undefined,
+        });
+      },
+      hints: {
+        stored: live.hints,
+        store: (hints) =>
+          storeSpanHints({
+            hints,
+            marks: live,
+            field: MARK_FIELDS.hints,
+            write: async () => undefined,
+          }),
+      },
+      runWindow: (window, pass, keep, hint) => {
         if (pass !== 'forward' && !pastForward) {
           pastForward = true;
           record.callsAfterForward = lane.reads - reads;
@@ -555,13 +605,12 @@ const simulate = async (input: Simulation): Promise<Outcome> => {
         return walkSpans<SimRecord[]>({
           window,
           keep,
+          hint,
           read: async (span, keepCalls) => {
-            const page = pageOf({
-              simulation: input,
-              span,
-              window,
-              isPointRead: isPointWindow(span),
-            });
+            // The first read of a point window is the read of the point, whether it starts with the
+            // whole window or with the hint a run before left: later reads are of its halves.
+            const isPointRead = firstRead && isPointWindow(window);
+            const page = pageOf({ simulation: input, span, window, isPointRead });
             const { paid, made } = payForRead({
               spent: reads,
               cost:
@@ -583,7 +632,7 @@ const simulate = async (input: Simulation): Promise<Outcome> => {
               return undefined;
             }
 
-            noteRead(span, pass === 'rescan');
+            noteRead(window, pass === 'rescan', isPointRead);
 
             return page;
           },
@@ -625,6 +674,14 @@ const simulate = async (input: Simulation): Promise<Outcome> => {
 
             record.rescanCommits += pass === 'rescan' && committed !== undefined ? 1 : 0;
 
+            if (committed !== undefined) {
+              record.commits.push({
+                kind: isPointWindow(window) ? 'point' : pass,
+                start: span.start,
+                end: span.end,
+              });
+            }
+
             return committed;
           },
         });
@@ -633,6 +690,7 @@ const simulate = async (input: Simulation): Promise<Outcome> => {
 
     marks = live;
     record.owed = live.pending;
+    record.hints = live.hints;
     record.cursor = live.cursor;
     record.callsAfterForward = pastForward ? record.callsAfterForward : lane.reads - reads;
     record.readsOfAPoint = Math.max(0, ...pointReads.values());
@@ -1961,5 +2019,300 @@ describe.each(LANES)('owed ground that never commits, $name lane', (lane) => {
         30,
       );
     });
+  });
+});
+
+/**
+ * `count` owed days, each holding one unreadable record with no time: every read of a day owes the
+ * whole day again, so each is owed whole in every run, however many runs there are.
+ */
+const stuckRangesScenario = (lane: Lane, count: number): Scenario => {
+  const builder = builderOf(lane, 53);
+  const days = Array.from({ length: count }, (_unused, index) => builder.rangeAt(index));
+
+  return {
+    owed: days,
+    records: days.map((day) => ({
+      ...builder.record(builder.interiorOf(day), NEVER),
+      unreadable: 'timeless' as const,
+    })),
+  };
+};
+
+/**
+ * Every owed range is read within `ceil(ranges / reads a run)` runs that enter the pending pass,
+ * `reads` the least ranges such a run reads (at least one): the runs read the ranges one after the
+ * other from the range cursor, wrapping around, so a range that is owed whole every run keeps no
+ * range behind it unread.
+ */
+const rangeRoundRobinViolations = (allRuns: RunRecord[]): string[] => {
+  const runs = allRuns.filter((run) => run.callsAfterForward > 0 && run.plannedRanges.length > 0);
+  const reads = Math.min(...runs.map((run) => run.rangesRead.length));
+  const ranges = Math.max(...runs.map((run) => run.plannedRanges.length));
+
+  if (runs.length === 0 || reads < 1) {
+    return [`RR: a run planned ranges and read none (${runs.length} runs with ranges)`];
+  }
+
+  const span = Math.ceil(ranges / reads);
+  const unread = runs
+    .slice(0, Math.max(0, runs.length - span + 1))
+    .flatMap((run, index) =>
+      run.plannedRanges.filter(
+        (start) =>
+          !runs.slice(index, index + span).some((other) => other.rangesRead.includes(start)),
+      ),
+    );
+
+  return unread.length > 0
+    ? [
+        `RR: ${unread.length} ranges planned in a run not read within ${span} runs ` +
+          `(${ranges} ranges, at least ${reads} read a run)`,
+      ]
+    : [];
+};
+
+describe.each(LANES)('R31: the round-robin over the owed ranges, $name lane', (lane) => {
+  let warn: jest.SpyInstance;
+
+  beforeEach(() => {
+    warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+  });
+
+  afterEach(() => {
+    warn.mockRestore();
+  });
+
+  it.each([1, 2, 3, 5, 8, 12].map((count) => ({ count })))(
+    '$count owed days, each owed whole again by every read: each is read within ceil(days / reads a run) runs, though the oldest is first in the plan every run',
+    async ({ count }) => {
+      const runs = 2 * Math.ceil(count / Math.max(1, pendingReadsOf(lane))) + 3;
+
+      const outcome = await simulate({
+        lane,
+        reading: 'both ends included',
+        scenario: stuckRangesScenario(lane, count),
+        runs,
+      });
+
+      expect(rangeRoundRobinViolations(outcome.runs)).toEqual([]);
+      expect(outcome.runs.every((run) => run.rangesRead.length >= 1)).toBe(true);
+    },
+  );
+
+  it('two owed days whose reads never finish, one read of one of them a run: each is read within 2 runs, because the cursor moves on once a read has started', async () => {
+    const days = [dayAt(40), dayAt(60)];
+
+    const outcome = await simulate({
+      lane: { ...lane, reads: 2 * lane.rangeCalls, splitCalls: lane.rangeCalls },
+      reading: 'both ends included',
+      scenario: { owed: days, records: [] },
+      runs: 8,
+      gapMs: 0,
+      dense: days.map((day) => ({ range: day, spanMs: 1 })),
+    });
+
+    expect(rangeRoundRobinViolations(outcome.runs)).toEqual([]);
+    expect(outcome.runs.slice(1).every((run) => run.rangesRead.length === 1)).toBe(true);
+  });
+
+  it('a run that reads one range moves on past it: the next run reads the range after it', async () => {
+    const outcome = await simulate({
+      lane: { ...lane, reads: 3 * lane.rangeCalls },
+      reading: 'both ends included',
+      scenario: stuckRangesScenario(lane, 4),
+      runs: 8,
+    });
+    // Run 0 has no forward window, so it has the calls for more than one range.
+    const caughtUp = outcome.runs.slice(1);
+    const firstRead = caughtUp.map((run) => run.rangesRead.at(0));
+
+    expect(caughtUp.every((run) => run.rangesRead.length === 1)).toBe(true);
+    expect(new Set(firstRead.slice(0, 4)).size).toBe(4);
+    expect(firstRead.slice(4)).toEqual(firstRead.slice(0, firstRead.length - 4));
+  });
+});
+
+/** The length of a span of `length` after `times` halvings, as `halfOf` cuts it. */
+const halvedLength = (length: number, times: number): number =>
+  times === 0 ? length : halvedLength(Math.floor(length / 2), times - 1);
+
+describe.each(LANES)('R32: a split window resumes in the next run, $name lane', (lane) => {
+  let warn: jest.SpyInstance;
+
+  beforeEach(() => {
+    warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+  });
+
+  afterEach(() => {
+    warn.mockRestore();
+  });
+
+  /**
+   * A run with the calls of `reads`, a dense window in the series the lane reads last (a split
+   * read costs every series of it): a chain of halvings needs one run for each halving.
+   */
+  const oneRead = (reads: number) => ({
+    lane: { ...lane, reads, splitCalls: lane.rangeCalls },
+    reading: 'both ends included' as const,
+    scenario: { owed: [], records: [] } as Scenario,
+  });
+  const HALVINGS = [1, 3, 6];
+
+  it.each(HALVINGS.map((halvings) => ({ halvings })))(
+    'forward pass: a window that needs $halvings halvings, one read a run: its first span commits within halvings + 1 runs',
+    async ({ halvings }) => {
+      const length = HOUR_MS * 2 ** halvings;
+
+      const outcome = await simulate({
+        ...oneRead(lane.rangeCalls),
+        runs: halvings + 4,
+        gapMs: 0,
+        catchUp: { runs: 1, gapMs: length },
+        dense: { range: { start: START_MS, end: START_MS + length }, spanMs: HOUR_MS },
+      });
+
+      // Run 0 has no window: the forward pass starts at the cursor, which is the end.
+      expect(firstRun(outcome.runs, (run) => (run.cursor ?? 0) > START_MS)).toBeLessThanOrEqual(
+        halvings + 1,
+      );
+    },
+  );
+
+  it.each(HALVINGS.map((halvings) => ({ halvings })))(
+    're-scan: a window that needs $halvings halvings, one read a run: its first span commits within halvings + 1 runs',
+    async ({ halvings }) => {
+      const outcome = await simulate({
+        ...oneRead(lane.rangeCalls),
+        runs: halvings + 3,
+        gapMs: 0,
+        dense: {
+          range: { start: START_MS - WINDOW_MS - DAY_MS, end: START_MS },
+          spanMs: halvedLength(WINDOW_MS, halvings),
+        },
+      });
+
+      expect(firstRun(outcome.runs, (run) => run.rescanCommits > 0)).toBeLessThanOrEqual(halvings);
+    },
+  );
+
+  it.each(HALVINGS.map((halvings) => ({ halvings })))(
+    'pending pass: an owed day that needs $halvings halvings, one read a run: its first span commits within halvings + 1 runs',
+    async ({ halvings }) => {
+      const day = dayAt(40);
+
+      const outcome = await simulate({
+        ...oneRead(2 * lane.rangeCalls),
+        runs: halvings + 3,
+        gapMs: 0,
+        scenario: { owed: [day], records: [] },
+        dense: { range: day, spanMs: halvedLength(DAY_MS, halvings) },
+      });
+
+      expect(
+        firstRun(outcome.runs, (run) =>
+          run.commits.some((commit) => commit.kind === 'pending' && commit.start === day.start),
+        ),
+      ).toBeLessThanOrEqual(halvings);
+    },
+  );
+
+  it.each(HALVINGS.map((halvings) => ({ halvings })))(
+    'pending pass: two owed days that each need $halvings halvings, one read a run: each commits its first span within 2 * halvings + 2 runs, so the hint of one is not the hint of the other',
+    async ({ halvings }) => {
+      const days = [dayAt(40), dayAt(60)];
+
+      const outcome = await simulate({
+        ...oneRead(2 * lane.rangeCalls),
+        runs: 2 * halvings + 4,
+        gapMs: 0,
+        scenario: { owed: days, records: [] },
+        dense: days.map((day) => ({ range: day, spanMs: halvedLength(DAY_MS, halvings) })),
+      });
+
+      for (const day of days) {
+        expect(
+          firstRun(outcome.runs, (run) =>
+            run.commits.some((commit) => commit.kind === 'pending' && commit.start === day.start),
+          ),
+        ).toBeLessThanOrEqual(2 * halvings + 1);
+      }
+
+      // A hint of one day used by the other would give it a span that ends before it starts.
+      const commits = outcome.runs
+        .flatMap((run) => run.commits)
+        .filter((commit) => commit.kind === 'pending');
+      expect(commits.filter((commit) => commit.end <= commit.start)).toEqual([]);
+      expect(
+        commits.filter(
+          (commit) => !days.some((day) => day.start <= commit.start && commit.end <= day.end),
+        ),
+      ).toEqual([]);
+    },
+  );
+
+  it('points: a point window that needs its halvings, one read a run: its first span commits within halvings + 1 runs', async () => {
+    const builder = builderOf(lane, 61);
+    const stuck = builder.record(BASE_MS + 60 * DAY_MS + HOUR_MS, NEVER);
+    const point = pointOf(stuck);
+    const length = point.end - point.start;
+    const halvings = Math.floor(Math.log2(length));
+
+    const outcome = await simulate({
+      ...oneRead(lane.rangeCalls + 1),
+      runs: halvings + 3,
+      gapMs: 0,
+      scenario: { owed: [point], records: [stuck] },
+      dense: { range: point, spanMs: halvedLength(length, halvings) },
+    });
+
+    expect(
+      firstRun(outcome.runs, (run) => run.commits.some((commit) => commit.kind === 'point')),
+    ).toBeLessThanOrEqual(halvings);
+  });
+
+  it('a run in which the forward pass and the re-scan both stop in the middle of a chain keeps both hints, and both go on', async () => {
+    const forwardHalvings = 4;
+    const rescanHalvings = 3;
+    const length = HOUR_MS * 2 ** forwardHalvings;
+    const builder = builderOf(lane, 71);
+    const stuck = { ...builder.record(START_MS + 30 * 60_000, NEVER), inForward: true };
+
+    const outcome = await simulate({
+      ...oneRead(2 * lane.rangeCalls),
+      scenario: { owed: [], records: [stuck] },
+      runs: forwardHalvings + rescanHalvings + 6,
+      gapMs: 0,
+      catchUp: { runs: 1, gapMs: length },
+      dense: [
+        { range: { start: START_MS, end: START_MS + length }, spanMs: HOUR_MS },
+        {
+          range: { start: START_MS - WINDOW_MS - DAY_MS, end: START_MS },
+          spanMs: halvedLength(WINDOW_MS, rescanHalvings),
+        },
+      ],
+    });
+
+    expect(
+      outcome.runs.some((run) => run.hints.forward.length > 0 && run.hints.rescan.length > 0),
+    ).toBe(true);
+    expect(firstRun(outcome.runs, (run) => run.rescanCommits > 0)).toBeLessThanOrEqual(
+      forwardHalvings + rescanHalvings + 3,
+    );
+    expect(outcome.runs.every((run) => (run.cursor ?? 0) <= stuck.time)).toBe(true);
+  });
+
+  it('drops every hint once the windows commit: a run that read to its ends leaves none', async () => {
+    const outcome = await simulate({
+      ...oneRead(8 * lane.rangeCalls),
+      runs: 6,
+      gapMs: 0,
+      dense: {
+        range: { start: START_MS - WINDOW_MS - DAY_MS, end: START_MS },
+        spanMs: halvedLength(WINDOW_MS, 2),
+      },
+    });
+
+    expect(outcome.runs.at(-1)?.hints).toEqual(NO_HINTS);
   });
 });

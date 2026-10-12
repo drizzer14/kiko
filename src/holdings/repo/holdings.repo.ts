@@ -39,7 +39,9 @@ import {
   withWalkOwnedMetadataCarried,
   type BinanceWalkNumberField,
   type BinanceWalkPendingField,
+  type BinanceWalkSpanHintField,
   type BinancePendingRange,
+  type BinanceSpanHints,
   withWalkOwnedMetadataResetToFloor,
 } from '../holding-metadata';
 import { isSyncedHolding } from '../deletable';
@@ -1165,6 +1167,16 @@ export const holdingsRepo = {
     field: BinanceWalkPendingField,
     ranges: BinancePendingRange[],
   ) => setBinanceWalkField(holdingId, field, ranges),
+  /**
+   * Store one Binance walk's span hints (`field`) on one holding's metadata, under the same
+   * account gate and merge as `setBinanceWalkCursor`: a late write from a walk started before a
+   * disconnect must not bring back a hint the disconnect dropped.
+   */
+  setBinanceWalkSpanHints: (
+    holdingId: string,
+    field: BinanceWalkSpanHintField,
+    hints: BinanceSpanHints,
+  ) => setBinanceWalkField(holdingId, field, hints),
   /**
    * Advance the crash-safe statement-import marker (`syncedBalanceMinorUnits`,
    * see db/schema.ts) for one Monobank card to the balance whose statements the

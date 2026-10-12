@@ -1,5 +1,6 @@
 import { DAY_MS } from '@kiko/dates';
 import {
+  type BinanceSpanHints,
   binanceWalkPendingOf,
   withWalkOwnedMetadataResetToFloor,
 } from '@kiko/holdings/holding-metadata';
@@ -102,6 +103,7 @@ const makeDeps = (over: Partial<BinanceTransactionSyncDeps> = {}): BinanceTransa
   addTransactions: jest.fn(async (rows: BinanceTransactionRow[]) => rows.length),
   writeWalkCursor: jest.fn(async () => undefined),
   writeWalkPending: jest.fn(async () => undefined),
+  writeWalkHints: jest.fn(async () => undefined),
   fetchDepositHistory: jest.fn(async () => historyPage([])),
   fetchWithdrawHistory: jest.fn(async () => historyPage([])),
   ...over,
@@ -153,21 +155,35 @@ const makeStatefulSpotAccount = (): {
   listHoldings: () => Promise<HoldingRow[]>;
   writeWalkCursor: jest.Mock<Promise<void>, [string, string, number]>;
   writeWalkPending: jest.Mock<Promise<void>, [string, string, OwedGround[]]>;
+  writeWalkHints: jest.Mock<Promise<void>, [string, string, BinanceSpanHints]>;
   cursor: () => number | null;
   rescanCursor: () => number | null;
   pointCursor: () => number | null;
+  rangeCursor: () => number | null;
+  hints: () => BinanceSpanHints | undefined;
   pending: () => OwedGround[];
 } => {
   const marks: Record<string, number> = {};
+  let hints: Record<string, BinanceSpanHints> = {};
   let pending: OwedGround[] = [];
 
   return {
     listHoldings: async () => [
       {
         id: 'h-spot',
-        metadata: { binanceAsset: 'BTC', ...marks, binanceHistoryPendingOverlap: pending },
+        metadata: {
+          binanceAsset: 'BTC',
+          ...marks,
+          ...hints,
+          binanceHistoryPendingOverlap: pending,
+        },
       } as unknown as HoldingRow,
     ],
+    writeWalkHints: jest.fn(async (_holdingId: string, field: string, next: BinanceSpanHints) => {
+      hints = { ...hints, [field]: next };
+    }),
+    rangeCursor: () => marks.binanceHistoryRangeCursor ?? null,
+    hints: () => hints.binanceHistorySpanHints,
     writeWalkCursor: jest.fn(async (_holdingId: string, field: string, cursorMs: number) => {
       marks[field] = cursorMs;
     }),
@@ -192,6 +208,7 @@ const makeFirstSyncDeps = (
     listHoldings: account.listHoldings,
     writeWalkCursor: account.writeWalkCursor,
     writeWalkPending: account.writeWalkPending,
+    writeWalkHints: account.writeWalkHints,
     latestTransactionTime: async () => undefined,
     ...over,
   });
@@ -2455,6 +2472,122 @@ describe('the pending overlap days of the capital walk', () => {
           { name: 'BinanceWalkStop', code: 'point-cursor-malformed' },
         ]);
       });
+    });
+  });
+
+  describe('the range cursor and the span hints of the round-robin', () => {
+    const CURSOR = NOW - 2 * DAY_MS;
+    const BASE = NOW - 300 * DAY_MS;
+    const dayAt = (index: number): OwedGround => ({
+      start: BASE + index * 10 * DAY_MS,
+      end: BASE + index * 10 * DAY_MS + DAY_MS,
+    });
+    const days = [dayAt(0), dayAt(1), dayAt(2)];
+    const RANGE_FIELD = 'binanceHistoryRangeCursor';
+    const HINTS_FIELD = 'binanceHistorySpanHints';
+    const dayStartsOf = (deps: BinanceTransactionSyncDeps): number[] =>
+      withdrawStartsOf(deps).filter((start) => days.some((day) => day.start === start));
+
+    /** A run that affords `cap` requests for withdrawals (the mock counts them), and no more. */
+    const runWithWithdrawals = (cap: number, requests: jest.Mock) => ({
+      gate: freshRun().gate,
+      budget: {
+        canAfford: () => requests.mock.calls.length < cap,
+        record: () => undefined,
+      },
+    });
+
+    it('reads the owed days that start after the stored range cursor first, then wraps around', async () => {
+      const state = await stateOf(CURSOR, days);
+      await state.account.writeWalkCursor('h-spot', RANGE_FIELD, days[0].end);
+
+      const { deps } = await runOver(state, []);
+
+      expect(dayStartsOf(deps)).toEqual([days[1].start, days[2].start, days[0].start]);
+    });
+
+    it('stores the end of the window of the last day it read, once each read has started', async () => {
+      const state = await stateOf(CURSOR, days);
+
+      const { deps } = await runOver(state, []);
+
+      const writes = (deps.writeWalkCursor as jest.Mock).mock.calls.filter(
+        (call) => call[1] === RANGE_FIELD,
+      );
+      expect(writes.map((call) => call[2])).toEqual(days.map((day) => day.end));
+      expect(state.account.rangeCursor()).toBe(days[2].end);
+    });
+
+    it('starts at the oldest day, with one fixed log code, when the stored cursor is no number', async () => {
+      const state = await stateOf(CURSOR, days);
+      await state.account.writeWalkCursor('h-spot', RANGE_FIELD, Number.NaN);
+      const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+      const { deps } = await runOver(state, []);
+
+      expect(dayStartsOf(deps)).toEqual(days.map((day) => day.start));
+      expect(warn.mock.calls).toContainEqual([
+        '[binance sync] range cursor unreadable',
+        { name: 'BinanceWalkStop', code: 'range-cursor-malformed' },
+      ]);
+    });
+
+    it('stores the span a day was left at when its halving chain is cut short, and begins with it in the next run', async () => {
+      const day = days[0];
+      const fullPage = Array.from({ length: HISTORY_PAGE_LIMIT }, (_unused, index) =>
+        withdrawal({ id: `w${index}`, applyTime: day.start + 1_000 }),
+      );
+      const denseDay = () =>
+        jest.fn(async (_apiKey: string, _secret: string, window: HistoryWindow) =>
+          window.startTime === day.start && window.endTime - window.startTime > DAY_MS / 4
+            ? historyPage(fullPage)
+            : historyPage([]),
+        );
+      const state = await stateOf(CURSOR, [day]);
+      const requests = denseDay();
+      const first = makeFirstSyncDeps(state.account, { fetchWithdrawHistory: requests });
+
+      // The forward window, then the day (too full), then its half (too full): no request is left
+      // for the half of that.
+      await sync(first, ACCOUNT, runWithWithdrawals(3, requests));
+
+      expect(state.account.hints()?.pending).toEqual([
+        { start: day.start, end: day.start + DAY_MS / 4 },
+      ]);
+      expect(state.account.hints()?.forward).toEqual([]);
+
+      const second = makeFirstSyncDeps(state.account, { fetchWithdrawHistory: denseDay() });
+
+      await sync(second, ACCOUNT, freshRun());
+
+      const firstOfDay = (second.fetchWithdrawHistory as jest.Mock).mock.calls
+        .map((call) => call[2] as HistoryWindow)
+        .find((window) => window.startTime === day.start);
+      expect(firstOfDay?.endTime).toBe(day.start + DAY_MS / 4);
+      expect(state.account.hints()?.pending).toEqual([]);
+    });
+
+    it('stores a malformed hint over with none, logging one fixed code, and reads the whole window', async () => {
+      const state = await stateOf(CURSOR, [days[0]]);
+      await state.account.writeWalkHints(
+        'h-spot',
+        HINTS_FIELD,
+        'soon' as unknown as BinanceSpanHints,
+      );
+      const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+      const { deps } = await runOver(state, []);
+
+      expect(warn.mock.calls).toContainEqual([
+        '[binance sync] span hints unreadable',
+        { name: 'BinanceWalkStop', code: 'span-hints-malformed' },
+      ]);
+      expect(state.account.hints()).toEqual({ forward: [], pending: [], rescan: [], point: [] });
+      expect(
+        (deps.fetchWithdrawHistory as jest.Mock).mock.calls
+          .map((call) => call[2] as HistoryWindow)
+          .find((window) => window.startTime === days[0].start)?.endTime,
+      ).toBe(days[0].end);
     });
   });
 

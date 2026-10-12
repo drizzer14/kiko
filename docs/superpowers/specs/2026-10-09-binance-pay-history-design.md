@@ -54,6 +54,8 @@ that holding.
 | OVERNIGHT 20 | User ruling 2026-10-12, B: the "history is behind" caption shows ONLY while a walk cursor is null or more than a day behind; an owed point does not show it (was: the applied default also showed it for an owed point) | section 8 |
 | OVERNIGHT 21 | User ruling 2026-10-12, B (the spec rule kept): a `FAILED` transfer stays owed at its point until the 6-month floor drops it. VERIFY 14 still records the exact status values, for the record; no rule waits on it | section 5, T11 |
 | R30 | Orchestrator ruling (technical) 2026-10-12: on every walk a BTC row the client cannot parse (no finite time, an off-contract field) is a per-record stop, never a whole-run throw. It owes its canonical point when a usable time exists, else the span; the other rows of the span import. Codes: `capital-row-unreadable`, `pay-row-unreadable`, `transfer-row-unreadable`, `earn-row-unreadable`. A malformed envelope still throws for the whole read | sections 1, 3, 5, 6, 7; P10, C3, T12, E12, E23 |
+| R31 | Orchestrator ruling (technical) 2026-10-12, under the no-starvation rule: each walk reads its owed ranges in a round-robin from a range cursor (`binanceHistoryRangeCursor`, `binancePayRangeCursor`, `binanceTransferRangeCursor`), the end of the window of the range it read last, moved once a read has started; each of `R` ranges is read within `ceil(R / L)` runs that enter the pending pass. Code `range-cursor-malformed` | section 4; the Transfer lane's cap of 80 reads one range a run |
+| R32 | Orchestrator ruling (technical) 2026-10-12, under the no-known-limit rule: a window that splits and stops before its first span commits leaves the span it was at as a hint, per walk and per pass (`binanceHistorySpanHints`, `binancePaySpanHints`, `binanceTransferSpanHints`); the next read of a window with that start begins with it; a window that needs `h` halvings commits its first span within `h + 1` runs. Code `span-hints-malformed` | section 4 |
 
 ## Sources (official, checked 2026-10-09)
 
@@ -197,13 +199,19 @@ withdraw budget moves into this object, with the same numbers and the same rule.
   keeps a list of pending overlap ranges (`binanceHistoryPendingOverlap`,
   `binancePayPendingOverlap`, `binanceTransferPendingOverlap`, `binanceEarnPendingOverlap`)
   and a point cursor (`binanceHistoryPointCursor`, `binancePayPointCursor`,
-  `binanceTransferPointCursor`, `binanceEarnPointCursor`), see section 4.
+  `binanceTransferPointCursor`, `binanceEarnPointCursor`), a range cursor
+  (`binanceHistoryRangeCursor`, `binancePayRangeCursor`, `binanceTransferRangeCursor`) and its
+  span hints (`binanceHistorySpanHints`, `binancePaySpanHints`, `binanceTransferSpanHints`), see
+  section 4.
 - All of them join the walk-owned keys of `holding-metadata.ts` (`binanceWalkCursorFields`,
-  `binanceWalkPendingFields` and `binanceWalkPointCursorFields`). The balance upsert carries
-  them and the disconnect resets the cursors to the floor, the lists to an empty list and drops
-  the point cursors (no key: start at the oldest point), through the existing code paths.
+  `binanceWalkPendingFields`, `binanceWalkPointCursorFields`, `binanceWalkRangeCursorFields`
+  and `binanceWalkSpanHintFields`). The balance upsert carries them and the disconnect resets
+  the cursors to the floor, the lists to an empty list and drops the point cursors, the range
+  cursors and the span hints (no key: start at the oldest point or range, with no span to
+  resume), through the existing code paths.
 - One generic `holdingsRepo.setBinanceWalkCursor(holdingId, key, ms)` (it also writes a point
-  cursor) and `setBinanceWalkPending(holdingId, key, ranges)` for a list keep the existing
+  or a range cursor), `setBinanceWalkPending(holdingId, key, ranges)` for a list and
+  `setBinanceWalkSpanHints(holdingId, key, hints)` keep the existing
   `institution = 'binance'` gate.
 - **Walks that read several series (Transfer: 20 types; Earn: 6 kinds).** They run on the same
   passes, per-record commits, owed points and round-robin as Pay and capital (section 4). A
@@ -341,7 +349,8 @@ withdraw budget moves into this object, with the same numbers and the same rule.
     leaves only once both halves were read): none of them takes the point off, and no span
     alone does.
   - **Order of a run.** Forward pass first, then the owed ranges the window re-scan will not
-    read this run, oldest first, as windows of their own (`WalkPass` `pending`), then the window
+    read this run, in a round-robin (the next bullet), as windows of their own (`WalkPass`
+    `pending`), then the window
     re-scan, then the owed points, each on the budget the earlier ones left. A stop in the
     forward pass (a record the walk cannot trust: the cursor never passes it) ends only the
     forward pass: the run goes on to the owed ranges, the re-scan and the points, so a record
@@ -417,6 +426,44 @@ withdraw budget moves into this object, with the same numbers and the same rule.
     list. A point leaves the list only as the Remove rule above says: a window read to its end
     that holds all of it and returned a record that owes exactly it, or the floor. A point is read whether
     or not a range or the re-scan holds it; a range never takes a point in.
+  - **Owed ranges, in a round-robin (R31, orchestrator ruling, technical, 2026-10-12).** Each
+    walk keeps a range cursor in a walk-owned key (`binanceHistoryRangeCursor`,
+    `binancePayRangeCursor`, `binanceTransferRangeCursor`, in `binanceWalkRangeCursorFields`): the
+    end of the window of an owed range it read last. The pending pass reads the ranges that start
+    after it first, oldest first, then wraps around to the rest (`startingAfter`, as the points
+    do), so a range that is owed whole in every run (a row with no time, a drift that lasts,
+    a holding that is missing) cannot keep the ranges behind it from being read. The cursor
+    moves past a range once the read of one of its windows has STARTED, whether or not the
+    window finished; it is the end of the window and not the start of the range, because a read
+    cuts the range and what is left of it starts later than the cursor would hold. Each of `R` owed
+    ranges is read within `ceil(R / L)` runs that enter the pending pass, where `L >= 1` is the
+    fewest ranges such a run reads. A run that has the calls for one read of one range at a time
+    (the Transfer lane's 80 calls beside the forward window, the re-scan and the points) reads
+    every range in `R` runs. The re-scan, the points, the keeps and the 12-range cap are as above.
+    The key is carried over a balance sync and dropped on a disconnect (no key: start at the
+    oldest range); a stored value that is no number is repaired at once to a start before every
+    range (`Number.MIN_SAFE_INTEGER`) and logged once under one fixed code
+    (`range-cursor-malformed`), never a throw.
+  - **A split window is resumed in the next run (R32, orchestrator ruling, technical,
+    2026-10-12).** A window whose read comes back too full is read in halves and commits nothing
+    until a span fits; a run that ends before that used to leave the next run to start the whole
+    chain again, and a chain longer than one run's calls (a dense Transfer type late in the list
+    costs up to 20 calls for one halving) never progressed. When a window stops before the first
+    span from its start commits, the run stores the narrowest span it asked, as a hint of the
+    window's pass, per walk and per pass (forward, pending, re-scan, point), in one walk-owned
+    key for each walk (`binanceHistorySpanHints`, `binancePaySpanHints`,
+    `binanceTransferSpanHints`, in `binanceWalkSpanHintFields`; each holds one list of
+    `{ start, end }` for each pass, one hint for each window start, so two chains stopped in one
+    run, in two passes or in two windows of the pending pass, never overwrite each other). A later
+    read of a window that starts at that start begins with that span, never wider than the window;
+    after it commits the walk goes on as always (the next span from the committed end, twice as
+    wide). The hint is dropped when a span from that start commits, or when no window of its pass
+    starts there any more (the cursor, the mark or the list moved); a stale hint can only narrow a
+    read, never skip ground, because a hint starts where its window starts. A window that needs
+    `h` halvings, read in runs that each afford one read of it, commits its first span within
+    `h + 1` runs. The key is carried over a balance sync and dropped on a disconnect; a stored
+    value that is not a record of lists of `{ start, end }` is ignored, stored over with no hint
+    at once, and logged once under one fixed code (`span-hints-malformed`), never a throw.
   - **Reserved calls.** Every read of the owed windows leaves the lane's last calls for the
     re-scan (`RESCAN_KEEP`, 1, when the plan has a re-scan) and for the points (`POINT_KEEP`, 1,
     when the plan has a point), so a list of ranges cannot spend a run on re-reading them whole;
@@ -463,9 +510,15 @@ withdraw budget moves into this object, with the same numbers and the same rule.
     gap of 3000 days), after which the points are read in the round-robin and a record that
     becomes placeable imports; and, on the mixed lane, a withdrawal and a deposit 999 ms before
     it whose points start together, beside a deposit at the very start of the withdrawal's
-    second. The bounds are derived from the reads: each range is read once,
-    oldest first, on the calls a run has beside the forward pass and the two the re-scan and
-    the points keep (`ceil((ranges + 1) / (reads - 3)) + 1` runs), a dense day or window by the
+    second. Two more families pin the round-robin of the ranges and the hints on every lane,
+    Transfer included: `R` = 1 to 12 owed days that are each owed whole again by every read, each
+    read within `ceil(R / L)` runs (and two days whose reads never finish, read in turn); and a
+    window that needs 1, 3 and 6 halvings, with the calls of one read a run (the dense Transfer
+    type last of the 20, so one halving costs all 20 calls), in the forward pass, the re-scan, the
+    pending pass (also two owed days at once) and the points, each committing its first span within
+    `h + 1` runs, with a run in which the forward pass and the re-scan both stop in the middle of
+    a chain. The bounds are derived from the reads: each range is read within `ceil(ranges / reads
+    a run)` runs that enter the pending pass, a dense day or window by the
     reads its halving needs, and the points by the round-robin.
   - **Bound.** The list holds at most 12 ranges (entries with no `kind`, of any length), plus
     the points, which are not ranges and are never merged with a range or with each other,

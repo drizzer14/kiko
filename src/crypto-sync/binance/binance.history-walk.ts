@@ -2,12 +2,19 @@ import { match } from 'ts-pattern';
 import { maxOf } from '@kiko/numbers';
 import {
   type BinancePendingRange,
+  type BinanceSpanHint,
+  type BinanceSpanHintPass,
+  type BinanceSpanHints,
   type BinanceWalkCursorField,
   type BinanceWalkNumberField,
   type BinanceWalkPendingField,
   type BinanceWalkPointCursorField,
+  type BinanceWalkRangeCursorField,
+  type BinanceWalkSpanHintField,
   binanceWalkPendingOf,
   binanceWalkPointCursorOf,
+  binanceWalkRangeCursorOf,
+  binanceWalkSpanHintsOf,
 } from '@kiko/holdings/holding-metadata';
 import type { HoldingRow } from '@kiko/db';
 import maybe, { foldMap } from 'fnts/maybe';
@@ -16,6 +23,7 @@ import { logFailure } from '@kiko/diagnostics';
 import type { ExchangeHolding } from '@kiko/holdings/repo';
 
 import { BINANCE_ASSET } from './binance.client';
+import type { BinanceWalkWriteDeps } from './binance.walk-write-deps';
 import { type BinanceWalletKey, binanceKeyOf, WALLET_HOLDING_NAMES } from './binance.holding-keys';
 
 /** What one walk reports: rows imported this run, and whether it reached the end of its span. */
@@ -84,13 +92,17 @@ export type SpanCommit = {
 /**
  * What one window gave: the rows imported, whether it was read to its end, whether any of its
  * spans left ground owed, and whether it was started: a read of one of its spans returned (a
- * page, or the half to read instead).
+ * page, or the half to read instead). `hint` is the span the window was left at when the run
+ * stopped before any span of it committed and the chain had narrowed below the window (the next
+ * run begins with it, see `walkSpans`); `null` when there is none, so a stored one for this
+ * window is dropped; absent when the walk does not say.
  */
 export type WindowOutcome = {
   imported: number;
   complete: boolean;
   owed: boolean;
   started: boolean;
+  hint?: BinanceSpanHint | null;
 };
 
 /**
@@ -302,54 +314,115 @@ export const readPendingMark = async (input: {
 };
 
 /**
- * A point cursor before every point, so the next run starts at the oldest: what a malformed
+ * A cursor before every point or range, so the next run starts at the oldest: what a malformed
  * stored cursor is repaired to. It is a number the cursor key can hold, and reads like no key.
  */
-const BEFORE_EVERY_POINT = Number.MIN_SAFE_INTEGER;
+const BEFORE_EVERY_GROUND = Number.MIN_SAFE_INTEGER;
 
 /**
- * The stored point cursor of one walk, or `null` to start at the oldest point (none stored). A
+ * A stored round-robin cursor of one walk, or `null` to start at the oldest (none stored). A
  * value that is no number says nothing about where the round-robin stood, and is repaired at
- * once, like the list (`readPendingMark`): `BEFORE_EVERY_POINT` is stored in its place, so the
+ * once, like the list (`readPendingMark`): `BEFORE_EVERY_GROUND` is stored in its place, so the
  * failure, logged under one fixed code and never thrown (a corrupt value must not fail a balance
  * sync), is logged by one run only.
  */
-export const readPointCursor = async (input: {
-  field: BinanceWalkPointCursorField;
-  metadata: unknown;
+const readRoundRobinCursor = async (input: {
+  stored: number | null | undefined;
+  field: BinanceWalkNumberField;
+  unreadable: { message: string; code: string };
   write: (field: BinanceWalkNumberField, cursorMs: number) => Promise<void>;
 }): Promise<number | null> => {
-  const { field, metadata, write } = input;
-  const stored = binanceWalkPointCursorOf(field, metadata);
+  const { stored, field, unreadable, write } = input;
 
   if (stored !== undefined) {
     return stored;
   }
 
-  logFailure(
-    '[binance sync] point cursor unreadable',
-    new BinanceWalkStop('point-cursor-malformed'),
-  );
-  await write(field, BEFORE_EVERY_POINT);
+  logFailure(unreadable.message, new BinanceWalkStop(unreadable.code));
+  await write(field, BEFORE_EVERY_GROUND);
 
-  return BEFORE_EVERY_POINT;
+  return BEFORE_EVERY_GROUND;
+};
+
+/** The stored point cursor of one walk (see `readRoundRobinCursor`). */
+export const readPointCursor = (input: {
+  field: BinanceWalkPointCursorField;
+  metadata: unknown;
+  write: (field: BinanceWalkNumberField, cursorMs: number) => Promise<void>;
+}): Promise<number | null> =>
+  readRoundRobinCursor({
+    stored: binanceWalkPointCursorOf(input.field, input.metadata),
+    field: input.field,
+    unreadable: {
+      message: '[binance sync] point cursor unreadable',
+      code: 'point-cursor-malformed',
+    },
+    write: input.write,
+  });
+
+/** The stored range cursor of one walk (see `readRoundRobinCursor`). */
+export const readRangeCursor = (input: {
+  field: BinanceWalkRangeCursorField;
+  metadata: unknown;
+  write: (field: BinanceWalkNumberField, cursorMs: number) => Promise<void>;
+}): Promise<number | null> =>
+  readRoundRobinCursor({
+    stored: binanceWalkRangeCursorOf(input.field, input.metadata),
+    field: input.field,
+    unreadable: {
+      message: '[binance sync] range cursor unreadable',
+      code: 'range-cursor-malformed',
+    },
+    write: input.write,
+  });
+
+/** A run with no span hint to resume from. */
+export const NO_HINTS: BinanceSpanHints = { forward: [], pending: [], rescan: [], point: [] };
+
+/**
+ * The stored span hints of one walk: none when nothing is stored. A value that is not a record of
+ * well-formed lists only narrows what a run reads, so it is ignored, and, like the cursors, it is
+ * repaired at once: no hint is stored in its place, so the failure, logged under one fixed code
+ * and never thrown (a corrupt value must not fail a balance sync), is logged by one run only.
+ */
+export const readSpanHints = async (input: {
+  field: BinanceWalkSpanHintField;
+  metadata: unknown;
+  write: (field: BinanceWalkSpanHintField, hints: BinanceSpanHints) => Promise<void>;
+}): Promise<BinanceSpanHints> => {
+  const { field, metadata, write } = input;
+  const stored = binanceWalkSpanHintsOf(field, metadata);
+
+  if (stored !== undefined) {
+    return stored;
+  }
+
+  logFailure('[binance sync] span hints unreadable', new BinanceWalkStop('span-hints-malformed'));
+  await write(field, NO_HINTS);
+
+  return NO_HINTS;
 };
 
 /**
- * `points`, oldest first, in the order a run reads them: those that start after the point
- * cursor (the start of the point the last run read), then the rest, wrapping around. The points
- * are read last, on the calls the run has left, and a run that always started at the oldest
- * would read the same few every time. Every point has a start of its own here (see
- * `pointsToRead`), and a run reads at least one point in every run whose forward pass leaves a
- * call, so every point is read within `ceil(points / reads a run)` such runs, however far apart
- * the runs are.
+ * `ground`, oldest first, in the order a run reads it: what starts after the cursor (the start of
+ * the point, or the end of the window of the range, the last run read), then the rest, wrapping
+ * around. The points are read last, on the calls the run has left, and a run that always started
+ * at the oldest would read the same few every time; the same holds for the owed ranges, where
+ * one range that is owed whole every run would be read first every run. Every point has a start
+ * of its own here (see `pointsToRead`), and a run reads at least one point in every run whose
+ * forward pass leaves a call, so every point is read within `ceil(points / reads a run)` such
+ * runs, however far apart the runs are; every range is read within `ceil(ranges / reads a
+ * run)` runs that enter the pending pass.
  */
-const startingAfter = (points: OwedWindow[], pointCursor: number | null): OwedWindow[] =>
-  pointCursor === null
-    ? points
+const startingAfter = <Ground extends WalkWindow>(
+  ground: Ground[],
+  cursor: number | null,
+): Ground[] =>
+  cursor === null
+    ? ground
     : [
-        ...points.filter((point) => point.start > pointCursor),
-        ...points.filter((point) => point.start <= pointCursor),
+        ...ground.filter((entry) => entry.start > cursor),
+        ...ground.filter((entry) => entry.start <= cursor),
       ];
 
 /**
@@ -409,8 +482,10 @@ const pointsToRead = (points: OwedGround[], endTime: number): OwedWindow[] => {
  * day. So the day goes into `pendingRanges` before the cursor moves, and stays there until a
  * committed span has read it (`advanceWalkMarks`); only the floor passing it drops it
  * unread. Each run reads, after the forward pass and before the re-scan, the owed ground
- * the re-scan will not read (oldest first), so a catch-up from a cursor of any age, a long
- * absence, or a window that outran an unfinished pass loses no day. The list is separate
+ * the re-scan will not read, in a round-robin over the ranges (`startingAfter`: those that start
+ * after the range cursor first, then the rest, oldest first), so a catch-up from a cursor of any
+ * age, a long absence, or a window that outran an unfinished pass loses no day, and a range that
+ * is owed whole every run cannot keep the ranges behind it from being read. The list is separate
  * from the re-scan mark: a stop inside one range leaves the other ranges and the re-scan to
  * run.
  */
@@ -418,6 +493,7 @@ export const planWalkPasses = (input: {
   cursor: number | null;
   rescanCursor: number | null;
   pointCursor: number | null;
+  rangeCursor: number | null;
   pending: OwedGround[];
   floorMs: number;
   endTime: number;
@@ -429,6 +505,7 @@ export const planWalkPasses = (input: {
     cursor,
     rescanCursor,
     pointCursor,
+    rangeCursor,
     pending,
     floorMs,
     endTime,
@@ -464,9 +541,12 @@ export const planWalkPasses = (input: {
 
   return {
     forward: buildWalkWindows(forwardStart, endTime, windowMs, maxWindows),
-    pending: withoutRead(
-      pendingRanges.filter((ground) => !isPoint(ground)),
-      rescanned,
+    pending: startingAfter(
+      withoutRead(
+        pendingRanges.filter((ground) => !isPoint(ground)),
+        rescanned,
+      ),
+      rangeCursor,
     ).flatMap((range) => buildWalkWindows(range.start, range.end, windowMs, maxWindows)),
     points: startingAfter(pointsToRead(pendingRanges.filter(isPoint), endTime), pointCursor),
     rescan,
@@ -489,18 +569,23 @@ export const rescanCursorAfter = (input: {
 
 /**
  * A walk's marks, as the run found them and then as the run last wrote them: the forward
- * cursor, the re-scan mark, the list of owed ground, and the point cursor of its round-robin.
+ * cursor, the re-scan mark, the list of owed ground, the cursors of its two round-robins (the
+ * owed points and the owed ranges), and the span hints of its passes.
  */
 export type WalkMarks = {
   cursor: number | null;
   rescanCursor: number | null;
   pointCursor: number | null;
+  rangeCursor: number | null;
+  hints: BinanceSpanHints;
   pending: OwedGround[];
 };
 
 /** The metadata field each of a walk's marks is stored under. */
 export type WalkMarkFields = Record<'cursor' | 'rescan', BinanceWalkCursorField> & {
   point: BinanceWalkPointCursorField;
+  range: BinanceWalkRangeCursorField;
+  hints: BinanceWalkSpanHintField;
   pending: BinanceWalkPendingField;
 };
 
@@ -699,6 +784,137 @@ export const storePointCursor = async (input: {
 };
 
 /**
+ * Store the end of the window just read as the walk's range cursor, unless it is already the
+ * stored one. Called once the read of the window has started, whether or not it finished. The
+ * end, not the start: a range a read has cut starts later than the window it was read from, and
+ * a start would put what is left of it ahead of the cursor again; no range that starts after the
+ * end of a window starts inside what is left of its own range.
+ */
+export const storeRangeCursor = async (input: {
+  window: WalkWindow;
+  marks: WalkMarks;
+  field: BinanceWalkRangeCursorField;
+  write: (field: BinanceWalkNumberField, cursorMs: number) => Promise<void>;
+}): Promise<void> => {
+  const { window, marks, field, write } = input;
+
+  if (marks.rangeCursor !== window.end) {
+    marks.rangeCursor = window.end;
+    await write(field, window.end);
+  }
+};
+
+/** Store the walk's span hints, and keep them in the marks. */
+export const storeSpanHints = async (input: {
+  hints: BinanceSpanHints;
+  marks: WalkMarks;
+  field: BinanceWalkSpanHintField;
+  write: (field: BinanceWalkSpanHintField, hints: BinanceSpanHints) => Promise<void>;
+}): Promise<void> => {
+  const { hints, marks, field, write } = input;
+
+  marks.hints = hints;
+  await write(field, hints);
+};
+
+/** How a walk writes its cursors and its span hints: its holding's writers, one for each. */
+type WalkWriters = {
+  writeCursor: (field: BinanceWalkNumberField, cursorMs: number) => Promise<void>;
+  writeHints: (field: BinanceWalkSpanHintField, hints: BinanceSpanHints) => Promise<void>;
+};
+
+/** The writers of a walk, bound to the holding that carries its marks. */
+export const walkWritersOf = (
+  holdingId: string,
+  deps: Pick<BinanceWalkWriteDeps, 'writeWalkCursor' | 'writeWalkHints'>,
+): WalkWriters => ({
+  writeCursor: (field, cursorMs) => deps.writeWalkCursor(holdingId, field, cursorMs),
+  writeHints: (field, hints) => deps.writeWalkHints(holdingId, field, hints),
+});
+
+/**
+ * What a walk reads of its two round-robins and its span hints from its holding's metadata, each
+ * repaired when malformed (see `readRoundRobinCursor`, `readSpanHints`).
+ */
+export const readWalkRoundRobins = async (
+  input: { fields: WalkMarkFields; metadata: unknown } & WalkWriters,
+): Promise<Pick<WalkMarks, 'pointCursor' | 'rangeCursor' | 'hints'>> => {
+  const { fields, metadata, writeCursor, writeHints } = input;
+
+  return {
+    pointCursor: await readPointCursor({ field: fields.point, metadata, write: writeCursor }),
+    rangeCursor: await readRangeCursor({ field: fields.range, metadata, write: writeCursor }),
+    hints: await readSpanHints({ field: fields.hints, metadata, write: writeHints }),
+  };
+};
+
+/**
+ * What `runWalkPlan` needs of a walk's round-robins and span hints, over the walk's own `marks`:
+ * mark a point or a range once its read has started, and store the hints.
+ */
+export const roundRobinHooksOf = (
+  input: { marks: WalkMarks; fields: WalkMarkFields } & WalkWriters,
+) => {
+  const { marks, fields, writeCursor, writeHints } = input;
+
+  return {
+    markPointRead: (window: OwedWindow) =>
+      storePointCursor({ window, marks, field: fields.point, write: writeCursor }),
+    markRangeRead: (window: OwedWindow) =>
+      storeRangeCursor({ window, marks, field: fields.range, write: writeCursor }),
+    hints: {
+      stored: marks.hints,
+      store: (hints: BinanceSpanHints) =>
+        storeSpanHints({ hints, marks, field: fields.hints, write: writeHints }),
+    },
+  };
+};
+
+const byHintStart = (left: BinanceSpanHint, right: BinanceSpanHint): number =>
+  left.start - right.start;
+
+/** The hints with the one of the window that starts at `start` replaced, or dropped for `null`. */
+const withHint = (
+  hints: BinanceSpanHints,
+  pass: BinanceSpanHintPass,
+  start: number,
+  hint: BinanceSpanHint | null,
+): BinanceSpanHints => ({
+  ...hints,
+  [pass]: [
+    ...hints[pass].filter((other) => other.start !== start),
+    ...(foldMap(maybe(hint), (value) => [value]) ?? []),
+  ].sort(byHintStart),
+});
+
+/**
+ * The hints that a window of the plan can still use: one starts where a window of its own pass
+ * starts. A cursor, a mark or a list that moved on leaves a hint nobody reads, and it goes.
+ */
+const hintsOfPlan = (hints: BinanceSpanHints, plan: WalkPlan): BinanceSpanHints => {
+  const startsOf = (windows: WalkWindow[]): number[] => windows.map((window) => window.start);
+  const kept = (pass: BinanceSpanHintPass, windows: WalkWindow[]): BinanceSpanHint[] =>
+    hints[pass].filter((hint) => startsOf(windows).includes(hint.start));
+
+  return {
+    forward: kept('forward', plan.forward),
+    pending: kept('pending', plan.pending),
+    rescan: kept('rescan', plan.rescan),
+    point: kept('point', plan.points),
+  };
+};
+
+const sameHints = (left: BinanceSpanHints, right: BinanceSpanHints): boolean =>
+  (['forward', 'pending', 'rescan', 'point'] as const).every(
+    (pass) =>
+      left[pass].length === right[pass].length &&
+      left[pass].every(
+        (hint, index) =>
+          hint.start === right[pass][index].start && hint.end === right[pass][index].end,
+      ),
+  );
+
+/**
  * Run a plan's windows: the forward pass first, then the owed ranges (oldest first), then the
  * re-scan, then the owed points, each on what budget is left. A window that does not finish
  * ends the pass it is in where `STOP_ENDS_PASS` says so, and a window the budget cannot afford
@@ -731,21 +947,62 @@ export const storePointCursor = async (input: {
 export const runWalkPlan = async (input: {
   plan: WalkPlan;
   canAfford: (keep: number) => boolean;
-  runWindow: (window: OwedWindow, pass: WalkPass, keep: number) => Promise<WindowOutcome>;
+  runWindow: (
+    window: OwedWindow,
+    pass: WalkPass,
+    keep: number,
+    hint?: BinanceSpanHint,
+  ) => Promise<WindowOutcome>;
   markPointRead?: (window: OwedWindow) => Promise<void>;
+  markRangeRead?: (window: OwedWindow) => Promise<void>;
+  hints?: { stored: BinanceSpanHints; store: (next: BinanceSpanHints) => Promise<void> };
   callsOf?: (window: OwedWindow) => number;
 }): Promise<WalkResult> => {
-  const { plan, canAfford, runWindow, markPointRead, callsOf = () => 1 } = input;
+  const { plan, canAfford, runWindow, markPointRead, markRangeRead, callsOf = () => 1 } = input;
   const pointKeep = plan.points.length > 0 ? POINT_KEEP * callsOf(plan.points[0]) : 0;
   const rescanKeep = plan.rescan.length > 0 ? RESCAN_KEEP * callsOf(plan.rescan[0]) : 0;
   let imported = 0;
   let complete = true;
+  let hints = input.hints?.stored ?? NO_HINTS;
+
+  const saveHints = async (next: BinanceSpanHints): Promise<void> => {
+    if (!sameHints(next, hints)) {
+      hints = next;
+      await input.hints?.store(next);
+    }
+  };
+
+  /**
+   * Run one window. It is given the hint of its own `hintPass` that starts where it starts, and
+   * the hint it comes back with takes the place of that one: a window that began with a hint and
+   * was cut short again leaves a narrower one, a window with a committed span leaves none.
+   */
+  const runWithHint = async (
+    window: OwedWindow,
+    pass: WalkPass,
+    keep: number,
+    hintPass: BinanceSpanHintPass,
+  ): Promise<WindowOutcome> => {
+    const outcome = await runWindow(
+      window,
+      pass,
+      keep,
+      hints[hintPass].find((hint) => hint.start === window.start),
+    );
+
+    if (outcome.hint !== undefined) {
+      await saveHints(withHint(hints, hintPass, window.start, outcome.hint));
+    }
+
+    return outcome;
+  };
 
   /** Read the windows of one pass, in order, until one ends the pass or the budget does. */
   const readPass = async (
     windows: OwedWindow[],
     pass: WalkPass,
     keep: number,
+    hintPass: BinanceSpanHintPass,
     afterRead?: (window: OwedWindow) => Promise<void>,
   ): Promise<void> => {
     for (const window of windows) {
@@ -757,7 +1014,7 @@ export const runWalkPlan = async (input: {
         return;
       }
 
-      const outcome = await runWindow(window, pass, keep);
+      const outcome = await runWithHint(window, pass, keep, hintPass);
       imported += outcome.imported;
       complete = complete && outcome.complete && !outcome.owed;
 
@@ -771,10 +1028,11 @@ export const runWalkPlan = async (input: {
     }
   };
 
-  await readPass(plan.forward, 'forward', 0);
-  await readPass(plan.pending, 'pending', rescanKeep + pointKeep);
-  await readPass(plan.rescan, 'rescan', pointKeep);
-  await readPass(plan.points, 'pending', 0, markPointRead);
+  await saveHints(hintsOfPlan(hints, plan));
+  await readPass(plan.forward, 'forward', 0, 'forward');
+  await readPass(plan.pending, 'pending', rescanKeep + pointKeep, 'pending', markRangeRead);
+  await readPass(plan.rescan, 'rescan', pointKeep, 'rescan');
+  await readPass(plan.points, 'pending', 0, 'point', markPointRead);
 
   return { imported, complete };
 };
@@ -849,6 +1107,23 @@ const stepAfterRead = <Page>(input: {
     )
     .exhaustive();
 
+/** The span a window starts with: its hint when that starts with the window, else the window. */
+const firstSpanOf = (window: WalkWindow, hint: BinanceSpanHint | undefined): WalkWindow =>
+  hint?.start === window.start
+    ? { start: window.start, end: Math.min(hint.end, window.end) }
+    : window;
+
+/**
+ * The span to resume from when a window is left while at `span`: that span when no span of the
+ * window committed and it is narrower than the window, else none.
+ */
+const leftAt = (
+  span: WalkWindow,
+  window: WalkWindow,
+  committed: boolean,
+): BinanceSpanHint | null =>
+  committed || span.end >= window.end ? null : { start: span.start, end: span.end };
+
 /**
  * Walk one window with no cursor and no order to rely on: read the whole window, and when
  * the read finds it too full (it may hold more than it shows) read its first half instead,
@@ -864,25 +1139,41 @@ const stepAfterRead = <Page>(input: {
  * unspent: a dense window must not read its way into them. A window read to its end hands
  * `onComplete` the points of the records its spans returned, less the points any record of it
  * left owed (see `dropReadPoints`); an incomplete one hands nothing, however much it read.
+ *
+ * A window that splits commits nothing until a span fits, and a run that ends before that leaves
+ * the next run to start the whole chain of halvings again, which may be longer than a run has
+ * calls for. So the window starts with `hint`, the span an earlier run was left at, when it
+ * starts where the window starts (never wider than the window: a hint can only narrow a read, so
+ * it never skips ground), and a run that stops before any span committed reports the span it was
+ * at as `hint` in the outcome (`null` when that is the whole window, or a span of the window
+ * committed: the window has moved on, or nothing was narrowed).
  */
 export const walkSpans = async <Page>(input: {
   window: WalkWindow;
   read: (span: WalkWindow, keep: number) => Promise<SpanRead<Page> | undefined>;
   commit: (span: WalkWindow, page: Page) => Promise<SpanCommit | undefined>;
   keep?: number;
+  hint?: BinanceSpanHint;
   onComplete?: (read: OwedGround[]) => Promise<void>;
 }): Promise<WindowOutcome> => {
-  const { window, read, commit, keep = 0, onComplete } = input;
-  const outcome: WindowOutcome = { imported: 0, complete: false, owed: false, started: false };
+  const { window, read, commit, keep = 0, hint, onComplete } = input;
+  const outcome: WindowOutcome = {
+    imported: 0,
+    complete: false,
+    owed: false,
+    started: false,
+    hint: null,
+  };
   const returned: OwedGround[] = [];
   const stuck: OwedGround[] = [];
-  let span = window;
+  let span = firstSpanOf(window, hint);
+  let committed = false;
 
   while (span.start < window.end) {
     const spanRead = await read(span, keep);
 
     if (spanRead === undefined) {
-      return outcome;
+      return { ...outcome, hint: leftAt(span, window, committed) };
     }
 
     outcome.started = true;
@@ -890,9 +1181,10 @@ export const walkSpans = async <Page>(input: {
     const step = await stepAfterRead({ read: spanRead, span, window, commit });
 
     if (step === undefined) {
-      return outcome;
+      return { ...outcome, hint: leftAt(span, window, committed) };
     }
 
+    committed = committed || spanRead.kind === 'page';
     outcome.imported += step.commit.imported;
     outcome.owed = outcome.owed || step.commit.owed;
     returned.push(...step.commit.returned);

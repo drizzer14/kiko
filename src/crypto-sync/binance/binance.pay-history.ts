@@ -4,10 +4,10 @@ import {
   BINANCE_PAY_HISTORY_CURSOR_FIELD,
   BINANCE_PAY_PENDING_OVERLAP_FIELD,
   BINANCE_PAY_POINT_CURSOR_FIELD,
+  BINANCE_PAY_RANGE_CURSOR_FIELD,
   BINANCE_PAY_RESCAN_CURSOR_FIELD,
+  BINANCE_PAY_SPAN_HINTS_FIELD,
   binanceWalkCursorOf,
-  type BinanceWalkNumberField,
-  type BinanceWalkPendingField,
 } from '@kiko/holdings/holding-metadata';
 import type { HoldingRow } from '@kiko/db';
 import maybe, { foldMap } from 'fnts/maybe';
@@ -28,21 +28,21 @@ import {
   dropReadPoints,
   halfOf,
   logWalkStop,
-  type OwedGround,
   planWalkPasses,
   readPendingMark,
-  readPointCursor,
+  readWalkRoundRobins,
   resolveWalletHoldings,
+  roundRobinHooksOf,
   runWalkPlan,
   type SpanCommit,
   type SpanRead,
-  storePointCursor,
   type WalkMarkFields,
   type WalkMarks,
   walkSpans,
   type WalkPass,
   type WalkPlan,
   type WalkResult,
+  walkWritersOf,
   type WalkWindow,
 } from './binance.history-walk';
 import {
@@ -74,6 +74,7 @@ import {
 import { type BinanceHistoryRun, COSTS } from './binance.history-budget';
 import { type BinanceCredentials, readCredentials } from './binance.credentials';
 import { isBinanceCoolingDown, setBinanceCooldownUntil } from './binance.cooldown';
+import { type BinanceWalkWriteDeps, defaultWalkWriteDeps } from './binance.walk-write-deps';
 
 /** Binance rejects a Pay `startTime`/`endTime` gap of 90 days or more. */
 export const PAY_WINDOW_MS = 89 * DAY_MS;
@@ -95,6 +96,8 @@ const PAY_MARK_FIELDS: WalkMarkFields = {
   cursor: BINANCE_PAY_HISTORY_CURSOR_FIELD,
   rescan: BINANCE_PAY_RESCAN_CURSOR_FIELD,
   point: BINANCE_PAY_POINT_CURSOR_FIELD,
+  range: BINANCE_PAY_RANGE_CURSOR_FIELD,
+  hints: BINANCE_PAY_SPAN_HINTS_FIELD,
   pending: BINANCE_PAY_PENDING_OVERLAP_FIELD,
 };
 
@@ -408,7 +411,7 @@ export const payRowsOf = (input: {
  * read, the insert-only holding creation, the deduping import, and the cursor write.
  * Pacing and the weight budget come from the run.
  */
-export type BinancePayHistoryDeps = {
+export type BinancePayHistoryDeps = BinanceWalkWriteDeps & {
   now: () => number;
   fetchImpl: typeof fetch;
   readCredentials: (accountId: string) => Promise<BinanceCredentials | undefined>;
@@ -426,19 +429,10 @@ export type BinancePayHistoryDeps = {
   ) => Promise<PayHistoryPage>;
   ensureHoldings: (holdings: ExchangeHolding[]) => Promise<void>;
   addTransactions: (rows: BinanceTransactionRow[]) => Promise<number>;
-  writeWalkCursor: (
-    holdingId: string,
-    field: BinanceWalkNumberField,
-    cursorMs: number,
-  ) => Promise<void>;
-  writeWalkPending: (
-    holdingId: string,
-    field: BinanceWalkPendingField,
-    ranges: OwedGround[],
-  ) => Promise<void>;
 };
 
 const defaultPayHistoryDeps: BinancePayHistoryDeps = {
+  ...defaultWalkWriteDeps,
   now: () => Date.now(),
   fetchImpl: fetch,
   readCredentials,
@@ -447,10 +441,6 @@ const defaultPayHistoryDeps: BinancePayHistoryDeps = {
   fetchPayHistory,
   ensureHoldings: (holdings) => holdingsRepo.ensureExchangeHoldings(holdings),
   addTransactions: (rows) => transactionsRepo.addManyDedup(rows),
-  writeWalkCursor: (holdingId, field, cursorMs) =>
-    holdingsRepo.setBinanceWalkCursor(holdingId, field, cursorMs),
-  writeWalkPending: (holdingId, field, ranges) =>
-    holdingsRepo.setBinanceWalkPending(holdingId, field, ranges),
 };
 
 type PayContext = {
@@ -716,10 +706,11 @@ const runSync = async (
 
   const payCursor = binanceWalkCursorOf(PAY_MARK_FIELDS.cursor, spot.metadata);
   const rescanCursor = binanceWalkCursorOf(PAY_MARK_FIELDS.rescan, spot.metadata);
-  const pointCursor = await readPointCursor({
-    field: PAY_MARK_FIELDS.point,
+  const writers = walkWritersOf(spot.id, deps);
+  const roundRobins = await readWalkRoundRobins({
+    fields: PAY_MARK_FIELDS,
     metadata: spot.metadata,
-    write: (field, cursorMs) => deps.writeWalkCursor(spot.id, field, cursorMs),
+    ...writers,
   });
   const floorMs = payFloorMs(now);
   const pending = await readPendingMark({
@@ -731,7 +722,8 @@ const runSync = async (
   const plan = planWalkPasses({
     cursor: payCursor,
     rescanCursor,
-    pointCursor,
+    pointCursor: roundRobins.pointCursor,
+    rangeCursor: roundRobins.rangeCursor,
     pending,
     floorMs,
     endTime: now,
@@ -753,7 +745,7 @@ const runSync = async (
     apiKey,
     secret,
     options: { fetchImpl: deps.fetchImpl, now: deps.now },
-    marks: { cursor: payCursor, rescanCursor, pointCursor, pending },
+    marks: { cursor: payCursor, rescanCursor, ...roundRobins, pending },
     plan,
   };
   const uid = await readOwnUid(base);
@@ -768,12 +760,13 @@ const runSync = async (
     plan,
     canAfford: (keep) =>
       run.budget.canAfford('pay', COSTS.pay, keep) && !isBinanceCoolingDown(accountId, deps.now()),
-    runWindow: (window, pass, keep) =>
+    runWindow: (window, pass, keep, hint) =>
       walkSpans({
         window,
         read: (span, keepCalls) => readSpan(context, span, keepCalls),
         commit: (span, page) => commitSpan(context, span, page, pass),
         keep,
+        hint,
         onComplete: (read) =>
           dropReadPoints({
             pass,
@@ -784,13 +777,7 @@ const runSync = async (
             writePending: (field, ranges) => deps.writeWalkPending(spot.id, field, ranges),
           }),
       }),
-    markPointRead: (window) =>
-      storePointCursor({
-        window,
-        marks: context.marks,
-        field: PAY_MARK_FIELDS.point,
-        write: (field, cursorMs) => deps.writeWalkCursor(spot.id, field, cursorMs),
-      }),
+    ...roundRobinHooksOf({ marks: context.marks, fields: PAY_MARK_FIELDS, ...writers }),
   });
 };
 

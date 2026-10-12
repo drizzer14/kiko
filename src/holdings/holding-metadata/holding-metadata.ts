@@ -276,8 +276,67 @@ export const binanceWalkPointCursorFields = [
 
 export type BinanceWalkPointCursorField = (typeof binanceWalkPointCursorFields)[number];
 
-/** A field the walk writes as one number: a cursor, or the point cursor of its round-robin. */
-export type BinanceWalkNumberField = BinanceWalkCursorField | BinanceWalkPointCursorField;
+/**
+ * Where a walk's round-robin over its owed RANGES stands: the end of the window it read last. A
+ * range that is read is cut to what is left of it, so its start moves on past a start the cursor
+ * would hold; the end of the window just read is never before the start of what remains of that
+ * range. The next run reads the ranges that start after it first, then wraps, so a range that is
+ * owed whole every run cannot keep the ranges behind it from being read. Kept like the point
+ * cursor: carried over a balance sync, dropped on a disconnect (no key means "start at the
+ * oldest range").
+ */
+export const BINANCE_HISTORY_RANGE_CURSOR_FIELD = 'binanceHistoryRangeCursor';
+
+export const BINANCE_PAY_RANGE_CURSOR_FIELD = 'binancePayRangeCursor';
+
+export const BINANCE_TRANSFER_RANGE_CURSOR_FIELD = 'binanceTransferRangeCursor';
+
+export const binanceWalkRangeCursorFields = [
+  BINANCE_HISTORY_RANGE_CURSOR_FIELD,
+  BINANCE_PAY_RANGE_CURSOR_FIELD,
+  BINANCE_TRANSFER_RANGE_CURSOR_FIELD,
+] as const;
+
+export type BinanceWalkRangeCursorField = (typeof binanceWalkRangeCursorFields)[number];
+
+/** A field the walk writes as one number: a cursor, or the cursor of one of its round-robins. */
+export type BinanceWalkNumberField =
+  | BinanceWalkCursorField
+  | BinanceWalkPointCursorField
+  | BinanceWalkRangeCursorField;
+
+/**
+ * Where a run left a window it split and could not finish before the first span of it committed:
+ * the narrowest span it asked for, which starts where the window starts. The next run that reads
+ * a window with that start begins with this span, so a chain of halvings longer than one run's
+ * calls goes on from where it stopped instead of starting over. A hint can only narrow a read.
+ */
+export type BinanceSpanHint = { start: number; end: number };
+
+/** The passes a run reads, and the points among them: each keeps its own hints. */
+export const binanceSpanHintPasses = ['forward', 'pending', 'rescan', 'point'] as const;
+
+export type BinanceSpanHintPass = (typeof binanceSpanHintPasses)[number];
+
+export type BinanceSpanHints = Record<BinanceSpanHintPass, BinanceSpanHint[]>;
+
+/**
+ * One key per walk, holding the hints of its four passes: carried over a balance sync and dropped
+ * on a disconnect, like the cursors.
+ */
+export const BINANCE_HISTORY_SPAN_HINTS_FIELD = 'binanceHistorySpanHints';
+
+export const BINANCE_PAY_SPAN_HINTS_FIELD = 'binancePaySpanHints';
+
+export const BINANCE_TRANSFER_SPAN_HINTS_FIELD = 'binanceTransferSpanHints';
+
+export const binanceWalkSpanHintFields = [
+  BINANCE_HISTORY_SPAN_HINTS_FIELD,
+  BINANCE_PAY_SPAN_HINTS_FIELD,
+  BINANCE_TRANSFER_SPAN_HINTS_FIELD,
+] as const;
+
+export type BinanceWalkSpanHintField = (typeof binanceWalkSpanHintFields)[number];
 
 /**
  * The two marks of a Monobank holding's close and reopen (see
@@ -301,6 +360,8 @@ const carriedMetadataKeys = [
   ...binanceWalkCursorFields,
   ...binanceWalkPendingFields,
   ...binanceWalkPointCursorFields,
+  ...binanceWalkRangeCursorFields,
+  ...binanceWalkSpanHintFields,
   STATEMENT_FROM_FIELD,
 ] as const;
 
@@ -377,6 +438,16 @@ export const binanceWalkPendingOf = (
     : undefined;
 };
 
+const roundRobinCursorOf = (field: string, metadata: unknown): number | null | undefined => {
+  const stored = isRecord(metadata) ? metadata[field] : undefined;
+
+  if (stored === undefined) {
+    return null;
+  }
+
+  return isNumber(stored) ? stored : undefined;
+};
+
 /**
  * One walk's stored point cursor: `null` when none is stored, `undefined` when a value is stored
  * but is no finite number (the caller logs a fixed code and starts at the oldest point; a parse
@@ -385,14 +456,68 @@ export const binanceWalkPendingOf = (
 export const binanceWalkPointCursorOf = (
   field: BinanceWalkPointCursorField,
   metadata: unknown,
-): number | null | undefined => {
+): number | null | undefined => roundRobinCursorOf(field, metadata);
+
+/** The stored range cursor, read as the point cursor is (see `binanceWalkPointCursorOf`). */
+export const binanceWalkRangeCursorOf = (
+  field: BinanceWalkRangeCursorField,
+  metadata: unknown,
+): number | null | undefined => roundRobinCursorOf(field, metadata);
+
+const asSpanHint = (value: unknown): BinanceSpanHint | undefined => {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+
+  const { start, end } = value;
+
+  return isNumber(start) && isNumber(end) && start < end ? { start, end } : undefined;
+};
+
+const asSpanHintList = (value: unknown): BinanceSpanHint[] | undefined => {
+  if (value === undefined) {
+    return [];
+  }
+
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+
+  const hints = value.map(asSpanHint);
+
+  return hints.every((hint): hint is BinanceSpanHint => hint !== undefined) ? hints : undefined;
+};
+
+/**
+ * One walk's stored span hints: none for each pass when nothing is stored, `undefined` when a
+ * value is stored but is not a record of well-formed lists (the caller logs a fixed code and
+ * stores no hint at once; a parse failure must never fail a balance sync).
+ */
+export const binanceWalkSpanHintsOf = (
+  field: BinanceWalkSpanHintField,
+  metadata: unknown,
+): BinanceSpanHints | undefined => {
   const stored = isRecord(metadata) ? metadata[field] : undefined;
 
   if (stored === undefined) {
-    return null;
+    return { forward: [], pending: [], rescan: [], point: [] };
   }
 
-  return isNumber(stored) ? stored : undefined;
+  if (!isRecord(stored)) {
+    return undefined;
+  }
+
+  const forward = asSpanHintList(stored.forward);
+  const pending = asSpanHintList(stored.pending);
+  const rescan = asSpanHintList(stored.rescan);
+  const point = asSpanHintList(stored.point);
+
+  return forward === undefined ||
+    pending === undefined ||
+    rescan === undefined ||
+    point === undefined
+    ? undefined
+    : { forward, pending, rescan, point };
 };
 
 export const syncClosedFromOf = numberFieldOf(SYNC_CLOSED_FROM_FIELD);
@@ -431,18 +556,25 @@ export const withWalkOwnedMetadataCarried = (
  * crypto-sync/disconnect.ts). Setting the floor rather than deleting the key
  * matters: a deleted key falls back to the legacy `latestTransactionTime`
  * cursor, which a reconnected DIFFERENT Binance account would inherit as if it
- * were its own already-imported history. Every `binanceWalkPointCursorFields` entry is
- * dropped: no key means "start at the oldest point", and a deleted key there has no legacy
- * fallback. `undefined` when nothing needed resetting, so a caller can skip a redundant write.
+ * were its own already-imported history. Every `binanceWalkPointCursorFields`,
+ * `binanceWalkRangeCursorFields` and `binanceWalkSpanHintFields` entry is dropped: no key means
+ * "start at the oldest point or range, with no span to resume", and a deleted key there has no
+ * legacy fallback. `undefined` when nothing needed resetting, so a caller can skip a redundant
+ * write.
  */
 export const withWalkOwnedMetadataResetToFloor = (
   storedMetadata: unknown,
   floorMs: number,
 ): Record<string, unknown> | undefined => {
+  const droppedKeys: readonly string[] = [
+    ...binanceWalkPointCursorFields,
+    ...binanceWalkRangeCursorFields,
+    ...binanceWalkSpanHintFields,
+  ];
   const walkOwnedKeys: readonly string[] = [
     ...binanceWalkCursorFields,
     ...binanceWalkPendingFields,
-    ...binanceWalkPointCursorFields,
+    ...droppedKeys,
   ];
 
   if (!isRecord(storedMetadata) || !walkOwnedKeys.some((key) => key in storedMetadata)) {
@@ -450,14 +582,12 @@ export const withWalkOwnedMetadataResetToFloor = (
   }
 
   const storedKeys = (keys: readonly string[]) => keys.filter((key) => key in storedMetadata);
-  const withoutPointCursors = Object.fromEntries(
-    Object.entries(storedMetadata).filter(
-      ([key]) => !(binanceWalkPointCursorFields as readonly string[]).includes(key),
-    ),
+  const withoutDroppedKeys = Object.fromEntries(
+    Object.entries(storedMetadata).filter(([key]) => !droppedKeys.includes(key)),
   );
 
   return {
-    ...withoutPointCursors,
+    ...withoutDroppedKeys,
     ...Object.fromEntries(storedKeys(binanceWalkCursorFields).map((key) => [key, floorMs])),
     ...Object.fromEntries(storedKeys(binanceWalkPendingFields).map((key) => [key, []])),
   };

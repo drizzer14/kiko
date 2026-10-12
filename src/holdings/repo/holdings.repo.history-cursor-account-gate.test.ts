@@ -21,6 +21,10 @@ import {
   binanceWalkCursorFields,
   binanceWalkPendingFields,
   binanceWalkPointCursorFields,
+  binanceWalkRangeCursorFields,
+  binanceWalkSpanHintFields,
+  type BinanceWalkNumberField,
+  type BinanceWalkSpanHintField,
 } from '@kiko/holdings/holding-metadata';
 import type { database } from '@kiko/db';
 import { DatabaseSync } from 'node:sqlite';
@@ -148,40 +152,74 @@ describe("holdingsRepo.setBinanceWalkCursor — gated on the holding's account s
   });
 });
 
-describe("holdingsRepo.setBinanceWalkCursor for the point cursors — gated on the holding's account", () => {
-  it.each(binanceWalkPointCursorFields)(
-    'writes %s when the account is connected, and a disconnect drops it',
-    async (field) => {
-      const rawDatabase = openTestDatabase('binance');
+const SPAN_HINTS = {
+  forward: [{ start: 100, end: 150 }],
+  pending: [],
+  rescan: [{ start: 200, end: 210 }],
+  point: [],
+};
+
+const DROPPED_ON_DISCONNECT = [
+  {
+    name: 'the point cursors',
+    fields: binanceWalkPointCursorFields,
+    stored: 4_242,
+    write: (field: string) =>
+      holdingsRepo.setBinanceWalkCursor('h-spot', field as BinanceWalkNumberField, 4_242),
+  },
+  {
+    name: 'the range cursors',
+    fields: binanceWalkRangeCursorFields,
+    stored: 4_242,
+    write: (field: string) =>
+      holdingsRepo.setBinanceWalkCursor('h-spot', field as BinanceWalkNumberField, 4_242),
+  },
+  {
+    name: 'the span hints',
+    fields: binanceWalkSpanHintFields,
+    stored: SPAN_HINTS,
+    write: (field: string) =>
+      holdingsRepo.setBinanceWalkSpanHints('h-spot', field as BinanceWalkSpanHintField, SPAN_HINTS),
+  },
+];
+
+describe.each(DROPPED_ON_DISCONNECT)(
+  "the walk-owned writes of $name — gated on the holding's account, dropped by a disconnect",
+  ({ fields, stored, write }) => {
+    it.each(fields)(
+      'writes %s when the account is connected, and a disconnect drops it',
+      async (field) => {
+        const rawDatabase = openTestDatabase('binance');
+        mockWorkDatabase = executingDrizzle<typeof database>(rawDatabase);
+
+        await write(field);
+
+        expect(storedMetadata(rawDatabase)).toMatchObject({ [field]: stored, syncedAt: 500 });
+
+        await holdingsRepo.resetBinanceWalkCursors('acc-1', 1);
+
+        expect(storedMetadata(rawDatabase)).toEqual({
+          binanceAsset: 'BTC',
+          binanceHistoryCursor: 1,
+          syncedAt: 500,
+        });
+      },
+    );
+
+    it('is a no-op on a disconnected account', async () => {
+      const rawDatabase = openTestDatabase(null);
       mockWorkDatabase = executingDrizzle<typeof database>(rawDatabase);
 
-      await holdingsRepo.setBinanceWalkCursor('h-spot', field, 4_242);
-
-      expect(storedMetadata(rawDatabase)).toMatchObject({ [field]: 4_242, syncedAt: 500 });
-
-      await holdingsRepo.resetBinanceWalkCursors('acc-1', 1);
+      await write(fields[0]);
 
       expect(storedMetadata(rawDatabase)).toEqual({
         binanceAsset: 'BTC',
-        binanceHistoryCursor: 1,
+        binanceHistoryCursor: 500,
         syncedAt: 500,
       });
-    },
-  );
-
-  it('is a no-op on a disconnected account', async () => {
-    const rawDatabase = openTestDatabase(null);
-    mockWorkDatabase = executingDrizzle<typeof database>(rawDatabase);
-
-    await holdingsRepo.setBinanceWalkCursor('h-spot', 'binancePayPointCursor', 4_242);
-
-    expect(storedMetadata(rawDatabase)).toEqual({
-      binanceAsset: 'BTC',
-      binanceHistoryCursor: 500,
-      syncedAt: 500,
     });
-  });
-});
+  },
+);
 
 describe("holdingsRepo.setBinanceWalkPending — gated on the holding's account still being connected to Binance", () => {
   const ranges = [{ start: 100, end: 200 }];

@@ -361,6 +361,9 @@ const depsOf = (
     world.events.push('list');
     world.metadata = { ...world.metadata, [field]: ranges };
   }),
+  writeWalkHints: jest.fn(async (_holdingId: string, field: string, hints: unknown) => {
+    world.metadata = { ...world.metadata, [field]: hints };
+  }),
   ...over,
 });
 
@@ -1107,6 +1110,106 @@ describe('the order of the writes', () => {
     expect(world.events.indexOf('list')).toBeLessThan(
       world.events.indexOf(`cursor:${SPOT_FIELDS.cursor}`),
     );
+  });
+});
+
+describe('the range cursor and the span hints of the round-robin', () => {
+  const dayAt = (index: number) => ({
+    start: agoMs(150) + index * 10 * DAY_MS,
+    end: agoMs(150) + index * 10 * DAY_MS + DAY_MS,
+  });
+  const days = [dayAt(0), dayAt(1), dayAt(2)];
+  const RANGE_FIELD = 'binanceTransferRangeCursor';
+  const HINTS_FIELD = 'binanceTransferSpanHints';
+  const base = { [SPOT_FIELDS.cursor]: agoMs(2), [SPOT_FIELDS.pending]: days };
+  const dayStartsOf = (requests: TransferQuery[]): number[] => [
+    ...new Set(
+      requests
+        .map((query) => query.startTime)
+        .filter((start) => days.some((day) => day.start === start)),
+    ),
+  ];
+  const writesTo = (deps: BinanceTransferHistoryDeps, field: string): number[] =>
+    (deps.writeWalkCursor as jest.Mock).mock.calls
+      .filter((call) => call[1] === field)
+      .map((call) => call[2] as number);
+  const codesLogged = () => warn.mock.calls.map((call) => (call[1] as { code?: string }).code);
+
+  it('reads the owed days that start after the stored range cursor first, then wraps around', async () => {
+    const world = worldOf({ ...base, [RANGE_FIELD]: days[0].end });
+
+    const { requests } = await walkOnce({ world });
+
+    // The cap leaves room for two of the three days beside the forward window and the re-scan.
+    expect(dayStartsOf(requests)).toEqual([days[1].start, days[2].start]);
+  });
+
+  it('stores the end of the window of each day it read, once its read has started', async () => {
+    const world = worldOf(base);
+
+    const { deps } = await walkOnce({ world });
+
+    expect(writesTo(deps, RANGE_FIELD)).toEqual([days[0].end, days[1].end]);
+  });
+
+  it('starts at the oldest day, and stores that start, when the stored cursor is no number', async () => {
+    const world = worldOf({ ...base, [RANGE_FIELD]: 'soon' });
+
+    const { requests, deps } = await walkOnce({ world });
+
+    expect(dayStartsOf(requests)[0]).toBe(days[0].start);
+    expect(codesLogged()).toContain('range-cursor-malformed');
+    expect(writesTo(deps, RANGE_FIELD)[0]).toBe(Number.MIN_SAFE_INTEGER);
+  });
+
+  describe('with a day that comes back full above 6 hours', () => {
+    const day = days[0];
+    const dense: Answer = (query) =>
+      query.startTime === day.start && query.endTime - query.startTime > DAY_MS / 4
+        ? fullPage()
+        : undefined;
+
+    it('stores the span the day was left at when its halving chain is cut short, and begins with it in the next run', async () => {
+      const world = worldOf({ ...base, [SPOT_FIELDS.pending]: [day] });
+      const fetcher = serverOf([], dense);
+      // The forward window and the re-scan keep their calls: a read of the day, whose first type
+      // comes back full, leaves no call for the read of its half.
+      const run = {
+        gate: freshRun().gate,
+        budget: {
+          canAfford: (_lane: unknown, _cost: unknown, keep = 0) =>
+            fetcher.mock.calls.length + keep < 60,
+          record: () => undefined,
+        },
+      };
+
+      await walkOnce({ world, run, over: { fetchUniversalTransfers: fetcher } });
+
+      expect((world.metadata[HINTS_FIELD] as { pending: unknown[] }).pending).toEqual([
+        { start: day.start, end: day.start + DAY_MS / 2 },
+      ]);
+
+      const { requests } = await walkOnce({ world, answer: dense });
+
+      expect(requests.find((query) => query.startTime === day.start)?.endTime).toBe(
+        day.start + DAY_MS / 2,
+      );
+    });
+
+    it('stores a malformed hint over with none, logging one fixed code, and reads the whole window', async () => {
+      const world = worldOf({ ...base, [SPOT_FIELDS.pending]: [day], [HINTS_FIELD]: 'soon' });
+
+      const { requests } = await walkOnce({ world });
+
+      expect(codesLogged()).toContain('span-hints-malformed');
+      expect(world.metadata[HINTS_FIELD]).toEqual({
+        forward: [],
+        pending: [],
+        rescan: [],
+        point: [],
+      });
+      expect(requests.find((query) => query.startTime === day.start)?.endTime).toBe(day.end);
+    });
   });
 });
 

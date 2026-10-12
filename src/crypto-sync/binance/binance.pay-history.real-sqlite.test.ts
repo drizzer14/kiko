@@ -69,57 +69,69 @@ const received = (over: Partial<BinancePayOrder>): BinancePayOrder =>
     ...over,
   });
 
+/** The request every walk of this file makes: the connected account, a fresh gate and budget. */
+const requestOf = () => ({
+  targetAccountId: ACCOUNT_ID,
+  run: createBinanceHistoryRun({ now: () => NOW, sleep: async () => undefined }),
+});
+
+/** The clock and the credentials every walk of this file reads. */
+const clockAndCredentials = {
+  now: () => NOW,
+  readCredentials: async () => ({ apiKey: 'api-key', secret: 'secret' }),
+};
+
+/** A fresh database for each test and a silenced `console.warn`, which the walks log to. */
+const useRealDatabase = (): void => {
+  let warn: jest.SpyInstance;
+
+  beforeEach(() => {
+    mockDatabase = openDatabase();
+    warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+  });
+
+  afterEach(() => {
+    warn.mockRestore();
+  });
+};
+
 const runWalk = (orders: BinancePayOrder[]) =>
-  syncBinancePayHistory(
-    {
-      targetAccountId: ACCOUNT_ID,
-      run: createBinanceHistoryRun({ now: () => NOW, sleep: async () => undefined }),
-    },
-    {
-      now: () => NOW,
-      readCredentials: async () => ({ apiKey: 'api-key', secret: 'secret' }),
-      fetchAccount: async () => ({ balances: [], uid: OWN }),
-      fetchPayHistory: async () => ({
-        rows: orders,
-        unreadable: [],
-        gathered: orders.length,
-        btcFundedOtherCoinOrders: [],
-        usedUidWeight1m: undefined,
-        usedIpWeight1m: undefined,
-      }),
-    },
-  );
+  syncBinancePayHistory(requestOf(), {
+    ...clockAndCredentials,
+    fetchAccount: async () => ({ balances: [], uid: OWN }),
+    fetchPayHistory: async () => ({
+      rows: orders,
+      unreadable: [],
+      gathered: orders.length,
+      btcFundedOtherCoinOrders: [],
+      usedUidWeight1m: undefined,
+      usedIpWeight1m: undefined,
+    }),
+  });
 
 /** The capital walk over the real repos, with Binance answering one page of deposits. */
 const runCapitalWalk = (deposits: { id: string; amount: string; insertTime: number }[]) =>
-  syncBinanceTransactions(
-    {
-      targetAccountId: ACCOUNT_ID,
-      run: createBinanceHistoryRun({ now: () => NOW, sleep: async () => undefined }),
-    },
-    {
-      now: () => NOW,
-      readCredentials: async () => ({ apiKey: 'api-key', secret: 'secret' }),
-      fetchDepositHistory: async () => ({
-        rows: deposits.map((deposit) => ({
-          ...deposit,
-          coin: 'BTC',
-          txId: `tx-${deposit.id}`,
-          status: 1,
-          walletType: undefined,
-        })),
-        unreadable: [],
-        usedUidWeight1m: undefined,
-        usedIpWeight1m: undefined,
-      }),
-      fetchWithdrawHistory: async () => ({
-        rows: [],
-        unreadable: [],
-        usedUidWeight1m: undefined,
-        usedIpWeight1m: undefined,
-      }),
-    },
-  );
+  syncBinanceTransactions(requestOf(), {
+    ...clockAndCredentials,
+    fetchDepositHistory: async () => ({
+      rows: deposits.map((deposit) => ({
+        ...deposit,
+        coin: 'BTC',
+        txId: `tx-${deposit.id}`,
+        status: 1,
+        walletType: undefined,
+      })),
+      unreadable: [],
+      usedUidWeight1m: undefined,
+      usedIpWeight1m: undefined,
+    }),
+    fetchWithdrawHistory: async () => ({
+      rows: [],
+      unreadable: [],
+      usedUidWeight1m: undefined,
+      usedIpWeight1m: undefined,
+    }),
+  });
 
 const storedRows = (): StoredRow[] =>
   mockDatabase
@@ -156,16 +168,7 @@ const holdingByKey = (key: string): { id: string; balance_minor_units: number } 
     .get(key) as { id: string; balance_minor_units: number } | undefined;
 
 describe('the Pay walk on real SQLite', () => {
-  let warn: jest.SpyInstance;
-
-  beforeEach(() => {
-    mockDatabase = openDatabase();
-    warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
-  });
-
-  afterEach(() => {
-    warn.mockRestore();
-  });
+  useRealDatabase();
 
   it('keeps a Pay row beside a stored capital deposit of the same size 9 minutes apart', async () => {
     await importCapitalDeposit('1', 50_000_000, DEPOSIT_TIME);
@@ -302,18 +305,11 @@ describe('the Pay walk on real SQLite', () => {
       };
     };
     const walkWith = (cutAfter: number) =>
-      syncBinancePayHistory(
-        {
-          targetAccountId: ACCOUNT_ID,
-          run: createBinanceHistoryRun({ now: () => NOW, sleep: async () => undefined }),
-        },
-        {
-          now: () => NOW,
-          readCredentials: async () => ({ apiKey: 'api-key', secret: 'secret' }),
-          fetchAccount: async () => ({ balances: [], uid: OWN }),
-          fetchPayHistory: answerByRange(cutAfter),
-        },
-      );
+      syncBinancePayHistory(requestOf(), {
+        ...clockAndCredentials,
+        fetchAccount: async () => ({ balances: [], uid: OWN }),
+        fetchPayHistory: answerByRange(cutAfter),
+      });
 
     await expect(walkWith(2)).rejects.toThrow('run suspended');
 
@@ -337,6 +333,28 @@ describe('the Pay walk on real SQLite', () => {
     await holdingsRepo.resetBinanceWalkCursors(ACCOUNT_ID, 1);
 
     expect(spotMetadata()).toMatchObject({ binancePayPendingOverlap: [] });
+  });
+
+  it('writes the range cursor of an owed day it read on the Spot holding, and a disconnect drops it', async () => {
+    const day = { start: NOW - 150 * DAY_MS, end: NOW - 149 * DAY_MS };
+    mockDatabase.prepare("UPDATE holdings SET metadata = ? WHERE id = 'h-spot'").run(
+      JSON.stringify({
+        binanceAsset: 'BTC',
+        binancePayHistoryCursor: NOW - 2 * DAY_MS,
+        binancePayPendingOverlap: [day],
+      }),
+    );
+
+    await runWalk([]);
+
+    expect(spotMetadata()).toMatchObject({
+      binancePayRangeCursor: day.end,
+      binancePayPendingOverlap: [],
+    });
+
+    await holdingsRepo.resetBinanceWalkCursors(ACCOUNT_ID, 1);
+
+    expect(spotMetadata()).not.toHaveProperty('binancePayRangeCursor');
   });
 
   it('creates a missing Earn holding at zero for an Earn order, and never touches an existing balance', async () => {
@@ -418,17 +436,8 @@ describe('the Pay walk on real SQLite', () => {
 });
 
 describe('the capital walk beside stored Pay rows on real SQLite', () => {
-  let warn: jest.SpyInstance;
+  useRealDatabase();
   const twinDeposit = { id: '1', amount: '0.5', insertTime: DEPOSIT_TIME };
-
-  beforeEach(() => {
-    mockDatabase = openDatabase();
-    warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
-  });
-
-  afterEach(() => {
-    warn.mockRestore();
-  });
 
   it('imports a deposit that settles after a Pay row of the same size: both rows stay, on every run', async () => {
     const payOrders = [
