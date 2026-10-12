@@ -528,6 +528,25 @@ describe('commitSettledSpan', () => {
       expect(advance).not.toHaveBeenCalled();
     });
 
+    it('stops the forward pass, writing nothing, for that very code when it owes the whole span: the record has no time to owe a point at', async () => {
+      const committed = await commitOwing({ rows: ['a'], codes: ['owed-only'], owed: [SPAN] });
+
+      expect(committed).toBeUndefined();
+      expect(add).not.toHaveBeenCalled();
+      expect(advance).not.toHaveBeenCalled();
+    });
+
+    it('stops the forward pass when one record owes a point and another the whole span', async () => {
+      const committed = await commitOwing({
+        rows: ['a'],
+        codes: ['owed-only', 'owed-only'],
+        owed: [point, SPAN],
+      });
+
+      expect(committed).toBeUndefined();
+      expect(add).not.toHaveBeenCalled();
+    });
+
     it('stops the forward pass when the rows cannot be placed, whatever else the span owes', async () => {
       const committed = await commitOwing(
         { rows: ['a'], codes: ['owed-only'], owed: [point] },

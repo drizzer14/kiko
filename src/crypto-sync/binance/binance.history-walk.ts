@@ -143,7 +143,7 @@ export type WalkPlan = {
  */
 const MAX_PENDING_RANGES = 12;
 
-const isPoint = (ground: OwedGround): boolean => ground.kind === 'point';
+export const isPoint = (ground: OwedGround): boolean => ground.kind === 'point';
 
 const sameWindow = (left: WalkWindow, right: WalkWindow): boolean =>
   left.start === right.start && left.end === right.end;

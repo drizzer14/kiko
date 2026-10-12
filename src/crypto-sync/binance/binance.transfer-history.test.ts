@@ -186,9 +186,21 @@ describe('transferRowsOf', () => {
     }
   });
 
-  it('T11: a FAILED transfer is a stop of its own, which the forward pass owes and goes past', () => {
+  it('T11: a FAILED transfer is a stop of its own', () => {
     expect(codeOf(() => rowsOf({ status: 'FAILED' }))).toBe('transfer-failed');
-    expect(TRANSFER_FORWARD_OWES).toEqual(['transfer-failed']);
+  });
+
+  it('owes and goes past in the forward pass every stop of one transfer, and no stop of the span as a whole', () => {
+    expect([...TRANSFER_FORWARD_OWES].sort()).toEqual([
+      'transfer-amount-invalid',
+      'transfer-failed',
+      'transfer-id-missing',
+      'transfer-not-settled',
+      'transfer-row-unreadable',
+      'transfer-type-mismatch',
+    ]);
+    expect(TRANSFER_FORWARD_OWES).not.toContain('transfer-page-drift');
+    expect(TRANSFER_FORWARD_OWES).not.toContain('transfer-holding-missing');
   });
 
   it('T6: a row of another asset gives no row', () => {
@@ -797,14 +809,56 @@ describe('a transfer the walk cannot trust', () => {
     expect(stopCodes(warn)).toEqual(['transfer-not-settled']);
   });
 
-  it('T9: in the forward pass, commits nothing of the span, ends the forward pass with the cursor unmoved, and the run goes on to the re-scan', async () => {
+  it('T9: in the forward pass, a stop with no time to owe a point at commits nothing of the span, ends the forward pass with the cursor unmoved, and the run goes on to the re-scan', async () => {
     const world = worldOf({ [SPOT_FIELDS.cursor]: agoMs(20) });
 
-    const { requests } = await walkOnce({ world, entries: [stuck(), other] });
+    const { requests } = await walkOnce({
+      world,
+      entries: [unreadableOf('FUNDING_MAIN', undefined), other],
+    });
 
     expect(world.added).toEqual([]);
     expect(world.metadata[SPOT_FIELDS.cursor]).toBe(agoMs(20));
     expect(requests.some((request) => request.startTime === agoMs(30))).toBe(true);
+  });
+
+  describe.each([
+    ['an unsettled transfer', stuck()],
+    [
+      'a transfer of another type than it was read under',
+      entryOf({ type: 'MAIN_UMFUTURE', tranId: 'wrong', timestamp: stuckAt }, 'MAIN_FUNDING'),
+    ],
+    ['a transfer with no id', entryOf({ tranId: '', timestamp: stuckAt })],
+    ['a transfer with no amount of satoshis', entryOf({ amount: '0', timestamp: stuckAt })],
+    ['an unreadable row with a time', unreadableOf('MAIN_FUNDING', stuckAt)],
+  ])('%s in the forward window', (_name, entry) => {
+    const newer = entryOf({ tranId: 'newer', timestamp: agoMs(2) });
+    const idsOf = (world: World) => [...new Set(world.added.map((row) => row.externalId))].sort();
+
+    it('is owed at its own point and the cursor goes past it: the other transfers of the span, the newer ones too, import in the same run', async () => {
+      const world = worldOf({ [SPOT_FIELDS.cursor]: agoMs(20) });
+
+      const { result } = await walkOnce({ world, entries: [entry, other, newer] });
+
+      expect(idsOf(world)).toEqual([
+        'acc-1:xfer:MAIN_FUNDING:newer:BTC',
+        'acc-1:xfer:MAIN_FUNDING:newer:BTC:funding',
+        'acc-1:xfer:UMFUTURE_MAIN:fine:BTC',
+      ]);
+      expect(world.metadata[SPOT_FIELDS.cursor]).toBe(NOW);
+      expect(listOf(world)).toContainEqual(pointOf(stuckAt, 'MAIN_FUNDING'));
+      expect(result.complete).toBe(false);
+    });
+
+    it('stays owed in every run after it, and a second identical run imports no row it had not', async () => {
+      const world = worldOf({ [SPOT_FIELDS.cursor]: agoMs(20) });
+
+      await walkOnce({ world, entries: [entry, other, newer] });
+      await walkOnce({ world, entries: [entry, other, newer] });
+
+      expect(listOf(world)).toContainEqual(pointOf(stuckAt, 'MAIN_FUNDING'));
+      expect(idsOf(world)).toHaveLength(3);
+    });
   });
 
   describe('a FAILED transfer in the forward window', () => {
@@ -838,12 +892,31 @@ describe('a transfer the walk cannot trust', () => {
       expect(idsOf(world)).toHaveLength(3);
     });
 
-    it('does not take the other stops of the forward pass with it: an unsettled transfer beside it still leaves the span uncommitted and the cursor unmoved', async () => {
+    it('does not take a stop with no time with it: an unreadable row with no time beside it still leaves the span uncommitted and the cursor unmoved', async () => {
       const world = worldOf({ [SPOT_FIELDS.cursor]: agoMs(20) });
-      const pending = stuck({ tranId: 'pending', timestamp: agoMs(8) });
 
-      await walkOnce({ world, entries: [failed, pending, other, newer] });
+      await walkOnce({
+        world,
+        entries: [failed, unreadableOf('FUNDING_MAIN', undefined), other, newer],
+      });
 
+      expect(world.metadata[SPOT_FIELDS.cursor]).toBe(agoMs(20));
+      expect(idsOf(world)).not.toContain('acc-1:xfer:MAIN_FUNDING:newer:BTC');
+    });
+
+    it('does not take a stop of the span as a whole with it: a type that drifted beside it still leaves the span uncommitted and the cursor unmoved', async () => {
+      const world = worldOf({ [SPOT_FIELDS.cursor]: agoMs(20) });
+
+      await walkOnce({
+        world,
+        entries: [failed, other, newer],
+        answer: (query) =>
+          query.startTime >= agoMs(20) && query.type === 'FUNDING_UMFUTURE'
+            ? pageOf({ total: 4 })
+            : undefined,
+      });
+
+      expect(stopCodes(warn)).toContain('transfer-page-drift');
       expect(world.metadata[SPOT_FIELDS.cursor]).toBe(agoMs(20));
       expect(idsOf(world)).not.toContain('acc-1:xfer:MAIN_FUNDING:newer:BTC');
     });
@@ -927,19 +1000,6 @@ describe('a transfer the walk cannot trust', () => {
 
     expect(world.added).toHaveLength(1);
     expect(listOf(world)).toEqual([{ start: agoMs(30), end: agoMs(5) }]);
-  });
-
-  it('in the forward pass, an unreadable row leaves the span uncommitted and the cursor unmoved, and the run goes on', async () => {
-    const world = worldOf({ [SPOT_FIELDS.cursor]: agoMs(20) });
-
-    const { requests } = await walkOnce({
-      world,
-      entries: [unreadableOf('MAIN_FUNDING', stuckAt), other],
-    });
-
-    expect(world.added).toEqual([]);
-    expect(world.metadata[SPOT_FIELDS.cursor]).toBe(agoMs(20));
-    expect(requests.some((request) => request.startTime === agoMs(30))).toBe(true);
   });
 
   it('never rejects for a row: the run resolves, and logs the code alone', async () => {

@@ -689,7 +689,8 @@ withdraw budget moves into this object, with the same numbers and the same rule.
 - **Commit granularity: per record** (user ruling 2026-10-12, OVERNIGHT 18 = A). A record the
   walk cannot trust owes its own point and the other records of the span commit (pending pass
   and re-scan). The forward pass leaves the span uncommitted and ends, the cursor unmoved;
-  the run then goes on (OVERNIGHT 17 = R28, user ruling 2026-10-12).
+  the run then goes on (OVERNIGHT 17 = R28, user ruling 2026-10-12); the Transfer lane goes
+  past a stop of one record with a usable time (O1 = A, below).
   Per-record codes: `transfer-not-settled` (any status but `CONFIRMED` and `FAILED`; T5),
   `transfer-failed` (`FAILED`; T11),
   `transfer-id-missing`, `transfer-amount-invalid`, `transfer-type-mismatch` (the row's
@@ -700,11 +701,20 @@ withdraw budget moves into this object, with the same numbers and the same rule.
   stays on the list, read once a round, until the 6-month floor passes it. No row imports. The
   owed point does not show the caption (section 8). VERIFY 14 records the exact status values
   for the record; no rule waits on them (T11).
-- **A `FAILED` transfer does not stop the forward pass** (user ruling 2026-10-12, item 3 = A).
-  `transfer-failed` is the one stop the forward pass owes and goes past: its point goes into
-  the list before the cursor moves, the other transfers of its span commit, the cursor passes
-  it, and the newer transfers import in the same run. Every other stop keeps the forward-pass
-  rule above (the cursor never passes that record, R28).
+- **A transfer with a usable time does not stop the forward pass** (user ruling 2026-10-12,
+  item 3 = A for `FAILED`, widened by O1 = A, Transfer lane only). Every stop tied to ONE
+  transfer with a usable time is owed at that transfer's own point (the point the pending pass
+  and the re-scan owe it) and goes past: `transfer-failed`, `transfer-not-settled`,
+  `transfer-type-mismatch`, `transfer-id-missing`, `transfer-amount-invalid`, and
+  `transfer-row-unreadable` with a `timestamp`. The point goes into the list before the cursor
+  moves, the other transfers of its span commit, the cursor passes it, and the newer transfers
+  import in the same run; the point stays owed in every run until the transfer settles or the
+  floor drops it, and a second identical run imports nothing it had not. A stop with no usable
+  time (a row with no finite `timestamp`, which owes the whole span) and a stop of the span as a
+  whole (`transfer-page-drift`, `transfer-holding-missing`, a record whose `timestamp` lies
+  outside the span) keep the forward-pass rule above: the span stays uncommitted, the forward
+  pass ends and the cursor never passes it (R28). The Pay and capital lanes do not change
+  (Pay A2: every stop holds the cursor).
 - **Owed after a stop.** A per-record stop owes `[timestamp - 1, timestamp + 1]` in the type
   it was read under (`timestamp` in ms; VERIFY 14 for the filter field and precision). A stop
   not tied to one record (`transfer-page-drift`, `transfer-holding-missing`), an unreadable row
@@ -937,12 +947,12 @@ Transfer:
 | T2 | FUNDING_MAIN | Funding -x, Spot +x, paired | same |
 | T3 | MAIN_UMFUTURE | Spot -x, `wallet:UMFUTURE`, excluded | same |
 | T4 | UMFUTURE_FUNDING | Funding +x, `wallet:UMFUTURE` | same |
-| T5 | status not settled | `transfer-not-settled`: owed at `[t - 1, t + 1]` in its type; forward pass: span uncommitted, cursor unmoved | stop the window |
+| T5 | status not settled | `transfer-not-settled`: owed at `[t - 1, t + 1]` in its type; forward pass: owed at that point too, the span commits and the cursor passes it (user ruling 2026-10-12, O1 = A) | stop the window |
 | T6 | asset not BTC | ignored (counted for the pager) | ignored |
 | T7 | Funding holding missing (T1) | P7, then T1 | same |
 | T8 | pending pass or re-scan: one T5 record and one CONFIRMED record of another type in the span | the CONFIRMED one imports; the T5 one is owed at its point | nothing of the window |
-| T9 | forward pass, the same span | nothing commits, the forward pass ends, the run goes on (OVERNIGHT 17) | stop the window |
-| T10 | row `type` is not the type read | `transfer-type-mismatch`, owed at its point | n/a |
+| T9 | forward pass, a span with a stop that owes no point (a row with no time, a type that drifted, a holding that is missing, a record outside the span) | nothing commits, the forward pass ends, the cursor stays, the run goes on (OVERNIGHT 17, R28) | stop the window |
+| T10 | row `type` is not the type read | `transfer-type-mismatch`, owed at its point; forward pass: the cursor passes it (O1 = A) | n/a |
 | T11 | status `FAILED` (user ruling 2026-10-12, OVERNIGHT 21 = B; the forward pass goes past it, item 3 = A) | `transfer-failed`: owed at its point until the 6-month floor drops it; no row; no caption; forward pass: the point is stored, the span commits and the cursor passes it | same (the OVERNIGHT 21 recommendation to ignore it is not taken) |
 | T12 | a row the client cannot parse (R30), beside a CONFIRMED row of another type, pending pass or re-scan | `transfer-row-unreadable`: owed at its point in the type read (no finite `timestamp`: the span, every type); the CONFIRMED row imports; the run goes on | the read threw, the run failed |
 

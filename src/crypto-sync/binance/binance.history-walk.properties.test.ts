@@ -214,6 +214,11 @@ type SimRecord = {
   heldUntil?: number;
   /** A transfer whose status is FAILED in every run: no row, ever, and its point stays owed. */
   failed?: boolean;
+  /**
+   * A confirmed transfer the walk can never trust, because of what is wrong with the row itself:
+   * the type it was read under is not its own, it has no id, or its amount is no number.
+   */
+  defect?: 'type-mismatch' | 'id-missing' | 'amount-invalid';
 };
 
 type Scenario = { owed: OwedGround[]; records: SimRecord[] };
@@ -352,15 +357,18 @@ const statusOf = (entry: SimRecord, run: number): string => {
     return 'FAILED';
   }
 
-  return run < entry.stuckUntil ? 'PENDING' : 'CONFIRMED';
+  return entry.defect === undefined && run < entry.stuckUntil ? 'PENDING' : 'CONFIRMED';
 };
 
 const transferOf = (entry: SimRecord, run: number): BinanceUniversalTransfer => ({
   asset: 'BTC',
-  amount: '0.001',
-  type: entry.series ?? '',
+  amount: entry.defect === 'amount-invalid' ? 'abc' : '0.001',
+  type:
+    entry.defect === 'type-mismatch'
+      ? (TRANSFER_TYPES.find((type) => type !== entry.series) ?? '')
+      : (entry.series ?? ''),
   status: statusOf(entry, run),
-  tranId: String(entry.id),
+  tranId: entry.defect === 'id-missing' ? '' : String(entry.id),
   timestamp: entry.time,
 });
 
@@ -859,6 +867,7 @@ const timelessLeftOf = (runs: RunRecord[], records: SimRecord[]): SimRecord[] =>
   records.filter(
     (entry) =>
       entry.unreadable === 'timeless' &&
+      entry.inForward !== true &&
       !runs.at(-1)?.owed.some((range) => range.kind !== 'point' && surelyHolds(range, entry.at)),
   );
 
@@ -1266,6 +1275,18 @@ const insideMergedRangeScenario = (lane: Lane, seed: number, withTwin = true): S
 };
 
 /**
+ * A stuck record at `time` that holds the forward pass back for good, so the cursor never passes
+ * it. The Transfer lane owes the point of a record with a time and goes past it (user ruling of
+ * 2026-10-12), so its record has none: the client could not read its time, and it owes the whole
+ * span, which only a stop of the forward pass keeps. Every other lane stops at any stuck record.
+ */
+const forwardStopOf = (lane: Lane, record: SimRecord): SimRecord => ({
+  ...record,
+  inForward: true,
+  ...(lane.series === undefined ? {} : { unreadable: 'timeless' as const }),
+});
+
+/**
  * `count` points found long ago, and a stuck record the forward pass meets at its start, so the
  * forward pass stops in every run from the second on and the cursor stays. An owed day holds a
  * record that becomes trustworthy at run 2, after the stop began, and one that can be trusted.
@@ -1280,7 +1301,7 @@ const forwardStopScenario = (lane: Lane, count: number): Scenario => {
   return {
     owed: [day, ...points.map(pointOf)],
     records: [
-      { ...builder.record(START_MS + 30 * 60_000, NEVER), inForward: true },
+      forwardStopOf(lane, builder.record(START_MS + 30 * 60_000, NEVER)),
       builder.record(builder.interiorOf(day), 2),
       builder.record(builder.interiorOf(day)),
       ...points,
@@ -1980,12 +2001,44 @@ describe.each(LANES)('owed ground that never commits, $name lane', (lane) => {
       },
     );
 
+    it.each(RUN_GAPS.map((gapMs) => ({ gapMs })))(
+      'a stop that holds the forward pass back (a stuck record on a lane that owes nothing in the forward pass, a record with no time on the Transfer lane): the cursor never passes it and nothing of its span imports, runs $gapMs ms apart',
+      async ({ gapMs }) => {
+        const builder = builderOf(lane, 83);
+        const stuck = forwardStopOf(lane, builder.record(START_MS + 30 * 60_000, NEVER));
+        const newer = builder.record(START_MS + 90 * 60_000);
+
+        const outcome = await simulate({
+          lane,
+          reading,
+          runs: 8,
+          gapMs,
+          catchUp: { runs: 1, gapMs: 2 * DAY_MS },
+          scenario: { owed: [], records: [stuck, newer] },
+        });
+
+        expect(outcome.runs.every((run) => (run.cursor ?? 0) <= stuck.time)).toBe(true);
+        expect(outcome.importedAt.has(newer.id)).toBe(false);
+      },
+    );
+
     if (lane.series !== undefined) {
-      it.each(RUN_GAPS.map((gapMs) => ({ gapMs })))(
-        'a FAILED transfer in the forward window is owed at its point and the cursor passes it: the transfers after it import in the run that reads the window, its point stays owed in every run, and no run after imports anything, runs $gapMs ms apart',
-        async ({ gapMs }) => {
+      const FAMILIES: { family: string; mark: Partial<SimRecord> }[] = [
+        { family: 'FAILED', mark: { failed: true } },
+        { family: 'not settled (pending)', mark: {} },
+        { family: 'of another type than it was read under', mark: { defect: 'type-mismatch' } },
+        { family: 'with no id', mark: { defect: 'id-missing' } },
+        { family: 'with an amount that is no number', mark: { defect: 'amount-invalid' } },
+        { family: 'whose row the client could not read', mark: { unreadable: 'timed' } },
+      ];
+
+      it.each(
+        FAMILIES.flatMap(({ family, mark }) => RUN_GAPS.map((gapMs) => ({ family, mark, gapMs }))),
+      )(
+        'a transfer $family, at a time in the forward window, is owed at its point and the cursor passes it: the transfers after it import in the run that reads the window, its point stays owed in every run, and no run after imports anything, runs $gapMs ms apart',
+        async ({ mark, gapMs }) => {
           const builder = builderOf(lane, 83);
-          const failed = { ...builder.record(START_MS + 30 * 60_000, NEVER), failed: true };
+          const stuck = { ...builder.record(START_MS + 30 * 60_000, NEVER), ...mark };
           const newer = builder.record(START_MS + 90 * 60_000);
 
           const outcome = await simulate({
@@ -1994,17 +2047,38 @@ describe.each(LANES)('owed ground that never commits, $name lane', (lane) => {
             runs: 8,
             gapMs,
             catchUp: { runs: 1, gapMs: 2 * DAY_MS },
-            scenario: { owed: [], records: [failed, newer] },
+            scenario: { owed: [], records: [stuck, newer] },
           });
 
           // Run 0 has no forward window: the window first exists in run 1.
           expect(outcome.importedAt.get(newer.id)).toBe(1);
-          expect(outcome.importedAt.has(failed.id)).toBe(false);
-          expect(outcome.runs[1].cursor).toBeGreaterThan(failed.time);
-          expect(outcome.runs.slice(1).every((run) => holdsPointOf(run.owed, failed))).toBe(true);
+          expect(outcome.importedAt.has(stuck.id)).toBe(false);
+          expect(outcome.runs[1].cursor).toBeGreaterThan(stuck.time);
+          expect(outcome.runs.slice(1).every((run) => holdsPointOf(run.owed, stuck))).toBe(true);
           expect([...outcome.importedAt.values()].every((run) => run <= 1)).toBe(true);
         },
       );
+
+      it('a pending transfer in the forward window that settles at run 4: its point stays owed until then, and it imports once it settles and its point leaves', async () => {
+        const builder = builderOf(lane, 83);
+        const pending = builder.record(START_MS + 30 * 60_000, 4);
+        const newer = builder.record(START_MS + 90 * 60_000);
+
+        const outcome = await simulate({
+          lane,
+          reading,
+          runs: 16,
+          gapMs: 0,
+          catchUp: { runs: 1, gapMs: 2 * DAY_MS },
+          scenario: { owed: [], records: [pending, newer] },
+        });
+
+        expect(outcome.importedAt.get(newer.id)).toBe(1);
+        expect(outcome.runs[1].cursor).toBeGreaterThan(pending.time);
+        expect(outcome.runs.slice(1, 4).every((run) => holdsPointOf(run.owed, pending))).toBe(true);
+        expect(outcome.importedAt.get(pending.id) ?? NEVER).toBeLessThan(12);
+        expect(holdsPointOf(outcome.runs.at(-1)?.owed ?? [], pending)).toBe(false);
+      });
 
       it.each([2, 6].map((count) => ({ count })))(
         'P1: $count records that can be trusted in one owed day, half of them in a series that drifts until run 4: the records of the other series import in the first run, the day stays owed, and the drifted series own import once it stops drifting',
@@ -2467,7 +2541,7 @@ describe.each(LANES)('a split window resumes in the next run, $name lane', (lane
       const rescanHalvings = 3;
       const length = HOUR_MS * 2 ** forwardHalvings;
       const builder = builderOf(lane, 71);
-      const stuck = { ...builder.record(START_MS + 30 * 60_000, NEVER), inForward: true };
+      const stuck = forwardStopOf(lane, builder.record(START_MS + 30 * 60_000, NEVER));
 
       const outcome = await simulate({
         ...oneRead(2 * lane.rangeCalls),

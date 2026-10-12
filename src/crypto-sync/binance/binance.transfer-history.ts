@@ -89,17 +89,36 @@ const TRANSFER_FAILED_STATUS = 'FAILED';
 
 const TRANSFER_FAILED = 'transfer-failed';
 
-/**
- * The stops the forward pass owes and goes past (user ruling): a FAILED transfer stays owed at
- * its point until the floor, so no later read settles it differently, and holding the cursor
- * behind it would keep every newer transfer from importing. Every other stop holds the cursor.
- */
-export const TRANSFER_FORWARD_OWES: readonly string[] = [TRANSFER_FAILED];
+const TRANSFER_TYPE_MISMATCH = 'transfer-type-mismatch';
+
+const TRANSFER_NOT_SETTLED = 'transfer-not-settled';
+
+const TRANSFER_ID_MISSING = 'transfer-id-missing';
+
+const TRANSFER_AMOUNT_INVALID = 'transfer-amount-invalid';
 
 const TRANSFER_PAGE_DRIFT = 'transfer-page-drift';
 
 /** The stop of a row the client could not read: logged by its code alone, never its content. */
 const TRANSFER_ROW_UNREADABLE = 'transfer-row-unreadable';
+
+/**
+ * The stops of one transfer that the forward pass owes and goes past (user ruling of 2026-10-12,
+ * O1 = A): the transfer stays owed at its own point until it settles or the floor drops it, so
+ * no later read of the span settles it differently, and holding the cursor behind it would keep
+ * every newer transfer from importing. It applies only to a transfer with a usable time, which
+ * owes a point (`commitSettledSpan`): a row with no time owes the whole span, and a stop that is
+ * no one transfer's (`transfer-page-drift`, `transfer-holding-missing`) is not in this list, so
+ * both hold the cursor back.
+ */
+export const TRANSFER_FORWARD_OWES: readonly string[] = [
+  TRANSFER_FAILED,
+  TRANSFER_TYPE_MISMATCH,
+  TRANSFER_NOT_SETTLED,
+  TRANSFER_ID_MISSING,
+  TRANSFER_AMOUNT_INVALID,
+  TRANSFER_ROW_UNREADABLE,
+];
 
 const TRANSFER_MARK_FIELDS: WalkMarkFields = {
   cursor: BINANCE_TRANSFER_HISTORY_CURSOR_FIELD,
@@ -231,7 +250,7 @@ export const transferRowsOf = (
   }
 
   if (record.type !== readAs) {
-    throw new BinanceWalkStop('transfer-type-mismatch');
+    throw new BinanceWalkStop(TRANSFER_TYPE_MISMATCH);
   }
 
   if (record.status === TRANSFER_FAILED_STATUS) {
@@ -239,17 +258,17 @@ export const transferRowsOf = (
   }
 
   if (record.status !== TRANSFER_SETTLED_STATUS) {
-    throw new BinanceWalkStop('transfer-not-settled');
+    throw new BinanceWalkStop(TRANSFER_NOT_SETTLED);
   }
 
   if (record.tranId === '') {
-    throw new BinanceWalkStop('transfer-id-missing');
+    throw new BinanceWalkStop(TRANSFER_ID_MISSING);
   }
 
   const satoshis = btcSatoshis(record.amount);
 
   if (satoshis === null || satoshis <= 0) {
-    throw new BinanceWalkStop('transfer-amount-invalid');
+    throw new BinanceWalkStop(TRANSFER_AMOUNT_INVALID);
   }
 
   const pairId = `${accountId}:xfer:${readAs}:${record.tranId}`;

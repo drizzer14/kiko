@@ -2016,8 +2016,19 @@ stop codes and scenario rows.
 - **STOP_ENDS_PASS and R28: user ruling of 2026-10-12, kept** (plan
   OVERNIGHT item 17). `STOP_ENDS_PASS` (`binance.history-walk.ts`) says a stop
   in the forward pass ends only that pass, so the run goes on to the owed
-  ranges, the re-scan and the points; the cursor never passes a stuck record;
-  a budget or rate limit ends every read.
+  ranges, the re-scan and the points; the cursor never passes a stuck record
+  (but see the Transfer ruling next); a budget or rate limit ends every read.
+- **Transfer forward stops: user ruling of 2026-10-12, O1 = A (Transfer lane
+  only).** A stop tied to ONE transfer with a usable time is owed at that
+  transfer's own point and the forward pass goes past it (`TRANSFER_FORWARD_OWES`:
+  `transfer-failed`, `-not-settled`, `-type-mismatch`, `-id-missing`,
+  `-amount-invalid`, `-row-unreadable` with a `timestamp`): the span's other
+  transfers commit, the cursor moves on, the point stays owed until the
+  transfer settles or the floor drops it. `commitSettledSpan` still stops the
+  forward pass (R28) for any stop that owes more than a point: a row with no
+  usable time (it owes the whole span), `transfer-page-drift`,
+  `transfer-holding-missing`, a record outside the span. Pay and capital keep
+  the A2 stop (every stop holds the cursor).
 - **R13.** Pay direction comes from the uid alone (`payDirection`): payer id =
   uid is out, receiver id = uid is in.
 - **C1.** The Pay walk does not read the capital cursor (spec section 4).

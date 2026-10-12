@@ -4,6 +4,7 @@ import { bifoldMap, type Either, eitherSync } from 'fnts/either';
 import {
   BinanceWalkStop,
   distinctGround,
+  isPoint,
   logWalkStop,
   type OwedGround,
   type SpanCommit,
@@ -191,7 +192,9 @@ const placed = async <Planned, Row>(input: {
  * else commits. A code in `forwardOwes` is one the forward pass owes like the other passes do:
  * its record's point is stored (`advance` gets it) and the cursor goes past it, because the
  * record stays owed until the floor and no later read of the span would settle it differently.
- * Any other code beside it still leaves the span uncommitted.
+ * Only a record with a usable time can be owed that way: a stop that owes more than a point (a
+ * record with no time owes the whole span, and so does a stop that is no one record's) leaves the
+ * span uncommitted, as does any other code beside it.
  */
 export const commitSettledSpan = async <Planned, Row>(input: {
   pass: WalkPass;
@@ -203,10 +206,11 @@ export const commitSettledSpan = async <Planned, Row>(input: {
   forwardOwes?: readonly string[];
 }): Promise<SpanCommit | undefined> => {
   const { pass, span, settled, add, advance, forwardOwes = [] } = input;
-  const stopsRun = (codes: string[]): boolean =>
-    pass === 'forward' && codes.some((code) => !forwardOwes.includes(code));
+  const stopsRun = (part: Pick<SettledSpan<unknown>, 'codes' | 'owed'>): boolean =>
+    pass === 'forward' &&
+    (part.codes.some((code) => !forwardOwes.includes(code)) || !part.owed.every(isPoint));
 
-  if (stopsRun(settled.codes)) {
+  if (stopsRun(settled)) {
     logCodes(settled.codes);
 
     return undefined;
@@ -216,7 +220,7 @@ export const commitSettledSpan = async <Planned, Row>(input: {
 
   logCodes(ready.codes);
 
-  if (stopsRun(ready.codes)) {
+  if (stopsRun(ready)) {
     return undefined;
   }
 
