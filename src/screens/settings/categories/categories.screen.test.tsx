@@ -302,16 +302,20 @@ describe('CategoriesScreen', () => {
       ).toBeTruthy();
     });
 
-    it('adds no template line when the template count cannot be read', async () => {
+    it('still says the templates are cleared when the template count cannot be read', async () => {
       mockCategories = [GROCERIES];
+      mockCountRules.mockResolvedValue(3);
       mockCountTemplates.mockRejectedValue(new Error('read failed'));
 
-      const { getByText, queryByText } = await renderScreen();
+      const { getByText, getByTestId } = await renderScreen();
 
       await holdCard();
 
       expect(getByText('Delete "Groceries"')).toBeTruthy();
-      expect(queryByText(/clears it in/)).toBeNull();
+      expect(
+        getByText('Its 3 rules will be deleted too.\nThis also clears it in its templates.'),
+      ).toBeTruthy();
+      expect(getByTestId(DELETE_CONFIRM_TEST_ID)).toBeTruthy();
     });
 
     it('keeps the confirm to its title when the category has no rules', async () => {

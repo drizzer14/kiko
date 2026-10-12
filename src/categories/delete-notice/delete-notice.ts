@@ -9,9 +9,9 @@ import { transactionTemplatesRepo } from '@kiko/transaction-templates/repo';
  * `undefined` when it touches nothing besides the category itself. The confirm's text is read
  * when the hold asks for it, so it names what is stored now. A rule count that cannot be read
  * still says the rules go too, without a number: the delete removes them whatever the read did.
- * A template count that cannot be read adds no line, because the delete clears the category in
- * its templates whatever the read did, and a line without a number would be a claim about a
- * count nobody knows.
+ * A template count that cannot be read still says the templates are cleared, without a number,
+ * for the same reason: the delete clears the category in its templates whatever the read did,
+ * so the confirm still warns.
  */
 export const categoryDeleteNoticeOf = async (
   key: string,
@@ -28,7 +28,7 @@ export const categoryDeleteNoticeOf = async (
   );
   const templateLines = bifoldMap(
     templateCount,
-    () => [],
+    () => [t('categories.deleteTemplatesUnknown')],
     (count) => (count > 0 ? [t('categories.deleteTemplates', { count })] : []),
   );
   const lines = [...ruleLines, ...templateLines];

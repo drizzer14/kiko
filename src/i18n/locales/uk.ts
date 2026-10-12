@@ -186,6 +186,7 @@ export const uk: typeof en = {
     deleteTemplates_few: 'Також її буде очищено в {{count}} шаблонах.',
     deleteTemplates_many: 'Також її буде очищено в {{count}} шаблонах.',
     deleteTemplates_other: 'Також її буде очищено в {{count}} шаблону.',
+    deleteTemplatesUnknown: 'Також її буде очищено в шаблонах.',
   },
   categoryPage: {
     rulesHeading: 'Правила',

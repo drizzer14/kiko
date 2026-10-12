@@ -212,6 +212,7 @@ export const en = {
     deleteTemplates_few: 'This also clears it in {{count}} templates.',
     deleteTemplates_many: 'This also clears it in {{count}} templates.',
     deleteTemplates_other: 'This also clears it in {{count}} templates.',
+    deleteTemplatesUnknown: 'This also clears it in its templates.',
   },
   categoryPage: {
     rulesHeading: 'Rules',

@@ -97,19 +97,30 @@ describe('categoryDeleteNoticeOf', () => {
       );
     });
 
-    it('adds no line when the count cannot be read, and leaves the rules line as it is', async () => {
+    it('still says the templates are cleared when the count cannot be read, after the rules line', async () => {
       mockCountRulesOfCategory.mockResolvedValue(3);
       mockCountReferencingCategory.mockRejectedValue(new Error('read failed'));
 
       expect(await categoryDeleteNoticeOf('groceries', i18n.t)).toBe(
-        'Its 3 rules will be deleted too.',
+        'Its 3 rules will be deleted too.\nThis also clears it in its templates.',
       );
     });
 
-    it('says nothing when the count cannot be read and there are no rules', async () => {
+    it('still says the templates are cleared when the count cannot be read and there are no rules', async () => {
       mockCountReferencingCategory.mockRejectedValue(new Error('read failed'));
 
-      expect(await categoryDeleteNoticeOf('groceries', i18n.t)).toBeUndefined();
+      expect(await categoryDeleteNoticeOf('groceries', i18n.t)).toBe(
+        'This also clears it in its templates.',
+      );
+    });
+
+    it('shows both unknown lines, the rules first, when neither count can be read', async () => {
+      mockCountRulesOfCategory.mockRejectedValue(new Error('read failed'));
+      mockCountReferencingCategory.mockRejectedValue(new Error('read failed'));
+
+      expect(await categoryDeleteNoticeOf('groceries', i18n.t)).toBe(
+        'Its rules will be deleted too.\nThis also clears it in its templates.',
+      );
     });
   });
 
@@ -154,6 +165,14 @@ describe('categoryDeleteNoticeOf', () => {
       mockCountReferencingCategory.mockResolvedValue(count);
 
       expect(await categoryDeleteNoticeOf('groceries', i18n.t)).toBe(expected);
+    });
+
+    it('still says the templates are cleared when their count cannot be read', async () => {
+      mockCountReferencingCategory.mockRejectedValue(new Error('read failed'));
+
+      expect(await categoryDeleteNoticeOf('groceries', i18n.t)).toBe(
+        'Також її буде очищено в шаблонах.',
+      );
     });
   });
 });
