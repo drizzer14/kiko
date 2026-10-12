@@ -1744,14 +1744,24 @@ than restated here:
   `BinanceHistoryParseError`, so the window stops and the cursor stays (spec
   section 7, "Strict capital parse").
   Each client call is ONE offset page of ONE window; the offset-paging
-  and the window walk live in `binance.transactions.ts`, not the client
-  (window building, start resolution and satoshi parsing in
-  `binance.history-walk.ts`).
-- **90-day windows, offset paging.** Binance rejects a `startTime`/
+  lives in `binance.transactions.ts`, not the client. The walk shared by
+  every Binance history walk lives in `binance.history-walk.ts` (read it for
+  its exports: `planWalkPasses`, `runWalkPlan`, `walkSpans`,
+  `buildWalkWindows`, the mark readers/writers, `btcSatoshis`,
+  `BinanceWalkStop`); the per-record commits live in
+  `binance.history-records.ts` (`settleRecords`, `commitSettledSpan`). The
+  capital caller is `binance.transactions.ts` (`WINDOW_MS`, `MAX_WINDOWS`,
+  `MAX_PAGES_PER_WINDOW`), the Pay caller `binance.pay-history.ts`
+  (`PAY_WINDOW_MS`, `MAX_WINDOWS`; see "Binance Pay" below).
+- **Two passes per walk, 89-day windows.** Binance rejects a `startTime`/
   `endTime` span of 90 days or more and caps a page at 1000 rows
-  (`HISTORY_PAGE_LIMIT` in `binance.history-client.ts`). The sync walks contiguous 89-day windows and
-  offset-pages each window until a short page. `MAX_WINDOWS` /
-  `MAX_PAGES_PER_WINDOW` are the loop backstops.
+  (`HISTORY_PAGE_LIMIT` in `binance.history-client.ts`); every walk
+  reads windows under 90 days. A run is the FORWARD pass (the cursor to
+  now, moving the cursor) and the window RE-SCAN (a stored mark; never
+  writes the forward cursor). The capital, Pay, Transfer and Earn walks all
+  run it. `WalkPass` is `'forward' | 'pending' | 'rescan'` (read it in
+  `binance.history-walk.ts`); a run reads the forward pass, the owed
+  ranges (`pending`, oldest first), the re-scan, then the owed points last.
 - **One pacing gate per run.** `createBinanceHistoryRun`
   (`binance.history-budget.ts`) builds ONE `createRequestGate` (the helper
   Monobank uses, `src/monobank/`) plus the run budget; `runCryptoSync`'s
@@ -1770,19 +1780,21 @@ than restated here:
   than `settings.lastSyncAt`. The watermark instead lives at
   `holdings.metadata.binanceHistoryCursor` on the Spot holding (the one
   deposits/withdrawals attach to): "every window ending at or before this
-  instant is imported." `binanceHistoryCursorOf` /
-  `holdingsRepo.setBinanceWalkCursor` (`holding-metadata.ts`,
-  `holdings.repo.ts`) are the reader/writer; `resolveWalkStart`'s (`binance.history-walk.ts`) window-start
-  formula is UNCHANGED from before this walk — it is now fed the watermark
-  (falling back to the legacy `latestTransactionTime` cursor only when the
-  holding has never carried one) instead of only ever reading the newest
-  imported row's own time. A steady-state re-sync still always re-scans at
-  least the last 89-day window, so a late-settling withdrawal is still
-  caught; a first sync (no watermark, no imported row either) walks the
-  full history from the 2017 floor; a LEGACY holding (imported before this
-  walk existed: some transactions, no watermark yet) starts from the
-  legacy cursor exactly as before, then adopts the watermark from its very
-  first committed window.
+  instant is imported." `binanceWalkCursorOf(field, metadata)`
+  (`holding-metadata.ts`) and `holdingsRepo.setBinanceWalkCursor`
+  (`holdings.repo.ts`) are the reader/writer. The plan comes from
+  `planWalkPasses` (`binance.history-walk.ts`; read its input type for the
+  cursor, re-scan cursor, point cursor, pending list, floor, window and
+  `RESYNC_OVERLAP_MS`). The capital walk feeds it
+  `planCursor = cursor ?? latestTransactionTime ?? null`, so a LEGACY holding
+  (transactions, no watermark yet) starts from its newest imported row and
+  adopts the watermark at its first committed window; a first sync walks from
+  the 2017 floor. The forward pass starts at `max(floor, cursor)`. The
+  re-scan covers `[base, forward start)` with
+  `base = max(floor, min(end - window, forward start - RESYNC_OVERLAP_MS))`,
+  kept in its own mark (`binanceHistoryRescanCursor` /
+  `binancePayRescanCursor`, in `binanceWalkCursorFields`); it stores the floor
+  when finished, and a mark behind the base starts a new pass.
 - **`upsertByMetadataKey` carries the watermark across a balance sync.** A
   balance sync's own upsert (`runBalanceSyncInner` -> `upsertExchangeMany`)
   writes a FRESH `{ syncedAt }` metadata object on every run, for every
@@ -1791,27 +1803,33 @@ than restated here:
   Binance arm always runs balance-then-history in the same invocation, so
   this bites on literally every subsequent sync). The upsert now reads the
   stored row's metadata inside the same write and carries over any
-  `carriedMetadataKeys` entry (the walk-owned keys — today the four walk
-  cursors in `binanceWalkCursorFields` (`holding-metadata.ts`) — plus a reopened Monobank card's `statementFromMs`):
+  `carriedMetadataKeys` entry (read it in `holding-metadata.ts`: the walk
+  cursors `binanceWalkCursorFields`, the owed lists `binanceWalkPendingFields`
+  and the point cursors `binanceWalkPointCursorFields`, plus a reopened
+  Monobank card's `statementFromMs`):
   `withWalkOwnedMetadataCarried` ALWAYS overwrites the target's own key
   with the stored value when the stored row has it, regardless of
   whether the caller's object also set that key; every other key is still
   fully replaced exactly as before. The two lists differ on purpose:
-  `withWalkOwnedMetadataResetToFloor` (the Binance disconnect) resets
-  `walkOwnedMetadataKeys` only and never touches `statementFromMs`. A
+  `withWalkOwnedMetadataResetToFloor` (the Binance disconnect) resets only
+  the Binance walk keys and never touches `statementFromMs`. A
   wallet holding never carries either kind of key.
-- **Per-window commit order, crash-safe.** The walk goes oldest -> newest.
-  A window's rows commit (`transactionsRepo.addManyDedup`) BEFORE its
-  watermark advances (`setBinanceWalkCursor`) — two SEPARATE writes, not
-  one transaction, so a crash between them just re-imports that window
-  idempotently on the next run rather than losing progress or re-marking
-  a window that never actually committed. `setBinanceWalkCursor` also
+- **Per-record commits, crash-safe.** The walk goes oldest -> newest.
+  Rows commit (`transactionsRepo.addManyDedup`) BEFORE the mark moves
+  (`setBinanceWalkCursor`) — separate writes, so a crash between them
+  re-imports idempotently rather than losing progress. In the pending pass
+  and the re-scan one list write follows the rows (the read span out, its
+  points in), then the mark. A stop tied to one record with a time inside
+  the span owes only that record's point; any other stop, or a record with
+  no usable time, owes the whole span; every record the walk can trust
+  imports either way. The forward pass leaves a span uncommitted on any
+  stop. `setBinanceWalkCursor` also
   gates the write on the holding's OWN account still being
   `institution = 'binance'` (joined in the same query) and is a no-op
   otherwise — a walk holds the account's credentials for its whole run, so
   a disconnect can commit while a window write is still in flight; without
   the gate that late write would resurrect a forward watermark over the
-  floor `resetBinanceHistoryCursor` just wrote (see below).
+  floor `resetBinanceWalkCursors` just wrote (see below).
 - **A per-lane call budget, refreshed from Binance's own headers.**
   `createBinanceRunBudget` (`binance.history-budget.ts`) caps each
   `BudgetLane` at its `LANE_CALL_CAPS` entry and charges `COSTS` per call.
@@ -1822,9 +1840,12 @@ than restated here:
   reading, not by a call cap. A window whose withdrawals cannot be FULLY
   paged within the remaining budget is not committed and not marked; the
   next run redoes it from the same, unmoved watermark.
+  The budget keeps calls for later passes: `RESCAN_KEEP` and `POINT_KEEP`
+  (`binance.history-walk.ts`) are the calls an owed range must leave for
+  the re-scan and for the points, and `canAfford` takes the calls to keep.
   `syncBinanceTransactions` returns the `WalkResult` `{ imported, complete }`
   (`binance.history-walk.ts`) — `complete: false` means history remains
-  behind and a later run (or sync press) resumes from the watermark.
+  behind and a later run (or sync press) resumes from the marks.
 - **A thrown error under `src/crypto-sync` is a named class with a fixed
   message.** Semgrep `kiko-no-literal-sync-error` flags
   `throw new Error(<literal>)`, and `logFailure` logs only the error's name.
@@ -1850,13 +1871,16 @@ than restated here:
   surfaced as the localized `accountDetail.binanceRequestFailed` message
   (never the raw `BinanceRateLimitError` text) — Spot's failure still
   fails the whole balance sync, per its own strict rule above.
-- **Disconnect resets the watermark to the floor, not the whole metadata
-  object, and never strips it.** `disconnectCryptoAccount`'s Binance path
-  calls `holdingsRepo.resetBinanceHistoryCursor(accountId, HISTORY_FLOOR_MS)`
+- **Disconnect resets the walk keys, not the whole metadata object.**
+  `disconnectCryptoAccount`'s Binance path
+  calls `holdingsRepo.resetBinanceWalkCursors(accountId, HISTORY_FLOOR_MS)`
   (built on `withWalkOwnedMetadataResetToFloor`) BEFORE `accountsRepo.disconnect`
   — a failure after the reset only causes a harmless, idempotent re-walk
-  from the floor. It touches ONLY the walk cursors (`binanceWalkCursorFields`), setting each
-  one already present to `HISTORY_FLOOR_MS` rather than deleting it: a DELETED cursor falls back
+  from the floor. It touches ONLY the walk keys: each cursor in
+  `binanceWalkCursorFields` already present is set to `HISTORY_FLOOR_MS`, each
+  owed list in `binanceWalkPendingFields` to `[]`, and each point cursor in
+  `binanceWalkPointCursorFields` is DELETED (no key = before the oldest
+  point). A cursor is never deleted: a DELETED cursor falls back
   to the legacy `latestTransactionTime` cursor, which a reconnected
   DIFFERENT Binance account would inherit as if it were its own
   already-imported history, silently skipping that account's own older
@@ -1887,8 +1911,8 @@ than restated here:
   deposit (`status === 1`) and a completed withdrawal (`status === 6`) are
   imported. `walletOf` in `binance.transactions.ts` places each row by
   `walletType`: 0 or absent is Spot, 1 is Funding, any other value stops the
-  walk (`capital-wallet-unknown`; the other stop codes are the `capital-…`
-  ones in that file). The wallet holding is found by `binanceKeyOf`
+  walk (`capital-wallet-unknown`). The stop codes are the `BinanceWalkStop`
+  codes (`binance.history-walk.ts`; the spec lists them): read them there. The wallet holding is found by `binanceKeyOf`
   (`binance.holding-keys.ts`) and, only for a row whose key is new, created
   at zero by `holdingsRepo.ensureExchangeHoldings` (insert-only); a row
   already stored keeps its holding. Earn gets no capital rows.
@@ -1908,6 +1932,66 @@ than restated here:
   the ledger line. The rows carry an EMPTY description, so the holding
   detail + Home lists render the shared income/expense default label; a
   bespoke "Deposit"/"Withdrawal" label is a deferred follow-up.
+
+### Binance Pay
+
+The Pay walk (`binance.pay-history.ts`) imports BTC Pay orders on the same
+two passes as the capital walk (see above). Design: spec section 4
+(`docs/superpowers/specs/2026-10-09-binance-pay-history-design.md`); plan
+`docs/superpowers/plans/2026-10-10-binance-history.md`. Read the spec for the
+stop codes and scenario rows.
+
+- **The owed list.** Each walk keeps one walk-owned list of owed ground
+  (`binanceWalkPendingFields`, `holding-metadata.ts`): a range (no `kind`) or
+  a point (`kind: 'point'`); the kind alone tells them apart. At most
+  `MAX_PENDING_RANGES` ranges (`binance.history-walk.ts`; the two nearest
+  merge); a point is never merged with, held by or dropped with a range;
+  equal points are one.
+- **Canonical points.** A stuck record owes `[t - 1, t + 1]` (Pay, a
+  deposit) or `[T - 1000, T + 1000]` (a withdrawal, whose `applyTime` may be
+  cut or rounded to the second); never cut to the span.
+- **The point-leave rule.** A point leaves only when a span holding ALL of it
+  was read and returned a record whose own point equals it, or by the floor.
+  A read that returned nothing, only neighbours, or a span holding part of it
+  keeps it. A range with no record leaves once read.
+- **Round-robin over points.** One point cursor per walk
+  (`binanceWalkPointCursorFields`) holds the start of the point read last; it
+  moves once a point read starts, finished or not. Each of P points is read
+  within `ceil(P / L)` runs whose forward pass leaves a call (L >= 1, the
+  points such a run reads). A malformed cursor is repaired at once and logged
+  (`point-cursor-malformed`). The rotation is deterministic and bounded; a
+  random or fail-closed-by-length rotation has no testable bound.
+- **STOP_ENDS_PASS and R28: OVERNIGHT DEFAULT, pending the user** (plan
+  OVERNIGHT item 17). `STOP_ENDS_PASS` (`binance.history-walk.ts`) says a stop
+  in the forward pass ends only that pass, so the run goes on to the owed
+  ranges, the re-scan and the points; the cursor never passes a stuck record;
+  a budget or rate limit ends every read. If the user reverses it, one branch
+  in `runWalkPlan` changes.
+- **R13.** Pay direction comes from the uid alone (`payDirection`): payer id =
+  uid is out, receiver id = uid is in.
+- **C1.** The Pay walk does not read the capital cursor (spec section 4).
+- **Wallets.** Sends (R20, B5, B7; B4 stops funds that are not BTC on sends
+  only): `walletType` 2 is Spot, 1 Funding, 5 Earn, any other untracked
+  (`walletOf`). Receives (R22, B6) are placed by DATE:
+  before `PAY_RECEIPTS_TO_SPOT_FROM_MS` (2026-09-29T00:00Z) Funding, from
+  then Spot.
+- **User ruling A (2026-10-11).** A non-BTC order the user paid with BTC funds
+  (`pay-btc-funded-other-coin`) is owed at its own point in the pending pass
+  and the re-scan and the other orders import; the forward pass keeps the A2
+  stop (cursor unmoved).
+- **Announcement.** Binance's January 2027 Funding -> Spot auto-migration:
+  https://www.binance.com/en/support/announcement/detail/01cbe42ead1e4f1a9382363754d2eb5a
+  (checked 2026-10-11). The 2026-09-29 Spot-from-date comes from a different
+  announcement (spec), which needs its own check date.
+- **Open probe items** (range-end semantics per endpoint, the withdraw filter
+  field and `applyTime` rounding, late Pay orders, the migration's transfer
+  history shape): the spec's "VERIFY gate" and the plan's probe items list
+  them.
+- **Disconnect and carry** are the capital rules above: the balance sync
+  carries the cursors, lists and point cursors; disconnect resets them.
+- **Delete notice.** A same-currency linked transfer's confirm uses
+  `transactions.deleteLinked.transfer`, `.transferUnlinked` and
+  `.transferUnlinkedPlain` (`src/transactions/remove-notice/remove-notice.ts`).
 
 ### Namespaced synced externalId (multi-account correctness)
 

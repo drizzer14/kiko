@@ -1043,6 +1043,11 @@ Rules:
   keeps the marker that takes its contribution out. The marker therefore may name
   a holding no leg of the pair sits on (the deposit), which is why a delete never
   clears a kept row's marker just because the row has one.
+- **A same-currency pair says "transfer".** `missingPartSentence` and
+  `exchangeSentence` (`src/transactions/remove-notice/remove-notice.ts`) pick
+  `transactions.deleteLinked.transfer`, `.transferUnlinked` and
+  `.transferUnlinkedPlain` for a pair whose legs share a currency (a Binance
+  Pay transfer between wallets), the `exchange*` keys otherwise.
 - **An unreadable deposit is not an error.** `removeDepositContributionDatabaseTransaction`
   returns false when the metadata cannot be read or no single contribution
   matches: the leg deletes and the deposit stays, as the confirm said
