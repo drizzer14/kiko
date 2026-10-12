@@ -1398,16 +1398,23 @@ const unreadableScenario = (lane: Lane, count: number, seed: number): Scenario =
   };
 };
 
+/** The run from which the series that drifts gives its rows again. */
+const DRIFT_UNTIL = 4;
+
 /**
- * ONE owed range far behind every other, with two records that can be trusted in it, while
- * `count` points of records that stay stuck are owed beside it: the points take every call a run
- * leaves after the owed range and the re-scan, so a lane whose cap leaves the range no call
- * starves it.
+ * ONE owed day far behind the re-scan, holding `count` records that can be trusted, alternately
+ * in the series that drifts (until `DRIFT_UNTIL`) and in another one: the other series' records
+ * import in the first run, and the day stays owed until the drifted series' own can be read. The
+ * re-scan does not reach the day, so only the owed range keeps the drifted records from being
+ * lost. With `points`, that many points of records that stay stuck are owed beside it: they take
+ * every call a run leaves after the forward read, the owed range and the re-scan, so a lane whose
+ * cap leaves the range no call starves it.
  */
-const rangeAmongPointsScenario = (lane: Lane, count: number): Scenario => {
-  const builder = builderOf(lane, 53);
+const driftScenario = (lane: Lane, count: number, seed: number, points = 0): Scenario => {
+  const builder = builderOf(lane, seed);
+  const [drifting, steady] = lane.series ?? ['', ''];
   const day = dayAt(40);
-  const stuck = Array.from({ length: count }, (_unused, index) =>
+  const stuck = Array.from({ length: points }, (_unused, index) =>
     builder.record(BASE_MS + (60 + index * 3) * DAY_MS + HOUR_MS, NEVER),
   );
 
@@ -1415,36 +1422,16 @@ const rangeAmongPointsScenario = (lane: Lane, count: number): Scenario => {
     owed: [day, ...stuck.map(pointOf)],
     records: [
       ...stuck,
-      builder.record(builder.interiorOf(day)),
-      builder.record(builder.interiorOf(day)),
+      ...Array.from({ length: count }, (_unused, index) => {
+        const isDrifting = index % 2 === 0;
+
+        return {
+          ...builder.record(builder.interiorOf(day)),
+          series: isDrifting ? drifting : steady,
+          ...(isDrifting ? { heldUntil: DRIFT_UNTIL } : {}),
+        };
+      }),
     ],
-  };
-};
-
-/** The run from which the series that drifts gives its rows again. */
-const DRIFT_UNTIL = 4;
-
-/**
- * `count` records that can be trusted inside the window of the re-scan, alternately in the series
- * that drifts (until `DRIFT_UNTIL`) and in another one: the other series' records import in the
- * first run, the drifted series' own only once it stops drifting.
- */
-const driftScenario = (lane: Lane, count: number, seed: number): Scenario => {
-  const builder = builderOf(lane, seed);
-  const [drifting, steady] = lane.series ?? ['', ''];
-  const window = { start: START_MS - 85 * DAY_MS, end: START_MS - 5 * DAY_MS };
-
-  return {
-    owed: [],
-    records: Array.from({ length: count }, (_unused, index) => {
-      const isDrifting = index % 2 === 0;
-
-      return {
-        ...builder.record(builder.interiorOf(window)),
-        series: isDrifting ? drifting : steady,
-        ...(isDrifting ? { heldUntil: DRIFT_UNTIL } : {}),
-      };
-    }),
   };
 };
 
@@ -1903,20 +1890,9 @@ describe.each(LANES)('owed ground that never commits, $name lane', (lane) => {
       },
     );
 
-    it.each([25, 40].map((count) => ({ count, bound: rangeRuns(lane, 1) })))(
-      'P1-P4: one owed range outside the re-scan window with $count points owed beside it, more than a run reads: the records of the range import within $bound runs, whatever the points take',
-      async ({ count, bound }) => {
-        await check(
-          { scenario: rangeAmongPointsScenario(lane, count) },
-          { imported: bound, pointed: 1 },
-          bound + 5,
-        );
-      },
-    );
-
     if (lane.series !== undefined) {
       it.each([2, 6].map((count) => ({ count })))(
-        'P1: $count records that can be trusted in a re-scan window, half of them in a series that drifts until run 4: the records of the other series import in the first run, the drifted series own only once it stops drifting',
+        'P1: $count records that can be trusted in one owed day, half of them in a series that drifts until run 4: the records of the other series import in the first run, the day stays owed, and the drifted series own import once it stops drifting',
         async ({ count }) => {
           const scenario = driftScenario(lane, count, 11);
           const bound = 2;
@@ -1932,6 +1908,20 @@ describe.each(LANES)('owed ground that never commits, $name lane', (lane) => {
           const steady = scenario.records.filter((entry) => entry.heldUntil === undefined);
           expect(steady.map(runOf).every((run) => run <= 1)).toBe(true);
           expect(drifting.map(runOf).every((run) => run >= DRIFT_UNTIL)).toBe(true);
+        },
+      );
+
+      it.each([25, 40].map((count) => ({ count, bound: rangeRuns(lane, 1) })))(
+        'P1-P4: one owed range outside the re-scan window that drifts until run 4, with $count points owed beside it, more than a run reads: its records import within $bound runs of the drift ending, whatever the points take',
+        async ({ count, bound }) => {
+          await check(
+            {
+              scenario: driftScenario(lane, 2, 11, count),
+              drift: { series: lane.series?.[0] ?? '', until: DRIFT_UNTIL },
+            },
+            { imported: bound, pointed: 1 },
+            DRIFT_UNTIL + bound + 3,
+          );
         },
       );
 
