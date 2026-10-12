@@ -179,13 +179,14 @@ withdraw budget moves into this object, with the same numbers and the same rule.
   that re-scans its last window also keeps a re-scan mark next to its cursor
   (`binanceHistoryRescanCursor` for capital, `binancePayRescanCursor` for Pay; the
   Transfer and Earn walks add theirs), see sections 4 and 7. It also keeps a list of
-  pending overlap ranges (`binanceHistoryPendingOverlap`, `binancePayPendingOverlap`), see
-  section 4.
-- All of them join the walk-owned keys of `holding-metadata.ts` (`binanceWalkCursorFields`
-  and `binanceWalkPendingFields`). The balance upsert carries them and the disconnect resets
-  the cursors to the floor and the lists to an empty list, through the existing code paths.
-- One generic `holdingsRepo.setBinanceWalkCursor(holdingId, key, ms)` (and
-  `setBinanceWalkPending(holdingId, key, ranges)` for a list) keeps the existing
+  pending overlap ranges (`binanceHistoryPendingOverlap`, `binancePayPendingOverlap`) and a
+  point cursor (`binanceHistoryPointCursor`, `binancePayPointCursor`), see section 4.
+- All of them join the walk-owned keys of `holding-metadata.ts` (`binanceWalkCursorFields`,
+  `binanceWalkPendingFields` and `binanceWalkPointCursorFields`). The balance upsert carries
+  them and the disconnect resets the cursors to the floor, the lists to an empty list and drops
+  the point cursors (no key: start at the oldest point), through the existing code paths.
+- One generic `holdingsRepo.setBinanceWalkCursor(holdingId, key, ms)` (it also writes a point
+  cursor) and `setBinanceWalkPending(holdingId, key, ranges)` for a list keep the existing
   `institution = 'binance'` gate.
 - Windows go oldest first. The rows of a window are written
   (`transactionsRepo.addManyDedup`) BEFORE its watermark advances. A crash between
@@ -290,26 +291,37 @@ withdraw budget moves into this object, with the same numbers and the same rule.
   - **Remove.** A range, or the part of one, leaves the list only when a committed span has read
     it: a re-scan span or a pending span takes `[span start, span end)` out of the list after its
     rows are durable (a span in a range's middle splits it). The floor passing a range drops it
-    (the part of a range the floor crosses is cut to the floor); nothing else does.
-  - **Order of a run.** Forward pass first (a stop there ends the run: the cursor never passes a
-    record the walk cannot trust), then the owed ranges the window re-scan will not read this
-    run, oldest first, as windows of their own (`WalkPass` `pending`), then the window re-scan,
-    then the owed points, each on the budget the earlier ones left. A window that does not finish
-    (the budget cannot afford the next read, or Binance rate-limits) ends the run in the forward
-    pass and the re-scan, whose marks only a commit moves, and does not end it in an owed range
-    or point, so the run goes on to the next one and to the re-scan. A rate limit ends the run
-    too (the account cooldown is part of the budget check). Ranges inside the re-scan's own
-    range are read by the re-scan, and leave the list as its mark passes them.
+    (the part of a range the floor crosses is cut to the floor); nothing else does. A point (see
+    below) is read as a whole or not at all: it leaves the list only when a span that holds all
+    of it was read and returned at least one record, and a span that holds only part of it
+    leaves it as it was. A read that returns no record cannot have held the point's record, so
+    the point stays: the walk fails closed.
+  - **Order of a run.** Forward pass first, then the owed ranges the window re-scan will not
+    read this run, oldest first, as windows of their own (`WalkPass` `pending`), then the window
+    re-scan, then the owed points, each on the budget the earlier ones left. A stop in the
+    forward pass (a record the walk cannot trust: the cursor never passes it) ends only the
+    forward pass: the run goes on to the owed ranges, the re-scan and the points, so a record
+    that settles in an owed day is imported however long the forward pass stays stopped. A
+    window that does not finish (the budget cannot afford the next read, or Binance
+    rate-limits) ends the pass it is in for the forward pass and the re-scan, whose marks only a
+    commit moves, and not for an owed range or point, which goes on to the next one. No pass
+    ends the run on its own; the budget does (a rate limit too: the account cooldown is part of
+    the budget check, so every later read is refused). Ranges inside the re-scan's own range are
+    read by the re-scan, and leave the list as its mark passes them.
   - **Per-record commits (pending pass and re-scan).** A read commits every record the walk can
     trust, and a record it cannot trust owes only its own ground: one stuck record never holds
     back the rest of a span, a range or the re-scan (`binance.history-records.ts`,
     `settleRecords`, `commitSettledSpan`). A stop that is tied to one record and has a time
-    inside the span owes that record's point: its millisecond (`[t, t + 1]` on Pay, since a
-    request needs `start < end`; `[t - 1, t]` when `t` is the last millisecond of the span) or,
-    for a capital withdrawal, whose `applyTime` has a precision of one second, its whole second
-    (`[t, t + 999]`), both cut to the span. Binance reads both ends of a span, so a read of a
-    point returns its record, and a good record at the same millisecond (the same second for a
-    withdrawal) commits with the first read of the span that holds both. The per-record codes
+    inside the span owes that record's point, the same whichever span read it and never cut to
+    the span: its millisecond and one more on each side (`[t - 1, t + 1]` on Pay and for a
+    capital deposit) or, for a capital withdrawal, whose `applyTime` has a precision of one
+    second, its whole second and one millisecond on each side (`[T - 1, T + 1000]`). The extra
+    millisecond on each side makes the record sit strictly inside the point, so a read of the
+    point returns it whichever end of a range Binance leaves out (the start, the end, or
+    neither), and a record on the boundary two spans share owes one point, not two. Two points
+    that start together are one point, the wider. A good record at the same millisecond (the
+    same second for a withdrawal) commits with the first read of the span that holds both. The
+    per-record codes
     are `pay-id-missing`, `pay-direction-ambiguous`, `pay-amount-invalid`, `pay-split-mismatch`,
     `pay-funds-not-btc`, `pay-wallet-unknown`, `pay-btc-funded-other-coin`, `capital-id-missing`,
     `capital-amount-invalid` and `capital-wallet-unknown`. Any stop that is not tied to one
@@ -321,44 +333,68 @@ withdraw budget moves into this object, with the same numbers and the same rule.
     mark moves after that write. A crash after the rows only has the next run read the span
     again, which imports nothing new (the keys are deterministic and the import is an upsert),
     and a crash after the list write and before the mark does the same for the re-scan.
-    **Forward pass.** Unchanged: any stop leaves its span uncommitted (nothing is written) and
-    ends the run, because the cursor must not pass a record the walk cannot trust.
+    **Forward pass.** Any stop leaves its span uncommitted (nothing is written) and ends the
+    forward pass, because the cursor must not pass a record the walk cannot trust; the other
+    passes of the run still read.
   - **Re-scan stop.** A stop in the window re-scan does not block the rest of the window: the
     span commits its trusted rows, its stuck records are added to the list as points (or the
     span, for a stop that owes it), and the re-scan mark moves on, so the records after the stuck
     one are re-scanned in the same run, however far apart the runs are.
   - **Owed points.** A point costs exactly one read a run, and is read LAST, after the re-scan, on
     the calls that are left, so many of them never take the budget of the owed days or of the
-    re-scan. The plan gives them in an order that depends on the run's end time alone
-    (`rotatedAt`: the time, mixed into 32 bits, picks where in the list the run starts; the same
-    order from there, wrapping around). No state is stored; every point has the same chance of
-    being among those a run reads, so none waits for ever, and the newest of many points is read
-    within a few runs. A point that is no longer stuck imports and leaves the list. A point is
-    dropped from the list only where a stored range holds it, or where it repeats one.
-  - **Reserved call.** Every read of the owed windows leaves the lane's last call for the re-scan
-    (`RESCAN_KEEP`, 1, when the plan has a re-scan), so a list of ranges cannot spend a run on
-    re-reading them whole. `BinanceRunBudget.canAfford` takes the number of calls to keep. The
-    forward pass and the re-scan keep none, and the points are read after the re-scan.
+    re-scan. They are read in a round-robin (`startingAfter`): each walk keeps one point cursor
+    in a walk-owned key next to its pending list (`binancePayPointCursor`, capital:
+    `binanceHistoryPointCursor`), the start of the point it read last. The next run reads the
+    points that start after it first, oldest first, then wraps around to the rest. The cursor is
+    written after the list write of the point just read (a crash between the two has the next
+    run read that point again), only for a point whose window was read to its end. It is
+    carried over a balance sync like the cursors and dropped on disconnect; a stored value that
+    is no number starts the round at the oldest point, under one fixed log code
+    (`point-cursor-malformed`), never a throw. Every run that has a point to read reads at least
+    one (see the reserved call), so each of `P` points is read within `ceil(P / L)` runs, where
+    `L >= 1` is the fewest points a run reads, however far apart the runs are and whatever the
+    run's own time. A point that is no longer stuck imports and leaves the list. A point is
+    dropped from the list only by a read that returned records and held all of it, where a
+    stored range already holds it (a point inside a merged range is read again when the range
+    is read: the read owes it again if it is still stuck), or where it repeats one.
+  - **Reserved calls.** Every read of the owed windows leaves the lane's last calls for the
+    re-scan (`RESCAN_KEEP`, 1, when the plan has a re-scan) and for the points (`POINT_KEEP`, 1,
+    when the plan has a point), so a list of ranges cannot spend a run on re-reading them whole;
+    the re-scan keeps the one call of the points. `BinanceRunBudget.canAfford` takes the number
+    of calls to keep. The forward pass keeps none (new records come first), the points keep
+    none.
   - **Properties** (pinned by `binance.history-walk.properties.test.ts`, which drives the
-    walk's own functions and the per-record commit run after run on the Pay lane, 19 reads a
-    run, and the capital withdraw lane, 9 reads, against records that can never be placed; the
-    name of each test states its bound in runs): P1 every record of the owed ground other than
-    the stuck ones, and every re-scan record, imports; P2 every stuck record is owed as a point,
-    and stays one (a point is never merged away); P3 each owed point costs at most one read a
-    run; P4 the re-scan gets a read and a commit in every run in which the forward pass did not
-    end it. The families: K = 1 to 12 stuck records at random points, one owed day each, and
-    all inside ONE owed day (also a day that comes back full above 6 hours); N = 1 to 12 close
-    pairs (1 and 2 ms apart; the same and the next second on capital); a good record at the same
-    millisecond (second) as a stuck one; K stuck records inside the re-scan window (read whole,
-    and full above 30 days with runs a day apart); many owed points (Pay 20 to 30, capital 10 to
-    14), the newest placeable at run 5, which imports within 10 runs of that, with runs an hour
-    and a day apart; and 14 owed days with points beside them, so that a list past 12 ranges
-    merges two of them. The bounds are measured, linear in the owed ranges: each range is read
-    once, oldest first, on the calls a run has beside the forward pass and the re-scan's one
-    (`ceil((ranges + 1) / (reads - 3)) + 1` runs), and a dense day or window by the reads its
-    halving needs.
+    walk's own functions and the per-record commit run after run on three lanes, Pay (19 reads
+    a run), capital withdrawals (9 reads) and capital withdrawals mixed with deposits (9
+    reads), against records that can never be placed, each under all three readings of which
+    end Binance leaves out of a range: both ends included, the start left out, the end left
+    out; a withdrawal sits on the first or the last millisecond of its second as often as
+    anywhere in it; the name of each test states its bound in runs): P1 every record of the
+    owed ground other than the stuck ones, and every re-scan record, imports; P2 every stuck
+    record is owed as a point that holds it strictly inside, and stays one (a point is never
+    merged away; a record that sits where two spans meet is held by exactly one point); P3 each
+    owed point costs at most one read a run; P4 the re-scan gets a read and a commit in every
+    run; P5 the round-robin: every run that plans a point reads at least one, and each point is
+    read within `ceil(P / L)` runs (`L` the fewest points a run read, measured, never below 1),
+    with runs an hour, a day and exactly 2^32 ms apart; P6 the cursor never passes a stuck
+    record of the forward pass, whose stop ends only the forward pass. The families: K = 1 to 12
+    stuck records at random points, one owed day each, and all inside ONE owed day (also a day
+    that comes back full above 6 hours, with three stuck records exactly where its spans meet);
+    N = 1 to 12 close pairs (1 and 2 ms apart; the same and the next second on capital); a good
+    record at the same millisecond (second) as each of K = 1 to 12, 14 and 20 stuck ones; K
+    stuck records inside the re-scan window (read whole, and full above 30 days with runs a day
+    apart); many owed points (10, 20 and 30, on every lane), the newest placeable at run 5,
+    which imports within `ceil(P / (reads - 2))` runs of that; 10 to 30 owed points with a
+    re-scan that comes back full above 3 days, so one pass spans several runs and each run
+    still reads a point; 14 owed days with points beside them, so that a list past 12 ranges
+    merges two of them, and a stuck point that lies inside the hull two of them merge into; and
+    a forward pass that stops in every run with owed points and an owed day holding a record
+    that settles at run 2. The bounds are derived from the reads: each range is read once,
+    oldest first, on the calls a run has beside the forward pass and the two the re-scan and
+    the points keep (`ceil((ranges + 1) / (reads - 3)) + 1` runs), a dense day or window by the
+    reads its halving needs, and the points by the round-robin.
   - **Bound.** The list holds at most 12 ranges (ranges longer than a point, `POINT_MAX_MS`,
-    one second), plus the points, which are not ranges and are never merged with a range or
+    1001 ms), plus the points, which are not ranges and are never merged with a range or
     with each other, plus this run's own overlap day, which the re-scan reads in the same run. A
     merge never takes a point in: the points between two ranges that merge stay in the list
     beside their hull. Each range costs at least one call of a run's leftover budget, so a longer
@@ -389,7 +425,8 @@ withdraw budget moves into this object, with the same numbers and the same rule.
   pending pass and the re-scan the other orders of the span still import and only that order
   stays unimported and owed at its own point (its `transactionTime`, read by the client; the
   whole span when the time is missing or outside the span); the forward pass keeps A2: the stop
-  ends the run, cursor unmoved.
+  ends the forward pass, cursor unmoved, and the run goes on to the owed ground, the re-scan
+  and the points.
 - **No cross-source cap and no overlap guard (user ruling C1, 2026-10-10).** The
   probe found 0 of 5 Pay BTC rows that match a capital row (Q5), so both are removed:
   the Pay window end is `now` (a null capital cursor no longer blocks the Pay walk),

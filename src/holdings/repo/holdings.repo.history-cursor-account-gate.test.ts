@@ -17,10 +17,14 @@ jest.mock('@kiko/db/client', () => {
   };
 });
 
+import {
+  binanceWalkCursorFields,
+  binanceWalkPendingFields,
+  binanceWalkPointCursorFields,
+} from '@kiko/holdings/holding-metadata';
 import type { database } from '@kiko/db';
 import { DatabaseSync } from 'node:sqlite';
 import { applyAllMigrations, executingDrizzle } from '@kiko/test-support/real-sqlite';
-import { binanceWalkCursorFields, binanceWalkPendingFields } from '@kiko/holdings/holding-metadata';
 
 import { holdingsRepo } from './holdings.repo';
 
@@ -138,6 +142,41 @@ describe("holdingsRepo.setBinanceWalkCursor — gated on the holding's account s
       binancePayRescanCursor: 1,
       binanceTransferHistoryCursor: 1,
       binanceEarnHistoryCursor: 1,
+      syncedAt: 500,
+    });
+  });
+});
+
+describe("holdingsRepo.setBinanceWalkCursor for the point cursors — gated on the holding's account", () => {
+  it.each(binanceWalkPointCursorFields)(
+    'writes %s when the account is connected, and a disconnect drops it',
+    async (field) => {
+      const rawDatabase = openTestDatabase('binance');
+      mockWorkDatabase = executingDrizzle<typeof database>(rawDatabase);
+
+      await holdingsRepo.setBinanceWalkCursor('h-spot', field, 4_242);
+
+      expect(storedMetadata(rawDatabase)).toMatchObject({ [field]: 4_242, syncedAt: 500 });
+
+      await holdingsRepo.resetBinanceWalkCursors('acc-1', 1);
+
+      expect(storedMetadata(rawDatabase)).toEqual({
+        binanceAsset: 'BTC',
+        binanceHistoryCursor: 1,
+        syncedAt: 500,
+      });
+    },
+  );
+
+  it('is a no-op on a disconnected account', async () => {
+    const rawDatabase = openTestDatabase(null);
+    mockWorkDatabase = executingDrizzle<typeof database>(rawDatabase);
+
+    await holdingsRepo.setBinanceWalkCursor('h-spot', 'binancePayPointCursor', 4_242);
+
+    expect(storedMetadata(rawDatabase)).toEqual({
+      binanceAsset: 'BTC',
+      binanceHistoryCursor: 500,
       syncedAt: 500,
     });
   });

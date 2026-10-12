@@ -11,11 +11,13 @@ import {
   nextSpanAfter,
   planWalkPasses,
   readPendingMark,
+  readPointCursor,
   rescanCursorAfter,
   resolveWalletHoldings,
   runWalkPlan,
   type SpanCommit,
   type SpanRead,
+  storePointCursor,
   type WalkMarks,
   type WalkResult,
   walkSpans,
@@ -39,6 +41,7 @@ describe('planWalkPasses', () => {
     overlapMs: DAY_MS,
     maxWindows: 12,
     rescanCursor: null,
+    pointCursor: null,
     pending: [],
   };
 
@@ -247,10 +250,10 @@ describe('planWalkPasses', () => {
     });
 
     describe('with points, the ground of one record each', () => {
-      const pointAt = (time: number): WalkWindow => ({ start: time, end: time + 1 });
-      const secondAt = (time: number): WalkWindow => ({ start: time, end: time + 999 });
+      const pointAt = (time: number): WalkWindow => ({ start: time - 1, end: time + 1 });
+      const secondAt = (time: number): WalkWindow => ({ start: time - 1, end: time + 1_000 });
       const pointsAmong = (ranges: WalkWindow[]): WalkWindow[] =>
-        ranges.filter((range) => range.end - range.start <= 1_000);
+        ranges.filter((range) => range.end - range.start <= 1_001);
 
       it('never merges a point, and does not count it against the twelve', () => {
         const stored = storedRanges(12);
@@ -316,6 +319,31 @@ describe('planWalkPasses', () => {
         expect(pendingRanges).toEqual([stored, outside, day]);
       });
 
+      it('keeps one point for two that start together, the wider one, which holds both', () => {
+        const time = END_MS - 150 * DAY_MS;
+
+        const { pendingRanges } = planWalkPasses({
+          ...input,
+          cursor,
+          pending: [pointAt(time), secondAt(time), pointAt(time)],
+        });
+
+        expect(pointsAmong(pendingRanges)).toEqual([secondAt(time)]);
+      });
+
+      it('leaves a point beside the range that only reaches into it, and never shortens either', () => {
+        const stored = { start: END_MS - 150 * DAY_MS, end: END_MS - 149 * DAY_MS };
+        const across = pointAt(stored.end);
+
+        const { pendingRanges } = planWalkPasses({
+          ...input,
+          cursor,
+          pending: [stored, across],
+        });
+
+        expect(pendingRanges).toEqual([stored, across, day]);
+      });
+
       it('leaves a point the re-scan covers to the re-scan, and plans no read for it', () => {
         const inside = pointAt(END_MS - 30 * DAY_MS);
 
@@ -335,7 +363,7 @@ describe('planWalkPasses', () => {
         expect(plan.pending).toEqual([]);
       });
 
-      it('cuts a point the floor has passed, and one past the end', () => {
+      it('drops a point the floor has passed, and one past the end', () => {
         const floorMs = END_MS - 100 * DAY_MS;
 
         const plan = planWalkPasses({
@@ -349,43 +377,106 @@ describe('planWalkPasses', () => {
         expect(pointsAmong(plan.pendingRanges)).toEqual([]);
       });
 
-      describe('read last, from a place that changes with the run', () => {
+      it('keeps a point the floor reaches into whole: its record is at the floor, or before it', () => {
+        const floorMs = END_MS - 150 * DAY_MS;
+
+        const plan = planWalkPasses({ ...input, floorMs, cursor, pending: [pointAt(floorMs)] });
+
+        expect(plan.points).toEqual([pointAt(floorMs)]);
+      });
+
+      it('cuts a point that reaches past the end at the end, and keeps its start', () => {
+        const plan = planWalkPasses({
+          ...input,
+          cursor: END_MS,
+          pending: [pointAt(END_MS - 150 * DAY_MS), pointAt(END_MS)],
+        });
+
+        expect(pointsAmong(plan.pendingRanges).at(-1)).toEqual({ start: END_MS - 1, end: END_MS });
+      });
+
+      it('plans a point the re-scan covers only in part as the whole point, never a remnant', () => {
+        const rescanStart = END_MS - WINDOW_MS;
+        const straddling = pointAt(rescanStart);
+
+        const plan = planWalkPasses({ ...input, cursor, pending: [straddling] });
+
+        expect(plan.points).toEqual([straddling]);
+      });
+
+      it('leaves a point that a pending range holds to the range, and plans no read for it', () => {
+        const stored = { start: END_MS - 150 * DAY_MS, end: END_MS - 149 * DAY_MS };
+        const inside = pointAt(stored.start + 5_000);
+
+        const plan = planWalkPasses({ ...input, cursor, pending: [stored, inside] });
+
+        expect(plan.points).toEqual([]);
+        expect(plan.pending).toEqual([stored]);
+      });
+
+      describe('read last, in a round-robin that the point cursor moves on', () => {
         const points = Array.from({ length: 7 }, (_unused, index) =>
           pointAt(END_MS - 150 * DAY_MS + index * 10 * DAY_MS),
         );
-        const planAt = (endTime: number) =>
-          planWalkPasses({ ...input, endTime, cursor: endTime - 2 * DAY_MS, pending: points });
+        const planAfter = (pointCursor: number | null, endTime = END_MS) =>
+          planWalkPasses({
+            ...input,
+            endTime,
+            pointCursor,
+            cursor: endTime - 2 * DAY_MS,
+            pending: points,
+          });
 
-        it('plans every point, in the stored order from one place, wrapping around', () => {
-          const plan = planAt(END_MS);
-          const first = points.findIndex((point) => point.start === plan.points[0].start);
-
-          expect(plan.points).toEqual([...points.slice(first), ...points.slice(0, first)]);
+        it('plans every point oldest first when there is no point cursor', () => {
+          expect(planAfter(null).points).toEqual(points);
         });
 
-        it('starts at each point in turn over runs an hour or a day apart', () => {
-          const starts = (step: number) =>
-            new Set(
-              Array.from({ length: 80 }, (_unused, run) => planAt(END_MS + run * step)).map(
-                (plan) => plan.points[0]?.start,
-              ),
-            );
+        it('starts at the first point after the cursor, and wraps around to the ones before', () => {
+          const plan = planAfter(points[2].start);
 
-          expect(starts(3_600_000).size).toBe(7);
-          expect(starts(DAY_MS).size).toBe(7);
+          expect(plan.points).toEqual([...points.slice(3), ...points.slice(0, 3)]);
         });
 
-        it('reads every point at the head of the order within 60 runs of any spacing', () => {
-          for (const step of [60_000, 3_600_000, DAY_MS, 7 * DAY_MS]) {
-            const seen = new Set(
-              Array.from({ length: 60 }, (_unused, run) => planAt(END_MS + run * step)).flatMap(
-                (plan) => plan.points.slice(0, 2).map((point) => point.start),
-              ),
-            );
+        it('reads the point the cursor stands on last', () => {
+          expect(planAfter(points[4].start).points.at(-1)).toEqual(points[4]);
+        });
 
-            expect(seen.size).toBe(7);
+        it('wraps to the oldest point when the cursor is past the newest', () => {
+          expect(planAfter(points[6].start).points).toEqual(points);
+          expect(planAfter(points[6].start + 1).points).toEqual(points);
+        });
+
+        it('starts at the oldest point when the cursor is before every point', () => {
+          expect(planAfter(points[0].start - 1).points).toEqual(points);
+        });
+
+        it('does not depend on the end time of the run', () => {
+          for (const step of [0, 1, 3_600_000, DAY_MS, 2 ** 32, 2 ** 33 + 7]) {
+            expect(planAfter(points[2].start, END_MS + step).points).toEqual(
+              planAfter(points[2].start).points,
+            );
           }
         });
+
+        it.each([1, 2, 3, 7])(
+          'reads every point within ceil(7 / %i) runs of reading the next %i after the cursor',
+          (reads) => {
+            let pointCursor: number | null = null;
+            const seen = new Set<number>();
+            const runs = Math.ceil(points.length / reads);
+
+            for (let run = 0; run < runs; run += 1) {
+              const read = planAfter(pointCursor, END_MS + run * 2 ** 32).points.slice(0, reads);
+
+              for (const point of read) {
+                seen.add(point.start);
+              }
+              pointCursor = read.at(-1)?.start ?? pointCursor;
+            }
+
+            expect(seen.size).toBe(points.length);
+          },
+        );
       });
     });
 
@@ -576,13 +667,49 @@ describe('runWalkPlan', () => {
     expect(result).toEqual({ imported: 0, complete: false });
   });
 
-  it('leaves the re-scan alone when a forward window does not complete', async () => {
-    const runWindow = jest.fn(async () => ran(1, false));
+  describe('a forward window that does not complete', () => {
+    const withPoint = { ...plan, points: [{ start: 500, end: 502 }] };
 
-    const result = await runWalkPlan({ plan, canAfford: () => true, runWindow });
+    it('ends only the forward pass: the owed windows, the re-scan and the points are read after it', async () => {
+      const seen: [number, WalkPass][] = [];
 
-    expect(runWindow).toHaveBeenCalledTimes(1);
-    expect(result).toEqual({ imported: 1, complete: false });
+      const result = await runWalkPlan({
+        plan: withPoint,
+        canAfford: () => true,
+        runWindow: async (span, pass) => {
+          seen.push([span.start, pass]);
+
+          return ran(1, pass !== 'forward');
+        },
+      });
+
+      expect(seen).toEqual([
+        [0, 'forward'],
+        [5, 'pending'],
+        [20, 'pending'],
+        [10, 'rescan'],
+        [500, 'pending'],
+      ]);
+      expect(result).toEqual({ imported: 5, complete: false });
+    });
+
+    it('still lets the budget end every pass', async () => {
+      let calls = 1;
+      const runWindow = jest.fn(async () => ran(1, false));
+
+      const result = await runWalkPlan({
+        plan: withPoint,
+        canAfford: () => {
+          calls -= 1;
+
+          return calls >= 0;
+        },
+        runWindow,
+      });
+
+      expect(runWindow).toHaveBeenCalledTimes(1);
+      expect(result).toEqual({ imported: 1, complete: false });
+    });
   });
 
   it('runs the re-scan on what budget the forward pass left, and reports it incomplete when it runs out', async () => {
@@ -803,6 +930,74 @@ describe('runWalkPlan', () => {
 
       expect(seen.at(-1)).toEqual([pointAt(5), 'pending']);
     });
+
+    describe('marking the points that were read, for the round-robin', () => {
+      it('marks each point after its own window, in the order they were read, and no other window', async () => {
+        const events: string[] = [];
+
+        await runWalkPlan({
+          plan: planOf({
+            pending: [owedWindow(20)],
+            points: [pointAt(9), pointAt(3)],
+            rescan: [rescanWindow],
+            rescanEnd: 300,
+          }),
+          canAfford: () => true,
+          runWindow: async (span, pass) => {
+            events.push(`read:${span.start}:${pass}`);
+
+            return ran(0, true, span.end - span.start === 1);
+          },
+          markPointRead: async (span) => {
+            events.push(`mark:${span.start}`);
+          },
+        });
+
+        expect(events).toEqual([
+          'read:20:pending',
+          'read:200:rescan',
+          'read:9:pending',
+          'mark:9',
+          'read:3:pending',
+          'mark:3',
+        ]);
+      });
+
+      it('marks a point that is still stuck: it was read', async () => {
+        const marked: number[] = [];
+
+        await runWalkPlan({
+          plan: planOf({ points: [pointAt(5)] }),
+          canAfford: () => true,
+          runWindow: stuckPointWalk(),
+          markPointRead: async (span) => {
+            marked.push(span.start);
+          },
+        });
+
+        expect(marked).toEqual([5]);
+      });
+
+      it('marks no point whose window did not finish, and none the budget skipped', async () => {
+        let calls = 2;
+        const marked: number[] = [];
+
+        await runWalkPlan({
+          plan: planOf({ points: [pointAt(1), pointAt(2), pointAt(3)] }),
+          canAfford: () => {
+            calls -= 1;
+
+            return calls >= 0;
+          },
+          runWindow: async (span) => ran(0, span.start !== 2),
+          markPointRead: async (span) => {
+            marked.push(span.start);
+          },
+        });
+
+        expect(marked).toEqual([1]);
+      });
+    });
   });
 
   describe('the calls a run keeps for later', () => {
@@ -844,7 +1039,7 @@ describe('runWalkPlan', () => {
       return { seen, result };
     };
 
-    it('keeps no call in the forward pass, one for the re-scan in the owed windows, and none in the re-scan or the points', async () => {
+    it('keeps no call in the forward pass, one for the re-scan and one for the points in the owed windows, one for the points in the re-scan, and none in the points', async () => {
       const { seen } = await keepsOf(
         planOf({
           forward: [window(0)],
@@ -858,19 +1053,28 @@ describe('runWalkPlan', () => {
 
       expect(seen).toEqual([
         [window(0), 'forward', 0],
-        [owedAt(500), 'pending', 1],
-        [rescanWindow, 'rescan', 0],
+        [owedAt(500), 'pending', 2],
+        [rescanWindow, 'rescan', 1],
         [pointAt(900), 'pending', 0],
       ]);
     });
 
-    it('keeps no call for a re-scan the plan does not have', async () => {
+    it('keeps no call for a re-scan or for points the plan does not have', async () => {
       const { seen } = await keepsOf(planOf({ pending: [owedAt(500)] }), 20);
 
       expect(seen).toEqual([[owedAt(500), 'pending', 0]]);
     });
 
-    it('leaves the owed windows unread that the call it keeps does not allow, and reads the re-scan', async () => {
+    it('keeps a call for the points alone when the plan has points and no re-scan', async () => {
+      const { seen } = await keepsOf(
+        planOf({ pending: [owedAt(500)], points: [pointAt(900)] }),
+        20,
+      );
+
+      expect(seen[0]).toEqual([owedAt(500), 'pending', 1]);
+    });
+
+    it('leaves the owed windows unread that the calls it keeps do not allow, and reads the re-scan and a point', async () => {
       const { seen, result } = await keepsOf(
         planOf({
           pending: [0, 500, 700, 900].map(owedAt),
@@ -883,10 +1087,26 @@ describe('runWalkPlan', () => {
 
       expect(seen.map(([span, pass]) => [span.start, pass])).toEqual([
         [0, 'pending'],
-        [500, 'pending'],
         [200, 'rescan'],
+        [1_100, 'pending'],
       ]);
       expect(result.complete).toBe(false);
+    });
+
+    it('reads a point in every run, whatever a dense re-scan and the owed windows would spend', async () => {
+      const dense = Array.from({ length: 10 }, (_unused, index) => window(200 + index));
+
+      const { seen } = await keepsOf(
+        planOf({
+          pending: [0, 500, 700].map(owedAt),
+          points: [pointAt(1_100)],
+          rescan: dense,
+          rescanEnd: 300,
+        }),
+        4,
+      );
+
+      expect(seen.filter(([span]) => span.start === 1_100)).toHaveLength(1);
     });
   });
 });
@@ -996,12 +1216,14 @@ describe('advanceWalkMarks', () => {
   const FORWARD_FIELD = 'binancePayHistoryCursor';
   const RESCAN_FIELD = 'binancePayRescanCursor';
   const PENDING_FIELD = 'binancePayPendingOverlap';
+  const POINT_FIELD = 'binancePayPointCursor';
 
   type Write = [string, number | WalkWindow[]];
 
   const markOf = (over: Partial<WalkMarks> = {}): WalkMarks => ({
     cursor: null,
     rescanCursor: null,
+    pointCursor: null,
     pending: [],
     ...over,
   });
@@ -1012,6 +1234,7 @@ describe('advanceWalkMarks', () => {
     marks: WalkMarks,
     walkPlan: WalkPlan = plan,
     owed: WalkWindow[] = [],
+    returnedRecords = true,
   ) => {
     const writes: Write[] = [];
 
@@ -1019,10 +1242,16 @@ describe('advanceWalkMarks', () => {
       pass,
       span,
       owed,
+      returnedRecords,
       plan: walkPlan,
       marks,
       restartMs: RESTART_MS,
-      fields: { cursor: FORWARD_FIELD, rescan: RESCAN_FIELD, pending: PENDING_FIELD },
+      fields: {
+        cursor: FORWARD_FIELD,
+        rescan: RESCAN_FIELD,
+        point: POINT_FIELD,
+        pending: PENDING_FIELD,
+      },
       write: async (field, cursorMs) => {
         writes.push([field, cursorMs]);
       },
@@ -1064,7 +1293,7 @@ describe('advanceWalkMarks', () => {
     const marks = markOf({ cursor: 900 });
 
     expect(await advance('rescan', { start: 100, end: 400 }, marks)).toEqual([[RESCAN_FIELD, 400]]);
-    expect(marks).toEqual({ cursor: 900, rescanCursor: 400, pending: [] });
+    expect(marks).toEqual({ cursor: 900, rescanCursor: 400, pointCursor: null, pending: [] });
   });
 
   it('writes the restart mark once a re-scan span reaches the end of the re-scan', async () => {
@@ -1090,8 +1319,8 @@ describe('advanceWalkMarks', () => {
   });
 
   describe('with pending overlap ranges', () => {
-    const day = { start: 70, end: 100 };
-    const planned = planOf({ rescanEnd: 1_000, pendingRanges: [day] });
+    const day = { start: 70_000, end: 100_000 };
+    const planned = planOf({ rescanEnd: 1_000_000, pendingRanges: [day] });
 
     it('stores the list before it moves the cursor, so a crash between the two loses nothing', async () => {
       const marks = markOf({ cursor: 100 });
@@ -1100,7 +1329,12 @@ describe('advanceWalkMarks', () => {
         [PENDING_FIELD, [day]],
         [FORWARD_FIELD, 400],
       ]);
-      expect(marks).toEqual({ cursor: 400, rescanCursor: null, pending: [day] });
+      expect(marks).toEqual({
+        cursor: 400,
+        rescanCursor: null,
+        pointCursor: null,
+        pending: [day],
+      });
     });
 
     it('stores the list once: the next forward span moves only the cursor', async () => {
@@ -1121,33 +1355,37 @@ describe('advanceWalkMarks', () => {
     });
 
     it('takes the read ground out of the list when a re-scan span commits, before the mark', async () => {
-      const marks = markOf({ cursor: 900, rescanCursor: 50, pending: [day] });
+      const marks = markOf({ cursor: 900, rescanCursor: 50_000, pending: [day] });
 
-      expect(await advance('rescan', { start: 50, end: 85 }, marks, planned)).toEqual([
-        [PENDING_FIELD, [{ start: 85, end: 100 }]],
-        [RESCAN_FIELD, 85],
+      expect(await advance('rescan', { start: 50_000, end: 85_000 }, marks, planned)).toEqual([
+        [PENDING_FIELD, [{ start: 85_000, end: 100_000 }]],
+        [RESCAN_FIELD, 85_000],
       ]);
-      expect(marks.pending).toEqual([{ start: 85, end: 100 }]);
+      expect(marks.pending).toEqual([{ start: 85_000, end: 100_000 }]);
     });
 
     it('drops a range a re-scan span reads whole', async () => {
-      const marks = markOf({ cursor: 900, rescanCursor: 85, pending: [{ start: 85, end: 100 }] });
+      const marks = markOf({
+        cursor: 900,
+        rescanCursor: 85_000,
+        pending: [{ start: 85_000, end: 100_000 }],
+      });
 
-      expect(await advance('rescan', { start: 85, end: 1_000 }, marks, planned)).toEqual([
+      expect(await advance('rescan', { start: 85_000, end: 1_000_000 }, marks, planned)).toEqual([
         [PENDING_FIELD, []],
         [RESCAN_FIELD, RESTART_MS],
       ]);
     });
 
     describe('with ground the span could not commit', () => {
-      const point = { start: 80, end: 81 };
+      const point = { start: 79_999, end: 80_001 };
 
       it('puts the points back in the same write that takes the read ground out, in a pending span', async () => {
         const marks = markOf({ cursor: 900, pending: [day] });
 
-        expect(await advance('pending', { start: 70, end: 100 }, marks, planned, [point])).toEqual([
-          [PENDING_FIELD, [point]],
-        ]);
+        expect(
+          await advance('pending', { start: 70_000, end: 100_000 }, marks, planned, [point]),
+        ).toEqual([[PENDING_FIELD, [point]]]);
         expect(marks.pending).toEqual([point]);
       });
 
@@ -1158,11 +1396,13 @@ describe('advanceWalkMarks', () => {
       });
 
       it('puts the points back before the mark moves in a re-scan span, so a stuck record is never passed unowed', async () => {
-        const marks = markOf({ cursor: 900, rescanCursor: 50, pending: [] });
+        const marks = markOf({ cursor: 900, rescanCursor: 50_000, pending: [] });
 
-        expect(await advance('rescan', { start: 50, end: 90 }, marks, planned, [point])).toEqual([
+        expect(
+          await advance('rescan', { start: 50_000, end: 90_000 }, marks, planned, [point]),
+        ).toEqual([
           [PENDING_FIELD, [point]],
-          [RESCAN_FIELD, 90],
+          [RESCAN_FIELD, 90_000],
         ]);
       });
 
@@ -1172,7 +1412,7 @@ describe('advanceWalkMarks', () => {
 
         it('keeps a point beside what is left of the range, and never merges the two', async () => {
           const marks = markOf({ cursor: 90_000, pending: [range] });
-          const inSpan = { start: 20_000, end: 20_001 };
+          const inSpan = { start: 19_999, end: 20_001 };
 
           await advance('pending', span, marks, planned, [inSpan]);
 
@@ -1200,8 +1440,8 @@ describe('advanceWalkMarks', () => {
     it('takes the ground a pending span reads out of the list and moves no mark', async () => {
       const marks = markOf({ cursor: 900, pending: [day] });
 
-      expect(await advance('pending', { start: 70, end: 90 }, marks, planned)).toEqual([
-        [PENDING_FIELD, [{ start: 90, end: 100 }]],
+      expect(await advance('pending', { start: 70_000, end: 90_000 }, marks, planned)).toEqual([
+        [PENDING_FIELD, [{ start: 90_000, end: 100_000 }]],
       ]);
       expect(marks.cursor).toBe(900);
       expect(marks.rescanCursor).toBeNull();
@@ -1210,12 +1450,12 @@ describe('advanceWalkMarks', () => {
     it('splits a range in two when a span in its middle commits', async () => {
       const marks = markOf({ cursor: 900, pending: [day] });
 
-      expect(await advance('pending', { start: 80, end: 90 }, marks, planned)).toEqual([
+      expect(await advance('pending', { start: 80_000, end: 90_000 }, marks, planned)).toEqual([
         [
           PENDING_FIELD,
           [
-            { start: 70, end: 80 },
-            { start: 90, end: 100 },
+            { start: 70_000, end: 80_000 },
+            { start: 90_000, end: 100_000 },
           ],
         ],
       ]);
@@ -1225,6 +1465,57 @@ describe('advanceWalkMarks', () => {
       const marks = markOf({ cursor: 900, pending: [day] });
 
       expect(await advance('pending', { start: 200, end: 300 }, marks, planned)).toEqual([]);
+    });
+
+    describe('with a point on the list', () => {
+      const point = { start: 79_999, end: 80_001 };
+      const whole = { start: 70_000, end: 90_000 };
+
+      it('takes a point off the list when a span that holds it whole returned records', async () => {
+        const marks = markOf({ cursor: 900, pending: [point] });
+
+        expect(await advance('pending', whole, marks, planned)).toEqual([[PENDING_FIELD, []]]);
+      });
+
+      it('keeps a point when the read of a span that holds it returned no record: it fails closed', async () => {
+        const marks = markOf({ cursor: 900, pending: [point] });
+
+        expect(await advance('pending', whole, marks, planned, [], false)).toEqual([]);
+        expect(marks.pending).toEqual([point]);
+      });
+
+      it('keeps a point beside what is left of a range when the read returned no record', async () => {
+        const marks = markOf({ cursor: 900, pending: [day, point] });
+
+        await advance('pending', whole, marks, planned, [], false);
+
+        expect(marks.pending).toEqual([point, { start: 90_000, end: 100_000 }]);
+      });
+
+      it.each([
+        ['its start', { start: 70_000, end: 80_000 }],
+        ['its end', { start: 80_000, end: 90_000 }],
+      ])('leaves a point whole that a span only reaches into at %s', async (_label, span) => {
+        const marks = markOf({ cursor: 900, pending: [point] });
+
+        expect(await advance('pending', span, marks, planned)).toEqual([]);
+        expect(marks.pending).toEqual([point]);
+      });
+
+      it('writes no list when a read of the point finds its record stuck again', async () => {
+        const marks = markOf({ cursor: 900, pending: [point] });
+
+        expect(await advance('pending', point, marks, planned, [point])).toEqual([]);
+      });
+
+      it('takes a point off the list as a re-scan span passes it, before the mark moves', async () => {
+        const marks = markOf({ cursor: 900, rescanCursor: 50_000, pending: [point] });
+
+        expect(await advance('rescan', { start: 50_000, end: 90_000 }, marks, planned)).toEqual([
+          [PENDING_FIELD, []],
+          [RESCAN_FIELD, 90_000],
+        ]);
+      });
     });
   });
 });
@@ -1334,6 +1625,81 @@ describe('readPendingMark', () => {
       expect(await ranges).toEqual([]);
       expect(write).toHaveBeenCalledWith(FIELD, []);
     });
+  });
+});
+
+describe('readPointCursor', () => {
+  const FIELD = 'binancePayPointCursor';
+  let warn: jest.SpyInstance;
+
+  beforeEach(() => {
+    warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+  });
+
+  afterEach(() => {
+    warn.mockRestore();
+  });
+
+  it('reads the stored cursor of one walk', () => {
+    expect(readPointCursor(FIELD, { [FIELD]: 5_000 })).toBe(5_000);
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it('starts at the oldest point (null) with nothing stored, and logs nothing', () => {
+    expect(readPointCursor(FIELD, { binanceAsset: 'BTC' })).toBeNull();
+    expect(readPointCursor(FIELD, null)).toBeNull();
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['text', '5000'],
+    ['not a finite number', Number.NaN],
+    ['null', null],
+    ['a list', [1]],
+  ])(
+    'starts at the oldest point for a stored value that is %s, logging one fixed code and never throwing',
+    (_label, value) => {
+      expect(readPointCursor(FIELD, { [FIELD]: value })).toBeNull();
+      expect(warn.mock.calls).toEqual([
+        [
+          '[binance sync] point cursor unreadable',
+          { name: 'BinanceWalkStop', code: 'point-cursor-malformed' },
+        ],
+      ]);
+    },
+  );
+});
+
+describe('storePointCursor', () => {
+  const FIELD = 'binanceHistoryPointCursor';
+  const marksOf = (pointCursor: number | null): WalkMarks => ({
+    cursor: null,
+    rescanCursor: null,
+    pointCursor,
+    pending: [],
+  });
+
+  it('stores the start of the point that was read, and keeps it in the marks', async () => {
+    const marks = marksOf(null);
+    const write = jest.fn(async (_field: string, _cursorMs: number) => undefined);
+
+    await storePointCursor({ window: { start: 700, end: 702 }, marks, field: FIELD, write });
+
+    expect(write).toHaveBeenCalledWith(FIELD, 700);
+    expect(marks.pointCursor).toBe(700);
+  });
+
+  it('writes nothing when that start already is the stored cursor', async () => {
+    const write = jest.fn(async (_field: string, _cursorMs: number) => undefined);
+
+    await storePointCursor({
+      window: { start: 700, end: 702 },
+      marks: marksOf(700),
+      field: FIELD,
+      write,
+    });
+
+    expect(write).not.toHaveBeenCalled();
   });
 });
 

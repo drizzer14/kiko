@@ -3,9 +3,10 @@ import { DAY_MS } from '@kiko/dates';
 import {
   BINANCE_PAY_HISTORY_CURSOR_FIELD,
   BINANCE_PAY_PENDING_OVERLAP_FIELD,
+  BINANCE_PAY_POINT_CURSOR_FIELD,
   BINANCE_PAY_RESCAN_CURSOR_FIELD,
   binanceWalkCursorOf,
-  type BinanceWalkCursorField,
+  type BinanceWalkNumberField,
   type BinanceWalkPendingField,
 } from '@kiko/holdings/holding-metadata';
 import type { HoldingRow } from '@kiko/db';
@@ -27,10 +28,12 @@ import {
   logWalkStop,
   planWalkPasses,
   readPendingMark,
+  readPointCursor,
   resolveWalletHoldings,
   runWalkPlan,
   type SpanCommit,
   type SpanRead,
+  storePointCursor,
   type WalkMarkFields,
   type WalkMarks,
   walkSpans,
@@ -63,7 +66,6 @@ import {
   instantAt,
   joinSettled,
   settleRecords,
-  stuckSpanOf,
 } from './binance.history-records';
 import { type BinanceHistoryRun, COSTS } from './binance.history-budget';
 import { type BinanceCredentials, readCredentials } from './binance.credentials';
@@ -88,6 +90,7 @@ const MAX_WINDOWS = 12;
 const PAY_MARK_FIELDS: WalkMarkFields = {
   cursor: BINANCE_PAY_HISTORY_CURSOR_FIELD,
   rescan: BINANCE_PAY_RESCAN_CURSOR_FIELD,
+  point: BINANCE_PAY_POINT_CURSOR_FIELD,
   pending: BINANCE_PAY_PENDING_OVERLAP_FIELD,
 };
 
@@ -418,7 +421,7 @@ export type BinancePayHistoryDeps = {
   addTransactions: (rows: BinanceTransactionRow[]) => Promise<number>;
   writeWalkCursor: (
     holdingId: string,
-    field: BinanceWalkCursorField,
+    field: BinanceWalkNumberField,
     cursorMs: number,
   ) => Promise<void>;
   writeWalkPending: (
@@ -552,8 +555,8 @@ const isReceivedBy = (uid: string, funded: BtcFundedOtherCoinOrder): boolean =>
 
 /**
  * The order of another coin that the user paid with BTC funds is a BTC movement with no row
- * rule yet (user ruling A2), so it is a stop that owes the order's own point: the BTC rows of
- * the span still import, and the forward pass, which cannot pass it, stops.
+ * rule yet, so it is a stop that owes the order's own point: the BTC rows of the span still
+ * import, and the forward pass, which cannot pass it, stops.
  */
 const stopOnBtcPaidOrder = (uid: string, funded: BtcFundedOtherCoinOrder): PlannedPayRow[] => {
   if (isReceivedBy(uid, funded)) {
@@ -569,9 +572,9 @@ const stopOnBtcPaidOrder = (uid: string, funded: BtcFundedOtherCoinOrder): Plann
  * order's stop, so the whole span is owed.
  */
 const settledOrdersOf = (context: PayContext, span: WalkWindow, page: PayHistoryPage) =>
-  joinSettled(span, [
+  joinSettled<PlannedPayRow>(span, [
     ...(page.gathered >= PAY_PAGE_LIMIT
-      ? [stuckSpanOf<PlannedPayRow>(span, 'pay-page-stuck')]
+      ? [{ rows: [], codes: ['pay-page-stuck'], owed: [span], records: 0 }]
       : []),
     settleRecords({
       span,
@@ -608,11 +611,12 @@ const commitSpan = (
     settled: settledOrdersOf(context, span, page),
     place: (planned) => placeRows(context, uniqueRowsOf(planned)),
     add: deps.addTransactions,
-    advance: (owed) =>
+    advance: ({ owed, returnedRecords }) =>
       advanceWalkMarks({
         pass,
         span,
         owed,
+        returnedRecords,
         plan,
         marks,
         restartMs: HISTORY_FLOOR_MS,
@@ -700,6 +704,7 @@ const runSync = async (
 
   const payCursor = binanceWalkCursorOf(PAY_MARK_FIELDS.cursor, spot.metadata);
   const rescanCursor = binanceWalkCursorOf(PAY_MARK_FIELDS.rescan, spot.metadata);
+  const pointCursor = readPointCursor(PAY_MARK_FIELDS.point, spot.metadata);
   const floorMs = payFloorMs(now);
   const pending = await readPendingMark({
     field: PAY_MARK_FIELDS.pending,
@@ -710,6 +715,7 @@ const runSync = async (
   const plan = planWalkPasses({
     cursor: payCursor,
     rescanCursor,
+    pointCursor,
     pending,
     floorMs,
     endTime: now,
@@ -731,7 +737,7 @@ const runSync = async (
     apiKey,
     secret,
     options: { fetchImpl: deps.fetchImpl, now: deps.now },
-    marks: { cursor: payCursor, rescanCursor, pending },
+    marks: { cursor: payCursor, rescanCursor, pointCursor, pending },
     plan,
   };
   const uid = await readOwnUid(base);
@@ -752,6 +758,13 @@ const runSync = async (
         read: (span, keepCalls) => readSpan(context, span, keepCalls),
         commit: (span, page) => commitSpan(context, span, page, pass),
         keep,
+      }),
+    markPointRead: (window) =>
+      storePointCursor({
+        window,
+        marks: context.marks,
+        field: PAY_MARK_FIELDS.point,
+        write: (field, cursorMs) => deps.writeWalkCursor(spot.id, field, cursorMs),
       }),
   });
 };

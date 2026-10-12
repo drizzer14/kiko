@@ -237,6 +237,26 @@ export type BinanceWalkPendingField = (typeof binanceWalkPendingFields)[number];
 export type BinancePendingRange = { start: number; end: number };
 
 /**
+ * Where a walk's round-robin over its owed points stands: the start of the point it read last.
+ * The next run reads the points after it first, then wraps, so every point is read within a
+ * bounded number of runs. Next to the pending list, carried over a balance sync, and dropped on
+ * a disconnect (no key means "start at the oldest point").
+ */
+export const BINANCE_HISTORY_POINT_CURSOR_FIELD = 'binanceHistoryPointCursor';
+
+export const BINANCE_PAY_POINT_CURSOR_FIELD = 'binancePayPointCursor';
+
+export const binanceWalkPointCursorFields = [
+  BINANCE_HISTORY_POINT_CURSOR_FIELD,
+  BINANCE_PAY_POINT_CURSOR_FIELD,
+] as const;
+
+export type BinanceWalkPointCursorField = (typeof binanceWalkPointCursorFields)[number];
+
+/** A field the walk writes as one number: a cursor, or the point cursor of its round-robin. */
+export type BinanceWalkNumberField = BinanceWalkCursorField | BinanceWalkPointCursorField;
+
+/**
  * The two marks of a Monobank holding's close and reopen (see
  * `reconcileClosedHoldings` in monobank/sync.ts). Each key has one role:
  * `syncClosedFromMs` says the SYNC closed this holding (the user's own close
@@ -257,6 +277,7 @@ export const STATEMENT_FROM_FIELD = 'statementFromMs';
 const carriedMetadataKeys = [
   ...binanceWalkCursorFields,
   ...binanceWalkPendingFields,
+  ...binanceWalkPointCursorFields,
   STATEMENT_FROM_FIELD,
 ] as const;
 
@@ -313,6 +334,24 @@ export const binanceWalkPendingOf = (
     : undefined;
 };
 
+/**
+ * One walk's stored point cursor: `null` when none is stored, `undefined` when a value is stored
+ * but is no finite number (the caller logs a fixed code and starts at the oldest point; a parse
+ * failure must never fail a balance sync).
+ */
+export const binanceWalkPointCursorOf = (
+  field: BinanceWalkPointCursorField,
+  metadata: unknown,
+): number | null | undefined => {
+  const stored = isRecord(metadata) ? metadata[field] : undefined;
+
+  if (stored === undefined) {
+    return null;
+  }
+
+  return isNumber(stored) ? stored : undefined;
+};
+
 export const syncClosedFromOf = numberFieldOf(SYNC_CLOSED_FROM_FIELD);
 
 export const statementFromOf = numberFieldOf(STATEMENT_FROM_FIELD);
@@ -349,8 +388,9 @@ export const withWalkOwnedMetadataCarried = (
  * crypto-sync/disconnect.ts). Setting the floor rather than deleting the key
  * matters: a deleted key falls back to the legacy `latestTransactionTime`
  * cursor, which a reconnected DIFFERENT Binance account would inherit as if it
- * were its own already-imported history. `undefined` when nothing needed
- * resetting, so a caller can skip a redundant write.
+ * were its own already-imported history. Every `binanceWalkPointCursorFields` entry is
+ * dropped: no key means "start at the oldest point", and a deleted key there has no legacy
+ * fallback. `undefined` when nothing needed resetting, so a caller can skip a redundant write.
  */
 export const withWalkOwnedMetadataResetToFloor = (
   storedMetadata: unknown,
@@ -359,6 +399,7 @@ export const withWalkOwnedMetadataResetToFloor = (
   const walkOwnedKeys: readonly string[] = [
     ...binanceWalkCursorFields,
     ...binanceWalkPendingFields,
+    ...binanceWalkPointCursorFields,
   ];
 
   if (!isRecord(storedMetadata) || !walkOwnedKeys.some((key) => key in storedMetadata)) {
@@ -366,9 +407,14 @@ export const withWalkOwnedMetadataResetToFloor = (
   }
 
   const storedKeys = (keys: readonly string[]) => keys.filter((key) => key in storedMetadata);
+  const withoutPointCursors = Object.fromEntries(
+    Object.entries(storedMetadata).filter(
+      ([key]) => !(binanceWalkPointCursorFields as readonly string[]).includes(key),
+    ),
+  );
 
   return {
-    ...storedMetadata,
+    ...withoutPointCursors,
     ...Object.fromEntries(storedKeys(binanceWalkCursorFields).map((key) => [key, floorMs])),
     ...Object.fromEntries(storedKeys(binanceWalkPendingFields).map((key) => [key, []])),
   };

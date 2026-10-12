@@ -1,8 +1,11 @@
 import { match } from 'ts-pattern';
 import {
   type BinanceWalkCursorField,
+  type BinanceWalkNumberField,
   type BinanceWalkPendingField,
+  type BinanceWalkPointCursorField,
   binanceWalkPendingOf,
+  binanceWalkPointCursorOf,
 } from '@kiko/holdings/holding-metadata';
 import type { HoldingRow } from '@kiko/db';
 import maybe, { foldMap } from 'fnts/maybe';
@@ -44,12 +47,13 @@ export const buildWalkWindows = (
 export type WalkPass = 'forward' | 'pending' | 'rescan';
 
 /**
- * Whether a window that does not finish (the budget cannot afford the next read, or Binance
- * rate-limits) ends the run in that pass. The forward pass and the re-scan move a mark that
- * only a commit moves, so they cannot read past it. An owed range is not read in order, so the
- * run reads on to the next one.
+ * Whether a window that does not finish (a stop in the forward pass, the budget cannot afford
+ * the next read, or Binance rate-limits) ends the pass it is in. The forward pass and the
+ * re-scan move a mark that only a commit moves, so they cannot read past it. An owed range is
+ * not read in order, so the pass reads on to the next one. No window ends the RUN: the passes
+ * after it are read on what budget is left (see `runWalkPlan`).
  */
-const STOP_ENDS_RUN: Record<WalkPass, boolean> = {
+const STOP_ENDS_PASS: Record<WalkPass, boolean> = {
   forward: true,
   pending: false,
   rescan: true,
@@ -70,11 +74,11 @@ export type WindowOutcome = { imported: number; complete: boolean; owed: boolean
 /**
  * One run of a walk, as three passes. `forward` goes from the cursor to the end and moves the
  * walk's cursor. `pending` reads the ground earlier runs left owed (`pending` holds the
- * windows of its ranges, `points` those of its points) and moves no mark. `rescan` goes back
- * over the ground behind the forward start, to catch a record that settles late, and never
- * moves that cursor. `rescanEnd` is where the re-scan ends. `pendingRanges` is the list of owed
- * ground as it stands once this run's own overlap day is in it: what to store before the
- * forward pass first moves the cursor.
+ * windows of its ranges, `points` those of its points, in the order the run reads them: see
+ * `startingAfter`) and moves no mark. `rescan` goes back over the ground behind the forward
+ * start, to catch a record that settles late, and never moves that cursor. `rescanEnd` is where
+ * the re-scan ends. `pendingRanges` is the list of owed ground as it stands once this run's own
+ * overlap day is in it: what to store before the forward pass first moves the cursor.
  */
 export type WalkPlan = {
   forward: WalkWindow[];
@@ -90,19 +94,24 @@ export type WalkPlan = {
  * call of a run's leftover budget, so a longer list could not be served in one run; past the
  * limit the two nearest ranges merge, which only has the run read the gap between them too. A
  * run's own overlap day is the one range beyond it (`planWalkPasses`): the re-scan reads that
- * day in the same run. Points (`POINT_MAX_MS`) are not ranges, and are never merged.
+ * day in the same run. Points (`POINT_MAX_MS`) are not ranges, and are never merged with one.
  */
 const MAX_PENDING_RANGES = 12;
 
 /**
  * The longest owed range that is a point, in milliseconds: the ground one record the walk
- * could not trust owes (one second for a withdrawal, whose time has a precision of one
- * second). A point is read on its own, last in a run, one call each, and starts a run at a
- * place that changes with the run's time (`planWalkPasses`).
+ * could not trust owes. A record with a time to the millisecond owes that millisecond and one
+ * on each side (2 ms); a withdrawal, whose time has a precision of one second, owes its second
+ * and one millisecond on each side (1001 ms). A point is read on its own, last in a run, one
+ * call each, in a fixed round-robin (`startingAfter`).
  */
-const POINT_MAX_MS = 1_000;
+const POINT_MAX_MS = 1_001;
 
 const isPoint = (window: WalkWindow): boolean => window.end - window.start <= POINT_MAX_MS;
+
+/** Whether `outer` holds all of `inner`. */
+export const holdsAll = (outer: WalkWindow, inner: WalkWindow): boolean =>
+  outer.start <= inner.start && inner.end <= outer.end;
 
 /** The ranges of `ranges` that `read` leaves: a read in a range's middle splits it in two. */
 export const withoutRead = (ranges: WalkWindow[], read: WalkWindow): WalkWindow[] =>
@@ -142,22 +151,51 @@ const nearestGapIndexOf = (ranges: WalkWindow[]): number =>
 
 const byStart = (left: WalkWindow, right: WalkWindow): number => left.start - right.start;
 
-/** The points of `ranges` once, and none that a range already holds. */
-const pointsOutside = (points: WalkWindow[], ranges: WalkWindow[]): WalkWindow[] =>
-  points.filter(
-    (point, index) =>
-      points.findIndex((other) => other.start === point.start && other.end === point.end) ===
-        index && !ranges.some((range) => range.start <= point.start && point.end <= range.end),
-  );
+/**
+ * The points of `ranges` with one for each start (the widest, which holds the others), and none
+ * that a range already holds: a read of the range returns that record, and finds it again if it
+ * is still stuck. Every point then has a start of its own, which is what the round-robin of
+ * `startingAfter` walks by.
+ */
+const pointsOutside = (points: WalkWindow[], ranges: WalkWindow[]): WalkWindow[] => {
+  const widestAt = new Map<number, WalkWindow>();
+
+  for (const point of points) {
+    const kept = widestAt.get(point.start);
+
+    if (
+      !ranges.some((range) => holdsAll(range, point)) &&
+      (kept === undefined || point.end > kept.end)
+    ) {
+      widestAt.set(point.start, point);
+    }
+  }
+
+  return [...widestAt.values()];
+};
 
 /**
- * Owed ground in its stored form: cut to what the walk can still ask for (not before the
- * floor, not after the end), oldest first. Ranges that touch are merged, and past `limit` the
- * two nearest merge into their hull, which reads the gap between them too and loses no
- * ground. A point (`POINT_MAX_MS`) is a record already found: it is never merged with
- * anything, so it is read alone and last. It is dropped only where a range already holds it
- * (before the merge past `limit`, so a hull that two ranges merged into never takes one in), or
- * where it repeats one.
+ * What the walk can still ask for of one owed range: not before the floor, not after the end. A
+ * point is a record already found, and a request for it only returns the record when it holds
+ * the millisecond on each side too, so a point is cut at the end alone, and dropped once the
+ * floor has passed all of it.
+ */
+const cutToBounds = (
+  range: WalkWindow,
+  bounds: { floorMs: number; endTime: number },
+): WalkWindow => ({
+  start: isPoint(range) ? range.start : Math.max(range.start, bounds.floorMs),
+  end: Math.min(range.end, bounds.endTime),
+});
+
+/**
+ * Owed ground in its stored form: cut to what the walk can still ask for (`cutToBounds`),
+ * oldest first. Ranges that touch are merged, and past `limit` the two nearest merge into
+ * their hull, which reads the gap between them too and loses no ground. A point
+ * (`POINT_MAX_MS`) is a record already found: it is never merged with a range, so it is read
+ * alone and last, and two points with one start are one point (`pointsOutside`). It is dropped
+ * only where a range already holds it (before the merge past `limit`, so a hull that two ranges
+ * merged into never takes one in).
  */
 const normalizePending = (
   ranges: WalkWindow[],
@@ -165,11 +203,8 @@ const normalizePending = (
   limit = MAX_PENDING_RANGES,
 ): WalkWindow[] => {
   const cut = ranges
-    .map((range) => ({
-      start: Math.max(range.start, bounds.floorMs),
-      end: Math.min(range.end, bounds.endTime),
-    }))
-    .filter((range) => range.start < range.end)
+    .map((range) => cutToBounds(range, bounds))
+    .filter((range) => range.start < range.end && bounds.floorMs < range.end)
     .sort(byStart);
   const merged = mergeTouching(cut.filter((range) => !isPoint(range)));
   const points = pointsOutside(cut.filter(isPoint), merged);
@@ -212,35 +247,43 @@ export const readPendingMark = async (input: {
   return owed;
 };
 
-const TWO_POWER_32 = 2 ** 32;
-
-const MIX_MULTIPLIER = 0x45d9f3b;
-
 /**
- * A 32-bit mix of a time, so that runs spaced at a regular interval (every hour, every day)
- * still land on unrelated numbers: a plain remainder of the time would repeat itself for a
- * count that divides the interval.
+ * The stored point cursor of one walk, or `null` to start at the oldest point (none stored, or
+ * one that is no number: it is logged under one fixed code, never thrown, because a corrupt
+ * value must not fail a balance sync).
  */
-const mixedFrom = (time: number): number => {
-  const folded = time % TWO_POWER_32;
-  const once = Math.imul(folded ^ (folded >>> 16), MIX_MULTIPLIER);
-  const twice = Math.imul(once ^ (once >>> 16), MIX_MULTIPLIER);
+export const readPointCursor = (
+  field: BinanceWalkPointCursorField,
+  metadata: unknown,
+): number | null => {
+  const stored = binanceWalkPointCursorOf(field, metadata);
 
-  return (twice ^ (twice >>> 16)) >>> 0;
+  if (stored !== undefined) {
+    return stored;
+  }
+
+  logFailure(
+    '[binance sync] point cursor unreadable',
+    new BinanceWalkStop('point-cursor-malformed'),
+  );
+
+  return null;
 };
 
 /**
- * `windows` starting at a place that depends on `time` alone, in the same order from there and
- * wrapping around. The points are read last, on the calls the run has left, and a run that
- * always started at the oldest would read the same few every time and never reach a newer one.
- * No state is stored: each run's own end time picks the place, so every point has the same
- * chance of being among the ones a run reads.
+ * `points`, oldest first, in the order a run reads them: those that start after the point
+ * cursor (the start of the point the last run read), then the rest, wrapping around. The points
+ * are read last, on the calls the run has left, and a run that always started at the oldest
+ * would read the same few every time. Each run reads at least one point, so every point is read
+ * within `ceil(points / reads a run)` runs, however far apart the runs are.
  */
-const rotatedAt = (windows: WalkWindow[], time: number): WalkWindow[] => {
-  const offset = windows.length === 0 ? 0 : mixedFrom(time) % windows.length;
-
-  return [...windows.slice(offset), ...windows.slice(0, offset)];
-};
+const startingAfter = (points: WalkWindow[], pointCursor: number | null): WalkWindow[] =>
+  pointCursor === null
+    ? points
+    : [
+        ...points.filter((point) => point.start > pointCursor),
+        ...points.filter((point) => point.start <= pointCursor),
+      ];
 
 /**
  * Plan a run so that new records always come first. A walk that re-scanned its last
@@ -274,6 +317,7 @@ const rotatedAt = (windows: WalkWindow[], time: number): WalkWindow[] => {
 export const planWalkPasses = (input: {
   cursor: number | null;
   rescanCursor: number | null;
+  pointCursor: number | null;
   pending: WalkWindow[];
   floorMs: number;
   endTime: number;
@@ -281,8 +325,17 @@ export const planWalkPasses = (input: {
   overlapMs: number;
   maxWindows: number;
 }): WalkPlan => {
-  const { cursor, rescanCursor, pending, floorMs, endTime, windowMs, overlapMs, maxWindows } =
-    input;
+  const {
+    cursor,
+    rescanCursor,
+    pointCursor,
+    pending,
+    floorMs,
+    endTime,
+    windowMs,
+    overlapMs,
+    maxWindows,
+  } = input;
   const windowStart = Math.max(floorMs, endTime - windowMs);
   const forwardStart = Math.max(floorMs, cursor ?? floorMs);
   const behindEnd = Math.min(forwardStart, endTime);
@@ -313,14 +366,27 @@ export const planWalkPasses = (input: {
     start: rescan.at(0)?.start ?? behindEnd,
     end: rescan.at(-1)?.end ?? behindEnd,
   };
-  const owed = withoutRead(pendingRanges, rescanned).flatMap((range) =>
+  const listedRanges = pendingRanges.filter((range) => !isPoint(range));
+  const owedRanges = withoutRead(listedRanges, rescanned).flatMap((range) =>
     buildWalkWindows(range.start, range.end, windowMs, maxWindows),
   );
+  // A point is read as a whole or not at all: the part of one that a read leaves is not the
+  // ground its record sits in. The re-scan, or a range, that holds the whole point returns its
+  // record, and a record that is still stuck is owed as the same point again.
+  const owedPoints = [
+    ...pendingRanges
+      .filter(isPoint)
+      .filter(
+        (point) =>
+          !holdsAll(rescanned, point) && !listedRanges.some((range) => holdsAll(range, point)),
+      ),
+    ...owedRanges.filter(isPoint),
+  ].sort(byStart);
 
   return {
     forward: buildWalkWindows(forwardStart, endTime, windowMs, maxWindows),
-    pending: owed.filter((window) => !isPoint(window)),
-    points: rotatedAt(owed.filter(isPoint), endTime),
+    pending: owedRanges.filter((window) => !isPoint(window)),
+    points: startingAfter(owedPoints, pointCursor),
     rescan,
     rescanEnd: behindEnd,
     pendingRanges,
@@ -341,16 +407,18 @@ export const rescanCursorAfter = (input: {
 
 /**
  * A walk's marks, as the run found them and then as the run last wrote them: the forward
- * cursor, the re-scan mark, and the list of owed ground.
+ * cursor, the re-scan mark, the list of owed ground, and the point cursor of its round-robin.
  */
 export type WalkMarks = {
   cursor: number | null;
   rescanCursor: number | null;
+  pointCursor: number | null;
   pending: WalkWindow[];
 };
 
 /** The metadata field each of a walk's marks is stored under. */
 export type WalkMarkFields = Record<'cursor' | 'rescan', BinanceWalkCursorField> & {
+  point: BinanceWalkPointCursorField;
   pending: BinanceWalkPendingField;
 };
 
@@ -358,11 +426,13 @@ type MarkAdvance = {
   span: WalkWindow;
   /** The ground of `span` the walk could not commit, which stays owed (a point, or the span). */
   owed?: WalkWindow[];
+  /** Whether the read of `span` returned any record: a point only leaves the list after one. */
+  returnedRecords: boolean;
   plan: WalkPlan;
   marks: WalkMarks;
   restartMs: number;
   fields: WalkMarkFields;
-  write: (field: BinanceWalkCursorField, cursorMs: number) => Promise<void>;
+  write: (field: BinanceWalkNumberField, cursorMs: number) => Promise<void>;
   writePending: (field: BinanceWalkPendingField, ranges: WalkWindow[]) => Promise<void>;
 };
 
@@ -395,6 +465,21 @@ const advanceCursor = async (input: MarkAdvance): Promise<void> => {
 };
 
 /**
+ * The list without the ground the span read. A point is read as a whole or not at all: a span
+ * that holds it returns its record under any end Binance leaves out, and takes it off the list,
+ * but only if the read returned a record; a read that returned none cannot have held the
+ * record, so the point stays. A span that holds only part of a point leaves it as it was.
+ */
+const withoutReadGround = (input: MarkAdvance): WalkWindow[] =>
+  input.marks.pending.flatMap((range) => {
+    if (!isPoint(range)) {
+      return withoutRead([range], input.span);
+    }
+
+    return input.returnedRecords && holdsAll(input.span, range) ? [] : [range];
+  });
+
+/**
  * The list without the ground the span read, and with the ground of it that stays owed: one
  * write, so a crash leaves either the list as it was or the list with the stuck records in it.
  */
@@ -402,7 +487,7 @@ const advancePending = (input: MarkAdvance): Promise<void> =>
   storePending(
     input,
     normalizePending(
-      [...withoutRead(input.marks.pending, input.span), ...(input.owed ?? [])],
+      [...withoutReadGround(input), ...(input.owed ?? [])],
       UNBOUNDED,
       Number.POSITIVE_INFINITY,
     ),
@@ -431,8 +516,9 @@ const advanceRescan = async (input: MarkAdvance): Promise<void> => {
  * only the re-scan mark and leaves the cursor alone, so a re-scan can never undo the
  * forward pass. A re-scan span and a pending span take the ground they read out of the
  * list, put `owed` (the part of it the walk could not commit: its stuck records) back, and an
- * entry leaves the list only by being read. `write` gets the field of the cursor that moved
- * and its value; `writePending` the field of the list and its new content.
+ * entry leaves the list only by being read (a point: by a read that returned records, see
+ * `withoutReadGround`). `write` gets the field of the cursor that moved and its value;
+ * `writePending` the field of the list and its new content.
  */
 export const advanceWalkMarks = (input: MarkAdvance & { pass: WalkPass }): Promise<void> =>
   match(input.pass)
@@ -471,21 +557,51 @@ export const nextSpanAfter = (committed: WalkWindow, window: WalkWindow): WalkWi
 const RESCAN_KEEP = 1;
 
 /**
+ * The calls a run keeps for the owed points while the owed ranges and the re-scan spend the
+ * budget. A run that reads at least one point reads every point within `ceil(points / reads a
+ * run)` runs (`startingAfter`); with none kept, a dense re-scan pass that spans several runs
+ * would leave the points nothing, run after run.
+ */
+const POINT_KEEP = 1;
+
+/**
+ * Store the start of the point just read as the walk's point cursor, unless it is already the
+ * stored one. Called after the point's own list write, so a crash between the two only has the
+ * next run read the point again.
+ */
+export const storePointCursor = async (input: {
+  window: WalkWindow;
+  marks: WalkMarks;
+  field: BinanceWalkPointCursorField;
+  write: (field: BinanceWalkNumberField, cursorMs: number) => Promise<void>;
+}): Promise<void> => {
+  const { window, marks, field, write } = input;
+
+  if (marks.pointCursor !== window.start) {
+    marks.pointCursor = window.start;
+    await write(field, window.start);
+  }
+};
+
+/**
  * Run a plan's windows: the forward pass first, then the owed ranges (oldest first), then the
- * re-scan, then the owed points, each on what budget is left. A forward or re-scan window that
- * does not finish, and any window the budget cannot afford, ends the run: a later run resumes
- * from the stored marks. An owed window that does not finish stays owed and the run goes on to
- * the next one and to the re-scan.
+ * re-scan, then the owed points, each on what budget is left. A window that does not finish
+ * ends the pass it is in where `STOP_ENDS_PASS` says so, and a window the budget cannot afford
+ * ends the pass; no pass ends the run, so a stop in the forward pass (whose cursor never passes
+ * the stuck record) still leaves the owed ground, the re-scan and the points their reads. A
+ * later run resumes from the stored marks. An owed window that does not finish stays owed and
+ * the run goes on to the next one and to the re-scan.
  *
  * A read commits every record it can trust and leaves the ground of the others owed (see
  * `settleRecords`), so a stuck record never holds back the rest of a span, a range or the
  * re-scan. The owed ranges are read before the re-scan, but never into the call it needs
- * (`RESCAN_KEEP`): a range that is read whole every run would otherwise leave the re-scan
- * nothing. The owed points are read after the re-scan, on the budget that is left, one call
- * each: reading them first would let many of them take the whole budget of every run from the
- * owed days and the re-scan. One that the budget skips stays owed; the plan puts them in an
- * order that changes with the run's time, so each is among those a run reads (see
- * `planWalkPasses`). `canAfford` takes the number of calls to keep after the one it asks about,
+ * (`RESCAN_KEEP`), nor into the one the points need (`POINT_KEEP`): a range that is read whole
+ * every run would otherwise leave the re-scan nothing. The owed points are read after the
+ * re-scan, on the budget that is left, one call each: reading them first would let many of them
+ * take the whole budget of every run from the owed days and the re-scan. One that the budget
+ * skips stays owed; the plan gives them in a round-robin (`startingAfter`) that `markPointRead`
+ * moves on after each point that was read, so each is among those a run reads in a bounded
+ * number of runs. `canAfford` takes the number of calls to keep after the one it asks about,
  * and must also say no once Binance has rate limited the account, or the run would go on asking
  * after a 429. The walk is reported complete only when every window was read to its end and no
  * record is left owed.
@@ -494,44 +610,44 @@ export const runWalkPlan = async (input: {
   plan: WalkPlan;
   canAfford: (keep: number) => boolean;
   runWindow: (window: WalkWindow, pass: WalkPass, keep: number) => Promise<WindowOutcome>;
+  markPointRead?: (window: WalkWindow) => Promise<void>;
 }): Promise<WalkResult> => {
-  const { plan, canAfford, runWindow } = input;
+  const { plan, canAfford, runWindow, markPointRead } = input;
+  const pointKeep = plan.points.length > 0 ? POINT_KEEP : 0;
   const rescanKeep = plan.rescan.length > 0 ? RESCAN_KEEP : 0;
   let imported = 0;
   let complete = true;
 
-  /** Whether the pass ends early: a window the budget cannot afford, or one that ends it. */
+  /** Read the windows of one pass, in order, until one ends the pass or the budget does. */
   const readPass = async (
     windows: WalkWindow[],
     pass: WalkPass,
     keep: number,
-  ): Promise<boolean> => {
+    afterRead?: (window: WalkWindow) => Promise<void>,
+  ): Promise<void> => {
     for (const window of windows) {
       if (!canAfford(keep)) {
         complete = false;
 
-        return true;
+        return;
       }
 
       const outcome = await runWindow(window, pass, keep);
       imported += outcome.imported;
       complete = complete && outcome.complete && !outcome.owed;
 
-      if (!outcome.complete && STOP_ENDS_RUN[pass]) {
-        return true;
+      if (outcome.complete) {
+        await afterRead?.(window);
+      } else if (STOP_ENDS_PASS[pass]) {
+        return;
       }
     }
-
-    return false;
   };
 
-  if (await readPass(plan.forward, 'forward', 0)) {
-    return { imported, complete: false };
-  }
-
-  await readPass(plan.pending, 'pending', rescanKeep);
-  await readPass(plan.rescan, 'rescan', 0);
-  await readPass(plan.points, 'pending', 0);
+  await readPass(plan.forward, 'forward', 0);
+  await readPass(plan.pending, 'pending', rescanKeep + pointKeep);
+  await readPass(plan.rescan, 'rescan', pointKeep);
+  await readPass(plan.points, 'pending', 0, markPointRead);
 
   return { imported, complete };
 };

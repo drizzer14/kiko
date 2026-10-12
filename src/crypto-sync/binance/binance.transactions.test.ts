@@ -80,6 +80,15 @@ const historyPage = <Row>(
 const emptyDepositFetch = () =>
   jest.fn(async (_apiKey: string, _secret: string, _window: HistoryWindow) => historyPage([]));
 
+/**
+ * A read that gives `rows` to the forward pass (a span that starts at `cursorMs` or later) and
+ * no row to any span behind it, so a stop of the forward pass is the only thing to see.
+ */
+const forwardRowsAt = <Row>(cursorMs: number, rows: Row[]) =>
+  jest.fn(async (_apiKey: string, _secret: string, window: HistoryWindow) =>
+    historyPage(window.startTime >= cursorMs ? rows : []),
+  );
+
 const makeDeps = (over: Partial<BinanceTransactionSyncDeps> = {}): BinanceTransactionSyncDeps => ({
   now: () => NOW,
   fetchImpl: (async () => ({})) as unknown as typeof fetch,
@@ -144,6 +153,7 @@ const makeStatefulSpotAccount = (): {
   writeWalkPending: jest.Mock<Promise<void>, [string, string, WalkWindow[]]>;
   cursor: () => number | null;
   rescanCursor: () => number | null;
+  pointCursor: () => number | null;
   pending: () => WalkWindow[];
 } => {
   const marks: Record<string, number> = {};
@@ -164,6 +174,7 @@ const makeStatefulSpotAccount = (): {
     }),
     cursor: () => marks.binanceHistoryCursor ?? null,
     rescanCursor: () => marks.binanceHistoryRescanCursor ?? null,
+    pointCursor: () => marks.binanceHistoryPointCursor ?? null,
     pending: () => pending,
   };
 };
@@ -763,15 +774,16 @@ describe('a settled capital row the walk cannot trust stops its window', () => {
   // A good row rides along in the deposit window, so the stop is proven to discard
   // the whole window and not only the bad row.
   const badDeposit = (over: Partial<BinanceDeposit>): Partial<BinanceTransactionSyncDeps> => ({
-    fetchDepositHistory: jest.fn(async () =>
-      historyPage([deposit(), deposit({ id: '2', ...over })]),
-    ),
+    fetchDepositHistory: forwardRowsAt(NOW - 89 * DAY_MS, [
+      deposit(),
+      deposit({ id: '2', ...over }),
+    ]),
   });
 
   const badWithdrawal = (
     over: Partial<BinanceWithdrawal>,
   ): Partial<BinanceTransactionSyncDeps> => ({
-    fetchWithdrawHistory: jest.fn(async () => historyPage([withdrawal({ id: '2', ...over })])),
+    fetchWithdrawHistory: forwardRowsAt(NOW - 89 * DAY_MS, [withdrawal({ id: '2', ...over })]),
   });
 
   const BAD_ROWS: [string, string, () => Partial<BinanceTransactionSyncDeps>][] = [
@@ -817,7 +829,7 @@ describe('a settled capital row the walk cannot trust stops its window', () => {
     expect(warn).not.toHaveBeenCalled();
   });
 
-  it('keeps the earlier window committed and its cursor when a later window stops', async () => {
+  it('keeps the earlier window committed and its cursor when a later window stops, and still reads the re-scan', async () => {
     let depositCalls = 0;
     const deps = makeDeps({
       latestTransactionTime: async () => NOW - 200 * DAY_MS,
@@ -832,8 +844,8 @@ describe('a settled capital row the walk cannot trust stops its window', () => {
 
     const result = await sync(deps);
 
-    expect(result).toEqual({ imported: 1, complete: false });
-    expect(deps.addTransactions).toHaveBeenCalledTimes(1);
+    expect(result).toEqual({ imported: 2, complete: false });
+    expect(deps.addTransactions).toHaveBeenCalledTimes(2);
     expect(cursorWritesOf(deps)).toEqual([FIRST_OF_THREE_WINDOWS_END]);
   });
 
@@ -1771,7 +1783,7 @@ describe('the pending overlap days of the capital walk', () => {
     expect(state.imported.has(keyOf(readable))).toBe(true);
     expect(state.imported.has(keyOf(inWindow))).toBe(true);
     const t = stuckDay.start + 3_600_000;
-    expect(state.account.pending()).toEqual([{ start: t, end: t + 999 }]);
+    expect(state.account.pending()).toEqual([{ start: t - 1, end: t + 1_000 }]);
     expect(second.result.complete).toBe(false);
   });
 
@@ -1791,8 +1803,8 @@ describe('the pending overlap days of the capital walk', () => {
       NOW - 89 * DAY_MS,
     ]);
     expect((second.deps.fetchWithdrawHistory as jest.Mock).mock.calls.at(-1)?.[2]).toMatchObject({
-      startTime: stuck.applyTime,
-      endTime: (stuck.applyTime as number) + 999,
+      startTime: (stuck.applyTime as number) - 1,
+      endTime: (stuck.applyTime as number) + 1_000,
     });
   });
 
@@ -1938,8 +1950,9 @@ describe('the pending overlap days of the capital walk', () => {
     const stuckAt = stuckDay.start + 3_600_000;
     const stuckRecord = () => withdrawal({ id: '', txId: '', applyTime: stuckAt });
     const fixedRecord = () => withdrawal({ id: 'fixed', applyTime: stuckAt });
-    // A withdrawal's time has a precision of one second: its point is the second after it.
-    const pointAt = (time: number): WalkWindow => ({ start: time, end: time + 999 });
+    // A withdrawal's time has a precision of one second: its point is that second and a
+    // millisecond on each side.
+    const pointAt = (time: number): WalkWindow => ({ start: time - 1, end: time + 1_000 });
     // The overlap day behind the cursor lies in the window the re-scan reads; only the ground
     // older than that window is the pending pass's.
     const beyondWindow = (ranges: WalkWindow[]): WalkWindow[] =>
@@ -1980,7 +1993,7 @@ describe('the pending overlap days of the capital walk', () => {
       const adds = deps.addTransactions as jest.Mock;
       const listWrites = (deps.writeWalkPending as jest.Mock).mock;
       const owedAt = listWrites.calls.findIndex((call) =>
-        (call[2] as WalkWindow[]).some((range) => range.start === stuckAt),
+        (call[2] as WalkWindow[]).some((range) => range.start === stuckAt - 1),
       );
       expect(adds.mock.invocationCallOrder[0]).toBeLessThan(listWrites.invocationCallOrder[owedAt]);
     });
@@ -2039,7 +2052,7 @@ describe('the pending overlap days of the capital walk', () => {
       const fresh = () => withdrawal({ id: 'new-day', applyTime: newDay.start + 1_000 });
       const late = () => withdrawal({ id: 'late', applyTime: NOW - 50 * DAY_MS });
       const isolatedOwed = (state: PendingState): WalkWindow[] =>
-        beyondWindow(state.account.pending()).filter((range) => range.end - range.start <= 999);
+        beyondWindow(state.account.pending()).filter((range) => range.end - range.start <= 1_001);
       const isolatedSpans = stuckTimes.map(pointAt);
 
       const stateWithIsolated = () => stateOf(NOW - 2 * DAY_MS, [...isolatedSpans, newDay]);
@@ -2122,7 +2135,7 @@ describe('the pending overlap days of the capital walk', () => {
       expect(owedAfterFirst).toEqual([pointAt(stuckAt)]);
       expect(beyondWindow(state.account.pending())).toEqual(owedAfterFirst);
       expect(withdrawStartsOf(second.deps).filter((start) => start < NOW - 89 * DAY_MS)).toEqual([
-        stuckAt,
+        stuckAt - 1,
       ]);
     });
 
@@ -2142,6 +2155,113 @@ describe('the pending overlap days of the capital walk', () => {
       expect(state.imported.has(keyOf(fixedRecord()))).toBe(true);
       expect(state.account.pending()).toEqual([]);
       expect(again.result).toEqual({ imported: 0, complete: true });
+    });
+
+    it('owes a stuck deposit at its millisecond and one on each side, beside a withdrawal at its second', async () => {
+      const state = await stateOf(NOW - 2 * DAY_MS, [stuckDay]);
+      const stuckDeposit = deposit({ id: '', txId: '', insertTime: stuckAt + 5_000 });
+      const fixedDeposit = deposit({ id: 'fixed-deposit', insertTime: stuckAt + 5_000 });
+
+      await runOver(state, [stuckRecord()], NOW, {
+        fetchDepositHistory: depositServer([stuckDeposit, fixedDeposit]),
+      });
+
+      expect(state.imported).toEqual(new Set([`${ACCOUNT}:deposit:fixed-deposit`]));
+      expect(beyondWindow(state.account.pending())).toEqual([
+        pointAt(stuckAt),
+        { start: stuckAt + 4_999, end: stuckAt + 5_001 },
+      ]);
+    });
+
+    describe('while the forward pass stops at a record it cannot trust, in every run', () => {
+      const CURSOR = NOW - 2 * DAY_MS;
+      const forwardStuck = () => withdrawal({ id: '', txId: '', applyTime: NOW - 3_600_000 });
+      const repaired = () => withdrawal({ id: 'repaired', applyTime: stuckAt });
+
+      it('goes on to the owed day and the window re-scan, and the cursor stays', async () => {
+        const state = await stateOf(CURSOR, [stuckDay]);
+
+        const { deps, result } = await runOver(state, [
+          forwardStuck(),
+          stuckRecord(),
+          fixedRecord(),
+        ]);
+
+        expect(state.imported).toEqual(new Set([keyOf(fixedRecord())]));
+        expect(state.account.cursor()).toBe(CURSOR);
+        expect(withdrawStartsOf(deps)).toContain(NOW - 89 * DAY_MS);
+        expect(beyondWindow(state.account.pending())).toEqual([pointAt(stuckAt)]);
+        expect(result.complete).toBe(false);
+      });
+
+      it('reads the points in the next run: a record that settles meanwhile imports, and the cursor stays', async () => {
+        const state = await stateOf(CURSOR, [stuckDay]);
+        await runOver(state, [forwardStuck(), stuckRecord()]);
+
+        const second = await runOver(state, [forwardStuck(), repaired()]);
+
+        expect(state.imported).toEqual(new Set([keyOf(repaired())]));
+        expect(withdrawStartsOf(second.deps)).toContain(stuckAt - 1);
+        expect(withdrawStartsOf(second.deps)).toContain(NOW - 89 * DAY_MS);
+        expect(beyondWindow(state.account.pending())).toEqual([]);
+        expect(state.account.cursor()).toBe(CURSOR);
+      });
+    });
+
+    describe('the point cursor of the round-robin', () => {
+      const CURSOR = NOW - 2 * DAY_MS;
+      const times = [
+        BASE + 3_600_000,
+        BASE + 10 * DAY_MS + 3_600_000,
+        BASE + 20 * DAY_MS + 3_600_000,
+      ];
+      const points = times.map(pointAt);
+      const stuckAtEach = () =>
+        times.map((applyTime) => withdrawal({ id: '', txId: '', applyTime }));
+      const pointStartsOf = (deps: BinanceTransactionSyncDeps) =>
+        withdrawStartsOf(deps).filter((start) => points.some((point) => point.start === start));
+
+      it('stores the start of the point it read, after the list write of that point', async () => {
+        const state = await stateOf(CURSOR, [stuckDay]);
+        await runOver(state, [stuckRecord()]);
+
+        const { deps } = await runOver(state, [fixedRecord()]);
+
+        const cursorWrites = deps.writeWalkCursor as jest.Mock;
+        const pointWriteAt = cursorWrites.mock.calls.findIndex(
+          (call) => call[1] === 'binanceHistoryPointCursor',
+        );
+        const lastListWrite = Math.max(
+          ...(deps.writeWalkPending as jest.Mock).mock.invocationCallOrder,
+        );
+        expect(cursorWrites.mock.calls[pointWriteAt][2]).toBe(stuckAt - 1);
+        expect(cursorWrites.mock.invocationCallOrder[pointWriteAt]).toBeGreaterThan(lastListWrite);
+        expect(state.account.pointCursor()).toBe(stuckAt - 1);
+      });
+
+      it('reads the points after the stored cursor first, then wraps around to the ones before', async () => {
+        const state = await stateOf(CURSOR, points);
+        await state.account.writeWalkCursor('h-spot', 'binanceHistoryPointCursor', points[0].start);
+
+        const { deps } = await runOver(state, stuckAtEach());
+
+        expect(pointStartsOf(deps)).toEqual([points[1].start, points[2].start, points[0].start]);
+        expect(state.account.pointCursor()).toBe(points[0].start);
+      });
+
+      it('starts at the oldest point, with one fixed log code, when the stored cursor is no number', async () => {
+        const state = await stateOf(CURSOR, points);
+        await state.account.writeWalkCursor('h-spot', 'binanceHistoryPointCursor', Number.NaN);
+        const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+        const { deps } = await runOver(state, stuckAtEach());
+
+        expect(pointStartsOf(deps)).toEqual(points.map((point) => point.start));
+        expect(warn.mock.calls).toContainEqual([
+          '[binance sync] point cursor unreadable',
+          { name: 'BinanceWalkStop', code: 'point-cursor-malformed' },
+        ]);
+      });
     });
   });
 

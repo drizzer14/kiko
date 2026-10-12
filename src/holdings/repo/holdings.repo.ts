@@ -37,7 +37,7 @@ import {
   STATEMENT_FROM_FIELD,
   SYNC_CLOSED_FROM_FIELD,
   withWalkOwnedMetadataCarried,
-  type BinanceWalkCursorField,
+  type BinanceWalkNumberField,
   type BinanceWalkPendingField,
   type BinancePendingRange,
   withWalkOwnedMetadataResetToFloor,
@@ -1152,7 +1152,7 @@ export const holdingsRepo = {
    * already-disconnected account (undoing `resetBinanceWalkCursors`'s own
    * floor write, which runs as part of that same disconnect).
    */
-  setBinanceWalkCursor: (holdingId: string, field: BinanceWalkCursorField, cursorMs: number) =>
+  setBinanceWalkCursor: (holdingId: string, field: BinanceWalkNumberField, cursorMs: number) =>
     setBinanceWalkField(holdingId, field, cursorMs),
   /**
    * Store one Binance walk's list of pending overlap ranges (`field`) on one holding's

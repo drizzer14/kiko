@@ -3,9 +3,10 @@ import { DAY_MS } from '@kiko/dates';
 import {
   BINANCE_HISTORY_CURSOR_FIELD,
   BINANCE_HISTORY_PENDING_OVERLAP_FIELD,
+  BINANCE_HISTORY_POINT_CURSOR_FIELD,
   BINANCE_HISTORY_RESCAN_CURSOR_FIELD,
   binanceWalkCursorOf,
-  type BinanceWalkCursorField,
+  type BinanceWalkNumberField,
   type BinanceWalkPendingField,
 } from '@kiko/holdings/holding-metadata';
 import type { HoldingRow } from '@kiko/db';
@@ -19,10 +20,12 @@ import {
   halfOf,
   planWalkPasses,
   readPendingMark,
+  readPointCursor,
   resolveWalletHoldings,
   runWalkPlan,
   type SpanCommit,
   type SpanRead,
+  storePointCursor,
   type WalkMarkFields,
   type WalkMarks,
   walkSpans,
@@ -82,6 +85,7 @@ export const HISTORY_FLOOR_MS = Date.UTC(2017, 6, 14);
 const CAPITAL_MARK_FIELDS: WalkMarkFields = {
   cursor: BINANCE_HISTORY_CURSOR_FIELD,
   rescan: BINANCE_HISTORY_RESCAN_CURSOR_FIELD,
+  point: BINANCE_HISTORY_POINT_CURSOR_FIELD,
   pending: BINANCE_HISTORY_PENDING_OVERLAP_FIELD,
 };
 
@@ -126,7 +130,7 @@ export type BinanceTransactionSyncDeps = {
   /** Advances one walk's own watermark once a span's rows have committed. */
   writeWalkCursor: (
     holdingId: string,
-    field: BinanceWalkCursorField,
+    field: BinanceWalkNumberField,
     cursorMs: number,
   ) => Promise<void>;
   /** Stores one walk's list of ground still owed, once a span has committed or the cursor moves. */
@@ -455,7 +459,7 @@ const plannedOf = (accountId: string, entry: SpanRecord): PlannedRow[] =>
     .exhaustive()
     .filter((row): row is PlannedRow => row !== null);
 
-/** The milliseconds a record may sit in: its time, or the whole second of a withdrawal's. */
+/** The milliseconds a record may sit in: its time, or the whole second of a withdrawal's time. */
 const extentOf = (entry: SpanRecord): WalkWindow | undefined =>
   match(entry)
     .returnType<WalkWindow | undefined>()
@@ -495,11 +499,12 @@ const commitSpan = (
     }),
     place: (planned) => placeRows(context, planned),
     add: deps.addTransactions,
-    advance: (owed) =>
+    advance: ({ owed, returnedRecords }) =>
       advanceWalkMarks({
         pass,
         span,
         owed,
+        returnedRecords,
         plan,
         marks,
         restartMs: HISTORY_FLOOR_MS,
@@ -535,6 +540,7 @@ const runSync = async (
   // or a first sync) falls back to the newest already-imported record.
   const cursor = binanceWalkCursorOf(CAPITAL_MARK_FIELDS.cursor, spot.metadata);
   const rescanCursor = binanceWalkCursorOf(CAPITAL_MARK_FIELDS.rescan, spot.metadata);
+  const pointCursor = readPointCursor(CAPITAL_MARK_FIELDS.point, spot.metadata);
   const latest = await deps.latestTransactionTime(spot.id);
   const planCursor = cursor ?? latest ?? null;
   const pending = await readPendingMark({
@@ -546,6 +552,7 @@ const runSync = async (
   const plan = planWalkPasses({
     cursor: planCursor,
     rescanCursor,
+    pointCursor,
     pending,
     floorMs: HISTORY_FLOOR_MS,
     endTime: now,
@@ -561,7 +568,7 @@ const runSync = async (
     apiKey,
     secret,
     options,
-    marks: { cursor, rescanCursor, pending },
+    marks: { cursor, rescanCursor, pointCursor, pending },
     plan,
   };
 
@@ -576,6 +583,13 @@ const runSync = async (
         read: (span, keepCalls) => readSpan(context, span, keepCalls),
         commit: (span, records) => commitSpan(context, span, records, pass),
         keep,
+      }),
+    markPointRead: (window) =>
+      storePointCursor({
+        window,
+        marks: context.marks,
+        field: CAPITAL_MARK_FIELDS.point,
+        write: (field, cursorMs) => deps.writeWalkCursor(spot.id, field, cursorMs),
       }),
   });
 };
