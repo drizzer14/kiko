@@ -728,7 +728,7 @@ describe('a span too full for one page, and a page that does not add up', () => 
     expect(result.imported).toBe(120);
   });
 
-  it('M3: a total with no rows is a drift, not an empty span: the forward pass commits nothing of it and the cursor stays', async () => {
+  it('a total with no rows is a drift, not an empty span: the forward pass commits nothing of it and the cursor stays', async () => {
     const world = worldOf(caughtUp);
 
     const { requests } = await walkOnce({
@@ -761,7 +761,7 @@ describe('a span too full for one page, and a page that does not add up', () => 
     expect(stopCodes(warn)).toContain('transfer-page-drift');
   });
 
-  it('M2: an off-contract row of another asset does not stall the BTC rows of its page', async () => {
+  it('an off-contract row of another asset does not stall the BTC rows of its page', async () => {
     const world = worldOf(caughtUp);
     const other = entryOf({ asset: 'USDT', amount: 'junk', tranId: 'other', timestamp: agoMs(3) });
 
@@ -942,7 +942,7 @@ describe('a transfer the walk cannot trust', () => {
     expect(requests.some((request) => request.startTime === agoMs(30))).toBe(true);
   });
 
-  it('R30: never rejects for a row: the run resolves, and logs the code alone', async () => {
+  it('never rejects for a row: the run resolves, and logs the code alone', async () => {
     const world = worldOf(caughtUp);
 
     await expect(

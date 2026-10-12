@@ -54,8 +54,8 @@ that holding.
 | OVERNIGHT 20 | User ruling 2026-10-12, B: the "history is behind" caption shows ONLY while a walk cursor is null or more than a day behind; an owed point does not show it (was: the applied default also showed it for an owed point) | section 8 |
 | OVERNIGHT 21 | User ruling 2026-10-12, B (the spec rule kept): a `FAILED` transfer stays owed at its point until the 6-month floor drops it. VERIFY 14 still records the exact status values, for the record; no rule waits on it | section 5, T11 |
 | R30 | Orchestrator ruling (technical) 2026-10-12: on every walk a BTC row the client cannot parse (no finite time, an off-contract field) is a per-record stop, never a whole-run throw. It owes its canonical point when a usable time exists, else the span; the other rows of the span import. Codes: `capital-row-unreadable`, `pay-row-unreadable`, `transfer-row-unreadable`, `earn-row-unreadable`. A malformed envelope still throws for the whole read | sections 1, 3, 5, 6, 7; P10, C3, T12, E12, E23 |
-| R31 | Orchestrator ruling (technical) 2026-10-12, under the no-starvation rule: each walk reads the windows of its owed ranges in a round-robin from a range cursor (`binanceHistoryRangeCursor`, `binancePayRangeCursor`, `binanceTransferRangeCursor`), the end of the window it read last, moved once a read has started; each of `W` owed windows is read within `ceil(W / L)` runs that enter the pending pass. Code `range-cursor-malformed` | section 4; the Transfer lane's cap of 80 reads one range a run |
-| R32 | Orchestrator ruling (technical) 2026-10-12, under the no-known-limit rule: a window that splits and stops before its first span commits leaves the span it was at as a hint, per walk and per pass (`binanceHistorySpanHints`, `binancePaySpanHints`, `binanceTransferSpanHints`); the next read of a window with that start begins with it; a window that needs `h` halvings commits its first span within `h + 1` runs. A POINT window that is left after some of its spans committed keeps a resume in the same hint (R34, see section 4). Code `span-hints-malformed` | section 4 |
+| R31 | Orchestrator ruling (technical) 2026-10-12, under the no-starvation rule: each walk reads the windows of its owed ranges in a round-robin from a range cursor (`binanceHistoryRangeCursor`, `binancePayRangeCursor`, `binanceTransferRangeCursor`), the end of the window it read last, moved once a read has started; each of `W` owed windows is read within `ceil(W / L)` runs that enter the pending pass. Code `range-cursor-malformed` | section 4; the Transfer lane's cap of 80 reads one window a run |
+| R32 | Orchestrator ruling (technical) 2026-10-12, under the no-known-limit rule: a window that splits and stops before its first span commits leaves the span it was at as a hint, per walk and per pass (`binanceHistorySpanHints`, `binancePaySpanHints`, `binanceTransferSpanHints`); the next read of a window whose start the hint holds (`hint.start <= window.start < hint.end`, not only a window that starts exactly there) begins with what is left of it; a window that needs `h` halvings commits its first span within `h + 1` runs, whether or not the window's start moves with the clock. A POINT window that is left after some of its spans committed keeps a resume in the same hint (R34, see section 4). Code `span-hints-malformed` | section 4 |
 
 ## Sources (official, checked 2026-10-09)
 
@@ -465,13 +465,24 @@ withdraw budget moves into this object, with the same numbers and the same rule.
     `binanceTransferSpanHints`, in `binanceWalkSpanHintFields`; each holds one list of
     `{ start, end }` for each pass, one hint for each window start, so two chains stopped in one
     run, in two passes or in two windows of the pending pass, never overwrite each other). A later
-    read of a window that starts at that start begins with that span, never wider than the window;
-    after it commits the walk goes on as always (the next span from the committed end, twice as
-    wide). The hint is dropped when a span from that start commits, or when no window of its pass
-    starts there any more (the cursor, the mark or the list moved); a stale hint can only narrow a
-    read, never skip ground, because a hint starts where its window starts. A window that needs
-    `h` halvings, read in runs that each afford one read of it, commits its first span within
-    `h + 1` runs. The key is carried over a balance sync and dropped on a disconnect; a stored
+    read of a window whose start the hint HOLDS (`hint.start <= window.start < hint.end`) begins
+    with what is left of it, from the window's own start (`{ window.start, hint.end }`), never
+    wider than the window; after it commits the walk goes on as always (the next span from the
+    committed end, twice as wide). It is a containment, not an equal start, because the start of
+    a window moves with the clock: a fresh re-scan pass starts a window before the end of the
+    run, and Pay's and Transfer's floor trails the run and cuts an owed range to a start at
+    millisecond precision, so no window of a later run starts where the hint did, and a hint
+    that had to start exactly there would drop every run and the halvings would begin again
+    every run. Of the hints that hold a window's start, the one that starts nearest to it is
+    given, and it is replaced by the hint the read leaves. A point window starts at its point,
+    which never moves, and the windows of two points overlap, so a point window takes only a
+    hint that starts exactly where it starts (a resume too: it names the ground of its own
+    window). The hint is dropped when a span of the window commits, or when no
+    window of its pass holds its start any more (the cursor, the mark or the list moved); a stale
+    hint can only narrow a read, never skip ground, because the window begins at its own start
+    and a hint only ends the first span earlier. A window that needs `h` halvings, read in runs
+    that each afford one read of it, commits its first span within `h + 1` runs, whatever the
+    clock does to its start (pinned at runs 0, an hour and a day apart). The key is carried over a balance sync and dropped on a disconnect; a stored
     value that is not a record of lists of `{ start, end }` is ignored, stored over with no hint
     at once, and logged once under one fixed code (`span-hints-malformed`), never a throw.
     **A point window keeps its progress across runs (R34, orchestrator ruling, technical,
@@ -495,7 +506,9 @@ withdraw budget moves into this object, with the same numbers and the same rule.
     malformed (`span-hints-malformed`), and a resume found in a list of another pass is ignored.
     A point window whose first span needs `h` halvings, read one span a run, completes within
     `2h + 1` runs: `h` runs of halving, then the doubling spans (`nextSpanAfter`) that cover the
-    rest of the window, at most `h + 1` of them.
+    rest of the window, at most `h + 1` of them. That holds only while no later span comes back
+    full: a later span that is too full halves again (one more run a halving) and the bound grows
+    by those halvings.
   - **Reserved calls.** Every read of the owed windows leaves the lane's last calls for the
     re-scan (`RESCAN_KEEP`, 1, when the plan has a re-scan) and for the points (`POINT_KEEP`, 1,
     when the plan has a point), so a list of ranges cannot spend a run on re-reading them whole;
@@ -1058,8 +1071,9 @@ Probe items:
     a wrong filter field keeps the point owed only while no trusted record sits at the same
     millisecond (with a twin the point leaves, and the stuck record is never returned either
     way), and the record starves once it can be placed. This item is a MERGE BLOCKER for that
-    case: if a filter mismatch is possible, the point must carry the stuck record's identity. The probe account had no transfer row: one small Spot -> Funding
-    transfer of any coin first (Still needing the user).
+    case: if a filter mismatch is possible, the point must carry the stuck record's identity. The
+    probe account had no transfer row: one small Spot -> Funding transfer of any coin first
+    (Still needing the user).
 15. Simple Earn, per kind: which field `startTime` and `endTime` filter on (`time`?), its
     precision, the range ends (item 12), and whether every member of a reward group comes
     back in any read that returns one of them. The owed point and the reward key

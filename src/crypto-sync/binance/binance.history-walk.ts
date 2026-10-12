@@ -910,17 +910,23 @@ export const roundRobinHooksOf = (
 const byHintStart = (left: BinanceSpanHint, right: BinanceSpanHint): number =>
   left.start - right.start;
 
-/** The hints with the one of the window that starts at `start` replaced, or dropped for `null`. */
-const withHint = (
-  hints: BinanceSpanHints,
-  pass: BinanceSpanHintPass,
-  start: number,
-  hint: BinanceSpanHint | null,
-): BinanceSpanHints => ({
-  ...hints,
-  [pass]: [
-    ...hints[pass].filter((other) => other.start !== start),
-    ...(foldMap(maybe(hint), (value) => [value]) ?? []),
+/**
+ * The hints with `given`, the one a window was given, replaced by `hint` (or dropped for `null`),
+ * and with any other hint that starts where `hint` starts replaced too.
+ */
+const withHint = (input: {
+  hints: BinanceSpanHints;
+  pass: BinanceSpanHintPass;
+  window: OwedWindow;
+  given: BinanceSpanHint | undefined;
+  hint: BinanceSpanHint | null;
+}): BinanceSpanHints => ({
+  ...input.hints,
+  [input.pass]: [
+    ...input.hints[input.pass].filter(
+      (other) => other !== input.given && other.start !== input.window.start,
+    ),
+    ...(foldMap(maybe(input.hint), (value) => [value]) ?? []),
   ].sort(byHintStart),
 });
 
@@ -931,13 +937,40 @@ const sameSeries = (left?: readonly string[], right?: readonly string[]): boolea
     : [...left].sort().join('|') === [...right].sort().join('|');
 
 /**
- * Whether `hint` can be read by `window`: it starts where the window starts, and a resume was
- * made for the series the window is read in now. A resume made for other series has read the
- * ground behind it in some of these only, so a window that took it would skip ground.
+ * Whether `hint` holds `start`, the start of a window: it starts at or before it and ends after
+ * it, so the window can begin with the part of the hint that is left. A window whose start moves
+ * with the clock (a re-scan pass starts a window before the end of the run, a floor trails the
+ * run) never starts where the hint did, and a hint that had to start exactly there would drop
+ * every run, so the halvings it holds would begin again every run and never commit. A resume
+ * names the ground of its own window, which never moves: it starts exactly where the window does.
  */
-const isHintOf = (hint: BinanceSpanHint, window: OwedWindow): boolean =>
-  hint.start === window.start &&
+const holdsStart = (hint: BinanceSpanHint, start: number): boolean =>
+  hint.resume === undefined ? hint.start <= start && start < hint.end : hint.start === start;
+
+/**
+ * Whether `hint` can be read by `window` of `pass`: it holds the window's start (`holdsStart`),
+ * and a resume was made for the series the window is read in now. A resume made for other series
+ * has read the ground behind it in some of these only, so a window that took it would skip
+ * ground. A point window starts at its point and never moves, and the windows of the points
+ * overlap, so a point window takes only a hint that starts exactly where it starts.
+ */
+const isHintOf = (hint: BinanceSpanHint, window: OwedWindow, pass: BinanceSpanHintPass): boolean =>
+  (pass === 'point' ? hint.start === window.start : holdsStart(hint, window.start)) &&
   (hint.resume === undefined || sameSeries(hint.resume.series, window.series));
+
+/**
+ * The hint a window of `pass` begins with: of those that hold its start, the one that starts
+ * nearest to it, which is the one that starts with it when there is one.
+ */
+const hintGivenTo = (
+  hints: BinanceSpanHints,
+  window: OwedWindow,
+  pass: BinanceSpanHintPass,
+): BinanceSpanHint | undefined =>
+  hints[pass]
+    .filter((hint) => isHintOf(hint, window, pass))
+    .sort(byHintStart)
+    .at(-1);
 
 /**
  * The hints that a window of the plan can still use (`isHintOf`). A cursor, a mark or a list that
@@ -945,7 +978,7 @@ const isHintOf = (hint: BinanceSpanHint, window: OwedWindow): boolean =>
  */
 const hintsOfPlan = (hints: BinanceSpanHints, plan: WalkPlan): BinanceSpanHints => {
   const kept = (pass: BinanceSpanHintPass, windows: OwedWindow[]): BinanceSpanHint[] =>
-    hints[pass].filter((hint) => windows.some((window) => isHintOf(hint, window)));
+    hints[pass].filter((hint) => windows.some((window) => isHintOf(hint, window, pass)));
 
   return {
     forward: kept('forward', plan.forward),
@@ -1035,11 +1068,12 @@ export const runWalkPlan = async (input: {
   };
 
   /**
-   * Run one window. It is given the hint of its own `hintPass` that starts where it starts, and
-   * the hint it comes back with takes the place of that one: a window that began with a hint and
-   * was cut short again leaves a narrower one. A window with a committed span leaves a resume
-   * when it is a point window, and none otherwise: the other passes keep what they read in their
-   * cursor, their list and their re-scan mark, which only a point window has no mark for.
+   * Run one window. It is given the hint of its own `hintPass` that holds its start
+   * (`hintGivenTo`), and the hint it comes back with takes the place of that one: a window that
+   * began with a hint and was cut short again leaves a narrower one. A window with a committed
+   * span leaves a resume when it is a point window, and none otherwise: the other passes keep what
+   * they read in their cursor, their list and their re-scan mark, which only a point window has no
+   * mark for.
    */
   const runWithHint = async (
     window: OwedWindow,
@@ -1047,16 +1081,12 @@ export const runWalkPlan = async (input: {
     keep: number,
     hintPass: BinanceSpanHintPass,
   ): Promise<WindowOutcome> => {
-    const outcome = await runWindow(
-      window,
-      pass,
-      keep,
-      hints[hintPass].find((hint) => hint.start === window.start),
-    );
+    const given = hintGivenTo(hints, window, hintPass);
+    const outcome = await runWindow(window, pass, keep, given);
     const hint = hintPass === 'point' || outcome.hint?.resume === undefined ? outcome.hint : null;
 
     if (hint !== undefined) {
-      await saveHints(withHint(hints, hintPass, window.start, hint));
+      await saveHints(withHint({ hints, pass: hintPass, window, given, hint }));
     }
 
     return outcome;
@@ -1173,11 +1203,12 @@ const stepAfterRead = <Page>(input: {
     .exhaustive();
 
 /**
- * The span a window starts with: its hint when that starts with the window (from the start of the
- * ground its resume has not read yet, if it has one), else the window.
+ * The span a window starts with: the part of its hint from the window's start, when the hint holds
+ * that start (from the start of the ground its resume has not read yet, if it has one), else the
+ * window.
  */
 const firstSpanOf = (window: WalkWindow, hint: BinanceSpanHint | undefined): WalkWindow =>
-  hint?.start === window.start
+  hint !== undefined && holdsStart(hint, window.start)
     ? { start: hint.resume?.from ?? window.start, end: Math.min(hint.end, window.end) }
     : window;
 
@@ -1232,10 +1263,13 @@ const leftAt = (input: {
  *
  * A window that splits commits nothing until a span fits, and a run that ends before that leaves
  * the next run to start the whole chain of halvings again, which may be longer than a run has
- * calls for. So the window starts with `hint`, the span an earlier run was left at, when it
- * starts where the window starts (never wider than the window: a hint can only narrow a read, so
- * it never skips ground), and a run that stops before any span committed reports the span it was
- * at as `hint` in the outcome (`null` when that is the whole window: nothing was narrowed).
+ * calls for. So the window starts with `hint`, the span an earlier run was left at, when it holds
+ * the start of the window (`holdsStart`: the start of a window moves with the clock, so the hint
+ * does not have to start where the window does, and the window begins with what is left of it from
+ * its own start; never wider than the window: a hint can only narrow a read, so it never skips
+ * ground), and a run that stops before any span committed reports the span it was at as `hint` in
+ * the outcome (`null` when that is the whole window: nothing was narrowed). The halvings a window
+ * needs are bounded by the runs it takes to read them, whatever the clock does to its start.
  *
  * A window that stops after some of its spans committed, in this run or an earlier one, reports a
  * resume as `hint` (see `BinanceSpanResume`): the span to read next, and the points the spans
@@ -1260,7 +1294,7 @@ export const walkSpans = async <Page>(input: {
     started: false,
     hint: null,
   };
-  const resume = hint?.start === window.start ? hint.resume : undefined;
+  const resume = hint !== undefined && holdsStart(hint, window.start) ? hint.resume : undefined;
   const returned: OwedGround[] = [...(resume?.returned ?? [])];
   const stuck: OwedGround[] = [...(resume?.stuck ?? [])];
   let span = firstSpanOf(window, hint);

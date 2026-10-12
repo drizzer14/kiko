@@ -1984,11 +1984,18 @@ stop codes and scenario rows.
   malformed cursor is repaired at once and logged (`range-cursor-malformed`).
   One hints key per walk (`binanceWalkSpanHintFields`) holds, per pass (forward, pending, re-scan,
   point), the narrowest span a window was left at when `walkSpans` stopped
-  before any span committed; a window that starts there begins with it (never
-  wider than the window), and it drops when a span from that start commits
-  (for a point window it becomes a resume, below) or no window of the pass
-  starts there. A window that needs h halvings commits
-  its first span within h + 1 runs of one read each. A malformed value is
+  before any span committed; a window whose start the hint HOLDS
+  (`hint.start <= window.start < hint.end`, `holdsStart`) begins with what is
+  left of it from its own start (never wider than the window), and it drops
+  when a span of the window commits (for a point window it becomes a resume,
+  below) or no window of the pass holds its start. A containment, not an equal
+  start: the start of a re-scan window (`endTime - windowMs`) and the cut start
+  of an owed range at a Pay or Transfer floor move with the clock every run, so
+  an exact match would drop the hint every run and the halvings would restart
+  forever. A point window takes only an exact start (its point never moves,
+  and two points' windows overlap). A window that needs h halvings commits
+  its first span within h + 1 runs of one read each, at any gap between runs
+  (the properties run at 0, an hour and a day). A malformed value is
   ignored, stored over at once and logged (`span-hints-malformed`).
 - **A point window keeps its progress across runs (R34).** A point leaves
   the list only when its WHOLE window was read to its end, so a window left
@@ -2004,7 +2011,8 @@ stop codes and scenario rows.
   for other series than the window has now (`isHintOf`): it would skip ground.
   A malformed resume makes the whole value malformed (`span-hints-malformed`).
   A point window whose first span needs h halvings, one span a run, completes
-  within 2h + 1 runs.
+  within 2h + 1 runs, while no later span comes back full (a later span that is
+  too full halves again, one more run a halving).
 - **STOP_ENDS_PASS and R28: user ruling of 2026-10-12, kept** (plan
   OVERNIGHT item 17). `STOP_ENDS_PASS` (`binance.history-walk.ts`) says a stop
   in the forward pass ends only that pass, so the run goes on to the owed

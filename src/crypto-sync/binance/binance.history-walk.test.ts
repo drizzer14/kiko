@@ -2916,6 +2916,140 @@ describe('runWalkPlan with span hints', () => {
     ]);
   });
 
+  describe('a window whose start moved on from the start of its hint', () => {
+    it('gives it the hint that holds its start, so the halvings it holds are not read again', async () => {
+      const given: [number, string, WalkWindow | undefined][] = [];
+
+      await run({
+        plan: planOf({ forward: [span(130)], pending: [span(150)], rescan: [span(180)] }),
+        stored: hintsOf({
+          forward: [span(100, 200)],
+          pending: [span(100, 200)],
+          rescan: [span(100, 200)],
+        }),
+        runWindow: async (window, pass, _keep, hint) => {
+          given.push([window.start, pass, hint]);
+
+          return outcome();
+        },
+      }).done;
+
+      expect(given).toEqual([
+        [130, 'forward', span(100, 200)],
+        [150, 'pending', span(100, 200)],
+        [180, 'rescan', span(100, 200)],
+      ]);
+    });
+
+    it.each([200, 250])(
+      'gives a window that starts at %i no hint that ends at 200',
+      async (start) => {
+        const given: (WalkWindow | undefined)[] = [];
+
+        await run({
+          plan: planOf({ pending: [span(start)] }),
+          stored: hintsOf({ pending: [span(100, 200)] }),
+          runWindow: async (_window, _pass, _keep, hint) => {
+            given.push(hint);
+
+            return outcome();
+          },
+        }).done;
+
+        expect(given).toEqual([undefined]);
+      },
+    );
+
+    it('keeps the hint a window of the plan holds the start of, and stores nothing before it reads', async () => {
+      const { store, done } = run({
+        plan: planOf({ pending: [span(150)] }),
+        stored: hintsOf({ pending: [span(100, 200)] }),
+        runWindow: async () => outcome(),
+      });
+
+      await done;
+
+      expect(store).not.toHaveBeenCalled();
+    });
+
+    it('drops the hint that no window of its pass holds the start of, once, before it reads', async () => {
+      const { store, done } = run({
+        plan: planOf({ pending: [span(200)] }),
+        stored: hintsOf({ pending: [span(100, 200)] }),
+        runWindow: async () => outcome(),
+      });
+
+      await done;
+
+      expect(store).toHaveBeenCalledTimes(1);
+      expect(store).toHaveBeenCalledWith(NO_HINTS);
+    });
+
+    it('gives it the hint that starts nearest to its start, the one that starts with it first', async () => {
+      const given: [number, WalkWindow | undefined][] = [];
+
+      await run({
+        plan: planOf({ pending: [span(150), span(300)] }),
+        stored: hintsOf({ pending: [span(100, 400), span(150, 160), span(250, 350)] }),
+        runWindow: async (window, _pass, _keep, hint) => {
+          given.push([window.start, hint]);
+
+          return outcome();
+        },
+      }).done;
+
+      expect(given).toEqual([
+        [150, span(150, 160)],
+        [300, span(250, 350)],
+      ]);
+    });
+
+    it('replaces the hint it gave with the one the window comes back with, so the old one is not kept beside it', async () => {
+      const { store, done } = run({
+        plan: planOf({ pending: [span(150)] }),
+        stored: hintsOf({ pending: [span(100, 200)] }),
+        runWindow: async (window) => outcome({ hint: span(window.start, 175) }),
+      });
+
+      await done;
+
+      expect(store.mock.calls.at(-1)?.[0].pending).toEqual([span(150, 175)]);
+    });
+
+    it('drops the hint it gave when the window comes back with no span left to resume', async () => {
+      const { store, done } = run({
+        plan: planOf({ pending: [span(150)] }),
+        stored: hintsOf({ pending: [span(100, 200)] }),
+        runWindow: async () => outcome({ hint: null }),
+      });
+
+      await done;
+
+      expect(store.mock.calls.at(-1)?.[0].pending).toEqual([]);
+    });
+
+    it('gives a point window only the hint that starts where it starts: the windows of two points overlap', async () => {
+      const given: [number, WalkWindow | undefined][] = [];
+      const { store, done } = run({
+        plan: planOf({ points: [span(150, 160), span(100, 200)] }),
+        stored: hintsOf({ point: [span(100, 150)] }),
+        runWindow: async (window, _pass, _keep, hint) => {
+          given.push([window.start, hint]);
+
+          return outcome();
+        },
+      });
+
+      await done;
+
+      expect(given).toEqual([
+        [150, undefined],
+        [100, span(100, 150)],
+      ]);
+      expect(store).not.toHaveBeenCalled();
+    });
+  });
+
   it('gives a point window the hint of the points, not that of the pending pass', async () => {
     const given: [string, WalkWindow | undefined][] = [];
 
@@ -3651,16 +3785,56 @@ describe('walkSpans', () => {
       expect(read.mock.calls[0][0]).toEqual({ start: 0, end: 20 });
     });
 
-    it('ignores a hint that starts anywhere else, so it can only narrow a read, never skip ground', async () => {
+    it('begins with what is left of a hint that started before the window, from the start of the window', async () => {
+      const read = readByWidth();
+
+      await walkSpans({
+        window: { start: 10, end: 100 },
+        read,
+        commit: commitCount(1),
+        hint: { start: 0, end: 20 },
+      });
+
+      expect(read.mock.calls.slice(0, 2).map(([span]) => span)).toEqual([
+        { start: 10, end: 20 },
+        { start: 20, end: 40 },
+      ]);
+    });
+
+    it('ignores a hint that starts after the window starts, so it can only narrow a read, never skip ground', async () => {
       const read = readByWidth();
 
       await walkSpans({ window, read, commit: commitCount(1), hint: { start: 10, end: 20 } });
-      await walkSpans({ window, read, commit: commitCount(1), hint: { start: -5, end: 20 } });
 
       expect(read.mock.calls[0][0]).toEqual({ start: 0, end: 100 });
-      expect(read.mock.calls.filter(([span]) => span.start === -5 || span.start === 10)).toEqual(
-        [],
-      );
+      expect(read.mock.calls.filter(([span]) => span.start === 10)).toEqual([]);
+    });
+
+    it.each([
+      { name: 'ends where the window starts', hint: { start: -20, end: 0 } },
+      { name: 'ends before the window starts', hint: { start: -20, end: -5 } },
+    ])(
+      'ignores a hint that $name: the ground it narrowed is behind the window',
+      async ({ hint }) => {
+        const read = readByWidth();
+
+        await walkSpans({ window, read, commit: commitCount(1), hint });
+
+        expect(read.mock.calls[0][0]).toEqual({ start: 0, end: 100 });
+      },
+    );
+
+    it('is the hint narrowed again from the start of the window, when a chain resumed from a hint that started before it is cut short', async () => {
+      const reads = [split({ start: 10, end: 40 }), undefined];
+
+      const result = await walkSpans({
+        window: { start: 10, end: 100 },
+        read: jest.fn(async () => reads.shift()),
+        commit: commitCount(1),
+        hint: { start: 0, end: 40 },
+      });
+
+      expect(result.hint).toEqual({ start: 10, end: 25 });
     });
 
     it('is the half the chain had reached when the budget ends it before any span committed', async () => {
