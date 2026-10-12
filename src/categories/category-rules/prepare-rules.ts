@@ -12,6 +12,7 @@ import type {
   StoredCategoryRule,
   TimeOperator,
 } from './category-rules.d';
+import { categoryKeyOf } from './same-category';
 import { distinctMatcherKeys } from './matcher-key';
 import { parseRuleMatchers } from './parse-rule-matchers';
 
@@ -95,7 +96,13 @@ export const prepareRules = (rows: readonly StoredCategoryRule[]): PreparedRules
       unreadable.push(row);
     } else {
       readable.push({
-        rule: { ...row, displayMatchers, matchers: displayMatchers.map(withNormalizedText) },
+        rule: {
+          ...row,
+          // The key form, so a rule restored with a capitalized category reads like every other.
+          category: categoryKeyOf(row.category),
+          displayMatchers,
+          matchers: displayMatchers.map(withNormalizedText),
+        },
         strength: distinctMatcherKeys(displayMatchers).length,
       });
     }

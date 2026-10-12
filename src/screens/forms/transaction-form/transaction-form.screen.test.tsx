@@ -752,6 +752,23 @@ describe('TransactionFormScreen — category pre-select from name rules', () => 
     expect(getByTestId('transaction-category-field')).toHaveTextContent('Groceries');
   });
 
+  it('shows the category of a rule a restored file left capitalized', async () => {
+    setLiveData(
+      [{ id: 'h1', currency: 'UAH', balanceMinorUnits: 0, type: 'cash' }],
+      undefined,
+      CATEGORIES,
+      [],
+      [],
+      [nameRule('rozetka', 'Groceries')],
+    );
+    const { getByLabelText, getByTestId } = await renderAdd();
+    await fireEvent.changeText(getByLabelText('Description'), 'Rozetka');
+    await fireEvent(getByLabelText('Description'), 'blur');
+
+    expect(getByTestId('transaction-category-field')).toHaveTextContent('Groceries');
+    expect(getByTestId('transaction-category-field')).not.toHaveTextContent('Select category');
+  });
+
   it('saves the new rule category when the description changes after a blur and Save is pressed while focused', async () => {
     const { getByLabelText } = await renderAdd();
     await fireEvent.changeText(getByLabelText('Amount'), '12.34');

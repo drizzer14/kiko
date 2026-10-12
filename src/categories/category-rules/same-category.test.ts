@@ -1,4 +1,14 @@
-import { isSameCategory } from './same-category';
+import { categoryKeyOf, isSameCategory } from './same-category';
+
+describe('categoryKeyOf', () => {
+  it.each([
+    ['Food', 'food'],
+    ['food', 'food'],
+    ['FOOD', 'food'],
+  ])('reads %s as %s', (stored, key) => {
+    expect(categoryKeyOf(stored)).toBe(key);
+  });
+});
 
 describe('isSameCategory', () => {
   it.each([

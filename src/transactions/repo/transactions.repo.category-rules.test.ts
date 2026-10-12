@@ -123,6 +123,14 @@ describe('a rule at insert', () => {
     expect(categoryOf('k1')).toBe('food');
   });
 
+  it('writes the key form of a rule category a restored file left capitalized', async () => {
+    insertRule('silpo', 'Groceries', [nameIs('silpo')]);
+
+    await transactionsRepo.addManyDedup([syncItem('k1', { category: 'shops' })]);
+
+    expect(categoryOf('k1')).toBe('groceries');
+  });
+
   it('keeps the bank category when no rule matches', async () => {
     insertRule('silpo', 'food', [nameIs('silpo')]);
 
@@ -318,6 +326,15 @@ describe('a rule at a refresh', () => {
 
   it('gives an unflagged row the category of the rule that wins at the new amount', async () => {
     insertRule('large', 'rent', [largeAmount]);
+    await transactionsRepo.addManyDedup([syncItem('k1')]);
+
+    await transactionsRepo.addManyDedup([syncItem('k1', { amountMinorUnits: -60_000 })]);
+
+    expect(categoryOf('k1')).toBe('rent');
+  });
+
+  it('writes the key form of a rule category a restored file left capitalized', async () => {
+    insertRule('large', 'Rent', [largeAmount]);
     await transactionsRepo.addManyDedup([syncItem('k1')]);
 
     await transactionsRepo.addManyDedup([syncItem('k1', { amountMinorUnits: -60_000 })]);
