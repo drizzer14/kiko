@@ -44,6 +44,16 @@ that holding.
 | D6 | B: one row per Earn reward record. The records have no id, so the key is built from the record's own fields (section 6) |
 | D7 | C: Convert is NOT imported for now. It is deferred because Convert history has no wallet field, so the holding a Convert moved cannot be known |
 
+## Rulings of 2026-10-12
+
+| # | Ruling | Where |
+|---|---|---|
+| OVERNIGHT 18 | User ruling 2026-10-12, A (confirmed): the Transfer and Earn walks follow option A. The other rows of a span import; only the stuck record is owed, at its point | sections 5, 6 |
+| OVERNIGHT 19 | User ruling 2026-10-12, A (confirmed): `LANE_CALL_CAPS.transfer` = 80 | section 2 |
+| OVERNIGHT 20 | User ruling 2026-10-12, B: the "history is behind" caption shows ONLY while a walk cursor is null or more than a day behind; an owed point does not show it (was: the applied default also showed it for an owed point) | section 8 |
+| OVERNIGHT 21 | User ruling 2026-10-12, B (the spec rule kept): a `FAILED` transfer stays owed at its point until the 6-month floor drops it. VERIFY 14 still records the exact status values, for the record; no rule waits on it | section 5, T11 |
+| R30 | Orchestrator ruling (technical) 2026-10-12: on every walk a BTC row the client cannot parse (no finite time, an off-contract field) is a per-record stop, never a whole-run throw. It owes its canonical point when a usable time exists, else the span; the other rows of the span import. Codes: `capital-row-unreadable`, `pay-row-unreadable`, `transfer-row-unreadable`, `earn-row-unreadable`. A malformed envelope still throws for the whole read | sections 1, 3, 5, 6, 7; P10, C3, T12, E12, E23 |
+
 ## Sources (official, checked 2026-10-09)
 
 developers.binance.com returned an empty body from this sandbox (HTTP 202, bot
@@ -124,8 +134,12 @@ missing. The balances stay correct.
 - Reads: `fetchPayHistory` (S1), `fetchUniversalTransfers(type, ...)` (S4),
   `fetchEarnRecords(kind, ...)` for the 6 Earn endpoints (S5, `asset=BTC`). No
   Convert read (D7).
-- A parse error or an unknown envelope throws an error with a fixed message (no
-  URL, no body). For Pay: a `code` other than `"000000"`, or no `data` array (A1).
+- An unknown envelope throws an error with a fixed message (no URL, no body). For
+  Pay: a `code` other than `"000000"`, or no `data` array (A1); for every read, a
+  non-array list or a non-numeric `total`. A ROW the strict parse rejects (not an
+  object, no string asset or currency, or a BTC row off contract) never throws: the
+  page lists it under `unreadable`, with its own time field when that is usable, and
+  the walk owes it (R30, 2026-10-12; was: the row threw for the whole read).
 - Parsed types keep only the fields in the S-table. For Pay that means
   `payerInfo.{name,binanceId}` and `receiverInfo.{name,binanceId}`. Email, phone,
   accountId, country codes, card number, institution, and digital wallet id are
@@ -158,7 +172,7 @@ withdraw budget moves into this object, with the same numbers and the same rule.
   |---|---|
   | capital | withdraw 9 (unchanged), deposit unbounded |
   | Pay | 20 |
-  | Transfer | 80 (was 60; OVERNIGHT 19, pending the user: a caught-up run needs forward 20 + an owed range 20 + re-scan 20 + points) |
+  | Transfer | 80 (was 60; user ruling 2026-10-12, OVERNIGHT 19 = A: a caught-up run needs forward 20 + an owed range 20 + re-scan 20 + points) |
   | Earn | 30 (4500 IP) |
 
   Each walk has its own cap so that a long backfill in one walk cannot starve the
@@ -355,9 +369,11 @@ withdraw budget moves into this object, with the same numbers and the same rule.
     holds both. The per-record codes
     are `pay-id-missing`, `pay-direction-ambiguous`, `pay-amount-invalid`, `pay-split-mismatch`,
     `pay-funds-not-btc`, `pay-wallet-unknown`, `pay-btc-funded-other-coin`, `capital-id-missing`,
-    `capital-amount-invalid` and `capital-wallet-unknown`. Any stop that is not tied to one
-    record (`pay-holding-missing`, `capital-holding-missing`, `pay-page-stuck`), and a record
-    with no usable time (`capital-time-invalid`, a Pay order of another coin with none) or one
+    `capital-amount-invalid`, `capital-wallet-unknown`, and (R30, 2026-10-12) `pay-row-unreadable`
+    and `capital-row-unreadable` for a row the client could not parse. Any stop that is not tied
+    to one record (`pay-holding-missing`, `capital-holding-missing`, `pay-page-stuck`), and a record
+    with no usable time (`capital-time-invalid`, a Pay order of another coin with none, an
+    unreadable row with none) or one
     outside the span, owes the whole span; a holding that cannot be placed commits no row of the
     span. **Write order.** The rows of the span are written first; then ONE list write takes the
     read span out of the list and puts the points (or the whole span) back; in the re-scan the
@@ -568,16 +584,24 @@ withdraw budget moves into this object, with the same numbers and the same rule.
   which is 140 calls of IP 1, spread over runs by the 80-call cap (section 2).
 - Filter: `asset === 'BTC'` (the client counts a row of another asset for the pager and
   parses only BTC rows strictly) and a settled `status` (`CONFIRMED` assumed, Q11).
-- **Commit granularity: per record.** A record the walk cannot trust owes its own point and
-  the other records of the span commit (pending pass and re-scan; the forward pass leaves the
-  span uncommitted and ends, the cursor unmoved; OVERNIGHT 18 and 17, pending the user).
+- **Commit granularity: per record** (user ruling 2026-10-12, OVERNIGHT 18 = A). A record the
+  walk cannot trust owes its own point and the other records of the span commit (pending pass
+  and re-scan). The forward pass leaves the span uncommitted and ends, the cursor unmoved;
+  whether the run goes on is OVERNIGHT 17, pending the user.
   Per-record codes: `transfer-not-settled` (any status but `CONFIRMED`; T5),
   `transfer-id-missing`, `transfer-amount-invalid`, `transfer-type-mismatch` (the row's
-  `type` is not the type read).
+  `type` is not the type read), `transfer-row-unreadable` (R30: a row the client could not
+  parse; T12).
+- **A `FAILED` transfer stays owed** (user ruling 2026-10-12, OVERNIGHT 21 = B). Any status
+  but `CONFIRMED`, a final failure included, is `transfer-not-settled`: the point stays on the
+  list, read once a round, until the 6-month floor passes it. No row imports. The owed point
+  does not show the caption (section 8). VERIFY 14 records the exact status values for the
+  record; no rule waits on them (T11).
 - **Owed after a stop.** A per-record stop owes `[timestamp - 1, timestamp + 1]` in the type
   it was read under (`timestamp` in ms; VERIFY 14 for the filter field and precision). A stop
-  not tied to one record (`transfer-page-drift`, `transfer-holding-missing`) or a record whose
-  `timestamp` lies outside the span owes the span, in every type.
+  not tied to one record (`transfer-page-drift`, `transfer-holding-missing`), an unreadable row
+  with no finite `timestamp`, or a record whose `timestamp` lies outside the span owes the
+  span, in every type.
 - `MAIN_FUNDING` gives Spot -x and Funding +x as paired legs. `FUNDING_MAIN` is the
   reverse.
 - An untracked type gives one leg on Spot (`MAIN`) or Funding (`FUNDING`), with
@@ -598,17 +622,20 @@ withdraw budget moves into this object, with the same numbers and the same rule.
   shared walk (sections 3 and 4). Windows of 30 days (the S5 cap). Paging:
   `fetchAllByTotal` (section 3). A drift of one kind (`earn-page-drift`) owes the span; the
   other kinds of the span commit (pending pass and re-scan).
-- **Commit granularity: per record** (OVERNIGHT 18, pending the user). A subscription or a
-  redemption is a record; a reward group (below) is ONE record. A record the walk cannot trust
-  owes `[time - 1, time + 1]` in its own kind (`time` in ms; VERIFY 15); per-record codes:
-  `earn-not-settled`, `earn-split-mismatch`, `earn-amount-invalid`, `earn-id-missing`,
-  `earn-account-unknown` (`sourceAccount` or `destAccount` neither SPOT nor FUNDING),
-  `earn-reward-type-unknown`. A stop not tied to one record (`earn-page-drift`,
-  `earn-holding-missing`) or a record outside the span owes the span. The forward pass leaves
+- **Commit granularity: per record** (user ruling 2026-10-12, OVERNIGHT 18 = A). A
+  subscription or a redemption is a record; a reward group (below) is ONE record. A record the
+  walk cannot trust owes `[time - 1, time + 1]` in its own kind (`time` in ms; VERIFY 15);
+  per-record codes: `earn-not-settled`, `earn-split-mismatch`, `earn-amount-invalid`,
+  `earn-id-missing`, `earn-account-unknown` (`sourceAccount` or `destAccount` neither SPOT nor
+  FUNDING), `earn-reward-type-unknown`, `earn-row-unreadable` (R30: a row the client could not
+  parse). An unreadable reward row owes its point for every reward group of its kind at that
+  `time`: its group cannot be known, and a group numbered without it would number two ways. A
+  stop not tied to one record (`earn-page-drift`, `earn-holding-missing`), an unreadable row
+  with no finite `time`, or a record outside the span owes the span. The forward pass leaves
   the span uncommitted and ends, the cursor unmoved.
 - Floor: 2022-01-01 UTC. That is before Simple Earn launched (assumption); the
   probe reports the earliest record (Q12). With the 30-call cap a first walk takes
-  about 10 runs.
+  about 12 runs (58 windows x 6 calls / 30).
 - **Subscription** (flexible or locked), with a settled status only (Q13):
   - one Earn +amount leg;
   - debit legs Spot -`amtFromSpot` and Funding -`amtFromFunding`, each only when
@@ -633,8 +660,9 @@ withdraw budget moves into this object, with the same numbers and the same rule.
     flexible `REALTIME` -> Earn holding; flexible `BONUS` -> Spot holding;
     locked (any `type`) -> Spot holding. Any other or unknown flexible `type`
     (including `REWARDS`) stops its group with the fixed tag
-    `earn-reward-type-unknown`, owed at the group's point: no row is guessed, and the
-    caption shows history behind (OVERNIGHT 20). A missing Spot holding is created at 0 (P7).
+    `earn-reward-type-unknown`, owed at the group's point: no row is guessed. The owed point
+    alone does not show the caption (user ruling 2026-10-12, OVERNIGHT 20 = B); a stop in the
+    forward pass holds the cursor, which does. A missing Spot holding is created at 0 (P7).
   - **Known gap.** A locked product that pays its rewards at maturity to the
     redeem destination (Spot, or the same-coin Flexible product = Earn, per
     `redeemTo`) cannot be told apart from the locked reward row, so such a reward
@@ -661,8 +689,10 @@ withdraw budget moves into this object, with the same numbers and the same rule.
     it finds any, the coordinator asks the user before merge whether they are real
     double credits.
   - A missing or non-finite amount, or a blank project or position id, stops the
-    group (owed at its point). A BTC row with no finite `time` fails the client's
-    strict parse: the walk's run fails and is logged (was: stop the window).
+    group (owed at its point). A BTC row with no finite `time`, or any other row the
+    client cannot parse, is `earn-row-unreadable` (R30, 2026-10-12): with no finite
+    `time` it owes the span, and the other rows of the span import; the run never fails
+    for it (was: the client's parse error failed the walk's run).
 - Keys for subscriptions and redemptions:
   `` `${accountId}:earn:<kind>:<purchaseId|redeemId>:${holdingKey}` ``.
 
@@ -687,14 +717,17 @@ window is finished over later runs from the re-scan mark. Only a span of 1 ms th
 full is offset-paged until a short page. The legacy fallback cursor (the newest imported
 record, for a holding with no cursor yet) still feeds the plan, but never the stored marks.
 
-Strict capital parse. Capital rows parse strictly. An off-contract body or row
-(a non-array body, a non-object row, a missing, null, or non-string `amount`, a
-non-numeric `status`, a bad `insertTime` or `applyTime`, a non-integer `walletType`)
-throws `BinanceHistoryParseError`. The window stops, so its rows are not committed
-and the cursor stays at the last good window's end. The walk is logged by the error
-name, and the caption shows history behind. The cost: one off-contract row stalls
-capital history until an app update. The reason: a skipped row is silent loss, and
-`amount: null` used to import a 0-sat row.
+Strict capital parse, one row at a time (R30, 2026-10-12). Capital rows parse
+strictly, and a skipped row is never silent: `amount: null` used to import a 0-sat
+row. An off-contract BODY (a non-array body) throws `BinanceHistoryParseError` for
+the whole read. An off-contract ROW (a non-object row, a missing, null, or non-string
+`amount`, a non-numeric `status`, a bad `insertTime` or `applyTime`, a non-integer
+`walletType`) is `capital-row-unreadable`, a per-record stop: it owes its point
+(`[t - 1, t + 1]` from a finite `insertTime`; `[T - 1000, T + 1000]` from an
+`applyTime` that `parseWithdrawTime` reads), or the span when no time is usable, and
+the other rows of the span import. In the forward pass it stops like any other record
+(span uncommitted, cursor unmoved). Was: the row threw, the window stopped, and one
+off-contract row stalled capital history until an app update.
 
 ### 8. Labels, caption, and i18n (en + uk, translator review before deploy)
 
@@ -709,8 +742,9 @@ capital history until an app update. The reason: a skipped row is silent loss, a
   uk: "Частину історії транзакцій Binance ще не імпортовано. Кіко продовжить
   імпорт під час наступних синхронізацій."
 - `isBinanceHistoryBehind` is true when ANY walk cursor is null or more than a day
-  behind, or any walk's list holds a point (OVERNIGHT 20, pending the user; was: the
-  cursors only).
+  behind, and only then. An owed point (a record a walk could not import yet, its cursor
+  past it) does not show the caption (user ruling 2026-10-12, OVERNIGHT 20 = B; was: the
+  default applied in 5ad68db9 also showed it while any walk's list held a point).
 - The stored literals `'Binance Pay'` and `'Binance Earn'` are data, not catalogue
   strings. They are proper nouns, so they are not translated.
 
@@ -784,6 +818,8 @@ Placement (the "was:" column shows today's result):
 | P9 | Pay, out | non-BTC order paid with BTC funds by the user (B4: one the user received, the user the receiver and not the payer, is ignored; an order whose parties do not settle it stops) | stop (`pay-btc-funded-other-coin`), cursor unmoved | n/a |
 | C1 | capital | walletType 0 | Spot | Spot |
 | C2 | capital | walletType 1 | Funding | Spot |
+| C3 | capital | a row the client cannot parse (R30), beside a good row, pending pass or re-scan | `capital-row-unreadable`: owed at its point (no usable time: the span); the good row imports; the run goes on | the read threw, the window stopped |
+| P10 | Pay | a BTC order (or an item with no string `currency`) the client cannot parse (R30), beside a good order, pending pass or re-scan | `pay-row-unreadable`: owed at its point (no finite `transactionTime`: the span); the good order imports; the run goes on | the read threw, the run failed |
 
 Transfer:
 
@@ -799,6 +835,8 @@ Transfer:
 | T8 | pending pass or re-scan: one T5 record and one CONFIRMED record of another type in the span | the CONFIRMED one imports; the T5 one is owed at its point | nothing of the window |
 | T9 | forward pass, the same span | nothing commits, the forward pass ends, the run goes on (OVERNIGHT 17) | stop the window |
 | T10 | row `type` is not the type read | `transfer-type-mismatch`, owed at its point | n/a |
+| T11 | status `FAILED` (user ruling 2026-10-12, OVERNIGHT 21 = B) | `transfer-not-settled`: owed at its point until the 6-month floor drops it; no row; no caption | same (the OVERNIGHT 21 recommendation to ignore it is not taken) |
+| T12 | a row the client cannot parse (R30), beside a CONFIRMED row of another type, pending pass or re-scan | `transfer-row-unreadable`: owed at its point in the type read (no finite `timestamp`: the span, every type); the CONFIRMED row imports; the run goes on | the read threw, the run failed |
 
 Earn:
 
@@ -815,7 +853,7 @@ Earn:
 | E9 | two identical reward records | two rows (`n` 0 and 1) | same |
 | E10 | re-read returns the same group | same keys, no new rows | same |
 | E11 | reward on a window boundary, returned by both windows | one row (same key) | same |
-| E12 | reward with missing `time` or a non-finite amount | missing `time`: client parse error, the run fails and is logged; non-finite amount: `earn-amount-invalid`, the group owed at its point | stop the window |
+| E12 | reward with missing `time` or a non-finite amount | missing `time`: `earn-row-unreadable` (R30), the span owed, the other rows of the span import, the run goes on; non-finite amount: `earn-amount-invalid`, the group owed at its point | missing `time`: the run failed (5ad68db9); before: stop the window |
 | E13 | gathered rows are not equal to `total` | `earn-page-drift`: the span owed as a range, the other kinds commit | stop the window |
 | E14 | status not settled | `earn-not-settled`, owed at its point | stop the window |
 | E15 | one flexible `BONUS` reward record | Spot +rewards, 'Binance Earn', no marker | same |
@@ -826,6 +864,7 @@ Earn:
 | E20 | two reward groups in one span, one of unknown `type` | the other group imports; the unknown one owed at one point | nothing of the window |
 | E21 | `FAILED` subscription | ignored, nothing owed | same |
 | E22 | one kind drifts in the re-scan | the other five kinds commit; the span owed as a range | nothing of the window |
+| E23 | a row the client cannot parse with a finite `time` (R30), pending pass or re-scan | `earn-row-unreadable`: owed at its point in its kind; a reward row holds every reward group of its kind at that `time` on the same point; the other rows import; the run goes on | the read threw, the run failed |
 
 Convert: not imported (D7). No walk, no rows.
 
@@ -854,12 +893,16 @@ Convert: not imported (D7). No walk, no rows.
   - the new metadata keys are carried and reset;
   - `run-crypto-sync`: one shared gate and budget, and a failure in each walk is
     isolated;
-  - the caption with any walk behind;
+  - the caption with any walk cursor behind, and no caption for an owed point alone
+    (user ruling 2026-10-12);
+  - each walk: an unreadable row is owed at its point (or its span) and the other rows
+    import; the run never throws for a row (R30);
   - `exchangeLegDescription` transfer and `wallet:` branches, and an unknown code;
   - `exchange-exclusion` with `untracked_counterpart`;
   - export back-compat.
-- Client tests: path, params, signing, envelope parse, a fixed-message error, PII
-  fields absent from the parsed objects, header parse, and 429 handling.
+- Client tests: path, params, signing, envelope parse, a fixed-message error for a bad
+  envelope, a bad row listed under `unreadable` and never thrown (R30), PII fields absent
+  from the parsed objects, header parse, and 429 handling.
 
 ## VERIFY gate (before merge): live probe run by the user
 
@@ -914,7 +957,8 @@ Probe items:
     (`[T - 1000, T + 1000]`) rests on this.
 14. Universal transfer: which field `startTime` and `endTime` filter on (`timestamp`?),
     the precision of `timestamp`, the range ends (item 12) on a row of ANY asset, whether
-    a `tranId` repeats across types, the status values (Q11), and the answer to a
+    a `tranId` repeats across types, the status values (Q11; for the record only, no rule
+    waits on them: a `FAILED` transfer stays owed, user ruling 2026-10-12), and the answer to a
     `startTime` older than 6 months. The owed point of a transfer rests on the first two;
     a wrong filter field keeps the point owed (fail closed), and the record starves once it
     can be placed. The probe account had no transfer row: one small Spot -> Funding
@@ -948,7 +992,7 @@ keeps its rule.
 | Q8 | Can BTC fund a non-BTC Pay order? | Stop `pay-btc-funded-other-coin`. If any are found, import the BTC part (I5, option A) | Not seen: 0 of 41 non-BTC orders paid with BTC; each of the 5 BTC orders has a BTC `fundsDetail` entry and none is mixed. User ruling A2: keep the stop; build option A when a real case is seen | 7 |
 | Q9 | Pay walletType 3/4/6 or combined payments? | Stop | `walletType` 1 on 5 of 5; `walletTypes` [1] on 4 and [1,2] on 1; no 3, 4, or 6. `walletType` was 1 even for the [1,2] split, so placement uses `walletTypes` and `walletAssetCost` (sums matched `abs(amount)` on 5 of 5). `walletTypes` entries probably come as text: the client reads an integer or a digit string. `fundsDetail` entry: `amount` string, `currency` string, `walletAssetCost` object keyed by wallet id | 8 |
 | Q10 | Universal transfer window cap and `size` max? | 30-day windows, size 100 | `size` 101 is rejected (-1102), 100 is the max. The 31, 60, 90 day, and whole-depth windows answered HTTP 200 with 0 rows, so the window cap is not proven. No data in the probe account for the rest; rule unchanged (30 days) | 9 |
-| Q11 | Universal transfer settled status value? | Only `CONFIRMED`. Anything else stops | No data in the probe account (0 transfer rows), rule unchanged | 9 |
+| Q11 | Universal transfer settled status value? | Only `CONFIRMED`. Anything else, `FAILED` included, is owed at its point until the floor drops it (user ruling 2026-10-12) | No data in the probe account (0 transfer rows), rule unchanged | 9 |
 | Q12 | Earn history depth? | Floor 2022-01-01. Older windows return empty | The samples before the 2022 floor returned total 0; there are no Earn rows at all. No data in the probe account, rule unchanged | 10 |
 | Q13 | Earn settled status values? | Only `SUCCESS`. A pending status stops, a final failure is ignored | `size` max is 100. No Earn rows, so no status values. No data in the probe account, rule unchanged | 10 |
 | Q14 | Where do Earn rewards land, and what does a locked redemption's `amount` mean? | ANSWERED, ruling A (user, 2026-10-10): flexible `REALTIME` -> Earn, flexible `BONUS` -> Spot, locked -> Spot, other flexible `type` stops (`earn-reward-type-unknown`); sources: the two FAQ URLs in section 6. Known gap: maturity-paid locked rewards. Redemption legs use `amount`. `rewardAmt` is not imported from redemptions | No data in the probe account (no reward rows, no locked positions), rule unchanged; ruling A stands and the maturity-paid gap stays open | 10 (reward `type` counts per kind; maturity-paid question) |
@@ -967,7 +1011,8 @@ keeps its rule.
   coin, and one small Simple Earn flexible subscription and redemption of any coin, so the
   transfer and Earn reads have a row to answer with.
 - Before January 2027: decide the import of the Funding -> Spot migration (item 16).
-- OVERNIGHT 17-21 of the plan (`docs/superpowers/plans/2026-10-10-binance-history.md`).
+- OVERNIGHT 17 of the plan (`docs/superpowers/plans/2026-10-10-binance-history.md`).
+  OVERNIGHT 18-21 are decided (user ruling 2026-10-12, "Rulings of 2026-10-12" above).
 
 ## Change sets (7 tasks, track `binance-history`)
 
@@ -989,12 +1034,13 @@ runs once at the end.
   test).
 - task 4/7: Pay walk (`binance.pay-history.ts`): direction, placement, the
   nickname description, the cap and guard, and tests.
-- task 5/7: the deferred task 4/7 minors (first commit), the multi-series shared walk
+- task 5/7: the deferred task 4/7 minors and R30 for capital and Pay (first commit), the
+  multi-series shared walk
   (`binance.history-paging.ts`, typed points, `callsOf`), the Transfer walk
   (`binance.transfer-history.ts`) and tests.
 - task 6/7: Earn walk (`binance.earn-history.ts`), including per-record rewards
-  with the group-ordinal key. Also the caption logic (`isBinanceHistoryBehind`
-  over all cursors) and copy (en + uk), moved here from the dropped Convert task.
+  with the group-ordinal key, and R30 for Earn rows. Also the caption logic
+  (`isBinanceHistoryBehind` over all cursors, no owed-point condition) and copy (en + uk), moved here from the dropped Convert task.
   Tests.
 - task 7/7: the probe script (memory/refs, user run) as the VERIFY gate, and the
   kiko-architecture "Binance transaction history" rewrite (via scribe). The
