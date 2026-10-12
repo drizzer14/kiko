@@ -4,6 +4,7 @@ import { mkdtempSync } from 'node:fs';
 
 import {
   mutatedFiles,
+  mutateEntries,
   REAL_NODE_MODULES,
   runWithArgumentStub,
   buildMutationRepository,
@@ -132,6 +133,14 @@ describe('scripts/checks/mutation.sh comment-only filter', () => {
       expect(result.stdout).not.toContain('skipped (comment-only)');
     });
 
+    it('hands Stryker the kept file as its plain path and never as a range too', () => {
+      const result = runBeside('src/foo.test.ts', TEST_REAL_CHANGE);
+
+      // Stryker reads a plain path beside a range of the same file as "do not mutate" it, and the
+      // comment lines of this file hold no mutant, so a range would also lose the rule.
+      expect(mutateEntries(result.stubArguments)).toEqual(['src/foo.ts']);
+    });
+
     it('skips the source file when the colocated test changed only in a comment', () => {
       const result = runBeside('src/foo.test.ts', TEST_COMMENTED);
 
@@ -198,8 +207,9 @@ describe('scripts/checks/mutation.sh comment-only filter', () => {
 
       expect(listed.code).toBe(0);
       expect(listed.stdout.split('\n').filter(Boolean)).toEqual([
-        'src/foo.ts',
+        'src/foo.ts whole file (2 lines)',
         KEPT_LINE('src/foo.ts'),
+        'changed lines: 2',
         'mutable files: 1 (cap 30)',
       ]);
     });
@@ -217,8 +227,9 @@ describe('scripts/checks/mutation.sh comment-only filter', () => {
 
     expect(listed.code).toBe(0);
     expect(listed.stdout.split('\n').filter(Boolean)).toEqual([
-      'src/nonascii/foo.ts',
+      'src/nonascii/foo.ts whole file (2 lines)',
       'kept (colocated test changed): src/nonascii/foo.ts',
+      'changed lines: 2',
       'mutable files: 1 (cap 30)',
     ]);
   });
@@ -244,6 +255,9 @@ describe('scripts/checks/mutation.sh comment-only filter', () => {
       // which the stub writes from the --mutate list; its table has one row per file it graded.
       expect(result.stdout).toMatch(/^src\/real\.ts: 100\.00 /m);
       expect(result.stdout).not.toMatch(/^src\/commented-/m);
+      expect(
+        mutateEntries(result.stubArguments).some((entry) => entry.startsWith('src/commented-')),
+      ).toBe(false);
       expect(result.stdout).toContain(SKIPPED_LINE('src/commented-one.ts'));
       expect(result.stdout).toContain(SKIPPED_LINE('src/commented-two.ts'));
     });
@@ -253,9 +267,10 @@ describe('scripts/checks/mutation.sh comment-only filter', () => {
 
       expect(result.code).toBe(0);
       expect(result.stdout.split('\n').filter(Boolean)).toEqual([
-        'src/real.ts',
+        'src/real.ts 1-1 (1 changed lines)',
         SKIPPED_LINE('src/commented-one.ts'),
         SKIPPED_LINE('src/commented-two.ts'),
+        'changed lines: 1',
         'mutable files: 1 (cap 30)',
       ]);
       expect(result.stubArguments).toBeNull();
