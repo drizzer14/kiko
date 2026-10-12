@@ -25,7 +25,8 @@
     "scripts/checks/closure-table.js",
     "scripts/checks/deps-ranges.js",
     "scripts/checks/mutation-score.js",
-    "scripts/checks/comment-only-changes.js"
+    "scripts/checks/comment-only-changes.js",
+    "scripts/checks/mutation-ranges.js"
   ],
   "ignoreDependencies": [
     "@babel/runtime",
