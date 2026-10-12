@@ -1654,7 +1654,7 @@ module pointers — read it there rather than a duplicated list here.
 user's BTC across ALL of Binance's wallets and writes THREE separate
 holdings — Spot, Funding, and Earn (Simple Earn Flexible + Locked
 COMBINED into one Earn holding) — each its own `binanceAsset` match key,
-NOT one aggregated "Binance BTC" holding (that was the prior model). The
+NOT one aggregated "Binance BTC" holding. The
 four reads, all signed by the one shared `signedRequest` helper in
 `binance.client.ts` (HMAC-SHA256 over the same `timestamp=…&recvWindow=…`
 query; read-only key is enough):
@@ -1752,13 +1752,20 @@ than restated here:
   `binance.history-records.ts` (`settleRecords`, `commitSettledSpan`). The
   capital caller is `binance.transactions.ts` (`WINDOW_MS`, `MAX_WINDOWS`,
   `MAX_PAGES_PER_WINDOW`), the Pay caller `binance.pay-history.ts`
-  (`PAY_WINDOW_MS`, `MAX_WINDOWS`; see "Binance Pay" below).
-- **Two passes per walk, 89-day windows.** Binance rejects a `startTime`/
+  (`PAY_WINDOW_MS`, `MAX_WINDOWS`; see "Binance Pay" below). The Transfer
+  caller is `binance.transfer-history.ts` (`syncBinanceTransferHistory`, run
+  third in `run-crypto-sync.ts`; see "Binance Transfer" below); the paging
+  helpers live in `binance.history-paging.ts` (`fetchAllByTotal`,
+  `readSeriesSpan`) and the write seam in `binance.walk-write-deps.ts`
+  (`BinanceWalkWriteDeps`).
+- **Two passes per walk; 89-day windows on capital and Pay, 30-day on Transfer.**
+  The Transfer walk reads 30-day windows within a six-month floor
+  (`TRANSFER_WINDOW_MS`, `transferFloorMs`). Binance rejects a `startTime`/
   `endTime` span of 90 days or more and caps a page at 1000 rows
   (`HISTORY_PAGE_LIMIT` in `binance.history-client.ts`); every walk
   reads windows under 90 days. A run is the FORWARD pass (the cursor to
   now, moving the cursor) and the window RE-SCAN (a stored mark; never
-  writes the forward cursor). The capital, Pay, Transfer and Earn walks all
+  writes the forward cursor). The capital, Pay and Transfer walks all
   run it. `WalkPass` is `'forward' | 'pending' | 'rescan'` (read it in
   `binance.history-walk.ts`); a run reads the forward pass, the owed
   ranges (`pending`, in a round-robin from the range cursor), the re-scan,
@@ -1793,8 +1800,8 @@ than restated here:
   the 2017 floor. The forward pass starts at `max(floor, cursor)`. The
   re-scan covers `[base, forward start)` with
   `base = max(floor, min(end - window, forward start - RESYNC_OVERLAP_MS))`,
-  kept in its own mark (`binanceHistoryRescanCursor` /
-  `binancePayRescanCursor`, in `binanceWalkCursorFields`); it stores the floor
+  kept in its own mark (one per walk; read `binanceWalkCursorFields` in
+  `holding-metadata.ts` for the keys); it stores the floor
   when finished, and a mark behind the base starts a new pass.
 - **`upsertByMetadataKey` carries the watermark across a balance sync.** A
   balance sync's own upsert (`runBalanceSyncInner` -> `upsertExchangeMany`)
@@ -1802,10 +1809,10 @@ than restated here:
   provider — a blind overwrite that would otherwise wipe
   `binanceHistoryCursor` the instant the NEXT balance sync ran (the
   Binance arm always runs balance-then-history in the same invocation, so
-  this bites on literally every subsequent sync). The upsert now reads the
+  this bites on literally every subsequent sync). The upsert reads the
   stored row's metadata inside the same write and carries over any
   `carriedMetadataKeys` entry (read it in `holding-metadata.ts`: the walk
-  cursors `binanceWalkCursorFields`, the owed lists `binanceWalkPendingFields`
+  cursors `binanceWalkCursorFields`, the owed lists `binanceWalkPendingFields`,
   the point cursors `binanceWalkPointCursorFields`, the range cursors
   `binanceWalkRangeCursorFields` and the span hints
   `binanceWalkSpanHintFields`, plus a reopened
@@ -1826,7 +1833,8 @@ than restated here:
   the span owes only that record's point; any other stop, or a record with
   no usable time, owes the whole span; every record the walk can trust
   imports either way. The forward pass leaves a span uncommitted on any
-  stop. `setBinanceWalkCursor` also
+  stop, except in the Transfer lane, where a stop tied to one transfer with
+  a usable time owes that point and the span commits (`TRANSFER_FORWARD_OWES`). `setBinanceWalkCursor` also
   gates the write on the holding's OWN account still being
   `institution = 'binance'` (joined in the same query) and is a no-op
   otherwise — a walk holds the account's credentials for its whole run, so
@@ -1937,6 +1945,27 @@ than restated here:
   detail + Home lists render the shared income/expense default label; a
   bespoke "Deposit"/"Withdrawal" label is a deferred follow-up.
 
+### Binance Transfer
+
+The Transfer walk (`binance.transfer-history.ts`) imports BTC transfers between the user's own
+wallets on the same two passes (see above), in 30-day windows (`TRANSFER_WINDOW_MS`) within a
+six-month floor (`transferFloorMs`). One window is one read per transfer type (the series;
+`callsOf` counts them, `LANE_CALL_CAPS.transfer` in `binance.history-budget.ts` caps the lane). A
+record imports only at `TRANSFER_SETTLED_STATUS`; BTC only. The stop codes live in
+`binance.transfer-history.ts`; the design is in the spec and plan named under "Binance Pay".
+
+- **Transfer forward stops (O1, Transfer lane only).** A stop tied to ONE transfer with a usable
+  time is owed at that transfer's own point and the forward pass goes past it
+  (`TRANSFER_FORWARD_OWES`:
+  `transfer-failed`, `-not-settled`, `-type-mismatch`, `-id-missing`,
+  `-amount-invalid`, `-row-unreadable` with a `timestamp`): the span's other
+  transfers commit, the cursor moves on, the point stays owed until the
+  transfer settles or the floor drops it. `commitSettledSpan` still stops the
+  forward pass (R28) for any stop that owes more than a point: a row with no
+  usable time (it owes the whole span), `transfer-page-drift`,
+  `transfer-holding-missing`, a record outside the span. Pay and capital keep
+  the A2 stop (every stop holds the cursor).
+
 ### Binance Pay
 
 The Pay walk (`binance.pay-history.ts`) imports BTC Pay orders on the same
@@ -1954,8 +1983,9 @@ stop codes and scenario rows.
 - **Canonical points.** A stuck record owes `[t - 1, t + 1]` (Pay, a
   deposit) or `[T - 1000, T + 1000]` (a withdrawal, whose `applyTime` may be
   cut or rounded to the second); never cut to the span.
-- **The point-leave rule.** A point leaves only when a span holding ALL of it
-  was read and returned a record whose own point equals it, or by the floor.
+- **The point-leave rule.** A point leaves only when a WINDOW read to its end
+  holds all of it and returned a record whose own point equals it (a point
+  window's progress across runs is the resume below), or by the floor.
   A read that returned nothing, only neighbours, or a span holding part of it
   keeps it. A range with no record leaves once read. A record is told by its
   point, not an id: a trusted twin at the same millisecond lets the point
@@ -2013,22 +2043,10 @@ stop codes and scenario rows.
   A point window whose first span needs h halvings, one span a run, completes
   within 2h + 1 runs, while no later span comes back full (a later span that is
   too full halves again, one more run a halving).
-- **STOP_ENDS_PASS and R28: user ruling of 2026-10-12, kept** (plan
-  OVERNIGHT item 17). `STOP_ENDS_PASS` (`binance.history-walk.ts`) says a stop
+- **STOP_ENDS_PASS and R28** (plan OVERNIGHT item 17). `STOP_ENDS_PASS` (`binance.history-walk.ts`) says a stop
   in the forward pass ends only that pass, so the run goes on to the owed
   ranges, the re-scan and the points; the cursor never passes a stuck record
   (but see the Transfer ruling next); a budget or rate limit ends every read.
-- **Transfer forward stops: user ruling of 2026-10-12, O1 = A (Transfer lane
-  only).** A stop tied to ONE transfer with a usable time is owed at that
-  transfer's own point and the forward pass goes past it (`TRANSFER_FORWARD_OWES`:
-  `transfer-failed`, `-not-settled`, `-type-mismatch`, `-id-missing`,
-  `-amount-invalid`, `-row-unreadable` with a `timestamp`): the span's other
-  transfers commit, the cursor moves on, the point stays owed until the
-  transfer settles or the floor drops it. `commitSettledSpan` still stops the
-  forward pass (R28) for any stop that owes more than a point: a row with no
-  usable time (it owes the whole span), `transfer-page-drift`,
-  `transfer-holding-missing`, a record outside the span. Pay and capital keep
-  the A2 stop (every stop holds the cursor).
 - **R13.** Pay direction comes from the uid alone (`payDirection`): payer id =
   uid is out, receiver id = uid is in.
 - **C1.** The Pay walk does not read the capital cursor (spec section 4).
@@ -2037,13 +2055,13 @@ stop codes and scenario rows.
   (`walletOf`). Receives (R22, B6) are placed by DATE:
   before `PAY_RECEIPTS_TO_SPOT_FROM_MS` (2026-09-29T00:00Z) Funding, from
   then Spot.
-- **User ruling A (2026-10-11).** A non-BTC order the user paid with BTC funds
+- **Ruling A.** A non-BTC order the user paid with BTC funds
   (`pay-btc-funded-other-coin`) is owed at its own point in the pending pass
   and the re-scan and the other orders import; the forward pass keeps the A2
   stop (cursor unmoved).
 - **Announcement.** Binance's January 2027 Funding -> Spot auto-migration:
   https://www.binance.com/en/support/announcement/detail/01cbe42ead1e4f1a9382363754d2eb5a
-  (checked 2026-10-11). The 2026-09-29 Spot-from-date comes from a different
+  (source checked 2026-10-11). The 2026-09-29 Spot-from-date comes from a different
   announcement (spec), which needs its own check date.
 - **Open probe items** (range-end semantics per endpoint, the withdraw filter
   field and `applyTime` rounding, late Pay orders, the migration's transfer

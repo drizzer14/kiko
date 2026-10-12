@@ -48,14 +48,18 @@ that holding.
 
 | # | Ruling | Where |
 |---|---|---|
-| OVERNIGHT 17 (R28) | User ruling 2026-10-12 (kept): a stop in the forward pass ends only the forward pass; the run goes on to the owed ranges, the re-scan and the points. The cursor still never passes the stuck record (A2) | sections 5, 7 |
+| OVERNIGHT 17 (R28) | User ruling 2026-10-12 (kept): a stop in the forward pass ends only the forward pass; the run goes on to the owed ranges, the re-scan and the points. The cursor still never passes the stuck record (A2) (Transfer: see O1) | sections 5, 7 |
 | OVERNIGHT 18 | User ruling 2026-10-12, A (confirmed): the Transfer and Earn walks follow option A. The other rows of a span import; only the stuck record is owed, at its point | sections 5, 6 |
 | OVERNIGHT 19 | User ruling 2026-10-12, A (confirmed): `LANE_CALL_CAPS.transfer` = 80 | section 2 |
 | OVERNIGHT 20 | User ruling 2026-10-12, B: the "history is behind" caption shows ONLY while a walk cursor is null or more than a day behind; an owed point does not show it (was: the applied default also showed it for an owed point) | section 8 |
 | OVERNIGHT 21 | User ruling 2026-10-12, B (the spec rule kept): a `FAILED` transfer stays owed at its point until the 6-month floor drops it. VERIFY 14 still records the exact status values, for the record; no rule waits on it | section 5, T11 |
+| O1 | User ruling 2026-10-12, O1 = A, Transfer lane only: every stop tied to one transfer with a usable time is owed at that transfer's own point and the forward pass goes past it (`TRANSFER_FORWARD_OWES`); a stop with no usable time keeps R28; the Pay and capital lanes do not change | sections 5, 7; T5, T10 |
 | R30 | Orchestrator ruling (technical) 2026-10-12: on every walk a BTC row the client cannot parse (no finite time, an off-contract field) is a per-record stop, never a whole-run throw. It owes its canonical point when a usable time exists, else the span; the other rows of the span import. Codes: `capital-row-unreadable`, `pay-row-unreadable`, `transfer-row-unreadable`, `earn-row-unreadable`. A malformed envelope still throws for the whole read | sections 1, 3, 5, 6, 7; P10, C3, T12, E12, E23 |
 | R31 | Orchestrator ruling (technical) 2026-10-12, under the no-starvation rule: each walk reads the windows of its owed ranges in a round-robin from a range cursor (`binanceHistoryRangeCursor`, `binancePayRangeCursor`, `binanceTransferRangeCursor`), the end of the window it read last, moved once a read has started; each of `W` owed windows is read within `ceil(W / L)` runs that enter the pending pass. Code `range-cursor-malformed` | section 4; the Transfer lane's cap of 80 reads one window a run |
 | R32 | Orchestrator ruling (technical) 2026-10-12, under the no-known-limit rule: a window that splits and stops before its first span commits leaves the span it was at as a hint, per walk and per pass (`binanceHistorySpanHints`, `binancePaySpanHints`, `binanceTransferSpanHints`); the next read of a window whose start the hint holds (`hint.start <= window.start < hint.end`, not only a window that starts exactly there) begins with what is left of it; a window that needs `h` halvings commits its first span within `h + 1` runs, whether or not the window's start moves with the clock. A POINT window that is left after some of its spans committed keeps a resume in the same hint (R34, see section 4). Code `span-hints-malformed` | section 4 |
+| R33 | Orchestrator ruling (technical) 2026-10-12, under the no-starvation rule: the round-robin rotates the WINDOWS of the owed ranges, not the ranges; the windows that start at or after the cursor come first (`start >= cursor`, not `>`), then the rest; each of `W` owed windows is read within `ceil(W / L)` runs that enter the pending pass | section 4 |
+| R34 | Orchestrator ruling (technical) 2026-10-12, under the no-known-limit rule: a point window keeps a resume across runs; its first span commits within `2h + 1` runs while no later span comes back full | section 4 |
+| R35 | Orchestrator ruling (technical) 2026-10-12, under the no-known-limit rule: a split hint matches a window by containment (`hint.start <= window.start < hint.end`); a point window matches by exact start | section 4 |
 
 ## Sources (official, checked 2026-10-09)
 
@@ -701,12 +705,13 @@ withdraw budget moves into this object, with the same numbers and the same rule.
   stays on the list, read once a round, until the 6-month floor passes it. No row imports. The
   owed point does not show the caption (section 8). VERIFY 14 records the exact status values
   for the record; no rule waits on them (T11).
-- **A transfer with a usable time does not stop the forward pass** (user ruling 2026-10-12,
-  item 3 = A for `FAILED`, widened by O1 = A, Transfer lane only). Every stop tied to ONE
+- **A transfer with a usable time does not stop the forward pass** (Transfer lane only). Every stop tied to ONE
   transfer with a usable time is owed at that transfer's own point (the point the pending pass
-  and the re-scan owe it) and goes past: `transfer-failed`, `transfer-not-settled`,
-  `transfer-type-mismatch`, `transfer-id-missing`, `transfer-amount-invalid`, and
-  `transfer-row-unreadable` with a `timestamp`. The point goes into the list before the cursor
+  and the re-scan owe it) and goes past: `transfer-failed` (user ruling 2026-10-12, item 3 = A),
+  `transfer-not-settled` (coordinator ruling on the user's standing approval, 2026-10-12: owed
+  at its point, imports when it settles), and `transfer-type-mismatch`, `transfer-id-missing`,
+  `transfer-amount-invalid` and `transfer-row-unreadable` with a `timestamp` (user ruling
+  2026-10-12, O1 = A). The point goes into the list before the cursor
   moves, the other transfers of its span commit, the cursor passes it, and the newer transfers
   import in the same run; the point stays owed in every run until the transfer settles or the
   floor drops it, and a second identical run imports nothing it had not. A stop with no usable
@@ -947,12 +952,12 @@ Transfer:
 | T2 | FUNDING_MAIN | Funding -x, Spot +x, paired | same |
 | T3 | MAIN_UMFUTURE | Spot -x, `wallet:UMFUTURE`, excluded | same |
 | T4 | UMFUTURE_FUNDING | Funding +x, `wallet:UMFUTURE` | same |
-| T5 | status not settled | `transfer-not-settled`: owed at `[t - 1, t + 1]` in its type; forward pass: owed at that point too, the span commits and the cursor passes it (user ruling 2026-10-12, O1 = A) | stop the window |
+| T5 | status not settled | `transfer-not-settled`: owed at `[t - 1, t + 1]` in its type; forward pass: owed at that point too, the span commits and the cursor passes it (coordinator ruling on the user's standing approval, 2026-10-12) | stop the window |
 | T6 | asset not BTC | ignored (counted for the pager) | ignored |
 | T7 | Funding holding missing (T1) | P7, then T1 | same |
 | T8 | pending pass or re-scan: one T5 record and one CONFIRMED record of another type in the span | the CONFIRMED one imports; the T5 one is owed at its point | nothing of the window |
 | T9 | forward pass, a span with a stop that owes no point (a row with no time, a type that drifted, a holding that is missing, a record outside the span) | nothing commits, the forward pass ends, the cursor stays, the run goes on (OVERNIGHT 17, R28) | stop the window |
-| T10 | row `type` is not the type read | `transfer-type-mismatch`, owed at its point; forward pass: the cursor passes it (O1 = A) | n/a |
+| T10 | row `type` is not the type read | `transfer-type-mismatch`, owed at its point; forward pass: the cursor passes it (user ruling 2026-10-12, O1 = A) | n/a |
 | T11 | status `FAILED` (user ruling 2026-10-12, OVERNIGHT 21 = B; the forward pass goes past it, item 3 = A) | `transfer-failed`: owed at its point until the 6-month floor drops it; no row; no caption; forward pass: the point is stored, the span commits and the cursor passes it | same (the OVERNIGHT 21 recommendation to ignore it is not taken) |
 | T12 | a row the client cannot parse (R30), beside a CONFIRMED row of another type, pending pass or re-scan | `transfer-row-unreadable`: owed at its point in the type read (no finite `timestamp`: the span, every type); the CONFIRMED row imports; the run goes on | the read threw, the run failed |
 
@@ -1081,8 +1086,12 @@ Probe items:
     a wrong filter field keeps the point owed only while no trusted record sits at the same
     millisecond (with a twin the point leaves, and the stuck record is never returned either
     way), and the record starves once it can be placed. This item is a MERGE BLOCKER for that
-    case: if a filter mismatch is possible, the point must carry the stuck record's identity. The
-    probe account had no transfer row: one small Spot -> Funding transfer of any coin first
+    case: if a filter mismatch is possible, the point must carry the stuck record's identity.
+    Two O1 cases follow from the same probe. (a) A forward `PENDING` transfer whose `timestamp`
+    moves when it settles, or one under a filter mismatch, that settles after it leaves the
+    30-day re-scan is never read. (b) A record Binance returns outside its requested span
+    (a `FAILED` one included) freezes the Transfer forward pass until the floor: that stop is
+    not in `TRANSFER_FORWARD_OWES`. The probe account had no transfer row: one small Spot -> Funding transfer of any coin first
     (Still needing the user).
 15. Simple Earn, per kind: which field `startTime` and `endTime` filter on (`time`?), its
     precision, the range ends (item 12), and whether every member of a reward group comes
