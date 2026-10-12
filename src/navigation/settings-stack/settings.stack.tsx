@@ -12,6 +12,7 @@ import ImportDataScreen from '@kiko/screens/settings/import-data';
 import ReminderFormScreen from '@kiko/screens/forms/reminder-form';
 import CategoryFormScreen from '@kiko/screens/forms/category-form';
 import CategoryDetailScreen from '@kiko/screens/settings/category-detail';
+import CategoryRuleFormScreen from '@kiko/screens/forms/category-rule-form';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 
 import type { SettingsStackParamList } from '../types';
@@ -56,6 +57,12 @@ const SettingsStack: FC = () => {
         name="CategoryForm"
         component={CategoryFormScreen}
         options={{ title: t('categoryForm.addTitle') }}
+      />
+
+      <Stack.Screen
+        name="CategoryRuleForm"
+        component={CategoryRuleFormScreen}
+        options={{ title: t('ruleForm.addTitle') }}
       />
 
       <Stack.Screen

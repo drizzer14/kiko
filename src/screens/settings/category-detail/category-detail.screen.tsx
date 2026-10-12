@@ -16,6 +16,7 @@ import Button from '@kiko/design-system/components/button';
 import Screen from '@kiko/design-system/components/screen';
 import { prepareRules } from '@kiko/categories/category-rules';
 import { editBarItem } from '@kiko/design-system/edit-bar-item';
+import { genericEntitySymbol } from '@kiko/holdings/entity-symbols';
 import { type FC, useEffect, useLayoutEffect, useMemo } from 'react';
 import type { SettingsStackParamList } from '@kiko/navigation/types';
 import LoadingState from '@kiko/design-system/components/loading-state';
@@ -30,7 +31,8 @@ import { ruleSummary } from './rule-summary';
 
 type CategoryDetailScreenProps = NativeStackScreenProps<SettingsStackParamList, 'CategoryDetail'>;
 
-type RuleLine = { id: string; title: string };
+// A rule that can not be read has nothing to open.
+type RuleLine = { id: string; title: string; isReadable: boolean };
 
 // The same money text the rest of the app shows, so a rule's amount reads like a transaction's.
 const formatRuleAmount = (minorUnits: number, currency: Currency): string =>
@@ -53,16 +55,18 @@ const ruleLinesOf = (
     ...prepared.ordered.filter(belongs).map((rule) => ({
       id: rule.id,
       title: ruleSummary(rule.displayMatchers, { t, clock, formatAmount: formatRuleAmount }),
+      isReadable: true,
     })),
     ...prepared.unreadable.filter(belongs).map((rule) => ({
       id: rule.id,
       title: t('categoryPage.unreadableRule'),
+      isReadable: false,
     })),
   ];
 };
 
-// A category's page: its rules as cards in priority order, and the row that makes it the default.
-// Editing the category is the header's Edit.
+// A category's page: its rules as cards in priority order, the button that adds one, and the row
+// that makes the category the default. Editing the category is the header's Edit.
 const CategoryDetailScreen: FC<CategoryDetailScreenProps> = ({ navigation, route }) => {
   const { categoryKey } = route.params;
   const { t } = useTranslation();
@@ -130,19 +134,41 @@ const CategoryDetailScreen: FC<CategoryDetailScreenProps> = ({ navigation, route
   }
 
   return (
-    <Screen scroll>
+    <Screen
+      scroll
+      footer={
+        <Button
+          variant="primary"
+          onPress={() => navigation.navigate('CategoryRuleForm', { categoryKey })}
+          icon={genericEntitySymbol.rule}
+        >
+          {t('categoryPage.addRule')}
+        </Button>
+      }
+    >
       <Box gap={4}>
         <Box gap={3}>
           <Text variant="heading">{t('categoryPage.rulesHeading')}</Text>
 
           {lines.length === 0 ? (
-            <Text tone="textSecondary">{t('categories.noRules')}</Text>
+            <Text variant="caption" tone="textSecondary">
+              {t('categoryPage.emptyRules')}
+            </Text>
           ) : (
             <Box gap={4}>
               {lines.map((line) => (
                 <RuleCard
                   key={line.id}
                   title={line.title}
+                  onPress={
+                    line.isReadable
+                      ? () =>
+                          navigation.navigate('CategoryRuleForm', {
+                            categoryKey,
+                            ruleId: line.id,
+                          })
+                      : undefined
+                  }
                   onDelete={() => categoryRulesRepo.deleteRule(line.id)}
                 />
               ))}

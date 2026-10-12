@@ -214,14 +214,30 @@ export const en = {
     quotedName: '"{{name}}"',
     unreadableRule: "This rule can't be read",
     deleteRuleTitle: 'Delete Rule',
+    addRule: 'Add rule',
+    emptyRules: 'Add a rule to set this category on matching transactions.',
   },
   categoryForm: {
     addTitle: 'New Category',
     editTitle: 'Edit Category',
   },
   ruleForm: {
+    addTitle: 'New Rule',
+    editTitle: 'Edit Rule',
+    // A condition is what the model calls a matcher: one test a transaction must pass.
+    addMatcher: 'Add condition',
+    allMustMatch: 'A transaction must match every condition.',
+    condition: 'Condition',
+    conditionSheetTitle: 'Condition',
+    selectCondition: 'Select a condition',
     nameIs: 'Name is',
     nameStartsWith: 'Name starts with',
+    amount: 'Amount',
+    direction: 'Type',
+    time: 'Time',
+    operator: 'Comparison',
+    operatorSheetTitle: 'Comparison',
+    selectOperator: 'Select a comparison',
     equal: 'Equal to',
     more: 'More than',
     atLeast: 'At least',
@@ -229,6 +245,27 @@ export const en = {
     atMost: 'At most',
     before: 'Before',
     after: 'After',
+    // A statement row can carry a date and no time; it is read as noon in the statement's zone.
+    timeHint: "Statement rows without a time count as 12:00 in the statement's time zone.",
+    remove: 'Remove',
+    removeCondition: 'Remove condition {{index}}',
+    errorNoMatchers: 'Add at least one condition.',
+    errorName: 'Enter a name.',
+    errorAmount: 'Enter an amount of 0 or more.',
+    errorNeverMatches:
+      'These conditions can never match together. For a window over midnight, use two rules.',
+    errorDuplicate: 'A rule with these conditions already exists in {{category}}.',
+  },
+  ruleRewrite: {
+    title: 'Apply Rule',
+    // How many existing transactions saving the rule changes; English defines every plural form so
+    // both catalogues carry the same keys (Ukrainian selects all four).
+    message_one: 'This changes {{count}} transaction.',
+    message_few: 'This changes {{count}} transactions.',
+    message_many: 'This changes {{count}} transactions.',
+    message_other: 'This changes {{count}} transactions.',
+    applyToExisting: 'Apply to existing',
+    newOnly: 'New transactions only',
   },
   forms: {
     // Field labels reused across two or more of the forms below (the account,

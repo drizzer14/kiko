@@ -119,6 +119,8 @@ const holdCard = async (): Promise<void> => {
 
 const GROCERIES: CategoryData = { key: 'groceries', title: 'Groceries', icon: 'cart' };
 
+const EMPTY_HINT = 'Add a rule to set this category on matching transactions.';
+
 describe('CategoryDetailScreen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -298,19 +300,97 @@ describe('CategoryDetailScreen', () => {
       expect(cards[1]).toHaveTextContent("This rule can't be read");
     });
 
-    it('says "No rules" when the category has none, and shows no card', async () => {
+    it('hints at adding a rule when the category has none, and shows no card', async () => {
       mockRules = [ruleOf('elsewhere', 'trips', [{ type: 'nameIs', text: 'Wizz' }])];
 
       const { getByText, queryAllByTestId } = await renderScreen();
 
-      expect(getByText('No rules')).toBeTruthy();
+      expect(getByText(EMPTY_HINT)).toBeTruthy();
       expect(queryAllByTestId('rule-card')).toHaveLength(0);
+    });
+
+    it('shows no hint once the category has a rule', async () => {
+      mockRules = [ruleOf('silpo', 'groceries', [{ type: 'nameIs', text: 'Silpo' }])];
+
+      const { queryByText } = await renderScreen();
+
+      expect(queryByText(EMPTY_HINT)).toBeNull();
     });
 
     it('heads the list "Rules"', async () => {
       const { getByText } = await renderScreen();
 
       expect(getByText('Rules')).toBeTruthy();
+    });
+  });
+
+  describe('adding and opening a rule', () => {
+    it('opens the rule editor for a new rule of this category from "Add rule"', async () => {
+      const { getByText } = await renderScreen('groceries');
+
+      await fireEvent.press(getByText('Add rule'));
+
+      expect(navigation.navigate).toHaveBeenCalledWith('CategoryRuleForm', {
+        categoryKey: 'groceries',
+      });
+    });
+
+    it('offers "Add rule" beside the rules too, not only on an empty page', async () => {
+      mockRules = [ruleOf('silpo', 'groceries', [{ type: 'nameIs', text: 'Silpo' }])];
+
+      const { getByText } = await renderScreen();
+
+      expect(getByText('Add rule')).toBeTruthy();
+    });
+
+    it('opens the editor for the rule that is tapped', async () => {
+      mockRules = [
+        ruleOf('silpo', 'groceries', [{ type: 'nameIs', text: 'Silpo' }]),
+        ruleOf('atb', 'groceries', [{ type: 'nameIs', text: 'Atb' }]),
+      ];
+
+      const { getByText } = await renderScreen('groceries');
+
+      await fireEvent.press(getByText('Name is "Atb"'));
+
+      expect(navigation.navigate).toHaveBeenCalledWith('CategoryRuleForm', {
+        categoryKey: 'groceries',
+        ruleId: 'atb',
+      });
+      expect(navigation.navigate).toHaveBeenCalledTimes(1);
+    });
+
+    it('opens nothing for a rule that can not be read, which only offers its delete', async () => {
+      mockRules = [ruleOf('broken', 'groceries', 'not json')];
+
+      const { getByText } = await renderScreen();
+
+      await fireEvent.press(getByText("This rule can't be read"));
+
+      expect(navigation.navigate).not.toHaveBeenCalled();
+    });
+
+    describe('under the uk language', () => {
+      beforeEach(async () => {
+        await act(async () => {
+          await i18n.changeLanguage('uk');
+        });
+      });
+
+      afterEach(async () => {
+        await act(async () => {
+          await i18n.changeLanguage('en');
+        });
+      });
+
+      it('labels the button and hints at the first rule in Ukrainian', async () => {
+        const { getByText } = await renderScreen('groceries');
+
+        expect(getByText('Додати правило')).toBeTruthy();
+        expect(
+          getByText('Додайте правило, щоб ставити цю категорію відповідним транзакціям.'),
+        ).toBeTruthy();
+      });
     });
   });
 
@@ -405,7 +485,7 @@ describe('CategoryDetailScreen', () => {
 
       expect(navigation.goBack).not.toHaveBeenCalled();
       expect(queryByTestId('category-detail-loading')).toBeNull();
-      expect(getByText('No rules')).toBeTruthy();
+      expect(getByText(EMPTY_HINT)).toBeTruthy();
     });
   });
 
@@ -414,13 +494,14 @@ describe('CategoryDetailScreen', () => {
       ['categories', () => (mockCategoriesIsLoading = true)],
       ['rules', () => (mockRulesIsLoading = true)],
       ['settings', () => (mockSettingsIsLoading = true)],
-    ])('shows the loading state, not "No rules", while the %s load', async (_name, load) => {
+    ])('shows the loading state, not the empty hint, while the %s load', async (_name, load) => {
       load();
 
       const { getByTestId, queryByText } = await renderScreen();
 
       expect(getByTestId('category-detail-loading')).toBeTruthy();
-      expect(queryByText('No rules')).toBeNull();
+      expect(queryByText(EMPTY_HINT)).toBeNull();
+      expect(queryByText('Add rule')).toBeNull();
       expect(navigation.goBack).not.toHaveBeenCalled();
     });
   });

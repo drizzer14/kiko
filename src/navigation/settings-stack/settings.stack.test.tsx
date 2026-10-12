@@ -84,6 +84,10 @@ describe('SettingsStack', () => {
     expect(titles.CategoryForm).toBe('New Category');
   });
 
+  it('registers the rule editor with the title of a new rule', () => {
+    expect(titleByScreen().CategoryRuleForm).toBe('New Rule');
+  });
+
   it('registers the reminders list and the reminder form it opens', () => {
     const titles = titleByScreen();
     expect(titles.Reminders).toBe('Reminders');

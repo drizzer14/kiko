@@ -18,8 +18,10 @@ import RuleCard from './rule-card.component';
 
 const SUMMARY = 'Name is "Silpo" · Expense';
 
-const renderCard = (onDelete = jest.fn()) =>
-  render(<RuleCard title={SUMMARY} onDelete={onDelete} />, { wrapper: GestureRootWrapper });
+const renderCard = (onDelete = jest.fn(), onPress?: () => void) =>
+  render(<RuleCard title={SUMMARY} onPress={onPress} onDelete={onDelete} />, {
+    wrapper: GestureRootWrapper,
+  });
 
 const hold = async (): Promise<void> => {
   await act(async () => {
@@ -37,6 +39,28 @@ describe('RuleCard', () => {
 
     expect(getByText(SUMMARY)).toBeTruthy();
     expect(getByText(SUMMARY).props.numberOfLines).toBeUndefined();
+  });
+
+  it('reports a tap on the rule when it has an action to open', async () => {
+    const onPress = jest.fn();
+    const { getByText } = await renderCard(jest.fn(), onPress);
+
+    await fireEvent.press(getByText(SUMMARY));
+
+    expect(onPress).toHaveBeenCalledTimes(1);
+  });
+
+  it('is a button for a rule it can open, and plain text for one it cannot', async () => {
+    const opening = await renderCard(jest.fn(), jest.fn());
+
+    expect(opening.getByRole('button', { name: SUMMARY })).toBeTruthy();
+
+    await opening.unmount();
+
+    const plain = await renderCard();
+
+    expect(plain.queryByRole('button', { name: SUMMARY })).toBeNull();
+    expect(plain.getByText(SUMMARY)).toBeTruthy();
   });
 
   it('asks before deleting on a hold, under a title that does not repeat the line in quotes', async () => {
