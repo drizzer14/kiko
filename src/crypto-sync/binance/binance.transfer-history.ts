@@ -103,13 +103,13 @@ const TRANSFER_PAGE_DRIFT = 'transfer-page-drift';
 const TRANSFER_ROW_UNREADABLE = 'transfer-row-unreadable';
 
 /**
- * The stops of one transfer that the forward pass owes and goes past (user ruling of 2026-10-12,
- * O1 = A): the transfer stays owed at its own point until it settles or the floor drops it, so
- * no later read of the span settles it differently, and holding the cursor behind it would keep
- * every newer transfer from importing. It applies only to a transfer with a usable time, which
- * owes a point (`commitSettledSpan`): a row with no time owes the whole span, and a stop that is
- * no one transfer's (`transfer-page-drift`, `transfer-holding-missing`) is not in this list, so
- * both hold the cursor back.
+ * The stops of one transfer that the forward pass owes and goes past: the transfer stays owed at
+ * its own point until it settles or the floor drops it, so no later read of the span settles it
+ * differently, and holding the cursor behind it would keep every newer transfer from importing.
+ * It applies only to a transfer with a usable time, which owes a point (`commitSettledSpan`): a
+ * row with no time owes the whole span, and a stop that is no one transfer's
+ * (`transfer-page-drift`, `transfer-holding-missing`) is not in this list, so both hold the
+ * cursor back.
  */
 export const TRANSFER_FORWARD_OWES: readonly string[] = [
   TRANSFER_FAILED,

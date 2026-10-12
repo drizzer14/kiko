@@ -1276,9 +1276,9 @@ const insideMergedRangeScenario = (lane: Lane, seed: number, withTwin = true): S
 
 /**
  * A stuck record at `time` that holds the forward pass back for good, so the cursor never passes
- * it. The Transfer lane owes the point of a record with a time and goes past it (user ruling of
- * 2026-10-12), so its record has none: the client could not read its time, and it owes the whole
- * span, which only a stop of the forward pass keeps. Every other lane stops at any stuck record.
+ * it. The Transfer lane owes the point of a record with a time and goes past it, so its record
+ * has none: the client could not read its time, and it owes the whole span, which only a stop of
+ * the forward pass keeps. Every other lane stops at any stuck record.
  */
 const forwardStopOf = (lane: Lane, record: SimRecord): SimRecord => ({
   ...record,

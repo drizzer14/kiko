@@ -3031,7 +3031,7 @@ describe('runWalkPlan with span hints', () => {
     it('gives a point window only the hint that starts where it starts: the windows of two points overlap', async () => {
       const given: [number, WalkWindow | undefined][] = [];
       const { store, done } = run({
-        plan: planOf({ points: [span(150, 160), span(100, 200)] }),
+        plan: planOf({ points: [span(120, 160), span(150, 160), span(100, 200)] }),
         stored: hintsOf({ point: [span(100, 150)] }),
         runWindow: async (window, _pass, _keep, hint) => {
           given.push([window.start, hint]);
@@ -3043,6 +3043,7 @@ describe('runWalkPlan with span hints', () => {
       await done;
 
       expect(given).toEqual([
+        [120, undefined],
         [150, undefined],
         [100, span(100, 150)],
       ]);
