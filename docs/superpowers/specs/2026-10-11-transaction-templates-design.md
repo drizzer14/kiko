@@ -318,6 +318,11 @@ SQL first and then decide in JS. This follows the rule
   shipped. If templates is first, it adds a `message` to today's `ConfirmSheet`,
   and category-rules keeps that line when it rebases. The two tracks never edit
   the confirm in parallel. See "Boundary with category-rules".
+  A count read that fails still adds a numberless line,
+  `categories.deleteTemplatesUnknown`, after the rules line, because the delete
+  clears the category in its templates whatever the read did, so the confirm
+  always warns (user ruling of 2026-10-12; the rules line,
+  `categories.deleteRulesNoticeUnknown`, follows the same pattern).
 - A template delete (context menu) has no links. It is a title-only confirm
   (`common.deleteNamed`).
 
@@ -638,6 +643,7 @@ Add new `SaveDisabledField` keys: `templateName` and `holding`.
 | `categories.deleteTemplates_few` | This also clears it in {{count}} templates. | Також її буде очищено в {{count}} шаблонах. | |
 | `categories.deleteTemplates_many` | This also clears it in {{count}} templates. | Також її буде очищено в {{count}} шаблонах. | |
 | `categories.deleteTemplates_other` | This also clears it in {{count}} templates. | Також її буде очищено в {{count}} шаблону. | |
+| `categories.deleteTemplatesUnknown` | This also clears it in its templates. | Також її буде очищено в шаблонах. | confirm body when the count read fails (no number) |
 
 Checked against the 2026-10-11 rulings: no key served a removed item (loan link,
 comment), so no key is removed. Every key has en and uk text, and every uk text

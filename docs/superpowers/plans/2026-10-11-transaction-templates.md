@@ -402,11 +402,11 @@ The two tracks never edit this confirm in parallel. Pick exactly one branch from
 
 **Files:** the confirm's screen file (branch (b): `categories.screen.tsx` and `categories.screen.test.tsx`), `en.ts`, `uk.ts`, `src/i18n/init/init.plural-rules.test.ts`
 
-**Strings:** `categories.deleteTemplates_one/_few/_many/_other`.
+**Strings:** `categories.deleteTemplates_one/_few/_many/_other`, `categories.deleteTemplatesUnknown`.
 
 - [ ] **step 1/5:** Write the failing test: when the confirm opens for a category that 2 templates use, `countReferencingCategory` is read and the confirm body says "This also clears it in 2 templates." With 0, there is no body (branch (b)) or no extra line (branch (a)). The uk text at 1, 2, 5 and 21.
 - [ ] **step 2/5:** Run `npx jest src/screens/settings/categories src/i18n` (branch (a): the screen folder category-rules used). Expected: FAIL.
-- [ ] **step 3/5:** Implement. The count is read when the confirm opens (as `removeHoldingsNoticeOf` does).
+- [ ] **step 3/5:** Implement. The count is read when the confirm opens (as `removeHoldingsNoticeOf` does). A count read that fails adds the numberless line `categories.deleteTemplatesUnknown` after the rules line, because the delete clears the category in its templates whatever the read did, so the confirm still warns (user ruling of 2026-10-12). Step 1/5 also pins that case, in en and uk, and the case where both reads fail (both unknown lines, rules first).
 - [ ] **step 4/5:** Run the step 2/5 command plus `npx tsc --noEmit`. Expected: PASS. If branch (a) applies, also check boundary point 7: a template with a category, used through the Template tab, saves with category-rules' manual-pick flag set to 1. Write that as a test in `transaction-form.templates.test.tsx` with the repo mocked: the `recordManual` input carries the flag that category-rules derives from `userPickedCategory`.
 - [ ] **step 5/5:** Commit `feat(categories): delete confirm counts templates`. Then the review, `make verify` and `KIKO_MUTATION_BASE=<CS6 base> make mutable` (expected 1), then BATCH READY. CS4, CS5 and CS6 merge into `next` together.
 
@@ -463,6 +463,7 @@ The text is the spec §8 table, verbatim. Task column: the task that adds the ke
 | `categories.deleteTemplates_one` | 16 | This also clears it in {{count}} template. | Також її буде очищено в {{count}} шаблоні. |
 | `categories.deleteTemplates_few` / `_many` | 16 | This also clears it in {{count}} templates. | Також її буде очищено в {{count}} шаблонах. |
 | `categories.deleteTemplates_other` | 16 | This also clears it in {{count}} templates. | Також її буде очищено в {{count}} шаблону. |
+| `categories.deleteTemplatesUnknown` | 16 | This also clears it in its templates. | Також її буде очищено в шаблонах. |
 
 Nav titles go in `title-keys.ts` (`addTemplateTitle`, `editTemplateTitle`, `templateSheetTitle`, `transactionTemplates.title`). The casing, final-stop and `TITLE_KEYS` call-site tests run in `npx jest src/i18n` in each task that adds keys.
 
