@@ -100,6 +100,14 @@ describe('planRuleRewrite', () => {
     expect(plan).toEqual([]);
   });
 
+  it('skips a row whose category key differs from the rule category only in case', () => {
+    const plan = planRuleRewrite(prepareRules([savedFood]), 'saved', [
+      candidate({ id: 'capitalized', category: 'Food' }),
+    ]);
+
+    expect(plan).toEqual([]);
+  });
+
   it('P13 skips a row a stronger rule wins', () => {
     const stronger = ruleRow({
       id: 'stronger',

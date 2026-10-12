@@ -10,10 +10,10 @@ import {
   chunkRows,
   IN_CLAUSE_CHUNK_SIZE,
 } from '@kiko/db';
-import { guard } from 'fnts';
 import {
   type CategoryRuleMatcher,
   type PreparedRule,
+  isSameCategory,
   matcherSetKey,
   matchesRule,
   parseRuleMatchers,
@@ -84,10 +84,11 @@ type RuleDraft = {
 };
 
 // A rule saved again exactly as it is stored has nothing to write and nothing to rewrite, so
-// neither the count nor the save looks at the ledger for it.
+// neither the count nor the save looks at the ledger for it. The category compares without case,
+// as the page that opened the editor found the rule.
 const isStoredAsGiven = (stored: CategoryRuleRow | undefined, draft: RuleDraft): boolean =>
   stored !== undefined &&
-  stored.category === draft.category &&
+  isSameCategory(stored.category, draft.category) &&
   JSON.stringify(parseRuleMatchers(stored.matchers)) === JSON.stringify(draft.matchers);
 
 // The row the draft becomes: a new rule is created now, an edited one keeps its creation time, and
@@ -121,15 +122,11 @@ const refusalOf = (draft: RuleDraft, otherRules: readonly PreparedRule[]): strin
   return parseRuleMatchers(JSON.stringify(draft.matchers)) === null ? 'unreadable' : undefined;
 };
 
-const assertSavable = guard(
-  [
-    (refusal: string | undefined) => refusal !== undefined,
-    (refusal: string | undefined): never => {
-      throw new Error(`categoryRulesRepo.saveRule: ${refusal}`);
-    },
-  ],
-  (_refusal: string | undefined): void => undefined,
-);
+const assertSavable = (refusal: string | undefined): void => {
+  if (refusal !== undefined) {
+    throw new Error(`categoryRulesRepo.saveRule: ${refusal}`);
+  }
+};
 
 type PreparedRules = ReturnType<typeof prepareRules>;
 
@@ -200,33 +197,33 @@ const rowIdsForUnnamedRule = async (
 const rowIdsRewrittenBy = async (
   databaseTransaction: typeof database,
   prepared: PreparedRules,
-  savedRuleId: string,
+  savedRule: PreparedRule,
 ): Promise<string[]> => {
-  const savedRule = prepared.ordered.find((rule) => rule.id === savedRuleId);
-
-  if (savedRule === undefined) {
-    return [];
-  }
-
   const nameMatchers = savedRule.matchers.filter(isNameMatcher);
 
   return nameMatchers.length > 0
     ? rowIdsForNamedRule(databaseTransaction, prepared, { ...savedRule, matchers: nameMatchers })
-    : rowIdsForUnnamedRule(databaseTransaction, prepared, savedRuleId);
+    : rowIdsForUnnamedRule(databaseTransaction, prepared, savedRule.id);
 };
 
+const preparedRuleOf = (prepared: PreparedRules, ruleId: string): PreparedRule | undefined =>
+  prepared.ordered.find((rule) => rule.id === ruleId);
+
+// Writes the saved rule's category onto every row that rule wins, planned from the rows as they
+// stand inside the write, so the count is exact even when a sync landed after the user saw a
+// number. It never reverts a row: a row the rule does not win keeps the category it has.
 const rewriteWithPreparedRules = async (
   databaseTransaction: typeof database,
   prepared: PreparedRules,
   savedRuleId: string,
 ): Promise<number> => {
-  const savedRule = prepared.ordered.find((rule) => rule.id === savedRuleId);
+  const savedRule = preparedRuleOf(prepared, savedRuleId);
 
   if (savedRule === undefined) {
     return 0;
   }
 
-  const rowIds = await rowIdsRewrittenBy(databaseTransaction, prepared, savedRuleId);
+  const rowIds = await rowIdsRewrittenBy(databaseTransaction, prepared, savedRule);
 
   for (const rowIdChunk of chunkRows(rowIds, IN_CLAUSE_CHUNK_SIZE)) {
     await databaseTransaction
@@ -237,22 +234,6 @@ const rewriteWithPreparedRules = async (
 
   return rowIds.length;
 };
-
-/**
- * Writes the saved rule's category onto every row that rule wins today, on the caller's own
- * transaction, and returns how many rows changed. Rows are planned from the rows as they stand
- * inside the write, so the count is exact even when a sync landed after the user saw a number.
- * It never reverts a row: a row the rule does not win keeps the category it has.
- */
-export const rewriteForRuleDatabaseTransaction = async (
-  databaseTransaction: typeof database,
-  savedRuleId: string,
-): Promise<number> =>
-  rewriteWithPreparedRules(
-    databaseTransaction,
-    prepareRules(await readAllRulesDatabaseTransaction(databaseTransaction)),
-    savedRuleId,
-  );
 
 // The row the user is editing always ends in the category they picked, whatever kind of row it is:
 // the rewrite never touches an exchange leg, a balance-setting row or a split-change row, so the
@@ -284,14 +265,16 @@ const giveSourceRowCategory = async (
 
   const winner = winningRule(prepared, subjectOfStoredRow(source));
   const isOutRanked =
-    winner !== undefined && winner.id !== savedRule.id && winner.category !== savedRule.category;
+    winner !== undefined &&
+    winner.id !== savedRule.id &&
+    !isSameCategory(winner.category, savedRule.category);
 
   await databaseTransaction
     .update(transactions)
     .set({ category: savedRule.category, categorySetByHand: isOutRanked })
     .where(eq(transactions.id, sourceTransactionId));
 
-  return source.category !== savedRule.category ? 1 : 0;
+  return isSameCategory(source.category, savedRule.category) ? 0 : 1;
 };
 
 export const categoryRulesRepo = {
@@ -333,8 +316,12 @@ export const categoryRulesRepo = {
     }
 
     const row = rowOfDraft(stored, draft, Date.now());
+    const prepared = prepareRules(withRow(rows, row));
+    const savedRule = preparedRuleOf(prepared, row.id);
 
-    return (await rowIdsRewrittenBy(database, prepareRules(withRow(rows, row)), row.id)).length;
+    return savedRule === undefined
+      ? 0
+      : (await rowIdsRewrittenBy(database, prepared, savedRule)).length;
   },
   /**
    * Saves the rule and, when asked, rewrites every existing row it wins, all in ONE write, so the
@@ -382,8 +369,9 @@ export const categoryRulesRepo = {
    * is already exactly this name moves to the new category (it keeps its id and is now the newest
    * rule, so the user's latest choice wins a tie); a rule with other conditions beside this name
    * is a different rule and is left alone. The row the user is editing gets the picked category
-   * and is freed from its by-hand mark, because it now follows the rule. A blank name is a no-op:
-   * it must not become a catch-all.
+   * and is freed from its by-hand mark, because it now follows the rule, unless a stronger rule of
+   * another category wins that row: then it is flagged by hand instead, so the pick stays. A blank
+   * name is a no-op: it must not become a catch-all.
    *
    * Categories are keyed by a stable slug, so a later category rename only changes its title.
    */

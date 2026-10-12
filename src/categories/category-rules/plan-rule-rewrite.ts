@@ -1,4 +1,5 @@
 import { winningRule } from './prepare-rules';
+import { isSameCategory } from './same-category';
 import { subjectOfStoredRow } from './rule-subject';
 import type { PreparedRules, RewriteCandidate } from './category-rules.d';
 
@@ -37,7 +38,7 @@ export const planRuleRewrite = (
     .filter(
       (row) =>
         isRewriteEligible(row) &&
-        row.category !== savedRule.category &&
+        !isSameCategory(row.category, savedRule.category) &&
         winningRule(prepared, subjectOfStoredRow(row))?.id === savedRuleId,
     )
     .map((row) => row.id);

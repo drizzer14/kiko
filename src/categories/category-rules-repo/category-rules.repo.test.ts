@@ -10,7 +10,7 @@ jest.mock('@kiko/db/client', () => {
   return { database: client.database, write: client.write };
 });
 
-import { database, write } from '@kiko/db';
+import { database } from '@kiko/db';
 import { DatabaseSync } from 'node:sqlite';
 import { applyAllMigrations } from '@kiko/test-support/real-sqlite';
 import { parseRuleMatchers, type CategoryRuleMatcher } from '@kiko/categories/category-rules';
@@ -18,7 +18,6 @@ import { parseRuleMatchers, type CategoryRuleMatcher } from '@kiko/categories/ca
 import {
   categoryRulesRepo,
   rewriteDescriptionRowsQuery,
-  rewriteForRuleDatabaseTransaction,
   rewritePageQuery,
 } from './category-rules.repo';
 
@@ -510,6 +509,37 @@ describe('categoryRulesRepo.applyNameRule', () => {
       expect(categoriesOf().source).toBe('food');
       expect(flagOf('source')).toBe(0);
     });
+
+    it('frees the source row as usual when the stronger rule is stored with the picked category in other case', async () => {
+      insertRule({ ...SILPO_EXPENSE_SHOPS, category: 'Food' });
+      insertTransaction({
+        id: 'source',
+        description: 'Silpo',
+        category: 'groceries',
+        categorySetByHand: true,
+      });
+
+      await categoryRulesRepo.applyNameRule({
+        name: 'Silpo',
+        category: 'food',
+        sourceTransactionId: 'source',
+      });
+
+      expect(categoriesOf().source).toBe('food');
+      expect(flagOf('source')).toBe(0);
+    });
+  });
+
+  it('does not count a source row that holds the picked category in other case', async () => {
+    insertTransaction({ id: 'source', description: 'Silpo', category: 'Food' });
+
+    const updated = await categoryRulesRepo.applyNameRule({
+      name: 'Silpo',
+      category: 'food',
+      sourceTransactionId: 'source',
+    });
+
+    expect(updated).toBe(0);
   });
 
   it('gives a split-change source row the picked category, while other split-change rows keep theirs', async () => {
@@ -749,6 +779,32 @@ describe('categoryRulesRepo.countRuleRewrite', () => {
     ).toBe(0);
   });
 
+  it('counts nothing for a rule whose stored category differs from its page only in case', async () => {
+    insertRule({ id: 'stored', category: 'Food', matchers: SILPO_FOOD });
+    insertTransaction({ id: 'silpo', description: 'Silpo', category: 'groceries' });
+
+    expect(
+      await categoryRulesRepo.countRuleRewrite({
+        id: 'stored',
+        category: 'food',
+        matchers: SILPO_FOOD,
+      }),
+    ).toBe(0);
+  });
+
+  it('does not count a row whose category differs from the rule only in case', async () => {
+    insertTransaction({ id: 'capitalized', description: 'Silpo', category: 'Food' });
+    insertTransaction({ id: 'other', description: 'Silpo', category: 'groceries' });
+
+    expect(
+      await categoryRulesRepo.countRuleRewrite({
+        id: null,
+        category: 'food',
+        matchers: SILPO_FOOD,
+      }),
+    ).toBe(1);
+  });
+
   it('counts only the rows a rule may rewrite', async () => {
     insertTransaction({
       id: 'picked',
@@ -936,6 +992,18 @@ describe('categoryRulesRepo.saveRule', () => {
     expect(categoriesOf()).toEqual({ silpo: 'groceries' });
   });
 
+  it('writes nothing for a rule whose stored category differs from its page only in case', async () => {
+    insertRule({ id: 'stored', category: 'Food', matchers: SILPO_FOOD });
+    insertTransaction({ id: 'silpo', description: 'Silpo', category: 'groceries' });
+    const rulesBefore = storedRules();
+
+    const saved = await saveFood(true, 'stored');
+
+    expect(saved).toEqual({ id: 'stored', changed: 0 });
+    expect(storedRules()).toEqual(rulesBefore);
+    expect(categoriesOf()).toEqual({ silpo: 'groceries' });
+  });
+
   it('keeps the creation time of an edited rule and makes it the newest', async () => {
     insertRule({ id: 'stored', category: 'shops', matchers: SILPO_FOOD });
 
@@ -984,7 +1052,7 @@ describe('categoryRulesRepo.saveRule', () => {
         matchers: [],
         applyToExisting: true,
       }),
-    ).rejects.toThrow();
+    ).rejects.toThrow(new Error('categoryRulesRepo.saveRule: noMatchers'));
     expect(storedRules()).toEqual([]);
   });
 
@@ -1001,7 +1069,7 @@ describe('categoryRulesRepo.saveRule', () => {
         ],
         applyToExisting: true,
       }),
-    ).rejects.toThrow();
+    ).rejects.toThrow(new Error('categoryRulesRepo.saveRule: neverMatches'));
     expect(storedRules()).toEqual([]);
     expect(categoriesOf()).toEqual({ silpo: 'groceries' });
   });
@@ -1018,19 +1086,33 @@ describe('categoryRulesRepo.saveRule', () => {
         matchers: [{ type: 'nameIs', text: ' SILPO ' }],
         applyToExisting: true,
       }),
-    ).rejects.toThrow();
+    ).rejects.toThrow(new Error('categoryRulesRepo.saveRule: duplicate'));
     expect(storedRules()).toEqual(rulesBefore);
     expect(categoriesOf()).toEqual({ silpo: 'groceries' });
   });
 
+  // A matcher the engine cannot even match is refused as one that never matches; one it could match
+  // but could not read back from storage is refused as unreadable.
   it.each([
-    ['a blank name', { type: 'nameIs', text: '   ' }],
-    ['a negative amount', { type: 'amount', operator: 'eq', minorUnits: -1, currency: 'UAH' }],
-    ['a fractional amount', { type: 'amount', operator: 'eq', minorUnits: 1.5, currency: 'UAH' }],
-    ['a minute past the end of the day', { type: 'time', operator: 'after', minuteOfDay: 1440 }],
-  ] satisfies [string, CategoryRuleMatcher][])(
-    'refuses a rule with %s, which could not be read back',
-    async (_label, matcher) => {
+    ['a blank name', 'unreadable', { type: 'nameIs', text: '   ' }],
+    [
+      'a negative amount',
+      'neverMatches',
+      { type: 'amount', operator: 'eq', minorUnits: -1, currency: 'UAH' },
+    ],
+    [
+      'a fractional amount',
+      'unreadable',
+      { type: 'amount', operator: 'eq', minorUnits: 1.5, currency: 'UAH' },
+    ],
+    [
+      'a minute past the end of the day',
+      'neverMatches',
+      { type: 'time', operator: 'after', minuteOfDay: 1440 },
+    ],
+  ] satisfies [string, string, CategoryRuleMatcher][])(
+    'refuses a rule with %s as %s',
+    async (_label, reason, matcher) => {
       await expect(
         categoryRulesRepo.saveRule({
           id: null,
@@ -1038,25 +1120,20 @@ describe('categoryRulesRepo.saveRule', () => {
           matchers: [matcher],
           applyToExisting: false,
         }),
-      ).rejects.toThrow();
+      ).rejects.toThrow(new Error(`categoryRulesRepo.saveRule: ${reason}`));
       expect(storedRules()).toEqual([]);
     },
   );
 });
 
-describe('rewriteForRuleDatabaseTransaction', () => {
-  const rewriteFor = (ruleId: string): Promise<number> =>
-    write((databaseTransaction) => rewriteForRuleDatabaseTransaction(databaseTransaction, ruleId));
+describe('categoryRulesRepo.saveRule over a large ledger', () => {
+  const SMALL_EXPENSE: CategoryRuleMatcher[] = [
+    { type: 'direction', direction: 'expense' },
+    { type: 'amount', operator: 'lte', minorUnits: 500, currency: 'UAH' },
+  ];
 
   it('pages through every row for a rule with no name, joining the currency from the holding', async () => {
-    insertRule({
-      id: 'small-expense',
-      category: 'coffee',
-      matchers: [
-        { type: 'direction', direction: 'expense' },
-        { type: 'amount', operator: 'lte', minorUnits: 500, currency: 'UAH' },
-      ],
-    });
+    insertRule({ id: 'small-expense', category: 'shops', matchers: SMALL_EXPENSE });
     insertTransaction({ id: 'matching', description: 'a', amountMinorUnits: -300 });
     insertTransaction({ id: 'too-large', description: 'b', amountMinorUnits: -900 });
     insertTransaction({ id: 'income', description: 'c', amountMinorUnits: 300 });
@@ -1075,9 +1152,14 @@ describe('rewriteForRuleDatabaseTransaction', () => {
     insertFillerRows(4_500);
 
     const statements = spyOnStatements();
-    const updated = await rewriteFor('small-expense');
+    const { changed } = await categoryRulesRepo.saveRule({
+      id: 'small-expense',
+      category: 'coffee',
+      matchers: SMALL_EXPENSE,
+      applyToExisting: true,
+    });
 
-    expect(updated).toBe(4_501);
+    expect(changed).toBe(4_501);
     expect(categoriesOf()).toMatchObject({
       matching: 'coffee',
       'too-large': null,
@@ -1090,13 +1172,6 @@ describe('rewriteForRuleDatabaseTransaction', () => {
     expect(
       statements.filter((sql) => /^select/i.test(sql) && /from "transactions"/i.test(sql)),
     ).toHaveLength(3);
-  });
-
-  it('changes nothing for a rule that is not stored', async () => {
-    insertTransaction({ id: 'plain', description: 'Silpo', category: 'groceries' });
-
-    expect(await rewriteFor('missing')).toBe(0);
-    expect(categoriesOf()).toEqual({ plain: 'groceries' });
   });
 });
 

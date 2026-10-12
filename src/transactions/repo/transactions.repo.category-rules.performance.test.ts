@@ -13,14 +13,15 @@ jest.mock('@kiko/db/client', () => {
 
 import {
   matchesRule,
+  parseRuleMatchers,
   planRuleRewrite,
   prepareRules,
   subjectOfStoredRow,
 } from '@kiko/categories/category-rules';
 import { DatabaseSync } from 'node:sqlite';
-import { write, IN_CLAUSE_CHUNK_SIZE } from '@kiko/db';
+import { IN_CLAUSE_CHUNK_SIZE } from '@kiko/db';
 import { applyAllMigrations } from '@kiko/test-support/real-sqlite';
-import { rewriteForRuleDatabaseTransaction } from '@kiko/categories/category-rules-repo';
+import { categoryRulesRepo } from '@kiko/categories/category-rules-repo';
 import { buildRulesPerformanceFixture } from '@kiko/categories/category-rules/__fixtures__/rules-performance-fixture';
 
 import { transactionsRepo } from './transactions.repo';
@@ -32,6 +33,7 @@ const TEST_TIMEOUT = 120_000;
 // A name rule that wins a few of the fixture's rows, and the no-name rule that wins the most.
 const NAME_RULE_ID = 'rule-119';
 const NO_NAME_RULE_ID = 'rule-190';
+const REWRITTEN_CATEGORY = 'rewritten';
 
 const HOLDINGS_PER_CURRENCY = { UAH: 8, USD: 4, EUR: 3, GBP: 3, BTC: 2 } as const;
 
@@ -185,8 +187,27 @@ describe('inserting a batch of 10 000 rows against 200 rules', () => {
 });
 
 describe('rewriting 50 000 rows for a saved rule', () => {
-  const rewriteFor = (ruleId: string): Promise<number> =>
-    write((databaseTransaction) => rewriteForRuleDatabaseTransaction(databaseTransaction, ruleId));
+  // The stored rule saved again with a category no row has and applied to the existing rows. It is
+  // the newest of its strength once saved, so the plan reads the rules the same way.
+  const savedRules = (ruleId: string) =>
+    rules.map((rule) =>
+      rule.id === ruleId ? { ...rule, category: REWRITTEN_CATEGORY, updatedAt: Date.now() } : rule,
+    );
+
+  const plannedFor = (ruleId: string): string[] =>
+    planRuleRewrite(prepareRules(savedRules(ruleId)), ruleId, rows);
+
+  const rewriteFor = async (ruleId: string): Promise<number> => {
+    const stored = rules.find((rule) => rule.id === ruleId);
+    const { changed } = await categoryRulesRepo.saveRule({
+      id: ruleId,
+      category: REWRITTEN_CATEGORY,
+      matchers: parseRuleMatchers(stored?.matchers ?? '') ?? [],
+      applyToExisting: true,
+    });
+
+    return changed;
+  };
 
   const changedRowIds = (before: Map<string, string | null>): string[] =>
     [...categoriesById()]
@@ -198,7 +219,7 @@ describe('rewriting 50 000 rows for a saved rule', () => {
     async () => {
       seedLedger();
 
-      const planned = planRuleRewrite(prepared, NAME_RULE_ID, rows);
+      const planned = plannedFor(NAME_RULE_ID);
       const before = categoriesById();
       const statements = spyOnStatements();
       const updated = await rewriteFor(NAME_RULE_ID);
@@ -219,7 +240,7 @@ describe('rewriting 50 000 rows for a saved rule', () => {
     async () => {
       seedLedger();
 
-      const planned = planRuleRewrite(prepared, NO_NAME_RULE_ID, rows);
+      const planned = plannedFor(NO_NAME_RULE_ID);
       const before = categoriesById();
       const statements = spyOnStatements();
       const updated = await rewriteFor(NO_NAME_RULE_ID);
