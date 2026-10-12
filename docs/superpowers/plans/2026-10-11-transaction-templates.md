@@ -35,7 +35,7 @@ Read these before task 1/18. Each line says what the code shows and what this pl
 - No foreign key on `transaction_templates`. No index. If an index is ever added, it needs an `EXPLAIN QUERY PLAN` test.
 - No loan field and no comment in any template path (O5, O11). `isLoanFieldVisible` stays as it is.
 - A template category is a hand pick: it sets `userPickedCategory` (O12). This track adds no manual-pick column.
-- A template stores a category only when the user picked it by hand (user ruling, 2026-10-12): a rule pre-select stores null, so each use of the template gets the current rule pre-select. The form's draft builder applies this in one place, from the live category.
+- A template stores a category only when the user picked it by hand: see the spec's paragraph "The category (user ruling, 2026-10-12)" under "`TemplateDraft`", which also covers Duplicate and Edit transaction.
 - Writes to `src/`, `__tests__/` and `rules/` go through Edit/Write only (the kill-guard SHELL-WRITE deny). Rename with `git mv`.
 - Migration 0057 is never edited once it ships (`check:shipped-migrations`).
 - The worktree has no `node_modules`. The developer runs `npm ci` once in this worktree before task 1/18, when the machine is on power (BATTERY MODE pauses gates). Never share the main checkout's `node_modules`.

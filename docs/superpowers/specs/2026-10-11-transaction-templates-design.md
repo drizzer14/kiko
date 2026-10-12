@@ -231,9 +231,11 @@ and the template has no slot for it.
 The category (user ruling, 2026-10-12): a template stores a category only when the
 user picked it by hand, so `category` is null for a rule pre-select and each use of
 the template gets the current rule pre-select. A template being edited or filled in
-that already carries a category keeps it (decision O12). The form's draft builder
-is the one place that applies this rule, and it reads the live category, not the
-picker's settled one.
+that already carries a category keeps it (decision O12). On Duplicate and Edit
+transaction the source row's category counts as a hand pick (user ruling,
+2026-10-12): the category-rules design writes a Duplicate seed with
+`categorySetByHand` 1, so a template saved from them stores it. The form's draft
+builder is the one place that applies this rule.
 
 ### Type guard and the read rule
 
