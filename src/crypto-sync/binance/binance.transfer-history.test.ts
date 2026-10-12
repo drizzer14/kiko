@@ -1210,6 +1210,56 @@ describe('the range cursor and the span hints of the round-robin', () => {
     expect(writesTo(deps, RANGE_FIELD)[0]).toBe(Number.MIN_SAFE_INTEGER);
   });
 
+  describe('with one owed range of five windows whose first window is owed whole by every read', () => {
+    const HOUR_MS = 3_600_000;
+    const floor = transferFloorMs(NOW);
+    const failedAt = agoMs(10);
+    const confirmedAt = floor + 100 * DAY_MS;
+    const owedWindows = Math.ceil((agoMs(40) - floor) / TRANSFER_WINDOW_MS);
+    // A record with no time in the first 30 days of the range, whichever of them a read asks.
+    const unreadableInFirstWindow: Answer = (query) =>
+      query.type === 'MAIN_UMFUTURE' &&
+      query.startTime <= floor + 5 * DAY_MS &&
+      floor + 5 * DAY_MS <= query.endTime
+        ? pageOf({ unreadable: [{ time: undefined }], gathered: 1, total: 1 })
+        : undefined;
+    const entries = [
+      entryOf({ tranId: 'failed', status: 'FAILED', timestamp: failedAt }),
+      entryOf({ tranId: 'good', timestamp: confirmedAt }),
+    ];
+
+    it('imports a transfer in a later window of the range within ceil(windows / reads a run) runs, though the FAILED transfer owed beside it leaves a read of one window a run', async () => {
+      const accountId = nextAccountId();
+      const world = worldOf({
+        [SPOT_FIELDS.cursor]: NOW - HOUR_MS,
+        [SPOT_FIELDS.pending]: [
+          { start: floor, end: agoMs(40) },
+          { start: failedAt - 1, end: failedAt + 1, kind: 'point', series: 'MAIN_FUNDING' },
+        ],
+      });
+      const importedAt: number[] = [];
+
+      for (let run = 0; run < 2 * owedWindows; run += 1) {
+        const now = NOW + run * HOUR_MS;
+
+        await walkOnce({
+          world,
+          entries,
+          answer: unreadableInFirstWindow,
+          accountId,
+          now,
+          run: createBinanceHistoryRun({ now: () => now, sleep: async () => undefined }),
+        });
+
+        if (world.added.some((row) => row.externalId.includes(':good:'))) {
+          importedAt.push(run);
+        }
+      }
+
+      expect(importedAt[0]).toBeLessThan(owedWindows);
+    });
+  });
+
   describe('with a day that comes back full above 6 hours', () => {
     const day = days[0];
     const dense: Answer = (query) =>

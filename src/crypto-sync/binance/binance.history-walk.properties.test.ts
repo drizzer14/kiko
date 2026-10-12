@@ -2134,6 +2134,36 @@ describe.each(LANES)('R31: the round-robin over the owed ranges, $name lane', (l
     },
   );
 
+  it.each([3, 4].map((windows) => ({ windows })))(
+    'one owed range of $windows windows whose first two windows each hold a record with no time, a point owed beside it, one range window read a run: a record that can be trusted in its third window imports within ceil(windows / reads a run) runs',
+    async ({ windows }) => {
+      const builder = builderOf(lane, 97);
+      const range = { start: BASE_MS, end: BASE_MS + windows * WINDOW_MS };
+      const windowAt = (index: number): WalkWindow => ({
+        start: range.start + index * WINDOW_MS,
+        end: range.start + (index + 1) * WINDOW_MS,
+      });
+      const withoutTime = [0, 1].map((index) => ({
+        ...builder.record(builder.interiorOf(windowAt(index)), NEVER),
+        unreadable: 'timeless' as const,
+      }));
+      const stuck = builder.record(range.end + 2 * DAY_MS, NEVER);
+      const trusted = builder.record(builder.interiorOf(windowAt(2)));
+
+      const outcome = await simulate({
+        lane: { ...lane, reads: 4 * lane.rangeCalls },
+        reading: 'both ends included',
+        scenario: { owed: [range, pointOf(stuck)], records: [...withoutTime, stuck, trusted] },
+        runs: 2 * windows + 4,
+      });
+
+      // Run 0 has no forward window, so it reads more windows than the runs after it.
+      const reads = Math.min(...outcome.runs.map((run) => run.rangesRead.length));
+      expect(reads).toBe(1);
+      expect(outcome.importedAt.get(trusted.id) ?? NEVER).toBeLessThan(Math.ceil(windows / reads));
+    },
+  );
+
   it('two owed days whose reads never finish, one read of one of them a run: each is read within 2 runs, because the cursor moves on once a read has started', async () => {
     const days = [dayAt(40), dayAt(60)];
 

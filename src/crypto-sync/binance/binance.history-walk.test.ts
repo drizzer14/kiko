@@ -184,8 +184,8 @@ describe('planWalkPasses', () => {
       expect(startsOf(ranges[3].end)).toEqual([0, 1, 2, 3].map((index) => ranges[index].start));
     });
 
-    it('puts a range that starts at the cursor with the ranges read already', () => {
-      expect(startsOf(ranges[2].start)).toEqual([3, 0, 1, 2].map((index) => ranges[index].start));
+    it('reads a range that starts at the cursor first: the cursor is the end of the window read last', () => {
+      expect(startsOf(ranges[2].start)).toEqual([2, 3, 0, 1].map((index) => ranges[index].start));
     });
 
     it('reads oldest first for a cursor before every range, the start a repair stores', () => {
@@ -218,17 +218,61 @@ describe('planWalkPasses', () => {
       ]);
     });
 
-    it('puts what is left of a range cut by a read behind the cursor of that read', () => {
+    it('reads what is left of a range cut by a read first: it starts at the end of the window read', () => {
       const left = {
         start: ranges[1].start + SHORT_WINDOW_MS,
         end: ranges[1].start + 2 * SHORT_WINDOW_MS,
       };
 
       expect(startsInShortWindows(left.start, [ranges[0], left, rangeAt(3)])).toEqual([
+        left.start,
         rangeAt(3).start,
         ranges[0].start,
-        left.start,
       ]);
+    });
+
+    describe('one range of several windows', () => {
+      const WINDOWS = 5;
+      const long = {
+        start: END_MS - 600 * DAY_MS,
+        end: END_MS - 600 * DAY_MS + WINDOWS * WINDOW_MS,
+      };
+      const windowStart = (index: number): number => long.start + index * WINDOW_MS;
+      const plannedStarts = (rangeCursor: number | null): number[] =>
+        planWalkPasses({ ...input, cursor, pending: [long], rangeCursor }).pending.map(
+          (window) => window.start,
+        );
+
+      it('plans the window after the one read last first, whichever window of the range that was', () => {
+        expect(plannedStarts(windowStart(1))[0]).toBe(windowStart(1));
+        expect(plannedStarts(windowStart(2))[0]).toBe(windowStart(2));
+        expect(plannedStarts(windowStart(1))).toEqual(
+          [1, 2, 3, 4, 0].map((index) => windowStart(index)),
+        );
+      });
+
+      it('wraps to the first window once the cursor is past the last', () => {
+        expect(plannedStarts(long.end)).toEqual([0, 1, 2, 3, 4].map((index) => windowStart(index)));
+      });
+
+      it('reads every window within 5 runs of one read each, the range owed whole every run', () => {
+        let rangeCursor: number | null = null;
+        const read: number[] = [];
+
+        for (let run = 0; run < WINDOWS; run += 1) {
+          const [first]: WalkWindow[] = planWalkPasses({
+            ...input,
+            cursor,
+            pending: [long],
+            rangeCursor,
+          }).pending;
+
+          read.push(first.start);
+          rangeCursor = first.end;
+        }
+
+        expect(read).toEqual([0, 1, 2, 3, 4].map((index) => windowStart(index)));
+      });
     });
 
     it('does not move the forward windows, the re-scan or the points', () => {

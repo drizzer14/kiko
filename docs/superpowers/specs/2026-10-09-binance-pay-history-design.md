@@ -54,7 +54,7 @@ that holding.
 | OVERNIGHT 20 | User ruling 2026-10-12, B: the "history is behind" caption shows ONLY while a walk cursor is null or more than a day behind; an owed point does not show it (was: the applied default also showed it for an owed point) | section 8 |
 | OVERNIGHT 21 | User ruling 2026-10-12, B (the spec rule kept): a `FAILED` transfer stays owed at its point until the 6-month floor drops it. VERIFY 14 still records the exact status values, for the record; no rule waits on it | section 5, T11 |
 | R30 | Orchestrator ruling (technical) 2026-10-12: on every walk a BTC row the client cannot parse (no finite time, an off-contract field) is a per-record stop, never a whole-run throw. It owes its canonical point when a usable time exists, else the span; the other rows of the span import. Codes: `capital-row-unreadable`, `pay-row-unreadable`, `transfer-row-unreadable`, `earn-row-unreadable`. A malformed envelope still throws for the whole read | sections 1, 3, 5, 6, 7; P10, C3, T12, E12, E23 |
-| R31 | Orchestrator ruling (technical) 2026-10-12, under the no-starvation rule: each walk reads its owed ranges in a round-robin from a range cursor (`binanceHistoryRangeCursor`, `binancePayRangeCursor`, `binanceTransferRangeCursor`), the end of the window of the range it read last, moved once a read has started; each of `R` ranges is read within `ceil(R / L)` runs that enter the pending pass. Code `range-cursor-malformed` | section 4; the Transfer lane's cap of 80 reads one range a run |
+| R31 | Orchestrator ruling (technical) 2026-10-12, under the no-starvation rule: each walk reads the windows of its owed ranges in a round-robin from a range cursor (`binanceHistoryRangeCursor`, `binancePayRangeCursor`, `binanceTransferRangeCursor`), the end of the window it read last, moved once a read has started; each of `W` owed windows is read within `ceil(W / L)` runs that enter the pending pass. Code `range-cursor-malformed` | section 4; the Transfer lane's cap of 80 reads one range a run |
 | R32 | Orchestrator ruling (technical) 2026-10-12, under the no-known-limit rule: a window that splits and stops before its first span commits leaves the span it was at as a hint, per walk and per pass (`binanceHistorySpanHints`, `binancePaySpanHints`, `binanceTransferSpanHints`); the next read of a window with that start begins with it; a window that needs `h` halvings commits its first span within `h + 1` runs. Code `span-hints-malformed` | section 4 |
 
 ## Sources (official, checked 2026-10-09)
@@ -426,24 +426,28 @@ withdraw budget moves into this object, with the same numbers and the same rule.
     list. A point leaves the list only as the Remove rule above says: a window read to its end
     that holds all of it and returned a record that owes exactly it, or the floor. A point is read whether
     or not a range or the re-scan holds it; a range never takes a point in.
-  - **Owed ranges, in a round-robin (R31, orchestrator ruling, technical, 2026-10-12).** Each
+  - **Owed windows, in a round-robin (R31, orchestrator ruling, technical, 2026-10-12).** Each
     walk keeps a range cursor in a walk-owned key (`binanceHistoryRangeCursor`,
     `binancePayRangeCursor`, `binanceTransferRangeCursor`, in `binanceWalkRangeCursorFields`): the
-    end of the window of an owed range it read last. The pending pass reads the ranges that start
-    after it first, oldest first, then wraps around to the rest (`startingAfter`, as the points
-    do), so a range that is owed whole in every run (a row with no time, a drift that lasts,
-    a holding that is missing) cannot keep the ranges behind it from being read. The cursor
-    moves past a range once the read of one of its windows has STARTED, whether or not the
-    window finished; it is the end of the window and not the start of the range, because a read
-    cuts the range and what is left of it starts later than the cursor would hold. Each of `R` owed
-    ranges is read within `ceil(R / L)` runs that enter the pending pass, where `L >= 1` is the
-    fewest ranges such a run reads. A run that has the calls for one read of one range at a time
-    (the Transfer lane's 80 calls beside the forward window, the re-scan and the points) reads
-    every range in `R` runs. The re-scan, the points, the keeps and the 12-range cap are as above.
-    The key is carried over a balance sync and dropped on a disconnect (no key: start at the
-    oldest range); a stored value that is no number is repaired at once to a start before every
-    range (`Number.MIN_SAFE_INTEGER`) and logged once under one fixed code
-    (`range-cursor-malformed`), never a throw.
+    end of the window of an owed range it read last. The pending pass builds the windows of all
+    owed ranges (oldest first, each range cut into windows of the lane's window length), reads
+    the windows that start AT OR AFTER the cursor first, then wraps around to the rest
+    (`windowsFrom`; the points do the same by `startingAfter`, over their own starts), so a
+    window that is owed whole in every run (a row with no time, a drift that lasts, a holding that
+    is missing) cannot keep the windows behind it, of its own range or of another, from being
+    read. It rotates windows, not ranges: a range longer than one window whose first window is
+    owed whole merges back into one range that starts before the cursor every run. At or after,
+    not after: the window that follows the one read starts exactly at its end, and a strict
+    comparison would skip every other window of a long range. The cursor moves past a window once
+    its read has STARTED, whether or not it finished. Each of `W` owed windows is read within
+    `ceil(W / L)` runs that enter the pending pass, where `L >= 1` is the fewest windows such a
+    run reads. A run that has the calls for one read of one window at a time (the Transfer lane's
+    80 calls beside the forward window, the re-scan and the points) reads every window in `W`
+    runs. The re-scan, the points, the keeps and the 12-range cap are as above. The key is carried
+    over a balance sync and dropped on a disconnect (no key: start at the oldest window); a stored
+    value that is no number is repaired at once to a start before every window
+    (`Number.MIN_SAFE_INTEGER`) and logged once under one fixed code (`range-cursor-malformed`),
+    never a throw.
   - **A split window is resumed in the next run (R32, orchestrator ruling, technical,
     2026-10-12).** A window whose read comes back too full is read in halves and commits nothing
     until a span fits; a run that ends before that used to leave the next run to start the whole

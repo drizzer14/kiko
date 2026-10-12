@@ -277,13 +277,12 @@ export const binanceWalkPointCursorFields = [
 export type BinanceWalkPointCursorField = (typeof binanceWalkPointCursorFields)[number];
 
 /**
- * Where a walk's round-robin over its owed RANGES stands: the end of the window it read last. A
- * range that is read is cut to what is left of it, so its start moves on past a start the cursor
- * would hold; the end of the window just read is never before the start of what remains of that
- * range. The next run reads the ranges that start after it first, then wraps, so a range that is
- * owed whole every run cannot keep the ranges behind it from being read. Kept like the point
+ * Where a walk's round-robin over the WINDOWS of its owed ranges stands: the end of the window it
+ * read last. The window that follows it starts exactly there. The next run reads the windows that
+ * start at or after it first, then wraps, so a window that is owed whole every run cannot keep
+ * the windows behind it, of its own range or another, from being read. Kept like the point
  * cursor: carried over a balance sync, dropped on a disconnect (no key means "start at the
- * oldest range").
+ * oldest window").
  */
 export const BINANCE_HISTORY_RANGE_CURSOR_FIELD = 'binanceHistoryRangeCursor';
 

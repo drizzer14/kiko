@@ -1965,16 +1965,20 @@ stop codes and scenario rows.
   points such a run reads). A malformed cursor is repaired at once and logged
   (`point-cursor-malformed`). The rotation is deterministic and bounded; a
   random or fail-closed-by-length rotation has no testable bound.
-- **Round-robin over owed ranges (R31) and span hints (R32).** One range
+- **Round-robin over owed WINDOWS (R31) and span hints (R32).** One range
   cursor per walk (`binanceWalkRangeCursorFields`) holds the END of the window
-  of the range read last (a read cuts a range, so a start would put what is
-  left of it ahead of the cursor again); the pending pass reads the ranges
-  that start after it first, then wraps, and the cursor moves once a window's
-  read has started, finished or not. Each of R ranges is read within
-  `ceil(R / L)` runs that enter the pending pass (L >= 1); a range owed whole
-  every run cannot starve the ones behind it. A malformed cursor is repaired
-  at once and logged (`range-cursor-malformed`). One hints key per walk
-  (`binanceWalkSpanHintFields`) holds, per pass (forward, pending, re-scan,
+  of a range read last; `planWalkPasses` builds the windows of all owed ranges
+  first (oldest first), and the pending pass reads the windows that start AT OR
+  AFTER the cursor first (`windowsFrom`), then wraps. It rotates windows, not
+  ranges: a range longer than a window whose first window is owed whole every
+  run merges back and starts before the cursor, so a rotation over ranges
+  reads that window every run and starves the ones behind it. `>=`, not `>`:
+  the next window starts exactly at the cursor, and `>` skips every second
+  window of a long range. The cursor moves once a window's read has started,
+  finished or not. Each of W owed windows is read within `ceil(W / L)` runs
+  that enter the pending pass (L >= 1, the windows such a run reads). A
+  malformed cursor is repaired at once and logged (`range-cursor-malformed`).
+  One hints key per walk (`binanceWalkSpanHintFields`) holds, per pass (forward, pending, re-scan,
   point), the narrowest span a window was left at when `walkSpans` stopped
   before any span committed; a window that starts there begins with it (never
   wider than the window), and it drops when a span from that start commits or
