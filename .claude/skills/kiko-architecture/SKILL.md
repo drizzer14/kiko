@@ -732,6 +732,15 @@ refresh CASE in `src/transactions/repo/transactions.repo.ts` both derive
 from it. Compare category keys with `isSameCategory`
 (`src/categories/category-rules/same-category.ts`), never `===`.
 
+### Transaction form pre-select
+
+`src/screens/forms/transaction-form/category-rule/` and `use-category-pick/`
+(read the hook's comments). A held category wins; otherwise the category is
+derived from the whole draft. Seed a loaded draft only through `seedCategory`
+(one call sets the category, the hand-pick flag and the settled description);
+the nav-bar Save settles the description first. Rule: coupled state is set by
+one seed function, never by a pair of exported setters.
+
 ## App-open and refresh work is gated on data presence
 
 Standing rule: the app never performs a request or a query for data

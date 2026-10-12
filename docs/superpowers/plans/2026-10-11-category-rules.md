@@ -533,7 +533,7 @@ export const fromMatcherDrafts: (drafts: readonly MatcherDraft[]) =>
   | Just for this one | `setCategory` (flag 1, from task 2/6) | — |
 
   Run: `npx jest src/screens/forms/transaction-form` -> FAIL.
-- [ ] **Step 2/5: Implement.** The subject: `subjectOfDraft({ description, absoluteMinorUnits: parsed amount or null, currency: the picked holding's currency or null, direction: mode, time })`. Re-evaluation runs where `reseatCategoryFromName` runs today and on the four new settle events; it seats the result or none, as today.
+- [ ] **Step 2/5: Implement.** The pre-select is derived: a held category wins, otherwise `categoryForDraft` over the draft's `subjectOfFormDraft`. The description settles through `settleDescription` (blur, suggestion tap, nav-bar Save); amount, time, mode and holding currency re-evaluate live. A Duplicate or template seed goes through `seedCategory`.
   Run -> PASS.
 - [ ] **Step 3/5: Commit:** `feat(transactions): category pre-select from the whole draft; manual-pick flag on save`.
 - [ ] **Step 4/5: Close.** Per-task close. Reviewer top question: "Is there any save path where a hand-picked category is stored with flag 0, or a pre-selected one with flag 1?"

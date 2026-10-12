@@ -662,8 +662,8 @@ one validation model — don't hand-roll a different one:
   entry.
 - A native bar-button press does not blur the focused field, so a value
   derived on blur (for example the TransactionForm category auto-pick)
-  is settled synchronously in the save path, from the same helper the
-  blur handler calls (`categoryForName`, `settleCategory` in
+  is settled synchronously in the save path, by the same function the
+  blur handler calls (see `useCategoryPick` in
   `src/screens/forms/transaction-form/use-category-pick/use-category-pick.ts`).
   Pin it with a test that presses Save without a blur.
 - A blocked field shows its message via the shared `FieldError`

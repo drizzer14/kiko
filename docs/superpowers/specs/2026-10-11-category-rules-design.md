@@ -181,7 +181,7 @@ Amounts in major units; a row is a stored transaction unless marked "draft". "wa
 | P15 | Rule deleted | no row changes | was: override deletion n/a (no UI) |
 | P16 | Form create, rule matches, user has not picked | pre-selected | pre-selected (name only, on blur) |
 | P17 | Form create, user picked a category, then a rule starts to match | user's pick stays | same |
-| P18 | Form create, pre-selected, then the draft stops matching | cleared to none | same (`reseatCategoryFromName`) |
+| P18 | Form create, pre-selected, then the draft stops matching | cleared to none | same (derived; no stored pre-select) |
 | P19 | Form edit of an existing row | no pre-select | same |
 | P20 | Suggestion "Apply" on name "Silpo" -> food; today's data (no flags, one-matcher rules) | same rows change as today | rows named "silpo" |
 | P21 | Rewrite, row is an exchange leg / balance-setting row / split-change row | untouched (decision 5) | name rewrite could touch it |
@@ -196,11 +196,12 @@ Amounts in major units; a row is a stored transaction unless marked "draft". "wa
 - Applies to every row the upsert inserts; a conflict refresh never writes `category` (unchanged contract, `transactions.repo.ts:1526-1534`), except one case: a refresh that changes the amount of an unflagged row re-evaluates it, and writes `category` only when a rule wins (decision 6).
 
 ### 7.2 Form pre-select (LAST task, on top of the split)
-After the split merges; the unit layout is fixed only then. Unit names from the transaction-templates spec (5a1a65ed, not yet approved): `category-rule/` (`ruleCategoryFor`, `resolveCategoryOverrideRequest`, `resolvePendingCategory`), `use-category-pick/` (`selectedCategory`, `userPickedCategory`, `selectCategory`, `reseatCategoryFromName`, `onDescriptionBlur`, `pickSuggestion`), `use-category-override/` (`pendingOverride`, `applyOverride`, `applyOverrideOne`, `cancelOverride`, `pendingCategory`), `category-override-sheet/` (the sheet JSX). `validation/` is shared: this track adds only its own `SaveDisabledField` keys there (none planned).
-- `category-rule/`: `ruleCategoryFor(description, map)` becomes `ruleCategoryFor(subject, preparedRules)` over the pure module (section 5).
-- `use-category-pick/`: subscribes to `category_rules` (live query) and calls `prepareRules` in a memo. On create, when `userPickedCategory` is false, re-evaluates when a draft field settles: description blur, suggestion tap, amount change, time change, mode (direction) change, holding change. The result (or none) seats the category, as `reseatCategoryFromName` does today.
-- A category seeded by Duplicate or by a template sets `userPickedCategory` (transaction-templates' design), so the pre-select never replaces it.
-- Never on an edit, never in exchange mode, never once the user picked.
+After the split merges; the unit layout is fixed only then. The pre-select is derived, not re-seated. Units: `category-rule/` (`subjectOfFormDraft`, `categoryForDraft`, `resolveCategoryOverrideRequest`, `resolvePendingCategory`; `ruleCategoryFor` is module-private), `use-category-pick/` (the hook described in its source; `seedCategory` and `settleDescription` are the two entry points this text needs), `use-category-override/`, `category-override-sheet/`. `validation/` is shared: this track adds no `SaveDisabledField` keys.
+- A held category (a hand pick, a Duplicate or template seed through `seedCategory`, an edit's stored one) wins; otherwise `categoryForDraft` runs over the whole draft.
+- The description settles on blur, a suggestion tap, or the nav-bar Save (`settleDescription`); amount, time, mode and holding currency re-evaluate live.
+- Subject: a split's direction is expense (payment stored negative); an exchange has no subject; an unknown amount never matches an amount matcher.
+- A Duplicate or template seed goes through the single `seedCategory`.
+- Never on an edit, never in exchange mode.
 
 ### 7.3 Retroactive rewrite
 - Trigger: Save in the rule editor of a NEW rule, or of a rule whose matchers or category changed. A save that changes nothing writes nothing.
