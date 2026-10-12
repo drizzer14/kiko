@@ -232,28 +232,34 @@ describe('buildDemoSnapshot', () => {
       }
     });
 
-    it('agrees with the ledger: every row a rule wins already holds that rule category', () => {
-      const prepared = prepareRules(snapshot.categoryRules);
-      const holdingById = new Map(snapshot.holdings.map((holding) => [holding.id, holding]));
-      const wins = snapshot.transactions.flatMap((transaction) => {
-        const rule = winningRule(
-          prepared,
-          subjectOfStoredRow({
-            ...transaction,
-            currency: holdingById.get(transaction.holdingId)?.currency ?? null,
-          }),
+    it.each(['uk', 'en'] as const)(
+      'agrees with the ledger in %s: every row a rule wins already holds that rule category',
+      (language) => {
+        const languageSnapshot = buildDemoSnapshot(buildScreenshotDataset(language, ANCHOR));
+        const prepared = prepareRules(languageSnapshot.categoryRules);
+        const holdingById = new Map(
+          languageSnapshot.holdings.map((holding) => [holding.id, holding]),
         );
+        const wins = languageSnapshot.transactions.flatMap((transaction) => {
+          const rule = winningRule(
+            prepared,
+            subjectOfStoredRow({
+              ...transaction,
+              currency: holdingById.get(transaction.holdingId)?.currency ?? null,
+            }),
+          );
 
-        return foldMap(maybe(rule), (won) => [{ transaction, rule: won }]) ?? [];
-      });
+          return foldMap(maybe(rule), (won) => [{ transaction, rule: won }]) ?? [];
+        });
 
-      // Both rules win rows, so the reviewer sees each one matter in the ledger.
-      expect(new Set(wins.map(({ rule }) => rule.id))).toEqual(new Set(['rule-1', 'rule-2']));
+        // Both rules win rows, so the reviewer sees each one matter in the ledger.
+        expect(new Set(wins.map(({ rule }) => rule.id))).toEqual(new Set(['rule-1', 'rule-2']));
 
-      for (const { transaction, rule } of wins) {
-        expect(transaction.category).toBe(rule.category);
-      }
-    });
+        for (const { transaction, rule } of wins) {
+          expect(transaction.category).toBe(rule.category);
+        }
+      },
+    );
 
     it('writes the English rules without a Cyrillic letter and the same shape', () => {
       const english = buildDemoSnapshot(buildScreenshotDataset('en', ANCHOR));

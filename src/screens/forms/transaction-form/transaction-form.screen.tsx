@@ -394,11 +394,9 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     selectedCategory,
     effectiveCategory,
     userPickedCategory,
-    settleCategory,
-    setStoredCategory,
-    setUserPickedCategory,
+    seedCategory,
     selectCategory,
-    onDescriptionBlur,
+    settleDescription,
     pickSuggestion,
   } = useCategoryPick({
     description,
@@ -457,18 +455,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
         setMode(seedFieldsPlan.sign);
         setDescription(seedFieldsPlan.description);
         setPrefilledLabel(seedFieldsPlan.prefilledLabel);
-        setStoredCategory(seedFieldsPlan.category);
-        // A seeded non-null category counts as a user pick, so the rule pre-select
-        // can never replace it, and it saves as a hand pick. This matters for the
-        // DUPLICATE path (`isEditing` is false there): the "duplicate a row, tweak
-        // the note" flow must keep the copied category when the retyped description
-        // matches no name rule. The edit path already guards its stored category
-        // via `isEditing`, so this is a harmless no-op there; the empty-create and
-        // fixed-holding paths seed a null category, so `userPickedCategory` stays
-        // false and the pre-select applies as usual.
-        if (seedFieldsPlan.category !== null) {
-          setUserPickedCategory(true);
-        }
+        seedCategory(seedFieldsPlan.category, seedFieldsPlan.description);
 
         // A null `time` keeps the field at NOW — the duplicate never copies the
         // source timestamp; the edit path carries the stored time.
@@ -492,8 +479,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     currency,
     defaultPrimaryHoldingId,
     blankLabel,
-    setStoredCategory,
-    setUserPickedCategory,
+    seedCategory,
   ]);
 
   // Seed the counterpart (cash) amount from the latest cached rate at
@@ -916,7 +902,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   const save = async (): Promise<void> => {
     // The nav-bar Save does not end editing, so the description may never have blurred; commit
     // its rule category to the picker, which `effectiveCategory` below already acts on.
-    settleCategory();
+    settleDescription();
 
     if (disableSave) {
       setAttemptedSave(true);
@@ -1081,7 +1067,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
             counterpartSuffix={holdingSuffix(holdings, counterpartHoldingId)}
             description={description}
             onChangeDescription={setDescription}
-            onBlurDescription={onDescriptionBlur}
+            onBlurDescription={settleDescription}
             // The inline suggestion row. Its pool is already empty on an
             // edit (see the `pastDescriptions` memo), and the component itself
             // hides when there is no match or the field already equals a

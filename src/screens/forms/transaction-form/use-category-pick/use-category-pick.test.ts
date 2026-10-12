@@ -149,7 +149,7 @@ describe('useCategoryPick', () => {
 
       expect(result.current.selectedCategory).toBeNull();
 
-      await run(() => result.current.onDescriptionBlur());
+      await run(() => result.current.settleDescription());
 
       expect(result.current.selectedCategory).toBe('dining');
     });
@@ -157,12 +157,12 @@ describe('useCategoryPick', () => {
     it('clears the category once a settled description matches no rule', async () => {
       const { result, change, run } = await setup([COFFEE_RULE], { description: 'Coffee' });
 
-      await run(() => result.current.onDescriptionBlur());
+      await run(() => result.current.settleDescription());
 
       expect(result.current.selectedCategory).toBe('dining');
 
       await change({ description: 'Other' });
-      await run(() => result.current.onDescriptionBlur());
+      await run(() => result.current.settleDescription());
 
       expect(result.current.selectedCategory).toBeNull();
     });
@@ -182,7 +182,7 @@ describe('useCategoryPick', () => {
       expect(result.current.selectedCategory).toBeNull();
       expect(result.current.effectiveCategory).toBe('dining');
 
-      await run(() => result.current.settleCategory());
+      await run(() => result.current.settleDescription());
 
       expect(result.current.selectedCategory).toBe('dining');
     });
@@ -205,6 +205,34 @@ describe('useCategoryPick', () => {
     });
   });
 
+  describe('when seeded', () => {
+    it('shows a seeded category and reports it as picked by hand', async () => {
+      const { result, change, run } = await setup([LARGE_EXPENSE_RULE]);
+
+      await run(() => result.current.seedCategory('dining', ''));
+
+      expect(result.current.selectedCategory).toBe('dining');
+      expect(result.current.effectiveCategory).toBe('dining');
+      expect(result.current.userPickedCategory).toBe(true);
+
+      await change({ amount: '1500' });
+
+      expect(result.current.selectedCategory).toBe('dining');
+    });
+
+    it('settles the seeded description, so a rule pre-selects before any blur', async () => {
+      const { result, run } = await setup([COFFEE_RULE], { description: 'Coffee' });
+
+      expect(result.current.selectedCategory).toBeNull();
+
+      await run(() => result.current.seedCategory(null, 'Coffee'));
+
+      expect(result.current.selectedCategory).toBe('dining');
+      expect(result.current.effectiveCategory).toBe('dining');
+      expect(result.current.userPickedCategory).toBe(false);
+    });
+  });
+
   describe('on an edit', () => {
     it('never pre-selects, whatever the draft becomes', async () => {
       const { result, change, run } = await setup([LARGE_EXPENSE_RULE, COFFEE_RULE], {
@@ -212,7 +240,7 @@ describe('useCategoryPick', () => {
       });
 
       await change({ amount: '1500', description: 'Coffee' });
-      await run(() => result.current.onDescriptionBlur());
+      await run(() => result.current.settleDescription());
 
       expect(result.current.selectedCategory).toBeNull();
       expect(result.current.effectiveCategory).toBeNull();
@@ -221,7 +249,7 @@ describe('useCategoryPick', () => {
     it('keeps the stored category', async () => {
       const { result, change, run } = await setup([LARGE_EXPENSE_RULE], { isEditing: true });
 
-      await run(() => result.current.setStoredCategory('dining'));
+      await run(() => result.current.seedCategory('dining'));
       await change({ amount: '1500' });
 
       expect(result.current.effectiveCategory).toBe('dining');
@@ -232,7 +260,7 @@ describe('useCategoryPick', () => {
     it('never pre-selects, even for a name a rule matches', async () => {
       const { result, change, run } = await setup([COFFEE_RULE], { description: 'Coffee' });
 
-      await run(() => result.current.onDescriptionBlur());
+      await run(() => result.current.settleDescription());
       await change({ mode: 'exchange' });
 
       expect(result.current.selectedCategory).toBeNull();

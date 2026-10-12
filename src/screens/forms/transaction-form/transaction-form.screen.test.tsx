@@ -914,8 +914,8 @@ describe('TransactionFormScreen — category pre-select from name rules', () => 
 
 describe('TransactionFormScreen — description suggestions', () => {
   // One name rule ("coffee" -> Dining) plus a pool of past MANUAL descriptions,
-  // so a tapped suggestion can be shown to BOTH fill the field and re-seat A1's
-  // rule category through the ONE shared description-handling surface.
+  // so a tapped suggestion can be shown to BOTH fill the field and settle the description, so
+  // the rule category is pre-selected, through the ONE shared description-handling surface.
   const COFFEE_RULE = nameRule('coffee', 'dining');
   const PAST = ['Coffee', 'Groceries run'];
 
@@ -958,8 +958,8 @@ describe('TransactionFormScreen — description suggestions', () => {
     await fireEvent.changeText(getByLabelText('Amount'), '12.34');
     await fireEvent.changeText(getByLabelText('Description'), 'Cof');
 
-    // Tapping the suggestion fills the field verbatim AND re-fires A1's rule
-    // lookup (coffee -> dining) through the same shared handler, so Save writes
+    // Tapping the suggestion fills the field verbatim AND settles the description, so the rule
+    // pre-select takes it (coffee -> dining) through the same shared handler, and Save writes
     // both without a manual category pick.
     await fireEvent.press(getByText('Coffee'));
     await pressSave(navigation.setOptions);
@@ -5028,6 +5028,34 @@ describe('TransactionFormScreen — the manual-pick flag on save', () => {
 
     expect(mockRecordManual).toHaveBeenCalledWith(
       expect.objectContaining({ category: 'groceries', categorySetByHand: true }),
+    );
+  });
+
+  it('shows and saves the rule category of a Duplicate seeded without one, as no pick', async () => {
+    setLiveData(
+      [UAH_CASH],
+      {
+        id: 'txn-src',
+        holdingId: 'h1',
+        amountMinorUnits: -1234,
+        time: 42,
+        description: 'Coffee',
+        category: null,
+        source: 'manual',
+      },
+      CATEGORIES,
+      [],
+      [],
+      [COFFEE_RULE],
+    );
+    const utils = await renderDuplicate('txn-src');
+
+    expect(utils.getByText('Dining')).toBeTruthy();
+
+    await pressSave(navigation.setOptions);
+
+    expect(mockRecordManual).toHaveBeenCalledWith(
+      expect.objectContaining({ category: 'dining', categorySetByHand: false }),
     );
   });
 

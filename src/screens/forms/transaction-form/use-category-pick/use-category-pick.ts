@@ -1,5 +1,5 @@
 import { useLiveQuery } from '@kiko/db';
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useCallback } from 'react';
 import type { Currency } from '@kiko/currency/currency';
 import { prepareRules } from '@kiko/categories/category-rules';
 import type { FormMode } from '@kiko/screens/forms/mode-select-field';
@@ -54,11 +54,21 @@ export const useCategoryPick = ({
     setUserPickedCategory(true);
   };
 
+  // The ONE way to seed a loaded draft (an edit, a Duplicate): a non-null category is held and
+  // flagged as a pick in one step, so the picker and Save can never disagree about it, and the
+  // description settles too, so a seeded draft without a category shows what its rules give it.
+  // The setters are stable, so the function is too, and an effect may depend on it.
+  const seedCategory = useCallback((category: string | null, seededDescription = ''): void => {
+    setStoredCategory(category);
+    setUserPickedCategory(category !== null);
+    setSettledDescription(seededDescription);
+  }, []);
+
   // The ONE rule lookup: the category the rules give the draft with this description, or null.
   const categoryForDescription = (name: string): string | null =>
     categoryForDraft({ description: name, amount, time, mode, currency }, preparedRules);
 
-  // An edit holds its own stored category and must not be re-derived from the draft.
+  // A hand pick or an edit holds its own category; only a create without one is derived.
   const holdsOwnCategory = userPickedCategory || isEditing;
 
   // What the picker shows: the held category, or what the rules give the draft with its settled
@@ -91,11 +101,9 @@ export const useCategoryPick = ({
     selectedCategory,
     effectiveCategory,
     userPickedCategory,
-    settleCategory: settleDescription,
-    setStoredCategory,
-    setUserPickedCategory,
+    seedCategory,
     selectCategory,
-    onDescriptionBlur: settleDescription,
+    settleDescription,
     pickSuggestion,
   };
 };
