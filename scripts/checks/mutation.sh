@@ -13,11 +13,15 @@
 # human. None of the progress/ETA/history code may change the pass/fail result:
 # every new step is guarded and a corrupt history just means "no estimate".
 #
-# `--list` prints the files this run would mutate and their count, then exits
-# (2 above the cap) without Stryker, so a change set is sized with the gate's
-# own filter instead of a hand count. It needs no Stryker binary and takes no
-# lock, since it never starts a run. Any other argument exits 2. A changed file whose diff is
-# only comments or whitespace is left out of the list (and printed as `skipped (comment-only)`).
+# The run mutates the CHANGED LINES of the changed source files (the lines the branch added,
+# passed to Stryker as `path:start-end` entries), not the whole files.
+#
+# `--list` prints the files this run would mutate with their changed-line ranges, the sum of
+# changed lines, and the file count, then exits (2 above the cap) without Stryker, so a change
+# set is sized with the gate's own filter instead of a hand count. It needs no Stryker binary and
+# takes no lock, since it never starts a run. Any other argument exits 2. A changed file whose
+# diff is only comments or whitespace is left out of the list (and printed as `skipped
+# (comment-only)`), and so is one with no added line (`skipped (no added lines)`).
 set -uo pipefail
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=/dev/null
@@ -263,6 +267,8 @@ fi
 # unchanged context lines to a hunk.
 norange_report=""
 entries=""
+list_report=""
+changed_lines=0
 if [ -n "$changed" ]; then
   while IFS= read -r candidate; do
     [ -n "$candidate" ] || continue
@@ -317,18 +323,26 @@ if [ -n "$changed" ]; then
       *"$newline$candidate$newline"*)
         entries="${entries:+$entries$newline}$candidate"
         ranged="${ranged:+$ranged$newline}$candidate"
+        # A whole file counts its line count at HEAD.
+        file_lines="$(git -C "$ROOT" show "HEAD:$candidate" 2>/dev/null | wc -l | tr -d ' ')"
+        changed_lines=$((changed_lines + file_lines))
+        list_report="${list_report}${candidate} whole file (${file_lines} lines)${newline}"
         ;;
       *)
         if [ -z "$field" ]; then
           norange_report="${norange_report}skipped (no added lines): ${candidate}${newline}"
         else
           ranged="${ranged:+$ranged$newline}$candidate"
+          file_lines=0
           old_ifs="$IFS"
           IFS=','
           for range in $field; do
             entries="${entries:+$entries$newline}$candidate:$range"
+            file_lines=$((file_lines + ${range#*-} - ${range%-*} + 1))
           done
           IFS="$old_ifs"
+          changed_lines=$((changed_lines + file_lines))
+          list_report="${list_report}${candidate} ${field} (${file_lines} changed lines)${newline}"
         fi
         ;;
     esac
@@ -338,8 +352,8 @@ fi
 
 file_count="$(printf '%s\n' "$changed" | grep -c . || true)"
 if [ "$list" -eq 1 ]; then
-  [ -n "$changed" ] && printf '%s\n' "$changed"
-  printf '%s%s%s' "$skipped_report" "$norange_report" "$kept_report"
+  printf '%s%s%s%s' "$list_report" "$skipped_report" "$norange_report" "$kept_report"
+  printf 'changed lines: %s\n' "$changed_lines"
   printf 'mutable files: %s (cap %s)\n' "$file_count" "$MUTATION_FILE_CAP"
 else
   printf '%s%s%s' "$skipped_report" "$norange_report" "$kept_report"

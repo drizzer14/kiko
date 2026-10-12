@@ -8,6 +8,7 @@ import {
   commitAll,
   mutatedFiles,
   writeExecutable,
+  REAL_NODE_MODULES,
   type ArgumentStubRun,
   copyMutationScripts,
   runWithArgumentStub,
@@ -26,6 +27,13 @@ const sources = (prefix: string, count: number): Record<string, string> =>
       `export const value${index} = ${index};\n`,
     ]),
   );
+
+const ONE_FILE_LIST = [
+  'src/changed-0.ts 1-1 (1 changed lines)',
+  'changed lines: 1',
+  'mutable files: 1 (cap 30)',
+  '',
+].join('\n');
 
 const buildRepository = (featureFiles: Record<string, string>): { root: string; script: string } =>
   buildMutationRepository(mkdtempSync(join(tmpdir(), 'kiko-mutation-cap-')), featureFiles);
@@ -196,7 +204,14 @@ describe('scripts/checks/mutation.sh file cap', () => {
 
     expect(result.code).toBe(0);
     expect(result.stdout).toBe(
-      'src/changed-0.ts\nsrc/changed-1.ts\nsrc/changed-2.ts\nmutable files: 3 (cap 30)\n',
+      [
+        'src/changed-0.ts 1-1 (1 changed lines)',
+        'src/changed-1.ts 1-1 (1 changed lines)',
+        'src/changed-2.ts 1-1 (1 changed lines)',
+        'changed lines: 3',
+        'mutable files: 3 (cap 30)',
+        '',
+      ].join('\n'),
     );
     expect(result.stubArguments).toBeNull();
   });
@@ -217,7 +232,13 @@ describe('scripts/checks/mutation.sh file cap', () => {
 
     expect(result.code).toBe(0);
     expect(result.stdout).toBe(
-      'src/changed-0.ts\nsrc/db/render-condition.ts\nmutable files: 2 (cap 30)\n',
+      [
+        'src/changed-0.ts 1-1 (1 changed lines)',
+        'src/db/render-condition.ts 1-1 (1 changed lines)',
+        'changed lines: 2',
+        'mutable files: 2 (cap 30)',
+        '',
+      ].join('\n'),
     );
   });
 
@@ -227,7 +248,57 @@ describe('scripts/checks/mutation.sh file cap', () => {
     const result = runWithArgumentStub(script, { KIKO_MUTATION_BASE: 'main' }, ['--list']);
 
     expect(result.code).toBe(0);
-    expect(result.stdout).toBe('mutable files: 0 (cap 30)\n');
+    expect(result.stdout).toBe('changed lines: 0\nmutable files: 0 (cap 30)\n');
+  });
+
+  it('--list prints the ranges of a modified file, a new file, and a whole kept file, then the sums', () => {
+    const twelveLines = (edits: Record<number, string>): string =>
+      `${Array.from({ length: 12 }, (_, index) => edits[index + 1] ?? `export const line${index + 1} = ${index + 1};`).join('\n')}\n`;
+    const { script } = buildMutationRepository(
+      mkdtempSync(join(tmpdir(), 'kiko-mutation-cap-')),
+      {
+        'src/mod.ts': twelveLines({
+          3: 'export const edited3 = 0;',
+          4: 'export const edited4 = 0;',
+          10: 'export const edited10 = 0;',
+        }),
+        'src/new.ts': `${twelveLines({}).split('\n').slice(0, 5).join('\n')}\n`,
+        'src/kept.ts': '// why a is one\nexport const a = 1;\n',
+        'src/kept.test.ts': 'export const t = 2;\n',
+        'src/commented.ts': '// why c is one\nexport const c = 1;\n',
+        'src/old.ts': null,
+        'src/moved.ts': twelveLines({}),
+      },
+      {
+        'src/mod.ts': twelveLines({}),
+        'src/kept.ts': 'export const a = 1;\n',
+        'src/kept.test.ts': 'export const t = 1;\n',
+        'src/commented.ts': 'export const c = 1;\n',
+        'src/old.ts': twelveLines({}),
+      },
+    );
+
+    const result = runWithArgumentStub(
+      script,
+      { KIKO_MUTATION_BASE: 'main', NODE_PATH: REAL_NODE_MODULES },
+      ['--list'],
+    );
+
+    expect(result.code).toBe(0);
+    expect(result.stdout).toBe(
+      [
+        'src/kept.ts whole file (2 lines)',
+        'src/mod.ts 3-4,10-10 (3 changed lines)',
+        'src/new.ts 1-5 (5 changed lines)',
+        'skipped (comment-only): src/commented.ts',
+        'skipped (no added lines): src/moved.ts',
+        'kept (colocated test changed): src/kept.ts',
+        'changed lines: 10',
+        'mutable files: 3 (cap 30)',
+        '',
+      ].join('\n'),
+    );
+    expect(result.stubArguments).toBeNull();
   });
 
   it('--list over the cap prints the list, then the cap block, and exits 2', () => {
@@ -237,7 +308,7 @@ describe('scripts/checks/mutation.sh file cap', () => {
 
     expectCapFailure(result, 31);
     expect(result.stdout.split('\n').filter((line) => line.startsWith('src/'))).toHaveLength(31);
-    expect(result.stdout).toContain('mutable files: 31 (cap 30)');
+    expect(result.stdout).toContain('changed lines: 31\nmutable files: 31 (cap 30)');
   });
 
   it('--list keeps the KIKO_MUTATION_FULL and unresolvable-base refusals', () => {
@@ -263,7 +334,7 @@ describe('scripts/checks/mutation.sh file cap', () => {
     );
 
     expect(result.code).toBe(0);
-    expect(result.stdout).toBe('src/changed-0.ts\nmutable files: 1 (cap 30)\n');
+    expect(result.stdout).toBe(ONE_FILE_LIST);
   });
 
   it('--list runs while a live run holds the global lock, and leaves that lock in place', () => {
@@ -281,7 +352,7 @@ describe('scripts/checks/mutation.sh file cap', () => {
     );
 
     expect(result.code).toBe(0);
-    expect(result.stdout).toBe('src/changed-0.ts\nmutable files: 1 (cap 30)\n');
+    expect(result.stdout).toBe(ONE_FILE_LIST);
     expect(existsSync(join(lockDirectory, 'pid'))).toBe(true);
   });
 

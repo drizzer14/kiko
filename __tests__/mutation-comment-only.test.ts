@@ -207,8 +207,9 @@ describe('scripts/checks/mutation.sh comment-only filter', () => {
 
       expect(listed.code).toBe(0);
       expect(listed.stdout.split('\n').filter(Boolean)).toEqual([
-        'src/foo.ts',
+        'src/foo.ts whole file (2 lines)',
         KEPT_LINE('src/foo.ts'),
+        'changed lines: 2',
         'mutable files: 1 (cap 30)',
       ]);
     });
@@ -226,8 +227,9 @@ describe('scripts/checks/mutation.sh comment-only filter', () => {
 
     expect(listed.code).toBe(0);
     expect(listed.stdout.split('\n').filter(Boolean)).toEqual([
-      'src/nonascii/foo.ts',
+      'src/nonascii/foo.ts whole file (2 lines)',
       'kept (colocated test changed): src/nonascii/foo.ts',
+      'changed lines: 2',
       'mutable files: 1 (cap 30)',
     ]);
   });
@@ -265,9 +267,10 @@ describe('scripts/checks/mutation.sh comment-only filter', () => {
 
       expect(result.code).toBe(0);
       expect(result.stdout.split('\n').filter(Boolean)).toEqual([
-        'src/real.ts',
+        'src/real.ts 1-1 (1 changed lines)',
         SKIPPED_LINE('src/commented-one.ts'),
         SKIPPED_LINE('src/commented-two.ts'),
+        'changed lines: 1',
         'mutable files: 1 (cap 30)',
       ]);
       expect(result.stubArguments).toBeNull();
