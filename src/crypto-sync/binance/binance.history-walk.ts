@@ -5,6 +5,7 @@ import {
   type BinanceSpanHint,
   type BinanceSpanHintPass,
   type BinanceSpanHints,
+  type BinanceSpanResume,
   type BinanceWalkCursorField,
   type BinanceWalkNumberField,
   type BinanceWalkPendingField,
@@ -93,9 +94,10 @@ export type SpanCommit = {
  * What one window gave: the rows imported, whether it was read to its end, whether any of its
  * spans left ground owed, and whether it was started: a read of one of its spans returned (a
  * page, or the half to read instead). `hint` is the span the window was left at when the run
- * stopped before any span of it committed and the chain had narrowed below the window (the next
- * run begins with it, see `walkSpans`); `null` when there is none, so a stored one for this
- * window is dropped; absent when the walk does not say.
+ * stopped before any span of it committed and the chain had narrowed below the window, or, when
+ * a span of it committed, that span with a resume (the next run begins with it, see
+ * `walkSpans`); `null` when there is none, so a stored one for this window is dropped; absent
+ * when the walk does not say.
  */
 export type WindowOutcome = {
   imported: number;
@@ -922,14 +924,28 @@ const withHint = (
   ].sort(byHintStart),
 });
 
+/** Whether two lists name the same series, in any order; none is none. */
+const sameSeries = (left?: readonly string[], right?: readonly string[]): boolean =>
+  left === undefined || right === undefined
+    ? left === right
+    : [...left].sort().join('|') === [...right].sort().join('|');
+
 /**
- * The hints that a window of the plan can still use: one starts where a window of its own pass
- * starts. A cursor, a mark or a list that moved on leaves a hint nobody reads, and it goes.
+ * Whether `hint` can be read by `window`: it starts where the window starts, and a resume was
+ * made for the series the window is read in now. A resume made for other series has read the
+ * ground behind it in some of these only, so a window that took it would skip ground.
+ */
+const isHintOf = (hint: BinanceSpanHint, window: OwedWindow): boolean =>
+  hint.start === window.start &&
+  (hint.resume === undefined || sameSeries(hint.resume.series, window.series));
+
+/**
+ * The hints that a window of the plan can still use (`isHintOf`). A cursor, a mark or a list that
+ * moved on leaves a hint nobody reads, and it goes.
  */
 const hintsOfPlan = (hints: BinanceSpanHints, plan: WalkPlan): BinanceSpanHints => {
-  const startsOf = (windows: WalkWindow[]): number[] => windows.map((window) => window.start);
-  const kept = (pass: BinanceSpanHintPass, windows: WalkWindow[]): BinanceSpanHint[] =>
-    hints[pass].filter((hint) => startsOf(windows).includes(hint.start));
+  const kept = (pass: BinanceSpanHintPass, windows: OwedWindow[]): BinanceSpanHint[] =>
+    hints[pass].filter((hint) => windows.some((window) => isHintOf(hint, window)));
 
   return {
     forward: kept('forward', plan.forward),
@@ -939,13 +955,23 @@ const hintsOfPlan = (hints: BinanceSpanHints, plan: WalkPlan): BinanceSpanHints 
   };
 };
 
+const sameResume = (left?: BinanceSpanResume, right?: BinanceSpanResume): boolean =>
+  left === undefined || right === undefined
+    ? left === right
+    : left.from === right.from &&
+      sameList(left.returned, right.returned) &&
+      sameList(left.stuck, right.stuck) &&
+      sameSeries(left.series, right.series);
+
 const sameHints = (left: BinanceSpanHints, right: BinanceSpanHints): boolean =>
   (['forward', 'pending', 'rescan', 'point'] as const).every(
     (pass) =>
       left[pass].length === right[pass].length &&
       left[pass].every(
         (hint, index) =>
-          hint.start === right[pass][index].start && hint.end === right[pass][index].end,
+          hint.start === right[pass][index].start &&
+          hint.end === right[pass][index].end &&
+          sameResume(hint.resume, right[pass][index].resume),
       ),
   );
 
@@ -1011,7 +1037,9 @@ export const runWalkPlan = async (input: {
   /**
    * Run one window. It is given the hint of its own `hintPass` that starts where it starts, and
    * the hint it comes back with takes the place of that one: a window that began with a hint and
-   * was cut short again leaves a narrower one, a window with a committed span leaves none.
+   * was cut short again leaves a narrower one. A window with a committed span leaves a resume
+   * when it is a point window, and none otherwise: the other passes keep what they read in their
+   * cursor, their list and their re-scan mark, which only a point window has no mark for.
    */
   const runWithHint = async (
     window: OwedWindow,
@@ -1025,9 +1053,10 @@ export const runWalkPlan = async (input: {
       keep,
       hints[hintPass].find((hint) => hint.start === window.start),
     );
+    const hint = hintPass === 'point' || outcome.hint?.resume === undefined ? outcome.hint : null;
 
-    if (outcome.hint !== undefined) {
-      await saveHints(withHint(hints, hintPass, window.start, outcome.hint));
+    if (hint !== undefined) {
+      await saveHints(withHint(hints, hintPass, window.start, hint));
     }
 
     return outcome;
@@ -1143,22 +1172,47 @@ const stepAfterRead = <Page>(input: {
     )
     .exhaustive();
 
-/** The span a window starts with: its hint when that starts with the window, else the window. */
+/**
+ * The span a window starts with: its hint when that starts with the window (from the start of the
+ * ground its resume has not read yet, if it has one), else the window.
+ */
 const firstSpanOf = (window: WalkWindow, hint: BinanceSpanHint | undefined): WalkWindow =>
   hint?.start === window.start
-    ? { start: window.start, end: Math.min(hint.end, window.end) }
+    ? { start: hint.resume?.from ?? window.start, end: Math.min(hint.end, window.end) }
     : window;
 
 /**
- * The span to resume from when a window is left while at `span`: that span when no span of the
- * window committed and it is narrower than the window, else none.
+ * The hint to leave when a window is left while at `span`. When no span of the window committed,
+ * in this run or an earlier one, it is that span if it is narrower than the window, else none.
+ * When some span did, it is a resume: the next span, and what the committed spans returned and
+ * left owed, so a later run finishes the window where this one stopped (`walkSpans`).
  */
-const leftAt = (
-  span: WalkWindow,
-  window: WalkWindow,
-  committed: boolean,
-): BinanceSpanHint | null =>
-  committed || span.end >= window.end ? null : { start: span.start, end: span.end };
+const leftAt = (input: {
+  span: WalkWindow;
+  window: OwedWindow;
+  progressed: boolean;
+  returned: OwedGround[];
+  stuck: OwedGround[];
+}): BinanceSpanHint | null => {
+  const { span, window, progressed, returned, stuck } = input;
+
+  if (!progressed) {
+    return span.end >= window.end ? null : { start: span.start, end: span.end };
+  }
+
+  return {
+    start: window.start,
+    end: span.end,
+    resume: {
+      from: span.start,
+      // A record a read returned names its point with no tag, and a stored list tells a point
+      // from a range by its tag alone.
+      returned: distinctGround(returned.map((point): OwedGround => ({ ...point, kind: 'point' }))),
+      stuck: distinctGround(stuck),
+      ...foldMap(maybe(window.series), (series) => ({ series: [...series] })),
+    },
+  };
+};
 
 /**
  * Walk one window with no cursor and no order to rely on: read the whole window, and when
@@ -1181,11 +1235,17 @@ const leftAt = (
  * calls for. So the window starts with `hint`, the span an earlier run was left at, when it
  * starts where the window starts (never wider than the window: a hint can only narrow a read, so
  * it never skips ground), and a run that stops before any span committed reports the span it was
- * at as `hint` in the outcome (`null` when that is the whole window, or a span of the window
- * committed: the window has moved on, or nothing was narrowed).
+ * at as `hint` in the outcome (`null` when that is the whole window: nothing was narrowed).
+ *
+ * A window that stops after some of its spans committed, in this run or an earlier one, reports a
+ * resume as `hint` (see `BinanceSpanResume`): the span to read next, and the points the spans
+ * read so far returned and the ground they left owed, which a run that finishes the window folds
+ * into its own, so the window hands `onComplete` what one read of all of it would have. Only a
+ * point window keeps the resume (`runWalkPlan`): a point leaves the list only by a window read to
+ * its end, and a window longer than a run's calls for it would never be.
  */
 export const walkSpans = async <Page>(input: {
-  window: WalkWindow;
+  window: OwedWindow;
   read: (span: WalkWindow, keep: number) => Promise<SpanRead<Page> | undefined>;
   commit: (span: WalkWindow, page: Page) => Promise<SpanCommit | undefined>;
   keep?: number;
@@ -1200,16 +1260,17 @@ export const walkSpans = async <Page>(input: {
     started: false,
     hint: null,
   };
-  const returned: OwedGround[] = [];
-  const stuck: OwedGround[] = [];
+  const resume = hint?.start === window.start ? hint.resume : undefined;
+  const returned: OwedGround[] = [...(resume?.returned ?? [])];
+  const stuck: OwedGround[] = [...(resume?.stuck ?? [])];
   let span = firstSpanOf(window, hint);
-  let committed = false;
+  let progressed = resume !== undefined;
 
   while (span.start < window.end) {
     const spanRead = await read(span, keep);
 
     if (spanRead === undefined) {
-      return { ...outcome, hint: leftAt(span, window, committed) };
+      return { ...outcome, hint: leftAt({ span, window, progressed, returned, stuck }) };
     }
 
     outcome.started = true;
@@ -1217,10 +1278,10 @@ export const walkSpans = async <Page>(input: {
     const step = await stepAfterRead({ read: spanRead, span, window, commit });
 
     if (step === undefined) {
-      return { ...outcome, hint: leftAt(span, window, committed) };
+      return { ...outcome, hint: leftAt({ span, window, progressed, returned, stuck }) };
     }
 
-    committed = committed || spanRead.kind === 'page';
+    progressed = progressed || spanRead.kind === 'page';
     outcome.imported += step.commit.imported;
     outcome.owed = outcome.owed || step.commit.owed;
     returned.push(...step.commit.returned);

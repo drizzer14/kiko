@@ -55,7 +55,7 @@ that holding.
 | OVERNIGHT 21 | User ruling 2026-10-12, B (the spec rule kept): a `FAILED` transfer stays owed at its point until the 6-month floor drops it. VERIFY 14 still records the exact status values, for the record; no rule waits on it | section 5, T11 |
 | R30 | Orchestrator ruling (technical) 2026-10-12: on every walk a BTC row the client cannot parse (no finite time, an off-contract field) is a per-record stop, never a whole-run throw. It owes its canonical point when a usable time exists, else the span; the other rows of the span import. Codes: `capital-row-unreadable`, `pay-row-unreadable`, `transfer-row-unreadable`, `earn-row-unreadable`. A malformed envelope still throws for the whole read | sections 1, 3, 5, 6, 7; P10, C3, T12, E12, E23 |
 | R31 | Orchestrator ruling (technical) 2026-10-12, under the no-starvation rule: each walk reads the windows of its owed ranges in a round-robin from a range cursor (`binanceHistoryRangeCursor`, `binancePayRangeCursor`, `binanceTransferRangeCursor`), the end of the window it read last, moved once a read has started; each of `W` owed windows is read within `ceil(W / L)` runs that enter the pending pass. Code `range-cursor-malformed` | section 4; the Transfer lane's cap of 80 reads one range a run |
-| R32 | Orchestrator ruling (technical) 2026-10-12, under the no-known-limit rule: a window that splits and stops before its first span commits leaves the span it was at as a hint, per walk and per pass (`binanceHistorySpanHints`, `binancePaySpanHints`, `binanceTransferSpanHints`); the next read of a window with that start begins with it; a window that needs `h` halvings commits its first span within `h + 1` runs. Code `span-hints-malformed` | section 4 |
+| R32 | Orchestrator ruling (technical) 2026-10-12, under the no-known-limit rule: a window that splits and stops before its first span commits leaves the span it was at as a hint, per walk and per pass (`binanceHistorySpanHints`, `binancePaySpanHints`, `binanceTransferSpanHints`); the next read of a window with that start begins with it; a window that needs `h` halvings commits its first span within `h + 1` runs. A POINT window that is left after some of its spans committed keeps a resume in the same hint (R34, see section 4). Code `span-hints-malformed` | section 4 |
 
 ## Sources (official, checked 2026-10-09)
 
@@ -468,6 +468,28 @@ withdraw budget moves into this object, with the same numbers and the same rule.
     `h + 1` runs. The key is carried over a balance sync and dropped on a disconnect; a stored
     value that is not a record of lists of `{ start, end }` is ignored, stored over with no hint
     at once, and logged once under one fixed code (`span-hints-malformed`), never a throw.
+    **A point window keeps its progress across runs (R34, orchestrator ruling, technical,
+    2026-10-12).** A point leaves the list only when its whole window was read to its end, and a
+    run that ends after the first span of a window committed used to drop the hint: the next run
+    started the whole chain again, so a point whose chain of halvings costs more than any run's
+    calls for it never completed. A POINT window (the points list of the hints only) that is left
+    after some of its spans committed now stores a `resume` beside its span: `from`, where the
+    next span starts (the span ends at the hint's `end`), `returned`, the points of the records
+    the committed spans returned, trusted or not, `stuck`, the ground the records among them that
+    could not be trusted owe, and `series`, the series the window was read in. A later run that
+    reads the window begins at `from` and, once the window is read to its end, hands the point
+    rule the points the earlier runs returned beside its own, less the ground any run left owed
+    (a returned record owes the point, a stuck record holds it, as in one read of the whole
+    window). A stale resume only narrows a read and never skips ground: it drops with its hint
+    when the point leaves or no point window starts there, and when the window is read in other
+    series than the resume was made for. The other passes keep no resume: their progress is in
+    their cursor, their list and their re-scan mark. The resume is part of the same key and
+    lifecycle (carried, dropped on a disconnect); a resume that is malformed (no `from` inside
+    its span, a list that is no list of owed ground, a blank series) makes the whole stored value
+    malformed (`span-hints-malformed`), and a resume found in a list of another pass is ignored.
+    A point window whose first span needs `h` halvings, read one span a run, completes within
+    `2h + 1` runs: `h` runs of halving, then the doubling spans (`nextSpanAfter`) that cover the
+    rest of the window, at most `h + 1` of them.
   - **Reserved calls.** Every read of the owed windows leaves the lane's last calls for the
     re-scan (`RESCAN_KEEP`, 1, when the plan has a re-scan) and for the points (`POINT_KEEP`, 1,
     when the plan has a point), so a list of ranges cannot spend a run on re-reading them whole;

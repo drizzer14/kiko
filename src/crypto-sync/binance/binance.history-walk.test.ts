@@ -1,6 +1,6 @@
 import { DAY_MS } from '@kiko/dates';
 import type { HoldingRow } from '@kiko/db';
-import type { BinanceSpanHints } from '@kiko/holdings/holding-metadata';
+import type { BinanceSpanHint, BinanceSpanHints } from '@kiko/holdings/holding-metadata';
 
 import {
   advanceWalkMarks,
@@ -2875,7 +2875,7 @@ describe('runWalkPlan with span hints', () => {
     window: OwedWindow,
     pass: WalkPass,
     keep: number,
-    hint?: WalkWindow,
+    hint?: BinanceSpanHint,
   ) => Promise<WindowOutcome>;
   const run = (input: { plan: WalkPlan; stored?: BinanceSpanHints; runWindow: RunWindow }) => {
     const store = jest.fn(async (_next: BinanceSpanHints) => undefined);
@@ -3056,6 +3056,127 @@ describe('runWalkPlan with span hints', () => {
     expect(store.mock.calls.at(-1)?.[0]).toEqual(hintsOf({ point: [span(7, 8)] }));
   });
 
+  describe('a window that is left after a span of it committed', () => {
+    const point: OwedGround = { start: 8, end: 10, kind: 'point' };
+    const resumed = (start: number, from: number, series?: string[]): BinanceSpanHint => ({
+      start,
+      end: start + 100,
+      resume: { from, returned: [point], stuck: [], series },
+    });
+
+    it('stores the resume of a point window under the points, with the points it holds', async () => {
+      const { store, done } = run({
+        plan: planOf({ points: [span(7, 9)] }),
+        runWindow: async () => outcome({ hint: resumed(7, 50) }),
+      });
+
+      await done;
+
+      expect(store.mock.calls.at(-1)?.[0]).toEqual(hintsOf({ point: [resumed(7, 50)] }));
+    });
+
+    it('stores no resume for a window of any other pass: those passes keep their progress in their own marks', async () => {
+      const { store, done } = run({
+        plan: planOf({ forward: [span(0)], pending: [span(200)], rescan: [span(500)] }),
+        stored: hintsOf({ pending: [span(200, 210)] }),
+        runWindow: async (window) => outcome({ hint: resumed(window.start, window.start + 50) }),
+      });
+
+      await done;
+
+      expect(store.mock.calls.at(-1)?.[0]).toEqual(NO_HINTS);
+    });
+
+    it('gives a point window its resume, and a window of another pass none', async () => {
+      const given: [number, string, BinanceSpanHint | undefined][] = [];
+
+      await run({
+        plan: planOf({ pending: [span(7)], points: [span(7, 9)] }),
+        stored: hintsOf({ point: [resumed(7, 50)] }),
+        runWindow: async (window, pass, _keep, hint) => {
+          given.push([window.end, pass, hint]);
+
+          return outcome();
+        },
+      }).done;
+
+      expect(given).toEqual([
+        [107, 'pending', undefined],
+        [9, 'pending', resumed(7, 50)],
+      ]);
+    });
+
+    it('stores the resume again when only what it holds changed', async () => {
+      const { store, done } = run({
+        plan: planOf({ points: [span(7, 9)] }),
+        stored: hintsOf({ point: [resumed(7, 50)] }),
+        runWindow: async () => outcome({ hint: resumed(7, 75) }),
+      });
+
+      await done;
+
+      expect(store.mock.calls.at(-1)?.[0]).toEqual(hintsOf({ point: [resumed(7, 75)] }));
+    });
+
+    it('stores nothing when the resume is the one stored', async () => {
+      const { store, done } = run({
+        plan: planOf({ points: [span(7, 9)] }),
+        stored: hintsOf({ point: [resumed(7, 50)] }),
+        runWindow: async () => outcome({ hint: resumed(7, 50) }),
+      });
+
+      await done;
+
+      expect(store).not.toHaveBeenCalled();
+    });
+
+    it('drops a resume made for a window of other series than the one the plan gives now, before it reads', async () => {
+      const given: (BinanceSpanHint | undefined)[] = [];
+      const { store, done } = run({
+        plan: planOf({ points: [{ ...span(7, 9), series: ['MAIN_FUNDING', 'FUNDING_MAIN'] }] }),
+        stored: hintsOf({ point: [resumed(7, 50, ['MAIN_FUNDING'])] }),
+        runWindow: async (_window, _pass, _keep, hint) => {
+          given.push(hint);
+
+          return outcome();
+        },
+      });
+
+      await done;
+
+      expect(given).toEqual([undefined]);
+      expect(store).toHaveBeenCalledWith(NO_HINTS);
+    });
+
+    it('keeps a resume made for the same series, whatever the order they are listed in', async () => {
+      const given: (BinanceSpanHint | undefined)[] = [];
+
+      await run({
+        plan: planOf({ points: [{ ...span(7, 9), series: ['MAIN_FUNDING', 'FUNDING_MAIN'] }] }),
+        stored: hintsOf({ point: [resumed(7, 50, ['FUNDING_MAIN', 'MAIN_FUNDING'])] }),
+        runWindow: async (_window, _pass, _keep, hint) => {
+          given.push(hint);
+
+          return outcome();
+        },
+      }).done;
+
+      expect(given).toEqual([resumed(7, 50, ['FUNDING_MAIN', 'MAIN_FUNDING'])]);
+    });
+
+    it('drops a resume no point window starts at any more, as it drops any other hint', async () => {
+      const { store, done } = run({
+        plan: planOf({ points: [span(20, 30)] }),
+        stored: hintsOf({ point: [resumed(7, 50)] }),
+        runWindow: async () => outcome(),
+      });
+
+      await done;
+
+      expect(store).toHaveBeenCalledWith(NO_HINTS);
+    });
+  });
+
   it('reads as before when no hints are given', async () => {
     const seen: (WalkWindow | undefined)[] = [];
 
@@ -3184,7 +3305,7 @@ describe('walkSpans', () => {
       complete: false,
       owed: false,
       started: true,
-      hint: null,
+      hint: { start: 0, end: 100, resume: { from: 50, returned: [], stuck: [] } },
     });
   });
 
@@ -3251,7 +3372,7 @@ describe('walkSpans', () => {
         complete: false,
         owed: true,
         started: true,
-        hint: null,
+        hint: { start: 0, end: 100, resume: { from: 50, returned: [], stuck: [] } },
       });
     });
   });
@@ -3589,7 +3710,33 @@ describe('walkSpans', () => {
       expect(result.hint).toBeNull();
     });
 
-    it('is no span once a span of the window committed, though the run stops after it', async () => {
+    it('is no span once the window was read to its end', async () => {
+      const result = await walkSpans({ window, read: readByWidth(), commit: commitCount(1) });
+
+      expect(result.hint).toBeNull();
+    });
+  });
+
+  describe('the resume a window is left with once a span of it committed', () => {
+    const page = (span: WalkWindow): SpanRead<WalkWindow> => ({ kind: 'page', page: span });
+    const split = (span: WalkWindow): SpanRead<WalkWindow> => ({
+      kind: 'split',
+      half: halfOf(span) as WalkWindow,
+    });
+    const pointA: OwedGround = { start: 9, end: 11, kind: 'point' };
+    const pointB: OwedGround = { start: 40, end: 42, kind: 'point' };
+
+    /** A commit that reports, per span start, the points its records returned and left owed. */
+    const commitReturning = (
+      bySpanStart: Record<number, { returned?: OwedGround[]; stuck?: OwedGround[] }>,
+    ) =>
+      jest.fn(async (span: WalkWindow, _page: WalkWindow): Promise<SpanCommit> => {
+        const { returned = [], stuck = [] } = bySpanStart[span.start] ?? {};
+
+        return { imported: 0, owed: stuck.length > 0, returned, stuck };
+      });
+
+    it('is the span to read next, from where the committed span ended, when the run stops after it', async () => {
       const reads = [split(window), page({ start: 0, end: 50 }), undefined];
 
       const result = await walkSpans({
@@ -3599,11 +3746,203 @@ describe('walkSpans', () => {
       });
 
       expect(result.imported).toBe(1);
-      expect(result.hint).toBeNull();
+      expect(result.hint).toEqual({
+        start: 0,
+        end: 100,
+        resume: { from: 50, returned: [], stuck: [] },
+      });
     });
 
-    it('is no span once the window was read to its end', async () => {
-      const result = await walkSpans({ window, read: readByWidth(), commit: commitCount(1) });
+    it('keeps the points the committed spans returned and the ground they left owed', async () => {
+      const reads = [split(window), page({ start: 0, end: 50 }), undefined];
+
+      const result = await walkSpans({
+        window,
+        read: jest.fn(async () => reads.shift()),
+        commit: commitReturning({ 0: { returned: [pointA, pointB], stuck: [pointB] } }),
+      });
+
+      expect(result.hint).toEqual({
+        start: 0,
+        end: 100,
+        resume: { from: 50, returned: [pointA, pointB], stuck: [pointB] },
+      });
+    });
+
+    /** A read by width (see `readByWidth`) that gives up after `count` reads. */
+    const readUntil = (count: number) => {
+      const byWidth = readByWidth();
+
+      return jest.fn(async (span: WalkWindow, keep?: number) =>
+        byWidth.mock.calls.length >= count ? undefined : byWidth(span, keep),
+      );
+    };
+
+    it('keeps each point once, whatever the number of spans that returned it', async () => {
+      const result = await walkSpans({
+        window,
+        read: readUntil(5),
+        commit: commitReturning({
+          0: { returned: [pointA], stuck: [pointB] },
+          25: { returned: [pointA], stuck: [pointB] },
+        }),
+      });
+
+      expect(result.hint?.resume).toEqual({ from: 50, returned: [pointA], stuck: [pointB] });
+    });
+
+    it('tags the points a read returned as points, as a stored list tells a point from a range by its tag alone', async () => {
+      const untagged = { start: 9, end: 11, series: 'MAIN_FUNDING' };
+
+      const result = await walkSpans({
+        window,
+        read: readUntil(3),
+        commit: commitReturning({ 0: { returned: [untagged, { start: 9, end: 11 }] } }),
+      });
+
+      expect(result.hint?.resume?.returned).toEqual([
+        { ...untagged, kind: 'point' },
+        { start: 9, end: 11, kind: 'point' },
+      ]);
+    });
+
+    it('names the series the window was read in, so a window of other series does not take it', async () => {
+      const typed = { start: 0, end: 100, series: ['MAIN_FUNDING', 'FUNDING_MAIN'] };
+
+      const result = await walkSpans({
+        window: typed,
+        read: readUntil(3),
+        commit: commitCount(1),
+      });
+
+      expect(result.hint?.resume?.series).toEqual(['MAIN_FUNDING', 'FUNDING_MAIN']);
+    });
+
+    it('begins at the span the resume names, and goes on from there as from any committed span', async () => {
+      const committed: WalkWindow[] = [];
+
+      const result = await walkSpans({
+        window,
+        read: readByWidth(),
+        commit: commitCount(1, committed),
+        hint: { start: 0, end: 100, resume: { from: 40, returned: [], stuck: [] } },
+      });
+
+      expect(committed).toEqual([
+        { start: 40, end: 55 },
+        { start: 55, end: 70 },
+        { start: 70, end: 85 },
+        { start: 85, end: 100 },
+      ]);
+      expect(result).toEqual({
+        imported: 4,
+        complete: true,
+        owed: false,
+        started: true,
+        hint: null,
+      });
+    });
+
+    it('never begins wider than the window, nor before it', async () => {
+      const read = readByWidth();
+
+      await walkSpans({
+        window: { start: 0, end: 60 },
+        read,
+        commit: commitCount(1),
+        hint: { start: 0, end: 100, resume: { from: 40, returned: [], stuck: [] } },
+      });
+
+      expect(read.mock.calls[0][0]).toEqual({ start: 40, end: 60 });
+    });
+
+    it('is complete at once when the window ends where the resume starts: the spans before it were read', async () => {
+      const read = readByWidth();
+      const onComplete = jest.fn(async (_read: OwedGround[]) => undefined);
+
+      const result = await walkSpans({
+        window: { start: 0, end: 40 },
+        read,
+        commit: commitCount(1),
+        hint: { start: 0, end: 100, resume: { from: 40, returned: [pointA], stuck: [] } },
+        onComplete,
+      });
+
+      expect(read).not.toHaveBeenCalled();
+      expect(result.complete).toBe(true);
+      expect(onComplete).toHaveBeenCalledWith([pointA]);
+    });
+
+    it('hands onComplete the points the earlier runs returned beside those of this run', async () => {
+      const onComplete = jest.fn(async (_read: OwedGround[]) => undefined);
+
+      await walkSpans({
+        window,
+        read: readByWidth(),
+        commit: commitReturning({ 85: { returned: [pointB] } }),
+        hint: { start: 0, end: 100, resume: { from: 40, returned: [pointA], stuck: [] } },
+        onComplete,
+      });
+
+      expect(onComplete).toHaveBeenCalledTimes(1);
+      expect(onComplete).toHaveBeenCalledWith([pointA, pointB]);
+    });
+
+    it('leaves out a point that a record of an earlier run left owed, though the spans of this run returned it', async () => {
+      const onComplete = jest.fn(async (_read: OwedGround[]) => undefined);
+
+      await walkSpans({
+        window,
+        read: readByWidth(),
+        commit: commitReturning({ 55: { returned: [pointA] } }),
+        hint: { start: 0, end: 100, resume: { from: 40, returned: [], stuck: [pointA] } },
+        onComplete,
+      });
+
+      expect(onComplete).toHaveBeenCalledWith([]);
+    });
+
+    it('is the resume again, from the narrower span, when a run that began with it is cut short before any commit', async () => {
+      const reads = [split({ start: 40, end: 100 }), undefined];
+
+      const result = await walkSpans({
+        window,
+        read: jest.fn(async () => reads.shift()),
+        commit: commitCount(1),
+        hint: { start: 0, end: 100, resume: { from: 40, returned: [pointA], stuck: [pointB] } },
+      });
+
+      expect(result.hint).toEqual({
+        start: 0,
+        end: 70,
+        resume: { from: 40, returned: [pointA], stuck: [pointB] },
+      });
+    });
+
+    it('is the resume again, from the span after the one it committed, when the run stops after a commit', async () => {
+      const reads = [page({ start: 40, end: 65 }), undefined];
+
+      const result = await walkSpans({
+        window,
+        read: jest.fn(async () => reads.shift()),
+        commit: commitReturning({ 40: { returned: [pointB] } }),
+        hint: { start: 0, end: 65, resume: { from: 40, returned: [pointA], stuck: [] } },
+      });
+
+      expect(result.hint).toEqual({
+        start: 0,
+        end: 100,
+        resume: { from: 65, returned: [pointA, pointB], stuck: [] },
+      });
+    });
+
+    it('is no hint once the window is read to its end, whatever it began with', async () => {
+      const result = await walkSpans({
+        window,
+        read: readByWidth(),
+        commit: commitCount(1),
+        hint: { start: 0, end: 100, resume: { from: 40, returned: [pointA], stuck: [] } },
+      });
 
       expect(result.hint).toBeNull();
     });

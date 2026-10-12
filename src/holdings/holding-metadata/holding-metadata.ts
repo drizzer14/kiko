@@ -305,12 +305,31 @@ export type BinanceWalkNumberField =
   | BinanceWalkRangeCursorField;
 
 /**
- * Where a run left a window it split and could not finish before the first span of it committed:
- * the narrowest span it asked for, which starts where the window starts. The next run that reads
- * a window with that start begins with this span, so a chain of halvings longer than one run's
- * calls goes on from where it stopped instead of starting over. A hint can only narrow a read.
+ * What a run keeps of a POINT window it left after some spans of it committed (the other passes
+ * keep their progress in their cursor, their list and their re-scan mark): `from` is where the
+ * next span starts (the hint's `end` is where it ends); `returned` the points of the records the
+ * committed spans returned, trusted or not, and `stuck` the ground the records among them that
+ * could not be trusted owe. Both are folded into the read of the window that finishes it in a
+ * later run, so the window takes its point off the list once, as one read of it would have.
+ * `series` is the series the window was read in: a window of other series does not take it.
  */
-export type BinanceSpanHint = { start: number; end: number };
+export type BinanceSpanResume = {
+  from: number;
+  returned: BinancePendingRange[];
+  stuck: BinancePendingRange[];
+  series?: string[];
+};
+
+/**
+ * Where a run left a window it could not finish: the narrowest span it asked for, which starts
+ * where the window starts, when no span of it committed. The next run that reads a window with
+ * that start begins with this span, so a chain of halvings longer than one run's calls goes on
+ * from where it stopped instead of starting over. A point window that committed some spans
+ * leaves a `resume` as well: its span starts at `resume.from`, after the ground already read, and
+ * `start` stays the start of the window, which is what finds the hint. A hint can only narrow a
+ * read.
+ */
+export type BinanceSpanHint = { start: number; end: number; resume?: BinanceSpanResume };
 
 /** The passes a run reads, and the points among them: each keeps its own hints. */
 export const binanceSpanHintPasses = ['forward', 'pending', 'rescan', 'point'] as const;
@@ -410,6 +429,18 @@ const asPendingRange = (value: unknown): BinancePendingRange | undefined => {
   return isSeries(series) ? { start, end, kind, series } : undefined;
 };
 
+const asPendingRanges = (value: unknown): BinancePendingRange[] | undefined => {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+
+  const ranges = value.map(asPendingRange);
+
+  return ranges.every((range): range is BinancePendingRange => range !== undefined)
+    ? ranges
+    : undefined;
+};
+
 /**
  * One walk's stored pending ranges, `[]` when none is stored, `undefined` when a value is
  * stored but is not a list of well-formed ranges (`readPendingMark` logs a fixed code and
@@ -426,15 +457,7 @@ export const binanceWalkPendingOf = (
     return [];
   }
 
-  if (!Array.isArray(stored)) {
-    return undefined;
-  }
-
-  const ranges = stored.map(asPendingRange);
-
-  return ranges.every((range): range is BinancePendingRange => range !== undefined)
-    ? ranges
-    : undefined;
+  return asPendingRanges(stored);
 };
 
 const roundRobinCursorOf = (field: string, metadata: unknown): number | null | undefined => {
@@ -463,17 +486,70 @@ export const binanceWalkRangeCursorOf = (
   metadata: unknown,
 ): number | null | undefined => roundRobinCursorOf(field, metadata);
 
-const asSpanHint = (value: unknown): BinanceSpanHint | undefined => {
+const isSeriesList = (value: unknown): value is string[] =>
+  Array.isArray(value) && value.length > 0 && value.every(isSeries);
+
+/**
+ * The resume of a point hint of `span`: where its next span starts, in the window and before the
+ * end of the span, and the two lists it holds. The lists are always stored, so one that is left
+ * out is as malformed as one that is no list.
+ */
+const asSpanResume = (value: unknown, span: BinanceSpanHint): BinanceSpanResume | undefined => {
   if (!isRecord(value)) {
     return undefined;
   }
 
-  const { start, end } = value;
+  const { from, returned, stuck, series } = value;
+  const returnedRanges = asPendingRanges(returned);
+  const stuckRanges = asPendingRanges(stuck);
 
-  return isNumber(start) && isNumber(end) && start < end ? { start, end } : undefined;
+  if (
+    !isNumber(from) ||
+    from < span.start ||
+    from >= span.end ||
+    returnedRanges === undefined ||
+    stuckRanges === undefined
+  ) {
+    return undefined;
+  }
+
+  if (series === undefined) {
+    return { from, returned: returnedRanges, stuck: stuckRanges };
+  }
+
+  return isSeriesList(series)
+    ? { from, returned: returnedRanges, stuck: stuckRanges, series }
+    : undefined;
 };
 
-const asSpanHintList = (value: unknown): BinanceSpanHint[] | undefined => {
+/**
+ * One stored hint. A resume belongs to the point list only (`withResume`): a hint of any other
+ * pass keeps its span and loses a resume it was given, because a resume would skip ground in a
+ * pass that keeps its progress elsewhere.
+ */
+const asSpanHint = (value: unknown, withResume: boolean): BinanceSpanHint | undefined => {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+
+  const { start, end, resume } = value;
+
+  if (!isNumber(start) || !isNumber(end) || start >= end) {
+    return undefined;
+  }
+
+  if (!withResume || resume === undefined) {
+    return { start, end };
+  }
+
+  return foldMap(maybe(asSpanResume(resume, { start, end })), (kept) => ({
+    start,
+    end,
+    resume: kept,
+  }));
+};
+
+const asSpanHintList = (value: unknown, withResume = false): BinanceSpanHint[] | undefined => {
   if (value === undefined) {
     return [];
   }
@@ -482,7 +558,7 @@ const asSpanHintList = (value: unknown): BinanceSpanHint[] | undefined => {
     return undefined;
   }
 
-  const hints = value.map(asSpanHint);
+  const hints = value.map((entry) => asSpanHint(entry, withResume));
 
   return hints.every((hint): hint is BinanceSpanHint => hint !== undefined) ? hints : undefined;
 };
@@ -509,7 +585,7 @@ export const binanceWalkSpanHintsOf = (
   const forward = asSpanHintList(stored.forward);
   const pending = asSpanHintList(stored.pending);
   const rescan = asSpanHintList(stored.rescan);
-  const point = asSpanHintList(stored.point);
+  const point = asSpanHintList(stored.point, true);
 
   return forward === undefined ||
     pending === undefined ||

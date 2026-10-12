@@ -859,6 +859,72 @@ describe('the Binance span hints', () => {
     ).toBeUndefined();
   });
 
+  describe('the resume of a point window', () => {
+    const resume = {
+      from: 401,
+      returned: [{ start: 400, end: 402, kind: 'point', series: 'MAIN_FUNDING' }],
+      stuck: [
+        { start: 400, end: 402, kind: 'point' },
+        { start: 390, end: 410 },
+      ],
+      series: ['MAIN_FUNDING', 'FUNDING_MAIN'],
+    };
+    const resumed = { ...hints, point: [{ start: 400, end: 450, resume }] };
+    const read = (stored: unknown) =>
+      binanceWalkSpanHintsOf('binancePaySpanHints', { binancePaySpanHints: stored });
+
+    it('is read with the points a record returned and the ground a record left owed', () => {
+      expect(read(resumed)).toEqual(resumed);
+    });
+
+    it('is read with no series for a walk that reads one series', () => {
+      const { series: _series, ...single } = resume;
+      const stored = { ...hints, point: [{ start: 400, end: 450, resume: single }] };
+
+      expect(read(stored)).toEqual(stored);
+    });
+
+    it('is dropped from a hint of any other pass, which keeps its span', () => {
+      expect(
+        read({
+          forward: [{ start: 1, end: 5, resume }],
+          pending: [{ start: 2, end: 6, resume }],
+          rescan: [{ start: 3, end: 7, resume }],
+          point: [],
+        }),
+      ).toEqual({
+        forward: [{ start: 1, end: 5 }],
+        pending: [{ start: 2, end: 6 }],
+        rescan: [{ start: 3, end: 7 }],
+        point: [],
+      });
+    });
+
+    it.each([
+      ['a resume that is no object', 'x'],
+      ['a resume that starts at a text', { ...resume, from: '401' }],
+      ['a resume that starts before its window', { ...resume, from: 399 }],
+      ['a resume that starts where its span ends', { ...resume, from: 450 }],
+      ['a resume that starts after its span ends', { ...resume, from: 451 }],
+      ['a resume with no list of returned points', { ...resume, returned: undefined }],
+      ['a resume whose returned points are no list', { ...resume, returned: 'x' }],
+      ['a resume with a returned point that is no range', { ...resume, returned: [{ start: 1 }] }],
+      ['a resume with no list of stuck ground', { ...resume, stuck: undefined }],
+      [
+        'a resume with a stuck entry of kind other than a point',
+        {
+          ...resume,
+          stuck: [{ start: 1, end: 2, kind: 'range' }],
+        },
+      ],
+      ['a resume whose series are no list', { ...resume, series: 'MAIN_FUNDING' }],
+      ['a resume with an empty list of series', { ...resume, series: [] }],
+      ['a resume with a series that is blank', { ...resume, series: [' '] }],
+    ])('makes the stored value undefined for %s', (_label, bad) => {
+      expect(read({ ...hints, point: [{ start: 400, end: 450, resume: bad }] })).toBeUndefined();
+    });
+  });
+
   it('are carried over a balance-sync metadata write', () => {
     const stored = {
       binanceAsset: 'BTC',

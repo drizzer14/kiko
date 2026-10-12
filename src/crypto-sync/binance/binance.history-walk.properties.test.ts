@@ -2335,6 +2335,36 @@ describe.each(LANES)('R32: a split window resumes in the next run, $name lane', 
     ).toBeLessThanOrEqual(halvings);
   });
 
+  it.each(HALVINGS.map((wanted) => ({ wanted })))(
+    'points: a point whose chain of at most $wanted halvings is longer than the one read a run its window gets, the dense type the last of the lane: its window completes and the point leaves within 2 * halvings + 1 runs',
+    async ({ wanted }) => {
+      const builder = builderOf(lane, 61);
+      const record = {
+        ...builder.record(BASE_MS + 60 * DAY_MS + HOUR_MS),
+        ...foldMap(maybe(lane.series?.at(-1)), (series) => ({ series })),
+      };
+      const point = pointOf(record);
+      const length = point.end - point.start;
+      const halvings = Math.min(wanted, Math.floor(Math.log2(length)));
+
+      const outcome = await simulate({
+        ...oneRead(lane.rangeCalls + 1),
+        runs: 2 * halvings + 4,
+        gapMs: 0,
+        scenario: { owed: [point], records: [record] },
+        dense: {
+          range: { start: point.start, end: point.start + 1 },
+          spanMs: halvedLength(length, halvings),
+        },
+      });
+
+      expect(outcome.importedAt.has(record.id)).toBe(true);
+      expect(firstRun(outcome.runs, (run) => !holdsPointOf(run.owed, record))).toBeLessThanOrEqual(
+        2 * halvings,
+      );
+    },
+  );
+
   it('a run in which the forward pass and the re-scan both stop in the middle of a chain keeps both hints, and both go on', async () => {
     const forwardHalvings = 4;
     const rescanHalvings = 3;

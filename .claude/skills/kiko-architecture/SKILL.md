@@ -1981,10 +1981,26 @@ stop codes and scenario rows.
   One hints key per walk (`binanceWalkSpanHintFields`) holds, per pass (forward, pending, re-scan,
   point), the narrowest span a window was left at when `walkSpans` stopped
   before any span committed; a window that starts there begins with it (never
-  wider than the window), and it drops when a span from that start commits or
-  no window of the pass starts there. A window that needs h halvings commits
+  wider than the window), and it drops when a span from that start commits
+  (for a point window it becomes a resume, below) or no window of the pass
+  starts there. A window that needs h halvings commits
   its first span within h + 1 runs of one read each. A malformed value is
   ignored, stored over at once and logged (`span-hints-malformed`).
+- **A point window keeps its progress across runs (R34).** A point leaves
+  the list only when its WHOLE window was read to its end, so a window left
+  after some spans committed would start over every run. `walkSpans` reports a
+  `resume` in the hint then (`BinanceSpanHint.resume`: `from` = the next
+  span's start, `returned` = the points of the records the committed spans
+  returned, `stuck` = the ground the untrusted ones owe, `series` = the series
+  the window was read in); `runWalkPlan` keeps it for the points list ONLY
+  (the other passes keep progress in their cursor, list and re-scan mark; the
+  parser drops a resume found in another list). The next run begins at `from`
+  and folds `returned` and `stuck` into what it hands `onComplete`, so the
+  point-leave rule above holds across runs. `hintsOfPlan` drops a resume made
+  for other series than the window has now (`isHintOf`): it would skip ground.
+  A malformed resume makes the whole value malformed (`span-hints-malformed`).
+  A point window whose first span needs h halvings, one span a run, completes
+  within 2h + 1 runs.
 - **STOP_ENDS_PASS and R28: user ruling of 2026-10-12, kept** (plan
   OVERNIGHT item 17). `STOP_ENDS_PASS` (`binance.history-walk.ts`) says a stop
   in the forward pass ends only that pass, so the run goes on to the owed

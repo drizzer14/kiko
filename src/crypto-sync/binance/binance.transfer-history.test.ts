@@ -1260,6 +1260,50 @@ describe('the range cursor and the span hints of the round-robin', () => {
     });
   });
 
+  describe('with a point whose window comes back full at its first millisecond', () => {
+    const time = agoMs(60);
+    const point = pointOf(time, 'MAIN_FUNDING');
+    const entries = [entryOf({ tranId: 't-point', timestamp: time })];
+    const dense: Answer = (query) =>
+      query.type === 'MAIN_FUNDING' && query.startTime === point.start && query.endTime > time
+        ? fullPage()
+        : undefined;
+    const pointRequestsOf = (requests: TransferQuery[]): TransferQuery[] =>
+      requests.filter((query) => query.type === 'MAIN_FUNDING' && query.endTime <= time + 1);
+
+    it('keeps the resume of the window when the run ends after its first span committed, and the next run goes on from there', async () => {
+      const world = worldOf({ [SPOT_FIELDS.cursor]: agoMs(2), [SPOT_FIELDS.pending]: [point] });
+      const fetcher = serverOf(entries, dense);
+      // The point is the last read of a run, and this run affords the read of its whole window
+      // (which comes back full) and of its first half, and no read after them.
+      const run = {
+        gate: freshRun().gate,
+        budget: {
+          canAfford: () =>
+            pointRequestsOf(fetcher.mock.calls.map(([, , query]) => query)).length < 2,
+          record: () => undefined,
+        },
+      };
+
+      await walkOnce({ world, run, over: { fetchUniversalTransfers: fetcher } });
+
+      expect((world.metadata[HINTS_FIELD] as { point: unknown[] }).point).toEqual([
+        {
+          start: point.start,
+          end: point.end,
+          resume: { from: time, returned: [point], stuck: [], series: ['MAIN_FUNDING'] },
+        },
+      ]);
+      expect(pointsIn(listOf(world))).toEqual([point]);
+
+      const { requests } = await walkOnce({ world, entries, answer: dense });
+
+      expect(pointRequestsOf(requests).map((query) => query.startTime)).toEqual([time]);
+      expect(pointsIn(listOf(world))).toEqual([]);
+      expect((world.metadata[HINTS_FIELD] as { point: unknown[] }).point).toEqual([]);
+    });
+  });
+
   describe('with a day that comes back full above 6 hours', () => {
     const day = days[0];
     const dense: Answer = (query) =>
