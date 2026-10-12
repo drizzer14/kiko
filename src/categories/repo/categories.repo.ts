@@ -79,7 +79,8 @@ export const categoriesRepo = {
    * ONE op-sqlite transaction: read the configured default key from settings,
    * refuse if the target IS the default (it is the catch-all — it can never be
    * deleted), then reassign every transaction pointing at this key to the
-   * default key, delete the category's rules, and finally remove the category
+   * default key, delete the category's rules, clear the category from every template that
+   * names it (the field stays in the template, empty), and finally remove the category
    * row. The reassignment (not a delete of the rows) is why this is one
    * transaction — a partial failure must never orphan a transaction on a
    * now-missing category slug.

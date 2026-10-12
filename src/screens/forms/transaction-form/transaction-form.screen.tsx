@@ -180,12 +180,12 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   // this same order (see `compareByAccountThenHolding`).
   const accountOrderById = new Map(accounts.map((account, index) => [account.id, index]));
 
-  // Six entry points, each named by a route param: `holdingId` = add a new manual row;
+  // Seven entry points: six named by a route param, `holdingId` = add a new manual row;
   // `transactionId` = open an existing one (edit/read-only); `duplicateOfTransactionId` = open the
   // CREATE form pre-filled FROM an existing manual row; `templateId` = create from a template;
-  // `editTemplateId` = edit a template; `newTemplate` = add one. No param is the global add. Read
-  // once by a pure helper so the component body spends no `in`-check branch on any of them. In
-  // add mode the by-id query runs against an empty id and returns nothing,
+  // `editTemplateId` = edit a template; `newTemplate` = add one; and no param at all, the global
+  // add. Read once by a pure helper so the component body spends no `in`-check branch on any of
+  // them. In add mode the by-id query runs against an empty id and returns nothing,
   // keeping the hook order stable without a conditional call.
   const {
     editingId,

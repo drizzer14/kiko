@@ -270,7 +270,7 @@ builder is the one place that applies this rule.
 A new feature container `src/transaction-templates/` (declare it in
 `scripts/checks/feature-imports.js`):
 
-- `repo/`: `transaction-templates.repo.ts` with `listQuery`, `getByIdQuery`,
+- `repo/`: `transaction-templates.repo.ts` with `listQuery`,
   `create`, `update`, `remove`, `insertDatabaseTransaction`,
   `clearHoldingsDatabaseTransaction`, `clearCategoryDatabaseTransaction`,
   `countReferencingHoldingsDatabaseTransaction`, and `countReferencingCategory`.

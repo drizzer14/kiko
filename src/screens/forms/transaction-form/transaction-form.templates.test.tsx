@@ -1,6 +1,6 @@
 import { Alert } from 'react-native';
 import type { ComponentProps } from 'react';
-import { act, fireEvent, render, within } from '@testing-library/react-native';
+import { fireEvent, render, within } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { DAY_MS } from '@kiko/dates';
 import { scrollToField } from '@kiko/design-system/scroll-to-field';
@@ -119,6 +119,24 @@ const EXPENSE = draftOf({
   category: 'groceries',
 });
 
+const EXCHANGE = draftOf({
+  mode: 'exchange',
+  holdingId: 'h1',
+  currency: 'UAH',
+  amountMinorUnits: 10000,
+  exchange: { destinationHoldingId: 'usd', destinationCurrency: 'USD', valueInMinorUnits: 250 },
+});
+
+const SPLIT = draftOf({
+  mode: 'split',
+  holdingId: 'h1',
+  currency: 'UAH',
+  amountMinorUnits: 10000,
+  description: 'Dinner',
+  category: 'dining',
+  returns: [{ holdingId: 'friend', amountMinorUnits: 500 }],
+});
+
 type TransactionRowFixture = {
   id: string;
   holdingId: string;
@@ -152,6 +170,11 @@ type LiveData = {
   templateList?: { id: string; name: string; draft?: TemplateDraft }[];
   // The list read of every stored template has not settled yet.
   isTemplateListLoading?: boolean;
+  // The tables whose first read has not settled yet: each holds no row and reads as loading.
+  loadingTables?: readonly string[];
+  // The stored holdings and accounts, when a test needs one the shared lists do not hold.
+  holdings?: readonly unknown[];
+  accounts?: readonly unknown[];
   // The transaction row the route names (to edit, or to duplicate). Absent on an add.
   transactionRow?: TransactionRowFixture;
 };
@@ -167,12 +190,15 @@ const setLiveData = ({
   templateName = 'Rent',
   templateList = [],
   isTemplateListLoading = false,
+  loadingTables = [],
+  holdings = HOLDINGS,
+  accounts = [{ id: 'acc', name: 'Home' }],
   transactionRow,
 }: LiveData) => {
   const template = { id: 'tpl', name: templateName, draft, createdAt: 1, updatedAt: 1 };
-  const dataByTable: Record<string, unknown[]> = {
-    holdings: HOLDINGS,
-    accounts: [{ id: 'acc', name: 'Home' }],
+  const dataByTable: Record<string, readonly unknown[]> = {
+    holdings,
+    accounts,
     categories: CATEGORIES,
     category_rules: categoryRules,
   };
@@ -200,7 +226,10 @@ const setLiveData = ({
   mockUseLiveQuery.mockImplementation((query: unknown, tables: string[]) => {
     const kind = (query as { __kind?: string })?.__kind ?? '';
 
-    if (kind === 'templateList' && isTemplateListLoading) {
+    if (
+      (kind === 'templateList' && isTemplateListLoading) ||
+      (kind === '' && loadingTables.includes(tables[0]))
+    ) {
       return { data: [], isLoading: true };
     }
 
@@ -221,7 +250,8 @@ const templateScreen = (params: TransactionFormParams = { templateId: 'tpl' }) =
   );
 };
 
-describe('TransactionFormScreen — filled from a template', () => {
+// A template fills its date at the moment of the fill, so every suite pins the clock.
+const pinTheClock = (): void => {
   beforeEach(() => {
     jest.clearAllMocks();
     jest.spyOn(Date, 'now').mockReturnValue(NOW);
@@ -230,6 +260,10 @@ describe('TransactionFormScreen — filled from a template', () => {
   afterEach(() => {
     jest.restoreAllMocks();
   });
+};
+
+describe('TransactionFormScreen — filled from a template', () => {
+  pinTheClock();
 
   it('fills an expense, dated at now, through the Duplicate seed', async () => {
     setLiveData({ draft: EXPENSE });
@@ -266,19 +300,7 @@ describe('TransactionFormScreen — filled from a template', () => {
   });
 
   it('fills an exchange with its destination and Value in, dated at now', async () => {
-    setLiveData({
-      draft: draftOf({
-        mode: 'exchange',
-        holdingId: 'h1',
-        currency: 'UAH',
-        amountMinorUnits: 10000,
-        exchange: {
-          destinationHoldingId: 'usd',
-          destinationCurrency: 'USD',
-          valueInMinorUnits: 250,
-        },
-      }),
-    });
+    setLiveData({ draft: EXCHANGE });
 
     const { getByLabelText } = await render(templateScreen());
 
@@ -300,17 +322,7 @@ describe('TransactionFormScreen — filled from a template', () => {
   });
 
   it('fills a split with its return rows, dated at now', async () => {
-    setLiveData({
-      draft: draftOf({
-        mode: 'split',
-        holdingId: 'h1',
-        currency: 'UAH',
-        amountMinorUnits: 10000,
-        description: 'Dinner',
-        category: 'dining',
-        returns: [{ holdingId: 'friend', amountMinorUnits: 500 }],
-      }),
-    });
+    setLiveData({ draft: SPLIT });
 
     const { getByLabelText } = await render(templateScreen());
 
@@ -365,15 +377,7 @@ describe('TransactionFormScreen — filled from a template', () => {
 
   it('saves the category a template with a split carries as a hand pick too', async () => {
     setLiveData({
-      draft: draftOf({
-        mode: 'split',
-        holdingId: 'h1',
-        currency: 'UAH',
-        amountMinorUnits: 10000,
-        description: 'Coffee',
-        category: 'groceries',
-        returns: [{ holdingId: 'friend', amountMinorUnits: 500 }],
-      }),
+      draft: { ...SPLIT, description: 'Coffee', category: 'groceries' },
       categoryRules: [nameRule('coffee', 'dining')],
     });
 
@@ -411,17 +415,14 @@ describe('TransactionFormScreen — filled from a template', () => {
 
   it('leaves Destination and Value in empty for a dangling destination, keeping the rest of the fill', async () => {
     setLiveData({
-      draft: draftOf({
-        mode: 'exchange',
-        holdingId: 'h1',
-        currency: 'UAH',
-        amountMinorUnits: 10000,
+      draft: {
+        ...EXCHANGE,
         exchange: {
           destinationHoldingId: 'gone',
           destinationCurrency: 'USD',
           valueInMinorUnits: 250,
         },
-      }),
+      },
     });
 
     const { getByLabelText, getByText } = await render(templateScreen());
@@ -477,6 +478,64 @@ describe('TransactionFormScreen — filled from a template', () => {
     expect(getByLabelText('Amount').props.value).toBe('1 050');
   });
 
+  // The template list has settled while one read the references resolve against has not, so a fill
+  // resolved now would latch against that read's empty list and keep it for good.
+  const fillAfterReadSettles = async (
+    table: string,
+    live: Omit<LiveData, 'loadingTables'>,
+  ): Promise<Awaited<ReturnType<typeof render>>> => {
+    setLiveData({ ...live, loadingTables: [table] });
+
+    const utils = await render(templateScreen());
+
+    expect(utils.getByLabelText('Amount').props.value).toBe('');
+
+    setLiveData(live);
+    await utils.rerender(templateScreen());
+
+    return utils;
+  };
+
+  it('waits for the holdings to load before it fills', async () => {
+    const { getByLabelText, getByText } = await fillAfterReadSettles('holdings', {
+      draft: EXPENSE,
+    });
+
+    expect(getByLabelText('Holding')).toHaveTextContent('Wallet UAHHome');
+    expect(getByLabelText('Amount').props.value).toBe('1 050');
+    expect(getByText('Groceries')).toBeTruthy();
+  });
+
+  it('waits for the accounts to load before it fills, so a synced holding is not seated', async () => {
+    const syncedHolding = {
+      ...HOLDINGS[0],
+      id: 'mono',
+      name: 'Mono UAH',
+      accountId: 'bank',
+      metadata: { monobankId: 'm1' },
+    };
+    const { getByLabelText } = await fillAfterReadSettles('accounts', {
+      draft: { ...EXPENSE, holdingId: 'mono' },
+      holdings: [...HOLDINGS, syncedHolding],
+      accounts: [
+        { id: 'acc', name: 'Home' },
+        { id: 'bank', name: 'Bank', institution: 'monobank' },
+      ],
+    });
+
+    expect(getByLabelText('Holding')).toHaveTextContent('Select holding');
+    expect(getByLabelText('Amount').props.value).toBe('1 050');
+  });
+
+  it('waits for the categories to load before it fills', async () => {
+    const { getByLabelText, getByText } = await fillAfterReadSettles('categories', {
+      draft: EXPENSE,
+    });
+
+    expect(getByText('Groceries')).toBeTruthy();
+    expect(getByLabelText('Holding')).toHaveTextContent('Wallet UAHHome');
+  });
+
   it('fills once: a live refresh of the template never clobbers an edit', async () => {
     setLiveData({ draft: EXPENSE });
 
@@ -493,14 +552,7 @@ describe('TransactionFormScreen — filled from a template', () => {
 const TAKEN_MESSAGE = 'A template with this name already exists.';
 
 describe('TransactionFormScreen — Add template', () => {
-  beforeEach(() => {
-    jest.clearAllMocks();
-    jest.spyOn(Date, 'now').mockReturnValue(NOW);
-  });
-
-  afterEach(() => {
-    jest.restoreAllMocks();
-  });
+  pinTheClock();
 
   it('is titled "Add Template", with no date row, no toggle and no loan field', async () => {
     setLiveData({ draft: EXPENSE, latestManualHoldingId: 'h1' });
@@ -669,23 +721,15 @@ describe('TransactionFormScreen — Add template', () => {
     expect(mockCreateTemplate).not.toHaveBeenCalled();
   });
 
-  it('hands the shared save-error alert a name the write itself refuses (a race)', async () => {
+  it.each([
+    [
+      'hands the shared save-error alert a name the write itself refuses (a race)',
+      () => new TemplateNameTakenError(),
+    ],
+    ['alerts on any other write failure and stays open', () => new Error('disk full')],
+  ] as const)('%s', async (_name, failure) => {
     setLiveData({ draft: EXPENSE, latestManualHoldingId: 'h1' });
-    mockCreateTemplate.mockRejectedValue(new TemplateNameTakenError());
-
-    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
-    const { getByLabelText } = await render(templateScreen({ newTemplate: true }));
-
-    await fireEvent.changeText(getByLabelText('Template name'), 'Tea');
-    await pressSave(navigation.setOptions);
-
-    expect(alertSpy).toHaveBeenCalledTimes(1);
-    expect(navigation.goBack).not.toHaveBeenCalled();
-  });
-
-  it('alerts on any other write failure and stays open', async () => {
-    setLiveData({ draft: EXPENSE, latestManualHoldingId: 'h1' });
-    mockCreateTemplate.mockRejectedValue(new Error('disk full'));
+    mockCreateTemplate.mockRejectedValue(failure());
 
     const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
     const { getByLabelText } = await render(templateScreen({ newTemplate: true }));
@@ -699,14 +743,7 @@ describe('TransactionFormScreen — Add template', () => {
 });
 
 describe('TransactionFormScreen — Edit template', () => {
-  beforeEach(() => {
-    jest.clearAllMocks();
-    jest.spyOn(Date, 'now').mockReturnValue(NOW);
-  });
-
-  afterEach(() => {
-    jest.restoreAllMocks();
-  });
+  pinTheClock();
 
   it('is titled "Edit Template" and fills the name and the fields', async () => {
     setLiveData({ draft: EXPENSE });
@@ -836,18 +873,14 @@ describe('TransactionFormScreen — Edit template', () => {
   });
 
   it('shows an exchange with no date row, and saves it with its destination left empty', async () => {
-    setLiveData({
-      draft: draftOf({
-        mode: 'exchange',
-        holdingId: 'h1',
-        currency: 'UAH',
-        exchange: {
-          destinationHoldingId: null,
-          destinationCurrency: null,
-          valueInMinorUnits: null,
-        },
-      }),
+    const withoutDestination = draftOf({
+      mode: 'exchange',
+      holdingId: 'h1',
+      currency: 'UAH',
+      exchange: { destinationHoldingId: null, destinationCurrency: null, valueInMinorUnits: null },
     });
+
+    setLiveData({ draft: withoutDestination });
     mockUpdateTemplate.mockResolvedValue(undefined);
 
     const { getByLabelText, queryByLabelText } = await render(
@@ -862,16 +895,7 @@ describe('TransactionFormScreen — Edit template', () => {
     expect(mockUpdateTemplate).toHaveBeenCalledWith({
       id: 'tpl',
       name: 'Rent',
-      draft: draftOf({
-        mode: 'exchange',
-        holdingId: 'h1',
-        currency: 'UAH',
-        exchange: {
-          destinationHoldingId: null,
-          destinationCurrency: null,
-          valueInMinorUnits: null,
-        },
-      }),
+      draft: withoutDestination,
     });
   });
 
@@ -911,45 +935,33 @@ describe('TransactionFormScreen — Edit template', () => {
 });
 
 describe('TransactionFormScreen — a holding change in a template entry settles the mode', () => {
-  const SWAP = draftOf({
-    mode: 'exchange',
-    holdingId: 'h1',
-    currency: 'UAH',
-    amountMinorUnits: 10000,
-    exchange: { destinationHoldingId: 'usd', destinationCurrency: 'USD', valueInMinorUnits: 250 },
-  });
+  pinTheClock();
 
-  beforeEach(() => {
-    jest.clearAllMocks();
-    jest.spyOn(Date, 'now').mockReturnValue(NOW);
-  });
-
-  afterEach(() => {
-    jest.restoreAllMocks();
-  });
-
-  it.each([
-    ['an Add template', { newTemplate: true }],
-    ['an Edit template', { editTemplateId: 'tpl' }],
-  ] as const)('settles an exchange to Expense when %s picks a card', async (_name, params) => {
-    setLiveData({ draft: SWAP, latestManualHoldingId: 'h1' });
-
-    const utils = await render(templateScreen(params));
-
-    if ('newTemplate' in params) {
-      await fireEvent.press(utils.getByLabelText('Type'));
-      await fireEvent.press(utils.getByTestId('transaction-type-field-option-exchange'));
-      await act(async () => {
-        await new Promise((resolve) => setTimeout(resolve, 0));
-      });
-    }
-
+  const settlesToExpenseOnCard = async (
+    utils: Awaited<ReturnType<typeof render>>,
+  ): Promise<void> => {
     expect(utils.getByLabelText('Type')).toHaveTextContent('Exchange');
 
     await fireEvent.press(utils.getByLabelText('Holding'));
     await fireEvent.press(utils.getByLabelText('Card UAH, Home'));
 
     expect(utils.getByLabelText('Type')).toHaveTextContent('Expense');
+  };
+
+  it('settles an exchange to Expense when an Add template picks a card', async () => {
+    setLiveData({ draft: EXCHANGE, latestManualHoldingId: 'h1' });
+
+    const utils = await render(templateScreen({ newTemplate: true }));
+
+    await fireEvent.press(utils.getByLabelText('Type'));
+    await fireEvent.press(utils.getByTestId('transaction-type-field-option-exchange'));
+    await settlesToExpenseOnCard(utils);
+  });
+
+  it('settles an exchange to Expense when an Edit template picks a card', async () => {
+    setLiveData({ draft: EXCHANGE, latestManualHoldingId: 'h1' });
+
+    await settlesToExpenseOnCard(await render(templateScreen({ editTemplateId: 'tpl' })));
   });
 });
 
@@ -1022,16 +1034,36 @@ describe('TransactionFormScreen — Save as a new template', () => {
     await pressSave(navigation.setOptions);
   };
 
+  // What a Coffee saved from the holding writes as the row, and what the template beside it stores.
+  const expectCoffeeSavedAs = async (
+    row: { category: string; categorySetByHand: boolean },
+    templateCategory: string | null,
+  ): Promise<void> => {
+    expect(mockRecordManual).toHaveBeenCalledWith(
+      expect.objectContaining(row),
+      expect.any(Function),
+    );
+
+    await runAlongside(mockRecordManual);
+
+    expect(mockInsertTemplate).toHaveBeenCalledWith(DATABASE_TRANSACTION, {
+      name: 'Morning',
+      draft: draftOf({
+        holdingId: 'h1',
+        currency: 'UAH',
+        amountMinorUnits: 25000,
+        description: 'Coffee',
+        category: templateCategory,
+      }),
+    });
+  };
+
+  pinTheClock();
+
   beforeEach(() => {
-    jest.clearAllMocks();
-    jest.spyOn(Date, 'now').mockReturnValue(NOW);
     // Reset, not just cleared: the write-failure tests below install their own implementations.
     mockUpdateTransaction.mockReset();
     mockInsertTemplate.mockReset().mockResolvedValue('new');
-  });
-
-  afterEach(() => {
-    jest.restoreAllMocks();
   });
 
   describe('on an Add', () => {
@@ -1117,24 +1149,7 @@ describe('TransactionFormScreen — Save as a new template', () => {
         const utils = await render(templateScreen({ holdingId: 'h1' }));
 
         await saveWithTemplate(utils, { description: 'Coffee', blur });
-
-        expect(mockRecordManual).toHaveBeenCalledWith(
-          expect.objectContaining({ category: 'dining', categorySetByHand: false }),
-          expect.any(Function),
-        );
-
-        await runAlongside(mockRecordManual);
-
-        expect(mockInsertTemplate).toHaveBeenCalledWith(DATABASE_TRANSACTION, {
-          name: 'Morning',
-          draft: draftOf({
-            holdingId: 'h1',
-            currency: 'UAH',
-            amountMinorUnits: 25000,
-            description: 'Coffee',
-            category: null,
-          }),
-        });
+        await expectCoffeeSavedAs({ category: 'dining', categorySetByHand: false }, null);
       },
     );
 
@@ -1144,24 +1159,7 @@ describe('TransactionFormScreen — Save as a new template', () => {
       const utils = await render(templateScreen({ holdingId: 'h1' }));
 
       await saveWithTemplate(utils, { description: 'Coffee', pick: 'Groceries' });
-
-      expect(mockRecordManual).toHaveBeenCalledWith(
-        expect.objectContaining({ category: 'groceries', categorySetByHand: true }),
-        expect.any(Function),
-      );
-
-      await runAlongside(mockRecordManual);
-
-      expect(mockInsertTemplate).toHaveBeenCalledWith(DATABASE_TRANSACTION, {
-        name: 'Morning',
-        draft: draftOf({
-          holdingId: 'h1',
-          currency: 'UAH',
-          amountMinorUnits: 25000,
-          description: 'Coffee',
-          category: 'groceries',
-        }),
-      });
+      await expectCoffeeSavedAs({ category: 'groceries', categorySetByHand: true }, 'groceries');
     });
 
     it('follows the text changed after a blur: the row takes its rule, the template no category', async () => {
@@ -1205,17 +1203,7 @@ describe('TransactionFormScreen — Save as a new template', () => {
     });
 
     it('hands a split its alongside step', async () => {
-      setLiveData({
-        draft: draftOf({
-          mode: 'split',
-          holdingId: 'h1',
-          currency: 'UAH',
-          amountMinorUnits: 10000,
-          description: 'Dinner',
-          category: 'dining',
-          returns: [{ holdingId: 'friend', amountMinorUnits: 500 }],
-        }),
-      });
+      setLiveData({ draft: SPLIT });
 
       const utils = await render(templateScreen());
 
@@ -1232,32 +1220,12 @@ describe('TransactionFormScreen — Save as a new template', () => {
 
       expect(mockInsertTemplate).toHaveBeenCalledWith(DATABASE_TRANSACTION, {
         name: 'Dinner out',
-        draft: draftOf({
-          mode: 'split',
-          holdingId: 'h1',
-          currency: 'UAH',
-          amountMinorUnits: 10000,
-          description: 'Dinner',
-          category: 'dining',
-          returns: [{ holdingId: 'friend', amountMinorUnits: 500 }],
-        }),
+        draft: SPLIT,
       });
     });
 
     it('hands an exchange its alongside step, with no category or description', async () => {
-      setLiveData({
-        draft: draftOf({
-          mode: 'exchange',
-          holdingId: 'h1',
-          currency: 'UAH',
-          amountMinorUnits: 10000,
-          exchange: {
-            destinationHoldingId: 'usd',
-            destinationCurrency: 'USD',
-            valueInMinorUnits: 250,
-          },
-        }),
-      });
+      setLiveData({ draft: EXCHANGE });
 
       const utils = await render(templateScreen());
 
@@ -1274,17 +1242,7 @@ describe('TransactionFormScreen — Save as a new template', () => {
 
       expect(mockInsertTemplate).toHaveBeenCalledWith(DATABASE_TRANSACTION, {
         name: 'Dollars',
-        draft: draftOf({
-          mode: 'exchange',
-          holdingId: 'h1',
-          currency: 'UAH',
-          amountMinorUnits: 10000,
-          exchange: {
-            destinationHoldingId: 'usd',
-            destinationCurrency: 'USD',
-            valueInMinorUnits: 250,
-          },
-        }),
+        draft: EXCHANGE,
       });
     });
   });
@@ -1571,14 +1529,7 @@ describe('TransactionFormScreen — Manual and Template tabs', () => {
     await fireEvent.press(utils.getByLabelText(optionLabel));
   };
 
-  beforeEach(() => {
-    jest.clearAllMocks();
-    jest.spyOn(Date, 'now').mockReturnValue(NOW);
-  });
-
-  afterEach(() => {
-    jest.restoreAllMocks();
-  });
+  pinTheClock();
 
   describe.each([
     ['a global add', {}],
@@ -1822,18 +1773,7 @@ describe('TransactionFormScreen — Manual and Template tabs', () => {
     const WALLET_EXCHANGE = {
       id: 't5',
       name: 'Swap',
-      draft: draftOf({
-        mode: 'exchange',
-        holdingId: 'h1',
-        currency: 'UAH',
-        amountMinorUnits: 10000,
-        category: 'groceries',
-        exchange: {
-          destinationHoldingId: 'usd',
-          destinationCurrency: 'USD',
-          valueInMinorUnits: 250,
-        },
-      }),
+      draft: { ...EXCHANGE, category: 'groceries' },
     };
 
     const openOnTemplate = async (templateId: string): Promise<Utils> => {
@@ -1931,24 +1871,14 @@ describe('TransactionFormScreen — Manual and Template tabs', () => {
 
   describe('where the seated holding offers fewer modes', () => {
     // An exchange whose own source holding was deleted, so the template holds none.
-    const EXCHANGE = {
+    const SWAP_WITHOUT_SOURCE = {
       id: 't5',
       name: 'Swap',
-      draft: draftOf({
-        mode: 'exchange',
-        holdingId: 'gone',
-        currency: 'UAH',
-        amountMinorUnits: 10000,
-        exchange: {
-          destinationHoldingId: 'usd',
-          destinationCurrency: 'USD',
-          valueInMinorUnits: 250,
-        },
-      }),
+      draft: { ...EXCHANGE, holdingId: 'gone' },
     };
 
     it('falls back to a mode a card offers, dropping the exchange fields', async () => {
-      setLiveData({ draft: EXPENSE, templateList: [EXCHANGE] });
+      setLiveData({ draft: EXPENSE, templateList: [SWAP_WITHOUT_SOURCE] });
 
       const utils = await render(templateScreen({ holdingId: 'card' }));
 
@@ -1961,7 +1891,7 @@ describe('TransactionFormScreen — Manual and Template tabs', () => {
     });
 
     it('keeps the exchange, leaving its destination empty when the destination is the page holding', async () => {
-      setLiveData({ draft: EXPENSE, templateList: [EXCHANGE] });
+      setLiveData({ draft: EXPENSE, templateList: [SWAP_WITHOUT_SOURCE] });
 
       const utils = await render(templateScreen({ holdingId: 'usd' }));
 
@@ -2123,6 +2053,13 @@ describe('TransactionFormScreen — Manual and Template tabs', () => {
           await pickHolding(utils, 'Wallet USD, Home');
 
           expect(utils.getByLabelText('Type')).toHaveTextContent('Split');
+          expect(utils.getByLabelText('Return to 1')).toHaveTextContent('Select holding');
+          expect(utils.getByLabelText('Return 1').props.value).toBe('5');
+
+          // Back in the return's own currency, a return holding that was only hidden would show
+          // again.
+          await pickHolding(utils, 'Wallet UAH, Home');
+
           expect(utils.getByLabelText('Return to 1')).toHaveTextContent('Select holding');
           expect(utils.getByLabelText('Return 1').props.value).toBe('5');
         });

@@ -197,7 +197,6 @@ export class TemplateNameTakenError extends Error {}
 export const toTransactionTemplate: (row: TransactionTemplateRow) => TransactionTemplate; // a bad draft reads as EMPTY_DRAFT, name kept
 export const transactionTemplatesRepo = {
   listQuery: () => /* select all, order by created_at asc, id asc */,
-  getByIdQuery: (id: string) => /* select where id */,
   create: (input: { name: string; draft: TemplateDraft }) => Promise<string>,        // own write()
   update: (input: { id: string; name: string; draft: TemplateDraft }) => Promise<void>, // own write(), updated_at = Date.now()
   remove: (id: string) => Promise<void>,
@@ -211,7 +210,7 @@ export const transactionTemplatesRepo = {
 Every insert or update stores `name.trim()`. The name check inside the write reads `selectDistinct({ id, name })` and calls `isTemplateNameTaken` (mismatch 3). The clear and count methods prefilter with `instr(draft, ?) > 0`, bound to `JSON.stringify(id or lowercase key)` (mismatch 4). The ids are chunked by `chunkForTable` so the variable limit holds. Then they decide with `draftReferences`. A clear rewrites only the rows that really reference the id, and leaves `updated_at` as it is. A count adds each template id once across all holding ids.
 
 - [ ] **step 1/5:** Write the failing tests:
-  - create, list (`created_at` ascending), getById, update (moves `updated_at`, not `created_at`), remove.
+  - create, list (`created_at` ascending), update (moves `updated_at`, not `created_at`), remove.
   - create and update store the trimmed name. "Оренда" after " оренда " throws `TemplateNameTakenError` and writes nothing. An update to the row's own name passes.
   - A row whose raw `draft` is `'{"version":9}'` lists as `EMPTY_DRAFT` with its name kept, and it can be updated and removed.
   - `clearHoldingsDatabaseTransaction` clears each slot, keeps a cleared return row, and leaves a template that only names the id inside `description` byte-equal, with `updated_at` unchanged.
@@ -283,7 +282,7 @@ The plan rules:
   - `resolveDraftReferences`: a deleted, closed or synced holding becomes null in each slot. A missing category becomes null.
   - `resolveHydration`: the two steps for a resolved holding. One step for a null holding, with `clearsHolding` true. Exact text for UAH 105000 ("1 050"), JPY 1050 and BTC 12345678. A re-pick to a different holding seeds that holding first.
   - The Duplicate and Edit plans `toEqual` today's values, with `mode` in place of `sign`, no destination, `valueIn: ''` and one empty return (Review Focus 2).
-- [ ] **step 2/6:** Write the failing screen tests in `transaction-form.templates.test.tsx`. Each mounts the form with `{ templateId }` (the tabs come in task 12/18) and mocks `transactionTemplatesRepo.getByIdQuery` in the existing `useLiveQuery` mock pattern. Cover: each mode fills with the date at now; on `{}`, a null holding leaves the holding picker empty; a seeded category is not replaced by the description pre-select (`userPickedCategory`); a dangling destination leaves Destination empty.
+- [ ] **step 2/6:** Write the failing screen tests in `transaction-form.templates.test.tsx`. Each mounts the form with `{ templateId }` (the tabs come in task 12/18) and mocks `transactionTemplatesRepo.listQuery` in the existing `useLiveQuery` mock pattern, the screen finding the template its route names in that list. Cover: each mode fills with the date at now; on `{}`, a null holding leaves the holding picker empty; a seeded category is not replaced by the description pre-select (`userPickedCategory`); a dangling destination leaves Destination empty.
 - [ ] **step 3/6:** Run `npx jest src/screens/forms/transaction-form`. Expected: FAIL.
 - [ ] **step 4/6:** Implement.
 - [ ] **step 5/6:** Run `npx jest src/screens/forms/transaction-form && npx tsc --noEmit && npm run check:feature-imports`. Expected: PASS, with `transaction-form.screen.test.tsx` unchanged and green.

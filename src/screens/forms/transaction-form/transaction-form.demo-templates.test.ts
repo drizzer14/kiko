@@ -17,7 +17,8 @@ import { resolveTemplateSeed } from './template-references';
 // reference seated: a template whose holding cannot be its mode's payer opens a plain expense and
 // the reviewer never reaches the mode (Guideline 5.6). The committed files are read, not the
 // dataset builder, because `src/screens` may not import the `e2e/` tree.
-const DEMO_KEY = join(__dirname, '../../../../e2e/screenshot/fixtures/kiko-demo.key');
+const FIXTURES = join(__dirname, '../../../../e2e/screenshot/fixtures');
+const DEMO_KEY = join(FIXTURES, 'kiko-demo.key');
 
 const decryptDemo = (envelopeJson: string): ExportPayload['tables'] => {
   const key = decodeBase64ToBytes(readFileSync(DEMO_KEY, 'utf8'));
@@ -30,14 +31,8 @@ const decryptDemo = (envelopeJson: string): ExportPayload['tables'] => {
 };
 
 const DEMO_ENVELOPES = {
-  en: readFileSync(
-    join(__dirname, '../../../../e2e/screenshot/fixtures/kiko-demo-en.kiko'),
-    'utf8',
-  ),
-  uk: readFileSync(
-    join(__dirname, '../../../../e2e/screenshot/fixtures/kiko-demo-uk.kiko'),
-    'utf8',
-  ),
+  en: readFileSync(join(FIXTURES, 'kiko-demo-en.kiko'), 'utf8'),
+  uk: readFileSync(join(FIXTURES, 'kiko-demo-uk.kiko'), 'utf8'),
 };
 
 describe.each(['uk', 'en'] as const)('the %s demo templates, filled into the form', (language) => {

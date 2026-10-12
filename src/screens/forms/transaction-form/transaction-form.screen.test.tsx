@@ -5286,6 +5286,12 @@ describe('TransactionFormScreen — a holding change settles the mode', () => {
     expect(utils.getByLabelText('Type')).toHaveTextContent('Split');
     expect(utils.getByLabelText('Return to 1')).toHaveTextContent('Select holding');
     expect(utils.getByLabelText('Return 1').props.value).toBe('5.00');
+
+    // Back in the return's own currency, a return holding that was only hidden would show again.
+    await pickHolding(utils, 'Wallet, Cash');
+
+    expect(utils.getByLabelText('Return to 1')).toHaveTextContent('Select holding');
+    expect(utils.getByLabelText('Return 1').props.value).toBe('5.00');
   });
 
   it('writes no split with the return holding left in the old currency', async () => {
