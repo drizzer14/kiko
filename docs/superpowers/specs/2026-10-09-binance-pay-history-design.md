@@ -853,6 +853,15 @@ Probe items:
     user before merge.
 11. Every SAPI response: whether `X-SAPI-USED-IP-WEIGHT-1M` and
     `X-SAPI-USED-UID-WEIGHT-1M` are present.
+12. Range end semantics, for each endpoint the walk reads (Pay transactions,
+    capital deposit, capital withdraw, transfer, Earn): whether `startTime` is
+    included and whether `endTime` is included. Read `[t, t]`, `[t - 1, t]`, and
+    `[t, t + 1]` around a known record time `t`, and print which of them return the
+    record.
+13. Withdraw history: which field `startTime` and `endTime` filter on (`applyTime`,
+    `completeTime`, or another), and whether `applyTime` is truncated or rounded to
+    the second against that field. The owed point of a withdrawal
+    (`[T - 1000, T + 1000]`) rests on this.
 
 ## Open questions (each has a safe default)
 
