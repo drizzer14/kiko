@@ -158,7 +158,7 @@ withdraw budget moves into this object, with the same numbers and the same rule.
   |---|---|
   | capital | withdraw 9 (unchanged), deposit unbounded |
   | Pay | 20 |
-  | Transfer | 60 |
+  | Transfer | 80 (was 60; OVERNIGHT 19, pending the user: a caught-up run needs forward 20 + an owed range 20 + re-scan 20 + points) |
   | Earn | 30 (4500 IP) |
 
   Each walk has its own cap so that a long backfill in one walk cannot starve the
@@ -177,10 +177,12 @@ withdraw budget moves into this object, with the same numbers and the same rule.
   `binancePayHistoryCursor`, `binanceTransferHistoryCursor`,
   `binanceEarnHistoryCursor` (and `binanceHistoryCursor` for the capital walk). A walk
   that re-scans its last window also keeps a re-scan mark next to its cursor
-  (`binanceHistoryRescanCursor` for capital, `binancePayRescanCursor` for Pay; the
-  Transfer and Earn walks add theirs), see sections 4 and 7. It also keeps a list of
-  pending overlap ranges (`binanceHistoryPendingOverlap`, `binancePayPendingOverlap`) and a
-  point cursor (`binanceHistoryPointCursor`, `binancePayPointCursor`), see section 4.
+  (`binanceHistoryRescanCursor` for capital, `binancePayRescanCursor` for Pay,
+  `binanceTransferRescanCursor`, `binanceEarnRescanCursor`), see sections 4 and 7. It also
+  keeps a list of pending overlap ranges (`binanceHistoryPendingOverlap`,
+  `binancePayPendingOverlap`, `binanceTransferPendingOverlap`, `binanceEarnPendingOverlap`)
+  and a point cursor (`binanceHistoryPointCursor`, `binancePayPointCursor`,
+  `binanceTransferPointCursor`, `binanceEarnPointCursor`), see section 4.
 - All of them join the walk-owned keys of `holding-metadata.ts` (`binanceWalkCursorFields`,
   `binanceWalkPendingFields` and `binanceWalkPointCursorFields`). The balance upsert carries
   them and the disconnect resets the cursors to the floor, the lists to an empty list and drops
@@ -188,6 +190,21 @@ withdraw budget moves into this object, with the same numbers and the same rule.
 - One generic `holdingsRepo.setBinanceWalkCursor(holdingId, key, ms)` (it also writes a point
   cursor) and `setBinanceWalkPending(holdingId, key, ranges)` for a list keep the existing
   `institution = 'binance'` gate.
+- **Walks that read several series (Transfer: 20 types; Earn: 6 kinds).** They run on the same
+  passes, per-record commits, owed points and round-robin as Pay and capital (section 4). A
+  span read is one call per series (`readSeriesSpan`, `binance.history-paging.ts`), entered
+  only when the run can afford all of its calls beside the calls it keeps; each series is paged
+  by `fetchAllByTotal`: a full page with more behind it in a span that halves is answered with
+  the half (every series is read again in it), a 1 ms span pages by `current` up to 50 pages,
+  and a short page whose running count is not `total` (also `{ total: N > 0 }` with no rows), a
+  count above `total`, or 50 pages short of `total` is a drift of that series, a stop that owes
+  the span. The keeps count calls (`callsOf`): a re-scan read keeps the calls of one span read
+  of every series, a point read the calls of its own series. A stuck record owes its point in
+  its own series only: the stored point carries the series (`series`, on a point only), the
+  read of it is one call, and it leaves only for a returned record of that series with exactly
+  that point. Points of different series that start together are read as one window, the
+  widest, in the union of their series. A stored point whose series the walk does not know
+  makes the list malformed (`pending-malformed`, repaired as in section 4).
 - Windows go oldest first. The rows of a window are written
   (`transactionsRepo.addManyDedup`) BEFORE its watermark advances. A crash between
   the two re-imports the window idempotently.
@@ -544,27 +561,51 @@ withdraw budget moves into this object, with the same numbers and the same rule.
 ### 5. Transfer walk (`binance.transfer-history.ts`)
 
 - Floor: `now - 6 months + 1 day` (S4). Windows of 30 days (the cap is not
-  documented, Q10). Per window, one request series per type in the 18-type list.
-  Paging: `current` from 1 and `size=100`, until the gathered rows cover `total` or
-  a short page. The window commits only once every type is complete. A first walk
-  is about 7 windows x 18 types, which is 126 calls of IP 1, spread over runs by the
-  60-call cap.
-- Filter: `asset === 'BTC'` and a settled `status` (`CONFIRMED` assumed, Q11). Any
-  other status stops the window, so a pending move is retried.
+  documented, Q10). The walk reads 20 types: the 18 untracked ones plus `MAIN_FUNDING` and
+  `FUNDING_MAIN`, those two first. It runs on the shared walk (sections 3 and 4): forward
+  pass, owed ranges, re-scan of the last 30 days, owed points, with per-record commits. A
+  span read is one series per type (`size=100`). A first walk is about 7 windows x 20 types,
+  which is 140 calls of IP 1, spread over runs by the 80-call cap (section 2).
+- Filter: `asset === 'BTC'` (the client counts a row of another asset for the pager and
+  parses only BTC rows strictly) and a settled `status` (`CONFIRMED` assumed, Q11).
+- **Commit granularity: per record.** A record the walk cannot trust owes its own point and
+  the other records of the span commit (pending pass and re-scan; the forward pass leaves the
+  span uncommitted and ends, the cursor unmoved; OVERNIGHT 18 and 17, pending the user).
+  Per-record codes: `transfer-not-settled` (any status but `CONFIRMED`; T5),
+  `transfer-id-missing`, `transfer-amount-invalid`, `transfer-type-mismatch` (the row's
+  `type` is not the type read).
+- **Owed after a stop.** A per-record stop owes `[timestamp - 1, timestamp + 1]` in the type
+  it was read under (`timestamp` in ms; VERIFY 14 for the filter field and precision). A stop
+  not tied to one record (`transfer-page-drift`, `transfer-holding-missing`) or a record whose
+  `timestamp` lies outside the span owes the span, in every type.
 - `MAIN_FUNDING` gives Spot -x and Funding +x as paired legs. `FUNDING_MAIN` is the
   reverse.
 - An untracked type gives one leg on Spot (`MAIN`) or Funding (`FUNDING`), with
   `untracked_counterpart = wallet:<other>`, negative when the tracked wallet is the
   source.
-- Key: `` `${accountId}:xfer:${tranId}:${holdingKey}` `` (one per leg). Pair id:
-  `` `${accountId}:xfer:${tranId}` ``.
+- Key: `` `${accountId}:xfer:${type}:${tranId}:${holdingKey}` `` (one per leg). Pair id:
+  `` `${accountId}:xfer:${type}:${tranId}` ``. The type is in the key, so a `tranId` that
+  two types share can never refresh the other's row (was: no type in the key).
+- January 2027 Funding -> Spot auto-migration (announcement
+  https://www.binance.com/en/support/announcement/detail/01cbe42ead1e4f1a9382363754d2eb5a,
+  checked 2026-10-11): if the move is a `FUNDING_MAIN` row, T2 imports it with no change; if
+  it is not in the transfer history, the Funding and Spot histories stop adding up to their
+  balances. VERIFY 16; the import is decided before the migration starts.
 
 ### 6. Earn walk (`binance.earn-history.ts`)
 
-- Six record kinds, each read with `asset=BTC`. Windows of 30 days (the S5 cap).
-  Paging: `current`/`size=100` until the gathered rows cover `total`. If the
-  gathered count is not equal to `total` after a short page (the data shifted
-  while paging), stop the window (`earn-page-drift`).
+- Six record kinds, each read with `asset=BTC`, are the six series of a span read on the
+  shared walk (sections 3 and 4). Windows of 30 days (the S5 cap). Paging:
+  `fetchAllByTotal` (section 3). A drift of one kind (`earn-page-drift`) owes the span; the
+  other kinds of the span commit (pending pass and re-scan).
+- **Commit granularity: per record** (OVERNIGHT 18, pending the user). A subscription or a
+  redemption is a record; a reward group (below) is ONE record. A record the walk cannot trust
+  owes `[time - 1, time + 1]` in its own kind (`time` in ms; VERIFY 15); per-record codes:
+  `earn-not-settled`, `earn-split-mismatch`, `earn-amount-invalid`, `earn-id-missing`,
+  `earn-account-unknown` (`sourceAccount` or `destAccount` neither SPOT nor FUNDING),
+  `earn-reward-type-unknown`. A stop not tied to one record (`earn-page-drift`,
+  `earn-holding-missing`) or a record outside the span owes the span. The forward pass leaves
+  the span uncommitted and ends, the cursor unmoved.
 - Floor: 2022-01-01 UTC. That is before Simple Earn launched (assumption); the
   probe reports the earliest record (Q12). With the 30-call cap a first walk takes
   about 10 runs.
@@ -572,8 +613,8 @@ withdraw budget moves into this object, with the same numbers and the same rule.
   - one Earn +amount leg;
   - debit legs Spot -`amtFromSpot` and Funding -`amtFromFunding`, each only when
     it is above zero;
-  - the sum must equal `amount` exactly, or the window stops
-    (`earn-split-mismatch`);
+  - the sum must equal `amount` exactly, or the record stops
+    (`earn-split-mismatch`, owed at its point);
   - when both split fields are absent, `sourceAccount` (SPOT or FUNDING) takes the
     whole amount;
   - pair id: `` `${accountId}:earn:sub:<flexible|locked>:${purchaseId}` ``;
@@ -591,9 +632,9 @@ withdraw budget moves into this object, with the same numbers and the same rule.
     field, so the wallet comes from the kind and the `type`:
     flexible `REALTIME` -> Earn holding; flexible `BONUS` -> Spot holding;
     locked (any `type`) -> Spot holding. Any other or unknown flexible `type`
-    (including `REWARDS`) stops the window with the fixed tag
-    `earn-reward-type-unknown`: no row is guessed, and the caption shows the walk
-    behind. A missing Spot holding is created at 0 (P7).
+    (including `REWARDS`) stops its group with the fixed tag
+    `earn-reward-type-unknown`, owed at the group's point: no row is guessed, and the
+    caption shows history behind (OVERNIGHT 20). A missing Spot holding is created at 0 (P7).
   - **Known gap.** A locked product that pays its rewards at maturity to the
     redeem destination (Spot, or the same-coin Flexible product = Earn, per
     `redeemTo`) cannot be told apart from the locked reward row, so such a reward
@@ -611,7 +652,7 @@ withdraw budget moves into this object, with the same numbers and the same rule.
     `` `${accountId}:earn:reward:<flexible|locked>:<projectId|positionId>:<type>:<time>:<n>` ``.
   - The key is stable across re-reads as long as Binance returns the same set of
     records for that group. `time` is in the group, so a group never spans two
-    windows. A record exactly on a window boundary that comes back in both windows
+    windows, as long as Binance filters on `time` itself (VERIFY 15). A record exactly on a window boundary that comes back in both windows
     gets the same group and the same `n`, so the key dedupes it.
   - **Two identical records** (every field equal) get `n` = 0 and 1. They are kept
     as two rows, because Binance listed two credits and the Earn balance holds
@@ -619,8 +660,9 @@ withdraw budget moves into this object, with the same numbers and the same rule.
     never deletes a synced row. The probe counts identical records (item 10). If
     it finds any, the coordinator asks the user before merge whether they are real
     double credits.
-  - A required field (`time`, the amount, the project or position id) that is
-    missing or not finite stops the window.
+  - A missing or non-finite amount, or a blank project or position id, stops the
+    group (owed at its point). A BTC row with no finite `time` fails the client's
+    strict parse: the walk's run fails and is logged (was: stop the window).
 - Keys for subscriptions and redemptions:
   `` `${accountId}:earn:<kind>:<purchaseId|redeemId>:${holdingKey}` ``.
 
@@ -667,7 +709,8 @@ capital history until an app update. The reason: a skipped row is silent loss, a
   uk: "Частину історії транзакцій Binance ще не імпортовано. Кіко продовжить
   імпорт під час наступних синхронізацій."
 - `isBinanceHistoryBehind` is true when ANY walk cursor is null or more than a day
-  behind.
+  behind, or any walk's list holds a point (OVERNIGHT 20, pending the user; was: the
+  cursors only).
 - The stored literals `'Binance Pay'` and `'Binance Earn'` are data, not catalogue
   strings. They are proper nouns, so they are not translated.
 
@@ -744,38 +787,45 @@ Placement (the "was:" column shows today's result):
 
 Transfer:
 
-| # | type, status | result |
-|---|---|---|
-| T1 | MAIN_FUNDING, CONFIRMED | Spot -x, Funding +x, paired, excluded from spending, labels "Transfer to/from" |
-| T2 | FUNDING_MAIN | Funding -x, Spot +x, paired |
-| T3 | MAIN_UMFUTURE | Spot -x, `wallet:UMFUTURE`, excluded |
-| T4 | UMFUTURE_FUNDING | Funding +x, `wallet:UMFUTURE` |
-| T5 | status not settled | stop |
-| T6 | asset not BTC | ignored |
-| T7 | Funding holding missing (T1) | P7, then T1 |
+| # | type, status | result | was: |
+|---|---|---|---|
+| T1 | MAIN_FUNDING, CONFIRMED | Spot -x, Funding +x, paired, excluded from spending, labels "Transfer to/from" | same |
+| T2 | FUNDING_MAIN | Funding -x, Spot +x, paired | same |
+| T3 | MAIN_UMFUTURE | Spot -x, `wallet:UMFUTURE`, excluded | same |
+| T4 | UMFUTURE_FUNDING | Funding +x, `wallet:UMFUTURE` | same |
+| T5 | status not settled | `transfer-not-settled`: owed at `[t - 1, t + 1]` in its type; forward pass: span uncommitted, cursor unmoved | stop the window |
+| T6 | asset not BTC | ignored (counted for the pager) | ignored |
+| T7 | Funding holding missing (T1) | P7, then T1 | same |
+| T8 | pending pass or re-scan: one T5 record and one CONFIRMED record of another type in the span | the CONFIRMED one imports; the T5 one is owed at its point | nothing of the window |
+| T9 | forward pass, the same span | nothing commits, the forward pass ends, the run goes on (OVERNIGHT 17) | stop the window |
+| T10 | row `type` is not the type read | `transfer-type-mismatch`, owed at its point | n/a |
 
 Earn:
 
-| # | record | result |
-|---|---|---|
-| E1 | flexible sub, amtFromSpot = amount | Spot -a, Earn +a, paired |
-| E2 | locked sub, spot 0.3 + funding 0.2 = 0.5 | Spot -0.3, Funding -0.2, Earn +0.5, one pair id |
-| E3 | sub, split sum is not amount | stop |
-| E4 | sub, no split fields, sourceAccount FUNDING | Funding -a, Earn +a |
-| E5 | flexible redeem, destAccount SPOT | Earn -a, Spot +a, paired |
-| E6 | locked redeem, rewardAmt > 0 | principal legs only; reward comes from E7 |
-| E7 | one flexible `REALTIME` reward record | Earn +rewards, 'Binance Earn', key ends `:<time>:0` |
-| E8 | two rewards in one group, amounts 0.00000002 and 0.00000001 | two rows, `n` 0 = 0.00000001, `n` 1 = 0.00000002 |
-| E9 | two identical reward records | two rows (`n` 0 and 1) |
-| E10 | re-read returns the same group | same keys, no new rows |
-| E11 | reward on a window boundary, returned by both windows | one row (same key) |
-| E12 | reward with missing `time` or a non-finite amount | stop |
-| E13 | gathered rows are not equal to `total` | stop (`earn-page-drift`) |
-| E14 | status not settled | stop |
-| E15 | one flexible `BONUS` reward record | Spot +rewards, 'Binance Earn', no marker |
-| E16 | one locked reward record (any `type`) | Spot +amount, 'Binance Earn', no marker |
-| E17 | flexible reward with `type` `REWARDS` or an unknown value | stop (`earn-reward-type-unknown`), no row, cursor unmoved |
-| E18 | `BONUS` or locked reward, Spot holding missing | Spot created at 0 (P7), then the row |
+| # | record | result | was: |
+|---|---|---|---|
+| E1 | flexible sub, amtFromSpot = amount | Spot -a, Earn +a, paired | same |
+| E2 | locked sub, spot 0.3 + funding 0.2 = 0.5 | Spot -0.3, Funding -0.2, Earn +0.5, one pair id | same |
+| E3 | sub, split sum is not amount | `earn-split-mismatch`, owed at its point | stop the window |
+| E4 | sub, no split fields, sourceAccount FUNDING | Funding -a, Earn +a | same |
+| E5 | flexible redeem, destAccount SPOT | Earn -a, Spot +a, paired | same |
+| E6 | locked redeem, rewardAmt > 0 | principal legs only; reward comes from E7 | same |
+| E7 | one flexible `REALTIME` reward record | Earn +rewards, 'Binance Earn', key ends `:<time>:0` | same |
+| E8 | two rewards in one group, amounts 0.00000002 and 0.00000001 | two rows, `n` 0 = 0.00000001, `n` 1 = 0.00000002 | same |
+| E9 | two identical reward records | two rows (`n` 0 and 1) | same |
+| E10 | re-read returns the same group | same keys, no new rows | same |
+| E11 | reward on a window boundary, returned by both windows | one row (same key) | same |
+| E12 | reward with missing `time` or a non-finite amount | missing `time`: client parse error, the run fails and is logged; non-finite amount: `earn-amount-invalid`, the group owed at its point | stop the window |
+| E13 | gathered rows are not equal to `total` | `earn-page-drift`: the span owed as a range, the other kinds commit | stop the window |
+| E14 | status not settled | `earn-not-settled`, owed at its point | stop the window |
+| E15 | one flexible `BONUS` reward record | Spot +rewards, 'Binance Earn', no marker | same |
+| E16 | one locked reward record (any `type`) | Spot +amount, 'Binance Earn', no marker | same |
+| E17 | flexible reward with `type` `REWARDS` or an unknown value | `earn-reward-type-unknown`: no row, the group owed at its point; forward pass: cursor unmoved | stop the window |
+| E18 | `BONUS` or locked reward, Spot holding missing | Spot created at 0 (P7), then the row | same |
+| E19 | pending pass or re-scan: a subscription not settled and a `REALTIME` reward in one span | the reward imports; the subscription owed at its point | nothing of the window |
+| E20 | two reward groups in one span, one of unknown `type` | the other group imports; the unknown one owed at one point | nothing of the window |
+| E21 | `FAILED` subscription | ignored, nothing owed | same |
+| E22 | one kind drifts in the re-scan | the other five kinds commit; the span owed as a range | nothing of the window |
 
 Convert: not imported (D7). No walk, no rows.
 
@@ -862,6 +912,22 @@ Probe items:
     `completeTime`, or another), and whether `applyTime` is truncated or rounded to
     the second against that field. The owed point of a withdrawal
     (`[T - 1000, T + 1000]`) rests on this.
+14. Universal transfer: which field `startTime` and `endTime` filter on (`timestamp`?),
+    the precision of `timestamp`, the range ends (item 12) on a row of ANY asset, whether
+    a `tranId` repeats across types, the status values (Q11), and the answer to a
+    `startTime` older than 6 months. The owed point of a transfer rests on the first two;
+    a wrong filter field keeps the point owed (fail closed), and the record starves once it
+    can be placed. The probe account had no transfer row: one small Spot -> Funding
+    transfer of any coin first (Still needing the user).
+15. Simple Earn, per kind: which field `startTime` and `endTime` filter on (`time`?), its
+    precision, the range ends (item 12), and whether every member of a reward group comes
+    back in any read that returns one of them. The owed point and the reward key
+    `<time>:<n>` rest on this. The probe account had no Earn row: one small flexible
+    subscription and redemption of any coin first (Still needing the user).
+16. After the January 2027 Funding -> Spot auto-migration (not before the merge): on an
+    account that held Funding BTC, the transfer rows of every type on the migration day.
+    Before it, `kiko:researcher` reads Binance's migration notes for how the move is
+    recorded (URL + date).
 
 ## Open questions (each has a safe default)
 
@@ -897,6 +963,11 @@ keeps its rule.
   whether they are real double credits.
 - Optional: check one BONUS or locked reward in the Binance app and say which
   wallet it landed in. Q14 itself is ruled (A, 2026-10-10).
+- Before the second probe run (items 12-15): one small Spot -> Funding transfer of any
+  coin, and one small Simple Earn flexible subscription and redemption of any coin, so the
+  transfer and Earn reads have a row to answer with.
+- Before January 2027: decide the import of the Funding -> Spot migration (item 16).
+- OVERNIGHT 17-21 of the plan (`docs/superpowers/plans/2026-10-10-binance-history.md`).
 
 ## Change sets (7 tasks, track `binance-history`)
 
@@ -918,7 +989,9 @@ runs once at the end.
   test).
 - task 4/7: Pay walk (`binance.pay-history.ts`): direction, placement, the
   nickname description, the cap and guard, and tests.
-- task 5/7: Transfer walk (`binance.transfer-history.ts`) and tests.
+- task 5/7: the deferred task 4/7 minors (first commit), the multi-series shared walk
+  (`binance.history-paging.ts`, typed points, `callsOf`), the Transfer walk
+  (`binance.transfer-history.ts`) and tests.
 - task 6/7: Earn walk (`binance.earn-history.ts`), including per-record rewards
   with the group-ordinal key. Also the caption logic (`isBinanceHistoryBehind`
   over all cursors) and copy (en + uk), moved here from the dropped Convert task.

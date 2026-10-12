@@ -50,6 +50,8 @@
 3. **Disconnect, then reconnect.** Every walk cursor is reset to 2017. The Pay walk's first request starts at `max(HISTORY_FLOOR_MS, now - 18 months + 10 days)`, the Transfer walk's at `now - 6 months + 1 day`, the Earn walk's at 2022-01-01. No request asks for older data. Pinned in tasks 4/7, 5/7, 6/7.
 4. **An Earn reward group grows on a re-read.** First read [0.00000002] gives `:0` = 2 sat. A re-read of [0.00000001, 0.00000002] gives `:0` = 1 sat (refreshed amount) and `:1` = 2 sat. Total 3 sat, two rows, no duplicate. Pinned in task 6/7 (real SQLite through `addManyDedup`).
 5. **Two Binance connections with the same `tranId`.** Each account gets its own legs and its own pair id; no row of one account is refreshed by the other. Pinned in task 5/7.
+6. **A Transfer run fits its cap.** A caught-up run reads the forward window (20 calls), one owed range outside the re-scan (20), the re-scan (20) and the points (1 call each) inside the cap of 80; at 60 the owed range starves while a point is owed. Pinned by the Transfer property lane (task 5/7, family a, mutant 8).
+7. **A typed point.** A stuck transfer (or Earn record) owes `[t - 1, t + 1]` in its own type (kind) only; its read is one call, and it leaves only for a record of that type with exactly that point. Pinned in task 5/7 (mutants 3-5, 7).
 
 ---
 
@@ -63,11 +65,11 @@ Each task is one change set. Its base is the commit it starts from: task 1/7's b
 | 2/7 | `binance.history-budget.ts`, `binance.history-walk.ts`, `binance.holding-keys.ts`, `binance.transactions.ts`, `binance.provider.ts`, `holding-metadata.ts`, `holdings.repo.ts`, `run-crypto-sync.ts` | 8 |
 | 3/7 | `src/db/schema.ts` (counted, not scored), `transactions.repo.ts`, `exchange-exclusion.ts`, `category-breakdown.ts`, `statistics.screen.tsx`, `untracked-counterpart.ts`, `exchange-description.ts`, `row-description.ts`, `home.screen.tsx`, `transaction-row.component.tsx`, `holding-detail.screen.tsx`, `transaction-form.screen.tsx`, `example-transaction.component.tsx` | 13 |
 | 4/7 | `binance.pay-history.ts`, `binance.history-walk.ts`, `run-crypto-sync.ts` | 3 |
-| 5/7 | `binance.transfer-history.ts`, `binance.history-walk.ts`, `run-crypto-sync.ts` | 3 |
-| 6/7 | `binance.earn-history.ts`, `run-crypto-sync.ts`, `binance-history-status.ts`, `crypto-sync-section.component.tsx` | 4 |
+| 5/7 | `binance.transfer-history.ts`, `binance.history-paging.ts`, `binance.history-walk.ts`, `binance.history-records.ts`, `binance.history-client.ts`, `binance.history-budget.ts`, `holding-metadata.ts`, `run-crypto-sync.ts` (step 1/11 adds no file beyond these; `row-labels.test.ts` is a test) | 8 |
+| 6/7 | `binance.earn-history.ts`, `holding-metadata.ts`, `run-crypto-sync.ts`, `binance-history-status.ts`, `crypto-sync-section.component.tsx` | 5 |
 | 7/7 | none (probe script is gitignored; skill text only) | 0 |
 
-All paths under `src/crypto-sync/binance/` unless shown otherwise. Slow runs to expect: task 3/7 mutates `transactions.repo.ts` (2,859 lines), `transaction-form.screen.tsx` (2,847), `statistics.screen.tsx` (1,307) and `holding-detail.screen.tsx` (1,299); task 2/7 mutates `holdings.repo.ts`. Stryker mutates whole files; quote the ETA from run history (`kiko:estimator`).
+All paths under `src/crypto-sync/binance/` unless shown otherwise. Slow runs to expect: tasks 5/7 and 6/7 mutate `binance.history-walk.ts` (about 850 lines) and `holding-metadata.ts` (about 840); task 3/7 mutates `transactions.repo.ts` (2,859 lines), `transaction-form.screen.tsx` (2,847), `statistics.screen.tsx` (1,307) and `holding-detail.screen.tsx` (1,299); task 2/7 mutates `holdings.repo.ts`. Stryker mutates whole files; quote the ETA from run history (`kiko:estimator`).
 
 ## Commands every task uses
 
@@ -318,41 +320,138 @@ Rules (spec section 4): window end = `now`; the Pay walk does not read the capit
 - [ ] **step 6/7:** Commit `feat(binance): Pay history walk (direction, placement, nickname description)`.
 - [ ] **step 7/7:** Pre-BATCH-READY commands; `kiko:reviewer` (brief: direction matrix vs spec; PII: only `name` stored, `binanceId` never leaves the function; logs fixed; no read of the capital cursor). BATCH READY.
 
-### binance-history task 5/7: Transfer walk (developer)
+### binance-history task 5/7: deferred minors, multi-series shared walk, Transfer walk (developer)
+
+**Shared walk: yes.** The Transfer walk runs on the task 4/7 walk: `planWalkPasses`, `runWalkPlan`, `walkSpans`, `settleRecords`, `commitSettledSpan`, `advanceWalkMarks`, per-record commits, owed points, the round-robin point cursor, `STOP_ENDS_PASS`, `RESCAN_KEEP`, `POINT_KEEP`, and R28 (OVERNIGHT 17). Paging by `current` + `total` fits it: `walkSpans` needs only "the whole page of this span, or the half to read instead", and `fetchAllByTotal` gives that. Two facts differ from Pay and capital. The shared code takes each as a parameter, and its default keeps Pay and capital unchanged:
+1. One span read is one call per transfer type (20). The keeps count calls, so `runWalkPlan` takes `callsOf(window)` and keeps the calls of one re-scan read and of one point read.
+2. A stuck transfer is owed only in its own type. An owed point carries that type (`series`), so a point read is one call, not 20.
+
+Rejected: a point read of all 20 types (20 calls a point; with the cap, about one point a run). Rejected: one walk state per type (80 metadata keys).
 
 **Files:**
-- Create: `binance.transfer-history.ts`, `binance.transfer-history.test.ts`, `binance.transfer-history.real-sqlite.test.ts`
-- Modify: `binance.history-walk.ts` (a shared `fetchAllByTotal` pager if task 6/7 reuses it; jscpd otherwise flags the two loops), `run-crypto-sync.ts` + test
+- step 1/11 (deferred minors): `binance.history-walk.ts`, `binance.history-records.ts`, `src/holdings/holding-metadata/holding-metadata.ts` (comment), `binance.history-walk.test.ts`, `binance.history-walk.properties.test.ts`, spec :357; Create `src/screens/forms/transaction-form/row-labels/row-labels.test.ts`
+- Create: `binance.history-paging.ts` + `.test.ts`, `binance.transfer-history.ts`, `binance.transfer-history.test.ts`, `binance.transfer-history.real-sqlite.test.ts`
+- Modify: `binance.history-walk.ts` + `.test.ts` (`series`, `callsOf`), `binance.history-records.ts` + `.test.ts` (`seriesOf`), `binance.history-client.ts` + `.test.ts` (M2: `gathered`, BTC-only strict parse), `binance.history-budget.ts` + `.test.ts` (transfer cap 80, OVERNIGHT 19), `holding-metadata.ts` + its test (Transfer keys, `series` on a point), `src/crypto-sync/disconnect/disconnect.test.ts`, `binance.history-walk.properties.test.ts` (Transfer lane), `src/crypto-sync/run-crypto-sync/run-crypto-sync.ts` + `.test.ts`, `index.ts` (barrel)
 
 **Interfaces:**
 ```ts
+// holding-metadata.ts
+export type BinancePendingRange = { start: number; end: number; kind?: 'point'; series?: string }; // series: on a point only, the read series of its record; a range with a series, or a blank series, is malformed
+export const BINANCE_TRANSFER_HISTORY_CURSOR_FIELD = 'binanceTransferHistoryCursor'; // now exported
+export const BINANCE_TRANSFER_RESCAN_CURSOR_FIELD = 'binanceTransferRescanCursor'; // in binanceWalkCursorFields
+export const BINANCE_TRANSFER_PENDING_OVERLAP_FIELD = 'binanceTransferPendingOverlap'; // in binanceWalkPendingFields
+export const BINANCE_TRANSFER_POINT_CURSOR_FIELD = 'binanceTransferPointCursor'; // in binanceWalkPointCursorFields
+
+// binance.history-walk.ts
+export type OwedWindow = WalkWindow & { series?: readonly string[] }; // absent = every series of the walk
+WalkPlan.points: OwedWindow[]; // one window per start: the widest point there; series = the union at that start (absent if one has none)
+planWalkPasses(input: { …; pending: OwedGround[] }); // m-4
+runWalkPlan(input: { …; callsOf?: (window: OwedWindow) => number }); // default () => 1. Keeps: RESCAN_KEEP * callsOf(rescan[0]), POINT_KEEP * callsOf(points[0]); a window is entered only when canAfford(keep + callsOf(window) - 1)
+readPendingMark(input: { …; knownSeries?: readonly string[] }); // a point whose series is not in it: the list is malformed (repaired as today)
+WindowOutcome.returned: OwedGround[]; // m-1: the points of every record the window's spans returned
+export const distinctGround: (ground: OwedGround[]) => OwedGround[]; // p-1: the one copy, records.ts imports it
+
+// binance.history-records.ts
+settleRecords(input: { …; seriesOf?: (record: Record) => string }); // the owed point and the returned point carry it
+
+// binance.history-client.ts (M2)
+TotalPage<Row> = HistoryPage<Row> & { total: number; gathered: number }; // gathered: every row of the page, any asset; rows: the BTC rows, strictly parsed; a row of another asset is counted and never parsed further
+
+// binance.history-paging.ts (new; Transfer and Earn)
+export type TotalPaged<Row> = { kind: 'rows'; rows: Row[] } | { kind: 'split'; half: WalkWindow } | { kind: 'drift' };
+export const fetchAllByTotal: <Row>(input: { run: BinanceHistoryRun; lane: BudgetLane; cost: CallCost; keep: number; half: WalkWindow | undefined; maxPages: number; fetchPage: (current: number) => Promise<TotalPage<Row>> }) => Promise<TotalPaged<Row> | undefined>; // undefined: budget
+export type SeriesSpan<Series, Row> = { read: { series: Series; rows: Row[] }[]; drifted: Series[] };
+export const readSeriesSpan: <Series extends string, Row>(input: { run; lane; cost; span: WalkWindow; keep: number; series: readonly Series[]; maxPages: number; fetchPage: (series: Series, span: WalkWindow, current: number) => Promise<TotalPage<Row>>; onRateLimit: (error: BinanceRateLimitError) => void }) => Promise<SpanRead<SeriesSpan<Series, Row>> | undefined>;
+
+// binance.transfer-history.ts
 export const TRANSFER_WINDOW_MS = 30 * DAY_MS;
 export const transferFloorMs: (now: number) => number; // now - 6 calendar months (UTC) + 1 day
 export const TRANSFER_SETTLED_STATUS = 'CONFIRMED';
-export const transferLegs: (accountId: string, record: BinanceUniversalTransfer, holdings: Map<BinanceWalletKey, HoldingRow>) => BinanceHistoryRow[] | 'stop' | 'ignore';
-export const syncBinanceTransferHistory: (request: { targetAccountId: string; run: BinanceHistoryRun }, overrides?) => Promise<WalkResult>;
-// binance.history-walk.ts
-export const fetchAllByTotal: <Row>(input: { lane: BudgetLane; cost: CallCost; run: BinanceHistoryRun; fetchPage: (current: number) => Promise<TotalPage<Row>>; maxPages: number }) => Promise<{ kind: 'done'; rows: Row[]; total: number } | { kind: 'unaffordable' }>;
+export const transferRowsOf: (accountId: string, record: BinanceUniversalTransfer, readAs: UniversalTransferType) => PlannedTransferRow[]; // throws BinanceWalkStop (per-record codes)
 export type BinanceHistoryRow = BinanceTransactionRow & { exchangeCounterpartHoldingId?: string; exchangePairId?: string; untrackedCounterpart?: string };
+export const syncBinanceTransferHistory: (request: { targetAccountId: string; run: BinanceHistoryRun }, overrides?: Partial<BinanceTransferHistoryDeps>) => Promise<WalkResult>;
+// deps: now, readCredentials, listHoldings, fetchUniversalTransfers, ensureHoldings, addTransactions, writeWalkCursor, writeWalkPending
 ```
-Rules (spec section 5): per window, one series per type in `UNIVERSAL_TRANSFER_TYPES`, paged by `current` until gathered >= `total` or a short page; the window commits only when every type is complete. Lane `transfer`, cost `COSTS.transfer`. Leg key `` `${accountId}:xfer:${tranId}:${holdingKey}` ``, pair id `` `${accountId}:xfer:${tranId}` ``, paired legs `description: ''`. One-leg rows: `untrackedCounterpart: untrackedWalletCode(other)`, `description: ''`.
 
-- [ ] **step 1/7:** Write the failing tests: T1-T7 from the spec (T1: Spot -x and Funding +x, each counterpart the other holding, one pair id, then `exchangeExcludedTransactionIds` on the written rows returns both ids and `transactionRowDescription` gives "Transfer to/from"); every one of the 18 untracked types maps to the right tracked holding, sign and code (table-driven); T5 `PENDING` -> stop, cursor unmoved; T6 non-BTC ignored; floor and Review Focus 3 (cursor 2017 -> first `startTime` = `transferFloorMs(now)`); one type's page unaffordable mid-window -> nothing of that window committed; cap 60; 429 -> cooldown; Review Focus 5 (two accounts, same `tranId` -> four rows, two pair ids; real SQLite); idempotent second run (real SQLite); `run-crypto-sync`: order capital -> Pay -> Transfer, failure isolated with tag `'[binance sync] transfer history failed'`.
-- **M2, from task 1/7 review:** `fetchUniversalTransfers` parses every asset's transfer rows strictly, so one off-contract non-BTC row stalls the BTC walk. Decide this first (for example read `asset` first and parse strictly only BTC rows, keeping the gathered count for the pager) and pin it with a test.
-- **M3, from task 1/7 review:** a body `{ total: N }` with no `rows` parses as `rows: []`. The pager (or the client) must treat absent rows with `total > 0` as a stop or a parse error. Pin it.
-- **January 2027 Funding -> Spot auto-migration (Binance announcement, checked 2026-10-11):** how does the move appear in the transfer history (`FUNDING_MAIN`, another type, or not at all)? If not at all, the Funding and Spot holding histories stop adding up to their balances; decide the import before the migration starts.
-- [ ] **step 2/7:** Run `npx jest src/crypto-sync/binance/binance.transfer-history`. Expected: FAIL.
-- [ ] **step 3/7:** Implement `fetchAllByTotal` and the walk.
-- [ ] **step 4/7:** Wire after the Pay walk with its own `logOnFailure`. Export from the barrel.
-- [ ] **step 5/7:** Run `npx jest src/crypto-sync src/statistics src/transactions`, then `npx tsc --noEmit`. Expected: PASS.
-- [ ] **step 6/7:** Commit `feat(binance): universal transfer walk (paired own-wallet legs, untracked wallet legs)`.
-- [ ] **step 7/7:** Pre-BATCH-READY commands; `kiko:reviewer`. BATCH READY.
+**Walk state (spec section 5):**
+
+| State | Rule |
+|---|---|
+| Floor, window | `transferFloorMs(now)`; 30-day windows; `MAX_WINDOWS` 12; overlap `RESYNC_OVERLAP_MS` (1 day) |
+| Passes | forward from `max(floor, cursor ?? floor)` to `now`; owed ranges outside the re-scan; re-scan `[base, forward start)`, `base = max(floor, min(now - 30 days, forward start - 1 day))`; owed points last (`startingAfter`) |
+| Span read | `readSeriesSpan` over `UNIVERSAL_TRANSFER_TYPES`, `MAIN_FUNDING` and `FUNDING_MAIN` first (the likely dense types split the span before the other 18 are paid for). A span is entered only when `canAfford(keep + types - 1)`, so no span is paid for in part by the cap |
+| Page rule (`fetchAllByTotal`) | A full page (`gathered` = 100) with `total` above the count so far: in a span that halves, the half (every type is read again in it); in a 1 ms span, the next `current`, at most 50 pages. `drift` for that type: a short page whose running count is not `total`, a count above `total`, or 50 pages short of `total`. M3: `{ total: N > 0 }` with no rows is a short page of 0, so it is `drift` |
+| Record | series = the type it was read under; time = `timestamp` (ms; filter field, precision and range ends: VERIFY 12, 14) |
+| Per-record stops (owe the point) | `transfer-not-settled` (status not `CONFIRMED`, T5), `transfer-id-missing` (blank `tranId`), `transfer-amount-invalid` (`btcSatoshis` null or at most 0), `transfer-type-mismatch` (the row's `type` is not the type read) |
+| Owed point | `{ start: timestamp - 1, end: timestamp + 1, kind: 'point', series: <type> }`, never cut to the span |
+| Span stops (owe the span as a range, every type) | `transfer-page-drift` (the types that did not drift still commit), `transfer-holding-missing`; a record whose `timestamp` lies outside the span |
+| Forward pass | any code: the span stays uncommitted and the forward pass ends; the cursor never passes the record (A2); the run goes on to the owed ranges, the re-scan and the points (R28, OVERNIGHT 17) |
+| Point read | the window's own series only: one call (one per type when points of different types start together: the widest window, the union of the types) |
+| Rows | key `` `${accountId}:xfer:${type}:${tranId}:${holdingKey}` ``, pair id `` `${accountId}:xfer:${type}:${tranId}` `` (the type in the key: a `tranId` shared by two types can never refresh the other's row, so this needs no probe). `MAIN_FUNDING`: Spot -x, Funding +x; `FUNDING_MAIN`: the reverse; each leg's `exchangeCounterpartHoldingId` is the other leg's holding; `description: ''`. Untracked type: one leg on Spot (`MAIN`) or Funding (`FUNDING`), `untrackedCounterpart: untrackedWalletCode(other)`, negative when the tracked wallet is the source, `description: ''`. Category null. P7 through `resolveWalletHoldings` |
+| Budget | lane `transfer`, `COSTS.transfer`, cap 80 (OVERNIGHT 19); `callsOf(window) = window.series?.length ?? 20`; `canAfford(keep) && !isBinanceCoolingDown`; a 429 sets the cooldown and ends every later read |
+| Metadata (Spot holding) | `binanceTransferHistoryCursor`, `binanceTransferRescanCursor`, `binanceTransferPendingOverlap` (`knownSeries` = the 20 types; malformed: owe `[floor, cursor ?? floor)` once, `pending-malformed`), `binanceTransferPointCursor` (malformed: repaired, `point-cursor-malformed`). A balance sync carries all four; a disconnect resets the cursors to 2017 and the list to `[]` and drops the point cursor (existing paths, through the field arrays) |
+| Write order | forward: the list with the overlap day, then the cursor. Other passes: rows, then one list write, then (re-scan) the mark, then (points) the point cursor |
+
+Budget arithmetic (pinned by the Transfer property lane): a caught-up run spends forward 20 + one owed range 20 (entered with keep 21) + re-scan 20 + points up to 20 = 80. At cap 60 an owed range is never entered while a point is owed (20 + 21 + 19 = 60), so it starves: the reason for OVERNIGHT 19.
+
+- **M2, from task 1/7 review:** decided above: the client reads `asset` first, parses only BTC rows strictly, and counts every row in `gathered` for the pager. Pinned in step 2/11.
+- **M3, from task 1/7 review:** decided above: `{ total: N > 0 }` with no rows is `drift` in `fetchAllByTotal` (the client keeps `rows: []`). Pinned in step 2/11.
+- **January 2027 Funding -> Spot auto-migration** (announcement https://www.binance.com/en/support/announcement/detail/01cbe42ead1e4f1a9382363754d2eb5a, checked 2026-10-11): how does the move appear in the transfer history (`FUNDING_MAIN`, another type, or not at all)? If `FUNDING_MAIN`, T2 imports it as paired legs with no change. If not at all, the Funding and Spot holding histories stop adding up to their balances. The import is decided before the migration starts: VERIFY 16 (spec), open for the user (Still needing the user).
+
+- [ ] **step 1/11: deferred minors from task 4/7 (the FIRST commit of this task).** Ruling: task4-review-fix13.md (orchestrator decision 06:23) and task4-review-merge.md. Cost if wrong: none extra, every file is already in this task's mutation window.
+  - m-1 (`binance.history-walk.ts` `withoutReadGround`, `runWalkPlan`): completion-gated drop. When a window of the pending pass, the re-scan or the points completes, ONE list write drops each listed point that the window holds whole and that equals a point in `WindowOutcome.returned`. A span that holds part of a point never drops it ("seen in any part" is wrong: it breaks the twin case). Tests, RED against TASK5_BASE: a point whose window comes back full, its record in the second half: it leaves once the window completes; the same window cut by the budget after the first half: it stays; two points that start together, the wider read, only the narrower's record returned: only the narrower leaves.
+  - m-2 (`binance.history-walk.properties.test.ts`): the `mismatch` reading also applies to range and re-scan reads for a record whose point is listed (the read returns its trusted neighbours, never the stuck record). The held-by-range-drop and end-drop mutants must fail the PROPERTY file (they were 0 of 1850).
+  - m-3 (spec :357): "A point costs exactly one read a run" -> "A point costs at most one window a run (a full window is read in halves)".
+  - m-4: `planWalkPasses` `pending: OwedGround[]`.
+  - p-1: one `distinctGround` (exported from `binance.history-walk.ts`, imported by `binance.history-records.ts`; `distinctPoints` is it plus the sort).
+  - p-2: drop the sort at the end of `pointsToRead` (its input is sorted by start).
+  - `holding-metadata.ts:327-328`: the comment says the caller goes on with an empty list; it is `readPendingMark`'s repair (owe `[floor, cursor)` once, stored at once).
+  - LOW (task4-review-merge.md, `row-labels.ts:101`, `:109`): `row-labels.test.ts`: a leg `{ holdingId: 'h-card', amountMinorUnits: -700, exchangeCounterpartHoldingId: 'h-uah' }` with both holdings in UAH, description cleared: the placeholder reads 'Transfer to Wallet UAH'. Check by hand that the mutants `holdingId: ''` and no `holdingCurrencyById` fail it.
+  - Check: `npx jest src/crypto-sync/binance/binance.history-walk src/crypto-sync/binance/binance.history-records src/holdings/holding-metadata src/screens/forms/transaction-form`, `npx tsc --noEmit`. Commit `fix(binance): deferred task 4/7 minors (completion-gated point drop, mismatch on every read, one distinctGround)`.
+- [ ] **step 2/11:** Write the failing tests of the shared extensions:
+  - `holding-metadata` test: a point with `series` round-trips; a range with `series`, a blank `series`, or a non-string `series` is malformed; the four Transfer keys are carried by `withWalkOwnedMetadataCarried` and reset by `withWalkOwnedMetadataResetToFloor` (point cursor dropped). `disconnect.test.ts`: a Spot holding with the four Transfer keys -> cursors 2017, list `[]`, no point cursor.
+  - `binance.history-walk.test.ts`: `sameGround` tells two points apart by `series`; `pointsToRead` gives one window per start with the union of the series; `readPendingMark` with `knownSeries`: an unknown series repairs the list and logs `pending-malformed`; `runWalkPlan` with `callsOf` 20: the pending window is not entered when `keep + 19` calls do not fit, the re-scan keeps 20 calls, a point window with one series needs one call.
+  - `binance.history-records.test.ts`: `seriesOf` reaches the owed point and the returned point; without it neither has a series (Pay and capital unchanged).
+  - `binance.history-paging.test.ts`, one `it` per row: full page + `total` above it + a span that halves -> `split`; a 1 ms span -> pages `current` 1..n until the count is `total`; a short page with the count equal to `total` -> `rows`; short page, count not `total` -> `drift`; `{ total: 5 }` with no rows -> `drift` (M3); count above `total` -> `drift`; 50 pages short -> `drift`; unaffordable before page 2 -> `undefined`. `readSeriesSpan`: not entered when `keep + series - 1` calls do not fit (zero requests); a split on the third type returns the half; a `drift` on one type returns the rows of the others and names the drifted type; a 429 calls `onRateLimit` and returns `undefined`.
+  - `binance.history-client.test.ts` (M2): a transfer page with a non-BTC row that lacks every field parses (`gathered` counts it, `rows` leaves it out); a malformed BTC row still throws `BINANCE_HISTORY_PARSE_ERROR`; the same for an Earn page.
+  - `binance.history-budget.test.ts`: transfer cap 80 (80th call allowed, 81st not).
+- [ ] **step 3/11:** Run `npx jest src/crypto-sync/binance src/holdings src/crypto-sync/disconnect`. Expected: FAIL (missing module, missing keys, `series` dropped).
+- [ ] **step 4/11:** Implement the shared extensions (`holding-metadata.ts`, `binance.history-walk.ts`, `binance.history-records.ts`, `binance.history-paging.ts`, `binance.history-client.ts`, `binance.history-budget.ts`). Run the step 3/11 command. Expected: PASS, and the Pay and capital suites unchanged.
+- [ ] **step 5/11:** Write the failing Transfer walk tests (`binance.transfer-history.test.ts`):
+  - T1-T7 and T8-T10 from the spec matrix, one `it` each (T1: Spot -x and Funding +x, each counterpart the other holding, one pair id, then `exchangeExcludedTransactionIds` on the written rows returns both ids and `transactionRowDescription` gives "Transfer to/from"); each of the 18 untracked types maps to the right tracked holding, sign and code (table-driven).
+  - Paging: a type whose first page is full halves the span and every type is read again in the half; a 1 ms span pages to `total`; a `drift` on one type in the re-scan commits the other 19 and owes the span as a range; M3 and M2 through the walk.
+  - A point read requests only its own `type` (assert the request's `type` param, one call).
+  - Floor and Review Focus 3 (cursor 2017 -> first `startTime` = `transferFloorMs(now)`); no request before the floor in any pass.
+  - Budget: cap 80; a span is not entered when its 20 calls plus the keep do not fit; 429 -> cooldown, no later request; cooldown active -> zero requests.
+  - Order: rows, then the list, then the re-scan mark (spy order); a stop logs only a `BinanceWalkStop` code (spy on `console.warn`: no amount, id or tranId).
+  - `binance.transfer-history.real-sqlite.test.ts`: Review Focus 5 (two accounts, same `tranId` -> four rows, two pair ids); a second identical run imports 0; a PENDING transfer owed as a point imports once CONFIRMED and leaves the list.
+  - `run-crypto-sync.test.ts`: order capital -> Pay -> Transfer with the SAME `run`; a Transfer failure is logged with `'[binance sync] transfer history failed'` and the balance result returns; a Pay 429 -> the Transfer walk makes no request.
+- [ ] **step 6/11:** Add the Transfer lane to `binance.history-walk.properties.test.ts`. `Lane` gains `rangeCalls` (Pay and capital 1, Transfer `UNIVERSAL_TRANSFER_TYPES.length`) and `series` (Transfer: records over at least 3 types); `reads` = `LANE_CALL_CAPS.transfer`. The simulator charges a forward, range or re-scan read `rangeCalls` calls and a point read one call per series. P1-P6 and SL, each under the three end readings (both ends included, start left out, end left out); P4 reads: the re-scan reads and commits in every run whose forward pass leaves `rangeCalls + 1` calls. New families: (a) an owed range outside the re-scan window while points are owed: read within its bound; (b) a drifted type in the re-scan: the other types' records import in the same run, its own on a later read; (c) two stuck transfers of different types at the same millisecond: two points, each leaves only for its own record. Each test names its bound in runs, derived from calls.
+- [ ] **step 7/11:** Run `npx jest src/crypto-sync/binance/binance.transfer-history src/crypto-sync/binance/binance.history-walk.properties`. Expected: FAIL (module missing).
+- [ ] **step 8/11:** Implement `binance.transfer-history.ts` (pure `transferRowsOf` first, then the walk on the shared passes). Wire `run-crypto-sync.ts` after the Pay walk: `await logOnFailure('[binance sync] transfer history failed', () => syncBinanceTransferHistory({ targetAccountId, run }))`. Export from the barrel.
+- [ ] **step 9/11:** Run `npx jest src/crypto-sync src/holdings src/statistics src/transactions src/screens/forms`, then `npx tsc --noEmit`. Expected: PASS. Commit `feat(binance): universal transfer walk on the shared per-record walk (typed owed points, paged by total)`.
+- [ ] **step 10/11:** Named mutants. Apply each by Edit, run `npx jest src/crypto-sync/binance/binance.history-walk.properties.test.ts`, record "mutant: failing tests / total", revert by Edit (never git checkout or restore). Every mutant must fail the PROPERTY file:
+  1. `callsOf` left out of the keeps (keeps of 1 call): the Transfer re-scan starves (P4).
+  2. no entry pre-check (`keep + callsOf(window) - 1`): spans paid in part, bounds broken.
+  3. `series` dropped when a point is stored: a point read costs 20 calls (P3, P5).
+  4. `series` left out of `sameGround`: one record takes the other type's twin point off (P2, family c).
+  5. `pointsToRead` keeps the widest point's series, not the union: the other type's point is never read (P5).
+  6. a drifted type read out of the list like a clean page: its records never import (P1, family b).
+  7. the point owed under the first type of the list, not the record's own (P2, P5).
+  8. `LANE_CALL_CAPS.transfer` 60: the owed range starves while a point is owed (family a).
+  9. m-1: a drop on "seen in any part", and no completion-gated drop.
+  10. m-2: held-by-range drop, end-drop.
+  11. forward commit on a stop (`commitSettledSpan` `stopsRun` false): P6.
+  12. the task 4/7 set, now on every lane including Transfer: no `holdsAll`, no returned check, any record returned, narrowest at start, cursor only on complete, `POINT_KEEP` 0, length-based `isPoint`, point cut to the span, R28 reverted, no round-robin.
+- [ ] **step 11/11:** Pre-BATCH-READY commands; `kiko:reviewer` on TASK5_BASE..tip (brief, top question first: can any trusted transfer row be dropped, doubled or starved, on every lane, under all three end readings, with a stop, a disconnect, the floor, a crash between any two writes? Then: the cap arithmetic; the typed point and the union window; M2/M3; the step 1/11 minors; the mutant table of step 10/11). BATCH READY names the mutant table.
 
 ### binance-history task 6/7: Earn walk, caption over every walk (developer)
 
+**Shared walk: yes**, as the Transfer walk: the six record kinds are the series, read through `readSeriesSpan` and `fetchAllByTotal` (task 5/7); `callsOf(window) = window.series?.length ?? 6`; an owed point carries its kind. No shared file changes. One Earn rule: a reward GROUP is one record for `settleRecords`, because its rows are numbered within it.
+
 **Files:**
 - Create: `binance.earn-history.ts`, `binance.earn-history.test.ts`, `binance.earn-history.rewards.test.ts`, `binance.earn-history.real-sqlite.test.ts`
-- Modify: `run-crypto-sync.ts` + test
+- Modify: `holding-metadata.ts` + its test (Earn keys), `src/crypto-sync/disconnect/disconnect.test.ts`, `binance.history-walk.properties.test.ts` (Earn lane), `run-crypto-sync.ts` + test, `index.ts` (barrel)
 - Modify: `src/screens/account-detail/crypto-sync-section/binance-history-status.ts` + test, `crypto-sync-section.component.tsx` + its test
 - Modify: `src/i18n/locales/en.ts`, `uk.ts` (`accountDetail.binanceHistoryPending`)
 
@@ -361,26 +460,51 @@ Rules (spec section 5): per window, one series per type in `UNIVERSAL_TRANSFER_T
 export const EARN_WINDOW_MS = 30 * DAY_MS;
 export const EARN_FLOOR_MS = Date.UTC(2022, 0, 1);
 export const EARN_SETTLED_STATUS = 'SUCCESS'; export const EARN_FAILED_STATUSES: readonly string[] = ['FAILED'];
-export const subscriptionLegs / redemptionLegs: (accountId, kind: 'flexible' | 'locked', record, holdings) => BinanceHistoryRow[] | 'stop' | 'ignore';
-export const rewardRows: (accountId, kind: 'flexible' | 'locked', records: EarnReward[], holdings: Map<BinanceWalletKey, HoldingRow>) => BinanceHistoryRow[] | 'stop';
-// placement by kind and type (Q14, ruling A): flexible REALTIME -> holdings Earn; flexible BONUS -> Spot; locked (any type) -> Spot;
-// any other flexible type (including REWARDS) -> 'stop' with the tag `earn-reward-type-unknown`, no row guessed.
-export const syncBinanceEarnHistory: (request: { targetAccountId: string; run: BinanceHistoryRun }, overrides?) => Promise<WalkResult>;
+export const EARN_SERIES: readonly EarnRecordKind[]; // flexibleRewards, lockedRewards, then the four subscription and redemption kinds
+export const subscriptionRowsOf / redemptionRowsOf: (accountId: string, kind: 'flexible' | 'locked', record) => PlannedEarnRow[]; // [] for FAILED; throws BinanceWalkStop
+export type EarnRewardGroup = { kind: 'flexible' | 'locked'; ownerId: string; type: string; time: number; records: EarnReward[] };
+export const rewardGroupsOf: (kind: 'flexible' | 'locked', records: EarnReward[]) => EarnRewardGroup[]; // by (kind, projectId | positionId, type, time)
+export const rewardGroupRowsOf: (accountId: string, group: EarnRewardGroup) => PlannedEarnRow[]; // satoshis ascending, n from 0; throws BinanceWalkStop
+export const syncBinanceEarnHistory: (request: { targetAccountId: string; run: BinanceHistoryRun }, overrides?: Partial<BinanceEarnHistoryDeps>) => Promise<WalkResult>;
+// holding-metadata.ts
+export const BINANCE_EARN_HISTORY_CURSOR_FIELD = 'binanceEarnHistoryCursor'; // now exported
+export const BINANCE_EARN_RESCAN_CURSOR_FIELD = 'binanceEarnRescanCursor';
+export const BINANCE_EARN_PENDING_OVERLAP_FIELD = 'binanceEarnPendingOverlap';
+export const BINANCE_EARN_POINT_CURSOR_FIELD = 'binanceEarnPointCursor';
 // binance-history-status.ts
-export const walkCursorsOf: (holdings: Pick<HoldingRow, 'metadata'>[]) => (number | null)[]; // the four cursors of the holding that carries the capital cursor; four nulls if none
-export const isBinanceHistoryBehind: (cursors: readonly (number | null)[], lastBalanceSyncAt: number | null) => boolean; // any null or any lag > DAY_MS
+export const walkCursorsOf: (holdings: Pick<HoldingRow, 'metadata'>[]) => (number | null)[]; // the four forward cursors of the holding that carries the capital cursor; four nulls if none
+export const owesPointsOf: (holdings: Pick<HoldingRow, 'metadata'>[]) => boolean; // any of the four lists on that holding holds a point (OVERNIGHT 20)
+export const isBinanceHistoryBehind: (input: { cursors: readonly (number | null)[]; owesPoints: boolean; lastBalanceSyncAt: number | null }) => boolean; // any null cursor, any lag > DAY_MS, or a point owed; false before the first balance sync
 ```
-Keys: sub/redeem `` `${accountId}:earn:sub:<flexible|locked>:${purchaseId}:${holdingKey}` `` / `` `…:earn:redeem:<flexible|locked>:${redeemId}:${holdingKey}` ``, pair id the same without `:${holdingKey}`. Reward `` `${accountId}:earn:reward:<flexible|locked>:<projectId|positionId>:<type>:<time>:<n>` ``, description `'Binance Earn'`, no markers. Lane `earn`, cost `COSTS.earn`, pager `fetchAllByTotal`; gathered != `total` after a short page -> stop (`earn-page-drift`). Flexible rewards `type` is optional (default ALL); the client sends `type=ALL`, one series. Reward placement follows the spec's Q14 ruling A (see `rewardRows`).
 
-- [ ] **step 1/8:** Write the failing tests: E1-E18 from the spec, one `it` each (E7 REALTIME -> Earn; E15 BONUS -> Spot; E16 locked -> Spot; E17 REWARDS or unknown type -> stop `earn-reward-type-unknown`, cursor unmoved; E18 / P7: a missing Spot holding is created at 0); E2 asserts three legs with one pair id, Spot and Funding counterparts = Earn, Earn counterpart = Spot (the larger leg; tie -> Spot); E4 `sourceAccount: 'FUNDING'`; a `FAILED` subscription is ignored and does not stop; an unknown status stops; floor 2022-01-01 and the 2017 reset (Review Focus 3); cap 30 and IP reading 5851 -> unaffordable; Review Focus 4 (real SQLite: group grows on re-read -> two rows, total 3 sat); E10/E11 idempotence (real SQLite). Caption: `isBinanceHistoryBehind` true for any null cursor, any lag > 1 day; false when all four within a day; false before the first balance sync; `walkCursorsOf` reads the Spot holding's four keys; the section shows `binanceHistoryPending` when only the Earn cursor is behind. `run-crypto-sync`: full order capital -> Pay -> Transfer -> Earn with one shared `run`; each walk's failure isolated; a 429 in Transfer -> Earn makes no request.
-- **M3, from task 1/7 review:** a body `{ total: N }` with no `rows` parses as `rows: []`. The pager (or the client) must treat absent rows with `total > 0` as a stop or a parse error. Pin it.
-- [ ] **step 2/8:** Run `npx jest src/crypto-sync/binance/binance.earn-history src/screens/account-detail`. Expected: FAIL.
-- [ ] **step 3/8:** Implement `binance.earn-history.ts`. Rewards: place by kind and type (REALTIME -> Earn, BONUS -> Spot, locked -> Spot, else stop `earn-reward-type-unknown`); group by (kind, project/position id, `type`, `time`) within the fetched window, sort each group by satoshis ascending, number from 0. A missing/non-finite `time`, amount, or id stops the window.
-- [ ] **step 4/8:** Wire after the Transfer walk with `logOnFailure('[binance sync] earn history failed', …)`. Export from the barrel.
-- [ ] **step 5/8:** Implement the caption change; update `binanceHistoryPending` copy: en "Some Binance transaction history is not imported yet. Kiko will keep importing on each sync." uk "Частину історії транзакцій Binance ще не імпортовано. Кіко продовжить імпорт під час наступних синхронізацій."
-- [ ] **step 6/8:** Run `npx jest src/crypto-sync src/screens/account-detail src/i18n`, then `npx tsc --noEmit`. Expected: PASS.
-- [ ] **step 7/8:** Commit `feat(binance): Simple Earn history walk (per-record rewards); history caption covers every walk`.
-- [ ] **step 8/8:** Pre-BATCH-READY commands; `kiko:reviewer`. BATCH READY lists the changed en/uk key for translator review.
+**Walk state (spec section 6):**
+
+| State | Rule |
+|---|---|
+| Floor, window | `EARN_FLOOR_MS`; 30-day windows (the S5 cap); `MAX_WINDOWS` 12; overlap 1 day |
+| Span read | `readSeriesSpan` over `EARN_SERIES`, `asset=BTC`, flexible rewards `type=ALL`; entered only when `canAfford(keep + 5)`; page rule as Transfer; `drift` is `earn-page-drift` (E13) for that kind |
+| Record | series = its kind; time = `time` (ms; filter field, precision and range ends: VERIFY 12, 15). A reward group (kind, `projectId` or `positionId`, `type`, `time`) is ONE record: its members share one time, so a read that returns one returns all of them (rests on VERIFY 15: the filter field is `time`) |
+| Per-record stops (owe the point) | `earn-not-settled` (status neither `SUCCESS` nor `FAILED`, E14), `earn-split-mismatch` (E3), `earn-amount-invalid` (E12 amount; in a group, the whole group), `earn-id-missing` (blank `purchaseId`, `redeemId`, `projectId` or `positionId`), `earn-account-unknown` (`sourceAccount` or `destAccount` neither SPOT nor FUNDING), `earn-reward-type-unknown` (E17, the group) |
+| Owed point | `{ start: time - 1, end: time + 1, kind: 'point', series: <kind> }`; one point per group |
+| Span stops (owe the span as a range, every kind) | `earn-page-drift`, `earn-holding-missing`; a record whose `time` lies outside the span |
+| No time | a BTC row with no finite `time` fails the client's strict parse (`BINANCE_HISTORY_PARSE_ERROR`): the walk's run fails and is logged (E12 time) |
+| Forward pass, point read, write order | as Transfer |
+| Rows | keys per OVERNIGHT 11; rewards: description `'Binance Earn'`, no markers, placement ruling A (flexible `REALTIME` -> Earn, flexible `BONUS` -> Spot, locked -> Spot); P7 through `resolveWalletHoldings` |
+| Budget | lane `earn`, `COSTS.earn` (IP 150), cap 30 (4500 IP). A caught-up run: forward 6 + owed range 6 (entered with keep 7) + re-scan 6 + points up to 12 = 30 |
+| Metadata (Spot holding) | the four Earn keys, `knownSeries` = `EARN_SERIES`; carry, reset and repair as Transfer |
+
+- **M3, from task 1/7 review:** handled by `fetchAllByTotal` (task 5/7); pinned again through the Earn walk in step 1/10.
+
+- [ ] **step 1/10:** Write the failing tests (`binance.earn-history.test.ts`, `binance.earn-history.rewards.test.ts`): E1-E22 from the spec matrix, one `it` each (E2: three legs, one pair id, Spot and Funding counterparts = Earn, Earn counterpart = Spot (the larger leg; tie -> Spot); E4 `sourceAccount: 'FUNDING'`; E7 REALTIME -> Earn; E15 BONUS -> Spot; E16 locked -> Spot; E17 -> the group owes its point, forward pass: cursor unmoved; E18 / P7: Spot created at 0); a `FAILED` subscription is ignored and owes nothing; a point read requests only its own kind (one call); floor 2022-01-01 and the 2017 reset (Review Focus 3); cap 30 and IP reading 5851 -> unaffordable; 429 -> cooldown; rows before the list before the mark. `binance.earn-history.real-sqlite.test.ts`: Review Focus 4 (a group grows on a re-read -> two rows, total 3 sat); E10/E11 idempotence; a stuck reward group imports once its type is known and leaves the list. `holding-metadata` and `disconnect` tests: the four Earn keys carried, reset, the point cursor dropped. `run-crypto-sync.test.ts`: the full order capital -> Pay -> Transfer -> Earn with one shared `run`; each walk's failure isolated (`'[binance sync] earn history failed'`); a 429 in Transfer -> Earn makes no request.
+- [ ] **step 2/10:** Write the failing caption tests: `isBinanceHistoryBehind` true for any null cursor, any lag > 1 day, or a point owed on any list (OVERNIGHT 20); false when all four cursors are within a day and no point is owed; false before the first balance sync; `walkCursorsOf` reads the Spot holding's four forward cursors; `owesPointsOf` reads its four lists (a range alone is not a point: the overlap day is always there); the section shows `binanceHistoryPending` when only the Earn cursor is behind, and when only a Transfer point is owed.
+- [ ] **step 3/10:** Add the Earn lane to `binance.history-walk.properties.test.ts`: `reads` = `LANE_CALL_CAPS.earn`, `rangeCalls` 6, series = the six kinds; a stuck record may be a reward group of 1 to 3 members at one millisecond. P1-P6 and SL under the three end readings, and families (a)-(c) of task 5/7 step 6/11 on this lane.
+- [ ] **step 4/10:** Run `npx jest src/crypto-sync/binance/binance.earn-history src/crypto-sync/binance/binance.history-walk.properties src/screens/account-detail src/holdings`. Expected: FAIL.
+- [ ] **step 5/10:** Implement `binance.earn-history.ts` (pure row and group functions first, then the walk) and the four Earn keys.
+- [ ] **step 6/10:** Wire after the Transfer walk with `logOnFailure('[binance sync] earn history failed', …)`. Export from the barrel.
+- [ ] **step 7/10:** Implement the caption change; update `binanceHistoryPending` copy: en "Some Binance transaction history is not imported yet. Kiko will keep importing on each sync." uk "Частину історії транзакцій Binance ще не імпортовано. Кіко продовжить імпорт під час наступних синхронізацій."
+- [ ] **step 8/10:** Run `npx jest src/crypto-sync src/holdings src/screens/account-detail src/i18n`, then `npx tsc --noEmit`. Expected: PASS. Commit `feat(binance): Simple Earn walk on the shared per-record walk (reward groups); history caption covers every walk and owed points`.
+- [ ] **step 9/10:** Named mutants, as task 5/7 step 10/11, on the Earn lane: `callsOf` left out of the keeps; `series` dropped from the stored point; the point owed under the first kind, not the record's own; a drifted kind read out of the list; forward commit on a stop; R28 reverted; no round-robin; a reward group settled per member (a member's stop owes its point and the other members commit: their `n` shifts, so a later read writes a second row for the same reward; killed by `binance.earn-history.rewards.test.ts`, recorded beside the property mutants).
+- [ ] **step 10/10:** Pre-BATCH-READY commands; `kiko:reviewer` on TASK6_BASE..tip (brief, top question first: can any trusted Earn row be dropped, doubled or starved, a reward group numbered two ways, or a row placed on the wrong wallet? Then: the caption with points; the mutant table). BATCH READY lists the changed en/uk key for translator review and the mutant table.
 
 ### binance-history task 7/7: VERIFY gate, skill rewrite, whole-branch gate (developer, scribe, reviewer)
 
@@ -398,8 +522,11 @@ The probe needs no app code: dispatch steps 1/7-3/7 right after task 1/7 lands, 
 - probe: receive from a Spot payer: `walletTypes` and `walletAssetCost` keys. (Ruling R22 replaces R21: a Pay receive is placed by date, Funding before 2026-09-29T00:00:00Z and Spot from it, and reads no wallet field, because a receive's wallet fields may describe the payer; the probe saw only Funding receives. Print, for a receive, `walletTypes` and the keys of `walletAssetCost` against the user's own wallets and its date, so the date rule can be confirmed or changed. Also: for a send, how often a named wallet has no cost above zero, the case the subset rule places on the costed wallet only.)
 - probe: range end semantics, for each endpoint the walk reads (Pay transactions, capital deposit, capital withdraw, transfer, Earn): whether `startTime` is included and whether `endTime` is included. Read `[t, t]`, `[t - 1, t]` and `[t, t + 1]` around a known record time `t` and print which of them return the record.
 - probe: withdraw history: which field `startTime` and `endTime` filter on (`applyTime`, `completeTime`, or another), and whether `applyTime` is truncated or rounded to the second against that field. The owed point of a withdrawal (`[T - 1000, T + 1000]`) rests on this.
+- probe (spec VERIFY 14): universal transfer: which field `startTime`/`endTime` filter on (`timestamp`?), the precision of `timestamp`, the range ends (item 12) on a transfer row of ANY asset, whether a `tranId` repeats across types, the status values (Q11), and the answer to a `startTime` older than 6 months. The probe account had 0 transfer rows: the user makes one small Spot -> Funding transfer of any coin first, or the item stays open (the walk holds under every end reading; a wrong filter field only keeps a point owed, fail closed).
+- probe (spec VERIFY 15): Simple Earn, per kind: the filter field (`time`?), its precision, the range ends (item 12), and whether every member of a reward group (kind, project or position id, `type`, `time`) comes back in any read that returns one of them. The reward key `<time>:<n>` rests on this. The probe account had 0 Earn rows: the user subscribes and redeems a small flexible amount of any coin first, or the item stays open.
+- probe (spec VERIFY 16, after the January 2027 migration, not before the merge): on an account that held Funding BTC, the transfer rows of every type on the migration day; before the migration, `kiko:researcher` reads Binance's migration notes for how it is recorded (URL + date).
 
-- [ ] **step 1/7:** Developer writes `binance-history-verify.sh` on the `eodhd-verify.sh` pattern: `set -u`; hidden `read -rs` for key and secret; HMAC via `openssl dgst -sha256 -hmac` reading the query from stdin; curl `--config -` (key header and URL never in argv); masked URLs in output; prints only HTTP status, `code`, counts, field names and JSON types, never a raw body, id, amount, name or uid. It covers spec probe items 1-11, each under a numbered heading. Item 10 includes the count of reward `type` values per kind (before the merge, Q14) and the maturity-paid question (do locked reward rows exist that pay at maturity to the redeem destination, for example locked reward rows compared with locked positions and redemptions with `redeemTo` FLEXIBLE). Read-only endpoints only. Weight-safe: sleeps 400 ms between calls; stops on 429/418 and prints the item reached.
+- [ ] **step 1/7:** Developer writes `binance-history-verify.sh` on the `eodhd-verify.sh` pattern: `set -u`; hidden `read -rs` for key and secret; HMAC via `openssl dgst -sha256 -hmac` reading the query from stdin; curl `--config -` (key header and URL never in argv); masked URLs in output; prints only HTTP status, `code`, counts, field names and JSON types, never a raw body, id, amount, name or uid. It covers spec probe items 1-15 (a second run for items 12-15, which came after the first run), each under a numbered heading. Item 10 includes the count of reward `type` values per kind (before the merge, Q14) and the maturity-paid question (do locked reward rows exist that pay at maturity to the redeem destination, for example locked reward rows compared with locked positions and redemptions with `redeemTo` FLEXIBLE). Read-only endpoints only. Weight-safe: sleeps 400 ms between calls; stops on 429/418 and prints the item reached.
 - [ ] **step 2/7:** The planner (or a fresh `kiko:reviewer`) reads the WHOLE script before it goes to the user: no secret echo, no `set -x`, no body dump, no write endpoint, every `curl` through `--config -`, heredocs quoted.
 - [ ] **step 3/7:** The coordinator sends the user the run command and the output path. The user runs it and returns the output.
 - [ ] **step 4/7:** The orchestrator maps every output item to Q1-Q16 and A1 (answered / safe default holds / rule change). Done 2026-10-10: the spec's Q table has an "Answer" column (A1, Q1-Q9 and Q15 answered; Q10-Q14 and Q16 "no data in the probe account, rule unchanged"); the rule changes were R13 (direction from the uid), C1 (guard and cap removed, Q5), I5 = A2 (Q8), R14 (capital two-pass), and the Q9 text wallet ids. A rule change updates the spec first, then gets its own fix task (renumber M). Before merge, the coordinator reports the Q14 probe counts (ruling A is made; the user may still check one BONUS or locked reward in the Binance app) and, if item 10 found identical reward records, Q16. Item 4's walletType-1 count > 0 opens the D3 follow-up (move old rows, with its own `kiko:reviewer`).
@@ -414,7 +541,7 @@ Safest defaults applied by the planner on 2026-10-10 while the user was away. Ea
 1. P7 creates a missing wallet holding with a new insert-only `ensureExchangeHoldings`, not `upsertExchangeMany` (the upsert would zero a live balance). Task 2/7.
 2. The Pay walk reads `fetchAccount` once per run for the `uid` (`{ ip: 20 }` on the Pay lane). A non-429 failure, or an account with no uid, stops the walk before any request (`pay-uid-unavailable`, R13). Task 4/7.
 3. SUPERSEDED (user ruling C1, 2026-10-10, after probe Q5): the Pay walk end is `now`, with no clamp to the capital cursor and no overlap guard. Task 4/7.
-4. The Transfer walk reads 20 types (the 18 untracked plus `MAIN_FUNDING`, `FUNDING_MAIN`). A first walk is about 140 calls over 3 runs. Task 5/7.
+4. The Transfer walk reads 20 types (the 18 untracked plus `MAIN_FUNDING`, `FUNDING_MAIN`). A first walk is about 140 calls over 2 runs at the cap of 80 (item 19; 3 runs at 60). Task 5/7.
 5. SUPERSEDED (R13, 2026-10-10, after probe Q3): the direction comes from the uid alone. A uid that matches neither Pay party, both parties, or nothing at all (unknown uid) stops the window. Task 4/7.
 6. Untracked wallet display names (code-side proper nouns): 'USDⓈ-M Futures', 'COIN-M Futures', 'Margin', 'Options', 'Portfolio Margin'. Task 3/7.
 7. The same-currency "Transfer to/from" label also applies to existing MANUAL same-currency Exchange legs, because the spec compares currencies generally. Task 3/7.
@@ -422,14 +549,19 @@ Safest defaults applied by the planner on 2026-10-10 while the user was away. Ea
 9. RESOLVED (step 2/9 SDK facts): type optional; client sends type=ALL, one series. Tasks 1/7 and 6/7.
 10. The migration takes number 0056. It is renumbered if build 29 lands a migration first. Task 3/7.
 11. Earn key layout: `earn:sub:<flexible|locked>:<purchaseId>:<holdingKey>`, `earn:redeem:…`. The pair id is the same without the holding key. Task 6/7.
-12. Earn statuses: only `SUCCESS` imports and `FAILED` is ignored. Any other status stops the window. Task 6/7.
+12. Earn statuses: only `SUCCESS` imports and `FAILED` is ignored. Any other status is a stop (owed at the record's point, item 18). Task 6/7.
 13. Walk stops are logged as `logFailure(tag, new BinanceWalkStop(code))`, so only the name and the fixed code reach the log. Tasks 2/7-6/7.
 14. The plan keeps the spec's 7 tasks. Task 3/7 mutates four large files, so its `make deep` is slow. The alternative is to split task 3/7 into "migration + exclusion" and "labels + callers", which renumbers the plan to 8 tasks.
 15. The probe script (task 7/7, steps 1/7-3/7) is dispatched as soon as task 1/7 lands, in parallel with tasks 2-6.
 16. B7 (fix round 8, orchestrator ruling B7): a Pay SEND with an empty `fundsDetail` stops (`pay-split-mismatch`) instead of being placed whole on the one wallet `walletTypes` names. B5 placement stays only for a send whose BTC funds entries, summed, equal `abs(amount)`, with no cost list and one `walletTypes` wallet. The user can reverse it before task 4/7 merges. Task 4/7.
 17. OVERNIGHT DEFAULT, pending the user (fix round 11, ruling R28; it touches the scope of A2 as ruling A did, and is not part of the user ruling of 2026-10-11): a stop in the FORWARD pass ends only the forward pass, so the run goes on to the owed ranges, the re-scan and the points (the budget and a rate limit still end every read), and a settled record in an owed day imports however long the forward pass stays stopped. The cursor still never passes the stuck record (A2 unchanged). If the user reverses it, a forward stop ends the run again: one branch in `runWalkPlan`. Task 4/7.
+18. NEEDS USER CONFIRMATION. Default applied: the Transfer and Earn walks follow the Pay rule of the user ruling of 2026-10-11 (option A): in the pending pass and the re-scan the other records of a span import, and only a record the walk cannot trust stays owed at its own point (a pending transfer, an Earn record not settled, a split mismatch, a reward of unknown type). The approved spec said the whole window stops ("the window commits only once every type is complete", T5, E3, E12-E14, E17). The forward pass keeps the stop (cursor unmoved, A2); whether the run then goes on is item 17, for every walk. Recommendation: confirm. Otherwise one pending transfer holds back 30 days of rows of all 20 types, and the shared walk needs a whole-window branch again. Tasks 5/7, 6/7.
+19. NEEDS USER CONFIRMATION. Default applied: the Transfer lane cap goes from 60 to 80 calls a run. A caught-up run needs forward 20 + one owed range 20 + re-scan 20 + points; at 60 an owed range outside the re-scan is never read while a point is owed, so its records are never imported. Cost: the Transfer walk takes up to 80 x 350 ms = 28 s of a sync during a catch-up (was 21 s); a caught-up run reads about 41 calls (14 s) either way. A first walk takes 2 runs instead of 3. Recommendation: confirm (the alternative is a known data gap). Task 5/7.
+20. NEEDS USER CONFIRMATION. Default applied: the history caption also shows while any walk owes a point (a record it could not import yet), not only when a cursor is more than a day behind. The spec promises the caption whenever a record is held back ("The caption shows that history is behind"); with owed points a held-back record no longer holds the cursor. Recommendation: confirm. If reversed, a stuck record found by the re-scan is invisible to the user until it imports. Task 6/7.
+21. NEEDS USER CONFIRMATION. Default applied: the spec rule, a transfer whose status is not `CONFIRMED` is owed (Q11 unanswered). A transfer that ends `FAILED` then stays owed until the 6-month floor drops it: one call a round and, with item 20, the caption for up to 6 months. Recommendation: once the probe (VERIFY 14) shows the final failure value, ignore it as Earn ignores `FAILED` (item 12); no row imports either way. Task 5/7.
 
 ## Self-review
 
 - Spec coverage: client (1/7), budget, caps, order, cooldown, cursors, generic writer, capital D3 (2/7), D5 column, exclusion, labels, back-compat (3/7), Pay (4/7), Transfer (5/7), Earn D6, caption and copy (6/7), probe and skill (7/7). Convert: no task (D7).
-- Names used across tasks: `BinanceHistoryRun`, `createBinanceHistoryRun`, `WalkResult`, `BinanceWalkStop`, `resolveWalletHoldings`, `ensureExchangeHoldings`, `setBinanceWalkCursor`, `fetchAllByTotal`, `BinanceHistoryRow`, `COSTS`, `untrackedWalletCode`.
+- Names used across tasks: `BinanceHistoryRun`, `createBinanceHistoryRun`, `WalkResult`, `BinanceWalkStop`, `resolveWalletHoldings`, `ensureExchangeHoldings`, `setBinanceWalkCursor`, `fetchAllByTotal`, `readSeriesSpan`, `OwedWindow`, `callsOf`, `distinctGround`, `BinanceHistoryRow`, `COSTS`, `untrackedWalletCode`.
+- Tasks 5/7 and 6/7 run on the shared per-record walk of task 4/7; the deferred task 4/7 minors are task 5/7 step 1/11.
