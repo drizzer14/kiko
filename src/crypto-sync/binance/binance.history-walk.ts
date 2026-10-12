@@ -1,4 +1,5 @@
 import { match } from 'ts-pattern';
+import { maxOf } from '@kiko/numbers';
 import {
   type BinancePendingRange,
   type BinanceWalkCursorField,
@@ -21,6 +22,13 @@ import { type BinanceWalletKey, binanceKeyOf, WALLET_HOLDING_NAMES } from './bin
 export type WalkResult = { imported: number; complete: boolean };
 
 export type WalkWindow = { start: number; end: number };
+
+/**
+ * A window to read, and the series to read it in: a walk that reads several series (a Transfer
+ * type each) reads an owed point in the series of its record only. No `series` is every series
+ * of the walk.
+ */
+export type OwedWindow = WalkWindow & { series?: readonly string[] };
 
 /** Split [start, end] into contiguous windows of at most `windowMs`, oldest first. */
 export const buildWalkWindows = (
@@ -69,7 +77,7 @@ const STOP_ENDS_PASS: Record<WalkPass, boolean> = {
 export type SpanCommit = {
   imported: number;
   owed: boolean;
-  returned: WalkWindow[];
+  returned: OwedGround[];
   stuck: OwedGround[];
 };
 
@@ -105,7 +113,7 @@ export type OwedGround = BinancePendingRange;
 export type WalkPlan = {
   forward: WalkWindow[];
   pending: WalkWindow[];
-  points: WalkWindow[];
+  points: OwedWindow[];
   rescan: WalkWindow[];
   rescanEnd: number;
   pendingRanges: OwedGround[];
@@ -125,9 +133,24 @@ const isPoint = (ground: OwedGround): boolean => ground.kind === 'point';
 const sameWindow = (left: WalkWindow, right: WalkWindow): boolean =>
   left.start === right.start && left.end === right.end;
 
-/** Whether two entries are the same ground: the same window, and both a range or both a point. */
+/**
+ * Whether two entries are the same ground: the same window, both a range or both a point, and a
+ * point in the same series. Two stuck records of different series at one millisecond owe two
+ * points, and each leaves only for a record of its own series.
+ */
 const sameGround = (left: OwedGround, right: OwedGround): boolean =>
-  sameWindow(left, right) && left.kind === right.kind;
+  sameWindow(left, right) && left.kind === right.kind && left.series === right.series;
+
+/** Whether two points are the same: the same window in the same series. */
+const samePoint = (left: OwedGround, right: OwedGround): boolean =>
+  sameWindow(left, right) && left.series === right.series;
+
+/**
+ * Whether `owed` keeps `point` from leaving the list: it is the same window, in the same series,
+ * or in none, which every series answers to (the whole span a stop owes as a range).
+ */
+const holdsPoint = (owed: OwedGround, point: OwedGround): boolean =>
+  sameWindow(owed, point) && (owed.series === undefined || owed.series === point.series);
 
 /** The ranges of `ranges` that `read` leaves: a read in a range's middle splits it in two. */
 export const withoutRead = (ranges: WalkWindow[], read: WalkWindow): WalkWindow[] =>
@@ -189,7 +212,12 @@ export const distinctGround = (ground: OwedGround[]): OwedGround[] =>
  * after a narrower one that starts with it.
  */
 const distinctPoints = (points: OwedGround[]): OwedGround[] =>
-  distinctGround(points).sort((left, right) => byStart(left, right) || left.end - right.end);
+  distinctGround(points).sort(
+    (left, right) =>
+      byStart(left, right) ||
+      left.end - right.end ||
+      (left.series ?? '').localeCompare(right.series ?? ''),
+  );
 
 /**
  * Owed ground in its stored form, oldest first. A range is cut to what the walk can still ask
@@ -224,22 +252,42 @@ const normalizePending = (
 };
 
 /**
+ * Whether a point of a stored list names a series its walk reads: one of `knownSeries`, or none
+ * for a walk that reads a single series. A point of any other series could never leave the list,
+ * because no record the walk reads is of that series.
+ */
+const hasKnownSeries = (
+  ground: OwedGround,
+  knownSeries: readonly string[] | undefined,
+): boolean => {
+  if (!isPoint(ground)) {
+    return true;
+  }
+
+  return knownSeries === undefined
+    ? ground.series === undefined
+    : ground.series !== undefined && knownSeries.includes(ground.series);
+};
+
+/**
  * The stored pending ranges of one walk. A value that is not a well-formed list says nothing
  * about which days were owed, and reading it as empty would let the next write drop them, so
  * all the ground before the cursor (`owedIfUnreadable`) is owed instead, once: it is stored
  * at once, so the repaired list is what every later run reads and moves forward. The failure
- * is logged under one fixed code: a corrupt list must not fail a balance sync.
+ * is logged under one fixed code: a corrupt list must not fail a balance sync. A list with a
+ * point of a series the walk does not read (`knownSeries`) is malformed too.
  */
 export const readPendingMark = async (input: {
   field: BinanceWalkPendingField;
   metadata: unknown;
   owedIfUnreadable: WalkWindow;
+  knownSeries?: readonly string[];
   write: (field: BinanceWalkPendingField, ranges: OwedGround[]) => Promise<void>;
 }): Promise<OwedGround[]> => {
-  const { field, metadata, owedIfUnreadable, write } = input;
+  const { field, metadata, owedIfUnreadable, knownSeries, write } = input;
   const stored = binanceWalkPendingOf(field, metadata);
 
-  if (stored !== undefined) {
+  if (stored?.every((ground) => hasKnownSeries(ground, knownSeries))) {
     return stored;
   }
 
@@ -296,7 +344,7 @@ export const readPointCursor = async (input: {
  * call, so every point is read within `ceil(points / reads a run)` such runs, however far apart
  * the runs are.
  */
-const startingAfter = (points: WalkWindow[], pointCursor: number | null): WalkWindow[] =>
+const startingAfter = (points: OwedWindow[], pointCursor: number | null): OwedWindow[] =>
   pointCursor === null
     ? points
     : [
@@ -305,25 +353,36 @@ const startingAfter = (points: WalkWindow[], pointCursor: number | null): WalkWi
       ];
 
 /**
+ * The series a window of points has to be read in: those of every point, or none named (every
+ * series) when one of the points has no series.
+ */
+const seriesOfPoints = (points: OwedGround[]): string[] | undefined => {
+  const named = points.flatMap((point) => point.series ?? []);
+
+  return named.length === points.length ? [...new Set(named)] : undefined;
+};
+
+/**
  * The windows to read for the points of a list, oldest first: one for each start, the widest
  * (a point that starts with it and ends before it lies inside it, so its read returns that
  * record too), cut at the end of the walk, with no window for a point the end has not reached.
- * Only what is read is cut: the points stay in the list as their records owe them. A point is
- * read whether or not a range or the re-scan holds it, because only a read that returns its own
- * record takes it off the list.
+ * A window is read in the series of every point that starts there, so a point of another series
+ * that starts with it is read too. Only what is read is cut: the points stay in the list as
+ * their records owe them. A point is read whether or not a range or the re-scan holds it,
+ * because only a read that returns its own record takes it off the list.
  */
-const pointsToRead = (points: OwedGround[], endTime: number): WalkWindow[] => {
-  const widestAt = new Map<number, WalkWindow>();
+const pointsToRead = (points: OwedGround[], endTime: number): OwedWindow[] => {
+  const reached = points.filter((point) => point.start < Math.min(point.end, endTime));
 
-  for (const { start, end: reach } of points) {
-    const end = Math.min(reach, endTime);
+  return [...new Set(reached.map((point) => point.start))].map((start): OwedWindow => {
+    const here = reached.filter((point) => point.start === start);
 
-    if (start < end && end > (widestAt.get(start)?.end ?? start)) {
-      widestAt.set(start, { start, end });
-    }
-  }
-
-  return [...widestAt.values()];
+    return {
+      start,
+      end: Math.min(maxOf(here.map((point) => point.end)), endTime),
+      ...foldMap(maybe(seriesOfPoints(here)), (series) => ({ series })),
+    };
+  });
 };
 
 /**
@@ -513,7 +572,7 @@ const withoutReadGround = (input: MarkAdvance): OwedGround[] =>
 export const dropReadPoints = async (input: {
   pass: WalkPass;
   window: WalkWindow;
-  read: WalkWindow[];
+  read: OwedGround[];
   marks: WalkMarks;
   fields: WalkMarkFields;
   writePending: (field: BinanceWalkPendingField, ranges: OwedGround[]) => Promise<void>;
@@ -525,7 +584,7 @@ export const dropReadPoints = async (input: {
   }
 
   const isSettled = (ground: OwedGround): boolean =>
-    isPoint(ground) && holdsAll(window, ground) && read.some((point) => sameWindow(point, ground));
+    isPoint(ground) && holdsAll(window, ground) && read.some((point) => samePoint(point, ground));
 
   await storePending(
     input,
@@ -662,28 +721,37 @@ export const storePointCursor = async (input: {
  * of calls to keep after the one it asks about, and must also say no once Binance has rate
  * limited the account, or the run would go on asking after a 429. The walk is reported complete
  * only when every window was read to its end and no record is left owed.
+ *
+ * A walk that reads several series (a Transfer type each) spends `callsOf(window)` calls on one
+ * read of a window: the keeps are counted in calls (the re-scan keeps one read of its first
+ * window, the points one read of the first point), and a window is entered only when all its
+ * calls fit beside the keep, because a read that ran out of calls part way would have paid for
+ * nothing. A walk with one call for a read leaves it out.
  */
 export const runWalkPlan = async (input: {
   plan: WalkPlan;
   canAfford: (keep: number) => boolean;
-  runWindow: (window: WalkWindow, pass: WalkPass, keep: number) => Promise<WindowOutcome>;
-  markPointRead?: (window: WalkWindow) => Promise<void>;
+  runWindow: (window: OwedWindow, pass: WalkPass, keep: number) => Promise<WindowOutcome>;
+  markPointRead?: (window: OwedWindow) => Promise<void>;
+  callsOf?: (window: OwedWindow) => number;
 }): Promise<WalkResult> => {
-  const { plan, canAfford, runWindow, markPointRead } = input;
-  const pointKeep = plan.points.length > 0 ? POINT_KEEP : 0;
-  const rescanKeep = plan.rescan.length > 0 ? RESCAN_KEEP : 0;
+  const { plan, canAfford, runWindow, markPointRead, callsOf = () => 1 } = input;
+  const pointKeep = plan.points.length > 0 ? POINT_KEEP * callsOf(plan.points[0]) : 0;
+  const rescanKeep = plan.rescan.length > 0 ? RESCAN_KEEP * callsOf(plan.rescan[0]) : 0;
   let imported = 0;
   let complete = true;
 
   /** Read the windows of one pass, in order, until one ends the pass or the budget does. */
   const readPass = async (
-    windows: WalkWindow[],
+    windows: OwedWindow[],
     pass: WalkPass,
     keep: number,
-    afterRead?: (window: WalkWindow) => Promise<void>,
+    afterRead?: (window: OwedWindow) => Promise<void>,
   ): Promise<void> => {
     for (const window of windows) {
-      if (!canAfford(keep)) {
+      // The window is entered only when every call of it fits beside the calls kept after it, so
+      // a read never pays for part of its series and then gives up.
+      if (!canAfford(keep + callsOf(window) - 1)) {
         complete = false;
 
         return;
@@ -802,11 +870,11 @@ export const walkSpans = async <Page>(input: {
   read: (span: WalkWindow, keep: number) => Promise<SpanRead<Page> | undefined>;
   commit: (span: WalkWindow, page: Page) => Promise<SpanCommit | undefined>;
   keep?: number;
-  onComplete?: (read: WalkWindow[]) => Promise<void>;
+  onComplete?: (read: OwedGround[]) => Promise<void>;
 }): Promise<WindowOutcome> => {
   const { window, read, commit, keep = 0, onComplete } = input;
   const outcome: WindowOutcome = { imported: 0, complete: false, owed: false, started: false };
-  const returned: WalkWindow[] = [];
+  const returned: OwedGround[] = [];
   const stuck: OwedGround[] = [];
   let span = window;
 
@@ -835,8 +903,8 @@ export const walkSpans = async <Page>(input: {
   await onComplete?.(
     returned.filter(
       (point, index) =>
-        returned.findIndex((other) => sameWindow(other, point)) === index &&
-        !stuck.some((owed) => sameWindow(owed, point)),
+        returned.findIndex((other) => samePoint(other, point)) === index &&
+        !stuck.some((owed) => holdsPoint(owed, point)),
     ),
   );
 

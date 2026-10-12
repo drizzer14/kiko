@@ -24,7 +24,7 @@ describe('LANE_CALL_CAPS', () => {
       capitalWithdraw: 9,
       capitalDeposit: Infinity,
       pay: 20,
-      transfer: 60,
+      transfer: 80,
       earn: 30,
     });
   });
@@ -51,7 +51,7 @@ describe('createBinanceRunBudget — per-lane call caps', () => {
 
   it.each([
     ['pay', COSTS.pay, 20],
-    ['transfer', COSTS.transfer, 60],
+    ['transfer', COSTS.transfer, 80],
     ['earn', COSTS.earn, 30],
   ] as const)('caps the %s lane at %i calls', (lane, cost, cap) => {
     const budget = createBinanceRunBudget();

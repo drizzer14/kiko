@@ -39,7 +39,7 @@ export const LANE_CALL_CAPS: Record<BudgetLane, number> = {
   capitalWithdraw: 9,
   capitalDeposit: Infinity,
   pay: 20,
-  transfer: 60,
+  transfer: 80,
   earn: 30,
 };
 

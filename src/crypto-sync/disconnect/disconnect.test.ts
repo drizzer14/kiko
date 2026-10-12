@@ -16,6 +16,7 @@ jest.mock('@kiko/holdings/repo', () => ({
 }));
 
 import { HISTORY_FLOOR_MS } from '@kiko/crypto-sync/binance';
+import { withWalkOwnedMetadataResetToFloor } from '@kiko/holdings/holding-metadata';
 
 import { disconnectCryptoAccount } from './disconnect';
 
@@ -46,6 +47,33 @@ describe('disconnectCryptoAccount', () => {
     // connection's disconnect never touches another's credentials.
     expect(mockClearCredentials).toHaveBeenCalledWith('acc-1');
     expect(order).toEqual(['cursor', 'db', 'keychain']);
+  });
+
+  it('for Binance, resets the four Transfer walk keys of a Spot holding: cursors to the floor, the list to empty, no point cursor', async () => {
+    let reset: Record<string, unknown> | undefined;
+    mockResetBinanceWalkCursors.mockImplementation(async (_id, floorMs) => {
+      reset = withWalkOwnedMetadataResetToFloor(
+        {
+          binanceAsset: 'BTC',
+          binanceTransferHistoryCursor: 9_000,
+          binanceTransferRescanCursor: 8_000,
+          binanceTransferPendingOverlap: [
+            { start: 5, end: 7, kind: 'point', series: 'MAIN_FUNDING' },
+          ],
+          binanceTransferPointCursor: 6,
+        },
+        floorMs,
+      );
+    });
+
+    await disconnectCryptoAccount('acc-1', 'binance');
+
+    expect(reset).toEqual({
+      binanceAsset: 'BTC',
+      binanceTransferHistoryCursor: HISTORY_FLOOR_MS,
+      binanceTransferRescanCursor: HISTORY_FLOOR_MS,
+      binanceTransferPendingOverlap: [],
+    });
   });
 
   it('for a wallet, runs only the DB disconnect — no cursor to reset, no secret to clear', async () => {

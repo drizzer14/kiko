@@ -4,6 +4,10 @@ import {
   asMetalMeta,
   asPropertyMeta,
   asTermDepositMeta,
+  BINANCE_TRANSFER_HISTORY_CURSOR_FIELD,
+  BINANCE_TRANSFER_PENDING_OVERLAP_FIELD,
+  BINANCE_TRANSFER_POINT_CURSOR_FIELD,
+  BINANCE_TRANSFER_RESCAN_CURSOR_FIELD,
   binanceWalkCursorFields,
   binanceWalkCursorOf,
   binanceWalkPendingFields,
@@ -418,18 +422,27 @@ describe('the Binance walk cursors', () => {
     binancePayHistoryCursor: 2_000,
     binancePayRescanCursor: 2_500,
     binanceTransferHistoryCursor: 3_000,
+    binanceTransferRescanCursor: 3_500,
     binanceEarnHistoryCursor: 4_000,
   };
 
-  it('lists the capital, capital re-scan, Pay, Pay re-scan, Transfer, and Earn fields in walk order', () => {
+  it('lists the capital, capital re-scan, Pay, Pay re-scan, Transfer, Transfer re-scan, and Earn fields in walk order', () => {
     expect(binanceWalkCursorFields).toEqual([
       'binanceHistoryCursor',
       'binanceHistoryRescanCursor',
       'binancePayHistoryCursor',
       'binancePayRescanCursor',
       'binanceTransferHistoryCursor',
+      'binanceTransferRescanCursor',
       'binanceEarnHistoryCursor',
     ]);
+  });
+
+  it('exports the Transfer cursor and re-scan field names the walk stores them under', () => {
+    expect(BINANCE_TRANSFER_HISTORY_CURSOR_FIELD).toBe('binanceTransferHistoryCursor');
+    expect(BINANCE_TRANSFER_RESCAN_CURSOR_FIELD).toBe('binanceTransferRescanCursor');
+    expect(BINANCE_TRANSFER_PENDING_OVERLAP_FIELD).toBe('binanceTransferPendingOverlap');
+    expect(BINANCE_TRANSFER_POINT_CURSOR_FIELD).toBe('binanceTransferPointCursor');
   });
 
   it('reads each field on its own, null when absent or not a finite number', () => {
@@ -464,6 +477,7 @@ describe('the Binance walk cursors', () => {
       binancePayHistoryCursor: 100,
       binancePayRescanCursor: 100,
       binanceTransferHistoryCursor: 100,
+      binanceTransferRescanCursor: 100,
       binanceEarnHistoryCursor: 100,
       statementFromMs: 700,
     });
@@ -482,10 +496,11 @@ describe('the Binance walk cursors', () => {
 describe('the Binance pending overlap lists', () => {
   const range = { start: 1_000, end: 2_000 };
 
-  it('lists the capital and Pay fields', () => {
+  it('lists the capital, Pay and Transfer fields', () => {
     expect(binanceWalkPendingFields).toEqual([
       'binanceHistoryPendingOverlap',
       'binancePayPendingOverlap',
+      'binanceTransferPendingOverlap',
     ]);
   });
 
@@ -511,6 +526,40 @@ describe('the Binance pending overlap lists', () => {
         binancePayPendingOverlap: [range, point],
       }),
     ).toEqual([range, point]);
+  });
+
+  it('round-trips the series of a point, the one series its record was read in', () => {
+    const typed = { start: 999, end: 1_001, kind: 'point', series: 'MAIN_FUNDING' };
+
+    expect(
+      binanceWalkPendingOf('binanceTransferPendingOverlap', {
+        binanceTransferPendingOverlap: [range, typed],
+      }),
+    ).toEqual([range, typed]);
+  });
+
+  it('reads a point with no series as a point with none', () => {
+    const point = { start: 999, end: 1_001, kind: 'point' };
+
+    expect(
+      binanceWalkPendingOf('binanceTransferPendingOverlap', {
+        binanceTransferPendingOverlap: [point],
+      }),
+    ).toEqual([point]);
+  });
+
+  it.each([
+    ['a range with a series', { start: 1_000, end: 2_000, series: 'MAIN_FUNDING' }],
+    ['a point with an empty series', { start: 999, end: 1_001, kind: 'point', series: '' }],
+    ['a point with a blank series', { start: 999, end: 1_001, kind: 'point', series: '  ' }],
+    ['a point whose series is not text', { start: 999, end: 1_001, kind: 'point', series: 7 }],
+    ['a point whose series is null', { start: 999, end: 1_001, kind: 'point', series: null }],
+  ])('is undefined for a stored value with %s', (_label, entry) => {
+    expect(
+      binanceWalkPendingOf('binanceTransferPendingOverlap', {
+        binanceTransferPendingOverlap: [entry],
+      }),
+    ).toBeUndefined();
   });
 
   it('reads a short entry with no kind as a range: only the tag makes a point', () => {
@@ -547,10 +596,12 @@ describe('the Binance pending overlap lists', () => {
 
   it('are carried over a balance-sync metadata write', () => {
     const target = { binanceAsset: 'BTC', syncedAt: 9_000 };
+    const typedPoint = { start: 5, end: 7, kind: 'point', series: 'MAIN_FUNDING' };
     const stored = {
       binanceAsset: 'BTC',
       binanceHistoryPendingOverlap: [range],
       binancePayPendingOverlap: [],
+      binanceTransferPendingOverlap: [typedPoint],
     };
 
     expect(withWalkOwnedMetadataCarried(target, stored)).toEqual({
@@ -558,6 +609,7 @@ describe('the Binance pending overlap lists', () => {
       syncedAt: 9_000,
       binanceHistoryPendingOverlap: [range],
       binancePayPendingOverlap: [],
+      binanceTransferPendingOverlap: [typedPoint],
     });
   });
 
@@ -567,6 +619,7 @@ describe('the Binance pending overlap lists', () => {
       binancePayHistoryCursor: 2_000,
       binancePayPendingOverlap: [range],
       binanceHistoryPendingOverlap: [range],
+      binanceTransferPendingOverlap: [{ start: 5, end: 7, kind: 'point', series: 'MAIN_FUNDING' }],
     };
 
     expect(withWalkOwnedMetadataResetToFloor(stored, 100)).toEqual({
@@ -574,6 +627,7 @@ describe('the Binance pending overlap lists', () => {
       binancePayHistoryCursor: 100,
       binancePayPendingOverlap: [],
       binanceHistoryPendingOverlap: [],
+      binanceTransferPendingOverlap: [],
     });
   });
 
@@ -588,10 +642,11 @@ describe('the Binance pending overlap lists', () => {
 });
 
 describe('the Binance point cursors', () => {
-  it('lists the capital and Pay fields', () => {
+  it('lists the capital, Pay and Transfer fields', () => {
     expect(binanceWalkPointCursorFields).toEqual([
       'binanceHistoryPointCursor',
       'binancePayPointCursor',
+      'binanceTransferPointCursor',
     ]);
   });
 
@@ -627,6 +682,7 @@ describe('the Binance point cursors', () => {
       binanceAsset: 'BTC',
       binanceHistoryPointCursor: 7,
       binancePayPointCursor: 9,
+      binanceTransferPointCursor: 11,
     };
 
     expect(withWalkOwnedMetadataCarried({ binanceAsset: 'BTC', syncedAt: 1 }, stored)).toEqual({
@@ -634,6 +690,7 @@ describe('the Binance point cursors', () => {
       syncedAt: 1,
       binanceHistoryPointCursor: 7,
       binancePayPointCursor: 9,
+      binanceTransferPointCursor: 11,
     });
   });
 
@@ -643,6 +700,7 @@ describe('the Binance point cursors', () => {
       binancePayHistoryCursor: 2_000,
       binancePayPointCursor: 9,
       binanceHistoryPointCursor: 7,
+      binanceTransferPointCursor: 11,
     };
 
     expect(withWalkOwnedMetadataResetToFloor(stored, 100)).toEqual({

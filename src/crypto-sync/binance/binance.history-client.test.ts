@@ -770,10 +770,10 @@ describe('fetchUniversalTransfers', () => {
     timestamp: 1_700_000_002_000,
   };
 
-  it('returns an empty page with total 0 when rows is absent', async () => {
+  it('returns an empty page with total 0 and nothing gathered when rows is absent', async () => {
     const page = await transferRead({ total: 0 }).run();
 
-    expect(page).toMatchObject({ rows: [], total: 0 });
+    expect(page).toMatchObject({ rows: [], unreadable: [], gathered: 0, total: 0 });
   });
 
   it('parses the rows and the total, and drops unlisted fields', async () => {
@@ -781,6 +781,7 @@ describe('fetchUniversalTransfers', () => {
 
     expect(page.rows).toEqual([transferRow]);
     expect(page.total).toBe(31);
+    expect(page.gathered).toBe(1);
   });
 
   it('parses a numeric tranId to a string', async () => {
@@ -790,19 +791,90 @@ describe('fetchUniversalTransfers', () => {
   });
 
   it.each([
+    ['an empty tranId', ''],
+    ['a missing tranId', undefined],
+    ['a tranId that is no id', {}],
+  ])('reads %s as empty text, so the walk can stop on the row', async (_label, tranId) => {
+    const page = await transferRead({ total: 1, rows: [{ ...transferRow, tranId }] }).run();
+
+    expect(page.rows).toEqual([{ ...transferRow, tranId: '' }]);
+    expect(page.unreadable).toEqual([]);
+  });
+
+  it.each([
     ['a non-numeric total', { total: '5', rows: [] }],
     ['a null total', { total: null, rows: [] }],
     ['a missing total', { rows: [] }],
     ['a non-finite total', { total: Number.POSITIVE_INFINITY, rows: [] }],
     ['rows that is not an array', { total: 1, rows: {} }],
-    ['a row that is not an object', { total: 1, rows: ['x'] }],
-    ['a row without a status', { total: 1, rows: [without(transferRow, 'status')] }],
-    ['a row with an empty tranId', { total: 1, rows: [{ ...transferRow, tranId: '' }] }],
-    ['a row with a text timestamp', { total: 1, rows: [{ ...transferRow, timestamp: 'now' }] }],
     ['a null body', null],
     ['an array body', []],
   ])('throws the fixed error for %s', async (_label, body) => {
     await expect(transferRead(body).run()).rejects.toThrow(PARSE_FAILURE);
+  });
+
+  describe('a row it cannot read (was: throws the fixed error)', () => {
+    const at = transferRow.timestamp;
+
+    it.each([
+      ['a BTC row without a status', without(transferRow, 'status'), at],
+      ['a BTC row with a numeric amount', { ...transferRow, amount: 1 }, at],
+      ['a BTC row with a text timestamp', { ...transferRow, timestamp: 'now' }, undefined],
+      ['a BTC row with a non-finite timestamp', { ...transferRow, timestamp: null }, undefined],
+      ['a row with no string asset', without(transferRow, 'asset'), at],
+      ['a row that is not an object', 'x', undefined],
+      ['a null row', null, undefined],
+    ])(
+      'lists %s as unreadable, with its timestamp when it has a finite one',
+      async (_label, row, time) => {
+        const page = await transferRead({ total: 1, rows: [row] }).run();
+
+        expect(page.rows).toEqual([]);
+        expect(page.unreadable).toEqual([{ time }]);
+        expect(page.gathered).toBe(1);
+      },
+    );
+
+    it('parses the readable rows of a page beside an unreadable one and a row of another asset', async () => {
+      const page = await transferRead({
+        total: 3,
+        rows: [transferRow, { ...transferRow, amount: 5 }, { ...transferRow, asset: 'ETH' }],
+      }).run();
+
+      expect(page.rows).toEqual([transferRow]);
+      expect(page.unreadable).toEqual([{ time: at }]);
+      expect(page.gathered).toBe(3);
+    });
+
+    it('lists an unreadable row by its time alone: no id, amount or status', async () => {
+      const page = await transferRead({
+        total: 1,
+        rows: [{ ...transferRow, amount: 5, tranId: 'secret-id' }],
+      }).run();
+
+      expect(JSON.stringify(page.unreadable)).not.toMatch(/secret-id|amount|status/);
+    });
+  });
+
+  describe('a row of another asset', () => {
+    it('is counted for the pager and never parsed, whatever else is wrong with it', async () => {
+      const page = await transferRead({
+        total: 4,
+        rows: [{ asset: 'ETH' }, { asset: 'USDT', amount: 7, timestamp: 'x' }, { asset: 'BNB' }],
+      }).run();
+
+      expect(page.rows).toEqual([]);
+      expect(page.unreadable).toEqual([]);
+      expect(page.gathered).toBe(3);
+      expect(page.total).toBe(4);
+    });
+
+    it('is told from a BTC row by its asset alone: a row with a lowercase btc asset is another asset', async () => {
+      const page = await transferRead({ total: 1, rows: [{ ...transferRow, asset: 'btc' }] }).run();
+
+      expect(page.rows).toEqual([]);
+      expect(page.gathered).toBe(1);
+    });
   });
 });
 
@@ -1023,29 +1095,72 @@ describe('fetchEarnRecords', () => {
     ]);
   });
 
-  it.each([
-    ['flexibleSubscription', { amount: '1', asset: 'BTC', time: 1, status: 'SUCCESS' }],
-    ['flexibleRedemption', { amount: '1', asset: 'BTC', time: 1, status: 'SUCCESS' }],
-    ['flexibleRewards', { asset: 'BTC', rewards: '1', projectId: 'p', type: 'REALTIME' }],
-    ['lockedSubscription', { amount: '1', asset: 'BTC', time: 1, status: 'SUCCESS' }],
-    ['lockedRedemption', { amount: '1', asset: 'BTC', time: 1, status: 'SUCCESS' }],
-    ['lockedRewards', { time: 1, asset: 'BTC', amount: '1', type: 'Locked Rewards' }],
-  ] as const)('throws the fixed error for a %s row missing its id or time', async (kind, row) => {
-    await expect(earnPage(kind, { total: 1, rows: [row] })).rejects.toThrow(PARSE_FAILURE);
+  it('counts every row of the page, and parses only the rows of BTC', async () => {
+    const page = await earnPage('lockedRewards', {
+      total: 2,
+      rows: [{ asset: 'ETH' }, { positionId: 'p', time: 1, asset: 'BTC', amount: '1', type: 't' }],
+    });
+
+    expect(page.gathered).toBe(2);
+    expect(page.rows).toHaveLength(1);
+    expect(page.unreadable).toEqual([]);
   });
 
-  it.each([
-    ['a null time', { time: null }],
-    ['a text time', { time: 'now' }],
-    ['a non-finite time', { time: Number.POSITIVE_INFINITY }],
-    ['a numeric amount', { amount: 1 }],
-    ['a missing type', { type: undefined }],
-  ])('throws the fixed error for a locked reward with %s', async (_label, overrides) => {
-    const row = { positionId: 'p', time: 1, asset: 'BTC', amount: '1', type: 't', ...overrides };
+  describe('a row it cannot read (was: throws the fixed error)', () => {
+    it.each([
+      ['flexibleSubscription', { amount: '1', asset: 'BTC', time: 1, status: 'SUCCESS' }, 1],
+      ['flexibleRedemption', { amount: '1', asset: 'BTC', time: 2, status: 'SUCCESS' }, 2],
+      [
+        'flexibleRewards',
+        { asset: 'BTC', rewards: '1', projectId: 'p', type: 'REALTIME' },
+        undefined,
+      ],
+      ['lockedSubscription', { amount: '1', asset: 'BTC', time: 3, status: 'SUCCESS' }, 3],
+      ['lockedRedemption', { amount: '1', asset: 'BTC', time: 4, status: 'SUCCESS' }, 4],
+      ['lockedRewards', { time: 5, asset: 'BTC', amount: '1', type: 'Locked Rewards' }, 5],
+    ] as const)(
+      'lists a %s row missing its id or time as unreadable, with its time when it has one',
+      async (kind, row, time) => {
+        const page = await earnPage(kind, { total: 1, rows: [row] });
 
-    await expect(earnPage('lockedRewards', { total: 1, rows: [row] })).rejects.toThrow(
-      PARSE_FAILURE,
+        expect(page.rows).toEqual([]);
+        expect(page.unreadable).toEqual([{ time }]);
+        expect(page.gathered).toBe(1);
+      },
     );
+
+    it.each([
+      ['a null time', { time: null }, undefined],
+      ['a text time', { time: 'now' }, undefined],
+      ['a non-finite time', { time: Number.POSITIVE_INFINITY }, undefined],
+      ['a numeric amount', { amount: 1 }, 1],
+      ['a missing type', { type: undefined }, 1],
+    ])('lists a locked reward with %s as unreadable', async (_label, overrides, time) => {
+      const row = { positionId: 'p', time: 1, asset: 'BTC', amount: '1', type: 't', ...overrides };
+
+      const page = await earnPage('lockedRewards', { total: 1, rows: [row] });
+
+      expect(page.rows).toEqual([]);
+      expect(page.unreadable).toEqual([{ time }]);
+    });
+
+    it('parses the readable rows of a page beside an unreadable one', async () => {
+      const readable = { time: 1, positionId: 'p', asset: 'BTC', amount: '1', type: 't' };
+
+      const page = await earnPage('lockedRewards', {
+        total: 2,
+        rows: [readable, { ...readable, amount: 1 }],
+      });
+
+      expect(page.rows).toEqual([readable]);
+      expect(page.unreadable).toEqual([{ time: 1 }]);
+    });
+
+    it('still throws the fixed error for rows that is not an array', async () => {
+      await expect(earnPage('lockedRewards', { total: 1, rows: {} })).rejects.toThrow(
+        PARSE_FAILURE,
+      );
+    });
   });
 });
 

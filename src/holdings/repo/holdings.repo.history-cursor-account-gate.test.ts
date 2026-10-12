@@ -141,6 +141,7 @@ describe("holdingsRepo.setBinanceWalkCursor — gated on the holding's account s
       binancePayHistoryCursor: 1,
       binancePayRescanCursor: 1,
       binanceTransferHistoryCursor: 1,
+      binanceTransferRescanCursor: 1,
       binanceEarnHistoryCursor: 1,
       syncedAt: 500,
     });
@@ -229,8 +230,23 @@ describe("holdingsRepo.setBinanceWalkPending — gated on the holding's account 
       binanceHistoryCursor: 1,
       binanceHistoryPendingOverlap: [],
       binancePayPendingOverlap: [],
+      binanceTransferPendingOverlap: [],
       syncedAt: 500,
     });
+  });
+
+  it('stores the series of a typed point on a Transfer list, and a disconnect empties it', async () => {
+    const rawDatabase = openTestDatabase('binance');
+    mockWorkDatabase = executingDrizzle<typeof database>(rawDatabase);
+    const typed = { start: 5, end: 7, kind: 'point' as const, series: 'MAIN_FUNDING' };
+
+    await holdingsRepo.setBinanceWalkPending('h-spot', 'binanceTransferPendingOverlap', [typed]);
+
+    expect(storedMetadata(rawDatabase)).toMatchObject({ binanceTransferPendingOverlap: [typed] });
+
+    await holdingsRepo.resetBinanceWalkCursors('acc-1', 1);
+
+    expect(storedMetadata(rawDatabase)).toMatchObject({ binanceTransferPendingOverlap: [] });
   });
 
   it("a disconnect's reset is not undone by a walk's late-arriving write", async () => {

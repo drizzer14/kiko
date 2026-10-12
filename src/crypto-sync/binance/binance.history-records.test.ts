@@ -182,6 +182,74 @@ describe('settleRecords', () => {
     expect(settled.owed).toEqual([pointOf(3_000, 3_002)]);
   });
 
+  describe('with a series of its own for each record', () => {
+    type Typed = Entry & { series: string };
+
+    const typed = (id: string, time: number | undefined, series: string, stuck = false): Typed => ({
+      ...entry(id, time, stuck),
+      series,
+    });
+    const settleTyped = (records: Typed[]) =>
+      settleRecords({
+        span: SPAN,
+        records,
+        rowsOf: (record) => {
+          if (record.stuck) {
+            throw new BinanceWalkStop(`stuck-${record.id}`);
+          }
+
+          return [record.id];
+        },
+        extentOf: atTime,
+        seriesOf: (record) => record.series,
+      });
+
+    it('owes the point of a stuck record in the series it was read under', () => {
+      const settled = settleTyped([typed('s', 3_000, 'MAIN_FUNDING', true)]);
+
+      expect(settled.owed).toEqual([{ ...pointOf(2_999, 3_001), series: 'MAIN_FUNDING' }]);
+    });
+
+    it('gives the point of every returned record in its own series, the trusted ones too', () => {
+      const settled = settleTyped([
+        typed('a', 2_000, 'FUNDING_MAIN'),
+        typed('s', 3_000, 'MAIN_FUNDING', true),
+      ]);
+
+      expect(settled.returned).toEqual([
+        { start: 1_999, end: 2_001, series: 'FUNDING_MAIN' },
+        { start: 2_999, end: 3_001, series: 'MAIN_FUNDING' },
+      ]);
+    });
+
+    it('owes the points of two records at one time in two series as two points', () => {
+      const settled = settleTyped([
+        typed('s', 3_000, 'MAIN_FUNDING', true),
+        typed('t', 3_000, 'FUNDING_MAIN', true),
+        typed('u', 3_000, 'MAIN_FUNDING', true),
+      ]);
+
+      expect(settled.owed).toEqual([
+        { ...pointOf(2_999, 3_001), series: 'MAIN_FUNDING' },
+        { ...pointOf(2_999, 3_001), series: 'FUNDING_MAIN' },
+      ]);
+    });
+
+    it('owes the span, with no series, for a stuck record that has no usable time', () => {
+      const settled = settleTyped([typed('s', undefined, 'MAIN_FUNDING', true)]);
+
+      expect(settled.owed).toEqual([SPAN]);
+      expect(settled.returned).toEqual([]);
+    });
+
+    it('gives no series to a point when no record names one, as the Pay and capital walks read', () => {
+      const settled = settle([entry('s', 3_000, true)], atTime);
+
+      expect(Object.keys(settled.owed[0])).toEqual(['start', 'end', 'kind']);
+      expect(Object.keys(settled.returned[0])).toEqual(['start', 'end']);
+    });
+  });
+
   it('rethrows a failure that is not a stop', () => {
     expect(() =>
       settleRecords({
@@ -285,6 +353,22 @@ describe('settleUnreadable', () => {
 
   it('settles nothing for a page with no unreadable row', () => {
     expect(settleRows([])).toEqual({ rows: [], codes: [], owed: [], returned: [] });
+  });
+
+  it('owes the point of an unreadable row in the series it was read under', () => {
+    const settled = settleUnreadable({
+      span: SPAN,
+      unreadable: [
+        { time: 3_000, series: 'MAIN_FUNDING' },
+        { time: undefined, series: 'X' },
+      ],
+      code: 'row-unreadable',
+      extentOf: timeOf,
+      seriesOf: (row) => row.series,
+    });
+
+    expect(settled.owed).toEqual([{ ...pointOf(2_999, 3_001), series: 'MAIN_FUNDING' }, SPAN]);
+    expect(settled.returned).toEqual([{ start: 2_999, end: 3_001, series: 'MAIN_FUNDING' }]);
   });
 
   it('is what the walk reads, beside the records it can settle, as one span', () => {

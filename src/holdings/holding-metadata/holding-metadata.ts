@@ -189,7 +189,10 @@ export const BINANCE_PAY_HISTORY_CURSOR_FIELD = 'binancePayHistoryCursor';
 /** The Pay walk's re-scan mark, kept the same way as the capital walk's. */
 export const BINANCE_PAY_RESCAN_CURSOR_FIELD = 'binancePayRescanCursor';
 
-const BINANCE_TRANSFER_HISTORY_CURSOR_FIELD = 'binanceTransferHistoryCursor';
+export const BINANCE_TRANSFER_HISTORY_CURSOR_FIELD = 'binanceTransferHistoryCursor';
+
+/** The Transfer walk's re-scan mark, kept the same way as the capital walk's. */
+export const BINANCE_TRANSFER_RESCAN_CURSOR_FIELD = 'binanceTransferRescanCursor';
 
 const BINANCE_EARN_HISTORY_CURSOR_FIELD = 'binanceEarnHistoryCursor';
 
@@ -206,6 +209,7 @@ export const binanceWalkCursorFields = [
   BINANCE_PAY_HISTORY_CURSOR_FIELD,
   BINANCE_PAY_RESCAN_CURSOR_FIELD,
   BINANCE_TRANSFER_HISTORY_CURSOR_FIELD,
+  BINANCE_TRANSFER_RESCAN_CURSOR_FIELD,
   BINANCE_EARN_HISTORY_CURSOR_FIELD,
 ] as const;
 
@@ -223,6 +227,8 @@ export const BINANCE_HISTORY_PENDING_OVERLAP_FIELD = 'binanceHistoryPendingOverl
 
 export const BINANCE_PAY_PENDING_OVERLAP_FIELD = 'binancePayPendingOverlap';
 
+export const BINANCE_TRANSFER_PENDING_OVERLAP_FIELD = 'binanceTransferPendingOverlap';
+
 /**
  * The walk-owned keys that hold a list of ranges, not a cursor. A balance sync carries them
  * with the cursors, and a disconnect resets them to an empty list.
@@ -230,6 +236,7 @@ export const BINANCE_PAY_PENDING_OVERLAP_FIELD = 'binancePayPendingOverlap';
 export const binanceWalkPendingFields = [
   BINANCE_HISTORY_PENDING_OVERLAP_FIELD,
   BINANCE_PAY_PENDING_OVERLAP_FIELD,
+  BINANCE_TRANSFER_PENDING_OVERLAP_FIELD,
 ] as const;
 
 export type BinanceWalkPendingField = (typeof binanceWalkPendingFields)[number];
@@ -238,9 +245,16 @@ export type BinanceWalkPendingField = (typeof binanceWalkPendingFields)[number];
  * One entry of a walk's list of owed ground: a range, or a point when tagged `kind: 'point'`. A
  * point is the ground one record the walk could not trust owes; it is never told from a range by
  * its length, and an entry with no tag is a range, which is how a list stored before the tag
- * existed reads.
+ * existed reads. A walk that reads several series (the Transfer types) stores the series its
+ * record was read under on a point (`series`): the point is read in that series only, and leaves
+ * the list only for a record of it. A range has none.
  */
-export type BinancePendingRange = { start: number; end: number; kind?: 'point' };
+export type BinancePendingRange = {
+  start: number;
+  end: number;
+  kind?: 'point';
+  series?: string;
+};
 
 /**
  * Where a walk's round-robin over its owed points stands: the start of the point it read last.
@@ -252,9 +266,12 @@ export const BINANCE_HISTORY_POINT_CURSOR_FIELD = 'binanceHistoryPointCursor';
 
 export const BINANCE_PAY_POINT_CURSOR_FIELD = 'binancePayPointCursor';
 
+export const BINANCE_TRANSFER_POINT_CURSOR_FIELD = 'binanceTransferPointCursor';
+
 export const binanceWalkPointCursorFields = [
   BINANCE_HISTORY_POINT_CURSOR_FIELD,
   BINANCE_PAY_POINT_CURSOR_FIELD,
+  BINANCE_TRANSFER_POINT_CURSOR_FIELD,
 ] as const;
 
 export type BinanceWalkPointCursorField = (typeof binanceWalkPointCursorFields)[number];
@@ -304,22 +321,33 @@ export const binanceWalkCursorOf = (
   metadata: unknown,
 ): number | null => numberFieldOf(field)(metadata);
 
+const isSeries = (value: unknown): value is string =>
+  typeof value === 'string' && value.trim() !== '';
+
 const asPendingRange = (value: unknown): BinancePendingRange | undefined => {
   if (!isRecord(value)) {
     return undefined;
   }
 
-  const { start, end, kind } = value;
+  const { start, end, kind, series } = value;
 
   if (!isNumber(start) || !isNumber(end) || start >= end) {
     return undefined;
   }
 
   if (kind === undefined) {
-    return { start, end };
+    return series === undefined ? { start, end } : undefined;
   }
 
-  return kind === 'point' ? { start, end, kind } : undefined;
+  if (kind !== 'point') {
+    return undefined;
+  }
+
+  if (series === undefined) {
+    return { start, end, kind };
+  }
+
+  return isSeries(series) ? { start, end, kind, series } : undefined;
 };
 
 /**

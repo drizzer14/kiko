@@ -125,8 +125,12 @@ export type HistoryPage<Row> = {
   usedIpWeight1m: number | undefined;
 };
 
-/** A page of a `{ rows, total }` endpoint, paged by `current`. */
-type TotalPage<Row> = HistoryPage<Row> & { total: number };
+/**
+ * A page of a `{ rows, total }` endpoint, paged by `current`. `gathered` counts every row of the
+ * page, of any asset and unreadable ones too: `total` counts them all, so the pager compares the
+ * two. `rows` are the BTC rows that parsed.
+ */
+export type TotalPage<Row> = HistoryPage<Row> & { total: number; gathered: number };
 
 type Reading<Value> = { value: Value } | { unreadable: UnreadableRow };
 
@@ -181,19 +185,35 @@ const arrayPage =
   };
 
 /**
- * Transfer and Earn rows parse strictly: a malformed row still fails the read, so `unreadable`
- * is always empty here.
+ * A row of another asset is counted for the pager and never parsed (`undefined`): it can be off
+ * contract in any way without stalling the BTC rows. A row with no string asset is not one of
+ * another asset, and the strict reader rejects it.
+ */
+const btcRowOf =
+  <Row>(readRow: Reader<Row>): Reader<Row | undefined> =>
+  (item) =>
+    isRecord(item) && typeof item.asset === 'string' && item.asset !== BINANCE_ASSET
+      ? undefined
+      : readRow(item);
+
+/**
+ * Transfer and Earn rows: the BTC rows parse strictly, and one that does not goes to
+ * `unreadable` with its own time field, so a malformed row never fails the read. A malformed
+ * envelope (a body or `rows` that is no list, a `total` that is no number) still does.
  */
 const totalPage =
-  <Row>(readRow: Reader<Row>) =>
+  <Row>(readRow: Reader<Row>, timeOf: TimeReader) =>
   ({ body, headers }: SignedPage): TotalPage<Row> => {
     if (!isRecord(body)) {
       return parseFailure();
     }
 
+    const readings = readingsOf(body.rows ?? [], btcRowOf(readRow), timeOf);
+
     return {
-      rows: listOf(readRow)(body.rows ?? []),
-      unreadable: [],
+      rows: valuesOf(readings).flatMap((row) => row ?? []),
+      unreadable: unreadableOf(readings),
+      gathered: readings.length,
       total: finiteNumber(body.total),
       ...usedWeightsFromHeaders(headers),
     };
@@ -537,21 +557,24 @@ export const UNIVERSAL_TRANSFER_TYPES = [
   'OPTION_FUNDING',
 ] as const;
 
-type UniversalTransferType = (typeof UNIVERSAL_TRANSFER_TYPES)[number];
+export type UniversalTransferType = (typeof UNIVERSAL_TRANSFER_TYPES)[number];
 
 const TRANSFER_FIELDS = {
   asset: text,
   amount: text,
   type: text,
   status: text,
-  tranId: identifier,
+  tranId: identifierOrEmpty,
   timestamp: finiteNumber,
 };
 
-/** One transfer from `/sapi/v1/asset/transfer`; its `tranId` is kept as text. */
-type BinanceUniversalTransfer = Parsed<typeof TRANSFER_FIELDS>;
+/**
+ * One transfer from `/sapi/v1/asset/transfer`; its `tranId` is kept as text, empty when it is
+ * not an id, which the walk stops on.
+ */
+export type BinanceUniversalTransfer = Parsed<typeof TRANSFER_FIELDS>;
 
-const transferPage = totalPage(recordReader(TRANSFER_FIELDS));
+const transferPage = totalPage(recordReader(TRANSFER_FIELDS), timeFieldOf('timestamp', epochTime));
 
 /**
  * `GET /sapi/v1/asset/transfer` (universal transfer history) for ONE page of ONE
@@ -695,5 +718,5 @@ export const fetchEarnRecords = async <Kind extends EarnRecordKind>(
     options,
   );
 
-  return totalPage(readRow as Reader<EarnRecordByKind[Kind]>)(page);
+  return totalPage(readRow as Reader<EarnRecordByKind[Kind]>, timeFieldOf('time', epochTime))(page);
 };

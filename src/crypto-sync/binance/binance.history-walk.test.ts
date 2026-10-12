@@ -12,6 +12,7 @@ import {
   logWalkStop,
   nextSpanAfter,
   type OwedGround,
+  type OwedWindow,
   planWalkPasses,
   readPendingMark,
   readPointCursor,
@@ -354,6 +355,106 @@ describe('planWalkPasses', () => {
         const { points } = planWalkPasses({ ...input, cursor, pending: [narrow, wide] });
 
         expect(points).toEqual([windowOf(wide)]);
+      });
+
+      describe('typed, the ground of one record in the series it was read under', () => {
+        const time = END_MS - 150 * DAY_MS;
+        const typedAt = (series: string, reach = 1): OwedGround => ({
+          start: time - reach,
+          end: time + reach,
+          kind: 'point',
+          series,
+        });
+        const seriesOf = (window: { series?: readonly string[] }): string[] =>
+          [...(window.series ?? [])].sort();
+
+        it('keeps the series of a point in the list', () => {
+          const { pendingRanges } = planWalkPasses({
+            ...input,
+            cursor,
+            pending: [typedAt('MAIN_FUNDING')],
+          });
+
+          expect(pointsAmong(pendingRanges)).toEqual([typedAt('MAIN_FUNDING')]);
+        });
+
+        it('keeps two points of one window in two series as two entries, and one that repeats as one', () => {
+          const { pendingRanges } = planWalkPasses({
+            ...input,
+            cursor,
+            pending: [typedAt('FUNDING_MAIN'), typedAt('MAIN_FUNDING'), typedAt('MAIN_FUNDING')],
+          });
+
+          expect(pointsAmong(pendingRanges)).toHaveLength(2);
+          expect(pointsAmong(pendingRanges).map((point) => point.series)).toEqual(
+            expect.arrayContaining(['FUNDING_MAIN', 'MAIN_FUNDING']),
+          );
+        });
+
+        it('reads a point in its own series only', () => {
+          const { points } = planWalkPasses({
+            ...input,
+            cursor,
+            pending: [typedAt('MAIN_UMFUTURE')],
+          });
+
+          expect(points).toEqual([
+            { ...windowOf(typedAt('MAIN_UMFUTURE')), series: ['MAIN_UMFUTURE'] },
+          ]);
+        });
+
+        it('reads one window for points that start together: the widest, in the union of their series', () => {
+          const wider: OwedGround = { ...typedAt('FUNDING_MAIN'), end: time + 1_000 };
+          const { points } = planWalkPasses({
+            ...input,
+            cursor,
+            pending: [typedAt('MAIN_FUNDING'), wider],
+          });
+
+          expect(points).toHaveLength(1);
+          expect(points[0]).toMatchObject(windowOf(wider));
+          expect(seriesOf(points[0])).toEqual(['FUNDING_MAIN', 'MAIN_FUNDING']);
+        });
+
+        it('lists a series once, however many points of it start together', () => {
+          const { points } = planWalkPasses({
+            ...input,
+            cursor,
+            pending: [typedAt('MAIN_FUNDING'), { ...typedAt('MAIN_FUNDING'), end: time + 1_000 }],
+          });
+
+          expect(points).toHaveLength(1);
+          expect(seriesOf(points[0])).toEqual(['MAIN_FUNDING']);
+        });
+
+        it('reads in every series, no series named, when a point that starts with the others has none', () => {
+          const untyped: OwedGround = { ...windowOf(typedAt('x')), kind: 'point' };
+
+          const { points } = planWalkPasses({
+            ...input,
+            cursor,
+            pending: [typedAt('MAIN_FUNDING'), untyped],
+          });
+
+          expect(points).toEqual([windowOf(untyped)]);
+        });
+
+        it('reads the points of different starts as windows of their own, each in its own series', () => {
+          const later: OwedGround = {
+            start: time + 10 * DAY_MS - 1,
+            end: time + 10 * DAY_MS + 1,
+            kind: 'point',
+            series: 'UMFUTURE_MAIN',
+          };
+
+          const { points } = planWalkPasses({
+            ...input,
+            cursor,
+            pending: [typedAt('MAIN_FUNDING'), later],
+          });
+
+          expect(points.map(seriesOf)).toEqual([['MAIN_FUNDING'], ['UMFUTURE_MAIN']]);
+        });
       });
 
       it('keeps a short range a range, and reads it among the ranges, never among the points', () => {
@@ -1190,6 +1291,100 @@ describe('runWalkPlan', () => {
       expect(result.complete).toBe(false);
     });
 
+    describe('when a window costs several calls, as one read of every transfer type does', () => {
+      const SERIES_COUNT = 20;
+      const callsOf = (window: OwedWindow): number => window.series?.length ?? SERIES_COUNT;
+      const typedPointAt = (start: number, series: string[]): OwedWindow => ({
+        ...pointAt(start),
+        series,
+      });
+
+      /** Runs the plan on a lane of `cap` calls; a window spends the calls `callsOf` gives it. */
+      const keepsWith = async (walkPlan: WalkPlan, cap: number) => {
+        let spent = 0;
+        const seen: [number, WalkPass, number][] = [];
+
+        await runWalkPlan({
+          plan: walkPlan,
+          callsOf,
+          canAfford: (keep) => spent + keep < cap,
+          runWindow: async (span, pass, keep) => {
+            spent += callsOf(span);
+            seen.push([span.start, pass, keep]);
+
+            return ran(1, true);
+          },
+        });
+
+        return seen;
+      };
+
+      it('keeps the calls of one read of every series for the re-scan, and the calls of the first point for the points', async () => {
+        const seen = await keepsWith(
+          planOf({
+            pending: [owedAt(500)],
+            points: [typedPointAt(900, ['A'])],
+            rescan: [rescanWindow],
+            rescanEnd: 300,
+          }),
+          60,
+        );
+
+        expect(seen).toEqual([
+          [500, 'pending', SERIES_COUNT + 1],
+          [200, 'rescan', 1],
+          [900, 'pending', 0],
+        ]);
+      });
+
+      it('keeps as many calls for the points as the first point to read costs', async () => {
+        const seen = await keepsWith(
+          planOf({ pending: [owedAt(500)], points: [typedPointAt(900, ['A', 'B', 'C'])] }),
+          60,
+        );
+
+        expect(seen[0]).toEqual([500, 'pending', 3]);
+      });
+
+      it('does not enter an owed window when the calls it keeps and its other calls do not fit, though the first call would', async () => {
+        const seen = await keepsWith(
+          planOf({
+            pending: [owedAt(500)],
+            points: [typedPointAt(900, ['A'])],
+            rescan: [rescanWindow],
+            rescanEnd: 300,
+          }),
+          40,
+        );
+
+        expect(seen.map(([start, pass]) => [start, pass])).toEqual([
+          [200, 'rescan'],
+          [900, 'pending'],
+        ]);
+      });
+
+      it('reads a point of one series on one call, and ends the points at a point of every series that does not fit', async () => {
+        const seen = await keepsWith(
+          planOf({
+            points: [typedPointAt(900, ['A']), pointAt(950), typedPointAt(990, ['B'])],
+            rescan: [rescanWindow],
+            rescanEnd: 300,
+          }),
+          30,
+        );
+
+        expect(seen.map(([start]) => start)).toEqual([200, 900]);
+      });
+
+      it('reads a point of every series only when all its calls fit beside what it keeps', async () => {
+        const fits = await keepsWith(planOf({ points: [pointAt(950)] }), SERIES_COUNT);
+        const short = await keepsWith(planOf({ points: [pointAt(950)] }), SERIES_COUNT - 1);
+
+        expect(fits).toHaveLength(1);
+        expect(short).toHaveLength(0);
+      });
+    });
+
     it('reads a point in every run, whatever a dense re-scan and the owed windows would spend', async () => {
       const dense = Array.from({ length: 10 }, (_unused, index) => window(200 + index));
 
@@ -1765,6 +1960,43 @@ describe('dropReadPoints', () => {
     expect(writes).toEqual([]);
     expect(marks.pending).toEqual([point]);
   });
+
+  describe('typed points', () => {
+    const typed = (series: string): OwedGround => ({ ...point, series });
+
+    it('takes off only the point of the series a returned record owes, not the point of another series at the very same window', async () => {
+      const { marks } = await drop({
+        pending: [typed('MAIN_FUNDING'), typed('FUNDING_MAIN')],
+        read: [typed('FUNDING_MAIN')],
+      });
+
+      expect(marks.pending).toEqual([typed('MAIN_FUNDING')]);
+    });
+
+    it('keeps a typed point when the window returned a record of the same window and no series', async () => {
+      const { marks, writes } = await drop({ pending: [typed('MAIN_FUNDING')], read: [point] });
+
+      expect(writes).toEqual([]);
+      expect(marks.pending).toEqual([typed('MAIN_FUNDING')]);
+    });
+
+    it('keeps a point with no series when the window returned a record of the same window in a series', async () => {
+      const { marks, writes } = await drop({ pending: [point], read: [typed('MAIN_FUNDING')] });
+
+      expect(writes).toEqual([]);
+      expect(marks.pending).toEqual([point]);
+    });
+
+    it('takes off a typed point whose window was read whole when a record of its own series came back', async () => {
+      const { marks, writes } = await drop({
+        pending: [typed('MAIN_FUNDING')],
+        read: [typed('MAIN_FUNDING')],
+      });
+
+      expect(writes).toEqual([[FIELDS.pending, []]]);
+      expect(marks.pending).toEqual([]);
+    });
+  });
 });
 
 describe('distinctGround', () => {
@@ -1773,6 +2005,18 @@ describe('distinctGround', () => {
     const point: OwedGround = { start: 1, end: 3, kind: 'point' };
 
     expect(distinctGround([range, point, { ...range }, { ...point }])).toEqual([range, point]);
+  });
+
+  it('tells two points of one window apart by their series, and keeps a repeat of one series once', () => {
+    const base = { start: 1, end: 3, kind: 'point' as const };
+    const first: OwedGround = { ...base, series: 'MAIN_FUNDING' };
+    const second: OwedGround = { ...base, series: 'FUNDING_MAIN' };
+
+    expect(distinctGround([first, second, { ...first }, base, { ...base }])).toEqual([
+      first,
+      second,
+      base,
+    ]);
   });
 });
 
@@ -1815,12 +2059,16 @@ describe('readPendingMark', () => {
   const FIELD = 'binancePayPendingOverlap';
   const owedBefore = { start: 1_000, end: 5_000 };
 
-  const readMark = (metadata: unknown, owedIfUnreadable = owedBefore) => {
+  const readMark = (
+    metadata: unknown,
+    owedIfUnreadable = owedBefore,
+    knownSeries?: readonly string[],
+  ) => {
     const write = jest.fn(async (_field: string, _ranges: WalkWindow[]) => undefined);
 
     return {
       write,
-      ranges: readPendingMark({ field: FIELD, metadata, owedIfUnreadable, write }),
+      ranges: readPendingMark({ field: FIELD, metadata, owedIfUnreadable, knownSeries, write }),
     };
   };
 
@@ -1880,6 +2128,50 @@ describe('readPendingMark', () => {
 
       expect(await ranges).toEqual([]);
       expect(write).toHaveBeenCalledWith(FIELD, []);
+    });
+  });
+
+  describe('for a walk of several series', () => {
+    const KNOWN = ['MAIN_FUNDING', 'FUNDING_MAIN'];
+    const typedPoint = { start: 10, end: 12, kind: 'point', series: 'MAIN_FUNDING' };
+    let warn: jest.SpyInstance;
+
+    beforeEach(() => {
+      warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    });
+
+    afterEach(() => {
+      warn.mockRestore();
+    });
+
+    it('reads a list whose points all name a known series, and writes nothing', async () => {
+      const stored = [{ start: 1, end: 2 }, typedPoint];
+      const { ranges, write } = readMark({ [FIELD]: stored }, owedBefore, KNOWN);
+
+      expect(await ranges).toEqual(stored);
+      expect(write).not.toHaveBeenCalled();
+      expect(warn).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['a point of a series the walk does not know', { ...typedPoint, series: 'MAIN_MARS' }],
+      ['a point that names no series', { start: 10, end: 12, kind: 'point' }],
+    ])('repairs the list like a malformed one for %s', async (_label, stray) => {
+      const { ranges, write } = readMark({ [FIELD]: [typedPoint, stray] }, owedBefore, KNOWN);
+
+      expect(await ranges).toEqual([owedBefore]);
+      expect(write).toHaveBeenCalledWith(FIELD, [owedBefore]);
+      expect(warn).toHaveBeenCalledWith('[binance sync] pending overlap ranges unreadable', {
+        name: 'BinanceWalkStop',
+        code: 'pending-malformed',
+      });
+    });
+
+    it('repairs a typed point in the list of a walk that has no series: it could never leave', async () => {
+      const { ranges, write } = readMark({ [FIELD]: [typedPoint] });
+
+      expect(await ranges).toEqual([owedBefore]);
+      expect(write).toHaveBeenCalledWith(FIELD, [owedBefore]);
     });
   });
 });
@@ -2230,6 +2522,58 @@ describe('walkSpans', () => {
       });
 
       expect(onComplete).toHaveBeenCalledWith([]);
+    });
+
+    describe('in several series', () => {
+      const typed = (series: string): OwedGround => ({ ...pointA, series });
+
+      it('lists the points of one window in two series as two points, each once', async () => {
+        const onComplete = jest.fn(async (_read: OwedGround[]) => undefined);
+
+        await walkSpans({
+          window,
+          read: readByWidth(),
+          commit: commitReturning({
+            0: { returned: [typed('MAIN_FUNDING'), typed('FUNDING_MAIN')] },
+            25: { returned: [typed('MAIN_FUNDING')] },
+          }),
+          onComplete,
+        });
+
+        expect(onComplete).toHaveBeenCalledWith([typed('MAIN_FUNDING'), typed('FUNDING_MAIN')]);
+      });
+
+      it('leaves out only the point of the series a record left owed, not the twin of another series at the same window', async () => {
+        const onComplete = jest.fn(async (_read: OwedGround[]) => undefined);
+
+        await walkSpans({
+          window,
+          read: readByWidth(),
+          commit: commitReturning({
+            0: { returned: [typed('MAIN_FUNDING'), typed('FUNDING_MAIN')] },
+            50: { stuck: [typed('MAIN_FUNDING')] },
+          }),
+          onComplete,
+        });
+
+        expect(onComplete).toHaveBeenCalledWith([typed('FUNDING_MAIN')]);
+      });
+
+      it('leaves out a point whose window a stuck span owes as a range, in whatever series it was read', async () => {
+        const onComplete = jest.fn(async (_read: OwedGround[]) => undefined);
+        const { start, end } = pointA;
+
+        await walkSpans({
+          window,
+          read: readByWidth(),
+          commit: commitReturning({
+            0: { returned: [typed('MAIN_FUNDING')], stuck: [{ start, end }] },
+          }),
+          onComplete,
+        });
+
+        expect(onComplete).toHaveBeenCalledWith([]);
+      });
     });
 
     it('is not called when the read gives up before the window is covered, though a span returned the point', async () => {

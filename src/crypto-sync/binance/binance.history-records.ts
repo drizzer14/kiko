@@ -16,13 +16,13 @@ import type { UnreadableRow } from './binance.history-client';
  * One span's records told apart: the rows of those the walk can trust, the codes of the stops
  * of those it cannot, the ground the stuck records owe, and the point of every record the read
  * returned, trusted or not (`returned`): the walk takes a point off its list only for one of
- * those.
+ * those. A point carries the series its record was read under, when the walk reads several.
  */
 type SettledSpan<Row> = {
   rows: Row[];
   codes: string[];
   owed: OwedGround[];
-  returned: WalkWindow[];
+  returned: OwedGround[];
 };
 
 /** The one millisecond a record with a time to the millisecond sits in, if it has a time. */
@@ -51,14 +51,20 @@ const pointOf = (span: WalkWindow, extent: WalkWindow | undefined): WalkWindow |
   return { start: extent.start - 1, end: extent.end + 1 };
 };
 
+/** The point of a record with `series` (none, for a walk that reads one series). */
+const withSeries = (point: WalkWindow, series: string | undefined): OwedGround => ({
+  ...point,
+  ...foldMap(maybe(series), (name) => ({ series: name })),
+});
+
 /** The ground a stuck record owes: its own point, or the whole span (a range) without one. */
-const owedBy = (span: WalkWindow, point: WalkWindow | undefined): OwedGround =>
+const owedBy = (span: WalkWindow, point: OwedGround | undefined): OwedGround =>
   foldMap(maybe(point), (found): OwedGround => ({ ...found, kind: 'point' })) ?? span;
 
 const settledRecord = <Row>(
   attempt: Either<unknown, Row[]>,
   span: WalkWindow,
-  point: WalkWindow | undefined,
+  point: OwedGround | undefined,
 ) => {
   const returned = foldMap(maybe(point), (found) => [found]) ?? [];
 
@@ -90,22 +96,27 @@ export const joinSettled = <Row>(parts: SettledSpan<Row>[]): SettledSpan<Row> =>
 /**
  * The records of one span, each on its own: a record the walk cannot trust (its `rowsOf` throws
  * a `BinanceWalkStop`) owes only the ground it sits in (`extentOf`, see `pointOf`) and holds
- * back nothing else, so the rows of the others are still imported.
+ * back nothing else, so the rows of the others are still imported. A walk that reads several
+ * series names the series a record was read under (`seriesOf`): its point, owed or returned,
+ * carries it, so it is read in that series and leaves only for a record of it.
  */
 export const settleRecords = <Record, Row>(input: {
   span: WalkWindow;
   records: Record[];
   rowsOf: (record: Record) => Row[];
   extentOf: (record: Record) => WalkWindow | undefined;
+  seriesOf?: (record: Record) => string;
 }): SettledSpan<Row> => {
-  const { span, records, rowsOf, extentOf } = input;
+  const { span, records, rowsOf, extentOf, seriesOf } = input;
 
   return joinSettled(
     records.map((record) =>
       settledRecord(
         eitherSync<unknown, Row[]>(() => rowsOf(record)),
         span,
-        pointOf(span, extentOf(record)),
+        foldMap(maybe(pointOf(span, extentOf(record))), (point) =>
+          withSeries(point, seriesOf?.(record)),
+        ),
       ),
     ),
   );
@@ -122,6 +133,7 @@ export const settleUnreadable = <Row extends UnreadableRow>(input: {
   unreadable: Row[];
   code: string;
   extentOf: (row: Row) => WalkWindow | undefined;
+  seriesOf?: (row: Row) => string;
 }): SettledSpan<never> =>
   settleRecords<Row, never>({
     span: input.span,
@@ -130,6 +142,7 @@ export const settleUnreadable = <Row extends UnreadableRow>(input: {
       throw new BinanceWalkStop(input.code);
     },
     extentOf: input.extentOf,
+    seriesOf: input.seriesOf,
   });
 
 const logCodes = (codes: string[]): void => {
