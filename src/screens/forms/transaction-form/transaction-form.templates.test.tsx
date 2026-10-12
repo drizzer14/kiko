@@ -5,8 +5,8 @@ import '@kiko/design-system/unistyles';
 import { DAY_MS } from '@kiko/dates';
 import { scrollToField } from '@kiko/design-system/scroll-to-field';
 import type { TransactionFormParams } from '@kiko/navigation/types';
-import type { TemplateDraft } from '@kiko/transaction-templates/draft';
 import { TemplateNameTakenError } from '@kiko/transaction-templates/repo';
+import { EMPTY_DRAFT, type TemplateDraft } from '@kiko/transaction-templates/draft';
 // Prefixed `mock*` so Jest's hoisted mock factory may reference it. Overrides
 // ONLY `useAnimatedRef` — see the module for the full rationale.
 import { mockReanimatedScrollToEnd } from '@kiko/test-support/mock-reanimated-scroll-to-end';
@@ -106,15 +106,7 @@ const CATEGORIES = [
 ];
 
 const draftOf = (overrides: Partial<TemplateDraft>): TemplateDraft => ({
-  version: 1,
-  mode: 'expense',
-  holdingId: null,
-  currency: null,
-  amountMinorUnits: null,
-  description: '',
-  category: null,
-  exchange: null,
-  returns: [],
+  ...EMPTY_DRAFT,
   ...overrides,
 });
 

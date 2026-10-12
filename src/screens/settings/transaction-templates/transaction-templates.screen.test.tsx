@@ -8,9 +8,9 @@ import {
   DELETE_CONFIRM_TEST_ID,
   EDIT_ACTION_TEST_ID,
 } from '@kiko/design-system/components/card-context-menu';
-import type { TemplateDraft } from '@kiko/transaction-templates/draft';
 import GestureRootWrapper from '@kiko/test-support/gesture-root-wrapper';
 import { transactionTemplatesRepo } from '@kiko/transaction-templates/repo';
+import { EMPTY_DRAFT, type TemplateDraft } from '@kiko/transaction-templates/draft';
 import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support/navigation-props';
 
 import TransactionTemplatesScreen from '.';
@@ -24,15 +24,7 @@ jest.mock('@kiko/db/use-live-query', () => ({
 }));
 
 const draftOf = (overrides: Partial<TemplateDraft> = {}): TemplateDraft => ({
-  version: 1,
-  mode: 'expense',
-  holdingId: null,
-  currency: null,
-  amountMinorUnits: null,
-  description: '',
-  category: null,
-  exchange: null,
-  returns: [],
+  ...EMPTY_DRAFT,
   ...overrides,
 });
 

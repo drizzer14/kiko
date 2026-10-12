@@ -106,7 +106,7 @@ export const applySeedFields = (
   // keeps the copied category when the retyped description matches no name rule, and a
   // template's category is a hand pick the same way. An edit already guards its stored category
   // via `isEditing`, so this is a harmless no-op there. A seed without a category clears the flag,
-  // so a template picked after a hand pick leaves A1's create-blur auto-seat free to run.
+  // so a template picked after a hand pick leaves the create-blur auto-seat free to run.
   setters.setUserPickedCategory(plan.category !== null);
 
   // A null `time` keeps the field at NOW — a Duplicate and a template never copy a timestamp;

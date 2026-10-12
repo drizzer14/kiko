@@ -137,7 +137,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     exchange: t('forms.transaction.exchange'),
     split: t('forms.transaction.split'),
   };
-  // The header's three candidate titles — resolved once per render and handed
+  // The header's five candidate titles — resolved once per render and handed
   // to `headerTitle` (row-labels/) so it stays translation-agnostic.
   const titleLabels = {
     readOnly: t('forms.transaction.title'),
@@ -176,10 +176,11 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   // this same order (see `compareByAccountThenHolding`).
   const accountOrderById = new Map(accounts.map((account, index) => [account.id, index]));
 
-  // Three entry points: `holdingId` = add a new manual row; `transactionId` =
-  // open an existing one (edit/read-only); `duplicateOfTransactionId` = open the
-  // CREATE form pre-filled FROM an existing manual row. Read once by a pure
-  // helper so the component body spends no `in`-check branch on any of them. In
+  // Six entry points, each named by a route param: `holdingId` = add a new manual row;
+  // `transactionId` = open an existing one (edit/read-only); `duplicateOfTransactionId` = open the
+  // CREATE form pre-filled FROM an existing manual row; `templateId` = create from a template;
+  // `editTemplateId` = edit a template; `newTemplate` = add one. No param is the global add. Read
+  // once by a pure helper so the component body spends no `in`-check branch on any of them. In
   // add mode the by-id query runs against an empty id and returns nothing,
   // keeping the hook order stable without a conditional call.
   const {
@@ -271,7 +272,8 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   // then lets the user re-point it through the picker below. Every
   // holding-derived value (currency, amount suffix, category eligibility,
   // exchange rules) reads through it. Null on a plain add/edit, where
-  // `holdingParamId`/`existing` supply the holding instead.
+  // `holdingParamId`/`existing` supply the holding instead, until a template seats it (a
+  // template with a holding sets it, and one with none empties it back to those).
   const [primaryHoldingId, setPrimaryHoldingId] = useState<string | null>(null);
   const holdingId = existing?.holdingId ?? primaryHoldingId ?? holdingParamId ?? undefined;
   const holding = holdings.find((candidate) => candidate.id === holdingId);
@@ -544,9 +546,10 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   // pure `resolveHydration` helper, so this effect stays a thin dispatch — a
   // duplicate first seats the `primaryHoldingId` seam (`seedHolding`), then, on
   // the next render once its holding resolves, seeds the copied fields
-  // (`seedFields`) dated to NOW. Edit never reaches Exchange (`canExchange` is
-  // `false` whenever `isEditing` is `true`), so hydrating straight to the
-  // income/expense sign is safe for both paths.
+  // (`seedFields`) dated to NOW. A picked template runs through the same plan. An Edit never
+  // reaches Exchange (`canExchange` is `false` whenever `isEditing` is `true`), so a row hydrates
+  // straight to its income/expense sign, while a template hydrates the mode it stores
+  // (exchange and split included), settled to what its holding offers.
   useEffect(() => {
     if (hydrated) {
       return;
