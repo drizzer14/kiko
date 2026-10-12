@@ -327,6 +327,11 @@ verified usage, not dead weight:
   `__tests__/comment-only-changes.test.ts` (the script, in a throwaway git
   repository) and `__tests__/mutation-comment-only.test.ts` (the wrapper),
   both as subprocesses, not an import.
+- **`knip.json` `ignore`**: `scripts/checks/mutation-ranges.js` — the same shape as
+  `comment-only-changes.js` above. `scripts/checks/mutation.sh` reaches it only via a `node`
+  invocation, never a static `import`/`require`, so Knip reports it as unused. Exercised by
+  `__tests__/mutation-ranges.test.ts` (the script, with a synthetic diff on stdin) and the
+  `__tests__/mutation-stream.test.ts` / `mutation-cap.test.ts` wrappers, both as subprocesses.
 - **`scripts/checks/comment-only-changes.js` requires `typescript`** — the
   one checker in `scripts/checks/` that is not dependency-free (see
   kiko-linter's "Node checkers"). The rule exists because the guard-replay
@@ -464,7 +469,7 @@ verified usage, not dead weight:
   negations + the changed-file filter in `scripts/checks/mutation.sh`)**:
   five categories are excluded from the set of files Stryker
   mutates, in both places (the config's own `mutate` array and the
-  diff-scoped changed-file filter; the wrapper refuses a whole-project
+  diff-scoped changed-line filter; the wrapper refuses a whole-project
   run, so the filter is the one a gated run uses). (0) **`scripts/checks/**`** — the
   harness's own check tooling, not app logic; `import-order.js`,
   `kill-guard.js`, and `full-word-identifiers.js` are already exempt by
@@ -540,7 +545,7 @@ verified usage, not dead weight:
   added. A changed file that is ABSENT from the json report is a file
   with no mutants (Stryker writes only files that have some) and is
   n/a, but only after the scorer has checked that the report's own
-  recorded scope (`config.mutate`) equals the changed-file list; a
+  recorded scope (`config.mutate`) equals the set of changed-line `--mutate` entries; a
   report that does not match fails the gate.
 - **`Stryker disable` comments**: not an allowlist. `check:overrides`
   (`override-guard.sh`) fails a `Stryker disable` comment without
