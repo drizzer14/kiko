@@ -39,6 +39,10 @@ export const useCategoryPick = ({
     setUserPickedCategory(true);
   };
 
+  // The ONE rule lookup: the category the name rules map a name to, or null.
+  const categoryForName = (name: string): string | null =>
+    ruleCategoryFor(nameOnlySubject(name), preparedRules);
+
   // The category auto-pick, factored into ONE surface both the description
   // blur AND the suggestion tap route through, so the two never stack a
   // second independent description effect. Given a settled name and no explicit
@@ -54,7 +58,19 @@ export const useCategoryPick = ({
       return;
     }
 
-    setSelectedCategory(ruleCategoryFor(nameOnlySubject(name), preparedRules));
+    setSelectedCategory(categoryForName(name));
+  };
+
+  // The category Save acts on: the one the rules give the LIVE description when
+  // nothing was picked and this is a create, else the committed pick. A nav-bar
+  // Save does not end editing, so no description blur has re-seated the pick yet.
+  const effectiveCategory =
+    userPickedCategory || isEditing ? selectedCategory : categoryForName(description);
+
+  // Commit the live description's rule category to the visible picker, so the
+  // picker shows what Save validates and writes, as a blur would have left it.
+  const settleCategory = (): void => {
+    reseatCategoryFromName(description);
   };
 
   // When the description SETTLES (blur, never a keystroke), re-seat the
@@ -74,6 +90,8 @@ export const useCategoryPick = ({
 
   return {
     selectedCategory,
+    effectiveCategory,
+    settleCategory,
     setSelectedCategory,
     setUserPickedCategory,
     selectCategory,

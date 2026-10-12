@@ -19,6 +19,7 @@ import { resolveCreateHoldingTarget } from '@kiko/screens/forms/create-holding-t
 // Prefixed `mock*` so Jest's hoisted mock factory may reference it. Overrides
 // ONLY `useAnimatedRef` — see the module for the full rationale.
 import { mockReanimatedScrollToEnd } from '@kiko/test-support/mock-reanimated-scroll-to-end';
+import { expectNavBarSaveOnly, pressSave, saveItem } from '@kiko/test-support/form-header-items';
 import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support/navigation-props';
 
 import TransactionFormScreen from './transaction-form.screen';
@@ -368,11 +369,11 @@ describe('TransactionFormScreen — add mode', () => {
 
   it('submits a manual transaction', async () => {
     const utils = await renderAdd();
-    const { getByLabelText, getByText } = utils;
+    const { getByLabelText } = utils;
     await fireEvent.changeText(getByLabelText('Amount'), '12.34');
     await fireEvent.changeText(getByLabelText('Description'), 'Coffee');
     await pickCategory(utils, 'Groceries');
-    await fireEvent.press(getByText('Save'));
+    await pressSave(navigation.setOptions);
     // Create defaults to the Expense chip (see "defaults to expense" tests
     // below), so an untouched chip writes a negative amount.
     expect(mockRecordManual).toHaveBeenCalledWith(
@@ -402,7 +403,7 @@ describe('TransactionFormScreen — add mode', () => {
     );
 
     const utils = await renderAdd();
-    const { getByLabelText, getByText } = utils;
+    const { getByLabelText } = utils;
     await fireEvent.changeText(getByLabelText('Amount'), '12.34');
     // Leave the description blank: a non-blank description picks the
     // category-override confirm sheet path (see "skips the override sheet
@@ -411,10 +412,11 @@ describe('TransactionFormScreen — add mode', () => {
     // the double-tap guard.
     await pickCategory(utils, 'Groceries');
 
-    const save = getByText('Save');
-
-    await fireEvent.press(save);
-    await fireEvent.press(save);
+    await pressSave(navigation.setOptions);
+    // The item is disabled while the first write is pending, so the second tap is the raw handler.
+    await act(async () => {
+      saveItem(navigation.setOptions)?.onPress();
+    });
 
     expect(mockRecordManual).toHaveBeenCalledTimes(1);
 
@@ -432,11 +434,11 @@ describe('TransactionFormScreen — add mode', () => {
 
   it('negates the amount for an expense', async () => {
     const utils = await renderAdd();
-    const { getByLabelText, getByText } = utils;
+    const { getByLabelText } = utils;
     await fireEvent.changeText(getByLabelText('Amount'), '10.00');
     await pickType(utils, 'expense');
     await pickCategory(utils, 'Groceries');
-    await fireEvent.press(getByText('Save'));
+    await pressSave(navigation.setOptions);
     expect(mockRecordManual).toHaveBeenCalledWith(
       expect.objectContaining({ holdingId: 'h1', amountMinorUnits: -1000 }),
     );
@@ -468,10 +470,10 @@ describe('TransactionFormScreen — add mode', () => {
 
   it('treats a fresh create amount as negative (expense) without touching the type field', async () => {
     const utils = await renderAdd();
-    const { getByLabelText, getByText } = utils;
+    const { getByLabelText } = utils;
     await fireEvent.changeText(getByLabelText('Amount'), '10.00');
     await pickCategory(utils, 'Groceries');
-    await fireEvent.press(getByText('Save'));
+    await pressSave(navigation.setOptions);
     expect(mockRecordManual).toHaveBeenCalledWith(
       expect.objectContaining({ holdingId: 'h1', amountMinorUnits: -1000 }),
     );
@@ -489,7 +491,7 @@ describe('TransactionFormScreen — add mode', () => {
     await fireEvent.changeText(utils.getByLabelText('Amount'), '12.34');
     await pickDate(utils, 2025, 2, 1);
     await pickCategory(utils, 'Groceries');
-    await fireEvent.press(utils.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(mockRecordManual).toHaveBeenCalledWith(
       expect.objectContaining({ time: new Date(2025, 1, 1, 14, 30, 0).getTime() }),
@@ -510,12 +512,12 @@ describe('TransactionFormScreen — add mode', () => {
 
   it('groups the amount with spaces as the user types and still parses it on save', async () => {
     const utils = await renderAdd();
-    const { getByLabelText, getByText } = utils;
+    const { getByLabelText } = utils;
     await fireEvent.changeText(getByLabelText('Amount'), '1000000');
     // The field reflects the grouped display value immediately as typed.
     expect(getByLabelText('Amount').props.value).toBe('1 000 000');
     await pickCategory(utils, 'Groceries');
-    await fireEvent.press(getByText('Save'));
+    await pressSave(navigation.setOptions);
     // The grouped string round-trips through parseAmount: 1,000,000.00 UAH,
     // negated by the Expense default.
     expect(mockRecordManual).toHaveBeenCalledWith(
@@ -524,37 +526,37 @@ describe('TransactionFormScreen — add mode', () => {
   });
 
   it('does not submit when the amount is empty', async () => {
-    const { getByLabelText, getByText } = await renderAdd();
+    const { getByLabelText } = await renderAdd();
     await fireEvent.changeText(getByLabelText('Description'), 'No amount');
-    await fireEvent.press(getByText('Save'));
+    await pressSave(navigation.setOptions);
     expect(mockRecordManual).not.toHaveBeenCalled();
   });
 
   it('does not write a zero-amount row', async () => {
     const utils = await renderAdd();
-    const { getByLabelText, getByText } = utils;
+    const { getByLabelText } = utils;
     await fireEvent.changeText(getByLabelText('Amount'), '0');
     await pickCategory(utils, 'Groceries');
-    await fireEvent.press(getByText('Save'));
+    await pressSave(navigation.setOptions);
     expect(mockRecordManual).not.toHaveBeenCalled();
   });
 
   it('does not write a 0.00 row', async () => {
     const utils = await renderAdd();
-    const { getByLabelText, getByText } = utils;
+    const { getByLabelText } = utils;
     await fireEvent.changeText(getByLabelText('Amount'), '0.00');
     await pickCategory(utils, 'Groceries');
-    await fireEvent.press(getByText('Save'));
+    await pressSave(navigation.setOptions);
     expect(mockRecordManual).not.toHaveBeenCalled();
   });
 
   it('still writes the smallest representable amount', async () => {
     const utils = await renderAdd();
-    const { getByLabelText, getByText } = utils;
+    const { getByLabelText } = utils;
     await fireEvent.changeText(getByLabelText('Amount'), '0.01');
     await pickType(utils, 'expense');
     await pickCategory(utils, 'Groceries');
-    await fireEvent.press(getByText('Save'));
+    await pressSave(navigation.setOptions);
     expect(mockRecordManual).toHaveBeenCalledWith(
       expect.objectContaining({ amountMinorUnits: -1 }),
     );
@@ -562,21 +564,16 @@ describe('TransactionFormScreen — add mode', () => {
 
   it('does not save for a zero amount, keeping Save enabled and showing the reason after a press', async () => {
     const utils = await renderAdd();
-    const { getByLabelText, getByText, getByTestId } = utils;
+    const { getByLabelText, getByText } = utils;
     await fireEvent.changeText(getByLabelText('Amount'), '0');
     await pickCategory(utils, 'Groceries');
 
-    expect(getByText('Save').parent?.props.accessibilityState.disabled).toBe(false);
+    expect(saveItem(navigation.setOptions)?.disabled).toBe(false);
 
-    await fireEvent.press(getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(mockRecordManual).not.toHaveBeenCalled();
     expect(getByText('Amount must be greater than 0.')).toBeTruthy();
-    // The reason sits on the Amount field, so the footer does not carry
-    // it — see the "renders only the Save button in the footer" test below.
-    expect(
-      within(getByTestId('screen-footer')).queryByText('Amount must be greater than 0.'),
-    ).toBeNull();
     const flatStyle = StyleSheet.flatten(getByLabelText('Amount').props.style);
     expect(flatStyle.borderColor).not.toBe('#FF453A');
   });
@@ -586,16 +583,12 @@ describe('TransactionFormScreen — add mode', () => {
 
     expect(utils.queryByText('Amount must be greater than 0.')).toBeNull();
 
-    await fireEvent.press(utils.getByText('Save'));
+    await pressSave(navigation.setOptions);
     expect(utils.getByText('Amount must be greater than 0.')).toBeTruthy();
-    expect(
-      within(utils.getByTestId('screen-footer')).queryByText('Amount must be greater than 0.'),
-    ).toBeNull();
 
     await fireEvent.changeText(utils.getByLabelText('Amount'), '12.34');
     expect(utils.queryByText('Amount must be greater than 0.')).toBeNull();
     expect(utils.getByText('Select a category.')).toBeTruthy();
-    expect(within(utils.getByTestId('screen-footer')).queryByText('Select a category.')).toBeNull();
 
     await pickCategory(utils, 'Groceries');
     expect(utils.queryByText('Select a category.')).toBeNull();
@@ -604,7 +597,7 @@ describe('TransactionFormScreen — add mode', () => {
   it('shows the amount and category errors together at the same Save press, each clearing only its own field', async () => {
     const utils = await renderAdd();
 
-    await fireEvent.press(utils.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(utils.getByText('Amount must be greater than 0.')).toBeTruthy();
     expect(utils.getByText('Select a category.')).toBeTruthy();
@@ -624,7 +617,7 @@ describe('TransactionFormScreen — add mode', () => {
 
     expect(isLabelInvalid(mockFieldLabel, 'Category')).toBe(false);
 
-    await fireEvent.press(utils.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(isLabelInvalid(mockFieldLabel, 'Category')).toBe(true);
 
@@ -637,7 +630,7 @@ describe('TransactionFormScreen — add mode', () => {
     const utils = await renderAdd();
 
     await fireEvent.changeText(utils.getByLabelText('Amount'), '12.34');
-    await fireEvent.press(utils.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     // A select field's error needs the same gap TextField's own `Box gap={1}`
     // already gives its error line.
@@ -645,21 +638,19 @@ describe('TransactionFormScreen — add mode', () => {
     expect(StyleSheet.flatten(errorGroup?.props.style).gap).toBe(darkTheme.spacing(1));
   });
 
-  it('renders only the Save button in the footer — no reason line, on any blocked path', async () => {
+  it('offers Save only as the prominent nav-bar item — no body button, even on a blocked path', async () => {
     const utils = await renderAdd();
-    await fireEvent.press(utils.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
-    const footer = utils.getByTestId('screen-footer');
-    expect(within(footer).getByText('Save')).toBeTruthy();
-    expect(within(footer).queryByText(/./)).toEqual(within(footer).getByText('Save'));
+    expectNavBarSaveOnly(navigation.setOptions, utils);
   });
 
   it('writes the picked category onto the row even with a blank description', async () => {
     const utils = await renderAdd();
-    const { getByLabelText, getByText } = utils;
+    const { getByLabelText } = utils;
     await fireEvent.changeText(getByLabelText('Amount'), '12.34');
     await pickCategory(utils, 'Groceries');
-    await fireEvent.press(getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(mockRecordManual).toHaveBeenCalledWith(
       expect.objectContaining({ category: 'groceries', description: '' }),
@@ -668,10 +659,10 @@ describe('TransactionFormScreen — add mode', () => {
 
   it('skips the override sheet entirely when the description is blank', async () => {
     const utils = await renderAdd();
-    const { getByLabelText, getByText, queryByText } = utils;
+    const { getByLabelText, queryByText } = utils;
     await fireEvent.changeText(getByLabelText('Amount'), '12.34');
     await pickCategory(utils, 'Groceries');
-    await fireEvent.press(getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(queryByText(/Apply/)).toBeNull();
     expect(mockApplyNameRule).not.toHaveBeenCalled();
@@ -684,7 +675,7 @@ describe('TransactionFormScreen — add mode', () => {
     await fireEvent.changeText(getByLabelText('Amount'), '12.34');
     await fireEvent.changeText(getByLabelText('Description'), 'ATB');
     await pickCategory(utils, 'Groceries');
-    await fireEvent.press(getByText('Save'));
+    await pressSave(navigation.setOptions);
     await fireEvent.press(getByText('Cancel'));
 
     expect(mockRecordManual).toHaveBeenCalledWith(
@@ -715,10 +706,10 @@ describe('TransactionFormScreen — add mode', () => {
     const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
 
     const utils = await renderAdd();
-    const { getByLabelText, getByText } = utils;
+    const { getByLabelText } = utils;
     await fireEvent.changeText(getByLabelText('Amount'), '12.34');
     await pickCategory(utils, 'Groceries');
-    await fireEvent.press(getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     await waitFor(() =>
       expect(alertSpy).toHaveBeenCalledWith('Could not save', 'Please try again.'),
@@ -732,6 +723,7 @@ describe('TransactionFormScreen — category pre-select from name rules (A1)', (
   // A single rule mapping the normalized description "coffee" to the Dining
   // category, so a create whose description settles to "Coffee" auto-picks it.
   const COFFEE_RULE = nameRule('coffee', 'dining');
+  const SILPO_RULE = nameRule('silpo', 'groceries');
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -741,19 +733,75 @@ describe('TransactionFormScreen — category pre-select from name rules (A1)', (
       CATEGORIES,
       [],
       [],
-      [COFFEE_RULE],
+      [COFFEE_RULE, SILPO_RULE],
+    );
+  });
+
+  // The nav-bar Save does not end editing, so the description is still focused (no blur has fired)
+  // when it is pressed: Save itself must settle the rule category for the live description.
+  it('saves the rule category for a description that never blurred', async () => {
+    const { getByLabelText, getByTestId } = await renderAdd();
+    await fireEvent.changeText(getByLabelText('Amount'), '12.34');
+    await fireEvent.changeText(getByLabelText('Description'), 'Silpo');
+    await pressSave(navigation.setOptions);
+
+    expect(mockRecordManual).toHaveBeenCalledWith(
+      expect.objectContaining({ description: 'Silpo', category: 'groceries' }),
+    );
+    // The picker shows what Save wrote, as a blur would have left it.
+    expect(getByTestId('transaction-category-field')).toHaveTextContent('Groceries');
+  });
+
+  it('saves the new rule category when the description changes after a blur and Save is pressed while focused', async () => {
+    const { getByLabelText } = await renderAdd();
+    await fireEvent.changeText(getByLabelText('Amount'), '12.34');
+    await fireEvent.changeText(getByLabelText('Description'), 'Silpo');
+    await fireEvent(getByLabelText('Description'), 'blur');
+    await fireEvent.changeText(getByLabelText('Description'), 'Coffee');
+    await pressSave(navigation.setOptions);
+
+    expect(mockRecordManual).toHaveBeenCalledWith(
+      expect.objectContaining({ description: 'Coffee', category: 'dining' }),
+    );
+  });
+
+  it('blocks Save and clears the stale auto-pick when the focused description matches no rule', async () => {
+    const { getByLabelText, getByText, getByTestId } = await renderAdd();
+    await fireEvent.changeText(getByLabelText('Amount'), '12.34');
+    await fireEvent.changeText(getByLabelText('Description'), 'Silpo');
+    await fireEvent(getByLabelText('Description'), 'blur');
+    await fireEvent.changeText(getByLabelText('Description'), 'Unmatched name');
+    await pressSave(navigation.setOptions);
+
+    expect(mockRecordManual).not.toHaveBeenCalled();
+    expect(getByText('Select a category.')).toBeTruthy();
+    // The stale Groceries is gone from the picker, which shows its empty placeholder.
+    expect(getByTestId('transaction-category-field')).toHaveTextContent('Select category');
+    expect(getByTestId('transaction-category-field')).not.toHaveTextContent('Groceries');
+  });
+
+  it('never replaces an explicit picker choice when Save settles the category', async () => {
+    const utils = await renderAdd();
+    const { getByLabelText } = utils;
+    await fireEvent.changeText(getByLabelText('Amount'), '12.34');
+    await pickCategory(utils, 'Dining');
+    await fireEvent.changeText(getByLabelText('Description'), 'Silpo');
+    await pressSave(navigation.setOptions);
+
+    expect(mockRecordManual).toHaveBeenCalledWith(
+      expect.objectContaining({ description: 'Silpo', category: 'dining' }),
     );
   });
 
   it('pre-selects the matching rule category when the description blurs on a create', async () => {
     const utils = await renderAdd();
-    const { getByLabelText, getByText } = utils;
+    const { getByLabelText } = utils;
     await fireEvent.changeText(getByLabelText('Amount'), '12.34');
     await fireEvent.changeText(getByLabelText('Description'), 'Coffee');
     // The lookup fires on BLUR, not on keystroke, and satisfies the create-time
     // category requirement without a manual pick.
     await fireEvent(getByLabelText('Description'), 'blur');
-    await fireEvent.press(getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(mockRecordManual).toHaveBeenCalledWith(
       expect.objectContaining({ description: 'Coffee', category: 'dining' }),
@@ -762,13 +810,13 @@ describe('TransactionFormScreen — category pre-select from name rules (A1)', (
 
   it('does not overwrite an explicit picker choice with a later matching blur', async () => {
     const utils = await renderAdd();
-    const { getByLabelText, getByText } = utils;
+    const { getByLabelText } = utils;
     await fireEvent.changeText(getByLabelText('Amount'), '12.34');
     // Explicit pick first, then a description that WOULD match a different rule.
     await pickCategory(utils, 'Groceries');
     await fireEvent.changeText(getByLabelText('Description'), 'Coffee');
     await fireEvent(getByLabelText('Description'), 'blur');
-    await fireEvent.press(getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     // The user's Groceries pick is preserved — the blur never clobbers it.
     expect(mockRecordManual).toHaveBeenCalledWith(
@@ -795,7 +843,7 @@ describe('TransactionFormScreen — category pre-select from name rules (A1)', (
     await fireEvent.changeText(getByLabelText('Amount'), '12.34');
     await fireEvent.changeText(getByLabelText('Description'), 'Coffee');
     await fireEvent(getByLabelText('Description'), 'blur');
-    await fireEvent.press(getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(mockRecordManual).not.toHaveBeenCalled();
     expect(getByText('Select a category.')).toBeTruthy();
@@ -814,11 +862,11 @@ describe('TransactionFormScreen — category pre-select from name rules (A1)', (
       ],
     );
 
-    const { getByLabelText, getByText } = await renderAdd();
+    const { getByLabelText } = await renderAdd();
     await fireEvent.changeText(getByLabelText('Amount'), '12.34');
     await fireEvent.changeText(getByLabelText('Description'), 'COFFEE');
     await fireEvent(getByLabelText('Description'), 'blur');
-    await fireEvent.press(getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(mockRecordManual).toHaveBeenCalledWith(expect.objectContaining({ category: 'dining' }));
   });
@@ -830,7 +878,7 @@ describe('TransactionFormScreen — category pre-select from name rules (A1)', (
     await fireEvent.changeText(utils.getByLabelText('Amount'), '12.34');
     await fireEvent.changeText(utils.getByLabelText('Description'), 'Coffee');
     await pickCategory(utils, 'Groceries');
-    await fireEvent.press(utils.getByText('Save'));
+    await pressSave(navigation.setOptions);
     await fireEvent.press(utils.getByText('Apply'));
 
     await waitFor(() =>
@@ -848,7 +896,7 @@ describe('TransactionFormScreen — category pre-select from name rules (A1)', (
     await fireEvent.changeText(getByLabelText('Amount'), '12.34');
     await fireEvent.changeText(getByLabelText('Description'), 'Coffee');
     await fireEvent(getByLabelText('Description'), 'blur');
-    await fireEvent.press(getByText('Save'));
+    await pressSave(navigation.setOptions);
     // The auto-pick supplied a category, so this first press actually wrote —
     // no reason for it.
     expect(queryByText('Select a category.')).toBeNull();
@@ -857,7 +905,7 @@ describe('TransactionFormScreen — category pre-select from name rules (A1)', (
     // is blocked again and shows the category reason.
     await fireEvent.changeText(getByLabelText('Description'), 'Unmatched name');
     await fireEvent(getByLabelText('Description'), 'blur');
-    await fireEvent.press(getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(getByText('Select a category.')).toBeTruthy();
   });
@@ -913,7 +961,7 @@ describe('TransactionFormScreen — description suggestions', () => {
     // lookup (coffee -> dining) through the same shared handler, so Save writes
     // both without a manual category pick.
     await fireEvent.press(getByText('Coffee'));
-    await fireEvent.press(getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(mockRecordManual).toHaveBeenCalledWith(
       expect.objectContaining({ description: 'Coffee', category: 'dining' }),
@@ -990,7 +1038,7 @@ describe('TransactionFormScreen — localization', () => {
     expect(getByLabelText('Віддано')).toBeTruthy();
     expect(getByLabelText('Куди')).toBeTruthy();
     expect(getByLabelText('Отримано')).toBeTruthy();
-    expect(getByText('Зберегти')).toBeTruthy();
+    expect(saveItem(navigation.setOptions, 'Зберегти')).toBeDefined();
   });
 });
 
@@ -1025,9 +1073,9 @@ describe('TransactionFormScreen — duplicate mode', () => {
 
   it('writes a NEW row via recordManual, dated to NOW (never the source time), leaving the source untouched', async () => {
     const before = Date.now();
-    const { getByText } = await renderDuplicate('txn-src');
+    await renderDuplicate('txn-src');
 
-    await fireEvent.press(getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     // A duplicate re-invokes the create path (recordManual), never the edit
     // (update) or delete (remove) paths, so the source row is left intact.
@@ -1063,11 +1111,11 @@ describe('TransactionFormScreen — duplicate mode', () => {
       source: 'manual',
     });
 
-    const { getByLabelText, getByText } = await renderDuplicate('txn-btc');
+    const { getByLabelText } = await renderDuplicate('txn-btc');
 
     expect(getByLabelText('Amount').props.value).toBe('0.0000005');
 
-    await fireEvent.press(getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(mockRecordManual).toHaveBeenCalledWith(
       expect.objectContaining({ holdingId: 'h-btc', amountMinorUnits: -50 }),
@@ -1088,7 +1136,7 @@ describe('TransactionFormScreen — duplicate mode', () => {
     // The seeded Groceries category survives the blur (chip still shown)...
     expect(getByText('Groceries')).toBeTruthy();
     // ...and Save stays enabled (a create needs a category).
-    expect(getByText('Save').parent?.props.accessibilityState.disabled).toBe(false);
+    expect(saveItem(navigation.setOptions)?.disabled).toBe(false);
   });
 });
 
@@ -1214,7 +1262,7 @@ describe('TransactionFormScreen — empty-create / global add (B)', () => {
     setLiveData(HOLDINGS, undefined, CATEGORIES, ACCOUNTS, [], [], [], 'h1');
 
     const utils = await renderEmptyCreate();
-    const { getByLabelText, getByText } = utils;
+    const { getByLabelText } = utils;
 
     // Re-point the primary leg to the USD card through the picker (the option
     // row's accessibility label is "<name>, <account>").
@@ -1224,7 +1272,7 @@ describe('TransactionFormScreen — empty-create / global add (B)', () => {
     await fireEvent.changeText(getByLabelText('Amount'), '12.00');
     await pickCategory(utils, 'Groceries');
 
-    await fireEvent.press(getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(mockRecordManual).toHaveBeenCalledWith(
       expect.objectContaining({ holdingId: 'h2', category: 'groceries' }),
@@ -1354,9 +1402,9 @@ describe('TransactionFormScreen — edit mode (manual)', () => {
   });
 
   it('calls update (not recordManual) with the transaction id and edited amount on save', async () => {
-    const { getByLabelText, getByText } = await renderEdit('txn-1');
+    const { getByLabelText } = await renderEdit('txn-1');
     await fireEvent.changeText(getByLabelText('Amount'), '20.00');
-    await fireEvent.press(getByText('Save'));
+    await pressSave(navigation.setOptions);
     expect(mockUpdate).toHaveBeenCalledWith(
       expect.objectContaining({
         transactionId: 'txn-1',
@@ -1369,26 +1417,22 @@ describe('TransactionFormScreen — edit mode (manual)', () => {
 
   it('keeps Save enabled but blocks the write and shows the reason when the amount is cleared on an edit', async () => {
     const utils = await renderEdit('txn-1');
-    const isSaveDisabled = (): boolean | undefined =>
-      utils.getByText('Save').parent?.props.accessibilityState.disabled;
+    const isSaveDisabled = (): boolean | undefined => saveItem(navigation.setOptions)?.disabled;
 
     expect(isSaveDisabled()).toBe(false);
 
     await fireEvent.changeText(utils.getByLabelText('Amount'), '');
     expect(isSaveDisabled()).toBe(false);
 
-    await fireEvent.press(utils.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(mockUpdate).not.toHaveBeenCalled();
     expect(utils.getByText('Amount must be greater than 0.')).toBeTruthy();
-    expect(
-      within(utils.getByTestId('screen-footer')).queryByText('Amount must be greater than 0.'),
-    ).toBeNull();
   });
 
   it('persists the existing time unchanged when the date is not edited', async () => {
-    const { getByText } = await renderEdit('txn-1');
-    await fireEvent.press(getByText('Save'));
+    await renderEdit('txn-1');
+    await pressSave(navigation.setOptions);
     // The stored time (42) hydrates the DateField and round-trips on save,
     // rather than being reset to Date.now().
     expect(mockUpdate).toHaveBeenCalledWith(expect.objectContaining({ time: 42 }));
@@ -1409,7 +1453,7 @@ describe('TransactionFormScreen — edit mode (manual)', () => {
     const utils = await renderEdit('txn-1');
 
     expect(utils.getByText(formatDate(future))).toBeTruthy();
-    await fireEvent.press(utils.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(mockUpdate).toHaveBeenCalledWith(expect.objectContaining({ time: future }));
     nowSpy.mockRestore();
@@ -1427,8 +1471,8 @@ describe('TransactionFormScreen — edit mode (manual)', () => {
       description: 'Coffee',
       source: 'manual',
     });
-    const utils = await renderEdit('txn-1');
-    await fireEvent.press(utils.getByText('Save'));
+    await renderEdit('txn-1');
+    await pressSave(navigation.setOptions);
 
     expect(mockUpdate).toHaveBeenCalledWith(expect.objectContaining({ time: laterToday }));
     nowSpy.mockRestore();
@@ -1448,7 +1492,7 @@ describe('TransactionFormScreen — edit mode (manual)', () => {
     });
     const utils = await renderEdit('txn-1');
     await pickDate(utils, 2025, 1, 10);
-    await fireEvent.press(utils.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(mockUpdate).toHaveBeenCalledWith(
       expect.objectContaining({ time: new Date(2025, 0, 10, 9, 15, 0).getTime() }),
@@ -1474,7 +1518,7 @@ describe('TransactionFormScreen — edit mode (manual)', () => {
       { type: 'set' },
       new Date(2000, 0, 1, 18, 45),
     );
-    await fireEvent.press(utils.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(mockUpdate).toHaveBeenCalledWith(
       expect.objectContaining({ time: new Date(2024, 5, 20, 18, 45).getTime() }),
@@ -1554,7 +1598,7 @@ describe('TransactionFormScreen — re-dating a possible balance-set row', () =>
     const utils = await editRow();
 
     await pickDate(utils, year, month, day);
-    await fireEvent.press(utils.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(mockUpdate).toHaveBeenCalledWith(
       expect.objectContaining({ time: new Date(year, month - 1, day, 9, 15).getTime() }),
@@ -1564,9 +1608,9 @@ describe('TransactionFormScreen — re-dating a possible balance-set row', () =>
   });
 
   it('keeps Save enabled while it edits a row', async () => {
-    const utils = await editRow();
+    await editRow();
 
-    expect(utils.getByText('Save').parent?.props.accessibilityState.disabled).toBe(false);
+    expect(saveItem(navigation.setOptions)?.disabled).toBe(false);
   });
 });
 
@@ -1625,8 +1669,8 @@ describe('TransactionFormScreen — blank description pre-fill on edit', () => {
   it.each(exchangeLegs)('saves %s untouched with an empty description', async (_name, row) => {
     setLiveData(holdings, row);
 
-    const { getByText } = await renderEdit('txn-leg');
-    await fireEvent.press(getByText('Save'));
+    await renderEdit('txn-leg');
+    await pressSave(navigation.setOptions);
 
     expect(mockUpdate).toHaveBeenCalledWith(
       expect.objectContaining({ transactionId: 'txn-leg', description: '' }),
@@ -1636,9 +1680,9 @@ describe('TransactionFormScreen — blank description pre-fill on edit', () => {
   it.each(exchangeLegs)('saves the typed text on %s once edited', async (_name, row) => {
     setLiveData(holdings, row);
 
-    const { getByLabelText, getByText } = await renderEdit('txn-leg');
+    const { getByLabelText } = await renderEdit('txn-leg');
     await fireEvent.changeText(getByLabelText('Description'), 'Rent swap');
-    await fireEvent.press(getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(mockUpdate).toHaveBeenCalledWith(
       expect.objectContaining({ transactionId: 'txn-leg', description: 'Rent swap' }),
@@ -1657,11 +1701,11 @@ describe('TransactionFormScreen — blank description pre-fill on edit', () => {
   it('pre-fills an ordinary blank row with its holding-name label and saves it untouched as empty', async () => {
     setLiveData(holdings, leg({}));
 
-    const { getByLabelText, getByText } = await renderEdit('txn-leg');
+    const { getByLabelText } = await renderEdit('txn-leg');
 
     expect(getByLabelText('Description').props.value).toBe('Wallet UAH expense');
 
-    await fireEvent.press(getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(mockUpdate).toHaveBeenCalledWith(expect.objectContaining({ description: '' }));
   });
@@ -1671,7 +1715,7 @@ describe('TransactionFormScreen — blank description pre-fill on edit', () => {
 
     const utils = await renderEdit('txn-leg');
     await pickCategory(utils, 'Dining');
-    await fireEvent.press(utils.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(utils.queryByText('Apply Category to All')).toBeNull();
     await waitFor(() =>
@@ -1712,8 +1756,8 @@ describe('TransactionFormScreen — read-only mode (monobank)', () => {
   });
 
   it('offers no Save action and never writes', async () => {
-    const { queryByText } = await renderEdit('txn-9');
-    expect(queryByText('Save')).toBeNull();
+    await renderEdit('txn-9');
+    expect(saveItem(navigation.setOptions)).toBeUndefined();
     expect(mockUpdate).not.toHaveBeenCalled();
     expect(mockRecordManual).not.toHaveBeenCalled();
   });
@@ -1775,11 +1819,11 @@ describe('TransactionFormScreen — read-only mode (imported statement row)', ()
   });
 
   it('keeps the amount and description locked and offers no Save', async () => {
-    const { getByLabelText, queryByText } = await renderEdit('txn-9');
+    const { getByLabelText } = await renderEdit('txn-9');
 
     expect(getByLabelText('Amount').props.editable).toBe(false);
     expect(getByLabelText('Description').props.editable).toBe(false);
-    expect(queryByText('Save')).toBeNull();
+    expect(saveItem(navigation.setOptions)).toBeUndefined();
   });
 });
 
@@ -1902,10 +1946,10 @@ describe('TransactionFormScreen — synced (binance) row', () => {
 
     const utils = await renderEdit('txn-b');
     // A synced row shows no Save until its category actually changes.
-    expect(utils.queryByText('Save')).toBeNull();
+    expect(saveItem(navigation.setOptions)).toBeUndefined();
 
     await pickCategory(utils, 'Groceries');
-    await fireEvent.press(utils.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     // The single-row, ungated writer persists the category by id.
     await waitFor(() =>
@@ -1965,7 +2009,7 @@ describe('TransactionFormScreen — category editing', () => {
 
     const utils = await renderEdit('txn-1');
     await pickCategory(utils, 'Dining');
-    await fireEvent.press(utils.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     // The themed confirm modal (not a native Alert) names the picked category
     // and the affected transaction name.
@@ -2005,7 +2049,7 @@ describe('TransactionFormScreen — category editing', () => {
 
     const utils = await renderEdit('txn-blank');
     await pickCategory(utils, 'Dining');
-    await fireEvent.press(utils.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(utils.queryByText('Apply Category to All')).toBeNull();
     await waitFor(() =>
@@ -2032,7 +2076,7 @@ describe('TransactionFormScreen — category editing', () => {
 
     const utils = await renderEdit('txn-1');
     await pickCategory(utils, 'Dining');
-    await fireEvent.press(utils.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     // The sheet offers the single-row override alongside the all-similar one.
     await fireEvent.press(utils.getByText('Just for this one'));
@@ -2062,7 +2106,7 @@ describe('TransactionFormScreen — category editing', () => {
 
     const utils = await renderEdit('txn-1');
     await pickCategory(utils, 'Dining');
-    await fireEvent.press(utils.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     // Every action in this confirm sheet matches the primary "Apply": the tall
     // regular 50pt size, full width. "Just for this one" and "Cancel" are NOT
@@ -2091,7 +2135,7 @@ describe('TransactionFormScreen — category editing', () => {
     await fireEvent.changeText(utils.getByLabelText('Amount'), '12.34');
     await fireEvent.changeText(utils.getByLabelText('Description'), 'ATB');
     await pickCategory(utils, 'Groceries');
-    await fireEvent.press(utils.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     // The all-similar "Apply" is offered; the single-row override is not.
     expect(utils.getByText('Apply')).toBeTruthy();
@@ -2124,7 +2168,7 @@ describe('TransactionFormScreen — category editing', () => {
 
     const utils = await renderEdit('txn-1');
     await pickCategory(utils, 'Dining');
-    await fireEvent.press(utils.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     const apply = utils.getByText('Apply');
 
@@ -2174,7 +2218,7 @@ describe('TransactionFormScreen — category editing', () => {
 
       const utils = await renderEdit('txn-1');
       await pickCategory(utils, 'Dining');
-      await fireEvent.press(utils.getByText('Save'));
+      await pressSave(navigation.setOptions);
 
       const sheet = within(utils.getByTestId('category-override-sheet'));
       expect(sheet.queryByTestId('button-loading-spinner')).toBeNull();
@@ -2210,7 +2254,7 @@ describe('TransactionFormScreen — category editing', () => {
 
     const utils = await renderEdit('txn-1');
     await pickCategory(utils, 'Dining');
-    await fireEvent.press(utils.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     // The confirm sheet echoes the picked category's own glyph (mocked to a View
     // that forwards its props), rendered white (textPrimary) against the sheet —
@@ -2235,10 +2279,10 @@ describe('TransactionFormScreen — category editing', () => {
 
     const utils = await renderEdit('txn-9');
     // No Save until the category actually changes on a synced row.
-    expect(utils.queryByText('Save')).toBeNull();
+    expect(saveItem(navigation.setOptions)).toBeUndefined();
 
     await pickCategory(utils, 'Dining');
-    await fireEvent.press(utils.getByText('Save'));
+    await pressSave(navigation.setOptions);
     await fireEvent.press(utils.getByText('Apply'));
 
     await waitFor(() =>
@@ -2264,8 +2308,8 @@ describe('TransactionFormScreen — category editing', () => {
       category: 'groceries',
     });
 
-    const { getByText, queryByText } = await renderEdit('txn-1');
-    await fireEvent.press(getByText('Save'));
+    const { queryByText } = await renderEdit('txn-1');
+    await pressSave(navigation.setOptions);
 
     expect(queryByText('Apply Category to All')).toBeNull();
     expect(mockApplyNameRule).not.toHaveBeenCalled();
@@ -2286,7 +2330,7 @@ describe('TransactionFormScreen — category editing', () => {
 
     const utils = await renderEdit('txn-1');
     await pickCategory(utils, 'Dining');
-    await fireEvent.press(utils.getByText('Save'));
+    await pressSave(navigation.setOptions);
     await fireEvent.press(utils.getByText('Cancel'));
 
     // The manual edit from step 1 still stands, but no rule is written.
@@ -2766,7 +2810,7 @@ describe('TransactionFormScreen — Exchange mode', () => {
       await fireEvent.changeText(getByLabelText('Value in'), valueIn);
     }
 
-    await fireEvent.press(getByText('Save'));
+    await pressSave(navigation.setOptions);
     expect(mockRecordExchange).not.toHaveBeenCalled();
   });
 
@@ -2774,24 +2818,23 @@ describe('TransactionFormScreen — Exchange mode', () => {
     const utils = await renderAddFromHolding('cash-1');
     await pickType(utils, 'exchange');
 
-    const isSaveDisabled = (): boolean | undefined =>
-      utils.getByText('Save').parent?.props.accessibilityState.disabled;
+    const isSaveDisabled = (): boolean | undefined => saveItem(navigation.setOptions)?.disabled;
 
     expect(isSaveDisabled()).toBe(false);
-    await fireEvent.press(utils.getByText('Save'));
+    await pressSave(navigation.setOptions);
     expect(mockRecordExchange).not.toHaveBeenCalled();
 
     await fireEvent.changeText(utils.getByLabelText('Value out'), '100');
-    await fireEvent.press(utils.getByText('Save'));
+    await pressSave(navigation.setOptions);
     expect(mockRecordExchange).not.toHaveBeenCalled();
 
     await fireEvent.press(utils.getByLabelText('To'));
     await fireEvent.press(utils.getByText('Cash USD'));
-    await fireEvent.press(utils.getByText('Save'));
+    await pressSave(navigation.setOptions);
     expect(mockRecordExchange).not.toHaveBeenCalled();
 
     await fireEvent.changeText(utils.getByLabelText('Value in'), '2.5');
-    await fireEvent.press(utils.getByText('Save'));
+    await pressSave(navigation.setOptions);
     expect(mockRecordExchange).toHaveBeenCalledTimes(1);
   });
 
@@ -2800,7 +2843,7 @@ describe('TransactionFormScreen — Exchange mode', () => {
     await pickType(utils, 'exchange');
 
     expect(utils.queryByText('Select a destination account.')).toBeNull();
-    await fireEvent.press(utils.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     // Destination, Value out, AND Value in are all still blank — every one
     // shows its own reason at this SAME press (Value out/Value in share the
@@ -2808,9 +2851,6 @@ describe('TransactionFormScreen — Exchange mode', () => {
     // at once).
     expect(utils.getByText('Select a destination account.')).toBeTruthy();
     expect(utils.getAllByText('Amount must be greater than 0.')).toHaveLength(2);
-    expect(
-      within(utils.getByTestId('screen-footer')).queryByText('Select a destination account.'),
-    ).toBeNull();
 
     await fireEvent.press(utils.getByLabelText('To'));
     await fireEvent.press(utils.getByText('Cash USD'));
@@ -2859,7 +2899,7 @@ describe('TransactionFormScreen — Exchange mode', () => {
     await fireEvent.press(getByText('Cash USD'));
     await fireEvent.changeText(getByLabelText('Value in'), '2.50');
 
-    await fireEvent.press(getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     await waitFor(() =>
       expect(mockRecordExchange).toHaveBeenCalledWith(
@@ -3027,7 +3067,7 @@ describe('TransactionFormScreen — Exchange create (cash-only, account names)',
     await fireEvent.press(getByText('Cash USD'));
     await fireEvent.changeText(getByLabelText('Value in'), '2.50');
 
-    await fireEvent.press(getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     await waitFor(() =>
       expect(mockRecordExchange).toHaveBeenCalledWith(
@@ -3322,7 +3362,7 @@ describe('TransactionFormScreen — Convert to Exchange', () => {
     await fireEvent.press(getByText('Cash USD')); // a cash destination in another account
     await fireEvent.changeText(getByLabelText('Value in'), '2.50');
 
-    await fireEvent.press(getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     await waitFor(() =>
       expect(mockRecordExchangeCounterpart).toHaveBeenCalledWith(
@@ -3388,7 +3428,7 @@ describe('TransactionFormScreen — Convert to Exchange', () => {
     // the "convert counterpart prefill" describe block below) — explicitly
     // blank the field to exercise the validation guard this test targets.
     await fireEvent.changeText(getByLabelText('Value in'), '');
-    await fireEvent.press(getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(mockRecordExchangeCounterpart).not.toHaveBeenCalled();
   });
@@ -3397,11 +3437,10 @@ describe('TransactionFormScreen — Convert to Exchange', () => {
     const utils = await renderEdit('expense-manual');
     await fireEvent.press(utils.getByText('Exchange'));
 
-    const isSaveDisabled = (): boolean | undefined =>
-      utils.getByText('Save').parent?.props.accessibilityState.disabled;
+    const isSaveDisabled = (): boolean | undefined => saveItem(navigation.setOptions)?.disabled;
 
     expect(isSaveDisabled()).toBe(false);
-    await fireEvent.press(utils.getByText('Save'));
+    await pressSave(navigation.setOptions);
     expect(mockRecordExchangeCounterpart).not.toHaveBeenCalled();
 
     await fireEvent.press(utils.getByLabelText('To'));
@@ -3410,11 +3449,11 @@ describe('TransactionFormScreen — Convert to Exchange', () => {
     // the bundled fiat rate seed — blank it explicitly so this still exercises
     // the "blocked until valid" guard (see the note on the test above).
     await fireEvent.changeText(utils.getByLabelText('Value in'), '');
-    await fireEvent.press(utils.getByText('Save'));
+    await pressSave(navigation.setOptions);
     expect(mockRecordExchangeCounterpart).not.toHaveBeenCalled();
 
     await fireEvent.changeText(utils.getByLabelText('Value in'), '2.5');
-    await fireEvent.press(utils.getByText('Save'));
+    await pressSave(navigation.setOptions);
     expect(mockRecordExchangeCounterpart).toHaveBeenCalledTimes(1);
   });
 
@@ -3423,11 +3462,8 @@ describe('TransactionFormScreen — Convert to Exchange', () => {
     await fireEvent.press(utils.getByText('Exchange'));
 
     expect(utils.queryByText('Select an account to convert into.')).toBeNull();
-    await fireEvent.press(utils.getByText('Save'));
+    await pressSave(navigation.setOptions);
     expect(utils.getByText('Select an account to convert into.')).toBeTruthy();
-    expect(
-      within(utils.getByTestId('screen-footer')).queryByText('Select an account to convert into.'),
-    ).toBeNull();
 
     await fireEvent.press(utils.getByLabelText('To'));
     await fireEvent.press(utils.getByText('Cash USD'));
@@ -3436,9 +3472,6 @@ describe('TransactionFormScreen — Convert to Exchange', () => {
     // "amount must be greater than 0" reason this test targets.
     await fireEvent.changeText(utils.getByLabelText('Value in'), '');
     expect(utils.getByText('Amount must be greater than 0.')).toBeTruthy();
-    expect(
-      within(utils.getByTestId('screen-footer')).queryByText('Amount must be greater than 0.'),
-    ).toBeNull();
 
     await fireEvent.changeText(utils.getByLabelText('Value in'), '2.5');
     expect(utils.queryByText('Amount must be greater than 0.')).toBeNull();
@@ -3448,7 +3481,7 @@ describe('TransactionFormScreen — Convert to Exchange', () => {
     const utils = await renderEdit('expense-manual');
     await fireEvent.press(utils.getByText('Exchange'));
 
-    await fireEvent.press(utils.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(utils.getByText('Select an account to convert into.')).toBeTruthy();
     expect(utils.getByText('Amount must be greater than 0.')).toBeTruthy();
@@ -3471,7 +3504,7 @@ describe('TransactionFormScreen — Convert to Exchange', () => {
     await fireEvent.press(getByLabelText('To'));
     await fireEvent.press(getByText('Cash USD'));
     await fireEvent.changeText(getByLabelText('Value in'), '5');
-    await fireEvent.press(getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     await waitFor(() => expect(mockRecordExchangeCounterpart).toHaveBeenCalled());
     expect(mockUpdate).not.toHaveBeenCalled();
@@ -3662,7 +3695,7 @@ describe('TransactionFormScreen — Split-change mode', () => {
     await fireEvent.changeText(utils.getByLabelText('Amount'), '212.00');
     await pickCategory(utils, 'Groceries');
 
-    await fireEvent.press(utils.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     await waitFor(() => expect(mockRecordManualWithReturns).toHaveBeenCalledTimes(1));
     expect(mockRecordManualWithReturns).toHaveBeenCalledWith(
@@ -3690,11 +3723,11 @@ describe('TransactionFormScreen — Split-change mode', () => {
     await pickCategory(utils, 'Groceries');
     await fireEvent.changeText(utils.getByLabelText('Amount'), '0.20');
 
-    await fireEvent.press(utils.getByText('Save'));
+    await pressSave(navigation.setOptions);
     expect(mockRecordManualWithReturns).not.toHaveBeenCalled();
 
     await fireEvent.changeText(utils.getByLabelText('Amount'), '1.00');
-    await fireEvent.press(utils.getByText('Save'));
+    await pressSave(navigation.setOptions);
     expect(mockRecordManualWithReturns).toHaveBeenCalledTimes(1);
   });
 
@@ -3703,27 +3736,21 @@ describe('TransactionFormScreen — Split-change mode', () => {
     await pickType(utils, 'split');
 
     expect(utils.queryByText('Select a category.')).toBeNull();
-    await fireEvent.press(utils.getByText('Save'));
+    await pressSave(navigation.setOptions);
     expect(utils.getByText('Select a category.')).toBeTruthy();
-    expect(within(utils.getByTestId('screen-footer')).queryByText('Select a category.')).toBeNull();
 
     await pickCategory(utils, 'Groceries');
-    await fireEvent.press(utils.getByText('Save'));
+    await pressSave(navigation.setOptions);
     expect(
       utils.getByText('Add at least one valid return, and keep the returns below the payment.'),
     ).toBeTruthy();
-    expect(
-      within(utils.getByTestId('screen-footer')).queryByText(
-        'Add at least one valid return, and keep the returns below the payment.',
-      ),
-    ).toBeNull();
   });
 
   it('shows the category and split-returns errors together at the same Save press, each clearing only its own field', async () => {
     const utils = await renderAddFromHolding('payer');
     await pickType(utils, 'split');
 
-    await fireEvent.press(utils.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(utils.getByText('Select a category.')).toBeTruthy();
     expect(
@@ -3757,7 +3784,7 @@ describe('TransactionFormScreen — Split-change mode', () => {
     expect(isLabelInvalid(mockFieldLabel, 'Return to 1')).toBe(false);
     expect(isLabelInvalid(mockFieldLabel, 'Return 1')).toBe(false);
 
-    await fireEvent.press(utils.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(isLabelInvalid(mockFieldLabel, 'Return to 1')).toBe(true);
     expect(isLabelInvalid(mockFieldLabel, 'Return 1')).toBe(true);
@@ -3779,7 +3806,7 @@ describe('TransactionFormScreen — Split-change mode', () => {
     await fireEvent.press(utils.getByText('Alice'));
     await fireEvent.changeText(utils.getByLabelText('Return 1'), '0.20');
 
-    await fireEvent.press(utils.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(mockRecordManualWithReturns).not.toHaveBeenCalled();
     expect(utils.getByText('Amount must be greater than 0.')).toBeTruthy();
@@ -3802,7 +3829,7 @@ describe('TransactionFormScreen — Split-change mode', () => {
     await fireEvent.changeText(utils.getByLabelText('Return 1'), '1.50');
     await fireEvent.changeText(utils.getByLabelText('Amount'), '1.00');
 
-    await fireEvent.press(utils.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(mockRecordManualWithReturns).not.toHaveBeenCalled();
     expect(
@@ -3828,11 +3855,11 @@ describe('TransactionFormScreen — Split-change mode', () => {
     await fireEvent.changeText(utils.getByLabelText('Return 1'), '0.20');
     await fireEvent.changeText(utils.getByLabelText('Amount'), '1.00');
 
-    await fireEvent.press(utils.getByText('Save'));
+    await pressSave(navigation.setOptions);
     expect(mockRecordManualWithReturns).not.toHaveBeenCalled();
 
     await pickCategory(utils, 'Groceries');
-    await fireEvent.press(utils.getByText('Save'));
+    await pressSave(navigation.setOptions);
     expect(mockRecordManualWithReturns).toHaveBeenCalledTimes(1);
   });
 
@@ -4196,10 +4223,10 @@ describe('TransactionFormScreen — convert counterpart prefill', () => {
 // wrapper ref has no host node to query by label, so a test names a field by
 // the one state in which only that field is invalid: the ref seen there is its
 // own, and a state with more invalid fields must not scroll to any other.
-const blockedSaveTarget = async (utils: Awaited<ReturnType<typeof render>>): Promise<unknown> => {
+const blockedSaveTarget = async (): Promise<unknown> => {
   const scrollToFieldMock = scrollToField as jest.Mock;
   scrollToFieldMock.mockClear();
-  await fireEvent.press(utils.getByText('Save'));
+  await pressSave(navigation.setOptions);
 
   expect(scrollToFieldMock).toHaveBeenCalledTimes(1);
 
@@ -4219,12 +4246,12 @@ describe('TransactionFormScreen — blocked Save scrolls to the first invalid fi
     setLiveData([{ id: 'h1', currency: 'UAH', balanceMinorUnits: 0, type: 'cash' }]);
     const utils = await renderAdd();
 
-    const bothInvalid = await blockedSaveTarget(utils);
+    const bothInvalid = await blockedSaveTarget();
     await fireEvent.changeText(utils.getByLabelText('Amount'), '12.34');
-    const categoryOnly = await blockedSaveTarget(utils);
+    const categoryOnly = await blockedSaveTarget();
     await fireEvent.changeText(utils.getByLabelText('Amount'), '');
     await pickCategory(utils, 'Groceries');
-    const amountOnly = await blockedSaveTarget(utils);
+    const amountOnly = await blockedSaveTarget();
 
     expect(sameTarget(categoryOnly, amountOnly)).toBe(false);
     expect(sameTarget(bothInvalid, amountOnly)).toBe(true);
@@ -4235,12 +4262,12 @@ describe('TransactionFormScreen — blocked Save scrolls to the first invalid fi
     const utils = await renderAddFromHolding('cash-1');
     await pickType(utils, 'exchange');
 
-    const allInvalid = await blockedSaveTarget(utils);
+    const allInvalid = await blockedSaveTarget();
     await fireEvent.press(utils.getByLabelText('To'));
     await fireEvent.press(utils.getByText('Cash USD'));
-    const outAndIn = await blockedSaveTarget(utils);
+    const outAndIn = await blockedSaveTarget();
     await fireEvent.changeText(utils.getByLabelText('Value out'), '100');
-    const inOnly = await blockedSaveTarget(utils);
+    const inOnly = await blockedSaveTarget();
 
     expect(sameTarget(outAndIn, inOnly)).toBe(false);
     expect(sameTarget(allInvalid, inOnly)).toBe(false);
@@ -4252,11 +4279,11 @@ describe('TransactionFormScreen — blocked Save scrolls to the first invalid fi
     const utils = await renderAddFromHolding('payer');
     await pickType(utils, 'split');
 
-    const allInvalid = await blockedSaveTarget(utils);
+    const allInvalid = await blockedSaveTarget();
     await fireEvent.changeText(utils.getByLabelText('Amount'), '1.00');
-    const categoryAndReturns = await blockedSaveTarget(utils);
+    const categoryAndReturns = await blockedSaveTarget();
     await pickCategory(utils, 'Groceries');
-    const returnsOnly = await blockedSaveTarget(utils);
+    const returnsOnly = await blockedSaveTarget();
 
     expect(sameTarget(categoryAndReturns, returnsOnly)).toBe(false);
     expect(sameTarget(allInvalid, returnsOnly)).toBe(false);
@@ -4273,13 +4300,13 @@ describe('TransactionFormScreen — blocked Save scrolls to the first invalid fi
     const utils = await renderEdit('expense-manual');
     await fireEvent.press(utils.getByText('Exchange'));
 
-    const bothInvalid = await blockedSaveTarget(utils);
+    const bothInvalid = await blockedSaveTarget();
     await fireEvent.press(utils.getByLabelText('To'));
     await fireEvent.press(utils.getByText('Cash USD'));
     // Picking a destination prefills the counterpart amount, so blank it to
     // leave only the amount invalid.
     await fireEvent.changeText(utils.getByLabelText('Value in'), '');
-    const amountOnly = await blockedSaveTarget(utils);
+    const amountOnly = await blockedSaveTarget();
 
     expect(sameTarget(bothInvalid, amountOnly)).toBe(false);
   });
@@ -4315,7 +4342,7 @@ describe('TransactionFormScreen — what the scroll is handed', () => {
     const utils = await renderAdd();
     await reportScrollGeometry(utils);
 
-    await fireEvent.press(utils.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(scrollToFieldMock).toHaveBeenCalledTimes(1);
     expect(scrollToFieldMock.mock.calls[0][2]).toEqual({
@@ -4352,7 +4379,7 @@ describe('TransactionFormScreen — what the scroll is handed', () => {
     const utils = await renderAdd();
     const focus = jest.spyOn(TextInput.prototype, 'focus').mockImplementation(() => undefined);
 
-    await fireEvent.press(utils.getByText('Save'));
+    await pressSave(navigation.setOptions);
     const amountSettled = scrollToFieldMock.mock.calls[0][3];
 
     expect(amountSettled).toEqual(expect.any(Function));
@@ -4363,7 +4390,7 @@ describe('TransactionFormScreen — what the scroll is handed', () => {
 
     await fireEvent.changeText(utils.getByLabelText('Amount'), '12.34');
     scrollToFieldMock.mockClear();
-    await fireEvent.press(utils.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(scrollToFieldMock.mock.calls[0][3]).toBeUndefined();
   });
@@ -4392,7 +4419,7 @@ describe("TransactionFormScreen — a valid Save runs only the active mode's own
 
     await fireEvent.changeText(utils.getByLabelText('Amount'), '12.34');
     await pickCategory(utils, 'Groceries');
-    await fireEvent.press(utils.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(calledWrites()).toEqual(['manual']);
   });
@@ -4405,7 +4432,7 @@ describe("TransactionFormScreen — a valid Save runs only the active mode's own
     await fireEvent.press(utils.getByLabelText('To'));
     await fireEvent.press(utils.getByText('Cash USD'));
     await fireEvent.changeText(utils.getByLabelText('Value in'), '2.50');
-    await fireEvent.press(utils.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(calledWrites()).toEqual(['exchange']);
   });
@@ -4419,7 +4446,7 @@ describe("TransactionFormScreen — a valid Save runs only the active mode's own
     await fireEvent.changeText(utils.getByLabelText('Return 1'), '0.20');
     await fireEvent.changeText(utils.getByLabelText('Amount'), '212.00');
     await pickCategory(utils, 'Groceries');
-    await fireEvent.press(utils.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(calledWrites()).toEqual(['withReturns']);
   });
@@ -4436,7 +4463,7 @@ describe("TransactionFormScreen — a valid Save runs only the active mode's own
     await fireEvent.press(utils.getByLabelText('To'));
     await fireEvent.press(utils.getByText('Cash USD'));
     await fireEvent.changeText(utils.getByLabelText('Value in'), '2.50');
-    await fireEvent.press(utils.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(calledWrites()).toEqual(['counterpart']);
   });
@@ -4476,7 +4503,7 @@ describe('TransactionFormScreen — the category override sheet on a manual row'
     setLiveData(HOLDINGS, ROW);
     const utils = await renderEdit('txn-1');
     await pickCategory(utils, 'Dining');
-    await fireEvent.press(utils.getByText('Save'));
+    await pressSave(navigation.setOptions);
     await fireEvent.press(utils.getByRole('button', { name: 'Apply' }));
 
     await waitFor(() =>

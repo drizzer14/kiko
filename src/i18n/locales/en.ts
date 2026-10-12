@@ -357,7 +357,6 @@ export const en = {
       amountPlaceholder: '500.00',
       errorMessage: 'Please try again.',
       errorTitle: 'Could not add contribution',
-      save: 'Save contribution',
     },
     holding: {
       addContribution: 'Add contribution',
@@ -553,7 +552,6 @@ export const en = {
       quantity: 'Quantity',
       quantityError: 'Enter a quantity greater than 0.',
       quantityPlaceholder: '10',
-      save: 'Save lot',
       sell: 'Sell',
       sellExceedsError: "You can't sell more than you currently hold.",
       totalCost: 'Total cost',
@@ -566,13 +564,11 @@ export const en = {
       title: 'Edit Share Change',
     },
     pricePoint: {
-      // Loan-specific title/field/button/error `PricePointFormScreen` applies
+      // Loan-specific title/field/error `PricePointFormScreen` applies
       // once the holding loads as a loan; `loanValueError` also accepts 0.
-      loanSave: 'Save outstanding',
       loanTitle: 'Update Outstanding',
       loanValue: 'Outstanding',
       loanValueError: 'Outstanding must be 0 or greater.',
-      save: 'Save value',
       title: 'Update Value',
       value: 'Value',
       valueError: 'Value must be greater than 0.',

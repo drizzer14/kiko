@@ -313,7 +313,6 @@ export const uk: typeof en = {
       amountPlaceholder: '500,00',
       errorMessage: 'Спробуйте ще раз.',
       errorTitle: 'Не вдалося додати внесок',
-      save: 'Зберегти внесок',
     },
     holding: {
       addContribution: 'Додати внесок',
@@ -486,7 +485,6 @@ export const uk: typeof en = {
       quantity: 'Кількість',
       quantityError: 'Введіть кількість більше 0.',
       quantityPlaceholder: '10',
-      save: 'Зберегти лот',
       sell: 'Продаж',
       sellExceedsError: 'Не можна продати більше, ніж є в наявності.',
       totalCost: 'Загальна вартість',
@@ -499,11 +497,9 @@ export const uk: typeof en = {
       title: 'Редагувати зміну частки',
     },
     pricePoint: {
-      loanSave: 'Зберегти залишок',
       loanTitle: 'Оновити залишок',
       loanValue: 'Залишок',
       loanValueError: 'Залишок має бути не менше 0.',
-      save: 'Зберегти вартість',
       title: 'Оновити вартість',
       value: 'Вартість',
       valueError: 'Вартість має бути більшою за 0.',

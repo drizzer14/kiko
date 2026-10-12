@@ -16,6 +16,10 @@ import {
   type CreateHoldingRoute,
   resolveCreateHoldingTarget,
 } from '@kiko/screens/forms/create-holding-target';
+import {
+  type FormHeaderItemsOptions,
+  useFormHeaderItems,
+} from '@kiko/screens/forms/use-form-header-items';
 import { holdingsRepo } from '@kiko/holdings/repo';
 import { parseAmount } from '@kiko/currency/parse';
 import { StyleSheet } from 'react-native-unistyles';
@@ -23,7 +27,6 @@ import Box from '@kiko/design-system/components/box';
 import { categoriesRepo } from '@kiko/categories/repo';
 import { useLiveQuery, type HoldingRow } from '@kiko/db';
 import { transactionsRepo } from '@kiko/transactions/repo';
-import Button from '@kiko/design-system/components/button';
 import Screen from '@kiko/design-system/components/screen';
 import { buildRateTable } from '@kiko/rates/net-worth-view';
 import { type TextInputInstance, View } from 'react-native';
@@ -101,7 +104,7 @@ type TransactionFormScreenProps = {
   route: { params: TransactionFormParams };
   navigation: {
     goBack: () => void;
-    setOptions: (options: { title: string }) => void;
+    setOptions: (options: { title: string } | FormHeaderItemsOptions) => void;
     navigate: (...route: CreateHoldingRoute) => void;
   };
 };
@@ -389,6 +392,8 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   const [time, setTime] = useState<number>(() => Date.now());
   const {
     selectedCategory,
+    effectiveCategory,
+    settleCategory,
     setSelectedCategory,
     setUserPickedCategory,
     selectCategory,
@@ -523,7 +528,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   // Derived (not stored) so it always reflects the persisted value even before
   // the hydration latch closes.
   const originalCategoryKey = existing?.category ? existing.category.toLowerCase() : null;
-  const categoryChanged = selectedCategory !== null && selectedCategory !== originalCategoryKey;
+  const categoryChanged = effectiveCategory !== null && effectiveCategory !== originalCategoryKey;
 
   const loanFieldVisible = isLoanFieldVisible(
     existing?.amountMinorUnits,
@@ -533,8 +538,8 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   );
 
   // The description field's placeholder previews the label the row would carry
-  // if left blank (see `resolveDescriptionPlaceholder`), and the Save button is
-  // disabled for a create still missing its amount or category (see
+  // if left blank (see `resolveDescriptionPlaceholder`), and Save is
+  // blocked for a create still missing its amount or category (see
   // `MODE_BEHAVIOR`). Both are module-level pure helpers so their
   // branches stay out of this component's cognitive-complexity budget.
   const descriptionPlaceholder = resolveDescriptionPlaceholder({
@@ -554,7 +559,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     counterpartAmount,
     destinationHoldingId,
     counterpartHoldingId,
-    selectedCategory,
+    selectedCategory: effectiveCategory,
     changeReturns,
     currency,
   };
@@ -611,7 +616,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
         // blank-description row (and any row whose override the user
         // cancelled) would be written uncategorised despite
         // `plainFieldErrors` forcing a pick on create.
-        category: selectedCategory,
+        category: effectiveCategory,
       });
     }
   };
@@ -749,7 +754,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
         amountMinorUnits: -paymentMinor,
         time,
         description,
-        category: selectedCategory,
+        category: effectiveCategory,
       },
       returns: changeReturns.map((change) => ({
         holdingId: change.holdingId as string,
@@ -889,6 +894,10 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   // into `performSave` itself pushes that function's cognitive complexity
   // over Biome's ceiling.
   const save = async (): Promise<void> => {
+    // The nav-bar Save does not end editing, so the description may never have blurred; commit
+    // its rule category to the picker, which `effectiveCategory` below already acts on.
+    settleCategory();
+
     if (disableSave) {
       setAttemptedSave(true);
 
@@ -919,7 +928,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
       const name = isReadOnly ? (existing?.description ?? '') : descriptionToStore;
       const overrideRequest = resolveCategoryOverrideRequest(
         categoryChanged,
-        selectedCategory,
+        effectiveCategory,
         name,
       );
 
@@ -938,10 +947,10 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
       // path (`resolveCategoryOverrideRequest` -> `applyNameRule`) stays
       // intact, so a catch-all rule is still refused. A create (no `editingId`)
       // already carries its category from `recordManual`, so it is excluded.
-      if (editingId !== null && categoryChanged && selectedCategory !== null) {
+      if (editingId !== null && categoryChanged && effectiveCategory !== null) {
         await transactionsRepo.setCategory({
           transactionId: editingId,
-          category: selectedCategory,
+          category: effectiveCategory,
         });
       }
 
@@ -956,6 +965,13 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   };
 
   const { onPress: onSave, isSubmitting } = useSubmitOnce(save);
+
+  useFormHeaderItems({
+    navigation,
+    onSave,
+    hasSave: showsSaveButton(isReadOnly, categoryChanged, converting),
+    isSaving: isSubmitting,
+  });
 
   // The transaction-TYPE selector, built here so the label/mode copy stays with
   // the component's live translations. It renders directly UNDER the Holding
@@ -979,18 +995,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
 
   return (
     <>
-      <Screen
-        scroll
-        scrollableRef={scrollableRef}
-        onContentSizeChange={onContentSizeChange}
-        footer={
-          showsSaveButton(isReadOnly, categoryChanged, converting) ? (
-            <Button onPress={onSave} disabled={isSubmitting}>
-              {t('common.save')}
-            </Button>
-          ) : undefined
-        }
-      >
+      <Screen scroll scrollableRef={scrollableRef} onContentSizeChange={onContentSizeChange}>
         <Box gap={4} testID="transaction-form">
           <ReadOnlyNotice isReadOnly={isReadOnly} noticeText={readOnlyNotice} />
 

@@ -6,6 +6,7 @@ import { i18n } from '@kiko/i18n/init';
 import { remindersRepo } from '@kiko/reminders/repo';
 import { remindersNative } from '@kiko/reminders/native';
 import { scrollToField, useHeaderInset } from '@kiko/design-system/scroll-to-field';
+import { expectNavBarSaveOnly, pressSave } from '@kiko/test-support/form-header-items';
 import { localDayOf, type ReminderSchedule, weekdayOf } from '@kiko/reminders/schedule';
 import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support/navigation-props';
 
@@ -81,10 +82,6 @@ const renderEdit = (schedule: ReminderSchedule) => {
 
 type Screen = Awaited<ReturnType<typeof renderCreate>>;
 
-const save = async (screen: Screen): Promise<void> => {
-  await fireEvent.press(screen.getByText('Save'));
-};
-
 const DAY_NAME = /^(Mon|Tue|Wed|Thu|Fri|Sat|Sun)$/;
 
 const selectedDayNames = (screen: Screen): string[] =>
@@ -125,10 +122,14 @@ describe('ReminderFormScreen — create', () => {
     ).toBeTruthy();
   });
 
-  it('saves an add-transactions reminder daily at 20:00 by default', async () => {
-    const screen = await renderCreate('add_transactions');
+  it('offers Save only as the prominent nav-bar item, never as a body button', async () => {
+    expectNavBarSaveOnly(navigation.setOptions, await renderCreate());
+  });
 
-    await save(screen);
+  it('saves an add-transactions reminder daily at 20:00 by default', async () => {
+    await renderCreate('add_transactions');
+
+    await pressSave(navigation.setOptions);
 
     expect(remindersRepo.create).toHaveBeenCalledWith({
       accountId: 'a-1',
@@ -139,9 +140,9 @@ describe('ReminderFormScreen — create', () => {
   });
 
   it('saves an import reminder monthly on day 1 at 19:00 by default', async () => {
-    const screen = await renderCreate('statement_import');
+    await renderCreate('statement_import');
 
-    await save(screen);
+    await pressSave(navigation.setOptions);
 
     expect(remindersRepo.create).toHaveBeenCalledWith({
       accountId: 'a-1',
@@ -154,7 +155,7 @@ describe('ReminderFormScreen — create', () => {
     const screen = await renderCreate();
 
     await pickTime(screen, 7, 15);
-    await save(screen);
+    await pressSave(navigation.setOptions);
 
     expect(remindersRepo.create).toHaveBeenCalledWith(
       expect.objectContaining({ schedule: { frequency: 'daily', minuteOfDay: 7 * 60 + 15 } }),
@@ -178,7 +179,7 @@ describe('ReminderFormScreen — create', () => {
     const otherWeekday = otherDay === 'Thu' ? 4 : 3;
 
     await fireEvent.press(screen.getByText(otherDay));
-    await save(screen);
+    await pressSave(navigation.setOptions);
 
     expect(remindersRepo.create).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -196,7 +197,7 @@ describe('ReminderFormScreen — create', () => {
 
     await fireEvent.press(screen.getByText('Monthly'));
     await fireEvent.press(screen.getByTestId('reminder-day-of-month-option-31'));
-    await save(screen);
+    await pressSave(navigation.setOptions);
 
     expect(remindersRepo.create).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -239,7 +240,7 @@ describe('ReminderFormScreen — create', () => {
     expect(screen.getByLabelText('Repeat every').props.value).toBe('7');
 
     await fireEvent.changeText(screen.getByLabelText('Repeat every'), '14');
-    await save(screen);
+    await pressSave(navigation.setOptions);
 
     expect(remindersRepo.create).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -259,7 +260,7 @@ describe('ReminderFormScreen — create', () => {
 
     expect(selectedDayNames(screen)).toEqual([]);
 
-    await save(screen);
+    await pressSave(navigation.setOptions);
 
     expect(screen.getByText('No days selected.')).toBeTruthy();
     expect(remindersRepo.create).not.toHaveBeenCalled();
@@ -271,7 +272,7 @@ describe('ReminderFormScreen — create', () => {
 
     await fireEvent.press(screen.getByText('Every N days'));
     await fireEvent.changeText(screen.getByLabelText('Repeat every'), '1');
-    await save(screen);
+    await pressSave(navigation.setOptions);
 
     expect(screen.getByText('Enter a number of days from 2 to 365.')).toBeTruthy();
     expect(remindersRepo.create).not.toHaveBeenCalled();
@@ -288,7 +289,7 @@ describe('ReminderFormScreen — create', () => {
     const [preselectedDay] = selectedDayNames(screen);
 
     await fireEvent.press(screen.getByText(preselectedDay));
-    await save(screen);
+    await pressSave(navigation.setOptions);
 
     const [scrollableRef, weekdaysFieldRef, weekdaysGeometry, weekdaysOnSettled] =
       scrollToFieldMock.mock.calls[0];
@@ -300,7 +301,7 @@ describe('ReminderFormScreen — create', () => {
     await fireEvent.press(screen.getByText('Every N days'));
     await fireEvent.changeText(screen.getByLabelText('Repeat every'), '1');
     scrollToFieldMock.mockClear();
-    await save(screen);
+    await pressSave(navigation.setOptions);
 
     const [, intervalFieldRef, intervalGeometry, intervalOnSettled] =
       scrollToFieldMock.mock.calls[0];
@@ -311,9 +312,9 @@ describe('ReminderFormScreen — create', () => {
   });
 
   it('re-plans the reminders after the write', async () => {
-    const screen = await renderCreate();
+    await renderCreate();
 
-    await save(screen);
+    await pressSave(navigation.setOptions);
 
     await waitFor(() => expect(mockSyncReminders).toHaveBeenCalled());
   });
@@ -323,9 +324,9 @@ describe('ReminderFormScreen — create', () => {
 
     jest.mocked(remindersRepo.create).mockRejectedValueOnce(new Error('disk full'));
 
-    const screen = await renderCreate();
+    await renderCreate();
 
-    await save(screen);
+    await pressSave(navigation.setOptions);
 
     expect(alert).toHaveBeenCalledTimes(1);
     expect(navigation.goBack).not.toHaveBeenCalled();
@@ -338,7 +339,7 @@ describe('ReminderFormScreen — notification permission', () => {
   it('saves and goes back with no pre-alert once notifications are allowed', async () => {
     const screen = await renderCreate();
 
-    await save(screen);
+    await pressSave(navigation.setOptions);
 
     expect(screen.queryByText('Reminder Notifications')).toBeNull();
     expect(requestAuthorization).not.toHaveBeenCalled();
@@ -350,7 +351,7 @@ describe('ReminderFormScreen — notification permission', () => {
 
     const screen = await renderCreate();
 
-    await save(screen);
+    await pressSave(navigation.setOptions);
 
     expect(remindersRepo.create).toHaveBeenCalledTimes(1);
     expect(screen.queryByText('Reminder Notifications')).toBeNull();
@@ -362,7 +363,7 @@ describe('ReminderFormScreen — notification permission', () => {
 
     const screen = await renderCreate();
 
-    await save(screen);
+    await pressSave(navigation.setOptions);
 
     expect(remindersRepo.create).toHaveBeenCalledTimes(1);
 
@@ -386,7 +387,7 @@ describe('ReminderFormScreen — notification permission', () => {
 
     const screen = await renderCreate();
 
-    await save(screen);
+    await pressSave(navigation.setOptions);
     await waitFor(() => expect(mockSyncReminders).toHaveBeenCalledTimes(1));
 
     const reportClosed = closedSignalOf(screen);
@@ -411,7 +412,7 @@ describe('ReminderFormScreen — notification permission', () => {
 
     const screen = await renderCreate();
 
-    await save(screen);
+    await pressSave(navigation.setOptions);
 
     const reportClosed = closedSignalOf(screen);
 
@@ -501,7 +502,7 @@ describe('ReminderFormScreen — edit', () => {
     const screen = await renderEdit({ frequency: 'daily', minuteOfDay: 8 * 60 });
 
     await pickTime(screen, 9, 30);
-    await save(screen);
+    await pressSave(navigation.setOptions);
 
     expect(remindersRepo.update).toHaveBeenCalledWith('r-1', {
       frequency: 'daily',
@@ -513,14 +514,14 @@ describe('ReminderFormScreen — edit', () => {
 
   it('keeps the saved interval anchor when the length stays the same', async () => {
     const anchorDay = { year: 2026, month: 1, day: 5 };
-    const screen = await renderEdit({
+    await renderEdit({
       frequency: 'interval',
       minuteOfDay: 8 * 60,
       everyDays: 10,
       anchorDay,
     });
 
-    await save(screen);
+    await pressSave(navigation.setOptions);
 
     expect(remindersRepo.update).toHaveBeenCalledWith('r-1', {
       frequency: 'interval',
@@ -535,7 +536,7 @@ describe('ReminderFormScreen — edit', () => {
 
     expect(within(screen.getByLabelText('Time')).getByText('20:00')).toBeTruthy();
 
-    await save(screen);
+    await pressSave(navigation.setOptions);
 
     expect(remindersRepo.update).toHaveBeenCalledWith('r-1', {
       frequency: 'daily',

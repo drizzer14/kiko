@@ -7,7 +7,6 @@ import {
 } from '@kiko/screens/forms/property-ownership';
 import { holdingsRepo } from '@kiko/holdings/repo';
 import type { TextInputInstance } from 'react-native';
-import Button from '@kiko/design-system/components/button';
 import Screen from '@kiko/design-system/components/screen';
 import { type FC, useEffect, useRef, useState } from 'react';
 import { asPropertyMeta } from '@kiko/holdings/holding-metadata';
@@ -20,6 +19,7 @@ import { dayKeyOf, localMidnightOfDayKey } from '@kiko/prices/price-book';
 import { useScrollToField } from '@kiko/design-system/use-scroll-to-field';
 import { WHOLE_SHARE, type OwnershipShare } from '@kiko/holdings/ownership';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { useFormHeaderItems } from '@kiko/screens/forms/use-form-header-items';
 
 type OwnershipChangeFormScreenProps = NativeStackScreenProps<
   AccountsStackParamList,
@@ -98,17 +98,10 @@ const OwnershipChangeFormScreen: FC<OwnershipChangeFormScreenProps> = ({ route, 
 
   const { onPress: onSave, isSubmitting } = useSubmitOnce(save);
 
+  useFormHeaderItems({ navigation, onSave, hasSave: true, isSaving: isSubmitting });
+
   return (
-    <Screen
-      scroll
-      scrollableRef={scrollableRef}
-      onContentSizeChange={onContentSizeChange}
-      footer={
-        <Button onPress={onSave} disabled={isSubmitting}>
-          {t('common.save')}
-        </Button>
-      }
-    >
+    <Screen scroll scrollableRef={scrollableRef} onContentSizeChange={onContentSizeChange}>
       <OwnershipField
         mode={entry.mode}
         onSelectMode={(mode) => updateEntry({ mode })}
