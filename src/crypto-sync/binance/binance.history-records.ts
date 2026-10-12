@@ -188,7 +188,10 @@ const placed = async <Planned, Row>(input: {
  * forward pass moves a cursor that must not pass
  * a record it could not trust, so a stop of any kind leaves its span uncommitted (`undefined`,
  * before anything is written); in the other passes the stuck records stay owed and everything
- * else commits.
+ * else commits. A code in `forwardOwes` is one the forward pass owes like the other passes do:
+ * its record's point is stored (`advance` gets it) and the cursor goes past it, because the
+ * record stays owed until the floor and no later read of the span would settle it differently.
+ * Any other code beside it still leaves the span uncommitted.
  */
 export const commitSettledSpan = async <Planned, Row>(input: {
   pass: WalkPass;
@@ -197,11 +200,13 @@ export const commitSettledSpan = async <Planned, Row>(input: {
   place: (planned: Planned[]) => Promise<Row[]>;
   add: (rows: Row[]) => Promise<number>;
   advance: (result: { owed: OwedGround[] }) => Promise<void>;
+  forwardOwes?: readonly string[];
 }): Promise<SpanCommit | undefined> => {
-  const { pass, span, settled, add, advance } = input;
-  const stopsRun = pass === 'forward';
+  const { pass, span, settled, add, advance, forwardOwes = [] } = input;
+  const stopsRun = (codes: string[]): boolean =>
+    pass === 'forward' && codes.some((code) => !forwardOwes.includes(code));
 
-  if (stopsRun && settled.codes.length > 0) {
+  if (stopsRun(settled.codes)) {
     logCodes(settled.codes);
 
     return undefined;
@@ -211,7 +216,7 @@ export const commitSettledSpan = async <Planned, Row>(input: {
 
   logCodes(ready.codes);
 
-  if (stopsRun && ready.codes.length > 0) {
+  if (stopsRun(ready.codes)) {
     return undefined;
   }
 

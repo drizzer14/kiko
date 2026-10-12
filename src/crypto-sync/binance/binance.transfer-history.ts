@@ -84,6 +84,18 @@ const MAX_PAGES_PER_SPAN = 50;
 /** The status Binance gives a transfer that went through; any other is owed, a failed one too. */
 export const TRANSFER_SETTLED_STATUS = 'CONFIRMED';
 
+/** The status Binance gives a transfer that did not go through, and never will. */
+const TRANSFER_FAILED_STATUS = 'FAILED';
+
+const TRANSFER_FAILED = 'transfer-failed';
+
+/**
+ * The stops the forward pass owes and goes past (user ruling): a FAILED transfer stays owed at
+ * its point until the floor, so no later read settles it differently, and holding the cursor
+ * behind it would keep every newer transfer from importing. Every other stop holds the cursor.
+ */
+export const TRANSFER_FORWARD_OWES: readonly string[] = [TRANSFER_FAILED];
+
 const TRANSFER_PAGE_DRIFT = 'transfer-page-drift';
 
 /** The stop of a row the client could not read: logged by its code alone, never its content. */
@@ -220,6 +232,10 @@ export const transferRowsOf = (
 
   if (record.type !== readAs) {
     throw new BinanceWalkStop('transfer-type-mismatch');
+  }
+
+  if (record.status === TRANSFER_FAILED_STATUS) {
+    throw new BinanceWalkStop(TRANSFER_FAILED);
   }
 
   if (record.status !== TRANSFER_SETTLED_STATUS) {
@@ -463,6 +479,7 @@ const commitSpan = (
     pass,
     span,
     settled: settledTransfersOf({ accountId, span, read }),
+    forwardOwes: TRANSFER_FORWARD_OWES,
     place: (planned) => placeRows(context, uniqueRowsOf(planned)),
     add: deps.addTransactions,
     advance: ({ owed }) =>

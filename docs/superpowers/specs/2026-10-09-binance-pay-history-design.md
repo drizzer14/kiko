@@ -645,15 +645,21 @@ withdraw budget moves into this object, with the same numbers and the same rule.
   walk cannot trust owes its own point and the other records of the span commit (pending pass
   and re-scan). The forward pass leaves the span uncommitted and ends, the cursor unmoved;
   the run then goes on (OVERNIGHT 17 = R28, user ruling 2026-10-12).
-  Per-record codes: `transfer-not-settled` (any status but `CONFIRMED`; T5),
+  Per-record codes: `transfer-not-settled` (any status but `CONFIRMED` and `FAILED`; T5),
+  `transfer-failed` (`FAILED`; T11),
   `transfer-id-missing`, `transfer-amount-invalid`, `transfer-type-mismatch` (the row's
   `type` is not the type read), `transfer-row-unreadable` (R30: a row the client could not
   parse; T12).
 - **A `FAILED` transfer stays owed** (user ruling 2026-10-12, OVERNIGHT 21 = B). Any status
-  but `CONFIRMED`, a final failure included, is `transfer-not-settled`: the point stays on the
-  list, read once a round, until the 6-month floor passes it. No row imports. The owed point
-  does not show the caption (section 8). VERIFY 14 records the exact status values for the
-  record; no rule waits on them (T11).
+  but `CONFIRMED` is a stop, and a `FAILED` one is its own code, `transfer-failed`: the point
+  stays on the list, read once a round, until the 6-month floor passes it. No row imports. The
+  owed point does not show the caption (section 8). VERIFY 14 records the exact status values
+  for the record; no rule waits on them (T11).
+- **A `FAILED` transfer does not stop the forward pass** (user ruling 2026-10-12, item 3 = A).
+  `transfer-failed` is the one stop the forward pass owes and goes past: its point goes into
+  the list before the cursor moves, the other transfers of its span commit, the cursor passes
+  it, and the newer transfers import in the same run. Every other stop keeps the forward-pass
+  rule above (the cursor never passes that record, R28).
 - **Owed after a stop.** A per-record stop owes `[timestamp - 1, timestamp + 1]` in the type
   it was read under (`timestamp` in ms; VERIFY 14 for the filter field and precision). A stop
   not tied to one record (`transfer-page-drift`, `transfer-holding-missing`), an unreadable row
@@ -892,7 +898,7 @@ Transfer:
 | T8 | pending pass or re-scan: one T5 record and one CONFIRMED record of another type in the span | the CONFIRMED one imports; the T5 one is owed at its point | nothing of the window |
 | T9 | forward pass, the same span | nothing commits, the forward pass ends, the run goes on (OVERNIGHT 17) | stop the window |
 | T10 | row `type` is not the type read | `transfer-type-mismatch`, owed at its point | n/a |
-| T11 | status `FAILED` (user ruling 2026-10-12, OVERNIGHT 21 = B) | `transfer-not-settled`: owed at its point until the 6-month floor drops it; no row; no caption | same (the OVERNIGHT 21 recommendation to ignore it is not taken) |
+| T11 | status `FAILED` (user ruling 2026-10-12, OVERNIGHT 21 = B; the forward pass goes past it, item 3 = A) | `transfer-failed`: owed at its point until the 6-month floor drops it; no row; no caption; forward pass: the point is stored, the span commits and the cursor passes it | same (the OVERNIGHT 21 recommendation to ignore it is not taken) |
 | T12 | a row the client cannot parse (R30), beside a CONFIRMED row of another type, pending pass or re-scan | `transfer-row-unreadable`: owed at its point in the type read (no finite `timestamp`: the span, every type); the CONFIRMED row imports; the run goes on | the read threw, the run failed |
 
 Earn:

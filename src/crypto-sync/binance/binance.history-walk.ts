@@ -579,6 +579,8 @@ export type WalkMarks = {
   rangeCursor: number | null;
   hints: BinanceSpanHints;
   pending: OwedGround[];
+  /** What the forward spans of this run owed, kept in the list each later forward span stores. */
+  forwardOwed?: OwedGround[];
 };
 
 /** The metadata field each of a walk's marks is stored under. */
@@ -620,10 +622,27 @@ const storePending = async (
 const advanceCursor = async (input: MarkAdvance): Promise<void> => {
   const { span, plan, marks, fields, write } = input;
 
+  // The ground a forward span owes (a record the forward pass goes past, see `commitSettledSpan`)
+  // is stored with the run's own list, and kept by every later forward span of the run.
+  if ((input.owed ?? []).length > 0) {
+    marks.forwardOwed = distinctGround([...(marks.forwardOwed ?? []), ...(input.owed ?? [])]);
+  }
+
+  const forwardOwed = marks.forwardOwed ?? [];
+
   // The owed ground goes first: a crash after it only leaves a range the next run reads
   // again, while a crash after the cursor alone would leave the overlap behind the old
   // cursor owed to no run.
-  await storePending(input, plan.pendingRanges);
+  await storePending(
+    input,
+    forwardOwed.length === 0
+      ? plan.pendingRanges
+      : normalizePending(
+          [...plan.pendingRanges, ...forwardOwed],
+          UNBOUNDED,
+          Number.POSITIVE_INFINITY,
+        ),
+  );
 
   marks.cursor = Math.max(span.end, marks.cursor ?? span.end);
   await write(fields.cursor, marks.cursor);

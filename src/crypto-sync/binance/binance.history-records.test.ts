@@ -484,6 +484,74 @@ describe('commitSettledSpan', () => {
     expect(committed).toEqual({ imported: 1, owed: false, returned: [], stuck: [] });
   });
 
+  describe('with a code the forward pass owes and goes past', () => {
+    const point = pointOf(3_000, 3_001);
+    const commitOwing = (
+      settled: { rows: string[]; codes: string[]; owed: OwedGround[] },
+      place: (planned: string[]) => Promise<string[]> = async (planned) => planned,
+    ) =>
+      commitSettledSpan({
+        pass: 'forward',
+        span: SPAN,
+        settled: { returned: [], ...settled },
+        place,
+        add,
+        advance,
+        forwardOwes: ['owed-only'],
+      });
+
+    it('commits the rows of the span and moves the marks with the ground it owes, so the cursor can pass it', async () => {
+      const committed = await commitOwing({ rows: ['a'], codes: ['owed-only'], owed: [point] });
+
+      expect(calls).toEqual(['add:a', 'advance:1']);
+      expect(advance).toHaveBeenCalledWith({ owed: [point] });
+      expect(committed).toEqual({ imported: 1, owed: true, returned: [], stuck: [point] });
+    });
+
+    it('logs the code like any other', async () => {
+      await commitOwing({ rows: [], codes: ['owed-only'], owed: [point] });
+
+      expect(warn.mock.calls).toEqual([
+        ['[binance sync] history window stopped', { name: 'BinanceWalkStop', code: 'owed-only' }],
+      ]);
+    });
+
+    it('stops the forward pass, writing nothing, when a code it does not owe is beside it', async () => {
+      const committed = await commitOwing({
+        rows: ['a'],
+        codes: ['owed-only', 'stuck'],
+        owed: [point, pointOf(5_000, 5_001)],
+      });
+
+      expect(committed).toBeUndefined();
+      expect(add).not.toHaveBeenCalled();
+      expect(advance).not.toHaveBeenCalled();
+    });
+
+    it('stops the forward pass when the rows cannot be placed, whatever else the span owes', async () => {
+      const committed = await commitOwing(
+        { rows: ['a'], codes: ['owed-only'], owed: [point] },
+        async () => {
+          throw new BinanceWalkStop('holding-missing');
+        },
+      );
+
+      expect(committed).toBeUndefined();
+      expect(add).not.toHaveBeenCalled();
+      expect(advance).not.toHaveBeenCalled();
+    });
+
+    it('stops the forward pass for the same code when none is owed', async () => {
+      const committed = await commit('forward', {
+        rows: ['a'],
+        codes: ['owed-only'],
+        owed: [point],
+      });
+
+      expect(committed).toBeUndefined();
+    });
+  });
+
   describe('when the rows cannot be placed', () => {
     const unplaceable = async (): Promise<string[]> => {
       throw new BinanceWalkStop('holding-missing');

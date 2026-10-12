@@ -38,7 +38,7 @@ import {
   settleUnreadable,
 } from './binance.history-records';
 import { LANE_CALL_CAPS } from './binance.history-budget';
-import { settledTransfersOf } from './binance.transfer-history';
+import { settledTransfersOf, TRANSFER_FORWARD_OWES } from './binance.transfer-history';
 import { type BinanceUniversalTransfer, UNIVERSAL_TRANSFER_TYPES } from './binance.history-client';
 
 /**
@@ -195,6 +195,8 @@ type SimRecord = {
   unreadable?: 'timed' | 'timeless';
   series?: string;
   heldUntil?: number;
+  /** A transfer whose status is FAILED in every run: no row, ever, and its point stays owed. */
+  failed?: boolean;
 };
 
 type Scenario = { owed: OwedGround[]; records: SimRecord[] };
@@ -326,11 +328,19 @@ const rowsOf = (entry: SimRecord, run: number): number[] => {
 type TransferType = (typeof TRANSFER_TYPES)[number];
 
 /** The transfer a record stands for: settled once it can be trusted, pending until then. */
+const statusOf = (entry: SimRecord, run: number): string => {
+  if (entry.failed === true) {
+    return 'FAILED';
+  }
+
+  return run < entry.stuckUntil ? 'PENDING' : 'CONFIRMED';
+};
+
 const transferOf = (entry: SimRecord, run: number): BinanceUniversalTransfer => ({
   asset: 'BTC',
   amount: '0.001',
   type: entry.series ?? '',
-  status: run < entry.stuckUntil ? 'PENDING' : 'CONFIRMED',
+  status: statusOf(entry, run),
   tranId: String(entry.id),
   timestamp: entry.time,
 });
@@ -503,6 +513,7 @@ const endTimeOf = (input: Simulation, run: number): number => {
 
 const simulate = async (input: Simulation): Promise<Outcome> => {
   const { lane, scenario, runs } = input;
+  const forwardOwes = lane.series === undefined ? undefined : TRANSFER_FORWARD_OWES;
   const importedAt = new Map<number, number>();
   let marks: WalkMarks = {
     cursor: START_MS,
@@ -650,6 +661,7 @@ const simulate = async (input: Simulation): Promise<Outcome> => {
               pass,
               span,
               settled: settledOf({ lane, span, page, run, window, drift: input.drift }),
+              forwardOwes,
               place: async (planned) => planned,
               add: async (ids) => {
                 for (const id of ids) {
@@ -1949,6 +1961,28 @@ describe.each(LANES)('owed ground that never commits, $name lane', (lane) => {
     );
 
     if (lane.series !== undefined) {
+      it('a FAILED transfer in the forward window is owed at its point and the cursor passes it: the transfers after it import in the run that reads the window, its point stays owed in every run, and no run after imports anything', async () => {
+        const builder = builderOf(lane, 83);
+        const failed = { ...builder.record(START_MS + 30 * 60_000, NEVER), failed: true };
+        const newer = builder.record(START_MS + 90 * 60_000);
+
+        const outcome = await simulate({
+          lane,
+          reading,
+          runs: 8,
+          gapMs: 0,
+          catchUp: { runs: 1, gapMs: 2 * DAY_MS },
+          scenario: { owed: [], records: [failed, newer] },
+        });
+
+        // Run 0 has no forward window: the window first exists in run 1.
+        expect(outcome.importedAt.get(newer.id)).toBe(1);
+        expect(outcome.importedAt.has(failed.id)).toBe(false);
+        expect(outcome.runs[1].cursor).toBeGreaterThan(failed.time);
+        expect(outcome.runs.slice(1).every((run) => holdsPointOf(run.owed, failed))).toBe(true);
+        expect([...outcome.importedAt.values()].every((run) => run <= 1)).toBe(true);
+      });
+
       it.each([2, 6].map((count) => ({ count })))(
         'P1: $count records that can be trusted in one owed day, half of them in a series that drifts until run 4: the records of the other series import in the first run, the day stays owed, and the drifted series own import once it stops drifting',
         async ({ count }) => {

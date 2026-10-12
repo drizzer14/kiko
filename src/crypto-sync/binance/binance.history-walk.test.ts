@@ -1749,6 +1749,39 @@ describe('advanceWalkMarks', () => {
       ]);
     });
 
+    it('stores the ground a forward span owes in the list, before it moves the cursor past it', async () => {
+      const marks = markOf({ cursor: 100 });
+      const point = pointOf(150_000, 150_002);
+
+      expect(await advance('forward', { start: 100, end: 400 }, marks, planned, [point])).toEqual([
+        [PENDING_FIELD, [day, point]],
+        [FORWARD_FIELD, 400],
+      ]);
+      expect(marks.pending).toEqual([day, point]);
+    });
+
+    it('keeps what an earlier forward span owed in the list the next forward span stores', async () => {
+      const marks = markOf({ cursor: 100 });
+      const first = pointOf(150_000, 150_002);
+      const second = pointOf(160_000, 160_002);
+      await advance('forward', { start: 100, end: 400 }, marks, planned, [first]);
+
+      expect(await advance('forward', { start: 400, end: 700 }, marks, planned, [second])).toEqual([
+        [PENDING_FIELD, [day, first, second]],
+        [FORWARD_FIELD, 700],
+      ]);
+    });
+
+    it('stores the same ground once when two forward spans owe it', async () => {
+      const marks = markOf({ cursor: 100 });
+      const point = pointOf(150_000, 150_002);
+      await advance('forward', { start: 100, end: 400 }, marks, planned, [point]);
+
+      expect(await advance('forward', { start: 400, end: 700 }, marks, planned, [point])).toEqual([
+        [FORWARD_FIELD, 700],
+      ]);
+    });
+
     it('stores nothing when the stored list already is the planned one', async () => {
       const marks = markOf({ cursor: 100, pending: [day] });
 
@@ -1831,10 +1864,11 @@ describe('advanceWalkMarks', () => {
         });
       });
 
-      it('owes nothing for a forward span, whose cursor a stuck record stops instead', async () => {
+      it('stores what a forward span owes (only a code the forward pass owes reaches it, see commitSettledSpan), before the cursor', async () => {
         const marks = markOf({ cursor: 100 });
 
         expect(await advance('forward', { start: 100, end: 400 }, marks, plan, [point])).toEqual([
+          [PENDING_FIELD, [point]],
           [FORWARD_FIELD, 400],
         ]);
       });

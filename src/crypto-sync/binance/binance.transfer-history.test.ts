@@ -17,6 +17,7 @@ import {
   type BinanceHistoryRow,
   type BinanceTransferHistoryDeps,
   syncBinanceTransferHistory,
+  TRANSFER_FORWARD_OWES,
   TRANSFER_SETTLED_STATUS,
   TRANSFER_WINDOW_MS,
   transferFloorMs,
@@ -180,9 +181,14 @@ describe('transferRowsOf', () => {
   });
 
   it('T5: a status that is not CONFIRMED is not settled, whatever it says', () => {
-    for (const status of ['PENDING', 'FAILED', '', 'confirmed', 'PROCESS']) {
+    for (const status of ['PENDING', '', 'confirmed', 'PROCESS']) {
       expect(codeOf(() => rowsOf({ status }))).toBe('transfer-not-settled');
     }
+  });
+
+  it('T11: a FAILED transfer is a stop of its own, which the forward pass owes and goes past', () => {
+    expect(codeOf(() => rowsOf({ status: 'FAILED' }))).toBe('transfer-failed');
+    expect(TRANSFER_FORWARD_OWES).toEqual(['transfer-failed']);
   });
 
   it('T6: a row of another asset gives no row', () => {
@@ -799,6 +805,48 @@ describe('a transfer the walk cannot trust', () => {
     expect(world.added).toEqual([]);
     expect(world.metadata[SPOT_FIELDS.cursor]).toBe(agoMs(20));
     expect(requests.some((request) => request.startTime === agoMs(30))).toBe(true);
+  });
+
+  describe('a FAILED transfer in the forward window', () => {
+    const failed = stuck({ status: 'FAILED', tranId: 'failed' });
+    const newer = entryOf({ tranId: 'newer', timestamp: agoMs(2) });
+    const idsOf = (world: World) => [...new Set(world.added.map((row) => row.externalId))].sort();
+
+    it('is owed at its own point and the cursor goes past it: the other transfers of the span, the newer ones too, import in the same run', async () => {
+      const world = worldOf({ [SPOT_FIELDS.cursor]: agoMs(20) });
+
+      const { result } = await walkOnce({ world, entries: [failed, other, newer] });
+
+      expect(idsOf(world)).toEqual([
+        'acc-1:xfer:MAIN_FUNDING:newer:BTC',
+        'acc-1:xfer:MAIN_FUNDING:newer:BTC:funding',
+        'acc-1:xfer:UMFUTURE_MAIN:fine:BTC',
+      ]);
+      expect(world.metadata[SPOT_FIELDS.cursor]).toBe(NOW);
+      expect(listOf(world)).toContainEqual(pointOf(stuckAt, 'MAIN_FUNDING'));
+      expect(result.complete).toBe(false);
+      expect(stopCodes(warn)).toContain('transfer-failed');
+    });
+
+    it('stays owed in every run after it, whatever the cursor, and a second identical run imports no row it had not', async () => {
+      const world = worldOf({ [SPOT_FIELDS.cursor]: agoMs(20) });
+
+      await walkOnce({ world, entries: [failed, other, newer] });
+      await walkOnce({ world, entries: [failed, other, newer] });
+
+      expect(listOf(world)).toContainEqual(pointOf(stuckAt, 'MAIN_FUNDING'));
+      expect(idsOf(world)).toHaveLength(3);
+    });
+
+    it('does not take the other stops of the forward pass with it: an unsettled transfer beside it still leaves the span uncommitted and the cursor unmoved', async () => {
+      const world = worldOf({ [SPOT_FIELDS.cursor]: agoMs(20) });
+      const pending = stuck({ tranId: 'pending', timestamp: agoMs(8) });
+
+      await walkOnce({ world, entries: [failed, pending, other, newer] });
+
+      expect(world.metadata[SPOT_FIELDS.cursor]).toBe(agoMs(20));
+      expect(idsOf(world)).not.toContain('acc-1:xfer:MAIN_FUNDING:newer:BTC');
+    });
   });
 
   it('T10: a row of another type than the one it was read under is owed at its point, in the type read', async () => {
