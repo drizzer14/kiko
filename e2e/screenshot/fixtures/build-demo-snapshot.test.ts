@@ -1,3 +1,11 @@
+import {
+  parseRuleMatchers,
+  prepareRules,
+  subjectOfStoredRow,
+  validateRule,
+  winningRule,
+} from '@kiko/categories/category-rules';
+import maybe, { foldMap } from 'fnts/maybe';
 import { buildPriceBook } from '@kiko/prices/price-book';
 import { holdingValue } from '@kiko/holdings/holding-value';
 import { isLedgerlessHoldingType } from '@kiko/holdings/holding-descriptor';
@@ -178,7 +186,81 @@ describe('buildDemoSnapshot', () => {
       LOAN_INTEREST_CATEGORY.key,
     ]);
     expect(snapshot.syncState).toEqual([]);
-    expect(snapshot.categoryRules).toEqual([]);
+  });
+
+  // The App Store reviewer reaches the rule editor and the rule cards only through the demo
+  // file (Guideline 5.6), so the file must carry a rule on a name alone and one on several
+  // conditions.
+  describe('category rules', () => {
+    const rulesOf = (demoSnapshot: typeof snapshot) =>
+      demoSnapshot.categoryRules.map((rule) => ({
+        rule,
+        matchers: parseRuleMatchers(rule.matchers),
+      }));
+
+    it('holds a rule on a name alone and a rule on several conditions', () => {
+      const matcherCounts = rulesOf(snapshot).map(({ matchers }) => matchers?.length);
+
+      expect(matcherCounts).toEqual([1, 2]);
+      expect(rulesOf(snapshot)[0].matchers).toEqual([{ type: 'nameIs', text: 'Сільпо' }]);
+      expect(rulesOf(snapshot)[1].matchers).toEqual([
+        { type: 'nameIs', text: 'Uklon' },
+        { type: 'amount', operator: 'lt', minorUnits: 100_000, currency: 'UAH' },
+      ]);
+    });
+
+    it('stores each rule as the app does: ids, a seeded category, the anchor for both stamps', () => {
+      const categoryKeys = new Set(snapshot.categories.map((category) => category.key));
+
+      expect(snapshot.categoryRules.map((rule) => rule.id)).toEqual(['rule-1', 'rule-2']);
+
+      for (const rule of snapshot.categoryRules) {
+        expect(categoryKeys.has(rule.category)).toBe(true);
+        expect(rule.createdAt).toBe(ANCHOR);
+        expect(rule.updatedAt).toBe(ANCHOR);
+      }
+    });
+
+    it('holds only rules the rule editor would accept, none a twin of another', () => {
+      const prepared = prepareRules(snapshot.categoryRules);
+
+      expect(prepared.unreadable).toEqual([]);
+      expect(prepared.ordered).toHaveLength(2);
+
+      for (const rule of prepared.ordered) {
+        expect(validateRule(rule.matchers, prepared.ordered, rule.id)).toEqual({ kind: 'valid' });
+      }
+    });
+
+    it('agrees with the ledger: every row a rule wins already holds that rule category', () => {
+      const prepared = prepareRules(snapshot.categoryRules);
+      const holdingById = new Map(snapshot.holdings.map((holding) => [holding.id, holding]));
+      const wins = snapshot.transactions.flatMap((transaction) => {
+        const rule = winningRule(
+          prepared,
+          subjectOfStoredRow({
+            ...transaction,
+            currency: holdingById.get(transaction.holdingId)?.currency ?? null,
+          }),
+        );
+
+        return foldMap(maybe(rule), (won) => [{ transaction, rule: won }]) ?? [];
+      });
+
+      // Both rules win rows, so the reviewer sees each one matter in the ledger.
+      expect(new Set(wins.map(({ rule }) => rule.id))).toEqual(new Set(['rule-1', 'rule-2']));
+
+      for (const { transaction, rule } of wins) {
+        expect(transaction.category).toBe(rule.category);
+      }
+    });
+
+    it('writes the English rules without a Cyrillic letter and the same shape', () => {
+      const english = buildDemoSnapshot(buildScreenshotDataset('en', ANCHOR));
+
+      expect(rulesOf(english).map(({ matchers }) => matchers?.length)).toEqual([1, 2]);
+      expect(rulesOf(english)[0].matchers).toEqual([{ type: 'nameIs', text: 'Silpo' }]);
+    });
   });
 
   it('seeds every category color from the branded-colors migration, matching a real fresh install', () => {
