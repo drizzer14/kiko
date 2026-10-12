@@ -27,7 +27,7 @@
 // there, so a conflict marker in it once broke every hook in every session.
 // A fast-forward-only update and the recovery options stay allowed.
 //
-// And it denies a shell write into `src/`, `__tests__/`, or `rules/` at the
+// And it denies a shell write into `src/`, `__tests__/`, `rules/`, or `e2e/` at the
 // root of any worktree of this repository — `sed -i`, `perl -i`, a `>`/`>>`
 // (or `>|`, `&>`, `<>`) redirect, `tee`, a python `-c` or node `-e` one-liner
 // (or one fed by a heredoc or here-string on its stdin)
@@ -93,7 +93,7 @@ const MAIN_CHECKOUT_REASON_LINES = [
 ];
 
 const SHELL_WRITE_REASON_LINES = [
-  'WHAT FAILED:    kill-guard denied a shell write into src/, __tests__/, or rules/ of a worktree ' +
+  'WHAT FAILED:    kill-guard denied a shell write into src/, __tests__/, rules/, or e2e/ of a worktree ' +
     'of this repository.',
   'WHY IT MATTERS: the pre-write guard (scripts/checks/pre-write-guard.sh) sees only the Edit, ' +
     'Write, and MultiEdit tools, so a file written by sed -i, perl -i, a > or >> redirect, tee, ' +
@@ -102,7 +102,7 @@ const SHELL_WRITE_REASON_LINES = [
   'HOW TO FIX:     use the Edit or Write tool for that file; to move a file, use `git mv` ' +
     '(git add a new file first), which guard-replay follows as a rename. A path the guard ' +
     'cannot resolve (a ' +
-    'variable, a glob) counts when a folder in it is named src, rules, or __tests__: write the ' +
+    'variable, a glob) counts when a folder in it is named src, rules, e2e, or __tests__: write the ' +
     'literal path, or use another folder name. Reading it, a redirect to /dev/null or to a path ' +
     'outside those trees (your scratchpad, /tmp), git itself (without a redirect into those ' +
     'trees), and a formatter or fixer writing on its own (./node_modules/.bin/biome check ' +
@@ -1224,11 +1224,11 @@ function gitFinding(segment, invocations, rules) {
   return { kind: 'mainCheckout', detail: `${segment.trim()} (runs in ${target})` };
 }
 
-// ---- shell writes into src/, __tests__/, and rules/ ----
+// ---- shell writes into src/, __tests__/, rules/, and e2e/ ----
 
 // The folders, at the root of any worktree of this repository, that only
 // Edit/Write may change: the pre-write guard sees no other tool.
-const WRITE_GUARDED_TREES = new Set(['src', '__tests__', 'rules']);
+const WRITE_GUARDED_TREES = new Set(['src', '__tests__', 'rules', 'e2e']);
 
 // The repository whose worktrees count: the one this file lives in.
 const PROJECT_ROOT = path.resolve(__dirname, '..', '..');

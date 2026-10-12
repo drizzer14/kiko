@@ -669,6 +669,7 @@ export const uk: typeof en = {
     interestEarned: 'Отримані відсотки',
     interestPaid: 'Сплачено відсотків',
     linkedPayments: 'Пов’язані платежі',
+    loanPayment: 'Платіж за кредитом',
     militaryLevy: 'Військовий збір {{pct}}%',
     openingDeposit: 'Відкриття депозиту',
     outstanding: 'Залишок боргу',
@@ -684,6 +685,7 @@ export const uk: typeof en = {
     purchase: 'Купівля',
     redemption: 'Погашення',
     sale: 'Продаж',
+    scheduled: 'Заплановано',
     shareChanges: 'Зміни частки',
     shareSince: 'з {{date}}',
     tax: 'Податок',
@@ -856,13 +858,15 @@ export const uk: typeof en = {
     transferTo: 'Переказ на {{name}}',
   },
   components: {
+    expandToggle: {
+      showAll: 'Показати всі',
+      showLess: 'Згорнути',
+    },
     netWorthLine: {
       loadingHistory: 'Завантаження історії',
     },
     pieChart: {
       emptyDefault: 'Створіть рахунок аби побачити його тут',
-      showAll: 'Показати всі',
-      showLess: 'Згорнути',
     },
   },
   migrations: {

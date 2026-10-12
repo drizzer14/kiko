@@ -163,17 +163,33 @@ dedup always runs in full.
   `check:plist`, `check:rules`.
 - Dedups only a single-file run (a path to an existing file; a
   whole-repo or directory target, as `check:all` runs it, always runs):
-  `check:lint`, `check:security`, `check:secrets`.
+  `check:lint`, `check:secrets`.
 - Dedups only a run given a file list (every argument an existing file,
   as the Stop tier passes the session's changed files; a no-argument run
   such as `check:all` always runs): `check:dup`, `check:overrides`.
+  `check:dup`'s large-file WARNING pass (files over jscpd's 1000-line or
+  100kb limit, measured alone, plus one combined run) is never deduped: the
+  fingerprint covers only the blocking run, and a matching fingerprint skips
+  only that run. The pass runs on every call, so a repeated scoped run prints
+  the same warning again (a Stop hook shows a warning on exit 0 only when
+  the tier fails for another reason, so a skip that hid the warning would hide
+  it for good). A scope with no large file
+  pays only the two `--debug` file listings (about 1 s on the whole repo).
+- Dedups a single file or a manual file list, never the Stop tier:
+  `check:security` (`medium.sh` does not call `security.sh`; the fast tier
+  passes one file, and a person may pass several). The key names every file
+  and the fingerprint covers every file's content plus the two Semgrep rules
+  files, so a changed file or a different file set rescans; a skip prints
+  `security.sh: SKIPPED, not a fresh scan` on stderr. A directory or
+  no-argument run always scans.
 - Dedups both a single-file run and the project-wide run:
   `check:import-order`, `check:full-word-identifiers`,
   `check:screen-imports`, `check:feature-imports`,
   `check:blank-line-separation`. The project-wide run does not dedup when
   its test-seam source-root variable is set.
 - Dedups every run (project-wide only, no per-file mode): `check:knip`,
-  `check:deps`, `check:comment-line-width` (not when its test-seam
+  `check:deps`, `check:comment-line-width` and
+  `check:component-i18n-namespace` (neither when its test-seam
   source-root variable is set), `check:shipped-migrations`,
   `check:guard-replay`, `check:mutation` (the fingerprint includes its
   scope: merge-base and file list).

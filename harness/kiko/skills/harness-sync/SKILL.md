@@ -24,6 +24,15 @@ BATCH READY, and a coordinator-run merge and push after the user's OK.
   `git -C <pff-ios> log --oneline <last point>..main -- harness scripts/checks scripts/wait-load.sh rules docs/harness CLAUDE.md __tests__`.
   Re-verify the sync point against the harness `git log` and CHANGELOG before you use it.
 
+Pending for the next sync (landed in pff-ios 2026-10-11 on branch loan-schedule-cards, not yet
+in the harness repo):
+- The generic Node rule `kiko-component-i18n-namespace` (pff-ios `99a6f0bc`, fixed in
+  `0fb10efc`): a `NODE_RULES` row with `overridable: false`,
+  `component-i18n-namespace.js`/`.sh`, `check:component-i18n-namespace` in `check:all`, exit 2
+  on a missing scan root. Portable only to a repo that uses the
+  `src/design-system/components/<name>/` convention.
+- Capitalization-tolerant history-word phrases in the history-word comment rule (`0fb10efc`).
+
 ## Classification
 
 Build a table FIRST: every pff-ios commit in the range, marked generic (port) or Kiko-only
@@ -39,7 +48,7 @@ Generic (ported in sync 2):
 - Mutation gate: change-set scoring (`mutation-score`), comment-only-changes filter,
   `Stryker disable` needs OVERRIDE, scaffolding out of the mutate set, json reporter.
 - check:closure and the check-all-lists invariant (both manual, outside check:all).
-- Comment rules: history-word, task-id, early-exit pipe consumer, history-id comment,
+- Comment rules: task-id, early-exit pipe consumer, history-id comment,
   comment-line-width, history-date, kiko-no-change-language-in-test-body (WARNING).
 - Invariants and small fixes: typecheck TS18003 notice pass, heading citations,
   cited-paths partial citations, no single-test `paths.exclude`, Biome formats good fixtures,
@@ -127,6 +136,7 @@ BATCH READY — HARNESS SYNC <N>
 
 Base: <sha> (harness main, plugin <version>). Tip: <sha> (branch, <n> commits). Not pushed, not merged.
 Source range: pff-ios <from>..<to> (<n> commits), plus <extra shas>.
+Run: <runId>. TIMES: per harness-workflow "Run log" / kiko:estimator.
 
 GATE (run by the orchestrator at the tip, after wait-load):
 - npm test: exit 0, <pass>/<total> (<suites>).
@@ -152,6 +162,19 @@ FOLLOW-UPS: ...
 Every count and exit code is the orchestrator's own measured result.
 
 ## Carried follow-ups
+
+- `run-log.mjs` was ported harness -> pff-ios from `cc5cd0f` (`d761245`); the
+  byte-identical rule is in `harness-workflow`'s "Run log".
+- The script has no dispatch/step-start event, so per-step `Minutes` miss the work before the
+  first verdict; fix in the harness repo.
+- The source finish snippet prints "run-log: not installed, skipped" also when `node finish`
+  exits 1 (unknown run) or 2 (empty RUN_ID), hiding a real failure; fix in the harness repo
+  (keep the snippet as is here).
+- The source start snippet exits 1 with empty stdout when the installed copy is missing,
+  although its text says it "degrades to a no-op"; fix in the harness repo (keep the snippet
+  as is here).
+- The source harness-workflow "Run log" text says `--step <id>`, but the script needs an
+  integer (`--step N`); fix it in the harness repo at sync 3.
 
 From sync 2 and earlier:
 - Not yet ported: guard-replay, shipped-migrations, plural-count, the estimator skill; the

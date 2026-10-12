@@ -17,6 +17,7 @@
     "scripts/checks/feature-imports.js",
     "scripts/checks/plural-count.js",
     "scripts/checks/comment-line-width.js",
+    "scripts/checks/component-i18n-namespace.js",
     "scripts/checks/specifier-scanner.js",
     "scripts/checks/pre-write-guard.js",
     "scripts/checks/guard-replay.js",

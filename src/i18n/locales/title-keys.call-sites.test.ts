@@ -43,9 +43,8 @@ const DYNAMIC_HEADING_KEYS: Record<string, readonly string[]> = {
   'screens/forms/price-point-form/price-point-form.screen.tsx#copy.title': [
     'forms.pricePoint.loanTitle',
   ],
-  'screens/forms/transaction-form/transaction-form.screen.tsx#props.sheetTitle': [
-    'forms.transaction.holdingSheetTitle',
-  ],
+  'screens/forms/transaction-form/primary-holding-field/primary-holding-field.component.tsx#sheetTitle':
+    ['forms.transaction.holdingSheetTitle'],
   'screens/forms/transaction-form/transaction-form.screen.tsx#title': [
     'forms.transaction.title',
     'forms.transaction.editTitle',

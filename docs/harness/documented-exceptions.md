@@ -159,6 +159,34 @@ verified usage, not dead weight:
   scope. Revisit or remove this exception if the two charts' structure
   ever diverges enough that the duplication is no longer a deliberate
   mirror.
+- **Tracked debt, not an ignore: `check:dup` size-limit warning**
+  (`scripts/checks/dup.sh`, dated 2026-10-11). jscpd 4.3.0 skips a file over
+  1000 lines or 100kb without a word, so the blocking run never measured the
+  large files. `dup.sh` now runs a second, NON-blocking pass: it measures each
+  skipped file ALONE with the limits raised and prints a `WARNING` on stderr
+  (exit code unchanged) for every file over the 5% threshold. No file is
+  allowlisted and the threshold is not raised: the files listed below are measured
+  debt that each warning names (the `dup.sh` warning output is the live list). Measured 2026-10-11 at base `7fc680a5`:
+  `home.screen.test.tsx` 38.24%, `accounts.screen.test.tsx` 23.87%,
+  `statement-import.screen.test.tsx` 14.72%, `transactions.repo.test.ts`
+  10.14%, `sync.test.ts` 7.67%, `statistics.screen.test.tsx` 7.38%,
+  `net-worth-series.test.ts` 7.25%, `restore-snapshot.test.ts` 7.21%,
+  `import-statement.test.ts` 7.09%, `account-form.screen.test.tsx` 6.88%,
+  `transactions.repo.remove-cascade.test.ts` 5.91%, `holdings.repo.test.ts`
+  5.75%, `holding-form.screen.test.tsx` 5.63% (every non-test source file over
+  the limit is under 2%). A second figure is tracked beside the per-file ones:
+  one more run measures the whole scope TOGETHER with the limits raised,
+  because a clone between a large file and another file is invisible to the
+  alone runs. Its baseline on 2026-10-11 is 7.33% of lines, against 3.24% for
+  the blocking run with the default limits, and it applies to the no-argument
+  (whole-repo) run only: a scoped run's combined figure is not comparable; a warning for a combined total
+  above the threshold is expected until the sweep lands, and a figure above
+  7.33% is a new regression. **Flip condition:** a separate sweep track makes
+  every large file 5% or less alone AND the combined raised total 5% or less;
+  then this warning becomes a failure (`exit 2` through `print_block`) and
+  this entry is deleted. The
+  warning is a stated exception to the "silent on success" wrapper contract
+  (kiko-linter's "The wrapper contract").
 - **`knip.json` `entry`** (an entry point, not an ignore):
   `scripts/bundle-contains.js` — the bundle freshness checker that only
   `scripts/deploy-device.sh` runs (`node scripts/bundle-contains.js`), so
@@ -169,7 +197,7 @@ verified usage, not dead weight:
   kill-guard.js`) to tokenize a Bash-tool command and deny pkill/killall,
   pattern/process-group kills, any `git stash`, an unquoted heredoc
   delimiter, a git history change on the main checkout, a shell write
-  into `src/`, `__tests__/`, or `rules/`, and a while/until process-scan
+  into `src/`, `__tests__/`, `rules/`, or `e2e/`, and a while/until process-scan
   wait loop (see CLAUDE.md's "Automatic wiring" and
   `.claude/skills/kiko-linter/SKILL.md`). It is reached only from a sibling
   `.sh` wrapper's `node` invocation — never a static `import`/`require` from
@@ -324,10 +352,23 @@ verified usage, not dead weight:
   columns". Exercised by `__tests__/comment-line-width.test.ts`, which
   spawns the checker and the wrapper as subprocesses, and by
   `__tests__/pre-write-guard.test.ts`'s `comment-line-width` case.
+- **`knip.json` `ignore`**: `scripts/checks/component-i18n-namespace.js` — the
+  same shape as `comment-line-width.js` above.
+  `scripts/checks/component-i18n-namespace.sh` reaches it only via a `node`
+  invocation (its project-wide mode, `npm run check:component-i18n-namespace`;
+  it has no per-file mode), and `scripts/checks/pre-write-guard.js` reaches it
+  only via `runSpawnedNodeChecker`'s own `spawnSync` (the
+  `kiko-component-i18n-namespace` `NODE_RULES` row) — never a static
+  `import`/`require`. The project-wide mode is part of `check:all`. The
+  checker has no allowlist. Exercised by
+  `__tests__/component-i18n-namespace.test.ts`, which spawns the checker and
+  the wrapper as subprocesses, and by `__tests__/pre-write-guard.test.ts`'s
+  `component-i18n-namespace` case.
 - **`knip.json` `ignore`**: `scripts/checks/specifier-scanner.js` — the
   shared specifier scanner. Its only importers are the checkers
-  `feature-imports.js`, `screen-imports.js`, `plural-count.js`, and
-  `comment-line-width.js` (a static `require`), and all four are themselves
+  `feature-imports.js`, `screen-imports.js`, `plural-count.js`,
+  `comment-line-width.js`, and `component-i18n-namespace.js` (a static
+  `require`), and all five are themselves
   in `ignore` above, so Knip never walks into it and reports it as an
   unused file. It is reached exactly as far as those checkers are, and
   exercised through their tests.
@@ -402,7 +443,8 @@ verified usage, not dead weight:
   the linter and assist off for the whole folder, so a good fixture is
   format-checked but never linted; `knip.json` `ignore`,
   `.jscpd.json` `ignore`, and
-  `--exclude 'fixtures'` in `scripts/checks/security.sh`)**: the
+  `--exclude 'fixtures'` in `scripts/checks/security.sh`, plus its drop of
+  any `rules/fixtures/` file among its arguments)**: the
   positive/negative fixture pair that
   proves each project Semgrep rule still fires. A positive fixture is
   deliberately non-conforming, never-imported code (a hidden Guideline 5.6
@@ -824,3 +866,32 @@ verified usage, not dead weight:
   `sf-symbol-catalogue.test.ts` and `deployment-target.test.ts` loudly, never silently. If a dependant
   stops installing it, add it to `package.json` as an exact-pinned
   devDependency instead.
+
+- **`__tests__/skill-identifiers.test.ts`'s two exemption lists (non-project
+  names, and bad-name examples per skill file).** The test fails when an inline code span in a
+  skill or agent file names an identifier that no word of the code corpus
+  matches (see kiko-linter's paragraph on this test, next to the one on
+  `__tests__/cited-paths.test.ts`), so a name that is not this repository's own code must be listed. Each
+  entry is a name the skills cite on purpose that the repository never
+  contains, by category (a category's reason is verified when it is added):
+  library and runtime internals cited to explain a behavior (react-native,
+  react-native-sortables, RNGH, Unistyles, drizzle, a clipboard hook,
+  jest-haste-map), Apple names `ios/` does not use (UIKit; the built
+  Info.plist's `UIDeviceFamily`, which the source plist lacks), the
+  `Intl.Locale` week getter, fnts exports and type parameters, a TypeScript
+  option that `@react-native/typescript-config` sets (`isolatedModules`;
+  `tsconfig.json` extends it and never spells it), a SQL keyword, shell and OS
+  tools plus a python module and a node API named in the kill-guard limits,
+  `du` and `curl` as the auditor and researcher agent files name them, Semgrep
+  taint and `--time` keys, the run log's `summary.json` and `run.json`
+  (written under `~/.claude/harness-runs`, outside the repository), a
+  conventional-commit scope word, a Claude Code
+  tool and a devicectl field, and the drizzer14/harness repo's own config
+  file, keys and env var. A deliberate bad-name or bad-id example, a placeholder (`isX`,
+  `vX.Y.Z`) and a React DevTools label (`Anonymous`) are exempt per
+  `(skill file, name)` pair, not by name alone, like the
+  `full-word-identifiers` `EXEMPTIONS` above: the same name cited as a real
+  symbol in another skill must still resolve. The test also fails on an
+  entry that is no longer cited or now resolves, so the lists only shrink.
+  A name that left the code is fixed in the skill text (renamed, or written
+  without backticks), never added here.

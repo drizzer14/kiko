@@ -350,19 +350,19 @@ Drizzle's own `useLiveQuery` hook only supports `expo-sqlite`, not
 op-sqlite's reactive primitive:
 
 ```ts
-useLiveQuery(drizzleQuery, tables)
+useLiveQuery(query, tables)
 ```
 
 It:
 
 1. Registers `db.reactiveExecute({ query: 'SELECT 1', arguments: [],
    fireOn: tables, callback })` — a CONSTANT trigger, never the real
-   `drizzleQuery`/its params, on the same `fireOn` tables. op-sqlite
+   `query`/its params, on the same `fireOn` tables. op-sqlite
    would otherwise execute the real query on its worker and build a
    native HostObject per row on EVERY fire, purely to hand `callback`
    a result it never reads (see step 2) — a constant trigger still
    fires on the same writes for a fraction of the cost.
-2. Awaits `drizzleQuery` itself (a thenable, mapped to the typed
+2. Awaits `query` itself (a thenable, mapped to the typed
    result shape Drizzle would have produced) once on mount and again
    on every `callback` fire — this is the ONLY place the real rows
    come from.
@@ -856,7 +856,7 @@ have their own, older, pre-existing chunking — don't assume they use
 ## Help (the tips are removed)
 
 - The first-use tips were removed by user ruling ("Hints still look bad, let's remove them for
-  now"): no tips feature folder, no `TipCard`, no `settingsRepo.dismissTip` / `resetTips`, and the Help
+  now"): no tips feature folder, no tip card component, no dismiss-tip or reset-tips settings function, and the Help
   page has no "Show tips again" button. Do not bring a tip or hint back without asking the user.
 - `settings.dismissed_tips` (a JSON `string[]`, migration 0055, `src/db/schema.ts`) is kept but
   unused: no reader and no writer. Migration 0055 already shipped and migrations are
@@ -1421,7 +1421,7 @@ Do NOT collapse them — each drives a different affordance:
    fetches and `commitHolding(count)` as each holding finishes — see
    `src/monobank/`. A path that registers ZERO work publishes
    nothing, so the bar never appears for a run that fetches nothing (the no-op
-   guard, spanning the fan-out). There is NO whole-app `countActiveHoldings`
+   guard, spanning the fan-out). There is NO whole-app active-holdings count
    denominator any more — `total` is the syncing holdings only.
 
    The WORK sources ("weight by real work", the user's decision; confirm on
@@ -1446,7 +1446,7 @@ Do NOT collapse them — each drives a different affordance:
 Read `runSync`/`runSyncInner` (`src/monobank/`) for the exact
 call sites rather than restating the lines here.
 
-The custom `SyncingIndicator` component was REMOVED. There are now TWO
+The custom syncing-indicator component was REMOVED. There are now TWO
 distinct Monobank-sync affordances on Home, DECOUPLED from each other:
 
 1. The native `RefreshControl` spinner — the PULL GESTURE indicator ALONE.
@@ -2046,7 +2046,8 @@ NBU → bundled fiat seed), the `price_points` table, and `PriceBook`.
 - BTC price: CoinGecko free API, quoted in USD; derive other pairs
   from it. No offline seed for crypto; an unrated crypto holding is
   excluded until a live CoinGecko price lands.
-- Store live results in `CurrencyRate`. Refresh on sync, throttled to
+- Store live results in the `currencyRates` table (row type `CurrencyRateRow`,
+  `src/db/schema.ts`). Refresh on sync, throttled to
   respect each provider's own cache window — do not poll faster than
   the upstream cache refreshes.
 

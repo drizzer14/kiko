@@ -40,4 +40,4 @@ Rules:
   over a few minutes in the background and wait only for its exit code; past 30 minutes on one
   step, report "still running: <step>, <elapsed>" instead of going quiet. Then include the command
   and output.
-- Wait for load only via scripts/wait-load.sh; never a ps/pgrep grep loop (kill-guard denies it).
+- Wait for load only via scripts/wait-load.sh; never a ps/pgrep grep loop (kill-guard denies it). `make verify` and mutation gates go through the shared one-at-a-time queue (memory/refs/verify-queue.sh until track H5); never start a second heavy job.

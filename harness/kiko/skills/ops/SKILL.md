@@ -31,6 +31,22 @@ Rules:
   resolve are refused directly (exit 2), and no env var bypasses the cap.
   On that failure, split the run into smaller change sets — never raise
   the cap.
+- A running gate can be paused with `kill -STOP` on its own pids (the
+  stryker parent plus its `child-process-proxy-worker` children) and
+  resumed with `kill -CONT` (verified 2026-10-10/11: kill-guard allows it
+  for own pids). A pause is NOT only a time cost: after the resume,
+  Stryker's wall-clock timer fires for each in-flight mutant, so each is
+  recorded as Timeout; `scripts/checks/mutation-score.js` counts Timeout
+  as detected, and `stryker.conf.json` `"incremental": true` keeps it in
+  `reports/stryker-incremental.json`. A pause can therefore credit up to
+  one in-flight mutant per worker per pause and turn a FAIL into a PASS.
+  Before trusting a paused run, recompute the score with the Timeout
+  mutants counted as survived, or re-run without the incremental report.
+  When the score is near the floor, let
+  the run finish or re-run it instead of pausing. Use a pause for battery
+  mode or a simulator session only when the score has headroom.
+- The coordinator who runs `make deep` logs the result per harness-workflow's "Run log"
+  (`--gate deep --verdict pass|fail|timeout` on the run id the BATCH READY names).
 - Run check:deep / check:mutation only through the wrapper
   (`npm run check:deep` / `npm run check:mutation`, or `make deep`); it is
   single-flighted and tears its own workers down. Never run
@@ -166,7 +182,7 @@ install, so compare it with the prior one to prove a fresh install
 actually landed.
 
 A change under `harness/kiko/` (hooks, scripts it calls) is live only
-after a plugin update — see `harness-workflow`'s "Harness hook changes
+after the coordinator's plugin update and reload — see `harness-workflow`'s "Harness hook changes
 go live only after a plugin update". Verify with a harmless probe
 before you rely on a hook.
 
@@ -236,5 +252,12 @@ runs (kiko-linter "WAIT-LOOP deny"); a `ps -p <pid>` or `kill -0 <pid>` wait
 stays allowed. At most ONE jest-heavy agent per track; Semgrep or jest
 timeouts at high load are environment, not code: re-run at low load,
 never raise a timeout. See memory `check-security-timeout-under-load`.
+
+`make verify` and a mutation gate each take the shared one-at-a-time lock; until track H5 moves the queue into scripts/, queue them via memory/refs/verify-queue.sh (coordinator-owned); never start a second heavy job. Keep `wait-load.sh` for the load wait only.
+
+Known limit: load5 can stay high while the CPU is idle, so `wait-load.sh` can block for nothing (2026-10-11: load5 31 with
+idle CPU blocked agents 35+ min). Workaround: check real CPU use
+(`top -l 2`, idle column) and pass a higher threshold, or skip the wait
+when the coordinator says so. When verify timeouts come from load, the queue (not raised thresholds or a skipped wait) is the fix.
 
 Background Claude sessions export FORCE_COLOR=3; run checks as `env -u FORCE_COLOR <command>`.

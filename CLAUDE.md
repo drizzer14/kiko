@@ -3,6 +3,14 @@
 This project uses a Biome-adapted, LLM-guarding quality harness. Every
 check runs through a wrapper in `scripts/checks/` that prints a
 structured failure block on failure and stays silent on success.
+`scripts/checks/security.sh` is a stated exception: it writes the
+dedup-skip notice (so a skip never reads as a fresh scan) and the Class B
+WARNING block (a finding that does not block still has to be seen) to
+stderr with exit 0. So is `scripts/checks/dup.sh`, whose large-file
+WARNING lines (tracked debt that does not block) go to stderr with exit 0.
+The other exceptions (the deep tier's streaming, the hook guards' JSON) are
+listed in kiko-linter's "The wrapper contract" (the JSON ones are `kill-guard.sh` and
+`pre-write-guard.sh`).
 
 **Standing rule: fix the underlying issue. Never weaken a check to get
 green.** No `|| true`. No global auto-suppress. An ignore-list entry
@@ -14,10 +22,10 @@ below).
 | Command | Tool | Threshold | Tier |
 |---|---|---|---|
 | `npm run check:lint` | Biome | any lint/format violation fails (Biome skips only the bad fixtures `rules/fixtures/**/*.bad.*`; a good fixture is format-checked, never linted — see `docs/harness/documented-exceptions.md`) | fast (PostToolUse) |
-| `npm run check:dup` | jscpd | >5% duplicated lines/tokens fails | medium (Stop/SubagentStop) |
+| `npm run check:dup` | jscpd (`scripts/checks/dup.sh`) | >5% duplicated lines/tokens fails. jscpd skips a file over 1000 lines or 100kb without a word, so a second NON-blocking pass (it runs on every call, a dedup skip included) measures each such file alone with the limits raised, plus one combined run of the whole scope, and prints a `WARNING` on stderr (file and percentage; exit code unchanged) for every figure over 5% or one it cannot measure. A scoped run covers only the files it was given. A warning on exit 0 is shown by a hook only when the tier fails for another reason (the tier's whole stderr is shown then); it is tracked debt, not that failure. A person or a manual `check:dup` run is its usual reader. Tracked debt, not an allowlist: it becomes a failure once the sweep track brings every large file, and the combined total, to 5% or less (see `docs/harness/documented-exceptions.md`) | medium (Stop/SubagentStop) |
 | `npm run check:knip` | Knip | any unused file/export/dependency fails | medium |
 | `npm run check:deps` | depcheck + `npm ci --dry-run` + `deps-ranges.js` (exact-pin allowlist) + `npm ls --all` | any unused/missing dep, or broken lockfile, fails; any non-exact-semver spec in dependencies/devDependencies/optionalDependencies/peerDependencies/overrides fails; any `npm ls --all` ELSPROBLEMS (an unsatisfied resolved-tree requirement) fails; a changed dependency block is surfaced for confirmation; a `node_modules/node_modules` link or folder fails before npm ls runs; the fix is `rm node_modules/node_modules` for a link and `npm ci` for a folder, never `rm -r node_modules` | medium |
-| `npm run check:security` | Semgrep (`p/typescript`, `p/react`, `p/secrets`, `rules/semgrep-mobile.yml`, `rules/semgrep-prewrite.yml`) | any Class A (ERROR) finding fails; Class B (WARNING) findings are surfaced, override-eligible, non-blocking; a Semgrep error, timeout, bad exit code, or invalid JSON output also fails (see `security.sh`) | fast |
+| `npm run check:security` | Semgrep (`p/typescript`, `p/react`, `p/secrets`, `rules/semgrep-mobile.yml`, `rules/semgrep-prewrite.yml`) | any Class A (ERROR) finding fails; Class B (WARNING) findings are surfaced, override-eligible, non-blocking; a Semgrep error, timeout, bad exit code, or invalid JSON output also fails (see `security.sh`); every argument is scanned in one call, and a dedup skip says so on stderr | fast |
 | `npm run check:rules` | `scripts/checks/semgrep-rules.sh` — Semgrep (`rules/semgrep-mobile.yml` and `rules/semgrep-prewrite.yml`) against `rules/fixtures/` | for every fixture present: a rule that reports nothing on its positive fixture, misses a line pinned there by an `EXPECT-FINDING` comment, or matches its negative one fails; so does a fixture id with only one half of its pair present, and a scan that proved nothing (no fixtures, a fixture semgrep never opened, a semgrep error, or a semgrep/verifier crash). A rule with no fixture at all is not detected here — the fixture set is the input | medium |
 | (PreToolUse hook) | `scripts/checks/pre-write-guard.sh` + `.js` — Semgrep (`rules/semgrep-prewrite.yml`) plus the Node-checker rules in `pre-write-guard.js`'s own `NODE_RULES` (see that file for the closed rule set) against the proposed post-edit content of an `Edit`/`Write`/`MultiEdit` target | any NEW finding from a Semgrep rule in `rules/semgrep-prewrite.yml` or a Node rule in `pre-write-guard.js`'s `NODE_RULES` denies the write before it lands; a "could not check" failure (Semgrep/Node crash, malformed input) denies too — fail-closed, never bypass | PreToolUse (pre-write) |
 | `npm run check:plist` | plist.sh (`plutil`) | any Info.plist security invariant violation fails; a credential client (a credential header or the api_token parameter) without a Cache-Control: no-store request header fails; so does a localized app-name table (`ios/Kiko/*.lproj/InfoPlist.strings`) missing from the Resources build phase, or a missing DiskSpace required-reason entry in `PrivacyInfo.xcprivacy` while any dependency on check 5's linked list in `scripts/checks/plist.sh` ships (fail-closed; see `plist.sh`) | medium |
@@ -29,6 +37,7 @@ below).
 | `npm run check:feature-imports` | `scripts/checks/feature-imports.sh` (+ `feature-imports.js`) | an import that crosses a feature without its barrel (`kiko-feature-imports`, B2) fails; so do the `--tree` layout findings over `src/` (loose file at a container root, unit without `index.ts`, undeclared container, a barrel that re-exports test code or another feature, a feature-level value-import cycle) | project-wide (`check:all`) + pre-write guard |
 | `npm run check:blank-line-separation` | `scripts/checks/blank-line-separation.sh` | a blank-line-separation violation (`kiko-blank-line-separation`) fails project-wide | project-wide (`check:all`) + pre-write guard |
 | `npm run check:comment-line-width` | `scripts/checks/comment-line-width.sh` (+ `.js`) | a physical line over 100 columns holding comment text (`kiko-comment-line-width`) fails project-wide, unless the comment has no wrap point (one long URL); no override of any kind (kiko-code-style "Wrap comments at 100 columns", kiko-linter's `comment-line-width.js` bullet) | project-wide (`check:all`) + pre-write guard |
+| `npm run check:component-i18n-namespace` | `scripts/checks/component-i18n-namespace.sh` (+ `.js`) | a file under `src/design-system/components/<name>/` that reads an i18n key `components.<other>.*`, where `<other>` is not the camelCase form of `<name>` (`kiko-component-i18n-namespace`), fails project-wide; no per-file mode, no exemption list (kiko-translator "A string moved into a shared component changes namespace") | project-wide (`check:all`) + pre-write guard |
 | `npm run check:guard-replay` | `scripts/checks/guard-replay.sh` (+ `.js` planner/runner) — the unchanged pre-write guard (`pre-write-guard.sh`), run once per `.ts`/`.tsx` file the session changed, with BEFORE = the file at HEAD, or at the parent of the earliest session commit (one that no worktree's passed-replay mark ref `refs/kiko/guard-replay/<worktree id>` reaches and that is newer than the floor ref `refs/kiko/guard-replay-floor` or has a session commit as a parent; through a merge commit, a file the merge kept from one parent takes that parent's baseline, and a file it left different from every parent is checked against both parents' baselines (see `guard-replay.js`'s header)), and AFTER = the working-tree file | any finding the change ADDED fails, naming file, rule, and line (a Bash/python write or its commit bypassed the pre-write guard); a pre-existing finding does not; a replay or guard that could not run fails too (fail closed), and so does the Stop tier's deadline (at most 150 s) | medium (Stop/SubagentStop) + project-wide (`check:all`, no deadline) |
 | `npm run check:shipped-migrations` | `scripts/checks/shipped-migrations.sh` (+ `.js`) | a shipped migration file that is modified, deleted, or renamed fails; a new migration passes; no override and no exemption list. The per-file rules, the baseline, and the known limits live in kiko-linter's "Shipped migrations are never edited" | medium (Stop/SubagentStop, before the replay and the HEAD-moved early exit) + project-wide (`check:all`) |
 | `npm run check:closure -- <table.md>` | `scripts/checks/closure-table.sh` (+ `.js`) | a closure-table row whose id cell is a range or list, a duplicate id, a fix sha that does not resolve or is not an ancestor of HEAD, a pinning test that is not an existing file:line, or a CLOSED or CLOSED-UNPROVEN row without a sha or a test, or a CLOSED row without "yes" under "Fails on pre-fix source" fails; run by hand at a round's end, not part of `check:all`, not deduped | manual |
@@ -41,7 +50,7 @@ Composite scripts:
 - `npm run check:all` — the fast + medium tier checks, in order:
   lint, dup, knip, deps, security, rules, plist, secrets, overrides,
   import-order, full-word-identifiers, screen-imports, feature-imports,
-  blank-line-separation, comment-line-width, shipped-migrations, guard-replay, typecheck.
+  blank-line-separation, comment-line-width, component-i18n-namespace, shipped-migrations, guard-replay, typecheck.
   `__tests__/check-all-lists.test.ts` pins this list to `package.json` and the hooks.
 - `npm run check:deep` — the heavy tier: mutation testing, then
   osv-scanner. It is not wired to any hook because it is slow; it is a
@@ -59,8 +68,9 @@ Composite scripts:
   bypasses the cap. There is no release-scope deep gate. **Who and when:**
   the coordinator runs `KIKO_MUTATION_BASE=<change set base sha> make
   deep`, detached, for each reviewed change set (<= 30 source files)
-  before its merge into next. Orchestrators never run it; a BATCH READY
-  names the change-set base sha and the file count, counted
+  before its merge into next (and logs the result per harness-workflow's
+  "Run log"). Orchestrators never run it; a BATCH READY
+  names the change-set base sha, the run id, and the file count, counted
   with the gate's own filter, never by hand: `KIKO_MUTATION_BASE=<base sha>
   make mutable` (it runs `mutation.sh --list`) prints the files and
   `mutable files: N (cap …)`, exits 2 above the cap, and never starts
@@ -142,7 +152,7 @@ See kiko-linter's "MAIN-CHECKOUT deny" for the full rule and limits.
 The same hook also denies a shell write (`sed -i`, `perl -i`, a `>`/`>>`
 redirect, `tee`, `cp`/`mv` (also `gcp`/`gmv`), a python/node one-liner or stdin heredoc
 script (ruby/perl code — `-e` or a stdin script — is a known limit))
-into `src/`, `__tests__/`, or `rules/` of any worktree of this
+into `src/`, `__tests__/`, `rules/`, or `e2e/` of any worktree of this
 repository, because the pre-write guard sees only Edit/Write/MultiEdit:
 use Edit or Write. Move or rename a file with `git mv` (`git add` a new
 file first), then edit it with Edit/Write. Reads, git itself, and a
@@ -273,7 +283,7 @@ skill that documents the release-publishing workflow and an
 `estimator` skill that states the duration-estimate rules, and a
 `harness-sync` skill for porting generic harness changes to the
 drizzer14/harness repo), one
-vendored review command, and the tier hooks documented above.
+vendored review command, the `harness/kiko/scripts/run-log.mjs` run log, and the tier hooks documented above.
 
 A fresh checkout must run `npm install` before the harness hooks
 work — the check tools they call (Biome, jscpd, Knip, depcheck,
