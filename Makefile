@@ -39,7 +39,7 @@ jest: ## Run the full Jest suite
 deep: ## Deep gate: mutation testing + osv-scanner, per small change set (set KIKO_MUTATION_BASE; > 30 files fails). It prints a `tail -f` line to watch progress.
 	npm run check:deep
 
-mutable: ## List the mutable files and count for KIKO_MUTATION_BASE (no Stryker)
+mutable: ## List the mutable files, their changed-line ranges, and the count for KIKO_MUTATION_BASE (no Stryker)
 	bash scripts/checks/mutation.sh --list
 
 typecheck: ## tsc --noEmit
