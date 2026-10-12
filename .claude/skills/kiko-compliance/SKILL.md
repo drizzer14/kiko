@@ -59,7 +59,11 @@ with no ledger of its own (the set `isLedgerlessHoldingType` in
 `src/holdings/holding-descriptor/holding-descriptors.ts` defines — read it
 there) values to non-zero through the app's own valuation, the demo dataset also holds a transaction
 template of every mode (`TEMPLATE_MODES` in `src/transaction-templates/draft/template-draft.ts`;
-pinned in `e2e/screenshot/seed/screenshot-seed.test.ts`), each referencing holdings and a
+`e2e/screenshot/seed/screenshot-seed.test.ts` pins one per stored mode; 
+`src/screens/forms/transaction-form/transaction-form.demo-templates.test.ts` reads the committed
+`kiko-demo-en`/`kiko-demo-uk` `.kiko` files as data and pins that every demo template fills in its
+own mode with every reference seated, while `generate-demo-kiko.test.ts` proves those files equal
+the seed builder), each referencing holdings and a
 category in the snapshot (`build-demo-snapshot.test.ts`), reachable from the Templates list
 (Settings > Transaction templates), the demo holds at
 least one bank account per connectable catalog bank (derived from `bankCatalog`,

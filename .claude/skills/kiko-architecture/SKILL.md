@@ -35,8 +35,11 @@ build-a-bundle CI gate:
   `npm run check:rules`). It flags three shapes: (a) importing a
   `SHOW_*`/`HIDE_*`/`SCREENSHOT_*` `@env` flag, (b) a static `import`
   whose specifier contains the literal `e2e/` segment, and (c) a dynamic
-  `require(...)` whose specifier contains `e2e/`. `src/` has zero `e2e/`
-  crossings of any kind. **Metro dead-code elimination is not
+  `require(...)` whose specifier contains `e2e/`. No `src/` module imports
+  an `e2e/` module. A jest test under `src/` may READ a committed `e2e/` fixture file as data
+  through `node:fs` (precedents: `src/data-transfer/import-data.back-compat.test.ts`,
+  `src/screens/forms/transaction-form/transaction-form.demo-templates.test.ts`); that is not an
+  import, and Metro never bundles a test file. **Metro dead-code elimination is not
   trusted as a substitute for (c):** build 8 shipped
   `seedScreenshotData` inside `main.jsbundle` despite it sitting behind
   a dead `if (SCREENSHOT_MODE === 'true')` branch that DCE was supposed
