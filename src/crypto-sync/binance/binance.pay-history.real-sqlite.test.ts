@@ -81,6 +81,7 @@ const runWalk = (orders: BinancePayOrder[]) =>
       fetchAccount: async () => ({ balances: [], uid: OWN }),
       fetchPayHistory: async () => ({
         rows: orders,
+        unreadable: [],
         gathered: orders.length,
         btcFundedOtherCoinOrders: [],
         usedUidWeight1m: undefined,
@@ -107,11 +108,13 @@ const runCapitalWalk = (deposits: { id: string; amount: string; insertTime: numb
           status: 1,
           walletType: undefined,
         })),
+        unreadable: [],
         usedUidWeight1m: undefined,
         usedIpWeight1m: undefined,
       }),
       fetchWithdrawHistory: async () => ({
         rows: [],
+        unreadable: [],
         usedUidWeight1m: undefined,
         usedIpWeight1m: undefined,
       }),
@@ -290,6 +293,7 @@ describe('the Pay walk on real SQLite', () => {
 
         return {
           rows,
+          unreadable: [],
           gathered: rows.length,
           btcFundedOtherCoinOrders: [],
           usedUidWeight1m: undefined,

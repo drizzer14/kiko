@@ -21,6 +21,7 @@ import {
   type BinancePayOrder,
   PAY_PAGE_LIMIT,
   type PayHistoryPage,
+  type UnreadableRow,
 } from './binance.history-client';
 import { BinanceRateLimitError } from './binance.client';
 import { HISTORY_FLOOR_MS } from './binance.transactions';
@@ -43,6 +44,7 @@ const nextAccountId = (): string => {
 
 const payPage = (rows: BinancePayOrder[], over: Partial<PayHistoryPage> = {}): PayHistoryPage => ({
   rows,
+  unreadable: [],
   gathered: rows.length,
   btcFundedOtherCoinOrders: [],
   usedUidWeight1m: undefined,
@@ -1752,6 +1754,156 @@ describe('the pending overlap days of a walk', () => {
         ).toBe(true);
         expect(beyondWindow(state.pending)).toEqual([]);
         expect(state.payCursor).toBe(CURSOR);
+      });
+    });
+
+    describe('with an item the client could not read (R30)', () => {
+      const UNREADABLE_CODE = 'pay-row-unreadable';
+      const goodOrder = () => order({ transactionId: 'good', transactionTime: stuckAt });
+
+      /** A read that also reports the unreadable items in the span (all those with no time). */
+      const reporting = (serve: ReturnType<typeof serverOf>, unreadable: UnreadableRow[]) =>
+        jest.fn(async (apiKey: string, secret: string, query: PayQuery) => {
+          const page = await serve(apiKey, secret, query);
+          const inSpan = unreadable.filter(
+            ({ time }) =>
+              typeof time !== 'number' || (time >= query.startTime && time <= query.endTime),
+          );
+
+          return { ...page, unreadable: inSpan, gathered: page.gathered + inSpan.length };
+        });
+
+      const loggedCodes = (): string[] => warn.mock.calls.map(([, detail]) => detail.code);
+
+      it('imports the readable order of an owed day and owes the unreadable one at its own point, logging only the code', async () => {
+        const state = stateOf({ payCursor: NOW - 2 * DAY_MS, pending: [stuckDay] });
+
+        const { result } = await runOver(state, [], NOW, {
+          fetchPayHistory: reporting(serverOf([goodOrder()], ASCENDING), [{ time: stuckAt }]),
+        });
+
+        expect(state.imported).toEqual(new Set([keyOf(state, goodOrder())]));
+        expect(beyondWindow(state.pending)).toEqual([pointAt(stuckAt)]);
+        expect(warn.mock.calls).toEqual([
+          [WARN_TAG_STOP, { name: 'BinanceWalkStop', code: UNREADABLE_CODE }],
+        ]);
+        expect(result.complete).toBe(false);
+      });
+
+      it('owes the whole span of an item with no usable time, and imports the other orders of it', async () => {
+        const state = stateOf({ payCursor: NOW - 2 * DAY_MS, pending: [stuckDay] });
+
+        await runOver(state, [], NOW, {
+          fetchPayHistory: reporting(serverOf([goodOrder()], ASCENDING), [{ time: undefined }]),
+        });
+
+        expect(state.imported).toEqual(new Set([keyOf(state, goodOrder())]));
+        expect(beyondWindow(state.pending)).toEqual([stuckDay]);
+        expect(loggedCodes()).toContain(UNREADABLE_CODE);
+      });
+
+      it('owes the point of an unreadable item of the re-scan window, and imports the orders around it', async () => {
+        const unreadableAt = NOW - 10 * DAY_MS;
+        const state = stateOf({ payCursor: NOW - 2 * DAY_MS });
+        const later = order({ transactionId: 'later', transactionTime: NOW - 5 * DAY_MS });
+
+        const { result } = await runOver(state, [], NOW, {
+          fetchPayHistory: reporting(serverOf([later], ASCENDING), [{ time: unreadableAt }]),
+        });
+
+        expect(state.imported).toEqual(new Set([keyOf(state, later)]));
+        expect(state.pending).toEqual([pointAt(unreadableAt)]);
+        expect(result.complete).toBe(false);
+      });
+
+      it('stops the forward pass like any other stop: the cursor stays, and the owed day is still read', async () => {
+        const cursor = NOW - 2 * DAY_MS;
+        const state = stateOf({ payCursor: cursor, pending: [stuckDay] });
+
+        const { result } = await runOver(state, [], NOW, {
+          fetchPayHistory: reporting(serverOf([goodOrder()], ASCENDING), [
+            { time: NOW - 3_600_000 },
+          ]),
+        });
+
+        expect(state.payCursor).toBe(cursor);
+        expect(state.imported).toEqual(new Set([keyOf(state, goodOrder())]));
+        expect(result.complete).toBe(false);
+      });
+
+      it('never rejects the run for an item, and writes the rows of the span before the list that owes it', async () => {
+        const state = stateOf({ payCursor: NOW - 2 * DAY_MS, pending: [stuckDay] });
+
+        const { deps } = await runOver(state, [], NOW, {
+          fetchPayHistory: reporting(serverOf([goodOrder()], ASCENDING), [{ time: stuckAt }]),
+        });
+
+        const listWrites = deps.writeWalkPending as jest.Mock;
+        const owedAt = listWrites.mock.calls.findIndex((call) =>
+          (call[2] as WalkWindow[]).some((range) => range.start === stuckAt - 1),
+        );
+        expect((deps.addTransactions as jest.Mock).mock.invocationCallOrder[0]).toBeLessThan(
+          listWrites.mock.invocationCallOrder[owedAt],
+        );
+      });
+    });
+
+    describe('a point whose window comes back full, so it is read in halves', () => {
+      const repaired = () => order({ transactionId: 'repaired', transactionTime: stuckAt });
+      const secondHalfOf = (query: PayQuery): boolean =>
+        query.startTime === stuckAt && query.endTime === stuckAt + 1;
+      const rateLimited = (): PayHistoryPage => {
+        throw new BinanceRateLimitError(429, 60_000);
+      };
+
+      /** The point's window is full; each half answers with the orders given, or a rate limit. */
+      const halvesGiving = (first: BinancePayOrder[], second: BinancePayOrder[] | 'rate limit') => {
+        const answers = new Map<string, () => PayHistoryPage>([
+          [`${stuckAt - 1}:${stuckAt + 1}`, () => fullPage()],
+          [`${stuckAt - 1}:${stuckAt}`, () => payPage(first)],
+          [
+            `${stuckAt}:${stuckAt + 1}`,
+            second === 'rate limit' ? rateLimited : () => payPage(second),
+          ],
+        ]);
+
+        return jest.fn(
+          async (_apiKey: string, _secret: string, query: PayQuery) =>
+            answers.get(`${query.startTime}:${query.endTime}`)?.() ?? payPage([]),
+        );
+      };
+
+      it('takes the point off the list once both halves were read, though only the second held its record', async () => {
+        const state = stateOf({ payCursor: NOW - 2 * DAY_MS, pending: [pointAt(stuckAt)] });
+
+        const { deps } = await runOver(state, [], NOW, {
+          fetchPayHistory: halvesGiving([], [repaired()]),
+        });
+
+        expect(state.imported).toEqual(new Set([keyOf(state, repaired())]));
+        expect(queriesOf(deps).filter(secondHalfOf)).toHaveLength(1);
+        expect(beyondWindow(state.pending)).toEqual([]);
+      });
+
+      it('keeps the point when the budget ends after the first half, though that half returned its record', async () => {
+        const state = stateOf({ payCursor: NOW - 2 * DAY_MS, pending: [pointAt(stuckAt)] });
+
+        await runOver(state, [], NOW, {
+          fetchPayHistory: halvesGiving([repaired()], 'rate limit'),
+        });
+
+        expect(state.imported).toEqual(new Set([keyOf(state, repaired())]));
+        expect(beyondWindow(state.pending)).toEqual([pointAt(stuckAt)]);
+      });
+
+      it('keeps the point when its record is stuck in the second half, whatever the first half returned', async () => {
+        const state = stateOf({ payCursor: NOW - 2 * DAY_MS, pending: [pointAt(stuckAt)] });
+
+        await runOver(state, [], NOW, {
+          fetchPayHistory: halvesGiving([repaired()], [stuckOrder()]),
+        });
+
+        expect(beyondWindow(state.pending)).toEqual([pointAt(stuckAt)]);
       });
     });
 

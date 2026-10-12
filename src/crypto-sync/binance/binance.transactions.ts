@@ -10,6 +10,7 @@ import {
   type BinanceWalkPendingField,
 } from '@kiko/holdings/holding-metadata';
 import type { HoldingRow } from '@kiko/db';
+import maybe, { foldMap } from 'fnts/maybe';
 import { transactionsRepo } from '@kiko/transactions/repo';
 import { type ExchangeHolding, holdingsRepo } from '@kiko/holdings/repo';
 
@@ -17,6 +18,7 @@ import {
   advanceWalkMarks,
   BinanceWalkStop,
   btcSatoshis,
+  dropReadPoints,
   halfOf,
   type OwedGround,
   planWalkPasses,
@@ -49,12 +51,22 @@ import {
   HISTORY_PAGE_LIMIT,
   type HistoryPage,
   type HistoryWindow,
+  type UnreadableRow,
 } from './binance.history-client';
+import {
+  commitSettledSpan,
+  instantAt,
+  joinSettled,
+  settleRecords,
+  settleUnreadable,
+} from './binance.history-records';
 import { type BinanceCredentials, readCredentials } from './binance.credentials';
 import { isBinanceCoolingDown, setBinanceCooldownUntil } from './binance.cooldown';
-import { commitSettledSpan, instantAt, settleRecords } from './binance.history-records';
 import { BINANCE_ASSET, BinanceRateLimitError, type FetchAccountOptions } from './binance.client';
 import { type BinanceWalletKey, binanceKeyOf, FUNDING_KEY, SPOT_KEY } from './binance.holding-keys';
+
+/** The stop of a row the client could not read: logged by its code alone, never its content. */
+const CAPITAL_ROW_UNREADABLE = 'capital-row-unreadable';
 
 /** Binance's own settled states: a credited deposit, a completed withdrawal. */
 const DEPOSIT_STATUS_SUCCESS = 1;
@@ -299,8 +311,13 @@ type WindowContext = {
   plan: WalkPlan;
 };
 
-/** One endpoint's records for a span, or the half to ask for instead. */
-type Paged<Row> = { kind: 'rows'; rows: Row[] } | { kind: 'split'; half: WalkWindow };
+/**
+ * One endpoint's records for a span (`rows` that parsed, `unreadable` that did not), or the half
+ * to ask for instead.
+ */
+type Paged<Row> =
+  | { kind: 'rows'; rows: Row[]; unreadable: UnreadableRow[] }
+  | { kind: 'split'; half: WalkWindow };
 
 /**
  * Page one span of one endpoint, spending the run's shared budget one call at a time and
@@ -322,6 +339,7 @@ const fetchAllInWindow = async <Row>(
   fetchPage: (offset: number) => Promise<HistoryPage<Row>>,
 ): Promise<Paged<Row> | undefined> => {
   const rows: Row[] = [];
+  const unreadable: UnreadableRow[] = [];
 
   for (let pageIndex = 0; pageIndex < MAX_PAGES_PER_WINDOW; pageIndex += 1) {
     if (!run.budget.canAfford(budgeted.lane, budgeted.cost, budgeted.keep)) {
@@ -332,9 +350,11 @@ const fetchAllInWindow = async <Row>(
     const page = await fetchPage(pageIndex * HISTORY_PAGE_LIMIT);
     run.budget.record(budgeted.lane, page);
     rows.push(...page.rows);
+    unreadable.push(...page.unreadable);
 
-    if (page.rows.length < HISTORY_PAGE_LIMIT) {
-      return { kind: 'rows', rows };
+    // An unreadable row fills the page as much as a row that parsed.
+    if (page.rows.length + page.unreadable.length < HISTORY_PAGE_LIMIT) {
+      return { kind: 'rows', rows, unreadable };
     }
 
     if (budgeted.half !== undefined) {
@@ -342,10 +362,15 @@ const fetchAllInWindow = async <Row>(
     }
   }
 
-  return { kind: 'rows', rows };
+  return { kind: 'rows', rows, unreadable };
 };
 
-type SpanRecords = { deposits: BinanceDeposit[]; withdrawals: BinanceWithdrawal[] };
+type SpanRecords = {
+  deposits: BinanceDeposit[];
+  withdrawals: BinanceWithdrawal[];
+  unreadableDeposits: UnreadableRow[];
+  unreadableWithdrawals: UnreadableRow[];
+};
 
 /**
  * Fetch one span's deposits and withdrawals. `undefined` is a clean stop: the budget ran
@@ -388,7 +413,12 @@ const readSpan = async (
 
     return {
       kind: 'page',
-      page: { deposits: deposits.rows, withdrawals: withdrawals.rows },
+      page: {
+        deposits: deposits.rows,
+        withdrawals: withdrawals.rows,
+        unreadableDeposits: deposits.unreadable,
+        unreadableWithdrawals: withdrawals.unreadable,
+      },
     };
   } catch (error) {
     if (error instanceof BinanceRateLimitError) {
@@ -463,22 +493,36 @@ const plannedOf = (accountId: string, entry: SpanRecord): PlannedRow[] =>
     .filter((row): row is PlannedRow => row !== null);
 
 /**
- * The milliseconds a record may sit in: its time, or every millisecond a second either side of a
- * withdrawal's time (which Binance may have cut or rounded to the second).
+ * The milliseconds a withdrawal may sit in: every millisecond a second either side of its time
+ * (which Binance may have cut or rounded to the second).
  */
+const withdrawalExtentOf = (applyTime: string | number): WalkWindow => {
+  const time = parseWithdrawTime(applyTime);
+
+  return {
+    start: time - (APPLY_TIME_PRECISION_MS - 1),
+    end: time + (APPLY_TIME_PRECISION_MS - 1),
+  };
+};
+
+/** The milliseconds a record may sit in: its time, or those of a withdrawal's second. */
 const extentOf = (entry: SpanRecord): WalkWindow | undefined =>
   match(entry)
     .returnType<WalkWindow | undefined>()
     .with({ kind: 'deposit' }, ({ record }) => instantAt(record.insertTime))
-    .with({ kind: 'withdraw' }, ({ record }) => {
-      const time = parseWithdrawTime(record.applyTime);
-
-      return {
-        start: time - (APPLY_TIME_PRECISION_MS - 1),
-        end: time + (APPLY_TIME_PRECISION_MS - 1),
-      };
-    })
+    .with({ kind: 'withdraw' }, ({ record }) => withdrawalExtentOf(record.applyTime))
     .exhaustive();
+
+/**
+ * Where a row the client could not read may sit, when its own time field was usable: like a
+ * deposit, the millisecond of a number; like a withdrawal, the seconds around a time that may be
+ * a datetime text. A time that does not parse gives an extent that is not finite, which the walk
+ * reads as no time at all.
+ */
+const unreadableExtentOf = (kind: SpanRecord['kind'], row: UnreadableRow): WalkWindow | undefined =>
+  foldMap(maybe(row.time), (time) =>
+    kind === 'deposit' ? instantAt(Number(time)) : withdrawalExtentOf(time),
+  );
 
 /**
  * Commit one span: place and write the rows of the records the walk can trust, then move the
@@ -497,23 +541,36 @@ const commitSpan = (
   return commitSettledSpan({
     pass,
     span,
-    settled: settleRecords({
-      span,
-      records: [
-        ...records.deposits.map((record): SpanRecord => ({ kind: 'deposit', record })),
-        ...records.withdrawals.map((record): SpanRecord => ({ kind: 'withdraw', record })),
-      ],
-      rowsOf: (entry) => plannedOf(accountId, entry),
-      extentOf,
-    }),
+    settled: joinSettled<PlannedRow>([
+      settleRecords({
+        span,
+        records: [
+          ...records.deposits.map((record): SpanRecord => ({ kind: 'deposit', record })),
+          ...records.withdrawals.map((record): SpanRecord => ({ kind: 'withdraw', record })),
+        ],
+        rowsOf: (entry) => plannedOf(accountId, entry),
+        extentOf,
+      }),
+      settleUnreadable({
+        span,
+        unreadable: records.unreadableDeposits,
+        code: CAPITAL_ROW_UNREADABLE,
+        extentOf: (row) => unreadableExtentOf('deposit', row),
+      }),
+      settleUnreadable({
+        span,
+        unreadable: records.unreadableWithdrawals,
+        code: CAPITAL_ROW_UNREADABLE,
+        extentOf: (row) => unreadableExtentOf('withdraw', row),
+      }),
+    ]),
     place: (planned) => placeRows(context, planned),
     add: deps.addTransactions,
-    advance: ({ owed, returned }) =>
+    advance: ({ owed }) =>
       advanceWalkMarks({
         pass,
         span,
         owed,
-        returned,
         plan,
         marks,
         restartMs: HISTORY_FLOOR_MS,
@@ -596,6 +653,15 @@ const runSync = async (
         read: (span, keepCalls) => readSpan(context, span, keepCalls),
         commit: (span, records) => commitSpan(context, span, records, pass),
         keep,
+        onComplete: (read) =>
+          dropReadPoints({
+            pass,
+            window,
+            read,
+            marks: context.marks,
+            fields: CAPITAL_MARK_FIELDS,
+            writePending: (field, ranges) => deps.writeWalkPending(spot.id, field, ranges),
+          }),
       }),
     markPointRead: (window) =>
       storePointCursor({

@@ -3,13 +3,14 @@ import { bifoldMap, type Either, eitherSync } from 'fnts/either';
 
 import {
   BinanceWalkStop,
+  distinctGround,
   logWalkStop,
   type OwedGround,
-  sameGround,
   type SpanCommit,
   type WalkPass,
   type WalkWindow,
 } from './binance.history-walk';
+import type { UnreadableRow } from './binance.history-client';
 
 /**
  * One span's records told apart: the rows of those the walk can trust, the codes of the stops
@@ -74,9 +75,6 @@ const settledRecord = <Row>(
   );
 };
 
-const distinctGround = (ground: OwedGround[]): OwedGround[] =>
-  ground.filter((entry, index) => ground.findIndex((other) => sameGround(other, entry)) === index);
-
 /**
  * The settled parts of one span as one. The same ground is owed once; a point is never taken
  * into a range that holds it, and a range never into another entry, so the whole span owed
@@ -112,6 +110,27 @@ export const settleRecords = <Record, Row>(input: {
     ),
   );
 };
+
+/**
+ * The rows the client could not read (the page's `unreadable` list), each settled on its own like
+ * a stuck record: one `BinanceWalkStop(code)` per row, so it owes its own point when its time is
+ * usable (`extentOf` gives where it may sit) and the whole span when it is not, and the other
+ * rows of the span still import. A row never fails the run: the walk never sees its content.
+ */
+export const settleUnreadable = <Row extends UnreadableRow>(input: {
+  span: WalkWindow;
+  unreadable: Row[];
+  code: string;
+  extentOf: (row: Row) => WalkWindow | undefined;
+}): SettledSpan<never> =>
+  settleRecords<Row, never>({
+    span: input.span,
+    records: input.unreadable,
+    rowsOf: () => {
+      throw new BinanceWalkStop(input.code);
+    },
+    extentOf: input.extentOf,
+  });
 
 const logCodes = (codes: string[]): void => {
   for (const code of new Set(codes)) {
@@ -149,10 +168,11 @@ const placed = async <Planned, Row>(input: {
 
 /**
  * Commit one span: place and write the rows of the records the walk can trust, then move the
- * walk's marks (`advance` gets the ground that stays owed, and the point of every record the
- * read returned: a point is only taken off the list by a read that returned a record owing
- * exactly it). Rows first, marks second, so a crash between the two only has the next run read
- * the span again, which imports nothing new. The forward pass moves a cursor that must not pass
+ * walk's marks (`advance` gets the ground that stays owed). The commit also reports that ground
+ * and the point of every record the read returned, which the window takes a point off the list
+ * by once it has been read to its end (see `walkSpans`). Rows first, marks second, so a crash
+ * between the two only has the next run read the span again, which imports nothing new. The
+ * forward pass moves a cursor that must not pass
  * a record it could not trust, so a stop of any kind leaves its span uncommitted (`undefined`,
  * before anything is written); in the other passes the stuck records stay owed and everything
  * else commits.
@@ -163,7 +183,7 @@ export const commitSettledSpan = async <Planned, Row>(input: {
   settled: SettledSpan<Planned>;
   place: (planned: Planned[]) => Promise<Row[]>;
   add: (rows: Row[]) => Promise<number>;
-  advance: (result: { owed: OwedGround[]; returned: WalkWindow[] }) => Promise<void>;
+  advance: (result: { owed: OwedGround[] }) => Promise<void>;
 }): Promise<SpanCommit | undefined> => {
   const { pass, span, settled, add, advance } = input;
   const stopsRun = pass === 'forward';
@@ -184,7 +204,12 @@ export const commitSettledSpan = async <Planned, Row>(input: {
 
   const imported = ready.rows.length > 0 ? await add(ready.rows) : 0;
 
-  await advance({ owed: ready.owed, returned: ready.returned });
+  await advance({ owed: ready.owed });
 
-  return { imported, owed: ready.owed.length > 0 };
+  return {
+    imported,
+    owed: ready.owed.length > 0,
+    returned: ready.returned,
+    stuck: ready.owed,
+  };
 };

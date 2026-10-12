@@ -3,6 +3,7 @@ import {
   instantAt,
   joinSettled,
   settleRecords,
+  settleUnreadable,
 } from './binance.history-records';
 import { BinanceWalkStop, type OwedGround, type WalkWindow } from './binance.history-walk';
 
@@ -241,6 +242,59 @@ describe('joinSettled', () => {
   });
 });
 
+describe('settleUnreadable', () => {
+  const rowAt = (time: number | string | undefined) => ({ time });
+  const timeOf = (row: { time: number | string | undefined }) =>
+    instantAt(typeof row.time === 'number' ? row.time : undefined);
+  const settleRows = (rows: { time: number | string | undefined }[]) =>
+    settleUnreadable({ span: SPAN, unreadable: rows, code: 'row-unreadable', extentOf: timeOf });
+
+  it('owes the point of an unreadable row with a usable time, and gives no rows', () => {
+    expect(settleRows([rowAt(3_000)])).toEqual({
+      rows: [],
+      codes: ['row-unreadable'],
+      owed: [pointOf(2_999, 3_001)],
+      returned: [{ start: 2_999, end: 3_001 }],
+    });
+  });
+
+  it('owes the whole span for an unreadable row with no usable time, and returns no point', () => {
+    expect(settleRows([rowAt(undefined)])).toEqual({
+      rows: [],
+      codes: ['row-unreadable'],
+      owed: [SPAN],
+      returned: [],
+    });
+  });
+
+  it('owes the span for a row whose time is outside it, which says nothing of where it sits', () => {
+    expect(settleRows([rowAt(90_000)]).owed).toEqual([SPAN]);
+  });
+
+  it('settles every row on its own, and owes the span once for several rows with no time', () => {
+    const settled = settleRows([rowAt(2_000), rowAt(undefined), rowAt(undefined), rowAt(3_000)]);
+
+    expect(settled.owed).toEqual([pointOf(1_999, 2_001), SPAN, pointOf(2_999, 3_001)]);
+    expect(settled.codes).toEqual([
+      'row-unreadable',
+      'row-unreadable',
+      'row-unreadable',
+      'row-unreadable',
+    ]);
+  });
+
+  it('settles nothing for a page with no unreadable row', () => {
+    expect(settleRows([])).toEqual({ rows: [], codes: [], owed: [], returned: [] });
+  });
+
+  it('is what the walk reads, beside the records it can settle, as one span', () => {
+    const joined = joinSettled([settle([entry('a', 2_000)], atTime), settleRows([rowAt(3_000)])]);
+
+    expect(joined.rows).toEqual(['a']);
+    expect(joined.owed).toEqual([pointOf(2_999, 3_001)]);
+  });
+});
+
 describe('commitSettledSpan', () => {
   let warn: jest.SpyInstance;
   const calls: string[] = [];
@@ -249,11 +303,9 @@ describe('commitSettledSpan', () => {
 
     return rows.length;
   });
-  const advance = jest.fn(
-    async ({ owed }: { owed: OwedGround[]; returned: WalkWindow[] }): Promise<void> => {
-      calls.push(`advance:${owed.length}`);
-    },
-  );
+  const advance = jest.fn(async ({ owed }: { owed: OwedGround[] }): Promise<void> => {
+    calls.push(`advance:${owed.length}`);
+  });
 
   beforeEach(() => {
     warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
@@ -294,8 +346,8 @@ describe('commitSettledSpan', () => {
       const committed = await commit(pass, { rows: ['a', 'b'], codes: ['stuck'], owed, returned });
 
       expect(calls).toEqual(['add:a,b', 'advance:1']);
-      expect(advance).toHaveBeenCalledWith({ owed, returned });
-      expect(committed).toEqual({ imported: 2, owed: true });
+      expect(advance).toHaveBeenCalledWith({ owed });
+      expect(committed).toEqual({ imported: 2, owed: true, returned, stuck: owed });
     },
   );
 
@@ -303,17 +355,17 @@ describe('commitSettledSpan', () => {
     const committed = await commit('rescan', { rows: [], codes: [], owed: [] });
 
     expect(add).not.toHaveBeenCalled();
-    expect(advance).toHaveBeenCalledWith({ owed: [], returned: [] });
-    expect(committed).toEqual({ imported: 0, owed: false });
+    expect(advance).toHaveBeenCalledWith({ owed: [] });
+    expect(committed).toEqual({ imported: 0, owed: false, returned: [], stuck: [] });
   });
 
-  it('hands the points of the returned records on, so a point stays after a read that found none', async () => {
+  it('reports the points of the returned records, so the window can take a point off once it completes', async () => {
     const found = { start: 2_999, end: 3_001 };
 
-    await commit('pending', { rows: [], codes: [], owed: [], returned: [found] });
-    await commit('pending', { rows: [], codes: [], owed: [] });
+    const withOne = await commit('pending', { rows: [], codes: [], owed: [], returned: [found] });
+    const withNone = await commit('pending', { rows: [], codes: [], owed: [] });
 
-    expect(advance.mock.calls.map(([result]) => result.returned)).toEqual([[found], []]);
+    expect([withOne?.returned, withNone?.returned]).toEqual([[found], []]);
   });
 
   it('logs each code once', async () => {
@@ -345,7 +397,7 @@ describe('commitSettledSpan', () => {
     const committed = await commit('forward', { rows: ['a'], codes: [], owed: [] });
 
     expect(calls).toEqual(['add:a', 'advance:0']);
-    expect(committed).toEqual({ imported: 1, owed: false });
+    expect(committed).toEqual({ imported: 1, owed: false, returned: [], stuck: [] });
   });
 
   describe('when the rows cannot be placed', () => {
@@ -366,8 +418,8 @@ describe('commitSettledSpan', () => {
         );
 
         expect(add).not.toHaveBeenCalled();
-        expect(advance).toHaveBeenCalledWith({ owed: [point, SPAN], returned });
-        expect(committed).toEqual({ imported: 0, owed: true });
+        expect(advance).toHaveBeenCalledWith({ owed: [point, SPAN] });
+        expect(committed).toEqual({ imported: 0, owed: true, returned, stuck: [point, SPAN] });
         expect(warn.mock.calls.map(([, detail]) => detail.code)).toEqual([
           'stuck',
           'holding-missing',
@@ -378,7 +430,7 @@ describe('commitSettledSpan', () => {
     it('owes the span once when it is owed already', async () => {
       await commit('pending', { rows: ['a'], codes: [], owed: [SPAN] }, unplaceable);
 
-      expect(advance).toHaveBeenCalledWith({ owed: [SPAN], returned: [] });
+      expect(advance).toHaveBeenCalledWith({ owed: [SPAN] });
     });
 
     it('stops the forward pass, writing nothing', async () => {

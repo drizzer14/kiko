@@ -10,6 +10,7 @@ import maybe, { foldMap } from 'fnts/maybe';
 import {
   advanceWalkMarks,
   BinanceWalkStop,
+  dropReadPoints,
   halfOf,
   planWalkPasses,
   runWalkPlan,
@@ -21,8 +22,14 @@ import {
   type WalkMarks,
   type WalkWindow,
 } from './binance.history-walk';
+import {
+  commitSettledSpan,
+  instantAt,
+  joinSettled,
+  settleRecords,
+  settleUnreadable,
+} from './binance.history-records';
 import { LANE_CALL_CAPS } from './binance.history-budget';
-import { commitSettledSpan, instantAt, settleRecords } from './binance.history-records';
 
 /**
  * The walk's own functions driven run after run, as the lanes drive them, against records that
@@ -101,7 +108,9 @@ const seededRandom = (seed: number): (() => number) => {
  * One record of the account. `time` is what the lane sees, `at` the millisecond Binance filters
  * by, `precision` the precision of `time`. A record is stuck (the walk cannot trust it) in every
  * run before `stuckUntil`. A record `inForward` is one the forward pass reads first, which the
- * cursor must never pass while it is stuck.
+ * cursor must never pass while it is stuck. An `unreadable` record is one the client could not
+ * read: the lane gets it in the page's `unreadable` list, with its time (`timed`) or without one
+ * (`timeless`), and never as a record: it owes its point, or its whole span.
  */
 type SimRecord = {
   id: number;
@@ -110,6 +119,7 @@ type SimRecord = {
   precision: number;
   stuckUntil: number;
   inForward?: boolean;
+  unreadable?: 'timed' | 'timeless';
 };
 
 type Scenario = { owed: OwedGround[]; records: SimRecord[] };
@@ -208,28 +218,64 @@ const rowsOf = (entry: SimRecord, run: number): number[] => {
 };
 
 /**
+ * The settled span of one page: its readable records, and the records the client could not read,
+ * which the lane takes from the page's `unreadable` list (with a time, or with none).
+ */
+const settledOf = (span: WalkWindow, page: SimRecord[], run: number) => {
+  const unreadable = page.filter((entry) => entry.unreadable !== undefined);
+
+  return joinSettled([
+    settleRecords({
+      span,
+      records: page.filter((entry) => entry.unreadable === undefined),
+      rowsOf: (entry) => rowsOf(entry, run),
+      extentOf,
+    }),
+    settleUnreadable({
+      span,
+      unreadable: unreadable.map((entry) => ({
+        time: entry.unreadable === 'timeless' ? undefined : entry.time,
+        record: entry,
+      })),
+      code: 'simulated-unreadable',
+      extentOf: (row) => foldMap(maybe(row.time), () => extentOf(row.record)),
+    }),
+  ]);
+};
+
+/**
  * What a read of `span` gives: the records in it, or the half to read when it is too full. A
  * read of a point, where Binance filters on another field (`mismatch`), gives the records that
  * can be trusted and lie in it (both ends included), never one that is stuck for good.
  */
-const pageOf = (
-  input: Simulation,
-  span: WalkWindow,
-  isPointRead: boolean,
-): SpanRead<SimRecord[]> => {
+const pageOf = (input: {
+  simulation: Simulation;
+  span: WalkWindow;
+  isPointRead: boolean;
+}): SpanRead<SimRecord[]> => {
+  const { simulation, span, isPointRead } = input;
+  // Binance's mismatch does not depend on what the walk stored: a record whose point the scenario
+  // starts with is never returned by a read of a range or the re-scan either.
+  const listed = simulation.scenario.owed;
   const half = halfOf(span);
 
-  if (isDense(input.dense, span) && half !== undefined) {
+  if (isDense(simulation.dense, span) && half !== undefined) {
     return { kind: 'split', half };
   }
 
-  const returned =
-    input.mismatch === true && isPointRead
-      ? (entry: SimRecord) =>
-          entry.stuckUntil !== NEVER && holds(span, entry.at, 'both ends included')
-      : (entry: SimRecord) => holds(span, entry.at, input.reading);
+  const mismatched = (entry: SimRecord): boolean =>
+    simulation.mismatch === true &&
+    entry.stuckUntil === NEVER &&
+    (isPointRead || holdsPointOf(listed, entry));
+  const reading =
+    simulation.mismatch === true && isPointRead ? 'both ends included' : simulation.reading;
 
-  return { kind: 'page', page: input.scenario.records.filter(returned) };
+  return {
+    kind: 'page',
+    page: simulation.scenario.records.filter(
+      (entry) => !mismatched(entry) && holds(span, entry.at, reading),
+    ),
+  };
 };
 
 /** When run number `run` happens: `gapMs` after the one before it, or `catchUp.gapMs` at first. */
@@ -315,18 +361,26 @@ const simulate = async (input: Simulation): Promise<Outcome> => {
               record.pointsRead.push(span.start);
             }
 
-            return pageOf(input, span, isPointWindow(span));
+            return pageOf({
+              simulation: input,
+              span,
+              isPointRead: isPointWindow(span),
+            });
           },
+          onComplete: (read) =>
+            dropReadPoints({
+              pass,
+              window,
+              read,
+              marks: live,
+              fields: MARK_FIELDS,
+              writePending: async () => undefined,
+            }),
           commit: async (span, page) => {
             const committed = await commitSettledSpan({
               pass,
               span,
-              settled: settleRecords({
-                span,
-                records: page,
-                rowsOf: (entry) => rowsOf(entry, run),
-                extentOf,
-              }),
+              settled: settledOf(span, page, run),
               place: async (planned) => planned,
               add: async (ids) => {
                 for (const id of ids) {
@@ -335,12 +389,11 @@ const simulate = async (input: Simulation): Promise<Outcome> => {
 
                 return ids.length;
               },
-              advance: ({ owed, returned }) =>
+              advance: ({ owed }) =>
                 advanceWalkMarks({
                   pass,
                   span,
                   owed,
-                  returned,
                   plan,
                   marks: live,
                   restartMs: FLOOR_MS,
@@ -378,8 +431,11 @@ const firstRun = (runs: RunRecord[], test: (run: RunRecord) => boolean): number 
 
 /** What the properties state, in runs, for one scenario. */
 type Bounds = {
-  /** Every record that can be trusted is imported within this many runs of it being placeable. */
-  imported: number;
+  /**
+   * Every record that can be trusted is imported within this many runs of it being placeable.
+   * Absent when the scenario cuts the reads on purpose, so no record is certain to be read.
+   */
+  imported?: number;
   /** Every stuck record is owed as a point within this many runs. */
   pointed: number;
   /** The points are read in a round-robin: see `roundRobinViolations`. */
@@ -391,6 +447,11 @@ type Bounds = {
    * point is in it in any run.
    */
   drained?: number;
+  /**
+   * The points are those of records that settle: from this run on the list is empty, each point
+   * having left once its window was read to its end.
+   */
+  emptied?: number;
 };
 
 /** The runs, from the first in which `held` is true, in which it stops being true. */
@@ -438,18 +499,59 @@ const roundRobinViolations = (allRuns: RunRecord[]): string[] => {
     : [];
 };
 
+/** The records that can be trusted and were not imported within `bound` runs of it (if any). */
+const lateRecords = (
+  importedAt: Map<number, number>,
+  records: SimRecord[],
+  bound: number | undefined,
+): SimRecord[] =>
+  records.filter(
+    (entry) =>
+      entry.stuckUntil !== NEVER &&
+      bound !== undefined &&
+      (importedAt.get(entry.id) ?? NEVER) >= entry.stuckUntil + bound,
+  );
+
+/** SL: the entries still in the list once no record holds one, and the points no record owes. */
+const leftoverViolations = (runs: RunRecord[], bounds: Bounds): string[] => {
+  const lingering =
+    foldMap(maybe(bounds.drained ?? bounds.emptied), (emptied) =>
+      runs.flatMap((run, index) => (index >= emptied && run.owed.length > 0 ? [index] : [])),
+    ) ?? [];
+  const phantoms =
+    foldMap(maybe(bounds.drained), () =>
+      runs.flatMap((run, index) => (run.owed.some((g) => g.kind === 'point') ? [index] : [])),
+    ) ?? [];
+
+  return [
+    ...(lingering.length > 0
+      ? [`SL: entries no record holds are still in the list at runs ${lingering}`]
+      : []),
+    ...(phantoms.length > 0 ? [`SL: a point no record owes appeared at runs ${phantoms}`] : []),
+  ];
+};
+
+/** A record the walk can never trust and owes a point for: not one of the forward pass's. */
+const isStuckWithPoint = (entry: SimRecord): boolean =>
+  entry.stuckUntil === NEVER && entry.inForward !== true && entry.unreadable !== 'timeless';
+
+/** The unreadable records with no time whose span the last run does not owe any more. */
+const timelessLeftOf = (runs: RunRecord[], records: SimRecord[]): SimRecord[] =>
+  records.filter(
+    (entry) =>
+      entry.unreadable === 'timeless' &&
+      !runs.at(-1)?.owed.some((range) => range.kind !== 'point' && surelyHolds(range, entry.at)),
+  );
+
 /** What breaks each property, as text a failing run prints; empty when all hold. */
 const violationsOf = (outcome: Outcome, scenario: Scenario, bounds: Bounds): string[] => {
   const { runs, importedAt } = outcome;
-  const stuck = scenario.records.filter(
-    (entry) => entry.stuckUntil === NEVER && entry.inForward !== true,
-  );
+  const stuck = scenario.records.filter(isStuckWithPoint);
+  const timelessLeft = timelessLeftOf(runs, scenario.records);
   const stuckInForward = scenario.records.filter(
     (entry) => entry.stuckUntil === NEVER && entry.inForward === true,
   );
-  const late = scenario.records
-    .filter((entry) => entry.stuckUntil !== NEVER)
-    .filter((entry) => (importedAt.get(entry.id) ?? NEVER) >= entry.stuckUntil + bounds.imported);
+  const late = lateRecords(importedAt, scenario.records, bounds.imported);
   const notPointed = stuck.filter(
     (entry) => firstRun(runs, (run) => holdsPointOf(run.owed, entry)) >= bounds.pointed,
   );
@@ -478,20 +580,9 @@ const violationsOf = (outcome: Outcome, scenario: Scenario, bounds: Bounds): str
     (run) => run.rescanCommits === 0 && run.callsAfterForward >= RESCAN_AND_POINT_CALLS,
   );
   const overReads = runs.filter((run) => run.readsOfAPoint > 1);
-  const lingering =
-    foldMap(maybe(bounds.drained), (drained) =>
-      runs.flatMap((run, index) => (index >= drained && run.owed.length > 0 ? [index] : [])),
-    ) ?? [];
-  const phantoms =
-    foldMap(maybe(bounds.drained), () =>
-      runs.flatMap((run, index) => (run.owed.some((g) => g.kind === 'point') ? [index] : [])),
-    ) ?? [];
 
   return [
-    ...(lingering.length > 0
-      ? [`SL: entries no record holds are still in the list at runs ${lingering}`]
-      : []),
-    ...(phantoms.length > 0 ? [`SL: a point no record owes appeared at runs ${phantoms}`] : []),
+    ...leftoverViolations(runs, bounds),
     ...(late.length > 0
       ? [`P1: ${late.length} records imported later than ${bounds.imported} runs after placeable`]
       : []),
@@ -503,6 +594,9 @@ const violationsOf = (outcome: Outcome, scenario: Scenario, bounds: Bounds): str
       : []),
     ...(manyPoints.length > 0
       ? [`${manyPoints.length} stuck records on a boundary are held by more than one point`]
+      : []),
+    ...(timelessLeft.length > 0
+      ? [`${timelessLeft.length} unreadable records with no time are no longer owed as a span`]
       : []),
     ...(passed.length > 0 ? ['P6: the cursor passed a stuck record of the forward pass'] : []),
     ...(overReads.length > 0
@@ -791,7 +885,7 @@ const beyondTwelveScenario = (lane: Lane, count: number): Scenario => {
  * hull; a stuck record, already found as a point, lies between them: inside the hull. The point
  * is never merged into the hull and never leaves with it: it stays as its record owes it.
  */
-const insideMergedRangeScenario = (lane: Lane, seed: number): Scenario => {
+const insideMergedRangeScenario = (lane: Lane, seed: number, withTwin = true): Scenario => {
   const builder = builderOf(lane, seed);
   const days = Array.from({ length: 14 }, (_unused, index) => builder.rangeAt(index));
   const near = { start: days[6].end + DAY_MS, end: days[6].end + DAY_MS + 3 * HOUR_MS };
@@ -802,7 +896,7 @@ const insideMergedRangeScenario = (lane: Lane, seed: number): Scenario => {
     owed: [...ranges, pointOf(stuck)],
     records: [
       stuck,
-      builder.twinOf(stuck),
+      ...(withTwin ? [builder.twinOf(stuck)] : []),
       ...ranges.map((range) => builder.record(builder.interiorOf(range))),
     ],
   };
@@ -929,6 +1023,104 @@ const sharedStartScenario = (lane: Lane, count: number, found: boolean): Scenari
       ...withdrawals,
       ...deposits,
       ...withdrawals.map((entry) => builder.typed(1, entry.time)),
+    ],
+  };
+};
+
+/**
+ * `count` points already found, each of a record that settles at run 1, with that record and
+ * the points' windows reading as a full page above one precision of the lane, so each point is
+ * read in halves: its read comes back full, then each half is read, and the record sits in one
+ * of the halves (or on the meeting place of both). A point leaves the list once its whole window
+ * was read and a record that owes exactly it came back.
+ */
+const splitPointsScenario = (lane: Lane, count: number): Scenario => {
+  const builder = builderOf(lane, 71);
+  const records = Array.from({ length: count }, (_unused, index) =>
+    builder.record(BASE_MS + index * 10 * DAY_MS + HOUR_MS, 1),
+  );
+
+  return { owed: records.map(pointOf), records };
+};
+
+/**
+ * `count` points already found, each of a stuck record and of a record that can be trusted in
+ * the very same second: the stuck one sits in the last millisecond of it, the other in the first.
+ * A read of the point comes back full and is read in halves, and the run has the calls for the
+ * first half only: the trusted record comes back alone, and the point is still the stuck one's.
+ */
+const splitTwinScenario = (lane: Lane, count: number): Scenario => {
+  const builder = builderOf(lane, 83);
+  const stuck = Array.from({ length: count }, (_unused, index) => {
+    const entry = builder.record(BASE_MS + index * 10 * DAY_MS + HOUR_MS, NEVER);
+
+    return { ...entry, at: entry.time + entry.precision - 1 };
+  });
+
+  return {
+    owed: stuck.map(pointOf),
+    records: [...stuck, ...stuck.map((entry) => ({ ...builder.twinOf(entry), at: entry.time }))],
+  };
+};
+
+/**
+ * `count` stuck records inside the window of the re-scan, each with a record that can be trusted
+ * a step before it and one a step after it (on the very edge of its point, none at its own time),
+ * and each point already found. Read with `mismatch`, a read of the re-scan holds every point
+ * whole and returns those neighbours, never the stuck record.
+ */
+const rescanNeighboursScenario = (lane: Lane, count: number): Scenario => {
+  const builder = builderOf(lane, 97);
+  const window = { start: START_MS - 85 * DAY_MS, end: START_MS - 5 * DAY_MS };
+  const stuck = Array.from({ length: count }, (_unused, index) =>
+    builder.record(window.start + (index + 1) * 10 * DAY_MS, NEVER),
+  );
+
+  return {
+    owed: stuck.map(pointOf),
+    records: [
+      ...stuck,
+      ...stuck.flatMap((entry) => [
+        builder.neighbourOf(entry, 'before'),
+        builder.neighbourOf(entry, 'after'),
+      ]),
+    ],
+  };
+};
+
+/**
+ * A stuck record whose point is already found and reaches past the end of the second run: that
+ * run's plan holds the point whole, and a list the forward pass stores from it must still hold it.
+ */
+const aheadPointScenario = (lane: Lane): Scenario => {
+  const builder = builderOf(lane, 91);
+  const stuck = builder.record(START_MS + HOUR_MS + 30 * SECOND_MS, NEVER);
+
+  return { owed: [pointOf(stuck)], records: [stuck] };
+};
+
+/**
+ * `count` owed days, each with a record the client could not read and two records that can be
+ * trusted. The first day's has no time: it owes its whole day. The others have one: each owes
+ * its own point.
+ */
+const unreadableScenario = (lane: Lane, count: number, seed: number): Scenario => {
+  const builder = builderOf(lane, seed);
+  const days = Array.from({ length: count }, (_unused, index) => builder.rangeAt(index));
+  const unrelated = unrelatedDayOf(lane, seed);
+
+  return {
+    owed: [...days, unrelated.day],
+    records: [
+      ...days.flatMap((day, index) => [
+        {
+          ...builder.record(builder.interiorOf(day), NEVER),
+          unreadable: index === 0 ? ('timeless' as const) : ('timed' as const),
+        },
+        builder.record(builder.interiorOf(day)),
+        builder.record(builder.interiorOf(day)),
+      ]),
+      ...unrelated.records,
     ],
   };
 };
@@ -1272,6 +1464,86 @@ describe.each(LANES)('owed ground that never commits, $name lane', (lane) => {
         },
       );
     }
+
+    const splitRangeOf = (count: number): WalkWindow => ({
+      start: BASE_MS - DAY_MS,
+      end: BASE_MS + 10 * count * DAY_MS,
+    });
+
+    it.each(
+      [1, 3, 6].map((count) => ({
+        count,
+        bound: Math.ceil((3 * count) / (lane.reads - 3)) + 3,
+      })),
+    )(
+      'SL: $count points whose window comes back full, so each is read in halves, and whose records settle at run 1: each leaves once its whole window was read to its end, within $bound runs',
+      async ({ count, bound }) => {
+        await check(
+          {
+            scenario: splitPointsScenario(lane, count),
+            dense: { range: splitRangeOf(count), spanMs: lane.precision },
+          },
+          { imported: bound, pointed: 1, emptied: bound },
+          bound + 4,
+        );
+      },
+    );
+
+    it.each([1, 3, 5].map((count) => ({ count })))(
+      'P1-P3: $count stuck records, each with a record that can be trusted in the same second, whose point comes back full and is cut after its first half: the stuck record keeps its point, and the other imports',
+      async ({ count }) => {
+        await check(
+          {
+            scenario: splitTwinScenario(lane, count),
+            dense: { range: splitRangeOf(count), spanMs: lane.precision },
+            reads: LEAST_READS_WITH_A_POINT + 1,
+          },
+          { pointed: 1 },
+          count + 6,
+        );
+      },
+    );
+
+    it('P1-P2 with Binance filtering on another field: a stuck record whose point reaches past the end of the run that plans it stays in the list', async () => {
+      await check(
+        { scenario: aheadPointScenario(lane), mismatch: true },
+        { imported: 1, pointed: 1 },
+        6,
+      );
+    });
+
+    it.each(seeds.map((seed) => ({ seed, bound: rangeRuns(lane, 14) + 6 })))(
+      'P1-P4 with Binance filtering on another field: 14 owed days and a stuck record found as a point inside the hull of two of them (seed $seed): no read of the hull returns the record, and its point stays',
+      async ({ seed, bound }) => {
+        await check(
+          { scenario: insideMergedRangeScenario(lane, seed, false), mismatch: true },
+          { imported: bound, pointed: 1 },
+          bound + 5,
+        );
+      },
+    );
+
+    it.each([1, 3, 6].map((count) => ({ count, bound: pointRuns(count, lane.reads - 2) + 1 })))(
+      'P1-P4 with Binance filtering on another field: $count points found already inside the window of the re-scan, each with the records beside it that can be trusted: a read of the re-scan holds each point whole and returns only those, so every point stays',
+      async ({ count, bound }) => {
+        await check(
+          { scenario: rescanNeighboursScenario(lane, count), mismatch: true },
+          { imported: bound, pointed: 1 },
+          bound + 6,
+        );
+      },
+    );
+
+    it.each([1, 3, 6].map((count) => ({ count, bound: rangeRuns(lane, 2 * count + 2) })))(
+      'P1-P4 with unreadable rows, reported in the page and never thrown: $count owed days each with an unreadable record (the first with no time, the others with one) beside two that can be trusted: every other record imports within $bound runs, each timed one is a point, and the first day stays owed whole',
+      async ({ count, bound }) => {
+        await check(
+          { scenario: unreadableScenario(lane, count, 11) },
+          { imported: bound, pointed: bound },
+          bound + 5,
+        );
+      },
+    );
 
     it('P4: a dense owed day that needs many reads leaves the re-scan a read and a commit every run of 30', async () => {
       const dense = dayAt(30);

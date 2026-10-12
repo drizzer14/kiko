@@ -52,6 +52,12 @@ const without = (row: Record<string, unknown>, ...keys: string[]): Record<string
 
 const PARSE_FAILURE = expect.objectContaining({ message: BINANCE_HISTORY_PARSE_ERROR });
 
+/** What a page gives for one row the client cannot read: no row, and the row's time if usable. */
+const onlyUnreadable = (time: number | string | undefined) => ({
+  rows: [],
+  unreadable: [{ time }],
+});
+
 const SIGNED = { timestamp: String(NOW), recvWindow: '5000', signature: expect.any(String) };
 
 const payRead = (body: unknown, response?: FakeResponse) => {
@@ -295,7 +301,12 @@ describe('used-weight headers', () => {
       optionsFor(fetchImpl),
     );
 
-    expect(page).toEqual({ rows: [], usedUidWeight1m: 18_000, usedIpWeight1m: undefined });
+    expect(page).toEqual({
+      rows: [],
+      unreadable: [],
+      usedUidWeight1m: 18_000,
+      usedIpWeight1m: undefined,
+    });
   });
 
   // The live withdraw history answers with a per-SECOND UID weight header
@@ -313,7 +324,12 @@ describe('used-weight headers', () => {
       optionsFor(fetchImpl),
     );
 
-    expect(page).toEqual({ rows: [], usedUidWeight1m: undefined, usedIpWeight1m: undefined });
+    expect(page).toEqual({
+      rows: [],
+      unreadable: [],
+      usedUidWeight1m: undefined,
+      usedIpWeight1m: undefined,
+    });
   });
 });
 
@@ -401,16 +417,53 @@ describe('fetchPayHistory envelope', () => {
     });
   });
 
-  it('throws the fixed error for an order that is not an object', async () => {
-    await expect(payRead({ code: '000000', data: ['x'] }).run()).rejects.toThrow(PARSE_FAILURE);
+  it('reports an order that is not an object as unreadable, with no time (was: throws the fixed error)', async () => {
+    const page = await payRead({ code: '000000', data: ['x'] }).run();
+
+    expect(page).toMatchObject(onlyUnreadable(undefined));
+    expect(page.gathered).toBe(1);
   });
 
-  it.each(['orderType', 'amount', 'currency', 'transactionTime'])(
-    'throws the fixed error when %s is missing',
+  it.each(['orderType', 'amount', 'currency'])(
+    'reports an order whose %s is missing as unreadable, with its time (was: throws the fixed error)',
     async (field) => {
-      await expect(payPageOf(without(payOrderBody, field))).rejects.toThrow(PARSE_FAILURE);
+      const page = await payPageOf(without(payOrderBody, field));
+
+      expect(page).toMatchObject(onlyUnreadable(payOrderBody.transactionTime));
     },
   );
+
+  it('reports an order whose transactionTime is missing as unreadable, with no time (was: throws the fixed error)', async () => {
+    const page = await payPageOf(without(payOrderBody, 'transactionTime'));
+
+    expect(page).toMatchObject(onlyUnreadable(undefined));
+  });
+
+  it.each([['soon'], [Number.POSITIVE_INFINITY], [null]])(
+    'gives no time for an unreadable order whose transactionTime is %p',
+    async (time) => {
+      const page = await payPageOf({ ...payOrderBody, amount: 5, transactionTime: time });
+
+      expect(page.unreadable).toEqual([{ time: undefined }]);
+    },
+  );
+
+  it('parses the readable orders of a page beside an unreadable one, in one read', async () => {
+    const unreadable = { ...payOrderBody, transactionId: '10009', amount: 5 };
+    const readable = { ...payOrderBody, transactionId: '10010' };
+
+    const page = await payRead({ code: '000000', data: [unreadable, readable, 'x'] }).run();
+
+    expect(page.rows).toEqual([{ ...parsedPayOrder, transactionId: '10010' }]);
+    expect(page.unreadable).toEqual([{ time: payOrderBody.transactionTime }, { time: undefined }]);
+    expect(page.gathered).toBe(3);
+  });
+
+  it('lists an unreadable order by its time and nothing else: no amount, id or party', async () => {
+    const page = await payPageOf({ ...payOrderBody, amount: 5, transactionId: 'SECRET-ID' });
+
+    expect(JSON.stringify(page.unreadable)).not.toMatch(/SECRET-ID|Ann|111|222/);
+  });
 
   it('keeps an empty transactionId so the walk can stop on it', async () => {
     const page = await payPageOf({ ...payOrderBody, transactionId: '' });
@@ -459,9 +512,14 @@ describe('fetchPayHistory envelope', () => {
     ['a fundsDetail entry that is not an object', { fundsDetail: ['x'] }],
     ['a fundsDetail entry without an amount', { fundsDetail: [{ currency: 'BTC' }] }],
     ['payerInfo that is not an object', { payerInfo: 'Me' }],
-  ])('throws the fixed error for %s', async (_label, overrides) => {
-    await expect(payPageOf({ ...payOrderBody, ...overrides })).rejects.toThrow(PARSE_FAILURE);
-  });
+  ])(
+    'reports an order with %s as unreadable, with its time (was: throws)',
+    async (_label, over) => {
+      const page = await payPageOf({ ...payOrderBody, ...over });
+
+      expect(page).toMatchObject(onlyUnreadable(payOrderBody.transactionTime));
+    },
+  );
 });
 
 // The Pay history lists every coin's orders. Only BTC orders reach a row, so only they
@@ -500,17 +558,33 @@ describe('fetchPayHistory other coins', () => {
   it.each([
     ['an amount that is missing', without(payOrderBody, 'amount')],
     ['fundsDetail that is not an array', { ...payOrderBody, fundsDetail: 'x' }],
-  ])('still fails the read for a BTC order with %s', async (_label, offContract) => {
-    await expect(pageOfOrders(usdtOrder, offContract)).rejects.toThrow(PARSE_FAILURE);
-  });
+  ])(
+    'reports a BTC order with %s as unreadable (was: fails the read)',
+    async (_label, offContract) => {
+      const page = await pageOfOrders(usdtOrder, offContract);
+
+      expect(page.rows).toEqual([]);
+      expect(page.unreadable).toEqual([{ time: payOrderBody.transactionTime }]);
+      expect(page.gathered).toBe(2);
+    },
+  );
 
   it.each([
-    ['a missing currency', without(usdtOrder, 'currency')],
-    ['a currency that is not a string', { ...usdtOrder, currency: 7 }],
-    ['an order that is not an object', null],
-  ])('fails the read for %s, since the coin cannot be told', async (_label, order) => {
-    await expect(pageOfOrders(order)).rejects.toThrow(PARSE_FAILURE);
-  });
+    ['a missing currency', without(usdtOrder, 'currency'), payOrderBody.transactionTime],
+    [
+      'a currency that is not a string',
+      { ...usdtOrder, currency: 7 },
+      payOrderBody.transactionTime,
+    ],
+    ['an order that is not an object', null, undefined],
+  ])(
+    'reports %s as unreadable, since the coin cannot be told (was: fails the read)',
+    async (_label, order, time) => {
+      const page = await pageOfOrders(order);
+
+      expect(page).toMatchObject(onlyUnreadable(time));
+    },
+  );
 
   it('lists the Binance ids of the parties of a non-BTC order that was paid with BTC funds', async () => {
     const paidWithBtc = {
@@ -592,16 +666,20 @@ describe('fetchPayHistory walletAssetCost', () => {
   });
 
   it.each([['x'], ['-1'], ['1.5'], ['1e2'], ['']])(
-    'throws the fixed error for the key %p',
+    'reports the order as unreadable for the key %p (was: throws)',
     async (key) => {
-      await expect(payPageOf(orderWithCost({ [key]: '0.6' }))).rejects.toThrow(PARSE_FAILURE);
+      const page = await payPageOf(orderWithCost({ [key]: '0.6' }));
+
+      expect(page).toMatchObject(onlyUnreadable(payOrderBody.transactionTime));
     },
   );
 
   it.each([[0.6], [null], [{ amount: '0.6' }]])(
-    'throws the fixed error for the value %p',
+    'reports the order as unreadable for the value %p (was: throws)',
     async (value) => {
-      await expect(payPageOf(orderWithCost({ '1': value }))).rejects.toThrow(PARSE_FAILURE);
+      const page = await payPageOf(orderWithCost({ '1': value }));
+
+      expect(page).toMatchObject(onlyUnreadable(payOrderBody.transactionTime));
     },
   );
 
@@ -609,8 +687,10 @@ describe('fetchPayHistory walletAssetCost', () => {
     ['an array', [['1', '0.6']]],
     ['a string', '1:0.6'],
     ['a number', 1],
-  ])('throws the fixed error when the cost is %s', async (_label, walletAssetCost) => {
-    await expect(payPageOf(orderWithCost(walletAssetCost))).rejects.toThrow(PARSE_FAILURE);
+  ])('reports the order as unreadable when the cost is %s (was: throws)', async (_label, cost) => {
+    const page = await payPageOf(orderWithCost(cost));
+
+    expect(page).toMatchObject(onlyUnreadable(payOrderBody.transactionTime));
   });
 });
 
@@ -1037,24 +1117,74 @@ describe('capital reads', () => {
     expect(page.rows[0].id).toBe('');
   });
 
-  it.each([
-    ['a body that is not an array', { rows: [] }],
-    ['a row that is not an object', ['x']],
-    ['a row without an amount', [without(depositRow, 'amount')]],
-    ['a row without a status', [without(depositRow, 'status')]],
-    ['a row without an insertTime', [without(depositRow, 'insertTime')]],
-    ['a row with a fractional walletType', [{ ...depositRow, walletType: 0.5 }]],
-  ])('throws the fixed error for deposits with %s', async (_label, body) => {
-    await expect(readDeposits(body)).rejects.toThrow(PARSE_FAILURE);
+  it('throws the fixed error for a deposit body that is not an array', async () => {
+    await expect(readDeposits({ rows: [] })).rejects.toThrow(PARSE_FAILURE);
+  });
+
+  it('throws the fixed error for a withdrawal body that is not an array', async () => {
+    await expect(readWithdrawals(null)).rejects.toThrow(PARSE_FAILURE);
   });
 
   it.each([
-    ['a body that is not an array', null],
-    ['a row without an applyTime', [without(withdrawalRow, 'applyTime')]],
-    ['a row with a null applyTime', [{ ...withdrawalRow, applyTime: null }]],
-    ['a row with a non-finite applyTime', [{ ...withdrawalRow, applyTime: Infinity }]],
-    ['a row with a text status', [{ ...withdrawalRow, status: 'done' }]],
-  ])('throws the fixed error for withdrawals with %s', async (_label, body) => {
-    await expect(readWithdrawals(body)).rejects.toThrow(PARSE_FAILURE);
+    ['a row that is not an object', ['x'], undefined],
+    ['a row without an amount', [without(depositRow, 'amount')], depositRow.insertTime],
+    ['a row without a status', [without(depositRow, 'status')], depositRow.insertTime],
+    ['a row without an insertTime', [without(depositRow, 'insertTime')], undefined],
+    ['a row with a text insertTime', [{ ...depositRow, insertTime: 'soon' }], undefined],
+    [
+      'a row with a fractional walletType',
+      [{ ...depositRow, walletType: 0.5 }],
+      depositRow.insertTime,
+    ],
+  ])(
+    'reports a deposit row with %s as unreadable, with its insertTime when usable (was: throws)',
+    async (_label, body, time) => {
+      const page = await readDeposits(body);
+
+      expect(page).toMatchObject(onlyUnreadable(time));
+    },
+  );
+
+  it.each([
+    ['a row without an applyTime', [without(withdrawalRow, 'applyTime')], undefined],
+    ['a row with a null applyTime', [{ ...withdrawalRow, applyTime: null }], undefined],
+    ['a row with a non-finite applyTime', [{ ...withdrawalRow, applyTime: Infinity }], undefined],
+    ['a row with a text status', [{ ...withdrawalRow, status: 'done' }], withdrawalRow.applyTime],
+    [
+      'a row with an applyTime that is a number and an amount that is not',
+      [{ ...withdrawalRow, applyTime: NOW, amount: 1 }],
+      NOW,
+    ],
+    ['a row that is not an object', [null], undefined],
+  ])(
+    'reports a withdrawal row with %s as unreadable, with its applyTime as given when usable (was: throws)',
+    async (_label, body, time) => {
+      const page = await readWithdrawals(body);
+
+      expect(page).toMatchObject(onlyUnreadable(time));
+    },
+  );
+
+  it('parses the readable rows of a page beside an unreadable one, deposits and withdrawals', async () => {
+    const deposits = await readDeposits([{ ...depositRow, amount: 5 }, depositRow]);
+    const withdrawals = await readWithdrawals([withdrawalRow, { ...withdrawalRow, amount: 5 }]);
+
+    expect(deposits.rows).toEqual([depositRow]);
+    expect(deposits.unreadable).toEqual([{ time: depositRow.insertTime }]);
+    expect(withdrawals.rows).toEqual([withdrawalRow]);
+    expect(withdrawals.unreadable).toEqual([{ time: withdrawalRow.applyTime }]);
+  });
+
+  it('lists a page with no unreadable row as having none', async () => {
+    expect((await readDeposits([depositRow])).unreadable).toEqual([]);
+    expect((await readWithdrawals([])).unreadable).toEqual([]);
+  });
+
+  it('lists an unreadable row by its time alone: no id, amount or hash', async () => {
+    const page = await readDeposits([
+      { ...depositRow, amount: 5, id: 'SECRET-ID', txId: 'SECRET' },
+    ]);
+
+    expect(JSON.stringify(page.unreadable)).not.toMatch(/SECRET/);
   });
 });

@@ -10,6 +10,7 @@ import {
   type BinanceWalkPendingField,
 } from '@kiko/holdings/holding-metadata';
 import type { HoldingRow } from '@kiko/db';
+import maybe, { foldMap } from 'fnts/maybe';
 import { transactionsRepo } from '@kiko/transactions/repo';
 import { type ExchangeHolding, holdingsRepo } from '@kiko/holdings/repo';
 
@@ -24,6 +25,7 @@ import {
   advanceWalkMarks,
   BinanceWalkStop,
   btcSatoshis,
+  dropReadPoints,
   halfOf,
   logWalkStop,
   type OwedGround,
@@ -67,6 +69,7 @@ import {
   instantAt,
   joinSettled,
   settleRecords,
+  settleUnreadable,
 } from './binance.history-records';
 import { type BinanceHistoryRun, COSTS } from './binance.history-budget';
 import { type BinanceCredentials, readCredentials } from './binance.credentials';
@@ -94,6 +97,9 @@ const PAY_MARK_FIELDS: WalkMarkFields = {
   point: BINANCE_PAY_POINT_CURSOR_FIELD,
   pending: BINANCE_PAY_PENDING_OVERLAP_FIELD,
 };
+
+/** The stop of an item the client could not read: logged by its code alone, never its content. */
+const PAY_ROW_UNREADABLE = 'pay-row-unreadable';
 
 /** A proper noun, never a catalogue string: the stored description when no name is given. */
 const PAY_BRAND = 'Binance Pay';
@@ -583,6 +589,12 @@ const settledOrdersOf = (context: PayContext, span: WalkWindow, page: PayHistory
       rowsOf: (order) => payRowsOf({ accountId: context.accountId, order, uid: context.uid }),
       extentOf: (order) => instantAt(order.transactionTime),
     }),
+    settleUnreadable({
+      span,
+      unreadable: page.unreadable,
+      code: PAY_ROW_UNREADABLE,
+      extentOf: (row) => foldMap(maybe(row.time), (time) => instantAt(Number(time))),
+    }),
     settleRecords({
       span,
       records: page.btcFundedOtherCoinOrders,
@@ -612,12 +624,11 @@ const commitSpan = (
     settled: settledOrdersOf(context, span, page),
     place: (planned) => placeRows(context, uniqueRowsOf(planned)),
     add: deps.addTransactions,
-    advance: ({ owed, returned }) =>
+    advance: ({ owed }) =>
       advanceWalkMarks({
         pass,
         span,
         owed,
-        returned,
         plan,
         marks,
         restartMs: HISTORY_FLOOR_MS,
@@ -763,6 +774,15 @@ const runSync = async (
         read: (span, keepCalls) => readSpan(context, span, keepCalls),
         commit: (span, page) => commitSpan(context, span, page, pass),
         keep,
+        onComplete: (read) =>
+          dropReadPoints({
+            pass,
+            window,
+            read,
+            marks: context.marks,
+            fields: PAY_MARK_FIELDS,
+            writePending: (field, ranges) => deps.writeWalkPending(spot.id, field, ranges),
+          }),
       }),
     markPointRead: (window) =>
       storePointCursor({

@@ -26,6 +26,7 @@ import {
   HISTORY_PAGE_LIMIT,
   type HistoryPage,
   type HistoryWindow,
+  type UnreadableRow,
 } from './binance.history-client';
 import { BinanceRateLimitError } from './binance.client';
 import type { OwedGround, WalkWindow } from './binance.history-walk';
@@ -71,6 +72,7 @@ const historyPage = <Row>(
   usedIpWeight1m?: number,
 ): HistoryPage<Row> => ({
   rows,
+  unreadable: [],
   usedUidWeight1m,
   usedIpWeight1m,
 });
@@ -2220,6 +2222,182 @@ describe('the pending overlap days of the capital walk', () => {
         expect(withdrawStartsOf(second.deps)).toContain(NOW - 89 * DAY_MS);
         expect(beyondWindow(state.account.pending())).toEqual([]);
         expect(state.account.cursor()).toBe(CURSOR);
+      });
+    });
+
+    describe('with a row the client could not read (R30)', () => {
+      const STOP_TAG = '[binance sync] history window stopped';
+      const UNREADABLE_CODE = 'capital-row-unreadable';
+      const goodDeposit = () => deposit({ id: 'good', insertTime: stuckAt });
+      const goodWithdrawal = () => withdrawal({ id: 'good-w', applyTime: stuckAt + 5_000 });
+      const depositKey = `${ACCOUNT}:deposit:good`;
+      const stuckAtText = new Date(stuckAt).toISOString().slice(0, 19).replace('T', ' ');
+      let warn: jest.SpyInstance;
+
+      beforeEach(() => {
+        warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+      });
+
+      afterEach(() => {
+        warn.mockRestore();
+      });
+
+      const timeOf = (row: UnreadableRow): number | undefined =>
+        typeof row.time === 'string' ? parseWithdrawTime(row.time) : row.time;
+
+      /** A read that also reports the unreadable rows in the span (all those with no time). */
+      const reporting = <Row>(
+        serve: (apiKey: string, secret: string, window: HistoryWindow) => Promise<HistoryPage<Row>>,
+        unreadable: UnreadableRow[],
+      ) =>
+        jest.fn(async (apiKey: string, secret: string, window: HistoryWindow) => ({
+          ...(await serve(apiKey, secret, window)),
+          unreadable:
+            window.offset > 0
+              ? []
+              : unreadable.filter((row) => {
+                  const time = timeOf(row);
+
+                  return time === undefined || (time >= window.startTime && time <= window.endTime);
+                }),
+        }));
+
+      const loggedCodes = (): string[] => warn.mock.calls.map(([, detail]) => detail.code);
+
+      it('imports the readable deposit of an owed day and owes the unreadable one at its own point, logging only the code', async () => {
+        const state = await stateOf(NOW - 2 * DAY_MS, [stuckDay]);
+
+        const { result } = await runOver(state, [], NOW, {
+          fetchDepositHistory: reporting(depositServer([goodDeposit()]), [{ time: stuckAt }]),
+        });
+
+        expect(state.imported).toEqual(new Set([depositKey]));
+        expect(beyondWindow(state.account.pending())).toEqual([
+          { start: stuckAt - 1, end: stuckAt + 1, kind: 'point' },
+        ]);
+        expect(warn.mock.calls).toEqual([
+          [STOP_TAG, { name: 'BinanceWalkStop', code: UNREADABLE_CODE }],
+        ]);
+        expect(result.complete).toBe(false);
+      });
+
+      it.each([
+        ['text', stuckAtText],
+        ['epoch milliseconds', stuckAt],
+      ])(
+        'owes an unreadable withdrawal whose applyTime is %s at the second it may sit in',
+        async (_label, applyTime) => {
+          const state = await stateOf(NOW - 2 * DAY_MS, [stuckDay]);
+
+          await runOver(state, [goodWithdrawal()], NOW, {
+            fetchWithdrawHistory: reporting(withdrawalServer([goodWithdrawal()]), [
+              { time: applyTime },
+            ]),
+          });
+
+          expect(state.imported).toEqual(new Set([keyOf(goodWithdrawal())]));
+          expect(beyondWindow(state.account.pending())).toEqual([pointAt(stuckAt)]);
+          expect(loggedCodes()).toEqual([UNREADABLE_CODE]);
+        },
+      );
+
+      it('owes the whole span of a row with no usable time, and imports the other rows of it', async () => {
+        const state = await stateOf(NOW - 2 * DAY_MS, [stuckDay]);
+
+        await runOver(state, [], NOW, {
+          fetchDepositHistory: reporting(depositServer([goodDeposit()]), [{ time: undefined }]),
+        });
+
+        expect(state.imported).toEqual(new Set([depositKey]));
+        expect(beyondWindow(state.account.pending())).toEqual([stuckDay]);
+        expect(loggedCodes()).toContain(UNREADABLE_CODE);
+      });
+
+      it('owes the point of an unreadable row of the re-scan window, and imports the rows around it', async () => {
+        const unreadableAt = NOW - 10 * DAY_MS;
+        const state = await stateOf(NOW - 2 * DAY_MS);
+        const later = deposit({ id: 'later', insertTime: NOW - 5 * DAY_MS });
+
+        const { result } = await runOver(state, [], NOW, {
+          fetchDepositHistory: reporting(depositServer([later]), [{ time: unreadableAt }]),
+        });
+
+        expect(state.imported).toEqual(new Set([`${ACCOUNT}:deposit:later`]));
+        expect(state.account.pending()).toEqual([
+          { start: unreadableAt - 1, end: unreadableAt + 1, kind: 'point' },
+        ]);
+        expect(result.complete).toBe(false);
+      });
+
+      it('stops the forward pass like any other stop: the cursor stays, and the owed day is still read', async () => {
+        const cursor = NOW - 2 * DAY_MS;
+        const state = await stateOf(cursor, [stuckDay]);
+
+        const { result } = await runOver(state, [], NOW, {
+          fetchDepositHistory: reporting(depositServer([goodDeposit()]), [
+            { time: NOW - 3_600_000 },
+          ]),
+        });
+
+        expect(state.account.cursor()).toBe(cursor);
+        expect(state.imported).toEqual(new Set([depositKey]));
+        expect(result.complete).toBe(false);
+      });
+
+      it('counts an unreadable row toward a full page, so a page of rows and unreadable ones is read in halves', async () => {
+        const state = await stateOf(NOW - 2 * DAY_MS, [stuckDay]);
+        const fullByOne = jest.fn(
+          async (_apiKey: string, _secret: string, window: HistoryWindow) => ({
+            ...historyPage(
+              window.endTime - window.startTime > DAY_MS / 2
+                ? Array.from({ length: HISTORY_PAGE_LIMIT - 1 }, (_unused, index) =>
+                    deposit({ id: `d${index}`, insertTime: window.startTime }),
+                  )
+                : [],
+            ),
+            unreadable: window.endTime - window.startTime > DAY_MS / 2 ? [{ time: undefined }] : [],
+          }),
+        );
+
+        await runOver(state, [], NOW, { fetchDepositHistory: fullByOne });
+
+        const dayCalls = fullByOne.mock.calls
+          .map((call) => call[2])
+          .filter((window) => window.startTime === stuckDay.start);
+        expect(dayCalls[0].endTime).toBe(stuckDay.end);
+        expect(dayCalls[1].endTime).toBe(stuckDay.start + DAY_MS / 2);
+      });
+
+      it('never rejects the run for a row, and writes the rows of the span before the list that owes it', async () => {
+        const state = await stateOf(NOW - 2 * DAY_MS, [stuckDay]);
+
+        const { deps } = await runOver(state, [], NOW, {
+          fetchDepositHistory: reporting(depositServer([goodDeposit()]), [{ time: stuckAt }]),
+        });
+
+        const listWrites = (deps.writeWalkPending as jest.Mock).mock;
+        const owedAt = listWrites.calls.findIndex((call) =>
+          (call[2] as WalkWindow[]).some((range) => range.start === stuckAt - 1),
+        );
+        expect((deps.addTransactions as jest.Mock).mock.invocationCallOrder[0]).toBeLessThan(
+          listWrites.invocationCallOrder[owedAt],
+        );
+      });
+    });
+
+    describe('with two points that start together, a withdrawal second and a deposit inside it', () => {
+      const withdrawalPoint = pointAt(stuckAt);
+      const depositAt = stuckAt - 999;
+      const depositPoint: OwedGround = { start: depositAt - 1, end: depositAt + 1, kind: 'point' };
+
+      it('takes off only the narrower, the deposit point, when the read of the wider returned the deposit alone', async () => {
+        const state = await stateOf(NOW - 2 * DAY_MS, [depositPoint, withdrawalPoint]);
+        const fixedDeposit = deposit({ id: 'fixed-deposit', insertTime: depositAt });
+
+        await runOver(state, [], NOW, { fetchDepositHistory: depositServer([fixedDeposit]) });
+
+        expect(state.imported).toEqual(new Set([`${ACCOUNT}:deposit:fixed-deposit`]));
+        expect(beyondWindow(state.account.pending())).toEqual([withdrawalPoint]);
       });
     });
 

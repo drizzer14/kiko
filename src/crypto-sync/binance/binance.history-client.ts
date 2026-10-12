@@ -1,5 +1,6 @@
 import maybe, { foldMap } from 'fnts/maybe';
 import { isRecord } from '@kiko/type-guards';
+import { bifoldMap, eitherSync } from 'fnts/either';
 
 import {
   BINANCE_ASSET,
@@ -106,9 +107,20 @@ const recordReader =
         ) as Parsed<Readers>)
       : parseFailure();
 
-/** One page of one window, with the minute's spent weight when Binance reports it. */
+/**
+ * A row the client could not read, kept for the walk instead of failing the read: it holds
+ * nothing of the row but its own time field when that is usable (a finite number or, for a
+ * withdrawal, a datetime text), else `undefined`. The walk owes the row's point, or its span.
+ */
+export type UnreadableRow = { time: number | string | undefined };
+
+/**
+ * One page of one window, with the minute's spent weight when Binance reports it. `rows` are the
+ * rows that parsed; every other row is in `unreadable`, so one malformed row never fails the read.
+ */
 export type HistoryPage<Row> = {
   rows: Row[];
+  unreadable: UnreadableRow[];
   usedUidWeight1m: number | undefined;
   usedIpWeight1m: number | undefined;
 };
@@ -116,13 +128,62 @@ export type HistoryPage<Row> = {
 /** A page of a `{ rows, total }` endpoint, paged by `current`. */
 type TotalPage<Row> = HistoryPage<Row> & { total: number };
 
-const arrayPage =
-  <Row>(readRow: Reader<Row>) =>
-  ({ body, headers }: SignedPage): HistoryPage<Row> => ({
-    rows: listOf(readRow)(body),
-    ...usedWeightsFromHeaders(headers),
-  });
+type Reading<Value> = { value: Value } | { unreadable: UnreadableRow };
 
+type TimeReader = Reader<UnreadableRow['time']>;
+
+/**
+ * Read one item of a page: the parsed value, or, when `read` rejects it, the item as an
+ * `UnreadableRow` carrying only the time `timeOf` finds in it.
+ */
+const readingOf =
+  <Value>(read: Reader<Value>, timeOf: TimeReader) =>
+  (item: unknown): Reading<Value> =>
+    bifoldMap(
+      eitherSync<unknown, Value>(() => read(item)),
+      (): Reading<Value> => ({ unreadable: { time: timeOf(item) } }),
+      (value): Reading<Value> => ({ value }),
+    );
+
+const readingsOf = <Value>(
+  items: unknown,
+  read: Reader<Value>,
+  timeOf: TimeReader,
+): Reading<Value>[] => (Array.isArray(items) ? items.map(readingOf(read, timeOf)) : parseFailure());
+
+const valuesOf = <Value>(readings: Reading<Value>[]): Value[] =>
+  readings.flatMap((reading) => ('value' in reading ? [reading.value] : []));
+
+const unreadableOf = <Value>(readings: Reading<Value>[]): UnreadableRow[] =>
+  readings.flatMap((reading) => ('unreadable' in reading ? [reading.unreadable] : []));
+
+/** The time an item's own field holds, as `UnreadableRow` keeps it: `undefined` if unusable. */
+const timeFieldOf =
+  (field: string, read: TimeReader): TimeReader =>
+  (item) =>
+    isRecord(item) ? read(item[field]) : undefined;
+
+const epochTime: TimeReader = optionalFiniteNumber;
+
+const epochOrDatetimeTime: TimeReader = (value) =>
+  typeof value === 'string' ? value : optionalFiniteNumber(value);
+
+const arrayPage =
+  <Row>(readRow: Reader<Row>, timeOf: TimeReader) =>
+  ({ body, headers }: SignedPage): HistoryPage<Row> => {
+    const readings = readingsOf(body, readRow, timeOf);
+
+    return {
+      rows: valuesOf(readings),
+      unreadable: unreadableOf(readings),
+      ...usedWeightsFromHeaders(headers),
+    };
+  };
+
+/**
+ * Transfer and Earn rows parse strictly: a malformed row still fails the read, so `unreadable`
+ * is always empty here.
+ */
 const totalPage =
   <Row>(readRow: Reader<Row>) =>
   ({ body, headers }: SignedPage): TotalPage<Row> => {
@@ -132,6 +193,7 @@ const totalPage =
 
     return {
       rows: listOf(readRow)(body.rows ?? []),
+      unreadable: [],
       total: finiteNumber(body.total),
       ...usedWeightsFromHeaders(headers),
     };
@@ -195,9 +257,12 @@ const WITHDRAWAL_FIELDS = {
 /** One withdrawal from `/sapi/v1/capital/withdraw/history`. */
 export type BinanceWithdrawal = Parsed<typeof WITHDRAWAL_FIELDS>;
 
-const depositPage = arrayPage(recordReader(DEPOSIT_FIELDS));
+const depositPage = arrayPage(recordReader(DEPOSIT_FIELDS), timeFieldOf('insertTime', epochTime));
 
-const withdrawalPage = arrayPage(recordReader(WITHDRAWAL_FIELDS));
+const withdrawalPage = arrayPage(
+  recordReader(WITHDRAWAL_FIELDS),
+  timeFieldOf('applyTime', epochOrDatetimeTime),
+);
 
 /**
  * `GET /sapi/v1/capital/deposit/hisrec` (deposit history), filtered to BTC, for
@@ -387,13 +452,17 @@ const readPayItem: Reader<PayItem> = (value) => {
 };
 
 const payPage = ({ body, headers }: SignedPage): PayHistoryPage => {
-  const items = listOf(readPayItem)(
+  const readings = readingsOf(
     isRecord(body) && body.code === PAY_SUCCESS_CODE ? body.data : undefined,
+    readPayItem,
+    timeFieldOf('transactionTime', epochTime),
   );
+  const items = valuesOf(readings);
 
   return {
     rows: items.flatMap((item) => item.btcOrder ?? []),
-    gathered: items.length,
+    unreadable: unreadableOf(readings),
+    gathered: readings.length,
     btcFundedOtherCoinOrders: items.flatMap((item) => item.btcFunded ?? []),
     ...usedWeightsFromHeaders(headers),
   };

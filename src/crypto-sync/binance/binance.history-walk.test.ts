@@ -6,6 +6,8 @@ import {
   BinanceWalkStop,
   btcSatoshis,
   buildWalkWindows,
+  distinctGround,
+  dropReadPoints,
   halfOf,
   logWalkStop,
   nextSpanAfter,
@@ -1331,7 +1333,6 @@ describe('advanceWalkMarks', () => {
     marks: WalkMarks,
     walkPlan: WalkPlan = plan,
     owed: OwedGround[] = [],
-    returned: WalkWindow[] = [],
   ) => {
     const writes: Write[] = [];
 
@@ -1339,7 +1340,6 @@ describe('advanceWalkMarks', () => {
       pass,
       span,
       owed,
-      returned,
       plan: walkPlan,
       marks,
       restartMs: RESTART_MS,
@@ -1567,59 +1567,13 @@ describe('advanceWalkMarks', () => {
     describe('with a point on the list', () => {
       const point = pointOf(79_999, 80_001);
       const whole = { start: 70_000, end: 90_000 };
-      const ownedBy = (...windows: WalkWindow[]) => windows;
 
-      it('takes a point off the list when the read returned a record that owes exactly it', async () => {
-        const marks = markOf({ cursor: 900, pending: [point] });
-
-        expect(await advance('pending', whole, marks, planned, [], ownedBy(point))).toEqual([
-          [PENDING_FIELD, []],
-        ]);
-      });
-
-      it('keeps a point when the read returned no record at all: it fails closed', async () => {
+      it('keeps a point whatever the span holds of it: only a window that completed takes a point off (dropReadPoints)', async () => {
         const marks = markOf({ cursor: 900, pending: [point] });
 
         expect(await advance('pending', whole, marks, planned)).toEqual([]);
         expect(marks.pending).toEqual([point]);
       });
-
-      it.each([
-        ['a neighbour a few ms away', { start: 80_099, end: 80_101 }],
-        ['a record whose point is wider', { start: 79_999, end: 81_000 }],
-        ['a record whose point is narrower', { start: 79_999, end: 80_000 }],
-        ['a record whose point starts later', { start: 80_000, end: 80_002 }],
-      ])(
-        'keeps a point when the read returned only %s: Binance may filter on another field',
-        async (_label, other) => {
-          const marks = markOf({ cursor: 900, pending: [point] });
-
-          expect(await advance('pending', whole, marks, planned, [], ownedBy(other))).toEqual([]);
-          expect(marks.pending).toEqual([point]);
-        },
-      );
-
-      it('keeps every point the read did not return a record for, and takes off only the one it did', async () => {
-        const other = pointOf(75_000, 75_002);
-        const marks = markOf({ cursor: 900, pending: [other, point] });
-
-        await advance('pending', whole, marks, planned, [], ownedBy(point));
-
-        expect(marks.pending).toEqual([other]);
-      });
-
-      it.each([
-        ['its start', { start: 70_000, end: 80_000 }],
-        ['its end', { start: 80_000, end: 90_000 }],
-      ])(
-        'keeps a point whole that a span only reaches into at %s, though a returned record owes it: the rest of its second is unread',
-        async (_label, span) => {
-          const marks = markOf({ cursor: 900, pending: [point] });
-
-          expect(await advance('pending', span, marks, planned, [], ownedBy(point))).toEqual([]);
-          expect(marks.pending).toEqual([point]);
-        },
-      );
 
       it('keeps a point beside what is left of a range when the read returned no record for it', async () => {
         const marks = markOf({ cursor: 900, pending: [day, point] });
@@ -1641,46 +1595,16 @@ describe('advanceWalkMarks', () => {
       it('writes no list when a read of the point finds its record stuck again', async () => {
         const marks = markOf({ cursor: 900, pending: [point] });
 
-        expect(await advance('pending', point, marks, planned, [point], ownedBy(point))).toEqual(
-          [],
-        );
+        expect(await advance('pending', point, marks, planned, [point])).toEqual([]);
       });
 
-      it('takes a point off the list as a re-scan span passes it, before the mark moves', async () => {
-        const marks = markOf({ cursor: 900, rescanCursor: 50_000, pending: [point] });
-
-        expect(
-          await advance(
-            'rescan',
-            { start: 50_000, end: 90_000 },
-            marks,
-            planned,
-            [],
-            ownedBy(point),
-          ),
-        ).toEqual([
-          [PENDING_FIELD, []],
-          [RESCAN_FIELD, 90_000],
-        ]);
-      });
-
-      it('keeps a point a re-scan span passes when the read returned nothing for it', async () => {
+      it('keeps a point a re-scan span passes, and moves only the mark', async () => {
         const marks = markOf({ cursor: 900, rescanCursor: 50_000, pending: [point] });
 
         expect(await advance('rescan', { start: 50_000, end: 90_000 }, marks, planned)).toEqual([
           [RESCAN_FIELD, 90_000],
         ]);
         expect(marks.pending).toEqual([point]);
-      });
-
-      it('keeps two points that start together, each until a record owes exactly it', async () => {
-        const narrow = pointOf(79_999, 80_001);
-        const wide = pointOf(79_999, 81_000);
-        const marks = markOf({ cursor: 900, pending: [narrow, wide] });
-
-        await advance('pending', whole, marks, planned, [], ownedBy(narrow));
-
-        expect(marks.pending).toEqual([wide]);
       });
     });
 
@@ -1728,6 +1652,127 @@ describe('advanceWalkMarks', () => {
         expect(marks.pending).toEqual([pointOf(80_000, 80_002)]);
       });
     });
+  });
+});
+
+describe('dropReadPoints', () => {
+  const FIELDS = {
+    cursor: 'binancePayHistoryCursor',
+    rescan: 'binancePayRescanCursor',
+    point: 'binancePayPointCursor',
+    pending: 'binancePayPendingOverlap',
+  } as const;
+
+  const pointOf = (start: number, end: number): OwedGround => ({ start, end, kind: 'point' });
+  const point = pointOf(79_999, 80_001);
+  const whole = { start: 70_000, end: 90_000 };
+
+  const drop = async (input: {
+    pending: OwedGround[];
+    read: OwedGround[];
+    window?: WalkWindow;
+    pass?: WalkPass;
+  }) => {
+    const { pending, read, window = whole, pass = 'pending' } = input;
+    const marks: WalkMarks = { cursor: 900, rescanCursor: null, pointCursor: null, pending };
+    const writes: [string, OwedGround[]][] = [];
+
+    await dropReadPoints({
+      pass,
+      window,
+      read,
+      marks,
+      fields: FIELDS,
+      writePending: async (field, ranges) => {
+        writes.push([field, ranges]);
+      },
+    });
+
+    return { marks, writes };
+  };
+
+  it('takes a point off the list when the window holds all of it and a returned record owes exactly it, in one write', async () => {
+    const { marks, writes } = await drop({ pending: [point], read: [point] });
+
+    expect(writes).toEqual([[FIELDS.pending, []]]);
+    expect(marks.pending).toEqual([]);
+  });
+
+  it('keeps a point, and writes nothing, when the window returned no record that owes it: it fails closed', async () => {
+    const { marks, writes } = await drop({ pending: [point], read: [] });
+
+    expect(writes).toEqual([]);
+    expect(marks.pending).toEqual([point]);
+  });
+
+  it.each([
+    ['a neighbour a few ms away', pointOf(80_099, 80_101)],
+    ['a record whose point is wider', pointOf(79_999, 81_000)],
+    ['a record whose point is narrower', pointOf(79_999, 80_000)],
+    ['a record whose point starts later', pointOf(80_000, 80_002)],
+  ])(
+    'keeps a point when the window returned only %s: Binance may filter on another field',
+    async (_label, other) => {
+      const { marks, writes } = await drop({ pending: [point], read: [other] });
+
+      expect(writes).toEqual([]);
+      expect(marks.pending).toEqual([point]);
+    },
+  );
+
+  it('keeps every point no returned record owes, and takes off only the one that one does', async () => {
+    const other = pointOf(75_000, 75_002);
+
+    const { marks } = await drop({ pending: [other, point], read: [point] });
+
+    expect(marks.pending).toEqual([other]);
+  });
+
+  it.each([
+    ['its start', { start: 70_000, end: 80_000 }],
+    ['its end', { start: 80_000, end: 90_000 }],
+  ])(
+    'keeps a point whole when the window only reaches into it at %s, though a returned record owes it: the rest of its second is unread',
+    async (_label, window) => {
+      const { marks, writes } = await drop({ pending: [point], read: [point], window });
+
+      expect(writes).toEqual([]);
+      expect(marks.pending).toEqual([point]);
+    },
+  );
+
+  it('takes off only the narrower of two points that start together when only its record was returned', async () => {
+    const narrow = pointOf(79_999, 80_001);
+    const wide = pointOf(79_999, 81_000);
+
+    const { marks } = await drop({ pending: [narrow, wide], read: [narrow] });
+
+    expect(marks.pending).toEqual([wide]);
+  });
+
+  it('never takes a range off the list: the span writes ranges, as it reads them', async () => {
+    const range = { start: 75_000, end: 85_000 };
+
+    const { marks, writes } = await drop({ pending: [range, point], read: [point] });
+
+    expect(writes).toEqual([[FIELDS.pending, [range]]]);
+    expect(marks.pending).toEqual([range]);
+  });
+
+  it('leaves the list alone for a window of the forward pass, which writes the list as the cursor moves', async () => {
+    const { marks, writes } = await drop({ pending: [point], read: [point], pass: 'forward' });
+
+    expect(writes).toEqual([]);
+    expect(marks.pending).toEqual([point]);
+  });
+});
+
+describe('distinctGround', () => {
+  it('keeps the first of every repeated entry, and tells a point from a range of the same window', () => {
+    const range = { start: 1, end: 3 };
+    const point: OwedGround = { start: 1, end: 3, kind: 'point' };
+
+    expect(distinctGround([range, point, { ...range }, { ...point }])).toEqual([range, point]);
   });
 });
 
@@ -1975,7 +2020,7 @@ describe('walkSpans', () => {
     jest.fn(async (span: WalkWindow, _page: WalkWindow): Promise<SpanCommit | undefined> => {
       committed.push(span);
 
-      return { imported: count, owed };
+      return { imported: count, owed, returned: [], stuck: [] };
     });
 
   it('halves a span the read finds too full, then reads on from where the commit ended, twice as wide', async () => {
@@ -2026,6 +2071,8 @@ describe('walkSpans', () => {
       async (_span: WalkWindow, _page: string): Promise<SpanCommit> => ({
         imported: 0,
         owed: false,
+        returned: [],
+        stuck: [],
       }),
     );
 
@@ -2076,7 +2123,7 @@ describe('walkSpans', () => {
       const commit = jest.fn(async (span: WalkWindow, _page: WalkWindow): Promise<SpanCommit> => {
         committed.push(span);
 
-        return { imported: 1, owed: span.start === 25 };
+        return { imported: 1, owed: span.start === 25, returned: [], stuck: [] };
       });
 
       const result = await walkSpans({ window, read: readByWidth(), commit });
@@ -2120,6 +2167,112 @@ describe('walkSpans', () => {
 
     expect(read).not.toHaveBeenCalled();
     expect(result).toEqual({ imported: 0, complete: true, owed: false, started: false });
+  });
+
+  describe('the points of the records the window returned, once it completes', () => {
+    const pointA: OwedGround = { start: 9, end: 11, kind: 'point' };
+    const pointB: OwedGround = { start: 40, end: 42, kind: 'point' };
+
+    /** A commit that reports, per span start, the points its records returned and left owed. */
+    const commitReturning = (
+      bySpanStart: Record<number, { returned?: OwedGround[]; stuck?: OwedGround[] }>,
+      events: string[] = [],
+    ) =>
+      jest.fn(async (span: WalkWindow, _page: WalkWindow): Promise<SpanCommit> => {
+        events.push(`commit ${span.start}`);
+        const { returned = [], stuck = [] } = bySpanStart[span.start] ?? {};
+
+        return { imported: 0, owed: stuck.length > 0, returned, stuck };
+      });
+
+    it('hands them to onComplete once, after the commit of the last span', async () => {
+      const events: string[] = [];
+      const onComplete = jest.fn(async (_read: OwedGround[]) => {
+        events.push('complete');
+      });
+
+      await walkSpans({
+        window,
+        read: readByWidth(),
+        commit: commitReturning({ 0: { returned: [pointA] }, 75: { returned: [pointB] } }, events),
+        onComplete,
+      });
+
+      expect(onComplete).toHaveBeenCalledTimes(1);
+      expect(onComplete).toHaveBeenCalledWith([pointA, pointB]);
+      expect(events.at(-1)).toBe('complete');
+    });
+
+    it('lists a point once, though several spans returned it', async () => {
+      const onComplete = jest.fn(async (_read: OwedGround[]) => undefined);
+
+      await walkSpans({
+        window,
+        read: readByWidth(),
+        commit: commitReturning({ 0: { returned: [pointA] }, 25: { returned: [pointA] } }),
+        onComplete,
+      });
+
+      expect(onComplete).toHaveBeenCalledWith([pointA]);
+    });
+
+    it('leaves out a point that a record of a later span left owed, though an earlier span returned it for a record it could trust', async () => {
+      const onComplete = jest.fn(async (_read: OwedGround[]) => undefined);
+
+      await walkSpans({
+        window,
+        read: readByWidth(),
+        commit: commitReturning({
+          0: { returned: [pointA] },
+          50: { returned: [pointA], stuck: [pointA] },
+        }),
+        onComplete,
+      });
+
+      expect(onComplete).toHaveBeenCalledWith([]);
+    });
+
+    it('is not called when the read gives up before the window is covered, though a span returned the point', async () => {
+      const half = { start: 0, end: 50 };
+      const reads = [
+        { kind: 'split' as const, half },
+        { kind: 'page' as const, page: half },
+        undefined,
+      ];
+      const onComplete = jest.fn(async (_read: OwedGround[]) => undefined);
+
+      await walkSpans({
+        window,
+        read: jest.fn(async () => reads.shift()),
+        commit: commitReturning({ 0: { returned: [pointA] } }),
+        onComplete,
+      });
+
+      expect(onComplete).not.toHaveBeenCalled();
+    });
+
+    it('is not called when the commit gives up', async () => {
+      const onComplete = jest.fn(async (_read: OwedGround[]) => undefined);
+
+      await walkSpans({
+        window,
+        read: readByWidth(),
+        commit: jest.fn(async () => undefined),
+        onComplete,
+      });
+
+      expect(onComplete).not.toHaveBeenCalled();
+    });
+
+    it('needs no onComplete', async () => {
+      const result = await walkSpans({
+        window,
+        read: readByWidth(),
+        commit: commitReturning({ 0: { returned: [pointA] } }),
+      });
+
+      expect(result.complete).toBe(true);
+    });
   });
 
   describe('whether the window was started', () => {

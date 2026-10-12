@@ -48,6 +48,7 @@ that holding.
 
 | # | Ruling | Where |
 |---|---|---|
+| OVERNIGHT 17 (R28) | User ruling 2026-10-12 (kept): a stop in the forward pass ends only the forward pass; the run goes on to the owed ranges, the re-scan and the points. The cursor still never passes the stuck record (A2) | sections 5, 7 |
 | OVERNIGHT 18 | User ruling 2026-10-12, A (confirmed): the Transfer and Earn walks follow option A. The other rows of a span import; only the stuck record is owed, at its point | sections 5, 6 |
 | OVERNIGHT 19 | User ruling 2026-10-12, A (confirmed): `LANE_CALL_CAPS.transfer` = 80 | section 2 |
 | OVERNIGHT 20 | User ruling 2026-10-12, B: the "history is behind" caption shows ONLY while a walk cursor is null or more than a day behind; an owed point does not show it (was: the applied default also showed it for an owed point) | section 8 |
@@ -326,16 +327,19 @@ withdraw budget moves into this object, with the same numbers and the same rule.
     it: a re-scan span or a pending span takes `[span start, span end)` out of the list after its
     rows are durable (a span in a range's middle splits it). The floor passing a range drops it
     (the part of a range the floor crosses is cut to the floor); nothing else does. A point (see
-    below) is the ground one record owes, and it leaves the list only when a span that holds all
-    of it was read and returned a record whose own point is exactly this one (every returned
-    record counts, the ones the walk can trust and the ones it cannot), or by the floor. A read
-    that returns no such record cannot be shown to have held the point's record, so the point
-    stays: the walk fails closed. That covers a read that returns nothing, one that returns only
-    the neighbours of the stuck record (Binance filters on another field, or rounds the time),
-    and a span that holds only part of the point (a window that came back too full and is read in
-    halves, or a re-scan that starts inside the second): none of them takes the point off. A
-    record that is still stuck owes its point again in the same write, so the point is one entry
-    for as long as the record is stuck.
+    below) is the ground one record owes, and it leaves the list only when a window of the
+    pending pass, the re-scan or the points that holds all of it was READ TO ITS END (every span
+    of it committed) and returned a record whose own point is exactly this one (every returned
+    record counts, the ones the walk can trust and the ones it cannot), or by the floor: one list
+    write, after the window's last span. A point that a record of the window left owed again
+    (the twin of a trusted record, still stuck) stays. A window that returns no such record
+    cannot be shown to have held the point's record, so the point stays: the walk fails closed.
+    That covers a window that returns nothing, one that returns only the neighbours of the stuck
+    record (Binance filters on another field, or rounds the time), a window that holds only part
+    of the point (a re-scan that starts inside the second), and a window that the budget cut
+    before its last span (a window that came back too full is read in halves, and the point
+    leaves only once both halves were read): none of them takes the point off, and no span
+    alone does.
   - **Order of a run.** Forward pass first, then the owed ranges the window re-scan will not
     read this run, oldest first, as windows of their own (`WalkPass` `pending`), then the window
     re-scan, then the owed points, each on the budget the earlier ones left. A stop in the
@@ -347,7 +351,7 @@ withdraw budget moves into this object, with the same numbers and the same rule.
     commit moves, and not for an owed range or point, which goes on to the next one. No pass
     ends the run on its own; the budget does (a rate limit too: the account cooldown is part of
     the budget check, so every later read is refused). That a forward stop ends only the forward
-    pass is an OVERNIGHT DEFAULT, pending the user (see the ruling under "Filter" below). Ranges
+    pass is a user ruling of 2026-10-12, R28 (see the ruling under "Filter" below). Ranges
     inside the re-scan's own range are read by the re-scan, and leave the list as its mark
     passes them.
   - **Per-record commits (pending pass and re-scan).** A read commits every record the walk can
@@ -387,8 +391,8 @@ withdraw budget moves into this object, with the same numbers and the same rule.
     span commits its trusted rows, its stuck records are added to the list as points (or the
     span, for a stop that owes it), and the re-scan mark moves on, so the records after the stuck
     one are re-scanned in the same run, however far apart the runs are.
-  - **Owed points.** A point costs exactly one read a run, and is read LAST, after the re-scan, on
-    the calls that are left, so many of them never take the budget of the owed days or of the
+  - **Owed points.** A point costs at most one window a run (a full window is read in halves), and
+    is read LAST, after the re-scan, on the calls that are left, so many of them never take the budget of the owed days or of the
     re-scan. They are read in a round-robin (`startingAfter`): each walk keeps one point cursor
     in a walk-owned key next to its pending list (`binancePayPointCursor`, capital:
     `binanceHistoryPointCursor`), the start of the point it read last. The next run reads the
@@ -410,8 +414,8 @@ withdraw budget moves into this object, with the same numbers and the same rule.
     fewest points such a run reads, however far apart the runs are and whatever the run's own
     time; a run whose forward pass (a catch-up over a long gap) spends every call of the lane
     reads no point, and is not counted. A point that is no longer stuck imports and leaves the
-    list. A point leaves the list only as the Remove rule above says: a read whose span holds
-    all of it and returned a record that owes exactly it, or the floor. A point is read whether
+    list. A point leaves the list only as the Remove rule above says: a window read to its end
+    that holds all of it and returned a record that owes exactly it, or the floor. A point is read whether
     or not a range or the re-scan holds it; a range never takes a point in.
   - **Reserved calls.** Every read of the owed windows leaves the lane's last calls for the
     re-scan (`RESCAN_KEEP`, 1, when the plan has a re-scan) and for the points (`POINT_KEEP`, 1,
@@ -497,11 +501,11 @@ withdraw budget moves into this object, with the same numbers and the same rule.
   pending pass and the re-scan the other orders of the span still import and only that order
   stays unimported and owed at its own point (its `transactionTime`, read by the client; the
   whole span when the time is missing or outside the span); the forward pass keeps A2: the stop
-  ends the forward pass, cursor unmoved. OVERNIGHT DEFAULT, pending the user (not part of that
-  ruling; it touches the scope of A2 as ruling A did): after a stop in the forward pass the run
-  goes on to the owed ground, the re-scan and the points, so a settled record in an owed day is
-  imported however long the forward pass stays stopped. If the user reverses it, the forward
-  stop ends the run again (one branch in `runWalkPlan`).
+  ends the forward pass, cursor unmoved. User ruling of 2026-10-12, R28 (kept; it touches the
+  scope of A2 as ruling A did): after a stop in the forward pass the run goes on to the owed
+  ground, the re-scan and the points, so a settled record in an owed day is imported however
+  long the forward pass stays stopped. Were it reversed, the forward stop would end the run
+  again (one branch in `runWalkPlan`).
 - **No cross-source cap and no overlap guard (user ruling C1, 2026-10-10).** The
   probe found 0 of 5 Pay BTC rows that match a capital row (Q5), so both are removed:
   the Pay window end is `now` (a null capital cursor no longer blocks the Pay walk),
@@ -587,7 +591,7 @@ withdraw budget moves into this object, with the same numbers and the same rule.
 - **Commit granularity: per record** (user ruling 2026-10-12, OVERNIGHT 18 = A). A record the
   walk cannot trust owes its own point and the other records of the span commit (pending pass
   and re-scan). The forward pass leaves the span uncommitted and ends, the cursor unmoved;
-  whether the run goes on is OVERNIGHT 17, pending the user.
+  the run then goes on (OVERNIGHT 17 = R28, user ruling 2026-10-12).
   Per-record codes: `transfer-not-settled` (any status but `CONFIRMED`; T5),
   `transfer-id-missing`, `transfer-amount-invalid`, `transfer-type-mismatch` (the row's
   `type` is not the type read), `transfer-row-unreadable` (R30: a row the client could not
@@ -1011,8 +1015,9 @@ keeps its rule.
   coin, and one small Simple Earn flexible subscription and redemption of any coin, so the
   transfer and Earn reads have a row to answer with.
 - Before January 2027: decide the import of the Funding -> Spot migration (item 16).
-- OVERNIGHT 17 of the plan (`docs/superpowers/plans/2026-10-10-binance-history.md`).
-  OVERNIGHT 18-21 are decided (user ruling 2026-10-12, "Rulings of 2026-10-12" above).
+- Nothing is open from the OVERNIGHT list of the plan
+  (`docs/superpowers/plans/2026-10-10-binance-history.md`): OVERNIGHT 17 (R28) and 18-21 are
+  decided (user ruling 2026-10-12, "Rulings of 2026-10-12" above).
 
 ## Change sets (7 tasks, track `binance-history`)
 

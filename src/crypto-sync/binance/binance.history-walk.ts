@@ -61,10 +61,17 @@ const STOP_ENDS_PASS: Record<WalkPass, boolean> = {
 };
 
 /**
- * What a committed span gave: the rows it imported, and whether it left ground owed: a record
- * it could not trust, which a later run reads again (see `settleRecords`).
+ * What a committed span gave: the rows it imported, whether it left ground owed (`stuck`: the
+ * ground of a record it could not trust, which a later run reads again, see `settleRecords`), and
+ * the point of every record its read returned, trusted or not (`returned`): the window takes a
+ * point off the list only for one of those (`dropReadPoints`).
  */
-export type SpanCommit = { imported: number; owed: boolean };
+export type SpanCommit = {
+  imported: number;
+  owed: boolean;
+  returned: WalkWindow[];
+  stuck: OwedGround[];
+};
 
 /**
  * What one window gave: the rows imported, whether it was read to its end, whether any of its
@@ -119,7 +126,7 @@ const sameWindow = (left: WalkWindow, right: WalkWindow): boolean =>
   left.start === right.start && left.end === right.end;
 
 /** Whether two entries are the same ground: the same window, and both a range or both a point. */
-export const sameGround = (left: OwedGround, right: OwedGround): boolean =>
+const sameGround = (left: OwedGround, right: OwedGround): boolean =>
   sameWindow(left, right) && left.kind === right.kind;
 
 /** The ranges of `ranges` that `read` leaves: a read in a range's middle splits it in two. */
@@ -171,16 +178,18 @@ const cutToBounds = (
   end: Math.min(range.end, bounds.endTime),
 });
 
+/** The ground of a list without a repeat: the first of each entry `sameGround` tells apart. */
+export const distinctGround = (ground: OwedGround[]): OwedGround[] =>
+  ground.filter((entry, index) => ground.findIndex((other) => sameGround(other, entry)) === index);
+
 /**
  * The points of a list without a repeat. Two points that start together but differ both stay:
- * a point leaves the list only by a record that owes exactly it (`withoutReadGround`), so a
+ * a point leaves the list only by a record that owes exactly it (`dropReadPoints`), so a
  * wider one that holds the other is no reason to drop the other. Oldest first, a wider point
  * after a narrower one that starts with it.
  */
 const distinctPoints = (points: OwedGround[]): OwedGround[] =>
-  points
-    .filter((point, index) => points.findIndex((other) => sameGround(other, point)) === index)
-    .sort((left, right) => byStart(left, right) || left.end - right.end);
+  distinctGround(points).sort((left, right) => byStart(left, right) || left.end - right.end);
 
 /**
  * Owed ground in its stored form, oldest first. A range is cut to what the walk can still ask
@@ -314,7 +323,7 @@ const pointsToRead = (points: OwedGround[], endTime: number): WalkWindow[] => {
     }
   }
 
-  return [...widestAt.values()].sort(byStart);
+  return [...widestAt.values()];
 };
 
 /**
@@ -350,7 +359,7 @@ export const planWalkPasses = (input: {
   cursor: number | null;
   rescanCursor: number | null;
   pointCursor: number | null;
-  pending: WalkWindow[];
+  pending: OwedGround[];
   floorMs: number;
   endTime: number;
   windowMs: number;
@@ -440,11 +449,6 @@ type MarkAdvance = {
   span: WalkWindow;
   /** The ground of `span` the walk could not commit, which stays owed (a point, or the span). */
   owed?: OwedGround[];
-  /**
-   * The point of every record the read of `span` returned, whether the walk could trust it or
-   * not (see `settleRecords`): a point only leaves the list when one of them is exactly it.
-   */
-  returned: WalkWindow[];
   plan: WalkPlan;
   marks: WalkMarks;
   restartMs: number;
@@ -459,7 +463,10 @@ const UNBOUNDED = { floorMs: Number.NEGATIVE_INFINITY, endTime: Number.POSITIVE_
 const sameList = (left: OwedGround[], right: OwedGround[]): boolean =>
   left.length === right.length && left.every((ground, index) => sameGround(ground, right[index]));
 
-const storePending = async (input: MarkAdvance, next: OwedGround[]): Promise<void> => {
+const storePending = async (
+  input: Pick<MarkAdvance, 'marks' | 'fields' | 'writePending'>,
+  next: OwedGround[],
+): Promise<void> => {
   if (!sameList(next, input.marks.pending)) {
     input.marks.pending = next;
     await input.writePending(input.fields.pending, next);
@@ -484,24 +491,47 @@ const holdsAll = (outer: WalkWindow, inner: WalkWindow): boolean =>
 
 /**
  * The list without the ground the span read. A range loses what the span reads of it. A point
- * is the ground one record owes, and a read proves that record was read only when the span holds
- * all of the point (a span that holds part of it can return one record of the second it owes and
- * miss another) and returned a record whose own point is exactly this one: then it leaves, and
- * the record owes it again if the walk still cannot trust it. A read that returned no such
- * record (none at all, or the neighbours of the stuck one, because Binance filters on another
- * field or rounds the time) leaves every point as it was, and so does a span that holds only
- * part of one (a window that came back too full and is read in halves).
+ * is the ground one record owes, and no one span proves that record was read: a span that holds
+ * part of it can return one record of the second it owes and miss another, so a point leaves
+ * the list only when its whole window was read to its end (`dropReadPoints`).
  */
 const withoutReadGround = (input: MarkAdvance): OwedGround[] =>
-  input.marks.pending.flatMap((ground) => {
-    if (!isPoint(ground)) {
-      return withoutRead([ground], input.span);
-    }
+  input.marks.pending.flatMap((ground) =>
+    isPoint(ground) ? [ground] : withoutRead([ground], input.span),
+  );
 
-    return holdsAll(input.span, ground) && input.returned.some((point) => sameWindow(point, ground))
-      ? []
-      : [ground];
-  });
+/**
+ * Take the points off the list that a window read to its end has settled: a point the window
+ * holds all of, and that a record the window returned owes exactly (`read`, the points of the
+ * returned records that no record of the window left owed again: the twin of a record that is
+ * still stuck keeps the point). A window that returned no such record (none at all, or the
+ * neighbours of the stuck one, because Binance filters on another field or rounds the time)
+ * leaves every point as it was, and so does a window that only reaches into a point. One list
+ * write. Ranges are not touched: each span took out what it read of them. The forward pass
+ * reads no owed ground and stores the list as the cursor moves, so it takes nothing off.
+ */
+export const dropReadPoints = async (input: {
+  pass: WalkPass;
+  window: WalkWindow;
+  read: WalkWindow[];
+  marks: WalkMarks;
+  fields: WalkMarkFields;
+  writePending: (field: BinanceWalkPendingField, ranges: OwedGround[]) => Promise<void>;
+}): Promise<void> => {
+  const { pass, window, read, marks } = input;
+
+  if (pass === 'forward') {
+    return;
+  }
+
+  const isSettled = (ground: OwedGround): boolean =>
+    isPoint(ground) && holdsAll(window, ground) && read.some((point) => sameWindow(point, ground));
+
+  await storePending(
+    input,
+    marks.pending.filter((ground) => !isSettled(ground)),
+  );
+};
 
 /**
  * The list without the ground the span read, and with the ground of it that stays owed: one
@@ -540,9 +570,9 @@ const advanceRescan = async (input: MarkAdvance): Promise<void> => {
  * only the re-scan mark and leaves the cursor alone, so a re-scan can never undo the
  * forward pass. A re-scan span and a pending span take the ground they read out of the
  * list, put `owed` (the part of it the walk could not commit: its stuck records) back, and an
- * entry leaves the list only by being read (a point: by a read that returned a record that owes
- * exactly it, see `withoutReadGround`). `write` gets the field of the cursor that moved and its
- * value; `writePending` the field of the list and its new content.
+ * entry leaves the list only by being read (a point: once its whole window was read and a record
+ * that owes exactly it came back, see `dropReadPoints`). `write` gets the field of the cursor that
+ * moved and its value; `writePending` the field of the list and its new content.
  */
 export const advanceWalkMarks = (input: MarkAdvance & { pass: WalkPass }): Promise<void> =>
   match(input.pass)
@@ -726,7 +756,7 @@ export type SpanRead<Page> = { kind: 'page'; page: Page } | { kind: 'split'; hal
 
 type SpanStep = { next: WalkWindow; commit: SpanCommit };
 
-const NOTHING_COMMITTED: SpanCommit = { imported: 0, owed: false };
+const NOTHING_COMMITTED: SpanCommit = { imported: 0, owed: false, returned: [], stuck: [] };
 
 /**
  * Handle what one read gave. A split moves to the half and commits nothing. A page is
@@ -763,16 +793,21 @@ const stepAfterRead = <Page>(input: {
  * stop reports the window incomplete with what was committed, and the walk's marks, which
  * only a commit moves, stay where the last committed span left them. `keep` is the number of
  * calls the run holds back for later passes, which every `read` of the window leaves
- * unspent: a dense window must not read its way into them.
+ * unspent: a dense window must not read its way into them. A window read to its end hands
+ * `onComplete` the points of the records its spans returned, less the points any record of it
+ * left owed (see `dropReadPoints`); an incomplete one hands nothing, however much it read.
  */
 export const walkSpans = async <Page>(input: {
   window: WalkWindow;
   read: (span: WalkWindow, keep: number) => Promise<SpanRead<Page> | undefined>;
   commit: (span: WalkWindow, page: Page) => Promise<SpanCommit | undefined>;
   keep?: number;
+  onComplete?: (read: WalkWindow[]) => Promise<void>;
 }): Promise<WindowOutcome> => {
-  const { window, read, commit, keep = 0 } = input;
+  const { window, read, commit, keep = 0, onComplete } = input;
   const outcome: WindowOutcome = { imported: 0, complete: false, owed: false, started: false };
+  const returned: WalkWindow[] = [];
+  const stuck: OwedGround[] = [];
   let span = window;
 
   while (span.start < window.end) {
@@ -792,8 +827,18 @@ export const walkSpans = async <Page>(input: {
 
     outcome.imported += step.commit.imported;
     outcome.owed = outcome.owed || step.commit.owed;
+    returned.push(...step.commit.returned);
+    stuck.push(...step.commit.stuck);
     span = step.next;
   }
+
+  await onComplete?.(
+    returned.filter(
+      (point, index) =>
+        returned.findIndex((other) => sameWindow(other, point)) === index &&
+        !stuck.some((owed) => sameWindow(owed, point)),
+    ),
+  );
 
   return { ...outcome, complete: true };
 };

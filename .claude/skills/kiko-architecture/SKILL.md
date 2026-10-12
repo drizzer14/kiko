@@ -1961,12 +1961,11 @@ stop codes and scenario rows.
   points such a run reads). A malformed cursor is repaired at once and logged
   (`point-cursor-malformed`). The rotation is deterministic and bounded; a
   random or fail-closed-by-length rotation has no testable bound.
-- **STOP_ENDS_PASS and R28: OVERNIGHT DEFAULT, pending the user** (plan
+- **STOP_ENDS_PASS and R28: user ruling of 2026-10-12, kept** (plan
   OVERNIGHT item 17). `STOP_ENDS_PASS` (`binance.history-walk.ts`) says a stop
   in the forward pass ends only that pass, so the run goes on to the owed
   ranges, the re-scan and the points; the cursor never passes a stuck record;
-  a budget or rate limit ends every read. If the user reverses it, one branch
-  in `runWalkPlan` changes.
+  a budget or rate limit ends every read.
 - **R13.** Pay direction comes from the uid alone (`payDirection`): payer id =
   uid is out, receiver id = uid is in.
 - **C1.** The Pay walk does not read the capital cursor (spec section 4).

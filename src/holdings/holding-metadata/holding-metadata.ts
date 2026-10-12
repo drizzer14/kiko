@@ -324,8 +324,9 @@ const asPendingRange = (value: unknown): BinancePendingRange | undefined => {
 
 /**
  * One walk's stored pending ranges, `[]` when none is stored, `undefined` when a value is
- * stored but is not a list of well-formed ranges (the caller logs a fixed code and goes on
- * with an empty list; a parse failure must never fail a balance sync).
+ * stored but is not a list of well-formed ranges (`readPendingMark` logs a fixed code and
+ * repairs it: all the ground before the cursor is owed once, and stored at once; a parse
+ * failure must never fail a balance sync).
  */
 export const binanceWalkPendingOf = (
   field: BinanceWalkPendingField,
