@@ -19,6 +19,7 @@ const SCRIPT = join(__dirname, '../../scripts/checks/mutation.sh');
 const LIB = join(__dirname, '../../scripts/checks/_lib.sh');
 const SCORE_SCRIPT = join(__dirname, '../../scripts/checks/mutation-score.js');
 const COMMENT_ONLY_SCRIPT = join(__dirname, '../../scripts/checks/comment-only-changes.js');
+const RANGES_SCRIPT = join(__dirname, '../../scripts/checks/mutation-ranges.js');
 
 // The throwaway repository has no node_modules, so the comment-only script
 // cannot find `typescript` there and keeps every file. A test that needs the
@@ -52,7 +53,8 @@ const STUB_WRITES_PASSING_REPORT = [
   '    --mutate=*) mutate_argument="$(printf %s "$argument" | cut -c10-)" ;;',
   '  esac',
   'done',
-  'entries_of() { printf %s "$mutate_argument" | tr "," "\\n"; }',
+  // The trailing newline matters: `read` fails on a last line without one.
+  'entries_of() { printf "%s\\n" "$mutate_argument" | tr "," "\\n"; }',
   'path_of() { printf %s "$1" | sed \'s/:.*//\'; }',
   'start_of() {',
   '  start="$(printf %s "$1" | sed -n \'s/^[^:]*:\\([0-9][0-9]*\\)-.*/\\1/p\')"',
@@ -149,6 +151,7 @@ export const copyMutationScripts = (root: string): string => {
   copyFileSync(LIB, join(root, 'scripts/checks/_lib.sh'));
   copyFileSync(SCORE_SCRIPT, join(root, 'scripts/checks/mutation-score.js'));
   copyFileSync(COMMENT_ONLY_SCRIPT, join(root, 'scripts/checks/comment-only-changes.js'));
+  copyFileSync(RANGES_SCRIPT, join(root, 'scripts/checks/mutation-ranges.js'));
 
   return script;
 };

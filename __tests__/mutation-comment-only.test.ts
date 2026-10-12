@@ -4,6 +4,7 @@ import { mkdtempSync } from 'node:fs';
 
 import {
   mutatedFiles,
+  mutateEntries,
   REAL_NODE_MODULES,
   runWithArgumentStub,
   buildMutationRepository,
@@ -132,6 +133,14 @@ describe('scripts/checks/mutation.sh comment-only filter', () => {
       expect(result.stdout).not.toContain('skipped (comment-only)');
     });
 
+    it('hands Stryker the kept file as its plain path and never as a range too', () => {
+      const result = runBeside('src/foo.test.ts', TEST_REAL_CHANGE);
+
+      // Stryker reads a plain path beside a range of the same file as "do not mutate" it, and the
+      // comment lines of this file hold no mutant, so a range would also lose the rule.
+      expect(mutateEntries(result.stubArguments)).toEqual(['src/foo.ts']);
+    });
+
     it('skips the source file when the colocated test changed only in a comment', () => {
       const result = runBeside('src/foo.test.ts', TEST_COMMENTED);
 
@@ -244,6 +253,9 @@ describe('scripts/checks/mutation.sh comment-only filter', () => {
       // which the stub writes from the --mutate list; its table has one row per file it graded.
       expect(result.stdout).toMatch(/^src\/real\.ts: 100\.00 /m);
       expect(result.stdout).not.toMatch(/^src\/commented-/m);
+      expect(
+        mutateEntries(result.stubArguments).some((entry) => entry.startsWith('src/commented-')),
+      ).toBe(false);
       expect(result.stdout).toContain(SKIPPED_LINE('src/commented-one.ts'));
       expect(result.stdout).toContain(SKIPPED_LINE('src/commented-two.ts'));
     });

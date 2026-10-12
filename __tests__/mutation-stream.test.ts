@@ -6,6 +6,7 @@ import { existsSync, mkdtempSync, readFileSync } from 'node:fs';
 import {
   runWithStub,
   mutatedFiles,
+  mutateEntries,
   writeStrykerStub,
   runWithArgumentStub,
   buildMutationRepository,
@@ -364,5 +365,115 @@ describe('scripts/checks/mutation.sh diff scoping', () => {
 
     expect(result.code).toBe(0);
     expect(result.stubArguments).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Changed lines: the gate hands Stryker `path:start-end` entries for the lines
+// the branch added (git diff -U0), never the whole file.
+// ---------------------------------------------------------------------------
+
+// A 12-line source file; `edits` replaces the given 1-based lines.
+const twelveLines = (edits: Record<number, string> = {}): string =>
+  `${Array.from({ length: 12 }, (_, index) => edits[index + 1] ?? `export const line${index + 1} = ${index + 1};`).join('\n')}\n`;
+
+const runOnChangedLines = (
+  featureFiles: Record<string, string | null>,
+  baseFiles: Record<string, string>,
+  gitConfig: string[] = [],
+) => {
+  const { root, script } = buildMutationRepository(
+    mkdtempSync(join(tmpdir(), 'kiko-mutrepo-')),
+    featureFiles,
+    baseFiles,
+  );
+
+  if (gitConfig.length > 0) {
+    spawnSync('git', ['config', ...gitConfig], { cwd: root });
+  }
+
+  return runWithArgumentStub(script, { KIKO_MUTATION_BASE: 'main' });
+};
+
+describe('scripts/checks/mutation.sh changed lines', () => {
+  it('hands Stryker one range per hunk of a modified file, never the plain path', () => {
+    const result = runOnChangedLines(
+      {
+        'src/x.ts': twelveLines({
+          3: 'export const changed3 = 0;',
+          4: 'export const changed4 = 0;',
+          10: 'export const changed10 = 0;',
+        }),
+      },
+      { 'src/x.ts': twelveLines() },
+    );
+
+    expect(result.code).toBe(0);
+    expect(mutateEntries(result.stubArguments)).toEqual(['src/x.ts:3-4', 'src/x.ts:10-10']);
+  });
+
+  it('hands Stryker the whole of a new file as one range', () => {
+    const result = runOnChangedLines({ 'src/new.ts': twelveLines() }, {});
+
+    expect(mutateEntries(result.stubArguments)).toEqual(['src/new.ts:1-12']);
+  });
+
+  it('skips a file that only lost lines, and passes without Stryker when it is the only one', () => {
+    const lines = twelveLines().split('\n');
+    lines.splice(4, 1);
+
+    const result = runOnChangedLines(
+      { 'src/x.ts': lines.join('\n') },
+      { 'src/x.ts': twelveLines() },
+    );
+
+    expect(result.code).toBe(0);
+    expect(result.stubArguments).toBeNull();
+    expect(result.stdout).toContain('skipped (no added lines): src/x.ts');
+    expect(result.stdout).toContain('nothing to mutate: no changed source file has added lines.');
+  });
+
+  it('leaves a file that only lost lines out of the entries of the other changed files', () => {
+    const lines = twelveLines().split('\n');
+    lines.splice(4, 1);
+
+    const result = runOnChangedLines(
+      { 'src/x.ts': lines.join('\n'), 'src/y.ts': twelveLines({ 2: 'export const edited = 0;' }) },
+      { 'src/x.ts': twelveLines(), 'src/y.ts': twelveLines() },
+    );
+
+    expect(result.code).toBe(0);
+    expect(mutateEntries(result.stubArguments)).toEqual(['src/y.ts:2-2']);
+    expect(result.stdout).toContain('skipped (no added lines): src/x.ts');
+  });
+
+  it('skips a file that was only moved, because a pure rename adds no line', () => {
+    const result = runOnChangedLines(
+      { 'src/old.ts': null, 'src/moved.ts': twelveLines() },
+      { 'src/old.ts': twelveLines() },
+    );
+
+    expect(result.code).toBe(0);
+    expect(result.stubArguments).toBeNull();
+    expect(result.stdout).toContain('skipped (no added lines): src/moved.ts');
+  });
+
+  it('hands Stryker only the edited line of a moved file', () => {
+    const result = runOnChangedLines(
+      { 'src/old.ts': null, 'src/moved.ts': twelveLines({ 6: 'export const edited = 0;' }) },
+      { 'src/old.ts': twelveLines() },
+    );
+
+    expect(mutateEntries(result.stubArguments)).toEqual(['src/moved.ts:6-6']);
+  });
+
+  it('still reads a moved file as a rename when the user config turns rename detection off', () => {
+    const result = runOnChangedLines(
+      { 'src/old.ts': null, 'src/moved.ts': twelveLines({ 6: 'export const edited = 0;' }) },
+      { 'src/old.ts': twelveLines() },
+      ['diff.renames', 'false'],
+    );
+
+    expect(mutateEntries(result.stubArguments)).toEqual(['src/moved.ts:6-6']);
   });
 });

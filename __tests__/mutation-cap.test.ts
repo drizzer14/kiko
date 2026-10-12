@@ -76,6 +76,36 @@ describe('scripts/checks/mutation.sh file cap', () => {
     expect(mutatedFiles(result.stubArguments)).toHaveLength(30);
   });
 
+  it('does not count a file that only lost lines: 30 files with added lines and one pure deletion run', () => {
+    const { script } = buildMutationRepository(
+      mkdtempSync(join(tmpdir(), 'kiko-mutation-cap-')),
+      { ...sources('changed', 30), 'src/trimmed.ts': 'export const first = 1;\n' },
+      { 'src/trimmed.ts': 'export const first = 1;\nexport const second = 2;\n' },
+    );
+
+    const result = runWithArgumentStub(script, { KIKO_MUTATION_BASE: 'main' });
+
+    expect(result.code).toBe(0);
+    expect(mutatedFiles(result.stubArguments)).toHaveLength(30);
+    expect(result.stdout).toContain('skipped (no added lines): src/trimmed.ts');
+  });
+
+  it.each([
+    ['a run', []],
+    ['--list', ['--list']],
+  ])('refuses a changed path with a glob character in %s, naming the file', (_name, flags) => {
+    const globPath = 'src/(group)/changed.ts';
+    const { script } = buildRepository({
+      ...sources('changed', 1),
+      [globPath]: 'export const grouped = 1;\n',
+    });
+
+    const result = runWithArgumentStub(script, { KIKO_MUTATION_BASE: 'main' }, flags);
+
+    expectRefusal(result, globPath);
+    expect(result.stderr).toContain('exclude it in mutable_source_files');
+  });
+
   it('no env var raises the cap', () => {
     const { script } = buildRepository(sources('changed', 31));
 

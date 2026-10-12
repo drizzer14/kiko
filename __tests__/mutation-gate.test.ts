@@ -78,7 +78,7 @@ describe('scripts/checks/mutation.sh change-set gate', () => {
     const { temporaryDirectory } = freshProject();
     const bin = writeStrykerStub(
       temporaryDirectory,
-      stubWritingReport(reportOf(['Killed', 'Killed', 'Killed', 'Killed'], ['src/other.ts'])),
+      stubWritingReport(reportOf(['Killed', 'Killed', 'Killed', 'Killed'], ['src/changed.ts:1-2'])),
     );
 
     const result = runWithStub(bin, temporaryDirectory, join(temporaryDirectory, 'calls'));
