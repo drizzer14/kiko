@@ -1,0 +1,601 @@
+import { match } from 'ts-pattern';
+import { DAY_MS } from '@kiko/dates';
+import {
+  BINANCE_TRANSFER_HISTORY_CURSOR_FIELD,
+  BINANCE_TRANSFER_PENDING_OVERLAP_FIELD,
+  BINANCE_TRANSFER_POINT_CURSOR_FIELD,
+  BINANCE_TRANSFER_RESCAN_CURSOR_FIELD,
+  binanceWalkCursorOf,
+  type BinanceWalkNumberField,
+  type BinanceWalkPendingField,
+} from '@kiko/holdings/holding-metadata';
+import type { HoldingRow } from '@kiko/db';
+import maybe, { foldMap } from 'fnts/maybe';
+import {
+  type UNTRACKED_WALLETS,
+  untrackedWalletCode,
+} from '@kiko/transactions/untracked-counterpart';
+import { transactionsRepo } from '@kiko/transactions/repo';
+import { type ExchangeHolding, holdingsRepo } from '@kiko/holdings/repo';
+
+import {
+  advanceWalkMarks,
+  BinanceWalkStop,
+  btcSatoshis,
+  dropReadPoints,
+  type OwedGround,
+  type OwedWindow,
+  planWalkPasses,
+  readPendingMark,
+  readPointCursor,
+  resolveWalletHoldings,
+  runWalkPlan,
+  type SpanCommit,
+  type SpanRead,
+  storePointCursor,
+  type WalkMarkFields,
+  type WalkMarks,
+  walkSpans,
+  type WalkPass,
+  type WalkPlan,
+  type WalkResult,
+  type WalkWindow,
+} from './binance.history-walk';
+import {
+  type BinanceTransactionRow,
+  HISTORY_FLOOR_MS,
+  RESYNC_OVERLAP_MS,
+} from './binance.transactions';
+import {
+  type BinanceUniversalTransfer,
+  fetchUniversalTransfers,
+  type TotalPage,
+  UNIVERSAL_TRANSFER_TYPES,
+  type UniversalTransferType,
+} from './binance.history-client';
+import {
+  commitSettledSpan,
+  instantAt,
+  joinSettled,
+  type SettledSpan,
+  settleRecords,
+  settleUnreadable,
+} from './binance.history-records';
+import { type BinanceHistoryRun, COSTS } from './binance.history-budget';
+import { readSeriesSpan, type SeriesSpan } from './binance.history-paging';
+import { BINANCE_ASSET, type FetchAccountOptions } from './binance.client';
+import { type BinanceCredentials, readCredentials } from './binance.credentials';
+import { isBinanceCoolingDown, setBinanceCooldownUntil } from './binance.cooldown';
+import { type BinanceWalletKey, binanceKeyOf, FUNDING_KEY, SPOT_KEY } from './binance.holding-keys';
+
+/** Binance does not document the widest range a transfer read takes; 30 days is the working cap. */
+export const TRANSFER_WINDOW_MS = 30 * DAY_MS;
+
+/** Binance serves the last six months of transfer history and nothing older. */
+const TRANSFER_HISTORY_MONTHS = 6;
+
+/** Safety stop on the window walk: the six months are 7 windows. */
+const MAX_WINDOWS = 12;
+
+/** Safety stop on paging one type within a span of one millisecond (100 rows x 50 pages). */
+const MAX_PAGES_PER_SPAN = 50;
+
+/** The status Binance gives a transfer that went through; any other is owed, a failed one too. */
+export const TRANSFER_SETTLED_STATUS = 'CONFIRMED';
+
+const TRANSFER_PAGE_DRIFT = 'transfer-page-drift';
+
+/** The stop of a row the client could not read: logged by its code alone, never its content. */
+const TRANSFER_ROW_UNREADABLE = 'transfer-row-unreadable';
+
+const TRANSFER_MARK_FIELDS: WalkMarkFields = {
+  cursor: BINANCE_TRANSFER_HISTORY_CURSOR_FIELD,
+  rescan: BINANCE_TRANSFER_RESCAN_CURSOR_FIELD,
+  point: BINANCE_TRANSFER_POINT_CURSOR_FIELD,
+  pending: BINANCE_TRANSFER_PENDING_OVERLAP_FIELD,
+};
+
+/**
+ * The earliest `startTime` the walk asks transfer history for: six calendar months back (UTC, the
+ * day clamped to the target month's length) plus a day, so the request is never older than the
+ * window Binance serves. Never before the shared history floor.
+ */
+export const transferFloorMs = (now: number): number => {
+  const date = new Date(now);
+  const year = date.getUTCFullYear();
+  const month = date.getUTCMonth() - TRANSFER_HISTORY_MONTHS;
+  const lastDayOfMonth = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+  const monthsAgo = Date.UTC(
+    year,
+    month,
+    Math.min(date.getUTCDate(), lastDayOfMonth),
+    date.getUTCHours(),
+    date.getUTCMinutes(),
+    date.getUTCSeconds(),
+    date.getUTCMilliseconds(),
+  );
+
+  return Math.max(HISTORY_FLOOR_MS, monthsAgo + DAY_MS);
+};
+
+type OwnWallet = 'MAIN' | 'FUNDING';
+
+type UntrackedWallet = (typeof UNTRACKED_WALLETS)[number];
+
+/**
+ * The two ends of a transfer type: a move between the two wallets Kiko tracks, or between one of
+ * them and a wallet it does not (`sign` is -1 when the tracked wallet is the source).
+ */
+type Endpoints =
+  | { kind: 'paired'; source: OwnWallet; destination: OwnWallet }
+  | { kind: 'untracked'; tracked: OwnWallet; other: UntrackedWallet; sign: 1 | -1 };
+
+const sends = (tracked: OwnWallet, other: UntrackedWallet): Endpoints => ({
+  kind: 'untracked',
+  tracked,
+  other,
+  sign: -1,
+});
+
+const receives = (tracked: OwnWallet, other: UntrackedWallet): Endpoints => ({
+  kind: 'untracked',
+  tracked,
+  other,
+  sign: 1,
+});
+
+const TRANSFER_ENDPOINTS: Record<UniversalTransferType, Endpoints> = {
+  MAIN_FUNDING: { kind: 'paired', source: 'MAIN', destination: 'FUNDING' },
+  FUNDING_MAIN: { kind: 'paired', source: 'FUNDING', destination: 'MAIN' },
+  MAIN_UMFUTURE: sends('MAIN', 'UMFUTURE'),
+  UMFUTURE_MAIN: receives('MAIN', 'UMFUTURE'),
+  MAIN_CMFUTURE: sends('MAIN', 'CMFUTURE'),
+  CMFUTURE_MAIN: receives('MAIN', 'CMFUTURE'),
+  MAIN_MARGIN: sends('MAIN', 'MARGIN'),
+  MARGIN_MAIN: receives('MAIN', 'MARGIN'),
+  MAIN_OPTION: sends('MAIN', 'OPTION'),
+  OPTION_MAIN: receives('MAIN', 'OPTION'),
+  MAIN_PORTFOLIO_MARGIN: sends('MAIN', 'PORTFOLIO_MARGIN'),
+  PORTFOLIO_MARGIN_MAIN: receives('MAIN', 'PORTFOLIO_MARGIN'),
+  FUNDING_UMFUTURE: sends('FUNDING', 'UMFUTURE'),
+  UMFUTURE_FUNDING: receives('FUNDING', 'UMFUTURE'),
+  FUNDING_CMFUTURE: sends('FUNDING', 'CMFUTURE'),
+  CMFUTURE_FUNDING: receives('FUNDING', 'CMFUTURE'),
+  FUNDING_MARGIN: sends('FUNDING', 'MARGIN'),
+  MARGIN_FUNDING: receives('FUNDING', 'MARGIN'),
+  FUNDING_OPTION: sends('FUNDING', 'OPTION'),
+  OPTION_FUNDING: receives('FUNDING', 'OPTION'),
+};
+
+const WALLET_KEY_OF: Record<OwnWallet, BinanceWalletKey> = {
+  MAIN: SPOT_KEY,
+  FUNDING: FUNDING_KEY,
+};
+
+/**
+ * A row mapped from a transfer, before its wallets are turned into holdings: `wallet` is the one
+ * it sits on, `counterpartWallet` the other leg's of a move between the two wallets Kiko tracks.
+ */
+type PlannedTransferRow = {
+  wallet: BinanceWalletKey;
+  counterpartWallet?: BinanceWalletKey;
+  amountMinorUnits: number;
+  time: number;
+  externalId: string;
+  exchangePairId?: string;
+  untrackedCounterpart?: string;
+  description: string;
+};
+
+/**
+ * The imported-transaction shape the transfer walk hands to `transactionsRepo.addManyDedup`: the
+ * capital row plus the markers of a transfer, the other leg's holding (and the id the two legs
+ * share) or the wallet Kiko does not track.
+ */
+export type BinanceHistoryRow = BinanceTransactionRow & {
+  exchangeCounterpartHoldingId?: string;
+  exchangePairId?: string;
+  untrackedCounterpart?: string;
+};
+
+/**
+ * The rows of one transfer read under `readAs`: two legs for a move between the two tracked
+ * wallets, one for a move to or from a wallet Kiko does not track, none for another asset. Each
+ * leg is keyed by the type and the transfer's own id, so a `tranId` two types share never
+ * refreshes the other type's row. A transfer the walk cannot trust (not the type it was read
+ * under, not settled, no id, no positive amount) throws a `BinanceWalkStop`: a skipped one would
+ * be silent loss.
+ */
+export const transferRowsOf = (
+  accountId: string,
+  record: BinanceUniversalTransfer,
+  readAs: UniversalTransferType,
+): PlannedTransferRow[] => {
+  if (record.asset !== BINANCE_ASSET) {
+    return [];
+  }
+
+  if (record.type !== readAs) {
+    throw new BinanceWalkStop('transfer-type-mismatch');
+  }
+
+  if (record.status !== TRANSFER_SETTLED_STATUS) {
+    throw new BinanceWalkStop('transfer-not-settled');
+  }
+
+  if (record.tranId === '') {
+    throw new BinanceWalkStop('transfer-id-missing');
+  }
+
+  const satoshis = btcSatoshis(record.amount);
+
+  if (satoshis === null || satoshis <= 0) {
+    throw new BinanceWalkStop('transfer-amount-invalid');
+  }
+
+  const pairId = `${accountId}:xfer:${readAs}:${record.tranId}`;
+  const legOf = (wallet: BinanceWalletKey, signedSatoshis: number) => ({
+    wallet,
+    amountMinorUnits: signedSatoshis,
+    time: record.timestamp,
+    externalId: `${pairId}:${wallet}`,
+    description: '',
+  });
+
+  return match(TRANSFER_ENDPOINTS[readAs])
+    .returnType<PlannedTransferRow[]>()
+    .with({ kind: 'paired' }, ({ source, destination }) => [
+      {
+        ...legOf(WALLET_KEY_OF[source], -satoshis),
+        counterpartWallet: WALLET_KEY_OF[destination],
+        exchangePairId: pairId,
+      },
+      {
+        ...legOf(WALLET_KEY_OF[destination], satoshis),
+        counterpartWallet: WALLET_KEY_OF[source],
+        exchangePairId: pairId,
+      },
+    ])
+    .with({ kind: 'untracked' }, ({ tracked, other, sign }) => [
+      {
+        ...legOf(WALLET_KEY_OF[tracked], sign * satoshis),
+        untrackedCounterpart: untrackedWalletCode(other),
+      },
+    ])
+    .exhaustive();
+};
+
+/**
+ * The injectable seams of the Transfer walk: the credential and holding reads, the transfer read
+ * (one page of one type of one range), the insert-only holding creation, the deduping import, and
+ * the mark writes. Pacing and the weight budget come from the run.
+ */
+export type BinanceTransferHistoryDeps = {
+  now: () => number;
+  fetchImpl: typeof fetch;
+  readCredentials: (accountId: string) => Promise<BinanceCredentials | undefined>;
+  listHoldings: (accountId: string) => Promise<HoldingRow[]>;
+  fetchUniversalTransfers: (
+    apiKey: string,
+    secret: string,
+    query: { type: UniversalTransferType; startTime: number; endTime: number; current: number },
+    options?: FetchAccountOptions,
+  ) => Promise<TotalPage<BinanceUniversalTransfer>>;
+  ensureHoldings: (holdings: ExchangeHolding[]) => Promise<void>;
+  addTransactions: (rows: BinanceHistoryRow[]) => Promise<number>;
+  writeWalkCursor: (
+    holdingId: string,
+    field: BinanceWalkNumberField,
+    cursorMs: number,
+  ) => Promise<void>;
+  writeWalkPending: (
+    holdingId: string,
+    field: BinanceWalkPendingField,
+    ranges: OwedGround[],
+  ) => Promise<void>;
+};
+
+const defaultTransferHistoryDeps: BinanceTransferHistoryDeps = {
+  now: () => Date.now(),
+  fetchImpl: fetch,
+  readCredentials,
+  listHoldings: async (accountId) => holdingsRepo.listByAccountQuery(accountId),
+  fetchUniversalTransfers,
+  ensureHoldings: (holdings) => holdingsRepo.ensureExchangeHoldings(holdings),
+  addTransactions: (rows) => transactionsRepo.addManyDedup(rows),
+  writeWalkCursor: (holdingId, field, cursorMs) =>
+    holdingsRepo.setBinanceWalkCursor(holdingId, field, cursorMs),
+  writeWalkPending: (holdingId, field, ranges) =>
+    holdingsRepo.setBinanceWalkPending(holdingId, field, ranges),
+};
+
+type TransferContext = {
+  deps: BinanceTransferHistoryDeps;
+  run: BinanceHistoryRun;
+  accountId: string;
+  spot: HoldingRow;
+  apiKey: string;
+  secret: string;
+  options: FetchAccountOptions;
+  marks: WalkMarks;
+  plan: WalkPlan;
+};
+
+/** The types a window is read in: every one, or the ones its owed points name. */
+const typesOf = (window: OwedWindow): readonly UniversalTransferType[] =>
+  window.series === undefined
+    ? UNIVERSAL_TRANSFER_TYPES
+    : UNIVERSAL_TRANSFER_TYPES.filter((type) => window.series?.includes(type));
+
+/** The calls one read of a window costs: one for each type it asks. */
+const callsOf = (window: OwedWindow): number => typesOf(window).length;
+
+/**
+ * One span read in every type of `window`. A type whose first page is full with more rows behind
+ * it halves the span (every type is read again in the half). `undefined` is a clean stop: the
+ * budget cannot afford every type, or Binance rate-limited (which also sets the account's
+ * cooldown). `keep` calls stay unspent for the passes that come later in the run.
+ */
+const readSpan = (
+  context: TransferContext,
+  window: OwedWindow,
+  span: WalkWindow,
+  keep: number,
+): Promise<SpanRead<SeriesSpan<UniversalTransferType, BinanceUniversalTransfer>> | undefined> => {
+  const { deps, run, accountId, apiKey, secret, options } = context;
+
+  return readSeriesSpan<UniversalTransferType, BinanceUniversalTransfer>({
+    run,
+    lane: 'transfer',
+    cost: COSTS.transfer,
+    span,
+    keep,
+    series: typesOf(window),
+    maxPages: MAX_PAGES_PER_SPAN,
+    fetchPage: (type, read, current) =>
+      deps.fetchUniversalTransfers(
+        apiKey,
+        secret,
+        { type, startTime: read.start, endTime: read.end, current },
+        options,
+      ),
+    onRateLimit: (error) => setBinanceCooldownUntil(accountId, deps.now() + error.retryAfterMs),
+  });
+};
+
+/**
+ * The records of one span, each on its own (see `settleRecords`): a transfer the walk cannot
+ * trust, or a row the client could not read, owes its own point in the type it was read under
+ * and the others still import. A type whose pages drifted is no one record's stop: the span is
+ * owed, as a range, in every type, and the types that did not drift still commit.
+ */
+export const settledTransfersOf = (input: {
+  accountId: string;
+  span: WalkWindow;
+  read: SeriesSpan<UniversalTransferType, BinanceUniversalTransfer>;
+}): SettledSpan<PlannedTransferRow> => {
+  const { accountId, span, read } = input;
+  const drift: SettledSpan<PlannedTransferRow> = {
+    rows: [],
+    codes: [TRANSFER_PAGE_DRIFT],
+    owed: [span],
+    returned: [],
+  };
+
+  return joinSettled<PlannedTransferRow>([
+    ...(read.drifted.length > 0 ? [drift] : []),
+    settleRecords({
+      span,
+      records: read.read.flatMap(({ series, rows }) => rows.map((row) => ({ type: series, row }))),
+      rowsOf: ({ type, row }) => transferRowsOf(accountId, row, type),
+      extentOf: ({ row }) => instantAt(row.timestamp),
+      seriesOf: ({ type }) => type,
+    }),
+    settleUnreadable({
+      span,
+      unreadable: read.read.flatMap(({ series, unreadable }) =>
+        unreadable.map((row) => ({ ...row, type: series })),
+      ),
+      code: TRANSFER_ROW_UNREADABLE,
+      extentOf: (row) => foldMap(maybe(row.time), (time) => instantAt(Number(time))),
+      seriesOf: (row) => row.type,
+    }),
+  ]);
+};
+
+const uniqueRowsOf = (planned: PlannedTransferRow[]): PlannedTransferRow[] => [
+  ...new Map(planned.map((row) => [row.externalId, row])).values(),
+];
+
+/** Every wallet the rows sit on or name as their other leg. */
+const walletsOf = (planned: PlannedTransferRow[]): BinanceWalletKey[] => [
+  ...new Set(
+    planned.flatMap((row) => [
+      row.wallet,
+      ...(foldMap(maybe(row.counterpartWallet), (key) => [key]) ?? []),
+    ]),
+  ),
+];
+
+/**
+ * Turn the planned rows into importable ones, creating a missing wallet holding at zero first. A
+ * wallet that cannot be resolved even after creation is no one transfer's stop: the span is owed.
+ */
+const placeRows = async (
+  context: TransferContext,
+  planned: PlannedTransferRow[],
+): Promise<BinanceHistoryRow[]> => {
+  if (planned.length === 0) {
+    return [];
+  }
+
+  const { accountId, deps } = context;
+  const holdings = await resolveWalletHoldings({
+    accountId,
+    keys: walletsOf(planned),
+    listHoldings: deps.listHoldings,
+    ensureHoldings: deps.ensureHoldings,
+  });
+
+  return planned.map(({ wallet, counterpartWallet, ...row }) => {
+    const holding = holdings.get(wallet);
+    const counterpart = foldMap(maybe(counterpartWallet), (key) => holdings.get(key));
+
+    if (holding === undefined || (counterpartWallet !== undefined && counterpart === undefined)) {
+      throw new BinanceWalkStop('transfer-holding-missing');
+    }
+
+    return {
+      ...row,
+      holdingId: holding.id,
+      source: 'binance',
+      ...foldMap(maybe(counterpart), (found) => ({ exchangeCounterpartHoldingId: found.id })),
+    };
+  });
+};
+
+/**
+ * Commit one span's read: place and write the rows of the transfers the walk can trust, then move
+ * the walk's marks (see `commitSettledSpan`: rows first, marks second, so a crash between the two
+ * just re-imports idempotently, and a transfer the walk cannot trust stays owed at its own point
+ * or stops the forward pass). One row per key: a transfer on the boundary of two spans is read
+ * twice.
+ */
+const commitSpan = (
+  context: TransferContext,
+  span: WalkWindow,
+  read: SeriesSpan<UniversalTransferType, BinanceUniversalTransfer>,
+  pass: WalkPass,
+): Promise<SpanCommit | undefined> => {
+  const { deps, accountId, spot, plan, marks } = context;
+
+  return commitSettledSpan({
+    pass,
+    span,
+    settled: settledTransfersOf({ accountId, span, read }),
+    place: (planned) => placeRows(context, uniqueRowsOf(planned)),
+    add: deps.addTransactions,
+    advance: ({ owed }) =>
+      advanceWalkMarks({
+        pass,
+        span,
+        owed,
+        plan,
+        marks,
+        restartMs: HISTORY_FLOOR_MS,
+        fields: TRANSFER_MARK_FIELDS,
+        write: (field, cursorMs) => deps.writeWalkCursor(spot.id, field, cursorMs),
+        writePending: (field, ranges) => deps.writeWalkPending(spot.id, field, ranges),
+      }),
+  });
+};
+
+const runSync = async (
+  deps: BinanceTransferHistoryDeps,
+  accountId: string,
+  run: BinanceHistoryRun,
+): Promise<WalkResult> => {
+  const now = deps.now();
+
+  if (isBinanceCoolingDown(accountId, now)) {
+    return { imported: 0, complete: false };
+  }
+
+  const holdings = await deps.listHoldings(accountId);
+  const spot = holdings.find((holding) => binanceKeyOf(holding) === SPOT_KEY);
+  const credentials = await deps.readCredentials(accountId);
+
+  if (spot === undefined || credentials === undefined) {
+    return { imported: 0, complete: true };
+  }
+
+  const cursor = binanceWalkCursorOf(TRANSFER_MARK_FIELDS.cursor, spot.metadata);
+  const rescanCursor = binanceWalkCursorOf(TRANSFER_MARK_FIELDS.rescan, spot.metadata);
+  const pointCursor = await readPointCursor({
+    field: TRANSFER_MARK_FIELDS.point,
+    metadata: spot.metadata,
+    write: (field, cursorMs) => deps.writeWalkCursor(spot.id, field, cursorMs),
+  });
+  const floorMs = transferFloorMs(now);
+  const pending = await readPendingMark({
+    field: TRANSFER_MARK_FIELDS.pending,
+    metadata: spot.metadata,
+    owedIfUnreadable: { start: floorMs, end: cursor ?? floorMs },
+    knownSeries: UNIVERSAL_TRANSFER_TYPES,
+    write: (field, ranges) => deps.writeWalkPending(spot.id, field, ranges),
+  });
+  const plan = planWalkPasses({
+    cursor,
+    rescanCursor,
+    pointCursor,
+    pending,
+    floorMs,
+    endTime: now,
+    windowMs: TRANSFER_WINDOW_MS,
+    overlapMs: RESYNC_OVERLAP_MS,
+    maxWindows: MAX_WINDOWS,
+  });
+
+  if (plan.forward.length === 0 && plan.rescan.length === 0) {
+    return { imported: 0, complete: false };
+  }
+
+  const context: TransferContext = {
+    deps,
+    run,
+    accountId,
+    spot,
+    apiKey: credentials.apiKey,
+    secret: credentials.secret,
+    options: { fetchImpl: deps.fetchImpl, now: deps.now },
+    marks: { cursor, rescanCursor, pointCursor, pending },
+    plan,
+  };
+
+  return runWalkPlan({
+    plan,
+    callsOf,
+    canAfford: (keep) =>
+      run.budget.canAfford('transfer', COSTS.transfer, keep) &&
+      !isBinanceCoolingDown(accountId, deps.now()),
+    runWindow: (window, pass, keep) =>
+      walkSpans({
+        window,
+        read: (span, keepCalls) => readSpan(context, window, span, keepCalls),
+        commit: (span, read) => commitSpan(context, span, read, pass),
+        keep,
+        onComplete: (read) =>
+          dropReadPoints({
+            pass,
+            window,
+            read,
+            marks: context.marks,
+            fields: TRANSFER_MARK_FIELDS,
+            writePending: (field, ranges) => deps.writeWalkPending(spot.id, field, ranges),
+          }),
+      }),
+    markPointRead: (window) =>
+      storePointCursor({
+        window,
+        marks: context.marks,
+        field: TRANSFER_MARK_FIELDS.point,
+        write: (field, cursorMs) => deps.writeWalkCursor(spot.id, field, cursorMs),
+      }),
+  });
+};
+
+/**
+ * Import the user's BTC universal transfers (Spot and Funding, to each other and to the wallets
+ * Kiko does not track) as transactions, committing a span's rows before advancing the mark past
+ * it. A run goes forward from the watermark first, then reads the overlap ground earlier runs left
+ * owed, then re-scans the last window behind the watermark, then reads the owed points, each on
+ * what budget is left (see `planWalkPasses`); every span asks all 20 types. `complete: false`
+ * means history, owed ground or the re-scan remains and a later run resumes from the stored marks;
+ * a failure other than a rate limit rejects, so the caller can log it without failing the balance
+ * sync.
+ */
+export const syncBinanceTransferHistory = (
+  request: { targetAccountId: string; run: BinanceHistoryRun },
+  overrides: Partial<BinanceTransferHistoryDeps> = {},
+): Promise<WalkResult> =>
+  runSync({ ...defaultTransferHistoryDeps, ...overrides }, request.targetAccountId, request.run);

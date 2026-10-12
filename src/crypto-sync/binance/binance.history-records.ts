@@ -18,7 +18,7 @@ import type { UnreadableRow } from './binance.history-client';
  * returned, trusted or not (`returned`): the walk takes a point off its list only for one of
  * those. A point carries the series its record was read under, when the walk reads several.
  */
-type SettledSpan<Row> = {
+export type SettledSpan<Row> = {
   rows: Row[];
   codes: string[];
   owed: OwedGround[];

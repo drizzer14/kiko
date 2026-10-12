@@ -12,7 +12,7 @@ import type { BinanceHistoryRun, BudgetLane, CallCost } from './binance.history-
  * half to read instead (the span holds more rows than one page shows), or a drift (the rows the
  * server counts and the rows it showed disagree, so nothing of it can be trusted).
  */
-export type TotalPaged<Row> =
+type TotalPaged<Row> =
   | { kind: 'rows'; rows: Row[]; unreadable: UnreadableRow[] }
   | { kind: 'split'; half: WalkWindow }
   | { kind: 'drift' };

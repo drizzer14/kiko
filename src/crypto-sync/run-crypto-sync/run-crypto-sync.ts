@@ -7,6 +7,7 @@ import {
   defaultBinanceDeps,
   syncBinancePayHistory,
   syncBinanceTransactions,
+  syncBinanceTransferHistory,
 } from '../binance';
 import { type BalanceSyncResult, runBalanceSync } from '../sync';
 import { bitcoinWalletProvider, defaultBitcoinWalletDeps } from '../btc-wallet';
@@ -39,6 +40,10 @@ const runBinanceSyncAndImport = async (targetAccountId: string): Promise<Balance
   // compares each of its rows with the capital rows already stored.
   await logOnFailure('[binance sync] pay history failed', () =>
     syncBinancePayHistory({ targetAccountId, run }),
+  );
+  // After the Pay walk, so a rate limit either walk met (the shared cooldown) skips this one.
+  await logOnFailure('[binance sync] transfer history failed', () =>
+    syncBinanceTransferHistory({ targetAccountId, run }),
   );
 
   return result;
