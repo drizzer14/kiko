@@ -40,7 +40,7 @@ export const useCategoryPick = ({
   const [storedCategory, setStoredCategory] = useState<string | null>(null);
   // Whether the user has explicitly picked a category through the picker. Gates
   // the pre-select: once the user chooses, a rule that starts to match later must
-  // never replace that choice. A category a Duplicate seeds counts as a pick too.
+  // never replace that choice. A category an edit or a Duplicate seeds counts as a pick too.
   const [userPickedCategory, setUserPickedCategory] = useState(false);
   // The description the picker's pre-select reads, taken from the field when it settles (a blur,
   // a tapped suggestion, a Save), never from a keystroke: a category that flipped under the
@@ -58,7 +58,7 @@ export const useCategoryPick = ({
   // flagged as a pick in one step, so the picker and Save can never disagree about it, and the
   // description settles too, so a seeded draft without a category shows what its rules give it.
   // The setters are stable, so the function is too, and an effect may depend on it.
-  const seedCategory = useCallback((category: string | null, seededDescription = ''): void => {
+  const seedCategory = useCallback((category: string | null, seededDescription: string): void => {
     setStoredCategory(category);
     setUserPickedCategory(category !== null);
     setSettledDescription(seededDescription);

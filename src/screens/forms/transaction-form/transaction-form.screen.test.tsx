@@ -1007,7 +1007,7 @@ describe('TransactionFormScreen — description suggestions', () => {
     expect(queryByText('Coffee')).toBeNull();
   });
 
-  it('fills the description and re-seats the rule category when a suggestion is tapped', async () => {
+  it('fills the description and pre-selects the rule category when a suggestion is tapped', async () => {
     const utils = await renderAdd();
     const { getByLabelText, getByText } = utils;
     await fireEvent.changeText(getByLabelText('Amount'), '12.34');

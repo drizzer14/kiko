@@ -249,7 +249,7 @@ describe('useCategoryPick', () => {
     it('keeps the stored category', async () => {
       const { result, change, run } = await setup([LARGE_EXPENSE_RULE], { isEditing: true });
 
-      await run(() => result.current.seedCategory('dining'));
+      await run(() => result.current.seedCategory('dining', ''));
       await change({ amount: '1500' });
 
       expect(result.current.effectiveCategory).toBe('dining');
