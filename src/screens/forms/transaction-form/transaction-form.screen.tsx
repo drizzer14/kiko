@@ -523,6 +523,10 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   // the hydration latch closes.
   const originalCategoryKey = existing?.category ? existing.category.toLowerCase() : null;
   const categoryChanged = effectiveCategory !== null && effectiveCategory !== originalCategoryKey;
+  // A create offers the name rule only for a category the user chose (a pick, or a seed a
+  // Duplicate carries): applying one the rules pre-selected would rewrite every same-name row to
+  // a category nobody chose.
+  const offersNameRule = categoryChanged && (isEditing || userPickedCategory);
 
   const loanFieldVisible = isLoanFieldVisible(
     existing?.amountMinorUnits,
@@ -933,7 +937,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
       // just-saved manual description.
       const name = isReadOnly ? (existing?.description ?? '') : descriptionToStore;
       const overrideRequest = resolveCategoryOverrideRequest(
-        categoryChanged,
+        offersNameRule,
         effectiveCategory,
         name,
         written.rowId,

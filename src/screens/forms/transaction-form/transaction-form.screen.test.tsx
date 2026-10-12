@@ -891,6 +891,44 @@ describe('TransactionFormScreen — category pre-select from name rules', () => 
     );
   });
 
+  it('opens no propagation sheet for a category an amount rule pre-selected on a create', async () => {
+    setLiveData(
+      [{ id: 'h1', currency: 'UAH', balanceMinorUnits: 0, type: 'cash' }],
+      undefined,
+      CATEGORIES,
+      [],
+      [],
+      [
+        storedRule('large-expense', 'dining', [
+          { type: 'amount', operator: 'gt', minorUnits: 100_000, currency: 'UAH' },
+          { type: 'direction', direction: 'expense' },
+        ]),
+      ],
+    );
+    const utils = await renderAdd();
+    await fireEvent.changeText(utils.getByLabelText('Amount'), '1500');
+    await fireEvent.changeText(utils.getByLabelText('Description'), 'Rozetka');
+    await pressSave(navigation.setOptions);
+
+    expect(utils.queryByText('Apply Category to All')).toBeNull();
+    expect(mockApplyNameRule).not.toHaveBeenCalled();
+    expect(mockRecordManual).toHaveBeenCalledWith(
+      expect.objectContaining({ category: 'dining', categorySetByHand: false }),
+    );
+    expect(navigation.goBack).toHaveBeenCalled();
+  });
+
+  it('opens the propagation sheet for a category picked by hand on a create', async () => {
+    const utils = await renderAdd();
+    await fireEvent.changeText(utils.getByLabelText('Amount'), '12.34');
+    await fireEvent.changeText(utils.getByLabelText('Description'), 'Rozetka');
+    await pickCategory(utils, 'Dining');
+    await pressSave(navigation.setOptions);
+
+    expect(utils.getByText('Apply Category to All')).toBeTruthy();
+    expect(navigation.goBack).not.toHaveBeenCalled();
+  });
+
   it('re-nulls the auto-pick so the category reason reappears when the name settles to a non-match', async () => {
     const utils = await renderAdd();
     const { getByLabelText, getByText, queryByText } = utils;
