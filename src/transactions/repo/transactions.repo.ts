@@ -220,8 +220,8 @@ const moveBalanceDatabaseTransaction = async (
 // The row carries its OWN category here — a picked category is never lost to
 // a blank description or a cancelled override sheet. `applyNameRule`
 // (category-rules.repo.ts) governs a SEPARATE concern: propagating that
-// pick to every OTHER same-name row, not whether this row itself is
-// categorised.
+// pick to every same-name row (and, when the form names this row as the rule's source, writes
+// this row's own category and by-hand flag as well), not whether this row itself is categorised.
 const recordManualTransaction = async (
   databaseTransaction: typeof database,
   {
@@ -2496,7 +2496,8 @@ export const transactionsRepo = {
   /**
    * Override the category of ONE transaction, by id, inside a single op-sqlite
    * transaction. This is the "just for this one" path: it rewrites only the
-   * target row's `category` and touches nothing else — no balance, no other row.
+   * target row's `category` and its by-hand flag and touches nothing else — no balance, no other
+   * row.
    *
    * It is DELIBERATELY different from
    * `categoryRulesRepo.applyNameRule` (category-rules.repo.ts), the "apply to
@@ -2507,8 +2508,8 @@ export const transactionsRepo = {
    *
    * There is NO `source` gate: a synced (bank-owned) row is still freely
    * categorizable — the category is the user's, not the bank's. A later re-sync
-   * never clobbers the pick, because `addManyDedup`'s `onConflictDoUpdate` set
-   * names only the bank-owned columns and deliberately excludes `category`.
+   * never clobbers the pick: the refresh may write `category` when a rule wins at a new amount,
+   * but only on a row the by-hand flag set here does not guard.
    */
   setCategory: ({ transactionId, category }: { transactionId: string; category: string }) =>
     write((databaseTransaction) =>

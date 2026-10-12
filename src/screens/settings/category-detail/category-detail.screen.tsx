@@ -14,7 +14,6 @@ import type { Currency } from '@kiko/currency/currency';
 import { useTimeClock } from '@kiko/i18n/use-time-clock';
 import Button from '@kiko/design-system/components/button';
 import Screen from '@kiko/design-system/components/screen';
-import { prepareRules } from '@kiko/categories/category-rules';
 import { editBarItem } from '@kiko/design-system/edit-bar-item';
 import { genericEntitySymbol } from '@kiko/holdings/entity-symbols';
 import { type FC, useEffect, useLayoutEffect, useMemo } from 'react';
@@ -24,6 +23,7 @@ import { DEFAULT_CATEGORY_KEY } from '@kiko/categories/category-display';
 import { categoryRulesRepo } from '@kiko/categories/category-rules-repo';
 import { type CategoryRuleRow, useDataReady, useLiveQuery } from '@kiko/db';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { isSameCategory, prepareRules } from '@kiko/categories/category-rules';
 import { resolveDefaultCategoryTitle } from '@kiko/i18n/default-category-title';
 
 import RuleCard from './rule-card';
@@ -46,10 +46,9 @@ const ruleLinesOf = (
   t: TFunction,
   clock: TimeClock,
 ): RuleLine[] => {
-  const lowercaseKey = categoryKey.toLowerCase();
   const prepared = prepareRules(rules);
   const belongs = (rule: { category: string }): boolean =>
-    rule.category.toLowerCase() === lowercaseKey;
+    isSameCategory(rule.category, categoryKey);
 
   return [
     ...prepared.ordered.filter(belongs).map((rule) => ({

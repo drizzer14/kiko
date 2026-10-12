@@ -8,6 +8,7 @@ import type { ScrollViewInstance } from 'react-native';
 import { useAnimatedRef } from 'react-native-reanimated';
 import Button from '@kiko/design-system/components/button';
 import Screen from '@kiko/design-system/components/screen';
+import { categoryKeyOf } from '@kiko/categories/category-rules';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { genericEntitySymbol } from '@kiko/holdings/entity-symbols';
 import { onGridDragEnd } from '@kiko/design-system/grid-interaction';
@@ -43,7 +44,7 @@ const ruleCountsByCategory = (rules: readonly CategoryRuleRow[]): Map<string, nu
   const counts = new Map<string, number>();
 
   for (const rule of rules) {
-    const key = rule.category.toLowerCase();
+    const key = categoryKeyOf(rule.category);
 
     counts.set(key, (counts.get(key) ?? 0) + 1);
   }
@@ -100,7 +101,7 @@ const CategoriesScreen: FC<CategoriesScreenProps> = ({ navigation }) => {
           title={displayName}
           icon={item.icon}
           color={resolveCategoryColor(item.color, item.key)}
-          ruleCount={ruleCounts.get(item.key.toLowerCase()) ?? 0}
+          ruleCount={ruleCounts.get(categoryKeyOf(item.key)) ?? 0}
           isDefault={isDefault}
           onPress={openUnlessLifted(item.key, () =>
             navigation.navigate('CategoryDetail', { categoryKey: item.key }),
