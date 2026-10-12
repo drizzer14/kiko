@@ -246,14 +246,15 @@ export const en = {
     before: 'Before',
     after: 'After',
     // A statement row can carry a date and no time; it is read as noon in the statement's zone.
-    timeHint: "Statement rows without a time count as 12:00 in the statement's time zone.",
+    timeHint: "Statement rows without a time count as noon in the statement's time zone.",
     remove: 'Remove',
     removeCondition: 'Remove condition {{index}}',
     errorNoMatchers: 'Add at least one condition.',
     errorName: 'Enter a name.',
-    errorAmount: 'Enter an amount of 0 or more.',
-    errorNeverMatches:
-      'These conditions can never match together. For a window over midnight, use two rules.',
+    errorAmount: 'Enter an amount of 0 or more, with no more decimals than the currency allows.',
+    errorNeverMatches: 'These conditions can never match together.',
+    errorNeverMatchesTime:
+      'These times can never match together. For a window over midnight, use two rules.',
     errorDuplicate: 'A rule with these conditions already exists in {{category}}.',
   },
   ruleRewrite: {

@@ -135,10 +135,30 @@ describe('validateRule', () => {
     expect(validateRule([], [], null)).toEqual({ kind: 'noMatchers' });
   });
 
-  it('M23 refuses a window over midnight written as one rule', () => {
+  it('M23 refuses a window over midnight written as one rule, as a clash of times', () => {
     expect(validateRule([clockAfter(22), clockBefore(6)], [], null)).toEqual({
       kind: 'neverMatches',
+      conflict: 'time',
     });
+  });
+
+  it.each([
+    ['two directions', [direction('expense'), direction('income')]],
+    ['two currencies', [amount('gt', 1, 'UAH'), amount('lt', 100, 'USD')]],
+    ['an empty amount range', [amount('gt', 10), amount('lt', 5)]],
+    ['two different exact names', [nameIs('silpo'), nameIs('atb')]],
+  ])('refuses %s as a clash that is not about times', (_label, matchers) => {
+    expect(validateRule(matchers, [], null)).toEqual({ kind: 'neverMatches', conflict: 'other' });
+  });
+
+  it('names the times when the times clash beside another clash', () => {
+    expect(
+      validateRule(
+        [direction('expense'), direction('income'), clockAfter(22), clockBefore(6)],
+        [],
+        null,
+      ),
+    ).toEqual({ kind: 'neverMatches', conflict: 'time' });
   });
 
   it('M23 accepts each half of that window as its own rule', () => {
@@ -154,6 +174,7 @@ describe('validateRule', () => {
 
     expect(validateRule([direction('income'), direction('expense')], others, null)).toEqual({
       kind: 'neverMatches',
+      conflict: 'other',
     });
   });
 

@@ -122,7 +122,7 @@ export const validateRule = (
   }
 
   if (!canEverMatch(matchers)) {
-    return { kind: 'neverMatches' };
+    return { kind: 'neverMatches', conflict: timesCanMatch(matchers) ? 'other' : 'time' };
   }
 
   const key = matcherSetKey(matchers);

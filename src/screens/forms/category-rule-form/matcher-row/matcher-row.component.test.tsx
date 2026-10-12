@@ -211,7 +211,7 @@ describe('MatcherRow', () => {
       const { getByText } = await renderRow({ draft: timeDraft });
 
       expect(
-        getByText("Statement rows without a time count as 12:00 in the statement's time zone."),
+        getByText("Statement rows without a time count as noon in the statement's time zone."),
       ).toBeTruthy();
     });
 
@@ -267,7 +267,7 @@ describe('MatcherRow', () => {
       const { getByText } = await renderRow({ draft: draftOf({ type: 'time' }) });
 
       expect(
-        getByText('Рядки виписки без часу рахуються як 12:00 у часовому поясі виписки.'),
+        getByText('Рядки виписки без часу рахуються як полудень у часовому поясі виписки.'),
       ).toBeTruthy();
     });
   });

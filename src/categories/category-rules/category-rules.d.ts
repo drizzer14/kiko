@@ -77,5 +77,7 @@ export type RewriteCandidate = {
 export type RuleValidation =
   | { kind: 'valid' }
   | { kind: 'noMatchers' }
-  | { kind: 'neverMatches' }
+  // `time` when the times alone can never meet, which a window over midnight written as one rule
+  // always is; `other` for any other clash.
+  | { kind: 'neverMatches'; conflict: 'time' | 'other' }
   | { kind: 'duplicate'; category: string };

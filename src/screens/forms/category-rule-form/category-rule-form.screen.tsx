@@ -57,7 +57,8 @@ const ruleErrorMessage = (
 ): string =>
   match(refusal)
     .with({ kind: 'noMatchers' }, () => t('ruleForm.errorNoMatchers'))
-    .with({ kind: 'neverMatches' }, () => t('ruleForm.errorNeverMatches'))
+    .with({ kind: 'neverMatches', conflict: 'time' }, () => t('ruleForm.errorNeverMatchesTime'))
+    .with({ kind: 'neverMatches', conflict: 'other' }, () => t('ruleForm.errorNeverMatches'))
     .with({ kind: 'duplicate' }, ({ category }) =>
       t('ruleForm.errorDuplicate', { category: categoryTitleOf(category) }),
     )
@@ -97,9 +98,10 @@ const CategoryRuleFormScreen: FC<CategoryRuleFormScreenProps> = ({ navigation, r
 
   const bringIntoView = (target: RefusalTarget): void =>
     scrollTo(
-      target.kind === 'rule'
-        ? ruleErrorView
-        : { current: rowViews.current[target.position] ?? null },
+      match(target)
+        .with({ kind: 'rule' }, () => ruleErrorView)
+        .with({ kind: 'row' }, ({ position }) => ({ current: rowViews.current[position] ?? null }))
+        .exhaustive(),
     );
 
   const { errors, save, sheet } = useSaveRule({

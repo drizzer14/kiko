@@ -82,6 +82,9 @@ const ruleOf = (id: string, category: string, matchers: CategoryRuleMatcher[]): 
 
 const SILPO: CategoryRuleMatcher = { type: 'nameIs', text: 'Silpo' };
 
+const AMOUNT_ERROR =
+  'Enter an amount of 0 or more, with no more decimals than the currency allows.';
+
 const pickType = async (screen: Screen, position: number, type: string): Promise<void> => {
   await fireEvent.press(screen.getByTestId(`matcher-type-${position}`));
   await fireEvent.press(screen.getByTestId(`matcher-type-${position}-option-${type}`));
@@ -194,9 +197,7 @@ describe('CategoryRuleFormScreen — a new rule', () => {
     expect(screen.getByText('Before')).toBeTruthy();
     expect(screen.getByText('After')).toBeTruthy();
     expect(
-      screen.getByText(
-        "Statement rows without a time count as 12:00 in the statement's time zone.",
-      ),
+      screen.getByText("Statement rows without a time count as noon in the statement's time zone."),
     ).toBeTruthy();
   });
 
@@ -320,7 +321,7 @@ describe('CategoryRuleFormScreen — a Save that is refused', () => {
     await fireEvent.changeText(screen.getByLabelText('Amount'), amount);
     await pressSave(screen);
 
-    expect(screen.getByText('Enter an amount of 0 or more.')).toBeTruthy();
+    expect(screen.getByText(AMOUNT_ERROR)).toBeTruthy();
     expect(mockSaveRule).not.toHaveBeenCalled();
   });
 
@@ -332,10 +333,10 @@ describe('CategoryRuleFormScreen — a Save that is refused', () => {
     await pressSave(screen);
 
     expect(screen.getByText('Enter a name.')).toBeTruthy();
-    expect(screen.getByText('Enter an amount of 0 or more.')).toBeTruthy();
+    expect(screen.getByText(AMOUNT_ERROR)).toBeTruthy();
   });
 
-  it('refuses conditions that can never match together, and points to two rules for a window over midnight', async () => {
+  it('refuses times that can never match together, and points to two rules for a window over midnight', async () => {
     const screen = await renderCreate();
 
     await pickType(screen, 0, 'time');
@@ -347,9 +348,23 @@ describe('CategoryRuleFormScreen — a Save that is refused', () => {
 
     expect(
       screen.getByText(
-        'These conditions can never match together. For a window over midnight, use two rules.',
+        'These times can never match together. For a window over midnight, use two rules.',
       ),
     ).toBeTruthy();
+    expect(mockSaveRule).not.toHaveBeenCalled();
+  });
+
+  it('refuses two directions without the hint about midnight', async () => {
+    const screen = await renderCreate();
+
+    await pickType(screen, 0, 'direction');
+    await fireEvent.press(screen.getByText('Add condition'));
+    await pickType(screen, 1, 'direction');
+    await fireEvent.press(screen.getAllByText('Income')[1] as never);
+    await pressSave(screen);
+
+    expect(screen.getByText('These conditions can never match together.')).toBeTruthy();
+    expect(screen.queryByText(/midnight/)).toBeNull();
     expect(mockSaveRule).not.toHaveBeenCalled();
   });
 

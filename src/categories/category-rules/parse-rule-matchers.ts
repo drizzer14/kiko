@@ -4,28 +4,9 @@ import { bifoldr, eitherSync } from 'fnts/either';
 import { isCurrency } from '@kiko/currency/currency';
 import { normalizeTransactionName } from '@kiko/transactions/normalize-name';
 
-import type {
-  AmountOperator,
-  CategoryRuleMatcher,
-  RuleDirection,
-  TimeOperator,
-} from './category-rules.d';
 import { LAST_MINUTE_OF_DAY } from './rule-constants';
-
-// Each list is built from a Record keyed by its union, so a new member in the types is a compile
-// error here instead of a value the guard silently rejects.
-const optionsOf = <Option extends string>(flags: Record<Option, true>): Option[] =>
-  Object.keys(flags) as Option[];
-
-const AMOUNT_OPERATORS = optionsOf<AmountOperator>({
-  eq: true,
-  gt: true,
-  gte: true,
-  lt: true,
-  lte: true,
-});
-const DIRECTIONS = optionsOf<RuleDirection>({ expense: true, income: true });
-const TIME_OPERATORS = optionsOf<TimeOperator>({ before: true, after: true });
+import type { CategoryRuleMatcher } from './category-rules.d';
+import { AMOUNT_OPERATORS, DIRECTIONS, TIME_OPERATORS } from './matcher-options';
 
 const isOneOf = <Option extends string>(
   options: readonly Option[],

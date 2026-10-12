@@ -27,30 +27,27 @@ export const emptyMatcherDraft = (baseCurrency: Currency): MatcherDraft => ({
   minuteOfDay: DEFAULT_MINUTE_OF_DAY,
 });
 
-const withFields = (blank: MatcherDraft, fields: Partial<MatcherDraft>): MatcherDraft => ({
-  ...blank,
-  ...fields,
-});
-
 const draftOf = (matcher: CategoryRuleMatcher, blank: MatcherDraft): MatcherDraft =>
-  match(matcher)
-    .with({ type: 'nameIs' }, { type: 'nameStartsWith' }, ({ type, text }) =>
-      withFields(blank, { type, text }),
-    )
-    .with({ type: 'amount' }, ({ operator, minorUnits, currency }) =>
-      withFields(blank, {
-        type: 'amount',
-        amountOperator: operator,
-        amountText: groupAmount(majorAmountText(currency, minorUnits)),
-        currency,
-      }),
-    )
-    .with({ type: 'direction' }, ({ direction }) =>
-      withFields(blank, { type: 'direction', direction }),
-    )
-    .with({ type: 'time' }, ({ operator, minuteOfDay }) =>
-      withFields(blank, { type: 'time', timeOperator: operator, minuteOfDay }),
-    )
+  match<CategoryRuleMatcher, MatcherDraft>(matcher)
+    .with({ type: 'nameIs' }, { type: 'nameStartsWith' }, ({ type, text }) => ({
+      ...blank,
+      type,
+      text,
+    }))
+    .with({ type: 'amount' }, ({ operator, minorUnits, currency }) => ({
+      ...blank,
+      type: 'amount',
+      amountOperator: operator,
+      amountText: groupAmount(majorAmountText(currency, minorUnits)),
+      currency,
+    }))
+    .with({ type: 'direction' }, ({ direction }) => ({ ...blank, type: 'direction', direction }))
+    .with({ type: 'time' }, ({ operator, minuteOfDay }) => ({
+      ...blank,
+      type: 'time',
+      timeOperator: operator,
+      minuteOfDay,
+    }))
     .exhaustive();
 
 /** The rows an edit starts from, one per stored matcher, in their stored order. */
@@ -81,20 +78,14 @@ const amountOutcome = ({ amountText, amountOperator, currency }: MatcherDraft): 
     : { error: 'errorAmount' };
 };
 
-const matcherOutcome = (matcher: CategoryRuleMatcher): DraftOutcome => ({ matcher });
-
 const outcomeOf = (draft: MatcherDraft): DraftOutcome =>
-  match(draft.type)
+  match<MatcherDraft['type'], DraftOutcome>(draft.type)
     .with('nameIs', 'nameStartsWith', (type) => nameOutcome(type, draft.text))
     .with('amount', () => amountOutcome(draft))
-    .with('direction', () => matcherOutcome({ type: 'direction', direction: draft.direction }))
-    .with('time', () =>
-      matcherOutcome({
-        type: 'time',
-        operator: draft.timeOperator,
-        minuteOfDay: draft.minuteOfDay,
-      }),
-    )
+    .with('direction', () => ({ matcher: { type: 'direction', direction: draft.direction } }))
+    .with('time', () => ({
+      matcher: { type: 'time', operator: draft.timeOperator, minuteOfDay: draft.minuteOfDay },
+    }))
     .exhaustive();
 
 /**

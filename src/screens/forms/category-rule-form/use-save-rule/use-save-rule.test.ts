@@ -129,7 +129,7 @@ describe('useSaveRule — what a Save press refuses', () => {
 
     await pressSave(hook);
 
-    expect(hook.result.current.errors.rule).toEqual({ kind: 'neverMatches' });
+    expect(hook.result.current.errors.rule).toEqual({ kind: 'neverMatches', conflict: 'time' });
     expect(onRefused).toHaveBeenCalledWith({ kind: 'rule' });
     expect(mockCountRuleRewrite).not.toHaveBeenCalled();
     expect(mockSaveRule).not.toHaveBeenCalled();

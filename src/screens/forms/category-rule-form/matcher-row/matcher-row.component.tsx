@@ -5,6 +5,10 @@ import {
   type CategoryRuleMatcher,
   type RuleDirection,
   type TimeOperator,
+  AMOUNT_OPERATORS,
+  DIRECTIONS,
+  MATCHER_TYPES,
+  TIME_OPERATORS,
   minuteOfDayOf,
 } from '@kiko/categories/category-rules';
 import { useTranslation } from 'react-i18next';
@@ -22,26 +26,6 @@ import SegmentedControl from '@kiko/design-system/components/segmented-control';
 import type { MatcherRowProps } from './matcher-row.props';
 
 type MatcherType = CategoryRuleMatcher['type'];
-
-const MATCHER_TYPES = [
-  'nameIs',
-  'nameStartsWith',
-  'amount',
-  'direction',
-  'time',
-] as const satisfies readonly MatcherType[];
-
-const AMOUNT_OPERATORS = [
-  'eq',
-  'gt',
-  'gte',
-  'lt',
-  'lte',
-] as const satisfies readonly AmountOperator[];
-
-const DIRECTIONS = ['expense', 'income'] as const satisfies readonly RuleDirection[];
-
-const TIME_OPERATORS = ['before', 'after'] as const satisfies readonly TimeOperator[];
 
 // A day with no clock change, so every minute of the day exists as a wall-clock time for the field.
 const wallClockOf = (minuteOfDay: number): number => new Date(2000, 0, 1, 0, minuteOfDay).getTime();
