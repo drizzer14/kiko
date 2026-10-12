@@ -746,7 +746,11 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
 
   // The template the form's fields make, by the same rules a transaction saves by (see
   // `draftFromForm`): saved on its own by a template mode, and along with the transaction by the
-  // "save as a new template" switch.
+  // "save as a new template" switch. The one difference: it stores a category only when the user
+  // picked one (or the template being edited or filled in carried one), because a rule pre-select
+  // is not the template's own and a later rule change should still move it. It reads
+  // `effectiveCategory`, not the picker's settled `selectedCategory`, because a nav-bar Save
+  // builds this in the same press that settles the description.
   const buildTemplateDraft = (): TemplateDraft => {
     const destination = holdings.find((candidate) => candidate.id === destinationHoldingId);
 
@@ -757,7 +761,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
       amount,
       description,
       prefilledLabel,
-      selectedCategory,
+      selectedCategory: userPickedCategory ? effectiveCategory : null,
       destinationHoldingId,
       destinationCurrency: destination?.currency ?? null,
       valueIn,

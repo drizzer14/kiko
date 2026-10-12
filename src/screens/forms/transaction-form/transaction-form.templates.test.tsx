@@ -565,6 +565,74 @@ describe('TransactionFormScreen — Add template', () => {
     expect(queryByText('Just for this one')).toBeNull();
   });
 
+  it('stores no category for a rule pre-select, with no blur before Save', async () => {
+    setLiveData({
+      draft: EXPENSE,
+      latestManualHoldingId: 'h1',
+      categoryRules: [nameRule('coffee', 'dining')],
+    });
+    mockCreateTemplate.mockResolvedValue('new');
+
+    const { getByLabelText } = await render(templateScreen({ newTemplate: true }));
+
+    await fireEvent.changeText(getByLabelText('Template name'), 'Morning');
+    await fireEvent.changeText(getByLabelText('Description'), 'Coffee');
+    await pressSave(navigation.setOptions);
+
+    expect(mockCreateTemplate).toHaveBeenCalledWith({
+      name: 'Morning',
+      draft: draftOf({ holdingId: 'h1', currency: 'UAH', description: 'Coffee', category: null }),
+    });
+  });
+
+  it('stores no category for a rule pre-select a blur has already settled', async () => {
+    setLiveData({
+      draft: EXPENSE,
+      latestManualHoldingId: 'h1',
+      categoryRules: [nameRule('coffee', 'dining')],
+    });
+    mockCreateTemplate.mockResolvedValue('new');
+
+    const { getByLabelText } = await render(templateScreen({ newTemplate: true }));
+
+    await fireEvent.changeText(getByLabelText('Template name'), 'Morning');
+    await fireEvent.changeText(getByLabelText('Description'), 'Coffee');
+    await fireEvent(getByLabelText('Description'), 'blur');
+    await pressSave(navigation.setOptions);
+
+    expect(mockCreateTemplate).toHaveBeenCalledWith({
+      name: 'Morning',
+      draft: draftOf({ holdingId: 'h1', currency: 'UAH', description: 'Coffee', category: null }),
+    });
+  });
+
+  it('stores a hand-picked category, whichever rule the description matches', async () => {
+    setLiveData({
+      draft: EXPENSE,
+      latestManualHoldingId: 'h1',
+      categoryRules: [nameRule('coffee', 'dining')],
+    });
+    mockCreateTemplate.mockResolvedValue('new');
+
+    const { getByLabelText, getByText } = await render(templateScreen({ newTemplate: true }));
+
+    await fireEvent.changeText(getByLabelText('Template name'), 'Morning');
+    await fireEvent.changeText(getByLabelText('Description'), 'Coffee');
+    await fireEvent.press(getByText('Category'));
+    await fireEvent.press(getByText('Groceries'));
+    await pressSave(navigation.setOptions);
+
+    expect(mockCreateTemplate).toHaveBeenCalledWith({
+      name: 'Morning',
+      draft: draftOf({
+        holdingId: 'h1',
+        currency: 'UAH',
+        description: 'Coffee',
+        category: 'groceries',
+      }),
+    });
+  });
+
   it('blocks Save on an empty name, showing its error and writing nothing', async () => {
     setLiveData({ draft: EXPENSE, latestManualHoldingId: 'h1' });
 
@@ -683,6 +751,43 @@ describe('TransactionFormScreen — Edit template', () => {
     expect(mockCreateTemplate).not.toHaveBeenCalled();
     expect(navigation.goBack).toHaveBeenCalledTimes(1);
     expect(queryByText('Just for this one')).toBeNull();
+  });
+
+  it('keeps no category for a template with none, whatever its rule pre-selects', async () => {
+    setLiveData({
+      draft: { ...EXPENSE, description: 'Coffee', category: null },
+      categoryRules: [nameRule('coffee', 'dining')],
+    });
+    mockUpdateTemplate.mockResolvedValue(undefined);
+
+    const { getByText } = await render(templateScreen({ editTemplateId: 'tpl' }));
+
+    expect(getByText('Dining')).toBeTruthy();
+
+    await pressSave(navigation.setOptions);
+
+    expect(mockUpdateTemplate).toHaveBeenCalledWith({
+      id: 'tpl',
+      name: 'Rent',
+      draft: { ...EXPENSE, description: 'Coffee', category: null },
+    });
+  });
+
+  it('keeps the category a template carries, whatever its rule pre-selects', async () => {
+    setLiveData({
+      draft: { ...EXPENSE, description: 'Coffee', category: 'groceries' },
+      categoryRules: [nameRule('coffee', 'dining')],
+    });
+    mockUpdateTemplate.mockResolvedValue(undefined);
+
+    await render(templateScreen({ editTemplateId: 'tpl' }));
+    await pressSave(navigation.setOptions);
+
+    expect(mockUpdateTemplate).toHaveBeenCalledWith({
+      id: 'tpl',
+      name: 'Rent',
+      draft: { ...EXPENSE, description: 'Coffee', category: 'groceries' },
+    });
   });
 
   it('does not count its own name as taken', async () => {
@@ -978,6 +1083,123 @@ describe('TransactionFormScreen — Save as a new template', () => {
         }),
       });
       expect(mockCreateTemplate).not.toHaveBeenCalled();
+    });
+
+    it('writes a rule pre-select as no pick and stores no category in the template', async () => {
+      setLiveData({ draft: EXPENSE, categoryRules: [nameRule('coffee', 'dining')] });
+
+      const utils = await render(templateScreen({ holdingId: 'h1' }));
+
+      await fireEvent.changeText(utils.getByLabelText('Amount'), '250');
+      await fireEvent.changeText(utils.getByLabelText('Description'), 'Coffee');
+      await fireEvent(utils.getByRole('switch'), 'valueChange', true);
+      await fireEvent.changeText(utils.getByLabelText('Template name'), 'Morning');
+      await pressSave(navigation.setOptions);
+
+      expect(mockRecordManual).toHaveBeenCalledWith(
+        expect.objectContaining({ category: 'dining', categorySetByHand: false }),
+        expect.any(Function),
+      );
+
+      await runAlongside(mockRecordManual);
+
+      expect(mockInsertTemplate).toHaveBeenCalledWith(DATABASE_TRANSACTION, {
+        name: 'Morning',
+        draft: draftOf({
+          holdingId: 'h1',
+          currency: 'UAH',
+          amountMinorUnits: 25000,
+          description: 'Coffee',
+          category: null,
+        }),
+      });
+    });
+
+    it('stores no category in the template for a rule pre-select a blur has settled', async () => {
+      setLiveData({ draft: EXPENSE, categoryRules: [nameRule('coffee', 'dining')] });
+
+      const utils = await render(templateScreen({ holdingId: 'h1' }));
+
+      await fireEvent.changeText(utils.getByLabelText('Amount'), '250');
+      await fireEvent.changeText(utils.getByLabelText('Description'), 'Coffee');
+      await fireEvent(utils.getByLabelText('Description'), 'blur');
+      await fireEvent(utils.getByRole('switch'), 'valueChange', true);
+      await fireEvent.changeText(utils.getByLabelText('Template name'), 'Morning');
+      await pressSave(navigation.setOptions);
+
+      expect(mockRecordManual).toHaveBeenCalledWith(
+        expect.objectContaining({ category: 'dining', categorySetByHand: false }),
+        expect.any(Function),
+      );
+
+      await runAlongside(mockRecordManual);
+
+      expect(mockInsertTemplate).toHaveBeenCalledWith(
+        DATABASE_TRANSACTION,
+        expect.objectContaining({ draft: expect.objectContaining({ category: null }) }),
+      );
+    });
+
+    it('writes a hand pick and stores it in the template, whichever rule matches', async () => {
+      setLiveData({ draft: EXPENSE, categoryRules: [nameRule('coffee', 'dining')] });
+
+      const utils = await render(templateScreen({ holdingId: 'h1' }));
+
+      await fireEvent.changeText(utils.getByLabelText('Amount'), '250');
+      await fireEvent.changeText(utils.getByLabelText('Description'), 'Coffee');
+      await pickCategory(utils, 'Groceries');
+      await fireEvent(utils.getByRole('switch'), 'valueChange', true);
+      await fireEvent.changeText(utils.getByLabelText('Template name'), 'Morning');
+      await pressSave(navigation.setOptions);
+
+      expect(mockRecordManual).toHaveBeenCalledWith(
+        expect.objectContaining({ category: 'groceries', categorySetByHand: true }),
+        expect.any(Function),
+      );
+
+      await runAlongside(mockRecordManual);
+
+      expect(mockInsertTemplate).toHaveBeenCalledWith(DATABASE_TRANSACTION, {
+        name: 'Morning',
+        draft: draftOf({
+          holdingId: 'h1',
+          currency: 'UAH',
+          amountMinorUnits: 25000,
+          description: 'Coffee',
+          category: 'groceries',
+        }),
+      });
+    });
+
+    it('follows the text changed after a blur: the row takes its rule, the template no category', async () => {
+      setLiveData({
+        draft: EXPENSE,
+        categoryRules: [nameRule('coffee', 'dining'), nameRule('tea', 'groceries')],
+      });
+
+      const utils = await render(templateScreen({ holdingId: 'h1' }));
+
+      await fireEvent.changeText(utils.getByLabelText('Amount'), '250');
+      await fireEvent.changeText(utils.getByLabelText('Description'), 'Coffee');
+      await fireEvent(utils.getByLabelText('Description'), 'blur');
+      await fireEvent.changeText(utils.getByLabelText('Description'), 'Tea');
+      await fireEvent(utils.getByRole('switch'), 'valueChange', true);
+      await fireEvent.changeText(utils.getByLabelText('Template name'), 'Morning');
+      await pressSave(navigation.setOptions);
+
+      expect(mockRecordManual).toHaveBeenCalledWith(
+        expect.objectContaining({ category: 'groceries', categorySetByHand: false }),
+        expect.any(Function),
+      );
+
+      await runAlongside(mockRecordManual);
+
+      expect(mockInsertTemplate).toHaveBeenCalledWith(
+        DATABASE_TRANSACTION,
+        expect.objectContaining({
+          draft: expect.objectContaining({ description: 'Tea', category: null }),
+        }),
+      );
     });
 
     it('passes no alongside step again once the switch is turned back off', async () => {
