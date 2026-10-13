@@ -52,8 +52,11 @@ Rules:
 - Orchestrator small change set (developer + review + fix round + gate):
   dispatch-to-BATCH-READY is around 40 minutes once sized from history;
   an agent's own stated estimate ("60-90 min") runs roughly 2x high.
-- Mutation (`make deep` / Stryker), file count to wall-clock time, all
-  measured 2026-10-03:
+- Mutation (`make deep` / Stryker), whole-file history: these file counts
+  predate changed-line runs, which mutate only the changed lines. The
+  driver is now `changed lines:` from `make mutable`, not the file count;
+  quote a changed-line run from the log once it has rows. Measured
+  2026-10-03:
   - 1-3 files: 2-12 min
   - 20 files: 94 min
   - 24 files: 113 min

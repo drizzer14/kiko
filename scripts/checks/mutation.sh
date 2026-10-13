@@ -13,11 +13,15 @@
 # human. None of the progress/ETA/history code may change the pass/fail result:
 # every new step is guarded and a corrupt history just means "no estimate".
 #
-# `--list` prints the files this run would mutate and their count, then exits
-# (2 above the cap) without Stryker, so a change set is sized with the gate's
-# own filter instead of a hand count. It needs no Stryker binary and takes no
-# lock, since it never starts a run. Any other argument exits 2. A changed file whose diff is
-# only comments or whitespace is left out of the list (and printed as `skipped (comment-only)`).
+# The run mutates the CHANGED LINES of the changed source files (the lines the branch added,
+# passed to Stryker as `path:start-end` entries), not the whole files.
+#
+# `--list` prints the files this run would mutate with their changed-line ranges, the sum of
+# changed lines, and the file count, then exits (2 above the cap) without Stryker, so a change
+# set is sized with the gate's own filter instead of a hand count. It needs no Stryker binary and
+# takes no lock, since it never starts a run. Any other argument exits 2. A changed file whose
+# diff is only comments or whitespace is left out of the list (and printed as `skipped
+# (comment-only)`), and so is one with no added line (`skipped (no added lines)`).
 set -uo pipefail
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=/dev/null
@@ -148,7 +152,11 @@ fi
 # Both git diffs below set core.quotePath=false: by default git prints a path with non-ASCII
 # bytes as a quoted, escaped string, which would miss every test-name pattern and filter.
 # An unreadable file list must never count as "nothing to mutate".
-if ! diff_names="$(git -C "$ROOT" -c core.quotePath=false diff --name-only --diff-filter=d "$merge_base" HEAD -- '*.ts' '*.tsx' 2>/dev/null)"; then
+#
+# --find-renames is explicit here and on the line diff below, so a user's diff.renames config
+# cannot flip the result: a moved file must read as a move (only its edited lines are mutated),
+# never as a new file mutated whole.
+if ! diff_names="$(git -C "$ROOT" -c core.quotePath=false diff --name-only --find-renames --diff-filter=d "$merge_base" HEAD -- '*.ts' '*.tsx' 2>/dev/null)"; then
   print_block \
     "Stryker (mutation testing)" \
     "Could not list the files changed since the merge-base with $base." \
@@ -178,6 +186,9 @@ changed="$(printf '%s\n' "$diff_names" | mutable_source_files)"
 newline=$'\n'
 skipped_report=""
 kept_report=""
+# The comment-only files kept for a changed colocated test. They go to Stryker WHOLE: their
+# changed lines are comments, which hold no mutant, so a range would empty the rule above.
+whole_kept=""
 
 # Prints the changed test files of $test_names that sit beside the source file $1.
 colocated_tests() {
@@ -231,6 +242,7 @@ if [ -n "$changed" ]; then
       kept="${kept:+$kept$newline}$candidate"
     elif [ "$test_changed" -eq 1 ]; then
       kept="${kept:+$kept$newline}$candidate"
+      whole_kept="${whole_kept:+$whole_kept$newline}$candidate"
       kept_report="${kept_report}kept (colocated test changed): ${candidate}${newline}"
     else
       skipped_report="${skipped_report}skipped (comment-only): ${candidate}${newline}"
@@ -239,21 +251,139 @@ if [ -n "$changed" ]; then
   changed="$kept"
 fi
 
+# CHANGED LINES. The kept files are mutated on the lines this branch ADDED, not whole: a one-line
+# edit of a big file once cost a whole-file run. Stryker takes `path:start-end` entries in
+# --mutate (1-based, end inclusive). mutation-ranges.js reads them from one `git diff -U0` over
+# the SAME tree-wide pathspec as the name list above, never a per-file pathspec: that would hide a
+# moved file's old path, so the move would read as a new file and be mutated whole.
+#
+# Never hand Stryker a plain path and a range for the same file: it reads that as "do not mutate".
+# So a file is either its plain path (a comment-only file kept for a changed colocated test) or
+# its ranges. A file with no added line (a pure deletion or a pure move) has nothing to mutate and
+# leaves the list, like a comment-only one. A path with a glob character is refused: Stryker can read it as a
+# pattern, not as a literal file.
+# A diff or a script that fails is a block and exit 2: never fall back to whole files.
+# --inter-hunk-context=0 keeps a user's diff.interHunkContext from merging hunks, which would add
+# unchanged context lines to a hunk.
+norange_report=""
+entries=""
+list_report=""
+changed_lines=0
+if [ -n "$changed" ]; then
+  range_paths=()
+  while IFS= read -r candidate; do
+    [ -n "$candidate" ] || continue
+    case "$candidate" in
+      *'['* | *'('* | *'*'* | *'?'* | *'{'*)
+        print_block \
+          "Stryker (mutation testing)" \
+          "A changed source file has a glob character in its path: $candidate" \
+          "Stryker checks each --mutate entry with new Minimatch(entry).hasMagic() (options-validator.js) and can read a path with one of [ ( * ? { as a pattern, not a literal file or a path:start-end range. The gate refuses these characters up front rather than guess how Stryker will read one." \
+          "A file Stryker cannot resolve would be graded n/a and the gate would pass without any mutant run on it." \
+          "Rename the file, or exclude it in mutable_source_files in mutation.sh when it needs no mutation, then re-run: npm run check:mutation" \
+          "Do not pass the path anyway, and do not drop it from the list by hand."
+        exit 2
+        ;;
+    esac
+    range_paths+=("$candidate")
+  done < <(printf '%s\n' "$changed")
+
+  # --text and --no-textconv: a file git reads as binary (a NUL byte, or a -diff/binary attribute)
+  # prints no hunk, and a textconv driver numbers the hunks of the converted text, so neither may
+  # decide which lines changed.
+  if ! line_diff="$(git -C "$ROOT" -c core.quotePath=false diff -U0 --text --no-textconv --inter-hunk-context=0 --find-renames --no-color --no-ext-diff --src-prefix=a/ --dst-prefix=b/ "$merge_base" HEAD -- '*.ts' '*.tsx' 2>/dev/null)"; then
+    print_block \
+      "Stryker (mutation testing)" \
+      "Could not read the changed lines since the merge-base with $base." \
+      "git diff -U0 $merge_base HEAD failed in $ROOT." \
+      "Without the changed lines the gate cannot say what to mutate, and it must never fall back to whole files or to nothing." \
+      "Check that the repository can read commit $merge_base, then re-run: npm run check:mutation" \
+      "Do not start Stryker directly to skip the cap."
+    exit 2
+  fi
+
+  # The script's stderr goes to its own file and is shown only in the failure block: a warning on
+  # stderr (a Node deprecation, say) beside an exit 0 must not read as a path line of its stdout.
+  if ! ranges_stderr="$(mktemp "${TMPDIR:-/tmp}/kiko-mutation-ranges.XXXXXX")"; then
+    print_block \
+      "Stryker (mutation testing)" \
+      "Could not create a temporary file for the changed-line reader." \
+      "mktemp failed under ${TMPDIR:-/tmp}." \
+      "Without the reader's output the gate cannot say what to mutate, and it must never fall back to whole files or to nothing." \
+      "Free space or fix the permissions of ${TMPDIR:-/tmp}, then re-run: npm run check:mutation" \
+      "Do not start Stryker directly to skip the cap."
+    exit 2
+  fi
+  if ! range_lines="$(printf '%s\n' "$line_diff" | node "$DIR/mutation-ranges.js" "${range_paths[@]}" 2>"$ranges_stderr")"; then
+    ranges_error="$(cat "$ranges_stderr")"
+    rm -f "$ranges_stderr"
+    print_block \
+      "Stryker (mutation testing)" \
+      "mutation-ranges.js could not read the changed lines of the changed source files." \
+      "$ranges_error" \
+      "A changed file must appear in the diff it came from; one that does not means the diff or the parse is broken, and guessing its lines would mutate the wrong code or none." \
+      "Read the output above, fix the cause, and re-run: npm run check:mutation" \
+      "Do not fall back to mutating whole files."
+    exit 2
+  fi
+  rm -f "$ranges_stderr"
+
+  tab=$'\t'
+  ranged=""
+  while IFS= read -r range_line; do
+    [ -n "$range_line" ] || continue
+    candidate="${range_line%%"$tab"*}"
+    field="${range_line#*"$tab"}"
+    case "$newline$whole_kept$newline" in
+      *"$newline$candidate$newline"*)
+        entries="${entries:+$entries$newline}$candidate"
+        ranged="${ranged:+$ranged$newline}$candidate"
+        # A whole file counts its line count at HEAD.
+        file_lines="$(git -C "$ROOT" show "HEAD:$candidate" 2>/dev/null | wc -l | tr -d ' ')"
+        changed_lines=$((changed_lines + file_lines))
+        list_report="${list_report}${candidate} whole file (${file_lines} lines)${newline}"
+        ;;
+      *)
+        if [ -z "$field" ]; then
+          norange_report="${norange_report}skipped (no added lines): ${candidate}${newline}"
+        else
+          ranged="${ranged:+$ranged$newline}$candidate"
+          file_lines=0
+          old_ifs="$IFS"
+          IFS=','
+          for range in $field; do
+            entries="${entries:+$entries$newline}$candidate:$range"
+            file_lines=$((file_lines + ${range#*-} - ${range%-*} + 1))
+          done
+          IFS="$old_ifs"
+          changed_lines=$((changed_lines + file_lines))
+          list_report="${list_report}${candidate} ${field} (${file_lines} changed lines)${newline}"
+        fi
+        ;;
+    esac
+  done < <(printf '%s\n' "$range_lines")
+  changed="$ranged"
+fi
+
 file_count="$(printf '%s\n' "$changed" | grep -c . || true)"
 if [ "$list" -eq 1 ]; then
-  [ -n "$changed" ] && printf '%s\n' "$changed"
-  printf '%s%s' "$skipped_report" "$kept_report"
+  printf '%s%s%s%s' "$list_report" "$skipped_report" "$norange_report" "$kept_report"
+  printf 'changed lines: %s\n' "$changed_lines"
   printf 'mutable files: %s (cap %s)\n' "$file_count" "$MUTATION_FILE_CAP"
 else
-  printf '%s%s' "$skipped_report" "$kept_report"
+  printf '%s%s%s' "$skipped_report" "$norange_report" "$kept_report"
 fi
 if [ -z "$changed" ]; then
-  # Nothing to mutate: the branch changed no mutable source file, or only comment/whitespace in
-  # the ones it changed. Pass.
-  [ -n "$skipped_report" ] && printf 'nothing to mutate: every changed source file is comment-only.\n'
+  # Nothing to mutate: the branch changed no mutable source file, or only comment/whitespace or
+  # removed lines in the ones it changed. Pass.
+  if [ -n "$norange_report" ]; then
+    printf 'nothing to mutate: no changed source file has added lines.\n'
+  elif [ -n "$skipped_report" ]; then
+    printf 'nothing to mutate: every changed source file is comment-only.\n'
+  fi
   exit 0
 fi
-csv="$(printf '%s' "$changed" | tr '\n' ',')"
+csv="$(printf '%s' "$entries" | tr '\n' ',')"
 mutate_arg="--mutate=${csv%,}"
 
 if [ "$file_count" -gt "$MUTATION_FILE_CAP" ]; then
@@ -401,12 +531,13 @@ if [ ! -f "$MUTATION_REPORT" ]; then
   exit 2
 fi
 
-# $changed is a newline-separated list (bash 3.2-safe: no mapfile), expanded
-# into one argv entry per file for mutation-score.js.
+# $entries is a newline-separated list (bash 3.2-safe: no mapfile), expanded
+# into one argv entry per --mutate entry for mutation-score.js, so the scorer's scope check
+# compares the report with the exact entries Stryker was given.
 file_arguments=()
 while IFS= read -r changed_file; do
   [ -n "$changed_file" ] && file_arguments+=("$changed_file")
-done < <(printf '%s\n' "$changed")
+done < <(printf '%s\n' "$entries")
 
 score_out="$(node "$DIR/mutation-score.js" "$MUTATION_REPORT" "${file_arguments[@]}" 2>&1)"
 score_code=$?

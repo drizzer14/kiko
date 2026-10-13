@@ -529,10 +529,11 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   set). See `docs/superpowers/specs/2026-09-25-pre-write-guard-design.md`
   for the full design and CLAUDE.md's "Automatic wiring" for the hook wiring.
 
-  `mutation.sh` also DIFF-SCOPES by default: it mutates only the `.ts`/
+  `mutation.sh` also DIFF-SCOPES by default: it mutates only the CHANGED LINES of the `.ts`/
   `.tsx` source files this branch changed vs the merge-base with
-  `${KIKO_MUTATION_BASE:-main}`, passed to Stryker as an explicit
-  `--mutate` list that overrides the whole-tree glob — and this
+  `${KIKO_MUTATION_BASE:-main}`, passed to Stryker as explicit
+  `--mutate` entries (`path:start-end`, one per added-line range; read
+  `scripts/checks/mutation-ranges.js` for the parse) that overrides the whole-tree glob — and this
   `--mutate` list REPLACES the config's own `mutate[]` excludes
   wholesale, so the script's own filtering is the only thing excluding
   tests/fixtures/low-logic files on a diff-scoped run. Do not restate
@@ -557,9 +558,10 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   base and HEAD text; its header states how the two are compared and what each
   verdict means. ONE LIST: `mutation.sh` filters `changed` once, right after
   `mutable_source_files`, so `--mutate`, the scorer, the fingerprint, the cap
-  and `--list` all read the same list (`--list` prints each skipped file as
+  and `--list` all read the same entries (`--list` prints each skipped file as
   `skipped (comment-only): <path>`; its count line counts only the mutated
-  files). FAIL CLOSED: the script prints a path only when it PROVED the file
+  files, and a file with no added line, a pure rename or a pure deletion, prints
+  `skipped (no added lines): <path>` and is not counted). FAIL CLOSED: the script prints a path only when it PROVED the file
   comment-only; a non-`.ts`/`.tsx` file, a new, renamed or deleted one, a
   parse diagnostic, a failing `git show`, `typescript` that cannot be
   required, any exception, and a script that crashes all keep the file. A file
@@ -586,8 +588,9 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   set's own base commit, never a raised cap. The coordinator runs it per
   reviewed change set (harness-workflow's "Mutation testing: small change
   sets only"). No env var bypasses the
-  cap. `mutation.sh --list` (`make mutable`) prints the file list and
-  `mutable files: N (cap …)` after the same refusals and the same
+  cap. `mutation.sh --list` (`make mutable`) prints each file's ranges (`<file> 3-7,12-12 (6 changed lines)`;
+  a comment-only file kept by its colocated test prints `whole file (N lines)`), `changed lines: N`, and
+  `mutable files: N (cap …)` last after the same refusals and the same
   `mutable_source_files` filter, then exits (2 above the cap) before
   the dedup skip; it needs no Stryker binary and never takes the global
   lock. Any argument other than `--list` (a typo like `--lsit`) exits 2
@@ -679,6 +682,13 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   (its `did not result in any files` warning) fails the run. Stryker `disable` comments turn mutants into
   Ignored, which the score leaves out, so `check:overrides` fails any
   such comment without `OVERRIDE(...)`. The
+  scorer takes the exact `--mutate` entries as arguments and grades only mutants fully inside a range,
+  because Stryker's incremental mode carries old out-of-range mutants with their old statuses into
+  `reports/mutation/mutation.json` (core `incremental-differ.js` lines 128-142). It exits 2 when one file is given both as a
+  plain path and as a range (Stryker reads that as "do not mutate"). A comment-only file kept because its
+  colocated test changed goes in as its plain path (whole file). A kept path with `[ ( * ? {` is refused with
+  exit 2, after the lock in a run and with no lock in `--list`, always before Stryker. The diff uses
+  `--find-renames --inter-hunk-context=0 --text --no-textconv` (a -diff/binary attribute or a textconv driver must not change the hunks). General rule: any checker that parses `git diff` hunks forces `--text --no-textconv --no-ext-diff` and `-c core.quotePath=false`, and treats a failed or unparsable diff as a block, never as "nothing to do" (H6 review 2026-10-12: a binary/textconv `.ts` diff gave no hunk and the gate passed with nothing mutated; fixed in 5f31d626). User ruling 2026-10-12, no edge-straddling mutant: Stryker 8.7.1 creates a mutant only when its whole node lies inside a range (its fully-inside rule, instrumenter syntax-helpers.js), and the scorer grades only mutants fully inside a range. Cost: an edit inside a multi-line block, condition, object or array, or an arrow body loses that construct's whole-node mutants; the inner mutants on the changed lines stay. User ruling 2026-10-12, source plus colocated test: when a source file and its colocated test both change, only the changed source lines are mutated. Cost: a weakened test is checked only against the changed lines, not the whole file. The
   scorer is unit-tested directly against constructed report fixtures
   in `__tests__/mutation-score.test.ts` (no mutated-src-text parsing,
   no real Stryker run); the existing cap/lock/streaming/eta tests drive

@@ -240,8 +240,13 @@ harness_fmt_duration() {
 # strictly-positive integers — so old count-less records (no rate is computable)
 # and 0-duration clock-skew records are excluded, and a rate can never divide by
 # an empty or zero count. Each valid record's rate is duration/count; normalizing
-# by mutant count is the whole point (a 5574-mutant run and a 40-mutant run give
-# comparable per-mutant rates, not wildly different whole-run durations). The
+# by mutant count keeps a big run and a small one on one scale, but only roughly:
+# every run also pays a fixed startup cost (the initial test run), so a small run
+# has a higher rate than a big one. A changed-line run has few mutants, so the
+# first changed-line ETAs read short while the history still holds whole-file
+# rates; after a few changed-line runs the median fits them. The count is the
+# denominator of Stryker's "N/M tested", which counts only the mutants that run.
+# The ETA is shown to a human only and never changes the gate's result. The
 # median is printed with printf "%g" so 2.0 prints "2" and 1.2 prints "1.2".
 # Portable awk only (bash 3.2: no mapfile, no jq); the median is a tiny insertion
 # sort over the <=5 collected rates, averaging the two middle values on an even
