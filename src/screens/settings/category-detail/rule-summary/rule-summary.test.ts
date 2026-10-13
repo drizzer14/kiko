@@ -14,11 +14,11 @@ const MINUTES_AT_18 = 18 * 60;
 const formatAmount = (minorUnits: number, currency: Currency): string =>
   `${(minorUnits / 100).toFixed(2)} ${currency}`;
 
-const summaryOf = (matchers: CategoryRuleMatcher[], clock: TimeClock = CLOCK_24): string =>
-  ruleSummary(matchers, { t: i18n.t, clock, formatAmount });
-
 const rowsOf = (matchers: CategoryRuleMatcher[], clock: TimeClock = CLOCK_24) =>
   ruleRows(matchers, { t: i18n.t, clock, formatAmount });
+
+const summaryOf = (matchers: CategoryRuleMatcher[], clock: TimeClock = CLOCK_24): string =>
+  ruleSummary(rowsOf(matchers, clock));
 
 describe('ruleRows', () => {
   it('gives one row per matcher, each with its subject, in the order they are stored', () => {
@@ -115,6 +115,15 @@ describe('ruleRows', () => {
 });
 
 describe('ruleSummary', () => {
+  it('reads the rows it is given, so the line can not differ from the table', () => {
+    expect(
+      ruleSummary([
+        { key: 'first', label: 'Label one', value: 'Value one' },
+        { key: 'second', label: 'Label two', value: 'Value two' },
+      ]),
+    ).toBe('Label one Value one · Label two Value two');
+  });
+
   it('joins the rows, each as its label then its value, with a middle dot', () => {
     expect(
       summaryOf([

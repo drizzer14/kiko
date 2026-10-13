@@ -60,10 +60,5 @@ export const ruleRows = (
   }));
 
 /** One line for a rule: its rows, each as label then value, joined by a middle dot. */
-export const ruleSummary = (
-  matchers: readonly CategoryRuleMatcher[],
-  options: RuleSummaryOptions,
-): string =>
-  ruleRows(matchers, options)
-    .map((row) => `${row.label} ${row.value}`)
-    .join(SEPARATOR);
+export const ruleSummary = (rows: readonly RuleRow[]): string =>
+  rows.map((row) => `${row.label} ${row.value}`).join(SEPARATOR);

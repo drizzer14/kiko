@@ -51,12 +51,12 @@ const ruleLinesOf = (
     isSameCategory(rule.category, categoryKey);
 
   return [
-    ...prepared.ordered.filter(belongs).map((rule) => ({
-      id: rule.id,
-      rows: ruleRows(rule.displayMatchers, { t, clock, formatAmount: formatRuleAmount }),
-      summary: ruleSummary(rule.displayMatchers, { t, clock, formatAmount: formatRuleAmount }),
-      isReadable: true,
-    })),
+    ...prepared.ordered.filter(belongs).map((rule) => {
+      // The line is read off the rows, so it can not say anything the table does not.
+      const rows = ruleRows(rule.displayMatchers, { t, clock, formatAmount: formatRuleAmount });
+
+      return { id: rule.id, rows, summary: ruleSummary(rows), isReadable: true };
+    }),
     ...prepared.unreadable.filter(belongs).map((rule) => ({
       id: rule.id,
       summary: t('categoryPage.unreadableRule'),
