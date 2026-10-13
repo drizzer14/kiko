@@ -44,8 +44,12 @@
 # comes from this process's own memory, never from the lock file, and never from a name or a
 # pattern. It then waits for the group to empty, polling every KIKO_QUEUE_POLL_SECONDS, at most
 # KIKO_QUEUE_STOP_POLLS times; a group that does not empty leaves the lock in place and the queue
-# exits anyway. A second signal during that wait exits at once. SIGKILL cannot be trapped: a
-# waiter killed with it leaves its job running with the lock live by group, so never SIGKILL one.
+# exits anyway. A second signal during that wait exits at once. The group gets the TERM only when
+# pgrep exits 0 (members found); a pgrep that cannot tell (exit 2 or 3) signals no group, and only
+# the job's own pid gets the TERM, while the lock stays held as for any unknown group. A signal that
+# lands while the job is being forked is kept and acted on once its group is known. SIGKILL cannot
+# be trapped: a waiter killed with it leaves its job running, so never SIGKILL one (the lock is
+# live by group only once the group is named; see Known limits).
 #
 # Exit codes: the job's own code (2 also covers a refused request, as the plan's contract says); 3
 # a gate whose HEAD moved; 130 after SIGINT; 143 after SIGTERM.
@@ -53,11 +57,18 @@
 # Known limits: the group check is a liveness test only. A pid reused by an unrelated process makes
 # a dead owner read as alive, so a lock can stall, never run two jobs at once. A claim whose holder
 # was SIGKILLed is removed by a check-then-remove, so two waiters meeting a dead claim at the same
-# instant can both pass it.
+# instant can both pass it. A waiter SIGKILLed between the fork of its job and the rename that names
+# the job group in the lock leaves a lock that still reads `<dead pid> -`: it names no group, so
+# the next waiter reclaims it while the job still runs, and two jobs run at once.
+#
+# Power: only a first pmset line naming AC Power reads as AC and one naming Battery Power as
+# battery; any other first line, no output, or a failing pmset holds with "power state unknown".
 #
 # Test seams: KIKO_QUEUE_DIR, KIKO_QUEUE_POLL_SECONDS (default 30), KIKO_QUEUE_STOP_POLLS
 # (default 20), KIKO_QUEUE_PMSET and KIKO_QUEUE_CAFFEINATE (the binary to run instead of pmset and
-# caffeinate; a missing pmset means AC power, a missing caffeinate means none).
+# caffeinate; a missing pmset means AC power, a missing caffeinate means none), and
+# KIKO_QUEUE_FORK_HOOK (a test-only program, empty in production, run with the queue's pid between
+# the fork of a job and the read of its pid).
 set -uo pipefail
 
 QUEUE_DIRECTORY="${KIKO_QUEUE_DIR:-$HOME/.claude/kiko-queue}"
@@ -96,21 +107,26 @@ pid_is_alive() {
   kill -0 "$1" 2> /dev/null
 }
 
-# A process group with a member. pgrep exits 1 for no match; any other outcome (it could not
-# tell) counts as a member, so a failing pgrep never frees a lock.
-group_has_members() {
-  local pgrep_code
+# pgrep's own answer for a process group: 0 when it found a member, 1 when it found none, any
+# other code when it could not tell. A group id that is not a positive number has no member.
+scan_group() {
   case "$1" in
     '' | *[!0-9]* | 0*) return 1 ;;
   esac
   pgrep -g "$1" > /dev/null 2>&1
-  pgrep_code=$?
-  [ "$pgrep_code" -ne 1 ]
 }
 
-# Why the power state stops a start; nothing for AC power or a machine without pmset. A pmset that
-# is present but fails or prints nothing says nothing about the power source, so it stops the
-# start too: battery must never read as AC.
+# Whether a lock may be kept: a pgrep that could not tell counts as a member, so a failing pgrep
+# never frees a lock.
+group_has_members() {
+  scan_group "$1"
+  [ "$?" -ne 1 ]
+}
+
+# Why the power state stops a start; nothing for AC power or a machine without pmset. Only a first
+# line naming AC Power reads as AC. A pmset that is present but fails, prints nothing, or opens
+# with any other line (a warning, UPS Power) says nothing sure about the power source, so it stops
+# the start too: battery must never read as AC.
 power_reason() {
   local pmset_binary="${KIKO_QUEUE_PMSET:-pmset}" power first_line
   command -v "$pmset_binary" > /dev/null 2>&1 || return 0
@@ -120,8 +136,9 @@ power_reason() {
   }
   first_line="$(printf '%s\n' "$power" | sed -n '1p')"
   case "$first_line" in
-    '') printf 'power state unknown' ;;
+    *'AC Power'*) ;;
     *'Battery Power'*) printf 'battery power' ;;
+    *) printf 'power state unknown' ;;
   esac
 }
 
@@ -339,14 +356,19 @@ pause() {
   sleeper=''
 }
 
-# TERM goes to the group this process created for its own job and to no other, and only while that
-# group has a member (a group id is never reused while it has one). Then the leader is reaped and
-# the group gets a bounded number of polls to empty.
+# TERM goes to the group this process created for its own job and to no other, and only while
+# pgrep reports a member (a group id is never reused while it has one); a pgrep that could not
+# tell signals no group, and the job's own unreaped pid (never reusable) gets the TERM instead.
+# Then the leader is reaped and the group gets a bounded number of polls to empty.
 terminate_job_group() {
   local polls=0
   [ -n "$job_group" ] || job_group="$job"
   [ -n "$job_group" ] || return 0
-  group_has_members "$job_group" && kill -s TERM -- "-$job_group" 2> /dev/null
+  if scan_group "$job_group"; then
+    kill -s TERM -- "-$job_group" 2> /dev/null
+  elif [ -n "$job" ]; then
+    kill -s TERM "$job" 2> /dev/null
+  fi
   if [ -n "$job" ]; then
     wait "$job" 2> /dev/null
     job=''
@@ -385,17 +407,26 @@ cleanup() {
 }
 
 # A signal ends the script: without the exit, a trap that only cleans up lets the wait loop go on.
-# A second signal while the group ends leaves at once.
+# A second signal while the group ends leaves at once. While the job is being forked the queue has
+# no pid to stop yet, so the signal is kept and run_job acts on it as soon as the group is known.
+starting=0
+pending_signal=''
 stop_on_signal() {
-  trap "exit $1" INT TERM
+  local exit_code=130
+  [ "$1" = TERM ] && exit_code=143
+  if [ "$starting" -eq 1 ]; then
+    pending_signal="$1"
+    return 0
+  fi
+  trap "exit $exit_code" INT TERM
   terminate_job_group
   cleanup
-  exit "$1"
+  exit "$exit_code"
 }
 
 trap cleanup EXIT
-trap 'stop_on_signal 130' INT
-trap 'stop_on_signal 143' TERM
+trap 'stop_on_signal INT' INT
+trap 'stop_on_signal TERM' TERM
 touch "$ticket_path"
 
 head_ticket() { ticket_names | sed -n '1p'; }
@@ -464,6 +495,7 @@ start_gate_job() {
 # also stops giving a background job /dev/null as stdin, so each job gets it by hand. FORCE_COLOR
 # breaks the fingerprint stamps that read a number through node, so every job runs without it.
 run_job() {
+  starting=1
   set -m
   case "$command_name" in
     verify) env -u FORCE_COLOR make -C "$worktree" verify < /dev/null & ;;
@@ -471,9 +503,14 @@ run_job() {
     security) (cd "$worktree" && exec env -u FORCE_COLOR npm run check:security) < /dev/null & ;;
     gate) start_gate_job ;;
   esac
+  # Test-only hook, empty in production: it runs inside the window where the job exists but its pid
+  # is not yet read, so a test can send the queue a signal at exactly that point.
+  [ -z "${KIKO_QUEUE_FORK_HOOK:-}" ] || "$KIKO_QUEUE_FORK_HOOK" "$$" < /dev/null
   job=$!
   set +m
   job_group="$job"
+  starting=0
+  [ -z "$pending_signal" ] || stop_on_signal "$pending_signal"
   record_job_group
   wait "$job"
   job_code=$?

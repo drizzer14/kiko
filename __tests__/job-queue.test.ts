@@ -639,6 +639,18 @@ const BLOCKING_MAKE_STUB = [
   '',
 ].join('\n');
 
+// The queue runs this in the window between starting the job and learning its pid, with its own pid
+// as the argument. It waits until the job has written its pid, so the job is certainly running,
+// then sends the queue the signal a test names. It ends on its own once the sandbox is deleted.
+const FORK_HOOK_STUB = [
+  '#!/usr/bin/env bash',
+  `while [ ! -s "$KIKO_STUB_PID" ] && [ -d "\${KIKO_STUB_PID%/*}" ]; do`,
+  '  sleep 0.02',
+  'done',
+  'kill -s "$KIKO_STUB_HOOK_SIGNAL" "$1"',
+  '',
+].join('\n');
+
 // A job that ends at once and leaves a child running: a leaked process. The child runs until the
 // test creates the release file, or until the sandbox is deleted, so a failed test cannot leave it
 // looping.
@@ -647,7 +659,7 @@ const LEAKING_MAKE_STUB = [
   'printf "make %s\\n" "$*" >> "$KIKO_STUB_CALLS"',
   'echo $$ > "$KIKO_STUB_PID"',
   '(',
-  '  while [ ! -e "$KIKO_STUB_RELEASE" ] && [ -d "$(dirname "$KIKO_STUB_RELEASE")" ]; do',
+  `  while [ ! -e "$KIKO_STUB_RELEASE" ] && [ -d "\${KIKO_STUB_RELEASE%/*}" ]; do`,
   '    sleep 0.05',
   '  done',
   ') &',
@@ -683,7 +695,8 @@ const CHAIN_LEAF_STUB = [
   '  trap \'echo term >> "$KIKO_STUB_LEAF_LOG"\' TERM',
   'fi',
   'echo $$ > "$KIKO_STUB_GRANDCHILD"',
-  'while [ ! -e "$KIKO_STUB_RELEASE" ] && [ -d "$(dirname "$KIKO_STUB_RELEASE")" ]; do',
+  // The loop starts no child per pass: a `$(dirname ...)` that the group TERM kills would end it.
+  `while [ ! -e "$KIKO_STUB_RELEASE" ] && [ -d "\${KIKO_STUB_RELEASE%/*}" ]; do`,
   '  sleep 0.05 &',
   '  wait $!',
   'done',
@@ -926,6 +939,48 @@ describe.each([
     expect(result.code).toBe(exitCode);
     expect(processIsAlive(jobPid)).toBe(false);
     expect(processIsAlive(foreign)).toBe(true);
+  });
+
+  it(`stops the job and keeps no lock when ${signal} arrives before the queue knows the job's pid`, async () => {
+    const sandbox = createSandbox();
+    writeExecutable(join(sandbox.root, 'bin/make'), BLOCKING_MAKE_STUB);
+    writeExecutable(join(sandbox.root, 'bin/fork-hook'), FORK_HOOK_STUB);
+    sandbox.environment.KIKO_STUB_PID = join(sandbox.root, 'job-pid');
+    sandbox.environment.KIKO_STUB_HOOK_SIGNAL = signal;
+    sandbox.environment.KIKO_QUEUE_FORK_HOOK = join(sandbox.root, 'bin/fork-hook');
+    const worktree = createWorktree(sandbox, 'one');
+
+    const result = await startQueue(sandbox, 'verify', worktree, 'one').finished;
+
+    expect(result.code).toBe(exitCode);
+    expect(processIsAlive(readPid(sandbox, 'job-pid'))).toBe(false);
+    expect(lockPresent(sandbox)).toBe(false);
+    expect(entriesOf(join(sandbox.queue, 'tickets'))).toEqual([]);
+    expect(existsSync(join(sandbox.queue, 'done.log'))).toBe(false);
+  });
+
+  it(`sends no group signal on ${signal} when pgrep cannot tell, and keeps the lock`, async () => {
+    const sandbox = createSandbox();
+    useChain(sandbox);
+    writeExecutable(join(sandbox.root, 'bin/pgrep'), '#!/usr/bin/env bash\nexit 2\n');
+    sandbox.environment.KIKO_QUEUE_STOP_POLLS = '3';
+    const worktree = createWorktree(sandbox, 'one');
+
+    const waiter = startQueue(sandbox, 'verify', worktree, 'one');
+    const { jobPid, leafPid } = await waitForChain(sandbox);
+    await waitFor(() => readlinkSync(join(sandbox.queue, 'lock')).split(' ')[1] === String(jobPid));
+    waiter.child.kill(signal);
+    await waitFor(() => waiter.child.exitCode !== null);
+
+    expect(waiter.child.exitCode).toBe(exitCode);
+    expect(readLines(join(sandbox.root, 'leaf-log'))).toEqual([]);
+    expect(processIsAlive(leafPid)).toBe(true);
+    expect(readlinkSync(join(sandbox.queue, 'lock'))).toBe(
+      `${waiter.child.pid} ${jobPid} verify one ${worktree}`,
+    );
+    writeFileSync(join(sandbox.root, 'release'), '');
+    process.kill(leafPid, 'SIGKILL');
+    await waitFor(() => !processIsAlive(leafPid));
   });
 });
 
@@ -1204,11 +1259,13 @@ describe('scripts/job-queue.sh battery power', () => {
     expect(startedWorktrees(sandbox)).toEqual([worktree]);
   });
 
-  // A pmset that is present but silent or failing says nothing about the power source, so the
-  // queue holds instead of reading AC.
+  // A pmset that is present but silent, failing, or printing a first line that names no known power
+  // source says nothing about the power source, so the queue holds instead of reading AC.
   it.each([
     ['prints nothing', '', false],
     ['exits non-zero', AC_POWER, true],
+    ['prints an unknown power source first', "Now drawing from 'UPS Power'\n", false],
+    ['prints a warning line first', `WARNING: sensor stale\n${AC_POWER}`, false],
   ])('holds with "power state unknown" when pmset %s', async (_title, output, fails) => {
     const sandbox = createSandbox();
     const worktree = createWorktree(sandbox, 'one');
