@@ -211,6 +211,7 @@ describe('scripts/checks/mutation.sh comment-only filter', () => {
         KEPT_LINE('src/foo.ts'),
         'changed lines: 2',
         'mutable files: 1 (cap 30)',
+        'timeout share (history): none',
       ]);
     });
   });
@@ -231,6 +232,7 @@ describe('scripts/checks/mutation.sh comment-only filter', () => {
       'kept (colocated test changed): src/nonascii/foo.ts',
       'changed lines: 2',
       'mutable files: 1 (cap 30)',
+      'timeout share (history): none',
     ]);
   });
 
@@ -272,6 +274,7 @@ describe('scripts/checks/mutation.sh comment-only filter', () => {
         SKIPPED_LINE('src/commented-two.ts'),
         'changed lines: 1',
         'mutable files: 1 (cap 30)',
+        'timeout share (history): none',
       ]);
       expect(result.stubArguments).toBeNull();
     });
