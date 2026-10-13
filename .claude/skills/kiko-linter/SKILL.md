@@ -1300,8 +1300,11 @@ reminders code says "the plan" or "this planner", never "in this plan".
 Fixture pair: the plan-history pins in `.bad.ts` and items 16 and 18 in
 `.good.ts`.
 
-**The section members (2026-09-29) need a number.** `[Ss]ection\s[A-Z0-9]+\.\d+`
-fires only on a word "section" followed by a dotted number, so a
+**The section members (2026-09-29) need a number.** The arm
+`[Ss]ection\s(?:[A-Z0-9]+\.\d+|\d+)` fires on a word "section" followed by a dotted number
+or by a bare number (`Section 4`). Its false-positive class is prose such as
+`// section 3 of the form` and a number that is not a section id (`Section 508`); the tree
+holds 0 such hits today. A
 "Section" header row, "2 sections", and "subsection 2.1" (no word
 boundary before "section") stay silent. `§\s?\d` sits OUTSIDE the `\b(...)`
 group in both arms: `§` is not a word character, so a `\b` before it
@@ -1665,7 +1668,8 @@ Mechanizes kiko-code-style's "A test title carries no history": the title of an 
 carries `(was: `, or ends in a task id in parentheses (`(P2)`, `(task C2)`, `(spec A3, B4)`).
 
 **Severity ERROR from the start.** The tree holds 0 findings. Re-measure with `semgrep
---metrics off --quiet --config rules/semgrep-prewrite.yml src --json` before quoting a count.
+--metrics off --quiet --config rules/semgrep-prewrite.yml src __tests__ --json` before quoting
+a count (the rule also covers `__tests__/*.test.ts`).
 
 **Scope.** Test-only: `paths.include` is `*.test.ts`, `*.test.tsx`, and `src/test-support/**`.
 The last entry is path-prefixed, so the fixture pair is NESTED under
@@ -1673,31 +1677,38 @@ The last entry is path-prefixed, so the fixture pair is NESTED under
 `title-example.good.ts`). It is one `$CALLEE($TITLE, ...)` pattern with a `metavariable-regex`
 on the callee and one on the title text.
 
+The rule matches `Task C2` and `task C2` (`[Tt]ask`) in the trailing parenthesis.
+
 **Known limits.** A title held in a variable, or built from anything but a string or a
 template literal, is out of reach. A leading letter-and-digits that is data (`B12px`, `a1:`)
-and a parenthesis that holds more than an id (`(A4 paper)`, `(P2P)`) stay silent.
+and a parenthesis that holds more than an id (`(A4 paper)`, `(P2P)`) stay silent. A
+multi-letter id (`(BUG1)`, `(SEC-12)`, `(T-12)`, `(P2b)`) and a ruling id in the middle of a
+title (`(ruling A2)`) are missed. A one-letter id that is data false-matches: `(H1)`, `(V2)`,
+`(B2)`, `(A4, portrait)` in the trailing parenthesis, and a leading `A1: header cell`. Reword
+such a title.
 
 ## `kiko-rejects-to-throw-needs-error`
 
 Mechanizes kiko-code-style's "A rejection names its error": a `.rejects` assertion with
-`toThrow()` or `toThrowError()` (no argument, the bare `Error` class, or `undefined`),
-`toBeInstanceOf(Error)`, or `toBeTruthy()`. Each passes on any failure, so a test that fails
-for the wrong reason stays green.
+`toThrow()` or `toThrowError()` (no argument, the bare `Error` class, `undefined`, an empty
+string `('')`, or the match-all pattern `(/.*/)`), `toEqual(expect.anything())`,
+`toBeInstanceOf(Error)`, `toBeInstanceOf(Object)`, `toBeTruthy()`, `toBeDefined()`, or
+`not.toBeNull()`. Each passes on any failure, so a test that fails for the wrong reason stays
+green.
 
 **Severity ERROR from the start.** The tree holds 0 findings.
 
 **Scope.** Test-only, with the same `paths.include` as the title rule. The fixture pair is
 NESTED under `rules/fixtures/kiko-rejects-to-throw-needs-error/src/test-support/`.
 
-**Known limits.** A rejection read through a helper, a `.rejects.toBeDefined()`, and a
-synchronous `expect(fn).toThrow()` are not seen. The rule checks that an expected error is
+**Known limits.** A rejection read through a helper and a synchronous `expect(fn).toThrow()` are not seen. The rule checks that an expected error is
 named, not that it is the right one.
 
 ## `kiko-sortable-grid-lone-card-lifts`
 
 Mechanizes kiko-gestures' "A lone card lifts too": a `<Sortable.Grid ... sortEnabled={...} />`
-whose `sortEnabled` is `$ITEMS.length > 1`, `$ITEMS.length >= 2`, or `1 < $ITEMS.length`,
-alone or at any place in an `&&` chain.
+whose `sortEnabled` is `$ITEMS.length > 1`, `$ITEMS.length >= 2`, `1 < $ITEMS.length`, or
+`2 <= $ITEMS.length`, alone or at any place in an `&&` chain.
 
 **Severity ERROR.** The one finding in the tree (the categories grid in
 `src/screens/settings/categories/categories.screen.tsx`) was fixed in the same change.
@@ -1714,16 +1725,19 @@ is not seen.
 Mechanizes kiko-code-style's "`ts-pattern` for exhaustive mapping": a ternary
 `$X.kind === "$KIND" ? $A : $B`, which sends every other variant down the else branch.
 
-**Severity WARNING on purpose, with no promotion condition.** This is the stated exception to
-"WARNING only while a sweep is pending" (see "Adding a pre-write guard rule"). The rule has no
-type information, so it cannot tell a closed union from a plain `kind` string. Its 3 tree
-sites fit kiko-code-style's single-boolean-guard allowance (`src/auth/biometrics.ts`,
-`src/auth/lock-gate/lock-gate.component.tsx`, `src/screens/column-mapping/column-mapping.screen.tsx`;
-re-measure with the Semgrep command in the title-rule section above, filtered to this id).
-Nothing sweeps them, so the rule never flips to ERROR. The pre-write guard denies any NEW
-finding whatever its severity, so a new site that fits the allowance takes
-`// nosemgrep: kiko-kind-ternary-prefers-match OVERRIDE(<reason>) <why>`; a site on a closed
-union of three or more variants uses `match(...).exhaustive()` instead.
+**Severity WARNING while a sweep is pending.** This is an ordinary pending sweep (see "Adding
+a pre-write guard rule", step 2). The rule has no type information, so it cannot tell a closed
+union from a plain `kind` string. The tree holds 3 sites, and each reads a closed union:
+`SensorStatus` (4 variants) in `src/auth/biometrics.ts`, `AuthResult` (5) in
+`src/auth/lock-gate/lock-gate.component.tsx`, and `LoadState` (4) in
+`src/screens/column-mapping/column-mapping.screen.tsx`. They do not fit kiko-code-style's
+single-boolean-guard allowance, because that allowance covers only a guard with no closed-set
+enum behind it. Re-measure with the Semgrep command in the title-rule section above, filtered
+to this id. Promotion condition: after the sweep of these 3 sites to `match(...).exhaustive()`
+the tree holds 0 findings, and the rule then flips to ERROR. A new site uses `match`. The
+pre-write guard denies any NEW finding whatever its severity, so `// nosemgrep:
+kiko-kind-ternary-prefers-match OVERRIDE(<reason>) <why>` is only for a site where `kind` is
+not a closed union.
 
 **Scope.** App source: `paths.exclude` is the test files, `__tests__/**`, `e2e/**`,
 `scripts/**`, and `harness/**`. The fixture pair is
@@ -2468,8 +2482,6 @@ mechanizable (see harness-workflow's "Classify every finding").
      rule id (not when a grep is empty). Record the promotion condition
      in the rule's comment and in
      `docs/harness/review-to-biome-inventory.md`.
-     Stated exception: `kiko-kind-ternary-prefers-match` stays WARNING with no promotion
-     condition (see its section).
      `metadata.skill` uses `"<skill> › <heading>"`. A finding without
      `metadata.skill` makes the guard deny "could not check".
      `__tests__/skill-citations.test.ts` fails a `metadata.skill` or a

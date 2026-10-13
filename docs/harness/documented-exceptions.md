@@ -907,6 +907,6 @@ verified usage, not dead weight:
   docs hold the phrase and are exempt by exact path, each pinned to its count of matches:
   `docs/superpowers/plans/2026-09-28-reminders.md` (1) and
   `docs/superpowers/specs/2026-09-27-reminders-design.md` (2). Reason: both are dated history
-  that predates the rule, and rewriting a dated record would falsify it. A doc that gains a
-  match, or loses one without its pin dropping, fails; an exempt doc with no match left
-  fails; so the list only shrinks and a new doc is never added.
+  that predates the rule, and rewriting a dated record would falsify it. The exact-count
+  test pins each count, so a doc that gains or loses a match fails; the list only shrinks and
+  a new doc is never added.

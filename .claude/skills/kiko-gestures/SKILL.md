@@ -53,8 +53,8 @@ account-detail holding grid):
 
 #### A lone card lifts too
 
-The `kiko-sortable-grid-lone-card-lifts` Semgrep rule now mechanizes this rule: a
-`Sortable.Grid` whose `sortEnabled` also counts the items fails the pre-write guard.
+The `kiko-sortable-grid-lone-card-lifts` Semgrep rule enforces this: a `Sortable.Grid` whose
+`sortEnabled` also counts the items fails the pre-write guard.
 
 `sortEnabled` is the query's `isFresh` only,
 never `&& data.length > 1`. react-native-sortables' touch handler gates
@@ -65,30 +65,29 @@ items — so a single card lifts and drops back (`onDragEnd` reports
 
 #### A hold that lifted the card never fires the card's tap
 
-A moved
-  drag and an opened context menu deliver NO `onPress`: react-native-sortables
-  1.10.0 on RNGH 3.2.1 (v3 adapter,
-  `integrations/gesture-handler/adapters/v3.ts`) makes RNGH cancel the JS
-  responder when its gesture activates (`RNRootViewGestureRecognizer.m:39-52`,
-  `cancelsJSResponder` defaults to YES). The press reaches JS only on a
-  still hold released before the menu (450 ms) with no touch-move after the
-  lift, because the v3 adapter activates on the next move. That is the path
-  this guard covers; `onActiveItemDropped` clears the flag in every other
-  case.
-  `useGridLiftGuard` (`src/design-system/use-grid-lift-guard/`) is the one
-  shared mechanism: pass its `onDragStart` and `onActiveItemDropped` to
-  the `Sortable.Grid` (both are JS callbacks the library hops to the JS
-  thread itself) and wrap each card's open handler:
-  `onOpen={openUnlessLifted(item.id, () => navigation.navigate(...))}`.
-  The lifted key is cleared by the press it suppressed, and again by
-  `onActiveItemDropped` (fires after the release, a drop animation
-  later) since a lift can end without any press. A quick tap never
-  activates the drag, so it opens as before. One hook call per screen
-  serves every grid on it (the guard is keyed by the card's id). A new
-  card grid must do the same; Jest cannot hit-test, so a screen test
-  drives `onDragStart` / `onActiveItemDropped` off the mocked grid's
-  props (`@kiko/test-support/lift-grid-card`) and the real feel is an
-  on-device check.
+A moved drag and an opened context menu deliver NO `onPress`: react-native-sortables
+1.10.0 on RNGH 3.2.1 (v3 adapter,
+`integrations/gesture-handler/adapters/v3.ts`) makes RNGH cancel the JS
+responder when its gesture activates (`RNRootViewGestureRecognizer.m:39-52`,
+`cancelsJSResponder` defaults to YES). The press reaches JS only on a
+still hold released before the menu (450 ms) with no touch-move after the
+lift, because the v3 adapter activates on the next move. That is the path
+this guard covers; `onActiveItemDropped` clears the flag in every other
+case.
+`useGridLiftGuard` (`src/design-system/use-grid-lift-guard/`) is the one
+shared mechanism: pass its `onDragStart` and `onActiveItemDropped` to
+the `Sortable.Grid` (both are JS callbacks the library hops to the JS
+thread itself) and wrap each card's open handler:
+`onOpen={openUnlessLifted(item.id, () => navigation.navigate(...))}`.
+The lifted key is cleared by the press it suppressed, and again by
+`onActiveItemDropped` (fires after the release, a drop animation
+later) since a lift can end without any press. A quick tap never
+activates the drag, so it opens as before. One hook call per screen
+serves every grid on it (the guard is keyed by the card's id). A new
+card grid must do the same; Jest cannot hit-test, so a screen test
+drives `onDragStart` / `onActiveItemDropped` off the mocked grid's
+props (`@kiko/test-support/lift-grid-card`) and the real feel is an
+on-device check.
 
 ## Every function called inside a worklet needs its own `'worklet'` directive
 

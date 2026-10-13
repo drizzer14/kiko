@@ -257,14 +257,6 @@ label. The id and the old value belong in the commit message. Mechanized by the
 `kiko-test-title-no-history` Semgrep rule (see kiko-linter's own section for its scope and
 limits).
 
-### A rejection names its error
-
-A `.rejects` assertion names what the call rejects with: the error class, a message, or
-`toHaveProperty('cause.message', ...)`. A bare `toThrow()`, `toThrow(Error)`, `toThrow(undefined)`,
-`toBeInstanceOf(Error)` or `toBeTruthy()` passes on any failure, including a typo that throws
-before the code under test runs. Mechanized by the `kiko-rejects-to-throw-needs-error` Semgrep
-rule (see kiko-linter's own section).
-
 ## Split a `useEffect` per logical concern, before it ships
 
 A single `useEffect` combining two or more unrelated "when X changes,
@@ -1294,6 +1286,14 @@ Known limits:
 - A template path (`` `${__dirname}/x.csv` ``) fires even with a
   non-TypeScript extension: the rule reads only a string literal or a
   join. A safe false positive: write `join(__dirname, 'x.csv')`.
+
+## A rejection names its error
+
+A `.rejects` assertion names what the call rejects with: the error class, a message, or
+`toHaveProperty('cause.message', ...)`. A bare `toThrow()`, `toThrow(Error)`, `toThrow(undefined)`,
+`toBeInstanceOf(Error)` or `toBeTruthy()` passes on any failure, including a typo that throws
+before the code under test runs. Mechanized by the `kiko-rejects-to-throw-needs-error` Semgrep
+rule (see kiko-linter's own section).
 
 ## Reviewed, and deliberately not changed
 
