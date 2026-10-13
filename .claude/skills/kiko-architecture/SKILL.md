@@ -1958,8 +1958,13 @@ record imports only at `TRANSFER_SETTLED_STATUS`; BTC only. The stop codes live 
 
 - **Transfer depth (Q3).** Binance refuses a `startTime` older than it keeps (HTTP 400, code
   -5026): the client throws `BinanceHistoryTooOldError` (the generic request-failed message), and
-  `readSpan` reads that span as empty (one call), never owed and never a rejected run. The floor
-  stays inside the depth probed.
+  `readSpan` never rejects the run for it. A span at or below the floor of now reads as empty
+  (one call, nothing owed); any other span is read from the start Binance serves, found by
+  bisection (`binance.history-depth.ts`, `binance.history-paging.ts`) and remembered with the
+  clock it was served at, since Binance's depth moves with the clock: a read begins at
+  `knownStartOf(memory, now)` (the start moved on by the elapsed time plus a margin), `now` read
+  after the run gate. The span read stops at its fifth refusal (28 requests at most for a span of
+  30 days), the span unread. The floor stays inside the depth probed.
 
 - **Transfer forward stops (O1, Transfer lane only).** A stop tied to ONE transfer with a usable
   time is owed at that transfer's own point and the forward pass goes past it

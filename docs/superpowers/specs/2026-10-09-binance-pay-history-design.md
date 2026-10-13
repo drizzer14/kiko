@@ -692,22 +692,41 @@ withdraw budget moves into this object, with the same numbers and the same rule.
   is refused with HTTP 400 code -5026, and 181-199 days is unknown; 6 calendar months + 1 day is
   180-183 days, so the old floor could ask for a refused start). Binance code -5026 is mapped by
   the client to a typed `BinanceHistoryTooOldError` (same message as the generic request-failed
-  error, so every other reader fails as before); the Transfer walk answers it, so the lane is
-  never rejected for it. Only ground Binance refuses counts as below what it keeps. On a refusal
-  the floor is read again from the clock (`now` moves on after a run is planned): a span that
-  ends at or before it lies below the floor and reads as empty (one call, nothing owed). Any other
-  span is never read as empty: the start moves up toward the span's end by halving the refused
-  part (a probe of one millisecond at the end of the span first, none to ask when the end is
-  refused: the span lies below what Binance keeps; then halvings until a served start lies within
-  one second of a refused one), and the span is read from the start Binance serves, which is kept
-  for the rest of the run. The ground below that start is refused, so it holds nothing Binance
-  keeps. The types of the span read before the refusal keep their rows (they are read once), and
-  the types after it start at the served start. A refusal costs at most 24 requests (the refused
-  read, the probe at the end, 22 halvings of a window of 30 days), a span read tolerates two
-  refusals (a second one only when the clock passed the served start while the narrowing ran),
-  and the requests spend the shared run budget like any read: when the budget or the refusals run
-  out the span stays unread, nothing of it commits, and the next run reads it again. Windows of 30 days (the cap is not
-  documented, Q10). The walk reads 20 types: the 18 untracked ones plus `MAIN_FUNDING` and
+  error, so a reader without a depth guard rejects with the same message); the Transfer walk
+  answers it, so the lane is never rejected for it. Only ground Binance refuses counts as below
+  what it keeps. On a refusal the floor is read again from the clock (`now` moves on after a run
+  is planned): a span that ends at or before it lies below the floor and reads as empty (one
+  call, nothing owed). Any other span is never read as empty.
+  - With no start known to be served, the start moves up toward the span's end by halving the
+    refused part: a probe of one millisecond at the end of the span first (refused: the span lies
+    below what Binance keeps and none of it is read), then halvings until a served start lies
+    within one second (`DEPTH_RESOLUTION_MS`) of a refused one. The span is read from that start,
+    and the run remembers it with the clock of the request that served it (for the rest of the
+    run, across the 20 types and the spans that follow).
+  - Binance's depth moves with the clock (measured: a start 180 days back is served, 200 days
+    back is refused; assumed: the oldest start it serves moves forward no faster than the
+    clock), and the requests are paced 350 ms apart, so a remembered start is read from as
+    `start + (now - servedAt) + margin`. `now` is read after the run gate let the request go (the
+    gate may wait for hours), and the start stays below the end of the span. The margin
+    (`DEPTH_MARGIN_MS`, 1 s) covers a request that reaches Binance later than the one that found
+    the start. A refusal of a read from a remembered start doubles it (1, 2, 4 and 8 s) and reads
+    again, with no request beyond the read.
+  - The ground below the start a read begins at is refused, or lies within the resolution and the
+    margin of the depth (and within the clock time the narrowing took, at most about 8 seconds) of
+    kept ground: that ground leaves Binance's depth at clock speed, within seconds of the read.
+  - The types of the span read before a refusal keep their rows (they are read once), and the
+    types after it start at the remembered start.
+  - Bound: the narrowing happens at most once in a span read and costs at most 23 requests (the
+    probe at the end, 22 halvings of a span of 30 days). A span read stops, with the span unread,
+    at its fifth refusal (`MAX_DEPTH_REFUSALS`), so it spends at most 5 refused reads and 23
+    requests of narrowing, 28, on the depth. The requests spend the shared run budget like any
+    read: when the budget or the refusals run out the span stays unread, nothing of it commits,
+    and the next run reads it again. Pinned against a fake clock that the gate's sleeps and the
+    request latency (0 to 300 ms) move, with all 20 types and run gaps of 0, 1 hour and 1 day: a
+    Binance that keeps 100 days gives every transfer it keeps within 2 runs and the forward cursor
+    passes the window that crosses the depth; a run planned 3 days before it reads, against a
+    Binance that keeps 180 days, gives every transfer within 3 runs.
+  - Windows of 30 days (the cap is not documented, Q10). The walk reads 20 types: the 18 untracked ones plus `MAIN_FUNDING` and
   `FUNDING_MAIN`, those two first. It runs on the shared walk (sections 3 and 4): forward
   pass, owed ranges, re-scan of the last 30 days, owed points, with per-record commits. A
   span read is one series per type (`size=100`). A first walk is about 7 windows x 20 types,
@@ -1213,6 +1232,13 @@ Probe items:
     account that held Funding BTC, the transfer rows of every type on the migration day.
     Before it, `kiko:researcher` reads Binance's migration notes for how the move is
     recorded (URL + date).
+17. OPEN CHECK (Transfer depth per type): the depth memory (section 5) is shared by all 20
+    transfer types, which assumes one depth for the endpoint. Probe B measured the depth for one
+    type only (a `startTime` 180 days back served, 200 days back refused). If a type keeps less
+    than the type that found the start is read from, it is refused at that start and the span
+    read stops at its fifth refusal (the span stays unread, every run); if a type keeps more,
+    the ground it keeps below the shared start is never read. Check: for each of the 20 types,
+    the oldest `startTime` served, to the day.
 
 ## Open questions (each has a safe default)
 
