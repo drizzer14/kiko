@@ -1974,9 +1974,13 @@ record imports only at `TRANSFER_SETTLED_STATUS`; BTC only. The stop codes live 
   between the start the memory holds and the one it would move on to. The margin doubles with
   each refusal up to `DEPTH_MARGIN_CAP_MS`; a refusal at the cap narrows upward from the refused
   start, and a new served start starts the margin over. The ground a read begins above (between
-  the start the type was served from and the start the read begins at) is owed in that type, as a
-  range with a `series` (`SeriesSpan.owed`), not committed as read: the pending pass reads it in
-  that type alone. A type stops at its `MAX_DEPTH_REFUSALS`-th refused read or its second lapse
+  the start the type was served from and the start the read begins at: its band) is read in the
+  same span read, right after the type's own read (`readBand`, a narrowing call, paged and never
+  halved): when Binance serves it, its rows join the type's rows and nothing is owed; when Binance
+  refuses it (a depth that moves with the clock does), the weight readings or the lane's calls do
+  not afford it, or its pages drift, it is owed in that type, as a range with a `series`
+  (`SeriesSpan.owed`), not committed as read: the pending pass reads it in that type alone. A
+  type stops at its `MAX_DEPTH_REFUSALS`-th refused read or its second lapse
   (76 requests at most for a span of 30 days), and a type the run's calls cannot narrow owes the
   span in itself alone; the other types commit and the cursor passes. The floor stays inside the
   depth probed. A span wholly below the depth costs the first type 2 calls (the refused read and
@@ -1988,19 +1992,19 @@ record imports only at `TRANSFER_SETTLED_STATUS`; BTC only. The stop codes live 
   keeps one read of the first forward window, of the re-scan and of the points for the later
   passes. A Transfer drift owes the span in the drifted type alone. The `binanceHistoryPending`
   caption also shows while the Transfer walk owes a range (`transferOwesRange`), not a point.
-  A span read that narrows (a type is refused a start, finds its memory lapsed, or asks the end of
-  the span) draws its calls from the lane's narrowing calls first (`LANE_NARROWING_CALLS`: 397 for
+  A span read that narrows (a type is refused a start, finds its memory lapsed, asks the end of
+  the span, or reads a band) draws its calls from the lane's narrowing calls first (`LANE_NARROWING_CALLS`: 397 for
   the Transfer lane, none for the others; `spanRunOf` in `binance.history-paging.ts`), and from the
   cap of 80 after them; a span read that does not narrow draws the cap alone. A run that narrows
   nothing therefore makes 80 calls at most and a run that narrows 477 (80 + 397; 167 s of pacing).
   A Binance that keeps less than 179 days is thus narrowed for all 20 types in the first run, which
   is what keeps the ground just above the depth (the next run meets a depth that has moved past
-  it). 397 is the smallest value that loses no row in the latency matrix of the spec's section 5
-  (160 with no latency, 200 up to 300 ms, 360 up to 3 s). `canAfford` judges every narrowing call
-  by the weight readings: a Transfer call weighs IP 1 and the gate allows 172 requests a minute,
-  so the walk adds at most 172 IP a minute. Residual: the ground a read begins above is owed in
-  its type and read by a later run; a depth that steps between two runs a day apart refuses it,
-  and 18 pins at runs 1 day apart fail by the rows in it.
+  it). 390 is the smallest value that loses no row in the 276 cases of the spec's section 5 (389
+  loses 5 rows at a 9 s spike on every seventh request); 397 keeps 7 calls beyond it, and the
+  longest run makes 477 (476 where the calls end inside a narrowing, which keeps one for its own
+  read). `canAfford` judges every narrowing call by the weight readings: a Transfer call weighs
+  IP 1 and the gate allows 172 requests a minute, so the walk adds at most 172 IP a minute. A
+  band Binance refuses stays owed in its type and is read by a later run.
 
 - **Transfer forward stops (O1, Transfer lane only).** A stop tied to ONE transfer with a usable
   time is owed at that transfer's own point and the forward pass goes past it

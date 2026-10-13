@@ -181,7 +181,7 @@ withdraw budget moves into this object, with the same numbers and the same rule.
   |---|---|
   | capital | withdraw 9 (unchanged), deposit unbounded |
   | Pay | 20 |
-  | Transfer | 80 (was 60; user ruling 2026-10-12, OVERNIGHT 19 = A: a caught-up run needs forward 20 + an owed range 20 + re-scan 20 + points), and 397 narrowing calls beyond it, spent only by a span read that narrows (user ruling C1 = A; section 5) |
+  | Transfer | 80 (was 60; user ruling 2026-10-12, OVERNIGHT 19 = A: a caught-up run needs forward 20 + an owed range 20 + re-scan 20 + points), and 397 narrowing calls beyond it, spent only by a span read that narrows or reads a band (user ruling C1 = A; section 5) |
   | Earn | 30 (4500 IP) |
 
   Each walk has its own cap so that a long backfill in one walk cannot starve the
@@ -253,7 +253,7 @@ withdraw budget moves into this object, with the same numbers and the same rule.
   widest, in the union of their series. A stored point whose series the walk does not know
   makes the list malformed (`pending-malformed`, repaired as in section 4).
   A range may carry a `series` as well (Transfer, section 5): ground one series left unread, or
-  skipped at the edge of its depth. It is owed in that series alone: its window is read in that
+  left unread at the edge of its depth (a band Binance refused). It is owed in that series alone: its window is read in that
   series, one call a span, and leaves the list once a span read in that series (or in every
   series) has committed; a range with no series is owed in every series and a read in some
   series takes none of it. Ranges merge per series (touching ranges, and the two nearest past the
@@ -763,22 +763,27 @@ withdraw budget moves into this object, with the same numbers and the same rule.
     start does), then the part between them is halved to the resolution, `1 + ceil(log2(elapsed
     / resolution))` requests (17 for 10 hours). A span that ends at or before the start the run
     holds, or whose end Binance refuses, reads as empty.
-  - What a read owes, under the assumption that the depth moves forward and never back: the
+  - The band of a read, under the assumption that the depth moves forward and never back: the
     ground below the start a read begins at is refused (within the resolution of 1 s; after a
-    lapse that ends against the start the type held, the ground from that start is owed with the
-    band below), or lies between the start the type was
-    served from and the start the read begins at, `start + (now - servedAt) + margin`: if the
-    depth stood still, Binance keeps it. That band is at most the time since the start was
-    served (120 s, which includes the time the request that served it took) and the margin cap
-    (8 s): 128 s. It is owed, not committed as read and not read as empty: the span's commit
-    stores it as a range owed in that type alone (a range with a `series`, section 3), the
-    forward pass goes past it, and the pending pass reads it in that type alone from its own
-    start. That read imports what Binance keeps of it, or reads as empty what Binance refuses
-    (the depth moved past it): a depth that moves with the clock refuses it, one refused read
-    and one request at its end, and a depth that stood still serves it. Owed bands of one type that touch merge, and
-    a band below the floor drops like any owed range. The band up to the end of the span is owed
-    the same way when the start a type's memory moved on to passes the end of the span. No claim
-    is made about the speed of the depth.
+    lapse that ends against the start the type held, the ground from that start belongs to the
+    band below), or lies between the start the type was served from and the start the read
+    begins at, `start + (now - servedAt) + margin`: if the depth stood still, Binance keeps it.
+    That band is at most the time since the start was served (120 s, which includes the time the
+    request that served it took) and the margin cap (8 s): 128 s. It is read in the same span
+    read, right after the type's own read (`readBand`, `binance.history-paging.ts`), as one more
+    request of the narrowing kind below, paged by `current` and never halved. When Binance
+    serves it, its rows join the rows of the type and nothing is owed. When Binance refuses it
+    (the depth moved past its start meanwhile: a depth that moves with the clock refuses it, a
+    depth that stood still serves it), when the weight readings or the lane's calls do not
+    afford the request, or when its pages drift, the band is owed, not committed as read and not
+    read as empty: the span's commit stores it as a range owed in that type alone (a range with a
+    `series`, section 3), the forward pass goes past it, and the pending pass reads it in that
+    type alone from its own start, importing what Binance keeps of it or reading as empty what
+    Binance refuses. A rate limit during the band read ends the span read with nothing
+    committed, as for any request. Owed bands of one type that touch merge, and a band below the
+    floor drops like any owed range. The band up to the end of the span is owed the same way,
+    with no request, when the start a type's memory moved on to passes the end of the span. No
+    claim is made about the speed of the depth.
   - The types of the span read keep their rows (they are read once). A type whose read cannot
     finish (the run's calls ran out while it narrowed, it reached its sixth refused read or its
     second lapse) owes the whole span, in that type alone, as a range with its `series`; the
@@ -793,10 +798,11 @@ withdraw budget moves into this object, with the same numbers and the same rule.
     (`MAX_DEPTH_REFUSALS`) or its second lapse (`MAX_DEPTH_LAPSES` = 1). A narrowing starts the
     margin over and it takes three refusals to reach the cap, so a type narrows twice after a
     refusal at most and once after a lapse: at most 6 refused reads + 2 * 23 + 24 = 76 requests
-    on the depth for one type, and 52 where no suspension comes. The 20 types each have their
-    own count, so a span read has no bound of its own beyond the shared run budget: 20 * 76
-    requests in theory, 80 calls a run for the lane and 397 narrowing calls beyond them (below)
-    in practice, each request spending one and passing the gate. The calls of a window: wholly
+    on the depth for one type, and 52 where no suspension comes; the read of its band adds one
+    request (a band of more rows than one page takes a request a page, up to `maxPages`). The 20 types each have their own count, so a span read has no
+    bound of its own beyond the shared run budget: 20 * 77 requests in theory, 80 calls a run
+    for the lane and 397 narrowing calls beyond them (below) in practice, each request spending
+    one and passing the gate. The calls of a window: wholly
     below every type's depth, the first type 2 (the refused read and the end of the span) and
     each other type 1 (the end alone, asked before any read while another type was refused the
     end; a type that holds a bound from an earlier window asks the end of the next one the same
@@ -805,47 +811,52 @@ withdraw budget moves into this object, with the same numbers and the same rule.
     refused, costs a type 23 or more).
   - Narrowing calls (user ruling C1 = A: a larger Transfer call cap only while a type
     narrows its depth; normal runs keep 80). A span read is narrowing from the first moment one of
-    its types is refused a start, finds its memory lapsed, or asks the end of the span before its
-    read (it holds a bound the span lies above, or another type was refused the end), until the
-    read ends. Every call of a narrowing span read, the refused read, the probes, and the reads
-    and pages of the types after it (the reads the narrowing unblocks), is a narrowing call: it
-    is drawn from the lane's 397 narrowing calls (`LANE_NARROWING_CALLS`) while any are left, and
-    from the cap of 80 once they are spent. A call of a span read that is not narrowing (each
-    type is served from its start, or from a start its memory holds) is drawn from the cap alone.
-    A run that narrows nothing therefore makes 80 calls at most, and a run that narrows 477 at
-    most (`LANE_CALL_CAPS.transfer` + `LANE_NARROWING_CALLS.transfer`). The narrowing calls are
-    not drawn from the cap, so the cap stays whole for the passes that follow a narrowing: the
+    its types is refused a start, finds its memory lapsed, asks the end of the span before its
+    read (it holds a bound the span lies above, or another type was refused the end), or reads the
+    band its read began above, until the read ends. Every call of a narrowing span read, the
+    refused read, the probes, the band, and the reads and pages of the types after it (the reads
+    the narrowing unblocks), is a narrowing call: it is drawn from the lane's 397 narrowing calls
+    (`LANE_NARROWING_CALLS`) while any are left, and from the cap of 80 once they are spent. A
+    call of a span read that is not narrowing (each type is served from its start, or from a
+    start its memory holds, and has no band) is drawn from the cap alone. A run that narrows
+    nothing therefore makes 80 calls at most, and a run that narrows 477 at most
+    (`LANE_CALL_CAPS.transfer` + `LANE_NARROWING_CALLS.transfer`). The narrowing calls are not
+    drawn from the cap, so the cap stays whole for the passes that follow a narrowing: the
     forward pass, the re-scan and the points keep the calls they keep today. A narrowing call is
     never made without `canAfford`: the weight readings (section 2), the cooldown and a rate limit
     end it as they end any call, and the types a refused call leaves are owed in themselves, never
-    committed as read. Measured against a fake clock that the gate's sleeps and the request
-    latency move, all 20 types, run gaps of 0, 1 hour and 1 day, a depth that moves with the
-    clock or in steps of a day, and rows 1 hour to 10 days above the depth: every type keeps 100
-    days; a middle type 90 and another 75; the first type 90, or 110; the last type 90; a
-    suspension of 10 or 30 hours in a gate wait of the first run; a run planned 3 days before it
-    reads against a Binance that keeps 180 days. The rows lost, by latency, with 0 to 397
-    narrowing calls (the rows a few seconds above a stepped depth, owed in a type, are left out;
-    below):
+    committed as read; a band the weight readings or the lane's calls do not afford is owed. A
+    type that narrows keeps one call for its own read, so a run whose calls end inside a narrowing
+    makes 476. Measured against a fake clock that the gate's sleeps and the request latency
+    move, 276 cases: all 20 types, run gaps of 0, 1 hour and 1 day, a depth that moves with the
+    clock or in steps of a day, and rows 1 hour to 10 days above the depth (and, in daily steps,
+    two rows 1.2 s and 1.8 s above it): every type keeps 100 days; a middle type 90 and another
+    75; the first type 90, or 110; the last type 90; a suspension of 10 or 30 hours in a gate wait
+    of the first run; a run planned 3 days before it reads against a Binance that keeps 180 days.
+    The rows lost in all 276 cases, by latency, by narrowing calls:
 
     | Narrowing calls | no latency | 0 to 300 ms | 0 to 3 s | 9 s spike every 7th request |
     |---|---|---|---|---|
-    | 0 | 1,685 | 1,705 | 1,872 | 1,813 |
-    | 80 | 129 | 156 | 338 | 558 |
-    | 160 | 0 | 4 | 13 | 124 |
-    | 200 | 0 | 0 | 9 | 49 |
-    | 320 | 0 | 0 | 4 | 5 |
+    | 0 | 1,969 | 1,996 | 2,033 | 2,104 |
+    | 80 | 361 | 398 | 559 | 628 |
+    | 160 | 6 | 6 | 71 | 26 |
+    | 200 | 0 | 0 | 11 | 11 |
+    | 320 | 0 | 0 | 6 | 11 |
     | 360 | 0 | 0 | 0 | 5 |
-    | 396 | 0 | 0 | 0 | 5 |
+    | 389 | 0 | 0 | 0 | 5 |
+    | 390 | 0 | 0 | 0 | 0 |
     | 397 | 0 | 0 | 0 | 0 |
 
-    397 is the smallest value that loses no row in any case: the slowest network, a spike of 9
-    seconds on every seventh request, makes a type's hint stale, so each type narrows again over
-    the whole span, and the last type of the window that crosses the depth needs the last of the
-    calls (396 loses 5 rows); 160 suffices with no latency and 200 with up to 300 ms. The run that
-    narrows the most makes 477 requests, which take 167 s of pacing or more. With them every
-    transfer each type keeps when the first run reads is imported within 2 runs (a run planned 3
-    days before it reads: within the first), nothing is owed after 15, and the forward cursor
-    passes the window that crosses the depth after 2; the pins allow 14.
+    The band read costs the narrowing calls one request a type; 390 is the smallest value that
+    loses no row in any case (389 loses 5 rows in 2 cases of the slowest network, a spike of 9
+    seconds on every seventh request, where the last type of the window that crosses the depth
+    needs the last of the calls); 397 keeps 7 calls beyond it. 160 suffices to within 6 rows with
+    no latency and 200 with up to 300 ms. The run that narrows the most makes 477 requests (a
+    latency of 0 to 3 seconds on every request; 476 at the 9 second spike), which take 167 s of
+    pacing or more. With them every transfer each type keeps when the first run reads is
+    imported within 2 runs (a run planned 3 days before it reads: within the first), nothing is
+    owed after 15, and the forward cursor passes the window that crosses the depth after 2; the
+    pins allow 14.
   - The ground the depth passes while a type waits to be read is gone from Binance, so a type
     read in a later run loses it. A type owed in a run is read in a later one. The owed ranges
     are read before the forward pass, and the run keeps one read of the first forward window, of
@@ -857,15 +868,14 @@ withdraw budget moves into this object, with the same numbers and the same rule.
     `binanceHistoryPending` caption, which also shows while the walk owes any range, in one type
     or in every type, and not for a point). The floor of a later run is `now - 179 days`, and a
     type is read from the floor of the run that reads it.
-  - What the narrowing calls do not reach: the ground a read begins above (the band, 129 s at
-    most) is owed in its type and read by the pending pass of a later run. A depth that stands
-    still in steps of a day and steps between the run that owes the band and the run that reads
-    it, runs a day apart, refuses the band, and the transfers in it (the pins put two, 1.2 s and
-    1.8 s above the depth) are not imported. Measured with 397 narrowing calls: the matrix of
-    Binances whose types keep different depths and the suspension pins, in daily steps, runs 1
-    day apart, lose those rows and no other (18 pins fail; the cases lose 614 rows in 16 of the
-    matrix and 154 and 159 in 4 each of the 10 and 30 hour suspensions). No number of narrowing
-    calls changes it: 1,000 loses the same rows.
+  - What stays owed: the band is owed only while Binance refuses it. A depth that moves with
+    the clock passes the start of the band between the request that found it and the band read,
+    so each type owes its band after that run (one refused request a type) and the pending pass
+    reads it in a later run; a depth that stands still serves it in the same span read. The ground
+    between the start a type's memory holds and the end of a span that lies below the start the
+    memory moved on to is owed with no request. The ground a refused band begins in is below the
+    depth, as any refused ground is. No row is lost in the 276 cases measured, with 397
+    narrowing calls.
   - Windows of 30 days (the cap is not documented, Q10). The walk reads 20 types: the 18 untracked ones plus `MAIN_FUNDING` and
   `FUNDING_MAIN`, those two first. It runs on the shared walk (sections 3 and 4): forward
   pass, owed ranges, re-scan of the last 30 days, owed points, with per-record commits. A
