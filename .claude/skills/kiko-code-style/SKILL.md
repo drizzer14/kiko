@@ -895,7 +895,7 @@ shortened word):
 | `ctx` | `context` |
 | `el` | `element` |
 | `opts` | `options` |
-| `tmp` | `temporary` |
+| `tmp` / `temp` | `temporary` |
 | `num` | `number` |
 | `arr` / `obj` / `str` | a descriptive name for what the array/object/string actually holds |
 

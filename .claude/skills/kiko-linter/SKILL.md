@@ -2417,7 +2417,17 @@ mechanizable (see harness-workflow's "Classify every finding").
    - A guard test proves concurrency or speed by counting work or by a
      file rendezvous between stubs, never by a clock. The invariant
      `__tests__/guard-tests-no-wall-clock.test.ts` fails a clock reading
-     in a pre-write-guard test; read it for the banned forms.
+     in a pre-write-guard test; read its `CLOCK_READINGS` for the banned
+     forms. It catches a `${Date.now() - start}` delta (only the whole
+     `${Date.now()}` unique name passes), `Date.now` without a call,
+     `+new Date`, `Date()`, and a shell `date -u +%s`, `date +"%s"`.
+   - A test that needs a scratch folder uses
+     `__tests__/test-support/temporary-directory.ts` (`createTemporaryDirectory`,
+     `trackTemporaryPath`, and `removeTemporaryDirectories` in an `afterEach`),
+     never a hand-rolled `mkdtempSync` that leaks when a test throws.
+   - `__tests__/error-class-pins.test.ts` fails when a non-empty
+     `extends Error` class under `src/` has no same-folder test pinning its
+     `.name` literal and its `.message`; a class with an empty body is skipped.
    - A new Node rule also runs on the probed negative (good) fixtures of
      `__tests__/pre-write-guard-rules.test.ts`. Make those fixtures pass
      the new rule, never exempt them.

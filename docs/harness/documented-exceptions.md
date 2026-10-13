@@ -900,3 +900,8 @@ verified usage, not dead weight:
   entry that is no longer cited or now resolves, so the lists only shrink.
   A name that left the code is fixed in the skill text (renamed, or written
   without backticks), never added here.
+- **`__tests__/error-class-pins.test.ts` skips a class with an empty body**
+  (`class X extends Error {}`): such a class inherits its name and message
+  from `Error` and has no own `.name` or `.message` literal to pin, and
+  pinning it would need a `src/` change that adds one. Every non-empty
+  `extends Error` class is checked, with no per-class exemption list.
