@@ -61,7 +61,8 @@ never `&& data.length > 1`. react-native-sortables' touch handler gates
 only on `sortEnabled`, the absolute layout being ready, and no other
 active item (`DragProvider.ts` `handleTouchStart`) — it never counts
 items — so a single card lifts and drops back (`onDragEnd` reports
-`fromIndex === toIndex`, which `onGridDragEnd` persists nothing for).
+`fromIndex === toIndex`, which `onGridDragEnd` persists nothing for). A spurious-drag worry
+is covered by that, and by `useGridLiftGuard` suppressing the tap.
 
 #### A hold that lifted the card never fires the card's tap
 
@@ -227,12 +228,6 @@ section opens nothing.
   `useAnimatedRef` passed through as `scrollableRef` to auto-scroll the
   parent list when a drag nears an edge — a grid with no surrounding
   scroll view does not need this prop.
-- **No single-item `sortEnabled` guard on a card grid.** A lone card must
-  lift on a hold like any other (see "A hold lifts the card" above), so
-  `sortEnabled` is the freshness gate alone. The spurious-drag worry that
-  once motivated `items.length > 1` is covered by `onGridDragEnd`
-  persisting nothing for a release in place and by `useGridLiftGuard`
-  suppressing the tap.
 - **`onDragEnd` always routes through `onGridDragEnd`** (`src/design-system/`)
   rather than calling the repo's `reorder()` inline, so the
   release-in-place guard lives in exactly one place.

@@ -3,8 +3,9 @@
 // directly in rules/fixtures/ (kiko-linter's "Semgrep facts" gotcha), so this fixture mirrors a
 // real src/test-support/ path instead. The rule MUST report a finding on each pinned line: a test
 // or suite title that opens with a task id (`A1 `, `Q7 `, `X1:`) or a ruling id (`ruling A2`), or
-// that carries a `(was: ` label or ends in a parenthesized id (`(P2)`, `(task C2)`, `(Task C2)`), however the
-// title is declared.
+// that carries a `(was: ` label or ends in a parenthesized id (`(P2)`, `(task C2)`,
+// `(Task C2)`), however the title is declared.
+export {};
 
 // EXPECT-FINDING
 describe('A1 the footer', () => {

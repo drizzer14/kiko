@@ -353,6 +353,11 @@ unmerged change sets, takes as its mutation base the `next` tip that
 already contains every earlier change set; otherwise the merge-base
 diff also counts the earlier sets' files against the 30 cap.
 
+A stacked pair where the earlier set changes only comments in a source and the later set changes
+its colocated test inflates `make mutable` (the colocated-test rule keeps the whole file): gate
+the later set alone, with the earlier set's tip as the base, and compare `changed lines:` with the
+diff first.
+
 ## Merge conflicts vs the pre-write guard
 
 Resolve conflict markers with Edit/Write as usual; resolving one whole

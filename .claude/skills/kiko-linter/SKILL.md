@@ -1534,7 +1534,7 @@ date attached to a ruling, a finding, or a plan left in a `src/**` comment
 ("user-approved 2026-10-08", "Device finding", "(multi-account plan,
 2026-09-11)"). The members are the two `pattern-regex` alternations in
 `kiko-no-history-date-comment` (`rules/semgrep-prewrite.yml`): `Device
-finding(s)`; `approved|probed|ruled|ruling|decided|confirmed` then an ISO date, with an
+finding(s)`; `approved|probed|ruled|ruling|decided|confirmed` (also the all-caps `RULED`/`RULING`) then an ISO date, with an
 optional `on` or `of` between ("ruling of 2026-10-12", "ruled on 2026-10-12") and a
 comment wrap tolerated between the word and the date; `plan|track|round|ruling|feedback|audit`,
 a comma, then an ISO date; a `docs/` path holding a dated file name; and a parenthesized
@@ -1689,20 +1689,19 @@ such a title.
 
 ## `kiko-rejects-to-throw-needs-error`
 
-Mechanizes kiko-code-style's "A rejection names its error": a `.rejects` assertion with
-`toThrow()` or `toThrowError()` (no argument, the bare `Error` class, `undefined`, an empty
-string `('')`, or the match-all pattern `(/.*/)`), `toEqual(expect.anything())`,
-`toBeInstanceOf(Error)`, `toBeInstanceOf(Object)`, `toBeTruthy()`, `toBeDefined()`, or
-`not.toBeNull()`. Each passes on any failure, so a test that fails for the wrong reason stays
-green.
+Mechanizes kiko-code-style's "A rejection names its error": any `.rejects` form that passes on
+every failure, so a test that fails for the wrong reason stays green. The forms are the patterns
+of `kiko-rejects-to-throw-needs-error` in `rules/semgrep-prewrite.yml`; read them there.
 
-**Severity ERROR from the start.** The tree holds 0 findings.
+**Severity ERROR from the start.** The tree holds 0 findings; re-measure with
+`semgrep --metrics off --quiet --json --config rules/semgrep-prewrite.yml src __tests__`, filtered
+to this id.
 
 **Scope.** Test-only, with the same `paths.include` as the title rule. The fixture pair is
 NESTED under `rules/fixtures/kiko-rejects-to-throw-needs-error/src/test-support/`.
 
-**Known limits.** A rejection read through a helper and a synchronous `expect(fn).toThrow()` are not seen. The rule checks that an expected error is
-named, not that it is the right one.
+**Known limits.** A rejection read through a helper and a synchronous `expect(fn).toThrow()`
+are not seen. The rule checks that an expected error is named, not that it is the right one.
 
 ## `kiko-sortable-grid-lone-card-lifts`
 
@@ -1710,8 +1709,9 @@ Mechanizes kiko-gestures' "A lone card lifts too": a `<Sortable.Grid ... sortEna
 whose `sortEnabled` is `$ITEMS.length > 1`, `$ITEMS.length >= 2`, `1 < $ITEMS.length`, or
 `2 <= $ITEMS.length`, alone or at any place in an `&&` chain.
 
-**Severity ERROR.** The one finding in the tree (the categories grid in
-`src/screens/settings/categories/categories.screen.tsx`) was fixed in the same change.
+**Severity ERROR.** The tree holds 0 findings; re-measure with
+`semgrep --metrics off --quiet --json --config rules/semgrep-prewrite.yml src __tests__`, filtered
+to this id.
 
 **Scope.** App source: `paths.exclude` is the test files. The fixture pair is
 `rules/fixtures/kiko-sortable-grid-lone-card-lifts.bad.tsx` and `.good.tsx`.
@@ -1743,9 +1743,9 @@ not a closed union.
 `scripts/**`, and `harness/**`. The fixture pair is
 `rules/fixtures/kiko-kind-ternary-prefers-match.bad.ts` and `.good.ts`.
 
-**Known limits.** Only the equality form with a string literal is matched: `!==`, a
-`switch`-less `if`, a ternary on a variable that holds the kind, and a nested ternary chain
-on later branches are not seen.
+**Known limits.** Only `$X.kind === "<literal>" ? a : b` is matched (a nested chain reports
+both ternaries). Not seen: `!==`, `==`, a reversed literal (`'x' === a.kind`), a ternary on a
+variable that holds the kind, and a plain `if` on `kind`.
 
 ## The `docs-known-limit` invariant
 
@@ -1771,12 +1771,14 @@ untyped one `["m"]`), so `--findRelatedTests` and Stryker's per-test coverage ne
 to that module. Proven on the Duo native specs (fixed in 21425bd1 and e015e334). **Fix:**
 `jest.requireActual('m') as { ... }`, or a typed const annotation.
 
-**Shape.** One `pattern-regex` (`\bjest\s*(?:\?\.|\.)\s*(?:require(?:Actual|Mock)|createMockFromModule|genMockFromModule)\s*<`), not an AST
-pattern: Semgrep reads an absent type argument as matching `<$T>`, so the AST form also matched
+**Shape.** One `pattern-regex`
+(`\bjest\s*(?:\?\.|\.)\s*(?:require(?:Actual|Mock)|createMockFromModule|genMockFromModule)\s*<`),
+not an AST pattern: Semgrep reads an absent type argument as matching `<$T>`, so the AST form also matched
 `jest.requireActual('m') as T` and `const x: T = jest.requireActual('m')` (probed on 1.175). The
-regex reads across a line break; a comment or a string that spells the typed form is flagged too, so reword
-it. A harness test that quotes the typed form in a string is denied by the guard: build the text at
-runtime, or keep it under `rules/fixtures/` (the only exempt folder). ERROR, flat fixture pair `rules/fixtures/kiko-no-typed-jest-require-actual.{bad,good}.ts`.
+regex reads across a line break; a comment or a string that spells the typed form is flagged
+too, so reword it. A harness test that quotes the typed form in a string is denied by the guard:
+build the text at runtime, or keep it under `rules/fixtures/` (the only exempt folder). ERROR,
+flat fixture pair `rules/fixtures/kiko-no-typed-jest-require-actual.{bad,good}.ts`.
 
 **Scope: no `paths.include`.** Any file that calls `jest.requireActual` is test code (a test, a
 `__mocks__` file, a test-support helper), and a typed call in a helper also cuts the chain test,
@@ -2226,8 +2228,8 @@ disk that git tracks or would track
 uncommitted file resolves and a deleted one does not.
 
 The same test checks the comments of `src/**` sources (read through the TypeScript parse, so
-a path in a string or JSX text is not read). A rooted path (`src/`, `docs/`, `rules/`,
-`e2e/`, `drizzle/`, `scripts/`, `__tests__/`) or a bare migration file name in a comment must
+a path in a string or JSX text is not read). A rooted path (the roots are in `TREE_PATH_PATTERN` in
+`__tests__/test-support/source-comment-citations.ts`; read them there) or a bare migration file name in a comment must
 exist. A rootless partial citation in a comment counts only when it ends in a file extension
 (`monobank/sync/sync.ts`): comment prose is not backticked, so two words joined by a
 slash are not a claim about a file. It then resolves as a partial citation in a
@@ -2494,6 +2496,13 @@ mechanizable (see harness-workflow's "Classify every finding").
      `.good.<ext>` (see "The fixture contract"). A rule with a
      path-prefixed `paths.include` needs the nested layout
      `rules/fixtures/<rule-id>/<mirrored path>/<name>.(bad|good).<ext>`.
+     A fixture under `rules/fixtures/` is still typechecked (the tsconfig
+     includes `**/*.ts`): give every fixture an `export {}` or an import,
+     and run `npm run check:typecheck` before committing a fixture change.
+   - A rule message or skill sentence that says what is allowed is checked
+     against the cited section's own text: if that section is silent, edit
+     the section (kiko-code-style's "`ts-pattern` for exhaustive mapping"
+     had to gain the kind-ternary sentence its rule cites).
    - Add the id to `RULE_IDS_WITH_FIXTURES` in
      `__tests__/pre-write-guard-rules.test.ts`; a path-scoped rule also
      needs `NESTED_FIXTURE_PREFIXES` and `PROBE_DIRECTORIES` entries.

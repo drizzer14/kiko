@@ -1226,13 +1226,10 @@ rules:
     languages: [typescript]
     severity: ERROR
     message: >
-      `.rejects.toThrow()` with no argument, with the bare `Error` class,
-      with `undefined`, with an empty message or with a match-all pattern,
-      and `.rejects.toBeInstanceOf(Error)`, `.rejects.toBeInstanceOf(Object)`,
-      `.rejects.toEqual(expect.anything())`, `.rejects.toBeTruthy()`,
-      `.rejects.not.toBeNull()` and `.rejects.toBeDefined()` pass on any
-      rejection, so a test that fails for the wrong reason stays green. Name
-      the error the call expects: its message, a pattern, or its own class.
+      A `.rejects` assertion that passes on every failure (a bare
+      `.rejects.toThrow()` is one; the forms are this rule's patterns) lets a
+      test that fails for the wrong reason stay green. Name the error the
+      call expects: its message, a pattern, or its own class.
     metadata:
       fix: "Pass the expected error to toThrow: its message (a string), a pattern (a regex) or its class."
       skill: "kiko-code-style › A rejection names its error"
@@ -1259,7 +1256,8 @@ rules:
           - pattern: $PROMISE.rejects.toBeInstanceOf(Object)
           - pattern: $PROMISE.rejects.not.toBeNull()
           - pattern: $PROMISE.rejects.toBeDefined()
-  # kiko-gestures' "A lone card lifts too" (under "A hold lifts the card"): `sortEnabled` is the
+  # kiko-gestures' "A lone card lifts too" (under "A hold lifts the card, and a lifted card never opens its
+  # page"): `sortEnabled` is the
   # query's freshness gate alone, never also a count of the items. react-native-sortables never
   # counts items, and a lone card lifts and drops back with nothing persisted. ERROR: the tree
   # holds 0 findings for this id. See kiko-linter's "kiko-sortable-grid-lone-card-lifts" section.

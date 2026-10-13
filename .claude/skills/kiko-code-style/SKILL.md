@@ -322,7 +322,10 @@ mapping site that hasn't been updated, not a silent runtime gap. See
 descriptor/form/detail-spec checklist a new holding type needs.
 
 A single boolean guard used exactly once (an `if`/`else` with no
-closed-set enum behind it) may stay as-is. Every branch over a closed
+closed-set enum behind it) may stay as-is. A ternary on one `kind` literal of a closed union
+(`x.kind === 'a' ? p : q`) is an `if`/`else` chain and uses `match(...).exhaustive()`; it is
+mechanized as a WARNING by `kiko-kind-ternary-prefers-match` while its 3-site sweep is pending,
+and a `nosemgrep` OVERRIDE fits only where `kind` is not a closed union. Every branch over a closed
 literal set uses `ts-pattern`'s `match(...).exhaustive()` (or a typed
 `Record` for a pure lookup) — no `switch`, with no exception; mechanized
 by the `kiko-no-switch` Semgrep rule (see kiko-linter's own
@@ -1290,10 +1293,13 @@ Known limits:
 ## A rejection names its error
 
 A `.rejects` assertion names what the call rejects with: the error class, a message, or
-`toHaveProperty('cause.message', ...)`. A bare `toThrow()`, `toThrow(Error)`, `toThrow(undefined)`,
-`toBeInstanceOf(Error)` or `toBeTruthy()` passes on any failure, including a typo that throws
-before the code under test runs. Mechanized by the `kiko-rejects-to-throw-needs-error` Semgrep
-rule (see kiko-linter's own section).
+`toHaveProperty('cause.message', ...)`. Any `.rejects` form that passes on every failure (a bare
+`toThrow()` is the plainest) also passes on a typo that throws before the code under test runs;
+the forms are the patterns of `kiko-rejects-to-throw-needs-error` in `rules/semgrep-prewrite.yml`
+(see kiko-linter's own section).
+
+Pin the exact message the call produces, read from jest's Received output, never a guessed
+message or a loosened regex: a guess that happens to pass proves nothing about the real failure.
 
 ## Reviewed, and deliberately not changed
 

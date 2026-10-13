@@ -662,7 +662,8 @@ detail — a holding id plus a share change's day key;
 `editOwnershipChange` is ID-shaped the same way but starts from the
 uncached `OwnershipChangeForm`), or is gated on `isFresh`. The drag reorders (Accounts' three
 grids, Account detail's holdings grid, Categories) set
-`sortEnabled={isFresh}` (only Categories adds `&& categories.length > 1`), and Categories' move-to-top/bottom
+`sortEnabled={isFresh}` (no grid counts its items; `kiko-sortable-grid-lone-card-lifts` enforces
+it), and Categories' move-to-top/bottom
 buttons ignore a press until `isFresh` — each persists the WHOLE order
 of the rows on screen. A new write from a display screen picks one of
 the two, never neither. Tests call `clearLiveQueryCache()` in
