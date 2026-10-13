@@ -114,6 +114,11 @@ call without knowing where the plugin lives.
   - a `wait-load.sh` or ops timeout: `--gate test --verdict timeout` or
     `--gate deep --verdict timeout`; a gate that did not run: `--gate check --verdict skipped`
     (or the gate that was skipped);
+  - a wait (battery, load, usage limit, the user): `--gate wait --verdict pass --reason <battery|load|usage-limit|user> --minutes <N>`,
+    or `--verdict timeout` when the wait ran out; log it when the wait ends, with the SAME
+    `--step` (and `--group`, if used) as the work it interrupts: a wait without them lands in
+    the `-` row and does not reduce that step's Work. N is the waited minutes (for example
+    from the last event's ts);
   - the retrospect: `--gate retro --verdict pass`.
 - **finish**: at BATCH READY (`--outcome done`), or when the track is blocked or aborted
   (`--outcome blocked` or `--outcome aborted`). `--recorded` and `--gaps` come from the
@@ -123,13 +128,21 @@ call without knowing where the plugin lives.
   checks that the run's `summary.json` exists; a run with no summary did not finish its
   bookkeeping. A `deep` event logged after `finish` is expected: `stats` shows it, but
   `summary.json` `totals` do not include it.
+- **gap**: `gap --run <id> --open <text>` records an open gap and prints `<runId>/<n>`;
+  `gap --run <id> --close <gapId> [--note <text>]` closes it. `stats --gaps --repo kiko`
+  (add `--format md`, `tsv` or `json`) lists open gaps only, read from `<root>/gaps/<repo>.jsonl`.
+- **start and finish rule**: every orchestrator starts a run before a task's first dispatch and
+  finishes it at that task's BATCH READY. At a handover the run id goes into the worktree
+  HANDOFF.md and the successor keeps writing to it.
 - **stats**: `stats --repo kiko --format md` prints one row per review chain. The repo slug is
   the origin remote's repo name (`drizzer14/kiko.git` -> `kiko`), not the checkout folder;
-  `--repo pff-ios` matches nothing and prints only the header. The `Minutes` column runs from a
-  step group's first logged verdict to its last: the developer's work before the first verdict
-  is not counted, and a one-event step shows 0. For a dispatch-to-BATCH-READY time use
+  `--repo pff-ios` matches nothing and prints only the header. `Minutes` is the span from a
+  step group's first verdict to its last (the developer's work before the first verdict is not
+  counted; a one-event step shows 0); `Wait` is the sum of the group's wait events; `Work` =
+  `Minutes` - `Wait`, never below 0. For a dispatch-to-BATCH-READY time use
   run.json `startedAt` to `summary.json` `finishedAt`. A run with no `summary.json` and no event
-  for 24 hours shows as `abandoned`.
+  for 24 hours shows as `abandoned`. The coordinator runs `finish --outcome aborted` for a
+  track it stops, in the same turn as the worktree prune.
 
 BATCH READY's TIMES line is built from the run log, never from memory. The source of each
 field is listed in `kiko:estimator` only.

@@ -30,7 +30,7 @@ Rules:
   yet, `finish` runs after you) and the `stats` rows
   (`node "${CLAUDE_PLUGIN_ROOT}/scripts/run-log.mjs" stats --repo kiko --since <date> --format md`)
   as measured inputs: rounds, retries, stalls, times. Flag every EARLIER run in that window
-  showing `abandoned` (no `summary.json` and no event for 24 h) in your report. Report how
+  showing `abandoned` (no `summary.json` and no event for 24 h) in your report. Report each open gap as one line (it was recorded with `gap --open`), and the ids of the gaps the run closed (`gap --close`); `finish`'s `--gaps N` stays the count. Report how
   many lessons you recorded and how many gaps remain open, so the orchestrator can pass them as `finish --recorded N --gaps N`.
 - Name the scribe's drift-fix commit sha (or "no drift found") in your
   report, per the standing rule.
