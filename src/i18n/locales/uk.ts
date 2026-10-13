@@ -229,7 +229,15 @@ export const uk: typeof en = {
     removeCondition: 'Видалити умову {{index}}',
     errorNoMatchers: 'Додайте хоча б одну умову.',
     errorName: 'Введіть назву.',
-    errorAmount: 'Введіть суму від 0, не більше знаків після коми, ніж має валюта.',
+    errorAmountNegative: 'Введіть суму від 0.',
+    errorAmountTooLarge: 'Ця сума завелика.',
+    errorAmountWholeOnly: 'Для цієї валюти можна ввести лише цілу суму.',
+    // i18next's uk plural rule, with the genitive "не більше" takes: _one (1, 21: знака), _few
+    // (2-4: знаків), _many (0, 5-20: знаків), _other (a fraction only; the digits are whole).
+    errorAmountDecimals_one: 'У цій валюті не більше {{count}} знака після коми.',
+    errorAmountDecimals_few: 'У цій валюті не більше {{count}} знаків після коми.',
+    errorAmountDecimals_many: 'У цій валюті не більше {{count}} знаків після коми.',
+    errorAmountDecimals_other: 'У цій валюті не більше {{count}} знака після коми.',
     errorNeverMatches: 'Ці умови не можуть збігтися разом.',
     errorNeverMatchesTime:
       'Ці значення часу не можуть збігтися разом. Для проміжку через північ створіть два правила.',

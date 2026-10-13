@@ -107,6 +107,11 @@ string ('дн.', 'days') reads wrong at 1, 2-4 and 21 in Ukrainian.
 Abbreviated units ('г', '%', 'шт.', 'міс.') do not decline and stay single
 keys (read `forms.units` in `src/i18n/locales/uk.ts` for the current set).
 
+**An error message that states a count is a plural key.** For example the
+allowed decimals: `t('...', { count })` takes `count` from the error value
+(the currency's digits), never from typed input. English defines all four
+forms (`_one`/`_few`/`_many`/`_other`) for parity with Ukrainian.
+
 **Ukrainian `_other` is the FRACTION form only.** `Intl.PluralRules('uk')`
 gives 'other' only for non-integers (for example 1.5 -> 'дня'). A
 whole-number field never reaches it. For "no number" (an empty field),
