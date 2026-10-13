@@ -154,7 +154,9 @@ describe('importData', () => {
     mockReadFile.mockResolvedValue(fileText);
     mockRestoreDataSnapshot.mockRejectedValue(new Error('restore failed'));
 
-    await expect(importData({ fileUri: '/tmp/x.kiko', keyBase64 })).rejects.toThrow();
+    await expect(importData({ fileUri: '/tmp/x.kiko', keyBase64 })).rejects.toThrow(
+      'restore failed',
+    );
 
     expect(mockReplanRestoredReminders).not.toHaveBeenCalled();
   });
@@ -285,7 +287,9 @@ describe('importData', () => {
     mockReadFile.mockResolvedValue(fileText);
     mockRestoreDataSnapshot.mockRejectedValue(new Error('restore failed'));
 
-    await expect(importData({ fileUri: '/tmp/x.kiko', keyBase64 })).rejects.toThrow();
+    await expect(importData({ fileUri: '/tmp/x.kiko', keyBase64 })).rejects.toThrow(
+      'restore failed',
+    );
 
     expect(mockRecostStoredLots).not.toHaveBeenCalled();
   });

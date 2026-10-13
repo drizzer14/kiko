@@ -525,7 +525,7 @@ describe('remindersRepo writes', () => {
           kind: 'add_transactions',
           schedule: WEEKLY,
         }),
-      ).rejects.toThrow();
+      ).rejects.toThrow('Failed query: insert into "reminders"');
       expect(reminderCount()).toBe(1);
     });
   });

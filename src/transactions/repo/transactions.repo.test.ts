@@ -1681,7 +1681,7 @@ describe('transactionsRepo.recordExchange', () => {
         valueInMinorUnits: 100,
         time: 1,
       }),
-    ).rejects.toThrow();
+    ).rejects.toThrow('recordExchange: destination equals source');
   });
 
   it('rejects an excluded destination type (bond/jar)', async () => {
@@ -1997,7 +1997,9 @@ describe('transactionsRepo.recordExchangeCounterpart', () => {
         existingHoldingId: 'existing-1',
         time: 1,
       }),
-    ).rejects.toThrow();
+    ).rejects.toThrow(
+      'recordExchangeCounterpart: a source leg must be a plain holding, got term_deposit',
+    );
   });
 
   it('throws for a bond/jar destination (excluded)', async () => {
@@ -2021,7 +2023,7 @@ describe('transactionsRepo.recordExchangeCounterpart', () => {
         existingHoldingId: 'existing-1',
         time: 1,
       }),
-    ).rejects.toThrow();
+    ).rejects.toThrow('recordExchangeCounterpart: bond is not a valid destination');
   });
 
   // Defense in depth: the counterpart picker already excludes a synced
@@ -2044,7 +2046,7 @@ describe('transactionsRepo.recordExchangeCounterpart', () => {
         existingHoldingId: 'existing-1',
         time: 123,
       }),
-    ).rejects.toThrow();
+    ).rejects.toThrow('recordExchangeCounterpart: counterpart holding dst-1 is synced');
 
     expect(inserts).toHaveLength(0);
     expect(updates).toHaveLength(0);

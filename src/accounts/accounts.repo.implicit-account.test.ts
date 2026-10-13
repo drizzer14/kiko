@@ -229,7 +229,7 @@ describe('accountsRepo.createImplicitHolding: the icon', () => {
         icon: 'house',
         firstPricePoint: failingFirstPricePoint,
       }),
-    ).rejects.toThrow();
+    ).rejects.toThrow('Failed query: insert into "price_points"');
 
     expect(count('holdings')).toBe(0);
     expect(count('accounts')).toBe(0);

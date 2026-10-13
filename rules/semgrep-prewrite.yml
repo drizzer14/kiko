@@ -1226,6 +1226,29 @@ rules:
       - metavariable-regex:
           metavariable: $TITLE
           regex: "^[\"'`](?:[A-Z]\\d+ |[Rr]uling [A-Z]\\d|.*\\(was: )"
+  # A rejection asserted with no expected error passes on any failure, including a typo that
+  # throws before the code under test runs. ERROR: the tree holds 0 findings for this id. See
+  # kiko-linter's "kiko-rejects-to-throw-needs-error" section. The `src/test-support/**` include
+  # entry is path-prefixed, so the fixture pair is NESTED.
+  - id: kiko-rejects-to-throw-needs-error
+    languages: [typescript]
+    severity: ERROR
+    message: >
+      `.rejects.toThrow()` with no argument passes on any rejection, so a test
+      that fails for the wrong reason stays green. Name the error the call
+      expects: its message, a pattern, or its class.
+    metadata:
+      fix: "Pass the expected error to toThrow: its message (a string), a pattern (a regex) or its class."
+      skill: "kiko-code-style › Linting rules that shape how you write code"
+    paths:
+      include:
+        - "*.test.ts"
+        - "*.test.tsx"
+        - "src/test-support/**"
+    patterns:
+      - pattern-either:
+          - pattern: $PROMISE.rejects.toThrow()
+          - pattern: $PROMISE.rejects.toThrowError()
   # kiko-design-system's CardContextMenu: a form has no in-form Delete. An
   # entity is deleted only from its page's touch-and-hold CardContextMenu,
   # which owns the ConfirmSheet, so a form never imports the sheet at all
