@@ -6,6 +6,7 @@ import { i18n } from '@kiko/i18n/init';
 import { formatDate } from '@kiko/dates';
 import { darkTheme } from '@kiko/design-system/theme';
 import { holdingTypes } from '@kiko/holdings/holding-type';
+import { pickCategory } from '@kiko/test-support/pick-category';
 import { defaultHoldingColor } from '@kiko/holdings/entity-colors';
 import { isLabelInvalid } from '@kiko/test-support/field-label-spy';
 import type { TransactionFormParams } from '@kiko/navigation/types';
@@ -301,19 +302,6 @@ const pickDate = async (
     dateString: `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`,
     timestamp: 0,
   });
-};
-
-// Pick a category from the field's bottom-sheet: tap the field to open the
-// sheet, then tap the option row. The picker is a single-select sheet, not an
-// inline chip row, so the option is only mounted once the sheet opens. A create
-// now requires a category before Save enables, so the add-mode cases pick one
-// through the same path the category-editing cases use.
-const pickCategory = async (
-  utils: Awaited<ReturnType<typeof render>>,
-  title: string,
-): Promise<void> => {
-  await fireEvent.press(utils.getByLabelText('Category'));
-  await fireEvent.press(utils.getByText(title));
 };
 
 // ModeSelectField defers its actual `onSelect` call to the next frame (see
@@ -2119,6 +2107,7 @@ describe('TransactionFormScreen — category editing', () => {
         category: 'dining',
       }),
     );
+    expect(mockSetCategory).toHaveBeenCalledTimes(1);
     expect(mockApplyNameRule).not.toHaveBeenCalled();
     expect(navigation.goBack).toHaveBeenCalled();
   });

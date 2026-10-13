@@ -270,7 +270,7 @@ Name, icon, colour (the existing inline controls moved here), Create mode: the s
 | ruleForm.errorNoMatchers | Add at least one condition. | Додайте хоча б одну умову. |
 | ruleForm.errorName | Enter a name. | Введіть назву. |
 | ruleForm.errorAmountNegative (a blank or non-number amount uses it too) | Enter an amount of 0 or more. | Введіть суму від 0. |
-| ruleForm.errorAmountTooLarge | This amount is too large. | Ця сума завелика. |
+| ruleForm.errorAmountTooLarge (also when the amount fails the roundtrip yet has no digit past the scale) | This amount is too large. | Ця сума завелика. |
 | ruleForm.errorAmountWholeOnly (a currency of 0 decimals) | For this currency, you can enter only a whole amount. | Для цієї валюти можна ввести лише цілу суму. |
 | ruleForm.errorAmountDecimals_one/few/many/other (count = the currency's minor-unit digits, never 0) | This currency allows up to {{count}} decimal place(s). | У цій валюті не більше {{count}} знака/знаків після коми. |
 | ruleForm.errorNeverMatches | These conditions can never match together. | Ці умови не можуть збігтися разом. |

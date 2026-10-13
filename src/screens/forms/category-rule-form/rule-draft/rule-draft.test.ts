@@ -137,6 +137,9 @@ describe('fromMatcherDrafts', () => {
     ['a tiny fraction of a cent', '0.001', 'UAH', 2],
     ['more decimals than a coin has', '0.123456789', 'BTC', 8],
     ['more decimals than three allow', '1.2345', 'BHD', 3],
+    ['more decimals beside a large whole part', '35849873297196.455', 'UAH', 2],
+    ['a space after the fraction beside a large whole part', '35849873297196.455 ', 'UAH', 2],
+    ['a space inside the fraction beside a large whole part', '35849873297196.4 55', 'UAH', 2],
   ] as const)(
     'refuses %s with the digits the currency allows',
     (_label, text, currency, digits) => {
@@ -161,6 +164,12 @@ describe('fromMatcherDrafts', () => {
     ['a value too large in a currency with no decimals', '99999999999999999999', 'BIF'],
     ['a fraction too large in a currency with no decimals', '99999999999999999999.5', 'BIF'],
     ['a number that is not finite', 'Infinity', 'UAH'],
+    ['a value whose digits fit the scale but not a float', '35849873297196.45', 'UAH'],
+    ['the same kind of value in three decimals', '4441174532554.572', 'BHD'],
+    ['the same kind of value in a coin', '35589809.88665199', 'BTC'],
+    ['such a value typed with a comma decimal', '35849873297196,45', 'UAH'],
+    ['such a value typed with grouped thousands', '35,849,873,297,196.45', 'UAH'],
+    ['such a value with trailing zeros past the scale', '35849873297196.450', 'UAH'],
   ] as const)('refuses %s as too large', (_label, text, currency) => {
     expect(fromMatcherDrafts([amountDraft(text, currency)])).toEqual({
       kind: 'invalid',

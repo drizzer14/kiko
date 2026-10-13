@@ -6,6 +6,7 @@ import { i18n } from '@kiko/i18n/init';
 import { fieldSuffix } from '@kiko/test-support/field-suffix';
 import { scrollToField } from '@kiko/design-system/scroll-to-field';
 import type { CategoryRuleMatcher } from '@kiko/categories/category-rules';
+import { expectNavBarSaveOnly, pressSave, saveItem } from '@kiko/test-support/form-header-items';
 import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support/navigation-props';
 
 import CategoryRuleFormScreen from './category-rule-form.screen';
@@ -93,11 +94,11 @@ const typeName = async (screen: Screen, text: string): Promise<void> => {
   await fireEvent.changeText(screen.getByLabelText('Name'), text);
 };
 
-const pressSave = async (screen: Screen): Promise<void> => {
-  await fireEvent.press(screen.getByText('Save'));
-};
-
-const lastOptions = (): { title?: string } => navigation.setOptions.mock.calls.at(-1)?.[0] ?? {};
+const registeredTitle = (): string | undefined =>
+  navigation.setOptions.mock.calls
+    .map(([options]) => options)
+    .filter((options) => 'title' in options)
+    .at(-1)?.title;
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -127,6 +128,21 @@ describe('CategoryRuleFormScreen — a new rule', () => {
     expect(getByText('Name is')).toBeTruthy();
     expect(getByLabelText('Name').props.value).toBe('');
     expect(queryByText('Remove')).toBeNull();
+  });
+
+  it('offers Save only as the nav-bar item, enabled before anything is typed', async () => {
+    const screen = await renderCreate();
+
+    expectNavBarSaveOnly(navigation.setOptions, screen);
+    expect(saveItem(navigation.setOptions)?.disabled).toBe(false);
+  });
+
+  it('offers no Save until the form has loaded', async () => {
+    mockSettingsLoading = true;
+
+    await renderCreate();
+
+    expect(saveItem(navigation.setOptions)).toBeUndefined();
   });
 
   it('says that a transaction must match every condition', async () => {
@@ -234,20 +250,20 @@ describe('CategoryRuleFormScreen — an existing rule', () => {
   it('is titled for an edit', async () => {
     await renderEdit('mine');
 
-    expect(lastOptions().title).toBe('Edit Rule');
+    expect(registeredTitle()).toBe('Edit Rule');
   });
 
   it('keeps the title of a new rule for a new rule', async () => {
     await renderCreate();
 
-    expect(navigation.setOptions).not.toHaveBeenCalled();
+    expect(registeredTitle()).toBeUndefined();
   });
 
   it('saves the rule with its own id and the category it belongs to', async () => {
     const screen = await renderEdit('mine');
 
     await typeName(screen, 'Silpo Market');
-    await pressSave(screen);
+    await pressSave(navigation.setOptions);
 
     await waitFor(() =>
       expect(mockSaveRule).toHaveBeenCalledWith({
@@ -299,7 +315,7 @@ describe('CategoryRuleFormScreen — a Save that is refused', () => {
 
     expect(screen.queryByText('Enter a name.')).toBeNull();
 
-    await pressSave(screen);
+    await pressSave(navigation.setOptions);
 
     expect(screen.getByText('Enter a name.')).toBeTruthy();
     expect(mockCountRuleRewrite).not.toHaveBeenCalled();
@@ -340,7 +356,7 @@ describe('CategoryRuleFormScreen — a Save that is refused', () => {
 
       await pickType(screen, 0, 'amount');
       await fireEvent.changeText(screen.getByLabelText('Amount'), amount);
-      await pressSave(screen);
+      await pressSave(navigation.setOptions);
 
       expect(screen.getByText(message)).toBeTruthy();
       expect(mockSaveRule).not.toHaveBeenCalled();
@@ -352,7 +368,7 @@ describe('CategoryRuleFormScreen — a Save that is refused', () => {
 
     await fireEvent.press(screen.getByText('Add condition'));
     await pickType(screen, 1, 'amount');
-    await pressSave(screen);
+    await pressSave(navigation.setOptions);
 
     expect(screen.getByText('Enter a name.')).toBeTruthy();
     expect(screen.getByText(AMOUNT_NEGATIVE_ERROR)).toBeTruthy();
@@ -366,7 +382,7 @@ describe('CategoryRuleFormScreen — a Save that is refused', () => {
     await pickType(screen, 1, 'time');
     await fireEvent.press(screen.getAllByText('After')[0] as never);
     await fireEvent.press(screen.getAllByText('Before')[1] as never);
-    await pressSave(screen);
+    await pressSave(navigation.setOptions);
 
     expect(
       screen.getByText(
@@ -383,7 +399,7 @@ describe('CategoryRuleFormScreen — a Save that is refused', () => {
     await fireEvent.press(screen.getByText('Add condition'));
     await pickType(screen, 1, 'direction');
     await fireEvent.press(screen.getAllByText('Income')[1] as never);
-    await pressSave(screen);
+    await pressSave(navigation.setOptions);
 
     expect(screen.getByText('These conditions can never match together.')).toBeTruthy();
     expect(screen.queryByText(/midnight/)).toBeNull();
@@ -396,7 +412,7 @@ describe('CategoryRuleFormScreen — a Save that is refused', () => {
     const screen = await renderCreate();
 
     await typeName(screen, 'Silpo');
-    await pressSave(screen);
+    await pressSave(navigation.setOptions);
 
     expect(
       screen.getByText('A rule with these conditions already exists in Rozetka.'),
@@ -410,7 +426,7 @@ describe('CategoryRuleFormScreen — a Save that is refused', () => {
     const screen = await renderCreate();
 
     await typeName(screen, 'Silpo');
-    await pressSave(screen);
+    await pressSave(navigation.setOptions);
 
     expect(
       screen.getByText('A rule with these conditions already exists in gone-shop.'),
@@ -424,7 +440,7 @@ describe('CategoryRuleFormScreen — a Save that is refused', () => {
     const screen = await renderCreate();
 
     await typeName(screen, 'Silpo');
-    await pressSave(screen);
+    await pressSave(navigation.setOptions);
     await typeName(screen, 'Silpo Market');
 
     expect(screen.queryByText(/already exists/)).toBeNull();
@@ -449,7 +465,7 @@ describe('CategoryRuleFormScreen — a Save that is refused', () => {
       const screen = await renderCreate();
 
       await fireEvent.changeText(screen.getByLabelText('Назва'), 'Silpo');
-      await fireEvent.press(screen.getByText('Зберегти'));
+      await pressSave(navigation.setOptions, 'Зберегти');
 
       expect(screen.getByText('Правило з такими умовами вже є в категорії Продукти.')).toBeTruthy();
     });
@@ -461,7 +477,7 @@ describe('CategoryRuleFormScreen — a Save that is accepted', () => {
     const screen = await renderCreate();
 
     await typeName(screen, '  Silpo ');
-    await pressSave(screen);
+    await pressSave(navigation.setOptions);
 
     await waitFor(() => expect(navigation.goBack).toHaveBeenCalledTimes(1));
     expect(mockSaveRule).toHaveBeenCalledWith({
@@ -479,7 +495,7 @@ describe('CategoryRuleFormScreen — a Save that is accepted', () => {
     const screen = await renderCreate();
 
     await typeName(screen, 'Silpo');
-    await pressSave(screen);
+    await pressSave(navigation.setOptions);
 
     await waitFor(() => expect(screen.getByText('This changes 3 transactions.')).toBeTruthy());
     expect(screen.getByText('Apply Rule')).toBeTruthy();
@@ -493,7 +509,7 @@ describe('CategoryRuleFormScreen — a Save that is accepted', () => {
     const screen = await renderCreate();
 
     await typeName(screen, 'Silpo');
-    await pressSave(screen);
+    await pressSave(navigation.setOptions);
     await waitFor(() => expect(screen.getByText('Apply to existing')).toBeTruthy());
 
     // The Jest Modal unmounts once hidden, so the close report is read while the sheet is up.
@@ -519,7 +535,7 @@ describe('CategoryRuleFormScreen — a Save that is accepted', () => {
     const screen = await renderCreate();
 
     await typeName(screen, 'Silpo');
-    await pressSave(screen);
+    await pressSave(navigation.setOptions);
     await waitFor(() => expect(screen.getByText('New transactions only')).toBeTruthy());
     await fireEvent.press(screen.getByText('New transactions only'));
 
@@ -536,7 +552,7 @@ describe('CategoryRuleFormScreen — a Save that is accepted', () => {
     const screen = await renderCreate();
 
     await typeName(screen, 'Silpo');
-    await pressSave(screen);
+    await pressSave(navigation.setOptions);
     await waitFor(() => expect(screen.getByText('Cancel')).toBeTruthy());
     await fireEvent.press(screen.getByText('Cancel'));
 
@@ -557,8 +573,14 @@ describe('CategoryRuleFormScreen — a Save that is accepted', () => {
     const screen = await renderCreate();
 
     await typeName(screen, 'Silpo');
-    await pressSave(screen);
-    await pressSave(screen);
+    await pressSave(navigation.setOptions);
+
+    expect(saveItem(navigation.setOptions)?.disabled).toBe(true);
+
+    // The item is disabled while the first save is pending, so the second tap is the raw handler.
+    await act(async () => {
+      saveItem(navigation.setOptions)?.onPress();
+    });
 
     expect(mockCountRuleRewrite).toHaveBeenCalledTimes(1);
 
@@ -574,7 +596,7 @@ describe('CategoryRuleFormScreen — a Save that is accepted', () => {
     const screen = await renderCreate();
 
     await typeName(screen, 'Silpo');
-    await pressSave(screen);
+    await pressSave(navigation.setOptions);
 
     await waitFor(() =>
       expect(Alert.alert).toHaveBeenCalledWith('Could not save', 'Please try again.'),

@@ -20,6 +20,7 @@ import { useScrollToField } from '@kiko/design-system/use-scroll-to-field';
 import { buildCategoryDisplayMap } from '@kiko/categories/category-display';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { categoryKeyOf, prepareRules } from '@kiko/categories/category-rules';
+import { useFormHeaderItems } from '@kiko/screens/forms/use-form-header-items';
 import { type FC, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
 import {
@@ -151,6 +152,16 @@ const CategoryRuleFormScreen: FC<CategoryRuleFormScreenProps> = ({ navigation, r
     setHydrated(true);
   }, [hydrated, isReady, isEdit, rules, ruleId, baseCurrency, navigation]);
 
+  const isLoaded = isReady && hydrated;
+
+  // Save appears with the conditions: while the form loads there is nothing to save.
+  useFormHeaderItems({
+    navigation,
+    onSave: save.onPress,
+    hasSave: isLoaded,
+    isSaving: save.isSubmitting,
+  });
+
   const changeRow = (key: string, fields: Partial<MatcherDraft>): void =>
     setRows((current) =>
       current.map((row) =>
@@ -167,7 +178,7 @@ const CategoryRuleFormScreen: FC<CategoryRuleFormScreenProps> = ({ navigation, r
   const categoryTitleOf = (key: string): string =>
     categoryTitles.get(categoryKeyOf(key))?.title ?? key;
 
-  if (!isReady || !hydrated) {
+  if (!isLoaded) {
     return (
       <Screen scroll>
         <LoadingState testID="category-rule-form-loading" />
@@ -177,16 +188,7 @@ const CategoryRuleFormScreen: FC<CategoryRuleFormScreenProps> = ({ navigation, r
 
   return (
     <>
-      <Screen
-        scroll
-        scrollableRef={scrollableRef}
-        onContentSizeChange={onContentSizeChange}
-        footer={
-          <Button onPress={save.onPress} disabled={save.isSubmitting}>
-            {t('common.save')}
-          </Button>
-        }
-      >
+      <Screen scroll scrollableRef={scrollableRef} onContentSizeChange={onContentSizeChange}>
         <Box gap={4}>
           <Text variant="caption" tone="textSecondary">
             {t('ruleForm.allMustMatch')}
