@@ -57,12 +57,13 @@ import { settledTransfersOf, TRANSFER_FORWARD_OWES } from './binance.transfer-hi
  * The walk's own functions driven run after run, as the lanes drive them, against records that
  * can never be committed. A run reads at most `lane.reads` calls; a read returns the records
  * whose time lies in the span, under one of three readings of which end Binance leaves out (both
- * included, the start left out, the end left out), and each property must hold under all three.
- * A stuck record owes its own point and holds nothing else back, so every other record of the
- * span commits. The properties tell a point by the window its record owes (never by a tag or a
- * length), so they hold for any list the walk stores. A lane that reads several series (the
- * Transfer types, the six Earn kinds) spends one call for each series of a span read, and settles
- * its spans with the lane's own `settledTransfersOf` or `settledEarnOf`.
+ * included, the start left out, the end left out), and each property must hold under all three;
+ * the Earn lane also runs under its own reading, which compares each end to the second (see
+ * `readingsOf`). A stuck record owes its own point and holds nothing else back, so every other
+ * record of the span commits. The properties tell a point by the window its record owes (never
+ * by a tag or a length), so they hold for any list the walk stores. A lane that reads several
+ * series (the Transfer types, the six Earn kinds) spends one call for each series of a span
+ * read, and settles its spans with the lane's own `settledTransfersOf` or `settledEarnOf`.
  */
 
 const HOUR_MS = 3_600_000;
@@ -118,6 +119,8 @@ type Lane = {
    */
   walk?: 'transfer' | 'earn';
   forwardOwes?: readonly string[];
+  /** A record's time sits on a multiple of this (Earn's sit on whole seconds), when it is wider. */
+  aligned?: number;
 };
 
 /**
@@ -219,6 +222,17 @@ type Reading =
   | 'start floored to the second';
 
 const READINGS: Reading[] = ['both ends included', 'start left out', 'end left out'];
+
+/** The readings a lane's families run under: the Earn lane's own reading is the second one. */
+const readingsOf = (lane: Lane): Reading[] =>
+  lane.walk === 'earn' ? [...READINGS, 'start floored to the second'] : READINGS;
+
+/**
+ * The lane as it meets a reading: a read that compares each end to the second is Earn's, whose
+ * records sit on whole seconds, so its records are generated on them.
+ */
+const laneUnder = (lane: Lane, reading: Reading): Lane =>
+  reading === 'start floored to the second' ? { ...lane, aligned: SECOND_MS } : lane;
 
 /** A seeded generator (Lehmer), so a failing run replays. */
 const seededRandom = (seed: number): (() => number) => {
@@ -350,10 +364,15 @@ const floorToSecond = (millisecond: number): number =>
 
 /** Whether a read of `range` returns the record that Binance filters at `millisecond`. */
 const holds = (range: WalkWindow, millisecond: number, reading: Reading): boolean =>
-  reading === 'start floored to the second'
-    ? floorToSecond(range.start) <= millisecond && millisecond <= floorToSecond(range.end)
-    : (reading === 'start left out' ? range.start < millisecond : range.start <= millisecond) &&
-      (reading === 'end left out' ? millisecond < range.end : millisecond <= range.end);
+  match(reading)
+    .with('both ends included', () => range.start <= millisecond && millisecond <= range.end)
+    .with('start left out', () => range.start < millisecond && millisecond <= range.end)
+    .with('end left out', () => range.start <= millisecond && millisecond < range.end)
+    .with(
+      'start floored to the second',
+      () => floorToSecond(range.start) <= millisecond && millisecond <= floorToSecond(range.end),
+    )
+    .exhaustive();
 
 /** Whether a read of `range` returns the record under every reading. */
 const surelyHolds = (range: WalkWindow, millisecond: number): boolean =>
@@ -1230,7 +1249,7 @@ const builderOf = (lane: Lane, seed: number) => {
   const record = (millisecond: number, stuckUntil = 0): SimRecord => {
     lastId += 1;
     const precision = precisionOf(lastId);
-    const time = alignedTo(millisecond, precision);
+    const time = alignedTo(millisecond, Math.max(precision, lane.aligned ?? 1));
 
     return {
       id: lastId,
@@ -1265,7 +1284,8 @@ const builderOf = (lane: Lane, seed: number) => {
     lastId += 1;
     const shift =
       lane.rounded === true && stuck.precision > 1 ? Math.floor(stuck.precision / 2) : 0;
-    const time = stuck.time + (side === 'after' ? stuck.precision : -stuck.precision);
+    const step = Math.max(stuck.precision, lane.aligned ?? 1);
+    const time = stuck.time + (side === 'after' ? step : -step);
     const at = side === 'after' ? time - shift : time + stuck.precision - 1 - shift;
 
     return {
@@ -1849,7 +1869,7 @@ const pointRuns = (points: number, reads: number): number => Math.ceil(points / 
 /** The points one run reads beside the forward read and the re-scan: a call each. */
 const pointReadsOf = (lane: Lane): number => lane.designReads - 2 * lane.rangeCalls;
 
-describe.each(LANES)('owed ground that never commits, $name lane', (lane) => {
+describe.each(LANES)('owed ground that never commits, $name lane', (laneOfName) => {
   let warn: jest.SpyInstance;
 
   beforeEach(() => {
@@ -1860,7 +1880,8 @@ describe.each(LANES)('owed ground that never commits, $name lane', (lane) => {
     warn.mockRestore();
   });
 
-  describe.each(READINGS)('a read that returns the records with %s', (reading) => {
+  describe.each(readingsOf(laneOfName))('a read that returns the records with %s', (reading) => {
+    const lane = laneUnder(laneOfName, reading);
     const seeds = reading === 'both ends included' ? SEEDS : SEEDS.slice(0, 1);
 
     const check = async (
@@ -2074,13 +2095,17 @@ describe.each(LANES)('owed ground that never commits, $name lane', (lane) => {
       },
     );
 
+    // A point is one millisecond either side of its record, so a lane whose records sit on whole
+    // seconds has no neighbour on its edge for a read of the point to return.
     it.each(
       [1, 3, 12].flatMap((count) =>
-        [true, false].map((found) => ({
-          count,
-          found,
-          bound: found ? rangeRuns(lane, count + 1) : pointRuns(count, pointReadsOf(lane)) + 1,
-        })),
+        [true, false]
+          .filter((found) => found || lane.aligned === undefined)
+          .map((found) => ({
+            count,
+            found,
+            bound: found ? rangeRuns(lane, count + 1) : pointRuns(count, pointReadsOf(lane)) + 1,
+          })),
       ),
     )(
       'P1-P4 with Binance filtering on another field: $count stuck records (found in an owed day: $found) that a read of their point never returns, only the neighbours on its edges: every point stays as its record owes it, and the neighbours import within $bound runs',
@@ -2866,7 +2891,9 @@ describe.each(LANES.filter((lane) => lane.walk === 'earn'))(
 
     it.each(
       RUN_GAPS.flatMap((gapMs) =>
-        READINGS.flatMap((reading) => [0, 1, 2].map((index) => ({ gapMs, reading, index }))),
+        readingsOf(lane).flatMap((reading) =>
+          [0, 1, 2].map((index) => ({ gapMs, reading, index })),
+        ),
       ),
     )(
       'member $index (by satoshis) is unreadable until run 4, runs $gapMs ms apart, reading $reading: nothing of the group is written before it, then its rows are exactly the keys 0 to 2, each written with one amount, and the satoshis add up',

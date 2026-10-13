@@ -1,3 +1,4 @@
+import { match } from 'ts-pattern';
 import { DAY_MS } from '@kiko/dates';
 import type { HoldingRow } from '@kiko/db';
 import maybe, { foldMap } from 'fnts/maybe';
@@ -169,10 +170,15 @@ const SECOND_MS = 1_000;
  * as the live Earn endpoints do, to the second the end falls in.
  */
 const reaches = (query: TotalQuery, time: number, precision: Precision): boolean =>
-  precision === 'second'
-    ? Math.floor(query.startTime / SECOND_MS) * SECOND_MS <= time &&
-      time <= Math.floor(query.endTime / SECOND_MS) * SECOND_MS
-    : query.startTime <= time && time <= query.endTime;
+  match(precision)
+    .with('second', () => {
+      const floorOf = (millisecond: number): number =>
+        Math.floor(millisecond / SECOND_MS) * SECOND_MS;
+
+      return floorOf(query.startTime) <= time && time <= floorOf(query.endTime);
+    })
+    .with('millisecond', () => query.startTime <= time && time <= query.endTime)
+    .exhaustive();
 
 /**
  * Binance's answer for one kind, one range (both ends included) and one page of 100. `answer` may
