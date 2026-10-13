@@ -16,12 +16,13 @@ import { tmpdir } from 'node:os';
 import { join, sep } from 'node:path';
 import { type SpawnSyncReturns, execFileSync, spawnSync } from 'node:child_process';
 
+import { isolatedGitEnvironment } from './test-support/isolated-git';
+
 // githooks/pre-commit and githooks/pre-merge-commit run scripts/checks/commit-typecheck.sh, which
 // typechecks a temporary copy of the STAGED index. Every case here runs the real hook inside a
-// throwaway git repository: HOME and GIT_CONFIG_GLOBAL point at a temporary folder and the system
-// config is switched off, so no setting of the developer's machine reaches the hook, and nothing
-// here touches the real repository's config. A fake node_modules/.bin/tsc fails when any `.ts` file
-// of the snapshot it runs in contains BROKEN, and records where it ran and with which arguments.
+// throwaway git repository with an isolated git environment, so nothing here touches the real
+// repository's config. A fake node_modules/.bin/tsc fails when any `.ts` file of the snapshot it
+// runs in contains BROKEN, and records where it ran and with which arguments.
 const ROOT = join(__dirname, '..');
 const BLOCK_TITLE = 'TypeScript on the staged commit (pre-commit)';
 const HOOK_NAMES = ['pre-commit', 'pre-merge-commit'];
@@ -57,18 +58,12 @@ type Repository = {
 
 type GitResult = SpawnSyncReturns<string>;
 
-const environmentOf = (
-  repository: Repository,
-  extra: NodeJS.ProcessEnv = {},
-): NodeJS.ProcessEnv => ({
-  ...Object.fromEntries(Object.entries(process.env).filter(([name]) => !name.startsWith('GIT_'))),
-  HOME: repository.home,
-  GIT_CONFIG_GLOBAL: join(repository.home, '.gitconfig'),
-  GIT_CONFIG_NOSYSTEM: '1',
-  TMPDIR: repository.temporary,
-  KIKO_FAKE_TSC_MARKER: repository.marker,
-  ...extra,
-});
+const environmentOf = (repository: Repository, extra: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv =>
+  isolatedGitEnvironment(repository.home, {
+    TMPDIR: repository.temporary,
+    KIKO_FAKE_TSC_MARKER: repository.marker,
+    ...extra,
+  });
 
 const git = (repository: Repository, ...gitArguments: string[]): GitResult =>
   spawnSync('git', gitArguments, {
