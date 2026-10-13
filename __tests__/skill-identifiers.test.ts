@@ -343,6 +343,19 @@ describe('identifiers named in skills, agents and harness skills', () => {
     ).toEqual([]);
   });
 
+  it('reports a name planted in a copy of the kiko-architecture text', () => {
+    const file = '.claude/skills/kiko-architecture/SKILL.md';
+    const planted = `${readFileSync(join(REPOSITORY_ROOT, file), 'utf8')}\n\nStale \`zzzPlantedGoneName\`.\n`;
+
+    expect(scopeFiles).toContain(file);
+    expect(
+      identifierCitations(planted)
+        .filter(({ name }) => !resolves(name))
+        .filter(({ name }) => !EXEMPTIONS.some((exemption) => exempts(exemption, file, name)))
+        .map(({ name }) => name),
+    ).toEqual(['zzzPlantedGoneName']);
+  });
+
   it('lists no exemption that is no longer cited or now resolves', () => {
     const stillUnresolved = scopeFiles.flatMap((file) =>
       citedUnresolved(file).map(({ name }) => ({ file, name })),
