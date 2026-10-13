@@ -32,6 +32,13 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
 - `source "$DIR/_lib.sh"` for `print_block`.
 - On failure: call `print_block` (a structured WHAT/DETAILS/WHY/HOW/
   DO-NOT block) to stderr, then `exit 2`.
+- A missing path is a failure, never a pass. A missing scan root or a missing path argument
+  exits 2 with the standard block that names the path (`harness_require_path` in `_lib.sh`).
+  A per-file wrapper given a directory exits 2 ("takes a file", `harness_require_file`).
+  One exception: `medium.sh` filters deleted files before it calls `dup.sh` and
+  `override-guard.sh`, so a deleted file on the medium tier is skipped silently, while a
+  direct call with a deleted path exits 2. `component-i18n-namespace.sh` keeps its own `-d`
+  block for its fixed root. `__tests__/wrapper-missing-path.test.ts` pins this.
 - On success: **silent**, `exit 0`. A wrapper that prints anything on
   success breaks the "stays silent on success" contract every other
   wrapper and every hook relies on. One exception is the deep,
@@ -2431,9 +2438,11 @@ mechanizable (see harness-workflow's "Classify every finding").
      helper when their file is next edited.
    - `__tests__/error-class-pins.test.ts` fails when a non-empty
      `extends Error` class under `src/` has no same-folder test pinning its
-     `.name` literal and its `.message`. The message pin must be in the same
-     `it` block as the `.name` pin, or be asserted on `new ClassName(...).message`;
-     a class with an empty body is skipped.
+     `.name` literal and its `.message`. The message pin must be on the same
+     receiver chain as the `.name` pin in the same test block (blocks split at
+     `it`/`test`/`xit`/`fit`/`xtest`/`describe` and their `.skip`/`.only`/`.concurrent`
+     forms), or on `new ClassName(...).message`, or in one `toMatchObject({ name, message })`.
+     Known limit: a rebound `let error` is not seen. A class with an empty body is skipped.
    - A new Node rule also runs on the probed negative (good) fixtures of
      `__tests__/pre-write-guard-rules.test.ts`. Make those fixtures pass
      the new rule, never exempt them.
