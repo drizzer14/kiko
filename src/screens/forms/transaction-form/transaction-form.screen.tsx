@@ -958,7 +958,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
       // path (`resolveCategoryOverrideRequest` -> `applyNameRule`) stays
       // intact, so a catch-all rule is still refused. A create (no `editingId`)
       // already carries its category from `recordManual`, so it is excluded.
-      if (editingId !== null && categoryChanged && effectiveCategory !== null) {
+      if (editingId !== null && categoryChanged) {
         await transactionsRepo.setCategory({
           transactionId: editingId,
           category: effectiveCategory,

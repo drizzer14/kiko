@@ -63,6 +63,21 @@ const nameOutcome = (type: 'nameIs' | 'nameStartsWith', text: string): DraftOutc
 const decimalsError = (digits: number): MatcherDraftError =>
   digits === 0 ? 'errorAmountWholeOnly' : { kind: 'errorAmountDecimals', digits };
 
+// The digits the typed text keeps after the decimal mark, as parseAmount reads the mark (the
+// last '.' or ','), without the zeros that end it: "1.50" has one.
+const typedFractionDigits = (amountText: string): number => {
+  const fraction = amountText.replace(/\s/g, '').match(/[.,](\d*)$/)?.[1] ?? '';
+
+  return fraction.replace(/0+$/, '').length;
+};
+
+// A number near the safe limit can fail the round trip with no digit past the scale, because a
+// float cannot hold that many digits; that is too large, not too many decimals.
+const roundTripError = (amountText: string, currency: Currency): MatcherDraftError =>
+  typedFractionDigits(amountText) <= currencyScale[currency]
+    ? 'errorAmountTooLarge'
+    : decimalsError(currencyScale[currency]);
+
 // The amount is the typed number through the currency's own scale. It must come back unchanged
 // from minor units, so a digit past the scale (1.005 in a currency of two decimals) is refused
 // instead of silently rounded away, and so is a number too large to hold as a whole minor unit.
@@ -82,7 +97,7 @@ const amountOutcome = ({ amountText, amountOperator, currency }: MatcherDraft): 
 
   return toMajor(minorUnits, currency) === major
     ? { matcher: { type: 'amount', operator: amountOperator, minorUnits, currency } }
-    : { error: decimalsError(currencyScale[currency]) };
+    : { error: roundTripError(amountText, currency) };
 };
 
 const outcomeOf = (draft: MatcherDraft): DraftOutcome =>
