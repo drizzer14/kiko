@@ -32,6 +32,8 @@ failing check always re-runs.
 
 ## Locking
 
+On a `Stop` event (not `SubagentStop`) whose payload has `stop_hook_active: true`, `medium.sh` exits 0 with a one-line stderr note instead of running, because a failing Stop tier started a new turn that ended in the same failure and the orchestrator looped (knip ran about 8 times in a row, 2026-10-11); a first `Stop` and every `SubagentStop` still run and block, the payload is read only when stdin is a regular file (`dispatch.sh` replays it as a file), and the cost is that a repeated Stop shows the failure once, with `check:all` before a commit still catching it.
+
 `medium.sh` holds a per-worktree single-flight lock so parallel
 `SubagentStop`/`Stop` runs do not launch concurrent
 `knip`/`deps`/`jscpd`.
@@ -76,7 +78,7 @@ compares the SET of entries with `config.mutate`, and the scorer exits 2 when on
 both as a plain path and as a range (Stryker reads that as "do not mutate"). A comment-only file
 kept because its colocated test changed goes in as its plain path (whole file). A kept path with
 `[ ( * ? {` is refused after the lock in a run, with no lock in `--list`, always before Stryker.
-The diff uses `--find-renames --inter-hunk-context=0 --text --no-textconv`, so a user's diff attributes or textconv driver cannot change the hunks.
+The diff uses `--find-renames --inter-hunk-context=0 --text --no-textconv` and runs with `GIT_DIFF_OPTS=` (a context width set there outranks `-U0`), so a user's diff attributes, textconv driver, or environment cannot change the hunks. The temp file for `mutation-ranges.js` stderr is removed on EXIT, INT (exit 130), and TERM (exit 143), together with the lock.
 
 User ruling 2026-10-12, no edge-straddling mutant: Stryker 8.7.1 creates a mutant only when its
 whole node lies inside a range (instrumenter `syntax-helpers.js` `locationIncluded`), and the

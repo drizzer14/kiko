@@ -99,7 +99,7 @@ files, fixtures, check wrappers, the Info.plist, the Xcode
 project, and every file under `drizzle/migrations/`). A session that edited
 only a rule, a fixture, or the plist is the one most likely to have
 broken a rule (or unpinned a credential-bearing host), so it must not
-be the one that runs nothing. The medium tier also replays the
+be the one that runs nothing. On a `Stop` event (not `SubagentStop`) whose payload has `stop_hook_active: true`, the medium tier exits 0 with a one-line stderr note instead of running, because a failing Stop tier started a new turn that ended in the same failure and the orchestrator looped (knip ran about 8 times in a row, 2026-10-11); a first `Stop` and every `SubagentStop` still run and block, the payload is read only when stdin is a regular file (`dispatch.sh` replays it as a file), and the cost is that a repeated Stop shows the failure once, with `check:all` before a commit still catching it. The medium tier also replays the
 pre-write guard (`scripts/checks/guard-replay.sh`) on every changed
 `.ts`/`.tsx` file, whatever wrote it — in the working tree, and in the
 commits no worktree's passed replay reached (its mark ref under

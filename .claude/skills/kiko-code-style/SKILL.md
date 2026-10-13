@@ -108,7 +108,8 @@ with separators (`` `${base}:${quote}` ``) stays a template literal.
 ### Wrap comments at 100 columns
 
 Biome cannot wrap a comment, so a long one stays long until its author
-wraps it. The pre-write guard (`kiko-comment-line-width`) denies a new
+wraps it. Shell scripts (`scripts/**/*.sh`) follow the same 100-column rule for their `#` comments, pinned by
+`__tests__/shell-comment-width.test.ts`. The pre-write guard (`kiko-comment-line-width`) denies a new
 physical line over 100 columns that holds comment text: a `//` comment,
 any line of a `/* */` or `/** */` block, a JSX `{/* */}` comment, or a
 trailing comment after code. Break the comment at a space and continue on
