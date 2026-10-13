@@ -703,29 +703,55 @@ withdraw budget moves into this object, with the same numbers and the same rule.
     within one second (`DEPTH_RESOLUTION_MS`) of a refused one. The span is read from that start,
     and the run remembers it with the clock of the request that served it (for the rest of the
     run, across the 20 types and the spans that follow).
-  - Binance's depth moves with the clock (measured: a start 180 days back is served, 200 days
-    back is refused; assumed: the oldest start it serves moves forward no faster than the
-    clock), and the requests are paced 350 ms apart, so a remembered start is read from as
-    `start + (now - servedAt) + margin`. `now` is read after the run gate let the request go (the
-    gate may wait for hours), and the start stays below the end of the span. The margin
-    (`DEPTH_MARGIN_MS`, 1 s) covers a request that reaches Binance later than the one that found
-    the start. A refusal of a read from a remembered start doubles it (1, 2, 4 and 8 s) and reads
-    again, with no request beyond the read.
-  - The ground below the start a read begins at is refused, or lies within the resolution and the
-    margin of the depth (and within the clock time the narrowing took, at most about 8 seconds) of
-    kept ground: that ground leaves Binance's depth at clock speed, within seconds of the read.
+  - Binance's depth moves (measured: a start 180 days back is served, 200 days back is refused;
+    assumed: the oldest start it serves moves forward and never back, with no claim about how
+    fast: with the clock or in steps, probe item 18). The requests are paced 350 ms apart, so a
+    remembered start is read from as `start + (now - servedAt) + margin` while it was served at
+    most `DEPTH_EXTRAPOLATION_MAX_MS` (120 s) ago. `now` is read after the run gate let the
+    request go (the gate may wait for hours), and the start stays below the end of the span. The
+    margin (`DEPTH_MARGIN_MS`, 1 s) covers a request that reaches Binance later than the one that
+    found the start. A refusal of a read from a remembered start doubles it (1, 2, 4 and 8 s;
+    `DEPTH_MARGIN_CAP_MS` is the cap) and reads again, with no request beyond the read. A
+    refusal at the cap, or with no start known to be served, narrows from the refused start
+    toward the end of the span, as above, and the next served start starts the margin over.
+  - A start served longer ago than `DEPTH_EXTRAPOLATION_MAX_MS` (a suspension of the app, a long
+    wait of the run gate) is not moved on by the time that passed. The start is found again
+    between the one the run holds and the one it would move on to: that one is asked first
+    (refused: the depth stepped past it, and the span narrows from it toward its end as a refused
+    start does), then the part between them is halved to the resolution, `1 + ceil(log2(elapsed
+    / resolution))` requests (17 for 10 hours). A span that ends at or before the start the run
+    holds, or whose end Binance refuses, reads as empty.
+  - What a read skips, under the assumption that the depth moves forward and never back: the
+    ground below the start a read begins at is refused, or lies within the resolution (1 s) of a
+    start Binance refused, plus what the extrapolation and the margin add if the depth stood
+    still: at most the time since the start was served (120 s) and the margin cap (8 s). So a
+    read skips at most 1 + 120 + 8 = 129 seconds of ground Binance keeps, and right after a
+    narrowing only the resolution, the margin (1 s) and the requests made after the last start
+    Binance served, each paced and answered. A depth that moves with the clock leaves only the
+    resolution and the margin. No claim is made about the speed of the depth.
   - The types of the span read before a refusal keep their rows (they are read once), and the
     types after it start at the remembered start.
-  - Bound: the narrowing happens at most once in a span read and costs at most 23 requests (the
-    probe at the end, 22 halvings of a span of 30 days). A span read stops, with the span unread,
-    at its fifth refusal (`MAX_DEPTH_REFUSALS`), so it spends at most 5 refused reads and 23
-    requests of narrowing, 28, on the depth. The requests spend the shared run budget like any
-    read: when the budget or the refusals run out the span stays unread, nothing of it commits,
-    and the next run reads it again. Pinned against a fake clock that the gate's sleeps and the
-    request latency (0 to 300 ms) move, with all 20 types and run gaps of 0, 1 hour and 1 day: a
-    Binance that keeps 100 days gives every transfer it keeps within 2 runs and the forward cursor
-    passes the window that crosses the depth; a run planned 3 days before it reads, against a
-    Binance that keeps 180 days, gives every transfer within 3 runs.
+  - Bound: a narrowing costs at most 23 requests (the end of the span, 22 halvings of a span of
+    30 days), the one after a lapse at most 24 (the start the run would move on to, the end, 22
+    halvings). A span read stops, with the span unread, at its sixth refused read
+    (`MAX_DEPTH_REFUSALS`) or its second lapse (`MAX_DEPTH_LAPSES` = 1). A narrowing starts the
+    margin over and it takes three refusals to reach the cap, so a span read narrows twice after
+    a refusal at most (the crossing of the depth, then a type whose depth lies above the start
+    the first found) and once after a lapse: at most 6 refused reads + 2 * 23 + 24 = 76 requests
+    on the depth, and 52 where no suspension comes. The requests spend the shared run budget
+    like any read: when the budget or the limits run out the span stays unread, nothing of it
+    commits, and the next run reads it again. A read that reaches Binance more than the margin
+    cap (8 s) after the request that found its start is refused every time: the span stays
+    unread, in at most 52 requests a run, and nothing is lost (the forward cursor does not pass
+    it). Pinned against a fake clock that the gate's sleeps and the request latency (0 to 300 ms,
+    0 to 3 s, a 9 s spike on every seventh request) move, with all 20 types and run gaps of 0, 1
+    hour and 1 day: a Binance that keeps 100 days gives every transfer it keeps within 2 runs and
+    the forward cursor passes the window that crosses the depth; the same, with a depth that
+    moves with the clock or in steps of a day and the app suspended for 10 or 30 hours inside a
+    wait of the run gate after the narrowing, gives every transfer it keeps, those just above the
+    depth too, within 2 runs; when one type keeps 90 days and the others 100, every transfer each
+    type keeps is imported within 3 runs and nothing is owed after 4; a run planned 3 days before it reads, against a Binance that keeps 180 days, gives
+    every transfer within 3 runs.
   - Windows of 30 days (the cap is not documented, Q10). The walk reads 20 types: the 18 untracked ones plus `MAIN_FUNDING` and
   `FUNDING_MAIN`, those two first. It runs on the shared walk (sections 3 and 4): forward
   pass, owed ranges, re-scan of the last 30 days, owed points, with per-record commits. A
@@ -1235,10 +1261,17 @@ Probe items:
 17. OPEN CHECK (Transfer depth per type): the depth memory (section 5) is shared by all 20
     transfer types, which assumes one depth for the endpoint. Probe B measured the depth for one
     type only (a `startTime` 180 days back served, 200 days back refused). If a type keeps less
-    than the type that found the start is read from, it is refused at that start and the span
-    read stops at its fifth refusal (the span stays unread, every run); if a type keeps more,
+    than the type that found the start is read from, it is refused at that start, its margin
+    grows to the cap in three refusals, and the next refusal narrows from the refused start
+    toward the end of the span (the type is then read from its own start); if a type keeps more,
     the ground it keeps below the shared start is never read. Check: for each of the 20 types,
     the oldest `startTime` served, to the day.
+18. OPEN CHECK (Transfer depth granularity): whether the oldest `startTime` Binance serves
+    moves continuously with the clock or in steps (for example a cutoff at the day). The code
+    assumes only that it moves forward and never back (section 5), so a step is answered by
+    narrowing, and the ground a read skips if it stood still is bounded (129 s). Check: ask the
+    same `startTime` near the depth every minute for two days and note when it changes from
+    served to refused, and by how much the oldest served start jumps.
 
 ## Open questions (each has a safe default)
 

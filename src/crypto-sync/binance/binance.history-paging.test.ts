@@ -9,11 +9,24 @@ import {
   MAX_DEPTH_REFUSALS,
   rememberServedStart,
 } from './binance.history-depth';
-import { jitterMs, movingClockOf } from './binance.depth-test-fixtures';
+import {
+  BINANCE_REQUEST_INTERVAL_MS,
+  COSTS,
+  createBinanceHistoryRun,
+  LANE_CALL_CAPS,
+} from './binance.history-budget';
+import {
+  crossingOf,
+  depthWorldOf,
+  isProbeRead,
+  jitterMs,
+  readDepthWorld,
+  refusedReadsOf,
+  skippedMsOf,
+} from './binance.depth-test-fixtures';
 import type { TotalPage, UnreadableRow } from './binance.history-client';
 import { fetchAllByTotal, readSeriesSpan } from './binance.history-paging';
 import { BinanceHistoryTooOldError, BinanceRateLimitError } from './binance.client';
-import { COSTS, createBinanceHistoryRun, LANE_CALL_CAPS } from './binance.history-budget';
 
 const NOW = 1_704_326_400_000;
 const FULL_PAGE = 100;
@@ -53,7 +66,7 @@ const scripted = (pages: TotalPage<Row>[]) => {
 
 const pagingOf = (
   over: Partial<Parameters<typeof fetchAllByTotal<Row>>[0]> & {
-    fetchPage: (current: number) => Promise<TotalPage<Row>>;
+    fetchPage: (current: number) => Promise<TotalPage<Row> | undefined>;
   },
 ) =>
   fetchAllByTotal<Row>({
@@ -91,6 +104,15 @@ describe('fetchAllByTotal', () => {
       rows: [...pageOf(FULL_PAGE, 250).rows, { id: 100 }, { id: 200 }],
       unreadable: [],
     });
+  });
+
+  it('is a clean stop, spending no call, when the page is not fetched (it answers nothing)', async () => {
+    const run = freshRun();
+    const fetchPage = jest.fn(async () => undefined);
+
+    expect(await pagingOf({ fetchPage, run })).toBeUndefined();
+    expect(fetchPage).toHaveBeenCalledTimes(1);
+    expect(run.budget.canAfford('transfer', COSTS.transfer, CAP - 1)).toBe(true);
   });
 
   it('is the rows of a short page whose rows counted are the total', async () => {
@@ -614,78 +636,7 @@ describe('readSeriesSpan, against a Binance that refuses a start older than it k
 });
 
 describe('readSeriesSpan, against a Binance whose depth moves with a clock the run gate advances', () => {
-  const KEPT_MS = 100 * DAY_MS;
-  const CLOCK_START = 1_800_000_000_000;
   const HOUR_MS = 3_600_000;
-  // The depth is crossed by a span of 30 days: ten days of refused ground, twenty of kept.
-  const crossing = (edgeMs: number) => ({ start: edgeMs - 10 * DAY_MS, end: edgeMs + 20 * DAY_MS });
-
-  type Read = { start: number; end: number };
-  type ReadLatency = (read: Read) => number;
-
-  const depthOnClock = (clock: { now: number }): DepthGuard => ({
-    isRefusal: (error) => error instanceof BinanceHistoryTooOldError,
-    nowMs: () => clock.now,
-    floorMs: () => clock.now - 179 * DAY_MS,
-    memory: createDepthMemory(),
-  });
-
-  /**
-   * A Binance that keeps `KEPT_MS` of a clock that every request moves on by its latency and every
-   * wait of the run gate by its sleep (`afterNarrowing` more, once a start is remembered).
-   */
-  const worldOf = (input: { latencyMs: ReadLatency; waitAfterNarrowingMs?: number }) => {
-    const { clock, newRun } = movingClockOf(CLOCK_START);
-    const base = newRun();
-    const depth = depthOnClock(clock);
-    const run = {
-      budget: base.budget,
-      gate: {
-        wait: async () => {
-          await base.gate.wait();
-          clock.now += depth.memory.startMs === undefined ? 0 : (input.waitAfterNarrowingMs ?? 0);
-        },
-      },
-    };
-    const calls: { read: Read; refused: boolean; sentAtMs: number }[] = [];
-    const fetchPage = jest.fn(async (_series: string, read: Read, _current: number) => {
-      const sentAtMs = clock.now;
-      clock.now += input.latencyMs(read);
-      const refused = read.start < clock.now - KEPT_MS;
-      calls.push({ read: { ...read }, refused, sentAtMs });
-
-      if (refused) {
-        throw new BinanceHistoryTooOldError('too old');
-      }
-
-      return pageOf(0, 0);
-    });
-
-    return { clock, run, depth, calls, fetchPage };
-  };
-
-  const seriesOf = (count: number) =>
-    Array.from({ length: count }, (_unused, index) => `T${index}`);
-
-  const readCrossing = (
-    world: ReturnType<typeof worldOf>,
-    over: { count?: number; span?: Read } = {},
-  ) =>
-    readSeriesSpan<string, Row>({
-      run: world.run,
-      lane: 'transfer',
-      cost: COSTS.transfer,
-      span: over.span ?? crossing(world.clock.now - KEPT_MS),
-      keep: 0,
-      series: seriesOf(over.count ?? 1),
-      maxPages: 50,
-      fetchPage: world.fetchPage,
-      onRateLimit: jest.fn(),
-      depth: world.depth,
-    });
-
-  const refusedReadsOf = (calls: { read: Read; refused: boolean }[]) =>
-    calls.filter(({ read, refused }) => refused && read.end - read.start > 1);
 
   describe.each([
     ['no latency', () => () => 0],
@@ -695,9 +646,9 @@ describe('readSeriesSpan, against a Binance whose depth moves with a clock the r
     it.each([1, 2, 3, 20])(
       'reads a span that crosses the depth to a page of all %i series, from above the depth, refused once',
       async (count) => {
-        const world = worldOf({ latencyMs: latencyOf() });
+        const world = depthWorldOf({ latencyMs: latencyOf() });
 
-        const result = await readCrossing(world, { count });
+        const result = await readDepthWorld(world, { count });
 
         expect(result).toMatchObject({ kind: 'page', page: { drifted: [] } });
         expect(result?.kind === 'page' ? result.page.read : []).toHaveLength(count);
@@ -709,9 +660,9 @@ describe('readSeriesSpan, against a Binance whose depth moves with a clock the r
 
   it('widens the margin for a read that reaches Binance later than the request that found the start, until it is served', async () => {
     // A request that is not a probe takes 2.5 seconds to reach Binance.
-    const world = worldOf({ latencyMs: (read) => (read.end - read.start > 1 ? 2_500 : 0) });
+    const world = depthWorldOf({ latencyMs: (read) => (isProbeRead(read) ? 0 : 2_500) });
 
-    const result = await readCrossing(world, { count: 3 });
+    const result = await readDepthWorld(world, { count: 3 });
 
     expect(result).toMatchObject({ kind: 'page' });
     expect(refusedReadsOf(world.calls)).toHaveLength(3);
@@ -719,88 +670,58 @@ describe('readSeriesSpan, against a Binance whose depth moves with a clock the r
   });
 
   it('begins each read from the start moved on by the wait of the gate, though the wait takes hours', async () => {
-    const world = worldOf({ latencyMs: () => 0, waitAfterNarrowingMs: HOUR_MS });
+    const world = depthWorldOf({ latencyMs: () => 0, suspensions: [{ atWait: 31, ms: HOUR_MS }] });
 
-    const result = await readCrossing(world, { count: 20 });
+    const result = await readDepthWorld(world, { count: 20 });
 
     expect(result).toMatchObject({ kind: 'page', page: { drifted: [] } });
     expect(refusedReadsOf(world.calls)).toHaveLength(1);
+    expect(skippedMsOf(world.calls.slice(30))[0]).toBeLessThanOrEqual(
+      DEPTH_RESOLUTION_MS + DEPTH_MARGIN_MS + BINANCE_REQUEST_INTERVAL_MS,
+    );
   });
 
-  it('never asks for a start at or past the end of the span, when the gate wait carries the clock past it', async () => {
-    const world = worldOf({ latencyMs: () => 0, waitAfterNarrowingMs: HOUR_MS });
-    const span = crossing(CLOCK_START - KEPT_MS);
+  it('never asks a read for a start at or past the end of the span, when the gate wait carries the clock past it', async () => {
+    const world = depthWorldOf({ latencyMs: () => 0, suspensions: [{ atWait: 1, ms: HOUR_MS }] });
+    const span = crossingOf(world.edgeOf('T0', world.clock.now));
     rememberServedStart(world.depth.memory, {
       startMs: span.end - 5_000,
-      servedAtMs: CLOCK_START,
+      servedAtMs: world.clock.now,
     });
 
-    const result = await readCrossing(world, { span });
+    const result = await readDepthWorld(world, { span });
 
     expect(result).toMatchObject({ kind: 'page', page: { drifted: [] } });
-    expect(world.calls.map(({ read }) => read)).toEqual([{ start: span.end - 1, end: span.end }]);
+    const reads = world.calls.filter(({ read }) => !isProbeRead(read));
+    expect(reads).toHaveLength(1);
+    expect(reads[0]?.read.start).toBeGreaterThanOrEqual(span.end - 5_000);
+    expect(reads[0]?.read.start).toBeLessThan(span.end);
   });
 
   it('remembers the start with the clock at the moment the request that served it was sent, after the gate', async () => {
-    const world = worldOf({ latencyMs: () => 0 });
+    const world = depthWorldOf({ latencyMs: () => 0 });
 
-    await readCrossing(world);
+    await readDepthWorld(world);
 
-    const served = world.calls.filter(
-      ({ read, refused }) => read.end - read.start === 1 && !refused,
-    );
+    const served = world.calls.filter(({ read, refused }) => isProbeRead(read) && !refused);
     const lastServed = served[served.length - 1];
     expect(world.depth.memory.startMs).toBe(lastServed?.read.start);
     expect(world.depth.memory.servedAtMs).toBe(lastServed?.sentAtMs);
   });
 
-  it('reads a span read again a day later from the start moved on by that day, with no refusal', async () => {
-    const world = worldOf({ latencyMs: () => 0 });
-    const span = crossing(CLOCK_START - KEPT_MS);
-    await readCrossing(world, { span });
+  it('reads a span read again a day later from a start found between the one it held and the one moved on by that day, with no refusal', async () => {
+    const world = depthWorldOf({ latencyMs: () => 0 });
+    const span = crossingOf(world.edgeOf('T0', world.clock.now));
+    await readDepthWorld(world, { span });
     const firstStart = world.depth.memory.startMs ?? 0;
     world.calls.length = 0;
     world.clock.now += DAY_MS;
 
-    await readCrossing(world, { span });
+    await readDepthWorld(world, { span });
 
-    expect(world.calls).toHaveLength(1);
-    expect(world.calls[0]?.refused).toBe(false);
-    expect(world.calls[0]?.read.start).toBeGreaterThanOrEqual(firstStart + DAY_MS);
-  });
-
-  it('spends at most MAX_DEPTH_REFUSALS refused reads and 23 narrowing requests on a span of 30 days: 28 requests', async () => {
-    const world = worldOf({ latencyMs: () => 0 });
-    // Every probe is served and every read is refused, whatever the clock.
-    const fetchPage = jest.fn(async (_series: string, read: Read, _current: number) => {
-      world.calls.push({
-        read: { ...read },
-        refused: read.end - read.start > 1,
-        sentAtMs: world.clock.now,
-      });
-
-      if (read.end - read.start > 1) {
-        throw new BinanceHistoryTooOldError('too old');
-      }
-
-      return pageOf(0, 0);
-    });
-
-    const result = await readSeriesSpan<string, Row>({
-      run: world.run,
-      lane: 'transfer',
-      cost: COSTS.transfer,
-      span: crossing(CLOCK_START),
-      keep: 0,
-      series: seriesOf(3),
-      maxPages: 50,
-      fetchPage,
-      onRateLimit: jest.fn(),
-      depth: world.depth,
-    });
-
-    expect(result).toBeUndefined();
-    expect(refusedReadsOf(world.calls)).toHaveLength(MAX_DEPTH_REFUSALS);
-    expect(world.calls).toHaveLength(28);
+    const probes = world.calls.filter(({ read }) => isProbeRead(read));
+    expect(refusedReadsOf(world.calls)).toHaveLength(0);
+    expect(probes.length).toBe(1 + Math.ceil(Math.log2(DAY_MS / DEPTH_RESOLUTION_MS)));
+    expect(world.calls.at(-1)?.read.start).toBeGreaterThanOrEqual(firstStart + DAY_MS);
   });
 });

@@ -8,6 +8,13 @@ import { transactionRowDescription } from '@kiko/transactions/row-description';
 import { exchangeExcludedTransactionIds } from '@kiko/statistics/exchange-exclusion';
 
 import {
+  DEPTH_EXTRAPOLATION_MAX_MS,
+  DEPTH_MARGIN_CAP_MS,
+  DEPTH_MARGIN_MS,
+  DEPTH_RESOLUTION_MS,
+  MAX_DEPTH_REFUSALS,
+} from './binance.history-depth';
+import {
   type BinanceUniversalTransfer,
   type TotalPage,
   type UniversalTransferType,
@@ -28,9 +35,8 @@ import { BinanceWalkStop } from './binance.history-walk';
 import { HISTORY_FLOOR_MS } from './binance.transactions';
 import { isBinanceCoolingDown } from './binance.cooldown';
 import { FUNDING_KEY, SPOT_KEY } from './binance.holding-keys';
-import { jitterMs, movingClockOf } from './binance.depth-test-fixtures';
-import { DEPTH_MARGIN_MS, DEPTH_RESOLUTION_MS } from './binance.history-depth';
 import { BinanceHistoryTooOldError, BinanceRateLimitError } from './binance.client';
+import { jitterMs, movingClockOf, suspendableRun } from './binance.depth-test-fixtures';
 import { COSTS, createBinanceHistoryRun, LANE_CALL_CAPS } from './binance.history-budget';
 
 const FLOOR = NOW - 179 * DAY_MS;
@@ -1219,12 +1225,14 @@ describe('a read that leaves the end out, as the live transfer endpoint does', (
 describe('a Binance that refuses a startTime older than the history it keeps (code -5026)', () => {
   /**
    * Binance as it answers: a read that starts more than `days` before the clock (`now`, a time or
-   * the clock itself) is refused.
+   * the clock itself) is refused. Its depth moves in steps of `stepMs` (1: with the clock).
    */
   const keepingDays =
-    (days: number, now: number | (() => number)): Answer =>
+    (days: number, now: number | (() => number), stepMs = 1): Answer =>
     (query) => {
-      if ((typeof now === 'number' ? now : now()) - query.startTime > days * DAY_MS) {
+      const nowMs = typeof now === 'number' ? now : now();
+
+      if (query.startTime < Math.floor((nowMs - days * DAY_MS) / stepMs) * stepMs) {
         throw new BinanceHistoryTooOldError('Binance request failed: 400: too old');
       }
 
@@ -1459,31 +1467,38 @@ describe('a Binance that refuses a startTime older than the history it keeps (co
 
     /**
      * `runs` runs on one world, `gapMs` apart, on one clock: the gate's sleeps and the latency of
-     * each request (`latencyMs`) move it, Binance keeps `days` of it, and the first run's app was
-     * suspended for `suspendedMs` after the run was planned. Each run's end is a snapshot.
+     * each request (`latencyMs`) move it, Binance keeps what `keepingOf` says of it, and the first
+     * run's app was suspended for `suspendedMs` after the run was planned, and for the
+     * `suspendedInGate` inside a wait of its run gate. Each run's end is a snapshot.
      */
     const walkAlongClock = async (input: {
       world: World;
       entries: Entry[];
-      days: number;
+      keepingOf: (clock: { now: number }) => Answer;
       gapMs: number;
       runs: number;
-      latencyMs: () => number;
+      latencyMs: (query: TransferQuery) => number;
       suspendedMs?: number;
+      suspendedInGate?: { atWait: number; ms: number };
     }) => {
-      const { world, entries, days, gapMs, runs, latencyMs, suspendedMs = 0 } = input;
+      const { world, entries, keepingOf, gapMs, runs, latencyMs, suspendedMs = 0 } = input;
       const { clock, newRun } = movingClockOf(NOW);
-      const keeping = keepingDays(days, () => clock.now);
+      const keeping = keepingOf(clock);
       const snapshots: { ids: Set<string>; cursor: unknown; requests: TransferQuery[] }[] = [];
 
       for (let index = 0; index < runs; index += 1) {
         const suspendedFor = index === 0 ? suspendedMs : 0;
+        const inGate = index === 0 ? input.suspendedInGate : undefined;
         const { requests } = await walkOnce({
           world,
           entries,
-          run: newRun(),
+          run: suspendableRun({
+            run: newRun(),
+            clock,
+            suspensions: foldMap(maybe(inGate), (suspension) => [suspension]) ?? [],
+          }),
           answer: (query) => {
-            clock.now += latencyMs();
+            clock.now += latencyMs(query);
 
             return keeping(query);
           },
@@ -1507,9 +1522,27 @@ describe('a Binance that refuses a startTime older than the history it keeps (co
       return snapshots;
     };
 
+    const keepingDaysOf =
+      (days: number, stepMs = 1) =>
+      (clock: { now: number }): Answer =>
+        keepingDays(days, () => clock.now, stepMs);
+
+    // A request in seven takes 9 seconds to reach Binance, the others 100 ms.
+    const spikeEverySeventh = () => {
+      let count = 0;
+
+      return () => {
+        count += 1;
+
+        return count % 7 === 0 ? 9_000 : 100;
+      };
+    };
+
     const LATENCIES = [
       ['no latency', () => () => 0],
       ['a latency of 0 to 300 ms', jitterMs],
+      ['a latency of 0 to 3 seconds', () => jitterMs(3_000)],
+      ['a spike of 9 seconds on every seventh request', spikeEverySeventh],
     ] as const;
 
     describe.each(LATENCIES)('with %s', (_name, latencyOf) => {
@@ -1530,7 +1563,7 @@ describe('a Binance that refuses a startTime older than the history it keeps (co
             const snapshots = await walkAlongClock({
               world,
               entries,
-              days: 100,
+              keepingOf: keepingDaysOf(100),
               gapMs,
               runs: 2,
               latencyMs: latencyOf(),
@@ -1559,7 +1592,7 @@ describe('a Binance that refuses a startTime older than the history it keeps (co
           const snapshots = await walkAlongClock({
             world,
             entries,
-            days: 180,
+            keepingOf: keepingDaysOf(180),
             gapMs,
             runs: 3,
             latencyMs: latencyOf(),
@@ -1573,6 +1606,130 @@ describe('a Binance that refuses a startTime older than the history it keeps (co
         },
       );
     });
+
+    const MINUTE_MS = 60_000;
+    const LAST_TYPE = UNIVERSAL_TRANSFER_TYPES[TYPE_COUNT - 1];
+    // The most of the ground Binance keeps that a read skips when its depth stands still.
+    const SKIPPED_BOUND_MS = DEPTH_RESOLUTION_MS + DEPTH_EXTRAPOLATION_MAX_MS + DEPTH_MARGIN_CAP_MS;
+
+    /** Which of the transfers `tranIds` name are among the imported `ids`, in the order given. */
+    const importedOf = (ids: Iterable<string> | undefined, tranIds: string[]): string[] =>
+      tranIds.filter((tranId) => [...(ids ?? [])].some((id) => id.includes(`:${tranId}:`)));
+
+    describe.each([
+      ['with the clock', 1, 3 * MINUTE_MS],
+      ['in steps of a day', DAY_MS, 20_000],
+    ])(
+      'against a Binance that keeps 100 days and whose depth moves %s',
+      (_name, stepMs, nearMs) => {
+        describe.each(RUN_GAPS)('runs %i ms apart', (gapMs) => {
+          it.each([
+            ['10 hours', 10 * HOUR_MS],
+            ['30 hours', 30 * HOUR_MS],
+          ])(
+            'imports every transfer it keeps within 2 runs, those just above the depth too, when the app is suspended for %s in a gate wait after a narrowing',
+            async (_label, suspendedMs) => {
+              const world = worldOf();
+              const depthAfterMs = Math.floor((NOW + suspendedMs - 100 * DAY_MS) / stepMs) * stepMs;
+              const entries = [
+                entryOf({ tranId: 'refused', timestamp: agoMs(110) }),
+                entryOf({ tranId: 'edge-first', timestamp: depthAfterMs + SKIPPED_BOUND_MS }),
+                entryOf({ tranId: 'edge-last', type: LAST_TYPE, timestamp: depthAfterMs + nearMs }),
+                entryOf({ tranId: 'middle', timestamp: agoMs(80) }),
+                entryOf({ tranId: 'newest', timestamp: agoMs(2) }),
+              ];
+
+              const snapshots = await walkAlongClock({
+                world,
+                entries,
+                keepingOf: keepingDaysOf(100, stepMs),
+                gapMs,
+                runs: 3,
+                latencyMs: jitterMs(),
+                suspendedInGate: { atWait: 40, ms: suspendedMs },
+              });
+
+              expect(
+                importedOf(snapshots[1]?.ids, [
+                  'refused',
+                  'edge-first',
+                  'edge-last',
+                  'middle',
+                  'newest',
+                ]),
+              ).toEqual(['edge-first', 'edge-last', 'middle', 'newest']);
+              expect(Number(snapshots[1]?.cursor)).toBeGreaterThan(agoMs(100) + TRANSFER_WINDOW_MS);
+              expect(listOf(world)).toEqual([]);
+              expect(stopCodes(warn)).toEqual([]);
+            },
+          );
+        });
+      },
+    );
+
+    describe.each(RUN_GAPS)(
+      'runs %i ms apart, against a Binance whose last type keeps 90 days and the others 100',
+      (gapMs) => {
+        const keepingOf =
+          (clock: { now: number }): Answer =>
+          (query) =>
+            keepingDays(query.type === LAST_TYPE ? 90 : 100, () => clock.now)(query);
+
+        it('imports every transfer each type keeps within 3 runs, and owes nothing: the type narrows from the start the others share', async () => {
+          const world = worldOf();
+          const entries = [
+            entryOf({ tranId: 'first', timestamp: agoMs(99) }),
+            entryOf({ tranId: 'unkept', type: LAST_TYPE, timestamp: agoMs(95) }),
+            entryOf({ tranId: 'last', type: LAST_TYPE, timestamp: agoMs(89) }),
+            entryOf({ tranId: 'newest', timestamp: agoMs(2) }),
+          ];
+
+          const snapshots = await walkAlongClock({
+            world,
+            entries,
+            keepingOf,
+            gapMs,
+            runs: 4,
+            latencyMs: jitterMs(),
+          });
+
+          expect(importedOf(snapshots[1]?.ids, ['first', 'unkept', 'last'])).toEqual([
+            'first',
+            'last',
+          ]);
+          expect(importedOf(snapshots[2]?.ids, ['newest'])).toEqual(['newest']);
+          expect(Number(snapshots[1]?.cursor)).toBeGreaterThan(agoMs(100) + TRANSFER_WINDOW_MS);
+          expect(listOf(world)).toEqual([]);
+          expect(stopCodes(warn)).toEqual([]);
+        });
+      },
+    );
+
+    describe.each(RUN_GAPS)(
+      'runs %i ms apart, against a Binance that keeps 100 days and answers a read 10 seconds late',
+      (gapMs) => {
+        it('stops the crossing window with nothing read, in the most requests a window spends, and never rejects', async () => {
+          const world = worldOf();
+          const entries = [entryOf({ tranId: 'oldest', timestamp: agoMs(95) })];
+
+          const snapshots = await walkAlongClock({
+            world,
+            entries,
+            keepingOf: keepingDaysOf(100),
+            gapMs,
+            runs: 2,
+            latencyMs: (query) => (query.endTime - query.startTime === 1 ? 50 : 10_000),
+          });
+
+          const windowRequests = snapshots[0]?.requests.slice(4) ?? [];
+          expect(world.added).toEqual([]);
+          expect(Number(snapshots[1]?.cursor)).toBeLessThan(agoMs(100));
+          expect(listOf(world)).toEqual([]);
+          expect(windowRequests.length).toBeLessThanOrEqual(MAX_DEPTH_REFUSALS + 2 * 23);
+          expect(stopCodes(warn)).toEqual([]);
+        });
+      },
+    );
   });
 
   it('loses no row and reads none twice when Binance refuses the start on a type after earlier types returned rows', async () => {
