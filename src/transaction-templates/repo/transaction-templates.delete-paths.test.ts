@@ -112,7 +112,9 @@ describe('deleting a holding clears it in the templates', () => {
     const before = storedDraftText('named');
     failDeletesFrom('holdings');
 
-    await expect(transactionsRepo.removeHolding('uah')).rejects.toThrow();
+    await expect(transactionsRepo.removeHolding('uah')).rejects.toThrow(
+      /Failed query: delete from "holdings"/,
+    );
 
     expect(storedDraftText('named')).toBe(before);
   });
@@ -137,7 +139,9 @@ describe('deleting an account clears every holding of it in the templates', () =
     const before = storedDraftText('first');
     failDeletesFrom('accounts');
 
-    await expect(accountsRepo.remove('account')).rejects.toThrow();
+    await expect(accountsRepo.remove('account')).rejects.toThrow(
+      /Failed query: delete from "accounts"/,
+    );
 
     expect(storedDraftText('first')).toBe(before);
   });
@@ -177,7 +181,9 @@ describe('deleting a category clears it in the templates', () => {
     const before = storedDraftText('groceries');
     failDeletesFrom('categories');
 
-    await expect(categoriesRepo.delete('groceries')).rejects.toThrow();
+    await expect(categoriesRepo.delete('groceries')).rejects.toThrow(
+      /Failed query: delete from "categories"/,
+    );
 
     expect(storedDraftText('groceries')).toBe(before);
   });

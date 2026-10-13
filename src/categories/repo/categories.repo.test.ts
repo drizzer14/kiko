@@ -331,7 +331,9 @@ describe('categoriesRepo.delete', () => {
     const { databaseTransaction } = makeDatabaseTransaction([{ defaultCategoryKey: 'other' }]);
     mockDatabaseTransaction = databaseTransaction;
 
-    await expect(categoriesRepo.delete('other')).rejects.toThrow();
+    await expect(categoriesRepo.delete('other')).rejects.toThrow(
+      'cannot delete the default category',
+    );
 
     expect(mockClearCategoryDatabaseTransaction).not.toHaveBeenCalled();
   });
