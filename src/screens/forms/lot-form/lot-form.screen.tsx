@@ -14,7 +14,6 @@ import { holdingsRepo } from '@kiko/holdings/repo';
 import { parseAmount } from '@kiko/currency/parse';
 import Box from '@kiko/design-system/components/box';
 import DateField from '@kiko/screens/forms/date-field';
-import Button from '@kiko/design-system/components/button';
 import Screen from '@kiko/design-system/components/screen';
 import { View, type TextInputInstance } from 'react-native';
 import { asMetalMeta } from '@kiko/holdings/holding-metadata';
@@ -32,6 +31,7 @@ import { dayKeyOf, localMidnightOfDayKey } from '@kiko/prices/price-book';
 import { useScrollToField } from '@kiko/design-system/use-scroll-to-field';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { type FC, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useFormHeaderItems } from '@kiko/screens/forms/use-form-header-items';
 import SegmentedControl from '@kiko/design-system/components/segmented-control';
 import { groupAmount, majorAmountText } from '@kiko/screens/forms/amount-format';
 
@@ -229,17 +229,10 @@ const LotFormScreen: FC<LotFormScreenProps> = ({ route, navigation }) => {
 
   const { onPress: onSave, isSubmitting } = useSubmitOnce(save);
 
+  useFormHeaderItems({ navigation, onSave, hasSave: true, isSaving: isSubmitting });
+
   return (
-    <Screen
-      scroll
-      scrollableRef={scrollableRef}
-      onContentSizeChange={onContentSizeChange}
-      footer={
-        <Button onPress={onSave} disabled={isSubmitting}>
-          {t('forms.lot.save')}
-        </Button>
-      }
-    >
+    <Screen scroll scrollableRef={scrollableRef} onContentSizeChange={onContentSizeChange}>
       <Box gap={4}>
         <Box gap={1}>
           <FieldLabel label={t('forms.lot.type')} />

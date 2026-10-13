@@ -70,11 +70,15 @@ Rules:
   and guard-rule jest suites run only in `make verify`.
 - Per-task deep gates: a per-file floor miss is fixed with tests only,
   never an exclusion.
-- Re-gate of named files across a big merge: `mutation.sh` has no
-  file-list mode, so the coordinator runs Stryker directly with
-  `--mutate` on the named files and reads the per-file floor (60) from
-  `reports/mutation/mutation.json`. This is a documented deviation until
-  a file-list option exists.
+- Re-gate of named files across a big merge: `make mutable` prints one
+  line per file. For `<path> a-b,c-d (N changed lines)` pass one `--mutate`
+  entry per range (`<path>:a-b`, `<path>:c-d`), never the comma list
+  (Stryker splits on the comma, so the later ranges are never mutated).
+  For `<path> whole file (N lines)` pass the plain path. Never pass a
+  plain path and a range for the same file (Stryker reads that as "do not
+  mutate"). The source of truth is the `entries` variable in
+  `scripts/checks/mutation.sh`. Read the per-file floor (60) from
+  `reports/mutation/mutation.json`.
 
 ## Run log
 
@@ -180,12 +184,14 @@ after excludes is within `MUTATION_FILE_CAP` (read it in
 `scripts/checks/mutation.sh`); a larger batch splits into change sets
 with their own bases. Count with the gate's own filter, never by hand:
 `KIKO_MUTATION_BASE=<base sha> make mutable` (it runs
-`mutation.sh --list`) prints the files and `mutable files: N (cap …)`,
+`mutation.sh --list`) prints each file's changed-line ranges, `changed lines: N`, and
+`mutable files: N (cap …)` last,
 exits 2 above the cap, and never starts Stryker or takes its lock. A
 change set with 0 mutable files gets no mutation run: `mutation.sh`
 exits 0 on 0 files without starting Stryker. A changed file whose diff
 is only comments or whitespace is left out of that count by the script
-itself (it prints `skipped (comment-only): <path>`); a `Stryker` or JSX
+itself (it prints `skipped (comment-only): <path>`; a file with no added line
+prints `skipped (no added lines): <path>`); a `Stryker` or JSX
 pragma comment, a colocated test changed by more than comments, or any
 doubt, keeps the file.
 
@@ -337,7 +343,7 @@ run the full `make verify`.
 
 Once a track has merged into `next`, set `KIKO_MUTATION_BASE` to
 `next`'s own sha for that track's mutation run, so only the track's own
-files mutate — not everything `next` already contains. (One line; this
+changed lines mutate — not everything `next` already contains. (One line; this
 does not contradict the "Mutation testing: small change sets only"
 section above, which sets the base to the change set's OWN base commit
 before it has merged.)

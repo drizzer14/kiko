@@ -112,7 +112,7 @@ export const resolveFieldScrollTarget = (
   // Flooring at 0 instead forced MORE scroll than a near-top field needed,
   // landing its top back inside the header band whenever the user was
   // already scrolled down when Save ran (the common case — Save is a pinned
-  // footer button reachable from any scroll position, so an early field can
+  // nav-bar button reachable from any scroll position, so an early field can
   // fail validation while `currentOffset` is deep into a long form).
   const lowerBound = -headerInset;
 

@@ -648,7 +648,9 @@ message keys before calling `Alert.alert` itself).
 Every Kiko form (`account-form.screen.tsx` and its siblings) follows
 one validation model — don't hand-roll a different one:
 
-- The Save/submit button is **always enabled**, never a standing
+- The Save is the form's nav-bar item from `useFormHeaderItems`
+  (`src/screens/forms/use-form-header-items/`), never a footer button
+  (Import on the statement import screen stays a footer button). It is **always enabled**, never a standing
   `disabled={!isValid}` gate. Validate on press instead: the submit
   handler checks its own guard (e.g. `canSave = trimmedName !== ''`)
   and returns early when it fails, only then revealing the error.
@@ -656,6 +658,12 @@ one validation model — don't hand-roll a different one:
   saved value depends on data still loading: the holding form's edit
   waits for the price book. See `kiko-design-system`'s FieldError
   entry.
+- A native bar-button press does not blur the focused field, so a value
+  derived on blur (for example the TransactionForm category auto-pick)
+  is settled synchronously in the save path, from the same helper the
+  blur handler calls (`categoryForName`, `settleCategory` in
+  `src/screens/forms/transaction-form/use-category-pick/use-category-pick.ts`).
+  Pin it with a test that presses Save without a blur.
 - A blocked field shows its message via the shared `FieldError`
   component (`src/design-system/components/field-error/`), not a
   hand-rolled `Box`+`Text` caption — see that component's own doc

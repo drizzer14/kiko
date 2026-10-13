@@ -5,6 +5,7 @@ import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
 import { holdingsRepo } from '@kiko/holdings/repo';
 import { scrollToField, useHeaderInset } from '@kiko/design-system/scroll-to-field';
+import { expectNavBarSaveOnly, pressSave, saveItem } from '@kiko/test-support/form-header-items';
 import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support/navigation-props';
 
 import ContributionFormScreen from './contribution-form.screen';
@@ -98,12 +99,16 @@ describe('ContributionFormScreen', () => {
     expect(queryByText('₴')).toBeNull();
   });
 
+  it('offers Save only as the prominent nav-bar item, never as a body button', async () => {
+    expectNavBarSaveOnly(navigation.setOptions, await renderScreen());
+  });
+
   it('appends the entered amount at the picked date and navigates back', async () => {
     const utils = await renderScreen();
 
     await fireEvent.changeText(utils.getByLabelText('Amount'), '1000');
     await pickDate(utils, 2025, 6, 1);
-    await fireEvent.press(utils.getByText('Save contribution'));
+    await pressSave(navigation.setOptions);
 
     // 1,000.00 UAH -> 100,000 minor units; the picked day lands at LOCAL
     // midnight, matching DateField and the interest boundaries.
@@ -134,10 +139,11 @@ describe('ContributionFormScreen', () => {
 
     await fireEvent.changeText(utils.getByLabelText('Amount'), '1000');
 
-    const save = utils.getByText('Save contribution');
-
-    await fireEvent.press(save);
-    await fireEvent.press(save);
+    await pressSave(navigation.setOptions);
+    // The item is disabled while the first write is pending, so the second tap is the raw handler.
+    await act(async () => {
+      saveItem(navigation.setOptions)?.onPress();
+    });
 
     expect(holdingsRepo.appendDepositContribution).toHaveBeenCalledTimes(1);
 
@@ -157,7 +163,7 @@ describe('ContributionFormScreen', () => {
     const utils = await renderScreen();
 
     await fireEvent.changeText(utils.getByLabelText('Amount'), '250');
-    await fireEvent.press(utils.getByText('Save contribution'));
+    await pressSave(navigation.setOptions);
 
     expect(holdingsRepo.appendDepositContribution).toHaveBeenCalledWith('h-1', {
       amountMinorUnits: 25_000,
@@ -171,7 +177,7 @@ describe('ContributionFormScreen', () => {
     await fireEvent.changeText(utils.getByLabelText('Amount'), '1000000');
     expect(utils.getByLabelText('Amount').props.value).toBe('1 000 000');
 
-    await fireEvent.press(utils.getByText('Save contribution'));
+    await pressSave(navigation.setOptions);
 
     expect(holdingsRepo.appendDepositContribution).toHaveBeenCalledWith(
       'h-1',
@@ -180,9 +186,9 @@ describe('ContributionFormScreen', () => {
   });
 
   it('does not append when the amount is blank', async () => {
-    const utils = await renderScreen();
+    await renderScreen();
 
-    await fireEvent.press(utils.getByText('Save contribution'));
+    await pressSave(navigation.setOptions);
 
     expect(holdingsRepo.appendDepositContribution).not.toHaveBeenCalled();
     expect(navigation.goBack).not.toHaveBeenCalled();
@@ -192,15 +198,14 @@ describe('ContributionFormScreen', () => {
     const utils = await renderScreen();
 
     await fireEvent.changeText(utils.getByLabelText('Amount'), '0');
-    await fireEvent.press(utils.getByText('Save contribution'));
+    await pressSave(navigation.setOptions);
 
     expect(holdingsRepo.appendDepositContribution).not.toHaveBeenCalled();
   });
 
   it('keeps Save always enabled, regardless of the amount', async () => {
     const utils = await renderScreen();
-    const isSaveDisabled = (): boolean | undefined =>
-      utils.getByText('Save contribution').parent?.props.accessibilityState.disabled;
+    const isSaveDisabled = (): boolean | undefined => saveItem(navigation.setOptions)?.disabled;
 
     expect(isSaveDisabled()).toBe(false);
 
@@ -213,7 +218,7 @@ describe('ContributionFormScreen', () => {
 
     expect(utils.queryByText('Amount must be greater than 0.')).toBeNull();
 
-    await fireEvent.press(utils.getByText('Save contribution'));
+    await pressSave(navigation.setOptions);
     expect(utils.getByText('Amount must be greater than 0.')).toBeTruthy();
     expect(holdingsRepo.appendDepositContribution).not.toHaveBeenCalled();
 
@@ -224,7 +229,7 @@ describe('ContributionFormScreen', () => {
   it('shows the amount error directly on the Amount field, not as a separate block', async () => {
     const utils = await renderScreen();
 
-    await fireEvent.press(utils.getByText('Save contribution'));
+    await pressSave(navigation.setOptions);
 
     expect(utils.getByText('Amount must be greater than 0.')).toBeTruthy();
     const flatStyle = StyleSheet.flatten(utils.getByLabelText('Amount').props.style);
@@ -232,9 +237,9 @@ describe('ContributionFormScreen', () => {
   });
 
   it('scrolls to the amount field when Save is pressed while it is invalid', async () => {
-    const utils = await renderScreen();
+    await renderScreen();
 
-    await fireEvent.press(utils.getByText('Save contribution'));
+    await pressSave(navigation.setOptions);
 
     expect(scrollToField).toHaveBeenCalled();
   });
@@ -244,7 +249,7 @@ describe('ContributionFormScreen', () => {
     const utils = await renderScreen();
 
     await fireEvent(utils.getByTestId('screen-scroll-view'), 'contentSizeChange', 0, 640);
-    await fireEvent.press(utils.getByText('Save contribution'));
+    await pressSave(navigation.setOptions);
 
     expect(scrollToField).toHaveBeenCalledTimes(1);
     const [scrollableRef, fieldRef, geometry, onSettled] = (scrollToField as jest.Mock).mock
@@ -262,7 +267,7 @@ describe('ContributionFormScreen', () => {
     const utils = await renderScreen();
 
     await fireEvent.changeText(utils.getByLabelText('Amount'), '1000');
-    await fireEvent.press(utils.getByText('Save contribution'));
+    await pressSave(navigation.setOptions);
 
     await waitFor(() => expect(alertSpy).toHaveBeenCalled());
     expect(navigation.goBack).not.toHaveBeenCalled();
@@ -287,11 +292,11 @@ describe('ContributionFormScreen — localization', () => {
       await i18n.changeLanguage('uk');
     });
 
-    const { getByLabelText, getByText, queryByText } = await renderScreen();
+    const { getByLabelText, queryByText } = await renderScreen();
 
     expect(getByLabelText('Сума')).toBeTruthy();
     expect(getByLabelText('Дата')).toBeTruthy();
-    expect(getByText('Зберегти внесок')).toBeTruthy();
+    expect(saveItem(navigation.setOptions, 'Зберегти')).toBeDefined();
     expect(queryByText('Amount')).toBeNull();
   });
 
@@ -304,7 +309,7 @@ describe('ContributionFormScreen — localization', () => {
 
     const utils = await renderScreen();
     await fireEvent.changeText(utils.getByLabelText('Сума'), '1000');
-    await fireEvent.press(utils.getByText('Зберегти внесок'));
+    await pressSave(navigation.setOptions, 'Зберегти');
 
     await waitFor(() =>
       expect(alertSpy).toHaveBeenCalledWith('Не вдалося додати внесок', 'Спробуйте ще раз.'),

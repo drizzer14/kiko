@@ -136,7 +136,7 @@ appId: com.dmytro-vasylkivskyi.kiko
     index: 1
 - inputText: "3500000"
 - tapOn:
-    text: "Save value"
+    text: "Save"
 
 # ---------------------------------------------------------------------------
 # P2/P3: a Metals account holding one gold bar. `useMetalFields`'s own
