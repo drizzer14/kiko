@@ -11,8 +11,8 @@ import type { LoadingStateProps } from './loading-state.props';
  * settle well under this, so a screen that resolves quickly never flashes a
  * spinner at all — only a genuinely slow first read (queued behind an
  * app-open write burst) shows one. Never change readiness semantics for
- * this: the screen is still gated on `useDataReady` exactly as before, only
- * the VISUAL spinner is delayed.
+ * this: the screen stays gated on `useDataReady`; only the VISUAL spinner is
+ * delayed.
  */
 export const SPINNER_DELAY_MS = 200;
 

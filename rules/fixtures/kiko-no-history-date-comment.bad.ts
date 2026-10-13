@@ -25,6 +25,21 @@ export const decidedOn = true;
 export const confirmedDate = true;
 
 // EXPECT-FINDING
+// The server answers 13 months back (probed 2026-10-06) with 200.
+export const probedLine = true;
+
+// EXPECT-FINDING
+// Probed on 2026-10-13: a start 180 days back is served and one 200 days back is refused.
+export const probedOnCapital = true;
+
+// EXPECT-FINDING
+/* The depth is 180 days, probed 2026-10-13, and a start older than it is refused. */
+export const probedBlock = true;
+
+// EXPECT-FINDING
+export const probedAfterCode = 1; // Keeps 180 days, probed 2026-10-13.
+
+// EXPECT-FINDING
 /* The pill is pinned to 5 rows, as ruled 2026-09-30 for this table. */
 export const ruledBlock = true;
 

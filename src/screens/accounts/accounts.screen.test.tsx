@@ -164,8 +164,8 @@ const setLiveData = (data: {
   rates?: Rate[];
   settings?: Settings[];
   // Per-table isLoading overrides, for the loading-gate tests only — every
-  // key defaults to `false` (an already-resolved query), so every existing
-  // call site above keeps behaving exactly as before.
+  // key defaults to `false` (an already-resolved query), so a call site that
+  // omits it sees resolved queries.
   isLoading?: Partial<Record<string, boolean>>;
   // Per-table "still the cached rows" overrides (`isFresh: false`), for the
   // reorder-gate tests only — every key defaults to fresh.
@@ -344,7 +344,7 @@ describe('AccountsScreen', () => {
     ).toBe(0);
     const leadBox = StyleSheet.flatten(ancestorWithStyle(title, 'alignItems').props.style);
     expect(leadBox.flex).toBe(1);
-    // A short name still centers beside the icon tile, as before.
+    // A short name still centers beside the icon tile.
     expect(leadBox.alignItems).toBe('center');
   });
 

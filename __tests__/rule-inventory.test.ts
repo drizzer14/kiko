@@ -67,12 +67,12 @@ const singleTestFileExcludes = (yamlText: string): string[] =>
     (entry) => !GLOB_CHARACTER_PATTERN.test(entry) && TEST_FILE_PATTERN.test(entry),
   );
 
-// kiko-linter's rule sections tell which of the comment-history rules block (ERROR) and which only
-// warn until the tree holds 0 findings. A severity changed in the rule file alone would pass every
-// fixture, so flipping one is a deliberate edit here too.
+// kiko-linter's rule sections tell which of the comment-history rules block (ERROR). A severity
+// changed in the rule file alone would pass every fixture, so flipping one is a deliberate edit
+// here too.
 const PINNED_SEVERITIES = {
   'kiko-no-history-word-comment': 'ERROR',
-  'kiko-no-task-id-comment': 'WARNING',
+  'kiko-no-task-id-comment': 'ERROR',
 };
 
 const RULE_BLOCK_START_PATTERN = /^ {2}- id: /m;
@@ -142,7 +142,7 @@ describe('rule severity', () => {
     ]);
   });
 
-  it('keeps the word rule an error and the task-id rule a warning', () => {
+  it('keeps the word rule and the task-id rule errors', () => {
     const severities = new Map(ruleFileTexts.flatMap((text) => [...ruleSeverities(text)]));
 
     expect(

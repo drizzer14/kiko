@@ -31,8 +31,7 @@ export type MoneyTextProps = {
   // (white). Ignored when `tone` is supplied.
   context?: MoneyTextContext;
   // Overrides the `context`-driven color resolution above with an explicit
-  // tone. Optional; when absent, behavior is unchanged (the amount is
-  // colored by `context` + sign as before).
+  // tone. Optional; when absent, the amount is colored by `context` + sign.
   tone?: MoneyTextTone;
   // Forwarded to the underlying Text so a caller can enlarge/align the amount
   // (e.g. the Home balance header). `color` is intentionally excluded so the

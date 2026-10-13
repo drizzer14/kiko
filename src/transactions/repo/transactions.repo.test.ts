@@ -524,8 +524,8 @@ const makeRemoveDatabaseTransaction = (options: {
 // lookup is skipped entirely when no input carries a description. The upsert
 // may now run as SEVERAL chunked `.values(...)` calls (`chunkForTable`), so
 // `captured.inserted` is the FLATTENED concatenation of every chunk, in call
-// order — a single-chunk batch (every existing test below) sees the same
-// shape as before; `captured.insertCallCount` exposes how many chunks ran.
+// order — a single-chunk batch (every test below) sees the unchunked shape;
+// `captured.insertCallCount` exposes how many chunks ran.
 const makeAddManyDatabaseTransaction = (
   rules: { normalizedName: string; category: string }[],
   existing: { source: string; externalId: string }[] = [],

@@ -346,8 +346,8 @@ const seed = (
   // unaffected (a priced holding with no points falls back to cost basis).
   pricePoints: unknown[] = [],
   // Per-table isLoading overrides, for the loading-gate tests only — every
-  // key defaults to `false` (an already-resolved query), so every existing
-  // call site above keeps behaving exactly as before.
+  // key defaults to `false` (an already-resolved query), so a call site that
+  // omits it sees resolved queries.
   isLoading: Partial<Record<string, boolean>> = {},
   // The rows `listLinkedToLoanQuery` resolves to — the loan detail's own
   // "Linked payments" section. Defaults to none, so every existing
