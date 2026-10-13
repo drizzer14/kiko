@@ -1,7 +1,16 @@
+import {
+  rmSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  realpathSync,
+  readFileSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { type SpawnSyncReturns, spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 
 import { writeExecutable } from './test-support/mutation-repository';
 
@@ -113,6 +122,91 @@ describe('scripts/job-queue.sh usage', () => {
 
     expect(result.status).toBe(2);
     expect(result.stderr).toContain('not a directory');
+  });
+});
+
+const createWorktree = (sandbox: Sandbox, name: string): string => {
+  const worktree = join(sandbox.root, name);
+  mkdirSync(worktree);
+
+  return worktree;
+};
+
+const readLines = (path: string): string[] =>
+  existsSync(path) ? readFileSync(path, 'utf8').split('\n').filter(Boolean) : [];
+
+const entriesOf = (directory: string): string[] =>
+  existsSync(directory) ? readdirSync(directory) : [];
+
+describe('scripts/job-queue.sh a single job', () => {
+  it('runs make verify with FORCE_COLOR unset, in the worktree it was given', () => {
+    const sandbox = createSandbox();
+    const worktree = createWorktree(sandbox, 'one');
+
+    const result = runQueue(sandbox, 'verify', worktree, 'one');
+
+    expect(result.status).toBe(0);
+    expect(readLines(sandbox.environment.KIKO_STUB_CALLS as string)).toEqual([
+      `make -C ${worktree} verify`,
+      expect.stringMatching(/^ {2}cwd /),
+      '  force-color unset',
+      '  base unset',
+    ]);
+  });
+
+  it('passes the job exit code through and prints QUEUED, START, and DONE lines', () => {
+    const sandbox = createSandbox();
+    const worktree = createWorktree(sandbox, 'one');
+    sandbox.environment.KIKO_STUB_EXIT = '7';
+
+    const result = runQueue(sandbox, 'verify', worktree, 'one');
+
+    expect(result.status).toBe(7);
+    expect(result.stdout).toMatch(/^QUEUED one \(verify\)/m);
+    expect(result.stdout).toMatch(/^START one /m);
+    expect(result.stdout).toMatch(/^DONE one exit 7 /m);
+  });
+
+  it('leaves no ticket and no lock, and one done.log line', () => {
+    const sandbox = createSandbox();
+    const worktree = createWorktree(sandbox, 'one');
+    sandbox.environment.KIKO_STUB_EXIT = '3';
+
+    runQueue(sandbox, 'verify', worktree, 'one');
+
+    expect(entriesOf(join(sandbox.queue, 'tickets'))).toEqual([]);
+    expect(existsSync(join(sandbox.queue, 'lock'))).toBe(false);
+    const finished = readLines(join(sandbox.queue, 'done.log'));
+    expect(finished).toHaveLength(1);
+    expect(finished[0]).toMatch(/^verify one 3 \S+ \S+$/);
+  });
+
+  it('runs npm --prefix <worktree> run check:all for check-all', () => {
+    const sandbox = createSandbox();
+    const worktree = createWorktree(sandbox, 'one');
+
+    const result = runQueue(sandbox, 'check-all', worktree, 'one');
+
+    expect(result.status).toBe(0);
+    expect(readLines(sandbox.environment.KIKO_STUB_CALLS as string)[0]).toBe(
+      `npm --prefix ${worktree} run check:all`,
+    );
+    expect(readLines(sandbox.environment.KIKO_STUB_CALLS as string)).toContain(
+      '  force-color unset',
+    );
+  });
+
+  it('runs npm run check:security inside the worktree for security', () => {
+    const sandbox = createSandbox();
+    const worktree = createWorktree(sandbox, 'one');
+
+    const result = runQueue(sandbox, 'security', worktree, 'one');
+
+    expect(result.status).toBe(0);
+    const calls = readLines(sandbox.environment.KIKO_STUB_CALLS as string);
+    expect(calls[0]).toBe('npm run check:security');
+    expect(realpathSync(calls[1].replace('  cwd ', ''))).toBe(realpathSync(worktree));
+    expect(calls).toContain('  force-color unset');
   });
 });
 

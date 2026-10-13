@@ -50,3 +50,33 @@ worktree="$2"
 label="$3"
 valid_label "$label" || usage "invalid label: $label"
 [ -d "$worktree" ] || usage "not a directory: $worktree"
+
+clock_time() { date +%H:%M; }
+iso_stamp() { date -u +%Y-%m-%dT%H:%M:%SZ; }
+
+job=''
+
+# The job runs in the background and the script waits on it, so a trapped signal interrupts the
+# wait at once instead of after the job. FORCE_COLOR breaks the node -p fingerprint stamps, so
+# every job runs without it.
+run_job() {
+  case "$command_name" in
+    verify) env -u FORCE_COLOR make -C "$worktree" verify & ;;
+    check-all) env -u FORCE_COLOR npm --prefix "$worktree" run check:all & ;;
+    security) (cd "$worktree" && exec env -u FORCE_COLOR npm run check:security) & ;;
+  esac
+  job=$!
+  wait "$job"
+  job_code=$?
+  job=''
+}
+
+mkdir -p "$QUEUE_DIRECTORY"
+printf 'QUEUED %s (%s)\n' "$label" "$command_name"
+started_at="$(iso_stamp)"
+printf 'START %s at %s\n' "$label" "$(clock_time)"
+run_job
+printf '%s %s %s %s %s\n' "$command_name" "$label" "$job_code" "$started_at" "$(iso_stamp)" \
+  >> "$QUEUE_DIRECTORY/done.log"
+printf 'DONE %s exit %s at %s\n' "$label" "$job_code" "$(clock_time)"
+exit "$job_code"
