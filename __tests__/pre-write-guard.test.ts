@@ -33,12 +33,36 @@ function createTempDirectory(prefix: string): string {
   return directory;
 }
 
-// Bash 3.2 (the macOS /usr/bin/env bash) has no millisecond clock, so a
-// stub reads one from the Node binary the test itself runs on. It writes the
-// number with `-e`, not `-p`: `-p` colors its output when FORCE_COLOR is set,
-// and an ANSI-wrapped stamp does not parse as a number.
-function timingLineFor(stubName: string, phase: 'start' | 'end'): string {
-  return `if [ -n "$STUB_TIMING_FILE" ]; then printf '${stubName} ${phase} %s\\n' "$("$STUB_NODE" -e 'process.stdout.write(String(Date.now()))')" >> "$STUB_TIMING_FILE"; fi`;
+// A stub proves it ran at the same time as its siblings with a rendezvous,
+// never a clock: it appends `<stubName> start` to $STUB_BARRIER_FILE, then
+// waits until every `<name>=<count>` pair in $STUB_BARRIER_EXPECT has that
+// many `<name> start` lines. A stub whose name is not in the pair list skips
+// the rendezvous. Run concurrently, every stub meets the count however slow
+// the machine is; run one after another, the first stub never sees the
+// others and records `timeout` (a later stub gives up at once on seeing it).
+// The bound is 200 polls, so it only ends a run that can never meet.
+function barrierLinesFor(stubName: string): string[] {
+  return [
+    `case " $STUB_BARRIER_EXPECT " in *" ${stubName}="*)`,
+    `  printf '${stubName} start\\n' >> "$STUB_BARRIER_FILE"`,
+    '  attempts=0',
+    '  met=no',
+    '  while [ "$attempts" -lt 200 ] && ! grep -q "^timeout$" "$STUB_BARRIER_FILE"; do',
+    '    met=yes',
+    '    for expectation in $STUB_BARRIER_EXPECT; do',
+    '      expectedName="$(printf "%s" "$expectation" | cut -d= -f1)"',
+    '      expectedCount="$(printf "%s" "$expectation" | cut -d= -f2)"',
+    '      started="$(grep -c "^$expectedName start$" "$STUB_BARRIER_FILE")"',
+    '      [ "$started" -ge "$expectedCount" ] || met=no',
+    '    done',
+    '    [ "$met" = yes ] && break',
+    '    sleep 0.05',
+    '    attempts=$((attempts + 1))',
+    '  done',
+    '  [ "$met" = yes ] || printf "timeout\\n" >> "$STUB_BARRIER_FILE"',
+    '  ;;',
+    'esac',
+  ];
 }
 
 // The guard's own `runSemgrep` always sends the SAME 9 fixed flag/value
@@ -57,11 +81,10 @@ function writeSemgrepStub(directory: string): string {
       'if [ -n "$KIKO_PREWRITE_TEST_MARKER" ]; then',
       '  touch "$KIKO_PREWRITE_TEST_MARKER"',
       'fi',
-      timingLineFor('semgrep', 'start'),
+      ...barrierLinesFor('semgrep'),
       'if [ -n "$STUB_SLEEP" ]; then',
       '  sleep "$STUB_SLEEP"',
       'fi',
-      timingLineFor('semgrep', 'end'),
       'shift 9',
       'scannedParts=""',
       'for target in "$@"; do',
@@ -2570,26 +2593,17 @@ describe('override protocol (nosemgrep / kiko-override)', () => {
 // pushed p50/p95 past the 3s target. The mitigation is to run them
 // concurrently instead (spawn, not spawnSync) — same results, since each
 // checker only ever reads the SAME mirrored file and reports its own
-// findings independently of the others. This stub sleeps a fixed duration
-// per invocation so the test can tell "ran one after another" (roughly 5x
-// the sleep) from "ran together"
-// (roughly ONE sleep) by wall-clock alone, without depending on real
-// checker runtimes that could vary by machine. Semgrep beside that phase
-// leaves only one sleep of margin, which process overhead under load ate,
-// so that test compares the stubs' own start/end stamps instead.
+// findings independently of the others. The stubs here rendezvous (see
+// `barrierLinesFor`): each waits until every sibling it should overlap with
+// has started, so "ran one after another" fails and "ran together" passes
+// whatever the machine load, with no clock involved. A wall-clock bound
+// failed under load more than once.
 describe('runNodeChecks concurrency (speed mitigation)', () => {
-  function writeSleepingNodeStub(directory: string): string {
-    const stubPath = join(directory, 'node-sleep-stub.sh');
+  function writeRendezvousNodeStub(directory: string): string {
+    const stubPath = join(directory, 'node-rendezvous-stub.sh');
     writeFileSync(
       stubPath,
-      [
-        '#!/usr/bin/env bash',
-        timingLineFor('node', 'start'),
-        'sleep "$NODE_STUB_SLEEP_SECONDS"',
-        timingLineFor('node', 'end'),
-        'exit 0',
-        '',
-      ].join('\n'),
+      ['#!/usr/bin/env bash', ...barrierLinesFor('node'), 'exit 0', ''].join('\n'),
     );
     chmodSync(stubPath, 0o755);
 
@@ -2668,14 +2682,22 @@ describe('runNodeChecks concurrency (speed mitigation)', () => {
     },
   );
 
-  it('runs the 5 spawned AFTER-tree Node checkers concurrently, not one after another', () => {
+  it('runs every spawned AFTER-tree Node checker concurrently, not one after another', () => {
     const project = createTempDirectory('kiko-prewrite-project-');
     const semgrepStub = writeSemgrepStub(project);
     const rules = writeRulesStub(project);
-    const nodeStub = writeSleepingNodeStub(project);
+    const nodeStub = writeRendezvousNodeStub(project);
     const targetFile = join(project, 'src', 'component', 'component.tsx');
+    const barrierFile = join(project, 'barrier.txt');
+    // Counted from the guard's own rule table, so adding a checker moves the
+    // rendezvous with it; under 2 would prove nothing, so a broken match fails.
+    const spawnedCheckerCount = (
+      readFileSync(join(__dirname, '../scripts/checks/pre-write-guard.js'), 'utf8').match(
+        /runSpawnedNodeChecker\(\s*'/g,
+      ) ?? []
+    ).length;
+    expect(spawnedCheckerCount).toBeGreaterThan(1);
 
-    const startTime = Date.now();
     const result = runGuard(
       payloadFor('Write', { file_path: targetFile, content: cleanComponentContent }),
       baseEnv({
@@ -2683,25 +2705,26 @@ describe('runNodeChecks concurrency (speed mitigation)', () => {
         KIKO_PREWRITE_SEMGREP_BIN: semgrepStub,
         KIKO_PREWRITE_RULES: rules,
         KIKO_PREWRITE_NODE_BIN: nodeStub,
-        NODE_STUB_SLEEP_SECONDS: '1',
+        STUB_BARRIER_FILE: barrierFile,
+        STUB_BARRIER_EXPECT: `node=${spawnedCheckerCount}`,
       }),
     );
-    const durationMilliseconds = Date.now() - startTime;
 
     expect(result.status).toBe(0);
-    // Sequential: 5 * 1s of stub sleep alone is >= 5000ms. Concurrent: the
-    // whole AFTER-tree Node-check phase takes roughly ONE sleep.
-    expect(durationMilliseconds).toBeGreaterThanOrEqual(900);
-    expect(durationMilliseconds).toBeLessThan(2500);
+    // Each checker returns only after all of them have started, so one run
+    // after another leaves the first alone and ends in `timeout`.
+    expect(readFileSync(barrierFile, 'utf8').trim().split('\n')).toEqual(
+      Array(spawnedCheckerCount).fill('node start'),
+    );
   });
 
   it('runs Semgrep concurrently with the AFTER-tree Node checkers, not one after the other', () => {
     const project = createTempDirectory('kiko-prewrite-project-');
     const semgrepStub = writeSemgrepStub(project);
     const rules = writeRulesStub(project);
-    const nodeStub = writeSleepingNodeStub(project);
+    const nodeStub = writeRendezvousNodeStub(project);
     const targetFile = join(project, 'src', 'component', 'component.tsx');
-    const timingFile = join(project, 'timing.txt');
+    const barrierFile = join(project, 'barrier.txt');
 
     const result = runGuard(
       payloadFor('Write', { file_path: targetFile, content: cleanComponentContent }),
@@ -2710,40 +2733,19 @@ describe('runNodeChecks concurrency (speed mitigation)', () => {
         KIKO_PREWRITE_SEMGREP_BIN: semgrepStub,
         KIKO_PREWRITE_RULES: rules,
         KIKO_PREWRITE_NODE_BIN: nodeStub,
-        NODE_STUB_SLEEP_SECONDS: '1',
-        STUB_SLEEP: '1',
-        STUB_NODE: process.execPath,
-        STUB_TIMING_FILE: timingFile,
+        STUB_BARRIER_FILE: barrierFile,
+        STUB_BARRIER_EXPECT: 'node=1 semgrep=1',
       }),
     );
 
     expect(result.status).toBe(0);
-    const stamps = readFileSync(timingFile, 'utf8')
-      .trim()
-      .split('\n')
-      .map((line) => line.split(' '));
-    const stampsOf = (stubName: string, phase: string) =>
-      stamps
-        .filter(([name, stampPhase]) => name === stubName && stampPhase === phase)
-        .map(([, , time]) => Number(time));
-    const unparsedStamps = stamps
-      .map(([, , time]) => time)
-      .filter((time) => !Number.isFinite(Number(time)));
-    // Lists the offending stamps in the failure diff instead of a later NaN
-    // comparison failing with no hint of its cause.
-    expect(unparsedStamps).toEqual([]);
-    const [semgrepStart] = stampsOf('semgrep', 'start');
-    const [semgrepEnd] = stampsOf('semgrep', 'end');
-    const nodeStarts = stampsOf('node', 'start');
-    const nodeEnds = stampsOf('node', 'end');
-
-    expect(nodeStarts).toHaveLength(nodeEnds.length);
-    expect(nodeStarts.length).toBeGreaterThan(0);
-    // Sequential, in either order, writes one phase's end stamp before the
-    // other phase's first start stamp; the intervals overlap only when the
-    // guard runs both phases at once, however loaded the machine is.
-    expect(semgrepStart).toBeLessThan(Math.max(...nodeEnds));
-    expect(Math.min(...nodeStarts)).toBeLessThan(semgrepEnd);
+    // Semgrep returns only after a Node checker has started and each Node
+    // checker only after Semgrep has, so either phase running first, alone,
+    // ends in `timeout`.
+    const lines = readFileSync(barrierFile, 'utf8').trim().split('\n');
+    expect(lines).not.toContain('timeout');
+    expect(lines.filter((line) => line === 'semgrep start')).toHaveLength(1);
+    expect(lines.filter((line) => line === 'node start').length).toBeGreaterThan(0);
   });
 });
 
