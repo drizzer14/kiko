@@ -1449,11 +1449,10 @@ wraps to the next line, reads as a clause end. `as before and after` reads as a 
 too. Reword such a comment.
 
 **Hand-run scan target.** A rule's `paths.exclude` (for example `__tests__/**`) is
-relative to the semgrep scan target. A hand-run count or sweep (every
-comment-history rule: id, word, date, task-id) must target the repo root (`.`) or single files; a directory
-target such as `__tests__` makes the paths relative to it, so the exclude misses (a
-2026-10-06 sweep counted 6 excluded `__tests__` files that way). `src` as a target is
-fine for these rules.
+relative to the semgrep scan target. A hand-run count or sweep (every comment-history rule: id,
+word, date, task-id) must target the repo root (`.`) or single files; a directory target such as
+`__tests__` makes the paths relative to it, so the exclude misses (a 2026-10-06 sweep counted 6
+excluded `__tests__` files that way). `src` as a target is fine for these rules.
 
 The anchoring is the id rule's: the same string-skip
 `^(?:…)*` walk, `(?<!:)//` for the line arm, the block arm that never
