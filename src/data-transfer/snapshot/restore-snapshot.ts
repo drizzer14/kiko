@@ -5,7 +5,7 @@ import {
   bondRegister,
   type CategoryRow,
   categories,
-  categoryOverrides,
+  categoryRules,
   currencyRateHistory,
   currencyRates,
   deletedImportKeys,
@@ -18,6 +18,7 @@ import {
   syncState,
   type TransactionRow,
   transactions,
+  transactionTemplates,
   write,
   type database,
   chunkForTable,
@@ -816,13 +817,14 @@ export const restoreDataSnapshot = (
     });
 
     const deleteAllTables = async (): Promise<void> => {
+      await databaseTransaction.delete(transactionTemplates);
       await databaseTransaction.delete(deletedImportKeys);
       await databaseTransaction.delete(transactions);
       await databaseTransaction.delete(syncState);
       await databaseTransaction.delete(reminders);
       await databaseTransaction.delete(holdings);
       await databaseTransaction.delete(accounts);
-      await databaseTransaction.delete(categoryOverrides);
+      await databaseTransaction.delete(categoryRules);
       await databaseTransaction.delete(categories);
       await databaseTransaction.delete(currencyRateHistory);
       await databaseTransaction.delete(currencyRates);
@@ -887,9 +889,9 @@ export const restoreDataSnapshot = (
       }
     };
 
-    const insertOverridesTransactionsSyncState = async (): Promise<void> => {
-      for (const part of chunkForTable(categoryOverrides, snapshot.categoryOverrides)) {
-        await databaseTransaction.insert(categoryOverrides).values(part);
+    const insertRulesTransactionsSyncState = async (): Promise<void> => {
+      for (const part of chunkForTable(categoryRules, snapshot.categoryRules)) {
+        await databaseTransaction.insert(categoryRules).values(part);
       }
 
       for (const part of chunkForTable(transactions, transactionsToInsert)) {
@@ -985,15 +987,25 @@ export const restoreDataSnapshot = (
       }
     };
 
+    // `?? []`: an export from before the table carries no `transactionTemplates`
+    // key and restores with none. No other table is referenced, so the order among
+    // the inserts does not matter.
+    const insertTransactionTemplates = async (): Promise<void> => {
+      for (const part of chunkForTable(transactionTemplates, snapshot.transactionTemplates ?? [])) {
+        await databaseTransaction.insert(transactionTemplates).values(part);
+      }
+    };
+
     const liveDeviceSettings = await readLiveDeviceSettings(databaseTransaction);
 
     await deleteAllTables();
     await insertAccountsHoldingsCategories();
     await insertDeletedImportKeys();
-    await insertOverridesTransactionsSyncState();
+    await insertRulesTransactionsSyncState();
     await insertRatesAndSettings();
     await insertBondRegister();
     await insertReminders();
+    await insertTransactionTemplates();
 
     return { accountsRestored: accountsToInsert.length };
   });

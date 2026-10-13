@@ -16,12 +16,18 @@ import { type Table, getTableColumns } from 'drizzle-orm';
 // repeat this: the widest table just gets a smaller chunk.
 const SAFE_BOUND_PARAMETER_LIMIT = 32000;
 
+// A one-column `inArray(...)` predicate binds one parameter per item — the
+// same SQLITE_MAX_VARIABLE_NUMBER (32766) ceiling as above, chunked directly at its own safe
+// margin rather than derived from a table's column count, which a plain scalar list has none of.
+export const IN_CLAUSE_CHUNK_SIZE = 32_000;
+
 /** Splits `rows` into fixed-size chunks, preserving order. The one generic
  * list-chunking primitive in the codebase — `chunkForTable` derives its
  * per-table chunk SIZE from column count and calls this to do the actual
- * slicing; `IN_CLAUSE_CHUNK_SIZE` (`transactions.repo.ts`: the key lookup behind
- * `partitionNewRows` and `withCategoryOverrides`) reuses it directly for its
- * scalar `IN (...)` lookups, which have no column count to derive a size from. */
+ * slicing; `IN_CLAUSE_CHUNK_SIZE` (below: the key lookup behind
+ * `partitionNewRows` and `withCategoryRules`, and the category rewrite's reads and updates)
+ * reuses it directly for its scalar `IN (...)` lookups, which have no column count to derive
+ * a size from. */
 export const chunkRows = <T>(rows: T[], size: number): T[][] => {
   const parts: T[][] = [];
 

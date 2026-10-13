@@ -10,7 +10,7 @@ import {
   accounts,
   bondRegister,
   categories,
-  categoryOverrides,
+  categoryRules,
   currencyRateHistory,
   currencyRates,
   deletedImportKeys,
@@ -20,6 +20,7 @@ import {
   settings,
   syncState,
   transactions,
+  transactionTemplates,
 } from '@kiko/db';
 import { getTableColumns } from 'drizzle-orm';
 import { holdingValue } from '@kiko/holdings/holding-value';
@@ -48,7 +49,7 @@ const tableNameOf = (table: unknown): string => {
 
   if (table === categories) return 'categories';
 
-  if (table === categoryOverrides) return 'categoryOverrides';
+  if (table === categoryRules) return 'categoryRules';
 
   if (table === pricePoints) return 'pricePoints';
 
@@ -57,6 +58,8 @@ const tableNameOf = (table: unknown): string => {
   if (table === reminders) return 'reminders';
 
   if (table === deletedImportKeys) return 'deletedImportKeys';
+
+  if (table === transactionTemplates) return 'transactionTemplates';
   throw new Error('unknown table');
 };
 
@@ -101,7 +104,7 @@ const emptySnapshot: DataSnapshot = {
   settings: [],
   syncState: [],
   categories: [],
-  categoryOverrides: [],
+  categoryRules: [],
   pricePoints: [],
   bondRegister: [],
   reminders: [],
@@ -139,13 +142,14 @@ describe('restoreDataSnapshot', () => {
     });
 
     expect(deletedTables).toEqual([
+      'transactionTemplates',
       'deletedImportKeys',
       'transactions',
       'syncState',
       'reminders',
       'holdings',
       'accounts',
-      'categoryOverrides',
+      'categoryRules',
       'categories',
       'currencyRateHistory',
       'currencyRates',
@@ -277,7 +281,7 @@ describe('restoreDataSnapshot', () => {
       settings: legacySettings,
       syncState: legacySyncState,
       categories: legacyCategories,
-      categoryOverrides: legacyCategoryOverrides,
+      categoryRules: legacyCategoryRules,
     } = emptySnapshot;
     const legacySnapshot = {
       accounts: legacyAccounts,
@@ -288,7 +292,7 @@ describe('restoreDataSnapshot', () => {
       settings: legacySettings,
       syncState: legacySyncState,
       categories: legacyCategories,
-      categoryOverrides: legacyCategoryOverrides,
+      categoryRules: legacyCategoryRules,
     } as unknown as DataSnapshot;
 
     await restoreDataSnapshot(legacySnapshot);
@@ -602,13 +606,14 @@ describe('restoreDataSnapshot', () => {
     });
 
     expect(deletedTables).toEqual([
+      'transactionTemplates',
       'deletedImportKeys',
       'transactions',
       'syncState',
       'reminders',
       'holdings',
       'accounts',
-      'categoryOverrides',
+      'categoryRules',
       'categories',
       'currencyRateHistory',
       'currencyRates',

@@ -846,6 +846,21 @@ verified usage, not dead weight:
   `nosemgrep ... OVERRIDE(...)` in the source, never a file exclude. The flat
   fixture pair proves the rule in `check:rules`.
 
+- **`readAllRulesDatabaseTransaction`
+  (`src/categories/category-rules-repo/category-rules.repo.ts`) reads the whole
+  `category_rules` table inside `write()`, with no `where` and no cap.**
+  Callers inside a write: `saveRule` and `applyNameRule` (once each) and
+  `withCategoryRules` in `src/transactions/repo/transactions.repo.ts` (once per
+  insert batch). `kiko-no-full-table-select-in-write`
+  (`rules/semgrep-prewrite.yml`) matches only a literal `write(...)` callback
+  body, so the helper is invisible to it and there is no inline `nosemgrep`;
+  this entry is the record. Safe because the table is user-authored (one row
+  per rule) and small, and every reader needs every rule: a `where` or a cap
+  would silently drop a rule, a category not applied (spec decision 10, no
+  known limit for data correctness). Bounded: read once per write
+  (`stageDraft`) and once per insert batch, never per row; transaction rows
+  are paged. Any new whole-table reader inside a write needs its own entry.
+
 - **`src/reminders/native/NativeKikoReminders.ts` — the only PascalCase
   `.ts` file name in `src/`.** React Native codegen reads a spec file only
   if its basename matches `/^(Native.+|.+NativeComponent)/`

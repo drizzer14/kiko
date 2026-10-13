@@ -392,11 +392,9 @@ const StatisticsScreen: FC = () => {
   // still persisted the currencies that DID compose — changes `historyRows`,
   // and with it these two values on the VERY NEXT render. Neither is an
   // effect dependency below: the backfill effect reads them through these
-  // "latest" refs (the same stable-callback-with-fresh-data pattern
-  // `categories.screen.tsx`'s `orderedKeysRef` uses) instead, so that
-  // self-triggered re-render cannot re-enter the effect on its own — only a
-  // dependency that genuinely changed for an unrelated reason (`now`
-  // advancing on a real focus, `spanStart` moving) does. Without this, a
+  // "latest" refs instead, so that self-triggered re-render cannot re-enter the effect on its own
+  // — only a dependency that genuinely changed for an unrelated reason (`now` advancing on a real
+  // focus, `spanStart` moving) does. Without this, a
   // failed run whose span ref was just cleared (below, to allow a LATER
   // retry) would see its own write's echo immediately, at the SAME instant,
   // and restart — a permanent request loop for a currency whose provider

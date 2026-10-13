@@ -16,6 +16,7 @@ const SOURCE_ROOT = join(__dirname, '..', '..');
 // `t('...')` passed to that prop is a heading key. `sheetTitle` is a sheet
 // title on any component, because SelectField wrappers pass it on.
 const HEADING_PROPS: Record<string, readonly string[]> = {
+  CardContextMenu: ['deleteTitle'],
   ConfirmSheet: ['title'],
   EntityAmountHeader: ['label'],
   LinkedPaymentsSection: ['title'],
@@ -49,12 +50,16 @@ const DYNAMIC_HEADING_KEYS: Record<string, readonly string[]> = {
     'forms.transaction.title',
     'forms.transaction.editTitle',
     'forms.transaction.addTitle',
+    'forms.transaction.editTemplateTitle',
+    'forms.transaction.addTemplateTitle',
   ],
 };
 
 // A heading slot inside a component that renders its own prop there: the keys
 // are checked at that component's call sites through HEADING_PROPS instead.
 const FORWARDED_HEADING_SITES: Record<string, `${string}.${string}`> = {
+  'design-system/components/card-context-menu/card-context-menu.component.tsx#deleteTitle':
+    'CardContextMenu.deleteTitle',
   'design-system/components/confirm-sheet/confirm-sheet.component.tsx#title': 'ConfirmSheet.title',
   'design-system/components/currency-field/currency-field.component.tsx#sheetTitle':
     'CurrencyField.sheetTitle',
@@ -88,6 +93,10 @@ const FORWARDED_HEADING_SITES: Record<string, `${string}.${string}`> = {
 const UNCHECKED_HEADING_SITES: Record<string, string> = {
   'calendar/calendar-header/calendar-header.component.tsx#title':
     'a month name and a year, not a phrase that has a casing role',
+  "navigation/settings-stack/settings.stack.tsx#''":
+    'an empty title, replaced by the category page’s own title as soon as the category is read',
+  'screens/settings/category-detail/category-detail.screen.tsx#displayName':
+    'the category’s display name, the localized default or the title the user typed',
   'design-system/components/card-context-menu/card-context-menu.component.tsx#name':
     'the user-entered name of the entity the menu acts on',
   'screens/account-detail/account-detail.screen.tsx#accountName': 'the user-entered account name',

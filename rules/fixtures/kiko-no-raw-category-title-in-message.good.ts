@@ -26,5 +26,5 @@ export const labels = (t: typeof i18n.t, category: Category, account: { title: s
 export const rowLabel = (t: typeof i18n.t, key: string) => {
   const category = resolveCategoryDisplay(key);
 
-  return t('categories.deleteLabel', { title: category.title });
+  return t('common.deleteNamed', { name: category.title });
 };

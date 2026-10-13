@@ -1959,6 +1959,10 @@ duplicate, because the merged line needs rewrapping at Biome's line
 width and a placement for any glued comment. The general re-check
 above reports it as `left for hand fix`.
 
+`kiko-repo-no-class` bans any class in a `*.repo.ts`, so a repo's error class lives in
+its own non-`.repo.ts` file exported through the repo barrel (precedent:
+`src/transaction-templates/repo/template-name-taken-error.ts`).
+
 ## `kiko-no-switch` — an AST `switch` pattern, not a keyword regex
 
 `kiko-no-switch` (`rules/semgrep-prewrite.yml`, Class A) mechanizes

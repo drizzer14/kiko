@@ -246,8 +246,11 @@ implemented, and callers must skip it rather than assume every id resolves.
 
   Re-syncing an existing `externalId` **refreshes** that row's
   bank-owned columns — the settled `amountMinorUnits` and `hold`
-  among them — and **never** its `category` (the user's override, or
-  a name rule's rewrite) or `comment`. Read `addManyDedup` in
+  among them — and **never** its `comment`; its `category` is written
+  only for an unflagged (`category_set_by_hand = 0`), non-structural row
+  (no exchange pair or counterpart holding, `sets_balance = 0`, no
+  `change_group_id`) whose amount changed and a category rule wins
+  (`ruleWonTransactionSet`, `src/transactions/repo/transactions.repo.ts`). Read `addManyDedup` in
   `src/transactions/` for the exact refreshable
   set, and `transactions.hold` in `src/db/schema.ts` for why a
   pending item is imported at its provisional amount at all, rather
@@ -318,6 +321,15 @@ A SYNC-owned balance is the exception and writes no ledger row: the
 provider owns that number (`upsertByMetadataKey` in
 `src/holdings/`), and the form hides the balance field for a synced
 holding entirely.
+
+A manual create carries `ManualTransaction.categorySetByHand` (true when the
+user picked the category by hand), stored in `transactions.category_set_by_hand`;
+`recordManual` returns the new row id and `recordManualWithReturns` the payment
+row id; rules and rewrites never touch a flagged row.
+The flag on save (a hand pick or a seed with a category saves true; a pre-select
+saves false (and opens no name-rule sheet); an edit never pre-selects; "Apply" on create passes the created row
+id): see `src/screens/forms/transaction-form/use-category-pick/` and decisions 13
+and 17 of `docs/superpowers/specs/2026-10-11-category-rules-design.md`.
 
 **Every transaction updates its balance (user rule 2026-10-05).** A manual
 write (`recordManual`, each exchange or change-return leg), its edit (`update`,
@@ -884,12 +896,21 @@ Writers hold up the other end: a category value is persisted only as
 the lowercase `categories.key` slug. `categoryForMcc`
 (`src/monobank/`) emits the slug, not a display title,
 and migration `0014_lowercase_categories` lowercased the legacy rows a
-capitalized-title era had already written. Because neither
-`transactions.category` nor `category_overrides.category` is COLLATE
-NOCASE, `categoriesRepo.delete`'s reassignment additionally compares
-case-insensitively on both sides (`lower(column) = lower(key)`), so an
-un-migrated row from an older build still gets folded onto the default
-instead of being orphaned on a deleted slug.
+capitalized-title era had already written. Neither
+`transactions.category` nor `category_rules.category` is COLLATE NOCASE;
+`categoriesRepo.delete`'s reassignment compares case-insensitively on both
+sides (`lower(column) = lower(key)`), so an un-migrated transaction row from
+an older build is folded onto the default instead of orphaned on a deleted
+slug; the category's rules are deleted in the same write, and the moved rows
+lose the by-hand flag.
+
+**Rule validation.** `src/categories/category-rules/validate-rule.ts`
+owns it; a `neverMatches` result carries `conflict: 'time' | 'other'`
+(read the `RuleValidation` type in `category-rules.d.ts`), and only the
+time conflict gets the midnight hint. The editor's matcher option lists
+come from `src/categories/category-rules/matcher-options.ts`. The
+editor's amount draft converts through `Money.fromMajor` exactly; a
+draft with too many decimals for the currency is refused.
 
 ## Spending-exclusion pipeline
 
@@ -1052,7 +1073,9 @@ Rules:
   other part of this exchange"; a "could not be found" holding the row's own
   `exchange` sentence already names is not named again there; with a split, the exchange sentences that say
   "only this part is deleted" take the same split wording. A holding or account
-  delete lists the OTHER holdings' changes only (`RemoveHoldingsPlan.balanceChanges`).
+  delete lists the OTHER holdings' changes only (`RemoveHoldingsPlan.balanceChanges`,
+  and `templatesChanged`, the templates whose holding reference the delete clears,
+  rendered by `removeHoldingsNoticeOf` with `holdings.deleteLinked.templates`).
 - **A confirm opened twice shows the latest plan.** The `CardContextMenu`
   `deleteMessage` is async and a superseded result is dropped (see
   `kiko-design-system`).
@@ -2515,8 +2538,9 @@ MANUAL action may ever move `loanLinkRejected`.
 conflict path both the Monobank sync and statement import share) never
 refreshes any of the three loan-link columns on a re-sync — its
 `onConflictDoUpdate` `set` names only the bank-owned columns, the same
-exclusion `category`/`comment` already rely on (see that function's own
-existing doc comment). Its `setWhere` is derived from that SAME `set`
+exclusion `comment` relies on (`category` is excluded except in
+`ruleWonTransactionSet`'s guarded CASE; see the sync paragraph above) (see
+that function's own existing doc comment). Its `setWhere` is derived from that SAME `set`
 column list (`BANK_OWNED_TRANSACTION_COLUMNS`), so the UPDATE — and the
 `transactions` reactive-query fire it would otherwise trigger — is skipped
 entirely when a re-fetched row is unchanged; the loan-link columns are
@@ -2752,6 +2776,33 @@ but leaves the other legs behind, so the money of a movement exists on one side
 only. Only `transactions.repo.ts` and `holdings.repo.ts` (its owner) call it
 (`kiko-holding-delete-needs-cascade`, `rules/semgrep-prewrite.yml`): every other
 caller deletes through `transactionsRepo.removeHolding`.
+
+A holding delete and an account delete also clear the transaction templates'
+references to the deleted holdings in the same write, on the same two paths as the
+loan-link clear (`removeHoldingDatabaseTransaction`, `accountsRepo.remove`; see the
+`clearLoanLinksForHoldingsDatabaseTransaction` paragraph above):
+`transactionTemplatesRepo.clearHoldingsDatabaseTransaction`. A category delete
+(`categoriesRepo`) clears the template's category through
+`clearCategoryDatabaseTransaction` to EMPTY, never to the default category; the field
+stays in the template.
+
+## Transaction templates
+
+`src/transaction-templates/{draft,template-name,repo}` own a saved, reusable
+transaction draft; `transactionTemplatesRepo` is its repo and `TemplateNameTakenError`
+its error. User rules: no loan link, no comment, no date; the amount is optional; the
+name is unique case-insensitively, with Unicode folding done in JS. A save from the
+transaction form rides `alongside(databaseTransaction)` on `transactionsRepo.recordManual`
+/ `recordExchange` / `recordManualWithReturns` / `update` (runs last inside the same
+write); the transactions feature never imports templates on that save path.
+A template stores a category ONLY when the user picked it by hand (`userPickedCategory`);
+otherwise it stores none, and each use gets the CURRENT category-rule pre-select (user
+ruling 2026-10-12). On Duplicate and Edit, the source category counts as a hand pick, so
+the template keeps it. The save path reads `userPickedCategory ? effectiveCategory : null`,
+never `selectedCategory` (settled only on blur). Pin it with a red test that presses Save
+WITHOUT a blur.
+The form's template units live in `src/screens/forms/transaction-form/` (list them with
+`ls`); the Template list screen is `src/screens/settings/transaction-templates/`.
 
 ## Adding a holding type
 

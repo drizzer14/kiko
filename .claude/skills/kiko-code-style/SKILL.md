@@ -345,6 +345,8 @@ closes the open note of finding U5 in
 `docs/reviews/2026-09-codebase-review.md` that this section did not cover
 booleans derived from a union. A judgment rule, not mechanized.
 
+In a per-row or per-keystroke hot path (rule matching over every transaction), use a typed `Record` table, not `match(...).exhaustive()`: the ts-pattern matcher cost 952 ms against 10 ms for the same lookup over 10 000 rows x 200 rules (`src/categories/category-rules`). Exhaustiveness stays in the Record's key type. Judgment rule, not mechanized.
+
 The set itself needs exactly one source of truth. Derive the literal
 union type from a `const` tuple, instead of hand-maintaining a union
 type and a separate `Set` literal that can drift apart:
@@ -676,8 +678,8 @@ one validation model — don't hand-roll a different one:
   entry.
 - A native bar-button press does not blur the focused field, so a value
   derived on blur (for example the TransactionForm category auto-pick)
-  is settled synchronously in the save path, from the same helper the
-  blur handler calls (`categoryForName`, `settleCategory` in
+  is settled synchronously in the save path, by the same function the
+  blur handler calls (see `useCategoryPick` in
   `src/screens/forms/transaction-form/use-category-pick/use-category-pick.ts`).
   Pin it with a test that presses Save without a blur.
 - A blocked field shows its message via the shared `FieldError`

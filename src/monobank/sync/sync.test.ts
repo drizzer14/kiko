@@ -333,6 +333,8 @@ const makeInMemoryDeps = (
         loanLinkRejected: false,
         // Only a manual balance set marks its row.
         setsBalance: false,
+        // The insert path never marks a category as picked by hand.
+        categorySetByHand: false,
         comment: input.comment ?? null,
         externalId: input.externalId ?? null,
       });

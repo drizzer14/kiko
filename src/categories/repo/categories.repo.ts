@@ -4,11 +4,12 @@ import {
   database,
   write,
   categories,
-  categoryOverrides,
+  categoryRules,
   settings,
   transactions,
 } from '@kiko/db';
 import { asc, eq, sql } from 'drizzle-orm';
+import { transactionTemplatesRepo } from '@kiko/transaction-templates/repo';
 
 import { DEFAULT_CATEGORY_KEY } from '../category-display';
 
@@ -40,17 +41,22 @@ export const categoriesRepo = {
     database.select().from(categories).orderBy(asc(categories.sortOrder), asc(categories.key)),
   // A user-added category gets a generated key, distinct from the seeded MCC
   // slugs, so it never collides with the canonical categories. It appends to the
-  // end of the list via `sortOrder = max + 1`.
+  // end of the list via `sortOrder = max + 1`. Returns the new key so the caller can open the
+  // category it just made.
   create: (category: { title: string; icon: string; color?: string | null }) =>
     write(async (databaseTransaction) => {
       const sortOrder = await nextSortOrder(databaseTransaction);
+      const key = id();
+
       await databaseTransaction.insert(categories).values({
-        key: id(),
+        key,
         title: category.title,
         icon: category.icon,
         color: category.color ?? null,
         sortOrder,
       });
+
+      return key;
     }),
   updateTitle: (key: string, title: string) =>
     write((databaseTransaction) =>
@@ -72,8 +78,9 @@ export const categoriesRepo = {
    * Delete a category, folding its data into the CURRENT default category. In
    * ONE op-sqlite transaction: read the configured default key from settings,
    * refuse if the target IS the default (it is the catch-all — it can never be
-   * deleted), then reassign every transaction and every name→category override
-   * pointing at this key to the default key, and finally remove the category
+   * deleted), then reassign every transaction pointing at this key to the
+   * default key, delete the category's rules, clear the category from every template that
+   * names it (the field stays in the template, empty), and finally remove the category
    * row. The reassignment (not a delete of the rows) is why this is one
    * transaction — a partial failure must never orphan a transaction on a
    * now-missing category slug.
@@ -89,7 +96,7 @@ export const categoriesRepo = {
 
       // Match case-insensitively: a row synced by an older build can carry a
       // capitalized value ('Groceries'), and neither `transactions.category`
-      // nor `category_overrides.category` is COLLATE NOCASE — a plain
+      // nor `category_rules.category` is COLLATE NOCASE — a plain
       // `eq(category, 'groceries')` would reassign zero of them and leave them
       // orphaned on a deleted category row, breaking this function's own
       // never-orphan contract. Migration 0014
@@ -97,14 +104,18 @@ export const categoriesRepo = {
       // for any row written by an older build that has not re-synced yet.
       const lowercaseKey = key.toLowerCase();
 
+      // The moved rows follow the default category's own rules from here on, so a by-hand mark
+      // on them (a pick of the category that is going away) is cleared with the move.
       await databaseTransaction
         .update(transactions)
-        .set({ category: defaultKey })
+        .set({ category: defaultKey, categorySetByHand: false })
         .where(sql`lower(${transactions.category}) = ${lowercaseKey}`);
+      // A rule for a category that is gone has nothing to apply, so its rules go with it.
       await databaseTransaction
-        .update(categoryOverrides)
-        .set({ category: defaultKey })
-        .where(sql`lower(${categoryOverrides.category}) = ${lowercaseKey}`);
+        .delete(categoryRules)
+        .where(sql`lower(${categoryRules.category}) = ${lowercaseKey}`);
+      // A template does not move to the default: the field stays in it, empty.
+      await transactionTemplatesRepo.clearCategoryDatabaseTransaction(databaseTransaction, key);
       await databaseTransaction.delete(categories).where(eq(categories.key, key));
     }),
   /**

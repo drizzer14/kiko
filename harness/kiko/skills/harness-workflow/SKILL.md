@@ -215,7 +215,8 @@ with `git -C /Users/drizzer14/Developer/Projects/pff-ios log -1 --oneline`.
 
 A track that regenerates shared binary fixtures (the demo .kiko files)
 merges main first and regenerates on the merged builder; never
-hand-merge a binary.
+hand-merge a binary. After merging the builder source, regenerate
+(`KIKO_REGEN_DEMO=1` on the generate-demo-kiko test), then re-run it plain.
 
 ## Read-only agents return their report
 

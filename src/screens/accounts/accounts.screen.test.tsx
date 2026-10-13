@@ -36,6 +36,7 @@ const NOTHING_LINKED: RemoveHoldingsPlan = {
   keptSynced: [],
   unlinked: [],
   unlinkedPlain: false,
+  templatesChanged: 0,
 };
 
 // The screen reads the floating tab-bar height from `react-native-bottom-tabs`

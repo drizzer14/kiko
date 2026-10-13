@@ -10,8 +10,10 @@ export type TransactionCardProps = {
   // Always rendered with `MoneyText`'s `"transaction"` context (a positive
   // amount reads green) — every consumer (Home's real row, the
   // statement-import/column-mapping preview) wants exactly that, so this is
-  // not a caller-configurable prop.
-  money: Money;
+  // not a caller-configurable prop. Optional because a transaction template's
+  // amount is optional: omitted renders no amount, and the title keeps the
+  // full row width.
+  money?: Money;
   // The footer's left caption (Home: "account · category") and right caption
   // (Home: the transaction time). Both optional — omitted footer content
   // simply leaves that side of the row blank; the footer row itself only

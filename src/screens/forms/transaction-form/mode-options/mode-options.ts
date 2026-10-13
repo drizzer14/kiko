@@ -23,6 +23,16 @@ export const resolveModeOptions = (
   return canExchange ? ['income', 'expense', 'exchange', 'split'] : ['income', 'expense'];
 };
 
+// The mode a fresh form opens on, and the one a holding that does not offer the current mode
+// settles to: every holding offers it, and an exchange and a split are both an expense.
+export const DEFAULT_MODE: FormMode = 'expense';
+
+// The mode a create form holds once `holding` is its primary holding: the same one when it offers
+// it, the default otherwise. One rule for a seeded holding and a picked one.
+export const settleMode = (mode: FormMode, holding: Pick<HoldingRow, 'type'>): FormMode => {
+  return resolveModeOptions(false, holding).includes(mode) ? mode : DEFAULT_MODE;
+};
+
 // The SF Symbol shown for each transaction type (the select trigger's glyph
 // and each sheet row's leading icon). Note the deliberate, spec-mandated
 // asymmetry: expense points UP and income points DOWN (money leaving vs.

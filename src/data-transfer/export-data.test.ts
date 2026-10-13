@@ -44,7 +44,7 @@ const emptySnapshot = {
   settings: [],
   syncState: [],
   categories: [],
-  categoryOverrides: [],
+  categoryRules: [],
 };
 
 describe('exportData', () => {
@@ -75,7 +75,7 @@ describe('exportData', () => {
       ciphertext: string;
     };
     expect(envelope.format).toBe('kiko-export');
-    expect(envelope.version).toBe(2);
+    expect(envelope.version).toBe(3);
     expect(typeof envelope.nonce).toBe('string');
     expect(typeof envelope.ciphertext).toBe('string');
 

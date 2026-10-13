@@ -2,8 +2,8 @@
 import type {
   AccountRow,
   BondRegisterRow,
-  CategoryOverrideRow,
   CategoryRow,
+  CategoryRuleRow,
   CurrencyRateHistoryRow,
   CurrencyRateRow,
   DeletedImportKeyRow,
@@ -13,6 +13,7 @@ import type {
   SettingsRow,
   SyncStateRow,
   TransactionRow,
+  TransactionTemplateRow,
 } from '@kiko/db';
 
 /**
@@ -30,11 +31,12 @@ export type DataSnapshot = {
   settings: SettingsRow[];
   syncState: SyncStateRow[];
   categories: CategoryRow[];
-  categoryOverrides: CategoryOverrideRow[];
+  categoryRules: CategoryRuleRow[];
   pricePoints: PricePointRow[];
   bondRegister: BondRegisterRow[];
   reminders: ReminderRow[];
   // Optional, unlike the tables above: an older file never had the key, and a
   // restore reads it defensively (`restoreDataSnapshot`) without a version bump.
   deletedImportKeys?: DeletedImportKeyRow[];
+  transactionTemplates?: TransactionTemplateRow[];
 };

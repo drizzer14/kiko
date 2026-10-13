@@ -105,6 +105,7 @@ const mockRemoveHoldingsPlan = jest.fn(
     keptSynced: [],
     unlinked: [],
     unlinkedPlain: false,
+    templatesChanged: 0,
   }),
 );
 const mockCloseMany = jest.fn((..._args: unknown[]): Promise<void> => Promise.resolve());
@@ -1016,6 +1017,7 @@ describe('AccountDetailScreen', () => {
       keptSynced: [],
       unlinked: [],
       unlinkedPlain: false,
+      templatesChanged: 0,
     });
     setLiveData({
       accounts: [account()],

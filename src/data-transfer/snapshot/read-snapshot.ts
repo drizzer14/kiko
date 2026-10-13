@@ -3,7 +3,7 @@ import {
   accounts,
   bondRegister,
   categories,
-  categoryOverrides,
+  categoryRules,
   currencyRateHistory,
   currencyRates,
   deletedImportKeys,
@@ -13,6 +13,7 @@ import {
   settings,
   syncState,
   transactions,
+  transactionTemplates,
   database,
 } from '@kiko/db';
 import { asc } from 'drizzle-orm';
@@ -45,10 +46,7 @@ export const readDataSnapshot = async (): Promise<DataSnapshot> => ({
   settings: await database.select().from(settings).orderBy(asc(settings.id)),
   syncState: await database.select().from(syncState).orderBy(asc(syncState.accountId)),
   categories: await database.select().from(categories).orderBy(asc(categories.key)),
-  categoryOverrides: await database
-    .select()
-    .from(categoryOverrides)
-    .orderBy(asc(categoryOverrides.normalizedName)),
+  categoryRules: await database.select().from(categoryRules).orderBy(asc(categoryRules.id)),
   // nosemgrep: kiko-no-whole-price-points-read OVERRIDE(export) the backup holds every price point
   pricePoints: await database
     .select()
@@ -60,4 +58,8 @@ export const readDataSnapshot = async (): Promise<DataSnapshot> => ({
     .select()
     .from(deletedImportKeys)
     .orderBy(asc(deletedImportKeys.holdingId), asc(deletedImportKeys.externalId)),
+  transactionTemplates: await database
+    .select()
+    .from(transactionTemplates)
+    .orderBy(asc(transactionTemplates.id)),
 });

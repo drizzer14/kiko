@@ -50,9 +50,11 @@ const TransactionCard: FC<TransactionCardProps> = ({
               <Text variant="body">{title}</Text>
             </Box>
           </Box>
-          <Box style={styles.rowAmount}>
-            <MoneyText money={money} context="transaction" />
-          </Box>
+          {money !== undefined && (
+            <Box style={styles.rowAmount}>
+              <MoneyText money={money} context="transaction" />
+            </Box>
+          )}
         </Box>
 
         {hasFooter && (

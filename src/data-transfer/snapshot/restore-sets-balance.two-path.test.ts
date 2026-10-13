@@ -55,7 +55,7 @@ const emptySnapshot: DataSnapshot = {
   settings: [],
   syncState: [],
   categories: [],
-  categoryOverrides: [],
+  categoryRules: [],
   pricePoints: [],
   bondRegister: [],
   reminders: [],
@@ -161,7 +161,14 @@ const readPreMarkerSnapshot = async (source: DatabaseSync): Promise<DataSnapshot
     .from(holdings)
     .orderBy(asc(holdings.id));
   const preMarkerTransactions = await sourceDrizzle
-    .select(columnsWithout(getTableColumns(transactions), 'setsBalance', 'exchangePairId'))
+    .select(
+      columnsWithout(
+        getTableColumns(transactions),
+        'setsBalance',
+        'exchangePairId',
+        'categorySetByHand',
+      ),
+    )
     .from(transactions)
     .orderBy(asc(transactions.id));
 
