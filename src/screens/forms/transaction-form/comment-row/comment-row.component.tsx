@@ -4,8 +4,8 @@ import Text from '@kiko/design-system/components/text';
 
 import type { CommentRowProps } from './comment-row.props';
 
-// The counterparty->comment column writes a real value no screen ever
-// surfaced, shown whenever the loaded row carries a non-blank comment.
+// The counterparty->comment column holds a real value, so the form shows it
+// whenever the loaded row carries a non-blank comment.
 // Not gated by `isReadOnly`:
 // `mapParsedTransaction`/Monobank sync can write `comment` onto any
 // imported row regardless of `source`, and a Monobank-synced row is exactly
