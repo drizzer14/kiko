@@ -1,3 +1,4 @@
+import { maxOf } from '@kiko/numbers';
 import maybe, { foldMap } from 'fnts/maybe';
 
 /**
@@ -84,10 +85,13 @@ export const createDepthMemory = (): DepthMemory => ({
 });
 
 /**
- * The memory of each series of a run, made when it is first asked for, and the hint the series
- * give each other: the start the series served most recently is served from, moved on to now
- * (`narrowRefusedStart` asks it first). A hint is only where a search begins and never what it
- * finds. A start that is refused (a bound) or served longer ago than it is moved on for gives none.
+ * The memory of each series of a run, made when it is first asked for, and what the series tell
+ * each other. `hintMs`: the start another series served most recently is served from, moved on to
+ * now (`narrowRefusedStart` asks it first); a hint is only where a search begins and never what it
+ * finds, and a start that is refused (a bound) or served longer ago than it is moved on for gives
+ * none; `exceptSeries` leaves out the series that asks. `refusedBoundMs`: the furthest start any
+ * series was refused (negative infinity while none), which only suggests that another series is
+ * refused the span below it too, and is asked before that series reads.
  */
 export const createDepthMemories = (nowMs: () => number) => {
   const memories = new Map<string, DepthMemory>();
@@ -99,15 +103,27 @@ export const createDepthMemories = (nowMs: () => number) => {
 
       return memory;
     },
-    hintMs: (): number | undefined => {
+    hintMs: (exceptSeries?: string): number | undefined => {
       const now = nowMs();
-      const freshest = [...memories.values()]
-        .filter((memory) => memory.servedAtMs !== undefined && !hasDepthLapsed(memory, now))
+      const freshest = [...memories.entries()]
+        .filter(
+          ([series, memory]) =>
+            series !== exceptSeries &&
+            memory.servedAtMs !== undefined &&
+            !hasDepthLapsed(memory, now),
+        )
+        .map(([, memory]) => memory)
         .sort((left, right) => (right.servedAtMs ?? 0) - (left.servedAtMs ?? 0))
         .at(0);
 
       return foldMap(maybe(freshest), (memory) => knownStartOf(memory, now));
     },
+    refusedBoundMs: (): number =>
+      maxOf(
+        [...memories.values()].flatMap(({ startMs, servedAtMs }) =>
+          servedAtMs === undefined && startMs !== undefined ? [startMs] : [],
+        ),
+      ),
   };
 };
 
@@ -179,7 +195,8 @@ export type DepthGuard = {
   nowMs: () => number;
   floorMs: () => number;
   memoryOf: (series: string) => DepthMemory;
-  hintMs: () => number | undefined;
+  hintMs: (exceptSeries?: string) => number | undefined;
+  refusedBoundMs: () => number;
 };
 
 /**

@@ -2,6 +2,7 @@ import { match } from 'ts-pattern';
 import maybe, { foldMap } from 'fnts/maybe';
 
 import {
+  DEPTH_RESOLUTION_MS,
   type DepthGuard,
   type DepthMemory,
   type DepthProbe,
@@ -164,17 +165,18 @@ type AfterDepth<Row> = { kind: 'retry' } | { kind: 'done'; read: SeriesRead<Row>
 const CLEAN_STOP: AfterDepth<never> = { kind: 'done', read: undefined };
 
 /**
- * Narrow with the requests of the lane: one request of the lane for each start asked, refused ones
- * too, and none that leaves the series' own read unaffordable. The start found is remembered with
- * the clock of the request that served it.
+ * A request of one millisecond at a start, one request of the lane, refused ones too, and none
+ * that leaves the series' own read unaffordable (`undefined`). `onServed` gets the clock of the
+ * request Binance served.
  */
-const narrowDepth = async <Series extends string, Row>(
-  input: SeriesDepth<Series, Row>,
-  narrow: (probe: DepthProbe) => Promise<Narrowed | undefined>,
-): Promise<AfterDepth<Row>> => {
-  const { run, lane, cost, name, keep, fetchPage, depth } = input;
-  const lastServed: { atMs: number | undefined } = { atMs: undefined };
-  const narrowed = await narrow(async (startMs) => {
+const probeOf =
+  <Series extends string, Row>(
+    input: SeriesDepth<Series, Row>,
+    onServed: (sentAtMs: number) => void,
+  ): DepthProbe =>
+  async (startMs) => {
+    const { run, lane, cost, name, keep, fetchPage, depth } = input;
+
     if (!run.budget.canAfford(lane, cost, keep + 1)) {
       return undefined;
     }
@@ -184,7 +186,7 @@ const narrowDepth = async <Series extends string, Row>(
 
     try {
       run.budget.record(lane, await fetchPage(name, { start: startMs, end: startMs + 1 }, 1));
-      lastServed.atMs = sentAtMs;
+      onServed(sentAtMs);
 
       return true;
     } catch (error) {
@@ -196,7 +198,23 @@ const narrowDepth = async <Series extends string, Row>(
 
       return false;
     }
-  });
+  };
+
+/**
+ * Narrow with the requests of the lane (see `probeOf`). The start found is remembered with the
+ * clock of the request that served it.
+ */
+const narrowDepth = async <Series extends string, Row>(
+  input: SeriesDepth<Series, Row>,
+  narrow: (probe: DepthProbe) => Promise<Narrowed | undefined>,
+): Promise<AfterDepth<Row>> => {
+  const { depth } = input;
+  const lastServed: { atMs: number | undefined } = { atMs: undefined };
+  const narrowed = await narrow(
+    probeOf(input, (sentAtMs) => {
+      lastServed.atMs = sentAtMs;
+    }),
+  );
 
   return match(narrowed)
     .returnType<AfterDepth<Row>>()
@@ -222,7 +240,7 @@ const narrowDepth = async <Series extends string, Row>(
 const narrowAfterRefusal = async <Series extends string, Row>(
   input: SeriesDepth<Series, Row> & { refusedMs: number },
 ): Promise<AfterDepth<Row>> => {
-  const { run, lane, span, depth, tally, refusedMs } = input;
+  const { run, lane, depth, tally, refusedMs } = input;
 
   run.budget.record(lane, REFUSED_CALL);
   tally.refusals += 1;
@@ -237,15 +255,61 @@ const narrowAfterRefusal = async <Series extends string, Row>(
     return { kind: 'retry' };
   }
 
-  return narrowDepth(input, (probe) =>
+  return narrowFromRefused(input, refusedMs);
+};
+
+/** Narrow from a start that is refused toward the end of the span (see `narrowRefusedStart`). */
+const narrowFromRefused = <Series extends string, Row>(
+  input: SeriesDepth<Series, Row>,
+  refusedMs: number,
+): Promise<AfterDepth<Row>> =>
+  narrowDepth(input, (probe) =>
     narrowRefusedStart({
       refusedMs,
-      endMs: span.end,
-      floorMs: depth.floorMs(),
-      hintMs: depth.hintMs(),
+      endMs: input.span.end,
+      floorMs: input.depth.floorMs(),
+      hintMs: input.depth.hintMs(input.name),
       probe,
     }),
   );
+
+/**
+ * What a series does before a read that is refused, or likely to be, so the refused read is not
+ * made. A series whose memory holds a start Binance refused (a bound) at or after the start of the
+ * span would read from that start: it narrows from the bound at once. A series with no memory,
+ * while another was refused a start at or after the end of the span, asks the end first, once: a
+ * refusal settles the span as below its depth in one request, and a series that serves the end is
+ * read as any other (`undefined`).
+ */
+const settleBeforeRead = async <Series extends string, Row>(
+  input: SeriesDepth<Series, Row>,
+  asked: { end: boolean },
+): Promise<AfterDepth<Row> | undefined> => {
+  const { span, depth } = input;
+  const { startMs, servedAtMs } = depth.memory;
+
+  if (startMs !== undefined && servedAtMs === undefined && startMs >= span.start) {
+    return narrowFromRefused(input, startMs);
+  }
+
+  if (startMs !== undefined || asked.end || depth.refusedBoundMs() < span.end) {
+    return undefined;
+  }
+
+  asked.end = true;
+  const served = await probeOf(input, () => undefined)(span.end);
+
+  if (served === undefined) {
+    return CLEAN_STOP;
+  }
+
+  if (served) {
+    return undefined;
+  }
+
+  rememberServedStart(depth.memory, { startMs: span.end, servedAtMs: undefined });
+
+  return { kind: 'retry' };
 };
 
 /**
@@ -265,15 +329,29 @@ const narrowAfterLapse = async <Series extends string, Row>(
     return CLEAN_STOP;
   }
 
-  return narrowDepth(input, (probe) =>
+  const after = await narrowDepth(input, (probe) =>
     narrowLapsedStart({ ...range, endMs: span.end, floorMs: depth.floorMs(), probe }),
   );
+
+  // A search that ends against the start the memory held (the depth stood still) leaves the ground
+  // from there to the start it found unknown, so the memory takes the old start back and the
+  // read owes that ground with the band its read begins above.
+  if (
+    after.kind === 'retry' &&
+    depth.memory.servedAtMs !== undefined &&
+    depth.memory.startMs !== undefined &&
+    depth.memory.startMs - range.lowMs <= DEPTH_RESOLUTION_MS
+  ) {
+    depth.memory.startMs = range.lowMs;
+  }
+
+  return after;
 };
 
 /**
- * Whether the span lies below the ground the memory knows is refused: the memory moved on by the
- * time that passed (a lapsed memory is not moved, see `DEPTH_EXTRAPOLATION_MAX_MS`: only the
- * start it holds is known to be refused below).
+ * Whether the span lies below the ground the series is not asked for: the floor of now, or the
+ * ground the memory knows is refused, moved on by the time that passed (a lapsed memory is not
+ * moved, see `DEPTH_EXTRAPOLATION_MAX_MS`: only the start it holds is known to be refused below).
  */
 const isBelowKnownStart = (span: WalkWindow, depth: SeriesGuard | undefined): boolean => {
   const knownMs = foldMap(maybe(depth), (guard) => {
@@ -283,26 +361,32 @@ const isBelowKnownStart = (span: WalkWindow, depth: SeriesGuard | undefined): bo
       ? guard.memory.startMs
       : knownStartOf(guard.memory, nowMs);
   });
+  const floorMs = foldMap(maybe(depth), (guard) => guard.floorMs());
 
-  return knownMs !== undefined && knownMs >= span.end;
+  return Math.max(knownMs ?? span.start, floorMs ?? span.start) >= span.end;
 };
 
 /**
- * Where a series is read from as of now: the span's start, or the start known to be served when
- * that is later (see `knownStartOf`; the time that passed moves it). Without a `depth` it is the
- * span's.
+ * Where a series is read from as of now: the span's start, or the floor of now, or the start known
+ * to be served (see `knownStartOf`; the time that passed moves it), whichever is latest. The
+ * floor is the clock's: a span planned before the clock moved on still holds ground below it that
+ * Binance does not keep, and a type read in a later run is read from the floor it meets then.
+ * Without a `depth` it is the span's.
  */
 const readStartOf = (span: WalkWindow, depth: SeriesGuard | undefined): number =>
   Math.max(
     span.start,
-    foldMap(maybe(depth), (guard) => knownStartOf(guard.memory, guard.nowMs())) ?? span.start,
+    foldMap(maybe(depth), (guard) =>
+      Math.max(guard.floorMs(), knownStartOf(guard.memory, guard.nowMs()) ?? guard.floorMs()),
+    ) ?? span.start,
   );
 
 /**
  * The ground of the span that lies below `toMs`, the start a series is read from (the end of the
  * span for a span read as below), and is not known to be refused: from the start the memory
- * holds, which was served, up to `toMs`. The depth may have stood still, so Binance may keep it.
- * A start the memory holds as refused is a bound, and nothing below it is owed.
+ * holds, which was served, up to `toMs`, and not below the floor of now. The depth may have stood
+ * still, so Binance may keep it. A start the memory holds as refused is a bound, and nothing
+ * below it is owed.
  */
 const skippedBandOf = (input: {
   span: WalkWindow;
@@ -313,7 +397,9 @@ const skippedBandOf = (input: {
   const servedMs = foldMap(maybe(depth), ({ memory }) =>
     foldMap(maybe(memory.servedAtMs), () => memory.startMs),
   );
-  const fromMs = foldMap(maybe(servedMs), (startMs) => Math.max(span.start, startMs)) ?? toMs;
+  const floorMs = foldMap(maybe(depth), (guard) => guard.floorMs()) ?? span.start;
+  const fromMs =
+    foldMap(maybe(servedMs), (startMs) => Math.max(span.start, floorMs, startMs)) ?? toMs;
 
   return fromMs < toMs ? { start: fromMs, end: toMs } : undefined;
 };
@@ -380,12 +466,6 @@ const attemptSeries = async <Series extends string, Row>(
   }
 };
 
-/** What a try at a series gave, with the ground its read began above. */
-const readOf = <Row>(
-  paged: TotalPaged<Row> | undefined,
-  skipped: WalkWindow | undefined,
-): SeriesRead<Row> | undefined => (paged?.kind === 'rows' ? { ...paged, skipped } : paged);
-
 /**
  * One series of a span, from the oldest start Binance is known to serve it (`depth`, when the lane
  * has a depth to be refused at). A start Binance refuses as older than it keeps is narrowed to
@@ -404,10 +484,23 @@ const readSeries = async <Series extends string, Row>(
   },
 ): Promise<SeriesRead<Row> | undefined> => {
   const { span, depth } = input;
+  const asked = { end: false };
 
   for (;;) {
     if (isBelowKnownStart(span, depth)) {
       return { kind: 'below', skipped: skippedBandOf({ span, depth, toMs: span.end }) };
+    }
+
+    const settled = await foldMap(maybe(depth), (guard) =>
+      settleBeforeRead({ ...input, depth: guard }, asked),
+    );
+
+    if (settled?.kind === 'done') {
+      return settled.read;
+    }
+
+    if (settled !== undefined) {
+      continue;
     }
 
     const attempt = await attemptSeries(input);
@@ -415,7 +508,10 @@ const readSeries = async <Series extends string, Row>(
       .returnType<Promise<AfterDepth<Row>>>()
       .with({ kind: 'read' }, async ({ paged, startMs }) => ({
         kind: 'done',
-        read: readOf(paged, skippedBandOf({ span, depth, toMs: startMs })),
+        read:
+          paged?.kind === 'rows'
+            ? { ...paged, skipped: skippedBandOf({ span, depth, toMs: startMs }) }
+            : paged,
       }))
       .with({ kind: 'refused' }, (refusal) =>
         narrowAfterRefusal({ ...input, depth: refusal.depth, refusedMs: refusal.startMs }),
@@ -448,8 +544,10 @@ const readSeries = async <Series extends string, Row>(
  * (`owed`), not read as empty, and so is the whole span of a series whose read stopped (the lane's
  * calls ran out while it narrowed, or it reached `MAX_DEPTH_REFUSALS` refusals or a second lapse),
  * never read as empty. A series costs at most the requests bounded in `MAX_DEPTH_REFUSALS` and
- * `MAX_DEPTH_LAPSES`, each spending the lane, and the series after it keep the calls reserved for
- * them. A lane without a depth reads every series or none.
+ * `MAX_DEPTH_LAPSES`, each spending the lane, and may spend the calls the series after it would
+ * have had: one series read to its end serves more ground than a request each for all of them,
+ * and a series with no call left is owed the whole span with no request. A lane without a depth
+ * reads every series or none.
  */
 export const readSeriesSpan = async <Series extends string, Row>(
   input: SeriesRequest<Series, Row> & {
@@ -478,7 +576,7 @@ export const readSeriesSpan = async <Series extends string, Row>(
       const paged = await readSeries<Series, Row>({
         ...input,
         name,
-        keep: keep + series.length - 1 - index,
+        keep: depth === undefined ? keep + series.length - 1 - index : keep,
         depth: foldMap(maybe(depth), (guard) => ({ ...guard, memory: guard.memoryOf(name) })),
         tally: { refusals: 0, lapses: 0 },
       });

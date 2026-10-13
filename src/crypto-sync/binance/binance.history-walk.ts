@@ -174,9 +174,7 @@ const holdsPoint = (owed: OwedGround, point: OwedGround): boolean =>
  */
 export const withoutRead = <Range extends WalkWindow>(ranges: Range[], read: WalkWindow): Range[] =>
   ranges.flatMap((range) => [
-    ...(range.start < read.start
-      ? [{ ...range, start: range.start, end: Math.min(range.end, read.start) }]
-      : []),
+    ...(range.start < read.start ? [{ ...range, end: Math.min(range.end, read.start) }] : []),
     ...(range.end > read.end
       ? [{ ...range, start: Math.max(range.start, read.end), end: range.end }]
       : []),
@@ -247,11 +245,7 @@ const mergedRangesOf = (sorted: OwedGround[], limit: number): OwedGround[] => {
 
   while (merged.length > limit) {
     const index = nearestGapIndexOf(merged);
-    merged.splice(index, 2, {
-      ...merged[index],
-      start: merged[index].start,
-      end: merged[index + 1].end,
-    });
+    merged.splice(index, 2, { ...merged[index], end: merged[index + 1].end });
   }
 
   return merged;
@@ -262,7 +256,10 @@ const groupedBySeries = (ranges: OwedGround[]): OwedGround[][] => {
   const groups = new Map<string | undefined, OwedGround[]>();
 
   for (const range of ranges) {
-    groups.set(range.series, [...(groups.get(range.series) ?? []), range]);
+    const group = groups.get(range.series) ?? [];
+
+    group.push(range);
+    groups.set(range.series, group);
   }
 
   return [...groups.values()];
@@ -642,6 +639,11 @@ export type WalkMarks = {
   pending: OwedGround[];
   /** What the forward spans of this run owed, kept in the list each later forward span stores. */
   forwardOwed?: OwedGround[];
+  /**
+   * The run stored the list of its plan before any pass (`storePlannedList`), and the owed windows
+   * it read since took ground off it: a forward span stores the list in `pending` with the cursor.
+   */
+  listStored?: boolean;
 };
 
 /** The metadata field each of a walk's marks is stored under. */
@@ -682,6 +684,19 @@ const storePending = async (
   }
 };
 
+/**
+ * Store the list of owed ground the plan holds, this run's overlap day in it, before any pass
+ * reads. A walk that reads its owed windows before the forward pass needs it: the forward pass
+ * stores the list with the cursor, and a list built from the plan would bring back the ground the
+ * owed windows read. A crash after it only leaves ground the next run reads again.
+ */
+export const storePlannedList = async (
+  input: Pick<MarkAdvance, 'plan' | 'marks' | 'fields' | 'writePending'>,
+): Promise<void> => {
+  await storePending(input, input.plan.pendingRanges);
+  input.marks.listStored = true;
+};
+
 const advanceCursor = async (input: MarkAdvance): Promise<void> => {
   const { span, plan, marks, fields, write } = input;
 
@@ -692,6 +707,7 @@ const advanceCursor = async (input: MarkAdvance): Promise<void> => {
   }
 
   const forwardOwed = marks.forwardOwed ?? [];
+  const listed = marks.listStored === true ? marks.pending : plan.pendingRanges;
 
   // The owed ground goes first: a crash after it only leaves a range the next run reads
   // again, while a crash after the cursor alone would leave the overlap behind the old
@@ -699,12 +715,8 @@ const advanceCursor = async (input: MarkAdvance): Promise<void> => {
   await storePending(
     input,
     forwardOwed.length === 0
-      ? plan.pendingRanges
-      : normalizePending(
-          [...plan.pendingRanges, ...forwardOwed],
-          UNBOUNDED,
-          Number.POSITIVE_INFINITY,
-        ),
+      ? listed
+      : normalizePending([...listed, ...forwardOwed], UNBOUNDED, Number.POSITIVE_INFINITY),
   );
 
   marks.cursor = Math.max(span.end, marks.cursor ?? span.end);
@@ -844,6 +856,13 @@ export const nextSpanAfter = (committed: WalkWindow, window: WalkWindow): WalkWi
  * no call in a run would never reach the records that settle late.
  */
 const RESCAN_KEEP = 1;
+
+/**
+ * The calls a run keeps for the forward pass while the owed ranges, which a walk can read first
+ * (`owedFirst`), spend the budget. A forward pass that gets no call in a run would never reach the
+ * newest records.
+ */
+const FORWARD_KEEP = 1;
 
 /**
  * The calls a run keeps for the owed points while the owed ranges and the re-scan spend the
@@ -1105,10 +1124,12 @@ export const runWalkPlan = async (input: {
   markRangeRead?: (window: OwedWindow) => Promise<void>;
   hints?: { stored: BinanceSpanHints; store: (next: BinanceSpanHints) => Promise<void> };
   callsOf?: (window: OwedWindow) => number;
+  owedFirst?: boolean;
 }): Promise<WalkResult> => {
   const { plan, canAfford, runWindow, markPointRead, markRangeRead, callsOf = () => 1 } = input;
   const pointKeep = plan.points.length > 0 ? POINT_KEEP * callsOf(plan.points[0]) : 0;
   const rescanKeep = plan.rescan.length > 0 ? RESCAN_KEEP * callsOf(plan.rescan[0]) : 0;
+  const forwardKeep = plan.forward.length > 0 ? FORWARD_KEEP * callsOf(plan.forward[0]) : 0;
   let imported = 0;
   let complete = true;
   let hints = input.hints?.stored ?? NO_HINTS;
@@ -1177,8 +1198,21 @@ export const runWalkPlan = async (input: {
   };
 
   await saveHints(hintsOfPlan(hints, plan));
-  await readPass(plan.forward, 'forward', 0, 'forward');
-  await readPass(plan.pending, 'pending', rescanKeep + pointKeep, 'pending', markRangeRead);
+
+  if (input.owedFirst === true) {
+    await readPass(
+      plan.pending,
+      'pending',
+      forwardKeep + rescanKeep + pointKeep,
+      'pending',
+      markRangeRead,
+    );
+    await readPass(plan.forward, 'forward', 0, 'forward');
+  } else {
+    await readPass(plan.forward, 'forward', 0, 'forward');
+    await readPass(plan.pending, 'pending', rescanKeep + pointKeep, 'pending', markRangeRead);
+  }
+
   await readPass(plan.rescan, 'rescan', pointKeep, 'rescan');
   await readPass(plan.points, 'pending', 0, 'point', markPointRead);
 

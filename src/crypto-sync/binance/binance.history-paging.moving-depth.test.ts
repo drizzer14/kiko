@@ -90,11 +90,11 @@ describe('readSeriesSpan, against a depth that moves with the clock or in steps 
         expect(
           maxOf(unowedSkippedMsOf(world.calls.slice(0, firstCalls), owedOf(first))),
         ).toBeLessThanOrEqual(DEPTH_RESOLUTION_MS);
-        // The search after the suspension starts from the start the first one found, which it
-        // takes for refused: the resolution of the first and of the second are both left.
+        // A search that ends against the start the first one found owes the ground from there, so
+        // only the resolution of the first search is left.
         expect(
           maxOf(unowedSkippedMsOf(world.calls.slice(firstCalls), owedOf(second))),
-        ).toBeLessThanOrEqual(2 * DEPTH_RESOLUTION_MS);
+        ).toBeLessThanOrEqual(DEPTH_RESOLUTION_MS);
         expect(maxOf(widthsOf(owedOf(second)))).toBeLessThanOrEqual(OWED_BOUND_MS);
         expect(probesOf(world.calls.slice(firstCalls)).length).toBeLessThanOrEqual(3 * 24);
         expect(probesOf(world.calls.slice(firstCalls)).length).toBeGreaterThan(0);

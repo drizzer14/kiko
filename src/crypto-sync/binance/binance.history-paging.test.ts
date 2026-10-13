@@ -512,7 +512,7 @@ describe('readSeriesSpan, against a Binance that refuses a start older than it k
     const result = await readDeep({ fetchPage, depth });
 
     expect(result).toEqual({ kind: 'page', page: { read: [], drifted: [], owed: [] } });
-    expect(fetchPage).toHaveBeenCalledTimes(2 * SERIES.length);
+    expect(fetchPage).toHaveBeenCalledTimes(SERIES.length + 1);
     expect(SERIES.map((series) => depth.memoryOf(series).startMs)).toEqual(
       SERIES.map(() => DEEP.end),
     );
@@ -520,6 +520,73 @@ describe('readSeriesSpan, against a Binance that refuses a start older than it k
     fetchPage.mockClear();
     await readDeep({ fetchPage, depth, span: { start: DEEP.start - DAY_MS, end: DEEP.end } });
     expect(fetchPage).not.toHaveBeenCalled();
+  });
+
+  it('asks the end of the span, and nothing else, of a series with no memory when another series was refused the end', async () => {
+    const fetchPage = keeping(DEEP.end + 1);
+    const depth = depthOf();
+
+    const result = await readDeep({ fetchPage, depth });
+
+    // The first series pays its refused read and the end; each of the others the end alone.
+    expect(result).toEqual({ kind: 'page', page: { read: [], drifted: [], owed: [] } });
+    expect(fetchPage.mock.calls.map(([series, span]) => [series, span.end - span.start])).toEqual([
+      ['MAIN_FUNDING', DEEP.end - DEEP.start],
+      ['MAIN_FUNDING', 1],
+      ['FUNDING_MAIN', 1],
+      ['MAIN_UMFUTURE', 1],
+    ]);
+    expect(SERIES.map((series) => depth.memoryOf(series).startMs)).toEqual(
+      SERIES.map(() => DEEP.end),
+    );
+  });
+
+  it('reads a series that serves the end of the span from the start of the span, when another series was refused the end', async () => {
+    const keepsAll = jest.fn(async (series: Series, span: typeof DEEP, _current: number) => {
+      if (series === 'MAIN_FUNDING' && span.start < DEEP.end + 1) {
+        throw new BinanceHistoryTooOldError('too old');
+      }
+
+      return pageOf(1, 1);
+    });
+
+    const result = await readDeep({ fetchPage: keepsAll });
+
+    expect(result).toEqual({
+      kind: 'page',
+      page: {
+        read: ['FUNDING_MAIN', 'MAIN_UMFUTURE'].map((series) => ({
+          series,
+          rows: [{ id: 0 }],
+          unreadable: [],
+        })),
+        drifted: [],
+        owed: [],
+      },
+    });
+    expect(
+      keepsAll.mock.calls
+        .filter(([series]) => series === 'FUNDING_MAIN')
+        .map(([, span]) => [span.start, span.end]),
+    ).toEqual([
+      [DEEP.end, DEEP.end + 1],
+      [DEEP.start, DEEP.end],
+    ]);
+  });
+
+  it('asks the end of a span that starts at the bound a series holds, with no read of the ground the bound refuses', async () => {
+    const fetchPage = keeping(DEEP.end + 10 * DAY_MS + 1);
+    const depth = depthOf();
+    const next = { start: DEEP.end, end: DEEP.end + 10 * DAY_MS };
+
+    await readDeep({ fetchPage, depth });
+    fetchPage.mockClear();
+    const result = await readDeep({ fetchPage, depth, span: next });
+
+    expect(result).toEqual({ kind: 'page', page: { read: [], drifted: [], owed: [] } });
+    expect(fetchPage.mock.calls.map(([series, span]) => [series, span.start, span.end])).toEqual(
+      SERIES.map((series) => [series, next.end, next.end + 1]),
+    );
   });
 
   it('reads the series after one whose span lies below the depth, from the start each of them is served from', async () => {
@@ -548,13 +615,17 @@ describe('readSeriesSpan, against a Binance that refuses a start older than it k
     });
   });
 
-  it('starts a span from the start already known to be served for each series, with no request for the ground below it', async () => {
+  it('narrows a span from the bound each series holds at once, with no request for the ground below it', async () => {
     const fetchPage = keeping(0);
-    const depth = depthOf({ memoryOf: () => boundedAt(DEEP.start + 2 * DAY_MS) });
+    const bound = DEEP.start + 2 * DAY_MS;
+    const depth = depthOf({ memoryOf: () => boundedAt(bound) });
 
     await readDeep({ fetchPage, depth });
 
-    expect(new Set(startsOf(fetchPage))).toEqual(new Set([DEEP.start + 2 * DAY_MS]));
+    expect(Math.min(...startsOf(fetchPage))).toBeGreaterThanOrEqual(bound);
+    expect(
+      SERIES.map((series) => fetchPage.mock.calls.find(([name]) => name === series)?.[1].end),
+    ).toEqual(SERIES.map(() => DEEP.end + 1));
   });
 
   it('asks nothing of a span that ends at or before the start already known to be served', async () => {
@@ -569,13 +640,23 @@ describe('readSeriesSpan, against a Binance that refuses a start older than it k
     expect(fetchPage).not.toHaveBeenCalled();
   });
 
-  it('reads a refused span that ends at or before the floor of now as empty, after the one refused request of each series', async () => {
+  it('reads a span that ends at or before the floor of now as empty, with no request', async () => {
     const fetchPage = keeping(DEEP.end + DAY_MS);
 
     const result = await readDeep({ fetchPage, depth: depthOf({ floorMs: () => DEEP.end }) });
 
     expect(result).toEqual({ kind: 'page', page: { read: [], drifted: [], owed: [] } });
-    expect(fetchPage).toHaveBeenCalledTimes(SERIES.length);
+    expect(fetchPage).not.toHaveBeenCalled();
+  });
+
+  it('reads a span that starts below the floor of now from the floor, and owes nothing below it', async () => {
+    const floorMs = DEEP.start + 2 * DAY_MS;
+    const fetchPage = keeping(floorMs);
+
+    const result = await readDeep({ fetchPage, depth: depthOf({ floorMs: () => floorMs }) });
+
+    expect(result).toMatchObject({ kind: 'page', page: { drifted: [], owed: [] } });
+    expect(startsOf(fetchPage)).toEqual(SERIES.map(() => floorMs));
   });
 
   it('answers the half of the span that starts where the span does, when the read from the served start comes back full', async () => {
@@ -648,13 +729,36 @@ describe('readSeriesSpan, against a Binance that refuses a start older than it k
 
     const result = await readDeep({ run, fetchPage });
 
-    // The first series spends the refused read and two probes: a third would eat into the calls
-    // kept for the first reads of the two series after it.
+    // The first series spends the refused read and four probes, the second its refused read, and
+    // the third no request: the lane has no call left for it.
     expect(result).toEqual({
       kind: 'page',
       page: { read: [], drifted: [], owed: SERIES.map((series) => ({ series, window: DEEP })) },
     });
-    expect(fetchPage).toHaveBeenCalledTimes(5);
+    expect(fetchPage).toHaveBeenCalledTimes(6);
+  });
+
+  it('lets a series that narrows spend the calls kept for the series after it, which are then owed in full', async () => {
+    const fetchPage = keeping(SERVED_FROM);
+    const cap = 24;
+    const run = {
+      gate: freshRun().gate,
+      budget: {
+        canAfford: (_lane: unknown, _cost: unknown, keep = 0) =>
+          fetchPage.mock.calls.length + keep < cap,
+        record: () => undefined,
+      },
+    };
+
+    const result = await readDeep({ run, fetchPage });
+
+    // The first series needs a refused read, an end probe, 20 halvings and its read: 23 calls.
+    const page = result?.kind === 'page' ? result.page : undefined;
+    expect(page?.read.map(({ series }) => series)).toEqual(['MAIN_FUNDING']);
+    expect(page?.owed?.map(({ series }) => series)).toEqual(
+      expect.arrayContaining(['FUNDING_MAIN', 'MAIN_UMFUTURE']),
+    );
+    expect(fetchPage.mock.calls.length).toBeLessThanOrEqual(cap);
   });
 
   it('is a clean stop, with nothing owed, when the span is not entered: the first reads of every series do not fit', async () => {

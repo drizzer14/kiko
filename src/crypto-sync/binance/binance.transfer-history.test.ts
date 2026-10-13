@@ -275,6 +275,20 @@ describe('settledTransfersOf, for ground a type left owed in itself', () => {
     ]);
   });
 
+  it('owes the span of a type whose pages drifted in that type alone', () => {
+    const settled = settledTransfersOf({
+      accountId: 'acc-1',
+      span,
+      read: { ...readOf(), drifted: ['FUNDING_MAIN', 'MAIN_UMFUTURE'] },
+    });
+
+    expect(settled.codes).toEqual(['transfer-page-drift']);
+    expect(settled.owed).toEqual([
+      { ...span, series: 'FUNDING_MAIN' },
+      { ...span, series: 'MAIN_UMFUTURE' },
+    ]);
+  });
+
   it('owes the same ground of one type once', () => {
     const band = { series: 'MAIN_FUNDING' as const, window: { start: 1_000, end: 1_500 } };
 
@@ -863,7 +877,7 @@ describe('a span too full for one page, and a page that does not add up', () => 
     expect(requests.some((request) => request.startTime < agoMs(5))).toBe(true);
   });
 
-  it('a drifted type in the re-scan commits the other 19 and owes the span as a range', async () => {
+  it('a drifted type in the re-scan commits the other 19 and owes the span as a range in that type alone', async () => {
     const world = worldOf(caughtUp);
     const record = entryOf({ type: 'UMFUTURE_MAIN', timestamp: agoMs(10), tranId: 'kept' });
     const behind = (query: TransferQuery) => query.startTime < agoMs(5);
@@ -876,7 +890,12 @@ describe('a span too full for one page, and a page that does not add up', () => 
     });
 
     expect(world.added.map((row) => row.externalId)).toEqual(['acc-1:xfer:UMFUTURE_MAIN:kept:BTC']);
-    expect(listOf(world)).toContainEqual({ start: agoMs(30), end: agoMs(5) });
+    expect(listOf(world)).toContainEqual({
+      start: agoMs(30),
+      end: agoMs(5),
+      series: 'FUNDING_MAIN',
+    });
+    expect(listOf(world)).not.toContainEqual({ start: agoMs(30), end: agoMs(5) });
     expect(stopCodes(warn)).toContain('transfer-page-drift');
   });
 
@@ -1322,27 +1341,21 @@ describe('a Binance that refuses a startTime older than the history it keeps (co
       expect(listOf(world)).toEqual([]);
     });
 
-    it('imports what Binance keeps of a span that starts older than it keeps within 3 runs, and reads the ground it refuses as empty', async () => {
+    it('imports what Binance keeps of a span that starts older than it keeps, reads the ground it refuses as empty, and owes nothing', async () => {
       const world = worldOf();
-      // The crossing window is read in the second run, `gapMs` after the first.
       const entries = [
         entryOf({ tranId: 'refused', timestamp: agoMs(110) }),
-        entryOf({ tranId: 'edge', timestamp: agoMs(100) + gapMs + 2 * DEPTH_RESOLUTION_MS }),
-        entryOf({ tranId: 'deep', timestamp: agoMs(97) }),
+        entryOf({ tranId: 'edge', timestamp: agoMs(100) + 2 * DEPTH_RESOLUTION_MS }),
+        entryOf({ tranId: 'deep', timestamp: agoMs(99) }),
         entryOf({ tranId: 'kept', timestamp: agoMs(50) }),
         entryOf({ tranId: 'newest', timestamp: agoMs(10) }),
       ];
 
-      const { ids, secondNow } = await walkRuns({
-        world,
-        entries,
-        gapMs,
-        runs: 3,
-        bindingAt: (now) => ({ answer: keepingDays(100, now) }),
-      });
+      const { ids, secondNow } = await walkKeeping({ world, entries, days: 100, gapMs });
 
       expect([...ids].sort()).toEqual(['edge', 'deep', 'kept', 'newest'].flatMap(keysOf).sort());
-      expect(Number(world.metadata[SPOT_FIELDS.cursor])).toBe(secondNow);
+      expect(world.metadata[SPOT_FIELDS.cursor]).toBe(secondNow);
+      expect(listOf(world)).toEqual([]);
       expect(stopCodes(warn)).toEqual([]);
     });
 
@@ -1359,25 +1372,33 @@ describe('a Binance that refuses a startTime older than the history it keeps (co
     });
   });
 
-  it('asks each type twice of a span it refuses whole: the refused start, then a start at its end', async () => {
+  it('asks the first type twice of a span it refuses whole, the refused start and a start at its end, and each other type the start at its end alone', async () => {
     const world = worldOf({ [SPOT_FIELDS.cursor]: agoMs(150) });
 
     const { requests } = await walkOnce({ world, answer: keepingDays(100, NOW) });
 
-    expect(requests.slice(0, 2 * TYPE_COUNT)).toEqual(
-      UNIVERSAL_TRANSFER_TYPES.flatMap((type) => [
-        { type, startTime: agoMs(150), endTime: agoMs(120), current: 1 },
-        { type, startTime: agoMs(120), endTime: agoMs(120) + 1, current: 1 },
-      ]),
-    );
-    expect(requests[2 * TYPE_COUNT]).toEqual(
-      expect.objectContaining({ type: 'MAIN_FUNDING', startTime: agoMs(120), endTime: agoMs(90) }),
-    );
+    const endProbe = (type: UniversalTransferType) => ({
+      type,
+      startTime: agoMs(120),
+      endTime: agoMs(120) + 1,
+      current: 1,
+    });
+    expect(requests.slice(0, TYPE_COUNT + 1)).toEqual([
+      { type: 'MAIN_FUNDING', startTime: agoMs(150), endTime: agoMs(120), current: 1 },
+      ...UNIVERSAL_TRANSFER_TYPES.map(endProbe),
+    ]);
+    // The next span begins at the bound each type holds, so it asks its end and no refused read.
+    expect(requests[TYPE_COUNT + 1]).toEqual({
+      type: 'MAIN_FUNDING',
+      startTime: agoMs(90),
+      endTime: agoMs(90) + 1,
+      current: 1,
+    });
   });
 
   describe('when the clock has moved on since the run was planned', () => {
     const SUSPENDED_MS = 3 * DAY_MS;
-    const BOUNDARY = FLOOR + SUSPENDED_MS - DAY_MS;
+    const READ_FLOOR = FLOOR + SUSPENDED_MS;
     const CREDENTIALS = { apiKey: 'api-key', secret: 'secret' };
 
     /**
@@ -1402,7 +1423,7 @@ describe('a Binance that refuses a startTime older than the history it keeps (co
     };
     const failedAt = FLOOR + 20 * DAY_MS;
     const entries = [
-      entryOf({ tranId: 'crossing', timestamp: BOUNDARY + DAY_MS / 2 }),
+      entryOf({ tranId: 'crossing', timestamp: READ_FLOOR + DAY_MS / 2 }),
       entryOf({ tranId: 'failed', status: 'FAILED', timestamp: failedAt }),
       entryOf({ tranId: 'later', timestamp: agoMs(100) }),
       entryOf({ tranId: 'newest', timestamp: agoMs(10) }),
@@ -1428,10 +1449,48 @@ describe('a Binance that refuses a startTime older than the history it keeps (co
       });
     });
 
-    it('moves the start of the span up by bisection, within a stated number of requests, to the oldest start Binance serves', async () => {
+    it('reads every type of the span from the floor of the read, in one request, and never below it', async () => {
       const world = worldOf();
 
       const { requests } = await walkOnce({ world, entries, ...suspendedFrom(NOW) });
+
+      const firstSpan = requests.slice(0, TYPE_COUNT);
+      expect(firstSpan.map((request) => request.type)).toEqual([...UNIVERSAL_TRANSFER_TYPES]);
+      expect(firstSpan.every((request) => request.startTime === READ_FLOOR)).toBe(true);
+      expect(minOf(requests.map((request) => request.startTime))).toBe(READ_FLOOR);
+    });
+
+    it('reads a span that lies wholly below the floor of now as empty, with no request', async () => {
+      const world = worldOf({
+        [SPOT_FIELDS.cursor]: agoMs(1),
+        [SPOT_FIELDS.rescan]: agoMs(1) - 1,
+        [SPOT_FIELDS.pending]: [{ start: FLOOR, end: FLOOR + DAY_MS }],
+      });
+
+      const { requests } = await walkOnce({ world, ...suspendedFrom(NOW) });
+
+      expect(
+        requests.filter(
+          (request) => request.startTime >= FLOOR && request.startTime <= FLOOR + DAY_MS,
+        ),
+      ).toEqual([]);
+      expect(listOf(world)).toEqual([]);
+    });
+  });
+
+  describe('when a span crosses the depth Binance keeps', () => {
+    const BOUNDARY = agoMs(100);
+    const crossing = entryOf({ tranId: 'crossing', timestamp: BOUNDARY + DAY_MS / 2 });
+    const crossingWorld = () => worldOf({ [SPOT_FIELDS.cursor]: agoMs(105) });
+
+    it('moves the start of the span up by bisection, within a stated number of requests, to the oldest start Binance serves', async () => {
+      const world = crossingWorld();
+
+      const { requests } = await walkOnce({
+        world,
+        entries: [crossing],
+        answer: keepingDays(100, NOW),
+      });
 
       const narrowingOf = (type: UniversalTransferType) =>
         requests.filter(
@@ -1451,9 +1510,13 @@ describe('a Binance that refuses a startTime older than the history it keeps (co
     });
 
     it('narrows each type by itself, the later types from the start the first one found, in a few requests', async () => {
-      const world = worldOf();
+      const world = crossingWorld();
 
-      const { requests } = await walkOnce({ world, entries, ...suspendedFrom(NOW) });
+      const { requests } = await walkOnce({
+        world,
+        entries: [crossing],
+        answer: keepingDays(100, NOW),
+      });
 
       const narrowingOf = (type: UniversalTransferType) =>
         requests.filter(
@@ -1466,30 +1529,16 @@ describe('a Binance that refuses a startTime older than the history it keeps (co
       expect(narrowingOf(UNIVERSAL_TRANSFER_TYPES[2]).length).toBeLessThanOrEqual(8);
     });
 
-    it('reads a span that lies wholly below the floor of now as empty, with no request beyond the refused one of each type', async () => {
-      const world = worldOf({
-        [SPOT_FIELDS.cursor]: agoMs(1),
-        [SPOT_FIELDS.rescan]: agoMs(1) - 1,
-        [SPOT_FIELDS.pending]: [{ start: FLOOR, end: FLOOR + DAY_MS }],
-      });
-
-      const { requests } = await walkOnce({ world, ...suspendedFrom(NOW) });
-
-      expect(
-        requests.filter(
-          (request) => request.startTime >= FLOOR && request.startTime <= FLOOR + DAY_MS,
-        ),
-      ).toHaveLength(TYPE_COUNT);
-      expect(listOf(world)).toEqual([]);
-    });
-
     it('owes the span in each type whose narrowing the budget cannot afford, never reads it as empty, and a later run imports it', async () => {
-      const world = worldOf();
-      const binding = suspendedFrom(NOW);
-      const fetcher = serverOf(entries, binding.answer);
-      // The span is entered (20 calls fit). The first type spends 5 calls, the refused read and 4
-      // probes, before the next would leave the calls the later types need; each of the later
-      // types spends its refused read and no more.
+      const world = crossingWorld();
+      const lastType = UNIVERSAL_TRANSFER_TYPES[TYPE_COUNT - 1];
+      const entries = [
+        entryOf({ tranId: 'crossing', type: lastType, timestamp: BOUNDARY + DAY_MS / 2 }),
+      ];
+      const answer = keepingDays(100, NOW);
+      const fetcher = serverOf(entries, answer);
+      // The span is entered (20 calls fit). The first type spends the calls, 24 in all, that its
+      // narrowing and read need; the later types are owed with no request.
       const run = {
         gate: freshRun().gate,
         budget: {
@@ -1502,22 +1551,22 @@ describe('a Binance that refuses a startTime older than the history it keeps (co
       const first = await walkOnce({
         world,
         run,
-        over: { ...binding.over, fetchUniversalTransfers: fetcher },
+        over: { fetchUniversalTransfers: fetcher },
       });
 
       expect(first.result).toEqual({ imported: 0, complete: false });
       expect(world.added).toEqual([]);
-      expect(fetcher).toHaveBeenCalledTimes(5 + (TYPE_COUNT - 1));
-      expect(listOf(world).map((ground) => (ground as { series?: string }).series)).toEqual(
-        expect.arrayContaining([...UNIVERSAL_TRANSFER_TYPES]),
+      expect(fetcher.mock.calls.length).toBeLessThanOrEqual(TYPE_COUNT + 5);
+      expect(listOf(world).map((ground) => (ground as { series?: string }).series)).toContain(
+        lastType,
       );
 
-      for (const _run of [1, 2, 3]) {
-        await walkOnce({ world, entries, ...suspendedFrom(NOW) });
+      for (const _run of Array.from({ length: 12 }, (_unused, index) => index)) {
+        await walkOnce({ world, entries, answer });
       }
 
       expect(world.added.map((row) => row.externalId)).toEqual(
-        expect.arrayContaining(keysOf('crossing')),
+        expect.arrayContaining([`acc-1:xfer:${lastType}:crossing:BTC:funding`]),
       );
     });
 
@@ -1540,7 +1589,11 @@ describe('a Binance that refuses a startTime older than the history it keeps (co
         (request) => request.startTime < agoMs(100) && request.endTime - request.startTime > 1,
       );
 
-      expect(readsBelowDepth.map((request) => request.type)).toEqual([...UNIVERSAL_TRANSFER_TYPES]);
+      // The types the run could afford to narrow each ask the refused start once.
+      expect(readsBelowDepth.length).toBeGreaterThan(0);
+      expect(readsBelowDepth.map((request) => request.type)).toEqual(
+        UNIVERSAL_TRANSFER_TYPES.slice(0, readsBelowDepth.length),
+      );
       expect(world.added.map((row) => row.externalId)).toEqual(keysOf('deep'));
       expect(pointsIn(listOf(world))).toEqual([]);
     });
@@ -1736,17 +1789,20 @@ describe('a Binance that refuses a startTime older than the history it keeps (co
         suspendedMs: input.suspendedMs,
         suspendedInGate: input.suspendedInGate,
       });
-      // The walk never asks for ground older than its floor of the moment, which moves with the
-      // clock, so ground that only a run before the last one could have asked for is not expected.
-      const keptAtEnd = (entry: Entry): boolean => {
-        const endMs = snapshots.at(-1)?.endMs ?? 0;
+      // A transfer Binance keeps while the first run reads is imported, however many runs later
+      // the depth and the floor have passed it.
+      const keptAtFirstRead = (entry: Entry): boolean => {
+        const firstReadMs = snapshots[0]?.endMs ?? 0;
 
         return (
           (timeOfEntry(entry) ?? 0) >=
-          Math.max(edgeAt(keptDaysOf(entry.readAs), stepMs, endMs), transferFloorMs(endMs))
+          Math.max(
+            edgeAt(keptDaysOf(entry.readAs), stepMs, firstReadMs),
+            transferFloorMs(firstReadMs),
+          )
         );
       };
-      const expected = keysOfEntries(entries.filter(keptAtEnd));
+      const expected = keysOfEntries(entries.filter(keptAtFirstRead));
       const missingByRun = snapshots.map(
         (snapshot) => expected.filter((id) => !snapshot.ids.has(id)).length,
       );
@@ -1823,6 +1879,79 @@ describe('a Binance that refuses a startTime older than the history it keeps (co
 
           expect(expected.length).toBeGreaterThanOrEqual(UNIVERSAL_TRANSFER_TYPES.length);
           expect(missingByRun[PLANNED_EARLY_RUNS - 1]).toBe(0);
+          expect(listOf(world)).toEqual([]);
+          expect(stopCodes(warn)).toEqual([]);
+        },
+      );
+    });
+
+    // Transfers of every type at these distances above the ground a type's reads begin at: each is
+    // kept by Binance when the first run reads it, so each is imported once, whatever the runs
+    // that follow do to the depth and the floor.
+    const ABOVE_OFFSETS: [string, number][] = [
+      ['h1', HOUR_MS],
+      ['h6', 6 * HOUR_MS],
+      ['h12', 12 * HOUR_MS],
+      ['h20', 20 * HOUR_MS],
+      ['d1h1', DAY_MS + HOUR_MS],
+      ['d2', 2 * DAY_MS],
+      ['d3', 3 * DAY_MS],
+      ['d10', 10 * DAY_MS],
+    ];
+
+    const aboveOf = (baseOf: (type: UniversalTransferType) => number): Entry[] =>
+      UNIVERSAL_TRANSFER_TYPES.flatMap((type) =>
+        ABOVE_OFFSETS.map(([name, offsetMs]) =>
+          entryOf({ tranId: `above-${name}-${type}`, type, timestamp: baseOf(type) + offsetMs }),
+        ),
+      );
+
+    describe.each(LATENCIES)('with %s', (_name, latencyOf) => {
+      describe.each([
+        ['with the clock', 1],
+        ['in steps of a day', DAY_MS],
+      ])(
+        'against a Binance that keeps 100 days in every type and whose depth moves %s',
+        (_how, stepMs) => {
+          it.each(RUN_GAPS)(
+            'imports the transfers just above the depth in every type, within 15 runs (runs %i ms apart)',
+            async (gapMs) => {
+              const { world, missingByRun, expected } = await simulate({
+                keptDaysOf: () => 100,
+                stepMs,
+                extraRows: aboveOf(() => edgeAt(100, stepMs, NOW)),
+                latencyMs: latencyOf(),
+                gapMs,
+                runs: 15,
+              });
+
+              expect(expected.length).toBeGreaterThanOrEqual(
+                UNIVERSAL_TRANSFER_TYPES.length * ABOVE_OFFSETS.length,
+              );
+              expect(missingByRun.at(-1)).toBe(0);
+              expect(listOf(world)).toEqual([]);
+              expect(stopCodes(warn)).toEqual([]);
+            },
+          );
+        },
+      );
+
+      it.each(RUN_GAPS)(
+        'imports the transfers just above the floor the first read meets in every type, when the run was planned 3 days before it read and Binance keeps 180 days (runs %i ms apart)',
+        async (gapMs) => {
+          const { world, missingByRun, expected } = await simulate({
+            keptDaysOf: () => 180,
+            extraRows: aboveOf(() => FLOOR + SUSPENDED_MS),
+            latencyMs: latencyOf(),
+            gapMs,
+            runs: 6,
+            suspendedMs: SUSPENDED_MS,
+          });
+
+          expect(expected.length).toBeGreaterThanOrEqual(
+            UNIVERSAL_TRANSFER_TYPES.length * ABOVE_OFFSETS.length,
+          );
+          expect(missingByRun.at(-1)).toBe(0);
           expect(listOf(world)).toEqual([]);
           expect(stopCodes(warn)).toEqual([]);
         },

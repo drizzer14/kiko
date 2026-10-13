@@ -492,6 +492,30 @@ describe('CryptoSyncSection', () => {
     expect(queryByText(HISTORY_CAPTION, { exact: false })).toBeNull();
   });
 
+  it.each([
+    ['a range owed in every type', { start: 5, end: 7 }],
+    ['a range owed in one type', { start: 5, end: 7, series: 'MAIN_FUNDING' }],
+  ])(
+    'shows the caption while the cursors are current and the Transfer walk owes %s',
+    async (_label, owed) => {
+      const { getByText } = await render(
+        <CryptoSyncSection
+          account={account({ institution: 'binance' })}
+          holdings={[
+            holding({
+              binanceAsset: 'BTC',
+              ...walkCursors(2 * HOUR_MS),
+              binanceTransferPendingOverlap: [owed],
+              syncedAt: CONNECTED_WALLET_SYNCED_AT,
+            }),
+          ]}
+        />,
+      );
+
+      expect(getByText(HISTORY_CAPTION, { exact: false })).toBeTruthy();
+    },
+  );
+
   it('hides the lagging-history caption while a sync is in flight, even when the history walk is behind', async () => {
     mockUseCryptoSync.mockReturnValue({ isSyncing: true, error: undefined, sync: mockSync });
 

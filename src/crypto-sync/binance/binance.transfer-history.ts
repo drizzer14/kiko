@@ -36,6 +36,7 @@ import {
   runWalkPlan,
   type SpanCommit,
   type SpanRead,
+  storePlannedList,
   type WalkMarkFields,
   type WalkMarks,
   walkSpans,
@@ -338,7 +339,7 @@ type TransferContext = {
   options: FetchAccountOptions;
   marks: WalkMarks;
   plan: WalkPlan;
-  depthMemories: Pick<DepthGuard, 'memoryOf' | 'hintMs'>;
+  depthMemories: Pick<DepthGuard, 'memoryOf' | 'hintMs' | 'refusedBoundMs'>;
 };
 
 /** The types a window is read in: every one, or the ones its owed points name. */
@@ -399,8 +400,8 @@ const readSpan = async (
  * The records of one span, each on its own (see `settleRecords`): a transfer the walk cannot
  * trust, or a row the client could not read, owes its own point in the type it was read under
  * and the others still import. A type whose pages drifted is no one record's stop: the span is
- * owed, as a range, in every type, and the types that did not drift still commit. The ground a
- * type left owed in itself (the edge band its read began above, or the whole span for a type
+ * owed, as a range, in that type alone, and the types that did not drift still commit. The ground
+ * a type left owed in itself (the edge band its read began above, or the whole span for a type
  * whose read stopped) is owed as a range in that type alone, and holds nothing back.
  */
 export const settledTransfersOf = (input: {
@@ -412,7 +413,7 @@ export const settledTransfersOf = (input: {
   const drift: SettledSpan<PlannedTransferRow> = {
     rows: [],
     codes: [TRANSFER_PAGE_DRIFT],
-    owed: [span],
+    owed: read.drifted.map((series) => ({ ...span, series })),
     returned: [],
   };
 
@@ -556,9 +557,17 @@ const runSync = async (
     depthMemories: createDepthMemories(deps.now),
   };
 
+  await storePlannedList({
+    plan,
+    marks: context.marks,
+    fields: TRANSFER_MARK_FIELDS,
+    writePending: (field, ranges) => deps.writeWalkPending(spot.id, field, ranges),
+  });
+
   return runWalkPlan({
     plan,
     callsOf,
+    owedFirst: true,
     canAfford: (keep) =>
       run.budget.canAfford('transfer', COSTS.transfer, keep) &&
       !isBinanceCoolingDown(accountId, deps.now()),

@@ -27,6 +27,7 @@ import {
   runWalkPlan,
   type SpanCommit,
   type SpanRead,
+  storePlannedList,
   storePointCursor,
   storeRangeCursor,
   storeSpanHints,
@@ -1433,6 +1434,66 @@ describe('runWalkPlan', () => {
       expect(result.complete).toBe(false);
     });
 
+    describe('with the owed windows first', () => {
+      const owedFirstPlan = planOf({
+        forward: [window(0), window(1)],
+        pending: [owedAt(500), owedAt(700)],
+        points: [pointAt(900)],
+        rescan: [rescanWindow],
+        rescanEnd: 300,
+      });
+
+      const keepsOwedFirst = async (calls: number) => {
+        const budget = budgetOf(calls);
+        const seen: [WalkWindow, WalkPass, number][] = [];
+
+        await runWalkPlan({
+          plan: owedFirstPlan,
+          owedFirst: true,
+          canAfford: budget.canAfford,
+          runWindow: async (span, pass, keep) => {
+            budget.spend();
+            seen.push([span, pass, keep]);
+
+            return ran(1, true);
+          },
+        });
+
+        return seen;
+      };
+
+      it('reads the owed windows, then the forward windows, the re-scan and the points', async () => {
+        expect((await keepsOwedFirst(20)).map(([span, pass]) => [span.start, pass])).toEqual([
+          [500, 'pending'],
+          [700, 'pending'],
+          [0, 'forward'],
+          [1, 'forward'],
+          [200, 'rescan'],
+          [900, 'pending'],
+        ]);
+      });
+
+      it('keeps one read of the first forward window, of the re-scan and of the points in the owed windows, and none in the forward pass', async () => {
+        expect((await keepsOwedFirst(20)).map(([, pass, keep]) => [pass, keep])).toEqual([
+          ['pending', 3],
+          ['pending', 3],
+          ['forward', 0],
+          ['forward', 0],
+          ['rescan', 1],
+          ['pending', 0],
+        ]);
+      });
+
+      it('leaves the owed windows unread that the calls it keeps do not allow, and still reads the first forward window', async () => {
+        expect((await keepsOwedFirst(4)).map(([span, pass]) => [span.start, pass])).toEqual([
+          [500, 'pending'],
+          [0, 'forward'],
+          [1, 'forward'],
+          [900, 'pending'],
+        ]);
+      });
+    });
+
     describe('when a window costs several calls, as one read of every transfer type does', () => {
       const SERIES_COUNT = 20;
       const callsOf = (window: OwedWindow): number => window.series?.length ?? SERIES_COUNT;
@@ -1832,6 +1893,74 @@ describe('advanceWalkMarks', () => {
       expect(await advance('forward', { start: 100, end: 400 }, marks, planned)).toEqual([
         [FORWARD_FIELD, 400],
       ]);
+    });
+
+    describe('when the run stored the planned list before any pass', () => {
+      const FIELDS = {
+        cursor: FORWARD_FIELD,
+        rescan: RESCAN_FIELD,
+        point: POINT_FIELD,
+        range: 'binancePayRangeCursor',
+        hints: 'binancePaySpanHints',
+        pending: PENDING_FIELD,
+      } as const;
+      const stale = { start: 10_000, end: 20_000 };
+      const storedPlan = planOf({ rescanEnd: 1_000_000, pendingRanges: [stale, day] });
+
+      const store = async (marks: WalkMarks): Promise<Write[]> => {
+        const writes: Write[] = [];
+
+        await storePlannedList({
+          plan: storedPlan,
+          marks,
+          fields: FIELDS,
+          writePending: async (field, ranges) => {
+            writes.push([field, ranges]);
+          },
+        });
+
+        return writes;
+      };
+
+      it('writes the list of the plan once, with the overlap day in it, and says so in the marks', async () => {
+        const marks = markOf({ cursor: 100, pending: [stale] });
+
+        expect(await store(marks)).toEqual([[PENDING_FIELD, [stale, day]]]);
+        expect(marks.pending).toEqual([stale, day]);
+        expect(marks.listStored).toBe(true);
+      });
+
+      it('writes nothing when the stored list already is the planned one', async () => {
+        const marks = markOf({ cursor: 100, pending: [stale, day] });
+
+        expect(await store(marks)).toEqual([]);
+        expect(marks.listStored).toBe(true);
+      });
+
+      it('stores the list the owed windows left with the cursor, not the ground they read', async () => {
+        const marks = markOf({ cursor: 100, pending: [stale] });
+        await store(marks);
+        await advance('pending', stale, marks, storedPlan);
+
+        expect(await advance('forward', { start: 100, end: 400 }, marks, storedPlan)).toEqual([
+          [FORWARD_FIELD, 400],
+        ]);
+        expect(marks.pending).toEqual([day]);
+      });
+
+      it('keeps what a forward span owes in the list it stores, beside what is left', async () => {
+        const marks = markOf({ cursor: 100, pending: [stale] });
+        const point = pointOf(150_000, 150_002);
+        await store(marks);
+        await advance('pending', stale, marks, storedPlan);
+
+        expect(
+          await advance('forward', { start: 100, end: 400 }, marks, storedPlan, [point]),
+        ).toEqual([
+          [PENDING_FIELD, [day, point]],
+          [FORWARD_FIELD, 400],
+        ]);
+      });
     });
 
     it('takes the read ground out of the list when a re-scan span commits, before the mark', async () => {

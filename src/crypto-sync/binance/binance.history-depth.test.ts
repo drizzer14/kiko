@@ -544,4 +544,30 @@ describe('the depth memories of the series of a run', () => {
 
     expect(hintMs()).toBeUndefined();
   });
+
+  it('leaves the series that asks out of its own hint', () => {
+    const { memoryOf, hintMs } = memoriesAt();
+    rememberServedStart(memoryOf('MAIN_FUNDING'), { startMs: START, servedAtMs: NOW_MS });
+    rememberServedStart(memoryOf('FUNDING_MAIN'), { startMs: START + 700, servedAtMs: NOW_MS - 1 });
+
+    expect(hintMs('MAIN_FUNDING')).toBe(START + 700 + DEPTH_MARGIN_MS + 1);
+    expect(hintMs('FUNDING_MAIN')).toBe(START + DEPTH_MARGIN_MS);
+    expect(hintMs('OPTION_FUNDING')).toBe(START + DEPTH_MARGIN_MS);
+
+    memoryOf('FUNDING_MAIN').servedAtMs = undefined;
+    expect(hintMs('MAIN_FUNDING')).toBeUndefined();
+  });
+
+  it('reports the furthest start any series was refused, and negative infinity while none was', () => {
+    const { memoryOf, refusedBoundMs } = memoriesAt();
+    expect(refusedBoundMs()).toBe(Number.NEGATIVE_INFINITY);
+
+    rememberServedStart(memoryOf('MAIN_FUNDING'), { startMs: START, servedAtMs: NOW_MS });
+    expect(refusedBoundMs()).toBe(Number.NEGATIVE_INFINITY);
+
+    rememberServedStart(memoryOf('FUNDING_MAIN'), { startMs: START + 5, servedAtMs: undefined });
+    rememberServedStart(memoryOf('MAIN_MARGIN'), { startMs: START + 9, servedAtMs: undefined });
+    rememberServedStart(memoryOf('MARGIN_MAIN'), { startMs: START + 2, servedAtMs: undefined });
+    expect(refusedBoundMs()).toBe(START + 9);
+  });
 });

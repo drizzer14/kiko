@@ -1,7 +1,7 @@
 import { DAY_MS } from '@kiko/dates';
 import type { HoldingRow } from '@kiko/db';
 
-import { isBinanceHistoryBehind, walkCursorsOf } from './binance-history-status';
+import { isBinanceHistoryBehind, transferOwesRange, walkCursorsOf } from './binance-history-status';
 
 const NOW = 1_704_326_400_000;
 const HOUR_MS = 60 * 60 * 1000;
@@ -54,6 +54,59 @@ describe('isBinanceHistoryBehind', () => {
         cursors: [NOW - 2 * DAY_MS, NOW, NOW, NOW],
         lastBalanceSyncAt: null,
       }),
+    ).toBe(false);
+    expect(
+      isBinanceHistoryBehind({ cursors: caughtUp, lastBalanceSyncAt: null, owesRange: true }),
+    ).toBe(false);
+  });
+
+  it('is behind when the Transfer walk owes a range, though every cursor is current', () => {
+    expect(
+      isBinanceHistoryBehind({ cursors: caughtUp, lastBalanceSyncAt: NOW, owesRange: true }),
+    ).toBe(true);
+    expect(
+      isBinanceHistoryBehind({ cursors: caughtUp, lastBalanceSyncAt: NOW, owesRange: false }),
+    ).toBe(false);
+  });
+});
+
+describe('transferOwesRange', () => {
+  const holding = (metadata: Record<string, unknown> | null): Pick<HoldingRow, 'metadata'> => ({
+    metadata,
+  });
+  const carrying = (owed: unknown) =>
+    holding({
+      binanceAsset: 'BTC',
+      binanceHistoryCursor: NOW,
+      binanceTransferPendingOverlap: owed,
+    });
+
+  it.each([
+    ['a range owed in every type', [{ start: 1, end: 3 }]],
+    ['a range owed in one type', [{ start: 1, end: 3, series: 'MAIN_FUNDING' }]],
+    [
+      'a range beside a point',
+      [
+        { start: 1, end: 3, kind: 'point', series: 'MAIN_FUNDING' },
+        { start: 5, end: 9 },
+      ],
+    ],
+  ])('is true for %s', (_label, owed) => {
+    expect(transferOwesRange([carrying(owed)])).toBe(true);
+  });
+
+  it.each([
+    ['no list', undefined],
+    ['an empty list', []],
+    ['only a point', [{ start: 1, end: 3, kind: 'point', series: 'MAIN_FUNDING' }]],
+    ['a list that is not well formed', 'x'],
+  ])('is false for %s', (_label, owed) => {
+    expect(transferOwesRange([carrying(owed)])).toBe(false);
+  });
+
+  it('is false when no holding carries the capital cursor', () => {
+    expect(
+      transferOwesRange([holding({ binanceTransferPendingOverlap: [{ start: 1, end: 3 }] })]),
     ).toBe(false);
   });
 });
