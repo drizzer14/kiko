@@ -1,7 +1,7 @@
 // Semgrep fixture (POSITIVE): kiko-gestures' "A lone card lifts too" makes `sortEnabled` the
 // query's freshness gate alone. `kiko-sortable-grid-lone-card-lifts` MUST report a finding on
 // each pinned line below: a `Sortable.Grid` whose `sortEnabled` also asks for more than one item,
-// whichever side of the `&&` the count sits on (Semgrep reports parenthesized JSX at the line of
+// wherever in an `&&` chain the count sits, and `1 < n` as well (Semgrep reports parenthesized JSX at the line of
 // the opening parenthesis).
 type GridProps = { data: unknown[]; sortEnabled: boolean; renderItem: () => null };
 
@@ -9,6 +9,7 @@ const Sortable = { Grid: (_props: GridProps) => null };
 
 const cards: unknown[] = [];
 const cardsFresh = true;
+const cardsReady = true;
 const holder = { items: cards };
 const renderCard = () => null;
 
@@ -47,4 +48,18 @@ export const memberCount = (
     sortEnabled={cardsFresh && holder.items.length > 1}
     renderItem={renderCard}
   />
+);
+
+// EXPECT-FINDING
+export const countBetweenTwoGates = (
+  <Sortable.Grid
+    data={cards}
+    sortEnabled={cardsFresh && cards.length > 1 && cardsReady}
+    renderItem={renderCard}
+  />
+);
+
+// EXPECT-FINDING
+export const yodaCount = (
+  <Sortable.Grid data={cards} sortEnabled={1 < cards.length} renderItem={renderCard} />
 );

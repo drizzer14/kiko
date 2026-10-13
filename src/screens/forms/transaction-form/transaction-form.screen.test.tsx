@@ -701,7 +701,7 @@ describe('TransactionFormScreen — add mode', () => {
   });
 });
 
-describe('TransactionFormScreen — category pre-select from name rules (A1)', () => {
+describe('TransactionFormScreen — category pre-select from name rules', () => {
   // A single rule mapping the normalized description "coffee" to the Dining
   // category, so a create whose description settles to "Coffee" auto-picks it.
   const COFFEE_RULE: OverrideRule = { normalizedName: 'coffee', category: 'dining' };

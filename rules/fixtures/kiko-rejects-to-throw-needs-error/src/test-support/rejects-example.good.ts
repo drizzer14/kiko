@@ -26,6 +26,14 @@ describe('a rejection with an expected error', () => {
     await expect(run()).rejects.toBeInstanceOf(SaleExceedsHoldingError);
   });
 
+  it('names the cause message', async () => {
+    await expect(run()).rejects.toHaveProperty('cause.message', 'a constraint failed');
+  });
+
+  it('names an error built in place', async () => {
+    await expect(run()).rejects.toThrow(new Error('a sale would take more than is held'));
+  });
+
   // A synchronous throw has no promise to reject; the rule is about a rejection only.
   it('keeps a synchronous toThrow out of scope', () => {
     expect(() => {

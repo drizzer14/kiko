@@ -2,7 +2,9 @@
 // `paths.include` entry (`src/test-support/**`), which draws NOTHING against a fixture placed
 // directly in rules/fixtures/ (kiko-linter's "Semgrep facts" gotcha), so this fixture mirrors a
 // real src/test-support/ path instead. The rule MUST report a finding on each pinned line: a
-// rejection asserted with `toThrow` or `toThrowError` and no argument, which passes on any failure.
+// rejection asserted with `toThrow` or `toThrowError` and no argument, or with the bare `Error`
+// class or `undefined`, or read through `toBeInstanceOf(Error)` or `toBeTruthy()`: each passes on
+// any failure.
 declare const run: () => Promise<void>;
 
 describe('a rejection with no expected error', () => {
@@ -30,5 +32,35 @@ describe('a rejection with no expected error', () => {
 
     // EXPECT-FINDING
     await expect(service.open()).rejects.toThrow();
+  });
+
+  it('passes on any failure when the bare Error class is named', async () => {
+    // EXPECT-FINDING
+    await expect(run()).rejects.toThrow(Error);
+  });
+
+  it('passes on any failure when the bare Error class is named through toThrowError', async () => {
+    // EXPECT-FINDING
+    await expect(run()).rejects.toThrowError(Error);
+  });
+
+  it('passes on any failure when undefined is named', async () => {
+    // EXPECT-FINDING
+    await expect(run()).rejects.toThrow(undefined);
+  });
+
+  it('passes on any failure when undefined is named through toThrowError', async () => {
+    // EXPECT-FINDING
+    await expect(run()).rejects.toThrowError(undefined);
+  });
+
+  it('passes on any failure when the instance is only an Error', async () => {
+    // EXPECT-FINDING
+    await expect(run()).rejects.toBeInstanceOf(Error);
+  });
+
+  it('passes on any failure when the rejection is only truthy', async () => {
+    // EXPECT-FINDING
+    await expect(run()).rejects.toBeTruthy();
   });
 });

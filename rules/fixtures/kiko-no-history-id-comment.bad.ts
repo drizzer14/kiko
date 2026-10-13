@@ -174,6 +174,14 @@ export const pickerListsEveryCurrency = true;
 export const feeOnItsOwnLine = true;
 
 // EXPECT-FINDING
+// The palette is the single dark theme (spec Section 2: spacing and radii are shared).
+export const paletteIsOneTheme = true;
+
+// EXPECT-FINDING
+/* Section 7 lists the tokens. */
+export const tokensAreListed = true;
+
+// EXPECT-FINDING
 /* Rows without a counterparty stay in the list (§3). */
 export const rowsWithoutCounterpartyStay = true;
 

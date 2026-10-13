@@ -26,6 +26,18 @@ describe('the footer', () => {
 
   it('rows (kind: card) stay flat', () => {});
 
+  // A parenthesis that holds more than a letter and its digits is a phrase, not an id.
+  it('reads an (A4 paper) size', () => {});
+
+  it('keeps a (UTF8) header', () => {});
+
+  it('reads a (P2P) transfer', () => {});
+
+  it('keeps a (T-shirt) size', () => {});
+
+  // A letter and digits with a colon after a lowercase opening are not a leading id.
+  it('reads the a1: cell', () => {});
+
   it.each([1, 2])('runs a table row for %s', () => {});
 
   it.only('runs a focused test', () => {});

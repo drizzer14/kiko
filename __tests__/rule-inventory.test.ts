@@ -75,6 +75,7 @@ const PINNED_SEVERITIES = {
   'kiko-no-history-date-comment': 'ERROR',
   'kiko-no-history-word-comment': 'ERROR',
   'kiko-no-task-id-comment': 'ERROR',
+  'kiko-test-title-no-history': 'ERROR',
 };
 
 const RULE_BLOCK_START_PATTERN = /^ {2}- id: /m;

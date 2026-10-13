@@ -2,8 +2,9 @@
 // `paths.include` entry (`src/test-support/**`), which draws NOTHING against a fixture placed
 // directly in rules/fixtures/ (kiko-linter's "Semgrep facts" gotcha), so this fixture mirrors a
 // real src/test-support/ path instead. The rule MUST report a finding on each pinned line: a test
-// or suite title that opens with a task id (`A1 `, `Q7 `) or a ruling id (`ruling A2`), or that
-// carries a `(was: ` label, however the title is declared.
+// or suite title that opens with a task id (`A1 `, `Q7 `, `X1:`) or a ruling id (`ruling A2`), or
+// that carries a `(was: ` label or ends in a parenthesized id (`(P2)`, `(task C2)`), however the
+// title is declared.
 
 // EXPECT-FINDING
 describe('A1 the footer', () => {
@@ -64,3 +65,27 @@ describe.skip('N13 skipped suite', () => {});
 
 // EXPECT-FINDING
 describe('a suite (was: grouped by day)', () => {});
+
+// EXPECT-FINDING
+describe('X1: the colon form of a task id', () => {});
+
+// EXPECT-FINDING
+describe('single-flight join over the whole arm (P2)', () => {});
+
+// EXPECT-FINDING
+describe(`a template title with a trailing id (T27)`, () => {});
+
+// EXPECT-FINDING
+describe('keeps the row flat (task C2)', () => {});
+
+// EXPECT-FINDING
+describe('keeps the cap (spec A3, B4)', () => {});
+
+// EXPECT-FINDING
+describe.each([1, 2])('runs a table row for %s (P2)', () => {});
+
+// EXPECT-FINDING
+describe.each`
+  first | second
+  ${1}  | ${2}
+`('Z9 runs a tagged table', () => {});
