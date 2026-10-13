@@ -6,8 +6,10 @@
 # tailable progress log under the out-of-repo per-worktree state dir and prints
 # the exact `tail -f` command to watch it, and (b) prints an ETA derived from the
 # history of past completed runs: a PER-MUTANT rate (seconds/mutant) times this
-# run's actual mutant count, printed LIVE the moment Stryker reports that count
-# (see the harness_mutation_* helpers in _lib.sh). This exists so a human can watch a multi-minute
+# run's actual mutant count, printed LIVE the moment Stryker reports that count, and split into
+# normal and timed-out mutants (a timeout costs far more) from the per-file history, with an
+# update at every 10% of the run (see the harness_mutation_* helpers in _lib.sh). This exists so
+# a human can watch a multi-minute
 # run directly — AGENTS must still NOT poll/tail it. The run's EXIT CODE is the only
 # signal an agent waits on (0 = pass, 2 = fail); the log and ETA are for the
 # human. None of the progress/ETA/history code may change the pass/fail result:
@@ -17,8 +19,9 @@
 # passed to Stryker as `path:start-end` entries), not the whole files.
 #
 # `--list` prints the files this run would mutate with their changed-line ranges, the sum of
-# changed lines, and the file count, then exits (2 above the cap) without Stryker, so a change
-# set is sized with the gate's own filter instead of a hand count. It needs no Stryker binary and
+# changed lines, the file count, and the share of those files' mutants that timed out in earlier
+# runs, then exits (2 above the cap) without Stryker, so a change set is sized with the gate's own
+# filter instead of a hand count. It needs no Stryker binary and
 # takes no lock, since it never starts a run. Any other argument exits 2. A changed file whose
 # diff is only comments or whitespace is left out of the list (and printed as `skipped
 # (comment-only)`), and so is one with no added line (`skipped (no added lines)`).
@@ -285,6 +288,8 @@ fi
 norange_report=""
 entries=""
 list_report=""
+# One `path<TAB>changed lines` row per file to mutate, for the timeout share.
+file_weights=""
 changed_lines=0
 if [ -n "$changed" ]; then
   range_paths=()
@@ -358,6 +363,7 @@ if [ -n "$changed" ]; then
         ranged="${ranged:+$ranged$newline}$candidate"
         # A whole file counts its line count at HEAD.
         file_lines="$(git -C "$ROOT" show "HEAD:$candidate" 2>/dev/null | wc -l | tr -d ' ')"
+        file_weights="${file_weights}${candidate}${tab}${file_lines}${newline}"
         changed_lines=$((changed_lines + file_lines))
         list_report="${list_report}${candidate} whole file (${file_lines} lines)${newline}"
         ;;
@@ -374,6 +380,7 @@ if [ -n "$changed" ]; then
             file_lines=$((file_lines + ${range#*-} - ${range%-*} + 1))
           done
           IFS="$old_ifs"
+          file_weights="${file_weights}${candidate}${tab}${file_lines}${newline}"
           changed_lines=$((changed_lines + file_lines))
           list_report="${list_report}${candidate} ${field} (${file_lines} changed lines)${newline}"
         fi
@@ -384,10 +391,25 @@ if [ -n "$changed" ]; then
 fi
 
 file_count="$(printf '%s\n' "$changed" | grep -c . || true)"
+
+# Prints "<percent> <files with a share> <files>", the line-weighted share of mutants that
+# timed out in earlier runs of the files about to be mutated, or nothing when no file has one.
+timeout_share() {
+  printf '%s' "$file_weights" \
+    | harness_mutation_timeout_share "$(harness_mutation_files_file "$ROOT")" "$(harness_mutation_history_file "$ROOT")"
+}
+
 if [ "$list" -eq 1 ]; then
   printf '%s%s%s%s' "$list_report" "$skipped_report" "$norange_report" "$kept_report"
   printf 'changed lines: %s\n' "$changed_lines"
   printf 'mutable files: %s (cap %s)\n' "$file_count" "$MUTATION_FILE_CAP"
+  share="$(timeout_share)"
+  if [ -n "$share" ]; then
+    share_rest="${share#* }"
+    printf 'timeout share (history): %s%% (%s of %s files)\n' "${share%% *}" "${share_rest%% *}" "${share_rest#* }"
+  else
+    printf 'timeout share (history): none\n'
+  fi
 else
   printf '%s%s%s' "$skipped_report" "$norange_report" "$kept_report"
 fi
@@ -452,26 +474,45 @@ rate="$(harness_mutation_rate "$hist")"
 if [ -z "$rate" ]; then
   printf 'No mutation history yet — no estimate available.\n'
 else
-  printf 'Estimated time prints once Stryker reports the mutant count (~%ss/mutant from history).\n' "$rate"
+  printf 'Estimated time prints once Stryker reports the mutant count (~%ss/mutant from history), then an update at every 10%% of the run.\n' "$rate"
 fi
 printf 'Watch live progress:  tail -f %s\n' "$log"
+
+# The costs of a normal and of a timed-out mutant (the fit; empty when there is none), the share
+# of mutants expected to time out, and the two stryker.conf.json settings that bound a timeout's
+# cost. Every one is empty when unknown, and the filter reads an empty one as unknown. A missing
+# or unreadable config just leaves the floor out.
+fit="$(harness_mutation_costs "$hist")"
+fit_normal="${fit%% *}"
+fit_slow="${fit#* }"
+share="$(timeout_share)"
+stryker_limits="$(node -e '
+  const config = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
+  const integer = (value, fallback) => (Number.isInteger(value) && value >= 0 ? value : fallback);
+  process.stdout.write(`${integer(config.timeoutMS, 5000)} ${integer(config.concurrency, "")}`);
+' "$ROOT/stryker.conf.json" 2>/dev/null || true)"
 
 # A report left by an earlier run must never be mistaken for THIS run's: remove
 # it so a Stryker that writes none is caught by the missing-report check below.
 rm -f "$MUTATION_REPORT"
 
 start="$(date +%s 2>/dev/null || printf '0')"
-"$BIN" run "$mutate_arg" 2>&1 | tee "$log" | harness_mutation_eta_filter "$rate"
+"$BIN" run "$mutate_arg" 2>&1 | tee "$log" \
+  | harness_mutation_eta_filter "$rate" "$fit_normal" "$fit_slow" "${share%% *}" "${stryker_limits%% *}" "${stryker_limits#* }"
 code="${PIPESTATUS[0]}"
 end="$(date +%s 2>/dev/null || printf '0')"
 out="$(cat "$log" 2>/dev/null || true)"
 dur=$((end - start))
 [ "$dur" -ge 0 ] 2>/dev/null || dur=0
 
-# Best-effort parse of the mutant count (the denominator of Stryker's progress
-# "N/M tested" counter) and the overall mutation score from the captured output.
-# A parse failure yields an empty string and NEVER aborts the run.
-count="$(printf '%s' "$out" | grep -Eo '[0-9]+/[0-9]+' | tail -1 | sed 's:.*/::' 2>/dev/null || true)"
+# Best-effort parse of the counts on Stryker's LAST progress line (mutants = the denominator of
+# its "N/M tested" counter, then tested and timed out) and of the overall mutation score from
+# the captured output. A parse failure yields an empty string and NEVER aborts the run.
+counts="$(harness_mutation_run_counts 2>/dev/null < "$log" || true)"
+count="${counts%% *}"
+counts_rest="${counts#* }"
+tested="${counts_rest%% *}"
+timed_out="${counts_rest#* }"
 score="$(printf '%s' "$out" | grep -Eio 'mutation score[^0-9]*[0-9]+(\.[0-9]+)?' | grep -Eo '[0-9]+(\.[0-9]+)?' | tail -1 2>/dev/null || true)"
 [ -n "$count" ] && printf 'Mutants: %s\n' "$count"
 
@@ -517,7 +558,7 @@ esac
 # failing it. A backward clock jump mid-run can yield dur=0; a 0s record would
 # drag the rolling ETA average toward zero, so only a strictly-positive
 # duration is ever recorded. This never changes the gate's exit code.
-[ "$dur" -gt 0 ] && harness_mutation_history_append "$ROOT" "$iso" "$dur" "$count" "$score"
+[ "$dur" -gt 0 ] && harness_mutation_history_append "$ROOT" "$iso" "$dur" "$count" "$score" "$tested" "$timed_out"
 
 if [ "$code" -eq 1 ]; then
   # Stryker's OWN break threshold (stryker.conf.json's thresholds.break: 60)
@@ -560,6 +601,9 @@ done < <(printf '%s\n' "$entries")
 score_out="$(node "$DIR/mutation-score.js" "$MUTATION_REPORT" "${file_arguments[@]}" 2>&1)"
 score_code=$?
 printf '%s\n' "$score_out"
+# The scorer's rows feed the per-file timeout history whichever way the gate goes; this reads
+# its output after the fact and never feeds it or changes $score_code.
+printf '%s\n' "$score_out" | harness_mutation_files_append "$ROOT" "$iso"
 if [ "$score_code" -ne 0 ]; then
   print_block \
     "Stryker (mutation testing)" \

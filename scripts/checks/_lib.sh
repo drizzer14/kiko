@@ -219,9 +219,17 @@ harness_lock_holder() {
 # to thousands, so normalizing by mutant count is what makes the estimate mean
 # anything. All of this is best-effort and MUST NOT change the gate's pass/fail:
 # every write is guarded, and a missing/corrupt history just means "no estimate".
-# State lives in a `mutation/` subdir of the per-worktree out-of-repo state dir
+# State lives in a `mutation/` subdir of an out-of-repo state dir
 # (harness_state_dir), keyed like the content-dedup fingerprints, so it never
-# trips a filesystem scanner.
+# trips a filesystem scanner. The progress log is per worktree; the two history
+# files are shared by every worktree of one repository (see
+# harness_mutation_history_dir).
+#
+# A timed-out mutant costs far more than a normal one (the run waits out its
+# timeout and restarts the test runner), and one slow-test file can time out
+# most of its mutants, so a single per-mutant rate misses by hours. The history
+# therefore also records, per run and per file, how many mutants timed out; the
+# estimate splits the remaining mutants into normal and timed-out ones.
 
 # harness_mutation_progress_log <root> : the stable, tailable log file Stryker's
 # combined output is tee'd to. mkdir -p its dir so a `tail -f` works immediately.
@@ -232,22 +240,66 @@ harness_mutation_progress_log() {
   printf '%s/mutation/progress.log' "$state"
 }
 
-# harness_mutation_history_file <root> : the append-only TSV of COMPLETED runs,
-# one record per line: iso-timestamp<TAB>durationSeconds<TAB>mutantCount<TAB>score.
-# mutantCount/score are best-effort and may be empty.
-harness_mutation_history_file() {
-  local state
-  state="$(harness_state_dir "$1")"
+# harness_mutation_history_dir <root> : the directory of the run history and the
+# per-file history. It is keyed by the git COMMON dir, not by <root>: a gate runs
+# in a per-change-set worktree, so a per-worktree key would never see an earlier
+# run of the same file, and the common dir is the one path every worktree of the
+# repository shares. A root git cannot answer for (no repository, or a git older
+# than --path-format) is keyed by itself.
+harness_mutation_history_dir() {
+  local common state
+  common="$(git -C "$1" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || common=""
+  case "$common" in /*) ;; *) common="$1" ;; esac
+  state="$(harness_state_dir "$common")"
   mkdir -p "$state/mutation" 2>/dev/null || true
-  printf '%s/mutation/history.tsv' "$state"
+  printf '%s/mutation' "$state"
 }
 
-# harness_mutation_history_append <root> <iso> <duration> <count> <score> :
-# append one completed-run record. Guarded — a write failure never aborts.
+# harness_mutation_history_file <root> : the append-only TSV of COMPLETED runs, one
+# record per line: iso-timestamp<TAB>durationSeconds<TAB>mutantCount<TAB>score<TAB>
+# tested<TAB>timedOut. tested and timedOut come from Stryker's last progress line (how
+# many mutants ran and how many of those timed out). All but the first two fields are
+# best-effort and may be empty.
+harness_mutation_history_file() {
+  printf '%s/history.tsv' "$(harness_mutation_history_dir "$1")"
+}
+
+# harness_mutation_files_file <root> : the append-only per-file TSV, one record per
+# graded file per completed run: iso-timestamp<TAB>path<TAB>tested<TAB>timedOut. The
+# counts cover only the mutants inside that run's changed lines.
+harness_mutation_files_file() {
+  printf '%s/files.tsv' "$(harness_mutation_history_dir "$1")"
+}
+
+# harness_mutation_history_append <root> <iso> <duration> <count> <score> [tested]
+# [timedOut] : append one completed-run record of six fields. Guarded — a write
+# failure never aborts. The stderr redirect comes first so a failing `>>` (a
+# directory in the way) stays silent too.
 harness_mutation_history_append() {
   local file
   file="$(harness_mutation_history_file "$1")"
-  printf '%s\t%s\t%s\t%s\n' "$2" "$3" "$4" "$5" >> "$file" 2>/dev/null || true
+  printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$2" "$3" "$4" "$5" "${6:-}" "${7:-}" 2>/dev/null >> "$file" || true
+}
+
+# harness_mutation_files_append <root> <iso> : read the change-set scorer's output on
+# stdin and append one files.tsv record per graded file. The scorer prints one row per
+# file, `<path>: <score> killed=K timeout=X survived=S noCoverage=N`; tested is
+# K + X + S (a noCoverage mutant never ran, so it never timed out). Any other line
+# (the total, the gate line, an excluded or ungraded file) is skipped. Guarded.
+harness_mutation_files_append() {
+  local file
+  file="$(harness_mutation_files_file "$1")"
+  awk -v iso="$2" '
+    /^CHANGE SET TOTAL: / { next }
+    {
+      if (!match($0, / killed=[0-9]+ timeout=[0-9]+ survived=[0-9]+ noCoverage=[0-9]+$/)) next;
+      head = substr($0, 1, RSTART - 1);
+      split(substr($0, RSTART + 1), counts, /[= ]/);
+      if (!sub(/: [0-9]+(\.[0-9]+)?$/, "", head)) next;
+      tested = counts[2] + counts[4] + counts[6];
+      if (tested > 0) printf "%s\t%s\t%d\t%d\n", iso, head, tested, counts[4];
+    }
+  ' 2>/dev/null >> "$file" || true
 }
 
 # harness_fmt_duration <seconds> : pure formatter. "45s", "1m", "1m 30s". A
@@ -310,19 +362,159 @@ harness_mutation_rate() {
   ' "$1" 2>/dev/null || true
 }
 
-# harness_mutation_eta_filter <rate> : a pipe STAGE for the mutation run. It reads
-# Stryker's combined output line by line and PASSES EVERY LINE THROUGH unchanged
-# (fflush after each so streaming stays live). On the FIRST line matching an
-# "N/M" counter it parses M (the run's mutant count = the denominator) and, if
-# <rate> is a positive number and M>0, prints exactly ONE extra line:
-#   Estimated ~<fmt> for <M> mutants (~<rate>s/mutant from history)
-# where <fmt> is rate*M rounded to whole seconds. When <rate> is empty or
-# non-positive it prints no ETA line and only passes lines through. This is a
-# downstream stage: it NEVER changes the exit code — the wrapper reads
-# PIPESTATUS[0] (Stryker), which adding a stage does not affect.
+# harness_mutation_run_counts : read Stryker's output on stdin and print
+# "<mutants> <tested> <timedOut>" from the LAST progress counter, a line holding
+# `N/M tested` (Stryker's append-only reporter prints one every 10 s:
+# `... 1117/1130 tested (56 survived, 435 timed out)`). M counts the mutants that run, N
+# how many have run so far. timedOut stays empty for a counter without the clause,
+# and nothing is printed without a counter. Only a counter that says `tested` counts:
+# a test title such as `rules 1/2/3` in the clear-text survivor list is not one.
+harness_mutation_run_counts() {
+  awk '
+    match($0, /[0-9]+\/[0-9]+ tested/) {
+      split(substr($0, RSTART, RLENGTH), counter, "/");
+      tested = counter[1] + 0;
+      mutants = counter[2] + 0;
+      timed = "";
+      if (match($0, /[0-9]+ timed out\)/)) timed = substr($0, RSTART, RLENGTH) + 0;
+      seen = 1;
+    }
+    END { if (seen) printf "%d %d %s", mutants, tested, timed }
+  ' 2>/dev/null || true
+}
+
+# harness_mutation_costs <historyfile> : pure. Print "<normal> <timedOut>", the fitted
+# seconds one normal mutant and one timed-out mutant cost, or NOTHING when no sound fit
+# exists (the caller then falls back to the median rate plus the configured floor).
+# Each qualifying history record (positive integer duration D and mutant count M, and
+# tested/timedOut fields that are integers with 0 < tested and timedOut <= tested) says
+# D = a*K + b*X, with X = M * timedOut / tested the timed-out mutants of the run, K = M - X
+# the others, a the normal cost and b the timed-out cost. A least-squares fit through
+# the origin over the last up-to-10 qualifying records solves the two normal equations.
+# It prints nothing for fewer than 2 records, for records at one timeout share (K and X
+# are then proportional and the system is singular: determinant <= 1e-9 of
+# sum(K^2)*sum(X^2), which also covers a history with no timeout and one where every
+# mutant timed out), and when either cost comes out non-positive. The fitted normal cost
+# includes the fixed startup of a run, because the history gives no way to separate it.
+harness_mutation_costs() {
+  [ -f "$1" ] || return 0
+  awk -F'\t' '
+    $2 ~ /^[0-9]+$/ && $2 + 0 > 0 && $3 ~ /^[0-9]+$/ && $3 + 0 > 0 &&
+    $5 ~ /^[0-9]+$/ && $5 + 0 > 0 && $6 ~ /^[0-9]+$/ && $6 + 0 <= $5 + 0 {
+      n++;
+      slow[n] = $3 * $6 / $5;
+      normal[n] = $3 - slow[n];
+      duration[n] = $2 + 0;
+    }
+    END {
+      if (n < 2) exit 0;
+      start = n - 9; if (start < 1) start = 1;
+      for (i = start; i <= n; i++) {
+        normalSquares += normal[i] * normal[i];
+        slowSquares += slow[i] * slow[i];
+        cross += normal[i] * slow[i];
+        normalDuration += normal[i] * duration[i];
+        slowDuration += slow[i] * duration[i];
+      }
+      product = normalSquares * slowSquares;
+      determinant = product - cross * cross;
+      if (determinant <= 1e-9 * product) exit 0;
+      normalCost = (normalDuration * slowSquares - slowDuration * cross) / determinant;
+      slowCost = (slowDuration * normalSquares - normalDuration * cross) / determinant;
+      if (normalCost > 0 && slowCost > 0) printf "%g %g", normalCost, slowCost;
+    }
+  ' "$1" 2>/dev/null || true
+}
+
+# harness_mutation_timeout_share <filesfile> <historyfile> : read `path<TAB>changedLines` on
+# stdin (one row per file about to be mutated; a whole file counts its line count) and
+# print "<percent> <F> <N>": the share of mutants expected to time out over the N files,
+# one decimal, and how many of them (F) contributed to it. A file's share is the sum of
+# timedOut over the sum of tested in its last 3 files.tsv records; a file with no
+# record takes the run-level share (the same sum over the last 5 history.tsv records
+# that carry the two fields); with neither, it is left out. The percent weights each
+# file's share by its changed lines, the only per-file size known before the run. Nothing
+# is printed when no file has a share, so the caller shows "none".
+harness_mutation_timeout_share() {
+  awk -v files="$1" -v history="$2" '
+    function valid(tested, timed) {
+      return tested ~ /^[0-9]+$/ && tested + 0 > 0 && timed ~ /^[0-9]+$/ && timed + 0 <= tested + 0;
+    }
+    BEGIN {
+      FS = "\t";
+      if (history != "") {
+        while ((getline line < history) > 0) {
+          split(line, field, "\t");
+          if (valid(field[5], field[6])) { runs++; runTested[runs] = field[5] + 0; runTimed[runs] = field[6] + 0 }
+        }
+        close(history);
+      }
+      start = runs - 4; if (start < 1) start = 1;
+      for (i = start; i <= runs; i++) { sumTested += runTested[i]; sumTimed += runTimed[i] }
+      if (sumTested > 0) { runShare = sumTimed / sumTested; haveRunShare = 1 }
+      if (files != "") {
+        while ((getline line < files) > 0) {
+          split(line, field, "\t");
+          if (valid(field[3], field[4])) {
+            records[field[2]]++;
+            fileTested[field[2], records[field[2]]] = field[3] + 0;
+            fileTimed[field[2], records[field[2]]] = field[4] + 0;
+          }
+        }
+        close(files);
+      }
+    }
+    $2 ~ /^[0-9]+$/ && $2 + 0 > 0 {
+      total++;
+      count = records[$1] + 0;
+      if (count > 0) {
+        first = count - 2; if (first < 1) first = 1;
+        testedSum = 0; timedSum = 0;
+        for (i = first; i <= count; i++) { testedSum += fileTested[$1, i]; timedSum += fileTimed[$1, i] }
+        share = timedSum / testedSum;
+      } else if (haveRunShare) {
+        share = runShare;
+      } else {
+        next;
+      }
+      known++;
+      weighted += $2 * share;
+      weights += $2;
+    }
+    END { if (known > 0) printf "%.1f %d %d", 100 * weighted / weights, known, total }
+  ' 2>/dev/null || true
+}
+
+# harness_mutation_eta_filter <rate> [normal] [timedOut] [share] [timeoutMS] [concurrency] :
+# a pipe STAGE for the mutation run. It reads Stryker's combined output line by line and
+# PASSES EVERY LINE THROUGH unchanged (fflush after each so streaming stays live). It
+# only ever adds lines after the one it read. It does the following:
+# - On the FIRST `N/M tested` counter it parses M (the run's mutant count = the
+#   denominator) and, if <rate> is a positive number and M>0, prints ONE line.
+#   Without a split it reads
+#     Estimated ~<fmt> for <M> mutants (~<rate>s/mutant from history)
+#   where <fmt> is rate*M rounded to whole seconds. With a split (<share> a percent in
+#   0..100, and a timed-out cost known) it reads
+#     Estimated ~<fmt> for <M> mutants (~<a>s/mutant, <P>% timeouts at ~<b>s each, from history)
+#   where <fmt> is M * ((1 - p) * a + p * b) and p is <share> / 100.
+# - At each 10% boundary of N/M after that (the first at 10%, and only once N >= 20
+#   and the counter carries the timeout clause), it prints ONE update:
+#     Estimate at <10k>%: ~<fmt> remaining (<Q>% timeouts so far)
+#   with q = timedOut / N from the counter itself replacing p: remaining is
+#   (M - N) * ((1 - q) * a + q * b). The filter reads no clock; every cost comes from its
+#   arguments.
+# The costs a and b are <normal> and <timedOut> (the fit of harness_mutation_costs) when
+# both are positive numbers. Otherwise a is <rate> and b is the configured floor,
+# a + (timeoutMS + overheadMS) / 1000 / concurrency, with overheadMS read from Stryker's
+# own `(net N ms, overhead N ms)` dry-run line, which comes before the first counter.
+# With no floor either (no dry-run line, or no concurrency), b is unknown and the filter
+# prints the plain first line and no updates. When <rate> is empty or non-positive it
+# prints no ETA line and only passes lines through. This is a downstream stage: it NEVER
+# changes the exit code — the wrapper reads PIPESTATUS[0] (Stryker), which adding a stage
+# does not affect, and a non-numeric argument is a zero, never an error.
 harness_mutation_eta_filter() {
-  local rate="${1:-}"
-  awk -v rate="$rate" '
+  awk -v rate="${1:-}" -v fitNormal="${2:-}" -v fitSlow="${3:-}" -v share="${4:-}" \
+      -v timeoutMS="${5:-}" -v concurrency="${6:-}" '
     # fmtdur mirrors harness_fmt_duration in this same file: <60 -> "Ns";
     # a whole minute -> "Nm"; else "Nm Ss".
     function fmtdur(s,   m) {
@@ -332,19 +524,51 @@ harness_mutation_eta_filter() {
       if (s == 0) return m "m";
       return m "m " s "s";
     }
+    # Sets normalCost and slowCost (0 when the timed-out cost is unknown).
+    function setCosts() {
+      normalCost = rate + 0;
+      slowCost = 0;
+      if (fitNormal + 0 > 0 && fitSlow + 0 > 0) {
+        normalCost = fitNormal + 0;
+        slowCost = fitSlow + 0;
+      } else if (haveOverhead && timeoutMS ~ /^[0-9]+$/ && concurrency ~ /^[0-9]+$/ && concurrency + 0 > 0) {
+        slowCost = normalCost + (timeoutMS + overhead) / 1000 / concurrency;
+      }
+    }
     {
       print; fflush();
-      if (!done && rate + 0 > 0 && $0 ~ /[0-9]+\/[0-9]+/) {
-        if (match($0, /[0-9]+\/[0-9]+/)) {
-          split(substr($0, RSTART, RLENGTH), a, "/");
-          m = a[2] + 0;
-          if (m > 0) {
-            printf "Estimated ~%s for %d mutants (~%gs/mutant from history)\n", \
-              fmtdur(rate * m), m, rate + 0;
-            fflush();
-            done = 1;
-          }
+      if (match($0, /overhead [0-9]+ ms\)/)) {
+        overhead = substr($0, RSTART + 9) + 0;
+        haveOverhead = 1;
+      }
+      if (rate + 0 <= 0 || !match($0, /[0-9]+\/[0-9]+ tested/)) next;
+      split(substr($0, RSTART, RLENGTH), counter, "/");
+      tested = counter[1] + 0;
+      mutants = counter[2] + 0;
+      if (mutants <= 0) next;
+      hasTimeouts = match($0, /[0-9]+ timed out\)/);
+      if (hasTimeouts) timedOut = substr($0, RSTART, RLENGTH) + 0;
+      setCosts();
+      if (!announced) {
+        if (slowCost > 0 && share ~ /^[0-9]+(\.[0-9]+)?$/ && share + 0 <= 100) {
+          p = share / 100;
+          printf "Estimated ~%s for %d mutants (~%gs/mutant, %g%% timeouts at ~%gs each, from history)\n", \
+            fmtdur(mutants * ((1 - p) * normalCost + p * slowCost)), mutants, normalCost, share + 0, slowCost;
+        } else {
+          printf "Estimated ~%s for %d mutants (~%gs/mutant from history)\n", \
+            fmtdur(rate * mutants), mutants, rate + 0;
         }
+        fflush();
+        announced = 1;
+      }
+      boundary = int(tested * 10 / mutants);
+      if (hasTimeouts && slowCost > 0 && tested >= 20 && tested <= mutants && timedOut <= tested \
+          && boundary > lastBoundary) {
+        q = timedOut / tested;
+        printf "Estimate at %d%%: ~%s remaining (%.0f%% timeouts so far)\n", \
+          boundary * 10, fmtdur((mutants - tested) * ((1 - q) * normalCost + q * slowCost)), q * 100;
+        fflush();
+        lastBoundary = boundary;
       }
     }
   '
