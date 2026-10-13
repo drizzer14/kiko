@@ -797,7 +797,8 @@ withdraw budget moves into this object, with the same numbers and the same rule.
   - pair id: `` `${accountId}:earn:sub:<flexible|locked>:${purchaseId}` ``;
   - each debit leg's counterpart is Earn; the Earn leg's counterpart is the larger
     debit leg's holding.
-  - **Known limits of the type allowlist** (leftovers of re-review 3, in VERIFY 10):
+  - **OPEN until probe VERIFY 10 (merge blocker)** (leftovers of re-review 3): each item is a
+    data-correctness case that blocks the merge until the probe answers it:
     - a locked auto-renewal that Binance records as `NORMAL` would still debit Spot (undetectable
       from the record);
     - a flexible `AUTO` is assumed Spot-funded (undocumented);
@@ -1107,7 +1108,8 @@ Probe items:
    match.
 9. Transfer: per type, the BTC row count, the `status` values, the result of a
    window over 30 days, and the largest accepted `size`.
-10. Earn: per kind, the `status` values, the `sourceAccount`/`destAccount`
+10. Earn (MERGE BLOCKER: the allowlist cases below are open data-correctness cases, and the
+    merge waits for this probe's answer): per kind, the `status` values, the `sourceAccount`/`destAccount`
     values, how often `amtFromSpot` + `amtFromFunding` = `amount`, the earliest
     record date, the largest `size`, the count of rewards `type` values per kind
     (before the merge, for Q14), and for locked redemptions how `amount` relates
@@ -1128,11 +1130,12 @@ Probe items:
     redemption pairs with a `RESTAKE` subscription (the same principal counted twice); whether
     a `MATURE` redemption pairs with a locked `AUTO` subscription, and the `sourceAccount` of a
     locked `AUTO` (the allowlist is per product: a locked `AUTO` stops); whether a locked auto-renewal is ever
-    recorded as `NORMAL` (it would still debit Spot, a known limit); whether a flexible `AUTO` is
+    recorded as `NORMAL` (it would still debit Spot: OPEN until VERIFY 10, merge blocker); whether a flexible `AUTO` is
     Spot-funded (assumed, undocumented); whether each locked auto-renewal leaves a permanent point
     (owed until OVERNIGHT 24 is answered or the probe settles it); where an
     `AHEAD` redemption's principal goes; the `REWARDS` flexible reward rows (count, wallet,
-    overlap with `REALTIME` and `BONUS` rows; they stay stopped, user ruling A); and the
+    overlap with `REALTIME` and `BONUS` rows; they stay stopped and owed:
+    OVERNIGHT DEFAULT, pending user (Q25)); and the
     decimals of every reward amount (any value over 8 decimals or under 1e-8).
 11. Every SAPI response: whether `X-SAPI-USED-IP-WEIGHT-1M` and
     `X-SAPI-USED-UID-WEIGHT-1M` are present.

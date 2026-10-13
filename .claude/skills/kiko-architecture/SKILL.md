@@ -2005,8 +2005,8 @@ balance sync and dropped on a disconnect through the field arrays. The stop code
   JSON type is an unreadable row, never absent. These type points are permanent: Binance fixes a
   record's `type` when it creates it, so such a point never imports by itself; it waits for the
   user's answer or the probe (task 7/7) and stays owed meanwhile (the Earn floor never moves for
-  it). Flexible `REWARDS` rewards and a reward that rounds to 0 satoshis stay stopped (user
-  rulings pending).
+  it). Flexible `REWARDS` rewards and a reward that rounds to 0 satoshis stay stopped and owed
+  (OVERNIGHT DEFAULT, pending user (Q25)).
 - **Earn forward stops (OVERNIGHT DEFAULT, pending user, 2026-10-13).** The Earn forward pass
   follows the Transfer rule: a stop tied to one record with a usable time is owed at its own point
   and the cursor goes past it (`EARN_FORWARD_OWES`, one constant: emptying it restores R28 for
