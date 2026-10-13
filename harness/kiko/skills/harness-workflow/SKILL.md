@@ -117,8 +117,8 @@ call without knowing where the plugin lives.
   - a wait (battery, load, usage limit, the user): `--gate wait --verdict pass --reason <battery|load|usage-limit|user> --minutes <N>`,
     or `--verdict timeout` when the wait ran out; log it when the wait ends, with the SAME
     `--step` (and `--group`, if used) as the work it interrupts: a wait without them lands in
-    the `-` row and does not reduce that step's Work. `--step N` or `--group N` is required
-    on `--gate wait`: the command refuses a wait without one. Ruling I-1 (orchestrator ruling,
+    the `-` row and does not reduce that step's Work. A wait event needs `--step N` or `--group N`;
+    the command refuses a wait without one. Ruling I-1 (orchestrator ruling,
     fix A): tag a wait with the step of the last event before it. N is the waited minutes (for
     example from the last event's ts);
   - the retrospect: `--gate retro --verdict pass`.
