@@ -1987,7 +1987,7 @@ balance sync and dropped on a disconnect through the field arrays. The stop code
 - **Settled status, per record kind (OVERNIGHT DEFAULT 23, pending user).** A subscription
   settles on `SUCCESS` (`EARN_SUBSCRIPTION_SETTLED_STATUS`), a redemption on `PAID`
   (`EARN_REDEMPTION_SETTLED_STATUS`; a redemption is never `SUCCESS`). `FAILED` is a final
-  failure: ignored, nothing owed. Any other value (`PURCHASING`, `CREATED`, unknown) is
+  failure: ignored, nothing owed. Any other value (a pending status such as PURCHASING or CREATED, or an unknown one) is
   `earn-not-settled`, owed at its point, and so is a locked redemption whose `isComplete` is
   `false` (left out or `true`: no effect).
 - **Placement.** Flexible `REALTIME` rewards go to the Earn holding, flexible `BONUS` and every
