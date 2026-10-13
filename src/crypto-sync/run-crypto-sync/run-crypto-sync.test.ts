@@ -82,7 +82,7 @@ describe('runCryptoSync', () => {
     warn.mockRestore();
   });
 
-  // P2: an account-detail Connect overlapping a pull-to-refresh fan-out can
+  // An account-detail Connect overlapping a pull-to-refresh fan-out can
   // both trigger a Binance sync for the SAME account while the first is still
   // in flight. `runBalanceSync` is already per-account single-flight-locked
   // (`src/crypto-sync/sync/sync.ts`), but the transaction import that runs
@@ -90,7 +90,7 @@ describe('runCryptoSync', () => {
   // `syncBinanceTransactions` — wasted requests and a possible swallowed 429.
   // The whole binance arm (balance + transaction import) must join one
   // in-flight run per account.
-  describe('single-flight join over the whole Binance arm (P2)', () => {
+  describe('single-flight join over the whole Binance arm', () => {
     it('runs syncBinanceTransactions once when two overlapping triggers target the SAME Binance account', async () => {
       const [a, b] = await Promise.all([
         runCryptoSync({ providerId: 'binance', targetAccountId: 'acc-2' }),

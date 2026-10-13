@@ -27,7 +27,7 @@ jest.mock('@kiko/transaction-templates/repo', () => ({
 }));
 
 // CANONICAL_SEED is the canonical seed the migration must insert: one stable
-// slug per MCC category (src/monobank/mcc-category.ts) plus `other`. The
+// slug per MCC category (src/monobank/mcc-category/mcc-category.ts) plus `other`. The
 // MCC -> display-key mapping must produce these exact keys. Shared with the
 // screen tests via one fixture so the canonical list lives in a single place.
 import type { SQL } from 'drizzle-orm';
@@ -331,7 +331,9 @@ describe('categoriesRepo.delete', () => {
     const { databaseTransaction } = makeDatabaseTransaction([{ defaultCategoryKey: 'other' }]);
     mockDatabaseTransaction = databaseTransaction;
 
-    await expect(categoriesRepo.delete('other')).rejects.toThrow();
+    await expect(categoriesRepo.delete('other')).rejects.toThrow(
+      'cannot delete the default category',
+    );
 
     expect(mockClearCategoryDatabaseTransaction).not.toHaveBeenCalled();
   });

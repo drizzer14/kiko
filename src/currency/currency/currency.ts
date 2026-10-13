@@ -8,9 +8,9 @@
  *
  * The fiat set is exactly the currencies Monobank's public `/bank/currency`
  * feed quotes against a base leg (UAH/USD/EUR): each is reachable from every
- * base currency through the UAH-anchored cross pairs `rates/rates-refresh.ts`
- * composes, so no holding silently drops out of a net-worth total, then the
- * crypto block last (BTC, ETH, USDT).
+ * base currency through the UAH-anchored cross pairs
+ * `src/rates/rates-refresh/rates-refresh.ts` composes, so no holding silently
+ * drops out of a net-worth total, then the crypto block last (BTC, ETH, USDT).
  */
 export const currencyOptions = [
   'UAH',

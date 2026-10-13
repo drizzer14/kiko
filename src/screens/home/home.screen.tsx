@@ -285,7 +285,7 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
 
   // Counterpart holding names, so an Exchange/Convert leg's label resolves to
   // the counterpart's CURRENT name in the ACTIVE language (nothing is
-  // persisted — see transactions/row-description.ts).
+  // persisted — see src/transactions/row-description/row-description.ts).
   const holdingNameById = useMemo(
     () => new Map(holdings.map((holding) => [holding.id, holding.name])),
     [holdings],

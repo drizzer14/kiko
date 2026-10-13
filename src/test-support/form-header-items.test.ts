@@ -86,6 +86,6 @@ describe('form header items test helper', () => {
   });
 
   it('fails the test when there is no Save item to press', async () => {
-    await expect(pressSave(jest.fn())).rejects.toThrow();
+    await expect(pressSave(jest.fn())).rejects.toThrow('expect(received).toBeDefined()');
   });
 });

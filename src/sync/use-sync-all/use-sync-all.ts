@@ -49,7 +49,7 @@ const fanOutAndRefresh = async (jobs: SyncJob[]): Promise<string[]> => {
  * and observes its result, rather than starting a SECOND fan-out. Without this,
  * a second fan-out re-runs every crypto `runBalanceSync`, and each re-entry
  * re-registers its holdings into the still-open, reference-counted progress
- * session (`src/monobank/sync-status.ts`) — whose accumulators reset only when
+ * session (`src/monobank/sync-status/sync-status.ts`) — whose accumulators reset only when
  * the session depth returns to 0 — so the "N / M holdings" total grew by the
  * crypto holding count on every pull. The lock releases the instant the run
  * settles (success OR failure), so a later, non-overlapping pull fans out fresh.

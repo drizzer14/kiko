@@ -6,7 +6,7 @@ import {
   serviceFor,
 } from './binance.credentials';
 
-// Mirrors `src/monobank/token.test.ts`'s service-keyed Keychain double, extended
+// Mirrors `src/monobank/token/token.test.ts`'s service-keyed Keychain double, extended
 // to record the options each call was made with so the access-control flags can
 // be asserted. Each `service` has its own credential slot, so per-account
 // isolation and the global -> per-account move can both be exercised.

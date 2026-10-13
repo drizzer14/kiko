@@ -950,3 +950,12 @@ verified usage, not dead weight:
   from `Error` and has no own `.name` or `.message` literal to pin, and
   pinning it would need a `src/` change that adds one. Every non-empty
   `extends Error` class is checked, with no per-class exemption list.
+- **`__tests__/docs-known-limit.test.ts`'s exact-path list (`PREDATING_DOCS`).** The test
+  fails when a plan or a spec under `docs/superpowers/` uses the phrase "known limit" or
+  "known limitation", because a gap filed that way ships with no owner. Two dated reminders
+  docs hold the phrase and are exempt by exact path, each pinned to its count of matches:
+  `docs/superpowers/plans/2026-09-28-reminders.md` (1) and
+  `docs/superpowers/specs/2026-09-27-reminders-design.md` (2). Reason: both are dated history
+  that predates the rule, and rewriting a dated record would falsify it. The exact-count
+  test pins each count, so a doc that gains or loses a match fails; the list only shrinks and
+  a new doc is never added.

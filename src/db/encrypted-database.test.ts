@@ -91,6 +91,17 @@ const exportCreatesEncryptedFile = (plaintext: FakeDb): void => {
   });
 };
 
+// Models a full disk: the export statement throws and every other statement succeeds.
+const exportFailsWithDiskFull = (plaintext: FakeDb): void => {
+  plaintext.execute.mockImplementation(async (sql: string) => {
+    if (sql.includes('sqlcipher_export')) {
+      throw new Error('disk full');
+    }
+
+    return { rows: [], rowsAffected: 0 };
+  });
+};
+
 beforeEach(() => {
   jest.clearAllMocks();
   mockFiles.clear();
@@ -288,13 +299,7 @@ describe('openEncryptedDatabase', () => {
       });
 
       it('keeps the plaintext when the export fails', async () => {
-        plaintext.execute.mockImplementation(async (sql: string) => {
-          if (sql.includes('sqlcipher_export')) {
-            throw new Error('disk full');
-          }
-
-          return { rows: [], rowsAffected: 0 };
-        });
+        exportFailsWithDiskFull(plaintext);
 
         await expect(openEncryptedDatabase()).rejects.toThrow('disk full');
 
@@ -472,13 +477,7 @@ describe('openEncryptedDatabase', () => {
       const plaintext = handleFor(LIVE_PLAINTEXT_DATABASE_NAME, 5);
       mockFiles.add(LIVE_PLAINTEXT_DATABASE_NAME);
       modelKilledExport(plaintext);
-      plaintext.execute.mockImplementation(async (sql: string) => {
-        if (sql.includes('sqlcipher_export')) {
-          throw new Error('disk full');
-        }
-
-        return { rows: [], rowsAffected: 0 };
-      });
+      exportFailsWithDiskFull(plaintext);
 
       await expect(openEncryptedDatabase()).rejects.toThrow('disk full');
 
@@ -560,7 +559,7 @@ describe('openEncryptedDatabase', () => {
     });
 
     it('generates no key, stores no key, and deletes no file', async () => {
-      await expect(openEncryptedDatabase()).rejects.toThrow();
+      await expect(openEncryptedDatabase()).rejects.toThrow(DatabaseKeyMissingError);
 
       expect(mockGenerateDbKey).not.toHaveBeenCalled();
       expect(mockStoreDbKey).not.toHaveBeenCalled();
@@ -574,7 +573,7 @@ describe('openEncryptedDatabase', () => {
     it('never opens the encrypted file with a key and closes every handle it opened', async () => {
       mockFiles.add(LIVE_PLAINTEXT_DATABASE_NAME);
 
-      await expect(openEncryptedDatabase()).rejects.toThrow();
+      await expect(openEncryptedDatabase()).rejects.toThrow(DatabaseKeyMissingError);
 
       expect(mockOpen.mock.calls.some(([options]) => options.encryptionKey !== undefined)).toBe(
         false,
@@ -718,13 +717,7 @@ describe('openEncryptedDatabase', () => {
       // openEncryptedDatabase draws it — otherwise the default (0) would route
       // through the fresh-install branch and skip the export entirely.
       const plaintext = handleFor(LIVE_PLAINTEXT_DATABASE_NAME, 5);
-      plaintext.execute.mockImplementation(async (sql: string) => {
-        if (sql.includes('sqlcipher_export')) {
-          throw new Error('disk full');
-        }
-
-        return { rows: [], rowsAffected: 0 };
-      });
+      exportFailsWithDiskFull(plaintext);
 
       await expect(openEncryptedDatabase()).rejects.toThrow('disk full');
 

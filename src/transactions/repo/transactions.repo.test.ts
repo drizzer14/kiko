@@ -130,7 +130,7 @@ describe('transactionsRepo', () => {
 
   // The loan-payment matcher's own candidate read (P-NOWORK: filter what it
   // can never link at the SQL level, not in JS) — a debit, not already
-  // linked, not previously rejected, not one leg of an Exchange/Convert,
+  // linked, not rejected, not one leg of an Exchange/Convert,
   // joined against the payer holding's own currency (the matcher compares
   // that against each loan's own currency itself).
   it('scopes loanMatchCandidatesQuery to an eligible debit: unlinked, un-rejected, no exchange marker', () => {
@@ -537,8 +537,8 @@ const nameRuleRow = (text: string, category: string, index = 0) => ({
 // dispatches on the table it reads rather than on call order. The upsert
 // may now run as SEVERAL chunked `.values(...)` calls (`chunkForTable`), so
 // `captured.inserted` is the FLATTENED concatenation of every chunk, in call
-// order — a single-chunk batch (every existing test below) sees the same
-// shape as before; `captured.insertCallCount` exposes how many chunks ran.
+// order — a single-chunk batch (every test below) sees the unchunked shape;
+// `captured.insertCallCount` exposes how many chunks ran.
 const makeAddManyDatabaseTransaction = (
   rules: { text: string; category: string }[],
   existing: { source: string; externalId: string }[] = [],
@@ -692,11 +692,11 @@ describe('transactionsRepo.addManyDedup upsert', () => {
     ]);
   });
 
-  // A binance import row carries the stable 'BTC' description (item 12). It rides
+  // A binance import row carries the stable 'BTC' description. It rides
   // the SAME shared upsert as Monobank, which already refreshes `description`, so
   // an already-imported crypto row whose description was '' gains 'BTC' on the
-  // next sync — with no repo change. These two guard that the behavior B3 relies
-  // on stays intact.
+  // next sync — with no repo change. These two guard that the behavior the Binance
+  // import relies on stays intact.
   const binanceRow = (overrides: Record<string, unknown> = {}) => ({
     holdingId: 'h-spot',
     amountMinorUnits: 50_000_000,
@@ -1639,7 +1639,7 @@ describe('transactionsRepo.recordExchange', () => {
 
     // Two ledger rows, tied STRUCTURALLY: each leg stores the OTHER leg's
     // holding id and persists NO description — the label is resolved at render
-    // time from that marker (see transactions/exchange-description.ts).
+    // time from that marker (see src/transactions/exchange-description/exchange-description.ts).
     expect(inserts).toEqual([
       expect.objectContaining({
         holdingId: 'src-1',
@@ -1728,7 +1728,7 @@ describe('transactionsRepo.recordExchange', () => {
         valueInMinorUnits: 100,
         time: 1,
       }),
-    ).rejects.toThrow();
+    ).rejects.toThrow('recordExchange: destination equals source');
   });
 
   it('rejects an excluded destination type (bond/jar)', async () => {
@@ -1832,7 +1832,7 @@ describe('transactionsRepo.recordExchangeCounterpart', () => {
 
     // Exactly ONE new ledger row: a positive receipt marked with the EXISTING
     // leg's holding id and no persisted description — the label resolves at
-    // render time (see transactions/exchange-description.ts).
+    // render time (see src/transactions/exchange-description/exchange-description.ts).
     expect(inserts).toEqual([
       expect.objectContaining({
         holdingId: 'dst-1',
@@ -2044,7 +2044,9 @@ describe('transactionsRepo.recordExchangeCounterpart', () => {
         existingHoldingId: 'existing-1',
         time: 1,
       }),
-    ).rejects.toThrow();
+    ).rejects.toThrow(
+      'recordExchangeCounterpart: a source leg must be a plain holding, got term_deposit',
+    );
   });
 
   it('throws for a bond/jar destination (excluded)', async () => {
@@ -2068,7 +2070,7 @@ describe('transactionsRepo.recordExchangeCounterpart', () => {
         existingHoldingId: 'existing-1',
         time: 1,
       }),
-    ).rejects.toThrow();
+    ).rejects.toThrow('recordExchangeCounterpart: bond is not a valid destination');
   });
 
   // Defense in depth: the counterpart picker already excludes a synced
@@ -2091,7 +2093,7 @@ describe('transactionsRepo.recordExchangeCounterpart', () => {
         existingHoldingId: 'existing-1',
         time: 123,
       }),
-    ).rejects.toThrow();
+    ).rejects.toThrow('recordExchangeCounterpart: counterpart holding dst-1 is synced');
 
     expect(inserts).toHaveLength(0);
     expect(updates).toHaveLength(0);

@@ -781,8 +781,8 @@ export const holdingsRepo = {
    * would apply the delta a second time. Do not "DRY" the two together.
    *
    * The row carries no description and no category: the list resolves its label
-   * at render time (transactions/row-description.ts), so no English sentence is
-   * persisted, and the category stays the user's to pick.
+   * at render time (src/transactions/row-description/row-description.ts), so no
+   * English sentence is persisted, and the category stays the user's to pick.
    *
    * DELIBERATE (ruled, not an oversight): with a null category the row folds
    * onto `settings.defaultCategoryKey`, so a downward correction DOES count as

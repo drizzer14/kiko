@@ -731,7 +731,7 @@ describe('importStatement', () => {
       const result = await importStatement(monobankInput, 'holding-1');
 
       // All 4 rows still land as ledger history (imported: 4) — the
-      // fixture's own closing balance (10_000_000) is ignored (as before),
+      // fixture's own closing balance (10_000_000) is ignored,
       // and every row is also dated before the boundary, so the net-delta
       // fallback adds 0: the balance stays exactly 500_000.
       expect(result.imported).toBe(4);

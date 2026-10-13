@@ -16,7 +16,8 @@ Rules:
   `harness/kiko/agents/`. Flag any drift found to the scribe as a
   distinct item from new lessons, including prose that only describes
   current usage instead of prescribing a rule. `make verify` already
-  fails a stale backticked path (`__tests__/cited-paths.test.ts`) or a
+  fails a stale path in a skill, agent, doc code span, or a `src` comment
+  (`__tests__/cited-paths.test.ts`) or a
   backticked identifier that left the code
   (`__tests__/skill-identifiers.test.ts`); spend the check on what those
   cannot see (a changed behavior, a count, a rule described wrongly).

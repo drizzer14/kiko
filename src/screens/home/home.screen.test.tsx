@@ -264,8 +264,8 @@ type LiveData = {
   // What the price book's `price_points` read answers.
   pricePoints?: PricePoint[];
   // Per-table isLoading overrides, for the loading-gate tests only — every
-  // key defaults to `false` (an already-resolved query), so every existing
-  // call site above keeps behaving exactly as before.
+  // key defaults to `false` (an already-resolved query), so a call site that
+  // omits it sees resolved queries.
   isLoading?: Partial<Record<string, boolean>>;
 };
 

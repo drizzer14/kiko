@@ -1,4 +1,3 @@
-// src/i18n/device-language.ts
 import { NativeModules } from 'react-native';
 
 export const appLanguages = ['uk', 'en'] as const;

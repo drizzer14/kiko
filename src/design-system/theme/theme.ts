@@ -1,5 +1,5 @@
-// iOS system palette — the single dark theme (spec Section 2: spacing, radii,
-// and typography are shared with the token shape).
+// iOS system palette — the single dark theme (spacing, radii, and typography
+// are shared with the token shape).
 //
 // Dark re-derived from Apple's dark-mode system colors (see
 // .claude/skills/kiko-design-system/SKILL.md):

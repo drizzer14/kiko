@@ -266,8 +266,8 @@ const setLiveData = (data: {
   settings?: Settings[];
   syncState?: SyncState[];
   // Every flag below defaults to `false` (an already-resolved query), so
-  // every existing call site keeps behaving exactly as before; a test that
-  // cares about the loading gate passes one or more explicitly.
+  // a call site that omits them sees resolved queries; a test that cares
+  // about the loading gate passes one or more explicitly.
   accountsIsLoading?: boolean;
   holdingsIsLoading?: boolean;
   ratesIsLoading?: boolean;

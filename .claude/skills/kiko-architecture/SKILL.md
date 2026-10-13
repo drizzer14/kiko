@@ -676,7 +676,8 @@ detail — a holding id plus a share change's day key;
 uncached `OwnershipChangeForm`), or is gated on `isFresh`. The drag reorders (Accounts' three
 grids, Account detail's holdings grid, Categories) set
 `sortEnabled={isFresh}` with no item-count condition (a lone card must
-lift) — each persists the WHOLE order of the rows on screen. A new write from a display screen picks one of
+lift; `kiko-sortable-grid-lone-card-lifts` enforces it) — each persists the WHOLE order
+of the rows on screen. A new write from a display screen picks one of
 the two, never neither. Tests call `clearLiveQueryCache()` in
 `beforeEach` so one `it`'s rows never seed the next.
 

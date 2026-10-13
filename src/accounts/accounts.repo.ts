@@ -240,7 +240,7 @@ export const accountsRepo = {
    * `transactionsRepo.recordManual`, which would ALSO add the amount to a
    * balance the insert above has already set. It carries no description and no
    * category: the label resolves at render time
-   * (transactions/row-description.ts).
+   * (src/transactions/row-description/row-description.ts).
    *
    * A non-zero initial balance also stamps the holding's `balanceSetAt` — it
    * IS a hand-set balance, the same as `holdingsRepo.create`'s own typed

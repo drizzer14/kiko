@@ -217,8 +217,7 @@ in a comment left behind in the code. Mechanized in `src/**` by the
 kiko-linter skill's own section on it for the rule's design.
 
 The "changed because …" narrative words are mechanized too, by the
-`kiko-no-history-word-comment` Semgrep rule (WARNING until its sweep
-lands): read the phrases in that rule's `pattern-regex` and `message` in
+`kiko-no-history-word-comment` Semgrep rule (ERROR): read the phrases in that rule's `pattern-regex` and `message` in
 `rules/semgrep-prewrite.yml` (they include a `was:` label before an old value,
 `// was: 30`). Write
 how the code works today and why ("matches the holding", "a card absent
@@ -237,13 +236,27 @@ those shapes; a date that is data (a fixture day, a DST day) stays.
 
 A comment names no task, step, finding, or spec id (`item 6`, `DEVICE BUG`,
 `Bug A2`, `Feature 1`, `SEC-C1`, `(A1)`): it states the reason itself. The
-`kiko-no-task-id-comment` Semgrep rule (WARNING until its sweep lands)
+`kiko-no-task-id-comment` Semgrep rule (ERROR)
 mechanizes the shapes listed in its kiko-linter section.
+
+A path cited in a `src` comment must exist, with or without its root. A rooted path
+(`src/…`, `docs/…`, a migration file name) must exist on disk. A rootless partial citation
+that ends in a file extension (`monobank/sync/sync.ts`) must match a tracked file's path
+suffix. `__tests__/cited-paths.test.ts` checks both; write the sentence without a path when
+the file is gone.
 
 Documented exception: the data-provenance date comment in
 `src/rates/fiat-rate-seed/fiat-rate-seed.ts` stays — it records WHEN
 the seed values were captured, which the code cannot show on its own,
 not a history narrative about a task or review round.
+
+### A test title carries no history
+
+A test or suite title says what the test pins. It carries no task id or ruling id as a prefix
+(`X1 `, `X1:`, `ruling A2`), no task id as a trailing `(P2)` or `(task C2)`, and no `(was: `
+label. The id and the old value belong in the commit message. Mechanized by the
+`kiko-test-title-no-history` Semgrep rule (see kiko-linter's own section for its scope and
+limits).
 
 ## Split a `useEffect` per logical concern, before it ships
 
@@ -310,7 +323,10 @@ mapping site that hasn't been updated, not a silent runtime gap. See
 descriptor/form/detail-spec checklist a new holding type needs.
 
 A single boolean guard used exactly once (an `if`/`else` with no
-closed-set enum behind it) may stay as-is. Every branch over a closed
+closed-set enum behind it) may stay as-is. A ternary on one `kind` literal of a closed union
+(`x.kind === 'a' ? p : q`) is an `if`/`else` chain and uses `match(...).exhaustive()`; it is
+mechanized as a WARNING by `kiko-kind-ternary-prefers-match` while its 3-site sweep is pending,
+and a `nosemgrep` OVERRIDE fits only where `kind` is not a closed union. Every branch over a closed
 literal set uses `ts-pattern`'s `match(...).exhaustive()` (or a typed
 `Record` for a pure lookup) — no `switch`, with no exception; mechanized
 by the `kiko-no-switch` Semgrep rule (see kiko-linter's own
@@ -1276,6 +1292,17 @@ Known limits:
 - A template path (`` `${__dirname}/x.csv` ``) fires even with a
   non-TypeScript extension: the rule reads only a string literal or a
   join. A safe false positive: write `join(__dirname, 'x.csv')`.
+
+## A rejection names its error
+
+A `.rejects` assertion names what the call rejects with: the error class, a message, or
+`toHaveProperty('cause.message', ...)`. Any `.rejects` form that passes on every failure (a bare
+`toThrow()` is the plainest) also passes on a typo that throws before the code under test runs;
+the forms are the patterns of `kiko-rejects-to-throw-needs-error` in `rules/semgrep-prewrite.yml`
+(see kiko-linter's own section).
+
+Pin the exact message the call produces, read from jest's Received output, never a guessed
+message or a loosened regex: a guess that happens to pass proves nothing about the real failure.
 
 ## Reviewed, and deliberately not changed
 

@@ -25,6 +25,21 @@ export const decidedOn = true;
 export const confirmedDate = true;
 
 // EXPECT-FINDING
+// The server answers 13 months back (probed 2026-10-06) with 200.
+export const probedLine = true;
+
+// EXPECT-FINDING
+// Probed on 2026-10-13: a start 180 days back is served and one 200 days back is refused.
+export const probedOnCapital = true;
+
+// EXPECT-FINDING
+/* The depth is 180 days, probed 2026-10-13, and a start older than it is refused. */
+export const probedBlock = true;
+
+// EXPECT-FINDING
+export const probedAfterCode = 1; // Keeps 180 days, probed 2026-10-13.
+
+// EXPECT-FINDING
 /* The pill is pinned to 5 rows, as ruled 2026-09-30 for this table. */
 export const ruledBlock = true;
 
@@ -85,6 +100,46 @@ export const parenthesizedDateLineComment = true;
  * it was approved 2026-10-08 by the user.
  */
 export const laterBlockLine = true;
+
+// EXPECT-FINDING
+// RULING 2026-10-12 keeps the footer.
+export const rulingUpper = true;
+
+// EXPECT-FINDING
+/* The footer is pinned, RULED 2026-10-12 by the user. */
+export const ruledUpperBlock = true;
+
+// EXPECT-FINDING
+// Rows stay flat, per the ruling of 2026-10-12 on the categories screen.
+export const rulingOfDate = true;
+
+// EXPECT-FINDING
+/* The footer stays pinned, the ruling of 2026-10-12 says so. */
+export const rulingOfDateBlock = true;
+
+// A form split across a comment wrap is reported at the line the word `ruling` is on.
+// EXPECT-FINDING
+// Rows stay flat, per the ruling of
+// 2026-10-12 on the categories screen.
+export const rulingOfDateWrappedLine = true;
+
+// EXPECT-FINDING
+/* The footer stays pinned, the ruling of
+ * 2026-10-12 says so. */
+export const rulingOfDateWrappedBlock = true;
+
+// EXPECT-FINDING
+// Rows stay flat, per the ruling
+// 2026-10-12 on the categories screen.
+export const rulingDateWrappedLine = true;
+
+// Known false positive: a line that ends on "approved" and a next line that opens with a date
+// (data, not a dated approval) reads as one dated approval, since the form may wrap. Reword
+// such a comment so the date is not the first word of a line.
+// EXPECT-FINDING
+// The accent was approved
+// 2026-10-08 is also the day the mock server was written.
+export const approvedThenDataDate = true;
 
 /**
  * A second member in the same block comment is reported too, at its own line:
