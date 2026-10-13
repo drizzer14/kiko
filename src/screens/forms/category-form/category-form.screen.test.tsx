@@ -1,25 +1,88 @@
-import type { ComponentProps } from 'react';
 import { Alert, TextInput } from 'react-native';
-import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
+import type { ComponentProps, ReactNode } from 'react';
+import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
+import type { TimeClock } from '@kiko/dates';
 import { darkTheme } from '@kiko/design-system/theme';
+import { holdCard } from '@kiko/test-support/hold-card';
 import { genericEntitySymbol } from '@kiko/holdings/entity-symbols';
+import GestureRootWrapper from '@kiko/test-support/gesture-root-wrapper';
+import { ancestorWithStyle } from '@kiko/test-support/ancestor-with-style';
 import { resolveCategoryColor } from '@kiko/statistics/category-breakdown';
+import type { RenderedElement } from '@kiko/test-support/rendered-element';
+import type { CategoryRuleMatcher } from '@kiko/categories/category-rules';
 import { KIKO_CATEGORIES_ICONS } from '@kiko/design-system/components/icon-pools';
+import { DELETE_CONFIRM_TEST_ID } from '@kiko/design-system/components/card-context-menu';
 import { expectNavBarSaveOnly, pressSave, saveItem } from '@kiko/test-support/form-header-items';
 import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support/navigation-props';
 
 import CategoryFormScreen from './category-form.screen';
 
 type CategoryData = { key: string; title: string; icon: string; color: string | null };
+type RuleData = {
+  id: string;
+  category: string;
+  matchers: string;
+  createdAt: number;
+  updatedAt: number;
+};
+type HeaderItem = {
+  type: string;
+  label?: string;
+  icon?: { type: string; name: string };
+  disabled?: boolean;
+  onPress: () => void;
+};
 
+type ButtonProps = {
+  variant?: string;
+  icon?: string;
+  children: ReactNode;
+  testID?: string;
+  onPress: () => void;
+};
+
+const mockButtonProps: Omit<ButtonProps, 'onPress'>[] = [];
 const mockCreate = jest.fn();
 const mockUpdateTitle = jest.fn();
 const mockUpdateIcon = jest.fn();
 const mockUpdateColor = jest.fn();
+const mockDeleteRule = jest.fn();
+const mockSetDefault = jest.fn();
 let mockCategories: CategoryData[] = [];
+let mockRules: RuleData[] = [];
+let mockSettingsRows: Array<{ defaultCategoryKey: string }> = [];
+let mockCategoriesIsLoading = false;
+// `false` = the categories read has not applied its own fresh result yet.
+let mockCategoriesIsFresh = true;
+let mockRulesIsLoading = false;
+let mockSettingsIsLoading = false;
+let mockClock: TimeClock = { uses24Hour: true };
 
+// The Button variant maps to a themed fill inside a react-native-unistyles `variants` block, which
+// the project's Jest mock strips out of the resolved style, so the screen's wiring is proven by
+// recording the props Button receives; the variant to colour contract is Button's own test.
+jest.mock('@kiko/design-system/components/button', () => {
+  const { Pressable, Text: RNText } = require('react-native');
+
+  return {
+    __esModule: true,
+    default: (props: ButtonProps) => {
+      mockButtonProps.push({
+        variant: props.variant,
+        icon: props.icon,
+        children: props.children,
+      });
+
+      return (
+        <Pressable accessibilityRole="button" testID={props.testID} onPress={props.onPress}>
+          <RNText>{props.children}</RNText>
+        </Pressable>
+      );
+    },
+  };
+});
 jest.mock('@kiko/categories/repo', () => ({
   categoriesRepo: {
     allQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }),
@@ -29,8 +92,39 @@ jest.mock('@kiko/categories/repo', () => ({
     updateColor: (...args: unknown[]) => mockUpdateColor(...args),
   },
 }));
+jest.mock('@kiko/categories/category-rules-repo', () => ({
+  categoryRulesRepo: {
+    allQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }),
+    deleteRule: (...args: unknown[]) => mockDeleteRule(...args),
+  },
+}));
+jest.mock('@kiko/settings/settings.repo', () => ({
+  settingsRepo: {
+    getQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }),
+    setDefaultCategoryKey: (...args: unknown[]) => mockSetDefault(...args),
+  },
+}));
+jest.mock('@kiko/i18n/use-time-clock', () => ({ useTimeClock: () => mockClock }));
 jest.mock('@kiko/db/use-live-query', () => ({
-  useLiveQuery: () => ({ data: mockCategories, isLoading: false, isFresh: true }),
+  useLiveQuery: (_query: unknown, keys: string[], enabled = true) => {
+    if (!enabled) {
+      return { data: [], isLoading: false, isFresh: true };
+    }
+
+    if (keys?.[0] === 'settings') {
+      return { data: mockSettingsRows, isLoading: mockSettingsIsLoading, isFresh: true };
+    }
+
+    if (keys?.[0] === 'category_rules') {
+      return { data: mockRules, isLoading: mockRulesIsLoading, isFresh: true };
+    }
+
+    return {
+      data: mockCategories,
+      isLoading: mockCategoriesIsLoading,
+      isFresh: mockCategoriesIsFresh,
+    };
+  },
 }));
 
 type FormProps = ComponentProps<typeof CategoryFormScreen>;
@@ -44,7 +138,59 @@ const formElement = (categoryKey?: string) => (
   />
 );
 
-const renderForm = (categoryKey?: string) => render(formElement(categoryKey));
+const renderForm = (categoryKey?: string) =>
+  render(formElement(categoryKey), { wrapper: GestureRootWrapper });
+
+const ruleOf = (
+  id: string,
+  category: string,
+  matchers: CategoryRuleMatcher[] | string,
+  updatedAt = 1000,
+): RuleData => ({
+  id,
+  category,
+  matchers: typeof matchers === 'string' ? matchers : JSON.stringify(matchers),
+  createdAt: 500,
+  updatedAt,
+});
+
+// The trailing items the screen last registered, read as the native bar would.
+const headerItems = (): HeaderItem[] => {
+  const registrations = navigation.setOptions.mock.calls
+    .map(([options]) => options)
+    .filter((options) => 'unstable_headerRightItems' in options);
+
+  return registrations.at(-1)?.unstable_headerRightItems?.({ canGoBack: false }) ?? [];
+};
+
+const headerLabels = (): Array<string | undefined> => headerItems().map((item) => item.label);
+
+const shownTitle = (): string | undefined =>
+  navigation.setOptions.mock.calls
+    .map(([options]) => options)
+    .filter((options) => 'title' in options)
+    .at(-1)?.title;
+
+// A rule card holds one table row per condition: the label and the value share the row.
+const expectRow = (card: RenderedElement, label: string, value: string): void => {
+  const row = ancestorWithStyle(within(card).getByText(label), 'justifyContent');
+
+  expect(within(row).getByText(value)).toBeTruthy();
+};
+
+const withUkrainian = (): void => {
+  beforeEach(async () => {
+    await act(async () => {
+      await i18n.changeLanguage('uk');
+    });
+  });
+
+  afterEach(async () => {
+    await act(async () => {
+      await i18n.changeLanguage('en');
+    });
+  });
+};
 
 // The swatch the colour picker rings when a new category's form opens: the palette's own fallback
 // for the placeholder key, read from the same resolver the form uses.
@@ -59,12 +205,27 @@ const GROCERIES: CategoryData = {
   icon: 'cart',
   color: darkTheme.colors.entityColors.khaki,
 };
+const OTHER: CategoryData = { key: 'other', title: 'Other', icon: 'square.grid.2x2', color: null };
+
+const EMPTY_HINT = 'Add a rule to set this category on matching transactions.';
 
 describe('CategoryFormScreen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockCreate.mockResolvedValue('new-key');
-    mockCategories = [GROCERIES, { key: 'trips', title: 'Trips', icon: 'airplane', color: null }];
+    mockCategories = [
+      GROCERIES,
+      { key: 'trips', title: 'Trips', icon: 'airplane', color: null },
+      OTHER,
+    ];
+    mockRules = [];
+    // `other` is the seeded default catch-all.
+    mockSettingsRows = [{ defaultCategoryKey: 'other' }];
+    mockCategoriesIsLoading = false;
+    mockCategoriesIsFresh = true;
+    mockRulesIsLoading = false;
+    mockSettingsIsLoading = false;
+    mockClock = { uses24Hour: true };
   });
 
   describe('creating a category', () => {
@@ -81,6 +242,15 @@ describe('CategoryFormScreen', () => {
       const utils = await renderForm();
 
       expectNavBarSaveOnly(navigation.setOptions, utils);
+    });
+
+    it('device check 3: shows no rules section and no default star before the category exists', async () => {
+      const { queryByText } = await renderForm();
+
+      expect(queryByText('Rules')).toBeNull();
+      expect(queryByText(EMPTY_HINT)).toBeNull();
+      expect(queryByText('Add rule')).toBeNull();
+      expect(headerLabels()).toEqual(['Save']);
     });
 
     it('leaves Save enabled before anything is typed, and checks the name on press', async () => {
@@ -163,14 +333,14 @@ describe('CategoryFormScreen', () => {
       );
     });
 
-    it('opens the page of the category it made, in place of the form', async () => {
+    it('device check 3: opens the screen of the category it made, in place of the form', async () => {
       const { getByLabelText } = await renderForm();
 
       await fireEvent.changeText(getByLabelText('Name'), 'Travel');
       await pressSave(navigation.setOptions);
 
       await waitFor(() =>
-        expect(navigation.replace).toHaveBeenCalledWith('CategoryDetail', {
+        expect(navigation.replace).toHaveBeenCalledWith('CategoryForm', {
           categoryKey: 'new-key',
         }),
       );
@@ -251,10 +421,28 @@ describe('CategoryFormScreen', () => {
   });
 
   describe('editing a category', () => {
-    it('titles the screen "Edit Category"', async () => {
+    it('titles the screen with the category name', async () => {
       await renderForm('groceries');
 
-      expect(navigation.setOptions).toHaveBeenCalledWith({ title: 'Edit Category' });
+      expect(shownTitle()).toBe('Groceries');
+    });
+
+    it('device check 3: opens with its fields and its rule cards under "Rules", the header holds the star, then Save', async () => {
+      mockRules = [ruleOf('silpo', 'groceries', [{ type: 'nameIs', text: 'Silpo' }])];
+
+      const { getByDisplayValue, getByLabelText, getByText, getAllByTestId } =
+        await renderForm('groceries');
+
+      expect(getByDisplayValue('Groceries')).toBeTruthy();
+      expect(getByLabelText('Change Icon')).toBeTruthy();
+      expect(getByLabelText('Color khaki').props.accessibilityState.selected).toBe(true);
+      expect(getByText('Rules')).toBeTruthy();
+      expect(getAllByTestId('rule-card')).toHaveLength(1);
+      expect(headerItems().map((item) => [item.type, item.label, item.icon?.name])).toEqual([
+        ['button', 'Set as default', 'star'],
+        ['button', 'Save', undefined],
+      ]);
+      expect(headerItems().some((item) => item.type === 'custom')).toBe(false);
     });
 
     it('opens with the stored name, icon and colour', async () => {
@@ -273,7 +461,18 @@ describe('CategoryFormScreen', () => {
       expect(queryByText('Delete')).toBeNull();
     });
 
-    it('saves a changed name, icon and colour through their own writes, then goes back', async () => {
+    it('offers Save only as the nav-bar item, and it stays enabled', async () => {
+      const { queryByText } = await renderForm('groceries');
+
+      expect(saveItem(navigation.setOptions)).toMatchObject({
+        label: 'Save',
+        variant: 'prominent',
+        disabled: false,
+      });
+      expect(queryByText('Save')).toBeNull();
+    });
+
+    it('device check 3: saves a changed name, icon and colour through their own writes, then goes back', async () => {
       const { getByLabelText } = await renderForm('groceries');
 
       await fireEvent.changeText(getByLabelText('Name'), '  Food  ');
@@ -353,6 +552,7 @@ describe('CategoryFormScreen', () => {
 
     it('disables Save until the category has loaded', async () => {
       mockCategories = [];
+      mockCategoriesIsLoading = true;
       await renderForm('groceries');
 
       expect(saveItem(navigation.setOptions)?.disabled).toBe(true);
@@ -362,9 +562,11 @@ describe('CategoryFormScreen', () => {
 
     it('enables Save once the category has loaded', async () => {
       mockCategories = [];
+      mockCategoriesIsLoading = true;
       const { rerender } = await renderForm('groceries');
 
       mockCategories = [GROCERIES];
+      mockCategoriesIsLoading = false;
       await act(async () => {
         await rerender(formElement('groceries'));
       });
@@ -385,21 +587,12 @@ describe('CategoryFormScreen', () => {
     });
 
     describe('under the uk language', () => {
-      beforeEach(async () => {
-        await act(async () => {
-          await i18n.changeLanguage('uk');
-        });
-      });
-
-      afterEach(async () => {
-        await act(async () => {
-          await i18n.changeLanguage('en');
-        });
-      });
+      withUkrainian();
 
       it('shows a seeded default under its Ukrainian title and does not rename it unless edited', async () => {
         const { getByDisplayValue } = await renderForm('groceries');
 
+        expect(shownTitle()).toBe('Продукти');
         expect(getByDisplayValue('Продукти')).toBeTruthy();
 
         await pressSave(navigation.setOptions, 'Зберегти');
@@ -407,6 +600,433 @@ describe('CategoryFormScreen', () => {
         await waitFor(() => expect(navigation.goBack).toHaveBeenCalledTimes(1));
         expect(mockUpdateTitle).not.toHaveBeenCalled();
       });
+    });
+  });
+
+  describe('the rules', () => {
+    it('shows one card per rule of the category with its conditions as label/value rows', async () => {
+      mockRules = [
+        ruleOf('silpo', 'groceries', [
+          { type: 'nameIs', text: 'Silpo' },
+          { type: 'direction', direction: 'expense' },
+          { type: 'amount', operator: 'gt', minorUnits: 50000, currency: 'UAH' },
+          { type: 'time', operator: 'after', minuteOfDay: 18 * 60 },
+        ]),
+      ];
+
+      const { getAllByTestId } = await renderForm('groceries');
+
+      expect(getAllByTestId('rule-card')).toHaveLength(1);
+      const card = getAllByTestId('rule-card')[0] as RenderedElement;
+
+      expectRow(card, 'Name is', '"Silpo"');
+      expectRow(card, 'Type', 'Expense');
+      expectRow(card, 'Amount is more than', '500.00 ₴');
+      expectRow(card, 'Time is after', '18:00');
+    });
+
+    it('lists the rules in the order that decides, the strongest first, and only this category', async () => {
+      mockRules = [
+        ruleOf('older-single', 'groceries', [{ type: 'nameIs', text: 'Atb' }], 1000),
+        ruleOf('elsewhere', 'trips', [{ type: 'nameIs', text: 'Wizz' }], 9000),
+        ruleOf('newer-single', 'groceries', [{ type: 'nameIs', text: 'Novus' }], 2000),
+        ruleOf(
+          'double',
+          'groceries',
+          [
+            { type: 'nameIs', text: 'Silpo' },
+            { type: 'direction', direction: 'expense' },
+          ],
+          500,
+        ),
+      ];
+
+      const { getAllByTestId } = await renderForm('groceries');
+      const cards = getAllByTestId('rule-card');
+
+      expect(cards).toHaveLength(3);
+      expectRow(cards[0] as RenderedElement, 'Name is', '"Silpo"');
+      expectRow(cards[0] as RenderedElement, 'Type', 'Expense');
+      expectRow(cards[1] as RenderedElement, 'Name is', '"Novus"');
+      expectRow(cards[2] as RenderedElement, 'Name is', '"Atb"');
+    });
+
+    it('matches the category key whatever the case of the stored one', async () => {
+      mockRules = [ruleOf('legacy', 'Groceries', [{ type: 'nameIs', text: 'Atb' }])];
+
+      const { getAllByTestId } = await renderForm('groceries');
+
+      expect(getAllByTestId('rule-card')).toHaveLength(1);
+    });
+
+    it('shows the text as the user typed it, not the lowercased form used to match', async () => {
+      mockRules = [ruleOf('typed', 'groceries', [{ type: 'nameStartsWith', text: 'SiLpO' }])];
+
+      const { getAllByTestId } = await renderForm('groceries');
+
+      expectRow(getAllByTestId('rule-card')[0] as RenderedElement, 'Name starts with', '"SiLpO"');
+    });
+
+    it('shows an amount in the currency of its own scale', async () => {
+      mockRules = [
+        ruleOf('crypto', 'groceries', [
+          { type: 'amount', operator: 'gte', minorUnits: 100000, currency: 'BTC' },
+        ]),
+      ];
+
+      const { getAllByTestId } = await renderForm('groceries');
+
+      expectRow(
+        getAllByTestId('rule-card')[0] as RenderedElement,
+        'Amount is at least',
+        '₿0.00100000',
+      );
+    });
+
+    it('reads a time on the 12-hour clock when the device uses it', async () => {
+      mockClock = { uses24Hour: false, beforeNoon: 'AM', afterNoon: 'PM' };
+      mockRules = [
+        ruleOf('evening', 'groceries', [{ type: 'time', operator: 'after', minuteOfDay: 18 * 60 }]),
+      ];
+
+      const { getAllByTestId } = await renderForm('groceries');
+
+      expectRow(getAllByTestId('rule-card')[0] as RenderedElement, 'Time is after', '6:00 PM');
+    });
+
+    it('says the rule can not be read when its stored conditions are not valid', async () => {
+      mockRules = [ruleOf('broken', 'groceries', 'not json')];
+
+      const { getAllByTestId, getByText } = await renderForm('groceries');
+
+      expect(getAllByTestId('rule-card')).toHaveLength(1);
+      expect(getByText("This rule can't be read")).toBeTruthy();
+    });
+
+    it('lists a rule that can not be read after the readable ones', async () => {
+      mockRules = [
+        ruleOf('broken', 'groceries', 'not json'),
+        ruleOf('fine', 'groceries', [{ type: 'nameIs', text: 'Atb' }]),
+      ];
+
+      const { getAllByTestId } = await renderForm('groceries');
+      const cards = getAllByTestId('rule-card');
+
+      expectRow(cards[0] as RenderedElement, 'Name is', '"Atb"');
+      expect(cards[1]).toHaveTextContent("This rule can't be read");
+    });
+
+    it('hints at adding a rule when the category has none, and shows no card', async () => {
+      mockRules = [ruleOf('elsewhere', 'trips', [{ type: 'nameIs', text: 'Wizz' }])];
+
+      const { getByText, queryAllByTestId } = await renderForm('groceries');
+
+      expect(getByText(EMPTY_HINT)).toBeTruthy();
+      expect(queryAllByTestId('rule-card')).toHaveLength(0);
+    });
+
+    it('shows no hint once the category has a rule', async () => {
+      mockRules = [ruleOf('silpo', 'groceries', [{ type: 'nameIs', text: 'Silpo' }])];
+
+      const { queryByText } = await renderForm('groceries');
+
+      expect(queryByText(EMPTY_HINT)).toBeNull();
+    });
+
+    it('heads the list "Rules"', async () => {
+      const { getByText } = await renderForm('groceries');
+
+      expect(getByText('Rules')).toBeTruthy();
+    });
+
+    describe('under the uk language', () => {
+      withUkrainian();
+
+      it('labels the amount and time rows with their subject in Ukrainian', async () => {
+        mockRules = [
+          ruleOf('evening', 'groceries', [
+            { type: 'amount', operator: 'gt', minorUnits: 50000, currency: 'UAH' },
+            { type: 'time', operator: 'after', minuteOfDay: 18 * 60 },
+          ]),
+        ];
+
+        const { getAllByTestId } = await renderForm('groceries');
+        const card = getAllByTestId('rule-card')[0] as RenderedElement;
+
+        expect(within(card).getByText('Сума більша ніж')).toBeTruthy();
+        expectRow(card, 'Час після', '18:00');
+      });
+    });
+  });
+
+  describe('adding and opening a rule', () => {
+    it('opens the rule editor for a new rule of this category from "Add rule"', async () => {
+      const { getByText } = await renderForm('groceries');
+
+      await fireEvent.press(getByText('Add rule'));
+
+      expect(navigation.navigate).toHaveBeenCalledWith('CategoryRuleForm', {
+        categoryKey: 'groceries',
+      });
+    });
+
+    it('offers "Add rule" beside the rules too, not only on an empty page', async () => {
+      mockRules = [ruleOf('silpo', 'groceries', [{ type: 'nameIs', text: 'Silpo' }])];
+
+      const { getByText } = await renderForm('groceries');
+
+      expect(getByText('Add rule')).toBeTruthy();
+    });
+
+    it('device check 3: leads "Add rule" with the rule symbol as the lone secondary action of the footer', async () => {
+      const { getByTestId } = await renderForm('groceries');
+      const addRuleProps = mockButtonProps.filter((props) => props.children === 'Add rule');
+
+      expect(addRuleProps.length).toBeGreaterThan(0);
+
+      for (const props of addRuleProps) {
+        expect(props.variant).toBe('secondaryTonal');
+        expect(props.icon).toBe(genericEntitySymbol.rule);
+      }
+
+      expect(within(getByTestId('screen-footer')).getAllByRole('button')).toHaveLength(1);
+    });
+
+    it('opens the editor for the rule that is tapped', async () => {
+      mockRules = [
+        ruleOf('silpo', 'groceries', [{ type: 'nameIs', text: 'Silpo' }]),
+        ruleOf('atb', 'groceries', [{ type: 'nameIs', text: 'Atb' }]),
+      ];
+
+      const { getByText } = await renderForm('groceries');
+
+      await fireEvent.press(getByText('"Atb"'));
+
+      expect(navigation.navigate).toHaveBeenCalledWith('CategoryRuleForm', {
+        categoryKey: 'groceries',
+        ruleId: 'atb',
+      });
+      expect(navigation.navigate).toHaveBeenCalledTimes(1);
+    });
+
+    it('device check 3: keeps the typed name when a rule card is tapped', async () => {
+      mockRules = [ruleOf('atb', 'groceries', [{ type: 'nameIs', text: 'Atb' }])];
+
+      const { getByText, getByLabelText, getByDisplayValue } = await renderForm('groceries');
+
+      await fireEvent.changeText(getByLabelText('Name'), 'Food');
+      await fireEvent.press(getByText('"Atb"'));
+
+      expect(navigation.navigate).toHaveBeenCalledWith('CategoryRuleForm', {
+        categoryKey: 'groceries',
+        ruleId: 'atb',
+      });
+      expect(getByDisplayValue('Food')).toBeTruthy();
+      expect(mockUpdateTitle).not.toHaveBeenCalled();
+    });
+
+    it('keeps the typed name when "Add rule" is pressed', async () => {
+      const { getByText, getByLabelText, getByDisplayValue } = await renderForm('groceries');
+
+      await fireEvent.changeText(getByLabelText('Name'), 'Food');
+      await fireEvent.press(getByText('Add rule'));
+
+      expect(navigation.navigate).toHaveBeenCalledTimes(1);
+      expect(getByDisplayValue('Food')).toBeTruthy();
+    });
+
+    it('opens nothing for a rule that can not be read, which only offers its delete', async () => {
+      mockRules = [ruleOf('broken', 'groceries', 'not json')];
+
+      const { getByText } = await renderForm('groceries');
+
+      await fireEvent.press(getByText("This rule can't be read"));
+
+      expect(navigation.navigate).not.toHaveBeenCalled();
+    });
+
+    describe('under the uk language', () => {
+      withUkrainian();
+
+      it('labels the button and hints at the first rule in Ukrainian', async () => {
+        const { getByText } = await renderForm('groceries');
+
+        expect(getByText('Додати правило')).toBeTruthy();
+        expect(
+          getByText('Додайте правило, щоб ставити цю категорію відповідним транзакціям.'),
+        ).toBeTruthy();
+      });
+    });
+  });
+
+  describe('deleting a rule', () => {
+    it('asks first, under a title of its own, and deletes only that rule once confirmed', async () => {
+      mockRules = [ruleOf('silpo', 'groceries', [{ type: 'nameIs', text: 'Silpo' }])];
+
+      const { getByText, getByTestId } = await renderForm('groceries');
+
+      await holdCard();
+
+      expect(getByText('Delete Rule')).toBeTruthy();
+      expect(mockDeleteRule).not.toHaveBeenCalled();
+
+      await fireEvent.press(getByTestId(DELETE_CONFIRM_TEST_ID));
+
+      expect(mockDeleteRule).toHaveBeenCalledWith('silpo');
+    });
+
+    it('offers only the delete for a rule that can not be read', async () => {
+      mockRules = [ruleOf('broken', 'groceries', 'not json')];
+
+      const { getByText, getByTestId } = await renderForm('groceries');
+
+      await holdCard();
+
+      expect(getByText('Delete Rule')).toBeTruthy();
+
+      await fireEvent.press(getByTestId(DELETE_CONFIRM_TEST_ID));
+
+      expect(mockDeleteRule).toHaveBeenCalledWith('broken');
+    });
+  });
+
+  describe('setting the default category', () => {
+    it('offers the outline star, then Save, as native header buttons', async () => {
+      await renderForm('groceries');
+
+      expect(headerItems().map((item) => [item.type, item.label, item.icon?.name])).toEqual([
+        ['button', 'Set as default', 'star'],
+        ['button', 'Save', undefined],
+      ]);
+    });
+
+    it('sets the category as the default at once from the star, without saving the form', async () => {
+      const { getByLabelText } = await renderForm('groceries');
+
+      await fireEvent.changeText(getByLabelText('Name'), 'Food');
+      headerItems()[0]?.onPress();
+
+      expect(mockSetDefault).toHaveBeenCalledWith('groceries');
+      expect(mockUpdateTitle).not.toHaveBeenCalled();
+      expect(navigation.goBack).not.toHaveBeenCalled();
+    });
+
+    it('shows the default category as a disabled filled star', async () => {
+      await renderForm('other');
+
+      expect(headerItems()[0]).toMatchObject({
+        type: 'button',
+        label: 'Default category',
+        icon: { type: 'sfSymbol', name: 'star.fill' },
+        disabled: true,
+      });
+      expect(headerLabels()).toEqual(['Default category', 'Save']);
+    });
+
+    it('moves from the outline to the filled star when the settings change', async () => {
+      const { rerender } = await renderForm('groceries');
+
+      expect(headerItems()[0]).toMatchObject({ label: 'Set as default', icon: { name: 'star' } });
+
+      mockSettingsRows = [{ defaultCategoryKey: 'groceries' }];
+      await act(async () => {
+        await rerender(formElement('groceries'));
+      });
+
+      expect(headerItems()[0]).toMatchObject({
+        label: 'Default category',
+        icon: { name: 'star.fill' },
+        disabled: true,
+      });
+    });
+
+    it('adds the star only once the settings are read, so the fallback default never shows', async () => {
+      mockSettingsIsLoading = true;
+      mockSettingsRows = [];
+      const { rerender } = await renderForm('other');
+
+      expect(headerLabels()).toEqual(['Save']);
+
+      mockSettingsIsLoading = false;
+      mockSettingsRows = [{ defaultCategoryKey: 'groceries' }];
+      await act(async () => {
+        await rerender(formElement('other'));
+      });
+
+      expect(headerLabels()).toEqual(['Set as default', 'Save']);
+    });
+
+    it('keeps the action out of the body', async () => {
+      const { queryByText } = await renderForm('groceries');
+
+      expect(queryByText('Set as default')).toBeNull();
+    });
+
+    describe('under the uk language', () => {
+      withUkrainian();
+
+      it('labels the star in Ukrainian, as the action and as the state', async () => {
+        await renderForm('groceries');
+
+        expect(headerItems()[0]?.label).toBe('Зробити типовою');
+
+        await renderForm('other');
+
+        expect(headerItems()[0]?.label).toBe('Типова категорія');
+      });
+    });
+  });
+
+  describe('a category that is gone', () => {
+    it('goes back once the fresh read no longer has it', async () => {
+      await renderForm('deleted-elsewhere');
+
+      expect(navigation.goBack).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not go back before the read is fresh, which may be one read old', async () => {
+      mockCategoriesIsFresh = false;
+
+      const { getByTestId } = await renderForm('just-created');
+
+      expect(navigation.goBack).not.toHaveBeenCalled();
+      expect(getByTestId('category-form-loading')).toBeTruthy();
+    });
+
+    it('shows the screen once the fresh read brings the category', async () => {
+      mockCategoriesIsFresh = false;
+
+      const { rerender, queryByTestId, getByText } = await renderForm('just-created');
+
+      mockCategories = [
+        ...mockCategories,
+        { key: 'just-created', title: 'New', icon: 'tag', color: null },
+      ];
+      mockCategoriesIsFresh = true;
+      await act(async () => {
+        await rerender(formElement('just-created'));
+      });
+
+      expect(navigation.goBack).not.toHaveBeenCalled();
+      expect(queryByTestId('category-form-loading')).toBeNull();
+      expect(getByText(EMPTY_HINT)).toBeTruthy();
+    });
+  });
+
+  describe('while a query is on its first load', () => {
+    it.each([
+      ['categories', () => (mockCategoriesIsLoading = true)],
+      ['rules', () => (mockRulesIsLoading = true)],
+      ['settings', () => (mockSettingsIsLoading = true)],
+    ])('shows the loading state, not the empty hint, while the %s load', async (_name, load) => {
+      load();
+
+      const { getByTestId, queryByText } = await renderForm('groceries');
+
+      expect(getByTestId('category-form-loading')).toBeTruthy();
+      expect(queryByText(EMPTY_HINT)).toBeNull();
+      expect(queryByText('Add rule')).toBeNull();
+      expect(navigation.goBack).not.toHaveBeenCalled();
     });
   });
 });

@@ -104,7 +104,7 @@ const CategoriesScreen: FC<CategoriesScreenProps> = ({ navigation }) => {
           ruleCount={ruleCounts.get(categoryKeyOf(item.key)) ?? 0}
           isDefault={isDefault}
           onPress={openUnlessLifted(item.key, () =>
-            navigation.navigate('CategoryDetail', { categoryKey: item.key }),
+            navigation.navigate('CategoryForm', { categoryKey: item.key }),
           )}
         />
       </CardContextMenu>

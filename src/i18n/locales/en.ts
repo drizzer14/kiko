@@ -234,7 +234,6 @@ export const en = {
   },
   categoryForm: {
     addTitle: 'New Category',
-    editTitle: 'Edit Category',
   },
   ruleForm: {
     addTitle: 'New Rule',

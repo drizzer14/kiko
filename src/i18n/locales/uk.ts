@@ -208,7 +208,6 @@ export const uk: typeof en = {
   },
   categoryForm: {
     addTitle: 'Нова категорія',
-    editTitle: 'Редагування категорії',
   },
   ruleForm: {
     addTitle: 'Нове правило',

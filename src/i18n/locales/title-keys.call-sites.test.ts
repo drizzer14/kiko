@@ -93,9 +93,7 @@ const FORWARDED_HEADING_SITES: Record<string, `${string}.${string}`> = {
 const UNCHECKED_HEADING_SITES: Record<string, string> = {
   'calendar/calendar-header/calendar-header.component.tsx#title':
     'a month name and a year, not a phrase that has a casing role',
-  "navigation/settings-stack/settings.stack.tsx#''":
-    'an empty title, replaced by the category page’s own title as soon as the category is read',
-  'screens/settings/category-detail/category-detail.screen.tsx#displayName':
+  'screens/forms/category-form/category-form.screen.tsx#displayName':
     'the category’s display name, the localized default or the title the user typed',
   'design-system/components/card-context-menu/card-context-menu.component.tsx#name':
     'the user-entered name of the entity the menu acts on',

@@ -229,14 +229,14 @@ describe('CategoriesScreen', () => {
   });
 
   describe('opening a category', () => {
-    it('opens the category page with its key when a card is tapped', async () => {
+    it('opens the category screen with its key when a card is tapped', async () => {
       mockCategories = [GROCERIES];
 
       const { getByText } = await renderScreen();
 
       await fireEvent.press(getByText('Groceries'));
 
-      expect(navigation.navigate).toHaveBeenCalledWith('CategoryDetail', {
+      expect(navigation.navigate).toHaveBeenCalledWith('CategoryForm', {
         categoryKey: 'groceries',
       });
     });
