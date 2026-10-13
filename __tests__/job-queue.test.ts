@@ -512,6 +512,94 @@ describe('scripts/job-queue.sh gate refusals', () => {
   });
 });
 
+// Blocks until the test releases it, or until the sandbox is deleted, so a failed test cannot
+// leave a stub looping.
+const BLOCKING_MAKE_STUB = [
+  '#!/usr/bin/env bash',
+  'echo $$ > "$KIKO_STUB_PID"',
+  'while [ ! -e "$KIKO_STUB_RELEASE" ] && [ -d "$(dirname "$KIKO_STUB_RELEASE")" ]; do',
+  '  sleep 0.05',
+  'done',
+  '',
+].join('\n');
+
+const processIsAlive = (pid: number): boolean => {
+  try {
+    process.kill(pid, 0);
+
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+// A poll interval far above the jest timeout: a signal that waited for the sleep to end would
+// fail the test, so no signal test reads a clock.
+const LONG_POLL_SECONDS = '600';
+
+describe.each([
+  ['SIGTERM', 143],
+  ['SIGINT', 130],
+] as const)('scripts/job-queue.sh on %s', (signal, exitCode) => {
+  it(`exits ${exitCode} from the wait loop and removes only its own ticket`, async () => {
+    const sandbox = createSandbox();
+    sandbox.environment.KIKO_QUEUE_POLL_SECONDS = LONG_POLL_SECONDS;
+    const worktree = createWorktree(sandbox, 'one');
+    const lock = holdLock(sandbox);
+    const owner = readFileSync(join(lock, 'owner'), 'utf8');
+
+    const waiter = startQueue(sandbox, 'verify', worktree, 'one');
+    await waitFor(() => entriesOf(join(sandbox.queue, 'tickets')).length === 1);
+    waiter.child.kill(signal);
+    const result = await waiter.finished;
+
+    expect(result.code).toBe(exitCode);
+    expect(entriesOf(join(sandbox.queue, 'tickets'))).toEqual([]);
+    expect(readFileSync(join(lock, 'owner'), 'utf8')).toBe(owner);
+    expect(startedWorktrees(sandbox)).toEqual([]);
+  });
+
+  it(`exits ${exitCode} from the wait loop even when its ticket is already gone`, async () => {
+    const sandbox = createSandbox();
+    sandbox.environment.KIKO_QUEUE_POLL_SECONDS = LONG_POLL_SECONDS;
+    const worktree = createWorktree(sandbox, 'one');
+    holdLock(sandbox);
+
+    const waiter = startQueue(sandbox, 'verify', worktree, 'one');
+    await waitFor(() => entriesOf(join(sandbox.queue, 'tickets')).length === 1);
+
+    for (const ticket of entriesOf(join(sandbox.queue, 'tickets'))) {
+      rmSync(join(sandbox.queue, 'tickets', ticket));
+    }
+
+    waiter.child.kill(signal);
+    const result = await waiter.finished;
+
+    expect(result.code).toBe(exitCode);
+  });
+
+  it(`exits ${exitCode} while the job runs, stops the job, and releases the lock`, async () => {
+    const sandbox = createSandbox();
+    writeExecutable(join(sandbox.root, 'bin/make'), BLOCKING_MAKE_STUB);
+    sandbox.environment.KIKO_STUB_PID = join(sandbox.root, 'job-pid');
+    sandbox.environment.KIKO_STUB_RELEASE = join(sandbox.root, 'release');
+    const worktree = createWorktree(sandbox, 'one');
+
+    const waiter = startQueue(sandbox, 'verify', worktree, 'one');
+    await waitFor(() => readLines(join(sandbox.root, 'job-pid')).length === 1);
+    const jobPid = Number(readFileSync(join(sandbox.root, 'job-pid'), 'utf8'));
+    expect(processIsAlive(jobPid)).toBe(true);
+    waiter.child.kill(signal);
+    const result = await waiter.finished;
+
+    expect(result.code).toBe(exitCode);
+    expect(processIsAlive(jobPid)).toBe(false);
+    expect(existsSync(join(sandbox.queue, 'lock'))).toBe(false);
+    expect(entriesOf(join(sandbox.queue, 'tickets'))).toEqual([]);
+    expect(existsSync(join(sandbox.queue, 'done.log'))).toBe(false);
+  });
+});
+
 const BATTERY_POWER = "Now drawing from 'Battery Power'\n";
 
 describe('scripts/job-queue.sh hold and release', () => {

@@ -146,20 +146,45 @@ mkdir -p "$TICKETS_DIRECTORY"
 ticket_name="${job_class}-$(printf '%010d' "$job_size")-$(date +%s)-$$-${label}"
 ticket_path="$TICKETS_DIRECTORY/$ticket_name"
 job=''
+sleeper=''
 owns_lock=0
 
+# The lock is this process's only while it made the directory and no other owner file names
+# another pid; an owner file not yet written (the instant after mkdir) still counts as its own.
 holds_lock() {
-  [ "$owns_lock" -eq 1 ] && [ "$(cut -d' ' -f1 "$LOCK_DIRECTORY/owner" 2>/dev/null)" = "$$" ]
+  local owner_pid
+  [ "$owns_lock" -eq 1 ] || return 1
+  owner_pid="$(cut -d' ' -f1 "$LOCK_DIRECTORY/owner" 2> /dev/null)"
+  [ -z "$owner_pid" ] || [ "$owner_pid" = "$$" ]
 }
 
+# Stops only the processes this script started (its own job and sleep), never one found by name.
 cleanup() {
+  if [ -n "$sleeper" ]; then
+    kill "$sleeper" 2> /dev/null
+    sleeper=''
+  fi
+  if [ -n "$job" ]; then
+    kill "$job" 2> /dev/null
+    wait "$job" 2> /dev/null
+    job=''
+  fi
   rm -f "$ticket_path"
   if holds_lock; then
     rm -rf "$LOCK_DIRECTORY"
+    owns_lock=0
   fi
 }
 
+# A signal ends the script: without the exit, a trap that only cleans up lets the wait loop go on.
+stop_on_signal() {
+  cleanup
+  exit "$1"
+}
+
 trap cleanup EXIT
+trap 'stop_on_signal 130' INT
+trap 'stop_on_signal 143' TERM
 touch "$ticket_path"
 
 head_ticket() { ticket_names | head -1; }
@@ -173,6 +198,15 @@ if [ "$command_name" = gate ]; then
 fi
 printf 'QUEUED %s (%s) ahead: %s\n' "$label" "$kind_text" "$(tickets_ahead)"
 
+# The sleep runs in the background and the script waits on it, so a signal ends the wait at once
+# instead of after the whole poll interval.
+pause() {
+  sleep "$POLL_SECONDS" &
+  sleeper=$!
+  wait "$sleeper"
+  sleeper=''
+}
+
 # A hold or battery power stops every class: the line prints when the reason changes, so a
 # waiter's log shows why it waits without a line per poll.
 waiting_reason=''
@@ -180,13 +214,13 @@ while :; do
   reason="$(blocked_reason)"
   if [ -n "$reason" ]; then
     [ "$reason" = "$waiting_reason" ] || printf 'WAITING %s: %s\n' "$label" "$reason"
-  elif [ "$(head_ticket)" = "$ticket_name" ] && mkdir "$LOCK_DIRECTORY" 2>/dev/null; then
+  elif [ "$(head_ticket)" = "$ticket_name" ] && mkdir "$LOCK_DIRECTORY" 2> /dev/null; then
+    owns_lock=1
     break
   fi
   waiting_reason="$reason"
-  sleep "$POLL_SECONDS"
+  pause
 done
-owns_lock=1
 printf '%s %s %s %s\n' "$$" "$command_name" "$label" "$worktree" > "$LOCK_DIRECTORY/owner"
 rm -f "$ticket_path"
 
