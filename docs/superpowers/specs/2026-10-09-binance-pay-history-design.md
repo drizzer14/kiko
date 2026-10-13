@@ -181,11 +181,29 @@ withdraw budget moves into this object, with the same numbers and the same rule.
   |---|---|
   | capital | withdraw 9 (unchanged), deposit unbounded |
   | Pay | 20 |
-  | Transfer | 80 (was 60; user ruling 2026-10-12, OVERNIGHT 19 = A: a caught-up run needs forward 20 + an owed range 20 + re-scan 20 + points) |
+  | Transfer | 80 (was 60; user ruling 2026-10-12, OVERNIGHT 19 = A: a caught-up run needs forward 20 + an owed range 20 + re-scan 20 + points), and 397 narrowing calls beyond it, spent only by a span read that narrows (user ruling C1 = A; section 5) |
   | Earn | 30 (4500 IP) |
 
   Each walk has its own cap so that a long backfill in one walk cannot starve the
   others.
+- Narrowing calls (`LANE_NARROWING_CALLS`): only the Transfer lane has any (397); the others have
+  none. `canAfford(lane, cost, keep, narrowing)` and `record(lane, page, narrowing)` take a
+  `narrowing` call from the lane's narrowing calls while any are left, whatever is kept, and from
+  its cap after that. A call that is not narrowing spends the cap alone, so a run that narrows
+  nothing makes 80 Transfer calls at most and a run that narrows 80 + 397 = 477 at most. A
+  narrowing call is judged by the weight readings above like any other (with the calls kept
+  counted in the weight), and a rate limit or a cooldown ends the read as for any other call.
+  The weight of the most calls a run makes: a Transfer call weighs IP 1 (S4). Every walk of a run
+  shares one gate, 350 ms apart, so the run makes 172 requests a minute at most (60,000 / 350 =
+  171.4, and one at the start of the minute) however many calls its lanes may make, and the 477
+  calls of the longest Transfer run take 167 s or more. The Transfer calls weigh at most 172 IP a
+  minute: 2.9% of `IP_BUDGET_1M` (6000) and 1.4% of the assumed ceiling of 12000. The worst
+  minute for the IP weight is the Transfer walk's last minute beside the Earn walk that follows
+  it: 30 Earn calls at 150 (4500) and 142 other requests at 1 (the same gate has room for 172 in
+  all), plus the 20 of the account read, are 4,662 at most, under both. The UID weight of the
+  minute is read by the Pay (3000) and withdraw (18,000) lanes; a Transfer call adds none, and if
+  it did (1 a call) 172 of 180,000 would be added. The cap on the calls of a run does not change
+  how many requests a minute Binance sees; it changes how long a run lasts.
 - Order: balance, then capital, Pay, Transfer, Earn. A walk that cannot
   afford its next call stops with `complete: false` and resumes from its watermark
   on a later run. Nothing sleeps until the next minute, because the history import
@@ -777,46 +795,77 @@ withdraw budget moves into this object, with the same numbers and the same rule.
     refusal at most and once after a lapse: at most 6 refused reads + 2 * 23 + 24 = 76 requests
     on the depth for one type, and 52 where no suspension comes. The 20 types each have their
     own count, so a span read has no bound of its own beyond the shared run budget: 20 * 76
-    requests in theory, 80 calls a run for the lane in practice, each request spending it and
-    passing the gate. The calls of a window: wholly below every type's depth, the first type
-    2 (the refused read and the end of the span) and each other type 1 (the end alone, asked
-    before any read while another type was refused the end; a type that holds a bound from an
-    earlier window asks the end of the next one the same way), 21 in all; a window that crosses
-    the depth, the first type about 25 and each later type that keeps what the first does 4 to 8.
-    One run therefore narrows the types of one window of 30 days or a few; the types the run's
-    calls leave are owed and read in the pending pass of the runs after it. The owed ranges are
-    read before the forward pass (the ground nearest the depth is lost first, and the new ground
-    stays kept for about the depth), and the run keeps one read of the first forward window, of
+    requests in theory, 80 calls a run for the lane and 397 narrowing calls beyond them (below)
+    in practice, each request spending one and passing the gate. The calls of a window: wholly
+    below every type's depth, the first type 2 (the refused read and the end of the span) and
+    each other type 1 (the end alone, asked before any read while another type was refused the
+    end; a type that holds a bound from an earlier window asks the end of the next one the same
+    way), 21 in all; a window that crosses the depth, the first type about 25 and each later type
+    that keeps what the first does 4 to 8 (a read that reaches Binance late, so that its hint is
+    refused, costs a type 23 or more).
+  - Narrowing calls (user ruling C1 = A: a larger Transfer call cap only while a type
+    narrows its depth; normal runs keep 80). A span read is narrowing from the first moment one of
+    its types is refused a start, finds its memory lapsed, or asks the end of the span before its
+    read (it holds a bound the span lies above, or another type was refused the end), until the
+    read ends. Every call of a narrowing span read, the refused read, the probes, and the reads
+    and pages of the types after it (the reads the narrowing unblocks), is a narrowing call: it
+    is drawn from the lane's 397 narrowing calls (`LANE_NARROWING_CALLS`) while any are left, and
+    from the cap of 80 once they are spent. A call of a span read that is not narrowing (each
+    type is served from its start, or from a start its memory holds) is drawn from the cap alone.
+    A run that narrows nothing therefore makes 80 calls at most, and a run that narrows 477 at
+    most (`LANE_CALL_CAPS.transfer` + `LANE_NARROWING_CALLS.transfer`). The narrowing calls are
+    not drawn from the cap, so the cap stays whole for the passes that follow a narrowing: the
+    forward pass, the re-scan and the points keep the calls they keep today. A narrowing call is
+    never made without `canAfford`: the weight readings (section 2), the cooldown and a rate limit
+    end it as they end any call, and the types a refused call leaves are owed in themselves, never
+    committed as read. Measured against a fake clock that the gate's sleeps and the request
+    latency move, all 20 types, run gaps of 0, 1 hour and 1 day, a depth that moves with the
+    clock or in steps of a day, and rows 1 hour to 10 days above the depth: every type keeps 100
+    days; a middle type 90 and another 75; the first type 90, or 110; the last type 90; a
+    suspension of 10 or 30 hours in a gate wait of the first run; a run planned 3 days before it
+    reads against a Binance that keeps 180 days. The rows lost, by latency, with 0 to 397
+    narrowing calls (the rows a few seconds above a stepped depth, owed in a type, are left out;
+    below):
+
+    | Narrowing calls | no latency | 0 to 300 ms | 0 to 3 s | 9 s spike every 7th request |
+    |---|---|---|---|---|
+    | 0 | 1,685 | 1,705 | 1,872 | 1,813 |
+    | 80 | 129 | 156 | 338 | 558 |
+    | 160 | 0 | 4 | 13 | 124 |
+    | 200 | 0 | 0 | 9 | 49 |
+    | 320 | 0 | 0 | 4 | 5 |
+    | 360 | 0 | 0 | 0 | 5 |
+    | 396 | 0 | 0 | 0 | 5 |
+    | 397 | 0 | 0 | 0 | 0 |
+
+    397 is the smallest value that loses no row in any case: the slowest network, a spike of 9
+    seconds on every seventh request, makes a type's hint stale, so each type narrows again over
+    the whole span, and the last type of the window that crosses the depth needs the last of the
+    calls (396 loses 5 rows); 160 suffices with no latency and 200 with up to 300 ms. The run that
+    narrows the most makes 477 requests, which take 167 s of pacing or more. With them every
+    transfer each type keeps when the first run reads is imported within 2 runs (a run planned 3
+    days before it reads: within the first), nothing is owed after 15, and the forward cursor
+    passes the window that crosses the depth after 2; the pins allow 14.
+  - The ground the depth passes while a type waits to be read is gone from Binance, so a type
+    read in a later run loses it. A type owed in a run is read in a later one. The owed ranges
+    are read before the forward pass, and the run keeps one read of the first forward window, of
     the re-scan and of the points for the passes after them, so the forward pass is never left
-    with no call. A type owed in a run is read in a later one, when the ground the depth
-    passed meanwhile (the rows a few hours above it, for a run a day later) is gone from
-    Binance: under the 80 calls of the lane this is a limit of narrowing 20 types one at a time,
-    measured in the pins below. A read that reaches
-    Binance more than the margin cap (8 s) after the request that found its start is refused
-    every time: every type owes the span in each run it is tried, in at most 52 requests a type,
-    and the forward cursor passes the span (a window stays owed until the floor or the depth
-    passes it; the Transfer walk shows it through the `binanceHistoryPending` caption, which
-    also shows while the walk owes any range, in one type or in every type, and not for a point).
-    The floor of a later run is `now - 179 days`, and a type is read from the floor of the run
-    that reads it. Measured against a fake clock that the gate's sleeps
-    and the request latency (none, 0 to 300 ms, 0 to 3 s, a 9 s spike on every seventh request)
-    move, with all 20 types, run gaps of 0, 1 hour and 1 day, and a depth that moves with the
-    clock or in steps of a day: a Binance where most types keep 100 days, a middle type 90 and
-    another 75 (or the first type keeps 90, or 110, or the last type 90). With runs 0 ms apart
-    every transfer each type keeps when the first run reads is imported within 10 runs and
-    nothing is owed after 15, with the forward cursor past the window that crosses the depth
-    after 2. With runs 1 hour apart the same holds except for the ground within the hour above
-    the depth: the first run narrows and reads 4 of the 20 types of the window that crosses it
-    (the first type needs about 25 calls, each other 4 to 8, after 41 calls on the two windows
-    below the depth), so the other 16 meet a depth one hour later. With runs 1 day apart the
-    ground within a day above the depth is lost for those 16, and within 3 days for 12 to 14, in
-    each case the types the first run did not read. A run planned 3 days before it reads,
-    against a Binance that keeps 180 days, gives every transfer above the floor of the read
-    within the first run, at run gaps of 0, 1 hour and 1 day. The pins `imports the transfers
-    just above the depth in every type`, the matrix of Binances whose types keep different
-    depths at runs 1 day apart and the suspension pins at runs 1 day apart assert that nothing
-    is lost; they fail by the amounts above, and what they assert holds only with more calls a
-    run than the lane's 80 (see the limit above).
+    with no call. A read that reaches Binance more than the margin cap (8 s) after the request
+    that found its start is refused every time: every type owes the span in each run it is tried,
+    in at most 52 requests a type, and the forward cursor passes the span (a window stays owed
+    until the floor or the depth passes it; the Transfer walk shows it through the
+    `binanceHistoryPending` caption, which also shows while the walk owes any range, in one type
+    or in every type, and not for a point). The floor of a later run is `now - 179 days`, and a
+    type is read from the floor of the run that reads it.
+  - What the narrowing calls do not reach: the ground a read begins above (the band, 129 s at
+    most) is owed in its type and read by the pending pass of a later run. A depth that stands
+    still in steps of a day and steps between the run that owes the band and the run that reads
+    it, runs a day apart, refuses the band, and the transfers in it (the pins put two, 1.2 s and
+    1.8 s above the depth) are not imported. Measured with 397 narrowing calls: the matrix of
+    Binances whose types keep different depths and the suspension pins, in daily steps, runs 1
+    day apart, lose those rows and no other (18 pins fail; the cases lose 614 rows in 16 of the
+    matrix and 154 and 159 in 4 each of the 10 and 30 hour suspensions). No number of narrowing
+    calls changes it: 1,000 loses the same rows.
   - Windows of 30 days (the cap is not documented, Q10). The walk reads 20 types: the 18 untracked ones plus `MAIN_FUNDING` and
   `FUNDING_MAIN`, those two first. It runs on the shared walk (sections 3 and 4): forward
   pass, owed ranges, re-scan of the last 30 days, owed points, with per-record commits. A
