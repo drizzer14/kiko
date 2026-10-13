@@ -609,4 +609,49 @@ describe('the depth memories of the series of a run', () => {
     rememberServedStart(memoryOf('MARGIN_MAIN'), { startMs: START + 2, servedAtMs: undefined });
     expect(refusedBoundMs()).toBe(START + 9);
   });
+
+  describe('the bands of the series, once a band was refused', () => {
+    it('expects no band to be refused while none was', () => {
+      const { isBandRefused } = memoriesAt();
+
+      expect(isBandRefused(START)).toBe(false);
+    });
+
+    it('expects a band that starts at or below the refused one, moved on by the time since, to be refused', () => {
+      const clock = { now: NOW_MS };
+      const { rememberRefusedBand, isBandRefused } = memoriesAt(() => clock.now);
+      rememberRefusedBand(START);
+
+      expect(isBandRefused(START)).toBe(true);
+      expect(isBandRefused(START - DAY_MS)).toBe(true);
+      expect(isBandRefused(START + 1)).toBe(false);
+
+      clock.now = NOW_MS + 5_000;
+      expect(isBandRefused(START + 5_000)).toBe(true);
+      expect(isBandRefused(START + 5_001)).toBe(false);
+    });
+
+    it('does not move the refused band back when the clock reads earlier than it did', () => {
+      const clock = { now: NOW_MS };
+      const { rememberRefusedBand, isBandRefused } = memoriesAt(() => clock.now);
+      rememberRefusedBand(START);
+
+      clock.now = NOW_MS - 5_000;
+
+      expect(isBandRefused(START)).toBe(true);
+      expect(isBandRefused(START + 1)).toBe(false);
+    });
+
+    it('moves on with the band refused last', () => {
+      const clock = { now: NOW_MS };
+      const { rememberRefusedBand, isBandRefused } = memoriesAt(() => clock.now);
+      rememberRefusedBand(START);
+      clock.now = NOW_MS + 2_000;
+      rememberRefusedBand(START + 2_000);
+      clock.now = NOW_MS + 3_000;
+
+      expect(isBandRefused(START + 3_000)).toBe(true);
+      expect(isBandRefused(START + 3_001)).toBe(false);
+    });
+  });
 });

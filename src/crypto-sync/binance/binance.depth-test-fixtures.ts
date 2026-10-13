@@ -193,7 +193,9 @@ type DepthOwed = { series: string; window: DepthRead }[];
  * The ground a series left neither read nor owed: how far the start its series holds ground from
  * (the lowest start of its served reads, a band included; the start of the ground it owes, when it
  * owes some) lay above the depth that read met on arrival. A narrowing leaves up to its
- * resolution, ground that lies within it of a start Binance refused.
+ * resolution, ground that lies within it of a start Binance refused. Only that one start of a
+ * series is measured: a gap between two of its served reads, or between a served read and the
+ * ground it owes, is not, so a pin that needs the reads of a series to meet checks that apart.
  */
 export const unowedSkippedMsOf = (calls: DepthCall[], owed: DepthOwed): number[] => {
   const lowestBySeries = new Map<string, DepthCall>();

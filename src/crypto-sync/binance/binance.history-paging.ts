@@ -535,6 +535,7 @@ const readBand = async <Series extends string, Row>(
     }
 
     run.budget.record(lane, REFUSED_CALL);
+    depth.rememberRefusedBand(band.start);
 
     return undefined;
   }
@@ -542,7 +543,9 @@ const readBand = async <Series extends string, Row>(
 
 /**
  * What a series read gave once the band it began above is read: the rows of both, and nothing owed
- * when the band was served; the rows of the read, and the band owed, when it was not.
+ * when the band was served; the rows of the read, and the band owed, when it was not. A band that
+ * starts within the reach of a band Binance refused (`isBandRefused`: the depth moves with the
+ * clock) is owed with no request, since Binance would refuse it too.
  */
 const withBandOf = async <Series extends string, Row>(
   input: SeriesRequest<Series, Row> & {
@@ -553,7 +556,11 @@ const withBandOf = async <Series extends string, Row>(
   read: Extract<TotalPaged<Row>, { kind: 'rows' }>,
   skipped: WalkWindow | undefined,
 ): Promise<SeriesRead<Row>> => {
-  const band = await foldMap(maybe(skipped), (window) => readBand(input, window));
+  const band = await foldMap(maybe(skipped), (window) =>
+    foldMap(maybe(input.depth), (guard) => guard.isBandRefused(window.start)) === true
+      ? undefined
+      : readBand(input, window),
+  );
 
   return band === undefined
     ? { ...read, skipped }
@@ -641,17 +648,17 @@ const readSeries = async <Series extends string, Row>(
  * already read keep their rows. A span with nothing Binance keeps in it for a series reads no rows
  * of it and the others are read. The ground a series read begins above (its band, see
  * `skippedBandOf`) is read right after the series, in the same span read, and joins its rows when
- * Binance serves it; when Binance refuses it or the lane cannot afford it, it is owed in that
- * series (`owed`), not read as empty. So is the whole span of a series whose read stopped (the
- * lane's calls ran out while it narrowed, or it reached `MAX_DEPTH_REFUSALS` refusals or a second
- * lapse), never read as empty. A series costs at most the requests bounded in `MAX_DEPTH_REFUSALS`
- * and `MAX_DEPTH_LAPSES` and one for its band, each spending the lane, and may spend the calls the
- * series after it would have had: one series read to its end serves more ground than a request
- * each for all of them, and a series with no call left is owed the whole span with no request. A
- * span read in which a series is refused, lapses, asks the end of the span or reads a band
- * narrows, and its calls are the lane's narrowing calls first (see `SpanRun`), so a depth shared
- * by 20 series is found in one run without the cap the passes after it need. A lane without a
- * depth reads every series or none.
+ * Binance serves it; when Binance refuses it, is expected to refuse it (see `withBandOf`) or the
+ * lane cannot afford it, it is owed in that series (`owed`), not read as empty. So is the whole
+ * span of a series whose read stopped (the lane's calls ran out while it narrowed, or it reached
+ * `MAX_DEPTH_REFUSALS` refusals or a second lapse), never read as empty. A series costs at most
+ * the requests bounded in `MAX_DEPTH_REFUSALS` and `MAX_DEPTH_LAPSES` and one for its band, each
+ * spending the lane, and may spend the calls the series after it would have had: one series read
+ * to its end serves more ground than a request each for all of them, and a series with no call
+ * left is owed the whole span with no request. A span read in which a series is refused, lapses,
+ * asks the end of the span or reads a band narrows, and its calls are the lane's narrowing calls
+ * first (see `SpanRun`), so the 20 series each find their depth in one run without the cap the
+ * passes after it need. A lane without a depth reads every series or none.
  */
 export const readSeriesSpan = async <Series extends string, Row>(
   input: Omit<SeriesRequest<Series, Row>, 'run'> & {

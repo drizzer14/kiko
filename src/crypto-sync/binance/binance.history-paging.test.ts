@@ -867,7 +867,7 @@ describe('readSeriesSpan, against a Binance that refuses a start older than it k
       });
     });
 
-    it('owes the band in its series, and keeps the rows of the series read, when Binance refuses the band', async () => {
+    it('owes the band in its series, and keeps the rows of the series read, when Binance refuses the band, and asks the band of no series after the one it refused', async () => {
       const run = freshRun();
       const record = jest.spyOn(run.budget, 'record');
       const fetchPage = jest.fn(async (_series: Series, span: typeof DEEP, _current: number) => {
@@ -880,8 +880,9 @@ describe('readSeriesSpan, against a Binance that refuses a start older than it k
 
       const result = await readDeep({ run, fetchPage, depth: servedJustNow() });
 
-      expect(fetchPage).toHaveBeenCalledTimes(2 * SERIES.length);
-      expect(record).toHaveBeenCalledTimes(2 * SERIES.length);
+      expect(fetchPage.mock.calls.filter(([, span]) => isBandRead(span))).toHaveLength(1);
+      expect(fetchPage).toHaveBeenCalledTimes(SERIES.length + 1);
+      expect(record).toHaveBeenCalledTimes(SERIES.length + 1);
       expect(result).toEqual({
         kind: 'page',
         page: {

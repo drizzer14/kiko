@@ -181,6 +181,67 @@ describe('readSeriesSpan, against a depth that moves with the clock or in steps 
     expect(owedOf(result)).toEqual([{ series: 'T0', window: world.calls[1]?.read }]);
   });
 
+  describe('the band below the start a read began at, once the band of another series was refused', () => {
+    // Both series were served 5 seconds ago, the second `t1AboveMs` above the depth of then.
+    const worldOfTwo = (input: { stepMs?: number; t1AboveMs?: number }) => {
+      const world = depthWorldOf({ latencyMs: () => 0, stepMs: input.stepMs });
+      const servedAtMs = world.clock.now - 5_000;
+      const servedStartOf = (series: string, aboveMs: number) => ({
+        startMs: world.edgeOf(series, servedAtMs) + aboveMs,
+        servedAtMs,
+      });
+
+      rememberServedStart(world.depth.memoryOf('T0'), servedStartOf('T0', 0));
+      rememberServedStart(world.depth.memoryOf('T1'), servedStartOf('T1', input.t1AboveMs ?? 0));
+
+      return world;
+    };
+
+    it('owes the band of the next series with no request when it lies within the reach of the depth since the refused one', async () => {
+      const world = worldOfTwo({});
+
+      const result = await readDepthWorld(world, { count: 2 });
+
+      expect(world.calls.map(({ series, refused }) => [series, refused])).toEqual([
+        ['T0', false],
+        ['T0', true],
+        ['T1', false],
+      ]);
+      expect(owedOf(result)).toEqual([
+        { series: 'T0', window: world.calls[1]?.read },
+        { series: 'T1', window: expect.objectContaining({ end: world.calls[2]?.read.start }) },
+      ]);
+    });
+
+    it('reads the band of the next series when the depth stood still, as the band that was served', async () => {
+      const world = worldOfTwo({ stepMs: DAY_MS });
+
+      const result = await readDepthWorld(world, { count: 2 });
+
+      expect(world.calls.map(({ series, refused }) => [series, refused])).toEqual([
+        ['T0', false],
+        ['T0', false],
+        ['T1', false],
+        ['T1', false],
+      ]);
+      expect(owedOf(result)).toEqual([]);
+    });
+
+    it('reads the band of the next series when it starts above the reach of the depth since the refused band', async () => {
+      const world = worldOfTwo({ t1AboveMs: HOUR_MS });
+
+      const result = await readDepthWorld(world, { count: 2 });
+
+      expect(world.calls.map(({ series, refused }) => [series, refused])).toEqual([
+        ['T0', false],
+        ['T0', true],
+        ['T1', false],
+        ['T1', false],
+      ]);
+      expect(owedOf(result)).toEqual([{ series: 'T0', window: world.calls[1]?.read }]);
+    });
+  });
+
   it('finds its start by narrowing once a millisecond more has passed', async () => {
     const { world } = worldServedAgo(DEPTH_EXTRAPOLATION_MAX_MS + 1);
 
@@ -202,6 +263,22 @@ describe('readSeriesSpan, against a depth that moves with the clock or in steps 
       refused: true,
     });
     expect(world.calls.filter(({ series }) => series === 'T0')).toHaveLength(1);
+  });
+
+  it('asks the end of a span that lies below the depth once for each series, the first after its refused read, and owes none of it', async () => {
+    const world = depthWorldOf({ latencyMs: () => 0 });
+    const edgeMs = world.edgeOf('T0', world.clock.now);
+    const span: DepthRead = { start: edgeMs - 2 * HOUR_MS, end: edgeMs - HOUR_MS };
+
+    const result = await readDepthWorld(world, { span, count: 3 });
+
+    expect(result).toEqual({ kind: 'page', page: { read: [], drifted: [], owed: [] } });
+    expect(world.calls.map(({ series, read }) => [series, isProbeRead(read), read.start])).toEqual([
+      ['T0', false, span.start],
+      ['T0', true, span.end],
+      ['T1', true, span.end],
+      ['T2', true, span.end],
+    ]);
   });
 
   it('owes the ground between the start a series was served from and the end of a span, with no request, when the start moved on passes the end', async () => {

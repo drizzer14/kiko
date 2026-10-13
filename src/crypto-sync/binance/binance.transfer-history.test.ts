@@ -2018,10 +2018,9 @@ describe('a Binance that refuses a startTime older than the history it keeps (co
               // A type whose depth lies in the window the re-scan reads owes the ground its band
               // met refused in the last run, which the next run settles.
               expect(
-                listOf(world).filter(
+                (listOf(world) as { end: number; series?: UniversalTransferType }[]).filter(
                   ({ end, series }) =>
-                    series === undefined ||
-                    end > edgeAt(keptDaysOf(series as UniversalTransferType), stepMs, endMs),
+                    series === undefined || end > edgeAt(keptDaysOf(series), stepMs, endMs),
                 ),
               ).toEqual([]);
               expect(stopCodes(warn)).toEqual([]);
