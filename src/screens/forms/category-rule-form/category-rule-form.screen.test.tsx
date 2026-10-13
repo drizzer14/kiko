@@ -82,8 +82,7 @@ const ruleOf = (id: string, category: string, matchers: CategoryRuleMatcher[]): 
 
 const SILPO: CategoryRuleMatcher = { type: 'nameIs', text: 'Silpo' };
 
-const AMOUNT_ERROR =
-  'Enter an amount of 0 or more, with no more decimals than the currency allows.';
+const AMOUNT_NEGATIVE_ERROR = 'Enter an amount of 0 or more.';
 
 const pickType = async (screen: Screen, position: number, type: string): Promise<void> => {
   await fireEvent.press(screen.getByTestId(`matcher-type-${position}`));
@@ -310,20 +309,43 @@ describe('CategoryRuleFormScreen — a Save that is refused', () => {
   });
 
   it.each([
-    ['blank', ''],
-    ['negative', '-5'],
-    ['more decimals than the currency has', '1.005'],
-    ['not a number', 'abc'],
-  ])('names an amount that is %s under its field', async (_label, amount) => {
-    const screen = await renderCreate();
+    ['UAH', '', 'blank', AMOUNT_NEGATIVE_ERROR],
+    ['UAH', '-5', 'negative', AMOUNT_NEGATIVE_ERROR],
+    ['UAH', 'abc', 'not a number', AMOUNT_NEGATIVE_ERROR],
+    [
+      'UAH',
+      '1.005',
+      'past the 2 decimals of the currency',
+      'This currency allows up to 2 decimal places.',
+    ],
+    [
+      'BHD',
+      '1.2345',
+      'past the 3 decimals of the currency',
+      'This currency allows up to 3 decimal places.',
+    ],
+    [
+      'BIF',
+      '1.5',
+      'a fraction of a currency without decimals',
+      'For this currency, you can enter only a whole amount.',
+    ],
+    ['UAH', '99999999999999999999', 'too large to hold', 'This amount is too large.'],
+  ])(
+    'names an amount in %s that is %s with the text that fits it',
+    async (baseCurrency, amount, _label, message) => {
+      mockSettingsRows = [{ baseCurrency }];
 
-    await pickType(screen, 0, 'amount');
-    await fireEvent.changeText(screen.getByLabelText('Amount'), amount);
-    await pressSave(screen);
+      const screen = await renderCreate();
 
-    expect(screen.getByText(AMOUNT_ERROR)).toBeTruthy();
-    expect(mockSaveRule).not.toHaveBeenCalled();
-  });
+      await pickType(screen, 0, 'amount');
+      await fireEvent.changeText(screen.getByLabelText('Amount'), amount);
+      await pressSave(screen);
+
+      expect(screen.getByText(message)).toBeTruthy();
+      expect(mockSaveRule).not.toHaveBeenCalled();
+    },
+  );
 
   it('names every refused row at once', async () => {
     const screen = await renderCreate();
@@ -333,7 +355,7 @@ describe('CategoryRuleFormScreen — a Save that is refused', () => {
     await pressSave(screen);
 
     expect(screen.getByText('Enter a name.')).toBeTruthy();
-    expect(screen.getByText(AMOUNT_ERROR)).toBeTruthy();
+    expect(screen.getByText(AMOUNT_NEGATIVE_ERROR)).toBeTruthy();
   });
 
   it('refuses times that can never match together, and points to two rules for a window over midnight', async () => {

@@ -1,5 +1,6 @@
 import type { CategoryRuleMatcher } from '@kiko/categories/category-rules';
 
+import type { MatcherDraftError } from './rule-draft.types';
 import { emptyMatcherDraft, fromMatcherDrafts, toMatcherDrafts } from './rule-draft';
 
 const roundTrip = (matchers: CategoryRuleMatcher[]) =>
@@ -115,21 +116,62 @@ describe('fromMatcherDrafts', () => {
   );
 
   it.each([
-    ['more decimals than the currency has', '1.005', 'UAH'],
-    ['a tiny fraction of a cent', '0.001', 'UAH'],
-    ['more decimals than a coin has', '0.123456789', 'BTC'],
-    ['a fraction in a currency with none', '1.5', 'BIF'],
     ['a negative amount', '-5', 'UAH'],
     ['a negative zero', '-0', 'UAH'],
     ['a blank amount', '', 'UAH'],
     ['a blank amount of spaces', '   ', 'UAH'],
     ['text that is not a number', 'abc', 'UAH'],
     ['a lone separator', ',', 'UAH'],
-    ['more than a safe integer of minor units', '99999999999999999999', 'UAH'],
-  ] as const)('refuses %s with the amount error', (_label, text, currency) => {
+    ['a negative amount with too many decimals', '-1.005', 'UAH'],
+    ['a negative amount too large to hold', '-99999999999999999999', 'UAH'],
+    ['a negative fraction in a currency with none', '-1.5', 'BIF'],
+  ] as const)('refuses %s as below zero', (_label, text, currency) => {
     expect(fromMatcherDrafts([amountDraft(text, currency)])).toEqual({
       kind: 'invalid',
-      errors: new Map([[0, 'errorAmount']]),
+      errors: new Map([[0, 'errorAmountNegative']]),
+    });
+  });
+
+  it.each([
+    ['more decimals than the currency has', '1.005', 'UAH', 2],
+    ['a tiny fraction of a cent', '0.001', 'UAH', 2],
+    ['more decimals than a coin has', '0.123456789', 'BTC', 8],
+    ['more decimals than three allow', '1.2345', 'BHD', 3],
+  ] as const)(
+    'refuses %s with the digits the currency allows',
+    (_label, text, currency, digits) => {
+      expect(fromMatcherDrafts([amountDraft(text, currency)])).toEqual({
+        kind: 'invalid',
+        errors: new Map([[0, { kind: 'errorAmountDecimals', digits }]]),
+      });
+    },
+  );
+
+  it('refuses a fraction in a currency with no decimals as whole amounts only', () => {
+    expect(fromMatcherDrafts([amountDraft('1.5', 'BIF')])).toEqual({
+      kind: 'invalid',
+      errors: new Map([[0, 'errorAmountWholeOnly']]),
+    });
+  });
+
+  it.each([
+    ['more than a safe integer of minor units', '99999999999999999999', 'UAH'],
+    ['the first value past a safe integer of minor units', '90071992547409.92', 'UAH'],
+    ['a value too large that also has too many decimals', '99999999999999999999.123', 'UAH'],
+    ['a value too large in a currency with no decimals', '99999999999999999999', 'BIF'],
+    ['a fraction too large in a currency with no decimals', '99999999999999999999.5', 'BIF'],
+    ['a number that is not finite', 'Infinity', 'UAH'],
+  ] as const)('refuses %s as too large', (_label, text, currency) => {
+    expect(fromMatcherDrafts([amountDraft(text, currency)])).toEqual({
+      kind: 'invalid',
+      errors: new Map([[0, 'errorAmountTooLarge']]),
+    });
+  });
+
+  it('reads the last amount a safe integer of minor units can hold', () => {
+    expect(fromMatcherDrafts([amountDraft('90071992547409.91')])).toEqual({
+      kind: 'valid',
+      matchers: [{ type: 'amount', operator: 'eq', minorUnits: 9007199254740991, currency: 'UAH' }],
     });
   });
 
@@ -162,9 +204,9 @@ describe('fromMatcherDrafts', () => {
 
     expect(result).toEqual({
       kind: 'invalid',
-      errors: new Map([
+      errors: new Map<number, MatcherDraftError>([
         [1, 'errorName'],
-        [3, 'errorAmount'],
+        [3, { kind: 'errorAmountDecimals', digits: 2 }],
       ]),
     });
   });
