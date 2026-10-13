@@ -517,13 +517,14 @@ const CategoriesScreen: FC<CategoriesScreenProps> = () => {
             quick tap still falls through to a card's own fields. `overDrag`
             keeps a dragged card on its vertical axis; `scrollableRef` +
             `autoScrollActivationOffset` let a drag near an edge scroll the parent
-            ScrollView; `sortEnabled` is off with a single category (nothing to
-            reorder), and until the categories query's own fresh read has
-            applied (never a drag from the cached order). Each card also
-            carries move-to-top/bottom buttons for a gesture-free reorder. */}
+            ScrollView; `sortEnabled` is off until the categories query's own
+            fresh read has applied (never a drag from the cached order), and
+            not otherwise: a lone card lifts like any other, since a release in
+            place persists nothing. Each card also carries move-to-top/bottom
+            buttons for a gesture-free reorder. */}
         <Sortable.Grid
           data={categories}
-          sortEnabled={categoriesFresh && categories.length > 1}
+          sortEnabled={categoriesFresh}
           activeItemScale={1.03}
           columns={1}
           overDrag="vertical"

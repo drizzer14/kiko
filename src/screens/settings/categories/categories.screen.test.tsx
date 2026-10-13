@@ -666,6 +666,14 @@ describe('CategoriesScreen', () => {
       expect(getByTestId('sortable-grid').props.sortEnabled).toBe(false);
     });
 
+    it('lets a lone category lift on a hold: sorting is enabled with a single category', async () => {
+      mockLiveQueryData = [{ key: 'utilities', title: 'Utilities', icon: 'bolt', color: null }];
+      mockSettingsRows = [{ defaultCategoryKey: 'utilities' }];
+      const { getByTestId } = await renderScreen();
+
+      expect(getByTestId('sortable-grid').props.sortEnabled).toBe(true);
+    });
+
     it('ignores a move-to-top press while the categories are still the cached order', async () => {
       mockCategoriesIsFresh = false;
       const { getByLabelText } = await renderScreen();

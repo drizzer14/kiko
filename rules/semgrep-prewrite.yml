@@ -1249,6 +1249,34 @@ rules:
       - pattern-either:
           - pattern: $PROMISE.rejects.toThrow()
           - pattern: $PROMISE.rejects.toThrowError()
+  # kiko-gestures' "A lone card lifts too": `sortEnabled` is the query's freshness gate alone,
+  # never also a count of the items. react-native-sortables never counts items, and a lone
+  # card lifts and drops back with nothing persisted. ERROR: the tree holds 0 findings for this
+  # id. See kiko-linter's "kiko-sortable-grid-lone-card-lifts" section.
+  - id: kiko-sortable-grid-lone-card-lifts
+    languages: [typescript]
+    severity: ERROR
+    message: >
+      `sortEnabled` on a `Sortable.Grid` asks for more than one item, so a
+      lone card never lifts on a hold. It is the query's freshness gate alone:
+      react-native-sortables never counts items, and a release in place
+      persists nothing — see kiko-gestures' "A hold lifts the card, and a
+      lifted card never opens its page".
+    metadata:
+      fix: "Pass the freshness gate alone: sortEnabled={isFresh}; drop the item-count check."
+      skill: "kiko-gestures › A hold lifts the card, and a lifted card never opens its page"
+    paths:
+      exclude:
+        - "*.test.ts"
+        - "*.test.tsx"
+    patterns:
+      - pattern-either:
+          - pattern: <Sortable.Grid ... sortEnabled={$FRESH && $ITEMS.length > 1} ... />
+          - pattern: <Sortable.Grid ... sortEnabled={$ITEMS.length > 1 && $FRESH} ... />
+          - pattern: <Sortable.Grid ... sortEnabled={$ITEMS.length > 1} ... />
+          - pattern: <Sortable.Grid ... sortEnabled={$FRESH && $ITEMS.length >= 2} ... />
+          - pattern: <Sortable.Grid ... sortEnabled={$ITEMS.length >= 2 && $FRESH} ... />
+          - pattern: <Sortable.Grid ... sortEnabled={$ITEMS.length >= 2} ... />
   # kiko-design-system's CardContextMenu: a form has no in-form Delete. An
   # entity is deleted only from its page's touch-and-hold CardContextMenu,
   # which owns the ConfirmSheet, so a form never imports the sheet at all
