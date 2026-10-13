@@ -434,8 +434,9 @@ harness_mutation_costs() {
 
 # harness_mutation_run_share <historyfile> : pure. Print the percent of mutants that timed
 # out in the last up-to-5 history records that carry the tested and timed-out fields (the
-# records harness_mutation_rate draws on, bar old ones lacking the fields), or NOTHING when no record does. It is the timeout share
-# the history rate already contains, which the eta filter takes out of the normal cost.
+# records harness_mutation_rate draws on, bar old ones lacking the fields), or NOTHING when no
+# record does. It is the timeout share the history rate already contains, which the eta filter
+# takes out of the normal cost.
 harness_mutation_run_share() {
   [ -f "$1" ] || return 0
   awk -F'\t' '
@@ -510,8 +511,8 @@ harness_mutation_timeout_share() {
 }
 
 # harness_mutation_eta_filter <rate> [normal] [timedOut] [share] [timeoutMS] [concurrency]
-# [historyShare] : a pipe STAGE for the mutation run. It reads Stryker's combined output line by line and
-# PASSES EVERY LINE THROUGH unchanged (fflush after each so streaming stays live). It
+# [historyShare] : a pipe STAGE for the mutation run. It reads Stryker's combined output line by
+# line and PASSES EVERY LINE THROUGH unchanged (fflush after each so streaming stays live). It
 # only ever adds lines after the one it read. It does the following:
 # - On the FIRST `N/M tested` counter it parses M (the run's mutant count = the
 #   denominator) and, if <rate> is a positive number and M>0, prints ONE line.
