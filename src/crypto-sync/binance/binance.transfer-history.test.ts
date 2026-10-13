@@ -27,6 +27,7 @@ import { NOW } from './binance.pay-test-fixtures';
 import { BinanceWalkStop } from './binance.history-walk';
 import { HISTORY_FLOOR_MS } from './binance.transactions';
 import { isBinanceCoolingDown } from './binance.cooldown';
+import { DEPTH_RESOLUTION_MS } from './binance.history-depth';
 import { FUNDING_KEY, SPOT_KEY } from './binance.holding-keys';
 import { BinanceHistoryTooOldError, BinanceRateLimitError } from './binance.client';
 import { COSTS, createBinanceHistoryRun, LANE_CALL_CAPS } from './binance.history-budget';
@@ -425,6 +426,48 @@ const walkOnce = async (input: {
   const result = await syncBinanceTransferHistory({ targetAccountId: accountId, run }, deps);
 
   return { result, deps, requests: requestsOf(deps), accountId };
+};
+
+const HOUR_MS = 3_600_000;
+const RUN_GAPS = [0, HOUR_MS, DAY_MS];
+
+/** The keys of the two rows a MAIN_FUNDING transfer imports. */
+const keysOf = (tranId: string): string[] => [
+  `acc-1:xfer:MAIN_FUNDING:${tranId}:BTC`,
+  `acc-1:xfer:MAIN_FUNDING:${tranId}:BTC:funding`,
+];
+
+type RunBinding = { answer?: Answer; over?: Partial<BinanceTransferHistoryDeps> };
+
+/**
+ * Two runs on one world, the second `gapMs` later, each against the answer (and the deps) that
+ * `bindingAt` gives for its own start.
+ */
+const walkTwice = async (input: {
+  world: World;
+  entries?: Entry[];
+  gapMs: number;
+  bindingAt?: (now: number) => RunBinding;
+  endLeftOut?: boolean;
+}) => {
+  const { world, entries, gapMs, bindingAt = () => ({}), endLeftOut } = input;
+  const first = await walkOnce({ world, entries, endLeftOut, ...bindingAt(NOW) });
+  const afterFirst = world.added.map((row) => row.externalId);
+  const secondNow = NOW + gapMs;
+  const second = await walkOnce({
+    world,
+    entries,
+    endLeftOut,
+    now: secondNow,
+    ...bindingAt(secondNow),
+  });
+
+  return {
+    afterFirst,
+    ids: [...new Set(world.added.map((row) => row.externalId))],
+    requests: [...first.requests, ...second.requests],
+    secondNow,
+  };
 };
 
 const listOf = (world: World): unknown[] =>
@@ -1082,37 +1125,13 @@ describe('a point read', () => {
 });
 
 describe('a read that leaves the end out, as the live transfer endpoint does', () => {
-  const HOUR_MS = 3_600_000;
-  const RUN_GAPS = [0, HOUR_MS, DAY_MS];
-  const keysOf = (tranId: string): string[] => [
-    `acc-1:xfer:MAIN_FUNDING:${tranId}:BTC`,
-    `acc-1:xfer:MAIN_FUNDING:${tranId}:BTC:funding`,
-  ];
-
-  /** Two runs, the second `gapMs` later, on a server that leaves the end out. */
-  const walkTwice = async (input: {
-    world: World;
-    entries: Entry[];
-    gapMs: number;
-    answer?: Answer;
-  }) => {
-    await walkOnce({ ...input, endLeftOut: true });
-    const afterFirst = input.world.added.map((row) => row.externalId);
-
-    await walkOnce({ ...input, endLeftOut: true, now: NOW + input.gapMs });
-
-    return {
-      afterFirst,
-      ids: [...new Set(input.world.added.map((row) => row.externalId))],
-    };
-  };
-
   describe.each(RUN_GAPS)('runs %i ms apart', (gapMs) => {
     it('imports a transfer at the floor once: the start is read', async () => {
       const world = worldOf();
 
       const { afterFirst, ids } = await walkTwice({
         world,
+        endLeftOut: true,
         entries: [entryOf({ tranId: 'floor', timestamp: transferFloorMs(NOW) })],
         gapMs,
       });
@@ -1127,6 +1146,7 @@ describe('a read that leaves the end out, as the live transfer endpoint does', (
 
       const { afterFirst, ids } = await walkTwice({
         world,
+        endLeftOut: true,
         entries: [entryOf({ tranId: 'boundary', timestamp: start + TRANSFER_WINDOW_MS })],
         gapMs,
       });
@@ -1142,12 +1162,15 @@ describe('a read that leaves the end out, as the live transfer endpoint does', (
 
       const { afterFirst, ids } = await walkTwice({
         world,
+        endLeftOut: true,
         entries: [entryOf({ tranId: 'half', timestamp: half })],
         gapMs,
-        answer: (query) =>
-          query.endTime - query.startTime > 3 * DAY_MS && query.type === 'MAIN_FUNDING'
-            ? fullPage()
-            : undefined,
+        bindingAt: () => ({
+          answer: (query) =>
+            query.endTime - query.startTime > 3 * DAY_MS && query.type === 'MAIN_FUNDING'
+              ? fullPage()
+              : undefined,
+        }),
       });
 
       expect(afterFirst).toEqual(keysOf('half'));
@@ -1163,6 +1186,7 @@ describe('a read that leaves the end out, as the live transfer endpoint does', (
 
       const { afterFirst, ids } = await walkTwice({
         world,
+        endLeftOut: true,
         entries: [entryOf({ tranId: 'point', timestamp: at })],
         gapMs,
       });
@@ -1180,6 +1204,7 @@ describe('a read that leaves the end out, as the live transfer endpoint does', (
 
       const { afterFirst, ids } = await walkTwice({
         world,
+        endLeftOut: true,
         entries: [entryOf({ tranId: 'edge', timestamp: NOW })],
         gapMs,
       });
@@ -1191,14 +1216,14 @@ describe('a read that leaves the end out, as the live transfer endpoint does', (
 });
 
 describe('a Binance that refuses a startTime older than the history it keeps (code -5026)', () => {
-  const HOUR_MS = 3_600_000;
-  const RUN_GAPS = [0, HOUR_MS, DAY_MS];
-
-  /** Binance as it answers: a read that starts more than `days` before `now` is refused. */
+  /**
+   * Binance as it answers: a read that starts more than `days` before the clock (`now`, a time or
+   * the clock itself) is refused.
+   */
   const keepingDays =
-    (days: number, now: number): Answer =>
+    (days: number, now: number | (() => number)): Answer =>
     (query) => {
-      if (now - query.startTime > days * DAY_MS) {
+      if ((typeof now === 'number' ? now : now()) - query.startTime > days * DAY_MS) {
         throw new BinanceHistoryTooOldError('Binance request failed: 400: too old');
       }
 
@@ -1206,33 +1231,19 @@ describe('a Binance that refuses a startTime older than the history it keeps (co
     };
 
   /** Two runs, the second `gapMs` later, each against a Binance that keeps `days`. */
-  const walkTwice = async (input: {
-    world: World;
-    entries?: Entry[];
-    days: number;
-    gapMs: number;
-  }) => {
-    const first = await walkOnce({
+  const walkKeeping = (input: { world: World; entries?: Entry[]; days: number; gapMs: number }) =>
+    walkTwice({
       world: input.world,
       entries: input.entries,
-      answer: keepingDays(input.days, NOW),
+      gapMs: input.gapMs,
+      bindingAt: (now) => ({ answer: keepingDays(input.days, now) }),
     });
-    const secondNow = NOW + input.gapMs;
-    const second = await walkOnce({
-      world: input.world,
-      entries: input.entries,
-      answer: keepingDays(input.days, secondNow),
-      now: secondNow,
-    });
-
-    return { requests: [...first.requests, ...second.requests], secondNow };
-  };
 
   describe.each(RUN_GAPS)('runs %i ms apart', (gapMs) => {
     it('never asks for more than the 180 days Binance was seen to serve, on a fresh connection', async () => {
       const world = worldOf();
 
-      const { requests, secondNow } = await walkTwice({ world, days: 180, gapMs });
+      const { requests, secondNow } = await walkKeeping({ world, days: 180, gapMs });
 
       expect(requests.length).toBeGreaterThan(0);
       expect(minOf(requests.map((request) => request.startTime))).toBe(FLOOR);
@@ -1246,31 +1257,26 @@ describe('a Binance that refuses a startTime older than the history it keeps (co
         [SPOT_FIELDS.pending]: [{ start: agoMs(190), end: agoMs(170) }],
       });
 
-      const { requests } = await walkTwice({ world, days: 180, gapMs });
+      const { requests } = await walkKeeping({ world, days: 180, gapMs });
 
       expect(minOf(requests.map((request) => request.startTime))).toBe(FLOOR);
       expect(requests.some((request) => request.startTime === FLOOR)).toBe(true);
       expect(listOf(world)).toEqual([]);
     });
 
-    it('reads a span it refuses as empty, owes nothing for it, and imports what lies in the spans after it', async () => {
+    it('imports what Binance keeps of a span that starts older than it keeps, reads the ground it refuses as empty, and owes nothing', async () => {
       const world = worldOf();
-      const kept = entryOf({ tranId: 'kept', timestamp: agoMs(50) });
-      const newest = entryOf({ tranId: 'newest', timestamp: agoMs(10) });
+      const entries = [
+        entryOf({ tranId: 'refused', timestamp: agoMs(110) }),
+        entryOf({ tranId: 'edge', timestamp: agoMs(100) + 2 * DEPTH_RESOLUTION_MS }),
+        entryOf({ tranId: 'deep', timestamp: agoMs(99) }),
+        entryOf({ tranId: 'kept', timestamp: agoMs(50) }),
+        entryOf({ tranId: 'newest', timestamp: agoMs(10) }),
+      ];
 
-      const { secondNow } = await walkTwice({
-        world,
-        entries: [kept, newest],
-        days: 100,
-        gapMs,
-      });
+      const { ids, secondNow } = await walkKeeping({ world, entries, days: 100, gapMs });
 
-      expect(world.added.map((row) => row.externalId)).toEqual(
-        expect.arrayContaining([
-          'acc-1:xfer:MAIN_FUNDING:kept:BTC',
-          'acc-1:xfer:MAIN_FUNDING:newest:BTC',
-        ]),
-      );
+      expect([...ids].sort()).toEqual(['edge', 'deep', 'kept', 'newest'].flatMap(keysOf).sort());
       expect(world.metadata[SPOT_FIELDS.cursor]).toBe(secondNow);
       expect(listOf(world)).toEqual([]);
       expect(stopCodes(warn)).toEqual([]);
@@ -1283,18 +1289,199 @@ describe('a Binance that refuses a startTime older than the history it keeps (co
         [SPOT_FIELDS.pending]: [{ start: agoMs(150), end: agoMs(140) }],
       });
 
-      await walkTwice({ world, days: 100, gapMs });
+      await walkKeeping({ world, days: 100, gapMs });
 
       expect(listOf(world)).toEqual([]);
     });
   });
 
-  it('spends one call, not one for each type, on a span it refuses', async () => {
+  it('asks the first type only, twice, of a span it refuses whole: the refused start, then a start at its end', async () => {
     const world = worldOf({ [SPOT_FIELDS.cursor]: agoMs(150) });
 
     const { requests } = await walkOnce({ world, answer: keepingDays(100, NOW) });
 
-    expect(requests.filter((request) => request.startTime === agoMs(150))).toHaveLength(1);
+    expect(requests.slice(0, 3)).toEqual([
+      { type: 'MAIN_FUNDING', startTime: agoMs(150), endTime: agoMs(120), current: 1 },
+      { type: 'MAIN_FUNDING', startTime: agoMs(120), endTime: agoMs(120) + 1, current: 1 },
+      expect.objectContaining({ startTime: agoMs(120), endTime: agoMs(90) }),
+    ]);
+  });
+
+  describe('when the clock has moved on since the run was planned', () => {
+    const SUSPENDED_MS = 3 * DAY_MS;
+    const BOUNDARY = FLOOR + SUSPENDED_MS - DAY_MS;
+    const CREDENTIALS = { apiKey: 'api-key', secret: 'secret' };
+
+    /**
+     * A run planned at `startMs` whose clock reads `SUSPENDED_MS` later once the credentials are
+     * read (the app was suspended before its first read), against a Binance that keeps 180 days of
+     * the clock.
+     */
+    const suspendedFrom = (startMs: number): RunBinding => {
+      const clock = { now: startMs };
+
+      return {
+        answer: keepingDays(180, () => clock.now),
+        over: {
+          now: () => clock.now,
+          readCredentials: async () => {
+            clock.now = startMs + SUSPENDED_MS;
+
+            return CREDENTIALS;
+          },
+        },
+      };
+    };
+    const failedAt = FLOOR + 20 * DAY_MS;
+    const entries = [
+      entryOf({ tranId: 'crossing', timestamp: BOUNDARY + DAY_MS / 2 }),
+      entryOf({ tranId: 'failed', status: 'FAILED', timestamp: failedAt }),
+      entryOf({ tranId: 'later', timestamp: agoMs(100) }),
+      entryOf({ tranId: 'newest', timestamp: agoMs(10) }),
+    ];
+
+    describe.each(RUN_GAPS)('with the second run %i ms later', (gapMs) => {
+      it('imports every transfer within the 180 days Binance keeps once, and keeps the failed one owed', async () => {
+        const world = worldOf();
+
+        const { afterFirst, ids } = await walkTwice({
+          world,
+          entries,
+          gapMs,
+          bindingAt: suspendedFrom,
+        });
+
+        // The first run's 80 calls reach the first windows only; the second finishes the rest.
+        expect(afterFirst).toEqual(expect.arrayContaining(keysOf('crossing')));
+        expect([...ids].sort()).toEqual(['crossing', 'later', 'newest'].flatMap(keysOf).sort());
+        expect(pointsIn(listOf(world))).toEqual([pointOf(failedAt, 'MAIN_FUNDING')]);
+        expect(new Set(stopCodes(warn))).toEqual(new Set(['transfer-failed']));
+      });
+    });
+
+    it('moves the start of the span up by bisection, within a stated number of requests, to the oldest start Binance serves', async () => {
+      const world = worldOf();
+
+      const { requests } = await walkOnce({ world, entries, ...suspendedFrom(NOW) });
+
+      const narrowing = requests.filter(
+        (request) => request.startTime < BOUNDARY || request.endTime - request.startTime === 1,
+      );
+      const bound = 2 + Math.ceil(Math.log2(TRANSFER_WINDOW_MS / DEPTH_RESOLUTION_MS));
+      const read = requests.find(
+        (request) => request.startTime >= BOUNDARY && request.endTime - request.startTime > 1,
+      );
+
+      expect(narrowing.length).toBeLessThanOrEqual(bound);
+      expect(narrowing.length).toBeGreaterThanOrEqual(bound - 1);
+      expect(read).toMatchObject({ type: 'MAIN_FUNDING' });
+      expect((read?.startTime ?? 0) - BOUNDARY).toBeLessThan(DEPTH_RESOLUTION_MS);
+    });
+
+    it('reads a span that lies wholly below the floor of now as empty, with no request beyond the refused one', async () => {
+      const world = worldOf({
+        [SPOT_FIELDS.cursor]: agoMs(1),
+        [SPOT_FIELDS.rescan]: agoMs(1) - 1,
+        [SPOT_FIELDS.pending]: [{ start: FLOOR, end: FLOOR + DAY_MS }],
+      });
+
+      const { requests } = await walkOnce({ world, ...suspendedFrom(NOW) });
+
+      expect(
+        requests.filter(
+          (request) => request.startTime >= FLOOR && request.startTime <= FLOOR + DAY_MS,
+        ),
+      ).toHaveLength(1);
+      expect(listOf(world)).toEqual([]);
+    });
+
+    it('leaves the span unread when the budget runs out while it narrows, and a later run imports it', async () => {
+      const world = worldOf();
+      const binding = suspendedFrom(NOW);
+      const fetcher = serverOf(entries, binding.answer);
+      // The span is entered (20 calls fit), and 5 calls are spent: the refused read and 4 requests.
+      const run = {
+        gate: freshRun().gate,
+        budget: {
+          canAfford: (_lane: unknown, _cost: unknown, keep = 0) =>
+            fetcher.mock.calls.length + keep < TYPE_COUNT + 5,
+          record: () => undefined,
+        },
+      };
+
+      const first = await walkOnce({
+        world,
+        run,
+        over: { ...binding.over, fetchUniversalTransfers: fetcher },
+      });
+
+      expect(first.result).toEqual({ imported: 0, complete: false });
+      expect(world.added).toEqual([]);
+      expect(world.metadata[SPOT_FIELDS.cursor]).toBeUndefined();
+      expect(listOf(world)).toEqual([]);
+
+      await walkOnce({ world, entries, ...suspendedFrom(NOW) });
+
+      expect(world.added.map((row) => row.externalId)).toEqual(
+        expect.arrayContaining(keysOf('crossing')),
+      );
+    });
+
+    it('asks no more than once for the start Binance refused when the span comes back full and is halved', async () => {
+      const world = worldOf({ [SPOT_FIELDS.cursor]: agoMs(105) });
+      const keeping = keepingDays(100, NOW);
+      const dense: Answer = (query) =>
+        query.endTime - query.startTime > 3 * DAY_MS && query.type === 'MAIN_FUNDING'
+          ? fullPage()
+          : undefined;
+      const deep = entryOf({ tranId: 'deep', timestamp: agoMs(99) });
+
+      const { requests } = await walkOnce({
+        world,
+        entries: [deep],
+        answer: (query) => keeping(query) ?? dense(query),
+      });
+
+      const readsBelowDepth = requests.filter(
+        (request) => request.startTime < agoMs(100) && request.endTime - request.startTime > 1,
+      );
+
+      expect(readsBelowDepth).toHaveLength(1);
+      expect(world.added.map((row) => row.externalId)).toEqual(keysOf('deep'));
+      expect(pointsIn(listOf(world))).toEqual([]);
+    });
+  });
+
+  it('loses no row and reads none twice when Binance refuses the start on a type after earlier types returned rows', async () => {
+    const world = worldOf({ [SPOT_FIELDS.cursor]: agoMs(60) });
+    const clock = { now: NOW };
+    const keeping = keepingDays(61, () => clock.now);
+    let served = 0;
+    // Binance forgets 5 more days once the first type is answered.
+    const answer: Answer = (query) => {
+      const verdict = keeping(query);
+
+      served += 1;
+      clock.now = served === 1 ? NOW + 5 * DAY_MS : clock.now;
+
+      return verdict;
+    };
+    const entries = [
+      entryOf({ tranId: 'first', timestamp: agoMs(58) }),
+      entryOf({ tranId: 'second', type: 'FUNDING_MAIN', timestamp: agoMs(50) }),
+      entryOf({ tranId: 'third', type: 'MAIN_UMFUTURE', timestamp: agoMs(40) }),
+    ];
+
+    await walkOnce({ world, entries, answer, over: { now: () => clock.now } });
+
+    expect(world.added.map((row) => row.externalId).sort()).toEqual(
+      [
+        ...keysOf('first'),
+        'acc-1:xfer:FUNDING_MAIN:second:BTC',
+        'acc-1:xfer:FUNDING_MAIN:second:BTC:funding',
+        'acc-1:xfer:MAIN_UMFUTURE:third:BTC',
+      ].sort(),
+    );
   });
 });
 

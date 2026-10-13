@@ -1,7 +1,10 @@
-import { BinanceRateLimitError } from './binance.client';
+import { DAY_MS } from '@kiko/dates';
+
 import type { TotalPage, UnreadableRow } from './binance.history-client';
 import { fetchAllByTotal, readSeriesSpan } from './binance.history-paging';
+import { BinanceHistoryTooOldError, BinanceRateLimitError } from './binance.client';
 import { COSTS, createBinanceHistoryRun, LANE_CALL_CAPS } from './binance.history-budget';
+import { DEPTH_RESOLUTION_MS, type DepthGuard, MAX_DEPTH_REFUSALS } from './binance.history-depth';
 
 const NOW = 1_704_326_400_000;
 const FULL_PAGE = 100;
@@ -353,5 +356,241 @@ describe('readSeriesSpan', () => {
 
     expect(result).toBeUndefined();
     expect(fetchPage.mock.calls.map(([, , current]) => current)).toEqual([1, 2]);
+  });
+});
+
+describe('readSeriesSpan, against a Binance that refuses a start older than it keeps', () => {
+  const SERIES = ['MAIN_FUNDING', 'FUNDING_MAIN', 'MAIN_UMFUTURE'] as const;
+  type Series = (typeof SERIES)[number];
+
+  const BASE = 1_700_000_000_000;
+  const DEEP = { start: BASE, end: BASE + 10 * DAY_MS };
+  const SERVED_FROM = BASE + 4 * DAY_MS + 345;
+
+  const depthOf = (over: Partial<DepthGuard> = {}): DepthGuard => ({
+    isRefusal: (error) => error instanceof BinanceHistoryTooOldError,
+    floorMs: () => BASE - DAY_MS,
+    memory: { startMs: undefined },
+    ...over,
+  });
+
+  /** A server that keeps every start from `servedFrom` on, and refuses an older one. */
+  const keeping = (
+    servedFrom: number,
+    page: (series: Series) => TotalPage<Row> = () => pageOf(1, 1),
+  ) =>
+    jest.fn(async (series: Series, span: typeof DEEP, _current: number) => {
+      if (span.start < servedFrom) {
+        throw new BinanceHistoryTooOldError('too old');
+      }
+
+      return page(series);
+    });
+
+  const readDeep = (
+    over: Partial<Parameters<typeof readSeriesSpan<Series, Row>>[0]> & {
+      fetchPage: (series: Series, span: typeof DEEP, current: number) => Promise<TotalPage<Row>>;
+    },
+  ) =>
+    readSeriesSpan<Series, Row>({
+      run: freshRun(),
+      lane: 'transfer',
+      cost: COSTS.transfer,
+      span: DEEP,
+      keep: 0,
+      series: SERIES,
+      maxPages: 50,
+      onRateLimit: jest.fn(),
+      depth: depthOf(),
+      ...over,
+    });
+
+  const startsOf = (fetchPage: jest.Mock): number[] =>
+    fetchPage.mock.calls.map(([, span]) => (span as typeof DEEP).start);
+
+  it('reads every series from the start Binance serves, the one refusal behind it, and keeps the memory of it', async () => {
+    const fetchPage = keeping(SERVED_FROM);
+    const depth = depthOf();
+
+    const result = await readDeep({ fetchPage, depth });
+
+    const realReads = fetchPage.mock.calls.filter(([, span]) => span.end - span.start > 1);
+    const found = depth.memory.startMs ?? 0;
+    expect(found).toBeGreaterThanOrEqual(SERVED_FROM);
+    expect(found - SERVED_FROM).toBeLessThan(DEPTH_RESOLUTION_MS);
+    expect(realReads.map(([series, span]) => [series, span.start, span.end])).toEqual([
+      ['MAIN_FUNDING', DEEP.start, DEEP.end],
+      ...SERIES.map((series) => [series, found, DEEP.end]),
+    ]);
+    expect(result).toEqual({
+      kind: 'page',
+      page: {
+        read: SERIES.map((series) => ({ series, rows: [{ id: 0 }], unreadable: [] })),
+        drifted: [],
+      },
+    });
+  });
+
+  it('keeps the rows of the series read before the refusal, and reads them no more', async () => {
+    const served = new Set<Series>();
+    // Binance forgets the first days once the first series is answered.
+    const fetchPage = jest.fn(async (series: Series, span: typeof DEEP, _current: number) => {
+      if (served.size > 0 && span.start < SERVED_FROM) {
+        throw new BinanceHistoryTooOldError('too old');
+      }
+
+      served.add(series);
+
+      return pageOf(1, 1, { rows: [{ id: SERIES.indexOf(series) }] });
+    });
+
+    const result = await readDeep({ fetchPage });
+
+    const firstReads = fetchPage.mock.calls.filter(
+      ([series, span]) => series === 'MAIN_FUNDING' && span.end - span.start > 1,
+    );
+    expect(firstReads).toHaveLength(1);
+    expect(result).toMatchObject({
+      page: {
+        read: SERIES.map((series) => ({ series, rows: [{ id: SERIES.indexOf(series) }] })),
+      },
+    });
+  });
+
+  it('reads a span whose end Binance refuses as empty, with no series read after the refusal, and no later span asks the refused ground', async () => {
+    const fetchPage = keeping(DEEP.end + 1);
+    const depth = depthOf();
+
+    const result = await readDeep({ fetchPage, depth });
+
+    expect(result).toEqual({ kind: 'page', page: { read: [], drifted: [] } });
+    expect(fetchPage).toHaveBeenCalledTimes(2);
+    expect(depth.memory.startMs).toBe(DEEP.end);
+
+    fetchPage.mockClear();
+    await readDeep({ fetchPage, depth, span: { start: DEEP.start - DAY_MS, end: DEEP.end } });
+    expect(fetchPage).not.toHaveBeenCalled();
+  });
+
+  it('starts a span from the start already known to be served, with no request for the ground below it', async () => {
+    const fetchPage = keeping(0);
+    const depth = depthOf({ memory: { startMs: DEEP.start + 2 * DAY_MS } });
+
+    await readDeep({ fetchPage, depth });
+
+    expect(new Set(startsOf(fetchPage))).toEqual(new Set([DEEP.start + 2 * DAY_MS]));
+  });
+
+  it('asks nothing of a span that ends at or before the start already known to be served', async () => {
+    const fetchPage = keeping(0);
+
+    const result = await readDeep({
+      fetchPage,
+      depth: depthOf({ memory: { startMs: DEEP.end } }),
+    });
+
+    expect(result).toEqual({ kind: 'page', page: { read: [], drifted: [] } });
+    expect(fetchPage).not.toHaveBeenCalled();
+  });
+
+  it('reads a refused span that ends at or before the floor of now as empty, after the one refused request', async () => {
+    const fetchPage = keeping(DEEP.end + DAY_MS);
+
+    const result = await readDeep({ fetchPage, depth: depthOf({ floorMs: () => DEEP.end }) });
+
+    expect(result).toEqual({ kind: 'page', page: { read: [], drifted: [] } });
+    expect(fetchPage).toHaveBeenCalledTimes(1);
+  });
+
+  it('answers the half of the span that starts where the span does, when the read from the served start comes back full', async () => {
+    const fetchPage = keeping(SERVED_FROM, () => pageOf(FULL_PAGE, 250));
+    const depth = depthOf();
+
+    const result = await readDeep({ fetchPage, depth });
+
+    const found = depth.memory.startMs ?? 0;
+    expect(result).toEqual({
+      kind: 'split',
+      half: { start: DEEP.start, end: found + Math.floor((DEEP.end - found) / 2) },
+    });
+  });
+
+  it('is a clean stop, with the span unread, once a read is refused more than MAX_DEPTH_REFUSALS times', async () => {
+    // Every start is served as a probe (one millisecond), and every read is refused.
+    const fetchPage = jest.fn(async (_series: Series, span: typeof DEEP, _current: number) => {
+      if (span.end - span.start > 1) {
+        throw new BinanceHistoryTooOldError('too old');
+      }
+
+      return pageOf(0, 0);
+    });
+
+    const result = await readDeep({ fetchPage });
+
+    expect(result).toBeUndefined();
+    expect(fetchPage.mock.calls.filter(([, span]) => span.end - span.start > 1)).toHaveLength(
+      MAX_DEPTH_REFUSALS + 1,
+    );
+  });
+
+  it('spends a call of the lane on every request it makes, a refused one too, each after the shared gate', async () => {
+    const run = freshRun();
+    const wait = jest.spyOn(run.gate, 'wait');
+    const fetchPage = keeping(SERVED_FROM);
+
+    await readDeep({ run, fetchPage });
+
+    const made = fetchPage.mock.calls.length;
+    expect(run.budget.canAfford('transfer', COSTS.transfer, CAP - made - 1)).toBe(true);
+    expect(run.budget.canAfford('transfer', COSTS.transfer, CAP - made)).toBe(false);
+    expect(wait).toHaveBeenCalledTimes(made);
+  });
+
+  it('is a clean stop, with no request made, when the budget cannot afford the next one while it narrows', async () => {
+    const fetchPage = keeping(SERVED_FROM);
+    const run = {
+      gate: freshRun().gate,
+      budget: {
+        canAfford: (_lane: unknown, _cost: unknown, keep = 0) =>
+          fetchPage.mock.calls.length + keep < 6,
+        record: () => undefined,
+      },
+    };
+
+    const result = await readDeep({ run, fetchPage });
+
+    expect(result).toBeUndefined();
+    expect(fetchPage).toHaveBeenCalledTimes(3);
+  });
+
+  it('hands a rate limit of a probe to the caller and stops', async () => {
+    const limited = new BinanceRateLimitError(429, 60_000);
+    const onRateLimit = jest.fn();
+    const fetchPage = jest.fn(async (_series: Series, span: typeof DEEP, _current: number) => {
+      throw span.end - span.start > 1 ? new BinanceHistoryTooOldError('too old') : limited;
+    });
+
+    const result = await readDeep({ fetchPage, onRateLimit });
+
+    expect(result).toBeUndefined();
+    expect(onRateLimit).toHaveBeenCalledWith(limited);
+  });
+
+  it('rethrows a failure of a probe that is not the refusal', async () => {
+    const fetchPage = jest.fn(async (_series: Series, span: typeof DEEP, _current: number) => {
+      throw span.end - span.start > 1
+        ? new BinanceHistoryTooOldError('too old')
+        : new Error('boom');
+    });
+
+    await expect(readDeep({ fetchPage })).rejects.toThrow('boom');
+  });
+
+  it('rethrows the refusal when the lane has no depth to be refused at', async () => {
+    const fetchPage = keeping(SERVED_FROM);
+
+    await expect(readDeep({ fetchPage, depth: undefined })).rejects.toBeInstanceOf(
+      BinanceHistoryTooOldError,
+    );
   });
 });

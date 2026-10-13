@@ -1,3 +1,5 @@
+import maybe, { foldMap } from 'fnts/maybe';
+
 import {
   HISTORY_TOTAL_PAGE_SIZE,
   type TotalPage,
@@ -6,6 +8,7 @@ import {
 import { BinanceRateLimitError } from './binance.client';
 import { halfOf, type SpanRead, type WalkWindow } from './binance.history-walk';
 import type { BinanceHistoryRun, BudgetLane, CallCost } from './binance.history-budget';
+import { type DepthGuard, MAX_DEPTH_REFUSALS, narrowRefusedStart } from './binance.history-depth';
 
 /**
  * What one series gave for a span: all its rows (and the rows the client could not read), the
@@ -81,6 +84,137 @@ export type SeriesSpan<Series, Row> = {
   drifted: Series[];
 };
 
+/** A refused request still counts as a call of the lane; Binance gave no weight reading for it. */
+const REFUSED_CALL = { usedUidWeight1m: undefined, usedIpWeight1m: undefined };
+
+type SeriesRequest<Series extends string, Row> = {
+  run: BinanceHistoryRun;
+  lane: BudgetLane;
+  cost: CallCost;
+  span: WalkWindow;
+  maxPages: number;
+  fetchPage: (series: Series, span: WalkWindow, current: number) => Promise<TotalPage<Row>>;
+};
+
+type SeriesDepth<Series extends string, Row> = SeriesRequest<Series, Row> & {
+  name: Series;
+  keep: number;
+  depth: DepthGuard;
+  refusals: { count: number };
+};
+
+/**
+ * What follows a start Binance refused: `retry` once the start the series is read from is in
+ * `depth.memory`, `below` when the span holds nothing Binance keeps, `undefined` for a clean stop.
+ * One request of the lane is spent for each start asked (see `narrowRefusedStart`), refused ones
+ * too, none past `MAX_DEPTH_REFUSALS` refusals of one span read, and none that leaves the series'
+ * own read unaffordable.
+ */
+const narrowAfterRefusal = async <Series extends string, Row>(
+  input: SeriesDepth<Series, Row> & { refusedMs: number },
+): Promise<{ kind: 'retry' } | { kind: 'below' } | undefined> => {
+  const { run, lane, cost, span, name, keep, fetchPage, depth, refusals } = input;
+
+  run.budget.record(lane, REFUSED_CALL);
+  refusals.count += 1;
+
+  if (refusals.count > MAX_DEPTH_REFUSALS) {
+    return undefined;
+  }
+
+  const narrowed = await narrowRefusedStart({
+    refusedMs: input.refusedMs,
+    endMs: span.end,
+    floorMs: depth.floorMs(),
+    probe: async (startMs) => {
+      if (!run.budget.canAfford(lane, cost, keep + 1)) {
+        return undefined;
+      }
+
+      await run.gate.wait();
+
+      try {
+        run.budget.record(lane, await fetchPage(name, { start: startMs, end: startMs + 1 }, 1));
+
+        return true;
+      } catch (error) {
+        if (!depth.isRefusal(error)) {
+          throw error;
+        }
+
+        run.budget.record(lane, REFUSED_CALL);
+
+        return false;
+      }
+    },
+  });
+
+  if (narrowed === undefined) {
+    return undefined;
+  }
+
+  if (narrowed.kind === 'floor') {
+    return { kind: 'below' };
+  }
+
+  depth.memory.startMs = Math.max(depth.memory.startMs ?? narrowed.startMs, narrowed.startMs);
+
+  return { kind: 'retry' };
+};
+
+/**
+ * One series of a span, from the oldest start Binance is known to serve (`depth`, when the lane
+ * has a depth to be refused at). A start Binance refuses as older than it keeps is narrowed to
+ * the start it serves and the series is read again from it; the ground before that start is read
+ * as empty, and `depth.memory` holds the start for the series and the spans that follow. A series
+ * is trusted only once read whole, so a refused one starts again at the narrowed start and keeps
+ * no page of its first try. `below` is a span with nothing Binance keeps in it; `undefined` is a
+ * clean stop, such as an unaffordable request.
+ */
+const readSeries = async <Series extends string, Row>(
+  input: SeriesRequest<Series, Row> & {
+    name: Series;
+    keep: number;
+    depth: DepthGuard | undefined;
+    refusals: { count: number };
+  },
+): Promise<TotalPaged<Row> | { kind: 'below' } | undefined> => {
+  const { run, lane, cost, span, name, keep, maxPages, fetchPage, depth } = input;
+
+  for (;;) {
+    const startMs = Math.max(span.start, depth?.memory.startMs ?? span.start);
+
+    if (startMs >= span.end) {
+      return { kind: 'below' };
+    }
+
+    const reading = { start: startMs, end: span.end };
+
+    try {
+      return await fetchAllByTotal<Row>({
+        run,
+        lane,
+        cost,
+        keep,
+        // The half starts where the span does: the ground the read skipped is committed with it.
+        half: foldMap(maybe(halfOf(reading)), (half) => ({ start: span.start, end: half.end })),
+        maxPages,
+        fetchPage: (current) => fetchPage(name, reading, current),
+      });
+    } catch (error) {
+      if (depth === undefined || !depth.isRefusal(error)) {
+        throw error;
+      }
+
+      const next = await narrowAfterRefusal({ ...input, depth, refusedMs: startMs });
+
+      if (next === undefined || next.kind === 'below') {
+        return next;
+      }
+    }
+  }
+};
+
 /**
  * Read one span in every series given, one after the other: the likely dense series first, so a
  * span that is too full is halved before the other series are paid for. The span is entered only
@@ -89,21 +223,24 @@ export type SeriesSpan<Series, Row> = {
  * the span and gives up. The first series that splits answers the whole span with the half; a
  * series that drifted is named, and the others keep their rows. A rate limit is handed to
  * `onRateLimit` (which sets the cooldown) and ends the read; `undefined` is a clean stop.
+ *
+ * With a `depth`, a start Binance refuses as older than it keeps moves up to the start it serves
+ * (see `readSeries`): the series already read keep their rows, and the series after them start
+ * where it does. A span with nothing Binance keeps in it reads no series after the one that
+ * found it, so the page holds the rows read before it. A read refused more than
+ * `MAX_DEPTH_REFUSALS` times is a clean stop: the span stays unread, never read as empty.
  */
-export const readSeriesSpan = async <Series extends string, Row>(input: {
-  run: BinanceHistoryRun;
-  lane: BudgetLane;
-  cost: CallCost;
-  span: WalkWindow;
-  keep: number;
-  series: readonly Series[];
-  maxPages: number;
-  fetchPage: (series: Series, span: WalkWindow, current: number) => Promise<TotalPage<Row>>;
-  onRateLimit: (error: BinanceRateLimitError) => void;
-}): Promise<SpanRead<SeriesSpan<Series, Row>> | undefined> => {
-  const { run, lane, cost, span, keep, series, maxPages, fetchPage, onRateLimit } = input;
-  const half = halfOf(span);
+export const readSeriesSpan = async <Series extends string, Row>(
+  input: SeriesRequest<Series, Row> & {
+    keep: number;
+    series: readonly Series[];
+    depth?: DepthGuard;
+    onRateLimit: (error: BinanceRateLimitError) => void;
+  },
+): Promise<SpanRead<SeriesSpan<Series, Row>> | undefined> => {
+  const { run, lane, cost, keep, series, depth, onRateLimit } = input;
   const result: SeriesSpan<Series, Row> = { read: [], drifted: [] };
+  const refusals = { count: 0 };
 
   if (!run.budget.canAfford(lane, cost, keep + series.length - 1)) {
     return undefined;
@@ -111,14 +248,12 @@ export const readSeriesSpan = async <Series extends string, Row>(input: {
 
   try {
     for (const [index, name] of series.entries()) {
-      const paged = await fetchAllByTotal<Row>({
-        run,
-        lane,
-        cost,
+      const paged = await readSeries<Series, Row>({
+        ...input,
+        name,
         keep: keep + series.length - 1 - index,
-        half,
-        maxPages,
-        fetchPage: (current) => fetchPage(name, span, current),
+        depth,
+        refusals,
       });
 
       if (paged === undefined) {
@@ -127,6 +262,10 @@ export const readSeriesSpan = async <Series extends string, Row>(input: {
 
       if (paged.kind === 'split') {
         return { kind: 'split', half: paged.half };
+      }
+
+      if (paged.kind === 'below') {
+        break;
       }
 
       if (paged.kind === 'drift') {

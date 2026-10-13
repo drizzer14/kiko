@@ -66,6 +66,7 @@ import {
   settleRecords,
   settleUnreadable,
 } from './binance.history-records';
+import type { DepthMemory } from './binance.history-depth';
 import { type BinanceHistoryRun, COSTS } from './binance.history-budget';
 import { readSeriesSpan, type SeriesSpan } from './binance.history-paging';
 import { type BinanceCredentials, readCredentials } from './binance.credentials';
@@ -77,9 +78,9 @@ import { type BinanceWalletKey, binanceKeyOf, FUNDING_KEY, SPOT_KEY } from './bi
 export const TRANSFER_WINDOW_MS = 30 * DAY_MS;
 
 /**
- * Binance documents the last six months of transfer history. Probed 2026-10-13: a `startTime` 180
- * days back is served and one 200 days back is refused (HTTP 400, code -5026); what lies between
- * is unknown, so the walk asks for no more than 179 whole days.
+ * Binance documents the last six months of transfer history. A `startTime` 180 days back is
+ * served and one 200 days back is refused (HTTP 400, code -5026); what lies between is unknown,
+ * so the walk asks for no more than 179 whole days.
  */
 const TRANSFER_HISTORY_DAYS = 179;
 
@@ -337,6 +338,7 @@ type TransferContext = {
   options: FetchAccountOptions;
   marks: WalkMarks;
   plan: WalkPlan;
+  depth: DepthMemory;
 };
 
 /** The types a window is read in: every one, or the ones its owed points name. */
@@ -353,6 +355,11 @@ const callsOf = (window: OwedWindow): number => typesOf(window).length;
  * it halves the span (every type is read again in the half). `undefined` is a clean stop: the
  * budget cannot afford every type, or Binance rate-limited (which also sets the account's
  * cooldown). `keep` calls stay unspent for the passes that come later in the run.
+ *
+ * A start Binance refuses as older than it keeps (-5026) is not read as empty: the clock moves on
+ * after a run is planned, so the span may still hold ground Binance keeps. The floor of now says
+ * whether the span lies below it (nothing to ask); otherwise the span is read from the oldest
+ * start Binance serves (see `readSeriesSpan`), and only the ground it refuses is read as empty.
  */
 const readSpan = async (
   context: TransferContext,
@@ -362,34 +369,28 @@ const readSpan = async (
 ): Promise<SpanRead<SeriesSpan<UniversalTransferType, BinanceUniversalTransfer>> | undefined> => {
   const { deps, run, accountId, apiKey, secret, options } = context;
 
-  try {
-    return await readSeriesSpan<UniversalTransferType, BinanceUniversalTransfer>({
-      run,
-      lane: 'transfer',
-      cost: COSTS.transfer,
-      span,
-      keep,
-      series: typesOf(window),
-      maxPages: MAX_PAGES_PER_SPAN,
-      fetchPage: (type, read, current) =>
-        deps.fetchUniversalTransfers(
-          apiKey,
-          secret,
-          { type, startTime: read.start, endTime: read.end, current },
-          options,
-        ),
-      onRateLimit: (error) => setBinanceCooldownUntil(accountId, deps.now() + error.retryAfterMs),
-    });
-  } catch (error) {
-    // A span Binance refuses as older than it keeps (-5026) lies below its history, like the
-    // ground below the floor: it holds nothing to read and owes nothing. Every type of the span
-    // starts at the same time, so the first refusal stands for all of them.
-    if (error instanceof BinanceHistoryTooOldError) {
-      return { kind: 'page', page: { read: [], drifted: [] } };
-    }
-
-    throw error;
-  }
+  return readSeriesSpan<UniversalTransferType, BinanceUniversalTransfer>({
+    run,
+    lane: 'transfer',
+    cost: COSTS.transfer,
+    span,
+    keep,
+    series: typesOf(window),
+    maxPages: MAX_PAGES_PER_SPAN,
+    fetchPage: (type, read, current) =>
+      deps.fetchUniversalTransfers(
+        apiKey,
+        secret,
+        { type, startTime: read.start, endTime: read.end, current },
+        options,
+      ),
+    onRateLimit: (error) => setBinanceCooldownUntil(accountId, deps.now() + error.retryAfterMs),
+    depth: {
+      isRefusal: (error) => error instanceof BinanceHistoryTooOldError,
+      floorMs: () => transferFloorMs(deps.now()),
+      memory: context.depth,
+    },
+  });
 };
 
 /**
@@ -538,6 +539,7 @@ const runSync = async (
     options: { fetchImpl: deps.fetchImpl, now: deps.now },
     marks: { cursor, rescanCursor, ...roundRobins, pending },
     plan,
+    depth: { startMs: undefined },
   };
 
   return runWalkPlan({

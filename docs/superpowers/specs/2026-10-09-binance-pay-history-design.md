@@ -692,10 +692,21 @@ withdraw budget moves into this object, with the same numbers and the same rule.
   is refused with HTTP 400 code -5026, and 181-199 days is unknown; 6 calendar months + 1 day is
   180-183 days, so the old floor could ask for a refused start). Binance code -5026 is mapped by
   the client to a typed `BinanceHistoryTooOldError` (same message as the generic request-failed
-  error, so every other reader fails as before); the Transfer walk reads a span it refuses as
-  empty (one call, not one per type), owes nothing for it and goes on, so the lane is never
-  rejected for it. A span that starts below what Binance keeps and ends above it reads as empty
-  too: the 179-day floor keeps every request inside the 180 days probed. Windows of 30 days (the cap is not
+  error, so every other reader fails as before); the Transfer walk answers it, so the lane is
+  never rejected for it. Only ground Binance refuses counts as below what it keeps. On a refusal
+  the floor is read again from the clock (`now` moves on after a run is planned): a span that
+  ends at or before it lies below the floor and reads as empty (one call, nothing owed). Any other
+  span is never read as empty: the start moves up toward the span's end by halving the refused
+  part (a probe of one millisecond at the end of the span first, none to ask when the end is
+  refused: the span lies below what Binance keeps; then halvings until a served start lies within
+  one second of a refused one), and the span is read from the start Binance serves, which is kept
+  for the rest of the run. The ground below that start is refused, so it holds nothing Binance
+  keeps. The types of the span read before the refusal keep their rows (they are read once), and
+  the types after it start at the served start. A refusal costs at most 24 requests (the refused
+  read, the probe at the end, 22 halvings of a window of 30 days), a span read tolerates two
+  refusals (a second one only when the clock passed the served start while the narrowing ran),
+  and the requests spend the shared run budget like any read: when the budget or the refusals run
+  out the span stays unread, nothing of it commits, and the next run reads it again. Windows of 30 days (the cap is not
   documented, Q10). The walk reads 20 types: the 18 untracked ones plus `MAIN_FUNDING` and
   `FUNDING_MAIN`, those two first. It runs on the shared walk (sections 3 and 4): forward
   pass, owed ranges, re-scan of the last 30 days, owed points, with per-record commits. A

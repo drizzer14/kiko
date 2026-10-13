@@ -63,8 +63,8 @@ const retryAfterMsFromHeaders = (headers: Headers): number => {
 
 /**
  * A history read Binance refuses because its `startTime` is older than the history it keeps (code
- * -5026, HTTP 400, probed 2026-10-13). It carries the generic request-failed message, so a reader
- * that does not catch it fails as before; the Transfer walk catches it and reads the span as empty.
+ * -5026, HTTP 400). It carries the generic request-failed message, so a reader that does not catch
+ * it fails like any other request; the Transfer walk catches it and finds the start Binance serves.
  */
 export class BinanceHistoryTooOldError extends Error {
   constructor(message: string) {

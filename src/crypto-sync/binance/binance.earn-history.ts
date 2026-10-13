@@ -78,9 +78,9 @@ const SECOND_MS = 1_000;
 
 /**
  * The start of the second `time` falls in. The Earn endpoints compare a record's time, a whole
- * second, to each end of a read at the second (probed 2026-10-13: `[S, E]` returns a record at
- * `T` exactly when `floor(S) <= T <= floor(E)`), so a read returns the record in the second of
- * its start, which is before that start.
+ * second, to each end of a read at the second (`[S, E]` returns a record at `T` exactly when
+ * `floor(S) <= T <= floor(E)`), so a read returns the record in the second of its start, which is
+ * before that start.
  */
 const floorToSecond = (time: number): number => Math.floor(time / SECOND_MS) * SECOND_MS;
 

@@ -208,9 +208,9 @@ const rescanReadsOf = (lane: Lane): number =>
   Math.floor((lane.designReads - lane.rangeCalls - 1) / lane.rangeCalls);
 
 /**
- * Which end of a range Binance leaves out of what a read returns, or (the Earn endpoints, probed
- * 2026-10-13) that it compares both ends at the second they fall in, which brings a record in the
- * second of the start, before the start.
+ * Which end of a range Binance leaves out of what a read returns, or (the Earn endpoints) that it
+ * compares both ends at the second they fall in, which brings a record in the second of the start,
+ * before the start.
  */
 type Reading =
   | 'both ends included'
