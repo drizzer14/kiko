@@ -1449,8 +1449,8 @@ wraps to the next line, reads as a clause end. `as before and after` reads as a 
 too. Reword such a comment.
 
 **Hand-run scan target.** A rule's `paths.exclude` (for example `__tests__/**`) is
-relative to the semgrep scan target. A hand-run count or sweep (this rule and
-`kiko-no-task-id-comment`) must target the repo root (`.`) or single files; a directory
+relative to the semgrep scan target. A hand-run count or sweep (every
+comment-history rule: id, word, date, task-id) must target the repo root (`.`) or single files; a directory
 target such as `__tests__` makes the paths relative to it, so the exclude misses (a
 2026-10-06 sweep counted 6 excluded `__tests__` files that way). `src` as a target is
 fine for these rules.
@@ -1608,7 +1608,7 @@ first, and a shape that hit prose was dropped or narrowed:
   `kiko-no-history-id-comment`. The history rule's single-letter members
   (`C`, `N`, `M`, `T`, `R`, `D`, and the others in its list) also match
   after the hyphen in `SEC-C1` and inside `(M1)`, so for those letters both
-  rules fire (ERROR and WARNING); this rule's letter-prefixed shape adds
+  rules fire (both ERROR); this rule's letter-prefixed shape adds
   cover only for second letters the history rule lacks (`SEC-A1`, `TX-B6a`).
 - `[Rr]ulings?`/`RULINGS?` plus a capital letter, a digit, and an optional trailing lowercase
   letter (`ruling A2`, `RULING B1`, `ruling A2b`), with a comment wrap tolerated between the
