@@ -282,10 +282,11 @@ const timeOfEntry = (entry: Entry): number | undefined =>
 type Answer = (query: TransferQuery) => TotalPage<BinanceUniversalTransfer> | undefined;
 
 /**
- * Binance's answer for one type, one range (both ends included) and one page of 100. `answer`
- * may replace the page of a read (a full page that makes the walk halve the span, a drift).
+ * Binance's answer for one type, one range (both ends included, or with the end left out as the
+ * live transfer endpoint does, `endLeftOut`) and one page of 100. `answer` may replace the page
+ * of a read (a full page that makes the walk halve the span, a drift).
  */
-const serverOf = (entries: Entry[], answer?: Answer) =>
+const serverOf = (entries: Entry[], answer?: Answer, endLeftOut = false) =>
   jest.fn(
     async (
       _apiKey: string,
@@ -303,7 +304,9 @@ const serverOf = (entries: Entry[], answer?: Answer) =>
 
         return (
           entry.readAs === query.type &&
-          (time === undefined || (query.startTime <= time && time <= query.endTime))
+          (time === undefined ||
+            (query.startTime <= time &&
+              (endLeftOut ? time < query.endTime : time <= query.endTime)))
         );
       });
       const page = inRange.slice((query.current - 1) * PAGE_SIZE, query.current * PAGE_SIZE);
@@ -404,13 +407,14 @@ const walkOnce = async (input: {
   world: World;
   entries?: Entry[];
   answer?: Answer;
+  endLeftOut?: boolean;
   accountId?: string;
   run?: ReturnType<typeof freshRun>;
   now?: number;
   over?: Partial<BinanceTransferHistoryDeps>;
 }) => {
   const { world, entries = [], answer, accountId = 'acc-1', run = freshRun() } = input;
-  const deps = depsOf(world, serverOf(entries, answer), {
+  const deps = depsOf(world, serverOf(entries, answer, input.endLeftOut), {
     ...foldMap(maybe(input.now), (nowMs) => ({ now: () => nowMs })),
     ...input.over,
   });
@@ -1071,6 +1075,115 @@ describe('a point read', () => {
     expect(world.added.map((row) => row.externalId)).toEqual(['acc-1:xfer:MAIN_UMFUTURE:late:BTC']);
     expect(pointsIn(listOf(world))).toEqual([]);
   });
+});
+
+describe('a read that leaves the end out, as the live transfer endpoint does', () => {
+  const HOUR_MS = 3_600_000;
+  const RUN_GAPS = [0, HOUR_MS, DAY_MS];
+  const keysOf = (tranId: string): string[] => [
+    `acc-1:xfer:MAIN_FUNDING:${tranId}:BTC`,
+    `acc-1:xfer:MAIN_FUNDING:${tranId}:BTC:funding`,
+  ];
+
+  /** Two runs, the second `gapMs` later, on a server that leaves the end out. */
+  const walkTwice = async (input: {
+    world: World;
+    entries: Entry[];
+    gapMs: number;
+    answer?: Answer;
+  }) => {
+    await walkOnce({ ...input, endLeftOut: true });
+    const afterFirst = input.world.added.map((row) => row.externalId);
+
+    await walkOnce({ ...input, endLeftOut: true, now: NOW + input.gapMs });
+
+    return {
+      afterFirst,
+      ids: [...new Set(input.world.added.map((row) => row.externalId))],
+    };
+  };
+
+  describe.each(RUN_GAPS)('runs %i ms apart', (gapMs) => {
+    it('imports a transfer at the floor once: the start is read', async () => {
+      const world = worldOf();
+
+      const { afterFirst, ids } = await walkTwice({
+        world,
+        entries: [entryOf({ tranId: 'floor', timestamp: transferFloorMs(NOW) })],
+        gapMs,
+      });
+
+      expect(afterFirst).toEqual(keysOf('floor'));
+      expect(ids).toEqual(keysOf('floor'));
+    });
+
+    it('imports a transfer on the boundary of two windows of 30 days once, in the window that starts there', async () => {
+      const start = agoMs(70);
+      const world = worldOf({ [SPOT_FIELDS.cursor]: start });
+
+      const { afterFirst, ids } = await walkTwice({
+        world,
+        entries: [entryOf({ tranId: 'boundary', timestamp: start + TRANSFER_WINDOW_MS })],
+        gapMs,
+      });
+
+      expect(afterFirst).toEqual(keysOf('boundary'));
+      expect(ids).toEqual(keysOf('boundary'));
+    });
+
+    it('imports a transfer on the boundary of the two halves of a span that came back full once', async () => {
+      const start = agoMs(5);
+      const half = start + Math.floor((NOW - start) / 2);
+      const world = worldOf({ [SPOT_FIELDS.cursor]: start });
+
+      const { afterFirst, ids } = await walkTwice({
+        world,
+        entries: [entryOf({ tranId: 'half', timestamp: half })],
+        gapMs,
+        answer: (query) =>
+          query.endTime - query.startTime > 3 * DAY_MS && query.type === 'MAIN_FUNDING'
+            ? fullPage()
+            : undefined,
+      });
+
+      expect(afterFirst).toEqual(keysOf('half'));
+      expect(ids).toEqual(keysOf('half'));
+    });
+
+    it('imports an owed transfer once from the read of its point, and takes the point off the list', async () => {
+      const at = agoMs(100);
+      const world = worldOf({
+        [SPOT_FIELDS.cursor]: agoMs(1),
+        [SPOT_FIELDS.pending]: [pointOf(at, 'MAIN_FUNDING')],
+      });
+
+      const { afterFirst, ids } = await walkTwice({
+        world,
+        entries: [entryOf({ tranId: 'point', timestamp: at })],
+        gapMs,
+      });
+
+      expect(afterFirst).toEqual(keysOf('point'));
+      expect(ids).toEqual(keysOf('point'));
+      expect(pointsIn(listOf(world))).toEqual([]);
+    });
+  });
+
+  it.each([HOUR_MS, DAY_MS])(
+    'imports a transfer at the very end of a run in the next run, %i ms later: the end read left it out, the cursor start reads it',
+    async (gapMs) => {
+      const world = worldOf({ [SPOT_FIELDS.cursor]: agoMs(2) });
+
+      const { afterFirst, ids } = await walkTwice({
+        world,
+        entries: [entryOf({ tranId: 'edge', timestamp: NOW })],
+        gapMs,
+      });
+
+      expect(afterFirst).toEqual([]);
+      expect(ids).toEqual(keysOf('edge'));
+    },
+  );
 });
 
 describe('the budget of a run', () => {

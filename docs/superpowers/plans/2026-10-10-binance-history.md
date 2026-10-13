@@ -653,6 +653,14 @@ The probe needs no app code: dispatch steps 1/7-3/7 right after task 1/7 lands, 
 | `reach` used for the whole-span fallback too (`owedBy(reach, ...)`) | 4 / 72 | 2 | 1 | `owes the span for a stuck record before the reach`, `after the span`, `with no time`, `lets settleUnreadable reach too`; `owes the span itself, never one that starts at the second` |
 | `floorToSecond` replaced by the identity | 0 | 11 | 2 | the same earn and properties cases as the first row |
 
+  - **Q2 (test only; the debugger found the walk clean):** the live Transfer read includes `startTime` and leaves `endTime` out, at the millisecond. The spans tile on a shared boundary, so a record there is read once. `binance.transfer-history.test.ts` gains a server variant that leaves the end out (`endLeftOut`) and, at run gaps 0 / 1 h / 1 day, pins a transfer at the floor, on the boundary of two windows of 30 days, on the boundary of the two halves of a span that came back full, and in a point window (each imported once, the point taken off the list), and a transfer at the very end of a run (not read that run, imported by the next).
+
+| Mutant (Q2, test only) | transfer (119) | Killers |
+|---|---|---|
+| `buildWalkWindows` starts the next window one millisecond after the end | 4 (3 new) | the 30-day boundary cases |
+| `nextSpanAfter` starts the next span one millisecond after the end | 5 (3 new) | the halving boundary cases |
+| `pointOf` ends the point at the record's millisecond, not one after | 22 (3 new) | the point window cases |
+
 - [ ] **step 5/7:** `kiko:retrospect` on the branch, then `kiko:scribe` rewrites kiko-architecture "Binance transaction history" (four walks, shared run budget and caps, walk cursors, P7 insert-only ensure, placement by walletType, pairing and `untracked_counterpart`, caption over every walk, capital rows' `'BTC'` description, Convert deferred and why) and commits.
 - [ ] **step 6/7:** `bash scripts/wait-load.sh 8` (background), then `env -u FORCE_COLOR make verify` at the branch tip until exit 0 with the full test count. Whole-branch `kiko:reviewer` pass (compliance brief: kiko-compliance 5.1.1/5.1.5, `memory/refs/resubmission-kit.md` section D unchanged, no new host).
 - [ ] **step 7/7:** Final report: every task's base sha, `make mutable` count and `make deep` result (the coordinator's runs), the drift-fix sha, the probe mapping, and the open user confirmations.
