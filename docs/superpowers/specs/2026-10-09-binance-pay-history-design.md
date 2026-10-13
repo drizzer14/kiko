@@ -754,8 +754,13 @@ withdraw budget moves into this object, with the same numbers and the same rule.
   parse). An unreadable reward row owes its point for every reward group of its kind at that
   `time`: its group cannot be known, and a group numbered without it would number two ways. A
   stop not tied to one record (`earn-page-drift`, `earn-holding-missing`), an unreadable row
-  with no finite `time`, or a record outside the span owes the span. The forward pass leaves
-  the span uncommitted and ends, the cursor unmoved.
+  with no finite `time`, or a record outside the span owes the span. **OVERNIGHT DEFAULT,
+  pending user (2026-10-13): the forward pass follows the Transfer rule (O1).** A stop tied to
+  one record with a usable time is owed at its own point (one point for a reward group) and the
+  forward pass goes past it: the span's other records commit and the cursor moves on
+  (`EARN_FORWARD_OWES`, one constant; emptying it restores R28 for every stop). A stop of the
+  span as a whole (`earn-page-drift`, `earn-holding-missing`) and a row with no usable time keep
+  the old rule: the span is left uncommitted, the forward pass ends, the cursor unmoved.
 - Floor: 2022-01-01 UTC. That is before Simple Earn launched (assumption); the
   probe reports the earliest record (Q12). With the 30-call cap a first walk takes
   about 12 runs (58 windows x 6 calls / 30).
@@ -981,7 +986,7 @@ Earn:
 | E14 | status not settled | `earn-not-settled`, owed at its point | stop the window |
 | E15 | one flexible `BONUS` reward record | Spot +rewards, 'Binance Earn', no marker | same |
 | E16 | one locked reward record (any `type`) | Spot +amount, 'Binance Earn', no marker | same |
-| E17 | flexible reward with `type` `REWARDS` or an unknown value | `earn-reward-type-unknown`: no row, the group owed at its point; forward pass: cursor unmoved | stop the window |
+| E17 | flexible reward with `type` `REWARDS` or an unknown value | `earn-reward-type-unknown`: no row, the group owed at its point; forward pass: the cursor goes past it (OVERNIGHT DEFAULT, pending user, 2026-10-13; was: cursor unmoved) | stop the window |
 | E18 | `BONUS` or locked reward, Spot holding missing | Spot created at 0 (P7), then the row | same |
 | E19 | pending pass or re-scan: a subscription not settled and a `REALTIME` reward in one span | the reward imports; the subscription owed at its point | nothing of the window |
 | E20 | two reward groups in one span, one of unknown `type` | the other group imports; the unknown one owed at one point | nothing of the window |

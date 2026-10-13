@@ -227,7 +227,7 @@ const depsOf = (
 ): BinanceEarnHistoryDeps => ({
   now: () => NOW,
   fetchImpl: (async () => ({})) as unknown as typeof fetch,
-  readCredentials: async () => ({ apiKey: 'api-key', secret: 'secret' }),
+  readCredentials: async () => ({ apiKey: 'test-key', secret: 'secret' }),
   listHoldings: async () => [holdingWith('h-spot', world.metadata), ...world.others],
   fetchEarnRecords: server as unknown as BinanceEarnHistoryDeps['fetchEarnRecords'],
   ensureHoldings: jest.fn(async (created: Omit<ExchangeHolding, 'renameFromDefault'>[]) => {

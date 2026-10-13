@@ -1909,13 +1909,15 @@ than restated here:
   whose stored addresses are all closed re-syncs nothing (an empty result,
   not an error); only a wallet that never stored an address throws.
 - **The lagging-history caption.** `isBinanceHistoryBehind` /
-  `historyCursorOf` (`screens/account-detail/crypto-sync-section/binance-history-status.ts`)
+  `walkCursorsOf` (`screens/account-detail/crypto-sync-section/binance-history-status.ts`)
   derive purely from the account's own `holdings` (already a screen prop —
-  no extra query): `historyCursorOf` scans for whichever holding carries
-  `binanceHistoryCursor` (only Spot ever does), `isBinanceHistoryBehind`
-  compares it against `latestSyncedAt(holdings)` (the existing balance-sync
-  stamp), true when never caught up (`null` cursor) or behind by more than
-  a day, false before the account's own first balance sync. `CryptoSyncSection`
+  no extra query): `walkCursorsOf` reads the four forward cursors (capital, Pay,
+  Transfer, Earn) off the holding that carries `binanceHistoryCursor` (only Spot
+  ever does; four nulls when none does), `isBinanceHistoryBehind`
+  compares them against `latestSyncedAt(holdings)` (the existing balance-sync
+  stamp), true when ANY walk never caught up (`null` cursor) or is behind by more than
+  a day, false before the account's own first balance sync. An owed point never
+  shows it (user ruling: the caption is about the cursors). `CryptoSyncSection`
   renders the `accountDetail.binanceHistoryPending` caption under the
   status line only when `connectedProvider === 'binance'`, so a wallet
   account never evaluates or shows it.
@@ -1965,6 +1967,30 @@ record imports only at `TRANSFER_SETTLED_STATUS`; BTC only. The stop codes live 
   usable time (it owes the whole span), `transfer-page-drift`,
   `transfer-holding-missing`, a record outside the span. Pay and capital keep
   the A2 stop (every stop holds the cursor).
+
+### Binance Earn
+
+The Earn walk (`binance.earn-history.ts`) imports BTC Simple Earn history on the same shared walk
+(see above and "Binance Transfer"), in 30-day windows (`EARN_WINDOW_MS`) from `EARN_FLOOR_MS`
+(2022-01-01). One window is one read per record kind (`EARN_SERIES`: the flexible and locked
+rewards first, then subscriptions and redemptions; `callsOf` counts them, `LANE_CALL_CAPS.earn`
+caps the lane). It keeps six walk-owned keys on the Spot holding (`BINANCE_EARN_*_FIELD`:
+forward cursor, re-scan, pending list, point cursor, range cursor, span hints), carried on a
+balance sync and dropped on a disconnect through the field arrays. The stop codes live in
+`binance.earn-history.ts`; the design is in the spec (section 6, matrix E1-E23) and the plan.
+
+- **A reward group is ONE record.** Binance gives a reward no id: the rows of a group
+  (`rewardGroupsOf`: product, project or position, type, time) are numbered from 0 by satoshis,
+  so one member that cannot be trusted stops the whole group (a member left out would shift the
+  numbers of the others and a later read would write a second row). A reward row the client could
+  not read blocks every reward group of its kind at that time, with one point owed.
+- **Placement.** Flexible `REALTIME` rewards go to the Earn holding, flexible `BONUS` and every
+  locked reward to Spot, a locked redemption returns to Spot (it names no destination).
+- **Earn forward stops (OVERNIGHT DEFAULT, pending user, 2026-10-13).** The Earn forward pass
+  follows the Transfer rule: a stop tied to one record with a usable time is owed at its own point
+  and the cursor goes past it (`EARN_FORWARD_OWES`, one constant: emptying it restores R28 for
+  every stop). A span stop (`earn-page-drift`, `earn-holding-missing`) and a row with no time keep
+  R28.
 
 ### Binance Pay
 

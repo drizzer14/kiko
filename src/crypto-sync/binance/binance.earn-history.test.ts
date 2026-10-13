@@ -980,6 +980,27 @@ describe('the budget of a run', () => {
     );
   });
 
+  it('keeps the 6 calls of the re-scan and the call of a point from the owed ranges: no range takes them, however many are owed', async () => {
+    const days = [100, 120, 140, 160].map((ago) => ({
+      start: agoMs(ago),
+      end: agoMs(ago) + DAY_MS,
+    }));
+    const world = worldOf({
+      [SPOT_FIELDS.cursor]: agoMs(1),
+      [SPOT_FIELDS.pending]: [...days, pointOf(agoMs(300), 'lockedRewards')],
+    });
+
+    const { requests } = await walkOnce({ world });
+
+    expect(
+      requests.filter((request) => request.startTime === agoMs(30)).map((request) => request.kind),
+    ).toEqual([...EARN_SERIES]);
+    expect(requests.filter((request) => request.startTime === agoMs(300) - 1)).toHaveLength(1);
+    expect(
+      days.filter((day) => requests.some((request) => request.startTime === day.start)),
+    ).toHaveLength(2);
+  });
+
   it('enters no span whose 6 calls do not fit beside the calls it keeps, and no request is made for part of it', async () => {
     const run = freshRun();
     spend(run, CAP - KIND_COUNT + 1);
