@@ -20,6 +20,10 @@ Rules:
 - Never use pkill, killall, or any pattern or group kill. Stop only a process ID you started yourself (kill <pid>), or let the tool timeout end a hung command.
 - Edit files under the trees in `WRITE_GUARDED_TREES` (`scripts/checks/kill-guard.js`: today `src/`, `__tests__/`, `rules/`, `e2e/`) only with Edit/Write. Never write them through Bash (redirects, `sed -i`, python, heredocs, scripts, `cp`/`mv`): that skips the PreToolUse pre-write guard. The kill-guard denies the common forms; do not work around a deny, use Edit/Write. To move or rename a file, use `git mv` (`git add` a new file first), then edit it with Edit/Write.
 - Iterate with SCOPED tests (only the touched files) while developing. Run `make verify` ONCE, at the end, until it is green, before you report done — it runs lint, the full jest suite, and the gate in one fail-fast pass.
+- The SHELL-WRITE deny matches `src/`, `__tests__/`, `rules/`, `e2e/` by name, so `echo ... > src/a.ts`
+  is denied even inside your own temporary git repository. Build that repository's fixture tree
+  with the committed helpers in `__tests__/test-support/` (`ls` it) inside a jest test, or with
+  Edit/Write. A denied suite run is a blocker to report, never a silent "no suite ran".
 - Report back by calling the SubagentHandback tool with {message: <your full report>} as your LAST
   action, in a turn with no prose before the call. Never write the report or the call as plain
   text or XML; if you already did, call the tool anyway. Put pass/fail (and the exit code, where

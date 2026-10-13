@@ -308,6 +308,9 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   so `hooks.json` is unchanged and no plugin reinstall is needed; a
   session in the main checkout gets it only after the merge to main.
 
+  A shell redirect into a tree is denied even inside your own temporary git repository: build its
+  fixture tree with the helpers in `__tests__/test-support/` inside a jest test, or with Edit/Write.
+
   WAIT-LOOP deny (why: a `while`/`until` loop whose process scan names
   the job it waits for matches its OWN command line, so it never ends;
   the `[j]est` bracket trick only helps while the word appears nowhere
