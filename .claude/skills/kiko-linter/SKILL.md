@@ -1425,10 +1425,8 @@ found. Reword any of these.
 The change-narrative half of kiko-code-style's "Comments: WHY only, never
 history". `kiko-no-history-id-comment` catches an id or a citation; this
 rule catches the phrases a comment uses to narrate a change, among them a
-`was:` label before an old value (`// was: 30`, ` * was: the old cap`), and `as before` at
-the end of a clause (`fails as before`, `as before, ...`; a following noun phrase such as
-`as before the request` is an ordering and stays silent). A comment states how the code
-works today and why, never how it worked before.
+`was:` label before an old value (`// was: 30`, ` * was: the old cap`). A
+comment states how the code works today and why, never how it worked before.
 The members are the `pattern-regex` alternation and the `message` of
 `kiko-no-history-word-comment` in `rules/semgrep-prewrite.yml`; read the
 phrases there, never copy them. The match is capitalization-tolerant, and
@@ -1530,7 +1528,7 @@ date attached to a ruling, a finding, or a plan left in a `src/**` comment
 ("user-approved 2026-10-08", "Device finding", "(multi-account plan,
 2026-09-11)"). The members are the two `pattern-regex` alternations in
 `kiko-no-history-date-comment` (`rules/semgrep-prewrite.yml`): `Device
-finding(s)`; `approved|probed|ruled|ruling|decided|confirmed` then an ISO date; `plan|track|round|ruling|feedback|audit`,
+finding(s)`; `approved|ruled|ruling|decided|confirmed` then an ISO date; `plan|track|round|ruling|feedback|audit`,
 a comma, then an ISO date; a `docs/` path holding a dated file name; and a parenthesized
 date that opens the comment text (`* (2026-09-11) moves …`). The anchoring is the
 history rules': the string-skip `^(?:…)*` walk, `(?<!:)//`, the block arm that never
@@ -1545,13 +1543,11 @@ so `check:security` reports 0 findings for the id.
 other 43 (27 files) are data, not history:
 a test's fixture day (`// 2026-01-15` after a `Date.UTC`), a DST day (`Europe/Kyiv falls back
 on 2026-10-25`), a leap day, a worked example, a date format sample, and provenance of a
-snapshot or a check (`captured 2026-09-22` in `fiat-rate-seed.ts`, `checked 2026-09-26` in
-`week-start.ts`). A date records WHEN a value was captured, which the code cannot show, so
-provenance and fixture days stay, and `fiat-rate-seed.ts` keeps its documented exception in
-kiko-code-style. A probe's date is not provenance: `probed <date>` is a member (the single
-`sync.ts` site was reworded when the member landed), and the comment states what the probe
-showed, never when it ran. Only a date that follows a ruling, probe, plan, or finding word
-counts. No exemption list exists, so there is
+snapshot or a probe (`captured 2026-09-22` in `fiat-rate-seed.ts`, `checked 2026-09-26` in
+`week-start.ts`, `probed 2026-10-06` in `sync.ts`). A date records WHEN a value was
+captured, which the code cannot show, so provenance and fixture days stay, and
+`fiat-rate-seed.ts` keeps its documented exception in kiko-code-style. Only a date that
+follows a ruling, plan, or finding word counts. No exemption list exists, so there is
 nothing in `docs/harness/documented-exceptions.md` to update. Known misses: a date after
 another word ("signed off 2026-10-08"), a date with no word before it, and a dated
 history sentence that names no ruling word. Reword by hand when a review finds one.

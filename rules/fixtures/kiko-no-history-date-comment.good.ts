@@ -19,18 +19,12 @@ export const dstDay = Date.UTC(2026, 9, 25); // 2026-10-25
 // A naive Date.parse('2019-10-12 11:12:02') reads it in the local zone.
 export const fixtureDay = 1;
 
-// 4. A date written as provenance of a snapshot or a check: it records WHEN a value was
-// captured, which the code cannot show, not a ruling or a plan. A probe's date is not
-// provenance: the comment states what the probe showed.
+// 4. A date written as provenance of a snapshot, a probe, or a check: it records WHEN a
+// value was captured, which the code cannot show, not a ruling or a plan.
 // Fallback FX snapshot captured 2026-09-22; approximate.
 // cldr-core/supplemental/weekData.json, checked 2026-09-26 by a CLDR diff.
-// The server answers 13 months back with 200.
+// The server answers 13 months back (probed 2026-10-06) with 200.
 export const provenance = 1;
-
-// 4b. The word "probed" with no date after it, or a date before it, is no stamp.
-// A start 180 days back is served, as the probe showed.
-// The depth was probed live; 2026-10-13 is the day the mock server was written.
-export const probeWithoutDate = 1;
 
 // 5. A parenthesized date inside a sentence, not opening the comment text.
 // Installment 12 falls due 2025-07-01, before `now` (2025-07-15).

@@ -52,11 +52,6 @@ export const urlNote = 'see https://example.test // previously';
 // The move onto the next row advances the cursor.
 // Through the extraction step the parser keeps the booking date.
 
-// 5d. "as before" with a noun phrase after it names an ordering, not a past behavior: the
-// clock reads as before the request, and the cursor moves as before each page.
-// The rows sort as before each commit and as before-and-after pairs.
-// The result is the same as beforehand.
-
 // 6. A multi-line block comment holding only the excluded purpose shape:
 /**
  * The cursor is used to resume the page after a failed run, so the retry
