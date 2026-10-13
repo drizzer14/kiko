@@ -2414,6 +2414,10 @@ mechanizable (see harness-workflow's "Classify every finding").
    - Node rules have no `rules/fixtures/` pair. Prove them with
      `__tests__/<name>.test.ts` and a case in
      `__tests__/pre-write-guard.test.ts`.
+   - A guard test proves concurrency or speed by counting work or by a
+     file rendezvous between stubs, never by a clock. The invariant
+     `__tests__/guard-tests-no-wall-clock.test.ts` fails a clock reading
+     in a pre-write-guard test; read it for the banned forms.
    - A new Node rule also runs on the probed negative (good) fixtures of
      `__tests__/pre-write-guard-rules.test.ts`. Make those fixtures pass
      the new rule, never exempt them.
