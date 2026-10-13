@@ -118,7 +118,8 @@ export type OwedGround = BinancePendingRange;
 /**
  * One run of a walk, as three passes. `forward` goes from the cursor to the end and moves the
  * walk's cursor. `pending` reads the windows of the ranges earlier runs left owed, in the order
- * the run reads them (`windowsFrom`), and moves no mark; `points` holds the windows of the points
+ * the run reads them (`windowsFrom`; a range owed in one series gives windows read in that series
+ * alone), and moves no mark; `points` holds the windows of the points
  * among them, in the order the run reads them: see `startingAfter`. `rescan` goes back over the
  * ground behind the forward start, to catch a record that settles late, and never moves that
  * cursor. `rescanEnd` is where the re-scan ends. `pendingRanges` is the list of owed ground as it

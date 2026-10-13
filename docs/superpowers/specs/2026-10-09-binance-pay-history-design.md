@@ -721,7 +721,7 @@ withdraw budget moves into this object, with the same numbers and the same rule.
     refused start and the last served one is halved; a refused hint turns the search toward the
     end of the span as above. The hint decides only which starts are asked first, so what a type
     is read from is what Binance answered for that type; a type that keeps what the first one
-    does is found in 2 to 6 requests instead of 23.
+    does is found in 2 to 6 requests, where a search with no hint takes 23.
   - Binance's depth moves (measured: a start 180 days back is served, 200 days back is refused;
     assumed: the oldest start it serves moves forward and never back, with no claim about how
     fast: with the clock or in steps, probe item 18). The requests are paced 350 ms apart, so a

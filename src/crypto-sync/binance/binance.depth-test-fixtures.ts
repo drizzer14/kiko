@@ -183,7 +183,7 @@ export const skippedMsOf = (calls: DepthCall[]): number[] =>
     .map(({ read, edgeMs }) => read.start - edgeMs);
 
 /** The ground a span read left owed, each piece in the one series that owes it. */
-export type DepthOwed = { series: string; window: DepthRead }[];
+type DepthOwed = { series: string; window: DepthRead }[];
 
 /**
  * The ground a served read skipped and did not owe: how far the start its series owes ground from
