@@ -1702,6 +1702,20 @@ describe('a Binance that refuses a startTime older than the history it keeps (co
     const OTHER_MIDDLE_TYPE = typeAt(13);
     const LAST_TYPE = typeAt(TYPE_COUNT - 1);
 
+    // Types whose depth lies far above the others': a run spends its calls on the 100-day types
+    // before it meets the crossing window of these, which are read minutes later.
+    const LATER_CROSSINGS: [string, Partial<Record<UniversalTransferType, number>>][] = [
+      ['a middle type keeps 45 days and the others 100', { [MIDDLE_TYPE]: 45 }],
+      ['a middle type keeps 40 days and the others 100', { [MIDDLE_TYPE]: 40 }],
+      ['a middle type keeps 35 days and the others 100', { [MIDDLE_TYPE]: 35 }],
+      ['a middle type keeps 30 days and the others 100', { [MIDDLE_TYPE]: 30 }],
+      [
+        'a middle type keeps 45 days, another 30 and the others 100',
+        { [MIDDLE_TYPE]: 45, [OTHER_MIDDLE_TYPE]: 30 },
+      ],
+      ['the last type keeps 35 days and the others 100', { [LAST_TYPE]: 35 }],
+    ];
+
     const KEEPINGS: [string, Partial<Record<UniversalTransferType, number>>][] = [
       [
         'most types keep 100 days, a middle type 90 and another 75',
@@ -1729,7 +1743,9 @@ describe('a Binance that refuses a startTime older than the history it keeps (co
 
     /**
      * Three transfers of every type: one Binance refuses (5 days below its depth), and two it
-     * keeps, 10 and 40 days above it; and, with `edge`, two of the ground just above the depth.
+     * keeps, 10 and 40 days above it (a type that keeps 40 days or fewer has no transfer 40 days
+     * above its depth: that lies past now); and, with `edge`, two of the ground just above the
+     * depth.
      */
     const rowsKeeping = (
       keptDaysOf: (type: UniversalTransferType) => number,
@@ -1742,7 +1758,9 @@ describe('a Binance that refuses a startTime older than the history it keeps (co
         return [
           entryOf({ tranId: `old-${type}`, type, timestamp: agoMs(days + 5) }),
           entryOf({ tranId: `deep-${type}`, type, timestamp: agoMs(days - 10) }),
-          entryOf({ tranId: `mid-${type}`, type, timestamp: agoMs(days - 40) }),
+          ...(days > 40
+            ? [entryOf({ tranId: `mid-${type}`, type, timestamp: agoMs(days - 40) })]
+            : []),
           ...(edge === undefined
             ? []
             : [
@@ -1972,6 +1990,46 @@ describe('a Binance that refuses a startTime older than the history it keeps (co
         },
       );
 
+      describe.each(LATER_CROSSINGS)('against a Binance where %s', (_label, kept) => {
+        const keptDaysOf = keptDaysFrom(kept);
+
+        describe.each([
+          ['with the clock', 1],
+          ['in steps of a day', DAY_MS],
+        ])('and whose depth moves %s', (_how, stepMs) => {
+          it.each(RUN_GAPS)(
+            'imports every transfer each type keeps, those just above its depth too, within 15 runs, and owes only ground Binance refuses (runs %i ms apart)',
+            async (gapMs) => {
+              const { world, snapshots, missingByRun, expected } = await simulate({
+                keptDaysOf,
+                stepMs,
+                edgeAtMs: stepMs > 1 ? NOW : undefined,
+                extraRows: aboveOf((type) => edgeAt(keptDaysOf(type), stepMs, NOW)),
+                latencyMs: latencyOf(),
+                gapMs,
+                runs: 15,
+              });
+              const endMs = snapshots.at(-1)?.endMs ?? 0;
+
+              expect(expected.length).toBeGreaterThanOrEqual(
+                UNIVERSAL_TRANSFER_TYPES.length * ABOVE_OFFSETS.length,
+              );
+              expect(missingByRun.at(-1)).toBe(0);
+              // A type whose depth lies in the window the re-scan reads owes the ground its band
+              // met refused in the last run, which the next run settles.
+              expect(
+                listOf(world).filter(
+                  ({ end, series }) =>
+                    series === undefined ||
+                    end > edgeAt(keptDaysOf(series as UniversalTransferType), stepMs, endMs),
+                ),
+              ).toEqual([]);
+              expect(stopCodes(warn)).toEqual([]);
+            },
+          );
+        });
+      });
+
       it.each(RUN_GAPS)(
         'imports the transfers just above the floor the first read meets in every type, when the run was planned 3 days before it read and Binance keeps 180 days (runs %i ms apart)',
         async (gapMs) => {
@@ -2061,16 +2119,14 @@ describe('a Binance that refuses a startTime older than the history it keeps (co
     );
 
     describe('the requests of one run that narrows', () => {
-      // The lane cap of 80 and the 397 narrowing calls, all spent by the slowest network measured:
-      // a latency of 0 to 3 seconds on every request. A type that narrows keeps one call for its
-      // own read, so a run ends one call short of them when the cap runs out inside a narrowing.
+      // The lane cap of 80 and the 397 narrowing calls. The 20 types of a Binance that keeps a
+      // different part of the history for each (every one finds its own depth, with no other to
+      // ask it from) spend them all, however fast the network is.
       const MOST_REQUESTS_OF_A_RUN = 477;
 
-      it('is bounded by the lane cap and the narrowing calls together, and the slowest network spends them all', async () => {
-        const keptDaysOf = keptDaysFrom({ [MIDDLE_TYPE]: 90, [OTHER_MIDDLE_TYPE]: 75 });
+      it('is bounded by the lane cap and the narrowing calls together, and 20 types that keep a different depth each spend them all', async () => {
         const { snapshots } = await simulate({
-          keptDaysOf,
-          extraRows: aboveOf((type) => edgeAt(keptDaysOf(type), 1, NOW)),
+          keptDaysOf: (type) => 100 + 3 * UNIVERSAL_TRANSFER_TYPES.indexOf(type),
           latencyMs: jitterMs(3_000),
           gapMs: DAY_MS,
           runs: 3,

@@ -10,6 +10,7 @@ import {
   hasDepthLapsed,
   isDepthMarginCapped,
   knownStartOf,
+  lapsedRangeOf,
   narrowLapsedStart,
   narrowRefusedStart,
   rememberServedStart,
@@ -496,6 +497,44 @@ describe('the depth memory', () => {
       rememberServedStart(memory, { startMs: SERVED_START, servedAtMs: SERVED_AT });
 
       expect(hasDepthLapsed(memory, SERVED_AT - DAY_MS)).toBe(false);
+    });
+  });
+
+  describe('the ground a lapsed memory leaves open', () => {
+    const LAPSED_AT = SERVED_AT + DEPTH_EXTRAPOLATION_MAX_MS + 1;
+    const movedOnMs = SERVED_START + DEPTH_EXTRAPOLATION_MAX_MS + 1 + DEPTH_MARGIN_MS;
+    const lapsedMemory = () => {
+      const memory = createDepthMemory();
+      rememberServedStart(memory, { startMs: SERVED_START, servedAtMs: SERVED_AT });
+
+      return memory;
+    };
+
+    it('reaches from the start the memory holds to the start it would move on to, for a span that starts below it', () => {
+      expect(lapsedRangeOf(lapsedMemory(), LAPSED_AT, movedOnMs - 1)).toEqual({
+        lowMs: SERVED_START,
+        highMs: movedOnMs,
+      });
+      expect(lapsedRangeOf(lapsedMemory(), LAPSED_AT, SERVED_START - DAY_MS)).toEqual({
+        lowMs: SERVED_START,
+        highMs: movedOnMs,
+      });
+    });
+
+    it('leaves none open for a span that starts at or above the start the memory would move on to', () => {
+      expect(lapsedRangeOf(lapsedMemory(), LAPSED_AT, movedOnMs)).toBeUndefined();
+      expect(lapsedRangeOf(lapsedMemory(), LAPSED_AT, movedOnMs + DAY_MS)).toBeUndefined();
+    });
+
+    it('leaves none open while the memory has not lapsed, or holds a refused start or none', () => {
+      const refused = createDepthMemory();
+      rememberServedStart(refused, { startMs: SERVED_START, servedAtMs: undefined });
+
+      expect(
+        lapsedRangeOf(lapsedMemory(), SERVED_AT + DEPTH_EXTRAPOLATION_MAX_MS, START),
+      ).toBeUndefined();
+      expect(lapsedRangeOf(refused, LAPSED_AT, START)).toBeUndefined();
+      expect(lapsedRangeOf(createDepthMemory(), LAPSED_AT, START)).toBeUndefined();
     });
   });
 });

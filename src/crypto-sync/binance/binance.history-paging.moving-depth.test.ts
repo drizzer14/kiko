@@ -242,6 +242,36 @@ describe('readSeriesSpan, against a depth that moves with the clock or in steps 
     ).toEqual([span.start, span.start]);
   });
 
+  it.each([
+    ['with the clock', 1],
+    ['in steps of a day', DAY_MS],
+  ])(
+    'reads a span that starts above the start a lapsed memory would have moved on to from its own start, with no request beyond the read, against a depth that moves %s',
+    async (_how, stepMs) => {
+      const { world, edgeMs } = worldServedAgo(5 * HOUR_MS, stepMs);
+      const memory = world.depth.memoryOf('T0');
+      const movedOnMs = (memory.startMs ?? 0) + 5 * HOUR_MS + DEPTH_MARGIN_MS;
+      const span: DepthRead = { start: movedOnMs + HOUR_MS, end: movedOnMs + 2 * HOUR_MS };
+
+      const result = await readDepthWorld(world, { span, count: 2 });
+
+      expect(edgeMs).toBeLessThan(span.start);
+      expect(readSeriesOf(result)).toEqual(['T0', 'T1']);
+      expect(probesOf(world.calls)).toEqual([]);
+      expect(world.calls.map(({ read }) => read.start)).toEqual([span.start, span.start]);
+    },
+  );
+
+  it('narrows a lapsed memory when the start it would have moved on to lies inside the span', async () => {
+    const { world } = worldServedAgo(5 * HOUR_MS, DAY_MS);
+    const movedOnMs = (world.depth.memoryOf('T0').startMs ?? 0) + 5 * HOUR_MS + DEPTH_MARGIN_MS;
+    const span: DepthRead = { start: movedOnMs - HOUR_MS, end: movedOnMs + HOUR_MS };
+
+    await readDepthWorld(world, { span });
+
+    expect(probesOf(world.calls).length).toBeGreaterThan(0);
+  });
+
   it('never asks a read for a start at or past the end of the span, when a gate wait carries the clock past it without a lapse', async () => {
     const world = depthWorldOf({ latencyMs: () => 0, suspensions: [{ atWait: 1, ms: 60_000 }] });
     const span = crossingOf(world.edgeOf('T0', world.clock.now));

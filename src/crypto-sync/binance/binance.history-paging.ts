@@ -445,9 +445,10 @@ type Attempt<Row> =
 /**
  * One try at a series, from the start the memory holds. The start is fixed once the run gate has
  * let the first page go, not before: the gate may wait for hours (a cooldown), and Binance's depth
- * may have moved meanwhile. A memory that lapsed by then makes no request (see
- * `DEPTH_EXTRAPOLATION_MAX_MS`). The start is kept below the end of the span, since no request has
- * `startTime` at or past `endTime`.
+ * may have moved meanwhile. A memory that lapsed by then, and whose moved-on start reaches into the
+ * span, makes no request (see `DEPTH_EXTRAPOLATION_MAX_MS` and `lapsedRangeOf`); a span that starts
+ * above that start is read from its own start. The start is kept below the end of the span, since
+ * no request has `startTime` at or past `endTime`.
  */
 const attemptSeries = async <Series extends string, Row>(
   input: SeriesRequest<Series, Row> & {
@@ -472,7 +473,7 @@ const attemptSeries = async <Series extends string, Row>(
       fetchPage: async (current) => {
         if (current === 1) {
           lapsed.found = foldMap(maybe(depth), (guard) =>
-            lapsedRangeOf(guard.memory, guard.nowMs()),
+            lapsedRangeOf(guard.memory, guard.nowMs(), span.start),
           );
 
           if (lapsed.found !== undefined) {

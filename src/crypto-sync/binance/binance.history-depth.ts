@@ -27,14 +27,17 @@ export const DEPTH_MARGIN_MS = 1_000;
 export const DEPTH_MARGIN_CAP_MS = 8_000;
 
 /**
- * How long after it was served a start is moved forward with the clock. A read made later than
- * this (the app was suspended, the run gate waited for hours) finds its start by narrowing
+ * How long after it was served a start is moved forward with the clock. A read of a span that the
+ * start it would be moved on to reaches into, made later than this (the app was suspended, the
+ * run gate waited for hours, a run that narrows went on for minutes), finds its start by narrowing
  * (`narrowLapsedStart`), so the time that passed never decides how wide the band of a read is.
- * It is as long as a run takes at a request time of up to about a second (a lane's call cap,
- * each call paced by the gate's interval and a second to answer), so a run on such a network does
- * not reach it and only a suspension or a slower network does. If the depth stands still, the band
- * of a read is at most this + `DEPTH_MARGIN_CAP_MS` of the ground that Binance keeps, and the
- * `DEPTH_RESOLUTION_MS` of a narrowing is not part of it.
+ * A run that spends the lane's call cap alone, each call paced by the gate's interval and a second
+ * to answer, ends before it, so it never meets a lapse; a run that narrows lasts for minutes
+ * (its calls are paced the same), so the memories of its first types lapse while it reads the
+ * later ones, and a span that starts above the start a lapsed memory would be moved on to is
+ * read from its own start with no narrowing (see `lapsedRangeOf`). If the depth stands still,
+ * the band of a read is at most this + `DEPTH_MARGIN_CAP_MS` of the ground that Binance keeps,
+ * and the `DEPTH_RESOLUTION_MS` of a narrowing is not part of it.
  */
 export const DEPTH_EXTRAPOLATION_MAX_MS = 120_000;
 
@@ -158,12 +161,25 @@ export const hasDepthLapsed = (memory: DepthMemory, nowMs: number): boolean =>
  */
 export type LapsedRange = { lowMs: number; highMs: number };
 
-/** The ground a lapsed memory leaves open, or `undefined` while the memory has not lapsed. */
-export const lapsedRangeOf = (memory: DepthMemory, nowMs: number): LapsedRange | undefined => {
+/**
+ * The ground a lapsed memory leaves open when it reaches into a span that starts at `spanStartMs`,
+ * or `undefined` while the memory has not lapsed or the start it would move on to lies at or below
+ * the start of the span. A read of such a span begins at its own start, whatever the memory holds
+ * (`readStartOf`), so it skips none of the ground the lapse left open, and a depth that moved past
+ * that start is a refusal, narrowed as any other.
+ */
+export const lapsedRangeOf = (
+  memory: DepthMemory,
+  nowMs: number,
+  spanStartMs: number,
+): LapsedRange | undefined => {
   const lowMs = memory.startMs;
   const highMs = knownStartOf(memory, nowMs);
 
-  return hasDepthLapsed(memory, nowMs) && lowMs !== undefined && highMs !== undefined
+  return hasDepthLapsed(memory, nowMs) &&
+    lowMs !== undefined &&
+    highMs !== undefined &&
+    highMs > spanStartMs
     ? { lowMs, highMs }
     : undefined;
 };
