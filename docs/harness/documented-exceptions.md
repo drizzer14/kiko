@@ -900,3 +900,13 @@ verified usage, not dead weight:
   entry that is no longer cited or now resolves, so the lists only shrink.
   A name that left the code is fixed in the skill text (renamed, or written
   without backticks), never added here.
+
+- **`__tests__/docs-known-limit.test.ts`'s exact-path list (`PREDATING_DOCS`).** The test
+  fails when a plan or a spec under `docs/superpowers/` uses the phrase "known limit" or
+  "known limitation", because a gap filed that way ships with no owner. Two dated reminders
+  docs hold the phrase and are exempt by exact path, each pinned to its count of matches:
+  `docs/superpowers/plans/2026-09-28-reminders.md` (1) and
+  `docs/superpowers/specs/2026-09-27-reminders-design.md` (2). Reason: both are dated history
+  that predates the rule, and rewriting a dated record would falsify it. A doc that gains a
+  match, or loses one without its pin dropping, fails; an exempt doc with no match left
+  fails; so the list only shrinks and a new doc is never added.

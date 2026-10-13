@@ -1657,6 +1657,92 @@ helpers are in scope only so the fixture probe can reach the rule.
 leaks the same way and is not seen. A `jest.spyOn(i18n, 'changeLanguage')` is not a call
 and stays silent. A `try`/`finally` reset inside the body still matches: use a hook.
 
+## `kiko-test-title-no-history`
+
+Mechanizes kiko-code-style's "A test title carries no history": the title of an `it`,
+`test`, or `describe` call (also `.only`, `.skip`, `.todo`, `.each(table)(...)`, and a tagged
+`.each` table) that opens with a task id (`A1 `, `A1:`), opens with a ruling id (`ruling A2`),
+carries `(was: `, or ends in a task id in parentheses (`(P2)`, `(task C2)`, `(spec A3, B4)`).
+
+**Severity ERROR from the start.** The tree holds 0 findings. Re-measure with `semgrep
+--metrics off --quiet --config rules/semgrep-prewrite.yml src --json` before quoting a count.
+
+**Scope.** Test-only: `paths.include` is `*.test.ts`, `*.test.tsx`, and `src/test-support/**`.
+The last entry is path-prefixed, so the fixture pair is NESTED under
+`rules/fixtures/kiko-test-title-no-history/src/test-support/` (`title-example.bad.ts` and
+`title-example.good.ts`). It is one `$CALLEE($TITLE, ...)` pattern with a `metavariable-regex`
+on the callee and one on the title text.
+
+**Known limits.** A title held in a variable, or built from anything but a string or a
+template literal, is out of reach. A leading letter-and-digits that is data (`B12px`, `a1:`)
+and a parenthesis that holds more than an id (`(A4 paper)`, `(P2P)`) stay silent.
+
+## `kiko-rejects-to-throw-needs-error`
+
+Mechanizes kiko-code-style's "A rejection names its error": a `.rejects` assertion with
+`toThrow()` or `toThrowError()` (no argument, the bare `Error` class, or `undefined`),
+`toBeInstanceOf(Error)`, or `toBeTruthy()`. Each passes on any failure, so a test that fails
+for the wrong reason stays green.
+
+**Severity ERROR from the start.** The tree holds 0 findings.
+
+**Scope.** Test-only, with the same `paths.include` as the title rule. The fixture pair is
+NESTED under `rules/fixtures/kiko-rejects-to-throw-needs-error/src/test-support/`.
+
+**Known limits.** A rejection read through a helper, a `.rejects.toBeDefined()`, and a
+synchronous `expect(fn).toThrow()` are not seen. The rule checks that an expected error is
+named, not that it is the right one.
+
+## `kiko-sortable-grid-lone-card-lifts`
+
+Mechanizes kiko-gestures' "A lone card lifts too": a `<Sortable.Grid ... sortEnabled={...} />`
+whose `sortEnabled` is `$ITEMS.length > 1`, `$ITEMS.length >= 2`, or `1 < $ITEMS.length`,
+alone or at any place in an `&&` chain.
+
+**Severity ERROR.** The one finding in the tree (the categories grid in
+`src/screens/settings/categories/categories.screen.tsx`) was fixed in the same change.
+
+**Scope.** App source: `paths.exclude` is the test files. The fixture pair is
+`rules/fixtures/kiko-sortable-grid-lone-card-lifts.bad.tsx` and `.good.tsx`.
+
+**Known limits.** A count held in a variable, then passed as `sortEnabled`, or a count read
+through another expression (`!isEmpty(items)`), is not seen. A grid other than `Sortable.Grid`
+is not seen.
+
+## `kiko-kind-ternary-prefers-match`
+
+Mechanizes kiko-code-style's "`ts-pattern` for exhaustive mapping": a ternary
+`$X.kind === "$KIND" ? $A : $B`, which sends every other variant down the else branch.
+
+**Severity WARNING on purpose, with no promotion condition.** This is the stated exception to
+"WARNING only while a sweep is pending" (see "Adding a pre-write guard rule"). The rule has no
+type information, so it cannot tell a closed union from a plain `kind` string. Its 3 tree
+sites fit kiko-code-style's single-boolean-guard allowance (`src/auth/biometrics.ts`,
+`src/auth/lock-gate/lock-gate.component.tsx`, `src/screens/column-mapping/column-mapping.screen.tsx`;
+re-measure with the Semgrep command in the title-rule section above, filtered to this id).
+Nothing sweeps them, so the rule never flips to ERROR. The pre-write guard denies any NEW
+finding whatever its severity, so a new site that fits the allowance takes
+`// nosemgrep: kiko-kind-ternary-prefers-match OVERRIDE(<reason>) <why>`; a site on a closed
+union of three or more variants uses `match(...).exhaustive()` instead.
+
+**Scope.** App source: `paths.exclude` is the test files, `__tests__/**`, `e2e/**`,
+`scripts/**`, and `harness/**`. The fixture pair is
+`rules/fixtures/kiko-kind-ternary-prefers-match.bad.ts` and `.good.ts`.
+
+**Known limits.** Only the equality form with a string literal is matched: `!==`, a
+`switch`-less `if`, a ternary on a variable that holds the kind, and a nested ternary chain
+on later branches are not seen.
+
+## The `docs-known-limit` invariant
+
+`__tests__/docs-known-limit.test.ts` fails when a plan or a spec under `docs/superpowers/`
+files a gap with the phrase "known limit" or "known limitation" (any case, wrapped across a
+line break too): a gap is fixed, or put to the user as an open question. Two dated reminders
+docs predate the rule and are exempt by exact path, each pinned to the count of matches it
+holds (the list is `PREDATING_DOCS` in the test). A doc that gains a match, or loses one
+without its pin dropping, fails, and so does an exempt doc with no match left. The list only
+shrinks; a new doc is never added. The reason is in `docs/harness/documented-exceptions.md`.
+
 ## `kiko-no-typed-jest-require-actual`
 
 Mechanizes kiko-code-style's "A jest.requireActual call takes no type argument": a type argument
@@ -2382,6 +2468,8 @@ mechanizable (see harness-workflow's "Classify every finding").
      rule id (not when a grep is empty). Record the promotion condition
      in the rule's comment and in
      `docs/harness/review-to-biome-inventory.md`.
+     Stated exception: `kiko-kind-ternary-prefers-match` stays WARNING with no promotion
+     condition (see its section).
      `metadata.skill` uses `"<skill> › <heading>"`. A finding without
      `metadata.skill` makes the guard deny "could not check".
      `__tests__/skill-citations.test.ts` fails a `metadata.skill` or a

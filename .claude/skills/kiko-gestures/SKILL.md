@@ -51,13 +51,21 @@ lifts it first. Two rules follow, shared by all three card grids
 (Accounts' main grid and its Property/Debts holding grids, and the
 account-detail holding grid):
 
-- **A lone card lifts too.** `sortEnabled` is the query's `isFresh` only,
-  never `&& data.length > 1`. react-native-sortables' touch handler gates
-  only on `sortEnabled`, the absolute layout being ready, and no other
-  active item (`DragProvider.ts` `handleTouchStart`) — it never counts
-  items — so a single card lifts and drops back (`onDragEnd` reports
-  `fromIndex === toIndex`, which `onGridDragEnd` persists nothing for).
-- **A hold that lifted the card never fires the card's tap.** A moved
+#### A lone card lifts too
+
+The `kiko-sortable-grid-lone-card-lifts` Semgrep rule now mechanizes this rule: a
+`Sortable.Grid` whose `sortEnabled` also counts the items fails the pre-write guard.
+
+`sortEnabled` is the query's `isFresh` only,
+never `&& data.length > 1`. react-native-sortables' touch handler gates
+only on `sortEnabled`, the absolute layout being ready, and no other
+active item (`DragProvider.ts` `handleTouchStart`) — it never counts
+items — so a single card lifts and drops back (`onDragEnd` reports
+`fromIndex === toIndex`, which `onGridDragEnd` persists nothing for).
+
+#### A hold that lifted the card never fires the card's tap
+
+A moved
   drag and an opened context menu deliver NO `onPress`: react-native-sortables
   1.10.0 on RNGH 3.2.1 (v3 adapter,
   `integrations/gesture-handler/adapters/v3.ts`) makes RNGH cancel the JS
