@@ -8,9 +8,10 @@ dedup-skip notice (so a skip never reads as a fresh scan) and the Class B
 WARNING block (a finding that does not block still has to be seen) to
 stderr with exit 0. So is `scripts/checks/dup.sh`, whose large-file
 WARNING lines (tracked debt that does not block) go to stderr with exit 0.
+So is `scripts/checks/medium.sh`: on a repeated Stop (payload `stop_hook_active: true`) it writes a one-line `medium tier: skipped on a repeated Stop` note to stderr and exits 0.
 The other exceptions (the deep tier's streaming, the hook guards' JSON) are
-listed in kiko-linter's "The wrapper contract" (so is `scripts/job-queue.sh`, not a checks wrapper: its QUEUED/WAITING/START/DONE lines are normal stdout) (the JSON ones are `kill-guard.sh` and
-`pre-write-guard.sh`).
+listed in kiko-linter's "The wrapper contract" (the JSON ones are `kill-guard.sh` and
+`pre-write-guard.sh`). `scripts/job-queue.sh` is not a checks wrapper: its QUEUED/WAITING/START/DONE lines are normal stdout.
 
 **Standing rule: fix the underlying issue. Never weaken a check to get
 green.** No `|| true`. No global auto-suppress. An ignore-list entry

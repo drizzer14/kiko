@@ -56,11 +56,11 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   finding is override-eligible and still has to be seen. `dup.sh` states
   its own exception: its large-file `WARNING` lines (see "`check:dup`
   measures the files jscpd skips for size" below), because a non-blocking
-  measurement of tracked debt still has to be seen. A hook that exits 0
+  measurement of tracked debt still has to be seen. `medium.sh` states a third: on a repeated Stop (payload `stop_hook_active: true`) it writes a one-line `medium tier: skipped on a repeated Stop` note to stderr and exits 0. A hook that exits 0
   does not feed its stderr back to the agent, unless a later check in the
   same tier fails: the tier's whole stderr is then shown, so a `dup.sh`
   WARNING or a `security.sh` SKIPPED notice can appear beside an unrelated
-  failure. It is tracked debt, not that failure; otherwise these are for a
+  failure. It is tracked debt, not that failure; otherwise these (and the `medium.sh` repeated-Stop note, which reaches a human only) are for a
   human or a manual `check:security`/`check:dup` run.
 
   Another exception, of a different shape: `scripts/checks/kill-guard.sh`
