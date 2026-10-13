@@ -1,8 +1,10 @@
 import {
   chmodSync,
+  closeSync,
   cpSync,
   mkdirSync,
   mkdtempSync,
+  openSync,
   readFileSync,
   rmSync,
   writeFileSync,
@@ -172,6 +174,111 @@ describe('medium.sh changed-file list', () => {
     expect(runMedium(project)).toEqual({ code: 0, stderr: '' });
     expect(argumentsSeenBy(project, 'dup.sh')).toEqual(['src/we"ird.ts']);
     expect(argumentsSeenBy(project, 'override-guard.sh')).toEqual(['src/we"ird.ts']);
+  });
+});
+
+// A Stop that fires again after the hook already blocked it (stop_hook_active) must not run the
+// tier a second time: knip fails the same way on the same tree, and the session loops. Only a
+// `Stop` event skips; SubagentStop blocks as before. The hook payload arrives on stdin as a file,
+// the way dispatch.sh replays it, so the runs below hand over a file descriptor.
+describe('medium.sh on a repeated Stop', () => {
+  const ALL_WRAPPERS = [...FILE_ARGUMENT_WRAPPERS, ...PLAIN_WRAPPERS];
+
+  // A session with one changed source file, so the tier is due, and a knip that fails.
+  const buildBlockingProject = (): Project => {
+    const project = buildProject({ 'src/kept.ts': 'export const kept = 1;\n' });
+    writeFile(project.root, 'src/kept.ts', 'export const kept = 2;\n');
+    writeExecutable(
+      project.root,
+      'scripts/checks/knip.sh',
+      [
+        '#!/usr/bin/env bash',
+        `echo ran >> "${logFor(project, 'knip.sh')}"`,
+        'echo "unused export" >&2',
+        'exit 2',
+        '',
+      ].join('\n'),
+    );
+
+    return project;
+  };
+
+  const runWithPayloadFile = (
+    project: Project,
+    payload: string,
+  ): { code: number | null; stderr: string } => {
+    const payloadFile = join(project.state, 'payload.json');
+    writeFileSync(payloadFile, payload);
+    const descriptor = openSync(payloadFile, 'r');
+
+    try {
+      const result = spawnSync('bash', [join(project.root, 'scripts/checks/medium.sh')], {
+        cwd: project.root,
+        env: { ...process.env, TMPDIR: project.state },
+        encoding: 'utf8',
+        stdio: [descriptor, 'pipe', 'pipe'],
+      });
+
+      return { code: result.status, stderr: result.stderr };
+    } finally {
+      closeSync(descriptor);
+    }
+  };
+
+  const hookPayload = (eventName: string, active: unknown): string =>
+    JSON.stringify({ hook_event_name: eventName, stop_hook_active: active, cwd: '/somewhere' });
+
+  it('exits 0 with a one-line note and runs no check on a Stop with stop_hook_active true', () => {
+    const project = buildBlockingProject();
+
+    const result = runWithPayloadFile(project, hookPayload('Stop', true));
+
+    expect(result.code).toBe(0);
+    expect(result.stderr).toBe(
+      'medium tier: skipped on a repeated Stop (stop_hook_active); run npm run check:all before you commit\n',
+    );
+    expect(ALL_WRAPPERS.filter((wrapper) => ran(project, wrapper))).toEqual([]);
+  });
+
+  it.each([
+    ['a first Stop (stop_hook_active false)', hookPayload('Stop', false)],
+    ['a Stop with no stop_hook_active field', JSON.stringify({ hook_event_name: 'Stop' })],
+    ['a Stop with stop_hook_active null', hookPayload('Stop', null)],
+    ['a Stop with stop_hook_active the text "true"', hookPayload('Stop', 'true')],
+    ['a SubagentStop with stop_hook_active true', hookPayload('SubagentStop', true)],
+    ['a SubagentStop with stop_hook_active false', hookPayload('SubagentStop', false)],
+    ['a payload with no event name', JSON.stringify({ stop_hook_active: true })],
+    ['a malformed payload', '{"hook_event_name": "Stop", "stop_hook_active": tru'],
+    ['an empty payload', ''],
+    ['a payload that is not an object', '[1, 2]'],
+  ])('still runs the tier and blocks on %s', (_label, payload) => {
+    const project = buildBlockingProject();
+
+    const result = runWithPayloadFile(project, payload);
+
+    expect(result.code).toBe(2);
+    expect(result.stderr).not.toContain('skipped on a repeated Stop');
+    expect(ran(project, 'knip.sh')).toBe(true);
+  });
+
+  it('still runs the tier when stdin holds no payload (a manual run, a closed stdin)', () => {
+    const project = buildBlockingProject();
+
+    expect(runMedium(project).code).toBe(2);
+    expect(ran(project, 'knip.sh')).toBe(true);
+  });
+
+  it('reads the payload from a file only, never from a pipe a caller may leave open', () => {
+    const project = buildBlockingProject();
+    const result = spawnSync('bash', [join(project.root, 'scripts/checks/medium.sh')], {
+      cwd: project.root,
+      env: { ...process.env, TMPDIR: project.state },
+      encoding: 'utf8',
+      input: hookPayload('Stop', true),
+    });
+
+    expect(result.status).toBe(2);
+    expect(ran(project, 'knip.sh')).toBe(true);
   });
 });
 

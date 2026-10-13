@@ -8,9 +8,10 @@ dedup-skip notice (so a skip never reads as a fresh scan) and the Class B
 WARNING block (a finding that does not block still has to be seen) to
 stderr with exit 0. So is `scripts/checks/dup.sh`, whose large-file
 WARNING lines (tracked debt that does not block) go to stderr with exit 0.
+So is `scripts/checks/medium.sh`: on a repeated Stop (payload `stop_hook_active: true`) it writes a one-line `medium tier: skipped on a repeated Stop` note to stderr and exits 0.
 The other exceptions (the deep tier's streaming, the hook guards' JSON) are
 listed in kiko-linter's "The wrapper contract" (the JSON ones are `kill-guard.sh` and
-`pre-write-guard.sh`).
+`pre-write-guard.sh`). `scripts/job-queue.sh` is not a checks wrapper: its QUEUED/WAITING/START/DONE lines are normal stdout.
 
 **Standing rule: fix the underlying issue. Never weaken a check to get
 green.** No `|| true`. No global auto-suppress. An ignore-list entry
@@ -67,7 +68,8 @@ Composite scripts:
   that does not resolve are refused directly (exit 2), and no env var
   bypasses the cap. There is no release-scope deep gate. **Who and when:**
   the coordinator runs `KIKO_MUTATION_BASE=<change set base sha> make
-  deep`, detached, for each reviewed change set (<= 30 source files)
+  deep`, detached (after the queue cutover, queued with
+  `scripts/job-queue.sh gate <worktree> <label> <base> <head>`), for each reviewed change set (<= 30 source files)
   before its merge into next (and logs the result per harness-workflow's
   "Run log"). Orchestrators never run it; a BATCH READY
   names the change-set base sha, the run id, and the file count, counted
@@ -98,7 +100,7 @@ files, fixtures, check wrappers, the Info.plist, the Xcode
 project, and every file under `drizzle/migrations/`). A session that edited
 only a rule, a fixture, or the plist is the one most likely to have
 broken a rule (or unpinned a credential-bearing host), so it must not
-be the one that runs nothing. The medium tier also replays the
+be the one that runs nothing. On a `Stop` event (not `SubagentStop`) whose payload has `stop_hook_active: true`, the medium tier exits 0 with a one-line stderr note instead of running, because a failing Stop tier started a new turn that ended in the same failure and the orchestrator looped (knip ran about 8 times in a row, 2026-10-11); a first `Stop` and every `SubagentStop` still run and block, the payload is read only when stdin is a regular file (`dispatch.sh` replays it as a file), and the cost is that a repeated Stop shows the failure once, with `check:all` before a commit still catching it. The medium tier also replays the
 pre-write guard (`scripts/checks/guard-replay.sh`) on every changed
 `.ts`/`.tsx` file, whatever wrote it — in the working tree, and in the
 commits no worktree's passed replay reached (its mark ref under

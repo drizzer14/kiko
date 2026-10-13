@@ -10,6 +10,7 @@ tools: Read, Write, Edit, Bash, Grep, Glob
 You write all TypeScript and React Native code for Kiko.
 
 Rules:
+- If a hook or the permission system denies a command, stop and report it; never route around it — not through a script file written with Write, and not by another spelling.
 - Use test-driven development. Invoke superpowers:test-driven-development before you write code.
 - Work inside the git worktree you are given, as its single editor while you hold it. Never run git checkout, restore, stash, or clean, in any checkout or clone, scratch clones included — commit a WIP or copy the files aside instead.
 - Never use pkill, killall, or any pattern or group kill. Stop only a process ID you started yourself (kill <pid>), or let the tool timeout end a hung command.

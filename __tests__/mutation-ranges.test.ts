@@ -1,5 +1,14 @@
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+
+import {
+  twelveLines,
+  writeExecutable,
+  runWithArgumentStub,
+  buildMutationRepository,
+} from './test-support/mutation-repository';
 
 // scripts/checks/mutation-ranges.js turns `git diff -U0` output (stdin) into the
 // added-line ranges of the paths given as arguments, one `<path>\t<ranges>` line
@@ -175,4 +184,134 @@ describe('mutation-ranges.js', () => {
   it('exits 2 without an argument', () => {
     expect(run(diffOf('src/a.ts', '@@ -2 +2 @@'), []).code).toBe(2);
   });
+});
+
+// mutation.sh runs the real reader on a real `git diff -U0`, in a throwaway repository whose
+// `main` holds twelve lines of src/changed.ts and whose `feature` edits lines 3 and 7.
+const buildChangedLinesRepository = (root: string): { root: string; script: string } =>
+  buildMutationRepository(
+    root,
+    {
+      'src/changed.ts': twelveLines({
+        3: 'export const edited3 = 3;',
+        7: 'export const edited7 = 7;',
+      }),
+    },
+    { 'src/changed.ts': twelveLines() },
+  );
+
+// Git's own variable name, spelled as a string: its last word is on the abbreviation denylist.
+const GIT_DIFF_CONTEXT_VARIABLE = 'GIT_DIFF_OPTS';
+
+describe('mutation.sh changed lines', () => {
+  it('prints the same ranges with --unified=3 in git diff options of the environment', () => {
+    const { script } = buildChangedLinesRepository(
+      join(mkdtempSync(join(tmpdir(), 'kiko-mutation-ranges-')), 'project'),
+    );
+
+    const plain = runWithArgumentStub(script, { KIKO_MUTATION_BASE: 'main' }, ['--list']);
+    const widened = runWithArgumentStub(
+      script,
+      { KIKO_MUTATION_BASE: 'main', [GIT_DIFF_CONTEXT_VARIABLE]: '--unified=3' },
+      ['--list'],
+    );
+
+    expect(plain.stdout).toContain('src/changed.ts 3-3,7-7 (2 changed lines)');
+    expect(widened.stdout).toBe(plain.stdout);
+  });
+});
+
+// A stand-in for `node` that runs the real one, except that the changed-line reader announces
+// itself with a ready file and then holds until the test creates the release file.
+const HOLDING_NODE_STUB = [
+  '#!/usr/bin/env bash',
+  'case "$1" in',
+  '  */mutation-ranges.js)',
+  '    : > "$KIKO_STUB_READY"',
+  // The directory test ends the loop when the sandbox is deleted, so a failed test cannot leave
+  // the stub looping.
+  `    while [ ! -e "$KIKO_STUB_RELEASE" ] && [ -d "\${KIKO_STUB_RELEASE%/*}" ]; do`,
+  '      sleep 0.05',
+  '    done',
+  '    ;;',
+  'esac',
+  'exec "$KIKO_REAL_NODE" "$@"',
+  '',
+].join('\n');
+
+const POLL_LIMIT = 500;
+
+// A poll count (not a measured time) bounds the wait, so a state that never appears fails the test
+// instead of leaving a loop that keeps jest alive.
+const waitFor = async (condition: () => boolean): Promise<void> => {
+  for (let poll = 0; !condition(); poll += 1) {
+    if (poll >= POLL_LIMIT) {
+      throw new Error('the awaited state never appeared');
+    }
+
+    await new Promise((settle) => setTimeout(settle, 20));
+  }
+};
+
+const sandboxes: string[] = [];
+
+afterEach(() => {
+  for (const sandbox of sandboxes.splice(0)) {
+    rmSync(sandbox, { recursive: true, force: true });
+  }
+});
+
+const rangesTemporaryFiles = (directory: string): string[] =>
+  readdirSync(directory).filter((name) => name.startsWith('kiko-mutation-ranges.'));
+
+describe('mutation.sh signals while the changed-line reader runs', () => {
+  it.each([
+    ['--list', 'TERM', 143],
+    ['--list', 'INT', 130],
+    ['a run', 'TERM', 143],
+    ['a run', 'INT', 130],
+  ] as const)(
+    '%s: %s leaves no temporary file and no lock, and exits %i',
+    async (mode, signal, exitCode) => {
+      const sandbox = mkdtempSync(join(tmpdir(), 'kiko-mutation-signal-'));
+      sandboxes.push(sandbox);
+      const { script, root } = buildChangedLinesRepository(join(sandbox, 'project'));
+      const state = join(sandbox, 'state');
+      mkdirSync(state);
+      mkdirSync(join(sandbox, 'bin'));
+      writeExecutable(join(sandbox, 'bin/node'), HOLDING_NODE_STUB);
+      const stryker = writeExecutable(join(sandbox, 'stryker'), '#!/usr/bin/env bash\nexit 0\n');
+      const ready = join(sandbox, 'ready');
+
+      const child = spawn('bash', mode === '--list' ? [script, '--list'] : [script], {
+        cwd: root,
+        env: {
+          ...process.env,
+          PATH: `${join(sandbox, 'bin')}:${process.env.PATH}`,
+          TMPDIR: state,
+          KIKO_MUTATION_BASE: 'main',
+          KIKO_MUTATION_FULL: undefined,
+          KIKO_MUTATION_BIN: stryker,
+          KIKO_REAL_NODE: process.execPath,
+          KIKO_STUB_READY: ready,
+          KIKO_STUB_RELEASE: join(sandbox, 'release'),
+        },
+        stdio: ['ignore', 'ignore', 'ignore'],
+      });
+      const closed = new Promise<number | null>((settle) => {
+        child.on('close', (code) => settle(code));
+      });
+      await waitFor(() => existsSync(ready));
+      expect(rangesTemporaryFiles(state)).toHaveLength(1);
+
+      // Bash runs a trap only after its foreground command ends, so the reader is released after
+      // the signal is sent.
+      child.kill(signal === 'TERM' ? 'SIGTERM' : 'SIGINT');
+      writeFileSync(join(sandbox, 'release'), '');
+
+      expect(await closed).toBe(exitCode);
+      expect(rangesTemporaryFiles(state)).toEqual([]);
+      expect(existsSync(join(state, 'kiko-harness', 'mutation.global.lock'))).toBe(false);
+    },
+  );
 });

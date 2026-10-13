@@ -26,10 +26,13 @@ fast+medium gate is picked up by `make verify` automatically through
 
 ## The wrapper contract
 
+`scripts/job-queue.sh` is not a `scripts/checks` wrapper: its QUEUED/WAITING/START/DONE lines are its normal stdout, not a failure block.
+
 Every check wrapper in `scripts/checks/` follows the same shape (read
 `scripts/checks/_lib.sh` for the exact helper):
 
 - `source "$DIR/_lib.sh"` for `print_block`.
+- Comments in a shell script wrap at 100 columns, as in any other source file; `__tests__/shell-comment-width.test.ts` pins it.
 - On failure: call `print_block` (a structured WHAT/DETAILS/WHY/HOW/
   DO-NOT block) to stderr, then `exit 2`.
 - On success: **silent**, `exit 0`. A wrapper that prints anything on
@@ -53,11 +56,11 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   finding is override-eligible and still has to be seen. `dup.sh` states
   its own exception: its large-file `WARNING` lines (see "`check:dup`
   measures the files jscpd skips for size" below), because a non-blocking
-  measurement of tracked debt still has to be seen. A hook that exits 0
+  measurement of tracked debt still has to be seen. `medium.sh` states a third: on a repeated Stop (payload `stop_hook_active: true`) it writes a one-line `medium tier: skipped on a repeated Stop` note to stderr and exits 0. A hook that exits 0
   does not feed its stderr back to the agent, unless a later check in the
   same tier fails: the tier's whole stderr is then shown, so a `dup.sh`
   WARNING or a `security.sh` SKIPPED notice can appear beside an unrelated
-  failure. It is tracked debt, not that failure; otherwise these are for a
+  failure. It is tracked debt, not that failure; otherwise these (and the `medium.sh` repeated-Stop note, which reaches a human only) are for a
   human or a manual `check:security`/`check:dup` run.
 
   Another exception, of a different shape: `scripts/checks/kill-guard.sh`
@@ -178,6 +181,7 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   operator (`>&-`, `<<-EOF`). So `kill <pid> 2>/dev/null` and
   `kill <pid> &>/dev/null` are allowed. The agent rule stays
   absolute regardless: never `git stash` or pattern-kill in any form.
+  The ONE allowed group kill (user ruling 2026-10-13): `scripts/job-queue.sh` may send TERM to the process group it created for its own job (`set -m`, then the group-TERM form its header shows), only while `pgrep -g` finds a member, never any other group; the lock stays live while any process of that group lives. An agent's own group or pattern kill is still denied.
   Every deny carries the `print_block` WHAT/DETAILS/WHY/HOW/DO-NOT shape
   as plain text in the one JSON reason field; the kill deny keeps its
   one-line reason. Deny/allow cases for each form live in
@@ -688,7 +692,7 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   plain path and as a range (Stryker reads that as "do not mutate"). A comment-only file kept because its
   colocated test changed goes in as its plain path (whole file). A kept path with `[ ( * ? {` is refused with
   exit 2, after the lock in a run and with no lock in `--list`, always before Stryker. The diff uses
-  `--find-renames --inter-hunk-context=0 --text --no-textconv` (a -diff/binary attribute or a textconv driver must not change the hunks). General rule: any checker that parses `git diff` hunks forces `--text --no-textconv --no-ext-diff` and `-c core.quotePath=false`, and treats a failed or unparsable diff as a block, never as "nothing to do" (H6 review 2026-10-12: a binary/textconv `.ts` diff gave no hunk and the gate passed with nothing mutated; fixed in 5f31d626). User ruling 2026-10-12, no edge-straddling mutant: Stryker 8.7.1 creates a mutant only when its whole node lies inside a range (its fully-inside rule, instrumenter syntax-helpers.js), and the scorer grades only mutants fully inside a range. Cost: an edit inside a multi-line block, condition, object or array, or an arrow body loses that construct's whole-node mutants; the inner mutants on the changed lines stay. User ruling 2026-10-12, source plus colocated test: when a source file and its colocated test both change, only the changed source lines are mutated. Cost: a weakened test is checked only against the changed lines, not the whole file. The
+  `--find-renames --inter-hunk-context=0 --text --no-textconv`, run with `GIT_DIFF_OPTS=` (a -diff/binary attribute, a textconv driver, or a context width in that variable must not change the hunks). One `cleanup` removes the lock and the temp file for `mutation-ranges.js` stderr on EXIT, INT (exit 130), and TERM (exit 143). General rule: any checker that parses `git diff` hunks forces `--text --no-textconv --no-ext-diff` and `-c core.quotePath=false`, and treats a failed or unparsable diff as a block, never as "nothing to do" (H6 review 2026-10-12: a binary/textconv `.ts` diff gave no hunk and the gate passed with nothing mutated; fixed in 5f31d626). User ruling 2026-10-12, no edge-straddling mutant: Stryker 8.7.1 creates a mutant only when its whole node lies inside a range (its fully-inside rule, instrumenter syntax-helpers.js), and the scorer grades only mutants fully inside a range. Cost: an edit inside a multi-line block, condition, object or array, or an arrow body loses that construct's whole-node mutants; the inner mutants on the changed lines stay. User ruling 2026-10-12, source plus colocated test: when a source file and its colocated test both change, only the changed source lines are mutated. Cost: a weakened test is checked only against the changed lines, not the whole file. The
   scorer is unit-tested directly against constructed report fixtures
   in `__tests__/mutation-score.test.ts` (no mutated-src-text parsing,
   no real Stryker run); the existing cap/lock/streaming/eta tests drive
@@ -2183,6 +2187,8 @@ a new tree. See `conflictSides`, `afterTreesFor`, and
 `throwIfEditBrokeASide` in `scripts/checks/pre-write-guard.js`.
 
 ## Pre-write guard replay on the Stop tier
+
+On a `Stop` event (not `SubagentStop`) whose payload has `stop_hook_active: true`, `medium.sh` exits 0 with a one-line stderr note instead of running, because a failing Stop tier started a new turn that ended in the same failure and the orchestrator looped (knip ran about 8 times in a row, 2026-10-11); a first `Stop` and every `SubagentStop` still run and block, the payload is read only when stdin is a regular file (`dispatch.sh` replays it as a file), and the cost is that a repeated Stop shows the failure once, with `check:all` before a commit still catching it. Read `medium.sh`'s header comment for the exact check.
 
 The pre-write guard sees only `Edit`/`Write`/`MultiEdit`. The
 kill-guard's SHELL-WRITE deny (above) blocks the common Bash write

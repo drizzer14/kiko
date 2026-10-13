@@ -915,3 +915,20 @@ verified usage, not dead weight:
   entry that is no longer cited or now resolves, so the lists only shrink.
   A name that left the code is fixed in the skill text (renamed, or written
   without backticks), never added here.
+
+- **`scripts/checks/medium.sh` repeated-Stop skip** (user ruling Q2 A,
+  2026-10-13, confirmed in the orchestrator's terminal): on a repeated Stop
+  (payload `stop_hook_active: true`) the tier writes `medium tier: skipped on
+  a repeated Stop` to stderr and exits 0. Reason: a failing Stop started a
+  new turn that ended in the same failure and the orchestrator looped (knip
+  ran about 8 times, binance-history-a7, 2026-10-11). Cost: a repeated Stop
+  shows a failure once; the next first Stop and `check:all` still catch it.
+  Scope: Stop only, never SubagentStop, only when stdin is a regular file; an
+  unreadable payload runs the tier as before.
+- **`scripts/job-queue.sh` power rule**: a missing `pmset` binary means AC
+  power (every other unreadable state holds). Reason: a machine without
+  `pmset` has no battery, so a hold would block forever. Risk: a Mac whose
+  `pmset` is not on PATH.
+- **`scripts/job-queue.sh` group TERM** (user ruling A, 2026-10-13): the
+  queue may send TERM to the process group it created for its own job, never
+  any other group; see kill-guard's entry above.
