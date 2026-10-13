@@ -250,6 +250,18 @@ export const mutatedFiles = (stubArguments: string[] | null): string[] => [
 export const writeStrykerStub = (temporaryDirectory: string, body: string): string =>
   writeExecutable(join(temporaryDirectory, 'stryker-stub'), body);
 
+// The out-of-repo TSV the wrapper appends to for `root` when TMPDIR is `temporaryDirectory`.
+// Asking _lib.sh keeps the tests off the path layout, which is keyed by the git directory.
+export const mutationStateFile = (
+  root: string,
+  temporaryDirectory: string,
+  kind: 'history' | 'files',
+): string =>
+  spawnSync('bash', ['-c', `source "${LIB}"\nharness_mutation_${kind}_file "$1"`, 'bash', root], {
+    env: { ...process.env, TMPDIR: temporaryDirectory },
+    encoding: 'utf8',
+  }).stdout.trim();
+
 export type StubRun = { code: number | null; stdout: string; stderr: string };
 
 // The repository lives at `<temporaryDirectory>/project`, and that same

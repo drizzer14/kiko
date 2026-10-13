@@ -44,12 +44,18 @@ Rules:
   ("Initial test run timed out") — re-run it rather than treating the
   timeout as a result. Never run a 25-30-file mutation window beside heavy
   agent work (a planner session, a full jest run, a build) — queue it
-  instead.
+  instead. Before a run quote `make mutable`'s `timeout share (history)`
+  line; during a run quote the `mutation.sh` ETA line and its latest
+  "Estimate at N%" update, never Stryker's own `remaining:` (it ignores
+  timeouts).
 - Report a miss honestly: state the estimate and the actual side by side,
   and record the lesson in the log row's Notes (for example "ran beside a
   heavy planner agent", "renames add few mutants").
 
 ## Current numbers (snapshot, 2026-10-03 — the log is the source)
+
+- Mutation history is repo-wide now (shared under the git common dir);
+  earlier per-worktree rates are gone.
 
 - Orchestrator small change set (developer + review + fix round + gate):
   dispatch-to-BATCH-READY is around 40 minutes once sized from history;

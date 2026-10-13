@@ -628,8 +628,9 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   sets only"). No env var bypasses the
   cap. `mutation.sh --list` (`make mutable`) prints each file's ranges (`<file> 3-7,12-12 (6 changed lines)`;
   a comment-only file kept by its colocated test prints `whole file (N lines)`), `changed lines: N`, and
-  `mutable files: N (cap …)` last after the same refusals and the same
-  `mutable_source_files` filter, then exits (2 above the cap) before
+  `mutable files: N (cap …)` after the same refusals and the same
+  `mutable_source_files` filter, then a `timeout share (history)` line (always
+  printed, `none` included; read the printf in `mutation.sh`), then exits (2 above the cap) before
   the dedup skip; it needs no Stryker binary and never takes the global
   lock. Any argument other than `--list` (a typo like `--lsit`) exits 2
   with the structured block before the Stryker-binary check, the lock,
@@ -652,14 +653,25 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   a test's own explicit setting still wins.
 
   `mutation.sh` also gives a watching HUMAN a live progress display and a
-  per-mutant-rate ETA, so nobody polls the run — its exit code stays the only
+  split ETA, so nobody polls the run — its exit code stays the only
   signal an agent waits on (the ops agent's no-poll rule is unchanged). It tees
   Stryker's combined output to a stable, tailable progress log and prints the
-  exact `tail -f <path>` command to watch it; the ETA is a per-mutant rate
-  (median seconds/mutant from history) times THIS run's actual mutant count,
+  exact `tail -f <path>` command to watch it; the ETA is the cost of a normal
+  and of a timed-out mutant, fitted from history (`harness_mutation_costs`; it
+  refuses a fit when the timeout shares of the runs are near-equal, and then
+  falls back to the median rate plus a timeout floor, using
+  `harness_mutation_run_share`), split by this change set's timeout share
+  (`harness_mutation_timeout_share`) and THIS run's actual mutant count. It is
   printed LIVE the moment Stryker's own output first reports that count (an
-  "N/M tested" counter) — not before the run starts. With no usable history it
-  prints a plain "no estimate" line instead. Each completed run (a pass OR a
+  anchored "N/M tested" token, parsed by `harness_mutation_run_counts`, so a
+  "1/2/3" in a test title never counts) — not before the run starts — and an
+  "Estimate at N%" update follows at each 10% boundary (only with the timeout
+  clause). With no usable history it prints a plain "no estimate" line instead.
+  History is keyed by the git COMMON dir (`harness_mutation_history_dir`), so
+  all worktrees share it (old per-worktree records are not read); the progress
+  log stays per worktree. Beside `history.tsv` (one record per run) a
+  `files.tsv` holds per-file tested/timedOut counts per run
+  (`harness_mutation_files_append`). Each completed run (a pass OR a
   break-threshold failure — Stryker exit 0, or exit 1 WITH a report; exit 1
   with no report is a crash, as is any other code) is appended to an
   out-of-repo history TSV that feeds the next run's rate. All of this lives in
