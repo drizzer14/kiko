@@ -51,7 +51,7 @@ that holding.
 | OVERNIGHT 17 (R28) | User ruling 2026-10-12 (kept): a stop in the forward pass ends only the forward pass; the run goes on to the owed ranges, the re-scan and the points. The cursor still never passes the stuck record (A2) (Transfer: see O1) | sections 5, 7 |
 | OVERNIGHT 18 | User ruling 2026-10-12, A (confirmed): the Transfer and Earn walks follow option A. The other rows of a span import; only the stuck record is owed, at its point | sections 5, 6 |
 | OVERNIGHT 19 | User ruling 2026-10-12, A (confirmed): `LANE_CALL_CAPS.transfer` = 80 | section 2 |
-| OVERNIGHT 20 | User ruling 2026-10-12, B: the "history is behind" caption shows ONLY while a walk cursor is null or more than a day behind; an owed point does not show it (was: the applied default also showed it for an owed point) | section 8 |
+| OVERNIGHT 20 | User ruling 2026-10-12, B: the "history is behind" caption shows while a walk cursor is null or more than a day behind, and (Coordinator ruling) while the Transfer walk owes a range, in one type or in every type; an owed point does not show it (was: the applied default also showed it for an owed point) | section 8 |
 | OVERNIGHT 21 | User ruling 2026-10-12, B (the spec rule kept): a `FAILED` transfer stays owed at its point until the 6-month floor drops it. VERIFY 14 still records the exact status values, for the record; no rule waits on it | section 5, T11 |
 | O1 | User ruling 2026-10-12, O1 = A, Transfer lane only: every stop tied to one transfer with a usable time is owed at that transfer's own point and the forward pass goes past it (`TRANSFER_FORWARD_OWES`); a stop with no usable time keeps R28; the Pay and capital lanes do not change | sections 5, 7; T5, T10 |
 | R30 | Orchestrator ruling (technical) 2026-10-12: on every walk a BTC row the client cannot parse (no finite time, an off-contract field) is a per-record stop, never a whole-run throw. It owes its canonical point when a usable time exists, else the span; the other rows of the span import. Codes: `capital-row-unreadable`, `pay-row-unreadable`, `transfer-row-unreadable`, `earn-row-unreadable`. A malformed envelope still throws for the whole read | sections 1, 3, 5, 6, 7; P10, C3, T12, E12, E23 |
@@ -703,9 +703,14 @@ withdraw budget moves into this object, with the same numbers and the same rule.
   the client to a typed `BinanceHistoryTooOldError` (same message as the generic request-failed
   error, so a reader without a depth guard rejects with the same message); the Transfer walk
   answers it, so the lane is never rejected for it. Only ground Binance refuses counts as below
-  what it keeps. On a refusal the floor is read again from the clock (`now` moves on after a run
-  is planned): a span that ends at or before it lies below the floor and reads as empty (one
-  call, nothing owed). Any other span is never read as empty.
+  what it keeps. The floor is read from the clock when a type is read (`now` moves on after a
+  run is planned, and a type read in a later run meets a later floor): a span that ends at or
+  before it lies below the floor and reads as empty (no call, nothing owed), and any other span
+  is read from the floor or the start the type is known to be served from, whichever is later,
+  so a type read some runs after its span was planned loses no ground that is above the floor of
+  the run that reads it. The ground between the floor of the plan and the floor of the read is
+  below the floor: the walk does not ask for it (a fresh connection does not either). A span that
+  is not below the floor is never read as empty.
   - With no start known to be served, the start moves up toward the span's end by halving the
     refused part: a probe of one millisecond at the end of the span first (refused: the span lies
     below what Binance keeps and none of it is read), then halvings until a served start lies
@@ -741,8 +746,9 @@ withdraw budget moves into this object, with the same numbers and the same rule.
     / resolution))` requests (17 for 10 hours). A span that ends at or before the start the run
     holds, or whose end Binance refuses, reads as empty.
   - What a read owes, under the assumption that the depth moves forward and never back: the
-    ground below the start a read begins at is refused (within the resolution of 1 s, 2 s after
-    a lapse, which takes the start it held for refused), or lies between the start the type was
+    ground below the start a read begins at is refused (within the resolution of 1 s; after a
+    lapse that ends against the start the type held, the ground from that start is owed with the
+    band below), or lies between the start the type was
     served from and the start the read begins at, `start + (now - servedAt) + margin`: if the
     depth stood still, Binance keeps it. That band is at most the time since the start was
     served (120 s, which includes the time the request that served it took) and the margin cap
@@ -758,8 +764,11 @@ withdraw budget moves into this object, with the same numbers and the same rule.
   - The types of the span read keep their rows (they are read once). A type whose read cannot
     finish (the run's calls ran out while it narrowed, it reached its sixth refused read or its
     second lapse) owes the whole span, in that type alone, as a range with its `series`; the
-    types after it are read on the calls kept for them, and the forward cursor passes the span,
-    because a range owed in one type is no stop of the span.
+    types after it are read on the calls the lane has left, and a type with none is owed the
+    whole span with no request (a type that narrows may spend the calls kept for the types after
+    it: reading one type to the end serves more ground than a request each for all of them). The
+    forward cursor passes the span, because a range owed in one type is no stop of the span. A
+    type whose pages drift owes the span in that type alone.
   - Bound: a narrowing costs a type at most 23 requests (the end of the span, 22 halvings of a
     span of 30 days), the one after a lapse at most 24 (the start the run would move on to, the
     end, 22 halvings). A type stops, with the span owed in it, at its sixth refused read
@@ -769,27 +778,45 @@ withdraw budget moves into this object, with the same numbers and the same rule.
     on the depth for one type, and 52 where no suspension comes. The 20 types each have their
     own count, so a span read has no bound of its own beyond the shared run budget: 20 * 76
     requests in theory, 80 calls a run for the lane in practice, each request spending it and
-    passing the gate. A usual crossing costs the first type about 25 requests and each later
-    type that keeps what the first does 4 to 8, so one run narrows the types of one window of
-    30 days or a few; the types the run's calls leave are owed and read in the pending pass of
-    the runs after it, a few a run beside the new ground and the re-scan. A read that reaches
+    passing the gate. The calls of a window: wholly below every type's depth, the first type
+    2 (the refused read and the end of the span) and each other type 1 (the end alone, asked
+    before any read while another type was refused the end; a type that holds a bound from an
+    earlier window asks the end of the next one the same way), 21 in all; a window that crosses
+    the depth, the first type about 25 and each later type that keeps what the first does 4 to 8.
+    One run therefore narrows the types of one window of 30 days or a few; the types the run's
+    calls leave are owed and read in the pending pass of the runs after it. The owed ranges are
+    read before the forward pass (the ground nearest the depth is lost first, and the new ground
+    stays kept for about the depth), and the run keeps one read of the first forward window, of
+    the re-scan and of the points for the passes after them, so the forward pass is never left
+    with no call. A type owed in a run is read in a later one, when the ground the depth
+    passed meanwhile (the rows a few hours above it, for a run a day later) is gone from
+    Binance: under the 80 calls of the lane this is a limit of narrowing 20 types one at a time,
+    measured in the pins below. A read that reaches
     Binance more than the margin cap (8 s) after the request that found its start is refused
     every time: every type owes the span in each run it is tried, in at most 52 requests a type,
-    and the forward cursor passes the span (a window stays owed until the floor passes it; it
-    shows in the pending list, not in the caption, which follows the cursors). The floor of a
-    later run is `now - 179 days`: a type read in a later run than the one that planned its span
-    loses the days the floor passed meanwhile. Pinned against a fake clock that the gate's sleeps
+    and the forward cursor passes the span (a window stays owed until the floor or the depth
+    passes it; the Transfer walk shows it through the `binanceHistoryPending` caption, which
+    also shows while the walk owes any range, in one type or in every type, and not for a point).
+    The floor of a later run is `now - 179 days`, and a type is read from the floor of the run
+    that reads it. Measured against a fake clock that the gate's sleeps
     and the request latency (none, 0 to 300 ms, 0 to 3 s, a 9 s spike on every seventh request)
     move, with all 20 types, run gaps of 0, 1 hour and 1 day, and a depth that moves with the
     clock or in steps of a day: a Binance where most types keep 100 days, a middle type 90 and
-    another 75 (or the first type keeps 90, or 110, or the last type 90) gives every transfer
-    each type keeps at the end of the runs (two deep ones for each type, and, in daily steps,
-    two of the ground just above the depth, 1.2 s and 1.8 s) within 14 runs, with the forward
-    cursor past the window that crosses the depth after 2, and nothing owed after 15; the same
-    with the app suspended for 10 or 30 hours inside a wait of the run gate, within 14 and 15; a
-    run planned 3 days before it reads, against a Binance that keeps 180 days, gives every
-    transfer within 3 runs and owes nothing after 4. The 14 runs come from the 80 calls a run:
-    new ground and the re-scan take about 40 of them.
+    another 75 (or the first type keeps 90, or 110, or the last type 90). With runs 0 ms apart
+    every transfer each type keeps when the first run reads is imported within 10 runs and
+    nothing is owed after 15, with the forward cursor past the window that crosses the depth
+    after 2. With runs 1 hour apart the same holds except for the ground within the hour above
+    the depth: the first run narrows and reads 4 of the 20 types of the window that crosses it
+    (the first type needs about 25 calls, each other 4 to 8, after 41 calls on the two windows
+    below the depth), so the other 16 meet a depth one hour later. With runs 1 day apart the
+    ground within a day above the depth is lost for those 16, and within 3 days for 12 to 14, in
+    each case the types the first run did not read. A run planned 3 days before it reads,
+    against a Binance that keeps 180 days, gives every transfer above the floor of the read
+    within the first run, at run gaps of 0, 1 hour and 1 day. The pins `imports the transfers
+    just above the depth in every type`, the matrix of Binances whose types keep different
+    depths at runs 1 day apart and the suspension pins at runs 1 day apart assert that nothing
+    is lost; they fail by the amounts above, and what they assert holds only with more calls a
+    run than the lane's 80 (see the limit above).
   - Windows of 30 days (the cap is not documented, Q10). The walk reads 20 types: the 18 untracked ones plus `MAIN_FUNDING` and
   `FUNDING_MAIN`, those two first. It runs on the shared walk (sections 3 and 4): forward
   pass, owed ranges, re-scan of the last 30 days, owed points, with per-record commits. A
@@ -1311,7 +1338,7 @@ Probe items:
     assumes only that it moves forward and never back (section 5), so a step is answered by
     narrowing, and the ground a read begins above (at most 128 s if the depth stood still) is
     owed in that type, not lost: the pending pass reads it and imports what Binance keeps. What
-    stays unread is the resolution of a narrowing (1 s, 2 s after a lapse). Check: ask the same
+    stays unread is the resolution of a narrowing (1 s). Check: ask the same
     `startTime` near the depth every minute for two days and note when it changes from served
     to refused, and by how much the oldest served start jumps.
 

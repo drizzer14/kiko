@@ -1916,8 +1916,9 @@ than restated here:
   ever does; four nulls when none does), `isBinanceHistoryBehind`
   compares them against `latestSyncedAt(holdings)` (the existing balance-sync
   stamp), true when ANY walk never caught up (`null` cursor) or is behind by more than
-  a day, false before the account's own first balance sync. An owed point never
-  shows it (user ruling: the caption is about the cursors). `CryptoSyncSection`
+  a day, or when the Transfer walk owes a range (`transferOwesRange`: ground its cursor passed),
+  false before the account's own first balance sync. An owed point never
+  shows it. `CryptoSyncSection`
   renders the `accountDetail.binanceHistoryPending` caption under the
   status line only when `connectedProvider === 'binance'`, so a wallet
   account never evaluates or shows it.
@@ -1959,8 +1960,9 @@ record imports only at `TRANSFER_SETTLED_STATUS`; BTC only. The stop codes live 
 - **Transfer depth (Q3).** Binance refuses a `startTime` older than it keeps (HTTP 400, code
   -5026): the client throws `BinanceHistoryTooOldError` (the generic request-failed message), and
   `readSpan` never rejects the run for it. A span at or below the floor of now reads as empty
-  (one call, nothing owed); any other span is read, in each type, from the start Binance serves
-  that type, found by bisection (`binance.history-depth.ts`, `binance.history-paging.ts`) and
+  (no call, nothing owed); any other span is read, in each type, from the floor of now or the
+  start Binance serves that type, whichever is later, found by bisection
+  (`binance.history-depth.ts`, `binance.history-paging.ts`) and
   remembered for that type (`createDepthMemories`: a memory per type, so a type that keeps less
   narrows only itself) with the clock it was served at. A search begins at the start another type
   is served from when one is known (`DepthGuard.hintMs`, `narrowFromHint`), which decides only
@@ -1977,7 +1979,19 @@ record imports only at `TRANSFER_SETTLED_STATUS`; BTC only. The stop codes live 
   that type alone. A type stops at its `MAX_DEPTH_REFUSALS`-th refused read or its second lapse
   (76 requests at most for a span of 30 days), and a type the run's calls cannot narrow owes the
   span in itself alone; the other types commit and the cursor passes. The floor stays inside the
-  depth probed.
+  depth probed. A span wholly below the depth costs the first type 2 calls (the refused read and
+  the end) and each other type 1 (its end, asked before any read while another type was refused
+  that end; a type holding a bound from an earlier span asks the end of the next one the same
+  way). In the depth lane a type that narrows may spend the calls kept for the types after it,
+  which are then owed in full without a request. The walk reads the owed ranges first
+  (`runWalkPlan` `owedFirst`; `storePlannedList` stores the planned list before any pass) and
+  keeps one read of the first forward window, of the re-scan and of the points for the later
+  passes. A Transfer drift owes the span in the drifted type alone. The `binanceHistoryPending`
+  caption also shows while the Transfer walk owes a range (`transferOwesRange`), not a point.
+  Residual under the 80-call lane cap: a Binance that keeps less than 179 days is narrowed one
+  type at a time (about 25 requests for the first type, 4 to 8 for each later one), so a run
+  imports the ground just above the depth for a few types and the others are read in the runs
+  after it; the ground the depth passes first is lost to the types not yet read.
 
 - **Transfer forward stops (O1, Transfer lane only).** A stop tied to ONE transfer with a usable
   time is owed at that transfer's own point and the forward pass goes past it
