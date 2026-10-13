@@ -2,7 +2,7 @@
 // `paths.include` entry (`src/test-support/**`), which draws NOTHING against a fixture placed
 // directly in rules/fixtures/ (kiko-linter's "Semgrep facts" gotcha), so this fixture mirrors a
 // real src/test-support/ path instead. The rule MUST report a finding on each pinned line: a test
-// or suite title that opens with a task id (`A1 `, `T28 `) or a ruling id (`ruling A2`), or that
+// or suite title that opens with a task id (`A1 `, `Q7 `) or a ruling id (`ruling A2`), or that
 // carries a `(was: ` label, however the title is declared.
 
 // EXPECT-FINDING
@@ -11,7 +11,7 @@ describe('A1 the footer', () => {
   it('B12 keeps the row flat', () => {});
 
   // EXPECT-FINDING
-  test('T28 renders the empty state', () => {});
+  test('Q7 renders the empty state', () => {});
 
   // EXPECT-FINDING
   it("C3 doesn't skip a double-quoted title", () => {});

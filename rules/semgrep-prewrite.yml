@@ -1196,7 +1196,7 @@ rules:
     languages: [typescript]
     severity: ERROR
     message: >
-      A test or suite title opens with a task id ("A1 ", "T28 "), opens with a
+      A test or suite title opens with a task id ("A1 ", "Q7 "), opens with a
       ruling id ("ruling A2"), or carries an old-value label in parentheses.
       kiko-code-style's "Comments: WHY only, never history": a title says what
       the test pins, and the id or the old value belongs in the commit
