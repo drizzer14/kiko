@@ -595,12 +595,23 @@ export const isBinanceHistoryBehind: (input: { cursors: readonly (number | null)
   - **m2**: `flowUnitsOf` and `rewardOf` end in `.exhaustive()` over the six kinds, with an explicit branch for the kinds they skip. No behaviour change; the earn tests stay green.
   - VERIFY 10 (spec) adds the subscription `type` counts per product, the `sourceAccount` per `type`, and whether a `MATURE` redemption pairs with a `RESTAKE` subscription.
 
-| Mutant (fix round 2) | earn+client (401 tests: 213 earn, 188 client) | Killers |
+| Mutant (fix round 2) | earn+client (401 tests: 213 earn in the three `binance.earn-history.test.ts`, `binance.earn-history.rewards.test.ts` and `binance.earn-history.real-sqlite.test.ts` files, 188 client) | Killers |
 |---|---|---|
 | the locked subscription not read by type (the check only for `flexible`) | 21 | per product pins of the locked kind: `RESTAKE`, `TRIAL`, `ACTIVITY`, `CONVERT`, `TRANSFER`, `LOAN`, `AI`, `X`, `normal`, `''`, absent; the walk-level and forward-window locked cases |
 | the allowlist widened by one value (`ACTIVITY`) | 2 | `of type ACTIVITY is a stop` for each product |
 | an absent `type` allowed | 4 | `of type undefined is a stop` for each product, the walk-level `flexibleSubscription` and `lockedSubscription` absent cases |
 | the locked subscription `type` read with `optionalText` | 1 (client) | `a lockedSubscription with a numeric type is unreadable` |
+
+- [ ] **fix round 3 (re-review of fix round 2, 2026-10-13):** I4, m3, m4, ponytail.
+  - **I4** (OVERNIGHT DEFAULT 24 extended, pending user): `WALLET_FUNDED_SUBSCRIPTION_TYPES` is one constant per product: `{ flexible: ['NORMAL', 'AUTO'], locked: ['NORMAL'] }`. A locked `AUTO` is most likely the auto-renewal at maturity (a locked subscribe's `autoSubscribe` defaults to true), so its money is the matured principal, not the wallet `sourceAccount` names: it stops with `earn-subscription-type-unconfirmed`, owed at its point. Pins (RED first: 2 failed in `binance.earn-history.test.ts` before the code): locked `AUTO` in the stop table of `a locked subscription by its type`; walk level `a lockedSubscription of type "AUTO" owes its point and writes nothing`; flexible `AUTO` still writes Spot -a / Earn +a.
+  - **m3**: the comment on `WALLET_FUNDED_SUBSCRIPTION_TYPES`, spec Subscription bullet and kiko-architecture "Placement" say "not documented to come from the wallet `sourceAccount` names" (only the type descriptions are documented: `CONVERT` Locked to Flexible, `TRANSFER` Locked Savings to Flexible, `TRIAL` trial fund order, `RESTAKE` restake order).
+  - **m4**: the fix round 2 mutant table names the three `binance.earn-history*` test files its 213 earn tests cover.
+  - **Ponytail** (test only): the `for` loop test `a locked subscription of type RESTAKE (and TRIAL) ...` is deleted (the per product stop table covers it); the walk-level subscription table carries the built entry in each row instead of the `kind` ternary.
+  - VERIFY 10 (spec) adds whether a `MATURE` redemption pairs with a locked `AUTO` subscription, and the `sourceAccount` of a locked `AUTO`.
+
+| Mutant (fix round 3) | earn+client+properties | Killers |
+|---|---|---|
+| the locked list widened back to `['NORMAL', 'AUTO']` | 2 / 213 earn, 0 / 188 client, 0 / 3696 properties | `of type "AUTO" is a stop` (locked), `a lockedSubscription of type "AUTO" owes its point and writes nothing` |
 
 ### binance-history task 7/7: VERIFY gate, skill rewrite, whole-branch gate (developer, scribe, reviewer)
 

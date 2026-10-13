@@ -1995,11 +1995,13 @@ balance sync and dropped on a disconnect through the field arrays. The stop code
   record has no destination field, so its `type` decides (OVERNIGHT DEFAULT 24, pending user):
   `MATURE` ("redeem to Spot Wallet") goes to Spot; `NEW_TRANSFERRED`, `AHEAD`, any other type or
   none is `earn-redemption-type-unconfirmed`, owed at its point, no row (Q14: never an assumed
-  wallet). A subscription of either product imports from `sourceAccount` or the split only when
-  its `type` is `NORMAL` or `AUTO` (`WALLET_FUNDED_SUBSCRIPTION_TYPES`, one constant, OVERNIGHT
-  DEFAULT 24 extended, pending user); any other value (`RESTAKE`, `TRIAL`, `ACTIVITY`, `CONVERT`,
-  `LOAN`, `AI`, `TRANSFER`, unknown) or none is `earn-subscription-type-unconfirmed` the same way,
-  because the money of those types does not come from the wallet `sourceAccount` names. A field
+  wallet). A subscription imports from `sourceAccount` or the split only when its `type` is in
+  its product's list (`WALLET_FUNDED_SUBSCRIPTION_TYPES`, one constant, per product: flexible
+  `NORMAL` or `AUTO`, locked `NORMAL` only; OVERNIGHT DEFAULT 24 extended, pending user); any
+  other value (a locked `AUTO`, most likely the auto-renewal at maturity, `RESTAKE`, `TRIAL`,
+  `ACTIVITY`, `CONVERT`, `LOAN`, `AI`, `TRANSFER`, unknown) or none is
+  `earn-subscription-type-unconfirmed` the same way, because the money of those types is not
+  documented to come from the wallet `sourceAccount` names. A field
   the walk decides by (a split amount, those `type`s, `isComplete`) that is present with another
   JSON type is an unreadable row, never absent. These type points are permanent: Binance fixes a
   record's `type` when it creates it, so such a point never imports by itself; it waits for the

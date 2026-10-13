@@ -225,16 +225,16 @@ describe('subscriptionRowsOf', () => {
     expect(stopCodeOf(() => rowsOf({ status: 'PAID' }, 'locked'))).toBe('earn-not-settled');
   });
 
-  describe.each([['flexible'], ['locked']] as const)('a %s subscription by its type', (product) => {
-    it.each([['NORMAL'], ['AUTO']])(
-      'of type %s is the money of its wallet: Spot -a and Earn +a',
-      (type) => {
-        expect(rowsOf({ type }, product).map((row) => [row.wallet, row.amountMinorUnits])).toEqual([
-          [SPOT_KEY, -SATOSHIS],
-          [EARN_KEY, SATOSHIS],
-        ]);
-      },
-    );
+  describe.each([
+    ['flexible', ['NORMAL', 'AUTO'], []],
+    ['locked', ['NORMAL'], ['AUTO']],
+  ] as const)('a %s subscription by its type', (product, written, alsoStopped) => {
+    it.each(written)('of type %s is the money of its wallet: Spot -a and Earn +a', (type) => {
+      expect(rowsOf({ type }, product).map((row) => [row.wallet, row.amountMinorUnits])).toEqual([
+        [SPOT_KEY, -SATOSHIS],
+        [EARN_KEY, SATOSHIS],
+      ]);
+    });
 
     it.each([
       ['CONVERT'],
@@ -248,6 +248,7 @@ describe('subscriptionRowsOf', () => {
       ['normal'],
       [''],
       [undefined],
+      ...alsoStopped.map((type): [string] => [type]),
     ])('of type %p is a stop: no document says its money came from the wallet it names', (type) => {
       expect(stopCodeOf(() => rowsOf({ type }, product))).toBe(
         'earn-subscription-type-unconfirmed',
@@ -257,14 +258,6 @@ describe('subscriptionRowsOf', () => {
     it('of an unconfirmed type that FAILED is ignored: nothing is owed for it', () => {
       expect(rowsOf({ type: 'RESTAKE', status: 'FAILED' }, product)).toEqual([]);
     });
-  });
-
-  it('a locked subscription of type RESTAKE (and TRIAL) owes its point and writes nothing', () => {
-    for (const type of ['RESTAKE', 'TRIAL']) {
-      expect(stopCodeOf(() => rowsOf({ type }, 'locked'))).toBe(
-        'earn-subscription-type-unconfirmed',
-      );
-    }
   });
 
   it('stops a settled subscription with no id', () => {
@@ -949,26 +942,47 @@ describe('a record the walk cannot trust', () => {
   );
 
   it.each([
-    ['flexibleSubscription', 'CONVERT'],
-    ['flexibleSubscription', 'TRANSFER'],
-    ['flexibleSubscription', undefined],
-    ['lockedSubscription', 'RESTAKE'],
-    ['lockedSubscription', 'TRIAL'],
-    ['lockedSubscription', undefined],
+    [
+      'flexibleSubscription',
+      'CONVERT',
+      entryOf('flexibleSubscription', flexibleSubscriptionOf({ type: 'CONVERT', time: stuckAt })),
+    ],
+    [
+      'flexibleSubscription',
+      'TRANSFER',
+      entryOf('flexibleSubscription', flexibleSubscriptionOf({ type: 'TRANSFER', time: stuckAt })),
+    ],
+    [
+      'flexibleSubscription',
+      undefined,
+      entryOf('flexibleSubscription', flexibleSubscriptionOf({ type: undefined, time: stuckAt })),
+    ],
+    [
+      'lockedSubscription',
+      'RESTAKE',
+      entryOf('lockedSubscription', lockedSubscriptionOf({ type: 'RESTAKE', time: stuckAt })),
+    ],
+    [
+      'lockedSubscription',
+      'TRIAL',
+      entryOf('lockedSubscription', lockedSubscriptionOf({ type: 'TRIAL', time: stuckAt })),
+    ],
+    [
+      'lockedSubscription',
+      'AUTO',
+      entryOf('lockedSubscription', lockedSubscriptionOf({ type: 'AUTO', time: stuckAt })),
+    ],
+    [
+      'lockedSubscription',
+      undefined,
+      entryOf('lockedSubscription', lockedSubscriptionOf({ type: undefined, time: stuckAt })),
+    ],
   ] as const)(
     'a %s of type %p owes its point and writes nothing: its money may not be the wallet it names',
-    async (kind, type) => {
+    async (kind, _type, entry) => {
       const world = worldOf(caughtUp);
-      const record = { type, time: stuckAt };
 
-      await walkOnce({
-        world,
-        entries: [
-          kind === 'flexibleSubscription'
-            ? entryOf(kind, flexibleSubscriptionOf(record))
-            : entryOf(kind, lockedSubscriptionOf(record)),
-        ],
-      });
+      await walkOnce({ world, entries: [entry] });
 
       expect(world.added).toEqual([]);
       expect(listOf(world)).toEqual([pointOf(stuckAt, kind)]);

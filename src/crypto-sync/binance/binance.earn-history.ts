@@ -217,14 +217,21 @@ const isSettled = (settledStatus: string, status: string): boolean => {
 };
 
 /**
- * The only subscription types, of either product, whose money is taken to come from the wallet
- * `sourceAccount` (or the split) names: `NORMAL` and `AUTO`. Binance documents the others as
- * money that never sat in a Spot or Funding wallet (`RESTAKE`, `TRIAL` the trial fund, `CONVERT`
- * and `TRANSFER` from the locked product) or does not say where it came from (`ACTIVITY`,
- * `LOAN`, `AI`), and a record with no type says nothing, so none of them is debited from a
- * guessed wallet. Widening this list is the one line a confirmed answer changes.
+ * The only subscription types, per product, whose money is taken to come from the wallet
+ * `sourceAccount` (or the split) names. Flexible: `NORMAL` and `AUTO`. Locked: `NORMAL` only,
+ * because a locked `AUTO` subscription is most likely the auto-renewal at maturity (a locked
+ * subscribe's `autoSubscribe` defaults to true), whose money is the matured principal, not a
+ * wallet. No other type is documented to come from the wallet `sourceAccount` names: the
+ * documented descriptions say the money never sat in a Spot or Funding wallet (`RESTAKE` a
+ * restake order, `TRIAL` a trial fund order, `CONVERT` Locked to Flexible, `TRANSFER` Locked
+ * Savings to Flexible) or say nothing of its source (`ACTIVITY`, `LOAN`, `AI`), and a record with
+ * no type says nothing, so none of them is debited from a guessed wallet. Widening a list is the
+ * one line a confirmed answer changes.
  */
-const WALLET_FUNDED_SUBSCRIPTION_TYPES: readonly string[] = ['NORMAL', 'AUTO'];
+const WALLET_FUNDED_SUBSCRIPTION_TYPES: Record<EarnProduct, readonly string[]> = {
+  flexible: ['NORMAL', 'AUTO'],
+  locked: ['NORMAL'],
+};
 
 /**
  * The one locked redemption type whose destination is documented: `MATURE` redeems to the Spot
@@ -312,7 +319,10 @@ export const subscriptionRowsOf = (
     throw new BinanceWalkStop(EARN_ID_MISSING);
   }
 
-  if (record.type === undefined || !WALLET_FUNDED_SUBSCRIPTION_TYPES.includes(record.type)) {
+  if (
+    record.type === undefined ||
+    !WALLET_FUNDED_SUBSCRIPTION_TYPES[product].includes(record.type)
+  ) {
     throw new BinanceWalkStop(EARN_SUBSCRIPTION_TYPE_UNCONFIRMED);
   }
 
