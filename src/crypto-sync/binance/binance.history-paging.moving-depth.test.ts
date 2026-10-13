@@ -183,6 +183,27 @@ describe('readSeriesSpan, against a depth that moves with the clock or in steps 
     expect(world.calls.filter(({ series }) => series === 'T0')).toHaveLength(1);
   });
 
+  it('owes the ground between the start a series was served from and the end of a span, with no request, when the start moved on passes the end', async () => {
+    const world = depthWorldOf({ latencyMs: () => 0 });
+    const span = crossingOf(world.edgeOf('T0', world.clock.now));
+    rememberServedStart(world.depth.memoryOf('T0'), {
+      startMs: span.end - 3_000,
+      servedAtMs: world.clock.now - 5_000,
+    });
+
+    const result = await readDepthWorld(world, { span });
+
+    expect(result).toEqual({
+      kind: 'page',
+      page: {
+        read: [],
+        drifted: [],
+        owed: [{ series: 'T0', window: { start: span.end - 3_000, end: span.end } }],
+      },
+    });
+    expect(world.calls).toEqual([]);
+  });
+
   it('reads a span above the depth from its own start, though the start would have moved on past its end', async () => {
     const { world, edgeMs } = worldServedAgo(5 * HOUR_MS, DAY_MS);
     const span: DepthRead = { start: edgeMs + HOUR_MS, end: edgeMs + 2 * HOUR_MS };

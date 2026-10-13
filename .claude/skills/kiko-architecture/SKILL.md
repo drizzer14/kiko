@@ -1959,19 +1959,24 @@ record imports only at `TRANSFER_SETTLED_STATUS`; BTC only. The stop codes live 
 - **Transfer depth (Q3).** Binance refuses a `startTime` older than it keeps (HTTP 400, code
   -5026): the client throws `BinanceHistoryTooOldError` (the generic request-failed message), and
   `readSpan` never rejects the run for it. A span at or below the floor of now reads as empty
-  (one call, nothing owed); any other span is read from the start Binance serves, found by
-  bisection (`binance.history-depth.ts`, `binance.history-paging.ts`) and remembered with the
-  clock it was served at. The depth is assumed to move forward and never back, with no claim
-  about its speed (open checks: spec probe items 17 and 18). A read begins at
+  (one call, nothing owed); any other span is read, in each type, from the start Binance serves
+  that type, found by bisection (`binance.history-depth.ts`, `binance.history-paging.ts`) and
+  remembered for that type (`createDepthMemories`: a memory per type, so a type that keeps less
+  narrows only itself) with the clock it was served at. A search begins at the start another type
+  is served from when one is known (`DepthGuard.hintMs`, `narrowFromHint`), which decides only
+  which starts are asked first. The depth is assumed to move forward and never back, with no
+  claim about its speed (open checks: spec probe items 17 and 18). A read begins at
   `knownStartOf(memory, now)` (the start moved on by the elapsed time plus a margin), `now` read
   after the run gate, only while the start was served at most `DEPTH_EXTRAPOLATION_MAX_MS` ago;
   after that (`hasDepthLapsed`: a suspension) the start is found again by `narrowLapsedStart`
   between the start the memory holds and the one it would move on to. The margin doubles with
   each refusal up to `DEPTH_MARGIN_CAP_MS`; a refusal at the cap narrows upward from the refused
-  start, and a new served start starts the margin over. A read skips at most the resolution, the
-  time since the start was served and the margin cap of the ground Binance keeps, if the depth
-  stood still. A span read stops at its `MAX_DEPTH_REFUSALS`-th refused read or its second
-  lapse (76 requests at most for a span of 30 days), the span unread. The floor stays inside the
+  start, and a new served start starts the margin over. The ground a read begins above (between
+  the start the type was served from and the start the read begins at) is owed in that type, as a
+  range with a `series` (`SeriesSpan.owed`), not committed as read: the pending pass reads it in
+  that type alone. A type stops at its `MAX_DEPTH_REFUSALS`-th refused read or its second lapse
+  (76 requests at most for a span of 30 days), and a type the run's calls cannot narrow owes the
+  span in itself alone; the other types commit and the cursor passes. The floor stays inside the
   depth probed.
 
 - **Transfer forward stops (O1, Transfer lane only).** A stop tied to ONE transfer with a usable
