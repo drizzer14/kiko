@@ -54,7 +54,7 @@ let mockCategories: CategoryData[] = [];
 let mockRules: RuleData[] = [];
 let mockSettingsRows: Array<{ defaultCategoryKey: string }> = [];
 let mockCategoriesIsLoading = false;
-// `false` = the categories read has not applied its own fresh result yet.
+// `false` = the categories read did not apply a result of its own, as after a failed read.
 let mockCategoriesIsFresh = true;
 let mockRulesIsLoading = false;
 let mockSettingsIsLoading = false;
@@ -213,6 +213,7 @@ describe('CategoryFormScreen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockCreate.mockResolvedValue('new-key');
+    mockUpdateTitle.mockResolvedValue(undefined);
     mockCategories = [
       GROCERIES,
       { key: 'trips', title: 'Trips', icon: 'airplane', color: null },
@@ -244,7 +245,7 @@ describe('CategoryFormScreen', () => {
       expectNavBarSaveOnly(navigation.setOptions, utils);
     });
 
-    it('device check 3: shows no rules section and no default star before the category exists', async () => {
+    it('shows no rules section and no default star before the category exists', async () => {
       const { queryByText } = await renderForm();
 
       expect(queryByText('Rules')).toBeNull();
@@ -333,7 +334,7 @@ describe('CategoryFormScreen', () => {
       );
     });
 
-    it('device check 3: opens the screen of the category it made, in place of the form', async () => {
+    it('opens the screen of the category it made, in place of the form', async () => {
       const { getByLabelText } = await renderForm();
 
       await fireEvent.changeText(getByLabelText('Name'), 'Travel');
@@ -427,22 +428,13 @@ describe('CategoryFormScreen', () => {
       expect(shownTitle()).toBe('Groceries');
     });
 
-    it('device check 3: opens with its fields and its rule cards under "Rules", the header holds the star, then Save', async () => {
+    it('shows its rule cards in the body while the header holds the star, then Save', async () => {
       mockRules = [ruleOf('silpo', 'groceries', [{ type: 'nameIs', text: 'Silpo' }])];
 
-      const { getByDisplayValue, getByLabelText, getByText, getAllByTestId } =
-        await renderForm('groceries');
+      const { getAllByTestId } = await renderForm('groceries');
 
-      expect(getByDisplayValue('Groceries')).toBeTruthy();
-      expect(getByLabelText('Change Icon')).toBeTruthy();
-      expect(getByLabelText('Color khaki').props.accessibilityState.selected).toBe(true);
-      expect(getByText('Rules')).toBeTruthy();
       expect(getAllByTestId('rule-card')).toHaveLength(1);
-      expect(headerItems().map((item) => [item.type, item.label, item.icon?.name])).toEqual([
-        ['button', 'Set as default', 'star'],
-        ['button', 'Save', undefined],
-      ]);
-      expect(headerItems().some((item) => item.type === 'custom')).toBe(false);
+      expect(headerLabels()).toEqual(['Set as default', 'Save']);
     });
 
     it('opens with the stored name, icon and colour', async () => {
@@ -472,7 +464,7 @@ describe('CategoryFormScreen', () => {
       expect(queryByText('Save')).toBeNull();
     });
 
-    it('device check 3: saves a changed name, icon and colour through their own writes, then goes back', async () => {
+    it('saves a changed name, icon and colour through their own writes, then goes back', async () => {
       const { getByLabelText } = await renderForm('groceries');
 
       await fireEvent.changeText(getByLabelText('Name'), '  Food  ');
@@ -572,6 +564,24 @@ describe('CategoryFormScreen', () => {
       });
 
       expect(saveItem(navigation.setOptions)?.disabled).toBe(false);
+    });
+
+    it('writes only what the user changed, not a field a restore changed under the form', async () => {
+      const { getByLabelText, rerender } = await renderForm('groceries');
+
+      await fireEvent.changeText(getByLabelText('Name'), 'Food');
+      mockCategories = [
+        { ...GROCERIES, icon: 'basket', color: darkTheme.colors.entityColors.yellow },
+      ];
+      await act(async () => {
+        await rerender(formElement('groceries'));
+      });
+      await pressSave(navigation.setOptions);
+
+      await waitFor(() => expect(navigation.goBack).toHaveBeenCalledTimes(1));
+      expect(mockUpdateTitle).toHaveBeenCalledWith('groceries', 'Food');
+      expect(mockUpdateIcon).not.toHaveBeenCalled();
+      expect(mockUpdateColor).not.toHaveBeenCalled();
     });
 
     it('keeps the user’s edits when the category refreshes', async () => {
@@ -778,7 +788,7 @@ describe('CategoryFormScreen', () => {
       expect(getByText('Add rule')).toBeTruthy();
     });
 
-    it('device check 3: leads "Add rule" with the rule symbol as the lone secondary action of the footer', async () => {
+    it('leads "Add rule" with the rule symbol as the lone secondary action of the footer', async () => {
       const { getByTestId } = await renderForm('groceries');
       const addRuleProps = mockButtonProps.filter((props) => props.children === 'Add rule');
 
@@ -809,7 +819,7 @@ describe('CategoryFormScreen', () => {
       expect(navigation.navigate).toHaveBeenCalledTimes(1);
     });
 
-    it('device check 3: keeps the typed name when a rule card is tapped', async () => {
+    it('keeps the typed name when a rule card is tapped', async () => {
       mockRules = [ruleOf('atb', 'groceries', [{ type: 'nameIs', text: 'Atb' }])];
 
       const { getByText, getByLabelText, getByDisplayValue } = await renderForm('groceries');
@@ -956,6 +966,20 @@ describe('CategoryFormScreen', () => {
       expect(headerLabels()).toEqual(['Set as default', 'Save']);
     });
 
+    it('adds no star while the category is not read, so it never writes a default it could not see', async () => {
+      mockCategories = [];
+      mockCategoriesIsFresh = false;
+      await renderForm('groceries');
+
+      expect(headerLabels()).toEqual(['Save']);
+    });
+
+    it('adds no star for a category the fresh read no longer has', async () => {
+      await renderForm('deleted-elsewhere');
+
+      expect(headerLabels()).toEqual(['Save']);
+    });
+
     it('keeps the action out of the body', async () => {
       const { queryByText } = await renderForm('groceries');
 
@@ -984,7 +1008,7 @@ describe('CategoryFormScreen', () => {
       expect(navigation.goBack).toHaveBeenCalledTimes(1);
     });
 
-    it('does not go back before the read is fresh, which may be one read old', async () => {
+    it('does not go back on a read that is not fresh, as after a failed read', async () => {
       mockCategoriesIsFresh = false;
 
       const { getByTestId } = await renderForm('just-created');

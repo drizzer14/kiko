@@ -32,13 +32,13 @@ import ColorPicker from '@kiko/design-system/components/color-picker';
 import LoadingState from '@kiko/design-system/components/loading-state';
 import { categoryRulesRepo } from '@kiko/categories/category-rules-repo';
 import { resolveCategoryColor } from '@kiko/statistics/category-breakdown';
+import { type CategoryRuleRow, useDataReady, useLiveQuery } from '@kiko/db';
 import { isSameCategory, prepareRules } from '@kiko/categories/category-rules';
 import { useFormHeaderItems } from '@kiko/screens/forms/use-form-header-items';
 import { resolveDefaultCategoryTitle } from '@kiko/i18n/default-category-title';
 import { KIKO_CATEGORIES_ICONS } from '@kiko/design-system/components/icon-pools';
 import { type FC, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import HoldingIdentityField from '@kiko/design-system/components/holding-identity-field';
-import { type CategoryRow, type CategoryRuleRow, useDataReady, useLiveQuery } from '@kiko/db';
 
 import RuleCard from './rule-card';
 import { type RuleRow, ruleRows, ruleSummary } from './rule-summary';
@@ -87,25 +87,28 @@ const ruleLinesOf = (
   ];
 };
 
-// Writes what differs from the stored category, each through its own repo write. A seeded default
-// is shown under its translated title, so a name equal to it (or to the stored one) is not a
-// rename. The colour picker cannot clear a colour, so a null colour means none was picked.
+type CategoryEdits = { name: string; icon: string; color: string | null };
+
+// Writes what the user changed from the values the form was seeded with, each through its own repo
+// write. The live row is not the baseline: a restore can change it under the open form, and a field
+// the user never touched must not be written back from the form. The seeded name is the shown
+// title, so a seeded default left alone is not a rename. The colour picker cannot clear a colour,
+// so a null colour means none was picked.
 const saveEdits = async (
-  category: CategoryRow,
-  edits: { name: string; icon: string; color: string | null },
+  categoryKey: string,
+  seed: CategoryEdits,
+  edits: CategoryEdits,
 ): Promise<void> => {
-  const shownTitle = resolveDefaultCategoryTitle(category.key, category.title);
-
-  if (edits.name !== shownTitle && edits.name !== category.title) {
-    await categoriesRepo.updateTitle(category.key, edits.name);
+  if (edits.name !== seed.name) {
+    await categoriesRepo.updateTitle(categoryKey, edits.name);
   }
 
-  if (edits.icon !== category.icon) {
-    await categoriesRepo.updateIcon(category.key, edits.icon);
+  if (edits.icon !== seed.icon) {
+    await categoriesRepo.updateIcon(categoryKey, edits.icon);
   }
 
-  if (edits.color !== null && edits.color !== category.color) {
-    await categoriesRepo.updateColor(category.key, edits.color);
+  if (edits.color !== null && edits.color !== seed.color) {
+    await categoriesRepo.updateColor(categoryKey, edits.color);
   }
 };
 
@@ -129,7 +132,8 @@ const CategoryFormScreen: FC<CategoryFormScreenProps> = ({ navigation, route }) 
   // The name field's ref, so the form can focus it imperatively on mount instead of relying on the
   // native `autoFocus` prop (see HoldingIdentityField's `nameInputRef`).
   const nameInputRef = useRef<TextInputInstance | null>(null);
-  const hydrated = useRef(false);
+  // What the form was seeded with: Save writes only the fields the user moved away from it.
+  const seed = useRef<CategoryEdits | undefined>(undefined);
 
   // Uncached: a form seeds its fields from this read, so it must not start from a cached row that
   // may be one read old.
@@ -154,7 +158,8 @@ const CategoryFormScreen: FC<CategoryFormScreenProps> = ({ navigation, route }) 
   const editingCategory = categories.find((row) => row.key === categoryKey);
   // An existing category shows its screen only once every read has landed and the category is in
   // them; until then its fields are not mounted and Save waits.
-  const isLoadingCategory = isEdit && (!isReady || editingCategory === undefined);
+  const hasCategory = editingCategory !== undefined;
+  const isLoadingCategory = isEdit && (!isReady || !hasCategory);
   const displayName = foldMap(maybe(editingCategory), (row) =>
     resolveDefaultCategoryTitle(row.key, row.title),
   );
@@ -181,14 +186,20 @@ const CategoryFormScreen: FC<CategoryFormScreenProps> = ({ navigation, route }) 
 
   // Seeded once, so a later live-query emission cannot replace what the user is typing.
   useEffect(() => {
-    if (hydrated.current || editingCategory === undefined) {
+    if (seed.current !== undefined || editingCategory === undefined) {
       return;
     }
 
-    hydrated.current = true;
-    setName(resolveDefaultCategoryTitle(editingCategory.key, editingCategory.title));
-    setIcon(editingCategory.icon);
-    setColor(editingCategory.color);
+    const seeded = {
+      name: resolveDefaultCategoryTitle(editingCategory.key, editingCategory.title),
+      icon: editingCategory.icon,
+      color: editingCategory.color,
+    };
+
+    seed.current = seeded;
+    setName(seeded.name);
+    setIcon(seeded.icon);
+    setColor(seeded.color);
   }, [editingCategory]);
 
   // Deferred to the next frame so the keyboard accessory mounted in the same commit has registered
@@ -204,8 +215,8 @@ const CategoryFormScreen: FC<CategoryFormScreenProps> = ({ navigation, route }) 
   }, [isEdit]);
 
   // A category deleted elsewhere (a restore) leaves nothing to show. Only the fresh read can say
-  // so: a read that has not applied yet may be one read old and not hold a category that was just
-  // created.
+  // so: a failed read applies no rows and is never fresh, and its empty result does not mean the
+  // category is gone.
   useEffect(() => {
     if (isEdit && isReady && categoriesFresh && editingCategory === undefined) {
       navigation.goBack();
@@ -221,8 +232,8 @@ const CategoryFormScreen: FC<CategoryFormScreenProps> = ({ navigation, route }) 
 
     try {
       if (isEdit) {
-        if (editingCategory !== undefined) {
-          await saveEdits(editingCategory, { name: trimmedName, icon, color });
+        if (editingCategory !== undefined && seed.current !== undefined) {
+          await saveEdits(editingCategory.key, seed.current, { name: trimmedName, icon, color });
           navigation.goBack();
         }
 
@@ -241,13 +252,14 @@ const CategoryFormScreen: FC<CategoryFormScreenProps> = ({ navigation, route }) 
   const { onPress: onSave, isSubmitting } = useSubmitOnce(save);
 
   // The star waits for the settings read: before it, the default would fall back to the seeded one
-  // and could show the wrong state. It writes at once, not on Save, and a category that does not
-  // exist yet has no key to write. Adjacent bar items share one glass capsule on iOS 26+, which
-  // would read the star and Save as one control, so neither shares its background.
+  // and could show the wrong state. It waits for the category row too, so a category the screen
+  // could not read is never written as the default. It writes at once, not on Save, and a category
+  // that does not exist yet has no key to write. Adjacent bar items share one glass capsule on
+  // iOS 26+, which would read the star and Save as one control, so neither shares its background.
   const starLabel = t(isDefault ? 'categoryPage.isDefault' : 'categoryPage.setAsDefault');
   const extraItems = useMemo<NativeStackHeaderItemButton[] | undefined>(
     () =>
-      categoryKey !== undefined && isReady
+      categoryKey !== undefined && isReady && hasCategory
         ? [
             {
               type: 'button',
@@ -265,7 +277,7 @@ const CategoryFormScreen: FC<CategoryFormScreenProps> = ({ navigation, route }) 
             },
           ]
         : undefined,
-    [categoryKey, isReady, isDefault, starLabel, theme.colors.textPrimary],
+    [categoryKey, isReady, hasCategory, isDefault, starLabel, theme.colors.textPrimary],
   );
 
   useFormHeaderItems({
