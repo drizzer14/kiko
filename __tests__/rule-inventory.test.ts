@@ -71,6 +71,8 @@ const singleTestFileExcludes = (yamlText: string): string[] =>
 // changed in the rule file alone would pass every fixture, so flipping one is a deliberate edit
 // here too.
 const PINNED_SEVERITIES = {
+  'kiko-no-history-id-comment': 'ERROR',
+  'kiko-no-history-date-comment': 'ERROR',
   'kiko-no-history-word-comment': 'ERROR',
   'kiko-no-task-id-comment': 'ERROR',
 };
@@ -142,7 +144,7 @@ describe('rule severity', () => {
     ]);
   });
 
-  it('keeps the word rule and the task-id rule errors', () => {
+  it('keeps the id, date, word and task-id comment rules errors', () => {
     const severities = new Map(ruleFileTexts.flatMap((text) => [...ruleSeverities(text)]));
 
     expect(

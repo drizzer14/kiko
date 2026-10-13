@@ -102,6 +102,14 @@ export const parenthesizedDateLineComment = true;
 export const laterBlockLine = true;
 
 // EXPECT-FINDING
+// RULING 2026-10-12 keeps the footer.
+export const rulingUpper = true;
+
+// EXPECT-FINDING
+/* The footer is pinned, RULED 2026-10-12 by the user. */
+export const ruledUpperBlock = true;
+
+// EXPECT-FINDING
 // Rows stay flat, per the ruling of 2026-10-12 on the categories screen.
 export const rulingOfDate = true;
 
@@ -124,6 +132,14 @@ export const rulingOfDateWrappedBlock = true;
 // Rows stay flat, per the ruling
 // 2026-10-12 on the categories screen.
 export const rulingDateWrappedLine = true;
+
+// Known false positive: a line that ends on "approved" and a next line that opens with a date
+// (data, not a dated approval) reads as one dated approval, since the form may wrap. Reword
+// such a comment so the date is not the first word of a line.
+// EXPECT-FINDING
+// The accent was approved
+// 2026-10-08 is also the day the mock server was written.
+export const approvedThenDataDate = true;
 
 /**
  * A second member in the same block comment is reported too, at its own line:

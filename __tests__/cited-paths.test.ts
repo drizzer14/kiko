@@ -19,6 +19,7 @@ import {
 } from './test-support/markdown-code-spans';
 import {
   type Citation,
+  type SourceComment,
   sourceComments,
   sourceCommentCitations,
 } from './test-support/source-comment-citations';
@@ -334,11 +335,40 @@ const presentBasenames = new Set(presentFiles.map((file) => basename(file)));
 // extension is a claim about a file; `accounts/holdings` is two words with a slash.
 const FILE_EXTENSION_PATTERN = /\.\w+$/;
 
+// A path that a comment wraps at a hyphen (`category-` then `// breakdown.ts`) is one path, so the
+// wrap is cut out before matching. A cut moves every later index, so the index is walked back to
+// the comment as written, which keeps a later citation on its own line.
+const HYPHEN_WRAP_PATTERN = /-\n[ \t]*(?:\/\/|\*)[ \t]*/g;
+
+const originalOffset = (comment: string, joinedIndex: number): number =>
+  [...comment.matchAll(HYPHEN_WRAP_PATTERN)].reduce(
+    (offset, wrap) => ((wrap.index ?? 0) + 1 <= offset ? offset + wrap[0].length - 1 : offset),
+    joinedIndex,
+  );
+
+// The parse lists each `//` line as a comment of its own, so a wrap between two of them is joined
+// here into one comment whose text holds the line break.
+const withLineCommentsJoinedAtHyphens = (comments: SourceComment[]): SourceComment[] =>
+  comments.reduce<SourceComment[]>((joined, comment) => {
+    const previous = joined.at(-1);
+    const continues =
+      previous?.text.startsWith('//') === true &&
+      previous.text.endsWith('-') &&
+      comment.text.startsWith('//') &&
+      comment.line === previous.line + lineCountBefore(previous.text, previous.text.length) + 1;
+
+    return continues
+      ? [...joined.slice(0, -1), { line: previous.line, text: `${previous.text}\n${comment.text}` }]
+      : [...joined, comment];
+  }, []);
+
 const partialCommentCitations = (fileName: string, text: string): Citation[] =>
-  sourceComments(fileName, text).flatMap((comment) =>
-    [...comment.text.matchAll(PARTIAL_CITATION_PATTERN)]
+  withLineCommentsJoinedAtHyphens(sourceComments(fileName, text)).flatMap((comment) =>
+    [...comment.text.replace(HYPHEN_WRAP_PATTERN, '-').matchAll(PARTIAL_CITATION_PATTERN)]
       .map((match) => ({
-        line: comment.line + lineCountBefore(comment.text, match.index ?? 0),
+        line:
+          comment.line +
+          lineCountBefore(comment.text, originalOffset(comment.text, match.index ?? 0)),
         path: match[0].replace(/\.+$/, ''),
       }))
       .filter((citation) => FILE_EXTENSION_PATTERN.test(citation.path))
@@ -410,6 +440,27 @@ describe('sourceCommentCitations', () => {
       { line: 1, path: '__tests__/a.test.ts' },
       { line: 1, path: 'rules/semgrep-prewrite.yml' },
       { line: 1, path: 'e2e/screenshot/b.ts' },
+    ]);
+  });
+
+  it('finds a path under the skill and harness roots', () => {
+    expect(
+      sourceCommentCitations(
+        'a.ts',
+        '// .claude/skills/kiko-design-system/SKILL.md and harness/kiko/agents/developer.md\n',
+      ),
+    ).toEqual([
+      { line: 1, path: '.claude/skills/kiko-design-system/SKILL.md' },
+      { line: 1, path: 'harness/kiko/agents/developer.md' },
+    ]);
+  });
+
+  it('reports a planted skill and harness path that are not in the tree', () => {
+    expect(
+      unresolvedSourceCitations('a.ts', '// .claude/skills/gone/SKILL.md, harness/gone/x.md\n'),
+    ).toEqual([
+      { line: 1, path: '.claude/skills/gone/SKILL.md' },
+      { line: 1, path: 'harness/gone/x.md' },
     ]);
   });
 });
@@ -484,6 +535,35 @@ describe('repo paths cited in src comments', () => {
           '// the income/expense split, accounts/holdings, 1/2, @kiko/db/client and lint/suspicious/x.',
           "const a = 'monobank/gone.ts';",
         ].join('\n'),
+      ),
+    ).toEqual([]);
+  });
+
+  it('joins a path that a line comment or a block comment wraps at a hyphen', () => {
+    expect(
+      unresolvedSourceCitations(
+        'a.ts',
+        [
+          '// see `monobank/gone/missing-',
+          '// path.ts` and monobank/gone/second.ts',
+          '/**',
+          ' * Mirrors currency/gone-',
+          ' *   third.ts here.',
+          ' */',
+        ].join('\n'),
+      ),
+    ).toEqual([
+      { line: 1, path: 'monobank/gone/missing-path.ts' },
+      { line: 2, path: 'monobank/gone/second.ts' },
+      { line: 4, path: 'currency/gone-third.ts' },
+    ]);
+  });
+
+  it('resolves a path that a comment wraps at a hyphen when the joined path is in the tree', () => {
+    expect(
+      unresolvedSourceCitations(
+        'a.ts',
+        '// see design-system/entity-tint/entity-\n// tint.ts here.\n',
       ),
     ).toEqual([]);
   });

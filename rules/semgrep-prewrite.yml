@@ -355,10 +355,10 @@ rules:
         - "drizzle.config.ts"
     patterns:
       - pattern-either:
-          - pattern-regex: '(?:^(?:[^''"`\n]|''[^''\n]*''|"[^"\n]*"|`[^`\n]*`)*(?<!:)//|(?!\A)\G)[^\n]*?\K(?:\b(?:[Dd]evice\s[Ff]indings?|(?:[Aa]pproved|[Pp]robed|[Rr]uled|[Rr]uling|[Dd]ecided|[Cc]onfirmed)\s+(?:(?://|\*(?!/))\s*)?(?:(?:on|of)\s+(?:(?://|\*(?!/))\s*)?)?\d{4}-\d{2}-\d{2}|(?:[Pp]lan|[Tt]rack|[Rr]ound|[Rr]uling|[Ff]eedback|[Aa]udit),\s+(?:(?://|\*(?!/))\s*)?\d{4}-\d{2}-\d{2}|docs/[\w./-]*?\d{4}-\d{2}-\d{2}(?=-))\b|(?<=\*\s|//\s)\(\d{4}-\d{2}-\d{2}\))'
-          - pattern-regex: '(?:^(?:[^''"`\n]|''[^''\n]*''|"[^"\n]*"|`[^`\n]*`)*/\*|(?!\A)\G)(?:(?!\*/)[\s\S])*?\K(?:\b(?:[Dd]evice\s[Ff]indings?|(?:[Aa]pproved|[Pp]robed|[Rr]uled|[Rr]uling|[Dd]ecided|[Cc]onfirmed)\s+(?:(?://|\*(?!/))\s*)?(?:(?:on|of)\s+(?:(?://|\*(?!/))\s*)?)?\d{4}-\d{2}-\d{2}|(?:[Pp]lan|[Tt]rack|[Rr]ound|[Rr]uling|[Ff]eedback|[Aa]udit),\s+(?:(?://|\*(?!/))\s*)?\d{4}-\d{2}-\d{2}|docs/[\w./-]*?\d{4}-\d{2}-\d{2}(?=-))\b|(?<=\*\s|//\s)\(\d{4}-\d{2}-\d{2}\))(?=(?:(?!\*/)[\s\S])*?\*/)'
-  # ERROR: the tree holds 0 findings for this id (user-approved promotion from WARNING). See
-  # kiko-linter's "kiko-no-task-id-comment" section.
+          - pattern-regex: '(?:^(?:[^''"`\n]|''[^''\n]*''|"[^"\n]*"|`[^`\n]*`)*(?<!:)//|(?!\A)\G)[^\n]*?\K(?:\b(?:[Dd]evice\s[Ff]indings?|(?:[Aa]pproved|[Pp]robed|[Rr]uled|[Rr]uling|RULED|RULING|[Dd]ecided|[Cc]onfirmed)\s+(?:(?://|\*(?!/))\s*)?(?:(?:on|of)\s+(?:(?://|\*(?!/))\s*)?)?\d{4}-\d{2}-\d{2}|(?:[Pp]lan|[Tt]rack|[Rr]ound|[Rr]uling|[Ff]eedback|[Aa]udit),\s+(?:(?://|\*(?!/))\s*)?\d{4}-\d{2}-\d{2}|docs/[\w./-]*?\d{4}-\d{2}-\d{2}(?=-))\b|(?<=\*\s|//\s)\(\d{4}-\d{2}-\d{2}\))'
+          - pattern-regex: '(?:^(?:[^''"`\n]|''[^''\n]*''|"[^"\n]*"|`[^`\n]*`)*/\*|(?!\A)\G)(?:(?!\*/)[\s\S])*?\K(?:\b(?:[Dd]evice\s[Ff]indings?|(?:[Aa]pproved|[Pp]robed|[Rr]uled|[Rr]uling|RULED|RULING|[Dd]ecided|[Cc]onfirmed)\s+(?:(?://|\*(?!/))\s*)?(?:(?:on|of)\s+(?:(?://|\*(?!/))\s*)?)?\d{4}-\d{2}-\d{2}|(?:[Pp]lan|[Tt]rack|[Rr]ound|[Rr]uling|[Ff]eedback|[Aa]udit),\s+(?:(?://|\*(?!/))\s*)?\d{4}-\d{2}-\d{2}|docs/[\w./-]*?\d{4}-\d{2}-\d{2}(?=-))\b|(?<=\*\s|//\s)\(\d{4}-\d{2}-\d{2}\))(?=(?:(?!\*/)[\s\S])*?\*/)'
+  # ERROR: the tree holds 0 findings for this id. See kiko-linter's "kiko-no-task-id-comment"
+  # section.
   - id: kiko-no-task-id-comment
     languages: [typescript]
     severity: ERROR

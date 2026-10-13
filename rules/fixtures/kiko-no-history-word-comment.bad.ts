@@ -99,6 +99,23 @@ export const asBeforeBlock = true;
 // EXPECT-FINDING
 export const asBeforeAfterCode = 1; // Everything else fails as before.
 
+// Known false positives of the "as before" member: it reads the words at a line end or before
+// "and" as the narrative whatever follows, so a noun phrase on the next line and a sentence about
+// both sides of a step are reported too. Reword such a comment, or keep the phrase mid-clause.
+// EXPECT-FINDING
+// The footer keeps its height as before
+// the sheet header grows.
+export const asBeforeAtLineEnd = true;
+
+// EXPECT-FINDING
+/* The footer keeps its height as before
+ * the sheet header grows. */
+export const asBeforeAtLineEndBlock = true;
+
+// EXPECT-FINDING
+// The count is the same as before and after the write.
+export const asBeforeAndAfter = true;
+
 // EXPECT-FINDING
 // was: 30
 export const wasLabelLine = 60;

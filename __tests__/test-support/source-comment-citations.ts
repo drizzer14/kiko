@@ -1,5 +1,7 @@
 import ts from 'typescript';
 
+import { lineCountBefore } from './markdown-code-spans';
+
 // The repo paths and migration file names that the comments of one source file name, for
 // cited-paths.test.ts. Comments come from the TypeScript parse, so a path inside a string, a
 // template or JSX text is never read as one.
@@ -8,7 +10,7 @@ export type Citation = { line: number; path: string };
 export type SourceComment = { line: number; text: string };
 
 const TREE_PATH_PATTERN =
-  /(?<![\w./~$-])(?:src|docs|rules|e2e|drizzle|scripts|__tests__)\/[\w./-]+\.\w+/g;
+  /(?<![\w./~$-])(?:src|docs|rules|e2e|harness|drizzle|scripts|__tests__|\.claude)\/[\w./-]+\.\w+/g;
 
 const MIGRATION_NAME_PATTERN = /(?<![\w-])\d{4}_[a-z0-9_]+\.sql(?!\w)/g;
 
@@ -43,12 +45,11 @@ const commentRanges = (sourceFile: ts.SourceFile): ts.CommentRange[] => {
   return [...ranges.values()].sort((first, second) => first.pos - second.pos);
 };
 
-const citationsInComment = (sourceFile: ts.SourceFile, range: ts.CommentRange): Citation[] => {
-  const comment = sourceFile.text.slice(range.pos, range.end);
-  const treePaths = [...comment.matchAll(TREE_PATH_PATTERN)];
+const citationsInComment = (comment: SourceComment): Citation[] => {
+  const treePaths = [...comment.text.matchAll(TREE_PATH_PATTERN)];
 
   // A migration path already names its file, so its bare name is not reported a second time.
-  const bareNames = [...comment.matchAll(MIGRATION_NAME_PATTERN)].filter(
+  const bareNames = [...comment.text.matchAll(MIGRATION_NAME_PATTERN)].filter(
     (name) =>
       !treePaths.some(
         (treePath) =>
@@ -58,16 +59,16 @@ const citationsInComment = (sourceFile: ts.SourceFile, range: ts.CommentRange): 
   );
 
   return [...treePaths, ...bareNames]
-    .map((match) => ({ offset: range.pos + (match.index ?? 0), path: match[0] }))
+    .map((match) => ({ offset: match.index ?? 0, path: match[0] }))
     .sort((first, second) => first.offset - second.offset)
     .map(({ offset, path }) => ({
-      line: sourceFile.getLineAndCharacterOfPosition(offset).line + 1,
+      line: comment.line + lineCountBefore(comment.text, offset),
       path,
     }));
 };
 
-const parsedSource = (fileName: string, text: string): ts.SourceFile =>
-  ts.createSourceFile(
+export const sourceComments = (fileName: string, text: string): SourceComment[] => {
+  const sourceFile = ts.createSourceFile(
     fileName,
     text,
     ts.ScriptTarget.Latest,
@@ -75,17 +76,11 @@ const parsedSource = (fileName: string, text: string): ts.SourceFile =>
     fileName.endsWith('.tsx') ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
   );
 
-export const sourceCommentCitations = (fileName: string, text: string): Citation[] => {
-  const sourceFile = parsedSource(fileName, text);
-
-  return commentRanges(sourceFile).flatMap((range) => citationsInComment(sourceFile, range));
-};
-
-export const sourceComments = (fileName: string, text: string): SourceComment[] => {
-  const sourceFile = parsedSource(fileName, text);
-
   return commentRanges(sourceFile).map((range) => ({
     line: sourceFile.getLineAndCharacterOfPosition(range.pos).line + 1,
     text: sourceFile.text.slice(range.pos, range.end),
   }));
 };
+
+export const sourceCommentCitations = (fileName: string, text: string): Citation[] =>
+  sourceComments(fileName, text).flatMap(citationsInComment);
