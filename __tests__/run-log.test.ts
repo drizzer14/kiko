@@ -14,10 +14,10 @@ import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
 import { execFileSync, spawnSync } from 'node:child_process';
 
-// harness/kiko/scripts/run-log.mjs is the plugin's run log (start / event / finish / stats). It
-// is a byte-identical port of the harness repo's plugin/scripts/run-log.mjs, so the CLI contract
-// pinned here is the harness repo's own. Every test spawns the script as a child process with
-// HARNESS_RUNS_DIR pointing at a temp dir, so nothing ever touches the real
+// harness/kiko/scripts/run-log.mjs is the plugin's run log (start / event / finish / gap /
+// stats). It is a byte-identical port of the harness repo's plugin/scripts/run-log.mjs, so the
+// CLI contract pinned here is the harness repo's own. Every test spawns the script as a child
+// process with HARNESS_RUNS_DIR pointing at a temp dir, so nothing ever touches the real
 // ~/.claude/harness-runs. Most run it with the cwd set to a throwaway local git repo (no remote
 // unless a test adds one, no network); the stats and consumer-line tests use a plain temp dir.
 // Stats fixtures are written straight into the runs dir so their timestamps can be old.
@@ -655,7 +655,7 @@ describe('event: wait gate', () => {
     const reasons = ['battery', 'load', 'usage-limit', 'user'];
 
     for (const reason of reasons) {
-      event(runs, repo, runId, ...waitFlags('--reason', reason, '--minutes', '5'));
+      event(runs, repo, runId, ...waitFlags('--reason', reason, '--minutes', '5', '--step', '1'));
     }
 
     const timedOut = [
@@ -665,8 +665,7 @@ describe('event: wait gate', () => {
       'timeout',
       '--reason',
       'load',
-      '--minutes',
-      '5',
+      ...['--minutes', '5', '--step', '1'],
     ];
     event(runs, repo, runId, ...timedOut);
 
@@ -698,12 +697,37 @@ describe('event: wait gate', () => {
     ];
 
     for (const args of bad) {
-      const result = run(runs, repo, 'event', '--run', runId, ...args);
+      // The step is given, so each case fails on its own flag and not on the missing step.
+      const result = run(runs, repo, 'event', '--run', runId, ...args, '--step', '1');
       expectStatus(result, 2, args.join(' '));
       expect(result.stderr).toContain('usage:');
     }
 
     expect(existsSync(join(runs, runId, 'events.jsonl'))).toBe(false);
+  });
+
+  test('a wait event with neither --step nor --group exits 2 and writes nothing', () => {
+    const { runs, repo, runId } = started();
+    const flags = waitFlags('--reason', 'battery', '--minutes', '30');
+    const result = run(runs, repo, 'event', '--run', runId, ...flags);
+
+    expectStatus(result, 2, 'wait without --step or --group');
+    expect(result.stderr).toContain('usage:');
+    expect(result.stderr).toContain('--step');
+    expect(result.stderr).toContain('--group');
+    expect(existsSync(join(runs, runId, 'events.jsonl'))).toBe(false);
+  });
+
+  test('a wait event with only --step or only --group is accepted', () => {
+    const { runs, repo, runId } = started();
+    const base = waitFlags('--reason', 'battery', '--minutes', '30');
+    ok(event(runs, repo, runId, ...base, '--step', '2'));
+    ok(event(runs, repo, runId, ...base, '--group', '1'));
+
+    expect(readEvents(runs, runId).map((line) => [line.step, line.group])).toEqual([
+      [2, null],
+      [null, 1],
+    ]);
   });
 
   test('--reason and --minutes on a gate other than wait exit 2 and write nothing', () => {
@@ -836,8 +860,7 @@ describe('finish', () => {
       'pass',
       '--reason',
       reason,
-      '--minutes',
-      minutes,
+      ...['--minutes', minutes, '--step', '1'],
     ];
     event(runs, repo, runId, ...wait('30', 'load'));
     event(runs, repo, runId, ...wait('450', 'battery'));
@@ -1554,6 +1577,24 @@ describe('gap', () => {
 
     expectStatus(gapCommand(runs, elsewhere, other, '--close', `${runId}/1`), 1, 'other repo');
     expect(existsSync(gapsFile(runs, 'other-repo'))).toBe(false);
+  });
+
+  test('a run.json whose repo is no slug exits 1 and writes nothing outside <root>/gaps', () => {
+    const { runs, repo, runId } = started();
+    const runFile = join(runs, runId, 'run.json');
+    writeFileSync(runFile, JSON.stringify({ ...readJson<RunRecord>(runFile), repo: '../escaped' }));
+    const before = readdirSync(runs).sort();
+
+    for (const args of [
+      ['--open', 'x'],
+      ['--close', `${runId}/1`],
+    ]) {
+      expectStatus(gapCommand(runs, repo, runId, ...args), 1, args.join(' '));
+    }
+
+    expect(existsSync(join(runs, 'escaped.jsonl'))).toBe(false);
+    expect(existsSync(join(runs, 'gaps'))).toBe(false);
+    expect(readdirSync(runs).sort()).toEqual(before);
   });
 
   test('a bad invocation exits 2 with usage and creates no gaps file', () => {

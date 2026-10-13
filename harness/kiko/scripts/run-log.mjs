@@ -37,8 +37,9 @@ const USAGE = `usage:
                     [--reason battery|load|usage-limit|user --minutes N]
       gate:    check|test|review|human|commit|deep|stall|retro|wait
       verdict: pass|fail|changes|approve|stall|timeout|skipped
-      wait:    logged when the wait ends; verdict pass|timeout, and --reason and --minutes N (N >= 1)
-               are required there and refused on any other gate
+      wait:    logged when the wait ends; verdict pass|timeout, and --reason, --minutes N (N >= 1)
+               and --step N or --group N are required there; --reason and --minutes are refused on
+               any other gate
   run-log.mjs finish --run <id> --outcome done|blocked|aborted [--recorded N] [--gaps N] [--archive <dir>]
   run-log.mjs gap --run <id> --open <text>              prints <runId>/<n>
   run-log.mjs gap --run <id> --close <gapId> [--note <text>]
@@ -231,7 +232,7 @@ function start(root, args) {
 
 // A wait line states why and for how long; any other gate states neither, so a stray flag is a
 // typo.
-function checkWaitFlags(flags, gate, minutes) {
+function checkWaitFlags(flags, gate, minutes, step, group) {
   if (gate !== 'wait') {
     if (flags.reason !== undefined || flags.minutes !== undefined) {
       throw usage('--reason and --minutes belong to --gate wait');
@@ -241,6 +242,11 @@ function checkWaitFlags(flags, gate, minutes) {
   oneOf(flags, 'verdict', WAIT_VERDICTS);
   oneOf(flags, 'reason', WAIT_REASONS);
   if (!(minutes >= 1)) throw usage('--minutes N (N >= 1) is required for --gate wait');
+  // A wait with no step or group lands in the `-` row, so the interrupted step's waiting would
+  // stay counted as Work.
+  if (step === null && group === null) {
+    throw usage('--step N or --group N is required for --gate wait');
+  }
 }
 
 function event(root, args) {
@@ -252,7 +258,7 @@ function event(root, args) {
   const [step, group, attempt, findings, mechanizable, minutes] = numbers.map((name) =>
     integer(flags, name),
   );
-  checkWaitFlags(flags, gate, minutes);
+  checkWaitFlags(flags, gate, minutes, step, group);
   const dir = runDir(root, flags);
   const line = {
     ...{ v: 1, ts: new Date().toISOString(), phase: flags.phase ?? null, step, group, gate },
