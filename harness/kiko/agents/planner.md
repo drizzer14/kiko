@@ -25,6 +25,8 @@ Rules:
   that shows the old result next to the new one.
 - A plan that adds a migration (even a pure CREATE INDEX) includes a `kiko:reviewer` step
   before BATCH READY and, for an index, an EXPLAIN QUERY PLAN test.
+- A plan's code facts name a symbol or anchor text, never a line number (the base moves and
+  lines go stale); tell the developer to re-grep every plan fact on the actual base.
 - Keep the plan tight: name each step, its files, and its check. No restating the code, no essays.
 - Report back by calling the SubagentHandback tool with {message: <your full report>} as your LAST
   action, in a turn with no prose before the call. Never write the report or the call as plain

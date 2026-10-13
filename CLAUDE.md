@@ -75,12 +75,15 @@ Composite scripts:
   names the change-set base sha, the run id, and the file count, counted
   with the gate's own filter, never by hand: `KIKO_MUTATION_BASE=<base sha>
   make mutable` (it runs `mutation.sh --list`) prints each file's changed-line ranges (or `whole file`),
-  `changed lines: N`, and `mutable files: N (cap …)`, exits 2 above the cap, and never starts
+  `changed lines: N`, and `mutable files: N (cap …)`, exits 2 above the cap, then a
+  `timeout share (history)` line, and never starts
   Stryker or takes its lock. The mutation step tees its output to a stable,
-  tailable progress log and prints an ETA from run history — a
-  per-mutant rate (seconds/mutant) derived from past runs, times this
-  run's actual mutant count, printed live the moment Stryker reports
-  that count — for a human to watch directly. The full never-poll rule
+  tailable progress log and prints an ETA from run history (shared by all
+  worktrees) — a split of normal-mutant cost and the timeout share at a fitted
+  timed-out cost, times this run's actual mutant count, printed live the moment
+  Stryker reports that count, then an "Estimate at N%" update at every 10% of
+  the run (the `harness_mutation_*` helpers in `scripts/checks/_lib.sh`) —
+  for a human to watch directly. The full never-poll rule
   (agents await only the exit code) lives in the `ops` skill — see it,
   and the `kiko-linter` skill, before running this yourself.
 

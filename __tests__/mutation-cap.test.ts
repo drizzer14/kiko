@@ -33,6 +33,7 @@ const ONE_FILE_LIST = [
   'src/changed-0.ts 1-1 (1 changed lines)',
   'changed lines: 1',
   'mutable files: 1 (cap 30)',
+  'timeout share (history): none',
   '',
 ].join('\n');
 
@@ -211,6 +212,7 @@ describe('scripts/checks/mutation.sh file cap', () => {
         'src/changed-2.ts 1-1 (1 changed lines)',
         'changed lines: 3',
         'mutable files: 3 (cap 30)',
+        'timeout share (history): none',
         '',
       ].join('\n'),
     );
@@ -238,6 +240,7 @@ describe('scripts/checks/mutation.sh file cap', () => {
         'src/db/render-condition.ts 1-1 (1 changed lines)',
         'changed lines: 2',
         'mutable files: 2 (cap 30)',
+        'timeout share (history): none',
         '',
       ].join('\n'),
     );
@@ -249,7 +252,9 @@ describe('scripts/checks/mutation.sh file cap', () => {
     const result = runWithArgumentStub(script, { KIKO_MUTATION_BASE: 'main' }, ['--list']);
 
     expect(result.code).toBe(0);
-    expect(result.stdout).toBe('changed lines: 0\nmutable files: 0 (cap 30)\n');
+    expect(result.stdout).toBe(
+      'changed lines: 0\nmutable files: 0 (cap 30)\ntimeout share (history): none\n',
+    );
   });
 
   it('--list prints the ranges of a modified file, a new file, and a whole kept file, then the sums', () => {
@@ -294,6 +299,7 @@ describe('scripts/checks/mutation.sh file cap', () => {
         'kept (colocated test changed): src/kept.ts',
         'changed lines: 10',
         'mutable files: 3 (cap 30)',
+        'timeout share (history): none',
         '',
       ].join('\n'),
     );

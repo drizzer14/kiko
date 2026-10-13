@@ -1,7 +1,14 @@
+import {
+  mkdirSync,
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  appendFileSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, appendFileSync, writeFileSync } from 'node:fs';
 
 import {
   writeFile,
@@ -11,6 +18,7 @@ import {
   mutateEntries,
   writeExecutable,
   writeStrykerStub,
+  mutationStateFile,
   runWithArgumentStub,
   buildMutationRepository,
   PASSING_REPORT_FOR_CHANGED_FILE,
@@ -61,6 +69,55 @@ const seedCorruptHistory = (temporaryDirectory: string): void => {
     encoding: 'utf8',
   });
 };
+
+const stateFile = (temporaryDirectory: string, kind: 'history' | 'files'): string =>
+  mutationStateFile(projectRoot(temporaryDirectory), temporaryDirectory, kind);
+
+// Lines that parse as no record at all, in either TSV: wrong field counts, text and negative
+// numbers, a number too big for a double, and a blank row.
+const HOSTILE_ROWS = [
+  'garbage',
+  'a\tb',
+  '\t\t\t\t\t',
+  '2026-09-10T10:00:00Z\tsrc/changed.ts\t-5\tnan',
+  '2026-09-10T10:00:00Z\t300\t1e999\t70\t99999999999999999999999\tmany',
+  '2026-09-10T10:00:00Z\tsrc/changed.ts\t1e999\t9999999999999999999999',
+].join('\n');
+
+const seedHostileRows = (temporaryDirectory: string): void => {
+  for (const kind of ['history', 'files'] as const) {
+    writeFileSync(stateFile(temporaryDirectory, kind), `${HOSTILE_ROWS}\n`);
+  }
+};
+
+// A stub that sleeps (so the run has a strictly-positive duration the history records), prints
+// the given Stryker lines, writes a passing report, and exits 0.
+const stubPrinting = (lines: string[]): string =>
+  [
+    '#!/usr/bin/env bash',
+    'printf "%s\\n" "$$" >> "$KIKO_STUB_CALLS"',
+    'sleep 1',
+    ...lines.map((line) => `echo "${line}"`),
+    PASSING_REPORT_FOR_CHANGED_FILE,
+    'exit 0',
+  ].join('\n');
+
+const runPrinting = (temporaryDirectory: string, lines: string[]) =>
+  runWithStub(
+    writeStrykerStub(temporaryDirectory, stubPrinting(lines)),
+    temporaryDirectory,
+    join(temporaryDirectory, 'calls'),
+  );
+
+const lastRecord = (temporaryDirectory: string): string[] =>
+  readFileSync(stateFile(temporaryDirectory, 'history'), 'utf8')
+    .split('\n')
+    .filter(Boolean)
+    .slice(-1)[0]
+    .split('\t');
+
+const DRY_RUN_LINE =
+  'Initial test run succeeded. Ran 9294 tests in 2 minutes 18 seconds (net 101106 ms, overhead 37176 ms).';
 
 // A stub that records each invocation (so a dedup test can count calls), prints
 // two distinctive lines, then exits with the given code.
@@ -150,11 +207,10 @@ describe('scripts/checks/mutation.sh streaming', () => {
     expect(result.stdout).toContain('No mutation history yet');
     // A completed positive-duration run is appended to the history TSV so the
     // NEXT run can estimate.
-    const match = result.stdout.match(/Watch live progress: {2}tail -f (\S+)/);
-    expect(match).not.toBeNull();
-    const historyFile = (match as RegExpMatchArray)[1].replace('progress.log', 'history.tsv');
+    const historyFile = stateFile(temporaryDirectory, 'history');
     expect(existsSync(historyFile)).toBe(true);
-    // Record shape: iso<TAB>duration<TAB>count<TAB>score — a strictly-positive duration.
+    // Record shape: iso<TAB>duration<TAB>count<TAB>score<TAB>tested<TAB>timedOut — a
+    // strictly-positive duration.
     const duration = Number(readFileSync(historyFile, 'utf8').split('\t')[1]);
     expect(duration).toBeGreaterThan(0);
   });
@@ -599,5 +655,197 @@ describe('scripts/checks/mutation.sh changed lines', () => {
     expect(result.stderr).toContain('mutation-ranges.js could not read the changed lines');
     expect(result.stderr).toContain('RANGES-SCRIPT-BROKE');
     expect(result.stubArguments).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Timeout-aware ETA: the counts a run records, and the estimates they feed.
+// ---------------------------------------------------------------------------
+
+const EARLY_PROGRESS =
+  'Mutation testing 10% (elapsed: ~1m, remaining: ~9m) 11/110 tested (1 survived, 4 timed out)';
+const LATE_PROGRESS =
+  'Mutation testing 50% (elapsed: ~5m, remaining: ~5m) 55/110 tested (5 survived, 20 timed out)';
+
+describe('scripts/checks/mutation.sh timeout counts in the history', () => {
+  it('records the counts of the last progress line, not of a test title after it', () => {
+    const temporaryDirectory = freshTemporaryDirectory();
+
+    const result = runPrinting(temporaryDirectory, [
+      EARLY_PROGRESS,
+      LATE_PROGRESS,
+      '  ✓ tallies the rules 1/2/3 case',
+    ]);
+
+    expect(result.code).toBe(0);
+    // iso, duration, mutants, score, tested, timed out.
+    expect(lastRecord(temporaryDirectory).slice(2)).toEqual(['110', '', '55', '20']);
+  });
+
+  it('leaves the timed-out field empty for a counter without a timeout clause', () => {
+    const temporaryDirectory = freshTemporaryDirectory();
+
+    runPrinting(temporaryDirectory, ['10/500 tested']);
+
+    expect(lastRecord(temporaryDirectory).slice(2)).toEqual(['500', '', '10', '']);
+  });
+
+  it.each([
+    ['passes', stubBody(0), 0],
+    ['fails', stubBody(1), 2],
+  ])(
+    'keeps the exit code of a run that %s when both TSV files hold only hostile rows',
+    (_title, body, exitCode) => {
+      const temporaryDirectory = freshTemporaryDirectory();
+      seedHostileRows(temporaryDirectory);
+
+      const result = runWithStub(
+        writeStrykerStub(temporaryDirectory, body),
+        temporaryDirectory,
+        join(temporaryDirectory, 'calls'),
+      );
+
+      expect(result.code).toBe(exitCode);
+      expect(result.stdout).toContain('No mutation history yet');
+    },
+  );
+
+  it.each(['history', 'files'] as const)(
+    'keeps the exit code when %s.tsv cannot be written',
+    (kind) => {
+      const temporaryDirectory = freshTemporaryDirectory();
+      mkdirSync(stateFile(temporaryDirectory, kind));
+
+      const result = runPrinting(temporaryDirectory, [LATE_PROGRESS]);
+
+      expect(result.code).toBe(0);
+      expect(result.stdout).toContain('CHANGE SET TOTAL: 100.00');
+    },
+  );
+});
+
+describe('scripts/checks/mutation.sh timeout-aware estimate', () => {
+  const writeConcurrency = (temporaryDirectory: string): void => {
+    writeFile(projectRoot(temporaryDirectory), 'stryker.conf.json', '{ "concurrency": 2 }\n');
+  };
+
+  it('splits the estimate by the fitted costs and the share of the changed file', () => {
+    const temporaryDirectory = freshTemporaryDirectory();
+    // 2 s per normal mutant, 40 s per timed-out one (the fit), rate = median(2, 21) = 11.5.
+    seedHistory(temporaryDirectory, [
+      '2026-09-10T10:00:00Z 200 100 70 100 0',
+      '2026-09-10T11:00:00Z 2100 100 70 100 50',
+    ]);
+    appendFileSync(
+      stateFile(temporaryDirectory, 'files'),
+      '2026-09-10T10:00:00Z\tsrc/changed.ts\t200\t50\n',
+    );
+    writeConcurrency(temporaryDirectory);
+
+    const result = runPrinting(temporaryDirectory, [
+      'Mutation testing 2% (elapsed: ~10s, remaining: ~9m) 10/500 tested (0 survived, 0 timed out)',
+    ]);
+
+    // 500 * (0.75 * 2 + 0.25 * 40) = 5750 s.
+    expect(result.stdout).toContain(
+      'Estimated ~95m 50s for 500 mutants (~2s/mutant, 25% timeouts at ~40s each, from history)',
+    );
+  });
+
+  it('updates the estimate from this run share with the configured floor when no fit exists', () => {
+    const temporaryDirectory = freshTemporaryDirectory();
+    seedHistory(temporaryDirectory, ['2026-09-10T10:00:00Z 600 300 70']);
+    writeConcurrency(temporaryDirectory);
+
+    const result = runPrinting(temporaryDirectory, [
+      DRY_RUN_LINE,
+      'Mutation testing 10% (elapsed: ~1m, remaining: ~9m) 100/1000 tested (9 survived, 40 timed out)',
+    ]);
+
+    expect(result.stdout).toContain(
+      'Estimated ~33m 20s for 1000 mutants (~2s/mutant from history)',
+    );
+    // floor = 2 + (5000 + 37176) / 1000 / 2 = 23.088; 900 * (0.6 * 2 + 0.4 * 23.088) = 9391.68 s.
+    expect(result.stdout).toContain('Estimate at 10%: ~156m 32s remaining (40% timeouts so far)');
+  });
+
+  it('estimates a run at the history timeout share as the history rate times the mutants', () => {
+    const temporaryDirectory = freshTemporaryDirectory();
+    // Two runs at one timeout share (40%) cannot be fitted, and each cost 17.2 s per mutant.
+    seedHistory(temporaryDirectory, [
+      '2026-09-10T10:00:00Z 17200 1000 70 1000 400',
+      '2026-09-10T11:00:00Z 8600 500 70 500 200',
+    ]);
+    writeConcurrency(temporaryDirectory);
+
+    const result = runPrinting(temporaryDirectory, [
+      DRY_RUN_LINE,
+      'Mutation testing 1% (elapsed: ~10s, remaining: ~9m) 10/1000 tested (0 survived, 4 timed out)',
+    ]);
+
+    // floor = (5000 + 37176) / 1000 / 2 = 21.088; a = 17.2 - 0.4 * 21.088 = 8.7648, b = 29.8528;
+    // 1000 * (0.6 * 8.7648 + 0.4 * 29.8528) = 17200 s, which is 1000 * 17.2.
+    expect(result.stdout).toContain(
+      'Estimated ~286m 40s for 1000 mutants (~8.7648s/mutant, 40% timeouts at ~29.8528s each, from history)',
+    );
+  });
+
+  it('keeps the estimate lines out of the progress log', () => {
+    const temporaryDirectory = freshTemporaryDirectory();
+    seedHistory(temporaryDirectory, ['2026-09-10T10:00:00Z 600 300 70']);
+
+    const result = runPrinting(temporaryDirectory, [LATE_PROGRESS]);
+    const logPath = /tail -f (\S+)/.exec(result.stdout)?.[1] ?? '';
+
+    expect(result.stdout).toContain('Estimated ~');
+    expect(readFileSync(logPath, 'utf8')).not.toContain('Estimate');
+  });
+});
+
+describe('scripts/checks/mutation.sh --list timeout share', () => {
+  const listWith = (fileRows: string[]) => {
+    const { root, script } = buildMutationRepository(
+      mkdtempSync(join(tmpdir(), 'kiko-mutrepo-')),
+      {
+        'src/alpha.ts': twelveLines({
+          3: 'export const edited3 = 0;',
+          4: 'export const edited4 = 0;',
+        }),
+        'src/beta.ts': twelveLines({ 6: 'export const edited6 = 0;' }),
+      },
+      { 'src/alpha.ts': twelveLines(), 'src/beta.ts': twelveLines() },
+    );
+    const temporaryDirectory = mkdtempSync(join(tmpdir(), 'kiko-mutation-state-'));
+
+    if (fileRows.length > 0) {
+      appendFileSync(
+        mutationStateFile(root, temporaryDirectory, 'files'),
+        `${fileRows.join('\n')}\n`,
+      );
+    }
+
+    return runWithArgumentStub(script, { KIKO_MUTATION_BASE: 'main', TMPDIR: temporaryDirectory }, [
+      '--list',
+    ]);
+  };
+
+  it('prints the line-weighted share of the changed files after the count', () => {
+    // alpha 10% over 2 lines, beta 40% over 1 line: (2 * 10 + 1 * 40) / 3 = 20.
+    const result = listWith([
+      '2026-09-10T10:00:00Z\tsrc/alpha.ts\t100\t10',
+      '2026-09-10T10:00:00Z\tsrc/beta.ts\t100\t40',
+    ]);
+
+    expect(result.code).toBe(0);
+    expect(result.stdout).toContain(
+      'changed lines: 3\nmutable files: 2 (cap 30)\ntimeout share (history): 20.0% (2 of 2 files)\n',
+    );
+  });
+
+  it('prints none when no history exists', () => {
+    const result = listWith([]);
+
+    expect(result.code).toBe(0);
+    expect(result.stdout).toContain('mutable files: 2 (cap 30)\ntimeout share (history): none\n');
   });
 });
