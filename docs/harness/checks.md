@@ -1,6 +1,6 @@
 # Checks, tiers, and hook wiring (detail)
 
-> Reference detail moved out of CLAUDE.md (2026-10-13) to keep the root harness doc lean. CLAUDE.md carries the short table and one line per hook deny and points here. This is the authoritative content; edit it here.
+> Authoritative; edit it here. CLAUDE.md carries the short table and one line per hook deny.
 
 ## Checks
 
@@ -32,11 +32,7 @@
 
 Composite scripts:
 
-- `npm run check:all` — the fast + medium tier checks, in order:
-  lint, dup, knip, deps, security, rules, plist, secrets, overrides,
-  import-order, full-word-identifiers, screen-imports, feature-imports,
-  blank-line-separation, comment-line-width, component-i18n-namespace, shipped-migrations, guard-replay, typecheck.
-  `__tests__/check-all-lists.test.ts` pins this list to `package.json` and the hooks.
+- `npm run check:all` — the fast + medium tier checks; the ordered list lives in CLAUDE.md "Composite scripts" (the one `__tests__/check-all-lists.test.ts` pins).
 - `npm run check:deep` — the heavy tier: mutation testing, then
   osv-scanner. It is not wired to any hook because it is slow; it is a
   manual checkpoint. **Mutation testing runs per SMALL change set only,

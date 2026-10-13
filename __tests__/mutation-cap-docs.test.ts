@@ -28,6 +28,7 @@ const DOCS_STATING_THE_CAP = [
   'harness/kiko/skills/harness-workflow/SKILL.md',
   'harness/kiko/agents/planner.md',
   'docs/harness/checks-internals.md',
+  'docs/harness/checks.md',
   'docs/plans/shares-property-metals-debts.md',
 ];
 

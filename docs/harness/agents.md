@@ -1,6 +1,6 @@
 # Harness agents (detail)
 
-> Reference detail moved out of CLAUDE.md (2026-10-13). CLAUDE.md names the agents and points here. This is the authoritative content; edit it here.
+> Authoritative; edit it here. CLAUDE.md names the agents and points here.
 
 ### The thirteen agents
 
@@ -36,9 +36,13 @@ and every other agent's output stay unaffected.
 
 ### Superpowers
 
-The plugin does not copy superpowers: its skills (`harness/kiko/skills/`)
-and agents point at the installed `superpowers` plugin's skills directly
-(test-driven-development, systematic-debugging, using-git-worktrees,
-requesting-code-review, writing-skills, dispatching-parallel-agents,
-brainstorming, writing-plans, executing-plans, subagent-driven-development,
-verification-before-completion, finishing-a-development-branch).
+The plugin does not copy superpowers. Its skills (the folders under
+`harness/kiko/skills/`) and its agents point at superpowers skills directly
+(`superpowers:test-driven-development`, `superpowers:systematic-debugging`,
+`superpowers:using-git-worktrees`, `superpowers:requesting-code-review`,
+`superpowers:writing-skills`, `superpowers:dispatching-parallel-agents`,
+`superpowers:brainstorming`, `superpowers:writing-plans`,
+`superpowers:executing-plans`, `superpowers:subagent-driven-development`,
+`superpowers:verification-before-completion`,
+`superpowers:finishing-a-development-branch`), reusing the installed
+`superpowers` plugin rather than duplicating any of its content.
