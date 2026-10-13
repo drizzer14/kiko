@@ -18,7 +18,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { writeExecutable } from './test-support/mutation-repository';
+import { buildMutationRepository, writeExecutable } from './test-support/mutation-repository';
 
 // scripts/job-queue.sh is the one in-repo queue for heavy jobs. Each test runs it against a
 // throwaway KIKO_QUEUE_DIR with `make`, `npm`, `caffeinate`, and `pmset` stubbed, so no real job
@@ -45,7 +45,17 @@ const TOOL_STUB = [
   '  printf "  force-color %s\\n" "$(printenv FORCE_COLOR || echo unset)"',
   '  printf "  base %s\\n" "$(printenv KIKO_MUTATION_BASE || echo unset)"',
   '} >> "$KIKO_STUB_CALLS"',
+  '[ -z "$(printenv KIKO_STUB_OUTPUT)" ] || printenv KIKO_STUB_OUTPUT',
   'exit "$(printenv KIKO_STUB_EXIT || echo 0)"',
+  '',
+].join('\n');
+
+// Records its own call, then runs the command it wraps, as the real `caffeinate -i <command>`.
+const CAFFEINATE_STUB = [
+  '#!/usr/bin/env bash',
+  'printf "caffeinate %s\\n" "$*" >> "$KIKO_STUB_CALLS"',
+  'shift',
+  'exec "$@"',
   '',
 ].join('\n');
 
@@ -55,6 +65,7 @@ const createSandbox = (): Sandbox => {
   mkdirSync(bin);
   writeExecutable(join(bin, 'make'), TOOL_STUB);
   writeExecutable(join(bin, 'npm'), TOOL_STUB);
+  writeExecutable(join(bin, 'caffeinate'), CAFFEINATE_STUB);
   writeExecutable(join(bin, 'pmset'), '#!/usr/bin/env bash\ncat "$KIKO_STUB_POWER"\n');
   writeFileSync(join(root, 'power'), AC_POWER);
 
@@ -68,6 +79,7 @@ const createSandbox = (): Sandbox => {
       KIKO_QUEUE_DIR: join(root, 'queue'),
       KIKO_QUEUE_POLL_SECONDS: '0.1',
       KIKO_QUEUE_PMSET: join(bin, 'pmset'),
+      KIKO_QUEUE_CAFFEINATE: join(bin, 'caffeinate'),
       KIKO_STUB_POWER: join(root, 'power'),
       KIKO_STUB_CALLS: join(root, 'calls'),
     },
@@ -381,6 +393,122 @@ describe('scripts/job-queue.sh job order', () => {
     expect(entriesOf(join(sandbox.queue, 'tickets'))).toEqual([
       expect.stringMatching(new RegExp(`^2-0000000007-\\d+-${waiter.child.pid}-gate$`)),
     ]);
+  });
+});
+
+describe('scripts/job-queue.sh a gate', () => {
+  it('runs make deep under caffeinate with the mutation base, logging to logs/', () => {
+    const sandbox = createSandbox();
+    const gate = createGateWorktree(sandbox, 'gate', listing(12));
+    sandbox.environment.KIKO_STUB_OUTPUT = 'noise\nCHANGE SET 80\nGATE: PASS';
+
+    const result = runQueue(sandbox, 'gate', gate.worktree, 'gate', 'abc1234base', gate.head);
+
+    expect(result.status).toBe(0);
+    expect(readLines(sandbox.environment.KIKO_STUB_CALLS as string)).toEqual([
+      `caffeinate -i make -C ${gate.worktree} deep`,
+      `make -C ${gate.worktree} deep`,
+      expect.stringMatching(/^ {2}cwd /),
+      '  force-color unset',
+      '  base abc1234base',
+    ]);
+    expect(readLines(join(sandbox.queue, 'logs', 'gate-gate.log'))).toEqual([
+      'noise',
+      'CHANGE SET 80',
+      'GATE: PASS',
+    ]);
+    expect(result.stdout).toContain('GATE: PASS');
+    expect(result.stdout).not.toContain('noise');
+  });
+
+  it('runs make directly when caffeinate is absent', () => {
+    const sandbox = createSandbox();
+    const gate = createGateWorktree(sandbox, 'gate', listing(12));
+    sandbox.environment.KIKO_QUEUE_CAFFEINATE = join(sandbox.root, 'no-such-caffeinate');
+
+    const result = runQueue(sandbox, 'gate', gate.worktree, 'gate', 'main', gate.head);
+
+    expect(result.status).toBe(0);
+    expect(readLines(sandbox.environment.KIKO_STUB_CALLS as string)[0]).toBe(
+      `make -C ${gate.worktree} deep`,
+    );
+  });
+
+  it('removes the Stryker incremental report and temporary directory before the run', () => {
+    const sandbox = createSandbox();
+    const gate = createGateWorktree(sandbox, 'gate', listing(12));
+    mkdirSync(join(gate.worktree, 'reports'));
+    writeFileSync(join(gate.worktree, 'reports/stryker-incremental.json'), '{}');
+    writeFileSync(join(gate.worktree, 'reports/mutation.json'), '{}');
+    mkdirSync(join(gate.worktree, '.stryker-tmp'));
+    writeFileSync(join(gate.worktree, '.stryker-tmp/sandbox'), 'x');
+
+    runQueue(sandbox, 'gate', gate.worktree, 'gate', 'main', gate.head);
+
+    expect(existsSync(join(gate.worktree, 'reports/stryker-incremental.json'))).toBe(false);
+    expect(existsSync(join(gate.worktree, '.stryker-tmp'))).toBe(false);
+    expect(existsSync(join(gate.worktree, 'reports/mutation.json'))).toBe(true);
+  });
+
+  it('accepts an abbreviated expected head', () => {
+    const sandbox = createSandbox();
+    const gate = createGateWorktree(sandbox, 'gate', listing(12));
+
+    const result = runQueue(sandbox, 'gate', gate.worktree, 'gate', 'main', gate.head.slice(0, 9));
+
+    expect(result.status).toBe(0);
+    expect(startedWorktrees(sandbox)).toEqual([gate.worktree]);
+  });
+
+  it('reads the size from the real mutation.sh --list output', () => {
+    const sandbox = createSandbox();
+    const { root } = buildMutationRepository(join(sandbox.root, 'real'), {
+      'src/changed.ts': 'export const changed = 1;\n',
+    });
+    const head = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim();
+
+    const result = runQueue(sandbox, 'gate', root, 'real', 'main', head);
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toMatch(/^QUEUED real \(gate, size 1\)/m);
+  });
+});
+
+describe('scripts/job-queue.sh gate refusals', () => {
+  it('exits 2 without a ticket when --list exits 2 (above the cap)', () => {
+    const sandbox = createSandbox();
+    const gate = createGateWorktree(sandbox, 'gate', ['mutable files: 31 (cap 30)'], 2);
+
+    const result = runQueue(sandbox, 'gate', gate.worktree, 'gate', 'main', gate.head);
+
+    expect(result.status).toBe(2);
+    expect(result.stderr).toContain('mutation.sh --list exited 2');
+    expect(entriesOf(join(sandbox.queue, 'tickets'))).toEqual([]);
+    expect(startedWorktrees(sandbox)).toEqual([]);
+  });
+
+  it('exits 2 and says to merge main when --list prints no changed-lines line', () => {
+    const sandbox = createSandbox();
+    const gate = createGateWorktree(sandbox, 'gate', ['mutable files: 1 (cap 30)']);
+
+    const result = runQueue(sandbox, 'gate', gate.worktree, 'gate', 'main', gate.head);
+
+    expect(result.status).toBe(2);
+    expect(result.stderr).toContain('merge main');
+    expect(entriesOf(join(sandbox.queue, 'tickets'))).toEqual([]);
+  });
+
+  it('exits 3 without calling make, and releases the lock, when HEAD is not the expected one', () => {
+    const sandbox = createSandbox();
+    const gate = createGateWorktree(sandbox, 'gate', listing(12));
+
+    const result = runQueue(sandbox, 'gate', gate.worktree, 'gate', 'main', 'deadbee');
+
+    expect(result.status).toBe(3);
+    expect(result.stderr).toContain('HEAD moved');
+    expect(startedWorktrees(sandbox)).toEqual([]);
+    expect(existsSync(join(sandbox.queue, 'lock'))).toBe(false);
+    expect(entriesOf(join(sandbox.queue, 'tickets'))).toEqual([]);
   });
 });
 

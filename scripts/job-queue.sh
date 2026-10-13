@@ -134,6 +134,38 @@ owns_lock=1
 printf '%s %s %s %s\n' "$$" "$command_name" "$label" "$worktree" > "$LOCK_DIRECTORY/owner"
 rm -f "$ticket_path"
 
+# A gate mutates the tip it was queued for, so a worktree that moved while the gate waited is
+# refused: the queue never checks out another commit. The stale Stryker state of an earlier run
+# is removed so the run starts from the diff, not from a half-finished one.
+prepare_gate() {
+  local actual_head
+  actual_head="$(git -C "$worktree" rev-parse HEAD 2>/dev/null)"
+  case "$actual_head" in
+    "$expected_head"*) ;;
+    *)
+      printf 'job-queue.sh: HEAD moved: %s is at %s, not %s; re-queue the gate.\n' \
+        "$worktree" "${actual_head:-unknown}" "$expected_head" >&2
+      exit 3
+      ;;
+  esac
+  rm -f "$worktree/reports/stryker-incremental.json"
+  rm -rf "$worktree/.stryker-tmp"
+}
+
+# caffeinate keeps the Mac awake for the run; a machine without it runs make directly.
+start_gate_job() {
+  local caffeinate_binary="${KIKO_QUEUE_CAFFEINATE:-caffeinate}"
+  gate_log="$QUEUE_DIRECTORY/logs/gate-$label.log"
+  mkdir -p "$QUEUE_DIRECTORY/logs"
+  if command -v "$caffeinate_binary" > /dev/null 2>&1; then
+    env -u FORCE_COLOR KIKO_MUTATION_BASE="$mutation_base" "$caffeinate_binary" -i \
+      make -C "$worktree" deep > "$gate_log" 2>&1 &
+  else
+    env -u FORCE_COLOR KIKO_MUTATION_BASE="$mutation_base" \
+      make -C "$worktree" deep > "$gate_log" 2>&1 &
+  fi
+}
+
 # The job runs in the background and the script waits on it, so a trapped signal interrupts the
 # wait at once instead of after the job. FORCE_COLOR breaks the node -p fingerprint stamps, so
 # every job runs without it.
@@ -142,7 +174,7 @@ run_job() {
     verify) env -u FORCE_COLOR make -C "$worktree" verify & ;;
     check-all) env -u FORCE_COLOR npm --prefix "$worktree" run check:all & ;;
     security) (cd "$worktree" && exec env -u FORCE_COLOR npm run check:security) & ;;
-    gate) env -u FORCE_COLOR KIKO_MUTATION_BASE="$mutation_base" make -C "$worktree" deep & ;;
+    gate) start_gate_job ;;
   esac
   job=$!
   wait "$job"
@@ -150,9 +182,12 @@ run_job() {
   job=''
 }
 
+[ "$command_name" = gate ] && prepare_gate
 started_at="$(iso_stamp)"
 printf 'START %s at %s\n' "$label" "$(clock_time)"
 run_job
+[ "$command_name" = gate ] \
+  && grep -E 'changed lines|CHANGE SET|GATE:|CHECK FAILED' "$gate_log" | tail -5
 printf '%s %s %s %s %s\n' "$command_name" "$label" "$job_code" "$started_at" "$(iso_stamp)" \
   >> "$QUEUE_DIRECTORY/done.log"
 printf 'DONE %s exit %s at %s\n' "$label" "$job_code" "$(clock_time)"
