@@ -1,7 +1,7 @@
 import { match } from 'ts-pattern';
 import { parseAmount } from '@kiko/currency/parse';
 import { Money, toMajor } from '@kiko/currency/money';
-import type { Currency } from '@kiko/currency/currency';
+import { type Currency, currencyScale } from '@kiko/currency/currency';
 import { normalizeTransactionName } from '@kiko/transactions/normalize-name';
 import { groupAmount, majorAmountText } from '@kiko/screens/forms/amount-format';
 import { type CategoryRuleMatcher, MINUTES_PER_HOUR } from '@kiko/categories/category-rules';
@@ -59,21 +59,30 @@ const nameOutcome = (type: 'nameIs' | 'nameStartsWith', text: string): DraftOutc
     ? { error: 'errorName' }
     : { matcher: { type, text: text.trim() } };
 
+// A currency of no decimals gets its own message: "up to 0 decimal places" reads wrong.
+const decimalsError = (digits: number): MatcherDraftError =>
+  digits === 0 ? 'errorAmountWholeOnly' : { kind: 'errorAmountDecimals', digits };
+
 // The amount is the typed number through the currency's own scale. It must come back unchanged
 // from minor units, so a digit past the scale (1.005 in a currency of two decimals) is refused
 // instead of silently rounded away, and so is a number too large to hold as a whole minor unit.
+// One input gets one reason, checked in this order: below zero (a blank or non-number amount
+// included, which parses to NaN), too large, then too many decimals.
 const amountOutcome = ({ amountText, amountOperator, currency }: MatcherDraft): DraftOutcome => {
   const major = parseAmount(amountText);
   const { minorUnits } = Money.fromMajor(currency, major);
-  const isExact =
-    major >= 0 &&
-    !Object.is(major, -0) &&
-    Number.isSafeInteger(minorUnits) &&
-    toMajor(minorUnits, currency) === major;
 
-  return isExact
+  if (!(major >= 0) || Object.is(major, -0)) {
+    return { error: 'errorAmountNegative' };
+  }
+
+  if (!Number.isSafeInteger(minorUnits)) {
+    return { error: 'errorAmountTooLarge' };
+  }
+
+  return toMajor(minorUnits, currency) === major
     ? { matcher: { type: 'amount', operator: amountOperator, minorUnits, currency } }
-    : { error: 'errorAmount' };
+    : { error: decimalsError(currencyScale[currency]) };
 };
 
 const outcomeOf = (draft: MatcherDraft): DraftOutcome =>

@@ -20,8 +20,14 @@ export type MatcherDraft = {
   minuteOfDay: number;
 };
 
-// The inline error a refused row shows, as the `ruleForm` key it reads.
-export type MatcherDraftError = 'errorName' | 'errorAmount';
+// The inline error a refused row shows, as the `ruleForm` key it reads. The decimals error carries
+// the digits the currency allows, so the message and the check read one scale.
+export type MatcherDraftError =
+  | 'errorName'
+  | 'errorAmountNegative'
+  | 'errorAmountTooLarge'
+  | 'errorAmountWholeOnly'
+  | { kind: 'errorAmountDecimals'; digits: number };
 
 export type DraftConversion =
   | { kind: 'valid'; matchers: CategoryRuleMatcher[] }

@@ -43,10 +43,15 @@ type DraftRow = { key: string; draft: MatcherDraft };
 const keyedRow = (draft: MatcherDraft): DraftRow => ({ key: id(), draft });
 
 const rowErrorMessage = (error: MatcherDraftError | undefined, t: TFunction): string | undefined =>
-  foldMap(maybe(error), (kind) =>
-    match(kind)
+  foldMap(maybe(error), (refusal) =>
+    match(refusal)
       .with('errorName', () => t('ruleForm.errorName'))
-      .with('errorAmount', () => t('ruleForm.errorAmount'))
+      .with('errorAmountNegative', () => t('ruleForm.errorAmountNegative'))
+      .with('errorAmountTooLarge', () => t('ruleForm.errorAmountTooLarge'))
+      .with('errorAmountWholeOnly', () => t('ruleForm.errorAmountWholeOnly'))
+      .with({ kind: 'errorAmountDecimals' }, ({ digits }) =>
+        t('ruleForm.errorAmountDecimals', { count: digits }),
+      )
       .exhaustive(),
   );
 

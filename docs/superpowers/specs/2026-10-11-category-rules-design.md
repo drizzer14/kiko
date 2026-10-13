@@ -269,7 +269,10 @@ Name, icon, colour (the existing inline controls moved here), Create mode: the s
 | ruleForm.time / before / after | Time / Before / After | Час / До / Після |
 | ruleForm.errorNoMatchers | Add at least one condition. | Додайте хоча б одну умову. |
 | ruleForm.errorName | Enter a name. | Введіть назву. |
-| ruleForm.errorAmount (pending the user's review; overnight default) | Enter an amount of 0 or more, with no more decimals than the currency allows. | Введіть суму від 0, не більше знаків після коми, ніж має валюта. |
+| ruleForm.errorAmountNegative (a blank or non-number amount uses it too) | Enter an amount of 0 or more. | Введіть суму від 0. |
+| ruleForm.errorAmountTooLarge | This amount is too large. | Ця сума завелика. |
+| ruleForm.errorAmountWholeOnly (a currency of 0 decimals) | For this currency, you can enter only a whole amount. | Для цієї валюти можна ввести лише цілу суму. |
+| ruleForm.errorAmountDecimals_one/few/many/other (count = the currency's minor-unit digits, never 0) | This currency allows up to {{count}} decimal place(s). | У цій валюті не більше {{count}} знака/знаків після коми. |
 | ruleForm.errorNeverMatches | These conditions can never match together. | Ці умови не можуть збігтися разом. |
 | ruleForm.errorNeverMatchesTime (pending the user's review; overnight default) | These times can never match together. For a window over midnight, use two rules. | Ці значення часу не можуть збігтися разом. Для проміжку через північ створіть два правила. |
 | ruleForm.timeHint (pending the user's review; overnight default) | Statement rows without a time count as noon in the statement's time zone. | Рядки виписки без часу рахуються як полудень у часовому поясі виписки. |

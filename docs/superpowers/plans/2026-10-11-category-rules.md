@@ -34,7 +34,7 @@
 2. A rule that can never match on its own or in combination beyond decision 8's list: `before 00:00`, `amount < 0`, `amount = 0` with a direction, two different `nameIs` texts, a `nameIs` that does not start with the rule's `nameStartsWith`. The editor refuses it as "never matches". Pinned in task 1/6 (`validate-rule.test.ts`).
 3. A name typed in NFD (decomposed "Café") against a rule typed in NFC ("Café"): match. Pinned in task 1/6 (matrix row M24b).
 4. A sync batch row whose holding currency read returns nothing (holding missing): name and direction rules still apply, amount rules do not, nothing throws. Pinned in task 2/6 step 5.
-5. The rule editor amount field with more decimals than the currency scale (500.123 UAH, 0.000000001 BTC): refused inline (`errorAmount`), never rounded. Pinned in task 5/6 step 3 (`rule-draft.test.ts`).
+5. The rule editor amount field with more decimals than the currency scale (500.123 UAH, 0.000000001 BTC): refused inline (`errorAmountDecimals`, count = the currency's digits; `errorAmountWholeOnly` for a 0-decimal currency), never rounded. Pinned in task 5/6 step 3 (`rule-draft.test.ts`).
 
 ## Migration index (read before task 2/6)
 
@@ -451,7 +451,7 @@ transactionsRepo.recordManualWithReturns(input: ManualWithReturnsInput /*, along
 - Create: `src/screens/forms/category-rule-form/rule-rewrite-sheet/rule-rewrite-sheet.component.tsx` (+ props, index, test; the `BottomSheet` + buttons pattern of `category-override-sheet/`)
 - Modify: `src/screens/settings/category-detail/category-detail.screen.tsx` ("Add rule" button with a leading symbol; tap on a rule card opens the editor; empty-state hint `categoryPage.emptyRules`)
 - Modify: `settings.stack.tsx`, `types.d.ts` (`CategoryRuleForm: { categoryKey: string; ruleId?: string }`)
-- Modify: `en.ts`, `uk.ts`: `categoryPage.addRule`, `categoryPage.emptyRules`, `ruleForm.addTitle/editTitle/addMatcher/allMustMatch/amount/direction/time/errorNoMatchers/errorName/errorAmount/errorNeverMatches/errorDuplicate`, `ruleRewrite.title/message_one/few/many/other/applyToExisting/newOnly`, and NEW `ruleForm.timeHint` (decision 15; shipped en/uk texts in `src/i18n/locales/en.ts` and `uk.ts` say the rows count as noon; the user confirms the wording). "Matcher" reads "condition" / "умова" (the user confirms).
+- Modify: `en.ts`, `uk.ts`: `categoryPage.addRule`, `categoryPage.emptyRules`, `ruleForm.addTitle/editTitle/addMatcher/allMustMatch/amount/direction/time/errorNoMatchers/errorName/errorAmountNegative/errorAmountTooLarge/errorAmountWholeOnly/errorAmountDecimals (plural)/errorNeverMatches/errorDuplicate`, `ruleRewrite.title/message_one/few/many/other/applyToExisting/newOnly`, and NEW `ruleForm.timeHint` (decision 15; shipped en/uk texts in `src/i18n/locales/en.ts` and `uk.ts` say the rows count as noon; the user confirms the wording). "Matcher" reads "condition" / "умова" (the user confirms).
 - Mutable count: about 8.
 
 **Interfaces (produces):**
@@ -466,7 +466,8 @@ type MatcherDraft = { type: CategoryRuleMatcher['type']; text: string; amountOpe
 export const toMatcherDrafts: (matchers: readonly CategoryRuleMatcher[], baseCurrency: Currency) => MatcherDraft[];
 export const fromMatcherDrafts: (drafts: readonly MatcherDraft[]) =>
   | { kind: 'valid'; matchers: CategoryRuleMatcher[] }
-  | { kind: 'invalid'; errors: ReadonlyMap<number, 'errorName' | 'errorAmount'> };
+  // MatcherDraftError: read it in rule-draft.types.d.ts
+  | { kind: 'invalid'; errors: ReadonlyMap<number, MatcherDraftError> };
 ```
 
 - [ ] **Step 1/7: Repo tests first** (real engine):
@@ -486,7 +487,7 @@ export const fromMatcherDrafts: (drafts: readonly MatcherDraft[]) =>
 
   Run: `npx jest src/categories/category-rules-repo` -> FAIL. Implement (`saveRule`: one `write`: insert or update with `updated_at = now`, then `rewriteForRuleDatabaseTransaction` when `applyToExisting`). Run -> PASS.
 - [ ] **Step 2/7: Apply-on-edit source row case (decision 17).** Add a test for "Apply" on an edit where a stronger rule wins the source row: with a 2-matcher rule of category A that wins the row, "Apply" with category B creates/updates the one-matcher nameIs rule for B, the source row gets B with category_set_by_hand = 1, and the other same-name rows that the A rule wins keep A; a same-name row where no stronger rule wins gets B with flag 0.
-- [ ] **Step 3/7: `rule-draft` tests first:** each type round-trips; amount text through `Money.fromMajor` with the draft currency, exact; more decimals than `currencyScale` -> `errorAmount` (Review Focus 5); negative or blank amount -> `errorAmount`; blank name -> `errorName`; default currency = base currency. Run -> FAIL; implement; PASS.
+- [ ] **Step 3/7: `rule-draft` tests first:** each type round-trips; amount text through `Money.fromMajor` with the draft currency, exact; more decimals than `currencyScale` -> `errorAmountDecimals` (digits), or `errorAmountWholeOnly` at scale 0 (Review Focus 5); negative, blank or non-number amount -> `errorAmountNegative`; too large -> `errorAmountTooLarge`; blank name -> `errorName`; default currency = base currency. Run -> FAIL; implement; PASS.
 - [ ] **Step 4/7: Editor tests first** (`category-rule-form.screen.test.tsx`, `use-save-rule.test.ts`): starts with one matcher row (create) or the rule's rows (edit); type select switches the input (name field / operator + amount + currency select / Expense-Income segment / Before-After segment + `TimeField` with `ruleForm.timeHint`); "Add matcher" adds a row; remove control on every row but the last; hint `ruleForm.allMustMatch`; Save: `noMatchers` / `neverMatches` (M23) / `duplicate` (names the other category) errors inline, nothing saved; N = 0 -> saves directly, no sheet (decision 11); N > 0 -> sheet "This changes N transactions" with "Apply to existing" (`applyToExisting: true`), "New transactions only" (`false`), Cancel (back to the editor, nothing saved); the editor has no Delete (a rule is deleted from its card's hold menu, spec §9.4); a double tap saves once (`useSubmitOnce`). Run -> FAIL; implement; PASS.
 - [ ] **Step 5/7: Category page tests** (extend): "Add rule" opens the editor in create mode; a tap on a readable rule card opens it in edit mode; the empty state shows `categoryPage.emptyRules`. Run -> FAIL; implement; PASS.
 - [ ] **Step 6/7: Commit:** `feat(categories): rule editor with the retroactive rewrite`.
