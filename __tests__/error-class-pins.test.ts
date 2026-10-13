@@ -32,8 +32,23 @@ const pinsName = (testSource: string, className: string): boolean =>
 const pinsMessage = (testSource: string): boolean =>
   /\.message\)\.(toBe|toEqual|toMatch|toContain)\(|\bmessage:\s*['"`]/.test(testSource);
 
+// A `.message` assertion in another `it` block can belong to another class, so the message pin
+// must share the name pin's block or be made on `new ClassName(...)` itself.
+const testBlocksOf = (testSource: string): string[] =>
+  testSource.split(/^\s*(?=(?:it|test)(?:\.each\b[^\n]*)?\()/m);
+
+const pinsMessageOfNewInstance = (testSource: string, className: string): boolean =>
+  new RegExp(
+    `new ${className}\\((?:[^()]|\\((?:[^()]|\\([^()]*\\))*\\))*\\)\\.message\\)\\.(toBe|toEqual|toMatch|toContain)\\(`,
+  ).test(testSource);
+
 const isPinned = (className: string, testSources: string[]): boolean =>
-  testSources.some((source) => pinsName(source, className) && pinsMessage(source));
+  testSources.some(
+    (source) =>
+      pinsName(source, className) &&
+      (testBlocksOf(source).some((block) => pinsName(block, className) && pinsMessage(block)) ||
+        pinsMessageOfNewInstance(source, className)),
+  );
 
 describe('errorClassesIn', () => {
   it('lists a class with a constructor body', () => {
@@ -95,6 +110,34 @@ describe('isPinned', () => {
 
   it('rejects an instanceof check, which pins neither', () => {
     expect(isPinned('OneError', ['expect(error).toBeInstanceOf(OneError);'])).toBe(false);
+  });
+
+  it('rejects a name pin in one it block and a message pin in another it block of the same file', () => {
+    expect(
+      isPinned('OneError', [
+        "it('names it', () => {\n  expect(new OneError().name).toBe('OneError');\n});\n\n" +
+          "it('words another', () => {\n  expect(new OtherError().message).toBe('text');\n});",
+      ]),
+    ).toBe(false);
+  });
+
+  it('accepts a message pin made on a new instance of the class in another it block', () => {
+    expect(
+      isPinned('OneError', [
+        "it('words it', () => {\n  expect(new OneError(418, { a: f() }).message).toBe('text');\n});\n\n" +
+          "it('names it', () => {\n  expect(new OneError().name).toBe('OneError');\n});",
+      ]),
+    ).toBe(true);
+  });
+
+  it('accepts a name pin and a message pin in one it block among others', () => {
+    expect(
+      isPinned('OneError', [
+        "it('other', () => {\n  expect(new OtherError().message).toBe('text');\n});\n\n" +
+          "it('pins it', () => {\n  const error = new OneError();\n" +
+          "  expect(error.name).toBe('OneError');\n  expect(error.message).toBe('text');\n});",
+      ]),
+    ).toBe(true);
   });
 
   it('rejects a name pin in one file and a message pin in another', () => {

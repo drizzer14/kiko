@@ -1,12 +1,8 @@
 import { tmpdir } from 'node:os';
-import { basename, dirname } from 'node:path';
-import { existsSync, symlinkSync } from 'node:fs';
+import { basename, dirname, join } from 'node:path';
+import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 
-import {
-  createTemporaryDirectory,
-  removeTemporaryDirectories,
-  trackTemporaryPath,
-} from './temporary-directory';
+import { createTemporaryDirectory, removeTemporaryDirectories } from './temporary-directory';
 
 afterEach(() => {
   removeTemporaryDirectories();
@@ -29,22 +25,30 @@ describe('createTemporaryDirectory', () => {
 });
 
 describe('removeTemporaryDirectories', () => {
-  it('removes every directory created so far and a tracked path', () => {
+  it('removes every directory created so far, with its content', () => {
     const first = createTemporaryDirectory('kiko-helper-test-');
     const second = createTemporaryDirectory('kiko-helper-test-');
-    const link = `${createTemporaryDirectory('kiko-helper-test-')}-link`;
-    symlinkSync(first, link);
-    trackTemporaryPath(link);
+    writeFileSync(join(first, 'file.txt'), 'content');
 
     removeTemporaryDirectories();
 
-    expect([first, second, link].map((path) => existsSync(path))).toEqual([false, false, false]);
+    expect([first, second].map((path) => existsSync(path))).toEqual([false, false]);
   });
 
-  it('removes nothing the second time, so a repeated call is safe', () => {
-    createTemporaryDirectory('kiko-helper-test-');
+  it('forgets a directory once removed, so a second call leaves a path made later alone', () => {
+    const directory = createTemporaryDirectory('kiko-helper-test-');
+    removeTemporaryDirectories();
+    mkdirSync(directory);
 
     removeTemporaryDirectories();
+
+    expect(existsSync(directory)).toBe(true);
+    rmSync(directory, { recursive: true });
+  });
+
+  it('skips a directory that is already gone', () => {
+    const directory = createTemporaryDirectory('kiko-helper-test-');
+    rmSync(directory, { recursive: true });
 
     expect(() => removeTemporaryDirectories()).not.toThrow();
   });

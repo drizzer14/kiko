@@ -4,15 +4,11 @@ import { readdirSync, readFileSync } from 'node:fs';
 // A pre-write-guard test that asserts on elapsed time fails under machine load (Stryker, a second
 // jest worker, a busy laptop), because load skews timing with no real regression. A test must
 // prove concurrency or speed by counting work or by a rendezvous between stubs, never by a clock.
-// The one clock use left is a unique name, `${Date.now()}` directly inside a template literal.
+// A unique name comes from createTemporaryDirectory, never from a clock reading.
 const TESTS_DIRECTORY = __dirname;
 
 // The text of a rule fixture, not a measurement: the rule under test reads it as code.
 const RULE_FIXTURE_LINES = ["'export const tomorrow = (): number => Date.now() + DAY_MS;',"];
-
-// Only the whole substitution `${Date.now()}` is a name, so a `${Date.now() - start}` delta still
-// reads as a clock.
-const UNIQUE_NAME_SUBSTITUTION = '${Date.now()}';
 
 const CLOCK_READINGS = [
   { reading: 'Date.now()', pattern: /Date\.now\b/g },
@@ -25,10 +21,7 @@ const CLOCK_READINGS = [
 ];
 
 const clockReadingsIn = (source: string): string[] => {
-  const measured = [...RULE_FIXTURE_LINES, UNIQUE_NAME_SUBSTITUTION].reduce(
-    (text, line) => text.replaceAll(line, ''),
-    source,
-  );
+  const measured = RULE_FIXTURE_LINES.reduce((text, line) => text.replaceAll(line, ''), source);
 
   return CLOCK_READINGS.filter(({ pattern }) => measured.match(pattern) !== null).map(
     ({ reading }) => reading,
@@ -60,7 +53,6 @@ describe('pre-write-guard tests assert on no clock delta', () => {
     ['a shell date +%s', 'start=$(date +%s)', ['a shell clock']],
     ['a shell date "+%s"', 'start=$(date "+%s")', ['a shell clock']],
     ['a Date.now() delta inside an interpolation', 'log(`${Date.now() - start}`);', ['Date.now()']],
-    ['a Date.now() read ahead of other text', 'log(`${Date.now()}ms`);', []],
     ['a Date.now() stored without a call', 'const clock = Date.now;', ['Date.now()']],
     ['a Date coerced by a unary plus', 'const start = +new Date;', ['new Date()']],
     ['a Date called as a function', 'const stamp = Date();', ['new Date()']],
@@ -69,9 +61,12 @@ describe('pre-write-guard tests assert on no clock delta', () => {
     ['a shell date -u +%s', 'start=$(date -u +%s)', ['a shell clock']],
     ['a shell date +"%s"', 'start=$(date +"%s")', ['a shell clock']],
     ['a shell date with a calendar format', 'stamp=$(date +%Y-%m-%d)', []],
-    ['a Date.now() used as a unique name', 'join(tmpdir(), `link-${Date.now()}`)', []],
-    ['a Date.now() after another interpolation', '`x-${process.pid}-${Date.now()}`', []],
     ['a Date.now() in a rule fixture', RULE_FIXTURE_LINES[0], []],
+    [
+      'a stub string stamping a Date.now() per run',
+      'const stub = `echo ${Date.now()} >> "$STAMP_FILE"`;',
+      ['Date.now()'],
+    ],
   ])('finds the clock readings of %s', (_label, source, expected) => {
     expect(clockReadingsIn(source)).toEqual(expected);
   });

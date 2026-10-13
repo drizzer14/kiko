@@ -4,13 +4,9 @@ import { mkdtempSync, rmSync } from 'node:fs';
 
 const createdPaths: string[] = [];
 
-export const trackTemporaryPath = (path: string): void => {
-  createdPaths.push(path);
-};
-
 export const createTemporaryDirectory = (prefix: string): string => {
   const directory = mkdtempSync(join(tmpdir(), prefix));
-  trackTemporaryPath(directory);
+  createdPaths.push(directory);
 
   return directory;
 };

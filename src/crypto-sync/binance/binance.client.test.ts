@@ -116,6 +116,13 @@ describe('fetchAccount', () => {
 });
 
 describe('BinanceRateLimitError', () => {
+  it('carries its own name and a message naming the status', () => {
+    const error = new BinanceRateLimitError(418, 120_000);
+
+    expect(error.name).toBe('BinanceRateLimitError');
+    expect(error.message).toBe('Binance rate limit 418');
+  });
+
   it('rejects with the status and Retry-After converted to milliseconds', async () => {
     await expect(
       fetchAccount('api-key-fixture', 'secret-fixture', {

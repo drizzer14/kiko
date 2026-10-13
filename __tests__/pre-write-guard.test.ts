@@ -7,14 +7,12 @@ import {
   symlinkSync,
   writeFileSync,
 } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { type SpawnSyncReturns, spawnSync } from 'node:child_process';
 
 import {
   createTemporaryDirectory,
   removeTemporaryDirectories,
-  trackTemporaryPath,
 } from './test-support/temporary-directory';
 
 // scripts/checks/pre-write-guard.sh is the PreToolUse hook for Edit/Write/
@@ -308,9 +306,8 @@ describe('scripts/checks/pre-write-guard.sh (PreToolUse Edit/Write/MultiEdit gua
 
   it('resolves a symlinked project path before relativizing', () => {
     const project = createTemporaryDirectory('kiko-prewrite-project-');
-    const projectLink = join(tmpdir(), `kiko-prewrite-link-${process.pid}-${Date.now()}`);
+    const projectLink = join(createTemporaryDirectory('kiko-prewrite-link-'), 'link');
     symlinkSync(project, projectLink);
-    trackTemporaryPath(projectLink);
     const stub = writeSemgrepStub(project);
     const rules = writeRulesStub(project);
     const marker = join(project, 'marker.txt');
@@ -384,8 +381,8 @@ describe('scripts/checks/pre-write-guard.sh (PreToolUse Edit/Write/MultiEdit gua
 
   it('denies when CLAUDE_PROJECT_DIR cannot be resolved', () => {
     const missingProjectDirectory = join(
-      tmpdir(),
-      `kiko-prewrite-missing-project-${process.pid}-${Date.now()}`,
+      createTemporaryDirectory('kiko-prewrite-missing-project-'),
+      'missing',
     );
     const targetFile = join(missingProjectDirectory, 'src', 'example.ts');
 
