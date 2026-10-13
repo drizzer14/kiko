@@ -357,9 +357,16 @@ const withLineCommentsJoinedAtHyphens = (comments: SourceComment[]): SourceComme
       comment.text.startsWith('//') &&
       comment.line === previous.line + lineCountBefore(previous.text, previous.text.length) + 1;
 
-    return continues
-      ? [...joined.slice(0, -1), { line: previous.line, text: `${previous.text}\n${comment.text}` }]
-      : [...joined, comment];
+    if (continues) {
+      joined[joined.length - 1] = {
+        line: previous.line,
+        text: `${previous.text}\n${comment.text}`,
+      };
+    } else {
+      joined.push(comment);
+    }
+
+    return joined;
   }, []);
 
 const partialCommentCitations = (fileName: string, text: string): Citation[] =>
