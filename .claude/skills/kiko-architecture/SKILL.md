@@ -1984,7 +1984,7 @@ balance sync and dropped on a disconnect through the field arrays. The stop code
   so one member that cannot be trusted stops the whole group (a member left out would shift the
   numbers of the others and a later read would write a second row). A reward row the client could
   not read blocks every reward group of its kind at that time, with one point owed.
-- **Settled status, per record kind (OVERNIGHT DEFAULT 23, pending user).** A subscription
+- **Settled status, per record kind (USER RULING 2026-10-13 (kept)).** A subscription
   settles on `SUCCESS` (`EARN_SUBSCRIPTION_SETTLED_STATUS`), a redemption on `PAID`
   (`EARN_REDEMPTION_SETTLED_STATUS`; a redemption is never `SUCCESS`). `FAILED` is a final
   failure: ignored, nothing owed. Any other value (a pending status such as PURCHASING or CREATED, or an unknown one) is
@@ -1992,12 +1992,12 @@ balance sync and dropped on a disconnect through the field arrays. The stop code
   `false` (left out or `true`: no effect).
 - **Placement.** Flexible `REALTIME` rewards go to the Earn holding, flexible `BONUS` and every
   locked reward to Spot. A flexible redemption goes to its `destAccount`. A locked redemption
-  record has no destination field, so its `type` decides (OVERNIGHT DEFAULT 24, pending user):
+  record has no destination field, so its `type` decides (USER RULING 2026-10-13 (kept)):
   `MATURE` ("redeem to Spot Wallet") goes to Spot; `NEW_TRANSFERRED`, `AHEAD`, any other type or
   none is `earn-redemption-type-unconfirmed`, owed at its point, no row (Q14: never an assumed
   wallet). A subscription imports from `sourceAccount` or the split only when its `type` is in
   its product's allowlist (`WALLET_FUNDED_SUBSCRIPTION_TYPES` in `binance.earn-history.ts`, one
-  constant, per product; read the values there; OVERNIGHT DEFAULT 24 extended, pending user);
+  constant, per product; read the values there; USER RULING 2026-10-13 (kept; 24 extended));
   any other type or none is `earn-subscription-type-unconfirmed` the same way, because the money
   of a type outside the allowlist is not documented to come from the wallet `sourceAccount`
   names. A field
@@ -2006,8 +2006,8 @@ balance sync and dropped on a disconnect through the field arrays. The stop code
   record's `type` when it creates it, so such a point never imports by itself; it waits for the
   user's answer or the probe (task 7/7) and stays owed meanwhile (the Earn floor never moves for
   it). Flexible `REWARDS` rewards and a reward that rounds to 0 satoshis stay stopped and owed
-  (OVERNIGHT DEFAULT, pending user (Q25)).
-- **Earn forward stops (OVERNIGHT DEFAULT, pending user, 2026-10-13).** The Earn forward pass
+  (USER RULING 2026-10-13, Q25 = A: stays owed until the probe; decided after the probe).
+- **Earn forward stops (USER RULING 2026-10-13 (kept).** The Earn forward pass
   follows the Transfer rule: a stop tied to one record with a usable time is owed at its own point
   and the cursor goes past it (`EARN_FORWARD_OWES`, one constant: emptying it restores R28 for
   every stop). A span stop (`earn-page-drift`, `earn-holding-missing`) and a row with no time keep

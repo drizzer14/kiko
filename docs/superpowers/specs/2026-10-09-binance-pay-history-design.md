@@ -751,14 +751,13 @@ withdraw budget moves into this object, with the same numbers and the same rule.
   per-record codes: `earn-not-settled`, `earn-split-mismatch`, `earn-amount-invalid`,
   `earn-id-missing`, `earn-account-unknown` (`sourceAccount` or `destAccount` neither SPOT nor
   FUNDING), `earn-subscription-type-unconfirmed` and `earn-redemption-type-unconfirmed`
-  (OVERNIGHT DEFAULT 24, below), `earn-reward-type-unknown`, `earn-row-unreadable` (R30: a row
+  (USER RULING 2026-10-13 (kept) 24, below), `earn-reward-type-unknown`, `earn-row-unreadable` (R30: a row
   the client could not parse; a field the walk decides by, a split amount, a `type` or
   `isComplete`, that is present with another JSON type than text or a boolean makes the row
   unreadable, never absent). An unreadable reward row owes its point for every reward group of its kind at that
   `time`: its group cannot be known, and a group numbered without it would number two ways. A
   stop not tied to one record (`earn-page-drift`, `earn-holding-missing`), an unreadable row
-  with no finite `time`, or a record outside the span owes the span. **OVERNIGHT DEFAULT 22,
-  pending user (2026-10-13): the forward pass follows the Transfer rule (O1).** A stop tied to
+  with no finite `time`, or a record outside the span owes the span. **USER RULING 2026-10-13 (kept), item 22: the forward pass follows the Transfer rule (O1).** A stop tied to
   one record with a usable time is owed at its own point (one point for a reward group) and the
   forward pass goes past it: the span's other records commit and the cursor moves on
   (`EARN_FORWARD_OWES`, one constant; emptying it restores R28 for every stop). A stop of the
@@ -770,7 +769,7 @@ withdraw budget moves into this object, with the same numbers and the same rule.
 - **Subscription** (flexible or locked), with a settled status only (Q13: `SUCCESS` settles,
   `FAILED` is ignored and owes nothing, any other value, `PURCHASING` or unknown, is not settled
   and stops at its point; a redemption's `PAID` is not a subscription status and is not settled):
-  - **OVERNIGHT DEFAULT 24 (extended 2026-10-13), pending user: a subscription of either
+  - **USER RULING 2026-10-13 (kept; 24 extended): a subscription of either
     product imports from `sourceAccount` or the split only when its `type` is in its product's
     list (an allowlist, `WALLET_FUNDED_SUBSCRIPTION_TYPES`, one constant, per product: flexible
     `NORMAL` or `AUTO`, locked `NORMAL` only). Every other value, a locked `AUTO` included, and
@@ -805,7 +804,7 @@ withdraw budget moves into this object, with the same numbers and the same rule.
     - each locked auto-renewal leaves one permanent point, owed until OVERNIGHT 24 is answered or
       the probe settles it.
 - **Redemption:** Earn -amount, and the destination +amount, paired. Settled status
-  (Q13, checked 2026-10-13; OVERNIGHT DEFAULT 23, pending user): `PAID` settles (a flexible
+  (Q13, checked 2026-10-13; USER RULING 2026-10-13 (kept)): `PAID` settles (a flexible
   redemption's documented values are `CREATED`, `PAID`, `FAILED`; a locked redemption's
   example is `PAID`), `FAILED` is ignored and owes nothing, any other value (`CREATED`,
   unknown) is not settled and stops at its point; a locked redemption whose `isComplete` is
@@ -813,7 +812,7 @@ withdraw budget moves into this object, with the same numbers and the same rule.
   `SUCCESS`.
   - Flexible: the destination is `destAccount` (SPOT or FUNDING).
   - Locked: the record has no destination field, so the destination comes from `type`
-    (OVERNIGHT DEFAULT 24, pending user): `MATURE` ("redeem to Spot Wallet") -> Spot, and
+    (USER RULING 2026-10-13 (kept)): `MATURE` ("redeem to Spot Wallet") -> Spot, and
     `amount` is assumed to be the principal returned. `NEW_TRANSFERRED` ("redeem to Flexible
     product"), `AHEAD` (early redemption; destination not documented), any other `type`, or
     none, stops with `earn-redemption-type-unconfirmed`, owed at its point, no row: Q14, no
@@ -1024,19 +1023,19 @@ Earn:
 | E11 | reward on a window boundary, returned by both windows | one row (same key) | same |
 | E12 | reward with missing `time` or a non-finite amount | missing `time`: `earn-row-unreadable` (R30), the span owed, the other rows of the span import, the run goes on; non-finite amount: `earn-amount-invalid`, the group owed at its point | missing `time`: the run failed (5ad68db9); before: stop the window |
 | E13 | gathered rows are not equal to `total` | `earn-page-drift`: the span owed as a range, the other kinds commit | stop the window |
-| E14 | status not settled: a subscription not `SUCCESS` or `FAILED` (`PURCHASING`, `PAID`, unknown), a redemption not `PAID` or `FAILED` (`CREATED`, `SUCCESS`, unknown) | `earn-not-settled`, owed at its point (OVERNIGHT DEFAULT 23, pending user) | stop the window |
+| E14 | status not settled: a subscription not `SUCCESS` or `FAILED` (`PURCHASING`, `PAID`, unknown), a redemption not `PAID` or `FAILED` (`CREATED`, `SUCCESS`, unknown) | `earn-not-settled`, owed at its point (USER RULING 2026-10-13 (kept)) | stop the window |
 | E15 | one flexible `BONUS` reward record | Spot +rewards, 'Binance Earn', no marker | same |
 | E16 | one locked reward record (any `type`) | Spot +amount, 'Binance Earn', no marker | same |
-| E17 | flexible reward with `type` `REWARDS` or an unknown value | `earn-reward-type-unknown`: no row, the group owed at its point; forward pass: the cursor goes past it (OVERNIGHT DEFAULT 22, pending user, 2026-10-13; was: cursor unmoved) | stop the window |
+| E17 | flexible reward with `type` `REWARDS` or an unknown value | `earn-reward-type-unknown`: no row, the group owed at its point; forward pass: the cursor goes past it (USER RULING 2026-10-13 (kept) 22; was: cursor unmoved) | stop the window |
 | E18 | `BONUS` or locked reward, Spot holding missing | Spot created at 0 (P7), then the row | same |
 | E19 | pending pass or re-scan: a subscription not settled and a `REALTIME` reward in one span | the reward imports; the subscription owed at its point | nothing of the window |
 | E20 | two reward groups in one span, one of unknown `type` | the other group imports; the unknown one owed at one point | nothing of the window |
 | E21 | `FAILED` subscription or redemption (either product) | ignored, nothing owed | same |
 | E22 | one kind drifts in the re-scan | the other five kinds commit; the span owed as a range | nothing of the window |
 | E23 | a row the client cannot parse with a finite `time` (R30), pending pass or re-scan | `earn-row-unreadable`: owed at its point in its kind; a reward row holds every reward group of its kind at that `time` on the same point; the other rows import; the run goes on | the read threw, the run failed |
-| E24 | locked redemption of type `NEW_TRANSFERRED`, `AHEAD`, any other type, or none, status `PAID` | `earn-redemption-type-unconfirmed`: no row, owed at its point; the forward pass goes past it; the point is permanent: a record's `type` never changes, so it imports only after the user's answer or the probe, and stays owed (the Earn floor never moves for it); the retry pins model a changed answer (OVERNIGHT DEFAULT 24, pending user) | not a case (every locked redemption went to Spot) |
-| E25 | subscription of either product, status `SUCCESS`, of type `CONVERT`, `TRANSFER`, `LOAN`, `AI`, `ACTIVITY`, `TRIAL`, `RESTAKE`, a locked `AUTO`, any other value, or none | `earn-subscription-type-unconfirmed`: no row, owed at its point; only a flexible `NORMAL` or `AUTO` and a locked `NORMAL` write as E1/E2/E4; permanent like E24 (OVERNIGHT DEFAULT 24 extended, pending user) | not a case |
-| E26 | locked redemption, status `PAID`, `isComplete` `false` | `earn-not-settled`, owed at its point; `isComplete` left out or `true` has no effect (OVERNIGHT DEFAULT 23, pending user) | not a case |
+| E24 | locked redemption of type `NEW_TRANSFERRED`, `AHEAD`, any other type, or none, status `PAID` | `earn-redemption-type-unconfirmed`: no row, owed at its point; the forward pass goes past it; the point is permanent: a record's `type` never changes, so it imports only after the user's answer or the probe, and stays owed (the Earn floor never moves for it); the retry pins model a changed answer (USER RULING 2026-10-13 (kept)) | not a case (every locked redemption went to Spot) |
+| E25 | subscription of either product, status `SUCCESS`, of type `CONVERT`, `TRANSFER`, `LOAN`, `AI`, `ACTIVITY`, `TRIAL`, `RESTAKE`, a locked `AUTO`, any other value, or none | `earn-subscription-type-unconfirmed`: no row, owed at its point; only a flexible `NORMAL` or `AUTO` and a locked `NORMAL` write as E1/E2/E4; permanent like E24 (USER RULING 2026-10-13 (kept; 24 extended)) | not a case |
+| E26 | locked redemption, status `PAID`, `isComplete` `false` | `earn-not-settled`, owed at its point; `isComplete` left out or `true` has no effect (USER RULING 2026-10-13 (kept)) | not a case |
 | E27 | a split amount, a subscription `type` (either product), a locked redemption `type` or `isComplete` that is present with another JSON type (a number) | the row is unreadable (R30, `earn-row-unreadable`), never read as absent: absent would debit `sourceAccount` | read as absent |
 | E28 | locked subscription of type `RESTAKE` or `TRIAL` (two cases each), forward window | owed at its own point, the cursor goes past it, the span's other records import, and the point stays owed in every later run (a `RESTAKE` Spot -a never happened; a `TRIAL` is money the user never held) | not a case |
 
@@ -1118,7 +1117,7 @@ Probe items:
     redeem destination, for example by comparing locked reward rows to locked
     positions and redemptions with `redeemTo` FLEXIBLE. For rewards: the number of groups with more than one record, and
     the number of fully identical records (E9). Any identical record goes to the
-    user before merge. Also (2026-10-13, for OVERNIGHT DEFAULTS 23 and 24): the `status` values
+    user before merge. Also (2026-10-13, for items 23 and 24, kept by the user ruling): the `status` values
     of flexible and locked redemptions, with the count of each, `CREATED` included, and of
     subscriptions; for locked redemptions the count of each `type` (`MATURE`, `NEW_TRANSFERRED`,
     `AHEAD`, any other) and of each `isComplete` value; for a position whose `redeemTo` is
@@ -1135,7 +1134,7 @@ Probe items:
     (owed until OVERNIGHT 24 is answered or the probe settles it); where an
     `AHEAD` redemption's principal goes; the `REWARDS` flexible reward rows (count, wallet,
     overlap with `REALTIME` and `BONUS` rows; they stay stopped and owed:
-    OVERNIGHT DEFAULT, pending user (Q25)); and the
+    USER RULING 2026-10-13, Q25 = A: stays owed until the probe; decided after the probe); and the
     decimals of every reward amount (any value over 8 decimals or under 1e-8).
 11. Every SAPI response: whether `X-SAPI-USED-IP-WEIGHT-1M` and
     `X-SAPI-USED-UID-WEIGHT-1M` are present.
@@ -1194,7 +1193,7 @@ keeps its rule.
 | Q10 | Universal transfer window cap and `size` max? | 30-day windows, size 100 | `size` 101 is rejected (-1102), 100 is the max. The 31, 60, 90 day, and whole-depth windows answered HTTP 200 with 0 rows, so the window cap is not proven. No data in the probe account for the rest; rule unchanged (30 days) | 9 |
 | Q11 | Universal transfer settled status value? | Only `CONFIRMED`. Anything else, `FAILED` included, is owed at its point until the floor drops it (user ruling 2026-10-12) | No data in the probe account (0 transfer rows), rule unchanged | 9 |
 | Q12 | Earn history depth? | Floor 2022-01-01. Older windows return empty | The samples before the 2022 floor returned total 0; there are no Earn rows at all. No data in the probe account, rule unchanged | 10 |
-| Q13 | Earn settled status values? | Per kind (documented 2026-10-13; OVERNIGHT DEFAULT 23, pending user): a subscription (flexible or locked) settles on `SUCCESS` (documented `PURCHASING`, `SUCCESS`, `FAILED`); a redemption settles on `PAID` (flexible documented `CREATED`, `PAID`, `FAILED`; locked: only `PAID` is an example). `FAILED` is a final failure, ignored; any other value is not settled and stops at its point. A locked redemption with `isComplete` `false` is not settled (was: only `SUCCESS` settled, so every redemption, whose status is `PAID`, stayed owed for good) | `size` max is 100. No Earn rows, so no status values. No data in the probe account, rule unchanged | 10 |
+| Q13 | Earn settled status values? | Per kind (documented 2026-10-13; USER RULING 2026-10-13 (kept)): a subscription (flexible or locked) settles on `SUCCESS` (documented `PURCHASING`, `SUCCESS`, `FAILED`); a redemption settles on `PAID` (flexible documented `CREATED`, `PAID`, `FAILED`; locked: only `PAID` is an example). `FAILED` is a final failure, ignored; any other value is not settled and stops at its point. A locked redemption with `isComplete` `false` is not settled (was: only `SUCCESS` settled, so every redemption, whose status is `PAID`, stayed owed for good) | `size` max is 100. No Earn rows, so no status values. No data in the probe account, rule unchanged | 10 |
 | Q14 | Where do Earn rewards land, and what does a locked redemption's `amount` mean? | ANSWERED, ruling A (user, 2026-10-10): flexible `REALTIME` -> Earn, flexible `BONUS` -> Spot, locked -> Spot, other flexible `type` stops (`earn-reward-type-unknown`); sources: the two FAQ URLs in section 6. Known gap: maturity-paid locked rewards. Redemption legs use `amount`. `rewardAmt` is not imported from redemptions | No data in the probe account (no reward rows, no locked positions), rule unchanged; ruling A stands and the maturity-paid gap stays open | 10 (reward `type` counts per kind; maturity-paid question) |
 | Q15 | The SAPI IP ceiling and the IP header? | `IP_BUDGET_1M` 6000 and the per-walk caps, which hold even without the header | The header is not the same everywhere. Pay: `X-SAPI-USED-UID-WEIGHT-1M` (peak 21000 after 9 calls). Capital deposit, transfer, Earn: `X-SAPI-USED-IP-WEIGHT-1M`. Withdraw history: `X-SAPI-USED-UID-WEIGHT-1S`, per second, no minute reading (it gives none; the cap of 9 calls bounds it). Account: `X-MBX-USED-WEIGHT-1M`. The IP ceiling could not be measured, so `IP_BUDGET_1M` stays | 11 |
 | Q16 | Are there fully identical reward records? | Each one is kept as its own row (E9) | No data in the probe account (no reward rows), rule unchanged | 10 |
