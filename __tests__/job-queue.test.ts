@@ -8,9 +8,15 @@ import {
   readFileSync,
   writeFileSync,
 } from 'node:fs';
+import {
+  type ChildProcess,
+  type SpawnSyncReturns,
+  spawn,
+  spawnSync,
+  execFileSync,
+} from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { type SpawnSyncReturns, spawnSync } from 'node:child_process';
 
 import { writeExecutable } from './test-support/mutation-repository';
 
@@ -24,6 +30,7 @@ type Sandbox = {
   root: string;
   queue: string;
   environment: NodeJS.ProcessEnv;
+  children: ChildProcess[];
 };
 
 let sandboxes: Sandbox[] = [];
@@ -35,10 +42,10 @@ const TOOL_STUB = [
   '{',
   '  printf "%s %s\\n" "$(basename "$0")" "$*"',
   '  printf "  cwd %s\\n" "$PWD"',
-  '  printf "  force-color %s\\n" "${FORCE_COLOR-unset}"',
-  '  printf "  base %s\\n" "${KIKO_MUTATION_BASE-unset}"',
+  '  printf "  force-color %s\\n" "$(printenv FORCE_COLOR || echo unset)"',
+  '  printf "  base %s\\n" "$(printenv KIKO_MUTATION_BASE || echo unset)"',
   '} >> "$KIKO_STUB_CALLS"',
-  'exit "${KIKO_STUB_EXIT-0}"',
+  'exit "$(printenv KIKO_STUB_EXIT || echo 0)"',
   '',
 ].join('\n');
 
@@ -64,6 +71,7 @@ const createSandbox = (): Sandbox => {
       KIKO_STUB_POWER: join(root, 'power'),
       KIKO_STUB_CALLS: join(root, 'calls'),
     },
+    children: [],
   };
   sandboxes.push(sandbox);
 
@@ -76,8 +84,62 @@ const runQueue = (sandbox: Sandbox, ...queueArguments: string[]): SpawnSyncRetur
     env: sandbox.environment,
   });
 
+type Finished = { code: number | null; stdout: string; stderr: string };
+
+type Waiter = {
+  child: ChildProcess;
+  finished: Promise<Finished>;
+  stdout: () => string;
+};
+
+// A queue process that stays alive while the test inspects the queue state around it.
+const startQueue = (sandbox: Sandbox, ...queueArguments: string[]): Waiter => {
+  const child = spawn('bash', [SCRIPT, ...queueArguments], {
+    env: sandbox.environment,
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  let stdout = '';
+  let stderr = '';
+  child.stdout?.on('data', (chunk: Buffer) => {
+    stdout += chunk.toString();
+  });
+  child.stderr?.on('data', (chunk: Buffer) => {
+    stderr += chunk.toString();
+  });
+  sandbox.children.push(child);
+
+  return {
+    child,
+    stdout: () => stdout,
+    finished: new Promise((settle) => {
+      child.on('close', (code) => settle({ code, stdout, stderr }));
+    }),
+  };
+};
+
+const POLL_LIMIT = 500;
+
+// Longer than the poll limit allows, so a state that never appears fails with its own message.
+jest.setTimeout(20_000);
+
+// Polls a file-system or output condition. A poll count (not a measured time) bounds it, so a
+// condition that never holds fails the test instead of leaving a loop that keeps jest alive.
+const waitFor = async (condition: () => boolean): Promise<void> => {
+  for (let poll = 0; !condition(); poll += 1) {
+    if (poll >= POLL_LIMIT) {
+      throw new Error('the awaited queue state never appeared');
+    }
+
+    await new Promise((settle) => setTimeout(settle, 20));
+  }
+};
+
 afterEach(() => {
   for (const sandbox of sandboxes) {
+    for (const child of sandbox.children) {
+      child.kill();
+    }
+
     rmSync(sandbox.root, { recursive: true, force: true });
   }
 
@@ -207,6 +269,118 @@ describe('scripts/job-queue.sh a single job', () => {
     expect(calls[0]).toBe('npm run check:security');
     expect(realpathSync(calls[1].replace('  cwd ', ''))).toBe(realpathSync(worktree));
     expect(calls).toContain('  force-color unset');
+  });
+});
+
+type GateWorktree = { worktree: string; head: string };
+
+// A git repository whose scripts/checks/mutation.sh prints what `--list` prints, so the queue
+// reads a size without running a real mutation gate. `listLines` is the stub's whole output.
+const createGateWorktree = (
+  sandbox: Sandbox,
+  name: string,
+  listLines: string[],
+  listExit = 0,
+): GateWorktree => {
+  const worktree = createWorktree(sandbox, name);
+  const git = (...gitArguments: string[]): string =>
+    execFileSync(
+      'git',
+      ['-c', 'user.name=Test', '-c', 'user.email=test@example.com', ...gitArguments],
+      { cwd: worktree, encoding: 'utf8' },
+    ).trim();
+  git('init', '-q', '-b', 'main');
+  mkdirSync(join(worktree, 'scripts/checks'), { recursive: true });
+  writeExecutable(
+    join(worktree, 'scripts/checks/mutation.sh'),
+    [
+      '#!/usr/bin/env bash',
+      '[ "$1" = "--list" ] || exit 9',
+      ...listLines.map((line) => `printf '%s\\n' '${line}'`),
+      `exit ${listExit}`,
+      '',
+    ].join('\n'),
+  );
+  git('add', '-A');
+  git('commit', '-q', '-m', 'gate worktree');
+
+  return { worktree, head: git('rev-parse', 'HEAD') };
+};
+
+const listing = (changedLines: number): string[] => [
+  `src/a.ts 1-${changedLines} (${changedLines} changed lines)`,
+  `changed lines: ${changedLines}`,
+  'mutable files: 1 (cap 30)',
+];
+
+const holdLock = (sandbox: Sandbox, owner = `${process.pid} verify other /elsewhere`): string => {
+  const lock = join(sandbox.queue, 'lock');
+  mkdirSync(lock, { recursive: true });
+  writeFileSync(join(lock, 'owner'), `${owner}\n`);
+
+  return lock;
+};
+
+// The worktree each started job names, in the order the stub `make` was called.
+const startedWorktrees = (sandbox: Sandbox): string[] =>
+  readLines(sandbox.environment.KIKO_STUB_CALLS as string)
+    .filter((line) => line.startsWith('make -C '))
+    .map((line) => line.split(' ')[2]);
+
+describe('scripts/job-queue.sh job order', () => {
+  it('runs the shortest class first and gates by changed lines, a long gate last', async () => {
+    const sandbox = createSandbox();
+    const verifyWorktree = createWorktree(sandbox, 'verify');
+    const big = createGateWorktree(sandbox, 'big', listing(900));
+    const small = createGateWorktree(sandbox, 'small', listing(40));
+    const long = createGateWorktree(sandbox, 'long', listing(5));
+    const lock = holdLock(sandbox);
+
+    const waiters = [
+      startQueue(sandbox, 'gate', big.worktree, 'big', 'main', big.head),
+      startQueue(sandbox, 'gate', small.worktree, 'small', 'main', small.head),
+      startQueue(sandbox, 'gate', long.worktree, 'long', 'main', long.head, '--long'),
+      startQueue(sandbox, 'verify', verifyWorktree, 'verify'),
+    ];
+    await waitFor(() => entriesOf(join(sandbox.queue, 'tickets')).length === 4);
+    rmSync(lock, { recursive: true });
+    const results = await Promise.all(waiters.map((waiter) => waiter.finished));
+
+    expect(results.map((result) => result.code)).toEqual([0, 0, 0, 0]);
+    expect(startedWorktrees(sandbox)).toEqual([
+      verifyWorktree,
+      small.worktree,
+      big.worktree,
+      long.worktree,
+    ]);
+  });
+
+  it('runs one job at a time while another holds the lock', async () => {
+    const sandbox = createSandbox();
+    const worktree = createWorktree(sandbox, 'one');
+    const lock = holdLock(sandbox);
+
+    const waiter = startQueue(sandbox, 'verify', worktree, 'one');
+    await waitFor(() => entriesOf(join(sandbox.queue, 'tickets')).length === 1);
+
+    expect(waiter.child.exitCode).toBeNull();
+    expect(startedWorktrees(sandbox)).toEqual([]);
+    rmSync(lock, { recursive: true });
+    await waiter.finished;
+    expect(startedWorktrees(sandbox)).toEqual([worktree]);
+  });
+
+  it('names the ticket class, size, and pid in sort order', async () => {
+    const sandbox = createSandbox();
+    const gate = createGateWorktree(sandbox, 'gate', listing(7));
+    holdLock(sandbox);
+
+    const waiter = startQueue(sandbox, 'gate', gate.worktree, 'gate', 'main', gate.head);
+    await waitFor(() => entriesOf(join(sandbox.queue, 'tickets')).length === 1);
+
+    expect(entriesOf(join(sandbox.queue, 'tickets'))).toEqual([
+      expect.stringMatching(new RegExp(`^2-0000000007-\\d+-${waiter.child.pid}-gate$`)),
+    ]);
   });
 });
 
