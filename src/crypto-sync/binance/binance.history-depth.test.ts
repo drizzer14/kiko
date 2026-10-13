@@ -647,11 +647,11 @@ describe('the depth memories of the series of a run', () => {
       const { rememberRefusedBand, isBandRefused } = memoriesAt(() => clock.now);
       rememberRefusedBand(START);
       clock.now = NOW_MS + 2_000;
-      rememberRefusedBand(START + 2_000);
+      rememberRefusedBand(START + 10_000);
       clock.now = NOW_MS + 3_000;
 
-      expect(isBandRefused(START + 3_000)).toBe(true);
-      expect(isBandRefused(START + 3_001)).toBe(false);
+      expect(isBandRefused(START + 11_000)).toBe(true);
+      expect(isBandRefused(START + 11_001)).toBe(false);
     });
   });
 });
