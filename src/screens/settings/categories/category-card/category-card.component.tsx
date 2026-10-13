@@ -4,13 +4,15 @@ import { useTranslation } from 'react-i18next';
 import Box from '@kiko/design-system/components/box';
 import Card from '@kiko/design-system/components/card';
 import Text from '@kiko/design-system/components/text';
+import SymbolIcon from '@kiko/design-system/components/symbol';
+import { DEFAULT_CATEGORY_SYMBOL } from '@kiko/categories/category-display';
 import EntityIconTile from '@kiko/design-system/components/entity-icon-tile';
 
 import { styles } from './category-card.styles';
 import type { CategoryCardProps } from './category-card.props';
 
 // One category as a wide row card, the Accounts card's layout: the icon tile and title with the
-// rule count under it, and the "Default" marker where an account shows its balance. Holding and
+// rule count under it, and the default star where an account shows its balance. Holding and
 // deleting belong to the enclosing grid and `CardContextMenu`, so the card has only a tap.
 const CategoryCard: FC<CategoryCardProps> = ({
   title,
@@ -41,9 +43,11 @@ const CategoryCard: FC<CategoryCardProps> = ({
 
         {isDefault && (
           <Box style={styles.rowTrailing}>
-            <Text variant="caption" tone="textSecondary">
-              {t('categories.default')}
-            </Text>
+            <SymbolIcon
+              name={DEFAULT_CATEGORY_SYMBOL}
+              tone="textSecondary"
+              accessibilityLabel={t('categories.default')}
+            />
           </Box>
         )}
       </Pressable>

@@ -1,6 +1,6 @@
 import type { ComponentProps } from 'react';
 import { State } from 'react-native-gesture-handler';
-import { act, fireEvent, render } from '@testing-library/react-native';
+import { act, fireEvent, render, within } from '@testing-library/react-native';
 import { fireGestureHandler, getByGestureTestId } from 'react-native-gesture-handler/jest-utils';
 import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
@@ -161,10 +161,13 @@ describe('CategoriesScreen', () => {
     it('marks the default category from the settings and no other', async () => {
       mockSettingsRows = [{ defaultCategoryKey: 'dining' }];
 
-      const { getAllByText, getAllByTestId } = await renderScreen();
+      const { getAllByLabelText, getAllByTestId, queryByText } = await renderScreen();
 
-      expect(getAllByText('Default')).toHaveLength(1);
-      expect(getAllByTestId('category-card')[1]).toHaveTextContent(/Default/);
+      expect(getAllByLabelText('Default')).toHaveLength(1);
+      expect(within(getAllByTestId('category-card')[1]).getByLabelText('Default').props.name).toBe(
+        'star.fill',
+      );
+      expect(queryByText('Default')).toBeNull();
     });
 
     it('falls back to the seeded default when the settings row is missing', async () => {
@@ -173,7 +176,9 @@ describe('CategoriesScreen', () => {
       const { getAllByTestId } = await renderScreen();
       const otherIndex = SEEDED_CATEGORIES.findIndex((category) => category.key === 'other');
 
-      expect(getAllByTestId('category-card')[otherIndex]).toHaveTextContent(/Default/);
+      expect(
+        within(getAllByTestId('category-card')[otherIndex]).getByLabelText('Default'),
+      ).toBeTruthy();
     });
 
     describe('under the uk language', () => {
@@ -215,10 +220,10 @@ describe('CategoriesScreen', () => {
         expect(none).toHaveTextContent(/Немає правил/);
       });
 
-      it('marks the default category with the Ukrainian word', async () => {
-        const { getAllByText } = await renderScreen();
+      it('labels the default category star with the Ukrainian word', async () => {
+        const { getAllByLabelText } = await renderScreen();
 
-        expect(getAllByText('Типова')).toHaveLength(1);
+        expect(getAllByLabelText('Типова')).toHaveLength(1);
       });
     });
   });

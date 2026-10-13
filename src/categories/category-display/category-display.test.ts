@@ -1,10 +1,19 @@
 import '@kiko/i18n/init';
 
 import {
+  DEFAULT_CATEGORY_SYMBOL,
+  SET_DEFAULT_CATEGORY_SYMBOL,
   buildCategoryDisplayMap,
   neutralCategory,
   resolveCategoryDisplay,
 } from './category-display';
+
+describe('the default-category symbols', () => {
+  it('marks the default with the filled star and offers "set as default" with the outline', () => {
+    expect(DEFAULT_CATEGORY_SYMBOL).toBe('star.fill');
+    expect(SET_DEFAULT_CATEGORY_SYMBOL).toBe('star');
+  });
+});
 
 describe('buildCategoryDisplayMap', () => {
   it('keys each category display by its stable key, carrying its stored color', () => {
