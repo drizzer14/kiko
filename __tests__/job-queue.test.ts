@@ -512,11 +512,117 @@ describe('scripts/job-queue.sh gate refusals', () => {
   });
 });
 
+const BATTERY_POWER = "Now drawing from 'Battery Power'\n";
+
+describe('scripts/job-queue.sh hold and release', () => {
+  it('hold records the reason, status shows it, and release removes it', () => {
+    const sandbox = createSandbox();
+
+    const held = runQueue(sandbox, 'hold', 'on', 'battery');
+    const recordedReason = readFileSync(join(sandbox.queue, 'hold'), 'utf8').trim();
+    const statusWhileHeld = runQueue(sandbox, 'status');
+    const released = runQueue(sandbox, 'release');
+    const statusAfter = runQueue(sandbox, 'status');
+
+    expect(held.status).toBe(0);
+    expect(recordedReason).toBe('on battery');
+    expect(statusWhileHeld.stdout).toContain('hold: on battery');
+    expect(released.status).toBe(0);
+    expect(statusAfter.stdout.trim()).toBe('queue empty');
+  });
+
+  it('release succeeds when nothing is held', () => {
+    expect(runQueue(createSandbox(), 'release').status).toBe(0);
+  });
+
+  it('hold without a reason exits 2', () => {
+    const result = runQueue(createSandbox(), 'hold');
+
+    expect(result.status).toBe(2);
+    expect(result.stderr).toContain('usage:');
+  });
+
+  it('starts no job while the queue is held, then runs it after release', async () => {
+    const sandbox = createSandbox();
+    const worktree = createWorktree(sandbox, 'one');
+    runQueue(sandbox, 'hold', 'battery');
+
+    const waiter = startQueue(sandbox, 'verify', worktree, 'one');
+    await waitFor(() => waiter.stdout().includes('WAITING one: hold (battery)'));
+
+    expect(waiter.child.exitCode).toBeNull();
+    expect(startedWorktrees(sandbox)).toEqual([]);
+    runQueue(sandbox, 'release');
+    const result = await waiter.finished;
+    expect(result.code).toBe(0);
+    expect(startedWorktrees(sandbox)).toEqual([worktree]);
+  });
+});
+
+describe('scripts/job-queue.sh battery power', () => {
+  it('starts no job of any class on battery, then runs them in class order on AC power', async () => {
+    const sandbox = createSandbox();
+    const verifyWorktree = createWorktree(sandbox, 'verify');
+    const gate = createGateWorktree(sandbox, 'gate', listing(12));
+    writeFileSync(sandbox.environment.KIKO_STUB_POWER as string, BATTERY_POWER);
+
+    const gateWaiter = startQueue(sandbox, 'gate', gate.worktree, 'gate', 'main', gate.head);
+    const verifyWaiter = startQueue(sandbox, 'verify', verifyWorktree, 'verify');
+    await waitFor(() => gateWaiter.stdout().includes('WAITING gate: battery power'));
+    await waitFor(() => verifyWaiter.stdout().includes('WAITING verify: battery power'));
+
+    expect(gateWaiter.child.exitCode).toBeNull();
+    expect(verifyWaiter.child.exitCode).toBeNull();
+    expect(startedWorktrees(sandbox)).toEqual([]);
+    writeFileSync(sandbox.environment.KIKO_STUB_POWER as string, AC_POWER);
+    const results = await Promise.all([gateWaiter.finished, verifyWaiter.finished]);
+
+    expect(results.map((result) => result.code)).toEqual([0, 0]);
+    expect(startedWorktrees(sandbox)).toEqual([verifyWorktree, gate.worktree]);
+  });
+
+  it('asks pmset for the battery state', () => {
+    const sandbox = createSandbox();
+    writeExecutable(
+      join(sandbox.root, 'bin/pmset'),
+      '#!/usr/bin/env bash\nprintf "pmset %s\\n" "$*" >> "$KIKO_STUB_CALLS"\ncat "$KIKO_STUB_POWER"\n',
+    );
+
+    runQueue(sandbox, 'verify', createWorktree(sandbox, 'one'), 'one');
+
+    expect(readLines(sandbox.environment.KIKO_STUB_CALLS as string)).toContain('pmset -g batt');
+  });
+
+  it('treats a machine without pmset as on AC power', () => {
+    const sandbox = createSandbox();
+    sandbox.environment.KIKO_QUEUE_PMSET = join(sandbox.root, 'no-such-pmset');
+
+    const result = runQueue(sandbox, 'verify', createWorktree(sandbox, 'one'), 'one');
+
+    expect(result.status).toBe(0);
+  });
+});
+
 describe('scripts/job-queue.sh status', () => {
   it('prints "queue empty" for an empty state directory', () => {
     const result = runQueue(createSandbox(), 'status');
 
     expect(result.status).toBe(0);
     expect(result.stdout.trim()).toBe('queue empty');
+  });
+
+  it('shows the running job, the queued tickets, and battery power', () => {
+    const sandbox = createSandbox();
+    holdLock(sandbox, `${process.pid} gate other-label /elsewhere`);
+    mkdirSync(join(sandbox.queue, 'tickets'), { recursive: true });
+    writeFileSync(join(sandbox.queue, 'tickets', `1-0000000000-1-${process.pid}-next`), '');
+    writeFileSync(sandbox.environment.KIKO_STUB_POWER as string, BATTERY_POWER);
+
+    const result = runQueue(sandbox, 'status');
+
+    expect(result.stdout).toContain(`running: ${process.pid} gate other-label /elsewhere`);
+    expect(result.stdout).toContain(`queued: 1-0000000000-1-${process.pid}-next`);
+    expect(result.stdout).toContain('battery power: no job starts');
+    expect(result.stdout).not.toContain('queue empty');
   });
 });

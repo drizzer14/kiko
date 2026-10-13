@@ -24,8 +24,43 @@ refuse() {
   exit 2
 }
 
+HOLD_FILE="$QUEUE_DIRECTORY/hold"
+
+ticket_names() { ls "$TICKETS_DIRECTORY" 2>/dev/null | LC_ALL=C sort; }
+
+# Battery power only; a machine without pmset, or output that does not say so, counts as AC.
+on_battery() {
+  local pmset_binary="${KIKO_QUEUE_PMSET:-pmset}"
+  command -v "$pmset_binary" > /dev/null 2>&1 || return 1
+  "$pmset_binary" -g batt 2> /dev/null | head -1 | grep -q 'Battery Power'
+}
+
+# Why no job may start now; empty when one may.
+blocked_reason() {
+  if [ -f "$HOLD_FILE" ]; then
+    printf 'hold (%s)' "$(head -1 "$HOLD_FILE")"
+  elif on_battery; then
+    printf 'battery power'
+  fi
+}
+
 queue_status() {
-  printf 'queue empty\n'
+  local busy=0 ticket
+  if [ -f "$HOLD_FILE" ]; then
+    printf 'hold: %s\n' "$(head -1 "$HOLD_FILE")"
+  fi
+  if on_battery; then
+    printf 'battery power: no job starts\n'
+  fi
+  if [ -f "$LOCK_DIRECTORY/owner" ]; then
+    busy=1
+    printf 'running: %s\n' "$(head -1 "$LOCK_DIRECTORY/owner")"
+  fi
+  for ticket in $(ticket_names); do
+    busy=1
+    printf 'queued: %s\n' "$ticket"
+  done
+  [ "$busy" -eq 1 ] || printf 'queue empty\n'
 }
 
 valid_label() {
@@ -52,6 +87,18 @@ case "$command_name" in
   status)
     [ "$#" -eq 1 ] || usage
     queue_status
+    exit 0
+    ;;
+  hold)
+    [ "$#" -ge 2 ] || usage
+    shift
+    mkdir -p "$QUEUE_DIRECTORY"
+    printf '%s\n' "$*" > "$HOLD_FILE"
+    exit 0
+    ;;
+  release)
+    [ "$#" -eq 1 ] || usage
+    rm -f "$HOLD_FILE"
     exit 0
     ;;
   verify | check-all | security)
@@ -115,7 +162,6 @@ cleanup() {
 trap cleanup EXIT
 touch "$ticket_path"
 
-ticket_names() { ls "$TICKETS_DIRECTORY" 2>/dev/null | LC_ALL=C sort; }
 head_ticket() { ticket_names | head -1; }
 tickets_ahead() { ticket_names | awk -v mine="$ticket_name" '$0 == mine { exit } { count++ } END { print count + 0 }'; }
 
@@ -127,7 +173,17 @@ if [ "$command_name" = gate ]; then
 fi
 printf 'QUEUED %s (%s) ahead: %s\n' "$label" "$kind_text" "$(tickets_ahead)"
 
-until [ "$(head_ticket)" = "$ticket_name" ] && mkdir "$LOCK_DIRECTORY" 2>/dev/null; do
+# A hold or battery power stops every class: the line prints when the reason changes, so a
+# waiter's log shows why it waits without a line per poll.
+waiting_reason=''
+while :; do
+  reason="$(blocked_reason)"
+  if [ -n "$reason" ]; then
+    [ "$reason" = "$waiting_reason" ] || printf 'WAITING %s: %s\n' "$label" "$reason"
+  elif [ "$(head_ticket)" = "$ticket_name" ] && mkdir "$LOCK_DIRECTORY" 2>/dev/null; then
+    break
+  fi
+  waiting_reason="$reason"
   sleep "$POLL_SECONDS"
 done
 owns_lock=1
