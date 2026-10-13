@@ -17,6 +17,22 @@ print_block() {
   } >&2
 }
 
+# harness_require_path <check> <path> : succeed when <path> exists. Otherwise print the failure
+# block for <check> and return 1; the caller exits 2. A scan of a path that is not on disk finds
+# nothing, and a check that finds nothing passes, so a missing scan root or a deleted file would
+# read as a clean tree.
+harness_require_path() {
+  [ -e "$2" ] && return 0
+  print_block \
+    "$1" \
+    "A path given to this check does not exist, so nothing was scanned." \
+    "Missing path: $2" \
+    "A check cannot read a path that is not on disk, and scanning nothing would report a clean tree. A missing file is not a pass." \
+    "Fix the path, or drop it from the arguments when the file was deleted. Then re-run the check." \
+    "Do not create an empty file or directory at the path to get past this."
+  return 1
+}
+
 # --- Content dedup + single-flight for the check wrappers --------------------
 # A check must not run when nothing it depends on changed. Each wrapper
 # computes a fingerprint of its own real inputs (the target files plus its

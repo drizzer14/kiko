@@ -23,9 +23,8 @@ fail() {
 # wrapper, so only the tests exercise this branch. A non-.ts/.tsx target, or
 # no file at all, is silently out of scope.
 if [ -n "$TARGET" ]; then
-  if [ ! -f "$TARGET" ]; then
-    exit 0
-  fi
+  harness_require_path "Cross-screen import" "$TARGET" || exit 2
+  [ -f "$TARGET" ] || exit 0
 
   case "$TARGET" in
     *.ts | *.tsx) : ;;
@@ -53,6 +52,7 @@ fi
 # skipped in that case, since the code fingerprint below reads the real
 # repo's git state, not the temp tree's content.
 if [ -n "${SCREEN_IMPORTS_SOURCE_ROOT:-}" ]; then
+  harness_require_path "Cross-screen import" "$SCREEN_IMPORTS_SOURCE_ROOT" || exit 2
   roots=("$SCREEN_IMPORTS_SOURCE_ROOT")
 else
   roots=("$ROOT/src" "$ROOT/__tests__" "$ROOT/e2e" "$ROOT/App.tsx")

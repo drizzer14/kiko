@@ -24,9 +24,8 @@ fail() {
 # exercise this branch. A non-.ts/.tsx target, or no file at all, is
 # silently out of scope.
 if [ -n "$TARGET" ]; then
-  if [ ! -f "$TARGET" ]; then
-    exit 0
-  fi
+  harness_require_path "Blank line separation" "$TARGET" || exit 2
+  [ -f "$TARGET" ] || exit 0
 
   case "$TARGET" in
     *.ts | *.tsx) : ;;
@@ -56,6 +55,7 @@ fi
 # code fingerprint below reads the real repo's git state, not the temp
 # tree's content.
 if [ -n "${BLANK_LINE_SOURCE_ROOT:-}" ]; then
+  harness_require_path "Blank line separation" "$BLANK_LINE_SOURCE_ROOT" || exit 2
   roots=("$BLANK_LINE_SOURCE_ROOT")
 else
   roots=("$ROOT/src" "$ROOT/__tests__" "$ROOT/e2e" "$ROOT/App.tsx")

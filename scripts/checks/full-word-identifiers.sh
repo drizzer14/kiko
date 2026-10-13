@@ -25,9 +25,8 @@ fail() {
 # CommonJS/ESM file next to TypeScript). Anything else, or no file at all,
 # is silently out of scope.
 if [ -n "$TARGET" ]; then
-  if [ ! -f "$TARGET" ]; then
-    exit 0
-  fi
+  harness_require_path "Full words in identifiers" "$TARGET" || exit 2
+  [ -f "$TARGET" ] || exit 0
 
   case "$TARGET" in
     *.ts | *.tsx) : ;;
@@ -71,6 +70,7 @@ if [ -z "${FULL_WORD_IDENTIFIERS_SRC_ROOT:-}" ]; then
 fi
 
 if [ -n "${FULL_WORD_IDENTIFIERS_SRC_ROOT:-}" ]; then
+  harness_require_path "Full words in identifiers" "$FULL_WORD_IDENTIFIERS_SRC_ROOT" || exit 2
   roots=("$FULL_WORD_IDENTIFIERS_SRC_ROOT")
   script_roots=("$FULL_WORD_IDENTIFIERS_SRC_ROOT/scripts")
 else
