@@ -14,7 +14,9 @@ import {
   BINANCE_REQUEST_INTERVAL_MS,
   COSTS,
   createBinanceHistoryRun,
+  IP_BUDGET_1M,
   LANE_CALL_CAPS,
+  LANE_NARROWING_CALLS,
 } from './binance.history-budget';
 import {
   crossingOf,
@@ -706,13 +708,13 @@ describe('readSeriesSpan, against a Binance that refuses a start older than it k
   it('spends a call of the lane on every request it makes, a refused one too, each after the shared gate', async () => {
     const run = freshRun();
     const wait = jest.spyOn(run.gate, 'wait');
+    const record = jest.spyOn(run.budget, 'record');
     const fetchPage = keeping(SERVED_FROM);
 
     await readDeep({ run, fetchPage });
 
     const made = fetchPage.mock.calls.length;
-    expect(run.budget.canAfford('transfer', COSTS.transfer, CAP - made - 1)).toBe(true);
-    expect(run.budget.canAfford('transfer', COSTS.transfer, CAP - made)).toBe(false);
+    expect(record).toHaveBeenCalledTimes(made);
     expect(wait).toHaveBeenCalledTimes(made);
   });
 
@@ -801,6 +803,175 @@ describe('readSeriesSpan, against a Binance that refuses a start older than it k
     await expect(readDeep({ fetchPage, depth: undefined })).rejects.toBeInstanceOf(
       BinanceHistoryTooOldError,
     );
+  });
+
+  describe('the calls of a span read, narrowing or not', () => {
+    /** The run with its budget watched: whether each call was asked and counted as narrowing. */
+    const watchedRun = () => {
+      const run = freshRun();
+      const asked = jest.spyOn(run.budget, 'canAfford');
+      const recorded = jest.spyOn(run.budget, 'record');
+
+      return {
+        run,
+        askedNarrowing: () => asked.mock.calls.map(([, , , narrowing]) => narrowing === true),
+        recordedNarrowing: () => recorded.mock.calls.map(([, , narrowing]) => narrowing === true),
+      };
+    };
+
+    it('counts every call of a span read in which a series was refused as a narrowing call, the refused read, the probes and the reads of the others', async () => {
+      const { run, askedNarrowing, recordedNarrowing } = watchedRun();
+      const fetchPage = keeping(SERVED_FROM);
+      const depth = depthOf();
+      // The last series is served from the start the first one found: it is not refused.
+      rememberServedStart(depth.memoryOf('MAIN_UMFUTURE'), {
+        startMs: SERVED_FROM,
+        servedAtMs: NOW,
+      });
+
+      await readDeep({ run, fetchPage, depth });
+
+      const made = fetchPage.mock.calls.length;
+      expect(recordedNarrowing()).toEqual(Array.from({ length: made }, () => true));
+      // Everything asked before the first refusal was asked as a call that is not narrowing yet.
+      expect(askedNarrowing().filter(Boolean).length).toBeGreaterThanOrEqual(made - 1);
+      expect(askedNarrowing()[0]).toBe(false);
+    });
+
+    it('counts no call of a span read in which no series was refused as a narrowing call', async () => {
+      const { run, askedNarrowing, recordedNarrowing } = watchedRun();
+      const fetchPage = keeping(DEEP.start);
+
+      const result = await readDeep({ run, fetchPage });
+
+      expect(result).toMatchObject({ kind: 'page', page: { drifted: [], owed: [] } });
+      expect(fetchPage).toHaveBeenCalledTimes(SERIES.length);
+      expect(recordedNarrowing()).toEqual(SERIES.map(() => false));
+      expect(askedNarrowing().some(Boolean)).toBe(false);
+    });
+
+    it('counts the calls of a series with a bound the span lies above as narrowing calls from the first', async () => {
+      const { run, askedNarrowing, recordedNarrowing } = watchedRun();
+      const fetchPage = keeping(DEEP.end + 1);
+      const depth = depthOf();
+      depth.memoryOf('MAIN_FUNDING').startMs = DEEP.start;
+      depth.memoryOf('MAIN_FUNDING').servedAtMs = undefined;
+
+      await readDeep({ run, fetchPage, depth });
+
+      // The first ask is the span's entry, made before any series is read.
+      expect(askedNarrowing()[1]).toBe(true);
+      expect(recordedNarrowing().every(Boolean)).toBe(true);
+    });
+
+    it('counts the calls of a series asked the end of the span, because another was refused it, as narrowing calls', async () => {
+      const { run, recordedNarrowing } = watchedRun();
+      const fetchPage = keeping(DEEP.end + 1);
+
+      await readDeep({ run, fetchPage });
+
+      // The first series' refused read and end are narrowing, and so are the others' ends.
+      expect(recordedNarrowing()).toEqual(Array.from({ length: SERIES.length + 1 }, () => true));
+    });
+
+    it('counts the end a series asks of a span, because an earlier span refused another series that start, as a narrowing call from the first', async () => {
+      const { run, recordedNarrowing } = watchedRun();
+      const fetchPage = keeping(DEEP.end + 1);
+      const depth = depthOf();
+      rememberServedStart(depth.memoryOf('FUNDING_MAIN'), {
+        startMs: DEEP.end,
+        servedAtMs: undefined,
+      });
+
+      await readDeep({ run, fetchPage, depth, series: ['MAIN_FUNDING'] });
+
+      expect(fetchPage).toHaveBeenCalledTimes(1);
+      expect(recordedNarrowing()).toEqual([true]);
+    });
+
+    it('counts the calls of a series whose memory lapsed as narrowing calls', async () => {
+      const { run, recordedNarrowing } = watchedRun();
+      const fetchPage = keeping(SERVED_FROM);
+      const depth = depthOf();
+      rememberServedStart(depth.memoryOf('MAIN_FUNDING'), {
+        startMs: SERVED_FROM,
+        servedAtMs: NOW - DAY_MS,
+      });
+
+      await readDeep({ run, fetchPage, depth, series: ['MAIN_FUNDING'] });
+
+      expect(recordedNarrowing().length).toBeGreaterThan(1);
+      expect(recordedNarrowing().every(Boolean)).toBe(true);
+    });
+
+    it('starts the next span read as one that is not narrowing', async () => {
+      const { run, recordedNarrowing } = watchedRun();
+      const fetchPage = keeping(SERVED_FROM);
+      const depth = depthOf();
+
+      await readDeep({ run, fetchPage, depth });
+      const first = recordedNarrowing().length;
+      await readDeep({ run, fetchPage, depth });
+
+      expect(recordedNarrowing().slice(first)).toEqual(SERIES.map(() => false));
+    });
+
+    it('keeps the lane cap whole when a span read narrows, so the reads that follow have all of it', async () => {
+      const run = freshRun();
+      const fetchPage = keeping(SERVED_FROM);
+
+      await readDeep({ run, fetchPage });
+
+      expect(run.budget.canAfford('transfer', COSTS.transfer, CAP - 1)).toBe(true);
+    });
+
+    it('spends the lane cap, never more, once the narrowing calls are spent', async () => {
+      const run = freshRun();
+      const fetchPage = keeping(SERVED_FROM);
+
+      for (let call = 0; call < LANE_NARROWING_CALLS.transfer; call += 1) {
+        run.budget.record(
+          'transfer',
+          { usedUidWeight1m: undefined, usedIpWeight1m: undefined },
+          true,
+        );
+      }
+
+      await readDeep({ run, fetchPage });
+
+      expect(
+        run.budget.canAfford('transfer', COSTS.transfer, CAP - fetchPage.mock.calls.length - 1),
+      ).toBe(true);
+      expect(
+        run.budget.canAfford('transfer', COSTS.transfer, CAP - fetchPage.mock.calls.length),
+      ).toBe(false);
+    });
+
+    it('leaves the span unread in the series after the weight reading refuses a narrowing call, never reading it as empty', async () => {
+      const run = freshRun();
+      const served = keeping(SERVED_FROM);
+      // The read of the first series answers the weight of the minute at its ceiling.
+      const fetchPage = jest.fn(async (series: Series, span: typeof DEEP, current: number) => {
+        const page = await served(series, span, current);
+
+        return span.end - span.start > 1 ? { ...page, usedIpWeight1m: IP_BUDGET_1M } : page;
+      });
+
+      const result = await readDeep({ run, fetchPage });
+
+      expect(result).toMatchObject({
+        kind: 'page',
+        page: {
+          read: [{ series: 'MAIN_FUNDING' }],
+          owed: expect.arrayContaining([
+            { series: 'FUNDING_MAIN', window: DEEP },
+            { series: 'MAIN_UMFUTURE', window: DEEP },
+          ]),
+        },
+      });
+      expect(fetchPage.mock.calls.some(([series]) => series === 'FUNDING_MAIN')).toBe(false);
+      expect(fetchPage.mock.calls.some(([series]) => series === 'MAIN_UMFUTURE')).toBe(false);
+    });
   });
 });
 

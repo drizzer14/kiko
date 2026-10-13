@@ -14,6 +14,12 @@ import {
   UNIVERSAL_TRANSFER_TYPES,
 } from './binance.history-client';
 import {
+  COSTS,
+  createBinanceHistoryRun,
+  LANE_CALL_CAPS,
+  LANE_NARROWING_CALLS,
+} from './binance.history-budget';
+import {
   type BinanceHistoryRow,
   type BinanceTransferHistoryDeps,
   settledTransfersOf,
@@ -29,10 +35,9 @@ import { BinanceWalkStop } from './binance.history-walk';
 import { HISTORY_FLOOR_MS } from './binance.transactions';
 import { isBinanceCoolingDown } from './binance.cooldown';
 import { FUNDING_KEY, SPOT_KEY } from './binance.holding-keys';
+import { DEPTH_MARGIN_MS, DEPTH_RESOLUTION_MS } from './binance.history-depth';
 import { BinanceHistoryTooOldError, BinanceRateLimitError } from './binance.client';
 import { jitterMs, movingClockOf, suspendableRun } from './binance.depth-test-fixtures';
-import { COSTS, createBinanceHistoryRun, LANE_CALL_CAPS } from './binance.history-budget';
-import { DEPTH_MARGIN_MS, DEPTH_RESOLUTION_MS, MAX_DEPTH_REFUSALS } from './binance.history-depth';
 
 const FLOOR = NOW - 179 * DAY_MS;
 const STOP_TAG = '[binance sync] history window stopped';
@@ -1936,6 +1941,37 @@ describe('a Binance that refuses a startTime older than the history it keeps (co
         },
       );
 
+      describe.each([
+        ['with the clock', 1],
+        ['in steps of a day', DAY_MS],
+      ])(
+        'against a Binance that keeps 100 days in most types, 90 in a middle type and 75 in another, and whose depth moves %s',
+        (_how, stepMs) => {
+          const keptDaysOf = keptDaysFrom({ [MIDDLE_TYPE]: 90, [OTHER_MIDDLE_TYPE]: 75 });
+
+          it.each(RUN_GAPS)(
+            'imports the transfers just above the depth of every type, within 15 runs (runs %i ms apart)',
+            async (gapMs) => {
+              const { world, missingByRun, expected } = await simulate({
+                keptDaysOf,
+                stepMs,
+                extraRows: aboveOf((type) => edgeAt(keptDaysOf(type), stepMs, NOW)),
+                latencyMs: latencyOf(),
+                gapMs,
+                runs: 15,
+              });
+
+              expect(expected.length).toBeGreaterThanOrEqual(
+                UNIVERSAL_TRANSFER_TYPES.length * ABOVE_OFFSETS.length,
+              );
+              expect(missingByRun.at(-1)).toBe(0);
+              expect(listOf(world)).toEqual([]);
+              expect(stopCodes(warn)).toEqual([]);
+            },
+          );
+        },
+      );
+
       it.each(RUN_GAPS)(
         'imports the transfers just above the floor the first read meets in every type, when the run was planned 3 days before it read and Binance keeps 180 days (runs %i ms apart)',
         async (gapMs) => {
@@ -2007,11 +2043,6 @@ describe('a Binance that refuses a startTime older than the history it keeps (co
             latencyMs: (query) => (query.endTime - query.startTime === 1 ? 50 : 10_000),
           });
 
-          const mostForOneType = MAX_DEPTH_REFUSALS + 2 * 23;
-          const requestsOfType = (type: string) =>
-            snapshots.map(
-              ({ requests }) => requests.filter((request) => request.type === type).length,
-            );
           expect(importedOf(snapshots.at(-1)?.ids, ['oldest'])).toEqual([]);
           expect(importedOf(snapshots.at(-1)?.ids, ['later'])).toEqual(['later']);
           expect(Number(snapshots[1]?.cursor)).toBeGreaterThanOrEqual(agoMs(89));
@@ -2019,11 +2050,54 @@ describe('a Binance that refuses a startTime older than the history it keeps (co
           expect(listOf(world)).toContainEqual(
             expect.objectContaining({ start: agoMs(119), series: FIRST_TYPE }),
           );
-          expect(Math.max(...requestsOfType(FIRST_TYPE))).toBeLessThanOrEqual(mostForOneType + 1);
+          // What one span read costs a type is pinned in the paging tests; a run reads several
+          // spans, so its requests are bounded by the lane cap and the narrowing calls together.
+          expect(Math.max(...snapshots.map(({ requests }) => requests.length))).toBeLessThanOrEqual(
+            LANE_CALL_CAPS.transfer + LANE_NARROWING_CALLS.transfer,
+          );
           expect(stopCodes(warn)).toEqual([]);
         });
       },
     );
+
+    describe('the requests of one run that narrows', () => {
+      // The lane cap of 80 and the 397 narrowing calls, all spent by the slowest network: a spike
+      // of 9 seconds on every seventh request lapses the depth each type found, so each type
+      // narrows again in every span it reads.
+      const MOST_REQUESTS_OF_A_RUN = 477;
+
+      it('is bounded by the lane cap and the narrowing calls together, and the slowest network spends them all', async () => {
+        const keptDaysOf = keptDaysFrom({ [MIDDLE_TYPE]: 90, [OTHER_MIDDLE_TYPE]: 75 });
+        const { snapshots } = await simulate({
+          keptDaysOf,
+          extraRows: aboveOf((type) => edgeAt(keptDaysOf(type), 1, NOW)),
+          latencyMs: spikeEverySeventh(),
+          gapMs: DAY_MS,
+          runs: 3,
+        });
+
+        expect(LANE_CALL_CAPS.transfer + LANE_NARROWING_CALLS.transfer).toBe(
+          MOST_REQUESTS_OF_A_RUN,
+        );
+        expect(snapshots[0]?.requests).toHaveLength(MOST_REQUESTS_OF_A_RUN);
+        expect(Math.max(...snapshots.map(({ requests }) => requests.length))).toBeLessThanOrEqual(
+          MOST_REQUESTS_OF_A_RUN,
+        );
+      });
+
+      it.each(LATENCIES)('spends no more than that, with %s', async (_name, latencyOf) => {
+        const { snapshots } = await simulate({
+          keptDaysOf: keptDaysFrom({ [MIDDLE_TYPE]: 90, [OTHER_MIDDLE_TYPE]: 75 }),
+          latencyMs: latencyOf(),
+          gapMs: HOUR_MS,
+          runs: 4,
+        });
+
+        expect(Math.max(...snapshots.map(({ requests }) => requests.length))).toBeLessThanOrEqual(
+          MOST_REQUESTS_OF_A_RUN,
+        );
+      });
+    });
   });
 
   it('loses no row and reads none twice when Binance refuses the start on a type after earlier types returned rows', async () => {
@@ -2080,6 +2154,16 @@ describe('the budget of a run', () => {
     expect(requests.filter((request) => request.endTime - request.startTime === 2)).toHaveLength(
       20,
     );
+  });
+
+  it('spends the lane cap, 80, and no narrowing call on a run in which Binance refuses nothing, however much is left to read', async () => {
+    const run = freshRun();
+    const record = jest.spyOn(run.budget, 'record');
+
+    const { requests } = await walkOnce({ world: worldOf(), run });
+
+    expect(requests).toHaveLength(80);
+    expect(record.mock.calls.every(([, , narrowing]) => narrowing === false)).toBe(true);
   });
 
   it('enters no span whose 20 calls do not fit beside the calls it keeps, and no request is made for part of it', async () => {

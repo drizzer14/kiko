@@ -7,6 +7,7 @@ import {
   createBinanceRunBudget,
   IP_BUDGET_1M,
   LANE_CALL_CAPS,
+  LANE_NARROWING_CALLS,
   UID_WEIGHT_BUDGET_1M,
 } from './binance.history-budget';
 
@@ -117,6 +118,113 @@ describe('createBinanceRunBudget — calls kept for later', () => {
 
     expect(budget.canAfford('earn', COSTS.earn, 1)).toBe(false);
     expect(budget.canAfford('earn', COSTS.earn, 0)).toBe(true);
+  });
+});
+
+describe('createBinanceRunBudget — narrowing calls', () => {
+  const NARROWING_CALLS = LANE_NARROWING_CALLS.transfer;
+
+  it('holds the narrowing calls of each lane: only the Transfer lane has any', () => {
+    expect(LANE_NARROWING_CALLS).toEqual({
+      capitalWithdraw: 0,
+      capitalDeposit: 0,
+      pay: 0,
+      transfer: 397,
+      earn: 0,
+    });
+  });
+
+  it('refuses a call that is not narrowing at the cap, however many narrowing calls are left', () => {
+    const budget = createBinanceRunBudget();
+
+    spendCalls(budget, 'transfer', 80);
+
+    expect(budget.canAfford('transfer', COSTS.transfer)).toBe(false);
+    expect(budget.canAfford('transfer', COSTS.transfer, 0, false)).toBe(false);
+  });
+
+  it('charges a narrowing call to the narrowing calls, so the lane cap stays whole', () => {
+    const budget = createBinanceRunBudget();
+
+    for (let call = 0; call < NARROWING_CALLS; call += 1) {
+      expect(budget.canAfford('transfer', COSTS.transfer, 0, true)).toBe(true);
+      budget.record('transfer', NO_READING, true);
+    }
+
+    expect(budget.canAfford('transfer', COSTS.transfer, 79)).toBe(true);
+    spendCalls(budget, 'transfer', 79);
+    expect(budget.canAfford('transfer', COSTS.transfer)).toBe(true);
+    spendCalls(budget, 'transfer', 1);
+    expect(budget.canAfford('transfer', COSTS.transfer)).toBe(false);
+  });
+
+  it('spends the lane cap once the narrowing calls are spent, and refuses at the cap beyond them', () => {
+    const budget = createBinanceRunBudget();
+
+    for (let call = 0; call < NARROWING_CALLS + 80; call += 1) {
+      expect(budget.canAfford('transfer', COSTS.transfer, 0, true)).toBe(true);
+      budget.record('transfer', NO_READING, true);
+    }
+
+    expect(budget.canAfford('transfer', COSTS.transfer, 0, true)).toBe(false);
+  });
+
+  it('does not keep calls out of the narrowing calls, and keeps them out of the lane cap after', () => {
+    const budget = createBinanceRunBudget();
+
+    for (let call = 0; call < NARROWING_CALLS - 1; call += 1) {
+      budget.record('transfer', NO_READING, true);
+    }
+
+    expect(budget.canAfford('transfer', COSTS.transfer, 79, true)).toBe(true);
+
+    budget.record('transfer', NO_READING, true);
+    spendCalls(budget, 'transfer', 20);
+
+    expect(budget.canAfford('transfer', COSTS.transfer, 59, true)).toBe(true);
+    expect(budget.canAfford('transfer', COSTS.transfer, 60, true)).toBe(false);
+  });
+
+  it('judges a narrowing call by the weight reading as any other call', () => {
+    const budget = createBinanceRunBudget();
+    budget.record('transfer', { ...NO_READING, usedIpWeight1m: IP_BUDGET_1M }, true);
+
+    expect(budget.canAfford('transfer', COSTS.transfer, 0, true)).toBe(false);
+  });
+
+  it('counts the calls to keep in the weight of a narrowing call', () => {
+    const budget = createBinanceRunBudget();
+    budget.record('transfer', { ...NO_READING, usedIpWeight1m: IP_BUDGET_1M - 2 }, true);
+
+    expect(budget.canAfford('transfer', COSTS.transfer, 1, true)).toBe(true);
+    expect(budget.canAfford('transfer', COSTS.transfer, 2, true)).toBe(false);
+  });
+
+  it.each([
+    ['capitalWithdraw', COSTS.withdraw],
+    ['pay', COSTS.pay],
+    ['earn', COSTS.earn],
+  ] as const)(
+    'gives the %s lane no narrowing calls: a narrowing call is held to its cap',
+    (lane, cost) => {
+      const budget = createBinanceRunBudget();
+
+      spendCalls(budget, lane, LANE_CALL_CAPS[lane]);
+
+      expect(budget.canAfford(lane, cost, 0, true)).toBe(false);
+    },
+  );
+
+  it('keeps the narrowing calls of one run out of another', () => {
+    const first = createBinanceRunBudget();
+    const second = createBinanceRunBudget();
+
+    for (let call = 0; call < NARROWING_CALLS + 80; call += 1) {
+      first.record('transfer', NO_READING, true);
+    }
+
+    expect(first.canAfford('transfer', COSTS.transfer, 0, true)).toBe(false);
+    expect(second.canAfford('transfer', COSTS.transfer, 0, true)).toBe(true);
   });
 });
 

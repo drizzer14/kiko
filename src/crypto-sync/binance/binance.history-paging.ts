@@ -124,8 +124,33 @@ export type SeriesSpan<Series, Row> = {
 /** A refused request still counts as a call of the lane; Binance gave no weight reading for it. */
 const REFUSED_CALL = { usedUidWeight1m: undefined, usedIpWeight1m: undefined };
 
+/**
+ * The run as one span read sees it: its gate, and a budget that counts the calls of the read as
+ * the lane's narrowing calls from the moment a series of it narrows (`beginNarrowing`), until the
+ * read ends: the refused read, the probes, and the reads of every series after it.
+ */
+type SpanRun = {
+  gate: BinanceHistoryRun['gate'];
+  budget: BinanceHistoryRun['budget'] & { beginNarrowing: () => void };
+};
+
+const spanRunOf = (run: BinanceHistoryRun): SpanRun => {
+  const narrowing = { begun: false };
+
+  return {
+    gate: run.gate,
+    budget: {
+      canAfford: (lane, cost, keep) => run.budget.canAfford(lane, cost, keep, narrowing.begun),
+      record: (lane, page) => run.budget.record(lane, page, narrowing.begun),
+      beginNarrowing: () => {
+        narrowing.begun = true;
+      },
+    },
+  };
+};
+
 type SeriesRequest<Series extends string, Row> = {
-  run: BinanceHistoryRun;
+  run: SpanRun;
   lane: BudgetLane;
   cost: CallCost;
   span: WalkWindow;
@@ -242,6 +267,7 @@ const narrowAfterRefusal = async <Series extends string, Row>(
 ): Promise<AfterDepth<Row>> => {
   const { run, lane, depth, tally, refusedMs } = input;
 
+  run.budget.beginNarrowing();
   run.budget.record(lane, REFUSED_CALL);
   tally.refusals += 1;
 
@@ -285,10 +311,12 @@ const settleBeforeRead = async <Series extends string, Row>(
   input: SeriesDepth<Series, Row>,
   asked: { end: boolean },
 ): Promise<AfterDepth<Row> | undefined> => {
-  const { span, depth } = input;
+  const { run, span, depth } = input;
   const { startMs, servedAtMs } = depth.memory;
 
   if (startMs !== undefined && servedAtMs === undefined && startMs >= span.start) {
+    run.budget.beginNarrowing();
+
     return narrowFromRefused(input, startMs);
   }
 
@@ -296,6 +324,7 @@ const settleBeforeRead = async <Series extends string, Row>(
     return undefined;
   }
 
+  run.budget.beginNarrowing();
   asked.end = true;
   const served = await probeOf(input, () => undefined)(span.end);
 
@@ -321,8 +350,9 @@ const settleBeforeRead = async <Series extends string, Row>(
 const narrowAfterLapse = async <Series extends string, Row>(
   input: SeriesDepth<Series, Row> & { range: LapsedRange },
 ): Promise<AfterDepth<Row>> => {
-  const { span, depth, tally, range } = input;
+  const { run, span, depth, tally, range } = input;
 
+  run.budget.beginNarrowing();
   tally.lapses += 1;
 
   if (tally.lapses > MAX_DEPTH_LAPSES) {
@@ -546,11 +576,14 @@ const readSeries = async <Series extends string, Row>(
  * never read as empty. A series costs at most the requests bounded in `MAX_DEPTH_REFUSALS` and
  * `MAX_DEPTH_LAPSES`, each spending the lane, and may spend the calls the series after it would
  * have had: one series read to its end serves more ground than a request each for all of them,
- * and a series with no call left is owed the whole span with no request. A lane without a depth
- * reads every series or none.
+ * and a series with no call left is owed the whole span with no request. A span read in which a
+ * series is refused, lapses or asks the end of the span narrows, and its calls are the lane's
+ * narrowing calls first (see `SpanRun`), so a depth shared by 20 series is found in one run
+ * without the cap the passes after it need. A lane without a depth reads every series or none.
  */
 export const readSeriesSpan = async <Series extends string, Row>(
-  input: SeriesRequest<Series, Row> & {
+  input: Omit<SeriesRequest<Series, Row>, 'run'> & {
+    run: BinanceHistoryRun;
     keep: number;
     series: readonly Series[];
     depth?: DepthGuard;
@@ -558,6 +591,7 @@ export const readSeriesSpan = async <Series extends string, Row>(
   },
 ): Promise<SpanRead<SeriesSpan<Series, Row>> | undefined> => {
   const { run, lane, cost, span, keep, series, depth, onRateLimit } = input;
+  const spanRun = spanRunOf(run);
   const result: SeriesSpan<Series, Row> = { read: [], drifted: [] };
   const owed: SeriesOwed<Series>[] = [];
 
@@ -575,6 +609,7 @@ export const readSeriesSpan = async <Series extends string, Row>(
     for (const [index, name] of series.entries()) {
       const paged = await readSeries<Series, Row>({
         ...input,
+        run: spanRun,
         name,
         keep: depth === undefined ? keep + series.length - 1 - index : keep,
         depth: foldMap(maybe(depth), (guard) => ({ ...guard, memory: guard.memoryOf(name) })),
