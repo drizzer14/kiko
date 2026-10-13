@@ -1,6 +1,5 @@
 import { join } from 'node:path';
-import { execFileSync, spawnSync } from 'node:child_process';
-import { chmodSync, cpSync, mkdirSync, writeFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 
 import {
   createTemporaryDirectory,
@@ -63,64 +62,32 @@ describe('a deleted path in the file list', () => {
     'blank-line-separation.sh',
     'dup.sh',
     'override-guard.sh',
+    'secrets.sh',
   ])('%s exits 2 and names the path', (wrapper) => {
     const deleted = join(createTemporaryDirectory('wrapper-missing-path-'), 'src/deleted.ts');
 
     expectRefusal(runWrapper(wrapper, [deleted]), deleted);
   });
+
+  it('secrets.sh exits 2 and names a missing directory', () => {
+    const missingDirectory = join(createTemporaryDirectory('wrapper-missing-path-'), 'no-such-dir');
+
+    expectRefusal(runWrapper('secrets.sh', [missingDirectory]), missingDirectory);
+  });
 });
 
-describe('medium.sh with a deleted source file', () => {
-  // medium.sh hands dup.sh and override-guard.sh only the changed files still on disk (3471b6c9),
-  // so a session whose only change is a deletion reaches neither wrapper and stays silent.
-  const REAL_WRAPPERS = ['medium.sh', '_lib.sh', 'dup.sh', 'override-guard.sh'];
-  const STUBBED_WRAPPERS = [
-    'shipped-migrations.sh',
-    'guard-replay.sh',
-    'knip.sh',
-    'deps.sh',
-    'semgrep-rules.sh',
-    'plist.sh',
-    'typecheck.sh',
-  ];
+describe('a directory given to a per-file wrapper', () => {
+  it.each([
+    'import-order.sh',
+    'full-word-identifiers.sh',
+    'screen-imports.sh',
+    'feature-imports.sh',
+    'blank-line-separation.sh',
+  ])('%s exits 2 and says it takes a file', (wrapper) => {
+    const directory = createTemporaryDirectory('wrapper-missing-path-');
+    const run = runWrapper(wrapper, [directory]);
 
-  const git = (cwd: string, ...gitArguments: string[]): void => {
-    execFileSync('git', gitArguments, { cwd, stdio: 'pipe' });
-  };
-
-  it('exits 0 and prints nothing, with the real dup.sh and override-guard.sh', () => {
-    const root = createTemporaryDirectory('wrapper-missing-path-project-');
-    mkdirSync(join(root, 'scripts/checks'), { recursive: true });
-    mkdirSync(join(root, 'src'));
-    git(root, 'init', '-q', '-b', 'main');
-    git(root, 'config', 'user.email', 'test@example.com');
-    git(root, 'config', 'user.name', 'Test');
-
-    for (const wrapper of REAL_WRAPPERS) {
-      cpSync(join(CHECKS, wrapper), join(root, 'scripts/checks', wrapper));
-    }
-
-    for (const wrapper of STUBBED_WRAPPERS) {
-      const stub = join(root, 'scripts/checks', wrapper);
-      writeFileSync(stub, '#!/usr/bin/env bash\nexit 0\n');
-      chmodSync(stub, 0o755);
-    }
-
-    writeFileSync(join(root, 'src/deleted.ts'), 'export const deleted = 1;\n');
-    git(root, 'add', '-A');
-    git(root, 'commit', '-qm', 'base');
-    execFileSync('rm', [join(root, 'src/deleted.ts')]);
-
-    const result = spawnSync('bash', [join(root, 'scripts/checks/medium.sh')], {
-      cwd: root,
-      env: { ...process.env, TMPDIR: createTemporaryDirectory('wrapper-missing-path-state-') },
-      encoding: 'utf8',
-    });
-
-    expect({ status: result.status, stdout: result.stdout, stderr: result.stderr }).toEqual({
-      status: 0,
-      stdout: '',
-      stderr: '',
-    });
+    expectRefusal(run, directory);
+    expect(run.stderr).toContain('takes a file');
   });
 });

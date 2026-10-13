@@ -18,11 +18,11 @@ fail() {
   exit 2
 }
 
-# Per-file mode (one file argument). A non-.ts/.tsx target, or no file at
-# all, is silently out of scope.
+# Per-file mode (one file argument). A non-.ts/.tsx target is silently out
+# of scope. A path that is not an existing regular file (deleted, or a
+# directory) exits 2 with a block.
 if [ -n "$TARGET" ]; then
-  harness_require_path "Feature import" "$TARGET" || exit 2
-  [ -f "$TARGET" ] || exit 0
+  harness_require_file "Feature import" "$TARGET" || exit 2
 
   case "$TARGET" in
     *.ts | *.tsx) : ;;

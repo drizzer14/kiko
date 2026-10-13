@@ -42,7 +42,9 @@ const pinsName = (testSource: string, className: string): boolean =>
 // A `.message` assertion in another `it` block can belong to another class, so the message pin
 // must share the name pin's block or be made on `new ClassName(...)` itself.
 const testBlocksOf = (testSource: string): string[] =>
-  testSource.split(/^\s*(?=(?:it|test)(?:\.(?:each|skip|only|concurrent)\b[^\n]*)?\()/m);
+  testSource.split(
+    /^\s*(?=(?:it|test|xit|fit|xtest|describe)(?:\.(?:each|skip|only|concurrent)\b[^\n]*)?\()/m,
+  );
 
 const pinsMessageOfNewInstance = (testSource: string, className: string): boolean =>
   new RegExp(
@@ -50,12 +52,17 @@ const pinsMessageOfNewInstance = (testSource: string, className: string): boolea
   ).test(testSource);
 
 // The message must be asserted on the receiver whose `.name` the block pins, so a message pin on
-// another instance or on `error.cause` in the same block does not count.
+// another instance or on `error.cause` in the same block does not count. The whole receiver chain
+// is compared, so `other.error.message` is not a pin for `result.error.name`.
 const pinsMessageOfNameReceiver = (block: string, className: string): boolean =>
-  [...block.matchAll(new RegExp(`(\\w+)\\.name\\)\\.(?:toBe|toEqual)\\(\\s*'${className}'`, 'g'))]
-    .map(([, receiver]) => receiver)
+  [
+    ...block.matchAll(
+      new RegExp(`([\\w.]+)\\.name\\)\\.(?:toBe|toEqual)\\(\\s*'${className}'`, 'g'),
+    ),
+  ]
+    .map(([, receiver]) => receiver.replaceAll('.', '\\.'))
     .some((receiver) =>
-      new RegExp(`\\b${receiver}\\.message\\)\\.${MESSAGE_MATCHERS}\\(`).test(block),
+      new RegExp(`(?<![\\w.])${receiver}\\.message\\)\\.${MESSAGE_MATCHERS}\\(`).test(block),
     );
 
 const isPinned = (className: string, testSources: string[]): boolean =>
@@ -185,7 +192,36 @@ describe('isPinned', () => {
     ).toBe(false);
   });
 
-  it.each(['it.skip', 'it.only', 'it.concurrent', 'test.skip', 'test.only', 'test.concurrent'])(
+  it('rejects a message pin on another object whose chain ends like the name pin receiver', () => {
+    expect(
+      isPinned('OneError', [
+        "it('x', () => {\n  expect(result.error.name).toBe('OneError');\n" +
+          "  expect(other.error.message).toBe('text');\n});",
+      ]),
+    ).toBe(false);
+  });
+
+  it('accepts a message pin on the same receiver chain as the name pin', () => {
+    expect(
+      isPinned('OneError', [
+        "it('x', () => {\n  expect(result.error.name).toBe('OneError');\n" +
+          "  expect(result.error.message).toBe('text');\n});",
+      ]),
+    ).toBe(true);
+  });
+
+  it.each([
+    'it.skip',
+    'it.only',
+    'it.concurrent',
+    'test.skip',
+    'test.only',
+    'test.concurrent',
+    'xit',
+    'fit',
+    'xtest',
+    'describe',
+  ])(
     'rejects a name pin in an it block and a message pin in a following %s block',
     (declaration) => {
       expect(

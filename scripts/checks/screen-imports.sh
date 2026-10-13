@@ -20,11 +20,11 @@ fail() {
 
 # Per-file mode (one file argument). fast.sh does not call it, and the
 # pre-write guard's runNodeChecks spawns screen-imports.js itself, not this
-# wrapper, so only the tests exercise this branch. A non-.ts/.tsx target, or
-# no file at all, is silently out of scope.
+# wrapper, so only the tests exercise this branch. A non-.ts/.tsx target is
+# silently out of scope. A path that is not an existing regular file
+# (deleted, or a directory) exits 2 with a block.
 if [ -n "$TARGET" ]; then
-  harness_require_path "Cross-screen import" "$TARGET" || exit 2
-  [ -f "$TARGET" ] || exit 0
+  harness_require_file "Cross-screen import" "$TARGET" || exit 2
 
   case "$TARGET" in
     *.ts | *.tsx) : ;;

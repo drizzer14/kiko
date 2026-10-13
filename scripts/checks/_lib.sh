@@ -33,6 +33,21 @@ harness_require_path() {
   return 1
 }
 
+# harness_require_file <check> <path> : like harness_require_path, and <path> must also be a
+# regular file. A per-file wrapper handed a directory would otherwise scan nothing and pass.
+harness_require_file() {
+  harness_require_path "$1" "$2" || return 1
+  [ -f "$2" ] && return 0
+  print_block \
+    "$1" \
+    "This check takes a file, not a directory or another kind of path." \
+    "Not a file: $2" \
+    "A per-file check cannot scan a directory, and scanning nothing would report a clean tree." \
+    "Pass one file, or run the project-wide form of the check (no argument) to scan a tree." \
+    "Do not pass a directory and read the silence as a pass."
+  return 1
+}
+
 # --- Content dedup + single-flight for the check wrappers --------------------
 # A check must not run when nothing it depends on changed. Each wrapper
 # computes a fingerprint of its own real inputs (the target files plus its
