@@ -2101,7 +2101,8 @@ stop codes and scenario rows.
   only): `walletType` 2 is Spot, 1 Funding, 5 Earn, any other untracked
   (`walletOf`). Receives (R22, B6) are placed by DATE:
   before `PAY_RECEIPTS_TO_SPOT_FROM_MS` (2026-09-29T00:00Z) Funding, from
-  then Spot.
+  then Spot. A receive's wallet fields describe the payer side, not where
+  the receipt landed (user-confirmed 2026-10-13, 1 receipt checked).
 - **Ruling A.** A non-BTC order the user paid with BTC funds
   (`pay-btc-funded-other-coin`) is owed at its own point in the pending pass
   and the re-scan and the other orders import; the forward pass keeps the A2

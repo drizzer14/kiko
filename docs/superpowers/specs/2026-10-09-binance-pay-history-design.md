@@ -670,7 +670,10 @@ withdraw budget moves into this object, with the same numbers and the same rule.
     receive does not read `walletType`, `walletTypes` or `walletAssetCost`, and a receive that
     lists two wallets no longer stops. The cost if the rule is wrong: a receive near the cutover,
     or an order type the announcement does not cover (a Crypto Box claim, a merchant refund),
-    lands on the other wallet of the same account; the totals stay right.
+    lands on the other wallet of the same account; the totals stay right. Confirmed by the user
+    2026-10-13: a BTC Pay receipt dated after 2026-09-29 landed on Spot in the Binance app,
+    although its walletType, walletTypes and cost key name wallet 1 (Funding); a receive's wallet
+    fields describe the payer side (1 receipt checked).
 - Amount: `abs(amount)` through `Money.fromMajor('BTC', ...)`, with the sign from
   the direction.
 - Key: `` `${accountId}:pay:${orderType}:${transactionId}:${walletType}` ``. An
@@ -976,8 +979,8 @@ Placement (the "was:" column shows today's result):
 | P4 | Pay, out | [1,2] (walletType 1, as the probe saw), walletAssetCost on wallets 1 and 2, sums to abs(amount) | one row per wallet | not imported |
 | P4a | Pay, out | [1,2], cost above zero on one of them only (the other zero or absent), sums to abs(amount) | one row, on the costed wallet | not imported |
 | P5 | Pay, out | costs do not sum to abs(amount) (any wallet count), a positive cost on a wallet not in walletTypes, a cost list that is all zero, or no cost entry with walletTypes absent or naming two wallets | stop (`pay-split-mismatch`) | not imported |
-| P5a | Pay, in | `transactionTime` before 2026-09-29T00:00:00Z, whatever walletType, walletTypes (one wallet, two, or none), costs and funds say | Funding (R22, by date) | not imported |
-| P5b | Pay, in | `transactionTime` at or after 2026-09-29T00:00:00Z, whatever the wallet fields say (including walletTypes [1,2]: no stop) | Spot (R22, by date) | not imported |
+| P5a | Pay, in | `transactionTime` before 2026-09-29T00:00:00Z, whatever walletType, walletTypes (one wallet, two, or none), costs and funds say | Funding (R22, by date; confirmed by the user 2026-10-13: a BTC Pay receipt dated after 2026-09-29 landed on Spot in the Binance app, although its walletType, walletTypes and cost key name wallet 1 (Funding); a receive's wallet fields describe the payer side (1 receipt checked)) | not imported |
+| P5b | Pay, in | `transactionTime` at or after 2026-09-29T00:00:00Z, whatever the wallet fields say (including walletTypes [1,2]: no stop) | Spot (R22, by date; confirmed by the user 2026-10-13: a BTC Pay receipt dated after 2026-09-29 landed on Spot in the Binance app, although its walletType, walletTypes and cost key name wallet 1 (Funding); a receive's wallet fields describe the payer side (1 receipt checked)) | not imported |
 | P5c | Pay, out | no BTC walletAssetCost entry at all (BTC funds with an empty cost list), the BTC funds entries added together equal to abs(amount), and walletTypes naming exactly one wallet (B5) | that wallet, the whole amount | not imported |
 | P5d | Pay, out | an empty `fundsDetail` (B7), whatever walletTypes says | stop (`pay-split-mismatch`) | not imported |
 | P6 | Pay, out | 3, 4, 6 | stop (Q9) | not imported |
@@ -1138,12 +1141,20 @@ Probe items:
     decimals of every reward amount (any value over 8 decimals or under 1e-8).
 11. Every SAPI response: whether `X-SAPI-USED-IP-WEIGHT-1M` and
     `X-SAPI-USED-UID-WEIGHT-1M` are present.
-12. Range end semantics, for each endpoint the walk reads (Pay transactions,
+12. ANSWERED for Pay, withdraw and deposit (probe rev 2 PART A, 2026-10-13); transfer and Earn stay
+    open (PART B). Pay: `startTime` and `endTime` both included; filter value = `transactionTime`
+    (probe rev 2 PART A, 2026-10-13). Withdraw: both ends included, sample 1 record (probe rev 2
+    PART A, 2026-10-13). Deposit: documented open check, accepted by the user 2026-10-13: no deposit
+    on the probe account since 2017; the walk is property-tested under all three end readings.
+    Original item: range end semantics, for each endpoint the walk reads (Pay transactions,
     capital deposit, capital withdraw, transfer, Earn): whether `startTime` is
     included and whether `endTime` is included. Read `[t, t]`, `[t - 1, t]`, and
     `[t, t + 1]` around a known record time `t`, and print which of them return the
     record.
-13. Withdraw history: which field `startTime` and `endTime` filter on (`applyTime`,
+13. ANSWERED (probe rev 2 PART A, 2026-10-13): the filter field is `applyTime`; the filter value minus
+    `applyTime` = 0 ms (`completeTime` is 93 s earlier and is not the filter); both ends included;
+    sample 1 record, status 6; the owed point `[T - 1000, T + 1000]` contains it, no code change.
+    Original item: withdraw history: which field `startTime` and `endTime` filter on (`applyTime`,
     `completeTime`, or another), and whether `applyTime` is truncated or rounded to
     the second against that field. The owed point of a withdrawal
     (`[T - 1000, T + 1000]`) rests on this.
@@ -1195,7 +1206,7 @@ keeps its rule.
 | Q12 | Earn history depth? | Floor 2022-01-01. Older windows return empty | The samples before the 2022 floor returned total 0; there are no Earn rows at all. No data in the probe account, rule unchanged | 10 |
 | Q13 | Earn settled status values? | Per kind (documented 2026-10-13; USER RULING 2026-10-13 (kept)): a subscription (flexible or locked) settles on `SUCCESS` (documented `PURCHASING`, `SUCCESS`, `FAILED`); a redemption settles on `PAID` (flexible documented `CREATED`, `PAID`, `FAILED`; locked: only `PAID` is an example). `FAILED` is a final failure, ignored; any other value is not settled and stops at its point. A locked redemption with `isComplete` `false` is not settled (was: only `SUCCESS` settled, so every redemption, whose status is `PAID`, stayed owed for good) | `size` max is 100. No Earn rows, so no status values. No data in the probe account, rule unchanged | 10 |
 | Q14 | Where do Earn rewards land, and what does a locked redemption's `amount` mean? | ANSWERED, ruling A (user, 2026-10-10): flexible `REALTIME` -> Earn, flexible `BONUS` -> Spot, locked -> Spot, other flexible `type` stops (`earn-reward-type-unknown`); sources: the two FAQ URLs in section 6. Known gap: maturity-paid locked rewards. Redemption legs use `amount`. `rewardAmt` is not imported from redemptions | No data in the probe account (no reward rows, no locked positions), rule unchanged; ruling A stands and the maturity-paid gap stays open | 10 (reward `type` counts per kind; maturity-paid question) |
-| Q15 | The SAPI IP ceiling and the IP header? | `IP_BUDGET_1M` 6000 and the per-walk caps, which hold even without the header | The header is not the same everywhere. Pay: `X-SAPI-USED-UID-WEIGHT-1M` (peak 21000 after 9 calls). Capital deposit, transfer, Earn: `X-SAPI-USED-IP-WEIGHT-1M`. Withdraw history: `X-SAPI-USED-UID-WEIGHT-1S`, per second, no minute reading (it gives none; the cap of 9 calls bounds it). Account: `X-MBX-USED-WEIGHT-1M`. The IP ceiling could not be measured, so `IP_BUDGET_1M` stays | 11 |
+| Q15 | The SAPI IP ceiling and the IP header? | `IP_BUDGET_1M` 6000 and the per-walk caps, which hold even without the header | The header is not the same everywhere. Pay: `X-SAPI-USED-UID-WEIGHT-1M` (peak 21000 after 9 calls). Capital deposit, transfer, Earn: `X-SAPI-USED-IP-WEIGHT-1M`. Withdraw history: `X-SAPI-USED-UID-WEIGHT-1S`, per second, no minute reading (it gives none; the cap of 9 calls bounds it). Account: `X-MBX-USED-WEIGHT-1M`. The IP ceiling could not be measured, so `IP_BUDGET_1M` stays. Probe rev 2 PART A (2026-10-13): withdraw reports `X-SAPI-USED-UID-WEIGHT-1S` again; Pay `X-SAPI-USED-UID-WEIGHT-1M` peaked at 39000; the IP ceiling is still not measurable | 11 |
 | Q16 | Are there fully identical reward records? | Each one is kept as its own row (E9) | No data in the probe account (no reward rows), rule unchanged | 10 |
 | A1 | The Pay success `code` is `"000000"` | A missing `data` array or an unknown code is an error | Yes: code `"000000"` and a `data` array on 7 of 7 Pay calls. As built | 1 |
 
