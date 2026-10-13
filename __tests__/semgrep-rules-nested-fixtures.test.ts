@@ -27,7 +27,7 @@ function runScript(fixturesDirectory: string): SpawnSyncReturns<string> {
   });
 }
 
-function makeTempFixturesRoot(): string {
+function makeTemporaryFixturesRoot(): string {
   return mkdtempSync(join(tmpdir(), 'kiko-nested-fixtures-'));
 }
 
@@ -39,7 +39,7 @@ describe('scripts/checks/semgrep-rules.sh nested fixture discovery (KIKO_RULES_F
   });
 
   it('credits a nested bad fixture (and its nested good pair) toward its rule id', () => {
-    const root = makeTempFixturesRoot();
+    const root = makeTemporaryFixturesRoot();
     try {
       const mirrored = join(root, 'kiko-no-switch', 'src', 'somewhere');
       mkdirSync(mirrored, { recursive: true });
@@ -55,7 +55,7 @@ describe('scripts/checks/semgrep-rules.sh nested fixture discovery (KIKO_RULES_F
   });
 
   it('fails a nested fixture missing its pair', () => {
-    const root = makeTempFixturesRoot();
+    const root = makeTemporaryFixturesRoot();
     try {
       const mirrored = join(root, 'kiko-no-switch', 'src', 'somewhere');
       mkdirSync(mirrored, { recursive: true });
@@ -72,7 +72,7 @@ describe('scripts/checks/semgrep-rules.sh nested fixture discovery (KIKO_RULES_F
   });
 
   it('still discovers a flat, top-level fixture pair (no regression)', () => {
-    const root = makeTempFixturesRoot();
+    const root = makeTemporaryFixturesRoot();
     try {
       copyFileSync(REAL_BAD, join(root, 'kiko-no-switch.bad.ts'));
       copyFileSync(REAL_GOOD, join(root, 'kiko-no-switch.good.ts'));

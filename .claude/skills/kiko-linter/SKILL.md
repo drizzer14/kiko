@@ -35,6 +35,13 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
 - Comments in a shell script wrap at 100 columns, as in any other source file; `__tests__/shell-comment-width.test.ts` pins it.
 - On failure: call `print_block` (a structured WHAT/DETAILS/WHY/HOW/
   DO-NOT block) to stderr, then `exit 2`.
+- A missing path is a failure, never a pass. A missing scan root or a missing path argument
+  exits 2 with the standard block that names the path (`harness_require_path` in `_lib.sh`).
+  A per-file wrapper given a directory exits 2 ("takes a file", `harness_require_file`).
+  One exception: `medium.sh` filters deleted files before it calls `dup.sh` and
+  `override-guard.sh`, so a deleted file on the medium tier is skipped silently, while a
+  direct call with a deleted path exits 2. `component-i18n-namespace.sh` keeps its own `-d`
+  block for its fixed root. `__tests__/wrapper-missing-path.test.ts` pins this.
 - On success: **silent**, `exit 0`. A wrapper that prints anything on
   success breaks the "stays silent on success" contract every other
   wrapper and every hook relies on. One exception is the deep,
@@ -2427,7 +2434,25 @@ mechanizable (see harness-workflow's "Classify every finding").
    - A guard test proves concurrency or speed by counting work or by a
      file rendezvous between stubs, never by a clock. The invariant
      `__tests__/guard-tests-no-wall-clock.test.ts` fails a clock reading
-     in a pre-write-guard test; read it for the banned forms.
+     in a pre-write-guard test; read its `CLOCK_READINGS` for the banned
+     forms. It fails every `Date.now()` read in a guard test, a
+     `${Date.now() - start}` delta included, and also `Date.now` without a
+     call, `+new Date`, `Date()`, and a shell `date -u +%s`, `date +"%s"`.
+     A unique temporary name comes from `createTemporaryDirectory(prefix)`,
+     with `join(..., '<name>')` for a path inside it, never from the clock.
+   - A test that needs a scratch folder uses
+     `__tests__/test-support/temporary-directory.ts` (`createTemporaryDirectory`
+     and `removeTemporaryDirectories` in an `afterEach`). New code uses the
+     helper, because a hand-rolled `mkdtempSync` leaks when a test throws.
+     Existing hand-rolled `mkdtempSync` calls are old code: they move to the
+     helper when their file is next edited.
+   - `__tests__/error-class-pins.test.ts` fails when a non-empty
+     `extends Error` class under `src/` has no same-folder test pinning its
+     `.name` literal and its `.message`. The message pin must be on the same
+     receiver chain as the `.name` pin in the same test block (blocks split at
+     `it`/`test`/`xit`/`fit`/`xtest`/`describe` and their `.skip`/`.only`/`.concurrent`
+     forms), or on `new ClassName(...).message`, or in one `toMatchObject({ name, message })`.
+     Known limit: a rebound `let error` is not seen. A class with an empty body is skipped.
    - A new Node rule also runs on the probed negative (good) fixtures of
      `__tests__/pre-write-guard-rules.test.ts`. Make those fixtures pass
      the new rule, never exempt them.

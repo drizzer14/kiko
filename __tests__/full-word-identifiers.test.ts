@@ -72,6 +72,25 @@ describe('scripts/checks/full-word-identifiers.sh', () => {
     expect(result.stderr).toContain('err_code');
   });
 
+  it('fails temp as a bare name and as one part of a camelCase identifier', () => {
+    const result = runCheck(
+      'const temp = 1;\nconst tempDirectory = 2;\nexport { temp, tempDirectory };\n',
+    );
+
+    expect(result.status).toBe(2);
+    expect(result.stderr).toContain('temp');
+    expect(result.stderr).toContain('tempDirectory');
+  });
+
+  it('does not flag temporary, template, or mkdtempSync, which only contain temp', () => {
+    const result = runCheck(
+      'const temporary = 1;\nconst template = 2;\nconst mkdtempSync = 3;\n' +
+        'export { temporary, template, mkdtempSync };\n',
+    );
+
+    expect(result.status).toBe(0);
+  });
+
   it('does not flag a whole word that only contains a denylisted word as a substring', () => {
     const result = runCheck(
       'const cube = 1;\nconst value = 2;\nconst context = 3;\nexport { cube, value, context };\n',

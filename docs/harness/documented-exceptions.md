@@ -932,3 +932,8 @@ verified usage, not dead weight:
 - **`scripts/job-queue.sh` group TERM** (user ruling A, 2026-10-13): the
   queue may send TERM to the process group it created for its own job, never
   any other group; see kill-guard's entry above.
+- **`__tests__/error-class-pins.test.ts` skips a class with an empty body**
+  (`class X extends Error {}`): such a class inherits its name and message
+  from `Error` and has no own `.name` or `.message` literal to pin, and
+  pinning it would need a `src/` change that adds one. Every non-empty
+  `extends Error` class is checked, with no per-class exemption list.

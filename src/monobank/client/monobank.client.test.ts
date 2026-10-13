@@ -146,6 +146,24 @@ describe('429 / Retry-After handling', () => {
   });
 });
 
+describe('Monobank error classes', () => {
+  it('names the timeout error and words it for the user', () => {
+    const error = new MonobankTimeoutError();
+
+    expect(error.name).toBe('MonobankTimeoutError');
+    expect(error.message).toBe('Monobank did not respond in time. Please try again.');
+  });
+
+  it('names the rate-limit error and words it for the user', () => {
+    const error = new MonobankRateLimitError();
+
+    expect(error.name).toBe('MonobankRateLimitError');
+    expect(error.message).toBe(
+      'Monobank allows at most 1 request per 60 seconds. Wait a minute, then try again.',
+    );
+  });
+});
+
 describe('request timeout', () => {
   it('aborts a hung request after the timeout and surfaces a timeout error', async () => {
     jest.useFakeTimers();
