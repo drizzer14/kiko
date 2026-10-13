@@ -6,9 +6,9 @@ import { repositoryFiles } from './test-support/repository-files';
 // A class that extends Error sets `this.name` and passes `super` a message, and a mutant that
 // blanks either one survives unless a test pins the exact literal. So every such class needs a
 // colocated test (same folder) that asserts its `.name` on the class's own literal and its
-// `.message`. The message pin is in the same `it` block as the `.name` pin, or is asserted on
-// `new ClassName(...).message`. A class with an empty body inherits both from Error and has no
-// literal to pin.
+// `.message`. The message pin is asserted on the same receiver as the `.name` pin in the same
+// `it` block, in the same `toMatchObject({ ... })` literal, or on `new ClassName(...).message`.
+// A class with an empty body inherits both from Error and has no literal to pin.
 const REPOSITORY_ROOT = join(__dirname, '..');
 
 const ERROR_CLASS_PATTERN = /\bclass (\w+) extends Error\s*\{(\s*\})?/g;
@@ -25,30 +25,47 @@ const errorClassesIn = (source: string): string[] =>
     .filter(([, , emptyBody]) => emptyBody === undefined)
     .map(([, className]) => className);
 
-const pinsName = (testSource: string, className: string): boolean =>
-  new RegExp(`\\.name\\)\\.(toBe|toEqual)\\(\\s*'${className}'|\\bname:\\s*'${className}'`).test(
-    testSource,
+const MESSAGE_MATCHERS = '(?:toBe|toEqual|toMatch|toContain)';
+
+// One `toMatchObject({ ... })` literal holding both fields: a `message:` field of a fixture
+// payload elsewhere in the block must not count as the message pin.
+const objectPinPattern = (className: string): RegExp =>
+  new RegExp(
+    `toMatchObject\\(\\{(?:[^{}]*\\bname:\\s*'${className}'[^{}]*\\bmessage:\\s*['"\`]|[^{}]*\\bmessage:\\s*['"\`][^{}]*\\bname:\\s*'${className}')`,
   );
 
-const pinsMessage = (testSource: string): boolean =>
-  /\.message\)\.(toBe|toEqual|toMatch|toContain)\(|\bmessage:\s*['"`]/.test(testSource);
+const pinsName = (testSource: string, className: string): boolean =>
+  new RegExp(
+    `\\.name\\)\\.(toBe|toEqual)\\(\\s*'${className}'|toMatchObject\\(\\{[^{}]*\\bname:\\s*'${className}'`,
+  ).test(testSource);
 
 // A `.message` assertion in another `it` block can belong to another class, so the message pin
 // must share the name pin's block or be made on `new ClassName(...)` itself.
 const testBlocksOf = (testSource: string): string[] =>
-  testSource.split(/^\s*(?=(?:it|test)(?:\.each\b[^\n]*)?\()/m);
+  testSource.split(/^\s*(?=(?:it|test)(?:\.(?:each|skip|only|concurrent)\b[^\n]*)?\()/m);
 
 const pinsMessageOfNewInstance = (testSource: string, className: string): boolean =>
   new RegExp(
-    `new ${className}\\((?:[^()]|\\((?:[^()]|\\([^()]*\\))*\\))*\\)\\.message\\)\\.(toBe|toEqual|toMatch|toContain)\\(`,
+    `new ${className}\\((?:[^()]|\\((?:[^()]|\\([^()]*\\))*\\))*\\)\\.message\\)\\.${MESSAGE_MATCHERS}\\(`,
   ).test(testSource);
+
+// The message must be asserted on the receiver whose `.name` the block pins, so a message pin on
+// another instance or on `error.cause` in the same block does not count.
+const pinsMessageOfNameReceiver = (block: string, className: string): boolean =>
+  [...block.matchAll(new RegExp(`(\\w+)\\.name\\)\\.(?:toBe|toEqual)\\(\\s*'${className}'`, 'g'))]
+    .map(([, receiver]) => receiver)
+    .some((receiver) =>
+      new RegExp(`\\b${receiver}\\.message\\)\\.${MESSAGE_MATCHERS}\\(`).test(block),
+    );
 
 const isPinned = (className: string, testSources: string[]): boolean =>
   testSources.some(
     (source) =>
-      pinsName(source, className) &&
-      (testBlocksOf(source).some((block) => pinsName(block, className) && pinsMessage(block)) ||
-        pinsMessageOfNewInstance(source, className)),
+      testBlocksOf(source).some(
+        (block) =>
+          pinsMessageOfNameReceiver(block, className) || objectPinPattern(className).test(block),
+      ) ||
+      (pinsName(source, className) && pinsMessageOfNewInstance(source, className)),
   );
 
 describe('errorClassesIn', () => {
@@ -139,6 +156,69 @@ describe('isPinned', () => {
           "  expect(error.name).toBe('OneError');\n  expect(error.message).toBe('text');\n});",
       ]),
     ).toBe(true);
+  });
+
+  it('rejects a message pin on another receiver in the name pin block', () => {
+    expect(
+      isPinned('OneError', [
+        "it('x', () => {\n  const error = new OneError();\n  expect(error.name).toBe('OneError');\n" +
+          "  expect(new OtherError().message).toBe('text');\n});",
+      ]),
+    ).toBe(false);
+  });
+
+  it('rejects a message pin on the cause of the name pin receiver', () => {
+    expect(
+      isPinned('OneError', [
+        "it('x', () => {\n  const error = new OneError();\n  expect(error.name).toBe('OneError');\n" +
+          "  expect((error.cause as Error).message).toBe('text');\n});",
+      ]),
+    ).toBe(false);
+  });
+
+  it('rejects a message field of a fixture payload beside the name pin', () => {
+    expect(
+      isPinned('OneError', [
+        "it('x', () => {\n  const payload = { message: 'boom' };\n  const error = new OneError(payload);\n" +
+          "  expect(error.name).toBe('OneError');\n});",
+      ]),
+    ).toBe(false);
+  });
+
+  it.each(['it.skip', 'it.only', 'it.concurrent', 'test.skip', 'test.only', 'test.concurrent'])(
+    'rejects a name pin in an it block and a message pin in a following %s block',
+    (declaration) => {
+      expect(
+        isPinned('OneError', [
+          "it('names it', () => {\n  const error = new OneError();\n  expect(error.name).toBe('OneError');\n});\n\n" +
+            `${declaration}('words another', () => {\n  const error = new OtherError();\n` +
+            "  expect(error.message).toBe('text');\n});",
+        ]),
+      ).toBe(false);
+    },
+  );
+
+  it('accepts the message pin on the same receiver as the name pin', () => {
+    expect(
+      isPinned('OneError', [
+        "it('x', () => {\n  const failure = new OneError();\n  expect(failure.name).toBe('OneError');\n" +
+          "  expect(failure.message).toBe('text');\n});",
+      ]),
+    ).toBe(true);
+  });
+
+  it('accepts an object-literal name and message in one toMatchObject, in either order', () => {
+    expect(
+      isPinned('OneError', ["expect(error).toMatchObject({ message: 'text', name: 'OneError' });"]),
+    ).toBe(true);
+  });
+
+  it('rejects a name field and a message field in different object literals', () => {
+    expect(
+      isPinned('OneError', [
+        "expect(error).toMatchObject({ name: 'OneError' });\nconst payload = { message: 'boom' };",
+      ]),
+    ).toBe(false);
   });
 
   it('rejects a name pin in one file and a message pin in another', () => {
