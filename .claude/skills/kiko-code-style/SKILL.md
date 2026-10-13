@@ -216,8 +216,7 @@ in a comment left behind in the code. Mechanized in `src/**` by the
 kiko-linter skill's own section on it for the rule's design.
 
 The "changed because …" narrative words are mechanized too, by the
-`kiko-no-history-word-comment` Semgrep rule (WARNING until its sweep
-lands): read the phrases in that rule's `pattern-regex` and `message` in
+`kiko-no-history-word-comment` Semgrep rule (ERROR): read the phrases in that rule's `pattern-regex` and `message` in
 `rules/semgrep-prewrite.yml` (they include a `was:` label before an old value,
 `// was: 30`). Write
 how the code works today and why ("matches the holding", "a card absent
@@ -236,8 +235,14 @@ those shapes; a date that is data (a fixture day, a DST day) stays.
 
 A comment names no task, step, finding, or spec id (`item 6`, `DEVICE BUG`,
 `Bug A2`, `Feature 1`, `SEC-C1`, `(A1)`): it states the reason itself. The
-`kiko-no-task-id-comment` Semgrep rule (WARNING until its sweep lands)
+`kiko-no-task-id-comment` Semgrep rule (ERROR)
 mechanizes the shapes listed in its kiko-linter section.
+
+A path cited in a `src` comment must exist, with or without its root. A rooted path
+(`src/…`, `docs/…`, a migration file name) must exist on disk. A rootless partial citation
+that ends in a file extension (`monobank/sync/sync.ts`) must match a tracked file's path
+suffix. `__tests__/cited-paths.test.ts` checks both; write the sentence without a path when
+the file is gone.
 
 Documented exception: the data-provenance date comment in
 `src/rates/fiat-rate-seed/fiat-rate-seed.ts` stays — it records WHEN

@@ -1137,8 +1137,10 @@ Mechanizes kiko-code-style's "Comments: WHY only, never history": no
 task id, review-round id, spec/decision id, or plan citation left
 behind in a `src/**` comment. The member list is the two
 `pattern-regex` arms of `kiko-no-history-id-comment` in
-`rules/semgrep-prewrite.yml`. Read them for the current set; the
-fixture pair shows each member. Two
+`rules/semgrep-prewrite.yml`. Read them for the current set; the P-ids are `P-?\d{1,3}`
+(`P3`, `P-12`), and "Display P3" and the curve names P-256, P-384 and P-521 are
+standards, not ids, so they stay silent (`rules/fixtures/kiko-no-history-id-comment.good.ts`).
+The fixture pair shows each member. Two
 `pattern-regex` arms, one per comment syntax —
 a single regex spanning both `//` and `/* */` would have to
 special-case where a line comment ends and a block comment does not.
@@ -1425,24 +1427,26 @@ found. Reword any of these.
 The change-narrative half of kiko-code-style's "Comments: WHY only, never
 history". `kiko-no-history-id-comment` catches an id or a citation; this
 rule catches the phrases a comment uses to narrate a change, among them a
-`was:` label before an old value (`// was: 30`, ` * was: the old cap`). A
-comment states how the code works today and why, never how it worked before.
+`was:` label before an old value (`// was: 30`, ` * was: the old cap`), and `as before`
+at the end of a clause (`fails as before`, `as before, ...`; a noun phrase after it, such as
+`as before the request`, is an ordering and stays silent). A comment states how the code
+works today and why, never how it worked before.
 The members are the `pattern-regex` alternation and the `message` of
 `kiko-no-history-word-comment` in `rules/semgrep-prewrite.yml`; read the
 phrases there, never copy them. The match is capitalization-tolerant, and
 the fixture pair shows each shape.
 
-**A separate rule id, severity WARNING (Class B).** Severity is per rule,
-so the words could not ride on the ERROR id rule. Count the live findings with
+**A separate rule id, severity ERROR.** Severity is per rule, so the words could not ride
+on the id rule while findings remained. The sweep landed, and the tree holds 0 findings for
+this rule id. Count the live findings with
 `semgrep --metrics off --quiet --config rules/semgrep-prewrite.yml src --json`,
-filtered to `kiko-no-history-word-comment` (it reports every word of a
-comment, so a comment holding two words counts twice). It
-lands as WARNING:
-`check:security` surfaces them without failing, and the pre-write guard
-already denies a NEW finding of any severity. **Promotion condition:**
-flip to ERROR when `check:security` reports 0 findings for this rule id,
-after the sweep (never when a grep is empty). The sweep is the user's
-call; do not run it as part of an unrelated task.
+filtered to `kiko-no-history-word-comment` (it reports every word of a comment, so a
+comment holding two words counts twice). `check:security` fails on a finding, and the
+pre-write guard denies a NEW one.
+
+**Known false positives.** `as before` at the end of a physical line, when its noun phrase
+wraps to the next line, reads as a clause end. `as before and after` reads as a clause end
+too. Reword such a comment.
 
 **Hand-run scan target.** A rule's `paths.exclude` (for example `__tests__/**`) is
 relative to the semgrep scan target. A hand-run count or sweep (this rule and
@@ -1528,9 +1532,13 @@ date attached to a ruling, a finding, or a plan left in a `src/**` comment
 ("user-approved 2026-10-08", "Device finding", "(multi-account plan,
 2026-09-11)"). The members are the two `pattern-regex` alternations in
 `kiko-no-history-date-comment` (`rules/semgrep-prewrite.yml`): `Device
-finding(s)`; `approved|ruled|ruling|decided|confirmed` then an ISO date; `plan|track|round|ruling|feedback|audit`,
+finding(s)`; `approved|probed|ruled|ruling|decided|confirmed` then an ISO date, with an
+optional `on` or `of` between ("ruling of 2026-10-12", "ruled on 2026-10-12") and a
+comment wrap tolerated between the word and the date; `plan|track|round|ruling|feedback|audit`,
 a comma, then an ISO date; a `docs/` path holding a dated file name; and a parenthesized
-date that opens the comment text (`* (2026-09-11) moves …`). The anchoring is the
+date that opens the comment text (`* (2026-09-11) moves …`). A probe's date is history
+too: `probed <date>` is a member, and the comment states what the probe showed, never when it
+ran. The anchoring is the
 history rules': the string-skip `^(?:…)*` walk, `(?<!:)//`, the block arm that never
 crosses `*/`, the `\K` match shape, and the same `paths.exclude` scope. The pair is flat
 (`rules/fixtures/kiko-no-history-date-comment.{bad,good}.ts`).
@@ -1540,17 +1548,21 @@ so `check:security` reports 0 findings for the id.
 
 **A bare ISO date is NOT a member, by measurement.** Over `src` a bare
 `\d{4}-\d{2}-\d{2}` inside a comment hit 55 times; the 12 history hits were swept and the
-other 43 (27 files) are data, not history:
-a test's fixture day (`// 2026-01-15` after a `Date.UTC`), a DST day (`Europe/Kyiv falls back
-on 2026-10-25`), a leap day, a worked example, a date format sample, and provenance of a
-snapshot or a probe (`captured 2026-09-22` in `fiat-rate-seed.ts`, `checked 2026-09-26` in
-`week-start.ts`, `probed 2026-10-06` in `sync.ts`). A date records WHEN a value was
-captured, which the code cannot show, so provenance and fixture days stay, and
-`fiat-rate-seed.ts` keeps its documented exception in kiko-code-style. Only a date that
-follows a ruling, plan, or finding word counts. No exemption list exists, so there is
-nothing in `docs/harness/documented-exceptions.md` to update. Known misses: a date after
-another word ("signed off 2026-10-08"), a date with no word before it, and a dated
-history sentence that names no ruling word. Reword by hand when a review finds one.
+other 43 (27 files) are data, not history: a test's fixture day (`// 2026-01-15` after a
+`Date.UTC`), a DST day (`Europe/Kyiv falls back on 2026-10-25`), a leap day, a worked example
+(`Date.UTC rolls 2026-09-31 into October` in `reminder-schedule.ts`), a date format sample,
+and provenance of a snapshot or a check (`captured 2026-09-22` in `fiat-rate-seed.ts`,
+`checked 2026-09-26` in `week-start.ts`). A date records WHEN a value was captured, which
+the code cannot show, so provenance and fixture days stay, and `fiat-rate-seed.ts` keeps its
+documented exception in kiko-code-style. The rule: only a date that follows a ruling, probe,
+plan, or finding word counts. No exemption list exists, so there is nothing in
+`docs/harness/documented-exceptions.md` to update. Known misses: a date after another word
+("signed off 2026-10-08"), a date with no word before it, and a dated history sentence that
+names no ruling word. Reword by hand when a review finds one.
+
+**Known false positive.** The wrap tolerance between the word and the date matches
+"was approved" at the end of a comment line when the next comment line starts with a date,
+for example a fixture day. Reword the comment so the date does not open a line.
 
 ## `kiko-no-task-id-comment`
 
@@ -1559,17 +1571,14 @@ The id half of kiko-code-style's "Comments: WHY only, never history" that
 bug, or finding id of the multi-round process left in a `src/**` comment
 (`DEVICE BUG fix`, `Bug A2`, `Feature 1`, `Global Constraint 2`, `item 6`,
 `Part A`, `Track A`, `Invariant #15`, `finding S4`, `ponytail L43`, a
-letter-prefixed finding id such as `SEC-C1`/`TX-C6a`, and a parenthesized
-plan id such as `(A1)`/`(P3)`). The members are the two `pattern-regex`
+letter-prefixed finding id such as `SEC-C1`/`TX-C6a`, a parenthesized
+plan id such as `(A1)`/`(P3)`, and a ruling id such as `ruling A2`/`RULING B1`). The members are the two `pattern-regex`
 alternations in `kiko-no-task-id-comment` (`rules/semgrep-prewrite.yml`);
 the fixture pair shows each shape.
 
-**A separate rule id, severity WARNING (Class B).** Severity is per rule, and
-files that other work still owns held findings of this shape when it landed.
-`check:security` surfaces them without failing; the pre-write guard denies a
-NEW one. **Promotion condition:** flip to ERROR when
-`check:security` reports 0 findings for this rule id (never when a grep is
-empty). Count them with `semgrep --metrics off --quiet --config
+**A separate rule id, severity ERROR.** Severity is per rule. The promotion condition
+(`check:security` reports 0 findings for this rule id) was met, so the rule fails
+`check:security`, and the pre-write guard denies a NEW one. Count the findings with `semgrep --metrics off --quiet --config
 rules/semgrep-prewrite.yml src --json`, filtered to this rule id.
 
 The anchoring is the two history rules': the same string-skip `^(?:…)*` walk,
@@ -1601,6 +1610,9 @@ first, and a shape that hit prose was dropped or narrowed:
   after the hyphen in `SEC-C1` and inside `(M1)`, so for those letters both
   rules fire (ERROR and WARNING); this rule's letter-prefixed shape adds
   cover only for second letters the history rule lacks (`SEC-A1`, `TX-B6a`).
+- `[Rr]ulings?`/`RULINGS?` plus a capital letter, a digit, and an optional trailing lowercase
+  letter (`ruling A2`, `RULING B1`, `ruling A2b`), with a comment wrap tolerated between the
+  word and the id. "ruling 3" (no letter) and "ruling A" (no digit) stay silent.
 - A parenthesized letter and one digit, `(A1)`/`(P3)`: `(S3)` and `(H1)` are
   excluded by a lookahead (a cloud name and a heading level). A single letter
   in parentheses (`(B)`, `uahPer(A)`) and a spreadsheet range (`A1:J1`) stay
@@ -2113,6 +2125,14 @@ disk that git tracks or would track
 (the file listing in `__tests__/test-support/repository-files.ts`, kept when
 `existsSync`), so, as with the rooted `existsSync` check, a new
 uncommitted file resolves and a deleted one does not.
+
+The same test checks the comments of `src/**` sources (read through the TypeScript parse, so
+a path in a string or JSX text is not read). A rooted path (`src/`, `docs/`, `rules/`,
+`e2e/`, `drizzle/`, `scripts/`, `__tests__/`) or a bare migration file name in a comment must
+exist. A rootless partial citation in a comment counts only when it ends in a file extension
+(`monobank/sync/sync.ts`): comment prose is not backticked, so two words joined by a
+slash are not a claim about a file. It then resolves as a partial citation in a
+doc does. The helper is `__tests__/test-support/source-comment-citations.ts`.
 
 A second Jest invariant, `__tests__/skill-identifiers.test.ts`, does the
 same for names: it fails when an inline code span in a skill
