@@ -87,7 +87,7 @@ export const holdings = sqliteTable('holdings', {
   // The card balance THROUGH WHICH this Monobank card's statements were last
   // SUCCESSFULLY imported — the crash-safe marker the balance-diff skip compares
   // against, NOT `balanceMinorUnits`. `balanceMinorUnits` is the live display
-  // balance, which `upsertHoldings` (src/monobank/sync.ts) overwrites from
+  // balance, which `upsertHoldings` (src/monobank/sync/sync.ts) overwrites from
   // /client-info at the START of every sync, BEFORE the per-card statement loop
   // runs. Comparing the skip against that display balance would lose data: a
   // run that committed a card's new balance up front and was then interrupted

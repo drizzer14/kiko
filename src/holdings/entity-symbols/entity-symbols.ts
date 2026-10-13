@@ -12,7 +12,7 @@ import type { HoldingType } from '../holding-type';
 import { holdingDescriptorOrUndefined, recordByType } from '../holding-descriptor';
 
 // The default SF Symbol shown for an account/holding icon, keyed by its
-// kind/type. Mirrors src/holdings/entity-colors.ts: fixed UI symbols (not
+// kind/type. Mirrors src/holdings/entity-colors/entity-colors.ts: fixed UI symbols (not
 // drawn from the user-facing curated icon pool in
 // src/design-system/components/icon-picker-modal/icon-picker-modal.component.tsx), so
 // a user may still override the icon per entity later; until then the row

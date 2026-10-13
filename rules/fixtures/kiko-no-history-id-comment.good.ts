@@ -165,3 +165,7 @@ export const caseSensitiveProseNearMiss = true;
 export const idStringAfterBlock = /* a plain note */ 'T14';
 // A plain note.
 export const idStringBelowLine = 'T14';
+
+// 25. A capital P with no digit run right after it, or a lower-case p, is not a spec id: P&L
+// (profit and loss), a Promise, p95 latency, a P2P transfer, and a PNG stay silent.
+export const priorityIdNearMiss = true;

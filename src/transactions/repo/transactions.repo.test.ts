@@ -130,7 +130,7 @@ describe('transactionsRepo', () => {
 
   // The loan-payment matcher's own candidate read (P-NOWORK: filter what it
   // can never link at the SQL level, not in JS) — a debit, not already
-  // linked, not previously rejected, not one leg of an Exchange/Convert,
+  // linked, not rejected, not one leg of an Exchange/Convert,
   // joined against the payer holding's own currency (the matcher compares
   // that against each loan's own currency itself).
   it('scopes loanMatchCandidatesQuery to an eligible debit: unlinked, un-rejected, no exchange marker', () => {
@@ -670,11 +670,11 @@ describe('transactionsRepo.addManyDedup upsert', () => {
     ]);
   });
 
-  // A binance import row carries the stable 'BTC' description (item 12). It rides
+  // A binance import row carries the stable 'BTC' description. It rides
   // the SAME shared upsert as Monobank, which already refreshes `description`, so
   // an already-imported crypto row whose description was '' gains 'BTC' on the
-  // next sync — with no repo change. These two guard that the behavior B3 relies
-  // on stays intact.
+  // next sync — with no repo change. These two guard that the behavior the Binance
+  // import relies on stays intact.
   const binanceRow = (overrides: Record<string, unknown> = {}) => ({
     holdingId: 'h-spot',
     amountMinorUnits: 50_000_000,

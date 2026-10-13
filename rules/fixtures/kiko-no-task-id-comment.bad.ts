@@ -146,3 +146,11 @@ export const itemProseLimit = true;
 // EXPECT-FINDING
 // The picker keeps its sort (item 3) and the filter stays on (item 4).
 export const secondIdOnLine = true;
+
+// EXPECT-FINDING
+// The sheet keeps its height per ruling A2: the footer never scrolls.
+export const rulingLetterId = true;
+
+// EXPECT-FINDING
+/* Per Ruling B14, the toggle stays flat. */
+export const rulingLetterIdBlock = true;

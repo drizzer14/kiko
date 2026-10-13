@@ -46,7 +46,7 @@ const defaultDeps: BalanceSyncDeps = {
 
 /**
  * Resolve the account this sync writes into, mirroring
- * `resolveMonobankAccountId` (`src/monobank/sync.ts`). A `targetAccountId` sync
+ * `resolveMonobankAccountId` (`src/monobank/sync/sync.ts`). A `targetAccountId` sync
  * validates only that the target exists — MULTIPLE `binance` and multiple
  * `btc_wallet` connections are allowed, each an independent account with its
  * own per-account secret/address and its own single-flight key.
@@ -56,7 +56,7 @@ const defaultDeps: BalanceSyncDeps = {
  */
 // Unlike the Monobank/disconnect error paths (which the screen swallows behind
 // a bare `catch` and a generic translated fallback — see
-// `accountDetail.tryAgainMessage`), `useSyncAction` (src/sync/use-sync.ts)
+// `accountDetail.tryAgainMessage`), `useSyncAction` (src/sync/use-sync/use-sync.ts)
 // surfaces THIS thrown message's `.message` verbatim as the sync screen's
 // error `<Text>`, so it genuinely needs `providerDisplayName`'s translated
 // name, not the raw `providerId`. This module has no React context of its
@@ -104,14 +104,14 @@ const resolveTargetAccount = async (
  */
 /**
  * Per-account single-flight join, mirroring `inFlightSync` in
- * `src/monobank/sync.ts` but keyed per account. Auto-sync (`useAutoSync`, app
+ * `src/monobank/sync/sync.ts` but keyed per account. Auto-sync (`useAutoSync`, app
  * open) and pull-to-refresh (`useSyncAll`) can each fan out over the SAME
  * connected crypto account; without this lock each fires its own
  * `runBalanceSync`, doubling the provider (Binance) request weight AND
  * double-registering the account's holdings into the shared, reference-counted
- * progress session (`src/monobank/sync-status.ts`) — whose accumulators reset
- * only when the session depth returns to 0 — so the "N / M holdings" total grew
- * by the crypto holding count on every overlap. While a run is in flight for an
+ * progress session (`src/monobank/sync-status/sync-status.ts`) — whose accumulators
+ * reset only when the session depth returns to 0 — so the "N / M holdings" total
+ * grew by the crypto holding count on every overlap. While a run is in flight for an
  * account, every new trigger for that SAME account JOINS it and observes its
  * result instead of starting a second run; the lock releases the instant the run
  * settles — success OR failure — so a later, non-overlapping sync starts fresh.
@@ -159,7 +159,7 @@ const runBalanceSyncInner = async <Deps>(
   overrides: Partial<BalanceSyncDeps> = {},
 ): Promise<BalanceSyncResult> => {
   const deps: BalanceSyncDeps = { ...defaultDeps, ...overrides };
-  // Enter the shared progress session (see `src/monobank/sync-status.ts`) so this
+  // Enter the shared progress session (see `src/monobank/sync-status/sync-status.ts`) so this
   // crypto sync feeds the same determinate bar as a concurrent Monobank run. The
   // `finally` leaves it on EVERY path — a failed fetch never strands the bar.
   beginProgressSession();

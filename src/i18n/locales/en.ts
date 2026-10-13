@@ -200,7 +200,7 @@ export const en = {
     rowColorPrefix: '{{title}} color',
     setAsDefaultLabel: 'Set {{title}} as default',
     titleFieldLabel: '{{title}} title',
-    // The ultimate fallback display (src/categories/category-display.ts
+    // The ultimate fallback display (src/categories/category-display/category-display.ts
     // NEUTRAL_CATEGORY) shown only when a category cannot be resolved AND
     // the default-category row itself is missing (e.g. before the seed
     // migration runs) — not the ordinary "Other" bucket above.
@@ -738,7 +738,7 @@ export const en = {
   holdingDetail: {
     addLot: 'Add lot',
     addTransaction: 'Add transaction',
-    // The derived lifecycle ledger lines (src/holdings/derived-entries.ts) a
+    // The derived lifecycle ledger lines (src/holdings/derived-entries/derived-entries.ts) a
     // term-deposit or bond's Holding-detail screen renders inline — a bank
     // statement's own line structure, not a stored transaction.
     capitalization: 'Capitalization',
@@ -966,7 +966,7 @@ export const en = {
     },
   },
   // The Home and Holding-detail rows both render the same fallback label
-  // (src/transactions/default-description.ts) for a transaction with no
+  // (src/transactions/default-description/default-description.ts) for a transaction with no
   // user-entered description, so it lives in its own small namespace rather
   // than duplicated under either screen.
   transactions: {
@@ -1025,7 +1025,7 @@ export const en = {
       emptyDefault: 'No accounts to show',
     },
   },
-  // The app-boot gate (src/migration/migrations.gate.tsx) — its own UI is the very
+  // The app-boot gate (src/migration/migrations-gate/migrations.gate.tsx) — its own UI is the very
   // first paint, before the navigator mounts, so it is keyed here rather than
   // under `common` even though it renders no other chrome.
   migrations: {

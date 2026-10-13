@@ -1882,7 +1882,7 @@ export const transactionsRepo = {
   /**
    * The loan-payment matcher's own candidate read
    * (`src/loans/payment-matcher/`): every debit, not already linked, not
-   * previously rejected (a manual "None" or Undo must stick), and not one leg
+   * rejected (a manual "None" or Undo must stick), and not one leg
    * of an Exchange/Convert (the structural `exchangeCounterpartHoldingId`
    * marker, same check `exchange-exclusion.ts` makes) — filtered here in SQL,
    * not in JS, so the matcher never even reads a row it can never link
@@ -2428,7 +2428,7 @@ export const transactionsRepo = {
    * separate function: only a manual action may ever move `loanLinkRejected`.
    *
    * - A manual LINK (`loanHoldingId` non-null) clears `loanLinkRejected`,
-   *   un-rejecting a row the user had previously undone — a fresh manual
+   *   un-rejecting a row the user had undone — a fresh manual
    *   pick always overrides an earlier Undo.
    * - A manual "None" (`loanHoldingId: null`) SETS `loanLinkRejected`: the
    *   choice sticks, so the matcher never re-proposes a link on a row the

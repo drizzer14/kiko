@@ -8,8 +8,8 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
 import { execFileSync } from 'node:child_process';
+import { dirname, basename, join } from 'node:path';
 
 import {
   type Paragraph,
@@ -18,6 +18,7 @@ import {
   paragraphsOutsideFences,
 } from './test-support/markdown-code-spans';
 import { repositoryFiles } from './test-support/repository-files';
+import { sourceCommentCitations } from './test-support/source-comment-citations';
 
 // A unit move leaves the skills and harness docs citing the old path, and a
 // drift pass had to re-list those by hand three times running. This makes a
@@ -315,5 +316,99 @@ describe('repo paths cited in skills, agents and harness docs', () => {
     expect(KNOWN_STALE_CITATIONS.map(citationKey).filter((key) => !stillMissing.has(key))).toEqual(
       [],
     );
+  });
+});
+
+// A migration regenerates under a new name and a moved file leaves a src comment naming the old
+// one, with nothing to fail until a reader follows it. A comment names a path under src, docs,
+// drizzle or scripts, or a migration file name on its own (`0012_name.sql`); either must exist.
+const presentBasenames = new Set(presentFiles.map((file) => basename(file)));
+
+const unresolvedSourceCitations = (fileName: string, text: string): Citation[] =>
+  sourceCommentCitations(fileName, text).filter((citation) =>
+    citation.path.includes('/')
+      ? !existsSync(join(REPOSITORY_ROOT, citation.path))
+      : !presentBasenames.has(citation.path),
+  );
+
+describe('sourceCommentCitations', () => {
+  it('finds a tree path and a bare migration name in a line comment (POSITIVE)', () => {
+    expect(
+      sourceCommentCitations('a.ts', '// see src/db/schema.ts and 0012_add_note.sql\n'),
+    ).toEqual([
+      { line: 1, path: 'src/db/schema.ts' },
+      { line: 1, path: '0012_add_note.sql' },
+    ]);
+  });
+
+  it('reports a path in a block comment at its own line, once for a migration path', () => {
+    expect(
+      sourceCommentCitations(
+        'a.ts',
+        'const a = 1;\n/**\n * Reads drizzle/migrations/0002_seed_categories.sql here.\n */\n',
+      ),
+    ).toEqual([{ line: 3, path: 'drizzle/migrations/0002_seed_categories.sql' }]);
+  });
+
+  it('finds a path in a comment that trails code', () => {
+    expect(sourceCommentCitations('a.ts', 'const a = 1; // docs/harness/x.md\n')).toEqual([
+      { line: 1, path: 'docs/harness/x.md' },
+    ]);
+  });
+
+  it('skips a path in a string, a template or JSX text (NEGATIVE)', () => {
+    expect(
+      sourceCommentCitations(
+        'a.tsx',
+        "const a = 'src/gone/missing.ts';\nconst b = `docs/gone.md`;\nconst c = <Text>// src/gone/x.ts</Text>;\n",
+      ),
+    ).toEqual([]);
+  });
+
+  it('skips a glob, a brace form, a placeholder and a directory (NEGATIVE)', () => {
+    expect(
+      sourceCommentCitations(
+        'a.ts',
+        '// src/**/*.ts src/a.{ts,tsx} src/<unit>/x.ts src/screens/ drizzle/migrations/\n',
+      ),
+    ).toEqual([]);
+  });
+});
+
+describe('repo paths cited in src comments', () => {
+  it('reports a planted path and a planted migration name that are not in the tree', () => {
+    expect(
+      unresolvedSourceCitations(
+        'a.ts',
+        '// see src/gone/missing.ts, drizzle/migrations/9999_gone.sql and 9998_gone_too.sql\n',
+      ),
+    ).toEqual([
+      { line: 1, path: 'src/gone/missing.ts' },
+      { line: 1, path: 'drizzle/migrations/9999_gone.sql' },
+      { line: 1, path: '9998_gone_too.sql' },
+    ]);
+  });
+
+  it('resolves a path and a migration name that are in the tree', () => {
+    expect(
+      unresolvedSourceCitations(
+        'a.ts',
+        '// see src/db/schema.ts, drizzle/migrations/0002_seed_categories.sql and 0002_seed_categories.sql\n',
+      ),
+    ).toEqual([]);
+  });
+
+  it('cites only paths and migration names that exist', () => {
+    const sourceFiles = presentFiles.filter(
+      (file) => file.startsWith('src/') && /\.tsx?$/.test(file),
+    );
+
+    expect(
+      sourceFiles.flatMap((file) =>
+        unresolvedSourceCitations(file, readFileSync(join(REPOSITORY_ROOT, file), 'utf8')).map(
+          (citation) => `${file}:${citation.line} ${citation.path}`,
+        ),
+      ),
+    ).toEqual([]);
   });
 });

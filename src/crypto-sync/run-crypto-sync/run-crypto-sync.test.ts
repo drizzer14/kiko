@@ -82,7 +82,7 @@ describe('runCryptoSync', () => {
     warn.mockRestore();
   });
 
-  // P2: an account-detail Connect overlapping a pull-to-refresh fan-out can
+  // An account-detail Connect overlapping a pull-to-refresh fan-out can
   // both trigger a Binance sync for the SAME account while the first is still
   // in flight. `runBalanceSync` is already per-account single-flight-locked
   // (`src/crypto-sync/sync/sync.ts`), but the transaction import that runs

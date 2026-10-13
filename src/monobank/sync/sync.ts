@@ -167,7 +167,7 @@ interface SyncSyncStateRepo {
  *
  * There is deliberately no settings-row-creation seam here either: the
  * single settings row (id = 1) is guaranteed to exist by the app-boot migrations
- * gate (`src/migration/migrations.gate.tsx`), which awaits `settingsRepo.ensure()`
+ * gate (`src/migration/migrations-gate/migrations.gate.tsx`), which awaits `settingsRepo.ensure()`
  * before any screen — and so before any sync — can run. The PER-CONNECTION
  * `sync_state` cursor row is NOT guaranteed by boot the same way (a fresh Connect
  * creates the account only then), so `runSyncInner` calls
@@ -336,7 +336,7 @@ const monobankIdOf = (metadata: unknown): string | undefined =>
  * connect an account first, so we surface a clear error rather than silently
  * minting a stray 'Monobank' account.
  */
-// `useSyncAction` (src/sync/use-sync.ts) surfaces this thrown message's
+// `useSyncAction` (src/sync/use-sync/use-sync.ts) surfaces this thrown message's
 // `.message` verbatim as the account-detail screen's error `<Text>` (see
 // account-detail.screen.tsx), so it genuinely needs to be localized, not left
 // as a diagnostic-only string. This module has no React context of its own,
@@ -372,7 +372,7 @@ const resolveMonobankAccountId = async (deps: SyncDeps): Promise<string> => {
  * 429 — permanently half-connected, since the account row is what every
  * other screen keys off of (detail screen shows Disconnect instead of the
  * token field, every other account's Connect is hidden, the account cannot
- * be deleted). `src/crypto-sync/sync.ts`'s `runBalanceSync` already orders
+ * be deleted). `src/crypto-sync/sync/sync.ts`'s `runBalanceSync` already orders
  * it this way. A re-sync (no `targetAccountId`) targets an already-marked
  * account, so this is a no-op then.
  */
@@ -1047,7 +1047,7 @@ type SyncResult = { importedTransactions: number };
 
 /**
  * Module-level PER-ACCOUNT single-flight lock — a `Map` keyed by the resolved
- * target account id, mirroring `inFlightBalanceSyncs` in `src/crypto-sync/sync.ts`.
+ * target account id, mirroring `inFlightBalanceSyncs` in `src/crypto-sync/sync/sync.ts`.
  * Monobank's rate limit is per TOKEN, and all three sync entry points —
  * `useAutoSync` (app open), `useSyncAll` (pull-to-refresh) and `useSync` (the
  * manual button) — drive an account's token, so two overlapping runs for the

@@ -53,3 +53,7 @@ export const otherWord = 1;
 export const memberStringAfterBlock = /* a plain note */ 'approved 2026-10-08';
 // A plain note.
 export const memberStringBelowLine = 'Device finding';
+
+// 10. A ruling that names no date after "of" or "on": a ruling of the layout, a ruling on amounts.
+// The ruling of the layout stays as written, and a ruling on amounts rounds half up.
+export const rulingWithoutDate = 1;

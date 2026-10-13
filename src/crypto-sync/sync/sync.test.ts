@@ -425,7 +425,7 @@ describe('runBalanceSync', () => {
   // join, each starts its own `runBalanceSync` — doubling the provider (Binance)
   // request weight and double-registering the account's holdings into the
   // shared, reference-counted progress session. Mirrors `inFlightSync` in
-  // `src/monobank/sync.ts`, keyed per account.
+  // `src/monobank/sync/sync.ts`, keyed per account.
   describe('single-flight join (BUG1)', () => {
     it('shares one balance sync across overlapping triggers for the same account (provider fetched once)', async () => {
       const { provider, calls } = makeProvider();

@@ -57,7 +57,7 @@ export const groupAmount = (input: string): string => {
 /**
  * Render a STORED minor-units amount as the plain major-unit string a text
  * field shows: fixed-decimal at the currency's own scale (`currencyScale`,
- * `src/currency/currency.ts` — the single source of truth), trailing zeros
+ * `src/currency/currency/currency.ts` — the single source of truth), trailing zeros
  * trimmed, unsigned (the form's sign chip carries polarity), never grouped
  * (the caller pipes this through `groupAmount`).
  *
