@@ -1995,11 +1995,17 @@ balance sync and dropped on a disconnect through the field arrays. The stop code
   record has no destination field, so its `type` decides (OVERNIGHT DEFAULT 24, pending user):
   `MATURE` ("redeem to Spot Wallet") goes to Spot; `NEW_TRANSFERRED`, `AHEAD`, any other type or
   none is `earn-redemption-type-unconfirmed`, owed at its point, no row (Q14: never an assumed
-  wallet). A flexible subscription of type `CONVERT` or `TRANSFER` (documented as from the locked
-  product) is `earn-subscription-type-unconfirmed` the same way; every other type debits as
-  before. A field the walk decides by (a split amount, those `type`s, `isComplete`) that is
-  present with another JSON type is an unreadable row, never absent. Flexible `REWARDS` rewards
-  and a reward that rounds to 0 satoshis stay stopped (user rulings pending).
+  wallet). A subscription of either product imports from `sourceAccount` or the split only when
+  its `type` is `NORMAL` or `AUTO` (`WALLET_FUNDED_SUBSCRIPTION_TYPES`, one constant, OVERNIGHT
+  DEFAULT 24 extended, pending user); any other value (`RESTAKE`, `TRIAL`, `ACTIVITY`, `CONVERT`,
+  `LOAN`, `AI`, `TRANSFER`, unknown) or none is `earn-subscription-type-unconfirmed` the same way,
+  because the money of those types does not come from the wallet `sourceAccount` names. A field
+  the walk decides by (a split amount, those `type`s, `isComplete`) that is present with another
+  JSON type is an unreadable row, never absent. These type points are permanent: Binance fixes a
+  record's `type` when it creates it, so such a point never imports by itself; it waits for the
+  user's answer or the probe (task 7/7) and stays owed meanwhile (the Earn floor never moves for
+  it). Flexible `REWARDS` rewards and a reward that rounds to 0 satoshis stay stopped (user
+  rulings pending).
 - **Earn forward stops (OVERNIGHT DEFAULT, pending user, 2026-10-13).** The Earn forward pass
   follows the Transfer rule: a stop tied to one record with a usable time is owed at its own point
   and the cursor goes past it (`EARN_FORWARD_OWES`, one constant: emptying it restores R28 for

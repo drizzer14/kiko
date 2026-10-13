@@ -217,11 +217,14 @@ const isSettled = (settledStatus: string, status: string): boolean => {
 };
 
 /**
- * The types of a flexible subscription that Binance documents as coming from the locked
- * product (`CONVERT` "Locked to Flexible", `TRANSFER` "Locked Savings to Flexible"): the money
- * is not what `sourceAccount` names, so no debit is guessed.
+ * The only subscription types, of either product, whose money is taken to come from the wallet
+ * `sourceAccount` (or the split) names: `NORMAL` and `AUTO`. Binance documents the others as
+ * money that never sat in a Spot or Funding wallet (`RESTAKE`, `TRIAL` the trial fund, `CONVERT`
+ * and `TRANSFER` from the locked product) or does not say where it came from (`ACTIVITY`,
+ * `LOAN`, `AI`), and a record with no type says nothing, so none of them is debited from a
+ * guessed wallet. Widening this list is the one line a confirmed answer changes.
  */
-const LOCKED_SOURCED_SUBSCRIPTION_TYPES: readonly string[] = ['CONVERT', 'TRANSFER'];
+const WALLET_FUNDED_SUBSCRIPTION_TYPES: readonly string[] = ['NORMAL', 'AUTO'];
 
 /**
  * The one locked redemption type whose destination is documented: `MATURE` redeems to the Spot
@@ -309,11 +312,7 @@ export const subscriptionRowsOf = (
     throw new BinanceWalkStop(EARN_ID_MISSING);
   }
 
-  if (
-    product === 'flexible' &&
-    record.type !== undefined &&
-    LOCKED_SOURCED_SUBSCRIPTION_TYPES.includes(record.type)
-  ) {
+  if (record.type === undefined || !WALLET_FUNDED_SUBSCRIPTION_TYPES.includes(record.type)) {
     throw new BinanceWalkStop(EARN_SUBSCRIPTION_TYPE_UNCONFIRMED);
   }
 
@@ -515,7 +514,18 @@ const rewardOf = (entry: EarnRecord): ProductReward | undefined =>
         amount: record.amount,
       },
     }))
-    .otherwise(() => undefined);
+    .with(
+      {
+        kind: P.union(
+          'flexibleSubscription',
+          'lockedSubscription',
+          'flexibleRedemption',
+          'lockedRedemption',
+        ),
+      },
+      () => undefined,
+    )
+    .exhaustive();
 
 const FLOW_PRODUCT: Record<
   'flexibleSubscription' | 'lockedSubscription' | 'flexibleRedemption' | 'lockedRedemption',
@@ -545,7 +555,8 @@ const flowUnitsOf = (accountId: string, entries: EarnRecord[]): EarnUnit[] =>
           rows: () => redemptionRowsOf(accountId, FLOW_PRODUCT[kind], record),
         },
       ])
-      .otherwise(() => []),
+      .with({ kind: P.union('flexibleRewards', 'lockedRewards') }, () => [])
+      .exhaustive(),
   );
 
 /**

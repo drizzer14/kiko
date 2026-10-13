@@ -589,6 +589,19 @@ export const isBinanceHistoryBehind: (input: { cursors: readonly (number | null)
 | the locked redemption `type` read as absent when it is no text | 1 / 185 (client) | `a locked redemption with type 5 is unreadable` |
 | a reward group settled per member (the `unreadableTimes` stop removed) | 27 / 3696 (properties), 2 / 183 (earn) | the 27 `a reward group with one member the client cannot read` cases (rows written before the member reads; key 0 written with two amounts); earn: `R30: an unreadable reward row at t beside a readable group at t ...`, `blocks every reward group of the kind at the time of an unreadable reward row` |
 
+- [ ] **fix round 2 (re-review of fix round 1, 2026-10-13):** I3, m1, m2.
+  - **I3** (OVERNIGHT DEFAULT 24 extended, pending user): a subscription of either product imports from `sourceAccount` or the split only when its `type` is `NORMAL` or `AUTO` (`WALLET_FUNDED_SUBSCRIPTION_TYPES`, one constant in `binance.earn-history.ts`); every other value and a missing `type` is `earn-subscription-type-unconfirmed`, owed at its point (already in `EARN_FORWARD_OWES`). The locked subscription `type` is read with `strictOptionalText` (a number makes the row unreadable). The flexible subscription fixture's default `type` is `NORMAL` (was `MANUAL`). Pins (all RED first: 32 of 359 failed in `binance.earn-history.test.ts` and `binance.history-client.test.ts` before the code): per product `NORMAL` and `AUTO` write Spot -a / Earn +a; per product `CONVERT`, `TRANSFER`, `LOAN`, `AI`, `ACTIVITY`, `TRIAL`, `RESTAKE`, `X`, `normal`, `''` and absent each stop with `earn-subscription-type-unconfirmed`; a `FAILED` subscription of an unconfirmed type is ignored; `a locked subscription of type RESTAKE (and TRIAL) owes its point and writes nothing` replaces `... CONVERT writes as before`; walk level: flexible `CONVERT`, `TRANSFER`, absent and locked `RESTAKE`, `TRIAL`, absent owe their point and write nothing; the point stays across two runs; a retry pin (`RESTAKE` then `NORMAL` imports); two forward-window cases each (owed and goes past, stays owed) for locked `RESTAKE` and `TRIAL`; client: `a lockedSubscription with a numeric type is unreadable`, and null/undefined `type` reads absent for both subscription kinds.
+  - **m1**: spec E24, E25, new E28, the Subscription bullet and kiko-architecture "Placement" say these points are permanent: a record's `type` is fixed when Binance creates it, so the point waits for the user's answer or the probe (task 7/7) and stays owed, the Earn floor never moves for it. The retry pins stay (they model a changed answer).
+  - **m2**: `flowUnitsOf` and `rewardOf` end in `.exhaustive()` over the six kinds, with an explicit branch for the kinds they skip. No behaviour change; the earn tests stay green.
+  - VERIFY 10 (spec) adds the subscription `type` counts per product, the `sourceAccount` per `type`, and whether a `MATURE` redemption pairs with a `RESTAKE` subscription.
+
+| Mutant (fix round 2) | earn+client (401 tests: 213 earn, 188 client) | Killers |
+|---|---|---|
+| the locked subscription not read by type (the check only for `flexible`) | 21 | per product pins of the locked kind: `RESTAKE`, `TRIAL`, `ACTIVITY`, `CONVERT`, `TRANSFER`, `LOAN`, `AI`, `X`, `normal`, `''`, absent; the walk-level and forward-window locked cases |
+| the allowlist widened by one value (`ACTIVITY`) | 2 | `of type ACTIVITY is a stop` for each product |
+| an absent `type` allowed | 4 | `of type undefined is a stop` for each product, the walk-level `flexibleSubscription` and `lockedSubscription` absent cases |
+| the locked subscription `type` read with `optionalText` | 1 (client) | `a lockedSubscription with a numeric type is unreadable` |
+
 ### binance-history task 7/7: VERIFY gate, skill rewrite, whole-branch gate (developer, scribe, reviewer)
 
 **Files:**

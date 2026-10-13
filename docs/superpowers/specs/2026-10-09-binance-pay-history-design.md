@@ -770,12 +770,19 @@ withdraw budget moves into this object, with the same numbers and the same rule.
 - **Subscription** (flexible or locked), with a settled status only (Q13: `SUCCESS` settles,
   `FAILED` is ignored and owes nothing, any other value, `PURCHASING` or unknown, is not settled
   and stops at its point; a redemption's `PAID` is not a subscription status and is not settled):
-  - **OVERNIGHT DEFAULT 24, pending user (2026-10-13): a flexible subscription whose `type` is
-    `CONVERT` ("Locked to Flexible") or `TRANSFER` ("Locked Savings to Flexible") stops with
-    `earn-subscription-type-unconfirmed`, owed at its point, no row: the money may have come
-    from the locked position, not from the wallet `sourceAccount` names. Every other `type`
-    (`AUTO`, `NORMAL`, `LOAN`, `AI`, left out, unknown) keeps the rule below. A locked
-    subscription is not read by `type`;**
+  - **OVERNIGHT DEFAULT 24 (extended 2026-10-13), pending user: a subscription of either
+    product imports from `sourceAccount` or the split only when its `type` is `NORMAL` or
+    `AUTO` (an allowlist, `WALLET_FUNDED_SUBSCRIPTION_TYPES`, one constant). Every other value
+    and a missing `type` stops with `earn-subscription-type-unconfirmed`, owed at its point, no
+    row. Binance documents the locked types `NORMAL`, `AUTO`, `ACTIVITY`, `TRIAL` (trial fund)
+    and `RESTAKE`, and the flexible types `AUTO`, `NORMAL`, `CONVERT` ("Locked to Flexible"),
+    `LOAN`, `AI` and `TRANSFER` ("Locked Savings to Flexible"); the money of `RESTAKE`,
+    `TRIAL`, `CONVERT` and `TRANSFER`, and possibly `ACTIVITY`, `LOAN` and `AI`, does not come
+    from the wallet `sourceAccount` names, and a `RESTAKE` would count its principal twice. The
+    point is permanent: Binance fixes a record's `type` when it creates the record, so a
+    type-unconfirmed record never imports by itself; it waits for the user's answer or the
+    probe (task 7/7) and stays owed meanwhile, so the Earn floor never moves for it. The
+    locked `type` is read as text only (a number makes the row unreadable);**
   - one Earn +amount leg;
   - debit legs Spot -`amtFromSpot` and Funding -`amtFromFunding`, each only when
     it is above zero;
@@ -1016,10 +1023,11 @@ Earn:
 | E21 | `FAILED` subscription or redemption (either product) | ignored, nothing owed | same |
 | E22 | one kind drifts in the re-scan | the other five kinds commit; the span owed as a range | nothing of the window |
 | E23 | a row the client cannot parse with a finite `time` (R30), pending pass or re-scan | `earn-row-unreadable`: owed at its point in its kind; a reward row holds every reward group of its kind at that `time` on the same point; the other rows import; the run goes on | the read threw, the run failed |
-| E24 | locked redemption of type `NEW_TRANSFERRED`, `AHEAD`, any other type, or none, status `PAID` | `earn-redemption-type-unconfirmed`: no row, owed at its point; the forward pass goes past it; the point is retried (OVERNIGHT DEFAULT 24, pending user) | not a case (every locked redemption went to Spot) |
-| E25 | flexible subscription of type `CONVERT` or `TRANSFER`, status `SUCCESS` | `earn-subscription-type-unconfirmed`: no row, owed at its point; `AUTO`, `NORMAL`, `LOAN`, `AI`, left out or unknown write as E1/E4 (OVERNIGHT DEFAULT 24, pending user) | not a case |
+| E24 | locked redemption of type `NEW_TRANSFERRED`, `AHEAD`, any other type, or none, status `PAID` | `earn-redemption-type-unconfirmed`: no row, owed at its point; the forward pass goes past it; the point is permanent: a record's `type` never changes, so it imports only after the user's answer or the probe, and stays owed (the Earn floor never moves for it); the retry pins model a changed answer (OVERNIGHT DEFAULT 24, pending user) | not a case (every locked redemption went to Spot) |
+| E25 | subscription of either product, status `SUCCESS`, of type `CONVERT`, `TRANSFER`, `LOAN`, `AI`, `ACTIVITY`, `TRIAL`, `RESTAKE`, any other value, or none | `earn-subscription-type-unconfirmed`: no row, owed at its point; only `NORMAL` and `AUTO` write as E1/E2/E4; permanent like E24 (OVERNIGHT DEFAULT 24 extended, pending user) | not a case |
+| E28 | locked subscription of type `RESTAKE` or `TRIAL` (two cases each), forward window | owed at its own point, the cursor goes past it, the span's other records import, and the point stays owed in every later run (a `RESTAKE` Spot -a never happened; a `TRIAL` is money the user never held) | not a case |
 | E26 | locked redemption, status `PAID`, `isComplete` `false` | `earn-not-settled`, owed at its point; `isComplete` left out or `true` has no effect (OVERNIGHT DEFAULT 23, pending user) | not a case |
-| E27 | a split amount, a flexible subscription `type`, a locked redemption `type` or `isComplete` that is present with another JSON type (a number) | the row is unreadable (R30, `earn-row-unreadable`), never read as absent: absent would debit `sourceAccount` | read as absent |
+| E27 | a split amount, a subscription `type` (either product), a locked redemption `type` or `isComplete` that is present with another JSON type (a number) | the row is unreadable (R30, `earn-row-unreadable`), never read as absent: absent would debit `sourceAccount` | read as absent |
 
 Convert: not imported (D7). No walk, no rows.
 
@@ -1103,7 +1111,11 @@ Probe items:
     subscriptions; for locked redemptions the count of each `type` (`MATURE`, `NEW_TRANSFERRED`,
     `AHEAD`, any other) and of each `isComplete` value; for a position whose `redeemTo` is
     FLEXIBLE that has matured, which records appear (a `NEW_TRANSFERRED` locked redemption, a
-    flexible subscription of type `CONVERT` or `TRANSFER` and its `sourceAccount`); where an
+    flexible subscription of type `CONVERT` or `TRANSFER` and its `sourceAccount`); for
+    subscriptions of each product the count of each `type` and, per `type` (`RESTAKE`,
+    `TRIAL`, `ACTIVITY`, `LOAN`, `AI`, `CONVERT`, `TRANSFER`, `NORMAL`, `AUTO`), the
+    `sourceAccount` values, so the allowlist can be widened or kept; whether a `MATURE`
+    redemption pairs with a `RESTAKE` subscription (the same principal counted twice); where an
     `AHEAD` redemption's principal goes; the `REWARDS` flexible reward rows (count, wallet,
     overlap with `REALTIME` and `BONUS` rows; they stay stopped, user ruling A); and the
     decimals of every reward amount (any value over 8 decimals or under 1e-8).

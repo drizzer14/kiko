@@ -225,25 +225,46 @@ describe('subscriptionRowsOf', () => {
     expect(stopCodeOf(() => rowsOf({ status: 'PAID' }, 'locked'))).toBe('earn-not-settled');
   });
 
-  it.each([['CONVERT'], ['TRANSFER']])(
-    'a flexible subscription of type %s (documented as from the locked product) is a stop: its money may not have come from the wallet it names',
-    (type) => {
-      expect(stopCodeOf(() => rowsOf({ type }))).toBe('earn-subscription-type-unconfirmed');
-    },
-  );
+  describe.each([['flexible'], ['locked']] as const)('a %s subscription by its type', (product) => {
+    it.each([['NORMAL'], ['AUTO']])(
+      'of type %s is the money of its wallet: Spot -a and Earn +a',
+      (type) => {
+        expect(rowsOf({ type }, product).map((row) => [row.wallet, row.amountMinorUnits])).toEqual([
+          [SPOT_KEY, -SATOSHIS],
+          [EARN_KEY, SATOSHIS],
+        ]);
+      },
+    );
 
-  it.each([['NORMAL'], ['AUTO'], ['LOAN'], ['AI'], ['X'], [undefined]])(
-    'a flexible subscription of type %p is the money of its wallet: Spot -a and Earn +a',
-    (type) => {
-      expect(rowsOf({ type }).map((row) => [row.wallet, row.amountMinorUnits])).toEqual([
-        [SPOT_KEY, -SATOSHIS],
-        [EARN_KEY, SATOSHIS],
-      ]);
-    },
-  );
+    it.each([
+      ['CONVERT'],
+      ['TRANSFER'],
+      ['LOAN'],
+      ['AI'],
+      ['ACTIVITY'],
+      ['TRIAL'],
+      ['RESTAKE'],
+      ['X'],
+      ['normal'],
+      [''],
+      [undefined],
+    ])('of type %p is a stop: no document says its money came from the wallet it names', (type) => {
+      expect(stopCodeOf(() => rowsOf({ type }, product))).toBe(
+        'earn-subscription-type-unconfirmed',
+      );
+    });
 
-  it('a locked subscription of type CONVERT writes as before: only a flexible one is read by type', () => {
-    expect(rowsOf({ type: 'CONVERT' }, 'locked')).toHaveLength(2);
+    it('of an unconfirmed type that FAILED is ignored: nothing is owed for it', () => {
+      expect(rowsOf({ type: 'RESTAKE', status: 'FAILED' }, product)).toEqual([]);
+    });
+  });
+
+  it('a locked subscription of type RESTAKE (and TRIAL) owes its point and writes nothing', () => {
+    for (const type of ['RESTAKE', 'TRIAL']) {
+      expect(stopCodeOf(() => rowsOf({ type }, 'locked'))).toBe(
+        'earn-subscription-type-unconfirmed',
+      );
+    }
   });
 
   it('stops a settled subscription with no id', () => {
@@ -927,21 +948,63 @@ describe('a record the walk cannot trust', () => {
     },
   );
 
-  it.each([['CONVERT'], ['TRANSFER']])(
-    'a flexible subscription of type %s owes its point and writes nothing: its money may be the locked position',
-    async (type) => {
+  it.each([
+    ['flexibleSubscription', 'CONVERT'],
+    ['flexibleSubscription', 'TRANSFER'],
+    ['flexibleSubscription', undefined],
+    ['lockedSubscription', 'RESTAKE'],
+    ['lockedSubscription', 'TRIAL'],
+    ['lockedSubscription', undefined],
+  ] as const)(
+    'a %s of type %p owes its point and writes nothing: its money may not be the wallet it names',
+    async (kind, type) => {
       const world = worldOf(caughtUp);
+      const record = { type, time: stuckAt };
 
       await walkOnce({
         world,
-        entries: [entryOf('flexibleSubscription', flexibleSubscriptionOf({ type, time: stuckAt }))],
+        entries: [
+          kind === 'flexibleSubscription'
+            ? entryOf(kind, flexibleSubscriptionOf(record))
+            : entryOf(kind, lockedSubscriptionOf(record)),
+        ],
       });
 
       expect(world.added).toEqual([]);
-      expect(listOf(world)).toEqual([pointOf(stuckAt, 'flexibleSubscription')]);
+      expect(listOf(world)).toEqual([pointOf(stuckAt, kind)]);
       expect(stopCodes(warn)).toEqual(['earn-subscription-type-unconfirmed']);
     },
   );
+
+  it('keeps the point of a subscription of an unconfirmed type in every run: its type never changes', async () => {
+    const world = worldOf(caughtUp);
+    const entries = [
+      entryOf('lockedSubscription', lockedSubscriptionOf({ type: 'RESTAKE', time: stuckAt })),
+    ];
+
+    await walkOnce({ world, entries });
+    await walkOnce({ world, entries });
+
+    expect(world.added).toEqual([]);
+    expect(listOf(world)).toEqual([pointOf(stuckAt, 'lockedSubscription')]);
+  });
+
+  it('retries the point of a subscription: it imports once the record reads NORMAL', async () => {
+    const world = worldOf(caughtUp);
+    const record = (type: string) =>
+      entryOf(
+        'lockedSubscription',
+        lockedSubscriptionOf({ type, purchaseId: 'later', time: stuckAt }),
+      );
+
+    await walkOnce({ world, entries: [record('RESTAKE')] });
+    expect(world.added).toEqual([]);
+
+    await walkOnce({ world, entries: [record('NORMAL')] });
+
+    expect(idsOf(world)).toHaveLength(2);
+    expect(pointsIn(listOf(world))).toEqual([]);
+  });
 
   it('retries the point of a locked redemption: it imports once the record reads MATURE', async () => {
     const world = worldOf(caughtUp);
@@ -1120,6 +1183,22 @@ describe('a record the walk cannot trust', () => {
         flexibleSubscriptionOf({ type: 'TRANSFER', purchaseId: 'transferred', time: stuckAt }),
       ),
       'flexibleSubscription',
+    ],
+    [
+      'a locked subscription of type RESTAKE',
+      entryOf(
+        'lockedSubscription',
+        lockedSubscriptionOf({ type: 'RESTAKE', purchaseId: 'restaked', time: stuckAt }),
+      ),
+      'lockedSubscription',
+    ],
+    [
+      'a locked subscription of type TRIAL',
+      entryOf(
+        'lockedSubscription',
+        lockedSubscriptionOf({ type: 'TRIAL', purchaseId: 'trial', time: stuckAt }),
+      ),
+      'lockedSubscription',
     ],
   ] as const)('%s in the forward window', (_name, entry, kind) => {
     const newer = entryOf(

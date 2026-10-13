@@ -27,7 +27,7 @@ export const flexibleSubscriptionOf = (
   time: agoMs(2),
   purchaseId: 'p-1',
   productId: 'BTC001',
-  type: 'MANUAL',
+  type: 'NORMAL',
   sourceAccount: undefined,
   amtFromSpot: '0.001',
   amtFromFunding: '0',

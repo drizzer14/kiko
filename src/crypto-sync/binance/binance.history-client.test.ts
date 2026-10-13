@@ -1166,6 +1166,7 @@ describe('fetchEarnRecords', () => {
         ['lockedSubscription', 'amtFromFunding'],
         ['lockedSubscription', 'amtFromSpot'],
         ['flexibleSubscription', 'type'],
+        ['lockedSubscription', 'type'],
       ] as const)('a %s with a numeric %s is unreadable', async (kind, field) => {
         const page = await earnPage(kind, {
           total: 1,
@@ -1176,10 +1177,15 @@ describe('fetchEarnRecords', () => {
         expect(page.unreadable).toEqual([{ time: 7 }]);
       });
 
-      it.each([[null], [undefined]])(
-        'a subscription whose split fields and type are %p reads them as absent',
-        async (value) => {
-          const page = await earnPage('flexibleSubscription', {
+      it.each([
+        ['flexibleSubscription', null],
+        ['flexibleSubscription', undefined],
+        ['lockedSubscription', null],
+        ['lockedSubscription', undefined],
+      ] as const)(
+        'a %s whose split fields and type are %p reads them as absent',
+        async (kind, value) => {
+          const page = await earnPage(kind, {
             total: 1,
             rows: [{ ...subscription, amtFromSpot: value, amtFromFunding: value, type: value }],
           });

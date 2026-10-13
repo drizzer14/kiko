@@ -666,7 +666,7 @@ const EARN_READS = {
       time: finiteNumber,
       asset: text,
       amount: text,
-      type: optionalText,
+      type: strictOptionalText,
       sourceAccount: optionalText,
       amtFromSpot: strictOptionalText,
       amtFromFunding: strictOptionalText,
