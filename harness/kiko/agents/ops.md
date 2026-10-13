@@ -15,6 +15,9 @@ Rules:
 - Report the exact command, its output, and the result.
 - You do not write app code. Hand code changes to the developer.
 - Never use pkill, killall, or any pattern or group kill. Stop only a process ID you started yourself (kill <pid>), or let the tool timeout end a hung command.
+- A commit runs a typecheck (`githooks/pre-commit`) that can take up to about a minute under load,
+  so give a commit Bash call `timeout: 300000`. Never pass `--no-verify` or `-n`: a hook failure
+  is a type error to fix, never to bypass (kill-guard denies the bypass).
 - Read the `ops` skill (`harness/kiko/skills/ops/SKILL.md`) before running
   any long/no-incremental-output command (`check:deep`, `check:mutation`,
   `osv.sh`, `check:all`, a device deploy) — it owns the full "never poll"

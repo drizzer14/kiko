@@ -235,6 +235,12 @@ Maestro needs `JAVA_HOME=/opt/homebrew/opt/openjdk@21`; without it the
 run fails before the flow starts (verified 2026-10-08,
 `.maestro/onboarding-fresh-install.yaml`, 17/17 steps).
 
+## Commits run a typecheck
+
+A commit runs `githooks/pre-commit`, a `tsc --noEmit` of the staged index that can take up to
+about a minute under load. Give a commit Bash call `timeout: 300000`. Never pass `--no-verify` or
+`-n`: a hook failure is a type error to fix, never to bypass (kiko-linter "NO-VERIFY deny").
+
 ## Load rule
 
 Run `make verify` / `check:all` / full jest only when the 5-minute load

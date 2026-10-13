@@ -319,6 +319,9 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   so `hooks.json` is unchanged and no plugin reinstall is needed; a
   session in the main checkout gets it only after the merge to main.
 
+  A shell redirect into a tree is denied even inside your own temporary git repository: build its
+  fixture tree with the helpers in `__tests__/test-support/` inside a jest test, or with Edit/Write.
+
   WAIT-LOOP deny (why: a `while`/`until` loop whose process scan names
   the job it waits for matches its OWN command line, so it never ends;
   the `[j]est` bracket trick only helps while the word appears nowhere
@@ -371,6 +374,30 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   the merge to main. Only an agent-text change shipped beside it (the
   plugin version bump) reaches a running session after a plugin
   reinstall and `/reload-plugins`.
+
+  NO-VERIFY deny (why: the tracked `githooks/pre-commit` and `githooks/pre-merge-commit` run
+  `scripts/checks/commit-typecheck.sh`, a typecheck of the staged index; a commit that skips them
+  lands a type error on the branch). Rule: deny a `git commit`, `git merge`, or `git pull` that
+  skips the hooks: `--no-verify` or an abbreviation of it, commit's `-n` (alone or inside a flag
+  group; on `merge` and `pull` `-n` is `--no-stat`, so it is no bypass), `-c core.hooksPath=...`
+  or `--config-env=core.hooksPath=...` before the subcommand, and a `NAME=value` prefix that sets
+  core.hooksPath through `GIT_CONFIG_COUNT` with `GIT_CONFIG_KEY_<n>`, or through
+  `GIT_CONFIG_PARAMETERS`. It also denies a `git config` that writes or unsets core.hooksPath in
+  any scope (the `set`/`unset` forms of git 2.46 too), because that switches the hooks off for
+  every worktree. Entry points: `skipsHooks`, `rewritesHooksPath`, `environmentSetsHooksPath`
+  in `scripts/checks/kill-guard.js`; the finding kind is `noVerify`. Allowed: a `--get` read of the
+  key, `git config core.hooksPath` with no value, `-n` after another option's value or after
+  `--`, text in a commit message, and `git log -n`. The repair route for an unset core.hooksPath
+  is `bash scripts/ensure-git-hooks.sh` or `npm ci`; a direct `git config core.hooksPath githooks`
+  is denied too. The pre-commit hook itself: `scripts/checks/commit-typecheck.sh` copies the
+  staged index to a temporary folder and runs `tsc --noEmit` there; it fails closed and skips a
+  commit whose staged diff touches no file tsc reads (see `docs/harness/checks-internals.md`).
+  A person may bypass in their own shell; the deny binds agent Bash calls only. Rows:
+  `__tests__/kill-guard.test.ts`, `__tests__/commit-typecheck.test.ts`,
+  `__tests__/ensure-git-hooks.test.ts`. Known limits, NOT denied: a bypass built at run time; an
+  `export GIT_CONFIG_*=...` line before the git command (only `NAME=value` prefixes are read);
+  `git config --value <v>` with the value as a separate word; `--remove-section core` and
+  `--rename-section core`.
 
   Probing the kill-guard (rule): SENTINEL probes only. A probe that
   EXECUTES shell text runs ONLY through the committed runner

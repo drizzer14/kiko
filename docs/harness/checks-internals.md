@@ -181,6 +181,20 @@ its answer depends on HEAD.
 `plist.sh`, `semgrep-rules.sh`) never record or read a fingerprint
 either: they run in full on every call.
 
+## Pre-commit typecheck: no queue, no dedup
+
+`scripts/checks/commit-typecheck.sh` (run by `githooks/pre-commit` and `githooks/pre-merge-commit`)
+is not a tier check. It records and reads no fingerprint, and it does not go through
+the in-repo job queue: it runs in full on every commit that touches a file tsc reads. It makes a
+temporary folder under `${TMPDIR:-/tmp}`, writes the staged index there with
+`git checkout-index --all`, links the real `node_modules` into it, and runs `tsc --noEmit -p .`
+inside it, so an unstaged or untracked file cannot change the answer. If git hands the hook a
+relative `GIT_INDEX_FILE`, the script makes it absolute before it changes folder, and exports it.
+The folder is removed on exit, on INT, and on TERM. It fails closed: a missing `tsc`, a missing
+`node`, a failed `mktemp`, a failed copy, or a failed diff makes the commit refuse (exit 2 with
+the structured block); only a clean `tsc`, or a staged diff with no tsc input, lets it through.
+Under load a commit can take up to about a minute.
+
 ## Which call form dedups
 
 Whether a wrapper skips depends on how it is called. A run that does not
