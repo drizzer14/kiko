@@ -757,7 +757,7 @@ withdraw budget moves into this object, with the same numbers and the same rule.
   unreadable, never absent). An unreadable reward row owes its point for every reward group of its kind at that
   `time`: its group cannot be known, and a group numbered without it would number two ways. A
   stop not tied to one record (`earn-page-drift`, `earn-holding-missing`), an unreadable row
-  with no finite `time`, or a record outside the span owes the span. **OVERNIGHT DEFAULT,
+  with no finite `time`, or a record outside the span owes the span. **OVERNIGHT DEFAULT 22,
   pending user (2026-10-13): the forward pass follows the Transfer rule (O1).** A stop tied to
   one record with a usable time is owed at its own point (one point for a reward group) and the
   forward pass goes past it: the span's other records commit and the cursor moves on
@@ -797,6 +797,12 @@ withdraw budget moves into this object, with the same numbers and the same rule.
   - pair id: `` `${accountId}:earn:sub:<flexible|locked>:${purchaseId}` ``;
   - each debit leg's counterpart is Earn; the Earn leg's counterpart is the larger
     debit leg's holding.
+  - **Known limits of the type allowlist** (leftovers of re-review 3, in VERIFY 10):
+    - a locked auto-renewal that Binance records as `NORMAL` would still debit Spot (undetectable
+      from the record);
+    - a flexible `AUTO` is assumed Spot-funded (undocumented);
+    - each locked auto-renewal leaves one permanent point, owed until OVERNIGHT 24 is answered or
+      the probe settles it.
 - **Redemption:** Earn -amount, and the destination +amount, paired. Settled status
   (Q13, checked 2026-10-13; OVERNIGHT DEFAULT 23, pending user): `PAID` settles (a flexible
   redemption's documented values are `CREATED`, `PAID`, `FAILED`; a locked redemption's
@@ -1020,7 +1026,7 @@ Earn:
 | E14 | status not settled: a subscription not `SUCCESS` or `FAILED` (`PURCHASING`, `PAID`, unknown), a redemption not `PAID` or `FAILED` (`CREATED`, `SUCCESS`, unknown) | `earn-not-settled`, owed at its point (OVERNIGHT DEFAULT 23, pending user) | stop the window |
 | E15 | one flexible `BONUS` reward record | Spot +rewards, 'Binance Earn', no marker | same |
 | E16 | one locked reward record (any `type`) | Spot +amount, 'Binance Earn', no marker | same |
-| E17 | flexible reward with `type` `REWARDS` or an unknown value | `earn-reward-type-unknown`: no row, the group owed at its point; forward pass: the cursor goes past it (OVERNIGHT DEFAULT, pending user, 2026-10-13; was: cursor unmoved) | stop the window |
+| E17 | flexible reward with `type` `REWARDS` or an unknown value | `earn-reward-type-unknown`: no row, the group owed at its point; forward pass: the cursor goes past it (OVERNIGHT DEFAULT 22, pending user, 2026-10-13; was: cursor unmoved) | stop the window |
 | E18 | `BONUS` or locked reward, Spot holding missing | Spot created at 0 (P7), then the row | same |
 | E19 | pending pass or re-scan: a subscription not settled and a `REALTIME` reward in one span | the reward imports; the subscription owed at its point | nothing of the window |
 | E20 | two reward groups in one span, one of unknown `type` | the other group imports; the unknown one owed at one point | nothing of the window |
@@ -1029,9 +1035,9 @@ Earn:
 | E23 | a row the client cannot parse with a finite `time` (R30), pending pass or re-scan | `earn-row-unreadable`: owed at its point in its kind; a reward row holds every reward group of its kind at that `time` on the same point; the other rows import; the run goes on | the read threw, the run failed |
 | E24 | locked redemption of type `NEW_TRANSFERRED`, `AHEAD`, any other type, or none, status `PAID` | `earn-redemption-type-unconfirmed`: no row, owed at its point; the forward pass goes past it; the point is permanent: a record's `type` never changes, so it imports only after the user's answer or the probe, and stays owed (the Earn floor never moves for it); the retry pins model a changed answer (OVERNIGHT DEFAULT 24, pending user) | not a case (every locked redemption went to Spot) |
 | E25 | subscription of either product, status `SUCCESS`, of type `CONVERT`, `TRANSFER`, `LOAN`, `AI`, `ACTIVITY`, `TRIAL`, `RESTAKE`, a locked `AUTO`, any other value, or none | `earn-subscription-type-unconfirmed`: no row, owed at its point; only a flexible `NORMAL` or `AUTO` and a locked `NORMAL` write as E1/E2/E4; permanent like E24 (OVERNIGHT DEFAULT 24 extended, pending user) | not a case |
-| E28 | locked subscription of type `RESTAKE` or `TRIAL` (two cases each), forward window | owed at its own point, the cursor goes past it, the span's other records import, and the point stays owed in every later run (a `RESTAKE` Spot -a never happened; a `TRIAL` is money the user never held) | not a case |
 | E26 | locked redemption, status `PAID`, `isComplete` `false` | `earn-not-settled`, owed at its point; `isComplete` left out or `true` has no effect (OVERNIGHT DEFAULT 23, pending user) | not a case |
 | E27 | a split amount, a subscription `type` (either product), a locked redemption `type` or `isComplete` that is present with another JSON type (a number) | the row is unreadable (R30, `earn-row-unreadable`), never read as absent: absent would debit `sourceAccount` | read as absent |
+| E28 | locked subscription of type `RESTAKE` or `TRIAL` (two cases each), forward window | owed at its own point, the cursor goes past it, the span's other records import, and the point stays owed in every later run (a `RESTAKE` Spot -a never happened; a `TRIAL` is money the user never held) | not a case |
 
 Convert: not imported (D7). No walk, no rows.
 
@@ -1121,7 +1127,10 @@ Probe items:
     `sourceAccount` values, so the allowlist can be widened or kept; whether a `MATURE`
     redemption pairs with a `RESTAKE` subscription (the same principal counted twice); whether
     a `MATURE` redemption pairs with a locked `AUTO` subscription, and the `sourceAccount` of a
-    locked `AUTO` (the allowlist is per product: a locked `AUTO` stops); where an
+    locked `AUTO` (the allowlist is per product: a locked `AUTO` stops); whether a locked auto-renewal is ever
+    recorded as `NORMAL` (it would still debit Spot, a known limit); whether a flexible `AUTO` is
+    Spot-funded (assumed, undocumented); whether each locked auto-renewal leaves a permanent point
+    (owed until OVERNIGHT 24 is answered or the probe settles it); where an
     `AHEAD` redemption's principal goes; the `REWARDS` flexible reward rows (count, wallet,
     overlap with `REALTIME` and `BONUS` rows; they stay stopped, user ruling A); and the
     decimals of every reward amount (any value over 8 decimals or under 1e-8).

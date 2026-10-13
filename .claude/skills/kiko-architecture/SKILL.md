@@ -1977,7 +1977,7 @@ rewards first, then subscriptions and redemptions; `callsOf` counts them, `LANE_
 caps the lane). It keeps six walk-owned keys on the Spot holding (`BINANCE_EARN_*_FIELD`:
 forward cursor, re-scan, pending list, point cursor, range cursor, span hints), carried on a
 balance sync and dropped on a disconnect through the field arrays. The stop codes live in
-`binance.earn-history.ts`; the design is in the spec (section 6, matrix E1-E27) and the plan.
+`binance.earn-history.ts`; the design is in the spec (section 6, the E matrix) and the plan.
 
 - **A reward group is ONE record.** Binance gives a reward no id: the rows of a group
   (`rewardGroupsOf`: product, project or position, type, time) are numbered from 0 by satoshis,
@@ -1996,12 +1996,11 @@ balance sync and dropped on a disconnect through the field arrays. The stop code
   `MATURE` ("redeem to Spot Wallet") goes to Spot; `NEW_TRANSFERRED`, `AHEAD`, any other type or
   none is `earn-redemption-type-unconfirmed`, owed at its point, no row (Q14: never an assumed
   wallet). A subscription imports from `sourceAccount` or the split only when its `type` is in
-  its product's list (`WALLET_FUNDED_SUBSCRIPTION_TYPES`, one constant, per product: flexible
-  `NORMAL` or `AUTO`, locked `NORMAL` only; OVERNIGHT DEFAULT 24 extended, pending user); any
-  other value (a locked `AUTO`, most likely the auto-renewal at maturity, `RESTAKE`, `TRIAL`,
-  `ACTIVITY`, `CONVERT`, `LOAN`, `AI`, `TRANSFER`, unknown) or none is
-  `earn-subscription-type-unconfirmed` the same way, because the money of those types is not
-  documented to come from the wallet `sourceAccount` names. A field
+  its product's allowlist (`WALLET_FUNDED_SUBSCRIPTION_TYPES` in `binance.earn-history.ts`, one
+  constant, per product; read the values there; OVERNIGHT DEFAULT 24 extended, pending user);
+  any other type or none is `earn-subscription-type-unconfirmed` the same way, because the money
+  of a type outside the allowlist is not documented to come from the wallet `sourceAccount`
+  names. A field
   the walk decides by (a split amount, those `type`s, `isComplete`) that is present with another
   JSON type is an unreadable row, never absent. These type points are permanent: Binance fixes a
   record's `type` when it creates it, so such a point never imports by itself; it waits for the
