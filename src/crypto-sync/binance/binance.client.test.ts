@@ -1,4 +1,5 @@
 import {
+  BinanceHistoryTooOldError,
   BinanceRateLimitError,
   DEFAULT_RETRY_AFTER_MS,
   fetchAccount,
@@ -199,6 +200,47 @@ describe('BinanceRateLimitError', () => {
         fetchImpl: makeFetch(invalidBody, false, 400),
       }),
     ).rejects.toThrow('Binance request failed: 400: Account has insufficient balance');
+  });
+});
+
+describe('BinanceHistoryTooOldError', () => {
+  const tooOld = { code: -5026, msg: 'The startTime is too old' };
+
+  it('is what a read Binance refuses as older than it keeps rejects with (code -5026)', async () => {
+    await expect(
+      fetchAccount('api-key-fixture', 'secret-fixture', {
+        fetchImpl: makeFetch(tooOld, false, 400),
+      }),
+    ).rejects.toBeInstanceOf(BinanceHistoryTooOldError);
+  });
+
+  it('keeps the message of the generic request-failed error, so every other reader fails as before', async () => {
+    await expect(
+      fetchAccount('api-key-fixture', 'secret-fixture', {
+        fetchImpl: makeFetch(tooOld, false, 400),
+      }),
+    ).rejects.toThrow('Binance request failed: 400: The startTime is too old');
+  });
+
+  it.each([
+    ['another code', { code: -1021, msg: 'Timestamp outside of the recvWindow' }],
+    ['a code that is text', { code: '-5026', msg: 'The startTime is too old' }],
+    ['no code', { msg: 'The startTime is too old' }],
+  ])('is not what a 400 with %s rejects with', async (_label, body) => {
+    const attempt = fetchAccount('api-key-fixture', 'secret-fixture', {
+      fetchImpl: makeFetch(body, false, 400),
+    });
+
+    await expect(attempt).rejects.toThrow('Binance request failed: 400');
+    await expect(attempt).rejects.not.toBeInstanceOf(BinanceHistoryTooOldError);
+  });
+
+  it('is not what an answer that went through is read as, whatever its body says', async () => {
+    const result = await fetchAccount('api-key-fixture', 'secret-fixture', {
+      fetchImpl: makeFetch({ ...accountBody, code: -5026 }),
+    });
+
+    expect(result.balances).toHaveLength(2);
   });
 });
 

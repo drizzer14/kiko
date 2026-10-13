@@ -25,13 +25,13 @@ import {
 } from './binance.transfer-history';
 import { NOW } from './binance.pay-test-fixtures';
 import { BinanceWalkStop } from './binance.history-walk';
-import { BinanceRateLimitError } from './binance.client';
 import { HISTORY_FLOOR_MS } from './binance.transactions';
 import { isBinanceCoolingDown } from './binance.cooldown';
 import { FUNDING_KEY, SPOT_KEY } from './binance.holding-keys';
+import { BinanceHistoryTooOldError, BinanceRateLimitError } from './binance.client';
 import { COSTS, createBinanceHistoryRun, LANE_CALL_CAPS } from './binance.history-budget';
 
-const FLOOR = Date.UTC(2026, 3, 11);
+const FLOOR = NOW - 179 * DAY_MS;
 const STOP_TAG = '[binance sync] history window stopped';
 const CAP = LANE_CALL_CAPS.transfer;
 const TYPE_COUNT = UNIVERSAL_TRANSFER_TYPES.length;
@@ -55,19 +55,23 @@ const transferOf = (over: Partial<BinanceUniversalTransfer> = {}): BinanceUniver
 });
 
 describe('transferFloorMs', () => {
-  it('is six calendar months back and one day on, so no request is older than the window Binance serves', () => {
+  it('is 179 whole days back, so no request is older than the 180 days Binance was seen to serve', () => {
     expect(transferFloorMs(NOW)).toBe(FLOOR);
     expect(transferFloorMs(Date.UTC(2026, 9, 10, 13, 45, 12, 345))).toBe(
-      Date.UTC(2026, 3, 11, 13, 45, 12, 345),
+      Date.UTC(2026, 9, 10, 13, 45, 12, 345) - 179 * DAY_MS,
     );
   });
 
-  it.each([
-    ['a shorter month', Date.UTC(2026, 7, 31), Date.UTC(2026, 2, 1)],
-    ['a leap February', Date.UTC(2024, 7, 31), Date.UTC(2024, 2, 1)],
-    ['the turn of the year', Date.UTC(2026, 2, 31), Date.UTC(2025, 9, 1)],
-  ])('clamps the day to the length of the month it lands in: %s', (_label, now, floor) => {
-    expect(transferFloorMs(now)).toBe(floor);
+  it('is never more than 179 days back, whatever the day of the year or the length of the months', () => {
+    const FIRST_DAY = Date.UTC(2024, 0, 1, 23, 59, 59, 999);
+    const ages = Array.from({ length: 2 * 366 }, (_unused, day) => {
+      const now = FIRST_DAY + day * DAY_MS;
+
+      return now - transferFloorMs(now);
+    });
+
+    expect(Math.max(...ages)).toBe(179 * DAY_MS);
+    expect(Math.min(...ages)).toBe(179 * DAY_MS);
   });
 
   it('never goes before the shared history floor', () => {
@@ -622,7 +626,7 @@ describe('the rows of a settled transfer, written', () => {
 });
 
 describe('where the walk starts and what it never asks', () => {
-  it('starts the first window at the floor of six months, and never before it, whatever the stored marks say', async () => {
+  it('starts the first window at the floor of 179 days, and never before it, whatever the stored marks say', async () => {
     const world = worldOf({
       [SPOT_FIELDS.cursor]: HISTORY_FLOOR_MS,
       [SPOT_FIELDS.rescan]: HISTORY_FLOOR_MS,
@@ -959,7 +963,7 @@ describe('a transfer the walk cannot trust', () => {
   });
 
   it('T11: a FAILED transfer is owed at its point run after run, one call in its own type, until the floor passes it; no row, ever', async () => {
-    const failedAt = Date.UTC(2026, 3, 12);
+    const failedAt = FLOOR + DAY_MS;
     const failed = entryOf({ status: 'FAILED', tranId: 'failed', timestamp: failedAt });
     const world = worldOf({
       [SPOT_FIELDS.cursor]: agoMs(5),
@@ -1184,6 +1188,114 @@ describe('a read that leaves the end out, as the live transfer endpoint does', (
       expect(ids).toEqual(keysOf('edge'));
     },
   );
+});
+
+describe('a Binance that refuses a startTime older than the history it keeps (code -5026)', () => {
+  const HOUR_MS = 3_600_000;
+  const RUN_GAPS = [0, HOUR_MS, DAY_MS];
+
+  /** Binance as it answers: a read that starts more than `days` before `now` is refused. */
+  const keepingDays =
+    (days: number, now: number): Answer =>
+    (query) => {
+      if (now - query.startTime > days * DAY_MS) {
+        throw new BinanceHistoryTooOldError('Binance request failed: 400: too old');
+      }
+
+      return undefined;
+    };
+
+  /** Two runs, the second `gapMs` later, each against a Binance that keeps `days`. */
+  const walkTwice = async (input: {
+    world: World;
+    entries?: Entry[];
+    days: number;
+    gapMs: number;
+  }) => {
+    const first = await walkOnce({
+      world: input.world,
+      entries: input.entries,
+      answer: keepingDays(input.days, NOW),
+    });
+    const secondNow = NOW + input.gapMs;
+    const second = await walkOnce({
+      world: input.world,
+      entries: input.entries,
+      answer: keepingDays(input.days, secondNow),
+      now: secondNow,
+    });
+
+    return { requests: [...first.requests, ...second.requests], secondNow };
+  };
+
+  describe.each(RUN_GAPS)('runs %i ms apart', (gapMs) => {
+    it('never asks for more than the 180 days Binance was seen to serve, on a fresh connection', async () => {
+      const world = worldOf();
+
+      const { requests, secondNow } = await walkTwice({ world, days: 180, gapMs });
+
+      expect(requests.length).toBeGreaterThan(0);
+      expect(minOf(requests.map((request) => request.startTime))).toBe(FLOOR);
+      expect(world.metadata[SPOT_FIELDS.cursor]).toBe(secondNow);
+    });
+
+    it('cuts an owed range that reaches back before the floor, and reads the rest of it', async () => {
+      const world = worldOf({
+        [SPOT_FIELDS.cursor]: agoMs(1),
+        [SPOT_FIELDS.rescan]: agoMs(1) - 1,
+        [SPOT_FIELDS.pending]: [{ start: agoMs(190), end: agoMs(170) }],
+      });
+
+      const { requests } = await walkTwice({ world, days: 180, gapMs });
+
+      expect(minOf(requests.map((request) => request.startTime))).toBe(FLOOR);
+      expect(requests.some((request) => request.startTime === FLOOR)).toBe(true);
+      expect(listOf(world)).toEqual([]);
+    });
+
+    it('reads a span it refuses as empty, owes nothing for it, and imports what lies in the spans after it', async () => {
+      const world = worldOf();
+      const kept = entryOf({ tranId: 'kept', timestamp: agoMs(50) });
+      const newest = entryOf({ tranId: 'newest', timestamp: agoMs(10) });
+
+      const { secondNow } = await walkTwice({
+        world,
+        entries: [kept, newest],
+        days: 100,
+        gapMs,
+      });
+
+      expect(world.added.map((row) => row.externalId)).toEqual(
+        expect.arrayContaining([
+          'acc-1:xfer:MAIN_FUNDING:kept:BTC',
+          'acc-1:xfer:MAIN_FUNDING:newest:BTC',
+        ]),
+      );
+      expect(world.metadata[SPOT_FIELDS.cursor]).toBe(secondNow);
+      expect(listOf(world)).toEqual([]);
+      expect(stopCodes(warn)).toEqual([]);
+    });
+
+    it('reads a refused owed range as empty and drops it from the list, as the floor would', async () => {
+      const world = worldOf({
+        [SPOT_FIELDS.cursor]: agoMs(1),
+        [SPOT_FIELDS.rescan]: agoMs(1) - 1,
+        [SPOT_FIELDS.pending]: [{ start: agoMs(150), end: agoMs(140) }],
+      });
+
+      await walkTwice({ world, days: 100, gapMs });
+
+      expect(listOf(world)).toEqual([]);
+    });
+  });
+
+  it('spends one call, not one for each type, on a span it refuses', async () => {
+    const world = worldOf({ [SPOT_FIELDS.cursor]: agoMs(150) });
+
+    const { requests } = await walkOnce({ world, answer: keepingDays(100, NOW) });
+
+    expect(requests.filter((request) => request.startTime === agoMs(150))).toHaveLength(1);
+  });
 });
 
 describe('the budget of a run', () => {

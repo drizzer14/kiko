@@ -19,6 +19,11 @@ import { transactionsRepo } from '@kiko/transactions/repo';
 import { type ExchangeHolding, holdingsRepo } from '@kiko/holdings/repo';
 
 import {
+  BINANCE_ASSET,
+  BinanceHistoryTooOldError,
+  type FetchAccountOptions,
+} from './binance.client';
+import {
   advanceWalkMarks,
   BinanceWalkStop,
   btcSatoshis,
@@ -63,7 +68,6 @@ import {
 } from './binance.history-records';
 import { type BinanceHistoryRun, COSTS } from './binance.history-budget';
 import { readSeriesSpan, type SeriesSpan } from './binance.history-paging';
-import { BINANCE_ASSET, type FetchAccountOptions } from './binance.client';
 import { type BinanceCredentials, readCredentials } from './binance.credentials';
 import { isBinanceCoolingDown, setBinanceCooldownUntil } from './binance.cooldown';
 import { type BinanceWalkWriteDeps, defaultWalkWriteDeps } from './binance.walk-write-deps';
@@ -72,10 +76,14 @@ import { type BinanceWalletKey, binanceKeyOf, FUNDING_KEY, SPOT_KEY } from './bi
 /** Binance does not document the widest range a transfer read takes; 30 days is the working cap. */
 export const TRANSFER_WINDOW_MS = 30 * DAY_MS;
 
-/** Binance serves the last six months of transfer history and nothing older. */
-const TRANSFER_HISTORY_MONTHS = 6;
+/**
+ * Binance documents the last six months of transfer history. Probed 2026-10-13: a `startTime` 180
+ * days back is served and one 200 days back is refused (HTTP 400, code -5026); what lies between
+ * is unknown, so the walk asks for no more than 179 whole days.
+ */
+const TRANSFER_HISTORY_DAYS = 179;
 
-/** Safety stop on the window walk: the six months are 7 windows. */
+/** Safety stop on the window walk: the 179 days are 6 windows. */
 const MAX_WINDOWS = 12;
 
 /** Safety stop on paging one type within a span of one millisecond (100 rows x 50 pages). */
@@ -130,27 +138,12 @@ const TRANSFER_MARK_FIELDS: WalkMarkFields = {
 };
 
 /**
- * The earliest `startTime` the walk asks transfer history for: six calendar months back (UTC, the
- * day clamped to the target month's length) plus a day, so the request is never older than the
- * window Binance serves. Never before the shared history floor.
+ * The earliest `startTime` the walk asks transfer history for: 179 whole days back (see
+ * `TRANSFER_HISTORY_DAYS`), so the request is never older than the history Binance was seen to
+ * serve. Never before the shared history floor.
  */
-export const transferFloorMs = (now: number): number => {
-  const date = new Date(now);
-  const year = date.getUTCFullYear();
-  const month = date.getUTCMonth() - TRANSFER_HISTORY_MONTHS;
-  const lastDayOfMonth = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
-  const monthsAgo = Date.UTC(
-    year,
-    month,
-    Math.min(date.getUTCDate(), lastDayOfMonth),
-    date.getUTCHours(),
-    date.getUTCMinutes(),
-    date.getUTCSeconds(),
-    date.getUTCMilliseconds(),
-  );
-
-  return Math.max(HISTORY_FLOOR_MS, monthsAgo + DAY_MS);
-};
+export const transferFloorMs = (now: number): number =>
+  Math.max(HISTORY_FLOOR_MS, now - TRANSFER_HISTORY_DAYS * DAY_MS);
 
 type OwnWallet = 'MAIN' | 'FUNDING';
 
@@ -361,7 +354,7 @@ const callsOf = (window: OwedWindow): number => typesOf(window).length;
  * budget cannot afford every type, or Binance rate-limited (which also sets the account's
  * cooldown). `keep` calls stay unspent for the passes that come later in the run.
  */
-const readSpan = (
+const readSpan = async (
   context: TransferContext,
   window: OwedWindow,
   span: WalkWindow,
@@ -369,23 +362,34 @@ const readSpan = (
 ): Promise<SpanRead<SeriesSpan<UniversalTransferType, BinanceUniversalTransfer>> | undefined> => {
   const { deps, run, accountId, apiKey, secret, options } = context;
 
-  return readSeriesSpan<UniversalTransferType, BinanceUniversalTransfer>({
-    run,
-    lane: 'transfer',
-    cost: COSTS.transfer,
-    span,
-    keep,
-    series: typesOf(window),
-    maxPages: MAX_PAGES_PER_SPAN,
-    fetchPage: (type, read, current) =>
-      deps.fetchUniversalTransfers(
-        apiKey,
-        secret,
-        { type, startTime: read.start, endTime: read.end, current },
-        options,
-      ),
-    onRateLimit: (error) => setBinanceCooldownUntil(accountId, deps.now() + error.retryAfterMs),
-  });
+  try {
+    return await readSeriesSpan<UniversalTransferType, BinanceUniversalTransfer>({
+      run,
+      lane: 'transfer',
+      cost: COSTS.transfer,
+      span,
+      keep,
+      series: typesOf(window),
+      maxPages: MAX_PAGES_PER_SPAN,
+      fetchPage: (type, read, current) =>
+        deps.fetchUniversalTransfers(
+          apiKey,
+          secret,
+          { type, startTime: read.start, endTime: read.end, current },
+          options,
+        ),
+      onRateLimit: (error) => setBinanceCooldownUntil(accountId, deps.now() + error.retryAfterMs),
+    });
+  } catch (error) {
+    // A span Binance refuses as older than it keeps (-5026) lies below its history, like the
+    // ground below the floor: it holds nothing to read and owes nothing. Every type of the span
+    // starts at the same time, so the first refusal stands for all of them.
+    if (error instanceof BinanceHistoryTooOldError) {
+      return { kind: 'page', page: { read: [], drifted: [] } };
+    }
+
+    throw error;
+  }
 };
 
 /**

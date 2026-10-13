@@ -60,6 +60,7 @@ that holding.
 | R33 | Orchestrator ruling (technical) 2026-10-12, under the no-starvation rule: the round-robin rotates the WINDOWS of the owed ranges, not the ranges; the windows that start at or after the cursor come first (`start >= cursor`, not `>`), then the rest; each of `W` owed windows is read within `ceil(W / L)` runs that enter the pending pass | section 4 |
 | R34 | Orchestrator ruling (technical) 2026-10-12, under the no-known-limit rule: a point window keeps a resume across runs; its first span commits within `2h + 1` runs while no later span comes back full | section 4 |
 | R35 | Orchestrator ruling (technical) 2026-10-12, under the no-known-limit rule: a split hint matches a window by containment (`hint.start <= window.start < hint.end`); a point window matches by exact start | section 4 |
+| Q3 | User ruling 2026-10-13, A (after the probe): `transferFloorMs` is `now - 179 whole days`; Binance code -5026 (a `startTime` older than it keeps) is a typed `BinanceHistoryTooOldError` and the Transfer walk reads that span as empty, never owed and never a rejected run | section 5; VERIFY 14 |
 | R36 | Orchestrator ruling (technical) 2026-10-13, under the no-known-limit rule and the user's standing approval (no change to which rows import or to any amount): the Earn endpoints compare a record's `time`, a whole second, to each end of a read at the second (live probe 2026-10-13: a read `[S, E]` returns a record at `T` exactly when `floor_s(S) <= T <= floor_s(E)`). So a read of a span returns a record in the second its start falls in, before the start; the Earn walk takes that record as inside the span (`reach = { start: floor_s(span.start), end: span.end }`, used only to tell whether a record sits in the span): a stuck one owes its own point `[T - 1, T + 1]`, never the span. The whole span owed for a stop with no point is still the real span. Without it a stuck record at `floor_s(span.start)` froze the forward pass every run. Earn only: Pay, capital and Transfer read at the millisecond | section 6; VERIFY 12; E29 |
 
 ## Sources (official, checked 2026-10-09)
@@ -686,7 +687,15 @@ withdraw budget moves into this object, with the same numbers and the same rule.
 
 ### 5. Transfer walk (`binance.transfer-history.ts`)
 
-- Floor: `now - 6 months + 1 day` (S4). Windows of 30 days (the cap is not
+- Floor: `now - 179 whole days` (`transferFloorMs`; USER RULING 2026-10-13, Q3 = A, after the
+  probe: S4 documents "last 6 months", a `startTime` 180 days back is served, one 200 days back
+  is refused with HTTP 400 code -5026, and 181-199 days is unknown; 6 calendar months + 1 day is
+  180-183 days, so the old floor could ask for a refused start). Binance code -5026 is mapped by
+  the client to a typed `BinanceHistoryTooOldError` (same message as the generic request-failed
+  error, so every other reader fails as before); the Transfer walk reads a span it refuses as
+  empty (one call, not one per type), owes nothing for it and goes on, so the lane is never
+  rejected for it. A span that starts below what Binance keeps and ends above it reads as empty
+  too: the 179-day floor keeps every request inside the 180 days probed. Windows of 30 days (the cap is not
   documented, Q10). The walk reads 20 types: the 18 untracked ones plus `MAIN_FUNDING` and
   `FUNDING_MAIN`, those two first. It runs on the shared walk (sections 3 and 4): forward
   pass, owed ranges, re-scan of the last 30 days, owed points, with per-record commits. A
@@ -706,7 +715,7 @@ withdraw budget moves into this object, with the same numbers and the same rule.
   parse; T12).
 - **A `FAILED` transfer stays owed** (user ruling 2026-10-12, OVERNIGHT 21 = B). Any status
   but `CONFIRMED` is a stop, and a `FAILED` one is its own code, `transfer-failed`: the point
-  stays on the list, read once a round, until the 6-month floor passes it. No row imports. The
+  stays on the list, read once a round, until the floor (179 days) passes it. No row imports. The
   owed point does not show the caption (section 8). VERIFY 14 records the exact status values
   for the record; no rule waits on them (T11).
 - **A transfer with a usable time does not stop the forward pass** (Transfer lane only). Every stop tied to ONE
@@ -1007,7 +1016,7 @@ Transfer:
 | T8 | pending pass or re-scan: one T5 record and one CONFIRMED record of another type in the span | the CONFIRMED one imports; the T5 one is owed at its point | nothing of the window |
 | T9 | forward pass, a span with a stop that owes no point (a row with no time, a type that drifted, a holding that is missing, a record outside the span) | nothing commits, the forward pass ends, the cursor stays, the run goes on (OVERNIGHT 17, R28) | stop the window |
 | T10 | row `type` is not the type read | `transfer-type-mismatch`, owed at its point; forward pass: the cursor passes it (user ruling 2026-10-12, O1 = A) | n/a |
-| T11 | status `FAILED` (user ruling 2026-10-12, OVERNIGHT 21 = B; the forward pass goes past it, item 3 = A) | `transfer-failed`: owed at its point until the 6-month floor drops it; no row; no caption; forward pass: the point is stored, the span commits and the cursor passes it | same (the OVERNIGHT 21 recommendation to ignore it is not taken) |
+| T11 | status `FAILED` (user ruling 2026-10-12, OVERNIGHT 21 = B; the forward pass goes past it, item 3 = A) | `transfer-failed`: owed at its point until the floor (179 days) drops it; no row; no caption; forward pass: the point is stored, the span commits and the cursor passes it | same (the OVERNIGHT 21 recommendation to ignore it is not taken) |
 | T12 | a row the client cannot parse (R30), beside a CONFIRMED row of another type, pending pass or re-scan | `transfer-row-unreadable`: owed at its point in the type read (no finite `timestamp`: the span, every type); the CONFIRMED row imports; the run goes on | the read threw, the run failed |
 
 Earn:
@@ -1169,7 +1178,11 @@ Probe items:
     the precision of `timestamp`, the range ends (item 12) on a row of ANY asset, whether
     a `tranId` repeats across types, the status values (Q11; for the record only, no rule
     waits on them: a `FAILED` transfer stays owed, user ruling 2026-10-12), and the answer to a
-    `startTime` older than 6 months. The owed point of a transfer rests on the first two;
+    `startTime` older than 6 months (ANSWERED, probe rev 2 PART B, 2026-10-13: a `startTime`
+    200 days back, and 400 days back, is HTTP 400 code -5026; 180 days is served; 31, 60 and
+    90 days and the whole depth of one read are served too, so the 30-day cap is not enforced
+    and the walk keeps 30; the floor is 179 days, user ruling Q3 = A). The owed point of a
+    transfer rests on the first two;
     a wrong filter field keeps the point owed only while no trusted record sits at the same
     millisecond (with a twin the point leaves, and the stuck record is never returned either
     way), and the record starves once it can be placed. This item is a MERGE BLOCKER for that

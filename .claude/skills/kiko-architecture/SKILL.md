@@ -1759,7 +1759,7 @@ than restated here:
   `readSeriesSpan`) and the write seam in `binance.walk-write-deps.ts`
   (`BinanceWalkWriteDeps`).
 - **Two passes per walk; 89-day windows on capital and Pay, 30-day on Transfer.**
-  The Transfer walk reads 30-day windows within a six-month floor
+  The Transfer walk reads 30-day windows within a 179-day floor
   (`TRANSFER_WINDOW_MS`, `transferFloorMs`). Binance rejects a `startTime`/
   `endTime` span of 90 days or more and caps a page at 1000 rows
   (`HISTORY_PAGE_LIMIT` in `binance.history-client.ts`); every walk
@@ -1951,10 +1951,15 @@ than restated here:
 
 The Transfer walk (`binance.transfer-history.ts`) imports BTC transfers between the user's own
 wallets on the same two passes (see above), in 30-day windows (`TRANSFER_WINDOW_MS`) within a
-six-month floor (`transferFloorMs`). One window is one read per transfer type (the series;
+179-day floor (`transferFloorMs`). One window is one read per transfer type (the series;
 `callsOf` counts them, `LANE_CALL_CAPS.transfer` in `binance.history-budget.ts` caps the lane). A
 record imports only at `TRANSFER_SETTLED_STATUS`; BTC only. The stop codes live in
 `binance.transfer-history.ts`; the design is in the spec and plan named under "Binance Pay".
+
+- **Transfer depth (Q3).** Binance refuses a `startTime` older than it keeps (HTTP 400, code
+  -5026): the client throws `BinanceHistoryTooOldError` (the generic request-failed message), and
+  `readSpan` reads that span as empty (one call), never owed and never a rejected run. The floor
+  stays inside the depth probed.
 
 - **Transfer forward stops (O1, Transfer lane only).** A stop tied to ONE transfer with a usable
   time is owed at that transfer's own point and the forward pass goes past it

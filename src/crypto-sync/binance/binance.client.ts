@@ -62,16 +62,46 @@ const retryAfterMsFromHeaders = (headers: Headers): number => {
 };
 
 /**
- * Binance error bodies are `{ code, msg }`. Surface `msg` (the clock-skew or
- * invalid-key text) so the user sees the real cause, not a bare status. A
- * non-JSON body (a gateway HTML page) yields no suffix.
+ * A history read Binance refuses because its `startTime` is older than the history it keeps (code
+ * -5026, HTTP 400, probed 2026-10-13). It carries the generic request-failed message, so a reader
+ * that does not catch it fails as before; the Transfer walk catches it and reads the span as empty.
  */
-const errorSuffix = async (response: Response): Promise<string> => {
-  const body = await either<unknown, unknown>(() => response.json());
-  const parsed = bifoldr(body);
-  const message = (parsed as { msg?: unknown } | undefined)?.msg;
+export class BinanceHistoryTooOldError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'BinanceHistoryTooOldError';
+    // A Babel/Hermes-transpiled `extends Error` loses the prototype link that
+    // `instanceof` relies on unless it is restored explicitly.
+    Object.setPrototypeOf(this, BinanceHistoryTooOldError.prototype);
+  }
+}
 
-  return typeof message === 'string' ? `: ${message}` : '';
+const HISTORY_TOO_OLD_CODE = -5026;
+
+/**
+ * Binance error bodies are `{ code, msg }`. A non-JSON body (a gateway HTML page) is no body at
+ * all.
+ */
+const errorBodyOf = async (response: Response): Promise<{ code?: unknown; msg?: unknown }> => {
+  const parsed = bifoldr(await either<unknown, unknown>(() => response.json()));
+
+  return isRecord(parsed) ? parsed : {};
+};
+
+/**
+ * The error of a non-ok response. `msg` (the clock-skew or invalid-key text) is surfaced so the
+ * user sees the real cause, not a bare status; no body yields no suffix.
+ */
+const requestFailedOf = async (response: Response): Promise<Error> => {
+  const { code, msg } = await errorBodyOf(response);
+  const message = i18n.t('accountDetail.binanceRequestFailed', {
+    status: response.status,
+    detail: typeof msg === 'string' ? `: ${msg}` : '',
+  });
+
+  return code === HISTORY_TOO_OLD_CODE
+    ? new BinanceHistoryTooOldError(message)
+    : new Error(message);
 };
 
 /**
@@ -83,12 +113,7 @@ const readBody = guard(
   [
     (response: Response) => !response.ok,
     async (response: Response): Promise<never> => {
-      throw new Error(
-        i18n.t('accountDetail.binanceRequestFailed', {
-          status: response.status,
-          detail: await errorSuffix(response),
-        }),
-      );
+      throw await requestFailedOf(response);
     },
   ],
   (response: Response): Promise<unknown> => response.json(),

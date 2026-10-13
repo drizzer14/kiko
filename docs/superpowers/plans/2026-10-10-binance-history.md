@@ -47,7 +47,7 @@
 
 1. **The newest Pay window.** With capital fully caught up, a Pay run commits its last window and `binancePayHistoryCursor` equals the capital cursor; the next run's Pay start re-scans from that cursor minus the overlap. Pinned in task 4/7. SUPERSEDED (C1): the Pay end is `now`, so the Pay cursor reaches `now`, not the capital cursor.
 2. **An old capital row with walletType 1.** A deposit imported on Spot before task 2/7, seen again in the overlap window with `walletType: 1`, stays on Spot: no second row on Funding, and the row count stays the same. Pinned in task 2/7 (real SQLite).
-3. **Disconnect, then reconnect.** Every walk cursor is reset to 2017. The Pay walk's first request starts at `max(HISTORY_FLOOR_MS, now - 18 months + 10 days)`, the Transfer walk's at `now - 6 months + 1 day`, the Earn walk's at 2022-01-01. No request asks for older data. Pinned in tasks 4/7, 5/7, 6/7.
+3. **Disconnect, then reconnect.** Every walk cursor is reset to 2017. The Pay walk's first request starts at `max(HISTORY_FLOOR_MS, now - 18 months + 10 days)`, the Transfer walk's at `now - 179 days` (user ruling Q3 = A, 2026-10-13), the Earn walk's at 2022-01-01. No request asks for older data. Pinned in tasks 4/7, 5/7, 6/7.
 4. **An Earn reward group grows on a re-read.** First read [0.00000002] gives `:0` = 2 sat. A re-read of [0.00000001, 0.00000002] gives `:0` = 1 sat (refreshed amount) and `:1` = 2 sat. Total 3 sat, two rows, no duplicate. Pinned in task 6/7 (real SQLite through `addManyDedup`).
 5. **Two Binance connections with the same `tranId`.** Each account gets its own legs and its own pair id; no row of one account is refreshed by the other. Pinned in task 5/7.
 6. **A Transfer run fits its cap.** A caught-up run reads the forward window (20 calls), one owed range outside the re-scan (20), the re-scan (20) and the points (1 call each) inside the cap of 80; at 60 the owed range starves while a point is owed. Pinned by the Transfer property lane (task 5/7, family a, mutant 8).
@@ -389,7 +389,7 @@ export const readSeriesSpan: <Series extends string, Row>(input: { run; lane; co
 
 // binance.transfer-history.ts
 export const TRANSFER_WINDOW_MS = 30 * DAY_MS;
-export const transferFloorMs: (now: number) => number; // now - 6 calendar months (UTC) + 1 day
+export const transferFloorMs: (now: number) => number; // now - 179 whole days (Q3 = A, 2026-10-13; was 6 calendar months + 1 day)
 export const TRANSFER_SETTLED_STATUS = 'CONFIRMED';
 export const transferRowsOf: (accountId: string, record: BinanceUniversalTransfer, readAs: UniversalTransferType) => PlannedTransferRow[]; // throws BinanceWalkStop (per-record codes)
 export type BinanceHistoryRow = BinanceTransactionRow & { exchangeCounterpartHoldingId?: string; exchangePairId?: string; untrackedCounterpart?: string };
@@ -660,6 +660,18 @@ The probe needs no app code: dispatch steps 1/7-3/7 right after task 1/7 lands, 
 | `buildWalkWindows` starts the next window one millisecond after the end | 4 (3 new) | the 30-day boundary cases |
 | `nextSpanAfter` starts the next span one millisecond after the end | 5 (3 new) | the halving boundary cases |
 | `pointOf` ends the point at the record's millisecond, not one after | 22 (3 new) | the point window cases |
+
+- [ ] **step 4c/7: Transfer floor and depth (USER RULING 2026-10-13, Q3 = A).** Probe: a `startTime` 180 days back is served, 200 days back is refused (HTTP 400, code -5026), 181-199 unknown; `transferFloorMs` (6 calendar months + 1 day, 180-183 days) could ask for a refused start, and the refusal (a generic `Error` out of `readBody`, which `readSeriesSpan` does not catch) rejected the whole Transfer lane every run.
+  - (a) `transferFloorMs(now) = max(HISTORY_FLOOR_MS, now - 179 whole days)`; the calendar-month code and `TRANSFER_HISTORY_MONTHS` are gone.
+  - (b) `binance.client.ts`: `readBody` throws `BinanceHistoryTooOldError` (same message as the generic request-failed error) for a non-ok response whose body code is -5026; `binance.transfer-history.ts` `readSpan` catches it and returns an empty page, so the span commits with no rows, owes nothing, and the run goes on. Placement: the Transfer walk is the only reader whose floor trails the clock and so the only one that can ask below what Binance keeps (Earn's floor is fixed, Pay's and capital's are not probed); catching in the shared `readSeriesSpan` would change Earn too, and in the client would hide the refusal from every caller. One call is spent, not one per type: every type of the span starts at the same time.
+  - Known limit, in the spec: a span that starts below what Binance keeps and ends above it reads as empty too; the 179-day floor keeps every request inside the 180 days probed.
+  - Pins: `binance.client.test.ts` (-5026 rejects with the typed error and the generic message; another code, a text code, no code, and an ok body are not it); `binance.transfer-history.test.ts` (`transferFloorMs` is `now - 179 days`, over two years of days the age is exactly 179 days; the floor-relative walk tests; a Binance that serves 180 days: a fresh connection and an owed range reaching back before the floor ask nothing older than the floor; a Binance that keeps 100 days: a refused span, a refused owed range, no rejected run, the newer records import, nothing owed, the cursor reaches now; one call on a refused span; each at run gaps 0 / 1 h / 1 day).
+
+| Mutant (step 4c/7) | client (44) | transfer (130) | Killers |
+|---|---|---|---|
+| the floor back to 6 calendar months + 1 day | 0 | 13 | the floor tests, the 180-day Binance cases, the floor-relative walk tests |
+| code -5026 not mapped (-5027) | 1 | 0 | `is what a read Binance refuses as older than it keeps rejects with (code -5026)` |
+| `readSpan` does not catch the typed error | 0 | 7 | the 100-day Binance cases (refused span, refused owed range, three gaps each) and the one-call case |
 
 - [ ] **step 5/7:** `kiko:retrospect` on the branch, then `kiko:scribe` rewrites kiko-architecture "Binance transaction history" (four walks, shared run budget and caps, walk cursors, P7 insert-only ensure, placement by walletType, pairing and `untracked_counterpart`, caption over every walk, capital rows' `'BTC'` description, Convert deferred and why) and commits.
 - [ ] **step 6/7:** `bash scripts/wait-load.sh 8` (background), then `env -u FORCE_COLOR make verify` at the branch tip until exit 0 with the full test count. Whole-branch `kiko:reviewer` pass (compliance brief: kiko-compliance 5.1.1/5.1.5, `memory/refs/resubmission-kit.md` section D unchanged, no new host).
