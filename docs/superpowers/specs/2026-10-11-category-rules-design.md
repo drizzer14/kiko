@@ -225,14 +225,14 @@ Form units after the split: `use-category-override/` (`applyOverride`, `applyOve
 ## 9. Screens (UI changes need the user's live confirmation on device)
 
 ### 9.1 Categories list (`Categories`)
-- One-column `Sortable.Grid` of cards built like `renderAccountCard`: `EntityIconTile` (category icon + resolved colour), title (wraps, per the locked "Card titles wrap" rule), caption "N rules" / "No rules" plus "Default" on the default category.
+- One-column `Sortable.Grid` of cards built like `renderAccountCard`: `EntityIconTile` (category icon + resolved colour), title (wraps, per the locked "Card titles wrap" rule), caption "N rules" / "No rules" plus a `star.fill` `SymbolIcon` (`DEFAULT_CATEGORY_SYMBOL` in `src/categories/category-display`) on the default category, accessibilityLabel `categories.default`; no text.
 - Tap -> category page. Hold -> `CardContextMenu` delete (not on the default). Drag -> reorder (`categoriesRepo.reorder`).
 - Footer "Add category" (leading symbol) -> category edit form in create mode; after save, the new category page.
 - "Set as default" moves to the category page (a row under the rules); move top/bottom goes away, reorder is by drag only, like Accounts (decision 14).
 
 ### 9.2 Category page (`CategoryDetail`, new route)
 - Header title = category name; header Edit -> category edit form.
-- Rules as cards, one per rule, sorted by priority (the order that decides). Each card shows its matchers as `SummaryTable` rows with `wraps`; the row labels name their subject (`AMOUNT_ROW_LABEL_KEYS` and `TIME_ROW_LABEL_KEYS` in `src/categories/category-rules/matcher-labels.ts`), and values with a time go through `formatTime` with the user's clock. The joined line (`ruleSummary` in `rule-summary.ts`, matchers joined by " · ") is the card's accessibility label and context-menu name.
+- Rules as cards, one per rule, sorted by priority (the order that decides). Each card shows its matchers as `SummaryTable` rows with `wraps`; the row labels name their subject (`AMOUNT_ROW_LABEL_KEYS` and `TIME_ROW_LABEL_KEYS` in `src/categories/category-rules/matcher-labels.ts`), and values with a time go through `formatTime` with the user's clock. The joined line (`ruleSummary(rows)` in `rule-summary.ts` joins the rule's `ruleRows`, label then value, with " · "; the caller builds the rows once and passes them to both the table and `ruleSummary`) is the card's accessibility label and context-menu name.
 - "Add rule" button (leading symbol) -> rule editor in create mode. Empty state when no rules.
 - Unreadable rule card (failed guard): "This rule can't be read" + Delete.
 
