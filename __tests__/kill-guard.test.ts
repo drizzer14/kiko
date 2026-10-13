@@ -492,6 +492,79 @@ const RECOVERY_IN_MAIN_CHECKOUT: string[] = [
   ['--abort', '--quit', '--skip', '--continue'].map((option) => `git ${subcommand} ${option}`),
 );
 
+// The tracked githooks/ run the typecheck on every commit and merge commit, so a commit or merge
+// that skips them — `--no-verify`, commit's `-n`, or a `-c core.hooksPath=...` — is denied. Each
+// spelling is checked alone, inside a flag cluster, through a global option, and inside a shell
+// string.
+const NO_VERIFY_COMMANDS: string[] = [
+  'git commit --no-verify',
+  'git commit -n',
+  'git commit -anm x',
+  'git commit -nm "msg"',
+  'git commit -vn',
+  'git commit -a -n -m x',
+  'git commit -m x --no-verify',
+  'git commit --amend -n',
+  'git commit --no-verif -m x',
+  'git commit --no-v -m x',
+  'git commit -m x -n',
+  'git commit --message x --no-verify',
+  `git -C ${WORKTREE} commit --no-verify`,
+  `git -C ${WORKTREE} commit -m x -n`,
+  `git -C ${MAIN_CHECKOUT} commit --no-verify -m x`,
+  'git merge --no-verify',
+  'git merge --no-ff --no-verify feature',
+  'git merge feature --no-verify',
+  'git -c core.hooksPath=/dev/null commit -m x',
+  'git -c core.hooksPath=/dev/null merge feature',
+  'git -c CORE.HOOKSPATH=/dev/null commit -m x',
+  'git -c core.hookspath= commit -m x',
+  'git -c user.name=x -c core.hooksPath=/dev/null commit',
+  'git --config-env=core.hooksPath=HOOKS commit -m x',
+  'git --config-env core.hooksPath=HOOKS commit',
+  `git -C ${WORKTREE} -c core.hooksPath=/dev/null commit -m x`,
+  'sh -c "git commit --no-verify -m x"',
+  "bash -c 'git commit -n -m x'",
+  "bash -lc 'git -c core.hooksPath=/dev/null commit'",
+  'sh -c "git merge --no-verify feature"',
+  'git add -A && git commit -n -m x',
+  'cd /tmp/scratch && git commit --no-verify',
+  'sudo git commit -n',
+  'env FOO=1 git commit --no-verify',
+  'echo $(git commit -n)',
+  '(git commit -n)',
+  'git commit -m "$(cat <<\'EOF\'\nfix: thing\nEOF\n)" --no-verify',
+];
+
+// The one-action commits the coordinator runs in the main checkout, and git spellings that only
+// look like a bypass: `-n` is a message, a log limit, or merge's --no-stat.
+const ALLOWED_COMMIT_COMMANDS: string[] = [
+  'git commit -m "-n"',
+  'git commit -m "use --no-verify never"',
+  'git commit -m x',
+  'git commit -amn',
+  'git commit --message=-n',
+  'git commit --message -n',
+  'git commit -F -',
+  'git commit -- -n',
+  'git commit --amend --no-edit',
+  'git log -n 3',
+  'git log -n3',
+  'git merge --ff-only abc1234',
+  `git -C ${WORKTREE} merge -n feature`,
+  'git -c user.name=x commit -m y',
+  'git -c core.pager=cat log',
+  'git -c core.hooksPath=/dev/null status',
+  'git commit -m x # -n',
+  'echo git commit -n',
+  'git -C /tmp/scratch log -n 3',
+  `git -C ${MAIN_CHECKOUT} commit -m "docs: x"`,
+  `git -C ${MAIN_CHECKOUT} commit -- HANDOFF.md -m "x"`,
+  `git -C ${MAIN_CHECKOUT} log -n 3`,
+  `git -C ${MAIN_CHECKOUT} merge --ff-only abc1234`,
+  `git -C ${WORKTREE} commit -m "feat: x"`,
+];
+
 const payloadIn = (directory: string, command: string): string =>
   JSON.stringify({ cwd: directory, tool_input: { command } });
 
@@ -564,6 +637,29 @@ describe('scripts/checks/kill-guard.sh (PreToolUse Bash guard)', () => {
   });
 
   it.each(RECOVERY_IN_MAIN_CHECKOUT)('allows recovery in the main checkout: %s', (command) => {
+    const result = run(payloadIn(MAIN_CHECKOUT, command));
+
+    expect(result.status).toBe(0);
+    expect(result.stdout.trim()).toBe('');
+  });
+
+  it.each(NO_VERIFY_COMMANDS)('denies a commit that skips the hook: %s', (command) => {
+    const reason = denyReasonFor(command);
+
+    expectStandardBlock(reason);
+    expect(reason).toContain('pre-commit');
+    expect(reason).toContain('--no-verify');
+    expect(reason).toContain('fix the type error');
+  });
+
+  it.each(ALLOWED_COMMIT_COMMANDS)('allows: %s', (command) => {
+    const result = run(payloadFor(command));
+
+    expect(result.status).toBe(0);
+    expect(result.stdout.trim()).toBe('');
+  });
+
+  it.each(ALLOWED_COMMIT_COMMANDS)('allows in the main checkout: %s', (command) => {
     const result = run(payloadIn(MAIN_CHECKOUT, command));
 
     expect(result.status).toBe(0);

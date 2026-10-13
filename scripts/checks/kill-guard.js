@@ -43,6 +43,13 @@
 // outside a loop, and a loop that scans nothing (a file, a pid,
 // scripts/wait-load.sh), stay allowed.
 //
+// And it denies a `git commit` or `git merge` that skips the tracked githooks/ (the
+// pre-commit typecheck): `--no-verify` (or an unambiguous abbreviation of it), commit's `-n`
+// (alone or inside a flag group), and `-c core.hooksPath=...` or `--config-env=core.hooksPath=...`
+// before the subcommand, in any directory and inside a shell string. A user may still bypass in
+// their own shell; the deny binds agent Bash calls only. `-n` after another option's value, after
+// `--`, in a message, or on `git log` or `git merge` (`--no-stat`) is not a bypass.
+//
 // Known limits: this guard stops ACCIDENTAL commands by cooperative agents.
 // It is a heuristic tokenizer, not a shell parser and not an adversarial
 // boundary: an exotic, obfuscated, or run-time-built form is a known limit,
@@ -132,6 +139,19 @@ const WAIT_LOOP_REASON_LINES = [
     'variable, or a script file, to get past this guard.',
 ];
 
+const NO_VERIFY_REASON_LINES = [
+  'WHAT FAILED:    kill-guard denied a git commit or merge that skips the pre-commit hook ' +
+    '(--no-verify, -n, or -c core.hooksPath=...).',
+  'WHY IT MATTERS: each commit must typecheck by itself: the tracked githooks/pre-commit and ' +
+    'githooks/pre-merge-commit run tsc on the staged files, and a bypassed commit lands an ' +
+    'unchecked type error on the branch.',
+  'HOW TO FIX:     fix the type error the hook reports, git add the fix, and commit again (the ' +
+    'hook reads the index, so an unstaged fix does not count). A user may bypass in their own ' +
+    'shell with git commit --no-verify; an agent never does.',
+  'DO NOT:         skip the hook through --no-verify, -n, -c core.hooksPath, a script file, an ' +
+    'alias, or a variable to get past this guard.',
+];
+
 const REASON_BY_KIND = {
   kill: () => KILL_REASON,
   stash: (finding) => blockReason(STASH_REASON_LINES, finding.detail),
@@ -139,6 +159,7 @@ const REASON_BY_KIND = {
   mainCheckout: (finding) => blockReason(MAIN_CHECKOUT_REASON_LINES, finding.detail),
   shellWrite: (finding) => blockReason(SHELL_WRITE_REASON_LINES, finding.detail),
   waitLoop: (finding) => blockReason(WAIT_LOOP_REASON_LINES, finding.detail),
+  noVerify: (finding) => blockReason(NO_VERIFY_REASON_LINES, finding.detail),
 };
 
 const reasonFor = (finding) => REASON_BY_KIND[finding.kind](finding);
@@ -1175,12 +1196,18 @@ function isInsideMainCheckout(directory, mainCheckoutPath) {
   return !isNestedWorktree(directory, mainCheckoutPath);
 }
 
+// The global options that set a config entry for one command: `-c name=value` and
+// `--config-env=name=VARIABLE`.
+const GIT_CONFIG_OPTIONS = new Set(['-c', '--config-env']);
+
 function applyGitOption(invocation, option, next) {
   const equals = option.indexOf('=');
   const name = equals === -1 ? option : option.slice(0, equals);
   const value = equals === -1 ? next : option.slice(equals + 1);
+  if (value === undefined) return;
+  if (GIT_CONFIG_OPTIONS.has(name)) invocation.configs.push(value);
   const field = GIT_PATH_OPTIONS.get(name);
-  if (field === undefined || value === undefined) return;
+  if (field === undefined) return;
   if (field === 'directory') invocation.directory = resolveDirectory(invocation.directory, value);
   else invocation[field] = value;
 }
@@ -1193,6 +1220,7 @@ function gitInvocation(rest, directory, environment) {
     directory,
     gitDirectory: environment.GIT_DIR,
     workTree: environment.GIT_WORK_TREE,
+    configs: [],
   };
   let i = 1;
   while (i < rest.length && rest[i].startsWith('-')) {
@@ -1206,8 +1234,96 @@ function gitInvocation(rest, directory, environment) {
   return {
     subcommand: rest[i],
     arguments: rest.slice(i + 1),
+    configs: invocation.configs,
     targets: [locate(invocation.workTree), locate(invocation.gitDirectory)],
   };
+}
+
+// ---- a commit or merge that skips the tracked githooks/ ----
+
+const HOOK_RUNNING_SUBCOMMANDS = new Set(['commit', 'merge']);
+// Git config keys are case-insensitive, and a bare name or an empty value still overrides the path.
+const HOOKS_PATH_CONFIG = /^core\.hookspath(?:=|$)/i;
+const NO_VERIFY_OPTION = '--no-verify';
+// `--no-v` is the shortest form of the option that no other `--no-…` option of commit or merge
+// shares, so git reads it as `--no-verify`.
+const NO_VERIFY_SHORTEST = '--no-v';
+
+// The options whose value is the NEXT word, so a `-n` or `--no-verify` there is text, not a flag.
+const VALUE_OPTIONS_BY_SUBCOMMAND = new Map([
+  [
+    'commit',
+    new Set([
+      '-m',
+      '-F',
+      '-C',
+      '-c',
+      '-t',
+      '--message',
+      '--file',
+      '--author',
+      '--date',
+      '--template',
+      '--reuse-message',
+      '--reedit-message',
+      '--fixup',
+      '--squash',
+      '--cleanup',
+      '--trailer',
+      '--pathspec-from-file',
+    ]),
+  ],
+  [
+    'merge',
+    new Set([
+      '-m',
+      '-F',
+      '-s',
+      '-X',
+      '--message',
+      '--file',
+      '--strategy',
+      '--strategy-option',
+      '--into-name',
+      '--cleanup',
+    ]),
+  ],
+]);
+// `git commit -S[<key>]` and `-u[<mode>]` take only a glued value, never the next word.
+const COMMIT_GLUED_ONLY_LETTERS = new Set(['S', 'u']);
+
+const isNoVerifyOption = (word) =>
+  word.length >= NO_VERIFY_SHORTEST.length && NO_VERIFY_OPTION.startsWith(word);
+
+// Whether a short-option group such as `-anm` holds commit's `-n`. A letter that takes a value ends
+// the group, because the rest of the group is its value: `-amn` is `-a -m n`.
+function groupHoldsNoVerify(group) {
+  for (const letter of group.slice(1)) {
+    if (letter === 'n') return true;
+    if ('mFCctSu'.includes(letter)) return false;
+  }
+
+  return false;
+}
+
+// Whether `git commit`/`git merge` is told to skip its hooks, by option or by config.
+function skipsHooks({ subcommand, arguments: parameters, configs }) {
+  if (!HOOK_RUNNING_SUBCOMMANDS.has(subcommand)) return false;
+  if (configs.some((entry) => HOOKS_PATH_CONFIG.test(entry))) return true;
+  const valueOptions = VALUE_OPTIONS_BY_SUBCOMMAND.get(subcommand);
+  let index = 0;
+  while (index < parameters.length) {
+    const word = parameters[index];
+    if (word === '--') return false;
+    if (isNoVerifyOption(word)) return true;
+    // `-n` is commit's --no-verify but merge's --no-stat.
+    if (subcommand === 'commit' && /^-[A-Za-z]+$/.test(word) && groupHoldsNoVerify(word)) {
+      return true;
+    }
+    index += takesNextWord(word, valueOptions, COMMIT_GLUED_ONLY_LETTERS) ? 2 : 1;
+  }
+
+  return false;
 }
 
 // One invocation per directory the command may run in; the subcommand is
@@ -1215,6 +1331,7 @@ function gitInvocation(rest, directory, environment) {
 function gitFinding(segment, invocations, rules) {
   const [git] = invocations;
   if (git.subcommand === 'stash') return { kind: 'stash', detail: segment.trim() };
+  if (skipsHooks(git)) return { kind: 'noVerify', detail: segment.trim() };
   if (!MAIN_CHECKOUT_SUBCOMMANDS.has(git.subcommand) || leavesMainCheckoutSafe(git)) return null;
   const target = invocations
     .flatMap((invocation) => invocation.targets)
