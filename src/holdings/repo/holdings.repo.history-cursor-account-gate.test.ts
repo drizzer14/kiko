@@ -147,6 +147,7 @@ describe("holdingsRepo.setBinanceWalkCursor — gated on the holding's account s
       binanceTransferHistoryCursor: 1,
       binanceTransferRescanCursor: 1,
       binanceEarnHistoryCursor: 1,
+      binanceEarnRescanCursor: 1,
       syncedAt: 500,
     });
   });
@@ -269,6 +270,7 @@ describe("holdingsRepo.setBinanceWalkPending — gated on the holding's account 
       binanceHistoryPendingOverlap: [],
       binancePayPendingOverlap: [],
       binanceTransferPendingOverlap: [],
+      binanceEarnPendingOverlap: [],
       syncedAt: 500,
     });
   });

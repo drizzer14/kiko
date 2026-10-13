@@ -521,7 +521,7 @@ export const fetchPayHistory = async (
  */
 export const HISTORY_TOTAL_PAGE_SIZE = 100;
 
-type TotalQuery = { startTime: number; endTime: number; current: number };
+export type TotalQuery = { startTime: number; endTime: number; current: number };
 
 const totalParams = (query: TotalQuery): Record<string, string> => ({
   startTime: String(query.startTime),
@@ -690,9 +690,9 @@ const EARN_READS = {
   },
 };
 
-type EarnRecordKind = keyof typeof EARN_READS;
+export type EarnRecordKind = keyof typeof EARN_READS;
 
-type EarnRecordByKind = {
+export type EarnRecordByKind = {
   [Kind in EarnRecordKind]: ReturnType<(typeof EARN_READS)[Kind]['readRow']>;
 };
 

@@ -5,6 +5,7 @@ import {
   binanceProvider,
   createBinanceHistoryRun,
   defaultBinanceDeps,
+  syncBinanceEarnHistory,
   syncBinancePayHistory,
   syncBinanceTransactions,
   syncBinanceTransferHistory,
@@ -44,6 +45,10 @@ const runBinanceSyncAndImport = async (targetAccountId: string): Promise<Balance
   // After the Pay walk, so a rate limit either walk met (the shared cooldown) skips this one.
   await logOnFailure('[binance sync] transfer history failed', () =>
     syncBinanceTransferHistory({ targetAccountId, run }),
+  );
+  // Last, so a rate limit any earlier walk met (the shared cooldown) skips this one too.
+  await logOnFailure('[binance sync] earn history failed', () =>
+    syncBinanceEarnHistory({ targetAccountId, run }),
   );
 
   return result;

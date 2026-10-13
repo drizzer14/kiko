@@ -4,6 +4,12 @@ import {
   asMetalMeta,
   asPropertyMeta,
   asTermDepositMeta,
+  BINANCE_EARN_HISTORY_CURSOR_FIELD,
+  BINANCE_EARN_PENDING_OVERLAP_FIELD,
+  BINANCE_EARN_POINT_CURSOR_FIELD,
+  BINANCE_EARN_RANGE_CURSOR_FIELD,
+  BINANCE_EARN_RESCAN_CURSOR_FIELD,
+  BINANCE_EARN_SPAN_HINTS_FIELD,
   BINANCE_TRANSFER_HISTORY_CURSOR_FIELD,
   BINANCE_TRANSFER_PENDING_OVERLAP_FIELD,
   BINANCE_TRANSFER_POINT_CURSOR_FIELD,
@@ -428,9 +434,10 @@ describe('the Binance walk cursors', () => {
     binanceTransferHistoryCursor: 3_000,
     binanceTransferRescanCursor: 3_500,
     binanceEarnHistoryCursor: 4_000,
+    binanceEarnRescanCursor: 4_500,
   };
 
-  it('lists the capital, capital re-scan, Pay, Pay re-scan, Transfer, Transfer re-scan, and Earn fields in walk order', () => {
+  it('lists the cursor and re-scan field of the capital, Pay, Transfer and Earn walks in walk order', () => {
     expect(binanceWalkCursorFields).toEqual([
       'binanceHistoryCursor',
       'binanceHistoryRescanCursor',
@@ -439,6 +446,7 @@ describe('the Binance walk cursors', () => {
       'binanceTransferHistoryCursor',
       'binanceTransferRescanCursor',
       'binanceEarnHistoryCursor',
+      'binanceEarnRescanCursor',
     ]);
   });
 
@@ -447,6 +455,15 @@ describe('the Binance walk cursors', () => {
     expect(BINANCE_TRANSFER_RESCAN_CURSOR_FIELD).toBe('binanceTransferRescanCursor');
     expect(BINANCE_TRANSFER_PENDING_OVERLAP_FIELD).toBe('binanceTransferPendingOverlap');
     expect(BINANCE_TRANSFER_POINT_CURSOR_FIELD).toBe('binanceTransferPointCursor');
+  });
+
+  it('exports the six field names the Earn walk stores its marks under', () => {
+    expect(BINANCE_EARN_HISTORY_CURSOR_FIELD).toBe('binanceEarnHistoryCursor');
+    expect(BINANCE_EARN_RESCAN_CURSOR_FIELD).toBe('binanceEarnRescanCursor');
+    expect(BINANCE_EARN_PENDING_OVERLAP_FIELD).toBe('binanceEarnPendingOverlap');
+    expect(BINANCE_EARN_POINT_CURSOR_FIELD).toBe('binanceEarnPointCursor');
+    expect(BINANCE_EARN_RANGE_CURSOR_FIELD).toBe('binanceEarnRangeCursor');
+    expect(BINANCE_EARN_SPAN_HINTS_FIELD).toBe('binanceEarnSpanHints');
   });
 
   it('reads each field on its own, null when absent or not a finite number', () => {
@@ -483,6 +500,7 @@ describe('the Binance walk cursors', () => {
       binanceTransferHistoryCursor: 100,
       binanceTransferRescanCursor: 100,
       binanceEarnHistoryCursor: 100,
+      binanceEarnRescanCursor: 100,
       statementFromMs: 700,
     });
   });
@@ -500,11 +518,12 @@ describe('the Binance walk cursors', () => {
 describe('the Binance pending overlap lists', () => {
   const range = { start: 1_000, end: 2_000 };
 
-  it('lists the capital, Pay and Transfer fields', () => {
+  it('lists the capital, Pay, Transfer and Earn fields', () => {
     expect(binanceWalkPendingFields).toEqual([
       'binanceHistoryPendingOverlap',
       'binancePayPendingOverlap',
       'binanceTransferPendingOverlap',
+      'binanceEarnPendingOverlap',
     ]);
   });
 
@@ -646,11 +665,12 @@ describe('the Binance pending overlap lists', () => {
 });
 
 describe('the Binance point cursors', () => {
-  it('lists the capital, Pay and Transfer fields', () => {
+  it('lists the capital, Pay, Transfer and Earn fields', () => {
     expect(binanceWalkPointCursorFields).toEqual([
       'binanceHistoryPointCursor',
       'binancePayPointCursor',
       'binanceTransferPointCursor',
+      'binanceEarnPointCursor',
     ]);
   });
 
@@ -721,11 +741,12 @@ describe('the Binance point cursors', () => {
 });
 
 describe('the Binance range cursors', () => {
-  it('lists the capital, Pay and Transfer fields', () => {
+  it('lists the capital, Pay, Transfer and Earn fields', () => {
     expect(binanceWalkRangeCursorFields).toEqual([
       'binanceHistoryRangeCursor',
       'binancePayRangeCursor',
       'binanceTransferRangeCursor',
+      'binanceEarnRangeCursor',
     ]);
   });
 
@@ -807,11 +828,12 @@ describe('the Binance span hints', () => {
     point: [{ start: 400, end: 402 }],
   };
 
-  it('lists the capital, Pay and Transfer fields', () => {
+  it('lists the capital, Pay, Transfer and Earn fields', () => {
     expect(binanceWalkSpanHintFields).toEqual([
       'binanceHistorySpanHints',
       'binancePaySpanHints',
       'binanceTransferSpanHints',
+      'binanceEarnSpanHints',
     ]);
   });
 
@@ -958,6 +980,44 @@ describe('the Binance span hints', () => {
     expect(
       withWalkOwnedMetadataResetToFloor({ binanceAsset: 'BTC', binancePaySpanHints: hints }, 100),
     ).toEqual({ binanceAsset: 'BTC' });
+  });
+});
+
+describe('the six keys of the Binance Earn walk', () => {
+  const point = { start: 5, end: 7, kind: 'point', series: 'flexibleRewards' };
+  const hints = { forward: [], pending: [{ start: 200, end: 220 }], rescan: [], point: [] };
+  const stored = {
+    binanceAsset: 'BTC',
+    binanceEarnHistoryCursor: 4_000,
+    binanceEarnRescanCursor: 3_000,
+    binanceEarnPendingOverlap: [point],
+    binanceEarnPointCursor: 6,
+    binanceEarnRangeCursor: 9,
+    binanceEarnSpanHints: hints,
+  };
+
+  it('are carried over a balance-sync metadata write', () => {
+    expect(withWalkOwnedMetadataCarried({ binanceAsset: 'BTC', syncedAt: 1 }, stored)).toEqual({
+      ...stored,
+      syncedAt: 1,
+    });
+  });
+
+  it('are reset on disconnect: the cursors to the floor, the list to empty, the round-robin marks and the hints dropped', () => {
+    expect(withWalkOwnedMetadataResetToFloor(stored, 100)).toEqual({
+      binanceAsset: 'BTC',
+      binanceEarnHistoryCursor: 100,
+      binanceEarnRescanCursor: 100,
+      binanceEarnPendingOverlap: [],
+    });
+  });
+
+  it('are read as the other walks read theirs: a list with a point of a kind, a cursor, a number, the hints', () => {
+    expect(binanceWalkPendingOf(BINANCE_EARN_PENDING_OVERLAP_FIELD, stored)).toEqual([point]);
+    expect(binanceWalkPointCursorOf(BINANCE_EARN_POINT_CURSOR_FIELD, stored)).toBe(6);
+    expect(binanceWalkRangeCursorOf(BINANCE_EARN_RANGE_CURSOR_FIELD, stored)).toBe(9);
+    expect(binanceWalkSpanHintsOf(BINANCE_EARN_SPAN_HINTS_FIELD, stored)).toEqual(hints);
+    expect(binanceWalkCursorOf(BINANCE_EARN_RESCAN_CURSOR_FIELD, stored)).toBe(3_000);
   });
 });
 

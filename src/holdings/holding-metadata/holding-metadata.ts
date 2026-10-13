@@ -194,7 +194,10 @@ export const BINANCE_TRANSFER_HISTORY_CURSOR_FIELD = 'binanceTransferHistoryCurs
 /** The Transfer walk's re-scan mark, kept the same way as the capital walk's. */
 export const BINANCE_TRANSFER_RESCAN_CURSOR_FIELD = 'binanceTransferRescanCursor';
 
-const BINANCE_EARN_HISTORY_CURSOR_FIELD = 'binanceEarnHistoryCursor';
+export const BINANCE_EARN_HISTORY_CURSOR_FIELD = 'binanceEarnHistoryCursor';
+
+/** The Earn walk's re-scan mark, kept the same way as the capital walk's. */
+export const BINANCE_EARN_RESCAN_CURSOR_FIELD = 'binanceEarnRescanCursor';
 
 /**
  * The metadata keys a sync WALK owns, as opposed to a balance snapshot — today only
@@ -211,6 +214,7 @@ export const binanceWalkCursorFields = [
   BINANCE_TRANSFER_HISTORY_CURSOR_FIELD,
   BINANCE_TRANSFER_RESCAN_CURSOR_FIELD,
   BINANCE_EARN_HISTORY_CURSOR_FIELD,
+  BINANCE_EARN_RESCAN_CURSOR_FIELD,
 ] as const;
 
 export type BinanceWalkCursorField = (typeof binanceWalkCursorFields)[number];
@@ -229,6 +233,8 @@ export const BINANCE_PAY_PENDING_OVERLAP_FIELD = 'binancePayPendingOverlap';
 
 export const BINANCE_TRANSFER_PENDING_OVERLAP_FIELD = 'binanceTransferPendingOverlap';
 
+export const BINANCE_EARN_PENDING_OVERLAP_FIELD = 'binanceEarnPendingOverlap';
+
 /**
  * The walk-owned keys that hold a list of ranges, not a cursor. A balance sync carries them
  * with the cursors, and a disconnect resets them to an empty list.
@@ -237,6 +243,7 @@ export const binanceWalkPendingFields = [
   BINANCE_HISTORY_PENDING_OVERLAP_FIELD,
   BINANCE_PAY_PENDING_OVERLAP_FIELD,
   BINANCE_TRANSFER_PENDING_OVERLAP_FIELD,
+  BINANCE_EARN_PENDING_OVERLAP_FIELD,
 ] as const;
 
 export type BinanceWalkPendingField = (typeof binanceWalkPendingFields)[number];
@@ -268,10 +275,13 @@ export const BINANCE_PAY_POINT_CURSOR_FIELD = 'binancePayPointCursor';
 
 export const BINANCE_TRANSFER_POINT_CURSOR_FIELD = 'binanceTransferPointCursor';
 
+export const BINANCE_EARN_POINT_CURSOR_FIELD = 'binanceEarnPointCursor';
+
 export const binanceWalkPointCursorFields = [
   BINANCE_HISTORY_POINT_CURSOR_FIELD,
   BINANCE_PAY_POINT_CURSOR_FIELD,
   BINANCE_TRANSFER_POINT_CURSOR_FIELD,
+  BINANCE_EARN_POINT_CURSOR_FIELD,
 ] as const;
 
 export type BinanceWalkPointCursorField = (typeof binanceWalkPointCursorFields)[number];
@@ -290,10 +300,13 @@ export const BINANCE_PAY_RANGE_CURSOR_FIELD = 'binancePayRangeCursor';
 
 export const BINANCE_TRANSFER_RANGE_CURSOR_FIELD = 'binanceTransferRangeCursor';
 
+export const BINANCE_EARN_RANGE_CURSOR_FIELD = 'binanceEarnRangeCursor';
+
 export const binanceWalkRangeCursorFields = [
   BINANCE_HISTORY_RANGE_CURSOR_FIELD,
   BINANCE_PAY_RANGE_CURSOR_FIELD,
   BINANCE_TRANSFER_RANGE_CURSOR_FIELD,
+  BINANCE_EARN_RANGE_CURSOR_FIELD,
 ] as const;
 
 export type BinanceWalkRangeCursorField = (typeof binanceWalkRangeCursorFields)[number];
@@ -348,10 +361,13 @@ export const BINANCE_PAY_SPAN_HINTS_FIELD = 'binancePaySpanHints';
 
 export const BINANCE_TRANSFER_SPAN_HINTS_FIELD = 'binanceTransferSpanHints';
 
+export const BINANCE_EARN_SPAN_HINTS_FIELD = 'binanceEarnSpanHints';
+
 export const binanceWalkSpanHintFields = [
   BINANCE_HISTORY_SPAN_HINTS_FIELD,
   BINANCE_PAY_SPAN_HINTS_FIELD,
   BINANCE_TRANSFER_SPAN_HINTS_FIELD,
+  BINANCE_EARN_SPAN_HINTS_FIELD,
 ] as const;
 
 export type BinanceWalkSpanHintField = (typeof binanceWalkSpanHintFields)[number];

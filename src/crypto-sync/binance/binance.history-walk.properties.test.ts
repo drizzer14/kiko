@@ -1,3 +1,4 @@
+import { match } from 'ts-pattern';
 import { DAY_MS } from '@kiko/dates';
 import {
   BINANCE_PAY_HISTORY_CURSOR_FIELD,
@@ -31,6 +32,17 @@ import {
   type WalkWindow,
 } from './binance.history-walk';
 import {
+  EARN_FORWARD_OWES,
+  EARN_SERIES,
+  type EarnRecord,
+  settledEarnOf,
+} from './binance.earn-history';
+import {
+  type BinanceUniversalTransfer,
+  type EarnRecordKind,
+  UNIVERSAL_TRANSFER_TYPES,
+} from './binance.history-client';
+import {
   commitSettledSpan,
   instantAt,
   joinSettled,
@@ -39,7 +51,6 @@ import {
 } from './binance.history-records';
 import { LANE_CALL_CAPS } from './binance.history-budget';
 import { settledTransfersOf, TRANSFER_FORWARD_OWES } from './binance.transfer-history';
-import { type BinanceUniversalTransfer, UNIVERSAL_TRANSFER_TYPES } from './binance.history-client';
 
 /**
  * The walk's own functions driven run after run, as the lanes drive them, against records that
@@ -49,8 +60,8 @@ import { type BinanceUniversalTransfer, UNIVERSAL_TRANSFER_TYPES } from './binan
  * A stuck record owes its own point and holds nothing else back, so every other record of the
  * span commits. The properties tell a point by the window its record owes (never by a tag or a
  * length), so they hold for any list the walk stores. A lane that reads several series (the
- * Transfer types) spends one call for each series of a span read, and the Transfer lane settles
- * its spans with the lane's own `settledTransfersOf`.
+ * Transfer types, the six Earn kinds) spends one call for each series of a span read, and settles
+ * its spans with the lane's own `settledTransfersOf` or `settledEarnOf`.
  */
 
 const HOUR_MS = 3_600_000;
@@ -100,6 +111,12 @@ type Lane = {
    * range that starts below it is cut to a start that moves every run. Capital's is fixed.
    */
   movesFloor?: boolean;
+  /**
+   * The walk a lane that reads several series settles its spans with, and the stops of one record
+   * its forward pass owes and goes past.
+   */
+  walk?: 'transfer' | 'earn';
+  forwardOwes?: readonly string[];
 };
 
 /**
@@ -153,6 +170,19 @@ const LANES: Lane[] = [
     precision: 1,
     series: TRANSFER_TYPES,
     movesFloor: true,
+    walk: 'transfer',
+    forwardOwes: TRANSFER_FORWARD_OWES,
+  },
+  {
+    name: 'Earn',
+    reads: LANE_CALL_CAPS.earn,
+    designReads: 30,
+    rangeCalls: EARN_SERIES.length,
+    splitCalls: 2,
+    precision: 1,
+    series: EARN_SERIES,
+    walk: 'earn',
+    forwardOwes: EARN_FORWARD_OWES,
   },
 ];
 
@@ -220,6 +250,9 @@ type SimRecord = {
    */
   defect?: 'type-mismatch' | 'id-missing' | 'amount-invalid';
 };
+
+/** The members of the reward group an Earn record stands for, of 1 to 3 (a reward is a group). */
+const membersOf = (entry: SimRecord): number => 1 + (entry.id % 3);
 
 type Scenario = { owed: OwedGround[]; records: SimRecord[] };
 
@@ -411,6 +444,144 @@ const settledTransfers = (input: {
   return { ...settled, rows: settled.rows.map((row) => idOfKey(row.externalId)) };
 };
 
+/** The id of the record an Earn row was written for (the fifth part of its key). */
+const idOfEarnKey = (externalId: string): number => Number(externalId.split(':')[4]);
+
+/**
+ * The records an Earn record stands for, as Binance gives them: a subscription or a redemption is
+ * one, settled once it can be trusted and pending until then; a reward is a group of 1 to 3
+ * members at one time, whose amounts are no number until it can be trusted. A `defect` makes the
+ * record wrong for good: no id, an amount that is no number, or (a flexible reward) a type the
+ * walk does not know.
+ */
+const earnRecordsOf = (entry: SimRecord, run: number): EarnRecord[] => {
+  const identifier = entry.defect === 'id-missing' ? '' : String(entry.id);
+  const settles = run >= entry.stuckUntil;
+  const amount = entry.defect === 'amount-invalid' ? 'abc' : '0.001';
+  const base = { asset: 'BTC', time: entry.time };
+  const status = settles ? 'SUCCESS' : 'PENDING';
+  const reward = settles && entry.defect !== 'amount-invalid' ? '0.00000001' : 'abc';
+  const memberAmounts = Array.from({ length: membersOf(entry) }, (_unused, index) =>
+    reward === 'abc' ? reward : `0.0000000${index + 1}`,
+  );
+
+  return match(entry.series)
+    .returnType<EarnRecord[]>()
+    .with('flexibleSubscription', (kind) => [
+      {
+        kind,
+        record: {
+          ...base,
+          amount,
+          purchaseId: identifier,
+          productId: undefined,
+          type: undefined,
+          sourceAccount: 'SPOT',
+          amtFromSpot: undefined,
+          amtFromFunding: undefined,
+          status,
+        },
+      },
+    ])
+    .with('lockedSubscription', (kind) => [
+      {
+        kind,
+        record: {
+          ...base,
+          amount,
+          positionId: undefined,
+          purchaseId: identifier,
+          type: undefined,
+          sourceAccount: 'SPOT',
+          amtFromSpot: undefined,
+          amtFromFunding: undefined,
+          status,
+        },
+      },
+    ])
+    .with('flexibleRedemption', (kind) => [
+      {
+        kind,
+        record: {
+          ...base,
+          amount,
+          projectId: undefined,
+          redeemId: identifier,
+          destAccount: 'SPOT',
+          status,
+        },
+      },
+    ])
+    .with('lockedRedemption', (kind) => [
+      {
+        kind,
+        record: {
+          ...base,
+          amount,
+          positionId: undefined,
+          redeemId: identifier,
+          originalAmount: undefined,
+          type: undefined,
+          status,
+        },
+      },
+    ])
+    .with('flexibleRewards', (kind) =>
+      memberAmounts.map((rewards) => ({
+        kind,
+        record: {
+          ...base,
+          rewards,
+          projectId: identifier,
+          type: entry.defect === 'type-mismatch' ? 'REWARDS' : 'REALTIME',
+        },
+      })),
+    )
+    .with('lockedRewards', (kind) =>
+      memberAmounts.map((memberAmount) => ({
+        kind,
+        record: { ...base, amount: memberAmount, positionId: identifier, type: 'Booster' },
+      })),
+    )
+    .otherwise(() => []);
+};
+
+/**
+ * The span of an Earn read, settled by the lane's own function: every series read, with the rows
+ * of its readable records and the times of the ones the client could not read; a series that
+ * `drifted` is named and gives no rows. The rows are told by the id of their record.
+ */
+const settledEarn = (input: {
+  span: WalkWindow;
+  page: SimRecord[];
+  run: number;
+  read: readonly string[];
+  drifted?: string;
+}) => {
+  const { span, page, run, read, drifted } = input;
+  const ofSeries = (series: string) => page.filter((entry) => entry.series === series);
+  const settled = settledEarnOf({
+    accountId: 'sim',
+    span,
+    read: {
+      read: read
+        .filter((series) => series !== drifted)
+        .map((series) => ({
+          series: series as EarnRecordKind,
+          rows: ofSeries(series)
+            .filter((entry) => entry.unreadable === undefined)
+            .flatMap((entry) => earnRecordsOf(entry, run)),
+          unreadable: ofSeries(series)
+            .filter((entry) => entry.unreadable !== undefined)
+            .map((entry) => ({ time: entry.unreadable === 'timeless' ? undefined : entry.time })),
+        })),
+      drifted: foldMap(maybe(drifted), (series) => [series as EarnRecordKind]) ?? [],
+    },
+  });
+
+  return { ...settled, rows: settled.rows.map((row) => idOfEarnKey(row.externalId)) };
+};
+
 /**
  * The settled span of one page: its readable records, and the records the client could not read,
  * which the lane takes from the page's `unreadable` list (with a time, or with none).
@@ -452,7 +623,9 @@ const settledOf = (input: {
     return settledOfOneSeries(span, page, run);
   }
 
-  return settledTransfers({
+  const settle = lane.walk === 'earn' ? settledEarn : settledTransfers;
+
+  return settle({
     span,
     page,
     run,
@@ -540,7 +713,7 @@ const endTimeOf = (input: Simulation, run: number): number => {
 
 const simulate = async (input: Simulation): Promise<Outcome> => {
   const { lane, scenario, runs } = input;
-  const forwardOwes = lane.series === undefined ? undefined : TRANSFER_FORWARD_OWES;
+  const { forwardOwes } = lane;
   const importedAt = new Map<number, number>();
   let marks: WalkMarks = {
     cursor: START_MS,
@@ -2023,19 +2196,37 @@ describe.each(LANES)('owed ground that never commits, $name lane', (lane) => {
     );
 
     if (lane.series !== undefined) {
-      const FAMILIES: { family: string; mark: Partial<SimRecord> }[] = [
-        { family: 'FAILED', mark: { failed: true } },
+      type Family = { family: string; mark: Partial<SimRecord> };
+      const SHARED_FAMILIES: Family[] = [
         { family: 'not settled (pending)', mark: {} },
-        { family: 'of another type than it was read under', mark: { defect: 'type-mismatch' } },
         { family: 'with no id', mark: { defect: 'id-missing' } },
         { family: 'with an amount that is no number', mark: { defect: 'amount-invalid' } },
         { family: 'whose row the client could not read', mark: { unreadable: 'timed' } },
       ];
+      // A FAILED Earn record is ignored and owes nothing, so only the Transfer lane has the
+      // family; a reward group of a type the walk does not know is the Earn lane's own.
+      const FAMILIES: Family[] =
+        lane.walk === 'earn'
+          ? [
+              ...SHARED_FAMILIES,
+              {
+                family: 'of a reward type the walk does not know',
+                mark: { defect: 'type-mismatch', series: 'flexibleRewards' },
+              },
+            ]
+          : [
+              { family: 'FAILED', mark: { failed: true } },
+              {
+                family: 'of another type than it was read under',
+                mark: { defect: 'type-mismatch' },
+              },
+              ...SHARED_FAMILIES,
+            ];
 
       it.each(
         FAMILIES.flatMap(({ family, mark }) => RUN_GAPS.map((gapMs) => ({ family, mark, gapMs }))),
       )(
-        'a transfer $family, at a time in the forward window, is owed at its point and the cursor passes it: the transfers after it import in the run that reads the window, its point stays owed in every run, and no run after imports anything, runs $gapMs ms apart',
+        'a record $family, at a time in the forward window, is owed at its point and the cursor passes it: the records after it import in the run that reads the window, its point stays owed in every run, and no run after imports anything, runs $gapMs ms apart',
         async ({ mark, gapMs }) => {
           const builder = builderOf(lane, 83);
           const stuck = { ...builder.record(START_MS + 30 * 60_000, NEVER), ...mark };
@@ -2059,7 +2250,7 @@ describe.each(LANES)('owed ground that never commits, $name lane', (lane) => {
         },
       );
 
-      it('a pending transfer in the forward window that settles at run 4: its point stays owed until then, and it imports once it settles and its point leaves', async () => {
+      it('a pending record in the forward window that settles at run 4: its point stays owed until then, and it imports once it settles and its point leaves', async () => {
         const builder = builderOf(lane, 83);
         const pending = builder.record(START_MS + 30 * 60_000, 4);
         const newer = builder.record(START_MS + 90 * 60_000);
@@ -2100,7 +2291,12 @@ describe.each(LANES)('owed ground that never commits, $name lane', (lane) => {
         },
       );
 
-      it.each([25, 40].map((count) => ({ count, bound: rangeRuns(lane, 1) })))(
+      // The re-scan spans of the drifting series are owed as ranges too, up to the 12 the list
+      // keeps. The Earn lane reads two of them a run, rotating from the range cursor, so the day
+      // is read within a round-robin of all of them, not after the first one.
+      const driftRanges = lane.walk === 'earn' ? 12 : 1;
+
+      it.each([25, 40].map((count) => ({ count, bound: rangeRuns(lane, driftRanges) })))(
         'P1-P4: one owed range outside the re-scan window that drifts until run 4, with $count points owed beside it, more than a run reads: its records import within $bound runs of the drift ending, whatever the points take',
         async ({ count, bound }) => {
           await check(

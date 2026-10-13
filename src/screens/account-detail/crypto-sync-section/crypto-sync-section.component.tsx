@@ -25,7 +25,7 @@ import { styles } from '../account-detail.styles';
 import SyncDisconnectActionsRow from '../sync-disconnect-actions-row';
 import { formatLastSyncAt, latestSyncedAt } from '../format-last-sync';
 
-import { historyCursorOf, isBinanceHistoryBehind } from './binance-history-status';
+import { isBinanceHistoryBehind, walkCursorsOf } from './binance-history-status';
 
 type CryptoSyncSectionProps = {
   account: AccountRow;
@@ -111,7 +111,10 @@ const CryptoSyncSection: FC<CryptoSyncSectionProps> = ({ account, holdings }) =>
     const historyBehind =
       !isSyncing &&
       connectedProvider === 'binance' &&
-      isBinanceHistoryBehind(historyCursorOf(holdings), latestSyncedAt(holdings));
+      isBinanceHistoryBehind({
+        cursors: walkCursorsOf(holdings),
+        lastBalanceSyncAt: latestSyncedAt(holdings),
+      });
 
     return (
       <Box gap={3}>

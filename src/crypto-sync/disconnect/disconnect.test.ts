@@ -76,6 +76,35 @@ describe('disconnectCryptoAccount', () => {
     });
   });
 
+  it('for Binance, resets the six Earn walk keys of a Spot holding: cursors to the floor, the list to empty, no point cursor, no range cursor, no hints', async () => {
+    let reset: Record<string, unknown> | undefined;
+    mockResetBinanceWalkCursors.mockImplementation(async (_id, floorMs) => {
+      reset = withWalkOwnedMetadataResetToFloor(
+        {
+          binanceAsset: 'BTC',
+          binanceEarnHistoryCursor: 9_000,
+          binanceEarnRescanCursor: 8_000,
+          binanceEarnPendingOverlap: [
+            { start: 5, end: 7, kind: 'point', series: 'flexibleRewards' },
+          ],
+          binanceEarnPointCursor: 6,
+          binanceEarnRangeCursor: 7,
+          binanceEarnSpanHints: { forward: [], pending: [], rescan: [], point: [] },
+        },
+        floorMs,
+      );
+    });
+
+    await disconnectCryptoAccount('acc-1', 'binance');
+
+    expect(reset).toEqual({
+      binanceAsset: 'BTC',
+      binanceEarnHistoryCursor: HISTORY_FLOOR_MS,
+      binanceEarnRescanCursor: HISTORY_FLOOR_MS,
+      binanceEarnPendingOverlap: [],
+    });
+  });
+
   it('for a wallet, runs only the DB disconnect — no cursor to reset, no secret to clear', async () => {
     await disconnectCryptoAccount('acc-1', 'btc_wallet');
 
