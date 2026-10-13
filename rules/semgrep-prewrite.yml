@@ -1187,6 +1187,45 @@ rules:
           - pattern-inside: test.$MODIFIER($NAME, ...)
           - pattern-inside: it.$MODIFIER(...)($NAME, ...)
           - pattern-inside: test.$MODIFIER(...)($NAME, ...)
+  # kiko-code-style's "Comments: WHY only, never history" covers a test title too: a title says
+  # what the test pins, never the task id, the ruling id, or the old value it came from. ERROR:
+  # the tree holds 0 findings for this id. A title that is not a string or a template literal
+  # is out of reach. See kiko-linter's "kiko-test-title-no-history" section. The
+  # `src/test-support/**` include entry is path-prefixed, so the fixture pair is NESTED.
+  - id: kiko-test-title-no-history
+    languages: [typescript]
+    severity: ERROR
+    message: >
+      A test or suite title opens with a task id ("A1 ", "T28 "), opens with a
+      ruling id ("ruling A2"), or carries an old-value label in parentheses.
+      kiko-code-style's "Comments: WHY only, never history": a title says what
+      the test pins, and the id or the old value belongs in the commit
+      message. Drop the id or the label and state the behavior.
+    metadata:
+      fix: "Rewrite the title to state the behavior the test pins; drop the task id, the ruling id and the old-value label."
+      skill: "kiko-code-style › Comments: WHY only, never history"
+    paths:
+      include:
+        - "*.test.ts"
+        - "*.test.tsx"
+        - "src/test-support/**"
+    patterns:
+      - pattern-either:
+          - pattern: it($TITLE, ...)
+          - pattern: test($TITLE, ...)
+          - pattern: describe($TITLE, ...)
+          - pattern: it.$MODIFIER($TITLE, ...)
+          - pattern: test.$MODIFIER($TITLE, ...)
+          - pattern: describe.$MODIFIER($TITLE, ...)
+          - pattern: it.$MODIFIER(...)($TITLE, ...)
+          - pattern: test.$MODIFIER(...)($TITLE, ...)
+          - pattern: describe.$MODIFIER(...)($TITLE, ...)
+          - pattern: it.$MODIFIER.$EACH(...)($TITLE, ...)
+          - pattern: test.$MODIFIER.$EACH(...)($TITLE, ...)
+          - pattern: describe.$MODIFIER.$EACH(...)($TITLE, ...)
+      - metavariable-regex:
+          metavariable: $TITLE
+          regex: "^[\"'`](?:[A-Z]\\d+ |[Rr]uling [A-Z]\\d|.*\\(was: )"
   # kiko-design-system's CardContextMenu: a form has no in-form Delete. An
   # entity is deleted only from its page's touch-and-hold CardContextMenu,
   # which owns the ConfirmSheet, so a form never imports the sheet at all
