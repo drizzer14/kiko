@@ -746,6 +746,27 @@ Failing tests per mutant of the band read, by test file (paging 84 tests, moving
 | a refused band is not counted as a call of the lane | 1 | 0 | 4 | `owes the band in its series ...` (the record count), the run bound |
 | any failure of the band read owes the band (a rate limit or another error too) | 2 | 0 | 0 | `hands a rate limit of the band read to the caller and leaves the span unread`, `rethrows a failure of the band read that is not the refusal` |
 
+Pins of the lapse range and of the band owed with no request: `binance.history-depth.test.ts` (`lapsedRangeOf` leaves no ground open for a span that starts at or above the start the memory would move on to, and for a memory that has not lapsed or holds a refused start; `isBandRefused` after `rememberRefusedBand`), `binance.history-paging.moving-depth.test.ts` (a span that starts above that start is read from its own start with no request beyond the read, with the clock and in steps of a day; a span it reaches into narrows; the band of the next series is owed with no request when it lies within the reach of the refused one, is read when the depth stood still or when it starts above that reach), `binance.history-paging.test.ts` (a refused band is asked of one series only), `binance.transfer-history.test.ts` (a middle type that keeps 45, 40, 35 or 30 days, one 45 and another 30, and the last type 35, at three gaps, with the clock and in steps of a day, at every latency: every transfer each type keeps is imported within 15 runs, and only ground Binance refuses is owed; the exact count: 20 types that keep a different depth each make 477 requests, none makes more). The acceptance pins are unchanged, but for the exact count, whose scenario is re-derived: no run of the 100-day, 90 and 75, or later-crossing cases makes more than 379 requests, so 20 types that keep a different depth each are the run that spends all 477.
+
+Failing tests per mutant of the lapse range and the owed band, by test file (depth 55 tests, paging 84, moving-depth 40, transfer 477, all passing unmutated):
+
+| Mutant | depth | paging | moving-depth | transfer | Killers |
+|---|---|---|---|---|---|
+| the lapse is taken for every span | 1 | 0 | 2 | 38 | `reads a span that starts above the start a lapsed memory would have moved on to from its own start ...`, the later-crossing cases at 0 to 3 s |
+| the lapse is taken for a span that starts at the start the memory would move on to (`>=`) | 1 | 0 | 0 | 0 | `leaves none open for a span that starts at or above the start the memory would move on to` |
+| the lapse is taken for the spans above the start only (inverted) | 2 | 3 | 14 | 38 | the same, the suspension cases |
+| the lapse is judged against the end of the span | 0 | 2 | 10 | 0 | the suspension cases of both files |
+| no band is expected to be refused | 3 | 1 | 1 | 0 | `owes the band of the next series with no request ...`, `asks the band of no series after the one it refused` |
+| every band is expected to be refused | 3 | 0 | 1 | 0 | `reads the band of the next series when the depth stood still ...`, `... when it starts above the reach of the depth` |
+| the reach is a band's start only (`<` for `<=`) | 3 | 1 | 0 | 0 | `expects a band that starts at or below the refused one ... to be refused` |
+| the reach is not moved on by the time since | 2 | 0 | 0 | 0 | the same |
+| the reach moves back with a clock that reads earlier | 1 | 0 | 0 | 0 | `does not move the refused band back when the clock reads earlier than it did` |
+| the first refused band is kept, not the last | 1 | 0 | 0 | 0 | `moves on with the band refused last` |
+| a refused band is not remembered | 0 | 1 | 1 | 0 | the same two |
+| one narrowing call more or fewer (398 or 396) | 0 | 0 | 0 | 1 | `is bounded by the lane cap and the narrowing calls together, and 20 types that keep a different depth each spend them all` (and the budget file) |
+
+Measured on the 420 cases of the spec's section 5 (15 runs, run gaps 0, 1 hour and 1 day): the 144 later-crossing cases lose 126 rows and 28 edge rows with a lapse taken for every span (63 and 14 at 0 to 3 s, 63 and 14 at the 9 s spike) and none with the lapse range; the other 276 lose none either way. The smallest narrowing cap with no row lost is 252; 397 is kept.
+
 - [ ] **step 5/7:** `kiko:retrospect` on the branch, then `kiko:scribe` rewrites kiko-architecture "Binance transaction history" (four walks, shared run budget and caps, walk cursors, P7 insert-only ensure, placement by walletType, pairing and `untracked_counterpart`, caption over every walk, capital rows' `'BTC'` description, Convert deferred and why) and commits.
 - [ ] **step 6/7:** `bash scripts/wait-load.sh 8` (background), then `env -u FORCE_COLOR make verify` at the branch tip until exit 0 with the full test count. Whole-branch `kiko:reviewer` pass (compliance brief: kiko-compliance 5.1.1/5.1.5, `memory/refs/resubmission-kit.md` section D unchanged, no new host).
 - [ ] **step 7/7:** Final report: every task's base sha, `make mutable` count and `make deep` result (the coordinator's runs), the drift-fix sha, the probe mapping, and the open user confirmations.

@@ -1997,14 +1997,21 @@ record imports only at `TRANSFER_SETTLED_STATUS`; BTC only. The stop codes live 
   the Transfer lane, none for the others; `spanRunOf` in `binance.history-paging.ts`), and from the
   cap of 80 after them; a span read that does not narrow draws the cap alone. A run that narrows
   nothing therefore makes 80 calls at most and a run that narrows 477 (80 + 397; 167 s of pacing).
-  A Binance that keeps less than 179 days is thus narrowed for all 20 types in the first run, which
-  is what keeps the ground just above the depth (the next run meets a depth that has moved past
-  it). 390 is the smallest value that loses no row in the 276 cases of the spec's section 5 (389
-  loses 5 rows at a 9 s spike on every seventh request); 397 keeps 7 calls beyond it, and the
-  longest run makes 477 (476 where the calls end inside a narrowing, which keeps one for its own
-  read). `canAfford` judges every narrowing call by the weight readings: a Transfer call weighs
-  IP 1 and the gate allows 172 requests a minute, so the walk adds at most 172 IP a minute. A
-  band Binance refuses stays owed in its type and is read by a later run.
+  A Binance that keeps less than 179 days is thus narrowed for all 20 types in the first run (the
+  run takes its calls at 350 ms each or the latency of the request when that is longer: 75 s for
+  215 requests against 100 days in every type at no latency, 12 minutes for 477 at 0 to 3 s), and
+  a type that has found its depth reads the ground above it in that run; a type read late in the
+  window that crosses the depth meets a depth that has moved past the rows just above where it
+  stood when the run was planned (spec section 5, "What the first run reaches late"). 252 is the
+  smallest value that loses no row in the 420 cases of the spec's section 5 (251 loses 5 rows at
+  a 9 s spike on every seventh request); 397 is kept, and the longest run makes 477 (20 types that
+  keep a different depth each; 476 where the calls end inside a narrowing, which keeps one for its
+  own read). A lapsed memory narrows only for a span the start it would move on to reaches into
+  (`lapsedRangeOf`); a span above it is read from its own start. A band that starts within the
+  reach of a band Binance refused is owed with no request (`isBandRefused`). `canAfford` judges
+  every narrowing call by the weight readings: a Transfer call weighs IP 1 and the gate allows 172
+  requests a minute, so the walk adds at most 172 IP a minute. A band Binance refuses stays owed
+  in its type and is read by a later run.
 
 - **Transfer forward stops (O1, Transfer lane only).** A stop tied to ONE transfer with a usable
   time is owed at that transfer's own point and the forward pass goes past it

@@ -762,7 +762,17 @@ withdraw budget moves into this object, with the same numbers and the same rule.
     (refused: the depth stepped past it, and the span narrows from it toward its end as a refused
     start does), then the part between them is halved to the resolution, `1 + ceil(log2(elapsed
     / resolution))` requests (17 for 10 hours). A span that ends at or before the start the run
-    holds, or whose end Binance refuses, reads as empty.
+    holds, or whose end Binance refuses, reads as empty. The lapse is taken only for a span that
+    the start the memory would move on to reaches into (`lapsedRangeOf`: that start lies above the
+    span's start). A span that starts at or above it is read from its own start, with no
+    narrowing: a read begins at the latest of the span's start, the floor and the moved-on start
+    (`readStartOf`), which is the span's start, so every start the span holds is asked and no kept
+    ground is skipped; a depth that stepped past the span's start meanwhile refuses the read, and
+    the refusal is answered as any other (a wider margin, then a narrowing from the refused start).
+    A run that narrows lasts for minutes (477 calls are 167 s of pacing), so the memories of its
+    first types lapse while it reads the later ones; a lapse taken for every span would narrow
+    every type again (10 to 15 requests a type) in each span of the run that lies days above the
+    depth, where the memory cannot decide where the read begins.
   - The band of a read, under the assumption that the depth moves forward and never back: the
     ground below the start a read begins at is refused (within the resolution of 1 s; after a
     lapse that ends against the start the type held, the ground from that start belongs to the
@@ -775,7 +785,15 @@ withdraw budget moves into this object, with the same numbers and the same rule.
     serves it, its rows join the rows of the type and nothing is owed. When Binance refuses it
     (the depth moved past its start meanwhile: a depth that moves with the clock refuses it, a
     depth that stood still serves it), when the weight readings or the lane's calls do not
-    afford the request, or when its pages drift, the band is owed, not committed as read and not
+    afford the request, or when its pages drift, the band is owed. A band that starts within the
+    reach of a band Binance refused in the same run (`isBandRefused`: its start is at or below
+    that band's start moved on by the time since, the depth moving with the clock) is owed with no
+    request, since Binance would refuse it too; the owed band is the one the refused request would
+    have left, so only the request is saved (5 to 10 of the 215 to 248 requests of a first run
+    against a Binance that keeps 100 days in every type: the starts two types are served from
+    differ by up to the resolution, so a part of the bands is still asked). A depth that
+    stood still refuses no band, so none is skipped after it and the bands Binance serves are
+    read. An owed band is not committed as read and not
     read as empty: the span's commit stores it as a range owed in that type alone (a range with a
     `series`, section 3), the forward pass goes past it, and the pending pass reads it in that
     type alone from its own start, importing what Binance keeps of it or reading as empty what
@@ -828,34 +846,41 @@ withdraw budget moves into this object, with the same numbers and the same rule.
     committed as read; a band the weight readings or the lane's calls do not afford is owed. A
     type that narrows keeps one call for its own read, so a run whose calls end inside a narrowing
     makes 476. Measured against a fake clock that the gate's sleeps and the request latency
-    move, 276 cases: all 20 types, run gaps of 0, 1 hour and 1 day, a depth that moves with the
+    move, 420 cases: all 20 types, run gaps of 0, 1 hour and 1 day, a depth that moves with the
     clock or in steps of a day, and rows 1 hour to 10 days above the depth (and, in daily steps,
     two rows 1.2 s and 1.8 s above it): every type keeps 100 days; a middle type 90 and another
-    75; the first type 90, or 110; the last type 90; a suspension of 10 or 30 hours in a gate wait
-    of the first run; a run planned 3 days before it reads against a Binance that keeps 180 days.
-    The rows lost in all 276 cases, by latency, by narrowing calls:
+    75; the first type 90, or 110; the last type 90; a middle type 45, 40, 35 or 30 days, or one
+    45 and another 30, or the last type 35 (their windows of 30 days are read a run's minutes
+    after those of the 100-day types); a suspension of 10 or 30 hours in a gate wait of the first
+    run; a run planned 3 days before it reads against a Binance that keeps 180 days. The rows
+    lost in all 420 cases, by latency, by narrowing calls:
 
     | Narrowing calls | no latency | 0 to 300 ms | 0 to 3 s | 9 s spike every 7th request |
     |---|---|---|---|---|
-    | 0 | 1,969 | 1,996 | 2,033 | 2,104 |
-    | 80 | 361 | 398 | 559 | 628 |
-    | 160 | 6 | 6 | 71 | 26 |
-    | 200 | 0 | 0 | 11 | 11 |
-    | 320 | 0 | 0 | 6 | 11 |
-    | 360 | 0 | 0 | 0 | 5 |
-    | 389 | 0 | 0 | 0 | 5 |
-    | 390 | 0 | 0 | 0 | 0 |
+    | 0 | 3,624 | 3,717 | 3,743 | 3,951 |
+    | 80 | 594 | 581 | 976 | 1,214 |
+    | 160 | 48 | 48 | 123 | 208 |
+    | 200 | 0 | 0 | 42 | 45 |
+    | 240 | 0 | 0 | 0 | 5 |
+    | 251 | 0 | 0 | 0 | 5 |
+    | 252 | 0 | 0 | 0 | 0 |
+    | 320 | 0 | 0 | 0 | 0 |
     | 397 | 0 | 0 | 0 | 0 |
 
-    The band read costs the narrowing calls one request a type; 390 is the smallest value that
-    loses no row in any case (389 loses 5 rows in 2 cases of the slowest network, a spike of 9
-    seconds on every seventh request, where the last type of the window that crosses the depth
-    needs the last of the calls); 397 keeps 7 calls beyond it. 160 suffices to within 6 rows with
-    no latency and 200 with up to 300 ms. The run that narrows the most makes 477 requests (a
-    latency of 0 to 3 seconds on every request; 476 at the 9 second spike), which take 167 s of
-    pacing or more. With them every transfer each type keeps when the first run reads is
-    imported within 2 runs (a run planned 3 days before it reads: within the first), nothing is
-    owed after 15, and the forward cursor passes the window that crosses the depth after 2; the
+    252 is the smallest value that loses no row in any case (251 loses 5 rows in 2 cases of the
+    slowest network, a spike of 9 seconds on every seventh request, where the last type of the
+    window that crosses the depth needs the last of the calls); 397 is the value kept, 145 calls
+    beyond it, and the run that narrows the most in these cases makes 379 requests. The run that
+    narrows the most makes 477 requests, with 20 types that each keep a different depth (each
+    finds its own, with no other to ask it from), at any latency. A first run that narrows takes
+    the calls it makes at 350 ms each, or the latency of the request when that is longer: 215
+    requests (75 s) against a Binance that keeps 100 days in every type at no latency, 248 (387
+    s, 6.5 minutes) at 0 to 3 seconds, 477 (167 s) at no latency to 739 s (12 minutes) at 0 to 3
+    seconds for the 20 different depths. With them every transfer each type keeps when the first
+    run reads is imported within 2 runs (a run planned 3 days before it reads: within the first),
+    nothing is owed after 15 except ground Binance refuses (a type whose depth lies inside the
+    window the re-scan reads owes, after each run, the band its read met refused, which the next
+    run settles), and the forward cursor passes the window that crosses the depth after 2; the
     pins allow 14.
   - The ground the depth passes while a type waits to be read is gone from Binance, so a type
     read in a later run loses it. A type owed in a run is read in a later one. The owed ranges
@@ -874,8 +899,26 @@ withdraw budget moves into this object, with the same numbers and the same rule.
     reads it in a later run; a depth that stands still serves it in the same span read. The ground
     between the start a type's memory holds and the end of a span that lies below the start the
     memory moved on to is owed with no request. The ground a refused band begins in is below the
-    depth, as any refused ground is. No row is lost in the 276 cases measured, with 397
-    narrowing calls.
+    depth, as any refused ground is. No row that Binance keeps when the first run reads is lost in
+    the 420 cases measured, with 397 narrowing calls.
+  - What the first run reaches late: the types read the window that crosses the depth in turn.
+    The first narrows (about 25 requests); each later type spends 4 to 6 (its refused read, two to
+    four requests of the search from the hint, its read), after the 41 requests that settle the
+    two windows below the depth (one for each type and window). The last type's read of the window
+    begins at request 153, 54 s into a run at no latency (350 ms a request). A depth that moves
+    with the clock passes, meanwhile, the rows just above where it stood when the run was planned,
+    and a type read later than the depth passed them does not import them: they are neither read
+    nor owed. Measured (every type keeps 100 days, 20 types, rows 1 s to 15 min above the depth
+    when the run was planned, three runs 1 hour apart), the types that lose a row, by its
+    distance above the depth:
+
+    | Rows above the depth | 1 to 10 s | 20 s | 40 s | 90 s | 180 s | 400 s |
+    |---|---|---|---|---|---|---|
+    | no latency, 0 to 300 ms | 20 of 20 | 20 of 20 | 10 of 20 | 0 | 0 | 0 |
+    | 0 to 3 s | 20 of 20 | 20 of 20 | 20 of 20 | 20 of 20 | 13 of 20 | 0 |
+
+    A row 90 s or more above the depth when the run was planned is imported by every type at up
+    to 300 ms of latency, 400 s or more by every type at up to 3 s.
   - Windows of 30 days (the cap is not documented, Q10). The walk reads 20 types: the 18 untracked ones plus `MAIN_FUNDING` and
   `FUNDING_MAIN`, those two first. It runs on the shared walk (sections 3 and 4): forward
   pass, owed ranges, re-scan of the last 30 days, owed points, with per-record commits. A
