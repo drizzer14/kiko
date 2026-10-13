@@ -110,7 +110,7 @@ function git(directory: string, ...args: string[]): string {
   }).trim();
 }
 
-function tempDirectory(): string {
+function temporaryDirectory(): string {
   const directory = realpathSync(mkdtempSync(join(tmpdir(), 'kiko-run-log-')));
   createdPaths.push(directory);
 
@@ -119,9 +119,11 @@ function tempDirectory(): string {
 
 // A git repo in a folder called `name`, on branch `branch`, with one commit; `remote` becomes
 // origin.
-function tempRepository(options: { name?: string; branch?: string; remote?: string } = {}): string {
+function temporaryRepository(
+  options: { name?: string; branch?: string; remote?: string } = {},
+): string {
   const { name = 'demo-repo', branch = 'main', remote } = options;
-  const directory = join(tempDirectory(), name);
+  const directory = join(temporaryDirectory(), name);
   mkdirSync(directory);
   git(directory, 'init', '-q', '-b', branch);
 
@@ -186,8 +188,8 @@ function readEvents(runs: string, runId: string): EventLine[] {
 
 // The usual setup: a runs dir, a repo and a started run.
 function started(...extra: string[]): Started {
-  const runs = tempDirectory();
-  const repo = tempRepository();
+  const runs = temporaryDirectory();
+  const repo = temporaryRepository();
 
   return { runs, repo, runId: startRun(runs, repo, ...extra) };
 }
@@ -198,8 +200,8 @@ function event(runs: string, repo: string, runId: string, ...args: string[]): Co
 
 describe('start', () => {
   test('prints only the runId, <UTC minute>-<repo>-<branch>, and creates run.json', () => {
-    const runs = tempDirectory();
-    const repo = tempRepository({ name: 'demo-repo', branch: 'feature-x' });
+    const runs = temporaryDirectory();
+    const repo = temporaryRepository({ name: 'demo-repo', branch: 'feature-x' });
     const before = utcMinute(new Date());
     const result = ok(run(runs, repo, 'start', '--task', 'build the thing', '--shape', 'build'));
     const after = utcMinute(new Date());
@@ -215,8 +217,8 @@ describe('start', () => {
   });
 
   test('writes run.json with the v1 fields', () => {
-    const runs = tempDirectory();
-    const repo = tempRepository({ name: 'demo-repo', branch: 'feature-x' });
+    const runs = temporaryDirectory();
+    const repo = temporaryRepository({ name: 'demo-repo', branch: 'feature-x' });
     const runId = startRun(runs, repo, '--jira', 'https://jira.example.com/browse/DS-1');
     const record = readJson<RunRecord>(join(runs, runId, 'run.json'));
 
@@ -238,8 +240,8 @@ describe('start', () => {
   });
 
   test('jira is null without --jira, and orca holds the ids it was given', () => {
-    const runs = tempDirectory();
-    const repo = tempRepository();
+    const runs = temporaryDirectory();
+    const repo = temporaryRepository();
     const plain = readJson<RunRecord>(join(runs, startRun(runs, repo), 'run.json'));
 
     expect(plain.jira).toBeNull();
@@ -259,8 +261,8 @@ describe('start', () => {
   });
 
   test('slugs the repo from the origin url (last segment, .git stripped) and the branch', () => {
-    const runs = tempDirectory();
-    const repo = tempRepository({
+    const runs = temporaryDirectory();
+    const repo = temporaryRepository({
       name: 'folder-name',
       branch: 'Feature/ABC_1',
       remote: 'https://git.example.com/team/Some_Repo.git',
@@ -270,8 +272,8 @@ describe('start', () => {
   });
 
   test('falls back to the git top-level folder name without a remote, from any subfolder', () => {
-    const runs = tempDirectory();
-    const repo = tempRepository({ name: 'My_Repo.Name' });
+    const runs = temporaryDirectory();
+    const repo = temporaryRepository({ name: 'My_Repo.Name' });
     mkdirSync(join(repo, 'sub'));
 
     expect(startRun(runs, join(repo, 'sub'))).toMatch(
@@ -280,8 +282,8 @@ describe('start', () => {
   });
 
   test('uses the cwd name and `detached` outside a git repo', () => {
-    const runs = tempDirectory();
-    const plain = join(tempDirectory(), 'Plain_Dir');
+    const runs = temporaryDirectory();
+    const plain = join(temporaryDirectory(), 'Plain_Dir');
     mkdirSync(plain);
     const runId = startRun(runs, plain);
 
@@ -290,8 +292,8 @@ describe('start', () => {
   });
 
   test('uses `detached` for a detached HEAD', () => {
-    const runs = tempDirectory();
-    const repo = tempRepository({ name: 'demo-repo' });
+    const runs = temporaryDirectory();
+    const repo = temporaryRepository({ name: 'demo-repo' });
     git(repo, 'checkout', '-q', '--detach');
 
     expect(startRun(runs, repo)).toMatch(new RegExp(`^${RUN_ID_PATTERN}-demo-repo-detached$`));
@@ -300,8 +302,8 @@ describe('start', () => {
   test('a taken id gets -2, -3, ...', () => {
     // Two starts only collide inside one UTC minute, so retry on the rare minute rollover.
     for (let attempt = 0; attempt < 3; attempt++) {
-      const runs = tempDirectory();
-      const repo = tempRepository();
+      const runs = temporaryDirectory();
+      const repo = temporaryRepository();
       const ids = [startRun(runs, repo), startRun(runs, repo), startRun(runs, repo)];
 
       if (new Set(ids.map((id) => id.slice(0, 13))).size > 1) continue;
@@ -317,8 +319,8 @@ describe('start', () => {
   });
 
   test('a usage error exits 2 with usage on stderr and creates no run', () => {
-    const runs = tempDirectory();
-    const repo = tempRepository();
+    const runs = temporaryDirectory();
+    const repo = temporaryRepository();
     const bad = [
       ['start', '--shape', 'build'],
       ['start', '--task', 'x'],
@@ -336,8 +338,8 @@ describe('start', () => {
   });
 
   test('accepts every shape', () => {
-    const runs = tempDirectory();
-    const repo = tempRepository();
+    const runs = temporaryDirectory();
+    const repo = temporaryRepository();
 
     for (const shape of ['build', 'fix', 'research', 'review']) {
       const runId = ok(run(runs, repo, 'start', '--task', 'x', '--shape', shape)).stdout.trim();
@@ -349,8 +351,8 @@ describe('start', () => {
 
 describe('command line', () => {
   test('no command and an unknown command exit 2 with usage on stderr', () => {
-    const runs = tempDirectory();
-    const repo = tempRepository();
+    const runs = temporaryDirectory();
+    const repo = temporaryRepository();
 
     for (const args of [[], ['frobnicate']]) {
       const result = run(runs, repo, ...args);
@@ -360,8 +362,8 @@ describe('command line', () => {
   });
 
   test('event and finish on an unknown run exit 1 and create nothing', () => {
-    const runs = tempDirectory();
-    const repo = tempRepository();
+    const runs = temporaryDirectory();
+    const repo = temporaryRepository();
 
     expect(
       run(runs, repo, 'event', '--run', 'nope', '--gate', 'check', '--verdict', 'pass').status,
@@ -371,9 +373,9 @@ describe('command line', () => {
   });
 
   test('--run cannot leave the runs dir or name a hidden folder', () => {
-    const runs = tempDirectory();
-    const repo = tempRepository();
-    const outside = tempDirectory();
+    const runs = temporaryDirectory();
+    const repo = temporaryRepository();
+    const outside = temporaryDirectory();
     writeFileSync(join(outside, 'run.json'), '{}');
     mkdirSync(join(runs, '.hidden'));
     writeFileSync(join(runs, '.hidden', 'run.json'), '{}');
@@ -396,13 +398,13 @@ describe('command line', () => {
   });
 
   test('an empty HARNESS_RUNS_DIR falls back to <HOME>/.claude/harness-runs', () => {
-    const home = tempDirectory();
+    const home = temporaryDirectory();
     const environment = { ...cleanEnvironment(), HARNESS_RUNS_DIR: '', HOME: home };
     const result = spawnSync(
       process.execPath,
       [SCRIPT, 'start', '--task', 'x', '--shape', 'build'],
       {
-        cwd: tempRepository(),
+        cwd: temporaryRepository(),
         env: environment,
         encoding: 'utf8',
       },
@@ -414,8 +416,8 @@ describe('command line', () => {
   });
 
   test('event and finish without --run exit 2', () => {
-    const runs = tempDirectory();
-    const repo = tempRepository();
+    const runs = temporaryDirectory();
+    const repo = temporaryRepository();
 
     expect(run(runs, repo, 'event', '--gate', 'check', '--verdict', 'pass').status).toBe(2);
     expect(run(runs, repo, 'finish', '--outcome', 'done').status).toBe(2);
@@ -482,8 +484,8 @@ describe('self copy', () => {
   });
 
   test('a failed copy warns on stderr and never fails the command', () => {
-    const runs = tempDirectory();
-    const repo = tempRepository();
+    const runs = temporaryDirectory();
+    const repo = temporaryRepository();
     writeFileSync(join(runs, 'bin'), 'a file where the bin directory should go');
     const result = run(runs, repo, 'start', '--task', 'x', '--shape', 'build');
 
@@ -604,7 +606,7 @@ describe('event', () => {
 describe('resume', () => {
   test('two events from two processes, one from another cwd, land in one log in order', () => {
     const { runs, repo, runId } = started();
-    const elsewhere = tempDirectory();
+    const elsewhere = temporaryDirectory();
     event(runs, repo, runId, '--gate', 'check', '--verdict', 'fail', '--step', '1');
     event(runs, elsewhere, runId, '--gate', 'check', '--verdict', 'pass', '--step', '1');
     const events = readEvents(runs, runId);
@@ -894,7 +896,7 @@ describe('stats', () => {
   }
 
   function fixtureRoot(): string {
-    const runs = tempDirectory();
+    const runs = temporaryDirectory();
     const doneSummary = {
       v: 1,
       runId: chainRun,
@@ -940,7 +942,7 @@ describe('stats', () => {
 
   function stats(runs: string, ...args: string[]): TableRow[] {
     return table(
-      ok(run(runs, tempDirectory(), 'stats', ...args)).stdout,
+      ok(run(runs, temporaryDirectory(), 'stats', ...args)).stdout,
       args.includes('tsv') ? 'tsv' : 'md',
     );
   }
@@ -995,7 +997,7 @@ describe('stats', () => {
   });
 
   test('the group falls back to the step when there is no group', () => {
-    const runs = tempDirectory();
+    const runs = temporaryDirectory();
     const events = [
       line('2026-09-01T10:00:00.000Z', 'review', 'changes', { step: 7 }),
       line('2026-09-01T10:30:00.000Z', 'review', 'approve', { step: 7 }),
@@ -1010,7 +1012,7 @@ describe('stats', () => {
   });
 
   test('the verdict chain stops at the first approve', () => {
-    const runs = tempDirectory();
+    const runs = temporaryDirectory();
     const events = [
       line('2026-09-01T10:00:00.000Z', 'review', 'approve', { step: 1 }),
       line('2026-09-01T10:10:00.000Z', 'review', 'changes', { step: 1 }),
@@ -1023,7 +1025,7 @@ describe('stats', () => {
   });
 
   test('a failing review counts as ✗ and a passing one as ✓', () => {
-    const runs = tempDirectory();
+    const runs = temporaryDirectory();
     const events = [
       line('2026-09-01T10:00:00.000Z', 'review', 'fail', { step: 1 }),
       line('2026-09-01T10:10:00.000Z', 'review', 'pass', { step: 1 }),
@@ -1042,7 +1044,7 @@ describe('stats', () => {
   });
 
   test('a recent run with no summary and a stale last event is abandoned only after 24 h', () => {
-    const runs = tempDirectory();
+    const runs = temporaryDirectory();
     const hoursAgo = (hours: number): string =>
       new Date(Date.now() - hours * 3600_000).toISOString();
     fixtureRun(runs, 'a-23h', 'demo-repo', hoursAgo(30), [
@@ -1067,7 +1069,7 @@ describe('stats', () => {
     const runs = fixtureRoot();
 
     for (const since of ['2026-9-1', '20260901', 'yesterday']) {
-      const result = run(runs, tempDirectory(), 'stats', '--since', since);
+      const result = run(runs, temporaryDirectory(), 'stats', '--since', since);
       expectStatus(result, 2, since);
       expect(result.stdout).toBe('');
     }
@@ -1090,7 +1092,7 @@ describe('stats', () => {
   });
 
   test('--format json is valid JSON that carries the runs', () => {
-    const result = ok(run(fixtureRoot(), tempDirectory(), 'stats', '--format', 'json'));
+    const result = ok(run(fixtureRoot(), temporaryDirectory(), 'stats', '--format', 'json'));
     const data = JSON.parse(result.stdout) as TableRow[];
 
     expect(Array.isArray(data)).toBe(true);
@@ -1100,7 +1102,7 @@ describe('stats', () => {
   });
 
   test('an unknown --format exits 2', () => {
-    expect(run(fixtureRoot(), tempDirectory(), 'stats', '--format', 'xml').status).toBe(2);
+    expect(run(fixtureRoot(), temporaryDirectory(), 'stats', '--format', 'xml').status).toBe(2);
   });
 
   test('the bin directory holding the self copy is not read as a run', () => {
@@ -1245,8 +1247,8 @@ describe('run log skill text', () => {
   });
 
   test('--repo in the skills is the slug the script derives from the project remote', () => {
-    const runs = tempDirectory();
-    const repo = tempRepository({ name: 'checkout-folder', remote: PROJECT_REMOTE });
+    const runs = temporaryDirectory();
+    const repo = temporaryRepository({ name: 'checkout-folder', remote: PROJECT_REMOTE });
     const derived = readJson<RunRecord>(join(runs, startRun(runs, repo), 'run.json')).repo;
     const slugs = allRunLogText().flatMap(repoSlugs);
 
@@ -1302,12 +1304,12 @@ describe('consumer line', () => {
   });
 
   test('a missing copy is skipped without failing the finish and starts nothing', () => {
-    const runs = tempDirectory();
-    const finished = runSnippet(finishSnippet, runs, tempDirectory(), 'any');
+    const runs = temporaryDirectory();
+    const finished = runSnippet(finishSnippet, runs, temporaryDirectory(), 'any');
 
     expect(finished.status).toBe(0);
     expect(finished.stdout).toBe('run-log: not installed, skipped');
-    expect(runSnippet(startSnippet, runs, tempDirectory()).stdout).toBe('');
+    expect(runSnippet(startSnippet, runs, temporaryDirectory()).stdout).toBe('');
     expect(runIds(runs)).toEqual([]);
   });
 
