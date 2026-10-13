@@ -207,8 +207,16 @@ const pendingReadsOf = (lane: Lane): number =>
 const rescanReadsOf = (lane: Lane): number =>
   Math.floor((lane.designReads - lane.rangeCalls - 1) / lane.rangeCalls);
 
-/** Which end of a range Binance leaves out of what a read returns. */
-type Reading = 'both ends included' | 'start left out' | 'end left out';
+/**
+ * Which end of a range Binance leaves out of what a read returns, or (the Earn endpoints, probed
+ * 2026-10-13) that it compares both ends at the second they fall in, which brings a record in the
+ * second of the start, before the start.
+ */
+type Reading =
+  | 'both ends included'
+  | 'start left out'
+  | 'end left out'
+  | 'start floored to the second';
 
 const READINGS: Reading[] = ['both ends included', 'start left out', 'end left out'];
 
@@ -286,6 +294,8 @@ type Simulation = {
   runs: number;
   /** The time between two runs. */
   gapMs?: number;
+  /** Every run reads the clock this long after a whole second, as a run that starts mid-second. */
+  skewMs?: number;
   /** The floor trails a run by this much, so it moves with the clock; fixed when absent. */
   floorAgeMs?: number;
   /** A span longer than `spanMs` that overlaps `range` comes back full, so it is read in halves. */
@@ -335,10 +345,15 @@ type Outcome = {
   writes: (EarnWrite & { run: number })[];
 };
 
+const floorToSecond = (millisecond: number): number =>
+  Math.floor(millisecond / SECOND_MS) * SECOND_MS;
+
 /** Whether a read of `range` returns the record that Binance filters at `millisecond`. */
 const holds = (range: WalkWindow, millisecond: number, reading: Reading): boolean =>
-  (reading === 'start left out' ? range.start < millisecond : range.start <= millisecond) &&
-  (reading === 'end left out' ? millisecond < range.end : millisecond <= range.end);
+  reading === 'start floored to the second'
+    ? floorToSecond(range.start) <= millisecond && millisecond <= floorToSecond(range.end)
+    : (reading === 'start left out' ? range.start < millisecond : range.start <= millisecond) &&
+      (reading === 'end left out' ? millisecond < range.end : millisecond <= range.end);
 
 /** Whether a read of `range` returns the record under every reading. */
 const surelyHolds = (range: WalkWindow, millisecond: number): boolean =>
@@ -751,7 +766,7 @@ const endTimeOf = (input: Simulation, run: number): number => {
   const { gapMs = HOUR_MS, catchUp } = input;
   const early = Math.min(run, catchUp?.runs ?? 0);
 
-  return START_MS + early * (catchUp?.gapMs ?? 0) + (run - early) * gapMs;
+  return START_MS + (input.skewMs ?? 0) + early * (catchUp?.gapMs ?? 0) + (run - early) * gapMs;
 };
 
 const simulate = async (input: Simulation): Promise<Outcome> => {
@@ -2892,6 +2907,72 @@ describe.each(LANES.filter((lane) => lane.walk === 'earn'))(
         expect([...amountsOf.values()].reduce((sum, amounts) => sum + [...amounts][0], 0)).toBe(6);
         expect(Math.min(...outcome.writes.map((write) => write.run))).toBeLessThanOrEqual(
           READABLE_FROM_RUN + 1,
+        );
+      },
+    );
+  },
+);
+
+describe.each(LANES.filter((lane) => lane.walk === 'earn'))(
+  'a read that compares each end to the second, $name lane',
+  (lane) => {
+    const SKEW_MS = 300;
+    const RUNS = 6;
+    const reading = 'start floored to the second';
+
+    let warn: jest.SpyInstance;
+
+    beforeEach(() => {
+      warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    });
+
+    afterEach(() => {
+      warn.mockRestore();
+    });
+
+    /** A record that sits in the whole second `time`, which is the one a read filters it by. */
+    const recordAt = (id: number, time: number, stuckUntil: number): SimRecord => ({
+      id,
+      time,
+      at: time,
+      precision: 1,
+      stuckUntil,
+      series: 'flexibleSubscription',
+    });
+
+    it.each(RUN_GAPS.map((gapMs) => ({ gapMs })))(
+      'a stuck record in the second of the end of a run never holds the cursor, runs $gapMs ms apart: the cursor reaches every end, each stuck record owes its one point and no range is owed, and a later record imports in the next run',
+      async ({ gapMs }) => {
+        const inRunSecond = (run: number): number => START_MS + run * gapMs;
+        const stuck = Array.from({ length: RUNS }, (_unused, run) =>
+          recordAt(run + 1, inRunSecond(run), NEVER),
+        );
+        const later =
+          gapMs === 0
+            ? []
+            : Array.from({ length: RUNS - 1 }, (_unused, run) =>
+                recordAt(100 + run, inRunSecond(run) + 2 * SECOND_MS, 0),
+              );
+        const scenario = { owed: [], records: [...stuck, ...later] };
+
+        const outcome = await simulate({
+          lane,
+          reading,
+          scenario,
+          runs: RUNS,
+          gapMs,
+          skewMs: SKEW_MS,
+        });
+
+        expect(violationsOf(lane, reading, outcome, scenario, { pointed: RUNS })).toEqual([]);
+        expect(outcome.runs.map((run) => run.cursor)).toEqual(
+          Array.from({ length: RUNS }, (_unused, run) => inRunSecond(run) + SKEW_MS),
+        );
+        expect(
+          outcome.runs.flatMap((run) => run.owed.filter((ground) => ground.kind !== 'point')),
+        ).toEqual([]);
+        expect(later.map((entry) => outcome.importedAt.get(entry.id))).toEqual(
+          later.map((_entry, run) => run + 1),
         );
       },
     );

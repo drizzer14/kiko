@@ -40,15 +40,16 @@ export const instantAt = (time: number | undefined): WalkWindow | undefined =>
  * `start < end`, and Binance may leave either end of a range out; with the extra millisecond on
  * both sides a request for the point returns the record under any of them, and a record on the
  * boundary of two spans owes one point. A record with no time, one whose extent is not finite,
- * or one outside the span says nothing of where in the span it is: it has no point.
+ * or one outside `reach` (the span, unless the read returns records beyond it) says nothing of
+ * where in the span it is: it has no point.
  */
-const pointOf = (span: WalkWindow, extent: WalkWindow | undefined): WalkWindow | undefined => {
+const pointOf = (reach: WalkWindow, extent: WalkWindow | undefined): WalkWindow | undefined => {
   if (
     extent === undefined ||
     !Number.isFinite(extent.start) ||
     !Number.isFinite(extent.end) ||
-    extent.end < span.start ||
-    extent.start > span.end
+    extent.end < reach.start ||
+    extent.start > reach.end
   ) {
     return undefined;
   }
@@ -103,23 +104,27 @@ export const joinSettled = <Row>(parts: SettledSpan<Row>[]): SettledSpan<Row> =>
  * a `BinanceWalkStop`) owes only the ground it sits in (`extentOf`, see `pointOf`) and holds
  * back nothing else, so the rows of the others are still imported. A walk that reads several
  * series names the series a record was read under (`seriesOf`): its point, owed or returned,
- * carries it, so it is read in that series and leaves only for a record of it.
+ * carries it, so it is read in that series and leaves only for a record of it. A read that
+ * compares a time coarser than a millisecond returns a record just before the span's start: the
+ * walk gives that `reach`, the ground a read of the span returns records from, and a record in it
+ * owes its own point; the whole span owed without a point is always the real span.
  */
 export const settleRecords = <Record, Row>(input: {
   span: WalkWindow;
+  reach?: WalkWindow;
   records: Record[];
   rowsOf: (record: Record) => Row[];
   extentOf: (record: Record) => WalkWindow | undefined;
   seriesOf?: (record: Record) => string;
 }): SettledSpan<Row> => {
-  const { span, records, rowsOf, extentOf, seriesOf } = input;
+  const { span, reach = span, records, rowsOf, extentOf, seriesOf } = input;
 
   return joinSettled(
     records.map((record) =>
       settledRecord(
         eitherSync<unknown, Row[]>(() => rowsOf(record)),
         span,
-        foldMap(maybe(pointOf(span, extentOf(record))), (point) =>
+        foldMap(maybe(pointOf(reach, extentOf(record))), (point) =>
           withSeries(point, seriesOf?.(record)),
         ),
       ),
@@ -135,6 +140,7 @@ export const settleRecords = <Record, Row>(input: {
  */
 export const settleUnreadable = <Row extends UnreadableRow>(input: {
   span: WalkWindow;
+  reach?: WalkWindow;
   unreadable: Row[];
   code: string;
   extentOf: (row: Row) => WalkWindow | undefined;
@@ -142,6 +148,7 @@ export const settleUnreadable = <Row extends UnreadableRow>(input: {
 }): SettledSpan<never> =>
   settleRecords<Row, never>({
     span: input.span,
+    reach: input.reach,
     records: input.unreadable,
     rowsOf: () => {
       throw new BinanceWalkStop(input.code);

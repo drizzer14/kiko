@@ -74,6 +74,16 @@ export const EARN_WINDOW_MS = 30 * DAY_MS;
 /** Simple Earn launched after this day, so nothing earlier is read. */
 export const EARN_FLOOR_MS = Date.UTC(2022, 0, 1);
 
+const SECOND_MS = 1_000;
+
+/**
+ * The start of the second `time` falls in. The Earn endpoints compare a record's time, a whole
+ * second, to each end of a read at the second (probed 2026-10-13: `[S, E]` returns a record at
+ * `T` exactly when `floor(S) <= T <= floor(E)`), so a read returns the record in the second of
+ * its start, which is before that start.
+ */
+const floorToSecond = (time: number): number => Math.floor(time / SECOND_MS) * SECOND_MS;
+
 /** Safety stop on the window walk. */
 const MAX_WINDOWS = 12;
 
@@ -627,6 +637,7 @@ export const settledEarnOf = (input: {
 }): SettledSpan<PlannedEarnRow> => {
   const { accountId, span, read } = input;
   const entries = read.read.flatMap(({ rows }) => rows);
+  const reach = { start: floorToSecond(span.start), end: span.end };
   const drift: SettledSpan<PlannedEarnRow> = {
     rows: [],
     codes: [EARN_PAGE_DRIFT],
@@ -638,6 +649,7 @@ export const settledEarnOf = (input: {
     ...(read.drifted.length > 0 ? [drift] : []),
     settleRecords({
       span,
+      reach,
       records: [
         ...flowUnitsOf(accountId, entries),
         ...rewardUnitsOf(accountId, entries, unreadableTimesOf(read)),
@@ -648,6 +660,7 @@ export const settledEarnOf = (input: {
     }),
     settleUnreadable({
       span,
+      reach,
       unreadable: read.read.flatMap(({ series, unreadable }) =>
         unreadable.map((row) => ({ ...row, series })),
       ),

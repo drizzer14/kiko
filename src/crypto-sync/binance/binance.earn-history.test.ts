@@ -13,6 +13,7 @@ import {
   EARN_SUBSCRIPTION_SETTLED_STATUS,
   EARN_WINDOW_MS,
   redemptionRowsOf,
+  settledEarnOf,
   subscriptionRowsOf,
 } from './binance.earn-history';
 import {
@@ -1323,6 +1324,160 @@ describe('a point read', () => {
       'acc-1:earn:sub:locked:late:BTC:earn',
     ]);
     expect(pointsIn(listOf(world))).toEqual([]);
+  });
+});
+
+describe('a read that compares each end to the second, as Binance does', () => {
+  const MINUTE_MS = 60_000;
+  const HOUR_MS = 60 * MINUTE_MS;
+  const RUN_GAPS = [0, HOUR_MS, DAY_MS];
+  const AT = Date.UTC(2026, 9, 9, 12, 0, 0);
+  const stuck = entryOf(
+    'flexibleSubscription',
+    flexibleSubscriptionOf({ time: AT, purchaseId: 'p-stuck', type: undefined }),
+  );
+  const later = entryOf(
+    'flexibleSubscription',
+    flexibleSubscriptionOf({ time: AT + 5 * MINUTE_MS, purchaseId: 'p-later' }),
+  );
+  const LATER_IDS = [
+    'acc-1:earn:sub:flexible:p-later:BTC',
+    'acc-1:earn:sub:flexible:p-later:BTC:earn',
+  ];
+
+  describe.each(RUN_GAPS)(
+    'a run %i ms after the one that reached the second of a record it owes',
+    (gapMs) => {
+      const runs = [AT + 300, AT + 300 + 10 * MINUTE_MS + gapMs];
+
+      it('moves the cursor to now, owes the one point and never the span, and imports a later record', async () => {
+        const world = worldOf({ [SPOT_FIELDS.cursor]: AT - 10 * DAY_MS });
+
+        for (const now of runs) {
+          await walkOnce({ world, entries: [stuck, later], precision: 'second', now });
+        }
+
+        expect(world.metadata[SPOT_FIELDS.cursor]).toBe(runs[1]);
+        expect(listOf(world)).toEqual([pointOf(AT, 'flexibleSubscription')]);
+        expect(idsOf(world)).toEqual(LATER_IDS);
+      });
+
+      it('does the same when the cursor sits on a halving boundary in the second of the record', async () => {
+        const start = AT - DAY_MS;
+        const first = start + 2 * (DAY_MS + 300);
+        const world = worldOf({ [SPOT_FIELDS.cursor]: start });
+        const halved = entryOf(
+          'flexibleSubscription',
+          flexibleSubscriptionOf({ time: AT + 12 * HOUR_MS, purchaseId: 'p-later' }),
+        );
+
+        for (const now of [first, first + HOUR_MS + gapMs]) {
+          await walkOnce({
+            world,
+            entries: [stuck, halved],
+            precision: 'second',
+            now,
+            answer: (query) =>
+              query.endTime - query.startTime > DAY_MS + 400 &&
+              query.endTime - query.startTime < 3 * DAY_MS
+                ? fullPage()
+                : undefined,
+          });
+        }
+
+        expect(world.metadata[SPOT_FIELDS.cursor]).toBe(first + HOUR_MS + gapMs);
+        expect(listOf(world)).toEqual([pointOf(AT, 'flexibleSubscription')]);
+        expect(idsOf(world)).toEqual(LATER_IDS);
+      });
+
+      it('imports a record it can trust once, and owes nothing for it', async () => {
+        const world = worldOf({ [SPOT_FIELDS.cursor]: AT - 10 * DAY_MS });
+        const trusted = entryOf(
+          'flexibleSubscription',
+          flexibleSubscriptionOf({ time: AT, purchaseId: 'p-ok' }),
+        );
+
+        for (const now of runs) {
+          await walkOnce({ world, entries: [trusted, later], precision: 'second', now });
+        }
+
+        expect(idsOf(world)).toHaveLength(4);
+        expect(listOf(world)).toEqual([]);
+        expect(world.metadata[SPOT_FIELDS.cursor]).toBe(runs[1]);
+      });
+    },
+  );
+
+  describe('the ground a span owes', () => {
+    const span = { start: AT + 300, end: AT + HOUR_MS };
+    const settledIn = (
+      records: Parameters<typeof flexibleSubscriptionOf>[0][],
+      unreadable: { time: number | undefined }[] = [],
+    ) =>
+      settledEarnOf({
+        accountId: ACCOUNT,
+        span,
+        read: {
+          read: [
+            {
+              series: 'flexibleSubscription',
+              rows: records.map((record) => ({
+                kind: 'flexibleSubscription' as const,
+                record: flexibleSubscriptionOf({ type: undefined, ...record }),
+              })),
+              unreadable,
+            },
+          ],
+          drifted: [],
+        },
+      });
+
+    it('owes the point of a stuck record in the second the span starts in, and the span for the ones outside it', () => {
+      const settled = settledIn([
+        { time: AT, purchaseId: 'same-second' },
+        { time: AT - 1_000, purchaseId: 'second-before' },
+        { time: AT + HOUR_MS + 1_000, purchaseId: 'after' },
+      ]);
+
+      expect(settled.owed).toEqual([pointOf(AT, 'flexibleSubscription'), span]);
+    });
+
+    it('owes the span itself, never one that starts at the second, for a row with no time', () => {
+      expect(settledIn([], [{ time: undefined }]).owed).toEqual([span]);
+    });
+
+    it('owes the point of an unreadable row in the second the span starts in', () => {
+      expect(settledIn([], [{ time: AT }]).owed).toEqual([pointOf(AT, 'flexibleSubscription')]);
+    });
+  });
+
+  describe.each(RUN_GAPS)('a point read %i ms after the one before it', (gapMs) => {
+    it('owes the point of a stuck record one second before the point, and no range', async () => {
+      const base = AT + 60 * DAY_MS;
+      const world = worldOf({
+        [SPOT_FIELDS.cursor]: base,
+        [SPOT_FIELDS.rescan]: base - 1,
+        [SPOT_FIELDS.pending]: [pointOf(AT, 'flexibleSubscription')],
+      });
+      const neighbour = entryOf(
+        'flexibleSubscription',
+        flexibleSubscriptionOf({ time: AT - 1_000, purchaseId: 'p-near', type: undefined }),
+      );
+      const settled = entryOf(
+        'flexibleSubscription',
+        flexibleSubscriptionOf({ time: AT, purchaseId: 'p-ok' }),
+      );
+
+      for (const now of [base + 500 + HOUR_MS, base + 500 + 2 * HOUR_MS + gapMs]) {
+        await walkOnce({ world, entries: [neighbour, settled], precision: 'second', now });
+      }
+
+      expect(listOf(world)).toEqual([pointOf(AT - 1_000, 'flexibleSubscription')]);
+      expect(idsOf(world)).toEqual([
+        'acc-1:earn:sub:flexible:p-ok:BTC',
+        'acc-1:earn:sub:flexible:p-ok:BTC:earn',
+      ]);
+    });
   });
 });
 

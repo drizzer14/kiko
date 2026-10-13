@@ -152,6 +152,8 @@ export const pageOf = (over: Partial<TotalPage<EarnRecordByKind[EarnRecordKind]>
   ...over,
 });
 
+type Precision = 'millisecond' | 'second';
+
 type EarnRead = TotalQuery & { kind: EarnRecordKind };
 
 type Answer = (query: EarnRead) => TotalPage<EarnRecordByKind[EarnRecordKind]> | undefined;
@@ -160,11 +162,23 @@ type Answer = (query: EarnRead) => TotalPage<EarnRecordByKind[EarnRecordKind]> |
 export const fullPage = (): TotalPage<EarnRecordByKind[EarnRecordKind]> =>
   pageOf({ gathered: PAGE_SIZE, total: PAGE_SIZE + 50 });
 
+const SECOND_MS = 1_000;
+
+/**
+ * Whether a read of `query` returns a record at `time`: each end compared to the millisecond or,
+ * as the live Earn endpoints do, to the second the end falls in.
+ */
+const reaches = (query: TotalQuery, time: number, precision: Precision): boolean =>
+  precision === 'second'
+    ? Math.floor(query.startTime / SECOND_MS) * SECOND_MS <= time &&
+      time <= Math.floor(query.endTime / SECOND_MS) * SECOND_MS
+    : query.startTime <= time && time <= query.endTime;
+
 /**
  * Binance's answer for one kind, one range (both ends included) and one page of 100. `answer` may
  * replace the page of a read (a full page that makes the walk halve the span, a drift).
  */
-const serverOf = (entries: EarnEntry[], answer?: Answer) =>
+const serverOf = (entries: EarnEntry[], answer?: Answer, precision: Precision = 'millisecond') =>
   jest.fn(
     async (
       _apiKey: string,
@@ -181,8 +195,7 @@ const serverOf = (entries: EarnEntry[], answer?: Answer) =>
       const inRange = entries.filter(
         (entry) =>
           entry.kind === kind &&
-          (entry.time === undefined ||
-            (query.startTime <= entry.time && entry.time <= query.endTime)),
+          (entry.time === undefined || reaches(query, entry.time, precision)),
       );
       const page = inRange.slice((query.current - 1) * PAGE_SIZE, query.current * PAGE_SIZE);
 
@@ -274,13 +287,14 @@ export const walkOnce = async (input: {
   world: World;
   entries?: EarnEntry[];
   answer?: Answer;
+  precision?: Precision;
   accountId?: string;
   run?: ReturnType<typeof freshRun>;
   now?: number;
   over?: Partial<BinanceEarnHistoryDeps>;
 }) => {
   const { world, entries = [], answer, accountId = 'acc-1', run = freshRun() } = input;
-  const deps = depsOf(world, serverOf(entries, answer), {
+  const deps = depsOf(world, serverOf(entries, answer, input.precision), {
     ...foldMap(maybe(input.now), (nowMs) => ({ now: () => nowMs })),
     ...input.over,
   });

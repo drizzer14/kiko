@@ -140,6 +140,58 @@ describe('settleRecords', () => {
     expect(settle([entry('s', time, true)], atTime).owed).toEqual([SPAN]);
   });
 
+  describe('with a reach wider than the span, where a read returns a record', () => {
+    const SECOND_SPAN = { start: 5_400, end: 9_000 };
+    const REACH = { start: 5_000, end: SECOND_SPAN.end };
+    const settleWith = (records: Entry[], reach: WalkWindow | undefined) =>
+      settleRecords({
+        span: SECOND_SPAN,
+        reach,
+        records,
+        rowsOf: (record) => {
+          throw new BinanceWalkStop(`stuck-${record.id}`);
+        },
+        extentOf: atTime,
+      });
+    const settleReaching = (records: Entry[]) => settleWith(records, REACH);
+
+    it('owes the point, not the span, of a stuck record before the span but inside the reach', () => {
+      const settled = settleReaching([entry('s', 5_000, true)]);
+
+      expect(settled.owed).toEqual([pointOf(4_999, 5_001)]);
+      expect(settled.returned).toEqual([{ start: 4_999, end: 5_001 }]);
+    });
+
+    it('owes the span for a stuck record before the reach', () => {
+      expect(settleReaching([entry('s', 4_999, true)]).owed).toEqual([SECOND_SPAN]);
+    });
+
+    it('owes the span for a stuck record after the span, the reach never moving its end', () => {
+      expect(settleReaching([entry('s', 9_001, true)]).owed).toEqual([SECOND_SPAN]);
+    });
+
+    it('owes the span, not the reach, for a stuck record with no time', () => {
+      expect(settleReaching([entry('s', undefined, true)]).owed).toEqual([SECOND_SPAN]);
+    });
+
+    it('reads a span with no reach by the span itself', () => {
+      expect(settleWith([entry('s', 5_000, true)], undefined).owed).toEqual([SECOND_SPAN]);
+    });
+
+    it('lets settleUnreadable reach too', () => {
+      const settled = settleUnreadable({
+        span: SECOND_SPAN,
+        reach: REACH,
+        unreadable: [{ time: 5_000 }, { time: 4_999 }],
+        code: 'row-unreadable',
+        extentOf: (row) => instantAt(row.time),
+      });
+
+      expect(settled.owed).toEqual([pointOf(4_999, 5_001), SECOND_SPAN]);
+      expect(settled.returned).toEqual([{ start: 4_999, end: 5_001 }]);
+    });
+  });
+
   it('owes the whole span for an extent that is not finite', () => {
     const open = () => ({ start: 3_000, end: Number.POSITIVE_INFINITY });
 

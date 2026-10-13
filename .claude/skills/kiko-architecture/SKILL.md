@@ -2012,6 +2012,13 @@ balance sync and dropped on a disconnect through the field arrays. The stop code
   and the cursor goes past it (`EARN_FORWARD_OWES`, one constant: emptying it restores R28 for
   every stop). A span stop (`earn-page-drift`, `earn-holding-missing`) and a row with no time keep
   R28.
+- **Earn reads at the second (R36).** The Earn endpoints compare a record's whole-second `time`
+  to each end of a read at the second, so a read of a span also returns a record in the second its
+  start falls in. `settledEarnOf` hands `settleRecords` and `settleUnreadable` a `reach` (the span
+  with its start floored to the second), used only to tell whether a record sits in the span: such
+  a stuck record owes its own point, never the span, and the cursor is never held. The whole span
+  owed for a stop with no point stays the real span. Earn only; the other walks read at the
+  millisecond.
 
 ### Binance Pay
 

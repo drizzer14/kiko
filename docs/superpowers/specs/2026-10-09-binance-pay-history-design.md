@@ -60,6 +60,7 @@ that holding.
 | R33 | Orchestrator ruling (technical) 2026-10-12, under the no-starvation rule: the round-robin rotates the WINDOWS of the owed ranges, not the ranges; the windows that start at or after the cursor come first (`start >= cursor`, not `>`), then the rest; each of `W` owed windows is read within `ceil(W / L)` runs that enter the pending pass | section 4 |
 | R34 | Orchestrator ruling (technical) 2026-10-12, under the no-known-limit rule: a point window keeps a resume across runs; its first span commits within `2h + 1` runs while no later span comes back full | section 4 |
 | R35 | Orchestrator ruling (technical) 2026-10-12, under the no-known-limit rule: a split hint matches a window by containment (`hint.start <= window.start < hint.end`); a point window matches by exact start | section 4 |
+| R36 | Orchestrator ruling (technical) 2026-10-13, under the no-known-limit rule and the user's standing approval (no change to which rows import or to any amount): the Earn endpoints compare a record's `time`, a whole second, to each end of a read at the second (live probe 2026-10-13: a read `[S, E]` returns a record at `T` exactly when `floor_s(S) <= T <= floor_s(E)`). So a read of a span returns a record in the second its start falls in, before the start; the Earn walk takes that record as inside the span (`reach = { start: floor_s(span.start), end: span.end }`, used only to tell whether a record sits in the span): a stuck one owes its own point `[T - 1, T + 1]`, never the span. The whole span owed for a stop with no point is still the real span. Without it a stuck record at `floor_s(span.start)` froze the forward pass every run. Earn only: Pay, capital and Transfer read at the millisecond | section 6; VERIFY 12; E29 |
 
 ## Sources (official, checked 2026-10-09)
 
@@ -1041,6 +1042,7 @@ Earn:
 | E26 | locked redemption, status `PAID`, `isComplete` `false` | `earn-not-settled`, owed at its point; `isComplete` left out or `true` has no effect (USER RULING 2026-10-13 (kept)) | not a case |
 | E27 | a split amount, a subscription `type` (either product), a locked redemption `type` or `isComplete` that is present with another JSON type (a number) | the row is unreadable (R30, `earn-row-unreadable`), never read as absent: absent would debit `sourceAccount` | read as absent |
 | E28 | locked subscription of type `RESTAKE` or `TRIAL` (two cases each), forward window | owed at its own point, the cursor goes past it, the span's other records import, and the point stays owed in every later run (a `RESTAKE` Spot -a never happened; a `TRIAL` is money the user never held) | not a case |
+| E29 | a stuck record at `T = floor_s(span.start)` below the span's start (a forward span that starts at the previous run's end, a re-scan or overlap start, a halving boundary, a point window `[t - 1, t + 1]` that also returns a neighbour at `t - 1000`), read at the second (R36) | owed at its own point `[T - 1, T + 1]`; no range; the cursor reaches the end of the span; a later record imports | the whole span owed as a range, the forward pass ends, the cursor never moves (a freeze) |
 
 Convert: not imported (D7). No walk, no rows.
 
@@ -1141,8 +1143,13 @@ Probe items:
     decimals of every reward amount (any value over 8 decimals or under 1e-8).
 11. Every SAPI response: whether `X-SAPI-USED-IP-WEIGHT-1M` and
     `X-SAPI-USED-UID-WEIGHT-1M` are present.
-12. ANSWERED for Pay, withdraw and deposit (probe rev 2 PART A, 2026-10-13); transfer and Earn stay
-    open (PART B). Pay: `startTime` and `endTime` both included; filter value = `transactionTime`
+12. ANSWERED (probe rev 2, 2026-10-13: Pay, withdraw and deposit in PART A; transfer and Earn in
+    PART B). Transfer: `startTime` included, `endTime` EXCLUDED, millisecond precision
+    (`[t, t]` and `[t - 1, t]` return nothing, `[t, t + 1]` and `[t - 1, t + 1]` return the row,
+    `[t + 1, t + 2]` nothing); the walk's spans tile on a shared boundary, so a record there is
+    read once. Earn (flexible subscription and redemption): the filter compares at the SECOND,
+    `floor_s(S) <= T <= floor_s(E)` (`[t - 1 day, t - 1 ms]` returns nothing, `[t + 1 ms, t + 1
+    day]` returns the row; R36). Pay: `startTime` and `endTime` both included; filter value = `transactionTime`
     (probe rev 2 PART A, 2026-10-13). Withdraw: both ends included, sample 1 record (probe rev 2
     PART A, 2026-10-13). Deposit: documented open check, accepted by the user 2026-10-13: no deposit
     on the probe account since 2017; the walk is property-tested under all three end readings.
