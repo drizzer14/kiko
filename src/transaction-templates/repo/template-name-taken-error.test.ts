@@ -14,11 +14,10 @@ describe('TemplateNameTakenError', () => {
     expect(thrown()).toBeInstanceOf(Error);
   });
 
-  it('carries its own name so a caller can tell it apart from a plain Error', () => {
-    expect((thrown() as Error).name).toBe('TemplateNameTakenError');
-  });
+  it('carries its own name and explains that another template already uses it', () => {
+    const error = thrown() as Error;
 
-  it('explains that another template already uses the name', () => {
-    expect((thrown() as Error).message).toBe('Another template already has this name');
+    expect(error.name).toBe('TemplateNameTakenError');
+    expect(error.message).toBe('Another template already has this name');
   });
 });
