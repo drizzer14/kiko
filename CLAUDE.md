@@ -81,7 +81,7 @@ Composite scripts:
   tailable progress log and prints an ETA from run history (shared by all
   worktrees) — a split of normal-mutant cost and the timeout share at a fitted
   timed-out cost, times this run's actual mutant count, printed live the moment
-  Stryker reports that count, then an "Estimate at N%" update at every 10% of
+  Stryker reports that count, then, when a timeout cost is known, an "Estimate at N%" update at every 10% of
   the run (the `harness_mutation_*` helpers in `scripts/checks/_lib.sh`) —
   for a human to watch directly. The full never-poll rule
   (agents await only the exit code) lives in the `ops` skill — see it,

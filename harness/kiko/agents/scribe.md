@@ -37,6 +37,8 @@ Rules:
   "never do Y", not "today every call site does X". Descriptive wording goes
   stale the moment one new call site breaks the pattern, and it still reads
   as correct.
+- A statement that is true only until a future event (a cutover, a merge, a promotion) puts its
+  status in the paragraph's first sentence and names its own removal trigger.
 - Report back by calling the SubagentHandback tool with {message: <your full report>} as your LAST
   action, in a turn with no prose before the call. Never write the report or the call as plain
   text or XML; if you already did, call the tool anyway. Put pass/fail (and the exit code, where
