@@ -2418,16 +2418,22 @@ mechanizable (see harness-workflow's "Classify every finding").
      file rendezvous between stubs, never by a clock. The invariant
      `__tests__/guard-tests-no-wall-clock.test.ts` fails a clock reading
      in a pre-write-guard test; read its `CLOCK_READINGS` for the banned
-     forms. It catches a `${Date.now() - start}` delta (only the whole
-     `${Date.now()}` unique name passes), `Date.now` without a call,
-     `+new Date`, `Date()`, and a shell `date -u +%s`, `date +"%s"`.
+     forms. It fails every `Date.now()` read in a guard test, a
+     `${Date.now() - start}` delta included, and also `Date.now` without a
+     call, `+new Date`, `Date()`, and a shell `date -u +%s`, `date +"%s"`.
+     A unique temporary name comes from `createTemporaryDirectory(prefix)`,
+     with `join(..., '<name>')` for a path inside it, never from the clock.
    - A test that needs a scratch folder uses
-     `__tests__/test-support/temporary-directory.ts` (`createTemporaryDirectory`,
-     `trackTemporaryPath`, and `removeTemporaryDirectories` in an `afterEach`),
-     never a hand-rolled `mkdtempSync` that leaks when a test throws.
+     `__tests__/test-support/temporary-directory.ts` (`createTemporaryDirectory`
+     and `removeTemporaryDirectories` in an `afterEach`). New code uses the
+     helper, because a hand-rolled `mkdtempSync` leaks when a test throws.
+     Existing hand-rolled `mkdtempSync` calls are old code: they move to the
+     helper when their file is next edited.
    - `__tests__/error-class-pins.test.ts` fails when a non-empty
      `extends Error` class under `src/` has no same-folder test pinning its
-     `.name` literal and its `.message`; a class with an empty body is skipped.
+     `.name` literal and its `.message`. The message pin must be in the same
+     `it` block as the `.name` pin, or be asserted on `new ClassName(...).message`;
+     a class with an empty body is skipped.
    - A new Node rule also runs on the probed negative (good) fixtures of
      `__tests__/pre-write-guard-rules.test.ts`. Make those fixtures pass
      the new rule, never exempt them.

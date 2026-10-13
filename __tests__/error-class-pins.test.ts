@@ -6,7 +6,8 @@ import { repositoryFiles } from './test-support/repository-files';
 // A class that extends Error sets `this.name` and passes `super` a message, and a mutant that
 // blanks either one survives unless a test pins the exact literal. So every such class needs a
 // colocated test (same folder) that asserts its `.name` on the class's own literal and its
-// `.message`, both in one file. A class with an empty body inherits both from Error and has no
+// `.message`. The message pin is in the same `it` block as the `.name` pin, or is asserted on
+// `new ClassName(...).message`. A class with an empty body inherits both from Error and has no
 // literal to pin.
 const REPOSITORY_ROOT = join(__dirname, '..');
 
