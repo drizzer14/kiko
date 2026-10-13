@@ -1403,8 +1403,12 @@ new component can land between reviews of this skill:
   left, formatted `MoneyText` right), filled row-major.
 - **SummaryTable** (`src/design-system/components/summary-table/`) — the
   one shared "label left, value right" summary block: an optional `title`
-  heading row, then a stack of `rows` (`{ key, label, value: ReactNode,
-  testID? }`), each split `space-between`. Extracted from the
+  heading row, then a stack of `rows` (row shape: read `summary-table.props.d.ts`), each split
+  `space-between`. A row may opt in to `wraps?: true` for a free-text value: the label keeps its
+  width and the value wraps inside the row; rows without it lay out exactly as before. The rule
+  card on the category page (`src/screens/settings/category-detail/rule-card/`) is the caller. At
+  very large Dynamic Type a wrapping value can be squeezed narrow; check it on the device.
+  Extracted from the
   holding-detail deposit/bond value-breakdown block —
   `HoldingDetailScreen` renders its own
   principal/gross/interest/tax/expected-profit rows through this (and,

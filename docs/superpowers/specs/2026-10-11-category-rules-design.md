@@ -232,7 +232,7 @@ Form units after the split: `use-category-override/` (`applyOverride`, `applyOve
 
 ### 9.2 Category page (`CategoryDetail`, new route)
 - Header title = category name; header Edit -> category edit form.
-- Rules as cards, one per rule, sorted by priority (the order that decides). Each card shows its matchers as one line, joined by " · " (for example `Name is "Silpo" · Expense · More than 500.00 UAH · After 18:00`), times through `formatTime` with the user's clock.
+- Rules as cards, one per rule, sorted by priority (the order that decides). Each card shows its matchers as `SummaryTable` rows with `wraps`; the row labels name their subject (`AMOUNT_ROW_LABEL_KEYS` and `TIME_ROW_LABEL_KEYS` in `src/categories/category-rules/matcher-labels.ts`), and values with a time go through `formatTime` with the user's clock. The joined line (`ruleSummary` in `rule-summary.ts`, matchers joined by " · ") is the card's accessibility label and context-menu name.
 - "Add rule" button (leading symbol) -> rule editor in create mode. Empty state when no rules.
 - Unreadable rule card (failed guard): "This rule can't be read" + Delete.
 
@@ -257,6 +257,7 @@ Name, icon, colour (the existing inline controls moved here), Create mode: the s
 | categoryPage.rulesHeading | Rules | Правила |
 | categoryPage.addRule | Add rule | Додати правило |
 | categoryPage.emptyRules | Add a rule to set this category on matching transactions. | Додайте правило, щоб ставити цю категорію відповідним транзакціям. |
+| categoryPage.amountEqual / amountMore / amountAtLeast / amountLess / amountAtMost / timeBefore / timeAfter | the rule card's row labels: read the en and uk text in `src/i18n/locales/en.ts` and `uk.ts` | (same) |
 | categoryPage.unreadableRule | This rule can't be read | Це правило неможливо прочитати |
 | categoryForm.addTitle / editTitle | New Category / Edit Category | Нова категорія / Редагування категорії |
 | ruleForm.addTitle / editTitle | New Rule / Edit Rule | Нове правило / Редагування правила |
