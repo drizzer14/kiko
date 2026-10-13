@@ -568,7 +568,7 @@ in another one-off brief.
 
 ## Load rule
 
-The load rule lives in the ops skill's "Load rule" section; see it. `make verify` and mutation gates take the shared one-at-a-time lock; until track H5 moves the queue into scripts/, queue them via memory/refs/verify-queue.sh (coordinator-owned); never start a second heavy job.
+The load rule lives in the ops skill's "Load rule" section; see it. One heavy job runs at a time. `make verify` and a mutation gate each take the shared lock. Verifies drain before any gate. Order gates shortest first by changed lines (`make mutable` prints "changed lines: N"). Start no heavy job on battery. Never start a heavy job directly: queue it. Interim mechanism until track H5 ports it into scripts/: the coordinator-owned queue scripts memory/refs/verify-queue.sh and security-queue.sh, and the coordinator's gate runner.
 
 ## Long briefs live in a file
 
