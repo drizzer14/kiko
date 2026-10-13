@@ -941,48 +941,30 @@ describe('a record the walk cannot trust', () => {
     },
   );
 
+  const subscriptionEntryOf: Record<
+    'flexibleSubscription' | 'lockedSubscription',
+    (type: string | undefined) => ReturnType<typeof entryOf>
+  > = {
+    flexibleSubscription: (type) =>
+      entryOf('flexibleSubscription', flexibleSubscriptionOf({ type, time: stuckAt })),
+    lockedSubscription: (type) =>
+      entryOf('lockedSubscription', lockedSubscriptionOf({ type, time: stuckAt })),
+  };
+
   it.each([
-    [
-      'flexibleSubscription',
-      'CONVERT',
-      entryOf('flexibleSubscription', flexibleSubscriptionOf({ type: 'CONVERT', time: stuckAt })),
-    ],
-    [
-      'flexibleSubscription',
-      'TRANSFER',
-      entryOf('flexibleSubscription', flexibleSubscriptionOf({ type: 'TRANSFER', time: stuckAt })),
-    ],
-    [
-      'flexibleSubscription',
-      undefined,
-      entryOf('flexibleSubscription', flexibleSubscriptionOf({ type: undefined, time: stuckAt })),
-    ],
-    [
-      'lockedSubscription',
-      'RESTAKE',
-      entryOf('lockedSubscription', lockedSubscriptionOf({ type: 'RESTAKE', time: stuckAt })),
-    ],
-    [
-      'lockedSubscription',
-      'TRIAL',
-      entryOf('lockedSubscription', lockedSubscriptionOf({ type: 'TRIAL', time: stuckAt })),
-    ],
-    [
-      'lockedSubscription',
-      'AUTO',
-      entryOf('lockedSubscription', lockedSubscriptionOf({ type: 'AUTO', time: stuckAt })),
-    ],
-    [
-      'lockedSubscription',
-      undefined,
-      entryOf('lockedSubscription', lockedSubscriptionOf({ type: undefined, time: stuckAt })),
-    ],
+    ['flexibleSubscription', 'CONVERT'],
+    ['flexibleSubscription', 'TRANSFER'],
+    ['flexibleSubscription', undefined],
+    ['lockedSubscription', 'RESTAKE'],
+    ['lockedSubscription', 'TRIAL'],
+    ['lockedSubscription', 'AUTO'],
+    ['lockedSubscription', undefined],
   ] as const)(
     'a %s of type %p owes its point and writes nothing: its money may not be the wallet it names',
-    async (kind, _type, entry) => {
+    async (kind, type) => {
       const world = worldOf(caughtUp);
 
-      await walkOnce({ world, entries: [entry] });
+      await walkOnce({ world, entries: [subscriptionEntryOf[kind](type)] });
 
       expect(world.added).toEqual([]);
       expect(listOf(world)).toEqual([pointOf(stuckAt, kind)]);

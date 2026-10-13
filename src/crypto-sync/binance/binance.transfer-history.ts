@@ -27,7 +27,6 @@ import {
   planWalkPasses,
   readPendingMark,
   readWalkRoundRobins,
-  resolveWalletHoldings,
   roundRobinHooksOf,
   runWalkPlan,
   type SpanCommit,
@@ -57,6 +56,7 @@ import {
   commitSettledSpan,
   instantAt,
   joinSettled,
+  placeWalletRows,
   type SettledSpan,
   settleRecords,
   settleUnreadable,
@@ -428,57 +428,6 @@ export const settledTransfersOf = (input: {
   ]);
 };
 
-const uniqueRowsOf = (planned: PlannedTransferRow[]): PlannedTransferRow[] => [
-  ...new Map(planned.map((row) => [row.externalId, row])).values(),
-];
-
-/** Every wallet the rows sit on or name as their other leg. */
-const walletsOf = (planned: PlannedTransferRow[]): BinanceWalletKey[] => [
-  ...new Set(
-    planned.flatMap((row) => [
-      row.wallet,
-      ...(foldMap(maybe(row.counterpartWallet), (key) => [key]) ?? []),
-    ]),
-  ),
-];
-
-/**
- * Turn the planned rows into importable ones, creating a missing wallet holding at zero first. A
- * wallet that cannot be resolved even after creation is no one transfer's stop: the span is owed.
- */
-const placeRows = async (
-  context: TransferContext,
-  planned: PlannedTransferRow[],
-): Promise<BinanceHistoryRow[]> => {
-  if (planned.length === 0) {
-    return [];
-  }
-
-  const { accountId, deps } = context;
-  const holdings = await resolveWalletHoldings({
-    accountId,
-    keys: walletsOf(planned),
-    listHoldings: deps.listHoldings,
-    ensureHoldings: deps.ensureHoldings,
-  });
-
-  return planned.map(({ wallet, counterpartWallet, ...row }) => {
-    const holding = holdings.get(wallet);
-    const counterpart = foldMap(maybe(counterpartWallet), (key) => holdings.get(key));
-
-    if (holding === undefined || (counterpartWallet !== undefined && counterpart === undefined)) {
-      throw new BinanceWalkStop('transfer-holding-missing');
-    }
-
-    return {
-      ...row,
-      holdingId: holding.id,
-      source: 'binance',
-      ...foldMap(maybe(counterpart), (found) => ({ exchangeCounterpartHoldingId: found.id })),
-    };
-  });
-};
-
 /**
  * Commit one span's read: place and write the rows of the transfers the walk can trust, then move
  * the walk's marks (see `commitSettledSpan`: rows first, marks second, so a crash between the two
@@ -499,7 +448,14 @@ const commitSpan = (
     span,
     settled: settledTransfersOf({ accountId, span, read }),
     forwardOwes: TRANSFER_FORWARD_OWES,
-    place: (planned) => placeRows(context, uniqueRowsOf(planned)),
+    place: (planned) =>
+      placeWalletRows({
+        accountId,
+        planned,
+        listHoldings: deps.listHoldings,
+        ensureHoldings: deps.ensureHoldings,
+        missingCode: 'transfer-holding-missing',
+      }),
     add: deps.addTransactions,
     advance: ({ owed }) =>
       advanceWalkMarks({

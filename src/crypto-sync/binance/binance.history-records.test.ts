@@ -1,11 +1,15 @@
+import type { HoldingRow } from '@kiko/db';
+
 import {
   commitSettledSpan,
   instantAt,
   joinSettled,
+  placeWalletRows,
   settleRecords,
   settleUnreadable,
 } from './binance.history-records';
 import { BinanceWalkStop, type OwedGround, type WalkWindow } from './binance.history-walk';
+import { type BinanceWalletKey, EARN_KEY, FUNDING_KEY, SPOT_KEY } from './binance.holding-keys';
 
 const SPAN = { start: 1_000, end: 5_000 };
 
@@ -619,5 +623,112 @@ describe('commitSettledSpan', () => {
         }),
       ).rejects.toThrow('boom');
     });
+  });
+});
+
+describe('placeWalletRows', () => {
+  type PlannedRow = {
+    wallet: BinanceWalletKey;
+    counterpartWallet?: BinanceWalletKey;
+    externalId: string;
+    amountMinorUnits?: number;
+  };
+
+  const holdingOf = (key: string): HoldingRow =>
+    ({ id: `h-${key}`, metadata: { binanceAsset: key } }) as unknown as HoldingRow;
+  const listHoldings = jest.fn(async (_accountId: string) => [
+    holdingOf(SPOT_KEY),
+    holdingOf(FUNDING_KEY),
+  ]);
+  const ensureHoldings = jest.fn(async (_holdings: unknown[]) => undefined);
+  const place = (planned: PlannedRow[]) =>
+    placeWalletRows({
+      accountId: 'acc-1',
+      planned,
+      listHoldings,
+      ensureHoldings,
+      missingCode: 'x-holding-missing',
+    });
+
+  beforeEach(() => {
+    listHoldings.mockClear();
+    ensureHoldings.mockClear();
+  });
+
+  it('reads no holding for no rows', async () => {
+    await expect(place([])).resolves.toEqual([]);
+    expect(listHoldings).not.toHaveBeenCalled();
+  });
+
+  it('puts a row on its wallet holding, with the source', async () => {
+    await expect(
+      place([{ wallet: FUNDING_KEY, externalId: 'a', amountMinorUnits: 5 }]),
+    ).resolves.toEqual([
+      { holdingId: `h-${FUNDING_KEY}`, source: 'binance', externalId: 'a', amountMinorUnits: 5 },
+    ]);
+  });
+
+  it('puts the other leg of a row on its own holding', async () => {
+    await expect(
+      place([{ wallet: SPOT_KEY, counterpartWallet: FUNDING_KEY, externalId: 'a' }]),
+    ).resolves.toEqual([
+      {
+        holdingId: `h-${SPOT_KEY}`,
+        exchangeCounterpartHoldingId: `h-${FUNDING_KEY}`,
+        source: 'binance',
+        externalId: 'a',
+      },
+    ]);
+  });
+
+  it('keeps one row of a key, the last one read', async () => {
+    const rows = await place([
+      { wallet: SPOT_KEY, externalId: 'a', amountMinorUnits: 1 },
+      { wallet: FUNDING_KEY, externalId: 'a', amountMinorUnits: 2 },
+    ]);
+
+    expect(rows.map((row) => row.amountMinorUnits)).toEqual([2]);
+  });
+
+  it('creates a missing wallet a row sits on, once for every row of it', async () => {
+    listHoldings
+      .mockResolvedValueOnce([holdingOf(SPOT_KEY)])
+      .mockResolvedValueOnce([holdingOf(SPOT_KEY), holdingOf(EARN_KEY)]);
+
+    const rows = await place([
+      { wallet: EARN_KEY, counterpartWallet: SPOT_KEY, externalId: 'a' },
+      { wallet: EARN_KEY, externalId: 'b' },
+    ]);
+
+    expect(ensureHoldings).toHaveBeenCalledTimes(1);
+    expect(ensureHoldings.mock.calls[0][0]).toEqual([
+      expect.objectContaining({ metadataKey: EARN_KEY }),
+    ]);
+    expect(rows.map((row) => row.holdingId)).toEqual([`h-${EARN_KEY}`, `h-${EARN_KEY}`]);
+  });
+
+  it('creates a missing wallet that only the other leg of a row names', async () => {
+    listHoldings
+      .mockResolvedValueOnce([holdingOf(SPOT_KEY)])
+      .mockResolvedValueOnce([holdingOf(SPOT_KEY), holdingOf(EARN_KEY)]);
+
+    const rows = await place([{ wallet: SPOT_KEY, counterpartWallet: EARN_KEY, externalId: 'a' }]);
+
+    expect(ensureHoldings.mock.calls[0][0]).toEqual([
+      expect.objectContaining({ metadataKey: EARN_KEY }),
+    ]);
+    expect(rows[0].exchangeCounterpartHoldingId).toBe(`h-${EARN_KEY}`);
+  });
+
+  it('stops with the code when a wallet has no holding even after creation', async () => {
+    await expect(place([{ wallet: EARN_KEY, externalId: 'a' }])).rejects.toEqual(
+      new BinanceWalkStop('x-holding-missing'),
+    );
+  });
+
+  it('stops with the code when only the other leg has no holding', async () => {
+    await expect(
+      place([{ wallet: SPOT_KEY, counterpartWallet: EARN_KEY, externalId: 'a' }]),
+    ).rejects.toEqual(new BinanceWalkStop('x-holding-missing'));
   });
 });

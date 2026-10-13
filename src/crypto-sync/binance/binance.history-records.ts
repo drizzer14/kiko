@@ -1,4 +1,6 @@
+import type { HoldingRow } from '@kiko/db';
 import maybe, { foldMap } from 'fnts/maybe';
+import type { ExchangeHolding } from '@kiko/holdings/repo';
 import { bifoldMap, type Either, eitherSync } from 'fnts/either';
 
 import {
@@ -7,11 +9,13 @@ import {
   isPoint,
   logWalkStop,
   type OwedGround,
+  resolveWalletHoldings,
   type SpanCommit,
   type WalkPass,
   type WalkWindow,
 } from './binance.history-walk';
 import type { UnreadableRow } from './binance.history-client';
+import type { BinanceWalletKey } from './binance.holding-keys';
 
 /**
  * One span's records told apart: the rows of those the walk can trust, the codes of the stops
@@ -234,4 +238,74 @@ export const commitSettledSpan = async <Planned, Row>(input: {
     returned: ready.returned,
     stuck: ready.owed,
   };
+};
+
+/**
+ * A row mapped from a record, before its wallets are turned into holdings: `wallet` is the one
+ * it sits on, `counterpartWallet` the other leg's of a move between two wallets.
+ */
+type WalletPlannedRow = {
+  wallet: BinanceWalletKey;
+  counterpartWallet?: BinanceWalletKey;
+  externalId: string;
+};
+
+type PlacedWalletRow<Planned extends WalletPlannedRow> = Omit<
+  Planned,
+  'wallet' | 'counterpartWallet'
+> & {
+  holdingId: string;
+  source: 'binance';
+  exchangeCounterpartHoldingId?: string;
+};
+
+/**
+ * Turn the planned rows of a span (one row per key, the last one read) into importable ones,
+ * creating a missing wallet holding at zero first. A wallet that cannot be resolved even after
+ * creation is no one record's stop: it throws `BinanceWalkStop(missingCode)` and the span is
+ * owed (see `placed`).
+ */
+export const placeWalletRows = async <Planned extends WalletPlannedRow>(input: {
+  accountId: string;
+  planned: Planned[];
+  listHoldings: (accountId: string) => Promise<HoldingRow[]>;
+  ensureHoldings: (holdings: ExchangeHolding[]) => Promise<void>;
+  missingCode: string;
+}): Promise<PlacedWalletRow<Planned>[]> => {
+  const { accountId, listHoldings, ensureHoldings, missingCode } = input;
+  const planned = [...new Map(input.planned.map((row) => [row.externalId, row])).values()];
+
+  if (planned.length === 0) {
+    return [];
+  }
+
+  const holdings = await resolveWalletHoldings({
+    accountId,
+    keys: [
+      ...new Set(
+        planned.flatMap((row) => [
+          row.wallet,
+          ...(foldMap(maybe(row.counterpartWallet), (key) => [key]) ?? []),
+        ]),
+      ),
+    ],
+    listHoldings,
+    ensureHoldings,
+  });
+
+  return planned.map(({ wallet, counterpartWallet, ...row }): PlacedWalletRow<Planned> => {
+    const holding = holdings.get(wallet);
+    const counterpart = foldMap(maybe(counterpartWallet), (key) => holdings.get(key));
+
+    if (holding === undefined || (counterpartWallet !== undefined && counterpart === undefined)) {
+      throw new BinanceWalkStop(missingCode);
+    }
+
+    return {
+      ...row,
+      holdingId: holding.id,
+      source: 'binance',
+      ...foldMap(maybe(counterpart), (found) => ({ exchangeCounterpartHoldingId: found.id })),
+    };
+  });
 };

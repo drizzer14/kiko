@@ -31,7 +31,6 @@ import {
   planWalkPasses,
   readPendingMark,
   readWalkRoundRobins,
-  resolveWalletHoldings,
   roundRobinHooksOf,
   runWalkPlan,
   type SpanCommit,
@@ -68,6 +67,7 @@ import {
   commitSettledSpan,
   instantAt,
   joinSettled,
+  placeWalletRows,
   settleRecords,
   settleUnreadable,
 } from './binance.history-records';
@@ -506,42 +506,6 @@ const fetchSpan = async (
   }
 };
 
-const uniqueRowsOf = (planned: PlannedPayRow[]): PlannedPayRow[] => [
-  ...new Map(planned.map((row) => [row.externalId, row])).values(),
-];
-
-const walletsOf = (rows: PlannedPayRow[]): BinanceWalletKey[] => [
-  ...new Set(rows.map((row) => row.wallet)),
-];
-
-/** Turn the planned rows into importable ones, creating a missing wallet holding at zero first. */
-const placeRows = async (
-  context: PayContext,
-  planned: PlannedPayRow[],
-): Promise<BinanceTransactionRow[]> => {
-  if (planned.length === 0) {
-    return [];
-  }
-
-  const { accountId, deps } = context;
-  const holdings = await resolveWalletHoldings({
-    accountId,
-    keys: walletsOf(planned),
-    listHoldings: deps.listHoldings,
-    ensureHoldings: deps.ensureHoldings,
-  });
-
-  return planned.map(({ wallet, ...row }) => {
-    const holding = holdings.get(wallet);
-
-    if (holding === undefined) {
-      throw new BinanceWalkStop('pay-holding-missing');
-    }
-
-    return { ...row, holdingId: holding.id, source: 'binance' };
-  });
-};
-
 /**
  * Whether the user is the receiver of an order of another coin and not its payer. Only
  * then did the BTC funds of that order leave someone else's wallet; an order the user paid,
@@ -606,13 +570,20 @@ const commitSpan = (
   page: PayHistoryPage,
   pass: WalkPass,
 ): Promise<SpanCommit | undefined> => {
-  const { deps, spot, plan, marks } = context;
+  const { deps, accountId, spot, plan, marks } = context;
 
   return commitSettledSpan({
     pass,
     span,
     settled: settledOrdersOf(context, span, page),
-    place: (planned) => placeRows(context, uniqueRowsOf(planned)),
+    place: (planned) =>
+      placeWalletRows({
+        accountId,
+        planned,
+        listHoldings: deps.listHoldings,
+        ensureHoldings: deps.ensureHoldings,
+        missingCode: 'pay-holding-missing',
+      }),
     add: deps.addTransactions,
     advance: ({ owed }) =>
       advanceWalkMarks({

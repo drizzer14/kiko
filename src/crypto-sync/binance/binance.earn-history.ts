@@ -23,7 +23,6 @@ import {
   planWalkPasses,
   readPendingMark,
   readWalkRoundRobins,
-  resolveWalletHoldings,
   roundRobinHooksOf,
   runWalkPlan,
   type SpanCommit,
@@ -55,6 +54,7 @@ import {
   commitSettledSpan,
   instantAt,
   joinSettled,
+  placeWalletRows,
   type SettledSpan,
   settleRecords,
   settleUnreadable,
@@ -222,11 +222,10 @@ const isSettled = (settledStatus: string, status: string): boolean => {
  * because a locked `AUTO` subscription is most likely the auto-renewal at maturity (a locked
  * subscribe's `autoSubscribe` defaults to true), whose money is the matured principal, not a
  * wallet. No other type is documented to come from the wallet `sourceAccount` names: the
- * documented descriptions say the money never sat in a Spot or Funding wallet (`RESTAKE` a
- * restake order, `TRIAL` a trial fund order, `CONVERT` Locked to Flexible, `TRANSFER` Locked
- * Savings to Flexible) or say nothing of its source (`ACTIVITY`, `LOAN`, `AI`), and a record with
- * no type says nothing, so none of them is debited from a guessed wallet. Widening a list is the
- * one line a confirmed answer changes.
+ * documented descriptions name another source (`RESTAKE` a restake order, `TRIAL` a trial fund
+ * order, `CONVERT` Locked to Flexible, `TRANSFER` Locked Savings to Flexible) or say nothing of
+ * its source (`ACTIVITY`, `LOAN`, `AI`), and a record with no type says nothing, so none of them
+ * is debited from a guessed wallet. Widening a list is the one line a confirmed answer changes.
  */
 const WALLET_FUNDED_SUBSCRIPTION_TYPES: Record<EarnProduct, readonly string[]> = {
   flexible: ['NORMAL', 'AUTO'],
@@ -743,57 +742,6 @@ const readSpan = (
   });
 };
 
-const uniqueRowsOf = (planned: PlannedEarnRow[]): PlannedEarnRow[] => [
-  ...new Map(planned.map((row) => [row.externalId, row])).values(),
-];
-
-/** Every wallet the rows sit on or name as their other leg. */
-const walletsOf = (planned: PlannedEarnRow[]): BinanceWalletKey[] => [
-  ...new Set(
-    planned.flatMap((row) => [
-      row.wallet,
-      ...(foldMap(maybe(row.counterpartWallet), (key) => [key]) ?? []),
-    ]),
-  ),
-];
-
-/**
- * Turn the planned rows into importable ones, creating a missing wallet holding at zero first. A
- * wallet that cannot be resolved even after creation is no one record's stop: the span is owed.
- */
-const placeRows = async (
-  context: EarnContext,
-  planned: PlannedEarnRow[],
-): Promise<BinanceHistoryRow[]> => {
-  if (planned.length === 0) {
-    return [];
-  }
-
-  const { accountId, deps } = context;
-  const holdings = await resolveWalletHoldings({
-    accountId,
-    keys: walletsOf(planned),
-    listHoldings: deps.listHoldings,
-    ensureHoldings: deps.ensureHoldings,
-  });
-
-  return planned.map(({ wallet, counterpartWallet, ...row }) => {
-    const holding = holdings.get(wallet);
-    const counterpart = foldMap(maybe(counterpartWallet), (key) => holdings.get(key));
-
-    if (holding === undefined || (counterpartWallet !== undefined && counterpart === undefined)) {
-      throw new BinanceWalkStop('earn-holding-missing');
-    }
-
-    return {
-      ...row,
-      holdingId: holding.id,
-      source: 'binance',
-      ...foldMap(maybe(counterpart), (found) => ({ exchangeCounterpartHoldingId: found.id })),
-    };
-  });
-};
-
 /**
  * Commit one span's read: place and write the rows of the records the walk can trust, then move
  * the walk's marks (see `commitSettledSpan`: rows first, marks second, so a crash between the two
@@ -814,7 +762,14 @@ const commitSpan = (
     span,
     settled: settledEarnOf({ accountId, span, read }),
     forwardOwes: EARN_FORWARD_OWES,
-    place: (planned) => placeRows(context, uniqueRowsOf(planned)),
+    place: (planned) =>
+      placeWalletRows({
+        accountId,
+        planned,
+        listHoldings: deps.listHoldings,
+        ensureHoldings: deps.ensureHoldings,
+        missingCode: 'earn-holding-missing',
+      }),
     add: deps.addTransactions,
     advance: ({ owed }) =>
       advanceWalkMarks({
