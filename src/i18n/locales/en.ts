@@ -251,7 +251,15 @@ export const en = {
     removeCondition: 'Remove condition {{index}}',
     errorNoMatchers: 'Add at least one condition.',
     errorName: 'Enter a name.',
-    errorAmount: 'Enter an amount of 0 or more, with no more decimals than the currency allows.',
+    errorAmountNegative: 'Enter an amount of 0 or more.',
+    errorAmountTooLarge: 'This amount is too large.',
+    errorAmountWholeOnly: 'For this currency, you can enter only a whole amount.',
+    // `count` is the digits the currency allows (never 0: a currency of no decimals reads
+    // errorAmountWholeOnly); English defines every plural form so the Ukrainian set keeps parity.
+    errorAmountDecimals_one: 'This currency allows up to {{count}} decimal place.',
+    errorAmountDecimals_few: 'This currency allows up to {{count}} decimal places.',
+    errorAmountDecimals_many: 'This currency allows up to {{count}} decimal places.',
+    errorAmountDecimals_other: 'This currency allows up to {{count}} decimal places.',
     errorNeverMatches: 'These conditions can never match together.',
     errorNeverMatchesTime:
       'These times can never match together. For a window over midnight, use two rules.',

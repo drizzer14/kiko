@@ -61,6 +61,41 @@ describe('i18n plurals without Intl.PluralRules', () => {
   });
 
   it.each([
+    [0, 'У цій валюті не більше 0 знаків після коми.'],
+    [1, 'У цій валюті не більше 1 знака після коми.'],
+    [2, 'У цій валюті не більше 2 знаків після коми.'],
+    [3, 'У цій валюті не більше 3 знаків після коми.'],
+    [5, 'У цій валюті не більше 5 знаків після коми.'],
+    [8, 'У цій валюті не більше 8 знаків після коми.'],
+    [21, 'У цій валюті не більше 21 знака після коми.'],
+  ])('reads the decimals a currency allows, %p, in Ukrainian as %p', async (count, message) => {
+    const i18n = await freshI18n('uk');
+
+    expect(i18n.t('ruleForm.errorAmountDecimals', { count })).toBe(message);
+  });
+
+  it.each([
+    [0, 'This currency allows up to 0 decimal places.'],
+    [1, 'This currency allows up to 1 decimal place.'],
+    [2, 'This currency allows up to 2 decimal places.'],
+    [5, 'This currency allows up to 5 decimal places.'],
+  ])('reads the decimals a currency allows, %p, in English as %p', async (count, message) => {
+    const i18n = await freshI18n('en');
+
+    expect(i18n.t('ruleForm.errorAmountDecimals', { count })).toBe(message);
+  });
+
+  it.each([
+    ['errorAmountNegative', 'Введіть суму від 0.'],
+    ['errorAmountWholeOnly', 'Для цієї валюти можна ввести лише цілу суму.'],
+    ['errorAmountTooLarge', 'Ця сума завелика.'],
+  ] as const)('reads the amount refusal %s in Ukrainian', async (key, message) => {
+    const i18n = await freshI18n('uk');
+
+    expect(i18n.t(`ruleForm.${key}`)).toBe(message);
+  });
+
+  it.each([
     [0, 'days'],
     [1, 'day'],
     [2, 'days'],
