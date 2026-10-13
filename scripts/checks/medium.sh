@@ -75,6 +75,29 @@ if [ ${#changed[@]} -eq 0 ] && [ ${#harness_changed[@]} -eq 0 ] && [ "$replay_pe
   exit 0
 fi
 
+# A Stop that fires again after the hook already blocked it (the payload's stop_hook_active is
+# true) would run the same checks on the same tree and block again, a loop the session cannot
+# leave: knip alone can fail it on a file the session is not allowed to touch. The first Stop
+# already showed every failure, so a repeated one is let through with a note. Only the Stop event
+# skips: SubagentStop keeps blocking. The payload is read only when stdin is a regular file, which
+# is how dispatch.sh replays it: a pipe or a terminal a caller never closes would hang this read.
+# Anything unreadable leaves the tier running, as before.
+repeated_stop="$(node -e '
+  const fs = require("node:fs");
+  try {
+    if (fs.fstatSync(0).isFile()) {
+      const payload = JSON.parse(fs.readFileSync(0, "utf8"));
+      if (payload.hook_event_name === "Stop" && payload.stop_hook_active === true) {
+        process.stdout.write("repeated");
+      }
+    }
+  } catch {}
+' 2>/dev/null)"
+if [ "$repeated_stop" = "repeated" ]; then
+  echo "medium tier: skipped on a repeated Stop (stop_hook_active); run npm run check:all before you commit" >&2
+  exit 0
+fi
+
 # Both Stop and SubagentStop call this wrapper, so one subagent-driven
 # session runs the medium tier one time per finished subagent, plus one
 # more time for the coordinator, and parallel subagents fire near-together.
