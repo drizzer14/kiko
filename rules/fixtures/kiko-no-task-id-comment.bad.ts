@@ -154,3 +154,26 @@ export const rulingLetterId = true;
 // EXPECT-FINDING
 /* Per Ruling B14, the toggle stays flat. */
 export const rulingLetterIdBlock = true;
+
+// EXPECT-FINDING
+// The footer stays pinned per RULING A2: the sheet never scrolls.
+export const rulingUpperCase = true;
+
+// EXPECT-FINDING
+// The footer stays pinned per ruling A2b: the sheet never scrolls.
+export const rulingTrailingLetter = true;
+
+// EXPECT-FINDING
+// The rulings A2 and B3 differ on the footer height.
+export const rulingsPlural = true;
+
+// A form split across a comment wrap is reported at the line the word `ruling` is on.
+// EXPECT-FINDING
+// The sheet keeps its height per ruling
+// A2: the footer never scrolls.
+export const rulingWrappedLine = true;
+
+// EXPECT-FINDING
+/* The toggle stays flat per ruling
+ * B14, as the summary table does. */
+export const rulingWrappedBlock = true;

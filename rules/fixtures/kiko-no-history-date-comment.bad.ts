@@ -94,6 +94,22 @@ export const rulingOfDate = true;
 /* The footer stays pinned, the ruling of 2026-10-12 says so. */
 export const rulingOfDateBlock = true;
 
+// A form split across a comment wrap is reported at the line the word `ruling` is on.
+// EXPECT-FINDING
+// Rows stay flat, per the ruling of
+// 2026-10-12 on the categories screen.
+export const rulingOfDateWrappedLine = true;
+
+// EXPECT-FINDING
+/* The footer stays pinned, the ruling of
+ * 2026-10-12 says so. */
+export const rulingOfDateWrappedBlock = true;
+
+// EXPECT-FINDING
+// Rows stay flat, per the ruling
+// 2026-10-12 on the categories screen.
+export const rulingDateWrappedLine = true;
+
 /**
  * A second member in the same block comment is reported too, at its own line:
 // EXPECT-FINDING
