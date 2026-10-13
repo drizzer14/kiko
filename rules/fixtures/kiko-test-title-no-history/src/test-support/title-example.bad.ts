@@ -3,7 +3,7 @@
 // directly in rules/fixtures/ (kiko-linter's "Semgrep facts" gotcha), so this fixture mirrors a
 // real src/test-support/ path instead. The rule MUST report a finding on each pinned line: a test
 // or suite title that opens with a task id (`A1 `, `Q7 `, `X1:`) or a ruling id (`ruling A2`), or
-// that carries a `(was: ` label or ends in a parenthesized id (`(P2)`, `(task C2)`), however the
+// that carries a `(was: ` label or ends in a parenthesized id (`(P2)`, `(task C2)`, `(Task C2)`), however the
 // title is declared.
 
 // EXPECT-FINDING
@@ -77,6 +77,9 @@ describe(`a template title with a trailing id (T27)`, () => {});
 
 // EXPECT-FINDING
 describe('keeps the row flat (task C2)', () => {});
+
+// EXPECT-FINDING
+describe('keeps the row flat (Task C2)', () => {});
 
 // EXPECT-FINDING
 describe('keeps the cap (spec A3, B4)', () => {});

@@ -3,8 +3,13 @@
 // directly in rules/fixtures/ (kiko-linter's "Semgrep facts" gotcha), so this fixture mirrors a
 // real src/test-support/ path instead. The rule MUST report a finding on each pinned line: a
 // rejection asserted with `toThrow` or `toThrowError` and no argument, or with the bare `Error`
-// class or `undefined`, or read through `toBeInstanceOf(Error)` or `toBeTruthy()`: each passes on
-// any failure.
+// class or `undefined`, with an empty message or a match-all pattern, or read through
+// `toBeInstanceOf(Error)`, `toBeInstanceOf(Object)`, `toEqual(expect.anything())`, `toBeTruthy()`,
+// `not.toBeNull()` or `toBeDefined()`: each passes on any failure.
+
+// A module, so this file's `run` does not collide with the sibling fixture's under `tsc`.
+export {};
+
 declare const run: () => Promise<void>;
 
 describe('a rejection with no expected error', () => {
@@ -62,5 +67,35 @@ describe('a rejection with no expected error', () => {
   it('passes on any failure when the rejection is only truthy', async () => {
     // EXPECT-FINDING
     await expect(run()).rejects.toBeTruthy();
+  });
+
+  it('passes on any failure when the message is the empty string', async () => {
+    // EXPECT-FINDING
+    await expect(run()).rejects.toThrow('');
+  });
+
+  it('passes on any failure when the pattern matches everything', async () => {
+    // EXPECT-FINDING
+    await expect(run()).rejects.toThrow(/.*/);
+  });
+
+  it('passes on any failure when anything is expected', async () => {
+    // EXPECT-FINDING
+    await expect(run()).rejects.toEqual(expect.anything());
+  });
+
+  it('passes on any failure when the instance is only an Object', async () => {
+    // EXPECT-FINDING
+    await expect(run()).rejects.toBeInstanceOf(Object);
+  });
+
+  it('passes on any failure when the rejection is only not null', async () => {
+    // EXPECT-FINDING
+    await expect(run()).rejects.not.toBeNull();
+  });
+
+  it('passes on any failure when the rejection is only defined', async () => {
+    // EXPECT-FINDING
+    await expect(run()).rejects.toBeDefined();
   });
 });

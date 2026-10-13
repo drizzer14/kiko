@@ -113,7 +113,7 @@ describe('scripts/checks/full-word-identifiers.sh', () => {
 
   const DOLLAR_BRACE = '$' + '{';
 
-  describe('checker gaps (R1d-round1-brief.md Minor item)', () => {
+  describe('how the checker reads quotes, template literals, regex literals and acronyms', () => {
     it('does not blank the rest of the file on an apostrophe inside JSX text', () => {
       const result = runCheck(
         'export const First = () => {\n' +

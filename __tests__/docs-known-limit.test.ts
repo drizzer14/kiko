@@ -68,12 +68,6 @@ describe('docs/superpowers has no "known limit"', () => {
     ).toEqual([]);
   });
 
-  it('lists no exempt doc that no longer holds the phrase', () => {
-    expect(
-      PREDATING_PATHS.filter((file) => knownLimitLines(readRepositoryFile(file)).length === 0),
-    ).toEqual([]);
-  });
-
   it('holds in each dated doc exactly the matches it held when the rule landed', () => {
     expect(
       Object.fromEntries(

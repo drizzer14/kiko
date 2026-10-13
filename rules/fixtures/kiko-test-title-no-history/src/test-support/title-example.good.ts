@@ -33,6 +33,9 @@ describe('the footer', () => {
 
   it('reads a (P2P) transfer', () => {});
 
+  // The word Task with no parenthesized id after it is a noun, not a task id.
+  it('Task rows stay flat', () => {});
+
   it('keeps a (T-shirt) size', () => {});
 
   // A letter and digits with a colon after a lowercase opening are not a leading id.

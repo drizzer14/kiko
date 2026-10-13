@@ -1198,7 +1198,7 @@ rules:
     message: >
       A test or suite title opens with a task id ("A1 ", "A1:"), opens with a
       ruling id ("ruling A2"), ends in a task id in parentheses ("(P2)",
-      "(task C2)"), or carries an old-value label in parentheses.
+      "(task C2)", "(Task C2)"), or carries an old-value label in parentheses.
       kiko-code-style's "Comments: WHY only, never history": a title says what
       the test pins, and the id or the old value belongs in the commit
       message. Drop the id or the label and state the behavior.
@@ -1217,7 +1217,7 @@ rules:
           regex: "^(?:it|test|describe)\\b"
       - metavariable-regex:
           metavariable: $TITLE
-          regex: "^[\"'`](?:[A-Z]\\d+[ :]|[Rr]uling [A-Z]\\d|.*\\(was: |.*\\((?:task |spec )?[A-Z]\\d+[),])"
+          regex: "^[\"'`](?:[A-Z]\\d+[ :]|[Rr]uling [A-Z]\\d|.*\\(was: |.*\\((?:[Tt]ask |spec )?[A-Z]\\d+[),])"
   # A rejection asserted with no expected error passes on any failure, including a typo that
   # throws before the code under test runs. ERROR: the tree holds 0 findings for this id. See
   # kiko-linter's "kiko-rejects-to-throw-needs-error" section. The `src/test-support/**` include
@@ -1226,11 +1226,13 @@ rules:
     languages: [typescript]
     severity: ERROR
     message: >
-      `.rejects.toThrow()` with no argument, with the bare `Error` class or
-      with `undefined`, `.rejects.toBeInstanceOf(Error)` and
-      `.rejects.toBeTruthy()` pass on any rejection, so a test that fails for
-      the wrong reason stays green. Name the error the call expects: its
-      message, a pattern, or its own class.
+      `.rejects.toThrow()` with no argument, with the bare `Error` class,
+      with `undefined`, with an empty message or with a match-all pattern,
+      and `.rejects.toBeInstanceOf(Error)`, `.rejects.toBeInstanceOf(Object)`,
+      `.rejects.toEqual(expect.anything())`, `.rejects.toBeTruthy()`,
+      `.rejects.not.toBeNull()` and `.rejects.toBeDefined()` pass on any
+      rejection, so a test that fails for the wrong reason stays green. Name
+      the error the call expects: its message, a pattern, or its own class.
     metadata:
       fix: "Pass the expected error to toThrow: its message (a string), a pattern (a regex) or its class."
       skill: "kiko-code-style › A rejection names its error"
@@ -1249,10 +1251,18 @@ rules:
           - pattern: $PROMISE.rejects.toThrowError(undefined)
           - pattern: $PROMISE.rejects.toBeInstanceOf(Error)
           - pattern: $PROMISE.rejects.toBeTruthy()
-  # kiko-gestures' "A lone card lifts too" (under "A hold lifts the card"): `sortEnabled` is the query's freshness gate alone,
-  # never also a count of the items. react-native-sortables never counts items, and a lone
-  # card lifts and drops back with nothing persisted. ERROR: the tree holds 0 findings for this
-  # id. See kiko-linter's "kiko-sortable-grid-lone-card-lifts" section.
+          - pattern: $PROMISE.rejects.toThrow("")
+          - pattern: $PROMISE.rejects.toThrowError("")
+          - pattern: $PROMISE.rejects.toThrow(/.*/)
+          - pattern: $PROMISE.rejects.toThrowError(/.*/)
+          - pattern: $PROMISE.rejects.toEqual(expect.anything())
+          - pattern: $PROMISE.rejects.toBeInstanceOf(Object)
+          - pattern: $PROMISE.rejects.not.toBeNull()
+          - pattern: $PROMISE.rejects.toBeDefined()
+  # kiko-gestures' "A lone card lifts too" (under "A hold lifts the card"): `sortEnabled` is the
+  # query's freshness gate alone, never also a count of the items. react-native-sortables never
+  # counts items, and a lone card lifts and drops back with nothing persisted. ERROR: the tree
+  # holds 0 findings for this id. See kiko-linter's "kiko-sortable-grid-lone-card-lifts" section.
   - id: kiko-sortable-grid-lone-card-lifts
     languages: [typescript]
     severity: ERROR
@@ -1260,8 +1270,7 @@ rules:
       `sortEnabled` on a `Sortable.Grid` asks for more than one item, so a
       lone card never lifts on a hold. It is the query's freshness gate alone:
       react-native-sortables never counts items, and a release in place
-      persists nothing — see kiko-gestures' "A hold lifts the card, and a
-      lifted card never opens its page".
+      persists nothing — see kiko-gestures' "A lone card lifts too".
     metadata:
       fix: "Pass the freshness gate alone: sortEnabled={isFresh}; drop the item-count check."
       skill: "kiko-gestures › A lone card lifts too"
@@ -1277,10 +1286,14 @@ rules:
             - pattern: $ITEMS.length > 1
             - pattern: $ITEMS.length >= 2
             - pattern: 1 < $ITEMS.length
+            - pattern: 2 <= $ITEMS.length
   # kiko-code-style's "`ts-pattern` for exhaustive mapping": a union read by `kind` goes through
   # `match`, so a new variant is a type error and not a silent fall-through. WARNING because
   # Semgrep has no type information: a `kind` on a type that is not a closed union is a false
-  # positive, and some sites stay a ternary for that reason. See kiko-linter's
+  # positive, and some sites stay a ternary for that reason. The tree holds 3 findings while the
+  # sweep is pending (src/auth/biometrics.ts, src/auth/lock-gate/lock-gate.component.tsx,
+  # src/screens/column-mapping/column-mapping.screen.tsx). Promotion condition: once the tree
+  # holds 0 findings for this id, raise it to ERROR. See kiko-linter's
   # "kiko-kind-ternary-prefers-match" section.
   - id: kiko-kind-ternary-prefers-match
     languages: [typescript]
@@ -1289,12 +1302,14 @@ rules:
       A ternary on one `kind` literal sends every other variant down the else
       branch, so a new variant of the union falls through silently. Read the
       union with `match(...).with({ kind: ... }, ...).exhaustive()` so a new
-      variant is a type error — see kiko-code-style's "`ts-pattern` for
-      exhaustive mapping". Keep the ternary only when `kind` is not a closed
-      union, or when it is a single boolean guard that fits that section's
-      allowance: mark the site with `// nosemgrep: kiko-kind-ternary-prefers-match
-      OVERRIDE(<reason>) <why>`, because the pre-write guard denies any new
-      finding whatever its severity.
+      variant is a type error (or give `.with` arms for every variant) — see
+      kiko-code-style's "`ts-pattern` for exhaustive mapping". The single
+      boolean guard that section allows has no closed-set enum behind it, so
+      it does not cover a ternary on the `kind` of a closed union. Keep the
+      ternary only when `kind` is not a closed union: mark that site with
+      `// nosemgrep: kiko-kind-ternary-prefers-match OVERRIDE(<reason>) <why>`,
+      because the pre-write guard denies any new finding whatever its
+      severity.
     metadata:
       fix: "Replace the ternary with match(x).with({ kind: '...' }, ...).exhaustive() so a new variant fails to compile; keep it only when kind is not a closed union."
       skill: "kiko-code-style › `ts-pattern` for exhaustive mapping"
