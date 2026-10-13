@@ -286,8 +286,9 @@ checkout, every worktree, and the user's own shell, and `scripts/ensure-git-hook
 Both run `scripts/checks/commit-typecheck.sh`, which runs `tsc --noEmit` on a temporary copy of the
 STAGED index, so an unstaged or untracked file cannot change the answer. It is silent on success and
 prints the structured block and exits 2 on a type error or a missing tool, which aborts the commit.
-It skips (exit 0) a commit whose staged diff touches no `.ts .tsx .js .jsx .mjs .cjs .json` file,
-because tsc's result then equals HEAD's (see `docs/harness/documented-exceptions.md`). User ruling
+It skips (exit 0) a commit whose staged diff touches no
+`.ts .tsx .mts .cts .js .jsx .mjs .cjs .json` file, because tsc's result then equals HEAD's (see
+`docs/harness/documented-exceptions.md`). User ruling
 2026-10-13: typecheck only, never the rest of check:all. Rebase, cherry-pick, revert, and am run no
 pre-commit hook. Agents never pass `--no-verify`/`-n` or `-c core.hooksPath` (kill-guard denies them).
 
