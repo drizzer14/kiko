@@ -385,7 +385,7 @@ The established patterns grouped under this heading:
   native-stack 7.18.9 sends it with no index, so react-native-screens
   inserts it at the trailing edge. A native item takes no `testID`; a
   test reads the item list from `setOptions` and calls its `onPress`.
-  Consumers: `AccountDetail` (bell, then Edit; Edit only for an implicit property or debt account, which takes no new reminders), `HoldingDetail` (Edit only, for every holding: a Property or Loans holding has no account button; the implicit account is reached from its section heading on the Accounts screen, see "Section heading disclosure row" below, and edited from its AccountDetail's Edit pencil). A native item types its SF Symbol `name` as the symbol catalogue's union, so a symbol read from a stored value (not a literal) would need a guard against an unknown name, because UIKit draws no image for one.
+  Consumers: `AccountDetail` (bell, then Edit; Edit only for an implicit property or debt account, which takes no new reminders), `CategoryDetail` (a star, then Edit; the star is `star.fill` and disabled on the default category, a state marker), `HoldingDetail` (Edit only, for every holding: a Property or Loans holding has no account button; the implicit account is reached from its section heading on the Accounts screen, see "Section heading disclosure row" below, and edited from its AccountDetail's Edit pencil). A native item types its SF Symbol `name` as the symbol catalogue's union, so a symbol read from a stored value (not a literal) would need a guard against an unknown name, because UIKit draws no image for one.
   The pre-write guard enforces both bans: Semgrep
   `kiko-header-item-native-only` denies a `headerRight`/`headerLeft` value
   other than `undefined` (a `StyleSheet.create` style and a destructuring
@@ -658,8 +658,8 @@ new component can land between reviews of this skill:
   counterpart — a faint neutral tint from the `neutralSubtle` theme
   token (`theme.ts`, sibling of `negativeSubtle`) under an ordinary
   `textPrimary` label — the standard treatment for a lower-emphasis
-  inline/standalone secondary action (e.g. the category page's
-  "Set as default" star, `src/screens/settings/category-detail/`), replacing a plain `secondary` `surfaceHigh`
+  inline/standalone secondary action (grep
+  `variant="secondaryTonal"` in `src/` for the live consumers), replacing a plain `secondary` `surfaceHigh`
   pill for that class of control. Both tonal variants are the exception
   to the `onAccent` rule below: a same-hue (or neutral) label on a
   same-hue tint is the tinted-button convention, so the label stays
