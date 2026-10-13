@@ -138,6 +138,8 @@ describe('fromMatcherDrafts', () => {
     ['more decimals than a coin has', '0.123456789', 'BTC', 8],
     ['more decimals than three allow', '1.2345', 'BHD', 3],
     ['more decimals beside a large whole part', '35849873297196.455', 'UAH', 2],
+    ['a space after the fraction beside a large whole part', '35849873297196.455 ', 'UAH', 2],
+    ['a space inside the fraction beside a large whole part', '35849873297196.4 55', 'UAH', 2],
   ] as const)(
     'refuses %s with the digits the currency allows',
     (_label, text, currency, digits) => {
