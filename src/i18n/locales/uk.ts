@@ -196,6 +196,14 @@ export const uk: typeof en = {
     deleteRuleTitle: 'Видалити правило',
     addRule: 'Додати правило',
     emptyRules: 'Додайте правило, щоб ставити цю категорію відповідним транзакціям.',
+    // The labels of a rule card's table; each names its subject because the row stands alone.
+    amountEqual: 'Сума дорівнює',
+    amountMore: 'Сума більша ніж',
+    amountAtLeast: 'Сума щонайменше',
+    amountLess: 'Сума менша ніж',
+    amountAtMost: 'Сума щонайбільше',
+    timeBefore: 'Час до',
+    timeAfter: 'Час після',
   },
   categoryForm: {
     addTitle: 'Нова категорія',

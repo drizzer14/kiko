@@ -222,6 +222,14 @@ export const en = {
     deleteRuleTitle: 'Delete Rule',
     addRule: 'Add rule',
     emptyRules: 'Add a rule to set this category on matching transactions.',
+    // The labels of a rule card's table; each names its subject because the row stands alone.
+    amountEqual: 'Amount equals',
+    amountMore: 'Amount is more than',
+    amountAtLeast: 'Amount is at least',
+    amountLess: 'Amount is less than',
+    amountAtMost: 'Amount is at most',
+    timeBefore: 'Time is before',
+    timeAfter: 'Time is after',
   },
   categoryForm: {
     addTitle: 'New Category',

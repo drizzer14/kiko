@@ -1,6 +1,6 @@
 import type { ComponentProps } from 'react';
 import { State } from 'react-native-gesture-handler';
-import { act, fireEvent, render } from '@testing-library/react-native';
+import { act, fireEvent, render, within } from '@testing-library/react-native';
 import { fireGestureHandler, getByGestureTestId } from 'react-native-gesture-handler/jest-utils';
 import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
@@ -10,6 +10,8 @@ import {
   HOLD_GESTURE_TEST_ID,
 } from '@kiko/design-system/components/card-context-menu';
 import GestureRootWrapper from '@kiko/test-support/gesture-root-wrapper';
+import { ancestorWithStyle } from '@kiko/test-support/ancestor-with-style';
+import type { RenderedElement } from '@kiko/test-support/rendered-element';
 import type { CategoryRuleMatcher } from '@kiko/categories/category-rules';
 import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support/navigation-props';
 
@@ -117,6 +119,13 @@ const holdCard = async (): Promise<void> => {
   });
 };
 
+// A rule card holds one table row per condition: the label and the value share the row.
+const expectRow = (card: RenderedElement, label: string, value: string): void => {
+  const row = ancestorWithStyle(within(card).getByText(label), 'justifyContent');
+
+  expect(within(row).getByText(value)).toBeTruthy();
+};
+
 const GROCERIES: CategoryData = { key: 'groceries', title: 'Groceries', icon: 'cart' };
 
 const EMPTY_HINT = 'Add a rule to set this category on matching transactions.';
@@ -196,7 +205,7 @@ describe('CategoryDetailScreen', () => {
   });
 
   describe('the rules', () => {
-    it('shows one card per rule of the category with its conditions on one line', async () => {
+    it('shows one card per rule of the category with its conditions as label/value rows', async () => {
       mockRules = [
         ruleOf('silpo', 'groceries', [
           { type: 'nameIs', text: 'Silpo' },
@@ -209,9 +218,12 @@ describe('CategoryDetailScreen', () => {
       const { getAllByTestId } = await renderScreen();
 
       expect(getAllByTestId('rule-card')).toHaveLength(1);
-      expect(getAllByTestId('rule-card')[0]).toHaveTextContent(
-        'Name is "Silpo" · Expense · More than 500.00 ₴ · After 18:00',
-      );
+      const card = getAllByTestId('rule-card')[0] as RenderedElement;
+
+      expectRow(card, 'Name is', '"Silpo"');
+      expectRow(card, 'Type', 'Expense');
+      expectRow(card, 'Amount is more than', '500.00 ₴');
+      expectRow(card, 'Time is after', '18:00');
     });
 
     it('lists the rules in the order that decides, the strongest first, and only this category', async () => {
@@ -234,9 +246,10 @@ describe('CategoryDetailScreen', () => {
       const cards = getAllByTestId('rule-card');
 
       expect(cards).toHaveLength(3);
-      expect(cards[0]).toHaveTextContent('Name is "Silpo" · Expense');
-      expect(cards[1]).toHaveTextContent('Name is "Novus"');
-      expect(cards[2]).toHaveTextContent('Name is "Atb"');
+      expectRow(cards[0] as RenderedElement, 'Name is', '"Silpo"');
+      expectRow(cards[0] as RenderedElement, 'Type', 'Expense');
+      expectRow(cards[1] as RenderedElement, 'Name is', '"Novus"');
+      expectRow(cards[2] as RenderedElement, 'Name is', '"Atb"');
     });
 
     it('matches the category key whatever the case of the stored one', async () => {
@@ -252,7 +265,7 @@ describe('CategoryDetailScreen', () => {
 
       const { getAllByTestId } = await renderScreen();
 
-      expect(getAllByTestId('rule-card')[0]).toHaveTextContent('Name starts with "SiLpO"');
+      expectRow(getAllByTestId('rule-card')[0] as RenderedElement, 'Name starts with', '"SiLpO"');
     });
 
     it('shows an amount in the currency of its own scale', async () => {
@@ -264,7 +277,11 @@ describe('CategoryDetailScreen', () => {
 
       const { getAllByTestId } = await renderScreen();
 
-      expect(getAllByTestId('rule-card')[0]).toHaveTextContent('At least ₿0.00100000');
+      expectRow(
+        getAllByTestId('rule-card')[0] as RenderedElement,
+        'Amount is at least',
+        '₿0.00100000',
+      );
     });
 
     it('reads a time on the 12-hour clock when the device uses it', async () => {
@@ -275,7 +292,7 @@ describe('CategoryDetailScreen', () => {
 
       const { getAllByTestId } = await renderScreen();
 
-      expect(getAllByTestId('rule-card')[0]).toHaveTextContent('After 6:00 PM');
+      expectRow(getAllByTestId('rule-card')[0] as RenderedElement, 'Time is after', '6:00 PM');
     });
 
     it('says the rule can not be read when its stored conditions are not valid', async () => {
@@ -296,7 +313,7 @@ describe('CategoryDetailScreen', () => {
       const { getAllByTestId } = await renderScreen();
       const cards = getAllByTestId('rule-card');
 
-      expect(cards[0]).toHaveTextContent('Name is "Atb"');
+      expectRow(cards[0] as RenderedElement, 'Name is', '"Atb"');
       expect(cards[1]).toHaveTextContent("This rule can't be read");
     });
 
@@ -321,6 +338,35 @@ describe('CategoryDetailScreen', () => {
       const { getByText } = await renderScreen();
 
       expect(getByText('Rules')).toBeTruthy();
+    });
+
+    describe('under the uk language', () => {
+      beforeEach(async () => {
+        await act(async () => {
+          await i18n.changeLanguage('uk');
+        });
+      });
+
+      afterEach(async () => {
+        await act(async () => {
+          await i18n.changeLanguage('en');
+        });
+      });
+
+      it('labels the amount and time rows with their subject in Ukrainian', async () => {
+        mockRules = [
+          ruleOf('evening', 'groceries', [
+            { type: 'amount', operator: 'gt', minorUnits: 50000, currency: 'UAH' },
+            { type: 'time', operator: 'after', minuteOfDay: 18 * 60 },
+          ]),
+        ];
+
+        const { getAllByTestId } = await renderScreen('groceries');
+        const card = getAllByTestId('rule-card')[0] as RenderedElement;
+
+        expect(within(card).getByText('Сума більша ніж')).toBeTruthy();
+        expectRow(card, 'Час після', '18:00');
+      });
     });
   });
 
@@ -351,7 +397,7 @@ describe('CategoryDetailScreen', () => {
 
       const { getByText } = await renderScreen('groceries');
 
-      await fireEvent.press(getByText('Name is "Atb"'));
+      await fireEvent.press(getByText('"Atb"'));
 
       expect(navigation.navigate).toHaveBeenCalledWith('CategoryRuleForm', {
         categoryKey: 'groceries',

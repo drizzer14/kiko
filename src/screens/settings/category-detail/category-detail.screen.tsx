@@ -27,12 +27,12 @@ import { isSameCategory, prepareRules } from '@kiko/categories/category-rules';
 import { resolveDefaultCategoryTitle } from '@kiko/i18n/default-category-title';
 
 import RuleCard from './rule-card';
-import { ruleSummary } from './rule-summary';
+import { type RuleRow, ruleRows, ruleSummary } from './rule-summary';
 
 type CategoryDetailScreenProps = NativeStackScreenProps<SettingsStackParamList, 'CategoryDetail'>;
 
-// A rule that can not be read has nothing to open.
-type RuleLine = { id: string; title: string; isReadable: boolean };
+// A rule that can not be read has nothing to open, and no rows: its summary is the note saying so.
+type RuleLine = { id: string; rows?: RuleRow[]; summary: string; isReadable: boolean };
 
 // The same money text the rest of the app shows, so a rule's amount reads like a transaction's.
 const formatRuleAmount = (minorUnits: number, currency: Currency): string =>
@@ -53,12 +53,13 @@ const ruleLinesOf = (
   return [
     ...prepared.ordered.filter(belongs).map((rule) => ({
       id: rule.id,
-      title: ruleSummary(rule.displayMatchers, { t, clock, formatAmount: formatRuleAmount }),
+      rows: ruleRows(rule.displayMatchers, { t, clock, formatAmount: formatRuleAmount }),
+      summary: ruleSummary(rule.displayMatchers, { t, clock, formatAmount: formatRuleAmount }),
       isReadable: true,
     })),
     ...prepared.unreadable.filter(belongs).map((rule) => ({
       id: rule.id,
-      title: t('categoryPage.unreadableRule'),
+      summary: t('categoryPage.unreadableRule'),
       isReadable: false,
     })),
   ];
@@ -158,7 +159,8 @@ const CategoryDetailScreen: FC<CategoryDetailScreenProps> = ({ navigation, route
               {lines.map((line) => (
                 <RuleCard
                   key={line.id}
-                  title={line.title}
+                  rows={line.rows}
+                  summary={line.summary}
                   onPress={
                     line.isReadable
                       ? () =>
