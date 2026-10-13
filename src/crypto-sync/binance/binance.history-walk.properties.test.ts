@@ -460,6 +460,7 @@ const earnRecordsOf = (entry: SimRecord, run: number): EarnRecord[] => {
   const amount = entry.defect === 'amount-invalid' ? 'abc' : '0.001';
   const base = { asset: 'BTC', time: entry.time };
   const status = settles ? 'SUCCESS' : 'PENDING';
+  const redemptionStatus = settles ? 'PAID' : 'CREATED';
   const reward = settles && entry.defect !== 'amount-invalid' ? '0.00000001' : 'abc';
   const memberAmounts = Array.from({ length: membersOf(entry) }, (_unused, index) =>
     reward === 'abc' ? reward : `0.0000000${index + 1}`,
@@ -508,7 +509,7 @@ const earnRecordsOf = (entry: SimRecord, run: number): EarnRecord[] => {
           projectId: undefined,
           redeemId: identifier,
           destAccount: 'SPOT',
-          status,
+          status: redemptionStatus,
         },
       },
     ])
@@ -521,8 +522,9 @@ const earnRecordsOf = (entry: SimRecord, run: number): EarnRecord[] => {
           positionId: undefined,
           redeemId: identifier,
           originalAmount: undefined,
-          type: undefined,
-          status,
+          type: 'MATURE',
+          status: redemptionStatus,
+          isComplete: undefined,
         },
       },
     ])

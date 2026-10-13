@@ -43,6 +43,8 @@ const textOrEmpty: Reader<string> = (value) => (typeof value === 'string' ? valu
 const optionalText: Reader<string | undefined> = (value) =>
   typeof value === 'string' ? value : undefined;
 
+const flag: Reader<boolean> = (value) => (typeof value === 'boolean' ? value : parseFailure());
+
 const finiteNumber: Reader<number> = (value) =>
   typeof value === 'number' && Number.isFinite(value) ? value : parseFailure();
 
@@ -81,6 +83,11 @@ const optional =
   <Value>(read: Reader<Value>): Reader<Value | undefined> =>
   (value) =>
     foldMap(maybe(value), read);
+
+/** Absent when null or left out; a value of another JSON type than text is no text. */
+const strictOptionalText = optional(text);
+
+const strictOptionalFlag = optional(flag);
 
 const listOf =
   <Item>(readItem: Reader<Item>): Reader<Item[]> =>
@@ -602,7 +609,10 @@ const EARN_HISTORY_ROOT = '/sapi/v1/simple-earn';
 
 /**
  * The six Simple Earn history reads. Only the fields a walk uses are read; an id
- * a walk keys a row by is required, and a field it only inspects is optional. The
+ * a walk keys a row by is required, and a field it only inspects is optional. A field the
+ * walk decides a wallet or a record's meaning by (the two split amounts, a `type`,
+ * `isComplete`) is absent only when it is null or left out: one of another JSON type makes
+ * the row unreadable, never absent, because absent changes what the walk writes. The
  * flexible rewards read always asks for `type=ALL`: the parameter is optional, but
  * an older doc revision calls it mandatory. The locked rewards read takes none.
  */
@@ -616,10 +626,10 @@ const EARN_READS = {
       time: finiteNumber,
       purchaseId: identifier,
       productId: optionalText,
-      type: optionalText,
+      type: strictOptionalText,
       sourceAccount: optionalText,
-      amtFromSpot: optionalText,
-      amtFromFunding: optionalText,
+      amtFromSpot: strictOptionalText,
+      amtFromFunding: strictOptionalText,
       status: text,
     }),
   },
@@ -658,8 +668,8 @@ const EARN_READS = {
       amount: text,
       type: optionalText,
       sourceAccount: optionalText,
-      amtFromSpot: optionalText,
-      amtFromFunding: optionalText,
+      amtFromSpot: strictOptionalText,
+      amtFromFunding: strictOptionalText,
       status: text,
     }),
   },
@@ -673,8 +683,9 @@ const EARN_READS = {
       asset: text,
       amount: text,
       originalAmount: optionalText,
-      type: optionalText,
+      type: strictOptionalText,
       status: text,
+      isComplete: strictOptionalFlag,
     }),
   },
   lockedRewards: {

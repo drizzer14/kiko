@@ -8,8 +8,9 @@ import {
   EARN_FAILED_STATUSES,
   EARN_FLOOR_MS,
   EARN_FORWARD_OWES,
+  EARN_REDEMPTION_SETTLED_STATUS,
   EARN_SERIES,
-  EARN_SETTLED_STATUS,
+  EARN_SUBSCRIPTION_SETTLED_STATUS,
   EARN_WINDOW_MS,
   redemptionRowsOf,
   subscriptionRowsOf,
@@ -73,8 +74,9 @@ describe('the Earn walk constants', () => {
     ]);
   });
 
-  it('settles on SUCCESS and ignores FAILED', () => {
-    expect(EARN_SETTLED_STATUS).toBe('SUCCESS');
+  it('settles a subscription on SUCCESS and a redemption on PAID, and ignores FAILED', () => {
+    expect(EARN_SUBSCRIPTION_SETTLED_STATUS).toBe('SUCCESS');
+    expect(EARN_REDEMPTION_SETTLED_STATUS).toBe('PAID');
     expect(EARN_FAILED_STATUSES).toEqual(['FAILED']);
   });
 
@@ -84,9 +86,11 @@ describe('the Earn walk constants', () => {
       'earn-amount-invalid',
       'earn-id-missing',
       'earn-not-settled',
+      'earn-redemption-type-unconfirmed',
       'earn-reward-type-unknown',
       'earn-row-unreadable',
       'earn-split-mismatch',
+      'earn-subscription-type-unconfirmed',
     ]);
     expect(EARN_FORWARD_OWES).not.toContain('earn-page-drift');
     expect(EARN_FORWARD_OWES).not.toContain('earn-holding-missing');
@@ -216,6 +220,32 @@ describe('subscriptionRowsOf', () => {
     }
   });
 
+  it('a subscription with status PAID is not settled: PAID is a redemption status', () => {
+    expect(stopCodeOf(() => rowsOf({ status: 'PAID' }))).toBe('earn-not-settled');
+    expect(stopCodeOf(() => rowsOf({ status: 'PAID' }, 'locked'))).toBe('earn-not-settled');
+  });
+
+  it.each([['CONVERT'], ['TRANSFER']])(
+    'a flexible subscription of type %s (documented as from the locked product) is a stop: its money may not have come from the wallet it names',
+    (type) => {
+      expect(stopCodeOf(() => rowsOf({ type }))).toBe('earn-subscription-type-unconfirmed');
+    },
+  );
+
+  it.each([['NORMAL'], ['AUTO'], ['LOAN'], ['AI'], ['X'], [undefined]])(
+    'a flexible subscription of type %p is the money of its wallet: Spot -a and Earn +a',
+    (type) => {
+      expect(rowsOf({ type }).map((row) => [row.wallet, row.amountMinorUnits])).toEqual([
+        [SPOT_KEY, -SATOSHIS],
+        [EARN_KEY, SATOSHIS],
+      ]);
+    },
+  );
+
+  it('a locked subscription of type CONVERT writes as before: only a flexible one is read by type', () => {
+    expect(rowsOf({ type: 'CONVERT' }, 'locked')).toHaveLength(2);
+  });
+
   it('stops a settled subscription with no id', () => {
     expect(stopCodeOf(() => rowsOf({ purchaseId: '' }))).toBe('earn-id-missing');
   });
@@ -296,15 +326,112 @@ describe('redemptionRowsOf', () => {
     expect(rows[0].exchangePairId).toBe('acc-1:earn:redeem:locked:r-1');
   });
 
-  it('E21: a FAILED redemption is ignored; one neither SUCCESS nor FAILED is not settled', () => {
+  it('E5/E6: a flexible and a locked redemption with status PAID write Earn -a and the destination +a', () => {
+    const flexible = redemptionRowsOf(
+      ACCOUNT,
+      'flexible',
+      flexibleRedemptionOf({ status: 'PAID', destAccount: 'SPOT' }),
+    );
+    const locked = redemptionRowsOf(
+      ACCOUNT,
+      'locked',
+      lockedRedemptionOf({ status: 'PAID', type: 'MATURE', isComplete: true }),
+    );
+
+    for (const rows of [flexible, locked]) {
+      expect(rows.map((row) => [row.wallet, row.amountMinorUnits])).toEqual([
+        [EARN_KEY, -SATOSHIS],
+        [SPOT_KEY, SATOSHIS],
+      ]);
+    }
+  });
+
+  it('a redemption with status SUCCESS is not settled: SUCCESS is a subscription status', () => {
+    expect(
+      stopCodeOf(() =>
+        redemptionRowsOf(ACCOUNT, 'flexible', flexibleRedemptionOf({ status: 'SUCCESS' })),
+      ),
+    ).toBe('earn-not-settled');
+    expect(
+      stopCodeOf(() =>
+        redemptionRowsOf(ACCOUNT, 'locked', lockedRedemptionOf({ status: 'SUCCESS' })),
+      ),
+    ).toBe('earn-not-settled');
+  });
+
+  it('E21: a FAILED redemption is ignored; one neither PAID nor FAILED (CREATED, PROCESS) is not settled', () => {
     expect(
       redemptionRowsOf(ACCOUNT, 'flexible', flexibleRedemptionOf({ status: 'FAILED' })),
     ).toEqual([]);
+    expect(redemptionRowsOf(ACCOUNT, 'locked', lockedRedemptionOf({ status: 'FAILED' }))).toEqual(
+      [],
+    );
+
+    for (const status of ['CREATED', 'PROCESS', '', 'paid']) {
+      expect(
+        stopCodeOf(() => redemptionRowsOf(ACCOUNT, 'flexible', flexibleRedemptionOf({ status }))),
+      ).toBe('earn-not-settled');
+      expect(
+        stopCodeOf(() => redemptionRowsOf(ACCOUNT, 'locked', lockedRedemptionOf({ status }))),
+      ).toBe('earn-not-settled');
+    }
+  });
+
+  it('a locked redemption with isComplete false is not settled, even when its status is PAID', () => {
     expect(
       stopCodeOf(() =>
-        redemptionRowsOf(ACCOUNT, 'locked', lockedRedemptionOf({ status: 'PROCESS' })),
+        redemptionRowsOf(ACCOUNT, 'locked', lockedRedemptionOf({ isComplete: false })),
       ),
     ).toBe('earn-not-settled');
+  });
+
+  it.each([[true], [undefined]])(
+    'a locked redemption with isComplete %p (true, or left out) is settled by its status alone',
+    (isComplete) => {
+      expect(redemptionRowsOf(ACCOUNT, 'locked', lockedRedemptionOf({ isComplete }))).toHaveLength(
+        2,
+      );
+    },
+  );
+
+  it('a FAILED locked redemption with isComplete false is ignored: nothing is owed for it', () => {
+    expect(
+      redemptionRowsOf(
+        ACCOUNT,
+        'locked',
+        lockedRedemptionOf({ status: 'FAILED', isComplete: false }),
+      ),
+    ).toEqual([]);
+  });
+
+  it('MATURE is the one locked redemption type that is placed: principal Earn -a, Spot +a', () => {
+    expect(
+      redemptionRowsOf(ACCOUNT, 'locked', lockedRedemptionOf({ type: 'MATURE' })).map((row) => [
+        row.wallet,
+        row.amountMinorUnits,
+      ]),
+    ).toEqual([
+      [EARN_KEY, -SATOSHIS],
+      [SPOT_KEY, SATOSHIS],
+    ]);
+  });
+
+  it.each([['NEW_TRANSFERRED'], ['AHEAD'], ['X'], [''], ['mature'], [undefined]])(
+    'a locked redemption of type %p is a stop: the record names no destination, so none is assumed',
+    (type) => {
+      expect(
+        stopCodeOf(() => redemptionRowsOf(ACCOUNT, 'locked', lockedRedemptionOf({ type }))),
+      ).toBe('earn-redemption-type-unconfirmed');
+    },
+  );
+
+  it('a FAILED locked redemption of an unconfirmed type is ignored, and a flexible redemption has no type to read', () => {
+    expect(
+      redemptionRowsOf(ACCOUNT, 'locked', lockedRedemptionOf({ status: 'FAILED', type: 'AHEAD' })),
+    ).toEqual([]);
+    expect(
+      redemptionRowsOf(ACCOUNT, 'flexible', flexibleRedemptionOf()).map((row) => row.wallet),
+    ).toEqual([EARN_KEY, SPOT_KEY]);
   });
 
   it('stops a redemption with no id or no positive amount', () => {
@@ -725,6 +852,131 @@ describe('a record the walk cannot trust', () => {
     expect(stopCodes(warn)).toEqual(['earn-account-unknown']);
   });
 
+  it.each([
+    [
+      'a flexible redemption',
+      entryOf('flexibleRedemption', flexibleRedemptionOf({ status: 'CREATED', time: stuckAt })),
+      'flexibleRedemption',
+    ],
+    [
+      'a locked redemption',
+      entryOf('lockedRedemption', lockedRedemptionOf({ status: 'CREATED', time: stuckAt })),
+      'lockedRedemption',
+    ],
+  ] as const)(
+    '%s with status CREATED owes its point and writes nothing',
+    async (_name, entry, kind) => {
+      const world = worldOf(caughtUp);
+
+      await walkOnce({ world, entries: [entry] });
+
+      expect(world.added).toEqual([]);
+      expect(listOf(world)).toEqual([pointOf(stuckAt, kind)]);
+      expect(stopCodes(warn)).toEqual(['earn-not-settled']);
+    },
+  );
+
+  it('a FAILED redemption writes nothing and owes nothing, of either product', async () => {
+    const world = worldOf(caughtUp);
+
+    const { result } = await walkOnce({
+      world,
+      entries: [
+        entryOf('flexibleRedemption', flexibleRedemptionOf({ status: 'FAILED', time: stuckAt })),
+        entryOf(
+          'lockedRedemption',
+          lockedRedemptionOf({ status: 'FAILED', isComplete: false, time: stuckAt }),
+        ),
+      ],
+    });
+
+    expect(world.added).toEqual([]);
+    expect(pointsIn(listOf(world))).toEqual([]);
+    expect(result.complete).toBe(true);
+    expect(stopCodes(warn)).toEqual([]);
+  });
+
+  it('a locked redemption with isComplete false owes its point, and writes nothing', async () => {
+    const world = worldOf(caughtUp);
+
+    await walkOnce({
+      world,
+      entries: [
+        entryOf('lockedRedemption', lockedRedemptionOf({ isComplete: false, time: stuckAt })),
+      ],
+    });
+
+    expect(world.added).toEqual([]);
+    expect(listOf(world)).toEqual([pointOf(stuckAt, 'lockedRedemption')]);
+    expect(stopCodes(warn)).toEqual(['earn-not-settled']);
+  });
+
+  it.each([['NEW_TRANSFERRED'], ['AHEAD'], ['X'], [undefined]])(
+    'a locked redemption of type %p owes its point and writes nothing: no wallet is assumed',
+    async (type) => {
+      const world = worldOf(caughtUp);
+
+      await walkOnce({
+        world,
+        entries: [entryOf('lockedRedemption', lockedRedemptionOf({ type, time: stuckAt }))],
+      });
+
+      expect(world.added).toEqual([]);
+      expect(listOf(world)).toEqual([pointOf(stuckAt, 'lockedRedemption')]);
+      expect(stopCodes(warn)).toEqual(['earn-redemption-type-unconfirmed']);
+    },
+  );
+
+  it.each([['CONVERT'], ['TRANSFER']])(
+    'a flexible subscription of type %s owes its point and writes nothing: its money may be the locked position',
+    async (type) => {
+      const world = worldOf(caughtUp);
+
+      await walkOnce({
+        world,
+        entries: [entryOf('flexibleSubscription', flexibleSubscriptionOf({ type, time: stuckAt }))],
+      });
+
+      expect(world.added).toEqual([]);
+      expect(listOf(world)).toEqual([pointOf(stuckAt, 'flexibleSubscription')]);
+      expect(stopCodes(warn)).toEqual(['earn-subscription-type-unconfirmed']);
+    },
+  );
+
+  it('retries the point of a locked redemption: it imports once the record reads MATURE', async () => {
+    const world = worldOf(caughtUp);
+    const record = (type: string) =>
+      entryOf('lockedRedemption', lockedRedemptionOf({ type, redeemId: 'later', time: stuckAt }));
+
+    await walkOnce({ world, entries: [record('NEW_TRANSFERRED')] });
+    expect(world.added).toEqual([]);
+
+    await walkOnce({ world, entries: [record('MATURE')] });
+
+    expect(idsOf(world).sort()).toEqual([
+      'acc-1:earn:redeem:locked:later:BTC',
+      'acc-1:earn:redeem:locked:later:BTC:earn',
+    ]);
+    expect(pointsIn(listOf(world))).toEqual([]);
+  });
+
+  it('retries the point of a redemption: it imports once its status reads PAID', async () => {
+    const world = worldOf(caughtUp);
+    const record = (status: string) =>
+      entryOf(
+        'flexibleRedemption',
+        flexibleRedemptionOf({ status, redeemId: 'later', time: stuckAt }),
+      );
+
+    await walkOnce({ world, entries: [record('CREATED')] });
+    expect(world.added).toEqual([]);
+
+    await walkOnce({ world, entries: [record('PAID')] });
+
+    expect(idsOf(world)).toHaveLength(2);
+    expect(pointsIn(listOf(world))).toEqual([]);
+  });
+
   it('R30: in the re-scan, an unreadable row with a time is owed at its point in its kind, and the settled row of another kind imports', async () => {
     const world = worldOf(caughtUp);
 
@@ -820,6 +1072,54 @@ describe('a record the walk cannot trust', () => {
       'an unreadable row with a time',
       unreadableEntryOf('lockedRedemption', stuckAt),
       'lockedRedemption',
+    ],
+    [
+      'a redemption with status CREATED',
+      entryOf(
+        'flexibleRedemption',
+        flexibleRedemptionOf({ status: 'CREATED', redeemId: 'created', time: stuckAt }),
+      ),
+      'flexibleRedemption',
+    ],
+    [
+      'a locked redemption that is not complete',
+      entryOf(
+        'lockedRedemption',
+        lockedRedemptionOf({ isComplete: false, redeemId: 'incomplete', time: stuckAt }),
+      ),
+      'lockedRedemption',
+    ],
+    [
+      'a locked redemption of type NEW_TRANSFERRED',
+      entryOf(
+        'lockedRedemption',
+        lockedRedemptionOf({ type: 'NEW_TRANSFERRED', redeemId: 'moved', time: stuckAt }),
+      ),
+      'lockedRedemption',
+    ],
+    [
+      'a locked redemption of type AHEAD',
+      entryOf(
+        'lockedRedemption',
+        lockedRedemptionOf({ type: 'AHEAD', redeemId: 'ahead', time: stuckAt }),
+      ),
+      'lockedRedemption',
+    ],
+    [
+      'a flexible subscription of type CONVERT',
+      entryOf(
+        'flexibleSubscription',
+        flexibleSubscriptionOf({ type: 'CONVERT', purchaseId: 'converted', time: stuckAt }),
+      ),
+      'flexibleSubscription',
+    ],
+    [
+      'a flexible subscription of type TRANSFER',
+      entryOf(
+        'flexibleSubscription',
+        flexibleSubscriptionOf({ type: 'TRANSFER', purchaseId: 'transferred', time: stuckAt }),
+      ),
+      'flexibleSubscription',
     ],
   ] as const)('%s in the forward window', (_name, entry, kind) => {
     const newer = entryOf(

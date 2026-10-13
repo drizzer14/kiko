@@ -80,8 +80,11 @@ const MAX_WINDOWS = 12;
 /** Safety stop on paging one kind within a span of one millisecond (100 rows x 50 pages). */
 const MAX_PAGES_PER_SPAN = 50;
 
-/** The status Binance gives a subscription or redemption that went through. */
-export const EARN_SETTLED_STATUS = 'SUCCESS';
+/** The status Binance gives a subscription that went through. */
+export const EARN_SUBSCRIPTION_SETTLED_STATUS = 'SUCCESS';
+
+/** The status Binance gives a redemption that was paid out (a redemption is never `SUCCESS`). */
+export const EARN_REDEMPTION_SETTLED_STATUS = 'PAID';
 
 /** The statuses of a record that did not go through and never will: nothing is owed for it. */
 export const EARN_FAILED_STATUSES: readonly string[] = ['FAILED'];
@@ -110,6 +113,10 @@ const EARN_ID_MISSING = 'earn-id-missing';
 
 const EARN_ACCOUNT_UNKNOWN = 'earn-account-unknown';
 
+const EARN_SUBSCRIPTION_TYPE_UNCONFIRMED = 'earn-subscription-type-unconfirmed';
+
+const EARN_REDEMPTION_TYPE_UNCONFIRMED = 'earn-redemption-type-unconfirmed';
+
 const EARN_REWARD_TYPE_UNKNOWN = 'earn-reward-type-unknown';
 
 const EARN_PAGE_DRIFT = 'earn-page-drift';
@@ -132,6 +139,8 @@ export const EARN_FORWARD_OWES: readonly string[] = [
   EARN_AMOUNT_INVALID,
   EARN_ID_MISSING,
   EARN_ACCOUNT_UNKNOWN,
+  EARN_SUBSCRIPTION_TYPE_UNCONFIRMED,
+  EARN_REDEMPTION_TYPE_UNCONFIRMED,
   EARN_REWARD_TYPE_UNKNOWN,
   EARN_ROW_UNREADABLE,
 ];
@@ -191,20 +200,36 @@ const splitSatoshis = (amount: string | undefined): number => {
 };
 
 /**
- * Whether a subscription or redemption went through: a failed one is ignored (nothing is owed
- * for it), any status that is neither settled nor failed is not settled yet and is a stop.
+ * Whether a subscription or redemption went through, by the status its own kind settles on
+ * (`SUCCESS` for a subscription, `PAID` for a redemption): a failed one is ignored (nothing is
+ * owed for it), any status that is neither settled nor failed is not settled yet and is a stop.
  */
-const isSettled = (status: string): boolean => {
+const isSettled = (settledStatus: string, status: string): boolean => {
   if (EARN_FAILED_STATUSES.includes(status)) {
     return false;
   }
 
-  if (status !== EARN_SETTLED_STATUS) {
+  if (status !== settledStatus) {
     throw new BinanceWalkStop(EARN_NOT_SETTLED);
   }
 
   return true;
 };
+
+/**
+ * The types of a flexible subscription that Binance documents as coming from the locked
+ * product (`CONVERT` "Locked to Flexible", `TRANSFER` "Locked Savings to Flexible"): the money
+ * is not what `sourceAccount` names, so no debit is guessed.
+ */
+const LOCKED_SOURCED_SUBSCRIPTION_TYPES: readonly string[] = ['CONVERT', 'TRANSFER'];
+
+/**
+ * The one locked redemption type whose destination is documented: `MATURE` redeems to the Spot
+ * wallet. A locked redemption record has no destination field, so no other type is placed:
+ * `NEW_TRANSFERRED` redeems to the Flexible product and `AHEAD` (an early redemption) names no
+ * destination at all.
+ */
+const LOCKED_REDEMPTION_TO_SPOT_TYPE = 'MATURE';
 
 /** The wallet an account name of Binance stands for, among the two Kiko tracks. */
 const walletOfAccount = (account: string | undefined): BinanceWalletKey =>
@@ -276,12 +301,20 @@ export const subscriptionRowsOf = (
   product: EarnProduct,
   record: SubscriptionRecord,
 ): PlannedEarnRow[] => {
-  if (!isSettled(record.status)) {
+  if (!isSettled(EARN_SUBSCRIPTION_SETTLED_STATUS, record.status)) {
     return [];
   }
 
   if (record.purchaseId === '') {
     throw new BinanceWalkStop(EARN_ID_MISSING);
+  }
+
+  if (
+    product === 'flexible' &&
+    record.type !== undefined &&
+    LOCKED_SOURCED_SUBSCRIPTION_TYPES.includes(record.type)
+  ) {
+    throw new BinanceWalkStop(EARN_SUBSCRIPTION_TYPE_UNCONFIRMED);
   }
 
   const satoshis = positiveSatoshis(record.amount);
@@ -305,16 +338,36 @@ export const subscriptionRowsOf = (
 };
 
 /**
- * The rows of one redemption: Earn out, the destination in, under one pair id. A locked
- * redemption names no destination, and its principal returns to Spot; its reward is not here,
- * it comes from the rewards record.
+ * The wallet a redemption pays into. A flexible redemption names it. A locked redemption names
+ * none: only the type `MATURE` is documented to pay Spot, and every other type, or none, is a
+ * stop, as is a locked redemption that is not complete: no wallet is assumed.
+ */
+const destinationOf = (record: RedemptionRecord): BinanceWalletKey => {
+  if ('destAccount' in record) {
+    return walletOfAccount(record.destAccount);
+  }
+
+  if (record.isComplete === false) {
+    throw new BinanceWalkStop(EARN_NOT_SETTLED);
+  }
+
+  if (record.type !== LOCKED_REDEMPTION_TO_SPOT_TYPE) {
+    throw new BinanceWalkStop(EARN_REDEMPTION_TYPE_UNCONFIRMED);
+  }
+
+  return SPOT_KEY;
+};
+
+/**
+ * The rows of one redemption: Earn out, the destination in, under one pair id. Its principal
+ * alone: the reward of a locked redemption comes from the rewards record.
  */
 export const redemptionRowsOf = (
   accountId: string,
   product: EarnProduct,
   record: RedemptionRecord,
 ): PlannedEarnRow[] => {
-  if (!isSettled(record.status)) {
+  if (!isSettled(EARN_REDEMPTION_SETTLED_STATUS, record.status)) {
     return [];
   }
 
@@ -323,7 +376,7 @@ export const redemptionRowsOf = (
   }
 
   const satoshis = positiveSatoshis(record.amount);
-  const destination = 'destAccount' in record ? walletOfAccount(record.destAccount) : SPOT_KEY;
+  const destination = destinationOf(record);
   const pairId = `${accountId}:earn:redeem:${product}:${record.redeemId}`;
   const time = record.time;
 

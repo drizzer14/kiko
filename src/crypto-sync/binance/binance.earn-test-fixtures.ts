@@ -51,7 +51,7 @@ export const lockedSubscriptionOf = (
   ...over,
 });
 
-/** A flexible redemption of 0.001 BTC to Spot, settled. */
+/** A flexible redemption of 0.001 BTC to Spot, settled (Binance spells a settled one PAID). */
 export const flexibleRedemptionOf = (
   over: Partial<EarnRecordByKind['flexibleRedemption']> = {},
 ): EarnRecordByKind['flexibleRedemption'] => ({
@@ -61,10 +61,11 @@ export const flexibleRedemptionOf = (
   projectId: 'BTC001',
   redeemId: 'r-1',
   destAccount: 'SPOT',
-  status: 'SUCCESS',
+  status: 'PAID',
   ...over,
 });
 
+/** A locked redemption at maturity (principal back to Spot), settled and complete. */
 export const lockedRedemptionOf = (
   over: Partial<EarnRecordByKind['lockedRedemption']> = {},
 ): EarnRecordByKind['lockedRedemption'] => ({
@@ -74,8 +75,9 @@ export const lockedRedemptionOf = (
   asset: 'BTC',
   amount: '0.001',
   originalAmount: '0.001',
-  type: 'NORMAL',
-  status: 'SUCCESS',
+  type: 'MATURE',
+  status: 'PAID',
+  isComplete: true,
   ...over,
 });
 

@@ -1039,9 +1039,10 @@ describe('fetchEarnRecords', () => {
           asset: 'BTC',
           amount: '0.2',
           originalAmount: '0.2',
-          type: 'NORMAL',
+          type: 'MATURE',
           rewardAmt: '0.001',
-          status: 'SUCCESS',
+          status: 'PAID',
+          isComplete: true,
         },
       ],
     });
@@ -1054,11 +1055,25 @@ describe('fetchEarnRecords', () => {
         asset: 'BTC',
         amount: '0.2',
         originalAmount: '0.2',
-        type: 'NORMAL',
-        status: 'SUCCESS',
+        type: 'MATURE',
+        status: 'PAID',
+        isComplete: true,
       },
     ]);
   });
+
+  it.each([[undefined], [null]])(
+    'reads a locked redemption whose isComplete is %p as absent',
+    async (isComplete) => {
+      const page = await earnPage('lockedRedemption', {
+        total: 1,
+        rows: [{ redeemId: 'r', time: 1, asset: 'BTC', amount: '0.2', status: 'PAID', isComplete }],
+      });
+
+      expect(page.rows[0].isComplete).toBeUndefined();
+      expect(page.unreadable).toEqual([]);
+    },
+  );
 
   it('parses a locked reward', async () => {
     const page = await earnPage('lockedRewards', {
@@ -1133,6 +1148,73 @@ describe('fetchEarnRecords', () => {
 
       expect(page.rows).toEqual([]);
       expect(page.unreadable).toEqual([{ time }]);
+    });
+
+    describe('a field the walk decides on: absent when null or left out, unreadable when it is no text', () => {
+      const subscription = {
+        amount: '0.5',
+        asset: 'BTC',
+        time: 7,
+        purchaseId: 'p1',
+        status: 'SUCCESS',
+      };
+      const redemption = { redeemId: 'r1', time: 8, asset: 'BTC', amount: '0.5', status: 'PAID' };
+
+      it.each([
+        ['flexibleSubscription', 'amtFromFunding'],
+        ['flexibleSubscription', 'amtFromSpot'],
+        ['lockedSubscription', 'amtFromFunding'],
+        ['lockedSubscription', 'amtFromSpot'],
+        ['flexibleSubscription', 'type'],
+      ] as const)('a %s with a numeric %s is unreadable', async (kind, field) => {
+        const page = await earnPage(kind, {
+          total: 1,
+          rows: [{ ...subscription, [field]: 30 }],
+        });
+
+        expect(page.rows).toEqual([]);
+        expect(page.unreadable).toEqual([{ time: 7 }]);
+      });
+
+      it.each([[null], [undefined]])(
+        'a subscription whose split fields and type are %p reads them as absent',
+        async (value) => {
+          const page = await earnPage('flexibleSubscription', {
+            total: 1,
+            rows: [{ ...subscription, amtFromSpot: value, amtFromFunding: value, type: value }],
+          });
+
+          expect(page.unreadable).toEqual([]);
+          expect(page.rows[0]).toMatchObject({
+            amtFromSpot: undefined,
+            amtFromFunding: undefined,
+            type: undefined,
+          });
+        },
+      );
+
+      it.each([
+        ['type', 5],
+        ['isComplete', 'true'],
+        ['isComplete', 1],
+      ] as const)('a locked redemption with %s %p is unreadable', async (field, value) => {
+        const page = await earnPage('lockedRedemption', {
+          total: 1,
+          rows: [{ ...redemption, [field]: value }],
+        });
+
+        expect(page.rows).toEqual([]);
+        expect(page.unreadable).toEqual([{ time: 8 }]);
+      });
+
+      it('reads isComplete false as false', async () => {
+        const page = await earnPage('lockedRedemption', {
+          total: 1,
+          rows: [{ ...redemption, isComplete: false }],
+        });
+
+        expect(page.rows[0].isComplete).toBe(false);
+      });
     });
 
     it('parses the readable rows of a page beside an unreadable one', async () => {

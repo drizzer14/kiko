@@ -1977,15 +1977,29 @@ rewards first, then subscriptions and redemptions; `callsOf` counts them, `LANE_
 caps the lane). It keeps six walk-owned keys on the Spot holding (`BINANCE_EARN_*_FIELD`:
 forward cursor, re-scan, pending list, point cursor, range cursor, span hints), carried on a
 balance sync and dropped on a disconnect through the field arrays. The stop codes live in
-`binance.earn-history.ts`; the design is in the spec (section 6, matrix E1-E23) and the plan.
+`binance.earn-history.ts`; the design is in the spec (section 6, matrix E1-E27) and the plan.
 
 - **A reward group is ONE record.** Binance gives a reward no id: the rows of a group
   (`rewardGroupsOf`: product, project or position, type, time) are numbered from 0 by satoshis,
   so one member that cannot be trusted stops the whole group (a member left out would shift the
   numbers of the others and a later read would write a second row). A reward row the client could
   not read blocks every reward group of its kind at that time, with one point owed.
+- **Settled status, per record kind (OVERNIGHT DEFAULT 23, pending user).** A subscription
+  settles on `SUCCESS` (`EARN_SUBSCRIPTION_SETTLED_STATUS`), a redemption on `PAID`
+  (`EARN_REDEMPTION_SETTLED_STATUS`; a redemption is never `SUCCESS`). `FAILED` is a final
+  failure: ignored, nothing owed. Any other value (`PURCHASING`, `CREATED`, unknown) is
+  `earn-not-settled`, owed at its point, and so is a locked redemption whose `isComplete` is
+  `false` (left out or `true`: no effect).
 - **Placement.** Flexible `REALTIME` rewards go to the Earn holding, flexible `BONUS` and every
-  locked reward to Spot, a locked redemption returns to Spot (it names no destination).
+  locked reward to Spot. A flexible redemption goes to its `destAccount`. A locked redemption
+  record has no destination field, so its `type` decides (OVERNIGHT DEFAULT 24, pending user):
+  `MATURE` ("redeem to Spot Wallet") goes to Spot; `NEW_TRANSFERRED`, `AHEAD`, any other type or
+  none is `earn-redemption-type-unconfirmed`, owed at its point, no row (Q14: never an assumed
+  wallet). A flexible subscription of type `CONVERT` or `TRANSFER` (documented as from the locked
+  product) is `earn-subscription-type-unconfirmed` the same way; every other type debits as
+  before. A field the walk decides by (a split amount, those `type`s, `isComplete`) that is
+  present with another JSON type is an unreadable row, never absent. Flexible `REWARDS` rewards
+  and a reward that rounds to 0 satoshis stay stopped (user rulings pending).
 - **Earn forward stops (OVERNIGHT DEFAULT, pending user, 2026-10-13).** The Earn forward pass
   follows the Transfer rule: a stop tied to one record with a usable time is owed at its own point
   and the cursor goes past it (`EARN_FORWARD_OWES`, one constant: emptying it restores R28 for
