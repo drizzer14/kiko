@@ -50,10 +50,8 @@ function barrierLinesFor(stubName: string): string[] {
     '  while [ "$attempts" -lt 200 ] && ! grep -q "^timeout$" "$STUB_BARRIER_FILE"; do',
     '    met=yes',
     '    for expectation in $STUB_BARRIER_EXPECT; do',
-    '      expectedName="$(printf "%s" "$expectation" | cut -d= -f1)"',
-    '      expectedCount="$(printf "%s" "$expectation" | cut -d= -f2)"',
-    '      started="$(grep -c "^$expectedName start$" "$STUB_BARRIER_FILE")"',
-    '      [ "$started" -ge "$expectedCount" ] || met=no',
+    `      started="$(grep -c "^\${expectation%%=*} start$" "$STUB_BARRIER_FILE")"`,
+    `      [ "$started" -ge "\${expectation#*=}" ] || met=no`,
     '    done',
     '    [ "$met" = yes ] && break',
     '    sleep 0.05',
@@ -2587,18 +2585,29 @@ describe('override protocol (nosemgrep / kiko-override)', () => {
   });
 });
 
-// Speed: on a large real .tsx file, the spawned Node checkers
-// (import-order, full-word-identifiers, blank-line-separation,
-// screen-imports, feature-imports) running one after another via spawnSync
-// pushed p50/p95 past the 3s target. The mitigation is to run them
-// concurrently instead (spawn, not spawnSync) — same results, since each
-// checker only ever reads the SAME mirrored file and reports its own
-// findings independently of the others. The stubs here rendezvous (see
-// `barrierLinesFor`): each waits until every sibling it should overlap with
-// has started, so "ran one after another" fails and "ran together" passes
-// whatever the machine load, with no clock involved. A wall-clock bound
-// failed under load more than once.
+// Speed: on a large real .tsx file, the spawned Node checkers running one
+// after another via spawnSync pushed p50/p95 past the 3s target. The
+// mitigation is to run them concurrently instead (spawn, not spawnSync) —
+// same results, since each checker only ever reads the SAME mirrored file and
+// reports its own findings independently of the others. The stubs here
+// rendezvous (see `barrierLinesFor`): each waits until every sibling it
+// should overlap with has started, so "ran one after another" fails and "ran
+// together" passes whatever the machine load. A clock would not: load skews
+// timing.
 describe('runNodeChecks concurrency (speed mitigation)', () => {
+  // Counted from the guard's own rule table, so adding a checker moves the
+  // rendezvous with it; under 2 would prove nothing, so a broken match fails.
+  function countSpawnedCheckers(): number {
+    const count = (
+      readFileSync(join(__dirname, '../scripts/checks/pre-write-guard.js'), 'utf8').match(
+        /runSpawnedNodeChecker\(\s*'/g,
+      ) ?? []
+    ).length;
+    expect(count).toBeGreaterThan(1);
+
+    return count;
+  }
+
   function writeRendezvousNodeStub(directory: string): string {
     const stubPath = join(directory, 'node-rendezvous-stub.sh');
     writeFileSync(
@@ -2689,14 +2698,7 @@ describe('runNodeChecks concurrency (speed mitigation)', () => {
     const nodeStub = writeRendezvousNodeStub(project);
     const targetFile = join(project, 'src', 'component', 'component.tsx');
     const barrierFile = join(project, 'barrier.txt');
-    // Counted from the guard's own rule table, so adding a checker moves the
-    // rendezvous with it; under 2 would prove nothing, so a broken match fails.
-    const spawnedCheckerCount = (
-      readFileSync(join(__dirname, '../scripts/checks/pre-write-guard.js'), 'utf8').match(
-        /runSpawnedNodeChecker\(\s*'/g,
-      ) ?? []
-    ).length;
-    expect(spawnedCheckerCount).toBeGreaterThan(1);
+    const spawnedCheckerCount = countSpawnedCheckers();
 
     const result = runGuard(
       payloadFor('Write', { file_path: targetFile, content: cleanComponentContent }),
@@ -2745,7 +2747,7 @@ describe('runNodeChecks concurrency (speed mitigation)', () => {
     const lines = readFileSync(barrierFile, 'utf8').trim().split('\n');
     expect(lines).not.toContain('timeout');
     expect(lines.filter((line) => line === 'semgrep start')).toHaveLength(1);
-    expect(lines.filter((line) => line === 'node start').length).toBeGreaterThan(0);
+    expect(lines.filter((line) => line === 'node start')).toHaveLength(countSpawnedCheckers());
   });
 });
 
