@@ -391,10 +391,16 @@ harness_mutation_run_counts() {
 # D = a*K + b*X, with X = M * timedOut / tested the timed-out mutants of the run, K = M - X
 # the others, a the normal cost and b the timed-out cost. A least-squares fit through
 # the origin over the last up-to-10 qualifying records solves the two normal equations.
-# It prints nothing for fewer than 2 records, for records at one timeout share (K and X
-# are then proportional and the system is singular: determinant <= 1e-9 of
-# sum(K^2)*sum(X^2), which also covers a history with no timeout and one where every
-# mutant timed out), and when either cost comes out non-positive. The fitted normal cost
+# It prints nothing for fewer than 2 records, for records whose timeout shares are too close
+# to separate the two costs, and when either cost comes out non-positive. "Too close" is
+# determinant <= 0.1 * sum(K^2)*sum(X^2), where determinant / (sum(K^2)*sum(X^2)) is sin^2 of
+# the angle between the K and X columns: 0 for one share (the system is singular, which also
+# covers a history with no timeout and one where every mutant timed out) and 1 for columns at
+# right angles. Measured on true costs 2 s and 40 s with a worst-case 4% error in two
+# durations: at 0.01 (a 5 point spread) the fitted ETA is off by up to 58% inside 20..80%
+# timeouts, at 0.1 (12 to 16 points) by 13..17% (3..4% at 1% error), and 40% against 42%
+# (0.0017) reads 16.8 s and 17.9 s, a timeout as cheap as a normal mutant. Below the bound the
+# caller takes the fallback, which is exact at the history own share. The fitted normal cost
 # includes the fixed startup of a run, because the history gives no way to separate it.
 harness_mutation_costs() {
   [ -f "$1" ] || return 0
@@ -418,10 +424,28 @@ harness_mutation_costs() {
       }
       product = normalSquares * slowSquares;
       determinant = product - cross * cross;
-      if (determinant <= 1e-9 * product) exit 0;
+      if (determinant <= 0.1 * product) exit 0;
       normalCost = (normalDuration * slowSquares - slowDuration * cross) / determinant;
       slowCost = (slowDuration * normalSquares - normalDuration * cross) / determinant;
       if (normalCost > 0 && slowCost > 0) printf "%g %g", normalCost, slowCost;
+    }
+  ' "$1" 2>/dev/null || true
+}
+
+# harness_mutation_run_share <historyfile> : pure. Print the percent of mutants that timed
+# out in the last up-to-5 history records that carry the tested and timed-out fields (the
+# records harness_mutation_rate draws on, bar old ones lacking the fields), or NOTHING when no record does. It is the timeout share
+# the history rate already contains, which the eta filter takes out of the normal cost.
+harness_mutation_run_share() {
+  [ -f "$1" ] || return 0
+  awk -F'\t' '
+    $5 ~ /^[0-9]+$/ && $5 + 0 > 0 && $6 ~ /^[0-9]+$/ && $6 + 0 <= $5 + 0 {
+      runs++; tested[runs] = $5 + 0; timed[runs] = $6 + 0;
+    }
+    END {
+      start = runs - 4; if (start < 1) start = 1;
+      for (i = start; i <= runs; i++) { sumTested += tested[i]; sumTimed += timed[i] }
+      if (sumTested > 0) printf "%g", 100 * sumTimed / sumTested;
     }
   ' "$1" 2>/dev/null || true
 }
@@ -485,8 +509,8 @@ harness_mutation_timeout_share() {
   ' 2>/dev/null || true
 }
 
-# harness_mutation_eta_filter <rate> [normal] [timedOut] [share] [timeoutMS] [concurrency] :
-# a pipe STAGE for the mutation run. It reads Stryker's combined output line by line and
+# harness_mutation_eta_filter <rate> [normal] [timedOut] [share] [timeoutMS] [concurrency]
+# [historyShare] : a pipe STAGE for the mutation run. It reads Stryker's combined output line by line and
 # PASSES EVERY LINE THROUGH unchanged (fflush after each so streaming stays live). It
 # only ever adds lines after the one it read. It does the following:
 # - On the FIRST `N/M tested` counter it parses M (the run's mutant count = the
@@ -504,17 +528,23 @@ harness_mutation_timeout_share() {
 #   (M - N) * ((1 - q) * a + q * b). The filter reads no clock; every cost comes from its
 #   arguments.
 # The costs a and b are <normal> and <timedOut> (the fit of harness_mutation_costs) when
-# both are positive numbers. Otherwise a is <rate> and b is the configured floor,
-# a + (timeoutMS + overheadMS) / 1000 / concurrency, with overheadMS read from Stryker's
-# own `(net N ms, overhead N ms)` dry-run line, which comes before the first counter.
-# With no floor either (no dry-run line, or no concurrency), b is unknown and the filter
+# both are positive numbers. Otherwise the floor is
+# (timeoutMS + overheadMS) / 1000 / concurrency, with overheadMS read from Stryker's
+# own `(net N ms, overhead N ms)` dry-run line, which comes before the first counter, and
+# b is a + floor. The history rate already contains the timeouts of the runs it came from, so
+# with [historyShare] (the percent they made up, harness_mutation_run_share) a is
+# <rate> - historyShare / 100 * floor: a run at the history's own share then costs the rate
+# per mutant, no timeout counted twice. A non-positive a means the floor overstates what a
+# timeout costs there, so the timed-out cost is treated as unknown (the plain line, no
+# updates) rather than inventing a normal cost. Without [historyShare] a is <rate>.
+# With no floor (no dry-run line, or no concurrency), b is unknown and the filter
 # prints the plain first line and no updates. When <rate> is empty or non-positive it
 # prints no ETA line and only passes lines through. This is a downstream stage: it NEVER
 # changes the exit code — the wrapper reads PIPESTATUS[0] (Stryker), which adding a stage
 # does not affect, and a non-numeric argument is a zero, never an error.
 harness_mutation_eta_filter() {
   awk -v rate="${1:-}" -v fitNormal="${2:-}" -v fitSlow="${3:-}" -v share="${4:-}" \
-      -v timeoutMS="${5:-}" -v concurrency="${6:-}" '
+      -v timeoutMS="${5:-}" -v concurrency="${6:-}" -v historyShare="${7:-}" '
     # fmtdur mirrors harness_fmt_duration in this same file: <60 -> "Ns";
     # a whole minute -> "Nm"; else "Nm Ss".
     function fmtdur(s,   m) {
@@ -532,7 +562,11 @@ harness_mutation_eta_filter() {
         normalCost = fitNormal + 0;
         slowCost = fitSlow + 0;
       } else if (haveOverhead && timeoutMS ~ /^[0-9]+$/ && concurrency ~ /^[0-9]+$/ && concurrency + 0 > 0) {
-        slowCost = normalCost + (timeoutMS + overhead) / 1000 / concurrency;
+        timeoutFloor = (timeoutMS + overhead) / 1000 / concurrency;
+        if (historyShare ~ /^[0-9]+(\.[0-9]+)?$/ && historyShare + 0 <= 100) {
+          normalCost = rate - historyShare / 100 * timeoutFloor;
+        }
+        if (normalCost > 0) slowCost = normalCost + timeoutFloor;
       }
     }
     {

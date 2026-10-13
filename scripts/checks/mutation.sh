@@ -481,11 +481,13 @@ printf 'Watch live progress:  tail -f %s\n' "$log"
 # The costs of a normal and of a timed-out mutant (the fit; empty when there is none), the share
 # of mutants expected to time out, and the two stryker.conf.json settings that bound a timeout's
 # cost. Every one is empty when unknown, and the filter reads an empty one as unknown. A missing
-# or unreadable config just leaves the floor out.
+# or unreadable config just leaves the floor out. The share the history rate already contains is
+# for the fallback, which takes it out of the normal cost so a timeout is not counted twice.
 fit="$(harness_mutation_costs "$hist")"
 fit_normal="${fit%% *}"
 fit_slow="${fit#* }"
 share="$(timeout_share)"
+history_share="$(harness_mutation_run_share "$hist")"
 stryker_limits="$(node -e '
   const config = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
   const integer = (value, fallback) => (Number.isInteger(value) && value >= 0 ? value : fallback);
@@ -498,7 +500,7 @@ rm -f "$MUTATION_REPORT"
 
 start="$(date +%s 2>/dev/null || printf '0')"
 "$BIN" run "$mutate_arg" 2>&1 | tee "$log" \
-  | harness_mutation_eta_filter "$rate" "$fit_normal" "$fit_slow" "${share%% *}" "${stryker_limits%% *}" "${stryker_limits#* }"
+  | harness_mutation_eta_filter "$rate" "$fit_normal" "$fit_slow" "${share%% *}" "${stryker_limits%% *}" "${stryker_limits#* }" "$history_share"
 code="${PIPESTATUS[0]}"
 end="$(date +%s 2>/dev/null || printf '0')"
 out="$(cat "$log" 2>/dev/null || true)"
