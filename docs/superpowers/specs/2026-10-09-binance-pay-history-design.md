@@ -657,8 +657,8 @@ withdraw budget moves into this object, with the same numbers and the same rule.
     stays for: `walletTypes` absent (`walletType` alone is not trusted), `walletTypes` with two
     wallets and no costs, and a cost list that is zero or does not add up. The sum is signed: if
     Binance signs the funds amounts of a send negative, no B5 order matches and every one stops
-    (fail-safe; the probe checks the sign). B7 is an overnight default and needs user
-    confirmation (plan, OVERNIGHT 16).
+    (fail-safe; the probe checks the sign). B7 is a final user ruling (2026-10-11, recorded
+    with B1-B6).
   - **B4.** The funds checks apply to OUTGOING orders only. `pay-funds-not-btc` (a BTC order
     whose `fundsDetail` names no BTC) stops a send; on a receive the funds are the payer's, in
     whatever coin, and say nothing of what the user received.
