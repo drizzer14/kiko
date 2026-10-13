@@ -44,11 +44,12 @@ export const LANE_CALL_CAPS: Record<BudgetLane, number> = {
 };
 
 /**
- * The calls of each lane beyond its cap that a span read may spend while it narrows (see
- * `readSeriesSpan`): a Binance that keeps less than the 179 days asked has each of the 20 Transfer
- * types find its own depth in the span that crosses it, and the ground just above the depth is
- * lost to a type that is read in a later run. Only those calls come from here, so a run that
- * narrows nothing spends `LANE_CALL_CAPS` alone, and the cap stays whole for the reads that follow.
+ * The calls of each lane beyond its cap that a span read may spend while it narrows or reads the
+ * band its read began above (see `readSeriesSpan`): a Binance that keeps less than the 179 days
+ * asked has each of the 20 Transfer types find its own depth in the span that crosses it, and the
+ * ground just above the depth is lost to a type that is read in a later run. Only those calls come
+ * from here, so a run that narrows nothing spends `LANE_CALL_CAPS` alone, and the cap stays whole
+ * for the reads that follow.
  * Every such call is judged by the weight reading as any other.
  */
 export const LANE_NARROWING_CALLS: Record<BudgetLane, number> = {

@@ -21,6 +21,7 @@ import {
   readDepthWorld,
   readSeriesOf,
   refusedReadsOf,
+  refusedSpanReadsOf,
   unowedSkippedMsOf,
 } from './binance.depth-test-fixtures';
 
@@ -77,21 +78,21 @@ describe('readSeriesSpan, against a depth that moves with the clock or in steps 
       ['10 hours, inside one step', 10 * HOUR_MS],
       ['20 hours, across a step', 20 * HOUR_MS],
     ])(
-      'reads each series again after %s, owing the ground it read above and skipping nothing beyond the resolution',
+      'reads each series again after %s, reading or owing the ground it read above and skipping nothing beyond the resolution',
       async (_label, suspendedMs) => {
-        const { world, first, second, firstCalls } = await readAcrossSuspension({
+        const { world, span, first, second, firstCalls } = await readAcrossSuspension({
           count: 3,
           stepMs,
           suspendedMs,
         });
 
         expect(readSeriesOf(second)).toEqual(['T0', 'T1', 'T2']);
-        expect(refusedReadsOf(world.calls)).toHaveLength(3);
+        expect(refusedSpanReadsOf(world.calls, span)).toHaveLength(3);
         expect(
           maxOf(unowedSkippedMsOf(world.calls.slice(0, firstCalls), owedOf(first))),
         ).toBeLessThanOrEqual(DEPTH_RESOLUTION_MS);
-        // A search that ends against the start the first one found owes the ground from there, so
-        // only the resolution of the first search is left.
+        // A search that ends against the start the first one found reads or owes the ground from
+        // there, so only the resolution of the first search is left.
         expect(
           maxOf(unowedSkippedMsOf(world.calls.slice(firstCalls), owedOf(second))),
         ).toBeLessThanOrEqual(DEPTH_RESOLUTION_MS);
@@ -151,13 +152,33 @@ describe('readSeriesSpan, against a depth that moves with the clock or in steps 
     return { world, edgeMs: world.edgeOf('T0', world.clock.now) };
   };
 
-  it('moves a start on with the clock up to the time it is moved on for, with no request beyond the read', async () => {
+  it('moves a start on with the clock up to the time it is moved on for, with no request beyond the read and the band below it', async () => {
     const { world } = worldServedAgo(DEPTH_EXTRAPOLATION_MAX_MS);
 
     await readDepthWorld(world);
 
-    expect(world.calls).toHaveLength(1);
+    expect(world.calls).toHaveLength(2);
     expect(world.calls[0]).toMatchObject({ refused: false });
+    expect(world.calls[1]?.read.end).toBe(world.calls[0]?.read.start);
+  });
+
+  it('reads the band below the start a read began at right after the read, and owes none of it when the depth stood still', async () => {
+    const { world, edgeMs } = worldServedAgo(5_000, DAY_MS);
+
+    const result = await readDepthWorld(world);
+
+    expect(world.calls.map(({ refused }) => refused)).toEqual([false, false]);
+    expect(world.calls[1]?.read).toEqual({ start: edgeMs, end: world.calls[0]?.read.start });
+    expect(owedOf(result)).toEqual([]);
+  });
+
+  it('owes the band below the start a read began at when the depth moved past its start meanwhile', async () => {
+    const { world } = worldServedAgo(5_000);
+
+    const result = await readDepthWorld(world);
+
+    expect(world.calls.map(({ refused }) => refused)).toEqual([false, true]);
+    expect(owedOf(result)).toEqual([{ series: 'T0', window: world.calls[1]?.read }]);
   });
 
   it('finds its start by narrowing once a millisecond more has passed', async () => {
@@ -232,8 +253,10 @@ describe('readSeriesSpan, against a depth that moves with the clock or in steps 
     const result = await readDepthWorld(world, { span });
 
     expect(readSeriesOf(result)).toEqual(['T0']);
-    expect(world.calls).toHaveLength(1);
+    expect(world.calls).toHaveLength(2);
     expect(world.calls[0]?.read).toEqual({ start: span.end - 1, end: span.end });
+    // The band is the ground from the start the memory holds up to that read.
+    expect(world.calls[1]?.read).toEqual({ start: span.end - 50_000, end: span.end - 1 });
   });
 });
 
@@ -252,13 +275,15 @@ describe('readSeriesSpan, against a refusal of a start whose margin is at the ca
 
     expect(result).toMatchObject({ kind: 'page', page: { drifted: [] } });
     expect(readSeriesOf(result)).toEqual(['T0', 'T1', 'T2']);
-    expect(refusedReadsOf(world.calls).filter(({ series }) => series === 'T0')).toHaveLength(1);
+    expect(
+      refusedSpanReadsOf(world.calls, crossingOf(edgeMs)).filter(({ series }) => series === 'T0'),
+    ).toHaveLength(1);
     expect(probesOf(world.calls.filter(({ series }) => series === 'T0')).length).toBeGreaterThan(0);
     expect(memory.marginMs).toBe(DEPTH_MARGIN_MS);
     expect(memory.startMs ?? 0).toBeGreaterThanOrEqual(edgeMs);
   });
 
-  it('widens the margin of a refusal that is not at the cap, with no request beyond the read', async () => {
+  it('widens the margin of a refusal that is not at the cap, with no request beyond the read and the band below it, which the depth has passed', async () => {
     const world = depthWorldOf({ latencyMs: () => 0 });
     const edgeMs = world.edgeOf('T0', world.clock.now);
     // The start is 5 seconds below the depth: margins of 1, 2 and 4 seconds miss it, 8 reach it.
@@ -269,7 +294,7 @@ describe('readSeriesSpan, against a refusal of a start whose margin is at the ca
 
     await readDepthWorld(world, { count: 1 });
 
-    expect(world.calls.map(({ refused }) => refused)).toEqual([true, true, true, false]);
+    expect(world.calls.map(({ refused }) => refused)).toEqual([true, true, true, false, true]);
     expect(probesOf(world.calls)).toHaveLength(0);
   });
 });
@@ -289,8 +314,12 @@ describe('readSeriesSpan, against types that keep a different part of the histor
     return { world, span, result };
   };
 
-  const lastReadOf = (calls: DepthCall[], series: string): DepthCall | undefined =>
-    calls.filter((call) => call.series === series && !isProbeRead(call.read)).at(-1);
+  // The last read of the span itself, not the read of the band below its start.
+  const lastReadOf = (calls: DepthCall[], series: string, span: DepthRead): DepthCall | undefined =>
+    calls
+      .filter((call) => call.series === series && !isProbeRead(call.read))
+      .filter((call) => call.read.end === span.end)
+      .at(-1);
 
   it.each([
     [
@@ -308,7 +337,7 @@ describe('readSeriesSpan, against types that keep a different part of the histor
   ])(
     'reads every type from the start it is served from by itself, narrowing alone, when %s',
     async (_label, keptMsOf) => {
-      const { world, result } = await readKeeping(keptMsOf);
+      const { world, span, result } = await readKeeping(keptMsOf);
 
       expect(readSeriesOf(result)).toHaveLength(20);
       expect(refusedReadsOf(world.calls).length).toBeGreaterThanOrEqual(19);
@@ -317,7 +346,7 @@ describe('readSeriesSpan, against types that keep a different part of the histor
       );
       expect(
         readSeriesOf(result).every((series) => {
-          const lastRead = lastReadOf(world.calls, series);
+          const lastRead = lastReadOf(world.calls, series, span);
 
           return lastRead?.refused === false && lastRead.read.start >= lastRead.edgeMs;
         }),
@@ -326,10 +355,12 @@ describe('readSeriesSpan, against types that keep a different part of the histor
   );
 
   it('does not move the start of a type that keeps more up to the start of one that keeps less', async () => {
-    const { world } = await readKeeping((series) => (series === 'T10' ? 90 * DAY_MS : KEPT_MS));
+    const { world, span } = await readKeeping((series) =>
+      series === 'T10' ? 90 * DAY_MS : KEPT_MS,
+    );
 
     const startOf = (series: string): number =>
-      lastReadOf(world.calls, series)?.read.start ?? Number.NaN;
+      lastReadOf(world.calls, series, span)?.read.start ?? Number.NaN;
     expect(startOf('T10') - startOf('T9')).toBeGreaterThan(9 * DAY_MS);
     expect(Math.abs(startOf('T11') - startOf('T9'))).toBeLessThan(DAY_MS);
   });
@@ -403,7 +434,7 @@ describe('readSeriesSpan, against the latencies of a run', () => {
     ['150 ms of latency, in steps of a day', () => () => 150, DAY_MS],
     ['a spike of 9 seconds on every seventh request, in steps of a day', spikeEverySeventh, DAY_MS],
   ])(
-    'reaches a page of all 20 series with %s, owing the ground each read began above',
+    'reaches a page of all 20 series with %s, reading or owing the ground each read began above',
     async (_name, latencyOf, stepMs) => {
       const latencyMs = latencyOf();
       const world = depthWorldOf({ latencyMs: () => latencyMs(), stepMs, uncapped: true });

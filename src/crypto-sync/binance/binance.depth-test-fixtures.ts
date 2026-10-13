@@ -173,6 +173,10 @@ export const readDepthWorld = (
 export const refusedReadsOf = (calls: DepthCall[]): DepthCall[] =>
   calls.filter(({ read, refused }) => refused && !isProbeRead(read));
 
+/** The refused reads of a span: those that end where it does, not those of a band below a read. */
+export const refusedSpanReadsOf = (calls: DepthCall[], span: DepthRead): DepthCall[] =>
+  refusedReadsOf(calls).filter(({ read }) => read.end === span.end);
+
 /**
  * The ground a served read skipped: how far its start lay above the depth it met on arrival, for
  * the reads of more than a millisecond.
@@ -186,17 +190,27 @@ export const skippedMsOf = (calls: DepthCall[]): number[] =>
 type DepthOwed = { series: string; window: DepthRead }[];
 
 /**
- * The ground a served read skipped and did not owe: how far the start its series owes ground from
- * (the start of the read, when it owes none) lay above the depth the read met on arrival. A
- * narrowing leaves up to its resolution, ground that lies within it of a start Binance refused.
+ * The ground a series left neither read nor owed: how far the start its series holds ground from
+ * (the lowest start of its served reads, a band included; the start of the ground it owes, when it
+ * owes some) lay above the depth that read met on arrival. A narrowing leaves up to its
+ * resolution, ground that lies within it of a start Binance refused.
  */
-export const unowedSkippedMsOf = (calls: DepthCall[], owed: DepthOwed): number[] =>
-  calls
-    .filter(({ read, refused }) => !refused && !isProbeRead(read))
-    .map(
-      ({ series, read, edgeMs }) =>
-        (owed.find((entry) => entry.series === series)?.window.start ?? read.start) - edgeMs,
-    );
+export const unowedSkippedMsOf = (calls: DepthCall[], owed: DepthOwed): number[] => {
+  const lowestBySeries = new Map<string, DepthCall>();
+
+  for (const call of calls.filter(({ read, refused }) => !refused && !isProbeRead(read))) {
+    const lowest = lowestBySeries.get(call.series);
+
+    if (lowest === undefined || call.read.start < lowest.read.start) {
+      lowestBySeries.set(call.series, call);
+    }
+  }
+
+  return [...lowestBySeries.values()].map(
+    ({ series, read, edgeMs }) =>
+      (owed.find((entry) => entry.series === series)?.window.start ?? read.start) - edgeMs,
+  );
+};
 
 /** The ground of a span read that was left owed (none for a span that was not read as a page). */
 export const owedOf = (result: Awaited<ReturnType<typeof readDepthWorld>>): DepthOwed =>

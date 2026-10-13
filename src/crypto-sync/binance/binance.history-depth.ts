@@ -14,26 +14,27 @@ export const DEPTH_RESOLUTION_MS = 1_000;
  * What a read adds to the start Binance was last seen to serve, beyond the time that passed, for
  * a request that reaches Binance later than the one that found the start. Each refusal of a read
  * from such a start doubles it (see `widenDepthMargin`) up to `DEPTH_MARGIN_CAP_MS`. If the depth
- * stands still, the ground within it of the depth is owed, to be read later.
+ * stands still, the ground within it of the depth is the band a read begins above: it is read
+ * right after the read, and owed when Binance refuses it.
  */
 export const DEPTH_MARGIN_MS = 1_000;
 
 /**
  * The most the margin grows to. A refusal of a read whose margin is at it is not answered by a
  * wider margin but by a narrowing from the refused start toward the end of the span, so the
- * margin never adds more than this to the ground a read owes.
+ * margin never adds more than this to the band a read begins above.
  */
 export const DEPTH_MARGIN_CAP_MS = 8_000;
 
 /**
  * How long after it was served a start is moved forward with the clock. A read made later than
  * this (the app was suspended, the run gate waited for hours) finds its start by narrowing
- * (`narrowLapsedStart`), so the time that passed never decides how much ground a read owes.
+ * (`narrowLapsedStart`), so the time that passed never decides how wide the band of a read is.
  * It is as long as a run takes at a request time of up to about a second (a lane's call cap,
  * each call paced by the gate's interval and a second to answer), so a run on such a network does
- * not reach it and only a suspension or a slower network does. If the depth stands still, a read
- * owes at most this + `DEPTH_MARGIN_CAP_MS` of the ground that Binance keeps, and the
- * `DEPTH_RESOLUTION_MS` of a narrowing is not owed.
+ * not reach it and only a suspension or a slower network does. If the depth stands still, the band
+ * of a read is at most this + `DEPTH_MARGIN_CAP_MS` of the ground that Binance keeps, and the
+ * `DEPTH_RESOLUTION_MS` of a narrowing is not part of it.
  */
 export const DEPTH_EXTRAPOLATION_MAX_MS = 120_000;
 

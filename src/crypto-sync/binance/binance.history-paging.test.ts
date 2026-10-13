@@ -24,7 +24,7 @@ import {
   isProbeRead,
   jitterMs,
   readDepthWorld,
-  refusedReadsOf,
+  refusedSpanReadsOf,
   skippedMsOf,
 } from './binance.depth-test-fixtures';
 import type { TotalPage, UnreadableRow } from './binance.history-client';
@@ -451,7 +451,7 @@ describe('readSeriesSpan, against a Binance that refuses a start older than it k
   const startsOf = (fetchPage: jest.Mock): number[] =>
     fetchPage.mock.calls.map(([, span]) => (span as typeof DEEP).start);
 
-  it('reads every series from the start Binance serves it, the one refusal behind it, keeps the memory of each, and owes the ground between the start and the one it read from', async () => {
+  it('reads every series from the start Binance serves it, the one refusal behind it, keeps the memory of each, and reads the ground between the start and the one it read from in the same span read', async () => {
     const fetchPage = keeping(SERVED_FROM);
     const depth = depthOf();
 
@@ -466,17 +466,19 @@ describe('readSeriesSpan, against a Binance that refuses a start older than it k
       SERIES.flatMap((series) => [
         [series, DEEP.start, DEEP.end],
         [series, found + DEPTH_MARGIN_MS, DEEP.end],
+        [series, found, found + DEPTH_MARGIN_MS],
       ]),
     );
     expect(result).toEqual({
       kind: 'page',
       page: {
-        read: SERIES.map((series) => ({ series, rows: [{ id: 0 }], unreadable: [] })),
-        drifted: [],
-        owed: SERIES.map((series) => ({
+        read: SERIES.map((series) => ({
           series,
-          window: { start: found, end: found + DEPTH_MARGIN_MS },
+          rows: [{ id: 0 }, { id: 0 }],
+          unreadable: [],
         })),
+        drifted: [],
+        owed: [],
       },
     });
   });
@@ -497,12 +499,19 @@ describe('readSeriesSpan, against a Binance that refuses a start older than it k
     const result = await readDeep({ fetchPage });
 
     const firstReads = fetchPage.mock.calls.filter(
-      ([series, span]) => series === 'MAIN_FUNDING' && span.end - span.start > 1,
+      ([series, span]) => series === 'MAIN_FUNDING' && span.start === DEEP.start,
     );
     expect(firstReads).toHaveLength(1);
+    // The first series was read whole before the refusal; the others are read from the start they
+    // are served from, and their bands are served.
     expect(result).toMatchObject({
       page: {
-        read: SERIES.map((series) => ({ series, rows: [{ id: SERIES.indexOf(series) }] })),
+        read: [
+          { series: 'MAIN_FUNDING', rows: [{ id: 0 }] },
+          { series: 'FUNDING_MAIN', rows: [{ id: 1 }, { id: 1 }] },
+          { series: 'MAIN_UMFUTURE', rows: [{ id: 2 }, { id: 2 }] },
+        ],
+        owed: [],
       },
     });
   });
@@ -805,20 +814,232 @@ describe('readSeriesSpan, against a Binance that refuses a start older than it k
     );
   });
 
-  describe('the calls of a span read, narrowing or not', () => {
-    /** The run with its budget watched: whether each call was asked and counted as narrowing. */
-    const watchedRun = () => {
-      const run = freshRun();
-      const asked = jest.spyOn(run.budget, 'canAfford');
-      const recorded = jest.spyOn(run.budget, 'record');
+  /** The run with its budget watched: whether each call was asked and counted as narrowing. */
+  const watchedRun = () => {
+    const run = freshRun();
+    const asked = jest.spyOn(run.budget, 'canAfford');
+    const recorded = jest.spyOn(run.budget, 'record');
 
-      return {
-        run,
-        askedNarrowing: () => asked.mock.calls.map(([, , , narrowing]) => narrowing === true),
-        recordedNarrowing: () => recorded.mock.calls.map(([, , narrowing]) => narrowing === true),
-      };
+    return {
+      run,
+      askedNarrowing: () => asked.mock.calls.map(([, , , narrowing]) => narrowing === true),
+      recordedNarrowing: () => recorded.mock.calls.map(([, , narrowing]) => narrowing === true),
+    };
+  };
+
+  describe('the band a read begins above', () => {
+    const SERVED_START = BASE + 2 * DAY_MS;
+    const BAND = { start: SERVED_START, end: SERVED_START + DEPTH_MARGIN_MS };
+    // A read of the span ends where the span does; a read of the band ends where the band does.
+    const isBandRead = (span: typeof DEEP): boolean => span.end === BAND.end;
+
+    /** Every series was served from `SERVED_START` just now: its read begins one margin above. */
+    const servedJustNow = (): DepthGuard => {
+      const depth = depthOf();
+
+      for (const series of SERIES) {
+        rememberServedStart(depth.memoryOf(series), { startMs: SERVED_START, servedAtMs: NOW });
+      }
+
+      return depth;
     };
 
+    it('reads the band in the same span read, right after the series read, and joins its rows to those of the series, owing nothing', async () => {
+      const fetchPage = jest.fn(async (_series: Series, span: typeof DEEP, _current: number) =>
+        pageOf(1, 1, { rows: [{ id: isBandRead(span) ? 1 : 0 }] }),
+      );
+
+      const result = await readDeep({ fetchPage, depth: servedJustNow() });
+
+      expect(fetchPage.mock.calls.map(([series, span]) => [series, span.start, span.end])).toEqual(
+        SERIES.flatMap((series) => [
+          [series, BAND.end, DEEP.end],
+          [series, BAND.start, BAND.end],
+        ]),
+      );
+      expect(result).toEqual({
+        kind: 'page',
+        page: {
+          read: SERIES.map((series) => ({ series, rows: [{ id: 0 }, { id: 1 }], unreadable: [] })),
+          drifted: [],
+          owed: [],
+        },
+      });
+    });
+
+    it('owes the band in its series, and keeps the rows of the series read, when Binance refuses the band', async () => {
+      const run = freshRun();
+      const record = jest.spyOn(run.budget, 'record');
+      const fetchPage = jest.fn(async (_series: Series, span: typeof DEEP, _current: number) => {
+        if (isBandRead(span)) {
+          throw new BinanceHistoryTooOldError('too old');
+        }
+
+        return pageOf(1, 1);
+      });
+
+      const result = await readDeep({ run, fetchPage, depth: servedJustNow() });
+
+      expect(fetchPage).toHaveBeenCalledTimes(2 * SERIES.length);
+      expect(record).toHaveBeenCalledTimes(2 * SERIES.length);
+      expect(result).toEqual({
+        kind: 'page',
+        page: {
+          read: SERIES.map((series) => ({ series, rows: [{ id: 0 }], unreadable: [] })),
+          drifted: [],
+          owed: SERIES.map((series) => ({ series, window: BAND })),
+        },
+      });
+    });
+
+    it('owes the band, never reading it as read, when the weight reading refuses the call after the series read', async () => {
+      const fetchPage = jest.fn(async (_series: Series, _span: typeof DEEP, _current: number) =>
+        pageOf(1, 1, { usedIpWeight1m: IP_BUDGET_1M }),
+      );
+
+      const result = await readDeep({ fetchPage, depth: servedJustNow() });
+
+      expect(fetchPage).toHaveBeenCalledTimes(1);
+      expect(result).toMatchObject({
+        kind: 'page',
+        page: {
+          read: [{ series: 'MAIN_FUNDING', rows: [{ id: 0 }] }],
+          owed: expect.arrayContaining([{ series: 'MAIN_FUNDING', window: BAND }]),
+        },
+      });
+    });
+
+    it('hands a rate limit of the band read to the caller and leaves the span unread', async () => {
+      const limited = new BinanceRateLimitError(429, 60_000);
+      const onRateLimit = jest.fn();
+      const fetchPage = jest.fn(async (_series: Series, span: typeof DEEP, _current: number) => {
+        if (isBandRead(span)) {
+          throw limited;
+        }
+
+        return pageOf(1, 1);
+      });
+
+      const result = await readDeep({ fetchPage, depth: servedJustNow(), onRateLimit });
+
+      expect(result).toBeUndefined();
+      expect(onRateLimit).toHaveBeenCalledWith(limited);
+      expect(fetchPage).toHaveBeenCalledTimes(2);
+    });
+
+    it('rethrows a failure of the band read that is not the refusal', async () => {
+      const fetchPage = jest.fn(async (_series: Series, span: typeof DEEP, _current: number) => {
+        if (isBandRead(span)) {
+          throw new Error('boom');
+        }
+
+        return pageOf(1, 1);
+      });
+
+      await expect(readDeep({ fetchPage, depth: servedJustNow() })).rejects.toThrow('boom');
+    });
+
+    it('counts the band read, and the reads after it, as narrowing calls, and the series read before it as not', async () => {
+      const { run, askedNarrowing, recordedNarrowing } = watchedRun();
+      const fetchPage = jest.fn(async () => pageOf(1, 1));
+
+      await readDeep({ run, fetchPage, depth: servedJustNow() });
+
+      expect(recordedNarrowing()).toEqual([false, true, true, true, true, true]);
+      // The first ask is the entry of the span, the second the read of the first series.
+      expect(askedNarrowing().slice(0, 3)).toEqual([false, false, true]);
+    });
+
+    it('pages the band by current, never splitting it, and joins every page', async () => {
+      const fetchPage = jest.fn(async (_series: Series, span: typeof DEEP, current: number) => {
+        if (!isBandRead(span)) {
+          return pageOf(1, 1);
+        }
+
+        return current === 1
+          ? pageOf(FULL_PAGE, 120, { rows: [{ id: 1 }] })
+          : pageOf(20, 120, { rows: [{ id: 2 }] });
+      });
+
+      const result = await readDeep({
+        fetchPage,
+        depth: servedJustNow(),
+        series: ['MAIN_FUNDING'],
+      });
+
+      expect(fetchPage.mock.calls.map(([, span, current]) => [isBandRead(span), current])).toEqual([
+        [false, 1],
+        [true, 1],
+        [true, 2],
+      ]);
+      expect(result).toMatchObject({
+        kind: 'page',
+        page: { read: [{ rows: [{ id: 0 }, { id: 1 }, { id: 2 }] }], owed: [] },
+      });
+    });
+
+    it('owes the band when its pages drift, and keeps the rows of the series read', async () => {
+      const fetchPage = jest.fn(async (_series: Series, span: typeof DEEP, _current: number) =>
+        isBandRead(span) ? pageOf(40, 90) : pageOf(1, 1),
+      );
+
+      const result = await readDeep({
+        fetchPage,
+        depth: servedJustNow(),
+        series: ['MAIN_FUNDING'],
+      });
+
+      expect(result).toEqual({
+        kind: 'page',
+        page: {
+          read: [{ series: 'MAIN_FUNDING', rows: [{ id: 0 }], unreadable: [] }],
+          drifted: [],
+          owed: [{ series: 'MAIN_FUNDING', window: BAND }],
+        },
+      });
+    });
+
+    it('carries the unreadable rows of the band with those of the series', async () => {
+      const fetchPage = jest.fn(async (_series: Series, span: typeof DEEP, _current: number) =>
+        isBandRead(span) ? pageOf(0, 1, { gathered: 1, unreadable: [{ time: 7 }] }) : pageOf(1, 1),
+      );
+
+      const result = await readDeep({
+        fetchPage,
+        depth: servedJustNow(),
+        series: ['MAIN_FUNDING'],
+      });
+
+      expect(result).toMatchObject({
+        page: { read: [{ rows: [{ id: 0 }], unreadable: [{ time: 7 }] }], owed: [] },
+      });
+    });
+
+    it('reads no band of a series whose read is answered with the half of the span', async () => {
+      const fetchPage = jest.fn(async () => pageOf(FULL_PAGE, 250));
+
+      const result = await readDeep({ fetchPage, depth: servedJustNow() });
+
+      expect(result).toMatchObject({ kind: 'split' });
+      expect(fetchPage).toHaveBeenCalledTimes(1);
+    });
+
+    it('reads no band of a series that is read from the start it was served from', async () => {
+      const depth = depthOf();
+      rememberServedStart(depth.memoryOf('MAIN_FUNDING'), {
+        startMs: SERVED_START,
+        servedAtMs: NOW,
+      });
+      depth.memoryOf('MAIN_FUNDING').marginMs = 0;
+      const fetchPage = jest.fn(async () => pageOf(1, 1));
+
+      await readDeep({ fetchPage, depth, series: ['MAIN_FUNDING'] });
+
+      expect(fetchPage).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('the calls of a span read, narrowing or not', () => {
     it('counts every call of a span read in which a series was refused as a narrowing call, the refused read, the probes and the reads of the others', async () => {
       const { run, askedNarrowing, recordedNarrowing } = watchedRun();
       const fetchPage = keeping(SERVED_FROM);
@@ -908,10 +1129,12 @@ describe('readSeriesSpan, against a Binance that refuses a start older than it k
       const { run, recordedNarrowing } = watchedRun();
       const fetchPage = keeping(SERVED_FROM);
       const depth = depthOf();
+      // A span above the start the first read found: it has no band to read.
+      const above = { start: BASE + 6 * DAY_MS, end: DEEP.end };
 
       await readDeep({ run, fetchPage, depth });
       const first = recordedNarrowing().length;
-      await readDeep({ run, fetchPage, depth });
+      await readDeep({ run, fetchPage, depth, span: above });
 
       expect(recordedNarrowing().slice(first)).toEqual(SERIES.map(() => false));
     });
@@ -988,12 +1211,15 @@ describe('readSeriesSpan, against a Binance whose depth moves with a clock the r
       async (count) => {
         const world = depthWorldOf({ latencyMs: latencyOf(), uncapped: true });
 
-        const result = await readDepthWorld(world, { count });
+        const span = crossingOf(world.edgeOf('T0', world.clock.now));
+
+        const result = await readDepthWorld(world, { count, span });
 
         expect(result).toMatchObject({ kind: 'page', page: { drifted: [] } });
         expect(result?.kind === 'page' ? result.page.read : []).toHaveLength(count);
-        expect(refusedReadsOf(world.calls)).toHaveLength(count);
-        expect(world.calls.length).toBeLessThanOrEqual(count * (1 + 23 + 1));
+        expect(refusedSpanReadsOf(world.calls, span)).toHaveLength(count);
+        // The refused read, 23 requests of the narrowing, the read, and the band below it.
+        expect(world.calls.length).toBeLessThanOrEqual(count * (1 + 23 + 1 + 1));
       },
     );
   });
@@ -1001,16 +1227,17 @@ describe('readSeriesSpan, against a Binance whose depth moves with a clock the r
   it('widens the margin of each series for a read that reaches Binance later than the request that found its start, until it is served', async () => {
     // A request that is not a probe takes 2.5 seconds to reach Binance.
     const world = depthWorldOf({ latencyMs: (read) => (isProbeRead(read) ? 0 : 2_500) });
+    const span = crossingOf(world.edgeOf('T0', world.clock.now));
 
-    const result = await readDepthWorld(world, { count: 3 });
+    const result = await readDepthWorld(world, { count: 3, span });
 
     expect(result).toMatchObject({ kind: 'page' });
     // The time the gate and the earlier series took since the start was found also moves a later
     // series on, so it needs a smaller margin than the first.
     for (const series of ['T0', 'T1', 'T2']) {
-      expect(refusedReadsOf(world.calls).filter((call) => call.series === series).length).toBe(
-        series === 'T0' ? 3 : 2,
-      );
+      expect(
+        refusedSpanReadsOf(world.calls, span).filter((call) => call.series === series).length,
+      ).toBe(series === 'T0' ? 3 : 2);
       expect(world.depth.memoryOf(series).marginMs).toBe(series === 'T0' ? 4_000 : 2_000);
     }
   });
@@ -1026,7 +1253,7 @@ describe('readSeriesSpan, against a Binance whose depth moves with a clock the r
     const result = await readDepthWorld(world, { count: 2, span });
 
     expect(result).toMatchObject({ kind: 'page', page: { drifted: [] } });
-    expect(refusedReadsOf(world.calls)).toHaveLength(2);
+    expect(refusedSpanReadsOf(world.calls, span)).toHaveLength(2);
     expect(skippedMsOf(world.calls.slice(firstCalls))[0]).toBeLessThanOrEqual(
       DEPTH_RESOLUTION_MS + DEPTH_MARGIN_MS + BINANCE_REQUEST_INTERVAL_MS,
     );
@@ -1044,9 +1271,11 @@ describe('readSeriesSpan, against a Binance whose depth moves with a clock the r
 
     expect(result).toMatchObject({ kind: 'page', page: { drifted: [] } });
     const reads = world.calls.filter(({ read }) => !isProbeRead(read));
-    expect(reads).toHaveLength(1);
+    expect(reads).toHaveLength(2);
     expect(reads[0]?.read.start).toBeGreaterThanOrEqual(span.end - 5_000);
     expect(reads[0]?.read.start).toBeLessThan(span.end);
+    // The band below that read is read right after it, from the start the memory held.
+    expect(reads[1]?.read).toEqual({ start: span.end - 5_000, end: reads[0]?.read.start });
   });
 
   it('remembers the start with the clock at the moment the request that served it was sent, after the gate', async () => {
@@ -1071,7 +1300,7 @@ describe('readSeriesSpan, against a Binance whose depth moves with a clock the r
     await readDepthWorld(world, { span });
 
     const probes = world.calls.filter(({ read }) => isProbeRead(read));
-    expect(refusedReadsOf(world.calls)).toHaveLength(0);
+    expect(refusedSpanReadsOf(world.calls, span)).toHaveLength(0);
     expect(probes.length).toBe(1 + Math.ceil(Math.log2(DAY_MS / DEPTH_RESOLUTION_MS)));
     expect(world.calls.at(-1)?.read.start).toBeGreaterThanOrEqual(firstStart + DAY_MS);
   });

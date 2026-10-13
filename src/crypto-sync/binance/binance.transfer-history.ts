@@ -401,8 +401,9 @@ const readSpan = async (
  * trust, or a row the client could not read, owes its own point in the type it was read under
  * and the others still import. A type whose pages drifted is no one record's stop: the span is
  * owed, as a range, in that type alone, and the types that did not drift still commit. The ground
- * a type left owed in itself (the edge band its read began above, or the whole span for a type
- * whose read stopped) is owed as a range in that type alone, and holds nothing back.
+ * a type left owed in itself (the edge band its read began above, when Binance refused it, or the
+ * whole span for a type whose read stopped) is owed as a range in that type alone, and holds
+ * nothing back.
  */
 export const settledTransfersOf = (input: {
   accountId: string;

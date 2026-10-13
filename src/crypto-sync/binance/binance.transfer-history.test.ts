@@ -2061,9 +2061,9 @@ describe('a Binance that refuses a startTime older than the history it keeps (co
     );
 
     describe('the requests of one run that narrows', () => {
-      // The lane cap of 80 and the 397 narrowing calls, all spent by the slowest network: a spike
-      // of 9 seconds on every seventh request lapses the depth each type found, so each type
-      // narrows again in every span it reads.
+      // The lane cap of 80 and the 397 narrowing calls, all spent by the slowest network measured:
+      // a latency of 0 to 3 seconds on every request. A type that narrows keeps one call for its
+      // own read, so a run ends one call short of them when the cap runs out inside a narrowing.
       const MOST_REQUESTS_OF_A_RUN = 477;
 
       it('is bounded by the lane cap and the narrowing calls together, and the slowest network spends them all', async () => {
@@ -2071,7 +2071,7 @@ describe('a Binance that refuses a startTime older than the history it keeps (co
         const { snapshots } = await simulate({
           keptDaysOf,
           extraRows: aboveOf((type) => edgeAt(keptDaysOf(type), 1, NOW)),
-          latencyMs: spikeEverySeventh(),
+          latencyMs: jitterMs(3_000),
           gapMs: DAY_MS,
           runs: 3,
         });
