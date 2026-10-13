@@ -37,9 +37,10 @@ if git rev-parse -q --verify HEAD > /dev/null 2>&1; then
 else
   base="$(git hash-object -t tree /dev/null)"
 fi
-# A failed diff leaves `changed` unset and the check runs: it never skips on a doubt.
+# A failed diff fails the assignment and the check runs: it never skips on a doubt. A here-string,
+# not a pipe, feeds grep -q: an early exit would SIGPIPE the producer and read as no match.
 if changed="$(git diff --cached --name-only --no-renames -z "$base" | tr '\0' '\n')" \
-  && ! printf '%s\n' "$changed" | grep -Eq "$SOURCE_FILES"; then
+  && ! grep -Eq "$SOURCE_FILES" <<< "$changed"; then
   exit 0
 fi
 
