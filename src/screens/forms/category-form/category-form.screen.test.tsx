@@ -7,6 +7,7 @@ import { darkTheme } from '@kiko/design-system/theme';
 import { genericEntitySymbol } from '@kiko/holdings/entity-symbols';
 import { resolveCategoryColor } from '@kiko/statistics/category-breakdown';
 import { KIKO_CATEGORIES_ICONS } from '@kiko/design-system/components/icon-pools';
+import { expectNavBarSaveOnly, pressSave, saveItem } from '@kiko/test-support/form-header-items';
 import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support/navigation-props';
 
 import CategoryFormScreen from './category-form.screen';
@@ -73,14 +74,27 @@ describe('CategoryFormScreen', () => {
       expect(getByLabelText('Name')).toBeTruthy();
       expect(getByLabelText('Change Icon')).toBeTruthy();
       expect(getByText('Color')).toBeTruthy();
-      expect(getByText('Save')).toBeTruthy();
       expect(queryByText('Delete')).toBeNull();
+    });
+
+    it('offers Save only as the nav-bar item, not in the body', async () => {
+      const utils = await renderForm();
+
+      expectNavBarSaveOnly(navigation.setOptions, utils);
+    });
+
+    it('leaves Save enabled before anything is typed, and checks the name on press', async () => {
+      await renderForm();
+
+      expect(saveItem(navigation.setOptions)?.disabled).toBe(false);
     });
 
     it('keeps the stack title, which already reads "New Category"', async () => {
       await renderForm();
 
-      expect(navigation.setOptions).not.toHaveBeenCalled();
+      expect(navigation.setOptions).not.toHaveBeenCalledWith(
+        expect.objectContaining({ title: expect.anything() }),
+      );
     });
 
     it('focuses the name input on mount, deferred to the next frame, without native autoFocus', async () => {
@@ -121,10 +135,10 @@ describe('CategoryFormScreen', () => {
     });
 
     it('saves the name with the default icon and no colour when none was picked', async () => {
-      const { getByLabelText, getByText } = await renderForm();
+      const { getByLabelText } = await renderForm();
 
       await fireEvent.changeText(getByLabelText('Name'), '  Travel  ');
-      await fireEvent.press(getByText('Save'));
+      await pressSave(navigation.setOptions);
 
       await waitFor(() =>
         expect(mockCreate).toHaveBeenCalledWith({ title: 'Travel', icon: 'tag', color: null }),
@@ -132,13 +146,13 @@ describe('CategoryFormScreen', () => {
     });
 
     it('saves the icon and the colour the user picked', async () => {
-      const { getByLabelText, getByText } = await renderForm();
+      const { getByLabelText } = await renderForm();
 
       await fireEvent.changeText(getByLabelText('Name'), 'Travel');
       await fireEvent.press(getByLabelText('Change Icon'));
       await fireEvent.press(getByLabelText('Choose icon basket'));
       await fireEvent.press(getByLabelText('Color yellow'));
-      await fireEvent.press(getByText('Save'));
+      await pressSave(navigation.setOptions);
 
       await waitFor(() =>
         expect(mockCreate).toHaveBeenCalledWith({
@@ -150,10 +164,10 @@ describe('CategoryFormScreen', () => {
     });
 
     it('opens the page of the category it made, in place of the form', async () => {
-      const { getByLabelText, getByText } = await renderForm();
+      const { getByLabelText } = await renderForm();
 
       await fireEvent.changeText(getByLabelText('Name'), 'Travel');
-      await fireEvent.press(getByText('Save'));
+      await pressSave(navigation.setOptions);
 
       await waitFor(() =>
         expect(navigation.replace).toHaveBeenCalledWith('CategoryDetail', {
@@ -164,9 +178,9 @@ describe('CategoryFormScreen', () => {
     });
 
     it('shows a name-required error and creates nothing when Save is pressed with a blank name', async () => {
-      const { getByText, findByText } = await renderForm();
+      const { findByText } = await renderForm();
 
-      await fireEvent.press(getByText('Save'));
+      await pressSave(navigation.setOptions);
 
       expect(await findByText('Enter a name.')).toBeTruthy();
       expect(mockCreate).not.toHaveBeenCalled();
@@ -174,19 +188,19 @@ describe('CategoryFormScreen', () => {
     });
 
     it('refuses a whitespace-only name the same way', async () => {
-      const { getByLabelText, getByText, findByText } = await renderForm();
+      const { getByLabelText, findByText } = await renderForm();
 
       await fireEvent.changeText(getByLabelText('Name'), '   ');
-      await fireEvent.press(getByText('Save'));
+      await pressSave(navigation.setOptions);
 
       expect(await findByText('Enter a name.')).toBeTruthy();
       expect(mockCreate).not.toHaveBeenCalled();
     });
 
     it('clears the error once a name is typed', async () => {
-      const { getByLabelText, getByText, findByText, queryByText } = await renderForm();
+      const { getByLabelText, findByText, queryByText } = await renderForm();
 
-      await fireEvent.press(getByText('Save'));
+      await pressSave(navigation.setOptions);
       expect(await findByText('Enter a name.')).toBeTruthy();
 
       await fireEvent.changeText(getByLabelText('Name'), 'Travel');
@@ -201,11 +215,17 @@ describe('CategoryFormScreen', () => {
           resolveCreate = resolve;
         }),
       );
-      const { getByLabelText, getByText } = await renderForm();
+      const { getByLabelText } = await renderForm();
 
       await fireEvent.changeText(getByLabelText('Name'), 'Travel');
-      await fireEvent.press(getByText('Save'));
-      await fireEvent.press(getByText('Save'));
+      await pressSave(navigation.setOptions);
+
+      expect(saveItem(navigation.setOptions)?.disabled).toBe(true);
+
+      // The bar item is disabled while the write is pending, so the second tap is the raw handler.
+      await act(async () => {
+        saveItem(navigation.setOptions)?.onPress();
+      });
 
       expect(mockCreate).toHaveBeenCalledTimes(1);
 
@@ -216,10 +236,10 @@ describe('CategoryFormScreen', () => {
     it('alerts and stays on the form when the write fails', async () => {
       mockCreate.mockRejectedValue(new Error('disk full'));
       const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
-      const { getByLabelText, getByText } = await renderForm();
+      const { getByLabelText } = await renderForm();
 
       await fireEvent.changeText(getByLabelText('Name'), 'Travel');
-      await fireEvent.press(getByText('Save'));
+      await pressSave(navigation.setOptions);
 
       await waitFor(() =>
         expect(alertSpy).toHaveBeenCalledWith('Could not save', 'Please try again.'),
@@ -254,13 +274,13 @@ describe('CategoryFormScreen', () => {
     });
 
     it('saves a changed name, icon and colour through their own writes, then goes back', async () => {
-      const { getByLabelText, getByText } = await renderForm('groceries');
+      const { getByLabelText } = await renderForm('groceries');
 
       await fireEvent.changeText(getByLabelText('Name'), '  Food  ');
       await fireEvent.press(getByLabelText('Change Icon'));
       await fireEvent.press(getByLabelText('Choose icon basket'));
       await fireEvent.press(getByLabelText('Color yellow'));
-      await fireEvent.press(getByText('Save'));
+      await pressSave(navigation.setOptions);
 
       await waitFor(() => expect(navigation.goBack).toHaveBeenCalledTimes(1));
       expect(mockUpdateTitle).toHaveBeenCalledWith('groceries', 'Food');
@@ -273,10 +293,10 @@ describe('CategoryFormScreen', () => {
     });
 
     it('writes only what changed', async () => {
-      const { getByLabelText, getByText } = await renderForm('groceries');
+      const { getByLabelText } = await renderForm('groceries');
 
       await fireEvent.changeText(getByLabelText('Name'), 'Food');
-      await fireEvent.press(getByText('Save'));
+      await pressSave(navigation.setOptions);
 
       await waitFor(() => expect(navigation.goBack).toHaveBeenCalledTimes(1));
       expect(mockUpdateTitle).toHaveBeenCalledWith('groceries', 'Food');
@@ -285,9 +305,9 @@ describe('CategoryFormScreen', () => {
     });
 
     it('writes nothing when nothing changed', async () => {
-      const { getByText } = await renderForm('groceries');
+      await renderForm('groceries');
 
-      await fireEvent.press(getByText('Save'));
+      await pressSave(navigation.setOptions);
 
       await waitFor(() => expect(navigation.goBack).toHaveBeenCalledTimes(1));
       expect(mockUpdateTitle).not.toHaveBeenCalled();
@@ -296,19 +316,19 @@ describe('CategoryFormScreen', () => {
     });
 
     it('saves no colour for a category that has none and whose colour was not picked', async () => {
-      const { getByText } = await renderForm('trips');
+      await renderForm('trips');
 
-      await fireEvent.press(getByText('Save'));
+      await pressSave(navigation.setOptions);
 
       await waitFor(() => expect(navigation.goBack).toHaveBeenCalledTimes(1));
       expect(mockUpdateColor).not.toHaveBeenCalled();
     });
 
     it('refuses a blank name and writes nothing', async () => {
-      const { getByLabelText, getByText, findByText } = await renderForm('groceries');
+      const { getByLabelText, findByText } = await renderForm('groceries');
 
       await fireEvent.changeText(getByLabelText('Name'), '   ');
-      await fireEvent.press(getByText('Save'));
+      await pressSave(navigation.setOptions);
 
       expect(await findByText('Enter a name.')).toBeTruthy();
       expect(mockUpdateTitle).not.toHaveBeenCalled();
@@ -318,10 +338,10 @@ describe('CategoryFormScreen', () => {
     it('alerts and stays on the form when a write fails', async () => {
       mockUpdateTitle.mockRejectedValue(new Error('disk full'));
       const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
-      const { getByLabelText, getByText } = await renderForm('groceries');
+      const { getByLabelText } = await renderForm('groceries');
 
       await fireEvent.changeText(getByLabelText('Name'), 'Food');
-      await fireEvent.press(getByText('Save'));
+      await pressSave(navigation.setOptions);
 
       await waitFor(() =>
         expect(alertSpy).toHaveBeenCalledWith('Could not save', 'Please try again.'),
@@ -331,14 +351,25 @@ describe('CategoryFormScreen', () => {
       alertSpy.mockRestore();
     });
 
-    it('does nothing on Save until the category has loaded', async () => {
+    it('disables Save until the category has loaded', async () => {
       mockCategories = [];
-      const { getByText } = await renderForm('groceries');
+      await renderForm('groceries');
 
-      await fireEvent.press(getByText('Save'));
-
+      expect(saveItem(navigation.setOptions)?.disabled).toBe(true);
       expect(mockUpdateTitle).not.toHaveBeenCalled();
       expect(navigation.goBack).not.toHaveBeenCalled();
+    });
+
+    it('enables Save once the category has loaded', async () => {
+      mockCategories = [];
+      const { rerender } = await renderForm('groceries');
+
+      mockCategories = [GROCERIES];
+      await act(async () => {
+        await rerender(formElement('groceries'));
+      });
+
+      expect(saveItem(navigation.setOptions)?.disabled).toBe(false);
     });
 
     it('keeps the user’s edits when the category refreshes', async () => {
@@ -367,11 +398,11 @@ describe('CategoryFormScreen', () => {
       });
 
       it('shows a seeded default under its Ukrainian title and does not rename it unless edited', async () => {
-        const { getByDisplayValue, getByText } = await renderForm('groceries');
+        const { getByDisplayValue } = await renderForm('groceries');
 
         expect(getByDisplayValue('Продукти')).toBeTruthy();
 
-        await fireEvent.press(getByText('Зберегти'));
+        await pressSave(navigation.setOptions, 'Зберегти');
 
         await waitFor(() => expect(navigation.goBack).toHaveBeenCalledTimes(1));
         expect(mockUpdateTitle).not.toHaveBeenCalled();

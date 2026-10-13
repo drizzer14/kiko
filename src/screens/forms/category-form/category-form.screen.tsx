@@ -3,7 +3,6 @@ import Box from '@kiko/design-system/components/box';
 import type { TextInputInstance } from 'react-native';
 import { categoriesRepo } from '@kiko/categories/repo';
 import { type CategoryRow, useLiveQuery } from '@kiko/db';
-import Button from '@kiko/design-system/components/button';
 import Screen from '@kiko/design-system/components/screen';
 import { alertOnCatch } from '@kiko/design-system/alert-on-catch';
 import { useSubmitOnce } from '@kiko/design-system/use-submit-once';
@@ -13,6 +12,7 @@ import ColorPicker from '@kiko/design-system/components/color-picker';
 import { resolveCategoryColor } from '@kiko/statistics/category-breakdown';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { type FC, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useFormHeaderItems } from '@kiko/screens/forms/use-form-header-items';
 import { resolveDefaultCategoryTitle } from '@kiko/i18n/default-category-title';
 import { KIKO_CATEGORIES_ICONS } from '@kiko/design-system/components/icon-pools';
 import HoldingIdentityField from '@kiko/design-system/components/holding-identity-field';
@@ -137,19 +137,16 @@ const CategoryFormScreen: FC<CategoryFormScreenProps> = ({ navigation, route }) 
 
   const { onPress: onSave, isSubmitting } = useSubmitOnce(save);
 
+  useFormHeaderItems({
+    navigation,
+    onSave,
+    hasSave: true,
+    // An edit saves values compared with the stored category, so it waits for that read.
+    isSaving: isSubmitting || (isEdit && editingCategory === undefined),
+  });
+
   return (
-    <Screen
-      scroll
-      footer={
-        // An edit saves values compared with the stored category, so it waits for that read.
-        <Button
-          onPress={onSave}
-          disabled={isSubmitting || (isEdit && editingCategory === undefined)}
-        >
-          {t('common.save')}
-        </Button>
-      }
-    >
+    <Screen scroll>
       <Box gap={4}>
         <HoldingIdentityField
           icons={KIKO_CATEGORIES_ICONS}
