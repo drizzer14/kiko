@@ -191,6 +191,7 @@ export const uk: typeof en = {
   categoryPage: {
     rulesHeading: 'Правила',
     setAsDefault: 'Зробити типовою',
+    isDefault: 'Типова категорія',
     quotedName: '«{{name}}»',
     unreadableRule: 'Це правило неможливо прочитати',
     deleteRuleTitle: 'Видалити правило',

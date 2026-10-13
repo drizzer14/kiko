@@ -217,6 +217,7 @@ export const en = {
   categoryPage: {
     rulesHeading: 'Rules',
     setAsDefault: 'Set as default',
+    isDefault: 'Default category',
     quotedName: '"{{name}}"',
     unreadableRule: "This rule can't be read",
     deleteRuleTitle: 'Delete Rule',

@@ -163,19 +163,19 @@ describe('CategoryDetailScreen', () => {
       expect(lastOptions().title).toBe('Groceries');
     });
 
-    it('offers an icon-only Edit that opens the category form with the key', async () => {
+    it('offers an icon-only Edit, after the default star, that opens the category form', async () => {
       await renderScreen('groceries');
 
       const items = lastOptions().unstable_headerRightItems?.() ?? [];
 
-      expect(items).toHaveLength(1);
-      expect(items[0]).toMatchObject({
+      expect(items.map((item) => item.icon?.name)).toEqual(['star', 'pencil']);
+      expect(items[1]).toMatchObject({
         type: 'button',
         label: 'Edit',
         icon: { type: 'sfSymbol', name: 'pencil' },
       });
 
-      items[0]?.onPress();
+      items[1]?.onPress();
 
       expect(navigation.navigate).toHaveBeenCalledWith('CategoryForm', {
         categoryKey: 'groceries',
@@ -199,7 +199,17 @@ describe('CategoryDetailScreen', () => {
         await renderScreen('groceries');
 
         expect(lastOptions().title).toBe('Продукти');
-        expect(lastOptions().unstable_headerRightItems?.()[0]?.label).toBe('Редагувати');
+        expect(lastOptions().unstable_headerRightItems?.()[1]?.label).toBe('Редагувати');
+      });
+
+      it('labels the star in Ukrainian, as the action and as the state', async () => {
+        await renderScreen('groceries');
+
+        expect(lastOptions().unstable_headerRightItems?.()[0]?.label).toBe('Зробити типовою');
+
+        await renderScreen('other');
+
+        expect(lastOptions().unstable_headerRightItems?.()[0]?.label).toBe('Типова категорія');
       });
     });
   });
@@ -472,23 +482,50 @@ describe('CategoryDetailScreen', () => {
   });
 
   describe('setting the default category', () => {
-    it('sets the category as the default from a row under the rules', async () => {
-      const { getByText } = await renderScreen('groceries');
+    const headerItems = (): HeaderItem[] => lastOptions().unstable_headerRightItems?.() ?? [];
 
-      await fireEvent.press(getByText('Set as default'));
+    it('offers the outline star, then Edit, as native header buttons', async () => {
+      await renderScreen('groceries');
+
+      expect(headerItems().map((item) => [item.type, item.label, item.icon?.name])).toEqual([
+        ['button', 'Set as default', 'star'],
+        ['button', 'Edit', 'pencil'],
+      ]);
+    });
+
+    it('sets the category as the default from the star', async () => {
+      await renderScreen('groceries');
+
+      headerItems()[0]?.onPress();
 
       expect(mockSetDefault).toHaveBeenCalledWith('groceries');
     });
 
-    it('offers it on no category that is already the default', async () => {
-      const { queryByText } = await renderScreen('other');
+    it('shows the default category as a disabled filled star', async () => {
+      await renderScreen('other');
 
-      expect(queryByText('Set as default')).toBeNull();
+      expect(headerItems()[0]).toMatchObject({
+        type: 'button',
+        label: 'Default category',
+        icon: { type: 'sfSymbol', name: 'star.fill' },
+        disabled: true,
+      });
+      expect(headerItems()).toHaveLength(2);
     });
 
     it('moves to the settings default when the settings change', async () => {
       mockSettingsRows = [{ defaultCategoryKey: 'groceries' }];
 
+      await renderScreen('groceries');
+
+      expect(headerItems()[0]).toMatchObject({
+        label: 'Default category',
+        icon: { name: 'star.fill' },
+        disabled: true,
+      });
+    });
+
+    it('keeps the action out of the body', async () => {
       const { queryByText } = await renderScreen('groceries');
 
       expect(queryByText('Set as default')).toBeNull();

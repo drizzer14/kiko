@@ -1,4 +1,9 @@
 import type { TFunction } from 'i18next';
+import {
+  DEFAULT_CATEGORY_KEY,
+  DEFAULT_CATEGORY_SYMBOL,
+  SET_DEFAULT_CATEGORY_SYMBOL,
+} from '@kiko/categories/category-display';
 import maybe, { foldMap } from 'fnts/maybe';
 import { Money } from '@kiko/currency/money';
 import type { TimeClock } from '@kiko/dates';
@@ -19,7 +24,6 @@ import { genericEntitySymbol } from '@kiko/holdings/entity-symbols';
 import { type FC, useEffect, useLayoutEffect, useMemo } from 'react';
 import type { SettingsStackParamList } from '@kiko/navigation/types';
 import LoadingState from '@kiko/design-system/components/loading-state';
-import { DEFAULT_CATEGORY_KEY } from '@kiko/categories/category-display';
 import { categoryRulesRepo } from '@kiko/categories/category-rules-repo';
 import { type CategoryRuleRow, useDataReady, useLiveQuery } from '@kiko/db';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -65,8 +69,8 @@ const ruleLinesOf = (
   ];
 };
 
-// A category's page: its rules as cards in priority order, the button that adds one, and the row
-// that makes the category the default. Editing the category is the header's Edit.
+// A category's page: its rules as cards in priority order and the button that adds one. The header
+// holds the star that makes the category the default, and Edit.
 const CategoryDetailScreen: FC<CategoryDetailScreenProps> = ({ navigation, route }) => {
   const { categoryKey } = route.params;
   const { t } = useTranslation();
@@ -100,14 +104,34 @@ const CategoryDetailScreen: FC<CategoryDetailScreenProps> = ({ navigation, route
     [rules, categoryKey, t, clock],
   );
 
+  const isDefault = categoryKey === defaultCategoryKey;
+
+  // Adjacent bar items share one glass capsule on iOS 26+, which would read the star and the
+  // pencil as one control with two glyphs, so neither shares its background.
   useLayoutEffect(() => {
     if (displayName === undefined) {
       return;
     }
 
+    const starLabel = t(isDefault ? 'categoryPage.isDefault' : 'categoryPage.setAsDefault');
+
     navigation.setOptions({
       title: displayName,
       unstable_headerRightItems: () => [
+        {
+          type: 'button' as const,
+          label: starLabel,
+          accessibilityLabel: starLabel,
+          icon: {
+            type: 'sfSymbol' as const,
+            name: isDefault ? DEFAULT_CATEGORY_SYMBOL : SET_DEFAULT_CATEGORY_SYMBOL,
+          },
+          tintColor: theme.colors.textPrimary,
+          sharesBackground: false,
+          // The default category is the state, not an action: the filled star only shows it.
+          disabled: isDefault,
+          onPress: () => settingsRepo.setDefaultCategoryKey(categoryKey),
+        },
         editBarItem({
           label: t('common.edit'),
           tintColor: theme.colors.textPrimary,
@@ -115,7 +139,7 @@ const CategoryDetailScreen: FC<CategoryDetailScreenProps> = ({ navigation, route
         }),
       ],
     });
-  }, [navigation, displayName, categoryKey, t, theme.colors.textPrimary]);
+  }, [navigation, displayName, categoryKey, isDefault, t, theme.colors.textPrimary]);
 
   // A category deleted elsewhere (a restore) leaves nothing to show. Only the fresh read can say
   // so: a cached one may be one read old and not hold a category that was just created.
@@ -146,45 +170,33 @@ const CategoryDetailScreen: FC<CategoryDetailScreenProps> = ({ navigation, route
         </Button>
       }
     >
-      <Box gap={4}>
-        <Box gap={3}>
-          <Text variant="heading">{t('categoryPage.rulesHeading')}</Text>
+      <Box gap={3}>
+        <Text variant="heading">{t('categoryPage.rulesHeading')}</Text>
 
-          {lines.length === 0 ? (
-            <Text variant="caption" tone="textSecondary">
-              {t('categoryPage.emptyRules')}
-            </Text>
-          ) : (
-            <Box gap={4}>
-              {lines.map((line) => (
-                <RuleCard
-                  key={line.id}
-                  rows={line.rows}
-                  summary={line.summary}
-                  onPress={
-                    line.isReadable
-                      ? () =>
-                          navigation.navigate('CategoryRuleForm', {
-                            categoryKey,
-                            ruleId: line.id,
-                          })
-                      : undefined
-                  }
-                  onDelete={() => categoryRulesRepo.deleteRule(line.id)}
-                />
-              ))}
-            </Box>
-          )}
-        </Box>
-
-        {category.key !== defaultCategoryKey && (
-          <Button
-            variant="secondaryTonal"
-            icon="star"
-            onPress={() => settingsRepo.setDefaultCategoryKey(category.key)}
-          >
-            {t('categoryPage.setAsDefault')}
-          </Button>
+        {lines.length === 0 ? (
+          <Text variant="caption" tone="textSecondary">
+            {t('categoryPage.emptyRules')}
+          </Text>
+        ) : (
+          <Box gap={4}>
+            {lines.map((line) => (
+              <RuleCard
+                key={line.id}
+                rows={line.rows}
+                summary={line.summary}
+                onPress={
+                  line.isReadable
+                    ? () =>
+                        navigation.navigate('CategoryRuleForm', {
+                          categoryKey,
+                          ruleId: line.id,
+                        })
+                    : undefined
+                }
+                onDelete={() => categoryRulesRepo.deleteRule(line.id)}
+              />
+            ))}
+          </Box>
         )}
       </Box>
     </Screen>
