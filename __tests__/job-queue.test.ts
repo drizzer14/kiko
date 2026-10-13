@@ -600,6 +600,41 @@ describe.each([
   });
 });
 
+// A pid that is certainly dead: the subshell prints its own pid and exits before spawnSync returns.
+const deadPid = (): string =>
+  spawnSync('bash', ['-c', 'echo $$'], { encoding: 'utf8' }).stdout.trim();
+
+describe('scripts/job-queue.sh stale state', () => {
+  it('removes a ticket and a lock whose owners are gone, then runs the job', async () => {
+    const sandbox = createSandbox();
+    const worktree = createWorktree(sandbox, 'one');
+    const staleTicket = `1-0000000000-1-${deadPid()}-ghost`;
+    mkdirSync(join(sandbox.queue, 'tickets'), { recursive: true });
+    writeFileSync(join(sandbox.queue, 'tickets', staleTicket), '');
+    holdLock(sandbox, `${deadPid()} verify ghost /elsewhere`);
+
+    const waiter = startQueue(sandbox, 'verify', worktree, 'one');
+    const result = await waiter.finished;
+
+    expect(result.code).toBe(0);
+    expect(startedWorktrees(sandbox)).toEqual([worktree]);
+    expect(entriesOf(join(sandbox.queue, 'tickets'))).toEqual([]);
+    expect(existsSync(join(sandbox.queue, 'lock'))).toBe(false);
+  });
+
+  it('removes a ticket with a malformed name, which would hold the head forever', async () => {
+    const sandbox = createSandbox();
+    const worktree = createWorktree(sandbox, 'one');
+    mkdirSync(join(sandbox.queue, 'tickets'), { recursive: true });
+    writeFileSync(join(sandbox.queue, 'tickets', '0-junk'), '');
+
+    const result = await startQueue(sandbox, 'verify', worktree, 'one').finished;
+
+    expect(result.code).toBe(0);
+    expect(entriesOf(join(sandbox.queue, 'tickets'))).toEqual([]);
+  });
+});
+
 const BATTERY_POWER = "Now drawing from 'Battery Power'\n";
 
 describe('scripts/job-queue.sh hold and release', () => {

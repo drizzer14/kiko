@@ -198,6 +198,29 @@ if [ "$command_name" = gate ]; then
 fi
 printf 'QUEUED %s (%s) ahead: %s\n' "$label" "$kind_text" "$(tickets_ahead)"
 
+# A ticket name carries its waiter's pid (the fourth dash-separated field). A waiter killed
+# without a trap leaves its ticket behind, and so does a file that is no ticket at all; either
+# would hold the head of the queue forever.
+prune_stale_tickets() {
+  local ticket waiter_pid
+  for ticket in $(ticket_names); do
+    waiter_pid="$(printf '%s' "$ticket" | cut -d- -f4)"
+    case "$waiter_pid" in
+      '' | *[!0-9]*) rm -f "$TICKETS_DIRECTORY/$ticket" ;;
+      *) kill -0 "$waiter_pid" 2> /dev/null || rm -f "$TICKETS_DIRECTORY/$ticket" ;;
+    esac
+  done
+}
+
+# Only the head waiter reclaims a lock, so two waiters never remove each other's fresh lock. An
+# owner file not yet written is a lock being taken, not a stale one.
+reclaim_stale_lock() {
+  local owner_pid
+  owner_pid="$(cut -d' ' -f1 "$LOCK_DIRECTORY/owner" 2> /dev/null)"
+  [ -n "$owner_pid" ] || return 0
+  kill -0 "$owner_pid" 2> /dev/null || rm -rf "$LOCK_DIRECTORY"
+}
+
 # The sleep runs in the background and the script waits on it, so a signal ends the wait at once
 # instead of after the whole poll interval.
 pause() {
@@ -211,10 +234,11 @@ pause() {
 # waiter's log shows why it waits without a line per poll.
 waiting_reason=''
 while :; do
+  prune_stale_tickets
   reason="$(blocked_reason)"
   if [ -n "$reason" ]; then
     [ "$reason" = "$waiting_reason" ] || printf 'WAITING %s: %s\n' "$label" "$reason"
-  elif [ "$(head_ticket)" = "$ticket_name" ] && mkdir "$LOCK_DIRECTORY" 2> /dev/null; then
+  elif [ "$(head_ticket)" = "$ticket_name" ] && reclaim_stale_lock && mkdir "$LOCK_DIRECTORY" 2> /dev/null; then
     owns_lock=1
     break
   fi
