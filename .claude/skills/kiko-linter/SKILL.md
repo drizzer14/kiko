@@ -26,6 +26,8 @@ fast+medium gate is picked up by `make verify` automatically through
 
 ## The wrapper contract
 
+`scripts/job-queue.sh` is not a `scripts/checks` wrapper: its QUEUED/WAITING/START/DONE lines are its normal stdout, not a failure block.
+
 Every check wrapper in `scripts/checks/` follows the same shape (read
 `scripts/checks/_lib.sh` for the exact helper):
 
@@ -178,6 +180,7 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   operator (`>&-`, `<<-EOF`). So `kill <pid> 2>/dev/null` and
   `kill <pid> &>/dev/null` are allowed. The agent rule stays
   absolute regardless: never `git stash` or pattern-kill in any form.
+  The ONE allowed group kill (user ruling 2026-10-13): `scripts/job-queue.sh` may send TERM to the process group it created for its own job (`set -m`, then the group-TERM form its header shows), only while `pgrep -g` finds a member, never any other group; the lock stays live while any process of that group lives. An agent's own group or pattern kill is still denied.
   Every deny carries the `print_block` WHAT/DETAILS/WHY/HOW/DO-NOT shape
   as plain text in the one JSON reason field; the kill deny keeps its
   one-line reason. Deny/allow cases for each form live in

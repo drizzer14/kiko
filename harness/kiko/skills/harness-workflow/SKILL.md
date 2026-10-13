@@ -235,7 +235,7 @@ a test in the fix commit.
 
 Never use pkill, killall, or any pattern or group kill. Stop only a
 process ID you started yourself (kill <pid>), or let the tool timeout
-end a hung command. Read-only roles (reviewer, auditor, explorer,
+end a hung command. The one exception is not yours: `scripts/job-queue.sh` may send TERM to the process group it created for its own job, only while `pgrep -g` finds a member. Read-only roles (reviewer, auditor, explorer,
 debugger, pm, retrospect) do not stop processes at all. The
 PreToolUse hook on `Bash` (`scripts/checks/kill-guard.sh`, wired in
 `harness/kiko/hooks/hooks.json`) denies the common forms of these
@@ -568,7 +568,7 @@ in another one-off brief.
 
 ## Load rule
 
-The load rule lives in the ops skill's "Load rule" section; see it. One heavy job runs at a time. `make verify` and a mutation gate each take the shared lock. Verifies drain before any gate. Order gates shortest first by changed lines (`make mutable` prints "changed lines: N"). Start no heavy job on battery. Never start a heavy job directly: queue it. Interim mechanism until track H5 ports it into scripts/: the coordinator-owned queue scripts memory/refs/verify-queue.sh and security-queue.sh, and the coordinator's gate runner.
+The load rule lives in the ops skill's "Load rule" section; see it. One heavy job runs at a time, queued by `scripts/job-queue.sh` (read its header for the full contract). Run `scripts/job-queue.sh verify|check-all|security <worktree> <label>` or `scripts/job-queue.sh gate <worktree> <label> <base> <head> [--long]` with run_in_background and await only its exit code; its QUEUED/WAITING/START/DONE lines are its normal stdout. State lives in `${KIKO_QUEUE_DIR:-$HOME/.claude/kiko-queue}`. Order: class 1 (verify, check-all, security) first, then gates by `changed lines:` (smallest first), then `--long` gates (user ruling 2026-10-13: a `--long` gate starts only on AC power, after every other ticket). `scripts/job-queue.sh hold <reason>` stops every start until `scripts/job-queue.sh release`; `scripts/job-queue.sh status` shows the hold, the power state, the running job, and the tickets. On battery NO job of any class starts (orchestrator default D1, accepted by the user 2026-10-13); an unreadable power state holds too. A gate refuses a tip whose `mutation.sh` has no changed-line `--list` ("merge main first", exit 2) and a moved HEAD (exit 3); the queue never checks out files (the old H6 overlay is gone). Cutover: until the coordinator's old tickets folder is empty and the old gate runner got END, the old scripts (memory/refs/verify-queue.sh, security-queue.sh, and the coordinator's gate runner) stay the live queue; do NOT switch to `scripts/job-queue.sh` before the coordinator says so, then use it only. Keep `wait-load.sh` for the load wait only.
 
 ## Long briefs live in a file
 
