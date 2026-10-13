@@ -371,8 +371,67 @@ describe('_lib.sh harness_mutation_costs (pure)', () => {
       ['x 200 100 70 abc 1', '2026-09-10T10:00:00Z 300 100 70 10 many'],
     ],
     ['a zero duration', [record(0, 100, 100, 0), record(0, 100, 100, 50)]],
+    [
+      'timeout shares of 40% and 42% with 4% noise in one duration',
+      // True costs 2 s and 40 s would give 17200 and 16164; the second duration is 4% lower, which
+      // an unguarded fit reads as a timed-out mutant costing barely more than a normal one.
+      [record(17200, 1000, 1000, 400), record(15500, 900, 900, 378)],
+    ],
   ])('prints nothing for %s', (_title, records) => {
     expect(costs(records)).toBe('');
+  });
+
+  it('fits the costs of two records whose timeout shares are 32% and 48%', () => {
+    // 100 * (0.68 * 2 + 0.32 * 40) = 1416 and 100 * (0.52 * 2 + 0.48 * 40) = 2024.
+    expect(costs([record(1416, 100, 100, 32), record(2024, 100, 100, 48)])).toBe('2 40');
+  });
+
+  it('prints nothing for two records whose timeout shares are 33% and 47%', () => {
+    // 100 * (0.67 * 2 + 0.33 * 40) = 1454 and 100 * (0.53 * 2 + 0.47 * 40) = 1986. The shares are
+    // 14 points apart (sin squared 0.0814 of the angle between the two columns, under 0.1).
+    expect(costs([record(1454, 100, 100, 33), record(1986, 100, 100, 47)])).toBe('');
+  });
+
+  it('fits the costs of two records whose timeout shares are 10% and 40%', () => {
+    // 200 * (0.9 * 2 + 0.1 * 40) = 1160 and 150 * (0.6 * 2 + 0.4 * 40) = 2580.
+    expect(costs([record(1160, 200, 200, 20), record(2580, 150, 150, 60)])).toBe('2 40');
+  });
+});
+
+describe('_lib.sh harness_mutation_run_share (pure)', () => {
+  const runShare = (records: string[]): string =>
+    sh(
+      withHistory(records, 'harness_mutation_run_share "$(harness_mutation_history_file "$root")"'),
+      freshTemporaryDirectory(),
+    );
+
+  it('prints the percent of tested mutants that timed out over the records', () => {
+    // 30 + 90 = 120 timed out of 100 + 300 = 400 tested.
+    expect(runShare([record(500, 100, 100, 30), record(1500, 300, 300, 90)])).toBe('30');
+  });
+
+  it('keeps the fraction of a share that does not divide evenly', () => {
+    expect(runShare([record(500, 100, 300, 100)])).toBe('33.3333');
+  });
+
+  it('counts only the last 5 records that carry the two fields', () => {
+    const records = [
+      record(900, 100, 100, 100),
+      ...Array.from({ length: 5 }, (_unused, index) => record(900, 100, 100, 10 + index)),
+      '2026-09-10T12:00:00Z 900 100 70',
+    ];
+
+    // 10 + 11 + 12 + 13 + 14 = 60 timed out of 500 tested.
+    expect(runShare(records)).toBe('12');
+  });
+
+  it.each([
+    ['no history file at all', []],
+    ['records without the tested and timed-out fields', ['2026-09-10T09:00:00Z 9000 100 70']],
+    ['nothing tested', [record(200, 100, 0, 0)]],
+    ['more timed out than tested', [record(200, 100, 10, 20)]],
+  ])('prints nothing for %s', (_title, records) => {
+    expect(runShare(records)).toBe('');
   });
 });
 
@@ -544,6 +603,58 @@ describe('_lib.sh harness_mutation_eta_filter (pure)', () => {
       ),
     ).toEqual([
       'Estimated ~121m 12s for 1000 mutants (~2s/mutant, 25% timeouts at ~23.088s each, from history)',
+    ]);
+  });
+
+  it('counts the timeouts once when the history rate already holds a timeout share', () => {
+    // rate 17.2 s/mutant over history runs at 40% timeouts, floor = (5000 + 37176) / 1000 / 2 =
+    // 21.088 s: a = 17.2 - 0.4 * 21.088 = 8.7648 s, b = a + 21.088 = 29.8528 s, and a run at
+    // 40% costs 1000 * (0.6 * 8.7648 + 0.4 * 29.8528) = 17200 s, the history rate times M.
+    // At 40% with q = 160 / 400 the remaining 600 mutants cost 600 * 17.2 = 10320 s.
+    expect(
+      estimates(
+        filtered(
+          ['17.2', '', '', '40', '5000', '2', '40'],
+          [DRY_RUN_LINE, progressLine(400, 1000, 160)],
+        ),
+      ),
+    ).toEqual([
+      'Estimated ~286m 40s for 1000 mutants (~8.7648s/mutant, 40% timeouts at ~29.8528s each, from history)',
+      'Estimate at 40%: ~172m remaining (40% timeouts so far)',
+    ]);
+  });
+
+  it('keeps the rate times the mutant count at a run share below the history share', () => {
+    // rate 10, history share 25%, floor 21.088 s: a = 10 - 0.25 * 21.088 = 4.728 s and
+    // b = 25.816 s; a run at 10% costs 500 * (0.9 * 4.728 + 0.1 * 25.816) = 3418.4 s, less than
+    // the 5000 s of the rate times 500 because this run has fewer timeouts than the history.
+    expect(
+      estimates(
+        filtered(['10', '', '', '10', '5000', '2', '25'], [DRY_RUN_LINE, progressLine(10, 500, 2)]),
+      ),
+    ).toEqual([
+      'Estimated ~56m 58s for 500 mutants (~4.728s/mutant, 10% timeouts at ~25.816s each, from history)',
+    ]);
+  });
+
+  it('falls back to the plain rate when the history share leaves no positive normal cost', () => {
+    // rate 2, history share 50%, floor 21.088 s: a = 2 - 10.544 is negative, so the timed-out cost
+    // is unknown and the estimate is the rate times the mutant count, with no update.
+    expect(
+      estimates(
+        filtered(
+          ['2', '', '', '25', '5000', '2', '50'],
+          [DRY_RUN_LINE, progressLine(100, 1000, 40)],
+        ),
+      ),
+    ).toEqual(['Estimated ~33m 20s for 1000 mutants (~2s/mutant from history)']);
+  });
+
+  it('uses the fitted costs and ignores the history share when a fit exists', () => {
+    expect(
+      estimates(filtered(['2', '3', '40', '25', '5000', '2', '40'], [progressLine(10, 500, 2)])),
+    ).toEqual([
+      'Estimated ~102m 5s for 500 mutants (~3s/mutant, 25% timeouts at ~40s each, from history)',
     ]);
   });
 

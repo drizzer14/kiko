@@ -769,6 +769,27 @@ describe('scripts/checks/mutation.sh timeout-aware estimate', () => {
     expect(result.stdout).toContain('Estimate at 10%: ~156m 32s remaining (40% timeouts so far)');
   });
 
+  it('estimates a run at the history timeout share as the history rate times the mutants', () => {
+    const temporaryDirectory = freshTemporaryDirectory();
+    // Two runs at one timeout share (40%) cannot be fitted, and each cost 17.2 s per mutant.
+    seedHistory(temporaryDirectory, [
+      '2026-09-10T10:00:00Z 17200 1000 70 1000 400',
+      '2026-09-10T11:00:00Z 8600 500 70 500 200',
+    ]);
+    writeConcurrency(temporaryDirectory);
+
+    const result = runPrinting(temporaryDirectory, [
+      DRY_RUN_LINE,
+      'Mutation testing 1% (elapsed: ~10s, remaining: ~9m) 10/1000 tested (0 survived, 4 timed out)',
+    ]);
+
+    // floor = (5000 + 37176) / 1000 / 2 = 21.088; a = 17.2 - 0.4 * 21.088 = 8.7648, b = 29.8528;
+    // 1000 * (0.6 * 8.7648 + 0.4 * 29.8528) = 17200 s, which is 1000 * 17.2.
+    expect(result.stdout).toContain(
+      'Estimated ~286m 40s for 1000 mutants (~8.7648s/mutant, 40% timeouts at ~29.8528s each, from history)',
+    );
+  });
+
   it('keeps the estimate lines out of the progress log', () => {
     const temporaryDirectory = freshTemporaryDirectory();
     seedHistory(temporaryDirectory, ['2026-09-10T10:00:00Z 600 300 70']);
