@@ -1,5 +1,42 @@
 #!/usr/bin/env bash
-# One queue for every heavy job across all worktrees.
+# One queue for every heavy job (make verify, check:all, check:security, the mutation gate) across
+# all worktrees: one job runs at a time, the shortest class first, and nothing runs on battery.
+#
+# Usage (run it with run_in_background and wait on its exit code):
+#   job-queue.sh verify|check-all|security <worktree> <label>
+#   job-queue.sh gate <worktree> <label> <mutation-base> <expected-head> [--long]
+#   job-queue.sh hold <reason>    stop every start until `release`; running jobs are not stopped
+#   job-queue.sh release
+#   job-queue.sh status           the hold, the power state, the running job, the queued tickets
+# A label holds only letters, digits, dot, underscore, and dash.
+#
+# State lives in ${KIKO_QUEUE_DIR:-$HOME/.claude/kiko-queue}, outside every worktree:
+#   tickets/   one file per waiting job, named <class>-<size>-<epoch>-<pid>-<label>
+#   lock/      a directory made with mkdir; its `owner` file is `<pid> <kind> <label> <worktree>`
+#   hold       present while held; its text is the reason
+#   logs/      gate-<label>.log, the whole output of a gate (other jobs print to stdout)
+#   done.log   one line per finished job: kind label exit start end
+#
+# Order is a plain `sort` of the ticket names. Class 1 is verify, check-all, and security (size
+# 0, first come first served); class 2 is a gate, class 3 a gate with --long. A gate's size is the
+# `changed lines:` figure of `KIKO_MUTATION_BASE=<base> scripts/checks/mutation.sh --list` in its
+# worktree, read when it is queued, so a short gate runs before a long one. A change set above the
+# file cap, or a tip whose mutation.sh prints no `changed lines:` line, is refused (exit 2).
+#
+# The first ticket in order starts once no hold exists, the machine is not on battery power, and
+# `mkdir lock` succeeds. A gate then checks that the worktree HEAD still starts with
+# <expected-head> (it never checks anything out), removes the stale Stryker state, and runs
+# `make deep` under caffeinate. A waiter removes a ticket whose pid is gone, and the head waiter a
+# lock whose owner pid is gone. A waiter killed with SIGKILL leaves its own job running while its
+# lock reads as stale, so never SIGKILL one; stop it with SIGTERM or SIGINT.
+#
+# Exit codes: the job's own code; 2 usage or a refused gate; 3 a gate whose HEAD moved; 130 after
+# SIGINT; 143 after SIGTERM. A signal stops this script's own job and sleep (never one found by
+# name), removes its ticket, removes the lock if it holds it, then exits.
+#
+# Test seams: KIKO_QUEUE_DIR, KIKO_QUEUE_POLL_SECONDS (default 30), KIKO_QUEUE_PMSET and
+# KIKO_QUEUE_CAFFEINATE (the binary to run instead of pmset and caffeinate; a missing binary means
+# AC power and no caffeinate).
 set -u
 
 QUEUE_DIRECTORY="${KIKO_QUEUE_DIR:-$HOME/.claude/kiko-queue}"
