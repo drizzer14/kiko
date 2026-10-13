@@ -49,19 +49,40 @@ it. Stryker's own `concurrency` is 2.
 After the lock, `mutation.sh` refuses (exit 2, structured block) a
 `KIKO_MUTATION_FULL=1` run and a `KIKO_MUTATION_BASE` that does not
 resolve, directly: a whole-project run is always above the cap. It then
-selects the files to mutate (the diff vs `KIKO_MUTATION_BASE`'s
+selects the files to mutate, then the changed lines of each (the diff vs `KIKO_MUTATION_BASE`'s
 merge-base; a failed `git diff` is a refusal too, never "nothing to
 mutate"), applies its excludes, drops the files whose diff is only
 comments or whitespace and has no colocated test changed by more than
-comments (`comment-only-changes.js`, fail-closed), and
-counts the rest. Above
+comments (`comment-only-changes.js`, fail-closed), turns one `-U0` diff
+into added-line ranges (`mutation-ranges.js`; a file with no added line is
+skipped and not counted), and counts the rest. Above
 `MUTATION_FILE_CAP` (30) it exits 2 with the structured block before
 Stryker starts. Only then does the dedup skip run, and its fingerprint
-includes the scope (the merge-base sha and the selected file list), so
+includes the scope (the merge-base sha and the `--mutate` entries, one `path:start-end` per range), so
 a pass over a narrow change set never skips a wider or refused one at
 the same HEAD. No env var bypasses the cap: mutation testing runs per
 small change set, with `KIKO_MUTATION_BASE` set to that change set's
 own base commit.
+
+The scorer (`mutation-score.js`) takes the exact `--mutate` entries as arguments and grades only
+mutants fully inside a range. It filters by range because Stryker's incremental mode carries old
+out-of-range mutants, with their old statuses, into `mutation.json` (core `incremental-differ.js`
+lines 128-142); without the filter a stale Survived would lower this run's score. The scope check
+compares the SET of entries with `config.mutate`, and the scorer exits 2 when one file is given
+both as a plain path and as a range (Stryker reads that as "do not mutate"). A comment-only file
+kept because its colocated test changed goes in as its plain path (whole file). A kept path with
+`[ ( * ? {` is refused after the lock in a run, with no lock in `--list`, always before Stryker.
+The diff uses `--find-renames --inter-hunk-context=0 --text --no-textconv`, so a user's diff attributes or textconv driver cannot change the hunks.
+
+User ruling 2026-10-12, no edge-straddling mutant: Stryker 8.7.1 creates a mutant only when its
+whole node lies inside a range (instrumenter `syntax-helpers.js` `locationIncluded`), and the
+scorer grades only mutants fully inside a range. Cost: an edit inside a multi-line block,
+condition, object or array, or an arrow body loses that construct's whole-node mutants; the inner
+mutants on the changed lines stay.
+
+User ruling 2026-10-12, source plus colocated test: when a source file and its colocated test both
+change, only the changed source lines are mutated. Cost: a weakened test is checked only against
+the changed lines, not the whole file.
 
 ## Guard replay: fingerprint, mark, and deadline
 
@@ -192,4 +213,4 @@ dedup always runs in full.
   `check:component-i18n-namespace` (neither when its test-seam
   source-root variable is set), `check:shipped-migrations`,
   `check:guard-replay`, `check:mutation` (the fingerprint includes its
-  scope: merge-base and file list).
+  scope: merge-base and `--mutate` entries).

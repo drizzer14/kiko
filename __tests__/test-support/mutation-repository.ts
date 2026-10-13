@@ -19,36 +19,29 @@ const SCRIPT = join(__dirname, '../../scripts/checks/mutation.sh');
 const LIB = join(__dirname, '../../scripts/checks/_lib.sh');
 const SCORE_SCRIPT = join(__dirname, '../../scripts/checks/mutation-score.js');
 const COMMENT_ONLY_SCRIPT = join(__dirname, '../../scripts/checks/comment-only-changes.js');
+const RANGES_SCRIPT = join(__dirname, '../../scripts/checks/mutation-ranges.js');
 
 // The throwaway repository has no node_modules, so the comment-only script
 // cannot find `typescript` there and keeps every file. A test that needs the
 // real parse sets NODE_PATH to this directory.
 export const REAL_NODE_MODULES = join(__dirname, '../../node_modules');
 
-// Bash lines that print one JSON entry per file of the comma list in
-// `$mutate_argument`, comma-separated. Bash 3.2-safe: IFS field-splitting, no
-// arrays.
-const printEachMutatedFile = (entryFormat: string): string[] => [
-  '  first=1',
-  '  old_ifs="$IFS"',
-  "  IFS=','",
-  '  for file in $mutate_argument; do',
-  '    [ -n "$file" ] || continue',
-  '    [ "$first" -eq 0 ] && printf \',\'',
-  '    first=0',
-  `    printf '${entryFormat}' "$file"`,
-  '  done',
-  '  IFS="$old_ifs"',
-];
+const KILLED_MUTANT_AT_LINE = [
+  '{"status":"Killed","location":',
+  '{"start":{"line":%s,"column":1},"end":{"line":%s,"column":2}}}',
+].join('');
 
-// Writes a trivial, fully-killed mutation.json report for every file named in
-// the stub's own `--mutate=` argument, with that list as the report's own
+// Writes a trivial, fully-killed mutation.json report for the entries named in
+// the stub's own `--mutate=` argument (a comma list of `path` or
+// `path:start-end`), with those entries verbatim as the report's own
 // `config.mutate` scope, so the CHANGE-SET gate
 // (scripts/checks/mutation-score.js, run by mutation.sh after a passing
 // Stryker exit) finds a report that belongs to this run and clears both the 75
 // total and the 60 per-file floor — these lines test the surrounding wrapper
 // machinery (cap, lock, ETA, streaming, dedup), not the scorer itself (see
-// __tests__/mutation-score.test.ts for that).
+// __tests__/mutation-score.test.ts for that). One `files[path]` per unique
+// path, one Killed mutant per entry on that entry's start line (line 1 for a
+// plain path). Bash 3.2-safe: no arrays, no here-strings.
 const STUB_WRITES_PASSING_REPORT = [
   'mkdir -p reports/mutation',
   'mutate_argument=""',
@@ -60,22 +53,56 @@ const STUB_WRITES_PASSING_REPORT = [
   '    --mutate=*) mutate_argument="$(printf %s "$argument" | cut -c10-)" ;;',
   '  esac',
   'done',
+  // The trailing newline matters: `read` fails on a last line without one.
+  'entries_of() { printf "%s\\n" "$mutate_argument" | tr "," "\\n"; }',
+  'path_of() { printf %s "$1" | sed \'s/:.*//\'; }',
+  'start_of() {',
+  '  start="$(printf %s "$1" | sed -n \'s/^[^:]*:\\([0-9][0-9]*\\)-.*/\\1/p\')"',
+  '  [ -n "$start" ] || start=1',
+  '  printf %s "$start"',
+  '}',
   '{',
   '  printf \'{"config":{"mutate":[\'',
-  ...printEachMutatedFile('"%s"'),
+  '  first=1',
+  '  while IFS= read -r entry; do',
+  '    [ -n "$entry" ] || continue',
+  '    [ "$first" -eq 0 ] && printf \',\'',
+  '    first=0',
+  '    printf \'"%s"\' "$entry"',
+  '  done < <(entries_of)',
   '  printf \']},"files":{\'',
-  ...printEachMutatedFile('"%s":{"mutants":[{"status":"Killed"}]}'),
+  '  first=1',
+  '  seen=""',
+  '  while IFS= read -r entry; do',
+  '    [ -n "$entry" ] || continue',
+  '    file="$(path_of "$entry")"',
+  '    case ",$seen," in *",$file,"*) continue ;; esac',
+  '    seen="$seen,$file"',
+  '    [ "$first" -eq 0 ] && printf \',\'',
+  '    first=0',
+  '    printf \'"%s":{"mutants":[\' "$file"',
+  '    inner=1',
+  '    while IFS= read -r other; do',
+  '      [ -n "$other" ] || continue',
+  '      [ "$(path_of "$other")" = "$file" ] || continue',
+  '      line="$(start_of "$other")"',
+  '      [ "$inner" -eq 0 ] && printf \',\'',
+  '      inner=0',
+  `      printf '${KILLED_MUTANT_AT_LINE}' "$line" "$line"`,
+  '    done < <(entries_of)',
+  "    printf ']}'",
+  '  done < <(entries_of)',
   "  printf '}}'",
   '} > reports/mutation/mutation.json',
 ].join('\n');
 
 // Same idea as STUB_WRITES_PASSING_REPORT above, for the raw bash stub bodies
 // in mutation-stream.test.ts/mutation-lock.test.ts, which always change the
-// one fixed file `src/changed.ts` (buildMutationRepository's own default) and
-// so never need to read it back out of an argument list.
+// one fixed one-line file `src/changed.ts` (buildMutationRepository's own
+// default), so its single range is `src/changed.ts:1-1`.
 export const PASSING_REPORT_FOR_CHANGED_FILE = [
   'mkdir -p reports/mutation',
-  'printf \'{"config":{"mutate":["src/changed.ts"]},"files":{"src/changed.ts":{"mutants":[{"status":"Killed"}]}}}\' > reports/mutation/mutation.json',
+  `printf '{"config":{"mutate":["src/changed.ts:1-1"]},"files":{"src/changed.ts":{"mutants":[${KILLED_MUTANT_AT_LINE}]}}}' 1 1 > reports/mutation/mutation.json`,
 ].join('\n');
 
 const ARGUMENT_STUB = [
@@ -124,6 +151,7 @@ export const copyMutationScripts = (root: string): string => {
   copyFileSync(LIB, join(root, 'scripts/checks/_lib.sh'));
   copyFileSync(SCORE_SCRIPT, join(root, 'scripts/checks/mutation-score.js'));
   copyFileSync(COMMENT_ONLY_SCRIPT, join(root, 'scripts/checks/comment-only-changes.js'));
+  copyFileSync(RANGES_SCRIPT, join(root, 'scripts/checks/mutation-ranges.js'));
 
   return script;
 };
@@ -166,6 +194,10 @@ export const buildMutationRepository = (
   return { root, script };
 };
 
+// A 12-line source file; `edits` replaces the given 1-based lines.
+export const twelveLines = (edits: Record<number, string> = {}): string =>
+  `${Array.from({ length: 12 }, (_, index) => edits[index + 1] ?? `export const line${index + 1} = ${index + 1};`).join('\n')}\n`;
+
 export type ArgumentStubRun = {
   code: number | null;
   stdout: string;
@@ -203,11 +235,17 @@ export const runWithArgumentStub = (
   return { code: result.status, stdout: result.stdout, stderr: result.stderr, stubArguments };
 };
 
-export const mutatedFiles = (stubArguments: string[] | null): string[] =>
+// The raw `--mutate` entries: `path:start-end` for a changed-line range, a
+// plain `path` for a whole file.
+export const mutateEntries = (stubArguments: string[] | null): string[] =>
   (stubArguments ?? [])
     .find((argument) => argument.startsWith('--mutate='))
     ?.slice('--mutate='.length)
     .split(',') ?? [];
+
+export const mutatedFiles = (stubArguments: string[] | null): string[] => [
+  ...new Set(mutateEntries(stubArguments).map((entry) => entry.replace(/:\d+-\d+$/, ''))),
+];
 
 export const writeStrykerStub = (temporaryDirectory: string, body: string): string =>
   writeExecutable(join(temporaryDirectory, 'stryker-stub'), body);
