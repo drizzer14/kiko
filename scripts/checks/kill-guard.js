@@ -1388,7 +1388,8 @@ function splitConfigWords(parameters) {
 }
 
 // Whether a `git config` writes or unsets core.hooksPath, which switches the hooks off for every
-// worktree until someone notices. `git config core.hooksPath` alone, and any `--get` form, only read.
+// worktree until someone notices. `git config core.hooksPath` alone, and any `--get` form, only
+// read.
 function rewritesHooksPath({ subcommand, arguments: parameters }) {
   if (subcommand !== 'config') return false;
   const { options, positionals } = splitConfigWords(parameters);

@@ -255,6 +255,14 @@ known limits (see kiko-linter's kill-guard entry), so a form it misses
 is still banned. Never chain a file write, a plugin update, and a
 memory rewrite in one Bash call — make each its own step.
 
+## A commit runs a typecheck
+
+A commit runs `githooks/pre-commit`, a `tsc --noEmit` of the staged index that can take up to
+about a minute under load. Give a commit Bash call `timeout: 300000`. Never pass `--no-verify` or
+`-n`: a hook failure is a type error to fix, never to bypass (kill-guard denies the bypass; see
+kiko-linter's "NO-VERIFY deny"). The commit gate is typecheck only (user ruling 2026-10-13);
+`check:all` runs before a merge.
+
 ## A write can be denied before it lands
 
 A `PreToolUse` hook on `Edit|Write|MultiEdit`

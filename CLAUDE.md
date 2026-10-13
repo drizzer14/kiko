@@ -120,6 +120,9 @@ failure back to the agent. A fresh checkout must run `npm install`
 before these hooks work — every wrapper's tool lives in
 `node_modules`.
 
+The git `pre-commit` and `pre-merge-commit` hooks (`githooks/`, not Claude Code hooks) run
+`scripts/checks/commit-typecheck.sh` on every commit and merge commit; see "Pre-commit typecheck".
+
 A `PreToolUse` hook (`scripts/checks/kill-guard.sh`) runs on every
 `Bash` tool call and denies `pkill`, `killall`, and any pattern- or
 process-group `kill` (including via `xargs`, `$(...)`, or a
@@ -170,6 +173,15 @@ job with `run_in_background` and wait on its exit code. A one-time
 `ps`/`pgrep`, a pid wait (`ps -p`, `--pid`, `-q`, or `kill -0`), a `pgrep`
 without `-f`, and a loop on a file stay allowed. See kiko-linter's
 "WAIT-LOOP deny".
+
+The same hook also denies a `git commit`, `merge`, or `pull` that skips the tracked `githooks/`
+(the pre-commit typecheck): `--no-verify` (or an abbreviation of it), commit's `-n` (alone or in a
+flag group), `-c core.hooksPath=...` or `--config-env=core.hooksPath=...`, and a `NAME=value`
+prefix that sets core.hooksPath through `GIT_CONFIG_COUNT`/`GIT_CONFIG_KEY_<n>` or
+`GIT_CONFIG_PARAMETERS`. It denies a `git config` that writes or unsets core.hooksPath (in any
+scope) too, because that switches the hooks off for every worktree. A `git config --get
+core.hooksPath` read stays allowed. To repair an unset core.hooksPath run
+`bash scripts/ensure-git-hooks.sh` or `npm ci`. See kiko-linter's "NO-VERIFY deny".
 
 A second `PreToolUse` matcher (`Edit|Write|MultiEdit`, beside the
 `Bash` matcher above) runs `scripts/checks/pre-write-guard.sh`: it
@@ -266,10 +278,23 @@ listed under "Known dependency CVEs" there are tracked, real
 debt, not a suppressed finding — never silence them; re-check
 periodically and pin the moment a fix ships.
 
+## Pre-commit typecheck
+
+`core.hooksPath` is set to `githooks` in the repository's common git config. It covers the main
+checkout, every worktree, and the user's own shell, and `scripts/ensure-git-hooks.sh` sets it from
+`postinstall`. Each worktree runs its own tracked `githooks/pre-commit` and `githooks/pre-merge-commit`.
+Both run `scripts/checks/commit-typecheck.sh`, which runs `tsc --noEmit` on a temporary copy of the
+STAGED index, so an unstaged or untracked file cannot change the answer. It is silent on success and
+prints the structured block and exits 2 on a type error or a missing tool, which aborts the commit.
+It skips (exit 0) a commit whose staged diff touches no `.ts .tsx .js .jsx .mjs .cjs .json` file,
+because tsc's result then equals HEAD's (see `docs/harness/documented-exceptions.md`). User ruling
+2026-10-13: typecheck only, never the rest of check:all. Rebase, cherry-pick, revert, and am run no
+pre-commit hook. Agents never pass `--no-verify`/`-n` or `-c core.hooksPath` (kill-guard denies them).
+
 ## Future stubs (disabled — do not enable without discussion)
 
 ```bash
-# FUTURE (disabled): a pre-commit hook could run `npm run check:all`.
+# FUTURE (disabled): a pre-commit hook could run the rest of `npm run check:all` (only typecheck is enabled; see "Pre-commit typecheck").
 # FUTURE (disabled): a CI job could run `npm run check:all` and `npm run check:deep` as required checks.
 ```
 

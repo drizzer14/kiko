@@ -872,6 +872,19 @@ verified usage, not dead weight:
   stops installing it, add it to `package.json` as an exact-pinned
   devDependency instead.
 
+- **`scripts/checks/commit-typecheck.sh` docs-only skip.** The pre-commit typecheck exits 0
+  without a run when the staged diff (renames listed under both names) touches no file whose name
+  ends in `.ts`, `.tsx`, `.mts`, `.cts`, `.js`, `.jsx`, `.mjs`, `.cjs`, or `.json` (the
+  `SOURCE_FILES` pattern in that script). Reason: tsc reads only those files and `node_modules`,
+  which follows `package.json` and `package-lock.json`, so the result then equals HEAD's. Only a
+  clean "no match" skips: a failed diff or a grep error runs the check.
+- **`scripts/ensure-git-hooks.sh` skip outside a repository root.** The `postinstall` step exits 0
+  without setting core.hooksPath when `git rev-parse --show-toplevel` fails (no repository: a
+  scratch copy without `.git`, a source tarball), or when the top level is not the folder that
+  holds the script (a copy inside another repository, whose config it must not change). Reason:
+  no commit is possible from there, so there is nothing to guard. A config it cannot read, a
+  write that fails, or a core.hooksPath that already holds another value is not skipped: it
+  prints the standard block and exits 2.
 - **`__tests__/skill-identifiers.test.ts`'s two exemption lists (non-project
   names, and bad-name examples per skill file).** The test fails when an inline code span in a
   skill or agent file names an identifier that no word of the code corpus
