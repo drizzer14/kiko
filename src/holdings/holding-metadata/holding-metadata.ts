@@ -254,7 +254,9 @@ export type BinanceWalkPendingField = (typeof binanceWalkPendingFields)[number];
  * its length, and an entry with no tag is a range, which is how a list stored before the tag
  * existed reads. A walk that reads several series (the Transfer types) stores the series its
  * record was read under on a point (`series`): the point is read in that series only, and leaves
- * the list only for a record of it. A range has none.
+ * the list only for a record of it. A range with a `series` is owed in that series alone (the
+ * ground one series left unread, or skipped at the edge of its depth) and leaves the list once a
+ * read of it in that series has committed; a range with none is owed in every series.
  */
 export type BinancePendingRange = {
   start: number;
@@ -430,19 +432,19 @@ const asPendingRange = (value: unknown): BinancePendingRange | undefined => {
     return undefined;
   }
 
-  if (kind === undefined) {
-    return series === undefined ? { start, end } : undefined;
-  }
-
-  if (kind !== 'point') {
+  if (kind !== undefined && kind !== 'point') {
     return undefined;
   }
 
   if (series === undefined) {
-    return { start, end, kind };
+    return kind === undefined ? { start, end } : { start, end, kind };
   }
 
-  return isSeries(series) ? { start, end, kind, series } : undefined;
+  if (!isSeries(series)) {
+    return undefined;
+  }
+
+  return kind === undefined ? { start, end, series } : { start, end, kind, series };
 };
 
 const asPendingRanges = (value: unknown): BinancePendingRange[] | undefined => {

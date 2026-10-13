@@ -127,7 +127,7 @@ export type OwedGround = BinancePendingRange;
  */
 export type WalkPlan = {
   forward: WalkWindow[];
-  pending: WalkWindow[];
+  pending: OwedWindow[];
   points: OwedWindow[];
   rescan: WalkWindow[];
   rescanEnd: number;
@@ -167,17 +167,22 @@ const samePoint = (left: OwedGround, right: OwedGround): boolean =>
 const holdsPoint = (owed: OwedGround, point: OwedGround): boolean =>
   sameWindow(owed, point) && (owed.series === undefined || owed.series === point.series);
 
-/** The ranges of `ranges` that `read` leaves: a read in a range's middle splits it in two. */
-export const withoutRead = (ranges: WalkWindow[], read: WalkWindow): WalkWindow[] =>
+/**
+ * The ranges of `ranges` that `read` leaves: a read in a range's middle splits it in two, and
+ * what is left of a range keeps its series.
+ */
+export const withoutRead = <Range extends WalkWindow>(ranges: Range[], read: WalkWindow): Range[] =>
   ranges.flatMap((range) => [
     ...(range.start < read.start
-      ? [{ start: range.start, end: Math.min(range.end, read.start) }]
+      ? [{ ...range, start: range.start, end: Math.min(range.end, read.start) }]
       : []),
-    ...(range.end > read.end ? [{ start: Math.max(range.start, read.end), end: range.end }] : []),
+    ...(range.end > read.end
+      ? [{ ...range, start: Math.max(range.start, read.end), end: range.end }]
+      : []),
   ]);
 
-const mergeTouching = (sorted: WalkWindow[]): WalkWindow[] => {
-  const merged: WalkWindow[] = [];
+const mergeTouching = <Range extends WalkWindow>(sorted: Range[]): Range[] => {
+  const merged: Range[] = [];
 
   for (const range of sorted) {
     const last = merged.at(-1);
@@ -208,10 +213,11 @@ const byStart = (left: WalkWindow, right: WalkWindow): number => left.start - ri
 /**
  * What the walk can still ask for of one owed range: not before the floor, not after the end.
  */
-const cutToBounds = (
-  range: WalkWindow,
+const cutToBounds = <Range extends WalkWindow>(
+  range: Range,
   bounds: { floorMs: number; endTime: number },
-): WalkWindow => ({
+): Range => ({
+  ...range,
   start: Math.max(range.start, bounds.floorMs),
   end: Math.min(range.end, bounds.endTime),
 });
@@ -234,10 +240,42 @@ const distinctPoints = (points: OwedGround[]): OwedGround[] =>
       (left.series ?? '').localeCompare(right.series ?? ''),
   );
 
+/** The ranges of one series (or of none: every series) merged and held to `limit`. */
+const mergedRangesOf = (sorted: OwedGround[], limit: number): OwedGround[] => {
+  const merged = mergeTouching(sorted);
+
+  while (merged.length > limit) {
+    const index = nearestGapIndexOf(merged);
+    merged.splice(index, 2, {
+      ...merged[index],
+      start: merged[index].start,
+      end: merged[index + 1].end,
+    });
+  }
+
+  return merged;
+};
+
+/** The ranges of a list grouped by the series they are owed in, a group for none. */
+const groupedBySeries = (ranges: OwedGround[]): OwedGround[][] => {
+  const groups = new Map<string | undefined, OwedGround[]>();
+
+  for (const range of ranges) {
+    groups.set(range.series, [...(groups.get(range.series) ?? []), range]);
+  }
+
+  return [...groups.values()];
+};
+
+const byStartThenSeries = (left: OwedGround, right: OwedGround): number =>
+  byStart(left, right) || (left.series ?? '').localeCompare(right.series ?? '');
+
 /**
  * Owed ground in its stored form, oldest first. A range is cut to what the walk can still ask
- * for (`cutToBounds`) and merged with the ranges it touches; past `limit` the two nearest
- * ranges merge into their hull, which reads the gap between them too and loses no ground. A
+ * for (`cutToBounds`) and merged with the ranges of its series that it touches; past `limit`
+ * the two nearest ranges of one series merge into their hull, which reads the gap between them
+ * too and loses no ground. A range owed in one series never merges with one of another series,
+ * or with one owed in every series: the hull of the two would read the gap in every series. A
  * point is kept exactly as its record owes it, uncut, and dropped only once the floor has passed
  * all of it: it is never merged with anything, held by a range or shortened, so it is still the
  * ground its record owes, and a read of it can be told from a read of any other ground.
@@ -247,41 +285,37 @@ const normalizePending = (
   bounds: { floorMs: number; endTime: number },
   limit = MAX_PENDING_RANGES,
 ): OwedGround[] => {
-  const merged = mergeTouching(
-    ground
-      .filter((range) => !isPoint(range))
-      .map((range) => cutToBounds(range, bounds))
-      .filter((range) => range.start < range.end && bounds.floorMs < range.end)
-      .sort(byStart),
-  );
+  const ranges = ground
+    .filter((range) => !isPoint(range))
+    .map((range) => cutToBounds(range, bounds))
+    .filter((range) => range.start < range.end && bounds.floorMs < range.end)
+    .sort(byStartThenSeries);
   const points = distinctPoints(ground.filter(isPoint)).filter(
     (point) => bounds.floorMs < point.end,
   );
 
-  while (merged.length > limit) {
-    const index = nearestGapIndexOf(merged);
-    merged.splice(index, 2, { start: merged[index].start, end: merged[index + 1].end });
-  }
-
-  return [...merged, ...points].sort(byStart);
+  return [
+    ...groupedBySeries(ranges).flatMap((group) => mergedRangesOf(group, limit)),
+    ...points,
+  ].sort(byStart);
 };
 
 /**
- * Whether a point of a stored list names a series its walk reads: one of `knownSeries`, or none
+ * Whether an entry of a stored list names a series its walk reads: one of `knownSeries`, or none
  * for a walk that reads a single series. A point of any other series could never leave the list,
- * because no record the walk reads is of that series.
+ * because no record the walk reads is of that series, and a range of one could never be read. A
+ * range with no series is owed in every series, and a point with none is only a walk's with a
+ * single series.
  */
 const hasKnownSeries = (
   ground: OwedGround,
   knownSeries: readonly string[] | undefined,
 ): boolean => {
-  if (!isPoint(ground)) {
-    return true;
+  if (ground.series === undefined) {
+    return !isPoint(ground) || knownSeries === undefined;
   }
 
-  return knownSeries === undefined
-    ? ground.series === undefined
-    : ground.series !== undefined && knownSeries.includes(ground.series);
+  return knownSeries?.includes(ground.series) ?? false;
 };
 
 /**
@@ -289,8 +323,8 @@ const hasKnownSeries = (
  * about which days were owed, and reading it as empty would let the next write drop them, so
  * all the ground before the cursor (`owedIfUnreadable`) is owed instead, once: it is stored
  * at once, so the repaired list is what every later run reads and moves forward. The failure
- * is logged under one fixed code: a corrupt list must not fail a balance sync. A list with a
- * point of a series the walk does not read (`knownSeries`) is malformed too.
+ * is logged under one fixed code: a corrupt list must not fail a balance sync. A list with an
+ * entry of a series the walk does not read (`knownSeries`) is malformed too.
  */
 export const readPendingMark = async (input: {
   field: BinanceWalkPendingField;
@@ -436,7 +470,7 @@ const startingAfter = <Ground extends WalkWindow>(
  * at least one window, so each of `windows` windows is read within `ceil(windows / reads a run)`
  * such runs.
  */
-const windowsFrom = (windows: WalkWindow[], cursor: number | null): WalkWindow[] =>
+const windowsFrom = (windows: OwedWindow[], cursor: number | null): OwedWindow[] =>
   cursor === null
     ? windows
     : [
@@ -564,7 +598,14 @@ export const planWalkPasses = (input: {
       withoutRead(
         pendingRanges.filter((ground) => !isPoint(ground)),
         rescanned,
-      ).flatMap((range) => buildWalkWindows(range.start, range.end, windowMs, maxWindows)),
+      ).flatMap((range) =>
+        buildWalkWindows(range.start, range.end, windowMs, maxWindows).map(
+          (window): OwedWindow => ({
+            ...window,
+            ...foldMap(maybe(range.series), (series) => ({ series: [series] })),
+          }),
+        ),
+      ),
       rangeCursor,
     ),
     points: startingAfter(pointsToRead(pendingRanges.filter(isPoint), endTime), pointCursor),
@@ -612,6 +653,8 @@ export type WalkMarkFields = Record<'cursor' | 'rescan', BinanceWalkCursorField>
 
 type MarkAdvance = {
   span: WalkWindow;
+  /** The series the span was read in, none for every series (see `OwedWindow`). */
+  series?: readonly string[];
   /** The ground of `span` the walk could not commit, which stays owed (a point, or the span). */
   owed?: OwedGround[];
   plan: WalkPlan;
@@ -675,12 +718,21 @@ const holdsAll = (outer: WalkWindow, inner: WalkWindow): boolean =>
  * The list without the ground the span read. A range loses what the span reads of it. A point
  * is the ground one record owes, and no one span proves that record was read: a span that holds
  * part of it can return one record of the second it owes and miss another, so a point leaves
- * the list only when its whole window was read to its end (`dropReadPoints`).
+ * the list only when its whole window was read to its end (`dropReadPoints`). A range owed in
+ * one series loses what a span read in that series, or in every series; a range owed in every
+ * series loses only what a span read in every series, since the series left out still owe it.
  */
-const withoutReadGround = (input: MarkAdvance): OwedGround[] =>
-  input.marks.pending.flatMap((ground) =>
-    isPoint(ground) ? [ground] : withoutRead([ground], input.span),
+const withoutReadGround = (input: MarkAdvance): OwedGround[] => {
+  const { series, span } = input;
+  const isReadIn = (ground: OwedGround): boolean =>
+    ground.series === undefined
+      ? series === undefined
+      : series === undefined || series.includes(ground.series);
+
+  return input.marks.pending.flatMap((ground) =>
+    !isPoint(ground) && isReadIn(ground) ? withoutRead([ground], span) : [ground],
   );
+};
 
 /**
  * Take the points off the list that a window read to its end has settled: a point the window

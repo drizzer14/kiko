@@ -192,6 +192,13 @@ const placed = async <Planned, Row>(input: {
 };
 
 /**
+ * Ground the forward pass owes and goes past: the point of one record, or a range owed in one
+ * series (the ground that series left unread, which holds nothing back in the others). A range
+ * owed in every series is a stop of the span as a whole.
+ */
+const isOwedPast = (ground: OwedGround): boolean => isPoint(ground) || ground.series !== undefined;
+
+/**
  * Commit one span: place and write the rows of the records the walk can trust, then move the
  * walk's marks (`advance` gets the ground that stays owed). The commit also reports that ground
  * and the point of every record the read returned, which the window takes a point off the list
@@ -219,7 +226,7 @@ export const commitSettledSpan = async <Planned, Row>(input: {
   const { pass, span, settled, add, advance, forwardOwes = [] } = input;
   const stopsRun = (part: Pick<SettledSpan<unknown>, 'codes' | 'owed'>): boolean =>
     pass === 'forward' &&
-    (part.codes.some((code) => !forwardOwes.includes(code)) || !part.owed.every(isPoint));
+    (part.codes.some((code) => !forwardOwes.includes(code)) || !part.owed.every(isOwedPast));
 
   if (stopsRun(settled)) {
     logCodes(settled.codes);

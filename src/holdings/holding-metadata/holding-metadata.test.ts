@@ -571,8 +571,21 @@ describe('the Binance pending overlap lists', () => {
     ).toEqual([point]);
   });
 
+  it('round-trips the series of a range, the one series it is owed in', () => {
+    const owedInOne = { start: 1_000, end: 2_000, series: 'MAIN_FUNDING' };
+
+    expect(
+      binanceWalkPendingOf('binanceTransferPendingOverlap', {
+        binanceTransferPendingOverlap: [range, owedInOne],
+      }),
+    ).toEqual([range, owedInOne]);
+  });
+
   it.each([
-    ['a range with a series', { start: 1_000, end: 2_000, series: 'MAIN_FUNDING' }],
+    ['a range with an empty series', { start: 1_000, end: 2_000, series: '' }],
+    ['a range with a blank series', { start: 1_000, end: 2_000, series: '  ' }],
+    ['a range whose series is not text', { start: 1_000, end: 2_000, series: 7 }],
+    ['a range whose series is null', { start: 1_000, end: 2_000, series: null }],
     ['a point with an empty series', { start: 999, end: 1_001, kind: 'point', series: '' }],
     ['a point with a blank series', { start: 999, end: 1_001, kind: 'point', series: '  ' }],
     ['a point whose series is not text', { start: 999, end: 1_001, kind: 'point', series: 7 }],
