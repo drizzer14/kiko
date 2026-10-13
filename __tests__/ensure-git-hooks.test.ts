@@ -1,7 +1,15 @@
+import {
+  chmodSync,
+  copyFileSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { type SpawnSyncReturns, spawnSync } from 'node:child_process';
-import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { type SpawnSyncReturns, execFileSync, spawnSync } from 'node:child_process';
 
 import { isolatedGitEnvironment } from './test-support/isolated-git';
 
@@ -39,12 +47,28 @@ const installScripts = (directory: string): void => {
   copyFileSync(join(ROOT, 'scripts/checks/_lib.sh'), join(directory, 'scripts/checks/_lib.sh'));
 };
 
-const ensure = (directory: string): SpawnSyncReturns<string> =>
+const ensure = (directory: string, extra: NodeJS.ProcessEnv = {}): SpawnSyncReturns<string> =>
   spawnSync('bash', ['scripts/ensure-git-hooks.sh'], {
     cwd: directory,
     encoding: 'utf8',
-    env: environment(),
+    env: { ...environment(), ...extra },
   });
+
+// A `git` ahead of the real one on PATH that fails every `--get` read with exit 3 (the status for
+// an unreadable config file) and passes everything else through.
+const gitFailingReads = (): NodeJS.ProcessEnv => {
+  const tools = join(base, 'tools');
+  const realGit = execFileSync('/bin/sh', ['-c', 'command -v git'], { encoding: 'utf8' }).trim();
+
+  mkdirSync(tools);
+  writeFileSync(
+    join(tools, 'git'),
+    `#!/bin/sh\nfor word in "$@"; do [ "$word" = "--get" ] && exit 3; done\nexec ${realGit} "$@"\n`,
+  );
+  chmodSync(join(tools, 'git'), 0o755);
+
+  return { PATH: `${tools}:${process.env.PATH}` };
+};
 
 const hooksPath = (directory: string): string => git(directory, 'config', 'core.hooksPath').stdout;
 
@@ -126,6 +150,24 @@ describe('scripts/ensure-git-hooks.sh', () => {
 
     expect(result.status).toBe(2);
     expect(result.stderr).toContain('/opt/shared-hooks');
+    expect(git(root, 'config', '--local', '--get', 'core.hooksPath').status).toBe(1);
+  });
+
+  it('blocks with exit 2 when the write fails, and does not read as installed', () => {
+    writeFileSync(join(root, '.git/config.lock'), '');
+
+    const result = ensure(root);
+
+    expect(result.status).toBe(2);
+    expect(result.stderr).toContain('CHECK FAILED: core.hooksPath could not be set');
+    expect(git(root, 'config', '--local', '--get', 'core.hooksPath').status).toBe(1);
+  });
+
+  it('blocks with exit 2 when reading the setting fails with a status other than 1', () => {
+    const result = ensure(root, gitFailingReads());
+
+    expect(result.status).toBe(2);
+    expect(result.stderr).toContain('CHECK FAILED: core.hooksPath could not be read');
     expect(git(root, 'config', '--local', '--get', 'core.hooksPath').status).toBe(1);
   });
 

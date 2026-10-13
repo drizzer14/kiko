@@ -280,6 +280,23 @@ describe('githooks and scripts/checks/commit-typecheck.sh', () => {
     expect(existsSync(repository.marker)).toBe(false);
   });
 
+  it('runs tsc when the name filter itself fails, instead of reading that as no match', () => {
+    const toolFolder = join(repository.base, 'broken-grep');
+    mkdirSync(toolFolder);
+    writeFileSync(join(toolFolder, 'grep'), '#!/bin/sh\nexit 2\n');
+    chmodSync(join(toolFolder, 'grep'), 0o755);
+    stage(repository, { 'docs/readme.md': '# changed\n' });
+
+    const result = spawnSync('git', ['commit', '-q', '-m', 'change'], {
+      cwd: repository.root,
+      encoding: 'utf8',
+      env: environmentOf(repository, { PATH: `${toolFolder}:${process.env.PATH}` }),
+    });
+
+    expect(result.status).toBe(0);
+    expect(existsSync(repository.marker)).toBe(true);
+  });
+
   it.each(['x.ts', 'x.tsx', 'x.js', 'x.jsx', 'x.mjs', 'x.cjs', 'x.json', 'sub/dir/x.d.ts'])(
     'runs tsc when the staged diff holds %s',
     (file) => {
@@ -539,6 +556,6 @@ describe('the tracked hooks', () => {
       .filter((line) => line !== '')
       .map((line) => line.split(' ')[0]);
 
-    expect(modes).not.toContain('100644');
+    expect(modes).toEqual(['100755', '100755']);
   });
 });

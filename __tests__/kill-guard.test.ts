@@ -534,6 +534,30 @@ const NO_VERIFY_COMMANDS: string[] = [
   'echo $(git commit -n)',
   '(git commit -n)',
   'git commit -m "$(cat <<\'EOF\'\nfix: thing\nEOF\n)" --no-verify',
+  'git pull --no-verify',
+  'git pull --no-verify origin main',
+  'git pull --rebase --no-verify',
+  'git -c core.hooksPath=/dev/null pull',
+  'git config core.hooksPath /dev/null',
+  'git config core.hooksPath ""',
+  'git config --local core.hooksPath ""',
+  'git config --global core.hooksPath /dev/null',
+  'git config --unset core.hooksPath',
+  'git config --unset-all core.hooksPath',
+  'git config --global --unset CORE.HOOKSPATH',
+  'git config --add core.hooksPath /dev/null',
+  'git config --replace-all core.hookspath /dev/null',
+  'git config set core.hooksPath /dev/null',
+  'git config unset core.hooksPath',
+  'git config -f .git/config core.hooksPath /dev/null',
+  `git -C ${WORKTREE} config core.hooksPath ""`,
+  'sh -c "git config --unset core.hooksPath"',
+  'git add -A && git config core.hooksPath /dev/null',
+  'GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.hooksPath GIT_CONFIG_VALUE_0=/dev/null git commit -m x',
+  'GIT_CONFIG_COUNT=2 GIT_CONFIG_KEY_0=user.name GIT_CONFIG_VALUE_0=x GIT_CONFIG_KEY_1=CORE.HOOKSPATH GIT_CONFIG_VALUE_1= git commit -m x',
+  'env GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.hookspath GIT_CONFIG_VALUE_0=/dev/null git merge feature',
+  'GIT_CONFIG_PARAMETERS="\'core.hooksPath=/dev/null\'" git commit -m x',
+  "GIT_CONFIG_PARAMETERS=\"'user.name=x' 'core.hookspath=/dev/null'\" git commit -m x",
 ];
 
 // The one-action commits the coordinator runs in the main checkout, and git spellings that only
@@ -563,6 +587,35 @@ const ALLOWED_COMMIT_COMMANDS: string[] = [
   `git -C ${MAIN_CHECKOUT} log -n 3`,
   `git -C ${MAIN_CHECKOUT} merge --ff-only abc1234`,
   `git -C ${WORKTREE} commit -m "feat: x"`,
+  'git commit -m "$(cat <<\'EOF\'\nfix: thing\nEOF\n)"',
+  'git config core.hooksPath',
+  'git config --get core.hooksPath',
+  'git config --local --get core.hooksPath',
+  'git config --get-all core.hooksPath',
+  'git config --show-origin --get-all core.hooksPath',
+  'git config get core.hooksPath',
+  'git config --list',
+  'git config user.name x',
+  'git config --global --unset user.name',
+  'git config --unset core.pager',
+  'git config core.hooksPathFoo x',
+  'GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.pager GIT_CONFIG_VALUE_0=cat git commit -m x',
+  'GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.hooksPath GIT_CONFIG_VALUE_0=/dev/null git status',
+  'GIT_CONFIG_PARAMETERS="\'core.pager=cat\'" git commit -m x',
+];
+
+// `git pull` and a non-fast-forward `git merge` run the merge hooks too, but outside the main
+// checkout (where both are denied for another reason) these spellings are not a bypass: their
+// `-n` is --no-stat, and --no-verify-signatures is a different option.
+const ALLOWED_PULL_AND_MERGE_COMMANDS: string[] = [
+  'git merge --no-stat feature',
+  'git pull',
+  'git pull --ff-only',
+  'git pull -n',
+  'git pull --no-stat',
+  'git pull --no-verify-signatures',
+  'git pull -s ours --no-edit',
+  'git pull origin main -m x',
 ];
 
 const payloadIn = (directory: string, command: string): string =>
@@ -650,6 +703,20 @@ describe('scripts/checks/kill-guard.sh (PreToolUse Bash guard)', () => {
     expect(reason).toContain('pre-commit');
     expect(reason).toContain('--no-verify');
     expect(reason).toContain('fix the type error');
+  });
+
+  it('names the config and environment spellings in the DO NOT line', () => {
+    const reason = denyReasonFor('git config --unset core.hooksPath');
+
+    expect(reason).toContain('git config core.hooksPath');
+    expect(reason).toContain('GIT_CONFIG_');
+  });
+
+  it.each(ALLOWED_PULL_AND_MERGE_COMMANDS)('allows: %s', (command) => {
+    const result = run(payloadFor(command));
+
+    expect(result.status).toBe(0);
+    expect(result.stdout.trim()).toBe('');
   });
 
   it.each(ALLOWED_COMMIT_COMMANDS)('allows: %s', (command) => {

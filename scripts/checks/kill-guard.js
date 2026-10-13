@@ -43,12 +43,15 @@
 // outside a loop, and a loop that scans nothing (a file, a pid,
 // scripts/wait-load.sh), stay allowed.
 //
-// And it denies a `git commit` or `git merge` that skips the tracked githooks/ (the
-// pre-commit typecheck): `--no-verify` (or an unambiguous abbreviation of it), commit's `-n`
-// (alone or inside a flag group), and `-c core.hooksPath=...` or `--config-env=core.hooksPath=...`
-// before the subcommand, in any directory and inside a shell string. A user may still bypass in
-// their own shell; the deny binds agent Bash calls only. `-n` after another option's value, after
-// `--`, in a message, or on `git log` or `git merge` (`--no-stat`) is not a bypass.
+// And it denies a `git commit`, `git merge`, or `git pull` that skips the tracked githooks/ (the
+// pre-commit typecheck): `--no-verify` (or an abbreviation of it), commit's `-n` (alone or inside
+// a flag group), `-c core.hooksPath=...` or `--config-env=core.hooksPath=...` before the
+// subcommand, and core.hooksPath set through `GIT_CONFIG_COUNT`/`GIT_CONFIG_KEY_<n>` or
+// `GIT_CONFIG_PARAMETERS`, in any directory and inside a shell string. A `git config` that sets or
+// unsets core.hooksPath is denied too, in any scope: it switches the hooks off for every worktree.
+// A user may still bypass in their own shell; the deny binds agent Bash calls only. `-n` after
+// another option's value, after `--`, in a message, or on `git log` or `git merge`/`git pull`
+// (`--no-stat`) is not a bypass, and a `git config` read of the key is allowed.
 //
 // Known limits: this guard stops ACCIDENTAL commands by cooperative agents.
 // It is a heuristic tokenizer, not a shell parser and not an adversarial
@@ -140,16 +143,18 @@ const WAIT_LOOP_REASON_LINES = [
 ];
 
 const NO_VERIFY_REASON_LINES = [
-  'WHAT FAILED:    kill-guard denied a git commit or merge that skips the pre-commit hook ' +
-    '(--no-verify, -n, or -c core.hooksPath=...).',
+  'WHAT FAILED:    kill-guard denied a git commit, merge, or pull that skips the pre-commit hook, ' +
+    'or a git config that switches it off (--no-verify, -n, -c core.hooksPath=..., git config ' +
+    'core.hooksPath, or GIT_CONFIG_* in the environment).',
   'WHY IT MATTERS: each commit must typecheck by itself: the tracked githooks/pre-commit and ' +
     'githooks/pre-merge-commit run tsc on the staged files, and a bypassed commit lands an ' +
     'unchecked type error on the branch.',
   'HOW TO FIX:     fix the type error the hook reports, git add the fix, and commit again (the ' +
     'hook reads the index, so an unstaged fix does not count). A user may bypass in their own ' +
     'shell with git commit --no-verify; an agent never does.',
-  'DO NOT:         skip the hook through --no-verify, -n, -c core.hooksPath, a script file, an ' +
-    'alias, or a variable to get past this guard.',
+  'DO NOT:         skip the hook through --no-verify, -n, -c core.hooksPath, git config ' +
+    'core.hooksPath (set or --unset, in any scope), GIT_CONFIG_COUNT/GIT_CONFIG_KEY_<n>/' +
+    'GIT_CONFIG_PARAMETERS, a script file, an alias, or a variable to get past this guard.',
 ];
 
 const REASON_BY_KIND = {
@@ -1235,18 +1240,27 @@ function gitInvocation(rest, directory, environment) {
     subcommand: rest[i],
     arguments: rest.slice(i + 1),
     configs: invocation.configs,
+    environment,
     targets: [locate(invocation.workTree), locate(invocation.gitDirectory)],
   };
 }
 
 // ---- a commit or merge that skips the tracked githooks/ ----
 
-const HOOK_RUNNING_SUBCOMMANDS = new Set(['commit', 'merge']);
+// `pull` runs the merge hooks, and takes `--no-verify` for the merge it starts.
+const HOOK_RUNNING_SUBCOMMANDS = new Set(['commit', 'merge', 'pull']);
 // Git config keys are case-insensitive, and a bare name or an empty value still overrides the path.
 const HOOKS_PATH_CONFIG = /^core\.hookspath(?:=|$)/i;
+const HOOKS_PATH_KEY = /^core\.hookspath$/i;
+// `GIT_CONFIG_COUNT` with `GIT_CONFIG_KEY_<n>`/`GIT_CONFIG_VALUE_<n>` names a config entry by key.
+const GIT_CONFIG_KEY_VARIABLE = /^GIT_CONFIG_KEY_\d+$/;
+// `GIT_CONFIG_PARAMETERS` holds quoted `'name=value'` entries, so the key sits after a quote or a
+// space.
+const HOOKS_PATH_PARAMETER = /(?:^|[\s'"])core\.hookspath(?:=|['"\s]|$)/i;
 const NO_VERIFY_OPTION = '--no-verify';
-// `--no-v` is the shortest form of the option that no other `--no-…` option of commit or merge
-// shares, so git reads it as `--no-verify`.
+// `--no-v` is the shortest prefix of `--no-verify`. Other options share it (`--no-verbose`,
+// `--no-verify-signatures`), so git may reject it as ambiguous, and denying a command git then
+// rejects costs nothing.
 const NO_VERIFY_SHORTEST = '--no-v';
 
 // The options whose value is the NEXT word, so a `-n` or `--no-verify` there is text, not a flag.
@@ -1288,6 +1302,22 @@ const VALUE_OPTIONS_BY_SUBCOMMAND = new Map([
       '--cleanup',
     ]),
   ],
+  [
+    'pull',
+    new Set([
+      '-s',
+      '-X',
+      '-o',
+      '-j',
+      '--strategy',
+      '--strategy-option',
+      '--server-option',
+      '--jobs',
+      '--depth',
+      '--upload-pack',
+      '--cleanup',
+    ]),
+  ],
 ]);
 // `git commit -S[<key>]` and `-u[<mode>]` take only a glued value, never the next word.
 const COMMIT_GLUED_ONLY_LETTERS = new Set(['S', 'u']);
@@ -1306,10 +1336,79 @@ function groupHoldsNoVerify(group) {
   return false;
 }
 
-// Whether `git commit`/`git merge` is told to skip its hooks, by option or by config.
-function skipsHooks({ subcommand, arguments: parameters, configs }) {
+const unquoted = (text) => text.replace(/^['"]|['"]$/g, '');
+
+// Whether the NAME=value prefixes of the command set core.hooksPath for the git it runs.
+const environmentSetsHooksPath = (environment) =>
+  Object.entries(environment).some(
+    ([name, value]) =>
+      (GIT_CONFIG_KEY_VARIABLE.test(name) && HOOKS_PATH_KEY.test(unquoted(value))) ||
+      (name === 'GIT_CONFIG_PARAMETERS' && HOOKS_PATH_PARAMETER.test(value)),
+  );
+
+// The `git config` options that only read, and the ones whose value is the NEXT word.
+const CONFIG_READ_OPTIONS = new Set([
+  '--get',
+  '--get-all',
+  '--get-regexp',
+  '--get-urlmatch',
+  '--get-color',
+  '--get-colorbool',
+  '-l',
+  '--list',
+]);
+const CONFIG_WRITE_OPTIONS = new Set(['--unset', '--unset-all', '--add', '--replace-all']);
+const CONFIG_OPTIONS_WITH_VALUE = new Set([
+  '-f',
+  '--file',
+  '--blob',
+  '--type',
+  '--default',
+  '--comment',
+]);
+
+// A `git config` command line split into its options and its positional words.
+function splitConfigWords(parameters) {
+  const options = [];
+  const positionals = [];
+  let optionsEnded = false;
+  for (let index = 0; index < parameters.length; index += 1) {
+    const word = parameters[index];
+    if (!optionsEnded && word === '--') {
+      optionsEnded = true;
+    } else if (optionsEnded || !word.startsWith('-') || word === '-') {
+      positionals.push(word);
+    } else {
+      options.push(word);
+      if (CONFIG_OPTIONS_WITH_VALUE.has(word)) index += 1;
+    }
+  }
+
+  return { options, positionals };
+}
+
+// Whether a `git config` writes or unsets core.hooksPath, which switches the hooks off for every
+// worktree until someone notices. `git config core.hooksPath` alone, and any `--get` form, only read.
+function rewritesHooksPath({ subcommand, arguments: parameters }) {
+  if (subcommand !== 'config') return false;
+  const { options, positionals } = splitConfigWords(parameters);
+  if (options.some((option) => CONFIG_READ_OPTIONS.has(option))) return false;
+  const holdsKey = (word) => word !== undefined && HOOKS_PATH_KEY.test(word);
+  if (options.some((option) => CONFIG_WRITE_OPTIONS.has(option))) return positionals.some(holdsKey);
+  // `git config set|unset <key>` (git 2.46) names the action first.
+  if (positionals[0] === 'set' || positionals[0] === 'unset') return holdsKey(positionals[1]);
+
+  return holdsKey(positionals[0]) && positionals.length >= 2;
+}
+
+// Whether the git command is told to skip its hooks, by option, by config, or by environment, or
+// switches them off for good with `git config`.
+function skipsHooks(git) {
+  const { subcommand, arguments: parameters, configs, environment } = git;
+  if (rewritesHooksPath(git)) return true;
   if (!HOOK_RUNNING_SUBCOMMANDS.has(subcommand)) return false;
   if (configs.some((entry) => HOOKS_PATH_CONFIG.test(entry))) return true;
+  if (environmentSetsHooksPath(environment)) return true;
   const valueOptions = VALUE_OPTIONS_BY_SUBCOMMAND.get(subcommand);
   let index = 0;
   while (index < parameters.length) {
