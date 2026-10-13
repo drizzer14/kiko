@@ -95,6 +95,26 @@ describe('TransactionCard', () => {
     expect(JSON.stringify(toJSON())).toContain('link');
   });
 
+  // A transaction template's amount is optional, so the card renders the
+  // title and footer with no amount text at all.
+  it('renders the title and footer with no amount when money is omitted', async () => {
+    const { getByText, queryByTestId } = await render(
+      <TransactionCard
+        title="Rent"
+        categoryIcon="house"
+        categoryIconColor="#8E44AD"
+        categoryAccessibilityLabel="Housing"
+        footerMeta="Monobank · Housing"
+        footerTrailing="Monthly"
+      />,
+    );
+
+    expect(getByText('Rent')).toBeTruthy();
+    expect(getByText('Monobank · Housing')).toBeTruthy();
+    expect(getByText('Monthly')).toBeTruthy();
+    expect(queryByTestId(/^money-context-/)).toBeNull();
+  });
+
   it('renders no loan-link marker when loanLinked is omitted', async () => {
     const { toJSON } = await render(
       <TransactionCard

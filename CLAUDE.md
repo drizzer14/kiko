@@ -8,9 +8,10 @@ dedup-skip notice (so a skip never reads as a fresh scan) and the Class B
 WARNING block (a finding that does not block still has to be seen) to
 stderr with exit 0. So is `scripts/checks/dup.sh`, whose large-file
 WARNING lines (tracked debt that does not block) go to stderr with exit 0.
+So is `scripts/checks/medium.sh`: on a repeated Stop (payload `stop_hook_active: true`) it writes a one-line `medium tier: skipped on a repeated Stop` note to stderr and exits 0.
 The other exceptions (the deep tier's streaming, the hook guards' JSON) are
 listed in kiko-linter's "The wrapper contract" (the JSON ones are `kill-guard.sh` and
-`pre-write-guard.sh`).
+`pre-write-guard.sh`). `scripts/job-queue.sh` is not a checks wrapper: its QUEUED/WAITING/START/DONE lines are normal stdout.
 
 **Standing rule: fix the underlying issue. Never weaken a check to get
 green.** No `|| true`. No global auto-suppress. An ignore-list entry
@@ -32,7 +33,7 @@ below).
 | `npm run check:secrets` | gitleaks | any detected secret fails; `.gitleaks.toml` allowlists `memory/refs/`, which `.gitignore` (`/memory/`) keeps out of git; see `docs/harness/documented-exceptions.md` | fast |
 | `npm run check:overrides` | override-guard.sh | any bare `biome-ignore`, `nosemgrep`, `kiko-override:`, or `Stryker disable` comment (no `OVERRIDE(...)`) fails | medium |
 | `npm run check:import-order` | `scripts/checks/import-order.sh` (+ `.js` analyzer) | a leading import block not sorted per kiko-code-style's "Import ordering" (3 blank-line-separated groups, ascending by ending-line length, value-before-type tiebreak, side-effect import as a barrier) fails; two ADJACENT groups of the same kind (no side-effect import as a barrier between them) also fail and must be merged into one; two declarations of ONE module specifier in the header (value+value, type+type, value+type, or a bare side-effect import beside a VALUE import; a namespace import, and a bare side-effect import beside only `import type` declarations, are exempt) also fail — `--write` fixes what it safely can, then re-checks its own output and prints `left for hand fix: <file> <reason>` and exits non-zero for ANY violation it could not fix (a merge blocked by a later group's own prefix or interior comment, a group left untouched because a comment is glued to a non-first import, or a duplicate specifier, which `--write` never merges), for a human to fix by hand. The pre-write guard runs the same analyzer as its `kiko-import-order` Node rule. The per-file fast tier can miss a multi-file/grouping violation that the project-wide `check:import-order` catches, so run the project-wide check before committing. The per-file mode skips a file under `rules/fixtures/`, which the pre-write guard and the project-wide roots never read either | fast (per-file) + project-wide (`check:all`) |
-| `npm run check:full-word-identifiers` | `scripts/checks/full-word-identifiers.sh` (+ `.js` analyzer) | any denylisted abbreviation (`cond`/`btn`/`idx`/`acc`/`tx`/`err`/`val`/`prev`/`cfg`/`e`/`res`/`msg`/`cb`/`ctx`/`el`/`opts`/`tmp`/`num`/`arr`/`obj`/`str`) as a whole camelCase/PascalCase/snake_case part of an identifier fails, unless the exact `(file path, denylisted word, identifier name)` triple is on the analyzer's own `EXEMPTIONS` allowlist (an exact-name match, not a whole-file exemption — see `docs/harness/documented-exceptions.md`) | fast (per-file) + project-wide (`check:all`) |
+| `npm run check:full-word-identifiers` | `scripts/checks/full-word-identifiers.sh` (+ `.js` analyzer) | any denylisted abbreviation (`cond`/`btn`/`idx`/`acc`/`tx`/`err`/`val`/`prev`/`cfg`/`e`/`res`/`msg`/`cb`/`ctx`/`el`/`opts`/`tmp`/`temp`/`num`/`arr`/`obj`/`str`) as a whole camelCase/PascalCase/snake_case part of an identifier fails, unless the exact `(file path, denylisted word, identifier name)` triple is on the analyzer's own `EXEMPTIONS` allowlist (an exact-name match, not a whole-file exemption — see `docs/harness/documented-exceptions.md`) | fast (per-file) + project-wide (`check:all`) |
 | `npm run check:screen-imports` | `scripts/checks/screen-imports.sh` | a cross-screen import (`kiko-no-cross-screen-import`) fails project-wide | project-wide (`check:all`) + pre-write guard |
 | `npm run check:feature-imports` | `scripts/checks/feature-imports.sh` (+ `feature-imports.js`) | an import that crosses a feature without its barrel (`kiko-feature-imports`, B2) fails; so do the `--tree` layout findings over `src/` (loose file at a container root, unit without `index.ts`, undeclared container, a barrel that re-exports test code or another feature, a feature-level value-import cycle) | project-wide (`check:all`) + pre-write guard |
 | `npm run check:blank-line-separation` | `scripts/checks/blank-line-separation.sh` | a blank-line-separation violation (`kiko-blank-line-separation`) fails project-wide | project-wide (`check:all`) + pre-write guard |
@@ -67,7 +68,8 @@ Composite scripts:
   that does not resolve are refused directly (exit 2), and no env var
   bypasses the cap. There is no release-scope deep gate. **Who and when:**
   the coordinator runs `KIKO_MUTATION_BASE=<change set base sha> make
-  deep`, detached, for each reviewed change set (<= 30 source files)
+  deep`, detached (after the queue cutover, queued with
+  `scripts/job-queue.sh gate <worktree> <label> <base> <head>`), for each reviewed change set (<= 30 source files)
   before its merge into next (and logs the result per harness-workflow's
   "Run log"). Orchestrators never run it; a BATCH READY
   names the change-set base sha, the run id, and the file count, counted
@@ -98,7 +100,7 @@ files, fixtures, check wrappers, the Info.plist, the Xcode
 project, and every file under `drizzle/migrations/`). A session that edited
 only a rule, a fixture, or the plist is the one most likely to have
 broken a rule (or unpinned a credential-bearing host), so it must not
-be the one that runs nothing. The medium tier also replays the
+be the one that runs nothing. On a `Stop` event (not `SubagentStop`) whose payload has `stop_hook_active: true`, the medium tier exits 0 with a one-line stderr note instead of running, because a failing Stop tier started a new turn that ended in the same failure and the orchestrator looped (knip ran about 8 times in a row, 2026-10-11); a first `Stop` and every `SubagentStop` still run and block, the payload is read only when stdin is a regular file (`dispatch.sh` replays it as a file), and the cost is that a repeated Stop shows the failure once, with `check:all` before a commit still catching it. The medium tier also replays the
 pre-write guard (`scripts/checks/guard-replay.sh`) on every changed
 `.ts`/`.tsx` file, whatever wrote it — in the working tree, and in the
 commits no worktree's passed replay reached (its mark ref under
@@ -119,6 +121,9 @@ the structured block to stderr, which is how Claude Code surfaces the
 failure back to the agent. A fresh checkout must run `npm install`
 before these hooks work — every wrapper's tool lives in
 `node_modules`.
+
+The git `pre-commit` and `pre-merge-commit` hooks (`githooks/`, not Claude Code hooks) run
+`scripts/checks/commit-typecheck.sh` on every commit and merge commit; see "Pre-commit typecheck".
 
 A `PreToolUse` hook (`scripts/checks/kill-guard.sh`) runs on every
 `Bash` tool call and denies `pkill`, `killall`, and any pattern- or
@@ -170,6 +175,15 @@ job with `run_in_background` and wait on its exit code. A one-time
 `ps`/`pgrep`, a pid wait (`ps -p`, `--pid`, `-q`, or `kill -0`), a `pgrep`
 without `-f`, and a loop on a file stay allowed. See kiko-linter's
 "WAIT-LOOP deny".
+
+The same hook also denies a `git commit`, `merge`, or `pull` that skips the tracked `githooks/`
+(the pre-commit typecheck): `--no-verify` (or an abbreviation of it), commit's `-n` (alone or in a
+flag group), `-c core.hooksPath=...` or `--config-env=core.hooksPath=...`, and a `NAME=value`
+prefix that sets core.hooksPath through `GIT_CONFIG_COUNT`/`GIT_CONFIG_KEY_<n>` or
+`GIT_CONFIG_PARAMETERS`. It denies a `git config` that writes or unsets core.hooksPath (in any
+scope) too, because that switches the hooks off for every worktree. A `git config --get
+core.hooksPath` read stays allowed. To repair an unset core.hooksPath run
+`bash scripts/ensure-git-hooks.sh` or `npm ci`. See kiko-linter's "NO-VERIFY deny".
 
 A second `PreToolUse` matcher (`Edit|Write|MultiEdit`, beside the
 `Bash` matcher above) runs `scripts/checks/pre-write-guard.sh`: it
@@ -266,10 +280,24 @@ listed under "Known dependency CVEs" there are tracked, real
 debt, not a suppressed finding — never silence them; re-check
 periodically and pin the moment a fix ships.
 
+## Pre-commit typecheck
+
+`core.hooksPath` is set to `githooks` in the repository's common git config. It covers the main
+checkout, every worktree, and the user's own shell, and `scripts/ensure-git-hooks.sh` sets it from
+`postinstall`. Each worktree runs its own tracked `githooks/pre-commit` and `githooks/pre-merge-commit`.
+Both run `scripts/checks/commit-typecheck.sh`, which runs `tsc --noEmit` on a temporary copy of the
+STAGED index, so an unstaged or untracked file cannot change the answer. It is silent on success and
+prints the structured block and exits 2 on a type error or a missing tool, which aborts the commit.
+It skips (exit 0) a commit whose staged diff touches no
+`.ts .tsx .mts .cts .js .jsx .mjs .cjs .json` file, because tsc's result then equals HEAD's (see
+`docs/harness/documented-exceptions.md`). User ruling
+2026-10-13: typecheck only, never the rest of check:all. Rebase, cherry-pick, revert, and am run no
+pre-commit hook. Agents never pass `--no-verify`/`-n` or `-c core.hooksPath` (kill-guard denies them).
+
 ## Future stubs (disabled — do not enable without discussion)
 
 ```bash
-# FUTURE (disabled): a pre-commit hook could run `npm run check:all`.
+# FUTURE (disabled): a pre-commit hook could run the rest of `npm run check:all` (only typecheck is enabled; see "Pre-commit typecheck").
 # FUTURE (disabled): a CI job could run `npm run check:all` and `npm run check:deep` as required checks.
 ```
 

@@ -7,8 +7,8 @@
 # the exact `tail -f` command to watch it, and (b) prints an ETA derived from the
 # history of past completed runs: a PER-MUTANT rate (seconds/mutant) times this
 # run's actual mutant count, printed LIVE the moment Stryker reports that count
-# (see the harness_mutation_* helpers in _lib.sh). This exists so a human can watch a multi-minute run
-# directly — AGENTS must still NOT poll/tail it. The run's EXIT CODE is the only
+# (see the harness_mutation_* helpers in _lib.sh). This exists so a human can watch a multi-minute
+# run directly — AGENTS must still NOT poll/tail it. The run's EXIT CODE is the only
 # signal an agent waits on (0 = pass, 2 = fail); the log and ETA are for the
 # human. None of the progress/ETA/history code may change the pass/fail result:
 # every new step is guarded and a corrupt history just means "no estimate".
@@ -74,6 +74,28 @@ fi
 # workers, which drove machine load to 152 on one occasion. If a LIVE run
 # already holds the lock, FAIL FAST (exit 2) — do not block or silently queue.
 # A stale lock (holder process gone) is reclaimed automatically.
+lock=""
+lock_held=0
+ranges_stderr=""
+
+# One cleanup for normal exit, INT, and TERM, so a killed run strands neither the machine-wide lock
+# nor the changed-line reader's stderr file. It forgets what it removed, so the EXIT trap that
+# follows an INT/TERM handler never removes a lock another run has taken in between. The traps
+# come before the first mktemp, in --list mode too.
+cleanup() {
+  if [ "$lock_held" -eq 1 ]; then
+    harness_unlock "$lock"
+    lock_held=0
+  fi
+  if [ -n "$ranges_stderr" ]; then
+    rm -f "$ranges_stderr"
+    ranges_stderr=""
+  fi
+}
+trap cleanup EXIT
+trap 'cleanup; exit 130' INT
+trap 'cleanup; exit 143' TERM
+
 if [ "$list" -eq 0 ]; then
   lock="$(harness_global_lock_dir)"
   mkdir -p "$(dirname "$lock")" 2>/dev/null || true
@@ -87,12 +109,7 @@ if [ "$list" -eq 0 ]; then
       "Do not start a second mutation run in parallel. Wait for the active one to finish."
     exit 2
   fi
-  # Release the global lock on normal exit AND on INT/TERM, so a killed run never
-  # strands the machine-wide lock. harness_unlock (rm -rf) is idempotent, so the
-  # EXIT trap re-firing after an INT/TERM handler is harmless.
-  trap 'harness_unlock "$lock"' EXIT
-  trap 'harness_unlock "$lock"; exit 130' INT
-  trap 'harness_unlock "$lock"; exit 143' TERM
+  lock_held=1
 fi
 
 # A whole-release mutation run took 10 h 16 min and produced no result, so a run
@@ -260,8 +277,8 @@ fi
 # Never hand Stryker a plain path and a range for the same file: it reads that as "do not mutate".
 # So a file is either its plain path (a comment-only file kept for a changed colocated test) or
 # its ranges. A file with no added line (a pure deletion or a pure move) has nothing to mutate and
-# leaves the list, like a comment-only one. A path with a glob character is refused: Stryker can read it as a
-# pattern, not as a literal file.
+# leaves the list, like a comment-only one. A path with a glob character is refused: Stryker can
+# read it as a pattern, not as a literal file.
 # A diff or a script that fails is a block and exit 2: never fall back to whole files.
 # --inter-hunk-context=0 keeps a user's diff.interHunkContext from merging hunks, which would add
 # unchanged context lines to a hunk.
@@ -290,8 +307,9 @@ if [ -n "$changed" ]; then
 
   # --text and --no-textconv: a file git reads as binary (a NUL byte, or a -diff/binary attribute)
   # prints no hunk, and a textconv driver numbers the hunks of the converted text, so neither may
-  # decide which lines changed.
-  if ! line_diff="$(git -C "$ROOT" -c core.quotePath=false diff -U0 --text --no-textconv --inter-hunk-context=0 --find-renames --no-color --no-ext-diff --src-prefix=a/ --dst-prefix=b/ "$merge_base" HEAD -- '*.ts' '*.tsx' 2>/dev/null)"; then
+  # decide which lines changed. GIT_DIFF_OPTS= for the same reason: a context width set there
+  # outranks -U0, and the ranges would then include unchanged lines.
+  if ! line_diff="$(GIT_DIFF_OPTS= git -C "$ROOT" -c core.quotePath=false diff -U0 --text --no-textconv --inter-hunk-context=0 --find-renames --no-color --no-ext-diff --src-prefix=a/ --dst-prefix=b/ "$merge_base" HEAD -- '*.ts' '*.tsx' 2>/dev/null)"; then
     print_block \
       "Stryker (mutation testing)" \
       "Could not read the changed lines since the merge-base with $base." \

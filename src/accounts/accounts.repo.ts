@@ -29,6 +29,7 @@ import type { Currency } from '@kiko/currency/currency';
 import { clearCredentials } from '@kiko/crypto-sync/binance';
 import { SYNCED_AT_FIELD } from '@kiko/holdings/holding-metadata';
 import { holdingTypesForAccountKind } from '@kiko/holdings/holding-type';
+import { transactionTemplatesRepo } from '@kiko/transaction-templates/repo';
 import { cascadeLinkedRowsDatabaseTransaction } from '@kiko/transactions/repo';
 import { isCurrencyAllowedForHoldingType } from '@kiko/holdings/holding-currency';
 import { isSyncedAccount, type SyncedInstitution } from '@kiko/holdings/deletable';
@@ -428,12 +429,11 @@ export const accountsRepo = {
         .from(holdings)
         .where(eq(holdings.accountId, accountId));
 
+      const holdingIds = accountHoldings.map((holding) => holding.id);
+
       // Before any row goes: the other parts of the movements these holdings'
       // rows belong to, in other accounts, are found through them.
-      await cascadeLinkedRowsDatabaseTransaction(
-        databaseTransaction,
-        accountHoldings.map((holding) => holding.id),
-      );
+      await cascadeLinkedRowsDatabaseTransaction(databaseTransaction, holdingIds);
 
       for (const holding of accountHoldings) {
         await databaseTransaction
@@ -455,9 +455,12 @@ export const accountsRepo = {
       await databaseTransaction.delete(syncState).where(eq(syncState.accountId, accountId));
       // `reminders.account_id` is the same kind of NO ACTION foreign key.
       await databaseTransaction.delete(reminders).where(eq(reminders.accountId, accountId));
-      await clearLoanLinksForHoldingsDatabaseTransaction(
+      await clearLoanLinksForHoldingsDatabaseTransaction(databaseTransaction, holdingIds);
+      // One call for every holding of the account, so a template that names two of them is
+      // rewritten once.
+      await transactionTemplatesRepo.clearHoldingsDatabaseTransaction(
         databaseTransaction,
-        accountHoldings.map((holding) => holding.id),
+        holdingIds,
       );
       await databaseTransaction.delete(holdings).where(eq(holdings.accountId, accountId));
       await databaseTransaction.delete(accounts).where(eq(accounts.id, accountId));

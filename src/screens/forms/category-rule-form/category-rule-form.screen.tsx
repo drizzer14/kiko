@@ -11,7 +11,6 @@ import { id, useDataReady, useLiveQuery } from '@kiko/db';
 import Button from '@kiko/design-system/components/button';
 import Screen from '@kiko/design-system/components/screen';
 import Divider from '@kiko/design-system/components/divider';
-import { prepareRules } from '@kiko/categories/category-rules';
 import FieldError from '@kiko/design-system/components/field-error';
 import type { SettingsStackParamList } from '@kiko/navigation/types';
 import LoadingState from '@kiko/design-system/components/loading-state';
@@ -20,6 +19,7 @@ import type { FieldInstance } from '@kiko/design-system/scroll-to-field';
 import { useScrollToField } from '@kiko/design-system/use-scroll-to-field';
 import { buildCategoryDisplayMap } from '@kiko/categories/category-display';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { categoryKeyOf, prepareRules } from '@kiko/categories/category-rules';
 import { useFormHeaderItems } from '@kiko/screens/forms/use-form-header-items';
 import { type FC, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
@@ -176,7 +176,7 @@ const CategoryRuleFormScreen: FC<CategoryRuleFormScreenProps> = ({ navigation, r
     setRows((current) => current.filter((row) => row.key !== key));
 
   const categoryTitleOf = (key: string): string =>
-    categoryTitles.get(key.toLowerCase())?.title ?? key;
+    categoryTitles.get(categoryKeyOf(key))?.title ?? key;
 
   if (!isLoaded) {
     return (

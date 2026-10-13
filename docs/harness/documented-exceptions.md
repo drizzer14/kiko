@@ -887,6 +887,19 @@ verified usage, not dead weight:
   stops installing it, add it to `package.json` as an exact-pinned
   devDependency instead.
 
+- **`scripts/checks/commit-typecheck.sh` docs-only skip.** The pre-commit typecheck exits 0
+  without a run when the staged diff (renames listed under both names) touches no file whose name
+  ends in `.ts`, `.tsx`, `.mts`, `.cts`, `.js`, `.jsx`, `.mjs`, `.cjs`, or `.json` (the
+  `SOURCE_FILES` pattern in that script). Reason: tsc reads only those files and `node_modules`,
+  which follows `package.json` and `package-lock.json`, so the result then equals HEAD's. Only a
+  clean "no match" skips: a failed diff or a grep error runs the check.
+- **`scripts/ensure-git-hooks.sh` skip outside a repository root.** The `postinstall` step exits 0
+  without setting core.hooksPath when `git rev-parse --show-toplevel` fails (no repository: a
+  scratch copy without `.git`, a source tarball), or when the top level is not the folder that
+  holds the script (a copy inside another repository, whose config it must not change). Reason:
+  no commit is possible from there, so there is nothing to guard. A config it cannot read, a
+  write that fails, or a core.hooksPath that already holds another value is not skipped: it
+  prints the standard block and exits 2.
 - **`__tests__/skill-identifiers.test.ts`'s two exemption lists (non-project
   names, and bad-name examples per skill file).** The test fails when an inline code span in a
   skill or agent file names an identifier that no word of the code corpus
@@ -915,3 +928,25 @@ verified usage, not dead weight:
   entry that is no longer cited or now resolves, so the lists only shrink.
   A name that left the code is fixed in the skill text (renamed, or written
   without backticks), never added here.
+
+- **`scripts/checks/medium.sh` repeated-Stop skip** (user ruling Q2 A,
+  2026-10-13, confirmed in the orchestrator's terminal): on a repeated Stop
+  (payload `stop_hook_active: true`) the tier writes `medium tier: skipped on
+  a repeated Stop` to stderr and exits 0. Reason: a failing Stop started a
+  new turn that ended in the same failure and the orchestrator looped (knip
+  ran about 8 times, binance-history-a7, 2026-10-11). Cost: a repeated Stop
+  shows a failure once; the next first Stop and `check:all` still catch it.
+  Scope: Stop only, never SubagentStop, only when stdin is a regular file; an
+  unreadable payload runs the tier as before.
+- **`scripts/job-queue.sh` power rule**: a missing `pmset` binary means AC
+  power (every other unreadable state holds). Reason: a machine without
+  `pmset` has no battery, so a hold would block forever. Risk: a Mac whose
+  `pmset` is not on PATH.
+- **`scripts/job-queue.sh` group TERM** (user ruling A, 2026-10-13): the
+  queue may send TERM to the process group it created for its own job, never
+  any other group; see kill-guard's entry above.
+- **`__tests__/error-class-pins.test.ts` skips a class with an empty body**
+  (`class X extends Error {}`): such a class inherits its name and message
+  from `Error` and has no own `.name` or `.message` literal to pin, and
+  pinning it would need a `src/` change that adds one. Every non-empty
+  `extends Error` class is checked, with no per-class exemption list.

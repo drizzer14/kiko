@@ -126,4 +126,5 @@ export const genericEntitySymbol = {
   transaction: 'arrow.up.arrow.down',
   category: 'tag',
   rule: 'slider.horizontal.3',
+  template: 'doc.on.doc',
 } as const;

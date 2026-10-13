@@ -31,7 +31,7 @@ Rules:
   runs after you) and the `stats` rows from
   `node "${CLAUDE_PLUGIN_ROOT}/scripts/run-log.mjs" stats --repo kiko --since <date> --format md`.
   Flag every earlier run in that window showing `abandoned` (no `summary.json` and no
-  event for 24 h). Report your recorded and gaps counts for `finish --recorded N --gaps N`.
+  event for 24 h). Report your recorded and gaps counts for `finish --recorded N --gaps N`. Report each open gap as one line (it was recorded with `gap --open`), and the ids of the gaps the run closed (`gap --close`); `finish`'s `--gaps N` stays the count.
 - Standing job: classify every review finding and feedback item of the
   run as mechanizable now, mechanizable with a pinned value, or
   judgment-only, with a one-line reason (`harness-workflow`'s "Classify

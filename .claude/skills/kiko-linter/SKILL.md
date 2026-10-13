@@ -26,12 +26,22 @@ fast+medium gate is picked up by `make verify` automatically through
 
 ## The wrapper contract
 
+`scripts/job-queue.sh` is not a `scripts/checks` wrapper: its QUEUED/WAITING/START/DONE lines are its normal stdout, not a failure block.
+
 Every check wrapper in `scripts/checks/` follows the same shape (read
 `scripts/checks/_lib.sh` for the exact helper):
 
 - `source "$DIR/_lib.sh"` for `print_block`.
+- Comments in a shell script wrap at 100 columns, as in any other source file; `__tests__/shell-comment-width.test.ts` pins it.
 - On failure: call `print_block` (a structured WHAT/DETAILS/WHY/HOW/
   DO-NOT block) to stderr, then `exit 2`.
+- A missing path is a failure, never a pass. A missing scan root or a missing path argument
+  exits 2 with the standard block that names the path (`harness_require_path` in `_lib.sh`).
+  A per-file wrapper given a directory exits 2 ("takes a file", `harness_require_file`).
+  One exception: `medium.sh` filters deleted files before it calls `dup.sh` and
+  `override-guard.sh`, so a deleted file on the medium tier is skipped silently, while a
+  direct call with a deleted path exits 2. `component-i18n-namespace.sh` keeps its own `-d`
+  block for its fixed root. `__tests__/wrapper-missing-path.test.ts` pins this.
 - On success: **silent**, `exit 0`. A wrapper that prints anything on
   success breaks the "stays silent on success" contract every other
   wrapper and every hook relies on. One exception is the deep,
@@ -53,11 +63,11 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   finding is override-eligible and still has to be seen. `dup.sh` states
   its own exception: its large-file `WARNING` lines (see "`check:dup`
   measures the files jscpd skips for size" below), because a non-blocking
-  measurement of tracked debt still has to be seen. A hook that exits 0
+  measurement of tracked debt still has to be seen. `medium.sh` states a third: on a repeated Stop (payload `stop_hook_active: true`) it writes a one-line `medium tier: skipped on a repeated Stop` note to stderr and exits 0. A hook that exits 0
   does not feed its stderr back to the agent, unless a later check in the
   same tier fails: the tier's whole stderr is then shown, so a `dup.sh`
   WARNING or a `security.sh` SKIPPED notice can appear beside an unrelated
-  failure. It is tracked debt, not that failure; otherwise these are for a
+  failure. It is tracked debt, not that failure; otherwise these (and the `medium.sh` repeated-Stop note, which reaches a human only) are for a
   human or a manual `check:security`/`check:dup` run.
 
   Another exception, of a different shape: `scripts/checks/kill-guard.sh`
@@ -178,6 +188,7 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   operator (`>&-`, `<<-EOF`). So `kill <pid> 2>/dev/null` and
   `kill <pid> &>/dev/null` are allowed. The agent rule stays
   absolute regardless: never `git stash` or pattern-kill in any form.
+  The ONE allowed group kill (user ruling 2026-10-13): `scripts/job-queue.sh` may send TERM to the process group it created for its own job (`set -m`, then the group-TERM form its header shows), only while `pgrep -g` finds a member, never any other group; the lock stays live while any process of that group lives. An agent's own group or pattern kill is still denied.
   Every deny carries the `print_block` WHAT/DETAILS/WHY/HOW/DO-NOT shape
   as plain text in the one JSON reason field; the kill deny keeps its
   one-line reason. Deny/allow cases for each form live in
@@ -308,6 +319,9 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   so `hooks.json` is unchanged and no plugin reinstall is needed; a
   session in the main checkout gets it only after the merge to main.
 
+  A shell redirect into a tree is denied even inside your own temporary git repository: build its
+  fixture tree with the helpers in `__tests__/test-support/` inside a jest test, or with Edit/Write.
+
   WAIT-LOOP deny (why: a `while`/`until` loop whose process scan names
   the job it waits for matches its OWN command line, so it never ends;
   the `[j]est` bracket trick only helps while the word appears nowhere
@@ -360,6 +374,30 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   the merge to main. Only an agent-text change shipped beside it (the
   plugin version bump) reaches a running session after a plugin
   reinstall and `/reload-plugins`.
+
+  NO-VERIFY deny (why: the tracked `githooks/pre-commit` and `githooks/pre-merge-commit` run
+  `scripts/checks/commit-typecheck.sh`, a typecheck of the staged index; a commit that skips them
+  lands a type error on the branch). Rule: deny a `git commit`, `git merge`, or `git pull` that
+  skips the hooks: `--no-verify` or an abbreviation of it, commit's `-n` (alone or inside a flag
+  group; on `merge` and `pull` `-n` is `--no-stat`, so it is no bypass), `-c core.hooksPath=...`
+  or `--config-env=core.hooksPath=...` before the subcommand, and a `NAME=value` prefix that sets
+  core.hooksPath through `GIT_CONFIG_COUNT` with `GIT_CONFIG_KEY_<n>`, or through
+  `GIT_CONFIG_PARAMETERS`. It also denies a `git config` that writes or unsets core.hooksPath in
+  any scope (the `set`/`unset` forms of git 2.46 too), because that switches the hooks off for
+  every worktree. Entry points: `skipsHooks`, `rewritesHooksPath`, `environmentSetsHooksPath`
+  in `scripts/checks/kill-guard.js`; the finding kind is `noVerify`. Allowed: a `--get` read of the
+  key, `git config core.hooksPath` with no value, `-n` after another option's value or after
+  `--`, text in a commit message, and `git log -n`. The repair route for an unset core.hooksPath
+  is `bash scripts/ensure-git-hooks.sh` or `npm ci`; a direct `git config core.hooksPath githooks`
+  is denied too. The pre-commit hook itself: `scripts/checks/commit-typecheck.sh` copies the
+  staged index to a temporary folder and runs `tsc --noEmit` there; it fails closed and skips a
+  commit whose staged diff touches no file tsc reads (see `docs/harness/checks-internals.md`).
+  A person may bypass in their own shell; the deny binds agent Bash calls only. Rows:
+  `__tests__/kill-guard.test.ts`, `__tests__/commit-typecheck.test.ts`,
+  `__tests__/ensure-git-hooks.test.ts`. Known limits, NOT denied: a bypass built at run time; an
+  `export GIT_CONFIG_*=...` line before the git command (only `NAME=value` prefixes are read);
+  `git config --value <v>` with the value as a separate word; `--remove-section core` and
+  `--rename-section core`.
 
   Probing the kill-guard (rule): SENTINEL probes only. A probe that
   EXECUTES shell text runs ONLY through the committed runner
@@ -688,7 +726,7 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   plain path and as a range (Stryker reads that as "do not mutate"). A comment-only file kept because its
   colocated test changed goes in as its plain path (whole file). A kept path with `[ ( * ? {` is refused with
   exit 2, after the lock in a run and with no lock in `--list`, always before Stryker. The diff uses
-  `--find-renames --inter-hunk-context=0 --text --no-textconv` (a -diff/binary attribute or a textconv driver must not change the hunks). General rule: any checker that parses `git diff` hunks forces `--text --no-textconv --no-ext-diff` and `-c core.quotePath=false`, and treats a failed or unparsable diff as a block, never as "nothing to do" (H6 review 2026-10-12: a binary/textconv `.ts` diff gave no hunk and the gate passed with nothing mutated; fixed in 5f31d626). User ruling 2026-10-12, no edge-straddling mutant: Stryker 8.7.1 creates a mutant only when its whole node lies inside a range (its fully-inside rule, instrumenter syntax-helpers.js), and the scorer grades only mutants fully inside a range. Cost: an edit inside a multi-line block, condition, object or array, or an arrow body loses that construct's whole-node mutants; the inner mutants on the changed lines stay. User ruling 2026-10-12, source plus colocated test: when a source file and its colocated test both change, only the changed source lines are mutated. Cost: a weakened test is checked only against the changed lines, not the whole file. The
+  `--find-renames --inter-hunk-context=0 --text --no-textconv`, run with `GIT_DIFF_OPTS=` (a -diff/binary attribute, a textconv driver, or a context width in that variable must not change the hunks). One `cleanup` removes the lock and the temp file for `mutation-ranges.js` stderr on EXIT, INT (exit 130), and TERM (exit 143). General rule: any checker that parses `git diff` hunks forces `--text --no-textconv --no-ext-diff` and `-c core.quotePath=false`, and treats a failed or unparsable diff as a block, never as "nothing to do" (H6 review 2026-10-12: a binary/textconv `.ts` diff gave no hunk and the gate passed with nothing mutated; fixed in 5f31d626). User ruling 2026-10-12, no edge-straddling mutant: Stryker 8.7.1 creates a mutant only when its whole node lies inside a range (its fully-inside rule, instrumenter syntax-helpers.js), and the scorer grades only mutants fully inside a range. Cost: an edit inside a multi-line block, condition, object or array, or an arrow body loses that construct's whole-node mutants; the inner mutants on the changed lines stay. User ruling 2026-10-12, source plus colocated test: when a source file and its colocated test both change, only the changed source lines are mutated. Cost: a weakened test is checked only against the changed lines, not the whole file. The
   scorer is unit-tested directly against constructed report fixtures
   in `__tests__/mutation-score.test.ts` (no mutated-src-text parsing,
   no real Stryker run); the existing cap/lock/streaming/eta tests drive
@@ -1846,6 +1884,10 @@ duplicate, because the merged line needs rewrapping at Biome's line
 width and a placement for any glued comment. The general re-check
 above reports it as `left for hand fix`.
 
+`kiko-repo-no-class` bans any class in a `*.repo.ts`, so a repo's error class lives in
+its own non-`.repo.ts` file exported through the repo barrel (precedent:
+`src/transaction-templates/repo/template-name-taken-error.ts`).
+
 ## `kiko-no-switch` — an AST `switch` pattern, not a keyword regex
 
 `kiko-no-switch` (`rules/semgrep-prewrite.yml`, Class A) mechanizes
@@ -2184,6 +2226,8 @@ a new tree. See `conflictSides`, `afterTreesFor`, and
 
 ## Pre-write guard replay on the Stop tier
 
+On a `Stop` event (not `SubagentStop`) whose payload has `stop_hook_active: true`, `medium.sh` exits 0 with a one-line stderr note instead of running, because a failing Stop tier started a new turn that ended in the same failure and the orchestrator looped (knip ran about 8 times in a row, 2026-10-11); a first `Stop` and every `SubagentStop` still run and block, the payload is read only when stdin is a regular file (`dispatch.sh` replays it as a file), and the cost is that a repeated Stop shows the failure once, with `check:all` before a commit still catching it. Read `medium.sh`'s header comment for the exact check.
+
 The pre-write guard sees only `Edit`/`Write`/`MultiEdit`. The
 kill-guard's SHELL-WRITE deny (above) blocks the common Bash write
 forms into `src/`, `__tests__/`, `rules/`, and `e2e/`. It allows the `--write`
@@ -2417,7 +2461,25 @@ mechanizable (see harness-workflow's "Classify every finding").
    - A guard test proves concurrency or speed by counting work or by a
      file rendezvous between stubs, never by a clock. The invariant
      `__tests__/guard-tests-no-wall-clock.test.ts` fails a clock reading
-     in a pre-write-guard test; read it for the banned forms.
+     in a pre-write-guard test; read its `CLOCK_READINGS` for the banned
+     forms. It fails every `Date.now()` read in a guard test, a
+     `${Date.now() - start}` delta included, and also `Date.now` without a
+     call, `+new Date`, `Date()`, and a shell `date -u +%s`, `date +"%s"`.
+     A unique temporary name comes from `createTemporaryDirectory(prefix)`,
+     with `join(..., '<name>')` for a path inside it, never from the clock.
+   - A test that needs a scratch folder uses
+     `__tests__/test-support/temporary-directory.ts` (`createTemporaryDirectory`
+     and `removeTemporaryDirectories` in an `afterEach`). New code uses the
+     helper, because a hand-rolled `mkdtempSync` leaks when a test throws.
+     Existing hand-rolled `mkdtempSync` calls are old code: they move to the
+     helper when their file is next edited.
+   - `__tests__/error-class-pins.test.ts` fails when a non-empty
+     `extends Error` class under `src/` has no same-folder test pinning its
+     `.name` literal and its `.message`. The message pin must be on the same
+     receiver chain as the `.name` pin in the same test block (blocks split at
+     `it`/`test`/`xit`/`fit`/`xtest`/`describe` and their `.skip`/`.only`/`.concurrent`
+     forms), or on `new ClassName(...).message`, or in one `toMatchObject({ name, message })`.
+     Known limit: a rebound `let error` is not seen. A class with an empty body is skipped.
    - A new Node rule also runs on the probed negative (good) fixtures of
      `__tests__/pre-write-guard-rules.test.ts`. Make those fixtures pass
      the new rule, never exempt them.

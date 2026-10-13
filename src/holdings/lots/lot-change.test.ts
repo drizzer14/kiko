@@ -95,6 +95,13 @@ describe('withLotChange', () => {
     ).toThrow(SaleExceedsHoldingError);
   });
 
+  it('names the refusal SaleExceedsHoldingError with the withLotChange message', () => {
+    const error = new SaleExceedsHoldingError();
+
+    expect(error.name).toBe('SaleExceedsHoldingError');
+    expect(error.message).toBe('withLotChange: a sale would take more than is held');
+  });
+
   it('sells everything held at the whole cost basis', () => {
     expect(withLotChange(base, { kind: 'add', lot: sell(april, '6') }, 'USD').at(2)).toEqual(
       sell(april, '6', -60_000),

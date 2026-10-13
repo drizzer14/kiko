@@ -51,6 +51,7 @@ import { maxOf, minOf } from '@kiko/numbers';
 import type { Currency } from '@kiko/currency/currency';
 import { exchangeReceivePath } from '@kiko/holdings/exchange-destination';
 import type { DepositContribution } from '@kiko/holdings/holding-metadata';
+import { transactionTemplatesRepo } from '@kiko/transaction-templates/repo';
 import { isLedgerlessHoldingType } from '@kiko/holdings/holding-descriptor';
 import type { ExchangeConvertDirection } from '@kiko/holdings/exchange-convert';
 import type { ClosingBalance, TimeReading } from '@kiko/statement-import/parser';
@@ -66,6 +67,11 @@ import type {
 } from '../remove-notice';
 import { balanceBoundaryOf, movesBalance } from '../balance-boundary';
 import { SYNC_MATCH_WINDOW_MILLISECONDS, pairSyncInputsWithImportRows } from '../sync-adoption';
+
+// A step the caller runs in the SAME write, after the rows are written, so a failure in either
+// part rolls both back. It lets the transaction form save a template with its transaction without
+// this feature importing the templates one.
+type Alongside = (databaseTransaction: typeof database) => Promise<void>;
 
 type NewTransaction = Pick<TransactionRow, 'holdingId' | 'amountMinorUnits' | 'time' | 'source'> &
   Partial<
@@ -961,6 +967,10 @@ const planLinkedRowsDatabaseTransaction = async (
     keptSynced: sortedHoldingNamesOf(kept, holdingsById),
     unlinked: unlinked.names,
     unlinkedPlain: unlinked.plain,
+    templatesChanged: await transactionTemplatesRepo.countReferencingHoldingsDatabaseTransaction(
+      databaseTransaction,
+      holdingIds,
+    ),
     balanceChanges: balanceChangesOf(removed, holdingsById),
   };
 };
@@ -2150,8 +2160,14 @@ export const transactionsRepo = {
    * its date, a back-dated row included: every transaction updates the balance. Returns the new
    * row's id; `categorySetByHand` marks a category the user picked, which no rule replaces.
    */
-  recordManual: (input: ManualTransaction) =>
-    write((databaseTransaction) => recordManualTransaction(databaseTransaction, input)),
+  recordManual: (input: ManualTransaction, alongside?: Alongside) =>
+    write(async (databaseTransaction) => {
+      const rowId = await recordManualTransaction(databaseTransaction, input);
+
+      await alongside?.(databaseTransaction);
+
+      return rowId;
+    }),
   /**
    * Record an Exchange as two INDEPENDENT ledger rows in ONE transaction, tied
    * by the structural `exchangeCounterpartHoldingId` marker — each leg stores
@@ -2164,7 +2180,7 @@ export const transactionsRepo = {
    * can never desync. Balances are read INSIDE the transaction, never from a
    * render snapshot, exactly as `recordManual` does.
    */
-  recordExchange: (input: ExchangeInput) =>
+  recordExchange: (input: ExchangeInput, alongside?: Alongside) =>
     write(async (databaseTransaction) => {
       if (input.destinationHoldingId === input.sourceHoldingId) {
         throw new Error('recordExchange: destination equals source');
@@ -2213,6 +2229,8 @@ export const transactionsRepo = {
           throw new Error(`recordExchange: ${input.destinationType} is not a valid destination`);
         })
         .exhaustive();
+
+      await alongside?.(databaseTransaction);
     }),
   /**
    * Convert-mode (spec "Convert an existing transaction"): record the ONE
@@ -2350,7 +2368,7 @@ export const transactionsRepo = {
    * does. Returns the payment row's id; the payment's `categorySetByHand` lands on that row
    * only, since a return has no category.
    */
-  recordManualWithReturns: (input: ManualWithReturnsInput) =>
+  recordManualWithReturns: (input: ManualWithReturnsInput, alongside?: Alongside) =>
     write(async (databaseTransaction) => {
       const changeGroupId = id();
 
@@ -2368,6 +2386,8 @@ export const transactionsRepo = {
         });
       }
 
+      await alongside?.(databaseTransaction);
+
       return paymentId;
     }),
   /**
@@ -2381,7 +2401,10 @@ export const transactionsRepo = {
    * never mutated by this path — its amount is owned by the bank import — and a
    * missing id is a no-op rather than an error.
    */
-  update: ({ transactionId, amountMinorUnits, time, description }: TransactionEdit) =>
+  update: (
+    { transactionId, amountMinorUnits, time, description }: TransactionEdit,
+    alongside?: Alongside,
+  ) =>
     write(async (databaseTransaction) => {
       const existingRows = await databaseTransaction
         .select()
@@ -2403,6 +2426,7 @@ export const transactionsRepo = {
         existing.holdingId,
         amountMinorUnits - existing.amountMinorUnits,
       );
+      await alongside?.(databaseTransaction);
     }),
   /**
    * Delete a MANUAL or IMPORTED transaction and reverse its effect on the

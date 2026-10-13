@@ -23,16 +23,7 @@ paths=("$@"); [ ${#paths[@]} -eq 0 ] && paths=(".")
 # A path that is not on disk (a deleted file) makes jscpd exit non-zero with ENOENT, which
 # the blocking run below would report as duplication. Say what is wrong instead.
 for p in "$@"; do
-  if [ ! -e "$p" ]; then
-    print_block \
-      "jscpd (copy/paste detection)" \
-      "A path passed to check:dup does not exist, so jscpd was not run." \
-      "Missing path: $p" \
-      "jscpd cannot read a file that is not on disk. A missing file is not duplicated code, and passing it on would report a false duplication failure." \
-      "Drop the path from the arguments (a deleted file has nothing to measure). Re-run: npm run check:dup" \
-      "Do not create an empty file at the path to get past this."
-    exit 2
-  fi
+  harness_require_path "jscpd (copy/paste detection)" "$p" || exit 2
 done
 
 # Dedup only an explicit set of files (the changed-files scope), keyed on

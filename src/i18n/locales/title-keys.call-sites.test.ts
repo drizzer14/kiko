@@ -50,6 +50,8 @@ const DYNAMIC_HEADING_KEYS: Record<string, readonly string[]> = {
     'forms.transaction.title',
     'forms.transaction.editTitle',
     'forms.transaction.addTitle',
+    'forms.transaction.editTemplateTitle',
+    'forms.transaction.addTemplateTitle',
   ],
 };
 

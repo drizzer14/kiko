@@ -19,10 +19,14 @@ const mockUpdate = jest.fn();
 const mockSetCategory = jest.fn();
 const mockUseLiveQuery = jest.fn();
 
+// A write takes its optional template step last, and an undefined one is the same call as none.
+const mockWithoutUndefinedTail = (args: unknown[]): unknown[] =>
+  args.at(-1) === undefined ? args.slice(0, -1) : args;
+
 jest.mock('@kiko/transactions/repo', () => ({
   transactionsRepo: {
-    recordManual: (...args: unknown[]) => mockRecordManual(...args),
-    update: (...args: unknown[]) => mockUpdate(...args),
+    recordManual: (...args: unknown[]) => mockRecordManual(...mockWithoutUndefinedTail(args)),
+    update: (...args: unknown[]) => mockUpdate(...mockWithoutUndefinedTail(args)),
     setCategory: (...args: unknown[]) => mockSetCategory(...args),
     getByIdQuery: (transactionId: string) => ({
       toSQL: () => ({ sql: '', params: [transactionId] }),

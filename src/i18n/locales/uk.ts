@@ -109,6 +109,7 @@ export const uk: typeof en = {
     language: 'Мова',
     system: 'Системні',
     title: 'Налаштування',
+    transactionTemplates: 'Шаблони транзакцій',
   },
   language: {
     en: '🇬🇧 English',
@@ -181,6 +182,11 @@ export const uk: typeof en = {
     deleteRulesNotice_many: 'Її {{count}} правил теж буде видалено.',
     deleteRulesNotice_other: 'Її {{count}} правила теж буде видалено.',
     deleteRulesNoticeUnknown: 'Її правила теж буде видалено.',
+    deleteTemplates_one: 'Також її буде очищено в {{count}} шаблоні.',
+    deleteTemplates_few: 'Також її буде очищено в {{count}} шаблонах.',
+    deleteTemplates_many: 'Також її буде очищено в {{count}} шаблонах.',
+    deleteTemplates_other: 'Також її буде очищено в {{count}} шаблону.',
+    deleteTemplatesUnknown: 'Також її буде очищено в шаблонах.',
   },
   categoryPage: {
     rulesHeading: 'Правила',
@@ -515,6 +521,7 @@ export const uk: typeof en = {
     },
     transaction: {
       addReturn: 'Додати повернення',
+      addTemplateTitle: 'Додати шаблон',
       addTitle: 'Додати транзакцію',
       amountError: 'Сума має бути більшою за 0.',
       amountPlaceholder: '250,00',
@@ -532,9 +539,12 @@ export const uk: typeof en = {
       convertAmountPlaceholder: '100,00',
       convertToExchange: 'Обміняти',
       counterpartAmountError: 'Сума має бути більшою за 0.',
+      createTransaction: 'Створити транзакцію',
       description: 'Опис',
       descriptionPlaceholder: 'Кава',
+      editTemplateTitle: 'Редагувати шаблон',
       editTitle: 'Редагувати транзакцію',
+      entryModeLabel: 'Спосіб введення',
       exchange: 'Обмін',
       expense: 'Витрата',
       from: 'Звідки',
@@ -549,21 +559,34 @@ export const uk: typeof en = {
       loanPayment: 'Платіж за кредитом',
       loanPaymentNone: 'Немає',
       loanPaymentSheetTitle: 'Платіж за кредитом',
+      noTemplatesHint:
+        'Шаблонів ще немає. Увімкніть «Зберегти як новий шаблон», коли зберігаєте транзакцію.',
       remove: 'Видалити',
       removeReturn: 'Видалити повернення {{index}}',
       returnAmount: 'Повернення {{index}}',
       returnsHeading: 'Повернення решти',
       returnTo: 'Повернути до {{index}}',
       returnToSheetTitle: 'Повернути до {{index}}',
+      saveAsTemplate: 'Зберегти як новий шаблон',
       selectCategoryError: 'Оберіть категорію.',
       selectCounterpartError: 'Оберіть рахунок для конвертації.',
       selectDestinationError: 'Оберіть рахунок призначення.',
       selectHolding: 'Оберіть актив',
+      selectHoldingError: 'Актив не вибрано.',
+      selectTemplate: 'Оберіть шаблон',
       split: 'Поділ',
       splitInvalidError:
         'Додайте принаймні одне коректне повернення, і нехай сума повернень буде меншою за платіж.',
       syncedNotice:
         'Цю транзакцію синхронізовано, тому можна змінити лише категорію та зв’язок із кредитом.',
+      tabManual: 'Вручну',
+      tabTemplate: 'Шаблон',
+      template: 'Шаблон',
+      templateName: 'Назва шаблону',
+      templateNameError: 'Введіть назву шаблону.',
+      templateNamePlaceholder: 'Оренда',
+      templateNameTakenError: 'Шаблон із такою назвою вже існує.',
+      templateSheetTitle: 'Шаблон',
       title: 'Транзакція',
       to: 'Куди',
       toSheetTitle: 'Куди',
@@ -774,6 +797,10 @@ export const uk: typeof en = {
       unlinked:
         'Деякі частини обмінів у {{names}} не знайдено, тож вони залишаться. Перевірте їх після видалення.',
       unlinkedPlain: 'Деякі частини обмінів не знайдено, тож вони залишаться.',
+      templates_one: 'Також його буде очищено в {{count}} шаблоні.',
+      templates_few: 'Також його буде очищено в {{count}} шаблонах.',
+      templates_many: 'Також його буде очищено в {{count}} шаблонах.',
+      templates_other: 'Також його буде очищено в {{count}} шаблону.',
     },
   },
   home: {
@@ -1141,6 +1168,15 @@ export const uk: typeof en = {
       interval_many: 'Кожні {{count}} днів {{at}} {{time}}',
       interval_other: 'Кожні {{count}} дня {{at}} {{time}}',
     },
+  },
+  transactionTemplates: {
+    addTemplate: 'Додати шаблон',
+    empty: {
+      message:
+        'Збережіть транзакцію, яку вводите часто, як шаблон, і додавайте її знову кількома дотиками.',
+      title: 'Шаблонів ще немає',
+    },
+    title: 'Шаблони транзакцій',
   },
   // Ukrainian currency display names, keyed by ISO letter code (mirrors
   // en.currencyNames). Official NBU names where the NBU exchange feed quotes the

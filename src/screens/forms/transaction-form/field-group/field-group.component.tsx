@@ -15,6 +15,8 @@ import type { FieldGroupProps } from './field-group.props';
 // cognitive-complexity budget is spent on state and save/derive logic, not
 // this three-way render switch.
 const FieldGroup = (props: FieldGroupProps): ReactElement => {
+  const { showsDate = true, required = true } = props;
+
   if (props.converting) {
     return (
       <ConvertExchangeFields
@@ -65,6 +67,8 @@ const FieldGroup = (props: FieldGroupProps): ReactElement => {
         valueOutFieldRef={props.valueOutFieldRef}
         destinationFieldRef={props.destinationFieldRef}
         valueInFieldRef={props.valueInFieldRef}
+        showsDate={showsDate}
+        required={required}
       />
     );
   }
@@ -83,7 +87,7 @@ const FieldGroup = (props: FieldGroupProps): ReactElement => {
           // A read-only (synced) row's amount never gates save, so it carries
           // no required marker; a manual add/edit always needs a positive
           // amount.
-          required={!props.isReadOnly}
+          required={required && !props.isReadOnly}
           error={props.amountError}
           invalid={props.amountInvalid}
           inputRef={props.amountInputRef}
@@ -104,14 +108,16 @@ const FieldGroup = (props: FieldGroupProps): ReactElement => {
         is rendered unconditionally here. */}
       {props.descriptionSuggestions}
 
-      <DateTimeRow
-        time={props.time}
-        onChangeTime={props.onChangeTime}
-        maxDate={props.maxDate}
-        disabled={props.isReadOnly}
-        dateTestID="transaction-date-field"
-        timeTestID="transaction-time-field"
-      />
+      {showsDate && (
+        <DateTimeRow
+          time={props.time}
+          onChangeTime={props.onChangeTime}
+          maxDate={props.maxDate}
+          disabled={props.isReadOnly}
+          dateTestID="transaction-date-field"
+          timeTestID="transaction-time-field"
+        />
+      )}
     </>
   );
 };

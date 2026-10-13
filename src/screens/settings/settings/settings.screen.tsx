@@ -106,14 +106,14 @@ const SettingsScreen: FC<SettingsScreenProps> = ({ navigation }) => {
   // that whitespace are derived from the SAME
   // `settings-row.chevron.ts` helpers `SettingsRow` itself uses for the
   // glyph, so this stays in sync if that sizing ever changes.
-  const dataTransferRowStyle = {
+  const groupedRowStyle = {
     paddingHorizontal: theme.spacing(3),
     paddingVertical: theme.spacing(3),
   };
-  const dataTransferChevronSize = chevronSize(theme);
-  const dataTransferDividerStyle = {
+  const groupedChevronSize = chevronSize(theme);
+  const groupedDividerStyle = {
     marginLeft: theme.spacing(3) + theme.iconSizes.body + theme.spacing(3),
-    marginRight: theme.spacing(3) + chevronTrailingWhitespace(dataTransferChevronSize, theme),
+    marginRight: theme.spacing(3) + chevronTrailingWhitespace(groupedChevronSize, theme),
   };
 
   const handleSelectCurrency = (currency: Currency): void => {
@@ -197,12 +197,12 @@ const SettingsScreen: FC<SettingsScreenProps> = ({ navigation }) => {
             near the top, below System and Reminders. Import first (the more
             common entry point — bringing existing data in) then Export.
             Each row carries its own explicit vertical padding
-            (`dataTransferRowStyle`, matching the Card's own padding=3 the
+            (`groupedRowStyle`, matching the Card's own padding=3 the
             OTHER single-row cards get for free) with the Card's own padding
             at 0 — an outer `Box gap` does not supply the
             spacing, so each row reads as a normal native grouped-list row
             rather than a shorter, gap-squeezed one. The divider is
-            LEADING-INSET (`dataTransferDividerStyle`'s `marginLeft`, aligned
+            LEADING-INSET (`groupedDividerStyle`'s `marginLeft`, aligned
             with the row LABEL — past the leading icon, not edge-to-edge),
             the standard iOS grouped-list divider treatment for an icon-led
             row. */}
@@ -212,17 +212,17 @@ const SettingsScreen: FC<SettingsScreenProps> = ({ navigation }) => {
             icon="square.and.arrow.down"
             label={t('settings.dataImport.rowLabel')}
             onPress={() => navigation.navigate('ImportData')}
-            style={dataTransferRowStyle}
+            style={groupedRowStyle}
           />
 
-          <Divider testID="settings-divider-data-transfer" style={dataTransferDividerStyle} />
+          <Divider testID="settings-divider-data-transfer" style={groupedDividerStyle} />
 
           <SettingsRow
             testID="settings-row-export-data"
             icon="square.and.arrow.up"
             label={t('settings.dataExport.rowLabel')}
             onPress={() => navigation.navigate('ExportData')}
-            style={dataTransferRowStyle}
+            style={groupedRowStyle}
           />
         </Card>
 
@@ -249,12 +249,24 @@ const SettingsScreen: FC<SettingsScreenProps> = ({ navigation }) => {
           </SettingsRow>
         </Card>
 
-        <Card testID="settings-card-categories" padding={3}>
+        {/* Same grouped-card treatment as Import/Export above. */}
+        <Card testID="settings-card-templates-and-categories" padding={0}>
+          <SettingsRow
+            testID="settings-row-transaction-templates"
+            icon={genericEntitySymbol.template}
+            label={t('settings.transactionTemplates')}
+            onPress={() => navigation.navigate('TransactionTemplates')}
+            style={groupedRowStyle}
+          />
+
+          <Divider testID="settings-divider-templates-and-categories" style={groupedDividerStyle} />
+
           <SettingsRow
             testID="settings-row-categories"
             icon={genericEntitySymbol.category}
             label={t('settings.categories')}
             onPress={() => navigation.navigate('Categories')}
+            style={groupedRowStyle}
           />
         </Card>
 

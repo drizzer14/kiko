@@ -61,6 +61,30 @@ describe('i18n plurals without Intl.PluralRules', () => {
   });
 
   it.each([
+    [1, 'Також його буде очищено в 1 шаблоні.'],
+    [2, 'Також його буде очищено в 2 шаблонах.'],
+    [5, 'Також його буде очищено в 5 шаблонах.'],
+    [21, 'Також його буде очищено в 21 шаблоні.'],
+    [1.5, 'Також його буде очищено в 1.5 шаблону.'],
+  ])('declines the cleared-in-templates sentence for %p', async (count, sentence) => {
+    const i18n = await freshI18n('uk');
+
+    expect(i18n.t('holdings.deleteLinked.templates', { count })).toBe(sentence);
+  });
+
+  it.each([
+    [1, 'Також її буде очищено в 1 шаблоні.'],
+    [2, 'Також її буде очищено в 2 шаблонах.'],
+    [5, 'Також її буде очищено в 5 шаблонах.'],
+    [21, 'Також її буде очищено в 21 шаблоні.'],
+    [1.5, 'Також її буде очищено в 1.5 шаблону.'],
+  ])('declines the category delete confirm sentence for %p', async (count, sentence) => {
+    const i18n = await freshI18n('uk');
+
+    expect(i18n.t('categories.deleteTemplates', { count })).toBe(sentence);
+  });
+
+  it.each([
     [0, 'У цій валюті не більше 0 знаків після коми.'],
     [1, 'У цій валюті не більше 1 знака після коми.'],
     [2, 'У цій валюті не більше 2 знаків після коми.'],

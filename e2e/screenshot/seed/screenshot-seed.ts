@@ -20,6 +20,7 @@ import type { Currency } from '@kiko/currency/currency';
 import type { BankId } from '@kiko/bank-sync/bank-catalog';
 import type { AppLanguage } from '@kiko/i18n/device-language';
 import { entityColorsDark } from '@kiko/design-system/palette';
+import type { TemplateDraft } from '@kiko/transaction-templates/draft';
 import type { AccountRow, BondRegisterRow, HoldingRow } from '@kiko/db';
 import type { ReminderKind, ReminderSchedule } from '@kiko/reminders/schedule';
 
@@ -91,6 +92,13 @@ type SeedReminder = {
   schedule: ReminderSchedule;
 };
 
+// A saved transaction form. The snapshot builder swaps every holding `key` in `draft` for that
+// holding's id, so the draft is written here against the keyed holdings of this dataset.
+type SeedTemplate = {
+  name: string;
+  draft: TemplateDraft;
+};
+
 type SeedAccount = {
   name: string;
   kind: AccountRow['kind'];
@@ -128,6 +136,7 @@ export type ScreenshotDataset = {
   history: SeedHistoryRow[];
   pricePoints: SeedPricePoint[];
   bondRegister: BondRegisterRow[];
+  templates: SeedTemplate[];
 };
 
 // ---------------------------------------------------------------------------
@@ -357,6 +366,10 @@ const CAR_LOAN_KEY = 'car-loan';
 const PERSONAL_DEBT_KEY = 'personal-debt';
 const APARTMENT_KEY = 'apartment';
 const CAR_KEY = 'car';
+const MAIN_CARD_KEY = 'main-card';
+const PRIVAT_CARD_KEY = 'privat-card';
+const CASH_KEY = 'cash';
+const USD_CASH_KEY = 'usd-cash';
 
 // A fabricated government bond: 1,000.00 nominal, a 16.2% coupon paid twice a
 // year (81.00 per bond each time). Its ISIN carries a valid check digit, so a
@@ -469,6 +482,7 @@ const buildAccounts = (calendar: DemoCalendar, text: DemoText): SeedAccount[] =>
       color: entityColorsDark.blue,
       holdings: [
         {
+          key: MAIN_CARD_KEY,
           name: text.monobank,
           type: 'card',
           currency: 'UAH',
@@ -534,6 +548,7 @@ const buildAccounts = (calendar: DemoCalendar, text: DemoText): SeedAccount[] =>
       ],
       holdings: [
         {
+          key: CASH_KEY,
           name: text.cash,
           type: 'cash',
           currency: 'UAH',
@@ -580,6 +595,7 @@ const buildAccounts = (calendar: DemoCalendar, text: DemoText): SeedAccount[] =>
       ],
       holdings: [
         {
+          key: PRIVAT_CARD_KEY,
           name: text.privatBank,
           type: 'card',
           currency: 'USD',
@@ -667,6 +683,7 @@ const buildAccounts = (calendar: DemoCalendar, text: DemoText): SeedAccount[] =>
       color: entityColorsDark.violet,
       holdings: [
         {
+          key: USD_CASH_KEY,
           name: text.usDollars,
           type: 'cash',
           currency: 'USD',
@@ -856,6 +873,65 @@ const buildBondRegister = (calendar: DemoCalendar, text: DemoText): BondRegister
   ];
 };
 
+// One template per form mode, so the reviewer sees each. The salary template leaves its amount
+// empty (the amount is optional), the rest fill it. The prices follow the dataset's own rates:
+// 4,100.00 UAH buys 100.00 USD at 41.
+const buildTemplates = (text: DemoText): SeedTemplate[] => {
+  const draft: TemplateDraft = {
+    version: 1,
+    mode: 'expense',
+    holdingId: MAIN_CARD_KEY,
+    currency: 'UAH',
+    amountMinorUnits: null,
+    description: '',
+    category: null,
+    exchange: null,
+    returns: [],
+  };
+
+  return [
+    {
+      name: text.templateSalary,
+      draft: { ...draft, mode: 'income', description: text.salary },
+    },
+    {
+      name: text.templateGroceries,
+      draft: {
+        ...draft,
+        amountMinorUnits: 150_000,
+        description: text.groceryStore,
+        category: 'groceries',
+      },
+    },
+    {
+      name: text.templateBuyDollars,
+      draft: {
+        ...draft,
+        mode: 'exchange',
+        holdingId: CASH_KEY,
+        amountMinorUnits: 410_000,
+        exchange: {
+          destinationHoldingId: USD_CASH_KEY,
+          destinationCurrency: 'USD',
+          valueInMinorUnits: 10_000,
+        },
+      },
+    },
+    {
+      name: text.templateDinner,
+      draft: {
+        ...draft,
+        mode: 'split',
+        holdingId: CASH_KEY,
+        amountMinorUnits: 120_000,
+        description: text.restaurant,
+        category: 'dining',
+        returns: [{ holdingId: MAIN_CARD_KEY, amountMinorUnits: 40_000 }],
+      },
+    },
+  ];
+};
+
 /**
  * The complete deterministic screenshot dataset. Pure: it reads no clock, no
  * `@env`, and no database, so its shape (counts, sums, fixed times, pinned
@@ -879,5 +955,6 @@ export const buildScreenshotDataset = (
     history: buildHistory(calendar),
     pricePoints: buildPricePoints(calendar),
     bondRegister: buildBondRegister(calendar, text),
+    templates: buildTemplates(text),
   };
 };

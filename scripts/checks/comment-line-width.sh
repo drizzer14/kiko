@@ -27,6 +27,7 @@ fail() {
 # the real repo's git state, not the temp tree's content. The fingerprint covers every .js
 # change, so an edit to comment-line-width.js or specifier-scanner.js re-runs the check.
 if [ -n "${COMMENT_LINE_WIDTH_SOURCE_ROOT:-}" ]; then
+  harness_require_path "Comment line width" "$COMMENT_LINE_WIDTH_SOURCE_ROOT" || exit 2
   roots=("$COMMENT_LINE_WIDTH_SOURCE_ROOT")
 else
   roots=(
