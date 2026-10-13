@@ -63,6 +63,27 @@ interface EventLine {
   findings: number | null;
   mechanizable: number | null;
   note: string | null;
+  reason: string | null;
+  minutes: number | null;
+}
+
+interface GapOpenLine {
+  v: number;
+  op: 'open';
+  gap: string;
+  repo: string;
+  run: string;
+  ts: string;
+  text: string;
+}
+
+interface GapCloseLine {
+  v: number;
+  op: 'close';
+  gap: string;
+  run: string;
+  ts: string;
+  note: string | null;
 }
 
 interface Summary {
@@ -75,6 +96,7 @@ interface Summary {
     byGate: Record<string, Record<string, number>>;
     stalls: number;
     retries: number;
+    waitMinutes: number;
   };
   retro: { recorded: number | null; gaps: number | null } | null;
 }
@@ -507,7 +529,7 @@ describe('event', () => {
 
     expect(Object.keys(line)).toEqual([
       ...['v', 'ts', 'phase', 'step', 'group', 'gate'],
-      ...['role', 'attempt', 'verdict', 'findings', 'mechanizable', 'note'],
+      ...['role', 'attempt', 'verdict', 'findings', 'mechanizable', 'note', 'reason', 'minutes'],
     ]);
     expect(line.v).toBe(1);
     expect(new Date(line.ts).toISOString()).toBe(line.ts);
@@ -552,6 +574,8 @@ describe('event', () => {
       findings: null,
       mechanizable: null,
       note: null,
+      reason: null,
+      minutes: null,
     });
     expect(line.gate).toBe('check');
     expect(line.verdict).toBe('pass');
@@ -598,6 +622,103 @@ describe('event', () => {
       run(runs, repo, 'event', '--run', runId, '--gate', 'nope', '--verdict', 'pass').status,
     ).toBe(2);
     expect(readFileSync(join(runs, runId, 'events.jsonl'), 'utf8')).toBe(before);
+  });
+});
+
+describe('event: wait gate', () => {
+  const waitFlags = (...extra: string[]): string[] => [
+    '--gate',
+    'wait',
+    '--verdict',
+    'pass',
+    ...extra,
+  ];
+
+  test('a wait event carries its reason and minutes', () => {
+    const { runs, repo, runId } = started();
+    event(
+      runs,
+      repo,
+      runId,
+      ...waitFlags('--reason', 'battery', '--minutes', '450', '--step', '3', '--group', '1'),
+    );
+    const [line] = readEvents(runs, runId);
+
+    expect(line).toMatchObject({
+      ...{ gate: 'wait', verdict: 'pass', reason: 'battery', minutes: 450 },
+      ...{ step: 3, group: 1 },
+    });
+  });
+
+  test('every reason and both verdicts are accepted', () => {
+    const { runs, repo, runId } = started();
+    const reasons = ['battery', 'load', 'usage-limit', 'user'];
+
+    for (const reason of reasons) {
+      event(runs, repo, runId, ...waitFlags('--reason', reason, '--minutes', '5'));
+    }
+
+    const timedOut = [
+      '--gate',
+      'wait',
+      '--verdict',
+      'timeout',
+      '--reason',
+      'load',
+      '--minutes',
+      '5',
+    ];
+    event(runs, repo, runId, ...timedOut);
+
+    expect(readEvents(runs, runId).map((line) => [line.verdict, line.reason])).toEqual([
+      ...reasons.map((reason) => ['pass', reason]),
+      ['timeout', 'load'],
+    ]);
+  });
+
+  test('other gates carry a null reason and null minutes', () => {
+    const { runs, repo, runId } = started();
+    event(runs, repo, runId, '--gate', 'check', '--verdict', 'pass');
+
+    expect(readEvents(runs, runId)[0]).toMatchObject({ reason: null, minutes: null });
+  });
+
+  test('a wait event that is missing or misstates a field exits 2 and writes nothing', () => {
+    const { runs, repo, runId } = started();
+    const bad = [
+      waitFlags('--minutes', '30'),
+      waitFlags('--reason', 'battery'),
+      waitFlags('--reason', 'nap', '--minutes', '30'),
+      waitFlags('--reason', 'battery', '--minutes', '0'),
+      waitFlags('--reason', 'battery', '--minutes', '-1'),
+      waitFlags('--reason', 'battery', '--minutes', 'soon'),
+      waitFlags('--reason', 'battery', '--minutes', '1.5'),
+      ['--gate', 'wait', '--verdict', 'approve', '--reason', 'battery', '--minutes', '30'],
+      ['--gate', 'wait', '--verdict', 'fail', '--reason', 'battery', '--minutes', '30'],
+    ];
+
+    for (const args of bad) {
+      const result = run(runs, repo, 'event', '--run', runId, ...args);
+      expectStatus(result, 2, args.join(' '));
+      expect(result.stderr).toContain('usage:');
+    }
+
+    expect(existsSync(join(runs, runId, 'events.jsonl'))).toBe(false);
+  });
+
+  test('--reason and --minutes on a gate other than wait exit 2 and write nothing', () => {
+    const { runs, repo, runId } = started();
+    const bad = [
+      ['--gate', 'check', '--verdict', 'pass', '--reason', 'battery'],
+      ['--gate', 'check', '--verdict', 'pass', '--minutes', '30'],
+      ['--gate', 'review', '--verdict', 'approve', '--reason', 'load', '--minutes', '30'],
+    ];
+
+    for (const args of bad) {
+      expectStatus(run(runs, repo, 'event', '--run', runId, ...args), 2, args.join(' '));
+    }
+
+    expect(existsSync(join(runs, runId, 'events.jsonl'))).toBe(false);
   });
 });
 
@@ -702,6 +823,51 @@ describe('finish', () => {
   test('retro with only one of --recorded/--gaps keeps the other as null', () => {
     expect(finished('--recorded', '4').summary.retro).toEqual({ recorded: 4, gaps: null });
     expect(finished('--gaps', '2').summary.retro).toEqual({ recorded: null, gaps: 2 });
+  });
+
+  test('totals.waitMinutes is the sum of the wait events and 0 without one', () => {
+    expect(finished().summary.totals.waitMinutes).toBe(0);
+
+    const { runs, repo, runId } = started();
+    const wait = (minutes: string, reason: string): string[] => [
+      '--gate',
+      'wait',
+      '--verdict',
+      'pass',
+      '--reason',
+      reason,
+      '--minutes',
+      minutes,
+    ];
+    event(runs, repo, runId, ...wait('30', 'load'));
+    event(runs, repo, runId, ...wait('450', 'battery'));
+    ok(run(runs, repo, 'finish', '--run', runId, '--outcome', 'done'));
+    const { totals } = readJson<Summary>(join(runs, runId, 'summary.json'));
+
+    expect(totals.waitMinutes).toBe(480);
+    expect(totals.byGate).toEqual({ wait: { pass: 2 } });
+  });
+
+  test('a wait between a failure and its retry keeps the retry and is no retry itself', () => {
+    const { runs, repo, runId } = started();
+    const step = ['--step', '1'];
+    event(runs, repo, runId, '--gate', 'test', '--verdict', 'fail', ...step);
+    const timedOut = [
+      '--gate',
+      'wait',
+      '--verdict',
+      'timeout',
+      '--reason',
+      'load',
+      '--minutes',
+      '5',
+    ];
+    event(runs, repo, runId, ...timedOut, ...step);
+    event(runs, repo, runId, ...timedOut, ...step);
+    event(runs, repo, runId, '--gate', 'test', '--verdict', 'pass', ...step);
+    ok(run(runs, repo, 'finish', '--run', runId, '--outcome', 'done'));
+
+    expect(readJson<Summary>(join(runs, runId, 'summary.json')).totals.retries).toBe(1);
   });
 
   test('a stall is a stall verdict on any gate or any verdict on the stall gate', () => {
@@ -816,10 +982,14 @@ describe('finish --archive', () => {
 
 describe('stats', () => {
   type TableRow = Record<string, string>;
+  // The shape an event had before the wait gate: the two wait fields are absent, not null.
+  type FixtureEvent = Omit<EventLine, 'reason' | 'minutes'> &
+    Partial<Pick<EventLine, 'reason' | 'minutes'>>;
 
   const HEADER = [
     ...['Run', 'Step group', 'Impl', 'Review', 'Verdicts', 'Steps'],
-    ...['Minutes', 'Target', 'Check/test retries', 'Stalls', 'Human rounds', 'Outcome'],
+    ...['Minutes', 'Wait', 'Work', 'Target'],
+    ...['Check/test retries', 'Stalls', 'Human rounds', 'Outcome'],
   ];
   const chainRun = '20260901T0900-demo-repo-feature-chain';
   const oldRun = '20200101T0900-demo-repo-old-work';
@@ -830,7 +1000,7 @@ describe('stats', () => {
     gate: string,
     verdict: string,
     fields: Partial<EventLine> = {},
-  ): EventLine {
+  ): FixtureEvent {
     return {
       ...{ v: 1, ts, phase: null, step: null, group: null, gate, role: null, attempt: null },
       ...{ verdict, findings: null, mechanizable: null, note: null, ...fields },
@@ -842,7 +1012,7 @@ describe('stats', () => {
     runId: string,
     repo: string,
     startedAt: string,
-    events: EventLine[],
+    events: FixtureEvent[],
     summary?: object,
   ): void {
     const directory = join(runs, runId);
@@ -876,7 +1046,7 @@ describe('stats', () => {
   // Group 1: a check retry, three reviews (changes, changes, approve), a stall and a human round,
   // 09:50 to 10:25. Group 2 is two steps with one approving review. The last event has neither
   // group nor step.
-  function chainEvents(): EventLine[] {
+  function chainEvents(): FixtureEvent[] {
     const groupOne = { group: 1, step: 1 };
 
     return [
@@ -1132,6 +1302,370 @@ describe('stats', () => {
 
     expect(readJson<Summary>(join(runs, runId, 'summary.json')).totals.events).toBe(1);
   });
+
+  describe('wait and work minutes', () => {
+    const waitLine = (ts: string, minutes: number | null, fields: Partial<EventLine> = {}) =>
+      line(ts, 'wait', 'pass', { step: 1, reason: 'battery', minutes, ...fields });
+    const checkLine = (ts: string, fields: Partial<EventLine> = {}) =>
+      line(ts, 'check', 'pass', { step: 1, ...fields });
+    const onlyRow = (events: FixtureEvent[]): TableRow => {
+      const runs = tempDirectory();
+      fixtureRun(runs, chainRun, 'demo-repo', '2026-09-01T09:45:00.000Z', events);
+
+      return row(stats(runs), chainRun, '1');
+    };
+    const minutesOf = (found: TableRow): string[] => [found.Minutes, found.Wait, found.Work];
+
+    test('a group with no wait event works for its whole span', () => {
+      const found = onlyRow([
+        checkLine('2026-09-01T10:00:00.000Z'),
+        checkLine('2026-09-01T10:40:00.000Z'),
+      ]);
+
+      expect(minutesOf(found)).toEqual(['40', '0', '40']);
+    });
+
+    test('the wait event is subtracted from the span: 450 of 480 minutes waiting leaves 30', () => {
+      const found = onlyRow([
+        checkLine('2026-09-01T10:00:00.000Z'),
+        checkLine('2026-09-01T18:00:00.000Z'),
+        waitLine('2026-09-01T18:00:00.000Z', 450),
+      ]);
+
+      expect(minutesOf(found)).toEqual(['480', '450', '30']);
+    });
+
+    test('a wait longer than the span leaves 0 work, not a negative number', () => {
+      const found = onlyRow([
+        checkLine('2026-09-01T10:00:00.000Z'),
+        checkLine('2026-09-01T10:20:00.000Z'),
+        waitLine('2026-09-01T10:20:00.000Z', 30),
+      ]);
+
+      expect(minutesOf(found)).toEqual(['20', '30', '0']);
+    });
+
+    test('one event has no span, so Minutes and Work are 0; a lone wait still shows its Wait', () => {
+      expect(minutesOf(onlyRow([checkLine('2026-09-01T10:00:00.000Z')]))).toEqual(['0', '0', '0']);
+      expect(minutesOf(onlyRow([waitLine('2026-09-01T10:00:00.000Z', 30)]))).toEqual([
+        '0',
+        '30',
+        '0',
+      ]);
+    });
+
+    test('every wait event of a group adds up, and another group keeps its own Wait', () => {
+      const runs = tempDirectory();
+      fixtureRun(runs, chainRun, 'demo-repo', '2026-09-01T09:45:00.000Z', [
+        checkLine('2026-09-01T10:00:00.000Z', { group: 1 }),
+        waitLine('2026-09-01T11:00:00.000Z', 60, { group: 1, reason: 'load' }),
+        waitLine('2026-09-01T12:30:00.000Z', 90, { group: 1, reason: 'usage-limit' }),
+        checkLine('2026-09-01T13:00:00.000Z', { group: 1 }),
+        checkLine('2026-09-01T10:00:00.000Z', { group: 2, step: 2 }),
+        checkLine('2026-09-01T10:30:00.000Z', { group: 2, step: 2 }),
+      ]);
+      const rows = stats(runs);
+
+      expect(minutesOf(row(rows, chainRun, '1'))).toEqual(['180', '150', '30']);
+      expect(minutesOf(row(rows, chainRun, '2'))).toEqual(['30', '0', '30']);
+    });
+
+    test('a wait between a failure and its retry keeps the retry and is no check or test', () => {
+      const found = onlyRow([
+        line('2026-09-01T10:00:00.000Z', 'test', 'fail', { step: 1 }),
+        waitLine('2026-09-01T10:30:00.000Z', 30),
+        line('2026-09-01T10:40:00.000Z', 'test', 'pass', { step: 1 }),
+      ]);
+
+      expect(found['Check/test retries']).toBe('1');
+      expect(found.Stalls).toBe('0');
+    });
+
+    test('a wait line whose minutes is missing or not a number counts as 0 wait', () => {
+      const found = onlyRow([
+        checkLine('2026-09-01T10:00:00.000Z'),
+        waitLine('2026-09-01T10:30:00.000Z', null),
+        { ...waitLine('2026-09-01T10:40:00.000Z', 5), minutes: undefined },
+        { ...waitLine('2026-09-01T10:40:00.000Z', 5), minutes: '5' as unknown as number },
+      ]);
+
+      expect(minutesOf(found)).toEqual(['40', '0', '40']);
+    });
+
+    test('an event from before the wait gate shows Wait 0 and Work equal to Minutes', () => {
+      const chain = row(stats(fixtureRoot()), chainRun, '1');
+
+      expect(minutesOf(chain)).toEqual(['35', '0', '35']);
+    });
+
+    test('tsv and json carry Wait and Work', () => {
+      const runs = tempDirectory();
+      fixtureRun(runs, chainRun, 'demo-repo', '2026-09-01T09:45:00.000Z', [
+        checkLine('2026-09-01T10:00:00.000Z'),
+        waitLine('2026-09-01T18:00:00.000Z', 450),
+      ]);
+      const tsv = row(stats(runs, '--format', 'tsv'), chainRun, '1');
+      const [json] = JSON.parse(
+        ok(run(runs, tempDirectory(), 'stats', '--format', 'json')).stdout,
+      ) as object[];
+
+      expect(minutesOf(tsv)).toEqual(['480', '450', '30']);
+      expect(json).toMatchObject({ Minutes: 480, Wait: 450, Work: 30 });
+    });
+  });
+});
+
+describe('gap', () => {
+  const GAP_HEADER = ['Gap', 'Opened', 'Run', 'Text'];
+
+  function gapsFile(runs: string, repoSlug: string): string {
+    return join(runs, 'gaps', `${repoSlug}.jsonl`);
+  }
+
+  function gapLines(runs: string, repoSlug = 'demo-repo'): (GapOpenLine | GapCloseLine)[] {
+    return readFileSync(gapsFile(runs, repoSlug), 'utf8')
+      .trim()
+      .split('\n')
+      .map((text) => JSON.parse(text) as GapOpenLine | GapCloseLine);
+  }
+
+  function gapCommand(runs: string, repo: string, runId: string, ...args: string[]): CommandResult {
+    return run(runs, repo, 'gap', '--run', runId, ...args);
+  }
+
+  function openGap(runs: string, repo: string, runId: string, text: string): string {
+    return ok(gapCommand(runs, repo, runId, '--open', text)).stdout.trim();
+  }
+
+  function gapRows(runs: string, ...args: string[]): Record<string, string>[] {
+    const result = ok(run(runs, tempDirectory(), 'stats', '--gaps', ...args));
+    const rows = result.stdout
+      .split('\n')
+      .filter((text) => text.startsWith('|'))
+      .map((text) =>
+        text
+          .split('|')
+          .slice(1, -1)
+          .map((cell) => cell.trim()),
+      )
+      .filter((cells) => !cells.every((cell) => /^:?-+:?$/.test(cell)));
+    const [header, ...body] = rows;
+
+    expect(header).toEqual(GAP_HEADER);
+
+    return body.map((cells) =>
+      Object.fromEntries(header.map((name, index) => [name, cells[index]])),
+    );
+  }
+
+  const gapIds = (rows: Record<string, string>[]): string[] => rows.map((found) => found.Gap);
+
+  // Two runs in one repo (the second started later) and nothing else.
+  function twoRuns(): { runs: string; repo: string; first: string; second: string } {
+    const { runs, repo, runId: first } = started();
+
+    return { runs, repo, first, second: startRun(runs, repo) };
+  }
+
+  test('open prints <runId>/<n>, counting up per run, and appends to <root>/gaps/<repo>.jsonl', () => {
+    const { runs, repo, runId } = started();
+
+    expect(ok(gapCommand(runs, repo, runId, '--open', 'first gap')).stdout).toBe(`${runId}/1\n`);
+    expect(ok(gapCommand(runs, repo, runId, '--open', 'second gap')).stdout).toBe(`${runId}/2\n`);
+
+    const lines = gapLines(runs);
+
+    expect(lines.map((entry) => Object.keys(entry))).toEqual([
+      ['v', 'op', 'gap', 'repo', 'run', 'ts', 'text'],
+      ['v', 'op', 'gap', 'repo', 'run', 'ts', 'text'],
+    ]);
+    expect(lines).toMatchObject([
+      { v: 1, op: 'open', gap: `${runId}/1`, repo: 'demo-repo' },
+      { v: 1, op: 'open', gap: `${runId}/2`, repo: 'demo-repo' },
+    ]);
+    expect(lines.map((entry) => (entry as GapOpenLine).text)).toEqual(['first gap', 'second gap']);
+    expect(lines.map((entry) => entry.run)).toEqual([runId, runId]);
+    expect(new Date(lines[0].ts).toISOString()).toBe(lines[0].ts);
+  });
+
+  test('another run numbers from 1 again, and a run of another repo writes its own file', () => {
+    const { runs, repo, first, second } = twoRuns();
+    const elsewhere = tempRepository({ name: 'other-repo' });
+    const other = startRun(runs, elsewhere);
+    openGap(runs, repo, first, 'one');
+
+    expect(openGap(runs, repo, second, 'two')).toBe(`${second}/1`);
+    expect(openGap(runs, elsewhere, other, 'three')).toBe(`${other}/1`);
+    expect(gapLines(runs).map((entry) => entry.gap)).toEqual([`${first}/1`, `${second}/1`]);
+    expect(gapLines(runs, 'other-repo').map((entry) => entry.gap)).toEqual([`${other}/1`]);
+    expect(readdirSync(join(runs, 'gaps')).sort()).toEqual(['demo-repo.jsonl', 'other-repo.jsonl']);
+  });
+
+  test('close appends a close line from a later run and prints nothing', () => {
+    const { runs, repo, first, second } = twoRuns();
+    openGap(runs, repo, first, 'one');
+    const result = ok(gapCommand(runs, repo, second, '--close', `${first}/1`, '--note', 'fixed'));
+    const [, close] = gapLines(runs);
+
+    expect(result.stdout).toBe('');
+    expect(Object.keys(close)).toEqual(['v', 'op', 'gap', 'run', 'ts', 'note']);
+    expect(close).toMatchObject({
+      v: 1,
+      op: 'close',
+      gap: `${first}/1`,
+      run: second,
+      note: 'fixed',
+    });
+    expect(new Date(close.ts).toISOString()).toBe(close.ts);
+  });
+
+  test('close without --note records a null note', () => {
+    const { runs, repo, runId } = started();
+    openGap(runs, repo, runId, 'one');
+    ok(gapCommand(runs, repo, runId, '--close', `${runId}/1`));
+
+    expect((gapLines(runs)[1] as GapCloseLine).note).toBeNull();
+  });
+
+  test('close of an unknown gap, a closed gap, or from an unknown run exits 1 and writes nothing', () => {
+    const { runs, repo, first, second } = twoRuns();
+    openGap(runs, repo, first, 'one');
+    ok(gapCommand(runs, repo, second, '--close', `${first}/1`));
+    const before = readFileSync(gapsFile(runs, 'demo-repo'), 'utf8');
+    const bad = [
+      [second, `${first}/9`],
+      [second, `${first}/1`],
+      [second, 'nope/1'],
+      ['nope', `${first}/1`],
+    ];
+
+    for (const [runId, gapId] of bad) {
+      expectStatus(gapCommand(runs, repo, runId, '--close', gapId), 1, `${runId} ${gapId}`);
+    }
+
+    expect(readFileSync(gapsFile(runs, 'demo-repo'), 'utf8')).toBe(before);
+  });
+
+  test('a run of another repo cannot close the gap', () => {
+    const { runs, repo, runId } = started();
+    const elsewhere = tempRepository({ name: 'other-repo' });
+    const other = startRun(runs, elsewhere);
+    openGap(runs, repo, runId, 'one');
+
+    expectStatus(gapCommand(runs, elsewhere, other, '--close', `${runId}/1`), 1, 'other repo');
+    expect(existsSync(gapsFile(runs, 'other-repo'))).toBe(false);
+  });
+
+  test('a bad invocation exits 2 with usage and creates no gaps file', () => {
+    const { runs, repo, runId } = started();
+    const bad = [
+      ['--open', 'x', '--close', 'y/1'],
+      ['--note', 'x'],
+      ['--open', 'x', '--note', 'x'],
+      ['--open', ''],
+      ['--close', ''],
+    ];
+
+    for (const args of bad) {
+      const result = gapCommand(runs, repo, runId, ...args);
+      expectStatus(result, 2, args.join(' '));
+      expect(result.stderr).toContain('usage:');
+    }
+
+    expectStatus(run(runs, repo, 'gap', '--open', 'x'), 2, 'no --run');
+    expect(existsSync(join(runs, 'gaps'))).toBe(false);
+  });
+
+  test('stats --gaps lists the open gaps with Gap, Opened, Run and Text', () => {
+    const { runs, repo, first, second } = twoRuns();
+    openGap(runs, repo, first, 'one');
+    openGap(runs, repo, first, 'two');
+    openGap(runs, repo, second, 'three');
+    ok(gapCommand(runs, repo, second, '--close', `${first}/2`));
+    const rows = gapRows(runs);
+
+    expect(rows).toEqual([
+      { Gap: `${first}/1`, Opened: gapLines(runs)[0].ts, Run: first, Text: 'one' },
+      { Gap: `${second}/1`, Opened: gapLines(runs)[2].ts, Run: second, Text: 'three' },
+    ]);
+  });
+
+  test('stats --gaps reads every repo, or the one --repo names', () => {
+    const { runs, repo, runId } = started();
+    const elsewhere = tempRepository({ name: 'other-repo' });
+    const other = startRun(runs, elsewhere);
+    openGap(runs, repo, runId, 'here');
+    openGap(runs, elsewhere, other, 'there');
+
+    expect(gapIds(gapRows(runs))).toEqual([`${runId}/1`, `${other}/1`]);
+    expect(gapIds(gapRows(runs, '--repo', 'other-repo'))).toEqual([`${other}/1`]);
+    expect(gapRows(runs, '--repo', 'no-such-repo')).toEqual([]);
+  });
+
+  test('stats --gaps with no gaps file prints the header only', () => {
+    const { runs } = started();
+
+    expect(gapRows(runs)).toEqual([]);
+    expect(ok(run(runs, tempDirectory(), 'stats', '--gaps')).stdout).toContain('| Gap |');
+    expect(ok(run(runs, tempDirectory(), 'stats', '--gaps', '--format', 'json')).stdout).toBe(
+      '[]\n',
+    );
+  });
+
+  test('stats --gaps --format tsv and json carry the same rows', () => {
+    const { runs, repo, runId } = started();
+    openGap(runs, repo, runId, 'one');
+    const [{ ts }] = gapLines(runs);
+    const tsv = ok(run(runs, tempDirectory(), 'stats', '--gaps', '--format', 'tsv')).stdout;
+    const json = ok(run(runs, tempDirectory(), 'stats', '--gaps', '--format', 'json')).stdout;
+
+    expect(tsv).toBe(`${GAP_HEADER.join('\t')}\n${[`${runId}/1`, ts, runId, 'one'].join('\t')}\n`);
+    expect(JSON.parse(json)).toEqual([{ Gap: `${runId}/1`, Opened: ts, Run: runId, Text: 'one' }]);
+  });
+
+  test('stats --gaps keeps a gap text on one table row', () => {
+    const { runs, repo, runId } = started();
+    openGap(runs, repo, runId, 'a | b\nc\td');
+    const md = ok(run(runs, tempDirectory(), 'stats', '--gaps')).stdout;
+    const tsv = ok(run(runs, tempDirectory(), 'stats', '--gaps', '--format', 'tsv')).stdout;
+
+    expect(md).toContain('| a \\| b c d |');
+    expect(tsv.trim().split('\n')).toHaveLength(2);
+    expect(tsv.trim().split('\n')[1].split('\t')).toHaveLength(4);
+  });
+
+  test('stats --gaps rejects a --repo that is not a slug and --since', () => {
+    const { runs } = started();
+
+    for (const args of [
+      ['--repo', '../x'],
+      ['--repo', 'A b'],
+      ['--since', '2026-09-01'],
+    ]) {
+      const result = run(runs, tempDirectory(), 'stats', '--gaps', ...args);
+      expectStatus(result, 2, args.join(' '));
+      expect(result.stdout).toBe('');
+    }
+  });
+
+  test('a damaged line in the gaps file is skipped', () => {
+    const { runs, repo, runId } = started();
+    openGap(runs, repo, runId, 'one');
+    appendFileSync(gapsFile(runs, 'demo-repo'), 'not json\nnull\n[1]\n{"op":"close"}\n');
+
+    expect(gapIds(gapRows(runs))).toEqual([`${runId}/1`]);
+    expect(openGap(runs, repo, runId, 'two')).toBe(`${runId}/2`);
+  });
+
+  test('the gaps folder is not read as a run by stats', () => {
+    const { runs, repo, runId } = started();
+    openGap(runs, repo, runId, 'one');
+    const table = ok(run(runs, tempDirectory(), 'stats')).stdout;
+
+    expect(table).not.toContain('gaps');
+    expect(table).not.toContain(`${runId}/1`);
+    expect(table).toContain(runId);
+  });
 });
 
 const WORKFLOW_SKILL = 'harness/kiko/skills/harness-workflow/SKILL.md';
@@ -1185,11 +1719,11 @@ function pairsTheScriptRejects(pairs: string[]): string[] {
 
   return pairs.filter((pair) => {
     const [gate, verdict] = pair.split(' ');
+    // The pair alone is on trial, so a wait gets the reason and minutes it always needs.
+    const waitFields = gate === 'wait' ? ['--reason', 'user', '--minutes', '1'] : [];
+    const flags = ['--gate', gate, '--verdict', verdict, '--step', '1', ...waitFields];
 
-    return (
-      run(runs, repo, 'event', '--run', runId, '--gate', gate, '--verdict', verdict, '--step', '1')
-        .status !== 0
-    );
+    return run(runs, repo, 'event', '--run', runId, ...flags).status !== 0;
   });
 }
 
@@ -1215,8 +1749,39 @@ function snippetFor(markdown: string, command: string): string {
   return matching[0];
 }
 
+// The flags a `--gate wait` command is missing; the command runs to the next backtick or the end
+// of its line, and a trailing backslash continues it.
+function waitFlagsMissing(text: string): string[] {
+  return [...text.matchAll(/--gate\s+wait\b(?:[^`\n\\]|\\[\s\S])*/g)].flatMap(([command]) =>
+    ['--reason', '--minutes'].filter((flag) => !new RegExp(`${flag}\\s+\\S`).test(command)),
+  );
+}
+
 describe('run log skill text', () => {
   const mutated = (text: string): string => `## Run log\n\n${text}\n`;
+
+  test('every --gate wait the skills write carries --reason and --minutes', () => {
+    expect(allRunLogText().flatMap(waitFlagsMissing)).toEqual([]);
+  });
+
+  test('a wait command missing --reason or --minutes is reported, across a continued line too', () => {
+    const text = mutated(
+      [
+        '`--gate wait --verdict pass --minutes 5`; `--gate wait --verdict pass --reason load`;',
+        '`--gate wait --verdict pass --reason load --minutes 5`;',
+        'run event --gate wait \\\n  --verdict pass --reason user \\\n  --minutes N',
+      ].join('\n'),
+    );
+
+    expect(waitFlagsMissing(text)).toEqual(['--reason', '--minutes']);
+  });
+
+  test('a wait pair with its reason and minutes is accepted by the script', () => {
+    const text = mutated('`--gate wait --verdict timeout --reason load --minutes 5`');
+
+    expect(gateVerdictPairs(text)).toEqual(['wait timeout']);
+    expect(pairsTheScriptRejects(gateVerdictPairs(text))).toEqual([]);
+  });
 
   test('every gate/verdict pair the skills write is accepted by the script', () => {
     const [workflow] = allRunLogText();
