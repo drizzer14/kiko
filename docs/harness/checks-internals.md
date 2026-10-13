@@ -179,7 +179,7 @@ either: they run in full on every call.
 
 `scripts/checks/commit-typecheck.sh` (run by `githooks/pre-commit` and `githooks/pre-merge-commit`)
 is not a tier check. It records and reads no fingerprint, and it does not go through
-`scripts/job-queue.sh`: it runs in full on every commit that touches a file tsc reads. It makes a
+the in-repo job queue: it runs in full on every commit that touches a file tsc reads. It makes a
 temporary folder under `${TMPDIR:-/tmp}`, writes the staged index there with
 `git checkout-index --all`, links the real `node_modules` into it, and runs `tsc --noEmit -p .`
 inside it, so an unstaged or untracked file cannot change the answer. If git hands the hook a

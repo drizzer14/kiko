@@ -30,7 +30,7 @@ Rules:
   any pattern/group kill.
 - Flag any diff that alters a user-approved visual (locked decisions live in `kiko-design-system`) unless the user explicitly approved the change.
 - Execute kill-guard probe text ONLY through `scripts/checks/kill-guard-probe.sh`, with the sentinel `kg_sentinel_target` in place of any kill command and a fake main folder in place of the real one; real kill words go only in non-executed `decide()` tests. The runner is not a sandbox. See kiko-linter's "Probing the kill-guard".
-- The SHELL-WRITE deny matches `src/`, `__tests__/`, `rules/`, `e2e/` by name, so `echo ... > src/a.ts`
+- The SHELL-WRITE deny matches `src/`, `__tests__/`, `rules/`, `e2e/` by name, so a shell redirect into a file under that folder
   is denied even inside your own temporary git repository. Build that repository's fixture tree
   with the committed helpers in `__tests__/test-support/` (`ls` it) inside a jest test, or with
   Edit/Write. A denied suite run is a blocker to report, never a silent "no suite ran".
