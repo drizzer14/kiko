@@ -525,7 +525,10 @@ describe('remindersRepo writes', () => {
           kind: 'add_transactions',
           schedule: WEEKLY,
         }),
-      ).rejects.toThrow('Failed query: insert into "reminders"');
+      ).rejects.toHaveProperty(
+        'cause.message',
+        'UNIQUE constraint failed: reminders.account_id, reminders.kind',
+      );
       expect(reminderCount()).toBe(1);
     });
   });

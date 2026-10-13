@@ -11,14 +11,17 @@ const REPOSITORY_ROOT = join(__dirname, '..');
 
 const SCOPE_PATTERN = /^docs\/superpowers\/.+\.md$/;
 
-const KNOWN_LIMIT_PATTERN = /known limit(?:ation)?/gi;
+const KNOWN_LIMIT_PATTERN = /known\s+limit(?:ation)?/gi;
 
-// Dated design docs that predate the rule, exempt by exact path. A doc that no longer holds the
-// phrase fails the list test, so the list only shrinks; a new doc is never added here.
-const PREDATING_DOCS: readonly string[] = [
-  'docs/superpowers/plans/2026-09-28-reminders.md',
-  'docs/superpowers/specs/2026-09-27-reminders-design.md',
-];
+// Dated design docs that predate the rule, exempt by exact path, each with the count of matches it
+// holds. A doc that gains a match, or loses one without the count dropping here, fails, so the
+// debt only shrinks; a new doc is never added.
+const PREDATING_DOCS: Readonly<Record<string, number>> = {
+  'docs/superpowers/plans/2026-09-28-reminders.md': 1,
+  'docs/superpowers/specs/2026-09-27-reminders-design.md': 2,
+};
+
+const PREDATING_PATHS = Object.keys(PREDATING_DOCS);
 
 const knownLimitLines = (markdown: string): number[] =>
   [...markdown.matchAll(KNOWN_LIMIT_PATTERN)].map(
@@ -39,6 +42,12 @@ describe('knownLimitLines', () => {
     ).toEqual([3, 5, 6]);
   });
 
+  it('finds the phrase wrapped across a line break, at the line of its first word (POSITIVE)', () => {
+    expect(
+      knownLimitLines('A note\non the known\nlimit of the import,\nand a known\n  limitation.\n'),
+    ).toEqual([2, 4]);
+  });
+
   it('skips a text that has no such phrase (NEGATIVE)', () => {
     expect(knownLimitLines('A known issue, a limit, and the limits of known data.\n')).toEqual([]);
   });
@@ -46,18 +55,13 @@ describe('knownLimitLines', () => {
 
 describe('docs/superpowers has no "known limit"', () => {
   it('scans the plans and the specs', () => {
-    expect(scopeFiles).toEqual(
-      expect.arrayContaining([
-        'docs/superpowers/plans/2026-09-28-reminders.md',
-        'docs/superpowers/specs/2026-09-27-reminders-design.md',
-      ]),
-    );
+    expect(scopeFiles).toEqual(expect.arrayContaining([...PREDATING_PATHS]));
   });
 
   it('holds the phrase only in the dated docs that predate the rule', () => {
     expect(
       scopeFiles
-        .filter((file) => !PREDATING_DOCS.includes(file))
+        .filter((file) => !PREDATING_PATHS.includes(file))
         .flatMap((file) =>
           knownLimitLines(readRepositoryFile(file)).map((line) => `${file}:${line}`),
         ),
@@ -66,7 +70,15 @@ describe('docs/superpowers has no "known limit"', () => {
 
   it('lists no exempt doc that no longer holds the phrase', () => {
     expect(
-      PREDATING_DOCS.filter((file) => knownLimitLines(readRepositoryFile(file)).length === 0),
+      PREDATING_PATHS.filter((file) => knownLimitLines(readRepositoryFile(file)).length === 0),
     ).toEqual([]);
+  });
+
+  it('holds in each dated doc exactly the matches it held when the rule landed', () => {
+    expect(
+      Object.fromEntries(
+        PREDATING_PATHS.map((file) => [file, knownLimitLines(readRepositoryFile(file)).length]),
+      ),
+    ).toEqual(PREDATING_DOCS);
   });
 });

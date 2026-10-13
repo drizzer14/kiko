@@ -559,7 +559,7 @@ describe('openEncryptedDatabase', () => {
     });
 
     it('generates no key, stores no key, and deletes no file', async () => {
-      await expect(openEncryptedDatabase()).rejects.toThrow(/database key is missing/);
+      await expect(openEncryptedDatabase()).rejects.toThrow(DatabaseKeyMissingError);
 
       expect(mockGenerateDbKey).not.toHaveBeenCalled();
       expect(mockStoreDbKey).not.toHaveBeenCalled();
@@ -573,7 +573,7 @@ describe('openEncryptedDatabase', () => {
     it('never opens the encrypted file with a key and closes every handle it opened', async () => {
       mockFiles.add(LIVE_PLAINTEXT_DATABASE_NAME);
 
-      await expect(openEncryptedDatabase()).rejects.toThrow(/database key is missing/);
+      await expect(openEncryptedDatabase()).rejects.toThrow(DatabaseKeyMissingError);
 
       expect(mockOpen.mock.calls.some(([options]) => options.encryptionKey !== undefined)).toBe(
         false,

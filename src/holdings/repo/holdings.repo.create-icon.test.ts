@@ -61,7 +61,7 @@ describe('holdingsRepo.create: the icon', () => {
 
     await expect(
       holdingsRepo.create({ ...flat, icon: 'house', firstPricePoint: failingFirstPricePoint }),
-    ).rejects.toThrow('Failed query: insert into "price_points"');
+    ).rejects.toHaveProperty('cause.message', 'NOT NULL constraint failed: price_points.price');
 
     expect(storedHoldings()).toEqual([]);
   });
