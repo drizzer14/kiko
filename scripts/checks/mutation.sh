@@ -8,7 +8,8 @@
 # history of past completed runs: a PER-MUTANT rate (seconds/mutant) times this
 # run's actual mutant count, printed LIVE the moment Stryker reports that count, and split into
 # normal and timed-out mutants (a timeout costs far more) from the per-file history, with an
-# update at every 10% of the run (see the harness_mutation_* helpers in _lib.sh). This exists so
+# update at every 10% of the run when a timeout cost is known (see the harness_mutation_* helpers
+# in _lib.sh). This exists so
 # a human can watch a multi-minute
 # run directly — AGENTS must still NOT poll/tail it. The run's EXIT CODE is the only
 # signal an agent waits on (0 = pass, 2 = fail); the log and ETA are for the
@@ -474,7 +475,7 @@ rate="$(harness_mutation_rate "$hist")"
 if [ -z "$rate" ]; then
   printf 'No mutation history yet — no estimate available.\n'
 else
-  printf 'Estimated time prints once Stryker reports the mutant count (~%ss/mutant from history), then an update at every 10%% of the run.\n' "$rate"
+  printf 'Estimated time prints once Stryker reports the mutant count (~%ss/mutant from history), then an update at every 10%% of the run when a timeout cost is known.\n' "$rate"
 fi
 printf 'Watch live progress:  tail -f %s\n' "$log"
 

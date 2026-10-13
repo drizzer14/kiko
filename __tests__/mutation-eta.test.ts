@@ -343,12 +343,13 @@ describe('_lib.sh harness_mutation_costs (pure)', () => {
   });
 
   it('counts only the last 10 qualifying records', () => {
-    // The oldest record is an outlier; the next five carry no timeouts and the last five carry
-    // half timeouts, so a window of 5 sees one share only (no fit) and a window of 11 is skewed.
+    // The 11th record from the end is an outlier, the 10th has no timeouts, and the last nine
+    // have half timeouts: a window of 9 sees one share only (no fit), a window of 10 fits the
+    // true costs, and a window of 11 takes in the outlier and fits nothing sound.
     const records = [
       record(99999, 100, 100, 0),
-      ...Array.from({ length: 5 }, () => record(200, 100, 100, 0)),
-      ...Array.from({ length: 5 }, () => record(2100, 100, 100, 50)),
+      record(200, 100, 100, 0),
+      ...Array.from({ length: 9 }, () => record(2100, 100, 100, 50)),
     ];
 
     expect(costs(records)).toBe('2 40');
