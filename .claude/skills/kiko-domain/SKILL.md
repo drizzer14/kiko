@@ -1073,7 +1073,9 @@ Rules:
   other part of this exchange"; a "could not be found" holding the row's own
   `exchange` sentence already names is not named again there; with a split, the exchange sentences that say
   "only this part is deleted" take the same split wording. A holding or account
-  delete lists the OTHER holdings' changes only (`RemoveHoldingsPlan.balanceChanges`).
+  delete lists the OTHER holdings' changes only (`RemoveHoldingsPlan.balanceChanges`,
+  and `templatesChanged`, the templates whose holding reference the delete clears,
+  rendered by `removeHoldingsNoticeOf` with `holdings.deleteLinked.templates`).
 - **A confirm opened twice shows the latest plan.** The `CardContextMenu`
   `deleteMessage` is async and a superseded result is dropped (see
   `kiko-design-system`).
@@ -2774,6 +2776,33 @@ but leaves the other legs behind, so the money of a movement exists on one side
 only. Only `transactions.repo.ts` and `holdings.repo.ts` (its owner) call it
 (`kiko-holding-delete-needs-cascade`, `rules/semgrep-prewrite.yml`): every other
 caller deletes through `transactionsRepo.removeHolding`.
+
+A holding delete and an account delete also clear the transaction templates'
+references to the deleted holdings in the same write, on the same two paths as the
+loan-link clear (`removeHoldingDatabaseTransaction`, `accountsRepo.remove`; see the
+`clearLoanLinksForHoldingsDatabaseTransaction` paragraph above):
+`transactionTemplatesRepo.clearHoldingsDatabaseTransaction`. A category delete
+(`categoriesRepo`) clears the template's category through
+`clearCategoryDatabaseTransaction` to EMPTY, never to the default category; the field
+stays in the template.
+
+## Transaction templates
+
+`src/transaction-templates/{draft,template-name,repo}` own a saved, reusable
+transaction draft; `transactionTemplatesRepo` is its repo and `TemplateNameTakenError`
+its error. User rules: no loan link, no comment, no date; the amount is optional; the
+name is unique case-insensitively, with Unicode folding done in JS. A save from the
+transaction form rides `alongside(databaseTransaction)` on `transactionsRepo.recordManual`
+/ `recordExchange` / `recordManualWithReturns` / `update` (runs last inside the same
+write); the transactions feature never imports templates on that save path.
+A template stores a category ONLY when the user picked it by hand (`userPickedCategory`);
+otherwise it stores none, and each use gets the CURRENT category-rule pre-select (user
+ruling 2026-10-12). On Duplicate and Edit, the source category counts as a hand pick, so
+the template keeps it. The save path reads `userPickedCategory ? effectiveCategory : null`,
+never `selectedCategory` (settled only on blur). Pin it with a red test that presses Save
+WITHOUT a blur.
+The form's template units live in `src/screens/forms/transaction-form/` (list them with
+`ls`); the Template list screen is `src/screens/settings/transaction-templates/`.
 
 ## Adding a holding type
 

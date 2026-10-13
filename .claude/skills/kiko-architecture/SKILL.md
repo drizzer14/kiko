@@ -35,8 +35,11 @@ build-a-bundle CI gate:
   `npm run check:rules`). It flags three shapes: (a) importing a
   `SHOW_*`/`HIDE_*`/`SCREENSHOT_*` `@env` flag, (b) a static `import`
   whose specifier contains the literal `e2e/` segment, and (c) a dynamic
-  `require(...)` whose specifier contains `e2e/`. `src/` has zero `e2e/`
-  crossings of any kind. **Metro dead-code elimination is not
+  `require(...)` whose specifier contains `e2e/`. No `src/` module imports
+  an `e2e/` module. A jest test under `src/` may READ a committed `e2e/` fixture file as data
+  through `node:fs` (precedents: `src/data-transfer/import-data.back-compat.test.ts`,
+  `src/screens/forms/transaction-form/transaction-form.demo-templates.test.ts`); that is not an
+  import, and Metro never bundles a test file. **Metro dead-code elimination is not
   trusted as a substitute for (c):** build 8 shipped
   `seedScreenshotData` inside `main.jsbundle` despite it sitting behind
   a dead `if (SCREENSHOT_MODE === 'true')` branch that DCE was supposed
@@ -703,10 +706,16 @@ Read these units before touching category UI: the Categories list
 - One delete path: `categoriesRepo.delete` deletes the category's rules
   in the same write. The confirm count and the delete use the same
   case-insensitive `lower(category)` predicate and both count unreadable
-  rules.
-- The confirm line comes only from `categoryDeleteNoticeOf`; a failed
-  count read still gives a numberless line, so the confirm always warns.
-  A second track that adds a delete-time line appends it there.
+  rules. `categoriesRepo.delete` also clears the category in every
+  template that names it in that same write.
+- The confirm text comes only from `categoryDeleteNoticeOf`: one line per kind of
+  thing the delete touches, the rules line first, then the templates line
+  (`categories.deleteTemplates` plural). A count of zero adds no line. A FAILED count
+  read (rules or templates) still adds that kind's numberless line
+  (`categories.deleteRulesNoticeUnknown`, `categories.deleteTemplatesUnknown`), because
+  the delete removes or clears them whatever the read did, so the confirm always warns.
+  Never pin a failed read as silent. A second track that adds a delete-time line appends
+  it there.
 - The category form has no Delete (kiko-design-system "A form has no
   in-form Delete"; pre-write rule `kiko-no-confirm-sheet-in-form`). A
   category is deleted only from its list card's hold menu, which is not
@@ -749,7 +758,8 @@ derived from the whole draft. Seed a loaded draft only through `seedCategory`
 the nav-bar Save settles the description first. Rule: coupled state is set by
 one seed function, never by a pair of exported setters. On a create, the
 name-rule sheet ("Apply to all transactions named X?") is offered only when the
-user picked the category by hand or a Duplicate/template seed carries one; a
+user picked the category by hand or a Duplicate/template seed carries one
+(what a template stores is kiko-domain "Transaction templates"); a
 category the rules pre-selected saves flag 0 with no sheet; an edit is
 unchanged. Otherwise Apply rewrites every same-name row to a category the user
 never chose (`resolveCategoryOverrideRequest` in
@@ -908,6 +918,11 @@ size from the table's column count — and issue every chunk inside
 the SAME `db.transaction()`/`write()` call. Never hand-roll a fixed
 row-count chunk; the safe size depends on the table's column count,
 which only `chunkForTable` knows.
+
+A long `a or b or ...` chain has a SECOND limit: SQLite refuses an expression tree
+deeper than 1000 ("Expression tree is too large"), separate from bound parameters.
+Chunk such a chain by term count (`MAX_OR_TERMS` in
+`src/transaction-templates/repo/transaction-templates.repo.ts`).
 
 Examples: `ratesRepo.upsertMany` (`src/rates/repo/rates.repo.ts`) and the
 shared `upsertDedupRowsDatabaseTransaction`
@@ -2144,7 +2159,8 @@ shape, and hand-rolled `utf8/utf8.ts` + `base64/base64.ts` codecs.
   deletes are unknowable, so there is no data step and no derived mirror. Its
   foreign key to `holdings` is NO ACTION, so the order carries it: a holding
   or account delete removes the keys first (`removeHoldingDatabaseTransaction`,
-  `accountsRepo.remove`). A write that moves a holding's balance anchor (a
+  `accountsRepo.remove`); a table with no FK (`transaction_templates`) has no
+  delete-order constraint. A write that moves a holding's balance anchor (a
   closing balance that applies, a hand-set balance, the bank figure of a sync)
   clears all its keys in the same write
   (`clearDeletedImportKeysDatabaseTransaction`): the sync clears but never
@@ -2301,12 +2317,11 @@ shape, and hand-rolled `utf8/utf8.ts` + `base64/base64.ts` codecs.
   with the reason no bump is needed: a column riding inside an existing row
   and derived on restore needs none, and neither does an idempotent data
   rewrite that the restore mirror re-applies to an older file (0049, 0050, 0051).
-  The decision per migration is recorded in `VERSION_DECISIONS` in
-  `src/data-transfer/crypto/envelope.test.ts`, which is where to read it (0052's
-  `exchangePairId` is the first kind: a column riding inside a row). A new
-  table the file carries as an OPTIONAL snapshot key (0054's
-  `deletedImportKeys`) needs none either: an older build drops the key and
-  keeps its old rule, and this build restores an older file with the table empty.
+  The decision per migration, each optional snapshot key included, is recorded in
+  `VERSION_DECISIONS` in `src/data-transfer/crypto/envelope.test.ts`: read it there.
+  A new table the file carries as an OPTIONAL key needs no bump: an older build
+  drops the key, and this build restores an older file with the table empty
+  (`?? []`).
 
 ## Reminders (local notifications)
 
@@ -2441,7 +2456,8 @@ what a change must keep.
 - **Screens.** `ReminderForm` (`src/screens/forms/reminder-form/`,
   params `{ reminderId } | { accountId, kind }`) and `AccountReminders`
   (`src/screens/settings/account-reminders/`, params `{ accountId }`) — `AccountReminders` is registered in the Accounts stack.
-  The Home stack registers `HoldingForm` (`HoldingFormParams`, no `returnTo`) and `AccountForm` as
+  The Home AND Settings stacks register `TransactionForm`, `AccountForm` and `HoldingForm`
+  (`HoldingFormParams`, no `returnTo`; neither stack passes `returnTo`) as
   well as the Accounts stack, because leaving the tab resets its stack and would lose the
   transaction form's draft; both take options from `src/navigation/swapped-form-options/`. A form
   that stays mounted underneath uses `navigate`, but a `HoldingForm` opening another `HoldingForm`
@@ -2457,7 +2473,8 @@ what a change must keep.
   reads the account's `kind`, `icon`, and `color` too. It uses the
   same `ReminderRow` and has no Add (reminders are created from an account's
   page). It opens from its own Settings card directly below System
-  (`settings-row-reminders`). The account page is reached from a
+  (`settings-row-reminders`). Transaction templates and Categories share one group card
+  (`settings-card-templates-and-categories`). The account page is reached from a
   native `bell` bar item in `AccountDetail`'s
   `unstable_headerRightItems`, left of Edit in its own glass capsule
   (see kiko-design-system's "Header bar items"), shown on every account
@@ -2701,6 +2718,23 @@ what a change must keep.
   argument is NULL; for "latest of a column and a value" use
   `coalesce(max(col, v), col, v)` (see `latest()` in
   `reminders.repo.ts`).
+
+## Transaction form: holding change and template seeding
+
+Every user primary-holding pick goes through ONE path: `pickPrimaryHolding` in
+`src/screens/forms/transaction-form/transaction-form.screen.tsx` calls `applyHoldingChange`
+(`holding-change/`). It settles the mode to one the new holding offers (`settleMode` /
+`DEFAULT_MODE`, `mode-options/`) and empties a split return row whose holding is in another
+currency (`emptyReturnsInOtherCurrency`; the amount stays). Hydration (`hydration/`) reuses
+the same helpers for a template seed. A holding-dependent invariant lives in that one
+function; when a review finds hidden state on one holding path, grep every
+`setPrimaryHoldingId` caller and every seed path, share one helper, and pin one red test per
+path.
+
+Field visibility is sticky: on Add-from-holding the holding field shows once a template seats
+a different holding (`revealsHoldingField` / `resolveHoldingField`, `route-entry/`) and stays
+shown, showing the holding Save writes. One state set in the seed branch holds it; it is
+never derived per render.
 
 ## Native iOS shell
 

@@ -53,6 +53,7 @@ const CONTAINERS = new Set([
   'statement-import/formats',
   'statistics',
   'sync',
+  'transaction-templates',
   'transactions',
 ]);
 

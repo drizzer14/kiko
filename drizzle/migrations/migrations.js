@@ -58,6 +58,7 @@ import m0053 from './0053_add_loan_holding_id_index.sql';
 import m0054 from './0054_add_deleted_import_keys.sql';
 import m0055 from './0055_add_dismissed_tips.sql';
 import m0056 from './0056_add_category_rules.sql';
+import m0057 from './0057_add_transaction_templates.sql';
 
 export default {
   journal,
@@ -119,5 +120,6 @@ export default {
     m0054,
     m0055,
     m0056,
+    m0057,
   },
 };

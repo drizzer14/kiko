@@ -129,7 +129,11 @@ describe('the export version against the migration journal', () => {
     // and a version 2 build requires `categoryOverrides`, so it has to refuse such a
     // file by its version instead of calling it invalid. This build restores an older
     // file by turning its overrides into rules.
-    migrationCount: 57,
+    // Through 0057_add_transaction_templates, a new table
+    // carried as an optional key (`transactionTemplates`), like 0054: an older
+    // build restoring such a file drops the key, and this build restores an older
+    // file with the table empty, so it needed no bump.
+    migrationCount: 58,
   };
 
   it('has a version decision for every migration', () => {

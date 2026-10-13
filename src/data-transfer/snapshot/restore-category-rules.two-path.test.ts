@@ -55,6 +55,13 @@ const MIGRATION_0056_SQL = readFileSync(
   'utf8',
 );
 
+// The snapshot reader selects every table the schema has today, so a database that ran 0056 also
+// carries the table of transaction templates (empty) for the read below.
+const MIGRATION_0057_SQL = readFileSync(
+  join(__dirname, '..', '..', '..', 'drizzle', 'migrations', '0057_add_transaction_templates.sql'),
+  'utf8',
+);
+
 type LegacyOverride = {
   normalizedName: string;
   category: string;
@@ -270,6 +277,7 @@ describe('restoring a .kiko file this build exported', () => {
     const exported = preMigrationDatabase();
 
     exported.exec(MIGRATION_0056_SQL.split('--> statement-breakpoint').join('\n'));
+    exported.exec(MIGRATION_0057_SQL);
     mockDatabase = exported;
 
     const tables = JSON.parse(JSON.stringify(await readDataSnapshot()));

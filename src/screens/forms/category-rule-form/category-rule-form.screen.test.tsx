@@ -404,6 +404,20 @@ describe('CategoryRuleFormScreen — a Save that is refused', () => {
     expect(mockSaveRule).not.toHaveBeenCalled();
   });
 
+  it('names a category that is gone by its raw key', async () => {
+    mockRules = [ruleOf('taken', 'gone-shop', [SILPO])];
+
+    const screen = await renderCreate();
+
+    await typeName(screen, 'Silpo');
+    await pressSave(screen);
+
+    expect(
+      screen.getByText('A rule with these conditions already exists in gone-shop.'),
+    ).toBeTruthy();
+    expect(mockSaveRule).not.toHaveBeenCalled();
+  });
+
   it('clears the error once the conditions are fixed', async () => {
     mockRules = [ruleOf('taken', 'shops', [SILPO])];
 

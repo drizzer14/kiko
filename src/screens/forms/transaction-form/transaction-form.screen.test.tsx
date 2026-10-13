@@ -79,13 +79,18 @@ const mockSetLoanPayment = jest.fn();
 const mockUndoAutoLoanLink = jest.fn();
 const mockUseLiveQuery = jest.fn();
 
+// A write takes its optional template step last, and an undefined one is the same call as none.
+const mockWithoutUndefinedTail = (args: unknown[]): unknown[] =>
+  args.at(-1) === undefined ? args.slice(0, -1) : args;
+
 jest.mock('@kiko/transactions/repo', () => ({
   transactionsRepo: {
-    recordManual: (...args: unknown[]) => mockRecordManual(...args),
-    recordManualWithReturns: (...args: unknown[]) => mockRecordManualWithReturns(...args),
-    recordExchange: (...args: unknown[]) => mockRecordExchange(...args),
+    recordManual: (...args: unknown[]) => mockRecordManual(...mockWithoutUndefinedTail(args)),
+    recordManualWithReturns: (...args: unknown[]) =>
+      mockRecordManualWithReturns(...mockWithoutUndefinedTail(args)),
+    recordExchange: (...args: unknown[]) => mockRecordExchange(...mockWithoutUndefinedTail(args)),
     recordExchangeCounterpart: (...args: unknown[]) => mockRecordExchangeCounterpart(...args),
-    update: (...args: unknown[]) => mockUpdate(...args),
+    update: (...args: unknown[]) => mockUpdate(...mockWithoutUndefinedTail(args)),
     remove: (...args: unknown[]) => mockRemove(...args),
     setCategory: (...args: unknown[]) => mockSetCategory(...args),
     setLoanPayment: (...args: unknown[]) => mockSetLoanPayment(...args),
@@ -5153,5 +5158,201 @@ describe('TransactionFormScreen — the manual-pick flag on save', () => {
         }),
       );
     });
+  });
+});
+
+describe('TransactionFormScreen — a holding change settles the mode', () => {
+  const holdingOf = (id: string, name: string, type: string, currency: string, order: number) => ({
+    id,
+    name,
+    type,
+    currency,
+    balanceMinorUnits: 0,
+    accountId: type === 'card' ? 'a2' : 'a1',
+    sortOrder: order,
+    createdAt: order,
+  });
+  const HOLDINGS = [
+    holdingOf('cash-uah', 'Wallet', 'cash', 'UAH', 0),
+    holdingOf('cash-usd', 'Dollars', 'cash', 'USD', 1),
+    holdingOf('cash-eur', 'Euros', 'cash', 'EUR', 2),
+    holdingOf('card-uah', 'Card', 'card', 'UAH', 3),
+    holdingOf('cash-uah-pocket', 'Pocket', 'cash', 'UAH', 4),
+    holdingOf('cash-uah-jar', 'Jar', 'cash', 'UAH', 5),
+  ];
+  const ACCOUNTS: Account[] = [
+    { id: 'a1', name: 'Cash' },
+    { id: 'a2', name: 'Bank' },
+  ];
+
+  const pickHolding = async (
+    utils: Awaited<ReturnType<typeof render>>,
+    optionLabel: string,
+  ): Promise<void> => {
+    await fireEvent.press(utils.getByLabelText('Holding'));
+    await fireEvent.press(utils.getByLabelText(optionLabel));
+  };
+
+  // An exchange from the Wallet to Dollars, with both values typed.
+  const startExchange = async (): Promise<Awaited<ReturnType<typeof render>>> => {
+    setLiveData(HOLDINGS, undefined, CATEGORIES, ACCOUNTS, [], [], [], 'cash-uah');
+
+    const utils = await renderEmptyCreate();
+
+    await pickType(utils, 'exchange');
+    await fireEvent.press(utils.getByLabelText('To'));
+    await fireEvent.press(utils.getByText('Dollars'));
+    await fireEvent.changeText(utils.getByLabelText('Value out'), '100');
+    await fireEvent.changeText(utils.getByLabelText('Value in'), '2.50');
+
+    return utils;
+  };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('settles an exchange to Expense when the holding becomes a card, keeping the amount', async () => {
+    const utils = await startExchange();
+
+    await pickHolding(utils, 'Card, Bank');
+
+    expect(utils.getByLabelText('Type')).toHaveTextContent('Expense');
+    expect(utils.queryByLabelText('Value in')).toBeNull();
+    expect(utils.getByLabelText('Amount').props.value).toBe('100');
+  });
+
+  it('writes no exchange from the card, and asks for the category an expense needs', async () => {
+    const utils = await startExchange();
+
+    await pickHolding(utils, 'Card, Bank');
+    await pressSave(navigation.setOptions);
+
+    expect(mockRecordExchange).not.toHaveBeenCalled();
+    expect(mockRecordManual).not.toHaveBeenCalled();
+    expect(utils.getByText('Select a category.')).toBeTruthy();
+  });
+
+  it('saves an expense from the card once it has a category', async () => {
+    const utils = await startExchange();
+
+    await pickHolding(utils, 'Card, Bank');
+    await pickCategory(utils, 'Groceries');
+    await pressSave(navigation.setOptions);
+
+    expect(mockRecordExchange).not.toHaveBeenCalled();
+    expect(mockRecordManual).toHaveBeenCalledWith(
+      expect.objectContaining({ holdingId: 'card-uah', amountMinorUnits: -10000 }),
+    );
+  });
+
+  it('settles a split to Expense when the holding becomes a card, dropping its returns', async () => {
+    setLiveData(HOLDINGS, undefined, CATEGORIES, ACCOUNTS, [], [], [], 'cash-uah');
+
+    const utils = await renderEmptyCreate();
+
+    await pickType(utils, 'split');
+
+    expect(utils.getByLabelText('Return to 1')).toBeTruthy();
+
+    await pickHolding(utils, 'Card, Bank');
+
+    expect(utils.getByLabelText('Type')).toHaveTextContent('Expense');
+    expect(utils.queryByLabelText('Return to 1')).toBeNull();
+  });
+
+  // A split from the Wallet with a 5.00 return to the Pocket, both in UAH.
+  const startSplitWithReturn = async (): Promise<Awaited<ReturnType<typeof render>>> => {
+    mockRecordManualWithReturns.mockResolvedValue(undefined);
+    setLiveData(HOLDINGS, undefined, CATEGORIES, ACCOUNTS, [], [], [], 'cash-uah');
+
+    const utils = await renderEmptyCreate();
+
+    await pickType(utils, 'split');
+    await fireEvent.press(utils.getByLabelText('Return to 1'));
+    await fireEvent.press(utils.getByText('Pocket'));
+    await fireEvent.changeText(utils.getByLabelText('Return 1'), '5.00');
+    await fireEvent.changeText(utils.getByLabelText('Amount'), '100');
+    await pickCategory(utils, 'Groceries');
+
+    return utils;
+  };
+
+  it('empties a split return holding in another currency than the new holding, keeping its amount', async () => {
+    const utils = await startSplitWithReturn();
+
+    await pickHolding(utils, 'Dollars, Cash');
+
+    expect(utils.getByLabelText('Type')).toHaveTextContent('Split');
+    expect(utils.getByLabelText('Return to 1')).toHaveTextContent('Select holding');
+    expect(utils.getByLabelText('Return 1').props.value).toBe('5.00');
+
+    // Back in the return's own currency, a return holding that was only hidden would show again.
+    await pickHolding(utils, 'Wallet, Cash');
+
+    expect(utils.getByLabelText('Return to 1')).toHaveTextContent('Select holding');
+    expect(utils.getByLabelText('Return 1').props.value).toBe('5.00');
+  });
+
+  it('writes no split with the return holding left in the old currency', async () => {
+    const utils = await startSplitWithReturn();
+
+    await pickHolding(utils, 'Dollars, Cash');
+    await pressSave(navigation.setOptions);
+
+    expect(mockRecordManualWithReturns).not.toHaveBeenCalled();
+  });
+
+  it('keeps a split return holding when the new holding shares its currency', async () => {
+    const utils = await startSplitWithReturn();
+
+    await pickHolding(utils, 'Jar, Cash');
+    await pressSave(navigation.setOptions);
+
+    expect(utils.getByLabelText('Return to 1')).toHaveTextContent('PocketCash');
+    expect(mockRecordManualWithReturns).toHaveBeenCalledWith(
+      expect.objectContaining({
+        payment: expect.objectContaining({ holdingId: 'cash-uah-jar' }),
+        returns: [{ holdingId: 'cash-uah-pocket', amountMinorUnits: 500 }],
+      }),
+    );
+  });
+
+  it('keeps the exchange and every field when the new holding is a cash holding', async () => {
+    const utils = await startExchange();
+
+    await pickHolding(utils, 'Euros, Cash');
+
+    expect(utils.getByLabelText('Type')).toHaveTextContent('Exchange');
+    expect(utils.getByLabelText('Value out').props.value).toBe('100');
+    expect(utils.getByLabelText('Value in').props.value).toBe('2.50');
+    expect(utils.getByLabelText('To')).toHaveTextContent('DollarsCash');
+  });
+
+  it('drops a destination equal to the new source, with its Value in', async () => {
+    const utils = await startExchange();
+
+    await pickHolding(utils, 'Dollars, Cash');
+
+    expect(utils.getByLabelText('Type')).toHaveTextContent('Exchange');
+    expect(utils.getByLabelText('To')).toHaveTextContent('Select holding');
+    expect(utils.getByLabelText('Value in').props.value).toBe('');
+    expect(utils.getByLabelText('Value out').props.value).toBe('100');
+  });
+
+  it.each([
+    ['income', 'Income'],
+    ['expense', 'Expense'],
+  ] as const)('keeps %s and its amount when the holding becomes a card', async (mode, title) => {
+    setLiveData(HOLDINGS, undefined, CATEGORIES, ACCOUNTS, [], [], [], 'cash-uah');
+
+    const utils = await renderEmptyCreate();
+
+    await pickType(utils, mode);
+    await fireEvent.changeText(utils.getByLabelText('Amount'), '12.00');
+    await pickHolding(utils, 'Card, Bank');
+
+    expect(utils.getByLabelText('Type')).toHaveTextContent(title);
+    expect(utils.getByLabelText('Amount').props.value).toBe('12.00');
   });
 });

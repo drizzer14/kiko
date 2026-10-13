@@ -21,6 +21,9 @@ export type SplitReturnsProps = {
   // (v1 returns are payer-currency only).
   suffix: string;
   selectHoldingPlaceholder: string;
+  // Whether each row's holding and amount carry the required marker. Defaults to true; a template
+  // asks for neither.
+  required?: boolean;
   t: TFunction;
   // The combined payment+returns validation-failure message, or `undefined`
   // when valid — rendered right after the mapped return rows, before the "Add

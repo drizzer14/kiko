@@ -48,6 +48,7 @@ const NOTHING_ELSE: RemoveHoldingsPlan = {
   keptSynced: [],
   unlinked: [],
   unlinkedPlain: false,
+  templatesChanged: 0,
 };
 
 // What a holdings delete takes and leaves, without the balance lines that `the

@@ -128,6 +128,7 @@ export const en = {
     language: 'Language',
     system: 'System',
     title: 'Settings',
+    transactionTemplates: 'Transaction templates',
   },
   language: {
     en: '🇬🇧 English',
@@ -207,6 +208,11 @@ export const en = {
     deleteRulesNotice_many: 'Its {{count}} rules will be deleted too.',
     deleteRulesNotice_other: 'Its {{count}} rules will be deleted too.',
     deleteRulesNoticeUnknown: 'Its rules will be deleted too.',
+    deleteTemplates_one: 'This also clears it in {{count}} template.',
+    deleteTemplates_few: 'This also clears it in {{count}} templates.',
+    deleteTemplates_many: 'This also clears it in {{count}} templates.',
+    deleteTemplates_other: 'This also clears it in {{count}} templates.',
+    deleteTemplatesUnknown: 'This also clears it in its templates.',
   },
   categoryPage: {
     rulesHeading: 'Rules',
@@ -584,6 +590,7 @@ export const en = {
     },
     transaction: {
       addReturn: 'Add return',
+      addTemplateTitle: 'Add Template',
       addTitle: 'Add Transaction',
       amountError: 'Amount must be greater than 0.',
       amountPlaceholder: '250.00',
@@ -598,9 +605,12 @@ export const en = {
       convertAmountPlaceholder: '100.00',
       convertToExchange: 'Exchange',
       counterpartAmountError: 'Amount must be greater than 0.',
+      createTransaction: 'Create transaction',
       description: 'Description',
       descriptionPlaceholder: 'Coffee',
+      editTemplateTitle: 'Edit Template',
       editTitle: 'Edit Transaction',
+      entryModeLabel: 'Entry mode',
       exchange: 'Exchange',
       expense: 'Expense',
       from: 'From',
@@ -622,19 +632,32 @@ export const en = {
       // stored choice (`loanLinkRejected`), not just an empty default.
       loanPaymentNone: 'None',
       loanPaymentSheetTitle: 'Loan Payment',
+      noTemplatesHint:
+        'No templates yet. Turn on "Save as a new template" when you save a transaction.',
       remove: 'Remove',
       removeReturn: 'Remove return {{index}}',
       returnAmount: 'Return {{index}}',
       returnsHeading: 'Change Returns',
       returnTo: 'Return to {{index}}',
       returnToSheetTitle: 'Return to {{index}}',
+      saveAsTemplate: 'Save as a new template',
       selectCategoryError: 'Select a category.',
       selectCounterpartError: 'Select an account to convert into.',
       selectDestinationError: 'Select a destination account.',
       selectHolding: 'Select holding',
+      selectHoldingError: 'No holding selected.',
+      selectTemplate: 'Select a template',
       split: 'Split',
       splitInvalidError: 'Add at least one valid return, and keep the returns below the payment.',
       syncedNotice: 'This was synced, so only the category and loan link can be changed.',
+      tabManual: 'Manual',
+      tabTemplate: 'Template',
+      template: 'Template',
+      templateName: 'Template name',
+      templateNameError: 'Enter a template name.',
+      templateNamePlaceholder: 'Rent',
+      templateNameTakenError: 'A template with this name already exists.',
+      templateSheetTitle: 'Template',
       title: 'Transaction',
       to: 'To',
       toSheetTitle: 'To',
@@ -894,8 +917,8 @@ export const en = {
   holdings: {
     // The delete confirm's body for a holding, or an account's holdings, whose
     // transactions are one part of a movement with another holding. Only `rows`
-    // takes a count; the other parts list holding names, joined by the caller
-    // (Hermes has no `Intl.ListFormat`).
+    // and `templates` take a count; the other parts list holding names, joined by
+    // the caller (Hermes has no `Intl.ListFormat`).
     deleteLinked: {
       rows_one: 'This also deletes {{count}} linked transaction in {{names}}.',
       rows_few: 'This also deletes {{count}} linked transactions in {{names}}.',
@@ -908,6 +931,10 @@ export const en = {
       unlinked:
         'Some exchange parts in {{names}} could not be found and stay. Check them after deleting.',
       unlinkedPlain: 'Some exchange parts could not be found and stay.',
+      templates_one: 'This also clears it in {{count}} template.',
+      templates_few: 'This also clears it in {{count}} templates.',
+      templates_many: 'This also clears it in {{count}} templates.',
+      templates_other: 'This also clears it in {{count}} templates.',
     },
   },
   home: {
@@ -1420,6 +1447,14 @@ export const en = {
       interval_many: 'Every {{count}} days at {{time}}',
       interval_other: 'Every {{count}} days at {{time}}',
     },
+  },
+  transactionTemplates: {
+    addTemplate: 'Add template',
+    empty: {
+      message: 'Save a transaction you enter often as a template, then add it again in a few taps.',
+      title: 'No templates yet',
+    },
+    title: 'Transaction Templates',
   },
   // The human-readable display name per ISO currency code, shown alongside the
   // code in the searchable CurrencyField (trigger label, rows, accessibility

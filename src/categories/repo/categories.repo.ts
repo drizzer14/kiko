@@ -9,6 +9,7 @@ import {
   transactions,
 } from '@kiko/db';
 import { asc, eq, sql } from 'drizzle-orm';
+import { transactionTemplatesRepo } from '@kiko/transaction-templates/repo';
 
 import { DEFAULT_CATEGORY_KEY } from '../category-display';
 
@@ -78,7 +79,8 @@ export const categoriesRepo = {
    * ONE op-sqlite transaction: read the configured default key from settings,
    * refuse if the target IS the default (it is the catch-all — it can never be
    * deleted), then reassign every transaction pointing at this key to the
-   * default key, delete the category's rules, and finally remove the category
+   * default key, delete the category's rules, clear the category from every template that
+   * names it (the field stays in the template, empty), and finally remove the category
    * row. The reassignment (not a delete of the rows) is why this is one
    * transaction — a partial failure must never orphan a transaction on a
    * now-missing category slug.
@@ -112,6 +114,8 @@ export const categoriesRepo = {
       await databaseTransaction
         .delete(categoryRules)
         .where(sql`lower(${categoryRules.category}) = ${lowercaseKey}`);
+      // A template does not move to the default: the field stays in it, empty.
+      await transactionTemplatesRepo.clearCategoryDatabaseTransaction(databaseTransaction, key);
       await databaseTransaction.delete(categories).where(eq(categories.key, key));
     }),
   /**

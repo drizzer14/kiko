@@ -21,6 +21,7 @@ type RuleData = { id: string; category: string; matchers: string };
 const mockDelete = jest.fn();
 const mockReorder = jest.fn();
 const mockCountRules = jest.fn<Promise<number>, [string]>();
+const mockCountTemplates = jest.fn<Promise<number>, [string]>();
 let mockCategories: CategoryData[] = [];
 let mockRules: RuleData[] = [];
 let mockSettingsRows: Array<{ defaultCategoryKey: string }> = [];
@@ -42,6 +43,11 @@ jest.mock('@kiko/categories/category-rules-repo', () => ({
   categoryRulesRepo: {
     allQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }),
     countRulesOfCategory: (key: string) => mockCountRules(key),
+  },
+}));
+jest.mock('@kiko/transaction-templates/repo', () => ({
+  transactionTemplatesRepo: {
+    countReferencingCategory: (key: string) => mockCountTemplates(key),
   },
 }));
 jest.mock('@kiko/settings/settings.repo', () => ({
@@ -96,6 +102,7 @@ describe('CategoriesScreen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockCountRules.mockResolvedValue(0);
+    mockCountTemplates.mockResolvedValue(0);
     mockCategories = SEEDED_CATEGORIES.map((category) => ({ ...category }));
     mockRules = [];
     // `other` is the seeded default catch-all.
@@ -278,6 +285,37 @@ describe('CategoriesScreen', () => {
       await holdCard();
 
       expect(getByText('Its 1 rule will be deleted too.')).toBeTruthy();
+    });
+
+    it('names the templates the delete clears the category in, below the rules, read for that category', async () => {
+      mockCategories = [GROCERIES];
+      mockCountRules.mockResolvedValue(3);
+      mockCountTemplates.mockResolvedValue(2);
+
+      const { getByText } = await renderScreen();
+
+      await holdCard();
+
+      expect(mockCountTemplates).toHaveBeenCalledWith('groceries');
+      expect(
+        getByText('Its 3 rules will be deleted too.\nThis also clears it in 2 templates.'),
+      ).toBeTruthy();
+    });
+
+    it('still says the templates are cleared when the template count cannot be read', async () => {
+      mockCategories = [GROCERIES];
+      mockCountRules.mockResolvedValue(3);
+      mockCountTemplates.mockRejectedValue(new Error('read failed'));
+
+      const { getByText, getByTestId } = await renderScreen();
+
+      await holdCard();
+
+      expect(getByText('Delete "Groceries"')).toBeTruthy();
+      expect(
+        getByText('Its 3 rules will be deleted too.\nThis also clears it in its templates.'),
+      ).toBeTruthy();
+      expect(getByTestId(DELETE_CONFIRM_TEST_ID)).toBeTruthy();
     });
 
     it('keeps the confirm to its title when the category has no rules', async () => {
