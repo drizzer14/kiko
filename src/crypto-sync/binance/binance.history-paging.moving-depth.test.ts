@@ -17,23 +17,55 @@ import {
   depthWorldOf,
   isProbeRead,
   jitterMs,
+  owedOf,
   readDepthWorld,
+  readSeriesOf,
   refusedReadsOf,
-  skippedMsOf,
+  unowedSkippedMsOf,
 } from './binance.depth-test-fixtures';
-import { BINANCE_REQUEST_INTERVAL_MS } from './binance.history-budget';
 
 const HOUR_MS = 3_600_000;
 const REQUEST_LATENCY_MS = 150;
-// The most that a read skips right after a narrowing when the depth stands still, however long
-// the app was suspended: the resolution of the narrowing, the margin it starts over with, and the
-// requests it made after the last one Binance served (24 at the most), each paced and answered.
-const SKIPPED_AFTER_SEARCH_MS =
-  DEPTH_RESOLUTION_MS + DEPTH_MARGIN_MS + 24 * (BINANCE_REQUEST_INTERVAL_MS + REQUEST_LATENCY_MS);
-// The most that a read skips when the depth stands still, whatever the run did.
-const SKIPPED_BOUND_MS = DEPTH_RESOLUTION_MS + DEPTH_EXTRAPOLATION_MAX_MS + DEPTH_MARGIN_CAP_MS;
+// The most of the ground a read begins above that one series owes: the time since its start was
+// served, which moves the start on, and the margin at its cap.
+const OWED_BOUND_MS = DEPTH_EXTRAPOLATION_MAX_MS + DEPTH_MARGIN_CAP_MS;
 
 const probesOf = (calls: DepthCall[]): DepthCall[] => calls.filter(({ read }) => isProbeRead(read));
+
+const widthsOf = (owed: { window: DepthRead }[]): number[] =>
+  owed.map(({ window }) => window.end - window.start);
+
+/**
+ * `count` series read twice over the span that crosses the depth, the app suspended for
+ * `suspendedMs` inside the gate wait that opens the second read (and, with `later`, again
+ * `afterWaits` waits after it), and the calls of the first read.
+ */
+const readAcrossSuspension = async (input: {
+  count: number;
+  stepMs?: number;
+  suspendedMs: number;
+  later?: { afterWaits: number; ms: number };
+}) => {
+  const suspensions: { atWait: number; ms: number }[] = [];
+  const world = depthWorldOf({
+    latencyMs: () => REQUEST_LATENCY_MS,
+    stepMs: input.stepMs,
+    suspensions,
+    uncapped: true,
+  });
+  const span = crossingOf(world.edgeOf('T0', world.clock.now));
+  const first = await readDepthWorld(world, { count: input.count, span });
+  const firstCalls = world.calls.length;
+  suspensions.push({ atWait: firstCalls + 1, ms: input.suspendedMs });
+
+  if (input.later !== undefined) {
+    suspensions.push({ atWait: firstCalls + 1 + input.later.afterWaits, ms: input.later.ms });
+  }
+
+  const second = await readDepthWorld(world, { count: input.count, span });
+
+  return { world, span, first, second, firstCalls };
+};
 
 describe('readSeriesSpan, against a depth that moves with the clock or in steps of a day, and an app that is suspended', () => {
   describe.each([
@@ -45,74 +77,73 @@ describe('readSeriesSpan, against a depth that moves with the clock or in steps 
       ['10 hours, inside one step', 10 * HOUR_MS],
       ['20 hours, across a step', 20 * HOUR_MS],
     ])(
-      'reads all 20 series of a span, and skips only the ground within the resolution and the margin, when the app is suspended for %s in the middle of the read',
+      'reads each series again after %s, owing the ground it read above and skipping nothing beyond the resolution',
       async (_label, suspendedMs) => {
-        const world = depthWorldOf({
-          latencyMs: () => REQUEST_LATENCY_MS,
+        const { world, first, second, firstCalls } = await readAcrossSuspension({
+          count: 3,
           stepMs,
-          suspensions: [{ atWait: 31, ms: suspendedMs }],
+          suspendedMs,
         });
 
-        const result = await readDepthWorld(world, { count: 20 });
-
-        expect(result).toMatchObject({ kind: 'page', page: { drifted: [] } });
-        expect(result?.kind === 'page' ? result.page.read : []).toHaveLength(20);
-        expect(maxOf(skippedMsOf(world.calls))).toBeLessThanOrEqual(SKIPPED_BOUND_MS);
-        expect(skippedMsOf(world.calls.slice(30))[0]).toBeLessThanOrEqual(SKIPPED_AFTER_SEARCH_MS);
-        expect(refusedReadsOf(world.calls)).toHaveLength(1);
-        expect(probesOf(world.calls.slice(30)).length).toBeLessThanOrEqual(24);
-        expect(probesOf(world.calls.slice(30)).length).toBeGreaterThan(0);
+        expect(readSeriesOf(second)).toEqual(['T0', 'T1', 'T2']);
+        expect(refusedReadsOf(world.calls)).toHaveLength(3);
+        expect(
+          maxOf(unowedSkippedMsOf(world.calls.slice(0, firstCalls), owedOf(first))),
+        ).toBeLessThanOrEqual(DEPTH_RESOLUTION_MS);
+        // The search after the suspension starts from the start the first one found, which it
+        // takes for refused: the resolution of the first and of the second are both left.
+        expect(
+          maxOf(unowedSkippedMsOf(world.calls.slice(firstCalls), owedOf(second))),
+        ).toBeLessThanOrEqual(2 * DEPTH_RESOLUTION_MS);
+        expect(maxOf(widthsOf(owedOf(second)))).toBeLessThanOrEqual(OWED_BOUND_MS);
+        expect(probesOf(world.calls.slice(firstCalls)).length).toBeLessThanOrEqual(3 * 24);
+        expect(probesOf(world.calls.slice(firstCalls)).length).toBeGreaterThan(0);
       },
     );
   });
 
-  it('finds the depth again in at most 1 + ceil(log2(elapsed / resolution)) requests, 17 for 10 hours, when it stood still', async () => {
-    const world = depthWorldOf({
-      latencyMs: () => 0,
+  it('finds the depth of each series again in at most 1 + ceil(log2(elapsed / resolution)) requests, 17 for 10 hours, when it stood still', async () => {
+    const { world, firstCalls } = await readAcrossSuspension({
+      count: 2,
       stepMs: DAY_MS,
-      suspensions: [{ atWait: 31, ms: 10 * HOUR_MS }],
+      suspendedMs: 10 * HOUR_MS,
     });
 
-    await readDepthWorld(world, { count: 20 });
-
-    expect(probesOf(world.calls.slice(30))).toHaveLength(17);
+    expect(probesOf(world.calls.slice(firstCalls))).toHaveLength(2 * 17);
   });
 
-  it('asks again toward the end of the span, 24 requests at most, when the depth stepped past the start it would have moved on to', async () => {
-    const world = depthWorldOf({
-      latencyMs: () => 0,
+  it('asks again toward the end of the span, 24 requests at most for each series, when the depth stepped past the start it would have moved on to', async () => {
+    const { world, firstCalls } = await readAcrossSuspension({
+      count: 2,
       stepMs: DAY_MS,
-      suspensions: [{ atWait: 31, ms: 20 * HOUR_MS }],
+      suspendedMs: 20 * HOUR_MS,
     });
 
-    await readDepthWorld(world, { count: 20 });
-
-    const probes = probesOf(world.calls.slice(30));
+    const probes = probesOf(world.calls.slice(firstCalls));
     expect(probes[0]?.refused).toBe(true);
-    expect(probes.length).toBeLessThanOrEqual(24);
-    expect(probes.length).toBeGreaterThan(17);
+    expect(probes.length).toBeLessThanOrEqual(2 * 24);
+    expect(probes.length).toBeGreaterThan(2 * 17);
   });
 
-  it('is a clean stop, the span unread, at the second suspension of one span read', async () => {
-    const world = depthWorldOf({
-      latencyMs: () => 0,
-      suspensions: [
-        { atWait: 31, ms: 10 * HOUR_MS },
-        { atWait: 52, ms: 10 * HOUR_MS },
-      ],
+  it('owes the span in a series that lapses twice in one span read, and reads the others', async () => {
+    // The second suspension comes in the wait of the read that follows the 17 probes of the first
+    // series.
+    const { world, span, second, firstCalls } = await readAcrossSuspension({
+      count: 2,
+      suspendedMs: 10 * HOUR_MS,
+      later: { afterWaits: 18, ms: 10 * HOUR_MS },
     });
 
-    const result = await readDepthWorld(world, { count: 20 });
-
-    expect(result).toBeUndefined();
-    expect(world.calls).toHaveLength(50);
+    expect(readSeriesOf(second)).toEqual(['T1']);
+    expect(owedOf(second)).toContainEqual({ series: 'T0', window: span });
+    expect(probesOf(world.calls.slice(firstCalls)).length).toBeLessThan(2 * 24);
   });
 
   // The memory holds the depth as it was `servedAgoMs` ago, served at that time.
   const worldServedAgo = (servedAgoMs: number, stepMs?: number) => {
     const world = depthWorldOf({ latencyMs: () => 0, stepMs });
     const servedAtMs = world.clock.now - servedAgoMs;
-    rememberServedStart(world.depth.memory, {
+    rememberServedStart(world.depth.memoryOf('T0'), {
       startMs: world.edgeOf('T0', servedAtMs),
       servedAtMs,
     });
@@ -143,12 +174,13 @@ describe('readSeriesSpan, against a depth that moves with the clock or in steps 
 
     const result = await readDepthWorld(world, { span, count: 2 });
 
-    expect(result).toEqual({ kind: 'page', page: { read: [], drifted: [] } });
-    expect(world.calls).toHaveLength(1);
+    expect(result).toEqual({ kind: 'page', page: { read: [], drifted: [], owed: [] } });
     expect(world.calls[0]).toMatchObject({
+      series: 'T0',
       read: { start: span.end, end: span.end + 1 },
       refused: true,
     });
+    expect(world.calls.filter(({ series }) => series === 'T0')).toHaveLength(1);
   });
 
   it('reads a span above the depth from its own start, though the start would have moved on past its end', async () => {
@@ -158,7 +190,7 @@ describe('readSeriesSpan, against a depth that moves with the clock or in steps 
     const result = await readDepthWorld(world, { span, count: 2 });
 
     expect(result).toMatchObject({ kind: 'page', page: { drifted: [] } });
-    expect(result?.kind === 'page' ? result.page.read : []).toHaveLength(2);
+    expect(readSeriesOf(result)).toEqual(['T0', 'T1']);
     expect(world.calls[0]).toMatchObject({
       read: { start: span.end, end: span.end + 1 },
       refused: false,
@@ -167,13 +199,28 @@ describe('readSeriesSpan, against a depth that moves with the clock or in steps 
       world.calls.filter(({ read }) => !isProbeRead(read)).map(({ read }) => read.start),
     ).toEqual([span.start, span.start]);
   });
+
+  it('never asks a read for a start at or past the end of the span, when a gate wait carries the clock past it without a lapse', async () => {
+    const world = depthWorldOf({ latencyMs: () => 0, suspensions: [{ atWait: 1, ms: 60_000 }] });
+    const span = crossingOf(world.edgeOf('T0', world.clock.now));
+    rememberServedStart(world.depth.memoryOf('T0'), {
+      startMs: span.end - 50_000,
+      servedAtMs: world.clock.now,
+    });
+
+    const result = await readDepthWorld(world, { span });
+
+    expect(readSeriesOf(result)).toEqual(['T0']);
+    expect(world.calls).toHaveLength(1);
+    expect(world.calls[0]?.read).toEqual({ start: span.end - 1, end: span.end });
+  });
 });
 
 describe('readSeriesSpan, against a refusal of a start whose margin is at the cap', () => {
   it('narrows from the refused start toward the end of the span, and starts the margin over with the start it finds', async () => {
     const world = depthWorldOf({ latencyMs: () => 0 });
     const edgeMs = world.edgeOf('T0', world.clock.now);
-    const { memory } = world.depth;
+    const memory = world.depth.memoryOf('T0');
     rememberServedStart(memory, { startMs: edgeMs - 5 * DAY_MS, servedAtMs: world.clock.now });
     widenDepthMargin(memory);
     widenDepthMargin(memory);
@@ -183,9 +230,9 @@ describe('readSeriesSpan, against a refusal of a start whose margin is at the ca
     const result = await readDepthWorld(world, { count: 3 });
 
     expect(result).toMatchObject({ kind: 'page', page: { drifted: [] } });
-    expect(result?.kind === 'page' ? result.page.read : []).toHaveLength(3);
-    expect(refusedReadsOf(world.calls)).toHaveLength(1);
-    expect(probesOf(world.calls).length).toBeGreaterThan(0);
+    expect(readSeriesOf(result)).toEqual(['T0', 'T1', 'T2']);
+    expect(refusedReadsOf(world.calls).filter(({ series }) => series === 'T0')).toHaveLength(1);
+    expect(probesOf(world.calls.filter(({ series }) => series === 'T0')).length).toBeGreaterThan(0);
     expect(memory.marginMs).toBe(DEPTH_MARGIN_MS);
     expect(memory.startMs ?? 0).toBeGreaterThanOrEqual(edgeMs);
   });
@@ -193,9 +240,11 @@ describe('readSeriesSpan, against a refusal of a start whose margin is at the ca
   it('widens the margin of a refusal that is not at the cap, with no request beyond the read', async () => {
     const world = depthWorldOf({ latencyMs: () => 0 });
     const edgeMs = world.edgeOf('T0', world.clock.now);
-    const { memory } = world.depth;
     // The start is 5 seconds below the depth: margins of 1, 2 and 4 seconds miss it, 8 reach it.
-    rememberServedStart(memory, { startMs: edgeMs - 5_000, servedAtMs: world.clock.now });
+    rememberServedStart(world.depth.memoryOf('T0'), {
+      startMs: edgeMs - 5_000,
+      servedAtMs: world.clock.now,
+    });
 
     await readDepthWorld(world, { count: 1 });
 
@@ -204,57 +253,112 @@ describe('readSeriesSpan, against a refusal of a start whose margin is at the ca
   });
 });
 
-describe('readSeriesSpan, against a type whose depth lies above the depth of the others', () => {
-  const KEPT_SHORT_MS = 90 * DAY_MS;
-  const keptMsOf = (series: string): number => (series === 'T19' ? KEPT_SHORT_MS : 100 * DAY_MS);
+describe('readSeriesSpan, against types that keep a different part of the history', () => {
+  const KEPT_MS = 100 * DAY_MS;
 
-  it('reads all 20 series: the type narrows from the start the others share, in the refusals it has left', async () => {
-    const world = depthWorldOf({ latencyMs: () => 150, keptMsOf });
+  const readKeeping = async (keptMsOf: (series: string) => number) => {
+    const world = depthWorldOf({
+      latencyMs: () => REQUEST_LATENCY_MS,
+      keptMsOf,
+      uncapped: true,
+    });
+    const span = crossingOf(world.edgeOf('T0', world.clock.now));
+    const result = await readDepthWorld(world, { count: 20, span });
 
-    const result = await readDepthWorld(world, { count: 20 });
+    return { world, span, result };
+  };
 
-    expect(result).toMatchObject({ kind: 'page', page: { drifted: [] } });
-    expect(result?.kind === 'page' ? result.page.read : []).toHaveLength(20);
-    const refusedByLast = refusedReadsOf(world.calls).filter(({ series }) => series === 'T19');
-    expect(refusedByLast).toHaveLength(4);
-    expect(refusedReadsOf(world.calls)).toHaveLength(5);
-    expect(world.depth.memory.marginMs).toBe(DEPTH_MARGIN_MS);
+  const lastReadOf = (calls: DepthCall[], series: string): DepthCall | undefined =>
+    calls.filter((call) => call.series === series && !isProbeRead(call.read)).at(-1);
+
+  it.each([
+    [
+      'a middle type that keeps 90 days',
+      (series: string) => (series === 'T10' ? 90 * DAY_MS : KEPT_MS),
+    ],
+    [
+      'the first type, that keeps 90 days',
+      (series: string) => (series === 'T0' ? 90 * DAY_MS : KEPT_MS),
+    ],
+    [
+      'the first type, that keeps 110 days',
+      (series: string) => (series === 'T0' ? 110 * DAY_MS : KEPT_MS),
+    ],
+  ])(
+    'reads every type from the start it is served from by itself, narrowing alone, when %s',
+    async (_label, keptMsOf) => {
+      const { world, result } = await readKeeping(keptMsOf);
+
+      expect(readSeriesOf(result)).toHaveLength(20);
+      expect(refusedReadsOf(world.calls).length).toBeGreaterThanOrEqual(19);
+      expect(maxOf(unowedSkippedMsOf(world.calls, owedOf(result)))).toBeLessThanOrEqual(
+        DEPTH_RESOLUTION_MS,
+      );
+      expect(
+        readSeriesOf(result).every((series) => {
+          const lastRead = lastReadOf(world.calls, series);
+
+          return lastRead?.refused === false && lastRead.read.start >= lastRead.edgeMs;
+        }),
+      ).toBe(true);
+    },
+  );
+
+  it('does not move the start of a type that keeps more up to the start of one that keeps less', async () => {
+    const { world } = await readKeeping((series) => (series === 'T10' ? 90 * DAY_MS : KEPT_MS));
+
+    const startOf = (series: string): number =>
+      lastReadOf(world.calls, series)?.read.start ?? Number.NaN;
+    expect(startOf('T10') - startOf('T9')).toBeGreaterThan(9 * DAY_MS);
+    expect(Math.abs(startOf('T11') - startOf('T9'))).toBeLessThan(DAY_MS);
   });
 
-  it('skips only the ground within the resolution and the margin of each type, the short one too', async () => {
-    const world = depthWorldOf({ latencyMs: () => 150, keptMsOf });
+  it('reads as empty the span of the one type whose depth lies above its end, and reads the others', async () => {
+    const { world, result } = await readKeeping((series) =>
+      series === 'T10' ? 75 * DAY_MS : KEPT_MS,
+    );
 
-    await readDepthWorld(world, { count: 20 });
-
-    const served = world.calls.filter(({ read, refused }) => !refused && !isProbeRead(read));
-    expect(served).toHaveLength(20);
-    expect(maxOf(skippedMsOf(world.calls))).toBeLessThanOrEqual(SKIPPED_AFTER_SEARCH_MS);
-    expect(served[19]?.series).toBe('T19');
-    expect(served[19]?.read.start).toBeGreaterThanOrEqual(served[19]?.edgeMs ?? 0);
+    expect(readSeriesOf(result)).not.toContain('T10');
+    expect(readSeriesOf(result)).toHaveLength(19);
+    expect(owedOf(result).map(({ series }) => series)).not.toContain('T10');
+    // The refused read, the start the types before it are served from, and the end of the span.
+    expect(world.calls.filter(({ series }) => series === 'T10')).toHaveLength(3);
+    expect(maxOf(unowedSkippedMsOf(world.calls, owedOf(result)))).toBeLessThanOrEqual(
+      DEPTH_RESOLUTION_MS,
+    );
   });
 });
 
 describe('readSeriesSpan, against reads that reach Binance later than the probe that found the start', () => {
   const lagOf = (readMs: number) => (read: DepthRead) => (isProbeRead(read) ? 50 : readMs);
 
-  it('reaches a page with a lag of 5 seconds: the margin grows to cover it', async () => {
-    const world = depthWorldOf({ latencyMs: lagOf(5_000) });
+  it('reaches a page with a lag of 5 seconds: the margin of each series grows to cover it', async () => {
+    const world = depthWorldOf({ latencyMs: lagOf(5_000), uncapped: true });
 
     const result = await readDepthWorld(world, { count: 20 });
 
     expect(result).toMatchObject({ kind: 'page', page: { drifted: [] } });
-    expect(refusedReadsOf(world.calls).length).toBeLessThan(MAX_DEPTH_REFUSALS);
-    expect(maxOf(skippedMsOf(world.calls))).toBeLessThanOrEqual(DEPTH_MARGIN_CAP_MS + 5_000);
+    expect(readSeriesOf(result)).toHaveLength(20);
+    expect(refusedReadsOf(world.calls).length).toBeLessThan(20 * MAX_DEPTH_REFUSALS);
+    expect(maxOf(unowedSkippedMsOf(world.calls, owedOf(result)))).toBeLessThanOrEqual(
+      DEPTH_RESOLUTION_MS,
+    );
+    expect(maxOf(widthsOf(owedOf(result)))).toBeLessThanOrEqual(OWED_BOUND_MS);
   });
 
-  it('is a clean stop, the span unread, with a lag of 10 seconds: the margin is capped at 8 seconds, and a clean stop spends 52 requests at most', async () => {
-    const world = depthWorldOf({ latencyMs: lagOf(10_000) });
+  it('owes the span in each series, with a lag of 10 seconds: the margin is capped at 8 seconds, and a series spends 52 requests at most', async () => {
+    const world = depthWorldOf({ latencyMs: lagOf(10_000), uncapped: true });
+    const span = crossingOf(world.edgeOf('T0', world.clock.now));
 
-    const result = await readDepthWorld(world, { count: 20 });
+    const result = await readDepthWorld(world, { count: 2, span });
 
-    expect(result).toBeUndefined();
-    expect(refusedReadsOf(world.calls)).toHaveLength(MAX_DEPTH_REFUSALS);
-    expect(world.calls.length).toBeLessThanOrEqual(MAX_DEPTH_REFUSALS + 2 * 23);
+    expect(readSeriesOf(result)).toEqual([]);
+    expect(owedOf(result)).toEqual([
+      { series: 'T0', window: span },
+      { series: 'T1', window: span },
+    ]);
+    expect(refusedReadsOf(world.calls)).toHaveLength(2 * MAX_DEPTH_REFUSALS);
+    expect(world.calls.length).toBeLessThanOrEqual(2 * (MAX_DEPTH_REFUSALS + 2 * 23));
   });
 });
 
@@ -278,32 +382,36 @@ describe('readSeriesSpan, against the latencies of a run', () => {
     ['150 ms of latency, in steps of a day', () => () => 150, DAY_MS],
     ['a spike of 9 seconds on every seventh request, in steps of a day', spikeEverySeventh, DAY_MS],
   ])(
-    'reaches a page of all 20 series with %s, skipping within the bound',
+    'reaches a page of all 20 series with %s, owing the ground each read began above',
     async (_name, latencyOf, stepMs) => {
       const latencyMs = latencyOf();
-      const world = depthWorldOf({ latencyMs: () => latencyMs(), stepMs });
+      const world = depthWorldOf({ latencyMs: () => latencyMs(), stepMs, uncapped: true });
 
       const result = await readDepthWorld(world, { count: 20 });
 
       expect(result).toMatchObject({ kind: 'page', page: { drifted: [] } });
-      expect(result?.kind === 'page' ? result.page.read : []).toHaveLength(20);
-      expect(maxOf(skippedMsOf(world.calls))).toBeLessThanOrEqual(SKIPPED_BOUND_MS);
+      expect(readSeriesOf(result)).toHaveLength(20);
+      expect(maxOf(unowedSkippedMsOf(world.calls, owedOf(result)))).toBeLessThanOrEqual(
+        DEPTH_RESOLUTION_MS,
+      );
+      expect(maxOf(widthsOf(owedOf(result)))).toBeLessThanOrEqual(OWED_BOUND_MS);
     },
   );
 });
 
 describe('readSeriesSpan, against the worst case of a span of 30 days', () => {
-  it('spends 6 refused reads, 2 narrowings of 23 requests after a refusal and 1 of 24 after a suspension: 76 requests', async () => {
+  it('spends 6 refused reads, 2 narrowings of 23 requests after a refusal and 1 of 24 after a suspension: 76 requests, and owes the span', async () => {
     // Every read is refused and every probe is served, but the first one after the suspension.
     const world = depthWorldOf({
       latencyMs: () => 0,
       suspensions: [{ atWait: 25, ms: 10 * HOUR_MS }],
       refuseWhen: (read, callNumber) => !isProbeRead(read) || callNumber === 25,
     });
+    const span = crossingOf(world.clock.now);
 
-    const result = await readDepthWorld(world, { span: crossingOf(world.clock.now) });
+    const result = await readDepthWorld(world, { span });
 
-    expect(result).toBeUndefined();
+    expect(owedOf(result)).toEqual([{ series: 'T0', window: span }]);
     expect(refusedReadsOf(world.calls)).toHaveLength(MAX_DEPTH_REFUSALS);
     expect(world.calls).toHaveLength(MAX_DEPTH_REFUSALS + 2 * 23 + 24);
     expect(world.calls).toHaveLength(76);
@@ -311,10 +419,11 @@ describe('readSeriesSpan, against the worst case of a span of 30 days', () => {
 
   it('spends 6 refused reads and 2 narrowings of 23 requests when no suspension comes: 52 requests', async () => {
     const world = depthWorldOf({ latencyMs: () => 0, refuseWhen: (read) => !isProbeRead(read) });
+    const span = crossingOf(world.clock.now);
 
-    const result = await readDepthWorld(world, { span: crossingOf(world.clock.now) });
+    const result = await readDepthWorld(world, { span });
 
-    expect(result).toBeUndefined();
+    expect(owedOf(result)).toEqual([{ series: 'T0', window: span }]);
     expect(world.calls).toHaveLength(MAX_DEPTH_REFUSALS + 2 * 23);
   });
 });

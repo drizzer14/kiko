@@ -1,6 +1,7 @@
 import { DAY_MS } from '@kiko/dates';
 
 import {
+  createDepthMemories,
   createDepthMemory,
   DEPTH_EXTRAPOLATION_MAX_MS,
   DEPTH_MARGIN_CAP_MS,
@@ -35,6 +36,7 @@ const binanceServing = (servedFrom: number) => {
 
 const narrow = (input: {
   probe: (startMs: number) => Promise<boolean | undefined>;
+  hintMs?: number;
   refusedMs?: number;
   endMs?: number;
   floorMs?: number;
@@ -149,6 +151,133 @@ describe('narrowRefusedStart', () => {
 
     expect(await narrow({ probe: stopAt(0) })).toBeUndefined();
     expect(await narrow({ probe: stopAt(3) })).toBeUndefined();
+  });
+});
+
+describe('narrowRefusedStart, with the start another series is served from as a hint', () => {
+  const SECOND_MS = DEPTH_RESOLUTION_MS;
+  const HINT = START + 10 * DAY_MS;
+
+  const narrowHinted = (input: {
+    probe: (startMs: number) => Promise<boolean | undefined>;
+    hintMs?: number;
+    refusedMs?: number;
+    endMs?: number;
+  }) => narrow({ hintMs: HINT, ...input });
+
+  it('asks the hint and the start a second below it, and is done after those two when Binance serves from within a second below the hint', async () => {
+    const { probe, asked } = binanceServing(HINT - 300);
+
+    const narrowed = await narrowHinted({ probe });
+
+    expect(asked).toEqual([HINT, HINT - SECOND_MS]);
+    expect(narrowed).toEqual({ kind: 'start', startMs: HINT });
+  });
+
+  it('goes down by doubling steps from the hint while the starts are served, then halves what is left', async () => {
+    const { probe, asked } = binanceServing(HINT - 5 * SECOND_MS);
+
+    const narrowed = await narrowHinted({ probe });
+
+    expect(asked).toEqual([
+      HINT,
+      HINT - SECOND_MS,
+      HINT - 3 * SECOND_MS,
+      HINT - 7 * SECOND_MS,
+      HINT - 5 * SECOND_MS,
+      HINT - 6 * SECOND_MS,
+    ]);
+    expect(narrowed).toEqual({ kind: 'start', startMs: HINT - 5 * SECOND_MS });
+  });
+
+  it('halves from the refused start once the steps down are all served: the hint was far above the start', async () => {
+    const { probe, asked } = binanceServing(START + 1);
+
+    const narrowed = await narrowHinted({ probe });
+
+    expect(narrowed).toMatchObject({ kind: 'start' });
+    const found = (narrowed as { startMs: number }).startMs;
+    expect(found - (START + 1)).toBeLessThan(DEPTH_RESOLUTION_MS);
+    expect(asked.slice(0, 6)).toEqual([
+      HINT,
+      HINT - SECOND_MS,
+      HINT - 3 * SECOND_MS,
+      HINT - 7 * SECOND_MS,
+      HINT - 15 * SECOND_MS,
+      HINT - 31 * SECOND_MS,
+    ]);
+    expect(asked.length).toBeLessThanOrEqual(
+      1 + 5 + Math.ceil(Math.log2((10 * DAY_MS) / SECOND_MS)),
+    );
+  });
+
+  it('narrows from the hint toward the end when Binance refuses the hint: the series keeps less than the one it came from', async () => {
+    const { probe, asked } = binanceServing(HINT + 3 * DAY_MS);
+
+    const narrowed = await narrowHinted({ probe });
+
+    expect(asked.slice(0, 2)).toEqual([HINT, START + WIDTH]);
+    expect(narrowed).toMatchObject({ kind: 'start' });
+    const found = (narrowed as { startMs: number }).startMs;
+    expect(found - (HINT + 3 * DAY_MS)).toBeGreaterThanOrEqual(0);
+    expect(found - (HINT + 3 * DAY_MS)).toBeLessThan(DEPTH_RESOLUTION_MS);
+  });
+
+  it('reads a span whose end Binance refuses as below it, after the hint and the end', async () => {
+    const { probe, asked } = binanceServing(START + WIDTH + 1);
+
+    expect(await narrowHinted({ probe })).toEqual({ kind: 'start', startMs: START + WIDTH });
+    expect(asked).toEqual([HINT, START + WIDTH]);
+  });
+
+  it.each([
+    ['at the refused start', START],
+    ['below the refused start', START - DAY_MS],
+    ['at the end of the span', START + WIDTH],
+    ['past the end of the span', START + WIDTH + DAY_MS],
+  ])('asks the end first, with no hint, for a hint %s', async (_label, hintMs) => {
+    const { probe, asked } = binanceServing(START + DAY_MS);
+
+    await narrowHinted({ probe, hintMs });
+
+    expect(asked[0]).toBe(START + WIDTH);
+  });
+
+  it('never asks the hint of a span that ends at or before the floor', async () => {
+    const { probe, asked } = binanceServing(0);
+
+    expect(await narrowHinted({ probe, endMs: FLOOR })).toEqual({ kind: 'floor' });
+    expect(asked).toEqual([]);
+  });
+
+  it('finds the start within the resolution above the oldest one served, whatever the hint', async () => {
+    for (const hintMs of [START + 1, START + DAY_MS, HINT, START + WIDTH - 1]) {
+      for (const offset of [1, 700, 12 * SECOND_MS, 7 * DAY_MS + 345, WIDTH - 1]) {
+        const { probe } = binanceServing(START + offset);
+
+        const narrowed = await narrowHinted({ probe, hintMs });
+
+        const found = (narrowed as { startMs: number }).startMs;
+        expect(found).toBeGreaterThanOrEqual(START + offset);
+        expect(found - (START + offset)).toBeLessThan(DEPTH_RESOLUTION_MS);
+      }
+    }
+  });
+
+  it('is a clean stop when the budget runs out at the hint, in the steps down, and in the halving', async () => {
+    const stopAt = (count: number) => {
+      let asked = 0;
+
+      return async (startMs: number) => {
+        asked += 1;
+
+        return asked > count ? undefined : startMs >= START + 1;
+      };
+    };
+
+    for (const count of [0, 2, 8]) {
+      expect(await narrowHinted({ probe: stopAt(count) })).toBeUndefined();
+    }
   });
 });
 
@@ -368,5 +497,51 @@ describe('the depth memory', () => {
 
       expect(hasDepthLapsed(memory, SERVED_AT - DAY_MS)).toBe(false);
     });
+  });
+});
+
+describe('the depth memories of the series of a run', () => {
+  const NOW_MS = START + 5_000;
+  const memoriesAt = (nowMs: () => number = () => NOW_MS) => createDepthMemories(nowMs);
+
+  it('gives each series a memory of its own, the same one every time', () => {
+    const { memoryOf } = memoriesAt();
+
+    expect(memoryOf('MAIN_FUNDING')).toBe(memoryOf('MAIN_FUNDING'));
+    expect(memoryOf('MAIN_FUNDING')).not.toBe(memoryOf('FUNDING_MAIN'));
+  });
+
+  it('writes the start one series is served from into its memory alone', () => {
+    const { memoryOf } = memoriesAt();
+
+    rememberServedStart(memoryOf('MAIN_FUNDING'), { startMs: START, servedAtMs: NOW_MS });
+
+    expect(memoryOf('FUNDING_MAIN').startMs).toBeUndefined();
+  });
+
+  it('hints nothing while no series is known to be served from a start', () => {
+    const { memoryOf, hintMs } = memoriesAt();
+    rememberServedStart(memoryOf('MAIN_FUNDING'), { startMs: START, servedAtMs: undefined });
+
+    expect(hintMs()).toBeUndefined();
+  });
+
+  it('hints the start the series served most recently is served from, moved on to now', () => {
+    const clock = { now: NOW_MS };
+    const { memoryOf, hintMs } = memoriesAt(() => clock.now);
+    rememberServedStart(memoryOf('MAIN_FUNDING'), { startMs: START, servedAtMs: NOW_MS - 2_000 });
+    rememberServedStart(memoryOf('FUNDING_MAIN'), { startMs: START + 700, servedAtMs: NOW_MS });
+    clock.now = NOW_MS + 3_000;
+
+    expect(hintMs()).toBe(START + 700 + 3_000 + DEPTH_MARGIN_MS);
+  });
+
+  it('hints nothing from a start that was served longer ago than it is moved on for', () => {
+    const clock = { now: NOW_MS };
+    const { memoryOf, hintMs } = memoriesAt(() => clock.now);
+    rememberServedStart(memoryOf('MAIN_FUNDING'), { startMs: START, servedAtMs: NOW_MS });
+    clock.now = NOW_MS + DEPTH_EXTRAPOLATION_MAX_MS + 1;
+
+    expect(hintMs()).toBeUndefined();
   });
 });

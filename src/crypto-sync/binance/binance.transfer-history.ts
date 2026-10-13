@@ -68,7 +68,7 @@ import {
 } from './binance.history-records';
 import { type BinanceHistoryRun, COSTS } from './binance.history-budget';
 import { readSeriesSpan, type SeriesSpan } from './binance.history-paging';
-import { createDepthMemory, type DepthMemory } from './binance.history-depth';
+import { createDepthMemories, type DepthGuard } from './binance.history-depth';
 import { type BinanceCredentials, readCredentials } from './binance.credentials';
 import { isBinanceCoolingDown, setBinanceCooldownUntil } from './binance.cooldown';
 import { type BinanceWalkWriteDeps, defaultWalkWriteDeps } from './binance.walk-write-deps';
@@ -338,7 +338,7 @@ type TransferContext = {
   options: FetchAccountOptions;
   marks: WalkMarks;
   plan: WalkPlan;
-  depth: DepthMemory;
+  depthMemories: Pick<DepthGuard, 'memoryOf' | 'hintMs'>;
 };
 
 /** The types a window is read in: every one, or the ones its owed points name. */
@@ -358,8 +358,9 @@ const callsOf = (window: OwedWindow): number => typesOf(window).length;
  *
  * A start Binance refuses as older than it keeps (-5026) is not read as empty: the clock moves on
  * after a run is planned, so the span may still hold ground Binance keeps. The floor of now says
- * whether the span lies below it (nothing to ask); otherwise the span is read from the oldest
- * start Binance serves (see `readSeriesSpan`), and only the ground it refuses is read as empty.
+ * whether the span lies below it (nothing to ask); otherwise each type is read from the oldest
+ * start Binance serves it (see `readSeriesSpan`; the types keep a depth of their own), and only
+ * the ground it refuses is read as empty.
  */
 const readSpan = async (
   context: TransferContext,
@@ -389,7 +390,7 @@ const readSpan = async (
       isRefusal: (error) => error instanceof BinanceHistoryTooOldError,
       nowMs: deps.now,
       floorMs: () => transferFloorMs(deps.now()),
-      memory: context.depth,
+      ...context.depthMemories,
     },
   });
 };
@@ -398,7 +399,9 @@ const readSpan = async (
  * The records of one span, each on its own (see `settleRecords`): a transfer the walk cannot
  * trust, or a row the client could not read, owes its own point in the type it was read under
  * and the others still import. A type whose pages drifted is no one record's stop: the span is
- * owed, as a range, in every type, and the types that did not drift still commit.
+ * owed, as a range, in every type, and the types that did not drift still commit. The ground a
+ * type left owed in itself (the edge band its read began above, or the whole span for a type
+ * whose read stopped) is owed as a range in that type alone, and holds nothing back.
  */
 export const settledTransfersOf = (input: {
   accountId: string;
@@ -413,7 +416,15 @@ export const settledTransfersOf = (input: {
     returned: [],
   };
 
+  const unread: SettledSpan<PlannedTransferRow> = {
+    rows: [],
+    codes: [],
+    owed: (read.owed ?? []).map(({ series, window }) => ({ ...window, series })),
+    returned: [],
+  };
+
   return joinSettled<PlannedTransferRow>([
+    unread,
     ...(read.drifted.length > 0 ? [drift] : []),
     settleRecords({
       span,
@@ -443,6 +454,7 @@ export const settledTransfersOf = (input: {
  */
 const commitSpan = (
   context: TransferContext,
+  window: OwedWindow,
   span: WalkWindow,
   read: SeriesSpan<UniversalTransferType, BinanceUniversalTransfer>,
   pass: WalkPass,
@@ -467,6 +479,7 @@ const commitSpan = (
       advanceWalkMarks({
         pass,
         span,
+        series: window.series,
         owed,
         plan,
         marks,
@@ -540,7 +553,7 @@ const runSync = async (
     options: { fetchImpl: deps.fetchImpl, now: deps.now },
     marks: { cursor, rescanCursor, ...roundRobins, pending },
     plan,
-    depth: createDepthMemory(),
+    depthMemories: createDepthMemories(deps.now),
   };
 
   return runWalkPlan({
@@ -553,7 +566,7 @@ const runSync = async (
       walkSpans({
         window,
         read: (span, keepCalls) => readSpan(context, window, span, keepCalls),
-        commit: (span, read) => commitSpan(context, span, read, pass),
+        commit: (span, read) => commitSpan(context, window, span, read, pass),
         keep,
         hint,
         onComplete: (read) =>

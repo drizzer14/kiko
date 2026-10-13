@@ -2,7 +2,7 @@ import { DAY_MS } from '@kiko/dates';
 
 import { readSeriesSpan } from './binance.history-paging';
 import { BinanceHistoryTooOldError } from './binance.client';
-import { createDepthMemory, type DepthGuard, type DepthMemory } from './binance.history-depth';
+import { createDepthMemories, type DepthGuard } from './binance.history-depth';
 import { type BinanceHistoryRun, COSTS, createBinanceHistoryRun } from './binance.history-budget';
 
 /**
@@ -93,6 +93,7 @@ export const suspendableRun = (input: {
  * and every wait of the run gate by its sleep. Its depth moves in steps of `stepMs` (1: with the
  * clock). The app is suspended for `ms` inside the wait number `atWait` of the run gate (each
  * request is preceded by one wait). `refuseWhen` replaces the depth as the judge of a request.
+ * A run without a call cap (`uncapped`) lets every series narrow in full.
  */
 export const depthWorldOf = (input: {
   latencyMs: (read: DepthRead) => number;
@@ -100,16 +101,23 @@ export const depthWorldOf = (input: {
   keptMsOf?: (series: string) => number;
   suspensions?: { atWait: number; ms: number }[];
   refuseWhen?: (read: DepthRead, callNumber: number) => boolean;
+  uncapped?: boolean;
 }) => {
   const { latencyMs, stepMs = 1, keptMsOf = () => DEPTH_KEPT_MS, suspensions = [] } = input;
   const { clock, newRun } = movingClockOf(DEPTH_CLOCK_START);
-  const run = suspendableRun({ run: newRun(), clock, suspensions });
-  const memory: DepthMemory = createDepthMemory();
+  const capped = newRun();
+  const run = suspendableRun({
+    run: input.uncapped
+      ? { gate: capped.gate, budget: { canAfford: () => true, record: () => undefined } }
+      : capped,
+    clock,
+    suspensions,
+  });
   const depth: DepthGuard = {
     isRefusal: (error) => error instanceof BinanceHistoryTooOldError,
     nowMs: () => clock.now,
     floorMs: () => clock.now - 179 * DAY_MS,
-    memory,
+    ...createDepthMemories(() => clock.now),
   };
   const calls: DepthCall[] = [];
   const edgeOf = (series: string, atMs: number): number =>
@@ -173,3 +181,27 @@ export const skippedMsOf = (calls: DepthCall[]): number[] =>
   calls
     .filter(({ read, refused }) => !refused && !isProbeRead(read))
     .map(({ read, edgeMs }) => read.start - edgeMs);
+
+/** The ground a span read left owed, each piece in the one series that owes it. */
+export type DepthOwed = { series: string; window: DepthRead }[];
+
+/**
+ * The ground a served read skipped and did not owe: how far the start its series owes ground from
+ * (the start of the read, when it owes none) lay above the depth the read met on arrival. A
+ * narrowing leaves up to its resolution, ground that lies within it of a start Binance refused.
+ */
+export const unowedSkippedMsOf = (calls: DepthCall[], owed: DepthOwed): number[] =>
+  calls
+    .filter(({ read, refused }) => !refused && !isProbeRead(read))
+    .map(
+      ({ series, read, edgeMs }) =>
+        (owed.find((entry) => entry.series === series)?.window.start ?? read.start) - edgeMs,
+    );
+
+/** The ground of a span read that was left owed (none for a span that was not read as a page). */
+export const owedOf = (result: Awaited<ReturnType<typeof readDepthWorld>>): DepthOwed =>
+  result?.kind === 'page' ? (result.page.owed ?? []) : [];
+
+/** The series of a span read that were read whole. */
+export const readSeriesOf = (result: Awaited<ReturnType<typeof readDepthWorld>>): string[] =>
+  result?.kind === 'page' ? result.page.read.map(({ series }) => series) : [];

@@ -13,55 +13,63 @@ export const DEPTH_RESOLUTION_MS = 1_000;
  * What a read adds to the start Binance was last seen to serve, beyond the time that passed, for
  * a request that reaches Binance later than the one that found the start. Each refusal of a read
  * from such a start doubles it (see `widenDepthMargin`) up to `DEPTH_MARGIN_CAP_MS`. If the depth
- * stands still, the ground within it of the depth is skipped.
+ * stands still, the ground within it of the depth is owed, to be read later.
  */
 export const DEPTH_MARGIN_MS = 1_000;
 
 /**
  * The most the margin grows to. A refusal of a read whose margin is at it is not answered by a
  * wider margin but by a narrowing from the refused start toward the end of the span, so the
- * margin never adds more than this to the ground a read skips.
+ * margin never adds more than this to the ground a read owes.
  */
 export const DEPTH_MARGIN_CAP_MS = 8_000;
 
 /**
  * How long after it was served a start is moved forward with the clock. A read made later than
  * this (the app was suspended, the run gate waited for hours) finds its start by narrowing
- * (`narrowLapsedStart`), so the time that passed never decides how much ground a read skips.
- * It is as long as a run takes at a request time of a second and more (a lane's call cap, each
- * call paced by the gate's interval and a second to answer), so a run on a slow network does not
- * reach it and only a suspension does. If the depth stands still, a read skips at most
- * `DEPTH_RESOLUTION_MS` + this + `DEPTH_MARGIN_CAP_MS` of the ground that Binance keeps.
+ * (`narrowLapsedStart`), so the time that passed never decides how much ground a read owes.
+ * It is as long as a run takes at a request time of up to about a second (a lane's call cap,
+ * each call paced by the gate's interval and a second to answer), so a run on such a network does
+ * not reach it and only a suspension or a slower network does. If the depth stands still, a read
+ * owes at most this + `DEPTH_MARGIN_CAP_MS` of the ground that Binance keeps, and the
+ * `DEPTH_RESOLUTION_MS` of a narrowing is not owed.
  */
 export const DEPTH_EXTRAPOLATION_MAX_MS = 120_000;
 
 /**
- * The refused reads one span read tolerates: the sixth ends it as a clean stop, the span unread.
- * A refused read with no start known to be served, or whose margin is at the cap, is answered by
- * one narrowing; any other is answered by a wider margin and the read again. A narrowing starts
- * the margin over and it takes three refusals to reach the cap, so six refusals hold the first
- * narrowing (of the span's crossing of the depth), three wider margins, and a second narrowing
- * (of a type whose depth lies above the start the first found), and never a third.
+ * The refused reads one series tolerates in one span read: the sixth ends its read as a clean
+ * stop, the span owed in that series. A refused read with no start known to be served, or whose
+ * margin is at the cap, is answered by one narrowing; any other is answered by a wider margin and
+ * the read again. A narrowing starts the margin over and it takes three refusals to reach the
+ * cap, so six refusals hold the first narrowing (of the span's crossing of the depth), three
+ * wider margins, and a second narrowing (of a start that lay above the first one found because
+ * the depth moved meanwhile), and never a third.
  */
 export const MAX_DEPTH_REFUSALS = 6;
 
 /**
- * The lapses one span read tolerates (see `DEPTH_EXTRAPOLATION_MAX_MS`): a second ends it as a
- * clean stop, the span unread. A span read of 30 days therefore spends at most
- * `MAX_DEPTH_REFUSALS` refused reads, 23 requests of each narrowing after a refusal (the end of
- * the span and 22 halvings) and 24 of the one after a lapse (the start the memory moved on to,
- * the end of the span, and 22 halvings): 6 + 2 * 23 + 24 = 76 requests on the depth. A run's
- * lane budget still ends it earlier.
+ * The lapses one series tolerates in one span read (see `DEPTH_EXTRAPOLATION_MAX_MS`): a second
+ * ends its read as a clean stop, the span owed in that series. A span of 30 days therefore costs
+ * a series at most `MAX_DEPTH_REFUSALS` refused reads, 23 requests of each narrowing after a
+ * refusal (the end of the span and 22 halvings) and 24 of the one after a lapse (the start the
+ * memory moved on to, which Binance refuses, the end of the span, and 22 halvings; when Binance
+ * serves the start the memory moved on to, the halvings between it and the start the memory holds
+ * are `ceil(log2(elapsed / DEPTH_RESOLUTION_MS))`, which is 22 at most for an elapsed time up to
+ * 48 days): 6 + 2 * 23 + 24 = 76 requests on the depth. The 20 series of a span each have their
+ * own, so a span read has no bound of its own beyond the shared lane budget: every request
+ * spends it, and a series whose narrowing runs out of it is owed (see `readSeriesSpan`).
  */
 export const MAX_DEPTH_LAPSES = 1;
 
 /**
- * The start from which Binance is known to serve in this run, and when it was found. Starts below
- * `startMs` are refused. A `startMs` that was served at `servedAtMs` (the clock of the request) is
- * the oldest start Binance served at that time; the depth moves with the clock since, so a read
- * starts at `knownStartOf` rather than at `startMs`. A `startMs` with no `servedAtMs` is a start
- * Binance refused (the end of a span that holds nothing it keeps): a bound, which does not move.
- * `marginMs` is the margin added to a served start, widened by every refusal of a read from it.
+ * The start from which Binance is known to serve one series in this run, and when it was found.
+ * Starts below `startMs` are refused. A `startMs` that was served at `servedAtMs` (the clock of
+ * the request) is the oldest start Binance served at that time; the depth has moved forward or
+ * stood still since, so a read starts at `knownStartOf`, the start moved on by the time that
+ * passed, rather than at `startMs`. A `startMs` with no `servedAtMs` is a start Binance refused
+ * (the end of a span that holds nothing it keeps): a bound, which does not move. `marginMs` is the
+ * margin added to a served start, widened by every refusal of a read from it. Each series has its
+ * own (`DepthGuard.memoryOf`): a series that keeps less than the others narrows by itself.
  */
 export type DepthMemory = {
   startMs: number | undefined;
@@ -74,6 +82,34 @@ export const createDepthMemory = (): DepthMemory => ({
   servedAtMs: undefined,
   marginMs: DEPTH_MARGIN_MS,
 });
+
+/**
+ * The memory of each series of a run, made when it is first asked for, and the hint the series
+ * give each other: the start the series served most recently is served from, moved on to now
+ * (`narrowRefusedStart` asks it first). A hint is only where a search begins and never what it
+ * finds. A start that is refused (a bound) or served longer ago than it is moved on for gives none.
+ */
+export const createDepthMemories = (nowMs: () => number) => {
+  const memories = new Map<string, DepthMemory>();
+
+  return {
+    memoryOf: (series: string): DepthMemory => {
+      const memory = memories.get(series) ?? createDepthMemory();
+      memories.set(series, memory);
+
+      return memory;
+    },
+    hintMs: (): number | undefined => {
+      const now = nowMs();
+      const freshest = [...memories.values()]
+        .filter((memory) => memory.servedAtMs !== undefined && !hasDepthLapsed(memory, now))
+        .sort((left, right) => (right.servedAtMs ?? 0) - (left.servedAtMs ?? 0))
+        .at(0);
+
+      return foldMap(maybe(freshest), (memory) => knownStartOf(memory, now));
+    },
+  };
+};
 
 /**
  * The start a served start is moved to as of `nowMs`, or `undefined` while none is known: forward
@@ -135,14 +171,15 @@ export const isDepthMarginCapped = (memory: DepthMemory): boolean =>
 /**
  * What a read knows of Binance's depth: which failure is Binance refusing a start as older than it
  * keeps, the clock, the earliest start the walk asks for as of now (a refused span that ends at or
- * before it lies below the floor, and Binance is not asked again), and the start known to be
- * served.
+ * before it lies below the floor, and Binance is not asked again), for each series the start known
+ * to be served, and the start another series is served from, where a search for one begins.
  */
 export type DepthGuard = {
   isRefusal: (error: unknown) => boolean;
   nowMs: () => number;
   floorMs: () => number;
-  memory: DepthMemory;
+  memoryOf: (series: string) => DepthMemory;
+  hintMs: () => number | undefined;
 };
 
 /**
@@ -187,23 +224,36 @@ const halveToServed = async (input: {
   return servedMs;
 };
 
+/** The steps down from a hint, each twice the one before: 1, 2, 4, 8 and 16 seconds. */
+const HINT_STEPS_MS = [1, 2, 4, 8, 16].map((seconds) => seconds * DEPTH_RESOLUTION_MS);
+
+const startFound = (startMs: number | undefined): Narrowed | undefined =>
+  foldMap(maybe(startMs), (found) => ({ kind: 'start' as const, startMs: found }));
+
 /**
  * Find where a span whose start Binance refused (`refusedMs`) is served from. A start at the end
  * of the span is asked first (refused: nothing of the span is served), then the span between the
  * refused start and the end is halved until it is `DEPTH_RESOLUTION_MS` wide: one request for the
- * end and `ceil(log2(width / DEPTH_RESOLUTION_MS))` for the halvings. `probe` answers whether
- * Binance serves a start (`undefined`: the budget cannot afford the request, a clean stop).
+ * end and `ceil(log2(width / DEPTH_RESOLUTION_MS))` for the halvings. With a `hintMs` between the
+ * refused start and the end the search begins there instead (see `narrowFromHint`). `probe`
+ * answers whether Binance serves a start (`undefined`: the budget cannot afford the request, a
+ * clean stop).
  */
 export const narrowRefusedStart = async (input: {
   refusedMs: number;
   endMs: number;
   floorMs: number;
+  hintMs?: number;
   probe: DepthProbe;
 }): Promise<Narrowed | undefined> => {
-  const { endMs, floorMs, probe } = input;
+  const { refusedMs, endMs, floorMs, hintMs, probe } = input;
 
   if (endMs <= floorMs) {
     return { kind: 'floor' };
+  }
+
+  if (hintMs !== undefined && hintMs > refusedMs && hintMs < endMs) {
+    return narrowFromHint({ refusedMs, endMs, floorMs, hintMs, probe });
   }
 
   const servedAtEnd = await probe(endMs);
@@ -216,9 +266,62 @@ export const narrowRefusedStart = async (input: {
     return { kind: 'start', startMs: endMs };
   }
 
-  const servedMs = await halveToServed({ refusedMs: input.refusedMs, servedMs: endMs, probe });
+  const servedMs = await halveToServed({ refusedMs, servedMs: endMs, probe });
 
-  return foldMap(maybe(servedMs), (startMs) => ({ kind: 'start' as const, startMs }));
+  return startFound(servedMs);
+};
+
+/**
+ * Find where a span is served from, asking first the start another series is served from
+ * (`hintMs`, strictly between the refused start and the end). A series that keeps what the other
+ * does is found in a request or two more: refused at the hint, it keeps less, and the span is
+ * narrowed from the hint toward its end as a refused start is; served, the starts below the hint
+ * are asked in doubling steps (`HINT_STEPS_MS`) until one is refused, and the part between that
+ * one and the last served is halved. Past the last step the part down to the refused start is
+ * halved. The hint decides only which starts are asked first: what is found is what Binance
+ * answered for this series, and the ground below it is ground it refused, within the resolution.
+ */
+const narrowFromHint = async (input: {
+  refusedMs: number;
+  endMs: number;
+  floorMs: number;
+  hintMs: number;
+  probe: DepthProbe;
+}): Promise<Narrowed | undefined> => {
+  const { refusedMs, endMs, floorMs, hintMs, probe } = input;
+  const servedAtHint = await probe(hintMs);
+
+  if (servedAtHint === undefined) {
+    return undefined;
+  }
+
+  if (!servedAtHint) {
+    return narrowRefusedStart({ refusedMs: hintMs, endMs, floorMs, probe });
+  }
+
+  let servedMs = hintMs;
+
+  for (const stepMs of HINT_STEPS_MS) {
+    const belowMs = servedMs - stepMs;
+
+    if (belowMs <= refusedMs) {
+      break;
+    }
+
+    const served = await probe(belowMs);
+
+    if (served === undefined) {
+      return undefined;
+    }
+
+    if (!served) {
+      return startFound(await halveToServed({ refusedMs: belowMs, servedMs, probe }));
+    }
+
+    servedMs = belowMs;
+  }
+
+  return startFound(await halveToServed({ refusedMs, servedMs, probe }));
 };
 
 /**
@@ -251,9 +354,7 @@ export const narrowLapsedStart = async (input: {
   }
 
   if (servedAtHigh) {
-    const servedMs = await halveToServed({ refusedMs: lowMs, servedMs: highMs, probe });
-
-    return foldMap(maybe(servedMs), (startMs) => ({ kind: 'start' as const, startMs }));
+    return startFound(await halveToServed({ refusedMs: lowMs, servedMs: highMs, probe }));
   }
 
   if (highMs >= endMs) {
