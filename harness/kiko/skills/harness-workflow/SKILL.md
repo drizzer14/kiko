@@ -115,12 +115,11 @@ call without knowing where the plugin lives.
     `--gate deep --verdict timeout`; a gate that did not run: `--gate check --verdict skipped`
     (or the gate that was skipped);
   - a wait (battery, load, usage limit, the user): `--gate wait --verdict pass --reason <battery|load|usage-limit|user> --minutes <N>`,
-    or `--verdict timeout` when the wait ran out; log it when the wait ends, with the SAME
-    `--step` (and `--group`, if used) as the work it interrupts: a wait without them lands in
-    the `-` row and does not reduce that step's Work. A wait event needs `--step N` or `--group N`;
-    the command refuses a wait without one. Ruling I-1 (orchestrator ruling,
-    fix A): tag a wait with the step of the last event before it. N is the waited minutes (for
-    example from the last event's ts);
+    or `--verdict timeout` when the wait ran out; log it when the wait ends, with the step (or
+    group) of the work it interrupts. A wait event needs `--step N` or `--group N`; the command
+    refuses a wait without one (exit 2). Tag a wait with the step of the last event before it.
+    N is the waited minutes (for example from the last event's ts). Only the other gates
+    (human, stall, timeout) land in the `-` row when they have no step;
   - the retrospect: `--gate retro --verdict pass`.
 - **finish**: at BATCH READY (`--outcome done`), or when the track is blocked or aborted
   (`--outcome blocked` or `--outcome aborted`). `--recorded` and `--gaps` come from the
@@ -131,8 +130,8 @@ call without knowing where the plugin lives.
   bookkeeping. A `deep` event logged after `finish` is expected: `stats` shows it, but
   `summary.json` `totals` do not include it.
 - **gap**: `gap --run <id> --open <text>` records an open gap and prints `<runId>/<n>`;
-  `gap --run <id> --close <gapId> [--note <text>]` closes it. M-2: open gaps one call at a
-  time (sequential); never make parallel calls on one run. `stats --gaps --repo kiko`
+  `gap --run <id> --close <gapId> [--note <text>]` closes it. Open gaps one call at a
+  time; never make parallel calls on one run. `stats --gaps --repo kiko`
   (add `--format md`, `tsv` or `json`) lists open gaps only, read from `<root>/gaps/<repo>.jsonl`.
 - **start and finish rule**: every orchestrator starts a run before a task's first dispatch and
   finishes it at that task's BATCH READY. At a handover the run id goes into the worktree
