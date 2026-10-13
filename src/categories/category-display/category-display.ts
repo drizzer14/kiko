@@ -9,7 +9,7 @@ import { resolveDefaultCategoryTitle } from '@kiko/i18n/default-category-title';
 export const DEFAULT_CATEGORY_KEY = 'other';
 
 // A transaction stores a category as its stable `categories.key` slug (the
-// lowercase MCC category name — see `monobank/mcc-category.ts`). The categories
+// lowercase MCC category name — see `src/monobank/mcc-category/mcc-category.ts`). The categories
 // table maps that key to the user-editable title + icon + optional color, so
 // the display resolves through the table rather than any hard-coded map.
 // `color` is the category's stored `#RRGGBB` hex, or null when none is picked

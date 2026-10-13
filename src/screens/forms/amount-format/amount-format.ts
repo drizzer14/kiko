@@ -1,8 +1,8 @@
 // Formats a numeric amount string with grouped thousands AS THE USER TYPES,
 // e.g. "1000000" -> "1 000 000". A space is the grouping separator (the iOS
-// convention for UAH; see currency/format.ts), and the decimal separator the
-// decimal-pad emits (',' or '.') is preserved exactly so a half-typed decimal
-// stays editable. The inverse is `parseAmount` (currency/parse.ts), which
+// convention for UAH; see src/currency/format/format.ts), and the decimal separator
+// the decimal-pad emits (',' or '.') is preserved exactly so a half-typed decimal
+// stays editable. The inverse is `parseAmount` (src/currency/parse/parse.ts), which
 // strips the grouping spaces back out — the two round-trip.
 //
 // Robustness over partial input: a lone "0", a trailing separator ("12,"), a

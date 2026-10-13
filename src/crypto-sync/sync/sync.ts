@@ -14,7 +14,7 @@ import { type BalanceProvider, type BalanceProviderId, providerDisplayName } fro
 
 /**
  * The injectable data-access seams of a balance sync. Mirrors `SyncDeps` in
- * `monobank/sync.ts` minus everything statement-shaped: a balance sync is one
+ * `src/monobank/sync/sync.ts` minus everything statement-shaped: a balance sync is one
  * snapshot per provider, so there is no pagination, throttling or transaction
  * import here. Provider-specific seams (network, credentials) live on the
  * provider's own `Deps`, passed through untouched.
@@ -103,7 +103,7 @@ const resolveTargetAccount = async (
  * a wallet or exchange gives a live number, not a ledger.
  */
 /**
- * Per-account single-flight join, mirroring `inFlightSync` in
+ * Per-account single-flight join, mirroring `inFlightSyncs` in
  * `src/monobank/sync/sync.ts` but keyed per account. Auto-sync (`useAutoSync`, app
  * open) and pull-to-refresh (`useSyncAll`) can each fan out over the SAME
  * connected crypto account; without this lock each fires its own

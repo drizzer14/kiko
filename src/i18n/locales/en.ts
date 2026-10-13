@@ -201,7 +201,7 @@ export const en = {
     setAsDefaultLabel: 'Set {{title}} as default',
     titleFieldLabel: '{{title}} title',
     // The ultimate fallback display (src/categories/category-display/category-display.ts
-    // NEUTRAL_CATEGORY) shown only when a category cannot be resolved AND
+    // neutralCategory()) shown only when a category cannot be resolved AND
     // the default-category row itself is missing (e.g. before the seed
     // migration runs) — not the ordinary "Other" bucket above.
     uncategorized: 'Uncategorized',

@@ -62,7 +62,7 @@ export const syncStateRepo = {
    * Persist this account's Monobank ids whose statement fetch FAILED on the last
    * run — the set the next run force-fetches regardless of balance. Stores the
    * array, or NULL when empty. See `failedSyncMonobankIds` in `db/schema.ts` and
-   * the end-of-run sequence in `monobank/sync.ts`.
+   * the end-of-run sequence in `src/monobank/sync/sync.ts`.
    */
   setFailedSyncMonobankIds: (accountId: string, ids: string[] | null) =>
     write((databaseTransaction) =>

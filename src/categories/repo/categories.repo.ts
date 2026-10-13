@@ -62,8 +62,8 @@ export const categoriesRepo = {
     ),
   // Sets the category's color (an entity-color hex) or, with `null`, clears it
   // back to no picked color. The display/chart layer falls back to the stable
-  // per-key palette hash when the stored color is null (see resolveCategoryColor
-  // in statistics/category-breakdown.ts), mirroring accounts'/holdings' color.
+  // per-key palette hash when the stored color is null (see resolveCategoryColor in
+  // src/statistics/category-breakdown/category-breakdown.ts), mirroring accounts'/holdings' color.
   updateColor: (key: string, color: string | null) =>
     write((databaseTransaction) =>
       databaseTransaction.update(categories).set({ color }).where(eq(categories.key, key)),

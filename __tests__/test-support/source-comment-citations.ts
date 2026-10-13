@@ -3,9 +3,12 @@ import ts from 'typescript';
 // The repo paths and migration file names that the comments of one source file name, for
 // cited-paths.test.ts. Comments come from the TypeScript parse, so a path inside a string, a
 // template or JSX text is never read as one.
-export type SourceCitation = { line: number; path: string };
+export type Citation = { line: number; path: string };
 
-const TREE_PATH_PATTERN = /(?<![\w./~$-])(?:src|docs|drizzle|scripts)\/[\w./-]+\.\w+/g;
+export type SourceComment = { line: number; text: string };
+
+const TREE_PATH_PATTERN =
+  /(?<![\w./~$-])(?:src|docs|rules|e2e|drizzle|scripts|__tests__)\/[\w./-]+\.\w+/g;
 
 const MIGRATION_NAME_PATTERN = /(?<![\w-])\d{4}_[a-z0-9_]+\.sql(?!\w)/g;
 
@@ -40,10 +43,7 @@ const commentRanges = (sourceFile: ts.SourceFile): ts.CommentRange[] => {
   return [...ranges.values()].sort((first, second) => first.pos - second.pos);
 };
 
-const citationsInComment = (
-  sourceFile: ts.SourceFile,
-  range: ts.CommentRange,
-): SourceCitation[] => {
+const citationsInComment = (sourceFile: ts.SourceFile, range: ts.CommentRange): Citation[] => {
   const comment = sourceFile.text.slice(range.pos, range.end);
   const treePaths = [...comment.matchAll(TREE_PATH_PATTERN)];
 
@@ -66,8 +66,8 @@ const citationsInComment = (
     }));
 };
 
-export const sourceCommentCitations = (fileName: string, text: string): SourceCitation[] => {
-  const sourceFile = ts.createSourceFile(
+const parsedSource = (fileName: string, text: string): ts.SourceFile =>
+  ts.createSourceFile(
     fileName,
     text,
     ts.ScriptTarget.Latest,
@@ -75,5 +75,17 @@ export const sourceCommentCitations = (fileName: string, text: string): SourceCi
     fileName.endsWith('.tsx') ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
   );
 
+export const sourceCommentCitations = (fileName: string, text: string): Citation[] => {
+  const sourceFile = parsedSource(fileName, text);
+
   return commentRanges(sourceFile).flatMap((range) => citationsInComment(sourceFile, range));
+};
+
+export const sourceComments = (fileName: string, text: string): SourceComment[] => {
+  const sourceFile = parsedSource(fileName, text);
+
+  return commentRanges(sourceFile).map((range) => ({
+    line: sourceFile.getLineAndCharacterOfPosition(range.pos).line + 1,
+    text: sourceFile.text.slice(range.pos, range.end),
+  }));
 };

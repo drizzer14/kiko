@@ -1592,7 +1592,7 @@ describe('transactionsRepo.recordExchange', () => {
 
     // Two ledger rows, tied STRUCTURALLY: each leg stores the OTHER leg's
     // holding id and persists NO description — the label is resolved at render
-    // time from that marker (see transactions/exchange-description.ts).
+    // time from that marker (see src/transactions/exchange-description/exchange-description.ts).
     expect(inserts).toEqual([
       expect.objectContaining({
         holdingId: 'src-1',
@@ -1785,7 +1785,7 @@ describe('transactionsRepo.recordExchangeCounterpart', () => {
 
     // Exactly ONE new ledger row: a positive receipt marked with the EXISTING
     // leg's holding id and no persisted description — the label resolves at
-    // render time (see transactions/exchange-description.ts).
+    // render time (see src/transactions/exchange-description/exchange-description.ts).
     expect(inserts).toEqual([
       expect.objectContaining({
         holdingId: 'dst-1',

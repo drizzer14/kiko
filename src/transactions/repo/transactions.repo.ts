@@ -85,7 +85,8 @@ type TransactionEdit = Pick<TransactionRow, 'amountMinorUnits' | 'time'> &
 
 // No holding NAMES here: neither leg persists a description anymore, so the
 // only thing each leg needs about the other is its ID — the marker the display
-// layer resolves the current name from (see transactions/exchange-description.ts).
+// layer resolves the current name from (see
+// src/transactions/exchange-description/exchange-description.ts).
 type ExchangeInput = {
   sourceHoldingId: string;
   valueOutMinorUnits: number;
@@ -2091,7 +2092,7 @@ export const transactionsRepo = {
         time: input.time,
         // No description is persisted: the label is resolved at render time
         // from this marker + the counterpart's CURRENT name via `t` (see
-        // transactions/exchange-description.ts). A persisted
+        // src/transactions/exchange-description/exchange-description.ts). A persisted
         // `Exchange to <name>` string was English forever and went stale on a
         // rename.
         exchangeCounterpartHoldingId: input.destinationHoldingId,

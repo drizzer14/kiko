@@ -285,8 +285,8 @@ describe('NetWorthLine', () => {
   it('re-formats a UAH Y-axis label when the active language changes (en-US comma grouping -> uk-UA space grouping)', async () => {
     // Clean, evenly-spaced amounts so the four Y-axis ticks (1236, 1224, 1212,
     // 1200) land on distinct grouped-thousands values in the base compact
-    // unit — see currency/compact.ts's chooseCompactUnit: a K-unit label here
-    // would collapse every tick to "1", so it steps down to the base unit,
+    // unit — see chooseCompactUnit in src/currency/compact/compact.ts: a K-unit label
+    // here would collapse every tick to "1", so it steps down to the base unit,
     // which is exactly the grouped integer this test needs.
     const uahPoints: NetWorthPoint[] = [
       { t: 0, amount: 1200 },
@@ -303,7 +303,7 @@ describe('NetWorthLine', () => {
     });
 
     // uk-UA groups thousands with U+00A0 NO-BREAK SPACE (see
-    // currency/compact.test.ts for the same finding on formatCompactMoney).
+    // src/currency/compact/compact.test.ts for the same finding on formatCompactMoney).
     expect(queryByText('1,236 ₴')).toBeNull();
     expect(getByText('1 236 ₴')).toBeTruthy();
   });
