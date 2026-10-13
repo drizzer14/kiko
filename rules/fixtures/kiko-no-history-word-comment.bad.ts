@@ -79,6 +79,26 @@ export const noLongerLaterBlockLine = true;
 // The sheet never used to flicker before the redesign.
 export const neverUsedToHistory = true;
 
+// The "as before" narrative: a reader that does not catch the error fails as before.
+// EXPECT-FINDING
+// A reader that does not catch it fails as before.
+export const asBeforeLine = true;
+
+// EXPECT-FINDING
+// The row keeps its caption exactly as before, and the cap holds.
+export const asBeforeMidSentence = true;
+
+// EXPECT-FINDING
+// As before, the label reads on its own.
+export const asBeforeCapital = true;
+
+// EXPECT-FINDING
+/* The header scrolls as before (the cursor moves with it). */
+export const asBeforeBlock = true;
+
+// EXPECT-FINDING
+export const asBeforeAfterCode = 1; // Everything else fails as before.
+
 // EXPECT-FINDING
 // was: 30
 export const wasLabelLine = 60;
