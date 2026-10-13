@@ -46,6 +46,7 @@ import {
   commitSettledSpan,
   instantAt,
   joinSettled,
+  type SettledSpan,
   settleRecords,
   settleUnreadable,
 } from './binance.history-records';
@@ -249,10 +250,29 @@ type SimRecord = {
    * the type it was read under is not its own, it has no id, or its amount is no number.
    */
   defect?: 'type-mismatch' | 'id-missing' | 'amount-invalid';
+  /**
+   * An Earn reward group of which one member (`index`, counted by ascending satoshis) is a row
+   * the client cannot read in every run before `until`; the others read fine.
+   */
+  stuckMember?: { index: number; until: number };
 };
 
 /** The members of the reward group an Earn record stands for, of 1 to 3 (a reward is a group). */
 const membersOf = (entry: SimRecord): number => 1 + (entry.id % 3);
+
+/** Whether run `run` finds the stuck member of an Earn reward group unreadable. */
+const isMemberStuck = (entry: SimRecord, run: number): boolean =>
+  entry.stuckMember !== undefined && run < entry.stuckMember.until;
+
+/**
+ * A row an Earn lane writes, told by its record's id and, to count it, by its full key and
+ * satoshis; the other lanes write the id alone.
+ */
+type EarnWrite = { id: number; key: string; satoshis: number };
+
+type SimRow = number | EarnWrite;
+
+const idOfRow = (row: SimRow): number => (typeof row === 'number' ? row : row.id);
 
 type Scenario = { owed: OwedGround[]; records: SimRecord[] };
 
@@ -308,7 +328,12 @@ type RunRecord = {
   hints: BinanceSpanHints;
 };
 
-type Outcome = { runs: RunRecord[]; importedAt: Map<number, number> };
+type Outcome = {
+  runs: RunRecord[];
+  importedAt: Map<number, number>;
+  /** Every Earn row the lane wrote, with the run that wrote it, in order. */
+  writes: (EarnWrite & { run: number })[];
+};
 
 /** Whether a read of `range` returns the record that Binance filters at `millisecond`. */
 const holds = (range: WalkWindow, millisecond: number, reading: Reading): boolean =>
@@ -464,7 +489,7 @@ const earnRecordsOf = (entry: SimRecord, run: number): EarnRecord[] => {
   const reward = settles && entry.defect !== 'amount-invalid' ? '0.00000001' : 'abc';
   const memberAmounts = Array.from({ length: membersOf(entry) }, (_unused, index) =>
     reward === 'abc' ? reward : `0.0000000${index + 1}`,
-  );
+  ).filter((_unused, index) => !(isMemberStuck(entry, run) && index === entry.stuckMember?.index));
 
   return match(entry.series)
     .returnType<EarnRecord[]>()
@@ -573,15 +598,31 @@ const settledEarn = (input: {
           rows: ofSeries(series)
             .filter((entry) => entry.unreadable === undefined)
             .flatMap((entry) => earnRecordsOf(entry, run)),
-          unreadable: ofSeries(series)
-            .filter((entry) => entry.unreadable !== undefined)
-            .map((entry) => ({ time: entry.unreadable === 'timeless' ? undefined : entry.time })),
+          unreadable: [
+            ...ofSeries(series)
+              .filter((entry) => entry.unreadable !== undefined)
+              .map((entry) => ({
+                time: entry.unreadable === 'timeless' ? undefined : entry.time,
+              })),
+            ...ofSeries(series)
+              .filter((entry) => isMemberStuck(entry, run))
+              .map((entry) => ({ time: entry.time })),
+          ],
         })),
       drifted: foldMap(maybe(drifted), (series) => [series as EarnRecordKind]) ?? [],
     },
   });
 
-  return { ...settled, rows: settled.rows.map((row) => idOfEarnKey(row.externalId)) };
+  return {
+    ...settled,
+    rows: settled.rows.map(
+      (row): EarnWrite => ({
+        id: idOfEarnKey(row.externalId),
+        key: row.externalId,
+        satoshis: row.amountMinorUnits,
+      }),
+    ),
+  };
 };
 
 /**
@@ -618,7 +659,7 @@ const settledOf = (input: {
   run: number;
   window: OwedWindow;
   drift: Simulation['drift'];
-}) => {
+}): SettledSpan<SimRow> => {
   const { lane, span, page, run, window, drift } = input;
 
   if (lane.series === undefined) {
@@ -717,6 +758,7 @@ const simulate = async (input: Simulation): Promise<Outcome> => {
   const { lane, scenario, runs } = input;
   const { forwardOwes } = lane;
   const importedAt = new Map<number, number>();
+  const writes: Outcome['writes'] = [];
   let marks: WalkMarks = {
     cursor: START_MS,
     rescanCursor: null,
@@ -866,12 +908,18 @@ const simulate = async (input: Simulation): Promise<Outcome> => {
               settled: settledOf({ lane, span, page, run, window, drift: input.drift }),
               forwardOwes,
               place: async (planned) => planned,
-              add: async (ids) => {
-                for (const id of ids) {
+              add: async (rows) => {
+                for (const row of rows) {
+                  const id = idOfRow(row);
+
                   importedAt.set(id, Math.min(importedAt.get(id) ?? run, run));
+
+                  if (typeof row !== 'number') {
+                    writes.push({ ...row, run });
+                  }
                 }
 
-                return ids.length;
+                return rows.length;
               },
               advance: ({ owed }) =>
                 advanceWalkMarks({
@@ -912,7 +960,7 @@ const simulate = async (input: Simulation): Promise<Outcome> => {
     records.push(record);
   }
 
-  return { runs: records, importedAt };
+  return { runs: records, importedAt, writes };
 };
 
 /** The run at whose end `test` first holds, or infinity when it never does. */
@@ -2783,3 +2831,69 @@ describe.each(LANES)('a split window resumes in the next run, $name lane', (lane
     },
   );
 });
+
+describe.each(LANES.filter((lane) => lane.walk === 'earn'))(
+  'a reward group with one member the client cannot read, $name lane',
+  (lane) => {
+    // Id 5 is a group of 3 members (see `membersOf`), of 1, 2 and 3 satoshis.
+    const GROUP_ID = 5;
+    const READABLE_FROM_RUN = 4;
+
+    let warn: jest.SpyInstance;
+
+    beforeEach(() => {
+      warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    });
+
+    afterEach(() => {
+      warn.mockRestore();
+    });
+
+    it.each(
+      RUN_GAPS.flatMap((gapMs) =>
+        READINGS.flatMap((reading) => [0, 1, 2].map((index) => ({ gapMs, reading, index }))),
+      ),
+    )(
+      'member $index (by satoshis) is unreadable until run 4, runs $gapMs ms apart, reading $reading: nothing of the group is written before it, then its rows are exactly the keys 0 to 2, each written with one amount, and the satoshis add up',
+      async ({ gapMs, reading, index }) => {
+        const builder = builderOf(lane, 83);
+        const group: SimRecord = {
+          ...builder.record(START_MS - 2 * DAY_MS),
+          id: GROUP_ID,
+          series: 'flexibleRewards',
+          stuckMember: { index, until: READABLE_FROM_RUN },
+        };
+
+        const outcome = await simulate({
+          lane,
+          reading,
+          scenario: { owed: [], records: [group] },
+          runs: READABLE_FROM_RUN + 4,
+          gapMs,
+        });
+
+        const prefix = `sim:earn:reward:flexible:${GROUP_ID}:REALTIME:${group.time}`;
+        const amountsOf = new Map<string, Set<number>>();
+
+        for (const write of outcome.writes) {
+          amountsOf.set(write.key, (amountsOf.get(write.key) ?? new Set()).add(write.satoshis));
+        }
+
+        expect(outcome.writes.filter((write) => write.run < READABLE_FROM_RUN)).toEqual([]);
+        expect(
+          [...amountsOf.entries()]
+            .sort(([left], [right]) => left.localeCompare(right))
+            .map(([key, amounts]) => [key, [...amounts]]),
+        ).toEqual([
+          [`${prefix}:0`, [1]],
+          [`${prefix}:1`, [2]],
+          [`${prefix}:2`, [3]],
+        ]);
+        expect([...amountsOf.values()].reduce((sum, amounts) => sum + [...amounts][0], 0)).toBe(6);
+        expect(Math.min(...outcome.writes.map((write) => write.run))).toBeLessThanOrEqual(
+          READABLE_FROM_RUN + 1,
+        );
+      },
+    );
+  },
+);

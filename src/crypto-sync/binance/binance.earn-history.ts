@@ -1,5 +1,5 @@
-import { match } from 'ts-pattern';
 import { DAY_MS } from '@kiko/dates';
+import { match, P } from 'ts-pattern';
 import {
   BINANCE_EARN_HISTORY_CURSOR_FIELD,
   BINANCE_EARN_PENDING_OVERLAP_FIELD,
@@ -517,36 +517,32 @@ const rewardOf = (entry: EarnRecord): ProductReward | undefined =>
     }))
     .otherwise(() => undefined);
 
+const FLOW_PRODUCT: Record<
+  'flexibleSubscription' | 'lockedSubscription' | 'flexibleRedemption' | 'lockedRedemption',
+  EarnProduct
+> = {
+  flexibleSubscription: 'flexible',
+  lockedSubscription: 'locked',
+  flexibleRedemption: 'flexible',
+  lockedRedemption: 'locked',
+};
+
 const flowUnitsOf = (accountId: string, entries: EarnRecord[]): EarnUnit[] =>
   entries.flatMap((entry) =>
     match(entry)
       .returnType<EarnUnit[]>()
-      .with({ kind: 'flexibleSubscription' }, ({ kind, record }) => [
+      .with({ kind: P.union('flexibleSubscription', 'lockedSubscription') }, ({ kind, record }) => [
         {
           series: kind,
           time: record.time,
-          rows: () => subscriptionRowsOf(accountId, 'flexible', record),
+          rows: () => subscriptionRowsOf(accountId, FLOW_PRODUCT[kind], record),
         },
       ])
-      .with({ kind: 'lockedSubscription' }, ({ kind, record }) => [
+      .with({ kind: P.union('flexibleRedemption', 'lockedRedemption') }, ({ kind, record }) => [
         {
           series: kind,
           time: record.time,
-          rows: () => subscriptionRowsOf(accountId, 'locked', record),
-        },
-      ])
-      .with({ kind: 'flexibleRedemption' }, ({ kind, record }) => [
-        {
-          series: kind,
-          time: record.time,
-          rows: () => redemptionRowsOf(accountId, 'flexible', record),
-        },
-      ])
-      .with({ kind: 'lockedRedemption' }, ({ kind, record }) => [
-        {
-          series: kind,
-          time: record.time,
-          rows: () => redemptionRowsOf(accountId, 'locked', record),
+          rows: () => redemptionRowsOf(accountId, FLOW_PRODUCT[kind], record),
         },
       ])
       .otherwise(() => []),
