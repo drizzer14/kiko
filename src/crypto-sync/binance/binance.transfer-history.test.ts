@@ -27,8 +27,9 @@ import { NOW } from './binance.pay-test-fixtures';
 import { BinanceWalkStop } from './binance.history-walk';
 import { HISTORY_FLOOR_MS } from './binance.transactions';
 import { isBinanceCoolingDown } from './binance.cooldown';
-import { DEPTH_RESOLUTION_MS } from './binance.history-depth';
 import { FUNDING_KEY, SPOT_KEY } from './binance.holding-keys';
+import { jitterMs, movingClockOf } from './binance.depth-test-fixtures';
+import { DEPTH_MARGIN_MS, DEPTH_RESOLUTION_MS } from './binance.history-depth';
 import { BinanceHistoryTooOldError, BinanceRateLimitError } from './binance.client';
 import { COSTS, createBinanceHistoryRun, LANE_CALL_CAPS } from './binance.history-budget';
 
@@ -1375,7 +1376,7 @@ describe('a Binance that refuses a startTime older than the history it keeps (co
       expect(narrowing.length).toBeLessThanOrEqual(bound);
       expect(narrowing.length).toBeGreaterThanOrEqual(bound - 1);
       expect(read).toMatchObject({ type: 'MAIN_FUNDING' });
-      expect((read?.startTime ?? 0) - BOUNDARY).toBeLessThan(DEPTH_RESOLUTION_MS);
+      expect((read?.startTime ?? 0) - BOUNDARY).toBeLessThan(DEPTH_RESOLUTION_MS + DEPTH_MARGIN_MS);
     });
 
     it('reads a span that lies wholly below the floor of now as empty, with no request beyond the refused one', async () => {
@@ -1449,6 +1450,128 @@ describe('a Binance that refuses a startTime older than the history it keeps (co
       expect(readsBelowDepth).toHaveLength(1);
       expect(world.added.map((row) => row.externalId)).toEqual(keysOf('deep'));
       expect(pointsIn(listOf(world))).toEqual([]);
+    });
+  });
+
+  describe('when the clock moves with every wait of the run gate and every request', () => {
+    const SUSPENDED_MS = 3 * DAY_MS;
+    const CREDENTIALS = { apiKey: 'api-key', secret: 'secret' };
+
+    /**
+     * `runs` runs on one world, `gapMs` apart, on one clock: the gate's sleeps and the latency of
+     * each request (`latencyMs`) move it, Binance keeps `days` of it, and the first run's app was
+     * suspended for `suspendedMs` after the run was planned. Each run's end is a snapshot.
+     */
+    const walkAlongClock = async (input: {
+      world: World;
+      entries: Entry[];
+      days: number;
+      gapMs: number;
+      runs: number;
+      latencyMs: () => number;
+      suspendedMs?: number;
+    }) => {
+      const { world, entries, days, gapMs, runs, latencyMs, suspendedMs = 0 } = input;
+      const { clock, newRun } = movingClockOf(NOW);
+      const keeping = keepingDays(days, () => clock.now);
+      const snapshots: { ids: Set<string>; cursor: unknown; requests: TransferQuery[] }[] = [];
+
+      for (let index = 0; index < runs; index += 1) {
+        const suspendedFor = index === 0 ? suspendedMs : 0;
+        const { requests } = await walkOnce({
+          world,
+          entries,
+          run: newRun(),
+          answer: (query) => {
+            clock.now += latencyMs();
+
+            return keeping(query);
+          },
+          over: {
+            now: () => clock.now,
+            readCredentials: async () => {
+              clock.now += suspendedFor;
+
+              return CREDENTIALS;
+            },
+          },
+        });
+        snapshots.push({
+          ids: new Set(world.added.map((row) => row.externalId)),
+          cursor: world.metadata[SPOT_FIELDS.cursor],
+          requests,
+        });
+        clock.now += gapMs;
+      }
+
+      return snapshots;
+    };
+
+    const LATENCIES = [
+      ['no latency', () => () => 0],
+      ['a latency of 0 to 300 ms', jitterMs],
+    ] as const;
+
+    describe.each(LATENCIES)('with %s', (_name, latencyOf) => {
+      describe.each(RUN_GAPS)(
+        'runs %i ms apart, against a Binance that keeps 100 days',
+        (gapMs) => {
+          const entries = [
+            entryOf({ tranId: 'refused', timestamp: agoMs(110) }),
+            entryOf({ tranId: 'oldest', timestamp: agoMs(95) }),
+            entryOf({ tranId: 'middle', timestamp: agoMs(80) }),
+            entryOf({ tranId: 'late', timestamp: agoMs(30) }),
+            entryOf({ tranId: 'newest', timestamp: agoMs(2) }),
+          ];
+
+          it('imports every transfer Binance keeps once, within 2 runs, and the cursor passes the window that crosses the depth', async () => {
+            const world = worldOf();
+
+            const snapshots = await walkAlongClock({
+              world,
+              entries,
+              days: 100,
+              gapMs,
+              runs: 2,
+              latencyMs: latencyOf(),
+            });
+
+            expect([...(snapshots[1]?.ids ?? [])].sort()).toEqual(
+              ['oldest', 'middle', 'late', 'newest'].flatMap(keysOf).sort(),
+            );
+            expect(Number(snapshots[1]?.cursor)).toBeGreaterThan(agoMs(100) + TRANSFER_WINDOW_MS);
+            expect(listOf(world)).toEqual([]);
+            expect(stopCodes(warn)).toEqual([]);
+          });
+        },
+      );
+
+      it.each(RUN_GAPS)(
+        'imports every transfer within the 180 days Binance keeps within 3 runs, owing nothing, when the run was planned 3 days before it read (runs %i ms apart)',
+        async (gapMs) => {
+          const world = worldOf();
+          const entries = [
+            entryOf({ tranId: 'crossing', timestamp: FLOOR + SUSPENDED_MS - DAY_MS / 2 }),
+            entryOf({ tranId: 'later', timestamp: agoMs(100) }),
+            entryOf({ tranId: 'newest', timestamp: agoMs(10) }),
+          ];
+
+          const snapshots = await walkAlongClock({
+            world,
+            entries,
+            days: 180,
+            gapMs,
+            runs: 3,
+            latencyMs: latencyOf(),
+            suspendedMs: SUSPENDED_MS,
+          });
+
+          expect([...(snapshots[2]?.ids ?? [])].sort()).toEqual(
+            ['crossing', 'later', 'newest'].flatMap(keysOf).sort(),
+          );
+          expect(listOf(world)).toEqual([]);
+        },
+      );
     });
   });
 

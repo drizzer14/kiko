@@ -1,6 +1,14 @@
 import { DAY_MS } from '@kiko/dates';
 
-import { DEPTH_RESOLUTION_MS, narrowRefusedStart } from './binance.history-depth';
+import {
+  createDepthMemory,
+  DEPTH_MARGIN_MS,
+  DEPTH_RESOLUTION_MS,
+  knownStartOf,
+  narrowRefusedStart,
+  rememberServedStart,
+  widenDepthMargin,
+} from './binance.history-depth';
 
 const START = 1_700_000_000_000;
 const WIDTH = 30 * DAY_MS;
@@ -136,5 +144,51 @@ describe('narrowRefusedStart', () => {
 
     expect(await narrow({ probe: stopAt(0) })).toBeUndefined();
     expect(await narrow({ probe: stopAt(3) })).toBeUndefined();
+  });
+});
+
+describe('the depth memory', () => {
+  const SERVED_AT = START + 5_000;
+  const SERVED_START = START + 40 * DAY_MS;
+
+  it('knows no start before anything was asked', () => {
+    expect(knownStartOf(createDepthMemory(), SERVED_AT)).toBeUndefined();
+  });
+
+  it('moves a served start forward with the clock, and adds the margin for the time a request takes', () => {
+    const memory = createDepthMemory();
+    rememberServedStart(memory, { startMs: SERVED_START, servedAtMs: SERVED_AT });
+
+    expect(knownStartOf(memory, SERVED_AT)).toBe(SERVED_START + DEPTH_MARGIN_MS);
+    expect(knownStartOf(memory, SERVED_AT + 8_400)).toBe(SERVED_START + 8_400 + DEPTH_MARGIN_MS);
+    expect(knownStartOf(memory, SERVED_AT + DAY_MS)).toBe(SERVED_START + DAY_MS + DEPTH_MARGIN_MS);
+  });
+
+  it('never moves a start back when the clock reads earlier than it did when the start was served', () => {
+    const memory = createDepthMemory();
+    rememberServedStart(memory, { startMs: SERVED_START, servedAtMs: SERVED_AT });
+
+    expect(knownStartOf(memory, SERVED_AT - 3_600_000)).toBe(SERVED_START + DEPTH_MARGIN_MS);
+  });
+
+  it('keeps a refused start where it is: it is a bound below the ground, with no time it was served at', () => {
+    const memory = createDepthMemory();
+    rememberServedStart(memory, { startMs: SERVED_START, servedAtMs: undefined });
+
+    expect(knownStartOf(memory, SERVED_AT)).toBe(SERVED_START);
+    expect(knownStartOf(memory, SERVED_AT + DAY_MS)).toBe(SERVED_START);
+  });
+
+  it('doubles the margin each time it is widened, and starts it over with the next served start', () => {
+    const memory = createDepthMemory();
+    rememberServedStart(memory, { startMs: SERVED_START, servedAtMs: SERVED_AT });
+
+    widenDepthMargin(memory);
+    expect(knownStartOf(memory, SERVED_AT)).toBe(SERVED_START + 2 * DEPTH_MARGIN_MS);
+    widenDepthMargin(memory);
+    expect(knownStartOf(memory, SERVED_AT)).toBe(SERVED_START + 4 * DEPTH_MARGIN_MS);
+
+    rememberServedStart(memory, { startMs: SERVED_START, servedAtMs: SERVED_AT });
+    expect(knownStartOf(memory, SERVED_AT)).toBe(SERVED_START + DEPTH_MARGIN_MS);
   });
 });

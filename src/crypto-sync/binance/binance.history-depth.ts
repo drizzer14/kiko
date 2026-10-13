@@ -1,33 +1,93 @@
+import maybe, { foldMap } from 'fnts/maybe';
+
 /**
- * How close to the start Binance serves the narrowing of a refused span gets: ground within a
- * second below that start is read as refused. The depth moves with the clock a second at a time,
- * so a start found this close to it is served only until the clock moves on.
+ * How close to the start Binance serves the narrowing of a refused span gets: it stops once the
+ * start it knows is refused and the start it knows is served are this close. Measured: a start 180
+ * days back is served, 200 days back is refused. Assumed: the oldest start Binance serves moves
+ * forward no faster than the clock. Up to this much ground that Binance still keeps therefore lies
+ * below the start a read begins at, and it leaves Binance's depth at clock speed anyway.
  */
 export const DEPTH_RESOLUTION_MS = 1_000;
 
 /**
- * The refused reads of one span read the narrowing tolerates before it leaves the span unread:
- * one refusal narrows to a start Binance serves, and a second only follows when the clock moved
- * past that start while the narrowing ran. A refusal costs at most 24 requests (the refused
- * read, the probe at the end of the span, and 22 halvings of a window of 30 days, see
- * `narrowRefusedStart`), so a span read spends at most 48 on its depth.
+ * What a read adds to the start Binance was last seen to serve, beyond the time that passed, for
+ * a request that reaches Binance later than the one that found the start. Binance's depth moves
+ * with the clock, so a start found within `DEPTH_RESOLUTION_MS` of it is refused after a request
+ * that takes longer. Each refusal of a read from such a start doubles it (see
+ * `widenDepthMargin`). Ground within it of the depth is skipped, and leaves the depth that fast.
  */
-export const MAX_DEPTH_REFUSALS = 2;
+export const DEPTH_MARGIN_MS = 1_000;
 
 /**
- * The start from which Binance is known to serve in this run (a start older than it was refused,
- * or lies within `DEPTH_RESOLUTION_MS` below one that was served), so a read starts at it rather
- * than ask again. The clock only moves forward, so the start stays valid for the run.
+ * The refused reads one span read tolerates: the fifth ends it as a clean stop, the span unread.
+ * Only a read with no start known to be served is narrowed (`narrowRefusedStart`), and it is
+ * narrowed once: one request for the end of the span and `ceil(log2(width / DEPTH_RESOLUTION_MS))`
+ * halvings, 23 for a span of 30 days. Every other refusal is a read from a start that Binance's
+ * depth passed meanwhile, and doubles the margin (1, 2, 4 and 8 seconds before the fifth), with no
+ * request beyond the read again. A span read of 30 days therefore spends at most 5 + 23 = 28
+ * requests on the depth.
  */
-export type DepthMemory = { startMs: number | undefined };
+export const MAX_DEPTH_REFUSALS = 5;
+
+/**
+ * The start from which Binance is known to serve in this run, and when it was found. Starts below
+ * `startMs` are refused. A `startMs` that was served at `servedAtMs` (the clock of the request) is
+ * the oldest start Binance served at that time; the depth moves with the clock since, so a read
+ * starts at `knownStartOf` rather than at `startMs`. A `startMs` with no `servedAtMs` is a start
+ * Binance refused (the end of a span that holds nothing it keeps): a bound, which does not move.
+ * `marginMs` is the margin added to a served start, widened by every refusal of a read from it.
+ */
+export type DepthMemory = {
+  startMs: number | undefined;
+  servedAtMs: number | undefined;
+  marginMs: number;
+};
+
+export const createDepthMemory = (): DepthMemory => ({
+  startMs: undefined,
+  servedAtMs: undefined,
+  marginMs: DEPTH_MARGIN_MS,
+});
+
+/**
+ * The start a read begins at as of `nowMs`, or `undefined` while none is known. A served start
+ * is moved forward by the time that passed since it was served (a clock that reads earlier moves
+ * it by none) and by the margin.
+ */
+export const knownStartOf = (memory: DepthMemory, nowMs: number): number | undefined =>
+  foldMap(
+    maybe(memory.startMs),
+    (startMs) =>
+      startMs +
+      (foldMap(
+        maybe(memory.servedAtMs),
+        (servedAtMs) => Math.max(0, nowMs - servedAtMs) + memory.marginMs,
+      ) ?? 0),
+  );
+
+/** Remember the start found, with the clock of the request it was served at (none if refused). */
+export const rememberServedStart = (
+  memory: DepthMemory,
+  found: { startMs: number; servedAtMs: number | undefined },
+): void => {
+  memory.startMs = found.startMs;
+  memory.servedAtMs = found.servedAtMs;
+  memory.marginMs = DEPTH_MARGIN_MS;
+};
+
+export const widenDepthMargin = (memory: DepthMemory): void => {
+  memory.marginMs *= 2;
+};
 
 /**
  * What a read knows of Binance's depth: which failure is Binance refusing a start as older than it
- * keeps, the earliest start the walk asks for as of now (a refused span that ends at or before it
- * lies below the floor, and Binance is not asked again), and the start known to be served.
+ * keeps, the clock, the earliest start the walk asks for as of now (a refused span that ends at or
+ * before it lies below the floor, and Binance is not asked again), and the start known to be
+ * served.
  */
 export type DepthGuard = {
   isRefusal: (error: unknown) => boolean;
+  nowMs: () => number;
   floorMs: () => number;
   memory: DepthMemory;
 };
@@ -35,7 +95,8 @@ export type DepthGuard = {
 /**
  * Where a refused span is read from: `floor` when it ends at or before the floor of now (Binance
  * is not asked), else the start from which Binance serves it: the end of the span when it serves
- * nothing of it. The ground before that start is refused, so it holds nothing Binance keeps.
+ * nothing of it. Up to `DEPTH_RESOLUTION_MS` of the ground before that start is ground Binance
+ * serves, which leaves its depth at clock speed (see `DEPTH_RESOLUTION_MS`).
  */
 type Narrowed = { kind: 'floor' } | { kind: 'start'; startMs: number };
 

@@ -51,6 +51,7 @@ import {
   settleUnreadable,
 } from './binance.history-records';
 import { LANE_CALL_CAPS } from './binance.history-budget';
+import { floorToSecond } from './binance.earn-test-fixtures';
 import { settledTransfersOf, TRANSFER_FORWARD_OWES } from './binance.transfer-history';
 
 /**
@@ -358,9 +359,6 @@ type Outcome = {
   /** Every Earn row the lane wrote, with the run that wrote it, in order. */
   writes: (EarnWrite & { run: number })[];
 };
-
-const floorToSecond = (millisecond: number): number =>
-  Math.floor(millisecond / SECOND_MS) * SECOND_MS;
 
 /** Whether a read of `range` returns the record that Binance filters at `millisecond`. */
 const holds = (range: WalkWindow, millisecond: number, reading: Reading): boolean =>
@@ -2095,8 +2093,10 @@ describe.each(LANES)('owed ground that never commits, $name lane', (laneOfName) 
       },
     );
 
-    // A point is one millisecond either side of its record, so a lane whose records sit on whole
-    // seconds has no neighbour on its edge for a read of the point to return.
+    // Where Binance filters on another field, the simulation reads a point to the millisecond
+    // (`pageOf`), so a point read returns no neighbour a second away. A lane whose records sit on
+    // whole seconds has none within a millisecond, and a point with no owed day around it is
+    // left without one.
     it.each(
       [1, 3, 12].flatMap((count) =>
         [true, false]

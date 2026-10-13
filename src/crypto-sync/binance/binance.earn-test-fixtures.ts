@@ -165,18 +165,20 @@ export const fullPage = (): TotalPage<EarnRecordByKind[EarnRecordKind]> =>
 
 const SECOND_MS = 1_000;
 
+/** The second a millisecond falls in, as the live Earn endpoints read a bound. */
+export const floorToSecond = (millisecond: number): number =>
+  Math.floor(millisecond / SECOND_MS) * SECOND_MS;
+
 /**
  * Whether a read of `query` returns a record at `time`: each end compared to the millisecond or,
  * as the live Earn endpoints do, to the second the end falls in.
  */
 const reaches = (query: TotalQuery, time: number, precision: Precision): boolean =>
   match(precision)
-    .with('second', () => {
-      const floorOf = (millisecond: number): number =>
-        Math.floor(millisecond / SECOND_MS) * SECOND_MS;
-
-      return floorOf(query.startTime) <= time && time <= floorOf(query.endTime);
-    })
+    .with(
+      'second',
+      () => floorToSecond(query.startTime) <= time && time <= floorToSecond(query.endTime),
+    )
     .with('millisecond', () => query.startTime <= time && time <= query.endTime)
     .exhaustive();
 

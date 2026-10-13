@@ -66,9 +66,9 @@ import {
   settleRecords,
   settleUnreadable,
 } from './binance.history-records';
-import type { DepthMemory } from './binance.history-depth';
 import { type BinanceHistoryRun, COSTS } from './binance.history-budget';
 import { readSeriesSpan, type SeriesSpan } from './binance.history-paging';
+import { createDepthMemory, type DepthMemory } from './binance.history-depth';
 import { type BinanceCredentials, readCredentials } from './binance.credentials';
 import { isBinanceCoolingDown, setBinanceCooldownUntil } from './binance.cooldown';
 import { type BinanceWalkWriteDeps, defaultWalkWriteDeps } from './binance.walk-write-deps';
@@ -387,6 +387,7 @@ const readSpan = async (
     onRateLimit: (error) => setBinanceCooldownUntil(accountId, deps.now() + error.retryAfterMs),
     depth: {
       isRefusal: (error) => error instanceof BinanceHistoryTooOldError,
+      nowMs: deps.now,
       floorMs: () => transferFloorMs(deps.now()),
       memory: context.depth,
     },
@@ -539,7 +540,7 @@ const runSync = async (
     options: { fetchImpl: deps.fetchImpl, now: deps.now },
     marks: { cursor, rescanCursor, ...roundRobins, pending },
     plan,
-    depth: { startMs: undefined },
+    depth: createDepthMemory(),
   };
 
   return runWalkPlan({
