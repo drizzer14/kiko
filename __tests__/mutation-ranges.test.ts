@@ -16,6 +16,10 @@ import {
 // diff on stdin (the mutation-score.test.ts pattern).
 const SCRIPT = join(__dirname, '../scripts/checks/mutation-ranges.js');
 
+// The signal tests spawn the real wrapper, which runs fresh node and stryker stubs; the first
+// exec of each is slow under machine load and outlasts jest's 5 s default.
+jest.setTimeout(20_000);
+
 type CliResult = { code: number | null; stdout: string; stderr: string };
 
 const run = (diff: string, paths: string[]): CliResult => {
