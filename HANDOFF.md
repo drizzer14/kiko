@@ -1,6 +1,21 @@
 # HANDOFF — Kiko 1.0.0: BUILD 25 ready for user resubmission; harness agents re-tuned (2026-09-22)
 
-## ⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐ COORDINATOR HANDOFF (2026-10-13 ~14:30) — READ THIS FIRST
+## ⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐ COORDINATOR HANDOFF (2026-10-14 ~12:00) — READ THIS FIRST
+Coordinator job 828f039f. Event log + OVERNIGHT DEFAULTS D1-D6: memory/refs/night-summary-2026-10-14.md.
+FIRST ACTION of the next session: walk the user through memory/refs/morning-walkthrough-2026-10-14.md,
+IN ITS ORDER, one item at a time (AskUserQuestion, recommendation first). Session addresses: memory
+orca-hub (last bullet). The 2026-10-13 section below is HISTORY.
+| Thing | Value |
+|---|---|
+| main = next | this handoff commit on 25ba6474 (retrospect drift fix, plugin 0.4.11) on 49208738. Contains category rules + templates + category-rules follow-ups 1/2 and 2/2 + all of H5 (job queue, run log wait/gaps, test infra, missing-path guards, comment/test-title rules, pre-commit typecheck hook, mutation ETA with timeouts) + the CLAUDE.md trim (183 lines; detail in docs/harness/checks.md + agents.md). origin/main still 1f7a26a4 (nothing pushed; user: "not yet"). |
+| iPhone | main 49208738 installed (build 29, data container kept). The user has the device checks (walkthrough item 1). |
+| QUEUE | scripts/job-queue.sh only (cutover ~04:30). Old memory/refs/verify-queue.sh RETIRED (blocking ticket in ~/.claude/jobs/828f039f/verify-queue/tickets). Wait for load with scripts/wait-load.sh 10 first. Pre-commit typecheck hook is live (core.hooksPath=githooks). |
+| BINANCE | task 7/7 COMPLETE at cd10464c (branch binance-pay-history; gate 16e15079..cd10464c PASS 95.65). Session closed. NOT merged: waits for the user's D1/D2 (owned open item; item-17 probe recommended). Merge handover: binance-pay-history/.superpowers/sdd/binance-history/handover-2026-10-14-merge.md. binance-t6 stopped at 16 % (user decides). |
+| HARNESS SYNC | drizzer14/harness branch h5-sync tip d92f28d (worktree /Users/drizzer14/orca/workspaces/harness/h5-sync; session harness-sync-g6 = SendMessage "h5-sync-18", idle). npm test 2562/2562. plugin/** patch list P1-P25 pending the user (auto mode denied the writes). Then the coordinator pushes. |
+| H7 | brief memory/refs/brief-h7.md (H5 track files copied to memory/refs/h5-sdd/). Set 1 G1 (a) needs the user's own-terminal confirmation. Not started. |
+| IDLE TRACKS | templates (transaction-templates worktree), duo (wt-simfix 4148568f; simulator check at the end), form-header (Maestro check when quiet), category-rules worktree (2/2 merged; its session closed). |
+
+## ⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐ COORDINATOR HANDOFF (2026-10-13 ~14:30) — HISTORY
 Coordinator job 828f039f. Event log of 2026-10-12/13: memory/refs/night-summary-2026-10-12.md.
 FIRST ACTION of the next session: walk the user through memory/refs/morning-walkthrough-2026-10-13.md,
 IN ITS ORDER, one item at a time (AskUserQuestion, recommendation first), and send each answer to the
