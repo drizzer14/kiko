@@ -342,11 +342,23 @@ strings in `src/i18n/locales/en.ts`): `emptyStates.*` title is sentence case wit
 message is a full sentence with "."; `accountDetail.emptyHoldings` (title and message)
 follows the same rule; there are no `tips.*` keys (the
 tips were removed by user ruling); `help.title` and `help.rowLabel` read
-"Help" in en and «Довідка» in uk; `help.*`
-topic titles are Title Case and listed in `TITLE_KEYS`
+"Help" in en and «Довідка» in uk; `help.topics.*` titles and
+`help.groups.*.title` are Title Case and listed in `TITLE_KEYS`
 (`src/i18n/locales/title-keys.ts`), the help steps are sentence case
-with ".". The numbered step keys are quoted (`'1'`..`'5'`) because
-i18next `ParseKeys` rejects a numeric property name.
+with ".". The numbered step keys are quoted (`'1'`, `'2'`, …; the count
+varies per topic, read `en.ts` `help.topics.*`) because i18next
+`ParseKeys` rejects a numeric property name.
+
+Every "…" (en) / «…» (uk) quote in a help step must be a real catalogue
+string outside `help.topics.*` that some screen shows as visible text,
+pinned in `src/help/help-topics.test.ts` (a label only an accessibility
+prop renders does not count; the Home FAB "+" is the one literal
+exception). The pin proves existence and visibility somewhere, NOT that
+the label shows on that screen in that state (edit-only labels, other
+screens): the writer checks each claim against the rendering code and the
+reviewer checks each label at its screen and state. Casing allowance:
+`src/i18n/locales/en.casing-by-role.test.ts` accepts a "…" span only when
+it exactly equals a `TITLE_KEYS` en value.
 
 The mechanized invariant lives in
 `src/i18n/locales/en.final-stop-by-role.test.ts` (checks both `en` and

@@ -663,8 +663,9 @@ how stale it is, and the next refresh tries again.
 
 `src/screens/forms/price-point-form/price-point-form.screen.tsx`,
 reached from `holding-detail.screen.tsx`'s `updateValue` footer action
-(`property_item`/`metal`'s own `holdingDetailSpecs` entry,
-`holding-detail-spec/` — a priced holding takes neither the
+(the `footerAction` of the `property_item` and `loan` entries in
+`src/screens/holding-detail/holding-detail-spec/holding-detail-spec.ts`;
+a metal takes `addLot`, see that file — a priced holding takes neither the
 `contribution` nor `transaction` footer action, an entirely separate
 branch), writes a new `manual` price
 point through `pricePointsRepo.upsertMany` directly on the holding's
