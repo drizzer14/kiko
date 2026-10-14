@@ -416,10 +416,10 @@ verified usage, not dead weight:
   JSON key". The `name` field (not just word) matters: it is what lets
   `src/crypto-sync/binance/binance.transactions.ts` exempt only its
   wire-mirrored `txId` field while still catching a DIFFERENT `tx`-bearing
-  identifier chosen freely in the SAME file (`BinanceTransactionSyncDeps`, this
-  codebase's own type name, correctly renamed to `BinanceTransactionSyncDeps`
+  identifier chosen freely in the SAME file (`BinanceTxSyncDeps`, this
+  codebase's own type name, since renamed to `BinanceTransactionSyncDeps`
   during the R1.d sweep — a word-only, file-wide exemption would have
-  silently skipped that one too). Each of the 20 entries is a real,
+  silently skipped that one too). Each of the 22 entries is a real,
   verified external-format mirror, not a style preference:
   `src/db/run-migrations.ts` + its test + the six
   `src/db/schema.*.test.ts` fixtures (`idx`) mirror drizzle-kit's own
@@ -429,8 +429,8 @@ verified usage, not dead weight:
   `val_code` and from `payments[].pay_val`) mirror the National Bank of
   Ukraine securities register's own external JSON fields; `src/crypto-sync/binance/binance.client.ts` +
   its test (`msg`) mirror Binance's own error-body shape `{code, msg}`;
-  those same two files plus `binance.transactions.ts`/`.test.ts` (`tx`,
-  from `txId`) mirror the literal field name on Binance's deposit/withdraw
+  `binance.history-client.ts`/`.test.ts` plus `binance.transactions.ts`/`.test.ts`/`.placement.test.ts`
+  and `binance.pay-history.real-sqlite.test.ts` (`tx`, from `txId`) mirror the literal field name on Binance's deposit/withdraw
   history records (`GET /sapi/v1/capital/deposit/hisrec` and
   `/withdraw/history`) — found only by reading the ACTUAL diff after an
   initial mechanical `tx` → `transaction` sweep pass, not by inspection

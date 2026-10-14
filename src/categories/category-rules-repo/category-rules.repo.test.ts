@@ -30,6 +30,7 @@ type TransactionSeed = {
   categorySetByHand?: boolean;
   exchangePairId?: string;
   exchangeCounterpartHoldingId?: string;
+  untrackedCounterpart?: string;
   setsBalance?: boolean;
   changeGroupId?: string;
 };
@@ -57,8 +58,8 @@ const insertTransaction = (row: TransactionSeed): void => {
     .prepare(
       `INSERT INTO transactions (id, holding_id, amount_minor_units, time, description, category,
          source, category_set_by_hand, exchange_pair_id, exchange_counterpart_holding_id,
-         sets_balance, change_group_id)
-       VALUES (?, ?, ?, 1000, ?, ?, 'manual', ?, ?, ?, ?, ?)`,
+         untracked_counterpart, sets_balance, change_group_id)
+       VALUES (?, ?, ?, 1000, ?, ?, 'manual', ?, ?, ?, ?, ?, ?)`,
     )
     .run(
       row.id,
@@ -69,6 +70,7 @@ const insertTransaction = (row: TransactionSeed): void => {
       row.categorySetByHand ? 1 : 0,
       row.exchangePairId ?? null,
       row.exchangeCounterpartHoldingId ?? null,
+      row.untrackedCounterpart ?? null,
       row.setsBalance ? 1 : 0,
       row.changeGroupId ?? null,
     );
@@ -112,6 +114,21 @@ const textsOf = (rule: StoredRule): string[] =>
   (parseRuleMatchers(rule.matchers) ?? []).flatMap((matcher) =>
     matcher.type === 'nameIs' ? [matcher.text] : [],
   );
+
+const NAME_AND_DIRECTION_MATCHERS: CategoryRuleMatcher[] = [
+  { type: 'nameIs', text: 'silpo' },
+  { type: 'direction', direction: 'expense' },
+];
+
+const insertSilpo = (id: string, seed: Partial<TransactionSeed> = {}): void => {
+  insertTransaction({ id, description: 'Silpo', category: 'groceries', ...seed });
+};
+
+const applySilpoRule = (sourceTransactionId: string | null = null) =>
+  categoryRulesRepo.applyNameRule({ name: 'Silpo', category: 'food', sourceTransactionId });
+
+const addedRulesBeside = (rule: RuleSeed): StoredRule[] =>
+  storedRules().filter((stored) => stored.id !== rule.id);
 
 // Records every statement the engine prepares from here on.
 const spyOnStatements = (): string[] => {
@@ -224,16 +241,12 @@ describe('categoryRulesRepo.deleteRule', () => {
 describe('categoryRulesRepo.applyNameRule', () => {
   it('changes exactly the rows whose normalized name matches, and leaves the other names alone', async () => {
     insertRule({ id: 'atb-rule', category: 'shops', matchers: [{ type: 'nameIs', text: 'Atb' }] });
-    insertTransaction({ id: 'plain', description: 'Silpo', category: 'groceries' });
+    insertSilpo('plain');
     insertTransaction({ id: 'spaced', description: '  SILPO  ', category: null });
     insertTransaction({ id: 'cyrillic', description: 'Сільпо', category: 'groceries' });
     insertTransaction({ id: 'other', description: 'Atb', category: 'groceries' });
 
-    await categoryRulesRepo.applyNameRule({
-      name: 'Silpo',
-      category: 'food',
-      sourceTransactionId: null,
-    });
+    await applySilpoRule();
 
     expect(categoriesOf()).toEqual({
       cyrillic: 'groceries',
@@ -244,18 +257,9 @@ describe('categoryRulesRepo.applyNameRule', () => {
   });
 
   it('keeps a row whose category the user picked by hand', async () => {
-    insertTransaction({
-      id: 'picked',
-      description: 'Silpo',
-      category: 'groceries',
-      categorySetByHand: true,
-    });
+    insertSilpo('picked', { categorySetByHand: true });
 
-    const updated = await categoryRulesRepo.applyNameRule({
-      name: 'Silpo',
-      category: 'food',
-      sourceTransactionId: null,
-    });
+    const updated = await applySilpoRule();
 
     expect(updated).toBe(0);
     expect(categoriesOf()).toEqual({ picked: 'groceries' });
@@ -263,51 +267,23 @@ describe('categoryRulesRepo.applyNameRule', () => {
   });
 
   it('does not count a row that already has the category', async () => {
-    insertTransaction({ id: 'already', description: 'Silpo', category: 'food' });
-    insertTransaction({ id: 'moved', description: 'Silpo', category: 'groceries' });
+    insertSilpo('already', { category: 'food' });
+    insertSilpo('moved');
 
-    const updated = await categoryRulesRepo.applyNameRule({
-      name: 'Silpo',
-      category: 'food',
-      sourceTransactionId: null,
-    });
+    const updated = await applySilpoRule();
 
     expect(updated).toBe(1);
     expect(categoriesOf()).toEqual({ already: 'food', moved: 'food' });
   });
 
   it('leaves an exchange leg, a balance-setting row and a split-change row alone', async () => {
-    insertTransaction({
-      id: 'exchange-pair',
-      description: 'Silpo',
-      category: 'groceries',
-      exchangePairId: 'pair',
-    });
-    insertTransaction({
-      id: 'exchange-counterpart',
-      description: 'Silpo',
-      category: 'groceries',
-      exchangeCounterpartHoldingId: 'usd-card',
-    });
-    insertTransaction({
-      id: 'balance',
-      description: 'Silpo',
-      category: 'groceries',
-      setsBalance: true,
-    });
-    insertTransaction({
-      id: 'change',
-      description: 'Silpo',
-      category: 'groceries',
-      changeGroupId: 'group',
-    });
-    insertTransaction({ id: 'plain', description: 'Silpo', category: 'groceries' });
+    insertSilpo('exchange-pair', { exchangePairId: 'pair' });
+    insertSilpo('exchange-counterpart', { exchangeCounterpartHoldingId: 'usd-card' });
+    insertSilpo('balance', { setsBalance: true });
+    insertSilpo('change', { changeGroupId: 'group' });
+    insertSilpo('plain');
 
-    const updated = await categoryRulesRepo.applyNameRule({
-      name: 'Silpo',
-      category: 'food',
-      sourceTransactionId: null,
-    });
+    const updated = await applySilpoRule();
 
     expect(updated).toBe(1);
     expect(categoriesOf()).toEqual({
@@ -344,29 +320,17 @@ describe('categoryRulesRepo.applyNameRule', () => {
     const stronger: RuleSeed = {
       id: 'silpo-expense',
       category: 'shops',
-      matchers: [
-        { type: 'nameIs', text: 'silpo' },
-        { type: 'direction', direction: 'expense' },
-      ],
+      matchers: NAME_AND_DIRECTION_MATCHERS,
     };
 
     insertRule(stronger);
-    insertTransaction({ id: 'expense', description: 'Silpo', category: 'groceries' });
-    insertTransaction({
-      id: 'income',
-      description: 'Silpo',
-      category: 'groceries',
-      amountMinorUnits: 100,
-    });
+    insertSilpo('expense');
+    insertSilpo('income', { amountMinorUnits: 100 });
 
-    const updated = await categoryRulesRepo.applyNameRule({
-      name: 'Silpo',
-      category: 'food',
-      sourceTransactionId: null,
-    });
+    const updated = await applySilpoRule();
 
     const rules = storedRules();
-    const added = rules.filter((rule) => rule.id !== stronger.id);
+    const added = addedRulesBeside(stronger);
 
     expect(rules.find((rule) => rule.id === stronger.id)).toMatchObject({
       category: 'shops',
@@ -382,18 +346,9 @@ describe('categoryRulesRepo.applyNameRule', () => {
   });
 
   it('frees the source row from the by-hand mark so the rule moves it', async () => {
-    insertTransaction({
-      id: 'source',
-      description: 'Silpo',
-      category: 'groceries',
-      categorySetByHand: true,
-    });
+    insertSilpo('source', { categorySetByHand: true });
 
-    const updated = await categoryRulesRepo.applyNameRule({
-      name: 'Silpo',
-      category: 'food',
-      sourceTransactionId: 'source',
-    });
+    const updated = await applySilpoRule('source');
 
     expect(updated).toBe(1);
     expect(categoriesOf()).toEqual({ source: 'food' });
@@ -404,32 +359,20 @@ describe('categoryRulesRepo.applyNameRule', () => {
     const SILPO_EXPENSE_SHOPS: RuleSeed = {
       id: 'silpo-expense',
       category: 'shops',
-      matchers: [
-        { type: 'nameIs', text: 'silpo' },
-        { type: 'direction', direction: 'expense' },
-      ],
+      matchers: NAME_AND_DIRECTION_MATCHERS,
     };
 
     const seedRows = (): void => {
-      insertTransaction({ id: 'source', description: 'Silpo', category: 'shops' });
-      insertTransaction({ id: 'same-expense', description: 'Silpo', category: 'shops' });
-      insertTransaction({
-        id: 'income',
-        description: 'Silpo',
-        category: 'groceries',
-        amountMinorUnits: 100,
-      });
+      insertSilpo('source', { category: 'shops' });
+      insertSilpo('same-expense', { category: 'shops' });
+      insertSilpo('income', { amountMinorUnits: 100 });
     };
 
     it('gives the source row the picked category and keeps it there by hand, so the pick stays', async () => {
       insertRule(SILPO_EXPENSE_SHOPS);
       seedRows();
 
-      await categoryRulesRepo.applyNameRule({
-        name: 'Silpo',
-        category: 'food',
-        sourceTransactionId: 'source',
-      });
+      await applySilpoRule('source');
 
       expect(categoriesOf().source).toBe('food');
       expect(flagOf('source')).toBe(1);
@@ -439,11 +382,7 @@ describe('categoryRulesRepo.applyNameRule', () => {
       insertRule(SILPO_EXPENSE_SHOPS);
       seedRows();
 
-      const updated = await categoryRulesRepo.applyNameRule({
-        name: 'Silpo',
-        category: 'food',
-        sourceTransactionId: 'source',
-      });
+      const updated = await applySilpoRule('source');
 
       expect(updated).toBe(2);
       expect(categoriesOf()).toEqual({ income: 'food', 'same-expense': 'shops', source: 'food' });
@@ -455,13 +394,9 @@ describe('categoryRulesRepo.applyNameRule', () => {
       insertRule(SILPO_EXPENSE_SHOPS);
       seedRows();
 
-      await categoryRulesRepo.applyNameRule({
-        name: 'Silpo',
-        category: 'food',
-        sourceTransactionId: 'source',
-      });
+      await applySilpoRule('source');
 
-      const added = storedRules().filter((rule) => rule.id !== SILPO_EXPENSE_SHOPS.id);
+      const added = addedRulesBeside(SILPO_EXPENSE_SHOPS);
 
       expect(added).toHaveLength(1);
       expect(added[0]).toMatchObject({ category: 'food' });
@@ -477,11 +412,7 @@ describe('categoryRulesRepo.applyNameRule', () => {
       });
       seedRows();
 
-      await categoryRulesRepo.applyNameRule({
-        name: 'Silpo',
-        category: 'food',
-        sourceTransactionId: 'source',
-      });
+      await applySilpoRule('source');
 
       expect(storedRules().map((rule) => rule.id)).toEqual(['silpo-expense', 'silpo-name']);
       expect(storedRules().find((rule) => rule.id === 'silpo-name')).toMatchObject({
@@ -493,18 +424,9 @@ describe('categoryRulesRepo.applyNameRule', () => {
 
     it('frees the source row as usual when the stronger rule has the picked category too', async () => {
       insertRule({ ...SILPO_EXPENSE_SHOPS, category: 'food' });
-      insertTransaction({
-        id: 'source',
-        description: 'Silpo',
-        category: 'groceries',
-        categorySetByHand: true,
-      });
+      insertSilpo('source', { categorySetByHand: true });
 
-      await categoryRulesRepo.applyNameRule({
-        name: 'Silpo',
-        category: 'food',
-        sourceTransactionId: 'source',
-      });
+      await applySilpoRule('source');
 
       expect(categoriesOf().source).toBe('food');
       expect(flagOf('source')).toBe(0);
@@ -512,18 +434,9 @@ describe('categoryRulesRepo.applyNameRule', () => {
 
     it('frees the source row as usual when the stronger rule is stored with the picked category in other case', async () => {
       insertRule({ ...SILPO_EXPENSE_SHOPS, category: 'Food' });
-      insertTransaction({
-        id: 'source',
-        description: 'Silpo',
-        category: 'groceries',
-        categorySetByHand: true,
-      });
+      insertSilpo('source', { categorySetByHand: true });
 
-      await categoryRulesRepo.applyNameRule({
-        name: 'Silpo',
-        category: 'food',
-        sourceTransactionId: 'source',
-      });
+      await applySilpoRule('source');
 
       expect(categoriesOf().source).toBe('food');
       expect(flagOf('source')).toBe(0);
@@ -531,38 +444,19 @@ describe('categoryRulesRepo.applyNameRule', () => {
   });
 
   it('does not count a source row that holds the picked category in other case', async () => {
-    insertTransaction({ id: 'source', description: 'Silpo', category: 'Food' });
+    insertSilpo('source', { category: 'Food' });
 
-    const updated = await categoryRulesRepo.applyNameRule({
-      name: 'Silpo',
-      category: 'food',
-      sourceTransactionId: 'source',
-    });
+    const updated = await applySilpoRule('source');
 
     expect(updated).toBe(0);
   });
 
   it('gives a split-change source row the picked category, while other split-change rows keep theirs', async () => {
-    insertTransaction({
-      id: 'source',
-      description: 'Silpo',
-      category: 'groceries',
-      changeGroupId: 'group',
-      categorySetByHand: true,
-    });
-    insertTransaction({
-      id: 'other-change',
-      description: 'Silpo',
-      category: 'groceries',
-      changeGroupId: 'group',
-    });
-    insertTransaction({ id: 'plain', description: 'Silpo', category: 'groceries' });
+    insertSilpo('source', { changeGroupId: 'group', categorySetByHand: true });
+    insertSilpo('other-change', { changeGroupId: 'group' });
+    insertSilpo('plain');
 
-    const updated = await categoryRulesRepo.applyNameRule({
-      name: 'Silpo',
-      category: 'food',
-      sourceTransactionId: 'source',
-    });
+    const updated = await applySilpoRule('source');
 
     expect(updated).toBe(2);
     expect(categoriesOf()).toEqual({
@@ -574,69 +468,37 @@ describe('categoryRulesRepo.applyNameRule', () => {
   });
 
   it('gives an exchange-leg source row the picked category, while other exchange legs keep theirs', async () => {
-    insertTransaction({
-      id: 'source',
-      description: 'Silpo',
-      category: 'groceries',
-      exchangePairId: 'pair',
-      categorySetByHand: true,
-    });
-    insertTransaction({
-      id: 'other-leg',
-      description: 'Silpo',
-      category: 'groceries',
-      exchangeCounterpartHoldingId: 'usd-card',
-    });
+    insertSilpo('source', { exchangePairId: 'pair', categorySetByHand: true });
+    insertSilpo('other-leg', { exchangeCounterpartHoldingId: 'usd-card' });
 
-    await categoryRulesRepo.applyNameRule({
-      name: 'Silpo',
-      category: 'food',
-      sourceTransactionId: 'source',
-    });
+    await applySilpoRule('source');
 
     expect(categoriesOf()).toEqual({ 'other-leg': 'groceries', source: 'food' });
     expect(flagOf('source')).toBe(0);
   });
 
   it('gives a balance-setting source row the picked category', async () => {
-    insertTransaction({
-      id: 'source',
-      description: 'Silpo',
-      category: 'groceries',
-      setsBalance: true,
-    });
+    insertSilpo('source', { setsBalance: true });
 
-    await categoryRulesRepo.applyNameRule({
-      name: 'Silpo',
-      category: 'food',
-      sourceTransactionId: 'source',
-    });
+    await applySilpoRule('source');
 
     expect(categoriesOf()).toEqual({ source: 'food' });
   });
 
   it('gives a source row whose description is not the rule name the picked category too', async () => {
-    insertTransaction({ id: 'source', description: 'Silpo Market', category: 'groceries' });
+    insertSilpo('source', { description: 'Silpo Market' });
 
-    const updated = await categoryRulesRepo.applyNameRule({
-      name: 'Silpo',
-      category: 'food',
-      sourceTransactionId: 'source',
-    });
+    const updated = await applySilpoRule('source');
 
     expect(updated).toBe(1);
     expect(categoriesOf()).toEqual({ source: 'food' });
   });
 
   it('counts only the rewrite when the source row no longer exists', async () => {
-    insertTransaction({ id: 'plain', description: 'Silpo', category: 'groceries' });
+    insertSilpo('plain');
     insertTransaction({ id: 'other', description: 'Atb', category: 'groceries' });
 
-    const updated = await categoryRulesRepo.applyNameRule({
-      name: 'Silpo',
-      category: 'food',
-      sourceTransactionId: 'deleted',
-    });
+    const updated = await applySilpoRule('deleted');
 
     expect(updated).toBe(1);
     expect(categoriesOf()).toEqual({ other: 'groceries', plain: 'food' });
@@ -697,6 +559,15 @@ describe('categoryRulesRepo.applyNameRule', () => {
 
 const SILPO_FOOD = [{ type: 'nameIs', text: 'Silpo' }] satisfies CategoryRuleMatcher[];
 
+const countFoodRewrite = (id: string | null) =>
+  categoryRulesRepo.countRuleRewrite({ id, category: 'food', matchers: SILPO_FOOD });
+
+// A stored rule that a save of the same rule over its page would leave as it is.
+const seedStoredRule = (storedCategory: string): void => {
+  insertRule({ id: 'stored', category: storedCategory, matchers: SILPO_FOOD });
+  insertSilpo('silpo');
+};
+
 describe('categoryRulesRepo.countRuleRewrite', () => {
   it('counts the rows a new rule would change, ranking the draft as the newest of its strength', async () => {
     insertRule({
@@ -704,34 +575,18 @@ describe('categoryRulesRepo.countRuleRewrite', () => {
       category: 'shops',
       matchers: [{ type: 'nameStartsWith', text: 'sil' }],
     });
-    insertTransaction({ id: 'silpo', description: 'Silpo', category: 'shops' });
+    insertSilpo('silpo', { category: 'shops' });
     insertTransaction({ id: 'atb', description: 'Atb', category: 'shops' });
 
-    const count = await categoryRulesRepo.countRuleRewrite({
-      id: null,
-      category: 'food',
-      matchers: SILPO_FOOD,
-    });
+    const count = await countFoodRewrite(null);
 
     expect(count).toBe(1);
   });
 
   it('ranks the draft by its distinct matchers, so a matcher written twice adds no strength', async () => {
-    insertRule({
-      id: 'stronger',
-      category: 'shops',
-      matchers: [
-        { type: 'nameIs', text: 'silpo' },
-        { type: 'direction', direction: 'expense' },
-      ],
-    });
-    insertTransaction({ id: 'expense', description: 'Silpo', category: 'shops' });
-    insertTransaction({
-      id: 'income',
-      description: 'Silpo',
-      category: 'shops',
-      amountMinorUnits: 100,
-    });
+    insertRule({ id: 'stronger', category: 'shops', matchers: NAME_AND_DIRECTION_MATCHERS });
+    insertSilpo('expense', { category: 'shops' });
+    insertSilpo('income', { category: 'shops', amountMinorUnits: 100 });
 
     const count = await categoryRulesRepo.countRuleRewrite({
       id: null,
@@ -747,16 +602,10 @@ describe('categoryRulesRepo.countRuleRewrite', () => {
 
   it('judges a rule that is being edited as it would be saved, not as it is stored', async () => {
     insertRule({ id: 'edited', category: 'shops', matchers: SILPO_FOOD });
-    insertTransaction({ id: 'silpo', description: 'Silpo', category: 'shops' });
+    insertSilpo('silpo', { category: 'shops' });
     insertTransaction({ id: 'atb', description: 'Atb', category: 'groceries' });
 
-    expect(
-      await categoryRulesRepo.countRuleRewrite({
-        id: 'edited',
-        category: 'food',
-        matchers: SILPO_FOOD,
-      }),
-    ).toBe(1);
+    expect(await countFoodRewrite('edited')).toBe(1);
     expect(
       await categoryRulesRepo.countRuleRewrite({
         id: 'edited',
@@ -767,74 +616,38 @@ describe('categoryRulesRepo.countRuleRewrite', () => {
   });
 
   it('counts nothing for a rule saved again exactly as it is stored', async () => {
-    insertRule({ id: 'stored', category: 'food', matchers: SILPO_FOOD });
-    insertTransaction({ id: 'silpo', description: 'Silpo', category: 'groceries' });
+    seedStoredRule('food');
 
-    expect(
-      await categoryRulesRepo.countRuleRewrite({
-        id: 'stored',
-        category: 'food',
-        matchers: SILPO_FOOD,
-      }),
-    ).toBe(0);
+    expect(await countFoodRewrite('stored')).toBe(0);
   });
 
   it('counts nothing for a rule whose stored category differs from its page only in case', async () => {
-    insertRule({ id: 'stored', category: 'Food', matchers: SILPO_FOOD });
-    insertTransaction({ id: 'silpo', description: 'Silpo', category: 'groceries' });
+    seedStoredRule('Food');
 
-    expect(
-      await categoryRulesRepo.countRuleRewrite({
-        id: 'stored',
-        category: 'food',
-        matchers: SILPO_FOOD,
-      }),
-    ).toBe(0);
+    expect(await countFoodRewrite('stored')).toBe(0);
   });
 
   it('does not count a row whose category differs from the rule only in case', async () => {
-    insertTransaction({ id: 'capitalized', description: 'Silpo', category: 'Food' });
-    insertTransaction({ id: 'other', description: 'Silpo', category: 'groceries' });
+    insertSilpo('capitalized', { category: 'Food' });
+    insertSilpo('other');
 
-    expect(
-      await categoryRulesRepo.countRuleRewrite({
-        id: null,
-        category: 'food',
-        matchers: SILPO_FOOD,
-      }),
-    ).toBe(1);
+    expect(await countFoodRewrite(null)).toBe(1);
   });
 
   it('counts only the rows a rule may rewrite', async () => {
-    insertTransaction({
-      id: 'picked',
-      description: 'Silpo',
-      category: 'groceries',
-      categorySetByHand: true,
-    });
-    insertTransaction({
-      id: 'exchange',
-      description: 'Silpo',
-      category: 'groceries',
-      exchangePairId: 'pair',
-    });
-    insertTransaction({ id: 'plain', description: 'Silpo', category: 'groceries' });
+    insertSilpo('picked', { categorySetByHand: true });
+    insertSilpo('exchange', { exchangePairId: 'pair' });
+    insertSilpo('plain');
 
-    expect(
-      await categoryRulesRepo.countRuleRewrite({
-        id: null,
-        category: 'food',
-        matchers: SILPO_FOOD,
-      }),
-    ).toBe(1);
+    expect(await countFoodRewrite(null)).toBe(1);
   });
 
   it('writes nothing', async () => {
     insertRule({ id: 'older', category: 'shops', matchers: SILPO_FOOD });
-    insertTransaction({ id: 'silpo', description: 'Silpo', category: 'shops' });
+    insertSilpo('silpo', { category: 'shops' });
     const rulesBefore = storedRules();
 
-    await categoryRulesRepo.countRuleRewrite({ id: null, category: 'food', matchers: SILPO_FOOD });
+    await countFoodRewrite(null);
 
     expect(storedRules()).toEqual(rulesBefore);
     expect(categoriesOf()).toEqual({ silpo: 'shops' });
@@ -844,6 +657,14 @@ describe('categoryRulesRepo.countRuleRewrite', () => {
 describe('categoryRulesRepo.saveRule', () => {
   const saveFood = (applyToExisting: boolean, id: string | null = null) =>
     categoryRulesRepo.saveRule({ id, category: 'food', matchers: SILPO_FOOD, applyToExisting });
+
+  const saveStoredRuleAgain = async (storedCategory: string) => {
+    seedStoredRule(storedCategory);
+
+    const rulesBefore = storedRules();
+
+    return { saved: await saveFood(true, 'stored'), rulesBefore };
+  };
 
   it('applies a new rule to the rows it wins, counting only the rows that change', async () => {
     insertTransaction({ id: 'differs', description: 'Silpo', category: 'groceries' });
@@ -866,21 +687,9 @@ describe('categoryRulesRepo.saveRule', () => {
   });
 
   it('leaves a row a stronger rule wins as it is', async () => {
-    insertRule({
-      id: 'stronger',
-      category: 'shops',
-      matchers: [
-        { type: 'nameIs', text: 'silpo' },
-        { type: 'direction', direction: 'expense' },
-      ],
-    });
-    insertTransaction({ id: 'expense', description: 'Silpo', category: 'groceries' });
-    insertTransaction({
-      id: 'income',
-      description: 'Silpo',
-      category: 'groceries',
-      amountMinorUnits: 100,
-    });
+    insertRule({ id: 'stronger', category: 'shops', matchers: NAME_AND_DIRECTION_MATCHERS });
+    insertSilpo('expense');
+    insertSilpo('income', { amountMinorUnits: 100 });
 
     const saved = await saveFood(true);
 
@@ -889,30 +698,10 @@ describe('categoryRulesRepo.saveRule', () => {
   });
 
   it('leaves a row picked by hand, an exchange leg, a balance-setting row and a split-change row alone', async () => {
-    insertTransaction({
-      id: 'picked',
-      description: 'Silpo',
-      category: 'groceries',
-      categorySetByHand: true,
-    });
-    insertTransaction({
-      id: 'exchange',
-      description: 'Silpo',
-      category: 'groceries',
-      exchangePairId: 'pair',
-    });
-    insertTransaction({
-      id: 'balance',
-      description: 'Silpo',
-      category: 'groceries',
-      setsBalance: true,
-    });
-    insertTransaction({
-      id: 'change',
-      description: 'Silpo',
-      category: 'groceries',
-      changeGroupId: 'group',
-    });
+    insertSilpo('picked', { categorySetByHand: true });
+    insertSilpo('exchange', { exchangePairId: 'pair' });
+    insertSilpo('balance', { setsBalance: true });
+    insertSilpo('change', { changeGroupId: 'group' });
 
     const saved = await saveFood(true);
 
@@ -924,6 +713,37 @@ describe('categoryRulesRepo.saveRule', () => {
       picked: 'groceries',
     });
     expect(flagOf('picked')).toBe(1);
+  });
+
+  it('leaves both legs of a wallet transfer alone for a rule with no name, and rewrites a plain row', async () => {
+    const withoutName: CategoryRuleMatcher[] = [{ type: 'direction', direction: 'expense' }];
+
+    insertTransaction({
+      id: 'to-futures',
+      description: 'Transfer',
+      category: 'groceries',
+      untrackedCounterpart: 'wallet:UMFUTURE',
+    });
+    insertTransaction({
+      id: 'to-funding',
+      description: 'Transfer',
+      category: 'groceries',
+      exchangePairId: 'pair',
+      exchangeCounterpartHoldingId: 'usd-card',
+    });
+    insertTransaction({ id: 'plain', description: 'Silpo', category: 'groceries' });
+    const draft = { id: null, category: 'food', matchers: withoutName };
+
+    const promised = await categoryRulesRepo.countRuleRewrite(draft);
+    const saved = await categoryRulesRepo.saveRule({ ...draft, applyToExisting: true });
+
+    expect(promised).toBe(1);
+    expect(saved.changed).toBe(1);
+    expect(categoriesOf()).toEqual({
+      plain: 'food',
+      'to-funding': 'groceries',
+      'to-futures': 'groceries',
+    });
   });
 
   it('changes exactly the number of rows the count promised, on data that did not change', async () => {
@@ -981,11 +801,7 @@ describe('categoryRulesRepo.saveRule', () => {
   });
 
   it('writes nothing for a rule saved again exactly as it is stored', async () => {
-    insertRule({ id: 'stored', category: 'food', matchers: SILPO_FOOD });
-    insertTransaction({ id: 'silpo', description: 'Silpo', category: 'groceries' });
-    const rulesBefore = storedRules();
-
-    const saved = await saveFood(true, 'stored');
+    const { saved, rulesBefore } = await saveStoredRuleAgain('food');
 
     expect(saved).toEqual({ id: 'stored', changed: 0 });
     expect(storedRules()).toEqual(rulesBefore);
@@ -993,11 +809,7 @@ describe('categoryRulesRepo.saveRule', () => {
   });
 
   it('writes nothing for a rule whose stored category differs from its page only in case', async () => {
-    insertRule({ id: 'stored', category: 'Food', matchers: SILPO_FOOD });
-    insertTransaction({ id: 'silpo', description: 'Silpo', category: 'groceries' });
-    const rulesBefore = storedRules();
-
-    const saved = await saveFood(true, 'stored');
+    const { saved, rulesBefore } = await saveStoredRuleAgain('Food');
 
     expect(saved).toEqual({ id: 'stored', changed: 0 });
     expect(storedRules()).toEqual(rulesBefore);

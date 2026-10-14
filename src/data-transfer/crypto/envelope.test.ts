@@ -133,7 +133,12 @@ describe('the export version against the migration journal', () => {
     // carried as an optional key (`transactionTemplates`), like 0054: an older
     // build restoring such a file drops the key, and this build restores an older
     // file with the table empty, so it needed no bump.
-    migrationCount: 58,
+    // Through 0058_add_untracked_counterpart, a nullable column riding inside the
+    // transaction row (`untrackedCounterpart`): an older build restoring a file
+    // that carries it drops the key, and this build restores an older file
+    // without it as null, so it needed no bump (a bump would make an older build
+    // refuse every new file).
+    migrationCount: 59,
   };
 
   it('has a version decision for every migration', () => {

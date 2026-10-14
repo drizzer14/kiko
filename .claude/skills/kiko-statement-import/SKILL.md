@@ -661,8 +661,9 @@ follow the same layout conventions as every other Kiko screen:
   row would. The title resolves through the SAME `transactionRowDescription`
   Home uses — an empty mapped description falls back
   to the income/expense default label (fed the chosen target holding's
-  name, via each caller's own `holdingName` prop, `undefined` before a
-  holding is chosen) instead of rendering blank; `exchangeCounterpartHoldingId`
+  name (each caller's `holdingName` prop, `undefined` before a
+  holding is chosen), with empty `holdingNameById` / `holdingCurrencyById` maps
+  (`ExampleTransaction` passes none) instead of rendering blank; `exchangeCounterpartHoldingId`
   is always `null` here (an import never creates an exchange-marked row).
   The footer shows the category title and the row's own date
   (`formatDate`) via `TransactionCard`'s existing optional `footerMeta`/

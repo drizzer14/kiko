@@ -15,25 +15,25 @@ jest.mock('@kiko/db/client', () => {
 import { join } from 'node:path';
 import { readFileSync } from 'node:fs';
 import { i18n } from '@kiko/i18n/init';
+import {
+  applyAllMigrations,
+  applyMigrationsBetween,
+  applyMigrationsThrough,
+} from '@kiko/test-support/real-sqlite';
 import { DatabaseSync } from 'node:sqlite';
 import maybe, { foldMap } from 'fnts/maybe';
 import { removeNotice } from '@kiko/transactions/remove-notice';
-import { applyAllMigrations, applyMigrationsThrough } from '@kiko/test-support/real-sqlite';
 
 import { transactionsRepo } from './transactions.repo';
+
+// The newest migration the repository's own columns need: the last one that
+// added a column `transactions` is read with.
+const LAST_MIGRATION_TAG = '0058_add_untracked_counterpart';
 
 const MIGRATION_0052_SQL = readFileSync(
   join(__dirname, '..', '..', '..', 'drizzle', 'migrations', '0052_add_exchange_pair_id.sql'),
   'utf8',
 );
-
-// The remove reads every `transactions` column the schema has today, so a database migrated only
-// through 0052 gets the column added since.
-const addCategorySetByHandColumn = (): void => {
-  mockDatabase.exec(
-    'ALTER TABLE transactions ADD category_set_by_hand integer DEFAULT false NOT NULL;',
-  );
-};
 
 const OPENED = Date.UTC(2026, 8, 1, 9);
 const MOVED = Date.UTC(2026, 9, 1, 9);
@@ -250,6 +250,71 @@ describe('deleting a leg of a manual Exchange', () => {
     expect(await linkageOf(idOfRowOn('usd'))).toEqual({
       split: false,
       exchange: { kind: 'deleted', names: ['Hryvnia card'] },
+    });
+  });
+
+  it('marks the plan same-currency, from either leg, when both holdings hold one currency', async () => {
+    await transactionsRepo.recordExchange({
+      sourceHoldingId: 'uah',
+      valueOutMinorUnits: 40_000,
+      destinationHoldingId: 'cash',
+      destinationType: 'cash',
+      valueInMinorUnits: 40_000,
+      time: MOVED,
+    });
+
+    expect(await linkageOf(idOfRowOn('uah'))).toEqual({
+      split: false,
+      exchange: { kind: 'deleted', names: ['Cash'], sameCurrency: true },
+    });
+    expect(await linkageOf(idOfRowOn('cash'))).toEqual({
+      split: false,
+      exchange: { kind: 'deleted', names: ['Hryvnia card'], sameCurrency: true },
+    });
+    expect(removeNotice(await transactionsRepo.removePlan(idOfRowOn('uah')), i18n.t)).toContain(
+      'This also deletes the other part of this transfer, in Cash.',
+    );
+  });
+
+  it('keeps the exchange wording when a same-currency leg was converted again with another currency', async () => {
+    const original = await convertExpenseOfUah('deposit', 'term_deposit', 40_000);
+
+    await transactionsRepo.recordExchangeCounterpart({
+      direction: 'record-destination',
+      counterpartHoldingId: 'usd',
+      counterpartType: 'card',
+      amountMinorUnits: 1_000,
+      existingTransactionId: original,
+      existingHoldingId: 'uah',
+      time: MOVED,
+    });
+
+    expect(rowOf(original)?.marker).toBe('deposit');
+    expect(await linkageOf(original)).toEqual({
+      split: false,
+      exchange: { kind: 'deleted', names: ['Dollar card'] },
+      deposit: { name: 'Deposit', matched: true },
+    });
+    expect(removeNotice(await transactionsRepo.removePlan(original), i18n.t)).toContain(
+      'This also deletes the other part of this exchange, in Dollar card.',
+    );
+  });
+
+  it('marks the plan same-currency only when every other leg holds the row’s currency too', async () => {
+    const original = await convertExpenseOfUah('cash', 'card', 40_000);
+
+    await transactionsRepo.recordExchangeCounterpart({
+      direction: 'record-destination',
+      counterpartHoldingId: 'second',
+      counterpartType: 'card',
+      amountMinorUnits: 40_000,
+      existingTransactionId: original,
+      existingHoldingId: 'uah',
+      time: MOVED,
+    });
+
+    expect(await linkageOf(original)).toMatchObject({
+      exchange: { kind: 'deleted', sameCurrency: true },
     });
   });
 
@@ -913,7 +978,8 @@ describe('deleting a part of a split payment that was converted', () => {
         mockDatabase.exec(statement);
       }
 
-      addCategorySetByHandColumn();
+      // The repository reads every column of today's schema.
+      applyMigrationsBetween(mockDatabase, '0052_add_exchange_pair_id', LAST_MIGRATION_TAG);
     };
 
     it.each(['legacy-return', 'legacy-converted', 'legacy-payment'])(
@@ -1561,7 +1627,8 @@ describe('a legacy leg written before the pair id existed', () => {
       mockDatabase.exec(statement);
     }
 
-    addCategorySetByHandColumn();
+    // The repository reads every column of today's schema.
+    applyMigrationsBetween(mockDatabase, '0052_add_exchange_pair_id', LAST_MIGRATION_TAG);
   };
 
   it('deletes both legs of a manual pair the backfill paired', async () => {
@@ -1666,5 +1733,31 @@ describe('a legacy leg written before the pair id existed', () => {
 
     expect(rowIds()).toEqual([]);
     expect(balancesOf().uah).toBe(100_000);
+  });
+
+  it('marks a missing other part same-currency only when the marker holding holds the row’s currency', async () => {
+    migratedLegacyDatabase(() => {
+      insertRow({
+        id: 'to-cash',
+        holdingId: 'uah',
+        amountMinorUnits: -40_000,
+        exchangeCounterpartHoldingId: 'cash',
+      });
+      insertRow({
+        id: 'to-usd',
+        holdingId: 'uah',
+        amountMinorUnits: -10_000,
+        exchangeCounterpartHoldingId: 'usd',
+      });
+    });
+
+    expect(await linkageOf('to-cash')).toEqual({
+      split: false,
+      exchange: { kind: 'missing', name: 'Cash', sameCurrency: true },
+    });
+    expect(await linkageOf('to-usd')).toEqual({
+      split: false,
+      exchange: { kind: 'missing', name: 'Dollar card' },
+    });
   });
 });

@@ -55,10 +55,16 @@ const MIGRATION_0056_SQL = readFileSync(
   'utf8',
 );
 
-// The snapshot reader selects every table the schema has today, so a database that ran 0056 also
-// carries the table of transaction templates (empty) for the read below.
+// The snapshot reader selects every table and column the schema has today, so a database that ran
+// 0056 also carries the table of transaction templates (empty) and the column of untracked
+// counterparts (null on every row) for the read below.
 const MIGRATION_0057_SQL = readFileSync(
   join(__dirname, '..', '..', '..', 'drizzle', 'migrations', '0057_add_transaction_templates.sql'),
+  'utf8',
+);
+
+const MIGRATION_0058_SQL = readFileSync(
+  join(__dirname, '..', '..', '..', 'drizzle', 'migrations', '0058_add_untracked_counterpart.sql'),
   'utf8',
 );
 
@@ -149,7 +155,9 @@ const versionTwoFile = async (source: DatabaseSync): Promise<{ text: string; key
     accounts: await sourceDrizzle.select().from(accounts).orderBy(asc(accounts.id)),
     holdings: await sourceDrizzle.select().from(holdings).orderBy(asc(holdings.id)),
     transactions: await sourceDrizzle
-      .select(columnsWithout(getTableColumns(transactions), 'categorySetByHand'))
+      .select(
+        columnsWithout(getTableColumns(transactions), 'categorySetByHand', 'untrackedCounterpart'),
+      )
       .from(transactions)
       .orderBy(asc(transactions.id)),
     currencyRates: [],
@@ -238,6 +246,23 @@ describe('restoring a .kiko file exported before category rules existed', () => 
   });
 });
 
+// Exports `exported` as this build writes it and restores the file into a fresh database, which
+// `mockDatabase` then holds.
+const restoreExportOf = async (exported: DatabaseSync): Promise<void> => {
+  mockDatabase = exported;
+
+  const tables = JSON.parse(JSON.stringify(await readDataSnapshot()));
+  const key = generateExportKey();
+  const envelope = encryptEnvelope(
+    utf8ToBytes(JSON.stringify({ exportedAt: 1, appVersion: '1.2.0', tables })),
+    key,
+  );
+
+  mockReadFile.mockResolvedValue(JSON.stringify(envelope));
+  mockDatabase = freshDatabase();
+  await importData({ fileUri: '/tmp/current.kiko', keyBase64: encodeBytesToBase64(key) });
+};
+
 describe('restoring a .kiko file this build exported', () => {
   it('keeps every rule and the by-hand mark of a row', async () => {
     const exported = freshDatabase();
@@ -253,18 +278,8 @@ describe('restoring a .kiko file this build exported', () => {
       INSERT INTO category_rules (id, category, matchers, created_at, updated_at)
         VALUES ('rule-1', 'food', '[{"type":"nameIs","text":"Silpo"},{"type":"direction","direction":"expense"}]', 11, 12);
     `);
-    mockDatabase = exported;
 
-    const tables = JSON.parse(JSON.stringify(await readDataSnapshot()));
-    const key = generateExportKey();
-    const envelope = encryptEnvelope(
-      utf8ToBytes(JSON.stringify({ exportedAt: 1, appVersion: '1.2.0', tables })),
-      key,
-    );
-
-    mockReadFile.mockResolvedValue(JSON.stringify(envelope));
-    mockDatabase = freshDatabase();
-    await importData({ fileUri: '/tmp/current.kiko', keyBase64: encodeBytesToBase64(key) });
+    await restoreExportOf(exported);
 
     expect(rulesOf(mockDatabase)).toEqual(rulesOf(exported));
     expect(flagsOf(mockDatabase)).toEqual([
@@ -278,18 +293,9 @@ describe('restoring a .kiko file this build exported', () => {
 
     exported.exec(MIGRATION_0056_SQL.split('--> statement-breakpoint').join('\n'));
     exported.exec(MIGRATION_0057_SQL);
-    mockDatabase = exported;
+    exported.exec(MIGRATION_0058_SQL);
 
-    const tables = JSON.parse(JSON.stringify(await readDataSnapshot()));
-    const key = generateExportKey();
-    const envelope = encryptEnvelope(
-      utf8ToBytes(JSON.stringify({ exportedAt: 1, appVersion: '1.2.0', tables })),
-      key,
-    );
-
-    mockReadFile.mockResolvedValue(JSON.stringify(envelope));
-    mockDatabase = freshDatabase();
-    await importData({ fileUri: '/tmp/current.kiko', keyBase64: encodeBytesToBase64(key) });
+    await restoreExportOf(exported);
 
     expect(rulesOf(mockDatabase)).toEqual(rulesOf(exported));
     expect(

@@ -749,7 +749,7 @@ export const en = {
     binanceConnected: 'Binance connected',
     binanceFundingResponseNotArray: 'Binance funding response was not an array',
     binanceHistoryPending:
-      'Some Binance deposit and withdrawal history is not imported yet. Kiko will keep importing on each sync.',
+      'Some Binance transaction history is not imported yet. Kiko will keep importing on each sync.',
     binanceKeychainDisclosure:
       "Your Binance API key is stored only in your device's Keychain, used only to fetch your own data directly from Binance, and is never sent to Kiko or any server.",
     binanceMissingBalancesArray: 'Binance account response did not contain a balances array',
@@ -1286,12 +1286,21 @@ export const en = {
     // (Hermes has no `Intl.ListFormat`).
     deleteLinked: {
       exchange: 'This also deletes the other part of this exchange, in {{name}}.',
+      // The same sentence when both legs hold one currency: the row reads
+      // "Transfer to/from", so its notice says transfer too.
+      transfer: 'This also deletes the other part of this transfer, in {{name}}.',
       exchangeSyncedKept:
         'The other part, in {{name}}, came from your bank and stays. Only this part is deleted.',
       exchangeUnlinked:
         'The other part of this exchange, in {{name}}, could not be found. Only this part is deleted, so check {{name}}.',
       exchangeUnlinkedPlain:
         'The other part of this exchange could not be found. Only this part is deleted.',
+      // The same two sentences when both holdings hold one currency: the row reads
+      // "Transfer to/from", so its notice says transfer too.
+      transferUnlinked:
+        'The other part of this transfer, in {{name}}, could not be found. Only this part is deleted, so check {{name}}.',
+      transferUnlinkedPlain:
+        'The other part of this transfer could not be found. Only this part is deleted.',
       deposit: 'This also removes its contribution to {{name}}.',
       depositKept:
         'Its contribution to {{name}} could not be matched and stays. Edit {{name}} to remove it.',
@@ -1312,6 +1321,10 @@ export const en = {
     },
     exchangeFrom: 'Exchange from {{name}}',
     exchangeTo: 'Exchange to {{name}}',
+    // The same movement when both sides hold one currency: an own-wallet move,
+    // not an exchange. Also names a wallet Kiko does not track.
+    transferFrom: 'Transfer from {{name}}',
+    transferTo: 'Transfer to {{name}}',
   },
   // Shared design-system components (src/design-system/components/*) that
   // carry their own hardcoded copy rather than taking it as a prop.

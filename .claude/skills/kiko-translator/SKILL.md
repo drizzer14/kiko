@@ -14,20 +14,12 @@ is live on the tree.
 ## Never persist a display string — resolve with `t` at render time
 
 A transaction/holding row stores data, never a rendered label. The
-exchange-leg bug (T-6) is the cautionary case:
-`recordExchange`/`recordExchangeCounterpart` in
-`src/transactions/` write a literal English
-`description` (`` `Exchange to ${name}` ``) straight into the row — a
-later language switch can never fix a row already written that way.
-The correct pattern already exists in the codebase for this exact
-shape: `defaultTransactionDescription`
-(`src/transactions/`) takes a `TFunction` and resolves the
-label on every call, re-evaluating against whatever language is active
-now. Give a structural marker (a category key or a shared correlation
-id) to anything that today gets its "what is this row" answer baked
-into a persisted description, and resolve the label the same way
-`defaultTransactionDescription` does — never write the resolved string
-to a column. The same rule applies to a placeholder like "Never" for
+exchange-leg bug (T-6) is the cautionary case: a persisted 'Exchange to <name>'
+stayed English after a language switch and went stale after a rename. The fix:
+the row stores a structural marker (`exchangeCounterpartHoldingId`,
+`untrackedCounterpart`) and `transactionRowDescription`
+(`src/transactions/row-description/`) resolves the label with `t` at render
+time (see kiko-domain 'Exchange/Convert legs'). The same rule applies to a placeholder like "Never" for
 last-sync (T-17, `src/screens/account-detail/format-last-sync.ts`): add
 a catalogue key and thread `t` through, don't hardcode the fallback.
 
@@ -240,6 +232,10 @@ string:
   `en.casing-by-role.test.ts` for en and in `uk.casing.test.ts` for uk
   — read them there, add a new name to the right one). A uk word
   missing from the uk `PROPER_NOUNS` is forced lowercase mid-sentence.
+  Untracked-wallet product names (`UNTRACKED_WALLETS`,
+  `src/transactions/untracked-counterpart/`) are kept out of the i18n
+  catalogue: code-side proper nouns; only the 'Transfer to/from {{name}}'
+  sentence (`transactions.transferTo`/`transactions.transferFrom`) is translated.
   uk writes the network name with a capital in every case form. It is a
   proper noun beside Monobank and Binance. The uk `PROPER_NOUNS` holds
   «Біткоїн» and «Біткоїна» today; add any other case form you use (for

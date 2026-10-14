@@ -1,3 +1,5 @@
+import { exchangeExcludedTransactionIds } from '@kiko/statistics/exchange-exclusion';
+
 import {
   REWRITE_GUARD_FIELDS,
   type RewriteGuardField,
@@ -20,6 +22,7 @@ const candidate = (overrides: Partial<RewriteCandidate> = {}): RewriteCandidate 
   categorySetByHand: false,
   exchangePairId: null,
   exchangeCounterpartHoldingId: null,
+  untrackedCounterpart: null,
   setsBalance: false,
   changeGroupId: null,
   ...overrides,
@@ -36,6 +39,7 @@ describe('isRewriteEligible', () => {
     ['a hand-picked category', { categorySetByHand: true }],
     ['an exchange pair', { exchangePairId: 'pair-1' }],
     ['an exchange counterpart holding', { exchangeCounterpartHoldingId: 'holding-2' }],
+    ['an untracked counterpart wallet', { untrackedCounterpart: 'wallet:UMFUTURE' }],
     ['a balance-setting row', { setsBalance: true }],
     ['a split-change row', { changeGroupId: 'group-1' }],
   ])('refuses %s', (_label, overrides) => {
@@ -50,6 +54,7 @@ describe('REWRITE_GUARD_FIELDS', () => {
     categorySetByHand: { categorySetByHand: true },
     exchangePairId: { exchangePairId: 'pair-1' },
     exchangeCounterpartHoldingId: { exchangeCounterpartHoldingId: 'holding-2' },
+    untrackedCounterpart: { untrackedCounterpart: 'wallet:UMFUTURE' },
     setsBalance: { setsBalance: true },
     changeGroupId: { changeGroupId: 'group-1' },
   };
@@ -71,6 +76,28 @@ describe('REWRITE_GUARD_FIELDS', () => {
     isRewriteEligible(watched);
 
     expect([...readFields].sort()).toEqual([...REWRITE_GUARD_FIELDS].sort());
+  });
+
+  // The statistics treat a row with one of these markers as an exchange leg, and a rule never
+  // rewrites an exchange leg, so a marker added there without a guard here leaks a leg to a rule.
+  it('names every structural marker the exchange exclusion reads', () => {
+    const markersRead = new Set<string | symbol>();
+    const row = { id: 'row-1', exchangeCounterpartHoldingId: null, untrackedCounterpart: null };
+    const watched = new Proxy(row, {
+      get: (target, field: keyof typeof row) => {
+        markersRead.add(field);
+
+        return target[field];
+      },
+    });
+    const guardFields: readonly (string | symbol)[] = REWRITE_GUARD_FIELDS;
+
+    exchangeExcludedTransactionIds([watched]);
+
+    expect(markersRead.size).toBeGreaterThan(0);
+    expect(
+      [...markersRead].filter((marker) => marker !== 'id' && !guardFields.includes(marker)),
+    ).toEqual([]);
   });
 });
 
@@ -165,6 +192,7 @@ describe('planRuleRewrite', () => {
   it.each([
     ['an exchange pair', { exchangePairId: 'pair-1' }],
     ['an exchange counterpart holding', { exchangeCounterpartHoldingId: 'holding-2' }],
+    ['an untracked counterpart wallet', { untrackedCounterpart: 'wallet:UMFUTURE' }],
     ['a balance-setting row', { setsBalance: true }],
     ['a split-change row', { changeGroupId: 'group-1' }],
   ])('skips %s', (_label, overrides) => {

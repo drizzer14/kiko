@@ -20,6 +20,13 @@ import {
   fetchFundingAsset,
   fetchLockedPosition,
 } from './binance.client';
+import {
+  binanceKeyOf,
+  EARN_KEY,
+  FUNDING_KEY,
+  SPOT_KEY,
+  WALLET_HOLDING_NAMES,
+} from './binance.holding-keys';
 import { type BinanceCredentials, readCredentials } from './binance.credentials';
 import { isBinanceCoolingDown, setBinanceCooldownUntil } from './binance.cooldown';
 
@@ -51,30 +58,6 @@ export const defaultBinanceDeps: BinanceDeps = {
 
 /** The only asset the sync reads; every other asset in every wallet is ignored. */
 const BINANCE_ASSET = 'BTC';
-
-/**
- * Match keys stored under `metadata.binanceAsset`, one holding per Binance
- * wallet. Spot REUSES the legacy 'BTC' key that the pre-split single aggregated
- * holding used, so the first post-split sync UPDATES that existing row in place
- * into the Spot holding (matched by `upsertByMetadataKey`) — no orphan, no
- * duplicate. Funding and Earn are new keys, so they are created fresh. Earn is
- * the Flexible + Locked positions COMBINED into one holding.
- */
-const SPOT_KEY = BINANCE_ASSET;
-const FUNDING_KEY = 'BTC:funding';
-const EARN_KEY = 'BTC:earn';
-
-/**
- * Default display names for the holdings a first sync creates. 'Binance' and its
- * wallet names are brand terms, read the same in every language (the same
- * convention as `providerDisplayName` and the prior single 'Binance BTC'
- * holding), and each name is user-editable after creation — the upsert never
- * rewrites it, so a transitioned Spot holding keeps its existing (possibly
- * user-edited) name rather than being renamed to 'Binance Spot'.
- */
-const SPOT_HOLDING_NAME = 'Binance Spot';
-const FUNDING_HOLDING_NAME = 'Binance Funding';
-const EARN_HOLDING_NAME = 'Binance Earn';
 
 /**
  * The pre-split default name of the single aggregated holding. The Spot balance
@@ -228,9 +211,9 @@ const existingBinanceKeys = (holdings: HoldingRow[]): Set<string> => {
   const keys = new Set<string>();
 
   for (const holding of holdings) {
-    const key = (holding.metadata as { binanceAsset?: unknown } | null)?.binanceAsset;
+    const key = binanceKeyOf(holding);
 
-    if (typeof key === 'string') {
+    if (key !== undefined) {
       keys.add(key);
     }
   }
@@ -317,7 +300,7 @@ export const binanceProvider: BalanceProvider<BinanceDeps> = {
       {
         balanceMinorUnits: spot,
         metadataKey: SPOT_KEY,
-        name: SPOT_HOLDING_NAME,
+        name: WALLET_HOLDING_NAMES[SPOT_KEY],
         // Relabel a legacy aggregated holding still named 'Binance BTC' to
         // 'Binance Spot' on the first post-split sync; a user rename is preserved.
         renameFromDefault: LEGACY_HOLDING_NAME,
@@ -330,7 +313,7 @@ export const binanceProvider: BalanceProvider<BinanceDeps> = {
     const funding = await walletSatoshis('funding', async () =>
       fundingSatoshis(await deps.fetchFundingAsset(apiKey, secret, options)),
     );
-    appendWallet(balances, funding, FUNDING_KEY, FUNDING_HOLDING_NAME, existingKeys);
+    appendWallet(balances, funding, FUNDING_KEY, WALLET_HOLDING_NAMES[FUNDING_KEY], existingKeys);
 
     // Earn: Flexible + Locked COMBINED into ONE holding. A failure in EITHER read
     // skips the WHOLE Earn holding — importing one side alone would silently
@@ -348,7 +331,7 @@ export const binanceProvider: BalanceProvider<BinanceDeps> = {
 
       return flexible + locked;
     });
-    appendWallet(balances, earn, EARN_KEY, EARN_HOLDING_NAME, existingKeys);
+    appendWallet(balances, earn, EARN_KEY, WALLET_HOLDING_NAMES[EARN_KEY], existingKeys);
 
     return balances;
   },

@@ -26,6 +26,7 @@ const makeTransaction = (over: Partial<BreakdownTransaction>): BreakdownTransact
   counterIban: null,
   description: '',
   exchangeCounterpartHoldingId: null,
+  untrackedCounterpart: null,
   changeGroupId: null,
   currency: 'UAH',
   ...over,

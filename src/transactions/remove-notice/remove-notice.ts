@@ -14,13 +14,16 @@ export type BalanceChange = { name: string; currency: Currency; minorUnits: numb
 export type ExchangeRemoval =
   // The other legs are the user's rows and go with this one; `names` are the
   // holdings they sit on. `keptNames` are the holdings of a bank-owned leg of
-  // the same pair that stays, present only when there is one.
-  | { kind: 'deleted'; names: string[]; keptNames?: string[] }
+  // the same pair that stays, present only when there is one. `sameCurrency` is
+  // set when both legs hold one currency, which the row's own label calls a
+  // transfer, so the notice does too.
+  | { kind: 'deleted'; names: string[]; keptNames?: string[]; sameCurrency?: boolean }
   // The other leg is the bank's row and stays; `names` are the holdings it sits on.
   | { kind: 'syncedKept'; names: string[] }
   // The row names an exchange partner that cannot be proven: `name` is the
-  // holding the marker points at, absent when that holding is gone.
-  | { kind: 'missing'; name?: string };
+  // holding the marker points at, absent when that holding is gone. `sameCurrency`
+  // is set on the same terms as for a deleted pair.
+  | { kind: 'missing'; name?: string; sameCurrency?: boolean };
 
 export type DepositRemoval = {
   name: string;
@@ -67,14 +70,42 @@ const splitExchangeSentences = (exchange: ExchangeRemoval, t: TFunction): string
     )
     .exhaustive();
 
+// The other part cannot be found: a transfer when the row reads "Transfer to/from", an
+// exchange otherwise, and the holding named only when it still exists.
+const missingPartSentence = (
+  { name, sameCurrency }: { name: string | undefined; sameCurrency: boolean },
+  t: TFunction,
+): string =>
+  match({ named: name !== undefined, sameCurrency })
+    .with({ named: true, sameCurrency: true }, () =>
+      t('transactions.deleteLinked.transferUnlinked', { name }),
+    )
+    .with({ named: true, sameCurrency: false }, () =>
+      t('transactions.deleteLinked.exchangeUnlinked', { name }),
+    )
+    .with({ named: false, sameCurrency: true }, () =>
+      t('transactions.deleteLinked.transferUnlinkedPlain'),
+    )
+    .with({ named: false, sameCurrency: false }, () =>
+      t('transactions.deleteLinked.exchangeUnlinkedPlain'),
+    )
+    .exhaustive();
+
 // A bank-owned or missing other part says "only this part is deleted" in the
 // exchange sentences, which a split delete contradicts: with a split they take
 // the split's own wording.
 const exchangeSentence = (exchange: ExchangeRemoval, isSplit: boolean, t: TFunction): string =>
   match(exchange)
-    .with({ kind: 'deleted' }, ({ names, keptNames = [] }) =>
+    .with({ kind: 'deleted' }, ({ names, keptNames = [], sameCurrency = false }) =>
       [
-        t('transactions.deleteLinked.exchange', { name: listedNames(names, t) }),
+        t(
+          sameCurrency
+            ? 'transactions.deleteLinked.transfer'
+            : 'transactions.deleteLinked.exchange',
+          {
+            name: listedNames(names, t),
+          },
+        ),
         ...keptNames.map((name) => t('transactions.deleteLinked.exchangeAlsoKept', { name })),
       ].join(' '),
     )
@@ -83,14 +114,12 @@ const exchangeSentence = (exchange: ExchangeRemoval, isSplit: boolean, t: TFunct
         ? splitExchangeSentences(exchange, t)
         : t('transactions.deleteLinked.exchangeSyncedKept', { name: listedNames(names, t) }),
     )
-    .with({ kind: 'missing' }, ({ name }) => {
+    .with({ kind: 'missing' }, ({ name, sameCurrency = false }) => {
       if (isSplit) {
         return splitExchangeSentences(exchange, t);
       }
 
-      return name === undefined
-        ? t('transactions.deleteLinked.exchangeUnlinkedPlain')
-        : t('transactions.deleteLinked.exchangeUnlinked', { name });
+      return missingPartSentence({ name, sameCurrency }, t);
     })
     .exhaustive();
 

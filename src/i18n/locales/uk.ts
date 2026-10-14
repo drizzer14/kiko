@@ -658,7 +658,7 @@ export const uk: typeof en = {
     binanceConnected: 'Binance підключено',
     binanceFundingResponseNotArray: 'Відповідь Binance funding не була масивом',
     binanceHistoryPending:
-      'Частину історії поповнень і виведень Binance ще не імпортовано. Кіко продовжить імпорт під час наступних синхронізацій.',
+      'Частину історії транзакцій Binance ще не імпортовано. Кіко продовжить імпорт під час наступних синхронізацій.',
     binanceKeychainDisclosure:
       'Ваш API-ключ Binance зберігається лише в Keychain вашого пристрою, використовується лише для отримання ваших власних даних безпосередньо з Binance і ніколи не надсилається до Кіко чи на будь-який сервер.',
     binanceMissingBalancesArray: 'Відповідь рахунку Binance не містила масиву балансів',
@@ -1116,12 +1116,17 @@ export const uk: typeof en = {
     defaultDescriptionIncomePlain: 'Надходження',
     deleteLinked: {
       exchange: 'Також буде видалено другу частину цього обміну, у {{name}}.',
+      transfer: 'Також буде видалено другу частину цього переказу, у {{name}}.',
       exchangeSyncedKept:
         'Друга частина, у {{name}}, надійшла з банку й залишиться. Буде видалено лише цю частину.',
       exchangeUnlinked:
         'Другу частину цього обміну, у «{{name}}», не знайдено. Буде видалено лише цю частину, тож перевірте «{{name}}».',
       exchangeUnlinkedPlain:
         'Другу частину цього обміну не знайдено. Буде видалено лише цю частину.',
+      transferUnlinked:
+        'Другу частину цього переказу, у «{{name}}», не знайдено. Буде видалено лише цю частину, тож перевірте «{{name}}».',
+      transferUnlinkedPlain:
+        'Другу частину цього переказу не знайдено. Буде видалено лише цю частину.',
       deposit: 'Також буде видалено її внесок у «{{name}}».',
       depositKept:
         'Її внесок у «{{name}}» не вдалося знайти, тож він залишиться. Щоб його прибрати, відредагуйте «{{name}}».',
@@ -1137,6 +1142,8 @@ export const uk: typeof en = {
     },
     exchangeFrom: 'Обмін з {{name}}',
     exchangeTo: 'Обмін на {{name}}',
+    transferFrom: 'Переказ з {{name}}',
+    transferTo: 'Переказ на {{name}}',
   },
   components: {
     expandToggle: {

@@ -152,6 +152,7 @@ const syntheticEntry = (
   counterIban: null,
   description: '',
   exchangeCounterpartHoldingId: null,
+  untrackedCounterpart: null,
   changeGroupId: null,
   currency: transaction.currency,
   time: transaction.time,

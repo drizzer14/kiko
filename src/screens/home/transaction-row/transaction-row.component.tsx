@@ -22,6 +22,7 @@ const TransactionRow: FC<TransactionRowProps> = ({
   categoryByKey,
   defaultCategoryKey,
   holdingNameById,
+  holdingCurrencyById,
   categoryKeyForRow,
   onPress,
   onDuplicate,
@@ -39,6 +40,7 @@ const TransactionRow: FC<TransactionRowProps> = ({
     transaction: item,
     holdingName: item.holdingName,
     holdingNameById,
+    holdingCurrencyById,
     t,
   });
 

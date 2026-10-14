@@ -73,15 +73,17 @@ export const runLoanAutoLink = async (now: number = Date.now()): Promise<void> =
     }
 
     // `loanMatchCandidatesQuery` already filters to a row with no link, no
-    // rejection, and no exchange marker — these three are hardcoded to the
-    // value that filter already guarantees, not re-read, so the matcher's own
-    // defensive checks always pass without a redundant projection.
+    // rejection, and no exchange or untracked-wallet marker — these are
+    // hardcoded to the value that filter already guarantees, not re-read, so
+    // the matcher's own defensive checks always pass without a redundant
+    // projection.
     const matches = matchLoanPayments({
       transactions: candidateRows.map((row) => ({
         ...row,
         loanHoldingId: null,
         loanLinkRejected: false,
         exchangeCounterpartHoldingId: null,
+        untrackedCounterpart: null,
       })),
       loans: loanHoldingRows,
       linkedPayments: linkedPaymentRows,

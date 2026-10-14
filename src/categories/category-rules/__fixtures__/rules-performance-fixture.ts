@@ -161,6 +161,7 @@ const buildRows = (): RewriteCandidate[] => {
       categorySetByHand: random() < 0.1,
       exchangePairId: null,
       exchangeCounterpartHoldingId: null,
+      untrackedCounterpart: null,
       setsBalance: false,
       changeGroupId: null,
     };
