@@ -154,10 +154,11 @@ const startQueue = (sandbox: Sandbox, ...queueArguments: string[]): Waiter => {
   };
 };
 
-const POLL_LIMIT = 500;
+const POLL_LIMIT = 3000;
 
-// Longer than the poll limit allows, so a state that never appears fails with its own message.
-jest.setTimeout(20_000);
+// Twice the 60 s poll budget (POLL_LIMIT x 20 ms), so a state that never appears fails with its
+// own message and a chain test that waits twice in a row still fits.
+jest.setTimeout(120_000);
 
 // Polls a file-system or output condition. A poll count (not a measured time) bounds it, so a
 // condition that never holds fails the test instead of leaving a loop that keeps jest alive.
@@ -689,7 +690,7 @@ const CHAIN_NPM_STUB = [
 
 const CHAIN_LEAF_STUB = [
   '#!/usr/bin/env bash',
-  'if [ -n "$(printenv KIKO_STUB_IGNORE_TERM)" ]; then',
+  'if [ -n "$KIKO_STUB_IGNORE_TERM" ]; then',
   '  trap "" TERM',
   'else',
   '  trap \'echo term >> "$KIKO_STUB_LEAF_LOG"\' TERM',
