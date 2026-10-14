@@ -2222,7 +2222,7 @@ describe('rate limits and failures', () => {
       }),
     });
 
-    await expect(sync(deps, accountId)).rejects.toThrow();
+    await expect(sync(deps, accountId)).rejects.toThrow('Binance request failed: 403');
     expect(isBinanceCoolingDown(accountId, NOW)).toBe(false);
   });
 });
@@ -2380,7 +2380,7 @@ describe('orders paid in other coins', () => {
   });
 });
 
-describe('wallet holdings (P7)', () => {
+describe('wallet holdings', () => {
   const earnOrder = order({ walletType: 5, fundsDetail: costOn(5) });
 
   it('creates a missing Earn holding at zero, then places the row on it', async () => {

@@ -1085,7 +1085,7 @@ const lateRecords = (
       (importedAt.get(entry.id) ?? NEVER) >= (entry.heldUntil ?? entry.stuckUntil) + bound,
   );
 
-/** P7: a read that spent some of its calls and gave up paid for nothing; no run has one. */
+/** A read that spent some of its calls and gave up paid for nothing; no run has one. */
 const partialReadViolations = (runs: RunRecord[]): string[] => {
   const partial = runs.filter((run) => run.partialReads > 0);
 
@@ -2129,7 +2129,7 @@ describe.each(LANES)('owed ground that never commits, $name lane', (laneOfName) 
     });
 
     it.each([2, 3, 5].map((count) => ({ count })))(
-      'P5: $count points whose window comes back full, on a run with one call left for the points: the point cursor moves on once a read has started, so each is read within $count runs',
+      '$count points whose window comes back full, on a run with one call left for the points: the point cursor moves on once a read has started, so each is read within $count runs',
       async ({ count }) => {
         await check(
           {
@@ -2362,7 +2362,7 @@ describe.each(LANES)('owed ground that never commits, $name lane', (laneOfName) 
       });
 
       it.each([2, 6].map((count) => ({ count })))(
-        'P1: $count records that can be trusted in one owed day, half of them in a series that drifts until run 4: the records of the other series import in the first run, the day stays owed, and the drifted series own import once it stops drifting',
+        '$count records that can be trusted in one owed day, half of them in a series that drifts until run 4: the records of the other series import in the first run, the day stays owed, and the drifted series own import once it stops drifting',
         async ({ count }) => {
           const scenario = driftScenario(lane, count, 11);
           const bound = 2;
@@ -2427,7 +2427,7 @@ describe.each(LANES)('owed ground that never commits, $name lane', (laneOfName) 
       );
     }
 
-    it('P4: a dense owed day that needs many reads leaves the re-scan a read and a commit every run of 30', async () => {
+    it('a dense owed day that needs many reads leaves the re-scan a read and a commit every run of 30', async () => {
       const dense = dayAt(30);
 
       await check(

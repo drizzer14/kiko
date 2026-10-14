@@ -110,7 +110,7 @@ describe('transferRowsOf', () => {
     return undefined;
   };
 
-  it('T1: a MAIN_FUNDING transfer is Spot -x and Funding +x, each leg naming the other wallet, one pair id', () => {
+  it('a MAIN_FUNDING transfer is Spot -x and Funding +x, each leg naming the other wallet, one pair id', () => {
     expect(rowsOf()).toEqual([
       {
         wallet: SPOT_KEY,
@@ -133,7 +133,7 @@ describe('transferRowsOf', () => {
     ]);
   });
 
-  it('T2: a FUNDING_MAIN transfer is the reverse: Funding -x and Spot +x', () => {
+  it('a FUNDING_MAIN transfer is the reverse: Funding -x and Spot +x', () => {
     const rows = rowsOf({ type: 'FUNDING_MAIN' });
 
     expect(rows.map((row) => [row.wallet, row.amountMinorUnits, row.counterpartWallet])).toEqual([
@@ -187,18 +187,18 @@ describe('transferRowsOf', () => {
     expect(UNIVERSAL_TRANSFER_TYPES.length - own.length).toBe(18);
   });
 
-  it('T5: only the status CONFIRMED is settled', () => {
+  it('only the status CONFIRMED is settled', () => {
     expect(TRANSFER_SETTLED_STATUS).toBe('CONFIRMED');
     expect(rowsOf({ status: TRANSFER_SETTLED_STATUS })).toHaveLength(2);
   });
 
-  it('T5: a status that is not CONFIRMED is not settled, whatever it says', () => {
+  it('a status that is not CONFIRMED is not settled, whatever it says', () => {
     for (const status of ['PENDING', '', 'confirmed', 'PROCESS']) {
       expect(codeOf(() => rowsOf({ status }))).toBe('transfer-not-settled');
     }
   });
 
-  it('T11: a FAILED transfer is a stop of its own', () => {
+  it('a FAILED transfer is a stop of its own', () => {
     expect(codeOf(() => rowsOf({ status: 'FAILED' }))).toBe('transfer-failed');
   });
 
@@ -215,11 +215,11 @@ describe('transferRowsOf', () => {
     expect(TRANSFER_FORWARD_OWES).not.toContain('transfer-holding-missing');
   });
 
-  it('T6: a row of another asset gives no row', () => {
+  it('a row of another asset gives no row', () => {
     expect(rowsOf({ asset: 'ETH' })).toEqual([]);
   });
 
-  it('T10: a row whose type is not the type it was read under is a stop', () => {
+  it('a row whose type is not the type it was read under is a stop', () => {
     expect(codeOf(() => rowsOf({ type: 'MAIN_UMFUTURE' }, 'MAIN_FUNDING'))).toBe(
       'transfer-type-mismatch',
     );
@@ -582,7 +582,7 @@ afterEach(() => {
 describe('the rows of a settled transfer, written', () => {
   const cursorBehind = { [SPOT_FIELDS.cursor]: agoMs(5) };
 
-  it('T1: writes Spot -x and Funding +x, each leg naming the other holding, one pair id, out of spending, labelled "Transfer to/from"', async () => {
+  it('writes Spot -x and Funding +x, each leg naming the other holding, one pair id, out of spending, labelled "Transfer to/from"', async () => {
     const world = worldOf(cursorBehind);
 
     const { result } = await walkOnce({ world, entries: [entryOf({ timestamp: agoMs(2) })] });
@@ -645,7 +645,7 @@ describe('the rows of a settled transfer, written', () => {
     expect(received).toBe('Transfer from Binance Spot');
   });
 
-  it('T2: a FUNDING_MAIN transfer is Funding -x and Spot +x', async () => {
+  it('a FUNDING_MAIN transfer is Funding -x and Spot +x', async () => {
     const world = worldOf(cursorBehind);
 
     await walkOnce({
@@ -659,7 +659,7 @@ describe('the rows of a settled transfer, written', () => {
     ]);
   });
 
-  it('T3: a MAIN_UMFUTURE transfer is one Spot leg, negative, tagged with the wallet it went to, with no pair', async () => {
+  it('a MAIN_UMFUTURE transfer is one Spot leg, negative, tagged with the wallet it went to, with no pair', async () => {
     const world = worldOf(cursorBehind);
 
     await walkOnce({ world, entries: [entryOf({ type: 'MAIN_UMFUTURE', timestamp: agoMs(2) })] });
@@ -677,7 +677,7 @@ describe('the rows of a settled transfer, written', () => {
     ]);
   });
 
-  it('T4: an UMFUTURE_FUNDING transfer is one Funding leg, positive, tagged with the wallet it came from', async () => {
+  it('an UMFUTURE_FUNDING transfer is one Funding leg, positive, tagged with the wallet it came from', async () => {
     const world = worldOf(cursorBehind);
 
     await walkOnce({
@@ -690,7 +690,7 @@ describe('the rows of a settled transfer, written', () => {
     ).toEqual([['h-funding', 100_000, 'wallet:UMFUTURE']]);
   });
 
-  it('T6: a transfer of another asset is ignored, and counted for the pager: a full page of other assets with one BTC row is the whole page', async () => {
+  it('a transfer of another asset is ignored, and counted for the pager: a full page of other assets with one BTC row is the whole page', async () => {
     const world = worldOf(cursorBehind);
     const others = Array.from({ length: PAGE_SIZE - 1 }, (_unused, index) =>
       entryOf({ asset: 'ETH', tranId: `eth-${index}`, timestamp: agoMs(3) }),
@@ -709,7 +709,7 @@ describe('the rows of a settled transfer, written', () => {
     expect(requests.filter((request) => request.current === 2)).toEqual([]);
   });
 
-  it('T7: creates the missing Funding holding at zero first, then writes the legs on it', async () => {
+  it('creates the missing Funding holding at zero first, then writes the legs on it', async () => {
     const world = worldOf(cursorBehind, []);
 
     const { deps } = await walkOnce({
@@ -940,7 +940,7 @@ describe('a transfer the walk cannot trust', () => {
     expect(stopCodes(warn)).toEqual(['transfer-not-settled']);
   });
 
-  it('T9: in the forward pass, a stop with no time to owe a point at commits nothing of the span, ends the forward pass with the cursor unmoved, and the run goes on to the re-scan', async () => {
+  it('in the forward pass, a stop with no time to owe a point at commits nothing of the span, ends the forward pass with the cursor unmoved, and the run goes on to the re-scan', async () => {
     const world = worldOf({ [SPOT_FIELDS.cursor]: agoMs(20) });
 
     const { requests } = await walkOnce({
@@ -1053,7 +1053,7 @@ describe('a transfer the walk cannot trust', () => {
     });
   });
 
-  it('T10: a row of another type than the one it was read under is owed at its point, in the type read', async () => {
+  it('a row of another type than the one it was read under is owed at its point, in the type read', async () => {
     const world = worldOf(caughtUp);
     const mismatched = entryOf(
       { type: 'MAIN_UMFUTURE', tranId: 'wrong', timestamp: stuckAt },
@@ -1085,7 +1085,7 @@ describe('a transfer the walk cannot trust', () => {
     expect(stopCodes(warn).sort()).toEqual(['transfer-amount-invalid', 'transfer-id-missing']);
   });
 
-  it('T11: a FAILED transfer is owed at its point run after run, one call in its own type, until the floor passes it; no row, ever', async () => {
+  it('a FAILED transfer is owed at its point run after run, one call in its own type, until the floor passes it; no row, ever', async () => {
     const failedAt = FLOOR + DAY_MS;
     const failed = entryOf({ status: 'FAILED', tranId: 'failed', timestamp: failedAt });
     const world = worldOf({

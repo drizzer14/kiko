@@ -107,7 +107,7 @@ describe('subscriptionRowsOf', () => {
       ? subscriptionRowsOf(ACCOUNT, 'flexible', flexibleSubscriptionOf(over))
       : subscriptionRowsOf(ACCOUNT, 'locked', lockedSubscriptionOf(over));
 
-  it('E1: a flexible subscription paid from Spot is Spot -a and Earn +a, each leg naming the other wallet, one pair id', () => {
+  it('a flexible subscription paid from Spot is Spot -a and Earn +a, each leg naming the other wallet, one pair id', () => {
     expect(rowsOf()).toEqual([
       {
         wallet: SPOT_KEY,
@@ -130,7 +130,7 @@ describe('subscriptionRowsOf', () => {
     ]);
   });
 
-  it('E2: a locked subscription of 0.3 from Spot and 0.2 from Funding is three legs and one pair id, the Earn leg naming the larger debit', () => {
+  it('a locked subscription of 0.3 from Spot and 0.2 from Funding is three legs and one pair id, the Earn leg naming the larger debit', () => {
     const rows = rowsOf({ amount: '0.5', amtFromSpot: '0.3', amtFromFunding: '0.2' }, 'locked');
 
     expect(rows.map((row) => [row.wallet, row.amountMinorUnits, row.counterpartWallet])).toEqual([
@@ -147,7 +147,7 @@ describe('subscriptionRowsOf', () => {
     ['Funding is the larger debit', '0.2', '0.3', FUNDING_KEY],
     ['the two debits are equal: Spot', '0.25', '0.25', SPOT_KEY],
   ])(
-    'E2: the Earn leg names Funding or Spot by the larger debit: %s',
+    'the Earn leg names Funding or Spot by the larger debit: %s',
     (_label, spot, funding, named) => {
       const rows = rowsOf({ amount: '0.5', amtFromSpot: spot, amtFromFunding: funding });
 
@@ -155,7 +155,7 @@ describe('subscriptionRowsOf', () => {
     },
   );
 
-  it('E4: with no split fields, sourceAccount FUNDING takes the whole amount from Funding', () => {
+  it('with no split fields, sourceAccount FUNDING takes the whole amount from Funding', () => {
     const rows = rowsOf({
       amtFromSpot: undefined,
       amtFromFunding: undefined,
@@ -189,7 +189,7 @@ describe('subscriptionRowsOf', () => {
     },
   );
 
-  it('E3: a subscription whose split is not its amount is a stop', () => {
+  it('a subscription whose split is not its amount is a stop', () => {
     expect(
       stopCodeOf(() => rowsOf({ amount: '0.5', amtFromSpot: '0.3', amtFromFunding: '0.1' })),
     ).toBe('earn-split-mismatch');
@@ -211,11 +211,11 @@ describe('subscriptionRowsOf', () => {
     },
   );
 
-  it('E21: a FAILED subscription is ignored: no row, and nothing owed', () => {
+  it('a FAILED subscription is ignored: no row, and nothing owed', () => {
     expect(rowsOf({ status: 'FAILED' })).toEqual([]);
   });
 
-  it('E14: a status that is neither SUCCESS nor FAILED is not settled', () => {
+  it('a status that is neither SUCCESS nor FAILED is not settled', () => {
     for (const status of ['PENDING', '', 'success', 'PROCESS']) {
       expect(stopCodeOf(() => rowsOf({ status }))).toBe('earn-not-settled');
     }
@@ -283,7 +283,7 @@ describe('subscriptionRowsOf', () => {
 });
 
 describe('redemptionRowsOf', () => {
-  it('E5: a flexible redemption to Spot is Earn -a and Spot +a, each leg naming the other wallet, one pair id', () => {
+  it('a flexible redemption to Spot is Earn -a and Spot +a, each leg naming the other wallet, one pair id', () => {
     expect(redemptionRowsOf(ACCOUNT, 'flexible', flexibleRedemptionOf())).toEqual([
       {
         wallet: EARN_KEY,
@@ -327,7 +327,7 @@ describe('redemptionRowsOf', () => {
     },
   );
 
-  it('E6: a locked redemption is the principal alone, to Spot: its reward comes from the rewards record', () => {
+  it('a locked redemption is the principal alone, to Spot: its reward comes from the rewards record', () => {
     const rows = redemptionRowsOf(
       ACCOUNT,
       'locked',
@@ -374,7 +374,7 @@ describe('redemptionRowsOf', () => {
     ).toBe('earn-not-settled');
   });
 
-  it('E21: a FAILED redemption is ignored; one neither PAID nor FAILED (CREATED, PROCESS) is not settled', () => {
+  it('a FAILED redemption is ignored; one neither PAID nor FAILED (CREATED, PROCESS) is not settled', () => {
     expect(
       redemptionRowsOf(ACCOUNT, 'flexible', flexibleRedemptionOf({ status: 'FAILED' })),
     ).toEqual([]);
@@ -464,7 +464,7 @@ describe('redemptionRowsOf', () => {
 describe('the rows of a settled record, written', () => {
   const cursorBehind = { [SPOT_FIELDS.cursor]: agoMs(5) };
 
-  it('E1: writes Spot -a and Earn +a, each leg naming the other holding, out of spending, labelled "Transfer to/from"', async () => {
+  it('writes Spot -a and Earn +a, each leg naming the other holding, out of spending, labelled "Transfer to/from"', async () => {
     const world = worldOf(cursorBehind);
 
     const { result } = await walkOnce({
@@ -530,7 +530,7 @@ describe('the rows of a settled record, written', () => {
     expect(received).toBe('Transfer from Binance Spot');
   });
 
-  it('E2: a locked subscription from Spot and Funding is three rows on three holdings, the Earn leg naming Spot', async () => {
+  it('a locked subscription from Spot and Funding is three rows on three holdings, the Earn leg naming Spot', async () => {
     const world = worldOf(cursorBehind);
 
     await walkOnce({
@@ -556,7 +556,7 @@ describe('the rows of a settled record, written', () => {
     ]);
   });
 
-  it('E5: a flexible redemption to Spot is Earn -a and Spot +a', async () => {
+  it('a flexible redemption to Spot is Earn -a and Spot +a', async () => {
     const world = worldOf(cursorBehind);
 
     await walkOnce({ world, entries: [entryOf('flexibleRedemption', flexibleRedemptionOf())] });
@@ -567,7 +567,7 @@ describe('the rows of a settled record, written', () => {
     ]);
   });
 
-  it('E18: creates the missing Earn holding at zero first, then writes the reward on it', async () => {
+  it('creates the missing Earn holding at zero first, then writes the reward on it', async () => {
     const world = worldOf(cursorBehind, []);
 
     const { deps } = await walkOnce({
@@ -581,7 +581,7 @@ describe('the rows of a settled record, written', () => {
     expect(world.added.map((row) => row.holdingId)).toEqual(['created-BTC:earn']);
   });
 
-  it('E10: writes the same keys again on a second identical run, for the deduping import to refresh', async () => {
+  it('writes the same keys again on a second identical run, for the deduping import to refresh', async () => {
     const world = worldOf(cursorBehind);
     const entries = [
       entryOf('flexibleSubscription', flexibleSubscriptionOf()),
@@ -597,7 +597,7 @@ describe('the rows of a settled record, written', () => {
     expect(idsOf(world)).toEqual(first);
   });
 
-  it('E21: a FAILED subscription writes nothing and owes nothing, and the run is complete', async () => {
+  it('a FAILED subscription writes nothing and owes nothing, and the run is complete', async () => {
     const world = worldOf(cursorBehind);
 
     const { result } = await walkOnce({
@@ -742,7 +742,7 @@ describe('a span too full for one page, and a page that does not add up', () => 
     expect(result.imported).toBe(120);
   });
 
-  it('E13: a total with no rows is a drift: the forward pass commits nothing of the span and the cursor stays', async () => {
+  it('a total with no rows is a drift: the forward pass commits nothing of the span and the cursor stays', async () => {
     const world = worldOf(caughtUp);
 
     await walkOnce({
@@ -757,7 +757,7 @@ describe('a span too full for one page, and a page that does not add up', () => 
     expect(world.metadata[SPOT_FIELDS.cursor]).toBe(agoMs(5));
   });
 
-  it('E22: a drifted kind in the re-scan commits the other five and owes the span as a range', async () => {
+  it('a drifted kind in the re-scan commits the other five and owes the span as a range', async () => {
     const world = worldOf(caughtUp);
     const behind = (query: { startTime: number }) => query.startTime < agoMs(5);
 
@@ -808,7 +808,7 @@ describe('a record the walk cannot trust', () => {
     expect(stopCodes(warn)).toEqual(['earn-not-settled']);
   });
 
-  it('E3: owes a subscription whose split is not its amount at its point', async () => {
+  it('owes a subscription whose split is not its amount at its point', async () => {
     const world = worldOf(caughtUp);
 
     await walkOnce({
@@ -831,7 +831,7 @@ describe('a record the walk cannot trust', () => {
     expect(stopCodes(warn)).toEqual(['earn-split-mismatch']);
   });
 
-  it('E12: owes a record with an amount that is no number of satoshis, and one with no id, each at its point', async () => {
+  it('owes a record with an amount that is no number of satoshis, and one with no id, each at its point', async () => {
     const world = worldOf(caughtUp);
     const later = stuckAt + 5 * 3_600_000;
 
@@ -1037,7 +1037,7 @@ describe('a record the walk cannot trust', () => {
     expect(pointsIn(listOf(world))).toEqual([]);
   });
 
-  it('R30: in the re-scan, an unreadable row with a time is owed at its point in its kind, and the settled row of another kind imports', async () => {
+  it('in the re-scan, an unreadable row with a time is owed at its point in its kind, and the settled row of another kind imports', async () => {
     const world = worldOf(caughtUp);
 
     const { result } = await walkOnce({
@@ -1238,7 +1238,7 @@ describe('a record the walk cannot trust', () => {
       flexibleRedemptionOf({ redeemId: 'newer', time: agoMs(2) }),
     );
 
-    it('E12: an unreadable row with no time leaves the span uncommitted and the cursor unmoved, and the run goes on to the re-scan', async () => {
+    it('an unreadable row with no time leaves the span uncommitted and the cursor unmoved, and the run goes on to the re-scan', async () => {
       const world = worldOf(forwardMarks);
 
       const { requests } = await walkOnce({

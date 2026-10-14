@@ -676,7 +676,7 @@ describe('wallet placement by walletType (C-matrix)', () => {
     ]);
   });
 
-  it('P7: creates the missing Funding holding at zero, then places the row on it', async () => {
+  it('creates the missing Funding holding at zero, then places the row on it', async () => {
     let stored = [spotHolding];
     const ensureHoldings = jest.fn(async (_holdings: unknown[]) => {
       stored = [spotHolding, fundingHolding];
@@ -704,7 +704,7 @@ describe('wallet placement by walletType (C-matrix)', () => {
     expect(result).toEqual({ imported: 1, complete: true });
   });
 
-  it('P7: creates no wallet holding when every row planned for it already exists', async () => {
+  it('creates no wallet holding when every row planned for it already exists', async () => {
     const deps = makeDeps({
       storedExternalIds: jest.fn(async () => new Set(['acc-1:deposit:1'])),
       latestTransactionTime: RECENT_CURSOR,
@@ -722,7 +722,7 @@ describe('wallet placement by walletType (C-matrix)', () => {
     expect(result).toEqual({ imported: 1, complete: true });
   });
 
-  it('P7: creates the wallet holding once when one of its rows is new', async () => {
+  it('creates the wallet holding once when one of its rows is new', async () => {
     let stored = [spotHolding];
     const ensureHoldings = jest.fn(async (_holdings: unknown[]) => {
       stored = [spotHolding, fundingHolding];

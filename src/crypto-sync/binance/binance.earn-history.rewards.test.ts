@@ -83,7 +83,7 @@ describe('rewardGroupRowsOf', () => {
     return group;
   };
 
-  it('E7: a flexible REALTIME reward is income on the Earn wallet, "Binance Earn", with no marker, the key ending in the time and 0', () => {
+  it('a flexible REALTIME reward is income on the Earn wallet, "Binance Earn", with no marker, the key ending in the time and 0', () => {
     expect(rewardGroupRowsOf(ACCOUNT, groupOf('flexible', rewardOf()))).toEqual([
       {
         wallet: EARN_KEY,
@@ -95,7 +95,7 @@ describe('rewardGroupRowsOf', () => {
     ]);
   });
 
-  it('E8: two rewards of one group are two rows, numbered from 0 by their satoshis ascending, whatever order they came in', () => {
+  it('two rewards of one group are two rows, numbered from 0 by their satoshis ascending, whatever order they came in', () => {
     const rows = rewardGroupRowsOf(
       ACCOUNT,
       groupOf('flexible', rewardOf({ amount: '0.00000002' }), rewardOf({ amount: '0.00000001' })),
@@ -107,7 +107,7 @@ describe('rewardGroupRowsOf', () => {
     ]);
   });
 
-  it('E9: two identical rewards are two rows, numbered 0 and 1', () => {
+  it('two identical rewards are two rows, numbered 0 and 1', () => {
     const rows = rewardGroupRowsOf(ACCOUNT, groupOf('flexible', rewardOf(), rewardOf()));
 
     expect(rows.map((row) => row.externalId)).toEqual([
@@ -116,7 +116,7 @@ describe('rewardGroupRowsOf', () => {
     ]);
   });
 
-  it('E15: a flexible BONUS reward is income on the Spot wallet, with no marker', () => {
+  it('a flexible BONUS reward is income on the Spot wallet, with no marker', () => {
     const [row] = rewardGroupRowsOf(ACCOUNT, groupOf('flexible', rewardOf({ type: 'BONUS' })));
 
     expect(row).toEqual({
@@ -128,7 +128,7 @@ describe('rewardGroupRowsOf', () => {
     });
   });
 
-  it('E16: a locked reward of any type is income on the Spot wallet, keyed by its position', () => {
+  it('a locked reward of any type is income on the Spot wallet, keyed by its position', () => {
     const rows = ['Booster', 'REWARDS', ''].map((type) =>
       rewardGroupRowsOf(ACCOUNT, groupOf('locked', rewardOf({ ownerId: 'pos-1', type }))),
     );
@@ -138,7 +138,7 @@ describe('rewardGroupRowsOf', () => {
   });
 
   it.each([['REWARDS'], ['realtime'], [''], ['SOMETHING']])(
-    'E17: a flexible reward of type %p is a stop, whatever its amount: no row is guessed',
+    'a flexible reward of type %p is a stop, whatever its amount: no row is guessed',
     (type) => {
       expect(
         stopCodeOf(() => rewardGroupRowsOf(ACCOUNT, groupOf('flexible', rewardOf({ type })))),
@@ -147,7 +147,7 @@ describe('rewardGroupRowsOf', () => {
   );
 
   it.each([['x'], [''], ['0'], ['0.000000001'], ['-0.00000001']])(
-    'E12: a reward whose amount is %p is no positive number of satoshis: the group is a stop',
+    'a reward whose amount is %p is no positive number of satoshis: the group is a stop',
     (amount) => {
       expect(
         stopCodeOf(() => rewardGroupRowsOf(ACCOUNT, groupOf('flexible', rewardOf({ amount })))),
@@ -305,7 +305,7 @@ describe('the reward groups of a walk', () => {
     ).toBe(false);
   });
 
-  it('E8: writes two rewards of one group as two rows whatever order Binance lists them in', async () => {
+  it('writes two rewards of one group as two rows whatever order Binance lists them in', async () => {
     const world = worldOf(caughtUp);
 
     await walkOnce({
@@ -323,7 +323,7 @@ describe('the reward groups of a walk', () => {
     ]);
   });
 
-  it('E11: a reward exactly where two spans of a halved window meet is read twice and written under one key', async () => {
+  it('a reward exactly where two spans of a halved window meet is read twice and written under one key', async () => {
     const world = worldOf(caughtUp);
     const meeting = agoMs(5) + Math.floor((NOW - agoMs(5)) / 2);
 
@@ -394,7 +394,7 @@ describe('the reward groups of a walk', () => {
     ]);
   });
 
-  it('R30: an unreadable reward row at t beside a readable group at t: neither imports, ONE point is owed, the code alone is logged', async () => {
+  it('an unreadable reward row at t beside a readable group at t: neither imports, ONE point is owed, the code alone is logged', async () => {
     const world = worldOf(caughtUp);
 
     await walkOnce({
@@ -411,7 +411,7 @@ describe('the reward groups of a walk', () => {
     expect(new Set(stopCodes(warn))).toEqual(new Set(['earn-row-unreadable']));
   });
 
-  it('R30: an unreadable reward row with no finite time owes the span, and the readable groups import', async () => {
+  it('an unreadable reward row with no finite time owes the span, and the readable groups import', async () => {
     const world = worldOf(caughtUp);
 
     await walkOnce({

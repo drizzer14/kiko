@@ -169,7 +169,7 @@ describe('payRowsOf: wallet placement', () => {
   const rowsOf = (over: Partial<BinancePayOrder> = {}) =>
     payRowsOf({ accountId: ACCOUNT_ID, order: sent(over), uid: OWN });
 
-  it('P1: walletType 2 is Spot', () => {
+  it('walletType 2 is Spot', () => {
     expect(rowsOf({ walletType: 2 })).toEqual([
       {
         wallet: 'BTC',
@@ -181,19 +181,19 @@ describe('payRowsOf: wallet placement', () => {
     ]);
   });
 
-  it('P2: walletType 1 is Funding, keyed by that wallet', () => {
+  it('walletType 1 is Funding, keyed by that wallet', () => {
     expect(rowsOf({ walletType: 1, fundsDetail: costOn(1) })).toMatchObject([
       { wallet: 'BTC:funding', externalId: 'acc-1:pay:C2C:tx-1:1' },
     ]);
   });
 
-  it('P2: the live probe shape (walletType 1, walletTypes [1]) is Funding and stops nowhere', () => {
+  it('the live probe shape (walletType 1, walletTypes [1]) is Funding and stops nowhere', () => {
     const rows = rowsOf({ walletType: 1, walletTypes: [1], fundsDetail: costOn(1) });
 
     expect(rows).toMatchObject([{ wallet: 'BTC:funding', externalId: 'acc-1:pay:C2C:tx-1:1' }]);
   });
 
-  it('P4: the live probe split (walletType 1, walletTypes [1, 2]) is placed by the costs, not by walletType', () => {
+  it('the live probe split (walletType 1, walletTypes [1, 2]) is placed by the costs, not by walletType', () => {
     const rows = rowsOf({
       walletType: 1,
       walletTypes: [1, 2],
@@ -215,7 +215,7 @@ describe('payRowsOf: wallet placement', () => {
     ]);
   });
 
-  it('P3: walletType 5 is Earn', () => {
+  it('walletType 5 is Earn', () => {
     expect(rowsOf({ walletType: 5, fundsDetail: costOn(5) })).toMatchObject([
       { wallet: 'BTC:earn', externalId: 'acc-1:pay:C2C:tx-1:5' },
     ]);
@@ -225,7 +225,7 @@ describe('payRowsOf: wallet placement', () => {
     { currency: 'BTC', amount: '0.001', walletAssetCost },
   ];
 
-  it('P4: two wallets whose costs sum to the amount give one row per wallet, each with its own key', () => {
+  it('two wallets whose costs sum to the amount give one row per wallet, each with its own key', () => {
     const rows = rowsOf({
       walletType: 2,
       walletTypes: [1, 2],
@@ -336,7 +336,7 @@ describe('payRowsOf: wallet placement', () => {
     });
   });
 
-  it('P4: costs for one wallet spread over several funds entries are added up', () => {
+  it('costs for one wallet spread over several funds entries are added up', () => {
     const rows = rowsOf({
       walletTypes: [1, 2],
       fundsDetail: [
@@ -384,7 +384,7 @@ describe('payRowsOf: wallet placement', () => {
     ]);
   });
 
-  it('P5: a positive cost on a wallet that walletTypes does not name stops, even when the costs sum to the amount', () => {
+  it('a positive cost on a wallet that walletTypes does not name stops, even when the costs sum to the amount', () => {
     const otherWallet = {
       walletTypes: [1, 2],
       fundsDetail: splitFunds([
@@ -396,7 +396,7 @@ describe('payRowsOf: wallet placement', () => {
     expect(stopCodeOf(() => rowsOf(otherWallet))).toBe('pay-split-mismatch');
   });
 
-  it('P5: costs that do not sum to the amount stop', () => {
+  it('costs that do not sum to the amount stop', () => {
     const wrongSum = {
       walletTypes: [1, 2],
       fundsDetail: splitFunds([
@@ -408,7 +408,7 @@ describe('payRowsOf: wallet placement', () => {
     expect(stopCodeOf(() => rowsOf(wrongSum))).toBe('pay-split-mismatch');
   });
 
-  it('P5: costs over the amount stop', () => {
+  it('costs over the amount stop', () => {
     const tooMuch = {
       walletTypes: [1, 2],
       fundsDetail: splitFunds([
@@ -420,13 +420,13 @@ describe('payRowsOf: wallet placement', () => {
     expect(stopCodeOf(() => rowsOf(tooMuch))).toBe('pay-split-mismatch');
   });
 
-  it('P5: two wallets with no per-wallet cost at all stop', () => {
+  it('two wallets with no per-wallet cost at all stop', () => {
     expect(stopCodeOf(() => rowsOf({ walletTypes: [1, 2], fundsDetail: [] }))).toBe(
       'pay-split-mismatch',
     );
   });
 
-  it('P5: two wallets whose costs are all zero stop', () => {
+  it('two wallets whose costs are all zero stop', () => {
     const allZero = {
       walletTypes: [1, 2],
       fundsDetail: splitFunds([
@@ -438,7 +438,7 @@ describe('payRowsOf: wallet placement', () => {
     expect(stopCodeOf(() => rowsOf(allZero))).toBe('pay-split-mismatch');
   });
 
-  it('P5: a cost that is not a number stops', () => {
+  it('a cost that is not a number stops', () => {
     const broken = {
       walletTypes: [1, 2],
       fundsDetail: splitFunds([
@@ -450,7 +450,7 @@ describe('payRowsOf: wallet placement', () => {
     expect(stopCodeOf(() => rowsOf(broken))).toBe('pay-amount-invalid');
   });
 
-  it('P5: a negative cost stops', () => {
+  it('a negative cost stops', () => {
     const broken = {
       walletTypes: [1, 2],
       fundsDetail: splitFunds([
@@ -462,13 +462,13 @@ describe('payRowsOf: wallet placement', () => {
     expect(stopCodeOf(() => rowsOf(broken))).toBe('pay-amount-invalid');
   });
 
-  it.each([[3], [4], [6], [0], [99]])('P6: walletType %p stops', (walletType) => {
+  it.each([[3], [4], [6], [0], [99]])('walletType %p stops', (walletType) => {
     expect(stopCodeOf(() => rowsOf({ walletType, fundsDetail: costOn(walletType) }))).toBe(
       'pay-wallet-unknown',
     );
   });
 
-  it('P6: a split that names an untracked wallet stops', () => {
+  it('a split that names an untracked wallet stops', () => {
     const toCard = {
       walletTypes: [2, 4],
       fundsDetail: splitFunds([
