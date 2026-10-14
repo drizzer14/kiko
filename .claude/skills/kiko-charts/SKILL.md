@@ -254,12 +254,13 @@ screen owns a `TrendFilterField`
 (`src/screens/statistics/trend-filter-field/`) — a single "Filters" button
 opening a `BottomSheet` — and feeds the result through the SAME
 `excludedCategories` path the builder already had. Manual mode passes explicit
-keys; Top mode ranks the categories live over the fixed 30-day window with
+keys; Top mode ranks the categories live over the screen's chosen range
+(`statistics.screen.tsx` passes `range { from: rangeFrom, to: rangeTo }`) with
 `buildCategoryMeasures` + `selectTopCategories`
 (`src/statistics/category-trend/`, `src/statistics/trend-filter/`) by one
 of three measures — Contribution (total spend), Frequency (kept-row count), or
-Rising (the least-squares slope of daily spend across the 30 window days,
-most-positive first) — then excludes every windowed category NOT in the top N.
+Rising (the least-squares slope of per-bucket spend across the range's buckets
+(`category-trend.ts`; bucket size follows the active range), most-positive first) — then excludes every windowed category NOT in the top N.
 
 ## PieChart donut mode
 
