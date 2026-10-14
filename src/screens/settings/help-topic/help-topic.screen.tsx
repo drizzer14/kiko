@@ -8,6 +8,7 @@ import Box from '@kiko/design-system/components/box';
 import Text from '@kiko/design-system/components/text';
 import Screen from '@kiko/design-system/components/screen';
 import Button from '@kiko/design-system/components/button';
+import { entrySymbol } from '@kiko/navigation/entry-symbols';
 import { genericEntitySymbol } from '@kiko/holdings/entity-symbols';
 import { openAccountForm } from '@kiko/navigation/open-account-form';
 import type { CompositeScreenProps } from '@react-navigation/native';
@@ -48,32 +49,32 @@ const HelpTopicScreen: FC<HelpTopicScreenProps> = ({ navigation, route }) => {
       }))
       .with('openCategories', () => ({
         label: t('help.actions.openCategories'),
-        icon: undefined,
+        icon: genericEntitySymbol.category,
         onPress: () => navigation.navigate('Categories'),
       }))
       .with('openTemplates', () => ({
         label: t('help.actions.openTemplates'),
-        icon: undefined,
+        icon: genericEntitySymbol.template,
         onPress: () => navigation.navigate('TransactionTemplates'),
       }))
       .with('openReminders', () => ({
         label: t('help.actions.openReminders'),
-        icon: undefined,
+        icon: entrySymbol.reminders,
         onPress: () => navigation.navigate('Reminders'),
       }))
       .with('openExportData', () => ({
         label: t('help.actions.openExportData'),
-        icon: undefined,
+        icon: entrySymbol.exportData,
         onPress: () => navigation.navigate('ExportData'),
       }))
       .with('openImportData', () => ({
         label: t('help.actions.openImportData'),
-        icon: undefined,
+        icon: entrySymbol.importData,
         onPress: () => navigation.navigate('ImportData'),
       }))
       .with('openSystem', () => ({
         label: t('help.actions.openSystem'),
-        icon: undefined,
+        icon: entrySymbol.system,
         onPress: () => navigation.navigate('System'),
       }))
       .exhaustive();

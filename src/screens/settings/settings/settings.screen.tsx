@@ -12,6 +12,7 @@ import Text from '@kiko/design-system/components/text';
 import Card from '@kiko/design-system/components/card';
 import Screen from '@kiko/design-system/components/screen';
 import Divider from '@kiko/design-system/components/divider';
+import { entrySymbol } from '@kiko/navigation/entry-symbols';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { PRIVACY_POLICY_URL_EN, PRIVACY_POLICY_URL_UK } from '@env';
 import { genericEntitySymbol } from '@kiko/holdings/entity-symbols';
@@ -178,7 +179,7 @@ const SettingsScreen: FC<SettingsScreenProps> = ({ navigation }) => {
         <Card testID="settings-card-system" padding={3}>
           <SettingsRow
             testID="settings-row-system"
-            icon="gearshape"
+            icon={entrySymbol.system}
             label={t('settings.system')}
             onPress={() => navigation.navigate('System')}
           />
@@ -187,7 +188,7 @@ const SettingsScreen: FC<SettingsScreenProps> = ({ navigation }) => {
         <Card testID="settings-card-reminders" padding={3}>
           <SettingsRow
             testID="settings-row-reminders"
-            icon="bell"
+            icon={entrySymbol.reminders}
             label={t('reminders.rowLabel')}
             onPress={() => navigation.navigate('Reminders')}
           />
@@ -209,7 +210,7 @@ const SettingsScreen: FC<SettingsScreenProps> = ({ navigation }) => {
         <Card testID="settings-card-data-transfer" padding={0}>
           <SettingsRow
             testID="settings-row-import-data"
-            icon="square.and.arrow.down"
+            icon={entrySymbol.importData}
             label={t('settings.dataImport.rowLabel')}
             onPress={() => navigation.navigate('ImportData')}
             style={groupedRowStyle}
@@ -219,7 +220,7 @@ const SettingsScreen: FC<SettingsScreenProps> = ({ navigation }) => {
 
           <SettingsRow
             testID="settings-row-export-data"
-            icon="square.and.arrow.up"
+            icon={entrySymbol.exportData}
             label={t('settings.dataExport.rowLabel')}
             onPress={() => navigation.navigate('ExportData')}
             style={groupedRowStyle}

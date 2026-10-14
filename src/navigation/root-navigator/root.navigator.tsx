@@ -8,6 +8,7 @@ import HomeStack from '../home-stack';
 import type { TabParamList } from '../types';
 import AccountsStack from '../accounts-stack';
 import SettingsStack from '../settings-stack';
+import { entrySymbol } from '../entry-symbols';
 import StatisticsStack from '../statistics-stack';
 
 const Tabs = createNativeBottomTabNavigator<TabParamList>();
@@ -76,7 +77,7 @@ const RootNavigator: FC = () => {
         component={StatisticsStack}
         options={{
           title: t('statistics.title'),
-          tabBarIcon: () => ({ sfSymbol: 'chart.xyaxis.line' }),
+          tabBarIcon: () => ({ sfSymbol: entrySymbol.statistics }),
         }}
       />
 
