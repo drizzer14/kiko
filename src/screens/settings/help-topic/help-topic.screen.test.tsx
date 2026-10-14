@@ -11,6 +11,8 @@ import {
 } from '@kiko/test-support/navigation-props';
 import { darkTheme } from '@kiko/design-system/theme';
 import { type HelpTopicId, helpTopicById } from '@kiko/help';
+import { entrySymbol } from '@kiko/navigation/entry-symbols';
+import { genericEntitySymbol } from '@kiko/holdings/entity-symbols';
 
 import HelpTopicScreen from './help-topic.screen';
 
@@ -81,6 +83,33 @@ describe('HelpTopicScreen', () => {
 
       expect(navigation.navigate).toHaveBeenCalledTimes(1);
       expect(navigation.navigate).toHaveBeenCalledWith(...target);
+    },
+  );
+
+  it.each([
+    ['addAccount', genericEntitySymbol.account],
+    ['connectMonobank', genericEntitySymbol.account],
+    ['connectCrypto', genericEntitySymbol.account],
+    ['setReminder', entrySymbol.reminders],
+    ['trackProperty', genericEntitySymbol.account],
+    ['trackLoan', genericEntitySymbol.account],
+    ['addTransaction', genericEntitySymbol.transaction],
+    ['useTemplates', genericEntitySymbol.template],
+    ['manageCategories', genericEntitySymbol.category],
+    ['categoryRules', genericEntitySymbol.category],
+    ['backupData', entrySymbol.exportData],
+    ['restoreData', entrySymbol.importData],
+    ['systemSettings', entrySymbol.system],
+  ] as const)(
+    'leads the footer button of the %s topic with the symbol %s',
+    async (topicId, symbol) => {
+      const { getByTestId } = await renderScreen(topicId);
+
+      const glyphs = getByTestId('help-topic-action').queryAll(
+        (node) => node.props.name === symbol,
+      );
+
+      expect(glyphs.length).toBeGreaterThan(0);
     },
   );
 
