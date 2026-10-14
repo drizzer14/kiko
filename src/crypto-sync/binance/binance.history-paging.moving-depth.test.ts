@@ -194,8 +194,9 @@ describe('readSeriesSpan, against a depth that moves with the clock or in steps 
         depthWorldOf({ latencyMs: () => 0, stepMs, keptMsOf, suspensions, uncapped: true });
       const dry = build([]);
       await readDepthWorld(dry, { count: 2, span: spanOf(dry) });
-      const bandOfFirst = dry.calls.findLastIndex(
-        ({ series, read }) => series === 'T0' && !isProbeRead(read),
+      const bandOfFirst = dry.calls.reduce(
+        (last, { series, read }, index) => (series === 'T0' && !isProbeRead(read) ? index : last),
+        -1,
       );
       const world = build([{ atWait: bandOfFirst + 1, ms: 16.5 * HOUR_MS }]);
 
