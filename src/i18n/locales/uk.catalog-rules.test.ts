@@ -10,6 +10,8 @@
 //     any string value.
 // (c) a tap is asked for with «натиснути» only, never торкнутися, тапнути,
 //     тицьнути or клацнути, in any string value.
+// (d) a long press is asked for with «утримувати» only, never притиснути, затиснути or a
+//     "довге натискання" phrasing, in any string value.
 import { uk } from './uk';
 import { flattenCatalog } from './flatten-catalog';
 
@@ -17,6 +19,7 @@ const CYRILLIC = 'А-Яа-яЁёІіЇїЄєҐґ';
 const ASCII_APOSTROPHE_IN_CYRILLIC_WORD = new RegExp(`[${CYRILLIC}]'[${CYRILLIC}]`);
 const LATIN_KIKO = /\bKiko\b/;
 const OTHER_TAP_VERB = /торкн|тапн|тицн|клацн/i;
+const OTHER_LONG_PRESS_VERB = /притисн|затисн|зажм|довг\S* (?:натиск|дотик|тап)/i;
 
 describe('uk.ts catalogue rules', () => {
   it('never uses an ASCII apostrophe inside a Cyrillic word (must be U+2019 ’)', () => {
@@ -35,6 +38,12 @@ describe('uk.ts catalogue rules', () => {
 
   it('asks for a tap with the verb "натиснути" only', () => {
     const offenders = flattenCatalog(uk).filter(({ value }) => OTHER_TAP_VERB.test(value));
+
+    expect(offenders).toEqual([]);
+  });
+
+  it('asks for a long press with the verb "утримувати" only', () => {
+    const offenders = flattenCatalog(uk).filter(({ value }) => OTHER_LONG_PRESS_VERB.test(value));
 
     expect(offenders).toEqual([]);
   });
