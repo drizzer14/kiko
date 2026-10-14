@@ -38,6 +38,11 @@ describe('the footer', () => {
 
   it('keeps a (T-shirt) size', () => {});
 
+  // The words device check with no number after them, or not opening the title, are a phrase.
+  it('device check results stay listed', () => {});
+
+  it('reads the device check 3 row of the sheet', () => {});
+
   // A letter and digits with a colon after a lowercase opening are not a leading id.
   it('reads the a1: cell', () => {});
 

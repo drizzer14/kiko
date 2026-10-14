@@ -45,13 +45,17 @@ describe('CategoryCard', () => {
     expect(queryByText(/^0 rules/)).toBeNull();
   });
 
-  it('marks the default category and no other', async () => {
+  it('marks the default category with a star symbol labelled Default, not with text', async () => {
     const defaultCard = await renderCard({ isDefault: true });
 
-    expect(defaultCard.getByText('Default')).toBeTruthy();
+    expect(defaultCard.getByLabelText('Default').props.name).toBe('star.fill');
+    expect(defaultCard.queryByText('Default')).toBeNull();
+  });
 
+  it('marks no other category', async () => {
     const otherCard = await renderCard({ isDefault: false });
 
+    expect(otherCard.queryByLabelText('Default')).toBeNull();
     expect(otherCard.queryByText('Default')).toBeNull();
   });
 
@@ -83,7 +87,7 @@ describe('CategoryCard', () => {
 
   it('wraps a long title in its own box instead of cutting it', async () => {
     const longTitle = 'A very long category name that has to wrap onto several lines to be read';
-    const { getByText } = await renderCard({ title: longTitle, isDefault: true });
+    const { getByText, getByLabelText } = await renderCard({ title: longTitle, isDefault: true });
     const title = getByText(longTitle);
     const titleBox = StyleSheet.flatten(ancestorWithStyle(title, 'flex').props.style);
 
@@ -91,7 +95,7 @@ describe('CategoryCard', () => {
     expect(titleBox.flex).toBe(1);
     expect(titleBox.flexDirection).toBeUndefined();
     expect(
-      StyleSheet.flatten(ancestorWithStyle(getByText('Default'), 'flexShrink').props.style)
+      StyleSheet.flatten(ancestorWithStyle(getByLabelText('Default'), 'flexShrink').props.style)
         .flexShrink,
     ).toBe(0);
   });

@@ -1,7 +1,7 @@
 import { StyleSheet } from 'react-native-unistyles';
 
 export const styles = StyleSheet.create((theme) => ({
-  // The icon cluster and the "Default" marker sit on opposite edges of the card.
+  // The icon cluster and the default marker sit on opposite edges of the card.
   row: {
     flexDirection: 'row',
     justifyContent: 'space-between',

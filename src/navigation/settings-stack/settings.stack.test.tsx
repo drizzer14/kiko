@@ -90,12 +90,14 @@ describe('SettingsStack', () => {
     expect(titles.ImportData).toBe('Import Data');
   });
 
-  it('registers the category page and the category form with their titles', () => {
-    const titles = titleByScreen();
+  it('registers one category screen, titled "New Category" until it is opened for a category', () => {
+    const names = screenElements().map((screen) => screen.props.name);
 
-    // The page names itself from the category, so its static title is empty.
-    expect(titles.CategoryDetail).toBe('');
-    expect(titles.CategoryForm).toBe('New Category');
+    expect(names).toContain('CategoryForm');
+    expect(names).not.toContain('CategoryDetail');
+    expect(optionsOf('CategoryForm')).toEqual({ title: 'New Category' });
+    // An existing category names the screen itself, so its static title is empty.
+    expect(optionsOf('CategoryForm', { categoryKey: 'groceries' })).toEqual({ title: '' });
   });
 
   it('registers the rule editor with the title of a new rule', () => {

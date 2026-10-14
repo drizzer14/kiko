@@ -191,15 +191,23 @@ export const uk: typeof en = {
   categoryPage: {
     rulesHeading: 'Правила',
     setAsDefault: 'Зробити типовою',
+    isDefault: 'Типова категорія',
     quotedName: '«{{name}}»',
     unreadableRule: 'Це правило неможливо прочитати',
     deleteRuleTitle: 'Видалити правило',
     addRule: 'Додати правило',
     emptyRules: 'Додайте правило, щоб ставити цю категорію відповідним транзакціям.',
+    // The labels of a rule card's table; each names its subject because the row stands alone.
+    amountEqual: 'Сума дорівнює',
+    amountMore: 'Сума більша ніж',
+    amountAtLeast: 'Сума щонайменше',
+    amountLess: 'Сума менша ніж',
+    amountAtMost: 'Сума щонайбільше',
+    timeBefore: 'Час до',
+    timeAfter: 'Час після',
   },
   categoryForm: {
     addTitle: 'Нова категорія',
-    editTitle: 'Редагування категорії',
   },
   ruleForm: {
     addTitle: 'Нове правило',

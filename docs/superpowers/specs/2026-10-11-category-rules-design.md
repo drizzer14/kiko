@@ -53,7 +53,7 @@ Non-goals (owned by transaction-templates): the transaction form SPLIT, its tabs
 
 Refinement of the proposal: NO `matcher_count` column. Reason: it is derivable from `matchers`, every reader loads all rules into JS anyway, and a second copy can drift (a restore, a hand-built test row). The priority sorts on the parsed list's length.
 
-Indices: PK only. Reason: the table is small (hundreds of rows); every reader reads all of it, and the category page filters in JS. A secondary index would need an EXPLAIN QUERY PLAN test and buys nothing. No new index on `transactions` unless the measurement in section 10 misses the target (then: an index plan, an EXPLAIN QUERY PLAN test, a reviewer step).
+Indices: PK only. Reason: the table is small (hundreds of rows); every reader reads all of it, and the category form filters in JS. A secondary index would need an EXPLAIN QUERY PLAN test and buys nothing. No new index on `transactions` unless the measurement in section 10 misses the target (then: an index plan, an EXPLAIN QUERY PLAN test, a reviewer step).
 
 Matcher JSON (one object per matcher):
 ```ts
@@ -225,19 +225,21 @@ Form units after the split: `use-category-override/` (`applyOverride`, `applyOve
 ## 9. Screens (UI changes need the user's live confirmation on device)
 
 ### 9.1 Categories list (`Categories`)
-- One-column `Sortable.Grid` of cards built like `renderAccountCard`: `EntityIconTile` (category icon + resolved colour), title (wraps, per the locked "Card titles wrap" rule), caption "N rules" / "No rules" plus "Default" on the default category.
-- Tap -> category page. Hold -> `CardContextMenu` delete (not on the default). Drag -> reorder (`categoriesRepo.reorder`).
-- Footer "Add category" (leading symbol) -> category edit form in create mode; after save, the new category page.
-- "Set as default" moves to the category page (a row under the rules); move top/bottom goes away, reorder is by drag only, like Accounts (decision 14).
+- One-column `Sortable.Grid` of cards built like `renderAccountCard`: `EntityIconTile` (category icon + resolved colour), title (wraps, per the locked "Card titles wrap" rule), caption "N rules" / "No rules" plus a `star.fill` `SymbolIcon` (`DEFAULT_CATEGORY_SYMBOL` in `src/categories/category-display`) on the default category, accessibilityLabel `categories.default`; no text.
+- Tap -> `CategoryForm { categoryKey }`. Hold -> `CardContextMenu` delete (not on the default). Drag -> reorder (`categoriesRepo.reorder`).
+- Footer "Add category" (leading symbol) -> `CategoryForm` in create mode; after Save the route is replaced by the new category's form.
+- "Set as default" moves to the category form header (a star before Save); move top/bottom goes away, reorder is by drag only, like Accounts (decision 14).
 
-### 9.2 Category page (`CategoryDetail`, new route)
-- Header title = category name; header Edit -> category edit form.
-- Rules as cards, one per rule, sorted by priority (the order that decides). Each card shows its matchers as one line, joined by " · " (for example `Name is "Silpo" · Expense · More than 500.00 UAH · After 18:00`), times through `formatTime` with the user's clock.
-- "Add rule" button (leading symbol) -> rule editor in create mode. Empty state when no rules.
+### 9.2 (merged into 9.3)
+The separate category page is gone; see 9.3.
+
+### 9.3 Category form (`CategoryForm`)
+One route for create, edit and the rules below. Fields: name, icon, colour. The form has no Delete: a category is deleted from its list card's hold menu (not offered on the default).
+- Edit mode header title = the category's displayed name; header items: a star (via `useFormHeaderItems` `extraItems`, shown only once the category row is read), then Save. The outline star sets the default; on the default category it is a disabled `star.fill` state marker. No Edit pencil, no body button. Save writes only the fields the user changed, then goes back to the list.
+- Create mode: the same fields, no rules, no star. Save replaces the route with the new category's `CategoryForm`.
+- Rules as cards, one per rule, sorted by priority (the order that decides). Each card shows its matchers as `SummaryTable` rows with `wraps`; the row labels name their subject (`AMOUNT_ROW_LABEL_KEYS` and `TIME_ROW_LABEL_KEYS` in `src/categories/category-rules/matcher-labels.ts`), and values with a time go through `formatTime` with the user's clock. The joined line (`ruleSummary(rows)` in `rule-summary.ts` joins the rule's `ruleRows`, label then value, with " · "; the caller builds the rows once and passes them to both the table and `ruleSummary`) is the card's accessibility label and context-menu name.
+- "Add rule": a lone footer `secondaryTonal` button with the rule symbol -> rule editor in create mode. Empty state when no rules.
 - Unreadable rule card (failed guard): "This rule can't be read" + Delete.
-
-### 9.3 Category edit form (`CategoryForm`, new route)
-Name, icon, colour (the existing inline controls moved here), Create mode: the same fields. The form has no Delete: a category is deleted from its list card's hold menu (not offered on the default).
 
 ### 9.4 Rule editor (`CategoryRuleForm`, new route)
 - A list of matcher rows; each row: a type select (Name is / Name starts with / Amount / Type / Time) and its input:
@@ -246,7 +248,7 @@ Name, icon, colour (the existing inline controls moved here), Create mode: the s
   - type: Expense / Income segment;
   - time: Before / After segment + `TimeField`.
 - "Add matcher" adds a row; each row has a remove control (not on the last row). Hint: "A transaction must match every condition."
-- Save validates (section 3.1), then runs 7.3. The editor has no Delete (kiko-design-system "A form has no in-form Delete"; pre-write rule `kiko-no-confirm-sheet-in-form`); a rule is deleted from its rule card's hold menu on the category page.
+- Save validates (section 3.1), then runs 7.3. The editor has no Delete (kiko-design-system "A form has no in-form Delete"; pre-write rule `kiko-no-confirm-sheet-in-form`); a rule is deleted from its rule card's hold menu on the category form.
 
 ### 9.5 Strings (en / uk; sentence case except titles; reviewed by the user at BATCH READY)
 | key (proposed) | en | uk |
@@ -257,8 +259,9 @@ Name, icon, colour (the existing inline controls moved here), Create mode: the s
 | categoryPage.rulesHeading | Rules | Правила |
 | categoryPage.addRule | Add rule | Додати правило |
 | categoryPage.emptyRules | Add a rule to set this category on matching transactions. | Додайте правило, щоб ставити цю категорію відповідним транзакціям. |
+| categoryPage.amountEqual / amountMore / amountAtLeast / amountLess / amountAtMost / timeBefore / timeAfter | the rule card's row labels: read the en and uk text in `src/i18n/locales/en.ts` and `uk.ts` | (same) |
 | categoryPage.unreadableRule | This rule can't be read | Це правило неможливо прочитати |
-| categoryForm.addTitle / editTitle | New Category / Edit Category | Нова категорія / Редагування категорії |
+| categoryForm.addTitle | New Category | Нова категорія |
 | ruleForm.addTitle / editTitle | New Rule / Edit Rule | Нове правило / Редагування правила |
 | ruleForm.addMatcher | Add condition | Додати умову |
 | ruleForm.allMustMatch | A transaction must match every condition. | Транзакція має відповідати всім умовам. |
@@ -291,6 +294,7 @@ Name, icon, colour (the existing inline controls moved here), Create mode: the s
 | categories.deleteRulesNoticeUnknown | Its rules will be deleted too. (shown when the count read fails) | Її правила теж буде видалено. |
 | categoryPage.deleteRuleTitle | Delete Rule (Title Case; the rule card's confirm title; the only rule-delete title, the editor has none) | Видалити правило |
 | categoryPage.setAsDefault | Set as default | Зробити типовою |
+| categoryPage.isDefault | Default category | Типова категорія |
 | categoryPage.quotedName | "{{name}}" | «{{name}}» |
 Expense / Income, Edit, Delete, Cancel reuse existing keys. "Matcher" in the UI reads "condition" ("умова"); the user confirms the wording.
 
@@ -345,7 +349,7 @@ Source: USER = the user's ruling, relayed by the coordinator; DEFAULT = the coor
 11. N = 0: no sheet, save directly. DEFAULT.
 12. Deleting a category deletes its rules in the same `categoriesRepo.delete` write; the confirm shows "N rules"; its rows move to the default as today, with the flag cleared on the moved rows. Was: overrides moved to the default. USER.
 13. A template's category counts as a hand pick (flag 1); a template without a category gets the pre-select on its draft, flag 0. Confirmed by the transaction-templates orchestrator: a transaction made from a template goes through the normal form save path, with no template-only path: income / expense -> `transactionsRepo.recordManual`; split -> `recordManualWithReturns`; exchange -> `recordExchange` (no category). Rules never apply on these paths. A seeded template category sets `userPickedCategory = true`, the same as Duplicate. So the flag write covers `recordManual` AND `recordManualWithReturns`. The template row itself (`transaction_templates`) stores no flag. DEFAULT.
-14. "Set as default" moves to the category page; reorder is by drag only, like Accounts. DEFAULT.
+14. "Set as default" moves to a header star on the category form, before Save (outline star sets the default; disabled `star.fill` on the default category; no body button); reorder is by drag only, like Accounts. DEFAULT.
 15. A date-only statement row's stored instant decides the time matcher; the time matcher's hint says so. The plan checks the current date-only mapping. DEFAULT.
 16. Task order: the migration + repo task lands on top of the transaction-templates split once it is in `next`. Before that, the track does only work that touches neither the form nor the schema: the pure rule module with the scenario-matrix tests and the performance fixture. Not chosen: a form swap on the unsplit file (conflicts on the moved lines); keeping `category_overrides` until the last task (a data gap at an intermediate tip). DEFAULT.
 17. "Apply" (to all) on an EDIT, when a stronger rule of another category out-ranks the new name rule on the source row: the source row always gets the picked category. It gets the manual-pick flag (1) only when a stronger rule out-ranks the new rule on that row, so the pick stays. Otherwise "Apply" clears the flag as decision 4 says. Not chosen: (b) the row keeps the stronger rule's category; (c) the picked category with the flag cleared (a later "Apply to existing" on the stronger rule would change it back). USER, 2026-10-11 12:20, relayed by the coordinator.

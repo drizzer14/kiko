@@ -1,7 +1,7 @@
-import { Text as RNText } from 'react-native';
 import { render } from '@testing-library/react-native';
-
+import { StyleSheet, Text as RNText } from 'react-native';
 import '@kiko/design-system/unistyles';
+import { ancestorWithStyle } from '@kiko/test-support/ancestor-with-style';
 
 import SummaryTable from './summary-table.component';
 
@@ -51,5 +51,32 @@ describe('SummaryTable', () => {
     );
 
     expect(getByTestId('my-row')).toHaveTextContent('4');
+  });
+
+  it('leaves a row without the wrap flag as it always was, its value box not shrinking', async () => {
+    const { getByText } = await render(
+      <SummaryTable rows={[{ key: 'a', label: 'Transactions', value: <RNText>4</RNText> }]} />,
+    );
+
+    expect(() => ancestorWithStyle(getByText('4'), 'flexShrink')).toThrow();
+    expect(() => ancestorWithStyle(getByText('Transactions'), 'flexShrink')).toThrow();
+  });
+
+  it('lets a wrapping row shrink its value box while its label keeps its width', async () => {
+    const { getByText } = await render(
+      <SummaryTable
+        rows={[{ key: 'a', label: 'Name starts with', value: <RNText>Silpo</RNText>, wraps: true }]}
+      />,
+    );
+    const labelStyle = StyleSheet.flatten(
+      ancestorWithStyle(getByText('Name starts with'), 'flexShrink').props.style,
+    );
+    const valueStyle = StyleSheet.flatten(
+      ancestorWithStyle(getByText('Silpo'), 'flexShrink').props.style,
+    );
+
+    expect(valueStyle.flexShrink).toBe(1);
+    expect(labelStyle.flexShrink).toBe(0);
+    expect(labelStyle.marginRight).toBeGreaterThan(0);
   });
 });

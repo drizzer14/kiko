@@ -566,7 +566,7 @@ The fix is one shared mechanism, not a per-screen ad hoc guard:
   `holding-detail`, `home` (net-worth headline + transaction list),
   `statistics` (every chart), `accounts` (the accounts-list empty
   state), `settings/system`, `settings/settings`,
-  `settings/categories`, `settings/category-detail`, statement-import's `example-transaction` (a
+  `settings/categories`, `forms/category-form`, statement-import's `example-transaction` (a
   single row inside an already-loaded parent, gated on its OWN
   categories/settings queries rather than the whole parent screen) —
   grep `useDataReady` for the current call-site list rather than
@@ -636,7 +636,7 @@ read never overwrites a newer one. A rejected read is never cached.
 passes `{ cached: true }` (the 4th argument:
 `useLiveQuery(query, tables, true, { cached: true })`, or
 `usePriceBook(enabled, { cached: true })`) READS it. Only a display screen's readiness query opts in — never a
-form, a one-shot seed, or a query that drives a write. For the current
+read that seeds a form's fields, a one-shot seed, or a query that drives a write. For the current
 set, grep `cached: true` under `src/`. A mount
 with a cache hit seeds `data` with the cached rows and `appliedKey`
 with the current key, so `isLoading` is `false` on the very first
@@ -698,10 +698,10 @@ read's own run from ever starting.
 ## Category screens and the delete path
 
 Read these units before touching category UI: the Categories list
-(`src/screens/settings/categories/`), the CategoryDetail route
-(`src/screens/settings/category-detail/`, with `rule-card/` and
-`rule-summary/`), the CategoryForm route
-(`src/screens/forms/category-form/`), and the delete notice
+(`src/screens/settings/categories/`), the one CategoryForm route
+(`src/screens/forms/category-form/`: create, edit and the rules below,
+with `rule-card/` and `rule-summary/` under it; the list card opens
+`CategoryForm { categoryKey }`; no separate category page), and the delete notice
 (`src/categories/delete-notice/`). Invariants:
 
 - One delete path: `categoriesRepo.delete` deletes the category's rules
@@ -725,7 +725,7 @@ Read these units before touching category UI: the Categories list
   (`src/navigation/types/types.d.ts`), in
   `src/screens/forms/category-rule-form/` (`matcher-row/`, `rule-draft/`,
   `use-save-rule/`, `rule-rewrite-sheet/`). It has no Delete either; a
-  rule is deleted from its rule card's hold menu on the category page.
+  rule is deleted from its rule card's hold menu on the category form.
   The rewrite confirm is a `BottomSheet` with buttons, opened from
   `use-save-rule/`, not a `ConfirmSheet`; a save that would rewrite
   zero rows saves with no sheet.

@@ -217,15 +217,23 @@ export const en = {
   categoryPage: {
     rulesHeading: 'Rules',
     setAsDefault: 'Set as default',
+    isDefault: 'Default category',
     quotedName: '"{{name}}"',
     unreadableRule: "This rule can't be read",
     deleteRuleTitle: 'Delete Rule',
     addRule: 'Add rule',
     emptyRules: 'Add a rule to set this category on matching transactions.',
+    // The labels of a rule card's table; each names its subject because the row stands alone.
+    amountEqual: 'Amount equals',
+    amountMore: 'Amount is more than',
+    amountAtLeast: 'Amount is at least',
+    amountLess: 'Amount is less than',
+    amountAtMost: 'Amount is at most',
+    timeBefore: 'Time is before',
+    timeAfter: 'Time is after',
   },
   categoryForm: {
     addTitle: 'New Category',
-    editTitle: 'Edit Category',
   },
   ruleForm: {
     addTitle: 'New Rule',

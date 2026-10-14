@@ -1716,7 +1716,8 @@ and stays silent. A `try`/`finally` reset inside the body still matches: use a h
 Mechanizes kiko-code-style's "A test title carries no history": the title of an `it`,
 `test`, or `describe` call (also `.only`, `.skip`, `.todo`, `.each(table)(...)`, and a tagged
 `.each` table) that opens with a task id (`A1 `, `A1:`), opens with a ruling id (`ruling A2`),
-carries `(was: `, or ends in a task id in parentheses (`(P2)`, `(task C2)`, `(spec A3, B4)`).
+opens with a numbered device check (`device check 3`, either case), carries `(was: `, or ends in
+a task id in parentheses (`(P2)`, `(task C2)`, `(spec A3, B4)`).
 
 **Severity ERROR from the start.** The tree holds 0 findings. Re-measure with `semgrep
 --metrics off --quiet --config rules/semgrep-prewrite.yml src __tests__ --json` before quoting

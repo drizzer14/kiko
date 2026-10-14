@@ -1197,7 +1197,8 @@ rules:
     severity: ERROR
     message: >
       A test or suite title opens with a task id ("A1 ", "A1:"), opens with a
-      ruling id ("ruling A2"), ends in a task id in parentheses ("(P2)",
+      ruling id ("ruling A2"), opens with a numbered device check
+      ("device check 3"), ends in a task id in parentheses ("(P2)",
       "(task C2)", "(Task C2)"), or carries an old-value label in parentheses.
       kiko-code-style's "Comments: WHY only, never history": a title says what
       the test pins, and the id or the old value belongs in the commit
@@ -1217,7 +1218,7 @@ rules:
           regex: "^(?:it|test|describe)\\b"
       - metavariable-regex:
           metavariable: $TITLE
-          regex: "^[\"'`](?:[A-Z]\\d+[ :]|[Rr]uling [A-Z]\\d|.*\\(was: |.*\\((?:[Tt]ask |spec )?[A-Z]\\d+[),])"
+          regex: "^[\"'`](?:[A-Z]\\d+[ :]|[Rr]uling [A-Z]\\d|[Dd]evice [Cc]heck \\d|.*\\(was:|.*\\((?:[Tt]ask |spec )?[A-Z]\\d+[),])"
   # A rejection asserted with no expected error passes on any failure, including a typo that
   # throws before the code under test runs. ERROR: the tree holds 0 findings for this id. See
   # kiko-linter's "kiko-rejects-to-throw-needs-error" section. The `src/test-support/**` include

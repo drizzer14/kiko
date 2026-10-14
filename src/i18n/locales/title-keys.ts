@@ -30,7 +30,6 @@ export const TITLE_KEYS = new Set([
   'accounts.title',
   'categories.chooseIconHeading',
   'categoryForm.addTitle',
-  'categoryForm.editTitle',
   'categoryPage.deleteRuleTitle',
   'categoryPage.rulesHeading',
   'columnMapping.amountColumnSheetTitle',
