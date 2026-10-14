@@ -225,7 +225,7 @@ describe('scripts/checks/mutation.sh comment-only filter', () => {
         WITH_TYPESCRIPT,
       );
 
-      expect(mutateEntries(result.stubArguments)).toEqual(['src/foo.ts:1-2']);
+      expect(mutateEntries(result.stubArguments)).toEqual(['src/foo.ts:1-1']);
       expect(result.stdout).not.toContain('skipped (comment-only)');
     });
   });
