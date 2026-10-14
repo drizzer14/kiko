@@ -385,7 +385,7 @@ The established patterns grouped under this heading:
   native-stack 7.18.9 sends it with no index, so react-native-screens
   inserts it at the trailing edge. A native item takes no `testID`; a
   test reads the item list from `setOptions` and calls its `onPress`.
-  Consumers: `AccountDetail` (bell, then Edit; Edit only for an implicit property or debt account, which takes no new reminders), `CategoryDetail` (a star, then Edit; the star is `star.fill` and disabled on the default category, a state marker), `HoldingDetail` (Edit only, for every holding: a Property or Loans holding has no account button; the implicit account is reached from its section heading on the Accounts screen, see "Section heading disclosure row" below, and edited from its AccountDetail's Edit pencil). A native item types its SF Symbol `name` as the symbol catalogue's union, so a symbol read from a stored value (not a literal) would need a guard against an unknown name, because UIKit draws no image for one.
+  Consumers: `AccountDetail` (bell, then Edit; Edit only for an implicit property or debt account, which takes no new reminders), `CategoryForm` (edit mode: a star via `useFormHeaderItems` `extraItems`, before Save; the star is `star.fill` and disabled on the default category, a state marker; shown only once the category row is read), `HoldingDetail` (Edit only, for every holding: a Property or Loans holding has no account button; the implicit account is reached from its section heading on the Accounts screen, see "Section heading disclosure row" below, and edited from its AccountDetail's Edit pencil). A native item types its SF Symbol `name` as the symbol catalogue's union, so a symbol read from a stored value (not a literal) would need a guard against an unknown name, because UIKit draws no image for one.
   The pre-write guard enforces both bans: Semgrep
   `kiko-header-item-native-only` denies a `headerRight`/`headerLeft` value
   other than `undefined` (a `StyleSheet.create` style and a destructuring
@@ -396,7 +396,8 @@ The established patterns grouped under this heading:
   `src/screens/forms/` calls `useFormHeaderItems`
   (`src/screens/forms/use-form-header-items/`). Save is the trailing
   item: a prominent, accent-tinted `type: 'button'` with the label
-  `common.save` (no per-form Save label key). Cancel is the leading
+  `common.save` (no per-form Save label key). The hook takes
+  `extraItems`, listed before Save (see its file for the option). Cancel is the leading
   plain `textPrimary` item and shows only when native-stack's
   `canGoBack` is false (the form is the first screen of its stack or
   pane); when a back button shows, the back button is the cancel. Save
@@ -720,7 +721,7 @@ new component can land between reviews of this skill:
   there is no "Add loan" footer: a loan is added through the implicit
   account's create flow, and account detail's footer is always "Add
   holding" with `genericEntitySymbol.holding`;
-  Add rule → `genericEntitySymbol.rule` (category page's footer);
+  Add rule → `genericEntitySymbol.rule` (category form's footer, a lone `secondaryTonal`);
   Add lot → the holding's OWN type glyph (`holdingTypeSymbol[holding.type]`),
   never a fixed type's; Add contribution →
   `calendar.badge.plus` (the one call-site literal). "Update value" /
@@ -1204,7 +1205,7 @@ new component can land between reviews of this skill:
   (`kiko-no-confirm-sheet-in-form`, `rules/semgrep-prewrite.yml`).
   `deleteTitle` is an optional string that replaces the default
   `common.deleteNamed` confirm title, for a card whose `name` is a
-  descriptive line rather than an entity name (the category page's rule
+  descriptive line rather than an entity name (the category form's rule
   card passes `t('categoryPage.deleteRuleTitle')`), so the title never
   nests quotes around a sentence. The key is Title Case in `TITLE_KEYS`
   and the forwarded heading is registered in
@@ -1406,7 +1407,7 @@ new component can land between reviews of this skill:
   heading row, then a stack of `rows` (row shape: read `summary-table.props.d.ts`), each split
   `space-between`. A row may opt in to `wraps?: true` for a free-text value: the label keeps its
   width and the value wraps inside the row; rows without it lay out exactly as before. The rule
-  card on the category page (`src/screens/settings/category-detail/rule-card/`) is the caller. At
+  card on the category form (the rule card under `src/screens/forms/category-form/`) is the caller. At
   very large Dynamic Type a wrapping value can be squeezed narrow; check it on the device.
   Extracted from the
   holding-detail deposit/bond value-breakdown block —
