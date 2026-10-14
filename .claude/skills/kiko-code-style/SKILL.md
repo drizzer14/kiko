@@ -253,8 +253,8 @@ not a history narrative about a task or review round.
 ### A test title carries no history
 
 A test or suite title says what the test pins. It carries no task id or ruling id as a prefix
-(`X1 `, `X1:`, `ruling A2`), no task id as a trailing `(P2)` or `(task C2)`, and no `(was: `
-label. The id and the old value belong in the commit message. Mechanized by the
+(`X1 `, `X1:`, `ruling A2`), no numbered device-check prefix (`device check 3`), no task id as
+a trailing `(P2)` or `(task C2)`, and no `(was: ` label. The id and the old value belong in the commit message. Mechanized by the
 `kiko-test-title-no-history` Semgrep rule (see kiko-linter's own section for its scope and
 limits).
 

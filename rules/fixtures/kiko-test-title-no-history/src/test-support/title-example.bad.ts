@@ -2,9 +2,9 @@
 // `paths.include` entry (`src/test-support/**`), which draws NOTHING against a fixture placed
 // directly in rules/fixtures/ (kiko-linter's "Semgrep facts" gotcha), so this fixture mirrors a
 // real src/test-support/ path instead. The rule MUST report a finding on each pinned line: a test
-// or suite title that opens with a task id (`A1 `, `Q7 `, `X1:`) or a ruling id (`ruling A2`), or
-// that carries a `(was: ` label or ends in a parenthesized id (`(P2)`, `(task C2)`,
-// `(Task C2)`), however the title is declared.
+// or suite title that opens with a task id (`A1 `, `Q7 `, `X1:`), a ruling id (`ruling A2`) or a
+// numbered device check (`device check 3`), or that carries a `(was: ` label or ends in a
+// parenthesized id (`(P2)`, `(task C2)`, `(Task C2)`), however the title is declared.
 export {};
 
 // EXPECT-FINDING
@@ -75,6 +75,12 @@ describe('single-flight join over the whole arm (P2)', () => {});
 
 // EXPECT-FINDING
 describe(`a template title with a trailing id (T27)`, () => {});
+
+// EXPECT-FINDING
+describe('device check 3: keeps the footer pinned', () => {});
+
+// EXPECT-FINDING
+describe('Device Check 12 keeps the footer pinned', () => {});
 
 // EXPECT-FINDING
 describe('keeps the row flat (task C2)', () => {});
