@@ -297,6 +297,14 @@ The established patterns grouped under this heading:
 - The capability-icon transparency principle — its own heading further
   down this file.
 - Field placeholder and error copy — below.
+- A form separates its field block from the next section with the shared `Divider`
+  (`src/design-system/components/divider/`), written `<Divider testID="form-divider" />`. It is
+  a direct child of the form's gap `Box`, with the default spacing and full width: no inset, no
+  spacing prop, no wrapper. It goes after the last field of the block and before the next
+  section. A section that exists only in edit mode (for example the category screen's rules
+  section) carries its divider inside the same condition, so a create-mode form shows neither.
+  Copy the placement from `src/screens/forms/account-form/account-form.screen.tsx` and
+  `src/screens/forms/holding-form/holding-form.screen.tsx`.
 - Content that APPEARS in response to a press (a banner, a confirmation) is silent to
   VoiceOver: pair it with `AccessibilityInfo.announceForAccessibility(t(...))` using the same
   i18n string as the visible text.

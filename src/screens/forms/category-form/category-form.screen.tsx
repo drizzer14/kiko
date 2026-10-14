@@ -24,6 +24,7 @@ import type { Currency } from '@kiko/currency/currency';
 import { useTimeClock } from '@kiko/i18n/use-time-clock';
 import Button from '@kiko/design-system/components/button';
 import Screen from '@kiko/design-system/components/screen';
+import Divider from '@kiko/design-system/components/divider';
 import { alertOnCatch } from '@kiko/design-system/alert-on-catch';
 import { useSubmitOnce } from '@kiko/design-system/use-submit-once';
 import { genericEntitySymbol } from '@kiko/holdings/entity-symbols';
@@ -331,35 +332,39 @@ const CategoryFormScreen: FC<CategoryFormScreenProps> = ({ navigation, route }) 
         <ColorPicker label={t('forms.fields.color')} value={previewColor} onSelect={setColor} />
 
         {isEdit && (
-          <Box gap={3}>
-            <Text variant="heading">{t('categoryPage.rulesHeading')}</Text>
+          <>
+            <Divider testID="form-divider" />
 
-            {lines.length === 0 ? (
-              <Text variant="caption" tone="textSecondary">
-                {t('categoryPage.emptyRules')}
-              </Text>
-            ) : (
-              <Box gap={4}>
-                {lines.map((line) => (
-                  <RuleCard
-                    key={line.id}
-                    rows={line.rows}
-                    summary={line.summary}
-                    onPress={
-                      line.isReadable
-                        ? () =>
-                            navigation.navigate('CategoryRuleForm', {
-                              categoryKey,
-                              ruleId: line.id,
-                            })
-                        : undefined
-                    }
-                    onDelete={() => categoryRulesRepo.deleteRule(line.id)}
-                  />
-                ))}
-              </Box>
-            )}
-          </Box>
+            <Box gap={3}>
+              <Text variant="heading">{t('categoryPage.rulesHeading')}</Text>
+
+              {lines.length === 0 ? (
+                <Text variant="caption" tone="textSecondary">
+                  {t('categoryPage.emptyRules')}
+                </Text>
+              ) : (
+                <Box gap={4}>
+                  {lines.map((line) => (
+                    <RuleCard
+                      key={line.id}
+                      rows={line.rows}
+                      summary={line.summary}
+                      onPress={
+                        line.isReadable
+                          ? () =>
+                              navigation.navigate('CategoryRuleForm', {
+                                categoryKey,
+                                ruleId: line.id,
+                              })
+                          : undefined
+                      }
+                      onDelete={() => categoryRulesRepo.deleteRule(line.id)}
+                    />
+                  ))}
+                </Box>
+              )}
+            </Box>
+          </>
         )}
       </Box>
     </Screen>
