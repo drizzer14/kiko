@@ -1,5 +1,7 @@
 # Help flows: implementation plan
 
+Shipped text lives in `src/i18n/locales/en.ts` and `uk.ts` (`help.topics.*`); this plan's step text is superseded where they differ. `src/help/help-topics.test.ts` pins the quoted labels.
+
 > For the developer: work tests-first (superpowers:test-driven-development). Every code fact
 > below names a symbol or anchor text, not a line number. Re-grep each one on the actual base
 > before you rely on it; the base moves. Every quoted UI label is an `en.ts`/`uk.ts` value as of

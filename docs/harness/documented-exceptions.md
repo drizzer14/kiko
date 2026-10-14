@@ -757,7 +757,7 @@ verified usage, not dead weight:
   Each override is a
   `// nosemgrep: kiko-no-source-text-read-in-test OVERRIDE(<reason>)` line
   directly above the ONE read the rule cannot prove is a non-TypeScript
-  fixture. None of these reads parses text that Stryker's instrumentation
+  fixture. None relies on text that Stryker's instrumentation
   changes. Every other read in the same file is still checked, so a new
   source-text read there is denied:
   - `src/db/settings-columns.test.ts`: reads the column names from

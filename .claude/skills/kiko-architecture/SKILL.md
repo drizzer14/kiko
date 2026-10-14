@@ -959,8 +959,13 @@ have their own, older, pre-existing chunking — don't assume they use
   `Pick<NavigationProp<TabParamList>, 'navigate'>` and makes one
   cross-tab navigate; its test uses the real-router helper
   `src/test-support/real-tab-navigator.tsx`.
-- `src/help/help-topics.ts`: one `topicsById` entry per topic;
-  `HELP_TOPICS` is derived from it.
+- `src/help/help-topics.ts`: topics and groups are keyed records
+  (`topicsById`, `groupsById`, each `satisfies Record<Id, Entry>`);
+  `HELP_TOPICS` and `HELP_GROUPS` are derived from them (record order =
+  section and row order). A topic's `action` may be `null`:
+  `help-topic.screen.tsx` then passes `footer` as `undefined`, so no
+  footer is drawn. The Help page renders by group; read the file for the
+  current groups and topics.
 - A new `settings` column also needs: the demo `.kiko` fixtures
   regenerated (`KIKO_REGEN_DEMO=1 npx jest
   e2e/screenshot/fixtures/generate-demo-kiko.test.ts`, as in commit
