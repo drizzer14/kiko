@@ -93,6 +93,8 @@ const FORWARDED_HEADING_SITES: Record<string, `${string}.${string}`> = {
 const UNCHECKED_HEADING_SITES: Record<string, string> = {
   'calendar/calendar-header/calendar-header.component.tsx#title':
     'a month name and a year, not a phrase that has a casing role',
+  'navigation/settings-stack/settings.stack.tsx#helpTopicById(route.params.topicId).titleKey':
+    'the help topic’s title, whose key help-topics.test.ts requires in TITLE_KEYS for every topic',
   'screens/forms/category-form/category-form.screen.tsx#displayName':
     'the category’s display name, the localized default or the title the user typed',
   'design-system/components/card-context-menu/card-context-menu.component.tsx#name':
@@ -128,8 +130,13 @@ const isJsx = (node: ts.Node): boolean =>
   ts.isJsxElement(node) || ts.isJsxSelfClosingElement(node) || ts.isJsxFragment(node);
 
 // The expressions a heading slot can render: both arms of a conditional, the
-// rendered side of `&&`, and every non-blank child of nested JSX.
+// rendered side of `&&`, and every non-blank child of nested JSX. An empty
+// string renders no heading, so it is no leaf.
 const headingLeaves = (node: ts.Node): ts.Node[] => {
+  if (ts.isStringLiteral(node) && node.text === '') {
+    return [];
+  }
+
   if (ts.isJsxExpression(node) || ts.isParenthesizedExpression(node)) {
     return foldMap(maybe(node.expression), headingLeaves) ?? [];
   }
@@ -203,7 +210,19 @@ const bottomSheetHeader = (element: ts.JsxOpeningLikeElement): ts.Node[] => {
   return expression === undefined || isJsx(expression) ? [] : [expression];
 };
 
-const titleProperty = (objectLiteral: ts.Node): ts.Node[] => {
+// The object a navigation option is written as: the literal itself, or the one a function of the
+// route returns as its expression body.
+const optionsObject = (node: ts.Node): ts.Node => {
+  if (ts.isParenthesizedExpression(node)) {
+    return optionsObject(node.expression);
+  }
+
+  return ts.isArrowFunction(node) ? optionsObject(node.body) : node;
+};
+
+const titleProperty = (options: ts.Node): ts.Node[] => {
+  const objectLiteral = optionsObject(options);
+
   if (!ts.isObjectLiteralExpression(objectLiteral)) {
     return [];
   }
@@ -336,6 +355,7 @@ describe('TITLE_KEYS covers every heading, sheet-title, and nav-title call site'
     expect(keys).toContain('holdingDetail.valueLabel');
     expect(keys).toContain('settings.categories');
     expect(keys).toContain('forms.account.editTitle');
+    expect(keys).toContain('categoryForm.addTitle');
   });
 
   it('lists every literal heading key in TITLE_KEYS', () => {
@@ -383,6 +403,40 @@ describe('TITLE_KEYS covers every heading, sheet-title, and nav-title call site'
 
     expect(unmapped).toEqual([]);
     expect(unforwarded).toEqual([]);
+  });
+});
+
+describe('reading a nav title written as a function of the route', () => {
+  const keysOf = (options: string): Array<string | undefined> =>
+    sitesInSource(
+      'fixture-nav-title.tsx',
+      `const Stack = () => (<Stack.Screen name="Form" options={${options}} />);`,
+    ).map((site) => site.key);
+
+  it('reads the title of an object the arrow function returns', () => {
+    expect(keysOf(`({ route }) => ({ title: t('forms.account.addTitle') })`)).toEqual([
+      'forms.account.addTitle',
+    ]);
+  });
+
+  it('reads both arms of a conditional title, and none for the empty string', () => {
+    expect(
+      keysOf(`({ route }) => ({ title: route.params ? t('forms.account.addTitle') : '' })`),
+    ).toEqual(['forms.account.addTitle']);
+    expect(
+      keysOf(`({ route }) => ({ title: route.params ? '' : t('forms.holding.addTitle') })`),
+    ).toEqual(['forms.holding.addTitle']);
+  });
+
+  it('treats a non-literal key in the function form as a non-literal site', () => {
+    const keys = keysOf(`({ route }) => ({ title: t(route.params.titleKey) })`);
+
+    expect(keys).toHaveLength(1);
+    expect(keys[0]).toBeUndefined();
+  });
+
+  it('reads nothing from a function that returns a call, whose object is out of reach', () => {
+    expect(keysOf(`({ route }) => formOptions(t, route)`)).toEqual([]);
   });
 });
 
