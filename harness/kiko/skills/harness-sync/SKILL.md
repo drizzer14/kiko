@@ -32,6 +32,12 @@ in the harness repo):
   on a missing scan root. Portable only to a repo that uses the
   `src/design-system/components/<name>/` convention.
 - Capitalization-tolerant history-word phrases in the history-word comment rule (`0fb10efc`).
+- All of H5 (not synced yet): the job queue (`scripts/job-queue.sh`), run-log wait/gaps, the
+  comment/test-title rules, the pre-commit typecheck hook, the mutation ETA with timeouts, and
+  the H5 closeout.
+- The CLAUDE.md trim (docs/harness/checks.md split).
+- A sync branch `h5-sync` exists in drizzer14/harness (tip `d92f28d`); its plugin patch list
+  P1-P25 is pending the user.
 
 ## Classification
 

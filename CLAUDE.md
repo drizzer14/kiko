@@ -51,9 +51,9 @@ Composite scripts:
 - `npm run check:deep` — the heavy tier: `check:mutation` (Stryker +
   `mutation-score.js`; thresholds in `docs/harness/checks.md`),
   then `bash scripts/checks/osv.sh` (any known CVE in `package-lock.json`
-  fails). Manual, wired to no hook; after the queue cutover the gate is queued with
-  `scripts/job-queue.sh gate <worktree> <label> <base> <head>` (until the coordinator announces
-  the cutover, heavy jobs use `memory/refs/verify-queue.sh` and the old gate runner). **Mutation runs per SMALL change
+  fails). Manual, wired to no hook; the gate is queued with
+  `scripts/job-queue.sh gate <worktree> <label> <base> <head>`
+  (the old `memory/refs/verify-queue.sh` is retired). **Mutation runs per SMALL change
   set only, never on a whole project or release** (a whole-release run went
   10 h 16 min with no result): set `KIKO_MUTATION_BASE` to the change set's
   own base commit; more than 30 files to mutate (`MUTATION_FILE_CAP` in
