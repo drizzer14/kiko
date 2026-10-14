@@ -161,7 +161,7 @@ describe('help topic registry', () => {
     ['useTemplates', 4],
     ['manageCategories', 5],
     ['categoryRules', 5],
-    ['viewStatistics', 4],
+    ['viewStatistics', 8],
     ['backupData', 4],
     ['restoreData', 4],
     ['systemSettings', 4],
