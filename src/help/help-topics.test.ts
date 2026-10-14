@@ -356,6 +356,19 @@ describe('the choices a help step names', () => {
       );
     }
   });
+
+  it.each([
+    ['en', enValues, /\bonly\b/i, 'Loan interest'],
+    ['uk', ukValues, /лише/i, 'Відсотки за кредитом'],
+  ] as const)(
+    'does not claim in %s that only the interest of a linked loan payment counts',
+    (_language, values, exclusive, interestLabel) => {
+      const step = stepOf(values, 'viewStatistics', 7);
+
+      expect(step).not.toMatch(exclusive);
+      expect(step).toContain(interestLabel);
+    },
+  );
 });
 
 describe('the Ukrainian wording of the help topics', () => {
