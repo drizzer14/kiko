@@ -24,6 +24,10 @@ import {
 // diff on stdin (the mutation-score.test.ts pattern).
 const SCRIPT = join(__dirname, '../scripts/checks/mutation-ranges.js');
 
+// The signal tests spawn the real wrapper behind a logging rm stub; under machine load that
+// outlasts jest's 5 s default.
+jest.setTimeout(20_000);
+
 type CliResult = { code: number | null; stdout: string; stderr: string };
 
 const run = (diff: string, paths: string[]): CliResult => {
