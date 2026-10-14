@@ -225,8 +225,9 @@ withdraw budget moves into this object, with the same numbers and the same rule.
   `binancePayPendingOverlap`, `binanceTransferPendingOverlap`, `binanceEarnPendingOverlap`)
   and a point cursor (`binanceHistoryPointCursor`, `binancePayPointCursor`,
   `binanceTransferPointCursor`, `binanceEarnPointCursor`), a range cursor
-  (`binanceHistoryRangeCursor`, `binancePayRangeCursor`, `binanceTransferRangeCursor`) and its
-  span hints (`binanceHistorySpanHints`, `binancePaySpanHints`, `binanceTransferSpanHints`), see
+  (`binanceHistoryRangeCursor`, `binancePayRangeCursor`, `binanceTransferRangeCursor`,
+  `binanceEarnRangeCursor`) and its span hints (`binanceHistorySpanHints`,
+  `binancePaySpanHints`, `binanceTransferSpanHints`, `binanceEarnSpanHints`), see
   section 4.
 - All of them join the walk-owned keys of `holding-metadata.ts` (`binanceWalkCursorFields`,
   `binanceWalkPendingFields`, `binanceWalkPointCursorFields`, `binanceWalkRangeCursorFields`
@@ -385,9 +386,9 @@ withdraw budget moves into this object, with the same numbers and the same rule.
     cannot tell a stuck record from a trusted twin at the same millisecond: with a trusted twin
     returned and the stuck record not returned (Binance filters on another field, so a read never
     returns the stuck record), the point LEAVES, and the stuck record is never returned either
-    way. Without a twin the point stays. Probe VERIFY 14 decides the filter field and is a MERGE
-    BLOCKER for this case: if a filter mismatch is possible, the point has to carry the stuck
-    record's identity (its id), not only its window.
+    way. Without a twin the point stays. Probe VERIFY 14 decided the filter field (CLOSED: it is
+    `timestamp`; twins 0, mismatch 0), so the point does not have to carry the stuck record's
+    identity (its id), only its window.
   - **Order of a run.** Forward pass first, then the owed ranges the window re-scan will not
     read this run, in a round-robin (the next bullet), as windows of their own (`WalkPass`
     `pending`), then the window
@@ -1147,7 +1148,10 @@ span whose first page is full (1000 records) is not paged through; it is halved 
 again, as in the Pay walk, so every committed span fits one call per endpoint and a heavy
 window is finished over later runs from the re-scan mark. Only a span of 1 ms that is still
 full is offset-paged until a short page. The legacy fallback cursor (the newest imported
-record, for a holding with no cursor yet) still feeds the plan, but never the stored marks.
+capital record, a row whose external id starts with `<accountId>:deposit:` or
+`<accountId>:withdraw:`, for a holding with no cursor yet) still feeds the plan, but never the
+stored marks. A Pay, Transfer or Earn row on the same holding never counts, so it cannot move
+the capital forward pass past ground the capital walk has not read.
 
 Strict capital parse, one row at a time (R30, 2026-10-12). Capital rows parse
 strictly, and a skipped row is never silent: `amount: null` used to import a 0-sat
@@ -1480,6 +1484,13 @@ Probe items:
     stays unread is the resolution of a narrowing (1 s). Check: ask the same
     `startTime` near the depth every minute for two days and note when it changes from served
     to refused, and by how much the oldest served start jumps.
+19. OPEN CHECK (Pay paid from the Earn wallet): does a Pay paid from the Earn wallet (Pay
+    `walletType` 5, placed on the Earn holding) create a flexible redemption record that the
+    Earn walk imports (a redemption debits Earn and credits its destination wallet)? If it
+    does, the one payment debits Earn twice, once as the Pay row and once as the redemption
+    leg. Unverified, no data. Check: pay a small amount from the Earn wallet, then read the
+    Pay history and the Simple Earn flexible redemption history for it and compare the
+    amounts and times. Owner: the user, with the live probe.
 
 ## Open questions (each has a safe default)
 
@@ -1512,7 +1523,8 @@ keeps its rule.
 ## Still needing the user
 
 - Open checks, documented and accepted (user ruling 2026-10-13), not merge blockers: VERIFY 15,
-  the VERIFY 10 allowlist cases, Q14 maturity-paid, Q25, and the deposit end semantics. If a
+  the VERIFY 10 allowlist cases, Q14 maturity-paid, Q25, the deposit end semantics, and the
+  Pay-from-Earn redemption check (item 19). If a
   probe finds identical reward records (Q16), confirm whether they are real double credits.
 - Optional: check one BONUS or locked reward in the Binance app and say which
   wallet it landed in. Q14 itself is ruled (A, 2026-10-10).

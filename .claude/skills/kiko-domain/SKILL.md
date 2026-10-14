@@ -1046,8 +1046,9 @@ Rules:
 - **A same-currency pair says "transfer".** `missingPartSentence` and
   `exchangeSentence` (`src/transactions/remove-notice/remove-notice.ts`) pick
   `transactions.deleteLinked.transfer`, `.transferUnlinked` and
-  `.transferUnlinkedPlain` for a pair whose legs share a currency (a Binance
-  Pay transfer between wallets), the `exchange*` keys otherwise.
+  `.transferUnlinkedPlain` for a pair whose legs share a currency (a manual
+  same-currency exchange between two holdings), the `exchange*` keys otherwise.
+  A Binance row is never the one deleted here: a synced row is not deletable.
 - **An unreadable deposit is not an error.** `removeDepositContributionDatabaseTransaction`
   returns false when the metadata cannot be read or no single contribution
   matches: the leg deletes and the deposit stays, as the confirm said

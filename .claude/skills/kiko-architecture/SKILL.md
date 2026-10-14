@@ -1748,9 +1748,11 @@ than restated here:
   (`binance.client.ts`), the same HMAC as the balance reads (read-only key).
   The history reads (`fetchDepositHistory`, `fetchWithdrawHistory`) live in
   `binance.history-client.ts`, not `binance.client.ts`, and return a
-  `HistoryPage` of strictly parsed rows; a malformed record throws
-  `BinanceHistoryParseError`, so the window stops and the cursor stays (spec
-  section 7, "Strict capital parse").
+  `HistoryPage` of strictly parsed rows; only a malformed BODY throws
+  `BinanceHistoryParseError`, so the window stops and the cursor stays. A
+  malformed ROW is `capital-row-unreadable`, a per-record stop: it is owed at
+  its point (the span when it has no usable time) and the other rows of the
+  span import (spec section 7, "Strict capital parse").
   Each client call is ONE offset page of ONE window; the offset-paging
   lives in `binance.transactions.ts`, not the client. The walk shared by
   every Binance history walk lives in `binance.history-walk.ts` (read it for
@@ -1803,9 +1805,12 @@ than restated here:
   cursor, re-scan cursor, point cursor, pending list, floor, window and
   `RESYNC_OVERLAP_MS`). The capital walk feeds it
   `planCursor = cursor ?? latestTransactionTime ?? null`, so a LEGACY holding
-  (transactions, no watermark yet) starts from its newest imported row and
-  adopts the watermark at its first committed window; a first sync walks from
-  the 2017 floor. The forward pass starts at `max(floor, cursor)`. The
+  (capital rows, no watermark yet) starts from its newest imported capital row
+  and adopts the watermark at its first committed window; a first sync walks
+  from the 2017 floor. `latestTransactionTime` reads only the rows whose
+  external id starts with `<accountId>:deposit:` or `<accountId>:withdraw:`:
+  a Pay, Transfer or Earn row on Spot never moves the capital forward pass, and
+  an account with no capital row starts at the floor. The forward pass starts at `max(floor, cursor)`. The
   re-scan covers `[base, forward start)` with
   `base = max(floor, min(end - window, forward start - RESYNC_OVERLAP_MS))`,
   kept in its own mark (one per walk; read `binanceWalkCursorFields` in
@@ -1841,8 +1846,9 @@ than restated here:
   the span owes only that record's point; any other stop, or a record with
   no usable time, owes the whole span; every record the walk can trust
   imports either way. The forward pass leaves a span uncommitted on any
-  stop, except in the Transfer lane, where a stop tied to one transfer with
-  a usable time owes that point and the span commits (`TRANSFER_FORWARD_OWES`). `setBinanceWalkCursor` also
+  stop, except in the Transfer and Earn lanes, where a stop tied to one record
+  with a usable time owes that point and the span commits
+  (`TRANSFER_FORWARD_OWES`, `EARN_FORWARD_OWES`). `setBinanceWalkCursor` also
   gates the write on the holding's OWN account still being
   `institution = 'binance'` (joined in the same query) and is a no-op
   otherwise — a walk holds the account's credentials for its whole run, so
@@ -1940,10 +1946,13 @@ than restated here:
   (`binance.holding-keys.ts`) and, only for a row whose key is new, created
   at zero by `holdingsRepo.ensureExchangeHoldings` (insert-only); a row
   already stored keeps its holding. Earn gets no capital rows. The walks
-  share this through `resolveWalletHoldings` (`binance.history-walk.ts`) with
-  `createKeys`: a wallet that only receives rows already stored elsewhere is
-  not created as an empty holding. `placeWalletRows`
-  (`binance.history-records.ts`) places the rows on the holdings.
+  share this through `resolveWalletHoldings` (`binance.history-walk.ts`). Only
+  the capital walk passes `createKeys` (`placeRows` in
+  `binance.transactions.ts`): a wallet that only receives rows already stored
+  elsewhere is not created as an empty holding. `placeWalletRows`
+  (`binance.history-records.ts`), which places the rows of the Pay, Transfer
+  and Earn walks, passes none and so creates every missing wallet holding at
+  zero.
 - **Pairing and untracked wallets.** Transfer and Earn legs share an
   `exchangePairId` (`binance.transfer-history.ts`, `binance.earn-history.ts`:
   read `pairId` there); each leg's `externalId` is the pair id plus the wallet,
@@ -2036,7 +2045,7 @@ record imports only at `TRANSFER_SETTLED_STATUS`; BTC only. The stop codes live 
   requests a minute, so the walk adds at most 172 IP a minute. A band Binance refuses stays owed
   in its type and is read by a later run.
 
-- **Transfer forward stops (O1, Transfer lane only).** A stop tied to ONE transfer with a usable
+- **Transfer forward stops (O1; the Earn lane does the same with `EARN_FORWARD_OWES`).** A stop tied to ONE transfer with a usable
   time is owed at that transfer's own point and the forward pass goes past it
   (`TRANSFER_FORWARD_OWES`:
   `transfer-failed`, `-not-settled`, `-type-mismatch`, `-id-missing`,
@@ -2124,8 +2133,8 @@ stop codes and scenario rows.
   keeps it. A range with no record leaves once read. A record is told by its
   point, not an id: a trusted twin at the same millisecond lets the point
   leave though the stuck record was never returned (a filter mismatch); spec
-  VERIFY 14 is a merge blocker for it (the point would have to carry the
-  stuck record's identity).
+  VERIFY 14 is CLOSED (the filter field is `timestamp`; twins 0, mismatch 0),
+  so the point does not need to carry the stuck record's identity.
 - **Round-robin over points.** One point cursor per walk
   (`binanceWalkPointCursorFields`) holds the start of the point read last; it
   moves once a point read starts, finished or not. Each of P points is read
@@ -2180,7 +2189,8 @@ stop codes and scenario rows.
 - **STOP_ENDS_PASS and R28** (plan OVERNIGHT item 17). `STOP_ENDS_PASS` (`binance.history-walk.ts`) says a stop
   in the forward pass ends only that pass, so the run goes on to the owed
   ranges, the re-scan and the points; the cursor never passes a stuck record
-  (but see the Transfer ruling next); a budget or rate limit ends every read.
+  (but see the Transfer and Earn forward stops; Earn: `EARN_FORWARD_OWES`); a
+  budget or rate limit ends every read.
 - **R13.** Pay direction comes from the uid alone (`payDirection`): payer id =
   uid is out, receiver id = uid is in.
 - **C1.** The Pay walk does not read the capital cursor (spec section 4).
