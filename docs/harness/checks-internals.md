@@ -58,8 +58,8 @@ resolve, directly: a whole-project run is always above the cap. It then
 selects the files to mutate, then the changed lines of each (the diff vs `KIKO_MUTATION_BASE`'s
 merge-base; a failed `git diff` is a refusal too, never "nothing to
 mutate"), applies its excludes, drops the files whose diff is only
-comments or whitespace and has no colocated test changed by more than
-comments (`comment-only-changes.js`, fail-closed), turns one `-U0` diff
+comments or whitespace, whatever its colocated test did
+(`comment-only-changes.js`, fail-closed), turns one `-U0` diff
 into added-line ranges (`mutation-ranges.js`; a file with no added line is
 skipped and not counted), and counts the rest. Above
 `MUTATION_FILE_CAP` (30) it exits 2 with the structured block before
@@ -75,8 +75,7 @@ mutants fully inside a range. It filters by range because Stryker's incremental 
 out-of-range mutants, with their old statuses, into `mutation.json` (core `incremental-differ.js`
 lines 128-142); without the filter a stale Survived would lower this run's score. The scope check
 compares the SET of entries with `config.mutate`, and the scorer exits 2 when one file is given
-both as a plain path and as a range (Stryker reads that as "do not mutate"). A comment-only file
-kept because its colocated test changed goes in as its plain path (whole file). A kept path with
+both as a plain path and as a range (Stryker reads that as "do not mutate"). A kept path with
 `[ ( * ? {` is refused after the lock in a run, with no lock in `--list`, always before Stryker.
 The diff uses `--find-renames --inter-hunk-context=0 --text --no-textconv` and runs with `GIT_DIFF_OPTS=` (a context width set there outranks `-U0`), so a user's diff attributes, textconv driver, or environment cannot change the hunks. The temp file for `mutation-ranges.js` stderr is removed on EXIT, INT (exit 130), and TERM (exit 143), together with the lock.
 
@@ -89,6 +88,11 @@ mutants on the changed lines stay.
 User ruling 2026-10-12, source plus colocated test: when a source file and its colocated test both
 change, only the changed source lines are mutated. Cost: a weakened test is checked only against
 the changed lines, not the whole file.
+
+User ruling 2026-10-14 (G1 a): a source file proved comment-only mutates nothing
+(`skipped (comment-only): <path>`), whatever its colocated test did; no whole-file keep exists.
+A real change with a changed test still mutates its changed-line ranges. Cost: a test weakened
+beside a comment-only source edit is not mutation-checked; `make verify` still runs it.
 
 ## Guard replay: fingerprint, mark, and deadline
 

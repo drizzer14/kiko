@@ -68,13 +68,15 @@ Rules:
 - Run the FULL jest (`make verify`) before every BATCH READY. `check:all`
   alone missed a fixture that broke two guard rules: the rule-inventory
   and guard-rule jest suites run only in `make verify`.
+- A change set that adds a repo-wide invariant or rule merges main first and re-runs
+  `check:all`: the new rule must hold on code main gained since the base.
 - Per-task deep gates: a per-file floor miss is fixed with tests only,
   never an exclusion.
 - Re-gate of named files across a big merge: `make mutable` prints one
   line per file. For `<path> a-b,c-d (N changed lines)` pass one `--mutate`
   entry per range (`<path>:a-b`, `<path>:c-d`), never the comma list
   (Stryker splits on the comma, so the later ranges are never mutated).
-  For `<path> whole file (N lines)` pass the plain path. Never pass a
+  Never pass a
   plain path and a range for the same file (Stryker reads that as "do not
   mutate"). The source of truth is the `entries` variable in
   `scripts/checks/mutation.sh`. Read the per-file floor (60) from
@@ -207,8 +209,8 @@ exits 0 on 0 files without starting Stryker. A changed file whose diff
 is only comments or whitespace is left out of that count by the script
 itself (it prints `skipped (comment-only): <path>`; a file with no added line
 prints `skipped (no added lines): <path>`); a `Stryker` or JSX
-pragma comment, a colocated test changed by more than comments, or any
-doubt, keeps the file.
+pragma comment, or any doubt, keeps the file; a changed colocated test beside a
+comment-only source does not.
 
 ## Merging into main
 
@@ -376,11 +378,6 @@ A change set that merged `next` mid-way, or that stacks on earlier
 unmerged change sets, takes as its mutation base the `next` tip that
 already contains every earlier change set; otherwise the merge-base
 diff also counts the earlier sets' files against the 30 cap.
-
-A stacked pair where the earlier set changes only comments in a source and the later set changes
-its colocated test inflates `make mutable` (the colocated-test rule keeps the whole file): gate
-the later set alone, with the earlier set's tip as the base, and compare `changed lines:` with the
-diff first.
 
 ## Merge conflicts vs the pre-write guard
 

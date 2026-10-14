@@ -606,14 +606,9 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   required, any exception, and a script that crashes all keep the file. A file
   whose base or HEAD text contains `Stryker` (a `disable`/`restore` directive
   changes the mutant set) or `@jsx` (a pragma changes how the file compiles)
-  is kept whatever else changed. A comment-only source file is also kept, and
-  `--list` says `kept (colocated test changed): <path>`, when a changed test
-  file beside it (same folder: `foo.test.ts(x)` or `foo.<anything>.test.ts(x)`
-  for `foo.ts(x)`) is not itself comment-only: a test weakened together with a
-  comment edit must still be mutated. "Colocated" means the SAME FOLDER only:
-  a test elsewhere (for example `__tests__/App.test.tsx` for `App.tsx`) or a
-  changed helper, mock, or fixture (`__mocks__/`, `test-support/`) does not
-  keep a comment-only source file. Both `git diff --name-only` calls run with
+  is kept whatever else changed. A changed colocated test beside a comment-only
+  source never keeps it (user ruling 2026-10-14, G1 a): the file mutates nothing, and
+  no whole-file keep exists. Both `git diff --name-only` calls run with
   `-c core.quotePath=false`, so a non-ASCII test name matches. Tests:
   `__tests__/comment-only-changes.test.ts` (the parse cases, one spawn) and
   `__tests__/mutation-comment-only.test.ts` (the wrapper, against the stub).
@@ -628,7 +623,7 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   reviewed change set (harness-workflow's "Mutation testing: small change
   sets only"). No env var bypasses the
   cap. `mutation.sh --list` (`make mutable`) prints each file's ranges (`<file> 3-7,12-12 (6 changed lines)`;
-  a comment-only file kept by its colocated test prints `whole file (N lines)`), `changed lines: N`, and
+  every file prints its ranges), `changed lines: N`, and
   `mutable files: N (cap …)` after the same refusals and the same
   `mutable_source_files` filter, then a `timeout share (history)` line (always
   printed, `none` included; read the printf in `mutation.sh`), then exits (2 above the cap) before
@@ -736,8 +731,7 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   scorer takes the exact `--mutate` entries as arguments and grades only mutants fully inside a range,
   because Stryker's incremental mode carries old out-of-range mutants with their old statuses into
   `reports/mutation/mutation.json` (core `incremental-differ.js` lines 128-142). It exits 2 when one file is given both as a
-  plain path and as a range (Stryker reads that as "do not mutate"). A comment-only file kept because its
-  colocated test changed goes in as its plain path (whole file). A kept path with `[ ( * ? {` is refused with
+  plain path and as a range (Stryker reads that as "do not mutate"). A kept path with `[ ( * ? {` is refused with
   exit 2, after the lock in a run and with no lock in `--list`, always before Stryker. The diff uses
   `--find-renames --inter-hunk-context=0 --text --no-textconv`, run with `GIT_DIFF_OPTS=` (a -diff/binary attribute, a textconv driver, or a context width in that variable must not change the hunks). One `cleanup` removes the lock and the temp file for `mutation-ranges.js` stderr on EXIT, INT (exit 130), and TERM (exit 143). General rule: any checker that parses `git diff` hunks forces `--text --no-textconv --no-ext-diff` and `-c core.quotePath=false`, and treats a failed or unparsable diff as a block, never as "nothing to do" (H6 review 2026-10-12: a binary/textconv `.ts` diff gave no hunk and the gate passed with nothing mutated; fixed in 5f31d626). User ruling 2026-10-12, no edge-straddling mutant: Stryker 8.7.1 creates a mutant only when its whole node lies inside a range (its fully-inside rule, instrumenter syntax-helpers.js), and the scorer grades only mutants fully inside a range. Cost: an edit inside a multi-line block, condition, object or array, or an arrow body loses that construct's whole-node mutants; the inner mutants on the changed lines stay. User ruling 2026-10-12, source plus colocated test: when a source file and its colocated test both change, only the changed source lines are mutated. Cost: a weakened test is checked only against the changed lines, not the whole file. The
   scorer is unit-tested directly against constructed report fixtures

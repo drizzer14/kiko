@@ -178,12 +178,14 @@ Every count and exit code is the orchestrator's own measured result.
   first verdict; fix in the harness repo.
 - The source finish snippet prints "run-log: not installed, skipped" also when `node finish`
   exits 1 (unknown run) or 2 (empty RUN_ID), hiding a real failure; fix in the harness repo
-  (keep the snippet as is here).
+  (pff-ios now has the corrected D4 snippet text; the harness repo still needs it).
 - The source start snippet exits 1 with empty stdout when the installed copy is missing,
-  although its text says it "degrades to a no-op"; fix in the harness repo (keep the snippet
-  as is here).
+  although its text says it "degrades to a no-op"; pff-ios now has the corrected D4 snippet
+  text; fix it in the harness repo.
 - The source harness-workflow "Run log" text says `--step <id>`, but the script needs an
-  integer (`--step N`); fix it in the harness repo at sync 3.
+  integer (`--step N`); pff-ios now says `--step N`; fix it in the harness repo at sync 3.
+- G1 port: in the harness repo, a comment-only source mutates nothing whatever its colocated
+  tests did (pff-ios `scripts/checks/mutation.sh` has no whole-file keep).
 
 From sync 2 and earlier:
 - Not yet ported: guard-replay, shipped-migrations, plural-count, the estimator skill; the

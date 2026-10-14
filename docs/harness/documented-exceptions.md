@@ -332,6 +332,13 @@ verified usage, not dead weight:
   invocation, never a static `import`/`require`, so Knip reports it as unused. Exercised by
   `__tests__/mutation-ranges.test.ts` (the script, with a synthetic diff on stdin) and the
   `__tests__/mutation-stream.test.ts` / `mutation-cap.test.ts` wrappers, both as subprocesses.
+- **User ruling 2026-10-14 (G1 a): a comment-only source with a changed colocated test mutates
+  nothing.** A source file `comment-only-changes.js` proves comment-only prints
+  `skipped (comment-only): <path>` and is not mutated, whatever its colocated test did; the
+  whole-file keep (its `--list` keep line) is removed from `mutation.sh`. A real change
+  with a changed test still mutates its changed-line ranges; a Stryker or JSX pragma comment, a
+  missing `typescript`, or any doubt keeps the file. Cost: a test weakened beside a
+  comment-only source edit is not mutation-checked; `make verify` still runs it.
 - **`scripts/checks/comment-only-changes.js` requires `typescript`** — the
   one checker in `scripts/checks/` that is not dependency-free (see
   kiko-linter's "Node checkers"). The rule exists because the guard-replay
