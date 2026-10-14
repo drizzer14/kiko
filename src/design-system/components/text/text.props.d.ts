@@ -5,7 +5,7 @@ import type { StyleProp, TextStyle } from 'react-native';
 // `ChipRow`'s optional `labelVariant`) can type its own step-override prop
 // against the SAME union, instead of hand-redeclaring a parallel one that can
 // drift.
-export type TextVariant = 'title' | 'heading' | 'body' | 'caption';
+export type TextVariant = 'largeTitle' | 'title' | 'heading' | 'body' | 'caption';
 
 // `onAccent` is the always-white foreground for text sitting ON a filled
 // accent/destructive surface (a selected chip/pill/row's label) — the same

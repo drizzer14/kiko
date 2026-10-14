@@ -105,7 +105,10 @@ Five token categories, defined once in a single theme module:
 - **spacing** — a scale used for all padding/margin/gap; components
   never hardcode a pixel value for spacing.
 - **typography** — font sizes/weights/line-heights for the type
-  scale used across screens.
+  scale used across screens. `largeTitle` (34pt bold, lineHeight 41,
+  not Dynamic-Type scaled) mirrors the native nav-bar large title;
+  use it for a full-title heading when a nav title does not fit
+  (`src/design-system/theme/theme.ts`).
 - **radii** — the corner-radius scale for surfaces and controls.
 - **iconSizes** — the semantic icon-size scale for SF Symbols
   (`SymbolIcon`), keyed by the same names as `typography`

@@ -18,6 +18,8 @@ const Text: FC<TextProps> = ({
   return (
     <RNText
       style={[styles.text, style]}
+      // The native large title is a fixed 34pt, so this variant must not scale.
+      allowFontScaling={variant !== 'largeTitle'}
       numberOfLines={numberOfLines}
       adjustsFontSizeToFit={adjustsFontSizeToFit}
       minimumFontScale={minimumFontScale}

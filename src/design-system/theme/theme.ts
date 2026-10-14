@@ -29,6 +29,11 @@ const typography = {
   // balance), styled at the same weight but larger, for the one or two
   // spots that need to read as the single most prominent figure on screen.
   display: { fontSize: 44, fontWeight: '700' as const },
+  // Mirrors the native navigation-bar large title (react-native-screens
+  // RNSScreenStackHeaderConfig.mm: a fixed 34pt bold system font, no Dynamic
+  // Type), so an in-screen full-title heading matches it. `Text` renders it
+  // with font scaling off for the same reason.
+  largeTitle: { fontSize: 34, fontWeight: '700' as const, lineHeight: 41 },
   title: { fontSize: 28, fontWeight: '700' as const },
   heading: { fontSize: 20, fontWeight: '600' as const },
   body: { fontSize: 16, fontWeight: '400' as const },
