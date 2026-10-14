@@ -12,7 +12,7 @@ import {
 import { darkTheme } from '@kiko/design-system/theme';
 import { type HelpTopicId, helpTopicById } from '@kiko/help';
 import { entrySymbol } from '@kiko/navigation/entry-symbols';
-import { genericEntitySymbol } from '@kiko/holdings/entity-symbols';
+import { accountKindSymbol, genericEntitySymbol } from '@kiko/holdings/entity-symbols';
 
 import HelpTopicScreen from './help-topic.screen';
 
@@ -64,7 +64,12 @@ describe('HelpTopicScreen', () => {
       'Add account',
       ['AccountsTab', { screen: 'AccountForm', params: {}, initial: false }],
     ],
+    ['connectMonobank', 'Add bank account', ['AccountForm', { initialKind: 'bank' }]],
+    ['connectCrypto', 'Add crypto account', ['AccountForm', { initialKind: 'crypto' }]],
+    ['trackProperty', 'Add property', ['HoldingForm', { implicitKind: 'property' }]],
+    ['trackLoan', 'Add loan', ['HoldingForm', { implicitKind: 'debt' }]],
     ['addTransaction', 'Add transaction', ['TransactionForm', {}]],
+    ['viewStatistics', 'Open statistics', ['StatisticsTab']],
     ['useTemplates', 'Open templates', ['TransactionTemplates']],
     ['setReminder', 'Open reminders', ['Reminders']],
     ['manageCategories', 'Open categories', ['Categories']],
@@ -88,12 +93,13 @@ describe('HelpTopicScreen', () => {
 
   it.each([
     ['addAccount', genericEntitySymbol.account],
-    ['connectMonobank', genericEntitySymbol.account],
-    ['connectCrypto', genericEntitySymbol.account],
+    ['connectMonobank', accountKindSymbol.bank],
+    ['connectCrypto', accountKindSymbol.crypto],
     ['setReminder', entrySymbol.reminders],
-    ['trackProperty', genericEntitySymbol.account],
-    ['trackLoan', genericEntitySymbol.account],
+    ['trackProperty', accountKindSymbol.property],
+    ['trackLoan', accountKindSymbol.debt],
     ['addTransaction', genericEntitySymbol.transaction],
+    ['viewStatistics', entrySymbol.statistics],
     ['useTemplates', genericEntitySymbol.template],
     ['manageCategories', genericEntitySymbol.category],
     ['categoryRules', genericEntitySymbol.category],
@@ -113,7 +119,7 @@ describe('HelpTopicScreen', () => {
     },
   );
 
-  describe.each(['importStatement', 'addHolding', 'editTransaction', 'viewStatistics'] as const)(
+  describe.each(['importStatement', 'addHolding', 'editTransaction'] as const)(
     'the %s topic, which has no action',
     (topicId) => {
       it('renders its steps and no footer button', async () => {

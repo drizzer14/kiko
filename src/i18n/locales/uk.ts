@@ -843,10 +843,15 @@ export const uk: typeof en = {
   },
   help: {
     actions: {
+      addBankAccount: 'Додати банківський рахунок',
+      addCryptoAccount: 'Додати крипторахунок',
+      addLoan: 'Додати кредит',
+      addProperty: 'Додати майно',
       openCategories: 'Відкрити категорії',
       openExportData: 'Відкрити експорт даних',
       openImportData: 'Відкрити імпорт даних',
       openReminders: 'Відкрити нагадування',
+      openStatistics: 'Відкрити статистику',
       openSystem: 'Відкрити системні налаштування',
       openTemplates: 'Відкрити шаблони',
     },
