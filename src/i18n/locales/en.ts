@@ -991,8 +991,9 @@ export const en = {
   // Each topic has a nav title (Title Case, in `TITLE_KEYS`) and a list-row label (sentence case)
   // as two keys, and numbered steps that each end with ".". The step keys are quoted because
   // i18next's typed keys skip a numeric property name. A step names a button, field, or tab in
-  // double quotes, and the quoted text is the exact catalogue string of that label (a test checks
-  // it). The action labels are sentence case buttons with no final ".".
+  // double quotes, and the quoted text is the exact catalogue string of that label. A test checks
+  // that each quote is a catalogue string outside `help.topics` and not one that only an
+  // accessibility prop renders. The action labels are sentence case buttons with no final ".".
   help: {
     actions: {
       openCategories: 'Open categories',
@@ -1054,7 +1055,7 @@ export const en = {
           '1': 'On the "Home" tab, tap "+", or open a holding and tap "Add transaction".',
           '2': 'Choose the "Type": "Expense", "Income", "Exchange", or "Split".',
           '3': 'Choose the holding, enter the amount and a description, and pick a category.',
-          '4': 'Tap "Save". If you picked the category yourself, choose "Apply" to use it for every transaction with that name, or "Just for this one".',
+          '4': 'Tap "Save". If you picked the category yourself, choose "Apply" to use it for every transaction with that name, or "Cancel" to keep it for this transaction only.',
         },
         title: 'Add a Transaction',
       },
@@ -1106,7 +1107,7 @@ export const en = {
         steps: {
           '1': 'On the "Home" tab, find the transaction. "Accounts", "Categories", and the calendar narrow the list.',
           '2': 'Tap it, make your changes, and tap "Save". In a synced or imported transaction, you can change only the category and the loan link.',
-          '3': 'Touch and hold a transaction you added yourself, then tap "Duplicate" for a copy dated now, or "Delete".',
+          '3': 'Touch and hold a transaction you added or imported, then tap "Delete". On one you added yourself, "Duplicate" makes a copy dated now.',
         },
         title: 'Edit, Duplicate, or Delete a Transaction',
       },
@@ -1138,7 +1139,7 @@ export const en = {
         steps: {
           '1': 'Open the "Settings" tab, then tap "Import Data".',
           '2': 'Tap "Choose file" and pick your .kiko file.',
-          '3': 'Paste its key into "Encryption key", or tap "Paste key from clipboard".',
+          '3': 'Paste its key into "Encryption key", or tap the paste button beside it.',
           '4': 'Tap "Import data", then "Replace data". This replaces everything in Kiko and cannot be undone.',
         },
         title: 'Restore a Backup',

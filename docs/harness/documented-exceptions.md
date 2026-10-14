@@ -749,7 +749,7 @@ verified usage, not dead weight:
   `check:rules`.
 
 - **`kiko-no-source-text-read-in-test` (`rules/semgrep-prewrite.yml`)
-  excludes `__tests__/**`, and four tests carry one per-line override.**
+  excludes `__tests__/**`, and five tests carry one per-line override.**
   The exclude: harness tests read rules, scripts, docs, and temp projects,
   never a mutable source; their paths are mostly computed, so the rule
   would fire on nearly every one.
@@ -766,6 +766,12 @@ verified usage, not dead weight:
   - `src/i18n/locales/title-keys.call-sites.test.ts`: unwraps Stryker's
     `stryMutAct_…() ? "" : (stryCov_…(), 'key')` argument shape, and its
     own "survives Stryker mutation-testing instrumentation" case pins it.
+  - `src/help/help-topics.test.ts`: reads each catalogue-key string literal in the
+    app source and walks up to the prop it sits in, to find a label only an
+    accessibility prop renders. Stryker keeps the original literal inside its
+    `stryMutAct_…() ? "" : (stryCov_…(), 'key')` shape, so the walk from the
+    literal still reaches the same prop, and the file's "reading how a catalogue
+    key is used in source" cases pin that shape.
   - `drizzle/migrations/0044-move-crypto-cash-holdings.test.ts`: searches
     `drizzle/` and `src/` text for the literal `crypto-from-`; Stryker
     keeps the original string beside its mutant.

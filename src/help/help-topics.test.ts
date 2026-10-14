@@ -1,8 +1,13 @@
+import ts from 'typescript';
+import { join } from 'node:path';
 import { en, uk } from '@kiko/i18n/locales';
+import { readdirSync, readFileSync } from 'node:fs';
 import { TITLE_KEYS } from '@kiko/i18n/locales/title-keys';
 import { flattenCatalog } from '@kiko/i18n/locales/flatten-catalog';
 
 import { HELP_GROUPS, HELP_TOPICS, helpTopicById } from './help-topics';
+
+const SOURCE_ROOT = join(__dirname, '..');
 
 const catalogPaths = new Set(flattenCatalog(en).map(({ path }) => path));
 
@@ -15,17 +20,108 @@ const QUOTED_LITERALS = new Set(['+']);
 const valueByPath = (catalogue: unknown): Map<string, string> =>
   new Map(flattenCatalog(catalogue).map(({ path, value }) => [path, value]));
 
-// Every catalogue value a step may quote. The help topics are left out so a step cannot vouch for
+// The catalogue leaves a step may quote. The help topics are left out so a step cannot vouch for
 // its own quote.
+const leavesOutsideHelp = (catalogue: unknown): Array<{ path: string; value: string }> =>
+  flattenCatalog(catalogue).filter(({ path }) => !path.startsWith('help.topics.'));
+
 const labelsOf = (catalogue: unknown): Set<string> =>
-  new Set(
-    flattenCatalog(catalogue)
-      .filter(({ path }) => !path.startsWith('help.topics.'))
-      .map(({ value }) => value),
-  );
+  new Set(leavesOutsideHelp(catalogue).map(({ value }) => value));
 
 const quotedSpans = (text: string, quote: RegExp): string[] =>
   [...text.matchAll(quote)].map(([, inner]) => inner);
+
+// A prop that only a screen reader reads: a button with no text of its own is named through one.
+const ACCESSIBILITY_PROP =
+  /^(accessibilityLabel|accessibilityHint|[a-z]\w*Accessibility(Label|Hint))$/;
+
+type KeyUse = 'accessibility' | 'visible';
+
+const sourceFiles = (directory: string): string[] =>
+  readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+    const path = join(directory, entry.name);
+
+    if (entry.isDirectory()) {
+      return sourceFiles(path);
+    }
+
+    return /\.tsx?$/.test(entry.name) && !/\.(test\.tsx?|d\.ts)$/.test(entry.name) ? [path] : [];
+  });
+
+const isBoundary = (node: ts.Node): boolean =>
+  ts.isJsxElement(node) ||
+  ts.isJsxSelfClosingElement(node) ||
+  ts.isJsxFragment(node) ||
+  ts.isBlock(node) ||
+  ts.isSourceFile(node);
+
+// The nearest prop or object property a key literal sits in decides how it is used; a literal
+// that reaches a child of JSX, a block, or the file first is shown as text.
+const usageAbove = (node: ts.Node | undefined): KeyUse => {
+  if (node === undefined || isBoundary(node)) {
+    return 'visible';
+  }
+
+  if (ts.isJsxAttribute(node) || ts.isPropertyAssignment(node)) {
+    return ACCESSIBILITY_PROP.test(node.name.getText()) ? 'accessibility' : 'visible';
+  }
+
+  return usageAbove(node.parent);
+};
+
+const keyLiterals = (node: ts.Node, keys: ReadonlySet<string>): ts.StringLiteralLike[] => {
+  const nested = node.getChildren().flatMap((child) => keyLiterals(child, keys));
+
+  return ts.isStringLiteralLike(node) && keys.has(node.text) ? [node, ...nested] : nested;
+};
+
+// Stryker's instrumentation keeps the original literal inside `stryMutAct_x("n") ? "" :
+// (stryCov_x("n"), 'key')`, so reading the literal and walking up from it works on the
+// instrumented copy of a file as well as on the pristine source.
+const keyUses = (
+  fileName: string,
+  text: string,
+  keys: ReadonlySet<string>,
+): Array<[string, KeyUse]> =>
+  keyLiterals(
+    ts.createSourceFile(
+      fileName,
+      text,
+      ts.ScriptTarget.Latest,
+      true,
+      fileName.endsWith('.tsx') ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
+    ),
+    keys,
+  ).map((literal) => [literal.text, usageAbove(literal.parent)]);
+
+// A key is accessibility-only when some prop names it and nothing else uses it. A key a table or
+// a variable holds, or that a Text shows, is visible, so a key used only dynamically is not seen.
+const accessibilityOnlyKeys = (uses: ReadonlyArray<[string, KeyUse]>): Set<string> => {
+  const visible = new Set(uses.filter(([, use]) => use === 'visible').map(([key]) => key));
+
+  return new Set(
+    uses.filter(([key, use]) => use === 'accessibility' && !visible.has(key)).map(([key]) => key),
+  );
+};
+
+const catalogueKeys = new Set(leavesOutsideHelp(en).map(({ path }) => path));
+
+const appAccessibilityOnlyKeys = accessibilityOnlyKeys(
+  sourceFiles(SOURCE_ROOT).flatMap((file) =>
+    // nosemgrep: kiko-no-source-text-read-in-test OVERRIDE(reads a key literal; Stryker keeps it)
+    keyUses(file, readFileSync(file, 'utf8'), catalogueKeys),
+  ),
+);
+
+// Every value that no visible text renders: each catalogue key holding it is accessibility-only.
+const accessibilityOnlyLabels = (catalogue: unknown): Set<string> => {
+  const leaves = leavesOutsideHelp(catalogue);
+  const shown = new Set(
+    leaves.filter(({ path }) => !appAccessibilityOnlyKeys.has(path)).map(({ value }) => value),
+  );
+
+  return new Set(leaves.map(({ value }) => value).filter((value) => !shown.has(value)));
+};
 
 describe('help topic registry', () => {
   it('has unique topic ids', () => {
@@ -141,6 +237,8 @@ describe('the labels a help step quotes', () => {
   const ukValues = valueByPath(uk);
   const enLabels = labelsOf(en);
   const ukLabels = labelsOf(uk);
+  const enSpokenOnly = accessibilityOnlyLabels(en);
+  const ukSpokenOnly = accessibilityOnlyLabels(uk);
 
   it('reads a quoted label out of a step', () => {
     expect(quotedSpans('Tap "Save", then "+".', /"([^"]*)"/g)).toEqual(['Save', '+']);
@@ -163,6 +261,31 @@ describe('the labels a help step quotes', () => {
     expect(unknown).toEqual([]);
   });
 
+  it.each(HELP_TOPICS)(
+    'quotes no label that only an accessibility prop renders in the $id steps',
+    (topic) => {
+      const spokenOnly = [
+        [enSpokenOnly, enValues, /"([^"]*)"/g],
+        [ukSpokenOnly, ukValues, /«([^»]*)»/g],
+      ] as const;
+
+      const quoted = spokenOnly.flatMap(([labels, values, quote]) =>
+        topic.stepKeys
+          .flatMap((key) => quotedSpans(values.get(key) ?? '', quote))
+          .filter((span) => labels.has(span)),
+      );
+
+      expect(quoted).toEqual([]);
+    },
+  );
+
+  it('finds the labels that only an accessibility prop renders', () => {
+    expect(enSpokenOnly).toContain(enValues.get('settings.dataImport.pasteKey'));
+    expect(ukSpokenOnly).toContain(ukValues.get('settings.dataImport.pasteKey'));
+    expect(enSpokenOnly).not.toContain(enValues.get('common.save'));
+    expect(enSpokenOnly).not.toContain(enValues.get('settings.dataImport.keyLabel'));
+  });
+
   it('finds the quoted labels of the steps at all', () => {
     const quoted = HELP_TOPICS.flatMap((topic) =>
       topic.stepKeys.flatMap((key) => quotedSpans(enValues.get(key) ?? '', /"([^"]*)"/g)),
@@ -170,5 +293,76 @@ describe('the labels a help step quotes', () => {
 
     expect(quoted.length).toBeGreaterThan(50);
     expect(quoted).toContain('Export Data');
+  });
+});
+
+describe('reading how a catalogue key is used in source', () => {
+  const usesIn = (source: string): Array<[string, KeyUse]> =>
+    keyUses('fixture.tsx', source, new Set(['a.key']));
+
+  it.each([
+    ['an accessibilityLabel prop', `<Pressable accessibilityLabel={t('a.key')} />`],
+    ['an accessibilityHint prop', `<Pressable accessibilityHint={t('a.key')} />`],
+    ['a prop named for what it labels', `<Field pasteAccessibilityLabel={t('a.key')} />`],
+    ['an accessibility property of an object', `const item = { accessibilityLabel: t('a.key') };`],
+    [
+      'a key literal inside the instrumented shape',
+      `<Pressable accessibilityLabel={t(stryMutAct_9fa48("1") ? "" : (stryCov_9fa48("1"), 'a.key'))} />`,
+    ],
+  ])('reads %s as accessibility', (_name, source) => {
+    expect(usesIn(source)).toEqual([['a.key', 'accessibility']]);
+  });
+
+  it.each([
+    ['the text of a Text', `<Text>{t('a.key')}</Text>`],
+    ['another prop', `<Button title={t('a.key')} />`],
+    ['a table of keys', `const labels = { label: 'a.key' };`],
+    ['a Text inside an accessibility prop', `<A accessibilityHint={<Text>{t('a.key')}</Text>} />`],
+    [
+      'a Text that its parent labels',
+      `<Pressable accessibilityLabel="x"><Text>{t('a.key')}</Text></Pressable>`,
+    ],
+  ])('reads %s as visible', (_name, source) => {
+    expect(usesIn(source)).toEqual([['a.key', 'visible']]);
+  });
+
+  it('counts a key that something else also shows as visible', () => {
+    expect(
+      accessibilityOnlyKeys([
+        ['read.key', 'accessibility'],
+        ['both.key', 'accessibility'],
+        ['both.key', 'visible'],
+        ['shown.key', 'visible'],
+      ]),
+    ).toEqual(new Set(['read.key']));
+  });
+});
+
+describe('the steps a review corrected', () => {
+  const enValues = valueByPath(en);
+  const ukValues = valueByPath(uk);
+  const stepOf = (values: Map<string, string>, id: string, step: number): string =>
+    values.get(`help.topics.${id}.steps.${step}`) ?? '';
+
+  it('names the choices the sheet of a new transaction shows, never the edit-only one', () => {
+    for (const [values, quote] of [
+      [enValues, /"([^"]*)"/g],
+      [ukValues, /«([^»]*)»/g],
+    ] as const) {
+      expect(quotedSpans(stepOf(values, 'addTransaction', 4), quote)).toEqual(
+        ['common.save', 'forms.transaction.apply', 'common.cancel'].map(
+          (path) => values.get(path) ?? '',
+        ),
+      );
+    }
+  });
+
+  it.each([
+    ['uk', 'viewStatistics', 3, 'фільтра «Рахунки»'],
+    ['uk', 'setReminder', 4, 'щоб видалити нагадування'],
+    ['en', 'editTransaction', 3, 'imported'],
+    ['uk', 'editTransaction', 3, 'імпортували'],
+  ] as const)('words the %s %s step %i with "%s"', (locale, id, step, wording) => {
+    expect(stepOf(locale === 'en' ? enValues : ukValues, id, step)).toContain(wording);
   });
 });
