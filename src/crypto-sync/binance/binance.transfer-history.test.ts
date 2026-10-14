@@ -2082,6 +2082,89 @@ describe('a Binance that refuses a startTime older than the history it keeps (co
     });
 
     describe.each(RUN_GAPS)(
+      'runs %i ms apart, against a Binance that keeps 100 days in most types, 90 in a middle type and 75 in another, in steps of a day that land at the moment a band is read',
+      (gapMs) => {
+        const keptDaysOf = keptDaysFrom({ [MIDDLE_TYPE]: 90, [OTHER_MIDDLE_TYPE]: 75 });
+        const JUST_ABOVE_MS = [1_200, 1_500, 1_800, 2_500];
+        // The depth of a type in steps of a day whose steps fall `offsetMs` into a day.
+        const edgeShifted = (days: number, offsetMs: number, atMs: number): number =>
+          Math.floor((atMs - days * DAY_MS - offsetMs) / DAY_MS) * DAY_MS + offsetMs;
+
+        const walkWithSteps = async (offsetMs: number) => {
+          const times: number[] = [];
+          const entries = UNIVERSAL_TRANSFER_TYPES.flatMap((type) => {
+            const days = keptDaysOf(type);
+            const above = edgeShifted(days, offsetMs, NOW + 3 * 60_000);
+
+            return JUST_ABOVE_MS.map((plus) =>
+              entryOf({ tranId: `above-${plus}-${type}`, type, timestamp: above + plus }),
+            );
+          });
+          const snapshots = await walkAlongClock({
+            world: worldOf(),
+            entries,
+            keepingOf: (clock) => (query) => {
+              times.push(clock.now);
+
+              if (query.startTime < edgeShifted(keptDaysOf(query.type), offsetMs, clock.now)) {
+                throw new BinanceHistoryTooOldError('Binance request failed: 400: too old');
+              }
+
+              return undefined;
+            },
+            gapMs,
+            runs: 4,
+            latencyMs: () => 0,
+          });
+          const firstReadMs = snapshots[0]?.endMs ?? 0;
+          const expected = keysOfEntries(
+            entries.filter(
+              (entry) =>
+                (timeOfEntry(entry) ?? 0) >=
+                Math.max(
+                  edgeShifted(keptDaysOf(entry.readAs), offsetMs, firstReadMs),
+                  transferFloorMs(firstReadMs),
+                ),
+            ),
+          );
+
+          return { times, snapshots, expected };
+        };
+
+        // The request the middle type reads its band with: its second request in a row that asks a
+        // span of under a minute.
+        const bandOf = (requests: TransferQuery[]): number =>
+          requests.findIndex(
+            ({ type, startTime, endTime }, index) =>
+              type === MIDDLE_TYPE &&
+              requests[index - 1]?.type === MIDDLE_TYPE &&
+              endTime - startTime < 60_000 &&
+              endTime - startTime > 1,
+          );
+
+        it.each([-10, -1])(
+          'imports every transfer Binance keeps when a step lands %i ms before the band of the middle type is read',
+          async (nudgeMs) => {
+            const base = await walkWithSteps(0);
+            const bandIndex = bandOf(base.snapshots[0]?.requests ?? []);
+            const stepAtMs = (base.times[bandIndex] ?? 0) + nudgeMs;
+            const offsetMs = ((stepAtMs % DAY_MS) + DAY_MS) % DAY_MS;
+
+            const { times, snapshots, expected } = await walkWithSteps(offsetMs);
+
+            expect(bandIndex).toBeGreaterThan(0);
+            expect(bandOf(snapshots[0]?.requests ?? [])).toBe(bandIndex);
+            expect((times[bandIndex] ?? 0) - stepAtMs).toBe(-nudgeMs);
+            expect(expected.length).toBeGreaterThanOrEqual(
+              UNIVERSAL_TRANSFER_TYPES.length * JUST_ABOVE_MS.length,
+            );
+            expect(expected.filter((id) => !snapshots.at(-1)?.ids.has(id))).toEqual([]);
+          },
+        );
+      },
+    );
+
+    describe.each(RUN_GAPS)(
       'runs %i ms apart, against a Binance that keeps 100 days and answers a read 10 seconds late',
       (gapMs) => {
         it('owes the crossing window in every type it cannot read, each run spending the most requests a type can, and never rejects', async () => {

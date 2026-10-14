@@ -339,10 +339,7 @@ type TransferContext = {
   options: FetchAccountOptions;
   marks: WalkMarks;
   plan: WalkPlan;
-  depthMemories: Pick<
-    DepthGuard,
-    'memoryOf' | 'hintMs' | 'refusedBoundMs' | 'rememberRefusedBand' | 'isBandRefused'
-  >;
+  depthMemories: Pick<DepthGuard, 'memoryOf' | 'hintMs' | 'refusedBoundMs'>;
 };
 
 /** The types a window is read in: every one, or the ones its owed points name. */

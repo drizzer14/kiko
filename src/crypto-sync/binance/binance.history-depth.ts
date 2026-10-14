@@ -95,26 +95,12 @@ export const createDepthMemory = (): DepthMemory => ({
  * finds, and a start that is refused (a bound) or served longer ago than it is moved on for gives
  * none; `exceptSeries` leaves out the series that asks. `refusedBoundMs`: the furthest start any
  * series was refused (negative infinity while none), which only suggests that another series is
- * refused the span below it too, and is asked before that series reads. `isBandRefused`: whether
- * a band that starts at a start is expected to be refused: some series was refused a band
- * (`rememberRefusedBand`) and the depth that refused it moves on with the clock, so a band that
- * starts within the reach of that depth, moved on by the time since, is refused too, and the
- * series after it owe their bands with no request. A depth that stands still refuses no band
- * after it, and a band that starts above that reach is asked.
+ * refused the span below it too, and is asked before that series reads.
  */
 export const createDepthMemories = (nowMs: () => number) => {
   const memories = new Map<string, DepthMemory>();
-  const refused: { band: { startMs: number; atMs: number } | undefined } = { band: undefined };
 
   return {
-    rememberRefusedBand: (startMs: number): void => {
-      refused.band = { startMs, atMs: nowMs() };
-    },
-    isBandRefused: (startMs: number): boolean =>
-      foldMap(
-        maybe(refused.band),
-        (band) => startMs <= band.startMs + Math.max(0, nowMs() - band.atMs),
-      ) ?? false,
     memoryOf: (series: string): DepthMemory => {
       const memory = memories.get(series) ?? createDepthMemory();
       memories.set(series, memory);
@@ -228,8 +214,6 @@ export type DepthGuard = {
   memoryOf: (series: string) => DepthMemory;
   hintMs: (exceptSeries?: string) => number | undefined;
   refusedBoundMs: () => number;
-  rememberRefusedBand: (startMs: number) => void;
-  isBandRefused: (startMs: number) => boolean;
 };
 
 /**
