@@ -1448,8 +1448,7 @@ Probe items:
     moves when it settles, or one under a filter mismatch, that settles after it leaves the
     30-day re-scan is never read. (b) A record Binance returns outside its requested span
     (a `FAILED` one included) freezes the Transfer forward pass until the floor: that stop is
-    not in `TRANSFER_FORWARD_OWES`. The probe account had no transfer row: one small Spot -> Funding transfer of any coin first
-    (Still needing the user).
+    not in `TRANSFER_FORWARD_OWES`.
 15. Simple Earn, per kind: which field `startTime` and `endTime` filter on (`time`?), its
     precision, the range ends (item 12), and whether every member of a reward group comes
     back in any read that returns one of them. The owed point and the reward key
