@@ -95,6 +95,8 @@ const UNCHECKED_HEADING_SITES: Record<string, string> = {
     'a month name and a year, not a phrase that has a casing role',
   'navigation/settings-stack/settings.stack.tsx#helpTopicById(route.params.topicId).titleKey':
     'the help topic’s title, whose key help-topics.test.ts requires in TITLE_KEYS for every topic',
+  'screens/settings/help/help.screen.tsx#group.titleKey':
+    'the help group’s title, whose key help-topics.test.ts requires in TITLE_KEYS for every group',
   'screens/forms/category-form/category-form.screen.tsx#displayName':
     'the category’s display name, the localized default or the title the user typed',
   'design-system/components/card-context-menu/card-context-menu.component.tsx#name':

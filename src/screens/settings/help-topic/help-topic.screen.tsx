@@ -1,6 +1,7 @@
 import type { FC } from 'react';
 import { match } from 'ts-pattern';
 import { helpTopicById } from '@kiko/help';
+import maybe, { foldMap } from 'fnts/maybe';
 import { useTranslation } from 'react-i18next';
 import { StyleSheet } from 'react-native-unistyles';
 import Box from '@kiko/design-system/components/box';
@@ -32,28 +33,30 @@ const HelpTopicScreen: FC<HelpTopicScreenProps> = ({ navigation, route }) => {
   const { t } = useTranslation();
   const topic = helpTopicById(route.params.topicId);
 
-  const action = match(topic.action)
-    .with('addAccount', () => ({
-      label: t('accounts.addAccount'),
-      icon: genericEntitySymbol.account,
-      onPress: () => openAccountForm(navigation),
-    }))
-    .with('openCategories', () => ({
-      label: t('help.actions.openCategories'),
-      icon: undefined,
-      onPress: () => navigation.navigate('Categories'),
-    }))
-    .exhaustive();
+  // `undefined` for a topic with no action, so `Screen` draws no footer at all.
+  const footer = foldMap(maybe(topic.action), (helpAction) => {
+    const action = match(helpAction)
+      .with('addAccount', () => ({
+        label: t('accounts.addAccount'),
+        icon: genericEntitySymbol.account,
+        onPress: () => openAccountForm(navigation),
+      }))
+      .with('openCategories', () => ({
+        label: t('help.actions.openCategories'),
+        icon: undefined,
+        onPress: () => navigation.navigate('Categories'),
+      }))
+      .exhaustive();
+
+    return (
+      <Button testID="help-topic-action" icon={action.icon} onPress={action.onPress}>
+        {action.label}
+      </Button>
+    );
+  });
 
   return (
-    <Screen
-      scroll
-      footer={
-        <Button testID="help-topic-action" icon={action.icon} onPress={action.onPress}>
-          {action.label}
-        </Button>
-      }
-    >
+    <Screen scroll footer={footer}>
       <Box gap={3}>
         {topic.stepKeys.map((stepKey, index) => (
           <Box key={stepKey} testID={`help-topic-step-${index + 1}`} direction="row" gap={3}>

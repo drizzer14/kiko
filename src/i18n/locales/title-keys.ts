@@ -100,6 +100,8 @@ export const TITLE_KEYS = new Set([
   // Settings rows in Title Case by user ruling, so each row matches the nav title
   // of the screen it opens (`help.title`, `settings.dataExport.title`,
   // `settings.dataImport.title`).
+  'help.groups.accounts.title',
+  'help.groups.categories.title',
   'help.rowLabel',
   'help.title',
   'help.topics.addAccount.title',
