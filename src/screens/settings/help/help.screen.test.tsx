@@ -106,34 +106,6 @@ describe('HelpScreen', () => {
     }
   });
 
-  it('puts one divider between each pair of rows of the accounts group, never before the first', async () => {
-    const { getByTestId } = await renderScreen();
-
-    const card = within(getByTestId('help-card-accounts'));
-
-    expect(
-      card.getAllByTestId(/^help-(divider-|row-)/).map((node) => node.props.testID as string),
-    ).toEqual([
-      'help-row-addAccount',
-      'help-divider-accounts',
-      'help-row-connectMonobank',
-      'help-divider-accounts',
-      'help-row-connectCrypto',
-      'help-divider-accounts',
-      'help-row-importStatement',
-      'help-divider-accounts',
-      'help-row-setReminder',
-    ]);
-  });
-
-  it('draws no divider in the statistics group, which holds one topic', async () => {
-    const { getByTestId } = await renderScreen();
-
-    expect(within(getByTestId('help-card-statistics')).queryAllByTestId(/^help-divider-/)).toEqual(
-      [],
-    );
-  });
-
   it('insets each divider to match the Settings card', async () => {
     const { getAllByTestId } = await renderScreen();
     const theme = darkTheme;

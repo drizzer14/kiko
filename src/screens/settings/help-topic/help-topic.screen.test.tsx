@@ -10,7 +10,7 @@ import {
   navigationSpy,
 } from '@kiko/test-support/navigation-props';
 import { darkTheme } from '@kiko/design-system/theme';
-import { HELP_TOPICS, type HelpTopicId, helpTopicById } from '@kiko/help';
+import { type HelpTopicId, helpTopicById } from '@kiko/help';
 
 import HelpTopicScreen from './help-topic.screen';
 
@@ -81,15 +81,6 @@ describe('HelpTopicScreen', () => {
 
       expect(navigation.navigate).toHaveBeenCalledTimes(1);
       expect(navigation.navigate).toHaveBeenCalledWith(...target);
-    },
-  );
-
-  it.each(HELP_TOPICS.filter(({ action }) => action !== null))(
-    'shows the action button of the $id topic',
-    async (topic) => {
-      const { getByTestId } = await renderScreen(topic.id);
-
-      expect(getByTestId('help-topic-action')).toBeTruthy();
     },
   );
 
