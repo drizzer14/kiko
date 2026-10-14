@@ -235,8 +235,7 @@ export const runWithArgumentStub = (
   return { code: result.status, stdout: result.stdout, stderr: result.stderr, stubArguments };
 };
 
-// The raw `--mutate` entries: `path:start-end` for a changed-line range, a
-// plain `path` for a whole file.
+// The raw `--mutate` entries, each a `path:start-end` changed-line range.
 export const mutateEntries = (stubArguments: string[] | null): string[] =>
   (stubArguments ?? [])
     .find((argument) => argument.startsWith('--mutate='))

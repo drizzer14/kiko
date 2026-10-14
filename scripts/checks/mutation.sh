@@ -25,7 +25,9 @@
 # filter instead of a hand count. It needs no Stryker binary and
 # takes no lock, since it never starts a run. Any other argument exits 2. A changed file whose
 # diff is only comments or whitespace is left out of the list (and printed as `skipped
-# (comment-only)`), and so is one with no added line (`skipped (no added lines)`).
+# (comment-only)`, whatever its colocated test changed: a test weakened beside a comment-only
+# source edit is not mutation-checked here), and so is one with no added line (`skipped (no
+# added lines)`).
 set -uo pipefail
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=/dev/null
@@ -198,34 +200,12 @@ changed="$(printf '%s\n' "$diff_names" | mutable_source_files)"
 # $changed, so a stray line cannot drop a file that was not a candidate. The arguments are
 # built only for a non-empty list: an empty array is an unbound variable in bash 3.2.
 #
-# A comment-only source file is still KEPT when a changed test file beside it (same folder:
-# foo.test.ts(x) or foo.<anything>.test.ts(x) for foo.ts(x)) is not itself comment-only: a test
-# weakened together with a comment edit must still be mutated. A comment-only test edit cannot
-# weaken a test. The test files come from their own diff (--no-renames, deletions included), and
-# a deleted, new, or unparsable one is never printed by the script, so it counts as a real change.
-# If that diff fails, nothing is skipped.
+# A source file the script proved comment-only mutates NOTHING, whatever its colocated test did
+# (user ruling 2026-10-14): a comment holds no mutant, so there is nothing to mutate in it. The
+# cost: a test weakened beside a comment-only source edit is not mutation-checked by this gate
+# (make verify still runs that test).
 newline=$'\n'
 skipped_report=""
-kept_report=""
-# The comment-only files kept for a changed colocated test. They go to Stryker WHOLE: their
-# changed lines are comments, which hold no mutant, so a range would empty the rule above.
-whole_kept=""
-
-# Prints the changed test files of $test_names that sit beside the source file $1.
-colocated_tests() {
-  local stem="${1%.*}" test_name
-  while IFS= read -r test_name; do
-    case "$test_name" in
-      "$stem".test.ts | "$stem".test.tsx) printf '%s\n' "$test_name" ;;
-      "$stem".*.test.ts | "$stem".*.test.tsx)
-        case "${test_name#"$stem"}" in
-          */*) ;;
-          *) printf '%s\n' "$test_name" ;;
-        esac
-        ;;
-    esac
-  done < <(printf '%s\n' "$test_names")
-}
 
 # True when $1 is a line of $comment_only, the script's proved-comment-only list.
 proved_comment_only() {
@@ -236,37 +216,20 @@ proved_comment_only() {
 }
 
 if [ -n "$changed" ]; then
-  comment_only=""
-  if test_names="$(git -C "$ROOT" -c core.quotePath=false diff --name-only --no-renames "$merge_base" HEAD -- '*.test.ts' '*.test.tsx' 2>/dev/null)"; then
-    candidate_arguments=()
-    while IFS= read -r candidate; do
-      [ -n "$candidate" ] || continue
-      candidate_arguments+=("$candidate")
-      while IFS= read -r test_name; do
-        [ -n "$test_name" ] && candidate_arguments+=("$test_name")
-      done < <(colocated_tests "$candidate")
-    done < <(printf '%s\n' "$changed")
+  candidate_arguments=()
+  while IFS= read -r candidate; do
+    [ -n "$candidate" ] && candidate_arguments+=("$candidate")
+  done < <(printf '%s\n' "$changed")
 
-    comment_only="$(node "$DIR/comment-only-changes.js" "$merge_base" "${candidate_arguments[@]}" 2>/dev/null)" || comment_only=""
-  fi
+  comment_only="$(node "$DIR/comment-only-changes.js" "$merge_base" "${candidate_arguments[@]}" 2>/dev/null)" || comment_only=""
 
   kept=""
   while IFS= read -r candidate; do
     [ -n "$candidate" ] || continue
-    test_changed=0
-    while IFS= read -r test_name; do
-      [ -n "$test_name" ] || continue
-      proved_comment_only "$test_name" || test_changed=1
-    done < <(colocated_tests "$candidate")
-
-    if ! proved_comment_only "$candidate"; then
-      kept="${kept:+$kept$newline}$candidate"
-    elif [ "$test_changed" -eq 1 ]; then
-      kept="${kept:+$kept$newline}$candidate"
-      whole_kept="${whole_kept:+$whole_kept$newline}$candidate"
-      kept_report="${kept_report}kept (colocated test changed): ${candidate}${newline}"
-    else
+    if proved_comment_only "$candidate"; then
       skipped_report="${skipped_report}skipped (comment-only): ${candidate}${newline}"
+    else
+      kept="${kept:+$kept$newline}$candidate"
     fi
   done < <(printf '%s\n' "$changed")
   changed="$kept"
@@ -279,8 +242,7 @@ fi
 # moved file's old path, so the move would read as a new file and be mutated whole.
 #
 # Never hand Stryker a plain path and a range for the same file: it reads that as "do not mutate".
-# So a file is either its plain path (a comment-only file kept for a changed colocated test) or
-# its ranges. A file with no added line (a pure deletion or a pure move) has nothing to mutate and
+# So a file is only ever its ranges. A file with no added line (a pure deletion or a pure move) has nothing to mutate and
 # leaves the list, like a comment-only one. A path with a glob character is refused: Stryker can
 # read it as a pattern, not as a literal file.
 # A diff or a script that fails is a block and exit 2: never fall back to whole files.
@@ -358,35 +320,22 @@ if [ -n "$changed" ]; then
     [ -n "$range_line" ] || continue
     candidate="${range_line%%"$tab"*}"
     field="${range_line#*"$tab"}"
-    case "$newline$whole_kept$newline" in
-      *"$newline$candidate$newline"*)
-        entries="${entries:+$entries$newline}$candidate"
-        ranged="${ranged:+$ranged$newline}$candidate"
-        # A whole file counts its line count at HEAD.
-        file_lines="$(git -C "$ROOT" show "HEAD:$candidate" 2>/dev/null | wc -l | tr -d ' ')"
-        file_weights="${file_weights}${candidate}${tab}${file_lines}${newline}"
-        changed_lines=$((changed_lines + file_lines))
-        list_report="${list_report}${candidate} whole file (${file_lines} lines)${newline}"
-        ;;
-      *)
-        if [ -z "$field" ]; then
-          norange_report="${norange_report}skipped (no added lines): ${candidate}${newline}"
-        else
-          ranged="${ranged:+$ranged$newline}$candidate"
-          file_lines=0
-          old_ifs="$IFS"
-          IFS=','
-          for range in $field; do
-            entries="${entries:+$entries$newline}$candidate:$range"
-            file_lines=$((file_lines + ${range#*-} - ${range%-*} + 1))
-          done
-          IFS="$old_ifs"
-          file_weights="${file_weights}${candidate}${tab}${file_lines}${newline}"
-          changed_lines=$((changed_lines + file_lines))
-          list_report="${list_report}${candidate} ${field} (${file_lines} changed lines)${newline}"
-        fi
-        ;;
-    esac
+    if [ -z "$field" ]; then
+      norange_report="${norange_report}skipped (no added lines): ${candidate}${newline}"
+    else
+      ranged="${ranged:+$ranged$newline}$candidate"
+      file_lines=0
+      old_ifs="$IFS"
+      IFS=','
+      for range in $field; do
+        entries="${entries:+$entries$newline}$candidate:$range"
+        file_lines=$((file_lines + ${range#*-} - ${range%-*} + 1))
+      done
+      IFS="$old_ifs"
+      file_weights="${file_weights}${candidate}${tab}${file_lines}${newline}"
+      changed_lines=$((changed_lines + file_lines))
+      list_report="${list_report}${candidate} ${field} (${file_lines} changed lines)${newline}"
+    fi
   done < <(printf '%s\n' "$range_lines")
   changed="$ranged"
 fi
@@ -401,7 +350,7 @@ timeout_share() {
 }
 
 if [ "$list" -eq 1 ]; then
-  printf '%s%s%s%s' "$list_report" "$skipped_report" "$norange_report" "$kept_report"
+  printf '%s%s%s' "$list_report" "$skipped_report" "$norange_report"
   printf 'changed lines: %s\n' "$changed_lines"
   printf 'mutable files: %s (cap %s)\n' "$file_count" "$MUTATION_FILE_CAP"
   share="$(timeout_share)"
@@ -412,7 +361,7 @@ if [ "$list" -eq 1 ]; then
     printf 'timeout share (history): none\n'
   fi
 else
-  printf '%s%s%s' "$skipped_report" "$norange_report" "$kept_report"
+  printf '%s%s' "$skipped_report" "$norange_report"
 fi
 if [ -z "$changed" ]; then
   # Nothing to mutate: the branch changed no mutable source file, or only comment/whitespace or
