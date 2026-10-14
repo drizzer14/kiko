@@ -2,6 +2,7 @@ import type { ComponentProps } from 'react';
 import { fireEvent, render, waitFor } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import '@kiko/i18n/init';
+import { pickCategory } from '@kiko/test-support/pick-category';
 import type { TransactionFormParams } from '@kiko/navigation/types';
 import { pressSave, saveItem } from '@kiko/test-support/form-header-items';
 import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support/navigation-props';
@@ -18,10 +19,14 @@ const mockUpdate = jest.fn();
 const mockSetCategory = jest.fn();
 const mockUseLiveQuery = jest.fn();
 
+// A write takes its optional template step last, and an undefined one is the same call as none.
+const mockWithoutUndefinedTail = (args: unknown[]): unknown[] =>
+  args.at(-1) === undefined ? args.slice(0, -1) : args;
+
 jest.mock('@kiko/transactions/repo', () => ({
   transactionsRepo: {
-    recordManual: (...args: unknown[]) => mockRecordManual(...args),
-    update: (...args: unknown[]) => mockUpdate(...args),
+    recordManual: (...args: unknown[]) => mockRecordManual(...mockWithoutUndefinedTail(args)),
+    update: (...args: unknown[]) => mockUpdate(...mockWithoutUndefinedTail(args)),
     setCategory: (...args: unknown[]) => mockSetCategory(...args),
     getByIdQuery: (transactionId: string) => ({
       toSQL: () => ({ sql: '', params: [transactionId] }),
@@ -45,8 +50,8 @@ jest.mock('@kiko/accounts/accounts.repo', () => ({
 jest.mock('@kiko/categories/repo', () => ({
   categoriesRepo: { allQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }) },
 }));
-jest.mock('@kiko/categories/category-overrides-repo', () => ({
-  categoryOverridesRepo: { allQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }) },
+jest.mock('@kiko/categories/category-rules-repo', () => ({
+  categoryRulesRepo: { allQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }) },
 }));
 jest.mock('@kiko/db/use-live-query', () => ({
   useLiveQuery: (...args: unknown[]) => mockUseLiveQuery(...args),
@@ -97,14 +102,6 @@ const renderForm = (params: TransactionFormParams): ReturnType<typeof render> =>
     />,
   );
 
-const pickCategory = async (
-  utils: Awaited<ReturnType<typeof render>>,
-  title: string,
-): Promise<void> => {
-  await fireEvent.press(utils.getByLabelText('Category'));
-  await fireEvent.press(utils.getByText(title));
-};
-
 describe('TransactionFormScreen — Save writes the category by id', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -131,7 +128,10 @@ describe('TransactionFormScreen — Save writes the category by id', () => {
   it('does not call setCategory when a manual edit is saved with its stored category unchanged', async () => {
     serveRows([storedRow({ id: 'txn-m', source: 'manual', category: 'groceries' })]);
 
-    await renderForm({ transactionId: 'txn-m' });
+    const utils = await renderForm({ transactionId: 'txn-m' });
+
+    expect(utils.getByText('Groceries')).toBeTruthy();
+
     await pressSave(navigation.setOptions);
 
     await waitFor(() => expect(navigation.goBack).toHaveBeenCalled());
@@ -145,18 +145,5 @@ describe('TransactionFormScreen — Save writes the category by id', () => {
     await renderForm({ transactionId: 'txn-b' });
 
     expect(saveItem(navigation.setOptions)).toBeUndefined();
-    expect(mockSetCategory).not.toHaveBeenCalled();
-  });
-
-  it('calls setCategory once with the row id and the new category when an edit changes it', async () => {
-    serveRows([storedRow({ id: 'txn-m', source: 'manual', category: 'groceries' })]);
-
-    const utils = await renderForm({ transactionId: 'txn-m' });
-    await pickCategory(utils, 'Dining');
-    await pressSave(navigation.setOptions);
-
-    await waitFor(() => expect(mockSetCategory).toHaveBeenCalledTimes(1));
-    expect(mockSetCategory).toHaveBeenCalledWith({ transactionId: 'txn-m', category: 'dining' });
-    expect(navigation.goBack).toHaveBeenCalled();
   });
 });

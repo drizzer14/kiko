@@ -104,8 +104,15 @@ const earlierBuildPayload = async (
 
   const tables = JSON.parse(JSON.stringify(await readDataSnapshot())) as Record<string, unknown>;
 
-  for (const table of ['reminders', 'pricePoints', 'bondRegister']) {
+  for (const table of ['reminders', 'pricePoints', 'bondRegister', 'categoryRules']) {
     delete tables[table];
+  }
+
+  // The earlier build kept its name rules in `categoryOverrides` and marked no row by hand.
+  tables.categoryOverrides = [];
+
+  for (const row of tables.transactions as Record<string, unknown>[]) {
+    delete row.categorySetByHand;
   }
 
   for (const row of tables.settings as Record<string, unknown>[]) {

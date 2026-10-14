@@ -2,16 +2,18 @@ import {
   chmodSync,
   existsSync,
   mkdirSync,
-  mkdtempSync,
   readdirSync,
   readFileSync,
-  rmSync,
   symlinkSync,
   writeFileSync,
 } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { type SpawnSyncReturns, spawnSync } from 'node:child_process';
+
+import {
+  createTemporaryDirectory,
+  removeTemporaryDirectories,
+} from './test-support/temporary-directory';
 
 // scripts/checks/pre-write-guard.sh is the PreToolUse hook for Edit/Write/
 // MultiEdit (wired in harness/kiko/hooks/hooks.json). It reads the hook's
@@ -23,15 +25,6 @@ import { type SpawnSyncReturns, spawnSync } from 'node:child_process';
 // so it pins one guard behavior without depending on the real rule set;
 // __tests__/pre-write-guard-rules.test.ts runs the real rules.
 const SCRIPT = join(__dirname, '../scripts/checks/pre-write-guard.sh');
-
-const createdPaths: string[] = [];
-
-function createTempDirectory(prefix: string): string {
-  const directory = mkdtempSync(join(tmpdir(), prefix));
-  createdPaths.push(directory);
-
-  return directory;
-}
 
 // A stub proves it ran at the same time as its siblings with a rendezvous,
 // never a clock: it appends `<stubName> start` to $STUB_BARRIER_FILE, then
@@ -243,16 +236,12 @@ function runGuard(input: string, env: NodeJS.ProcessEnv): SpawnSyncReturns<strin
 }
 
 afterEach(() => {
-  while (createdPaths.length > 0) {
-    const directory = createdPaths.pop();
-
-    if (directory) rmSync(directory, { recursive: true, force: true });
-  }
+  removeTemporaryDirectories();
 });
 
 describe('scripts/checks/pre-write-guard.sh (PreToolUse Edit/Write/MultiEdit guard)', () => {
   it('allows a non-.ts/.tsx file without running semgrep', () => {
-    const project = createTempDirectory('kiko-prewrite-project-');
+    const project = createTemporaryDirectory('kiko-prewrite-project-');
     const stub = writeSemgrepStub(project);
     const rules = writeRulesStub(project);
     const marker = join(project, 'marker.txt');
@@ -273,7 +262,7 @@ describe('scripts/checks/pre-write-guard.sh (PreToolUse Edit/Write/MultiEdit gua
   });
 
   it('allows a path under rules/fixtures/', () => {
-    const project = createTempDirectory('kiko-prewrite-project-');
+    const project = createTemporaryDirectory('kiko-prewrite-project-');
     const stub = writeSemgrepStub(project);
     const rules = writeRulesStub(project);
     const marker = join(project, 'marker.txt');
@@ -294,8 +283,8 @@ describe('scripts/checks/pre-write-guard.sh (PreToolUse Edit/Write/MultiEdit gua
   });
 
   it('allows a .ts file outside CLAUDE_PROJECT_DIR', () => {
-    const project = createTempDirectory('kiko-prewrite-project-');
-    const outside = createTempDirectory('kiko-prewrite-outside-');
+    const project = createTemporaryDirectory('kiko-prewrite-project-');
+    const outside = createTemporaryDirectory('kiko-prewrite-outside-');
     const stub = writeSemgrepStub(project);
     const rules = writeRulesStub(project);
     const marker = join(project, 'marker.txt');
@@ -316,10 +305,9 @@ describe('scripts/checks/pre-write-guard.sh (PreToolUse Edit/Write/MultiEdit gua
   });
 
   it('resolves a symlinked project path before relativizing', () => {
-    const project = createTempDirectory('kiko-prewrite-project-');
-    const projectLink = join(tmpdir(), `kiko-prewrite-link-${process.pid}-${Date.now()}`);
+    const project = createTemporaryDirectory('kiko-prewrite-project-');
+    const projectLink = join(createTemporaryDirectory('kiko-prewrite-link-'), 'link');
     symlinkSync(project, projectLink);
-    createdPaths.push(projectLink);
     const stub = writeSemgrepStub(project);
     const rules = writeRulesStub(project);
     const marker = join(project, 'marker.txt');
@@ -340,7 +328,7 @@ describe('scripts/checks/pre-write-guard.sh (PreToolUse Edit/Write/MultiEdit gua
   });
 
   it('denies on malformed stdin JSON', () => {
-    const project = createTempDirectory('kiko-prewrite-project-');
+    const project = createTemporaryDirectory('kiko-prewrite-project-');
 
     const result = runGuard('{not valid json', baseEnv({ CLAUDE_PROJECT_DIR: project }));
 
@@ -351,7 +339,7 @@ describe('scripts/checks/pre-write-guard.sh (PreToolUse Edit/Write/MultiEdit gua
   });
 
   it('denies when semgrep exits neither 0 nor 1', () => {
-    const project = createTempDirectory('kiko-prewrite-project-');
+    const project = createTemporaryDirectory('kiko-prewrite-project-');
     const stub = writeSemgrepStub(project);
     const rules = writeRulesStub(project);
     const targetFile = join(project, 'src', 'example.ts');
@@ -372,7 +360,7 @@ describe('scripts/checks/pre-write-guard.sh (PreToolUse Edit/Write/MultiEdit gua
   });
 
   it('denies when rules/semgrep-prewrite.yml is unreadable', () => {
-    const project = createTempDirectory('kiko-prewrite-project-');
+    const project = createTemporaryDirectory('kiko-prewrite-project-');
     const stub = writeSemgrepStub(project);
     const missingRules = join(project, 'rules', 'semgrep-prewrite.yml');
     const targetFile = join(project, 'src', 'example.ts');
@@ -393,8 +381,8 @@ describe('scripts/checks/pre-write-guard.sh (PreToolUse Edit/Write/MultiEdit gua
 
   it('denies when CLAUDE_PROJECT_DIR cannot be resolved', () => {
     const missingProjectDirectory = join(
-      tmpdir(),
-      `kiko-prewrite-missing-project-${process.pid}-${Date.now()}`,
+      createTemporaryDirectory('kiko-prewrite-missing-project-'),
+      'missing',
     );
     const targetFile = join(missingProjectDirectory, 'src', 'example.ts');
 
@@ -409,7 +397,7 @@ describe('scripts/checks/pre-write-guard.sh (PreToolUse Edit/Write/MultiEdit gua
   });
 
   it('denies on a non-ENOENT realpath error (a symlink loop) instead of allowing unchecked', () => {
-    const project = createTempDirectory('kiko-prewrite-project-');
+    const project = createTemporaryDirectory('kiko-prewrite-project-');
     const loopPath = join(project, 'loop.ts');
     symlinkSync(loopPath, loopPath);
 
@@ -424,7 +412,7 @@ describe('scripts/checks/pre-write-guard.sh (PreToolUse Edit/Write/MultiEdit gua
   });
 
   it('treats a file name starting with ".." as inside the project, not outside', () => {
-    const project = createTempDirectory('kiko-prewrite-project-');
+    const project = createTemporaryDirectory('kiko-prewrite-project-');
     const stub = writeSemgrepStub(project);
     const rules = writeRulesStub(project);
     const marker = join(project, 'marker.txt');
@@ -445,7 +433,7 @@ describe('scripts/checks/pre-write-guard.sh (PreToolUse Edit/Write/MultiEdit gua
   });
 
   it('denies an unknown tool_name instead of treating BEFORE as AFTER', () => {
-    const project = createTempDirectory('kiko-prewrite-project-');
+    const project = createTemporaryDirectory('kiko-prewrite-project-');
     const stub = writeSemgrepStub(project);
     const rules = writeRulesStub(project);
     mkdirSync(join(project, 'src'), { recursive: true });
@@ -467,8 +455,8 @@ describe('scripts/checks/pre-write-guard.sh (PreToolUse Edit/Write/MultiEdit gua
   });
 
   it('denies on internal timeout and leaves no temp root', () => {
-    const scratchTemporaryDirectory = createTempDirectory('kiko-prewrite-scratch-');
-    const project = createTempDirectory('kiko-prewrite-project-');
+    const scratchTemporaryDirectory = createTemporaryDirectory('kiko-prewrite-scratch-');
+    const project = createTemporaryDirectory('kiko-prewrite-project-');
     const stub = writeSemgrepStub(project);
     const rules = writeRulesStub(project);
     const targetFile = join(project, 'src', 'example.ts');
@@ -490,8 +478,8 @@ describe('scripts/checks/pre-write-guard.sh (PreToolUse Edit/Write/MultiEdit gua
   });
 
   it('removes its temp root on allow, deny, and crash', () => {
-    const scratchTemporaryDirectory = createTempDirectory('kiko-prewrite-scratch-');
-    const project = createTempDirectory('kiko-prewrite-project-');
+    const scratchTemporaryDirectory = createTemporaryDirectory('kiko-prewrite-scratch-');
+    const project = createTemporaryDirectory('kiko-prewrite-project-');
     const stub = writeSemgrepStub(project);
     const rules = writeRulesStub(project);
     const targetFile = join(project, 'src', 'example.ts');
@@ -535,7 +523,7 @@ describe('scripts/checks/pre-write-guard.sh (PreToolUse Edit/Write/MultiEdit gua
   });
 
   it('prints the documented deny JSON shape', () => {
-    const project = createTempDirectory('kiko-prewrite-project-');
+    const project = createTemporaryDirectory('kiko-prewrite-project-');
 
     const result = runGuard('{not valid json', baseEnv({ CLAUDE_PROJECT_DIR: project }));
 
@@ -551,7 +539,7 @@ describe('scripts/checks/pre-write-guard.sh (PreToolUse Edit/Write/MultiEdit gua
   // means the wrapper prints its own deny JSON") — left untested, this
   // branch of pre-write-guard.sh would ship unverified.
   it("denies via the wrapper's own JSON when node exits with an unexpected code, even with a multi-line stderr", () => {
-    const project = createTempDirectory('kiko-prewrite-project-');
+    const project = createTemporaryDirectory('kiko-prewrite-project-');
     const fakeBinDirectory = join(project, 'fake-bin');
     mkdirSync(fakeBinDirectory);
     const fakeNodePath = join(fakeBinDirectory, 'node');
@@ -577,8 +565,8 @@ describe('scripts/checks/pre-write-guard.sh (PreToolUse Edit/Write/MultiEdit gua
 
 describe('rebuildContents (BEFORE/AFTER reconstruction for Write/Edit/MultiEdit)', () => {
   it('Write, new file: BEFORE empty, AFTER = content', () => {
-    const project = createTempDirectory('kiko-prewrite-project-');
-    const captureDirectory = createTempDirectory('kiko-prewrite-capture-');
+    const project = createTemporaryDirectory('kiko-prewrite-project-');
+    const captureDirectory = createTemporaryDirectory('kiko-prewrite-capture-');
     const stub = writeCapturingSemgrepStub(project, captureDirectory);
     const rules = writeRulesStub(project);
     const targetFile = join(project, 'src', 'new-file.ts');
@@ -601,8 +589,8 @@ describe('rebuildContents (BEFORE/AFTER reconstruction for Write/Edit/MultiEdit)
   });
 
   it('Write, existing file: BEFORE = disk, AFTER = content', () => {
-    const project = createTempDirectory('kiko-prewrite-project-');
-    const captureDirectory = createTempDirectory('kiko-prewrite-capture-');
+    const project = createTemporaryDirectory('kiko-prewrite-project-');
+    const captureDirectory = createTemporaryDirectory('kiko-prewrite-capture-');
     const stub = writeCapturingSemgrepStub(project, captureDirectory);
     const rules = writeRulesStub(project);
     mkdirSync(join(project, 'src'), { recursive: true });
@@ -629,8 +617,8 @@ describe('rebuildContents (BEFORE/AFTER reconstruction for Write/Edit/MultiEdit)
   });
 
   it('Edit: replaces the first occurrence only', () => {
-    const project = createTempDirectory('kiko-prewrite-project-');
-    const captureDirectory = createTempDirectory('kiko-prewrite-capture-');
+    const project = createTemporaryDirectory('kiko-prewrite-project-');
+    const captureDirectory = createTemporaryDirectory('kiko-prewrite-capture-');
     const stub = writeCapturingSemgrepStub(project, captureDirectory);
     const rules = writeRulesStub(project);
     mkdirSync(join(project, 'src'), { recursive: true });
@@ -652,8 +640,8 @@ describe('rebuildContents (BEFORE/AFTER reconstruction for Write/Edit/MultiEdit)
   });
 
   it('Edit replace_all: replaces every occurrence', () => {
-    const project = createTempDirectory('kiko-prewrite-project-');
-    const captureDirectory = createTempDirectory('kiko-prewrite-capture-');
+    const project = createTemporaryDirectory('kiko-prewrite-project-');
+    const captureDirectory = createTemporaryDirectory('kiko-prewrite-capture-');
     const stub = writeCapturingSemgrepStub(project, captureDirectory);
     const rules = writeRulesStub(project);
     mkdirSync(join(project, 'src'), { recursive: true });
@@ -680,8 +668,8 @@ describe('rebuildContents (BEFORE/AFTER reconstruction for Write/Edit/MultiEdit)
   });
 
   it('Edit: keeps a literal $& in new_string, never a matched-substring backreference', () => {
-    const project = createTempDirectory('kiko-prewrite-project-');
-    const captureDirectory = createTempDirectory('kiko-prewrite-capture-');
+    const project = createTemporaryDirectory('kiko-prewrite-project-');
+    const captureDirectory = createTemporaryDirectory('kiko-prewrite-capture-');
     const stub = writeCapturingSemgrepStub(project, captureDirectory);
     const rules = writeRulesStub(project);
     mkdirSync(join(project, 'src'), { recursive: true });
@@ -703,8 +691,8 @@ describe('rebuildContents (BEFORE/AFTER reconstruction for Write/Edit/MultiEdit)
   });
 
   it('MultiEdit: applies edits in array order on the running result', () => {
-    const project = createTempDirectory('kiko-prewrite-project-');
-    const captureDirectory = createTempDirectory('kiko-prewrite-capture-');
+    const project = createTemporaryDirectory('kiko-prewrite-project-');
+    const captureDirectory = createTemporaryDirectory('kiko-prewrite-capture-');
     const stub = writeCapturingSemgrepStub(project, captureDirectory);
     const rules = writeRulesStub(project);
     mkdirSync(join(project, 'src'), { recursive: true });
@@ -732,8 +720,8 @@ describe('rebuildContents (BEFORE/AFTER reconstruction for Write/Edit/MultiEdit)
   });
 
   it('denies when old_string is not found verbatim', () => {
-    const project = createTempDirectory('kiko-prewrite-project-');
-    const captureDirectory = createTempDirectory('kiko-prewrite-capture-');
+    const project = createTemporaryDirectory('kiko-prewrite-project-');
+    const captureDirectory = createTemporaryDirectory('kiko-prewrite-capture-');
     const stub = writeCapturingSemgrepStub(project, captureDirectory);
     const rules = writeRulesStub(project);
     mkdirSync(join(project, 'src'), { recursive: true });
@@ -764,8 +752,8 @@ describe('rebuildContents (BEFORE/AFTER reconstruction for Write/Edit/MultiEdit)
   });
 
   it('mirrors the repo-relative path under before/ and after/', () => {
-    const project = createTempDirectory('kiko-prewrite-project-');
-    const captureDirectory = createTempDirectory('kiko-prewrite-capture-');
+    const project = createTemporaryDirectory('kiko-prewrite-project-');
+    const captureDirectory = createTemporaryDirectory('kiko-prewrite-capture-');
     const stub = writeCapturingSemgrepStub(project, captureDirectory);
     const rules = writeRulesStub(project);
     const targetFile = join(project, 'src', 'screens', 'a', 'a.screen.tsx');
@@ -793,7 +781,7 @@ describe('rebuildContents (BEFORE/AFTER reconstruction for Write/Edit/MultiEdit)
 
 describe('Semgrep pass + new-findings-only diff', () => {
   it('allows when the only finding already existed on a shifted line', () => {
-    const project = createTempDirectory('kiko-prewrite-project-');
+    const project = createTemporaryDirectory('kiko-prewrite-project-');
     const stub = writeFindingsStub(project);
     const rules = writeRulesStub(project);
     mkdirSync(join(project, 'src'), { recursive: true });
@@ -839,7 +827,7 @@ describe('Semgrep pass + new-findings-only diff', () => {
   });
 
   it('denies a second textually identical violation (occurrence index)', () => {
-    const project = createTempDirectory('kiko-prewrite-project-');
+    const project = createTemporaryDirectory('kiko-prewrite-project-');
     const stub = writeFindingsStub(project);
     const rules = writeRulesStub(project);
     mkdirSync(join(project, 'src'), { recursive: true });
@@ -901,7 +889,7 @@ describe('Semgrep pass + new-findings-only diff', () => {
   // ranks first and the existing one becomes the "new" one: the deny names every line that
   // shares the key, so the agent cannot reword the wrong one and keep the count.
   it('names every line sharing the key when a second finding with the same text is added', () => {
-    const project = createTempDirectory('kiko-prewrite-project-');
+    const project = createTemporaryDirectory('kiko-prewrite-project-');
     const stub = writeFindingsStub(project);
     const rules = writeRulesStub(project);
     mkdirSync(join(project, 'src'), { recursive: true });
@@ -953,7 +941,7 @@ describe('Semgrep pass + new-findings-only diff', () => {
   });
 
   it('names each line on its own when every finding with the same text is new', () => {
-    const project = createTempDirectory('kiko-prewrite-project-');
+    const project = createTemporaryDirectory('kiko-prewrite-project-');
     const stub = writeFindingsStub(project);
     const rules = writeRulesStub(project);
     mkdirSync(join(project, 'src'), { recursive: true });
@@ -989,7 +977,7 @@ describe('Semgrep pass + new-findings-only diff', () => {
   });
 
   it('treats a whitespace-only reformat of a finding as pre-existing', () => {
-    const project = createTempDirectory('kiko-prewrite-project-');
+    const project = createTemporaryDirectory('kiko-prewrite-project-');
     const stub = writeFindingsStub(project);
     const rules = writeRulesStub(project);
     mkdirSync(join(project, 'src'), { recursive: true });
@@ -1035,7 +1023,7 @@ describe('Semgrep pass + new-findings-only diff', () => {
   });
 
   it('strips the config-path prefix from check_id', () => {
-    const project = createTempDirectory('kiko-prewrite-project-');
+    const project = createTemporaryDirectory('kiko-prewrite-project-');
     const stub = writeFindingsStub(project);
     const rules = writeRulesStub(project);
     const targetFile = join(project, 'src', 'new-file.ts');
@@ -1069,7 +1057,7 @@ describe('Semgrep pass + new-findings-only diff', () => {
   });
 
   it('slices matched text from offsets, not extra.lines', () => {
-    const project = createTempDirectory('kiko-prewrite-project-');
+    const project = createTemporaryDirectory('kiko-prewrite-project-');
     const stub = writeFindingsStub(project);
     const rules = writeRulesStub(project);
     const targetFile = join(project, 'src', 'new-file.ts');
@@ -1104,7 +1092,7 @@ describe('Semgrep pass + new-findings-only diff', () => {
   });
 
   it('slices matched text by UTF-8 byte offset, not UTF-16 code unit, for non-ASCII source', () => {
-    const project = createTempDirectory('kiko-prewrite-project-');
+    const project = createTemporaryDirectory('kiko-prewrite-project-');
     const stub = writeFindingsStub(project);
     const rules = writeRulesStub(project);
     mkdirSync(join(project, 'src'), { recursive: true });
@@ -1153,8 +1141,8 @@ describe('Semgrep pass + new-findings-only diff', () => {
   });
 
   it('runs one semgrep process, AFTER only, when AFTER is clean', () => {
-    const project = createTempDirectory('kiko-prewrite-project-');
-    const captureDirectory = createTempDirectory('kiko-prewrite-capture-');
+    const project = createTemporaryDirectory('kiko-prewrite-project-');
+    const captureDirectory = createTemporaryDirectory('kiko-prewrite-capture-');
     const stub = writeFindingsStub(project);
     const rules = writeRulesStub(project);
     const targetFile = join(project, 'src', 'new-file.ts');
@@ -1186,7 +1174,7 @@ describe('Semgrep pass + new-findings-only diff', () => {
   // type with `spans`, not only as `["PartialParsing", [...]]` (the shape
   // pre-write-guard-rules.test.ts proves against real Semgrep).
   it('names a string-typed Syntax error by file:line in the deny reason', () => {
-    const project = createTempDirectory('kiko-prewrite-project-');
+    const project = createTemporaryDirectory('kiko-prewrite-project-');
     const stub = join(project, 'semgrep-syntax-error-stub.js');
     writeFileSync(
       stub,
@@ -1227,8 +1215,8 @@ describe('Semgrep pass + new-findings-only diff', () => {
   });
 
   it('passes semgrep a --timeout of whole seconds within the remaining budget', () => {
-    const project = createTempDirectory('kiko-prewrite-project-');
-    const captureDirectory = createTempDirectory('kiko-prewrite-capture-');
+    const project = createTemporaryDirectory('kiko-prewrite-project-');
+    const captureDirectory = createTemporaryDirectory('kiko-prewrite-capture-');
     const argvFile = join(captureDirectory, 'argv.json');
     const stub = join(project, 'semgrep-argv-stub.js');
     writeFileSync(
@@ -1270,8 +1258,8 @@ describe('Semgrep pass + new-findings-only diff', () => {
   });
 
   it('runs one semgrep process over both trees when AFTER has findings', () => {
-    const project = createTempDirectory('kiko-prewrite-project-');
-    const captureDirectory = createTempDirectory('kiko-prewrite-capture-');
+    const project = createTemporaryDirectory('kiko-prewrite-project-');
+    const captureDirectory = createTemporaryDirectory('kiko-prewrite-capture-');
     const stub = writeFindingsStub(project);
     const rules = writeRulesStub(project);
     mkdirSync(join(project, 'src'), { recursive: true });
@@ -1315,7 +1303,7 @@ describe('Semgrep pass + new-findings-only diff', () => {
   });
 
   it('deny reason lists rule id, AFTER line, matched text, fix and skill', () => {
-    const project = createTempDirectory('kiko-prewrite-project-');
+    const project = createTemporaryDirectory('kiko-prewrite-project-');
     const stub = writeFindingsStub(project);
     const rules = writeRulesStub(project);
     const targetFile = join(project, 'src', 'new-file.ts');
@@ -1355,7 +1343,7 @@ describe('Semgrep pass + new-findings-only diff', () => {
   });
 
   it('denies when a finding lacks metadata.skill', () => {
-    const project = createTempDirectory('kiko-prewrite-project-');
+    const project = createTemporaryDirectory('kiko-prewrite-project-');
     const stub = writeFindingsStub(project);
     const rules = writeRulesStub(project);
     const targetFile = join(project, 'src', 'new-file.ts');
@@ -1397,7 +1385,7 @@ describe('Semgrep pass + new-findings-only diff', () => {
 // Node-checker finding instead of a Semgrep one.
 describe('runNodeChecks (rules 4, 5, 6: import-order, full-word-identifiers, one-component-per-file)', () => {
   it('denies an edit that breaks import order (kiko-import-order)', () => {
-    const project = createTempDirectory('kiko-prewrite-project-');
+    const project = createTemporaryDirectory('kiko-prewrite-project-');
     const stub = writeSemgrepStub(project);
     const rules = writeRulesStub(project);
     const targetFile = join(project, 'src', 'example.ts');
@@ -1432,7 +1420,7 @@ describe('runNodeChecks (rules 4, 5, 6: import-order, full-word-identifiers, one
   });
 
   it('denies an edit that imports one specifier twice (kiko-import-order)', () => {
-    const project = createTempDirectory('kiko-prewrite-project-');
+    const project = createTemporaryDirectory('kiko-prewrite-project-');
     const stub = writeSemgrepStub(project);
     const rules = writeRulesStub(project);
     const targetFile = join(project, 'src', 'example.ts');
@@ -1462,7 +1450,7 @@ describe('runNodeChecks (rules 4, 5, 6: import-order, full-word-identifiers, one
   });
 
   it('allows an unrelated edit in a file whose import order was already broken', () => {
-    const project = createTempDirectory('kiko-prewrite-project-');
+    const project = createTemporaryDirectory('kiko-prewrite-project-');
     const stub = writeSemgrepStub(project);
     const rules = writeRulesStub(project);
     mkdirSync(join(project, 'src'), { recursive: true });
@@ -1496,7 +1484,7 @@ describe('runNodeChecks (rules 4, 5, 6: import-order, full-word-identifiers, one
   });
 
   it('denies a new abbreviated identifier (kiko-full-word-identifiers)', () => {
-    const project = createTempDirectory('kiko-prewrite-project-');
+    const project = createTemporaryDirectory('kiko-prewrite-project-');
     const stub = writeSemgrepStub(project);
     const rules = writeRulesStub(project);
     const targetFile = join(project, 'src', 'example.ts');
@@ -1517,7 +1505,7 @@ describe('runNodeChecks (rules 4, 5, 6: import-order, full-word-identifiers, one
   });
 
   it('names every line sharing a Node-rule finding when an equal one is added above it', () => {
-    const project = createTempDirectory('kiko-prewrite-project-');
+    const project = createTemporaryDirectory('kiko-prewrite-project-');
     const stub = writeSemgrepStub(project);
     const rules = writeRulesStub(project);
     mkdirSync(join(project, 'src'), { recursive: true });
@@ -1544,7 +1532,7 @@ describe('runNodeChecks (rules 4, 5, 6: import-order, full-word-identifiers, one
   });
 
   it('honors full-word-identifiers EXEMPTIONS by path suffix', () => {
-    const project = createTempDirectory('kiko-prewrite-project-');
+    const project = createTemporaryDirectory('kiko-prewrite-project-');
     const stub = writeSemgrepStub(project);
     const rules = writeRulesStub(project);
     mkdirSync(join(project, 'src', 'db'), { recursive: true });
@@ -1563,7 +1551,7 @@ describe('runNodeChecks (rules 4, 5, 6: import-order, full-word-identifiers, one
   });
 
   it('denies a second exported component in a .tsx (kiko-one-component-per-file)', () => {
-    const project = createTempDirectory('kiko-prewrite-project-');
+    const project = createTemporaryDirectory('kiko-prewrite-project-');
     const stub = writeSemgrepStub(project);
     const rules = writeRulesStub(project);
     const targetFile = join(project, 'src', 'example.screen.tsx');
@@ -1600,7 +1588,7 @@ describe('runNodeChecks (rules 4, 5, 6: import-order, full-word-identifiers, one
   });
 
   it('does not run the component check on a .ts file', () => {
-    const project = createTempDirectory('kiko-prewrite-project-');
+    const project = createTemporaryDirectory('kiko-prewrite-project-');
     const stub = writeSemgrepStub(project);
     const rules = writeRulesStub(project);
     const targetFile = join(project, 'src', 'example.ts');
@@ -1630,7 +1618,7 @@ describe('runNodeChecks (rules 4, 5, 6: import-order, full-word-identifiers, one
   });
 
   it('denies when a Node checker exits with a code other than 0 or 1', () => {
-    const project = createTempDirectory('kiko-prewrite-project-');
+    const project = createTemporaryDirectory('kiko-prewrite-project-');
     const stub = writeSemgrepStub(project);
     const rules = writeRulesStub(project);
     const nodeStubPath = join(project, 'node-stub.sh');
@@ -1661,7 +1649,7 @@ describe('runNodeChecks (rules 4, 5, 6: import-order, full-word-identifiers, one
     // which is exactly what would let a broken checker disable its own rule
     // unnoticed. Any stderr output on a Node-checker child is treated as a
     // crash, never a clean run's exit 1.
-    const project = createTempDirectory('kiko-prewrite-project-');
+    const project = createTemporaryDirectory('kiko-prewrite-project-');
     const stub = writeSemgrepStub(project);
     const rules = writeRulesStub(project);
     const nodeStubPath = join(project, 'node-stub.sh');
@@ -1689,7 +1677,7 @@ describe('runNodeChecks (rules 4, 5, 6: import-order, full-word-identifiers, one
     // OTHER shape a crash can take (no stderr, but no real violation line
     // either) — the same fail-closed contract as the stderr case above, on
     // the stdout side instead.
-    const project = createTempDirectory('kiko-prewrite-project-');
+    const project = createTemporaryDirectory('kiko-prewrite-project-');
     const stub = writeSemgrepStub(project);
     const rules = writeRulesStub(project);
     const nodeStubPath = join(project, 'node-stub.sh');
@@ -1768,7 +1756,7 @@ describe('spawnAsync stdout decoding (multibyte character split across chunks)',
   }
 
   it('keeps a pre-existing multibyte finding from reading as new when only its AFTER read is chunk-split', () => {
-    const project = createTempDirectory('kiko-prewrite-project-');
+    const project = createTemporaryDirectory('kiko-prewrite-project-');
     const semgrepStub = writeSemgrepStub(project);
     const rules = writeRulesStub(project);
     const nodeStub = writeMultibyteFullWordStub(project);
@@ -1795,7 +1783,7 @@ describe('spawnAsync stdout decoding (multibyte character split across chunks)',
 // rules 4/5/6 describe block above.
 describe('runNodeChecks (rule 11: blank-line-separation)', () => {
   it('denies an edit that adds a return with no blank line above (kiko-blank-line-separation)', () => {
-    const project = createTempDirectory('kiko-prewrite-project-');
+    const project = createTemporaryDirectory('kiko-prewrite-project-');
     const stub = writeSemgrepStub(project);
     const rules = writeRulesStub(project);
     const targetFile = join(project, 'src', 'example.ts');
@@ -1830,7 +1818,7 @@ describe('runNodeChecks (rule 11: blank-line-separation)', () => {
     // EXISTING unseparated statement (renaming a variable it returns) reads
     // as a brand-new violation and denies an edit that changes nothing about
     // the separation the rule enforces.
-    const project = createTempDirectory('kiko-prewrite-project-');
+    const project = createTemporaryDirectory('kiko-prewrite-project-');
     const stub = writeSemgrepStub(project);
     const rules = writeRulesStub(project);
     mkdirSync(join(project, 'src'), { recursive: true });
@@ -1870,7 +1858,7 @@ describe('runNodeChecks (rule 11: blank-line-separation)', () => {
 // deciding "screen-a" vs "screen-b" requires exactly that resolution.
 describe('runNodeChecks (rule 12: no-cross-screen-import)', () => {
   it('denies an edit that adds a cross-screen import (kiko-no-cross-screen-import)', () => {
-    const project = createTempDirectory('kiko-prewrite-project-');
+    const project = createTemporaryDirectory('kiko-prewrite-project-');
     const stub = writeSemgrepStub(project);
     const rules = writeRulesStub(project);
     const targetFile = join(project, 'src', 'screens', 'a', 'forms', 'x.tsx');
@@ -1902,7 +1890,7 @@ describe('runNodeChecks (rule 13: feature-imports)', () => {
   const leavingImport = "import { database } from '../../db/client';";
 
   it('denies an edit that adds a relative import leaving its feature (kiko-feature-imports)', () => {
-    const project = createTempDirectory('kiko-prewrite-project-');
+    const project = createTemporaryDirectory('kiko-prewrite-project-');
     const stub = writeSemgrepStub(project);
     const rules = writeRulesStub(project);
     const targetFile = join(project, ...importerPath);
@@ -1927,7 +1915,7 @@ describe('runNodeChecks (rule 13: feature-imports)', () => {
   });
 
   it('allows an edit that leaves an existing leaving import as it was', () => {
-    const project = createTempDirectory('kiko-prewrite-project-');
+    const project = createTemporaryDirectory('kiko-prewrite-project-');
     const stub = writeSemgrepStub(project);
     const rules = writeRulesStub(project);
     const targetFile = join(project, ...importerPath);
@@ -1959,7 +1947,7 @@ describe('runNodeChecks (plural-key-needs-count)', () => {
   const targetPath = ['src', 'probe', 'label.ts'];
 
   function runPluralProbe(content: string): SpawnSyncReturns<string> {
-    const project = createTempDirectory('kiko-prewrite-project-');
+    const project = createTemporaryDirectory('kiko-prewrite-project-');
     const stub = writeSemgrepStub(project);
     const rules = writeRulesStub(project);
 
@@ -2006,7 +1994,7 @@ describe('runNodeChecks (comment-line-width)', () => {
     toolName: 'Write' | 'Edit',
     input: Record<string, string>,
   ): SpawnSyncReturns<string> {
-    const project = createTempDirectory('kiko-prewrite-project-');
+    const project = createTemporaryDirectory('kiko-prewrite-project-');
     const stub = writeSemgrepStub(project);
     const rules = writeRulesStub(project);
     const targetFile = join(project, 'src', 'probe', 'notes.ts');
@@ -2137,7 +2125,7 @@ describe('runNodeChecks (component-i18n-namespace)', () => {
   const targetPath = ['src', 'design-system', 'components', 'expand-toggle', 'probe.tsx'];
 
   function runNamespaceProbe(content: string): SpawnSyncReturns<string> {
-    const project = createTempDirectory('kiko-prewrite-project-');
+    const project = createTemporaryDirectory('kiko-prewrite-project-');
     const stub = writeSemgrepStub(project);
     const rules = writeRulesStub(project);
 
@@ -2216,7 +2204,7 @@ describe('runNodeChecks (component-i18n-namespace)', () => {
 // exactly like an unexplained Biome ignore comment.
 describe('override protocol (nosemgrep / kiko-override)', () => {
   it('allows a new finding with `// nosemgrep: <id> OVERRIDE(reason) why` on the line above', () => {
-    const project = createTempDirectory('kiko-prewrite-project-');
+    const project = createTemporaryDirectory('kiko-prewrite-project-');
     const stub = writeFindingsStub(project);
     const rules = writeRulesStub(project);
     const targetFile = join(project, 'src', 'new-file.ts');
@@ -2253,7 +2241,7 @@ describe('override protocol (nosemgrep / kiko-override)', () => {
   });
 
   it('allows a new finding with the override on the same line', () => {
-    const project = createTempDirectory('kiko-prewrite-project-');
+    const project = createTemporaryDirectory('kiko-prewrite-project-');
     const stub = writeFindingsStub(project);
     const rules = writeRulesStub(project);
     const targetFile = join(project, 'src', 'new-file.ts');
@@ -2291,7 +2279,7 @@ describe('override protocol (nosemgrep / kiko-override)', () => {
   it('allows a new finding with a block-comment `/* nosemgrep: <id> OVERRIDE(...) */` override', () => {
     // The only comment form JSX allows (`{/* ... */}`) must justify a
     // finding exactly like the `//` line-comment form does.
-    const project = createTempDirectory('kiko-prewrite-project-');
+    const project = createTemporaryDirectory('kiko-prewrite-project-');
     const stub = writeFindingsStub(project);
     const rules = writeRulesStub(project);
     const targetFile = join(project, 'src', 'new-file.ts');
@@ -2328,7 +2316,7 @@ describe('override protocol (nosemgrep / kiko-override)', () => {
   });
 
   it('denies a new finding under a bare nosemgrep comment with no OVERRIDE(...)', () => {
-    const project = createTempDirectory('kiko-prewrite-project-');
+    const project = createTemporaryDirectory('kiko-prewrite-project-');
     const stub = writeFindingsStub(project);
     const rules = writeRulesStub(project);
     const targetFile = join(project, 'src', 'new-file.ts');
@@ -2367,7 +2355,7 @@ describe('override protocol (nosemgrep / kiko-override)', () => {
   });
 
   it('denies an override naming a different rule id', () => {
-    const project = createTempDirectory('kiko-prewrite-project-');
+    const project = createTemporaryDirectory('kiko-prewrite-project-');
     const stub = writeFindingsStub(project);
     const rules = writeRulesStub(project);
     const targetFile = join(project, 'src', 'new-file.ts');
@@ -2406,7 +2394,7 @@ describe('override protocol (nosemgrep / kiko-override)', () => {
   });
 
   it('allows a Node-rule finding with `// kiko-override: kiko-import-order OVERRIDE(...) why`', () => {
-    const project = createTempDirectory('kiko-prewrite-project-');
+    const project = createTemporaryDirectory('kiko-prewrite-project-');
     const stub = writeSemgrepStub(project);
     const rules = writeRulesStub(project);
     const targetFile = join(project, 'src', 'example.ts');
@@ -2442,7 +2430,7 @@ describe('override protocol (nosemgrep / kiko-override)', () => {
   });
 
   it('denies a bare kiko-override comment with no OVERRIDE(...)', () => {
-    const project = createTempDirectory('kiko-prewrite-project-');
+    const project = createTemporaryDirectory('kiko-prewrite-project-');
     const stub = writeSemgrepStub(project);
     const rules = writeRulesStub(project);
     const targetFile = join(project, 'src', 'example.ts');
@@ -2476,7 +2464,7 @@ describe('override protocol (nosemgrep / kiko-override)', () => {
   });
 
   it('denies when an edit deletes a justified override that suppressed a BEFORE finding', () => {
-    const project = createTempDirectory('kiko-prewrite-project-');
+    const project = createTemporaryDirectory('kiko-prewrite-project-');
     const stub = writeFindingsStub(project);
     const rules = writeRulesStub(project);
     mkdirSync(join(project, 'src'), { recursive: true });
@@ -2530,7 +2518,7 @@ describe('override protocol (nosemgrep / kiko-override)', () => {
     // anything — check:security still honours it as a blanket comment, so
     // leaving it un-flagged just because the underlying finding is old would
     // let a bare override slip past this guard entirely.
-    const project = createTempDirectory('kiko-prewrite-project-');
+    const project = createTemporaryDirectory('kiko-prewrite-project-');
     const stub = writeFindingsStub(project);
     const rules = writeRulesStub(project);
     mkdirSync(join(project, 'src'), { recursive: true });
@@ -2644,8 +2632,8 @@ describe('runNodeChecks concurrency (speed mitigation)', () => {
   ])(
     're-runs on the baselines of %s only the Node rules that found something in AFTER',
     (_label, beforeContent, baselineTrees) => {
-      const project = createTempDirectory('kiko-prewrite-project-');
-      const captureDirectory = createTempDirectory('kiko-prewrite-capture-');
+      const project = createTemporaryDirectory('kiko-prewrite-project-');
+      const captureDirectory = createTemporaryDirectory('kiko-prewrite-capture-');
       const logFile = join(captureDirectory, 'node-calls.txt');
       const nodeStub = join(project, 'node-logging-stub.sh');
       writeFileSync(
@@ -2692,7 +2680,7 @@ describe('runNodeChecks concurrency (speed mitigation)', () => {
   );
 
   it('runs every spawned AFTER-tree Node checker concurrently, not one after another', () => {
-    const project = createTempDirectory('kiko-prewrite-project-');
+    const project = createTemporaryDirectory('kiko-prewrite-project-');
     const semgrepStub = writeSemgrepStub(project);
     const rules = writeRulesStub(project);
     const nodeStub = writeRendezvousNodeStub(project);
@@ -2721,7 +2709,7 @@ describe('runNodeChecks concurrency (speed mitigation)', () => {
   });
 
   it('runs Semgrep concurrently with the AFTER-tree Node checkers, not one after the other', () => {
-    const project = createTempDirectory('kiko-prewrite-project-');
+    const project = createTemporaryDirectory('kiko-prewrite-project-');
     const semgrepStub = writeSemgrepStub(project);
     const rules = writeRulesStub(project);
     const nodeStub = writeRendezvousNodeStub(project);
@@ -2783,7 +2771,7 @@ describe('temp root lifetime vs a fast-rejecting sibling', () => {
   }
 
   it('lets a slower Node checker finish reading its mirrored file before the temp root is removed', () => {
-    const project = createTempDirectory('kiko-prewrite-project-');
+    const project = createTemporaryDirectory('kiko-prewrite-project-');
     const missingRules = join(project, 'rules', 'semgrep-prewrite.yml');
     const marker = join(project, 'marker.txt');
     const nodeStub = writeExistenceCheckingNodeStub(project, marker);
@@ -2837,7 +2825,7 @@ describe('conflicted file on disk (ours/theirs baselines)', () => {
   }
 
   function runConflictScenario(overrides: Record<string, string>, afterContent = RESOLVED_AFTER) {
-    const project = createTempDirectory('kiko-prewrite-project-');
+    const project = createTemporaryDirectory('kiko-prewrite-project-');
     mkdirSync(join(project, 'src'), { recursive: true });
     const targetFile = join(project, 'src', 'example.ts');
     writeFileSync(targetFile, CONFLICTED_BEFORE);
@@ -2855,7 +2843,7 @@ describe('conflicted file on disk (ours/theirs baselines)', () => {
   }
 
   it('scans the ours, theirs and after trees in one semgrep process', () => {
-    const captureDirectory = createTempDirectory('kiko-prewrite-capture-');
+    const captureDirectory = createTemporaryDirectory('kiko-prewrite-capture-');
     const counterFile = join(captureDirectory, 'counter.txt');
     const argvFile = join(captureDirectory, 'argv.json');
 
@@ -2922,7 +2910,7 @@ describe('conflicted file on disk (ours/theirs baselines)', () => {
   );
 
   it('scans both sides of a marker-keeping step in the same semgrep process', () => {
-    const captureDirectory = createTempDirectory('kiko-prewrite-capture-');
+    const captureDirectory = createTemporaryDirectory('kiko-prewrite-capture-');
     const counterFile = join(captureDirectory, 'counter.txt');
     const argvFile = join(captureDirectory, 'argv.json');
 
@@ -2983,7 +2971,7 @@ describe('conflicted file on disk (ours/theirs baselines)', () => {
 // too.
 describe('parse-error advice', () => {
   it('gives the on-disk advice when both the file on disk and the new content fail to parse', () => {
-    const project = createTempDirectory('kiko-prewrite-project-');
+    const project = createTemporaryDirectory('kiko-prewrite-project-');
     mkdirSync(join(project, 'src'), { recursive: true });
     const targetFile = join(project, 'src', 'example.ts');
     writeFileSync(targetFile, 'export function broken( {\n');
@@ -3049,7 +3037,7 @@ describe('PreToolUse wiring in harness/kiko/hooks/hooks.json', () => {
 
   it('exits 0 with empty stdout when the resolved root has no guard script', () => {
     const command = preToolUseCommand('Edit|Write|MultiEdit');
-    const missingProject = createTempDirectory('kiko-prewrite-wiring-');
+    const missingProject = createTemporaryDirectory('kiko-prewrite-wiring-');
 
     // Malformed (empty) stdin resolves neither a file_path nor a cwd, so the
     // dispatcher falls back to CLAUDE_PROJECT_DIR — this exercises that same

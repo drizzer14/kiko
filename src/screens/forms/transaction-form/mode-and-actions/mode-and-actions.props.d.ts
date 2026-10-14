@@ -12,7 +12,7 @@ export type ModeAndActionsProps = {
   onSelectCategory: (key: string) => void;
   convertEligible: boolean;
   onPressConvert: () => void;
-  isEditing: boolean;
+  categoryRequired: boolean;
   t: TFunction;
   // The category picker's own validation-failure message, or `undefined` when
   // valid — the `CategoryField` renders it under itself and turns its label

@@ -8,8 +8,14 @@ import { resolveDefaultCategoryTitle } from '@kiko/i18n/default-category-title';
 // pure resolvers take the resolved key as a parameter and never reference this.
 export const DEFAULT_CATEGORY_KEY = 'other';
 
+// The filled star says "this is the default" (the Categories card's badge); the outline star is
+// the action that makes a category the default. One pair here, so the badge and the action never
+// drift into two different stars.
+export const DEFAULT_CATEGORY_SYMBOL = 'star.fill' as const;
+export const SET_DEFAULT_CATEGORY_SYMBOL = 'star' as const;
+
 // A transaction stores a category as its stable `categories.key` slug (the
-// lowercase MCC category name — see `monobank/mcc-category.ts`). The categories
+// lowercase MCC category name — see `src/monobank/mcc-category/mcc-category.ts`). The categories
 // table maps that key to the user-editable title + icon + optional color, so
 // the display resolves through the table rather than any hard-coded map.
 // `color` is the category's stored `#RRGGBB` hex, or null when none is picked

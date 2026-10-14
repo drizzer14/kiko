@@ -174,6 +174,14 @@ export const pickerListsEveryCurrency = true;
 export const feeOnItsOwnLine = true;
 
 // EXPECT-FINDING
+// The palette is the single dark theme (spec Section 2: spacing and radii are shared).
+export const paletteIsOneTheme = true;
+
+// EXPECT-FINDING
+/* Section 7 lists the tokens. */
+export const tokensAreListed = true;
+
+// EXPECT-FINDING
 /* Rows without a counterparty stay in the list (§3). */
 export const rowsWithoutCounterpartyStay = true;
 
@@ -454,3 +462,24 @@ export const secondIdInBlock = true;
 // EXPECT-FINDING
 // The retry budget moved in T14 and its window in T15, see Bug 9.
 export const secondIdOnLine = true;
+
+// A spec P-id (a priority or plan number), written with or without the hyphen, is left behind
+// in a comment like any other id.
+// EXPECT-FINDING
+// P1: a rate of zero is not usable, so the row is skipped.
+export const specPriorityLine = true;
+
+// EXPECT-FINDING
+// The same parity as every other P-0 amount conversion.
+export const specPriorityHyphen = true;
+
+// EXPECT-FINDING
+/* P12 keeps the fee on its own line. */
+export const specPriorityBlock = true;
+
+/**
+ * A P-id on a later line of a block comment is reported at that line:
+// EXPECT-FINDING
+ * the overlap guard covers P2 as well.
+ */
+export const specPriorityLaterBlockLine = true;

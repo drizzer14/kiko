@@ -45,7 +45,7 @@ export const holdingTypesForAccountKind: Record<AccountKind, readonly HoldingTyp
 };
 
 // The holding types the Monobank sync pipeline OWNS: it creates a `card` per
-// bank card and a `jar` per jar programmatically (see src/monobank/sync.ts), so
+// bank card and a `jar` per jar programmatically (see src/monobank/sync/sync.ts), so
 // a user never manually creates one. The manual create form drops these from its
 // options; editing an existing synced row still works (its type is read-only and
 // stays whatever the sync wrote).

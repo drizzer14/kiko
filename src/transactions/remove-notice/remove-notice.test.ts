@@ -387,6 +387,7 @@ describe('removeNotice', () => {
             keptSynced: [],
             unlinked: [],
             unlinkedPlain: false,
+            templatesChanged: 0,
             balanceChanges: [{ name: 'Dollar card', currency: 'USD', minorUnits: -1_000 }],
           },
           i18n.t,
@@ -463,6 +464,7 @@ const NOTHING_ELSE: RemoveHoldingsPlan = {
   keptSynced: [],
   unlinked: [],
   unlinkedPlain: false,
+  templatesChanged: 0,
 };
 
 describe('removeHoldingsNotice', () => {
@@ -531,6 +533,8 @@ describe('removeHoldingsNotice', () => {
           keptSynced: ['Monobank card'],
           unlinked: ['Cash'],
           unlinkedPlain: false,
+          templatesChanged: 3,
+          balanceChanges: [{ name: 'Dollar card', currency: 'USD', minorUnits: -1_000 }],
         },
         i18n.t,
       ),
@@ -541,8 +545,42 @@ describe('removeHoldingsNotice', () => {
         'Some contributions to Bond could not be matched and stay. Edit the deposit to remove them.',
         'Linked transactions from your bank stay in Monobank card.',
         'Some exchange parts in Cash could not be found and stay. Check them after deleting.',
+        'This changes the balance of Dollar card by -$10.00.',
+        'This also clears it in 3 templates.',
       ].join(' '),
     );
+  });
+
+  describe('the templates a delete changes', () => {
+    it('says nothing for none', () => {
+      expect(removeHoldingsNotice(NOTHING_ELSE, i18n.t)).toBeUndefined();
+    });
+
+    it.each([
+      [1, 'This also clears it in 1 template.'],
+      [2, 'This also clears it in 2 templates.'],
+    ])('reads the English count %s', (count, expected) => {
+      expect(removeHoldingsNotice({ ...NOTHING_ELSE, templatesChanged: count }, i18n.t)).toBe(
+        expected,
+      );
+    });
+
+    describe('in Ukrainian', () => {
+      beforeEach(async () => {
+        await i18n.changeLanguage('uk');
+      });
+
+      it.each([
+        [1, 'Також його буде очищено в 1 шаблоні.'],
+        [2, 'Також його буде очищено в 2 шаблонах.'],
+        [5, 'Також його буде очищено в 5 шаблонах.'],
+        [21, 'Також його буде очищено в 21 шаблоні.'],
+      ])('reads the count %s with the right plural form', (count, expected) => {
+        expect(removeHoldingsNotice({ ...NOTHING_ELSE, templatesChanged: count }, i18n.t)).toBe(
+          expected,
+        );
+      });
+    });
   });
 
   // The count reads through `installPluralRulesFallback` on a device, whose

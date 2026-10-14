@@ -11,7 +11,7 @@ const MAX_SUGGESTIONS = 5;
 // typed value, keeping the caller's newest-first order, deduped by normalized
 // name, capped at the top five. A blank typed value yields nothing (the whole
 // pool would otherwise match). Matching is JS-normalized (never SQL), mirroring
-// the sync insert and A1 rule paths.
+// the sync insert and the category-rule paths.
 const matchSuggestions = (descriptions: readonly string[], value: string): string[] => {
   const normalizedValue = normalizeTransactionName(value);
 

@@ -1337,8 +1337,8 @@ describe('holdingsRepo.updateWithBalanceDelta', () => {
     await holdingsRepo.updateWithBalanceDelta('h-1', { balance: Money.of('UAH', 500_00) }, 1);
 
     // No persisted sentence: the list resolves this row's label at render time
-    // through `t` (transactions/row-description.ts), so it follows a language
-    // switch and a holding rename. No category either — the user owns that.
+    // through `t` (src/transactions/row-description/row-description.ts), so it follows a
+    // language switch and a holding rename. No category either — the user owns that.
     expect(captured.inserts[0]).toMatchObject({ description: '', category: null });
   });
 

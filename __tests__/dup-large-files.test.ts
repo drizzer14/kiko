@@ -1,30 +1,24 @@
 import {
+  appendFileSync,
   chmodSync,
   copyFileSync,
   existsSync,
   mkdirSync,
-  mkdtempSync,
   readFileSync,
-  rmSync,
   writeFileSync,
 } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { type SpawnSyncReturns, spawnSync } from 'node:child_process';
+
+import {
+  createTemporaryDirectory,
+  removeTemporaryDirectories,
+} from './test-support/temporary-directory';
 
 // Each test builds a throwaway project with a copy of scripts/checks/dup.sh, the repository's
 // .jscpd.json, and a wrapper around the repository's jscpd binary, so the real jscpd measures
 // real files and the wrapper can fail or log the calls the large-file pass makes.
 const REPOSITORY_ROOT = join(__dirname, '..');
-
-const createdPaths: string[] = [];
-
-function createTempDirectory(prefix: string): string {
-  const directory = mkdtempSync(join(tmpdir(), prefix));
-  createdPaths.push(directory);
-
-  return directory;
-}
 
 const DUPLICATED_BLOCK = [
   'export function computeTotal(items: number[]): number {',
@@ -64,9 +58,9 @@ interface Project {
   invocations: () => string[];
 }
 
-function createProject(): Project {
-  const root = createTempDirectory('kiko-dup-large-');
-  const stateDirectory = createTempDirectory('kiko-dup-large-state-');
+function createProject(libraryPaddingLines = 0): Project {
+  const root = createTemporaryDirectory('kiko-dup-large-');
+  const stateDirectory = createTemporaryDirectory('kiko-dup-large-state-');
   const logPath = join(stateDirectory, 'invocations.log');
   mkdirSync(join(root, 'scripts/checks'), { recursive: true });
   copyFileSync(join(REPOSITORY_ROOT, 'scripts/checks/dup.sh'), join(root, 'scripts/checks/dup.sh'));
@@ -74,7 +68,23 @@ function createProject(): Project {
     join(REPOSITORY_ROOT, 'scripts/checks/_lib.sh'),
     join(root, 'scripts/checks/_lib.sh'),
   );
-  copyFileSync(join(REPOSITORY_ROOT, '.jscpd.json'), join(root, '.jscpd.json'));
+  appendFileSync(
+    join(root, 'scripts/checks/_lib.sh'),
+    Array.from({ length: libraryPaddingLines }, (_unused, index) => `# padding ${index}\n`).join(
+      '',
+    ),
+  );
+  // jscpd's threshold is the duplicated percentage over every file it scans, so the copied
+  // scripts would be part of the denominator and their size would decide the small-file cases.
+  // The project keeps the repository's own rules and only ignores its copies.
+  const repositoryConfig = JSON.parse(readFileSync(join(REPOSITORY_ROOT, '.jscpd.json'), 'utf8'));
+  writeFileSync(
+    join(root, '.jscpd.json'),
+    JSON.stringify({
+      ...repositoryConfig,
+      ignore: [...repositoryConfig.ignore, 'scripts/checks/**'],
+    }),
+  );
   const binary = join(root, 'node_modules/.bin/jscpd');
   mkdirSync(join(root, 'node_modules/.bin'), { recursive: true });
   writeFileSync(
@@ -135,11 +145,7 @@ function measuredPercentage(stderr: string, fileName: string): number {
 }
 
 afterEach(() => {
-  while (createdPaths.length > 0) {
-    const directory = createdPaths.pop();
-
-    if (directory) rmSync(directory, { recursive: true, force: true });
-  }
+  removeTemporaryDirectories();
 });
 
 describe('scripts/checks/dup.sh large files', () => {
@@ -219,6 +225,19 @@ describe('scripts/checks/dup.sh large files', () => {
     expect(result.status).toBe(2);
     expect(result.stderr).toContain('CHECK FAILED');
   });
+
+  it.each([300, 2000])(
+    'still fails on a small duplicated file when the copied _lib.sh holds %i more lines',
+    (paddingLines) => {
+      const project = createProject(paddingLines);
+      project.file('src/small.ts', duplicated(5));
+
+      const result = project.run();
+
+      expect(result.status).toBe(2);
+      expect(result.stderr).toContain('CHECK FAILED');
+    },
+  );
 
   it('fails on a small duplicated file and does not run the large-file pass', () => {
     const project = createProject();

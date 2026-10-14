@@ -80,6 +80,10 @@ const RULE_IDS_WITH_FIXTURES = [
   'kiko-holding-delete-needs-cascade',
   'kiko-no-change-language-in-test-body',
   'kiko-no-typed-jest-require-actual',
+  'kiko-test-title-no-history',
+  'kiko-rejects-to-throw-needs-error',
+  'kiko-sortable-grid-lone-card-lifts',
+  'kiko-kind-ternary-prefers-match',
 ] as const;
 
 // kiko-no-literal-sync-error carries a path-prefixed `paths.include` (
@@ -110,6 +114,9 @@ const NESTED_FIXTURE_PREFIXES: Partial<Record<(typeof RULE_IDS_WITH_FIXTURES)[nu
     'kiko-no-fixed-day-offset-on-real-clock-in-test/src/test-support/day-offset-example',
   'kiko-no-change-language-in-test-body':
     'kiko-no-change-language-in-test-body/src/test-support/language-example',
+  'kiko-test-title-no-history': 'kiko-test-title-no-history/src/test-support/title-example',
+  'kiko-rejects-to-throw-needs-error':
+    'kiko-rejects-to-throw-needs-error/src/test-support/rejects-example',
 };
 
 // A rule scoped by `paths.include` only fires when the guard's OWN probe
@@ -128,6 +135,8 @@ const PROBE_DIRECTORIES: Partial<Record<(typeof RULE_IDS_WITH_FIXTURES)[number],
   'kiko-no-source-text-read-in-test': 'src/test-support',
   'kiko-no-fixed-day-offset-on-real-clock-in-test': 'src/test-support',
   'kiko-no-change-language-in-test-body': 'src/test-support',
+  'kiko-test-title-no-history': 'src/test-support',
+  'kiko-rejects-to-throw-needs-error': 'src/test-support',
 };
 
 function fixturePrefix(ruleId: string): string {

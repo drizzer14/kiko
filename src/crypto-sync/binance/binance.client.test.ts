@@ -164,6 +164,13 @@ describe('fetchAccount', () => {
 });
 
 describe('BinanceRateLimitError', () => {
+  it('carries its own name and a message naming the status', () => {
+    const error = new BinanceRateLimitError(418, 120_000);
+
+    expect(error.name).toBe('BinanceRateLimitError');
+    expect(error.message).toBe('Binance rate limit 418');
+  });
+
   it('rejects with the status and Retry-After converted to milliseconds', async () => {
     await expect(
       fetchAccount('api-key-fixture', 'secret-fixture', {
@@ -205,6 +212,13 @@ describe('BinanceRateLimitError', () => {
 
 describe('BinanceHistoryTooOldError', () => {
   const tooOld = { code: -5026, msg: 'The startTime is too old' };
+
+  it('carries its own name and the message it was given', () => {
+    const error = new BinanceHistoryTooOldError('Binance request failed: 400');
+
+    expect(error.name).toBe('BinanceHistoryTooOldError');
+    expect(error.message).toBe('Binance request failed: 400');
+  });
 
   it('is what a read Binance refuses as older than it keeps rejects with (code -5026)', async () => {
     await expect(
@@ -250,30 +264,51 @@ describe('BinanceHistoryTooOldError', () => {
 // signature is present rather than re-deriving the HMAC.
 type SpyInit = { method?: string; headers: Record<string, string> };
 
+// A fetch that answers `body` and keeps the one request it was given.
+const spyFetch = (body: unknown) => {
+  let sentUrl = '';
+  let sentInit: SpyInit = { headers: {} };
+  const fetchImpl = (async (url: string, init: SpyInit) => {
+    sentUrl = url;
+    sentInit = init;
+
+    return { ok: true, json: async () => body, status: 200, headers: new Headers() };
+  }) as unknown as typeof fetch;
+
+  return { fetchImpl, sent: () => ({ url: new URL(sentUrl), init: sentInit }) };
+};
+
+const expectSignedRequest = (
+  sent: { url: URL; init: SpyInit },
+  method: string,
+  pathname: string,
+  parameters: Record<string, string>,
+) => {
+  expect(sent.url.pathname).toBe(pathname);
+
+  for (const [name, value] of Object.entries(parameters)) {
+    expect(sent.url.searchParams.get(name)).toBe(value);
+  }
+
+  expect(sent.url.searchParams.get('signature')).toBeTruthy();
+  expect(sent.init.method).toBe(method);
+  expect(sent.init.headers['X-MBX-APIKEY']).toBe('api-key-fixture');
+};
+
 describe('fetchFundingAsset', () => {
   it('POSTs to /sapi/v1/asset/get-funding-asset filtered to BTC, signed, with the api-key header', async () => {
-    let sentUrl = '';
-    let sentInit: SpyInit = { headers: {} };
-    const spyFetch = (async (url: string, init: SpyInit) => {
-      sentUrl = url;
-      sentInit = init;
-
-      return { ok: true, json: async () => [], status: 200 };
-    }) as unknown as typeof fetch;
+    const spy = spyFetch([]);
 
     await fetchFundingAsset('api-key-fixture', 'secret-fixture', {
-      fetchImpl: spyFetch,
+      fetchImpl: spy.fetchImpl,
       now: () => NOW,
     });
 
-    const url = new URL(sentUrl);
-    expect(url.pathname).toBe('/sapi/v1/asset/get-funding-asset');
-    expect(url.searchParams.get('asset')).toBe('BTC');
-    expect(url.searchParams.get('recvWindow')).toBe('5000');
-    expect(url.searchParams.get('timestamp')).toBe(String(NOW));
-    expect(url.searchParams.get('signature')).toBeTruthy();
-    expect(sentInit.method).toBe('POST');
-    expect(sentInit.headers['X-MBX-APIKEY']).toBe('api-key-fixture');
+    expectSignedRequest(spy.sent(), 'POST', '/sapi/v1/asset/get-funding-asset', {
+      asset: 'BTC',
+      recvWindow: '5000',
+      timestamp: String(NOW),
+    });
   });
 
   it('returns the parsed funding-asset array', async () => {
@@ -318,30 +353,20 @@ const flexRow = { asset: 'BTC', totalAmount: '0.01' };
 
 describe('fetchFlexiblePosition', () => {
   it('GETs the first page filtered to BTC, size 100, current 1, signed, with the api-key header', async () => {
-    let sentUrl = '';
-    let sentInit: SpyInit = { headers: {} };
-    const spyFetch = (async (url: string, init: SpyInit) => {
-      sentUrl = url;
-      sentInit = init;
-
-      return { ok: true, json: async () => ({ rows: [], total: 0 }), status: 200 };
-    }) as unknown as typeof fetch;
+    const spy = spyFetch({ rows: [], total: 0 });
 
     await fetchFlexiblePosition('api-key-fixture', 'secret-fixture', {
-      fetchImpl: spyFetch,
+      fetchImpl: spy.fetchImpl,
       now: () => NOW,
     });
 
-    const url = new URL(sentUrl);
-    expect(url.pathname).toBe('/sapi/v1/simple-earn/flexible/position');
-    expect(url.searchParams.get('asset')).toBe('BTC');
-    expect(url.searchParams.get('current')).toBe('1');
-    expect(url.searchParams.get('size')).toBe('100');
-    expect(url.searchParams.get('recvWindow')).toBe('5000');
-    expect(url.searchParams.get('timestamp')).toBe(String(NOW));
-    expect(url.searchParams.get('signature')).toBeTruthy();
-    expect(sentInit.method).toBe('GET');
-    expect(sentInit.headers['X-MBX-APIKEY']).toBe('api-key-fixture');
+    expectSignedRequest(spy.sent(), 'GET', '/sapi/v1/simple-earn/flexible/position', {
+      asset: 'BTC',
+      current: '1',
+      size: '100',
+      recvWindow: '5000',
+      timestamp: String(NOW),
+    });
   });
 
   it('stops once the gathered rows cover the reported total', async () => {
@@ -493,28 +518,18 @@ describe('usedWeightsFromHeaders', () => {
 
 describe('fetchLockedPosition', () => {
   it('GETs the first page of /simple-earn/locked/position filtered to BTC, size 100, current 1', async () => {
-    let sentUrl = '';
-    let sentInit: SpyInit = { headers: {} };
-    const spyFetch = (async (url: string, init: SpyInit) => {
-      sentUrl = url;
-      sentInit = init;
-
-      return { ok: true, json: async () => ({ rows: [], total: 0 }), status: 200 };
-    }) as unknown as typeof fetch;
+    const spy = spyFetch({ rows: [], total: 0 });
 
     await fetchLockedPosition('api-key-fixture', 'secret-fixture', {
-      fetchImpl: spyFetch,
+      fetchImpl: spy.fetchImpl,
       now: () => NOW,
     });
 
-    const url = new URL(sentUrl);
-    expect(url.pathname).toBe('/sapi/v1/simple-earn/locked/position');
-    expect(url.searchParams.get('asset')).toBe('BTC');
-    expect(url.searchParams.get('current')).toBe('1');
-    expect(url.searchParams.get('size')).toBe('100');
-    expect(url.searchParams.get('signature')).toBeTruthy();
-    expect(sentInit.method).toBe('GET');
-    expect(sentInit.headers['X-MBX-APIKEY']).toBe('api-key-fixture');
+    expectSignedRequest(spy.sent(), 'GET', '/sapi/v1/simple-earn/locked/position', {
+      asset: 'BTC',
+      current: '1',
+      size: '100',
+    });
   });
 
   it('walks `current` until the gathered rows cover `total`, accumulating every page', async () => {

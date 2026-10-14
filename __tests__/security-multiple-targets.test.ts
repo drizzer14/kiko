@@ -1,15 +1,11 @@
-import {
-  chmodSync,
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { type SpawnSyncReturns, spawnSync } from 'node:child_process';
+import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+
+import {
+  createTemporaryDirectory,
+  removeTemporaryDirectories,
+} from './test-support/temporary-directory';
 
 // Invariants of scripts/checks/security.sh: a call with several files scans every one of them;
 // its failure block names the reason even when Semgrep (run with --quiet) puts it only in its
@@ -18,15 +14,6 @@ import { type SpawnSyncReturns, spawnSync } from 'node:child_process';
 // from the files it is given.
 const SCRIPT = join(__dirname, '../scripts/checks/security.sh');
 const REPOSITORY_ROOT = join(__dirname, '..');
-
-const createdPaths: string[] = [];
-
-function createTempDirectory(prefix: string): string {
-  const directory = mkdtempSync(join(tmpdir(), prefix));
-  createdPaths.push(directory);
-
-  return directory;
-}
 
 const CLASS_A_RESULT = {
   check_id: 'rules.kiko-test-rule',
@@ -49,9 +36,9 @@ interface Harness {
 // STUB_EXIT is set, and answers with a clean scan otherwise. It never writes
 // stderr: the real Semgrep, run with --quiet, does not either.
 function createHarness(): Harness {
-  const stubDirectory = createTempDirectory('kiko-security-multi-stub-');
-  const stateDirectory = createTempDirectory('kiko-security-multi-state-');
-  const workDirectory = createTempDirectory('kiko-security-multi-work-');
+  const stubDirectory = createTemporaryDirectory('kiko-security-multi-stub-');
+  const stateDirectory = createTemporaryDirectory('kiko-security-multi-state-');
+  const workDirectory = createTemporaryDirectory('kiko-security-multi-work-');
   const logPath = join(stubDirectory, 'invocations.log');
   const stubPath = join(stubDirectory, 'semgrep');
   writeFileSync(
@@ -101,11 +88,7 @@ function createHarness(): Harness {
 }
 
 afterEach(() => {
-  while (createdPaths.length > 0) {
-    const directory = createdPaths.pop();
-
-    if (directory) rmSync(directory, { recursive: true, force: true });
-  }
+  removeTemporaryDirectories();
 });
 
 describe('scripts/checks/security.sh with several targets', () => {

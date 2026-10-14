@@ -80,7 +80,7 @@ describe('HoldingCard', () => {
     ).toBe(0);
     const leadBox = StyleSheet.flatten(ancestorWithStyle(title, 'alignItems').props.style);
     expect(leadBox.flex).toBe(1);
-    // A short name still centers beside the icon tile, as before.
+    // A short name still centers beside the icon tile.
     expect(leadBox.alignItems).toBe('center');
   });
 

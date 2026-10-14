@@ -3,6 +3,7 @@ import { Money } from '@kiko/currency/money';
 import { parseAmount } from '@kiko/currency/parse';
 import type { Currency } from '@kiko/currency/currency';
 import type { FormMode } from '@kiko/screens/forms/mode-select-field';
+import { isTemplateNameTaken } from '@kiko/transaction-templates/template-name';
 
 // Whether a money field holds a strictly positive number — the same guard every
 // `save` path applies before it writes. `parseAmount` yields NaN for a blank,
@@ -34,10 +35,24 @@ export type SaveDisabledParams = {
   selectedCategory: string | null;
   changeReturns: readonly { holdingId: string | null; amount: string }[];
   currency: Currency;
+  // The holding the form saves against, whichever way it was fixed: the picker, the page it was
+  // opened from, or the row being edited. Null while none is.
+  primaryHoldingId: string | null;
+  templateName: string;
+  // Whether the name field is asked for: a template mode always, a transaction when its
+  // "save as a template" switch is on.
+  templateNameRequired: boolean;
+  isTemplateMode: boolean;
+  // Every stored template, for the case-insensitive name check; `editTemplateId` is the one being
+  // edited, which does not count against its own name.
+  templateNames: readonly { id: string; name: string }[];
+  editTemplateId: string | null;
 };
 
 // The field key each save-blocking condition below belongs to.
 export type SaveDisabledField =
+  | 'templateName'
+  | 'holding'
   | 'counterpartHolding'
   | 'counterpartAmount'
   | 'destinationHolding'
@@ -53,6 +68,47 @@ export type SaveDisabledField =
 // field keys — a mode's function never even mentions a field it has no
 // opinion on, so there is no all-undefined record to keep in sync by hand.
 type TransactionFieldErrors = Partial<Record<SaveDisabledField, string>>;
+
+const holdingError = (params: SaveDisabledParams, t: TFunction): string | undefined =>
+  params.primaryHoldingId === null ? t('forms.transaction.selectHoldingError') : undefined;
+
+// The name field's own error, in a template mode and beside a transaction alike. A taken name is
+// judged here against the live list alone; a name taken since that list was read is refused by the
+// write, which the shared save-error alert reports.
+const templateNameError = (params: SaveDisabledParams, t: TFunction): string | undefined => {
+  if (params.templateName.trim() === '') {
+    return t('forms.transaction.templateNameError');
+  }
+
+  return isTemplateNameTaken(params.templateName, params.templateNames, params.editTemplateId)
+    ? t('forms.transaction.templateNameTakenError')
+    : undefined;
+};
+
+// A template leaves every amount optional: a blank one is fine, a filled one must still be
+// positive.
+const isBlankOrPositive = (text: string): boolean =>
+  text.trim() === '' || isPositiveAmountText(text);
+
+const filledAmountError = (text: string, message: string): string | undefined =>
+  isBlankOrPositive(text) ? undefined : message;
+
+// Every field's OWN independent error in a template mode. Only the holding is required (beside
+// the name, `resolveFieldErrors`): the destination, the return holdings and the category are not
+// checked at all. One function serves all four modes: `resolveFieldOrder` picks the keys a mode
+// shows, so the Value out and plain amount errors share the one amount text.
+const templateModeFieldErrors = (
+  params: SaveDisabledParams,
+  t: TFunction,
+): TransactionFieldErrors => ({
+  holding: holdingError(params, t),
+  amount: filledAmountError(params.amount, t('forms.transaction.amountError')),
+  valueOut: filledAmountError(params.amount, t('forms.transaction.valueOutError')),
+  valueIn: filledAmountError(params.valueIn, t('forms.transaction.valueInError')),
+  splitReturns: params.changeReturns.every((change) => isBlankOrPositive(change.amount))
+    ? undefined
+    : t('forms.transaction.amountError'),
+});
 
 // Every field's OWN independent error for the convert mode.
 const convertingFieldErrors = (
@@ -70,6 +126,7 @@ const convertingFieldErrors = (
 
 // Every field's OWN independent error for the exchange mode.
 const exchangeFieldErrors = (params: SaveDisabledParams, t: TFunction): TransactionFieldErrors => ({
+  holding: holdingError(params, t),
   destinationHolding:
     params.destinationHoldingId === null
       ? t('forms.transaction.selectDestinationError')
@@ -85,6 +142,7 @@ const exchangeFieldErrors = (params: SaveDisabledParams, t: TFunction): Transact
 // own error; returns that cover the payment stay the returns' error, which
 // also turns the Amount label red (`isSplitAmountInvalid`).
 const splitFieldErrors = (params: SaveDisabledParams, t: TFunction): TransactionFieldErrors => ({
+  holding: holdingError(params, t),
   amount: isPositiveAmountText(params.amount) ? undefined : t('forms.transaction.amountError'),
   selectedCategory:
     params.selectedCategory === null ? t('forms.transaction.selectCategoryError') : undefined,
@@ -98,6 +156,7 @@ const splitFieldErrors = (params: SaveDisabledParams, t: TFunction): Transaction
 export const isSplitAmountInvalid = (params: SaveDisabledParams, attemptedSave: boolean): boolean =>
   attemptedSave &&
   params.isSplit &&
+  !params.isTemplateMode &&
   returnsCoverPayment(params.amount, params.changeReturns, params.currency);
 
 // Every field's OWN independent error for the read-only/editing/fresh-add
@@ -112,6 +171,7 @@ const plainFieldErrors = (params: SaveDisabledParams, t: TFunction): Transaction
   }
 
   return {
+    holding: holdingError(params, t),
     amount: isPositiveAmountText(params.amount) ? undefined : t('forms.transaction.amountError'),
     selectedCategory:
       params.isEditing || params.selectedCategory !== null
@@ -146,7 +206,7 @@ type ModeBehavior = {
 
 const PLAIN_MODE_BEHAVIOR: ModeBehavior = {
   fieldErrors: plainFieldErrors,
-  fieldOrder: ['amount', 'selectedCategory'],
+  fieldOrder: ['holding', 'amount', 'selectedCategory'],
   save: null,
 };
 
@@ -158,12 +218,12 @@ export const MODE_BEHAVIOR: Record<ActiveMode, ModeBehavior> = {
   expense: PLAIN_MODE_BEHAVIOR,
   exchange: {
     fieldErrors: exchangeFieldErrors,
-    fieldOrder: ['destinationHolding', 'valueOut', 'valueIn'],
+    fieldOrder: ['holding', 'destinationHolding', 'valueOut', 'valueIn'],
     save: 'exchange',
   },
   split: {
     fieldErrors: splitFieldErrors,
-    fieldOrder: ['amount', 'selectedCategory', 'splitReturns'],
+    fieldOrder: ['holding', 'amount', 'selectedCategory', 'splitReturns'],
     save: 'split',
   },
   converting: {
@@ -171,6 +231,47 @@ export const MODE_BEHAVIOR: Record<ActiveMode, ModeBehavior> = {
     fieldOrder: ['counterpartHolding', 'counterpartAmount'],
     save: 'convert',
   },
+};
+
+// The fields a template mode can block on, besides its name: it asks for the holding and checks
+// the amounts only when filled.
+const TEMPLATE_BLOCKING_FIELDS: ReadonlySet<SaveDisabledField> = new Set([
+  'holding',
+  'amount',
+  'valueOut',
+  'valueIn',
+  'splitReturns',
+]);
+
+// Every field's errors for the active mode: a template mode swaps the mode's own rules for the
+// template's, and the name field adds its error wherever it is asked for.
+export const resolveFieldErrors = (
+  activeMode: ActiveMode,
+  params: SaveDisabledParams,
+  t: TFunction,
+): TransactionFieldErrors => {
+  const modeErrors = params.isTemplateMode
+    ? templateModeFieldErrors(params, t)
+    : MODE_BEHAVIOR[activeMode].fieldErrors(params, t);
+
+  return params.templateNameRequired
+    ? { ...modeErrors, templateName: templateNameError(params, t) }
+    : modeErrors;
+};
+
+// The scroll/priority order that goes with `resolveFieldErrors`: the name leads a template mode
+// (it sits on top of the form) and trails a transaction (it sits under the switch at the bottom).
+export const resolveFieldOrder = (
+  activeMode: ActiveMode,
+  params: SaveDisabledParams,
+): readonly SaveDisabledField[] => {
+  const modeOrder = MODE_BEHAVIOR[activeMode].fieldOrder;
+
+  if (params.isTemplateMode) {
+    return ['templateName', ...modeOrder.filter((key) => TEMPLATE_BLOCKING_FIELDS.has(key))];
+  }
+
+  return params.templateNameRequired ? [...modeOrder, 'templateName'] : modeOrder;
 };
 
 // The first still-invalid field in priority order, or null once every field

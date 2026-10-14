@@ -3,15 +3,17 @@ import {
   copyFileSync,
   existsSync,
   mkdirSync,
-  mkdtempSync,
   readFileSync,
   realpathSync,
-  rmSync,
   writeFileSync,
 } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { type SpawnSyncReturns, spawn, spawnSync } from 'node:child_process';
+
+import {
+  createTemporaryDirectory,
+  removeTemporaryDirectories,
+} from './test-support/temporary-directory';
 
 // harness/kiko/hooks/dispatch.sh is the plugin's own hook dispatcher: every
 // hooks.json entry now invokes `dispatch.sh <script-name>` instead of a
@@ -25,17 +27,8 @@ import { type SpawnSyncReturns, spawn, spawnSync } from 'node:child_process';
 // wiring") for why.
 const DISPATCH = join(__dirname, '../harness/kiko/hooks/dispatch.sh');
 
-const createdPaths: string[] = [];
-
-function createTempDirectory(prefix: string): string {
-  const directory = mkdtempSync(join(tmpdir(), prefix));
-  createdPaths.push(directory);
-
-  return directory;
-}
-
 function initGitRepository(prefix: string): string {
-  const directory = createTempDirectory(prefix);
+  const directory = createTemporaryDirectory(prefix);
   const result = spawnSync('git', ['init', '--quiet', directory], { encoding: 'utf8' });
 
   if (result.status !== 0) {
@@ -147,11 +140,7 @@ function runDispatch(
 }
 
 afterEach(() => {
-  while (createdPaths.length > 0) {
-    const directory = createdPaths.pop();
-
-    if (directory) rmSync(directory, { recursive: true, force: true });
-  }
+  removeTemporaryDirectories();
 });
 
 describe('harness/kiko/hooks/dispatch.sh', () => {
@@ -289,7 +278,7 @@ describe('harness/kiko/hooks/dispatch.sh', () => {
     const fallbackRepository = initGitRepository('kiko-dispatch-fallback-nogit-');
     const marker = join(fallbackRepository, 'marker.txt');
     writeStubScript(fallbackRepository, 'fast.sh', marker);
-    const outsideDirectory = createTempDirectory('kiko-dispatch-plain-dir-');
+    const outsideDirectory = createTemporaryDirectory('kiko-dispatch-plain-dir-');
     const targetFile = join(outsideDirectory, 'example.ts');
 
     const result = runDispatch('fast.sh', payloadForFile(targetFile), {
@@ -303,7 +292,7 @@ describe('harness/kiko/hooks/dispatch.sh', () => {
   });
 
   it('denies (deny JSON, exit 2) for pre-write-guard.sh when the dispatcher itself cannot even buffer stdin', () => {
-    const fakeBinDirectory = createTempDirectory('kiko-dispatch-fake-bin-');
+    const fakeBinDirectory = createTemporaryDirectory('kiko-dispatch-fake-bin-');
     writeFileSync(
       join(fakeBinDirectory, 'mktemp'),
       ['#!/usr/bin/env bash', 'exit 1', ''].join('\n'),
@@ -323,7 +312,7 @@ describe('harness/kiko/hooks/dispatch.sh', () => {
   });
 
   it('follows its kept fail-open semantics (exit 0, no output) for fast.sh on the same dispatcher crash', () => {
-    const fakeBinDirectory = createTempDirectory('kiko-dispatch-fake-bin-fast-');
+    const fakeBinDirectory = createTemporaryDirectory('kiko-dispatch-fake-bin-fast-');
     writeFileSync(
       join(fakeBinDirectory, 'mktemp'),
       ['#!/usr/bin/env bash', 'exit 1', ''].join('\n'),
@@ -341,7 +330,7 @@ describe('harness/kiko/hooks/dispatch.sh', () => {
   });
 
   it("follows kill-guard.sh's own always-allow semantics on the same dispatcher crash", () => {
-    const fakeBinDirectory = createTempDirectory('kiko-dispatch-fake-bin-kill-');
+    const fakeBinDirectory = createTemporaryDirectory('kiko-dispatch-fake-bin-kill-');
     writeFileSync(
       join(fakeBinDirectory, 'mktemp'),
       ['#!/usr/bin/env bash', 'exit 1', ''].join('\n'),
@@ -389,7 +378,7 @@ describe('harness/kiko/hooks/dispatch.sh', () => {
     const fallbackRepository = initGitRepository('kiko-dispatch-cwd-nogit-fallback-');
     const marker = join(fallbackRepository, 'marker.txt');
     writeStubScript(fallbackRepository, 'kill-guard.sh', marker);
-    const outsideDirectory = createTempDirectory('kiko-dispatch-cwd-plain-dir-');
+    const outsideDirectory = createTemporaryDirectory('kiko-dispatch-cwd-plain-dir-');
 
     const result = runDispatch('kill-guard.sh', payloadForCwd(outsideDirectory), {
       ...process.env,
@@ -412,7 +401,7 @@ describe('harness/kiko/hooks/dispatch.sh', () => {
     const realGitPath = spawnSync('which', ['git'], { encoding: 'utf8' }).stdout.trim();
 
     it('denies (deny JSON, exit 2) for pre-write-guard.sh', () => {
-      const fakeBinDirectory = createTempDirectory('kiko-dispatch-fake-git-deny-');
+      const fakeBinDirectory = createTemporaryDirectory('kiko-dispatch-fake-git-deny-');
       writeFakeGitOtherFailure(fakeBinDirectory, realGitPath);
 
       const result = runDispatch('pre-write-guard.sh', payloadForFile('/tmp/whatever-i2.ts'), {
@@ -428,7 +417,7 @@ describe('harness/kiko/hooks/dispatch.sh', () => {
     });
 
     it('follows its kept fail-open semantics (exit 0, no output) for fast.sh', () => {
-      const fakeBinDirectory = createTempDirectory('kiko-dispatch-fake-git-fast-');
+      const fakeBinDirectory = createTemporaryDirectory('kiko-dispatch-fake-git-fast-');
       writeFakeGitOtherFailure(fakeBinDirectory, realGitPath);
 
       const result = runDispatch('fast.sh', payloadForFile('/tmp/whatever-i2.ts'), {
@@ -442,9 +431,9 @@ describe('harness/kiko/hooks/dispatch.sh', () => {
     });
 
     it("follows kill-guard.sh's own always-allow semantics for a cwd-based payload", () => {
-      const fakeBinDirectory = createTempDirectory('kiko-dispatch-fake-git-kill-');
+      const fakeBinDirectory = createTemporaryDirectory('kiko-dispatch-fake-git-kill-');
       writeFakeGitOtherFailure(fakeBinDirectory, realGitPath);
-      const cwdDirectory = createTempDirectory('kiko-dispatch-fake-git-kill-cwd-');
+      const cwdDirectory = createTemporaryDirectory('kiko-dispatch-fake-git-kill-cwd-');
 
       const result = runDispatch('kill-guard.sh', payloadForCwd(cwdDirectory), {
         ...process.env,

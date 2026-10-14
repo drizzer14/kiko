@@ -8,8 +8,8 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
 import { execFileSync } from 'node:child_process';
+import { dirname, basename, join } from 'node:path';
 
 import {
   type Paragraph,
@@ -17,6 +17,12 @@ import {
   INLINE_CODE_PATTERN,
   paragraphsOutsideFences,
 } from './test-support/markdown-code-spans';
+import {
+  type Citation,
+  type SourceComment,
+  sourceComments,
+  sourceCommentCitations,
+} from './test-support/source-comment-citations';
 import { repositoryFiles } from './test-support/repository-files';
 
 // A unit move leaves the skills and harness docs citing the old path, and a
@@ -83,8 +89,6 @@ const RESOLUTION_TARGETS = [
 // stale fails the test, so the list can only shrink.
 const KNOWN_STALE_CITATIONS: ReadonlyArray<{ file: string; path: string }> = [];
 
-type Citation = { line: number; path: string };
-
 const citationsInParagraph =
   (pattern: RegExp) =>
   (paragraph: Paragraph): Citation[] =>
@@ -108,14 +112,16 @@ const citationsInParagraph =
 const citedPaths = (markdown: string): Citation[] =>
   paragraphsOutsideFences(markdown).flatMap(citationsInParagraph(CITATION_PATTERN));
 
+const startsInChildFolderOfRoot = (citation: Citation): boolean => {
+  const firstSegment = citation.path.split('/')[0];
+
+  return !CITED_ROOTS.includes(firstSegment) && CHILD_FOLDERS_OF_ROOTS.has(firstSegment);
+};
+
 const citedPartialPaths = (markdown: string): Citation[] =>
   paragraphsOutsideFences(markdown)
     .flatMap(citationsInParagraph(PARTIAL_CITATION_PATTERN))
-    .filter((citation) => {
-      const firstSegment = citation.path.split('/')[0];
-
-      return !CITED_ROOTS.includes(firstSegment) && CHILD_FOLDERS_OF_ROOTS.has(firstSegment);
-    });
+    .filter(startsInChildFolderOfRoot);
 
 const partialCitationResolves = (path: string): boolean => {
   const suffix = `/${path.replace(/\/+$/, '')}`;
@@ -315,5 +321,280 @@ describe('repo paths cited in skills, agents and harness docs', () => {
     expect(KNOWN_STALE_CITATIONS.map(citationKey).filter((key) => !stillMissing.has(key))).toEqual(
       [],
     );
+  });
+});
+
+// A migration regenerates under a new name and a moved file leaves a src comment naming the old
+// one, with nothing to fail until a reader follows it. A comment names a path under src, docs,
+// rules, e2e, drizzle, scripts or __tests__, or a migration file name on its own
+// (`0012_name.sql`); either must exist.
+const presentBasenames = new Set(presentFiles.map((file) => basename(file)));
+
+// A comment also names a path without its root (`monobank/sync/sync.ts`), which resolves the way a
+// partial citation in a doc does. Prose is not backticked there, so only a path that ends in a file
+// extension is a claim about a file; `accounts/holdings` is two words with a slash.
+const FILE_EXTENSION_PATTERN = /\.\w+$/;
+
+// A path that a comment wraps at a hyphen (`category-` then `// breakdown.ts`) is one path, so the
+// wrap is cut out before matching. A cut moves every later index, so the index is walked back to
+// the comment as written, which keeps a later citation on its own line.
+const HYPHEN_WRAP_PATTERN = /-\n[ \t]*(?:\/\/|\*)[ \t]*/g;
+
+const originalOffset = (comment: string, joinedIndex: number): number =>
+  [...comment.matchAll(HYPHEN_WRAP_PATTERN)].reduce(
+    (offset, wrap) => ((wrap.index ?? 0) + 1 <= offset ? offset + wrap[0].length - 1 : offset),
+    joinedIndex,
+  );
+
+// The parse lists each `//` line as a comment of its own, so a wrap between two of them is joined
+// here into one comment whose text holds the line break.
+const withLineCommentsJoinedAtHyphens = (comments: SourceComment[]): SourceComment[] =>
+  comments.reduce<SourceComment[]>((joined, comment) => {
+    const previous = joined.at(-1);
+    const continues =
+      previous?.text.startsWith('//') === true &&
+      previous.text.endsWith('-') &&
+      comment.text.startsWith('//') &&
+      comment.line === previous.line + lineCountBefore(previous.text, previous.text.length) + 1;
+
+    if (continues) {
+      joined[joined.length - 1] = {
+        line: previous.line,
+        text: `${previous.text}\n${comment.text}`,
+      };
+    } else {
+      joined.push(comment);
+    }
+
+    return joined;
+  }, []);
+
+const partialCommentCitations = (fileName: string, text: string): Citation[] =>
+  withLineCommentsJoinedAtHyphens(sourceComments(fileName, text)).flatMap((comment) =>
+    [...comment.text.replace(HYPHEN_WRAP_PATTERN, '-').matchAll(PARTIAL_CITATION_PATTERN)]
+      .map((match) => ({
+        line:
+          comment.line +
+          lineCountBefore(comment.text, originalOffset(comment.text, match.index ?? 0)),
+        path: match[0].replace(/\.+$/, ''),
+      }))
+      .filter((citation) => FILE_EXTENSION_PATTERN.test(citation.path))
+      .filter((citation) => !PLACEHOLDER_PATTERN.test(citation.path))
+      .filter(startsInChildFolderOfRoot),
+  );
+
+const unresolvedSourceCitations = (fileName: string, text: string): Citation[] => [
+  ...sourceCommentCitations(fileName, text).filter((citation) =>
+    citation.path.includes('/')
+      ? !existsSync(join(REPOSITORY_ROOT, citation.path))
+      : !presentBasenames.has(citation.path),
+  ),
+  ...partialCommentCitations(fileName, text).filter(
+    (citation) => !partialCitationResolves(citation.path),
+  ),
+];
+
+describe('sourceCommentCitations', () => {
+  it('finds a tree path and a bare migration name in a line comment (POSITIVE)', () => {
+    expect(
+      sourceCommentCitations('a.ts', '// see src/db/schema.ts and 0012_add_note.sql\n'),
+    ).toEqual([
+      { line: 1, path: 'src/db/schema.ts' },
+      { line: 1, path: '0012_add_note.sql' },
+    ]);
+  });
+
+  it('reports a path in a block comment at its own line, once for a migration path', () => {
+    expect(
+      sourceCommentCitations(
+        'a.ts',
+        'const a = 1;\n/**\n * Reads drizzle/migrations/0002_seed_categories.sql here.\n */\n',
+      ),
+    ).toEqual([{ line: 3, path: 'drizzle/migrations/0002_seed_categories.sql' }]);
+  });
+
+  it('finds a path in a comment that trails code', () => {
+    expect(sourceCommentCitations('a.ts', 'const a = 1; // docs/harness/x.md\n')).toEqual([
+      { line: 1, path: 'docs/harness/x.md' },
+    ]);
+  });
+
+  it('skips a path in a string, a template or JSX text (NEGATIVE)', () => {
+    expect(
+      sourceCommentCitations(
+        'a.tsx',
+        "const a = 'src/gone/missing.ts';\nconst b = `docs/gone.md`;\nconst c = <Text>// src/gone/x.ts</Text>;\n",
+      ),
+    ).toEqual([]);
+  });
+
+  it('skips a glob, a brace form, a placeholder and a directory (NEGATIVE)', () => {
+    expect(
+      sourceCommentCitations(
+        'a.ts',
+        '// src/**/*.ts src/a.{ts,tsx} src/<unit>/x.ts src/screens/ drizzle/migrations/\n',
+      ),
+    ).toEqual([]);
+  });
+
+  it('finds a path under the test, rule and end-to-end roots', () => {
+    expect(
+      sourceCommentCitations(
+        'a.ts',
+        '// __tests__/a.test.ts, rules/semgrep-prewrite.yml and e2e/screenshot/b.ts\n',
+      ),
+    ).toEqual([
+      { line: 1, path: '__tests__/a.test.ts' },
+      { line: 1, path: 'rules/semgrep-prewrite.yml' },
+      { line: 1, path: 'e2e/screenshot/b.ts' },
+    ]);
+  });
+
+  it('finds a path under the skill and harness roots', () => {
+    expect(
+      sourceCommentCitations(
+        'a.ts',
+        '// .claude/skills/kiko-design-system/SKILL.md and harness/kiko/agents/developer.md\n',
+      ),
+    ).toEqual([
+      { line: 1, path: '.claude/skills/kiko-design-system/SKILL.md' },
+      { line: 1, path: 'harness/kiko/agents/developer.md' },
+    ]);
+  });
+
+  it('reports a planted skill and harness path that are not in the tree', () => {
+    expect(
+      unresolvedSourceCitations('a.ts', '// .claude/skills/gone/SKILL.md, harness/gone/x.md\n'),
+    ).toEqual([
+      { line: 1, path: '.claude/skills/gone/SKILL.md' },
+      { line: 1, path: 'harness/gone/x.md' },
+    ]);
+  });
+});
+
+describe('sourceComments', () => {
+  it('lists each comment with the line it starts on, and no string or JSX text (POSITIVE)', () => {
+    expect(
+      sourceComments(
+        'a.tsx',
+        "const a = '// not one';\n// one\nconst b = 1; /* two\n three */\nconst c = <Text>// no</Text>;\n",
+      ),
+    ).toEqual([
+      { line: 2, text: '// one' },
+      { line: 3, text: '/* two\n three */' },
+    ]);
+  });
+});
+
+describe('repo paths cited in src comments', () => {
+  it('reports a planted path and a planted migration name that are not in the tree', () => {
+    expect(
+      unresolvedSourceCitations(
+        'a.ts',
+        '// see src/gone/missing.ts, drizzle/migrations/9999_gone.sql and 9998_gone_too.sql\n',
+      ),
+    ).toEqual([
+      { line: 1, path: 'src/gone/missing.ts' },
+      { line: 1, path: 'drizzle/migrations/9999_gone.sql' },
+      { line: 1, path: '9998_gone_too.sql' },
+    ]);
+  });
+
+  it('reports a planted test, rule and end-to-end path that are not in the tree', () => {
+    expect(
+      unresolvedSourceCitations(
+        'a.ts',
+        '// see __tests__/gone.test.ts, rules/gone.yml and e2e/gone/flow.yaml\n',
+      ),
+    ).toEqual([
+      { line: 1, path: '__tests__/gone.test.ts' },
+      { line: 1, path: 'rules/gone.yml' },
+      { line: 1, path: 'e2e/gone/flow.yaml' },
+    ]);
+  });
+
+  it('reports a planted path without its root, in a line, a block and a trailing comment', () => {
+    expect(
+      unresolvedSourceCitations(
+        'a.ts',
+        [
+          '// see `monobank/gone/missing.ts`.',
+          '/**',
+          ' * Mirrors currency/gone.ts and design-system/gone.tsx.',
+          ' */',
+          'const a = 1; // transactions/gone-description.ts',
+        ].join('\n'),
+      ),
+    ).toEqual([
+      { line: 1, path: 'monobank/gone/missing.ts' },
+      { line: 3, path: 'currency/gone.ts' },
+      { line: 3, path: 'design-system/gone.tsx' },
+      { line: 5, path: 'transactions/gone-description.ts' },
+    ]);
+  });
+
+  it('resolves a path without its root that is in the tree, and skips prose and packages', () => {
+    expect(
+      unresolvedSourceCitations(
+        'a.ts',
+        [
+          '// see design-system/entity-tint/entity-tint.ts and monobank/sync/sync.ts,',
+          '// the income/expense split, accounts/holdings, 1/2, @kiko/db/client and lint/suspicious/x.',
+          "const a = 'monobank/gone.ts';",
+        ].join('\n'),
+      ),
+    ).toEqual([]);
+  });
+
+  it('joins a path that a line comment or a block comment wraps at a hyphen', () => {
+    expect(
+      unresolvedSourceCitations(
+        'a.ts',
+        [
+          '// see `monobank/gone/missing-',
+          '// path.ts` and monobank/gone/second.ts',
+          '/**',
+          ' * Mirrors currency/gone-',
+          ' *   third.ts here.',
+          ' */',
+        ].join('\n'),
+      ),
+    ).toEqual([
+      { line: 1, path: 'monobank/gone/missing-path.ts' },
+      { line: 2, path: 'monobank/gone/second.ts' },
+      { line: 4, path: 'currency/gone-third.ts' },
+    ]);
+  });
+
+  it('resolves a path that a comment wraps at a hyphen when the joined path is in the tree', () => {
+    expect(
+      unresolvedSourceCitations(
+        'a.ts',
+        '// see design-system/entity-tint/entity-\n// tint.ts here.\n',
+      ),
+    ).toEqual([]);
+  });
+
+  it('resolves a path and a migration name that are in the tree', () => {
+    expect(
+      unresolvedSourceCitations(
+        'a.ts',
+        '// see src/db/schema.ts, drizzle/migrations/0002_seed_categories.sql and 0002_seed_categories.sql\n',
+      ),
+    ).toEqual([]);
+  });
+
+  it('cites only paths and migration names that exist', () => {
+    const sourceFiles = presentFiles.filter(
+      (file) => file.startsWith('src/') && /\.tsx?$/.test(file),
+    );
+
+    expect(
+      sourceFiles.flatMap((file) =>
+        unresolvedSourceCitations(file, readFileSync(join(REPOSITORY_ROOT, file), 'utf8')).map(
+          (citation) => `${file}:${citation.line} ${citation.path}`,
+        ),
+      ),
+    ).toEqual([]);
   });
 });

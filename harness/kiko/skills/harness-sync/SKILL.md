@@ -32,6 +32,12 @@ in the harness repo):
   on a missing scan root. Portable only to a repo that uses the
   `src/design-system/components/<name>/` convention.
 - Capitalization-tolerant history-word phrases in the history-word comment rule (`0fb10efc`).
+- All of H5 (not synced yet): the job queue (`scripts/job-queue.sh`), run-log wait/gaps, the
+  comment/test-title rules, the pre-commit typecheck hook, the mutation ETA with timeouts, and
+  the H5 closeout.
+- The CLAUDE.md trim (docs/harness/checks.md split).
+- A sync branch `h5-sync` exists in drizzer14/harness (tip `d92f28d`); its plugin patch list
+  P1-P25 is pending the user.
 
 ## Classification
 
@@ -165,6 +171,9 @@ Every count and exit code is the orchestrator's own measured result.
 
 - `run-log.mjs` was ported harness -> pff-ios from `cc5cd0f` (`d761245`); the
   byte-identical rule is in `harness-workflow`'s "Run log".
+- `run-log.mjs` changed again in pff-ios and needs porting to the harness repo: port whatever
+  `git diff e2d96c17..f6f96f68 -- harness/kiko/scripts/run-log.mjs` shows (the change set's own
+  range), byte-identical.
 - The script has no dispatch/step-start event, so per-step `Minutes` miss the work before the
   first verdict; fix in the harness repo.
 - The source finish snippet prints "run-log: not installed, skipped" also when `node finish`

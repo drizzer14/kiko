@@ -37,7 +37,7 @@ const createdAtCount = (): number =>
     }
   ).count;
 
-const enter = (holdingId: string, amountMinorUnits = -100): Promise<void> =>
+const enter = (holdingId: string, amountMinorUnits = -100): Promise<string> =>
   transactionsRepo.recordManual({ holdingId, amountMinorUnits, time: TIME, category: 'food' });
 
 const exchange = (sourceHoldingId: string, destinationHoldingId: string, time = TIME) =>

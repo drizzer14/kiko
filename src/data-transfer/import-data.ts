@@ -1,4 +1,5 @@
 import * as RNFS from 'react-native-fs';
+import { isRecord } from '@kiko/type-guards';
 import { bifold, eitherSync, isLeft } from 'fnts/either';
 import { recostStoredLots } from '@kiko/holdings/lot-recost';
 import { runLoanAutoLink } from '@kiko/loans/use-loan-auto-link';
@@ -13,7 +14,12 @@ import {
 } from './crypto/envelope';
 import { utf8Decode } from './utf8/utf8';
 import type { ExportPayload } from './payload';
+import {
+  type LegacyCategoryOverrideRow,
+  withLegacyOverridesConverted,
+} from './snapshot/with-legacy-overrides-converted';
 import { decodeBase64ToBytes } from './base64/base64';
+import type { DataSnapshot } from './snapshot/data-snapshot';
 import { isExportSecrets } from './secrets/is-export-secrets';
 import { restoreDataSnapshot } from './snapshot/restore-snapshot';
 import { type ExportSecretKind, restoreExportSecrets } from './secrets/restore-secrets';
@@ -57,31 +63,85 @@ const REQUIRED_TABLE_KEYS = [
   'settings',
   'syncState',
   'categories',
-  'categoryOverrides',
 ] as const;
+
+// A file written before category rules (versions 1 and 2) carries the name rules as overrides, and
+// has no rule table; a version 3 file carries rules and no overrides.
+const FIRST_RULES_EXPORT_VERSION = 3;
+
+type LegacyExportPayload = Omit<ExportPayload, 'tables'> & {
+  tables: Omit<DataSnapshot, 'categoryRules'> & { categoryOverrides: LegacyCategoryOverrideRow[] };
+};
 
 const restoredAccountIds = (accountRows: readonly { id?: unknown }[]): ReadonlySet<string> =>
   new Set(accountRows.flatMap(({ id }) => (typeof id === 'string' ? [id] : [])));
 
-const isExportPayload = (value: unknown): value is ExportPayload => {
-  if (
-    typeof value !== 'object' ||
-    value === null ||
-    typeof (value as ExportPayload).exportedAt !== 'number'
-  ) {
+// Only the shape of a rule is checked, never whether its matchers read back: the app itself stores
+// a rule it cannot read (a migrated override with a blank name) and exports it, and a restore must
+// take its own file back. A rule that does not read never matches and shows as unreadable.
+const isStoredCategoryRule = (value: unknown): boolean =>
+  isRecord(value) &&
+  typeof value.id === 'string' &&
+  typeof value.category === 'string' &&
+  typeof value.matchers === 'string' &&
+  typeof value.createdAt === 'number' &&
+  typeof value.updatedAt === 'number';
+
+// An override row as an earlier build exported it: its timestamps may be missing, its text never.
+const isLegacyCategoryOverride = (value: unknown): boolean =>
+  isRecord(value) &&
+  typeof value.category === 'string' &&
+  typeof value.displayName === 'string' &&
+  (value.createdAt === undefined || typeof value.createdAt === 'number') &&
+  (value.updatedAt === undefined || typeof value.updatedAt === 'number');
+
+const hasPayloadShape = (value: unknown, tableKeys: readonly string[]): boolean => {
+  if (!isRecord(value) || typeof value.exportedAt !== 'number') {
     return false;
   }
 
-  const { tables, secrets } = value as ExportPayload;
+  const { tables, secrets } = value;
 
-  if (typeof tables !== 'object' || tables === null) {
+  if (!isRecord(tables)) {
     return false;
   }
 
   return (
-    REQUIRED_TABLE_KEYS.every((key) => Array.isArray((tables as Record<string, unknown>)[key])) &&
+    tableKeys.every((key) => Array.isArray(tables[key])) &&
     (secrets === undefined || isExportSecrets(secrets))
   );
+};
+
+const isExportPayload = (value: unknown): value is ExportPayload =>
+  hasPayloadShape(value, [...REQUIRED_TABLE_KEYS, 'categoryRules']) &&
+  (value as ExportPayload).tables.categoryRules.every(isStoredCategoryRule);
+
+const isLegacyExportPayload = (value: unknown): value is LegacyExportPayload =>
+  hasPayloadShape(value, [...REQUIRED_TABLE_KEYS, 'categoryOverrides']) &&
+  (value as LegacyExportPayload).tables.categoryOverrides.every(isLegacyCategoryOverride);
+
+// The payload as this build restores it, or undefined when the file is not a valid export of its
+// own version. An older file's overrides become rules before the restore, as the category-rules
+// migration makes them; no rewrite runs, because the rows of the file already carry the
+// categories they have.
+const payloadToRestore = (value: unknown, version: number): ExportPayload | undefined => {
+  if (version >= FIRST_RULES_EXPORT_VERSION) {
+    return isExportPayload(value) ? value : undefined;
+  }
+
+  if (!isLegacyExportPayload(value)) {
+    return undefined;
+  }
+
+  const { categoryOverrides, ...tables } = value.tables;
+
+  return {
+    ...value,
+    tables: {
+      ...tables,
+      categoryRules: withLegacyOverridesConverted(categoryOverrides, Date.now()),
+    },
+  };
 };
 
 const INVALID_FILE_MESSAGE = 'data-transfer/import: not a valid Kiko export file';
@@ -153,12 +213,13 @@ export const importData = async (options: {
 
   const plaintext = decryptEnvelope(envelope, key);
 
-  const payload = attemptOrThrow<unknown>(
+  const parsedPayload = attemptOrThrow<unknown>(
     () => JSON.parse(utf8Decode(plaintext)),
     INVALID_FILE_MESSAGE,
   );
+  const payload = payloadToRestore(parsedPayload, envelope.version);
 
-  if (!isExportPayload(payload)) {
+  if (payload === undefined) {
     throw new Error(INVALID_FILE_MESSAGE);
   }
 

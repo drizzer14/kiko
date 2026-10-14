@@ -8,6 +8,7 @@ import {
   useState,
 } from 'react';
 import { match } from 'ts-pattern';
+import maybe, { foldMap } from 'fnts/maybe';
 import { ratesRepo } from '@kiko/rates/repo';
 import { Money } from '@kiko/currency/money';
 import { accountsRepo } from '@kiko/accounts';
@@ -25,22 +26,25 @@ import { parseAmount } from '@kiko/currency/parse';
 import { StyleSheet } from 'react-native-unistyles';
 import Box from '@kiko/design-system/components/box';
 import { categoriesRepo } from '@kiko/categories/repo';
-import { useLiveQuery, type HoldingRow } from '@kiko/db';
 import { transactionsRepo } from '@kiko/transactions/repo';
 import Screen from '@kiko/design-system/components/screen';
+import Button from '@kiko/design-system/components/button';
 import { buildRateTable } from '@kiko/rates/net-worth-view';
 import { type TextInputInstance, View } from 'react-native';
 import { alertOnCatch } from '@kiko/design-system/alert-on-catch';
+import { genericEntitySymbol } from '@kiko/holdings/entity-symbols';
 import { useSubmitOnce } from '@kiko/design-system/use-submit-once';
 import type { TransactionFormParams } from '@kiko/navigation/types';
 import { accountDisplayName } from '@kiko/holdings/implicit-account';
+import { useDataReady, useLiveQuery, type HoldingRow } from '@kiko/db';
+import type { TemplateDraft } from '@kiko/transaction-templates/draft';
 import { type Currency, currencySymbol } from '@kiko/currency/currency';
 import type { FieldInstance } from '@kiko/design-system/scroll-to-field';
 import { resolveCategoryColor } from '@kiko/statistics/category-breakdown';
 import { useScrollToField } from '@kiko/design-system/use-scroll-to-field';
 import { seedCounterpartMinorUnits } from '@kiko/holdings/exchange-prefill';
 import { buildCategoryDisplayMap } from '@kiko/categories/category-display';
-import { categoryOverridesRepo } from '@kiko/categories/category-overrides-repo';
+import { transactionTemplatesRepo } from '@kiko/transaction-templates/repo';
 import DescriptionSuggestions from '@kiko/screens/forms/description-suggestions';
 import { groupAmount, majorAmountText } from '@kiko/screens/forms/amount-format';
 import type { HoldingSelectOption } from '@kiko/screens/forms/holding-select-field';
@@ -56,6 +60,8 @@ import {
   isSplitAmountInvalid,
   MODE_BEHAVIOR,
   resolveActiveMode,
+  resolveFieldErrors,
+  resolveFieldOrder,
 } from './validation';
 import {
   type ChangeReturnRow,
@@ -68,6 +74,11 @@ import {
   signedMinorUnits,
   storedDescription,
 } from './row-labels';
+import EntryTabs, {
+  type EntryTab,
+  awaitsTemplatePick,
+  resolveSelectedTemplate,
+} from './entry-tabs';
 import {
   buildExchangeOptions,
   buildLoanOptions,
@@ -84,22 +95,28 @@ import ModeAndActions, {
 import CommentRow from './comment-row';
 import FieldGroup from './field-group';
 import SplitReturns from './split-returns';
-import { readRouteEntry } from './route-entry';
-import { resolveHydration } from './hydration';
 import ReadOnlyNotice from './read-only-notice';
+import { draftFromForm } from './draft-from-form';
+import TemplateNameField from './template-name-field';
 import { useCategoryPick } from './use-category-pick';
+import { applyHoldingChange } from './holding-change';
 import PrimaryHoldingField from './primary-holding-field';
+import { resolveTemplateSeed } from './template-references';
 import CategoryOverrideSheet from './category-override-sheet';
 import { useCategoryOverride } from './use-category-override';
-import { MODE_ICONS, resolveModeOptions } from './mode-options';
-import { resolveCategoryOverrideRequest } from './category-rule';
+import { applySeedFields, resolveHydration } from './hydration';
+import { alongsideInsert, writeTemplate } from './template-save';
+import SaveAsTemplate, { resolveTemplateSwitch } from './save-as-template';
 import { convertCounterpartType, resolveConvertView } from './convert-view';
+import { DEFAULT_MODE, MODE_ICONS, resolveModeOptions } from './mode-options';
+import { readRouteEntry, resolveHoldingField, revealsHoldingField } from './route-entry';
+import { offersCategoryNameRule, resolveCategoryOverrideRequest } from './category-rule';
 
-// This screen is registered in BOTH the Home and Accounts stacks (Home lists
-// every transaction; Accounts reaches it from a holding), so it cannot bind its
-// props to a single stack's param list. It only needs the route params and a few
-// navigation methods (`navigate` for the create forms both stacks register), so
-// it declares exactly that minimal shape — structurally satisfied by either
+// This screen is registered in the Home, Accounts, and Settings stacks (Home lists every
+// transaction; Accounts reaches it from a holding; Settings reaches it from the templates
+// list), so it cannot bind its props to a single stack's param list. It only needs the route
+// params and a few navigation methods (`navigate` for the create forms every stack
+// registers), so it declares exactly that minimal shape — structurally satisfied by any
 // stack's generated props.
 type TransactionFormScreenProps = {
   route: { params: TransactionFormParams };
@@ -107,6 +124,9 @@ type TransactionFormScreenProps = {
     goBack: () => void;
     setOptions: (options: { title: string } | FormHeaderItemsOptions) => void;
     navigate: (...route: CreateHoldingRoute) => void;
+    // A template's "Create transaction" opens this same route from the template's own form, so it
+    // must push a second entry: a `navigate` to the current route would only swap its params.
+    push: (name: 'TransactionForm', params: TransactionFormParams) => void;
   };
 };
 
@@ -121,24 +141,30 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     exchange: t('forms.transaction.exchange'),
     split: t('forms.transaction.split'),
   };
-  // The header's three candidate titles — resolved once per render and handed
+  // The header's five candidate titles — resolved once per render and handed
   // to `headerTitle` (row-labels/) so it stays translation-agnostic.
   const titleLabels = {
     readOnly: t('forms.transaction.title'),
     editing: t('forms.transaction.editTitle'),
     adding: t('forms.transaction.addTitle'),
+    addingTemplate: t('forms.transaction.addTemplateTitle'),
+    editingTemplate: t('forms.transaction.editTemplateTitle'),
   };
   const buildApplyCategoryMessage = (category: string, name: string): string =>
     t('forms.transaction.applyCategoryMessage', { category, name });
   // `holdingsRepo` exposes no single-row lookup, so the holding's own currency
   // (needed to convert the entered major amount to minor units) comes from
   // filtering the full holdings list — the same approach the detail screen uses.
-  const { data: holdings } = useLiveQuery(holdingsRepo.allQuery(), ['holdings']);
+  const { data: holdings, isLoading: holdingsLoading } = useLiveQuery(holdingsRepo.allQuery(), [
+    'holdings',
+  ]);
   // The Exchange destination picker's account-name caption:
   // every account, reduced to an id -> name map so `buildExchangeOptions` can
   // thread a plain string onto each holding option without a per-row lookup
   // query.
-  const { data: accounts } = useLiveQuery(accountsRepo.listQuery(), ['accounts']);
+  const { data: accounts, isLoading: accountsLoading } = useLiveQuery(accountsRepo.listQuery(), [
+    'accounts',
+  ]);
   // The display name, not the stored one: a loan option sits under the implicit
   // debt account, whose stored name is an English sentinel.
   const accountNameById = new Map(
@@ -154,13 +180,27 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   // this same order (see `compareByAccountThenHolding`).
   const accountOrderById = new Map(accounts.map((account, index) => [account.id, index]));
 
-  // Three entry points: `holdingId` = add a new manual row; `transactionId` =
-  // open an existing one (edit/read-only); `duplicateOfTransactionId` = open the
-  // CREATE form pre-filled FROM an existing manual row. Read once by a pure
-  // helper so the component body spends no `in`-check branch on any of them. In
-  // add mode the by-id query runs against an empty id and returns nothing,
+  // Seven entry points: six named by a route param, `holdingId` = add a new manual row;
+  // `transactionId` = open an existing one (edit/read-only); `duplicateOfTransactionId` = open the
+  // CREATE form pre-filled FROM an existing manual row; `templateId` = create from a template;
+  // `editTemplateId` = edit a template; `newTemplate` = add one; and no param at all, the global
+  // add. Read once by a pure helper so the component body spends no `in`-check branch on any of
+  // them. In add mode the by-id query runs against an empty id and returns nothing,
   // keeping the hook order stable without a conditional call.
-  const { editingId, duplicateOfId, holdingParamId, isEmptyCreate } = readRouteEntry(route.params);
+  const {
+    editingId,
+    duplicateOfId,
+    holdingParamId,
+    templateQueryId,
+    editTemplateId,
+    templateEntry,
+    isEmptyCreate,
+    seedsDefaultHolding,
+    hasEntryTabs,
+    initialTab,
+  } = readRouteEntry(route.params);
+  // Adding or editing a template: the form saves a template, not a transaction.
+  const isTemplateMode = templateEntry !== null;
   // ONE by-id subscription serves both the edit source and the duplicate source
   // (never both at once — the union keeps the params mutually exclusive).
   const { data: matchedTransactions } = useLiveQuery(
@@ -173,23 +213,23 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   // the form as editing the source row.
   const existing = editingId ? matchedTransactions.at(0) : undefined;
   const duplicateSource = duplicateOfId ? matchedTransactions.at(0) : undefined;
+  // Every stored template, for the name field's case-insensitive "taken" check, the Template tab's
+  // select (whose empty-list hint waits for this read to settle), and the one template the route
+  // names (to fill from, or to edit), found in it by id. An entry that names none reads an empty id
+  // and finds nothing.
+  const { data: storedTemplates, isLoading: storedTemplatesLoading } = useLiveQuery(
+    transactionTemplatesRepo.listQuery(),
+    ['transaction_templates'],
+  );
 
   // The category picker's options come from the categories live query (a rename
   // flows straight through), and the confirm copy resolves the picked key to its
   // display title through the same map every screen uses.
-  const { data: categories } = useLiveQuery(categoriesRepo.allQuery(), ['categories']);
-  const categoryByKey = buildCategoryDisplayMap(categories);
-  // The name→category rules: subscribed once and reduced to a normalized-
-  // name lookup map, so a create can pre-select a category from the settled
-  // description on blur. Matching is JS-normalized (never SQL), mirroring the
-  // sync insert path — see `ruleCategoryFor` and the description blur handler.
-  const { data: overrideRules } = useLiveQuery(categoryOverridesRepo.allQuery(), [
-    'category_overrides',
-  ]);
-  const categoryByNormalizedName = useMemo(
-    () => new Map(overrideRules.map((rule) => [rule.normalizedName, rule.category])),
-    [overrideRules],
+  const { data: categories, isLoading: categoriesLoading } = useLiveQuery(
+    categoriesRepo.allQuery(),
+    ['categories'],
   );
+  const categoryByKey = buildCategoryDisplayMap(categories);
   // The distinct past MANUAL descriptions (newest-first), reduced to a plain
   // string list the inline suggestion row matches against as the user types.
   // Reactive on `'transactions'`, so a freshly saved manual row feeds the next
@@ -225,10 +265,22 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   // then lets the user re-point it through the picker below. Every
   // holding-derived value (currency, amount suffix, category eligibility,
   // exchange rules) reads through it. Null on a plain add/edit, where
-  // `holdingParamId`/`existing` supply the holding instead.
+  // `holdingParamId`/`existing` supply the holding instead, until a template seats it (a
+  // template with a holding sets it, and one with none empties it back to those).
   const [primaryHoldingId, setPrimaryHoldingId] = useState<string | null>(null);
   const holdingId = existing?.holdingId ?? primaryHoldingId ?? holdingParamId ?? undefined;
   const holding = holdings.find((candidate) => candidate.id === holdingId);
+  // The holding an add from a holding names, which stays the form's holding whenever the seam is
+  // empty again: a template with none of its own falls back to it.
+  const pageHolding = holdings.find((candidate) => candidate.id === holdingParamId);
+  // Set once a template seats a holding other than the page's, and never cleared (see
+  // `revealsHoldingField`): an add from a holding then shows its holding field.
+  const [isHoldingFieldRevealed, setHoldingFieldRevealed] = useState(false);
+  const holdingField = resolveHoldingField({
+    isEmptyCreate,
+    isRevealed: isHoldingFieldRevealed,
+    holdingId,
+  });
   const currency: Currency = holding?.currency ?? 'UAH';
   // Each money field's trailing currency glyph, keyed off the holding that owns
   // that leg. Empty when the owning holding hasn't resolved/been picked yet, so
@@ -280,7 +332,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   // The hydrate effect below feeds it to `resolveHydration`, which seeds it
   // through the SAME `seedHolding` step the duplicate path uses.
   const defaultPrimaryHoldingId = resolveDefaultPrimaryHolding({
-    isEmptyCreate,
+    isEmptyCreate: seedsDefaultHolding,
     primaryHoldingId,
     latestManualLoading,
     latestManualHoldingId,
@@ -341,7 +393,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
 
   const [amount, setAmount] = useState('');
   const [description, setDescription] = useState('');
-  const [mode, setMode] = useState<FormMode>('expense');
+  const [mode, setMode] = useState<FormMode>(DEFAULT_MODE);
   const isExchange = mode === 'exchange';
   const isSplit = mode === 'split';
   const { scrollableRef, onContentSizeChange, scrollTo } = useScrollToField();
@@ -371,10 +423,18 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   // no keyboard, or is owned by ExchangeFields/ConvertExchangeFields, which
   // have no matching focus ref of their own yet).
   const amountInputRef = useRef<TextInputInstance>(null);
+  // The template name field's wrapper and inner input, like the Amount field's pair, and the
+  // primary holding picker's wrapper (a picker has no keyboard to focus).
+  const templateNameFieldRef = useRef<FieldInstance>(null);
+  const templateNameInputRef = useRef<TextInputInstance>(null);
+  const holdingFieldRef = useRef<FieldInstance>(null);
   const focusByKey: Partial<Record<SaveDisabledField, () => void>> = {
     amount: () => amountInputRef.current?.focus(),
+    templateName: () => templateNameInputRef.current?.focus(),
   };
   const fieldRefsByKey: Record<SaveDisabledField, RefObject<FieldInstance | null>> = {
+    templateName: templateNameFieldRef,
+    holding: holdingFieldRef,
     counterpartHolding: counterpartHoldingFieldRef,
     counterpartAmount: counterpartAmountFieldRef,
     destinationHolding: destinationFieldRef,
@@ -405,18 +465,77 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   const {
     selectedCategory,
     effectiveCategory,
-    settleCategory,
-    setSelectedCategory,
-    setUserPickedCategory,
+    userPickedCategory,
+    seedCategory,
     selectCategory,
-    onDescriptionBlur,
+    settleDescription,
     pickSuggestion,
-  } = useCategoryPick({ description, setDescription, isEditing, categoryByNormalizedName });
+  } = useCategoryPick({
+    description,
+    setDescription,
+    isEditing,
+    amount,
+    time,
+    mode,
+    currency: holding?.currency ?? null,
+  });
   const [hydrated, setHydrated] = useState(false);
   // Held from the seed rather than re-resolved at Save, so a counterpart
   // renamed mid-edit cannot turn the untouched label into stored text.
   const [prefilledLabel, setPrefilledLabel] = useState<string | null>(null);
+  // The template name field: filled by an Edit template, typed in an Add template.
+  const [templateName, setTemplateName] = useState('');
+  const [saveAsTemplate, setSaveAsTemplate] = useState(false);
+  const templateSwitch = resolveTemplateSwitch({
+    isOn: saveAsTemplate,
+    isReadOnly,
+    converting,
+    isTemplateMode,
+  });
   const blankLabel = resolveBlankLabel({ existing, holding, holdings, t });
+  const [tab, setTab] = useState<EntryTab>(initialTab);
+  const [pickedTemplateId, setPickedTemplateId] = useState<string | null>(null);
+  // The template the Template tab has picked: the select's pick, else the one the route names.
+  const { template: selectedTemplate, id: selectedTemplateId } = resolveSelectedTemplate({
+    pickedId: pickedTemplateId,
+    templates: storedTemplates,
+    entryTemplate: storedTemplates.find((template) => template.id === templateQueryId),
+  });
+  const awaitsPick = awaitsTemplatePick({
+    hasEntryTabs,
+    tab,
+    selectedTemplateId,
+    isEntryTemplateLoading: storedTemplatesLoading,
+  });
+  // A pick is ONE event: it names the template and opens the hydration latch again, and the one
+  // hydrate effect below applies the plan. There is no second effect and no second fill path. The
+  // template already picked is a no-op, so a stray tap in the sheet costs no edit.
+  const pickTemplate = (templateId: string): void => {
+    if (templateId === selectedTemplateId) {
+      return;
+    }
+
+    setPickedTemplateId(templateId);
+    setHydrated(false);
+  };
+  // The template the entry fills from, its references resolved against the live holdings and
+  // categories. Held back until all of those reads settle, so nothing resolves against a list that
+  // is still loading. The template list needs no gate of its own here: it holds no row until its
+  // read settles, so there is no template to resolve.
+  const isTemplateReady = useDataReady(holdingsLoading, accountsLoading, categoriesLoading);
+  const { templateDraft, templateName: seededTemplateName } = resolveTemplateSeed({
+    row: selectedTemplate,
+    isReady: isTemplateReady,
+    isHydrated: hydrated,
+    carriesName: editTemplateId !== null,
+    source: {
+      holdings,
+      accountNameById,
+      accountOrderById,
+      accountById,
+      categoryKeys: categories.map((category) => category.key),
+    },
+  });
   // Whether the user has pressed Save at least once. Save is always enabled;
   // this latches the inline reason on so it only ever appears after a press
   // that `disableSave` blocked, never live while the user is still filling
@@ -429,9 +548,10 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   // pure `resolveHydration` helper, so this effect stays a thin dispatch — a
   // duplicate first seats the `primaryHoldingId` seam (`seedHolding`), then, on
   // the next render once its holding resolves, seeds the copied fields
-  // (`seedFields`) dated to NOW. Edit never reaches Exchange (`canExchange` is
-  // `false` whenever `isEditing` is `true`), so hydrating straight to the
-  // income/expense sign is safe for both paths.
+  // (`seedFields`) dated to NOW. A picked template runs through the same plan. An Edit never
+  // reaches Exchange (`canExchange` is `false` whenever `isEditing` is `true`), so a row hydrates
+  // straight to its income/expense sign, while a template hydrates the mode it stores
+  // (exchange and split included), settled to what its holding offers.
   useEffect(() => {
     if (hydrated) {
       return;
@@ -445,41 +565,41 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
       currency,
       defaultPrimaryHoldingId,
       blankLabel,
+      templateDraft,
+      templateName: seededTemplateName,
+      pageHolding,
+      holdings,
     });
 
     match(plan)
       .with({ kind: 'seedHolding' }, (seedHoldingPlan) => {
         setPrimaryHoldingId(seedHoldingPlan.holdingId);
+        setHoldingFieldRevealed((revealed) =>
+          revealsHoldingField(revealed, holdingParamId, seedHoldingPlan.holdingId),
+        );
         // Close the latch only for a FINAL seed (empty-create): `false` is a
         // no-op on the duplicate step (the latch is already open), so this stays
         // a single flat statement rather than another branch.
         setHydrated(seedHoldingPlan.final);
       })
       .with({ kind: 'seedFields' }, (seedFieldsPlan) => {
-        setAmount(seedFieldsPlan.amount);
-        setMode(seedFieldsPlan.sign);
-        setDescription(seedFieldsPlan.description);
-        setPrefilledLabel(seedFieldsPlan.prefilledLabel);
-        setSelectedCategory(seedFieldsPlan.category);
-        // A seeded non-null category counts as a user pick, so a later
-        // description blur (A1's `reseatCategoryFromName`) can never clobber it.
-        // This matters for the DUPLICATE path (`isEditing` is false there): the
-        // "duplicate a row, tweak the note" flow must keep the copied category
-        // when the retyped description matches no name rule. The edit path already
-        // guards its stored category via `isEditing`, so this is a harmless no-op
-        // there; the empty-create/fixed-holding paths seed a null category, so
-        // `userPickedCategory` stays false and A1's normal create-blur auto-seat
-        // is unaffected.
-        if (seedFieldsPlan.category !== null) {
-          setUserPickedCategory(true);
-        }
-
-        // A null `time` keeps the field at NOW — the duplicate never copies the
-        // source timestamp; the edit path carries the stored time.
-        if (seedFieldsPlan.time !== null) {
-          setTime(seedFieldsPlan.time);
-        }
-
+        applySeedFields(
+          seedFieldsPlan,
+          {
+            setAmount,
+            setMode,
+            setDescription,
+            setPrefilledLabel,
+            seedCategory,
+            setTime,
+            setDestinationHoldingId,
+            setValueIn,
+            setChangeReturns,
+            setPrimaryHoldingId,
+            setTemplateName,
+          },
+          () => nextReturnId.current++,
+        );
         setHydrated(true);
       })
       // Neither the source row's holding nor a default primary holding has
@@ -496,8 +616,12 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     currency,
     defaultPrimaryHoldingId,
     blankLabel,
-    setSelectedCategory,
-    setUserPickedCategory,
+    templateDraft,
+    seededTemplateName,
+    pageHolding,
+    holdings,
+    holdingParamId,
+    seedCategory,
   ]);
 
   // Seed the counterpart (cash) amount from the latest cached rate at
@@ -536,11 +660,28 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     setCounterpartAmount(groupAmount(majorAmountText(counterpart.currency, seeded)));
   };
 
+  // The picker is the one place a user changes the primary holding, so a mode the new holding does
+  // not offer is settled here, with the same rule the template seed uses.
+  const pickPrimaryHolding = (pickedId: string): void => {
+    setPrimaryHoldingId(pickedId);
+
+    const picked = holdings.find((candidate) => candidate.id === pickedId);
+
+    if (picked !== undefined) {
+      applyHoldingChange(
+        picked,
+        { mode, destinationHoldingId, holdings },
+        { setMode, setDestinationHoldingId, setValueIn, setChangeReturns },
+      );
+    }
+  };
+
   // The row's category at open, keyed the same way, so an edit is detectable.
   // Derived (not stored) so it always reflects the persisted value even before
   // the hydration latch closes.
   const originalCategoryKey = existing?.category ? existing.category.toLowerCase() : null;
   const categoryChanged = effectiveCategory !== null && effectiveCategory !== originalCategoryKey;
+  const offersNameRule = offersCategoryNameRule({ categoryChanged, isEditing, userPickedCategory });
 
   const loanFieldVisible = isLoanFieldVisible(
     existing?.amountMinorUnits,
@@ -574,63 +715,118 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     selectedCategory: effectiveCategory,
     changeReturns,
     currency,
+    primaryHoldingId: holdingId ?? null,
+    templateName,
+    templateNameRequired: templateSwitch.nameRequired,
+    isTemplateMode,
+    templateNames: storedTemplates,
+    editTemplateId,
   };
   // Every field's OWN independent error (see `TransactionFieldErrors`'s own
   // doc comment) — `fieldError` just applies the shared `attemptedSave` gate
-  // once here instead of at each of the eight call sites below.
-  const activeFieldErrors = modeBehavior.fieldErrors(saveDisabledParams, t);
+  // once here instead of at each of the call sites below.
+  const activeMode = resolveActiveMode(converting, mode);
+  const activeFieldErrors = resolveFieldErrors(activeMode, saveDisabledParams, t);
   const fieldError = (key: SaveDisabledField): string | undefined =>
     attemptedSave ? activeFieldErrors[key] : undefined;
   // The first still-blocking field, in the active mode's own priority order
   // — both the Save-block gate AND the scroll-to-first-invalid target, so
   // the two can never disagree about which field is blocking.
-  const disableSaveField = firstInvalidField(modeBehavior.fieldOrder, activeFieldErrors);
+  const disableSaveField = firstInvalidField(
+    resolveFieldOrder(activeMode, saveDisabledParams),
+    activeFieldErrors,
+  );
   const disableSave = disableSaveField !== null;
 
-  const title = headerTitle(isReadOnly, isEditing, titleLabels);
+  const title = headerTitle(isReadOnly, isEditing, templateEntry, titleLabels);
   useLayoutEffect(() => {
     navigation.setOptions({ title });
   }, [navigation, title]);
 
   const descriptionToStore = storedDescription(description, prefilledLabel);
 
+  // The template the form's fields make, by the same rules a transaction saves by (see
+  // `draftFromForm`): saved on its own by a template mode, and along with the transaction by the
+  // "save as a new template" switch. The one difference: it stores a category only when the user
+  // picked one (or the template being edited or filled in carried one), because a rule pre-select
+  // is not the template's own and a later rule change should still move it.
+  const buildTemplateDraft = (): TemplateDraft => {
+    const destination = holdings.find((candidate) => candidate.id === destinationHoldingId);
+
+    return draftFromForm({
+      mode,
+      primaryHoldingId: holdingId ?? null,
+      currency: holding?.currency ?? null,
+      amount,
+      description,
+      prefilledLabel,
+      selectedCategory: userPickedCategory ? effectiveCategory : null,
+      destinationHoldingId,
+      destinationCurrency: destination?.currency ?? null,
+      valueIn,
+      changeReturns,
+    });
+  };
+
+  // The step every transaction write below takes while the switch is on: it saves the template
+  // inside that one write. Undefined while it is off.
+  const templateAlongside = () =>
+    alongsideInsert({
+      enabled: templateSwitch.saves,
+      name: templateName,
+      draft: buildTemplateDraft(),
+    });
+
   // Persist the amount/description edit on a manual row (edit vs. add). Only
   // ever called from the income/expense path (`save` branches Exchange off to
   // `saveExchange` before reaching here), so `mode` is guaranteed a `Sign`.
-  const writeManual = async (): Promise<void> => {
+  // Returns the id of the row it wrote: the edited row's, the created row's, or
+  // null when a create had no holding to write to.
+  const writeManual = async (): Promise<string | null> => {
     const amountMinorUnits = signedMinorUnits(currency, amount, mode as Sign);
 
     if (editingId) {
-      // Leave the category to the always-propagating override path below:
+      // Leave the category to the override path below:
       // `transactionsRepo.update` deliberately handles only amount/time/
       // description with its own balance-delta logic, and an edit's category
       // change still routes through the override rule.
-      await transactionsRepo.update({
-        transactionId: editingId,
-        amountMinorUnits,
-        time,
-        description: descriptionToStore,
-      });
+      await transactionsRepo.update(
+        {
+          transactionId: editingId,
+          amountMinorUnits,
+          time,
+          description: descriptionToStore,
+        },
+        templateAlongside(),
+      );
 
-      return;
+      return editingId;
     }
 
     if (holdingId) {
-      await transactionsRepo.recordManual({
-        holdingId,
-        amountMinorUnits,
-        time,
-        description,
-        // The row carries its OWN category. The override sheet below governs
-        // only whether the pick ALSO propagates to every same-name row; it is
-        // not what categorises this row. The override rule alone cannot
-        // persist the pick: it returns early on a blank normalized name, so a
-        // blank-description row (and any row whose override the user
-        // cancelled) would be written uncategorised despite
-        // `plainFieldErrors` forcing a pick on create.
-        category: effectiveCategory,
-      });
+      return transactionsRepo.recordManual(
+        {
+          holdingId,
+          amountMinorUnits,
+          time,
+          description,
+          // The row carries its OWN category. The override sheet below governs
+          // only whether the pick ALSO propagates to every same-name row; it is
+          // not what categorises this row. The override rule alone cannot
+          // persist the pick: it returns early on a blank normalized name, so a
+          // blank-description row (and any row whose override the user
+          // cancelled) would be written uncategorised despite
+          // `plainFieldErrors` forcing a pick on create.
+          category: effectiveCategory,
+          // Only a pick by hand is flagged: a category the rules pre-selected stays
+          // free for a later rule rewrite to move.
+          categorySetByHand: userPickedCategory,
+        },
+        templateAlongside(),
+      );
     }
+
+    return null;
   };
 
   // The shared failure alert for every write this screen makes: `save`,
@@ -760,19 +956,24 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
 
     const paymentMinor = Money.fromMajor(holding.currency, parseAmount(amount)).minorUnits;
 
-    await transactionsRepo.recordManualWithReturns({
-      payment: {
-        holdingId: holding.id,
-        amountMinorUnits: -paymentMinor,
-        time,
-        description,
-        category: effectiveCategory,
+    await transactionsRepo.recordManualWithReturns(
+      {
+        payment: {
+          holdingId: holding.id,
+          amountMinorUnits: -paymentMinor,
+          time,
+          description,
+          category: effectiveCategory,
+          categorySetByHand: userPickedCategory,
+        },
+        returns: changeReturns.map((change) => ({
+          holdingId: change.holdingId as string,
+          amountMinorUnits: Money.fromMajor(holding.currency, parseAmount(change.amount))
+            .minorUnits,
+        })),
       },
-      returns: changeReturns.map((change) => ({
-        holdingId: change.holdingId as string,
-        amountMinorUnits: Money.fromMajor(holding.currency, parseAmount(change.amount)).minorUnits,
-      })),
-    });
+      templateAlongside(),
+    );
 
     navigation.goBack();
   };
@@ -802,14 +1003,17 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     const valueOut = Money.fromMajor(holding.currency, valueOutMajor);
     const valueInMoney = Money.fromMajor(destination.currency, valueInMajor);
 
-    await transactionsRepo.recordExchange({
-      sourceHoldingId: holding.id,
-      valueOutMinorUnits: valueOut.minorUnits,
-      destinationHoldingId: destination.id,
-      destinationType: destination.type,
-      valueInMinorUnits: valueInMoney.minorUnits,
-      time,
-    });
+    await transactionsRepo.recordExchange(
+      {
+        sourceHoldingId: holding.id,
+        valueOutMinorUnits: valueOut.minorUnits,
+        destinationHoldingId: destination.id,
+        destinationType: destination.type,
+        valueInMinorUnits: valueInMoney.minorUnits,
+        time,
+      },
+      templateAlongside(),
+    );
 
     navigation.goBack();
   };
@@ -856,25 +1060,29 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   };
 
   // Guard: reject an empty, non-numeric, or NON-POSITIVE amount, then write
-  // the manual edit. Returns whether the write happened, so `save` can abort
-  // the whole flow (including the category confirm below) on a bad amount
-  // without its own nested branch.
+  // the manual edit. Returns the written row's id, or null when the amount was
+  // rejected, so `save` can abort the whole flow (including the category confirm
+  // below) on a bad amount without its own nested branch. A synced row is
+  // bank-owned: only its category may change, so it skips the amount write
+  // entirely and hands back its own id for the category confirm.
   //
   // The magnitude test is the same `<= 0` rejection `saveExchange` and
   // `saveConvert` already apply. Testing only empty/NaN let `"0"` through and
   // created a 0.00 row, contradicting this guard's own "no zero-amount row"
   // claim. The user's income/expense chip carries the sign, so the typed
   // magnitude is always non-negative here — `<= 0` means "zero".
-  const tryWriteManual = async (): Promise<boolean> => {
+  const tryWriteManual = async (): Promise<{ rowId: string | null } | null> => {
+    if (isReadOnly) {
+      return { rowId: editingId };
+    }
+
     const magnitude = parseAmount(amount);
 
     if (amount.trim() === '' || Number.isNaN(magnitude) || magnitude <= 0) {
-      return false;
+      return null;
     }
 
-    await writeManual();
-
-    return true;
+    return { rowId: await writeManual() };
   };
 
   // The three non-manual save modes, dispatched ahead of the income/expense
@@ -883,6 +1091,13 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   // cognitive-complexity budget.
   const dispatchSpecialSave = async (): Promise<boolean> => {
     const { save: saveSpecial } = modeBehavior;
+
+    // A template mode saves its draft whichever mode is selected, so it goes first.
+    if (isTemplateMode) {
+      await saveTemplate();
+
+      return true;
+    }
 
     if (saveSpecial === null) {
       return false;
@@ -908,7 +1123,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   const save = async (): Promise<void> => {
     // The nav-bar Save does not end editing, so the description may never have blurred; commit
     // its rule category to the picker, which `effectiveCategory` below already acts on.
-    settleCategory();
+    settleDescription();
 
     if (disableSave) {
       setAttemptedSave(true);
@@ -923,15 +1138,24 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     await performSave();
   };
 
+  // The template modes' save: the draft built from the form, written as a new template or over the
+  // one being edited. No transaction is written and the category override sheet never opens. A
+  // failed write rejects into `performSave`'s catch, like every other write here.
+  const saveTemplate = async (): Promise<void> => {
+    await writeTemplate({ editTemplateId, name: templateName, draft: buildTemplateDraft() });
+
+    navigation.goBack();
+  };
+
   const performSave = async (): Promise<void> => {
     try {
       if (await dispatchSpecialSave()) {
         return;
       }
 
-      // A synced row is bank-owned: only its category may change, so skip the
-      // amount write entirely and fall through to the category confirm below.
-      if (!isReadOnly && !(await tryWriteManual())) {
+      const written = await tryWriteManual();
+
+      if (written === null) {
         return;
       }
 
@@ -939,9 +1163,10 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
       // just-saved manual description.
       const name = isReadOnly ? (existing?.description ?? '') : descriptionToStore;
       const overrideRequest = resolveCategoryOverrideRequest(
-        categoryChanged,
+        offersNameRule,
         effectiveCategory,
         name,
+        written.rowId,
       );
 
       if (overrideRequest) {
@@ -956,10 +1181,10 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
       // the picked category straight onto THIS row by id via the ungated
       // `setCategory`, so a category change on an existing row is never dropped.
       // This is the single-row writer only; the blank-name guard on the name RULE
-      // path (`resolveCategoryOverrideRequest` -> `upsertCategoryOverride`) stays
+      // path (`resolveCategoryOverrideRequest` -> `applyNameRule`) stays
       // intact, so a catch-all rule is still refused. A create (no `editingId`)
       // already carries its category from `recordManual`, so it is excluded.
-      if (editingId !== null && categoryChanged && effectiveCategory !== null) {
+      if (editingId !== null && categoryChanged) {
         await transactionsRepo.setCategory({
           transactionId: editingId,
           category: effectiveCategory,
@@ -981,7 +1206,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   useFormHeaderItems({
     navigation,
     onSave,
-    hasSave: showsSaveButton(isReadOnly, categoryChanged, converting),
+    hasSave: showsSaveButton(isReadOnly, categoryChanged, converting, awaitsPick),
     isSaving: isSubmitting,
   });
 
@@ -1007,32 +1232,76 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
 
   return (
     <>
-      <Screen scroll scrollableRef={scrollableRef} onContentSizeChange={onContentSizeChange}>
+      <Screen
+        scroll
+        scrollableRef={scrollableRef}
+        onContentSizeChange={onContentSizeChange}
+        footer={foldMap(maybe(editTemplateId), (templateId) => (
+          // Create transaction opens the template as it is STORED: the unsaved edits on this
+          // form are neither used nor saved. Save is the nav bar's, like every other form's, so
+          // this lone secondary action is the whole footer.
+          <Button
+            variant="secondaryTonal"
+            onPress={() => {
+              navigation.push('TransactionForm', { templateId });
+            }}
+            icon={genericEntitySymbol.transaction}
+          >
+            {t('forms.transaction.createTransaction')}
+          </Button>
+        ))}
+      >
         <Box gap={4} testID="transaction-form">
-          <ReadOnlyNotice isReadOnly={isReadOnly} noticeText={readOnlyNotice} />
+          {/* The Manual and Template tabs sit on top of the form, which they gate: the Template
+            tab holds the whole form back until a template is picked. A tab switch only shows or
+            hides it, so no value (all of it lives in this screen's state) is lost. */}
+          <EntryTabs
+            visible={hasEntryTabs}
+            tab={tab}
+            onSelectTab={setTab}
+            awaitsPick={awaitsPick}
+            templates={storedTemplates}
+            templatesLoading={storedTemplatesLoading}
+            selectedTemplateId={selectedTemplateId}
+            onSelectTemplate={pickTemplate}
+          >
+            <ReadOnlyNotice isReadOnly={isReadOnly} noticeText={readOnlyNotice} />
 
-          {/* B: the primary-leg holding picker, shown ONLY when no holding was
-            fixed by navigation (the global-add entry). It drives the shared
-            `primaryHoldingId` seam, so the currency/category/exchange derivation
-            below follows the pick automatically. Null on every other path. */}
-          <PrimaryHoldingField
-            visible={isEmptyCreate}
-            label={t('forms.transaction.holding')}
-            sheetTitle={t('forms.transaction.holdingSheetTitle')}
-            placeholder={t('forms.transaction.selectHolding')}
-            options={primaryOptions}
-            selectedId={primaryHoldingId}
-            onSelect={setPrimaryHoldingId}
-            onCreateNew={openCreateHoldingIn(undefined, isTransactionEligibleType)}
-          />
+            {/* A template mode's name field goes on top, above the holding picker. */}
+            <TemplateNameField
+              visible={isTemplateMode}
+              value={templateName}
+              onChangeText={setTemplateName}
+              error={fieldError('templateName')}
+              fieldRef={templateNameFieldRef}
+              inputRef={templateNameInputRef}
+            />
 
-          {/* The transaction-TYPE selector, directly under the Holding select.
+            {/* B: the primary-leg holding picker, shown when no holding was fixed by
+            navigation (the global-add entry), and on an add from a holding once a
+            template has seated another one. It drives the shared `primaryHoldingId`
+            seam, so the currency/category/exchange derivation below follows the pick
+            automatically. Null on every other path. */}
+            <PrimaryHoldingField
+              visible={holdingField.visible}
+              label={t('forms.transaction.holding')}
+              sheetTitle={t('forms.transaction.holdingSheetTitle')}
+              placeholder={t('forms.transaction.selectHolding')}
+              options={primaryOptions}
+              selectedId={holdingField.selectedId}
+              onSelect={pickPrimaryHolding}
+              onCreateNew={openCreateHoldingIn(undefined, isTransactionEligibleType)}
+              error={fieldError('holding')}
+              fieldRef={holdingFieldRef}
+            />
+
+            {/* The transaction-TYPE selector, directly under the Holding select.
             Built with `visible={!converting}` (a convert has no mode toggle),
             so it is rendered unconditionally here — the field itself carries
             both that gate and the read-only dimming for a synced row. */}
-          {typeSelectField}
+            {typeSelectField}
 
-          {/* Convert-mode replaces the entire income/expense/exchange field
+            {/* Convert-mode replaces the entire income/expense/exchange field
             group with the single-counterpart convert group — no mode toggle,
             no category, just the fixed existing leg plus the one leg being
             recorded. Exchange gets its own field group (Value Out, To, Value
@@ -1041,72 +1310,74 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
             literally inline here, unchanged from before Exchange existed.
             The three-way switch lives in `FieldGroup` rather than a nested
             ternary here. */}
-          <FieldGroup
-            converting={converting}
-            convertView={convertView}
-            counterpartHoldingId={counterpartHoldingId}
-            onSelectCounterpart={selectCounterpart}
-            onCreateCounterpart={openCreateHoldingIn(
-              holding?.accountId,
-              convertCounterpartType(convertView.direction),
-            )}
-            counterpartAmount={counterpartAmount}
-            onChangeCounterpartAmount={(text) => setCounterpartAmount(groupAmount(text))}
-            isExchange={isExchange}
-            amount={amount}
-            onChangeAmount={(text) => setAmount(groupAmount(text))}
-            amountSuffix={amountSuffix}
-            // The fixed convert leg is the existing transaction's own holding,
-            // so it shares the source holding's currency glyph.
-            fixedSuffix={amountSuffix}
-            destinationOptions={destinationOptions}
-            destinationHoldingId={destinationHoldingId}
-            onSelectDestination={setDestinationHoldingId}
-            onCreateDestination={openCreateHoldingIn(
-              holding?.accountId,
-              isExchangeCreateDestinationType,
-            )}
-            valueIn={valueIn}
-            onChangeValueIn={(text) => setValueIn(groupAmount(text))}
-            valueInSuffix={holdingSuffix(holdings, destinationHoldingId)}
-            counterpartSuffix={holdingSuffix(holdings, counterpartHoldingId)}
-            description={description}
-            onChangeDescription={setDescription}
-            onBlurDescription={onDescriptionBlur}
-            // The inline suggestion row. Its pool is already empty on an
-            // edit (see the `pastDescriptions` memo), and the component itself
-            // hides when there is no match or the field already equals a
-            // suggestion, so it is passed unconditionally here.
-            descriptionSuggestions={
-              <DescriptionSuggestions
-                descriptions={pastDescriptions}
-                value={description}
-                onPick={pickSuggestion}
-              />
-            }
-            descriptionPlaceholder={descriptionPlaceholder}
-            isReadOnly={isReadOnly}
-            time={time}
-            onChangeTime={setTime}
-            maxDate={Date.now()}
-            t={t}
-            amountError={fieldError('amount')}
-            amountInvalid={isSplitAmountInvalid(saveDisabledParams, attemptedSave)}
-            amountFieldRef={amountFieldRef}
-            amountInputRef={amountInputRef}
-            valueOutError={fieldError('valueOut')}
-            destinationError={fieldError('destinationHolding')}
-            valueInError={fieldError('valueIn')}
-            valueOutFieldRef={valueOutFieldRef}
-            destinationFieldRef={destinationFieldRef}
-            valueInFieldRef={valueInFieldRef}
-            counterpartError={fieldError('counterpartHolding')}
-            counterpartAmountError={fieldError('counterpartAmount')}
-            counterpartFieldRef={counterpartHoldingFieldRef}
-            counterpartAmountFieldRef={counterpartAmountFieldRef}
-          />
+            <FieldGroup
+              converting={converting}
+              convertView={convertView}
+              counterpartHoldingId={counterpartHoldingId}
+              onSelectCounterpart={selectCounterpart}
+              onCreateCounterpart={openCreateHoldingIn(
+                holding?.accountId,
+                convertCounterpartType(convertView.direction),
+              )}
+              counterpartAmount={counterpartAmount}
+              onChangeCounterpartAmount={(text) => setCounterpartAmount(groupAmount(text))}
+              isExchange={isExchange}
+              amount={amount}
+              onChangeAmount={(text) => setAmount(groupAmount(text))}
+              amountSuffix={amountSuffix}
+              // The fixed convert leg is the existing transaction's own holding,
+              // so it shares the source holding's currency glyph.
+              fixedSuffix={amountSuffix}
+              destinationOptions={destinationOptions}
+              destinationHoldingId={destinationHoldingId}
+              onSelectDestination={setDestinationHoldingId}
+              onCreateDestination={openCreateHoldingIn(
+                holding?.accountId,
+                isExchangeCreateDestinationType,
+              )}
+              valueIn={valueIn}
+              onChangeValueIn={(text) => setValueIn(groupAmount(text))}
+              valueInSuffix={holdingSuffix(holdings, destinationHoldingId)}
+              counterpartSuffix={holdingSuffix(holdings, counterpartHoldingId)}
+              description={description}
+              onChangeDescription={setDescription}
+              onBlurDescription={settleDescription}
+              // The inline suggestion row. Its pool is already empty on an
+              // edit (see the `pastDescriptions` memo), and the component itself
+              // hides when there is no match or the field already equals a
+              // suggestion, so it is passed unconditionally here.
+              descriptionSuggestions={
+                <DescriptionSuggestions
+                  descriptions={pastDescriptions}
+                  value={description}
+                  onPick={pickSuggestion}
+                />
+              }
+              descriptionPlaceholder={descriptionPlaceholder}
+              isReadOnly={isReadOnly}
+              time={time}
+              onChangeTime={setTime}
+              maxDate={Date.now()}
+              showsDate={!isTemplateMode}
+              required={!isTemplateMode}
+              t={t}
+              amountError={fieldError('amount')}
+              amountInvalid={isSplitAmountInvalid(saveDisabledParams, attemptedSave)}
+              amountFieldRef={amountFieldRef}
+              amountInputRef={amountInputRef}
+              valueOutError={fieldError('valueOut')}
+              destinationError={fieldError('destinationHolding')}
+              valueInError={fieldError('valueIn')}
+              valueOutFieldRef={valueOutFieldRef}
+              destinationFieldRef={destinationFieldRef}
+              valueInFieldRef={valueInFieldRef}
+              counterpartError={fieldError('counterpartHolding')}
+              counterpartAmountError={fieldError('counterpartAmount')}
+              counterpartFieldRef={counterpartHoldingFieldRef}
+              counterpartAmountFieldRef={counterpartAmountFieldRef}
+            />
 
-          {/* Split-change only: the dynamic return rows + "Add return" action,
+            {/* Split-change only: the dynamic return rows + "Add return" action,
             rendered below the reused Amount/Description/Date/Time group. The
             `visible` gate and the `.map` live in `SplitReturns`, so this stays
             a single element. Wrapped in `splitReturnsFieldRef` here (the CALL
@@ -1129,60 +1400,75 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
             (not `Box`) is required here: `Box` is a non-forwarding function
             component, so `ref={splitReturnsFieldRef}` on it would never
             resolve for `measureLayout`. */}
-          <View
-            ref={splitReturnsFieldRef}
-            style={[styles.splitReturnsGap, !isSplit && styles.hidden]}
-            testID="split-returns-wrapper"
-          >
-            <SplitReturns
-              visible={isSplit}
-              returns={changeReturns}
-              buildOptions={returnOptionsFor}
-              onSelectHolding={selectReturnHolding}
-              onCreateHolding={openCreateHoldingIn(
-                holding?.accountId,
-                isTransactionEligibleType,
-                holding?.currency,
-              )}
-              onChangeAmount={changeReturnAmount}
-              onRemove={removeReturn}
-              onAdd={addReturn}
-              suffix={amountSuffix}
-              selectHoldingPlaceholder={t('forms.transaction.selectHolding')}
-              t={t}
-              error={fieldError('splitReturns')}
-              lastRowRef={lastReturnFieldRef}
-            />
-          </View>
+            <View
+              ref={splitReturnsFieldRef}
+              style={[styles.splitReturnsGap, !isSplit && styles.hidden]}
+              testID="split-returns-wrapper"
+            >
+              <SplitReturns
+                visible={isSplit}
+                returns={changeReturns}
+                buildOptions={returnOptionsFor}
+                onSelectHolding={selectReturnHolding}
+                onCreateHolding={openCreateHoldingIn(
+                  holding?.accountId,
+                  isTransactionEligibleType,
+                  holding?.currency,
+                )}
+                onChangeAmount={changeReturnAmount}
+                onRemove={removeReturn}
+                onAdd={addReturn}
+                suffix={amountSuffix}
+                selectHoldingPlaceholder={t('forms.transaction.selectHolding')}
+                required={!isTemplateMode}
+                t={t}
+                error={fieldError('splitReturns')}
+                lastRowRef={lastReturnFieldRef}
+              />
+            </View>
 
-          {/* The mode chip row, category picker, and "Convert to exchange"
+            {/* The mode chip row, category picker, and "Convert to exchange"
             action — everything below the main field group EXCEPT while
             converting. The `!converting` gate and every `&&`-conditional
             live in `ModeAndActions`. */}
-          <ModeAndActions
-            converting={converting}
-            isReadOnly={isReadOnly}
-            isExchange={isExchange}
-            categoryOptions={categoryOptions}
-            selectedCategory={selectedCategory}
-            onSelectCategory={selectCategory}
-            convertEligible={convertView.eligible}
-            onPressConvert={() => setConverting(true)}
-            isEditing={isEditing}
-            t={t}
-            categoryError={fieldError('selectedCategory')}
-            categoryFieldRef={categoryFieldRef}
-            loanFieldVisible={loanFieldVisible}
-            loanOptions={loanOptions}
-            {...loanLinkState}
-            onSelectLoanPayment={selectLoanPayment}
-            onUndoLoanLink={undoLoanLink}
-          />
+            <ModeAndActions
+              converting={converting}
+              isReadOnly={isReadOnly}
+              isExchange={isExchange}
+              categoryOptions={categoryOptions}
+              selectedCategory={selectedCategory}
+              onSelectCategory={selectCategory}
+              convertEligible={convertView.eligible}
+              onPressConvert={() => setConverting(true)}
+              categoryRequired={!(isEditing || isTemplateMode)}
+              t={t}
+              categoryError={fieldError('selectedCategory')}
+              categoryFieldRef={categoryFieldRef}
+              loanFieldVisible={loanFieldVisible}
+              loanOptions={loanOptions}
+              {...loanLinkState}
+              onSelectLoanPayment={selectLoanPayment}
+              onUndoLoanLink={undoLoanLink}
+            />
 
-          {/* After description AND category — the top of the form (above
+            {/* After description AND category — the top of the form (above
               holding/type/amount) reads wrong for a supplementary,
               often-empty field. */}
-          <CommentRow comment={existing?.comment} label={t('forms.transaction.comment')} />
+            <CommentRow comment={existing?.comment} label={t('forms.transaction.comment')} />
+
+            {/* The last thing in the form body, so a native Save in the nav bar can take the
+              footer's place without moving it. Its name field shows right below it while on. */}
+            <SaveAsTemplate
+              visible={templateSwitch.visible}
+              isOn={saveAsTemplate}
+              onToggle={setSaveAsTemplate}
+              name={templateName}
+              onChangeName={setTemplateName}
+              error={fieldError('templateName')}
+              nameFieldRef={templateNameFieldRef}
+              nameInputRef={templateNameInputRef}
+            />
+          </EntryTabs>
         </Box>
       </Screen>
 

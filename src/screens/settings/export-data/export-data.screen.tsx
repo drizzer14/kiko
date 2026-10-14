@@ -147,7 +147,7 @@ const ExportDataScreen: FC<ExportDataScreenProps> = () => {
           {/* The toggle sits INLINE with its own label, not stacked below it —
               `SettingsRow`'s `trailing` prop puts it on the same header line
               as the leading icon + label; the hint stays full-width
-              `children` below, same as before. */}
+              `children` below. */}
           <SettingsRow
             icon="key"
             label={t('settings.dataExport.includeSecrets')}

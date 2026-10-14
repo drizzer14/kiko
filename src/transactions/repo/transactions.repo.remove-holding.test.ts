@@ -48,6 +48,7 @@ const NOTHING_ELSE: RemoveHoldingsPlan = {
   keptSynced: [],
   unlinked: [],
   unlinkedPlain: false,
+  templatesChanged: 0,
 };
 
 // What a holdings delete takes and leaves, without the balance lines that `the
@@ -94,7 +95,7 @@ const exchangeUahIntoDeposit = (): Promise<void> =>
     time: MOVED,
   });
 
-const splitPayment = (): Promise<void> =>
+const splitPayment = (): Promise<string> =>
   transactionsRepo.recordManualWithReturns({
     payment: { holdingId: 'uah', amountMinorUnits: -50_000, time: MOVED, category: 'groceries' },
     returns: [

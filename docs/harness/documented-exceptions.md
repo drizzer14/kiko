@@ -198,7 +198,7 @@ verified usage, not dead weight:
   pattern/process-group kills, any `git stash`, an unquoted heredoc
   delimiter, a git history change on the main checkout, a shell write
   into `src/`, `__tests__/`, `rules/`, or `e2e/`, and a while/until process-scan
-  wait loop (see CLAUDE.md's "Automatic wiring" and
+  wait loop (see `docs/harness/checks.md` "Automatic wiring" and
   `.claude/skills/kiko-linter/SKILL.md`). It is reached only from a sibling
   `.sh` wrapper's `node` invocation — never a static `import`/`require` from
   any TypeScript/JavaScript source, and never a package.json script Knip's
@@ -214,7 +214,7 @@ verified usage, not dead weight:
   PreToolUse hook script that `scripts/checks/pre-write-guard.sh` invokes
   (`node --experimental-strip-types --no-warnings pre-write-guard.js`) to
   rebuild an Edit/Write/MultiEdit's proposed file content and deny the
-  write when it introduces a known violation (see CLAUDE.md's "Automatic
+  write when it introduces a known violation (see `docs/harness/checks.md` "Automatic
   wiring" and `.claude/skills/kiko-linter/SKILL.md`), the same reason as
   `kill-guard.js` above. It is reached only from a sibling `.sh` wrapper's
   `node` invocation — never a static `import`/`require` from any
@@ -529,7 +529,7 @@ verified usage, not dead weight:
   `scripts/checks/mutation.sh` for the exact patterns and re-includes
   (not restated in full here so they cannot drift).
 - **`scripts/checks/mutation-score.js` declaration-only exclusion
-  allowlist**: the CHANGE-SET mutation gate (CLAUDE.md's
+  allowlist**: the CHANGE-SET mutation gate (`docs/harness/checks.md`
   `check:mutation` row) excludes a file from BOTH the change-set score
   and its own per-file floor when it is a declaration file. Today:
   **`src/db/schema.ts`** (Drizzle table/column declarations): its
@@ -846,6 +846,21 @@ verified usage, not dead weight:
   `nosemgrep ... OVERRIDE(...)` in the source, never a file exclude. The flat
   fixture pair proves the rule in `check:rules`.
 
+- **`readAllRulesDatabaseTransaction`
+  (`src/categories/category-rules-repo/category-rules.repo.ts`) reads the whole
+  `category_rules` table inside `write()`, with no `where` and no cap.**
+  Callers inside a write: `saveRule` and `applyNameRule` (once each) and
+  `withCategoryRules` in `src/transactions/repo/transactions.repo.ts` (once per
+  insert batch). `kiko-no-full-table-select-in-write`
+  (`rules/semgrep-prewrite.yml`) matches only a literal `write(...)` callback
+  body, so the helper is invisible to it and there is no inline `nosemgrep`;
+  this entry is the record. Safe because the table is user-authored (one row
+  per rule) and small, and every reader needs every rule: a `where` or a cap
+  would silently drop a rule, a category not applied (spec decision 10, no
+  known limit for data correctness). Bounded: read once per write
+  (`stageDraft`) and once per insert batch, never per row; transaction rows
+  are paged. Any new whole-table reader inside a write needs its own entry.
+
 - **`src/reminders/native/NativeKikoReminders.ts` — the only PascalCase
   `.ts` file name in `src/`.** React Native codegen reads a spec file only
   if its basename matches `/^(Native.+|.+NativeComponent)/`
@@ -872,6 +887,19 @@ verified usage, not dead weight:
   stops installing it, add it to `package.json` as an exact-pinned
   devDependency instead.
 
+- **`scripts/checks/commit-typecheck.sh` docs-only skip.** The pre-commit typecheck exits 0
+  without a run when the staged diff (renames listed under both names) touches no file whose name
+  ends in `.ts`, `.tsx`, `.mts`, `.cts`, `.js`, `.jsx`, `.mjs`, `.cjs`, or `.json` (the
+  `SOURCE_FILES` pattern in that script). Reason: tsc reads only those files and `node_modules`,
+  which follows `package.json` and `package-lock.json`, so the result then equals HEAD's. Only a
+  clean "no match" skips: a failed diff or a grep error runs the check.
+- **`scripts/ensure-git-hooks.sh` skip outside a repository root.** The `postinstall` step exits 0
+  without setting core.hooksPath when `git rev-parse --show-toplevel` fails (no repository: a
+  scratch copy without `.git`, a source tarball), or when the top level is not the folder that
+  holds the script (a copy inside another repository, whose config it must not change). Reason:
+  no commit is possible from there, so there is nothing to guard. A config it cannot read, a
+  write that fails, or a core.hooksPath that already holds another value is not skipped: it
+  prints the standard block and exits 2.
 - **`__tests__/skill-identifiers.test.ts`'s two exemption lists (non-project
   names, and bad-name examples per skill file).** The test fails when an inline code span in a
   skill or agent file names an identifier that no word of the code corpus
@@ -900,3 +928,34 @@ verified usage, not dead weight:
   entry that is no longer cited or now resolves, so the lists only shrink.
   A name that left the code is fixed in the skill text (renamed, or written
   without backticks), never added here.
+
+- **`scripts/checks/medium.sh` repeated-Stop skip** (user ruling Q2 A,
+  2026-10-13, confirmed in the orchestrator's terminal): on a repeated Stop
+  (payload `stop_hook_active: true`) the tier writes `medium tier: skipped on
+  a repeated Stop` to stderr and exits 0. Reason: a failing Stop started a
+  new turn that ended in the same failure and the orchestrator looped (knip
+  ran about 8 times, binance-history-a7, 2026-10-11). Cost: a repeated Stop
+  shows a failure once; the next first Stop and `check:all` still catch it.
+  Scope: Stop only, never SubagentStop, only when stdin is a regular file; an
+  unreadable payload runs the tier as before.
+- **`scripts/job-queue.sh` power rule**: a missing `pmset` binary means AC
+  power (every other unreadable state holds). Reason: a machine without
+  `pmset` has no battery, so a hold would block forever. Risk: a Mac whose
+  `pmset` is not on PATH.
+- **`scripts/job-queue.sh` group TERM** (user ruling A, 2026-10-13): the
+  queue may send TERM to the process group it created for its own job, never
+  any other group; see kill-guard's entry above.
+- **`__tests__/error-class-pins.test.ts` skips a class with an empty body**
+  (`class X extends Error {}`): such a class inherits its name and message
+  from `Error` and has no own `.name` or `.message` literal to pin, and
+  pinning it would need a `src/` change that adds one. Every non-empty
+  `extends Error` class is checked, with no per-class exemption list.
+- **`__tests__/docs-known-limit.test.ts`'s exact-path list (`PREDATING_DOCS`).** The test
+  fails when a plan or a spec under `docs/superpowers/` uses the phrase "known limit" or
+  "known limitation", because a gap filed that way ships with no owner. Two dated reminders
+  docs hold the phrase and are exempt by exact path, each pinned to its count of matches:
+  `docs/superpowers/plans/2026-09-28-reminders.md` (1) and
+  `docs/superpowers/specs/2026-09-27-reminders-design.md` (2). Reason: both are dated history
+  that predates the rule, and rewriting a dated record would falsify it. The exact-count
+  test pins each count, so a doc that gains or loses a match fails; the list only shrinks and
+  a new doc is never added.

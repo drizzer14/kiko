@@ -128,6 +128,7 @@ export const en = {
     language: 'Language',
     system: 'System',
     title: 'Settings',
+    transactionTemplates: 'Transaction templates',
   },
   language: {
     en: '🇬🇧 English',
@@ -182,29 +183,112 @@ export const en = {
     // later migration (0039) — the interest portion of a linked loan
     // payment (never its principal) files under this key.
     loan_interest: 'Loan interest',
-    // Categories screen and inline add-category-row UI copy (distinct from the
+    // Categories screen, category form and icon picker UI copy (distinct from the
     // seeded default-category display names above).
     addCategory: 'Add category',
-    changeIconLabel: 'Change {{title}} icon',
     chooseIconHeading: 'Icon',
-    chooseNewIconLabel: 'Choose new category icon',
-    colorLabel: 'Color',
-    deleteLabel: 'Delete {{title}}',
     dismissIconPicker: 'Dismiss icon picker',
     iconOptionLabel: 'Choose icon {{icon}}',
-    isDefaultLabel: '{{title}} is the default category',
-    moveToBottomLabel: 'Move {{title}} to bottom',
-    moveToTopLabel: 'Move {{title}} to top',
     namePlaceholder: 'Groceries',
-    newColorPrefix: 'New category color',
-    rowColorPrefix: '{{title}} color',
-    setAsDefaultLabel: 'Set {{title}} as default',
-    titleFieldLabel: '{{title}} title',
-    // The ultimate fallback display (src/categories/category-display.ts
-    // NEUTRAL_CATEGORY) shown only when a category cannot be resolved AND
+    // The ultimate fallback display (src/categories/category-display/category-display.ts
+    // neutralCategory()) shown only when a category cannot be resolved AND
     // the default-category row itself is missing (e.g. before the seed
     // migration runs) — not the ordinary "Other" bucket above.
     uncategorized: 'Uncategorized',
+    // The rule count on a category card; English defines every plural form so both catalogues
+    // carry the same keys (Ukrainian selects all four).
+    rulesCount_one: '{{count}} rule',
+    rulesCount_few: '{{count}} rules',
+    rulesCount_many: '{{count}} rules',
+    rulesCount_other: '{{count}} rules',
+    noRules: 'No rules',
+    default: 'Default',
+    deleteRulesNotice_one: 'Its {{count}} rule will be deleted too.',
+    deleteRulesNotice_few: 'Its {{count}} rules will be deleted too.',
+    deleteRulesNotice_many: 'Its {{count}} rules will be deleted too.',
+    deleteRulesNotice_other: 'Its {{count}} rules will be deleted too.',
+    deleteRulesNoticeUnknown: 'Its rules will be deleted too.',
+    deleteTemplates_one: 'This also clears it in {{count}} template.',
+    deleteTemplates_few: 'This also clears it in {{count}} templates.',
+    deleteTemplates_many: 'This also clears it in {{count}} templates.',
+    deleteTemplates_other: 'This also clears it in {{count}} templates.',
+    deleteTemplatesUnknown: 'This also clears it in its templates.',
+  },
+  categoryPage: {
+    rulesHeading: 'Rules',
+    setAsDefault: 'Set as default',
+    isDefault: 'Default category',
+    quotedName: '"{{name}}"',
+    unreadableRule: "This rule can't be read",
+    deleteRuleTitle: 'Delete Rule',
+    addRule: 'Add rule',
+    emptyRules: 'Add a rule to set this category on matching transactions.',
+    // The labels of a rule card's table; each names its subject because the row stands alone.
+    amountEqual: 'Amount equals',
+    amountMore: 'Amount is more than',
+    amountAtLeast: 'Amount is at least',
+    amountLess: 'Amount is less than',
+    amountAtMost: 'Amount is at most',
+    timeBefore: 'Time is before',
+    timeAfter: 'Time is after',
+  },
+  categoryForm: {
+    addTitle: 'New Category',
+  },
+  ruleForm: {
+    addTitle: 'New Rule',
+    editTitle: 'Edit Rule',
+    // A condition is what the model calls a matcher: one test a transaction must pass.
+    addMatcher: 'Add condition',
+    allMustMatch: 'A transaction must match every condition.',
+    condition: 'Condition',
+    conditionSheetTitle: 'Condition',
+    selectCondition: 'Select a condition',
+    nameIs: 'Name is',
+    nameStartsWith: 'Name starts with',
+    amount: 'Amount',
+    direction: 'Type',
+    time: 'Time',
+    operator: 'Comparison',
+    operatorSheetTitle: 'Comparison',
+    selectOperator: 'Select a comparison',
+    equal: 'Equal to',
+    more: 'More than',
+    atLeast: 'At least',
+    less: 'Less than',
+    atMost: 'At most',
+    before: 'Before',
+    after: 'After',
+    // A statement row can carry a date and no time; it is read as noon in the statement's zone.
+    timeHint: "Statement rows without a time count as noon in the statement's time zone.",
+    remove: 'Remove',
+    removeCondition: 'Remove condition {{index}}',
+    errorNoMatchers: 'Add at least one condition.',
+    errorName: 'Enter a name.',
+    errorAmountNegative: 'Enter an amount of 0 or more.',
+    errorAmountTooLarge: 'This amount is too large.',
+    errorAmountWholeOnly: 'For this currency, you can enter only a whole amount.',
+    // `count` is the digits the currency allows (never 0: a currency of no decimals reads
+    // errorAmountWholeOnly); English defines every plural form so the Ukrainian set keeps parity.
+    errorAmountDecimals_one: 'This currency allows up to {{count}} decimal place.',
+    errorAmountDecimals_few: 'This currency allows up to {{count}} decimal places.',
+    errorAmountDecimals_many: 'This currency allows up to {{count}} decimal places.',
+    errorAmountDecimals_other: 'This currency allows up to {{count}} decimal places.',
+    errorNeverMatches: 'These conditions can never match together.',
+    errorNeverMatchesTime:
+      'These times can never match together. For a window over midnight, use two rules.',
+    errorDuplicate: 'A rule with these conditions already exists in {{category}}.',
+  },
+  ruleRewrite: {
+    title: 'Apply Rule',
+    // How many existing transactions saving the rule changes; English defines every plural form so
+    // both catalogues carry the same keys (Ukrainian selects all four).
+    message_one: 'This changes {{count}} transaction.',
+    message_few: 'This changes {{count}} transactions.',
+    message_many: 'This changes {{count}} transactions.',
+    message_other: 'This changes {{count}} transactions.',
+    applyToExisting: 'Apply to existing',
+    newOnly: 'New transactions only',
   },
   forms: {
     // Field labels reused across two or more of the forms below (the account,
@@ -514,6 +598,7 @@ export const en = {
     },
     transaction: {
       addReturn: 'Add return',
+      addTemplateTitle: 'Add Template',
       addTitle: 'Add Transaction',
       amountError: 'Amount must be greater than 0.',
       amountPlaceholder: '250.00',
@@ -528,9 +613,12 @@ export const en = {
       convertAmountPlaceholder: '100.00',
       convertToExchange: 'Exchange',
       counterpartAmountError: 'Amount must be greater than 0.',
+      createTransaction: 'Create transaction',
       description: 'Description',
       descriptionPlaceholder: 'Coffee',
+      editTemplateTitle: 'Edit Template',
       editTitle: 'Edit Transaction',
+      entryModeLabel: 'Entry mode',
       exchange: 'Exchange',
       expense: 'Expense',
       from: 'From',
@@ -552,19 +640,32 @@ export const en = {
       // stored choice (`loanLinkRejected`), not just an empty default.
       loanPaymentNone: 'None',
       loanPaymentSheetTitle: 'Loan Payment',
+      noTemplatesHint:
+        'No templates yet. Turn on "Save as a new template" when you save a transaction.',
       remove: 'Remove',
       removeReturn: 'Remove return {{index}}',
       returnAmount: 'Return {{index}}',
       returnsHeading: 'Change Returns',
       returnTo: 'Return to {{index}}',
       returnToSheetTitle: 'Return to {{index}}',
+      saveAsTemplate: 'Save as a new template',
       selectCategoryError: 'Select a category.',
       selectCounterpartError: 'Select an account to convert into.',
       selectDestinationError: 'Select a destination account.',
       selectHolding: 'Select holding',
+      selectHoldingError: 'No holding selected.',
+      selectTemplate: 'Select a template',
       split: 'Split',
       splitInvalidError: 'Add at least one valid return, and keep the returns below the payment.',
       syncedNotice: 'This was synced, so only the category and loan link can be changed.',
+      tabManual: 'Manual',
+      tabTemplate: 'Template',
+      template: 'Template',
+      templateName: 'Template name',
+      templateNameError: 'Enter a template name.',
+      templateNamePlaceholder: 'Rent',
+      templateNameTakenError: 'A template with this name already exists.',
+      templateSheetTitle: 'Template',
       title: 'Transaction',
       to: 'To',
       toSheetTitle: 'To',
@@ -738,7 +839,7 @@ export const en = {
   holdingDetail: {
     addLot: 'Add lot',
     addTransaction: 'Add transaction',
-    // The derived lifecycle ledger lines (src/holdings/derived-entries.ts) a
+    // The derived lifecycle ledger lines (src/holdings/derived-entries/derived-entries.ts) a
     // term-deposit or bond's Holding-detail screen renders inline — a bank
     // statement's own line structure, not a stored transaction.
     capitalization: 'Capitalization',
@@ -824,8 +925,8 @@ export const en = {
   holdings: {
     // The delete confirm's body for a holding, or an account's holdings, whose
     // transactions are one part of a movement with another holding. Only `rows`
-    // takes a count; the other parts list holding names, joined by the caller
-    // (Hermes has no `Intl.ListFormat`).
+    // and `templates` take a count; the other parts list holding names, joined by
+    // the caller (Hermes has no `Intl.ListFormat`).
     deleteLinked: {
       rows_one: 'This also deletes {{count}} linked transaction in {{names}}.',
       rows_few: 'This also deletes {{count}} linked transactions in {{names}}.',
@@ -838,6 +939,10 @@ export const en = {
       unlinked:
         'Some exchange parts in {{names}} could not be found and stay. Check them after deleting.',
       unlinkedPlain: 'Some exchange parts could not be found and stay.',
+      templates_one: 'This also clears it in {{count}} template.',
+      templates_few: 'This also clears it in {{count}} templates.',
+      templates_many: 'This also clears it in {{count}} templates.',
+      templates_other: 'This also clears it in {{count}} templates.',
     },
   },
   home: {
@@ -966,7 +1071,7 @@ export const en = {
     },
   },
   // The Home and Holding-detail rows both render the same fallback label
-  // (src/transactions/default-description.ts) for a transaction with no
+  // (src/transactions/default-description/default-description.ts) for a transaction with no
   // user-entered description, so it lives in its own small namespace rather
   // than duplicated under either screen.
   transactions: {
@@ -1038,7 +1143,7 @@ export const en = {
       emptyDefault: 'No accounts to show',
     },
   },
-  // The app-boot gate (src/migration/migrations.gate.tsx) — its own UI is the very
+  // The app-boot gate (src/migration/migrations-gate/migrations.gate.tsx) — its own UI is the very
   // first paint, before the navigator mounts, so it is keyed here rather than
   // under `common` even though it renders no other chrome.
   migrations: {
@@ -1363,6 +1468,14 @@ export const en = {
       interval_many: 'Every {{count}} days at {{time}}',
       interval_other: 'Every {{count}} days at {{time}}',
     },
+  },
+  transactionTemplates: {
+    addTemplate: 'Add template',
+    empty: {
+      message: 'Save a transaction you enter often as a template, then add it again in a few taps.',
+      title: 'No templates yet',
+    },
+    title: 'Transaction Templates',
   },
   // The human-readable display name per ISO currency code, shown alongside the
   // code in the searchable CurrencyField (trigger label, rows, accessibility

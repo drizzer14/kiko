@@ -4,7 +4,7 @@
 
 **Goal:** Every Binance movement that changes the Spot (`'BTC'`), Funding (`'BTC:funding'`) or Earn (`'BTC:earn'`) BTC holding becomes a transaction row on that holding. Convert is deferred (D7).
 
-**Architecture:** One shared request gate and one `BinanceRunBudget` per Binance arm feed four walks in order (capital, Pay, Transfer, Earn). Each walk is its own file, its own watermark on the Spot holding's metadata, and its own `logOnFailure`. Movements between two tracked holdings are paired legs (`exchangeCounterpartHoldingId` + `exchangePairId`). A one-leg movement to an untracked wallet carries the new `transactions.untracked_counterpart` code (migration 0056). Labels are resolved at render time.
+**Architecture:** One shared request gate and one `BinanceRunBudget` per Binance arm feed four walks in order (capital, Pay, Transfer, Earn). Each walk is its own file, its own watermark on the Spot holding's metadata, and its own `logOnFailure`. Movements between two tracked holdings are paired legs (`exchangeCounterpartHoldingId` + `exchangePairId`). A one-leg movement to an untracked wallet carries the new `transactions.untracked_counterpart` code (migration 0058). Labels are resolved at render time.
 
 **Tech Stack:** React Native 0.87, op-sqlite + Drizzle, react-i18next, Jest/RNTL with `node:sqlite` (`@kiko/test-support/real-sqlite`), fnts, ts-pattern.
 
@@ -25,7 +25,7 @@
 9. **Disconnect resets every walk key to `HISTORY_FLOOR_MS` (2017).** `withWalkOwnedMetadataResetToFloor` iterates `walkOwnedMetadataKeys`, so the new keys reset with no disconnect change. 2017 is below the Pay floor (18 months) and the Transfer floor (6 months), so each walk clamps its start to its own floor (pinned in tasks 4/7 and 5/7).
 10. **A credential client must send `no-store`.** `scripts/checks/plist.sh:20` flags any file holding `'X-MBX-APIKEY'`. `binance.history-client.ts` must reuse the exported `signedRequestPage` from `binance.client.ts` and never build its own headers.
 11. **Withdraw-budget constants are exported from `binance.transactions.ts`** (`WITHDRAW_CALLS_PER_RUN_FALLBACK`, `WITHDRAW_UID_WEIGHT`, `UID_WEIGHT_BUDGET_1M`). Task 2/7 moves them to `binance.history-budget.ts` and updates the test imports; no re-export (Knip).
-12. **Migration index.** `main`, `next`, and every build-29 branch (`release-29`, `duo-adaptive`, `ios18-fallback`, `keyloss-fix`, `onboarding-fixes*`) end at `0055` on 2026-10-10. This plan takes `0056`. If build 29 lands a migration first, renumber 0056 before merging (never after a build ships).
+12. **Migration index.** `main`, `next`, and every build-29 branch (`release-29`, `duo-adaptive`, `ios18-fallback`, `keyloss-fix`, `onboarding-fixes*`) end at `0057` (`0056_add_category_rules`, `0057_add_transaction_templates`). This plan takes `0058`, the next free index at the merge; a migration that lands first moves it (never after a build ships).
 13. **Capital rows carry `description: 'BTC'`** (`binance.transactions.ts:196`), not `''` as kiko-architecture says. Unchanged here; the task 7/7 skill rewrite fixes the skill text.
 14. **The worktree has no `node_modules`.** Task 1/7 step 1/9 runs `npm ci` in this worktree once. Never symlink main's (memory `scratch-copy-never-shares-node-modules`).
 
@@ -77,7 +77,7 @@ All paths under `src/crypto-sync/binance/` unless shown otherwise. Slow runs to 
 - Red/green: `npx jest <test file>` (red: FAIL for the named reason; green: PASS).
 - Before BATCH READY, in this order: `bash scripts/wait-load.sh 10` (background, wait on its exit code), `npx jest` (full suite, exit 0, report the count), `npm run check:all` (exit 0), `KIKO_MUTATION_BASE=<task base> make mutable` (exit 0, count <= 30).
 - `bash scripts/checks/dup.sh <the task's changed files>` (the Stop-hook scope), and each touched test file on its own.
-- BATCH READY names: task, base sha, tip sha, `make mutable` count, full-jest count, `check:all` exit code, reviewer verdict, and (task 3/7) "migration 0056".
+- BATCH READY names: task, base sha, tip sha, `make mutable` count, full-jest count, `check:all` exit code, reviewer verdict, and (task 3/7) "migration 0058".
 - One `kiko:reviewer` pass per task (change set), plus one whole-branch pass in task 7/7. Cheap same-file Minors ride a fix round; no fix round for Minors alone.
 
 ---
@@ -240,10 +240,10 @@ export const syncBinanceTransactions: (request: { targetAccountId: string; run: 
 - [ ] **step 7/8:** Run `npx jest src/crypto-sync src/holdings src/screens/account-detail`, then `npx tsc --noEmit`. Expected: PASS. Commit `feat(binance): shared history run budget, capital placement by walletType, walk cursors`.
 - [ ] **step 8/8:** Pre-BATCH-READY commands; `kiko:reviewer` (brief: budget numbers equal the old withdraw rule; `ensureExchangeHoldings` never writes an existing row; C2 cannot move an existing row; the cursor gate kept). BATCH READY.
 
-### binance-history task 3/7: migration 0056, exclusion, transfer labels (developer, then reviewer)
+### binance-history task 3/7: migration 0058, exclusion, transfer labels (developer, then reviewer)
 
 **Files:**
-- Create: `drizzle/migrations/0056_add_untracked_counterpart.sql`, `drizzle/migrations/meta/0056_snapshot.json` (generated), `drizzle/migrations/0056-add-untracked-counterpart.test.ts`
+- Create: `drizzle/migrations/0058_add_untracked_counterpart.sql`, `drizzle/migrations/meta/0058_snapshot.json` (generated), `drizzle/migrations/0058-add-untracked-counterpart.test.ts`
 - Modify: `drizzle/migrations/meta/_journal.json`, `drizzle/migrations/migrations.js` (generated), `src/db/schema.ts` (transactions, after `exchangePairId`)
 - Modify: `src/transactions/repo/transactions.repo.ts` (`NewTransaction` gains the three marker fields)
 - Create: `src/transactions/repo/transactions.repo.markers.test.ts` (real SQLite)
@@ -271,7 +271,7 @@ transactionRowDescription(input: { transaction: Pick<TransactionRow, 'holdingId'
 // order: stored description -> paired leg (transfer when both currencies known and equal, else exchange) -> known untracked code (transfer) -> default income/expense label
 ```
 
-- [ ] **step 1/10:** Write `0056-add-untracked-counterpart.test.ts` in the shape of `0055-add-dismissed-tips.test.ts`: `applyMigrationsThrough(db, '0055_add_dismissed_tips')`, insert one transaction row; assert (1) no `untracked_counterpart` before; (2) after: `text`, `notnull = 0`, `dflt_value = null`; (3) the existing row reads `null`; (4) a row with `'wallet:UMFUTURE'` round-trips; (5) no index on the column (`pragma_index_list('transactions')` unchanged, count equal before/after).
+- [ ] **step 1/10:** Write `0058-add-untracked-counterpart.test.ts` in the shape of `0055-add-dismissed-tips.test.ts`: `applyMigrationsThrough(db, '0057_add_transaction_templates')`, insert one transaction row; assert (1) no `untracked_counterpart` before; (2) after: `text`, `notnull = 0`, `dflt_value = null`; (3) the existing row reads `null`; (4) a row with `'wallet:UMFUTURE'` round-trips; (5) no index on the column (`pragma_index_list('transactions')` unchanged, count equal before/after).
 - [ ] **step 2/10:** Write the other failing tests:
   - `transactions.repo.markers.test.ts`: `addManyDedup` stores `exchangeCounterpartHoldingId`, `exchangePairId`, `untrackedCounterpart`; a second `addManyDedup` of the same key with a changed amount refreshes the amount and leaves the three markers as stored.
   - `exchange-exclusion.test.ts`: a row with only `untrackedCounterpart` set is excluded; a row with neither marker is not.
@@ -279,14 +279,14 @@ transactionRowDescription(input: { transaction: Pick<TransactionRow, 'holdingId'
   - `exchange-description.test.ts` / `row-description.test.ts`: BTC->BTC paired leg, negative -> "Transfer to Binance Funding", positive -> "Transfer from …"; BTC->UAH leg -> "Exchange to …" (unchanged); counterpart missing from `holdingCurrencyById` -> exchange label (unchanged behavior); `wallet:UMFUTURE` negative -> "Transfer to USDⓈ-M Futures"; unknown code -> the default income/expense label; a stored description wins over both. Use the real `en` catalogue through the existing test `t`.
   - `import-data.back-compat.test.ts`: an export whose transaction rows lack `untrackedCounterpart` imports, and every restored row reads `null`.
   - Statistics: one case in the existing statistics screen or category-breakdown test that an `untrackedCounterpart` row is out of the spending pie.
-- [ ] **step 3/10:** Run `npx jest drizzle/migrations/0056-add-untracked-counterpart.test.ts src/transactions src/statistics src/data-transfer`. Expected: FAIL.
-- [ ] **step 4/10:** Add the schema column with its WHY comment. Run `npx drizzle-kit generate --name add_untracked_counterpart`, then `./node_modules/.bin/biome check --write drizzle/migrations`. The SQL body is exactly ``ALTER TABLE `transactions` ADD `untracked_counterpart` text;``. Prepend the 0055-style `/* */` header: purpose; additive, one ADD COLUMN, no index, no backfill, so a crash leaves 0055 and it retries whole; an old `.kiko` restores `null`. Re-check the `migrations.js` layout.
+- [ ] **step 3/10:** Run `npx jest drizzle/migrations/0058-add-untracked-counterpart.test.ts src/transactions src/statistics src/data-transfer`. Expected: FAIL.
+- [ ] **step 4/10:** Add the schema column with its WHY comment. Run `npx drizzle-kit generate --name add_untracked_counterpart`, then `./node_modules/.bin/biome check --write drizzle/migrations`. The SQL body is exactly ``ALTER TABLE `transactions` ADD `untracked_counterpart` text;``. Prepend the 0055-style `/* */` header: purpose; additive, one ADD COLUMN, no index, no backfill, so a crash leaves 0057 and it retries whole; an old `.kiko` restores `null`. Re-check the `migrations.js` layout.
 - [ ] **step 5/10:** Widen `NewTransaction`; implement exclusion and the statistics mappings; implement `untracked-counterpart.ts`, the label branches, and the `holdingCurrencyById` plumbing in every caller (`tsc` lists them).
 - [ ] **step 6/10:** Add `transactions.transferTo: 'Transfer to {{name}}'`, `transferFrom: 'Transfer from {{name}}'` (en) and `'Переказ на {{name}}'`, `'Переказ з {{name}}'` (uk), next to `exchangeTo/From`.
-- [ ] **step 7/10:** Run `npx jest drizzle/migrations src/db src/data-transfer src/transactions src/statistics src/screens src/design-system src/i18n`, then `npx tsc --noEmit`. Expected: PASS. Commit `feat(transactions): untracked_counterpart column (0056), spending exclusion, transfer labels`.
-- [ ] **step 8/10:** `kiko:reviewer` on the migration (before BATCH READY). Brief: (1) one additive nullable ADD COLUMN, snapshot matches, journal idx 56 with no collision on `main`/`next`; (2) which existing queries touch `transactions` (`listAllQuery`, `listByHoldingQuery`, `listWithContextBetweenQuery`, `readDataSnapshot`, `restoreDataSnapshot`, `addManyDedup` upsert) and which index each uses now: none changes, no new index, so no EXPLAIN QUERY PLAN test (the reviewer confirms); (3) an old `.kiko` and a 0055 database both work; (4) the header states the crash-safe order.
+- [ ] **step 7/10:** Run `npx jest drizzle/migrations src/db src/data-transfer src/transactions src/statistics src/screens src/design-system src/i18n`, then `npx tsc --noEmit`. Expected: PASS. Commit `feat(transactions): untracked_counterpart column (0058), spending exclusion, transfer labels`.
+- [ ] **step 8/10:** `kiko:reviewer` on the migration (before BATCH READY). Brief: (1) one additive nullable ADD COLUMN, snapshot matches, journal idx 58 with no collision on `main`/`next`; (2) which existing queries touch `transactions` (`listAllQuery`, `listByHoldingQuery`, `listWithContextBetweenQuery`, `readDataSnapshot`, `restoreDataSnapshot`, `addManyDedup` upsert) and which index each uses now: none changes, no new index, so no EXPLAIN QUERY PLAN test (the reviewer confirms); (3) an old `.kiko` and a 0057 database both work; (4) the header states the crash-safe order.
 - [ ] **step 9/10:** `kiko:reviewer` on the rest of the diff (same pass is fine): label order, the manual same-currency relabel, Semgrep `kiko-no-direct-default-transaction-description` still satisfied. Fix Critical/Important.
-- [ ] **step 10/10:** Pre-BATCH-READY commands. BATCH READY names "migration 0056" and lists the new en/uk keys for translator review before any deploy.
+- [ ] **step 10/10:** Pre-BATCH-READY commands. BATCH READY names "migration 0058" and lists the new en/uk keys for translator review before any deploy.
 
 ### binance-history task 4/7: Pay walk (developer)
 
@@ -779,7 +779,7 @@ Safest defaults applied by the planner on 2026-10-10 while the user was away. Ea
 7. The same-currency "Transfer to/from" label also applies to existing MANUAL same-currency Exchange legs, because the spec compares currencies generally. Task 3/7.
 8. The uk `transferTo/From` strings take no «» quotes, the same as the existing `exchangeTo/From`. They go to translator review. Task 3/7.
 9. RESOLVED (step 2/9 SDK facts): type optional; client sends type=ALL, one series. Tasks 1/7 and 6/7.
-10. The migration takes number 0056. It is renumbered if build 29 lands a migration first. Task 3/7.
+10. The migration takes number 0058. It is renumbered if another migration lands first. Task 3/7.
 11. Earn key layout: `earn:sub:<flexible|locked>:<purchaseId>:<holdingKey>`, `earn:redeem:…`. The pair id is the same without the holding key. Task 6/7.
 12. Earn statuses: only `SUCCESS` imports and `FAILED` is ignored. Any other status is a stop (owed at the record's point, item 18). Task 6/7.
 13. Walk stops are logged as `logFailure(tag, new BinanceWalkStop(code))`, so only the name and the fixed code reach the log. Tasks 2/7-6/7.
@@ -795,7 +795,7 @@ Safest defaults applied by the planner on 2026-10-10 while the user was away. Ea
 23. DECIDED, user ruling 2026-10-13 (kept): Earn settled status per kind: a subscription settles on `SUCCESS`, a redemption on `PAID`; a locked redemption with `isComplete` `false` is not settled; `FAILED` is ignored. Task 6/7.
 24. DECIDED, user ruling 2026-10-13 (kept): a locked redemption is placed by its `type` (`MATURE` -> Spot, any other type owed as `earn-redemption-type-unconfirmed`); extended to the per-product subscription allowlist {flexible `NORMAL`/`AUTO`, locked `NORMAL`}, every other type owed permanently. Task 6/7.
 
-25. OPEN, owned by the live probe of spec item 17 (overnight default; the user confirms in the morning): a Transfer type that keeps less than 179 days costs rows just above its depth when a run reads it late (a depth that moves with the clock), and 20 types that keep a different depth each leave rows above the depths of the types a first run does not reach (5, 20 and 30 rows with 397 narrowing calls, none with 550); a type that keeps 30 days owes one refused band each run, so the caption stays on. If the probe shows such a type, the speculative-read redesign is the next change set. The cap stays 397 (232 is the smallest value that loses no row in the 420 cases). Spec section 5, "OPEN ITEM".
+25. CLOSED BY MEASUREMENT, spec item 17 (user rulings D1 and D2 confirmed 2026-10-14; the live probe of 2026-10-14 found all 20 types keeping 183 days). The costs are reachable only if Binance later keeps a type for less than 179 days: a Transfer type that keeps less than 179 days costs rows just above its depth when a run reads it late (a depth that moves with the clock), and 20 types that keep a different depth each leave rows above the depths of the types a first run does not reach (5, 20 and 30 rows with 397 narrowing calls, none with 550); a type that keeps 30 days owes one refused band each run, so the caption stays on. The speculative-read redesign stays in the backlog, not scheduled. The cap stays 397 (232 is the smallest value that loses no row in the 420 cases). Spec section 5, "Transfer depth, CLOSED BY MEASUREMENT".
 
 Orchestrator ruling R30 (technical, 2026-10-12, not a user item): on every walk a BTC row the client cannot parse is a per-record stop (`capital-row-unreadable`, `pay-row-unreadable`, `transfer-row-unreadable`, `earn-row-unreadable`), never a whole-run throw: it owes its canonical point when a usable time exists, else the span; the other rows of the span import. Task 5/7 step 1/11 (capital, Pay), task 5/7 (Transfer), task 6/7 (Earn).
 

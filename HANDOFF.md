@@ -1,6 +1,41 @@
 # HANDOFF — Kiko 1.0.0: BUILD 25 ready for user resubmission; harness agents re-tuned (2026-09-22)
 
-## ⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐ COORDINATOR HANDOFF (2026-10-12 ~01:40) — READ THIS FIRST
+## ⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐ COORDINATOR HANDOFF (2026-10-14 ~12:00) — READ THIS FIRST
+Coordinator job 828f039f. Event log + OVERNIGHT DEFAULTS D1-D6: memory/refs/night-summary-2026-10-14.md.
+FIRST ACTION of the next session: walk the user through memory/refs/morning-walkthrough-2026-10-14.md,
+IN ITS ORDER, one item at a time (AskUserQuestion, recommendation first). Session addresses: memory
+orca-hub (last bullet). The 2026-10-13 section below is HISTORY.
+| Thing | Value |
+|---|---|
+| main = next | this handoff commit on 25ba6474 (retrospect drift fix, plugin 0.4.11) on 49208738. Contains category rules + templates + category-rules follow-ups 1/2 and 2/2 + all of H5 (job queue, run log wait/gaps, test infra, missing-path guards, comment/test-title rules, pre-commit typecheck hook, mutation ETA with timeouts) + the CLAUDE.md trim (183 lines; detail in docs/harness/checks.md + agents.md). origin/main still 1f7a26a4 (nothing pushed; user: "not yet"). |
+| iPhone | main 49208738 installed (build 29, data container kept). The user has the device checks (walkthrough item 1). |
+| QUEUE | scripts/job-queue.sh only (cutover ~04:30). Old memory/refs/verify-queue.sh RETIRED (blocking ticket in ~/.claude/jobs/828f039f/verify-queue/tickets). Wait for load with scripts/wait-load.sh 10 first. Pre-commit typecheck hook is live (core.hooksPath=githooks). |
+| BINANCE | task 7/7 COMPLETE at cd10464c (branch binance-pay-history; gate 16e15079..cd10464c PASS 95.65). Session closed. NOT merged: waits for the user's D1/D2 (owned open item; item-17 probe recommended). Merge handover: binance-pay-history/.superpowers/sdd/binance-history/handover-2026-10-14-merge.md. binance-t6 stopped at 16 % (user decides). |
+| HARNESS SYNC | drizzer14/harness branch h5-sync tip d92f28d (worktree /Users/drizzer14/orca/workspaces/harness/h5-sync; session harness-sync-g6 = SendMessage "h5-sync-18", idle). npm test 2562/2562. plugin/** patch list P1-P25 pending the user (auto mode denied the writes). Then the coordinator pushes. |
+| H7 | brief memory/refs/brief-h7.md (H5 track files copied to memory/refs/h5-sdd/). Set 1 G1 (a) needs the user's own-terminal confirmation. Not started. |
+| IDLE TRACKS | templates (transaction-templates worktree), duo (wt-simfix 4148568f; simulator check at the end), form-header (Maestro check when quiet), category-rules worktree (2/2 merged; its session closed). |
+
+## ⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐ COORDINATOR HANDOFF (2026-10-13 ~14:30) — HISTORY
+Coordinator job 828f039f. Event log of 2026-10-12/13: memory/refs/night-summary-2026-10-12.md.
+FIRST ACTION of the next session: walk the user through memory/refs/morning-walkthrough-2026-10-13.md,
+IN ITS ORDER, one item at a time (AskUserQuestion, recommendation first), and send each answer to the
+named track. Item 1 (the category-rules review) unblocks the category-rules merge and the whole
+templates stack.
+Then: SendMessage your name to the orchestrators below; arm memory/refs/gaugewatch.sh per terminal
+(run_in_background) and a power watcher (until-loop on pmset -g batt).
+| Thing | Value |
+|---|---|
+| main = next | this handoff commit on efd18ea1 (retrospect skills/memory) on f2f4f0aa (H6 changed-line gates 8e871af4, form header c948aa56, wall-clock flake fix f2f4f0aa). Plugin 0.4.5 (retrospect drift fix efd18ea1). origin/main still 1f7a26a4 (nothing pushed; ask the user). |
+| QUEUE | Heavy jobs only through memory/refs/verify-queue.sh. Gates: /Users/drizzer14/.claude/jobs/828f039f/tmp/gate-runner2.sh (gates2.list / gates2.done; overlays the H6 gate files from 8e871af4 after each checkout). It was a background job of the old session: if it is gone, relaunch it with run_in_background. Left: binance-t5 (running, slow), binance-t4, duo-t6-night, binance-t6, binance-t7s0. Battery hold 0-0000000007-battery-hold since 12:15: remove at CHARGER BACK. User rules: verifies before gates, shortest gate first, no heavy job on battery. |
+| CATEGORY RULES | rules-f10 = SendMessage "category-rules-7e" (term_1ea826c4-5065-4a7f-8593-6f32a3d33c00). READY at 74f60ed1, all gates PASS. Waits ONLY for the user's review (walkthrough item 1). Then ff next+main, then the footer-Save follow-up. |
+| TEMPLATES | templates-e9 = SendMessage "transaction-templates-d8" (term_5cab2f3c-a2f7-402a-8f29-b6165e5c5a5c). READY after category-rules: ff in order fc332d3a (CS2), 1599dbfe (CS4+CS5), 85044fca (CS6); all gates and verifies PASS. Then remove worktrees templates-p1-gate / templates-cs2-gate. No templates build on a device before the merge (migration now 0057). |
+| BINANCE | binance-c9 = SendMessage "binance-pay-history-72" (term_648f61fc-468e-4dac-986e-199e6ee4ea96). Tasks 4/7 (22b66372), 5/7 (0c0adb29), 6/7 (67936c29) BATCH READY; 7/7 step 0 done; probe script rev 2 ready, waits for the user's runs (memory/refs/binance-probe-user-list-2026-10-13.md). No merge before the probe. Standing user approval for edge cases (memory binance-edge-cases-coordinator-decides). Migration 0056_add_untracked_counterpart regenerates at merge (rules keep 0056, templates 0057). |
+| FORM HEADER | MERGED. form-header-e6 idle; worktree stays until the user's iPhone + Maestro check. Deferred: drop "&& effectiveCategory !== null" at transaction-form.screen.tsx:962; 3 set-category test minors. |
+| DUO | duo-adaptive-f5 idle. Gates t7 + simfix PASS; duo-t6 in the list. App installed on sim E862974E (shut down); the user's 10-item check is in the walkthrough. |
+| LOAN CARDS | MERGED (8df0344b). loan-cards-b2 idle; worktree until the user's device check. |
+| HARNESS | H6 MERGED. H5 not started (brief memory/refs/brief-run-log-fixes.md, ~25 backlog items incl. the gate-runner port); ask the user. Harness-repo plugin edits work in auto mode now. |
+
+## ⭐ (SUPERSEDED by the section above) COORDINATOR HANDOFF (2026-10-12 ~01:40)
 Coordinator: session "Coordinator" (job 828f039f). Full log of 2026-10-11: memory/refs/night-summary-2026-10-11.md (every ruling, every event). Retrospect: memory retrospect-2026-10-11.md.
 FIRST ACTIONS of the next session:
 1. SendMessage your name to the 7 orchestrators below and to the PM "Status". Arm `bash memory/refs/gaugewatch.sh <terminal>` (run_in_background) for each. Arm a power watcher (loop on pmset -g batt).

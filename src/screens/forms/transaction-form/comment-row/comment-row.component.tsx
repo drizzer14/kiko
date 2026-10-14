@@ -4,8 +4,8 @@ import Text from '@kiko/design-system/components/text';
 
 import type { CommentRowProps } from './comment-row.props';
 
-// The counterparty->comment column writes a real value no screen ever
-// surfaced, shown whenever the loaded row carries a non-blank comment.
+// The counterparty->comment column holds a real value, so the form shows it
+// whenever the loaded row carries a non-blank comment.
 // Not gated by `isReadOnly`:
 // `mapParsedTransaction`/Monobank sync can write `comment` onto any
 // imported row regardless of `source`, and a Monobank-synced row is exactly
@@ -13,21 +13,10 @@ import type { CommentRowProps } from './comment-row.props';
 // both. A component of its own for the same cognitive-complexity-budget
 // reason as `ReadOnlyNotice`.
 //
-// This does NOT reuse `SummaryTable`
-// (the app's shared "label left, value right" ROW layout) — `SummaryTable`
-// was built for short values (money, counts, dates); Comment is free text
-// that can run to a full sentence. `SummaryTable` wraps a row's `value` in
-// its OWN `Box` (`summary-table.component.tsx`'s `<Box
-// testID={row.testID}>{row.value}</Box>`), one level BELOW the row's own
-// flex-row layout — a `flexShrink`/`textAlign` set on the VALUE node I pass
-// in (a grandchild of the row, not a direct flex child of it) has no effect
-// on that row's own layout pass in Yoga; only the WRAPPING `Box` itself
-// (which `SummaryTable` owns, not a caller) would need `flexShrink` — and
-// `SummaryTable`'s shared row must not change for one
-// caller. Stacking the label ABOVE the value instead — a plain `Box`
-// column, not a flex row — sidesteps the problem entirely: the value
-// `Text` gets the row's FULL width to itself and wraps normally, with no
-// label competing for horizontal space on the same line.
+// This does NOT use a `SummaryTable` row, even one with `wraps`: that layout puts the label
+// beside the value, so a comment that runs to a full sentence would wrap inside the narrow
+// column the label leaves. Stacked, the label above the value, the sentence gets the full width
+// and reads as text.
 const CommentRow = ({ comment, label }: CommentRowProps): ReactElement | null => {
   const trimmed = comment?.trim();
 

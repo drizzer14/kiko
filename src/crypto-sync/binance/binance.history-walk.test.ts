@@ -1655,6 +1655,7 @@ describe('BinanceWalkStop', () => {
     expect(stop).toBeInstanceOf(Error);
     expect(stop).toBeInstanceOf(BinanceWalkStop);
     expect(stop.name).toBe('BinanceWalkStop');
+    expect(stop.message).toBe('capital-wallet-unknown');
     expect(stop.code).toBe('capital-wallet-unknown');
     expect(Object.hasOwn(stop, 'code')).toBe(true);
   });

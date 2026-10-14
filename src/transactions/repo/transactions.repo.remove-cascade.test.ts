@@ -28,7 +28,7 @@ import { transactionsRepo } from './transactions.repo';
 
 // The newest migration the repository's own columns need: the last one that
 // added a column `transactions` is read with.
-const LAST_MIGRATION_TAG = '0056_add_untracked_counterpart';
+const LAST_MIGRATION_TAG = '0058_add_untracked_counterpart';
 
 const MIGRATION_0052_SQL = readFileSync(
   join(__dirname, '..', '..', '..', 'drizzle', 'migrations', '0052_add_exchange_pair_id.sql'),
@@ -774,7 +774,7 @@ describe('deleting a leg of a Convert', () => {
 });
 
 describe('deleting a row of a split payment', () => {
-  const splitPayment = (): Promise<void> =>
+  const splitPayment = (): Promise<string> =>
     transactionsRepo.recordManualWithReturns({
       payment: { holdingId: 'uah', amountMinorUnits: -50_000, time: MOVED, category: 'groceries' },
       returns: [

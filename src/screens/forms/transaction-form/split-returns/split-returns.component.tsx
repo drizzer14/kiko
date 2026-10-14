@@ -21,6 +21,7 @@ const SplitReturns = (props: SplitReturnsProps): ReactElement | null => {
     return null;
   }
 
+  const { required = true } = props;
   const invalid = props.error !== undefined;
 
   return (
@@ -50,7 +51,7 @@ const SplitReturns = (props: SplitReturnsProps): ReactElement | null => {
               selectedId={row.holdingId}
               onSelect={(holdingId) => props.onSelectHolding(index, holdingId)}
               onCreateNew={props.onCreateHolding}
-              required
+              required={required}
               invalid={invalid}
             />
 
@@ -61,7 +62,7 @@ const SplitReturns = (props: SplitReturnsProps): ReactElement | null => {
               keyboardType="decimal-pad"
               placeholder={props.t('forms.transaction.amountPlaceholder')}
               suffix={props.suffix}
-              required
+              required={required}
               invalid={invalid}
             />
 

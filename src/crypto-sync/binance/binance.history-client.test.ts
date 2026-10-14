@@ -413,7 +413,7 @@ describe('fetchPayHistory envelope', () => {
     expect(error).toBeInstanceOf(BinanceHistoryParseError);
     expect(error).toMatchObject({
       name: 'BinanceHistoryParseError',
-      message: BINANCE_HISTORY_PARSE_ERROR,
+      message: 'Binance history response malformed',
     });
   });
 

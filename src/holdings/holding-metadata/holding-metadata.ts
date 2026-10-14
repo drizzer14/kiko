@@ -140,8 +140,8 @@ export const walletAddressOf = (metadata: unknown): string | undefined => {
 
 /**
  * The IBAN a Monobank card sync writes next to its `monobankId` (see
- * `mapAccountToHolding` in monobank/sync.ts). Read back so the category chart
- * can build the set of the user's OWN card IBANs and tell an own-account
+ * `mapAccountToHolding` in src/monobank/sync/sync.ts). Read back so the category
+ * chart can build the set of the user's OWN card IBANs and tell an own-account
  * transfer from a genuine P2P payment. `undefined` when absent (jars, manual
  * holdings, crypto).
  */
@@ -376,7 +376,7 @@ export type BinanceWalkSpanHintField = (typeof binanceWalkSpanHintFields)[number
 
 /**
  * The two marks of a Monobank holding's close and reopen (see
- * `reconcileClosedHoldings` in monobank/sync.ts). Each key has one role:
+ * `reconcileClosedHoldings` in src/monobank/sync/sync.ts). Each key has one role:
  * `syncClosedFromMs` says the SYNC closed this holding (the user's own close
  * never writes it), and `statementFromMs` is the from-cursor of the next
  * statement fetch of a card or jar the sync just reopened. Only the first is dropped
@@ -646,7 +646,7 @@ export const withWalkOwnedMetadataCarried = (
  * history) — the disconnect-side counterpart of `withWalkOwnedMetadataCarried`,
  * so a disconnected Binance connection's watermark cannot leak into a
  * DIFFERENTLY-owned reconnect (`disconnectCryptoAccount`,
- * crypto-sync/disconnect.ts). Setting the floor rather than deleting the key
+ * src/crypto-sync/disconnect/disconnect.ts). Setting the floor rather than deleting the key
  * matters: a deleted key falls back to the legacy `latestTransactionTime`
  * cursor, which a reconnected DIFFERENT Binance account would inherit as if it
  * were its own already-imported history. Every `binanceWalkPointCursorFields`,

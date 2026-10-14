@@ -415,7 +415,7 @@ export const refreshRates = async (deps: RefreshDeps = {}): Promise<RatesRefresh
   };
 
   // Settle the fiat (with its NBU fallback) and crypto pipelines
-  // independently, exactly as `runBackfill` does (rates/history-backfill.ts).
+  // independently, exactly as `runBackfill` does (src/rates/history-backfill/history-backfill.ts).
   // `Promise.all` discarded a successful fiat fetch whenever CoinGecko 429'd
   // or returned a malformed body, left the stale rate table in place, and
   // propagated the rejection through `useSyncAction` — so a fiat import that

@@ -63,8 +63,8 @@ describe('Crypto coverage — every added crypto reaches every base (no silent n
   // Home (src/screens/home/home.screen.tsx) renders its per-currency breakdown
   // row via `guardedBreakdown`, a DIFFERENT function from `guardedNetWorth` —
   // it filters by the same `canConvert` gate but never converts the amount, it
-  // sums each holding in its OWN currency (rates/net-worth-view.ts). A crypto
-  // proven convertible above could still be silently dropped from this second,
+  // sums each holding in its OWN currency (src/rates/net-worth-view/net-worth-view.ts). A
+  // crypto proven convertible above could still be silently dropped from this second,
   // separate call site if that call site filtered differently.
   it('includes every crypto in the per-currency breakdown Home renders (guardedBreakdown)', async () => {
     const table = await composeTable();
@@ -94,7 +94,7 @@ describe('Crypto coverage — every added crypto reaches every base (no silent n
 
   // USDT is priced via CoinGecko at its real market rate (~1.0007), not hard-
   // pegged to 1. Only USDT:UAH is stored (`buildUahPrice`/`buildUahRows`,
-  // rates/rates-refresh.ts); `rateBetween` resolves USDT:USD at READ TIME by
+  // src/rates/rates-refresh/rates-refresh.ts); `rateBetween` resolves USDT:USD at READ TIME by
   // dividing USDT's UAH price by USD's — algebraically this cancels the
   // (index-dependent, test-fixture) UAH/USD leg entirely and must reproduce
   // the raw CoinGecko USD price exactly. If a future change special-cased a

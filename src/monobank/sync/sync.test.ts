@@ -186,8 +186,8 @@ type SyncedTransactionInput = Parameters<SyncDeps['transactionsRepo']['addManyDe
  * user's own value, and the real `addManyDedup` upsert leaves them alone too.
  *
  * This list MIRRORS that upsert's `onConflictDoUpdate` set in
- * `transactions/transactions.repo.ts` and must change with it, or the double
- * stops standing for the repository it doubles.
+ * `src/transactions/repo/transactions.repo.ts` and must change with it, or the
+ * double stops standing for the repository it doubles.
  */
 const bankOwnedColumns = (input: SyncedTransactionInput) => ({
   amountMinorUnits: input.amountMinorUnits,
@@ -334,6 +334,8 @@ const makeInMemoryDeps = (
         loanLinkRejected: false,
         // Only a manual balance set marks its row.
         setsBalance: false,
+        // The insert path never marks a category as picked by hand.
+        categorySetByHand: false,
         comment: input.comment ?? null,
         externalId: input.externalId ?? null,
       });
@@ -518,7 +520,7 @@ describe('runSync', () => {
     expect(transactionsStore).toHaveLength(0);
   });
 
-  // `useSyncAction` (src/sync/use-sync.ts) surfaces this thrown message
+  // `useSyncAction` (src/sync/use-sync/use-sync.ts) surfaces this thrown message
   // verbatim as the account-detail screen's error text, so it genuinely needs
   // to resolve in the active language, unlike a swallowed/discarded error.
   it('throws the no-account-connected message in Ukrainian once the active language switches', async () => {
@@ -1265,7 +1267,7 @@ describe('runSync', () => {
 
     // First run: the FIRST card fails, but the second card must still import —
     // the old fail-fast loop stopped every later card the moment one threw.
-    await expect(runSync(deps)).rejects.toThrow();
+    await expect(runSync(deps)).rejects.toThrow('Monobank request failed: 500');
     expect(transactionsStore.some((row) => row.externalId === 'acc-mono:txn-B')).toBe(true);
     // The cursor stays put so card A's window is re-fetched next time.
     expect(setLastSyncAt).not.toHaveBeenCalled();
@@ -1317,7 +1319,7 @@ describe('runSync', () => {
     deps.syncStateRepo.setLastSyncDisplayAt = setLastSyncDisplayAt;
     deps.now = () => 1_700_000_000_000;
 
-    await expect(runSync(deps)).rejects.toThrow();
+    await expect(runSync(deps)).rejects.toThrow('Monobank request failed: 500');
 
     // The failed card leaves the cursor put, but card B imported, so the
     // display stamp still moves — to the injected `now`.
@@ -1341,7 +1343,7 @@ describe('runSync', () => {
     );
     deps.syncStateRepo.setLastSyncDisplayAt = setLastSyncDisplayAt;
 
-    await expect(runSync(deps)).rejects.toThrow();
+    await expect(runSync(deps)).rejects.toThrow('Monobank request failed: 500');
 
     expect(setLastSyncDisplayAt).not.toHaveBeenCalled();
   });
@@ -1801,7 +1803,7 @@ describe('runSync', () => {
       deps.syncStateRepo.setLastFullSyncAt = setLastFullSyncAt;
       deps.syncStateRepo.setFailedSyncMonobankIds = setFailedSyncIds;
 
-      await expect(runSync(deps)).rejects.toThrow();
+      await expect(runSync(deps)).rejects.toThrow('Monobank request failed: 500');
 
       // Anchored to this run's own FROM cursor (the default 31-day lookback
       // below the ceiling), never the ceiling itself; the failed card is
@@ -1840,7 +1842,7 @@ describe('runSync', () => {
       deps.fetchStatement = fetchStatement as unknown as SyncDeps['fetchStatement'];
 
       // First sync ever, card A fails: a partial failure.
-      await expect(runSync(deps)).rejects.toThrow();
+      await expect(runSync(deps)).rejects.toThrow('Monobank request failed: 500');
       const fromSecondsRun1 = (fetchStatement as jest.Mock).mock.calls.find(
         ([, accountId]) => decodeURIComponent(accountId as string) === idA,
       )?.[2] as number;
@@ -1884,7 +1886,7 @@ describe('runSync', () => {
       deps.fetchStatement = fetchStatement as unknown as SyncDeps['fetchStatement'];
 
       // First sync ever, card A fails: a partial failure.
-      await expect(runSync(deps)).rejects.toThrow();
+      await expect(runSync(deps)).rejects.toThrow('Monobank request failed: 500');
       // The OLDEST (last) paged call for A, not the first: once the retry's
       // own span exceeds the 31-day API window (the anchor plus the elapsed
       // delay), `fetchAllStatements` pages backward from `toSeconds` and the
@@ -1937,7 +1939,7 @@ describe('runSync', () => {
       });
       deps.fetchStatement = fetchStatement as unknown as SyncDeps['fetchStatement'];
 
-      await expect(runSync(deps)).rejects.toThrow();
+      await expect(runSync(deps)).rejects.toThrow('Monobank request failed: 500');
       const fromSecondsRun1 = (fetchStatement as jest.Mock).mock.calls.find(
         ([, accountId]) => decodeURIComponent(accountId as string) === idA,
       )?.[2] as number;
@@ -2951,7 +2953,7 @@ describe('runSync fetches a jar statement like a card', () => {
       return [];
     };
 
-    await expect(runSync(deps)).rejects.toThrow();
+    await expect(runSync(deps)).rejects.toThrow('Monobank request failed: 500');
 
     expect(setLastSyncDisplayAt).toHaveBeenCalledTimes(1);
   });

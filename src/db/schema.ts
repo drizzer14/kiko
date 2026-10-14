@@ -87,7 +87,7 @@ export const holdings = sqliteTable('holdings', {
   // The card balance THROUGH WHICH this Monobank card's statements were last
   // SUCCESSFULLY imported — the crash-safe marker the balance-diff skip compares
   // against, NOT `balanceMinorUnits`. `balanceMinorUnits` is the live display
-  // balance, which `upsertHoldings` (src/monobank/sync.ts) overwrites from
+  // balance, which `upsertHoldings` (src/monobank/sync/sync.ts) overwrites from
   // /client-info at the START of every sync, BEFORE the per-card statement loop
   // runs. Comparing the skip against that display balance would lose data: a
   // run that committed a card's new balance up front and was then interrupted
@@ -135,28 +135,34 @@ export const transactions = sqliteTable(
     time: integer('time').notNull(),
     description: text('description').notNull().default(''),
     category: text('category'),
+    // True once the user picked this row's category by hand, so no rule and no rewrite replaces
+    // it. The insert path never sets it, and a re-sync never touches it.
+    categorySetByHand: integer('category_set_by_hand', { mode: 'boolean' })
+      .notNull()
+      .default(false),
     mcc: integer('mcc'),
     // Monobank's `hold` flag: the item is a PENDING authorization whose final
     // settled amount can still change (a restaurant tip, a fuel pre-auth). The
     // row is imported anyway, so a pending charge shows in the ledger
-    // immediately; `addManyDedup` (transactions/transactions.repo.ts) then
+    // immediately; `addManyDedup` (src/transactions/repo/transactions.repo.ts) then
     // upserts on (source, external_id), so the settled re-fetch REFRESHES the
-    // amount and clears this flag — without ever touching `category`, which may
-    // hold the user's own override. Null on manual rows and on rows synced
-    // before this column existed.
+    // amount and clears this flag. `category` may hold the user's own pick, so a
+    // refresh writes it only for an unflagged, non-structural row whose amount
+    // changed and a rule wins (`ruleWonTransactionSet` in the transactions
+    // repo). Null on manual rows and on rows synced before this column existed.
     hold: integer('hold', { mode: 'boolean' }),
     // The counterparty's IBAN on a synced Monobank transfer (null for manual
     // rows, for non-transfer merchants, and for rows synced before this column
     // existed). Lets the category chart tell an OWN-account transfer (counter
     // IBAN ∈ the user's own cards) from a genuine P2P payment — see
-    // statistics/transfer-exclusion.ts.
+    // src/statistics/transfer-exclusion/transfer-exclusion.ts.
     counterIban: text('counter_iban'),
     // Set on BOTH legs of an Exchange/Convert to the OTHER leg's holding id
     // (and on the single debit leg of an exchange into a term deposit, which
     // writes a metadata contribution rather than a credit row). This is the
     // DURABLE structural marker that an exchange leg is an internal money
-    // movement, not spending — see statistics/exchange-exclusion.ts. It is a
-    // column and not a reserved `category` value because the category picker
+    // movement, not spending — see src/statistics/exchange-exclusion/exchange-exclusion.ts.
+    // It is a column and not a reserved `category` value because the category picker
     // and the override sheet both rewrite `category`, so a marker there could
     // be destroyed by ordinary user action; and not a shared id in
     // `externalId` because `(source, external_id)` is unique and both legs are
@@ -209,11 +215,11 @@ export const transactions = sqliteTable(
     // (a Futures, Margin, Options or Portfolio Margin wallet), as the code
     // `wallet:<TYPE>`. No second row exists to pair against, so this stored
     // marker (like `exchangeCounterpartHoldingId`) keeps the leg out of spending
-    // (statistics/exchange-exclusion.ts). A code, not a sentence, so the label
-    // is resolved at render time through `t` and stays in the active language;
-    // the `wallet:` prefix leaves room for another kind of code later. Null on
-    // every other row, and `addManyDedup`'s upsert never refreshes it: the key
-    // that carries it never changes.
+    // (src/statistics/exchange-exclusion/exchange-exclusion.ts). A code, not a
+    // sentence, so the label is resolved at render time through `t` and stays in
+    // the active language; the `wallet:` prefix leaves room for another kind of
+    // code later. Null on every other row, and `addManyDedup`'s upsert never
+    // refreshes it: the key that carries it never changes.
     untrackedCounterpart: text('untracked_counterpart'),
     // The loan holding this payment counts against — null for an ordinary
     // transaction. A loan holding writes no ledger rows of its own
@@ -332,6 +338,22 @@ export const deletedImportKeys = sqliteTable(
 );
 
 export type DeletedImportKeyRow = typeof deletedImportKeys.$inferSelect;
+
+// A saved transaction form: a name and the fields the form fills from it. No
+// foreign key, because the holding and category ids live inside `draft`
+// and a delete of one clears them there; no index, because the table is small and
+// read by primary key or in full. `draft` is typed `unknown` here (this layer must
+// not import a feature): the templates repo narrows it on read, and a draft it
+// cannot read reads as an empty one.
+export const transactionTemplates = sqliteTable('transaction_templates', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  draft: text('draft', { mode: 'json' }).$type<unknown>().notNull(),
+  createdAt: integer('created_at').notNull().default(sql`(unixepoch() * 1000)`),
+  updatedAt: integer('updated_at').notNull().default(sql`(unixepoch() * 1000)`),
+});
+
+export type TransactionTemplateRow = typeof transactionTemplates.$inferSelect;
 
 export const currencyRates = sqliteTable(
   'currency_rates',
@@ -585,8 +607,9 @@ export const categories = sqliteTable('categories', {
   icon: text('icon').notNull(),
   // Nullable per-category color (#RRGGBB, an `entityColors` token). Null means
   // "no color picked" — the display/chart layer falls back to the stable per-key
-  // palette hash (see resolveCategoryColor in statistics/category-breakdown.ts),
-  // mirroring accounts/holdings' nullable `color`.
+  // palette hash (see resolveCategoryColor in
+  // src/statistics/category-breakdown/category-breakdown.ts), mirroring
+  // accounts/holdings' nullable `color`.
   color: text('color'),
   // The user-controlled display order of the categories list (drag-and-drop /
   // move-to-top/bottom on the Categories screen). Mirrors accounts/holdings'
@@ -598,21 +621,21 @@ export const categories = sqliteTable('categories', {
 export type CategoryRow = typeof categories.$inferSelect;
 
 /**
- * A name→category override rule. Editing any transaction's category upserts a
- * rule keyed by the JS-normalized name (see normalizeTransactionName), which
- * (1) rewrites every existing same-name transaction and (2) is re-applied to
- * every future synced insert with that name. `category` is a categories.key
- * (slug); `displayName` is the last-seen human name, shown to the user.
+ * A category rule: when every matcher of `matchers` matches a transaction, the rule's `category`
+ * (a categories.key slug) applies to it, at insert and in the form, and the user can apply it to
+ * the rows that already exist. `matchers` is a JSON list kept as plain text on purpose: the
+ * read-time guard in `@kiko/categories/category-rules` parses it, so a row a bad restore or a
+ * future build wrote is skipped as unreadable instead of failing a whole query.
  */
-export const categoryOverrides = sqliteTable('category_overrides', {
-  normalizedName: text('normalized_name').primaryKey(),
+export const categoryRules = sqliteTable('category_rules', {
+  id: text('id').primaryKey(),
   category: text('category').notNull(),
-  displayName: text('display_name').notNull(),
+  matchers: text('matchers').notNull(),
   createdAt: integer('created_at').notNull().default(sql`(unixepoch() * 1000)`),
   updatedAt: integer('updated_at').notNull().default(sql`(unixepoch() * 1000)`),
 });
 
-export type CategoryOverrideRow = typeof categoryOverrides.$inferSelect;
+export type CategoryRuleRow = typeof categoryRules.$inferSelect;
 
 /**
  * One priced point for a metal/holding on a given day. Keyed the

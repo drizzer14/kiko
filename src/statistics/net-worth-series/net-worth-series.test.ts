@@ -396,7 +396,7 @@ describe('buildNetWorthSeries', () => {
     // shape `GET /personal/statement/...` returns
     // (`src/monobank/monobank-types/monobank.types.d.ts`) — and threads it through the REAL,
     // exported `mapStatementItem` from
-    // `src/monobank/sync.ts` (the same function `mapFetched`/`importAccount` call
+    // `src/monobank/sync/sync.ts` (the same function `mapFetched`/`importAccount` call
     // in production) to produce the funding debit, rather than typing
     // `amountMinorUnits` by hand. That exercises the real sign/unit convention
     // (`item.amount` already a signed integer in minor units per kiko-architecture

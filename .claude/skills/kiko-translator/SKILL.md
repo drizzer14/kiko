@@ -99,6 +99,11 @@ string ('дн.', 'days') reads wrong at 1, 2-4 and 21 in Ukrainian.
 Abbreviated units ('г', '%', 'шт.', 'міс.') do not decline and stay single
 keys (read `forms.units` in `src/i18n/locales/uk.ts` for the current set).
 
+**An error message that states a count is a plural key.** For example the
+allowed decimals: `t('...', { count })` takes `count` from the error value
+(the currency's digits), never from typed input. English defines all four
+forms (`_one`/`_few`/`_many`/`_other`) for parity with Ukrainian.
+
 **Ukrainian `_other` is the FRACTION form only.** `Intl.PluralRules('uk')`
 gives 'other' only for non-integers (for example 1.5 -> 'дня'). A
 whole-number field never reaches it. For "no number" (an empty field),
@@ -291,7 +296,10 @@ template) fails until it is listed in exactly one allowlist:
 `sheetTitle` prop, which needs no `HEADING_PROPS` entry), or
 `UNCHECKED_HEADING_SITES` (a reason: user-entered names, a month/year, a
 bank brand name). A new component that renders a prop as a heading goes
-into `HEADING_PROPS`. Every picker sheet (`SelectField` and its wrappers,
+into `HEADING_PROPS`. A component prop that forwards a heading into a
+`ConfirmSheet` title (`CardContextMenu` `deleteTitle`) goes into both
+`HEADING_PROPS` and `FORWARDED_HEADING_SITES` of that test, and its key
+into `TITLE_KEYS`; read the test for the current entries. Every picker sheet (`SelectField` and its wrappers,
 `DateField`, `TimeField`, `CategoryField`, `BankTypeField`,
 `HoldingSelectField`, `PaymentHoldingField`/`LoanPaymentField`,
 `CurrencyField`, `FilterMenu`, `ColumnSelectField`) takes a REQUIRED

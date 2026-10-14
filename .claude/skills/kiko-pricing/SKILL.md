@@ -274,8 +274,8 @@ immediately, at the SAME `now`, with the span ref just cleared by the
 failure handler to allow a LATER retry — a permanent request loop for a
 currency whose provider never answers, for as long as Statistics stays
 mounted. The effect instead reads both through "latest" refs (`useRef`
-assigned directly during render, the same pattern `categories.screen.tsx`'s
-`orderedKeysRef` uses for a stable callback that still sees fresh data),
+assigned directly during render, for a stable callback that still sees
+fresh data),
 so only a dependency that genuinely changed for an unrelated reason
 (`now` advancing on a real focus, `spanStart` moving) re-enters it — the
 effect's own write echoing back through `historyRows` cannot.

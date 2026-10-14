@@ -948,7 +948,7 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
   const holdingName = holding?.name ?? initialName;
   // Counterpart holding names, so an Exchange/Convert leg on this holding reads
   // as "Exchange to/from <the OTHER holding's CURRENT name>" in the active
-  // language — nothing is persisted (see transactions/row-description.ts).
+  // language — nothing is persisted (see src/transactions/row-description/row-description.ts).
   const holdingNameById = useMemo(
     () => new Map(holdings.map((candidate) => [candidate.id, candidate.name])),
     [holdings],

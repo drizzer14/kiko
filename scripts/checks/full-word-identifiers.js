@@ -33,6 +33,7 @@ const DENYLIST = new Set([
   'el',
   'opts',
   'tmp',
+  'temp',
   'num',
   'arr',
   'obj',

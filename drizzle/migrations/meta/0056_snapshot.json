@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "992f7f5f-7a73-4480-91bc-f32db9c06766",
+  "id": "781ad54f-5896-4ede-8d77-d7e0b429f2b3",
   "prevId": "b2cc376f-aa36-44d3-8b2b-a8c7f6cfd59d",
   "tables": {
     "accounts": {
@@ -170,11 +170,11 @@
       "uniqueConstraints": {},
       "checkConstraints": {}
     },
-    "category_overrides": {
-      "name": "category_overrides",
+    "category_rules": {
+      "name": "category_rules",
       "columns": {
-        "normalized_name": {
-          "name": "normalized_name",
+        "id": {
+          "name": "id",
           "type": "text",
           "primaryKey": true,
           "notNull": true,
@@ -187,8 +187,8 @@
           "notNull": true,
           "autoincrement": false
         },
-        "display_name": {
-          "name": "display_name",
+        "matchers": {
+          "name": "matchers",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
@@ -917,6 +917,14 @@
           "notNull": false,
           "autoincrement": false
         },
+        "category_set_by_hand": {
+          "name": "category_set_by_hand",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": false
+        },
         "mcc": {
           "name": "mcc",
           "type": "integer",
@@ -954,13 +962,6 @@
         },
         "exchange_pair_id": {
           "name": "exchange_pair_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "untracked_counterpart": {
-          "name": "untracked_counterpart",
           "type": "text",
           "primaryKey": false,
           "notNull": false,

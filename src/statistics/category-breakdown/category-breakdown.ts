@@ -88,8 +88,8 @@ export const resolveCategoryColor = (
 // The normalized grouping key for a transaction's category: lowercased, with a
 // null/empty category AND a slug the display map cannot resolve both folding
 // into the DEFAULT category key. This is the same fold `resolveCategoryKey`
-// (categories/category-display.ts) applies for Home's filter chips — keeping an
-// unresolvable slug as its own bucket produced several wedges all labelled with
+// (src/categories/category-display/category-display.ts) applies for Home's filter chips
+// — keeping an unresolvable slug as its own bucket produced several wedges all labelled with
 // the default's title, in different palette hues, because
 // `resolveCategoryDisplay` had already folded the TITLE while this kept the KEY.
 // One fold, one place.

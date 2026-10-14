@@ -61,8 +61,19 @@ const MIGRATION_0055_SQL = readFileSync(
   join(__dirname, '..', '..', '..', 'drizzle', 'migrations', '0055_add_dismissed_tips.sql'),
   'utf8',
 );
+
 const MIGRATION_0056_SQL = readFileSync(
-  join(__dirname, '..', '..', '..', 'drizzle', 'migrations', '0056_add_untracked_counterpart.sql'),
+  join(__dirname, '..', '..', '..', 'drizzle', 'migrations', '0056_add_category_rules.sql'),
+  'utf8',
+);
+
+const MIGRATION_0057_SQL = readFileSync(
+  join(__dirname, '..', '..', '..', 'drizzle', 'migrations', '0057_add_transaction_templates.sql'),
+  'utf8',
+);
+
+const MIGRATION_0058_SQL = readFileSync(
+  join(__dirname, '..', '..', '..', 'drizzle', 'migrations', '0058_add_untracked_counterpart.sql'),
   'utf8',
 );
 
@@ -73,12 +84,15 @@ const databaseBefore0050 = (): DatabaseSync => {
   // The snapshot reader selects every column and table the schema has today, so
   // this database carries the ones added since: a column (null on every row, as no
   // row here is an exchange leg), the table of deleted import keys (empty), the
-  // settings column of dismissed tips and the column of untracked counterparts
+  // settings column of dismissed tips, the category rules (none) with the by-hand mark,
+  // the table of transaction templates (empty) and the column of untracked counterparts
   // (null on every row).
   target.exec('ALTER TABLE transactions ADD exchange_pair_id text;');
   target.exec(MIGRATION_0054_SQL);
   target.exec(MIGRATION_0055_SQL);
   target.exec(MIGRATION_0056_SQL);
+  target.exec(MIGRATION_0057_SQL);
+  target.exec(MIGRATION_0058_SQL);
   target.exec('PRAGMA foreign_keys = ON;');
 
   return target;

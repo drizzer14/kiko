@@ -187,8 +187,8 @@ type LiveData = {
   history?: HistoryRow[];
   categories?: CategoryRow[];
   // Per-table isLoading overrides, for the loading-gate tests only — every
-  // key defaults to `false` (an already-resolved query), so every existing
-  // call site above keeps behaving exactly as before.
+  // key defaults to `false` (an already-resolved query), so a call site that
+  // omits it sees resolved queries.
   isLoading?: Partial<Record<string, boolean>>;
   // Per-table cached-rows overrides: `true` = the table still shows the cached
   // rows of a cached display mount, before its own fresh read has applied.

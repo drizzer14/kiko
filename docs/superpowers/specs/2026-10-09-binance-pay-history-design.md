@@ -899,7 +899,7 @@ withdraw budget moves into this object, with the same numbers and the same rule.
     between the start a type's memory holds and the end of a span that lies below the start the
     memory moved on to is owed with no request. The ground a refused band begins in is below the
     depth, as any refused ground is. No row that Binance keeps when the first run reads is lost in
-    the 420 cases measured, with 397 narrowing calls; the open item below states what is lost
+    the 420 cases measured, with 397 narrowing calls; the conditional costs below state what is lost
     outside them.
   - What the first run reaches late: the types read the window that crosses the depth in turn.
     The first narrows (25 requests: 23 of the search, its read and its band); each later type
@@ -923,11 +923,15 @@ withdraw budget moves into this object, with the same numbers and the same rule.
 
     A row 90 s or more above the depth when the run was planned is imported by every type at up
     to 300 ms of latency, 400 s or more by every type at up to 3 s.
-  - OPEN ITEM (owner: the live probe of item 17, run by the user; documented and owned, not a
-    closed limit). The three items below arise only when a Transfer type keeps less than 179 days:
-    a type that keeps 179 days or more is read from the floor and never narrows. If the probe of
-    item 17 shows a type that keeps less than 179 days, the speculative-read redesign is the next
-    change set. Until then these items stand, as measured:
+  - Transfer depth, CLOSED BY MEASUREMENT (user rulings D1 and D2 confirmed 2026-10-14; item 17).
+    The live probe of 2026-10-14 (`memory/refs/binance-transfer-depth-probe.sh`, 200 calls, 152 s,
+    0 errors) found, for 20 of 20 Transfer types, the oldest `startTime` Binance serves 183 days
+    back (2026-04-14 UTC), and a request 184 days back refused. All 20 types share one depth, so
+    the case of types that keep different depths (D2) does not occur on this account. Every type
+    keeps at least 179 days, so the walk reads from the floor and never narrows. The three costs
+    below are reachable only when a Transfer type keeps less than 179 days; they stay documented
+    as conditional, as measured. The speculative-read redesign that would remove them stays in the
+    backlog, not scheduled:
     - The rows just above a depth that moves with the clock, when the type is read late in the
       run (the table above), the worst case at each latency. With no latency: 20 of 20 types lose
       the row 5 to 20 s above the depth when the run was planned, 10 of 20 the row 40 s above it.
@@ -1460,21 +1464,23 @@ Probe items:
     account that held Funding BTC, the transfer rows of every type on the migration day.
     Before it, `kiko:researcher` reads Binance's migration notes for how the move is
     recorded (URL + date).
-17. OPEN CHECK (Transfer depth per type): each of the 20 transfer types keeps a depth memory of
-    its own (section 5), so the walk does not depend on one depth for all types. Probe B
-    measured the depth for one type only (a `startTime` 180 days back served, 200 days back
-    refused). A type that keeps less than the others narrows only itself and a type that keeps
-    more is read down to what it keeps; a span lies below a type only when that type's own end
-    probe is refused. The start another type is served from is where a search begins, never
-    what it finds, so the walk is correct for any answer; the answer decides how many requests
-    a crossing of the depth costs (a type that keeps what the first does is found in 2 to 6
-    requests, any other in up to 29). Check: for each of the 20 types, the oldest `startTime`
-    served, to the day. This check owns the open item of section 5 (the Transfer walk), which is
-    documented and owned, not closed: a type that keeps 179 days or more is read from the floor
-    and never narrows; if the check shows a type that keeps less, the rows just above its depth
-    that a run reads late, and the rows lost when many types keep a different depth, are costs
-    that stand until the speculative-read redesign, which is then the next change set. Owner:
-    the user, with the live probe.
+17. CLOSED BY MEASUREMENT (Transfer depth per type, user rulings D1 and D2 confirmed
+    2026-10-14): each of the 20 transfer types keeps a depth memory of its own (section 5), so
+    the walk does not depend on one depth for all types. A type that keeps less than the others
+    narrows only itself and a type that keeps more is read down to what it keeps; a span lies
+    below a type only when that type's own end probe is refused. The start another type is
+    served from is where a search begins, never what it finds, so the walk is correct for any
+    answer; the answer decides how many requests a crossing of the depth costs (a type that
+    keeps what the first does is found in 2 to 6 requests, any other in up to 29). Result of the
+    live probe of 2026-10-14 (`memory/refs/binance-transfer-depth-probe.sh`, 200 calls, 152 s):
+    for 20 of 20 types the oldest `startTime` served is 183 days back (2026-04-14 UTC), refused
+    at 184 days, 0 errors. All 20 types share one depth, so the case of types that keep
+    different depths does not occur on this account. Every type keeps at least 179 days, so the
+    walk reads from the floor and never narrows. The costs of section 5 (the rows just above a
+    depth that moves with the clock, and the rows lost when many types keep a different depth)
+    are reachable only if Binance later keeps a type for less than 179 days; they stay
+    documented as conditional. The speculative-read redesign stays in the backlog, not
+    scheduled; the cap stays 397.
 18. OPEN CHECK (Transfer depth granularity): whether the oldest `startTime` Binance serves
     moves continuously with the clock or in steps (for example a cutoff at the day). The code
     assumes only that it moves forward and never back (section 5), so a step is answered by

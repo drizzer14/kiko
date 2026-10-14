@@ -55,7 +55,7 @@ const emptySnapshot: DataSnapshot = {
   settings: [],
   syncState: [],
   categories: [],
-  categoryOverrides: [],
+  categoryRules: [],
   pricePoints: [],
   bondRegister: [],
   reminders: [],
@@ -166,6 +166,7 @@ const readPreMarkerSnapshot = async (source: DatabaseSync): Promise<DataSnapshot
         getTableColumns(transactions),
         'setsBalance',
         'exchangePairId',
+        'categorySetByHand',
         'untrackedCounterpart',
       ),
     )
