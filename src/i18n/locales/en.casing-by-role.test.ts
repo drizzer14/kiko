@@ -131,12 +131,30 @@ const titleCaseViolations = (value: string): string[] => {
   });
 };
 
+// The en value of every Title-role key. A sentence may quote one of them whole ("Export Data",
+// a Settings row that is Title Case by ruling), so that exact text is not a casing slip.
+const TITLE_VALUES = new Set(
+  flattenCatalog(en)
+    .filter(({ path }) => TITLE_KEYS.has(path))
+    .map(({ value }) => value),
+);
+
+// Blanks every `"…"` span whose text is exactly a Title-role value, quotes included, so the words
+// inside are not read as sentence text. A span that only contains one, or any other capitalized
+// phrase, stays and is checked.
+const withoutQuotedTitles = (value: string): string =>
+  value.replace(/"([^"]*)"/g, (span, inner: string) =>
+    TITLE_VALUES.has(inner) ? ' '.repeat(span.length) : span,
+  );
+
 // Sentence case: a word may be capitalized only at the very start of the
 // string, at the start of a later sentence (after `. ! ? : — -  " “`), when it
 // is an acronym (starts with 2+ uppercase letters/digits, e.g. "ISIN's"),
 // or when it is on the proper-noun allow-list above.
 const sentenceCaseViolations = (value: string): string[] => {
-  const stripped = value.replace(/\{\{[^}]*\}\}/g, (match) => ' '.repeat(match.length));
+  const stripped = withoutQuotedTitles(value).replace(/\{\{[^}]*\}\}/g, (match) =>
+    ' '.repeat(match.length),
+  );
   const wordPattern = /[A-Za-z']+/g;
   const violations: string[] = [];
   let match: RegExpExecArray | null = wordPattern.exec(stripped);
@@ -165,6 +183,26 @@ const sentenceCaseViolations = (value: string): string[] => {
 
   return violations;
 };
+
+describe('a sentence that quotes a Title-role value', () => {
+  it('accepts a quoted span that is exactly the value of a Title-role key', () => {
+    expect(sentenceCaseViolations('Open the "Settings" tab, then tap "Export Data".')).toEqual([]);
+    expect(sentenceCaseViolations('Tap "Import Data", then "Replace data".')).toEqual([]);
+  });
+
+  it('still rejects a quoted capitalized phrase that is no Title-role value', () => {
+    expect(sentenceCaseViolations('Tap "Export Stuff" to continue.')).toEqual(['Stuff']);
+  });
+
+  it('still rejects a capital outside the quoted Title-role value', () => {
+    expect(sentenceCaseViolations('Tap "Export Data" And continue.')).toEqual(['And']);
+    expect(sentenceCaseViolations('Tap "Export Data" or Export Data.')).toEqual(['Export', 'Data']);
+  });
+
+  it('rejects a span that only contains a Title-role value', () => {
+    expect(sentenceCaseViolations('Tap "Export Data Now" to continue.')).toEqual(['Data', 'Now']);
+  });
+});
 
 describe('en catalog casing follows one rule per UI role', () => {
   const allLeaves = flattenCatalog(en).filter(({ path }) => !isExempt(path));

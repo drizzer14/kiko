@@ -89,7 +89,9 @@ const FORWARDED_HEADING_SITES: Record<string, `${string}.${string}`> = {
   'screens/holding-detail/holding-detail.screen.tsx#title': 'LinkedPaymentsSection.title',
 };
 
-// A heading slot that renders no Title-role key, with the reason.
+// A heading slot that renders no Title-role key (user text, a date, a brand name), or that renders
+// Title-role keys of a registry whose own test pins every one of them to TITLE_KEYS (both help
+// entries), with the reason.
 const UNCHECKED_HEADING_SITES: Record<string, string> = {
   'calendar/calendar-header/calendar-header.component.tsx#title':
     'a month name and a year, not a phrase that has a casing role',

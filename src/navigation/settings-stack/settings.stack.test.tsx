@@ -1,3 +1,5 @@
+import { i18n } from '@kiko/i18n/init';
+import { HELP_TOPICS } from '@kiko/help';
 import { isValidElement, type ReactElement } from 'react';
 
 // The real screens wired into this stack pull in db/client, which opens a real
@@ -168,7 +170,11 @@ describe('SettingsStack', () => {
     expect(titleByScreen().Help).toBe('Help');
   });
 
-  it('titles each Help topic page with its own topic title', () => {
+  it.each(HELP_TOPICS)('titles the $id Help topic page with its own topic title', (topic) => {
+    expect(optionsOf('HelpTopic', { topicId: topic.id })?.title).toBe(i18n.t(topic.titleKey));
+  });
+
+  it('titles the first two Help topic pages with their written titles', () => {
     expect(optionsOf('HelpTopic', { topicId: 'addAccount' })?.title).toBe('Add an Account');
     expect(optionsOf('HelpTopic', { topicId: 'manageCategories' })?.title).toBe(
       'Manage Categories',

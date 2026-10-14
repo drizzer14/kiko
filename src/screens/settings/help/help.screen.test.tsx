@@ -10,24 +10,10 @@ import {
   navigationSpy,
 } from '@kiko/test-support/navigation-props';
 import { darkTheme } from '@kiko/design-system/theme';
-import { HELP_GROUPS, HELP_TOPICS, helpTopicById } from '@kiko/help';
+import { HELP_GROUPS, HELP_TOPICS } from '@kiko/help';
 import { chevronSize, chevronTrailingWhitespace } from '@kiko/screens/settings/settings-row';
 
 import HelpScreen from './help.screen';
-
-// A test sets `override` to render a group the registry does not hold; the getter keeps the real
-// groups otherwise, so every other test reads the shipped registry.
-const mockGroups: { override: typeof HELP_GROUPS | undefined } = { override: undefined };
-jest.mock('@kiko/help', () => {
-  const actual = jest.requireActual('@kiko/help');
-
-  return {
-    ...actual,
-    get HELP_GROUPS() {
-      return mockGroups.override ?? actual.HELP_GROUPS;
-    },
-  };
-});
 
 type HelpProps = ComponentProps<typeof HelpScreen>;
 
@@ -120,42 +106,52 @@ describe('HelpScreen', () => {
     }
   });
 
-  // Each registered group holds one topic today, so no divider renders; a group of two pins it.
-  describe('a group of two topics', () => {
-    beforeEach(() => {
-      mockGroups.override = [
-        {
-          id: 'accounts',
-          titleKey: 'help.groups.accounts.title',
-          topics: [helpTopicById('addAccount'), helpTopicById('manageCategories')],
-        },
-      ];
-    });
+  it('puts one divider between each pair of rows of the accounts group, never before the first', async () => {
+    const { getByTestId } = await renderScreen();
 
-    afterEach(() => {
-      mockGroups.override = undefined;
-    });
+    const card = within(getByTestId('help-card-accounts'));
 
-    it('puts one divider between the rows, never before the first', async () => {
-      const { getAllByTestId } = await renderScreen();
+    expect(
+      card.getAllByTestId(/^help-(divider-|row-)/).map((node) => node.props.testID as string),
+    ).toEqual([
+      'help-row-addAccount',
+      'help-divider-accounts',
+      'help-row-connectMonobank',
+      'help-divider-accounts',
+      'help-row-connectCrypto',
+      'help-divider-accounts',
+      'help-row-importStatement',
+      'help-divider-accounts',
+      'help-row-setReminder',
+    ]);
+  });
 
-      expect(
-        getAllByTestId(/^help-(divider-|row-)/).map((node) => node.props.testID as string),
-      ).toEqual(['help-row-addAccount', 'help-divider-accounts', 'help-row-manageCategories']);
-    });
+  it('draws no divider in the statistics group, which holds one topic', async () => {
+    const { getByTestId } = await renderScreen();
 
-    it('insets the divider to match the Settings card', async () => {
-      const { getByTestId } = await renderScreen();
-      const theme = darkTheme;
+    expect(within(getByTestId('help-card-statistics')).queryAllByTestId(/^help-divider-/)).toEqual(
+      [],
+    );
+  });
 
-      const dividerStyle = StyleSheet.flatten(getByTestId('help-divider-accounts').props.style);
+  it('insets each divider to match the Settings card', async () => {
+    const { getAllByTestId } = await renderScreen();
+    const theme = darkTheme;
+
+    const dividers = getAllByTestId(/^help-divider-/);
+
+    expect(dividers.length).toBeGreaterThan(0);
+
+    for (const divider of dividers) {
+      const dividerStyle = StyleSheet.flatten(divider.props.style);
 
       expect(dividerStyle.marginLeft).toBe(theme.spacing(3));
       expect(dividerStyle.marginRight).toBe(
         theme.spacing(3) + chevronTrailingWhitespace(chevronSize(theme), theme),
       );
-      expect(chevronTrailingWhitespace(chevronSize(theme), theme)).toBeGreaterThan(0);
-    });
+    }
+
+    expect(chevronTrailingWhitespace(chevronSize(theme), theme)).toBeGreaterThan(0);
   });
 
   it('centers the privacy line', async () => {
