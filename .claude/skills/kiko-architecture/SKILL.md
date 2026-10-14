@@ -2004,12 +2004,10 @@ record imports only at `TRANSFER_SETTLED_STATUS`; BTC only. The stop codes live 
   window that crosses the depth meets a depth that has moved past the rows just above where it
   stood when the run was planned (spec section 5, "What the first run reaches late"; the costs
   that stand for a type that keeps less than 179 days are its OPEN ITEM, owned by the live probe
-  of spec item 17). 232 is the
-  smallest value that loses no row in the 420 cases of the spec's section 5 (231 loses 5 rows at
-  a 9 s spike on every seventh request); 397 is kept (a user ruling), and the longest run makes
-  477 (20 types that
-  keep a different depth each; 476 where the calls end inside a narrowing, which keeps one for its
-  own read). A lapsed memory narrows only for a span the start it would move on to reaches into
+  of spec item 17). 232 is the smallest value that loses no row in the 420 cases of the spec's
+  section 5 (231 loses 5 rows at a 9 s spike on every seventh request); 397 is kept (a user
+  ruling), and the longest run makes 477 (20 types that keep a different depth each; 476 where
+  the calls end inside a narrowing, which keeps one for its own read). A lapsed memory narrows only for a span the start it would move on to reaches into
   (`lapsedRangeOf`); a span above it is read from its own start. Every type asks its own band,
   whatever Binance answered for the band of another type (a depth in steps of a day can step
   between one type's band read and the next type's read). `canAfford` judges

@@ -821,8 +821,9 @@ withdraw budget moves into this object, with the same numbers and the same rule.
     each other type 1 (the end alone, asked before any read while another type was refused the
     end; a type that holds a bound from an earlier window asks the end of the next one the same
     way), 21 in all; a window that crosses the depth, the first type about 25 and each later type
-    that keeps what the first does 4 to 8 (a read that reaches Binance late, so that its hint is
-    refused, costs a type 23 or more).
+    that keeps what the first does 4 to 6 (2 to 4 requests of the search from the hint, its read
+    and its band; a read that reaches Binance late, so that its hint is refused, costs a type 23
+    or more).
   - Narrowing calls (user ruling C1 = A: a larger Transfer call cap only while a type
     narrows its depth; normal runs keep 80). A span read is narrowing from the first moment one of
     its types is refused a start, finds its memory lapsed, asks the end of the span before its
@@ -921,14 +922,16 @@ withdraw budget moves into this object, with the same numbers and the same rule.
     A row 90 s or more above the depth when the run was planned is imported by every type at up
     to 300 ms of latency, 400 s or more by every type at up to 3 s.
   - OPEN ITEM (owner: the live probe of item 17, run by the user; documented and owned, not a
-    closed limit). Both costs below arise only when a Transfer type keeps less than 179 days:
+    closed limit). The three items below arise only when a Transfer type keeps less than 179 days:
     a type that keeps 179 days or more is read from the floor and never narrows. If the probe of
     item 17 shows a type that keeps less than 179 days, the speculative-read redesign is the next
-    change set. Until then these costs stand, as measured:
+    change set. Until then these items stand, as measured:
     - The rows just above a depth that moves with the clock, when the type is read late in the
-      run (the table above): every type loses the row 5 to 20 s above the depth when the run was
-      planned, 11 of 20 the row 40 s above it at 0 to 300 ms of latency, and 9 to 16 of 20 the row
-      180 s above it at 0 to 3 s.
+      run (the table above), the worst case at each latency. With no latency: 20 of 20 types lose
+      the row 5 to 20 s above the depth when the run was planned, 10 of 20 the row 40 s above it.
+      At 0 to 300 ms: 20 of 20 lose the 5 to 20 s row, 11 of 20 the 40 s row. At 0 to 3 s: 20 of
+      20 lose the 5 to 20 s, 40 s and 90 s rows, and 9 to 16 of 20 the 180 s row; the 400 s row is
+      lost by none.
     - Types that keep a different depth each. When the 20 types each keep a different depth
       below 179 days (the scenario of the run that makes 477 requests), the first run spends all
       397 narrowing calls and leaves some types unread; the rows just above the depths of those
