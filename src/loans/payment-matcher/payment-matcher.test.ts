@@ -50,6 +50,7 @@ const baseTransaction = (overrides: Partial<MatchableTransaction> = {}): Matchab
   loanHoldingId: null,
   loanLinkRejected: false,
   exchangeCounterpartHoldingId: null,
+  untrackedCounterpart: null,
   ...overrides,
 });
 
@@ -306,6 +307,21 @@ describe('matchLoanPayments', () => {
       amountMinorUnits: -firstInstallment.paymentMinorUnits,
       time: firstInstallment.dueDate,
       exchangeCounterpartHoldingId: 'other-holding',
+    });
+
+    const matches = matchLoanPayments({ transactions: [transaction], loans: [loan], now: NOW });
+
+    expect(matches).toEqual([]);
+  });
+
+  it('never links a move to a wallet Kiko does not track, even with matching amount/date/signal', () => {
+    const loan = loanHolding({ paymentHoldingId: 'binance-spot' }, { currency: 'BTC' });
+    const transaction = baseTransaction({
+      holdingId: 'binance-spot',
+      currency: 'BTC',
+      amountMinorUnits: -firstInstallment.paymentMinorUnits,
+      time: firstInstallment.dueDate,
+      untrackedCounterpart: 'wallet:UMFUTURE',
     });
 
     const matches = matchLoanPayments({ transactions: [transaction], loans: [loan], now: NOW });

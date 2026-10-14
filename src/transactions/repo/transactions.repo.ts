@@ -1961,8 +1961,9 @@ export const transactionsRepo = {
    * The loan-payment matcher's own candidate read
    * (`src/loans/payment-matcher/`): every debit, not already linked, not
    * previously rejected (a manual "None" or Undo must stick), and not one leg
-   * of an Exchange/Convert (the structural `exchangeCounterpartHoldingId`
-   * marker, same check `exchange-exclusion.ts` makes) — filtered here in SQL,
+   * of an Exchange/Convert or a move to an untracked Binance wallet (the structural
+   * `exchangeCounterpartHoldingId` and `untrackedCounterpart` markers, same checks
+   * `exchange-exclusion.ts` makes) — filtered here in SQL,
    * not in JS, so the matcher never even reads a row it can never link
    * (P-NOWORK). Joined against the PAYER holding's own currency, which the
    * matcher compares against each loan's own currency itself (this query
@@ -1997,6 +1998,7 @@ export const transactionsRepo = {
           isNull(transactions.loanHoldingId),
           eq(transactions.loanLinkRejected, false),
           isNull(transactions.exchangeCounterpartHoldingId),
+          isNull(transactions.untrackedCounterpart),
           gte(transactions.time, params.minTime),
           inArray(holdings.currency, [...params.currencies]),
         ),
