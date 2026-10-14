@@ -149,19 +149,19 @@ call without knowing where the plugin lives.
 BATCH READY's TIMES line is built from the run log, never from memory. The source of each
 field is listed in `kiko:estimator` only.
 
-A project skill outside the plugin calls the installed copy. When the copy is missing, the
-start snippet prints nothing and starts no run; the finish snippet prints
-`run-log: not installed, skipped`. Start (prints the run id):
+A project skill outside the plugin calls the installed copy. When the copy is missing, both
+snippets print `run-log: not installed, skipped` and exit 0; when the copy is present, its own
+exit code and error pass through. Start (prints the run id):
 
 ```bash
-RUN_LOG="${HARNESS_RUNS_DIR:-$HOME/.claude/harness-runs}/bin/run-log.mjs"; [ -f "$RUN_LOG" ] && RUN_ID=$(node "$RUN_LOG" start --task "<track> task N/M" --shape build) && echo "$RUN_ID"
+RUN_LOG="${HARNESS_RUNS_DIR:-$HOME/.claude/harness-runs}/bin/run-log.mjs"; if [ -f "$RUN_LOG" ]; then node "$RUN_LOG" start --task "<track> task N/M" --shape build; else echo "run-log: not installed, skipped"; fi
 ```
 
 Finish, in a later Bash call (shell variables do not survive between calls), prefixed with
 `RUN_ID=<printed id>;`:
 
 ```bash
-RUN_LOG="${HARNESS_RUNS_DIR:-$HOME/.claude/harness-runs}/bin/run-log.mjs"; [ -f "$RUN_LOG" ] && node "$RUN_LOG" finish --run "$RUN_ID" --outcome done || echo "run-log: not installed, skipped"
+RUN_LOG="${HARNESS_RUNS_DIR:-$HOME/.claude/harness-runs}/bin/run-log.mjs"; if [ -f "$RUN_LOG" ]; then node "$RUN_LOG" finish --run "$RUN_ID" --outcome done; else echo "run-log: not installed, skipped"; fi
 ```
 
 ## Skill drift rule

@@ -1876,19 +1876,21 @@ describe('consumer line', () => {
   const startSnippet = snippetFor(workflow, 'start');
   const finishSnippet = snippetFor(workflow, 'finish');
 
+  const SKIPPED = 'run-log: not installed, skipped';
+
   function runSnippet(
     snippet: string,
     runs: string,
     cwd: string,
     runId = '',
-  ): { status: number | null; stdout: string } {
+  ): { status: number | null; stdout: string; stderr: string } {
     const result = spawnSync('sh', ['-c', snippet], {
       cwd,
       env: { ...childEnvironment(runs), RUN_ID: runId },
       encoding: 'utf8',
     });
 
-    return { status: result.status, stdout: result.stdout.trim() };
+    return { status: result.status, stdout: result.stdout.trim(), stderr: result.stderr };
   }
 
   test('starts a run through the installed copy and prints its id', () => {
@@ -1909,29 +1911,51 @@ describe('consumer line', () => {
     expect(readJson<Summary>(join(runs, runId, 'summary.json')).outcome).toBe('done');
   });
 
-  test('a missing copy is skipped without failing the finish and starts nothing', () => {
+  test('a missing copy is skipped by both snippets with exit 0 and starts nothing', () => {
     const runs = temporaryDirectory();
     const finished = runSnippet(finishSnippet, runs, temporaryDirectory(), 'any');
+    const startedRun = runSnippet(startSnippet, runs, temporaryDirectory());
 
     expect(finished.status).toBe(0);
-    expect(finished.stdout).toBe('run-log: not installed, skipped');
-    expect(runSnippet(startSnippet, runs, temporaryDirectory()).stdout).toBe('');
+    expect(finished.stdout).toBe(SKIPPED);
+    expect(startedRun.status).toBe(0);
+    expect(startedRun.stdout).toBe(SKIPPED);
     expect(runIds(runs)).toEqual([]);
   });
 
-  test('a snippet that names the wrong file starts nothing', () => {
+  test('finishing an unknown run passes the copy exit code and error through', () => {
+    const { runs, repo } = started();
+    const result = runSnippet(finishSnippet, runs, repo, 'no-such-run');
+
+    expect(result.status).toBe(1);
+    expect(result.stdout).not.toBe(SKIPPED);
+    expect(result.stderr).toContain('unknown run no-such-run');
+  });
+
+  test('finishing with an empty RUN_ID passes the copy usage exit code through', () => {
+    const { runs, repo } = started();
+    const result = runSnippet(finishSnippet, runs, repo, '');
+
+    expect(result.status).toBe(2);
+    expect(result.stdout).not.toBe(SKIPPED);
+    expect(result.stderr).toContain('--run is required');
+  });
+
+  test('a snippet that names the wrong file is skipped and starts nothing', () => {
     const { runs, repo } = started();
     const broken = startSnippet.replace('bin/run-log.mjs', 'bin/runlog.mjs');
 
-    expect(runSnippet(broken, runs, repo).stdout).toBe('');
+    expect(runSnippet(broken, runs, repo).stdout).toBe(SKIPPED);
     expect(runIds(runs)).toHaveLength(1);
   });
 
-  test('a snippet with the wrong command does not finish the run', () => {
+  test('a snippet with the wrong command fails and does not finish the run', () => {
     const { runs, repo, runId } = started();
     const broken = finishSnippet.replace(' finish ', ' finnish ');
+    const result = runSnippet(broken, runs, repo, runId);
 
-    expect(runSnippet(broken, runs, repo, runId).stdout).not.toBe('');
+    expect(result.status).not.toBe(0);
+    expect(result.stdout).not.toBe(SKIPPED);
     expect(existsSync(join(runs, runId, 'summary.json'))).toBe(false);
   });
 
