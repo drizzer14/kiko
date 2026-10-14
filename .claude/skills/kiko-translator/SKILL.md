@@ -435,9 +435,9 @@ needs for correct thousands/decimal punctuation (`uk-UA` groups
 at a `formatMoney` call site — always go through `activeLocale()` so a
 language switch changes number formatting everywhere at once.
 
-## Ukrainian catalogue rules — apostrophe and the app name
+## Ukrainian catalogue rules
 
-Two `uk.ts` rules, enforced at runtime by
+These `uk.ts` rules, enforced at runtime by
 `src/i18n/locales/uk.catalog-rules.test.ts` over every nested string
 value (not the source text, so a template literal or a computed value
 is caught too):
@@ -447,6 +447,11 @@ is caught too):
 - The app name in `uk` strings is always the Cyrillic "Кіко", never
   the Latin "Kiko". English strings keep "Kiko" — this rule applies to
   `uk.ts` only.
+- A tap is asked with «натиснути» only, never торкнутися, тапнути,
+  тицьнути or клацнути; `OTHER_TAP_VERB` in the same test file enforces it.
+- A uk help topic title is the noun form («Додавання рахунку», «Облік
+  кредиту»), pinned by `TOPIC_TITLES` in `src/help/help-topics.test.ts`.
+- Convention, not pinned by any test: a long press is «Утримуйте».
 
 ## A list of names is quoted name by name, through `common.listedName`
 

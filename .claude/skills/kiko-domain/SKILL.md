@@ -219,7 +219,8 @@ implemented, and callers must skip it rather than assume every id resolves.
   `side`; today the `debt` kind) says loan too: the holding form's
   create title `forms.holding.addLoanTitle` ("Add Loan" / "Додати
   кредит") and its edit title `forms.holding.editLoanTitle` ("Edit Loan"
-  / "Редагувати кредит"). There is no "Add loan" footer
+  / "Редагувати кредит"). Account detail has no "Add loan" footer; the Help topic
+  footer has one (`HelpAction` `addLoan`, kiko-design-system D10).
   Holding detail passes the flag in
   the HoldingForm route (`debtAccount`) on edit, so the title is right
   on the first frame; the form reads the account row when the route has
@@ -2160,8 +2161,8 @@ needs a 0032-style migration), while the `loan` type is
 `arrow.up.forward.circle.fill` — a saved loan holding stores a null icon,
 so the new glyph needs no migration. That type glyph is now only the
 fallback for a loan with no valid kind: a loan's default glyph follows its
-kind (below). There is no "Add loan" footer
-button any more (kiko-design-system's footer mapping).
+kind (below). Account detail has no "Add loan" footer button; the Help topic footer
+has one (kiko-design-system D10).
 
 A `debt` account's Type field IS its loan-kind picker (`LoanKindField`,
 `src/screens/forms/holding-form/loan/loan-kind-field/`, testID
