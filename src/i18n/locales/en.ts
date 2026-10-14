@@ -996,10 +996,15 @@ export const en = {
   // accessibility prop renders. The action labels are sentence case buttons with no final ".".
   help: {
     actions: {
+      addBankAccount: 'Add bank account',
+      addCryptoAccount: 'Add crypto account',
+      addLoan: 'Add loan',
+      addProperty: 'Add property',
       openCategories: 'Open categories',
       openExportData: 'Open data export',
       openImportData: 'Open data import',
       openReminders: 'Open reminders',
+      openStatistics: 'Open statistics',
       openSystem: 'Open system settings',
       openTemplates: 'Open templates',
     },

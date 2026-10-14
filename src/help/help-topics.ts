@@ -27,12 +27,17 @@ type HelpGroupId =
   | 'statistics'
   | 'settings';
 
-type HelpAction =
+export type HelpAction =
   | 'addAccount'
+  | 'addBankAccount'
+  | 'addCryptoAccount'
+  | 'addProperty'
+  | 'addLoan'
   | 'addTransaction'
   | 'openCategories'
   | 'openTemplates'
   | 'openReminders'
+  | 'openStatistics'
   | 'openExportData'
   | 'openImportData'
   | 'openSystem';
@@ -78,7 +83,7 @@ const topicsById = {
       'help.topics.connectMonobank.steps.4',
       'help.topics.connectMonobank.steps.5',
     ],
-    action: 'addAccount',
+    action: 'addBankAccount',
   },
   connectCrypto: {
     id: 'connectCrypto',
@@ -91,7 +96,7 @@ const topicsById = {
       'help.topics.connectCrypto.steps.4',
       'help.topics.connectCrypto.steps.5',
     ],
-    action: 'addAccount',
+    action: 'addCryptoAccount',
   },
   importStatement: {
     id: 'importStatement',
@@ -143,7 +148,7 @@ const topicsById = {
       'help.topics.trackProperty.steps.4',
       'help.topics.trackProperty.steps.5',
     ],
-    action: 'addAccount',
+    action: 'addProperty',
   },
   trackLoan: {
     id: 'trackLoan',
@@ -157,7 +162,7 @@ const topicsById = {
       'help.topics.trackLoan.steps.5',
       'help.topics.trackLoan.steps.6',
     ],
-    action: 'addAccount',
+    action: 'addLoan',
   },
   addTransaction: {
     id: 'addTransaction',
@@ -230,7 +235,7 @@ const topicsById = {
       'help.topics.viewStatistics.steps.3',
       'help.topics.viewStatistics.steps.4',
     ],
-    action: null,
+    action: 'openStatistics',
   },
   backupData: {
     id: 'backupData',
