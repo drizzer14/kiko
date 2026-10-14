@@ -599,7 +599,7 @@ const runSync = async (
   const { apiKey, secret } = credentials;
   const options: FetchAccountOptions = { fetchImpl: deps.fetchImpl, now: deps.now };
   // The watermark takes priority; a holding that never had one (legacy data,
-  // or a first sync) falls back to the newest already-imported record.
+  // or a first sync) falls back to the newest already-imported capital record.
   const cursor = binanceWalkCursorOf(CAPITAL_MARK_FIELDS.cursor, spot.metadata);
   const rescanCursor = binanceWalkCursorOf(CAPITAL_MARK_FIELDS.rescan, spot.metadata);
   const writers = walkWritersOf(spot.id, deps);

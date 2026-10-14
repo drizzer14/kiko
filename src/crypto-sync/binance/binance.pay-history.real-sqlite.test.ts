@@ -540,7 +540,8 @@ describe('the capital cursor beside rows of the other walks on real SQLite', () 
     await runCapitalWalkOver(server(firstRun));
     await runCapitalWalkOver(server(secondRun));
 
-    const earliest = (windows: HistoryWindow[]) => Math.min(...windows.map((w) => w.startTime));
+    const earliest = (windows: HistoryWindow[]) =>
+      Math.min(...windows.map((window) => window.startTime));
     expect(earliest(firstRun)).toBe(NOW - 89 * DAY_MS);
     expect(earliest(secondRun)).toBe(earliest(firstRun));
     expect(storedRows().map((row) => row.external_id)).toContain('acc-1:deposit:behind');
@@ -563,6 +564,8 @@ describe('the capital cursor beside rows of the other walks on real SQLite', () 
 
     await runCapitalWalkOver(depositServer([], asked));
 
-    expect(Math.min(...asked.map((window) => window.startTime))).toBe(NOW - 89 * DAY_MS);
+    const starts = asked.map((window) => window.startTime);
+    expect(starts).toContain(NOW - 5 * DAY_MS);
+    expect(starts).not.toContain(NOW - DAY_MS);
   });
 });
