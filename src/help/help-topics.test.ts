@@ -338,7 +338,7 @@ describe('reading how a catalogue key is used in source', () => {
   });
 });
 
-describe('the steps a review corrected', () => {
+describe('the choices a help step names', () => {
   const enValues = valueByPath(en);
   const ukValues = valueByPath(uk);
   const stepOf = (values: Map<string, string>, id: string, step: number): string =>
@@ -356,13 +356,41 @@ describe('the steps a review corrected', () => {
       );
     }
   });
+});
+
+describe('the Ukrainian wording of the help topics', () => {
+  const ukValues = valueByPath(uk);
+  const stepValues = HELP_TOPICS.flatMap((topic) =>
+    topic.stepKeys.map((key) => ({ key, value: ukValues.get(key) ?? '' })),
+  );
+
+  it('asks for every tap with the verb "натиснути"', () => {
+    expect(stepValues.filter(({ value }) => /торкн|тапн|тицн|клацн/i.test(value))).toEqual([]);
+    expect(stepValues.filter(({ value }) => /натисн/i.test(value)).length).toBeGreaterThan(30);
+  });
 
   it.each([
-    ['uk', 'viewStatistics', 3, 'фільтра «Рахунки»'],
-    ['uk', 'setReminder', 4, 'щоб видалити нагадування'],
-    ['en', 'editTransaction', 3, 'imported'],
-    ['uk', 'editTransaction', 3, 'імпортували'],
-  ] as const)('words the %s %s step %i with "%s"', (locale, id, step, wording) => {
-    expect(stepOf(locale === 'en' ? enValues : ukValues, id, step)).toContain(wording);
+    ['addAccount', 'Додавання рахунку'],
+    ['connectMonobank', 'Підключення Monobank'],
+    ['connectCrypto', 'Підключення Binance або гаманця Біткоїна'],
+    ['importStatement', 'Імпорт банківської виписки'],
+    ['setReminder', 'Налаштування нагадування'],
+    ['addHolding', 'Додавання активу'],
+    ['trackProperty', 'Облік майна'],
+    ['trackLoan', 'Облік кредиту'],
+    ['addTransaction', 'Додавання транзакції'],
+    ['editTransaction', 'Зміна, дублювання чи видалення транзакції'],
+    ['useTemplates', 'Шаблони транзакцій'],
+    ['manageCategories', 'Керування категоріями'],
+    ['categoryRules', 'Автоматичні категорії'],
+    ['viewStatistics', 'Перегляд статистики'],
+    ['backupData', 'Резервна копія даних'],
+    ['restoreData', 'Відновлення з резервної копії'],
+    ['systemSettings', 'Мова й блокування застосунку'],
+  ] as const)('titles the %s topic «%s» and labels its row the same', (topicId, title) => {
+    const topic = helpTopicById(topicId);
+
+    expect(ukValues.get(topic.titleKey)).toBe(title);
+    expect(ukValues.get(topic.rowLabelKey)).toBe(title);
   });
 });
