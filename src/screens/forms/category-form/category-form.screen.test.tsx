@@ -254,6 +254,12 @@ describe('CategoryFormScreen', () => {
       expect(headerLabels()).toEqual(['Save']);
     });
 
+    it('shows no divider, since there is no rules section to divide the fields from', async () => {
+      const { queryByTestId } = await renderForm();
+
+      expect(queryByTestId('form-divider')).toBeNull();
+    });
+
     it('leaves Save enabled before anything is typed, and checks the name on press', async () => {
       await renderForm();
 
@@ -747,6 +753,12 @@ describe('CategoryFormScreen', () => {
       const { getByText } = await renderForm('groceries');
 
       expect(getByText('Rules')).toBeTruthy();
+    });
+
+    it('divides the name, icon and colour fields from the rules with one divider', async () => {
+      const { getAllByTestId } = await renderForm('groceries');
+
+      expect(getAllByTestId('form-divider')).toHaveLength(1);
     });
 
     describe('under the uk language', () => {
