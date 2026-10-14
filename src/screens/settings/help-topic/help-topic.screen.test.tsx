@@ -1,3 +1,4 @@
+import { StyleSheet } from 'react-native';
 import type { ComponentProps } from 'react';
 import { fireEvent, render } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
@@ -8,23 +9,10 @@ import {
   type NavigationSpy,
   navigationSpy,
 } from '@kiko/test-support/navigation-props';
-import { type HelpTopicId, helpTopicById } from '@kiko/help';
+import { darkTheme } from '@kiko/design-system/theme';
+import { HELP_TOPICS, type HelpTopicId, helpTopicById } from '@kiko/help';
 
 import HelpTopicScreen from './help-topic.screen';
-
-// No registered topic has a `null` action yet, so a test sets `override` to render one that does;
-// otherwise every test reads the shipped registry.
-const mockTopic: { override: ReturnType<typeof helpTopicById> | undefined } = {
-  override: undefined,
-};
-jest.mock('@kiko/help', () => {
-  const actual = jest.requireActual('@kiko/help');
-
-  return {
-    ...actual,
-    helpTopicById: (id: HelpTopicId) => mockTopic.override ?? actual.helpTopicById(id),
-  };
-});
 
 type HelpTopicProps = ComponentProps<typeof HelpTopicScreen>;
 
@@ -49,38 +37,17 @@ describe('HelpTopicScreen', () => {
     });
   });
 
-  it('renders exactly the four manage-categories steps, and names the real Apply button', async () => {
+  it('renders the five manage-categories steps, naming the real Add category and Delete labels', async () => {
     const { getAllByTestId, getByTestId } = await renderScreen('manageCategories');
 
-    expect(getAllByTestId(/^help-topic-step-/)).toHaveLength(4);
-    expect(getByTestId('help-topic-step-4')).toHaveTextContent(
-      `"${i18n.t('forms.transaction.apply')}"`,
+    expect(getAllByTestId(/^help-topic-step-/)).toHaveLength(5);
+    expect(getByTestId('help-topic-step-2')).toHaveTextContent(
+      `"${i18n.t('categories.addCategory')}"`,
       { exact: false },
     );
-  });
-
-  it('opens the account form from the add-account action', async () => {
-    const navigation = navigationSpy();
-    const { getByText } = await renderScreen('addAccount', navigation);
-
-    await fireEvent.press(getByText('Add account'));
-
-    expect(navigation.navigate).toHaveBeenCalledTimes(1);
-    expect(navigation.navigate).toHaveBeenCalledWith('AccountsTab', {
-      screen: 'AccountForm',
-      params: {},
-      initial: false,
+    expect(getByTestId('help-topic-step-5')).toHaveTextContent(`"${i18n.t('common.delete')}"`, {
+      exact: false,
     });
-  });
-
-  it('opens Categories from the manage-categories action', async () => {
-    const navigation = navigationSpy();
-    const { getByText } = await renderScreen('manageCategories', navigation);
-
-    await fireEvent.press(getByText('Open categories'));
-
-    expect(navigation.navigate).toHaveBeenCalledTimes(1);
-    expect(navigation.navigate).toHaveBeenCalledWith('Categories');
   });
 
   it('shows only its own topic action', async () => {
@@ -89,21 +56,67 @@ describe('HelpTopicScreen', () => {
     expect(queryByText('Add account')).toBeNull();
   });
 
-  describe('a topic with no action', () => {
-    beforeEach(() => {
-      mockTopic.override = { ...helpTopicById('addAccount'), action: null };
-    });
+  it.each([
+    [
+      'addAccount',
+      'Add account',
+      ['AccountsTab', { screen: 'AccountForm', params: {}, initial: false }],
+    ],
+    ['addTransaction', 'Add transaction', ['TransactionForm', {}]],
+    ['useTemplates', 'Open templates', ['TransactionTemplates']],
+    ['setReminder', 'Open reminders', ['Reminders']],
+    ['manageCategories', 'Open categories', ['Categories']],
+    ['backupData', 'Open data export', ['ExportData']],
+    ['restoreData', 'Open data import', ['ImportData']],
+    ['systemSettings', 'Open system settings', ['System']],
+  ] as const)(
+    'opens the target of the %s action, labelled "%s"',
+    async (topicId, label, target) => {
+      const navigation = navigationSpy();
+      const { getByTestId } = await renderScreen(topicId, navigation);
 
-    afterEach(() => {
-      mockTopic.override = undefined;
-    });
+      expect(getByTestId('help-topic-action')).toHaveTextContent(label);
 
-    it('renders its steps and no footer', async () => {
-      const { getAllByTestId, queryByTestId } = await renderScreen('addAccount');
+      await fireEvent.press(getByTestId('help-topic-action'));
 
-      expect(getAllByTestId(/^help-topic-step-/)).toHaveLength(5);
-      expect(queryByTestId('help-topic-action')).toBeNull();
-      expect(queryByTestId('screen-footer')).toBeNull();
-    });
-  });
+      expect(navigation.navigate).toHaveBeenCalledTimes(1);
+      expect(navigation.navigate).toHaveBeenCalledWith(...target);
+    },
+  );
+
+  it.each(HELP_TOPICS.filter(({ action }) => action !== null))(
+    'shows the action button of the $id topic',
+    async (topic) => {
+      const { getByTestId } = await renderScreen(topic.id);
+
+      expect(getByTestId('help-topic-action')).toBeTruthy();
+    },
+  );
+
+  describe.each(['importStatement', 'addHolding', 'editTransaction', 'viewStatistics'] as const)(
+    'the %s topic, which has no action',
+    (topicId) => {
+      it('renders its steps and no footer button', async () => {
+        const { getAllByTestId, queryByTestId } = await renderScreen(topicId);
+
+        expect(getAllByTestId(/^help-topic-step-/)).toHaveLength(
+          helpTopicById(topicId).stepKeys.length,
+        );
+        expect(helpTopicById(topicId).action).toBeNull();
+        expect(queryByTestId('help-topic-action')).toBeNull();
+        expect(queryByTestId('screen-footer')).toBeNull();
+      });
+
+      it('gives the screen no footer at all, so the scroll content keeps its own bottom padding', async () => {
+        const { getByTestId } = await renderScreen(topicId);
+
+        const contentStyle = StyleSheet.flatten(
+          getByTestId('screen-scroll-view').props.contentContainerStyle,
+        );
+
+        // A footer owns the gap above itself, so the padding drops to 0 only when one is passed.
+        expect(contentStyle.paddingBottom).toBe(darkTheme.spacing(4));
+      });
+    },
+  );
 });

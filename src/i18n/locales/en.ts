@@ -988,12 +988,19 @@ export const en = {
     },
   },
   // The Help page (`src/help/`). Each group has a section title (Title Case, in `TITLE_KEYS`).
-  // Each topic has a nav title (Title Case) and a list-row label (sentence case) as two keys, and
-  // numbered steps that each end with ".". The step keys are quoted because i18next's typed keys
-  // skip a numeric property name.
+  // Each topic has a nav title (Title Case, in `TITLE_KEYS`) and a list-row label (sentence case)
+  // as two keys, and numbered steps that each end with ".". The step keys are quoted because
+  // i18next's typed keys skip a numeric property name. A step names a button, field, or tab in
+  // double quotes, and the quoted text is the exact catalogue string of that label (a test checks
+  // it). The action labels are sentence case buttons with no final ".".
   help: {
     actions: {
       openCategories: 'Open categories',
+      openExportData: 'Open data export',
+      openImportData: 'Open data import',
+      openReminders: 'Open reminders',
+      openSystem: 'Open system settings',
+      openTemplates: 'Open templates',
     },
     groups: {
       accounts: {
@@ -1001,6 +1008,18 @@ export const en = {
       },
       categories: {
         title: 'Categories',
+      },
+      holdings: {
+        title: 'Holdings and Loans',
+      },
+      settings: {
+        title: 'Settings',
+      },
+      statistics: {
+        title: 'Statistics',
+      },
+      transactions: {
+        title: 'Transactions',
       },
     },
     privacy: 'All your data stays on this device.',
@@ -1018,15 +1037,174 @@ export const en = {
         },
         title: 'Add an Account',
       },
+      addHolding: {
+        rowLabel: 'Add a holding',
+        steps: {
+          '1': 'On the "Accounts" tab, open an account and tap "Add holding".',
+          '2': 'Choose its "Type". The types on offer depend on the kind of account.',
+          '3': 'For a bond, enter its ISIN, and Kiko fills in its face value, coupon, and maturity date from the NBU register.',
+          '4': 'Tap "Save", then open the holding: "Add contribution" for a deposit, "Add lot" for a precious metal, or "Add transaction" for a card.',
+          '5': 'Kiko updates crypto and precious metal prices on its own.',
+        },
+        title: 'Add a Holding',
+      },
+      addTransaction: {
+        rowLabel: 'Add a transaction',
+        steps: {
+          '1': 'On the "Home" tab, tap "+", or open a holding and tap "Add transaction".',
+          '2': 'Choose the "Type": "Expense", "Income", "Exchange", or "Split".',
+          '3': 'Choose the holding, enter the amount and a description, and pick a category.',
+          '4': 'Tap "Save". If you picked the category yourself, choose "Apply" to use it for every transaction with that name, or "Just for this one".',
+        },
+        title: 'Add a Transaction',
+      },
+      backupData: {
+        rowLabel: 'Back up your data',
+        steps: {
+          '1': 'Open the "Settings" tab, then tap "Export Data".',
+          '2': 'To keep syncing after a restore, turn on "Include saved passwords & keys".',
+          '3': 'Tap "Export data", then "Share file" to save the .kiko file.',
+          '4': 'Tap "Copy key" and keep the key somewhere safe. It is shown only once, and the file cannot be opened without it.',
+        },
+        title: 'Back Up Your Data',
+      },
+      categoryRules: {
+        rowLabel: 'Set categories automatically',
+        steps: {
+          '1': 'Open the "Settings" tab, tap "Categories", then tap a category.',
+          '2': 'Tap "Add rule" and set a condition on the name, the amount, or the time. Tap "Add condition" for more; a transaction must match them all.',
+          '3': 'Tap "Save". If existing transactions match, choose "Apply to existing" or "New transactions only".',
+          '4': 'Rules also sort the transactions you import or sync later.',
+          '5': 'When you change the category of a transaction and choose "Apply", Kiko adds a rule for its name.',
+        },
+        title: 'Set Categories Automatically',
+      },
+      connectCrypto: {
+        rowLabel: 'Connect Binance or a Bitcoin wallet',
+        steps: {
+          '1': 'On the "Accounts" tab, tap "Add account", enter a name, and choose "Crypto".',
+          '2': 'Under "Source", choose "Binance" or "Wallet".',
+          '3': 'For Binance, tap "Open Binance API management" and create an API key there. Paste the "API key" and "API secret", then tap "Connect Binance".',
+          '4': 'For a Bitcoin wallet, paste its address and tap "Connect wallet".',
+          '5': 'Tap "Save". Your keys stay only in the Keychain on this iPhone and are never sent to Kiko.',
+        },
+        title: 'Connect Binance or a Bitcoin Wallet',
+      },
+      connectMonobank: {
+        rowLabel: 'Connect Monobank',
+        steps: {
+          '1': 'On the "Accounts" tab, tap "Add account", enter a name, and choose "Bank".',
+          '2': 'Under "Bank type", choose Monobank.',
+          '3': 'Tap "Open api.monobank.ua", get your personal token, and paste it into "Token".',
+          '4': 'Tap "Connect Monobank", then "Save". Kiko loads your cards and their transactions.',
+          '5': 'To sync again, pull down the list on the "Home" tab, or tap "Sync" on the account page.',
+        },
+        title: 'Connect Monobank',
+      },
+      editTransaction: {
+        rowLabel: 'Edit, duplicate, or delete a transaction',
+        steps: {
+          '1': 'On the "Home" tab, find the transaction. "Accounts", "Categories", and the calendar narrow the list.',
+          '2': 'Tap it, make your changes, and tap "Save". In a synced or imported transaction, you can change only the category and the loan link.',
+          '3': 'Touch and hold a transaction you added yourself, then tap "Duplicate" for a copy dated now, or "Delete".',
+        },
+        title: 'Edit, Duplicate, or Delete a Transaction',
+      },
+      importStatement: {
+        rowLabel: 'Import a bank statement',
+        steps: {
+          '1': 'Download a statement from your bank as a CSV or XLSX file.',
+          '2': 'On the "Accounts" tab, open the bank account, tap "Import statement", and choose the file.',
+          '3': 'Check the preview, choose the "Holding" to import into, then tap "Import". Transactions already in Kiko are skipped.',
+          '4': 'If Kiko does not recognize the file, tap "Map columns manually". If you mapped this kind of file before, this step opens on its own.',
+          '5': 'Tap the row with the column names, then choose the date, amount, and currency columns.',
+          '6': 'Check "Result" and tap "Import". Next time, Kiko fills in the same columns for you.',
+        },
+        title: 'Import a Bank Statement',
+      },
       manageCategories: {
         rowLabel: 'Manage categories',
         steps: {
           '1': 'Open the "Settings" tab, then tap "Categories".',
-          '2': 'Tap "Add category", enter a name, and choose an icon and a color.',
-          '3': 'To apply a category to every transaction with the same name, open one of them, change its category, and tap "Save".',
-          '4': 'Choose "Apply". The rule also applies to future imports.',
+          '2': 'Tap "Add category", enter a name, choose an icon and a color, and tap "Save".',
+          '3': 'Tap a category to change its name, icon, or color, and to see its rules.',
+          '4': 'Tap the star at the top to make it the default category. Transactions with no category count toward it.',
+          '5': 'To delete a category other than the default, touch and hold it, then tap "Delete". Its rules are deleted too.',
         },
         title: 'Manage Categories',
+      },
+      restoreData: {
+        rowLabel: 'Restore a backup',
+        steps: {
+          '1': 'Open the "Settings" tab, then tap "Import Data".',
+          '2': 'Tap "Choose file" and pick your .kiko file.',
+          '3': 'Paste its key into "Encryption key", or tap "Paste key from clipboard".',
+          '4': 'Tap "Import data", then "Replace data". This replaces everything in Kiko and cannot be undone.',
+        },
+        title: 'Restore a Backup',
+      },
+      setReminder: {
+        rowLabel: 'Set up a reminder',
+        steps: {
+          '1': 'Open an account you track by hand, then tap the bell at the top.',
+          '2': 'Choose "Add transactions" or, for a bank account, "Statement import".',
+          '3': 'Choose how often it repeats and at what time, then tap "Save".',
+          '4': 'To see every reminder, open the "Settings" tab and tap "Reminders". Use the switch to turn one on or off, or touch and hold it to delete it.',
+        },
+        title: 'Set Up a Reminder',
+      },
+      systemSettings: {
+        rowLabel: 'Change the language or lock the app',
+        steps: {
+          '1': 'Open the "Settings" tab, then tap "System".',
+          '2': 'Under "Language", choose your language.',
+          '3': 'Turn on "Require Face ID or passcode" to lock Kiko. Each time you launch it, it asks for Face ID or your device passcode.',
+          '4': 'To turn the lock off, Kiko first asks you to confirm it is you.',
+        },
+        title: 'Language and App Lock',
+      },
+      trackLoan: {
+        rowLabel: 'Track a loan',
+        steps: {
+          '1': 'On the "Accounts" tab, tap "Add account" and choose "Debt".',
+          '2': 'Choose the loan kind, then enter the principal, the annual rate, the start date, and the term.',
+          '3': 'Choose a "Schedule" to see upcoming payments, and the holding it is "Paid from".',
+          '4': 'Tap "Save". It shows under "Loans" on the "Accounts" tab.',
+          '5': 'When you add a payment, link it under "Loan payment". Kiko also links matching payments on its own.',
+          '6': 'To correct what you still owe, open the loan and tap "Update outstanding".',
+        },
+        title: 'Track a Loan',
+      },
+      trackProperty: {
+        rowLabel: 'Track property',
+        steps: {
+          '1': 'On the "Accounts" tab, tap "Add account" and choose "Property".',
+          '2': 'Choose what it is, such as real estate, a vehicle, or money you lent, then enter its name and cost.',
+          '3': 'If you own only part of it, set your share under "Ownership".',
+          '4': 'Tap "Save". It shows under "Properties" on the "Accounts" tab.',
+          '5': 'To record a new value, open it and tap "Update value".',
+        },
+        title: 'Track Property',
+      },
+      useTemplates: {
+        rowLabel: 'Use transaction templates',
+        steps: {
+          '1': 'When you save a transaction, turn on "Save as a new template" and fill in "Template name".',
+          '2': 'Or open the "Settings" tab, tap "Transaction templates", then "Add template".',
+          '3': 'To use one, tap "+" on the "Home" tab, choose "Template", pick a template, and tap "Save".',
+          '4': 'In "Transaction templates", tap a template to edit it, or touch and hold it to delete it.',
+        },
+        title: 'Use Transaction Templates',
+      },
+      viewStatistics: {
+        rowLabel: 'Read your statistics',
+        steps: {
+          '1': 'Open the "Statistics" tab to see your net worth over time, by type, and by account.',
+          '2': 'Scroll down for your expenses by category and how they change over time.',
+          '3': 'Use "Accounts" and the calendar to choose what the charts show.',
+          '4': 'Totals are in your base currency. To change it, open the "Settings" tab and tap "Base currency".',
+        },
+        title: 'Read Your Statistics',
       },
     },
   },

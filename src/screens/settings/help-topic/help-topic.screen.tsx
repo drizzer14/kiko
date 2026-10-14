@@ -41,10 +41,40 @@ const HelpTopicScreen: FC<HelpTopicScreenProps> = ({ navigation, route }) => {
         icon: genericEntitySymbol.account,
         onPress: () => openAccountForm(navigation),
       }))
+      .with('addTransaction', () => ({
+        label: t('home.addTransaction'),
+        icon: genericEntitySymbol.transaction,
+        onPress: () => navigation.navigate('TransactionForm', {}),
+      }))
       .with('openCategories', () => ({
         label: t('help.actions.openCategories'),
         icon: undefined,
         onPress: () => navigation.navigate('Categories'),
+      }))
+      .with('openTemplates', () => ({
+        label: t('help.actions.openTemplates'),
+        icon: undefined,
+        onPress: () => navigation.navigate('TransactionTemplates'),
+      }))
+      .with('openReminders', () => ({
+        label: t('help.actions.openReminders'),
+        icon: undefined,
+        onPress: () => navigation.navigate('Reminders'),
+      }))
+      .with('openExportData', () => ({
+        label: t('help.actions.openExportData'),
+        icon: undefined,
+        onPress: () => navigation.navigate('ExportData'),
+      }))
+      .with('openImportData', () => ({
+        label: t('help.actions.openImportData'),
+        icon: undefined,
+        onPress: () => navigation.navigate('ImportData'),
+      }))
+      .with('openSystem', () => ({
+        label: t('help.actions.openSystem'),
+        icon: undefined,
+        onPress: () => navigation.navigate('System'),
       }))
       .exhaustive();
 
