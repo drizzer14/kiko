@@ -1205,10 +1205,14 @@ export const en = {
       viewStatistics: {
         rowLabel: 'Read your statistics',
         steps: {
-          '1': 'Open the "Statistics" tab to see your net worth over time, by type, and by account.',
-          '2': 'Scroll down for your expenses by category and how they change over time.',
-          '3': 'Use "Accounts" and the calendar to choose what the charts show.',
-          '4': 'Totals are in your base currency. To change it, open the "Settings" tab and tap "Base currency".',
+          '1': 'Open the "Statistics" tab. "Accounts" at the top chooses the accounts that every chart counts. The calendar beside it chooses the dates for "Net Worth Over Time" and the two spending charts.',
+          '2': '"Net Worth Over Time" shows your net worth across those dates. The dashed line is its value on the first day: the line is green above it and red below it.',
+          '3': '"By Type" shows what your assets are worth today by holding type, largest first. Loans and anything you owe are not part of it.',
+          '4': '"Account Contribution" shows each account as a share of what you own today. If you owe anything, "Debts" below the chart shows the total.',
+          '5': '"Expenses by Category" shows your spending over the chosen dates, with the total in the middle. "Categories" chooses which categories it counts. The list under the chart shows categories of 5% or more, and "Show all" shows the rest.',
+          '6': '"Spending Trend by Category" shows how much each category cost in each period. Tap the button above the chart to pick categories yourself ("Manual") or the top ones ("Top") by "Contribution", "Frequency", or "Rising".',
+          '7': 'Transfers between your own accounts, currency exchanges, and cash withdrawals from your bank do not count as spending. If a payment is linked to a loan, only the interest counts, under "Loan interest".',
+          '8': 'Totals are in your base currency. To change it, open the "Settings" tab and tap "Base currency".',
         },
         title: 'Read Your Statistics',
       },
