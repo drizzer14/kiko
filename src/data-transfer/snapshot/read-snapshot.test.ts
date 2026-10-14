@@ -14,7 +14,7 @@ jest.mock('@kiko/db/client', () => ({
 import { readDataSnapshot } from './read-snapshot';
 
 describe('readDataSnapshot', () => {
-  it('reads all thirteen tables, in order, into the matching snapshot fields', async () => {
+  it('reads all fourteen tables, in order, into the matching snapshot fields', async () => {
     mockResultQueue = [
       [{ id: 'a1' }], // accounts
       [{ id: 'h1' }], // holdings
@@ -24,11 +24,12 @@ describe('readDataSnapshot', () => {
       [{ id: 1 }], // settings
       [{ accountId: 'a1' }], // syncState
       [{ key: 'food' }], // categories
-      [{ normalizedName: 'x' }], // categoryOverrides
+      [{ id: 'rule-1' }], // categoryRules
       [{ instrument: 'metal:XAU', day: 1 }], // pricePoints
       [{ isin: 'UA4000234215' }], // bondRegister
       [{ id: 'reminder-1' }], // reminders
       [{ holdingId: 'h1', externalId: 'k-1' }], // deletedImportKeys
+      [{ id: 'template-1' }], // transactionTemplates
     ];
 
     const snapshot = await readDataSnapshot();
@@ -41,15 +42,16 @@ describe('readDataSnapshot', () => {
     expect(snapshot.settings).toEqual([{ id: 1 }]);
     expect(snapshot.syncState).toEqual([{ accountId: 'a1' }]);
     expect(snapshot.categories).toEqual([{ key: 'food' }]);
-    expect(snapshot.categoryOverrides).toEqual([{ normalizedName: 'x' }]);
+    expect(snapshot.categoryRules).toEqual([{ id: 'rule-1' }]);
     expect(snapshot.pricePoints).toEqual([{ instrument: 'metal:XAU', day: 1 }]);
     expect(snapshot.bondRegister).toEqual([{ isin: 'UA4000234215' }]);
     expect(snapshot.reminders).toEqual([{ id: 'reminder-1' }]);
     expect(snapshot.deletedImportKeys).toEqual([{ holdingId: 'h1', externalId: 'k-1' }]);
+    expect(snapshot.transactionTemplates).toEqual([{ id: 'template-1' }]);
   });
 
   it('returns empty arrays for tables with no rows', async () => {
-    mockResultQueue = [[], [], [], [], [], [], [], [], [], [], [], [], []];
+    mockResultQueue = [[], [], [], [], [], [], [], [], [], [], [], [], [], []];
 
     const snapshot = await readDataSnapshot();
 

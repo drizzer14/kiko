@@ -242,10 +242,11 @@ const resolves = (name: string): boolean => {
 
 const scopeFiles = presentFiles.filter((file) => SCOPE_FILE.test(file));
 
-const citedUnresolved = (file: string): Citation[] =>
-  identifierCitations(readFileSync(join(REPOSITORY_ROOT, file), 'utf8')).filter(
-    ({ name }) => !resolves(name),
-  );
+const readRepositoryFile = (file: string): string =>
+  readFileSync(join(REPOSITORY_ROOT, file), 'utf8');
+
+const citedUnresolved = (text: string): Citation[] =>
+  identifierCitations(text).filter(({ name }) => !resolves(name));
 
 const exempts = (exemption: Exemption, file: string, name: string): boolean =>
   exemption.name === name && (exemption.file === undefined || exemption.file === file);
@@ -336,16 +337,28 @@ describe('identifiers named in skills, agents and harness skills', () => {
   it('names only identifiers that exist in the code, or are listed as exempt', () => {
     expect(
       scopeFiles.flatMap((file) =>
-        citedUnresolved(file)
+        citedUnresolved(readRepositoryFile(file))
           .filter(({ name }) => !EXEMPTIONS.some((exemption) => exempts(exemption, file, name)))
           .map(({ line, name }) => `${file}:${line} ${name}`),
       ),
     ).toEqual([]);
   });
 
+  it('reports a name planted in a copy of the kiko-architecture text', () => {
+    const file = '.claude/skills/kiko-architecture/SKILL.md';
+    const planted = `${readRepositoryFile(file)}\n\nStale \`zzzPlantedGoneName\`.\n`;
+
+    expect(scopeFiles).toContain(file);
+    expect(
+      citedUnresolved(planted)
+        .filter(({ name }) => !EXEMPTIONS.some((exemption) => exempts(exemption, file, name)))
+        .map(({ name }) => name),
+    ).toEqual(['zzzPlantedGoneName']);
+  });
+
   it('lists no exemption that is no longer cited or now resolves', () => {
     const stillUnresolved = scopeFiles.flatMap((file) =>
-      citedUnresolved(file).map(({ name }) => ({ file, name })),
+      citedUnresolved(readRepositoryFile(file)).map(({ name }) => ({ file, name })),
     );
 
     expect(

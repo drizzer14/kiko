@@ -49,7 +49,7 @@ const manualIdAt = (time: number): string =>
       .get(time) as { id: string }
   ).id;
 
-const recordManual = (amountMinorUnits: number, time: number): Promise<void> =>
+const recordManual = (amountMinorUnits: number, time: number): Promise<string> =>
   transactionsRepo.recordManual({ holdingId: 'card', amountMinorUnits, time });
 
 // The bank statement: one purchase on September 20 and the bank's own closing

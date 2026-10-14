@@ -5,7 +5,8 @@ description: Invoke when adding or changing a harness check (scripts/checks/*.sh
 
 # Kiko linter and harness-check authoring
 
-Source of truth: `CLAUDE.md` (the checks table, "Override protocol",
+Source of truth: `docs/harness/checks.md` (the authoritative check rows and hook
+wiring; `CLAUDE.md` carries the short form, plus "Override protocol" and
 "Documented exceptions") and `scripts/checks/_lib.sh`. This skill
 states the conventions for adding to the harness itself — the checks
 that check the app, not the app's own code style (see
@@ -26,12 +27,22 @@ fast+medium gate is picked up by `make verify` automatically through
 
 ## The wrapper contract
 
+`scripts/job-queue.sh` is not a `scripts/checks` wrapper: its QUEUED/WAITING/START/DONE lines are its normal stdout, not a failure block.
+
 Every check wrapper in `scripts/checks/` follows the same shape (read
 `scripts/checks/_lib.sh` for the exact helper):
 
 - `source "$DIR/_lib.sh"` for `print_block`.
+- Comments in a shell script wrap at 100 columns, as in any other source file; `__tests__/shell-comment-width.test.ts` pins it.
 - On failure: call `print_block` (a structured WHAT/DETAILS/WHY/HOW/
   DO-NOT block) to stderr, then `exit 2`.
+- A missing path is a failure, never a pass. A missing scan root or a missing path argument
+  exits 2 with the standard block that names the path (`harness_require_path` in `_lib.sh`).
+  A per-file wrapper given a directory exits 2 ("takes a file", `harness_require_file`).
+  One exception: `medium.sh` filters deleted files before it calls `dup.sh` and
+  `override-guard.sh`, so a deleted file on the medium tier is skipped silently, while a
+  direct call with a deleted path exits 2. `component-i18n-namespace.sh` keeps its own `-d`
+  block for its fixed root. `__tests__/wrapper-missing-path.test.ts` pins this.
 - On success: **silent**, `exit 0`. A wrapper that prints anything on
   success breaks the "stays silent on success" contract every other
   wrapper and every hook relies on. One exception is the deep,
@@ -53,11 +64,11 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   finding is override-eligible and still has to be seen. `dup.sh` states
   its own exception: its large-file `WARNING` lines (see "`check:dup`
   measures the files jscpd skips for size" below), because a non-blocking
-  measurement of tracked debt still has to be seen. A hook that exits 0
+  measurement of tracked debt still has to be seen. `medium.sh` states a third: on a repeated Stop (payload `stop_hook_active: true`) it writes a one-line `medium tier: skipped on a repeated Stop` note to stderr and exits 0. A hook that exits 0
   does not feed its stderr back to the agent, unless a later check in the
   same tier fails: the tier's whole stderr is then shown, so a `dup.sh`
   WARNING or a `security.sh` SKIPPED notice can appear beside an unrelated
-  failure. It is tracked debt, not that failure; otherwise these are for a
+  failure. It is tracked debt, not that failure; otherwise these (and the `medium.sh` repeated-Stop note, which reaches a human only) are for a
   human or a manual `check:security`/`check:dup` run.
 
   Another exception, of a different shape: `scripts/checks/kill-guard.sh`
@@ -70,8 +81,8 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   pattern/process-group kill. It has no `print_block`/`_lib.sh` dependency
   and no content-dedup fingerprint — a `PreToolUse` hook runs on every Bash
   call by design, and skipping one because "nothing changed" would mean
-  skipping the one call the guard exists to catch. See CLAUDE.md's
-  "Automatic wiring" and `harness/kiko/hooks/hooks.json`'s `PreToolUse`
+  skipping the one call the guard exists to catch. See `docs/harness/checks.md` "Automatic
+  wiring" and `harness/kiko/hooks/hooks.json`'s `PreToolUse`
   entry for the wiring, and `kill-guard.js` for the tokenizer. The other
   hook guard, `pre-write-guard.sh`, prints the same deny JSON on stdout but
   exits 2; its paragraph below starts "Another exception, of yet another shape".
@@ -178,6 +189,7 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   operator (`>&-`, `<<-EOF`). So `kill <pid> 2>/dev/null` and
   `kill <pid> &>/dev/null` are allowed. The agent rule stays
   absolute regardless: never `git stash` or pattern-kill in any form.
+  The ONE allowed group kill (user ruling 2026-10-13): `scripts/job-queue.sh` may send TERM to the process group it created for its own job (`set -m`, then the group-TERM form its header shows), only while `pgrep -g` finds a member, never any other group; the lock stays live while any process of that group lives. An agent's own group or pattern kill is still denied.
   Every deny carries the `print_block` WHAT/DETAILS/WHY/HOW/DO-NOT shape
   as plain text in the one JSON reason field; the kill deny keeps its
   one-line reason. Deny/allow cases for each form live in
@@ -308,6 +320,9 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   so `hooks.json` is unchanged and no plugin reinstall is needed; a
   session in the main checkout gets it only after the merge to main.
 
+  A shell redirect into a tree is denied even inside your own temporary git repository: build its
+  fixture tree with the helpers in `__tests__/test-support/` inside a jest test, or with Edit/Write.
+
   WAIT-LOOP deny (why: a `while`/`until` loop whose process scan names
   the job it waits for matches its OWN command line, so it never ends;
   the `[j]est` bracket trick only helps while the word appears nowhere
@@ -360,6 +375,30 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   the merge to main. Only an agent-text change shipped beside it (the
   plugin version bump) reaches a running session after a plugin
   reinstall and `/reload-plugins`.
+
+  NO-VERIFY deny (why: the tracked `githooks/pre-commit` and `githooks/pre-merge-commit` run
+  `scripts/checks/commit-typecheck.sh`, a typecheck of the staged index; a commit that skips them
+  lands a type error on the branch). Rule: deny a `git commit`, `git merge`, or `git pull` that
+  skips the hooks: `--no-verify` or an abbreviation of it, commit's `-n` (alone or inside a flag
+  group; on `merge` and `pull` `-n` is `--no-stat`, so it is no bypass), `-c core.hooksPath=...`
+  or `--config-env=core.hooksPath=...` before the subcommand, and a `NAME=value` prefix that sets
+  core.hooksPath through `GIT_CONFIG_COUNT` with `GIT_CONFIG_KEY_<n>`, or through
+  `GIT_CONFIG_PARAMETERS`. It also denies a `git config` that writes or unsets core.hooksPath in
+  any scope (the `set`/`unset` forms of git 2.46 too), because that switches the hooks off for
+  every worktree. Entry points: `skipsHooks`, `rewritesHooksPath`, `environmentSetsHooksPath`
+  in `scripts/checks/kill-guard.js`; the finding kind is `noVerify`. Allowed: a `--get` read of the
+  key, `git config core.hooksPath` with no value, `-n` after another option's value or after
+  `--`, text in a commit message, and `git log -n`. The repair route for an unset core.hooksPath
+  is `bash scripts/ensure-git-hooks.sh` or `npm ci`; a direct `git config core.hooksPath githooks`
+  is denied too. The pre-commit hook itself: `scripts/checks/commit-typecheck.sh` copies the
+  staged index to a temporary folder and runs `tsc --noEmit` there; it fails closed and skips a
+  commit whose staged diff touches no file tsc reads (see `docs/harness/checks-internals.md`).
+  A person may bypass in their own shell; the deny binds agent Bash calls only. Rows:
+  `__tests__/kill-guard.test.ts`, `__tests__/commit-typecheck.test.ts`,
+  `__tests__/ensure-git-hooks.test.ts`. Known limits, NOT denied: a bypass built at run time; an
+  `export GIT_CONFIG_*=...` line before the git command (only `NAME=value` prefixes are read);
+  `git config --value <v>` with the value as a separate word; `--remove-section core` and
+  `--rename-section core`.
 
   Probing the kill-guard (rule): SENTINEL probes only. A probe that
   EXECUTES shell text runs ONLY through the committed runner
@@ -527,7 +566,7 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   `KIKO_PREWRITE_SEMGREP_BIN`, `KIKO_PREWRITE_NODE_BIN` — read
   `pre-write-guard.js` for their exact defaults and the closed `NODE_RULES`
   set). See `docs/superpowers/specs/2026-09-25-pre-write-guard-design.md`
-  for the full design and CLAUDE.md's "Automatic wiring" for the hook wiring.
+  for the full design and `docs/harness/checks.md` "Automatic wiring" for the hook wiring.
 
   `mutation.sh` also DIFF-SCOPES by default: it mutates only the CHANGED LINES of the `.ts`/
   `.tsx` source files this branch changed vs the merge-base with
@@ -590,8 +629,9 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   sets only"). No env var bypasses the
   cap. `mutation.sh --list` (`make mutable`) prints each file's ranges (`<file> 3-7,12-12 (6 changed lines)`;
   a comment-only file kept by its colocated test prints `whole file (N lines)`), `changed lines: N`, and
-  `mutable files: N (cap …)` last after the same refusals and the same
-  `mutable_source_files` filter, then exits (2 above the cap) before
+  `mutable files: N (cap …)` after the same refusals and the same
+  `mutable_source_files` filter, then a `timeout share (history)` line (always
+  printed, `none` included; read the printf in `mutation.sh`), then exits (2 above the cap) before
   the dedup skip; it needs no Stryker binary and never takes the global
   lock. Any argument other than `--list` (a typo like `--lsit`) exits 2
   with the structured block before the Stryker-binary check, the lock,
@@ -614,14 +654,25 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   a test's own explicit setting still wins.
 
   `mutation.sh` also gives a watching HUMAN a live progress display and a
-  per-mutant-rate ETA, so nobody polls the run — its exit code stays the only
+  split ETA, so nobody polls the run — its exit code stays the only
   signal an agent waits on (the ops agent's no-poll rule is unchanged). It tees
   Stryker's combined output to a stable, tailable progress log and prints the
-  exact `tail -f <path>` command to watch it; the ETA is a per-mutant rate
-  (median seconds/mutant from history) times THIS run's actual mutant count,
+  exact `tail -f <path>` command to watch it; the ETA is the cost of a normal
+  and of a timed-out mutant, fitted from history (`harness_mutation_costs`; it
+  refuses a fit when the timeout shares of the runs are near-equal, and then
+  falls back to the median rate plus a timeout floor, using
+  `harness_mutation_run_share`), split by this change set's timeout share
+  (`harness_mutation_timeout_share`) and THIS run's actual mutant count. It is
   printed LIVE the moment Stryker's own output first reports that count (an
-  "N/M tested" counter) — not before the run starts. With no usable history it
-  prints a plain "no estimate" line instead. Each completed run (a pass OR a
+  anchored "N/M tested" token, parsed by `harness_mutation_run_counts`, so a
+  "1/2/3" in a test title never counts) — not before the run starts — and an
+  "Estimate at N%" update follows at each 10% boundary (only with the timeout
+  clause). With no usable history it prints a plain "no estimate" line instead.
+  History is keyed by the git COMMON dir (`harness_mutation_history_dir`), so
+  all worktrees share it (old per-worktree records are not read); the progress
+  log stays per worktree. Beside `history.tsv` (one record per run) a
+  `files.tsv` holds per-file tested/timedOut counts per run
+  (`harness_mutation_files_append`). Each completed run (a pass OR a
   break-threshold failure — Stryker exit 0, or exit 1 WITH a report; exit 1
   with no report is a crash, as is any other code) is appended to an
   out-of-repo history TSV that feeds the next run's rate. All of this lives in
@@ -667,8 +718,8 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   (`node:*` requires only, consistent with every other Node checker
   here) that computes killed+timeout over
   killed+timeout+survived+noCoverage per file and for the change set
-  as a whole, restricted to those files. Read CLAUDE.md's
-  `check:mutation` row for the exact thresholds (they ratchet over
+  as a whole, restricted to those files. Read the `check:mutation` row in
+  `docs/harness/checks.md` for the exact thresholds (they ratchet over
   time, so are not restated here; the scorer prints them on its `GATE:`
   line) and `mutation-score.js` itself for
   the declaration-only exclusion allowlist (one allowlist, each entry
@@ -688,7 +739,7 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   plain path and as a range (Stryker reads that as "do not mutate"). A comment-only file kept because its
   colocated test changed goes in as its plain path (whole file). A kept path with `[ ( * ? {` is refused with
   exit 2, after the lock in a run and with no lock in `--list`, always before Stryker. The diff uses
-  `--find-renames --inter-hunk-context=0 --text --no-textconv` (a -diff/binary attribute or a textconv driver must not change the hunks). General rule: any checker that parses `git diff` hunks forces `--text --no-textconv --no-ext-diff` and `-c core.quotePath=false`, and treats a failed or unparsable diff as a block, never as "nothing to do" (H6 review 2026-10-12: a binary/textconv `.ts` diff gave no hunk and the gate passed with nothing mutated; fixed in 5f31d626). User ruling 2026-10-12, no edge-straddling mutant: Stryker 8.7.1 creates a mutant only when its whole node lies inside a range (its fully-inside rule, instrumenter syntax-helpers.js), and the scorer grades only mutants fully inside a range. Cost: an edit inside a multi-line block, condition, object or array, or an arrow body loses that construct's whole-node mutants; the inner mutants on the changed lines stay. User ruling 2026-10-12, source plus colocated test: when a source file and its colocated test both change, only the changed source lines are mutated. Cost: a weakened test is checked only against the changed lines, not the whole file. The
+  `--find-renames --inter-hunk-context=0 --text --no-textconv`, run with `GIT_DIFF_OPTS=` (a -diff/binary attribute, a textconv driver, or a context width in that variable must not change the hunks). One `cleanup` removes the lock and the temp file for `mutation-ranges.js` stderr on EXIT, INT (exit 130), and TERM (exit 143). General rule: any checker that parses `git diff` hunks forces `--text --no-textconv --no-ext-diff` and `-c core.quotePath=false`, and treats a failed or unparsable diff as a block, never as "nothing to do" (H6 review 2026-10-12: a binary/textconv `.ts` diff gave no hunk and the gate passed with nothing mutated; fixed in 5f31d626). User ruling 2026-10-12, no edge-straddling mutant: Stryker 8.7.1 creates a mutant only when its whole node lies inside a range (its fully-inside rule, instrumenter syntax-helpers.js), and the scorer grades only mutants fully inside a range. Cost: an edit inside a multi-line block, condition, object or array, or an arrow body loses that construct's whole-node mutants; the inner mutants on the changed lines stay. User ruling 2026-10-12, source plus colocated test: when a source file and its colocated test both change, only the changed source lines are mutated. Cost: a weakened test is checked only against the changed lines, not the whole file. The
   scorer is unit-tested directly against constructed report fixtures
   in `__tests__/mutation-score.test.ts` (no mutated-src-text parsing,
   no real Stryker run); the existing cap/lock/streaming/eta tests drive
@@ -1038,7 +1089,7 @@ bad file and confirming the check would otherwise fire on it.
 ## `check:dup`'s changed-file scope can surface PRE-EXISTING duplication
 
 `check:dup`'s jscpd run is scoped to the session's changed source
-files (see `CLAUDE.md`'s "Automatic wiring"), so a new test file
+files (see `docs/harness/checks.md` "Automatic wiring"), so a new test file
 entering that changed-file set can pull an EXISTING sibling test file
 along with it and cross the 5% threshold together, even though the
 duplication (e.g. repeated fixture-building closures) predated the new
@@ -1137,8 +1188,10 @@ Mechanizes kiko-code-style's "Comments: WHY only, never history": no
 task id, review-round id, spec/decision id, or plan citation left
 behind in a `src/**` comment. The member list is the two
 `pattern-regex` arms of `kiko-no-history-id-comment` in
-`rules/semgrep-prewrite.yml`. Read them for the current set; the
-fixture pair shows each member. Two
+`rules/semgrep-prewrite.yml`. Read them for the current set; the P-ids are `P-?\d{1,3}`
+(`P3`, `P-12`), and "Display P3" and the curve names P-256, P-384 and P-521 are
+standards, not ids, so they stay silent (`rules/fixtures/kiko-no-history-id-comment.good.ts`).
+The fixture pair shows each member. Two
 `pattern-regex` arms, one per comment syntax —
 a single regex spanning both `//` and `/* */` would have to
 special-case where a line comment ends and a block comment does not.
@@ -1298,8 +1351,11 @@ reminders code says "the plan" or "this planner", never "in this plan".
 Fixture pair: the plan-history pins in `.bad.ts` and items 16 and 18 in
 `.good.ts`.
 
-**The section members (2026-09-29) need a number.** `[Ss]ection\s[A-Z0-9]+\.\d+`
-fires only on a word "section" followed by a dotted number, so a
+**The section members (2026-09-29) need a number.** The arm
+`[Ss]ection\s(?:[A-Z0-9]+\.\d+|\d+)` fires on a word "section" followed by a dotted number
+or by a bare number (`Section 4`). Its false-positive class is prose such as
+`// section 3 of the form` and a number that is not a section id (`Section 508`); the tree
+holds 0 such hits today. A
 "Section" header row, "2 sections", and "subsection 2.1" (no word
 boundary before "section") stay silent. `§\s?\d` sits OUTSIDE the `\b(...)`
 group in both arms: `§` is not a word character, so a `\b` before it
@@ -1425,31 +1481,32 @@ found. Reword any of these.
 The change-narrative half of kiko-code-style's "Comments: WHY only, never
 history". `kiko-no-history-id-comment` catches an id or a citation; this
 rule catches the phrases a comment uses to narrate a change, among them a
-`was:` label before an old value (`// was: 30`, ` * was: the old cap`). A
-comment states how the code works today and why, never how it worked before.
+`was:` label before an old value (`// was: 30`, ` * was: the old cap`), and `as before`
+at the end of a clause (`fails as before`, `as before, ...`; a noun phrase after it, such as
+`as before the request`, is an ordering and stays silent). A comment states how the code
+works today and why, never how it worked before.
 The members are the `pattern-regex` alternation and the `message` of
 `kiko-no-history-word-comment` in `rules/semgrep-prewrite.yml`; read the
 phrases there, never copy them. The match is capitalization-tolerant, and
 the fixture pair shows each shape.
 
-**A separate rule id, severity WARNING (Class B).** Severity is per rule,
-so the words could not ride on the ERROR id rule. Count the live findings with
+**A separate rule id, severity ERROR.** Severity is per rule, so the words could not ride
+on the id rule while findings remained. The sweep landed, and the tree holds 0 findings for
+this rule id. Count the live findings with
 `semgrep --metrics off --quiet --config rules/semgrep-prewrite.yml src --json`,
-filtered to `kiko-no-history-word-comment` (it reports every word of a
-comment, so a comment holding two words counts twice). It
-lands as WARNING:
-`check:security` surfaces them without failing, and the pre-write guard
-already denies a NEW finding of any severity. **Promotion condition:**
-flip to ERROR when `check:security` reports 0 findings for this rule id,
-after the sweep (never when a grep is empty). The sweep is the user's
-call; do not run it as part of an unrelated task.
+filtered to `kiko-no-history-word-comment` (it reports every word of a comment, so a
+comment holding two words counts twice). `check:security` fails on a finding, and the
+pre-write guard denies a NEW one.
+
+**Known false positives.** `as before` at the end of a physical line, when its noun phrase
+wraps to the next line, reads as a clause end. `as before and after` reads as a clause end
+too. Reword such a comment.
 
 **Hand-run scan target.** A rule's `paths.exclude` (for example `__tests__/**`) is
-relative to the semgrep scan target. A hand-run count or sweep (this rule and
-`kiko-no-task-id-comment`) must target the repo root (`.`) or single files; a directory
-target such as `__tests__` makes the paths relative to it, so the exclude misses (a
-2026-10-06 sweep counted 6 excluded `__tests__` files that way). `src` as a target is
-fine for these rules.
+relative to the semgrep scan target. A hand-run count or sweep (every comment-history rule: id,
+word, date, task-id) must target the repo root (`.`) or single files; a directory target such as
+`__tests__` makes the paths relative to it, so the exclude misses (a 2026-10-06 sweep counted 6
+excluded `__tests__` files that way). `src` as a target is fine for these rules.
 
 The anchoring is the id rule's: the same string-skip
 `^(?:…)*` walk, `(?<!:)//` for the line arm, the block arm that never
@@ -1528,9 +1585,13 @@ date attached to a ruling, a finding, or a plan left in a `src/**` comment
 ("user-approved 2026-10-08", "Device finding", "(multi-account plan,
 2026-09-11)"). The members are the two `pattern-regex` alternations in
 `kiko-no-history-date-comment` (`rules/semgrep-prewrite.yml`): `Device
-finding(s)`; `approved|ruled|ruling|decided|confirmed` then an ISO date; `plan|track|round|ruling|feedback|audit`,
+finding(s)`; `approved|probed|ruled|ruling|decided|confirmed` (also the all-caps `RULED`/`RULING`) then an ISO date, with an
+optional `on` or `of` between ("ruling of 2026-10-12", "ruled on 2026-10-12") and a
+comment wrap tolerated between the word and the date; `plan|track|round|ruling|feedback|audit`,
 a comma, then an ISO date; a `docs/` path holding a dated file name; and a parenthesized
-date that opens the comment text (`* (2026-09-11) moves …`). The anchoring is the
+date that opens the comment text (`* (2026-09-11) moves …`). A probe's date is history
+too: `probed <date>` is a member, and the comment states what the probe showed, never when it
+ran. The anchoring is the
 history rules': the string-skip `^(?:…)*` walk, `(?<!:)//`, the block arm that never
 crosses `*/`, the `\K` match shape, and the same `paths.exclude` scope. The pair is flat
 (`rules/fixtures/kiko-no-history-date-comment.{bad,good}.ts`).
@@ -1540,17 +1601,21 @@ so `check:security` reports 0 findings for the id.
 
 **A bare ISO date is NOT a member, by measurement.** Over `src` a bare
 `\d{4}-\d{2}-\d{2}` inside a comment hit 55 times; the 12 history hits were swept and the
-other 43 (27 files) are data, not history:
-a test's fixture day (`// 2026-01-15` after a `Date.UTC`), a DST day (`Europe/Kyiv falls back
-on 2026-10-25`), a leap day, a worked example, a date format sample, and provenance of a
-snapshot or a probe (`captured 2026-09-22` in `fiat-rate-seed.ts`, `checked 2026-09-26` in
-`week-start.ts`, `probed 2026-10-06` in `sync.ts`). A date records WHEN a value was
-captured, which the code cannot show, so provenance and fixture days stay, and
-`fiat-rate-seed.ts` keeps its documented exception in kiko-code-style. Only a date that
-follows a ruling, plan, or finding word counts. No exemption list exists, so there is
-nothing in `docs/harness/documented-exceptions.md` to update. Known misses: a date after
-another word ("signed off 2026-10-08"), a date with no word before it, and a dated
-history sentence that names no ruling word. Reword by hand when a review finds one.
+other 43 (27 files) are data, not history: a test's fixture day (`// 2026-01-15` after a
+`Date.UTC`), a DST day (`Europe/Kyiv falls back on 2026-10-25`), a leap day, a worked example
+(`Date.UTC rolls 2026-09-31 into October` in `reminder-schedule.ts`), a date format sample,
+and provenance of a snapshot or a check (`captured 2026-09-22` in `fiat-rate-seed.ts`,
+`checked 2026-09-26` in `week-start.ts`). A date records WHEN a value was captured, which
+the code cannot show, so provenance and fixture days stay, and `fiat-rate-seed.ts` keeps its
+documented exception in kiko-code-style. The rule: only a date that follows a ruling, probe,
+plan, or finding word counts. No exemption list exists, so there is nothing in
+`docs/harness/documented-exceptions.md` to update. Known misses: a date after another word
+("signed off 2026-10-08"), a date with no word before it, and a dated history sentence that
+names no ruling word. Reword by hand when a review finds one.
+
+**Known false positive.** The wrap tolerance between the word and the date matches
+"was approved" at the end of a comment line when the next comment line starts with a date,
+for example a fixture day. Reword the comment so the date does not open a line.
 
 ## `kiko-no-task-id-comment`
 
@@ -1559,17 +1624,14 @@ The id half of kiko-code-style's "Comments: WHY only, never history" that
 bug, or finding id of the multi-round process left in a `src/**` comment
 (`DEVICE BUG fix`, `Bug A2`, `Feature 1`, `Global Constraint 2`, `item 6`,
 `Part A`, `Track A`, `Invariant #15`, `finding S4`, `ponytail L43`, a
-letter-prefixed finding id such as `SEC-C1`/`TX-C6a`, and a parenthesized
-plan id such as `(A1)`/`(P3)`). The members are the two `pattern-regex`
+letter-prefixed finding id such as `SEC-C1`/`TX-C6a`, a parenthesized
+plan id such as `(A1)`/`(P3)`, and a ruling id such as `ruling A2`/`RULING B1`). The members are the two `pattern-regex`
 alternations in `kiko-no-task-id-comment` (`rules/semgrep-prewrite.yml`);
 the fixture pair shows each shape.
 
-**A separate rule id, severity WARNING (Class B).** Severity is per rule, and
-files that other work still owns held findings of this shape when it landed.
-`check:security` surfaces them without failing; the pre-write guard denies a
-NEW one. **Promotion condition:** flip to ERROR when
-`check:security` reports 0 findings for this rule id (never when a grep is
-empty). Count them with `semgrep --metrics off --quiet --config
+**A separate rule id, severity ERROR.** Severity is per rule. The promotion condition
+(`check:security` reports 0 findings for this rule id) was met, so the rule fails
+`check:security`, and the pre-write guard denies a NEW one. Count the findings with `semgrep --metrics off --quiet --config
 rules/semgrep-prewrite.yml src --json`, filtered to this rule id.
 
 The anchoring is the two history rules': the same string-skip `^(?:…)*` walk,
@@ -1599,8 +1661,11 @@ first, and a shape that hit prose was dropped or narrowed:
   `kiko-no-history-id-comment`. The history rule's single-letter members
   (`C`, `N`, `M`, `T`, `R`, `D`, and the others in its list) also match
   after the hyphen in `SEC-C1` and inside `(M1)`, so for those letters both
-  rules fire (ERROR and WARNING); this rule's letter-prefixed shape adds
+  rules fire (both ERROR); this rule's letter-prefixed shape adds
   cover only for second letters the history rule lacks (`SEC-A1`, `TX-B6a`).
+- `[Rr]ulings?`/`RULINGS?` plus a capital letter, a digit, and an optional trailing lowercase
+  letter (`ruling A2`, `RULING B1`, `ruling A2b`), with a comment wrap tolerated between the
+  word and the id. "ruling 3" (no letter) and "ruling A" (no digit) stay silent.
 - A parenthesized letter and one digit, `(A1)`/`(P3)`: `(S3)` and `(H1)` are
   excluded by a lookahead (a cloud name and a heading level). A single letter
   in parentheses (`(B)`, `uahPer(A)`) and a spreadsheet range (`A1:J1`) stay
@@ -1646,6 +1711,100 @@ helpers are in scope only so the fixture probe can reach the rule.
 leaks the same way and is not seen. A `jest.spyOn(i18n, 'changeLanguage')` is not a call
 and stays silent. A `try`/`finally` reset inside the body still matches: use a hook.
 
+## `kiko-test-title-no-history`
+
+Mechanizes kiko-code-style's "A test title carries no history": the title of an `it`,
+`test`, or `describe` call (also `.only`, `.skip`, `.todo`, `.each(table)(...)`, and a tagged
+`.each` table) that opens with a task id (`A1 `, `A1:`), opens with a ruling id (`ruling A2`),
+carries `(was: `, or ends in a task id in parentheses (`(P2)`, `(task C2)`, `(spec A3, B4)`).
+
+**Severity ERROR from the start.** The tree holds 0 findings. Re-measure with `semgrep
+--metrics off --quiet --config rules/semgrep-prewrite.yml src __tests__ --json` before quoting
+a count (the rule also covers `__tests__/*.test.ts`).
+
+**Scope.** Test-only: `paths.include` is `*.test.ts`, `*.test.tsx`, and `src/test-support/**`.
+The last entry is path-prefixed, so the fixture pair is NESTED under
+`rules/fixtures/kiko-test-title-no-history/src/test-support/` (`title-example.bad.ts` and
+`title-example.good.ts`). It is one `$CALLEE($TITLE, ...)` pattern with a `metavariable-regex`
+on the callee and one on the title text.
+
+The rule matches `Task C2` and `task C2` (`[Tt]ask`) in the trailing parenthesis.
+
+**Known limits.** A title held in a variable, or built from anything but a string or a
+template literal, is out of reach. A leading letter-and-digits that is data (`B12px`, `a1:`)
+and a parenthesis that holds more than an id (`(A4 paper)`, `(P2P)`) stay silent. A
+multi-letter id (`(BUG1)`, `(SEC-12)`, `(T-12)`, `(P2b)`) and a ruling id in the middle of a
+title (`(ruling A2)`) are missed. A one-letter id that is data false-matches: `(H1)`, `(V2)`,
+`(B2)`, `(A4, portrait)` in the trailing parenthesis, and a leading `A1: header cell`. Reword
+such a title.
+
+## `kiko-rejects-to-throw-needs-error`
+
+Mechanizes kiko-code-style's "A rejection names its error": any `.rejects` form that passes on
+every failure, so a test that fails for the wrong reason stays green. The forms are the patterns
+of `kiko-rejects-to-throw-needs-error` in `rules/semgrep-prewrite.yml`; read them there.
+
+**Severity ERROR from the start.** The tree holds 0 findings; re-measure with
+`semgrep --metrics off --quiet --json --config rules/semgrep-prewrite.yml src __tests__`, filtered
+to this id.
+
+**Scope.** Test-only, with the same `paths.include` as the title rule. The fixture pair is
+NESTED under `rules/fixtures/kiko-rejects-to-throw-needs-error/src/test-support/`.
+
+**Known limits.** A rejection read through a helper and a synchronous `expect(fn).toThrow()`
+are not seen. The rule checks that an expected error is named, not that it is the right one.
+
+## `kiko-sortable-grid-lone-card-lifts`
+
+Mechanizes kiko-gestures' "A lone card lifts too": a `<Sortable.Grid ... sortEnabled={...} />`
+whose `sortEnabled` is `$ITEMS.length > 1`, `$ITEMS.length >= 2`, `1 < $ITEMS.length`, or
+`2 <= $ITEMS.length`, alone or at any place in an `&&` chain.
+
+**Severity ERROR.** The tree holds 0 findings; re-measure with
+`semgrep --metrics off --quiet --json --config rules/semgrep-prewrite.yml src __tests__`, filtered
+to this id.
+
+**Scope.** App source: `paths.exclude` is the test files. The fixture pair is
+`rules/fixtures/kiko-sortable-grid-lone-card-lifts.bad.tsx` and `.good.tsx`.
+
+**Known limits.** A count held in a variable, then passed as `sortEnabled`, or a count read
+through another expression (`!isEmpty(items)`), is not seen. A grid other than `Sortable.Grid`
+is not seen.
+
+## `kiko-kind-ternary-prefers-match`
+
+Mechanizes kiko-code-style's "`ts-pattern` for exhaustive mapping": a ternary
+`$X.kind === "$KIND" ? $A : $B`, which sends every other variant down the else branch.
+
+**Severity WARNING while a sweep is pending.** This is an ordinary pending sweep (see "Adding
+a pre-write guard rule", step 2). The rule has no type information, so it cannot tell a closed
+union from a plain `kind` string. The sites are not listed here: re-measure with the Semgrep command in the title-rule
+section above, filtered to this id, and read each site's union. A site on a closed union does
+not fit kiko-code-style's single-boolean-guard allowance, because that allowance covers only a
+guard with no closed-set enum behind it. Promotion condition: once the sweep to
+`match(...).exhaustive()` leaves 0 tree findings, the rule flips to ERROR. A new site uses `match`. The
+pre-write guard denies any NEW finding whatever its severity, so `// nosemgrep:
+kiko-kind-ternary-prefers-match OVERRIDE(<reason>) <why>` is only for a site where `kind` is
+not a closed union.
+
+**Scope.** App source: `paths.exclude` is the test files, `__tests__/**`, `e2e/**`,
+`scripts/**`, and `harness/**`. The fixture pair is
+`rules/fixtures/kiko-kind-ternary-prefers-match.bad.ts` and `.good.ts`.
+
+**Known limits.** Only `$X.kind === "<literal>" ? a : b` is matched (a nested chain reports
+both ternaries). Not seen: `!==`, `==`, a reversed literal (`'x' === a.kind`), a ternary on a
+variable that holds the kind, and a plain `if` on `kind`.
+
+## The `docs-known-limit` invariant
+
+`__tests__/docs-known-limit.test.ts` fails when a plan or a spec under `docs/superpowers/`
+files a gap with the phrase "known limit" or "known limitation" (any case, wrapped across a
+line break too): a gap is fixed, or put to the user as an open question. Two dated reminders
+docs predate the rule and are exempt by exact path, each pinned to the count of matches it
+holds (the list is `PREDATING_DOCS` in the test). A doc that gains a match, or loses one
+without its pin dropping, fails, and so does an exempt doc with no match left. The list only
+shrinks; a new doc is never added. The reason is in `docs/harness/documented-exceptions.md`.
+
 ## `kiko-no-typed-jest-require-actual`
 
 Mechanizes kiko-code-style's "A jest.requireActual call takes no type argument": a type argument
@@ -1660,12 +1819,14 @@ untyped one `["m"]`), so `--findRelatedTests` and Stryker's per-test coverage ne
 to that module. Proven on the Duo native specs (fixed in 21425bd1 and e015e334). **Fix:**
 `jest.requireActual('m') as { ... }`, or a typed const annotation.
 
-**Shape.** One `pattern-regex` (`\bjest\s*(?:\?\.|\.)\s*(?:require(?:Actual|Mock)|createMockFromModule|genMockFromModule)\s*<`), not an AST
-pattern: Semgrep reads an absent type argument as matching `<$T>`, so the AST form also matched
+**Shape.** One `pattern-regex`
+(`\bjest\s*(?:\?\.|\.)\s*(?:require(?:Actual|Mock)|createMockFromModule|genMockFromModule)\s*<`),
+not an AST pattern: Semgrep reads an absent type argument as matching `<$T>`, so the AST form also matched
 `jest.requireActual('m') as T` and `const x: T = jest.requireActual('m')` (probed on 1.175). The
-regex reads across a line break; a comment or a string that spells the typed form is flagged too, so reword
-it. A harness test that quotes the typed form in a string is denied by the guard: build the text at
-runtime, or keep it under `rules/fixtures/` (the only exempt folder). ERROR, flat fixture pair `rules/fixtures/kiko-no-typed-jest-require-actual.{bad,good}.ts`.
+regex reads across a line break; a comment or a string that spells the typed form is flagged
+too, so reword it. A harness test that quotes the typed form in a string is denied by the guard:
+build the text at runtime, or keep it under `rules/fixtures/` (the only exempt folder). ERROR,
+flat fixture pair `rules/fixtures/kiko-no-typed-jest-require-actual.{bad,good}.ts`.
 
 **Scope: no `paths.include`.** Any file that calls `jest.requireActual` is test code (a test, a
 `__mocks__` file, a test-support helper), and a typed call in a helper also cuts the chain test,
@@ -1845,6 +2006,10 @@ assist merges duplicates, and it is off here. `--write` never merges a
 duplicate, because the merged line needs rewrapping at Biome's line
 width and a placement for any glued comment. The general re-check
 above reports it as `left for hand fix`.
+
+`kiko-repo-no-class` bans any class in a `*.repo.ts`, so a repo's error class lives in
+its own non-`.repo.ts` file exported through the repo barrel (precedent:
+`src/transaction-templates/repo/template-name-taken-error.ts`).
 
 ## `kiko-no-switch` — an AST `switch` pattern, not a keyword regex
 
@@ -2114,6 +2279,14 @@ disk that git tracks or would track
 `existsSync`), so, as with the rooted `existsSync` check, a new
 uncommitted file resolves and a deleted one does not.
 
+The same test checks the comments of `src/**` sources (read through the TypeScript parse, so
+a path in a string or JSX text is not read). A rooted path (the roots are in `TREE_PATH_PATTERN` in
+`__tests__/test-support/source-comment-citations.ts`; read them there) or a bare migration file name in a comment must
+exist. A rootless partial citation in a comment counts only when it ends in a file extension
+(`monobank/sync/sync.ts`): comment prose is not backticked, so two words joined by a
+slash are not a claim about a file. It then resolves as a partial citation in a
+doc does. The helper is `__tests__/test-support/source-comment-citations.ts`.
+
 A second Jest invariant, `__tests__/skill-identifiers.test.ts`, does the
 same for names: it fails when an inline code span in a skill
 (`.claude/skills`, `harness/kiko/skills`) or an agent file
@@ -2183,6 +2356,8 @@ a new tree. See `conflictSides`, `afterTreesFor`, and
 `throwIfEditBrokeASide` in `scripts/checks/pre-write-guard.js`.
 
 ## Pre-write guard replay on the Stop tier
+
+On a `Stop` event (not `SubagentStop`) whose payload has `stop_hook_active: true`, `medium.sh` exits 0 with a one-line stderr note instead of running, because a failing Stop tier started a new turn that ended in the same failure and the orchestrator looped (knip ran about 8 times in a row, 2026-10-11); a first `Stop` and every `SubagentStop` still run and block, the payload is read only when stdin is a regular file (`dispatch.sh` replays it as a file), and the cost is that a repeated Stop shows the failure once, with `check:all` before a commit still catching it. Read `medium.sh`'s header comment for the exact check.
 
 The pre-write guard sees only `Edit`/`Write`/`MultiEdit`. The
 kill-guard's SHELL-WRITE deny (above) blocks the common Bash write
@@ -2362,7 +2537,9 @@ mechanizable (see harness-workflow's "Classify every finding").
      rule to ERROR when `check:security` reports 0 findings for that
      rule id (not when a grep is empty). Record the promotion condition
      in the rule's comment and in
-     `docs/harness/review-to-biome-inventory.md`.
+     `docs/harness/review-to-biome-inventory.md`. Document the re-measure
+     command and the promotion condition there, never a site count or a
+     site list (a copied count goes stale at the first sweep step).
      `metadata.skill` uses `"<skill> › <heading>"`. A finding without
      `metadata.skill` makes the guard deny "could not check".
      `__tests__/skill-citations.test.ts` fails a `metadata.skill` or a
@@ -2375,6 +2552,13 @@ mechanizable (see harness-workflow's "Classify every finding").
      `.good.<ext>` (see "The fixture contract"). A rule with a
      path-prefixed `paths.include` needs the nested layout
      `rules/fixtures/<rule-id>/<mirrored path>/<name>.(bad|good).<ext>`.
+     A fixture under `rules/fixtures/` is still typechecked (the tsconfig
+     includes `**/*.ts`): give every fixture an `export {}` or an import,
+     and run `npm run check:typecheck` before committing a fixture change.
+   - A rule message or skill sentence that says what is allowed is checked
+     against the cited section's own text: if that section is silent, edit
+     the section (kiko-code-style's "`ts-pattern` for exhaustive mapping"
+     had to gain the kind-ternary sentence its rule cites).
    - Add the id to `RULE_IDS_WITH_FIXTURES` in
      `__tests__/pre-write-guard-rules.test.ts`; a path-scoped rule also
      needs `NESTED_FIXTURE_PREFIXES` and `PROBE_DIRECTORIES` entries.
@@ -2417,7 +2601,25 @@ mechanizable (see harness-workflow's "Classify every finding").
    - A guard test proves concurrency or speed by counting work or by a
      file rendezvous between stubs, never by a clock. The invariant
      `__tests__/guard-tests-no-wall-clock.test.ts` fails a clock reading
-     in a pre-write-guard test; read it for the banned forms.
+     in a pre-write-guard test; read its `CLOCK_READINGS` for the banned
+     forms. It fails every `Date.now()` read in a guard test, a
+     `${Date.now() - start}` delta included, and also `Date.now` without a
+     call, `+new Date`, `Date()`, and a shell `date -u +%s`, `date +"%s"`.
+     A unique temporary name comes from `createTemporaryDirectory(prefix)`,
+     with `join(..., '<name>')` for a path inside it, never from the clock.
+   - A test that needs a scratch folder uses
+     `__tests__/test-support/temporary-directory.ts` (`createTemporaryDirectory`
+     and `removeTemporaryDirectories` in an `afterEach`). New code uses the
+     helper, because a hand-rolled `mkdtempSync` leaks when a test throws.
+     Existing hand-rolled `mkdtempSync` calls are old code: they move to the
+     helper when their file is next edited.
+   - `__tests__/error-class-pins.test.ts` fails when a non-empty
+     `extends Error` class under `src/` has no same-folder test pinning its
+     `.name` literal and its `.message`. The message pin must be on the same
+     receiver chain as the `.name` pin in the same test block (blocks split at
+     `it`/`test`/`xit`/`fit`/`xtest`/`describe` and their `.skip`/`.only`/`.concurrent`
+     forms), or on `new ClassName(...).message`, or in one `toMatchObject({ name, message })`.
+     Known limit: a rebound `let error` is not seen. A class with an empty body is skipped.
    - A new Node rule also runs on the probed negative (good) fixtures of
      `__tests__/pre-write-guard-rules.test.ts`. Make those fixtures pass
      the new rule, never exempt them.
@@ -2440,7 +2642,7 @@ mechanizable (see harness-workflow's "Classify every finding").
      an inventory row").
    - `docs/harness/documented-exceptions.md` for any new exclude or
      allowlist entry.
-   - The CLAUDE.md checks table and `check:all` list only for a new
+   - The CLAUDE.md short table and `docs/harness/checks.md` row, and the `check:all` list, only for a new
      `check:*` gate.
 8. **Speed check.** Guard p95 must stay under 3 s. Run 20 guard calls on
    the largest real `.tsx` under `src/screens/` and take the 19th sorted
@@ -2759,7 +2961,7 @@ git repository with good and bad tables built in the test:
 `check:all`, the list in CLAUDE.md's "`npm run check:all` — the fast +
 medium tier checks, in order" bullet, and the hooks disagree. The list
 must be the same, in the same order, in the first two; each entry has a
-CLAUDE.md checks table row and a wrapper that exists; and each entry
+CLAUDE.md short-table row (full row in `docs/harness/checks.md`) and a wrapper that exists; and each entry
 runs in the fast tier (`fast.sh`), the medium tier (`medium.sh`), or at
 write time (it is the `projectCheck` of a `NODE_RULES` row in
 `pre-write-guard.js`). Every wrapper `fast.sh` or `medium.sh` runs must

@@ -229,7 +229,7 @@ describe('accountsRepo.createImplicitHolding: the icon', () => {
         icon: 'house',
         firstPricePoint: failingFirstPricePoint,
       }),
-    ).rejects.toThrow();
+    ).rejects.toHaveProperty('cause.message', 'NOT NULL constraint failed: price_points.price');
 
     expect(count('holdings')).toBe(0);
     expect(count('accounts')).toBe(0);

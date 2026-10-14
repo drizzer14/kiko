@@ -4,9 +4,10 @@ This project uses a Biome-adapted, LLM-guarding quality harness. Every
 check runs through a wrapper in `scripts/checks/` that prints a
 structured failure block on failure and stays silent on success. The
 stated exceptions (`security.sh` and `dup.sh` write notices and WARNINGs to
-stderr with exit 0; the deep tier's streaming; the hook guards' JSON, which
-are `kill-guard.sh` and `pre-write-guard.sh`) are listed in kiko-linter's
-"The wrapper contract".
+stderr with exit 0; `medium.sh` writes a one-line skip note on a repeated Stop; the deep tier's
+streaming; the hook guards' JSON, which are `kill-guard.sh` and `pre-write-guard.sh`) are listed in
+kiko-linter's "The wrapper contract". `scripts/job-queue.sh` is not a checks wrapper: its
+QUEUED/WAITING/START/DONE lines are normal stdout.
 
 **Standing rule: fix the underlying issue. Never weaken a check to get
 green.** No `|| true`. No global auto-suppress. An ignore-list entry
@@ -50,7 +51,8 @@ Composite scripts:
 - `npm run check:deep` — the heavy tier: `check:mutation` (Stryker +
   `mutation-score.js`; change-set score below 75 total or 60 per file fails),
   then `bash scripts/checks/osv.sh` (any known CVE in `package-lock.json`
-  fails). Manual, wired to no hook. **Mutation runs per SMALL change
+  fails). Manual, wired to no hook; the gate is queued with
+  `scripts/job-queue.sh gate <worktree> <label> <base> <head>`. **Mutation runs per SMALL change
   set only, never on a whole project or release** (a whole-release run went
   10 h 16 min with no result): set `KIKO_MUTATION_BASE` to the change set's
   own base commit; more than 30 files to mutate (`MUTATION_FILE_CAP` in
@@ -71,7 +73,9 @@ Detail for every hook: `docs/harness/checks.md` "Automatic wiring".
 Hooks live in `harness/kiko/hooks/hooks.json` (via the `kiko` plugin) and
 run `harness/kiko/hooks/dispatch.sh <script-name>`, which execs the edited
 worktree's own `scripts/checks/<script-name>`. Hook changes reach running
-sessions only after a plugin reinstall plus `/reload-plugins`.
+sessions only after a plugin reinstall plus `/reload-plugins`. A repeated `Stop` (payload
+`stop_hook_active: true`) skips the medium tier with a one-line note; `SubagentStop` always runs.
+The git `pre-commit`/`pre-merge-commit` hooks (`githooks/`) run the pre-commit typecheck below.
 
 - `PostToolUse` (`Edit|Write|MultiEdit`): `scripts/checks/fast.sh` (lint,
   security, secrets, import-order, full-word-identifiers on the touched file).
@@ -98,9 +102,20 @@ sessions only after a plugin reinstall plus `/reload-plugins`.
     `__tests__/`, `rules/`, `e2e/` of any worktree ("SHELL-WRITE deny"); use
     Edit/Write, and `git add` + `git mv` to rename; a formatter's own
     `--write` stays allowed.
+  - a `git commit|merge|pull` that skips `githooks/` (`--no-verify`, `-n`, `core.hooksPath`
+    overrides) or a `git config` that writes core.hooksPath ("NO-VERIFY deny"); repair with
+    `bash scripts/ensure-git-hooks.sh` or `npm ci`.
   - a `while`/`until` loop that scans the process table for make verify,
     check:all, jest, stryker, semgrep, or xcodebuild ("WAIT-LOOP deny"); wait
     with `bash scripts/wait-load.sh <load> <timeout>` or a background job.
+
+## Pre-commit typecheck
+
+Tracked `githooks/pre-commit` and `githooks/pre-merge-commit` (`core.hooksPath=githooks`, set by
+`scripts/ensure-git-hooks.sh` from `postinstall`) run `scripts/checks/commit-typecheck.sh`:
+`tsc --noEmit` on the staged index; exit 2 aborts the commit. User ruling 2026-10-13: typecheck
+only, never the rest of `check:all`. Never pass `--no-verify`/`-n` or `-c core.hooksPath`. Detail:
+`docs/harness/checks.md` "Pre-commit typecheck".
 
 ## Override protocol
 
@@ -137,7 +152,7 @@ periodically and pin the moment a fix ships.
 
 ## Future stubs (disabled — do not enable without discussion)
 
-A pre-commit hook could run `npm run check:all`; a CI job could run `check:all` and `check:deep` as required checks.
+A pre-commit hook could run the rest of `npm run check:all` (only typecheck is enabled); a CI job could run `check:all` and `check:deep` as required checks.
 
 ## Harness agents
 

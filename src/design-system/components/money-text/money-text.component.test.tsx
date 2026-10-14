@@ -73,7 +73,7 @@ describe('MoneyText', () => {
     });
 
     // uk-UA groups thousands with U+00A0 NO-BREAK SPACE and a comma decimal
-    // (see currency/format.test.ts for the same finding).
+    // (see src/currency/format/format.test.ts for the same finding).
     expect(queryByText('1,234.56 ₴')).toBeNull();
     expect(getByText('1 234,56 ₴')).toBeTruthy();
   });

@@ -22,12 +22,11 @@ fail() {
 # .ts/.tsx is in scope; a .js/.mjs/.cjs is in scope only under a scripts/
 # directory (fast.sh's own harness-tooling scripts, which are checked-in
 # source the same as everything else, and the only place today's tree has a
-# CommonJS/ESM file next to TypeScript). Anything else, or no file at all,
-# is silently out of scope.
+# CommonJS/ESM file next to TypeScript). Anything else is silently out of
+# scope. A path that is not an existing regular file (deleted, or a
+# directory) exits 2 with a block.
 if [ -n "$TARGET" ]; then
-  if [ ! -f "$TARGET" ]; then
-    exit 0
-  fi
+  harness_require_file "Full words in identifiers" "$TARGET" || exit 2
 
   case "$TARGET" in
     *.ts | *.tsx) : ;;
@@ -71,6 +70,7 @@ if [ -z "${FULL_WORD_IDENTIFIERS_SRC_ROOT:-}" ]; then
 fi
 
 if [ -n "${FULL_WORD_IDENTIFIERS_SRC_ROOT:-}" ]; then
+  harness_require_path "Full words in identifiers" "$FULL_WORD_IDENTIFIERS_SRC_ROOT" || exit 2
   roots=("$FULL_WORD_IDENTIFIERS_SRC_ROOT")
   script_roots=("$FULL_WORD_IDENTIFIERS_SRC_ROOT/scripts")
 else

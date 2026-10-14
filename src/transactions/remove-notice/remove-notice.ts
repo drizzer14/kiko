@@ -145,6 +145,8 @@ export type RemoveHoldingsPlan = {
   unlinked: string[];
   // A leg with no partner whose marker holding is gone, so none is named.
   unlinkedPlain: boolean;
+  // How many templates the delete empties a deleted holding in, each counted once.
+  templatesChanged: number;
   // How far the delete moves the balance of each other holding it takes a row
   // from; absent when none.
   balanceChanges?: BalanceChange[];
@@ -191,6 +193,9 @@ export const removeHoldingsNotice = (plan: RemoveHoldingsPlan, t: TFunction): st
     namesSentence('holdings.deleteLinked.syncedKept', plan.keptSynced, t),
     unlinkedSentence(plan, t),
     balanceChangeSentences(plan.balanceChanges ?? [], t),
+    plan.templatesChanged === 0
+      ? undefined
+      : t('holdings.deleteLinked.templates', { count: plan.templatesChanged }),
   );
 
 /**

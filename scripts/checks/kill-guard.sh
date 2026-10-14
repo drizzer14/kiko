@@ -9,7 +9,7 @@
 # one-liner) into src/, __tests__/, rules/, or e2e/ of a worktree of this
 # repository, or a while/until wait loop that scans ps or pgrep -f for a heavy
 # job (it matches its own command line and never ends). See kill-guard.js for
-# the full rationale and CLAUDE.md's "Automatic wiring" note for the hook
+# the full rationale and docs/harness/checks.md "Automatic wiring" for the hook
 # wiring.
 #
 # This wrapper is NOT a check (see .claude/skills/kiko-linter/SKILL.md for

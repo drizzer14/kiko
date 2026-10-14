@@ -54,7 +54,7 @@ const DateField: FC<DateFieldProps> = ({
     // Move the DAY only, carrying over the existing value's time-of-day so a
     // paired TimeField pick is not clobbered back to midnight. When nothing is
     // picked yet (value === null) there is no time to preserve, so the fields
-    // default to zero and the timestamp lands on local midnight as before.
+    // default to zero and the timestamp lands on local midnight.
     const previous = foldMap(maybe(value), (timestamp) => new Date(timestamp));
 
     onChange(

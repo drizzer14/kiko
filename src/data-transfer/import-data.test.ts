@@ -65,7 +65,7 @@ const payload = {
     settings: [],
     syncState: [],
     categories: [],
-    categoryOverrides: [],
+    categoryRules: [],
   },
 };
 
@@ -74,6 +74,23 @@ const encryptedFixture = (): { fileText: string; keyBase64: string } => {
   const envelope = encryptEnvelope(utf8ToBytes(JSON.stringify(payload)), key);
 
   return { fileText: JSON.stringify(envelope), keyBase64: encodeBytesToBase64(key) };
+};
+
+// A file whose own header says it was written as `version`, by an earlier build or this one.
+const encryptedWith = (
+  version: number,
+  tables: Record<string, unknown>,
+): { fileText: string; keyBase64: string } => {
+  const key = generateExportKey();
+  const envelope = encryptEnvelope(
+    utf8ToBytes(JSON.stringify({ ...payload, tables: { ...payload.tables, ...tables } })),
+    key,
+  );
+
+  return {
+    fileText: JSON.stringify({ ...envelope, version }),
+    keyBase64: encodeBytesToBase64(key),
+  };
 };
 
 describe('importData', () => {
@@ -154,7 +171,9 @@ describe('importData', () => {
     mockReadFile.mockResolvedValue(fileText);
     mockRestoreDataSnapshot.mockRejectedValue(new Error('restore failed'));
 
-    await expect(importData({ fileUri: '/tmp/x.kiko', keyBase64 })).rejects.toThrow();
+    await expect(importData({ fileUri: '/tmp/x.kiko', keyBase64 })).rejects.toThrow(
+      'restore failed',
+    );
 
     expect(mockReplanRestoredReminders).not.toHaveBeenCalled();
   });
@@ -285,7 +304,9 @@ describe('importData', () => {
     mockReadFile.mockResolvedValue(fileText);
     mockRestoreDataSnapshot.mockRejectedValue(new Error('restore failed'));
 
-    await expect(importData({ fileUri: '/tmp/x.kiko', keyBase64 })).rejects.toThrow();
+    await expect(importData({ fileUri: '/tmp/x.kiko', keyBase64 })).rejects.toThrow(
+      'restore failed',
+    );
 
     expect(mockRecostStoredLots).not.toHaveBeenCalled();
   });
@@ -472,18 +493,171 @@ describe('importData', () => {
   });
 
   it('reads a version 1 file an earlier build wrote, and refuses a version no build writes', async () => {
+    const earlier = encryptedWith(1, { categoryOverrides: [], categoryRules: undefined });
+
+    mockReadFile.mockResolvedValue(earlier.fileText);
+    await importData({ fileUri: '/tmp/x.kiko', keyBase64: earlier.keyBase64 });
+    expect(mockRestoreDataSnapshot).toHaveBeenCalledTimes(1);
+
     const { fileText, keyBase64 } = encryptedFixture();
     const envelope = JSON.parse(fileText) as { version: number };
 
-    mockReadFile.mockResolvedValue(JSON.stringify({ ...envelope, version: 1 }));
-    await importData({ fileUri: '/tmp/x.kiko', keyBase64 });
-    expect(mockRestoreDataSnapshot).toHaveBeenCalledTimes(1);
-
-    mockReadFile.mockResolvedValue(JSON.stringify({ ...envelope, version: 3 }));
+    mockReadFile.mockResolvedValue(JSON.stringify({ ...envelope, version: 4 }));
     await expect(importData({ fileUri: '/tmp/x.kiko', keyBase64 })).rejects.toThrow(
       'data-transfer/import',
     );
     expect(mockRestoreDataSnapshot).toHaveBeenCalledTimes(1);
+  });
+
+  describe('the category rules of a file', () => {
+    const goodRule = {
+      id: 'rule-1',
+      category: 'food',
+      matchers: JSON.stringify([{ type: 'nameIs', text: 'Silpo' }]),
+      createdAt: 10,
+      updatedAt: 20,
+    };
+
+    it.each([2, 1])(
+      'restores the overrides of a version %d file as rules and drops the overrides key',
+      async (version) => {
+        const { fileText, keyBase64 } = encryptedWith(version, {
+          categoryRules: undefined,
+          categoryOverrides: [
+            {
+              normalizedName: 'silpo',
+              category: 'food',
+              displayName: 'Silpo',
+              createdAt: 10,
+              updatedAt: 20,
+            },
+          ],
+        });
+        mockReadFile.mockResolvedValue(fileText);
+
+        await importData({ fileUri: '/tmp/x.kiko', keyBase64 });
+
+        const restored = mockRestoreDataSnapshot.mock.calls[0][0] as Record<string, unknown>;
+
+        expect(restored).not.toHaveProperty('categoryOverrides');
+        expect(restored.categoryRules).toEqual([
+          {
+            id: expect.any(String),
+            category: 'food',
+            matchers: JSON.stringify([{ type: 'nameIs', text: 'Silpo' }]),
+            createdAt: 10,
+            updatedAt: 20,
+          },
+        ]);
+      },
+    );
+
+    it.each([
+      ['null', null],
+      ['a string', 'silpo'],
+      ['a number', 7],
+      ['an object without a display name', { normalizedName: 'silpo', category: 'food' }],
+      ['an object without a category', { normalizedName: 'silpo', displayName: 'Silpo' }],
+      [
+        'an object with a created time that is not a number',
+        { normalizedName: 'silpo', category: 'food', displayName: 'Silpo', createdAt: '10' },
+      ],
+    ])(
+      'refuses a version 2 file whose override entry is %s, never a raw error',
+      async (_name, entry) => {
+        const { fileText, keyBase64 } = encryptedWith(2, {
+          categoryRules: undefined,
+          categoryOverrides: [entry],
+        });
+        mockReadFile.mockResolvedValue(fileText);
+
+        await expect(importData({ fileUri: '/tmp/x.kiko', keyBase64 })).rejects.toThrow(
+          'data-transfer/import: not a valid Kiko export file',
+        );
+        expect(mockRestoreDataSnapshot).not.toHaveBeenCalled();
+      },
+    );
+
+    it('requires the overrides, not the rules, of a version 2 file', async () => {
+      const { fileText, keyBase64 } = encryptedWith(2, { categoryRules: [goodRule] });
+      mockReadFile.mockResolvedValue(fileText);
+
+      await expect(importData({ fileUri: '/tmp/x.kiko', keyBase64 })).rejects.toThrow(
+        'data-transfer/import',
+      );
+      expect(mockRestoreDataSnapshot).not.toHaveBeenCalled();
+    });
+
+    it('requires the rules, not the overrides, of a version 3 file', async () => {
+      const { fileText, keyBase64 } = encryptedWith(3, {
+        categoryRules: undefined,
+        categoryOverrides: [],
+      });
+      mockReadFile.mockResolvedValue(fileText);
+
+      await expect(importData({ fileUri: '/tmp/x.kiko', keyBase64 })).rejects.toThrow(
+        'data-transfer/import',
+      );
+      expect(mockRestoreDataSnapshot).not.toHaveBeenCalled();
+    });
+
+    it('restores the rules of a version 3 file as they are', async () => {
+      const { fileText, keyBase64 } = encryptedWith(3, { categoryRules: [goodRule] });
+      mockReadFile.mockResolvedValue(fileText);
+
+      await importData({ fileUri: '/tmp/x.kiko', keyBase64 });
+
+      expect(mockRestoreDataSnapshot).toHaveBeenCalledWith(
+        expect.objectContaining({ categoryRules: [goodRule] }),
+      );
+    });
+
+    it.each([
+      [
+        'matchers that fail the guard',
+        { ...goodRule, id: 'blank', matchers: '[{"type":"nameIs","text":" "}]' },
+      ],
+      ['matchers that are not JSON', { ...goodRule, id: 'broken', matchers: 'nope' }],
+    ])(
+      'restores a version 3 rule with %s as the unreadable rule it is, unchanged',
+      async (_name, unreadableRule) => {
+        const { fileText, keyBase64 } = encryptedWith(3, {
+          categoryRules: [goodRule, unreadableRule],
+        });
+        mockReadFile.mockResolvedValue(fileText);
+
+        await importData({ fileUri: '/tmp/x.kiko', keyBase64 });
+
+        expect(mockRestoreDataSnapshot).toHaveBeenCalledWith(
+          expect.objectContaining({ categoryRules: [goodRule, unreadableRule] }),
+        );
+      },
+    );
+
+    it.each([
+      ['a matchers value that is not a string', { ...goodRule, matchers: [] }],
+      [
+        'a missing matchers value',
+        { id: 'rule-2', category: 'food', createdAt: 10, updatedAt: 20 },
+      ],
+      ['an id that is not a string', { ...goodRule, id: 7 }],
+      ['a category that is not a string', { ...goodRule, category: null }],
+      ['a created time that is not a number', { ...goodRule, createdAt: '10' }],
+      ['an updated time that is not a number', { ...goodRule, updatedAt: null }],
+      ['an entry that is not an object', 'rule'],
+      ['an entry that is null', null],
+    ])(
+      'refuses a version 3 file with %s before the restore touches the data',
+      async (_name, rule) => {
+        const { fileText, keyBase64 } = encryptedWith(3, { categoryRules: [goodRule, rule] });
+        mockReadFile.mockResolvedValue(fileText);
+
+        await expect(importData({ fileUri: '/tmp/x.kiko', keyBase64 })).rejects.toThrow(
+          'data-transfer/import',
+        );
+        expect(mockRestoreDataSnapshot).not.toHaveBeenCalled();
+      },
+    );
   });
 
   it('throws an import-prefixed error on unparseable JSON', async () => {

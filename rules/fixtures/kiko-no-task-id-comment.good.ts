@@ -62,3 +62,9 @@ export const plainBlock = true;
 export const idStringAfterBlock = /* a plain note */ 'DEVICE BUG fix (item 3)';
 // A plain note.
 export const idStringBelowLine = 'Bug A2 and Feature 1';
+
+// 13. A ruling with no letter and digit id after it: a ruling on amounts, a ruling A without a
+// number, a ruling 3 with no letter, and the plural rulings with no id.
+// A ruling on amounts rounds half up; the ruling Ahead of it is the layout, and rulings differ.
+// A ruling 3 and a ruling A alone stay silent.
+export const rulingProse = true;

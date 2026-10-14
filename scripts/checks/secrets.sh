@@ -17,6 +17,8 @@ if ! command -v gitleaks >/dev/null 2>&1; then
   exit 2
 fi
 
+harness_require_path "gitleaks (secret scanning)" "$TARGET" || exit 2
+
 # Dedup a single-file target on its content plus the gitleaks config. A
 # whole-repo or directory target always runs.
 dkey=""; fp=""

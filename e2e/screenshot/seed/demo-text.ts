@@ -37,6 +37,10 @@ const uk = {
   debts: 'Борги',
   carLoan: 'Автокредит',
   owedToAndrii: 'Борг Андрію',
+  templateSalary: 'Зарплата',
+  templateGroceries: 'Продукти на тиждень',
+  templateBuyDollars: 'Купівля доларів',
+  templateDinner: 'Вечеря з друзями',
 };
 
 /**
@@ -85,6 +89,10 @@ const en: DemoText = {
   debts: 'Debts',
   carLoan: 'Car loan',
   owedToAndrii: 'Owed to Andrii',
+  templateSalary: 'Salary',
+  templateGroceries: 'Weekly groceries',
+  templateBuyDollars: 'Buy dollars',
+  templateDinner: 'Dinner with friends',
 };
 
 export const demoText = { uk, en } satisfies Record<AppLanguage, DemoText>;

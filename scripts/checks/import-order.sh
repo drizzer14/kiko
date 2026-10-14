@@ -21,11 +21,10 @@ fail() {
 # Fast-tier, per-file mode (called from fast.sh with one edited file). A
 # non-.ts/.tsx target, a file under rules/fixtures/ (whose fixtures hold any
 # import order on purpose; the pre-write guard and the project-wide roots
-# below never read it either), or no file at all, is silently out of scope.
+# below never read it either), is silently out of scope. A path that is not
+# an existing regular file (deleted, or a directory) exits 2 with a block.
 if [ -n "$TARGET" ]; then
-  if [ ! -f "$TARGET" ]; then
-    exit 0
-  fi
+  harness_require_file "Import ordering" "$TARGET" || exit 2
 
   case "$TARGET" in
     "$ROOT/rules/fixtures/"* | rules/fixtures/*) exit 0 ;;
@@ -55,6 +54,7 @@ fi
 # fingerprint below reads the real repo's git state, not the temp tree's
 # content.
 if [ -n "${IMPORT_ORDER_SRC_ROOT:-}" ]; then
+  harness_require_path "Import ordering" "$IMPORT_ORDER_SRC_ROOT" || exit 2
   roots=("$IMPORT_ORDER_SRC_ROOT")
 else
   roots=("$ROOT/src" "$ROOT/__tests__" "$ROOT/e2e" "$ROOT/App.tsx")

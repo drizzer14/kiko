@@ -276,7 +276,8 @@ describe('a sync item adopts its import twin', () => {
 
   it('fills a missing category by the name rule an inserted row would get', async () => {
     run(
-      "INSERT INTO category_overrides (normalized_name, category, display_name) VALUES ('rozetka', 'gifts', 'Rozetka')",
+      `INSERT INTO category_rules (id, category, matchers)
+       VALUES ('rozetka', 'gifts', '[{"type":"nameIs","text":"Rozetka"}]')`,
     );
     insertRow({ id: 'i1', time: T, category: null });
 

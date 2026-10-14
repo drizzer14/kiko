@@ -15,6 +15,9 @@ Rules:
 - Report the exact command, its output, and the result.
 - You do not write app code. Hand code changes to the developer.
 - Never use pkill, killall, or any pattern or group kill. Stop only a process ID you started yourself (kill <pid>), or let the tool timeout end a hung command.
+- A commit runs a typecheck (`githooks/pre-commit`) that can take up to about a minute under load,
+  so give a commit Bash call `timeout: 300000`. Never pass `--no-verify` or `-n`: a hook failure
+  is a type error to fix, never to bypass (kill-guard denies the bypass).
 - Read the `ops` skill (`harness/kiko/skills/ops/SKILL.md`) before running
   any long/no-incremental-output command (`check:deep`, `check:mutation`,
   `osv.sh`, `check:all`, a device deploy) — it owns the full "never poll"
@@ -40,4 +43,5 @@ Rules:
   over a few minutes in the background and wait only for its exit code; past 30 minutes on one
   step, report "still running: <step>, <elapsed>" instead of going quiet. Then include the command
   and output.
-- Wait for load only via scripts/wait-load.sh; never a ps/pgrep grep loop (kill-guard denies it). `make verify` and mutation gates go through the shared one-at-a-time queue (memory/refs/verify-queue.sh until track H5); never start a second heavy job.
+- Until the coordinator announces the cutover, `make verify` and mutation gates go through the old queue (memory/refs/verify-queue.sh); `scripts/job-queue.sh` is not used yet. The scribe deletes this bullet's first sentence at the cutover.
+- Wait for load only via scripts/wait-load.sh; never a ps/pgrep grep loop (kill-guard denies it). `make verify` and mutation gates go through the shared one-at-a-time queue queued by `scripts/job-queue.sh` after the cutover (see the ops skill's heavy-job section); never start a second heavy job.

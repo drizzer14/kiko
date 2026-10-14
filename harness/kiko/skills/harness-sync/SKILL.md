@@ -165,6 +165,9 @@ Every count and exit code is the orchestrator's own measured result.
 
 - `run-log.mjs` was ported harness -> pff-ios from `cc5cd0f` (`d761245`); the
   byte-identical rule is in `harness-workflow`'s "Run log".
+- `run-log.mjs` changed again in pff-ios and needs porting to the harness repo: port whatever
+  `git diff e2d96c17..f6f96f68 -- harness/kiko/scripts/run-log.mjs` shows (the change set's own
+  range), byte-identical.
 - The script has no dispatch/step-start event, so per-step `Minutes` miss the work before the
   first verdict; fix in the harness repo.
 - The source finish snippet prints "run-log: not installed, skipped" also when `node finish`

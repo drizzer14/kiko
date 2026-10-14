@@ -1,11 +1,12 @@
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { existsSync, mkdtempSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync } from 'node:fs';
 
 import {
   writeFile,
   runWithStub,
   writeStrykerStub,
+  mutationStateFile,
   buildMutationRepository,
 } from './test-support/mutation-repository';
 
@@ -38,9 +39,10 @@ const reportOf = (statuses: string[], scope: string[] = ['src/changed.ts:1-1']):
     },
   });
 
-const stubWritingReport = (report: string): string =>
+const stubWritingReport = (report: string, outputLines: string[] = []): string =>
   [
     '#!/usr/bin/env bash',
+    ...outputLines,
     'mkdir -p reports/mutation',
     `printf '%s' '${report}' > ${REPORT_PATH}`,
     'exit 0',
@@ -101,7 +103,7 @@ describe('scripts/checks/mutation.sh change-set gate', () => {
   });
 
   it('treats exit 1 with no report as a crash and records nothing in the ETA history', () => {
-    const { temporaryDirectory } = freshProject();
+    const { temporaryDirectory, root } = freshProject();
     const bin = writeStrykerStub(
       temporaryDirectory,
       '#!/usr/bin/env bash\nsleep 1\necho "No tests were executed"\nexit 1',
@@ -113,18 +115,19 @@ describe('scripts/checks/mutation.sh change-set gate', () => {
     expect(result.stderr).toContain('rather than completing a run');
     expect(result.stderr).toContain('No tests were executed');
     expect(result.stderr).not.toContain('sanity floor (Stryker');
-    const progressLog = /tail -f (\S+)/.exec(result.stdout)?.[1] ?? '';
-    expect(existsSync(progressLog.replace('progress.log', 'history.tsv'))).toBe(false);
+    expect(existsSync(mutationStateFile(root, temporaryDirectory, 'history'))).toBe(false);
+    expect(existsSync(mutationStateFile(root, temporaryDirectory, 'files'))).toBe(false);
   });
 
-  it('exits 2 when Stryker passes but writes no report', () => {
-    const { temporaryDirectory } = freshProject();
+  it('exits 2 when Stryker passes but writes no report, and records no file rows', () => {
+    const { temporaryDirectory, root } = freshProject();
     const bin = writeStrykerStub(temporaryDirectory, '#!/usr/bin/env bash\nexit 0');
 
     const result = runWithStub(bin, temporaryDirectory, join(temporaryDirectory, 'calls'));
 
     expect(result.code).toBe(2);
     expect(result.stderr).toContain('wrote no JSON report');
+    expect(existsSync(mutationStateFile(root, temporaryDirectory, 'files'))).toBe(false);
   });
 
   it('exits 2 when Stryker warns that a --mutate glob matched no file, even with a passing report', () => {
@@ -171,6 +174,45 @@ describe('scripts/checks/mutation.sh change-set gate', () => {
     expect(result.code).toBe(2);
     expect(result.stderr).toContain('Stryker could not resolve a changed file');
     expect(result.stdout).not.toContain('CHANGE SET TOTAL');
+  });
+
+  describe('per-file timeout history', () => {
+    // A positive duration is needed for the run to count as a completed run.
+    const SLEEP_AND_COUNTER = ['sleep 1', 'echo "10/50 tested (3 survived, 4 timed out)"'];
+
+    const runWith = (statuses: string[]) => {
+      const { temporaryDirectory, root } = freshProject();
+      const bin = writeStrykerStub(
+        temporaryDirectory,
+        stubWritingReport(reportOf(statuses), SLEEP_AND_COUNTER),
+      );
+      const result = runWithStub(bin, temporaryDirectory, join(temporaryDirectory, 'calls'));
+      const rows = (kind: 'history' | 'files'): string[][] =>
+        readFileSync(mutationStateFile(root, temporaryDirectory, kind), 'utf8')
+          .split('\n')
+          .filter(Boolean)
+          .map((line) => line.split('\t'));
+
+      return { result, rows };
+    };
+
+    it('records one row per graded file with its tested and timed-out counts', () => {
+      const { result, rows } = runWith(['Killed', 'Killed', 'Timeout', 'Survived']);
+
+      expect(result.code).toBe(0);
+      // iso, path, killed + timeout + survived, timeout.
+      expect(rows('files').map((row) => row.slice(1))).toEqual([['src/changed.ts', '4', '1']]);
+      expect(rows('history').map((row) => row.slice(2))).toEqual([['50', '', '10', '4']]);
+    });
+
+    it('records the history and the file rows although the scorer fails the gate', () => {
+      const { result, rows } = runWith(['Killed', 'Timeout', 'Survived', 'Survived']);
+
+      expect(result.code).toBe(2);
+      expect(result.stderr).toContain("CHANGE SET's own mutation score failed");
+      expect(rows('files').map((row) => row.slice(1))).toEqual([['src/changed.ts', '4', '1']]);
+      expect(rows('history')).toHaveLength(1);
+    });
   });
 
   it('never reads a stale report left by an earlier run', () => {

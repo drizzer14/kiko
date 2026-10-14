@@ -6,8 +6,10 @@ description: Use when giving the user a duration or ETA for any dispatched work 
 Quote measured history, never an agent's own guess. Two sources:
 - The run log: `node "${CLAUDE_PLUGIN_ROOT}/scripts/run-log.mjs" stats --format md` (add
   `--since YYYY-MM-DD`, and `--repo kiko`: the slug is the origin remote's repo name, not
-  `pff-ios`). `Minutes` runs from a step group's first logged verdict to its last: developer
-  work before the first verdict is not counted and a one-event step shows 0; for a
+  `pff-ios`). Quote `Work`, not `Minutes`: `Work` is `Minutes` (a step group's first
+  logged verdict to its last) minus `Wait` (the sum of its wait events: battery, load, usage
+  limit, user), which is excluded. Developer work before the first verdict is not counted and
+  a one-event step shows 0; for a
   dispatch-to-BATCH-READY time use run.json `startedAt` to summary.json `finishedAt`. Each row
   gives minutes, rounds to first approve, check/test retries, stalls and human rounds (see `harness-workflow`'s "Run log").
 - The duration log at `memory/refs/duration-log.md` in the main checkout. It stays: it holds
@@ -42,12 +44,18 @@ Rules:
   ("Initial test run timed out") — re-run it rather than treating the
   timeout as a result. Never run a 25-30-file mutation window beside heavy
   agent work (a planner session, a full jest run, a build) — queue it
-  instead.
+  instead. Before a run quote `make mutable`'s `timeout share (history)`
+  line; during a run quote the `mutation.sh` ETA line and its latest
+  "Estimate at N%" update, never Stryker's own `remaining:` (it ignores
+  timeouts).
 - Report a miss honestly: state the estimate and the actual side by side,
   and record the lesson in the log row's Notes (for example "ran beside a
   heavy planner agent", "renames add few mutants").
 
 ## Current numbers (snapshot, 2026-10-03 — the log is the source)
+
+- Mutation history is repo-wide now (shared under the git common dir);
+  earlier per-worktree rates are gone.
 
 - Orchestrator small change set (developer + review + fix round + gate):
   dispatch-to-BATCH-READY is around 40 minutes once sized from history;

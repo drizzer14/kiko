@@ -64,8 +64,8 @@ const HOLD_LIFT_DURATION_MS = 300;
  * - a touch-and-HOLD that stays still (past `HOLD_DURATION_MS`, within
  *   `HOLD_MAX_DISTANCE`) plays a medium-impact haptic. On a delete-only card
  *   it raises the shared, themed `ConfirmSheet` (a `BottomSheet`, NOT a
- *   native `ActionSheetIOS`) straight away, titled `Delete "<name>"` with a
- *   bare destructive `Delete` confirm and no body, unless the card passes a
+ *   native `ActionSheetIOS`) straight away, titled `Delete "<name>"` (a `deleteTitle` replaces
+ *   that title) with a bare destructive `Delete` confirm and no body, unless the card passes a
  *   `deleteMessage`. A card with another action
  *   opens the action list instead, whose Delete (only when deletable) hands
  *   off to that same confirm. Only the confirm routes to `onDelete`; Cancel
@@ -120,6 +120,10 @@ const CardContextMenu: FC<{
   // sheet change under their finger), for a message that depends on what is
   // stored right now; a rejection or `undefined` opens the title-only confirm.
   deleteMessage?: () => Promise<string | undefined>;
+  // An optional title for the delete confirm, for an item whose own name is a whole sentence (a
+  // rule's summary) that would read badly inside `Delete "<name>"`. Omitted, the confirm is
+  // titled with the name; `name` still heads the action list.
+  deleteTitle?: string;
   // Opt-in press feedback for a card that sits in a PLAIN (non-sortable)
   // list, matching the barely-there `activeItemScale={1.03}` lift the
   // account/holding sortable grids already get for free from
@@ -127,7 +131,7 @@ const CardContextMenu: FC<{
   // `false`/omitted, which renders the plain (non-`Animated`) `View` byte-
   // for-byte as before — an account/holding card must NEVER pass this, since
   // its grid already lifts the card itself; a second, competing scale here
-  // would double-animate it. Only the Home transaction row passes it today.
+  // would double-animate it. Only cards in a plain list pass it.
   liftOnHold?: boolean;
   children: ReactNode;
 }> = ({
@@ -138,6 +142,7 @@ const CardContextMenu: FC<{
   onEdit,
   closeAction,
   deleteMessage,
+  deleteTitle,
   liftOnHold = false,
   children,
 }) => {
@@ -323,7 +328,7 @@ const CardContextMenu: FC<{
 
       <ConfirmSheet
         visible={confirmVisible}
-        title={t('common.deleteNamed', { name })}
+        title={deleteTitle ?? t('common.deleteNamed', { name })}
         message={resolvedMessage}
         confirmLabel={t('common.delete')}
         onConfirm={confirmDelete}

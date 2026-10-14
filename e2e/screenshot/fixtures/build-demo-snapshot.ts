@@ -1,17 +1,19 @@
 // Pure mapper: `ScreenshotDataset` (`../seed/screenshot-seed.ts`) ->
 // `DataSnapshot` (`src/data-transfer/snapshot/data-snapshot.d.ts`). No DB, no
 // `Date.now()`. `restoreDataSnapshot` (`src/data-transfer/snapshot/
-// restore-snapshot.ts`) REPLACES every row in all 9 logical tables on
-// import, so this populates every one of them — an incomplete snapshot would
+// restore-snapshot.ts`) REPLACES every row in every table of `DataSnapshot` on
+// import, so this populates every key of it — an incomplete snapshot would
 // leave the imported app with no categories and no settings row.
 import type {
   AccountRow,
   HoldingRow,
   CategoryRow,
   ReminderRow,
+  CategoryRuleRow,
   SettingsRow,
   PricePointRow,
   TransactionRow,
+  TransactionTemplateRow,
 } from '@kiko/db';
 import { match } from 'ts-pattern';
 import maybe, { foldMap } from 'fnts/maybe';
@@ -19,10 +21,12 @@ import { SETTINGS_ID } from '@kiko/settings';
 import type { DataSnapshot } from '@kiko/data-transfer';
 import { OTHER_BANK_ID } from '@kiko/bank-sync/bank-catalog';
 import { entityColorsDark } from '@kiko/design-system/palette';
+import type { CategoryRuleMatcher } from '@kiko/categories/category-rules';
 import { holdingInstrument, metalInstrument } from '@kiko/prices/instrument';
 import { readSeedCategoryColors } from '@kiko/db/__fixtures__/seed-category-colors';
 import { SEEDED_CATEGORIES, LOAN_INTEREST_CATEGORY } from '@kiko/db/__fixtures__/seeded-categories';
 
+import { demoText } from '../seed/demo-text';
 import type { ScreenshotDataset } from '../seed/screenshot-seed';
 
 /**
@@ -56,6 +60,37 @@ const buildCategories = (): CategoryRow[] => {
       sortOrder: SEEDED_CATEGORIES.length,
     },
   ];
+};
+
+/**
+ * Two rules, so the reviewer finds both kinds on the category page and in the rule editor (the
+ * demo file is the only way to see them, Guideline 5.6): a name alone, and a name with an
+ * amount. Each one agrees with the ledger it ships with, so no row would change category if a
+ * rule were applied to existing transactions. Stored as the export stores a rule: the matchers
+ * as the JSON text the table holds.
+ */
+const buildCategoryRules = (dataset: ScreenshotDataset): CategoryRuleRow[] => {
+  const rules: { category: string; matchers: CategoryRuleMatcher[] }[] = [
+    {
+      category: 'groceries',
+      matchers: [{ type: 'nameIs', text: demoText[dataset.language].groceryStore }],
+    },
+    {
+      category: 'transport',
+      matchers: [
+        { type: 'nameIs', text: 'Uklon' },
+        { type: 'amount', operator: 'lt', minorUnits: 100_000, currency: 'UAH' },
+      ],
+    },
+  ];
+
+  return rules.map(({ category, matchers }, index) => ({
+    id: `rule-${index + 1}`,
+    category,
+    matchers: JSON.stringify(matchers),
+    createdAt: dataset.anchor,
+    updatedAt: dataset.anchor,
+  }));
 };
 
 /** The single settings row: the dataset's language/currency, lock always OFF. */
@@ -207,6 +242,7 @@ const buildLedger = (dataset: ScreenshotDataset): BuiltLedger => {
           loanLinkSource: loanHoldingId === null ? null : 'manual',
           loanLinkRejected: false,
           setsBalance: false,
+          categorySetByHand: false,
           comment: null,
           source: 'manual',
           externalId: null,
@@ -258,6 +294,30 @@ const buildReminders = (dataset: ScreenshotDataset): ReminderRow[] =>
       updatedAt: dataset.anchor,
     }));
 
+// `tpl-1..n`, each draft's holding keys swapped for the `hold-n` ids of the ledger above.
+const buildTemplates = (dataset: ScreenshotDataset): TransactionTemplateRow[] => {
+  const idsByKey = holdingIdsByKey(dataset);
+  const idOf = (key: string | null): string | null =>
+    foldMap(maybe(key), (holdingKey) => holdingIdOf(idsByKey, holdingKey)) ?? null;
+
+  return dataset.templates.map(({ name, draft }, index) => ({
+    id: `tpl-${index + 1}`,
+    name,
+    draft: {
+      ...draft,
+      holdingId: idOf(draft.holdingId),
+      exchange:
+        foldMap(maybe(draft.exchange), (exchange) => ({
+          ...exchange,
+          destinationHoldingId: idOf(exchange.destinationHoldingId),
+        })) ?? null,
+      returns: draft.returns.map((row) => ({ ...row, holdingId: idOf(row.holdingId) })),
+    },
+    createdAt: dataset.anchor,
+    updatedAt: dataset.anchor,
+  }));
+};
+
 export const buildDemoSnapshot = (dataset: ScreenshotDataset): DataSnapshot => {
   const ledger = buildLedger(dataset);
 
@@ -270,9 +330,10 @@ export const buildDemoSnapshot = (dataset: ScreenshotDataset): DataSnapshot => {
     settings: buildSettings(dataset),
     syncState: [],
     categories: buildCategories(),
-    categoryOverrides: [],
+    categoryRules: buildCategoryRules(dataset),
     pricePoints: buildPricePoints(dataset),
     bondRegister: dataset.bondRegister,
     reminders: buildReminders(dataset),
+    transactionTemplates: buildTemplates(dataset),
   };
 };

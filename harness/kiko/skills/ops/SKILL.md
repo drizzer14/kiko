@@ -235,6 +235,12 @@ Maestro needs `JAVA_HOME=/opt/homebrew/opt/openjdk@21`; without it the
 run fails before the flow starts (verified 2026-10-08,
 `.maestro/onboarding-fresh-install.yaml`, 17/17 steps).
 
+## Commits run a typecheck
+
+A commit runs `githooks/pre-commit`, a `tsc --noEmit` of the staged index that can take up to
+about a minute under load. Give a commit Bash call `timeout: 300000`. Never pass `--no-verify` or
+`-n`: a hook failure is a type error to fix, never to bypass (kiko-linter "NO-VERIFY deny").
+
 ## Load rule
 
 Run `make verify` / `check:all` / full jest only when the 5-minute load
@@ -253,7 +259,9 @@ stays allowed. At most ONE jest-heavy agent per track; Semgrep or jest
 timeouts at high load are environment, not code: re-run at low load,
 never raise a timeout. See memory `check-security-timeout-under-load`.
 
-One heavy job runs at a time. `make verify` and a mutation gate each take the shared lock. Verifies drain before any gate. Order gates shortest first by changed lines (`make mutable` prints "changed lines: N"). Start no heavy job on battery. Never start a heavy job directly: queue it. Interim mechanism until track H5 ports it into scripts/: the coordinator-owned queue scripts memory/refs/verify-queue.sh and security-queue.sh, and the coordinator's gate runner. Keep `wait-load.sh` for the load wait only.
+Until the coordinator announces the cutover, heavy jobs go through the old queue (memory/refs/verify-queue.sh, security-queue.sh, and the coordinator's gate runner); `scripts/job-queue.sh` is not used yet. The scribe deletes these cutover sentences when the coordinator announces the cutover. After it, one heavy job runs at a time, queued by `scripts/job-queue.sh` (read its header for the full contract). Run `scripts/job-queue.sh verify|check-all|security <worktree> <label>` or `scripts/job-queue.sh gate <worktree> <label> <base> <head> [--long]` with run_in_background and await only its exit code; its QUEUED/WAITING/START/DONE lines are its normal stdout. State lives in `${KIKO_QUEUE_DIR:-$HOME/.claude/kiko-queue}`. Order: class 1 (verify, check-all, security) first, then gates by `changed lines:` (smallest first), then `--long` gates (user ruling 2026-10-13: a `--long` gate starts only on AC power, after every other ticket). `scripts/job-queue.sh hold <reason>` stops every start until `scripts/job-queue.sh release`; `scripts/job-queue.sh status` shows the hold, the power state, the running job, and the tickets. On battery NO job of any class starts (orchestrator default D1, accepted by the user 2026-10-13); an unreadable power state holds too. A gate refuses a tip whose `mutation.sh` has no changed-line `--list` ("merge main first", exit 2) and a moved HEAD (exit 3); the queue never checks out files (the old H6 overlay is gone). The cutover happens when the coordinator's old tickets folder is empty and the old gate runner got END, and the coordinator says so. Keep `wait-load.sh` for the load wait only. Signalling only the top pid of a job chain (make -> npm -> bash -> Stryker) leaves the leaf running; the queue owns the job's process group. A queued check:all or verify runs on the worktree as it is when the job STARTS; never queue one while a developer still edits that tree, or keep that tree untouched from the queue time until the job starts.
+
+The ONE allowed group kill (user ruling 2026-10-13): `scripts/job-queue.sh` may send TERM to the process group it created for its own job (`set -m`, then the group-TERM form its header shows), only while `pgrep -g` finds a member, never any other group; the lock stays live while any process of that group lives. You still never run a group or pattern kill yourself (kill-guard denies it).
 
 Known limit: load5 can stay high while the CPU is idle, so `wait-load.sh` can block for nothing (2026-10-11: load5 31 with
 idle CPU blocked agents 35+ min). Workaround: check real CPU use

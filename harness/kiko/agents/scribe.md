@@ -28,13 +28,17 @@ Rules:
   that changes often. Apply this whenever you write or edit a skill, and when retrospect
   flags drift (see the retrospect agent's standing verification job), fix it this way
   rather than just patching the stale value back to correct.
-- Before adding or renaming a skill, grep __tests__ for tests that READ skill, agent, or
-  doc text, not only for tests that list skills, and run them. Never enumerate those tests
-  in skill or agent text; point at the grep, since a new invariant would make the list stale.
+- Before EVERY commit that edits skill, agent, docs/ or CLAUDE.md text, run the suites that
+  read that text. Find them with `grep -l readFileSync __tests__/*.test.ts` and run them with
+  `npx jest <files>`. This holds for adding or renaming a skill too, not only for tests that
+  list skills. Never enumerate those tests in skill or agent text; point at the grep, since a
+  new invariant would make the list stale.
 - A skill states the RULE, never a survey of current usage: "always do X" or
   "never do Y", not "today every call site does X". Descriptive wording goes
   stale the moment one new call site breaks the pattern, and it still reads
   as correct.
+- A statement that is true only until a future event (a cutover, a merge, a promotion) puts its
+  status in the paragraph's first sentence and names its own removal trigger.
 - Report back by calling the SubagentHandback tool with {message: <your full report>} as your LAST
   action, in a turn with no prose before the call. Never write the report or the call as plain
   text or XML; if you already did, call the tool anyway. Put pass/fail (and the exit code, where

@@ -22,7 +22,7 @@ import { asMetalMeta } from '@kiko/holdings/holding-metadata';
 import { buildPriceBook, dayKeyOf } from '@kiko/prices/price-book';
 import { applyAllMigrations } from '@kiko/test-support/real-sqlite';
 import { holdingValueBreakdown } from '@kiko/holdings/holding-value';
-import { quantityAt, type Lot, type LotChange } from '@kiko/holdings/lots';
+import { quantityAt, SaleExceedsHoldingError, type Lot, type LotChange } from '@kiko/holdings/lots';
 
 import { readDataSnapshot } from './read-snapshot';
 import type { DataSnapshot } from './data-snapshot';
@@ -401,7 +401,7 @@ describe('metal lots, operation x state', () => {
     openDatabase(cell.given);
 
     if (cell.rejects === true) {
-      await expect(cell.act()).rejects.toThrow();
+      await expect(cell.act()).rejects.toThrow(SaleExceedsHoldingError);
     } else {
       await cell.act();
     }

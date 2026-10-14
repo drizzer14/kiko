@@ -6,11 +6,13 @@ import { i18n } from '@kiko/i18n/init';
 import { formatDate } from '@kiko/dates';
 import { darkTheme } from '@kiko/design-system/theme';
 import { holdingTypes } from '@kiko/holdings/holding-type';
+import { pickCategory } from '@kiko/test-support/pick-category';
 import { defaultHoldingColor } from '@kiko/holdings/entity-colors';
 import { isLabelInvalid } from '@kiko/test-support/field-label-spy';
 import type { TransactionFormParams } from '@kiko/navigation/types';
 import { defaultHoldingSymbol } from '@kiko/holdings/entity-symbols';
 import { makeFocusNavigation } from '@kiko/test-support/focus-navigation';
+import type { CategoryRuleMatcher } from '@kiko/categories/category-rules';
 import { isLedgerlessHoldingType } from '@kiko/holdings/holding-descriptor';
 import { scrollToField, useHeaderInset } from '@kiko/design-system/scroll-to-field';
 import { glyphNamesWithin, glyphTintsWithin } from '@kiko/test-support/glyphs-within';
@@ -72,19 +74,24 @@ const mockRecordExchange = jest.fn();
 const mockRecordExchangeCounterpart = jest.fn();
 const mockUpdate = jest.fn();
 const mockRemove = jest.fn();
-const mockUpsertCategoryOverride = jest.fn();
+const mockApplyNameRule = jest.fn();
 const mockSetCategory = jest.fn();
 const mockSetLoanPayment = jest.fn();
 const mockUndoAutoLoanLink = jest.fn();
 const mockUseLiveQuery = jest.fn();
 
+// A write takes its optional template step last, and an undefined one is the same call as none.
+const mockWithoutUndefinedTail = (args: unknown[]): unknown[] =>
+  args.at(-1) === undefined ? args.slice(0, -1) : args;
+
 jest.mock('@kiko/transactions/repo', () => ({
   transactionsRepo: {
-    recordManual: (...args: unknown[]) => mockRecordManual(...args),
-    recordManualWithReturns: (...args: unknown[]) => mockRecordManualWithReturns(...args),
-    recordExchange: (...args: unknown[]) => mockRecordExchange(...args),
+    recordManual: (...args: unknown[]) => mockRecordManual(...mockWithoutUndefinedTail(args)),
+    recordManualWithReturns: (...args: unknown[]) =>
+      mockRecordManualWithReturns(...mockWithoutUndefinedTail(args)),
+    recordExchange: (...args: unknown[]) => mockRecordExchange(...mockWithoutUndefinedTail(args)),
     recordExchangeCounterpart: (...args: unknown[]) => mockRecordExchangeCounterpart(...args),
-    update: (...args: unknown[]) => mockUpdate(...args),
+    update: (...args: unknown[]) => mockUpdate(...mockWithoutUndefinedTail(args)),
     remove: (...args: unknown[]) => mockRemove(...args),
     setCategory: (...args: unknown[]) => mockSetCategory(...args),
     setLoanPayment: (...args: unknown[]) => mockSetLoanPayment(...args),
@@ -123,9 +130,9 @@ jest.mock('@kiko/categories/repo', () => ({
     allQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }),
   },
 }));
-jest.mock('@kiko/categories/category-overrides-repo', () => ({
-  categoryOverridesRepo: {
-    upsertCategoryOverride: (...args: unknown[]) => mockUpsertCategoryOverride(...args),
+jest.mock('@kiko/categories/category-rules-repo', () => ({
+  categoryRulesRepo: {
+    applyNameRule: (...args: unknown[]) => mockApplyNameRule(...args),
     allQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }),
   },
 }));
@@ -187,7 +194,24 @@ const CATEGORIES: Category[] = [
 ];
 
 type Rate = { base: string; quote: string; rate: string };
-type OverrideRule = { normalizedName: string; category: string };
+type StoredRule = {
+  id: string;
+  category: string;
+  matchers: string;
+  createdAt: number;
+  updatedAt: number;
+};
+
+// A stored rule row as the rules table holds it: its matchers as a JSON list.
+const storedRule = (
+  id: string,
+  category: string,
+  matchers: CategoryRuleMatcher[],
+  updatedAt = 1,
+): StoredRule => ({ id, category, matchers: JSON.stringify(matchers), createdAt: 1, updatedAt });
+
+const nameRule = (text: string, category: string): StoredRule =>
+  storedRule(`name-${text}`, category, [{ type: 'nameIs', text }]);
 
 const setLiveData = (
   holdings: Holding[],
@@ -195,7 +219,7 @@ const setLiveData = (
   categories: Category[] = CATEGORIES,
   accounts: Account[] = [],
   rates: Rate[] = [],
-  overrideRules: OverrideRule[] = [],
+  categoryRules: StoredRule[] = [],
   pastDescriptions: string[] = [],
   latestManualHoldingId: string | null = null,
 ): void => {
@@ -205,7 +229,7 @@ const setLiveData = (
     categories,
     accounts,
     currency_rates: rates,
-    category_overrides: overrideRules,
+    category_rules: categoryRules,
   };
 
   mockUseLiveQuery.mockImplementation((query: unknown, tables: string[]) => {
@@ -278,19 +302,6 @@ const pickDate = async (
     dateString: `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`,
     timestamp: 0,
   });
-};
-
-// Pick a category from the field's bottom-sheet: tap the field to open the
-// sheet, then tap the option row. The picker is a single-select sheet, not an
-// inline chip row, so the option is only mounted once the sheet opens. A create
-// now requires a category before Save enables, so the add-mode cases pick one
-// through the same path the category-editing cases use.
-const pickCategory = async (
-  utils: Awaited<ReturnType<typeof render>>,
-  title: string,
-): Promise<void> => {
-  await fireEvent.press(utils.getByLabelText('Category'));
-  await fireEvent.press(utils.getByText(title));
 };
 
 // ModeSelectField defers its actual `onSelect` call to the next frame (see
@@ -647,7 +658,7 @@ describe('TransactionFormScreen — add mode', () => {
     await pressSave(navigation.setOptions);
 
     expect(queryByText(/Apply/)).toBeNull();
-    expect(mockUpsertCategoryOverride).not.toHaveBeenCalled();
+    expect(mockApplyNameRule).not.toHaveBeenCalled();
     expect(navigation.goBack).toHaveBeenCalled();
   });
 
@@ -663,7 +674,7 @@ describe('TransactionFormScreen — add mode', () => {
     expect(mockRecordManual).toHaveBeenCalledWith(
       expect.objectContaining({ category: 'groceries' }),
     );
-    expect(mockUpsertCategoryOverride).not.toHaveBeenCalled();
+    expect(mockApplyNameRule).not.toHaveBeenCalled();
   });
 
   it('renders the type selector directly under the Holding select, above Amount: Type, Amount, Description, Date, Time, Category', async () => {
@@ -701,11 +712,11 @@ describe('TransactionFormScreen — add mode', () => {
   });
 });
 
-describe('TransactionFormScreen — category pre-select from name rules (A1)', () => {
+describe('TransactionFormScreen — category pre-select from name rules', () => {
   // A single rule mapping the normalized description "coffee" to the Dining
   // category, so a create whose description settles to "Coffee" auto-picks it.
-  const COFFEE_RULE: OverrideRule = { normalizedName: 'coffee', category: 'dining' };
-  const SILPO_RULE: OverrideRule = { normalizedName: 'silpo', category: 'groceries' };
+  const COFFEE_RULE = nameRule('coffee', 'dining');
+  const SILPO_RULE = nameRule('silpo', 'groceries');
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -732,6 +743,23 @@ describe('TransactionFormScreen — category pre-select from name rules (A1)', (
     );
     // The picker shows what Save wrote, as a blur would have left it.
     expect(getByTestId('transaction-category-field')).toHaveTextContent('Groceries');
+  });
+
+  it('shows the category of a rule a restored file left capitalized', async () => {
+    setLiveData(
+      [{ id: 'h1', currency: 'UAH', balanceMinorUnits: 0, type: 'cash' }],
+      undefined,
+      CATEGORIES,
+      [],
+      [],
+      [nameRule('rozetka', 'Groceries')],
+    );
+    const { getByLabelText, getByTestId } = await renderAdd();
+    await fireEvent.changeText(getByLabelText('Description'), 'Rozetka');
+    await fireEvent(getByLabelText('Description'), 'blur');
+
+    expect(getByTestId('transaction-category-field')).toHaveTextContent('Groceries');
+    expect(getByTestId('transaction-category-field')).not.toHaveTextContent('Select category');
   });
 
   it('saves the new rule category when the description changes after a blur and Save is pressed while focused', async () => {
@@ -806,6 +834,111 @@ describe('TransactionFormScreen — category pre-select from name rules (A1)', (
     );
   });
 
+  it('never pre-selects from a rule whose other condition the draft does not meet', async () => {
+    setLiveData(
+      [{ id: 'h1', currency: 'UAH', balanceMinorUnits: 0, type: 'cash' }],
+      undefined,
+      CATEGORIES,
+      [],
+      [],
+      [
+        storedRule('coffee-income', 'dining', [
+          { type: 'nameIs', text: 'coffee' },
+          { type: 'direction', direction: 'income' },
+        ]),
+      ],
+    );
+
+    const { getByLabelText, getByText } = await renderAdd();
+    await fireEvent.changeText(getByLabelText('Amount'), '12.34');
+    await fireEvent.changeText(getByLabelText('Description'), 'Coffee');
+    await fireEvent(getByLabelText('Description'), 'blur');
+    await pressSave(navigation.setOptions);
+
+    expect(mockRecordManual).not.toHaveBeenCalled();
+    expect(getByText('Select a category.')).toBeTruthy();
+  });
+
+  it('pre-selects from the strongest of two name rules on the same name', async () => {
+    setLiveData(
+      [{ id: 'h1', currency: 'UAH', balanceMinorUnits: 0, type: 'cash' }],
+      undefined,
+      CATEGORIES,
+      [],
+      [],
+      [
+        storedRule('older', 'groceries', [{ type: 'nameIs', text: 'coffee' }], 1),
+        storedRule('newer', 'dining', [{ type: 'nameIs', text: 'Coffee' }], 2),
+      ],
+    );
+
+    const { getByLabelText } = await renderAdd();
+    await fireEvent.changeText(getByLabelText('Amount'), '12.34');
+    await fireEvent.changeText(getByLabelText('Description'), 'COFFEE');
+    await fireEvent(getByLabelText('Description'), 'blur');
+    await pressSave(navigation.setOptions);
+
+    expect(mockRecordManual).toHaveBeenCalledWith(expect.objectContaining({ category: 'dining' }));
+  });
+
+  it('creates the name rule and hands it the row the create just wrote, so that row follows it', async () => {
+    mockApplyNameRule.mockResolvedValue(undefined);
+    mockRecordManual.mockResolvedValue('created-row');
+
+    const utils = await renderAdd();
+    await fireEvent.changeText(utils.getByLabelText('Amount'), '12.34');
+    await fireEvent.changeText(utils.getByLabelText('Description'), 'Coffee');
+    await pickCategory(utils, 'Groceries');
+    await pressSave(navigation.setOptions);
+    await fireEvent.press(utils.getByText('Apply'));
+
+    await waitFor(() =>
+      expect(mockApplyNameRule).toHaveBeenCalledWith({
+        name: 'Coffee',
+        category: 'groceries',
+        sourceTransactionId: 'created-row',
+      }),
+    );
+  });
+
+  it('opens no propagation sheet for a category an amount rule pre-selected on a create', async () => {
+    setLiveData(
+      [{ id: 'h1', currency: 'UAH', balanceMinorUnits: 0, type: 'cash' }],
+      undefined,
+      CATEGORIES,
+      [],
+      [],
+      [
+        storedRule('large-expense', 'dining', [
+          { type: 'amount', operator: 'gt', minorUnits: 100_000, currency: 'UAH' },
+          { type: 'direction', direction: 'expense' },
+        ]),
+      ],
+    );
+    const utils = await renderAdd();
+    await fireEvent.changeText(utils.getByLabelText('Amount'), '1500');
+    await fireEvent.changeText(utils.getByLabelText('Description'), 'Rozetka');
+    await pressSave(navigation.setOptions);
+
+    expect(utils.queryByText('Apply Category to All')).toBeNull();
+    expect(mockApplyNameRule).not.toHaveBeenCalled();
+    expect(mockRecordManual).toHaveBeenCalledWith(
+      expect.objectContaining({ category: 'dining', categorySetByHand: false }),
+    );
+    expect(navigation.goBack).toHaveBeenCalled();
+  });
+
+  it('opens the propagation sheet for a category picked by hand on a create', async () => {
+    const utils = await renderAdd();
+    await fireEvent.changeText(utils.getByLabelText('Amount'), '12.34');
+    await fireEvent.changeText(utils.getByLabelText('Description'), 'Rozetka');
+    await pickCategory(utils, 'Dining');
+    await pressSave(navigation.setOptions);
+
+    expect(utils.getByText('Apply Category to All')).toBeTruthy();
+    expect(navigation.goBack).not.toHaveBeenCalled();
+  });
+
   it('re-nulls the auto-pick so the category reason reappears when the name settles to a non-match', async () => {
     const utils = await renderAdd();
     const { getByLabelText, getByText, queryByText } = utils;
@@ -829,9 +962,9 @@ describe('TransactionFormScreen — category pre-select from name rules (A1)', (
 
 describe('TransactionFormScreen — description suggestions', () => {
   // One name rule ("coffee" -> Dining) plus a pool of past MANUAL descriptions,
-  // so a tapped suggestion can be shown to BOTH fill the field and re-seat A1's
-  // rule category through the ONE shared description-handling surface.
-  const COFFEE_RULE: OverrideRule = { normalizedName: 'coffee', category: 'dining' };
+  // so a tapped suggestion can be shown to BOTH fill the field and settle the description, so
+  // the rule category is pre-selected, through the ONE shared description-handling surface.
+  const COFFEE_RULE = nameRule('coffee', 'dining');
   const PAST = ['Coffee', 'Groceries run'];
 
   const seed = (transaction?: Transaction): void =>
@@ -867,14 +1000,14 @@ describe('TransactionFormScreen — description suggestions', () => {
     expect(queryByText('Coffee')).toBeNull();
   });
 
-  it('fills the description and re-seats the rule category when a suggestion is tapped', async () => {
+  it('fills the description and pre-selects the rule category when a suggestion is tapped', async () => {
     const utils = await renderAdd();
     const { getByLabelText, getByText } = utils;
     await fireEvent.changeText(getByLabelText('Amount'), '12.34');
     await fireEvent.changeText(getByLabelText('Description'), 'Cof');
 
-    // Tapping the suggestion fills the field verbatim AND re-fires A1's rule
-    // lookup (coffee -> dining) through the same shared handler, so Save writes
+    // Tapping the suggestion fills the field verbatim AND settles the description, so the rule
+    // pre-select takes it (coffee -> dining) through the same shared handler, and Save writes
     // both without a manual category pick.
     await fireEvent.press(getByText('Coffee'));
     await pressSave(navigation.setOptions);
@@ -1640,7 +1773,7 @@ describe('TransactionFormScreen — blank description pre-fill on edit', () => {
         category: 'dining',
       }),
     );
-    expect(mockUpsertCategoryOverride).not.toHaveBeenCalled();
+    expect(mockApplyNameRule).not.toHaveBeenCalled();
   });
 });
 
@@ -1877,7 +2010,7 @@ describe('TransactionFormScreen — synced (binance) row', () => {
     // A blank description opens no propagation sheet, writes no name rule, and
     // never touches a bank-owned field.
     expect(utils.queryByText('Apply Category to All')).toBeNull();
-    expect(mockUpsertCategoryOverride).not.toHaveBeenCalled();
+    expect(mockApplyNameRule).not.toHaveBeenCalled();
     expect(mockUpdate).not.toHaveBeenCalled();
     expect(mockRecordManual).not.toHaveBeenCalled();
     expect(navigation.goBack).toHaveBeenCalled();
@@ -1911,7 +2044,7 @@ describe('TransactionFormScreen — category editing', () => {
     jest.clearAllMocks();
   });
 
-  it('propagates a MANUAL row category change through upsertCategoryOverride after confirming', async () => {
+  it('creates a name rule for a MANUAL row category change through applyNameRule after confirming', async () => {
     setLiveData([{ id: 'h1', currency: 'UAH', balanceMinorUnits: 5000, type: 'term_deposit' }], {
       id: 'txn-1',
       holdingId: 'h1',
@@ -1921,7 +2054,7 @@ describe('TransactionFormScreen — category editing', () => {
       source: 'manual',
       category: 'groceries',
     });
-    mockUpsertCategoryOverride.mockResolvedValue(undefined);
+    mockApplyNameRule.mockResolvedValue(undefined);
 
     const utils = await renderEdit('txn-1');
     await pickCategory(utils, 'Dining');
@@ -1937,7 +2070,11 @@ describe('TransactionFormScreen — category editing', () => {
     // The manual edit still runs, and the override propagates the category.
     expect(mockUpdate).toHaveBeenCalledWith(expect.objectContaining({ transactionId: 'txn-1' }));
     await waitFor(() =>
-      expect(mockUpsertCategoryOverride).toHaveBeenCalledWith('Coffee', 'dining'),
+      expect(mockApplyNameRule).toHaveBeenCalledWith({
+        name: 'Coffee',
+        category: 'dining',
+        sourceTransactionId: 'txn-1',
+      }),
     );
     expect(navigation.goBack).toHaveBeenCalled();
   });
@@ -1970,7 +2107,8 @@ describe('TransactionFormScreen — category editing', () => {
         category: 'dining',
       }),
     );
-    expect(mockUpsertCategoryOverride).not.toHaveBeenCalled();
+    expect(mockSetCategory).toHaveBeenCalledTimes(1);
+    expect(mockApplyNameRule).not.toHaveBeenCalled();
     expect(navigation.goBack).toHaveBeenCalled();
   });
 
@@ -2001,7 +2139,7 @@ describe('TransactionFormScreen — category editing', () => {
         category: 'dining',
       }),
     );
-    expect(mockUpsertCategoryOverride).not.toHaveBeenCalled();
+    expect(mockApplyNameRule).not.toHaveBeenCalled();
     expect(navigation.goBack).toHaveBeenCalled();
   });
 
@@ -2071,7 +2209,7 @@ describe('TransactionFormScreen — category editing', () => {
     // one transaction for a double-tapped Save" above for why the two
     // presses are awaited sequentially instead of fired back to back.
     let resolveWrite: () => void = () => {};
-    mockUpsertCategoryOverride.mockImplementation(
+    mockApplyNameRule.mockImplementation(
       () =>
         new Promise<void>((resolve) => {
           resolveWrite = resolve;
@@ -2087,26 +2225,26 @@ describe('TransactionFormScreen — category editing', () => {
     await fireEvent.press(apply);
     await fireEvent.press(apply);
 
-    expect(mockUpsertCategoryOverride).toHaveBeenCalledTimes(1);
+    expect(mockApplyNameRule).toHaveBeenCalledTimes(1);
 
     await act(async () => {
       resolveWrite();
     });
     await waitFor(() => expect(navigation.goBack).toHaveBeenCalled());
-    expect(mockUpsertCategoryOverride).toHaveBeenCalledTimes(1);
+    expect(mockApplyNameRule).toHaveBeenCalledTimes(1);
     expect(navigation.goBack).toHaveBeenCalledTimes(1);
 
     // jest.clearAllMocks() (this describe's beforeEach) clears call history
     // but not a custom mockImplementation — reset it explicitly so it does
     // not leak this test's never-auto-resolving write into the next test.
-    mockUpsertCategoryOverride.mockReset();
+    mockApplyNameRule.mockReset();
   });
 
   // Both sheet writes can take a moment (Apply rewrites every same-name row):
   // the pressed action shows a spinner, and the sheet stays up — a scrim/back
   // dismiss or Cancel mid-write closes nothing — until the write is done.
   it.each([
-    ['Apply', () => mockUpsertCategoryOverride],
+    ['Apply', () => mockApplyNameRule],
     ['Just for this one', () => mockSetCategory],
   ])(
     'shows "%s" loading and keeps the sheet open until its write is done',
@@ -2187,7 +2325,7 @@ describe('TransactionFormScreen — category editing', () => {
       source: 'monobank',
       category: 'groceries',
     });
-    mockUpsertCategoryOverride.mockResolvedValue(undefined);
+    mockApplyNameRule.mockResolvedValue(undefined);
 
     const utils = await renderEdit('txn-9');
     // No Save until the category actually changes on a synced row.
@@ -2198,7 +2336,11 @@ describe('TransactionFormScreen — category editing', () => {
     await fireEvent.press(utils.getByText('Apply'));
 
     await waitFor(() =>
-      expect(mockUpsertCategoryOverride).toHaveBeenCalledWith('Monobank Merchant', 'dining'),
+      expect(mockApplyNameRule).toHaveBeenCalledWith({
+        name: 'Monobank Merchant',
+        category: 'dining',
+        sourceTransactionId: 'txn-9',
+      }),
     );
     // The bank-owned fields are never written on a synced row.
     expect(mockUpdate).not.toHaveBeenCalled();
@@ -2220,7 +2362,7 @@ describe('TransactionFormScreen — category editing', () => {
     await pressSave(navigation.setOptions);
 
     expect(queryByText('Apply Category to All')).toBeNull();
-    expect(mockUpsertCategoryOverride).not.toHaveBeenCalled();
+    expect(mockApplyNameRule).not.toHaveBeenCalled();
     expect(mockUpdate).toHaveBeenCalled();
     expect(navigation.goBack).toHaveBeenCalled();
   });
@@ -2243,7 +2385,7 @@ describe('TransactionFormScreen — category editing', () => {
 
     // The manual edit from step 1 still stands, but no rule is written.
     expect(mockUpdate).toHaveBeenCalled();
-    expect(mockUpsertCategoryOverride).not.toHaveBeenCalled();
+    expect(mockApplyNameRule).not.toHaveBeenCalled();
     expect(navigation.goBack).toHaveBeenCalled();
   });
 });
@@ -4406,7 +4548,7 @@ describe('TransactionFormScreen — the category override sheet on a manual row'
   });
 
   it('shows the save-error alert and stays on the form when the sheet "Apply" write fails', async () => {
-    mockUpsertCategoryOverride.mockRejectedValueOnce(new Error('boom'));
+    mockApplyNameRule.mockRejectedValueOnce(new Error('boom'));
     const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
     setLiveData(HOLDINGS, ROW);
     const utils = await renderEdit('txn-1');
@@ -4417,7 +4559,11 @@ describe('TransactionFormScreen — the category override sheet on a manual row'
     await waitFor(() =>
       expect(alertSpy).toHaveBeenCalledWith('Could not save', 'Please try again.'),
     );
-    expect(mockUpsertCategoryOverride).toHaveBeenCalledWith('Coffee', 'dining');
+    expect(mockApplyNameRule).toHaveBeenCalledWith({
+      name: 'Coffee',
+      category: 'dining',
+      sourceTransactionId: 'txn-1',
+    });
     expect(navigation.goBack).not.toHaveBeenCalled();
     alertSpy.mockRestore();
   });
@@ -4716,5 +4862,486 @@ describe('TransactionFormScreen — "Add holding" row in an empty holding picker
     );
 
     expect(utils.getByLabelText('To')).toHaveTextContent('Select holding');
+  });
+});
+
+describe('TransactionFormScreen — category pre-select from the whole draft', () => {
+  const NOON = new Date(2026, 9, 12, 12, 0).getTime();
+  const LARGE_EXPENSE_RULE = storedRule('large-expense', 'dining', [
+    { type: 'amount', operator: 'gt', minorUnits: 100_000, currency: 'UAH' },
+    { type: 'direction', direction: 'expense' },
+  ]);
+  const MORNING_RULE = storedRule('morning', 'dining', [
+    { type: 'time', operator: 'before', minuteOfDay: 9 * 60 },
+  ]);
+  const DOLLAR_RULE = storedRule('dollar', 'dining', [
+    { type: 'amount', operator: 'eq', minorUnits: 1200, currency: 'USD' },
+  ]);
+  const UAH_CASH: Holding = { id: 'h1', currency: 'UAH', balanceMinorUnits: 0, type: 'cash' };
+  const field = (utils: Awaited<ReturnType<typeof render>>) =>
+    utils.getByTestId('transaction-category-field');
+  let nowSpy: jest.SpyInstance;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    nowSpy = jest.spyOn(Date, 'now').mockReturnValue(NOON);
+  });
+
+  afterEach(() => {
+    nowSpy.mockRestore();
+  });
+
+  it('pre-selects once the amount makes a rule on amount and direction match', async () => {
+    setLiveData([UAH_CASH], undefined, CATEGORIES, [], [], [LARGE_EXPENSE_RULE]);
+    const utils = await renderAdd();
+
+    expect(field(utils)).toHaveTextContent('Select category');
+
+    await fireEvent.changeText(utils.getByLabelText('Amount'), '1500');
+
+    expect(field(utils)).toHaveTextContent('Dining');
+
+    await pressSave(navigation.setOptions);
+
+    expect(mockRecordManual).toHaveBeenCalledWith(expect.objectContaining({ category: 'dining' }));
+  });
+
+  it('pre-selects once the time moves into the range of a time rule', async () => {
+    setLiveData([UAH_CASH], undefined, CATEGORIES, [], [], [MORNING_RULE]);
+    const utils = await renderAdd();
+
+    expect(field(utils)).toHaveTextContent('Select category');
+
+    await fireEvent.press(utils.getByLabelText('Time'));
+    await fireEvent(
+      utils.getByTestId('Time picker'),
+      'change',
+      { type: 'set' },
+      new Date(2000, 0, 1, 8, 15),
+    );
+
+    expect(field(utils)).toHaveTextContent('Dining');
+  });
+
+  it('pre-selects once the type changes to the direction of a rule', async () => {
+    setLiveData([UAH_CASH], undefined, CATEGORIES, [], [], [LARGE_EXPENSE_RULE]);
+    const utils = await renderAdd();
+    await pickType(utils, 'income');
+    await fireEvent.changeText(utils.getByLabelText('Amount'), '1500');
+
+    expect(field(utils)).toHaveTextContent('Select category');
+
+    await pickType(utils, 'expense');
+
+    expect(field(utils)).toHaveTextContent('Dining');
+  });
+
+  it('pre-selects once the holding changes to the currency of a rule', async () => {
+    const holdings: Holding[] = [
+      {
+        id: 'h1',
+        currency: 'UAH',
+        balanceMinorUnits: 0,
+        type: 'cash',
+        name: 'Wallet',
+        accountId: 'a1',
+        sortOrder: 0,
+        createdAt: 1,
+      },
+      {
+        id: 'h2',
+        currency: 'USD',
+        balanceMinorUnits: 0,
+        type: 'card',
+        name: 'Card',
+        accountId: 'a2',
+        sortOrder: 0,
+        createdAt: 2,
+      },
+    ];
+    const accounts: Account[] = [
+      { id: 'a1', name: 'Cash' },
+      { id: 'a2', name: 'Bank' },
+    ];
+    setLiveData(holdings, undefined, CATEGORIES, accounts, [], [DOLLAR_RULE], [], 'h1');
+    const utils = await renderEmptyCreate();
+    await fireEvent.changeText(utils.getByLabelText('Amount'), '12.00');
+
+    expect(field(utils)).toHaveTextContent('Select category');
+
+    await fireEvent.press(utils.getByLabelText('Holding'));
+    await fireEvent.press(utils.getByLabelText('Card, Bank'));
+
+    expect(field(utils)).toHaveTextContent('Dining');
+  });
+
+  it('clears the pre-selection once the draft stops matching', async () => {
+    setLiveData([UAH_CASH], undefined, CATEGORIES, [], [], [LARGE_EXPENSE_RULE]);
+    const utils = await renderAdd();
+    await fireEvent.changeText(utils.getByLabelText('Amount'), '1500');
+
+    expect(field(utils)).toHaveTextContent('Dining');
+
+    await fireEvent.changeText(utils.getByLabelText('Amount'), '15');
+
+    expect(field(utils)).toHaveTextContent('Select category');
+  });
+
+  it('keeps a category picked by hand when a rule starts to match', async () => {
+    setLiveData([UAH_CASH], undefined, CATEGORIES, [], [], [LARGE_EXPENSE_RULE]);
+    const utils = await renderAdd();
+    await pickCategory(utils, 'Groceries');
+    await fireEvent.changeText(utils.getByLabelText('Amount'), '1500');
+
+    expect(field(utils)).toHaveTextContent('Groceries');
+
+    await pressSave(navigation.setOptions);
+
+    expect(mockRecordManual).toHaveBeenCalledWith(
+      expect.objectContaining({ category: 'groceries' }),
+    );
+  });
+
+  it('never pre-selects on an edit', async () => {
+    setLiveData(
+      [UAH_CASH],
+      {
+        id: 'txn-1',
+        holdingId: 'h1',
+        amountMinorUnits: -1234,
+        time: NOON,
+        description: 'Coffee',
+        category: null,
+        source: 'manual',
+      },
+      CATEGORIES,
+      [],
+      [],
+      [LARGE_EXPENSE_RULE],
+    );
+    const utils = await renderEdit('txn-1');
+    await fireEvent.changeText(utils.getByLabelText('Amount'), '1500');
+
+    expect(field(utils)).toHaveTextContent('Select category');
+  });
+});
+
+describe('TransactionFormScreen — the manual-pick flag on save', () => {
+  const UAH_CASH: Holding = { id: 'h1', currency: 'UAH', balanceMinorUnits: 0, type: 'cash' };
+  const COFFEE_RULE = nameRule('coffee', 'dining');
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockRecordManual.mockResolvedValue('created-row');
+    mockRecordManualWithReturns.mockResolvedValue('created-row');
+  });
+
+  it('flags a category picked by hand on a create', async () => {
+    setLiveData([UAH_CASH], undefined, CATEGORIES, [], [], [COFFEE_RULE]);
+    const utils = await renderAdd();
+    await fireEvent.changeText(utils.getByLabelText('Amount'), '12.34');
+    await fireEvent.changeText(utils.getByLabelText('Description'), 'Coffee');
+    await pickCategory(utils, 'Groceries');
+    await pressSave(navigation.setOptions);
+
+    expect(mockRecordManual).toHaveBeenCalledWith(
+      expect.objectContaining({ category: 'groceries', categorySetByHand: true }),
+    );
+  });
+
+  it('flags nothing for a category the rules pre-selected', async () => {
+    setLiveData([UAH_CASH], undefined, CATEGORIES, [], [], [COFFEE_RULE]);
+    const utils = await renderAdd();
+    await fireEvent.changeText(utils.getByLabelText('Amount'), '12.34');
+    await fireEvent.changeText(utils.getByLabelText('Description'), 'Coffee');
+    await fireEvent(utils.getByLabelText('Description'), 'blur');
+    await pressSave(navigation.setOptions);
+
+    expect(mockRecordManual).toHaveBeenCalledWith(
+      expect.objectContaining({ category: 'dining', categorySetByHand: false }),
+    );
+  });
+
+  it('flags the category a Duplicate seeds, as a pick', async () => {
+    setLiveData([UAH_CASH], {
+      id: 'txn-src',
+      holdingId: 'h1',
+      amountMinorUnits: -1234,
+      time: 42,
+      description: 'Coffee',
+      category: 'groceries',
+      source: 'manual',
+    });
+    await renderDuplicate('txn-src');
+    await pressSave(navigation.setOptions);
+
+    expect(mockRecordManual).toHaveBeenCalledWith(
+      expect.objectContaining({ category: 'groceries', categorySetByHand: true }),
+    );
+  });
+
+  it('shows and saves the rule category of a Duplicate seeded without one, as no pick', async () => {
+    setLiveData(
+      [UAH_CASH],
+      {
+        id: 'txn-src',
+        holdingId: 'h1',
+        amountMinorUnits: -1234,
+        time: 42,
+        description: 'Coffee',
+        category: null,
+        source: 'manual',
+      },
+      CATEGORIES,
+      [],
+      [],
+      [COFFEE_RULE],
+    );
+    const utils = await renderDuplicate('txn-src');
+
+    expect(utils.getByText('Dining')).toBeTruthy();
+
+    await pressSave(navigation.setOptions);
+
+    expect(mockRecordManual).toHaveBeenCalledWith(
+      expect.objectContaining({ category: 'dining', categorySetByHand: false }),
+    );
+  });
+
+  describe('on a split', () => {
+    const fillSplit = async (utils: Awaited<ReturnType<typeof render>>): Promise<void> => {
+      await pickType(utils, 'split');
+      await fireEvent.press(utils.getByLabelText('Return to 1'));
+      await fireEvent.press(utils.getByText('Alice'));
+      await fireEvent.changeText(utils.getByLabelText('Return 1'), '0.20');
+      await fireEvent.changeText(utils.getByLabelText('Amount'), '212.00');
+      await fireEvent.changeText(utils.getByLabelText('Description'), 'Coffee');
+    };
+
+    beforeEach(() => {
+      setLiveData(SPLIT_HOLDINGS, undefined, CATEGORIES, SPLIT_ACCOUNTS, [], [COFFEE_RULE]);
+    });
+
+    it('flags a category picked by hand on the payment', async () => {
+      const utils = await renderAddFromHolding('payer');
+      await fillSplit(utils);
+      await pickCategory(utils, 'Groceries');
+      await pressSave(navigation.setOptions);
+
+      expect(mockRecordManualWithReturns).toHaveBeenCalledWith(
+        expect.objectContaining({
+          payment: expect.objectContaining({ category: 'groceries', categorySetByHand: true }),
+        }),
+      );
+    });
+
+    it('flags nothing for a category the rules pre-selected', async () => {
+      const utils = await renderAddFromHolding('payer');
+      await fillSplit(utils);
+      await fireEvent(utils.getByLabelText('Description'), 'blur');
+      await pressSave(navigation.setOptions);
+
+      expect(mockRecordManualWithReturns).toHaveBeenCalledWith(
+        expect.objectContaining({
+          payment: expect.objectContaining({ category: 'dining', categorySetByHand: false }),
+        }),
+      );
+    });
+  });
+});
+
+describe('TransactionFormScreen — a holding change settles the mode', () => {
+  const holdingOf = (id: string, name: string, type: string, currency: string, order: number) => ({
+    id,
+    name,
+    type,
+    currency,
+    balanceMinorUnits: 0,
+    accountId: type === 'card' ? 'a2' : 'a1',
+    sortOrder: order,
+    createdAt: order,
+  });
+  const HOLDINGS = [
+    holdingOf('cash-uah', 'Wallet', 'cash', 'UAH', 0),
+    holdingOf('cash-usd', 'Dollars', 'cash', 'USD', 1),
+    holdingOf('cash-eur', 'Euros', 'cash', 'EUR', 2),
+    holdingOf('card-uah', 'Card', 'card', 'UAH', 3),
+    holdingOf('cash-uah-pocket', 'Pocket', 'cash', 'UAH', 4),
+    holdingOf('cash-uah-jar', 'Jar', 'cash', 'UAH', 5),
+  ];
+  const ACCOUNTS: Account[] = [
+    { id: 'a1', name: 'Cash' },
+    { id: 'a2', name: 'Bank' },
+  ];
+
+  const pickHolding = async (
+    utils: Awaited<ReturnType<typeof render>>,
+    optionLabel: string,
+  ): Promise<void> => {
+    await fireEvent.press(utils.getByLabelText('Holding'));
+    await fireEvent.press(utils.getByLabelText(optionLabel));
+  };
+
+  // An exchange from the Wallet to Dollars, with both values typed.
+  const startExchange = async (): Promise<Awaited<ReturnType<typeof render>>> => {
+    setLiveData(HOLDINGS, undefined, CATEGORIES, ACCOUNTS, [], [], [], 'cash-uah');
+
+    const utils = await renderEmptyCreate();
+
+    await pickType(utils, 'exchange');
+    await fireEvent.press(utils.getByLabelText('To'));
+    await fireEvent.press(utils.getByText('Dollars'));
+    await fireEvent.changeText(utils.getByLabelText('Value out'), '100');
+    await fireEvent.changeText(utils.getByLabelText('Value in'), '2.50');
+
+    return utils;
+  };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('settles an exchange to Expense when the holding becomes a card, keeping the amount', async () => {
+    const utils = await startExchange();
+
+    await pickHolding(utils, 'Card, Bank');
+
+    expect(utils.getByLabelText('Type')).toHaveTextContent('Expense');
+    expect(utils.queryByLabelText('Value in')).toBeNull();
+    expect(utils.getByLabelText('Amount').props.value).toBe('100');
+  });
+
+  it('writes no exchange from the card, and asks for the category an expense needs', async () => {
+    const utils = await startExchange();
+
+    await pickHolding(utils, 'Card, Bank');
+    await pressSave(navigation.setOptions);
+
+    expect(mockRecordExchange).not.toHaveBeenCalled();
+    expect(mockRecordManual).not.toHaveBeenCalled();
+    expect(utils.getByText('Select a category.')).toBeTruthy();
+  });
+
+  it('saves an expense from the card once it has a category', async () => {
+    const utils = await startExchange();
+
+    await pickHolding(utils, 'Card, Bank');
+    await pickCategory(utils, 'Groceries');
+    await pressSave(navigation.setOptions);
+
+    expect(mockRecordExchange).not.toHaveBeenCalled();
+    expect(mockRecordManual).toHaveBeenCalledWith(
+      expect.objectContaining({ holdingId: 'card-uah', amountMinorUnits: -10000 }),
+    );
+  });
+
+  it('settles a split to Expense when the holding becomes a card, dropping its returns', async () => {
+    setLiveData(HOLDINGS, undefined, CATEGORIES, ACCOUNTS, [], [], [], 'cash-uah');
+
+    const utils = await renderEmptyCreate();
+
+    await pickType(utils, 'split');
+
+    expect(utils.getByLabelText('Return to 1')).toBeTruthy();
+
+    await pickHolding(utils, 'Card, Bank');
+
+    expect(utils.getByLabelText('Type')).toHaveTextContent('Expense');
+    expect(utils.queryByLabelText('Return to 1')).toBeNull();
+  });
+
+  // A split from the Wallet with a 5.00 return to the Pocket, both in UAH.
+  const startSplitWithReturn = async (): Promise<Awaited<ReturnType<typeof render>>> => {
+    mockRecordManualWithReturns.mockResolvedValue(undefined);
+    setLiveData(HOLDINGS, undefined, CATEGORIES, ACCOUNTS, [], [], [], 'cash-uah');
+
+    const utils = await renderEmptyCreate();
+
+    await pickType(utils, 'split');
+    await fireEvent.press(utils.getByLabelText('Return to 1'));
+    await fireEvent.press(utils.getByText('Pocket'));
+    await fireEvent.changeText(utils.getByLabelText('Return 1'), '5.00');
+    await fireEvent.changeText(utils.getByLabelText('Amount'), '100');
+    await pickCategory(utils, 'Groceries');
+
+    return utils;
+  };
+
+  it('empties a split return holding in another currency than the new holding, keeping its amount', async () => {
+    const utils = await startSplitWithReturn();
+
+    await pickHolding(utils, 'Dollars, Cash');
+
+    expect(utils.getByLabelText('Type')).toHaveTextContent('Split');
+    expect(utils.getByLabelText('Return to 1')).toHaveTextContent('Select holding');
+    expect(utils.getByLabelText('Return 1').props.value).toBe('5.00');
+
+    // Back in the return's own currency, a return holding that was only hidden would show again.
+    await pickHolding(utils, 'Wallet, Cash');
+
+    expect(utils.getByLabelText('Return to 1')).toHaveTextContent('Select holding');
+    expect(utils.getByLabelText('Return 1').props.value).toBe('5.00');
+  });
+
+  it('writes no split with the return holding left in the old currency', async () => {
+    const utils = await startSplitWithReturn();
+
+    await pickHolding(utils, 'Dollars, Cash');
+    await pressSave(navigation.setOptions);
+
+    expect(mockRecordManualWithReturns).not.toHaveBeenCalled();
+  });
+
+  it('keeps a split return holding when the new holding shares its currency', async () => {
+    const utils = await startSplitWithReturn();
+
+    await pickHolding(utils, 'Jar, Cash');
+    await pressSave(navigation.setOptions);
+
+    expect(utils.getByLabelText('Return to 1')).toHaveTextContent('PocketCash');
+    expect(mockRecordManualWithReturns).toHaveBeenCalledWith(
+      expect.objectContaining({
+        payment: expect.objectContaining({ holdingId: 'cash-uah-jar' }),
+        returns: [{ holdingId: 'cash-uah-pocket', amountMinorUnits: 500 }],
+      }),
+    );
+  });
+
+  it('keeps the exchange and every field when the new holding is a cash holding', async () => {
+    const utils = await startExchange();
+
+    await pickHolding(utils, 'Euros, Cash');
+
+    expect(utils.getByLabelText('Type')).toHaveTextContent('Exchange');
+    expect(utils.getByLabelText('Value out').props.value).toBe('100');
+    expect(utils.getByLabelText('Value in').props.value).toBe('2.50');
+    expect(utils.getByLabelText('To')).toHaveTextContent('DollarsCash');
+  });
+
+  it('drops a destination equal to the new source, with its Value in', async () => {
+    const utils = await startExchange();
+
+    await pickHolding(utils, 'Dollars, Cash');
+
+    expect(utils.getByLabelText('Type')).toHaveTextContent('Exchange');
+    expect(utils.getByLabelText('To')).toHaveTextContent('Select holding');
+    expect(utils.getByLabelText('Value in').props.value).toBe('');
+    expect(utils.getByLabelText('Value out').props.value).toBe('100');
+  });
+
+  it.each([
+    ['income', 'Income'],
+    ['expense', 'Expense'],
+  ] as const)('keeps %s and its amount when the holding becomes a card', async (mode, title) => {
+    setLiveData(HOLDINGS, undefined, CATEGORIES, ACCOUNTS, [], [], [], 'cash-uah');
+
+    const utils = await renderEmptyCreate();
+
+    await pickType(utils, mode);
+    await fireEvent.changeText(utils.getByLabelText('Amount'), '12.00');
+    await pickHolding(utils, 'Card, Bank');
+
+    expect(utils.getByLabelText('Type')).toHaveTextContent(title);
+    expect(utils.getByLabelText('Amount').props.value).toBe('12.00');
   });
 });

@@ -67,6 +67,34 @@ const singleTestFileExcludes = (yamlText: string): string[] =>
     (entry) => !GLOB_CHARACTER_PATTERN.test(entry) && TEST_FILE_PATTERN.test(entry),
   );
 
+// kiko-linter's rule sections tell which of the comment-history rules block (ERROR). A severity
+// changed in the rule file alone would pass every fixture, so flipping one is a deliberate edit
+// here too.
+const PINNED_SEVERITIES = {
+  'kiko-no-history-id-comment': 'ERROR',
+  'kiko-no-history-date-comment': 'ERROR',
+  'kiko-no-history-word-comment': 'ERROR',
+  'kiko-no-task-id-comment': 'ERROR',
+  'kiko-test-title-no-history': 'ERROR',
+};
+
+const RULE_BLOCK_START_PATTERN = /^ {2}- id: /m;
+
+const SEVERITY_PATTERN = /^ {4}severity: (\w+)\s*$/m;
+
+const ruleSeverities = (yamlText: string): Map<string, string> =>
+  new Map(
+    yamlText
+      .split(RULE_BLOCK_START_PATTERN)
+      .slice(1)
+      .flatMap((block) =>
+        (SEVERITY_PATTERN.exec(block)?.slice(1) ?? []).map((severity): [string, string] => [
+          block.split('\n')[0].trim(),
+          severity,
+        ]),
+      ),
+  );
+
 const readRepositoryFile = (file: string): string =>
   readFileSync(join(REPOSITORY_ROOT, file), 'utf8');
 
@@ -95,6 +123,36 @@ describe('rule inventory (kiko-linter › Every mechanized finding gets an inven
     const missing = ruleIds.filter((ruleId) => !firstCellIds.has(ruleId));
 
     expect(missing).toEqual([]);
+  });
+});
+
+describe('rule severity', () => {
+  it('reads the severity under each rule id', () => {
+    const yaml = [
+      '  - id: kiko-a',
+      '    severity: ERROR',
+      '  # a comment between two rules',
+      '  - id: kiko-b',
+      '    languages: [typescript]',
+      '    severity: WARNING',
+      '  - id: kiko-c',
+      '    pattern: c',
+    ].join('\n');
+
+    expect([...ruleSeverities(yaml)]).toEqual([
+      ['kiko-a', 'ERROR'],
+      ['kiko-b', 'WARNING'],
+    ]);
+  });
+
+  it('keeps the id, date, word and task-id comment rules errors', () => {
+    const severities = new Map(ruleFileTexts.flatMap((text) => [...ruleSeverities(text)]));
+
+    expect(
+      Object.fromEntries(
+        Object.keys(PINNED_SEVERITIES).map((ruleId) => [ruleId, severities.get(ruleId)]),
+      ),
+    ).toEqual(PINNED_SEVERITIES);
   });
 });
 

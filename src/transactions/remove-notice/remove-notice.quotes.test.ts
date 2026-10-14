@@ -89,6 +89,7 @@ const NOTHING_ELSE: RemoveHoldingsPlan = {
   keptSynced: [],
   unlinked: [],
   unlinkedPlain: false,
+  templatesChanged: 0,
 };
 
 const listedExchanges: [string, ExchangeRemoval][] = [

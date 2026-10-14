@@ -47,8 +47,8 @@ export const buildRateTable = (
  * every supported FIAT currency, this silent exclusion in practice fires
  * only for a currency with neither a live rate NOR a seed entry — today that
  * is exactly the crypto set (BTC/ETH/USDT), which has no seed by design and
- * is excluded here until a live CoinGecko price lands, exactly as before
- * this fix. This is the one remaining, intentional silent-drop case.
+ * is excluded here until a live CoinGecko price lands. This is the one
+ * remaining, intentional silent-drop case.
  */
 export const canConvert = (currency: Currency, base: Currency, rates: RateTable): boolean =>
   rateBetween(rates, currency, base) !== undefined;

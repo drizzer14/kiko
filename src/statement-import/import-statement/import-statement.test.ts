@@ -79,7 +79,7 @@ import {
   procreditBusinessFixtureInput,
 } from '@kiko/statement-import/formats/format-test-fixtures';
 import { kyivWallClockToUtcMilliseconds } from '@kiko/dates';
-import { accounts, categoryOverrides, holdings, transactions } from '@kiko/db';
+import { accounts, categoryRules, holdings, transactions } from '@kiko/db';
 
 import { StatementParseError } from '../parser';
 import { applyColumnMapping, type ColumnMapping } from '../column-mapping';
@@ -214,7 +214,7 @@ const unsyncedAccount = { institution: null };
 
 /**
  * A full in-memory fake for the write-transaction handle `importRows` runs
- * against: `categoryOverrides` always answers empty (none seeded for this
+ * against: the rules read always answers empty (none seeded for this
  * test), the `holdings`/`accounts` reads answer the given `holding`/`account`
  * (`.limit(1)` chained or not — both calling conventions resolve, mirroring
  * `transactions.repo.test.ts`'s own dual-convention trick), the
@@ -242,10 +242,6 @@ const resolveImportSelect = (
   table: unknown,
   fields: Record<string, unknown> | undefined,
 ): unknown[] => {
-  if (table === categoryOverrides) {
-    return [];
-  }
-
   if (table === holdings) {
     const syncTimes = options.store.transactions
       .filter((row) => row.source !== 'manual' && row.source !== 'import')
@@ -279,9 +275,11 @@ const makeImportDatabaseTransaction = (
 
   const databaseTransaction = {
     select: (fields?: Record<string, unknown>) => ({
-      from: (table: unknown) => ({
-        where: () => resolveRows(resolveImportSelect(options, table, fields)),
-      }),
+      // The read of every rule has no `where`, and no rule is seeded for this test.
+      from: (table: unknown) =>
+        table === categoryRules
+          ? Promise.resolve([])
+          : { where: () => resolveRows(resolveImportSelect(options, table, fields)) },
     }),
     insert: (table: unknown) => ({
       values: (rows: Record<string, unknown>[]) => ({
@@ -733,7 +731,7 @@ describe('importStatement', () => {
       const result = await importStatement(monobankInput, 'holding-1');
 
       // All 4 rows still land as ledger history (imported: 4) — the
-      // fixture's own closing balance (10_000_000) is ignored (as before),
+      // fixture's own closing balance (10_000_000) is ignored,
       // and every row is also dated before the boundary, so the net-delta
       // fallback adds 0: the balance stays exactly 500_000.
       expect(result.imported).toBe(4);

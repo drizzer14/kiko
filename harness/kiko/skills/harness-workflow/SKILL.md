@@ -114,6 +114,12 @@ call without knowing where the plugin lives.
   - a `wait-load.sh` or ops timeout: `--gate test --verdict timeout` or
     `--gate deep --verdict timeout`; a gate that did not run: `--gate check --verdict skipped`
     (or the gate that was skipped);
+  - a wait (battery, load, usage limit, the user): `--gate wait --verdict pass --reason <battery|load|usage-limit|user> --minutes <N>`,
+    or `--verdict timeout` when the wait ran out; log it when the wait ends, with the step (or
+    group) of the work it interrupts. A wait event needs `--step N` or `--group N`; the command
+    refuses a wait without one (exit 2). Tag a wait with the step of the last event before it.
+    N is the waited minutes (for example from the last event's ts). Only the other gates
+    (human, stall, timeout) land in the `-` row when they have no step;
   - the retrospect: `--gate retro --verdict pass`.
 - **finish**: at BATCH READY (`--outcome done`), or when the track is blocked or aborted
   (`--outcome blocked` or `--outcome aborted`). `--recorded` and `--gaps` come from the
@@ -123,13 +129,22 @@ call without knowing where the plugin lives.
   checks that the run's `summary.json` exists; a run with no summary did not finish its
   bookkeeping. A `deep` event logged after `finish` is expected: `stats` shows it, but
   `summary.json` `totals` do not include it.
+- **gap**: `gap --run <id> --open <text>` records an open gap and prints `<runId>/<n>`;
+  `gap --run <id> --close <gapId> [--note <text>]` closes it. Open gaps one call at a
+  time; never make parallel calls on one run. `stats --gaps --repo kiko`
+  (add `--format md`, `tsv` or `json`) lists open gaps only, read from `<root>/gaps/<repo>.jsonl`.
+- **start and finish rule**: every orchestrator starts a run before a task's first dispatch and
+  finishes it at that task's BATCH READY. At a handover the run id goes into the worktree
+  HANDOFF.md and the successor keeps writing to it.
 - **stats**: `stats --repo kiko --format md` prints one row per review chain. The repo slug is
   the origin remote's repo name (`drizzer14/kiko.git` -> `kiko`), not the checkout folder;
-  `--repo pff-ios` matches nothing and prints only the header. The `Minutes` column runs from a
-  step group's first logged verdict to its last: the developer's work before the first verdict
-  is not counted, and a one-event step shows 0. For a dispatch-to-BATCH-READY time use
+  `--repo pff-ios` matches nothing and prints only the header. `Minutes` is the span from a
+  step group's first verdict to its last (the developer's work before the first verdict is not
+  counted; a one-event step shows 0); `Wait` is the sum of the group's wait events; `Work` =
+  `Minutes` - `Wait`, never below 0. For a dispatch-to-BATCH-READY time use
   run.json `startedAt` to `summary.json` `finishedAt`. A run with no `summary.json` and no event
-  for 24 hours shows as `abandoned`.
+  for 24 hours shows as `abandoned`. The coordinator runs `finish --outcome aborted` for a
+  track it stops, in the same turn as the worktree prune.
 
 BATCH READY's TIMES line is built from the run log, never from memory. The source of each
 field is listed in `kiko:estimator` only.
@@ -185,7 +200,7 @@ after excludes is within `MUTATION_FILE_CAP` (read it in
 with their own bases. Count with the gate's own filter, never by hand:
 `KIKO_MUTATION_BASE=<base sha> make mutable` (it runs
 `mutation.sh --list`) prints each file's changed-line ranges, `changed lines: N`, and
-`mutable files: N (cap …)` last,
+`mutable files: N (cap …)`, then a `timeout share (history)` line (quote it in the BATCH READY: a high share predicts a long run),
 exits 2 above the cap, and never starts Stryker or takes its lock. A
 change set with 0 mutable files gets no mutation run: `mutation.sh`
 exits 0 on 0 files without starting Stryker. A changed file whose diff
@@ -215,7 +230,8 @@ with `git -C /Users/drizzer14/Developer/Projects/pff-ios log -1 --oneline`.
 
 A track that regenerates shared binary fixtures (the demo .kiko files)
 merges main first and regenerates on the merged builder; never
-hand-merge a binary.
+hand-merge a binary. After merging the builder source, regenerate
+(`KIKO_REGEN_DEMO=1` on the generate-demo-kiko test), then re-run it plain.
 
 ## Read-only agents return their report
 
@@ -235,7 +251,7 @@ a test in the fix commit.
 
 Never use pkill, killall, or any pattern or group kill. Stop only a
 process ID you started yourself (kill <pid>), or let the tool timeout
-end a hung command. Read-only roles (reviewer, auditor, explorer,
+end a hung command. The one exception is not yours: `scripts/job-queue.sh` may send TERM to the process group it created for its own job, only while `pgrep -g` finds a member. Read-only roles (reviewer, auditor, explorer,
 debugger, pm, retrospect) do not stop processes at all. The
 PreToolUse hook on `Bash` (`scripts/checks/kill-guard.sh`, wired in
 `harness/kiko/hooks/hooks.json`) denies the common forms of these
@@ -254,6 +270,14 @@ WHAT/DETAILS/WHY/HOW/DO-NOT reason; it is a heuristic tokenizer with
 known limits (see kiko-linter's kill-guard entry), so a form it misses
 is still banned. Never chain a file write, a plugin update, and a
 memory rewrite in one Bash call — make each its own step.
+
+## A commit runs a typecheck
+
+A commit runs `githooks/pre-commit`, a `tsc --noEmit` of the staged index that can take up to
+about a minute under load. Give a commit Bash call `timeout: 300000`. Never pass `--no-verify` or
+`-n`: a hook failure is a type error to fix, never to bypass (kill-guard denies the bypass; see
+kiko-linter's "NO-VERIFY deny"). The commit gate is typecheck only (user ruling 2026-10-13);
+`check:all` runs before a merge.
 
 ## A write can be denied before it lands
 
@@ -352,6 +376,11 @@ A change set that merged `next` mid-way, or that stacks on earlier
 unmerged change sets, takes as its mutation base the `next` tip that
 already contains every earlier change set; otherwise the merge-base
 diff also counts the earlier sets' files against the 30 cap.
+
+A stacked pair where the earlier set changes only comments in a source and the later set changes
+its colocated test inflates `make mutable` (the colocated-test rule keeps the whole file): gate
+the later set alone, with the earlier set's tip as the base, and compare `changed lines:` with the
+diff first.
 
 ## Merge conflicts vs the pre-write guard
 
@@ -568,7 +597,7 @@ in another one-off brief.
 
 ## Load rule
 
-The load rule lives in the ops skill's "Load rule" section; see it. One heavy job runs at a time. `make verify` and a mutation gate each take the shared lock. Verifies drain before any gate. Order gates shortest first by changed lines (`make mutable` prints "changed lines: N"). Start no heavy job on battery. Never start a heavy job directly: queue it. Interim mechanism until track H5 ports it into scripts/: the coordinator-owned queue scripts memory/refs/verify-queue.sh and security-queue.sh, and the coordinator's gate runner.
+Until the coordinator announces the cutover, heavy jobs go through the old queue (memory/refs/verify-queue.sh, security-queue.sh, and the coordinator's gate runner); `scripts/job-queue.sh` is not used yet. The scribe deletes these cutover sentences when the coordinator announces the cutover. The load rule lives in the ops skill's "Load rule" section; see it. After the cutover, one heavy job runs at a time, queued by `scripts/job-queue.sh` (read its header for the full contract). Run `scripts/job-queue.sh verify|check-all|security <worktree> <label>` or `scripts/job-queue.sh gate <worktree> <label> <base> <head> [--long]` with run_in_background and await only its exit code; its QUEUED/WAITING/START/DONE lines are its normal stdout. State lives in `${KIKO_QUEUE_DIR:-$HOME/.claude/kiko-queue}`. Order: class 1 (verify, check-all, security) first, then gates by `changed lines:` (smallest first), then `--long` gates (user ruling 2026-10-13: a `--long` gate starts only on AC power, after every other ticket). `scripts/job-queue.sh hold <reason>` stops every start until `scripts/job-queue.sh release`; `scripts/job-queue.sh status` shows the hold, the power state, the running job, and the tickets. On battery NO job of any class starts (orchestrator default D1, accepted by the user 2026-10-13); an unreadable power state holds too. A gate refuses a tip whose `mutation.sh` has no changed-line `--list` ("merge main first", exit 2) and a moved HEAD (exit 3); the queue never checks out files (the old H6 overlay is gone). The cutover happens when the coordinator's old tickets folder is empty and the old gate runner got END, and the coordinator says so. Keep `wait-load.sh` for the load wait only. A queued check:all or verify runs on the worktree as it is when the job STARTS; never queue one while a developer still edits that tree, or keep that tree untouched from the queue time until the job starts.
 
 ## Long briefs live in a file
 

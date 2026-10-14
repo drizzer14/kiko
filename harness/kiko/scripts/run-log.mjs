@@ -2,6 +2,8 @@
 // Run log for harness sessions. Each run is a folder <root>/<runId>/ holding run.json (written by `start`),
 // an append-only events.jsonl (one line per `event`) and summary.json (written by `finish`); `stats` reads
 // them back as a table of review chains. Root: ${HARNESS_RUNS_DIR:-$HOME/.claude/harness-runs}.
+// Open gaps live beside the runs in <root>/gaps/<repo>.jsonl, append-only: `gap --open` and
+// `gap --close` append a line, and `stats --gaps` lists the gaps no close line names.
 // git is read locally only (remote url, branch, HEAD); nothing is fetched.
 //
 // Every command first makes <root>/bin/run-log.mjs a byte-identical copy of this script, so a consumer can
@@ -9,7 +11,8 @@
 //
 // Usage: see USAGE below (printed on stderr for any bad argument).
 //
-// Exit codes: 0 = success, 1 = unknown run or I/O error, 2 = bad arguments (usage on stderr).
+// Exit codes: 0 = success, 1 = unknown run, unknown or closed gap, or I/O error, 2 = bad arguments
+// (usage on stderr).
 
 import { execFileSync } from 'node:child_process';
 import {
@@ -31,14 +34,23 @@ const USAGE = `usage:
   run-log.mjs start --task <text> --shape build|fix|research|review [--jira <url>] [--orca-task <id>] [--orca-dispatch <id>]
   run-log.mjs event --run <id> --gate <gate> --verdict <verdict> [--phase <text>] [--step N] [--group N]
                     [--role <text>] [--attempt N] [--findings N] [--mechanizable N] [--note <text>]
-      gate:    check|test|review|human|commit|deep|stall|retro
+                    [--reason battery|load|usage-limit|user --minutes N]
+      gate:    check|test|review|human|commit|deep|stall|retro|wait
       verdict: pass|fail|changes|approve|stall|timeout|skipped
+      wait:    logged when the wait ends; verdict pass|timeout, and --reason, --minutes N (N >= 1)
+               and --step N or --group N are required there; --reason and --minutes are refused on
+               any other gate
   run-log.mjs finish --run <id> --outcome done|blocked|aborted [--recorded N] [--gaps N] [--archive <dir>]
-  run-log.mjs stats [--since YYYY-MM-DD] [--repo <slug>] [--format md|tsv|json]`;
+  run-log.mjs gap --run <id> --open <text>              prints <runId>/<n>
+  run-log.mjs gap --run <id> --close <gapId> [--note <text>]
+  run-log.mjs stats [--since YYYY-MM-DD] [--repo <slug>] [--format md|tsv|json]
+  run-log.mjs stats --gaps [--repo <slug>] [--format md|tsv|json]`;
 
 const SELF = fileURLToPath(import.meta.url);
 const SHAPES = ['build', 'fix', 'research', 'review'];
-const GATES = ['check', 'test', 'review', 'human', 'commit', 'deep', 'stall', 'retro'];
+const GATES = ['check', 'test', 'review', 'human', 'commit', 'deep', 'stall', 'retro', 'wait'];
+const WAIT_VERDICTS = ['pass', 'timeout'];
+const WAIT_REASONS = ['battery', 'load', 'usage-limit', 'user'];
 const VERDICTS = ['pass', 'fail', 'changes', 'approve', 'stall', 'timeout', 'skipped'];
 const OUTCOMES = ['done', 'blocked', 'aborted'];
 const FORMATS = ['md', 'tsv', 'json'];
@@ -46,10 +58,15 @@ const RETRY_AFTER = new Set(['fail', 'changes', 'timeout']);
 const MARKS = { changes: '✗', fail: '✗', approve: '✓', pass: '✓' };
 const TARGET = 2;
 const DAY_MS = 24 * 60 * 60 * 1000;
+const GAPS_DIR = 'gaps';
+// Run-log repo slugs, as `slug` makes them; it keeps a --repo value inside <root>/gaps/.
+const REPO_SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const HEADER = [
   ...['Run', 'Step group', 'Impl', 'Review', 'Verdicts', 'Steps'],
-  ...['Minutes', 'Target', 'Check/test retries', 'Stalls', 'Human rounds', 'Outcome'],
+  ...['Minutes', 'Wait', 'Work', 'Target'],
+  ...['Check/test retries', 'Stalls', 'Human rounds', 'Outcome'],
 ];
+const GAP_HEADER = ['Gap', 'Opened', 'Run', 'Text'];
 
 class Exit extends Error {
   constructor(code, message) {
@@ -62,14 +79,19 @@ const usage = (message) => new Exit(2, `run-log: ${message}\n${USAGE}`);
 
 // ---- arguments ----
 
-function parseFlags(args, names) {
+// `switches` are the flags that stand alone, without a value.
+function parseFlags(args, names, switches = []) {
   const flags = {};
-  for (let index = 0; index < args.length; index += 2) {
+  for (let index = 0; index < args.length; index++) {
     const name = args[index].replace(/^--/, '');
+    if (args[index].startsWith('--') && switches.includes(name)) {
+      flags[name] = true;
+      continue;
+    }
     if (!args[index].startsWith('--') || !names.includes(name) || args[index + 1] === undefined) {
       throw usage(`bad argument ${args[index]}`);
     }
-    flags[name] = args[index + 1];
+    flags[name] = args[++index];
   }
   return flags;
 }
@@ -100,8 +122,8 @@ function readJson(path) {
   }
 }
 
-function readEvents(dir) {
-  const file = join(dir, 'events.jsonl');
+// A damaged line is skipped so one torn append never hides the lines around it.
+function readJsonLines(file) {
   if (!existsSync(file)) return [];
   return readFileSync(file, 'utf8')
     .split('\n')
@@ -115,6 +137,8 @@ function readEvents(dir) {
       }
     });
 }
+
+const readEvents = (dir) => readJsonLines(join(dir, 'events.jsonl'));
 
 function runDir(root, flags) {
   const runId = required(flags, 'run');
@@ -206,15 +230,35 @@ function start(root, args) {
 
 // ---- event ----
 
+// A wait line states why and for how long; any other gate states neither, so a stray flag is a
+// typo.
+function checkWaitFlags(flags, gate, minutes, step, group) {
+  if (gate !== 'wait') {
+    if (flags.reason !== undefined || flags.minutes !== undefined) {
+      throw usage('--reason and --minutes belong to --gate wait');
+    }
+    return;
+  }
+  oneOf(flags, 'verdict', WAIT_VERDICTS);
+  oneOf(flags, 'reason', WAIT_REASONS);
+  if (!(minutes >= 1)) throw usage('--minutes N (N >= 1) is required for --gate wait');
+  // A wait with no step or group lands in the `-` row, so the interrupted step's waiting would
+  // stay counted as Work.
+  if (step === null && group === null) {
+    throw usage('--step N or --group N is required for --gate wait');
+  }
+}
+
 function event(root, args) {
-  const texts = ['run', 'gate', 'verdict', 'phase', 'role', 'note'];
-  const numbers = ['step', 'group', 'attempt', 'findings', 'mechanizable'];
+  const texts = ['run', 'gate', 'verdict', 'phase', 'role', 'note', 'reason'];
+  const numbers = ['step', 'group', 'attempt', 'findings', 'mechanizable', 'minutes'];
   const flags = parseFlags(args, [...texts, ...numbers]);
   const gate = oneOf(flags, 'gate', GATES);
   const verdict = oneOf(flags, 'verdict', VERDICTS);
-  const [step, group, attempt, findings, mechanizable] = numbers.map((name) =>
+  const [step, group, attempt, findings, mechanizable, minutes] = numbers.map((name) =>
     integer(flags, name),
   );
+  checkWaitFlags(flags, gate, minutes, step, group);
   const dir = runDir(root, flags);
   const line = {
     ...{ v: 1, ts: new Date().toISOString(), phase: flags.phase ?? null, step, group, gate },
@@ -225,6 +269,8 @@ function event(root, args) {
       findings,
       mechanizable,
       note: flags.note ?? null,
+      reason: flags.reason ?? null,
+      minutes,
     },
   };
   appendFileSync(join(dir, 'events.jsonl'), `${JSON.stringify(line)}\n`);
@@ -246,6 +292,15 @@ function countRetries(events) {
   return retries;
 }
 
+const isWait = (entry) => entry.gate === 'wait';
+
+// An event of an older run has no `minutes`, and a wait line without one waited for no known time.
+function waitMinutes(events) {
+  return events
+    .filter(isWait)
+    .reduce((sum, { minutes }) => sum + (Number.isFinite(minutes) && minutes > 0 ? minutes : 0), 0);
+}
+
 function totals(events) {
   const byGate = {};
   for (const { gate, verdict } of events) {
@@ -256,7 +311,9 @@ function totals(events) {
     events: events.length,
     byGate,
     stalls: events.filter(isStall).length,
-    retries: countRetries(events),
+    // A timed-out wait followed by another wait on the same step is no retry of work.
+    retries: countRetries(events.filter((entry) => !isWait(entry))),
+    waitMinutes: waitMinutes(events),
   };
 }
 
@@ -301,6 +358,53 @@ function finish(root, args) {
   }
 }
 
+// ---- gap ----
+
+const gapsFile = (root, repo) => join(root, GAPS_DIR, `${repo}.jsonl`);
+
+// A gap is open until some close line names its id.
+function openGaps(file) {
+  const lines = readJsonLines(file);
+  const closed = new Set(lines.filter((entry) => entry.op === 'close').map((entry) => entry.gap));
+  return lines.filter((entry) => entry.op === 'open' && !closed.has(entry.gap));
+}
+
+function openGap(file, repo, runId, text) {
+  const opened = readJsonLines(file).filter((entry) => entry.op === 'open' && entry.run === runId);
+  const id = `${runId}/${opened.length + 1}`;
+  const ts = new Date().toISOString();
+  const line = { ...{ v: 1, op: 'open', gap: id, repo, run: runId }, ts, text };
+  mkdirSync(dirname(file), { recursive: true });
+  appendFileSync(file, `${JSON.stringify(line)}\n`);
+  process.stdout.write(`${id}\n`);
+}
+
+function closeGap(file, repo, runId, id, note) {
+  if (!openGaps(file).some((entry) => entry.gap === id)) {
+    throw new Exit(1, `run-log: no open gap ${id} in ${repo}`);
+  }
+  const ts = new Date().toISOString();
+  const line = { v: 1, op: 'close', gap: id, run: runId, ts, note: note ?? null };
+  appendFileSync(file, `${JSON.stringify(line)}\n`);
+}
+
+function gap(root, args) {
+  const flags = parseFlags(args, ['run', 'open', 'close', 'note']);
+  const opening = flags.open !== undefined;
+  if (opening === (flags.close !== undefined)) throw usage('exactly one of --open and --close');
+  if (opening && flags.note !== undefined) throw usage('--note belongs to --close');
+  required(flags, opening ? 'open' : 'close');
+  const dir = runDir(root, flags);
+  const runId = basename(dir);
+  const repo = readJson(join(dir, 'run.json'))?.repo;
+  if (typeof repo !== 'string' || !REPO_SLUG.test(repo)) {
+    throw new Exit(1, `run-log: run ${runId} has no repo slug`);
+  }
+  const file = gapsFile(root, repo);
+  if (opening) openGap(file, repo, runId, flags.open);
+  else closeGap(file, repo, runId, flags.close, flags.note);
+}
+
 // ---- stats ----
 
 function runOutcome(dir, run, events) {
@@ -334,6 +438,7 @@ function groupRow(runId, key, events, outcome) {
     times.length > 0 ? Math.round((Math.max(...times) - Math.min(...times)) / 60000) : 0;
   const steps = new Set(events.map((entry) => entry.step).filter((step) => step != null));
   const checksAndTests = events.filter((entry) => entry.gate === 'check' || entry.gate === 'test');
+  const wait = waitMinutes(events);
   return {
     ...{
       Run: runId,
@@ -345,6 +450,9 @@ function groupRow(runId, key, events, outcome) {
       Verdicts: chain,
       Steps: steps.size,
       Minutes: minutes,
+      Wait: wait,
+      // A wait can start before the group's first event, so it can exceed the span.
+      Work: Math.max(0, minutes - wait),
       Target: TARGET,
     },
     'Check/test retries': countRetries(checksAndTests),
@@ -370,17 +478,40 @@ function runRows(dir, run) {
   );
 }
 
-function render(rows, format) {
+// One row per line: whitespace in a cell becomes a space, and md also escapes its column bar.
+function render(rows, format, header = HEADER) {
   if (format === 'json') return `${JSON.stringify(rows, null, 2)}\n`;
-  const body = rows.map((row) => HEADER.map((name) => String(row[name])));
-  if (format === 'tsv') return `${[HEADER, ...body].map((cells) => cells.join('\t')).join('\n')}\n`;
+  const columnBar = format === 'md' ? (text) => text.replaceAll('|', '\\|') : (text) => text;
+  const cell = (value) => columnBar(String(value ?? '').replace(/\s+/g, ' '));
+  const body = rows.map((row) => header.map((name) => cell(row[name])));
+  if (format === 'tsv') return `${[header, ...body].map((cells) => cells.join('\t')).join('\n')}\n`;
   const line = (cells) => `| ${cells.join(' | ')} |`;
-  return `${[line(HEADER), line(HEADER.map(() => '---')), ...body.map(line)].join('\n')}\n`;
+  return `${[line(header), line(header.map(() => '---')), ...body.map(line)].join('\n')}\n`;
+}
+
+function statsGaps(root, flags, format) {
+  if (flags.since !== undefined) throw usage('--since does not apply to --gaps');
+  if (flags.repo !== undefined && !REPO_SLUG.test(flags.repo)) {
+    throw usage('--repo must be a repo slug');
+  }
+  const directory = join(root, GAPS_DIR);
+  const files =
+    flags.repo === undefined
+      ? (existsSync(directory) ? readdirSync(directory) : []).filter((name) =>
+          name.endsWith('.jsonl'),
+        )
+      : [`${flags.repo}.jsonl`];
+  const rows = files
+    .sort()
+    .flatMap((name) => openGaps(join(directory, name)))
+    .map((entry) => ({ Gap: entry.gap, Opened: entry.ts, Run: entry.run, Text: entry.text }));
+  process.stdout.write(render(rows, format, GAP_HEADER));
 }
 
 function stats(root, args) {
-  const flags = parseFlags(args, ['since', 'repo', 'format']);
+  const flags = parseFlags(args, ['since', 'repo', 'format'], ['gaps']);
   const format = flags.format === undefined ? 'md' : oneOf(flags, 'format', FORMATS);
+  if (flags.gaps) return statsGaps(root, flags, format);
   if (flags.since !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(flags.since)) {
     throw usage('--since must be YYYY-MM-DD');
   }
@@ -402,7 +533,7 @@ function stats(root, args) {
 
 // ---- main ----
 
-const COMMANDS = { start, event, finish, stats };
+const COMMANDS = { start, event, finish, gap, stats };
 
 function main([command, ...args]) {
   if (!Object.hasOwn(COMMANDS, command ?? ''))

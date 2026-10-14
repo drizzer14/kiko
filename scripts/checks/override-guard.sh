@@ -12,6 +12,10 @@ else
   scan_targets=("$@")
 fi
 
+for p in "${scan_targets[@]}"; do
+  harness_require_path "Override guard" "$p" || exit 2
+done
+
 # Dedup only an explicit set of files. The check greps their contents for an
 # unjustified biome-ignore, so its result depends only on those files.
 dkey=""; fp=""

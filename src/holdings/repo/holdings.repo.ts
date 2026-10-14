@@ -16,6 +16,7 @@ import { Money } from '@kiko/currency/money';
 import { isRecord } from '@kiko/type-guards';
 import { holdingInstrument } from '@kiko/prices/instrument';
 import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { transactionTemplatesRepo } from '@kiko/transaction-templates/repo';
 
 import {
   ownershipMetadata,
@@ -449,6 +450,8 @@ export const removeHoldingDatabaseTransaction = async (
   // normal spending. A no-op for every non-loan holding, since nothing ever
   // points a `loanHoldingId` at one.
   await clearLoanLinksForHoldingsDatabaseTransaction(databaseTransaction, [holdingId]);
+  // A template keeps no id of a deleted holding: the field stays in it, empty.
+  await transactionTemplatesRepo.clearHoldingsDatabaseTransaction(databaseTransaction, [holdingId]);
   // A priced holding (property_item) has no transactions, but it may have its
   // own price series on `holding:<id>` — cleared here, inline on the handle
   // (not through `pricePointsRepo.removeInstrument`, which would open its own
@@ -778,8 +781,8 @@ export const holdingsRepo = {
    * would apply the delta a second time. Do not "DRY" the two together.
    *
    * The row carries no description and no category: the list resolves its label
-   * at render time (transactions/row-description.ts), so no English sentence is
-   * persisted, and the category stays the user's to pick.
+   * at render time (src/transactions/row-description/row-description.ts), so no
+   * English sentence is persisted, and the category stays the user's to pick.
    *
    * DELIBERATE (ruled, not an oversight): with a null category the row folds
    * onto `settings.defaultCategoryKey`, so a downward correction DOES count as

@@ -482,7 +482,7 @@ const runSync = async (
   const windows = buildWindows(resolveStartTime(cursor ?? latest, endTime), endTime);
   // ONE gate per invocation, threaded through every deposit/withdraw request so
   // the whole run stays under the Binance weight limit — mirrors the per-token
-  // gate `runSync` builds in `src/monobank/sync.ts`.
+  // gate `runSync` builds in `src/monobank/sync/sync.ts`.
   const gate = createRequestGate({
     intervalMs: BINANCE_REQUEST_INTERVAL_MS,
     now: deps.now,

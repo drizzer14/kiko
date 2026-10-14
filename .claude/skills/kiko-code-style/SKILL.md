@@ -108,7 +108,8 @@ with separators (`` `${base}:${quote}` ``) stays a template literal.
 ### Wrap comments at 100 columns
 
 Biome cannot wrap a comment, so a long one stays long until its author
-wraps it. The pre-write guard (`kiko-comment-line-width`) denies a new
+wraps it. Shell scripts (`scripts/**/*.sh`) follow the same 100-column rule for their `#` comments, pinned by
+`__tests__/shell-comment-width.test.ts`. The pre-write guard (`kiko-comment-line-width`) denies a new
 physical line over 100 columns that holds comment text: a `//` comment,
 any line of a `/* */` or `/** */` block, a JSX `{/* */}` comment, or a
 trailing comment after code. Break the comment at a space and continue on
@@ -216,8 +217,7 @@ in a comment left behind in the code. Mechanized in `src/**` by the
 kiko-linter skill's own section on it for the rule's design.
 
 The "changed because …" narrative words are mechanized too, by the
-`kiko-no-history-word-comment` Semgrep rule (WARNING until its sweep
-lands): read the phrases in that rule's `pattern-regex` and `message` in
+`kiko-no-history-word-comment` Semgrep rule (ERROR): read the phrases in that rule's `pattern-regex` and `message` in
 `rules/semgrep-prewrite.yml` (they include a `was:` label before an old value,
 `// was: 30`). Write
 how the code works today and why ("matches the holding", "a card absent
@@ -236,13 +236,27 @@ those shapes; a date that is data (a fixture day, a DST day) stays.
 
 A comment names no task, step, finding, or spec id (`item 6`, `DEVICE BUG`,
 `Bug A2`, `Feature 1`, `SEC-C1`, `(A1)`): it states the reason itself. The
-`kiko-no-task-id-comment` Semgrep rule (WARNING until its sweep lands)
+`kiko-no-task-id-comment` Semgrep rule (ERROR)
 mechanizes the shapes listed in its kiko-linter section.
+
+A path cited in a `src` comment must exist, with or without its root. A rooted path
+(`src/…`, `docs/…`, a migration file name) must exist on disk. A rootless partial citation
+that ends in a file extension (`monobank/sync/sync.ts`) must match a tracked file's path
+suffix. `__tests__/cited-paths.test.ts` checks both; write the sentence without a path when
+the file is gone.
 
 Documented exception: the data-provenance date comment in
 `src/rates/fiat-rate-seed/fiat-rate-seed.ts` stays — it records WHEN
 the seed values were captured, which the code cannot show on its own,
 not a history narrative about a task or review round.
+
+### A test title carries no history
+
+A test or suite title says what the test pins. It carries no task id or ruling id as a prefix
+(`X1 `, `X1:`, `ruling A2`), no task id as a trailing `(P2)` or `(task C2)`, and no `(was: `
+label. The id and the old value belong in the commit message. Mechanized by the
+`kiko-test-title-no-history` Semgrep rule (see kiko-linter's own section for its scope and
+limits).
 
 ## Split a `useEffect` per logical concern, before it ships
 
@@ -309,7 +323,11 @@ mapping site that hasn't been updated, not a silent runtime gap. See
 descriptor/form/detail-spec checklist a new holding type needs.
 
 A single boolean guard used exactly once (an `if`/`else` with no
-closed-set enum behind it) may stay as-is. Every branch over a closed
+closed-set enum behind it) may stay as-is. A ternary on one `kind` literal of a closed union
+(`x.kind === 'a' ? p : q`) is an `if`/`else` chain and uses `match(...).exhaustive()`; it is
+mechanized as a WARNING by `kiko-kind-ternary-prefers-match` while its sweep is pending (re-measure with the command in kiko-linter's
+`kiko-kind-ternary-prefers-match` section),
+and a `nosemgrep` OVERRIDE fits only where `kind` is not a closed union. Every branch over a closed
 literal set uses `ts-pattern`'s `match(...).exhaustive()` (or a typed
 `Record` for a pure lookup) — no `switch`, with no exception; mechanized
 by the `kiko-no-switch` Semgrep rule (see kiko-linter's own
@@ -328,6 +346,8 @@ in one table. See `MODE_BEHAVIOR` in
 closes the open note of finding U5 in
 `docs/reviews/2026-09-codebase-review.md` that this section did not cover
 booleans derived from a union. A judgment rule, not mechanized.
+
+In a per-row or per-keystroke hot path (rule matching over every transaction), use a typed `Record` table, not `match(...).exhaustive()`: the ts-pattern matcher cost 952 ms against 10 ms for the same lookup over 10 000 rows x 200 rules (`src/categories/category-rules`). Exhaustiveness stays in the Record's key type. Judgment rule, not mechanized.
 
 The set itself needs exactly one source of truth. Derive the literal
 union type from a `const` tuple, instead of hand-maintaining a union
@@ -660,8 +680,8 @@ one validation model — don't hand-roll a different one:
   entry.
 - A native bar-button press does not blur the focused field, so a value
   derived on blur (for example the TransactionForm category auto-pick)
-  is settled synchronously in the save path, from the same helper the
-  blur handler calls (`categoryForName`, `settleCategory` in
+  is settled synchronously in the save path, by the same function the
+  blur handler calls (see `useCategoryPick` in
   `src/screens/forms/transaction-form/use-category-pick/use-category-pick.ts`).
   Pin it with a test that presses Save without a blur.
 - A blocked field shows its message via the shared `FieldError`
@@ -895,7 +915,7 @@ shortened word):
 | `ctx` | `context` |
 | `el` | `element` |
 | `opts` | `options` |
-| `tmp` | `temporary` |
+| `tmp` / `temp` | `temporary` |
 | `num` | `number` |
 | `arr` / `obj` / `str` | a descriptive name for what the array/object/string actually holds |
 
@@ -1273,6 +1293,17 @@ Known limits:
 - A template path (`` `${__dirname}/x.csv` ``) fires even with a
   non-TypeScript extension: the rule reads only a string literal or a
   join. A safe false positive: write `join(__dirname, 'x.csv')`.
+
+## A rejection names its error
+
+A `.rejects` assertion names what the call rejects with: the error class, a message, or
+`toHaveProperty('cause.message', ...)`. Any `.rejects` form that passes on every failure (a bare
+`toThrow()` is the plainest) also passes on a typo that throws before the code under test runs;
+the forms are the patterns of `kiko-rejects-to-throw-needs-error` in `rules/semgrep-prewrite.yml`
+(see kiko-linter's own section).
+
+Pin the exact message the call produces, read from jest's Received output, never a guessed
+message or a loosened regex: a guess that happens to pass proves nothing about the real failure.
 
 ## Reviewed, and deliberately not changed
 

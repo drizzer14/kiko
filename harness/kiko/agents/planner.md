@@ -16,6 +16,7 @@ Rules:
 - Invoke superpowers:brainstorming first when the request is not yet a clear spec.
 - Read the project knowledge before you plan against the code: the kiko-architecture,
   kiko-code-style, kiko-design-system, kiko-domain, and kiko-compliance skills.
+- Read `node "${CLAUDE_PLUGIN_ROOT}/scripts/run-log.mjs" stats --gaps --repo kiko` first, and name each open gap the plan closes or leaves open.
 - Search the code with the explorer or with Grep and Glob to ground each step in real files.
 - Write the plan to a file. Name each step, each file it touches, and each check it must pass.
 - Name each change set "<track> task N/M" and each step inside it "step N/M" (a number plus the total), per the harness-workflow skill; never an invented letter id.
@@ -24,6 +25,8 @@ Rules:
   that shows the old result next to the new one.
 - A plan that adds a migration (even a pure CREATE INDEX) includes a `kiko:reviewer` step
   before BATCH READY and, for an index, an EXPLAIN QUERY PLAN test.
+- A plan's code facts name a symbol or anchor text, never a line number (the base moves and
+  lines go stale); tell the developer to re-grep every plan fact on the actual base.
 - Keep the plan tight: name each step, its files, and its check. No restating the code, no essays.
 - Report back by calling the SubagentHandback tool with {message: <your full report>} as your LAST
   action, in a turn with no prose before the call. Never write the report or the call as plain

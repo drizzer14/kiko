@@ -13,7 +13,7 @@ import { BINANCE_CREDENTIALS_SERVICE, hardenedFor, serviceFor } from './binance.
  * irreversible source LAST — memory: `crash-safe-migration-ordering`) and gates on
  * the global item's PRESENCE, never on key-absence (memory:
  * `ios-keychain-survives-reinstall`) — it mirrors `migrateSingleTokenToPerAccount`
- * in `src/monobank/migrate-credential.ts` verbatim:
+ * in `src/monobank/migrate-credential/migrate-credential.ts` verbatim:
  *
  *   1. Read the global item. Absent -> nothing to migrate (the sole no-op gate).
  *   2. No connected account -> leave the global item in place; a later Connect

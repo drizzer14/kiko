@@ -1,874 +1,477 @@
 import type { ComponentProps } from 'react';
-import { StyleSheet, TextInput } from 'react-native';
-import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
+import { State } from 'react-native-gesture-handler';
+import { act, fireEvent, render } from '@testing-library/react-native';
+import { fireGestureHandler, getByGestureTestId } from 'react-native-gesture-handler/jest-utils';
 import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
-import { darkTheme } from '@kiko/design-system/theme';
-import { categoryColor } from '@kiko/statistics/category-breakdown';
+import {
+  DELETE_CONFIRM_TEST_ID,
+  HOLD_GESTURE_TEST_ID,
+} from '@kiko/design-system/components/card-context-menu';
+import GestureRootWrapper from '@kiko/test-support/gesture-root-wrapper';
 import { SEEDED_CATEGORIES } from '@kiko/db/__fixtures__/seeded-categories';
-// Prefixed `mock*` so Jest's hoisted mock factory may reference it. Overrides
-// ONLY `useAnimatedRef` — see the module for the full rationale.
-import { mockReanimatedScrollToEnd } from '@kiko/test-support/mock-reanimated-scroll-to-end';
+import { dropCard, type LiftableGrid, liftCard } from '@kiko/test-support/lift-grid-card';
 import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support/navigation-props';
 
 import CategoriesScreen from './categories.screen';
 
-const mockScrollToEnd = jest.fn();
+type CategoryData = { key: string; title: string; icon: string; color?: string | null };
+type RuleData = { id: string; category: string; matchers: string };
 
-// A function ref keeps its `.current` when React attaches the host node.
-jest.mock('react-native-reanimated', () => mockReanimatedScrollToEnd(() => mockScrollToEnd));
-
-// Override the shared `react-native-sortables` mock (`jest/setup.js`) for this
-// file only, so the identity-churn regression test below can inspect the exact
-// `renderItem`/`keyExtractor` props `Sortable.Grid` receives on each render —
-// the shared mock's `Grid` destructures them straight off `props` without
-// exposing them on the rendered host View. Otherwise byte-for-byte the same
-// shape (renders `data` through `renderItem`, keyed via `keyExtractor`, and
-// surfaces `onDragEnd`/the rest on the `sortable-grid` host View), so every
-// other test in this file is unaffected.
-type MockGridProps = {
-  data?: unknown[];
-  renderItem: (info: { item: unknown; index: number }) => unknown;
-  keyExtractor?: (item: unknown) => string;
-  onDragEnd?: (...args: unknown[]) => void;
-  [prop: string]: unknown;
-};
-
-const mockGridSpy = jest.fn<void, [MockGridProps]>();
-jest.mock('react-native-sortables', () => {
-  const React = require('react');
-  const { View } = require('react-native');
-
-  const Grid = ({ data, renderItem, keyExtractor, onDragEnd, ...rest }: MockGridProps) => {
-    mockGridSpy({ data, renderItem, keyExtractor, onDragEnd, ...rest });
-
-    return React.createElement(
-      View,
-      { testID: 'sortable-grid', onDragEnd, ...rest },
-      (data ?? []).map((item: unknown, index: number) =>
-        React.createElement(
-          React.Fragment,
-          { key: keyExtractor ? keyExtractor(item) : index },
-          renderItem({ item, index }),
-        ),
-      ),
-    );
-  };
-
-  const Passthrough = ({ children }: { children?: unknown }) => children ?? null;
-
-  return {
-    __esModule: true,
-    default: { Grid, Flex: Passthrough, Layer: Passthrough, Handle: Passthrough },
-  };
-});
-
-const mockUpdateTitle = jest.fn();
-const mockUpdateIcon = jest.fn();
-const mockUpdateColor = jest.fn();
-const mockCreate = jest.fn();
 const mockDelete = jest.fn();
 const mockReorder = jest.fn();
-const mockSetDefault = jest.fn();
-let mockLiveQueryData: Array<{ key: string; title: string; icon: string; color?: string | null }> =
-  [];
+const mockCountRules = jest.fn<Promise<number>, [string]>();
+const mockCountTemplates = jest.fn<Promise<number>, [string]>();
+let mockCategories: CategoryData[] = [];
+let mockRules: RuleData[] = [];
 let mockSettingsRows: Array<{ defaultCategoryKey: string }> = [];
 let mockCategoriesIsLoading = false;
-// `false` = the categories are still the cached rows (a cached display mount
-// before its own fresh read has applied).
+// `false` = the categories are still the cached rows (a cached display mount before its own fresh
+// read has applied).
 let mockCategoriesIsFresh = true;
+let mockRulesIsLoading = false;
 let mockSettingsIsLoading = false;
 
 jest.mock('@kiko/categories/repo', () => ({
   categoriesRepo: {
     allQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }),
-    create: (...args: unknown[]) => mockCreate(...args),
-    updateTitle: (...args: unknown[]) => mockUpdateTitle(...args),
-    updateIcon: (...args: unknown[]) => mockUpdateIcon(...args),
-    updateColor: (...args: unknown[]) => mockUpdateColor(...args),
     delete: (...args: unknown[]) => mockDelete(...args),
     reorder: (...args: unknown[]) => mockReorder(...args),
   },
 }));
-jest.mock('@kiko/settings/settings.repo', () => ({
-  settingsRepo: {
-    getQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }),
-    setDefaultCategoryKey: (...args: unknown[]) => mockSetDefault(...args),
+jest.mock('@kiko/categories/category-rules-repo', () => ({
+  categoryRulesRepo: {
+    allQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }),
+    countRulesOfCategory: (key: string) => mockCountRules(key),
   },
 }));
+jest.mock('@kiko/transaction-templates/repo', () => ({
+  transactionTemplatesRepo: {
+    countReferencingCategory: (key: string) => mockCountTemplates(key),
+  },
+}));
+jest.mock('@kiko/settings/settings.repo', () => ({
+  settingsRepo: { getQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }) },
+}));
 jest.mock('@kiko/db/use-live-query', () => ({
-  useLiveQuery: (_query: unknown, keys: string[]) =>
-    keys?.[0] === 'settings'
-      ? { data: mockSettingsRows, isLoading: mockSettingsIsLoading }
-      : {
-          data: mockLiveQueryData,
-          isLoading: mockCategoriesIsLoading,
-          isFresh: mockCategoriesIsFresh,
-        },
+  useLiveQuery: (_query: unknown, keys: string[]) => {
+    if (keys?.[0] === 'settings') {
+      return { data: mockSettingsRows, isLoading: mockSettingsIsLoading };
+    }
+
+    if (keys?.[0] === 'category_rules') {
+      return { data: mockRules, isLoading: mockRulesIsLoading, isFresh: true };
+    }
+
+    return {
+      data: mockCategories,
+      isLoading: mockCategoriesIsLoading,
+      isFresh: mockCategoriesIsFresh,
+    };
+  },
 }));
 
 type CategoriesProps = ComponentProps<typeof CategoriesScreen>;
 
-// The screen reads neither prop (it navigates through hooks), but React
-// Navigation still types both as required, so every render supplies the pair
-// from the shared, singly-cast test doubles.
+const navigation = navigationSpy();
+
 const screenElement = () => (
   <CategoriesScreen
-    navigation={asNavigationProp<CategoriesProps['navigation']>(navigationSpy())}
+    navigation={asNavigationProp<CategoriesProps['navigation']>(navigation)}
     route={asRouteProp<CategoriesProps['route']>('Categories')}
   />
 );
 
-const renderScreen = () => render(screenElement());
+const renderScreen = () => render(screenElement(), { wrapper: GestureRootWrapper });
 
-// The categories query hands back new rows (a live-query refire), so each row
-// re-renders with the same key and never remounts.
-const rerenderWithCategories = async (
-  rerender: (element: ReturnType<typeof screenElement>) => void,
-  titleByKey: Record<string, string>,
-) => {
-  mockLiveQueryData = SEEDED_CATEGORIES.map((category) => ({
-    ...category,
-    title: titleByKey[category.key] ?? category.title,
-  }));
-  mockCategoriesIsFresh = true;
+const ruleOf = (id: string, category: string): RuleData => ({ id, category, matchers: '[]' });
 
+const holdCard = async (): Promise<void> => {
   await act(async () => {
-    rerender(screenElement());
+    fireGestureHandler(getByGestureTestId(HOLD_GESTURE_TEST_ID), [
+      { state: State.BEGAN },
+      { state: State.ACTIVE },
+      { state: State.END },
+    ]);
   });
 };
+
+const GROCERIES: CategoryData = { key: 'groceries', title: 'Groceries', icon: 'cart' };
 
 describe('CategoriesScreen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    mockLiveQueryData = SEEDED_CATEGORIES.map((category) => ({ ...category }));
+    mockCountRules.mockResolvedValue(0);
+    mockCountTemplates.mockResolvedValue(0);
+    mockCategories = SEEDED_CATEGORIES.map((category) => ({ ...category }));
+    mockRules = [];
     // `other` is the seeded default catch-all.
     mockSettingsRows = [{ defaultCategoryKey: 'other' }];
     mockCategoriesIsLoading = false;
     mockCategoriesIsFresh = true;
+    mockRulesIsLoading = false;
     mockSettingsIsLoading = false;
   });
 
-  it('lists every seeded category by its title', async () => {
-    const { getByDisplayValue } = await renderScreen();
+  describe('the cards', () => {
+    it('shows a card for every category in the stored order, each with its title', async () => {
+      const { getAllByTestId } = await renderScreen();
+      const cards = getAllByTestId('category-card');
 
-    for (const category of SEEDED_CATEGORIES) {
-      expect(getByDisplayValue(category.title)).toBeTruthy();
-    }
-  });
-
-  it('renders each category as its own card, with no add-category card until the footer expands it', async () => {
-    const { getAllByTestId, getByText, getByTestId, queryByTestId } = await renderScreen();
-
-    // One Card per category — not a single shared surface housing every row.
-    expect(getAllByTestId('category-card')).toHaveLength(SEEDED_CATEGORIES.length);
-    // The add-category form is not mounted until the footer action is tapped.
-    expect(queryByTestId('add-category-card')).toBeNull();
-
-    await fireEvent.press(getByText('Add category'));
-
-    expect(getByTestId('add-category-card')).toBeTruthy();
-  });
-
-  // The category card is the SAME solid content-layer `Card` the account and
-  // holding cards use: a flat `surface` fill, no Liquid Glass material and so
-  // no separate base/wash sub-layers to assert on — the category color lives
-  // on the row icon only, never on the card background.
-  it('renders each category card as the shared solid Card surface', async () => {
-    const { getAllByTestId } = await renderScreen();
-
-    const card = getAllByTestId('category-card')[0];
-    expect(StyleSheet.flatten(card.props.style).backgroundColor).toBe(darkTheme.colors.surface);
-  });
-
-  // ROOT-CAUSE REGRESSION for the flaky category-card ordering: an inline
-  // `keyExtractor`/`renderItem` (a fresh function on every render) makes
-  // `react-native-sortables`' item store (`ItemsProvider`/`createItemsStore`)
-  // treat the renderer itself as changed and recompute EVERY row's node, not
-  // just the row whose data actually changed (see `categoryKeyExtractor`'s
-  // doc comment in `categories.screen.tsx`; the current solid `Card` has no
-  // Liquid Glass resample to worry about, but the referential-stability fix
-  // is still worth asserting). This asserts the FIX (`categoryKeyExtractor` +
-  // the memoized `renderCategoryRow`) directly: the exact function references
-  // `Sortable.Grid` receives must survive a re-render triggered by an
-  // unrelated category write — a live-query refire that hands back a brand
-  // new array of brand new row objects (`useLiveQuery`'s real behavior),
-  // never a `.rerender` reusing the previous props.
-  it('keeps keyExtractor and renderItem referentially stable across a re-render triggered by an unrelated category edit', async () => {
-    const { rerender } = await renderScreen();
-
-    const initialProps = mockGridSpy.mock.calls.at(-1)?.[0];
-    expect(initialProps?.keyExtractor).toEqual(expect.any(Function));
-    expect(initialProps?.renderItem).toEqual(expect.any(Function));
-
-    // Simulate the live query re-firing after an edit to some OTHER category
-    // (a rename/recolor/icon-pick elsewhere in the list): a brand-new array of
-    // brand-new row objects for the same category set, exactly what a real
-    // `categories` table re-`SELECT` hands back.
-    mockLiveQueryData = SEEDED_CATEGORIES.map((category) => ({ ...category }));
-
-    await act(async () => {
-      await rerender(screenElement());
-    });
-
-    const nextProps = mockGridSpy.mock.calls.at(-1)?.[0];
-    expect(nextProps?.keyExtractor).toBe(initialProps?.keyExtractor);
-    expect(nextProps?.renderItem).toBe(initialProps?.renderItem);
-  });
-
-  it('renames a category via updateTitle and shows the new title in the field', async () => {
-    const { getByLabelText, getByDisplayValue } = await renderScreen();
-
-    const field = getByLabelText('Groceries title');
-    await fireEvent.changeText(field, 'Food');
-    await fireEvent(field, 'endEditing');
-
-    expect(mockUpdateTitle).toHaveBeenCalledWith('groceries', 'Food');
-    expect(getByDisplayValue('Food')).toBeTruthy();
-  });
-
-  // kiko-architecture: a cached display mount shows rows that can be one read
-  // old, and a row keyed by category.key never remounts when the fresh row
-  // arrives. A rename made elsewhere (a .kiko restore) must reach the field,
-  // and a no-op focus/blur must never write the cached title back over it.
-  describe('rename from a cached row', () => {
-    beforeEach(() => {
-      mockLiveQueryData = SEEDED_CATEGORIES.map((category) =>
-        category.key === 'groceries' ? { ...category, title: 'Food' } : { ...category },
-      );
-      mockCategoriesIsFresh = false;
-    });
-
-    it('shows the fresh title once it arrives, and a focus/blur writes nothing', async () => {
-      const { rerender, getByLabelText, getByDisplayValue, queryByDisplayValue } =
-        await renderScreen();
-
-      await rerenderWithCategories(rerender, { groceries: 'Groceries' });
-
-      expect(getByDisplayValue('Groceries')).toBeTruthy();
-      expect(queryByDisplayValue('Food')).toBeNull();
-
-      const field = getByLabelText('Groceries title');
-      await fireEvent(field, 'focus');
-      await fireEvent(field, 'endEditing');
-
-      expect(mockUpdateTitle).not.toHaveBeenCalled();
-    });
-
-    it('never writes the cached title back when the fresh title arrives mid-edit', async () => {
-      const { rerender, getByLabelText, getByDisplayValue } = await renderScreen();
-
-      await fireEvent(getByLabelText('Food title'), 'focus');
-      await rerenderWithCategories(rerender, { groceries: 'Groceries' });
-      await fireEvent(getByLabelText('Groceries title'), 'endEditing');
-
-      expect(mockUpdateTitle).not.toHaveBeenCalled();
-      expect(getByDisplayValue('Groceries')).toBeTruthy();
-    });
-
-    it('still saves a rename typed after the fresh title arrived', async () => {
-      const { rerender, getByLabelText } = await renderScreen();
-
-      await rerenderWithCategories(rerender, { groceries: 'Groceries' });
-
-      const field = getByLabelText('Groceries title');
-      await fireEvent(field, 'focus');
-      await fireEvent.changeText(field, 'Food');
-      await fireEvent(field, 'endEditing');
-
-      expect(mockUpdateTitle).toHaveBeenCalledWith('groceries', 'Food');
-    });
-  });
-
-  it('does not call updateTitle when the trimmed new title is empty', async () => {
-    const { getByLabelText } = await renderScreen();
-
-    const field = getByLabelText('Dining title');
-    await fireEvent.changeText(field, '   ');
-    await fireEvent(field, 'endEditing');
-
-    expect(mockUpdateTitle).not.toHaveBeenCalled();
-  });
-
-  it('opens the icon picker modal when a category icon is tapped', async () => {
-    const { getByLabelText, queryByLabelText } = await renderScreen();
-
-    // The modal — and its options — is absent until the icon chip is tapped.
-    expect(queryByLabelText('Choose icon basket')).toBeNull();
-
-    await fireEvent.press(getByLabelText('Change Groceries icon'));
-
-    expect(getByLabelText('Choose icon basket')).toBeTruthy();
-  });
-
-  it('changes a category icon via updateIcon and closes the modal when a curated icon is chosen', async () => {
-    const { getByLabelText, queryByLabelText } = await renderScreen();
-
-    await fireEvent.press(getByLabelText('Change Groceries icon'));
-    await fireEvent.press(getByLabelText('Choose icon basket'));
-
-    expect(mockUpdateIcon).toHaveBeenCalledWith('groceries', 'basket');
-    // Selecting dismisses the modal, so its options are gone.
-    expect(queryByLabelText('Choose icon basket')).toBeNull();
-  });
-
-  it('closes the modal on cancel without changing the icon', async () => {
-    const { getByLabelText, getByText, queryByLabelText } = await renderScreen();
-
-    await fireEvent.press(getByLabelText('Change Groceries icon'));
-    await fireEvent.press(getByText('Cancel'));
-
-    expect(mockUpdateIcon).not.toHaveBeenCalled();
-    expect(queryByLabelText('Choose icon basket')).toBeNull();
-  });
-
-  it('offers a fixed curated icon set (not a free-text field) in the picker', async () => {
-    const { getByLabelText, queryByPlaceholderText } = await renderScreen();
-
-    await fireEvent.press(getByLabelText('Change Groceries icon'));
-
-    // Curated options are rendered as pressable choices, not a typed input.
-    expect(getByLabelText('Choose icon cart')).toBeTruthy();
-    expect(queryByPlaceholderText(/icon/i)).toBeNull();
-  });
-
-  it('no longer overlays a pencil edit badge on the category icons', async () => {
-    const { queryAllByTestId } = await renderScreen();
-
-    // The bordered icon chip is now the sole edit affordance; the overlaid
-    // pencil badge was removed.
-    expect(queryAllByTestId('category-icon-edit-badge')).toHaveLength(0);
-  });
-
-  it('reveals the add-category form when the footer action is tapped', async () => {
-    const { getByLabelText, getByText, queryByLabelText } = await renderScreen();
-
-    // The name field is absent until the footer's "Add category" action is tapped.
-    expect(queryByLabelText('Name')).toBeNull();
-
-    await fireEvent.press(getByText('Add category'));
-
-    expect(getByLabelText('Name')).toBeTruthy();
-  });
-
-  it('focuses the name field when the add-category form is revealed, without native autoFocus', async () => {
-    const focusSpy = jest.spyOn(TextInput.prototype, 'focus');
-
-    const { getByLabelText, getByText } = await renderScreen();
-
-    await fireEvent.press(getByText('Add category'));
-
-    // The name field never sets native autoFocus (it would race the sibling
-    // keyboard InputAccessoryView's registration) — AddCategoryRow instead
-    // focuses it imperatively, deferred to the next frame; wait for that frame
-    // to elapse.
-    expect(getByLabelText('Name').props.autoFocus).toBeUndefined();
-    await waitFor(() => expect(focusSpy).toHaveBeenCalled());
-
-    focusSpy.mockRestore();
-  });
-
-  it('scrolls the ScrollView to the newly revealed form when the add form expands', async () => {
-    // The scroll is deferred to the next frame so the just-revealed fields are
-    // measured first; run that frame synchronously to assert the effect.
-    const rafSpy = jest
-      .spyOn(globalThis, 'requestAnimationFrame')
-      .mockImplementation((callback) => {
-        callback(0);
-
-        return 0;
+      expect(cards).toHaveLength(SEEDED_CATEGORIES.length);
+      SEEDED_CATEGORIES.forEach((category, index) => {
+        expect(cards[index]).toHaveTextContent(new RegExp(category.title));
       });
-
-    const { getByText } = await renderScreen();
-
-    await fireEvent.press(getByText('Add category'));
-
-    expect(mockScrollToEnd).toHaveBeenCalledWith({ animated: true });
-
-    rafSpy.mockRestore();
-  });
-
-  it('creates a category via categoriesRepo.create and clears the form after saving', async () => {
-    const { getByLabelText, getByText, queryByLabelText } = await renderScreen();
-
-    await fireEvent.press(getByText('Add category'));
-    await fireEvent.changeText(getByLabelText('Name'), 'Travel');
-    await fireEvent.press(getByText('Save'));
-
-    // The default icon seeds the new category until the user picks another, and
-    // with no swatch tapped the color persists as null (the "not picked" state).
-    expect(mockCreate).toHaveBeenCalledWith({
-      title: 'Travel',
-      icon: 'tag',
-      color: null,
-    });
-    // The form collapses (clears) on a successful add.
-    expect(queryByLabelText('Name')).toBeNull();
-  });
-
-  it('creates a category with the picked color when a swatch is tapped', async () => {
-    const { getByLabelText, getByText } = await renderScreen();
-
-    await fireEvent.press(getByText('Add category'));
-    await fireEvent.changeText(getByLabelText('Name'), 'Travel');
-    // The add-form picker scopes its swatch labels with its own prefix, so this
-    // targets it unambiguously despite the per-row pickers already on screen.
-    await fireEvent.press(getByLabelText('New category color yellow'));
-    await fireEvent.press(getByText('Save'));
-
-    expect(mockCreate).toHaveBeenCalledWith(
-      expect.objectContaining({ title: 'Travel', color: expect.stringMatching(/^#/) }),
-    );
-  });
-
-  it('recolors a category via updateColor when a row swatch is tapped', async () => {
-    const { getByLabelText } = await renderScreen();
-
-    // Each row's picker prefixes its swatch labels with the category title, so
-    // the Groceries row's yellow swatch is addressable on its own.
-    await fireEvent.press(getByLabelText('Groceries color yellow'));
-
-    expect(mockUpdateColor).toHaveBeenCalledWith('groceries', expect.stringMatching(/^#/));
-  });
-
-  it('shows a name-required error and creates nothing when the name is blank', async () => {
-    const { getByLabelText, getByText, findByText } = await renderScreen();
-
-    await fireEvent.press(getByText('Add category'));
-    await fireEvent.press(getByText('Save'));
-
-    expect(await findByText('Enter a name.')).toBeTruthy();
-    expect(mockCreate).not.toHaveBeenCalled();
-
-    await fireEvent.changeText(getByLabelText('Name'), '   ');
-    await fireEvent.press(getByText('Save'));
-
-    expect(mockCreate).not.toHaveBeenCalled();
-  });
-
-  it('leads the footer "Add category" action with the category tag glyph', async () => {
-    const { getByTestId } = await renderScreen();
-
-    const glyphs = getByTestId('add-category-footer').queryAll((node) => node.props.name === 'tag');
-
-    expect(glyphs.length).toBeGreaterThan(0);
-  });
-
-  it('collapses the add-category form (and writes nothing) when Cancel is pressed', async () => {
-    const { getByLabelText, getByText, queryByLabelText } = await renderScreen();
-
-    await fireEvent.press(getByText('Add category'));
-    // Enter a name, then back out — Cancel must be a real escape hatch.
-    await fireEvent.changeText(getByLabelText('Name'), 'Travel');
-    await fireEvent.press(getByText('Cancel'));
-
-    // The form collapses back to the single footer "Add category" action...
-    expect(queryByLabelText('Name')).toBeNull();
-    expect(getByText('Add category')).toBeTruthy();
-    // ...without persisting anything.
-    expect(mockCreate).not.toHaveBeenCalled();
-  });
-
-  it('offers an expanded curated icon pool covering common finance categories', async () => {
-    const { getByLabelText, getAllByLabelText } = await renderScreen();
-
-    await fireEvent.press(getByLabelText('Change Groceries icon'));
-
-    // The whole Kiko Categories pool (76 symbols) is offered at once.
-    expect(getAllByLabelText(/^Choose icon /).length).toBeGreaterThan(40);
-
-    // A spread of category-relevant SF Symbols from the Kiko Categories pool is
-    // present.
-    for (const icon of [
-      'cart',
-      'fuelpump',
-      'banknote',
-      'house',
-      'building',
-      'cup.and.saucer',
-      'tshirt',
-      'gift',
-    ]) {
-      expect(getByLabelText(`Choose icon ${icon}`)).toBeTruthy();
-    }
-  });
-
-  it('gives each card control a >=44pt tap target via the shared Button (iOS HIG)', async () => {
-    const { getByLabelText } = await renderScreen();
-
-    // The set-default star is the shared Button at the `compact` size (44pt
-    // visible, aligning with the name input); the delete and both reorder
-    // controls are at the shorter `small` size, whose >= 44pt tap target (H1 in
-    // the HIG audit) is restored by hitSlop. Either way the tap target is the
-    // visible minHeight PLUS any hitSlop above and below it, and that must
-    // reach 44.
-    for (const label of [
-      'Set Groceries as default',
-      'Delete Groceries',
-      'Move Transport to top',
-      'Move Transport to bottom',
-    ]) {
-      const control = getByLabelText(label);
-      const visibleHeight = StyleSheet.flatten(control.props.style).minHeight as number;
-      const slop = (control.props.hitSlop ?? { top: 0, bottom: 0 }) as {
-        top?: number;
-        bottom?: number;
-      };
-      expect(visibleHeight + (slop.top ?? 0) + (slop.bottom ?? 0)).toBeGreaterThanOrEqual(44);
-    }
-  });
-
-  it('renders a disabled Delete on the default category card for layout parity', async () => {
-    const { getByLabelText } = await renderScreen();
-
-    // The default card ALWAYS renders the Delete control, but disabled — the
-    // default can never be deleted, and the disabled state
-    // keeps the bottom row's layout identical across every card.
-    expect(getByLabelText('Delete Other')).toBeDisabled();
-  });
-
-  it('renders the default-star marker as the same faint-tint compact Button shape as the set-default star', async () => {
-    const { getByLabelText } = await renderScreen();
-
-    // The default marker is the same faint-tint `compact` Button as the
-    // set-default star, disabled so it reads as a static marker — the SAME
-    // control shape and padding, not a bare icon. At compact it holds a 44pt
-    // visible tap target outright.
-    const marker = getByLabelText('Other is the default category');
-    const visibleHeight = StyleSheet.flatten(marker.props.style).minHeight as number;
-    const slop = (marker.props.hitSlop ?? { top: 0, bottom: 0 }) as {
-      top?: number;
-      bottom?: number;
-    };
-    expect(visibleHeight + (slop.top ?? 0) + (slop.bottom ?? 0)).toBeGreaterThanOrEqual(44);
-    expect(marker).toBeDisabled();
-  });
-
-  it('sizes both favorite star buttons to compact (44pt) to match the name input height', async () => {
-    const { getByLabelText } = await renderScreen();
-
-    // The star sits beside the fixed 44pt name input (HoldingIdentityField's
-    // nameField), so its VISIBLE height must be 44pt (compact), not the shorter
-    // 34pt `small` — otherwise it reads as misaligned against the input. Both the
-    // set-default star and the default-marker star take the compact height.
-    const setDefaultStar = getByLabelText('Set Groceries as default');
-    const defaultMarker = getByLabelText('Other is the default category');
-    expect(StyleSheet.flatten(setDefaultStar.props.style).minHeight).toBe(44);
-    expect(StyleSheet.flatten(defaultMarker.props.style).minHeight).toBe(44);
-  });
-
-  it('keeps a non-default card Delete enabled', async () => {
-    const { getByLabelText } = await renderScreen();
-
-    expect(getByLabelText('Delete Groceries')).not.toBeDisabled();
-  });
-
-  it('tints an uncolored category row icon from the chart set hash', async () => {
-    // A single uncolored category, so exactly one row icon renders and its
-    // color comes from the `categoryColor(key)` hash, not a stored hex.
-    mockLiveQueryData = [{ key: 'utilities', title: 'Utilities', icon: 'bolt', color: null }];
-    mockSettingsRows = [{ defaultCategoryKey: 'utilities' }];
-
-    const { getByLabelText } = await renderScreen();
-
-    expect(getByLabelText('Icon bolt').props.tintColor).toBe(categoryColor('utilities'));
-  });
-
-  it('shows the delete control at the bottom with a visible "Delete" label', async () => {
-    const { getAllByText, getByLabelText } = await renderScreen();
-
-    // The delete affordance carries a visible "Delete" text label — one per card
-    // (the default card's is disabled, but still rendered for layout parity), not
-    // just an icon.
-    expect(getAllByText('Delete')).toHaveLength(SEEDED_CATEGORIES.length);
-    expect(getByLabelText('Delete Groceries')).toBeTruthy();
-  });
-
-  it('puts the "Set as default" control in the header slot on the non-default cards and hides it on the default', async () => {
-    const { queryByLabelText, getByLabelText } = await renderScreen();
-
-    // The default card shows the filled-star marker in its header slot instead
-    // of a "Set as default" control.
-    expect(queryByLabelText('Set Other as default')).toBeNull();
-    // Every other card exposes the icon-only "Set as default" star, identified
-    // purely by its VoiceOver label.
-    expect(getByLabelText('Set Groceries as default')).toBeTruthy();
-  });
-
-  it('sets a category as the default when its "Set as default" is pressed', async () => {
-    const { getByLabelText } = await renderScreen();
-
-    await fireEvent.press(getByLabelText('Set Groceries as default'));
-
-    expect(mockSetDefault).toHaveBeenCalledWith('groceries');
-  });
-
-  it('confirms via the themed sheet before deleting, then deletes by key on confirm', async () => {
-    const { getByLabelText, getByTestId, getByText } = await renderScreen();
-
-    await fireEvent.press(getByLabelText('Delete Groceries'));
-
-    // The themed ConfirmSheet (not a native action sheet) opens titled with the
-    // category name; nothing is deleted until its destructive confirm is pressed.
-    expect(getByText('Delete "Groceries"')).toBeTruthy();
-    expect(mockDelete).not.toHaveBeenCalled();
-
-    await fireEvent.press(getByTestId('category-delete-confirm'));
-
-    expect(mockDelete).toHaveBeenCalledWith('groceries');
-  });
-
-  it('deletes nothing when the themed delete confirm is dismissed via Cancel', async () => {
-    const { getByLabelText, getByText } = await renderScreen();
-
-    await fireEvent.press(getByLabelText('Delete Groceries'));
-    await fireEvent.press(getByText('Cancel'));
-
-    expect(mockDelete).not.toHaveBeenCalled();
-  });
-
-  describe('reorder', () => {
-    // The seeded categories render top-to-bottom in `SEEDED_CATEGORIES` order.
-    const keys = SEEDED_CATEGORIES.map((category) => category.key);
-
-    it('moves a category to the top when its move-to-top button is pressed', async () => {
-      const { getByLabelText } = await renderScreen();
-
-      // Transport is the third card; move-to-top lifts it above every other,
-      // keeping the rest in their existing relative order.
-      await fireEvent.press(getByLabelText('Move Transport to top'));
-
-      expect(mockReorder).toHaveBeenCalledWith([
-        'transport',
-        ...keys.filter((k) => k !== 'transport'),
-      ]);
     });
 
-    it('moves a category to the bottom when its move-to-bottom button is pressed', async () => {
-      const { getByLabelText } = await renderScreen();
+    it('draws each card with the icon of its category', async () => {
+      mockCategories = [GROCERIES];
 
-      // Transport drops below every other, the rest keeping their order.
-      await fireEvent.press(getByLabelText('Move Transport to bottom'));
-
-      expect(mockReorder).toHaveBeenCalledWith([
-        ...keys.filter((k) => k !== 'transport'),
-        'transport',
-      ]);
-    });
-
-    // kiko-architecture: a cached display mount shows rows that can be one
-    // read old. Both reorder paths persist the WHOLE order of the rows on
-    // screen, so neither may act on the cached order.
-    it('never starts a drag reorder while the categories are still the cached order', async () => {
-      mockCategoriesIsFresh = false;
       const { getByTestId } = await renderScreen();
 
-      expect(getByTestId('sortable-grid').props.sortEnabled).toBe(false);
+      expect(
+        getByTestId('entity-icon-tile').queryAll((node) => node.props.name === 'cart').length,
+      ).toBeGreaterThan(0);
     });
 
-    it('ignores a move-to-top press while the categories are still the cached order', async () => {
-      mockCategoriesIsFresh = false;
-      const { getByLabelText } = await renderScreen();
+    it('counts the rules of each category, whatever the case of the stored key', async () => {
+      mockCategories = [GROCERIES, { key: 'dining', title: 'Dining', icon: 'fork.knife' }];
+      mockRules = [
+        ruleOf('r1', 'groceries'),
+        ruleOf('r2', 'Groceries'),
+        ruleOf('r3', 'groceries'),
+        ruleOf('r4', 'dining'),
+      ];
 
-      await fireEvent.press(getByLabelText('Move Transport to top'));
+      const { getAllByTestId } = await renderScreen();
+      const [groceries, dining] = getAllByTestId('category-card');
 
-      expect(mockReorder).not.toHaveBeenCalled();
+      expect(groceries).toHaveTextContent(/3 rules/);
+      expect(dining).toHaveTextContent(/1 rule(?!s)/);
     });
 
-    it('persists a drag reorder through onGridDragEnd (only when the item actually moved)', async () => {
-      const { getByTestId } = await renderScreen();
+    it('says "No rules" for a category without rules', async () => {
+      mockCategories = [GROCERIES];
 
-      // A release-in-place (fromIndex === toIndex) is a held-not-dragged gesture:
-      // onGridDragEnd persists nothing.
-      await act(async () => {
-        getByTestId('sortable-grid').props.onDragEnd({
-          key: 'transport',
-          fromIndex: 2,
-          toIndex: 2,
-          indexToKey: keys,
+      const { getByText } = await renderScreen();
+
+      expect(getByText('No rules')).toBeTruthy();
+    });
+
+    it('marks the default category from the settings and no other', async () => {
+      mockSettingsRows = [{ defaultCategoryKey: 'dining' }];
+
+      const { getAllByText, getAllByTestId } = await renderScreen();
+
+      expect(getAllByText('Default')).toHaveLength(1);
+      expect(getAllByTestId('category-card')[1]).toHaveTextContent(/Default/);
+    });
+
+    it('falls back to the seeded default when the settings row is missing', async () => {
+      mockSettingsRows = [];
+
+      const { getAllByTestId } = await renderScreen();
+      const otherIndex = SEEDED_CATEGORIES.findIndex((category) => category.key === 'other');
+
+      expect(getAllByTestId('category-card')[otherIndex]).toHaveTextContent(/Default/);
+    });
+
+    describe('under the uk language', () => {
+      beforeEach(async () => {
+        await act(async () => {
+          await i18n.changeLanguage('uk');
         });
       });
-      expect(mockReorder).not.toHaveBeenCalled();
 
-      // A real move (fromIndex !== toIndex) persists the new front-to-back order.
-      const reordered = ['transport', ...keys.filter((k) => k !== 'transport')];
+      afterEach(async () => {
+        await act(async () => {
+          await i18n.changeLanguage('en');
+        });
+      });
+
+      it('names a seeded category by its translated title and says the rule count in the right plural form', async () => {
+        mockCategories = [
+          GROCERIES,
+          { key: 'a', title: 'A', icon: 'tag' },
+          { key: 'b', title: 'B', icon: 'tag' },
+          { key: 'c', title: 'C', icon: 'tag' },
+          { key: 'd', title: 'D', icon: 'tag' },
+        ];
+        mockRules = [
+          ruleOf('g1', 'groceries'),
+          ...['a1', 'a2'].map((id) => ruleOf(id, 'a')),
+          ...['b1', 'b2', 'b3', 'b4', 'b5'].map((id) => ruleOf(id, 'b')),
+          ...Array.from({ length: 21 }, (_, index) => ruleOf(`c${index}`, 'c')),
+        ];
+
+        const { getAllByTestId } = await renderScreen();
+        const [groceries, two, five, twentyOne, none] = getAllByTestId('category-card');
+
+        expect(groceries).toHaveTextContent(/Продукти/);
+        expect(groceries).toHaveTextContent(/1 правило/);
+        expect(two).toHaveTextContent(/2 правила/);
+        expect(five).toHaveTextContent(/5 правил/);
+        expect(twentyOne).toHaveTextContent(/21 правило/);
+        expect(none).toHaveTextContent(/Немає правил/);
+      });
+
+      it('marks the default category with the Ukrainian word', async () => {
+        const { getAllByText } = await renderScreen();
+
+        expect(getAllByText('Типова')).toHaveLength(1);
+      });
+    });
+  });
+
+  describe('opening a category', () => {
+    it('opens the category page with its key when a card is tapped', async () => {
+      mockCategories = [GROCERIES];
+
+      const { getByText } = await renderScreen();
+
+      await fireEvent.press(getByText('Groceries'));
+
+      expect(navigation.navigate).toHaveBeenCalledWith('CategoryDetail', {
+        categoryKey: 'groceries',
+      });
+    });
+
+    it('does not open a card that a hold lifted', async () => {
+      mockCategories = [GROCERIES];
+
+      const { getByText, getByTestId } = await renderScreen();
+
+      await liftCard(getByTestId('sortable-grid') as LiftableGrid, 'groceries');
+      await fireEvent.press(getByText('Groceries'));
+
+      expect(navigation.navigate).not.toHaveBeenCalled();
+
+      await dropCard(getByTestId('sortable-grid') as LiftableGrid, 'groceries');
+      await fireEvent.press(getByText('Groceries'));
+
+      expect(navigation.navigate).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('deleting a category', () => {
+    it('offers the delete on a hold, named by the displayed title', async () => {
+      mockCategories = [GROCERIES];
+
+      const { getByText } = await renderScreen();
+
+      await holdCard();
+
+      expect(getByText('Delete "Groceries"')).toBeTruthy();
+    });
+
+    it('names the rules the delete takes with it, read for that category', async () => {
+      mockCategories = [GROCERIES];
+      mockCountRules.mockResolvedValue(3);
+
+      const { getByText } = await renderScreen();
+
+      await holdCard();
+
+      expect(mockCountRules).toHaveBeenCalledWith('groceries');
+      expect(getByText('Its 3 rules will be deleted too.')).toBeTruthy();
+    });
+
+    it('says "rule" for a single rule', async () => {
+      mockCategories = [GROCERIES];
+      mockCountRules.mockResolvedValue(1);
+
+      const { getByText } = await renderScreen();
+
+      await holdCard();
+
+      expect(getByText('Its 1 rule will be deleted too.')).toBeTruthy();
+    });
+
+    it('names the templates the delete clears the category in, below the rules, read for that category', async () => {
+      mockCategories = [GROCERIES];
+      mockCountRules.mockResolvedValue(3);
+      mockCountTemplates.mockResolvedValue(2);
+
+      const { getByText } = await renderScreen();
+
+      await holdCard();
+
+      expect(mockCountTemplates).toHaveBeenCalledWith('groceries');
+      expect(
+        getByText('Its 3 rules will be deleted too.\nThis also clears it in 2 templates.'),
+      ).toBeTruthy();
+    });
+
+    it('still says the templates are cleared when the template count cannot be read', async () => {
+      mockCategories = [GROCERIES];
+      mockCountRules.mockResolvedValue(3);
+      mockCountTemplates.mockRejectedValue(new Error('read failed'));
+
+      const { getByText, getByTestId } = await renderScreen();
+
+      await holdCard();
+
+      expect(getByText('Delete "Groceries"')).toBeTruthy();
+      expect(
+        getByText('Its 3 rules will be deleted too.\nThis also clears it in its templates.'),
+      ).toBeTruthy();
+      expect(getByTestId(DELETE_CONFIRM_TEST_ID)).toBeTruthy();
+    });
+
+    it('keeps the confirm to its title when the category has no rules', async () => {
+      mockCategories = [GROCERIES];
+
+      const { getByText, queryByText } = await renderScreen();
+
+      await holdCard();
+
+      expect(getByText('Delete "Groceries"')).toBeTruthy();
+      expect(queryByText(/will be deleted too/)).toBeNull();
+    });
+
+    it('still says the rules go too when the rule count cannot be read', async () => {
+      mockCategories = [GROCERIES];
+      mockCountRules.mockRejectedValue(new Error('read failed'));
+
+      const { getByText, getByTestId } = await renderScreen();
+
+      await holdCard();
+
+      expect(getByText('Delete "Groceries"')).toBeTruthy();
+      expect(getByText('Its rules will be deleted too.')).toBeTruthy();
+      expect(getByTestId(DELETE_CONFIRM_TEST_ID)).toBeTruthy();
+    });
+
+    it('gives the card caption and the confirm the same count for a stored key of another case', async () => {
+      mockCategories = [GROCERIES];
+      mockRules = [ruleOf('r1', 'groceries'), ruleOf('r2', 'GROCERIES')];
+      mockCountRules.mockResolvedValue(2);
+
+      const { getByText, getByTestId } = await renderScreen();
+
+      expect(getByTestId('category-card')).toHaveTextContent(/2 rules/);
+
+      await holdCard();
+
+      expect(mockCountRules).toHaveBeenCalledWith('groceries');
+      expect(getByText('Its 2 rules will be deleted too.')).toBeTruthy();
+    });
+
+    it('deletes the category only when the confirm is pressed', async () => {
+      mockCategories = [GROCERIES];
+
+      const { getByTestId } = await renderScreen();
+
+      await holdCard();
+
+      expect(mockDelete).not.toHaveBeenCalled();
+
+      await fireEvent.press(getByTestId(DELETE_CONFIRM_TEST_ID));
+
+      expect(mockDelete).toHaveBeenCalledWith('groceries');
+    });
+
+    it('offers no delete on the default category', async () => {
+      mockCategories = [{ key: 'other', title: 'Other', icon: 'square.grid.2x2' }];
+
+      await renderScreen();
+
+      expect(() => getByGestureTestId(HOLD_GESTURE_TEST_ID)).toThrow();
+    });
+  });
+
+  describe('reordering', () => {
+    it('persists the new order when a card is dragged to another slot', async () => {
+      const { getByTestId } = await renderScreen();
+      const keys = SEEDED_CATEGORIES.map((category) => category.key);
+      const reordered = [keys[1], keys[0], ...keys.slice(2)];
+
       await act(async () => {
         getByTestId('sortable-grid').props.onDragEnd({
-          key: 'transport',
-          fromIndex: 2,
+          key: keys[1],
+          fromIndex: 1,
           toIndex: 0,
           indexToKey: reordered,
         });
       });
+
       expect(mockReorder).toHaveBeenCalledWith(reordered);
     });
 
-    // Every card here wraps a live rename TextInput, unlike the accounts and
-    // holdings grids. The library's default 200ms drag-activation is shorter
-    // than iOS's own text-selection hold, so a hold meant to place the cursor
-    // (or open Paste) started a card drag instead — this grid needs a delay
-    // above that threshold (kiko-gestures).
-    it('gives the categories grid a drag delay above the iOS text-selection threshold', async () => {
+    it('persists nothing for a hold released in place', async () => {
       const { getByTestId } = await renderScreen();
 
-      const grid = getByTestId('sortable-grid');
+      await act(async () => {
+        getByTestId('sortable-grid').props.onDragEnd({
+          key: 'groceries',
+          fromIndex: 0,
+          toIndex: 0,
+          indexToKey: SEEDED_CATEGORIES.map((category) => category.key),
+        });
+      });
 
-      expect(grid.props.dragActivationDelay).toBeGreaterThanOrEqual(500);
+      expect(mockReorder).not.toHaveBeenCalled();
+    });
+
+    it('allows a drag only once the fresh read applied, a lone card included', async () => {
+      const fresh = await renderScreen();
+
+      expect(fresh.getByTestId('sortable-grid').props.sortEnabled).toBe(true);
+      await fresh.unmount();
+
+      mockCategoriesIsFresh = false;
+      const cached = await renderScreen();
+
+      expect(cached.getByTestId('sortable-grid').props.sortEnabled).toBe(false);
+      await cached.unmount();
+
+      mockCategoriesIsFresh = true;
+      mockCategories = [GROCERIES];
+      const single = await renderScreen();
+
+      expect(single.getByTestId('sortable-grid').props.sortEnabled).toBe(true);
+    });
+
+    it('lays the cards out as one column, like the Accounts list', async () => {
+      const { getByTestId } = await renderScreen();
+
+      expect(getByTestId('sortable-grid').props.columns).toBe(1);
+      expect(getByTestId('sortable-grid').props.overDrag).toBe('vertical');
     });
   });
 
-  describe('localization', () => {
-    afterEach(async () => {
-      await act(async () => {
-        await i18n.changeLanguage('en');
-      });
+  describe('adding a category', () => {
+    it('opens the category form without a key from the footer', async () => {
+      const { getByText } = await renderScreen();
+
+      await fireEvent.press(getByText('Add category'));
+
+      expect(navigation.navigate).toHaveBeenCalledWith('CategoryForm', {});
     });
 
-    it('shows the translated label for an un-renamed default under the Ukrainian catalog', async () => {
-      await act(async () => {
-        await i18n.changeLanguage('uk');
-      });
+    it('leads the footer "Add category" action with the category tag glyph', async () => {
+      const { getByTestId } = await renderScreen();
 
-      const { getByDisplayValue, queryByDisplayValue } = await renderScreen();
-
-      expect(getByDisplayValue('Продукти')).toBeTruthy();
-      expect(queryByDisplayValue('Groceries')).toBeNull();
-    });
-
-    // The regression this guards against: pre-filling the editable field with
-    // the TRANSLATED title would make an unedited (no-op) end-of-editing look
-    // like a rename to that translated string, permanently un-translating the
-    // row (its stored title would not match the English seed). Focusing
-    // then blurring without typing anything must never call updateTitle.
-    it('does not persist the translated label as a rename on an unedited (no-op) save', async () => {
-      await act(async () => {
-        await i18n.changeLanguage('uk');
-      });
-
-      const { getByLabelText } = await renderScreen();
-
-      const field = getByLabelText('Назва Продукти');
-      await fireEvent(field, 'focus');
-      await fireEvent(field, 'endEditing');
-
-      expect(mockUpdateTitle).not.toHaveBeenCalled();
-    });
-
-    it('reverts to the translated label after a no-op focus/blur cycle', async () => {
-      await act(async () => {
-        await i18n.changeLanguage('uk');
-      });
-
-      const { getByLabelText, getByDisplayValue } = await renderScreen();
-
-      const field = getByLabelText('Назва Продукти');
-      await fireEvent(field, 'focus');
-      await fireEvent(field, 'endEditing');
-
-      expect(getByDisplayValue('Продукти')).toBeTruthy();
-    });
-
-    // Every per-card accessibility label names the category as the user SEES
-    // it — the translated default name, never the raw English seed title.
-    it('names an un-renamed default by its translated title in every card accessibility label under uk', async () => {
-      await act(async () => {
-        await i18n.changeLanguage('uk');
-      });
-
-      const { getByLabelText, queryByLabelText } = await renderScreen();
-
-      for (const label of [
-        'Змінити іконку Продукти',
-        'Назва Продукти',
-        'Зробити Продукти категорією за замовчуванням',
-        'Видалити Продукти',
-        'Перемістити Продукти нагору',
-        'Перемістити Продукти вниз',
-        'Інше — категорія за замовчуванням',
-      ]) {
-        expect(getByLabelText(label)).toBeTruthy();
-      }
-
-      expect(queryByLabelText(/Groceries|Other/)).toBeNull();
-    });
-
-    it('prefixes the per-card color swatches with the translated title under uk', async () => {
-      await act(async () => {
-        await i18n.changeLanguage('uk');
-      });
-
-      const { getAllByLabelText, queryAllByLabelText } = await renderScreen();
-
-      expect(getAllByLabelText(/^Колір Продукти /).length).toBeGreaterThan(0);
-      expect(queryAllByLabelText(/^Колір Groceries /)).toHaveLength(0);
-    });
-
-    it('titles the delete confirm sheet with the translated name under uk', async () => {
-      await act(async () => {
-        await i18n.changeLanguage('uk');
-      });
-
-      const { getByLabelText, getByText, queryByText } = await renderScreen();
-
-      await fireEvent.press(getByLabelText('Видалити Продукти'));
-
-      expect(getByText('Видалити «Продукти»')).toBeTruthy();
-      expect(queryByText('Видалити «Groceries»')).toBeNull();
-    });
-
-    it('keeps a renamed category verbatim in its accessibility labels and delete title under uk', async () => {
-      mockLiveQueryData = mockLiveQueryData.map((category) =>
-        category.key === 'groceries' ? { ...category, title: 'Овочі' } : category,
+      const glyphs = getByTestId('add-category-footer').queryAll(
+        (node) => node.props.name === 'tag',
       );
-      await act(async () => {
-        await i18n.changeLanguage('uk');
-      });
 
-      const { getByLabelText, getByText } = await renderScreen();
-
-      await fireEvent.press(getByLabelText('Видалити Овочі'));
-
-      expect(getByText('Видалити «Овочі»')).toBeTruthy();
-    });
-
-    it('still renames a category via updateTitle when the field is actually edited under uk', async () => {
-      await act(async () => {
-        await i18n.changeLanguage('uk');
-      });
-
-      const { getByLabelText } = await renderScreen();
-
-      const field = getByLabelText('Назва Продукти');
-      await fireEvent(field, 'focus');
-      await fireEvent.changeText(field, 'Овочі');
-      await fireEvent(field, 'endEditing');
-
-      expect(mockUpdateTitle).toHaveBeenCalledWith('groceries', 'Овочі');
+      expect(glyphs.length).toBeGreaterThan(0);
     });
   });
-});
 
-describe('CategoriesScreen — loading gate', () => {
-  beforeEach(() => {
-    jest.clearAllMocks();
-    mockLiveQueryData = [];
-    mockCategoriesIsLoading = true;
-  });
+  describe('while a query is on its first load', () => {
+    it.each([
+      ['categories', () => (mockCategoriesIsLoading = true)],
+      ['rules', () => (mockRulesIsLoading = true)],
+      ['settings', () => (mockSettingsIsLoading = true)],
+    ])('shows the loading state and no card while the %s are loading', async (_name, load) => {
+      load();
 
-  it('shows a loading spinner, not a blank list, while categories is on its first load', async () => {
-    const { getByTestId, queryByTestId } = await renderScreen();
+      const { getByTestId, queryAllByTestId } = await renderScreen();
 
-    expect(getByTestId('categories-loading')).toBeTruthy();
-    expect(queryByTestId('sortable-grid')).toBeNull();
-  });
-
-  it('renders the real list once categories has loaded', async () => {
-    mockCategoriesIsLoading = false;
-    mockLiveQueryData = SEEDED_CATEGORIES.map((category) => ({ ...category }));
-
-    const { getByDisplayValue, queryByTestId } = await renderScreen();
-
-    expect(getByDisplayValue(SEEDED_CATEGORIES[0].title)).toBeTruthy();
-    expect(queryByTestId('categories-loading')).toBeNull();
+      expect(getByTestId('categories-loading')).toBeTruthy();
+      expect(queryAllByTestId('category-card')).toHaveLength(0);
+    });
   });
 });

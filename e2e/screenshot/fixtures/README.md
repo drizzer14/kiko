@@ -28,7 +28,7 @@ argument (Guideline 5.6):
 | `kiko-demo-en.kiko` | Same, English dataset |
 | `kiko-demo-en-1.1.kiko` | A frozen copy of the English file as release 1.1 wrote it (export version 1, none of 1.2's settings columns); never regenerated or edited, read only by `src/data-transfer/import-data.back-compat.test.ts` |
 | `kiko-demo.key` | The base64 AES-256 key, **shared by all the files** |
-| `build-demo-snapshot.ts` | Pure mapper: `ScreenshotDataset` -> `DataSnapshot` (all 10 logical tables) |
+| `build-demo-snapshot.ts` | Pure mapper: `ScreenshotDataset` -> `DataSnapshot` (every logical table, the transaction templates included) |
 | `generate-demo-kiko.ts` | Pure encoder: `DataSnapshot` + key + anchor -> the `.kiko` file's JSON, via the app's real `encryptEnvelope` |
 | `demo-anchor.ts` | Picks the regen anchor: `KIKO_DEMO_ANCHOR` or the local day |
 | `generate-demo-kiko.test.ts` | REGEN (writes the fixtures) + GUARD (decrypts and diffs them against the current builder — this is what `make gate` runs on every future commit) |
@@ -95,6 +95,10 @@ verify it passed before committing. Never regenerate or edit
 Note: `encryptEnvelope` uses a fresh random nonce every call, so the
 ciphertext bytes differ on every regen even when the underlying data is
 unchanged — that is expected, not a bug.
+
+The demo carries category rules; the contract is in `build-demo-snapshot.test.ts`
+(rule-vs-ledger agreement over en and uk). Regenerating moves the anchor to the
+regeneration day.
 
 ## Importing on a device
 

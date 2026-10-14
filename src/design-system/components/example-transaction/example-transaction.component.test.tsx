@@ -32,9 +32,8 @@ jest.mock('@kiko/design-system/components/transaction-card', () => ({
 }));
 
 // Controllable per-table isLoading, for the loading-gate tests only — both
-// default to false (already-resolved, matching the empty `data: []` the
-// unmocked hook resolved to before this mock existed), so every other test
-// below keeps behaving exactly as before.
+// default to false (already-resolved, matching the empty `data: []` an
+// unmocked hook resolves to), so every other test below sees a resolved query.
 let mockCategoriesLoading = false;
 let mockSettingsLoading = false;
 jest.mock('@kiko/db/use-live-query', () => ({
