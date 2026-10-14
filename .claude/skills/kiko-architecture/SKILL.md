@@ -743,8 +743,11 @@ one list of rows a rule never rewrites; `isRewriteEligible` and the
 refresh CASE in `src/transactions/repo/transactions.repo.ts` both derive
 from it. It names every structural marker `exchangeExcludedTransactionIds`
 reads (`plan-rule-rewrite.test.ts` pins that), so a marker the statistics
-start treating as an exchange leg joins the list in the same change. The insert path applies rules to every
-row, exchange legs included; only the rewrite skips the marked rows.
+start treating as an exchange leg joins the list in the same change. The insert path
+(`withCategoryRules`) applies rules to every new row, exchange legs and untracked-wallet legs
+included (user ruling Q1 = A, 2026-10-15); the rewrite of a saved rule and the re-sync refresh
+CASE (`ruleWonTransactionSet`) skip the rows that any `REWRITE_GUARD_FIELDS` field marks
+(OVERNIGHT DEFAULT D3, 2026-10-15).
 `saveRule`, `countRuleRewrite` and `applyNameRule` go through one
 `stageDraft` (the stored rule, the row it becomes, every rule prepared with
 that row in place), so the rules are read once per write; `storeRule` is the
@@ -2099,7 +2102,8 @@ record imports only at `TRANSFER_SETTLED_STATUS`; BTC only. The stop codes live 
   narrows only itself) with the clock it was served at. A search begins at the start another type
   is served from when one is known (`DepthGuard.hintMs`, `narrowFromHint`), which decides only
   which starts are asked first. The depth is assumed to move forward and never back, with no
-  claim about its speed (open checks: spec probe items 17 and 18). A read begins at
+  claim about its speed (spec probe item 17 is closed by measurement, see Transfer depth
+  below; item 18, depth granularity, stays an open check). A read begins at
   `knownStartOf(memory, now)` (the start moved on by the elapsed time plus a margin), `now` read
   after the run gate, only while the start was served at most `DEPTH_EXTRAPOLATION_MAX_MS` ago;
   after that (`hasDepthLapsed`: a suspension) the start is found again by `narrowLapsedStart`
@@ -2306,9 +2310,9 @@ stop codes and scenario rows.
   https://www.binance.com/en/support/announcement/detail/01cbe42ead1e4f1a9382363754d2eb5a
   (source checked 2026-10-11). The 2026-09-29 Spot-from-date comes from a different
   announcement (spec), which needs its own check date.
-- **Open probe items** (range-end semantics per endpoint, the withdraw filter
-  field and `applyTime` rounding, late Pay orders, the migration's transfer
-  history shape): the spec's "VERIFY gate" and the plan's probe items list
+- **Open probe items** (item 17, Transfer depth, is closed by measurement; range-end semantics
+  per endpoint, the withdraw filter field and `applyTime` rounding, late Pay orders, the
+  migration's transfer history shape): the spec's "VERIFY gate" and the plan's probe items list
   them.
 - **Disconnect and carry** are the capital rules above: the balance sync
   carries the cursors, lists, point cursors, range cursors and span hints;

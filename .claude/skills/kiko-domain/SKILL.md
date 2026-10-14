@@ -248,8 +248,9 @@ implemented, and callers must skip it rather than assume every id resolves.
   bank-owned columns — the settled `amountMinorUnits` and `hold`
   among them — and **never** its `comment`; its `category` is written
   only for an unflagged (`category_set_by_hand = 0`), non-structural row
-  (no exchange pair or counterpart holding, `sets_balance = 0`, no
-  `change_group_id`) whose amount changed and a category rule wins
+  (a row that no field of `REWRITE_GUARD_FIELDS` in
+  `src/categories/category-rules/plan-rule-rewrite.ts` marks) whose amount changed and a
+  category rule wins
   (`ruleWonTransactionSet`, `src/transactions/repo/transactions.repo.ts`). Read `addManyDedup` in
   `src/transactions/` for the exact refreshable
   set, and `transactions.hold` in `src/db/schema.ts` for why a
