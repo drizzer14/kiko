@@ -12,6 +12,20 @@ import { type HelpTopicId, helpTopicById } from '@kiko/help';
 
 import HelpTopicScreen from './help-topic.screen';
 
+// No registered topic has a `null` action yet, so a test sets `override` to render one that does;
+// otherwise every test reads the shipped registry.
+const mockTopic: { override: ReturnType<typeof helpTopicById> | undefined } = {
+  override: undefined,
+};
+jest.mock('@kiko/help', () => {
+  const actual = jest.requireActual('@kiko/help');
+
+  return {
+    ...actual,
+    helpTopicById: (id: HelpTopicId) => mockTopic.override ?? actual.helpTopicById(id),
+  };
+});
+
 type HelpTopicProps = ComponentProps<typeof HelpTopicScreen>;
 
 const renderScreen = (topicId: HelpTopicId, navigation: NavigationSpy = navigationSpy()) =>
@@ -73,5 +87,23 @@ describe('HelpTopicScreen', () => {
     const { queryByText } = await renderScreen('manageCategories');
 
     expect(queryByText('Add account')).toBeNull();
+  });
+
+  describe('a topic with no action', () => {
+    beforeEach(() => {
+      mockTopic.override = { ...helpTopicById('addAccount'), action: null };
+    });
+
+    afterEach(() => {
+      mockTopic.override = undefined;
+    });
+
+    it('renders its steps and no footer', async () => {
+      const { getAllByTestId, queryByTestId } = await renderScreen('addAccount');
+
+      expect(getAllByTestId(/^help-topic-step-/)).toHaveLength(5);
+      expect(queryByTestId('help-topic-action')).toBeNull();
+      expect(queryByTestId('screen-footer')).toBeNull();
+    });
   });
 });

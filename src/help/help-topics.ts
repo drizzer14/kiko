@@ -2,6 +2,8 @@ import type { ParseKeys } from 'i18next';
 
 export type HelpTopicId = 'addAccount' | 'manageCategories';
 
+type HelpGroupId = 'accounts' | 'categories';
+
 type HelpAction = 'addAccount' | 'openCategories';
 
 type HelpTopic = {
@@ -9,7 +11,14 @@ type HelpTopic = {
   titleKey: ParseKeys;
   rowLabelKey: ParseKeys;
   stepKeys: readonly ParseKeys[];
-  action: HelpAction;
+  // `null` means the topic page has no footer button.
+  action: HelpAction | null;
+};
+
+type HelpGroupEntry = {
+  id: HelpGroupId;
+  titleKey: ParseKeys;
+  topicIds: readonly HelpTopicId[];
 };
 
 // Keyed by id so a topic that is added to `HelpTopicId` without an entry here fails `tsc`.
@@ -46,3 +55,29 @@ const topicsById = {
 export const HELP_TOPICS: readonly HelpTopic[] = Object.values(topicsById);
 
 export const helpTopicById = (id: HelpTopicId): HelpTopic => topicsById[id];
+
+// Keyed by id so a group that is added to `HelpGroupId` without an entry here fails `tsc`.
+const groupsById = {
+  accounts: {
+    id: 'accounts',
+    titleKey: 'help.groups.accounts.title',
+    topicIds: ['addAccount'],
+  },
+  categories: {
+    id: 'categories',
+    titleKey: 'help.groups.categories.title',
+    topicIds: ['manageCategories'],
+  },
+} satisfies Record<HelpGroupId, HelpGroupEntry>;
+
+// The record's insertion order is the section order on the Help page, and each group's
+// `topicIds` order is its row order.
+export const HELP_GROUPS: readonly {
+  id: HelpGroupId;
+  titleKey: ParseKeys;
+  topics: readonly HelpTopic[];
+}[] = Object.values(groupsById).map(({ id, titleKey, topicIds }) => ({
+  id,
+  titleKey,
+  topics: topicIds.map(helpTopicById),
+}));

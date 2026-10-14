@@ -845,6 +845,14 @@ export const uk: typeof en = {
     actions: {
       openCategories: 'Відкрити категорії',
     },
+    groups: {
+      accounts: {
+        title: 'Рахунки',
+      },
+      categories: {
+        title: 'Категорії',
+      },
+    },
     privacy: 'Усі ваші дані залишаються на цьому пристрої.',
     rowLabel: 'Довідка',
     title: 'Довідка',

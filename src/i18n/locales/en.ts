@@ -987,12 +987,21 @@ export const en = {
       title: 'Start by creating an account',
     },
   },
-  // The Help page (`src/help/`). Each topic has a nav title (Title Case) and a list-row
-  // label (sentence case) as two keys, and numbered steps that each end with ".". The step keys
-  // are quoted because i18next's typed keys skip a numeric property name.
+  // The Help page (`src/help/`). Each group has a section title (Title Case, in `TITLE_KEYS`).
+  // Each topic has a nav title (Title Case) and a list-row label (sentence case) as two keys, and
+  // numbered steps that each end with ".". The step keys are quoted because i18next's typed keys
+  // skip a numeric property name.
   help: {
     actions: {
       openCategories: 'Open categories',
+    },
+    groups: {
+      accounts: {
+        title: 'Accounts',
+      },
+      categories: {
+        title: 'Categories',
+      },
     },
     privacy: 'All your data stays on this device.',
     rowLabel: 'Help',

@@ -3,7 +3,6 @@ import type { ComponentProps } from 'react';
 import { fireEvent, render, within } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
-import { HELP_TOPICS } from '@kiko/help';
 import {
   asNavigationProp,
   asRouteProp,
@@ -11,11 +10,31 @@ import {
   navigationSpy,
 } from '@kiko/test-support/navigation-props';
 import { darkTheme } from '@kiko/design-system/theme';
+import { HELP_GROUPS, HELP_TOPICS, helpTopicById } from '@kiko/help';
 import { chevronSize, chevronTrailingWhitespace } from '@kiko/screens/settings/settings-row';
 
 import HelpScreen from './help.screen';
 
+// A test sets `override` to render a group the registry does not hold; the getter keeps the real
+// groups otherwise, so every other test reads the shipped registry.
+const mockGroups: { override: typeof HELP_GROUPS | undefined } = { override: undefined };
+jest.mock('@kiko/help', () => {
+  const actual = jest.requireActual('@kiko/help');
+
+  return {
+    ...actual,
+    get HELP_GROUPS() {
+      return mockGroups.override ?? actual.HELP_GROUPS;
+    },
+  };
+});
+
 type HelpProps = ComponentProps<typeof HelpScreen>;
+
+type JsonNode = {
+  props: { testID?: string };
+  children: readonly (JsonNode | string)[] | null;
+};
 
 const renderScreen = (navigation: NavigationSpy = navigationSpy()) =>
   render(
@@ -25,40 +44,72 @@ const renderScreen = (navigation: NavigationSpy = navigationSpy()) =>
     />,
   );
 
+const findByTestId = (node: JsonNode, testID: string): JsonNode | undefined =>
+  node.props.testID === testID
+    ? node
+    : (node.children ?? [])
+        .flatMap((child) => (typeof child === 'string' ? [] : [findByTestId(child, testID)]))
+        .find((found) => found !== undefined);
+
 describe('HelpScreen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
   });
 
-  it('renders one row per topic in a single card group with a divider between rows', async () => {
-    const { getByTestId, getAllByTestId } = await renderScreen();
-
-    const card = getByTestId('help-card-topics');
-
-    for (const topic of HELP_TOPICS) {
-      expect(within(card).getByTestId(`help-row-${topic.id}`)).toBeTruthy();
-      expect(within(card).getByText(i18n.t(topic.rowLabelKey))).toBeTruthy();
-    }
-
-    expect(getAllByTestId('help-divider-topics')).toHaveLength(HELP_TOPICS.length - 1);
-  });
-
-  it('puts the divider after the first row, never before it', async () => {
+  it('renders one section per group, in order', async () => {
     const { getAllByTestId } = await renderScreen();
 
-    const orderedIds = getAllByTestId(/^help-(divider-topics|row-)/).map(
+    expect(getAllByTestId(/^help-group-/).map((node) => node.props.testID)).toEqual(
+      HELP_GROUPS.map((group) => `help-group-${group.id}`),
+    );
+  });
+
+  it.each(HELP_GROUPS)('shows the $id group title, then its card', async (group) => {
+    const { toJSON } = await renderScreen();
+
+    const section = findByTestId(toJSON() as JsonNode, `help-group-${group.id}`);
+    const [heading, card, ...rest] = section?.children ?? [];
+
+    expect(rest).toEqual([]);
+    expect((heading as JsonNode).children).toEqual([i18n.t(group.titleKey)]);
+    expect((card as JsonNode).props.testID).toBe(`help-card-${group.id}`);
+  });
+
+  it.each(HELP_GROUPS)('puts the rows of the $id group in its own card', async (group) => {
+    const { getByTestId } = await renderScreen();
+
+    const card = within(getByTestId(`help-card-${group.id}`));
+
+    expect(card.getAllByTestId(/^help-row-/).map((node) => node.props.testID)).toEqual(
+      group.topics.map((topic) => `help-row-${topic.id}`),
+    );
+
+    for (const topic of group.topics) {
+      expect(card.getByText(i18n.t(topic.rowLabelKey))).toBeTruthy();
+    }
+
+    expect(card.queryAllByTestId(`help-divider-${group.id}`)).toHaveLength(group.topics.length - 1);
+  });
+
+  it('puts the divider after the first row of a group, never before it', async () => {
+    const { getAllByTestId } = await renderScreen();
+
+    const orderedIds = getAllByTestId(/^help-(divider-|row-)/).map(
       (node) => node.props.testID as string,
     );
 
-    expect(orderedIds).toEqual([
-      `help-row-${HELP_TOPICS[0].id}`,
-      'help-divider-topics',
-      `help-row-${HELP_TOPICS[1].id}`,
-    ]);
+    expect(orderedIds).toEqual(
+      HELP_GROUPS.flatMap((group) =>
+        group.topics.flatMap((topic, index) => [
+          ...(index > 0 ? [`help-divider-${group.id}`] : []),
+          `help-row-${topic.id}`,
+        ]),
+      ),
+    );
   });
 
-  it('pads each row and insets the divider to match the Settings card', async () => {
-    const { getByTestId, getAllByTestId } = await renderScreen();
+  it('pads each row to match the Settings card', async () => {
+    const { getByTestId } = await renderScreen();
     const theme = darkTheme;
 
     for (const topic of HELP_TOPICS) {
@@ -67,14 +118,44 @@ describe('HelpScreen', () => {
       expect(rowStyle.paddingHorizontal).toBe(theme.spacing(3));
       expect(rowStyle.paddingVertical).toBe(theme.spacing(3));
     }
+  });
 
-    const dividerStyle = StyleSheet.flatten(getAllByTestId('help-divider-topics')[0].props.style);
+  // Each registered group holds one topic today, so no divider renders; a group of two pins it.
+  describe('a group of two topics', () => {
+    beforeEach(() => {
+      mockGroups.override = [
+        {
+          id: 'accounts',
+          titleKey: 'help.groups.accounts.title',
+          topics: [helpTopicById('addAccount'), helpTopicById('manageCategories')],
+        },
+      ];
+    });
 
-    expect(dividerStyle.marginLeft).toBe(theme.spacing(3));
-    expect(dividerStyle.marginRight).toBe(
-      theme.spacing(3) + chevronTrailingWhitespace(chevronSize(theme), theme),
-    );
-    expect(chevronTrailingWhitespace(chevronSize(theme), theme)).toBeGreaterThan(0);
+    afterEach(() => {
+      mockGroups.override = undefined;
+    });
+
+    it('puts one divider between the rows, never before the first', async () => {
+      const { getAllByTestId } = await renderScreen();
+
+      expect(
+        getAllByTestId(/^help-(divider-|row-)/).map((node) => node.props.testID as string),
+      ).toEqual(['help-row-addAccount', 'help-divider-accounts', 'help-row-manageCategories']);
+    });
+
+    it('insets the divider to match the Settings card', async () => {
+      const { getByTestId } = await renderScreen();
+      const theme = darkTheme;
+
+      const dividerStyle = StyleSheet.flatten(getByTestId('help-divider-accounts').props.style);
+
+      expect(dividerStyle.marginLeft).toBe(theme.spacing(3));
+      expect(dividerStyle.marginRight).toBe(
+        theme.spacing(3) + chevronTrailingWhitespace(chevronSize(theme), theme),
+      );
+      expect(chevronTrailingWhitespace(chevronSize(theme), theme)).toBeGreaterThan(0);
+    });
   });
 
   it('centers the privacy line', async () => {

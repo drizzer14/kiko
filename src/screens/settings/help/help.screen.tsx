@@ -1,4 +1,4 @@
-import { HELP_TOPICS } from '@kiko/help';
+import { HELP_GROUPS } from '@kiko/help';
 import { type FC, Fragment } from 'react';
 import SettingsRow, {
   chevronSize,
@@ -41,20 +41,28 @@ const HelpScreen: FC<HelpScreenProps> = ({ navigation }) => {
   return (
     <Screen scroll>
       <Box gap={4}>
-        <Card testID="help-card-topics" padding={0}>
-          {HELP_TOPICS.map((topic, index) => (
-            <Fragment key={topic.id}>
-              {index > 0 && <Divider testID="help-divider-topics" style={dividerStyle} />}
+        {HELP_GROUPS.map((group) => (
+          <Box key={group.id} testID={`help-group-${group.id}`} gap={3}>
+            <Text variant="heading">{t(group.titleKey)}</Text>
 
-              <SettingsRow
-                testID={`help-row-${topic.id}`}
-                label={t(topic.rowLabelKey)}
-                onPress={() => navigation.navigate('HelpTopic', { topicId: topic.id })}
-                style={rowStyle}
-              />
-            </Fragment>
-          ))}
-        </Card>
+            <Card testID={`help-card-${group.id}`} padding={0}>
+              {group.topics.map((topic, index) => (
+                <Fragment key={topic.id}>
+                  {index > 0 && (
+                    <Divider testID={`help-divider-${group.id}`} style={dividerStyle} />
+                  )}
+
+                  <SettingsRow
+                    testID={`help-row-${topic.id}`}
+                    label={t(topic.rowLabelKey)}
+                    onPress={() => navigation.navigate('HelpTopic', { topicId: topic.id })}
+                    style={rowStyle}
+                  />
+                </Fragment>
+              ))}
+            </Card>
+          </Box>
+        ))}
 
         <Text variant="caption" tone="textSecondary" style={styles.privacy}>
           {t('help.privacy')}
