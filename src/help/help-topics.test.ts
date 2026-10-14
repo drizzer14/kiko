@@ -364,12 +364,7 @@ describe('the Ukrainian wording of the help topics', () => {
     topic.stepKeys.map((key) => ({ key, value: ukValues.get(key) ?? '' })),
   );
 
-  it('asks for every tap with the verb "натиснути"', () => {
-    expect(stepValues.filter(({ value }) => /торкн|тапн|тицн|клацн/i.test(value))).toEqual([]);
-    expect(stepValues.filter(({ value }) => /натисн/i.test(value)).length).toBeGreaterThan(30);
-  });
-
-  it.each([
+  const TOPIC_TITLES = [
     ['addAccount', 'Додавання рахунку'],
     ['connectMonobank', 'Підключення Monobank'],
     ['connectCrypto', 'Підключення Binance або гаманця Біткоїна'],
@@ -379,7 +374,7 @@ describe('the Ukrainian wording of the help topics', () => {
     ['trackProperty', 'Облік майна'],
     ['trackLoan', 'Облік кредиту'],
     ['addTransaction', 'Додавання транзакції'],
-    ['editTransaction', 'Зміна, дублювання чи видалення транзакції'],
+    ['editTransaction', 'Редагування, дублювання чи видалення транзакції'],
     ['useTemplates', 'Шаблони транзакцій'],
     ['manageCategories', 'Керування категоріями'],
     ['categoryRules', 'Автоматичні категорії'],
@@ -387,10 +382,30 @@ describe('the Ukrainian wording of the help topics', () => {
     ['backupData', 'Резервна копія даних'],
     ['restoreData', 'Відновлення з резервної копії'],
     ['systemSettings', 'Мова й блокування застосунку'],
-  ] as const)('titles the %s topic «%s» and labels its row the same', (topicId, title) => {
-    const topic = helpTopicById(topicId);
+  ] as const;
 
-    expect(ukValues.get(topic.titleKey)).toBe(title);
-    expect(ukValues.get(topic.rowLabelKey)).toBe(title);
+  it('asks for most taps in the steps with the verb "натиснути"', () => {
+    expect(stepValues.filter(({ value }) => /натисн/i.test(value)).length).toBeGreaterThan(30);
+  });
+
+  it('covers every help topic in the title table', () => {
+    expect(TOPIC_TITLES.map(([topicId]) => topicId)).toEqual(HELP_TOPICS.map(({ id }) => id));
+  });
+
+  it.each(TOPIC_TITLES)(
+    'titles the %s topic «%s» and labels its row the same',
+    (topicId, title) => {
+      const topic = helpTopicById(topicId);
+
+      expect(ukValues.get(topic.titleKey)).toBe(title);
+      expect(ukValues.get(topic.rowLabelKey)).toBe(title);
+    },
+  );
+
+  it.each([
+    ['importStatement', 5, 'рядок із назвами'],
+    ['categoryRules', 1, 'натисніть «Категорії», а потім потрібну категорію'],
+  ] as const)('words the %s topic step %i with «%s»', (topicId, step, wording) => {
+    expect(ukValues.get(`help.topics.${topicId}.steps.${step}`)).toContain(wording);
   });
 });

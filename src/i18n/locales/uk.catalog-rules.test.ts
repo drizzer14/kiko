@@ -8,12 +8,15 @@
 //     value — Ukrainian text must use the U+2019 apostrophe `’`.
 // (b) the app name appears only as Cyrillic `Кіко`, never Latin `Kiko`, in
 //     any string value.
+// (c) a tap is asked for with «натиснути» only, never торкнутися, тапнути,
+//     тицьнути or клацнути, in any string value.
 import { uk } from './uk';
 import { flattenCatalog } from './flatten-catalog';
 
 const CYRILLIC = 'А-Яа-яЁёІіЇїЄєҐґ';
 const ASCII_APOSTROPHE_IN_CYRILLIC_WORD = new RegExp(`[${CYRILLIC}]'[${CYRILLIC}]`);
 const LATIN_KIKO = /\bKiko\b/;
+const OTHER_TAP_VERB = /торкн|тапн|тицн|клацн/i;
 
 describe('uk.ts catalogue rules', () => {
   it('never uses an ASCII apostrophe inside a Cyrillic word (must be U+2019 ’)', () => {
@@ -26,6 +29,12 @@ describe('uk.ts catalogue rules', () => {
 
   it('never spells the app name in Latin script ("Kiko") — must be Cyrillic "Кіко"', () => {
     const offenders = flattenCatalog(uk).filter(({ value }) => LATIN_KIKO.test(value));
+
+    expect(offenders).toEqual([]);
+  });
+
+  it('asks for a tap with the verb "натиснути" only', () => {
+    const offenders = flattenCatalog(uk).filter(({ value }) => OTHER_TAP_VERB.test(value));
 
     expect(offenders).toEqual([]);
   });
