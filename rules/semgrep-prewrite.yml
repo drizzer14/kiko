@@ -1218,7 +1218,7 @@ rules:
           regex: "^(?:it|test|describe)\\b"
       - metavariable-regex:
           metavariable: $TITLE
-          regex: "^[\"'`](?:[A-Z]\\d+[ :]|[Rr]uling [A-Z]\\d|[Dd]evice [Cc]heck \\d|.*\\(was:|.*\\((?:[Tt]ask |spec )?[A-Z]\\d+[),])"
+          regex: "^[\"'`](?:[A-Z]\\d+[ :]|[Rr]uling [A-Z]\\d|[Dd]evice [Cc]heck \\d|.*\\(was: |.*\\((?:[Tt]ask |spec )?[A-Z]\\d+[),])"
   # A rejection asserted with no expected error passes on any failure, including a typo that
   # throws before the code under test runs. ERROR: the tree holds 0 findings for this id. See
   # kiko-linter's "kiko-rejects-to-throw-needs-error" section. The `src/test-support/**` include
