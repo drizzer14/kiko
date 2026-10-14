@@ -17,8 +17,13 @@ import { holdingsRepo } from '@kiko/holdings/repo';
 import { transactionsRepo } from '@kiko/transactions/repo';
 import { applyAllMigrations } from '@kiko/test-support/real-sqlite';
 
+import type {
+  BinanceDeposit,
+  BinancePayOrder,
+  HistoryPage,
+  HistoryWindow,
+} from './binance.history-client';
 import { syncBinancePayHistory } from './binance.pay-history';
-import type { BinancePayOrder } from './binance.history-client';
 import { createBinanceHistoryRun } from './binance.history-budget';
 import { HISTORY_FLOOR_MS, syncBinanceTransactions } from './binance.transactions';
 import { costOn, NOW, OTHER, OWN, party, payOrder } from './binance.pay-test-fixtures';
@@ -109,29 +114,36 @@ const runWalk = (orders: BinancePayOrder[]) =>
     }),
   });
 
-/** The capital walk over the real repos, with Binance answering one page of deposits. */
-const runCapitalWalk = (deposits: { id: string; amount: string; insertTime: number }[]) =>
+type TestDeposit = { id: string; amount: string; insertTime: number };
+
+const depositRecord = (deposit: TestDeposit) => ({
+  ...deposit,
+  coin: 'BTC',
+  txId: `tx-${deposit.id}`,
+  status: 1,
+  walletType: undefined,
+});
+
+const historyPageOf = <Row>(rows: Row[]) => ({
+  rows,
+  unreadable: [],
+  usedUidWeight1m: undefined,
+  usedIpWeight1m: undefined,
+});
+
+/** The capital walk over the real repos, with the given answer to a deposit-history request. */
+const runCapitalWalkOver = (
+  fetchDepositHistory: (window: HistoryWindow) => Promise<HistoryPage<BinanceDeposit>>,
+) =>
   syncBinanceTransactions(requestOf(), {
     ...clockAndCredentials,
-    fetchDepositHistory: async () => ({
-      rows: deposits.map((deposit) => ({
-        ...deposit,
-        coin: 'BTC',
-        txId: `tx-${deposit.id}`,
-        status: 1,
-        walletType: undefined,
-      })),
-      unreadable: [],
-      usedUidWeight1m: undefined,
-      usedIpWeight1m: undefined,
-    }),
-    fetchWithdrawHistory: async () => ({
-      rows: [],
-      unreadable: [],
-      usedUidWeight1m: undefined,
-      usedIpWeight1m: undefined,
-    }),
+    fetchDepositHistory: (_apiKey, _secret, window) => fetchDepositHistory(window),
+    fetchWithdrawHistory: async () => historyPageOf([]),
   });
+
+/** The capital walk over the real repos, with Binance answering one page of deposits. */
+const runCapitalWalk = (deposits: TestDeposit[]) =>
+  runCapitalWalkOver(async () => historyPageOf(deposits.map(depositRecord)));
 
 const storedRows = (): StoredRow[] =>
   mockDatabase
@@ -456,5 +468,101 @@ describe('the capital walk beside stored Pay rows on real SQLite', () => {
       'acc-1:deposit:1',
       'acc-1:pay:C2C:first:2',
     ]);
+  });
+});
+
+describe('the capital cursor beside rows of the other walks on real SQLite', () => {
+  useRealDatabase();
+  const OLD_DEPOSIT = { id: 'old', amount: '0.5', insertTime: Date.UTC(2019, 2, 1) };
+
+  const withoutCapitalCursor = (): void => {
+    mockDatabase
+      .prepare("UPDATE holdings SET metadata = ? WHERE id = 'h-spot'")
+      .run(JSON.stringify({ binanceAsset: 'BTC' }));
+  };
+
+  /** Binance answering as it does: the deposits that fall in the window asked for. */
+  const depositServer =
+    (deposits: BinanceDeposit[], asked: HistoryWindow[] = []) =>
+    async (window: HistoryWindow): Promise<HistoryPage<BinanceDeposit>> => {
+      asked.push(window);
+
+      return historyPageOf(
+        deposits.filter(
+          (deposit) =>
+            deposit.insertTime >= window.startTime && deposit.insertTime <= window.endTime,
+        ),
+      );
+    };
+
+  it('reads the capital history from the floor when the only rows on Spot are Pay, Transfer and Earn rows', async () => {
+    withoutCapitalCursor();
+    await expect(
+      runCapitalWalkOver(async () => {
+        throw new Error('capital history unavailable');
+      }),
+    ).rejects.toThrow('capital history unavailable');
+    await runWalk([received({ transactionId: 'recent', transactionTime: NOW - 2 * DAY_MS })]);
+    await transactionsRepo.addManyDedup(
+      ['acc-1:xfer:MAIN_UMFUTURE:7:spot', 'acc-1:earn:reward:flexible:BTC:REWARDS:1:0'].map(
+        (externalId) => ({
+          holdingId: 'h-spot',
+          amountMinorUnits: 10,
+          time: NOW - DAY_MS,
+          source: 'binance' as const,
+          externalId,
+          description: 'BTC',
+        }),
+      ),
+    );
+    const asked: HistoryWindow[] = [];
+
+    const result = await runCapitalWalkOver(depositServer([depositRecord(OLD_DEPOSIT)], asked));
+
+    expect(asked[0].startTime).toBe(HISTORY_FLOOR_MS);
+    expect(result.imported).toBe(1);
+    expect(storedRows().map((row) => row.external_id)).toContain('acc-1:deposit:old');
+  });
+
+  it('keeps reading the ground behind an account whose capital rows are all it has, after a run whose forward pass stopped', async () => {
+    withoutCapitalCursor();
+    await importCapitalDeposit('latest', 10, NOW - DAY_MS);
+    const stuck = {
+      ...depositRecord({ ...OLD_DEPOSIT, insertTime: NOW - DAY_MS + 60_000 }),
+      id: '',
+      txId: '',
+    };
+    const behind = depositRecord({ id: 'behind', amount: '0.5', insertTime: NOW - 30 * DAY_MS });
+    const server = (asked: HistoryWindow[]) => depositServer([stuck, behind], asked);
+    const firstRun: HistoryWindow[] = [];
+    const secondRun: HistoryWindow[] = [];
+
+    await runCapitalWalkOver(server(firstRun));
+    await runCapitalWalkOver(server(secondRun));
+
+    const earliest = (windows: HistoryWindow[]) => Math.min(...windows.map((w) => w.startTime));
+    expect(earliest(firstRun)).toBe(NOW - 89 * DAY_MS);
+    expect(earliest(secondRun)).toBe(earliest(firstRun));
+    expect(storedRows().map((row) => row.external_id)).toContain('acc-1:deposit:behind');
+  });
+
+  it('starts at the newest stored withdrawal of an account that has no capital cursor, beside a newer Pay row', async () => {
+    withoutCapitalCursor();
+    await transactionsRepo.addManyDedup([
+      {
+        holdingId: 'h-spot',
+        amountMinorUnits: -10,
+        time: NOW - 5 * DAY_MS,
+        source: 'binance',
+        externalId: 'acc-1:withdraw:w1',
+        description: 'BTC',
+      },
+    ]);
+    await runWalk([received({ transactionId: 'recent', transactionTime: NOW - DAY_MS })]);
+    const asked: HistoryWindow[] = [];
+
+    await runCapitalWalkOver(depositServer([], asked));
+
+    expect(Math.min(...asked.map((window) => window.startTime))).toBe(NOW - 89 * DAY_MS);
   });
 });

@@ -140,8 +140,15 @@ export type BinanceTransactionSyncDeps = BinanceWalkWriteDeps & {
   ensureHoldings: (holdings: ExchangeHolding[]) => Promise<void>;
   /** Which of these external ids a stored Binance row already holds, on any holding. */
   storedExternalIds: (externalIds: string[]) => Promise<Set<string>>;
-  /** The legacy fallback cursor: only consulted when the holding carries no watermark yet. */
-  latestTransactionTime: (holdingId: string) => Promise<number | undefined>;
+  /**
+   * The legacy fallback cursor: only consulted when the holding carries no watermark yet. It
+   * reads the newest row whose external id starts with one of the prefixes, the capital rows
+   * alone, so a Pay, Transfer or Earn row on the same holding never moves the capital walk.
+   */
+  latestTransactionTime: (
+    holdingId: string,
+    externalIdPrefixes: string[],
+  ) => Promise<number | undefined>;
   addTransactions: (rows: BinanceTransactionRow[]) => Promise<number>;
   fetchDepositHistory: (
     apiKey: string,
@@ -166,8 +173,9 @@ const defaultBinanceTransactionDeps: BinanceTransactionSyncDeps = {
   ensureHoldings: (holdings) => holdingsRepo.ensureExchangeHoldings(holdings),
   storedExternalIds: (externalIds) =>
     transactionsRepo.storedExternalIdsQuery('binance', externalIds),
-  latestTransactionTime: async (holdingId) =>
-    (await transactionsRepo.latestSyncedTimeQuery(holdingId, 'binance')).at(0)?.time,
+  latestTransactionTime: async (holdingId, externalIdPrefixes) =>
+    (await transactionsRepo.latestSyncedTimeQuery(holdingId, 'binance', externalIdPrefixes)).at(0)
+      ?.time,
   addTransactions: (rows) => transactionsRepo.addManyDedup(rows),
   fetchDepositHistory,
   fetchWithdrawHistory,
@@ -600,7 +608,11 @@ const runSync = async (
     metadata: spot.metadata,
     ...writers,
   });
-  const latest = await deps.latestTransactionTime(spot.id);
+  // An account with no capital row falls back to nothing, and so starts at the floor.
+  const latest = await deps.latestTransactionTime(spot.id, [
+    `${accountId}:deposit:`,
+    `${accountId}:withdraw:`,
+  ]);
   const planCursor = cursor ?? latest ?? null;
   const pending = await readPendingMark({
     field: CAPITAL_MARK_FIELDS.pending,

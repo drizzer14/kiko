@@ -1898,13 +1898,33 @@ export const transactionsRepo = {
    * The newest imported time for a holding's rows of one sync `source` (a single
    * `{ time }` row, or none). The crypto-sync transaction import reads this as an
    * incremental cursor: the next Binance fetch starts from just before this time
-   * rather than re-walking the full history every sync.
+   * rather than re-walking the full history every sync. With `externalIdPrefixes`, only
+   * the rows whose external id starts with one of them count, so a cursor can follow one
+   * kind of row while other kinds of the same source sit on the holding. The prefix is
+   * compared by `substr`, not `LIKE`, so an id with `%` or `_` in it is no pattern.
    */
-  latestSyncedTimeQuery: (holdingId: string, source: TransactionRow['source']) =>
+  latestSyncedTimeQuery: (
+    holdingId: string,
+    source: TransactionRow['source'],
+    externalIdPrefixes?: string[],
+  ) =>
     database
       .select({ time: transactions.time })
       .from(transactions)
-      .where(and(eq(transactions.holdingId, holdingId), eq(transactions.source, source)))
+      .where(
+        and(
+          eq(transactions.holdingId, holdingId),
+          eq(transactions.source, source),
+          foldMap(maybe(externalIdPrefixes), (prefixes) =>
+            or(
+              ...prefixes.map(
+                (prefix) =>
+                  sql`substr(${transactions.externalId}, 1, ${prefix.length}) = ${prefix}`,
+              ),
+            ),
+          ),
+        ),
+      )
       .orderBy(desc(transactions.time))
       .limit(1),
   /**
