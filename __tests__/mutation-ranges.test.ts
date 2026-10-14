@@ -1,7 +1,15 @@
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 
 import {
   twelveLines,
@@ -264,6 +272,62 @@ afterEach(() => {
 const rangesTemporaryFiles = (directory: string): string[] =>
   readdirSync(directory).filter((name) => name.startsWith('kiko-mutation-ranges.'));
 
+// A stand-in for `rm` that logs each call's arguments, then runs the real one.
+const LOGGING_REMOVE_STUB = [
+  '#!/usr/bin/env bash',
+  'printf "%s\\n" "$*" >> "$KIKO_STUB_REMOVALS"',
+  'exec /bin/rm "$@"',
+  '',
+].join('\n');
+
+type SignalledRun = { state: string; removals: string; exitCode: number | null };
+
+const signalDuringRangesReader = async (
+  mode: '--list' | 'a run',
+  signal: 'TERM' | 'INT',
+): Promise<SignalledRun> => {
+  const sandbox = mkdtempSync(join(tmpdir(), 'kiko-mutation-signal-'));
+  sandboxes.push(sandbox);
+  const { script, root } = buildChangedLinesRepository(join(sandbox, 'project'));
+  const state = join(sandbox, 'state');
+  mkdirSync(state);
+  mkdirSync(join(sandbox, 'bin'));
+  writeExecutable(join(sandbox, 'bin/node'), HOLDING_NODE_STUB);
+  writeExecutable(join(sandbox, 'bin/rm'), LOGGING_REMOVE_STUB);
+  const stryker = writeExecutable(join(sandbox, 'stryker'), '#!/usr/bin/env bash\nexit 0\n');
+  const ready = join(sandbox, 'ready');
+  const removals = join(sandbox, 'removals');
+
+  const child = spawn('bash', mode === '--list' ? [script, '--list'] : [script], {
+    cwd: root,
+    env: {
+      ...process.env,
+      PATH: `${join(sandbox, 'bin')}:${process.env.PATH}`,
+      TMPDIR: state,
+      KIKO_MUTATION_BASE: 'main',
+      KIKO_MUTATION_FULL: undefined,
+      KIKO_MUTATION_BIN: stryker,
+      KIKO_REAL_NODE: process.execPath,
+      KIKO_STUB_READY: ready,
+      KIKO_STUB_RELEASE: join(sandbox, 'release'),
+      KIKO_STUB_REMOVALS: removals,
+    },
+    stdio: ['ignore', 'ignore', 'ignore'],
+  });
+  const closed = new Promise<number | null>((settle) => {
+    child.on('close', (code) => settle(code));
+  });
+  await waitFor(() => existsSync(ready));
+  expect(rangesTemporaryFiles(state)).toHaveLength(1);
+
+  // Bash runs a trap only after its foreground command ends, so the reader is released after
+  // the signal is sent.
+  child.kill(signal === 'TERM' ? 'SIGTERM' : 'SIGINT');
+  writeFileSync(join(sandbox, 'release'), '');
+
+  return { state, removals, exitCode: await closed };
+};
+
 describe('mutation.sh signals while the changed-line reader runs', () => {
   it.each([
     ['--list', 'TERM', 143],
@@ -273,45 +337,20 @@ describe('mutation.sh signals while the changed-line reader runs', () => {
   ] as const)(
     '%s: %s leaves no temporary file and no lock, and exits %i',
     async (mode, signal, exitCode) => {
-      const sandbox = mkdtempSync(join(tmpdir(), 'kiko-mutation-signal-'));
-      sandboxes.push(sandbox);
-      const { script, root } = buildChangedLinesRepository(join(sandbox, 'project'));
-      const state = join(sandbox, 'state');
-      mkdirSync(state);
-      mkdirSync(join(sandbox, 'bin'));
-      writeExecutable(join(sandbox, 'bin/node'), HOLDING_NODE_STUB);
-      const stryker = writeExecutable(join(sandbox, 'stryker'), '#!/usr/bin/env bash\nexit 0\n');
-      const ready = join(sandbox, 'ready');
+      const result = await signalDuringRangesReader(mode, signal);
 
-      const child = spawn('bash', mode === '--list' ? [script, '--list'] : [script], {
-        cwd: root,
-        env: {
-          ...process.env,
-          PATH: `${join(sandbox, 'bin')}:${process.env.PATH}`,
-          TMPDIR: state,
-          KIKO_MUTATION_BASE: 'main',
-          KIKO_MUTATION_FULL: undefined,
-          KIKO_MUTATION_BIN: stryker,
-          KIKO_REAL_NODE: process.execPath,
-          KIKO_STUB_READY: ready,
-          KIKO_STUB_RELEASE: join(sandbox, 'release'),
-        },
-        stdio: ['ignore', 'ignore', 'ignore'],
-      });
-      const closed = new Promise<number | null>((settle) => {
-        child.on('close', (code) => settle(code));
-      });
-      await waitFor(() => existsSync(ready));
-      expect(rangesTemporaryFiles(state)).toHaveLength(1);
-
-      // Bash runs a trap only after its foreground command ends, so the reader is released after
-      // the signal is sent.
-      child.kill(signal === 'TERM' ? 'SIGTERM' : 'SIGINT');
-      writeFileSync(join(sandbox, 'release'), '');
-
-      expect(await closed).toBe(exitCode);
-      expect(rangesTemporaryFiles(state)).toEqual([]);
-      expect(existsSync(join(state, 'kiko-harness', 'mutation.global.lock'))).toBe(false);
+      expect(result.exitCode).toBe(exitCode);
+      expect(rangesTemporaryFiles(result.state)).toEqual([]);
+      expect(existsSync(join(result.state, 'kiko-harness', 'mutation.global.lock'))).toBe(false);
     },
   );
+
+  it('removes the global lock in exactly one rm call after TERM, not again in the EXIT trap', async () => {
+    const result = await signalDuringRangesReader('a run', 'TERM');
+    const lockRemovals = readFileSync(result.removals, 'utf8')
+      .split('\n')
+      .filter((call) => call.includes(join(result.state, 'kiko-harness', 'mutation.global.lock')));
+
+    expect(lockRemovals).toHaveLength(1);
+  });
 });
