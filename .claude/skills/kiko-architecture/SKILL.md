@@ -1718,7 +1718,7 @@ the live API (or the official Binance Postman collection / SDK models)
 during any change — the field names above (`totalAmount` for flexible,
 `amount` for locked, funding's four fields) are the ones the parse keys on.
 
-### Binance transaction history — deposits + withdrawals on the Spot holding
+### Binance transaction history — the capital walk and the shared walk
 
 The Binance BALANCE sync (`runBalanceSync`) still writes no transaction
 rows — the generic balance sync gives a live number, not a ledger. A
@@ -1728,8 +1728,16 @@ SEPARATE step imports the ledger: `syncBinanceTransactions`
 holding already exists. It is SUPPLEMENTARY — the arm runs it under
 `logOnFailure('[binance sync] capital history failed', …)`
 (`@kiko/diagnostics`, name and code only), so a 429 or a permission gap never
-fails the balance sync. TRADES are deliberately out of scope for this
-milestone; only DEPOSIT and WITHDRAWAL history is imported.
+fails the balance sync. The Binance arm runs four walks in this order, in
+`runBinanceSyncAndImport` (`src/crypto-sync/run-crypto-sync/run-crypto-sync.ts`):
+`syncBinanceTransactions` (capital), `syncBinancePayHistory`,
+`syncBinanceTransferHistory`, `syncBinanceEarnHistory`. Each runs in its own
+`logOnFailure` (tags `capital history failed`, `pay history failed`,
+`transfer history failed`, `earn history failed`) and all four share one `run`.
+TRADES are out of scope. Convert is not imported either: Convert history has
+no wallet field, so the holding a Convert moved cannot be known (spec D7 and
+S6). `recordExchangeCounterpart` (Convert-mode) in `kiko-domain` is the app's
+manual Convert, not Binance Convert.
 
 Load-bearing rules, verified in `binance.transactions.test.ts` rather
 than restated here:
@@ -1758,16 +1766,16 @@ than restated here:
   helpers live in `binance.history-paging.ts` (`fetchAllByTotal`,
   `readSeriesSpan`) and the write seam in `binance.walk-write-deps.ts`
   (`BinanceWalkWriteDeps`).
-- **Two passes per walk; 89-day windows on capital and Pay, 30-day on Transfer.**
+- **Passes per walk; 89-day windows on capital and Pay, 30-day on Transfer.**
   The Transfer walk reads 30-day windows within a 179-day floor
   (`TRANSFER_WINDOW_MS`, `transferFloorMs`). Binance rejects a `startTime`/
   `endTime` span of 90 days or more and caps a page at 1000 rows
   (`HISTORY_PAGE_LIMIT` in `binance.history-client.ts`); every walk
   reads windows under 90 days. A run is the FORWARD pass (the cursor to
   now, moving the cursor) and the window RE-SCAN (a stored mark; never
-  writes the forward cursor). The capital, Pay and Transfer walks all
-  run it. `WalkPass` is `'forward' | 'pending' | 'rescan'` (read it in
-  `binance.history-walk.ts`); a run reads the forward pass, the owed
+  writes the forward cursor). Every walk (capital, Pay, Transfer, Earn)
+  runs it. `WalkPass` is `'forward' | 'pending' | 'rescan'` plus the points
+  pass (read it in `binance.history-walk.ts`); a run reads the forward pass, the owed
   ranges (`pending`, in a round-robin from the range cursor), the re-scan,
   then the owed points last.
 - **One pacing gate per run.** `createBinanceHistoryRun`
@@ -1915,9 +1923,10 @@ than restated here:
   Transfer, Earn) off the holding that carries `binanceHistoryCursor` (only Spot
   ever does; four nulls when none does), `isBinanceHistoryBehind`
   compares them against `latestSyncedAt(holdings)` (the existing balance-sync
-  stamp), true when ANY walk never caught up (`null` cursor) or is behind by more than
-  a day, or when the Transfer walk owes a range (`transferOwesRange`: ground its cursor passed),
-  false before the account's own first balance sync. An owed point never
+  stamp), true when ANY of the four walks never caught up (`null` cursor) or is behind by
+  more than a day, or when the Transfer walk owes a range (`transferOwesRange`: ground its cursor
+  passed; only the Transfer walk's owed RANGE counts, as `transferOwesRange` reads
+  `BINANCE_TRANSFER_PENDING_OVERLAP_FIELD` alone), false before the account's own first balance sync. An owed point never
   shows it. `CryptoSyncSection`
   renders the `accountDetail.binanceHistoryPending` caption under the
   status line only when `connectedProvider === 'binance'`, so a wallet
@@ -1930,7 +1939,22 @@ than restated here:
   codes (`binance.history-walk.ts`; the spec lists them): read them there. The wallet holding is found by `binanceKeyOf`
   (`binance.holding-keys.ts`) and, only for a row whose key is new, created
   at zero by `holdingsRepo.ensureExchangeHoldings` (insert-only); a row
-  already stored keeps its holding. Earn gets no capital rows.
+  already stored keeps its holding. Earn gets no capital rows. The walks
+  share this through `resolveWalletHoldings` (`binance.history-walk.ts`) with
+  `createKeys`: a wallet that only receives rows already stored elsewhere is
+  not created as an empty holding. `placeWalletRows`
+  (`binance.history-records.ts`) places the rows on the holdings.
+- **Pairing and untracked wallets.** Transfer and Earn legs share an
+  `exchangePairId` (`binance.transfer-history.ts`, `binance.earn-history.ts`:
+  read `pairId` there); each leg's `externalId` is the pair id plus the wallet,
+  and `placeWalletRows` maps `counterpartWallet` to
+  `exchangeCounterpartHoldingId`. A move to a wallet the app does not track
+  carries `untrackedCounterpart` = `wallet:<TYPE>` (`UNTRACKED_WALLETS` in
+  `src/transactions/untracked-counterpart/untracked-counterpart.ts`; migration
+  `drizzle/migrations/0056_add_untracked_counterpart.sql`; the data-transfer
+  decision is the 0056 `untrackedCounterpart` note on the snapshot version in this file). The label and the exclusion are in
+  `kiko-domain` (the `untrackedCounterpart` bullet); the name rule is in
+  `kiko-translator`.
 - **Idempotent via `(source, external_id)`.** Each row is
   `source: 'binance'` with `externalId`
   `` `${accountId}:deposit:<id>` `` / `` `${accountId}:withdraw:<id>` ``
@@ -1944,9 +1968,11 @@ than restated here:
   epoch ms — `parseWithdrawTime` pins it to UTC (a bare `Date.parse` would
   shift it by the device's local offset). Amounts convert through
   `Money.fromMajor('BTC', …)`; the withdrawal network fee is excluded from
-  the ledger line. The rows carry an EMPTY description, so the holding
-  detail + Home lists render the shared income/expense default label; a
-  bespoke "Deposit"/"Withdrawal" label is a deferred follow-up.
+  the ledger line. A capital row's description is the asset code
+  (`BINANCE_ASSET`), so the name rule matches and the category-apply sheet
+  appears; a stored description wins in `row-description.ts`. The other walks
+  set theirs in their own files (`description` in `binance.transfer-history.ts`,
+  `binance.earn-history.ts`, `binance.pay-history.ts`): read them there.
 
 ### Binance Transfer
 
@@ -1993,21 +2019,16 @@ record imports only at `TRANSFER_SETTLED_STATUS`; BTC only. The stop codes live 
   passes. A Transfer drift owes the span in the drifted type alone. The `binanceHistoryPending`
   caption also shows while the Transfer walk owes a range (`transferOwesRange`), not a point.
   A span read that narrows (a type is refused a start, finds its memory lapsed, asks the end of
-  the span, or reads a band) draws its calls from the lane's narrowing calls first (`LANE_NARROWING_CALLS`: 397 for
-  the Transfer lane, none for the others; `spanRunOf` in `binance.history-paging.ts`), and from the
-  cap of 80 after them; a span read that does not narrow draws the cap alone. A run that narrows
-  nothing therefore makes 80 calls at most and a run that narrows 477 (80 + 397; 167 s of pacing).
-  A Binance that keeps less than 179 days is thus narrowed for all 20 types in the first run (the
-  run takes its calls at 350 ms each or the latency of the request when that is longer: 77 s for
-  220 requests against 100 days in every type at no latency, 12 minutes for 477 at 0 to 3 s), and
-  a type that has found its depth reads the ground above it in that run; a type read late in the
-  window that crosses the depth meets a depth that has moved past the rows just above where it
-  stood when the run was planned (spec section 5, "What the first run reaches late"; the costs
-  that stand for a type that keeps less than 179 days are its OPEN ITEM, owned by the live probe
-  of spec item 17). 232 is the smallest value that loses no row in the 420 cases of the spec's
-  section 5 (231 loses 5 rows at a 9 s spike on every seventh request); 397 is kept (a user
-  ruling), and the longest run makes 477 (20 types that keep a different depth each; 476 where
-  the calls end inside a narrowing, which keeps one for its own read). A lapsed memory narrows only for a span the start it would move on to reaches into
+  the span, or reads a band) draws its calls from the lane's narrowing calls first
+  (`LANE_NARROWING_CALLS` in `binance.history-budget.ts`; `spanRunOf` in
+  `binance.history-paging.ts`), and from the lane's cap (`LANE_CALL_CAPS`) after them; a span read
+  that does not narrow draws the cap alone. Those two constants are the source of the call
+  counts; the measured costs, the pacing times, the simulation tables that chose the narrowing
+  calls and the first run's reach are in spec section 5 (read it there, do not copy a figure).
+  The costs that stand for a type that keeps less than 179 days are the spec's section 5
+  "OPEN ITEM", owned by the live probe of spec item 17; if the probe shows a type keeping less than
+  179 days, the next step is the speculative-read redesign. A lapsed memory narrows only for a
+  span the start it would move on to reaches into
   (`lapsedRangeOf`); a span above it is read from its own start. Every type asks its own band,
   whatever Binance answered for the band of another type (a depth in steps of a day can step
   between one type's band read and the next type's read). `canAfford` judges

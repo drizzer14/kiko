@@ -2142,19 +2142,19 @@ describe('a Binance that refuses a startTime older than the history it keeps (co
               endTime - startTime > 1,
           );
 
-        it.each([-10, -1])(
+        it.each([10, 1])(
           'imports every transfer Binance keeps when a step lands %i ms before the band of the middle type is read',
           async (nudgeMs) => {
             const base = await walkWithSteps(0);
             const bandIndex = bandOf(base.snapshots[0]?.requests ?? []);
-            const stepAtMs = (base.times[bandIndex] ?? 0) + nudgeMs;
+            const stepAtMs = (base.times[bandIndex] ?? 0) - nudgeMs;
             const offsetMs = ((stepAtMs % DAY_MS) + DAY_MS) % DAY_MS;
 
             const { times, snapshots, expected } = await walkWithSteps(offsetMs);
 
             expect(bandIndex).toBeGreaterThan(0);
             expect(bandOf(snapshots[0]?.requests ?? [])).toBe(bandIndex);
-            expect((times[bandIndex] ?? 0) - stepAtMs).toBe(-nudgeMs);
+            expect((times[bandIndex] ?? 0) - stepAtMs).toBe(nudgeMs);
             expect(expected.length).toBeGreaterThanOrEqual(
               UNIVERSAL_TRANSFER_TYPES.length * JUST_ABOVE_MS.length,
             );

@@ -37,8 +37,8 @@ const runBinanceSyncAndImport = async (targetAccountId: string): Promise<Balance
   await logOnFailure('[binance sync] capital history failed', () =>
     syncBinanceTransactions({ targetAccountId, run }),
   );
-  // After the capital walk, never before: the Pay walk stops at the capital watermark and
-  // compares each of its rows with the capital rows already stored.
+  // After the capital walk: the Pay walk does not read the capital cursor, and the order
+  // fixes which walk a shared rate limit (the cooldown) skips.
   await logOnFailure('[binance sync] pay history failed', () =>
     syncBinancePayHistory({ targetAccountId, run }),
   );

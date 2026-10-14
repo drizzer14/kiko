@@ -62,6 +62,7 @@ that holding.
 | R35 | Orchestrator ruling (technical) 2026-10-12, under the no-known-limit rule: a split hint matches a window by containment (`hint.start <= window.start < hint.end`); a point window matches by exact start | section 4 |
 | Q3 | User ruling 2026-10-13, A (after the probe): `transferFloorMs` is `now - 179 whole days`; Binance code -5026 (a `startTime` older than it keeps) is a typed `BinanceHistoryTooOldError` and the Transfer walk reads that span as empty, never owed and never a rejected run | section 5; VERIFY 14 |
 | R36 | Orchestrator ruling (technical) 2026-10-13, under the no-known-limit rule and the user's standing approval (no change to which rows import or to any amount): the Earn endpoints compare a record's `time`, a whole second, to each end of a read at the second (live probe 2026-10-13: a read `[S, E]` returns a record at `T` exactly when `floor_s(S) <= T <= floor_s(E)`). So a read of a span returns a record in the second its start falls in, before the start; the Earn walk takes that record as inside the span (`reach = { start: floor_s(span.start), end: span.end }`, used only to tell whether a record sits in the span): a stuck one owes its own point `[T - 1, T + 1]`, never the span. The whole span owed for a stop with no point is still the real span. Without it a stuck record at `floor_s(span.start)` froze the forward pass every run. Earn only: Pay, capital and Transfer read at the millisecond | section 6; VERIFY 12; E29 |
+| NODATA | User ruling 2026-10-13: the no-data items (VERIFY 15, the VERIFY 10 allowlist cases, Q14 maturity-paid, Q25) are documented open checks, accepted by the user, not merge blockers. Q3 floor A (179 days and code -5026) stands; R22 holds; the deposit end semantics stay an open check | sections 5, 6; VERIFY 10, 14, 15; Q14, Q25 |
 
 ## Sources (official, checked 2026-10-09)
 
@@ -1058,8 +1059,9 @@ withdraw budget moves into this object, with the same numbers and the same rule.
   - pair id: `` `${accountId}:earn:sub:<flexible|locked>:${purchaseId}` ``;
   - each debit leg's counterpart is Earn; the Earn leg's counterpart is the larger
     debit leg's holding.
-  - **OPEN until probe VERIFY 10 (merge blocker)** (leftovers of re-review 3): each item is a
-    data-correctness case that blocks the merge until the probe answers it:
+  - **Documented open checks (VERIFY 10; user ruling 2026-10-13, not a merge blocker)**
+    (leftovers of re-review 3): each item is a data-correctness case the probe closes when it
+    has data to answer it:
     - a locked auto-renewal that Binance records as `NORMAL` would still debit Spot (undetectable
       from the record);
     - a flexible `AUTO` is assumed Spot-funded (undocumented);
@@ -1370,8 +1372,8 @@ Probe items:
    match.
 9. Transfer: per type, the BTC row count, the `status` values, the result of a
    window over 30 days, and the largest accepted `size`.
-10. Earn (MERGE BLOCKER: the allowlist cases below are open data-correctness cases, and the
-    merge waits for this probe's answer): per kind, the `status` values, the `sourceAccount`/`destAccount`
+10. Earn (the allowlist cases below are documented open checks, accepted by the user
+    2026-10-13, not merge blockers): per kind, the `status` values, the `sourceAccount`/`destAccount`
     values, how often `amtFromSpot` + `amtFromFunding` = `amount`, the earliest
     record date, the largest `size`, the count of rewards `type` values per kind
     (before the merge, for Q14), and for locked redemptions how `amount` relates
@@ -1392,12 +1394,13 @@ Probe items:
     redemption pairs with a `RESTAKE` subscription (the same principal counted twice); whether
     a `MATURE` redemption pairs with a locked `AUTO` subscription, and the `sourceAccount` of a
     locked `AUTO` (the allowlist is per product: a locked `AUTO` stops); whether a locked auto-renewal is ever
-    recorded as `NORMAL` (it would still debit Spot: OPEN until VERIFY 10, merge blocker); whether a flexible `AUTO` is
+    recorded as `NORMAL` (it would still debit Spot: documented open check until VERIFY 10, user ruling 2026-10-13); whether a flexible `AUTO` is
     Spot-funded (assumed, undocumented); whether each locked auto-renewal leaves a permanent point
     (owed until OVERNIGHT 24 is answered or the probe settles it); where an
     `AHEAD` redemption's principal goes; the `REWARDS` flexible reward rows (count, wallet,
     overlap with `REALTIME` and `BONUS` rows; they stay stopped and owed:
-    USER RULING 2026-10-13, Q25 = A: stays owed until the probe; decided after the probe); and the
+    USER RULING 2026-10-13, Q25 = A: stays owed until the probe; decided after the probe; a documented open check, accepted by the
+    user 2026-10-13); and the
     decimals of every reward amount (any value over 8 decimals or under 1e-8).
 11. Every SAPI response: whether `X-SAPI-USED-IP-WEIGHT-1M` and
     `X-SAPI-USED-UID-WEIGHT-1M` are present.
@@ -1434,8 +1437,9 @@ Probe items:
     transfer rests on the first two;
     a wrong filter field keeps the point owed only while no trusted record sits at the same
     millisecond (with a twin the point leaves, and the stuck record is never returned either
-    way), and the record starves once it can be placed. This item is a MERGE BLOCKER for that
-    case: if a filter mismatch is possible, the point must carry the stuck record's identity.
+    way), and the record starves once it can be placed. CLOSED by the debugger's sample (the
+    filter field is `timestamp`; twins 0, mismatch 0): the point does not need the stuck
+    record's identity.
     Two O1 cases follow from the same probe. (a) A forward `PENDING` transfer whose `timestamp`
     moves when it settles, or one under a filter mismatch, that settles after it leaves the
     30-day re-scan is never read. (b) A record Binance returns outside its requested span
@@ -1446,7 +1450,9 @@ Probe items:
     precision, the range ends (item 12), and whether every member of a reward group comes
     back in any read that returns one of them. The owed point and the reward key
     `<time>:<n>` rest on this. The probe account had no Earn row: one small flexible
-    subscription and redemption of any coin first (Still needing the user).
+    subscription and redemption of any coin first (Still needing the user). Documented open
+    check, accepted by the user 2026-10-13, not a merge blocker; it closes when a read of a
+    reward group returns every member of the group for one of them.
 16. After the January 2027 Funding -> Spot auto-migration (not before the merge): on an
     account that held Funding BTC, the transfer rows of every type on the migration day.
     Before it, `kiko:researcher` reads Binance's migration notes for how the move is
@@ -1497,16 +1503,17 @@ keeps its rule.
 | Q11 | Universal transfer settled status value? | Only `CONFIRMED`. Anything else, `FAILED` included, is owed at its point until the floor drops it (user ruling 2026-10-12) | No data in the probe account (0 transfer rows), rule unchanged | 9 |
 | Q12 | Earn history depth? | Floor 2022-01-01. Older windows return empty | The samples before the 2022 floor returned total 0; there are no Earn rows at all. No data in the probe account, rule unchanged | 10 |
 | Q13 | Earn settled status values? | Per kind (documented 2026-10-13; USER RULING 2026-10-13 (kept)): a subscription (flexible or locked) settles on `SUCCESS` (documented `PURCHASING`, `SUCCESS`, `FAILED`); a redemption settles on `PAID` (flexible documented `CREATED`, `PAID`, `FAILED`; locked: only `PAID` is an example). `FAILED` is a final failure, ignored; any other value is not settled and stops at its point. A locked redemption with `isComplete` `false` is not settled (was: only `SUCCESS` settled, so every redemption, whose status is `PAID`, stayed owed for good) | `size` max is 100. No Earn rows, so no status values. No data in the probe account, rule unchanged | 10 |
-| Q14 | Where do Earn rewards land, and what does a locked redemption's `amount` mean? | ANSWERED, ruling A (user, 2026-10-10): flexible `REALTIME` -> Earn, flexible `BONUS` -> Spot, locked -> Spot, other flexible `type` stops (`earn-reward-type-unknown`); sources: the two FAQ URLs in section 6. Known gap: maturity-paid locked rewards. Redemption legs use `amount`. `rewardAmt` is not imported from redemptions | No data in the probe account (no reward rows, no locked positions), rule unchanged; ruling A stands and the maturity-paid gap stays open | 10 (reward `type` counts per kind; maturity-paid question) |
+| Q14 | Where do Earn rewards land, and what does a locked redemption's `amount` mean? | ANSWERED, ruling A (user, 2026-10-10): flexible `REALTIME` -> Earn, flexible `BONUS` -> Spot, locked -> Spot, other flexible `type` stops (`earn-reward-type-unknown`); sources: the two FAQ URLs in section 6. Known gap: maturity-paid locked rewards. Redemption legs use `amount`. `rewardAmt` is not imported from redemptions | No data in the probe account (no reward rows, no locked positions), rule unchanged; ruling A stands and the maturity-paid gap stays open as a documented open check (user ruling 2026-10-13), closed when a locked reward paid at maturity is seen in the Binance app | 10 (reward `type` counts per kind; maturity-paid question) |
 | Q15 | The SAPI IP ceiling and the IP header? | `IP_BUDGET_1M` 6000 and the per-walk caps, which hold even without the header | The header is not the same everywhere. Pay: `X-SAPI-USED-UID-WEIGHT-1M` (peak 21000 after 9 calls). Capital deposit, transfer, Earn: `X-SAPI-USED-IP-WEIGHT-1M`. Withdraw history: `X-SAPI-USED-UID-WEIGHT-1S`, per second, no minute reading (it gives none; the cap of 9 calls bounds it). Account: `X-MBX-USED-WEIGHT-1M`. The IP ceiling could not be measured, so `IP_BUDGET_1M` stays. Probe rev 2 PART A (2026-10-13): withdraw reports `X-SAPI-USED-UID-WEIGHT-1S` again; Pay `X-SAPI-USED-UID-WEIGHT-1M` peaked at 39000; the IP ceiling is still not measurable | 11 |
 | Q16 | Are there fully identical reward records? | Each one is kept as its own row (E9) | No data in the probe account (no reward rows), rule unchanged | 10 |
+| Q25 | Do flexible `REWARDS` rows and sub-satoshi rewards import? | A (user ruling 2026-10-13): they stay stopped and owed until the probe; a documented open check, not a merge blocker | No data in the probe account (no reward rows); closed when a flexible `REWARDS` row is seen: its count, wallet, and overlap with `REALTIME` and `BONUS` rows | 10 |
 | A1 | The Pay success `code` is `"000000"` | A missing `data` array or an unknown code is an error | Yes: code `"000000"` and a `data` array on 7 of 7 Pay calls. As built | 1 |
 
 ## Still needing the user
 
-- Run the probe script (task 7/7) and send back its output.
-- Before merge: if probe item 10 finds identical reward records (Q16), confirm
-  whether they are real double credits.
+- Open checks, documented and accepted (user ruling 2026-10-13), not merge blockers: VERIFY 15,
+  the VERIFY 10 allowlist cases, Q14 maturity-paid, Q25, and the deposit end semantics. If a
+  probe finds identical reward records (Q16), confirm whether they are real double credits.
 - Optional: check one BONUS or locked reward in the Binance app and say which
   wallet it landed in. Q14 itself is ruled (A, 2026-10-10).
 - Before the second probe run (items 12-15): one small Spot -> Funding transfer of any
