@@ -242,9 +242,9 @@ fi
 # moved file's old path, so the move would read as a new file and be mutated whole.
 #
 # Never hand Stryker a plain path and a range for the same file: it reads that as "do not mutate".
-# So a file is only ever its ranges. A file with no added line (a pure deletion or a pure move) has nothing to mutate and
-# leaves the list, like a comment-only one. A path with a glob character is refused: Stryker can
-# read it as a pattern, not as a literal file.
+# So a file is only ever its ranges. A file with no added line (a pure deletion or a pure move)
+# has nothing to mutate and leaves the list, like a comment-only one. A path with a glob
+# character is refused: Stryker can read it as a pattern, not as a literal file.
 # A diff or a script that fails is a block and exit 2: never fall back to whole files.
 # --inter-hunk-context=0 keeps a user's diff.interHunkContext from merging hunks, which would add
 # unchanged context lines to a hunk.
