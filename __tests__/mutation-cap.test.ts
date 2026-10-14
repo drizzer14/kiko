@@ -257,7 +257,7 @@ describe('scripts/checks/mutation.sh file cap', () => {
     );
   });
 
-  it('--list prints the ranges of a modified file, a new file, and a whole kept file, then the sums', () => {
+  it('--list prints the ranges of a modified file and a new file, skips comment-only files, then the sums', () => {
     const { script } = buildMutationRepository(
       mkdtempSync(join(tmpdir(), 'kiko-mutation-cap-')),
       {
@@ -267,16 +267,16 @@ describe('scripts/checks/mutation.sh file cap', () => {
           10: 'export const edited10 = 0;',
         }),
         'src/new.ts': `${twelveLines({}).split('\n').slice(0, 5).join('\n')}\n`,
-        'src/kept.ts': '// why a is one\nexport const a = 1;\n',
-        'src/kept.test.ts': 'export const t = 2;\n',
+        'src/tested.ts': '// why a is one\nexport const a = 1;\n',
+        'src/tested.test.ts': 'export const t = 2;\n',
         'src/commented.ts': '// why c is one\nexport const c = 1;\n',
         'src/old.ts': null,
         'src/moved.ts': twelveLines({}),
       },
       {
         'src/mod.ts': twelveLines({}),
-        'src/kept.ts': 'export const a = 1;\n',
-        'src/kept.test.ts': 'export const t = 1;\n',
+        'src/tested.ts': 'export const a = 1;\n',
+        'src/tested.test.ts': 'export const t = 1;\n',
         'src/commented.ts': 'export const c = 1;\n',
         'src/old.ts': twelveLines({}),
       },
@@ -291,14 +291,13 @@ describe('scripts/checks/mutation.sh file cap', () => {
     expect(result.code).toBe(0);
     expect(result.stdout).toBe(
       [
-        'src/kept.ts whole file (2 lines)',
         'src/mod.ts 3-4,10-10 (3 changed lines)',
         'src/new.ts 1-5 (5 changed lines)',
         'skipped (comment-only): src/commented.ts',
+        'skipped (comment-only): src/tested.ts',
         'skipped (no added lines): src/moved.ts',
-        'kept (colocated test changed): src/kept.ts',
-        'changed lines: 10',
-        'mutable files: 3 (cap 30)',
+        'changed lines: 8',
+        'mutable files: 2 (cap 30)',
         'timeout share (history): none',
         '',
       ].join('\n'),

@@ -109,65 +109,59 @@ describe('scripts/checks/mutation.sh comment-only filter', () => {
     const TEST_BASE = 'export const t = 1;\n';
     const TEST_COMMENTED = '// what t checks\nexport const t = 1;\n';
     const TEST_REAL_CHANGE = 'export const t = 2;\n';
-    const KEPT_LINE = (path: string): string => `kept (colocated test changed): ${path}`;
 
-    const runBeside = (testPath: string, testHead: string | null, testExistsAtBase = true) =>
+    const runBeside = (
+      testPath: string,
+      testHead: string | null,
+      testExistsAtBase = true,
+      scriptArguments: string[] = [],
+    ) =>
       runWithArgumentStub(
         build(
           { 'src/foo.ts': COMMENTED, [testPath]: testHead },
           { 'src/foo.ts': BASE, ...(testExistsAtBase ? { [testPath]: TEST_BASE } : {}) },
         ),
         WITH_TYPESCRIPT,
+        scriptArguments,
       );
+
+    const expectNothingMutated = (result: ReturnType<typeof runBeside>): void => {
+      expect(result.code).toBe(0);
+      expect(result.stubArguments).toBeNull();
+      expect(result.stdout).toContain(SKIPPED_LINE('src/foo.ts'));
+      expect(result.stdout).toContain(
+        'nothing to mutate: every changed source file is comment-only.',
+      );
+      expect(result.stdout).not.toContain('kept (');
+      expect(result.stdout).not.toContain('whole file');
+    };
 
     it.each([
       ['foo.test.ts', 'src/foo.test.ts'],
       ['foo.test.tsx', 'src/foo.test.tsx'],
       ['foo.<anything>.test.tsx', 'src/foo.extra.test.tsx'],
       ['foo.<anything>.test.ts', 'src/foo.ledgerless-guard.test.ts'],
-    ])('keeps the source file when %s has a code change', (_name, testPath) => {
-      const result = runBeside(testPath, TEST_REAL_CHANGE);
-
-      expect(mutatedFiles(result.stubArguments)).toEqual(['src/foo.ts']);
-      expect(result.stdout).toContain(KEPT_LINE('src/foo.ts'));
-      expect(result.stdout).not.toContain('skipped (comment-only)');
+    ])('mutates nothing of a comment-only source when %s has a code change', (_name, testPath) => {
+      expectNothingMutated(runBeside(testPath, TEST_REAL_CHANGE));
     });
 
-    it('hands Stryker the kept file as its plain path and never as a range too', () => {
-      const result = runBeside('src/foo.test.ts', TEST_REAL_CHANGE);
-
-      // Stryker reads a plain path beside a range of the same file as "do not mutate" it, and the
-      // comment lines of this file hold no mutant, so a range would also lose the rule.
-      expect(mutateEntries(result.stubArguments)).toEqual(['src/foo.ts']);
+    it('mutates nothing of a comment-only source when the colocated test changed only in a comment', () => {
+      expectNothingMutated(runBeside('src/foo.test.ts', TEST_COMMENTED));
     });
 
-    it('skips the source file when the colocated test changed only in a comment', () => {
-      const result = runBeside('src/foo.test.ts', TEST_COMMENTED);
-
-      expect(result.stubArguments).toBeNull();
-      expect(result.stdout).toContain(SKIPPED_LINE('src/foo.ts'));
-      expect(result.stdout).not.toContain('kept (colocated test changed)');
+    it('mutates nothing of a comment-only source when the colocated test is new', () => {
+      expectNothingMutated(runBeside('src/foo.test.ts', TEST_COMMENTED, false));
     });
 
-    it('keeps the source file when the colocated test is new', () => {
-      const result = runBeside('src/foo.test.ts', TEST_COMMENTED, false);
-
-      expect(mutatedFiles(result.stubArguments)).toEqual(['src/foo.ts']);
+    it('mutates nothing of a comment-only source when the colocated test was deleted', () => {
+      expectNothingMutated(runBeside('src/foo.test.ts', null));
     });
 
-    it('keeps the source file when the colocated test was deleted', () => {
-      const result = runBeside('src/foo.test.ts', null);
-
-      expect(mutatedFiles(result.stubArguments)).toEqual(['src/foo.ts']);
+    it('mutates nothing of a comment-only source when the colocated test no longer parses', () => {
+      expectNothingMutated(runBeside('src/foo.test.ts', '// broken\nexport const t = ;\n'));
     });
 
-    it('keeps the source file when the colocated test no longer parses', () => {
-      const result = runBeside('src/foo.test.ts', '// broken\nexport const t = ;\n');
-
-      expect(mutatedFiles(result.stubArguments)).toEqual(['src/foo.ts']);
-    });
-
-    it('keeps the source file when one of two colocated tests has a code change', () => {
+    it('mutates nothing of a comment-only source when one of two colocated tests has a code change', () => {
       const result = runWithArgumentStub(
         build(
           {
@@ -180,7 +174,7 @@ describe('scripts/checks/mutation.sh comment-only filter', () => {
         WITH_TYPESCRIPT,
       );
 
-      expect(mutatedFiles(result.stubArguments)).toEqual(['src/foo.ts']);
+      expectNothingMutated(result);
     });
 
     it.each([
@@ -188,35 +182,55 @@ describe('scripts/checks/mutation.sh comment-only filter', () => {
       ['a test file in __tests__', '__tests__/foo.test.ts'],
       ['a test file of a longer base name', 'src/foobar.test.ts'],
       ['a test file of a folder named like the source', 'src/foo.d/bar.test.ts'],
-    ])('skips the source file for %s', (_name, testPath) => {
-      const result = runBeside(testPath, TEST_REAL_CHANGE);
-
-      expect(result.stubArguments).toBeNull();
-      expect(result.stdout).toContain(SKIPPED_LINE('src/foo.ts'));
+    ])('mutates nothing of a comment-only source beside %s', (_name, testPath) => {
+      expectNothingMutated(runBeside(testPath, TEST_REAL_CHANGE));
     });
 
-    it('--list names the kept file and says why', () => {
-      const listed = runWithArgumentStub(
-        build(
-          { 'src/foo.ts': COMMENTED, 'src/foo.test.ts': TEST_REAL_CHANGE },
-          { 'src/foo.ts': BASE, 'src/foo.test.ts': TEST_BASE },
-        ),
-        WITH_TYPESCRIPT,
-        ['--list'],
-      );
+    it('--list names the comment-only source as skipped and counts no mutable file', () => {
+      const listed = runBeside('src/foo.test.ts', TEST_REAL_CHANGE, true, ['--list']);
 
       expect(listed.code).toBe(0);
       expect(listed.stdout.split('\n').filter(Boolean)).toEqual([
-        'src/foo.ts whole file (2 lines)',
-        KEPT_LINE('src/foo.ts'),
-        'changed lines: 2',
-        'mutable files: 1 (cap 30)',
+        SKIPPED_LINE('src/foo.ts'),
+        'changed lines: 0',
+        'mutable files: 0 (cap 30)',
         'timeout share (history): none',
+        'nothing to mutate: every changed source file is comment-only.',
       ]);
+    });
+
+    it('hands Stryker only the changed-line range of a real source change beside a changed test', () => {
+      const result = runWithArgumentStub(
+        build(
+          { 'src/foo.ts': REAL_CHANGE, 'src/foo.test.ts': TEST_REAL_CHANGE },
+          { 'src/foo.ts': BASE, 'src/foo.test.ts': TEST_BASE },
+        ),
+        WITH_TYPESCRIPT,
+      );
+
+      expect(result.code).toBe(0);
+      expect(mutateEntries(result.stubArguments)).toEqual(['src/foo.ts:1-1']);
+      expect(result.stdout).not.toContain('whole file');
+    });
+
+    it('hands Stryker the ranges of a Stryker directive edit beside a changed test', () => {
+      const result = runWithArgumentStub(
+        build(
+          {
+            'src/foo.ts': `${DIRECTIVE}\nexport const a = 1;\n`,
+            'src/foo.test.ts': TEST_REAL_CHANGE,
+          },
+          { 'src/foo.ts': BASE, 'src/foo.test.ts': TEST_BASE },
+        ),
+        WITH_TYPESCRIPT,
+      );
+
+      expect(mutateEntries(result.stubArguments)).toEqual(['src/foo.ts:1-2']);
+      expect(result.stdout).not.toContain('skipped (comment-only)');
     });
   });
 
-  it('keeps a comment-only file whose colocated test has a non-ASCII name and a code change', () => {
+  it('mutates nothing of a comment-only source whose colocated test has a non-ASCII name and a code change', () => {
     const listed = runWithArgumentStub(
       build(
         { 'src/nonascii/foo.ts': COMMENTED, 'src/nonascii/foo.тест.test.ts': REAL_CHANGE },
@@ -228,11 +242,11 @@ describe('scripts/checks/mutation.sh comment-only filter', () => {
 
     expect(listed.code).toBe(0);
     expect(listed.stdout.split('\n').filter(Boolean)).toEqual([
-      'src/nonascii/foo.ts whole file (2 lines)',
-      'kept (colocated test changed): src/nonascii/foo.ts',
-      'changed lines: 2',
-      'mutable files: 1 (cap 30)',
+      SKIPPED_LINE('src/nonascii/foo.ts'),
+      'changed lines: 0',
+      'mutable files: 0 (cap 30)',
       'timeout share (history): none',
+      'nothing to mutate: every changed source file is comment-only.',
     ]);
   });
 
