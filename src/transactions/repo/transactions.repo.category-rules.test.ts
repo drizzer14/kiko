@@ -367,6 +367,7 @@ describe('a rule at a refresh', () => {
     categorySetByHand: 'category_set_by_hand = 1',
     exchangePairId: "exchange_pair_id = 'pair'",
     exchangeCounterpartHoldingId: "exchange_counterpart_holding_id = 'usd'",
+    untrackedCounterpart: "untracked_counterpart = 'wallet:UMFUTURE'",
     setsBalance: 'sets_balance = 1',
     changeGroupId: "change_group_id = 'group'",
   };

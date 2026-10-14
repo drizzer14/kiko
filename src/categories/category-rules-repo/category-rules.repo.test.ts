@@ -30,6 +30,7 @@ type TransactionSeed = {
   categorySetByHand?: boolean;
   exchangePairId?: string;
   exchangeCounterpartHoldingId?: string;
+  untrackedCounterpart?: string;
   setsBalance?: boolean;
   changeGroupId?: string;
 };
@@ -57,8 +58,8 @@ const insertTransaction = (row: TransactionSeed): void => {
     .prepare(
       `INSERT INTO transactions (id, holding_id, amount_minor_units, time, description, category,
          source, category_set_by_hand, exchange_pair_id, exchange_counterpart_holding_id,
-         sets_balance, change_group_id)
-       VALUES (?, ?, ?, 1000, ?, ?, 'manual', ?, ?, ?, ?, ?)`,
+         untracked_counterpart, sets_balance, change_group_id)
+       VALUES (?, ?, ?, 1000, ?, ?, 'manual', ?, ?, ?, ?, ?, ?)`,
     )
     .run(
       row.id,
@@ -69,6 +70,7 @@ const insertTransaction = (row: TransactionSeed): void => {
       row.categorySetByHand ? 1 : 0,
       row.exchangePairId ?? null,
       row.exchangeCounterpartHoldingId ?? null,
+      row.untrackedCounterpart ?? null,
       row.setsBalance ? 1 : 0,
       row.changeGroupId ?? null,
     );
@@ -924,6 +926,37 @@ describe('categoryRulesRepo.saveRule', () => {
       picked: 'groceries',
     });
     expect(flagOf('picked')).toBe(1);
+  });
+
+  it('leaves both legs of a wallet transfer alone for a rule with no name, and rewrites a plain row', async () => {
+    const withoutName: CategoryRuleMatcher[] = [{ type: 'direction', direction: 'expense' }];
+
+    insertTransaction({
+      id: 'to-futures',
+      description: 'Transfer',
+      category: 'groceries',
+      untrackedCounterpart: 'wallet:UMFUTURE',
+    });
+    insertTransaction({
+      id: 'to-funding',
+      description: 'Transfer',
+      category: 'groceries',
+      exchangePairId: 'pair',
+      exchangeCounterpartHoldingId: 'usd-card',
+    });
+    insertTransaction({ id: 'plain', description: 'Silpo', category: 'groceries' });
+    const draft = { id: null, category: 'food', matchers: withoutName };
+
+    const promised = await categoryRulesRepo.countRuleRewrite(draft);
+    const saved = await categoryRulesRepo.saveRule({ ...draft, applyToExisting: true });
+
+    expect(promised).toBe(1);
+    expect(saved.changed).toBe(1);
+    expect(categoriesOf()).toEqual({
+      plain: 'food',
+      'to-funding': 'groceries',
+      'to-futures': 'groceries',
+    });
   });
 
   it('changes exactly the number of rows the count promised, on data that did not change', async () => {

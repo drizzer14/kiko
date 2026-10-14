@@ -741,7 +741,9 @@ short-circuit (`isStoredAsGiven`), so the count shown never differs from
 the write. `REWRITE_GUARD_FIELDS` (`src/categories/category-rules/`) is the
 one list of rows a rule never rewrites; `isRewriteEligible` and the
 refresh CASE in `src/transactions/repo/transactions.repo.ts` both derive
-from it. `saveRule`, `countRuleRewrite` and `applyNameRule` go through one
+from it. It names every structural marker `exchangeExcludedTransactionIds`
+reads (`plan-rule-rewrite.test.ts` pins that), so a marker the statistics
+start treating as an exchange leg joins the list in the same change. `saveRule`, `countRuleRewrite` and `applyNameRule` go through one
 `stageDraft` (the stored rule, the row it becomes, every rule prepared with
 that row in place), so the rules are read once per write; `storeRule` is the
 one insert-or-update. `prepareRules` lowercases a rule's category once, so

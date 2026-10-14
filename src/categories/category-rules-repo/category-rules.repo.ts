@@ -48,6 +48,7 @@ const candidateColumns = {
   categorySetByHand: transactions.categorySetByHand,
   exchangePairId: transactions.exchangePairId,
   exchangeCounterpartHoldingId: transactions.exchangeCounterpartHoldingId,
+  untrackedCounterpart: transactions.untrackedCounterpart,
   setsBalance: transactions.setsBalance,
   changeGroupId: transactions.changeGroupId,
 };

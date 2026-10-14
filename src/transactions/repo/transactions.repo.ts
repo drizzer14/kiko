@@ -1422,6 +1422,7 @@ const GUARD_FIELD_IS_UNSET: Record<RewriteGuardField, SQL> = {
   categorySetByHand: sql`${transactions.categorySetByHand} = 0`,
   exchangePairId: sql`${transactions.exchangePairId} IS NULL`,
   exchangeCounterpartHoldingId: sql`${transactions.exchangeCounterpartHoldingId} IS NULL`,
+  untrackedCounterpart: sql`${transactions.untrackedCounterpart} IS NULL`,
   setsBalance: sql`${transactions.setsBalance} = 0`,
   changeGroupId: sql`${transactions.changeGroupId} IS NULL`,
 };
