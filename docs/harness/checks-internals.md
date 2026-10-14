@@ -1,7 +1,7 @@
 # Checks internals: content dedup and locking
 
-This is the full mechanism behind the one-line summary in the root
-`CLAUDE.md` ("a check skips when its inputs did not change").
+This is the full mechanism behind the one-line summary in
+`docs/harness/checks.md` "Content dedup" ("a check skips when its inputs did not change").
 
 ## Why dedup exists
 

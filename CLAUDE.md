@@ -49,10 +49,11 @@ Composite scripts:
   blank-line-separation, comment-line-width, component-i18n-namespace, shipped-migrations, guard-replay, typecheck.
   `__tests__/check-all-lists.test.ts` pins this list to `package.json` and the hooks.
 - `npm run check:deep` — the heavy tier: `check:mutation` (Stryker +
-  `mutation-score.js`; change-set score below 75 total or 60 per file fails),
+  `mutation-score.js`; thresholds in `docs/harness/checks.md`),
   then `bash scripts/checks/osv.sh` (any known CVE in `package-lock.json`
-  fails). Manual, wired to no hook; the gate is queued with
-  `scripts/job-queue.sh gate <worktree> <label> <base> <head>`. **Mutation runs per SMALL change
+  fails). Manual, wired to no hook; after the queue cutover the gate is queued with
+  `scripts/job-queue.sh gate <worktree> <label> <base> <head>` (until the coordinator announces
+  the cutover, heavy jobs use `memory/refs/verify-queue.sh` and the old gate runner). **Mutation runs per SMALL change
   set only, never on a whole project or release** (a whole-release run went
   10 h 16 min with no result): set `KIKO_MUTATION_BASE` to the change set's
   own base commit; more than 30 files to mutate (`MUTATION_FILE_CAP` in
@@ -103,7 +104,7 @@ The git `pre-commit`/`pre-merge-commit` hooks (`githooks/`) run the pre-commit t
     Edit/Write, and `git add` + `git mv` to rename; a formatter's own
     `--write` stays allowed.
   - a `git commit|merge|pull` that skips `githooks/` (`--no-verify`, `-n`, `core.hooksPath`
-    overrides) or a `git config` that writes core.hooksPath ("NO-VERIFY deny"); repair with
+    overrides) or a `git config` that writes or unsets core.hooksPath (any scope) ("NO-VERIFY deny"); repair with
     `bash scripts/ensure-git-hooks.sh` or `npm ci`.
   - a `while`/`until` loop that scans the process table for make verify,
     check:all, jest, stryker, semgrep, or xcodebuild ("WAIT-LOOP deny"); wait
@@ -149,7 +150,6 @@ rule, and the tracked/accepted dependency CVEs are documented IN FULL in
 CVEs" there are tracked, real debt, not a suppressed finding — never silence them; re-check
 periodically and pin the moment a fix ships.
 
-
 ## Future stubs (disabled — do not enable without discussion)
 
 A pre-commit hook could run the rest of `npm run check:all` (only typecheck is enabled); a CI job could run `check:all` and `check:deep` as required checks.
@@ -175,7 +175,6 @@ locations (`.claude/skills/` and `harness/kiko/skills/`, plus `harness/kiko/agen
 new code. Then `kiko:scribe` fixes the drift and commits, before the next iteration or the merge.
 The completion report names the drift-fix sha (or states "no drift found"). The coordinator checks
 that sha before it merges.
-
 
 ### The thirteen agents
 

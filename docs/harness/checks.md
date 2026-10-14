@@ -67,8 +67,10 @@ Composite scripts:
   (agents await only the exit code) lives in the `ops` skill — see it,
   and the `kiko-linter` skill, before running this yourself.
 
+## Automatic wiring
+
 Automatic wiring (`harness/kiko/hooks/hooks.json`, via the
-`kiko` plugin — see "Harness agents" below): the fast tier
+`kiko` plugin — see CLAUDE.md "Harness agents"): the fast tier
 (`scripts/checks/fast.sh`: lint, security, secrets, import-order,
 full-word-identifiers on the touched file) runs on `PostToolUse` for
 `Edit|Write|MultiEdit`. The medium
@@ -218,10 +220,3 @@ It skips (exit 0) a commit whose staged diff touches no
 `docs/harness/documented-exceptions.md`). User ruling
 2026-10-13: typecheck only, never the rest of check:all. Rebase, cherry-pick, revert, and am run no
 pre-commit hook. Agents never pass `--no-verify`/`-n` or `-c core.hooksPath` (kill-guard denies them).
-
-## Future stubs
-
-```bash
-# FUTURE (disabled): a pre-commit hook could run the rest of `npm run check:all` (only typecheck is enabled; see "Pre-commit typecheck").
-# FUTURE (disabled): a CI job could run `npm run check:all` and `npm run check:deep` as required checks.
-```

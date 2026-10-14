@@ -277,7 +277,7 @@ or endorsed by any bank/broker" caption under its trigger
 Ask: does this diff add a new dependency that performs analytics,
 tracking, or crash reporting? `npm run check:deps` surfaces any
 changed dependency block for confirmation (see the checks table in
-`CLAUDE.md`), which is where a new dependency is visible — but it does
+`docs/harness/checks.md`), which is where a new dependency is visible — but it does
 not judge INTENT; deciding whether a new dependency is a tracking SDK
 is a reviewer judgment call.
 
