@@ -32,7 +32,7 @@ const styles = StyleSheet.create(() => ({
 }));
 
 // The create forms of a fixed kind open in the Settings stack, so Save and Back return to the
-// topic; only Add account, which pins the Accounts tab's route, leaves the tab for its form.
+// topic; Add account keeps its pinned Accounts tab route, so it leaves the Settings stack.
 const footerActionFor = (
   helpAction: HelpAction,
   t: TFunction,
