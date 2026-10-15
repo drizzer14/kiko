@@ -393,10 +393,14 @@ that embeds an amount, and the migration test lists each one. Crash-safe: the ru
 whole file and its bookkeeping row in one transaction, so a crash leaves 0059 to retry whole.
 
 JSON fields (`holdings.metadata`, `category_rules.matchers`, `transaction_templates.draft`): 0059
-rescales a value only where `json_valid(<column>)` holds AND `json_type(<column>, <path>) =
+rescales a value only where `CASE WHEN json_valid(<column>) THEN json_type(<column>, <path>) END =
 'integer'`; a column that is not valid JSON, or a field that is a real, a string, null or absent,
-stays exactly as stored. The bound count below applies the same two conditions, so it never reads
-malformed JSON (and never aborts on it). `withUsdtRescaled` applies the same rule: a field is
+stays exactly as stored. The guard is a CASE, never `json_valid(...)` joined to `json_type(...)` by
+a logical and: SQLite does not guarantee that a logical and short-circuits, and `json_type` raises
+an error on malformed JSON, which would abort 0059 (U13 pins the malformed case). Every
+`json_each` over a column sits behind the same CASE guard. The bound count below uses the same
+guard, so it never reads malformed JSON (and never aborts on it). `withUsdtRescaled` applies the
+same rule: a field is
 rescaled only when its column parsed as JSON and the value is a safe integer
 (`Number.isSafeInteger`); anything else is restored as stored. The app's writers (`JSON.stringify`)
 never store an integral real such as `5000.0`, so the two paths agree on every value the app
@@ -864,8 +868,11 @@ effect.
 - Walk state (set 4, migration 0060): `ALTER TABLE sync_state ADD exchange_state text`, then one
   `INSERT INTO sync_state (account_id, exchange_state) ... ON CONFLICT(account_id) DO UPDATE SET
   exchange_state = excluded.exchange_state` per account that has a holding with
-  `json_valid(metadata)` and `json_extract(metadata, '$.binanceAsset') = 'BTC'` carrying a walk
-  key. The insert creates the `sync_state` row when none exists (its other columns null, so nothing
+  `CASE WHEN json_valid(metadata) THEN json_extract(metadata, '$.binanceAsset') END = 'BTC'`
+  carrying a walk key. Every `json_extract` over `metadata` sits behind the same CASE guard,
+  because SQLite does not guarantee that a logical and short-circuits, and `json_extract` raises an
+  error on malformed JSON (Z4 pins the malformed case). The insert creates the `sync_state` row
+  when none exists (its other columns null, so nothing
   reads the account as synced). The JSON is built with `json_object` from each `binance*` walk key
   (cursor, rescan, pending, point cursor, range cursor, span hints per walk; field map pinned by the
   migration test); each value is copied as stored into its own field (`json(...)` for a list or an
