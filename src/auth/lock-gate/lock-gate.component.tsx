@@ -1,4 +1,4 @@
-import { match } from 'ts-pattern';
+import { match, P } from 'ts-pattern';
 import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
 import Box from '@kiko/design-system/components/box';
@@ -29,7 +29,12 @@ const unlockHint = (result: AuthResult | undefined, t: TFunction): string =>
 // once biometry is locked out, so the retry action is the same call; only the
 // label changes to tell the user what to expect.
 const unlockLabel = (result: AuthResult | undefined, t: TFunction): string =>
-  result?.kind === 'lockout' ? t('auth.usePasscode') : t('auth.unlock');
+  match<AuthResult['kind'] | undefined, string>(result?.kind)
+    .with('lockout', () => t('auth.usePasscode'))
+    .with(P.union(undefined, 'success', 'cancelled', 'passcodeNotSet', 'failed'), () =>
+      t('auth.unlock'),
+    )
+    .exhaustive();
 
 /**
  * Mounted inside `MigrationsGate` (settings must be readable) and around the
