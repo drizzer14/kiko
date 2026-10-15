@@ -2750,6 +2750,10 @@ titles are both covered and no screen passes it (`src/navigation/fitting-large-t
 title-fit logic there, not in screens. Cross-cutting chrome wraps screen content only, never the
 native header or the safe areas.
 
+The restore (`largeTitleRestoredOptions`) reads the screen's own options from before the switch
+(the `ownOptions` ref), so a screen's own `headerTransparent`, `headerShadowVisible` and
+`headerTitle` survive a heading round trip; a value changed during heading mode is not kept.
+
 Testing: `jest/setup.js` globally mocks `useTitleFit` (`{ fits: true, measurer: null }`); a test
 that needs "does not fit" uses `jest.mocked(useTitleFit).mockReturnValue(...)`;
 `use-title-fit.test.tsx` unmocks it to test the real hook.
