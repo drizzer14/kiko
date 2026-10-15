@@ -98,6 +98,16 @@ before that early exit, the medium tier runs
 `scripts/checks/shipped-migrations.sh`, so a turn that only committed an
 edit to a shipped migration is still checked, and a failure leaves the
 replay's mark ref unmoved so every later Stop fails again.
+
+The medium tier also runs the doc-reading jest suites on a doc change: a path matching
+`harness_doc_roots_pattern` in `scripts/checks/_lib.sh` (read it there for the roots) that is
+uncommitted, or committed since the guard-replay mark. `harness_doc_suites` finds the suites at
+run time (`readFileSync` plus a quoted doc-root literal); there is no list to maintain. A
+`doc-suites` fingerprint (`harness_doc_fingerprint`) skips an unchanged doc state. The step runs
+before `guard-replay.sh`, so a failed doc step leaves the committed change pending. At
+hookStarted + 270 s it stops its own jest pid and exits 2 with a block saying to run
+`make doc-suites` by hand; zero suites or a missing jest also exit 2 (fail-closed). A by-hand
+`make doc-suites` pass does not record the fingerprint.
 `tsc --noEmit` is project-wide by
 nature — a type error surfaces in the file that CONSUMES a changed
 type, not only in the file that was edited — so it never takes a

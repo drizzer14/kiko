@@ -69,7 +69,9 @@ Rules:
   alone missed a fixture that broke two guard rules: the rule-inventory
   and guard-rule jest suites run only in `make verify`.
 - A change set that adds a repo-wide invariant or rule merges main first and re-runs
-  `check:all`: the new rule must hold on code main gained since the base.
+  `check:all`: the new rule must hold on code main gained since the base. After that merge the
+  mutation gate uses the merged main tip as `KIKO_MUTATION_BASE` (see "Mutation base after a
+  track merged next").
 - Per-task deep gates: a per-file floor miss is fixed with tests only,
   never an exclusion.
 - Re-gate of named files across a big merge: `make mutable` prints one

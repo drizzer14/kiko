@@ -70,6 +70,14 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   WARNING or a `security.sh` SKIPPED notice can appear beside an unrelated
   failure. It is tracked debt, not that failure; otherwise these (and the `medium.sh` repeated-Stop note, which reaches a human only) are for a
   human or a manual `check:security`/`check:dup` run.
+  `__tests__/wrapper-stderr-exit-zero.test.ts` pins this: a `scripts/checks/*.sh` wrapper that
+  writes to stderr and exits 0 must be named in backticks in this section, and a new one
+  without a mention fails; keep `dup.sh`, `medium.sh` and `security.sh` named.
+
+  `medium.sh`'s doc step (see `docs/harness/checks.md` "Automatic wiring") has a deadline exit
+  shaped like the guard replay's: at hookStarted + 270 s it stops its own jest pid and exits 2
+  with a block that says to run `make doc-suites` by hand; zero suites or a missing jest also
+  exit 2.
 
   Another exception, of a different shape: `scripts/checks/kill-guard.sh`
   (+ its sibling `scripts/checks/kill-guard.js`) is a `PreToolUse` hook on
@@ -1775,8 +1783,8 @@ Mechanizes kiko-code-style's "`ts-pattern` for exhaustive mapping": a ternary
 **Severity ERROR.** The rule has no type information, so it cannot tell a closed union from a
 plain `kind` string. A site on a closed union does not fit kiko-code-style's single-boolean-guard
 allowance, because that allowance covers only a guard with no closed-set enum behind it. A site
-uses `match(...).exhaustive()`. To re-measure, run the Semgrep command in the title-rule section
-above, filtered to this id; the tree must hold 0 findings. `// nosemgrep:
+uses `match(...).exhaustive()`. To re-measure, run the Semgrep command in the
+`kiko-test-title-no-history` section above, filtered to this id; the tree must hold 0 findings. `// nosemgrep:
 kiko-kind-ternary-prefers-match OVERRIDE(<reason>) <why>` is only for a site where `kind` is
 not a closed union.
 
