@@ -70,22 +70,22 @@ if [ "$recorded" = "$(harness_replay_mark "$ROOT")" ]; then
   replay_pending=0
 fi
 
-# Doc text the doc-reading jest suites read: a touched file under a doc root, or a file a commit
-# changed since the replay mark above (the mark, read here before guard-replay.sh moves it, is
-# the last state a Stop passed, so a scribe commit that left a clean tree still counts).
-doc_pattern="$(harness_doc_roots_pattern)"
-doc_changed=()
-for f in "${touched[@]+"${touched[@]}"}"; do
-  [[ "$f" =~ $doc_pattern ]] && doc_changed+=("$f")
-done
-if [ -n "$recorded" ]; then
-  while IFS= read -r -d '' f; do
-    [[ "$f" =~ $doc_pattern ]] && doc_changed+=("$f")
-  done < <(git diff --name-only -z "$recorded" HEAD 2>/dev/null)
+# The doc-reading jest suites run whenever the doc fingerprint differs from the one a pass
+# recorded: a fingerprint of the doc files and suites as they are on disk, so it needs no diff and
+# no replay mark. A mark or a diff each lose a case: a by-hand replay moves the mark past a
+# committed doc edit, a worktree with no mark has no baseline, and a diff folds a file moved out
+# of a doc root into its new path alone. The cost is one run per fresh worktree or purged state
+# dir. It is empty when the project holds no doc file and no suite, so nothing is pending there.
+# The state key uses the physical root so `make doc-suites` writes the same one.
+doc_root="$(pwd -P)"
+doc_fingerprint="$(harness_doc_fingerprint "$doc_root")"
+doc_pending=0
+if [ -n "$doc_fingerprint" ] && ! harness_unchanged "$doc_root" "doc-suites" "$doc_fingerprint"; then
+  doc_pending=1
 fi
 
 # Nothing relevant changed (the coordinator case): stay silent.
-if [ ${#changed[@]} -eq 0 ] && [ ${#harness_changed[@]} -eq 0 ] && [ ${#doc_changed[@]} -eq 0 ] \
+if [ ${#changed[@]} -eq 0 ] && [ ${#harness_changed[@]} -eq 0 ] && [ "$doc_pending" -eq 0 ] \
   && [ "$replay_pending" -eq 0 ]; then
   exit 0
 fi
@@ -147,89 +147,85 @@ fi
 # hides the committed violation. Failing first leaves the mark where it was, so
 # every later Stop fails again until the migration is restored.
 "$DIR/shipped-migrations.sh" || exit 2
-# The doc-reading jest suites. Like the migrations check it runs BEFORE the replay: a pass moves
-# the mark, so a failure after that would leave the next Stop a clean tree with no doc change in
-# view, and the committed doc edit would go unchecked. Its fingerprint skips an identical doc
-# state. The jest run stops at its own deadline, well inside the 300 s hook kill, and fails
-# closed: a killed hook ends the turn with no error and no check. KIKO_DOC_SUITES_DEADLINE_SECONDS
-# exists for the tests and only lowers the budget.
-if [ ${#doc_changed[@]} -gt 0 ]; then
-  doc_fingerprint="$(harness_doc_fingerprint "$ROOT")"
-  if ! harness_unchanged "$ROOT" "doc-suites" "$doc_fingerprint"; then
-    doc_suites=()
-    while IFS= read -r f; do
-      doc_suites+=("$f")
-    done < <(harness_doc_suites "$ROOT")
-    doc_jest="$ROOT/node_modules/.bin/jest"
-    doc_budget=270
-    case "${KIKO_DOC_SUITES_DEADLINE_SECONDS:-}" in
-      '' | *[!0-9]*) ;;
-      *) [ "$KIKO_DOC_SUITES_DEADLINE_SECONDS" -lt "$doc_budget" ] \
-        && doc_budget="$KIKO_DOC_SUITES_DEADLINE_SECONDS" ;;
-    esac
-    doc_why="A skill, agent, docs or CLAUDE.md edit can drift from the code these suites pin, and only a run shows it."
-    doc_donot="Do not edit a suite or its pin to get past this, and do not skip the Stop tier."
-    if [ ${#doc_suites[@]} -eq 0 ] || [ ! -x "$doc_jest" ]; then
-      print_block \
-        "Doc-reading jest suites" \
-        "The doc-reading suites could not be run." \
-        "Suites found: ${#doc_suites[@]}. Jest binary: $doc_jest" \
-        "$doc_why" \
-        "Run: npm install, then make doc-suites. If no suite is found, the discovery in harness_doc_suites (scripts/checks/_lib.sh) broke." \
-        "$doc_donot"
-      exit 2
-    fi
-    doc_output="$state/doc-suites.out"
-    "$doc_jest" "${doc_suites[@]}" > "$doc_output" 2>&1 &
-    doc_pid=$!
-    doc_timed_out=0
-    while kill -0 "$doc_pid" 2>/dev/null; do
-      if [ "$(date +%s)" -ge $((hookStarted + doc_budget)) ]; then
-        doc_timed_out=1
-        break
-      fi
-      sleep 0.2
-    done
-    if [ "$doc_timed_out" -eq 1 ]; then
-      # Only the pid this wrapper started; escalate when jest ignores the first signal.
-      kill "$doc_pid" 2>/dev/null
-      for _ in 1 2 3 4 5 6 7 8 9 10; do
-        kill -0 "$doc_pid" 2>/dev/null || break
-        sleep 0.5
-      done
-      kill -0 "$doc_pid" 2>/dev/null && kill -KILL "$doc_pid" 2>/dev/null
-    fi
-    wait "$doc_pid" 2>/dev/null
-    doc_code=$?
-    if [ "$doc_timed_out" -eq 1 ]; then
-      print_block \
-        "Doc-reading jest suites" \
-        "The suites stopped at the Stop-tier deadline before they finished." \
-        "Stopped $doc_budget s after the hook started. Last output: $(tail -n 20 "$doc_output")" \
-        "The Stop hook is killed at 300 s, and a killed hook ends the turn with no error and no check. Failing at the deadline keeps the unchecked docs visible." \
-        "The suites need more time than a Stop allows: run make doc-suites by hand (no deadline), then fix anything it reports." \
-        "$doc_donot"
-      exit 2
-    fi
-    if [ "$doc_code" -ne 0 ]; then
-      print_block \
-        "Doc-reading jest suites" \
-        "A suite that reads skill, agent, docs or CLAUDE.md text failed." \
-        "$(tail -n 60 "$doc_output")" \
-        "$doc_why" \
-        "Fix the text (or the code it describes) the failing test names, then re-run: make doc-suites" \
-        "$doc_donot"
-      exit 2
-    fi
-    harness_mark_pass "$ROOT" "doc-suites" "$doc_fingerprint"
+# The doc-reading jest suites, when the doc fingerprint computed above differs from the recorded
+# pass. They no longer depend on the replay mark, so their order against the replay is free;
+# the step stays before it. The jest run stops at its own deadline, well inside the 300 s hook
+# kill, and fails closed: a killed hook ends the turn with no error and no check.
+# KIKO_DOC_SUITES_DEADLINE_SECONDS exists for the tests and only lowers the budget.
+if [ "$doc_pending" -eq 1 ]; then
+  doc_suites=()
+  while IFS= read -r f; do
+    doc_suites+=("$f")
+  done < <(harness_doc_suites "$ROOT")
+  doc_jest="$ROOT/node_modules/.bin/jest"
+  doc_budget=270
+  case "${KIKO_DOC_SUITES_DEADLINE_SECONDS:-}" in
+    '' | *[!0-9]*) ;;
+    *) [ "$KIKO_DOC_SUITES_DEADLINE_SECONDS" -lt "$doc_budget" ] \
+      && doc_budget="$KIKO_DOC_SUITES_DEADLINE_SECONDS" ;;
+  esac
+  doc_why="A skill, agent, docs or CLAUDE.md edit can drift from the code these suites pin, and only a run shows it."
+  doc_donot="Do not edit a suite or its pin to get past this, and do not skip the Stop tier."
+  if [ ${#doc_suites[@]} -eq 0 ] || [ ! -x "$doc_jest" ]; then
+    print_block \
+      "Doc-reading jest suites" \
+      "The doc-reading suites could not be run." \
+      "Suites found: ${#doc_suites[@]}. Jest binary: $doc_jest" \
+      "$doc_why" \
+      "Run: npm install, then make doc-suites. If no suite is found, the discovery in harness_doc_suites (scripts/checks/_lib.sh) broke." \
+      "$doc_donot"
+    exit 2
   fi
+  doc_output="$state/doc-suites.out"
+  "$doc_jest" "${doc_suites[@]}" > "$doc_output" 2>&1 &
+  doc_pid=$!
+  doc_timed_out=0
+  while kill -0 "$doc_pid" 2>/dev/null; do
+    if [ "$(date +%s)" -ge $((hookStarted + doc_budget)) ]; then
+      doc_timed_out=1
+      break
+    fi
+    sleep 0.2
+  done
+  if [ "$doc_timed_out" -eq 1 ]; then
+    # Only the pid this wrapper started; escalate when jest ignores the first signal.
+    kill "$doc_pid" 2>/dev/null
+    for _ in 1 2 3 4 5 6 7 8 9 10; do
+      kill -0 "$doc_pid" 2>/dev/null || break
+      sleep 0.5
+    done
+    kill -0 "$doc_pid" 2>/dev/null && kill -KILL "$doc_pid" 2>/dev/null
+  fi
+  wait "$doc_pid" 2>/dev/null
+  doc_code=$?
+  if [ "$doc_timed_out" -eq 1 ]; then
+    print_block \
+      "Doc-reading jest suites" \
+      "The suites stopped at the Stop-tier deadline before they finished." \
+      "Stopped $doc_budget s after the hook started. Last output: $(tail -n 20 "$doc_output")" \
+      "The Stop hook is killed at 300 s, and a killed hook ends the turn with no error and no check. Failing at the deadline keeps the unchecked docs visible." \
+      "The suites need more time than a Stop allows: run make doc-suites by hand (no deadline), then fix anything it reports." \
+      "$doc_donot"
+    exit 2
+  fi
+  if [ "$doc_code" -ne 0 ]; then
+    print_block \
+      "Doc-reading jest suites" \
+      "A suite that reads skill, agent, docs or CLAUDE.md text failed." \
+      "$(tail -n 60 "$doc_output")" \
+      "$doc_why" \
+      "Fix the text (or the code it describes) the failing test names, then re-run: make doc-suites" \
+      "$doc_donot"
+    exit 2
+  fi
+  harness_mark_pass "$doc_root" "doc-suites" "$doc_fingerprint"
 fi
 # Session-change scope: the pre-write guard, replayed on every .ts/.tsx file
 # the session changed, whatever wrote it (guard-replay.js computes its own
 # set), with the Stop-tier deadline.
 "$DIR/guard-replay.sh" --stop-tier "$hookStarted" || exit 2
-# Only HEAD moved (a commit, no file change): the replay and the shipped-migrations
-# check were the checks due.
+# Only HEAD moved (a commit, no file change): the replay, the shipped-migrations check and
+# the doc step were the checks due.
 if [ ${#changed[@]} -eq 0 ] && [ ${#harness_changed[@]} -eq 0 ]; then
   exit 0
 fi

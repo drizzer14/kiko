@@ -1,6 +1,6 @@
 import { join } from 'node:path';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { chmodSync, cpSync, mkdirSync, writeFileSync } from 'node:fs';
+import { chmodSync, cpSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 
 import {
   createTemporaryDirectory,
@@ -135,17 +135,100 @@ const jestRuns = (project: Project): string[][] => {
   }
 };
 
-// A first run moves the stub replay's mark to the base commit, so a later commit is "since the
-// mark".
-const projectWithMark = (): Project => {
+// A first run records the doc pass and moves the stub replay's mark to the base commit; its jest
+// call is forgotten, so a row counts only the runs its own change causes.
+const projectWithPass = (): Project => {
   const project = buildProject();
 
   expect(runMedium(project)).toEqual({ code: 0, stderr: '' });
+  expect(jestRuns(project)).toEqual([DISCOVERED]);
+  rmSync(stateFile(project, 'jest.runs'));
 
   return project;
 };
 
+// What `npm run check:guard-replay` does: the stub replay moves the mark to HEAD.
+const replayByHand = (project: Project): void => {
+  execFileSync('bash', [join(project.root, 'scripts/checks/guard-replay.sh')], {
+    cwd: project.root,
+    env: isolatedGitEnvironment(project.state),
+    stdio: 'pipe',
+  });
+};
+
+const commitAll = (project: Project, message: string): void => {
+  git(project, 'add', '-A');
+  git(project, 'commit', '-qm', message);
+};
+
 afterEach(removeTemporaryDirectories);
+
+describe('medium.sh doc-suites step trigger is the doc fingerprint, not the replay mark', () => {
+  it('runs on a clean tree with no recorded pass, then not again', () => {
+    const project = buildProject();
+
+    expect(runMedium(project)).toEqual({ code: 0, stderr: '' });
+    expect(runMedium(project)).toEqual({ code: 0, stderr: '' });
+    expect(jestRuns(project)).toEqual([DISCOVERED]);
+  });
+
+  it('runs for a committed doc edit after a by-hand replay moved the mark past it', () => {
+    const project = projectWithPass();
+    writeFile(project, 'docs/harness/committed.md', 'committed\n');
+    commitAll(project, 'doc');
+    replayByHand(project);
+
+    expect(runMedium(project)).toEqual({ code: 0, stderr: '' });
+    expect(jestRuns(project)).toEqual([DISCOVERED]);
+  });
+
+  it.each([
+    ['moved out of a doc root and staged', false],
+    ['moved out of a doc root and committed', true],
+  ])('runs for a doc file %s', (_label, committed) => {
+    const project = projectWithPass();
+    git(project, 'mv', 'docs/harness/base.md', 'notes-base.md');
+
+    if (committed) commitAll(project, 'move');
+
+    expect(runMedium(project)).toEqual({ code: 0, stderr: '' });
+    expect(jestRuns(project)).toEqual([DISCOVERED]);
+  });
+
+  it.each([
+    ['deleted and unstaged', false],
+    ['deleted and committed', true],
+  ])('runs for a doc file %s', (_label, committed) => {
+    const project = projectWithPass();
+    rmSync(join(project.root, 'docs/harness/base.md'));
+
+    if (committed) commitAll(project, 'delete');
+
+    expect(runMedium(project)).toEqual({ code: 0, stderr: '' });
+    expect(jestRuns(project)).toEqual([DISCOVERED]);
+  });
+
+  it('skips a code-only Stop while the doc fingerprint equals the recorded pass', () => {
+    const project = projectWithPass();
+    writeFile(project, 'src/code.ts', 'export const code = 1;\n');
+    commitAll(project, 'code');
+    writeFile(project, 'src/more.ts', 'export const more = 1;\n');
+
+    expect(runMedium(project)).toEqual({ code: 0, stderr: '' });
+    expect(jestRuns(project)).toEqual([]);
+  });
+
+  it('stays silent in a project with no doc file and no suite', () => {
+    const project = buildProject();
+    git(project, 'rm', '-q', '-f', 'CLAUDE.md', 'docs/harness/base.md', '__tests__/a-doc.test.ts');
+    git(project, 'rm', '-q', '-f', '__tests__/b-skill.test.ts', '__tests__/c-no-root.test.ts');
+    git(project, 'rm', '-q', '-f', '__tests__/d-no-read.test.ts');
+    commitAll(project, 'empty');
+
+    expect(runMedium(project)).toEqual({ code: 0, stderr: '' });
+    expect(jestRuns(project)).toEqual([]);
+  });
+});
 
 describe('medium.sh doc-suites step', () => {
   it.each([
@@ -155,7 +238,7 @@ describe('medium.sh doc-suites step', () => {
     ['docs/', 'docs/harness/new.md'],
     ['CLAUDE.md', 'CLAUDE.md'],
   ])('runs the discovered suites after an uncommitted change under %s', (_root, path) => {
-    const project = projectWithMark();
+    const project = projectWithPass();
     writeFile(project, path, 'changed\n');
 
     expect(runMedium(project)).toEqual({ code: 0, stderr: '' });
@@ -163,7 +246,7 @@ describe('medium.sh doc-suites step', () => {
   });
 
   it('runs once for a clean tree after a commit that changed a doc, then not again', () => {
-    const project = projectWithMark();
+    const project = projectWithPass();
     writeFile(project, 'docs/harness/committed.md', 'committed\n');
     git(project, 'add', '-A');
     git(project, 'commit', '-qm', 'doc');
@@ -175,7 +258,7 @@ describe('medium.sh doc-suites step', () => {
   });
 
   it('does not run again on a second Stop with the same doc state', () => {
-    const project = projectWithMark();
+    const project = projectWithPass();
     writeFile(project, 'docs/harness/new.md', 'changed\n');
 
     expect(runMedium(project).code).toBe(0);
@@ -184,7 +267,7 @@ describe('medium.sh doc-suites step', () => {
   });
 
   it('runs again when the doc changes after a pass', () => {
-    const project = projectWithMark();
+    const project = projectWithPass();
     writeFile(project, 'docs/harness/new.md', 'one\n');
     runMedium(project);
     writeFile(project, 'docs/harness/new.md', 'two\n');
@@ -194,7 +277,7 @@ describe('medium.sh doc-suites step', () => {
   });
 
   it('does not run for a change outside the doc roots', () => {
-    const project = projectWithMark();
+    const project = projectWithPass();
     writeFile(project, 'src/code.ts', 'export const code = 1;\n');
     writeFile(project, 'README.md', 'readme\n');
 
@@ -203,7 +286,7 @@ describe('medium.sh doc-suites step', () => {
   });
 
   it('exits 2 with a block naming make doc-suites when a suite fails, and keeps failing', () => {
-    const project = projectWithMark();
+    const project = projectWithPass();
     writeFileSync(stateFile(project, 'jest.mode'), 'fail');
     writeFile(project, 'docs/harness/committed.md', 'committed\n');
     git(project, 'add', '-A');
@@ -221,7 +304,7 @@ describe('medium.sh doc-suites step', () => {
   });
 
   it('stops its own jest at the deadline, exits 2 and says to run it by hand', () => {
-    const project = projectWithMark();
+    const project = projectWithPass();
     writeFileSync(stateFile(project, 'jest.mode'), 'hang');
     writeFile(project, 'docs/harness/new.md', 'changed\n');
 
@@ -234,7 +317,7 @@ describe('medium.sh doc-suites step', () => {
   });
 
   it('discovers a new suite with a doc-root literal and a file read, and skips one without', () => {
-    const project = projectWithMark();
+    const project = projectWithPass();
     writeFile(project, '__tests__/e-new.test.ts', suiteReading('harness/kiko/agents'));
     writeFile(project, '__tests__/f-no-root.test.ts', suiteReading('lib/other'));
     writeFile(project, 'docs/harness/new.md', 'changed\n');
