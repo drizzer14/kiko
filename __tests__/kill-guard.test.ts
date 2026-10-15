@@ -325,9 +325,10 @@ const HEREDOC_COMMANDS: string[] = [
   "bash <<< 'cat <<X\nhello\nX'",
 ];
 
-// A quoted heredoc body that no shell runs is text: a note or a commit message may show any
-// command in backticks. The body is judged for a kill or a git stash only (it can still be piped
-// to a shell), and a variable the command assigns never reaches into it.
+// A quoted heredoc body that no shell runs is text: a note or a commit message may show a
+// command in backticks. The body is judged as it always was (see kill-guard-heredoc-bodies.test.ts
+// for the kinds) and for nothing newer, so the texts below, which name only newer denies, pass; a
+// variable the command assigns never reaches into it.
 const HEREDOC_DATA_COMMANDS: string[] = [
   "cat > f.md <<'EOF'\n- `pid=-1; kill -9 $pid` denies\nEOF",
   "git commit -F - <<'EOF'\ndocs: the guard reads `pid=-1; kill -9 $pid` as a group kill\nEOF",
@@ -337,10 +338,6 @@ const HEREDOC_DATA_COMMANDS: string[] = [
   "git commit -F - <<'EOF'\nfix: deny `git commit-tree`\nEOF",
   "cat > f.md <<'EOF'\n- `export GIT_CONFIG_KEY_0=core.hooksPath` denies\nEOF",
   "cat > f.md <<'EOF'\n- `git -c include.path=/tmp/x commit` denies\nEOF",
-  "cat > f.md <<'EOF'\n- `git config --unset core.hooksPath` denies\nEOF",
-  "cat > f.md <<'EOF'\n- `git commit --no-verify` denies\nEOF",
-  "cat > f.md <<'EOF'\n- `git -C /Users/drizzer14/Developer/Projects/pff-ios merge x` denies\nEOF",
-  "cat > f.md <<'EOF'\n- `while ps | grep jest; do sleep 1; done` denies\nEOF",
 ];
 
 const ALLOWED_GIT_AND_HEREDOC_COMMANDS: string[] = [
@@ -404,6 +401,8 @@ const MAIN_CHECKOUT_COMMANDS: [string, string][] = [
   [MAIN_CHECKOUT, 'git apply --stat --apply x.patch'],
   [WORKTREE, `git -C ${MAIN_CHECKOUT} pull --no-ff`],
   [WORKTREE, `git -C ${MAIN_CHECKOUT} cherry-pick 1a2b3c4`],
+  // A body that no shell runs is still read for a main-checkout change, as before.
+  [WORKTREE, `cat > f.md <<'EOF'\n- \`git -C ${MAIN_CHECKOUT} merge x\` denies\nEOF`],
   // A directory the command assigns is read into `-C`.
   [WORKTREE, `d=${MAIN_CHECKOUT}; git -C $d merge feat/x`],
   [WORKTREE, `export d=${MAIN_CHECKOUT} && git -C "\${d}" pull --no-ff`],
@@ -568,6 +567,8 @@ const NO_VERIFY_COMMANDS: string[] = [
   'git pull --no-verify',
   'git pull --no-verify origin main',
   'git pull --rebase --no-verify',
+  // A body that no shell runs is still read for a hook skip by option, as before.
+  "cat > f.md <<'EOF'\n- `git commit --no-verify` denies\nEOF",
 ];
 
 // A change to the git config that holds core.hooksPath switches the hooks off for every worktree: a
@@ -625,6 +626,8 @@ const CONFIG_REWRITE_COMMANDS: string[] = [
   'git config --un core.hooksPath',
   'git config --re core',
   'git config --bogus core.hooksPath',
+  // A body that no shell runs is still read for a core.hooksPath write, as before.
+  "cat > f.md <<'EOF'\n- `git config --unset core.hooksPath` denies\nEOF",
 ];
 
 // The one-action commits the coordinator runs in the main checkout, and git spellings that only

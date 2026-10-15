@@ -66,6 +66,9 @@ const DENIED_WAIT_LOOPS: string[] = [
   "until ! pgrep -f 'jest|stryker'; do sleep 1; done",
   "eval 'until ! pgrep -f jest; do sleep 1; done'",
   "bash <<'EOF'\nuntil ! pgrep -f jest; do sleep 1; done\nEOF",
+  'eval "$(cat <<\'EOF\'\nuntil ! pgrep -f jest; do sleep 1; done\nEOF\n)"',
+  // A body that no shell runs is still read for a wait loop, as before.
+  "cat > f.md <<'EOF'\n- `while ps | grep jest; do sleep 1; done` denies\nEOF",
   'while top -l 1 | grep -q xcodebuild; do sleep 5; done',
   'while true; do bash -c "pgrep -f jest" || break; done',
   'echo start; while pgrep -f jest > /dev/null 2>&1; do sleep 1; done; echo done',
