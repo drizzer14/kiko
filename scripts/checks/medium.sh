@@ -152,7 +152,10 @@ fi
 # the step stays before it. The jest run stops at its own deadline, well inside the 300 s hook
 # kill, and fails closed: a killed hook ends the turn with no error and no check.
 # KIKO_DOC_SUITES_DEADLINE_SECONDS exists for the tests and only lowers the budget.
-if [ "$doc_pending" -eq 1 ]; then
+# Rechecked here, under the lock: another Stop may have run the same suites and recorded its pass
+# while this one waited, and running them again (or stopping at the deadline for docs that just
+# passed) would repeat that work. The early exit above keeps the pre-lock value.
+if [ "$doc_pending" -eq 1 ] && ! harness_unchanged "$doc_root" "doc-suites" "$doc_fingerprint"; then
   doc_suites=()
   while IFS= read -r f; do
     doc_suites+=("$f")

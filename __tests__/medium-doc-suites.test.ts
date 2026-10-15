@@ -184,6 +184,44 @@ const futureClockDirectory = (project: Project): string => {
   return directory;
 };
 
+// The lock directory medium.sh takes for this project, held by this test process (alive), so the
+// run under test waits for it.
+const holdLock = (project: Project): void => {
+  const stateDirectory = execFileSync(
+    'bash',
+    ['-c', 'source "$1/scripts/checks/_lib.sh"; harness_state_dir "$1"', 'bash', project.root],
+    { encoding: 'utf8', env: { ...process.env, TMPDIR: project.state } },
+  );
+  const lock = join(stateDirectory, 'medium.lock');
+
+  mkdirSync(lock, { recursive: true });
+  writeFileSync(join(lock, 'pid'), String(process.pid));
+};
+
+// A directory holding a `sleep` that, on the first call (the lock wait's), records the doc pass
+// for the doc state on disk and frees the lock: another Stop finished while this one waited.
+const finishingHolderDirectory = (project: Project): string => {
+  const flag = stateFile(project, 'holder.finished');
+
+  writeFile(
+    project,
+    'lock-wait/sleep',
+    stubScript(
+      `if [ ! -e "${flag}" ]; then`,
+      `  : > "${flag}"`,
+      `  source "${project.root}/scripts/checks/_lib.sh"`,
+      '  physical="$(pwd -P)"',
+      '  harness_mark_pass "$physical" doc-suites "$(harness_doc_fingerprint "$physical")"',
+      `  rm -rf "$(harness_state_dir "${project.root}")/medium.lock"`,
+      'fi',
+      'exec /bin/sleep "$@"',
+    ),
+    0o755,
+  );
+
+  return join(project.root, 'lock-wait');
+};
+
 // A first run records the doc pass and moves the stub replay's mark to the base commit; its jest
 // call is forgotten, so a row counts only the runs its own change causes.
 const projectWithPass = (): Project => {
@@ -442,6 +480,19 @@ describe('medium.sh doc-suites step', () => {
     );
 
     expect(timeouts).toEqual([HOOK_BUDGET_SECONDS, HOOK_BUDGET_SECONDS]);
+  });
+
+  it('skips the suites when another Stop recorded the same doc state during the lock wait', () => {
+    const project = projectWithPass();
+    writeFile(project, 'docs/harness/new.md', 'changed\n');
+    holdLock(project);
+
+    const outcome = runMedium(project, {
+      PATH: `${finishingHolderDirectory(project)}:${process.env.PATH}`,
+    });
+
+    expect(outcome).toEqual({ code: 0, stderr: '' });
+    expect(jestRuns(project)).toEqual([]);
   });
 
   it('discovers a new suite with a doc-root literal and a file read, and skips one without', () => {
