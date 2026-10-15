@@ -66,9 +66,9 @@ Composite scripts:
   next"). **Clearing a TIMEOUT-HEAVY file:** the orchestrator proves each timed-out mutant in
   plain jest, or writes it in the BATCH READY as equivalent. The gate keeps failing for that
   file, so the BATCH READY carries the failed gate with the proofs. Never raise the timeout;
-  there is no allowlist file. A queued gate (`scripts/job-queue.sh gate`) prints, after its
-  DONE tail, each `TIMEOUT-HEAVY` line of the gate log once, so the waiter's output shows the
-  ruling. The mutation step tees its output to a stable,
+  there is no allowlist file. A queued gate (`scripts/job-queue.sh gate`) prints, after
+  the gate-log summary lines and before the DONE line, each `TIMEOUT-HEAVY` line of the gate log
+  once, so the waiter's output shows the ruling. The mutation step tees its output to a stable,
   tailable progress log and prints an ETA from run history (shared by all
   worktrees) — a split of normal-mutant cost and the timeout share at a fitted
   timed-out cost, times this run's actual mutant count, printed live the moment
@@ -180,7 +180,7 @@ run from it. Allowed there: the recovery options `--abort`, `--quit`,
 The script reads `${KIKO_QUEUE_DIR:-$HOME/.claude/kiko-queue}/done.log`: lines are
 `kind label exit start end head`, where head is the full 40-character sha the queue tested, or
 `unknown` unless the tree is clean at START and again at the end (`git --no-optional-locks
-status --porcelain`, untracked files counted), HEAD is unchanged, and the repository is readable.
+status --porcelain --untracked-files=all`), HEAD is unchanged, and the repository is readable.
 The queue never takes the worktree's index.lock for these reads. A job that edits its own tree
 without committing records `unknown`; an edit reverted before the end is not seen, and ignored
 files (`.env`, `node_modules`) are not counted; keep the tree untouched until DONE. The LAST
@@ -197,7 +197,8 @@ variable the same command assigns is expanded only into write targets and git di
 $d`): a segment is judged as written, then expanded, and the expansion can only add a deny; a
 kill target and a command word are never expanded. It reads a script file a shell runs (`bash
 <file>`, `source`, a shebang path; one level, at most 256 KiB) and denies a kill in it (a
-heredoc in it is judged for kills only). `kill -0` and `kill -s 0` are harmless only when no later
+heredoc in it is judged for the `SCRIPT_KINDS` kinds in kill-guard.js: kills and a raw main
+fast-forward). `kill -0` and `kill -s 0` are harmless only when no later
 word before the targets can be an option: a `-X` word, a word that may expand, or a `-N` word
 with more words after it (`sendsNoSignal`; `kill -0 -s KILL -1` denies), and
 `$1`..`$9` is a caller's own pid, in a typed command as in a script;
@@ -208,8 +209,8 @@ overrides), `git commit-tree`, and a config-style route to the same end (`git co
 options resolved by git's prefix rule, `include.path`, GIT_CONFIG_COUNT/KEY/VALUE/PARAMETERS
 exports). A `GIT_CONFIG_GLOBAL`/`GIT_CONFIG_SYSTEM` swap is not judged: the local-scope
 core.hooksPath that `scripts/ensure-git-hooks.sh` writes outranks both. A heredoc body no shell
-runs is judged only for the `DATA_KINDS` kinds (kill, stash, hook skips by option or core.hooksPath,
-main checkout, wait loop), so text documenting other commands is allowed there; a body a
+runs is judged only for the `DATA_KINDS` kinds (the set in kill-guard.js; read it there), so
+text documenting other commands is allowed there; a body a
 shell or eval runs is judged in full. An error while judging denies (`internalError`); a
 malformed payload, an empty command, and a missing node allow. `git rebase`, `cherry-pick`,
 and `am` replay commits without

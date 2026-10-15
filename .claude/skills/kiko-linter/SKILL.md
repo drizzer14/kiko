@@ -29,7 +29,7 @@ fast+medium gate is picked up by `make verify` automatically through
 
 `scripts/job-queue.sh` is not a `scripts/checks` wrapper: its QUEUED/WAITING/START/DONE lines are its normal stdout, not a failure block.
 A gate forwards the `--list` over-count `warning:` line before QUEUED and prints each
-`TIMEOUT-HEAVY` line of its log after the DONE tail (read `scripts/job-queue.sh`).
+`TIMEOUT-HEAVY` line of its log before the DONE line (the ops skill's "Load rule" has the order).
 
 Every check wrapper in `scripts/checks/` follows the same shape (read
 `scripts/checks/_lib.sh` for the exact helper):
@@ -174,7 +174,8 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   heredoc inside a body that runs is denied only when that body is a
   shell's stdin script (`bash <<'EOF'`); a kill or `git stash` line in
   a body of a typed command is denied, while a heredoc inside a scanned script file is judged
-  for kills only. Here-strings: a `<<<` target that a
+  for the kills and a raw main fast-forward (`SCRIPT_KINDS` in kill-guard.js).
+  Here-strings: a `<<<` target that a
   shell without `-c` reads (`bash <<< "…"`) is its script, judged in full
   (a redirect into a guarded folder is a shell write, `bash <<< "git commit-tree HEAD"` a hook
   skip). A command

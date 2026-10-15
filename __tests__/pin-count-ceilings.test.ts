@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 // A pin list only shrinks. A stale pin already fails its own suite; this suite fails a list that
 // grew, so a new long line is wrapped instead of pinned. Lower a ceiling when a list shrinks.
 const MARKDOWN_PINS_FILE = join(__dirname, 'fixtures/markdown-prose-width.pinned.json');
-const MARKDOWN_PIN_CEILING = 242;
+const MARKDOWN_PIN_CEILING = 238;
 const COMMENT_PINS_FILE = join(__dirname, '../scripts/checks/comment-line-width.pinned');
 const COMMENT_PIN_CEILING = 0;
 

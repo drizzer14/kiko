@@ -967,7 +967,8 @@ verified usage, not dead weight:
   a new doc is never added.
 
 - **`scripts/checks/comment-line-width.pinned`**: exact comment lines over 100 columns that
-  cannot wrap (rows `<path><TAB><exact line>`; read the file for the current rows). Reason: a
+  cannot wrap (rows `<path><TAB><exact line>`; currently empty: `COMMENT_PIN_CEILING` is 0 in
+  `__tests__/pin-count-ceilings.test.ts`). Reason: a
   fixture line that is itself the probe, or a line whose wrapping would change what the
   rule under test sees. The list only shrinks: a row whose line is gone or now fits fails as a
   stale pin, and a line that can wrap is wrapped, never pinned.

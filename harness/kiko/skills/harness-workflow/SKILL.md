@@ -640,9 +640,8 @@ the job is DONE; keep that tree untouched from the queue time until DONE, and ne
 a developer still edits that tree. done.log's head field is `unknown` if the tree was dirty at
 START or at the end, or HEAD moved.
 
-A gate forwards the `--list` over-count `warning:` line once before QUEUED, and after its DONE
-tail prints each `TIMEOUT-HEAVY` line of the gate log once (read `scripts/job-queue.sh`), so the
-waiter's output shows both.
+A gate's forwarded warning and `TIMEOUT-HEAVY` lines, and their order against the DONE line,
+are in the ops skill's "Load rule" section.
 
 ## Long briefs live in a file
 
