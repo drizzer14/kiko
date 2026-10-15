@@ -975,7 +975,6 @@ verified usage, not dead weight:
   comment-only source edit is not mutation-checked; `make verify` still runs it.
 
 - **`medium.sh` doc step deadline exit (2026-10-15)**: at hookStarted + the budget that
-  `node scripts/checks/guard-replay.js step-budget` prints, the doc step stops its own jest pid and exits 2
-  with a block telling the agent to run `make doc-suites`
-  by hand. Reason: the 300 s hook limit would otherwise kill the Stop tier with no block. Zero
+  `node scripts/checks/guard-replay.js step-budget` prints, the doc step stops its own jest pid
+  and exits 2 with a block telling the agent to run `make doc-suites` by hand. Reason: the 300 s hook limit would otherwise kill the Stop tier with no block. Zero
   discovered suites, a missing jest or an unreadable budget also exit 2 (fail-closed).
