@@ -158,21 +158,26 @@ if [ "$doc_pending" -eq 1 ]; then
     doc_suites+=("$f")
   done < <(harness_doc_suites "$ROOT")
   doc_jest="$ROOT/node_modules/.bin/jest"
-  doc_budget=270
+  # The replay's own constants, so the doc step leaves the guard call tail and the checks after
+  # it (which have no deadline) the same reserve the replay sizes its deadline with.
+  doc_budget="$(node "$DIR/guard-replay.js" step-budget 2>/dev/null)"
+  case "$doc_budget" in
+    '' | *[!0-9]*) doc_budget="" ;;
+  esac
   case "${KIKO_DOC_SUITES_DEADLINE_SECONDS:-}" in
     '' | *[!0-9]*) ;;
-    *) [ "$KIKO_DOC_SUITES_DEADLINE_SECONDS" -lt "$doc_budget" ] \
+    *) [ "$KIKO_DOC_SUITES_DEADLINE_SECONDS" -lt "${doc_budget:-0}" ] \
       && doc_budget="$KIKO_DOC_SUITES_DEADLINE_SECONDS" ;;
   esac
   doc_why="A skill, agent, docs or CLAUDE.md edit can drift from the code these suites pin, and only a run shows it."
   doc_donot="Do not edit a suite or its pin to get past this, and do not skip the Stop tier."
-  if [ ${#doc_suites[@]} -eq 0 ] || [ ! -x "$doc_jest" ]; then
+  if [ ${#doc_suites[@]} -eq 0 ] || [ ! -x "$doc_jest" ] || [ -z "$doc_budget" ]; then
     print_block \
       "Doc-reading jest suites" \
       "The doc-reading suites could not be run." \
-      "Suites found: ${#doc_suites[@]}. Jest binary: $doc_jest" \
+      "Suites found: ${#doc_suites[@]}. Jest binary: $doc_jest. Budget: ${doc_budget:-unreadable} s." \
       "$doc_why" \
-      "Run: npm install, then make doc-suites. If no suite is found, the discovery in harness_doc_suites (scripts/checks/_lib.sh) broke." \
+      "Run: npm install, then make doc-suites. If no suite is found, the discovery in harness_doc_suites (scripts/checks/_lib.sh) broke; if the budget is unreadable, run node scripts/checks/guard-replay.js step-budget and fix what it prints." \
       "$doc_donot"
     exit 2
   fi

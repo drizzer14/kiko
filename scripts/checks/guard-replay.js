@@ -44,7 +44,9 @@
 // reason, and exits 2 when any file failed. With `--deadline` (the Stop tier)
 // it starts no new guard call after `stopTierDeadlineSeconds` and exits 4
 // when files were left unchecked. Any other non-zero exit means the replay
-// itself could not run; guard-replay.sh fails closed on it.
+// itself could not run; guard-replay.sh fails closed on it. `step-budget` prints the seconds,
+// counted from the hook's start, by which a medium.sh step that has no deadline of its own
+// must end (see `secondsBeforeLaterChecks`); medium.sh sizes its doc step from it.
 
 const fs = require('node:fs');
 const os = require('node:os');
@@ -75,6 +77,12 @@ const STOP_TIER_DEADLINE_SECONDS = 150;
 const HOOK_BUDGET_SECONDS = 300;
 const GUARD_CALL_TAIL_SECONDS = 25;
 const LATER_CHECKS_RESERVE_SECONDS = 60;
+
+// The hook seconds a step may use when the guard call tail and the later checks must still fit
+// after it: the replay's own deadline counts its start from here, and medium.sh's doc step ends
+// here, so neither eats the share the other reserved.
+const secondsBeforeLaterChecks = () =>
+  HOOK_BUDGET_SECONDS - GUARD_CALL_TAIL_SECONDS - LATER_CHECKS_RESERVE_SECONDS;
 
 const REPLAYED_EXTENSION = /\.(ts|tsx)$/;
 
@@ -418,11 +426,7 @@ function stopTierDeadlineSeconds({ override, hookStarted, now }) {
 
   if (!/^\d+$/.test(hookStarted ?? '')) return ceiling;
 
-  const budgetLeft =
-    HOOK_BUDGET_SECONDS -
-    (now - Number(hookStarted)) -
-    GUARD_CALL_TAIL_SECONDS -
-    LATER_CHECKS_RESERVE_SECONDS;
+  const budgetLeft = secondsBeforeLaterChecks() - (now - Number(hookStarted));
 
   return Math.min(ceiling, budgetLeft);
 }
@@ -462,6 +466,12 @@ async function main() {
     return;
   }
 
+  if (command === 'step-budget') {
+    process.stdout.write(String(secondsBeforeLaterChecks()));
+
+    return;
+  }
+
   if (command === 'run') {
     const deadlineSeconds = stopTierDeadlineSeconds({
       override: process.env.KIKO_GUARD_REPLAY_DEADLINE_SECONDS,
@@ -473,7 +483,9 @@ async function main() {
     return;
   }
 
-  throw new Error('usage: guard-replay.js plan [<floor>] | run [--deadline [<hook start>]]');
+  throw new Error(
+    'usage: guard-replay.js plan [<floor>] | run [--deadline [<hook start>]] | step-budget',
+  );
 }
 
 if (require.main === module) {
@@ -483,4 +495,10 @@ if (require.main === module) {
   });
 }
 
-module.exports = { stopTierDeadlineSeconds };
+module.exports = {
+  stopTierDeadlineSeconds,
+  secondsBeforeLaterChecks,
+  HOOK_BUDGET_SECONDS,
+  GUARD_CALL_TAIL_SECONDS,
+  LATER_CHECKS_RESERVE_SECONDS,
+};

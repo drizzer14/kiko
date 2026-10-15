@@ -26,6 +26,11 @@ const NO_OP_WRAPPERS = [
   'typecheck.sh',
 ];
 
+// The guard replay's budget constants: the doc step's deadline is read from the same place.
+const { HOOK_BUDGET_SECONDS, GUARD_CALL_TAIL_SECONDS, LATER_CHECKS_RESERVE_SECONDS } = require(
+  join(CHECKS, 'guard-replay.js'),
+);
+
 // Spawned bash, git and a sleeping stub: far above a normal run, for a full-jest load.
 jest.setTimeout(120_000);
 
@@ -69,6 +74,7 @@ const buildProject = (): Project => {
   git(project, 'config', 'user.name', 'Test');
   cpSync(join(CHECKS, 'medium.sh'), join(project.root, 'scripts/checks/medium.sh'));
   cpSync(join(CHECKS, '_lib.sh'), join(project.root, 'scripts/checks/_lib.sh'));
+  cpSync(join(CHECKS, 'guard-replay.js'), join(project.root, 'scripts/checks/guard-replay.js'));
 
   for (const wrapper of NO_OP_WRAPPERS) {
     writeFile(project, `scripts/checks/${wrapper}`, stubScript('exit 0'), 0o755);
@@ -133,6 +139,28 @@ const jestRuns = (project: Project): string[][] => {
   } catch {
     return [];
   }
+};
+
+// A directory holding a `date` that answers its first `+%s` with the real time (the hook's start)
+// and every later one with a time far past any budget, so the doc step reaches its deadline at
+// once; any other `date` call passes through.
+const futureClockDirectory = (project: Project): string => {
+  const directory = join(project.root, 'future-clock');
+  const started = stateFile(project, 'clock.started');
+
+  writeFile(
+    project,
+    'future-clock/date',
+    stubScript(
+      'if [ "$1" != "+%s" ]; then exec /bin/date "$@"; fi',
+      `if [ -e "${started}" ]; then echo $(( $(/bin/date +%s) + 100000 )); exit 0; fi`,
+      `: > "${started}"`,
+      '/bin/date +%s',
+    ),
+    0o755,
+  );
+
+  return directory;
 };
 
 // A first run records the doc pass and moves the stub replay's mark to the base commit; its jest
@@ -314,6 +342,45 @@ describe('medium.sh doc-suites step', () => {
     expect(outcome.code).toBe(2);
     expect(outcome.stderr).toContain('run make doc-suites by hand');
     expect(() => process.kill(stubPid, 0)).toThrow();
+  });
+
+  it('ends before the guard call tail and the later checks need their share of the hook', () => {
+    const project = projectWithPass();
+    writeFileSync(stateFile(project, 'jest.mode'), 'hang');
+    writeFile(project, 'docs/harness/new.md', 'changed\n');
+
+    const outcome = runMedium(project, {
+      PATH: `${futureClockDirectory(project)}:${process.env.PATH}`,
+    });
+    const budget = Number(/Stopped (\d+) s after the hook started/.exec(outcome.stderr)?.[1]);
+
+    expect(outcome.code).toBe(2);
+    expect(budget).toBeLessThanOrEqual(
+      HOOK_BUDGET_SECONDS - GUARD_CALL_TAIL_SECONDS - LATER_CHECKS_RESERVE_SECONDS,
+    );
+  });
+
+  it('exits 2 without running a suite when the replay engine cannot give its budget', () => {
+    const project = projectWithPass();
+    rmSync(join(project.root, 'scripts/checks/guard-replay.js'));
+    writeFile(project, 'docs/harness/new.md', 'changed\n');
+
+    const outcome = runMedium(project);
+
+    expect(outcome.code).toBe(2);
+    expect(outcome.stderr).toContain('Budget: unreadable');
+    expect(jestRuns(project)).toEqual([]);
+  });
+
+  it('reads its hook budget from the number the Stop hooks are killed at', () => {
+    const hooks = JSON.parse(
+      readTextFile(join(__dirname, '../harness/kiko/hooks/hooks.json')),
+    ).hooks;
+    const timeouts = [...hooks.Stop, ...hooks.SubagentStop].flatMap(
+      (entry: { hooks: { timeout: number }[] }) => entry.hooks.map((hook) => hook.timeout),
+    );
+
+    expect(timeouts).toEqual([HOOK_BUDGET_SECONDS, HOOK_BUDGET_SECONDS]);
   });
 
   it('discovers a new suite with a doc-root literal and a file read, and skips one without', () => {
