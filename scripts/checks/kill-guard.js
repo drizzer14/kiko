@@ -85,9 +85,9 @@
 // read), a regular file of at most 256 KiB, and kills and a raw `mainFastForward` only (a
 // `git stash` or a write inside the file is not judged). `scripts/job-queue.sh` at the root of a
 // worktree of this repository is exempt: its own group TERM is the one allowed group kill.
-// `scripts/ff-main.sh` there is exempt from the raw fast-forward finding alone: it is the way main
-// moves, and a kill in it is still judged. A script built in the same command, a missing file, and
-// a path held in a variable are not read.
+// `scripts/ff-main.sh` needs no exemption: its merge uses a variable target, which this scan does
+// not resolve. A script built in the same command, a missing file, and a path held in a variable
+// are not read.
 //
 // Known limits: this guard stops ACCIDENTAL commands by cooperative agents.
 // It is a heuristic tokenizer, not a shell parser and not an adversarial
@@ -2557,28 +2557,20 @@ function scriptFileOf(base, rest) {
 // The files a shell reads its own stdin through.
 const STDIN_FILES = new Set(['/dev/stdin', '/dev/fd/0', '/proc/self/fd/0']);
 
-// Whether `file` is the script `name` at the root of a worktree of this repository. Stricter than
-// the write deny's worktree test: the folder must share this repository's git directory, readably.
-function isRepositoryScript(file, name, rules) {
+// `scripts/job-queue.sh` at the root of a worktree of this repository sends TERM to the process
+// group of its own job: the one allowed group kill (user ruling). Stricter than the write deny's
+// worktree test: the folder must share this repository's git directory, readably.
+function isQueueScript(file, rules) {
   const scripts = path.dirname(file);
-  if (path.basename(file).toLowerCase() !== name) return false;
+  if (path.basename(file).toLowerCase() !== 'job-queue.sh') return false;
   if (path.basename(scripts).toLowerCase() !== 'scripts') return false;
   const common = gitCommonDirectory(path.dirname(scripts));
 
   return common !== null && common === rules.projectCommonDirectory;
 }
 
-// `scripts/job-queue.sh` sends TERM to the process group of its own job: the one allowed group
-// kill (user ruling), so it is not read at all.
-const isQueueScript = (file, rules) => isRepositoryScript(file, 'job-queue.sh', rules);
-
-// `scripts/ff-main.sh` fast-forwards the main checkout after a queued verify (user ruling): it is
-// exempt from the raw fast-forward finding alone, and a kill in it is still judged.
-const isFfMainScript = (file, rules) => isRepositoryScript(file, 'ff-main.sh', rules);
-
-// The text of a script file the guard may read, with the finding kinds to judge in it: a regular
-// file within the size limit that is not the exempt queue script, and, for a path run directly,
-// one with a shell shebang.
+// The text of a script file the guard may read: a regular file within the size limit that is not
+// the exempt queue script, and, for a path run directly, one with a shell shebang.
 function readScriptFile(file, rules, requireShebang) {
   try {
     const real = fs.realpathSync(file);
@@ -2586,9 +2578,8 @@ function readScriptFile(file, rules, requireShebang) {
     if (!status.isFile() || status.size > SCRIPT_FILE_MAXIMUM_BYTES) return null;
     if (isQueueScript(real, rules)) return null;
     const text = fs.readFileSync(real, 'utf8');
-    if (requireShebang && !SHELL_SHEBANG.test(text)) return null;
 
-    return { text, kinds: isFfMainScript(real, rules) ? FF_MAIN_SCRIPT_KINDS : SCRIPT_KINDS };
+    return requireShebang && !SHELL_SHEBANG.test(text) ? null : text;
   } catch {
     return null;
   }
@@ -2601,18 +2592,13 @@ function scriptKillFinding(scriptFile, context) {
   if (scriptFile === null || !context.rules.scanScripts) return null;
   const { operand, requireShebang } = scriptFile;
   if (operand === undefined) return null;
+  const scan = { ...context.rules, kinds: SCRIPT_KINDS, scanScripts: false, checkWrites: false };
   for (const directory of context.directories) {
     const file = resolveDirectory(directory, operand);
-    const script = file === null ? null : readScriptFile(file, context.rules, requireShebang);
-    if (script === null) continue;
-    const scan = {
-      ...context.rules,
-      kinds: script.kinds,
-      scanScripts: false,
-      checkWrites: false,
-    };
+    const text = file === null ? null : readScriptFile(file, context.rules, requireShebang);
+    if (text === null) continue;
     const found = findDanger(
-      script.text,
+      text,
       1,
       false,
       { directories: [directory], variables: noVariables() },
@@ -2937,8 +2923,6 @@ function observeWaitLoops(watch, segment, spans) {
 // wait loop), and every other finding in either is not that pass's business. `null` reports every
 // kind.
 const SCRIPT_KINDS = new Set(['kill', 'mainFastForward']);
-// The script kinds of scripts/ff-main.sh, which is exempt from the raw fast-forward finding.
-const FF_MAIN_SCRIPT_KINDS = new Set(['kill']);
 const DATA_KINDS = new Set([
   'kill',
   'stash',

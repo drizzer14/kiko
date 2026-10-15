@@ -1,6 +1,6 @@
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { chmodSync, mkdirSync, writeFileSync } from 'node:fs';
+import { chmodSync, readFileSync, writeFileSync } from 'node:fs';
 
 import {
   createTemporaryDirectory,
@@ -11,9 +11,7 @@ import {
 // commit a queued verify passed on. A raw `git merge --ff-only` or `git pull --ff-only` aimed at
 // it is the finding `mainFastForward`: typed, inside a `-c` string, through a variable the same
 // command assigns, in a heredoc body (a shell reads it or not), and in a script file a shell runs.
-// scripts/ff-main.sh at the root of a worktree of this repository is exempt from that finding
-// only; a kill in it is still judged. A form with another option stays `mainCheckout`, and help
-// and recovery options stay allowed.
+// A form with another option stays `mainCheckout`, and help and recovery options stay allowed.
 //
 // Every text here is judged, never run: `decide` is called in node as a parser only.
 const GUARD = join(__dirname, '../scripts/checks/kill-guard.js');
@@ -296,95 +294,18 @@ describe('kill-guard script scan: a raw fast-forward of the main checkout', () =
   });
 });
 
-// scripts/ff-main.sh fast-forwards the main checkout after its own checks. The exemption holds
-// only for the file at the root of a worktree of this repository, and a kill in it is judged.
-const FAKE_MAIN = join(SCRATCH, 'fake-main');
-const FAKE_WORKTREE = join(SCRATCH, 'fake-worktree');
-const FAKE_OTHER = join(SCRATCH, 'fake-other');
-const KILLING_MAIN = join(SCRATCH, 'killing-main');
+// The shipped scripts/ff-main.sh moves main through a variable target, which the script scan does
+// not resolve, so running it needs no exemption.
 const REAL_FF_MAIN = join(REPOSITORY_ROOT, 'scripts/ff-main.sh');
+scriptWith('ff-main-copy.sh', readFileSync(REAL_FF_MAIN, 'utf8'), 0o755);
 
-for (const folder of [
-  'fake-main/.git/worktrees/fake-worktree',
-  'fake-main/scripts',
-  'fake-worktree/scripts',
-  'fake-other/.git',
-  'fake-other/scripts',
-  'killing-main/.git',
-  'killing-main/scripts',
-  'unrelated/scripts',
-  'copies',
-]) {
-  mkdirSync(join(SCRATCH, folder), { recursive: true });
-}
-writeFileSync(join(FAKE_MAIN, '.git/worktrees/fake-worktree/commondir'), '../..\n');
-writeFileSync(
-  join(FAKE_WORKTREE, '.git'),
-  `gitdir: ${join(FAKE_MAIN, '.git/worktrees/fake-worktree')}\n`,
-);
-
-for (const place of [
-  'fake-main/scripts/ff-main.sh',
-  'fake-main/scripts/other-ff.sh',
-  'fake-worktree/scripts/ff-main.sh',
-  'fake-other/scripts/ff-main.sh',
-  'unrelated/scripts/ff-main.sh',
-  'copies/ff-main.sh',
-]) {
-  scriptWith(place, HOLDING_BODY, 0o755);
-}
-scriptWith(
-  'killing-main/scripts/ff-main.sh',
-  `#!/bin/bash\n${FAST_FORWARD_LINE}\npkill node\n`,
-  0o755,
-);
-
-const fakeRepository: Options = { projectRoot: FAKE_MAIN };
-
-describe('kill-guard script scan: scripts/ff-main.sh exemption', () => {
-  it('reads the script as holding a raw fast-forward, so the exemption is what lets it run', () => {
-    expect(decide('bash unrelated/scripts/ff-main.sh 1a2b3c4', inScratch)).toBe('mainFastForward');
-  });
-
+describe('kill-guard script scan: the shipped scripts/ff-main.sh', () => {
   it.each([
-    ['from the main checkout', FAKE_MAIN, 'bash scripts/ff-main.sh 1a2b3c4'],
-    ['from a linked worktree', FAKE_WORKTREE, 'bash scripts/ff-main.sh 1a2b3c4'],
-    ['by absolute path', FAKE_WORKTREE, `bash ${FAKE_MAIN}/scripts/ff-main.sh 1a2b3c4`],
-    [
-      'by absolute path from elsewhere',
-      SCRATCH,
-      `bash ${FAKE_WORKTREE}/scripts/ff-main.sh 1a2b3c4`,
-    ],
-    ['executed directly', FAKE_MAIN, './scripts/ff-main.sh 1a2b3c4'],
-    ['sourced', FAKE_MAIN, 'source scripts/ff-main.sh'],
-    ['through a shell string', FAKE_MAIN, 'sh -c "bash scripts/ff-main.sh 1a2b3c4"'],
-  ])('allows the script %s', (_label, cwd, command) => {
-    expect(decide(command, { ...fakeRepository, cwd })).toBe('allow');
-  });
-
-  it.each([
-    ['as a copy outside any worktree', SCRATCH, 'bash copies/ff-main.sh 1a2b3c4'],
-    [
-      'in a scripts folder with no repository',
-      SCRATCH,
-      'bash unrelated/scripts/ff-main.sh 1a2b3c4',
-    ],
-    ['in another repository', SCRATCH, 'bash fake-other/scripts/ff-main.sh 1a2b3c4'],
-    ['from another repository', FAKE_OTHER, 'bash scripts/ff-main.sh 1a2b3c4'],
-    ['under another name in this repository', FAKE_MAIN, 'bash scripts/other-ff.sh'],
-    ['executed from a copy', SCRATCH, './copies/ff-main.sh 1a2b3c4'],
-  ])('denies the script %s', (_label, cwd, command) => {
-    expect(decide(command, { ...fakeRepository, cwd })).toBe('mainFastForward');
-  });
-
-  it('still judges a kill in the exempt script', () => {
-    const options = { projectRoot: KILLING_MAIN, cwd: KILLING_MAIN };
-
-    expect(decide('bash scripts/ff-main.sh 1a2b3c4', options)).toBe('scriptKill');
-  });
-
-  it('allows the real script as a worktree of this repository, by relative and absolute path', () => {
-    expect(decide('bash scripts/ff-main.sh 1a2b3c4', { cwd: REPOSITORY_ROOT })).toBe('allow');
-    expect(decide(`bash ${REAL_FF_MAIN} 1a2b3c4`, inScratch)).toBe('allow');
+    ['by relative path in this repository', REPOSITORY_ROOT, 'bash scripts/ff-main.sh 1a2b3c4'],
+    ['by absolute path', SCRATCH, `bash ${REAL_FF_MAIN} 1a2b3c4`],
+    ['as a copy outside any worktree', SCRATCH, 'bash ff-main-copy.sh 1a2b3c4'],
+    ['as a copy executed directly', SCRATCH, './ff-main-copy.sh 1a2b3c4'],
+  ])('allows running it %s', (_label, cwd, command) => {
+    expect(decide(command, { cwd })).toBe('allow');
   });
 });
