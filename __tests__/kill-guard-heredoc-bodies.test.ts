@@ -3,10 +3,11 @@ import { spawnSync } from 'node:child_process';
 
 // A heredoc body is judged by what reads it. A quoted body that no shell runs (`cat > f <<'EOF'`,
 // `git commit -F - <<'EOF'`, a commit message through `$(cat <<'EOF' ...)`) is text, judged for a
-// kill, a git stash, a main-checkout merge, a hook skip by option, `core.hooksPath` config or a
-// wait loop, and for no other kind, so a document that names a narrower bypass passes. A body a
-// shell or `eval` runs (`bash <<'EOF'`, `sh -c "$(cat <<'EOF' ...)"`, `eval "$(cat <<'EOF' ...)"`,
-// `source /dev/stdin`) is judged in full, like the same text typed as a command.
+// kill, a git stash, a main-checkout merge or fast-forward, a hook skip by option,
+// `core.hooksPath` config or a wait loop, and for no other kind, so a document that names a
+// narrower bypass passes. A body a shell or `eval` runs (`bash <<'EOF'`,
+// `sh -c "$(cat <<'EOF' ...)"`, `eval "$(cat <<'EOF' ...)"`, `source /dev/stdin`) is judged in
+// full, like the same text typed as a command.
 //
 // Every text here is judged, never run: `decide` is called in node as a parser only.
 const GUARD = join(__dirname, '../scripts/checks/kill-guard.js');
@@ -69,7 +70,15 @@ const RUN_TEMPLATES: Template[] = [
 ];
 
 // The kinds a data body is judged for, `hooksConfig` being the kind of a config text.
-const DATA_BODY_KINDS = ['kill', 'stash', 'noVerify', 'hooksConfig', 'mainCheckout', 'waitLoop'];
+const DATA_BODY_KINDS = [
+  'kill',
+  'stash',
+  'noVerify',
+  'hooksConfig',
+  'mainCheckout',
+  'mainFastForward',
+  'waitLoop',
+];
 
 // Every one of these, as a line of any data body above, denies: a document that shows one cannot
 // be told apart from a command piped to a shell. No kind may leave this list.
@@ -87,6 +96,7 @@ const DATA_BODY_DENIED_LINES: string[] = [
   'git config core.hooksPath /dev/null',
   `git -C ${MAIN_CHECKOUT} merge x`,
   `cd ${MAIN_CHECKOUT} && git pull origin x`,
+  `git -C ${MAIN_CHECKOUT} merge --ff-only 1a2b3c4`,
   'while ps | grep jest; do sleep 1; done',
 ];
 
@@ -143,6 +153,7 @@ describe('kill-guard: a heredoc body that no shell runs', () => {
     "cat > f.md <<'EOF'\n- `git config --unset core.hooksPath` denies\nEOF",
     "cat > f.md <<'EOF'\n- `git commit --no-verify` denies\nEOF",
     `cat > f.md <<'EOF'\n- \`git -C ${MAIN_CHECKOUT} merge x\` denies\nEOF`,
+    `cat > f.md <<'EOF'\n- \`git -C ${MAIN_CHECKOUT} merge --ff-only 1a2b3c4\` denies\nEOF`,
     "cat > f.md <<'EOF'\n- `while ps | grep jest; do sleep 1; done` denies\nEOF",
     "cat > f.md <<'EOF'\n- `git stash` denies\nEOF",
     "cat > f.md <<'EOF'\n- `pkill node` denies\nEOF",
