@@ -1,7 +1,7 @@
 import { bankProviderIdOf, bankProviderIds, isBankProviderId } from './provider';
 
 describe('bank provider ids', () => {
-  it('lists the sole shipped native bank provider (Guideline 5.6 remediation: Monobank-only)', () => {
+  it('lists the sole shipped native bank provider (Guideline 2.3.1(a) remediation: Monobank-only)', () => {
     expect(bankProviderIds).toEqual(['monobank']);
   });
 

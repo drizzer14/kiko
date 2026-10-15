@@ -103,7 +103,7 @@ const isNumber = (value: unknown): value is number =>
  * single source of truth for `isSyncedHolding` and for the metadata-key
  * upserts in the holdings repo.
  *
- * Guideline 5.6 remediation: `privatbankId`, `bunqId`, and `starlingId` were
+ * Guideline 2.3.1(a) remediation: `privatbankId`, `bunqId`, and `starlingId` were
  * removed — those bank-CONNECT providers were deleted entirely, and no user
  * release ever shipped a holding with one of those keys.
  */

@@ -391,7 +391,7 @@ verified usage, not dead weight:
   `@kiko/<path>`, and only by a test file. No barrel may export them
   (`--tree` `barrel-leak`), and a production file may not import them
   (`test-only-from-production`), so no test code reaches the App Store
-  build (kiko-compliance 5.6). Each entry and its reason:
+  build (kiko-compliance 2.3.1(a)). Each entry and its reason:
   - `test-support/**`: shared test helpers with no owning feature. The
     folder has no barrel.
   - `**/__fixtures__/**`: fixture data (db, monobank, the statement-import
@@ -452,7 +452,7 @@ verified usage, not dead weight:
   any `rules/fixtures/` file among its arguments)**: the
   positive/negative fixture pair that
   proves each project Semgrep rule still fires. A positive fixture is
-  deliberately non-conforming, never-imported code (a hidden Guideline 5.6
+  deliberately non-conforming, never-imported code (a hidden Guideline 2.3.1(a)
   feature flag import, a Keychain secret pushed into React state), and each
   pair is near-identical by construction — the negative fixture
   is the positive one plus the fix. Verified: without these exclusions a
@@ -637,17 +637,17 @@ verified usage, not dead weight:
   machine was not proof of a fresh checkout; defaulting to a committed file
   makes them reproducible. Every value is public, non-secret config (same
   rule as `.env` — see `dependency-hygiene.md`'s "`.env` is public-only").
-  Updated 2026-09-18 (Guideline 5.6 remediation, Task 1): `.env.test` no
+  Updated 2026-09-18 (Guideline 2.3.1(a) remediation, Task 1): `.env.test` no
   longer carries a `SHOW_UNREADY_BANKS`-style flag — that release-readiness
   visibility gate was removed outright, not merely defaulted off. The "add
   a bank" sheet's `visibleCatalogEntries`
   (`src/screens/account-detail/add-bank-sheet/add-bank-sheet.component.tsx`)
   now takes no flag argument: it shows every wired-registry provider in the
   catalog unconditionally, so there is nothing left for a test-env value to
-  gate. See the `kiko-architecture` skill's "Guideline 5.6 — no hidden
+  gate. See the `kiko-architecture` skill's "Guideline 2.3.1(a) — no hidden
   features" section for the standing rule this codifies.
 - **`e2e/screenshot/` — the demo-dataset subsystem lives outside `src/`,
-  and `knip.json` needs NO entry/ignore for it (2026-09-19, Guideline 5.6
+  and `knip.json` needs NO entry/ignore for it (2026-09-19, Guideline 2.3.1(a)
   remediation).** `src/` now has **zero** references into `e2e/`, of any
   kind — no static import, no dynamic `require`. The one dynamic `require`
   that used to reach `screenshot-seed.ts` from `MigrationsGate`

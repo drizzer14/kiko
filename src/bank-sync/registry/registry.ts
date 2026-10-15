@@ -18,7 +18,7 @@ export type BankProviderRegistryEntry = {
  * implemented — its sync/connect/disconnect callers must skip it, never
  * assume every native id resolves.
  *
- * Guideline 5.6 remediation: PrivatBank, bunq, and Starling entries were
+ * Guideline 2.3.1(a) remediation: PrivatBank, bunq, and Starling entries were
  * REMOVED (their code is deleted, not flag-hidden) — Monobank is the sole
  * shipped provider. This `Partial<Record<...>>` shape stays exactly as it
  * was, so a future provider is a new entry here again.

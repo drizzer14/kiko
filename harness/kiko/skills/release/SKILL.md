@@ -149,8 +149,8 @@ grep -h -oE 'name="[A-Za-z]+"' $(find src/navigation -name '*.tsx' ! -name '*.te
 ```
 
 Paste the resulting list into the App Store review notes as Guideline
-5.6 evidence that every screen is reachable with no flag or env gate
-(see "Guideline 5.6 — no hidden features" in `kiko-architecture`). Do
+2.3.1(a) evidence that every screen is reachable with no flag or env gate
+(see "Guideline 2.3.1(a) — no hidden features" in `kiko-architecture`). Do
 not hardcode the list here — it drifts with every added screen; always
 re-run the grep at submission time.
 
@@ -180,13 +180,13 @@ Durable lessons carried forward from `1.0.0`'s submission history (see
 memory `release-5-6-audit-findings` and
 `guidelines-compliance-is-architecture-rule` for the full account):
 
-- **Guideline 5.6 (hidden features) is a real rejection risk, twice
+- **Guideline 2.3.1(a) (hidden features) is a real rejection risk, twice
   over.** A build was rejected once for a screenshot/demo subsystem
   compiled into the shipping binary, and again for a `SHOW_*`-style
   flag that only hid a not-ready feature (bunq/PrivatBank) from the UI
   while its full client code still shipped. Fix by REMOVING a
   not-ready feature's code entirely, never by flag-hiding it — see
-  "Guideline 5.6 — no hidden features" in `kiko-architecture`.
+  "Guideline 2.3.1(a) — no hidden features" in `kiko-architecture`.
 - **A spent build number cannot be resubmitted.** Apple Store Connect
   will not re-accept a build number it has already seen, even after a
   rejection — bump `CURRENT_PROJECT_VERSION` before every re-archive,

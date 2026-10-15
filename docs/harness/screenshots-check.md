@@ -5,7 +5,7 @@
 > and `docs/harness/documented-exceptions.md`), but its content is now a
 > checklist, not a check spec.
 
-## 2026-09-19 — the automated subsystem was deleted (Guideline 5.6)
+## 2026-09-19 — the automated subsystem was deleted (Guideline 2.3.1(a))
 
 `check:screenshots` and its `:empty`/`:locked` siblings, the pixelmatch
 diff engine (scripts/checks/screenshot-diff/), the stable-glass build
@@ -17,7 +17,7 @@ and the four `.env.screenshots*` files were all **removed outright** — no
 `@env` flag, launch argument, or native module survives that makes the app
 render differently for a test harness. This is an architecture rule, not a
 one-off cleanup: see `.claude/skills/kiko-architecture/SKILL.md`
-("Guideline 5.6 — no hidden features"). The Semgrep rule
+("Guideline 2.3.1(a) — no hidden features"). The Semgrep rule
 `kiko-no-hidden-feature-flag-or-demo-import` (`rules/semgrep-mobile.yml`)
 mechanizes the ban on any `SCREENSHOT_*` `@env` read or `src/`→`e2e/`
 crossing (static import or dynamic `require`) returning.

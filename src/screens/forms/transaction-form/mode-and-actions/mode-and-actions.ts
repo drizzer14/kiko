@@ -17,7 +17,7 @@ export const showsSaveButton = (
 // or synced alike — `setLoanPayment`/`undoAutoLoanLink` carry no source
 // gate, same as the category field), data-driven on `loanOptions` rather
 // than a flag (a currency with no open loan holding at all simply never
-// offers the field — Guideline 5.6), and never while converting (that swaps
+// offers the field — Guideline 2.3.1(a)), and never while converting (that swaps
 // the whole field group for the convert-only inputs). Keyed off the
 // PERSISTED amount, not the live in-progress `mode` toggle, so the link's
 // own visibility never flip-flops before Save. Kept module-level and pure

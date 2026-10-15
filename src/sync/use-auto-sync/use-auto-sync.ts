@@ -25,7 +25,7 @@ export const AUTO_SYNC_INTERVAL_MS = 5 * 60 * 1000;
  * `sync_state` (de-globalized from `settings` — see the `syncState` table
  * comment in `db/schema.ts`), so the throttle reads a connected BANK
  * account's own cursor — routed through `bankAccountIdFor` below, so the
- * next native provider (Guideline 5.6 remediation left Monobank as the sole
+ * next native provider (Guideline 2.3.1(a) remediation left Monobank as the sole
  * shipped one) throttles the exact same way without a rewrite here; a
  * crypto-only or fully manual user has none, so the throttle lets every
  * launch sync once (the per-mount `hasRun` ref still fires it at most once

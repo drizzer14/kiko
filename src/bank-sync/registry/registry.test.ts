@@ -14,7 +14,7 @@ describe('bank provider registry', () => {
     expect(entry?.disconnect).toBe(disconnectMonobank);
   });
 
-  it('carries exactly the one shipped provider (Guideline 5.6 remediation: Monobank-only)', () => {
+  it('carries exactly the one shipped provider (Guideline 2.3.1(a) remediation: Monobank-only)', () => {
     expect(Object.keys(bankProviderRegistry)).toEqual(['monobank']);
   });
 });

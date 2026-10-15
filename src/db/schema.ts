@@ -266,7 +266,7 @@ export const transactions = sqliteTable(
     // imports BTC deposit/withdrawal history as `source: 'binance'` rows on the
     // Spot holding (see `crypto-sync/binance/binance.transactions.ts`);
     // 'btc_wallet' still writes none.
-    // Guideline 5.6 remediation: 'privatbank', 'bunq', and 'starling' were
+    // Guideline 2.3.1(a) remediation: 'privatbank', 'bunq', and 'starling' were
     // removed from this enum — those bank-CONNECT providers were deleted
     // entirely (src/bank-sync/provider/provider.ts), and no user release
     // ever shipped a transaction row with one of those sources, so no

@@ -140,7 +140,7 @@ jest.mock('@kiko/reminders/offer', () => ({
   useReminderOffer: (...args: unknown[]) => mockUseReminderOffer(...args),
 }));
 // `BankSyncSection` (real, unmocked here) calls `useSync` once per render for
-// its sole shipped provider (Guideline 5.6 remediation: Monobank-only).
+// its sole shipped provider (Guideline 2.3.1(a) remediation: Monobank-only).
 jest.mock('@kiko/sync/use-sync', () => ({
   useSync: () => mockUseSync(),
 }));
@@ -1412,7 +1412,7 @@ describe('AccountDetailScreen', () => {
     expect(queryByText('Disconnect')).toBeNull();
   });
 
-  // PrivatBank, bunq, and Starling have no bank-CONNECT (Guideline 5.6) —
+  // PrivatBank, bunq, and Starling have no bank-CONNECT (Guideline 2.3.1(a)) —
   // Monobank is the sole shipped native provider, so the picker sheet lists
   // exactly one row and there is no cross-provider routing to exercise here
   // (see `bank-sync-section.component.test.tsx` and

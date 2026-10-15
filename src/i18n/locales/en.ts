@@ -721,7 +721,7 @@ export const en = {
   },
   // The "add a bank" catalog copy (src/bank-sync/provider-catalog/): one
   // about/eligibility pair per native provider, shown on the picker before
-  // any credential is entered. Guideline 5.6 remediation: PrivatBank, bunq,
+  // any credential is entered. Guideline 2.3.1(a) remediation: PrivatBank, bunq,
   // and Starling entries were removed — Monobank is the sole shipped
   // provider.
   addBank: {

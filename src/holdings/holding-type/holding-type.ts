@@ -77,7 +77,7 @@ export const isSyncOnlyHoldingType = (type: HoldingType): boolean =>
 // (the standalone kind, always eligible — physical possession has no bank to
 // gate on). Under a `bank`-kind account it additionally requires
 // `bankSellsMetals(bankId)` — the catalog allow-list (`src/bank-sync/bank-catalog/`,
-// Guideline 5.6: always-rendered DATA, never a visibility flag), currently
+// Guideline 2.3.1(a): always-rendered DATA, never a visibility flag), currently
 // only PrivatBank. `bankId` is optional (nullable) for every existing caller
 // that has none to pass.
 export const creatableHoldingTypesForAccount = (

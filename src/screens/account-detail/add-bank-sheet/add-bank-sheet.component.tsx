@@ -15,7 +15,7 @@ import type { AddBankProviderSheetProps } from './add-bank-sheet.props';
  * The rows `AddBankProviderSheet` offers: every `providerCatalog` entry that
  * has a wired `bankProviderRegistry` entry (a catalog entry with no registry
  * wiring yet is described but not yet connectable, so it stays filtered out).
- * Guideline 5.6 remediation (App Store rejection: "features intentionally
+ * Guideline 2.3.1(a) remediation (App Store rejection: "features intentionally
  * hidden during review"): the sheet shows the full wired catalog
  * UNCONDITIONALLY now — there is no release-readiness build flag anymore.
  * A not-yet-safe-to-connect provider must never ship in the app AT ALL
