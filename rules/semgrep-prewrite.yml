@@ -1258,11 +1258,11 @@ rules:
           - pattern: $PROMISE.rejects.toBeInstanceOf(Object)
           - pattern: $PROMISE.rejects.not.toBeNull()
           - pattern: $PROMISE.rejects.toBeDefined()
-  # kiko-gestures' "A lone card lifts too" (under "A hold lifts the card, and a lifted card never opens its
-  # page"): `sortEnabled` is the
-  # query's freshness gate alone, never also a count of the items. react-native-sortables never
-  # counts items, and a lone card lifts and drops back with nothing persisted. ERROR: the tree
-  # holds 0 findings for this id. See kiko-linter's "kiko-sortable-grid-lone-card-lifts" section.
+  # kiko-gestures' "A lone card lifts too" (under "A hold lifts the card, and a lifted card never
+  # opens its page"): `sortEnabled` is the query's freshness gate alone, never also a count of the
+  # items. react-native-sortables never counts items, and a lone card lifts and drops back with
+  # nothing persisted. ERROR: the tree holds 0 findings for this id. See kiko-linter's
+  # "kiko-sortable-grid-lone-card-lifts" section.
   - id: kiko-sortable-grid-lone-card-lifts
     languages: [typescript]
     severity: ERROR

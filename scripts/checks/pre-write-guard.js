@@ -1316,6 +1316,7 @@ async function run() {
 }
 
 if (require.main === module) {
-  // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function) run() catches every error itself and turns it into a deny
+  // run() catches every error itself and turns it into a deny, so it never rejects.
+  // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function: run() handles any error)
   run();
 }

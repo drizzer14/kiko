@@ -4,7 +4,7 @@
 // formatter.lineWidth to 100, but Biome cannot wrap a comment, so a long comment stays long until
 // its author wraps it. A long code line with no comment is Biome's, never reported here.
 //
-// Usage: comment-line-width.js <file>...
+// Usage: comment-line-width.js [--pinned <file> --root <dir> [--complete]] <file>...
 //
 // Two comment syntaxes, chosen by the file:
 //   - `#` comments in a shell or YAML file: a `.sh`, `.bash`, `.yml` or `.yaml` file, or an
@@ -35,7 +35,13 @@
 // URL does. `// see https://...` still fails, since the words before the URL can wrap; after the
 // wrap, `// https://...` is exempt. A JSX `{/* */}` comment is measured with its braces in both
 // the overflow and the standalone measure, since the braces cannot be moved off it. There is no
-// inline override and no allowlist.
+// inline override.
+//
+// Pinned lines: `--pinned <file> --root <dir>` reads a pin file of `<path><TAB><exact line>` rows
+// (blank rows and rows starting with `#` are skipped; <path> is relative to <dir>). A violation
+// whose path and whole physical line match a row is excused, one row per occurrence. The list
+// only shrinks: a row whose line is gone or now fits is reported as a stale pin, and with
+// `--complete` so is a row whose path is not among the files named.
 //
 // Output: one `<path>:<line>: <columns> columns: <comment text>` line per finding. The comment
 // text is each comment on the line, trimmed, joined with a single space: it holds no line number
@@ -47,6 +53,7 @@
 // node_modules.
 
 const fs = require('node:fs');
+const path = require('node:path');
 
 const { commentSpans } = require('./specifier-scanner');
 
@@ -215,33 +222,121 @@ function findViolations(source, syntax = SLASH_SYNTAX) {
   return violations;
 }
 
+function exitWith(message) {
+  process.stderr.write(`comment-line-width: ${message}\n`);
+  process.exit(2);
+}
+
+function parseArguments(argv) {
+  const options = { files: [], complete: false };
+
+  for (let index = 0; index < argv.length; index += 1) {
+    if (argv[index] === '--pinned' || argv[index] === '--root') {
+      options[argv[index].slice(2)] = argv[index + 1];
+      index += 1;
+    } else if (argv[index] === '--complete') {
+      options.complete = true;
+    } else {
+      options.files.push(argv[index]);
+    }
+  }
+
+  if (
+    options.files.length === 0 ||
+    (options.pinned === undefined) !== (options.root === undefined)
+  ) {
+    exitWith('usage: comment-line-width.js [--pinned <file> --root <dir> [--complete]] <file>...');
+  }
+
+  return options;
+}
+
+// Path -> the exact lines (one entry per pinned occurrence) the pin file excuses.
+function readPins(pinnedFile) {
+  const pins = new Map();
+  let text;
+
+  try {
+    text = fs.readFileSync(pinnedFile, 'utf8');
+  } catch (error) {
+    return exitWith(`could not read ${pinnedFile}: ${error.message}`);
+  }
+
+  for (const row of text.split('\n')) {
+    if (row.trim() === '' || row.startsWith('#')) {
+      continue;
+    }
+
+    const separator = row.indexOf('\t');
+
+    if (separator < 1) {
+      exitWith(`${pinnedFile}: a pin row is <path><TAB><exact line>: ${row}`);
+    }
+
+    const path = row.slice(0, separator);
+
+    pins.set(path, [...(pins.get(path) ?? []), row.slice(separator + 1).trimEnd()]);
+  }
+
+  return pins;
+}
+
+// The report lines of one file: each violation the pin file does not excuse, then each pinned
+// line the file no longer holds as a violation.
+function reportFile(file, source, excusedLines) {
+  const unused = [...excusedLines];
+  const lines = source.split('\n');
+  const report = [];
+
+  for (const { line, columns, text } of findViolations(source, syntaxOf(file, source))) {
+    const pinIndex = unused.indexOf(lines[line - 1].trimEnd());
+
+    if (pinIndex >= 0) {
+      unused.splice(pinIndex, 1);
+    } else {
+      report.push(`${file}:${line}: ${columns} columns: ${text}`);
+    }
+  }
+
+  return [
+    ...report,
+    ...unused.map((line) => `${file}: stale pin, the line is gone or fits: ${line}`),
+  ];
+}
+
+function readSource(file) {
+  try {
+    return fs.readFileSync(file, 'utf8');
+  } catch (error) {
+    return exitWith(`could not read ${file}: ${error.message}`);
+  }
+}
+
 function runCli() {
-  const files = process.argv.slice(2);
+  const { files, pinned, root, complete } = parseArguments(process.argv.slice(2));
+  const pins = pinned === undefined ? new Map() : readPins(pinned);
+  const relativeOf = (file) =>
+    path
+      .relative(root ?? '', path.resolve(file))
+      .split(path.sep)
+      .join('/');
+  const scanned = new Set(files.map(relativeOf));
+  const report = files.flatMap((file) =>
+    reportFile(file, readSource(file), pins.get(relativeOf(file)) ?? []),
+  );
 
-  if (files.length === 0) {
-    process.stderr.write('usage: comment-line-width.js <file>...\n');
-    process.exit(2);
-  }
-
-  let found = false;
-
-  for (const file of files) {
-    let source;
-
-    try {
-      source = fs.readFileSync(file, 'utf8');
-    } catch (error) {
-      process.stderr.write(`comment-line-width: could not read ${file}: ${error.message}\n`);
-      process.exit(2);
-    }
-
-    for (const { line, columns, text } of findViolations(source, syntaxOf(file, source))) {
-      found = true;
-      process.stdout.write(`${file}:${line}: ${columns} columns: ${text}\n`);
+  if (complete) {
+    for (const [pinnedPath, lines] of pins) {
+      report.push(
+        ...(scanned.has(pinnedPath)
+          ? []
+          : lines.map((line) => `${pinnedPath}: stale pin, the file is not scanned: ${line}`)),
+      );
     }
   }
 
-  process.exit(found ? 1 : 0);
+  process.stdout.write(report.map((line) => `${line}\n`).join(''));
+  process.exit(report.length > 0 ? 1 : 0);
 }
 
 if (require.main === module) {

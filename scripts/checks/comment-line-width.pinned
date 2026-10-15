@@ -1,0 +1,4 @@
+# Comment lines over 100 columns that cannot be wrapped, for check:comment-line-width.
+# One row per line: <path relative to the repository root><TAB><the exact line>. The list only
+# shrinks: a row whose line is gone or fits fails as a stale pin. Wrap every line that can wrap
+# and pin only what cannot.
