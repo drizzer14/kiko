@@ -293,25 +293,22 @@ describe('scripts/job-queue.sh a single job', () => {
     );
   });
 
-  it.each(['verify', 'check-all', 'security'])(
-    'names the worktree HEAD at start on the START line of %s',
-    (kind) => {
-      const sandbox = createSandbox();
-      const { worktree } = createGateWorktree(sandbox, 'one', listing(1));
-      writeFile(worktree, 'later.txt', 'a later commit\n');
-      commitAll(worktree, 'a later commit');
-      const head = execFileSync('git', ['rev-parse', 'HEAD'], {
-        cwd: worktree,
-        encoding: 'utf8',
-      }).trim();
+  it('names the worktree HEAD at start on the START line of a job that is not a gate', () => {
+    const sandbox = createSandbox();
+    const { worktree } = createGateWorktree(sandbox, 'one', listing(1));
+    writeFile(worktree, 'later.txt', 'a later commit\n');
+    commitAll(worktree, 'a later commit');
+    const head = execFileSync('git', ['rev-parse', 'HEAD'], {
+      cwd: worktree,
+      encoding: 'utf8',
+    }).trim();
 
-      const result = runQueue(sandbox, kind, worktree, 'one');
+    const result = runQueue(sandbox, 'verify', worktree, 'one');
 
-      expect(result.stdout).toMatch(
-        new RegExp(`^START one at \\d\\d:\\d\\d head ${head.slice(0, 12)} `, 'm'),
-      );
-    },
-  );
+    expect(result.stdout).toMatch(
+      new RegExp(`^START one at \\d\\d:\\d\\d head ${head.slice(0, 12)} `, 'm'),
+    );
+  });
 
   it('prints head unknown for a worktree that is not a git repository', () => {
     const sandbox = createSandbox();
@@ -521,6 +518,30 @@ describe('scripts/job-queue.sh a gate', () => {
     ]);
     expect(result.stdout).toContain('GATE: PASS');
     expect(result.stdout).not.toContain('noise');
+  });
+
+  it('prints a TIMEOUT-HEAVY line once, although the gate output holds it twice', () => {
+    const sandbox = createSandbox();
+    const gate = createGateWorktree(sandbox, 'gate', listing(12));
+    const heavy = 'TIMEOUT-HEAVY src/a.ts: timeout 7 of 10 detected (70 %), killed 3';
+    sandbox.environment.KIKO_STUB_OUTPUT = `noise\n${heavy}\nGATE: FAIL\n${heavy}`;
+
+    const result = runQueue(sandbox, 'gate', gate.worktree, 'gate', 'main', gate.head);
+
+    expect(result.stdout.split('\n').filter((line) => line === heavy)).toEqual([heavy]);
+    expect(result.stdout).not.toContain('noise');
+  });
+
+  it('forwards the --list warning line to the waiter, once', () => {
+    const sandbox = createSandbox();
+    const warning = 'warning: 300 changed lines, but this branch added only 20 of them itself';
+    const gate = createGateWorktree(sandbox, 'gate', [...listing(12), warning]);
+
+    const result = runQueue(sandbox, 'gate', gate.worktree, 'gate', 'main', gate.head);
+
+    expect(result.status).toBe(0);
+    expect(result.stdout.split('\n').filter((line) => line === warning)).toEqual([warning]);
+    expect(result.stdout).not.toContain('mutable files:');
   });
 
   it.each([
