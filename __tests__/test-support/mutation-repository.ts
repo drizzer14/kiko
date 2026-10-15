@@ -118,7 +118,7 @@ const wrapperEnvironment = (environment: Record<string, string>): NodeJS.Process
   ...environment,
 });
 
-const runGit = (cwd: string, ...gitArguments: string[]): void => {
+export const runGit = (cwd: string, ...gitArguments: string[]): void => {
   execFileSync('git', gitArguments, { cwd, encoding: 'utf8', stdio: 'pipe' });
 };
 

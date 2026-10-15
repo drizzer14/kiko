@@ -27,7 +27,9 @@
 # diff is only comments or whitespace is left out of the list (and printed as `skipped
 # (comment-only)`, whatever its colocated test changed: a test weakened beside a comment-only
 # source edit is not mutation-checked here), and so is one with no added line (`skipped (no
-# added lines)`).
+# added lines)`). A `warning:` line follows `changed lines:` when the count is far above what the
+# branch's own commits added (a merged track is counted as this branch's change); it is advice
+# and changes no exit code.
 set -uo pipefail
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=/dev/null
@@ -349,9 +351,42 @@ timeout_share() {
     | harness_mutation_timeout_share "$(harness_mutation_files_file "$ROOT")" "$(harness_mutation_history_file "$ROOT")"
 }
 
+# Prints the lines the listed files gained in this branch's own commits: the first-parent chain
+# without its merge commits, so a track merged into the branch adds nothing. A line added and
+# removed again counts twice, which can only hide a warning, never raise a false one. Prints
+# nothing when git cannot say.
+own_added_lines() {
+  git -C "$ROOT" -c core.quotePath=false log --first-parent --no-merges --no-renames --format= --numstat "$merge_base..HEAD" -- '*.ts' '*.tsx' 2> /dev/null \
+    | LISTED="$file_weights" awk -F'\t' '
+        BEGIN {
+          count = split(ENVIRON["LISTED"], rows, "\n")
+          for (position = 1; position <= count; position++) {
+            split(rows[position], parts, "\t")
+            if (parts[1] != "") listed[parts[1]] = 1
+          }
+        }
+        $1 ~ /^[0-9]+$/ && ($3 in listed) { sum += $1 }
+        END { print sum + 0 }
+      '
+}
+
+# The branch's diff against the base counts every merged-in line as changed, which sizes a gate
+# for a whole merged track. Warns when the count is above both 1.5 x and +50 of what the branch
+# added itself. The line starts with `warning:`, so job-queue's `^changed lines: [0-9]+$` parse
+# never reads it.
+warn_over_count() {
+  local own_lines
+  own_lines="$(own_added_lines)" || return 0
+  [ -n "$own_lines" ] || return 0
+  [ "$changed_lines" -gt $((own_lines + 50)) ] || return 0
+  [ $((changed_lines * 2)) -gt $((own_lines * 3)) ] || return 0
+  printf 'warning: %s changed lines, but this branch added only %s of them itself (first-parent commits); a merged track is counted: set KIKO_MUTATION_BASE to the merged tip (harness-workflow "Mutation base after a track merged next")\n' "$changed_lines" "$own_lines"
+}
+
 if [ "$list" -eq 1 ]; then
   printf '%s%s%s' "$list_report" "$skipped_report" "$norange_report"
   printf 'changed lines: %s\n' "$changed_lines"
+  warn_over_count
   printf 'mutable files: %s (cap %s)\n' "$file_count" "$MUTATION_FILE_CAP"
   share="$(timeout_share)"
   if [ -n "$share" ]; then
