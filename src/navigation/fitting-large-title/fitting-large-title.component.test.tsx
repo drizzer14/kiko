@@ -123,6 +123,20 @@ describe('fittingLargeTitleLayout', () => {
     expect(getByTestId('heading-title').props.children).toBe('native large title');
   });
 
+  it('restores the native large title once, not again on a later title change', async () => {
+    forceTitleFit(false);
+    const navigation = navigationSpy();
+    const switchedOptions = { ...LARGE_TITLE_OPTIONS, ...largeTitleHeadingOptions(TITLE, false) };
+    const { rerender } = await render(layoutOf(navigation, LARGE_TITLE_OPTIONS));
+    await rerender(layoutOf(navigation, switchedOptions));
+    forceTitleFit(true);
+    await rerender(layoutOf(navigation, { ...switchedOptions, title: 'Short' }));
+
+    await rerender(layoutOf(navigation, { ...LARGE_TITLE_OPTIONS, title: 'Another short' }));
+
+    expect(navigation.setOptions).toHaveBeenCalledTimes(2);
+  });
+
   it('shows the new title in the heading when the title changes', async () => {
     forceTitleFit(false);
     const navigation = navigationSpy();

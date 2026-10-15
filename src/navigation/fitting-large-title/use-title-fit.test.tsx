@@ -83,18 +83,24 @@ describe('useTitleFit', () => {
     expect(getByTestId('fits').props.children).toBe('false');
   });
 
-  it('counts a title as fitting, and measures nothing, in a window with no usable width', async () => {
-    jest
-      .spyOn(Dimensions, 'get')
-      .mockReturnValue({ width: 0, height: 812, scale: 3, fontScale: 1 });
+  // A window as wide as the two 16pt side margins (32pt) leaves a line of nothing, as one with
+  // no width at all does.
+  it.each([
+    ['no width', 0],
+    ['only the two side margins of width', 32],
+  ])(
+    'counts a title as fitting, and measures nothing, in a window with %s',
+    async (_name, width) => {
+      jest.spyOn(Dimensions, 'get').mockReturnValue({ width, height: 812, scale: 3, fontScale: 1 });
 
-    const { getByTestId, queryByTestId } = await render(
-      <Probe title="Edit, Duplicate, or Delete a Transaction" />,
-    );
+      const { getByTestId, queryByTestId } = await render(
+        <Probe title="Edit, Duplicate, or Delete a Transaction" />,
+      );
 
-    expect(getByTestId('fits').props.children).toBe('true');
-    expect(queryByTestId('title-measurer', HIDDEN)).toBeNull();
-  });
+      expect(getByTestId('fits').props.children).toBe('true');
+      expect(queryByTestId('title-measurer', HIDDEN)).toBeNull();
+    },
+  );
 
   it('drops a measurement once the title changes, and measures the new title', async () => {
     const { getByTestId, rerender } = await render(<Probe title="Edit Account" />);
