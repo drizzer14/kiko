@@ -1288,16 +1288,13 @@ rules:
             - pattern: 1 < $ITEMS.length
             - pattern: 2 <= $ITEMS.length
   # kiko-code-style's "`ts-pattern` for exhaustive mapping": a union read by `kind` goes through
-  # `match`, so a new variant is a type error and not a silent fall-through. WARNING because
-  # Semgrep has no type information: a `kind` on a type that is not a closed union is a false
-  # positive, and some sites stay a ternary for that reason. The tree holds 3 findings while the
-  # sweep is pending (src/auth/biometrics.ts, src/auth/lock-gate/lock-gate.component.tsx,
-  # src/screens/column-mapping/column-mapping.screen.tsx). Promotion condition: once the tree
-  # holds 0 findings for this id, raise it to ERROR. See kiko-linter's
-  # "kiko-kind-ternary-prefers-match" section.
+  # `match`, so a new variant is a type error and not a silent fall-through. Semgrep has no type
+  # information: a `kind` on a type that is not a closed union is a false positive, and such a
+  # site stays a ternary under a `nosemgrep` OVERRIDE. ERROR: the tree holds 0 findings for this
+  # id. See kiko-linter's "kiko-kind-ternary-prefers-match" section.
   - id: kiko-kind-ternary-prefers-match
     languages: [typescript]
-    severity: WARNING
+    severity: ERROR
     message: >
       A ternary on one `kind` literal sends every other variant down the else
       branch, so a new variant of the union falls through silently. Read the
