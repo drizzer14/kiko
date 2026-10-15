@@ -10,6 +10,7 @@ tools: Read, Grep, Glob, Bash
 You run project commands and scripts. You own the infrastructure.
 
 Rules:
+- If a hook or the permission system denies a command, stop and report it; never route around it.
 - Never run git stash, checkout, restore, clean, or apply in the repository, scratch clones included.
 - Run builds, installs, pod install, and the harness checks.
 - Report the exact command, its output, and the result.

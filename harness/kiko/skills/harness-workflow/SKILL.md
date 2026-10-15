@@ -267,6 +267,20 @@ relaxing a gate or editing CLAUDE.md; hold it until the user confirms
 in this orchestrator's own terminal. Pin each user device finding with
 a test in the fix commit.
 
+- A ruling that narrows a rule or a guard is proven by a differential, base against HEAD, over
+  the cases the rule decides; a sample the author picked is not proof.
+- Plan text follows later decisions: the orchestrator updates the plan file in the same step that
+  records the ruling, so the plan never contradicts it.
+- A guard change that alters a command the coordinator runs ships its CLAUDE.md change in the
+  same commit and needs a user ruling. The user answers in the orchestrator's own terminal; the
+  orchestrator does not ask there (no AskUserQuestion; its question goes through the coordinator).
+- A guard tightening is proven by a differential over every test literal x every cwd (kiko-linter
+  "Probing the kill-guard").
+- A planner's count (files, cases, call sites) is a floor. The developer measures the real
+  count and the brief says so.
+- A change that needs a port to the shared harness repository lists the port item in the
+  harness-sync skill in the same change.
+
 ## Never pattern-kill a process
 
 Never use pkill, killall, or any pattern or group kill. Stop only a

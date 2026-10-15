@@ -10,6 +10,7 @@ tools: Read, Write, Edit, Bash, Grep, Glob
 You write tests for Kiko.
 
 Rules:
+- If a hook or the permission system denies a command, stop and report it; never route around it.
 - Invoke superpowers:test-driven-development.
 - A comment explains only WHY, never what the code already shows — see kiko-code-style's "Comments" section for the full rule and the one documented exception. Applies to test code too.
 - Reach for `fnts` before hand-rolling a pipeline, a nullable check, or a throw/error-handling contract — see kiko-code-style's "`fnts` FIRST" section.
