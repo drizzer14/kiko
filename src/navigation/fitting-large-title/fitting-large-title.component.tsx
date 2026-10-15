@@ -23,6 +23,9 @@ const FittingLargeTitle: FC<FittingLargeTitleProps> = ({ navigation, options, ch
   // Whether this layout has switched the bar to the heading look. Its own override turns
   // `headerLargeTitle` off, so the merged options alone cannot say the screen had a large title.
   const switched = useRef(false);
+  // The screen's own bar options, which the restore brings back. Once switched, the merged options
+  // carry the heading look's values, so they are read only while the bar has not switched.
+  const ownOptions = useRef(options);
   const eligible =
     options.headerShown !== false &&
     title !== '' &&
@@ -30,6 +33,14 @@ const FittingLargeTitle: FC<FittingLargeTitleProps> = ({ navigation, options, ch
   const headingMode = eligible && !fits;
   // The bar loses its title only while the heading is on screen to show it instead.
   const headingShown = headingMode && hosted;
+
+  // Runs every commit, before the effect below sets the heading look, so the options it reads are
+  // the screen's own.
+  useLayoutEffect(() => {
+    if (!switched.current) {
+      ownOptions.current = options;
+    }
+  });
 
   useLayoutEffect(() => {
     if (headingShown) {
@@ -42,7 +53,7 @@ const FittingLargeTitle: FC<FittingLargeTitleProps> = ({ navigation, options, ch
     if (switched.current) {
       switched.current = false;
       setScrolled(false);
-      navigation.setOptions(largeTitleRestoredOptions);
+      navigation.setOptions(largeTitleRestoredOptions(ownOptions.current));
     }
   }, [headingShown, title, scrolled, navigation]);
 

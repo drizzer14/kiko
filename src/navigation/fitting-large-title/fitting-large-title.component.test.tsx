@@ -134,8 +134,34 @@ describe('fittingLargeTitleLayout', () => {
     await rerender(layoutOf(navigation, { ...switchedOptions, title: 'Short' }));
 
     expect(navigation.setOptions).toHaveBeenCalledTimes(2);
-    expect(navigation.setOptions).toHaveBeenLastCalledWith(largeTitleRestoredOptions);
+    expect(navigation.setOptions).toHaveBeenLastCalledWith(largeTitleRestoredOptions({}));
     expect(getByTestId('heading-title').props.children).toBe('native large title');
+  });
+
+  // The heading look overrides these keys, so once the bar has switched, the merged options carry
+  // the layout's values instead of the screen's; the restore puts the screen's own back.
+  it("brings back the screen's own bar options when the native large title returns", async () => {
+    forceTitleFit(false);
+    const navigation = navigationSpy();
+    const ownOptions = {
+      ...LARGE_TITLE_OPTIONS,
+      headerTransparent: true,
+      headerShadowVisible: false,
+      headerTitle: 'Own bar title',
+    };
+    const { rerender } = await render(layoutOf(navigation, ownOptions));
+
+    forceTitleFit(true);
+    await rerender(
+      layoutOf(navigation, { ...ownOptions, ...largeTitleHeadingOptions(TITLE, false) }),
+    );
+
+    expect(navigation.setOptions).toHaveBeenLastCalledWith({
+      headerLargeTitle: true,
+      headerTransparent: true,
+      headerShadowVisible: false,
+      headerTitle: 'Own bar title',
+    });
   });
 
   it('restores the native large title once, not again on a later title change', async () => {
@@ -165,7 +191,7 @@ describe('fittingLargeTitleLayout', () => {
 
     expect(navigation.setOptions.mock.calls).toEqual([
       [largeTitleHeadingOptions(TITLE, false)],
-      [largeTitleRestoredOptions],
+      [largeTitleRestoredOptions({})],
     ]);
   });
 
@@ -234,7 +260,7 @@ describe('fittingLargeTitleLayout', () => {
     forceTitleFit(true);
     await rerender(layoutOf(navigation, scrolledOptions));
     forceTitleFit(false);
-    await rerender(layoutOf(navigation, { ...scrolledOptions, ...largeTitleRestoredOptions }));
+    await rerender(layoutOf(navigation, { ...scrolledOptions, ...largeTitleRestoredOptions({}) }));
 
     expect(navigation.setOptions).toHaveBeenLastCalledWith(largeTitleHeadingOptions(TITLE, false));
   });
