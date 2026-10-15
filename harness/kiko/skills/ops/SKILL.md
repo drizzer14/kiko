@@ -40,11 +40,17 @@ Rules:
   as detected, and `stryker.conf.json` `"incremental": true` keeps it in
   `reports/stryker-incremental.json`. A pause can therefore credit up to
   one in-flight mutant per worker per pause and turn a FAIL into a PASS.
+  A paused run can also trip the TIMEOUT-HEAVY rule (`TIMEOUT_HEAVY_SHARE` and
+  `TIMEOUT_HEAVY_MINIMUM` in `scripts/checks/mutation-score.js`; clearing rules in
+  `docs/harness/checks.md` "Clearing a TIMEOUT-HEAVY file").
   Before trusting a paused run, recompute the score with the Timeout
   mutants counted as survived, or re-run without the incremental report.
   When the score is near the floor, let
   the run finish or re-run it instead of pausing. Use a pause for battery
   mode or a simulator session only when the score has headroom.
+- A TIMEOUT-HEAVY failure is cleared by the orchestrator (a plain-jest proof per mutant, or an
+  equivalent note in the BATCH READY), never by ops. Ops reports the failure block as is, never
+  re-runs to clear it, and never raises the timeout.
 - The coordinator who runs `make deep` logs the result per harness-workflow's "Run log"
   (`--gate deep --verdict pass|fail|timeout` on the run id the BATCH READY names).
 - Run check:deep / check:mutation only through the wrapper
