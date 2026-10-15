@@ -21,9 +21,10 @@
 #   logs/      gate-<label>.log, the whole output of a gate (other jobs print to stdout)
 #   done.log   one line per finished job: kind label exit start end head. head is the full
 #              40-character HEAD of the worktree, read at START only when `git status --porcelain`
-#              (untracked files included) was empty then and HEAD is the same at the end; it is
-#              `unknown` for a changed tree, a moved HEAD, or an unreadable repository. A line from
-#              before this field has five fields. scripts/ff-main.sh reads it.
+#              (untracked files included) was empty at START and again at the end and HEAD is the
+#              same at the end; it is `unknown` for a changed tree at either point, a moved HEAD,
+#              or an unreadable repository. A line from before this field has five fields.
+#              scripts/ff-main.sh reads it.
 #
 # Order is a plain `sort` of the ticket names. Class 1 is verify, check-all, and security (size
 # 0, first come first served); class 2 is a gate, class 3 a gate with --long. A gate's size is the
@@ -545,27 +546,32 @@ full_head() {
   esac
 }
 
+# Succeeds only when the worktree has no change at all (untracked files count). --no-optional-locks
+# keeps the read from taking the worktree's index.lock, so it never races a git command of the user.
+tree_is_clean() {
+  local changes
+  changes="$(git --no-optional-locks -C "$worktree" status --porcelain 2> /dev/null)" || return 1
+  [ -z "$changes" ]
+}
+
 # The commit a job ran on, named only while that is certain: a queued job reads the working tree,
 # so a tree with any change (untracked files count) at START is not "the job at that commit".
 read_tested_head() {
-  local changes head
-  changes="$(git -C "$worktree" status --porcelain 2> /dev/null)" || {
-    printf unknown
-    return 0
-  }
+  local head
   head="$(full_head)"
-  if [ -z "$changes" ] && [ -n "$head" ]; then
+  if tree_is_clean && [ -n "$head" ]; then
     printf '%s' "$head"
   else
     printf unknown
   fi
 }
 
-# A HEAD that moved during the job means the job ran on more than one commit. Only HEAD is
-# compared, never the tree: a job may write files itself.
+# A HEAD that moved during the job means the job ran on more than one commit, and a tree that is
+# no longer clean means the job ran on something that is not that commit. make verify writes its
+# state outside the tree, so a job that dirties its own tree records unknown.
 confirm_tested_head() {
   [ "$tested_head" = unknown ] && return 0
-  [ "$(full_head)" = "$tested_head" ] || tested_head=unknown
+  [ "$(full_head)" = "$tested_head" ] && tree_is_clean || tested_head=unknown
 }
 
 [ "$command_name" = gate ] && prepare_gate

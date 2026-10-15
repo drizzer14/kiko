@@ -1365,12 +1365,21 @@ const COMMITTING_MAKE_STUB = [
   '',
 ].join('\n');
 
+// A `make` stub that changes the tree it was given (`make -C <dir> verify`) without committing,
+// then passes.
+const dirtyingMakeStub = (change: string): string =>
+  ['#!/usr/bin/env bash', `cd "$2" && ${change}`, ''].join('\n');
+
+const installMake = (sandbox: Sandbox, body: string): void => {
+  writeExecutable(join(sandbox.root, 'bin/make'), body);
+};
+
 const finishedLine = (sandbox: Sandbox): string =>
   readLines(join(sandbox.queue, 'done.log'))[0] as string;
 
 describe('scripts/job-queue.sh done.log tested HEAD', () => {
-  // The 6th field names the commit a job ran on only while the tree was clean at START and HEAD
-  // had not moved by the end: a dirty tree or a moved HEAD is not "verify at that sha".
+  // The 6th field names the commit a job ran on only while the tree was clean at START and at the
+  // end and HEAD had not moved: a dirty tree or a moved HEAD is not "verify at that sha".
   it.each([
     ['a clean tree', () => undefined, true],
     [
@@ -1381,8 +1390,19 @@ describe('scripts/job-queue.sh done.log tested HEAD', () => {
     ['an untracked file', (worktree: string) => writeFile(worktree, 'new.txt', 'new\n'), false],
     [
       'a commit made by the job itself',
+      (_worktree: string, sandbox: Sandbox) => installMake(sandbox, COMMITTING_MAKE_STUB),
+      false,
+    ],
+    [
+      'a tracked edit made by the job itself, never committed',
       (_worktree: string, sandbox: Sandbox) =>
-        writeExecutable(join(sandbox.root, 'bin/make'), COMMITTING_MAKE_STUB),
+        installMake(sandbox, dirtyingMakeStub('echo "# edited" >> scripts/checks/mutation.sh')),
+      false,
+    ],
+    [
+      'an untracked file made by the job itself',
+      (_worktree: string, sandbox: Sandbox) =>
+        installMake(sandbox, dirtyingMakeStub('echo new > made-by-job.txt')),
       false,
     ],
   ])('verify on %s writes the 6th field', (_title, prepare, namesHead) => {
@@ -1393,6 +1413,28 @@ describe('scripts/job-queue.sh done.log tested HEAD', () => {
     runQueue(sandbox, 'verify', worktree, 'one');
 
     expect(finishedLine(sandbox).split(' ')[5]).toBe(namesHead ? head : 'unknown');
+  });
+
+  it('reads the tree status at START and at the end without taking the index lock', () => {
+    const sandbox = createSandbox();
+    const { worktree } = createGateWorktree(sandbox, 'one', listing(1));
+    const realGit = execFileSync('which', ['git'], { encoding: 'utf8' }).trim();
+    const calls = join(sandbox.root, 'git-calls');
+    writeExecutable(
+      join(sandbox.root, 'bin/git'),
+      [
+        '#!/usr/bin/env bash',
+        `printf '%s\\n' "$*" >> '${calls}'`,
+        `exec '${realGit}' "$@"`,
+        '',
+      ].join('\n'),
+    );
+
+    runQueue(sandbox, 'verify', worktree, 'one');
+
+    const statusCalls = readLines(calls).filter((call) => call.includes(' status'));
+    expect(statusCalls).toHaveLength(2);
+    expect(statusCalls.every((call) => call.startsWith('--no-optional-locks '))).toBe(true);
   });
 
   it('writes the 40-character HEAD of a gate', () => {

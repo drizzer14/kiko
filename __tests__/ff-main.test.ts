@@ -119,6 +119,23 @@ const recordOnly =
     return ofTip(fixture);
   };
 
+// Runs the real `job-queue.sh verify` on the linked worktree with a stub `make` of `makeBody`.
+const runQueuedVerify = (fixture: Fixture, makeBody: string) => {
+  const bin = join(fixture.home, 'bin');
+  mkdirSync(bin);
+  writeExecutable(join(bin, 'make'), makeBody);
+
+  return spawnSync('bash', [JOB_QUEUE, 'verify', fixture.work, 'end-to-end'], {
+    env: {
+      ...fixture.environment,
+      PATH: `${bin}:${process.env.PATH}`,
+      KIKO_QUEUE_PMSET: join(bin, 'no-such-pmset'),
+      KIKO_QUEUE_POLL_SECONDS: '0.1',
+    },
+    encoding: 'utf8',
+  });
+};
+
 describe('scripts/ff-main.sh moves main', () => {
   it.each<[string, Arrange, boolean]>([
     ['a verify exit 0 line at the full commit', greenTip, true],
@@ -213,18 +230,7 @@ describe('scripts/ff-main.sh moves main', () => {
 
   it('accepts the done.log line a real `job-queue.sh verify` writes', () => {
     const fixture = createFixture();
-    const bin = join(fixture.home, 'bin');
-    mkdirSync(bin);
-    writeExecutable(join(bin, 'make'), '#!/usr/bin/env bash\nexit 0\n');
-    const queued = spawnSync('bash', [JOB_QUEUE, 'verify', fixture.work, 'end-to-end'], {
-      env: {
-        ...fixture.environment,
-        PATH: `${bin}:${process.env.PATH}`,
-        KIKO_QUEUE_PMSET: join(bin, 'no-such-pmset'),
-        KIKO_QUEUE_POLL_SECONDS: '0.1',
-      },
-      encoding: 'utf8',
-    });
+    const queued = runQueuedVerify(fixture, '#!/usr/bin/env bash\nexit 0\n');
 
     const result = runScript(fixture, [fixture.tipCommit]);
 
@@ -344,6 +350,23 @@ describe('scripts/ff-main.sh refuses', () => {
     }
 
     expect(result.stderr).toContain(DO_NOT);
+  });
+
+  it.each([
+    ['a tracked edit', 'echo edited >> change.txt'],
+    ['an untracked file', 'echo new > made-by-job.txt'],
+  ])('exit 2 for a queued verify whose job left %s uncommitted', (_title, change) => {
+    const fixture = createFixture();
+    const queued = runQueuedVerify(fixture, `#!/usr/bin/env bash\ncd "$2" && ${change}\nexit 0\n`);
+
+    const result = runScript(fixture, [fixture.tipCommit]);
+
+    expect(queued.status).toBe(0);
+    expect(result.status).toBe(2);
+    expect(result.stderr.split('\n')).toContain(
+      'WHAT FAILED:    No successful queued verify at this commit',
+    );
+    expect(mainHead(fixture)).toBe(fixture.baseCommit);
   });
 
   it.each<[string, string[]]>([
