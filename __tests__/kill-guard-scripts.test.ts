@@ -21,7 +21,8 @@ import {
 // (one level, a regular file of at most 256 KiB) and denies a kill in it: a pkill, a killall, or a
 // pattern or process-group kill. A script in a scratchpad outside the project is a place the
 // pre-write guard never looks. scripts/job-queue.sh at the root of a worktree of this
-// repository is exempt: its own group TERM is the one allowed group kill.
+// repository is exempt: its own group TERM is the one allowed group kill. The same scan reads a
+// raw fast-forward of the main checkout, in kill-guard-main-fast-forward.test.ts.
 //
 // Every text here is judged, never run: `decide` is called in node as a parser only. The scripts
 // the rows name are written by this test into a scratch folder.
@@ -390,7 +391,7 @@ describe('kill-guard script scan: every tracked script and the routine commands'
     'bash scripts/wait-load.sh 4 300',
     'bash scripts/checks/fast.sh',
     'npm run check:all',
-    'git -C /Users/drizzer14/Developer/Projects/pff-ios merge --ff-only abc1234',
+    'bash scripts/ff-main.sh abc1234',
     'git -C /Users/drizzer14/Developer/Projects/pff-ios log --oneline -3',
     'bash scripts/ensure-git-hooks.sh',
   ];

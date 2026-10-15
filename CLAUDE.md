@@ -95,9 +95,9 @@ The git `pre-commit`/`pre-merge-commit` hooks (`githooks/`) run the pre-commit t
   - a heredoc with an unquoted delimiter (`<<EOF`; `<<'EOF'` passes).
   - `git apply|merge|rebase|pull|cherry-pick|revert|am` on the MAIN checkout
     `/Users/drizzer14/Developer/Projects/pff-ios` ("MAIN-CHECKOUT deny");
-    allowed: `merge --ff-only`, `pull --ff-only`, `--abort|--quit|--skip|--continue`.
-    Merge in a separate detached worktree, then
-    `git -C /Users/drizzer14/Developer/Projects/pff-ios merge --ff-only <sha>`.
+    allowed: `--abort|--quit|--skip|--continue`.
+    Merge in a separate detached worktree, then `bash scripts/ff-main.sh <sha>`
+    (a raw `merge --ff-only`/`pull --ff-only` on main is denied).
   - a shell write (`sed -i`, `perl -i`, `>`/`>>`, `tee`, `cp`/`mv` (also
     `gcp`/`gmv`), python/node one-liner or stdin heredoc script) into `src/`,
     `__tests__/`, `rules/`, `e2e/` of any worktree ("SHELL-WRITE deny"); use

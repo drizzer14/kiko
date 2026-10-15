@@ -251,12 +251,16 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   options (at the time of writing `--abort`, `--quit`, `--skip`,
   `--continue`, `--resolved`, `--edit-todo`, `--show-current-patch`);
   `git apply --check`,
-  `--stat`, `--numstat`, `--summary` without `--apply`; and the one
-  update form, `git merge --ff-only <ref>` or
-  `git pull --ff-only [remote [ref]]` with no other option (strict,
-  because a later `--no-ff`/`--rebase` overrides `--ff-only`). The way
-  out: do the real merge in a separate detached worktree, verify it, then
-  `git -C <main> merge --ff-only <sha>`. A help or recovery option lets
+  `--stat`, `--numstat`, `--summary` without `--apply`. A `merge` or `pull` whose only option
+  is `--ff-only` (strict, because a later `--no-ff`/`--rebase` overrides it) aimed at main is
+  its own kind, `mainFastForward` (typed, cd/`-C`/`--git-dir`/`--work-tree`/`GIT_DIR` forms,
+  run bodies, same-command variables, data bodies, scanned scripts); its HOW TO FIX is
+  `bash scripts/ff-main.sh <sha>`. Any other merge on main stays `mainCheckout`, whose HOW TO
+  FIX also names `scripts/ff-main.sh`. The way out: do the real merge in a separate detached
+  worktree, run a queued `scripts/job-queue.sh verify` on the merge commit, then
+  `bash scripts/ff-main.sh <sha>` (it needs the LAST `verify` line of done.log for that full
+  sha to be exit 0; read its header). `scripts/ff-main.sh` needs no exemption: its merge uses
+  a variable target. A help or recovery option lets
   the whole command through from ANY argument position, even as another
   option's value (see the limits list). A session
   in the main checkout gets this deny only after the guard merges to
@@ -427,9 +431,12 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   <file>`, `source <file>` or `. <file>`, or a path run directly whose first line names a
   shell) and denies a pkill, killall, or pattern or process-group kill in it (kind `scriptKill`;
   `scriptKillFinding`, `scriptFileOf`, `shellScriptOperand`, `readScriptFile`). One level only,
-  a regular file of at most 256 KiB, kills only (`rules.kinds` is `SCRIPT_KINDS`, the kill
-  kind alone: a stash or write inside it is not judged). A heredoc inside a scanned script is
-  judged for those kinds too (kill only); `DATA_KINDS` applies to typed commands only. `kill -0`
+  a regular file of at most 256 KiB, kills and a raw `mainFastForward` only (`rules.kinds` is
+  `SCRIPT_KINDS`, read it in `kill-guard.js`: a stash or write inside it is not judged). The
+  script scan tracks no variables; a data heredoc in a script that prints a raw main
+  fast-forward is denied; a non-ff main merge held in a script is not judged. A heredoc inside
+  a scanned script is judged for those kinds too; `DATA_KINDS` applies to typed commands only.
+  `kill -0`
   and `kill -s 0` send no signal and are harmless ONLY when no later word before the targets can be
   an option: a word matching `/^-[A-Za-z]/`, a word that may expand (a leading `~`, or `$`,
   a backtick, `*`, `?`, `[`, `{`, a subshell placeholder; `mayBeOption` in
@@ -454,7 +461,8 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   `kill-guard.js` are the closed sets; read them there). A body no shell runs (`cat > f
   <<'EOF'`, `ssh host <<'EOF'`) is data: `nestedFinding` judges it for `DATA_KINDS` (the kinds
   the guard judged there before the newer denies: kill, stash, noVerify, hooksConfig,
-  mainCheckout, waitLoop) by the base triggers only, with no variable tracking, no shell-write
+  mainCheckout, mainFastForward, waitLoop) by the base triggers only, with no variable
+  tracking, no shell-write
   check, no script scan, and none of the newer triggers (`git commit-tree`, a `GIT_CONFIG_*`
   export, `include.path`, a prefix-resolved `git config` option). So a note or commit message
   that documents those commands in a heredoc is allowed, while a base-trigger text (`git commit
@@ -571,7 +579,7 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   - Main-checkout deny, NOT denied: a path through another variable,
     `~user`, a glob, or a symlink; a git alias, script, or function;
     `export GIT_DIR=…` as its own earlier command; `env -C <main>`;
-    `git -c pull.rebase=true pull --ff-only`; a help or recovery option
+    a help or recovery option
     used as another option's value (`git merge -m --abort x` really
     merges); `cd $VAR` (counts as not main); a span as the `cd` target
     (`cd "$(echo <main>)" && git merge x`).
@@ -653,7 +661,8 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
     moved; `pushd -n`/`popd -n` count as moving; from main,
     `cd <wt> || { echo no; exit 1; }; git merge` (a brace group after
     `||` is not read as an exit); `--git-dir=<main>/.git/worktrees/<name>`;
-    a `merge --ff-only` with any extra option; a heredoc body line that
+    a `merge --ff-only` with any extra option (that is `mainCheckout`, not `mainFastForward`);
+    a heredoc body line that
     literally is a covered command, even when only written to a file
     (write such text with the Write tool, or `git commit -F <file>`);
     every guarded name in any command-position span is tried

@@ -279,7 +279,7 @@ describe('scripts/job-queue.sh a single job', () => {
     expect(isPresent(join(sandbox.queue, 'claim'))).toBe(false);
     const finished = readLines(join(sandbox.queue, 'done.log'));
     expect(finished).toHaveLength(1);
-    expect(finished[0]).toMatch(/^verify one 3 \S+ \S+$/);
+    expect(finished[0]).toMatch(/^verify one 3 \S+ \S+ (?:[0-9a-f]{40}|unknown)$/);
   });
 
   it('prints the head sha and the load average on the START line', () => {
@@ -369,6 +369,8 @@ const createGateWorktree = (
       { cwd: worktree, encoding: 'utf8' },
     ).trim();
   git('init', '-q', '-b', 'main');
+  // The stub's `listed` marker is not a change to the tree a job is tested on.
+  writeFileSync(join(worktree, '.git/info/exclude'), 'scripts/checks/listed\n');
   mkdirSync(join(worktree, 'scripts/checks'), { recursive: true });
   writeExecutable(
     join(worktree, 'scripts/checks/mutation.sh'),
@@ -1353,6 +1355,140 @@ describe('scripts/job-queue.sh battery power', () => {
     const result = await waiter.finished;
     expect(result.code).toBe(0);
     expect(startedWorktrees(sandbox)).toEqual([worktree]);
+  });
+});
+
+// A `make` stub that commits inside the worktree it was given (`make -C <dir> verify`).
+const COMMITTING_MAKE_STUB = [
+  '#!/usr/bin/env bash',
+  'git -C "$2" -c user.name=Test -c user.email=test@example.com commit -q --allow-empty -m mid-run',
+  '',
+].join('\n');
+
+// A `make` stub that changes the tree it was given (`make -C <dir> verify`) without committing,
+// then passes.
+const dirtyingMakeStub = (change: string): string =>
+  ['#!/usr/bin/env bash', `cd "$2" && ${change}`, ''].join('\n');
+
+const installMake = (sandbox: Sandbox, body: string): void => {
+  writeExecutable(join(sandbox.root, 'bin/make'), body);
+};
+
+// `git status` follows this setting unless the queue asks for untracked files by name.
+const hideUntrackedFiles = (worktree: string): void => {
+  execFileSync('git', ['config', 'status.showUntrackedFiles', 'no'], { cwd: worktree });
+};
+
+const finishedLine = (sandbox: Sandbox): string =>
+  readLines(join(sandbox.queue, 'done.log'))[0] as string;
+
+describe('scripts/job-queue.sh done.log tested HEAD', () => {
+  // The 6th field names the commit a job ran on only while the tree was clean at START and at the
+  // end and HEAD had not moved: a dirty tree or a moved HEAD is not "verify at that sha".
+  it.each([
+    ['a clean tree', () => undefined, true],
+    [
+      'a tracked edit',
+      (worktree: string) => writeFile(worktree, 'scripts/checks/mutation.sh', '# edited\n'),
+      false,
+    ],
+    ['an untracked file', (worktree: string) => writeFile(worktree, 'new.txt', 'new\n'), false],
+    [
+      'a commit made by the job itself',
+      (_worktree: string, sandbox: Sandbox) => installMake(sandbox, COMMITTING_MAKE_STUB),
+      false,
+    ],
+    [
+      'a tracked edit made by the job itself, never committed',
+      (_worktree: string, sandbox: Sandbox) =>
+        installMake(sandbox, dirtyingMakeStub('echo "# edited" >> scripts/checks/mutation.sh')),
+      false,
+    ],
+    [
+      'an untracked file made by the job itself',
+      (_worktree: string, sandbox: Sandbox) =>
+        installMake(sandbox, dirtyingMakeStub('echo new > made-by-job.txt')),
+      false,
+    ],
+    [
+      'an untracked file under status.showUntrackedFiles=no',
+      (worktree: string) => {
+        hideUntrackedFiles(worktree);
+        writeFile(worktree, 'new.txt', 'new\n');
+      },
+      false,
+    ],
+    [
+      'an untracked file made by the job itself under status.showUntrackedFiles=no',
+      (worktree: string, sandbox: Sandbox) => {
+        hideUntrackedFiles(worktree);
+        installMake(sandbox, dirtyingMakeStub('echo new > made-by-job.txt'));
+      },
+      false,
+    ],
+  ])('verify on %s writes the 6th field', (_title, prepare, namesHead) => {
+    const sandbox = createSandbox();
+    const { worktree, head } = createGateWorktree(sandbox, 'one', listing(1));
+    prepare(worktree, sandbox);
+
+    runQueue(sandbox, 'verify', worktree, 'one');
+
+    expect(finishedLine(sandbox).split(' ')[5]).toBe(namesHead ? head : 'unknown');
+  });
+
+  it('reads the tree status at START and at the end without taking the index lock', () => {
+    const sandbox = createSandbox();
+    const { worktree } = createGateWorktree(sandbox, 'one', listing(1));
+    const realGit = execFileSync('which', ['git'], { encoding: 'utf8' }).trim();
+    const calls = join(sandbox.root, 'git-calls');
+    writeExecutable(
+      join(sandbox.root, 'bin/git'),
+      [
+        '#!/usr/bin/env bash',
+        `printf '%s\\n' "$*" >> '${calls}'`,
+        `exec '${realGit}' "$@"`,
+        '',
+      ].join('\n'),
+    );
+
+    runQueue(sandbox, 'verify', worktree, 'one');
+
+    const statusCalls = readLines(calls).filter((call) => call.includes(' status'));
+    expect(statusCalls).toHaveLength(2);
+    expect(statusCalls.every((call) => call.startsWith('--no-optional-locks '))).toBe(true);
+  });
+
+  it('writes the 40-character HEAD of a gate', () => {
+    const sandbox = createSandbox();
+    const gate = createGateWorktree(sandbox, 'gate', listing(1));
+
+    runQueue(sandbox, 'gate', gate.worktree, 'gate', 'main', gate.head.slice(0, 9));
+
+    expect(finishedLine(sandbox).split(' ')[5]).toBe(gate.head);
+  });
+
+  it('writes unknown for a worktree that is not a git repository', () => {
+    const sandbox = createSandbox();
+
+    runQueue(sandbox, 'verify', createWorktree(sandbox, 'one'), 'one');
+
+    expect(finishedLine(sandbox).split(' ')[5]).toBe('unknown');
+  });
+
+  it('keeps fields 1 to 5 in the shape of the 5-field line, and the START line as it was', () => {
+    const sandbox = createSandbox();
+    const { worktree } = createGateWorktree(sandbox, 'one', listing(1));
+    sandbox.environment.KIKO_STUB_EXIT = '4';
+
+    const result = runQueue(sandbox, 'verify', worktree, 'one');
+
+    expect(finishedLine(sandbox).split(' ').slice(0, 5).join(' ')).toMatch(
+      /^verify one 4 \d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ \d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$/,
+    );
+    expect(finishedLine(sandbox).split(' ')).toHaveLength(6);
+    expect(result.stdout).toMatch(
+      /^START one at \d\d:\d\d head [0-9a-f]{12} \(load: 1\.50 2\.50 3\.50\)$/m,
+    );
   });
 });
 
