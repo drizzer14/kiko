@@ -282,7 +282,7 @@ function readPins(pinnedFile) {
 }
 
 // The report lines of one file: each violation the pin file does not excuse, then each pinned
-// line the file no longer holds as a violation.
+// line the file does not hold as a violation.
 function reportFile(file, source, excusedLines) {
   const unused = [...excusedLines];
   const lines = source.split('\n');

@@ -24,7 +24,7 @@ let root: string;
 let fixSha: string;
 let strayCommit: string;
 
-// The fix lives in the first commit and a later commit moves HEAD on, so the fix is an ancestor
+// The fix lives in the first commit and a second commit moves HEAD on, so the fix is an ancestor
 // of HEAD but not HEAD itself. A commit made with commit-tree hangs off no branch, which makes
 // it a sha that resolves but is not an ancestor of HEAD.
 beforeEach(() => {

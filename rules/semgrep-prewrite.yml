@@ -271,7 +271,7 @@ rules:
   # positive tuning, and the paths.exclude scope reasoning (design notes
   # live there ONCE, not duplicated here).
   - id: kiko-no-history-id-comment
-    languages: [typescript]
+    languages: [typescript, javascript]
     severity: ERROR
     message: >
       A comment cites a task id, review-round id, spec/decision id, a bug
@@ -286,9 +286,7 @@ rules:
       skill: "kiko-code-style › Comments: WHY only, never history"
     paths:
       exclude:
-        - "__tests__/**"
         - "e2e/**"
-        - "scripts/**"
         - "harness/**"
         - "App.tsx"
         - "drizzle.config.ts"
@@ -299,7 +297,7 @@ rules:
   # ERROR: the tree holds 0 findings for this id. See kiko-linter's
   # "kiko-no-history-word-comment" section.
   - id: kiko-no-history-word-comment
-    languages: [typescript]
+    languages: [typescript, javascript]
     severity: ERROR
     message: >
       A comment narrates a change ("it replaces", "no longer", "used to",
@@ -316,9 +314,7 @@ rules:
       skill: "kiko-code-style › Comments: WHY only, never history"
     paths:
       exclude:
-        - "__tests__/**"
         - "e2e/**"
-        - "scripts/**"
         - "harness/**"
         - "App.tsx"
         - "drizzle.config.ts"
@@ -330,7 +326,7 @@ rules:
   # See kiko-linter's "kiko-no-history-date-comment" section for the members, the
   # false-positive classes that kept a bare ISO date out, and the scope.
   - id: kiko-no-history-date-comment
-    languages: [typescript]
+    languages: [typescript, javascript]
     severity: ERROR
     message: >
       A comment dates a decision, a device finding, a probe, or a plan
@@ -347,9 +343,7 @@ rules:
       skill: "kiko-code-style › Comments: WHY only, never history"
     paths:
       exclude:
-        - "__tests__/**"
         - "e2e/**"
-        - "scripts/**"
         - "harness/**"
         - "App.tsx"
         - "drizzle.config.ts"

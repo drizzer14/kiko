@@ -39,7 +39,7 @@
 # naming no live pid, or no pid at all, is not live). A job's own end waits the same way: the lock
 # is removed once the group is empty, and a DRAIN line says a process of the job still runs.
 #
-# Group signal (user ruling 2026-10-13): on SIGINT or SIGTERM the queue sends TERM to the process
+# Group signal: on SIGINT or SIGTERM the queue sends TERM to the process
 # group it created for its own job (`kill -s TERM -- -<group>`), and to no other group: the group
 # comes from this process's own memory, never from the lock file, and never from a name or a
 # pattern. It then waits for the group to empty, polling every KIKO_QUEUE_POLL_SECONDS, at most
@@ -51,8 +51,8 @@
 # be trapped: a waiter killed with it leaves its job running, so never SIGKILL one (the lock is
 # live by group only once the group is named; see Known limits).
 #
-# Exit codes: the job's own code (2 also covers a refused request, as the plan's contract says); 3
-# a gate whose HEAD moved; 130 after SIGINT; 143 after SIGTERM.
+# Exit codes: the job's own code (2 also covers a refused request); 3 a gate whose HEAD moved; 130
+# after SIGINT; 143 after SIGTERM.
 #
 # Known limits: the group check is a liveness test only. A pid reused by an unrelated process makes
 # a dead owner read as alive, so a lock can stall, never run two jobs at once. A claim whose holder

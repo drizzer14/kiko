@@ -81,9 +81,9 @@ done <<EOF
 $credential_files
 EOF
 
-# Every pinned domain must carry at least two SPKI pins (reinforces Task 7/H3).
+# Every pinned domain must carry at least two SPKI pins.
 # A domain pinned with a single hash cannot survive a certificate rotation:
-# the day that cert is replaced, the app can no longer reach the host at all
+# the day that cert is replaced, the app cannot reach the host at all
 # until an app update ships. Two pins (root + intermediate, or current +
 # backup) let a rotation happen without an outage.
 thin_pins="$(plutil -convert json -o - "$PLIST" | node -e '

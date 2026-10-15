@@ -18,7 +18,7 @@ import {
   buildMutationRepository,
 } from './test-support/mutation-repository';
 
-// scripts/checks/mutation-ranges.js turns `git diff -U0` output (stdin) into the
+// scripts/checks/mutation-ranges.js turns `git diff --unified=0` output (stdin) into the
 // added-line ranges of the paths given as arguments, one `<path>\t<ranges>` line
 // per argument in argument order. It spawns the real script with a synthetic
 // diff on stdin (the mutation-score.test.ts pattern).
@@ -198,8 +198,8 @@ describe('mutation-ranges.js', () => {
   });
 });
 
-// mutation.sh runs the real reader on a real `git diff -U0`, in a throwaway repository whose
-// `main` holds twelve lines of src/changed.ts and whose `feature` edits lines 3 and 7.
+// mutation.sh runs the real reader on a real `git diff --unified=0`, in a throwaway repository
+// whose `main` holds twelve lines of src/changed.ts and whose `feature` edits lines 3 and 7.
 const buildChangedLinesRepository = (root: string): { root: string; script: string } =>
   buildMutationRepository(
     root,

@@ -7,8 +7,8 @@ import { repositoryFiles } from './test-support/repository-files';
 // read by agents line by line, and a line that runs past 100 columns is unreadable in a diff.
 // Exempt: fenced code, a table row, an ATX heading, the YAML front matter, and a line with no
 // wrap point (one long URL). Lines that predate the rule are pinned by exact text in
-// markdown-prose-width.pinned.json; the list only shrinks, so a pin whose line no longer
-// runs past 100 columns fails until the pin is deleted.
+// markdown-prose-width.pinned.json; the list only shrinks, so a pin whose line fits within 100
+// columns fails until the pin is deleted.
 const ROOT = join(__dirname, '..');
 const PROSE_ROOTS = [
   '.claude/skills/',
