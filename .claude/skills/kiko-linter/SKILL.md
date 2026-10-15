@@ -1784,7 +1784,8 @@ Mechanizes kiko-code-style's "`ts-pattern` for exhaustive mapping": a ternary
 plain `kind` string. A site on a closed union does not fit kiko-code-style's single-boolean-guard
 allowance, because that allowance covers only a guard with no closed-set enum behind it. A site
 uses `match(...).exhaustive()`. To re-measure, run the Semgrep command in the
-`kiko-test-title-no-history` section above, filtered to this id; the tree must hold 0 findings. `// nosemgrep:
+`kiko-test-title-no-history` section above, filtered to this id; the tree must hold 0
+findings. `// nosemgrep:
 kiko-kind-ternary-prefers-match OVERRIDE(<reason>) <why>` is only for a site where `kind` is
 not a closed union.
 
