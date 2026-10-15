@@ -11,8 +11,8 @@ import { isolatedGitEnvironment } from './test-support/isolated-git';
 
 // medium.sh runs the doc-reading jest suites when a file under a doc root changed, uncommitted or
 // committed since the guard replay's mark. Every test runs COPIES of medium.sh and _lib.sh in a
-// throwaway repository; the other wrappers are no-op stubs, and jest is a stub reached through
-// KIKO_DOC_SUITES_JEST, so the test proves which suites medium.sh hands jest and when.
+// throwaway repository; the other wrappers are no-op stubs, and jest is a stub at
+// node_modules/.bin/jest, so the test proves which suites medium.sh hands jest and when.
 const CHECKS = join(__dirname, '../scripts/checks');
 
 const NO_OP_WRAPPERS = [
@@ -86,7 +86,7 @@ const buildProject = (): Project => {
   );
   writeFile(
     project,
-    'jest-stub.sh',
+    'node_modules/.bin/jest',
     stubScript(
       `echo "$@" >> "${stateFile(project, 'jest.runs')}"`,
       `mode="$(cat "${stateFile(project, 'jest.mode')}" 2>/dev/null)"`,
@@ -100,6 +100,7 @@ const buildProject = (): Project => {
   writeFile(project, '__tests__/b-skill.test.ts', suiteReading('.claude/skills'));
   writeFile(project, '__tests__/c-no-root.test.ts', suiteReading('src/features'));
   writeFile(project, '__tests__/d-no-read.test.ts', "export const root = 'docs/harness/x.md';\n");
+  writeFile(project, '.gitignore', 'node_modules/\n');
   writeFile(project, 'CLAUDE.md', 'base\n');
   writeFile(project, 'docs/harness/base.md', 'base\n');
   git(project, 'add', '-A');
@@ -114,7 +115,6 @@ const runMedium = (project: Project, extra: NodeJS.ProcessEnv = {}): Outcome => 
     env: {
       ...process.env,
       TMPDIR: project.state,
-      KIKO_DOC_SUITES_JEST: join(project.root, 'jest-stub.sh'),
       ...extra,
     },
     encoding: 'utf8',

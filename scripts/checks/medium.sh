@@ -151,8 +151,8 @@ fi
 # the mark, so a failure after that would leave the next Stop a clean tree with no doc change in
 # view, and the committed doc edit would go unchecked. Its fingerprint skips an identical doc
 # state. The jest run stops at its own deadline, well inside the 300 s hook kill, and fails
-# closed: a killed hook ends the turn with no error and no check. KIKO_DOC_SUITES_JEST and
-# KIKO_DOC_SUITES_DEADLINE_SECONDS exist for the tests; the second only lowers the budget.
+# closed: a killed hook ends the turn with no error and no check. KIKO_DOC_SUITES_DEADLINE_SECONDS
+# exists for the tests and only lowers the budget.
 if [ ${#doc_changed[@]} -gt 0 ]; then
   doc_fingerprint="$(harness_doc_fingerprint "$ROOT")"
   if ! harness_unchanged "$ROOT" "doc-suites" "$doc_fingerprint"; then
@@ -160,7 +160,7 @@ if [ ${#doc_changed[@]} -gt 0 ]; then
     while IFS= read -r f; do
       doc_suites+=("$f")
     done < <(harness_doc_suites "$ROOT")
-    doc_jest="${KIKO_DOC_SUITES_JEST:-$ROOT/node_modules/.bin/jest}"
+    doc_jest="$ROOT/node_modules/.bin/jest"
     doc_budget=270
     case "${KIKO_DOC_SUITES_DEADLINE_SECONDS:-}" in
       '' | *[!0-9]*) ;;
