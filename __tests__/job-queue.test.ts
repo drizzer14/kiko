@@ -1010,6 +1010,9 @@ describe.each([
     const waiter = startQueue(sandbox, 'verify', worktree, 'one');
     await waitFor(() => readLines(join(sandbox.root, 'job-pid')).length === 1);
     const jobPid = Number(readFileSync(join(sandbox.root, 'job-pid'), 'utf8'));
+    // The queue names the job group in the record after the job starts; a lock swapped before
+    // that rename would be overwritten by it.
+    await waitFor(() => readlinkSync(join(sandbox.queue, 'lock')).split(' ')[1] === String(jobPid));
     rmSync(join(sandbox.queue, 'lock'));
     holdLock(sandbox, `${waiter.child.pid} ${foreign} verify one ${worktree}`);
     waiter.child.kill(signal);
