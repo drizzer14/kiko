@@ -14,7 +14,10 @@
 #
 # This wrapper is NOT a check (see .claude/skills/kiko-linter/SKILL.md for
 # that contract) — it must ALWAYS exit 0, even if node is missing or the
-# payload is malformed, so a broken guard never blocks the Bash tool itself.
+# payload is malformed; a deny is the JSON on stdout, never the exit code.
+# An error thrown while judging a command is a deny (`internalError`), because the command that
+# crashed the guard may be the one it exists to stop. A malformed or unreadable payload, an empty
+# command, and a missing node still allow, so a broken hook process never blocks the Bash tool.
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 node "$DIR/kill-guard.js" 2>/dev/null
 exit 0
