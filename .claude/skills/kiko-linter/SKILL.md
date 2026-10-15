@@ -395,25 +395,55 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   `readonly`; a later assignment wins; a subshell's scope ends with it; a `NAME=v cmd` prefix and
   an assignment before `&` or `|` do not persist) is expanded in later words, redirect targets,
   and nested text (`expandVariables`, `assignedVariables`, `withVariables`, `isLiteralValue`;
-  `findDanger`'s place is `{ directories, variables }`). A value that is itself an expansion
-  (`$!`, `$(...)`, `$other`) stays unknown. Not tracked: `unset`, `cd $d`, `f+=x`, loop
-  variables; a conditional assignment is read as if it ran. Side effects: `git -C $d` with a
-  same-command `d` resolves for the main-checkout deny, and a `-1` held in a same-command
-  variable and passed to a kill denies. A variable the command does not assign stays unresolved
-  because failing closed would deny `tmp=$(mktemp); cp x "$tmp"` and existing allow rows.
+  `findDanger`'s place is `{ directories, variables }`). The expansion reaches only write
+  targets (words and redirect targets) and git directories (`git -C $d`). `segmentFinding`
+  judges a segment as written first, then, when the command assigned a variable the segment
+  reads, once more with the values filled in; the second reading reports only `shellWrite` and
+  `mainCheckout` (`EXPANDED_KINDS`), so an assignment can only ADD a deny, never remove one.
+  A kill target and a command word are never expanded: `pid=-1; kill -9 $pid` is judged as
+  written (an unknown `$pid` is the agent's own) and is not denied. A value that is itself an
+  expansion (`$!`, `$(...)`, `$other`) stays unknown; a value over 4 KiB
+  (`VARIABLE_VALUE_LIMIT`) is unknown, and one word never expands past 16 KiB
+  (`EXPANDED_WORD_LIMIT`). Not tracked: `unset`, `cd $d`, `f+=x`, loop variables; an assignment
+  in a branch that may not run counts as run for the expanded reading, which only adds, and the
+  raw reading still denies what the text denies. Scopes chain per segment (`SCOPE_DEPTH_LIMIT`
+  folds them). A variable the command does not assign stays unresolved because failing closed
+  would deny `tmp=$(mktemp); cp x "$tmp"` and existing allow rows.
 
   Script-content kill scan. The guard reads a script file a command runs (`bash|sh|zsh|dash
   <file>`, `source <file>` or `. <file>`, or a path run directly whose first line names a
   shell) and denies a pkill, killall, or pattern or process-group kill in it (kind `scriptKill`;
   `scriptKillFinding`, `scriptFileOf`, `shellScriptOperand`, `readScriptFile`). One level only,
-  a regular file of at most 256 KiB, kills only (`killOnly`: a stash or write inside it is not
-  judged). `isQueueScript` exempts `scripts/job-queue.sh` whose worktree root shares this
+  a regular file of at most 256 KiB, kills only (`rules.kinds` is `SCRIPT_KINDS`, the kill
+  kind alone: a stash or write inside it is not judged). `kill -0` and `kill -s 0` send no
+  signal and never deny, and `$1`..`$9` is a caller's own pid like a named variable
+  (`sendsNoSignal`, `isDangerousKillTarget`). `isQueueScript` exempts `scripts/job-queue.sh`
+  whose worktree root shares this
   repository's git directory readably; a copy outside a worktree or in another repository
   denies. Known limits, NOT denied: a script built in the same command, a missing or larger
   file, a variable path, a script that sources another, a file for a non-shell interpreter,
   and `make` targets; a `cp -R` copy of a linked worktree counts as this repository. Pinned by
-  `__tests__/kill-guard-scripts.test.ts` (every `git ls-files` `*.sh`, the routine coordinator
+  `__tests__/kill-guard-scripts.test.ts` (every tracked file with a shell shebang, the
+  extensionless `githooks/pre-commit` and `pre-merge-commit` included, the routine coordinator
   commands, the queue-script rows).
+
+  Heredoc bodies and `rules.kinds` (null judges every kind; `SCRIPT_KINDS` and `DATA_KINDS` in
+  `kill-guard.js` are the closed sets; read them there). A body no shell runs (`cat > f
+  <<'EOF'`, `ssh host <<'EOF'`) is data: `nestedFinding` judges it for `DATA_KINDS` (the kinds
+  the guard judged there before the newer denies: kill, stash, noVerify, hooksConfig,
+  mainCheckout, waitLoop) by the base triggers only, with no variable tracking, no shell-write
+  check, no script scan, and none of the newer triggers (`git commit-tree`, a `GIT_CONFIG_*`
+  export, `include.path`, a prefix-resolved `git config` option). So a note or commit message
+  that documents those commands in a heredoc is allowed, while a base-trigger text (`git commit
+  --no-verify`, a main-checkout merge) in it still denies. A body a shell or eval RUNS is
+  judged in full (`rules.outputRuns`, `rulesForSpans`, `RUNNING_COMMANDS`): `bash <<'EOF'`,
+  `sh -c "$(cat <<'EOF' ...)"`, `eval "$(cat <<'EOF' ...)"`, `eval ... <<'EOF'`, `source|.
+  /dev/stdin <<'EOF'`, a span in command position, and `<(...)`.
+
+  The `internalError` kind: `decide` fails closed, so an error thrown while judging returns an
+  `internalError` finding (`INTERNAL_ERROR_REASON_LINES`) and the command is denied. A
+  malformed payload or a missing command still allows. `kill-guard.sh` exits 0 always and
+  denies through its JSON, also when judging crashed.
 
   NO-VERIFY deny (why: the tracked `githooks/pre-commit` and `githooks/pre-merge-commit` run
   `scripts/checks/commit-typecheck.sh`, a typecheck of the staged index; a commit that skips them
@@ -425,9 +455,11 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   `GIT_CONFIG_PARAMETERS`. It also denies a `git config` that writes or unsets core.hooksPath in
   any scope (the `set`/`unset` forms of git 2.46 too), because that switches the hooks off for
   every worktree. Entry points: `skipsHooks`, `rewritesHooksPath`, `environmentSetsHooksPath`
-  in `scripts/checks/kill-guard.js`; the finding kind is `noVerify`. Allowed: a `--get` read of the
-  key, `git config core.hooksPath` with no value, `-n` after another option's value or after
-  `--`, text in a commit message, and `git log -n`. The repair route for an unset core.hooksPath
+  in `scripts/checks/kill-guard.js`; the kind is `noVerify` for `--no-verify`/`-n` and
+  `hooksConfig` for the `rewritesHooksPath` and `environmentSetsHooksPath` findings. Allowed: a
+  `--get` read of the key, `git config core.hooksPath` with no value, `-n` after another
+  option's value or after `--`, text in a commit message (within the data-body rule below), and
+  `git log -n`. The repair route for an unset core.hooksPath
   is `bash scripts/ensure-git-hooks.sh` or `npm ci`; a direct `git config core.hooksPath githooks`
   is denied too. The pre-commit hook itself: `scripts/checks/commit-typecheck.sh` copies the
   staged index to a temporary folder and runs `tsc --noEmit` there; it fails closed and skips a
@@ -438,8 +470,8 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
 
   The `noVerify` kind covers `--no-verify`, `-n`, and `git commit-tree` in every form (it
   writes a commit no hook runs for; `git update-ref` stays allowed). The kind `hooksConfig`
-  (entry points `rewritesHooksPath`, `runsWithHooksConfig`, `environmentSetsHooksPath`,
-  `environmentSwapsConfigFile`, `environmentFinding`) carries a reason naming
+  (entry points `rewritesHooksPath`, `environmentSetsHooksPath`, `environmentFinding`) carries a
+  reason naming
   `scripts/ensure-git-hooks.sh`. A `git config` long option resolves by git's unique-prefix rule
   (`CONFIG_LONG_OPTIONS`, the union of git 2.38.1 and later-git names, read through
   `resolveConfigLongOption`): an ambiguous or unknown option denies when the command names a
@@ -449,10 +481,10 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   `--config-env`, or GIT_CONFIG_* denies; a read allows), since the included file can set the
   key. An `export`, `declare -x`, `typeset`, `local`, `readonly`, or bare assignment of
   `GIT_CONFIG_KEY_<n>` to those keys, or of `GIT_CONFIG_PARAMETERS` holding them, denies by
-  itself. `GIT_CONFIG_GLOBAL` and `GIT_CONFIG_SYSTEM`, on a commit, merge, or pull or exported,
-  pass only for `/dev/null` or an existing regular file of at most 256 KiB with no `hookspath`
-  and no `include`; any other denies (defense in depth: a local config outranks them). Known
-  limits, NOT denied: a bypass built at run time.
+  itself. A `GIT_CONFIG_GLOBAL` or `GIT_CONFIG_SYSTEM` file swap is not judged:
+  `scripts/ensure-git-hooks.sh` writes core.hooksPath in the local scope, which outranks the
+  global and system scopes and every file they include, so a swapped file switches nothing off.
+  Known limits, NOT denied: a bypass built at run time.
 
   Probing the kill-guard (rule): SENTINEL probes only. A probe that
   EXECUTES shell text runs ONLY through the committed runner
@@ -495,9 +527,12 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   Stopping rule: an exotic, obfuscated, or run-time-built form is a
   known limit to list here, not a bug to fix. Re-verify each item in
   `kill-guard.js`, `kill-guard-probe.sh`, and their tests.
+  - Commit-hook bypass, NOT denied: `git rebase`, `cherry-pick`, and `am` replay commits
+    without running pre-commit.
   - NOT denied: a kill or stash through an alias, a function, a script
     file the kill scan does not read (see the script-content scan above), or a variable
-    (`$CMD`); a word built at run time
+    (`$CMD`; a command word and a kill target are never expanded from a same-command
+    assignment); a word built at run time
     (`a=pk; ${a}ill x`, `$(printf pk)ill x`, `$(cat name.txt) x`); a
     span glued after the command word (`git$(true) stash`); a span
     glued before the name inside quotes (`"$(true)git" stash`,

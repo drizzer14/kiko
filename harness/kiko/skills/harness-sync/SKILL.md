@@ -187,8 +187,11 @@ Every count and exit code is the orchestrator's own measured result.
 - G1 port: in the harness repo, a comment-only source mutates nothing whatever its colocated
   tests did (pff-ios `scripts/checks/mutation.sh` has no whole-file keep).
 - kill-guard: port to drizzer14/harness the config long-option prefix fix, the new denies
-  (`commit-tree`, git config files, include.path, GIT_CONFIG_* exports and files), the
-  script-content kill scan, and the same-command variable expansion.
+  (`commit-tree`, git config files, include.path, GIT_CONFIG_* exports), the
+  script-content kill scan, and the same-command variable expansion. The port also carries the
+  data-body kinds (`DATA_KINDS`), the run-body routing, the raw-then-expanded segment reading,
+  the chained variable scope, the `internalError` wrapper, and `kill -0` / `$1`..`$9`. It does
+  NOT carry the GIT_CONFIG_GLOBAL/GIT_CONFIG_SYSTEM file check (deleted).
 
 From sync 2 and earlier:
 - Not yet ported: guard-replay, shipped-migrations, plural-count, the estimator skill; the
