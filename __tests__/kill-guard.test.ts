@@ -15,7 +15,8 @@ import { type SpawnSyncReturns, spawnSync } from 'node:child_process';
 // pid), any `git stash` subcommand, a heredoc whose delimiter is not
 // quoted, or a git history change (`apply`, `merge`, `rebase`, `pull`,
 // `cherry-pick`, `revert`, `am`) aimed at the main checkout other than a
-// fast-forward-only update or a recovery option (the last three with a
+// recovery option (a raw fast-forward is `mainFastForward`, see
+// kill-guard-main-fast-forward.test.ts; each with a
 // WHAT/DETAILS/WHY/HOW/DO-NOT reason). It must
 // ALWAYS exit 0 — even on malformed input — so a broken guard
 // never blocks the Bash tool itself. See scripts/checks/kill-guard.js for
@@ -421,8 +422,8 @@ const ALLOWED_GIT_AND_HEREDOC_COMMANDS: string[] = [
 
 // The hooks' dispatcher runs from the main checkout, so a conflict marker
 // there breaks every hook in every session: git apply/merge/rebase/pull/
-// cherry-pick/revert/am aimed at it is denied, except a fast-forward-only
-// update and the recovery options; the same commands anywhere else pass.
+// cherry-pick/revert/am aimed at it is denied, except the recovery options and help; the same
+// commands anywhere else pass.
 const MAIN_CHECKOUT = '/Users/drizzer14/Developer/Projects/pff-ios';
 const WORKTREE = '/Users/drizzer14/orca/workspaces/pff-ios/shares-assets-research';
 
@@ -534,12 +535,6 @@ const ALLOWED_OUTSIDE_MAIN_CHECKOUT: [string, string][] = [
   [MAIN_CHECKOUT, 'git merge -h'],
   [MAIN_CHECKOUT, 'echo git merge feat/x'],
   [MAIN_CHECKOUT, 'grep -rn "git rebase" docs/'],
-  [MAIN_CHECKOUT, 'git merge --ff-only feat/x'],
-  [MAIN_CHECKOUT, 'git merge --ff-only 1a2b3c4'],
-  [MAIN_CHECKOUT, 'git pull --ff-only'],
-  [MAIN_CHECKOUT, 'git pull --ff-only origin main'],
-  [WORKTREE, `git -C ${MAIN_CHECKOUT} merge --ff-only 1a2b3c4`],
-  [WORKTREE, `git -C ${MAIN_CHECKOUT} pull --ff-only`],
   [MAIN_CHECKOUT, 'git apply --check x.patch'],
   [MAIN_CHECKOUT, 'git apply --stat x.patch'],
   [WORKTREE, 'cd ~/orca/workspaces/pff-ios/shares-assets-research && git merge feat/x'],
@@ -687,7 +682,6 @@ const ALLOWED_COMMIT_COMMANDS: string[] = [
   'git commit --amend --no-edit',
   'git log -n 3',
   'git log -n3',
-  'git merge --ff-only abc1234',
   `git -C ${WORKTREE} merge -n feature`,
   'git -c user.name=x commit -m y',
   'git -c core.pager=cat log',
@@ -698,7 +692,6 @@ const ALLOWED_COMMIT_COMMANDS: string[] = [
   `git -C ${MAIN_CHECKOUT} commit -m "docs: x"`,
   `git -C ${MAIN_CHECKOUT} commit -- HANDOFF.md -m "x"`,
   `git -C ${MAIN_CHECKOUT} log -n 3`,
-  `git -C ${MAIN_CHECKOUT} merge --ff-only abc1234`,
   `git -C ${WORKTREE} commit -m "feat: x"`,
   'git commit -m "$(cat <<\'EOF\'\nfix: thing\nEOF\n)"',
   'git config core.hooksPath',
@@ -804,7 +797,7 @@ describe('scripts/checks/kill-guard.sh (PreToolUse Bash guard)', () => {
       expectStandardBlock(reason);
       expect(reason).toContain('main checkout');
       expect(reason).toContain('separate detached worktree');
-      expect(reason).toContain(`git -C ${MAIN_CHECKOUT} merge --ff-only <sha>`);
+      expect(reason).toContain('bash scripts/ff-main.sh <sha>');
     },
   );
 

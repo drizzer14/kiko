@@ -26,8 +26,10 @@
 // `revert`, or `am` whose target is the main checkout (the payload's cwd, a
 // `cd` earlier in the command, git's `-C`/`--git-dir`/`--work-tree`, or a
 // `GIT_DIR=`/`GIT_WORK_TREE=` prefix): the hooks' dispatcher runs from
-// there, so a conflict marker in it once broke every hook in every session.
-// A fast-forward-only update and the recovery options stay allowed.
+// there, so a conflict marker in it once broke every hook in every session. The recovery options
+// and help stay allowed. A fast-forward-only update (`merge --ff-only`, `pull --ff-only`) is its
+// own finding, `mainFastForward`: main moves only through `bash scripts/ff-main.sh <sha>`, which
+// runs after a queued verify of that commit.
 //
 // And it denies a shell write into `src/`, `__tests__/`, `rules/`, or `e2e/` at the
 // root of any worktree of this repository — `sed -i`, `perl -i`, a `>`/`>>`
@@ -80,10 +82,12 @@
 // `. <file>`, or a path run directly whose first line names a shell) and denies a pkill, killall,
 // or pattern or process-group kill in it: a script in a scratchpad outside the project is a place
 // the pre-write guard never looks. One level only (a script the script runs is not
-// read), a regular file of at most 256 KiB, and kills only (a `git stash` or a write inside the
-// file is not judged). `scripts/job-queue.sh` at the root of a worktree of this repository is
-// exempt: its own group TERM is the one allowed group kill. A script built in the same command, a
-// missing file, and a path held in a variable are not read.
+// read), a regular file of at most 256 KiB, and kills and a raw `mainFastForward` only (a
+// `git stash` or a write inside the file is not judged). `scripts/job-queue.sh` at the root of a
+// worktree of this repository is exempt: its own group TERM is the one allowed group kill.
+// `scripts/ff-main.sh` there is exempt from the raw fast-forward finding alone: it is the way main
+// moves, and a kill in it is still judged. A script built in the same command, a missing file, and
+// a path held in a variable are not read.
 //
 // Known limits: this guard stops ACCIDENTAL commands by cooperative agents.
 // It is a heuristic tokenizer, not a shell parser and not an adversarial
@@ -129,9 +133,21 @@ const MAIN_CHECKOUT_REASON_LINES = [
   `WHY IT MATTERS: the hooks of every session run from the main checkout (${MAIN_CHECKOUT_PATH}), ` +
     'so a conflict marker there breaks every hook in every session.',
   'HOW TO FIX:     do the real merge in a separate detached worktree, verify it, then ' +
-    `\`git -C ${MAIN_CHECKOUT_PATH} merge --ff-only <sha>\`. To recover a stuck operation there, ` +
+    'move main with `bash scripts/ff-main.sh <sha>`. To recover a stuck operation there, ' +
     '--abort, --quit, --skip, and --continue stay allowed.',
   'DO NOT:         reach the main checkout through a script file, an alias, or a variable to get past this guard.',
+];
+
+const MAIN_FAST_FORWARD_REASON_LINES = [
+  'WHAT FAILED:    kill-guard denied a raw git merge --ff-only or git pull --ff-only on the main ' +
+    'checkout.',
+  `WHY IT MATTERS: main (${MAIN_CHECKOUT_PATH}) must move only to a commit a queued verify passed ` +
+    'on, and its hooks run for every session; a raw fast-forward skips that check.',
+  'HOW TO FIX:     queue `bash scripts/job-queue.sh verify <worktree at the sha> <label>`, wait for ' +
+    'exit 0, then run `bash scripts/ff-main.sh <sha>`. To recover a stuck operation on main, ' +
+    '--abort, --quit, --skip, and --continue stay allowed.',
+  'DO NOT:         reach the main checkout through a script file, an alias, or a variable, edit ' +
+    "the queue's done.log, or look for a bypass flag to get past this guard.",
 ];
 
 const SHELL_WRITE_REASON_LINES = [
@@ -234,6 +250,7 @@ const REASON_BY_KIND = {
   stash: (finding) => blockReason(STASH_REASON_LINES, finding.detail),
   heredoc: (finding) => blockReason(HEREDOC_REASON_LINES, finding.detail),
   mainCheckout: (finding) => blockReason(MAIN_CHECKOUT_REASON_LINES, finding.detail),
+  mainFastForward: (finding) => blockReason(MAIN_FAST_FORWARD_REASON_LINES, finding.detail),
   shellWrite: (finding) => blockReason(SHELL_WRITE_REASON_LINES, finding.detail),
   waitLoop: (finding) => blockReason(WAIT_LOOP_REASON_LINES, finding.detail),
   noVerify: (finding) => blockReason(NO_VERIFY_REASON_LINES, finding.detail),
@@ -1230,19 +1247,20 @@ const RECOVERY_OPTIONS = new Set([
 const FAST_FORWARD_SUBCOMMANDS = new Set(['merge', 'pull']);
 const APPLY_READ_ONLY_OPTIONS = new Set(['--check', '--stat', '--numstat', '--summary']);
 
-// What the main checkout may still run: help, recovery from a stuck
-// operation, an `apply` that only inspects, and the one update that cannot
-// conflict — a fast-forward with no option but `--ff-only`, since a later
-// `--no-ff` or `--rebase` would override it.
+// What the main checkout may still run: help, recovery from a stuck operation, and an `apply` that
+// only inspects. A fast-forward is not here: main moves through scripts/ff-main.sh.
 function leavesMainCheckoutSafe(git) {
   const { subcommand, arguments: parameters } = git;
   const has = (options) => parameters.some((parameter) => options.has(parameter));
   if (has(HELP_OPTIONS)) return true;
   if (RECOVERY_SUBCOMMANDS.has(subcommand) && has(RECOVERY_OPTIONS)) return true;
-  if (subcommand === 'apply') {
-    return has(APPLY_READ_ONLY_OPTIONS) && !parameters.includes('--apply');
-  }
 
+  return subcommand === 'apply' && has(APPLY_READ_ONLY_OPTIONS) && !parameters.includes('--apply');
+}
+
+// A merge or pull with no option but `--ff-only`, since a later `--no-ff` or `--rebase` would
+// override it.
+function isFastForwardOnly({ subcommand, arguments: parameters }) {
   return (
     FAST_FORWARD_SUBCOMMANDS.has(subcommand) &&
     parameters.includes('--ff-only') &&
@@ -1741,7 +1759,10 @@ function gitFinding(segment, invocations, rules) {
     .find((directory) => isInsideMainCheckout(directory, rules.mainCheckoutPath));
   if (target === undefined) return null;
 
-  return { kind: 'mainCheckout', detail: `${segment.trim()} (runs in ${target})` };
+  return {
+    kind: isFastForwardOnly(git) ? 'mainFastForward' : 'mainCheckout',
+    detail: `${segment.trim()} (runs in ${target})`,
+  };
 }
 
 // ---- shell writes into src/, __tests__/, rules/, and e2e/ ----
@@ -2536,20 +2557,28 @@ function scriptFileOf(base, rest) {
 // The files a shell reads its own stdin through.
 const STDIN_FILES = new Set(['/dev/stdin', '/dev/fd/0', '/proc/self/fd/0']);
 
-// `scripts/job-queue.sh` at the root of a worktree of this repository sends TERM to the process
-// group of its own job: the one allowed group kill (user ruling). Stricter than the write deny's
-// worktree test: the folder must share this repository's git directory, readably.
-function isQueueScript(file, rules) {
+// Whether `file` is the script `name` at the root of a worktree of this repository. Stricter than
+// the write deny's worktree test: the folder must share this repository's git directory, readably.
+function isRepositoryScript(file, name, rules) {
   const scripts = path.dirname(file);
-  if (path.basename(file).toLowerCase() !== 'job-queue.sh') return false;
+  if (path.basename(file).toLowerCase() !== name) return false;
   if (path.basename(scripts).toLowerCase() !== 'scripts') return false;
   const common = gitCommonDirectory(path.dirname(scripts));
 
   return common !== null && common === rules.projectCommonDirectory;
 }
 
-// The text of a script file the guard may read: a regular file within the size limit that is not
-// the exempt queue script, and, for a path run directly, one with a shell shebang.
+// `scripts/job-queue.sh` sends TERM to the process group of its own job: the one allowed group
+// kill (user ruling), so it is not read at all.
+const isQueueScript = (file, rules) => isRepositoryScript(file, 'job-queue.sh', rules);
+
+// `scripts/ff-main.sh` fast-forwards the main checkout after a queued verify (user ruling): it is
+// exempt from the raw fast-forward finding alone, and a kill in it is still judged.
+const isFfMainScript = (file, rules) => isRepositoryScript(file, 'ff-main.sh', rules);
+
+// The text of a script file the guard may read, with the finding kinds to judge in it: a regular
+// file within the size limit that is not the exempt queue script, and, for a path run directly,
+// one with a shell shebang.
 function readScriptFile(file, rules, requireShebang) {
   try {
     const real = fs.realpathSync(file);
@@ -2557,33 +2586,44 @@ function readScriptFile(file, rules, requireShebang) {
     if (!status.isFile() || status.size > SCRIPT_FILE_MAXIMUM_BYTES) return null;
     if (isQueueScript(real, rules)) return null;
     const text = fs.readFileSync(real, 'utf8');
+    if (requireShebang && !SHELL_SHEBANG.test(text)) return null;
 
-    return requireShebang && !SHELL_SHEBANG.test(text) ? null : text;
+    return { text, kinds: isFfMainScript(real, rules) ? FF_MAIN_SCRIPT_KINDS : SCRIPT_KINDS };
   } catch {
     return null;
   }
 }
 
-// A kill in the script file a command runs (one level: a script it runs or sources in turn is not
-// read). A file the text cannot name (a variable), a missing one, one over the size limit, and one
-// built in the same command are not read.
+// A kill or a raw main fast-forward in the script file a command runs (one level: a script it runs
+// or sources in turn is not read). A file the text cannot name (a variable), a missing one, one
+// over the size limit, and one built in the same command are not read.
 function scriptKillFinding(scriptFile, context) {
   if (scriptFile === null || !context.rules.scanScripts) return null;
   const { operand, requireShebang } = scriptFile;
   if (operand === undefined) return null;
-  const scan = { ...context.rules, kinds: SCRIPT_KINDS, scanScripts: false, checkWrites: false };
   for (const directory of context.directories) {
     const file = resolveDirectory(directory, operand);
-    const text = file === null ? null : readScriptFile(file, context.rules, requireShebang);
-    if (text === null) continue;
-    const kill = findDanger(
-      text,
+    const script = file === null ? null : readScriptFile(file, context.rules, requireShebang);
+    if (script === null) continue;
+    const scan = {
+      ...context.rules,
+      kinds: script.kinds,
+      scanScripts: false,
+      checkWrites: false,
+    };
+    const found = findDanger(
+      script.text,
       1,
       false,
       { directories: [directory], variables: noVariables() },
       scan,
     );
-    if (kill !== null) return { kind: 'scriptKill', detail: `${file} holds \`${kill.detail}\`` };
+    if (found !== null) {
+      return {
+        kind: found.kind === 'mainFastForward' ? 'mainFastForward' : 'scriptKill',
+        detail: `${file} holds \`${found.detail}\``,
+      };
+    }
   }
 
   return null;
@@ -2663,7 +2703,7 @@ function redirectWrite(redirects, directories, rules) {
 }
 
 // The kinds the second, variable-expanded reading of a segment reports (see `segmentFinding`).
-const EXPANDED_KINDS = new Set(['shellWrite', 'mainCheckout']);
+const EXPANDED_KINDS = new Set(['shellWrite', 'mainCheckout', 'mainFastForward']);
 
 // Returns the finding for one simple command — `{ kind: 'kill' }`, or
 // `{ kind: 'stash' | 'mainCheckout' | 'shellWrite', detail }` — or null
@@ -2891,17 +2931,21 @@ function observeWaitLoops(watch, segment, spans) {
   return closed.find((finding) => finding !== null) ?? null;
 }
 
-// The finding kinds a pass reports: a script file is read for kills only, a heredoc body that no
-// shell is known to run is read for the kinds in `DATA_KINDS` (a kill, a git stash, a hook skip by
-// option or core.hooksPath, a main-checkout change, a wait loop), and every other finding in either
-// is not that pass's business. `null` reports every kind.
-const SCRIPT_KINDS = new Set(['kill']);
+// The finding kinds a pass reports: a script file is read for kills and a raw main fast-forward
+// only, a heredoc body that no shell is known to run is read for the kinds in `DATA_KINDS` (a kill,
+// a git stash, a hook skip by option or core.hooksPath, a main-checkout change or fast-forward, a
+// wait loop), and every other finding in either is not that pass's business. `null` reports every
+// kind.
+const SCRIPT_KINDS = new Set(['kill', 'mainFastForward']);
+// The script kinds of scripts/ff-main.sh, which is exempt from the raw fast-forward finding.
+const FF_MAIN_SCRIPT_KINDS = new Set(['kill']);
 const DATA_KINDS = new Set([
   'kill',
   'stash',
   'noVerify',
   'hooksConfig',
   'mainCheckout',
+  'mainFastForward',
   'waitLoop',
 ]);
 
