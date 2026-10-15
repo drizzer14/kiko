@@ -10,8 +10,9 @@ import {
 // kiko-code-style's "Comments: WHY only, never history" is mechanized by three rules for `//` and
 // `/* */` comments and three for `#` comment lines of shell scripts. The first three read every
 // TypeScript and JavaScript file except the e2e and harness trees and the two root files; the
-// shell rules read every .sh file except the harness tree. This suite runs the real rule files
-// against a throwaway tree, once, and names the rule ids that fire on each probe file.
+// shell rules read every .sh and .bash file and every githooks file, except the harness tree.
+// This suite runs the real rule files against a throwaway tree, once, and names the rule ids that
+// fire on each probe file.
 const ROOT = join(__dirname, '..');
 const RULE_FILES = ['rules/semgrep-prewrite.yml', 'rules/semgrep-mobile.yml'];
 const SLASH_RULES = [
@@ -39,18 +40,21 @@ const IN_SCOPE_PROBES: Probe[] = [
   { path: 'scripts/probe', marker: '//', extension: 'js', code: 'module.exports = 1;' },
   { path: 'scripts/checks/probe', marker: '//', extension: 'js', code: 'module.exports = 1;' },
   { path: 'scripts/checks/probe', marker: '#', extension: 'sh', code: 'value=1' },
+  { path: 'scripts/probe', marker: '#', extension: 'bash', code: 'value=1' },
+  { path: 'githooks/probe', marker: '#', extension: '', code: 'value=1' },
 ];
 
 const OUT_OF_SCOPE_PROBES: Probe[] = [
   { path: 'e2e/probe', marker: '//', extension: 'ts', code: 'export const value = 1;' },
   { path: 'harness/kiko/probe', marker: '//', extension: 'js', code: 'module.exports = 1;' },
   { path: 'harness/kiko/hooks/probe', marker: '#', extension: 'sh', code: 'value=1' },
+  { path: 'harness/kiko/hooks/probe', marker: '#', extension: 'bash', code: 'value=1' },
 ];
 
 type Variant = 'bad' | 'good';
 
 const probeFile = ({ path, extension }: Probe, variant: Variant): string =>
-  `${path}-${variant}.${extension}`;
+  `${path}-${variant}${extension === '' ? '' : `.${extension}`}`;
 
 const probeText = ({ marker, code }: Probe, lines: string[]): string =>
   `${lines.map((line) => `${marker} ${line}`).join('\n')}\n${code}\n`;

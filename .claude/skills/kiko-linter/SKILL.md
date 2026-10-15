@@ -1297,7 +1297,8 @@ JavaScript, now including `__tests__/` and the scripts js; their `paths.exclude`
 `harness/`, `App.tsx` and `drizzle.config.ts` out. Three generic shell rules in
 `rules/semgrep-mobile.yml` (`kiko-no-history-id-shell-comment`,
 `kiko-no-history-word-shell-comment`, `kiko-no-history-date-shell-comment`) apply the same
-words, ids and dates to a line of a `.sh` file whose first non-blank character is `#`; a `#`
+words, ids and dates to a line of a `.sh`, `.bash` or `githooks/` file whose first non-blank
+character is `#`; a `#`
 after code is not read. They are in
 `semgrep-mobile.yml`, not `semgrep-prewrite.yml`, because the pre-write guard reads TypeScript
 only; `check:security` and `check:rules` run them (fixtures
@@ -1308,8 +1309,8 @@ comment that writes the git flag `-U0`: write `--unified=0` instead.
 
 Mechanizes kiko-code-style's "Comments: WHY only, never history": no
 task id, review-round id, spec/decision id, or plan citation left
-behind in a comment under `src`, `__tests__`, the scripts js, or a `#` line of a `.sh` file
-(read each rule's `paths` key). The member list is the two
+behind in a comment under `src`, `__tests__`, the scripts js, or a `#` line of a `.sh`, `.bash`
+or `githooks/` file (read each rule's `paths` key). The member list is the two
 `pattern-regex` arms of `kiko-no-history-id-comment` in
 `rules/semgrep-prewrite.yml`. Read them for the current set; the P-ids are `P-?\d{1,3}`
 (`P3`, `P-12`), and "Display P3" and the curve names P-256, P-384 and P-521 are

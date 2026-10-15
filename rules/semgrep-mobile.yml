@@ -430,6 +430,8 @@ rules:
     paths:
       include:
         - "*.sh"
+        - "*.bash"
+        - "githooks/*"
       exclude:
         - "harness/**"
     severity: ERROR
@@ -449,6 +451,8 @@ rules:
     paths:
       include:
         - "*.sh"
+        - "*.bash"
+        - "githooks/*"
       exclude:
         - "harness/**"
     severity: ERROR
@@ -469,6 +473,8 @@ rules:
     paths:
       include:
         - "*.sh"
+        - "*.bash"
+        - "githooks/*"
       exclude:
         - "harness/**"
     severity: ERROR
