@@ -105,7 +105,10 @@ The medium tier also runs the doc-reading jest suites when the doc fingerprint
 differs from the recorded `doc-suites` pass. The pass is rechecked under the lock, so a Stop
 that waited behind one that already passed skips the suites.
 There is no replay-mark dependency: a fresh worktree or a purged state dir runs the step once,
-and a rename out of a root or a delete changes the fingerprint. `harness_doc_suites` finds the
+and a rename out of a root or a delete changes the fingerprint. The fingerprint also covers each
+file under `__tests__/` that a discovered suite names in a quoted `fixtures/...` literal
+(`harness_doc_suite_fixtures`), such as a pin list, so an edit of only that file runs the step.
+`harness_doc_suites` finds the
 suites at run time; there is no list to maintain. It finds a suite only when the file holds
 `readFileSync` and a quoted doc-root literal, so path-segment joins and template paths are not
 discovered (a documented limit). The step runs before `guard-replay.sh` by choice; the order no
