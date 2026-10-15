@@ -161,8 +161,8 @@ fi
 # every later Stop fails again until the migration is restored.
 "$DIR/shipped-migrations.sh" || exit 2
 # The doc-reading jest suites, when the doc fingerprint computed above differs from the recorded
-# pass. They no longer depend on the replay mark, so their order against the replay is free;
-# the step stays before it. The jest run stops at its own deadline, well inside the 300 s hook
+# pass. They do not depend on the replay mark, so their order against the replay is free;
+# the step runs before it. The jest run stops at its own deadline, well inside the 300 s hook
 # kill, and fails closed: a killed hook ends the turn with no error and no check.
 # KIKO_DOC_SUITES_DEADLINE_SECONDS exists for the tests and only lowers the budget.
 # Rechecked here, under the lock: another Stop may have run the same suites and recorded its pass

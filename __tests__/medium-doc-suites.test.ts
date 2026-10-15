@@ -9,10 +9,11 @@ import {
 import { readTextFile } from './test-support/read-text-file';
 import { isolatedGitEnvironment } from './test-support/isolated-git';
 
-// medium.sh runs the doc-reading jest suites when a file under a doc root changed, uncommitted or
-// committed since the guard replay's mark. Every test runs COPIES of medium.sh and _lib.sh in a
-// throwaway repository; the other wrappers are no-op stubs, and jest is a stub at
-// node_modules/.bin/jest, so the test proves which suites medium.sh hands jest and when.
+// medium.sh runs the doc-reading jest suites when the doc fingerprint (the doc files and suites as
+// they are on disk) differs from the one a pass recorded, whatever the guard replay's mark says.
+// Every test runs COPIES of medium.sh and _lib.sh in a throwaway repository; the other wrappers
+// are no-op stubs, and jest is a stub at node_modules/.bin/jest, so the test proves which suites
+// medium.sh hands jest and when.
 const CHECKS = join(__dirname, '../scripts/checks');
 
 const NO_OP_WRAPPERS = [
