@@ -48,8 +48,9 @@ export const largeTitleHeadingOptions = (
 
 /**
  * Puts a screen back on the native large title after `largeTitleHeadingOptions`. Each key the
- * heading look overrides gets the screen's own value back (`screenOptions`, read before the
- * switch), or `undefined` when the screen set none, so the bar is exactly as the screen left it.
+ * heading look overrides gets the screen's own value from before the switch back, or `undefined`
+ * when the screen set none. A key the screen changes during heading mode gets the older value,
+ * because `setOptions` cannot remove the heading look's override.
  */
 export const largeTitleRestoredOptions = ({
   headerTransparent,
