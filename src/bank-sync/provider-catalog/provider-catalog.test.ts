@@ -3,7 +3,7 @@ import { i18n } from '@kiko/i18n/init';
 import { providerCatalog } from './provider-catalog';
 
 describe('provider catalog', () => {
-  it('lists exactly the sole shipped native provider (Guideline 5.6 remediation: Monobank-only)', () => {
+  it('lists exactly the sole shipped native provider (Guideline 2.3.1(a) remediation: Monobank-only)', () => {
     expect(providerCatalog.map((entry) => entry.id)).toEqual(['monobank']);
   });
 

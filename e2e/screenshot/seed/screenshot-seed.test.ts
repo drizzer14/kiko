@@ -274,7 +274,7 @@ describe('buildScreenshotDataset (pure, deterministic)', () => {
   });
 
   // The reviewer reaches the Templates screen and the form's template modes only through
-  // this dataset (Guideline 5.6), so it holds a template of every mode.
+  // this dataset (Guideline 2.3.1(a)), so it holds a template of every mode.
   describe.each(['uk', 'en'] as const)('the %s transaction templates', (language) => {
     const { accounts, templates } = buildScreenshotDataset(language, ANCHOR);
     const holdingKeys = new Set(

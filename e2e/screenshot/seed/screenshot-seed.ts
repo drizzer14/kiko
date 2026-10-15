@@ -1,4 +1,4 @@
-// DEV/TEST-ONLY. Lives under `e2e/`, OUTSIDE `src/` (App Store Guideline 5.6
+// DEV/TEST-ONLY. Lives under `e2e/`, OUTSIDE `src/` (App Store Guideline 2.3.1(a)
 // remediation, 2026-09-18): the fabricated real-brand demo dataset this module
 // builds (Сільпо, Rozetka, Монобанк, ПриватБанк, and other real Ukrainian
 // merchant/bank names) must not sit in app source at all. This is now a PURE

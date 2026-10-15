@@ -117,7 +117,7 @@ absent** — this skill states the shape and non-enum facts only:
   (`src/holdings/deletable/`) or any provider-registry lookup — those
   stay keyed on `institution` alone, so tagging an account
   `bankId: 'privatbank'` can never make it look connected. This is the
-  Guideline 5.6 invariant (see `guidelines-compliance-is-architecture-rule`
+  Guideline 2.3.1(a) invariant (see `guidelines-compliance-is-architecture-rule`
   in memory): never wire a picker selection into a connected-ness
   check.
 
@@ -1530,7 +1530,7 @@ The counting must happen from OUTSIDE production, with **zero counting
 code in `holding-value-at.ts` or `internal-transfers.ts`** — an injected
 counter parameter or debug flag on the production function is a
 test-only hook living in shipping code, which the App Store build must
-never carry (see "Guideline 5.6 — no hidden features" in the root
+never carry (see "Guideline 2.3.1(a) — no hidden features" in the root
 `CLAUDE.md`: test/demo machinery must be ABSENT from the build, not
 merely dormant). The test instead feeds each function input ROWS whose
 own `time` (and, for holding-value-at, `amountMinorUnits`) fields are

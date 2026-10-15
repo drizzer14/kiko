@@ -2,7 +2,7 @@
 # (docs/plans/statement-import.md; the shares-property-metals-debts P0
 # brief, T8). NOT a screenshot-diff check — no `takeScreenshot` step, no
 # baseline; there is no automated screenshot check of any kind any more
-# (2026-09-19, Guideline 5.6 remediation). This asserts real end-to-end
+# (2026-09-19, Guideline 2.3.1(a) remediation). This asserts real end-to-end
 # BEHAVIOR: picking the committed uabean Monobank CSV fixture, landing on
 # the dedicated (Monobank-recognized) preview, tapping into the GENERIC
 # column-mapping screen instead of trusting the dedicated format, mapping

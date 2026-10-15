@@ -47,7 +47,7 @@ const MonobankTokenInput: FC<MonobankTokenInputProps> = ({ value, onChangeText, 
         error={error}
       />
 
-      {/* Guideline 5.6 data-handling disclosure: the token never leaves the
+      {/* Guideline 2.3.1(a) data-handling disclosure: the token never leaves the
           device except straight to Monobank's own API. */}
       <Text variant="caption" tone="textSecondary">
         {t('accountDetail.monobankKeychainDisclosure')}

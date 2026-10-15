@@ -19,11 +19,11 @@ Ask every question below of the diff you are reviewing. Report each
 compliance finding explicitly, separate from correctness and
 over-engineering findings — name the guideline number.
 
-## 5.6 — Developer Code of Conduct (hidden features)
+## 2.3.1(a) — no hidden, dormant or undocumented features (Apple's rejection cited 5.6)
 
 The rejection guideline. Full rule, rationale, and known limits of the
 mechanized check live in `.claude/skills/kiko-architecture/SKILL.md`
-("Guideline 5.6 — no hidden features") — read that section, do not
+("Guideline 2.3.1(a) — no hidden features") — read that section, do not
 re-derive it here. In short, ask:
 
 - Does this diff add or keep an `@env` flag (a `SHOW_*`/`HIDE_*`-style
@@ -33,6 +33,9 @@ re-derive it here. In short, ask:
   app `src/`?
 - Does this diff leave a not-ready feature reachable-but-hidden
   instead of physically removing its code paths?
+- Does the release note for this change describe every new feature, functionality and product
+  change specifically in the Notes for Review (App Store Connect)? Guideline 2.3.1(a): generic
+  descriptions are rejected.
 
 Mechanized: the Semgrep rule `kiko-no-hidden-feature-flag-or-demo-import`
 (`rules/semgrep-mobile.yml`, Class A ERROR, runs under
@@ -118,7 +121,7 @@ A new third-party data recipient also needs the privacy policy updated
 (`docs/privacy-policy*.md` §3), not only the App Privacy answers. A new data
 category from an existing recipient also edits section 3 (Binance's Pay history,
 universal transfers, and Simple Earn did). There
-is no EODHD entry (removed with the shares cut, Guideline 5.6). The live
+is no EODHD entry (removed with the shares cut, Guideline 2.3.1(a)). The live
 gh-pages policy may still name EODHD until the edited policy is
 published: check the live policy before an upload.
 

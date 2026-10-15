@@ -2,7 +2,7 @@
  * The "which broker is this account" catalog, stored in `accounts.bankId` for
  * a `broker`-kind account. Identity only: a broker account is always manual,
  * so an entry carries no connect or import capability. Every entry always
- * renders (Guideline 5.6); `other` covers any broker not listed, and the
+ * renders (Guideline 2.3.1(a)); `other` covers any broker not listed, and the
  * account's own name says which one it is.
  */
 export const brokerIds = [

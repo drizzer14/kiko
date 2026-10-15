@@ -5,7 +5,7 @@
  * deliberately no aggregator id here — every provider currently wired is a
  * single stored-credential bank.
  *
- * Guideline 5.6 remediation (App Store rejection: "features intentionally
+ * Guideline 2.3.1(a) remediation (App Store rejection: "features intentionally
  * hidden during review"): PrivatBank, bunq, and Starling bank-CONNECT were
  * REMOVED from the app entirely, not flag-hidden — Monobank is the sole
  * shipped provider. The registry ARCHITECTURE stays (this tuple, the
