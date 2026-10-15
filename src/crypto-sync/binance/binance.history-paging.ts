@@ -1,4 +1,4 @@
-import { match } from 'ts-pattern';
+import { match, P } from 'ts-pattern';
 import maybe, { foldMap } from 'fnts/maybe';
 
 import {
@@ -528,7 +528,11 @@ const readBand = async <Series extends string, Row>(
       fetchPage: (current) => fetchPage(name, band, current),
     });
 
-    return paged?.kind === 'rows' ? paged : undefined;
+    return match(paged)
+      .returnType<Extract<TotalPaged<Row>, { kind: 'rows' }> | undefined>()
+      .with({ kind: 'rows' }, (rows) => rows)
+      .with(P.union(undefined, { kind: 'split' }, { kind: 'drift' }), () => undefined)
+      .exhaustive();
   } catch (error) {
     if (depth === undefined || !depth.isRefusal(error)) {
       throw error;
@@ -607,10 +611,13 @@ const readSeries = async <Series extends string, Row>(
       .returnType<Promise<AfterDepth<Row>>>()
       .with({ kind: 'read' }, async ({ paged, startMs }) => ({
         kind: 'done',
-        read:
-          paged?.kind === 'rows'
-            ? await withBandOf(input, paged, skippedBandOf({ span, depth, toMs: startMs }))
-            : paged,
+        read: await match(paged)
+          .returnType<Promise<SeriesRead<Row> | undefined>>()
+          .with({ kind: 'rows' }, async (rows) =>
+            withBandOf(input, rows, skippedBandOf({ span, depth, toMs: startMs })),
+          )
+          .with(P.union(undefined, { kind: 'split' }, { kind: 'drift' }), async (unread) => unread)
+          .exhaustive(),
       }))
       .with({ kind: 'refused' }, (refusal) =>
         narrowAfterRefusal({ ...input, depth: refusal.depth, refusedMs: refusal.startMs }),

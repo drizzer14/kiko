@@ -639,3 +639,82 @@ harness_code_fingerprint() {
     done
   } | shasum 2>/dev/null | cut -c1-40
 }
+
+# --- The doc-reading jest suites ----------------------------------------------------------------
+# Some suites read skill, agent, docs and CLAUDE.md text and fail when it drifts from the code.
+# The tier that runs them (medium.sh, and `make doc-suites`) finds them at run time, so a new
+# suite needs no list edit.
+
+# harness_doc_roots_pattern : the regex a changed path matches when it is doc text a suite reads.
+harness_doc_roots_pattern() {
+  printf '%s' '^(harness/kiko/(skills|agents)/|\.claude/skills/|docs/|CLAUDE\.md$)'
+}
+
+# harness_doc_suites <root> : the suites under <root>/__tests__ that read a file
+# (readFileSync) and name a doc root in a quoted literal, relative to <root>, sorted. Both
+# conditions, so a suite that reads files but never a doc (a spawned-bash suite) stays out.
+harness_doc_suites() {
+  (
+    cd "$1" || exit 1
+    grep -l readFileSync __tests__/*.test.ts 2>/dev/null \
+      | xargs -r grep -l -E "['\"\`](docs/harness/|docs/superpowers/|\.claude/skills|harness/kiko/(skills|agents)|CLAUDE\.md)" 2>/dev/null \
+      | LC_ALL=C sort
+  )
+}
+
+# harness_doc_files <root> : the doc files under <root> that exist on disk (tracked or untracked,
+# not ignored), relative to <root>, each followed by a NUL.
+harness_doc_files() {
+  local root="$1" pattern file
+  pattern="$(harness_doc_roots_pattern)"
+  while IFS= read -r -d '' file; do
+    if [[ "$file" =~ $pattern ]] && [ -f "$root/$file" ]; then
+      printf '%s\0' "$file"
+    fi
+  done < <(git -C "$root" ls-files -z --cached --others --exclude-standard 2>/dev/null)
+}
+
+# harness_doc_fingerprint <root> : a hash of the working-tree state of every doc file plus the
+# discovered suites' contents. It reads the working tree, not HEAD and a diff, so a committed,
+# a staged and an uncommitted edit of the same text give the same value, and a pass recorded
+# before a commit still covers it. A doc file moved out of a root or deleted drops out of the
+# name list, so that changes it too. It prints nothing when there is no doc file and no suite
+# (nothing for a suite to read) and when the hash fails; a caller that must tell the two apart
+# lists the files and suites itself, and an empty value never matches a recorded pass.
+harness_doc_fingerprint() {
+  local root="$1" file
+  local -a docs=() suites=()
+  while IFS= read -r -d '' file; do
+    docs+=("$file")
+  done < <(harness_doc_files "$root")
+  while IFS= read -r file; do
+    suites+=("$file")
+  done < <(harness_doc_suites "$root")
+  [ ${#docs[@]} -gt 0 ] || [ ${#suites[@]} -gt 0 ] || return 0
+  {
+    printf '%s\n' "${docs[@]+"${docs[@]}"}" "${suites[@]+"${suites[@]}"}"
+    git -C "$root" hash-object -- "${docs[@]+"${docs[@]}"}" "${suites[@]+"${suites[@]}"}" 2>/dev/null
+  } | harness_hash
+}
+
+# harness_doc_suites_by_hand <root> : `make doc-suites`. Runs the discovered suites with no
+# deadline and, on a pass, records the doc fingerprint under the key medium.sh reads, so the next
+# Stop skips the same docs: a deadline block there is cleared by this run. The key uses the
+# physical root (`pwd -P`), as medium.sh does, so a symlinked path to the worktree cannot give
+# the two a different state directory. The fingerprint is taken before jest starts: a doc edited
+# during the run is then not covered by the recorded pass.
+harness_doc_suites_by_hand() {
+  local root file fingerprint
+  local -a suites=()
+  root="$(cd "$1" && pwd -P)" || return 1
+  while IFS= read -r file; do
+    suites+=("$file")
+  done < <(harness_doc_suites "$root")
+  if [ ${#suites[@]} -eq 0 ]; then
+    echo "no doc-reading suite found (harness_doc_suites in scripts/checks/_lib.sh)" >&2
+    return 1
+  fi
+  fingerprint="$(harness_doc_fingerprint "$root")"
+  (cd "$root" && node_modules/.bin/jest "${suites[@]}") || return $?
+  harness_mark_pass "$root" "doc-suites" "$fingerprint"
+}

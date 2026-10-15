@@ -1,3 +1,4 @@
+import { match, P } from 'ts-pattern';
 import { minOf } from '@kiko/numbers';
 import { useTranslation } from 'react-i18next';
 import { useMemo, useRef, useState } from 'react';
@@ -23,7 +24,11 @@ const refusalOf = (
 
   const validation = validateRule(conversion.matchers, otherRules, ruleId);
 
-  return validation.kind === 'valid' ? undefined : validation;
+  return match(validation)
+    .returnType<RefusedRule | undefined>()
+    .with({ kind: 'valid' }, () => undefined)
+    .with({ kind: P.union('noMatchers', 'neverMatches', 'duplicate') }, (refused) => refused)
+    .exhaustive();
 };
 
 /**

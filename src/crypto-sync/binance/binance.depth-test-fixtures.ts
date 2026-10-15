@@ -1,4 +1,5 @@
 import { DAY_MS } from '@kiko/dates';
+import { match, P } from 'ts-pattern';
 
 import { readSeriesSpan } from './binance.history-paging';
 import { BinanceHistoryTooOldError } from './binance.client';
@@ -216,8 +217,16 @@ export const unowedSkippedMsOf = (calls: DepthCall[], owed: DepthOwed): number[]
 
 /** The ground of a span read that was left owed (none for a span that was not read as a page). */
 export const owedOf = (result: Awaited<ReturnType<typeof readDepthWorld>>): DepthOwed =>
-  result?.kind === 'page' ? (result.page.owed ?? []) : [];
+  match(result)
+    .returnType<DepthOwed>()
+    .with({ kind: 'page' }, ({ page }) => page.owed ?? [])
+    .with(P.union(undefined, { kind: 'split' }), () => [])
+    .exhaustive();
 
 /** The series of a span read that were read whole. */
 export const readSeriesOf = (result: Awaited<ReturnType<typeof readDepthWorld>>): string[] =>
-  result?.kind === 'page' ? result.page.read.map(({ series }) => series) : [];
+  match(result)
+    .returnType<string[]>()
+    .with({ kind: 'page' }, ({ page }) => page.read.map(({ series }) => series))
+    .with(P.union(undefined, { kind: 'split' }), () => [])
+    .exhaustive();

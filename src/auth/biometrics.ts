@@ -1,3 +1,4 @@
+import { match, P } from 'ts-pattern';
 import { i18n } from '@kiko/i18n/init';
 import either, { bifold, isLeft } from 'fnts/either';
 import type * as ReactNativeBiometrics from '@sbaiahmed1/react-native-biometrics';
@@ -179,7 +180,11 @@ export const authenticate = async (prompt: string): Promise<AuthResult> => {
     // its own.
     const sensorStatus = await isSensorAvailable();
 
-    return sensorStatus.kind === 'passcodeNotSet' ? { kind: 'passcodeNotSet' } : classified;
+    return match(sensorStatus)
+      .returnType<AuthResult>()
+      .with({ kind: 'passcodeNotSet' }, () => ({ kind: 'passcodeNotSet' }))
+      .with({ kind: P.union('available', 'passcodeOnly', 'unavailable') }, () => classified)
+      .exhaustive();
   }
 
   // Same annotation gotcha as `isSensorAvailable`'s `info`.

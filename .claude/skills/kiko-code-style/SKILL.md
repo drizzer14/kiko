@@ -325,8 +325,8 @@ descriptor/form/detail-spec checklist a new holding type needs.
 A single boolean guard used exactly once (an `if`/`else` with no
 closed-set enum behind it) may stay as-is. A ternary on one `kind` literal of a closed union
 (`x.kind === 'a' ? p : q`) is an `if`/`else` chain and uses `match(...).exhaustive()`; it is
-mechanized as a WARNING by `kiko-kind-ternary-prefers-match` while its sweep is pending (re-measure with the command in kiko-linter's
-`kiko-kind-ternary-prefers-match` section),
+mechanized as an ERROR by `kiko-kind-ternary-prefers-match` (re-measure with the command in
+kiko-linter's `kiko-kind-ternary-prefers-match` section),
 and a `nosemgrep` OVERRIDE fits only where `kind` is not a closed union. Every branch over a closed
 literal set uses `ts-pattern`'s `match(...).exhaustive()` (or a typed
 `Record` for a pure lookup) — no `switch`, with no exception; mechanized

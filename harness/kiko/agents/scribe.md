@@ -29,10 +29,14 @@ Rules:
   flags drift (see the retrospect agent's standing verification job), fix it this way
   rather than just patching the stale value back to correct.
 - Before EVERY commit that edits skill, agent, docs/ or CLAUDE.md text, run the suites that
-  read that text. Find them with `grep -l readFileSync __tests__/*.test.ts` and run them with
-  `npx jest <files>`. This holds for adding or renaming a skill too, not only for tests that
-  list skills. Never enumerate those tests in skill or agent text; point at the grep, since a
-  new invariant would make the list stale.
+  read that text. Run `make doc-suites`, which finds them at run time (`harness_doc_suites` in
+  `scripts/checks/_lib.sh`: `readFileSync` plus a doc-root literal); a pass is recorded. The
+  grep `grep -l readFileSync __tests__/*.test.ts` is a broader superset that includes slow
+  spawn suites. This holds for adding or
+  renaming a skill too, not only for tests that list skills. Never enumerate those tests in
+  skill or agent text; point at `make doc-suites` and
+  `harness_doc_suites` in `scripts/checks/_lib.sh`, since a new invariant would make the
+  list stale.
 - A skill states the RULE, never a survey of current usage: "always do X" or
   "never do Y", not "today every call site does X". Descriptive wording goes
   stale the moment one new call site breaks the pattern, and it still reads

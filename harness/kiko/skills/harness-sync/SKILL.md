@@ -178,12 +178,23 @@ Every count and exit code is the orchestrator's own measured result.
   first verdict; fix in the harness repo.
 - The source finish snippet prints "run-log: not installed, skipped" also when `node finish`
   exits 1 (unknown run) or 2 (empty RUN_ID), hiding a real failure; fix in the harness repo
-  (keep the snippet as is here).
+  (pff-ios now has the corrected D4 snippet text; the harness repo still needs it).
 - The source start snippet exits 1 with empty stdout when the installed copy is missing,
-  although its text says it "degrades to a no-op"; fix in the harness repo (keep the snippet
-  as is here).
+  although its text says it "degrades to a no-op"; pff-ios now has the corrected D4 snippet
+  text; fix it in the harness repo.
 - The source harness-workflow "Run log" text says `--step <id>`, but the script needs an
-  integer (`--step N`); fix it in the harness repo at sync 3.
+  integer (`--step N`); pff-ios now says `--step N`; fix it in the harness repo at sync 3.
+- G1 port: in the harness repo, a comment-only source mutates nothing whatever its colocated
+  tests did (pff-ios `scripts/checks/mutation.sh` has no whole-file keep).
+- kill-guard: port to drizzer14/harness the config long-option prefix fix, the new denies
+  (`commit-tree`, git config files, include.path, GIT_CONFIG_* exports), the
+  script-content kill scan, and the same-command variable expansion. The port also carries the
+  data-body kinds (`DATA_KINDS`), the run-body routing, the raw-then-expanded segment reading,
+  the chained variable scope, the `internalError` wrapper, and `kill -0` / `$1`..`$9`
+  (`f0e9919f`: a later option word after `kill -0` / `kill -s 0` makes the kill count;
+  `20457fac`: a heredoc in a scanned script is judged for the scan's kinds; `088a78d7` and
+  `7ce17ec5`: comments and test titles). It does
+  NOT carry the GIT_CONFIG_GLOBAL/GIT_CONFIG_SYSTEM file check (deleted).
 
 From sync 2 and earlier:
 - Not yet ported: guard-replay, shipped-migrations, plural-count, the estimator skill; the

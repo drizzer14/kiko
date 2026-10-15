@@ -27,7 +27,7 @@
 | `npm run check:shipped-migrations` | `scripts/checks/shipped-migrations.sh` (+ `.js`) | a shipped migration file that is modified, deleted, or renamed fails; a new migration passes; no override and no exemption list. The per-file rules, the baseline, and the known limits live in kiko-linter's "Shipped migrations are never edited" | medium (Stop/SubagentStop, before the replay and the HEAD-moved early exit) + project-wide (`check:all`) |
 | `npm run check:closure -- <table.md>` | `scripts/checks/closure-table.sh` (+ `.js`) | a closure-table row whose id cell is a range or list, a duplicate id, a fix sha that does not resolve or is not an ancestor of HEAD, a pinning test that is not an existing file:line, or a CLOSED or CLOSED-UNPROVEN row without a sha or a test, or a CLOSED row without "yes" under "Fails on pre-fix source" fails; run by hand at a round's end, not part of `check:all`, not deduped | manual |
 | `npm run check:typecheck` | tsc (`--noEmit`) | any type error fails | medium |
-| `npm run check:mutation` | Stryker (Jest runner) + `scripts/checks/mutation-score.js` | a passing run is scored on the CHANGE SET only: `mutation-score.js` reads the `json` reporter's output (`reports/mutation/mutation.json`) for the changed lines THIS run mutated (one `--mutate` entry per range, `path:start-end`) and grades only the mutants fully inside a range; it fails when the change-set total is below 75, any graded file is below 60, or the report's own recorded scope (`config.mutate`) differs from the set of `--mutate` entries (the report is not this run's); a file with no mutants is n/a, not a failure. A file whose diff has no added line (a pure rename or a pure deletion) prints `skipped (no added lines): <path>` and does not count toward the cap. User ruling 2026-10-12, no edge-straddling mutant: Stryker 8.7.1 creates a mutant only when its whole node lies inside a range (instrumenter `syntax-helpers.js` `locationIncluded`), and the scorer grades only mutants fully inside a range. Cost: an edit inside a multi-line block, condition, object or array, or an arrow body loses that construct's whole-node mutants; the inner mutants on the changed lines stay. User ruling 2026-10-12, source plus colocated test: when a source file and its colocated test both change, only the changed source lines are mutated. Cost: a weakened test is checked only against the changed lines, not the whole file.  A file kept because its colocated test changed goes into `--mutate` whole, as its plain path (`--list` prints `whole file (N lines)`). A changed file Stryker cannot resolve (its `did not result in any files` warning) fails too. Stryker's own break threshold (60, over the whole accumulated report) stays as a whole-report floor. `src/db/schema.ts` is excluded from both the total and the floor — see `docs/harness/documented-exceptions.md`. A changed file whose diff against the merge-base touches only comments or whitespace is skipped (`scripts/checks/comment-only-changes.js`, decided from the TypeScript parse and fail-closed: any doubt, a `Stryker` or JSX-pragma comment, a missing `typescript`, or a colocated test file (same folder only) changed in the same change set by more than comments keeps the file), before the cap and the scorer see the list. More than 30 source files to mutate (`MUTATION_FILE_CAP` in `mutation.sh`) fails before Stryker starts — no env var bypasses the cap; `mutation.sh --list` (`make mutable`) prints each file's changed-line ranges, `changed lines: N`, and the file count, then exits (2 above the cap) without Stryker, and any other argument exits 2 | deep only |
+| `npm run check:mutation` | Stryker (Jest runner) + `scripts/checks/mutation-score.js` | a passing run is scored on the CHANGE SET only: `mutation-score.js` reads the `json` reporter's output (`reports/mutation/mutation.json`) for the changed lines THIS run mutated (one `--mutate` entry per range, `path:start-end`) and grades only the mutants fully inside a range; it fails when the change-set total is below 75, any graded file is below 60, or the report's own recorded scope (`config.mutate`) differs from the set of `--mutate` entries (the report is not this run's); a file with no mutants is n/a, not a failure. A file whose diff has no added line (a pure rename or a pure deletion) prints `skipped (no added lines): <path>` and does not count toward the cap. User ruling 2026-10-12, no edge-straddling mutant: Stryker 8.7.1 creates a mutant only when its whole node lies inside a range (instrumenter `syntax-helpers.js` `locationIncluded`), and the scorer grades only mutants fully inside a range. Cost: an edit inside a multi-line block, condition, object or array, or an arrow body loses that construct's whole-node mutants; the inner mutants on the changed lines stay. User ruling 2026-10-12, source plus colocated test: when a source file and its colocated test both change, only the changed source lines are mutated. Cost: a weakened test is checked only against the changed lines, not the whole file. A changed file Stryker cannot resolve (its `did not result in any files` warning) fails too. Stryker's own break threshold (60, over the whole accumulated report) stays as a whole-report floor. `src/db/schema.ts` is excluded from both the total and the floor — see `docs/harness/documented-exceptions.md`. A changed file whose diff against the merge-base touches only comments or whitespace is skipped (`scripts/checks/comment-only-changes.js`, decided from the TypeScript parse and fail-closed: any doubt, a `Stryker` or JSX-pragma comment, or a missing `typescript` keeps the file), before the cap and the scorer see the list, whatever its colocated test did (user ruling 2026-10-14, see `docs/harness/documented-exceptions.md`). More than 30 source files to mutate (`MUTATION_FILE_CAP` in `mutation.sh`) fails before Stryker starts — no env var bypasses the cap; `mutation.sh --list` (`make mutable`) prints each file's changed-line ranges, `changed lines: N`, and the file count, then exits (2 above the cap) without Stryker, and any other argument exits 2 | deep only |
 | `bash scripts/checks/osv.sh` | osv-scanner | any known CVE in `package-lock.json` fails | deep only |
 
 Composite scripts:
@@ -54,7 +54,7 @@ Composite scripts:
   "Run log"). Orchestrators never run it; a BATCH READY
   names the change-set base sha, the run id, and the file count, counted
   with the gate's own filter, never by hand: `KIKO_MUTATION_BASE=<base sha>
-  make mutable` (it runs `mutation.sh --list`) prints each file's changed-line ranges (or `whole file`),
+  make mutable` (it runs `mutation.sh --list`) prints each file's changed-line ranges,
   `changed lines: N`, and `mutable files: N (cap …)`, exits 2 above the cap, then a
   `timeout share (history)` line, and never starts
   Stryker or takes its lock. The mutation step tees its output to a stable,
@@ -98,6 +98,28 @@ before that early exit, the medium tier runs
 `scripts/checks/shipped-migrations.sh`, so a turn that only committed an
 edit to a shipped migration is still checked, and a failure leaves the
 replay's mark ref unmoved so every later Stop fails again.
+
+The medium tier also runs the doc-reading jest suites when the doc fingerprint
+(`harness_doc_fingerprint`; roots in `harness_doc_roots_pattern`, `scripts/checks/_lib.sh`)
+differs from the recorded `doc-suites` pass. The pass is rechecked under the lock, so a Stop
+that waited behind one that already passed skips the suites.
+There is no replay-mark dependency: a fresh worktree or a purged state dir runs the step once,
+and a rename out of a root or a delete changes the fingerprint. `harness_doc_suites` finds the
+suites at run time; there is no list to maintain. It finds a suite only when the file holds
+`readFileSync` and a quoted doc-root literal, so path-segment joins and template paths are not
+discovered (a documented limit). The step runs before `guard-replay.sh` by choice; the order no
+longer matters. Jest runs with `--maxWorkers=2`. The deadline is hookStarted + the budget that
+`node scripts/checks/guard-replay.js step-budget` prints (hook budget minus the call tail minus
+the later-checks reserve; read the formula there), so the checks after the replay keep their
+reserve. At the deadline it stops its own
+jest pid and exits 2 with a block saying to
+run `make doc-suites` by hand. Zero suites, a missing jest, an unreadable budget or a
+fingerprint hash failure while doc files or suites exist also exit 2 before any jest run
+(fail-closed); "nothing to check" comes from the doc-file and suite lists, not from the hash
+output. A by-hand
+`make doc-suites` pass IS recorded (physical-root key, and TMPDIR like every harness
+fingerprint), so the next Stop skips the same docs.
+
 `tsc --noEmit` is project-wide by
 nature — a type error surfaces in the file that CONSUMES a changed
 type, not only in the file that was edited — so it never takes a
@@ -138,6 +160,29 @@ run from it. Allowed there: `git merge --ff-only <ref>`,
 worktree, verify it, then run
 `git -C /Users/drizzer14/Developer/Projects/pff-ios merge --ff-only <sha>`.
 See kiko-linter's "MAIN-CHECKOUT deny" for the full rule and limits.
+
+The same hook also denies a write into a git config file (`.git/config`, `config.worktree`). A
+variable the same command assigns is expanded only into write targets and git directories (`-C
+$d`): a segment is judged as written, then expanded, and the expansion can only add a deny; a
+kill target and a command word are never expanded. It reads a script file a shell runs (`bash
+<file>`, `source`, a shebang path; one level, at most 256 KiB) and denies a kill in it (a
+heredoc in it is judged for kills only). `kill -0` and `kill -s 0` are harmless only when no later
+word before the targets can be an option: a `-X` word, a word that may expand, or a `-N` word
+with more words after it (`sendsNoSignal`; `kill -0 -s KILL -1` denies), and
+`$1`..`$9` is a caller's own pid, in a typed command as in a script;
+`scripts/job-queue.sh` of this repository is exempt. It also
+denies a `git commit|merge|pull` that skips `githooks/` (`--no-verify`, `-n`, `core.hooksPath`
+overrides), `git commit-tree`, and a config-style route to the same end (`git config` long
+options resolved by git's prefix rule, `include.path`, GIT_CONFIG_COUNT/KEY/VALUE/PARAMETERS
+exports). A `GIT_CONFIG_GLOBAL`/`GIT_CONFIG_SYSTEM` swap is not judged: the local-scope
+core.hooksPath that `scripts/ensure-git-hooks.sh` writes outranks both. A heredoc body no shell
+runs is judged only for the `DATA_KINDS` kinds (kill, stash, hook skips by option or core.hooksPath,
+main checkout, wait loop), so text documenting other commands is allowed there; a body a
+shell or eval runs is judged in full. An error while judging denies (`internalError`); a
+malformed payload, an empty command, and a missing node allow. `git rebase`, `cherry-pick`,
+and `am` replay commits without
+pre-commit (a known limit).
+See kiko-linter's "NO-VERIFY deny", "SHELL-WRITE deny", and "Script-content kill scan".
 
 The same hook also denies a shell write (`sed -i`, `perl -i`, a `>`/`>>`
 redirect, `tee`, `cp`/`mv` (also `gcp`/`gmv`), a python/node one-liner or stdin heredoc

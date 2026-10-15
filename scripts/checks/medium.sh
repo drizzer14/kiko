@@ -70,17 +70,48 @@ if [ "$recorded" = "$(harness_replay_mark "$ROOT")" ]; then
   replay_pending=0
 fi
 
+# The doc-reading jest suites run whenever the doc fingerprint differs from the one a pass
+# recorded: a fingerprint of the doc files and suites as they are on disk, so it needs no diff and
+# no replay mark. A mark or a diff each lose a case: a by-hand replay moves the mark past a
+# committed doc edit, a worktree with no mark has no baseline, and a diff folds a file moved out
+# of a doc root into its new path alone. The cost is one run per fresh worktree or purged state
+# dir. Nothing is pending when the project holds no doc file and no suite; that is decided from
+# the two lists, not from the hash, so a hash that fails with docs present stays pending and the
+# step fails closed. The state key uses the physical root so `make doc-suites` writes the same one.
+doc_root="$(pwd -P)"
+doc_suites=()
+while IFS= read -r f; do
+  doc_suites+=("$f")
+done < <(harness_doc_suites "$doc_root")
+doc_has_files=0
+while IFS= read -r -d '' f; do
+  doc_has_files=1
+  break
+done < <(harness_doc_files "$doc_root")
+doc_fingerprint=""
+doc_pending=0
+if [ ${#doc_suites[@]} -gt 0 ] || [ "$doc_has_files" -eq 1 ]; then
+  doc_fingerprint="$(harness_doc_fingerprint "$doc_root")"
+  if ! harness_unchanged "$doc_root" "doc-suites" "$doc_fingerprint"; then
+    doc_pending=1
+  fi
+fi
+
 # Nothing relevant changed (the coordinator case): stay silent.
-if [ ${#changed[@]} -eq 0 ] && [ ${#harness_changed[@]} -eq 0 ] && [ "$replay_pending" -eq 0 ]; then
+if [ ${#changed[@]} -eq 0 ] && [ ${#harness_changed[@]} -eq 0 ] && [ "$doc_pending" -eq 0 ] \
+  && [ "$replay_pending" -eq 0 ]; then
   exit 0
 fi
 
 # A Stop that fires again after the hook already blocked it (the payload's stop_hook_active is
-# true) would run the same checks on the same tree and block again, a loop the session cannot
-# leave: knip alone can fail it on a file the session is not allowed to touch. The first Stop
-# already showed every failure, so a repeated one is let through with a note. Only the Stop event
-# skips: SubagentStop keeps blocking. The payload is read only when stdin is a regular file, which
-# is how dispatch.sh replays it: a pipe or a terminal a caller never closes would hang this read.
+# true) would, on an unchanged tree, run the same checks and block again, a loop the session
+# cannot leave: knip alone can fail it on a file the session is not allowed to touch. Claude Code
+# sets stop_hook_active on every Stop that follows a block in the same turn, whether or not the
+# tree changed since, so the skip cannot tell an unchanged tree from an edited one: it holds for
+# both, and an agent that edits after a block runs check:all itself. The first Stop already
+# showed every failure, so a repeated one is let through with a note. Only the Stop event skips:
+# SubagentStop keeps blocking. The payload is read only when stdin is a regular file, which is
+# how dispatch.sh replays it: a pipe or a terminal a caller never closes would hang this read.
 # Anything unreadable leaves the tier running, as before.
 repeated_stop="$(node -e '
   const fs = require("node:fs");
@@ -129,12 +160,101 @@ fi
 # hides the committed violation. Failing first leaves the mark where it was, so
 # every later Stop fails again until the migration is restored.
 "$DIR/shipped-migrations.sh" || exit 2
+# The doc-reading jest suites, when the doc fingerprint computed above differs from the recorded
+# pass. They do not depend on the replay mark, so their order against the replay is free;
+# the step runs before it. The jest run stops at its own deadline, well inside the 300 s hook
+# kill, and fails closed: a killed hook ends the turn with no error and no check.
+# KIKO_DOC_SUITES_DEADLINE_SECONDS exists for the tests and only lowers the budget.
+# Rechecked here, under the lock: another Stop may have run the same suites and recorded its pass
+# while this one waited, and running them again (or stopping at the deadline for docs that just
+# passed) would repeat that work. The early exit above keeps the pre-lock value.
+if [ "$doc_pending" -eq 1 ] && ! harness_unchanged "$doc_root" "doc-suites" "$doc_fingerprint"; then
+  doc_jest="$ROOT/node_modules/.bin/jest"
+  # The replay's own constants, so the doc step leaves the guard call tail and the checks after
+  # it (which have no deadline) the same reserve the replay sizes its deadline with.
+  doc_budget="$(node "$DIR/guard-replay.js" step-budget 2>/dev/null)"
+  case "$doc_budget" in
+    '' | *[!0-9]*) doc_budget="" ;;
+  esac
+  case "${KIKO_DOC_SUITES_DEADLINE_SECONDS:-}" in
+    '' | *[!0-9]*) ;;
+    *) [ "$KIKO_DOC_SUITES_DEADLINE_SECONDS" -lt "${doc_budget:-0}" ] \
+      && doc_budget="$KIKO_DOC_SUITES_DEADLINE_SECONDS" ;;
+  esac
+  doc_why="A skill, agent, docs or CLAUDE.md edit can drift from the code these suites pin, and only a run shows it."
+  doc_donot="Do not edit a suite or its pin to get past this, and do not skip the Stop tier."
+  if [ -z "$doc_fingerprint" ]; then
+    print_block \
+      "Doc-reading jest suites" \
+      "The doc fingerprint could not be computed, so the doc state cannot be compared with a pass." \
+      "Doc files or suites exist (suites found: ${#doc_suites[@]}), but hashing them printed nothing." \
+      "$doc_why" \
+      "Check that shasum and git work in this worktree; a by-hand run records no pass without a fingerprint, so the next Stop runs this check again." \
+      "$doc_donot"
+    exit 2
+  fi
+  if [ ${#doc_suites[@]} -eq 0 ] || [ ! -x "$doc_jest" ] || [ -z "$doc_budget" ]; then
+    print_block \
+      "Doc-reading jest suites" \
+      "The doc-reading suites could not be run." \
+      "Suites found: ${#doc_suites[@]}. Jest binary: $doc_jest. Budget: ${doc_budget:-unreadable} s." \
+      "$doc_why" \
+      "Run: npm install, then make doc-suites. If no suite is found, the discovery in harness_doc_suites (scripts/checks/_lib.sh) broke; if the budget is unreadable, run node scripts/checks/guard-replay.js step-budget and fix what it prints." \
+      "$doc_donot"
+    exit 2
+  fi
+  doc_output="$state/doc-suites.out"
+  # Two workers, so a Stop-tier run leaves cores to the other sessions and to the checks that
+  # run after it.
+  "$doc_jest" --maxWorkers=2 "${doc_suites[@]}" > "$doc_output" 2>&1 &
+  doc_pid=$!
+  doc_timed_out=0
+  while kill -0 "$doc_pid" 2>/dev/null; do
+    if [ "$(date +%s)" -ge $((hookStarted + doc_budget)) ]; then
+      doc_timed_out=1
+      break
+    fi
+    sleep 0.2
+  done
+  if [ "$doc_timed_out" -eq 1 ]; then
+    # Only the pid this wrapper started; escalate when jest ignores the first signal.
+    kill "$doc_pid" 2>/dev/null
+    for _ in 1 2 3 4 5 6 7 8 9 10; do
+      kill -0 "$doc_pid" 2>/dev/null || break
+      sleep 0.5
+    done
+    kill -0 "$doc_pid" 2>/dev/null && kill -KILL "$doc_pid" 2>/dev/null
+  fi
+  wait "$doc_pid" 2>/dev/null
+  doc_code=$?
+  if [ "$doc_timed_out" -eq 1 ]; then
+    print_block \
+      "Doc-reading jest suites" \
+      "The suites stopped at the Stop-tier deadline before they finished." \
+      "Stopped $doc_budget s after the hook started. Last output: $(tail -n 20 "$doc_output")" \
+      "The Stop hook is killed at 300 s, and a killed hook ends the turn with no error and no check. Failing at the deadline keeps the unchecked docs visible." \
+      "The suites need more time than a Stop allows: run make doc-suites by hand (no deadline; its pass is recorded, so the next Stop skips the same docs), then fix anything it reports." \
+      "$doc_donot"
+    exit 2
+  fi
+  if [ "$doc_code" -ne 0 ]; then
+    print_block \
+      "Doc-reading jest suites" \
+      "A suite that reads skill, agent, docs or CLAUDE.md text failed." \
+      "$(tail -n 60 "$doc_output")" \
+      "$doc_why" \
+      "Fix the text (or the code it describes) the failing test names, then re-run: make doc-suites" \
+      "$doc_donot"
+    exit 2
+  fi
+  harness_mark_pass "$doc_root" "doc-suites" "$doc_fingerprint"
+fi
 # Session-change scope: the pre-write guard, replayed on every .ts/.tsx file
 # the session changed, whatever wrote it (guard-replay.js computes its own
 # set), with the Stop-tier deadline.
 "$DIR/guard-replay.sh" --stop-tier "$hookStarted" || exit 2
-# Only HEAD moved (a commit, no file change): the replay and the shipped-migrations
-# check were the checks due.
+# Only HEAD moved (a commit, no file change): the replay, the shipped-migrations check and
+# the doc step were the checks due.
 if [ ${#changed[@]} -eq 0 ] && [ ${#harness_changed[@]} -eq 0 ]; then
   exit 0
 fi

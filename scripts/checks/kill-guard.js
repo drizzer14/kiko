@@ -6,7 +6,9 @@
 // signal-as-target). See docs/harness/checks.md "Automatic wiring" and
 // `.claude/skills/kiko-linter/SKILL.md` for the check-wrapper contract this
 // hook does NOT follow: it must ALWAYS exit 0, even on a crash or malformed
-// payload, so it can never break the Bash tool itself. Wired from
+// payload, so a failure of the hook process never breaks the Bash tool. An error thrown while
+// judging a command is a deny (`internalError`), not an allow: the command that crashed the guard
+// may be the one it stops; an unreadable payload still allows. Wired from
 // harness/kiko/hooks/hooks.json via scripts/checks/kill-guard.sh.
 //
 // Incident this guards against: a reviewer subagent ran
@@ -34,7 +36,17 @@
 // that opens a file for writing, and `xargs`
 // running an in-place edit — because the pre-write guard sees only
 // Edit/Write/MultiEdit, so such a write lands unchecked. A heredoc body that
-// no shell or interpreter runs is text, never checked for writes.
+// no shell or interpreter runs is text, never checked for writes (see `findDanger` for the
+// kinds it is checked for). The same write machinery
+// denies a write into a git config file (`.git/config`, `.git/config.worktree`, a linked
+// worktree's `config.worktree`) of any repository, and an unresolved path that spells
+// `.git/config`: that file holds core.hooksPath. A variable the SAME command assigns (`f=<path>`,
+// `export f=`, `declare f=`, `local f=`; a later assignment wins, in order) is expanded where
+// `$f` or `${f}` is a write target or a git directory (`-C $d`), so `f=src/x.ts && sed -i '' ...
+// $f` is judged by `src/x.ts` as well as by `$f`: the expanded reading only ADDS a deny, and a
+// kill target or a command word is never expanded. A variable the command does not assign, or
+// assigns from an expansion (`f=$(mktemp)`), stays unresolved and is not denied (a documented
+// limit).
 //
 // And it denies a `while` or `until` loop that scans the process table (`ps`,
 // `top`, `pstree`, or `pgrep -f`) for make verify, check:all, jest, stryker,
@@ -48,10 +60,30 @@
 // a flag group), `-c core.hooksPath=...` or `--config-env=core.hooksPath=...` before the
 // subcommand, and core.hooksPath set through `GIT_CONFIG_COUNT`/`GIT_CONFIG_KEY_<n>` or
 // `GIT_CONFIG_PARAMETERS`, in any directory and inside a shell string. A `git config` that sets or
-// unsets core.hooksPath is denied too, in any scope: it switches the hooks off for every worktree.
+// unsets core.hooksPath, or removes or renames its `core` section, is denied too, in any scope: it
+// switches the hooks off for every worktree. git reads a `--long` option as an exact name or a
+// unique prefix (`--unset-a` is `--unset-all`), so the guard resolves each option the same way
+// (CONFIG_LONG_OPTIONS, the union of the `git config -h` lists); an ambiguous or unknown option
+// denies when the command names the key or the section. The same config-style denies cover an
+// `include.path`/`includeIf.<c>.path` entry (a `-c`, `--config-env`, GIT_CONFIG_* or `git config`
+// write: the included file can set the key), an `export`, `declare -x`, or bare assignment that
+// sets core.hooksPath through GIT_CONFIG_* (denied by itself, whatever runs after it). They carry
+// their own reason: leave core.hooksPath as scripts/ensure-git-hooks.sh sets it. A
+// GIT_CONFIG_GLOBAL/GIT_CONFIG_SYSTEM file is not judged: the key sits in the local scope, which
+// outranks both and what they include. `git commit-tree` is denied in every form: it writes a
+// commit no hook runs for (`git update-ref` stays allowed).
 // A user may still bypass in their own shell; the deny binds agent Bash calls only. `-n` after
 // another option's value, after `--`, in a message, or on `git log` or `git merge`/`git pull`
 // (`--no-stat`) is not a bypass, and a `git config` read of the key is allowed.
+//
+// And it reads a script file a command runs (`bash|sh|zsh|dash <file>`, `source <file>`,
+// `. <file>`, or a path run directly whose first line names a shell) and denies a pkill, killall,
+// or pattern or process-group kill in it: a script in a scratchpad outside the project is a place
+// the pre-write guard never looks. One level only (a script the script runs is not
+// read), a regular file of at most 256 KiB, and kills only (a `git stash` or a write inside the
+// file is not judged). `scripts/job-queue.sh` at the root of a worktree of this repository is
+// exempt: its own group TERM is the one allowed group kill. A script built in the same command, a
+// missing file, and a path held in a variable are not read.
 //
 // Known limits: this guard stops ACCIDENTAL commands by cooperative agents.
 // It is a heuristic tokenizer, not a shell parser and not an adversarial
@@ -104,7 +136,7 @@ const MAIN_CHECKOUT_REASON_LINES = [
 
 const SHELL_WRITE_REASON_LINES = [
   'WHAT FAILED:    kill-guard denied a shell write into src/, __tests__/, rules/, or e2e/ of a worktree ' +
-    'of this repository.',
+    'of this repository, or into a git config file (.git/config, config.worktree).',
   'WHY IT MATTERS: the pre-write guard (scripts/checks/pre-write-guard.sh) sees only the Edit, ' +
     'Write, and MultiEdit tools, so a file written by sed -i, perl -i, a > or >> redirect, tee, ' +
     'cp, mv, or a python or node one-liner lands unchecked; guard-replay only catches it at ' +
@@ -117,7 +149,9 @@ const SHELL_WRITE_REASON_LINES = [
     'outside those trees (your scratchpad, /tmp), git itself (without a redirect into those ' +
     'trees), and a formatter or fixer writing on its own (./node_modules/.bin/biome check ' +
     "--write, the harness's " +
-    'import-order --write) stay allowed.',
+    'import-order --write) stay allowed. A git config file holds core.hooksPath: leave it as ' +
+    'scripts/ensure-git-hooks.sh sets it (repair with `bash scripts/ensure-git-hooks.sh`), and ' +
+    'change any other setting with `git config`.',
   'DO NOT:         route the write through a variable, a script file, a shell fed by a pipe, or ' +
     'another tool (cp, mv, dd) to get past this guard.',
 ];
@@ -143,28 +177,68 @@ const WAIT_LOOP_REASON_LINES = [
 ];
 
 const NO_VERIFY_REASON_LINES = [
-  'WHAT FAILED:    kill-guard denied a git commit, merge, or pull that skips the pre-commit hook, ' +
-    'or a git config that switches it off (--no-verify, -n, -c core.hooksPath=..., git config ' +
-    'core.hooksPath, or GIT_CONFIG_* in the environment).',
+  'WHAT FAILED:    kill-guard denied a git commit, merge, or pull that skips the pre-commit hook ' +
+    '(--no-verify, -n), or a git commit-tree, which writes a commit no hook runs for.',
   'WHY IT MATTERS: each commit must typecheck by itself: the tracked githooks/pre-commit and ' +
     'githooks/pre-merge-commit run tsc on the staged files, and a bypassed commit lands an ' +
     'unchecked type error on the branch.',
   'HOW TO FIX:     fix the type error the hook reports, git add the fix, and commit again (the ' +
-    'hook reads the index, so an unstaged fix does not count). A user may bypass in their own ' +
+    'hook reads the index, so an unstaged fix does not count); make every commit with git ' +
+    'commit, never git commit-tree, so the pre-commit hook runs. A user may bypass in their own ' +
     'shell with git commit --no-verify; an agent never does.',
-  'DO NOT:         skip the hook through --no-verify, -n, -c core.hooksPath, git config ' +
-    'core.hooksPath (set or --unset, in any scope), GIT_CONFIG_COUNT/GIT_CONFIG_KEY_<n>/' +
+  'DO NOT:         skip the hook through --no-verify, -n, git commit-tree, a script file, an ' +
+    'alias, or a variable to get past this guard.',
+];
+
+const HOOKS_CONFIG_REASON_LINES = [
+  'WHAT FAILED:    kill-guard denied a change to the git config that holds core.hooksPath (git ' +
+    'config core.hooksPath, --unset, --remove-section core, an abbreviated option, or GIT_CONFIG_* ' +
+    'in the environment).',
+  'WHY IT MATTERS: core.hooksPath=githooks, set once by scripts/ensure-git-hooks.sh, runs the ' +
+    'pre-commit typecheck for every worktree; rewriting the key, or removing or renaming its ' +
+    'core section, switches that typecheck off everywhere until someone notices.',
+  'HOW TO FIX:     leave core.hooksPath as scripts/ensure-git-hooks.sh sets it. If it was lost, ' +
+    'repair it with `bash scripts/ensure-git-hooks.sh` (or `npm ci`, whose postinstall runs it).',
+  'DO NOT:         set, unset, remove, or rename core.hooksPath or its section through git config ' +
+    '(any scope, any option spelling or abbreviation), GIT_CONFIG_COUNT/GIT_CONFIG_KEY_<n>/' +
     'GIT_CONFIG_PARAMETERS, a script file, an alias, or a variable to get past this guard.',
+];
+
+const SCRIPT_KILL_REASON_LINES = [
+  'WHAT FAILED:    kill-guard denied running a script file that holds a pkill, killall, or ' +
+    'pattern or process-group kill.',
+  'WHY IT MATTERS: a pattern kill once restarted Orca and the iOS Simulator, and the script that ' +
+    'held it sat in a scratchpad outside the project, where no write guard looks; the guard reads ' +
+    'the file a shell is about to run (one level) so the kill is caught before it runs.',
+  'HOW TO FIX:     remove the kill from the script: stop only a process ID you started yourself ' +
+    '(kill <pid>, or kill "$pid"), or let the tool timeout end a hung command.',
+  'DO NOT:         hide the kill in a second script the first one runs, build the command at run ' +
+    'time, or write the script in the same command that runs it to get past this guard.',
+];
+
+const INTERNAL_ERROR_REASON_LINES = [
+  'WHAT FAILED:    kill-guard hit an internal error while judging this command, so it could not ' +
+    'clear it.',
+  'WHY IT MATTERS: a guard that allowed a command it could not judge would let through the very ' +
+    'command that crashed it, and the guard exists to stop pattern kills, stashes, unchecked ' +
+    'writes, and skipped hooks.',
+  'HOW TO FIX:     split the command into smaller steps or simplify its longest construct (a ' +
+    'chain of variable assignments or expansions, deep nesting), then run it again; if a plain ' +
+    'short command is denied, report the error in DETAILS to the coordinator.',
+  'DO NOT:         wrap the command in a script file, an alias, or a variable to get past this guard.',
 ];
 
 const REASON_BY_KIND = {
   kill: () => KILL_REASON,
+  scriptKill: (finding) => blockReason(SCRIPT_KILL_REASON_LINES, finding.detail),
   stash: (finding) => blockReason(STASH_REASON_LINES, finding.detail),
   heredoc: (finding) => blockReason(HEREDOC_REASON_LINES, finding.detail),
   mainCheckout: (finding) => blockReason(MAIN_CHECKOUT_REASON_LINES, finding.detail),
   shellWrite: (finding) => blockReason(SHELL_WRITE_REASON_LINES, finding.detail),
   waitLoop: (finding) => blockReason(WAIT_LOOP_REASON_LINES, finding.detail),
   noVerify: (finding) => blockReason(NO_VERIFY_REASON_LINES, finding.detail),
+  hooksConfig: (finding) => blockReason(HOOKS_CONFIG_REASON_LINES, finding.detail),
+  internalError: (finding) => blockReason(INTERNAL_ERROR_REASON_LINES, finding.detail),
 };
 
 const reasonFor = (finding) => REASON_BY_KIND[finding.kind](finding);
@@ -1080,15 +1154,32 @@ function killTargets(tokens) {
   return tokens.slice(i);
 }
 
+// Signal 0 (`kill -0`, `kill -s 0`) only tests whether a process exists: nothing is sent, so
+// whatever it names is safe. The builtin reads `-s SIG`, `-n N` and `-sSIG` again after an earlier
+// spec, so a later option word replaces the 0 with a real signal and the command is judged by its
+// targets instead. The shell expands a word before the builtin parses it, so a later word that
+// may expand (a `$`, a backtick or `__SUBSHELL__`, a glob, a bracket, a brace) counts as a
+// possible option too, as does a `-N` signal number that other words follow.
+function sendsNoSignal(tokens) {
+  const afterSpec = tokens[0] === '-s' ? tokens.slice(2) : tokens.slice(1);
+  const isNull = tokens[0] === '-0' || (tokens[0] === '-s' && tokens[1] === '0');
+  const mayBeOption = (word, index) =>
+    /^-[A-Za-z]/.test(word) ||
+    /[$`*?[{]|__SUBSHELL__/.test(word) ||
+    (/^-\d+$/.test(word) && index < afterSpec.length - 1);
+
+  return isNull && !afterSpec.some(mayBeOption);
+}
+
 // A target is safe only when it is a plain positive pid, a shell variable
 // the agent's own script set (`$PID`, `"$pid"`, `${pid}` — the agent is
-// presumably stopping a process it started itself), or a job-control spec
-// (`%1` — the caller's own shell job, not a pattern match on other
-// processes). Everything else — a name, a glob, 0, a negative pid, or the
+// presumably stopping a process it started itself), a positional parameter a caller passed
+// (`"$1"` .. `"$9"`), or a job-control spec (`%1` — the caller's own shell job, not a pattern
+// match on other processes). Everything else — a name, a glob, 0, a negative pid, or the
 // `__SUBSHELL__` placeholder standing in for a `$(...)`/backtick whose
 // targets come from a live pattern match — is dangerous.
 function isDangerousKillTarget(target) {
-  if (/^\$[A-Za-z_{]/.test(target)) return false;
+  if (/^\$[A-Za-z_{1-9]/.test(target)) return false;
   if (/^%/.test(target)) return false;
   if (/^-?\d+$/.test(target)) return Number(target) <= 0;
   return true;
@@ -1237,6 +1328,7 @@ function gitInvocation(rest, directory, environment) {
     raw === undefined ? invocation.directory : resolveDirectory(invocation.directory, raw);
 
   return {
+    directory: invocation.directory,
     subcommand: rest[i],
     arguments: rest.slice(i + 1),
     configs: invocation.configs,
@@ -1249,14 +1341,22 @@ function gitInvocation(rest, directory, environment) {
 
 // `pull` runs the merge hooks, and takes `--no-verify` for the merge it starts.
 const HOOK_RUNNING_SUBCOMMANDS = new Set(['commit', 'merge', 'pull']);
+// The config keys that decide which hooks run: core.hooksPath, and `include.path` or
+// `includeIf.<condition>.path`, which pull in a file that can set it (the condition may hold dots).
 // Git config keys are case-insensitive, and a bare name or an empty value still overrides the path.
-const HOOKS_PATH_CONFIG = /^core\.hookspath(?:=|$)/i;
-const HOOKS_PATH_KEY = /^core\.hookspath$/i;
+const HOOKS_CONFIG_KEY_PATTERN = String.raw`(?:core\.hookspath|include\.path|includeif\..+\.path)`;
+const HOOKS_CONFIG_ENTRY = new RegExp(`^${HOOKS_CONFIG_KEY_PATTERN}(?:=|$)`, 'i');
+const HOOKS_CONFIG_KEY = new RegExp(`^${HOOKS_CONFIG_KEY_PATTERN}$`, 'i');
 // `GIT_CONFIG_COUNT` with `GIT_CONFIG_KEY_<n>`/`GIT_CONFIG_VALUE_<n>` names a config entry by key.
 const GIT_CONFIG_KEY_VARIABLE = /^GIT_CONFIG_KEY_\d+$/;
 // `GIT_CONFIG_PARAMETERS` holds quoted `'name=value'` entries, so the key sits after a quote or a
 // space.
-const HOOKS_PATH_PARAMETER = /(?:^|[\s'"])core\.hookspath(?:=|['"\s]|$)/i;
+const HOOKS_CONFIG_PARAMETER = new RegExp(
+  `(?:^|[\\s'"])${HOOKS_CONFIG_KEY_PATTERN}(?:=|['"\\s]|$)`,
+  'i',
+);
+// The commands that set a variable for the shell that follows, whatever runs after them.
+const ASSIGNING_COMMANDS = new Set(['export', 'declare', 'typeset', 'local', 'readonly']);
 const NO_VERIFY_OPTION = '--no-verify';
 // `--no-v` is the shortest prefix of `--no-verify`. Other options share it (`--no-verbose`,
 // `--no-verify-signatures`), so git may reject it as ambiguous, and denying a command git then
@@ -1338,38 +1438,119 @@ function groupHoldsNoVerify(group) {
 
 const unquoted = (text) => text.replace(/^['"]|['"]$/g, '');
 
-// Whether the NAME=value prefixes of the command set core.hooksPath for the git it runs.
+// Whether the variables in `environment` (the NAME=value prefixes of a command, or what an
+// `export` sets) set core.hooksPath or an include path for the git that runs next.
 const environmentSetsHooksPath = (environment) =>
   Object.entries(environment).some(
     ([name, value]) =>
-      (GIT_CONFIG_KEY_VARIABLE.test(name) && HOOKS_PATH_KEY.test(unquoted(value))) ||
-      (name === 'GIT_CONFIG_PARAMETERS' && HOOKS_PATH_PARAMETER.test(value)),
+      (GIT_CONFIG_KEY_VARIABLE.test(name) && HOOKS_CONFIG_KEY.test(unquoted(value))) ||
+      (name === 'GIT_CONFIG_PARAMETERS' && HOOKS_CONFIG_PARAMETER.test(value)),
   );
 
-// The `git config` options that only read, and the ones whose value is the NEXT word.
-const CONFIG_READ_OPTIONS = new Set([
-  '--get',
-  '--get-all',
-  '--get-regexp',
-  '--get-urlmatch',
-  '--get-color',
-  '--get-colorbool',
-  '-l',
-  '--list',
+// The long options of `git config`, as `git config -h` lists them on git 2.38.1 (the git on this
+// machine's PATH), plus the ones later gits added (`--value`, `--all`, `--regexp`, `--url`,
+// `--comment`, `--show-names`): the union, so a prefix that is unique on one git but ambiguous on
+// another reads as ambiguous (git then rejects it, and the guard denies it with a hooksPath key).
+// Each name maps to what it does: `read` (an action that only reads, so nothing is written),
+// `write` (sets or unsets the keys named after it), `section` (removes or renames the section
+// named after it), `value` (the NEXT word is its value), or `flag`.
+const CONFIG_LONG_OPTIONS = new Map([
+  ['--global', 'flag'],
+  ['--system', 'flag'],
+  ['--local', 'flag'],
+  ['--worktree', 'flag'],
+  ['--file', 'value'],
+  ['--blob', 'value'],
+  ['--get', 'read'],
+  ['--get-all', 'read'],
+  ['--get-regexp', 'read'],
+  ['--get-urlmatch', 'read'],
+  ['--get-color', 'read'],
+  ['--get-colorbool', 'read'],
+  ['--list', 'read'],
+  ['--replace-all', 'write'],
+  ['--add', 'write'],
+  ['--unset', 'write'],
+  ['--unset-all', 'write'],
+  ['--rename-section', 'section'],
+  ['--remove-section', 'section'],
+  ['--fixed-value', 'flag'],
+  ['--edit', 'flag'],
+  ['--type', 'value'],
+  ['--bool', 'flag'],
+  ['--int', 'flag'],
+  ['--bool-or-int', 'flag'],
+  ['--bool-or-str', 'flag'],
+  ['--path', 'flag'],
+  ['--expiry-date', 'flag'],
+  ['--null', 'flag'],
+  ['--name-only', 'flag'],
+  ['--includes', 'flag'],
+  ['--show-origin', 'flag'],
+  ['--show-scope', 'flag'],
+  ['--show-names', 'flag'],
+  ['--default', 'value'],
+  ['--comment', 'value'],
+  ['--value', 'value'],
+  ['--url', 'value'],
+  ['--all', 'flag'],
+  ['--regexp', 'flag'],
+  ['--help', 'read'],
+  ['--help-all', 'read'],
 ]);
-const CONFIG_WRITE_OPTIONS = new Set(['--unset', '--unset-all', '--add', '--replace-all']);
-const CONFIG_OPTIONS_WITH_VALUE = new Set([
-  '-f',
-  '--file',
-  '--blob',
-  '--type',
-  '--default',
-  '--comment',
+const CONFIG_SHORT_OPTIONS = new Map([
+  ['f', 'value'],
+  ['t', 'value'],
+  ['l', 'read'],
+  ['e', 'flag'],
+  ['z', 'flag'],
+  ['h', 'read'],
 ]);
 
-// A `git config` command line split into its options and its positional words.
+// What one `--long[=value]` word of `git config` is, as git's parse-options reads it: an exact
+// name wins; otherwise a prefix that only one name starts with resolves to it; any other word is
+// `unresolved` (ambiguous, or unknown). A `--no-<option>` negates a flag and never names an action.
+function resolveConfigLongOption(word) {
+  const name = word.split('=')[0];
+  const exact = CONFIG_LONG_OPTIONS.get(name);
+  if (exact !== undefined) return { kind: exact, hasValue: word.includes('=') };
+  if (name.startsWith('--no-')) return { kind: 'flag', hasValue: false };
+  const matches = [...CONFIG_LONG_OPTIONS].filter(([candidate]) => candidate.startsWith(name));
+  if (matches.length !== 1) return { kind: 'unresolved', hasValue: false };
+
+  return { kind: matches[0][1], hasValue: word.includes('=') };
+}
+
+// A short-option group of `git config` (`-l`, `-lz`, `-fFILE`): the strongest kind in it, and
+// whether the NEXT word is the value of its last letter.
+function resolveConfigShortOption(word) {
+  const kinds = [];
+  for (const [index, letter] of [...word.slice(1)].entries()) {
+    const kind = CONFIG_SHORT_OPTIONS.get(letter) ?? 'unresolved';
+    kinds.push(kind);
+    if (kind === 'value') {
+      return { kinds, hasValue: index < word.length - 2 };
+    }
+  }
+
+  return { kinds, hasValue: true };
+}
+
+// The kinds one option word names, and whether its value is the NEXT word.
+function readConfigOption(word) {
+  if (word.startsWith('--')) {
+    const { kind, hasValue } = resolveConfigLongOption(word);
+
+    return { kinds: [kind], takesNextWord: kind === 'value' && !hasValue };
+  }
+  const { kinds, hasValue } = resolveConfigShortOption(word);
+
+  return { kinds, takesNextWord: kinds.includes('value') && !hasValue };
+}
+
+// A `git config` command line split into the kinds of its options and its positional words.
 function splitConfigWords(parameters) {
-  const options = [];
+  const kinds = [];
   const positionals = [];
   let optionsEnded = false;
   for (let index = 0; index < parameters.length; index += 1) {
@@ -1379,37 +1560,57 @@ function splitConfigWords(parameters) {
     } else if (optionsEnded || !word.startsWith('-') || word === '-') {
       positionals.push(word);
     } else {
-      options.push(word);
-      if (CONFIG_OPTIONS_WITH_VALUE.has(word)) index += 1;
+      const option = readConfigOption(word);
+      kinds.push(...option.kinds);
+      if (option.takesNextWord) index += 1;
     }
   }
 
-  return { options, positionals };
+  return { kinds: new Set(kinds), positionals };
 }
 
-// Whether a `git config` writes or unsets core.hooksPath, which switches the hooks off for every
-// worktree until someone notices. `git config core.hooksPath` alone, and any `--get` form, only
-// read.
+const isHooksPathKey = (word) => word !== undefined && HOOKS_CONFIG_KEY.test(word);
+const isCoreSection = (word) => word !== undefined && word.toLowerCase() === 'core';
+
+// Whether a `git config` writes or unsets core.hooksPath, or removes or renames its section
+// (`core`), which switches the hooks off for every worktree until someone notices. `git config
+// core.hooksPath` alone, and any resolved read action (`--get` and its prefixes, `--list`), only
+// read. A word git cannot resolve to one option (ambiguous or unknown) makes git reject the whole
+// command, so it denies whenever the command names the key or the section (fail closed).
 function rewritesHooksPath({ subcommand, arguments: parameters }) {
   if (subcommand !== 'config') return false;
-  const { options, positionals } = splitConfigWords(parameters);
-  if (options.some((option) => CONFIG_READ_OPTIONS.has(option))) return false;
-  const holdsKey = (word) => word !== undefined && HOOKS_PATH_KEY.test(word);
-  if (options.some((option) => CONFIG_WRITE_OPTIONS.has(option))) return positionals.some(holdsKey);
-  // `git config set|unset <key>` (git 2.46) names the action first.
-  if (positionals[0] === 'set' || positionals[0] === 'unset') return holdsKey(positionals[1]);
+  const { kinds, positionals } = splitConfigWords(parameters);
+  const namesTarget = (word) => isHooksPathKey(word) || isCoreSection(word);
+  if (kinds.has('unresolved')) return positionals.some(namesTarget);
+  if (kinds.has('read')) return false;
+  if (kinds.has('write')) return positionals.some(isHooksPathKey);
+  if (kinds.has('section')) return positionals.some(isCoreSection);
+  // `git config set|unset <key>` and `remove-section|rename-section <name>` (git 2.46) name the
+  // action first.
+  const [action, name] = positionals;
+  if (action === 'set' || action === 'unset') return isHooksPathKey(name);
+  if (action === 'remove-section' || action === 'rename-section') return isCoreSection(name);
 
-  return holdsKey(positionals[0]) && positionals.length >= 2;
+  return isHooksPathKey(action) && positionals.length >= 2;
 }
 
-// Whether the git command is told to skip its hooks, by option, by config, or by environment, or
-// switches them off for good with `git config`.
-function skipsHooks(git) {
-  const { subcommand, arguments: parameters, configs, environment } = git;
-  if (rewritesHooksPath(git)) return true;
+// Whether a hook-running git command is given a config that can switch its hooks off: a `-c` or
+// `--config-env` entry that sets core.hooksPath or an include path, or the same through a
+// GIT_CONFIG_* variable. Both inject config at command scope, which outranks the local scope that
+// holds core.hooksPath. A GIT_CONFIG_GLOBAL/GIT_CONFIG_SYSTEM file does not: local outranks it.
+function runsWithHooksConfig(invocations) {
+  const [{ subcommand, configs, environment }] = invocations;
   if (!HOOK_RUNNING_SUBCOMMANDS.has(subcommand)) return false;
-  if (configs.some((entry) => HOOKS_PATH_CONFIG.test(entry))) return true;
-  if (environmentSetsHooksPath(environment)) return true;
+
+  return (
+    configs.some((entry) => HOOKS_CONFIG_ENTRY.test(entry)) || environmentSetsHooksPath(environment)
+  );
+}
+
+// Whether the git command is told to skip its hooks by option: `--no-verify`, or commit's `-n`.
+function skipsHooks(git) {
+  const { subcommand, arguments: parameters } = git;
+  if (!HOOK_RUNNING_SUBCOMMANDS.has(subcommand)) return false;
   const valueOptions = VALUE_OPTIONS_BY_SUBCOMMAND.get(subcommand);
   let index = 0;
   while (index < parameters.length) {
@@ -1426,12 +1627,114 @@ function skipsHooks(git) {
   return false;
 }
 
+// ---- the hook skips a heredoc body that no shell runs is judged for ----
+
+// Such a body is a document that may name any bypass, so it is judged only for the plain
+// core.hooksPath spellings below: a body cannot be told apart from a command piped to a shell, and
+// a document that shows an include path, a prefix-resolved option, a GIT_CONFIG_* export or
+// `commit-tree` must not deny.
+const CORE_HOOKS_PATH_ENTRY = /^core\.hookspath(?:=|$)/i;
+const CORE_HOOKS_PATH_KEY = /^core\.hookspath$/i;
+const CORE_HOOKS_PATH_PARAMETER = /(?:^|[\s'"])core\.hookspath(?:=|['"\s]|$)/i;
+const EXACT_CONFIG_READ_OPTIONS = new Set([
+  '--get',
+  '--get-all',
+  '--get-regexp',
+  '--get-urlmatch',
+  '--get-color',
+  '--get-colorbool',
+  '-l',
+  '--list',
+]);
+const EXACT_CONFIG_WRITE_OPTIONS = new Set(['--unset', '--unset-all', '--add', '--replace-all']);
+const EXACT_CONFIG_OPTIONS_WITH_VALUE = new Set([
+  '-f',
+  '--file',
+  '--blob',
+  '--type',
+  '--default',
+  '--comment',
+]);
+
+// The options of a `git config` command line by exact name, and its positional words.
+function splitExactConfigWords(parameters) {
+  const options = [];
+  const positionals = [];
+  let optionsEnded = false;
+  for (let index = 0; index < parameters.length; index += 1) {
+    const word = parameters[index];
+    if (!optionsEnded && word === '--') {
+      optionsEnded = true;
+    } else if (optionsEnded || !word.startsWith('-') || word === '-') {
+      positionals.push(word);
+    } else {
+      options.push(word);
+      if (EXACT_CONFIG_OPTIONS_WITH_VALUE.has(word)) index += 1;
+    }
+  }
+
+  return { options, positionals };
+}
+
+// Whether a `git config` writes or unsets core.hooksPath, by exact option names alone.
+function writesCoreHooksPath({ subcommand, arguments: parameters }) {
+  if (subcommand !== 'config') return false;
+  const { options, positionals } = splitExactConfigWords(parameters);
+  if (options.some((option) => EXACT_CONFIG_READ_OPTIONS.has(option))) return false;
+  const holdsKey = (word) => word !== undefined && CORE_HOOKS_PATH_KEY.test(word);
+  if (options.some((option) => EXACT_CONFIG_WRITE_OPTIONS.has(option))) {
+    return positionals.some(holdsKey);
+  }
+  if (positionals[0] === 'set' || positionals[0] === 'unset') return holdsKey(positionals[1]);
+
+  return holdsKey(positionals[0]) && positionals.length >= 2;
+}
+
+// Whether a hook-running git command is given core.hooksPath by `-c`, `--config-env`, or the
+// variables in front of it.
+function runsWithCoreHooksPath({ subcommand, configs, environment }) {
+  if (!HOOK_RUNNING_SUBCOMMANDS.has(subcommand)) return false;
+
+  return (
+    configs.some((entry) => CORE_HOOKS_PATH_ENTRY.test(entry)) ||
+    Object.entries(environment).some(
+      ([name, value]) =>
+        (GIT_CONFIG_KEY_VARIABLE.test(name) && CORE_HOOKS_PATH_KEY.test(unquoted(value))) ||
+        (name === 'GIT_CONFIG_PARAMETERS' && CORE_HOOKS_PATH_PARAMETER.test(value)),
+    )
+  );
+}
+
+function dataBodyHookFinding(git, segment) {
+  if (writesCoreHooksPath(git) || runsWithCoreHooksPath(git)) {
+    return { kind: 'hooksConfig', detail: segment.trim() };
+  }
+
+  return skipsHooks(git) ? { kind: 'noVerify', detail: segment.trim() } : null;
+}
+
+// The hook skips of a command that runs: a config rewrite, a `-c` entry or a GIT_CONFIG_*
+// variable, `git commit-tree` (it writes a commit object without running any hook), or an option.
+function hookFinding(git, invocations, segment) {
+  if (rewritesHooksPath(git) || runsWithHooksConfig(invocations)) {
+    return { kind: 'hooksConfig', detail: segment.trim() };
+  }
+  if (git.subcommand === 'commit-tree' || skipsHooks(git)) {
+    return { kind: 'noVerify', detail: segment.trim() };
+  }
+
+  return null;
+}
+
 // One invocation per directory the command may run in; the subcommand is
 // the same in each.
 function gitFinding(segment, invocations, rules) {
   const [git] = invocations;
   if (git.subcommand === 'stash') return { kind: 'stash', detail: segment.trim() };
-  if (skipsHooks(git)) return { kind: 'noVerify', detail: segment.trim() };
+  const skipped = rules.dataBody
+    ? dataBodyHookFinding(git, segment)
+    : hookFinding(git, invocations, segment);
+  if (skipped !== null) return skipped;
   if (!MAIN_CHECKOUT_SUBCOMMANDS.has(git.subcommand) || leavesMainCheckoutSafe(git)) return null;
   const target = invocations
     .flatMap((invocation) => invocation.targets)
@@ -1513,18 +1816,42 @@ function namesGuardedTree(target) {
   );
 }
 
+// The repository config holds core.hooksPath, which turns the pre-commit typecheck on, so a shell
+// write into it is a way to turn it off: `.git/config`, `.git/config.worktree`, and a linked
+// worktree's `.git/worktrees/<name>/config.worktree`, of any repository (APFS folds case).
+const GIT_CONFIG_FILES = new Set(['config', 'config.worktree']);
+
+function isGitConfigFile(target) {
+  const segments = target.toLowerCase().split('/');
+
+  return segments.some(
+    (segment, index) =>
+      segment === '.git' &&
+      (GIT_CONFIG_FILES.has(segments[index + 1]) ||
+        (segments[index + 1] === 'worktrees' && segments[index + 3] === 'config.worktree')),
+  );
+}
+
+// A path the text cannot pin down that still spells `.git/config` (`"$D/.git/config"`).
+const namesGitConfig = (target) => /(?:^|\/)\.git\/config(?:\.worktree)?$/i.test(target);
+
 // Where `target` lands from `directory` (resolved when the text allows) when
-// that is inside a tree, or null. A cp/mv `destination` may be a folder, and
-// what it copies lands inside it, so one that is a tree folder itself counts
-// too. With `resolvedOnly`, a target the text cannot resolve never counts.
+// that is inside a tree or is a git config file, or null. A cp/mv
+// `destination` may be a folder, and what it copies lands inside it, so one
+// that is a tree folder itself counts too. With `resolvedOnly`, a target the
+// text cannot resolve never counts.
 function guardedPlace(target, directory, rules, { destination, resolvedOnly }) {
   const resolved = resolveDirectory(directory, target);
   const inside = (place) => (destination ? `${place.replace(/\/+$/, '')}/_` : place);
   if (resolved === null) {
-    return !resolvedOnly && namesGuardedTree(inside(target)) ? target : null;
+    if (resolvedOnly) return null;
+
+    return namesGuardedTree(inside(target)) || namesGitConfig(target) ? target : null;
   }
 
-  return isInsideGuardedTree(inside(resolved), rules) ? resolved : null;
+  return isInsideGuardedTree(inside(resolved), rules) || isGitConfigFile(resolved)
+    ? resolved
+    : null;
 }
 
 // The first of `targets` that lands inside a tree from any directory the
@@ -2094,9 +2421,9 @@ function settleFallback(location, separator) {
 
 // A subshell's directory changes end with the subshell.
 function enterSubshells(location, count) {
-  const { directories, previous, stack, fallback } = location;
+  const { directories, previous, stack, fallback, variables } = location;
   for (let open = 0; open < count; open++) {
-    location.saved.push({ directories, previous, stack, fallback });
+    location.saved.push({ directories, previous, stack, fallback, variables });
   }
 }
 
@@ -2159,29 +2486,155 @@ function substitutedCommandFinding(command, context) {
   );
 }
 
+// A statement that only sets variables (a bare `NAME=value`, or an `export`/`declare`) denies by
+// itself when they set core.hooksPath through GIT_CONFIG_*, whatever git command runs after it.
+function environmentFinding(environment, context) {
+  if (context.rules.dataBody || !environmentSetsHooksPath(environment)) return null;
+
+  return { kind: 'hooksConfig', detail: context.segment.trim() };
+}
+
+// ---- a script file a shell runs ----
+
+const SCRIPT_FILE_MAXIMUM_BYTES = 256 * 1024;
+// A first line that names a shell as the interpreter: `#!/bin/bash`, `#!/usr/bin/env zsh -f`.
+const SHELL_SHEBANG = /^#!\s*(?:\S*\/)?(?:env\s+(?:-\S+\s+)*)?(?:sh|bash|zsh|dash)(?:\s|$)/;
+// The shell options that take their value as the NEXT word (`bash -o pipefail x.sh`).
+const SHELL_OPTIONS_WITH_VALUE = new Set(['-o', '+o', '-O', '+O', '--rcfile', '--init-file']);
+// `-s` reads the script from stdin, so a word after it is an argument, not a file.
+const SHELL_STDIN_FLAG = /^-[A-Za-z]*s[A-Za-z]*$/;
+const SHELL_OPTION = /^[-+]./;
+
+// The script file `bash [options] <file>` runs: its first operand. A `-c` flag (anywhere, as
+// `queueShellScript` reads it) or `-s` means the script is text, not a file.
+function shellScriptOperand(rest) {
+  if (rest.some((word, index) => index > 0 && SHELL_COMMAND_FLAG.test(word))) return undefined;
+  let index = 1;
+  while (index < rest.length) {
+    const word = rest[index];
+    if (word === '--') return rest[index + 1];
+    if (!SHELL_OPTION.test(word)) return word;
+    if (SHELL_STDIN_FLAG.test(word)) return undefined;
+    index += SHELL_OPTIONS_WITH_VALUE.has(word) ? 2 : 1;
+  }
+
+  return undefined;
+}
+
+// The script file a command runs, as `{ operand, requireShebang }`, or null: `bash|sh|zsh|dash
+// <file>`, `source <file>` and `. <file>`, or a path run directly (`./x.sh`, `/tmp/x.sh`), which a
+// shell reads only when its first line names a shell.
+function scriptFileOf(base, rest) {
+  if (SHELLS.has(base)) return { operand: shellScriptOperand(rest), requireShebang: false };
+  if (base === 'source' || base === '.') {
+    return { operand: rest.slice(1).find((word) => word !== '--'), requireShebang: false };
+  }
+
+  return rest[0].includes('/') ? { operand: rest[0], requireShebang: true } : null;
+}
+
+// The files a shell reads its own stdin through.
+const STDIN_FILES = new Set(['/dev/stdin', '/dev/fd/0', '/proc/self/fd/0']);
+
+// `scripts/job-queue.sh` at the root of a worktree of this repository sends TERM to the process
+// group of its own job: the one allowed group kill (user ruling). Stricter than the write deny's
+// worktree test: the folder must share this repository's git directory, readably.
+function isQueueScript(file, rules) {
+  const scripts = path.dirname(file);
+  if (path.basename(file).toLowerCase() !== 'job-queue.sh') return false;
+  if (path.basename(scripts).toLowerCase() !== 'scripts') return false;
+  const common = gitCommonDirectory(path.dirname(scripts));
+
+  return common !== null && common === rules.projectCommonDirectory;
+}
+
+// The text of a script file the guard may read: a regular file within the size limit that is not
+// the exempt queue script, and, for a path run directly, one with a shell shebang.
+function readScriptFile(file, rules, requireShebang) {
+  try {
+    const real = fs.realpathSync(file);
+    const status = fs.statSync(real);
+    if (!status.isFile() || status.size > SCRIPT_FILE_MAXIMUM_BYTES) return null;
+    if (isQueueScript(real, rules)) return null;
+    const text = fs.readFileSync(real, 'utf8');
+
+    return requireShebang && !SHELL_SHEBANG.test(text) ? null : text;
+  } catch {
+    return null;
+  }
+}
+
+// A kill in the script file a command runs (one level: a script it runs or sources in turn is not
+// read). A file the text cannot name (a variable), a missing one, one over the size limit, and one
+// built in the same command are not read.
+function scriptKillFinding(scriptFile, context) {
+  if (scriptFile === null || !context.rules.scanScripts) return null;
+  const { operand, requireShebang } = scriptFile;
+  if (operand === undefined) return null;
+  const scan = { ...context.rules, kinds: SCRIPT_KINDS, scanScripts: false, checkWrites: false };
+  for (const directory of context.directories) {
+    const file = resolveDirectory(directory, operand);
+    const text = file === null ? null : readScriptFile(file, context.rules, requireShebang);
+    if (text === null) continue;
+    const kill = findDanger(
+      text,
+      1,
+      false,
+      { directories: [directory], variables: noVariables() },
+      scan,
+    );
+    if (kill !== null) return { kind: 'scriptKill', detail: `${file} holds \`${kill.detail}\`` };
+  }
+
+  return null;
+}
+
+// A pkill/killall (or the probe's sentinel), or a `kill` aimed at a pattern or a process group.
+function killFinding(base, { tokens: rest, viaXargs }, context) {
+  const aimsAtMany = () => viaXargs || killTargets(rest.slice(1)).some(isDangerousKillTarget);
+  const isKill =
+    context.rules.killCommands.has(base) ||
+    (base === 'kill' && !sendsNoSignal(rest.slice(1)) && aimsAtMany());
+
+  return isKill ? { kind: 'kill', detail: context.segment.trim() } : null;
+}
+
+// `export`/`declare`/`typeset`/`local`/`readonly` set the variables named after them.
+function assignmentFinding({ tokens: rest, environment }, context) {
+  const assigned = { ...environment };
+  for (const word of rest.slice(1)) recordAssignment(assigned, word);
+
+  return environmentFinding(assigned, context);
+}
+
 // The finding for one unwrapped command (see `segmentFinding`).
 function commandFinding(command, context) {
-  const { tokens: rest, viaXargs, environment } = command;
-  if (rest.length === 0) return null;
+  const { tokens: rest, environment } = command;
+  if (rest.length === 0) return environmentFinding(environment, context);
   if (rest[0].includes(SUBSHELL_PLACEHOLDER)) return substitutedCommandFinding(command, context);
   const base = basename(rest[0]);
+  if (ASSIGNING_COMMANDS.has(base)) return assignmentFinding(command, context);
 
   if (SHELLS.has(base)) {
     queueShellScript(rest, context.scripts, context.stdinScripts);
-    return null;
+
+    return scriptKillFinding(scriptFileOf(base, rest), context);
   }
 
+  // `eval "$(cat)" <<'EOF'` runs what its stdin holds, as `source /dev/stdin <<'EOF'` does.
   if (base === 'eval') {
-    context.scripts.push(rest.slice(1).join(' '));
+    context.scripts.push(rest.slice(1).join(' '), ...context.stdinScripts);
     return null;
   }
 
-  if (context.rules.killCommands.has(base)) return { kind: 'kill' };
+  const kill = killFinding(base, command, context);
+  if (kill !== null || base === 'kill') return kill;
 
-  if (base === 'kill') {
-    const isPatternKill = viaXargs || killTargets(rest.slice(1)).some(isDangerousKillTarget);
+  if (base === 'source' || base === '.') {
+    const scriptFile = scriptFileOf(base, rest);
+    if (STDIN_FILES.has(scriptFile.operand)) context.scripts.push(...context.stdinScripts);
 
-    return isPatternKill ? { kind: 'kill' } : null;
+    return scriptKillFinding(scriptFile, context);
   }
 
   if (base === 'git') {
@@ -2192,6 +2645,8 @@ function commandFinding(command, context) {
     return gitFinding(context.segment, invocations, context.rules);
   }
 
+  const executed = scriptKillFinding(scriptFileOf(base, rest), context);
+  if (executed !== null) return executed;
   if (!context.rules.checkWrites) return null;
   const write = commandWrite(command, context);
   if (write === null) return null;
@@ -2207,28 +2662,55 @@ function redirectWrite(redirects, directories, rules) {
   return firstGuardedWrite(targets, directories, rules);
 }
 
+// The kinds the second, variable-expanded reading of a segment reports (see `segmentFinding`).
+const EXPANDED_KINDS = new Set(['shellWrite', 'mainCheckout']);
+
 // Returns the finding for one simple command — `{ kind: 'kill' }`, or
 // `{ kind: 'stash' | 'mainCheckout' | 'shellWrite', detail }` — or null
 // when it is safe. A shell's script and `eval`'s joined arguments go to
 // `scripts` as command text. `stdinBodies` are the heredoc bodies it reads,
 // `spans` the text of its `$(...)`/backtick spans, and `directories` the
-// places it may run in (null for one the text cannot pin down).
-function segmentFinding({ segment, scripts, stdinBodies, spans, directories, rules }) {
+// places it may run in (null for one the text cannot pin down). The text is judged as written
+// first; when the command assigned a variable the segment reads, it is judged once more with the
+// values filled in, so an assignment only ever adds a finding: a command that assigns a name the
+// guard cannot follow (a loop variable, `read`, `+=`) still denies what its raw text denied. The
+// second reading reports only a write or a main-checkout finding: a variable's value says where a
+// write lands or a git command runs, but never which command runs or what a kill aims at (an
+// unknown `$pid` is the agent's own).
+function segmentFinding({ segment, scripts, stdinBodies, spans, place, rules }) {
+  const { directories, variables } = place;
   const { words: tokens, hereStrings, redirects } = tokenize(segment);
   const stdinScripts = [...stdinBodies, ...hereStrings];
-  const finding = commandFinding(unwrap(tokens), {
-    segment,
-    scripts,
-    stdinScripts,
-    spans,
-    directories,
-    rules,
-  });
-  if (finding !== null) return finding;
-  const write = redirectWrite(redirects, directories, rules);
-  if (write === null) return null;
+  const judge = (words, targets, queue) => {
+    const finding = commandFinding(unwrap(words), {
+      segment,
+      scripts: queue,
+      stdinScripts,
+      spans,
+      directories,
+      rules,
+    });
+    if (finding !== null) return finding;
+    const write = redirectWrite(targets, directories, rules);
 
-  return shellWriteFinding(segment, write);
+    return write === null ? null : shellWriteFinding(segment, write);
+  };
+  const finding = judge(tokens, redirects, scripts);
+  if (finding !== null || !hasVariables(variables)) return finding;
+  const expand = (word) => expandVariables(word, variables);
+  const expandedWords = tokens.map(expand);
+  const expandedTargets = redirects.map((redirect) => ({
+    ...redirect,
+    target: expand(redirect.target),
+  }));
+  const unchanged =
+    expandedWords.every((word, index) => word === tokens[index]) &&
+    expandedTargets.every((redirect, index) => redirect.target === redirects[index].target);
+
+  if (unchanged) return null;
+  const added = judge(expandedWords, expandedTargets, []);
+
+  return EXPANDED_KINDS.has(added?.kind) ? added : null;
 }
 
 // ---- wait loops that scan the process table ----
@@ -2409,14 +2891,125 @@ function observeWaitLoops(watch, segment, spans) {
   return closed.find((finding) => finding !== null) ?? null;
 }
 
+// The finding kinds a pass reports: a script file is read for kills only, a heredoc body that no
+// shell is known to run is read for the kinds in `DATA_KINDS` (a kill, a git stash, a hook skip by
+// option or core.hooksPath, a main-checkout change, a wait loop), and every other finding in either
+// is not that pass's business. `null` reports every kind.
+const SCRIPT_KINDS = new Set(['kill']);
+const DATA_KINDS = new Set([
+  'kill',
+  'stash',
+  'noVerify',
+  'hooksConfig',
+  'mainCheckout',
+  'waitLoop',
+]);
+
+const wanted = (finding, rules) =>
+  rules.kinds !== null && !rules.kinds.has(finding?.kind) ? null : finding;
+
+// A line carries its own `rules` when it is judged otherwise than the lines around it.
 function firstFinding(lines, depth, checkHeredoc, rules) {
   for (const line of lines) {
-    const finding = findDanger(line.text, depth + 1, checkHeredoc, line.directories, rules);
+    const place = { directories: line.directories, variables: line.variables };
+    const finding = findDanger(line.text, depth + 1, checkHeredoc, place, line.rules ?? rules);
     if (finding !== null) return finding;
   }
 
   return null;
 }
+
+// ---- variables a command assigns for itself ----
+
+const VARIABLE_REFERENCE = /\$(?:\{([A-Za-z_][A-Za-z0-9_]*)\}|([A-Za-z_][A-Za-z0-9_]*))/g;
+
+// A value is a path the text names, not a program's output: one longer than this is unknown, and
+// one word never grows past four of them, so `v=$v$v` repeated cannot build a string the engine
+// refuses (which threw, and the hook then allowed everything).
+const VARIABLE_VALUE_LIMIT = 4096;
+const EXPANDED_WORD_LIMIT = 4 * VARIABLE_VALUE_LIMIT;
+
+// `$name` and `${name}` in `word` read as the value this command assigned earlier (quoting and
+// word splitting aside); a name it never assigned, or whose value is unknown, stays as it is.
+function expandVariables(word, variables) {
+  let room = EXPANDED_WORD_LIMIT;
+
+  return word.replace(VARIABLE_REFERENCE, (match, braced, bare) => {
+    const value = lookupVariable(variables, braced ?? bare);
+    if (value === undefined || value === null) return match;
+    room -= value.length;
+
+    return room < 0 ? match : value;
+  });
+}
+
+// The variables one segment leaves set for the commands after it: a bare `NAME=value` statement,
+// or the `NAME=value` words of an `export`/`declare`/`typeset`/`local`/`readonly`. A `NAME=value`
+// in front of a command lasts for that command only, and a segment before `&` or `|` runs in a
+// subshell, so neither persists.
+function assignedVariables(segment, variables, separator) {
+  if (separator === '&' || separator === '|') return {};
+  const { tokens, environment } = unwrap(
+    words(segment).map((word) => expandVariables(word, variables)),
+  );
+  if (tokens.length === 0) return environment;
+  if (!ASSIGNING_COMMANDS.has(basename(tokens[0]))) return {};
+  const assigned = {};
+  for (const word of tokens.slice(1)) recordAssignment(assigned, word);
+
+  return assigned;
+}
+
+// A value that is itself an expansion (`$!`, `$(pgrep x)`, `$other`) is not a path the text names,
+// and expanding it would hide that a kill's target is a variable: it is recorded as unknown.
+const isLiteralValue = (value) =>
+  value.length <= VARIABLE_VALUE_LIMIT && !/[$`]|__SUBSHELL__/.test(value);
+
+// The variables at one point of a command: `own` entries over the `parent` scope. A segment's
+// scope must stay as it was, because the nested text of earlier segments still reads it, so a later
+// assignment adds a link instead of copying every earlier variable (thousands of assignments
+// copied quadratically, seconds of the hook's 10). Every SCOPE_DEPTH_LIMIT links the chain is
+// folded into one map, so a lookup walks a few links at most.
+const SCOPE_DEPTH_LIMIT = 32;
+
+const noVariables = () => ({ own: new Map(), parent: null, depth: 0 });
+
+const hasVariables = (scope) => scope.parent !== null || scope.own.size > 0;
+
+function lookupVariable(scope, name) {
+  for (let link = scope; link !== null; link = link.parent) {
+    if (link.own.has(name)) return link.own.get(name);
+  }
+
+  return undefined;
+}
+
+function foldScope(scope) {
+  const links = [];
+  for (let link = scope; link !== null; link = link.parent) links.unshift(link);
+  const own = new Map();
+  for (const link of links) for (const [name, value] of link.own) own.set(name, value);
+
+  return { own, parent: null, depth: 0 };
+}
+
+// A later assignment of a name wins, in the order the command runs them. A segment that assigns
+// nothing shares its scope.
+function withVariables(scope, assigned) {
+  const entries = Object.entries(assigned);
+  if (entries.length === 0) return scope;
+  const own = new Map(entries.map(([name, value]) => [name, isLiteralValue(value) ? value : null]));
+  const next = { own, parent: scope, depth: scope.depth + 1 };
+
+  return next.depth >= SCOPE_DEPTH_LIMIT ? foldScope(next) : next;
+}
+
+// The variables after one segment. Only a write or a directory is judged through a variable, and
+// a pass that reports kills and stashes alone judges neither, so it tracks none.
+const variablesAfter = (variables, segment, separator, rules) =>
+  rules.kinds === null
+    ? withVariables(variables, assignedVariables(segment, variables, separator))
+    : variables;
 
 // The texts of `entries` (heredoc bodies or nested spans) that belong to a
 // segment, by its index. Grouped once per line, since a line can hold
@@ -2443,22 +3036,56 @@ function followingCommands(segments) {
   return following;
 }
 
+// The commands that run what their arguments print or name.
+const RUNNING_COMMANDS = new Set(['eval', 'source', '.', ...SHELLS]);
+
+// The rules for the `$(...)` and backtick spans of one segment. What a span prints is run when the
+// segment is such a command (`eval "$(cat <<'EOF' ...)"`, `sh -c "$(...)"`, `source <(...)`), or
+// is the span itself in command position, so a heredoc body inside the span is shell text. A
+// guess about what the span prints would be a guess a bypass can lose, so any span there counts.
+function rulesForSpans(segment, spans, rules) {
+  if (spans.length === 0 || rules.outputRuns) return rules;
+  const [first] = unwrap(tokenize(segment).words).tokens;
+  const runs =
+    first !== undefined &&
+    (first.includes(SUBSHELL_PLACEHOLDER) || RUNNING_COMMANDS.has(basename(first)));
+
+  return runs ? { ...rules, outputRuns: true } : rules;
+}
+
 // Scans one full line of shell text (recursing into `$(...)`, backticks, a
 // `-c` argument to `sh`/`bash`/`zsh`/`dash`, an `eval` string, and heredoc
 // bodies) and returns the first finding anywhere in it, or null. A heredoc
 // body is never part of the command line around it, but a body can still be
-// run (`bash <<'EOF'`, `eval "$(cat <<'EOF' …)"`, `ssh host <<'EOF'`), so
-// each body is checked on its own for a kill or a git stash. Only a body a
-// shell reads as its script is also checked for an unquoted heredoc; any
-// other body is text, so a `<<word` in it is not an operator, and it is not
-// checked for shell writes either (a commit message or a notes file that
-// shows `sed -i` or `> src/…` writes nothing). `directories` are the places
-// the line may start in; every nested line runs where its segment does.
-function findDanger(line, depth, checkHeredoc, directories, rules) {
+// run, so each body is checked on its own. A body a shell reads as its script
+// (`bash <<'EOF'`, `source /dev/stdin <<'EOF'`), or that a span prints into a
+// command that runs it (`eval "$(cat <<'EOF' …)"`, `sh -c "$(…)"`, a span in
+// command position), is shell text: judged in full, an unquoted heredoc
+// included. Any other body (`cat > f <<'EOF'`, `ssh host <<'EOF'`) is text, so
+// a `<<word` in it is not an operator, and it is judged for the kinds the
+// pass reports (`DATA_KINDS` for a typed command, the script scan's own kinds
+// inside a script) by the plain triggers of those kinds, never for a shell
+// write or a narrower deny (`git commit-tree`, a GIT_CONFIG_* export, an
+// include path, a prefix-resolved `git config` option), and no variable the
+// command assigns reaches into it: a commit message or a notes file that shows
+// `git commit-tree` or `pid=-1; kill -9 $pid` runs nothing, yet one that shows
+// a plain bypass still denies, since a body cannot be told apart from a
+// command piped to a shell. `place` holds the
+// `directories` the line may start in and the `variables` the command has
+// assigned so far (a scope, see `withVariables`); every nested line runs where its segment does.
+function findDanger(line, depth, checkHeredoc, place, rules) {
   if (depth > 8) return null; // guards against pathological nesting
   const { segments, nested, heredoc, bodies, opens, closes, separators } = scanLevel(line);
-  const location = { directories, previous: [null], stack: [], fallback: null, saved: [] };
-  const directoriesAt = [];
+  const location = {
+    directories: place.directories,
+    variables: place.variables,
+    previous: [null],
+    stack: [],
+    fallback: null,
+    saved: [],
+  };
+  const placesAt = [];
+  const spanRules = [];
   const scripts = [];
   const bodiesAt = textsBySegment(bodies);
   const spansAt = textsBySegment(nested);
@@ -2468,39 +3095,65 @@ function findDanger(line, depth, checkHeredoc, directories, rules) {
 
   for (const [index, segment] of segments.entries()) {
     enterSubshells(location, opens[index]);
-    const here = location.directories;
-    directoriesAt.push(here);
+    const here = { directories: location.directories, variables: location.variables };
+    placesAt.push(here);
+    spanRules.push(rulesForSpans(segment, spansAt(index), rules));
     const segmentScripts = [];
-    const finding =
+    const finding = wanted(
       segmentFinding({
         segment,
         scripts: segmentScripts,
         stdinBodies: bodiesAt(index),
         spans: spansAt(index),
-        directories: here,
+        place: here,
         rules,
-      }) ?? observeWaitLoops(waitLoops, segment, spansAt(index));
+      }) ?? observeWaitLoops(waitLoops, segment, spansAt(index)),
+      rules,
+    );
     if (finding !== null) return finding;
-    scripts.push(...segmentScripts.map((text) => ({ text, directories: here })));
+    scripts.push(...segmentScripts.map((text) => ({ text, ...here })));
     const after = separators[index];
     const blank = segment.trim() === '';
     if (!blank) {
       moveDirectory(location, { segment, before, after, next: nextCommands[index] });
       settleFallback(location, after);
+      location.variables = variablesAfter(location.variables, segment, after, rules);
     }
     if (closes[index]) leaveSubshell(location);
     before = blank && CONTINUED_ON_NEXT_LINE.has(before) ? before : after;
   }
   if (checkHeredoc && heredoc !== null) return { kind: 'heredoc', detail: heredoc };
 
-  const inItsDirectory = (entry) => ({
-    text: entry.text,
-    directories: directoriesAt[entry.segmentIndex],
-  });
+  return nestedFinding(
+    { nested, scripts, bodies, placesAt, spanRules },
+    depth,
+    checkHeredoc,
+    rules,
+  );
+}
+
+// The nested lines, queued scripts and heredoc bodies of one line. A body is data for the command
+// that reads it, judged for the pass's kinds (`DATA_KINDS` when it has none) with no variable the
+// command assigns, unless what a span prints is run (`rules.outputRuns`), when it is shell text,
+// judged in full.
+function nestedFinding(parts, depth, checkHeredoc, rules) {
+  const { nested, scripts, bodies, placesAt, spanRules } = parts;
+  const inItsPlace = (entry) => ({ text: entry.text, ...placesAt[entry.segmentIndex] });
+  const inItsRules = (entry) => ({ ...inItsPlace(entry), rules: spanRules[entry.segmentIndex] });
+  const asData = (entry) => ({ ...inItsPlace(entry), variables: noVariables() });
+  const dataRules = {
+    ...rules,
+    kinds: rules.kinds ?? DATA_KINDS,
+    dataBody: true,
+    checkWrites: false,
+    scanScripts: false,
+  };
 
   return (
-    firstFinding([...nested.map(inItsDirectory), ...scripts], depth, checkHeredoc, rules) ??
-    firstFinding(bodies.map(inItsDirectory), depth, false, { ...rules, checkWrites: false })
+    firstFinding([...nested.map(inItsRules), ...scripts], depth, checkHeredoc, rules) ??
+    (rules.outputRuns
+      ? firstFinding(bodies.map(inItsPlace), depth, checkHeredoc, rules)
+      : firstFinding(bodies.map(asData), depth, false, dataRules))
   );
 }
 
@@ -2523,16 +3176,34 @@ const KILL_COMMANDS = ['pkill', 'killall'];
 // every command is judged once per reading, and either finding counts. The
 // outer text cannot tell whether such a delimiter hides in a nested `-c` or
 // `eval` string (`\$\"EOF\"`), so both readings always run.
+//
+// Judging fails closed: an error thrown while judging (a pathological command the scanners could
+// not take) is an `internalError` finding that denies, never an allow, because the command that
+// crashed the guard may be the one it exists to stop.
 function decide(command, options = {}) {
+  try {
+    return judge(command, options);
+  } catch (error) {
+    return {
+      kind: 'internalError',
+      detail: `${error?.name}: ${String(error?.message).slice(0, 200)}`,
+    };
+  }
+}
+
+function judge(command, options) {
   const rules = {
     killCommands: new Set([...KILL_COMMANDS, ...(options.sentinelKillCommands ?? [])]),
     mainCheckoutPath: options.mainCheckoutPath ?? MAIN_CHECKOUT_PATH,
     projectCommonDirectory: gitCommonDirectory(options.projectRoot ?? PROJECT_ROOT),
     checkWrites: true,
+    scanScripts: true,
+    kinds: null,
   };
   const start = typeof options.cwd === 'string' ? resolveDirectory(null, options.cwd) : null;
   for (const reading of ['bash', 'zsh']) {
-    const finding = withShellReading(reading, () => findDanger(command, 0, true, [start], rules));
+    const place = { directories: [start], variables: noVariables() };
+    const finding = withShellReading(reading, () => findDanger(command, 0, true, place, rules));
     if (finding !== null) return finding;
   }
 

@@ -43,6 +43,9 @@ describe('the footer', () => {
 
   it('reads the device check 3 row of the sheet', () => {});
 
+  // A parenthesized word and colon with no space after it is a data token, not a label.
+  it('parses an "(was:3)" import token', () => {});
+
   // A letter and digits with a colon after a lowercase opening are not a leading id.
   it('reads the a1: cell', () => {});
 

@@ -70,6 +70,16 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   WARNING or a `security.sh` SKIPPED notice can appear beside an unrelated
   failure. It is tracked debt, not that failure; otherwise these (and the `medium.sh` repeated-Stop note, which reaches a human only) are for a
   human or a manual `check:security`/`check:dup` run.
+  `__tests__/wrapper-stderr-exit-zero.test.ts` pins this: a `scripts/checks/*.sh` wrapper that
+  writes to stderr and exits 0 must be named in the list item that cites that test, and a new one
+  without a mention fails; keep `dup.sh`, `medium.sh` and `security.sh` named.
+
+  `medium.sh`'s doc step (see `docs/harness/checks.md` "Automatic wiring") has a deadline exit
+  shaped like the guard replay's: at hookStarted + the budget that
+  `node scripts/checks/guard-replay.js step-budget` prints it stops its own jest pid and exits 2
+  with a block that says to run `make doc-suites` by hand; zero suites, a missing jest, an
+  unreadable budget or a fingerprint hash failure (while doc files or suites exist) also
+  exit 2. A by-hand `make doc-suites` pass records the doc fingerprint and clears the block.
 
   Another exception, of a different shape: `scripts/checks/kill-guard.sh`
   (+ its sibling `scripts/checks/kill-guard.js`) is a `PreToolUse` hook on
@@ -142,19 +152,24 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   the word; `<<-` strips leading tabs; several heredocs on one line are
   read in order). Body text is never parsed as shell, so a `#`, an
   apostrophe, or a `<<word` in a body hides or denies nothing. Each body
-  is still checked on its own for a kill or `git stash` line, because a
-  body can run (`bash <<'EOF'`, `eval "$(cat <<'EOF' …)"`,
-  `ssh host <<'EOF'`, `cat <<'EOF' | sh`); only a body that a shell
+  is still judged on its own, because a body can run (`bash <<'EOF'`,
+  `eval "$(cat <<'EOF' …)"`, `ssh host <<'EOF'`, `cat <<'EOF' | sh`). A
+  data body is judged for the `DATA_KINDS` kinds (read the set in
+  `scripts/checks/kill-guard.js`) by the plain triggers; a run body (eval, `sh -c "$(cat <<…)"`,
+  `source /dev/stdin`, a span, `<(...)`) is judged in full, and only a body that a shell
   without `-c` reads as its script is also checked for an unquoted
-  heredoc. An unterminated body: the rest of the input is scanned as
+  heredoc (see "Heredoc bodies and `rules.kinds`" below). An
+  unterminated body: the rest of the input is scanned as
   shell (fail closed).
   A shell `-c` flag is matched anywhere in the arguments, not only
   before the command string (errs toward deny). A nested unquoted
   heredoc inside a body that runs is denied only when that body is a
   shell's stdin script (`bash <<'EOF'`); a kill or `git stash` line in
-  any running body is still denied. Here-strings: a `<<<` target that a
-  shell without `-c` reads (`bash <<< "…"`) is its script, scanned like
-  a shell stdin body (kill, stash, unquoted heredoc). A command
+  a body of a typed command is denied, while a heredoc inside a scanned script file is judged
+  for kills only. Here-strings: a `<<<` target that a
+  shell without `-c` reads (`bash <<< "…"`) is its script, judged in full
+  (a redirect into a guarded folder is a shell write, `bash <<< "git commit-tree HEAD"` a hook
+  skip). A command
   substitution in command position (`$(which pkill) -f x`,
   `` `true` git stash ``, `$(true)cd <main> && …`) is judged twice: as
   each guarded name any span in the segment shows, and as the next word
@@ -376,6 +391,73 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   plugin version bump) reaches a running session after a plugin
   reinstall and `/reload-plugins`.
 
+  SHELL-WRITE deny, git config files and same-command variables. The write target predicate
+  (`isGitConfigFile`, `namesGitConfig`) also covers `.git/config`, `.git/config.worktree`, and
+  `.git/worktrees/<n>/config.worktree` of any repository, and an unresolved path that spells
+  `.git/config` denies; the reason names the git config file and `scripts/ensure-git-hooks.sh`.
+  Not denied: `rm` or `mv`-away of `.git/config`, and `git config --edit`. A variable the SAME
+  command assigns with a literal value (bare, `export`, `declare`, `typeset`, `local`,
+  `readonly`; a later assignment wins; a subshell's scope ends with it; a `NAME=v cmd` prefix and
+  an assignment before `&` or `|` do not persist) is expanded in later words, redirect targets,
+  and nested text (`expandVariables`, `assignedVariables`, `withVariables`, `isLiteralValue`;
+  `findDanger`'s place is `{ directories, variables }`). The expansion reaches only write
+  targets (words and redirect targets) and git directories (`git -C $d`). `segmentFinding`
+  judges a segment as written first, then, when the command assigned a variable the segment
+  reads, once more with the values filled in; the second reading reports only `shellWrite` and
+  `mainCheckout` (`EXPANDED_KINDS`), so an assignment can only ADD a deny, never remove one.
+  A kill target and a command word are never expanded: `pid=-1; kill -9 $pid` is judged as
+  written (an unknown `$pid` is the agent's own) and is not denied. A value that is itself an
+  expansion (`$!`, `$(...)`, `$other`) stays unknown; a value over 4 KiB
+  (`VARIABLE_VALUE_LIMIT`) is unknown, and one word never expands past 16 KiB
+  (`EXPANDED_WORD_LIMIT`). Not tracked: `unset`, `cd $d`, `f+=x`, loop variables; an assignment
+  in a branch that may not run counts as run for the expanded reading, which only adds, and the
+  raw reading still denies what the text denies. Scopes chain per segment (`SCOPE_DEPTH_LIMIT`
+  folds them). A variable the command does not assign stays unresolved because failing closed
+  would deny `tmp=$(mktemp); cp x "$tmp"` and existing allow rows.
+
+  Script-content kill scan. The guard reads a script file a command runs (`bash|sh|zsh|dash
+  <file>`, `source <file>` or `. <file>`, or a path run directly whose first line names a
+  shell) and denies a pkill, killall, or pattern or process-group kill in it (kind `scriptKill`;
+  `scriptKillFinding`, `scriptFileOf`, `shellScriptOperand`, `readScriptFile`). One level only,
+  a regular file of at most 256 KiB, kills only (`rules.kinds` is `SCRIPT_KINDS`, the kill
+  kind alone: a stash or write inside it is not judged). A heredoc inside a scanned script is
+  judged for those kinds too (kill only); `DATA_KINDS` applies to typed commands only. `kill -0`
+  and `kill -s 0` send no signal and are harmless ONLY when no later word before the targets can be
+  an option: a word matching `/^-[A-Za-z]/`, a word that may expand (see `sendsNoSignal` in
+  `scripts/checks/kill-guard.js` for the characters), or a `-N` word with more words after it.
+  A later `-s`, `-n`, or `-sSIG` replaces the 0 with a real signal; otherwise the kill is
+  judged by its targets. These deny, typed or inside a scanned script: `kill -0 -s
+  KILL -1`, `kill -s 0 -s KILL -1`, `kill -0 -n 9 -1`, `kill -0 -sKILL -1`, `kill -s 0 -n 9 -1`.
+  `$1`..`$9` is a caller's own pid like a named variable; both rules apply to typed commands as
+  well as the script scan (`sendsNoSignal`, `isDangerousKillTarget`, `killFinding`).
+  `isQueueScript` exempts `scripts/job-queue.sh`
+  whose worktree root shares this
+  repository's git directory readably; a copy outside a worktree or in another repository
+  denies. Known limits, NOT denied: a script built in the same command, a missing or larger
+  file, a variable path, a script that sources another, a file for a non-shell interpreter,
+  and `make` targets; a `cp -R` copy of a linked worktree counts as this repository. Pinned by
+  `__tests__/kill-guard-scripts.test.ts` (every tracked file with a shell shebang, the
+  extensionless `githooks/pre-commit` and `pre-merge-commit` included, the routine coordinator
+  commands, the queue-script rows).
+
+  Heredoc bodies and `rules.kinds` (null judges every kind; `SCRIPT_KINDS` and `DATA_KINDS` in
+  `kill-guard.js` are the closed sets; read them there). A body no shell runs (`cat > f
+  <<'EOF'`, `ssh host <<'EOF'`) is data: `nestedFinding` judges it for `DATA_KINDS` (the kinds
+  the guard judged there before the newer denies: kill, stash, noVerify, hooksConfig,
+  mainCheckout, waitLoop) by the base triggers only, with no variable tracking, no shell-write
+  check, no script scan, and none of the newer triggers (`git commit-tree`, a `GIT_CONFIG_*`
+  export, `include.path`, a prefix-resolved `git config` option). So a note or commit message
+  that documents those commands in a heredoc is allowed, while a base-trigger text (`git commit
+  --no-verify`, a main-checkout merge) in it still denies. A body a shell or eval RUNS is
+  judged in full (`rules.outputRuns`, `rulesForSpans`, `RUNNING_COMMANDS`): `bash <<'EOF'`,
+  `sh -c "$(cat <<'EOF' ...)"`, `eval "$(cat <<'EOF' ...)"`, `eval ... <<'EOF'`, `source|.
+  /dev/stdin <<'EOF'`, a span in command position, and `<(...)`.
+
+  The `internalError` kind: `decide` fails closed, so an error thrown while judging returns an
+  `internalError` finding (`INTERNAL_ERROR_REASON_LINES`) and the command is denied. A
+  malformed or unreadable payload, an empty command, and a missing node still allow.
+  `kill-guard.sh` exits 0 always and denies through its JSON, also when judging crashed.
+
   NO-VERIFY deny (why: the tracked `githooks/pre-commit` and `githooks/pre-merge-commit` run
   `scripts/checks/commit-typecheck.sh`, a typecheck of the staged index; a commit that skips them
   lands a type error on the branch). Rule: deny a `git commit`, `git merge`, or `git pull` that
@@ -385,20 +467,41 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   core.hooksPath through `GIT_CONFIG_COUNT` with `GIT_CONFIG_KEY_<n>`, or through
   `GIT_CONFIG_PARAMETERS`. It also denies a `git config` that writes or unsets core.hooksPath in
   any scope (the `set`/`unset` forms of git 2.46 too), because that switches the hooks off for
-  every worktree. Entry points: `skipsHooks`, `rewritesHooksPath`, `environmentSetsHooksPath`
-  in `scripts/checks/kill-guard.js`; the finding kind is `noVerify`. Allowed: a `--get` read of the
-  key, `git config core.hooksPath` with no value, `-n` after another option's value or after
-  `--`, text in a commit message, and `git log -n`. The repair route for an unset core.hooksPath
+  every worktree. Entry points: `skipsHooks` (the `--no-verify`/`-n` options only),
+  `rewritesHooksPath`, `runsWithHooksConfig` (the `-c`/`--config-env` entries and the
+  GIT_CONFIG_* variables), `environmentSetsHooksPath` in `scripts/checks/kill-guard.js`;
+  `hookFinding` combines them for a command that runs. The kind is `noVerify` for
+  `--no-verify`/`-n` and `hooksConfig` for the `rewritesHooksPath` and `runsWithHooksConfig`
+  findings. A data body uses `dataBodyHookFinding` (`writesCoreHooksPath`,
+  `runsWithCoreHooksPath`, `skipsHooks`). Allowed: a
+  `--get` read of the key, `git config core.hooksPath` with no value, `-n` after another
+  option's value or after `--`, text in a commit message (within the data-body rule below), and
+  `git log -n`. The repair route for an unset core.hooksPath
   is `bash scripts/ensure-git-hooks.sh` or `npm ci`; a direct `git config core.hooksPath githooks`
   is denied too. The pre-commit hook itself: `scripts/checks/commit-typecheck.sh` copies the
   staged index to a temporary folder and runs `tsc --noEmit` there; it fails closed and skips a
   commit whose staged diff touches no file tsc reads (see `docs/harness/checks-internals.md`).
   A person may bypass in their own shell; the deny binds agent Bash calls only. Rows:
   `__tests__/kill-guard.test.ts`, `__tests__/commit-typecheck.test.ts`,
-  `__tests__/ensure-git-hooks.test.ts`. Known limits, NOT denied: a bypass built at run time; an
-  `export GIT_CONFIG_*=...` line before the git command (only `NAME=value` prefixes are read);
-  `git config --value <v>` with the value as a separate word; `--remove-section core` and
-  `--rename-section core`.
+  `__tests__/ensure-git-hooks.test.ts`, `__tests__/kill-guard-hook-skips.test.ts`.
+
+  The `noVerify` kind covers `--no-verify`, `-n`, and `git commit-tree` in every form (it
+  writes a commit no hook runs for; `git update-ref` stays allowed). The kind `hooksConfig`
+  (entry points `rewritesHooksPath`, `environmentSetsHooksPath`, `environmentFinding`) carries a
+  reason naming
+  `scripts/ensure-git-hooks.sh`. A `git config` long option resolves by git's unique-prefix rule
+  (`CONFIG_LONG_OPTIONS`, the union of git 2.38.1 and later-git names, read through
+  `resolveConfigLongOption`): an ambiguous or unknown option denies when the command names a
+  hooksPath or include key or the `core` section. `--remove-section` and `--rename-section` of
+  `core` (case-insensitive, also the subcommand forms) deny. `--value` takes the next word.
+  `include.path` and `includeIf.<c>.path` are treated like core.hooksPath (a write, `-c`,
+  `--config-env`, or GIT_CONFIG_* denies; a read allows), since the included file can set the
+  key. An `export`, `declare -x`, `typeset`, `local`, `readonly`, or bare assignment of
+  `GIT_CONFIG_KEY_<n>` to those keys, or of `GIT_CONFIG_PARAMETERS` holding them, denies by
+  itself. A `GIT_CONFIG_GLOBAL` or `GIT_CONFIG_SYSTEM` file swap is not judged:
+  `scripts/ensure-git-hooks.sh` writes core.hooksPath in the local scope, which outranks the
+  global and system scopes and every file they include, so a swapped file switches nothing off.
+  Known limits, NOT denied: a bypass built at run time.
 
   Probing the kill-guard (rule): SENTINEL probes only. A probe that
   EXECUTES shell text runs ONLY through the committed runner
@@ -441,8 +544,12 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   Stopping rule: an exotic, obfuscated, or run-time-built form is a
   known limit to list here, not a bug to fix. Re-verify each item in
   `kill-guard.js`, `kill-guard-probe.sh`, and their tests.
+  - Commit-hook bypass, NOT denied: `git rebase`, `cherry-pick`, and `am` replay commits
+    without running pre-commit.
   - NOT denied: a kill or stash through an alias, a function, a script
-    file, or a variable (`$CMD`); a word built at run time
+    file the kill scan does not read (see the script-content scan above), or a variable
+    (`$CMD`; a command word and a kill target are never expanded from a same-command
+    assignment); a word built at run time
     (`a=pk; ${a}ill x`, `$(printf pk)ill x`, `$(cat name.txt) x`); a
     span glued after the command word (`git$(true) stash`); a span
     glued before the name inside quotes (`"$(true)git" stash`,
@@ -462,9 +569,9 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
     `eval "$(cat <<'EOF' …)"`, or `bash -c "$(cat <<'EOF' …)"`: not
     denied. Heredoc delimiter corner cases beyond those modeled above
     (bash's `EOF)` shorthand, trailing spaces).
-  - Shell-write deny, NOT denied: a path held in a variable or loop
-    variable (`sed -i … "$f"`, `for f in …; do … > "$f"; done`), or assigned earlier in the same
-    command (`f=… && sed -i '' … $f`; run-log gap 20261014T2300-kiko-help-flows/1), unless
+  - Shell-write deny, NOT denied: a path held in a variable the command
+    does not assign, or assigns from an expansion, or a loop
+    variable (`sed -i ... "$f"`, `for f in ...; do ... > "$f"; done`) unless
     its text names a tree folder; a `cd` into a tree through a variable
     then a relative path (`cd $VAR/src && echo x > y.ts`; plain
     `cd $VAR && echo x > src/…` IS denied); `eval` of a built string;
@@ -487,8 +594,9 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
     (`find src -exec sed -i … {} +`, `find /tmp -exec cp {} src/ \;`,
     `find … -exec mv {} rules/ +`, `find … -exec sh -c 'sed -i …
     "$1"' _ {} \;`); `xargs -I{} sh -c '… {}'` (the `{}` is not read as
-    the input); a `cp`/`mv` whose destination is a variable (the
-    variable-path rule above); other writers and tools — `dd of=`,
+    the input); a `cp`/`mv` whose destination is a variable (the "SHELL-WRITE deny, git config
+    files and same-command variables" paragraph above: only an unassigned or
+    expansion-derived variable passes); other writers and tools — `dd of=`,
     `install`, `rsync`, `ditto`, `ln`, `truncate`, `touch`, `patch`, `awk`'s own
     `print >`, `ex`/`vim -c`, a `npx`/`uv run` wrapper
     around python or node, and a python/node write API outside
@@ -607,15 +715,11 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   required, any exception, and a script that crashes all keep the file. A file
   whose base or HEAD text contains `Stryker` (a `disable`/`restore` directive
   changes the mutant set) or `@jsx` (a pragma changes how the file compiles)
-  is kept whatever else changed. A comment-only source file is also kept, and
-  `--list` says `kept (colocated test changed): <path>`, when a changed test
-  file beside it (same folder: `foo.test.ts(x)` or `foo.<anything>.test.ts(x)`
-  for `foo.ts(x)`) is not itself comment-only: a test weakened together with a
-  comment edit must still be mutated. "Colocated" means the SAME FOLDER only:
-  a test elsewhere (for example `__tests__/App.test.tsx` for `App.tsx`) or a
-  changed helper, mock, or fixture (`__mocks__/`, `test-support/`) does not
-  keep a comment-only source file. Both `git diff --name-only` calls run with
-  `-c core.quotePath=false`, so a non-ASCII test name matches. Tests:
+  is kept whatever else changed. A changed colocated test beside a comment-only
+  source never keeps it (user ruling 2026-10-14, G1 a): the file mutates nothing, and
+  no whole-file keep exists. The changed-files `git diff --name-only`
+  (`diff_names` in `scripts/checks/mutation.sh`) runs with `-c core.quotePath=false`, so a
+  non-ASCII file name matches. Tests:
   `__tests__/comment-only-changes.test.ts` (the parse cases, one spawn) and
   `__tests__/mutation-comment-only.test.ts` (the wrapper, against the stub).
 
@@ -629,7 +733,7 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   reviewed change set (harness-workflow's "Mutation testing: small change
   sets only"). No env var bypasses the
   cap. `mutation.sh --list` (`make mutable`) prints each file's ranges (`<file> 3-7,12-12 (6 changed lines)`;
-  a comment-only file kept by its colocated test prints `whole file (N lines)`), `changed lines: N`, and
+  every file prints its ranges), `changed lines: N`, and
   `mutable files: N (cap …)` after the same refusals and the same
   `mutable_source_files` filter, then a `timeout share (history)` line (always
   printed, `none` included; read the printf in `mutation.sh`), then exits (2 above the cap) before
@@ -737,8 +841,7 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   scorer takes the exact `--mutate` entries as arguments and grades only mutants fully inside a range,
   because Stryker's incremental mode carries old out-of-range mutants with their old statuses into
   `reports/mutation/mutation.json` (core `incremental-differ.js` lines 128-142). It exits 2 when one file is given both as a
-  plain path and as a range (Stryker reads that as "do not mutate"). A comment-only file kept because its
-  colocated test changed goes in as its plain path (whole file). A kept path with `[ ( * ? {` is refused with
+  plain path and as a range (Stryker reads that as "do not mutate"). A kept path with `[ ( * ? {` is refused with
   exit 2, after the lock in a run and with no lock in `--list`, always before Stryker. The diff uses
   `--find-renames --inter-hunk-context=0 --text --no-textconv`, run with `GIT_DIFF_OPTS=` (a -diff/binary attribute, a textconv driver, or a context width in that variable must not change the hunks). One `cleanup` removes the lock and the temp file for `mutation-ranges.js` stderr on EXIT, INT (exit 130), and TERM (exit 143). General rule: any checker that parses `git diff` hunks forces `--text --no-textconv --no-ext-diff` and `-c core.quotePath=false`, and treats a failed or unparsable diff as a block, never as "nothing to do" (H6 review 2026-10-12: a binary/textconv `.ts` diff gave no hunk and the gate passed with nothing mutated; fixed in 5f31d626). User ruling 2026-10-12, no edge-straddling mutant: Stryker 8.7.1 creates a mutant only when its whole node lies inside a range (its fully-inside rule, instrumenter syntax-helpers.js), and the scorer grades only mutants fully inside a range. Cost: an edit inside a multi-line block, condition, object or array, or an arrow body loses that construct's whole-node mutants; the inner mutants on the changed lines stay. User ruling 2026-10-12, source plus colocated test: when a source file and its colocated test both change, only the changed source lines are mutated. Cost: a weakened test is checked only against the changed lines, not the whole file. The
   scorer is unit-tested directly against constructed report fixtures
@@ -1778,14 +1881,12 @@ is not seen.
 Mechanizes kiko-code-style's "`ts-pattern` for exhaustive mapping": a ternary
 `$X.kind === "$KIND" ? $A : $B`, which sends every other variant down the else branch.
 
-**Severity WARNING while a sweep is pending.** This is an ordinary pending sweep (see "Adding
-a pre-write guard rule", step 2). The rule has no type information, so it cannot tell a closed
-union from a plain `kind` string. The sites are not listed here: re-measure with the Semgrep command in the title-rule
-section above, filtered to this id, and read each site's union. A site on a closed union does
-not fit kiko-code-style's single-boolean-guard allowance, because that allowance covers only a
-guard with no closed-set enum behind it. Promotion condition: once the sweep to
-`match(...).exhaustive()` leaves 0 tree findings, the rule flips to ERROR. A new site uses `match`. The
-pre-write guard denies any NEW finding whatever its severity, so `// nosemgrep:
+**Severity ERROR.** The rule has no type information, so it cannot tell a closed union from a
+plain `kind` string. A site on a closed union does not fit kiko-code-style's single-boolean-guard
+allowance, because that allowance covers only a guard with no closed-set enum behind it. A site
+uses `match(...).exhaustive()`. To re-measure, run the Semgrep command in the
+`kiko-test-title-no-history` section above, filtered to this id; the tree must hold 0
+findings. `// nosemgrep:
 kiko-kind-ternary-prefers-match OVERRIDE(<reason>) <why>` is only for a site where `kind` is
 not a closed union.
 
@@ -2372,7 +2473,8 @@ kill-guard's SHELL-WRITE deny (above) blocks the common Bash write
 forms into `src/`, `__tests__/`, `rules/`, and `e2e/`. It allows the `--write`
 fixers and git itself, which write source legitimately. What it does
 not see still reaches disk unchecked: a script file that writes,
-`find -exec`, a path held in a variable, and a commit of any
+`find -exec`, a path held in a variable the command does not assign (see "SHELL-WRITE deny,
+git config files and same-command variables"), and a commit of any
 of these (see its Known limits). The replay catches those writes after
 they land.
 
@@ -2446,9 +2548,11 @@ they land.
   that cannot run (git, node) fails closed with its own block.
 - **Deadline.** On the Stop tier the replay starts no guard call after
   `stopTierDeadlineSeconds`: at most 150 s, and less when `medium.sh`'s
-  own elapsed time (lock wait, `dup.sh`), the 25 s in-flight guard call,
+  own elapsed time (lock wait, `dup.sh`, the doc step), the 25 s in-flight guard call,
   and a 60 s reserve for the later checks leave less of the 300 s hook
-  budget. It then fails with a block telling the agent to run
+  budget. The doc step ends by the budget `node scripts/checks/guard-replay.js step-budget`
+  prints, so the replay keeps the guard-call tail and the later-checks reserve. It then fails with a
+  block telling the agent to run
   `npm run check:guard-replay` by hand, which has no deadline and
   records its pass. A killed Stop hook would otherwise end the turn with
   no error and no check. The `KIKO_GUARD_REPLAY_DEADLINE_SECONDS` test

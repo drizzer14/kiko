@@ -68,13 +68,17 @@ Rules:
 - Run the FULL jest (`make verify`) before every BATCH READY. `check:all`
   alone missed a fixture that broke two guard rules: the rule-inventory
   and guard-rule jest suites run only in `make verify`.
+- A change set that adds a repo-wide invariant or rule merges main first and re-runs
+  `check:all`: the new rule must hold on code main gained since the base. After that merge the
+  mutation gate uses the merged main tip as `KIKO_MUTATION_BASE` (see "Mutation base after a
+  track merged next").
 - Per-task deep gates: a per-file floor miss is fixed with tests only,
   never an exclusion.
 - Re-gate of named files across a big merge: `make mutable` prints one
   line per file. For `<path> a-b,c-d (N changed lines)` pass one `--mutate`
   entry per range (`<path>:a-b`, `<path>:c-d`), never the comma list
   (Stryker splits on the comma, so the later ranges are never mutated).
-  For `<path> whole file (N lines)` pass the plain path. Never pass a
+  Never pass a
   plain path and a range for the same file (Stryker reads that as "do not
   mutate"). The source of truth is the `entries` variable in
   `scripts/checks/mutation.sh`. Read the per-file floor (60) from
@@ -149,19 +153,20 @@ call without knowing where the plugin lives.
 BATCH READY's TIMES line is built from the run log, never from memory. The source of each
 field is listed in `kiko:estimator` only.
 
-A project skill outside the plugin calls the installed copy. When the copy is missing, the
-start snippet prints nothing and starts no run; the finish snippet prints
-`run-log: not installed, skipped`. Start (prints the run id):
+A project skill outside the plugin calls the installed copy. When the copy is missing, both
+snippets print `run-log: not installed, skipped` and exit 0; when the copy is present, its own
+exit code and error pass through. Start (prints the run id):
 
 ```bash
-RUN_LOG="${HARNESS_RUNS_DIR:-$HOME/.claude/harness-runs}/bin/run-log.mjs"; [ -f "$RUN_LOG" ] && RUN_ID=$(node "$RUN_LOG" start --task "<track> task N/M" --shape build) && echo "$RUN_ID"
+RUN_LOG="${HARNESS_RUNS_DIR:-$HOME/.claude/harness-runs}/bin/run-log.mjs"; if [ -f "$RUN_LOG" ]; then node "$RUN_LOG" start --task "<track> task N/M" --shape build; else echo "run-log: not installed, skipped"; fi
 ```
 
 Finish, in a later Bash call (shell variables do not survive between calls), prefixed with
-`RUN_ID=<printed id>;`:
+`RUN_ID=<printed id>;`. When start printed the skip line, there is no run id: skip the finish
+snippet, never paste the skip line as `RUN_ID`:
 
 ```bash
-RUN_LOG="${HARNESS_RUNS_DIR:-$HOME/.claude/harness-runs}/bin/run-log.mjs"; [ -f "$RUN_LOG" ] && node "$RUN_LOG" finish --run "$RUN_ID" --outcome done || echo "run-log: not installed, skipped"
+RUN_LOG="${HARNESS_RUNS_DIR:-$HOME/.claude/harness-runs}/bin/run-log.mjs"; if [ -f "$RUN_LOG" ]; then node "$RUN_LOG" finish --run "$RUN_ID" --outcome done; else echo "run-log: not installed, skipped"; fi
 ```
 
 ## Skill drift rule
@@ -207,8 +212,8 @@ exits 0 on 0 files without starting Stryker. A changed file whose diff
 is only comments or whitespace is left out of that count by the script
 itself (it prints `skipped (comment-only): <path>`; a file with no added line
 prints `skipped (no added lines): <path>`); a `Stryker` or JSX
-pragma comment, a colocated test changed by more than comments, or any
-doubt, keeps the file.
+pragma comment, or any doubt, keeps the file; a changed colocated test beside a
+comment-only source does not.
 
 ## Merging into main
 
@@ -377,10 +382,7 @@ unmerged change sets, takes as its mutation base the `next` tip that
 already contains every earlier change set; otherwise the merge-base
 diff also counts the earlier sets' files against the 30 cap.
 
-A stacked pair where the earlier set changes only comments in a source and the later set changes
-its colocated test inflates `make mutable` (the colocated-test rule keeps the whole file): gate
-the later set alone, with the earlier set's tip as the base, and compare `changed lines:` with the
-diff first.
+After a merge of `main` into the change set, the base is the merged main tip.
 
 ## Merge conflicts vs the pre-write guard
 
@@ -400,7 +402,9 @@ kiko-linter's "SHELL-WRITE deny". Move
 or rename a file with `git mv` (`git add` a new file first), then edit
 it with Edit/Write; see kiko-code-style's "Folder-per-thing
 co-location". A Bash write it
-does not see (a script file, `find -exec`, a variable path)
+does not see (a script file, `find -exec`, a path held in a variable the command does not
+assign; kiko-linter's "SHELL-WRITE deny, git config files and same-command variables" covers
+the variables it does expand)
 and a commit of it still skip the pre-write guard. On `Stop` and `SubagentStop`, `medium.sh`
 replays the same guard over every `.ts`/`.tsx` file the session changed:
 the working tree, plus every commit no worktree's passed replay reached
@@ -411,7 +415,9 @@ and line. Fix it with Edit/Write, so the guard checks the fix. Never
 rewrite the file with Bash again. The `--write` fixers and clean merges
 pass, because only a finding the change added fails. If the replay stops at its Stop-tier deadline,
 run `npm run check:guard-replay` by hand; its pass is recorded. See
-kiko-linter's "Pre-write guard replay on the Stop tier".
+kiko-linter's "Pre-write guard replay on the Stop tier". On a doc change the Stop tier also
+runs the doc-reading jest suites first; on a failure or a deadline block, run
+`make doc-suites` by hand (a pass is recorded); see kiko-linter "The wrapper contract".
 
 ## Run verbose commands through an Orca terminal
 

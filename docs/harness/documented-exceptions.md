@@ -965,3 +965,18 @@ verified usage, not dead weight:
   that predates the rule, and rewriting a dated record would falsify it. The exact-count
   test pins each count, so a doc that gains or loses a match fails; the list only shrinks and
   a new doc is never added.
+
+- **User ruling 2026-10-14 (G1 a): a comment-only source with a changed colocated test mutates
+  nothing.** A source file that `comment-only-changes.js` proves comment-only prints
+  `skipped (comment-only): <path>` and is not mutated, whatever its colocated test did; the
+  whole-file keep (its `--list` keep line) is removed from `mutation.sh`. A real change
+  with a changed test still mutates its changed-line ranges; a Stryker or JSX pragma comment, a
+  missing `typescript`, or any doubt keeps the file. Cost: a test weakened beside a
+  comment-only source edit is not mutation-checked; `make verify` still runs it.
+
+- **`medium.sh` doc step deadline exit (2026-10-15)**: at hookStarted + the budget that
+  `node scripts/checks/guard-replay.js step-budget` prints, the doc step stops its own jest pid
+  and exits 2 with a block telling the agent to run `make doc-suites` by hand.
+  Reason: the 300 s hook limit would otherwise kill the Stop tier with no block. Zero
+  discovered suites, a missing jest, an unreadable budget or a fingerprint hash failure
+  while doc files or suites exist also exit 2 (fail-closed).

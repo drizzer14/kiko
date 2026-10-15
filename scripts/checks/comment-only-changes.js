@@ -41,11 +41,8 @@
 // ignore */` or `/*#__PURE__*/` comment changes coverage or minification only, not what Stryker
 // mutates.
 //
-// mutation.sh also passes the changed test files that sit beside a candidate (foo.test.ts,
-// foo.<anything>.test.ts(x)) and keeps the candidate when one of them is not printed here: a
-// test weakened together with a comment edit must still be mutated, while a comment-only test
-// edit cannot weaken a test. A test file absent at the base or at HEAD (new or deleted) or
-// unparsable is never printed, so it counts as a real change.
+// mutation.sh passes only the changed source files, so a printed path mutates nothing whatever
+// the test beside it did (user ruling 2026-10-14).
 //
 // Unlike every other checker in this directory it requires an npm package (typescript). That is
 // safe because it runs only inside mutation.sh, in a full worktree where Stryker itself needs
