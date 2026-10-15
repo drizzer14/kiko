@@ -155,7 +155,7 @@ gap; the not-listed note names it.
 | `exchange/walk/` | the walk engine: `planWalkPasses`, `runWalkPlan`, `walkSpans`, `buildWalkWindows`, owed ranges and points, range cursor, span hints, `settleRecords`, `commitSettledSpan`, `placeWalletRows`, depth guards; `WalkStop` codes generic, exchange codes added per exchange | `binance.history-walk.ts`, `binance.history-records.ts`, `binance.history-depth.ts` (constants become a per-exchange `DepthConfig`), `binance.walk-write-deps.ts` |
 | `exchange/walk-state/` | `ExchangeState` type, its per-walk strict parse, readers and the gated writer over `sync_state.exchange_state` (set 4) | the walk-owned metadata keys of `holding-metadata.ts` (`binanceWalkCursorFields`, `binanceWalkPendingFields`, `binanceWalkPointCursorFields`, `binanceWalkRangeCursorFields`, `binanceWalkSpanHintFields`) and `holdingsRepo.setBinanceWalkCursor`, `setBinanceWalkPending`, `setBinanceWalkSpanHints`, `resetBinanceWalkCursors` |
 | `exchange/history-status/` | `isExchangeHistoryBehind(state, latestSyncedAt)`, `untrackedCoinsOf(state)` and `oversizedCoinsOf(state)` (each the sorted union of its kind's balance and history lists, C-NR8) | `screens/account-detail/crypto-sync-section/binance-history-status.ts` (`walkCursorsOf`, `transferOwesRange`, `isBinanceHistoryBehind`) |
-| `exchange/amounts/` | `exchangeMinorUnits(currency, text): Either<AmountError, number>`: a wrapper over set 2's exact decimal-to-minor-units parser in `src/currency/decimal/decimal.ts`, refusing more decimals than the scale (`amount-precision`) unless the coin is reduced-scale (section 3) and a result above `Number.MAX_SAFE_INTEGER` (`amount-too-large`) | new in set 3 with no caller; set 5 switches `sumSatoshis`/`Money.fromMajor(BINANCE_ASSET, Number(...))` in `binance.provider.ts` to it, set 6 switches `btcSatoshis` (`binance.history-walk.ts`) |
+| `exchange/amounts/` | `exchangeMinorUnits(currency, text, use: 'balance' \| 'row'): Either<AmountError, number>`: a wrapper over set 2's exact decimal-to-minor-units parser in `src/currency/decimal/decimal.ts`; both modes refuse an exponent form (`amount-malformed`) and a result above `Number.MAX_SAFE_INTEGER` (`amount-too-large`). `'balance'`: more decimals than the scale round half away from zero and log `balance-precision-rounded`. `'row'`: more decimals than the scale are refused (`amount-precision`), except on a reduced-scale coin (section 3), where they round the same way and log `row-precision-rounded` | new in set 3 with no caller; set 5 switches `sumSatoshis`/`Money.fromMajor(BINANCE_ASSET, Number(...))` in `binance.provider.ts` to it, set 6 switches `btcSatoshis` (`binance.history-walk.ts`) |
 
 The Binance host constant stays in `binance.client.ts` (re-grep the `@env` host); there is no
 hosts unit in 1.3-a.
@@ -227,6 +227,7 @@ type CoinLists = {
 type WalkMarks = {
   cursor: number | null; rescan?: number; pending?: BinancePendingRange[];
   pointCursor?: number; rangeCursor?: number; spanHints?: BinanceSpanHints; multiCoinSince?: number;
+  multiCoinSeen?: true;                       // the walk's first multi-coin run happened (section 7)
   emptyWindows?: number;                      // P2P only: empty windows in a row (section 5)
 };
 ```
@@ -255,7 +256,8 @@ Parse, per walk (set 4):
   non-number reads as null); `pending` by `readPendingMark` (all ground before the cursor owed,
   written once); `pointCursor` and `rangeCursor` by `readRoundRobinCursor` (repaired to
   `BEFORE_EVERY_GROUND`, written once); `spanHints` by `readSpanHints` (`span-hints-malformed`,
-  reads as `NO_HINTS`); `multiCoinSince` as a number or absent. A walk entry that is not an object
+  reads as `NO_HINTS`); `multiCoinSince` as a number or absent; `multiCoinSeen` as `true` or absent (any other value reads as
+  absent). A walk entry that is not an object
   reads as every field's empty value and logs the tag with the walk id. The developer re-greps each
   reader and its repair write on the base. Each repair writes only its own field.
 
@@ -498,9 +500,13 @@ zero and logs `balance-precision-rounded`. A ROW with more decimals is a per-rec
   count against the `/api/*` IP budget (section 5). The privacy policy says so (section 9).
 - History backfill per new coin (set 2): one call per coin, only for the coins that a holding uses
   (`src/rates/history-backfill/history-backfill.ts`, `fetchCryptoHistory` in
-  `src/rates/coingecko-history/coingecko-history.ts`). Never every curated coin: the default
-  `currencies = cryptoCurrencyOptions` goes, so a caller names the held coins, and a test pins
-  that a curated coin no holding uses is never requested.
+  `src/rates/coingecko-history/coingecko-history.ts`). Never every curated coin: the callers
+  already pass the held coins on the base (`historyCurrencies` in `open-currencies-gate.ts`,
+  `rates-refresh.ts`), so the `currencies = cryptoCurrencyOptions` defaults of
+  `fetchCryptoPrices` and `fetchCryptoHistory` stay, and a test pins that a curated coin no
+  holding uses is never requested. `fetchCryptoHistory` keeps at most
+  `CRYPTO_HISTORY_CONCURRENCY` coin requests in flight (C-NR9 b; start at 2, the value measured in
+  set 2), and still fetches every coin.
 - A coin with no price from either source stays visible at its coin amount and is left out of net
   worth with the existing "no rate" treatment (`net-worth-view.ts`).
 
@@ -908,9 +914,14 @@ effect.
 
 ### Backfill of new coins (R-Q8, sets 6 and 15)
 
-- Set 6: on a walk's first multi-coin run, `walks.<walk>.multiCoinSince` = its cursor at that run.
-  A walk whose cursor is null at that run (never synced, or a fresh connect) sets no
-  `multiCoinSince`: it reads every coin from its floor anyway.
+- Set 6: on a walk's first multi-coin run, the walk writes `walks.<walk>.multiCoinSeen = true`,
+  whatever its cursor, and `walks.<walk>.multiCoinSince` = its plan cursor at that run (the cursor
+  the run plans from: capital's is the stored cursor, else the latest stored capital row time). A
+  walk whose plan cursor is null at that run (never synced, or a fresh connect) sets no
+  `multiCoinSince`: it reads every coin from its floor anyway. A walk with `multiCoinSeen` never
+  writes either field again, so a later run after a null-cursor first run records none.
+  Disconnect removes `multiCoinSince` and keeps `multiCoinSeen`: the reset cursor is the floor,
+  so every coin is read from it and nothing is owed.
 - Set 15: each of capital, Pay, Transfer, Earn with a `multiCoinSince` owes one range
   `[floor, multiCoinSince)` with `scope: 'backfill'`, read in the existing round-robin of owed
   ranges. A read in a backfill range imports every coin except BTC; BTC records there are skipped
