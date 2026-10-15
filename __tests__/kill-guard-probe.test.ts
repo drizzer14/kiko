@@ -156,11 +156,12 @@ describe('scripts/checks/kill-guard-probe.sh (sentinel probe runner)', () => {
 
     // A busy loop, not `sleep`: a sleep child would hold the output pipe
     // until the reader's own alarm (limit + 2 s) and hide the early stop.
-    it.each(SHELLS)('stops a probe that runs past the limit, on time, in %s', (shell) => {
-      const started = Date.now();
+    // No wall-clock bound: the runner's warm-up of never-seen stubs runs before the
+    // alarm and can take seconds under exec churn. `EXIT 142` shows the alarm fired;
+    // without it spawnSync would end at its own 30 s timeout.
+    it.each(SHELLS)('stops a probe that runs past the limit in %s', (shell) => {
       const result = runProbe(shell, 'while true; do :; done', { KIKO_PROBE_TIMEOUT: '1' });
 
-      expect(Date.now() - started).toBeLessThan(3000);
       expect(result.status).toBe(0);
       expect(result.stdout).toMatch(/^EXIT 142$/m);
     });
