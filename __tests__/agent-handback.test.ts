@@ -1,7 +1,7 @@
 import { join } from 'node:path';
 import { readdirSync, readFileSync } from 'node:fs';
 
-const agentsDirectory = join(__dirname, '..', 'harness', 'kiko', 'agents');
+const agentsDirectory = join(__dirname, '..', 'harness/kiko/agents');
 const agentFiles = readdirSync(agentsDirectory).filter((name) => name.endsWith('.md'));
 
 describe('harness agent hand-back', () => {
