@@ -7,7 +7,7 @@
 
 .DEFAULT_GOAL := help
 
-.PHONY: help deploy pods gate jest deep mutable typecheck lint dup knip deps \
+.PHONY: help deploy pods gate jest doc-suites deep mutable typecheck lint dup knip deps \
         security secrets rules plist overrides start clean-ios verify
 
 help: ## List available targets
@@ -35,6 +35,9 @@ verify: ## Fail-fast end-of-work check: lint, then full jest, then gate — stop
 
 jest: ## Run the full Jest suite
 	npx jest
+
+doc-suites: ## Run the jest suites that read skill, agent, docs and CLAUDE.md text (found by harness_doc_suites; run before a doc commit)
+	npx jest $$(bash -c '. scripts/checks/_lib.sh; harness_doc_suites .')
 
 deep: ## Deep gate: mutation testing + osv-scanner, per small change set (set KIKO_MUTATION_BASE; > 30 files fails). It prints a `tail -f` line to watch progress.
 	npm run check:deep
