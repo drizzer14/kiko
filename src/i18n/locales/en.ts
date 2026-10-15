@@ -97,6 +97,8 @@ export const en = {
       title: 'Export Data',
     },
     dataImport: {
+      amountTooLargeError:
+        'This backup has a USDT amount too large for Kiko to store exactly, so nothing was imported. Your current data is unchanged.',
       chooseFile: 'Choose file',
       confirmButton: 'Replace data',
       confirmMessage:

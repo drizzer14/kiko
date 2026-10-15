@@ -50,6 +50,23 @@ const renderScreen = () =>
 // rejected before the confirm sheet opens.
 const VALID_KEY = 'a'.repeat(44);
 
+const pickAndConfirmImport = async () => {
+  mockPick.mockResolvedValue([{ uri: 'file:///picked.kiko', name: 'picked.kiko' }]);
+
+  const screen = await renderScreen();
+
+  await fireEvent.press(screen.getByTestId('settings-button-pick-file'));
+  await waitFor(() => expect(mockPick).toHaveBeenCalled());
+  await fireEvent.changeText(
+    screen.getByPlaceholderText('Paste the key from your export'),
+    VALID_KEY,
+  );
+  await fireEvent.press(screen.getByTestId('settings-button-import'));
+  await fireEvent.press(await screen.findByText('Replace data'));
+
+  return screen;
+};
+
 describe('ImportDataScreen', () => {
   afterEach(() => jest.restoreAllMocks());
 
@@ -252,7 +269,6 @@ describe('ImportDataScreen', () => {
   // BEFORE the success message is composed, so it renders in the restored
   // language, not the pre-import one.
   it('shows the success message in the language restored by the import, not the pre-import language', async () => {
-    mockPick.mockResolvedValue([{ uri: 'file:///picked.kiko', name: 'picked.kiko' }]);
     mockImportData.mockResolvedValue({
       accountsRestored: 2,
       holdingsRestored: 3,
@@ -261,36 +277,12 @@ describe('ImportDataScreen', () => {
       unrestoredCredentials: [],
     });
 
-    const { getByTestId, getByPlaceholderText, findByText } = await renderScreen();
-
-    await fireEvent.press(getByTestId('settings-button-pick-file'));
-    await waitFor(() => expect(mockPick).toHaveBeenCalled());
-
-    await fireEvent.changeText(getByPlaceholderText('Paste the key from your export'), VALID_KEY);
-    await fireEvent.press(getByTestId('settings-button-import'));
-    await fireEvent.press(await findByText('Replace data'));
+    const { findByText } = await pickAndConfirmImport();
 
     expect(await findByText('Імпорт завершено — відновлено рахунків: 2.')).toBeTruthy();
   });
 
   describe('when a saved key could not be written after the data was restored', () => {
-    const pickAndConfirmImport = async () => {
-      mockPick.mockResolvedValue([{ uri: 'file:///picked.kiko', name: 'picked.kiko' }]);
-
-      const screen = await renderScreen();
-
-      await fireEvent.press(screen.getByTestId('settings-button-pick-file'));
-      await waitFor(() => expect(mockPick).toHaveBeenCalled());
-      await fireEvent.changeText(
-        screen.getByPlaceholderText('Paste the key from your export'),
-        VALID_KEY,
-      );
-      await fireEvent.press(screen.getByTestId('settings-button-import'));
-      await fireEvent.press(await screen.findByText('Replace data'));
-
-      return screen;
-    };
-
     it('shows the success and names the connections to set up again, with no failure alert', async () => {
       mockImportData.mockResolvedValue({
         accountsRestored: 2,
@@ -340,47 +332,28 @@ describe('ImportDataScreen', () => {
     });
   });
 
-  it('shows a wrong-key-specific error when importData throws a decrypt-prefixed error', async () => {
-    mockPick.mockResolvedValue([{ uri: 'file:///picked.kiko', name: 'picked.kiko' }]);
-    mockImportData.mockRejectedValue(
-      new Error('data-transfer/decrypt: wrong key or corrupted file'),
-    );
+  it.each([
+    [
+      'shows a wrong-key-specific error when importData throws a decrypt-prefixed error',
+      'data-transfer/decrypt: wrong key or corrupted file',
+      'The key is wrong, or the file is corrupted.',
+    ],
+    [
+      'shows the too-large message when a backup is refused by the USDT bound',
+      'data-transfer/amount-too-large: a USDT amount is over the bound',
+      'This backup has a USDT amount too large for Kiko to store exactly, so nothing was imported. Your current data is unchanged.',
+    ],
+    [
+      'shows the generic invalid-file error when importData throws anything else',
+      'unexpected JSON shape',
+      'This does not look like a valid Kiko export file.',
+    ],
+  ])('%s', async (_name, errorMessage, shownMessage) => {
+    mockImportData.mockRejectedValue(new Error(errorMessage));
     const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
 
-    const { getByTestId, getByPlaceholderText, findByText } = await renderScreen();
+    await pickAndConfirmImport();
 
-    await fireEvent.press(getByTestId('settings-button-pick-file'));
-    await waitFor(() => expect(mockPick).toHaveBeenCalled());
-    await fireEvent.changeText(getByPlaceholderText('Paste the key from your export'), VALID_KEY);
-    await fireEvent.press(getByTestId('settings-button-import'));
-    await fireEvent.press(await findByText('Replace data'));
-
-    await waitFor(() =>
-      expect(alertSpy).toHaveBeenCalledWith(
-        'Import failed',
-        'The key is wrong, or the file is corrupted.',
-      ),
-    );
-  });
-
-  it('shows the generic invalid-file error when importData throws anything else', async () => {
-    mockPick.mockResolvedValue([{ uri: 'file:///picked.kiko', name: 'picked.kiko' }]);
-    mockImportData.mockRejectedValue(new Error('unexpected JSON shape'));
-    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
-
-    const { getByTestId, getByPlaceholderText, findByText } = await renderScreen();
-
-    await fireEvent.press(getByTestId('settings-button-pick-file'));
-    await waitFor(() => expect(mockPick).toHaveBeenCalled());
-    await fireEvent.changeText(getByPlaceholderText('Paste the key from your export'), VALID_KEY);
-    await fireEvent.press(getByTestId('settings-button-import'));
-    await fireEvent.press(await findByText('Replace data'));
-
-    await waitFor(() =>
-      expect(alertSpy).toHaveBeenCalledWith(
-        'Import failed',
-        'This does not look like a valid Kiko export file.',
-      ),
-    );
+    await waitFor(() => expect(alertSpy).toHaveBeenCalledWith('Import failed', shownMessage));
   });
 });

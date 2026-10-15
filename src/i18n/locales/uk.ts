@@ -78,6 +78,8 @@ export const uk: typeof en = {
       title: 'Експорт даних',
     },
     dataImport: {
+      amountTooLargeError:
+        'У цій резервній копії є сума в USDT, завелика, щоб Кіко зберіг її точно, тому нічого не імпортовано. Ваші поточні дані не змінено.',
       chooseFile: 'Обрати файл',
       confirmButton: 'Замінити дані',
       confirmMessage:

@@ -54,8 +54,12 @@ const CONNECTION_NAMES: Record<ExportSecretKind, string> = {
 };
 
 // The error copy for a failed import, picked by the prefix `importData`'s own
-// decrypt step puts on the message; anything else reads as an invalid file.
-const IMPORT_ERROR_KEYS = [['data-transfer/decrypt', 'settings.dataImport.wrongKeyError']] as const;
+// decrypt step puts on the message and by the one the restore puts on a refused backup;
+// anything else reads as an invalid file.
+const IMPORT_ERROR_KEYS = [
+  ['data-transfer/decrypt', 'settings.dataImport.wrongKeyError'],
+  ['data-transfer/amount-too-large', 'settings.dataImport.amountTooLargeError'],
+] as const;
 
 const importErrorKey = (error: unknown) => {
   const message = error instanceof Error ? error.message : '';
