@@ -168,7 +168,8 @@ kill target and a command word are never expanded. It reads a script file a shel
 <file>`, `source`, a shebang path; one level, at most 256 KiB) and denies a kill in it (a
 heredoc in it is judged for kills only). `kill -0` and `kill -s 0` are harmless only when no later
 word before the targets is an option (`kill -0 -s KILL -1` denies), and
-`$1`..`$9` is a caller's own pid, in a typed command as in a script; `scripts/job-queue.sh` of this repository is exempt. It also
+`$1`..`$9` is a caller's own pid, in a typed command as in a script;
+`scripts/job-queue.sh` of this repository is exempt. It also
 denies a `git commit|merge|pull` that skips `githooks/` (`--no-verify`, `-n`, `core.hooksPath`
 overrides), `git commit-tree`, and a config-style route to the same end (`git config` long
 options resolved by git's prefix rule, `include.path`, GIT_CONFIG_COUNT/KEY/VALUE/PARAMETERS
