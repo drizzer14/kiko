@@ -4,8 +4,9 @@
 Coordinator job 828f039f. Event log + OVERNIGHT DEFAULTS D1-D7 + morning walkthrough answers:
 memory/refs/night-summary-2026-10-15.md. Retrospect: memory retrospect-2026-10-15. Session addresses:
 memory orca-hub (last bullets; SendMessage names differ from titles). The 2026-10-14 section below is HISTORY.
-FIRST ACTIONS of the next session: SendMessage your name to the 3 orchestrators below; arm a pmset
-watcher (battery <-> AC) and a context-gauge watcher (fires at 40 %) per orchestrator terminal.
+FIRST ACTIONS of the next session: SendMessage your name to the 3 orchestrators below AND to the PM
+"Status" (then one message to Status at EVERY milestone); arm a pmset watcher (battery <-> AC) and
+a context-gauge watcher (fires at 40 %) per orchestrator terminal.
 | Thing | Value |
 |---|---|
 | main = next = origin? | main = next = ecda6f75. origin/main = f08d323e (pushed 2026-10-15 on the user's "push now"; later merges not pushed). Harness repo drizzer14/harness main = d296f49 (plugin 1.5.0, pushed). |
