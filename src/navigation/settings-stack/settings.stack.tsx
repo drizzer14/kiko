@@ -24,6 +24,7 @@ import {
   restoreDefaultAnimationOfSwappedForm,
 } from '../swapped-form-options';
 import type { SettingsStackParamList } from '../types';
+import { fittingLargeTitleLayout } from '../fitting-large-title';
 import { resetTabStackOnBlur } from '../reset-tab-stack-on-blur';
 import { largeTitleScreenOptions } from '../large-title-screen-options';
 
@@ -34,7 +35,11 @@ const SettingsStack: FC = () => {
   const { t } = useTranslation();
 
   return (
-    <Stack.Navigator screenOptions={largeTitleScreenOptions} screenListeners={resetTabStackOnBlur}>
+    <Stack.Navigator
+      screenOptions={largeTitleScreenOptions}
+      screenLayout={fittingLargeTitleLayout}
+      screenListeners={resetTabStackOnBlur}
+    >
       <Stack.Screen
         name="Settings"
         component={SettingsScreen}

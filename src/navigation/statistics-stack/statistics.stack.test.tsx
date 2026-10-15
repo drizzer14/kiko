@@ -15,6 +15,8 @@ jest.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string) => key }),
 }));
 
+import { fittingLargeTitleLayout } from '../fitting-large-title';
+
 import StatisticsStack from './statistics.stack';
 
 type ScreenElement = ReactElement<{ name: string }>;
@@ -39,6 +41,12 @@ describe('StatisticsStack', () => {
     }>;
 
     expect(navigator.props.children.props.options).toEqual({ title: 'statistics.title' });
+  });
+
+  it('wraps every screen in the fitting large-title layout', () => {
+    const navigator = StatisticsStack({}) as ReactElement<{ screenLayout: unknown }>;
+
+    expect(navigator.props.screenLayout).toBe(fittingLargeTitleLayout);
   });
 
   // Jest pins `isLiquidGlassSupported` to false (jest/setup.js), the iOS < 26

@@ -12,6 +12,7 @@ import {
   restoreDefaultAnimationOfSwappedForm,
 } from '../swapped-form-options';
 import type { HomeStackParamList } from '../types';
+import { fittingLargeTitleLayout } from '../fitting-large-title';
 import { resetTabStackOnBlur } from '../reset-tab-stack-on-blur';
 import { largeTitleScreenOptions } from '../large-title-screen-options';
 
@@ -32,7 +33,11 @@ const HomeStack: FC = () => {
   const { t } = useTranslation();
 
   return (
-    <Stack.Navigator screenOptions={{ headerShown: false }} screenListeners={resetTabStackOnBlur}>
+    <Stack.Navigator
+      screenOptions={{ headerShown: false }}
+      screenLayout={fittingLargeTitleLayout}
+      screenListeners={resetTabStackOnBlur}
+    >
       <Stack.Screen name="Home" component={HomeScreen} />
 
       <Stack.Screen
