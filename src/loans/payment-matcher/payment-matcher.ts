@@ -87,6 +87,7 @@ export type MatchableTransaction = {
   loanHoldingId: string | null;
   loanLinkRejected: boolean;
   exchangeCounterpartHoldingId: string | null;
+  untrackedCounterpart: string | null;
 };
 
 type LoanPaymentMatch = {
@@ -97,13 +98,15 @@ type LoanPaymentMatch = {
 
 // Rule-4's candidate filter: a debit, never already linked or already
 // rejected (a manual "None" or Undo must stick — kiko-domain), never one leg
-// of an Exchange/Convert (a structural marker, not a description guess — see
-// `exchange-exclusion.ts`'s identical check).
+// of an Exchange/Convert, and never a move to an untracked Binance wallet
+// (structural markers, not a description guess — see `exchange-exclusion.ts`'s
+// identical checks).
 const isEligibleTransaction = (transaction: MatchableTransaction): boolean =>
   transaction.amountMinorUnits < 0 &&
   transaction.loanHoldingId === null &&
   !transaction.loanLinkRejected &&
-  transaction.exchangeCounterpartHoldingId === null;
+  transaction.exchangeCounterpartHoldingId === null &&
+  transaction.untrackedCounterpart === null;
 
 // Rule 2: the transaction's own LOCAL day, 3 days before to 7 days after the
 // due date's local day — both bounds inclusive, the same "both bounds

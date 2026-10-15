@@ -114,6 +114,7 @@ describe('Money-path guard: split-change + convert prefill', () => {
       counterIban: null,
       description: '',
       exchangeCounterpartHoldingId: null,
+      untrackedCounterpart: null,
       currency: 'UAH' as const,
     };
     const slices = buildCategoryBreakdown({
@@ -194,6 +195,7 @@ describe('Money-path guard: split-change + convert prefill', () => {
       counterIban: null,
       description: '',
       exchangeCounterpartHoldingId: null,
+      untrackedCounterpart: null,
       currency: 'UAH' as const,
     };
     const series = buildCategoryTrend({

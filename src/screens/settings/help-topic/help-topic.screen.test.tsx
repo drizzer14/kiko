@@ -1,3 +1,4 @@
+import { StyleSheet } from 'react-native';
 import type { ComponentProps } from 'react';
 import { fireEvent, render } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
@@ -8,7 +9,10 @@ import {
   type NavigationSpy,
   navigationSpy,
 } from '@kiko/test-support/navigation-props';
+import { darkTheme } from '@kiko/design-system/theme';
 import { type HelpTopicId, helpTopicById } from '@kiko/help';
+import { entrySymbol } from '@kiko/navigation/entry-symbols';
+import { accountKindSymbol, genericEntitySymbol } from '@kiko/holdings/entity-symbols';
 
 import HelpTopicScreen from './help-topic.screen';
 
@@ -35,38 +39,17 @@ describe('HelpTopicScreen', () => {
     });
   });
 
-  it('renders exactly the four manage-categories steps, and names the real Apply button', async () => {
+  it('renders the five manage-categories steps, naming the real Add category and Delete labels', async () => {
     const { getAllByTestId, getByTestId } = await renderScreen('manageCategories');
 
-    expect(getAllByTestId(/^help-topic-step-/)).toHaveLength(4);
-    expect(getByTestId('help-topic-step-4')).toHaveTextContent(
-      `"${i18n.t('forms.transaction.apply')}"`,
+    expect(getAllByTestId(/^help-topic-step-/)).toHaveLength(5);
+    expect(getByTestId('help-topic-step-2')).toHaveTextContent(
+      `"${i18n.t('categories.addCategory')}"`,
       { exact: false },
     );
-  });
-
-  it('opens the account form from the add-account action', async () => {
-    const navigation = navigationSpy();
-    const { getByText } = await renderScreen('addAccount', navigation);
-
-    await fireEvent.press(getByText('Add account'));
-
-    expect(navigation.navigate).toHaveBeenCalledTimes(1);
-    expect(navigation.navigate).toHaveBeenCalledWith('AccountsTab', {
-      screen: 'AccountForm',
-      params: {},
-      initial: false,
+    expect(getByTestId('help-topic-step-5')).toHaveTextContent(`"${i18n.t('common.delete')}"`, {
+      exact: false,
     });
-  });
-
-  it('opens Categories from the manage-categories action', async () => {
-    const navigation = navigationSpy();
-    const { getByText } = await renderScreen('manageCategories', navigation);
-
-    await fireEvent.press(getByText('Open categories'));
-
-    expect(navigation.navigate).toHaveBeenCalledTimes(1);
-    expect(navigation.navigate).toHaveBeenCalledWith('Categories');
   });
 
   it('shows only its own topic action', async () => {
@@ -74,4 +57,92 @@ describe('HelpTopicScreen', () => {
 
     expect(queryByText('Add account')).toBeNull();
   });
+
+  it.each([
+    [
+      'addAccount',
+      'Add account',
+      ['AccountsTab', { screen: 'AccountForm', params: {}, initial: false }],
+    ],
+    ['connectMonobank', 'Add bank account', ['AccountForm', { initialKind: 'bank' }]],
+    ['connectCrypto', 'Add crypto account', ['AccountForm', { initialKind: 'crypto' }]],
+    ['trackProperty', 'Add property', ['HoldingForm', { implicitKind: 'property' }]],
+    ['trackLoan', 'Add loan', ['HoldingForm', { implicitKind: 'debt' }]],
+    ['addTransaction', 'Add transaction', ['TransactionForm', {}]],
+    ['viewStatistics', 'Open statistics', ['StatisticsTab']],
+    ['useTemplates', 'Open templates', ['TransactionTemplates']],
+    ['setReminder', 'Open reminders', ['Reminders']],
+    ['manageCategories', 'Open categories', ['Categories']],
+    ['backupData', 'Open data export', ['ExportData']],
+    ['restoreData', 'Open data import', ['ImportData']],
+    ['systemSettings', 'Open system settings', ['System']],
+  ] as const)(
+    'opens the target of the %s action, labelled "%s"',
+    async (topicId, label, target) => {
+      const navigation = navigationSpy();
+      const { getByTestId } = await renderScreen(topicId, navigation);
+
+      expect(getByTestId('help-topic-action')).toHaveTextContent(label);
+
+      await fireEvent.press(getByTestId('help-topic-action'));
+
+      expect(navigation.navigate).toHaveBeenCalledTimes(1);
+      expect(navigation.navigate).toHaveBeenCalledWith(...target);
+    },
+  );
+
+  it.each([
+    ['addAccount', genericEntitySymbol.account],
+    ['connectMonobank', accountKindSymbol.bank],
+    ['connectCrypto', accountKindSymbol.crypto],
+    ['setReminder', entrySymbol.reminders],
+    ['trackProperty', accountKindSymbol.property],
+    ['trackLoan', accountKindSymbol.debt],
+    ['addTransaction', genericEntitySymbol.transaction],
+    ['viewStatistics', entrySymbol.statistics],
+    ['useTemplates', genericEntitySymbol.template],
+    ['manageCategories', genericEntitySymbol.category],
+    ['categoryRules', genericEntitySymbol.category],
+    ['backupData', entrySymbol.exportData],
+    ['restoreData', entrySymbol.importData],
+    ['systemSettings', entrySymbol.system],
+  ] as const)(
+    'leads the footer button of the %s topic with the symbol %s',
+    async (topicId, symbol) => {
+      const { getByTestId } = await renderScreen(topicId);
+
+      const glyphs = getByTestId('help-topic-action').queryAll(
+        (node) => node.props.name === symbol,
+      );
+
+      expect(glyphs.length).toBeGreaterThan(0);
+    },
+  );
+
+  describe.each(['importStatement', 'addHolding', 'editTransaction'] as const)(
+    'the %s topic, which has no action',
+    (topicId) => {
+      it('renders its steps and no footer button', async () => {
+        const { getAllByTestId, queryByTestId } = await renderScreen(topicId);
+
+        expect(getAllByTestId(/^help-topic-step-/)).toHaveLength(
+          helpTopicById(topicId).stepKeys.length,
+        );
+        expect(helpTopicById(topicId).action).toBeNull();
+        expect(queryByTestId('help-topic-action')).toBeNull();
+        expect(queryByTestId('screen-footer')).toBeNull();
+      });
+
+      it('gives the screen no footer at all, so the scroll content keeps its own bottom padding', async () => {
+        const { getByTestId } = await renderScreen(topicId);
+
+        const contentStyle = StyleSheet.flatten(
+          getByTestId('screen-scroll-view').props.contentContainerStyle,
+        );
+
+        // A footer owns the gap above itself, so the padding drops to 0 only when one is passed.
+        expect(contentStyle.paddingBottom).toBe(darkTheme.spacing(4));
+      });
+    },
+  );
 });

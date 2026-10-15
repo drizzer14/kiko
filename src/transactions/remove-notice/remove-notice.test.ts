@@ -37,6 +37,65 @@ describe('removeNotice', () => {
     ).toBe('This also deletes the other part of this exchange, in Dollar card, Cash.');
   });
 
+  it('calls the other part a transfer, as the row is labelled, when both legs hold one currency', () => {
+    expect(
+      removeNotice(
+        {
+          split: false,
+          exchange: { kind: 'deleted', names: ['Binance Funding'], sameCurrency: true },
+        },
+        i18n.t,
+      ),
+    ).toBe('This also deletes the other part of this transfer, in Binance Funding.');
+  });
+
+  it('keeps the exchange wording when the legs hold different currencies', () => {
+    expect(
+      removeNotice(
+        {
+          split: false,
+          exchange: { kind: 'deleted', names: ['Dollar card'], sameCurrency: false },
+        },
+        i18n.t,
+      ),
+    ).toBe('This also deletes the other part of this exchange, in Dollar card.');
+  });
+
+  describe('in Ukrainian', () => {
+    beforeEach(async () => {
+      await i18n.changeLanguage('uk');
+    });
+
+    it('writes the transfer wording with the same name interpolation as the exchange one', () => {
+      const notice = (sameCurrency: boolean) =>
+        removeNotice(
+          { split: false, exchange: { kind: 'deleted', names: ['Cash'], sameCurrency } },
+          i18n.t,
+        );
+
+      expect(notice(true)).toBe('Також буде видалено другу частину цього переказу, у «Cash».');
+      expect(notice(false)).toBe('Також буде видалено другу частину цього обміну, у «Cash».');
+    });
+
+    it('writes both missing-part wordings, quoting the name where the exchange one does', () => {
+      const notice = (exchange: ExchangeRemoval) =>
+        removeNotice({ split: false, exchange }, i18n.t);
+
+      expect(notice({ kind: 'missing', name: 'Cash', sameCurrency: true })).toBe(
+        'Другу частину цього переказу, у «Cash», не знайдено. Буде видалено лише цю частину, тож перевірте «Cash».',
+      );
+      expect(notice({ kind: 'missing', sameCurrency: true })).toBe(
+        'Другу частину цього переказу не знайдено. Буде видалено лише цю частину.',
+      );
+      expect(notice({ kind: 'missing', name: 'Cash' })).toBe(
+        'Другу частину цього обміну, у «Cash», не знайдено. Буде видалено лише цю частину, тож перевірте «Cash».',
+      );
+      expect(notice({ kind: 'missing' })).toBe(
+        'Другу частину цього обміну не знайдено. Буде видалено лише цю частину.',
+      );
+    });
+  });
+
   it('says a bank-owned other part stays, and that only this part goes', () => {
     expect(
       removeNotice(
@@ -59,6 +118,31 @@ describe('removeNotice', () => {
   it('says the other part could not be found, with no holding to name', () => {
     expect(removeNotice({ split: false, exchange: { kind: 'missing' } }, i18n.t)).toBe(
       'The other part of this exchange could not be found. Only this part is deleted.',
+    );
+  });
+
+  it('calls a missing other part a transfer, as the row is labelled, when both holdings hold one currency', () => {
+    expect(
+      removeNotice(
+        { split: false, exchange: { kind: 'missing', name: 'Dollar card', sameCurrency: true } },
+        i18n.t,
+      ),
+    ).toBe(
+      'The other part of this transfer, in Dollar card, could not be found. Only this part is deleted, so check Dollar card.',
+    );
+    expect(
+      removeNotice({ split: false, exchange: { kind: 'missing', sameCurrency: true } }, i18n.t),
+    ).toBe('The other part of this transfer could not be found. Only this part is deleted.');
+  });
+
+  it('keeps the exchange wording for a missing other part in another currency', () => {
+    expect(
+      removeNotice(
+        { split: false, exchange: { kind: 'missing', name: 'Dollar card', sameCurrency: false } },
+        i18n.t,
+      ),
+    ).toBe(
+      'The other part of this exchange, in Dollar card, could not be found. Only this part is deleted, so check Dollar card.',
     );
   });
 

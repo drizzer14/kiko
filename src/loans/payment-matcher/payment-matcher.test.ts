@@ -50,6 +50,7 @@ const baseTransaction = (overrides: Partial<MatchableTransaction> = {}): Matchab
   loanHoldingId: null,
   loanLinkRejected: false,
   exchangeCounterpartHoldingId: null,
+  untrackedCounterpart: null,
   ...overrides,
 });
 
@@ -59,194 +60,102 @@ const baseTransaction = (overrides: Partial<MatchableTransaction> = {}): Matchab
 // produces.
 const firstInstallment = loanInstallments(baseLoanMeta())[0];
 
+// A loan paid from the holding every `baseTransaction` is debited on.
+const payerLoan = () => loanHolding({ paymentHoldingId: 'payer-1' });
+
+// A debit of the first installment's size on its due date, before any override.
+const installmentDebit = (overrides: Partial<MatchableTransaction> = {}): MatchableTransaction =>
+  baseTransaction({
+    amountMinorUnits: -firstInstallment.paymentMinorUnits,
+    time: firstInstallment.dueDate,
+    ...overrides,
+  });
+
+const matchesOf = (
+  transaction: MatchableTransaction,
+  loan: Pick<HoldingRow, 'id' | 'currency' | 'metadata'> = payerLoan(),
+) => matchLoanPayments({ transactions: [transaction], loans: [loan], now: NOW });
+
+const firstInstallmentMatch = {
+  transactionId: 'txn-1',
+  loanHoldingId: 'loan-1',
+  dueDate: firstInstallment.dueDate,
+};
+
 describe('matchLoanPayments', () => {
   it('links a debit whose amount and date match an installment, paid from the loan’s own paymentHoldingId', () => {
-    const loan = loanHolding({ paymentHoldingId: 'payer-1' });
-    const transaction = baseTransaction({
-      holdingId: 'payer-1',
-      amountMinorUnits: -firstInstallment.paymentMinorUnits,
-      time: firstInstallment.dueDate,
-    });
-
-    const matches = matchLoanPayments({ transactions: [transaction], loans: [loan], now: NOW });
-
-    expect(matches).toEqual([
-      { transactionId: 'txn-1', loanHoldingId: 'loan-1', dueDate: firstInstallment.dueDate },
-    ]);
+    expect(matchesOf(installmentDebit())).toEqual([firstInstallmentMatch]);
   });
 
   it.each(['кредит', 'погашення', 'іпотек', 'позик', 'loan', 'mortgage', 'repayment'])(
     'links a debit whose description carries the keyword %j',
     (keyword) => {
-      const loan = loanHolding();
-      const transaction = baseTransaction({
-        amountMinorUnits: -firstInstallment.paymentMinorUnits,
-        time: firstInstallment.dueDate,
-        description: `Monthly ${keyword} payment`,
-      });
+      const matches = matchesOf(
+        installmentDebit({ description: `Monthly ${keyword} payment` }),
+        loanHolding(),
+      );
 
-      const matches = matchLoanPayments({ transactions: [transaction], loans: [loan], now: NOW });
-
-      expect(matches).toEqual([
-        { transactionId: 'txn-1', loanHoldingId: 'loan-1', dueDate: firstInstallment.dueDate },
-      ]);
+      expect(matches).toEqual([firstInstallmentMatch]);
     },
   );
 
   it('links a debit whose description carries the lender’s own name', () => {
-    const loan = loanHolding({ lenderName: 'PrivatBank' });
-    const transaction = baseTransaction({
-      amountMinorUnits: -firstInstallment.paymentMinorUnits,
-      time: firstInstallment.dueDate,
-      description: 'Payment to privatbank',
-    });
-
-    const matches = matchLoanPayments({ transactions: [transaction], loans: [loan], now: NOW });
+    const matches = matchesOf(
+      installmentDebit({ description: 'Payment to privatbank' }),
+      loanHolding({ lenderName: 'PrivatBank' }),
+    );
 
     expect(matches).toHaveLength(1);
   });
 
   it('links a debit whose counterIban equals the lenderIban', () => {
-    const loan = loanHolding({ lenderIban: 'UA123456789012345678901234567' });
-    const transaction = baseTransaction({
-      amountMinorUnits: -firstInstallment.paymentMinorUnits,
-      time: firstInstallment.dueDate,
-      counterIban: 'UA123456789012345678901234567',
-    });
-
-    const matches = matchLoanPayments({ transactions: [transaction], loans: [loan], now: NOW });
+    const matches = matchesOf(
+      installmentDebit({ counterIban: 'UA123456789012345678901234567' }),
+      loanHolding({ lenderIban: 'UA123456789012345678901234567' }),
+    );
 
     expect(matches).toHaveLength(1);
   });
 
   it('does not link amount + date alone with no third signal (e.g. same-size rent)', () => {
-    const loan = loanHolding();
-    const transaction = baseTransaction({
-      amountMinorUnits: -firstInstallment.paymentMinorUnits,
-      time: firstInstallment.dueDate,
-      description: 'Monthly rent',
-    });
-
-    const matches = matchLoanPayments({ transactions: [transaction], loans: [loan], now: NOW });
+    const matches = matchesOf(installmentDebit({ description: 'Monthly rent' }), loanHolding());
 
     expect(matches).toEqual([]);
   });
 
-  it('does not link an amount outside the tolerance (more than 1% or 1.00, whichever is larger)', () => {
-    const loan = loanHolding({ paymentHoldingId: 'payer-1' });
-    const transaction = baseTransaction({
-      holdingId: 'payer-1',
-      amountMinorUnits: -(firstInstallment.paymentMinorUnits + 5_000),
-      time: firstInstallment.dueDate,
-    });
-
-    const matches = matchLoanPayments({ transactions: [transaction], loans: [loan], now: NOW });
-
-    expect(matches).toEqual([]);
-  });
-
-  it('links an amount within tolerance (a bank fee/rounding of a few kopecks)', () => {
-    const loan = loanHolding({ paymentHoldingId: 'payer-1' });
-    const transaction = baseTransaction({
-      holdingId: 'payer-1',
-      amountMinorUnits: -(firstInstallment.paymentMinorUnits + 50),
-      time: firstInstallment.dueDate,
-    });
-
-    const matches = matchLoanPayments({ transactions: [transaction], loans: [loan], now: NOW });
-
-    expect(matches).toHaveLength(1);
-  });
-
-  // The installment is 1,000.00 UAH, so 1% (10.00) is the tolerance.
+  // The installment is 1,000.00 UAH, so 1% (10.00) is the tolerance: a bank
+  // fee/rounding of a few kopecks links, 50.00 off does not.
   it.each([
+    [50, 1],
+    [5_000, 0],
     [1_000, 1],
     [1_001, 0],
     [-1_000, 1],
     [-1_001, 0],
   ])('links an amount %i minor units off the installment: %i match(es)', (offset, expected) => {
-    const loan = loanHolding({ paymentHoldingId: 'payer-1' });
-    const transaction = baseTransaction({
-      holdingId: 'payer-1',
-      amountMinorUnits: -(firstInstallment.paymentMinorUnits + offset),
-      time: firstInstallment.dueDate,
-    });
-
-    const matches = matchLoanPayments({ transactions: [transaction], loans: [loan], now: NOW });
+    const matches = matchesOf(
+      installmentDebit({ amountMinorUnits: -(firstInstallment.paymentMinorUnits + offset) }),
+    );
 
     expect(matches).toHaveLength(expected);
   });
 
-  it('does not link a transaction more than 7 days after the due date', () => {
-    const loan = loanHolding({ paymentHoldingId: 'payer-1' });
-    const transaction = baseTransaction({
-      holdingId: 'payer-1',
-      amountMinorUnits: -firstInstallment.paymentMinorUnits,
-      time: firstInstallment.dueDate + 8 * DAY_MS,
-    });
+  // The window is 3 days before to 7 days after the due date, both bounds inclusive.
+  it.each([
+    [-4, 0],
+    [-3, 1],
+    [7, 1],
+    [8, 0],
+  ])('links a transaction %i days from the due date: %i match(es)', (days, expected) => {
+    const matches = matchesOf(installmentDebit({ time: firstInstallment.dueDate + days * DAY_MS }));
 
-    const matches = matchLoanPayments({ transactions: [transaction], loans: [loan], now: NOW });
-
-    expect(matches).toEqual([]);
-  });
-
-  it('does not link a transaction more than 3 days before the due date', () => {
-    const loan = loanHolding({ paymentHoldingId: 'payer-1' });
-    const transaction = baseTransaction({
-      holdingId: 'payer-1',
-      amountMinorUnits: -firstInstallment.paymentMinorUnits,
-      time: firstInstallment.dueDate - 4 * DAY_MS,
-    });
-
-    const matches = matchLoanPayments({ transactions: [transaction], loans: [loan], now: NOW });
-
-    expect(matches).toEqual([]);
-  });
-
-  it('links a transaction exactly 3 days before the due date (inclusive lower bound)', () => {
-    const loan = loanHolding({ paymentHoldingId: 'payer-1' });
-    const before = baseTransaction({
-      holdingId: 'payer-1',
-      amountMinorUnits: -firstInstallment.paymentMinorUnits,
-      time: firstInstallment.dueDate - 3 * DAY_MS,
-    });
-
-    const matches = matchLoanPayments({ transactions: [before], loans: [loan], now: NOW });
-
-    expect(matches).toHaveLength(1);
-  });
-
-  it('links a transaction exactly 7 days after the due date (inclusive upper bound)', () => {
-    const loan = loanHolding({ paymentHoldingId: 'payer-1' });
-    const after = baseTransaction({
-      holdingId: 'payer-1',
-      amountMinorUnits: -firstInstallment.paymentMinorUnits,
-      time: firstInstallment.dueDate + 7 * DAY_MS,
-    });
-
-    const matches = matchLoanPayments({ transactions: [after], loans: [loan], now: NOW });
-
-    expect(matches).toHaveLength(1);
+    expect(matches).toHaveLength(expected);
   });
 
   it('links no candidate when two transactions both match the same installment (ambiguous)', () => {
-    const loan = loanHolding({ paymentHoldingId: 'payer-1' });
-    const first = baseTransaction({
-      id: 'txn-1',
-      holdingId: 'payer-1',
-      amountMinorUnits: -firstInstallment.paymentMinorUnits,
-      time: firstInstallment.dueDate,
-    });
-    const second = baseTransaction({
-      id: 'txn-2',
-      holdingId: 'payer-1',
-      amountMinorUnits: -firstInstallment.paymentMinorUnits,
-      time: firstInstallment.dueDate,
-    });
-
     const matches = matchLoanPayments({
-      transactions: [first, second],
-      loans: [loan],
+      transactions: [installmentDebit({ id: 'txn-1' }), installmentDebit({ id: 'txn-2' })],
+      loans: [payerLoan()],
       now: NOW,
     });
 
@@ -254,140 +163,76 @@ describe('matchLoanPayments', () => {
   });
 
   it('does not link a transaction that matches installments of two different loans', () => {
-    const loanA = loanHolding({ paymentHoldingId: 'payer-1' }, { id: 'loan-a' });
-    const loanB = loanHolding({ paymentHoldingId: 'payer-1' }, { id: 'loan-b' });
-    const transaction = baseTransaction({
-      holdingId: 'payer-1',
-      amountMinorUnits: -firstInstallment.paymentMinorUnits,
-      time: firstInstallment.dueDate,
-    });
-
     const matches = matchLoanPayments({
-      transactions: [transaction],
-      loans: [loanA, loanB],
+      transactions: [installmentDebit()],
+      loans: [
+        loanHolding({ paymentHoldingId: 'payer-1' }, { id: 'loan-a' }),
+        loanHolding({ paymentHoldingId: 'payer-1' }, { id: 'loan-b' }),
+      ],
       now: NOW,
     });
 
     expect(matches).toEqual([]);
   });
 
-  it('never links a row already marked loanLinkRejected', () => {
-    const loan = loanHolding({ paymentHoldingId: 'payer-1' });
-    const transaction = baseTransaction({
-      holdingId: 'payer-1',
-      amountMinorUnits: -firstInstallment.paymentMinorUnits,
-      time: firstInstallment.dueDate,
-      loanLinkRejected: true,
-    });
-
-    const matches = matchLoanPayments({ transactions: [transaction], loans: [loan], now: NOW });
-
-    expect(matches).toEqual([]);
+  it.each([
+    ['a row already marked loanLinkRejected', { loanLinkRejected: true }],
+    ['a row that is already linked (unchanged)', { loanHoldingId: 'some-other-loan' }],
+    [
+      'an exchange leg, even with matching amount/date/signal',
+      { exchangeCounterpartHoldingId: 'other-holding' },
+    ],
+    [
+      'a credit (a positive amount), even with matching magnitude/date/signal',
+      { amountMinorUnits: firstInstallment.paymentMinorUnits },
+    ],
+    ['a transaction in a different currency than the loan', { currency: 'USD' }],
+  ] as const)('never links %s', (_label, overrides) => {
+    expect(matchesOf(installmentDebit(overrides))).toEqual([]);
   });
 
-  it('never re-proposes a link for a row that is already linked (unchanged)', () => {
-    const loan = loanHolding({ paymentHoldingId: 'payer-1' });
-    const transaction = baseTransaction({
-      holdingId: 'payer-1',
-      amountMinorUnits: -firstInstallment.paymentMinorUnits,
-      time: firstInstallment.dueDate,
-      loanHoldingId: 'some-other-loan',
-    });
-
-    const matches = matchLoanPayments({ transactions: [transaction], loans: [loan], now: NOW });
-
-    expect(matches).toEqual([]);
-  });
-
-  it('never links an exchange leg, even with matching amount/date/signal', () => {
-    const loan = loanHolding({ paymentHoldingId: 'payer-1' });
-    const transaction = baseTransaction({
-      holdingId: 'payer-1',
-      amountMinorUnits: -firstInstallment.paymentMinorUnits,
-      time: firstInstallment.dueDate,
-      exchangeCounterpartHoldingId: 'other-holding',
-    });
-
-    const matches = matchLoanPayments({ transactions: [transaction], loans: [loan], now: NOW });
-
-    expect(matches).toEqual([]);
-  });
-
-  it('never links a credit (a positive amount), even with matching magnitude/date/signal', () => {
-    const loan = loanHolding({ paymentHoldingId: 'payer-1' });
-    const transaction = baseTransaction({
-      holdingId: 'payer-1',
-      amountMinorUnits: firstInstallment.paymentMinorUnits,
-      time: firstInstallment.dueDate,
-    });
-
-    const matches = matchLoanPayments({ transactions: [transaction], loans: [loan], now: NOW });
-
-    expect(matches).toEqual([]);
-  });
-
-  it('does not link a transaction in a different currency than the loan', () => {
-    const loan = loanHolding({ paymentHoldingId: 'payer-1' });
-    const transaction = baseTransaction({
-      holdingId: 'payer-1',
-      currency: 'USD',
-      amountMinorUnits: -firstInstallment.paymentMinorUnits,
-      time: firstInstallment.dueDate,
-    });
-
-    const matches = matchLoanPayments({ transactions: [transaction], loans: [loan], now: NOW });
+  it('never links a move to a wallet Kiko does not track, even with matching amount/date/signal', () => {
+    const matches = matchesOf(
+      installmentDebit({
+        holdingId: 'binance-spot',
+        currency: 'BTC',
+        untrackedCounterpart: 'wallet:UMFUTURE',
+      }),
+      loanHolding({ paymentHoldingId: 'binance-spot' }, { currency: 'BTC' }),
+    );
 
     expect(matches).toEqual([]);
   });
 
   it('never links any payment against an informal (schedule: "none") loan', () => {
-    const loan = loanHolding({ schedule: 'none', annualRatePct: undefined, termMonths: undefined });
-    const transaction = baseTransaction({
-      holdingId: 'payer-1',
-      amountMinorUnits: -firstInstallment.paymentMinorUnits,
-      time: firstInstallment.dueDate,
-      description: 'loan payment',
-    });
-
-    const matches = matchLoanPayments({ transactions: [transaction], loans: [loan], now: NOW });
+    const matches = matchesOf(
+      installmentDebit({ description: 'loan payment' }),
+      loanHolding({ schedule: 'none', annualRatePct: undefined, termMonths: undefined }),
+    );
 
     expect(matches).toEqual([]);
   });
 
   it('is idempotent: re-running once the row is already linked proposes nothing further', () => {
-    const loan = loanHolding({ paymentHoldingId: 'payer-1' });
-    const transaction = baseTransaction({
-      holdingId: 'payer-1',
-      amountMinorUnits: -firstInstallment.paymentMinorUnits,
-      time: firstInstallment.dueDate,
-    });
+    const transaction = installmentDebit();
 
-    const firstRun = matchLoanPayments({ transactions: [transaction], loans: [loan], now: NOW });
+    const firstRun = matchesOf(transaction);
     expect(firstRun).toHaveLength(1);
 
     const alreadyLinked: TransactionRow['loanHoldingId'] = firstRun[0].loanHoldingId;
-    const secondRun = matchLoanPayments({
-      transactions: [{ ...transaction, loanHoldingId: alreadyLinked }],
-      loans: [loan],
-      now: NOW,
-    });
+    const secondRun = matchesOf({ ...transaction, loanHoldingId: alreadyLinked });
 
     expect(secondRun).toEqual([]);
   });
 
   it('backfills a payment against a PAST installment (not just the next unpaid one)', () => {
-    const loan = loanHolding({ paymentHoldingId: 'payer-1' });
-    const installments = loanInstallments(baseLoanMeta());
-    const thirdInstallment = installments[2];
+    const thirdInstallment = loanInstallments(baseLoanMeta())[2];
     const transaction = baseTransaction({
-      holdingId: 'payer-1',
       amountMinorUnits: -thirdInstallment.paymentMinorUnits,
       time: thirdInstallment.dueDate,
     });
 
-    const matches = matchLoanPayments({ transactions: [transaction], loans: [loan], now: NOW });
-
-    expect(matches).toEqual([
+    expect(matchesOf(transaction)).toEqual([
       { transactionId: 'txn-1', loanHoldingId: 'loan-1', dueDate: thirdInstallment.dueDate },
     ]);
   });
@@ -401,16 +246,13 @@ describe('matchLoanPayments', () => {
       termMonths: 8,
       schedule: 'differentiated',
     };
-    const loan = loanHolding({ ...degenerate, paymentHoldingId: 'payer-1' });
     const sixthInstallment = loanInstallments(baseLoanMeta(degenerate))[5];
-    const transaction = baseTransaction({
-      holdingId: 'payer-1',
-      amountMinorUnits: -50,
-      time: sixthInstallment.dueDate,
-    });
+    const transaction = baseTransaction({ amountMinorUnits: -50, time: sixthInstallment.dueDate });
 
     expect(sixthInstallment.paymentMinorUnits).toBe(0);
-    expect(matchLoanPayments({ transactions: [transaction], loans: [loan], now: NOW })).toEqual([]);
+    expect(
+      matchesOf(transaction, loanHolding({ ...degenerate, paymentHoldingId: 'payer-1' })),
+    ).toEqual([]);
   });
 });
 
@@ -420,70 +262,34 @@ describe('matchLoanPayments', () => {
 // same-amount candidate (with its OWN valid third signal) would then take
 // its place, double-counting one installment across two real payments.
 describe('matchLoanPayments — an installment already taken', () => {
-  it('does not link a later same-amount candidate for an installment a manually linked payment already took', () => {
-    const loan = loanHolding({ paymentHoldingId: 'payer-1' });
-    // A same-size rent, paid from the SAME holding the loan is paid from —
-    // its own third signal would otherwise be enough to link it.
-    const rent = baseTransaction({
-      id: 'txn-rent',
-      holdingId: 'payer-1',
+  const firstInstallmentPaidBy = (loanHoldingId: string): LinkedLoanPayment[] => [
+    {
+      loanHoldingId,
       amountMinorUnits: -firstInstallment.paymentMinorUnits,
       time: firstInstallment.dueDate,
-    });
-    const linkedPayments: LinkedLoanPayment[] = [
-      {
-        loanHoldingId: 'loan-1',
-        amountMinorUnits: -firstInstallment.paymentMinorUnits,
-        time: firstInstallment.dueDate,
-      },
-    ];
+    },
+  ];
 
-    const matches = matchLoanPayments({
-      transactions: [rent],
-      loans: [loan],
+  const matchesWithLinked = (linkedPayments: LinkedLoanPayment[]) =>
+    matchLoanPayments({
+      transactions: [installmentDebit()],
+      loans: [payerLoan()],
       linkedPayments,
       now: NOW,
     });
 
-    expect(matches).toEqual([]);
+  it('does not link a later same-amount candidate for an installment a manually linked payment already took', () => {
+    // A same-size rent, paid from the SAME holding the loan is paid from —
+    // its own third signal would otherwise be enough to link it.
+    expect(matchesWithLinked(firstInstallmentPaidBy('loan-1'))).toEqual([]);
   });
 
   it('still links a fresh candidate when the only linked payment belongs to a DIFFERENT loan', () => {
-    const loan = loanHolding({ paymentHoldingId: 'payer-1' });
-    const transaction = baseTransaction({
-      holdingId: 'payer-1',
-      amountMinorUnits: -firstInstallment.paymentMinorUnits,
-      time: firstInstallment.dueDate,
-    });
-    const linkedPayments: LinkedLoanPayment[] = [
-      {
-        loanHoldingId: 'some-other-loan',
-        amountMinorUnits: -firstInstallment.paymentMinorUnits,
-        time: firstInstallment.dueDate,
-      },
-    ];
-
-    const matches = matchLoanPayments({
-      transactions: [transaction],
-      loans: [loan],
-      linkedPayments,
-      now: NOW,
-    });
-
-    expect(matches).toHaveLength(1);
+    expect(matchesWithLinked(firstInstallmentPaidBy('some-other-loan'))).toHaveLength(1);
   });
 
   it('links normally when linkedPayments is omitted (backward-compatible default)', () => {
-    const loan = loanHolding({ paymentHoldingId: 'payer-1' });
-    const transaction = baseTransaction({
-      holdingId: 'payer-1',
-      amountMinorUnits: -firstInstallment.paymentMinorUnits,
-      time: firstInstallment.dueDate,
-    });
-
-    const matches = matchLoanPayments({ transactions: [transaction], loans: [loan], now: NOW });
-
-    expect(matches).toHaveLength(1);
+    expect(matchesOf(installmentDebit())).toHaveLength(1);
   });
 });
 
@@ -493,56 +299,37 @@ describe('matchLoanPayments — an installment already taken', () => {
 // shorter than 3 characters is too likely to appear inside an unrelated
 // description by coincidence to count as a real signal.
 describe('matchLoanPayments — IBAN normalization and lender-name length', () => {
-  it('matches a lenderIban stored with different case/whitespace against a clean counterIban', () => {
-    const loan = loanHolding({ lenderIban: ' ua123456789012345678901234567 ' });
-    const transaction = baseTransaction({
-      amountMinorUnits: -firstInstallment.paymentMinorUnits,
-      time: firstInstallment.dueDate,
-      counterIban: 'UA123456789012345678901234567',
-    });
-
-    const matches = matchLoanPayments({ transactions: [transaction], loans: [loan], now: NOW });
-
-    expect(matches).toHaveLength(1);
-  });
-
-  it('matches a counterIban carrying grouping spaces against a clean lenderIban', () => {
-    const loan = loanHolding({ lenderIban: 'UA123456789012345678901234567' });
-    const transaction = baseTransaction({
-      amountMinorUnits: -firstInstallment.paymentMinorUnits,
-      time: firstInstallment.dueDate,
-      counterIban: 'ua12 3456 7890 1234 5678 9012 3456 7',
-    });
-
-    const matches = matchLoanPayments({ transactions: [transaction], loans: [loan], now: NOW });
+  it.each([
+    [
+      'a lenderIban stored with different case/whitespace against a clean counterIban',
+      ' ua123456789012345678901234567 ',
+      'UA123456789012345678901234567',
+    ],
+    [
+      'a counterIban carrying grouping spaces against a clean lenderIban',
+      'UA123456789012345678901234567',
+      'ua12 3456 7890 1234 5678 9012 3456 7',
+    ],
+  ])('matches %s', (_label, lenderIban, counterIban) => {
+    const matches = matchesOf(installmentDebit({ counterIban }), loanHolding({ lenderIban }));
 
     expect(matches).toHaveLength(1);
   });
 
-  it('does not link on a lenderName shorter than 3 characters, even when it appears in the description', () => {
-    const loan = loanHolding({ lenderName: 'Jo' });
-    const transaction = baseTransaction({
-      amountMinorUnits: -firstInstallment.paymentMinorUnits,
-      time: firstInstallment.dueDate,
-      description: 'Payment to Jo',
-    });
+  it.each([
+    [
+      'does not link on a lenderName shorter than 3 characters, even when it appears in the description',
+      'Jo',
+      0,
+    ],
+    ['links on a lenderName of exactly 3 characters', 'ICU', 1],
+  ])('%s', (_label, lenderName, expected) => {
+    const matches = matchesOf(
+      installmentDebit({ description: `Payment to ${lenderName}` }),
+      loanHolding({ lenderName }),
+    );
 
-    const matches = matchLoanPayments({ transactions: [transaction], loans: [loan], now: NOW });
-
-    expect(matches).toEqual([]);
-  });
-
-  it('links on a lenderName of exactly 3 characters', () => {
-    const loan = loanHolding({ lenderName: 'ICU' });
-    const transaction = baseTransaction({
-      amountMinorUnits: -firstInstallment.paymentMinorUnits,
-      time: firstInstallment.dueDate,
-      description: 'Payment to ICU',
-    });
-
-    const matches = matchLoanPayments({ transactions: [transaction], loans: [loan], now: NOW });
-
-    expect(matches).toHaveLength(1);
+    expect(matches).toHaveLength(expected);
   });
 });
 

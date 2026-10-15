@@ -73,11 +73,23 @@ import { SYNC_MATCH_WINDOW_MILLISECONDS, pairSyncInputsWithImportRows } from '..
 // this feature importing the templates one.
 type Alongside = (databaseTransaction: typeof database) => Promise<void>;
 
+// The three movement markers are insert-only: the upsert's update set
+// (`BANK_OWNED_TRANSACTION_COLUMNS`) leaves them out, since the deterministic key
+// of a history row never changes the movement it names.
 type NewTransaction = Pick<TransactionRow, 'holdingId' | 'amountMinorUnits' | 'time' | 'source'> &
   Partial<
     Pick<
       TransactionRow,
-      'description' | 'category' | 'mcc' | 'hold' | 'counterIban' | 'comment' | 'externalId'
+      | 'description'
+      | 'category'
+      | 'mcc'
+      | 'hold'
+      | 'counterIban'
+      | 'comment'
+      | 'externalId'
+      | 'exchangeCounterpartHoldingId'
+      | 'exchangePairId'
+      | 'untrackedCounterpart'
     >
   >;
 
@@ -523,6 +535,26 @@ const viaSplitPairOf = (row: TransactionRow, linked: LinkedRows): LinkedRows['pa
   return { removed: reachedViaSplit(linked.pair.removed), kept: reachedViaSplit(linked.pair.kept) };
 };
 
+// The test the row's label applies (`transactionRowDescription`) to read "Transfer
+// to/from" instead of "Exchange to/from": the holdings are known and hold one currency.
+// The notice also names the other legs of the pair, which can differ from the marker's
+// holding when a leg was converted again, so each of them must hold that currency too.
+const holdsSameCurrencyAs = (
+  row: TransactionRow,
+  otherLegs: TransactionRow[],
+  holdingsById: Map<string, NamedHolding>,
+): boolean => {
+  const own = holdingsById.get(row.holdingId);
+
+  return (
+    own !== undefined &&
+    [
+      markerHoldingOf(row, holdingsById),
+      ...otherLegs.map((leg) => holdingsById.get(leg.holdingId)),
+    ].every((holding) => holding?.currency === own.currency)
+  );
+};
+
 const exchangeRemovalOf = (
   row: TransactionRow,
   linked: LinkedRows,
@@ -535,6 +567,7 @@ const exchangeRemovalOf = (
       kind: 'deleted',
       names: uniqueHoldingNamesOf(pair.removed, holdingsById),
       ...(pair.kept.length > 0 ? { keptNames: uniqueHoldingNamesOf(pair.kept, holdingsById) } : {}),
+      ...(holdsSameCurrencyAs(row, pair.removed, holdingsById) ? { sameCurrency: true } : {}),
     };
   }
 
@@ -549,7 +582,11 @@ const exchangeRemovalOf = (
     return undefined;
   }
 
-  return { kind: 'missing', ...foldMap(maybe(marker), ({ name }) => ({ name })) };
+  return {
+    kind: 'missing',
+    ...foldMap(maybe(marker), ({ name }) => ({ name })),
+    ...(holdsSameCurrencyAs(row, [], holdingsById) ? { sameCurrency: true } : {}),
+  };
 };
 
 // What the delete does to the conversions it reaches only through the split: the
@@ -1385,6 +1422,7 @@ const GUARD_FIELD_IS_UNSET: Record<RewriteGuardField, SQL> = {
   categorySetByHand: sql`${transactions.categorySetByHand} = 0`,
   exchangePairId: sql`${transactions.exchangePairId} IS NULL`,
   exchangeCounterpartHoldingId: sql`${transactions.exchangeCounterpartHoldingId} IS NULL`,
+  untrackedCounterpart: sql`${transactions.untrackedCounterpart} IS NULL`,
   setsBalance: sql`${transactions.setsBalance} = 0`,
   changeGroupId: sql`${transactions.changeGroupId} IS NULL`,
 };
@@ -1913,6 +1951,11 @@ const contextRowsQuery = () =>
       // it to resolve an exchange leg's label, and Statistics reads it to
       // drop both legs from the spending pie.
       exchangeCounterpartHoldingId: transactions.exchangeCounterpartHoldingId,
+      // The untracked-wallet code travels with it, for the same two readers.
+      untrackedCounterpart: transactions.untrackedCounterpart,
+      // With the marker, what the row label needs to compare the leg's own
+      // currency to its counterpart's (`holdingCurrencyById`).
+      holdingId: transactions.holdingId,
       // The split-change group id travels too: the spending pie nets a
       // payment's linked returns into its category (statistics/category-breakdown).
       changeGroupId: transactions.changeGroupId,
@@ -1944,10 +1987,10 @@ const contextRowsQuery = () =>
 export const transactionsRepo = {
   listByHoldingQuery: (holdingId: string) =>
     database.select().from(transactions).where(eq(transactions.holdingId, holdingId)),
-  // Every transaction row, newest first, carrying its `holdingId` — the
-  // Statistics line chart groups the whole ledger by holding to reconstruct
-  // each holding's balance over time, which `listWithContextBetweenQuery` (a
-  // display projection without `holdingId`) cannot feed.
+  // Every transaction row, newest first, as stored — the Statistics line chart
+  // groups the whole ledger by holding to reconstruct each holding's balance
+  // over time. `listWithContextBetweenQuery` is a display projection joined to
+  // the holding and account for their names, which this read has no use for.
   listAllQuery: () => database.select().from(transactions).orderBy(desc(transactions.time)),
   getByIdQuery: (transactionId: string) =>
     database.select().from(transactions).where(eq(transactions.id, transactionId)).limit(1),
@@ -1955,15 +1998,51 @@ export const transactionsRepo = {
    * The newest imported time for a holding's rows of one sync `source` (a single
    * `{ time }` row, or none). The crypto-sync transaction import reads this as an
    * incremental cursor: the next Binance fetch starts from just before this time
-   * rather than re-walking the full history every sync.
+   * rather than re-walking the full history every sync. With `externalIdPrefixes`, only
+   * the rows whose external id starts with one of them count, so a cursor can follow one
+   * kind of row while other kinds of the same source sit on the holding. The prefix is
+   * compared by `substr`, not `LIKE`, so an id with `%` or `_` in it is no pattern.
    */
-  latestSyncedTimeQuery: (holdingId: string, source: TransactionRow['source']) =>
+  latestSyncedTimeQuery: (
+    holdingId: string,
+    source: TransactionRow['source'],
+    externalIdPrefixes?: string[],
+  ) =>
     database
       .select({ time: transactions.time })
       .from(transactions)
-      .where(and(eq(transactions.holdingId, holdingId), eq(transactions.source, source)))
+      .where(
+        and(
+          eq(transactions.holdingId, holdingId),
+          eq(transactions.source, source),
+          foldMap(maybe(externalIdPrefixes), (prefixes) =>
+            or(
+              ...prefixes.map(
+                (prefix) =>
+                  sql`substr(${transactions.externalId}, 1, ${prefix.length}) = ${prefix}`,
+              ),
+            ),
+          ),
+        ),
+      )
       .orderBy(desc(transactions.time))
       .limit(1),
+  /**
+   * Which of `externalIds` a stored row of `source` already holds, on any holding —
+   * the same `(source, external_id)` lookup `addManyDedup` counts new rows with.
+   */
+  storedExternalIdsQuery: async (
+    source: TransactionRow['source'],
+    externalIds: string[],
+  ): Promise<Set<string>> => {
+    const stored = await readStoredConflictRows(
+      externalIds.map((externalId) => ({ source, externalId })),
+      (where) =>
+        database.select({ externalId: transactions.externalId }).from(transactions).where(where),
+    );
+
+    return new Set(stored.flatMap((row) => row.externalId ?? []));
+  },
   /**
    * The DISTINCT holding ids that still carry an outstanding Monobank hold (a
    * pending authorization: `source = 'monobank'` AND `hold = true`). The sync
@@ -1982,8 +2061,9 @@ export const transactionsRepo = {
    * The loan-payment matcher's own candidate read
    * (`src/loans/payment-matcher/`): every debit, not already linked, not
    * rejected (a manual "None" or Undo must stick), and not one leg
-   * of an Exchange/Convert (the structural `exchangeCounterpartHoldingId`
-   * marker, same check `exchange-exclusion.ts` makes) — filtered here in SQL,
+   * of an Exchange/Convert or a move to an untracked Binance wallet (the structural
+   * `exchangeCounterpartHoldingId` and `untrackedCounterpart` markers, same checks
+   * `exchange-exclusion.ts` makes) — filtered here in SQL,
    * not in JS, so the matcher never even reads a row it can never link
    * (P-NOWORK). Joined against the PAYER holding's own currency, which the
    * matcher compares against each loan's own currency itself (this query
@@ -2018,6 +2098,7 @@ export const transactionsRepo = {
           isNull(transactions.loanHoldingId),
           eq(transactions.loanLinkRejected, false),
           isNull(transactions.exchangeCounterpartHoldingId),
+          isNull(transactions.untrackedCounterpart),
           gte(transactions.time, params.minTime),
           inArray(holdings.currency, [...params.currencies]),
         ),

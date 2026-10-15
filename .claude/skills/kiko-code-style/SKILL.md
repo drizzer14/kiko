@@ -1272,15 +1272,11 @@ Semgrep `kiko-no-source-text-read-in-test` (`rules/semgrep-prewrite.yml`)
 enforces this in every `*.test.ts(x)` and `src/test-support/**`. It
 flags a `readFileSync`/`readFile`/`createReadStream` call whose path it
 cannot prove is a non-TypeScript file, so a walked or computed path is
-flagged too. Four tests keep one text read each by a documented
+flagged too. A test that must read source text keeps one documented
 per-line override (`// nosemgrep: kiko-no-source-text-read-in-test
 OVERRIDE(<reason>)` on the line above that read), never a whole-file
-exclude, so a new read in the same file is still denied. Three search
-src text for a word or a literal that Stryker's instrumentation keeps
-(`settings-columns.test.ts`, `title-keys.call-sites.test.ts`,
-`0044-move-crypto-cash-holdings.test.ts`), and
-`generate-demo-kiko.test.ts` reads its `.kiko` fixtures by a name from a
-table. Harness tests under `__tests__/` are out of scope: they read
+exclude. The current inventory is in `docs/harness/documented-exceptions.md`.
+Harness tests under `__tests__/` are out of scope: they read
 rules, scripts, docs, and temp projects.
 
 Known limits:

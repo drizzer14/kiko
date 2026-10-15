@@ -25,6 +25,7 @@ export type BreakdownTransaction = Pick<
   | 'counterIban'
   | 'description'
   | 'exchangeCounterpartHoldingId'
+  | 'untrackedCounterpart'
   | 'changeGroupId'
 > & {
   currency: HoldingRow['currency'];

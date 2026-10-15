@@ -380,6 +380,7 @@ type LedgerRowContext = {
   defaultCategoryKey: string;
   holdingName: string;
   holdingNameById: Map<string, string>;
+  holdingCurrencyById: Map<string, string>;
   onPressTransaction: (transactionId: string) => void;
   // Duplicate this ledger row into a pre-filled create form. Passed for
   // manual rows only (a synced row is not duplicable), stateless via the
@@ -421,6 +422,7 @@ const LedgerRowItem: FC<{ row: LedgerRow; context: LedgerRowContext }> = ({ row,
     defaultCategoryKey,
     holdingName,
     holdingNameById,
+    holdingCurrencyById,
     onPressTransaction,
     onDuplicateTransaction,
     lotActions,
@@ -480,6 +482,7 @@ const LedgerRowItem: FC<{ row: LedgerRow; context: LedgerRowContext }> = ({ row,
         transaction: transactionRow.transaction,
         holdingName,
         holdingNameById,
+        holdingCurrencyById,
         t,
       });
 
@@ -950,6 +953,12 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
     () => new Map(holdings.map((candidate) => [candidate.id, candidate.name])),
     [holdings],
   );
+  // With the names, what tells a same-currency leg ("Transfer to") from a
+  // cross-currency one ("Exchange to").
+  const holdingCurrencyById = useMemo(
+    () => new Map(holdings.map((candidate) => [candidate.id, candidate.currency])),
+    [holdings],
+  );
   // The holding's effective icon + color, rendered as the identity glyph beside
   // the Value amount (via `EntityHeaderIcon` in the `EntityAmountHeader` icon slot
   // below) rather than in the nav title.
@@ -973,6 +982,7 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
     defaultCategoryKey,
     holdingName,
     holdingNameById,
+    holdingCurrencyById,
     onPressTransaction: (transactionId) =>
       navigation.navigate('TransactionForm', { transactionId }),
     onDuplicateTransaction: (transactionId) =>

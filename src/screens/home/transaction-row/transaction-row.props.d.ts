@@ -14,6 +14,7 @@ export type TransactionRowProps = {
   categoryByKey: ReadonlyMap<string, CategoryDisplay>;
   defaultCategoryKey: string;
   holdingNameById: ReadonlyMap<string, string>;
+  holdingCurrencyById: ReadonlyMap<string, string>;
   categoryKeyForRow: (raw: string | null) => string;
   onPress: (transactionId: string) => void;
   // Open the create form pre-filled from this row. Passed for MANUAL rows

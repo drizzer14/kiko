@@ -407,6 +407,13 @@
       "when": 1791806052743,
       "tag": "0057_add_transaction_templates",
       "breakpoints": true
+    },
+    {
+      "idx": 58,
+      "version": "6",
+      "when": 1791971566390,
+      "tag": "0058_add_untracked_counterpart",
+      "breakpoints": true
     }
   ]
 }

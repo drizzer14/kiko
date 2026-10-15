@@ -219,7 +219,8 @@ implemented, and callers must skip it rather than assume every id resolves.
   `side`; today the `debt` kind) says loan too: the holding form's
   create title `forms.holding.addLoanTitle` ("Add Loan" / "Додати
   кредит") and its edit title `forms.holding.editLoanTitle` ("Edit Loan"
-  / "Редагувати кредит"). There is no "Add loan" footer
+  / "Редагувати кредит"). Account detail has no "Add loan" footer; the Help topic
+  footer has one (`HelpAction` `addLoan`, kiko-design-system D10).
   Holding detail passes the flag in
   the HoldingForm route (`debtAccount`) on edit, so the title is right
   on the first frame; the form reads the account row when the route has
@@ -248,8 +249,9 @@ implemented, and callers must skip it rather than assume every id resolves.
   bank-owned columns — the settled `amountMinorUnits` and `hold`
   among them — and **never** its `comment`; its `category` is written
   only for an unflagged (`category_set_by_hand = 0`), non-structural row
-  (no exchange pair or counterpart holding, `sets_balance = 0`, no
-  `change_group_id`) whose amount changed and a category rule wins
+  (a row that no field of `REWRITE_GUARD_FIELDS` in
+  `src/categories/category-rules/plan-rule-rewrite.ts` marks) whose amount changed and a
+  category rule wins
   (`ruleWonTransactionSet`, `src/transactions/repo/transactions.repo.ts`). Read `addManyDedup` in
   `src/transactions/` for the exact refreshable
   set, and `transactions.hold` in `src/db/schema.ts` for why a
@@ -983,13 +985,25 @@ always, and the marker only when it is manual or imported and carries none; see
   rows — a null `mcc`, an empty description, and a cross-currency pair
   the matched-pair matcher rejects.
 - **The repository never writes a description for a leg.** The label is
-  resolved at render time through `t` from the marker plus the
-  counterpart's CURRENT name (a description the USER later types on that
-  row still wins — the resolver prefers a stored one) — `exchangeLegDescription`
-  (`src/transactions/`), applied by both
-  transaction lists via `transactionRowDescription` (`src/transactions/`). A
-  persisted sentence stayed English after a language switch and went
+  resolved at render time through `t`. `transactionRowDescription`
+  (`src/transactions/row-description/`) applies this order: (1) a stored
+  description wins; (2) a row with `exchangeCounterpartHoldingId` gets the
+  paired leg's label from `exchangeLegDescription` / `transferLegDescription`
+  (`src/transactions/exchange-description/`): 'Transfer to/from <name>' when
+  both holdings have the same currency, 'Exchange to/from <name>' otherwise or
+  when either currency is unknown; (3) a row with a known `untrackedCounterpart`
+  code (`wallet:<TYPE>`, `src/transactions/untracked-counterpart/`; wallet
+  names are proper nouns kept in code, not in i18n) gets 'Transfer to/from
+  <wallet>'; (4) otherwise `defaultTransactionDescription`. Same-currency legs,
+  including manual ones, read 'Transfer', not 'Exchange'. The caller supplies
+  `holdingNameById` and `holdingCurrencyById`, both built from the holdings live
+  query. A persisted sentence stayed English after a language switch and went
   stale after a rename; that is the bug the column exists to prevent.
+- `transactions.untrackedCounterpart` (0058, nullable `wallet:<TYPE>`) marks a
+  leg whose other side is an untracked wallet. The exchange-exclusion module
+  also excludes these rows from spending (read
+  `src/statistics/exchange-exclusion/`). The column is insert-only: it is not in
+  `BANK_OWNED_TRANSACTION_COLUMNS` (`src/transactions/repo/transactions.repo.ts`).
 - **`transactionRowDescription` is the ONE owner of a blank row's label.**
   Every surface that shows it calls it: both lists, `ExampleTransaction`,
   and the transaction form. On an edit, the form pre-fills a blank
@@ -999,7 +1013,7 @@ always, and the marker only when it is manual or imported and carries none; see
   untouched leg keeps resolving at render time. A direct
   `defaultTransactionDescription(` call outside
   `src/transactions/row-description/` (or the helper's own folder)
-  skips the exchange branch and is denied by the
+  skips the exchange, transfer and untracked branches, and is denied by the
   `kiko-no-direct-default-transaction-description` Semgrep rule.
 - A repository input therefore carries holding IDs, never holding
   display names, for an exchange.
@@ -1052,6 +1066,12 @@ Rules:
   keeps the marker that takes its contribution out. The marker therefore may name
   a holding no leg of the pair sits on (the deposit), which is why a delete never
   clears a kept row's marker just because the row has one.
+- **A same-currency pair says "transfer".** `missingPartSentence` and
+  `exchangeSentence` (`src/transactions/remove-notice/remove-notice.ts`) pick
+  `transactions.deleteLinked.transfer`, `.transferUnlinked` and
+  `.transferUnlinkedPlain` for a pair whose legs share a currency (a manual
+  same-currency exchange between two holdings), the `exchange*` keys otherwise.
+  A Binance row is never the one deleted here: a synced row is not deletable.
 - **An unreadable deposit is not an error.** `removeDepositContributionDatabaseTransaction`
   returns false when the metadata cannot be read or no single contribution
   matches: the leg deletes and the deposit stays, as the confirm said
@@ -2160,8 +2180,8 @@ needs a 0032-style migration), while the `loan` type is
 `arrow.up.forward.circle.fill` — a saved loan holding stores a null icon,
 so the new glyph needs no migration. That type glyph is now only the
 fallback for a loan with no valid kind: a loan's default glyph follows its
-kind (below). There is no "Add loan" footer
-button any more (kiko-design-system's footer mapping).
+kind (below). Account detail has no "Add loan" footer button; the Help topic footer
+has one (kiko-design-system D10).
 
 A `debt` account's Type field IS its loan-kind picker (`LoanKindField`,
 `src/screens/forms/holding-form/loan/loan-kind-field/`, testID

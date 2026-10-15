@@ -70,6 +70,7 @@ export type RewriteCandidate = {
   categorySetByHand: boolean;
   exchangePairId: string | null;
   exchangeCounterpartHoldingId: string | null;
+  untrackedCounterpart: string | null;
   setsBalance: boolean;
   changeGroupId: string | null;
 };
