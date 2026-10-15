@@ -6,13 +6,11 @@ file="$(printf '%s' "$payload" | node -e 'let s="";process.stdin.on("data",d=>s+
 [ -z "$file" ] && exit 0
 # The pre-write guard reads only TypeScript, so this is the one per-edit check on a `#` comment.
 case "$file" in
+  *.ts | *.tsx | *.js) : ;;
   *.sh | *.bash | *.yml | *.yaml | githooks/* | */githooks/*)
     "$DIR/comment-line-width.sh" "$file" || exit 2
     exit 0
     ;;
-esac
-case "$file" in
-  *.ts|*.tsx|*.js) : ;;
   *) exit 0 ;;
 esac
 "$DIR/lint.sh" "$file" || exit 2

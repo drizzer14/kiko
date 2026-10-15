@@ -59,6 +59,22 @@ describe.each([
   });
 });
 
+// An explicit `any` fails Biome's lint, so a lint block in the output shows the write reached
+// lint.sh and not only the comment-width check.
+describe('fast.sh on a TypeScript or JavaScript write under a githooks segment', () => {
+  it.each([
+    ['githooks/probe.ts'],
+    ['githooks/probe.tsx'],
+    ['githooks/probe.js'],
+    ['nested/githooks/probe.ts'],
+  ])('runs the full fast tier on %s, not only the comment-width check', (path) => {
+    const result = runFast(path, 'export const probe: any = 1;\n');
+
+    expect(result.status).toBe(2);
+    expect(result.stderr).toContain('Biome (lint + format)');
+  });
+});
+
 describe('fast.sh on a write to a file of another type', () => {
   it.each([
     ['notes.md', `${wordsOfWidth('# ', LIMIT + 1)}\n`],
