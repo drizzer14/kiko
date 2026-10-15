@@ -304,6 +304,115 @@ describe('scripts/checks/comment-line-width.js', () => {
   });
 });
 
+// A `#` comment is read by file type: a shell or YAML file, or an extensionless file whose first
+// line is a shell shebang. A comment line is a line whose first non-blank character is `#`.
+describe('scripts/checks/comment-line-width.js on # comments', () => {
+  const hashLine = (width: number): string => lineOfWidth('# ', width);
+
+  it.each([['probe.sh'], ['probe.bash'], ['probe.yml'], ['probe.yaml'], ['githooks/pre-commit']])(
+    'flags a comment of 101 columns and passes one of 100 in %s',
+    (path) => {
+      const shebang = path === 'githooks/pre-commit' ? '#!/usr/bin/env bash\n' : '';
+      const flagged = hashLine(LIMIT + 1);
+
+      expect(runChecker(`${shebang}${hashLine(LIMIT)}\nvalue=1\n`, path).status).toBe(0);
+
+      const result = runChecker(`${shebang}value=1\n${flagged}\n`, path);
+
+      expect(result.stderr).toBe('');
+      expect(result.status).toBe(1);
+      expect(findingLines(result)).toEqual([
+        `${join(directory, path)}:${shebang === '' ? 2 : 3}: 101 columns: ${flagged}`,
+      ]);
+    },
+  );
+
+  it('flags an indented comment by the whole physical line', () => {
+    const line = lineOfWidth('    # ', LIMIT + 3);
+
+    expect(findingLines(runChecker(`if true; then\n${line}\nfi\n`, 'probe.sh'))).toEqual([
+      `${join(directory, 'probe.sh')}:2: 103 columns: ${line.trim()}`,
+    ]);
+  });
+
+  it('counts code points: 100 Cyrillic letters pass and 101 fail', () => {
+    const cyrillic = (count: number): string => `# ${'я'.repeat(count - 4)} к`;
+
+    expect(Buffer.byteLength(cyrillic(LIMIT))).toBeGreaterThan(LIMIT);
+    expect(runChecker(`${cyrillic(LIMIT)}\n`, 'probe.sh').status).toBe(0);
+    expect(runChecker(`${cyrillic(LIMIT + 1)}\n`, 'probe.sh').status).toBe(1);
+  });
+
+  it('does not read a shebang on the first line as a comment', () => {
+    expect(runChecker(`#!/usr/bin/env ${'a'.repeat(LIMIT)}\n`, 'probe.sh').status).toBe(0);
+  });
+
+  it('reads a #! line after the first line as a comment', () => {
+    expect(runChecker(`echo ok\n#!${'a b '.repeat(LIMIT / 2)}\n`, 'probe.sh').status).toBe(1);
+  });
+
+  it('never flags a long code line, a long trailing comment, or a long string with a hash', () => {
+    const long = 'a'.repeat(LIMIT);
+
+    expect(runChecker(`echo ${long}\n`, 'probe.sh').status).toBe(0);
+    expect(runChecker(`echo ok # ${long} ${long}\n`, 'probe.sh').status).toBe(0);
+    expect(runChecker(`message: "x # ${long}"\n`, 'probe.yml').status).toBe(0);
+  });
+
+  it('never reads // or /* as a comment in a shell file', () => {
+    expect(
+      runChecker(`// ${hashLine(LIMIT + 5)}\n/* ${hashLine(LIMIT + 5)} */\n`, 'probe.sh'),
+    ).toMatchObject({
+      status: 0,
+      stdout: '',
+    });
+  });
+
+  it('never reads # as a comment in a TypeScript file', () => {
+    expect(runChecker(`${hashLine(LIMIT + 5)}\n`, 'src/probe.ts').status).toBe(0);
+  });
+
+  it('never reads # as a comment in an extensionless file without a shell shebang', () => {
+    expect(runChecker(`${hashLine(LIMIT + 5)}\n`, 'notes').status).toBe(0);
+    expect(runChecker(`#!/usr/bin/env python3\n${hashLine(LIMIT + 5)}\n`, 'notes').status).toBe(0);
+  });
+
+  it.each([['sh'], ['bash'], ['zsh'], ['dash']])(
+    'reads # as a comment in an extensionless file with a %s shebang',
+    (shell) => {
+      expect(runChecker(`#!/bin/${shell}\n${hashLine(LIMIT + 5)}\n`, 'hook').status).toBe(1);
+    },
+  );
+
+  describe('a comment that cannot be wrapped is exempt', () => {
+    it('passes one URL as the whole comment text', () => {
+      expect(runChecker(`# ${urlOfWidth(LIMIT + 20)}\n`, 'probe.sh')).toMatchObject({
+        status: 0,
+        stdout: '',
+      });
+    });
+
+    it('passes a glued opener and one long word, and a doubled hash', () => {
+      expect(runChecker(`#${urlOfWidth(LIMIT + 10)}\n`, 'probe.yml').status).toBe(0);
+      expect(runChecker(`## ${urlOfWidth(LIMIT + 10)}\n`, 'probe.yml').status).toBe(0);
+    });
+
+    it('flags a URL after words, because the words can wrap before it', () => {
+      const result = runChecker(`# see ${urlOfWidth(LIMIT)}\n`, 'probe.sh');
+
+      expect(result.status).toBe(1);
+      expect(result.stdout).toContain(' columns: # see https://');
+    });
+
+    it('wraps when the first word ends at column 100, and is exempt when it ends at 101', () => {
+      const first = (width: number): string => `# ${'w'.repeat(width - 2)} tail`;
+
+      expect(runChecker(`${first(LIMIT)}\n`, 'probe.sh').status).toBe(1);
+      expect(runChecker(`${first(LIMIT + 1)}\n`, 'probe.sh').status).toBe(0);
+    });
+  });
+});
+
 describe('scripts/checks/comment-line-width.sh', () => {
   const longComment = lineOfWidth('// ', LIMIT + 1);
 

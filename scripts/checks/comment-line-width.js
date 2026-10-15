@@ -6,7 +6,15 @@
 //
 // Usage: comment-line-width.js <file>...
 //
-// What counts:
+// Two comment syntaxes, chosen by the file:
+//   - `#` comments in a shell or YAML file: a `.sh`, `.bash`, `.yml` or `.yaml` file, or an
+//     extensionless file whose first line is a `#!` line naming sh, bash, zsh or dash. A comment
+//     line is a line whose first non-blank character is `#`, except a `#!` on line 1. A trailing
+//     `#` after code, or a `#` inside a string, is not read. Everything below about columns, the
+//     wrap point and the output holds for these lines too, with `#`, `##`, ... as the opener.
+//   - `//` and `/* */` comments in every other file, as described next.
+//
+// What counts (`//` and `/* */`):
 //   - Columns are Unicode code points of the line without its trailing whitespace, so a Cyrillic
 //     letter is one column, as Biome counts it. Biome counts an East Asian wide character or an
 //     emoji as two columns; this checker counts one, so it never reports a line Biome would not.
@@ -43,35 +51,42 @@ const fs = require('node:fs');
 const { commentSpans } = require('./specifier-scanner');
 
 const LINE_WIDTH = 100;
-const OPENER_PATTERN = /^\{?(?:\/\/+|\/\*+|\*+)/;
-const CLOSER_PATTERN = /\*\/\}?$/;
+const SLASH_SYNTAX = { opener: /^\{?(?:\/\/+|\/\*+|\*+)/, closer: /\*\/\}?$/ };
+// A `#` comment has no closing marker, so no word of it is dropped as one.
+const HASH_SYNTAX = { opener: /^#+/, closer: undefined };
+const HASH_FILE_PATTERN = /\.(?:sh|bash|ya?ml)$/;
+const SHELL_SHEBANG_PATTERN = /^#!\s*(?:\S*\/)?(?:env\s+)?(?:sh|bash|zsh|dash)(?:\s|$)/;
 
 const columnsOf = (text) => [...text].length;
 
 const lastOffsetOf = (span) => Math.max(span.start, span.end - 1);
 
-function wordsOf(text) {
+function wordsOf(text, syntax) {
   const words = [...text.matchAll(/\S+/g)].map((match) => ({
     text: match[0],
     end: match.index + match[0].length,
   }));
   const [first] = words;
 
-  if (first !== undefined && first.text.replace(OPENER_PATTERN, '') === '') {
+  if (first !== undefined && first.text.replace(syntax.opener, '') === '') {
     words.shift();
   }
 
   const last = words[words.length - 1];
 
-  if (last !== undefined && last.text.replace(CLOSER_PATTERN, '') === '') {
+  if (
+    syntax.closer !== undefined &&
+    last !== undefined &&
+    last.text.replace(syntax.closer, '') === ''
+  ) {
     words.pop();
   }
 
   return words;
 }
 
-function canBeWrapped(standalone) {
-  const words = wordsOf(standalone);
+function canBeWrapped(standalone, syntax) {
+  const words = wordsOf(standalone, syntax);
 
   return words.length >= 2 && columnsOf(standalone.slice(0, words[0].end)) <= LINE_WIDTH;
 }
@@ -103,7 +118,7 @@ function measureComment(trimmed, commentStart, commentEnd) {
   };
 }
 
-function checkLine(line, lineSegments) {
+function checkLine(line, lineSegments, syntax) {
   const trimmed = line.trimEnd();
   const commentStart = Math.min(...lineSegments.map((segment) => segment.start));
   const commentEnd = Math.min(
@@ -116,7 +131,7 @@ function checkLine(line, lineSegments) {
     return undefined;
   }
 
-  if (columnsOf(standalone) > LINE_WIDTH && !canBeWrapped(standalone)) {
+  if (columnsOf(standalone) > LINE_WIDTH && !canBeWrapped(standalone, syntax)) {
     return undefined;
   }
 
@@ -127,11 +142,40 @@ function checkLine(line, lineSegments) {
   return { columns: columnsOf(trimmed), text };
 }
 
+// The `#` comment spans of a shell or YAML source: every line whose first non-blank character is
+// `#`, except a `#!` on line 1. The span runs from the `#` to the end of the line.
+function hashCommentSpans(source) {
+  const spans = [];
+  let lineStart = 0;
+
+  for (const [lineIndex, line] of source.split('\n').entries()) {
+    const start = lineStart + line.length - line.trimStart().length;
+
+    if (line.trimStart().startsWith('#') && !(lineIndex === 0 && line.startsWith('#!'))) {
+      spans.push({ start, end: lineStart + line.length });
+    }
+
+    lineStart += line.length + 1;
+  }
+
+  return spans;
+}
+
+// The comment syntax a file uses: `#` for a shell or YAML file (by extension, or by a shell
+// shebang on an extensionless file), `//` and `/* */` for everything else.
+function syntaxOf(file, source) {
+  const isShellScript =
+    HASH_FILE_PATTERN.test(file) ||
+    (!/\.[^/]*$/.test(file) && SHELL_SHEBANG_PATTERN.test(source.split('\n', 1)[0]));
+
+  return isShellScript ? HASH_SYNTAX : SLASH_SYNTAX;
+}
+
 // Every line over the limit whose comment can be wrapped, as { line, columns, text }. The spans
 // arrive in file order and never overlap, so one sweep over the lines with a running offset pairs
 // each line with the comments that touch it.
-function findViolations(source) {
-  const spans = commentSpans(source);
+function findViolations(source, syntax = SLASH_SYNTAX) {
+  const spans = syntax === HASH_SYNTAX ? hashCommentSpans(source) : commentSpans(source);
   const violations = [];
   let firstSpan = 0;
   let lineStart = 0;
@@ -158,7 +202,7 @@ function findViolations(source) {
 
     const found =
       lineSegments.length > 0 && line.length > LINE_WIDTH
-        ? checkLine(line, lineSegments)
+        ? checkLine(line, lineSegments, syntax)
         : undefined;
 
     if (found !== undefined) {
@@ -191,7 +235,7 @@ function runCli() {
       process.exit(2);
     }
 
-    for (const { line, columns, text } of findViolations(source)) {
+    for (const { line, columns, text } of findViolations(source, syntaxOf(file, source))) {
       found = true;
       process.stdout.write(`${file}:${line}: ${columns} columns: ${text}\n`);
     }
