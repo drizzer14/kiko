@@ -32,7 +32,7 @@ describe('largeTitleHeadingOptions', () => {
 
 describe('largeTitleRestoredOptions', () => {
   it('brings the native large title back, with the bar title following the title again', () => {
-    expect(largeTitleRestoredOptions).toEqual({
+    expect(largeTitleRestoredOptions({})).toEqual({
       headerLargeTitle: true,
       headerTransparent: undefined,
       headerShadowVisible: undefined,
@@ -40,8 +40,23 @@ describe('largeTitleRestoredOptions', () => {
     });
   });
 
+  it("brings back the screen's own value of every key the heading look overrides", () => {
+    expect(
+      largeTitleRestoredOptions({
+        headerTransparent: false,
+        headerShadowVisible: false,
+        headerTitle: 'Own bar title',
+      }),
+    ).toEqual({
+      headerLargeTitle: true,
+      headerTransparent: false,
+      headerShadowVisible: false,
+      headerTitle: 'Own bar title',
+    });
+  });
+
   it('undoes every key the heading look sets', () => {
-    const restored = largeTitleRestoredOptions as Record<string, unknown>;
+    const restored = largeTitleRestoredOptions({}) as Record<string, unknown>;
 
     for (const key of Object.keys(largeTitleHeadingOptions('A long title', true))) {
       expect(restored).toHaveProperty(key);

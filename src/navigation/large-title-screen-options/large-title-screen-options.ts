@@ -46,10 +46,18 @@ export const largeTitleHeadingOptions = (
   headerTitle: scrolled ? title : '',
 });
 
-/** Puts a screen back on the native large title after `largeTitleHeadingOptions`. */
-export const largeTitleRestoredOptions: NativeStackNavigationOptions = {
+/**
+ * Puts a screen back on the native large title after `largeTitleHeadingOptions`. Each key the
+ * heading look overrides gets the screen's own value back (`screenOptions`, read before the
+ * switch), or `undefined` when the screen set none, so the bar is exactly as the screen left it.
+ */
+export const largeTitleRestoredOptions = ({
+  headerTransparent,
+  headerShadowVisible,
+  headerTitle,
+}: NativeStackNavigationOptions): NativeStackNavigationOptions => ({
   headerLargeTitle: true,
-  headerTransparent: undefined,
-  headerShadowVisible: undefined,
-  headerTitle: undefined,
-};
+  headerTransparent,
+  headerShadowVisible,
+  headerTitle,
+});

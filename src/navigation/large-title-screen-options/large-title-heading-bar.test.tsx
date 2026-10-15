@@ -96,9 +96,22 @@ describe('the bar of a screen showing its title as a heading', () => {
     const restored = await barProps({
       ...LARGE_TITLE,
       ...largeTitleHeadingOptions('A long title', true),
-      ...largeTitleRestoredOptions,
+      ...largeTitleRestoredOptions({}),
     });
 
+    expect(restored).toEqual(largeTitle);
+  });
+
+  it("is the screen's own bar again once restored, here with its shadow hidden", async () => {
+    const own: NativeStackNavigationOptions = { ...LARGE_TITLE, headerShadowVisible: false };
+    const largeTitle = await barProps(own);
+    const restored = await barProps({
+      ...own,
+      ...largeTitleHeadingOptions('A long title', true),
+      ...largeTitleRestoredOptions(own),
+    });
+
+    expect(largeTitle.hideShadow).toBe(true);
     expect(restored).toEqual(largeTitle);
   });
 });
