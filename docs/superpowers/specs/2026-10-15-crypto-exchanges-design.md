@@ -256,7 +256,9 @@ Parse, per walk (set 4):
   non-number reads as null); `pending` by `readPendingMark` (all ground before the cursor owed,
   written once); `pointCursor` and `rangeCursor` by `readRoundRobinCursor` (repaired to
   `BEFORE_EVERY_GROUND`, written once); `spanHints` by `readSpanHints` (`span-hints-malformed`,
-  reads as `NO_HINTS`); `multiCoinSince` as a number or absent; `multiCoinSeen` as `true` or absent (any other value reads as
+  reads as `NO_HINTS`); `multiCoinSince` as a number or absent, and a present but malformed one (not a
+  finite number) reads as the entry's parsed `cursor` (absent when that cursor is null): fail-safe, it
+  owes a range rather than none; `multiCoinSeen` as `true` or absent (any other value reads as
   absent). A walk entry that is not an object
   reads as every field's empty value and logs the tag with the walk id. The developer re-greps each
   reader and its repair write on the base. Each repair writes only its own field.
@@ -411,10 +413,14 @@ an error on malformed JSON, which would abort 0059 (U13 pins the malformed case)
 `json_each` over a column sits behind the same CASE guard. The bound count below uses the same
 guard, so it never reads malformed JSON (and never aborts on it). `withUsdtRescaled` applies the
 same rule: a field is
-rescaled only when its column parsed as JSON and the value is a safe integer
-(`Number.isSafeInteger`); anything else is restored as stored. The app's writers (`JSON.stringify`)
-never store an integral real such as `5000.0`, so the two paths agree on every value the app
-writes.
+rescaled only when its column parsed as JSON and the value is a JSON integer as SQLite's
+`json_type` reads app-written JSON: `Number.isInteger(value) && Math.abs(value) < 1e21` (the range in
+which `JSON.stringify` writes a number with no fraction and no exponent); anything else is restored
+as stored. Then the bound, SQL's two-sided comparison: `value < -USDT_RESCALE_BOUND_MINOR_UNITS ||
+value > USDT_RESCALE_BOUND_MINOR_UNITS` (9,007,199,254, "Bound" below) throws
+`data-transfer/amount-too-large`. Accepted limit: a number text the
+app never writes (`12.0`, `1e5`) is a real to SQLite and an integer here; the app's writers
+(`JSON.stringify`) never store one, so the two paths agree on every value the app writes.
 
 Bound: at scale 8 a value fits a JS number exactly up to 90,071,992.54740991 units, so a scale-2
 value above 9,007,199,254 minor units cannot rescale. 0059 first counts such values over every
