@@ -223,11 +223,13 @@ No history in a comment: no task id (`T28`), no review-round id (`I1`),
 no spec section number (`spec 6.2`), no plan citation (`per the plan`),
 and no "changed because …" narrative (the full set is the regexes of
 `kiko-no-history-id-comment` and `kiko-no-history-word-comment` in
-`rules/semgrep-prewrite.yml`). That belongs in the commit message that
+`rules/semgrep-prewrite.yml`, and the shell variants in `rules/semgrep-mobile.yml`). That
+belongs in the commit message that
 made the change, or in the skill section that owns the rule — never
-in a comment left behind in the code. Mechanized in `src/**` by the
-`kiko-no-history-id-comment` Semgrep rule (ERROR) — see the
-kiko-linter skill's own section on it for the rule's design.
+in a comment left behind in the code. Mechanized across `src`, `__tests__`, the scripts js and
+the `#` lines of `.sh` files by the `kiko-no-history-*` Semgrep rules (ERROR); read their
+`paths` in `rules/semgrep-prewrite.yml` and `rules/semgrep-mobile.yml`, and the kiko-linter
+skill's own section on them for the design.
 
 The "changed because …" narrative words are mechanized too, by the
 `kiko-no-history-word-comment` Semgrep rule (ERROR): read the phrases in that rule's `pattern-regex` and `message` in

@@ -1287,10 +1287,10 @@ The one-exported-component-per-`.tsx` check is a Jest invariant plus a
 pre-write guard Node rule, not Semgrep — see "One exported component per
 `.tsx` — a Jest invariant and a guard rule" below. The import-length-sort check is a hand-rolled
 shell+JS checker/fixer at the fast tier — see "Import length-sort — a
-hand-rolled checker (and fixer)" below. The comment checks are three Semgrep
-rules in `rules/semgrep-prewrite.yml` — `kiko-no-history-id-comment`,
-`kiko-no-history-word-comment`, `kiko-no-task-id-comment` — see each rule's
-section below; each rule's own `severity:` field is the source for its tier.
+hand-rolled checker (and fixer)" below. The comment checks are the comment-history
+rules (`kiko-no-history-*`, `kiko-no-task-id-comment`) in `rules/semgrep-prewrite.yml` and
+`rules/semgrep-mobile.yml` (the `*-shell-comment` rules); read both files for the set. See each
+rule's section below; each rule's own `severity:` field is the source for its tier.
 
 **Scope of the comment-history rules.** The id, word and date rules read TypeScript and
 JavaScript, now including `__tests__/` and the scripts js; their `paths.exclude` keeps `e2e/`,
@@ -1308,7 +1308,8 @@ comment that writes the git flag `-U0`: write `--unified=0` instead.
 
 Mechanizes kiko-code-style's "Comments: WHY only, never history": no
 task id, review-round id, spec/decision id, or plan citation left
-behind in a `src/**` comment. The member list is the two
+behind in a comment under `src`, `__tests__`, the scripts js, or a `#` line of a `.sh` file
+(read each rule's `paths` key). The member list is the two
 `pattern-regex` arms of `kiko-no-history-id-comment` in
 `rules/semgrep-prewrite.yml`. Read them for the current set; the P-ids are `P-?\d{1,3}`
 (`P3`, `P-12`), and "Display P3" and the curve names P-256, P-384 and P-521 are
