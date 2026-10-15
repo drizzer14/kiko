@@ -36,6 +36,7 @@ import { isBalanceSetShapedRow } from '@kiko/transactions/balance-set-row';
 import { planImportTimeRezone } from '@kiko/statement-import/rezone-import-times';
 
 import type { DataSnapshot } from './data-snapshot';
+import { withUsdtRescaled } from './with-usdt-rescaled';
 import { withImplicitAccountsMerged } from './with-implicit-accounts-merged';
 
 /** Migration 0036's `MAX(time)` per holding, computed in one pass over
@@ -865,12 +866,32 @@ export const restoreDataSnapshot = (
     // the dedup-key upgrade.
     const {
       settings: settingsToInsert,
-      transactions: transactionsToInsert,
-      holdings: holdingsToInsert,
+      transactions: transactionsAfterRezone,
+      holdings: holdingsAfterRezone,
     } = withImportTimesRezoned(
       dedupUpgradedSettings,
       dedupUpgradedTransactions,
       holdingsAfterMarking,
+    );
+
+    // Last of the mirrors: the rewrites above build keys from the row's amount, so they must have
+    // run before the amounts and the keys are rescaled together, in the order a live device sees
+    // them. A value over the bound throws here, ahead of every delete and insert below.
+    const {
+      holdings: holdingsToInsert,
+      transactions: transactionsToInsert,
+      categoryRules: categoryRulesToInsert,
+      transactionTemplates: transactionTemplatesToInsert,
+      deletedImportKeys: deletedImportKeysToInsert,
+    } = withUsdtRescaled(
+      {
+        holdings: holdingsAfterRezone,
+        transactions: transactionsAfterRezone,
+        categoryRules: snapshot.categoryRules,
+        transactionTemplates: snapshot.transactionTemplates,
+        deletedImportKeys: snapshot.deletedImportKeys,
+      },
+      version,
     );
 
     // Split into four sequential groups (rather than one 10-loop function) to
@@ -891,7 +912,7 @@ export const restoreDataSnapshot = (
     };
 
     const insertRulesTransactionsSyncState = async (): Promise<void> => {
-      for (const part of chunkForTable(categoryRules, snapshot.categoryRules)) {
+      for (const part of chunkForTable(categoryRules, categoryRulesToInsert)) {
         await databaseTransaction.insert(categoryRules).values(part);
       }
 
@@ -910,7 +931,7 @@ export const restoreDataSnapshot = (
     // `?? []`: an export from before the table carries no `deletedImportKeys` key.
     const insertDeletedImportKeys = async (): Promise<void> => {
       const insertedHoldingIds = new Set(holdingsToInsert.map((holding) => holding.id));
-      const keysToInsert = (snapshot.deletedImportKeys ?? []).filter((key) =>
+      const keysToInsert = (deletedImportKeysToInsert ?? []).filter((key) =>
         insertedHoldingIds.has(key.holdingId),
       );
 
@@ -992,7 +1013,7 @@ export const restoreDataSnapshot = (
     // key and restores with none. No other table is referenced, so the order among
     // the inserts does not matter.
     const insertTransactionTemplates = async (): Promise<void> => {
-      for (const part of chunkForTable(transactionTemplates, snapshot.transactionTemplates ?? [])) {
+      for (const part of chunkForTable(transactionTemplates, transactionTemplatesToInsert ?? [])) {
         await databaseTransaction.insert(transactionTemplates).values(part);
       }
     };

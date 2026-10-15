@@ -5,6 +5,7 @@
 import { join } from 'node:path';
 import { readFileSync } from 'node:fs';
 import { DatabaseSync, type SQLInputValue } from 'node:sqlite';
+import { USDT_RESCALE_BOUND_MINOR_UNITS } from '@kiko/data-transfer';
 import { applyMigrationsThrough } from '@kiko/test-support/real-sqlite';
 import { computeDedupKey, DEDUP_OCCURRENCE_SEPARATOR } from '@kiko/statement-import/mapping';
 
@@ -900,5 +901,15 @@ describe('USDT rescale: the safe-integer bound', () => {
 
     expect(message).toContain(GUARD_MESSAGE);
     expect(message).not.toContain('integer overflow');
+  });
+});
+
+describe('USDT rescale: the bound literal', () => {
+  it('equals USDT_RESCALE_BOUND_MINOR_UNITS', () => {
+    const statements = readFileSync(MIGRATION_FILE, 'utf8').replace(/\/\*[\s\S]*?\*\//, '');
+
+    expect(new Set(statements.match(/\b\d{9,}\b/g))).toEqual(
+      new Set([String(USDT_RESCALE_BOUND_MINOR_UNITS)]),
+    );
   });
 });
