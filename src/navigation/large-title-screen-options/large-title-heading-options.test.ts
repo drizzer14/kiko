@@ -18,21 +18,15 @@ describe('largeTitleHeadingOptions', () => {
     expect(options).not.toHaveProperty('title');
   });
 
+  // Strict, so a blur key set to `undefined` fails too: merged over the stack options it would
+  // clear the blur they carry.
   it('shows the whole title in the bar once the heading has scrolled under it', () => {
-    expect(largeTitleHeadingOptions('A long title', true)).toEqual({
+    expect(largeTitleHeadingOptions('A long title', true)).toStrictEqual({
       headerLargeTitle: false,
       headerTransparent: true,
       headerShadowVisible: true,
       headerTitle: 'A long title',
     });
-  });
-
-  it('keeps the bar translucent and leaves the bar blur to the stack options', () => {
-    const options = largeTitleHeadingOptions('A long title', true);
-
-    expect(options.headerTransparent).toBe(true);
-    expect(options).not.toHaveProperty('headerBlurEffect');
-    expect(options).not.toHaveProperty('headerLargeStyle');
   });
 });
 
