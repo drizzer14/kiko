@@ -100,6 +100,16 @@ The demo carries category rules; the contract is in `build-demo-snapshot.test.ts
 (rule-vs-ledger agreement over en and uk). Regenerating moves the anchor to the
 regeneration day.
 
+## The live rule demo
+
+Six Monobank card rows (`Glovo: ...` and `Bolt Food: ...`, 3 to 12 days before the anchor) sit in
+the default category with no rule over them, so a rule typed live in the app has rows to move. Open
+Categories, then Dining, then Add rule, and enter three conditions: Name starts with `Glovo`;
+Amount, Less than, `800` (hryvnias); Type, Expense. Save asks "This changes 3 transactions."; the
+pizza, sushi and burgers move to Dining. The refund (an income), the Bolt Food order (another
+name) and the group order (1,450) each fail one condition and stay.
+`build-demo-snapshot.rule-demo.test.ts` pins the rule and the count with the app's own matcher.
+
 ## Importing on a device
 
 Settings → Import Data → pick the `.kiko` file → paste the key from
