@@ -128,6 +128,51 @@ describe('scripts/checks/kill-guard-probe.sh (sentinel probe runner)', () => {
     expectStub(result, `${SENTINEL} a b`);
   });
 
+  // The stub's first exec of a never-seen script can wait seconds on macOS
+  // (XProtect); the runner warms each stub before its alarm starts, so the
+  // alarm bounds only the probe's own work. The seam makes a stub sleep on
+  // its first call only, which stands in for that wait.
+  describe('first-exec delay of a stub', () => {
+    const SLOW_FIRST_EXEC = { KIKO_PROBE_TIMEOUT: '1', KIKO_PROBE_STUB_FIRST_RUN_DELAY: '2' };
+
+    it.each(SHELLS)('does not count a stub first-exec delay against the alarm in %s', (shell) => {
+      const result = runProbe(
+        shell,
+        `bash -c '${SENTINEL} -y'; sh -c '${SENTINEL} -z'`,
+        SLOW_FIRST_EXEC,
+      );
+
+      expectStub(result, `${SENTINEL} -y`);
+      expect(result.stdout).toContain(`STUB ${SENTINEL} -z`);
+      expect(result.stdout).toMatch(/^EXIT 0$/m);
+    });
+
+    it.each(SHELLS)('does not count a git first-exec delay against the alarm in %s', (shell) => {
+      const result = runProbe(shell, `cd ${SCRATCH_MAIN} && git merge feat/x`, SLOW_FIRST_EXEC);
+
+      expectStub(result, `git cwd=${SCRATCH_MAIN} merge feat/x`);
+      expect(result.stdout).toMatch(/^EXIT 0$/m);
+    });
+
+    // A busy loop, not `sleep`: a sleep child would hold the output pipe
+    // until the reader's own alarm (limit + 2 s) and hide the early stop.
+    it.each(SHELLS)('stops a probe that runs past the limit, on time, in %s', (shell) => {
+      const started = Date.now();
+      const result = runProbe(shell, 'while true; do :; done', { KIKO_PROBE_TIMEOUT: '1' });
+
+      expect(Date.now() - started).toBeLessThan(3000);
+      expect(result.status).toBe(0);
+      expect(result.stdout).toMatch(/^EXIT 142$/m);
+    });
+
+    it.each(SHELLS)('keeps the warm-up call out of the log in %s', (shell) => {
+      const result = runProbe(shell, 'true', { KIKO_PROBE_STUB_FIRST_RUN_DELAY: '0' });
+
+      expect(result.status).toBe(0);
+      expect(result.stdout).toBe('EXIT 0\n');
+    });
+  });
+
   it('refuses a shell other than bash or zsh', () => {
     expect(runProbe('sh', 'true').status).toBe(2);
   });
