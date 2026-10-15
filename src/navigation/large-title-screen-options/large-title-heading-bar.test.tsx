@@ -1,20 +1,16 @@
-import type { FC, ReactNode } from 'react';
-import { renderHook } from '@testing-library/react-native';
+import type { FC } from 'react';
+import {
+  createNativeStackNavigator,
+  type NativeStackNavigationOptions,
+} from '@react-navigation/native-stack';
+import { render } from '@testing-library/react-native';
 import { NavigationContainer } from '@react-navigation/native';
-import type { NativeStackNavigationOptions } from '@react-navigation/native-stack';
 
 import { largeTitleHeadingOptions, largeTitleRestoredOptions } from './large-title-screen-options';
 
-// The real derivation native-stack runs on the merged options: it decides the bar props that
-// react-native-screens turns into the UIKit bar (translucent, background, shadow). It is read
-// from the package file because the package exports no deep path.
-const {
-  useHeaderConfigProps,
-} = require('../../../node_modules/@react-navigation/native-stack/lib/module/views/useHeaderConfigProps');
+const Stack = createNativeStackNavigator();
 
-const Container: FC<{ children: ReactNode }> = ({ children }) => (
-  <NavigationContainer>{children}</NavigationContainer>
-);
+const DetailScreen: FC = () => null;
 
 type BarProps = {
   translucent: boolean;
@@ -23,20 +19,34 @@ type BarProps = {
   largeTitle: boolean | undefined;
 };
 
+type RenderedNode = { type: string; props: object; children: (RenderedNode | string)[] | null };
+
+const headerConfigsOf = (node: RenderedNode | string | null): BarProps[] => {
+  if (node === null || typeof node === 'string') {
+    return [];
+  }
+
+  return [
+    ...(node.type === 'RNSScreenStackHeaderConfig' ? [node.props as BarProps] : []),
+    ...(node.children ?? []).flatMap(headerConfigsOf),
+  ];
+};
+
+// The bar props native-stack derives from the merged options and hands to react-native-screens,
+// which turns them into the UIKit bar (translucent, background, shadow). They are read from the
+// header config of a rendered stack.
 const barProps = async (options: NativeStackNavigationOptions): Promise<BarProps> => {
-  const { result } = await renderHook(
-    () =>
-      useHeaderConfigProps({
-        ...options,
-        route: { key: 'detail', name: 'Detail' },
-        headerHeight: 100,
-        headerTopInsetEnabled: true,
-        headerBack: undefined,
-      }),
-    { wrapper: Container },
+  const view = await render(
+    <NavigationContainer>
+      <Stack.Navigator>
+        <Stack.Screen name="Detail" component={DetailScreen} options={options} />
+      </Stack.Navigator>
+    </NavigationContainer>,
   );
 
-  const { translucent, backgroundColor, hideShadow, largeTitle } = result.current;
+  const tree = view.toJSON() as RenderedNode | RenderedNode[] | null;
+  const roots = Array.isArray(tree) ? tree : [tree];
+  const [{ translucent, backgroundColor, hideShadow, largeTitle }] = roots.flatMap(headerConfigsOf);
 
   // Only the props that make up the bar's look: the rest holds React elements, which an
   // equality check cannot walk.
