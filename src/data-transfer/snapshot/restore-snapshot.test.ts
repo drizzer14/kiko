@@ -34,6 +34,8 @@ import { EXPORT_VERSION } from '../crypto/envelope';
 import type { DataSnapshot } from './data-snapshot';
 import { restoreDataSnapshot } from './restore-snapshot';
 
+const restore = (snapshot: DataSnapshot) => restoreDataSnapshot(snapshot, EXPORT_VERSION);
+
 const tableNameOf = (table: unknown): string => {
   if (table === accounts) return 'accounts';
 
@@ -136,15 +138,12 @@ describe('restoreDataSnapshot', () => {
       }),
     };
 
-    await restoreDataSnapshot(
-      {
-        ...emptySnapshot,
-        accounts: [{ id: 'a1' }] as never,
-        holdings: [{ id: 'h1' }] as never,
-        transactions: [{ id: 't1' }] as never,
-      },
-      EXPORT_VERSION,
-    );
+    await restore({
+      ...emptySnapshot,
+      accounts: [{ id: 'a1' }] as never,
+      holdings: [{ id: 'h1' }] as never,
+      transactions: [{ id: 't1' }] as never,
+    });
 
     expect(deletedTables).toEqual([
       'transactionTemplates',
@@ -196,7 +195,7 @@ describe('restoreDataSnapshot', () => {
     const { databaseTransaction, insertedRows } = makeRowCapturingDatabaseTransaction();
     mockDatabaseTransaction = databaseTransaction;
 
-    await restoreDataSnapshot(emptySnapshot, EXPORT_VERSION);
+    await restore(emptySnapshot);
 
     // `categories` is the exception: the `loan_interest` reseed always
     // inserts, even from an otherwise-empty snapshot. So is `settings`: the
@@ -215,15 +214,12 @@ describe('restoreDataSnapshot', () => {
       const { databaseTransaction, insertedRows } = makeRowCapturingDatabaseTransaction();
       mockDatabaseTransaction = databaseTransaction;
 
-      await restoreDataSnapshot(
-        {
-          ...emptySnapshot,
-          categories: [
-            { key: 'groceries', title: 'Groceries', icon: 'cart', color: null, sortOrder: 0 },
-          ] as never,
-        },
-        EXPORT_VERSION,
-      );
+      await restore({
+        ...emptySnapshot,
+        categories: [
+          { key: 'groceries', title: 'Groceries', icon: 'cart', color: null, sortOrder: 0 },
+        ] as never,
+      });
 
       expect(insertedRows.categories).toEqual([
         { key: 'groceries', title: 'Groceries', icon: 'cart', color: null, sortOrder: 0 },
@@ -249,13 +245,10 @@ describe('restoreDataSnapshot', () => {
         sortOrder: 7,
       };
 
-      await restoreDataSnapshot(
-        {
-          ...emptySnapshot,
-          categories: [ownLoanInterest] as never,
-        },
-        EXPORT_VERSION,
-      );
+      await restore({
+        ...emptySnapshot,
+        categories: [ownLoanInterest] as never,
+      });
 
       expect(insertedRows.categories).toEqual([ownLoanInterest]);
     });
@@ -265,15 +258,12 @@ describe('restoreDataSnapshot', () => {
     const { databaseTransaction, insertedRows } = makeRowCapturingDatabaseTransaction();
     mockDatabaseTransaction = databaseTransaction;
 
-    await restoreDataSnapshot(
-      {
-        ...emptySnapshot,
-        pricePoints: [
-          { instrument: 'metal:silver', day: 1, price: '190.00', currency: 'USD', source: 'nbu' },
-        ] as never,
-      },
-      EXPORT_VERSION,
-    );
+    await restore({
+      ...emptySnapshot,
+      pricePoints: [
+        { instrument: 'metal:silver', day: 1, price: '190.00', currency: 'USD', source: 'nbu' },
+      ] as never,
+    });
 
     expect(insertedRows.pricePoints).toEqual([
       { instrument: 'metal:silver', day: 1, price: '190.00', currency: 'USD', source: 'nbu' },
@@ -309,7 +299,7 @@ describe('restoreDataSnapshot', () => {
       categoryRules: legacyCategoryRules,
     } as unknown as DataSnapshot;
 
-    await restoreDataSnapshot(legacySnapshot, EXPORT_VERSION);
+    await restore(legacySnapshot);
 
     expect(Object.keys(insertedRows)).not.toContain('pricePoints');
   });
@@ -318,19 +308,16 @@ describe('restoreDataSnapshot', () => {
     const { databaseTransaction, insertedRows } = makeRowCapturingDatabaseTransaction();
     mockDatabaseTransaction = databaseTransaction;
 
-    await restoreDataSnapshot(
-      {
-        ...emptySnapshot,
-        bondRegister: [
-          {
-            isin: 'UA4000234215',
-            terms: { isin: 'UA4000234215', currency: 'UAH' },
-            fetchedAt: 1,
-          },
-        ] as never,
-      },
-      EXPORT_VERSION,
-    );
+    await restore({
+      ...emptySnapshot,
+      bondRegister: [
+        {
+          isin: 'UA4000234215',
+          terms: { isin: 'UA4000234215', currency: 'UAH' },
+          fetchedAt: 1,
+        },
+      ] as never,
+    });
 
     expect(insertedRows.bondRegister).toEqual([
       { isin: 'UA4000234215', terms: { isin: 'UA4000234215', currency: 'UAH' }, fetchedAt: 1 },
@@ -358,13 +345,10 @@ describe('restoreDataSnapshot', () => {
         ownershipInput: 'fraction',
       };
 
-      await restoreDataSnapshot(
-        {
-          ...emptySnapshot,
-          holdings: [propertyHolding(metadata)] as never,
-        },
-        EXPORT_VERSION,
-      );
+      await restore({
+        ...emptySnapshot,
+        holdings: [propertyHolding(metadata)] as never,
+      });
 
       expect(JSON.stringify(insertedRows.holdings)).toBe(
         JSON.stringify([propertyHolding(metadata)]),
@@ -376,13 +360,10 @@ describe('restoreDataSnapshot', () => {
       const { databaseTransaction, insertedRows } = makeRowCapturingDatabaseTransaction();
       mockDatabaseTransaction = databaseTransaction;
 
-      await restoreDataSnapshot(
-        {
-          ...emptySnapshot,
-          holdings: [propertyHolding({ category: 'real_estate', lots })] as never,
-        },
-        EXPORT_VERSION,
-      );
+      await restore({
+        ...emptySnapshot,
+        holdings: [propertyHolding({ category: 'real_estate', lots })] as never,
+      });
 
       expect(holdingValue(insertedRows.holdings?.[0] as never, NOW).minorUnits).toBe(900_000);
     });
@@ -397,7 +378,7 @@ describe('restoreDataSnapshot', () => {
     const legacySnapshot = { ...emptySnapshot } as unknown as Record<string, unknown>;
     delete legacySnapshot.bondRegister;
 
-    await restoreDataSnapshot(legacySnapshot as unknown as DataSnapshot, EXPORT_VERSION);
+    await restore(legacySnapshot as unknown as DataSnapshot);
 
     expect(Object.keys(insertedRows)).not.toContain('bondRegister');
   });
@@ -420,14 +401,11 @@ describe('restoreDataSnapshot', () => {
       }),
     };
 
-    await restoreDataSnapshot(
-      {
-        ...emptySnapshot,
-        accounts: [{ id: 'a1' }] as never,
-        reminders: [{ id: 'reminder-1', accountId: 'a1', lastSnoozedAt: 5 }] as never,
-      },
-      EXPORT_VERSION,
-    );
+    await restore({
+      ...emptySnapshot,
+      accounts: [{ id: 'a1' }] as never,
+      reminders: [{ id: 'reminder-1', accountId: 'a1', lastSnoozedAt: 5 }] as never,
+    });
 
     expect(insertedRows.reminders).toEqual([
       { id: 'reminder-1', accountId: 'a1', activeSince: 777, lastSnoozedAt: null },
@@ -471,13 +449,10 @@ describe('restoreDataSnapshot', () => {
       const { databaseTransaction, insertedRows } = makeRowCapturingDatabaseTransaction();
       mockDatabaseTransaction = databaseTransaction;
 
-      const summary = await restoreDataSnapshot(
-        {
-          ...emptySnapshot,
-          ...twoPropertyAccounts,
-        } as never,
-        EXPORT_VERSION,
-      );
+      const summary = await restore({
+        ...emptySnapshot,
+        ...twoPropertyAccounts,
+      } as never);
 
       expect((insertedRows.accounts as { id: string }[]).map((row) => row.id)).toEqual([
         'older',
@@ -505,7 +480,7 @@ describe('restoreDataSnapshot', () => {
     const legacySnapshot = { ...emptySnapshot } as unknown as Record<string, unknown>;
     delete legacySnapshot.reminders;
 
-    await restoreDataSnapshot(legacySnapshot as unknown as DataSnapshot, EXPORT_VERSION);
+    await restore(legacySnapshot as unknown as DataSnapshot);
 
     expect(Object.keys(insertedRows)).not.toContain('reminders');
   });
@@ -543,10 +518,7 @@ describe('restoreDataSnapshot', () => {
       Object.fromEntries(transactionColumnNames.map((name) => [name, name === 'id' ? id : null]));
     const bigTransactions = Array.from({ length: 4500 }, (_, i) => fullShapedRow(`t${i}`));
 
-    await restoreDataSnapshot(
-      { ...emptySnapshot, transactions: bigTransactions as never },
-      EXPORT_VERSION,
-    );
+    await restore({ ...emptySnapshot, transactions: bigTransactions as never });
 
     // Every chunk must bind well under SQLite's 32766-parameter ceiling —
     // the old fixed 2000-row chunk bound 2000 * 18 = 36000 and would fail
@@ -631,14 +603,11 @@ describe('restoreDataSnapshot', () => {
       balanceMinorUnits: 12_345,
     };
 
-    await restoreDataSnapshot(
-      {
-        ...emptySnapshot,
-        accounts: [sourceAccount] as never,
-        holdings: [fiatHolding, cryptoCashHolding] as never,
-      },
-      EXPORT_VERSION,
-    );
+    await restore({
+      ...emptySnapshot,
+      accounts: [sourceAccount] as never,
+      holdings: [fiatHolding, cryptoCashHolding] as never,
+    });
 
     expect(deletedTables).toEqual([
       'transactionTemplates',
@@ -728,14 +697,11 @@ describe('restoreDataSnapshot', () => {
       createdAt: 1_600_000_000_000,
     };
 
-    await restoreDataSnapshot(
-      {
-        ...emptySnapshot,
-        accounts: [reuseTargetAccount, archivedSourceAccount] as never,
-        holdings: [archivedSourceHolding] as never,
-      },
-      EXPORT_VERSION,
-    );
+    await restore({
+      ...emptySnapshot,
+      accounts: [reuseTargetAccount, archivedSourceAccount] as never,
+      holdings: [archivedSourceHolding] as never,
+    });
 
     expect(insertedRows.accounts).toEqual([
       reuseTargetAccount,
@@ -763,10 +729,7 @@ describe('restoreDataSnapshot', () => {
     mockDatabaseTransaction = databaseTransaction;
     const cryptoHolding = { id: 'h1', accountId: 'a1', type: 'crypto_asset', currency: 'BTC' };
 
-    await restoreDataSnapshot(
-      { ...emptySnapshot, holdings: [cryptoHolding] as never },
-      EXPORT_VERSION,
-    );
+    await restore({ ...emptySnapshot, holdings: [cryptoHolding] as never });
 
     expect(insertedRows.holdings).toEqual([expect.objectContaining(cryptoHolding)]);
   });
@@ -776,13 +739,10 @@ describe('restoreDataSnapshot', () => {
     mockDatabaseTransaction = databaseTransaction;
     const legacyTransaction = { id: 't1', holdingId: 'h1', source: 'manual' };
 
-    await restoreDataSnapshot(
-      {
-        ...emptySnapshot,
-        transactions: [legacyTransaction] as never,
-      },
-      EXPORT_VERSION,
-    );
+    await restore({
+      ...emptySnapshot,
+      transactions: [legacyTransaction] as never,
+    });
 
     // Older than the balance-set mark and the pair id too, which the 0047 and
     // 0052 mirrors derive.
@@ -818,35 +778,32 @@ describe('restoreDataSnapshot', () => {
         captureHoldingsInsert();
       mockDatabaseTransaction = databaseTransaction;
 
-      await restoreDataSnapshot(
-        {
-          ...emptySnapshot,
-          holdings: [{ id: 'h1', balanceMinorUnits: 5_000 }] as never,
-          transactions: [
-            {
-              id: 't1',
-              holdingId: 'h1',
-              source: 'manual',
-              description: '',
-              category: null,
-              exchangeCounterpartHoldingId: null,
-              changeGroupId: null,
-              time: 100,
-            },
-            {
-              id: 't2',
-              holdingId: 'h1',
-              source: 'manual',
-              description: '',
-              category: null,
-              exchangeCounterpartHoldingId: null,
-              changeGroupId: null,
-              time: 300,
-            },
-          ] as never,
-        },
-        EXPORT_VERSION,
-      );
+      await restore({
+        ...emptySnapshot,
+        holdings: [{ id: 'h1', balanceMinorUnits: 5_000 }] as never,
+        transactions: [
+          {
+            id: 't1',
+            holdingId: 'h1',
+            source: 'manual',
+            description: '',
+            category: null,
+            exchangeCounterpartHoldingId: null,
+            changeGroupId: null,
+            time: 100,
+          },
+          {
+            id: 't2',
+            holdingId: 'h1',
+            source: 'manual',
+            description: '',
+            category: null,
+            exchangeCounterpartHoldingId: null,
+            changeGroupId: null,
+            time: 300,
+          },
+        ] as never,
+      });
 
       expect(insertedHoldings()).toEqual([
         { id: 'h1', balanceMinorUnits: 5_000, balanceSetAt: 300, balanceSetRowId: 't2' },
@@ -858,37 +815,34 @@ describe('restoreDataSnapshot', () => {
         captureHoldingsInsert();
       mockDatabaseTransaction = databaseTransaction;
 
-      await restoreDataSnapshot(
-        {
-          ...emptySnapshot,
-          holdings: [{ id: 'h1', balanceMinorUnits: 5_000 }] as never,
-          transactions: [
-            // A real spend: carries a description, so it's not a hand-set-shaped row.
-            {
-              id: 't1',
-              holdingId: 'h1',
-              source: 'manual',
-              description: 'Coffee',
-              category: null,
-              exchangeCounterpartHoldingId: null,
-              changeGroupId: null,
-              time: 100,
-            },
-            // An exchange leg: carries the structural marker.
-            {
-              id: 't2',
-              holdingId: 'h1',
-              source: 'manual',
-              description: '',
-              category: null,
-              exchangeCounterpartHoldingId: 'h2',
-              changeGroupId: null,
-              time: 200,
-            },
-          ] as never,
-        },
-        EXPORT_VERSION,
-      );
+      await restore({
+        ...emptySnapshot,
+        holdings: [{ id: 'h1', balanceMinorUnits: 5_000 }] as never,
+        transactions: [
+          // A real spend: carries a description, so it's not a hand-set-shaped row.
+          {
+            id: 't1',
+            holdingId: 'h1',
+            source: 'manual',
+            description: 'Coffee',
+            category: null,
+            exchangeCounterpartHoldingId: null,
+            changeGroupId: null,
+            time: 100,
+          },
+          // An exchange leg: carries the structural marker.
+          {
+            id: 't2',
+            holdingId: 'h1',
+            source: 'manual',
+            description: '',
+            category: null,
+            exchangeCounterpartHoldingId: 'h2',
+            changeGroupId: null,
+            time: 200,
+          },
+        ] as never,
+      });
 
       expect(insertedHoldings()).toEqual([
         { id: 'h1', balanceMinorUnits: 5_000, balanceSetAt: null, balanceSetRowId: null },
@@ -900,25 +854,22 @@ describe('restoreDataSnapshot', () => {
         captureHoldingsInsert();
       mockDatabaseTransaction = databaseTransaction;
 
-      await restoreDataSnapshot(
-        {
-          ...emptySnapshot,
-          holdings: [{ id: 'h1', balanceMinorUnits: 5_000, balanceSetAt: 999 }] as never,
-          transactions: [
-            {
-              id: 't1',
-              holdingId: 'h1',
-              source: 'manual',
-              description: '',
-              category: null,
-              exchangeCounterpartHoldingId: null,
-              changeGroupId: null,
-              time: 100,
-            },
-          ] as never,
-        },
-        EXPORT_VERSION,
-      );
+      await restore({
+        ...emptySnapshot,
+        holdings: [{ id: 'h1', balanceMinorUnits: 5_000, balanceSetAt: 999 }] as never,
+        transactions: [
+          {
+            id: 't1',
+            holdingId: 'h1',
+            source: 'manual',
+            description: '',
+            category: null,
+            exchangeCounterpartHoldingId: null,
+            changeGroupId: null,
+            time: 100,
+          },
+        ] as never,
+      });
 
       expect(insertedHoldings()).toEqual([
         { id: 'h1', balanceMinorUnits: 5_000, balanceSetAt: 999, balanceSetRowId: null },
@@ -937,82 +888,79 @@ describe('restoreDataSnapshot', () => {
         captureHoldingsInsert();
       mockDatabaseTransaction = databaseTransaction;
 
-      await restoreDataSnapshot(
-        {
-          ...emptySnapshot,
-          holdings: [{ id: 'h1', balanceMinorUnits: 5_000 }] as never,
-          transactions: [
-            // Wrong source (a synced row can't be a hand-set balance).
-            {
-              id: 't-source',
-              holdingId: 'h1',
-              source: 'monobank',
-              description: '',
-              category: null,
-              exchangeCounterpartHoldingId: null,
-              changeGroupId: null,
-              time: 100,
-            },
-            // Wrong description (a real, named spend).
-            {
-              id: 't-description',
-              holdingId: 'h1',
-              source: 'manual',
-              description: 'Coffee',
-              category: null,
-              exchangeCounterpartHoldingId: null,
-              changeGroupId: null,
-              time: 200,
-            },
-            // Wrong category (a categorized manual entry).
-            {
-              id: 't-category',
-              holdingId: 'h1',
-              source: 'manual',
-              description: '',
-              category: 'food',
-              exchangeCounterpartHoldingId: null,
-              changeGroupId: null,
-              time: 300,
-            },
-            // Wrong exchangeCounterpartHoldingId (an exchange leg).
-            {
-              id: 't-exchange',
-              holdingId: 'h1',
-              source: 'manual',
-              description: '',
-              category: null,
-              exchangeCounterpartHoldingId: 'h2',
-              changeGroupId: null,
-              time: 400,
-            },
-            // Wrong changeGroupId (a change-return row).
-            {
-              id: 't-change-group',
-              holdingId: 'h1',
-              source: 'manual',
-              description: '',
-              category: null,
-              exchangeCounterpartHoldingId: null,
-              changeGroupId: 'g1',
-              time: 500,
-            },
-            // Wrong holdingId (a real hand-set-shaped row, but on a DIFFERENT
-            // holding — must not backfill h1).
-            {
-              id: 't-holding',
-              holdingId: 'h2',
-              source: 'manual',
-              description: '',
-              category: null,
-              exchangeCounterpartHoldingId: null,
-              changeGroupId: null,
-              time: 600,
-            },
-          ] as never,
-        },
-        EXPORT_VERSION,
-      );
+      await restore({
+        ...emptySnapshot,
+        holdings: [{ id: 'h1', balanceMinorUnits: 5_000 }] as never,
+        transactions: [
+          // Wrong source (a synced row can't be a hand-set balance).
+          {
+            id: 't-source',
+            holdingId: 'h1',
+            source: 'monobank',
+            description: '',
+            category: null,
+            exchangeCounterpartHoldingId: null,
+            changeGroupId: null,
+            time: 100,
+          },
+          // Wrong description (a real, named spend).
+          {
+            id: 't-description',
+            holdingId: 'h1',
+            source: 'manual',
+            description: 'Coffee',
+            category: null,
+            exchangeCounterpartHoldingId: null,
+            changeGroupId: null,
+            time: 200,
+          },
+          // Wrong category (a categorized manual entry).
+          {
+            id: 't-category',
+            holdingId: 'h1',
+            source: 'manual',
+            description: '',
+            category: 'food',
+            exchangeCounterpartHoldingId: null,
+            changeGroupId: null,
+            time: 300,
+          },
+          // Wrong exchangeCounterpartHoldingId (an exchange leg).
+          {
+            id: 't-exchange',
+            holdingId: 'h1',
+            source: 'manual',
+            description: '',
+            category: null,
+            exchangeCounterpartHoldingId: 'h2',
+            changeGroupId: null,
+            time: 400,
+          },
+          // Wrong changeGroupId (a change-return row).
+          {
+            id: 't-change-group',
+            holdingId: 'h1',
+            source: 'manual',
+            description: '',
+            category: null,
+            exchangeCounterpartHoldingId: null,
+            changeGroupId: 'g1',
+            time: 500,
+          },
+          // Wrong holdingId (a real hand-set-shaped row, but on a DIFFERENT
+          // holding — must not backfill h1).
+          {
+            id: 't-holding',
+            holdingId: 'h2',
+            source: 'manual',
+            description: '',
+            category: null,
+            exchangeCounterpartHoldingId: null,
+            changeGroupId: null,
+            time: 600,
+          },
+        ] as never,
+      });
 
       expect(insertedHoldings()).toEqual([
         { id: 'h1', balanceMinorUnits: 5_000, balanceSetAt: null, balanceSetRowId: null },
@@ -1024,25 +972,22 @@ describe('restoreDataSnapshot', () => {
         captureHoldingsInsert();
       mockDatabaseTransaction = databaseTransaction;
 
-      await restoreDataSnapshot(
-        {
-          ...emptySnapshot,
-          holdings: [{ id: 'h1', balanceMinorUnits: 5_000, balanceSetAt: null }] as never,
-          transactions: [
-            {
-              id: 't1',
-              holdingId: 'h1',
-              source: 'manual',
-              description: '',
-              category: null,
-              exchangeCounterpartHoldingId: null,
-              changeGroupId: null,
-              time: 100,
-            },
-          ] as never,
-        },
-        EXPORT_VERSION,
-      );
+      await restore({
+        ...emptySnapshot,
+        holdings: [{ id: 'h1', balanceMinorUnits: 5_000, balanceSetAt: null }] as never,
+        transactions: [
+          {
+            id: 't1',
+            holdingId: 'h1',
+            source: 'manual',
+            description: '',
+            category: null,
+            exchangeCounterpartHoldingId: null,
+            changeGroupId: null,
+            time: 100,
+          },
+        ] as never,
+      });
 
       expect(insertedHoldings()).toEqual([
         { id: 'h1', balanceMinorUnits: 5_000, balanceSetAt: null, balanceSetRowId: null },
@@ -1082,14 +1027,11 @@ describe('restoreDataSnapshot', () => {
       const { databaseTransaction, insertedRows } = makeRowCapturingDatabaseTransaction();
       mockDatabaseTransaction = databaseTransaction;
 
-      await restoreDataSnapshot(
-        {
-          ...emptySnapshot,
-          holdings: [strayHolding()] as never,
-          transactions: [strayTransaction()] as never,
-        },
-        EXPORT_VERSION,
-      );
+      await restore({
+        ...emptySnapshot,
+        holdings: [strayHolding()] as never,
+        transactions: [strayTransaction()] as never,
+      });
 
       expect(insertedRows.holdings).toEqual([
         { id: 'h1', type: 'term_deposit', balanceMinorUnits: 0, balanceSetAt: null },
@@ -1101,14 +1043,11 @@ describe('restoreDataSnapshot', () => {
       const { databaseTransaction, insertedRows } = makeRowCapturingDatabaseTransaction();
       mockDatabaseTransaction = databaseTransaction;
 
-      await restoreDataSnapshot(
-        {
-          ...emptySnapshot,
-          holdings: [strayHolding({ type: 'bond' })] as never,
-          transactions: [strayTransaction()] as never,
-        },
-        EXPORT_VERSION,
-      );
+      await restore({
+        ...emptySnapshot,
+        holdings: [strayHolding({ type: 'bond' })] as never,
+        transactions: [strayTransaction()] as never,
+      });
 
       expect(insertedRows.holdings).toEqual([
         { id: 'h1', type: 'bond', balanceMinorUnits: 0, balanceSetAt: null },
@@ -1121,14 +1060,11 @@ describe('restoreDataSnapshot', () => {
       mockDatabaseTransaction = databaseTransaction;
       const cardHolding = strayHolding({ type: 'card' });
 
-      await restoreDataSnapshot(
-        {
-          ...emptySnapshot,
-          holdings: [cardHolding] as never,
-          transactions: [strayTransaction()] as never,
-        },
-        EXPORT_VERSION,
-      );
+      await restore({
+        ...emptySnapshot,
+        holdings: [cardHolding] as never,
+        transactions: [strayTransaction()] as never,
+      });
 
       // A card's own opening row: the 0047 mirror marks it as one, and as
       // the holding's current balance-set row.
@@ -1143,14 +1079,11 @@ describe('restoreDataSnapshot', () => {
       mockDatabaseTransaction = databaseTransaction;
       const editedTransaction = strayTransaction({ description: 'Edited note' });
 
-      await restoreDataSnapshot(
-        {
-          ...emptySnapshot,
-          holdings: [strayHolding()] as never,
-          transactions: [editedTransaction] as never,
-        },
-        EXPORT_VERSION,
-      );
+      await restore({
+        ...emptySnapshot,
+        holdings: [strayHolding()] as never,
+        transactions: [editedTransaction] as never,
+      });
 
       expect(insertedRows.holdings).toEqual([strayHolding({ balanceSetRowId: null })]);
       expect(insertedRows.transactions).toEqual([
@@ -1163,14 +1096,11 @@ describe('restoreDataSnapshot', () => {
       mockDatabaseTransaction = databaseTransaction;
       const secondTransaction = strayTransaction({ id: 't2', amountMinorUnits: 1, time: 5_000 });
 
-      await restoreDataSnapshot(
-        {
-          ...emptySnapshot,
-          holdings: [strayHolding()] as never,
-          transactions: [strayTransaction(), secondTransaction] as never,
-        },
-        EXPORT_VERSION,
-      );
+      await restore({
+        ...emptySnapshot,
+        holdings: [strayHolding()] as never,
+        transactions: [strayTransaction(), secondTransaction] as never,
+      });
 
       expect(insertedRows.holdings).toEqual([strayHolding({ balanceSetRowId: 't1' })]);
       expect(insertedRows.transactions).toEqual([
@@ -1185,14 +1115,11 @@ describe('restoreDataSnapshot', () => {
       // No `balanceSetAt` key at all — a build-25-shaped export.
       const legacyHolding = { id: 'h1', type: 'term_deposit', balanceMinorUnits: 50_000 };
 
-      await restoreDataSnapshot(
-        {
-          ...emptySnapshot,
-          holdings: [legacyHolding] as never,
-          transactions: [strayTransaction()] as never,
-        },
-        EXPORT_VERSION,
-      );
+      await restore({
+        ...emptySnapshot,
+        holdings: [legacyHolding] as never,
+        transactions: [strayTransaction()] as never,
+      });
 
       expect(insertedRows.holdings).toEqual([
         { id: 'h1', type: 'term_deposit', balanceMinorUnits: 0, balanceSetAt: null },
@@ -1205,13 +1132,10 @@ describe('restoreDataSnapshot', () => {
       mockDatabaseTransaction = databaseTransaction;
       const cleanHolding = strayHolding({ balanceMinorUnits: 0, balanceSetAt: null });
 
-      await restoreDataSnapshot(
-        {
-          ...emptySnapshot,
-          holdings: [cleanHolding] as never,
-        },
-        EXPORT_VERSION,
-      );
+      await restore({
+        ...emptySnapshot,
+        holdings: [cleanHolding] as never,
+      });
 
       expect(insertedRows.holdings).toEqual([cleanHolding]);
     });
@@ -1252,14 +1176,11 @@ describe('restoreDataSnapshot', () => {
       // separate import-time rezone (its own describe block below).
       const legacySettingsRow = { id: 1, baseCurrency: 'UAH', importTimesRezoned: true };
 
-      await restoreDataSnapshot(
-        {
-          ...emptySnapshot,
-          settings: [legacySettingsRow] as never,
-          transactions: [legacyImportTransaction()] as never,
-        },
-        EXPORT_VERSION,
-      );
+      await restore({
+        ...emptySnapshot,
+        settings: [legacySettingsRow] as never,
+        transactions: [legacyImportTransaction()] as never,
+      });
 
       expect(insertedRows.transactions).toEqual([
         legacyImportTransaction({ externalId: `${legacyBase}␟1` }),
@@ -1281,14 +1202,11 @@ describe('restoreDataSnapshot', () => {
       mockDatabaseTransaction = databaseTransaction;
       const editedTransaction = legacyImportTransaction({ description: 'Top up (edited note)' });
 
-      await restoreDataSnapshot(
-        {
-          ...emptySnapshot,
-          settings: [{ id: 1, baseCurrency: 'UAH', importTimesRezoned: true }] as never,
-          transactions: [editedTransaction] as never,
-        },
-        EXPORT_VERSION,
-      );
+      await restore({
+        ...emptySnapshot,
+        settings: [{ id: 1, baseCurrency: 'UAH', importTimesRezoned: true }] as never,
+        transactions: [editedTransaction] as never,
+      });
 
       expect(insertedRows.transactions).toEqual([editedTransaction]);
       expect(insertedRows.settings).toEqual([
@@ -1314,14 +1232,11 @@ describe('restoreDataSnapshot', () => {
       };
       const legacyShapedTransaction = legacyImportTransaction();
 
-      await restoreDataSnapshot(
-        {
-          ...emptySnapshot,
-          settings: [alreadyMigratedSettingsRow] as never,
-          transactions: [legacyShapedTransaction] as never,
-        },
-        EXPORT_VERSION,
-      );
+      await restore({
+        ...emptySnapshot,
+        settings: [alreadyMigratedSettingsRow] as never,
+        transactions: [legacyShapedTransaction] as never,
+      });
 
       expect(insertedRows.transactions).toEqual([legacyShapedTransaction]);
       expect(insertedRows.settings).toEqual([
@@ -1362,20 +1277,17 @@ describe('restoreDataSnapshot', () => {
       const { databaseTransaction, insertedRows } = makeRowCapturingDatabaseTransaction();
       mockDatabaseTransaction = databaseTransaction;
 
-      await restoreDataSnapshot(
-        {
-          ...emptySnapshot,
-          // `dedupKeysUpgraded: true` keeps this section isolated from the
-          // separate dedup-key upgrade above, the same way that section pins
-          // `importTimesRezoned: true` to stay isolated from this one.
-          settings: [
-            { id: 1, baseCurrency: 'UAH', dedupKeysUpgraded: true, importTimesRezoned: false },
-          ] as never,
-          holdings: [stampedHolding] as never,
-          transactions: [legacyImportRow()] as never,
-        },
-        EXPORT_VERSION,
-      );
+      await restore({
+        ...emptySnapshot,
+        // `dedupKeysUpgraded: true` keeps this section isolated from the
+        // separate dedup-key upgrade above, the same way that section pins
+        // `importTimesRezoned: true` to stay isolated from this one.
+        settings: [
+          { id: 1, baseCurrency: 'UAH', dedupKeysUpgraded: true, importTimesRezoned: false },
+        ] as never,
+        holdings: [stampedHolding] as never,
+        transactions: [legacyImportRow()] as never,
+      });
 
       const rezonedTime = rezoneImportTime(legacyTime);
 
@@ -1399,17 +1311,14 @@ describe('restoreDataSnapshot', () => {
       const { databaseTransaction, insertedRows } = makeRowCapturingDatabaseTransaction();
       mockDatabaseTransaction = databaseTransaction;
 
-      await restoreDataSnapshot(
-        {
-          ...emptySnapshot,
-          settings: [
-            { id: 1, baseCurrency: 'UAH', dedupKeysUpgraded: true, importTimesRezoned: true },
-          ] as never,
-          holdings: [stampedHolding] as never,
-          transactions: [legacyImportRow()] as never,
-        },
-        EXPORT_VERSION,
-      );
+      await restore({
+        ...emptySnapshot,
+        settings: [
+          { id: 1, baseCurrency: 'UAH', dedupKeysUpgraded: true, importTimesRezoned: true },
+        ] as never,
+        holdings: [stampedHolding] as never,
+        transactions: [legacyImportRow()] as never,
+      });
 
       expect(insertedRows.transactions).toEqual([legacyImportRow()]);
       expect(insertedRows.holdings).toEqual([stampedHolding]);
@@ -1429,15 +1338,12 @@ describe('restoreDataSnapshot', () => {
       const { databaseTransaction, insertedRows } = makeRowCapturingDatabaseTransaction();
       mockDatabaseTransaction = databaseTransaction;
 
-      await restoreDataSnapshot(
-        {
-          ...emptySnapshot,
-          settings: [{ id: 1, baseCurrency: 'UAH', dedupKeysUpgraded: true }] as never,
-          holdings: [stampedHolding] as never,
-          transactions: [legacyImportRow()] as never,
-        },
-        EXPORT_VERSION,
-      );
+      await restore({
+        ...emptySnapshot,
+        settings: [{ id: 1, baseCurrency: 'UAH', dedupKeysUpgraded: true }] as never,
+        holdings: [stampedHolding] as never,
+        transactions: [legacyImportRow()] as never,
+      });
 
       const rezonedTime = rezoneImportTime(legacyTime);
 
@@ -1468,19 +1374,16 @@ describe('restoreDataSnapshot', () => {
       const { databaseTransaction, insertedRows } = makeRowCapturingDatabaseTransaction();
       mockDatabaseTransaction = databaseTransaction;
 
-      await restoreDataSnapshot(
-        {
-          ...emptySnapshot,
-          currencyRates: [
-            { base: 'USD', quote: 'UAH', rate: '40', source: 'monobank', fetchedAt: 1 },
-            { base: 'EUR', quote: 'UAH', rate: '43', source: 'monobank', fetchedAt: 1 },
-            { base: 'BTC', quote: 'UAH', rate: '2600000', source: 'coingecko', fetchedAt: 1 },
-            { base: 'UAH', quote: 'USD', rate: '0.025', source: 'monobank', fetchedAt: 1 },
-            { base: 'USD', quote: 'EUR', rate: '0.93', source: 'monobank', fetchedAt: 1 },
-          ] as never,
-        },
-        EXPORT_VERSION,
-      );
+      await restore({
+        ...emptySnapshot,
+        currencyRates: [
+          { base: 'USD', quote: 'UAH', rate: '40', source: 'monobank', fetchedAt: 1 },
+          { base: 'EUR', quote: 'UAH', rate: '43', source: 'monobank', fetchedAt: 1 },
+          { base: 'BTC', quote: 'UAH', rate: '2600000', source: 'coingecko', fetchedAt: 1 },
+          { base: 'UAH', quote: 'USD', rate: '0.025', source: 'monobank', fetchedAt: 1 },
+          { base: 'USD', quote: 'EUR', rate: '0.93', source: 'monobank', fetchedAt: 1 },
+        ] as never,
+      });
 
       expect(insertedRows.currencyRates).toEqual([
         { base: 'USD', quote: 'UAH', rate: '40', source: 'monobank', fetchedAt: 1 },
@@ -1493,15 +1396,12 @@ describe('restoreDataSnapshot', () => {
       const { databaseTransaction, insertedRows } = makeRowCapturingDatabaseTransaction();
       mockDatabaseTransaction = databaseTransaction;
 
-      await restoreDataSnapshot(
-        {
-          ...emptySnapshot,
-          currencyRates: [
-            { base: 'UAH', quote: 'GBP', rate: '0.02', source: 'monobank', fetchedAt: 5 },
-          ] as never,
-        },
-        EXPORT_VERSION,
-      );
+      await restore({
+        ...emptySnapshot,
+        currencyRates: [
+          { base: 'UAH', quote: 'GBP', rate: '0.02', source: 'monobank', fetchedAt: 5 },
+        ] as never,
+      });
 
       expect(insertedRows.currencyRates).toEqual([
         { base: 'GBP', quote: 'UAH', rate: String(1 / 0.02), source: 'monobank', fetchedAt: 5 },
@@ -1512,16 +1412,13 @@ describe('restoreDataSnapshot', () => {
       const { databaseTransaction, insertedRows } = makeRowCapturingDatabaseTransaction();
       mockDatabaseTransaction = databaseTransaction;
 
-      await restoreDataSnapshot(
-        {
-          ...emptySnapshot,
-          currencyRates: [
-            { base: 'USD', quote: 'UAH', rate: '40', source: 'monobank', fetchedAt: 1 },
-            { base: 'GBP', quote: 'USD', rate: '1.3', source: 'monobank', fetchedAt: 1 },
-          ] as never,
-        },
-        EXPORT_VERSION,
-      );
+      await restore({
+        ...emptySnapshot,
+        currencyRates: [
+          { base: 'USD', quote: 'UAH', rate: '40', source: 'monobank', fetchedAt: 1 },
+          { base: 'GBP', quote: 'USD', rate: '1.3', source: 'monobank', fetchedAt: 1 },
+        ] as never,
+      });
 
       expect(insertedRows.currencyRates).toEqual([
         { base: 'USD', quote: 'UAH', rate: '40', source: 'monobank', fetchedAt: 1 },
@@ -1537,10 +1434,7 @@ describe('restoreDataSnapshot', () => {
         { base: 'BTC', quote: 'UAH', rate: '2600000', source: 'coingecko', fetchedAt: 1 },
       ];
 
-      await restoreDataSnapshot(
-        { ...emptySnapshot, currencyRates: starRows as never },
-        EXPORT_VERSION,
-      );
+      await restore({ ...emptySnapshot, currencyRates: starRows as never });
 
       expect(insertedRows.currencyRates).toEqual(starRows);
     });
@@ -1549,7 +1443,7 @@ describe('restoreDataSnapshot', () => {
       const { databaseTransaction, insertedRows } = makeRowCapturingDatabaseTransaction();
       mockDatabaseTransaction = databaseTransaction;
 
-      await restoreDataSnapshot(emptySnapshot, EXPORT_VERSION);
+      await restore(emptySnapshot);
 
       expect(insertedRows.currencyRates ?? []).toEqual([]);
     });
@@ -1558,19 +1452,16 @@ describe('restoreDataSnapshot', () => {
       const { databaseTransaction, insertedRows } = makeRowCapturingDatabaseTransaction();
       mockDatabaseTransaction = databaseTransaction;
 
-      await restoreDataSnapshot(
-        {
-          ...emptySnapshot,
-          currencyRateHistory: [
-            // Day 1: a full legacy pair set — only the star rows should survive.
-            { base: 'USD', quote: 'UAH', day: 1, rate: '40', source: 'nbu' },
-            { base: 'BTC', quote: 'USD', day: 1, rate: '65000', source: 'coingecko' },
-            // Day 2: only an inverse UAH:GBP row.
-            { base: 'UAH', quote: 'GBP', day: 2, rate: '0.02', source: 'nbu' },
-          ] as never,
-        },
-        EXPORT_VERSION,
-      );
+      await restore({
+        ...emptySnapshot,
+        currencyRateHistory: [
+          // Day 1: a full legacy pair set — only the star rows should survive.
+          { base: 'USD', quote: 'UAH', day: 1, rate: '40', source: 'nbu' },
+          { base: 'BTC', quote: 'USD', day: 1, rate: '65000', source: 'coingecko' },
+          // Day 2: only an inverse UAH:GBP row.
+          { base: 'UAH', quote: 'GBP', day: 2, rate: '0.02', source: 'nbu' },
+        ] as never,
+      });
 
       expect(insertedRows.currencyRateHistory).toEqual([
         { base: 'USD', quote: 'UAH', day: 1, rate: '40', source: 'nbu' },
@@ -1589,7 +1480,7 @@ describe('restoreDataSnapshot', () => {
       const { databaseTransaction, insertedRows } = makeRowCapturingDatabaseTransaction();
       mockDatabaseTransaction = databaseTransaction;
 
-      await restoreDataSnapshot(emptySnapshot, EXPORT_VERSION);
+      await restore(emptySnapshot);
 
       expect(insertedRows.currencyRateHistory ?? []).toEqual([]);
     });
@@ -1620,9 +1511,8 @@ describe('restoreDataSnapshot', () => {
       },
     };
 
-    await restoreDataSnapshot(
+    await restore(
       JSON.parse(JSON.stringify({ ...emptySnapshot, holdings: [bond] })) as DataSnapshot,
-      EXPORT_VERSION,
     );
 
     const [restored] = insertedRows.holdings as { metadata: unknown }[];
@@ -1650,9 +1540,8 @@ describe('restoreDataSnapshot', () => {
       },
     };
 
-    await restoreDataSnapshot(
+    await restore(
       JSON.parse(JSON.stringify({ ...emptySnapshot, holdings: [bond] })) as DataSnapshot,
-      EXPORT_VERSION,
     );
 
     const [restored] = insertedRows.holdings as { metadata: unknown }[];
@@ -1676,9 +1565,8 @@ describe('restoreDataSnapshot', () => {
       },
     };
 
-    await restoreDataSnapshot(
+    await restore(
       JSON.parse(JSON.stringify({ ...emptySnapshot, holdings: [spot] })) as DataSnapshot,
-      EXPORT_VERSION,
     );
 
     const [restored] = insertedRows.holdings as { metadata: unknown }[];
