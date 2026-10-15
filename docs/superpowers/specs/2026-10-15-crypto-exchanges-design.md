@@ -1,9 +1,9 @@
 # Crypto exchanges 1.3: shared exchange layer and multi-coin Binance (1.3-a)
 
-Date: 2026-10-15. Status: draft for user approval, after review round 2 and the NR4 and NR5
+Date: 2026-10-15. Status: draft for user approval, after review round 2 and the NR4 ... NR7
 rulings. Rulings: `.superpowers/sdd/binance-multicoin/rulings.md` (user rulings cited as R-Scope,
-R-Q3 ... R-Q16, R-Tech; the coordinator rulings at its end cited as C-NR1 ... C-NR5; C-NR2 is
-confirmed by the user). Base: branch `binance-backfill-fix`, HEAD d8d57ba2. Track: `crypto-exchanges-1.3-a`.
+R-Q3 ... R-Q16, R-Tech; the coordinator rulings at its end cited as C-NR1 ... C-NR7; C-NR2 is
+confirmed by the user). Base: branch `binance-backfill-fix`. Track: `crypto-exchanges-1.3-a`.
 
 Every code fact below names a symbol or an anchor text, never a line. The base moves: the developer
 re-greps every fact on the actual base before relying on it. Migration numbers 0059-0061 follow
@@ -86,9 +86,10 @@ These are the coordinator's rulings, not the user's, except C-NR2, which the use
 | C-NR1 A | The fiat total of a P2P buy, card buy or fiat deposit is stored in the marker code as a major-unit decimal at the fiat's scale: `p2p:UAH:4000.00`, `card:UAH:2600.00`, `bank:EUR:100.00`. Parsed by the exact decimal parser (`src/currency/decimal/decimal.ts`), never `Number()`. The note (`comment`) only displays the total | 5, 6 |
 | C-NR2 B | A fee charged in the SPENT coin is added to the spent leg (spent leg = gross + fee); no extra row; out of spending. CONFIRMED BY THE USER (2026-10-15) | 5, 7 |
 | C-NR3 A | An operation whose wallet the API does not name goes on the wallet probe 2 observes on the user's account; when probe 2 sees no records of it, the default is Convert -> Spot, P2P -> Funding, fiat orders and payments -> Spot. The not-listed note names the assumption. Final after probe 2 | 5, 10 |
-| C-NR4 A | If Binance refuses `fromId` together with `orderId` (probe P15), an order with more than 1000 fills is re-read through the normal trade id cursor, keeping only that order's fills; its start point is C-NR6. P15 decides whether this fallback is used | 5, 7, 12 |
+| C-NR4 A | If Binance refuses `fromId` together with `orderId` (probe P15), an order with more than 1000 fills is re-read through the normal trade id cursor, keeping only that order's fills. Not needed while P15 holds (C-NR7); P15 is a hard gate before set 11 | 5, 12 |
 | C-NR5 A | A third-coin fee row of a trade whose RECEIVED coin is not tracked carries `untrackedCounterpart = asset:<received coin>` and stays out of spending | 5, 6, 7 |
-| C-NR6 B | The C-NR4 fallback starts from the order's stored row time (the first fill time): one `myTrades?symbol=&startTime=&endTime=` call finds the lowest fill id with that `orderId`; then it pages by `fromId` and keeps only that order's fills; the symbol's own cursor does not move. No new cursor state. The `startTime` + `endTime` read is probe 3 (P17), run before set 11 | 5, 7, 12 |
+| C-NR6 B | The C-NR4 fallback starts from the order's stored row time (the first fill time). Not needed while P15 holds (C-NR7); P15 is a hard gate before set 11 | 5, 12 |
+| C-NR7 A | The C-NR4 / C-NR6 re-read fallback is cut from 1.3-a. P15 (`myTrades` with `symbol` + `orderId` + `fromId` pages an order's fills by id) runs in probe 3 as a hard gate before set 11: refuted or untestable (for example, no spot order on the account) -> stop and ask the coordinator | 5, 11, 12 |
 
 ### Rulings this spec reverses
 
@@ -499,8 +500,7 @@ confirm; section 12 gives each fallback.
 | Fiat orders | `GET /sapi/v1/fiat/orders`, `transactionType` 0 deposit, 1 withdraw (2 series) | probe / probe | `page`/`rows` 500 | UID 45000 | 3 | `walks.fiatOrders` | P6 |
 | Fiat payments | `GET /sapi/v1/fiat/payments`, `transactionType` 0 buy, 1 sell (2 series) | probe / probe | `page`/`rows` 100 | IP 1 | 10 | `walks.fiatPayments` | P6 |
 | Spot trades | `GET /api/v3/myTrades?symbol=&fromId=` per symbol | none (id cursor) / probe | `fromId`, 1000 | IP 20 (`/api/*`) | 100 calls | `trades.symbols[s].fromId` | P1, P2, P3 |
-| Order fills | `GET /api/v3/myTrades?symbol=&orderId=&fromId=` (an order re-read, below) | - | `fromId`, 1000, until a short page | IP 5 per page (`/api/*`; P15 confirms) | shares the trades lane | `trades.symbols[s].heldOrderId` | P15 |
-| Order fills, C-NR4 fallback (C-NR6) | `GET /api/v3/myTrades?symbol=&startTime=&endTime=` (1 call), then `myTrades?symbol=&fromId=` | - | the window call, then `fromId`, 1000, until the stop rule (below) | IP 20 (`/api/*`; P17 confirms) | shares the trades lane | `trades.symbols[s].heldOrderId` | P15, P17 |
+| Order fills | `GET /api/v3/myTrades?symbol=&orderId=&fromId=` (an order re-read, below) | - | `fromId`, 1000, until a short page; `ceil(f / 1000)` pages, `f` the order's own fills | IP 5 per page (`/api/*`; P15 confirms) | shares the trades lane | `trades.symbols[s].heldOrderId` | P15 (probe 3, hard gate) |
 | Symbol list | `GET /api/v3/exchangeInfo` (public) | - | - | IP 20 (`/api/*`) | 1 per run | - | P2 |
 
 The lane caps are starting values. Set 11 measures a caught-up run and a backfill run on the
@@ -614,10 +614,11 @@ counterparty field is read into a type (privacy, section 9). Key
   sold before 1.3 and seen nowhere else is not found: the not-listed note names it.
 - Rotation: a symbol is read this run when its base or quote balance changed since
   `trades.balanceSnapshot`, when it was never read (no entry or a null `fromId`), when it holds a
-  `heldOrderId` (same priority as a never-read symbol, read first), or when its turn comes in the round-robin
-  from `trades.rotation`. At least 1 call of the lane per run is reserved for the round-robin, so
-  the changed and null-cursor symbols never take the whole lane. Each of `S` candidate symbols is
-  read within `ceil(S / L)` runs, `L >= 1` the calls reserved or left for rotation (memory
+  `heldOrderId`, or when its turn comes in the round-robin from `trades.rotation`. Fixed read order:
+  held symbols first, in ascending symbol order; then never-read symbols; then changed symbols; then
+  the round-robin. At least 1 call of the lane per run is reserved for the round-robin, so the held,
+  changed and null-cursor symbols never take every call of the lane. Each of `S` candidate symbols
+  is read within `ceil(S / L)` runs, `L >= 1` the calls reserved or left for rotation (memory
   "round-robin rotates units read"; property test).
 - Paging (`idCursorPager`): `fromId` = the stored cursor, else 0; no time parameters (probe P1).
   After a completed read the symbol stores `fromId` = last trade id read + 1, or 0 when the read
@@ -634,36 +635,23 @@ counterparty field is read into a type (privacy, section 9). Key
   `myTrades?symbol=&orderId=&fromId=`, paging by `fromId` (last id + 1) until a short page, before
   it writes the order, and writes every row of the order from the whole set (`addManyDedup` updates
   the leg and fee amounts, a bank-owned column, under the same keys). An order whose fills span a
-  page boundary inside one run pages on before it is written.
-- Re-read fallback (C-NR4, start point C-NR6). It runs only when probe P15 shows Binance refuses
-  `fromId` together with `orderId`, and `myTrades?symbol=&orderId=` returns a full page (1000).
-  Start: `T` = the order's stored row time (the first fill time, "Pair id" below); one call
-  `myTrades?symbol=&startTime=T&endTime=T+60000` (1 minute: `T` is the first fill's own time, so
-  the window only has to contain `T`; a short window keeps other orders' fills out of the first
-  page; far inside Binance's 24 h limit, P17). The start id = the lowest fill id with that
-  `orderId` in the window. A window page that holds no fill of the order pages on by `fromId`
-  (last id + 1) with the same `startTime` and `endTime` until it finds one or a short page; a
-  window with no fill of the order logs `trade-order-reread-held` and holds the order (below).
-  From the start id the re-read pages `myTrades?symbol=&fromId=` (last id + 1, 1000 per page)
-  and keeps only fills with that `orderId`. Stop: a short page, or the first fill whose id is
-  past the current batch's last id (that fill and the rest of its page are not kept; the id
-  cursor reads them in a later batch, as in T10). The re-read's set alone is the order's result:
-  no fill from the batch or an earlier run is added to it, so none counts twice. The symbol's own
-  cursor is not moved by the re-read. No new cursor state: the start comes from the stored row.
-- Fallback bound: every call of the re-read is one call of the trades lane (section 5 table):
-  `W + ceil((L - S + 1) / 1000)` calls, `W` the window pages (1 unless more than 1000 fills fall
-  in the window), `S` the start id, `L` the current batch's last id. A re-read takes at most the
-  calls the lane has left this run. A re-read that does not fit the lane (the lane ends before
-  its stop) writes nothing of the order, logs the fixed tag `trade-order-reread-held`, and holds
-  the order as T11 does (below). A held symbol is read first next run, so it gets the whole lane;
-  an order whose span needs more calls than the whole lane stays held and logs the tag on every
-  run.
-- A re-read that does not fit the lane stops the symbol at that order's first fill in the batch
-  (the stop fill): the fills before it are written, nothing at or after it is written, `fromId` is
-  stored as the stop fill's id, and the symbol stores `heldOrderId` = that order's id. The next run
-  reads that symbol first, with the priority of a never-read symbol: the held order's re-read, then
-  the id cursor from the stop fill. `heldOrderId` is cleared in the cursor patch written after the
-  order's rows. No owed point is stored (the trades walk keys progress by id, not time).
+  page boundary inside one run pages on before it is written. P15 (probe 3) is a hard gate before
+  set 11 that `orderId` + `fromId` page an order's fills by id (C-NR7).
+- An order is re-read at most once per run: after its re-read, its fills in later id-cursor pages
+  of the same run are skipped (not added, and not a trigger for a second re-read).
+- Re-read bound: the re-read's first call counts in it. It takes `ceil(f / 1000)` pages, `f` =
+  the order's own fills (a `fromId` page returns up to 1000 of the account's own fills; a full
+  page means more pages, so an `f` that is a multiple of 1000 takes one more, empty, page), every
+  call in the trades lane. Fit is decided by reading (the lane ends before the short page), never
+  computed ahead from ids.
+- A re-read that does not fit the lane stops the symbol at that order's first fill in the batch (the
+  stop fill): the fills before it are written, nothing at or after it is written, `fromId` is stored
+  as the stop fill's id, and the symbol stores `heldOrderId` = that order's id. The next run reads
+  that symbol first (held symbols in ascending symbol order): the held order's re-read (`orderId` +
+  `fromId`, complete by itself), then the id cursor from the stop fill, where the held order's fills
+  are skipped by the once-per-run rule. A held symbol gets at most the lane cap - 1 calls (one call
+  stays for the round-robin, "Rotation" above). `heldOrderId` is cleared in the cursor patch written
+  after the order's rows. No owed point is stored (the trades walk keys progress by id, not time).
 - Rows per order, Spot wallet: spent leg = sum of `quoteQty` (buy) or `qty` (sell), negative;
   received leg = sum of `qty` (buy) or `quoteQty` (sell) minus every commission in the received
   coin. Commission in the SPENT coin (C-NR2, confirmed by the user): added to the spent leg, so the spent leg =
@@ -675,10 +663,10 @@ counterparty field is read into a type (privacy, section 9). Key
   the fee row has no received-leg holding, so it carries `untrackedCounterpart = asset:<received
   coin>` instead of `exchangeCounterpartHoldingId`, and stays out of spending.
 - One side untracked (USDT -> PEPE): the tracked leg alone, `untrackedCounterpart = asset:<CODE>`,
-  no `exchangePairId`; its key is still `${pairId}:<walletKey>`, so a later fill finds it by the
-  key prefix and re-reads the order. Its third-coin fee row (C-NR5) still carries
-  `exchangePairId = pairId`, so the order has a pair id on the fee row alone. The fee row stays on any leg or
-  holding delete: a synced row is never deleted (`isDeletableTransaction` in
+  no `exchangePairId`; its key is still `${pairId}:<walletKey>`, so a later fill finds it by the key
+  prefix and re-reads the order. Its third-coin fee row (C-NR5) still carries
+  `exchangePairId = pairId`, so the order has a pair id on the fee row alone. The fee row stays on
+  any leg or holding delete: a synced row is never deleted (`isDeletableTransaction` in
   `src/holdings/deletable/deletable.ts` allows `manual` and `import` only; `transactionsRepo.remove`
   refuses a synced row, and a cascade keeps every bank-owned row), so a pair id on the leg would
   remove nothing more.
@@ -936,11 +924,9 @@ Trades (set 11; property tests at clock gaps 0, 1 h, 1 day):
 | T8 | buy 0.01 BTC for 600 USDT | 0.6 USDT (spent coin) | USDT Spot -600.6; BTC Spot +0.01; no fee row | excluded | not imported |
 | T9 | BTC/EUR | EUR | EUR fiat leg | excluded | not imported |
 | T10 | run 1 reads fills A1 (order A), B1 (order B), cursor past B1; run 2 reads A2 (a later fill of A) | - | run 2 re-reads A by `orderId` (A1 + A2), rewrites A's pair from both fills; B unchanged; no fill of A dropped | excluded | not imported |
-| T11 | T10, but the `orderId` re-read does not fit the lane | - | cursor holds: `fromId` = A2's id, `heldOrderId` = A; nothing at or after A2 written; no owed point; the next run reads the symbol first, re-reads A, writes A from A1 + A2, and clears `heldOrderId` in the cursor patch written after A's rows | none | not imported |
+| T11 | T10, but the `orderId` re-read does not fit the lane | - | cursor holds: `fromId` = A2's id, `heldOrderId` = A; nothing at or after A2 written; no owed point; the next run reads the symbol first, re-reads A by `orderId` + `fromId` (A1 + A2, complete by itself), then reads the id cursor from A2 where A2 is skipped (A already re-read this run, no second re-read), writes A from A1 + A2, and clears `heldOrderId` in the cursor patch written after A's rows | none | not imported |
 | T12 | sell PEPE (untracked) for USDT; run 1 reads fill A1, run 2 reads A2 | - | run 2 finds A by the `${pairId}:` key prefix (no `exchangePairId` stored), re-reads A by `orderId`; one USDT +(A1 + A2) row under the same key, `asset:PEPE` | excluded | not imported |
 | T12b | T12 with a BNB commission on each fill | BNB | as T12, plus one BNB fee row `${pairId}:fee:<walletKey>` refreshed to the summed commission of A1 + A2, `exchangePairId = pairId` (the USDT leg keeps none); no second fee row; the fee row stays on any leg or holding delete (a synced row is never deleted) | excluded | not imported |
-| T13 | P15 shows `fromId` refused with `orderId` (C-NR4); run 1 wrote order A (stored time `T`) from fills A1..A1499; run 2's batch holds A1500 | - | `myTrades?symbol=&orderId=` returns a full page (1000), so the fallback runs (C-NR6): one window call `startTime=T`, `endTime=T+60000` finds A1's id; the re-read pages `fromId` from A1, keeps only A's fills (other orders' fills in those pages ignored), and stops at the first fill past run 2's batch last id (or a short page); A is rewritten from the re-read's set alone (1500 fills, none twice); the symbol's cursor unchanged by the re-read | excluded | not imported |
-| T13b | T13, but the fallback re-read does not fit the lane | - | tag `trade-order-reread-held` logged; held as T11: `fromId` = A1500's id, `heldOrderId` = A, nothing of A written; the next run reads the symbol first and runs the fallback again | none | not imported |
 | T14 | buy PEPE (untracked) with USDT (C-NR5) | BNB | USDT Spot -x, `asset:PEPE`; BNB Spot fee row `${pairId}:fee:<walletKey>`, `untrackedCounterpart = asset:PEPE`, no `exchangeCounterpartHoldingId`, `operation = 'trade-fee'`, `exchangePairId = pairId` (the USDT leg keeps none); the fee row stays on any leg or holding delete (a synced row is never deleted) | both excluded | not imported |
 
 Convert, dust, dividends, P2P, fiat (sets 8, 9, 12):
@@ -1176,7 +1162,7 @@ main's journal before its merge.
 | 8/15 | Convert walk | `binance.convert-history.ts` (new), `binance.history-client.ts`, `binance.history-budget.ts`, `run-crypto-sync.ts` (~6) | none | C1-C2; window halving on `moreData`; walk properties | yes (P4; C-NR3 wallet) |
 | 9/15 | dust read; dividend walk only if P8 yields an allowlist value | `binance.dust-history.ts`, `binance.dividend-history.ts` (new, conditional), client, budget, run wiring (~7) | none | D1-D3; V1-V2 and the allowlist pin if shipped | yes (P7, P8) |
 | 10/15 | trades 1/2: symbol discovery, rotation with the reserved call, `idCursorPager` | `exchange/paging/id-cursor-pager.ts`, `binance.trade-symbols.ts` (new), public `exchangeInfo` read, `walk-state` trades part (~7) | none | rotation bound `ceil(S / L)` property with `L >= 1` when changed symbols fill the lane; discovery cases; pager pages | yes (P1, P2) |
-| 11/15 | trades 2/2: order aggregation, `orderId` re-read, rows, fee rules (C-NR2, C-NR5), C-NR4 re-read fallback (C-NR6 start), `/api/*` IP budget, lane caps measured | `binance.trade-history.ts` (new), `binance.history-client.ts`, `binance.history-budget.ts`, `run-crypto-sync.ts` (~6) | none | T1-T14 exact parity; properties at 0 / 1 h / 1 day; measured run report | yes (P1, P3, P15, P17) |
+| 11/15 | trades 2/2: order aggregation, `orderId` re-read, rows, fee rules (C-NR2, C-NR5), `/api/*` IP budget, lane caps measured | `binance.trade-history.ts` (new), `binance.history-client.ts`, `binance.history-budget.ts`, `run-crypto-sync.ts` (~6) | none | T1-T12b and T14 exact parity; properties at 0 / 1 h / 1 day; measured run report | yes (P1, P3, P15; P15 in probe 3) |
 | 12/15 | P2P, fiat orders, fiat payments walks | `binance.p2p-history.ts`, `binance.fiat-history.ts` (new), client, budget, run wiring (~7) | none | P1-P5, F1-F3; UID 45000 lane cap; properties | yes (P5, P6; C-NR3 wallets) |
 | 13/15 | read-time bank-debit matcher and its caption | `src/statistics/exchange-funding-match/` (new), `statistics.screen.tsx`, the transaction form caption slot, i18n, demo bank debit (~6) | none | M1-M13; one-to-one tie-breaks with a distinct value per sort key | no |
 | 14/15 | exchange catalog, picker field, registry wiring, shared provider sheet, `syncJobsFor` | `exchange-catalog/`, `exchange/registry/`, `exchange-type-field/` (new), `crypto-sync-form`, `account-form.screen.tsx`, `crypto-sync-section`, `add-bank-sheet` -> `provider-sheet`, `bank-sync-section`, `sync-jobs.ts`, `provider.ts`, `deletable.ts`, i18n, `build-demo-snapshot.ts` (crypto `bankId` kept) + `binance` and `btc_wallet` demo accounts (`institution` null) + demo regen (~16) | none | picker and caption render; registry skip of an unwired id; connect-first rollback; demo invariant per connectable catalog entry | no |
@@ -1197,7 +1183,7 @@ kept for 1.1).
 
 Probe 2 is `memory/refs/binance-operations-probe.sh` (trades, convert, p2p, fiat, dust,
 dividends), plus a `balances` part to add to it for P9-P14 (counts and tickers only, as the script's
-privacy header requires). Probe 3 is the P17 check, run before set 11.
+privacy header requires). Probe 3 is the P15 check, run before set 11.
 
 | # | Fact | Default until confirmed | Fallback if refuted | Sets |
 |---|---|---|---|---|
@@ -1215,12 +1201,11 @@ privacy header requires). Probe 3 is the P17 check, run before set 11.
 | P12 | Pay `fundsDetail` with several coins; `walletAssetCost` keys per coin | rows per coin and wallet | `pay-split-mismatch` stop | 6 |
 | P13 | `get-funding-asset` without `asset` omits zero rows | a missing coin reads as zero for existing holdings | none needed | 5 |
 | P14 | `EURUSDT` is a live spot symbol | USDT fallback via EURUSDT | no USDT fallback; USDT unpriced when CoinGecko fails (existing "no rate" treatment) | 5 |
-| P15 | weight headers of each new endpoint, the weight of `myTrades` with `orderId`; that `symbol` + `orderId` + `fromId` together page an order's fills by id (pages of 1000 until a short page) | caps of section 5; the re-read pages by `fromId` | caps alone bound the run; `fromId` refused with `orderId`: the C-NR4 re-read through the trade id cursor, started from the order's stored time (C-NR6, P17) | 8-12 |
+| P15 | probe 3, a hard gate before set 11 (C-NR7): weight headers of each new endpoint, the weight of `myTrades` with `orderId`; that `symbol` + `orderId` + `fromId` together page an order's fills by id (pages of 1000 until a short page) | caps of section 5; the re-read pages by `fromId` | stop and ask the coordinator before set 11 (also when untestable, for example no spot order on the account) | 8-12 |
 | P16 | `walletType` of non-BTC deposits | 0 Spot, 1 Funding, else stop | stop owes the record | 6 |
-| P17 | probe 3, run before set 11: `myTrades` with `symbol` + `startTime` + `endTime` returns fills in id order from `startTime`; its weight; its max window (24 h expected); `fromId` paging after it | the C-NR6 start: a 1-minute window at the order's stored time, IP 20 per call | none in 1.3-a: the fallback cannot start, so an order that needs it logs `trade-order-reread-held` and stays held | 11 |
 
 ### NEEDS RULING
 
-C-NR1 ... C-NR6 are ruled (section 1); C-NR2 is confirmed by the user; C-NR3 is final after
-probe 2; P15 decides whether the C-NR4 fallback is used, and P17 (probe 3) confirms its C-NR6
-start. None is open; set 11 waits only on its probes (P1, P3, P15, P17).
+C-NR1 ... C-NR7 are ruled (section 1); C-NR2 is confirmed by the user; C-NR3 is final after
+probe 2; C-NR4 and C-NR6 are not needed while P15 holds (C-NR7). None is open; set 11 waits only
+on its probes (P1, P3, and P15 in probe 3).
