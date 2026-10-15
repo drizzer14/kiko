@@ -497,7 +497,6 @@ if (require.main === module) {
 
 module.exports = {
   stopTierDeadlineSeconds,
-  secondsBeforeLaterChecks,
   HOOK_BUDGET_SECONDS,
   GUARD_CALL_TAIL_SECONDS,
   LATER_CHECKS_RESERVE_SECONDS,
