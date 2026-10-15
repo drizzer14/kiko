@@ -2505,7 +2505,7 @@ function scriptKillFinding(scriptFile, context) {
       text,
       1,
       false,
-      { directories: [directory], variables: new Map() },
+      { directories: [directory], variables: noVariables() },
       scan,
     );
     if (kill !== null) return { kind: 'scriptKill', detail: `${file} holds \`${kill.detail}\`` };
@@ -2615,7 +2615,7 @@ function segmentFinding({ segment, scripts, stdinBodies, spans, place, rules }) 
     return write === null ? null : shellWriteFinding(segment, write);
   };
   const finding = judge(tokens, redirects, scripts);
-  if (finding !== null || variables.size === 0) return finding;
+  if (finding !== null || !hasVariables(variables)) return finding;
   const expand = (word) => expandVariables(word, variables);
   const expandedWords = tokens.map(expand);
   const expandedTargets = redirects.map((redirect) => ({
@@ -2845,7 +2845,7 @@ function expandVariables(word, variables) {
   let room = EXPANDED_WORD_LIMIT;
 
   return word.replace(VARIABLE_REFERENCE, (match, braced, bare) => {
-    const value = variables.get(braced ?? bare);
+    const value = lookupVariable(variables, braced ?? bare);
     if (value === undefined || value === null) return match;
     room -= value.length;
 
@@ -2875,16 +2875,44 @@ function assignedVariables(segment, variables, separator) {
 const isLiteralValue = (value) =>
   value.length <= VARIABLE_VALUE_LIMIT && !/[$`]|__SUBSHELL__/.test(value);
 
-// A later assignment of a name wins, in the order the command runs them; the earlier map is left as
-// it was, because the nested text of earlier segments still reads it.
-const withVariables = (variables, assigned) =>
-  new Map([
-    ...variables,
-    ...Object.entries(assigned).map(([name, value]) => [
-      name,
-      isLiteralValue(value) ? value : null,
-    ]),
-  ]);
+// The variables at one point of a command: `own` entries over the `parent` scope. A segment's
+// scope must stay as it was, because the nested text of earlier segments still reads it, so a later
+// assignment adds a link instead of copying every earlier variable (thousands of assignments
+// copied quadratically, seconds of the hook's 10). Every SCOPE_DEPTH_LIMIT links the chain is
+// folded into one map, so a lookup walks a few links at most.
+const SCOPE_DEPTH_LIMIT = 32;
+
+const noVariables = () => ({ own: new Map(), parent: null, depth: 0 });
+
+const hasVariables = (scope) => scope.parent !== null || scope.own.size > 0;
+
+function lookupVariable(scope, name) {
+  for (let link = scope; link !== null; link = link.parent) {
+    if (link.own.has(name)) return link.own.get(name);
+  }
+
+  return undefined;
+}
+
+function foldScope(scope) {
+  const links = [];
+  for (let link = scope; link !== null; link = link.parent) links.unshift(link);
+  const own = new Map();
+  for (const link of links) for (const [name, value] of link.own) own.set(name, value);
+
+  return { own, parent: null, depth: 0 };
+}
+
+// A later assignment of a name wins, in the order the command runs them. A segment that assigns
+// nothing shares its scope.
+function withVariables(scope, assigned) {
+  const entries = Object.entries(assigned);
+  if (entries.length === 0) return scope;
+  const own = new Map(entries.map(([name, value]) => [name, isLiteralValue(value) ? value : null]));
+  const next = { own, parent: scope, depth: scope.depth + 1 };
+
+  return next.depth >= SCOPE_DEPTH_LIMIT ? foldScope(next) : next;
+}
 
 // The variables after one segment. Only a write or a directory is judged through a variable, and
 // a pass that reports kills and stashes alone judges neither, so it tracks none.
@@ -2930,7 +2958,7 @@ function followingCommands(segments) {
 // assigns reaches into it (a commit message or a notes file that shows `sed -i`, `git commit-tree`,
 // or `pid=-1; kill -9 $pid` runs nothing). `place` holds the
 // `directories` the line may start in and the `variables` the command has
-// assigned so far (a Map); every nested line runs where its segment does.
+// assigned so far (a scope, see `withVariables`); every nested line runs where its segment does.
 function findDanger(line, depth, checkHeredoc, place, rules) {
   if (depth > 8) return null; // guards against pathological nesting
   const { segments, nested, heredoc, bodies, opens, closes, separators } = scanLevel(line);
@@ -2981,7 +3009,7 @@ function findDanger(line, depth, checkHeredoc, place, rules) {
   if (checkHeredoc && heredoc !== null) return { kind: 'heredoc', detail: heredoc };
 
   const inItsPlace = (entry) => ({ text: entry.text, ...placesAt[entry.segmentIndex] });
-  const asData = (entry) => ({ ...inItsPlace(entry), variables: new Map() });
+  const asData = (entry) => ({ ...inItsPlace(entry), variables: noVariables() });
   const dataRules = { ...rules, kinds: DATA_KINDS, checkWrites: false, scanScripts: false };
 
   return (
@@ -3035,7 +3063,7 @@ function judge(command, options) {
   };
   const start = typeof options.cwd === 'string' ? resolveDirectory(null, options.cwd) : null;
   for (const reading of ['bash', 'zsh']) {
-    const place = { directories: [start], variables: new Map() };
+    const place = { directories: [start], variables: noVariables() };
     const finding = withShellReading(reading, () => findDanger(command, 0, true, place, rules));
     if (finding !== null) return finding;
   }

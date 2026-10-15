@@ -667,6 +667,17 @@ describe('kill-guard shell-write deny (parser only, fake repository)', () => {
     expect(Date.now() - started).toBeLessThan(2000);
   });
 
+  // Each assignment used to copy every earlier one (10000 of them took seconds of the hook's 10).
+  it('judges thousands of assignments and plain commands well inside the hook timeout', () => {
+    const assignments = Array.from({ length: 10000 }, (_, index) => `v${index}=/tmp/x`).join('; ');
+    const plain = Array.from({ length: 6000 }, () => 'echo a').join('; ');
+    const command = `f=src/x.ts; ${assignments}; ${plain}; sed -i '' s/a/b/ $f`;
+    const started = Date.now();
+
+    expect(decideInMain(command)).toBe('shellWrite');
+    expect(Date.now() - started).toBeLessThan(1500);
+  });
+
   // A command that doubles a variable 31 times would build a string past the engine's limit, and
   // the throw used to turn the whole decision into an allow.
   it('judges a command that doubles a variable past any size', () => {
