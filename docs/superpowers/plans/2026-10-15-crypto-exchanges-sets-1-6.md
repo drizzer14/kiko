@@ -56,34 +56,37 @@ before relying on it.**
 | `20261015T1035-kiko-release-1-2/1` (1.2 export drops `untracked_counterpart`; no migration on release-1.2) | LEFT OPEN (scribe). Related: set 1 makes `.kiko` v4, unreadable by 1.2.x; the release-step note of spec section 11 applies |
 | `20261013T2223-kiko-harness-h5/5`, `/6`; `20261014T0952-kiko-harness-h7/1`; `20261015T0021-kiko-harness-h7/1`; `20261015T0639-kiko-harness-h7/1`; `20261015T1119-kiko-harness-h7/1` | LEFT OPEN, unrelated |
 
-## BLOCKER for set 3 (needs a coordinator ruling before set 3 starts)
+## Set 3 layer direction (ruled: option A, coordinator 2026-10-15)
 
-The spec says set 3 "moves code only" and puts `binance.history-walk.ts`, `binance.history-paging.ts`,
-`binance.history-records.ts`, `binance.walk-write-deps.ts` into `exchange/walk/` and `exchange/paging/`. On the
-base, a pure move creates a **feature value cycle**, which `check:feature-imports --tree` fails (`feature-cycle`
-finding in `scripts/checks/feature-imports.js`, `findTreeViolations`):
+A pure move of `binance.history-walk.ts`, `binance.history-paging.ts`, `binance.history-records.ts` and
+`binance.walk-write-deps.ts` into `exchange/` would create a feature value cycle, which
+`check:feature-imports --tree` fails (`feature-cycle`, `findTreeViolations` in `scripts/checks/feature-imports.js`):
+the walk imports `BINANCE_ASSET` (`binance.client`), `binanceKeyOf` and `WALLET_HOLDING_NAMES`
+(`binance.holding-keys`); the pager imports `BinanceRateLimitError` (`binance.client`) and `HISTORY_TOTAL_PAGE_SIZE`
+(`binance.history-client`); and `binance/` imports both back.
 
-- `binance.history-walk.ts` imports VALUES from `./binance.client` (`BINANCE_ASSET`) and `./binance.holding-keys`
-  (`binanceKeyOf`, `WALLET_HOLDING_NAMES`);
-- `binance.history-paging.ts` imports VALUES from `./binance.client` (`BinanceRateLimitError`) and
-  `./binance.history-client` (`HISTORY_TOTAL_PAGE_SIZE`);
-- `binance/` in turn imports the walk and paging values.
+Ruling A: the moved walk and pager read those values from one per-exchange config object that the Binance callers
+pass in, like `DepthConfig`. Keys and requests stay byte-identical, pinned by set 3 step 1/9.
 
-So `exchange/walk` -> `crypto-sync/binance` -> `exchange/walk`. The spec names the depth constants becoming a
-per-exchange `DepthConfig` but names no injection for these five values. Options (the plan does not pick one):
-
-- **A (recommended):** the moved walk and pager take those values from a per-exchange config object passed by the
-  Binance callers (the same shape as `DepthConfig`: asset code, holding-key reader, default wallet names, a
-  rate-limit predicate, the page size); the types `UnreadableRow`/`TotalPage` move to `exchange/paging`. Keys and
-  requests stay byte-identical (set 3 step 1/9 pins them). Cost: about 5 extra parameters threaded through the
-  walk entry points.
-- **B:** set 3 moves only the cycle-free units (credentials, signing, budget shape, depth, amounts) and leaves
-  walk, paging, records and walk-write-deps in `binance/` for 1.3-a; `exchange/walk-state` (set 4) is new and
-  cycle-free. Cost: reverses the spec's unit table for four files; 1.3-b moves them later.
-
-Set 3 steps 1/9 to 5/9 below are cycle-free under either option and may start; steps 6/9 to 9/9 are written for
-option A and wait for the ruling. Sets 4-6 name walk files by their binance path; under option A the developer
-re-greps the moved path.
+- Type `ExchangeWalkConfig`, in `src/crypto-sync/exchange/walk/walk-config.ts`, exported by the
+  `exchange/walk` barrel (the pager imports it as a type; the pager already depends on the walk):
+  ```ts
+  type ExchangeWalkConfig = {
+    asset: string;                                                 // 'BTC' for Binance in 1.3-a
+    holdingKeyOf: (holding: Pick<HoldingRow, 'metadata'>) => string | undefined;
+    walletHoldingNames: Readonly<Record<string, string>>;          // wallet key -> default name
+    isRateLimitError: (error: unknown) => boolean;
+    totalPageSize: number;
+    depth: DepthConfig;                                            // set 3 step 4/9
+  };
+  ```
+- The Binance instance `BINANCE_WALK_CONFIG` is in `src/crypto-sync/binance/binance.walk-config.ts` and is built
+  from `BINANCE_ASSET`, `binanceKeyOf`, `WALLET_HOLDING_NAMES`, `error instanceof BinanceRateLimitError`,
+  `HISTORY_TOTAL_PAGE_SIZE` and the Binance `DepthConfig`. It is passed by every Binance walk entry point (capital in
+  `binance.transactions.ts`, Pay, Transfer, Earn).
+- The types `UnreadableRow` and `TotalPage` move to `exchange/paging`; `binance.history-client.ts` imports them from
+  there (a type import only).
+- Sets 4-6 name walk files by their pre-move binance path; the developer re-greps the moved path in `exchange/walk/`.
 
 ## Review focus
 
@@ -185,8 +188,10 @@ Files: `drizzle/migrations/0059_usdt_scale_8.sql` (new, hand-authored, no snapsh
       - "rescales a value at the bound exactly" (9007199254 -> 9007199254000000);
       - "rescales every minor-unit field of USDT holding metadata" (contributions[].amountMinorUnits,
         principalMinorUnits, faceValueMinorUnits, purchasePriceMinorUnits, lots[].costMinorUnits);
-      - "keeps every other array element as it was" (Review focus 1: a lots array with a string, `true`, `null` and an
-        object without `costMinorUnits`, order kept);
+      - "keeps every other array element as it was" (Review focus 1: a lots array with a string, `null` and an
+        object without `costMinorUnits` beside a rescaled object, order kept);
+      - "keeps a boolean element a boolean" (`json_each` reports `true`/`false` as `1`/`0`; after the migration the
+        element reads back with `json_type` = `'true'` and `'false'`, never `'integer'`; also in a `matchers` array);
       - "leaves malformed JSON byte-unchanged and still succeeds" (U13: metadata `'{bad'`, matchers `'not json'`);
       - "leaves a string or real field and rescales its integer siblings" (U14: `"5000"`, `12.5`, integer
         `purchasePriceMinorUnits`; template `amountMinorUnits` null);
@@ -245,7 +250,9 @@ Files: `0059_usdt_scale_8.sql`, `0059-usdt-scale-8.test.ts`.
       `deleted_import_keys` -> `-500000000 tea␟1`); "leaves a bank-issued key alone"; "decides by the key's first
       token, not the row's holding" (USDT-keyed row now on a UAH holding: rewritten; UAH-keyed row now on the USDT
       holding: unchanged; same two keys in `deleted_import_keys`); "rescales two keys whose new amount equals the
-      other's old amount" (Review focus 2); "a re-import of the same statement after the migration adds no row"
+      other's old amount" (Review focus 2: two USDT rows on one holding at one time and description, amounts -1 and
+      -1000000; a one-statement final-key UPDATE fails here with a UNIQUE constraint error, so the test also runs that
+      naive statement on the same seed and expects the error, then expects the migration to succeed); "a re-import of the same statement after the migration adds no row"
       (compute the key with `computeDedupKey` at scale 8 and assert it equals the stored key).
 - [ ] Red; quote the count.
 - [ ] Code: a `CREATE TEMP TABLE usdt_import_keys (table_name text, row_key text, old_key text, new_key text)` filled
@@ -426,11 +433,18 @@ Files: `decimal.ts`, `decimal.test.ts`.
 ### step 2/10: coin registry with the scale formula (R1-R5, invariants)
 
 Files: `src/currency/coins/coins.ts`, `index.ts`, `coins.test.ts` (new).
-- [ ] Curation (network reads, public endpoints, recorded with date, URL and result in the commit message): CoinGecko
-      `/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=50`, `/coins/list` (verify `chaingpt` and every
-      id), Binance `GET /api/v3/exchangeInfo` (`baseAssetPrecision`, `<CODE>USDT` symbol status). List rule of spec
-      section 3 (user coins BTC, USDT, CGPT; top 30 minus excluded classes and fiat-colliding codes; USDC, FDUSD, DAI;
-      BNB kept). `maxUnits` per coin from supply (stablecoins 90,000,000); `dustBelow` near 1 USD at the curation price.
+- [ ] Input (no network read by the developer): `.superpowers/sdd/binance-multicoin/coin-curation-2026-10-15.md`
+      (the date in the name is the check date; a later read gets a new file). kiko:researcher does the live reads of
+      the public endpoints, read-only, with a source URL and a check date per claim: CoinGecko
+      `/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=50`, CoinGecko `/coins/list` (verifies every id,
+      including `chaingpt`), Binance `GET /api/v3/exchangeInfo`. The orchestrator writes the result to the file
+      before the developer starts. One row per candidate coin, with these fields:
+      `code`; `name` (en); `coinGeckoId` (verified on `/coins/list`); `binanceSymbol` (`<CODE>USDT`, its `status`; none
+      for USDT); `baseAssetPrecision` (from `exchangeInfo`); the top-30 rank and its source (URL + check date; or
+      "user coin" / "stablecoin rule" / "BNB rule"); `maxUnits` with its supply source; the USD price used for
+      `dustBelow`; the list-rule decision (kept, or excluded with the class: other stablecoin, wrapped/bridged/
+      liquid-staking, no USDT spot market, fiat-code collision). The registry is built only from this file; the
+      commit body cites the file and its check date.
 - [ ] Tests first: "derives scale 8 for a stablecoin" (R1); "reduces scale for a huge supply" (R2: precision 8,
       maxUnits 10^12 -> 3, reduced; `decimalToMinorUnits('1.23456789', 3, 'half-away-from-zero')` = 1235); "keeps a
       coin under the minimum scale off the registry" (R3: 10^15 -> 0 < 2); "keeps the exchange precision when
@@ -438,7 +452,7 @@ Files: `src/currency/coins/coins.ts`, `index.ts`, `coins.test.ts` (new).
       at scale 8" (R5); invariants per entry with `it.each(Object.values(curatedCoins))`: keys equal the crypto block,
       unique CoinGecko ids, scale = formula, scale >= 2, `maxUnits * 10^scale <= MAX_SAFE_INTEGER`, `reducedScale =
       scale < baseAssetPrecision`, `binanceSymbol` ends in `USDT` except USDT.
-- [ ] Red; code; check. Commit `feat(currency): curated coin registry` (curation record in the body).
+- [ ] Red; code; check. Commit `feat(currency): curated coin registry` (the body cites the curation file).
 
 ### step 3/10: crypto lists derive from the registry
 
@@ -511,7 +525,7 @@ Files: `e2e/screenshot/fixtures/build-demo-snapshot.ts`, `build-demo-snapshot.te
 
 ---
 
-## Set 3: `crypto-exchanges-1.3-a task 3/15` (layer extraction, code moves only) — see BLOCKER
+## Set 3: `crypto-exchanges-1.3-a task 3/15` (layer extraction, code moves only; layer direction per the ruled option A above)
 
 Spec: "today's suites green unchanged; a byte-identical key and request snapshot test". Expected mutable files:
 20-26 (prep). First commit = moves + importers; then `KIKO_MUTATION_BASE=<set 3 base> make mutable`; over 30 ->
@@ -556,14 +570,38 @@ Files: `exchange/amounts/amounts.ts`, `index.ts`, `amounts.test.ts`.
       reduced-scale coin", "refuses above the safe integer", "refuses an exponent form". Code wraps
       `decimalToMinorUnits` with the registry's scale and `reducedScale`. Commit.
 
-### steps 6/9-8/9 (wait for the BLOCKER ruling; option A shown)
+### step 6/9: walk config and the paging unit
 
-- [ ] step 6/9: `exchange/paging/` (`Pager`, `SpanRead`, `offsetPager` = today's paging moved; `UnreadableRow`,
-      `TotalPage` types move here; the page size and rate-limit predicate come from the Binance config).
-- [ ] step 7/9: `exchange/walk/` (history-walk, history-records, walk-write-deps moved; `BINANCE_ASSET`,
-      `binanceKeyOf`, `WALLET_HOLDING_NAMES` come from the Binance config); `btcSatoshis`/`sumSatoshis` unchanged.
-- [ ] step 8/9: `BINANCE_ASSET` defined once (re-grep both definitions); every suite and step 1's snapshot green
-      unchanged; `npm run check:feature-imports -- --tree` clean.
+Files: `src/crypto-sync/exchange/walk/walk-config.ts` (new, `ExchangeWalkConfig`), `src/crypto-sync/binance/
+binance.walk-config.ts` (new, `BINANCE_WALK_CONFIG`), `git mv binance.history-paging.ts exchange/paging/paging.ts`
+(+ its tests, incl. `binance.history-paging.moving-depth.test.ts`), `exchange/paging/index.ts`,
+`binance.history-client.ts` (types `UnreadableRow`, `TotalPage` imported from `exchange/paging`).
+- [ ] Test first in `binance.walk-config.test.ts`: "the Binance walk config carries today's asset, names, page size
+      and rate-limit check" (`asset` = `'BTC'`; `walletHoldingNames` equal `WALLET_HOLDING_NAMES`; `totalPageSize` =
+      `HISTORY_TOTAL_PAGE_SIZE`; `isRateLimitError(new BinanceRateLimitError(...))` true, `new Error()` false). Red:
+      the file does not exist yet.
+- [ ] Code: `Pager`, `SpanRead`, `offsetPager` are today's paging, moved; the body reads `config.totalPageSize` and
+      `config.isRateLimitError(error)` where it read `HISTORY_TOTAL_PAGE_SIZE` and `instanceof BinanceRateLimitError`;
+      no other body edit. Check: paging suites and the step 1/9 snapshot green unchanged. Commit
+      `refactor(exchange): paging unit with a per-exchange walk config`.
+
+### step 7/9: the walk unit
+
+Files: `git mv binance.history-walk.ts exchange/walk/walk.ts`, `binance.history-records.ts ->
+exchange/walk/records.ts`, `binance.walk-write-deps.ts -> exchange/walk/walk-write-deps.ts` (+ their tests),
+`exchange/walk/index.ts`, every Binance walk entry point (passes `BINANCE_WALK_CONFIG`).
+- [ ] Code: `BINANCE_ASSET`, `binanceKeyOf`, `WALLET_HOLDING_NAMES` uses in the moved walk become `config.asset`,
+      `config.holdingKeyOf`, `config.walletHoldingNames`; the config is threaded from the walk entry points; every
+      other line unchanged. `btcSatoshis` and `sumSatoshis` keep their behaviour.
+- [ ] Check: the walk, records, properties and series-ranges suites and the step 1/9 snapshot green unchanged;
+      `npm run check:feature-imports -- --tree` reports no `feature-cycle`. Commit
+      `refactor(exchange): walk unit reads the per-exchange walk config`.
+
+### step 8/9: one `BINANCE_ASSET`
+
+- [ ] `BINANCE_ASSET` is defined once (today in both `binance.client.ts` and `binance.provider.ts`; re-grep), and
+      `binance.provider.ts` imports it. Every suite and the step 1/9 snapshot green unchanged;
+      `npm run check:feature-imports -- --tree` clean; knip clean. Commit `refactor(binance): one asset constant`.
 
 ### step 9/9: skill text (kiko:scribe)
 
