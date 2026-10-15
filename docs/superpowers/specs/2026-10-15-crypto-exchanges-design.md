@@ -506,7 +506,7 @@ confirm; section 12 gives each fallback.
 | Convert | `GET /sapi/v1/convert/tradeFlow` | 30 d / probe (2 years read on 2026-10-15) | `limit` 1000 + `moreData`: a window with `moreData` halves | UID 3000 | 20 | `walks.convert` | P4 |
 | Dust | `GET /sapi/v1/asset/dribblet` | last 100 records, after 2020-12-01 | none | IP 1 | 1 | none (every run; keys dedupe) | P7 |
 | Dividends | `GET /sapi/v1/asset/assetDividend` | 180 d / probe (3 years read) | `limit` 500, none: a full page halves | IP 10 | 10 | `walks.dividend` | P8 |
-| P2P | `GET /sapi/v1/c2c/orderMatch/listUserOrderHistory`, `tradeType` BUY and SELL (2 series) | 30 d / back until Binance stops serving: 6 empty or refused windows in a row per series (probe 3 measures the depth; probe 2 served rows 8-9 months back) | `page`/`rows` 100 | IP 1 | 10 | `walks.p2p` | P5 |
+| P2P | `GET /sapi/v1/c2c/orderMatch/listUserOrderHistory`, `tradeType` BUY and SELL (2 series) | 30 d / back until Binance stops serving: 6 empty or refused windows in a row, a window empty when neither series returns a row (probe 3 measures the depth; probe 2 served rows 8-9 months back) | `page`/`rows` 100 | IP 1 | 10 | `walks.p2p` | P5 |
 | Fiat orders | `GET /sapi/v1/fiat/orders`, `transactionType` 0 deposit, 1 withdraw (2 series) | probe / probe | `page`/`rows` 500 | UID 45000 | 3 | `walks.fiatOrders` | P6 |
 | Fiat payments | `GET /sapi/v1/fiat/payments`, `transactionType` 0 buy, 1 sell (2 series) | probe / probe | `page`/`rows` 100 | IP 1 | 10 | `walks.fiatPayments` | P6 |
 | Spot trades | `GET /api/v3/myTrades?symbol=&fromId=` per symbol | none (id cursor) / probe | `fromId`, 1000 | IP 20 (`/api/*`) | 100 calls | `trades.symbols[s].fromId` | P1, P2, P3 |
