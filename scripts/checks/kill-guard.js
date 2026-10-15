@@ -67,6 +67,15 @@
 // another option's value, after `--`, in a message, or on `git log` or `git merge`/`git pull`
 // (`--no-stat`) is not a bypass, and a `git config` read of the key is allowed.
 //
+// And it reads a script file a command runs (`bash|sh|zsh|dash <file>`, `source <file>`,
+// `. <file>`, or a path run directly whose first line names a shell) and denies a pkill, killall,
+// or pattern or process-group kill in it: the incident's script sat in a scratchpad outside the
+// project, where the pre-write guard never looks. One level only (a script the script runs is not
+// read), a regular file of at most 256 KiB, and kills only (a `git stash` or a write inside the
+// file is not judged). `scripts/job-queue.sh` at the root of a worktree of this repository is
+// exempt: its own group TERM is the one allowed group kill. A script built in the same command, a
+// missing file, and a path held in a variable are not read.
+//
 // Known limits: this guard stops ACCIDENTAL commands by cooperative agents.
 // It is a heuristic tokenizer, not a shell parser and not an adversarial
 // boundary: an exotic, obfuscated, or run-time-built form is a known limit,
@@ -186,8 +195,21 @@ const HOOKS_CONFIG_REASON_LINES = [
     'GIT_CONFIG_PARAMETERS, a script file, an alias, or a variable to get past this guard.',
 ];
 
+const SCRIPT_KILL_REASON_LINES = [
+  'WHAT FAILED:    kill-guard denied running a script file that holds a pkill, killall, or ' +
+    'pattern or process-group kill.',
+  'WHY IT MATTERS: a pattern kill once restarted Orca and the iOS Simulator, and the script that ' +
+    'held it sat in a scratchpad outside the project, where no write guard looks; the guard reads ' +
+    'the file a shell is about to run (one level) so the kill is caught before it runs.',
+  'HOW TO FIX:     remove the kill from the script: stop only a process ID you started yourself ' +
+    '(kill <pid>, or kill "$pid"), or let the tool timeout end a hung command.',
+  'DO NOT:         hide the kill in a second script the first one runs, build the command at run ' +
+    'time, or write the script in the same command that runs it to get past this guard.',
+];
+
 const REASON_BY_KIND = {
   kill: () => KILL_REASON,
+  scriptKill: (finding) => blockReason(SCRIPT_KILL_REASON_LINES, finding.detail),
   stash: (finding) => blockReason(STASH_REASON_LINES, finding.detail),
   heredoc: (finding) => blockReason(HEREDOC_REASON_LINES, finding.detail),
   mainCheckout: (finding) => blockReason(MAIN_CHECKOUT_REASON_LINES, finding.detail),
@@ -2379,23 +2401,121 @@ function environmentFinding(environment, context) {
   return { kind: 'hooksConfig', detail: context.segment.trim() };
 }
 
+// ---- a script file a shell runs ----
+
+const SCRIPT_FILE_MAXIMUM_BYTES = 256 * 1024;
+// A first line that names a shell as the interpreter: `#!/bin/bash`, `#!/usr/bin/env zsh -f`.
+const SHELL_SHEBANG = /^#!\s*(?:\S*\/)?(?:env\s+(?:-\S+\s+)*)?(?:sh|bash|zsh|dash)(?:\s|$)/;
+// The shell options that take their value as the NEXT word (`bash -o pipefail x.sh`).
+const SHELL_OPTIONS_WITH_VALUE = new Set(['-o', '+o', '-O', '+O', '--rcfile', '--init-file']);
+// `-s` reads the script from stdin, so a word after it is an argument, not a file.
+const SHELL_STDIN_FLAG = /^-[A-Za-z]*s[A-Za-z]*$/;
+const SHELL_OPTION = /^[-+]./;
+
+// The script file `bash [options] <file>` runs: its first operand. A `-c` flag (anywhere, as
+// `queueShellScript` reads it) or `-s` means the script is text, not a file.
+function shellScriptOperand(rest) {
+  if (rest.some((word, index) => index > 0 && SHELL_COMMAND_FLAG.test(word))) return undefined;
+  let index = 1;
+  while (index < rest.length) {
+    const word = rest[index];
+    if (word === '--') return rest[index + 1];
+    if (!SHELL_OPTION.test(word)) return word;
+    if (SHELL_STDIN_FLAG.test(word)) return undefined;
+    index += SHELL_OPTIONS_WITH_VALUE.has(word) ? 2 : 1;
+  }
+
+  return undefined;
+}
+
+// The script file a command runs, as `{ operand, requireShebang }`, or null: `bash|sh|zsh|dash
+// <file>`, `source <file>` and `. <file>`, or a path run directly (`./x.sh`, `/tmp/x.sh`), which a
+// shell reads only when its first line names a shell.
+function scriptFileOf(base, rest) {
+  if (SHELLS.has(base)) return { operand: shellScriptOperand(rest), requireShebang: false };
+  if (base === 'source' || base === '.') {
+    return { operand: rest.slice(1).find((word) => word !== '--'), requireShebang: false };
+  }
+
+  return rest[0].includes('/') ? { operand: rest[0], requireShebang: true } : null;
+}
+
+// `scripts/job-queue.sh` at the root of a worktree of this repository sends TERM to the process
+// group of its own job: the one allowed group kill (user ruling). Stricter than the write deny's
+// worktree test: the folder must share this repository's git directory, readably.
+function isQueueScript(file, rules) {
+  const scripts = path.dirname(file);
+  if (path.basename(file).toLowerCase() !== 'job-queue.sh') return false;
+  if (path.basename(scripts).toLowerCase() !== 'scripts') return false;
+  const common = gitCommonDirectory(path.dirname(scripts));
+
+  return common !== null && common === rules.projectCommonDirectory;
+}
+
+// The text of a script file the guard may read: a regular file within the size limit that is not
+// the exempt queue script, and, for a path run directly, one with a shell shebang.
+function readScriptFile(file, rules, requireShebang) {
+  try {
+    const real = fs.realpathSync(file);
+    const status = fs.statSync(real);
+    if (!status.isFile() || status.size > SCRIPT_FILE_MAXIMUM_BYTES) return null;
+    if (isQueueScript(real, rules)) return null;
+    const text = fs.readFileSync(real, 'utf8');
+
+    return requireShebang && !SHELL_SHEBANG.test(text) ? null : text;
+  } catch {
+    return null;
+  }
+}
+
+// A kill in the script file a command runs (one level: a script it runs or sources in turn is not
+// read). A file the text cannot name (a variable), a missing one, one over the size limit, and one
+// built in the same command are not read.
+function scriptKillFinding(scriptFile, context) {
+  if (scriptFile === null || !context.rules.scanScripts) return null;
+  const { operand, requireShebang } = scriptFile;
+  if (operand === undefined) return null;
+  const scan = { ...context.rules, killOnly: true, scanScripts: false, checkWrites: false };
+  for (const directory of context.directories) {
+    const file = resolveDirectory(directory, operand);
+    const text = file === null ? null : readScriptFile(file, context.rules, requireShebang);
+    if (text === null) continue;
+    const kill = findDanger(text, 1, false, [directory], scan);
+    if (kill !== null) return { kind: 'scriptKill', detail: `${file} holds \`${kill.detail}\`` };
+  }
+
+  return null;
+}
+
+// A pkill/killall (or the probe's sentinel), or a `kill` aimed at a pattern or a process group.
+function killFinding(base, { tokens: rest, viaXargs }, context) {
+  const isKill =
+    context.rules.killCommands.has(base) ||
+    (base === 'kill' && (viaXargs || killTargets(rest.slice(1)).some(isDangerousKillTarget)));
+
+  return isKill ? { kind: 'kill', detail: context.segment.trim() } : null;
+}
+
+// `export`/`declare`/`typeset`/`local`/`readonly` set the variables named after them.
+function assignmentFinding({ tokens: rest, environment }, context) {
+  const assigned = { ...environment };
+  for (const word of rest.slice(1)) recordAssignment(assigned, word);
+
+  return environmentFinding(assigned, context);
+}
+
 // The finding for one unwrapped command (see `segmentFinding`).
 function commandFinding(command, context) {
-  const { tokens: rest, viaXargs, environment } = command;
+  const { tokens: rest, environment } = command;
   if (rest.length === 0) return environmentFinding(environment, context);
   if (rest[0].includes(SUBSHELL_PLACEHOLDER)) return substitutedCommandFinding(command, context);
   const base = basename(rest[0]);
-
-  if (ASSIGNING_COMMANDS.has(base)) {
-    const assigned = { ...environment };
-    for (const word of rest.slice(1)) recordAssignment(assigned, word);
-
-    return environmentFinding(assigned, context);
-  }
+  if (ASSIGNING_COMMANDS.has(base)) return assignmentFinding(command, context);
 
   if (SHELLS.has(base)) {
     queueShellScript(rest, context.scripts, context.stdinScripts);
-    return null;
+
+    return scriptKillFinding(scriptFileOf(base, rest), context);
   }
 
   if (base === 'eval') {
@@ -2403,13 +2523,11 @@ function commandFinding(command, context) {
     return null;
   }
 
-  if (context.rules.killCommands.has(base)) return { kind: 'kill' };
+  const kill = killFinding(base, command, context);
+  if (kill !== null || base === 'kill') return kill;
 
-  if (base === 'kill') {
-    const isPatternKill = viaXargs || killTargets(rest.slice(1)).some(isDangerousKillTarget);
-
-    return isPatternKill ? { kind: 'kill' } : null;
-  }
+  if (base === 'source' || base === '.')
+    return scriptKillFinding(scriptFileOf(base, rest), context);
 
   if (base === 'git') {
     const invocations = context.directories.map((directory) =>
@@ -2419,6 +2537,8 @@ function commandFinding(command, context) {
     return gitFinding(context.segment, invocations, context.rules);
   }
 
+  const executed = scriptKillFinding(scriptFileOf(base, rest), context);
+  if (executed !== null) return executed;
   if (!context.rules.checkWrites) return null;
   const write = commandWrite(command, context);
   if (write === null) return null;
@@ -2636,6 +2756,9 @@ function observeWaitLoops(watch, segment, spans) {
   return closed.find((finding) => finding !== null) ?? null;
 }
 
+// A script scan looks for kills only; any other finding in a script file is not its business.
+const wanted = (finding, rules) => (rules.killOnly && finding?.kind !== 'kill' ? null : finding);
+
 function firstFinding(lines, depth, checkHeredoc, rules) {
   for (const line of lines) {
     const finding = findDanger(line.text, depth + 1, checkHeredoc, line.directories, rules);
@@ -2698,7 +2821,7 @@ function findDanger(line, depth, checkHeredoc, directories, rules) {
     const here = location.directories;
     directoriesAt.push(here);
     const segmentScripts = [];
-    const finding =
+    const finding = wanted(
       segmentFinding({
         segment,
         scripts: segmentScripts,
@@ -2706,7 +2829,9 @@ function findDanger(line, depth, checkHeredoc, directories, rules) {
         spans: spansAt(index),
         directories: here,
         rules,
-      }) ?? observeWaitLoops(waitLoops, segment, spansAt(index));
+      }) ?? observeWaitLoops(waitLoops, segment, spansAt(index)),
+      rules,
+    );
     if (finding !== null) return finding;
     scripts.push(...segmentScripts.map((text) => ({ text, directories: here })));
     const after = separators[index];
@@ -2756,6 +2881,8 @@ function decide(command, options = {}) {
     mainCheckoutPath: options.mainCheckoutPath ?? MAIN_CHECKOUT_PATH,
     projectCommonDirectory: gitCommonDirectory(options.projectRoot ?? PROJECT_ROOT),
     checkWrites: true,
+    scanScripts: true,
+    killOnly: false,
   };
   const start = typeof options.cwd === 'string' ? resolveDirectory(null, options.cwd) : null;
   for (const reading of ['bash', 'zsh']) {
