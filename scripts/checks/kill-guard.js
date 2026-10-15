@@ -39,9 +39,11 @@
 // worktree's `config.worktree`) of any repository, and an unresolved path that spells
 // `.git/config`: that file holds core.hooksPath. A variable the SAME command assigns (`f=<path>`,
 // `export f=`, `declare f=`, `local f=`; a later assignment wins, in order) is expanded where
-// `$f` or `${f}` is used, so `f=src/x.ts && sed -i '' ... $f` is judged by `src/x.ts`; a variable
-// the command does not assign, or assigns from an expansion (`f=$(mktemp)`), stays unresolved and
-// is not denied (a documented limit).
+// `$f` or `${f}` is a write target or a git directory (`-C $d`), so `f=src/x.ts && sed -i '' ...
+// $f` is judged by `src/x.ts` as well as by `$f`: the expanded reading only ADDS a deny, and a
+// kill target or a command word is never expanded. A variable the command does not assign, or
+// assigns from an expansion (`f=$(mktemp)`), stays unresolved and is not denied (a documented
+// limit).
 //
 // And it denies a `while` or `until` loop that scans the process table (`ps`,
 // `top`, `pstree`, or `pgrep -f`) for make verify, check:all, jest, stryker,
@@ -2564,6 +2566,9 @@ function redirectWrite(redirects, directories, rules) {
   return firstGuardedWrite(targets, directories, rules);
 }
 
+// The kinds the second, variable-expanded reading of a segment reports (see `segmentFinding`).
+const EXPANDED_KINDS = new Set(['shellWrite', 'mainCheckout']);
+
 // Returns the finding for one simple command — `{ kind: 'kill' }`, or
 // `{ kind: 'stash' | 'mainCheckout' | 'shellWrite', detail }` — or null
 // when it is safe. A shell's script and `eval`'s joined arguments go to
@@ -2572,7 +2577,10 @@ function redirectWrite(redirects, directories, rules) {
 // places it may run in (null for one the text cannot pin down). The text is judged as written
 // first; when the command assigned a variable the segment reads, it is judged once more with the
 // values filled in, so an assignment only ever adds a finding: a command that assigns a name the
-// guard cannot follow (a loop variable, `read`, `+=`) still denies what its raw text denied.
+// guard cannot follow (a loop variable, `read`, `+=`) still denies what its raw text denied. The
+// second reading reports only a write or a main-checkout finding: a variable's value says where a
+// write lands or a git command runs, but never which command runs or what a kill aims at (an
+// unknown `$pid` is the agent's own, as it always was).
 function segmentFinding({ segment, scripts, stdinBodies, spans, place, rules }) {
   const { directories, variables } = place;
   const { words: tokens, hereStrings, redirects } = tokenize(segment);
@@ -2603,7 +2611,10 @@ function segmentFinding({ segment, scripts, stdinBodies, spans, place, rules }) 
     expandedWords.every((word, index) => word === tokens[index]) &&
     expandedTargets.every((redirect, index) => redirect.target === redirects[index].target);
 
-  return unchanged ? null : judge(expandedWords, expandedTargets, []);
+  if (unchanged) return null;
+  const added = judge(expandedWords, expandedTargets, []);
+
+  return EXPANDED_KINDS.has(added?.kind) ? added : null;
 }
 
 // ---- wait loops that scan the process table ----

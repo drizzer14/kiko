@@ -175,10 +175,6 @@ const BLOCKED_COMMANDS: string[] = [
   '"$(which pkill)" -f foo',
   '$(true)pkill x',
   '$(command -v kill) -9 -1',
-  // A variable the same command assigns a group target is read as that target.
-  'pid=-1; kill -9 $pid',
-  'pid=0 && kill "$pid"',
-  `export pid=-1234; kill -9 \${pid}`,
 ];
 
 const ALLOWED_COMMANDS: string[] = [
@@ -234,6 +230,12 @@ const ALLOWED_COMMANDS: string[] = [
   'sleep 30 & pid=$!; kill "$pid"',
   'pid=$(pgrep -f metro); kill "$pid"',
   'pid=-1; pid=$(cat pid.txt); kill -9 $pid',
+  // A kill target or a command word is judged as written: a variable the command assigns is never
+  // read into it (only a write target and a git directory are), so a `$pid` is always "your own".
+  'pid=-1; kill -9 $pid',
+  'pid=0 && kill "$pid"',
+  `export pid=-1234; kill -9 \${pid}`,
+  'c=pkill; $c node',
 ];
 
 // A git stash in any directory — this repository, a worktree, or a scratch
@@ -393,6 +395,9 @@ const MAIN_CHECKOUT_COMMANDS: [string, string][] = [
   [MAIN_CHECKOUT, 'git apply --stat --apply x.patch'],
   [WORKTREE, `git -C ${MAIN_CHECKOUT} pull --no-ff`],
   [WORKTREE, `git -C ${MAIN_CHECKOUT} cherry-pick 1a2b3c4`],
+  // A directory the command assigns is read into `-C`.
+  [WORKTREE, `d=${MAIN_CHECKOUT}; git -C $d merge feat/x`],
+  [WORKTREE, `export d=${MAIN_CHECKOUT} && git -C "\${d}" pull --no-ff`],
   [WORKTREE, 'cd ~/Developer/Projects/pff-ios && git merge feat/x'],
   [WORKTREE, 'cd $HOME/Developer/Projects/pff-ios && git merge feat/x'],
   [WORKTREE, `cd "\${HOME}/Developer/Projects/pff-ios" && git rebase main`],
