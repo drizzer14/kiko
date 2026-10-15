@@ -34,7 +34,10 @@
 // that opens a file for writing, and `xargs`
 // running an in-place edit — because the pre-write guard sees only
 // Edit/Write/MultiEdit, so such a write lands unchecked. A heredoc body that
-// no shell or interpreter runs is text, never checked for writes.
+// no shell or interpreter runs is text, never checked for writes. The same write machinery
+// denies a write into a git config file (`.git/config`, `.git/config.worktree`, a linked
+// worktree's `config.worktree`) of any repository, and an unresolved path that spells
+// `.git/config`: that file holds core.hooksPath.
 //
 // And it denies a `while` or `until` loop that scans the process table (`ps`,
 // `top`, `pstree`, or `pgrep -f`) for make verify, check:all, jest, stryker,
@@ -115,7 +118,7 @@ const MAIN_CHECKOUT_REASON_LINES = [
 
 const SHELL_WRITE_REASON_LINES = [
   'WHAT FAILED:    kill-guard denied a shell write into src/, __tests__/, rules/, or e2e/ of a worktree ' +
-    'of this repository.',
+    'of this repository, or into a git config file (.git/config, config.worktree).',
   'WHY IT MATTERS: the pre-write guard (scripts/checks/pre-write-guard.sh) sees only the Edit, ' +
     'Write, and MultiEdit tools, so a file written by sed -i, perl -i, a > or >> redirect, tee, ' +
     'cp, mv, or a python or node one-liner lands unchecked; guard-replay only catches it at ' +
@@ -128,7 +131,9 @@ const SHELL_WRITE_REASON_LINES = [
     'outside those trees (your scratchpad, /tmp), git itself (without a redirect into those ' +
     'trees), and a formatter or fixer writing on its own (./node_modules/.bin/biome check ' +
     "--write, the harness's " +
-    'import-order --write) stay allowed.',
+    'import-order --write) stay allowed. A git config file holds core.hooksPath: leave it as ' +
+    'scripts/ensure-git-hooks.sh sets it (repair with `bash scripts/ensure-git-hooks.sh`), and ' +
+    'change any other setting with `git config`.',
   'DO NOT:         route the write through a variable, a script file, a shell fed by a pipe, or ' +
     'another tool (cp, mv, dd) to get past this guard.',
 ];
@@ -1690,18 +1695,42 @@ function namesGuardedTree(target) {
   );
 }
 
+// The repository config holds core.hooksPath, which turns the pre-commit typecheck on, so a shell
+// write into it is a way to turn it off: `.git/config`, `.git/config.worktree`, and a linked
+// worktree's `.git/worktrees/<name>/config.worktree`, of any repository (APFS folds case).
+const GIT_CONFIG_FILES = new Set(['config', 'config.worktree']);
+
+function isGitConfigFile(target) {
+  const segments = target.toLowerCase().split('/');
+
+  return segments.some(
+    (segment, index) =>
+      segment === '.git' &&
+      (GIT_CONFIG_FILES.has(segments[index + 1]) ||
+        (segments[index + 1] === 'worktrees' && segments[index + 3] === 'config.worktree')),
+  );
+}
+
+// A path the text cannot pin down that still spells `.git/config` (`"$D/.git/config"`).
+const namesGitConfig = (target) => /(?:^|\/)\.git\/config(?:\.worktree)?$/i.test(target);
+
 // Where `target` lands from `directory` (resolved when the text allows) when
-// that is inside a tree, or null. A cp/mv `destination` may be a folder, and
-// what it copies lands inside it, so one that is a tree folder itself counts
-// too. With `resolvedOnly`, a target the text cannot resolve never counts.
+// that is inside a tree or is a git config file, or null. A cp/mv
+// `destination` may be a folder, and what it copies lands inside it, so one
+// that is a tree folder itself counts too. With `resolvedOnly`, a target the
+// text cannot resolve never counts.
 function guardedPlace(target, directory, rules, { destination, resolvedOnly }) {
   const resolved = resolveDirectory(directory, target);
   const inside = (place) => (destination ? `${place.replace(/\/+$/, '')}/_` : place);
   if (resolved === null) {
-    return !resolvedOnly && namesGuardedTree(inside(target)) ? target : null;
+    if (resolvedOnly) return null;
+
+    return namesGuardedTree(inside(target)) || namesGitConfig(target) ? target : null;
   }
 
-  return isInsideGuardedTree(inside(resolved), rules) ? resolved : null;
+  return isInsideGuardedTree(inside(resolved), rules) || isGitConfigFile(resolved)
+    ? resolved
+    : null;
 }
 
 // The first of `targets` that lands inside a tree from any directory the

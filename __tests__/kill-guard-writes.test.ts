@@ -390,7 +390,94 @@ const ALLOWED_E2E: string[] = [
   `echo x > ${PLAIN}/e2e/x.ts`,
 ];
 
+// The repository config holds core.hooksPath, which switches the pre-commit typecheck on, so a
+// shell write into `.git/config` (or a worktree's `config.worktree`) is a way to switch it off. A
+// path the text cannot resolve that names `.git/config` denies (fail closed).
+const DENIED_GIT_CONFIG: string[] = [
+  'echo x > .git/config',
+  'echo x >> .git/config',
+  'echo x >| .git/config',
+  'echo x | tee -a .git/config',
+  "sed -i '' 's/a/b/' .git/config",
+  "sed -i.bak 's/a/b/' .git/config",
+  "perl -pi -e 's/a/b/' .git/config",
+  'cp /tmp/x .git/config',
+  'cp -t .git /tmp/config',
+  'cp /tmp/config .git/',
+  'mv /tmp/x .git/config',
+  'echo x > .git/config.worktree',
+  'echo x > .GIT/CONFIG',
+  'cd .git && echo x > config',
+  'echo x > ./.git/config',
+  `echo x >> ${MAIN}/.git/config`,
+  `echo x >> ${MAIN}/.git/worktrees/worktree/config.worktree`,
+  `echo x > ${WORKTREE}/.git/config`,
+  'echo x > ../main/.git/config',
+  'echo x > ../main/.git/worktrees/worktree/config.worktree',
+  'echo x > /tmp/other/.git/config',
+  'echo x > "$D/.git/config"',
+  'echo x >> $D/.git/config',
+  'echo x | tee -a "$ROOT"/.git/config',
+  "sed -i '' 's/a/b/' \"$D/.git/config\"",
+  'cp /tmp/x "$D"/.git/config',
+  `python3 -c "open('.git/config', 'a').write('x')"`,
+  `python3 -c "open('${MAIN}/.git/config', 'w')"`,
+  `node -e "require('fs').appendFileSync('.git/config', 'x')"`,
+  `node -e "require('fs').writeFileSync('${MAIN}/.git/worktrees/worktree/config.worktree', 'x')"`,
+  "python3 - <<'EOF'\nfrom pathlib import Path\nPath('.git/config').write_text('x')\nEOF",
+  'bash -c "echo x >> .git/config"',
+  'true && echo x > .git/config',
+];
+
+const ALLOWED_GIT_CONFIG: string[] = [
+  'cat .git/config',
+  'cat .git/config > /tmp/config.bak',
+  'git config --get core.hooksPath',
+  'git config user.name x',
+  'echo x > /tmp/x/config',
+  'echo x > config',
+  'echo x > scripts/config',
+  'echo x > .github/config',
+  'echo x > .gitignore',
+  'echo x > docs/.git-notes/config',
+  'echo x > .git/info/exclude',
+  'echo x >> .git/COMMIT_EDITMSG',
+  'cp .git/config /tmp/config.bak',
+  'cp .git/config /tmp/snap/',
+  'mv .git/config.bak /tmp/config.bak',
+  "sed -n '1p' .git/config",
+  'grep hooksPath .git/config',
+  'echo x > "$D/config"',
+  'echo x > "$D/gitconfig"',
+  `python3 -c "print(open('.git/config').read())"`,
+  `python3 -c "open('/tmp/x', 'w').write(open('.git/config').read())"`,
+  'echo ".git/config" > /tmp/names.txt',
+  `echo x > ${MAIN}/.gitconfig`,
+];
+
 describe('kill-guard shell-write deny (parser only, fake repository)', () => {
+  it.each(DENIED_GIT_CONFIG)('denies a write into a git config file: %s', (command) => {
+    expect(decideInMain(command)).toBe('shellWrite');
+  });
+
+  it.each(ALLOWED_GIT_CONFIG)(
+    'allows a read of a git config file or another path: %s',
+    (command) => {
+      expect(decideInMain(command)).toBe('allow');
+    },
+  );
+
+  it('judges a linked worktree and a path with no known directory the same way', () => {
+    expect(decide('echo x >> ../main/.git/config', { cwd: WORKTREE })).toBe('shellWrite');
+    expect(decide('echo x >> .git/config', { cwd: PLAIN })).toBe('shellWrite');
+    expect(decide('echo x >> .git/config')).toBe('shellWrite');
+    expect(decide('echo x >> /tmp/x/config')).toBe('allow');
+  });
+
+  it('names the config file in DETAILS', () => {
+    expect(detailOf('echo x >> .git/config')).toContain(`(writes ${MAIN}/.git/config)`);
+  });
+
   it.each(DENIED_E2E)('denies a write into e2e/: %s', (command) => {
     expect(decideInMain(command)).toBe('shellWrite');
   });
@@ -487,6 +574,18 @@ describe('scripts/checks/kill-guard.sh shell-write deny (hook entry)', () => {
     expect(reason).toContain(join(REPOSITORY_ROOT, 'src/App.tsx'));
     expect(reason).toContain('Edit or Write');
     expect(reason).toContain('to move a file, use `git mv` (git add a new file first)');
+  });
+
+  it('denies a write into .git/config and names ensure-git-hooks.sh', () => {
+    const result = run(payloadIn(REPOSITORY_ROOT, 'echo x >> .git/config'));
+
+    expect(result.status).toBe(0);
+    const parsed = JSON.parse(result.stdout.trim());
+    const reason: string = parsed.hookSpecificOutput.permissionDecisionReason;
+    expect(parsed.hookSpecificOutput.permissionDecision).toBe('deny');
+    expect(BLOCK_LABELS.filter((label) => !reason.includes(label))).toEqual([]);
+    expect(reason).toContain(join(REPOSITORY_ROOT, '.git/config'));
+    expect(reason).toContain('bash scripts/ensure-git-hooks.sh');
   });
 
   it.each(['echo x > /tmp/out.txt', 'cat src/App.tsx > /dev/null', "sed -n '1p' src/App.tsx"])(
