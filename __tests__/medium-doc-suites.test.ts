@@ -129,8 +129,8 @@ const runMedium = (project: Project, extra: NodeJS.ProcessEnv = {}): Outcome => 
   return { code: result.status, stderr: result.stderr };
 };
 
-// One entry per jest run, each the suites that run was given.
-const jestRuns = (project: Project): string[][] => {
+// One entry per jest run, each every argument that run was given.
+const jestCalls = (project: Project): string[][] => {
   try {
     return readTextFile(stateFile(project, 'jest.runs'))
       .split('\n')
@@ -140,6 +140,10 @@ const jestRuns = (project: Project): string[][] => {
     return [];
   }
 };
+
+// One entry per jest run, each the suites that run was given.
+const jestRuns = (project: Project): string[][] =>
+  jestCalls(project).map((call) => call.filter((argument) => !argument.startsWith('--')));
 
 // A directory holding a `date` that answers its first `+%s` with the real time (the hook's start)
 // and every later one with a time far past any budget, so the doc step reaches its deadline at
@@ -271,6 +275,14 @@ describe('medium.sh doc-suites step', () => {
 
     expect(runMedium(project)).toEqual({ code: 0, stderr: '' });
     expect(jestRuns(project)).toEqual([DISCOVERED]);
+  });
+
+  it('hands jest two workers before the suites, so the Stop tier leaves the machine its cores', () => {
+    const project = projectWithPass();
+    writeFile(project, 'docs/harness/new.md', 'changed\n');
+    runMedium(project);
+
+    expect(jestCalls(project)).toEqual([['--maxWorkers=2', ...DISCOVERED]]);
   });
 
   it('runs once for a clean tree after a commit that changed a doc, then not again', () => {

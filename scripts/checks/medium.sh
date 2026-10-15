@@ -182,7 +182,9 @@ if [ "$doc_pending" -eq 1 ]; then
     exit 2
   fi
   doc_output="$state/doc-suites.out"
-  "$doc_jest" "${doc_suites[@]}" > "$doc_output" 2>&1 &
+  # Two workers, so a Stop-tier run leaves cores to the other sessions and to the checks that
+  # run after it.
+  "$doc_jest" --maxWorkers=2 "${doc_suites[@]}" > "$doc_output" 2>&1 &
   doc_pid=$!
   doc_timed_out=0
   while kill -0 "$doc_pid" 2>/dev/null; do
