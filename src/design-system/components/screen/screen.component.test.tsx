@@ -445,8 +445,10 @@ describe('Screen with a title heading', () => {
         <LargeTitleHeadingContext.Provider
           value={{
             title: HEADING_TITLE,
+            scrolled: false,
             headingBottom: { current: headingBottom },
             onScrolledChange,
+            onHostedChange: jest.fn(),
           }}
         >
           <Screen {...props}>
@@ -474,6 +476,18 @@ describe('Screen with a title heading', () => {
 
     expect(scrollView.props.scrollEventThrottle).toBe(16);
     expect(onScrolledChange.mock.calls).toEqual([[true], [false]]);
+  });
+
+  // The heading bar is translucent: the content rests one header height above offset zero.
+  it('does not report the heading scrolled at the rest offset under the translucent bar', async () => {
+    const onScrolledChange = jest.fn();
+    const { getByTestId } = await renderWithHeading(onScrolledChange, { scroll: true }, 90);
+
+    getByTestId(SCROLL_VIEW_TEST_ID).props.onScroll({
+      nativeEvent: { contentOffset: { x: 0, y: -HEADER_HEIGHT } },
+    });
+
+    expect(onScrolledChange.mock.calls).toEqual([[false]]);
   });
 
   it('renders no heading and adds no scroll handler while the native large title shows the title', async () => {

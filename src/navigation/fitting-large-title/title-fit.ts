@@ -40,9 +40,11 @@ export const estimateTitleWidth = (title: string, fontSize: number): number =>
 /**
  * A cautious first-render guess of whether `title` fits one line of `availableWidth`: it errs
  * towards "fits" (today's native look), and only a clearly over-long title starts as a heading.
+ * A width of nothing or less is no line to wrap in (a window not laid out yet), so it fits.
  */
 export const estimatedTitleFits = (
   title: string,
   availableWidth: number,
   fontSize: number,
-): boolean => estimateTitleWidth(title, fontSize) <= availableWidth * ESTIMATE_TOLERANCE;
+): boolean =>
+  availableWidth <= 0 || estimateTitleWidth(title, fontSize) <= availableWidth * ESTIMATE_TOLERANCE;

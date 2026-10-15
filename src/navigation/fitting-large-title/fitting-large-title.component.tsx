@@ -1,5 +1,5 @@
-import { type FC, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { LargeTitleHeadingContext } from '@kiko/design-system/components/large-title-heading';
+import { type FC, type ReactElement, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
 import { largeTitleHeadingOptions, largeTitleRestoredOptions } from '../large-title-screen-options';
 
@@ -8,15 +8,17 @@ import type { FittingLargeTitleProps } from './fitting-large-title.props';
 
 /**
  * Keeps a screen's title readable in full. A title that fits one line of the native large title
- * stays the native large title. A title that does not fit switches the bar to an inline bar and
- * hands the full title to the screen as a wrapping heading (`LargeTitleHeadingContext`), which
- * the screen renders as its first scroll content. It wraps the screen's content only: the
- * native header and the safe areas are never wrapped.
+ * stays the native large title. A title that does not fit hands the full title to the screen as
+ * a wrapping heading (`LargeTitleHeadingContext`), which the screen renders as its first scroll
+ * content; once the heading is on screen, the bar switches to the large-title look with no
+ * large title. A screen that never renders the heading keeps its native bar. It wraps the
+ * screen's content only: the native header and the safe areas are never wrapped.
  */
 const FittingLargeTitle: FC<FittingLargeTitleProps> = ({ navigation, options, children }) => {
   const title = options.title ?? '';
   const { fits, measurer } = useTitleFit(title);
   const [scrolled, setScrolled] = useState(false);
+  const [hosted, setHosted] = useState(false);
   const headingBottom = useRef(0);
   // Whether this layout has switched the bar to the heading look. Its own override turns
   // `headerLargeTitle` off, so the merged options alone cannot say the screen had a large title.
@@ -26,9 +28,11 @@ const FittingLargeTitle: FC<FittingLargeTitleProps> = ({ navigation, options, ch
     title !== '' &&
     (options.headerLargeTitle === true || switched.current);
   const headingMode = eligible && !fits;
+  // The bar loses its title only while the heading is on screen to show it instead.
+  const headingShown = headingMode && hosted;
 
   useLayoutEffect(() => {
-    if (headingMode) {
+    if (headingShown) {
       switched.current = true;
       navigation.setOptions(largeTitleHeadingOptions(title, scrolled));
 
@@ -40,11 +44,20 @@ const FittingLargeTitle: FC<FittingLargeTitleProps> = ({ navigation, options, ch
       setScrolled(false);
       navigation.setOptions(largeTitleRestoredOptions);
     }
-  }, [headingMode, title, scrolled, navigation]);
+  }, [headingShown, title, scrolled, navigation]);
 
   const heading = useMemo(
-    () => (headingMode ? { title, headingBottom, onScrolledChange: setScrolled } : undefined),
-    [headingMode, title],
+    () =>
+      headingMode
+        ? {
+            title,
+            scrolled,
+            headingBottom,
+            onScrolledChange: setScrolled,
+            onHostedChange: setHosted,
+          }
+        : undefined,
+    [headingMode, title, scrolled],
   );
 
   return (
@@ -56,4 +69,19 @@ const FittingLargeTitle: FC<FittingLargeTitleProps> = ({ navigation, options, ch
   );
 };
 
-export default FittingLargeTitle;
+/**
+ * The `screenLayout` of every native stack that shows a large title. React Navigation calls it
+ * once per screen with the screen's merged options, so a title set by `options.title` or by
+ * `navigation.setOptions` is covered with no screen passing it twice.
+ */
+export const fittingLargeTitleLayout = ({
+  navigation,
+  options,
+  children,
+}: FittingLargeTitleProps): ReactElement => {
+  return (
+    <FittingLargeTitle navigation={navigation} options={options}>
+      {children}
+    </FittingLargeTitle>
+  );
+};

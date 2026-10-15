@@ -1,1 +1,1 @@
-export { fittingLargeTitleLayout } from './fitting-large-title.layout';
+export { fittingLargeTitleLayout } from './fitting-large-title.component';

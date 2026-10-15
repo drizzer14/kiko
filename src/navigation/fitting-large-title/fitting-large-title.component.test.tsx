@@ -1,13 +1,14 @@
-import { useContext } from 'react';
 import { Pressable, Text, View } from 'react-native';
+import { type ReactElement, useContext } from 'react';
 import { fireEvent, render } from '@testing-library/react-native';
 import type { NativeStackNavigationOptions } from '@react-navigation/native-stack';
-import { forceTitleFit, restoreTitleFit } from '@kiko/test-support/force-title-fit';
 import { navigationSpy, type NavigationSpy } from '@kiko/test-support/navigation-props';
 
 import '@kiko/design-system/unistyles';
 
-import { LargeTitleHeadingContext } from '@kiko/design-system/components/large-title-heading';
+import LargeTitleHeading, {
+  LargeTitleHeadingContext,
+} from '@kiko/design-system/components/large-title-heading';
 
 import {
   largeTitleHeadingOptions,
@@ -16,15 +17,25 @@ import {
 } from '../large-title-screen-options';
 
 import { fittingLargeTitleLayout } from '.';
+import { useTitleFit } from './use-title-fit';
 
 const TITLE = 'A title that is much too long for one line';
 
-const Screen = () => {
+// Jest lays no text out, so `jest/setup.js` mocks `useTitleFit` to "fits"; this sets the answer
+// for the heading path.
+const forceTitleFit = (fits: boolean, measurer: ReactElement | null = null): void => {
+  jest.mocked(useTitleFit).mockReturnValue({ fits, measurer });
+};
+
+// What a screen has from the layout, with or without the heading it is meant to render.
+const Controls = () => {
   const heading = useContext(LargeTitleHeadingContext);
 
   return (
     <>
       <Text testID="heading-title">{heading?.title ?? 'native large title'}</Text>
+
+      <Text testID="heading-scrolled">{String(heading?.scrolled)}</Text>
 
       <Pressable testID="scroll-under" onPress={() => heading?.onScrolledChange(true)} />
 
@@ -33,8 +44,19 @@ const Screen = () => {
   );
 };
 
-const layoutOf = (navigation: NavigationSpy, options: NativeStackNavigationOptions) =>
-  fittingLargeTitleLayout({ navigation, options, children: <Screen /> });
+const Screen = () => (
+  <>
+    <Controls />
+
+    <LargeTitleHeading />
+  </>
+);
+
+const layoutOf = (
+  navigation: NavigationSpy,
+  options: NativeStackNavigationOptions,
+  children = <Screen />,
+) => fittingLargeTitleLayout({ navigation, options, children });
 
 const LARGE_TITLE_OPTIONS: NativeStackNavigationOptions = {
   ...largeTitleScreenOptions,
@@ -43,7 +65,7 @@ const LARGE_TITLE_OPTIONS: NativeStackNavigationOptions = {
 
 describe('fittingLargeTitleLayout', () => {
   afterEach(() => {
-    restoreTitleFit();
+    forceTitleFit(true);
   });
 
   it('leaves a title that fits to the native large title', async () => {
@@ -61,6 +83,17 @@ describe('fittingLargeTitleLayout', () => {
 
     expect(navigation.setOptions.mock.calls).toEqual([[largeTitleHeadingOptions(TITLE, false)]]);
     expect(getByTestId('heading-title').props.children).toBe(TITLE);
+  });
+
+  // A future plain or bleed-top screen with a long title never renders the heading; blanking its
+  // title and switching off its large title would then leave it with no title at all.
+  it('keeps the native bar while no screen renders the heading', async () => {
+    forceTitleFit(false);
+    const navigation = navigationSpy();
+
+    await render(layoutOf(navigation, LARGE_TITLE_OPTIONS, <Controls />));
+
+    expect(navigation.setOptions).not.toHaveBeenCalled();
   });
 
   it('does not switch again on the re-render that carries its own options', async () => {
@@ -117,6 +150,17 @@ describe('fittingLargeTitleLayout', () => {
       [largeTitleHeadingOptions(TITLE, true)],
       [largeTitleHeadingOptions(TITLE, false)],
     ]);
+  });
+
+  it('tells the heading whether it has scrolled under the bar', async () => {
+    forceTitleFit(false);
+    const { getByTestId } = await render(layoutOf(navigationSpy(), LARGE_TITLE_OPTIONS));
+
+    expect(getByTestId('heading-scrolled').props.children).toBe('false');
+
+    await fireEvent.press(getByTestId('scroll-under'));
+
+    expect(getByTestId('heading-scrolled').props.children).toBe('true');
   });
 
   it('starts the next heading unscrolled after the native large title was back in between', async () => {

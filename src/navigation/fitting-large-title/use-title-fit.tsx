@@ -11,7 +11,8 @@ const LARGE_TITLE_MARGIN_STEP = 4;
 type TitleFit = {
   fits: boolean;
   // The invisible element that measures the title; render it for the measurement to arrive.
-  measurer: ReactElement;
+  // `null` when there is no width to measure at.
+  measurer: ReactElement | null;
 };
 
 type Measurement = { key: string; fits: boolean };
@@ -37,13 +38,15 @@ export const useTitleFit = (title: string): TitleFit => {
 
   return {
     fits,
-    measurer: (
-      <TitleMeasurer
-        key={key}
-        title={title}
-        availableWidth={availableWidth}
-        onFitChange={(measuredFits) => setMeasurement({ key, fits: measuredFits })}
-      />
-    ),
+    // A width of nothing or less cannot lay a title out, so there is nothing to measure.
+    measurer:
+      availableWidth > 0 ? (
+        <TitleMeasurer
+          key={key}
+          title={title}
+          availableWidth={availableWidth}
+          onFitChange={(measuredFits) => setMeasurement({ key, fits: measuredFits })}
+        />
+      ) : null,
   };
 };
