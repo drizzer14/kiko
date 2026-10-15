@@ -1,9 +1,9 @@
 # Crypto exchanges 1.3: shared exchange layer and multi-coin Binance (1.3-a)
 
-Date: 2026-10-15. Status: draft for user approval, after review round 1. Rulings:
-`.superpowers/sdd/binance-multicoin/rulings.md` (user rulings cited as R-Scope, R-Q3 ... R-Q16,
-R-Tech; the coordinator rulings at its end cited as C-NR1, C-NR2, C-NR3). Base: branch
-`binance-backfill-fix`, HEAD 0c6c8bfe. Track: `crypto-exchanges-1.3-a`.
+Date: 2026-10-15. Status: draft for user approval, after review round 2 and the NR4 and NR5
+rulings. Rulings: `.superpowers/sdd/binance-multicoin/rulings.md` (user rulings cited as R-Scope,
+R-Q3 ... R-Q16, R-Tech; the coordinator rulings at its end cited as C-NR1 ... C-NR5; C-NR2 is
+confirmed by the user). Base: branch `binance-backfill-fix`, HEAD d8d57ba2. Track: `crypto-exchanges-1.3-a`.
 
 Every code fact below names a symbol or an anchor text, never a line. The base moves: the developer
 re-greps every fact on the actual base before relying on it. Migration numbers 0059-0061 follow
@@ -78,13 +78,16 @@ round). This spec closes none of them and leaves every one open.
 
 ### Coordinator rulings (binding; `rulings.md`, "Spec NEEDS RULING")
 
-These are the coordinator's rulings, not the user's.
+These are the coordinator's rulings, not the user's, except C-NR2, which the user confirmed
+(2026-10-15).
 
 | Id | Ruling | Where |
 |---|---|---|
 | C-NR1 A | The fiat total of a P2P buy, card buy or fiat deposit is stored in the marker code as a major-unit decimal at the fiat's scale: `p2p:UAH:4000.00`, `card:UAH:2600.00`, `bank:EUR:100.00`. Parsed by the exact decimal parser (`src/currency/decimal/decimal.ts`), never `Number()`. The note (`comment`) only displays the total | 5, 6 |
-| C-NR2 B | A fee charged in the SPENT coin is added to the spent leg (spent leg = gross + fee); no extra row; out of spending | 5, 7 |
+| C-NR2 B | A fee charged in the SPENT coin is added to the spent leg (spent leg = gross + fee); no extra row; out of spending. CONFIRMED BY THE USER (2026-10-15) | 5, 7 |
 | C-NR3 A | An operation whose wallet the API does not name goes on the wallet probe 2 observes on the user's account; when probe 2 sees no records of it, the default is Convert -> Spot, P2P -> Funding, fiat orders and payments -> Spot. The not-listed note names the assumption. Final after probe 2 | 5, 10 |
+| C-NR4 A | If Binance refuses `fromId` together with `orderId` (probe P15), an order with more than 1000 fills is re-read through the normal trade id cursor from the order's first stored fill id, keeping only that order's fills. P15 decides whether this fallback is used | 5, 7 |
+| C-NR5 A | A third-coin fee row of a trade whose RECEIVED coin is not tracked carries `untrackedCounterpart = asset:<received coin>` and stays out of spending | 5, 6, 7 |
 
 ### Rulings this spec reverses
 
@@ -628,7 +631,10 @@ counterparty field is read into a type (privacy, section 9). Key
   `myTrades?symbol=&orderId=&fromId=`, paging by `fromId` (last id + 1) until a short page, before
   it writes the order, and writes every row of the order from the whole set (`addManyDedup` updates
   the leg and fee amounts, a bank-owned column, under the same keys). An order whose fills span a
-  page boundary inside one run pages on before it is written.
+  page boundary inside one run pages on before it is written. If probe P15 shows Binance refuses
+  `fromId` together with `orderId` (C-NR4): an order with more than 1000 fills is re-read through
+  the normal trade id cursor (`myTrades?symbol=&fromId=`) from the order's first stored fill id,
+  keeping only that order's fills; the symbol's own cursor is not moved by that re-read.
 - A re-read that does not fit the lane stops the symbol at that order's first fill in the batch
   (the stop fill): the fills before it are written, nothing at or after it is written, `fromId` is
   stored as the stop fill's id, and the symbol stores `heldOrderId` = that order's id. The next run
@@ -637,11 +643,14 @@ counterparty field is read into a type (privacy, section 9). Key
   order. No owed point is stored (the trades walk keys progress by id, not time).
 - Rows per order, Spot wallet: spent leg = sum of `quoteQty` (buy) or `qty` (sell), negative;
   received leg = sum of `qty` (buy) or `quoteQty` (sell) minus every commission in the received
-  coin. Commission in the SPENT coin (C-NR2): added to the spent leg, so the spent leg =
+  coin. Commission in the SPENT coin (C-NR2, confirmed by the user): added to the spent leg, so the spent leg =
   `-(gross + commission)`; no extra row. Commission in a third coin (BNB): one row
   `-sum(commission)` on that coin's Spot holding, `exchangePairId` = the order's pair id,
   `exchangeCounterpartHoldingId` = the received leg's holding, `operation = 'trade-fee'` (R-Q13).
-  A third coin that is untracked: no fee row, its ticker joins the not-tracked line.
+  A third coin that is untracked: no fee row, its ticker joins the not-tracked line. A tracked
+  third coin whose order's RECEIVED coin is untracked (buy PEPE with USDT, fee in BNB; C-NR5):
+  the fee row has no received-leg holding, so it carries `untrackedCounterpart = asset:<received
+  coin>` instead of `exchangeCounterpartHoldingId`, and stays out of spending.
 - One side untracked (USDT -> PEPE): the tracked leg alone, `untrackedCounterpart = asset:<CODE>`,
   no `exchangePairId`; its key is still `${pairId}:<walletKey>`, so a later fill finds it by the
   key prefix and re-reads the order.
@@ -711,7 +720,8 @@ only rows with `exchangePairId`, `exchangeCounterpartHoldingId` and `untrackedCo
 null. `exchangeExcludedTransactionIds` (`src/statistics/exchange-exclusion/`) excludes a row with
 an `exchangeCounterpartHoldingId` or an `untrackedCounterpart`; it does not look at
 `exchangePairId`. Every pair leg and fee row this spec writes carries one of those two markers
-beside its `exchangePairId` (the one open case is NR5, section 12), so it is excluded there;
+beside its `exchangePairId` (a third-coin fee row of an order with an untracked received coin
+carries `untrackedCounterpart`, C-NR5), so it is excluded there;
 either way, a row with any of the three markers must never consume an
 unmarked row as its partner. Set 6 ships it, because set 6 is the first set that imports
 non-BTC pairs and Pay sends of the same coin; the case S1 pins it. A BTC case (a Transfer pair leg
@@ -901,6 +911,8 @@ Trades (set 11; property tests at clock gaps 0, 1 h, 1 day):
 | T11 | T10, but the `orderId` re-read does not fit the lane | - | cursor holds: `fromId` = A2's id, `heldOrderId` = A; nothing at or after A2 written; no owed point; the next run reads the symbol first, re-reads A, writes A from A1 + A2 and clears `heldOrderId` | none | not imported |
 | T12 | sell PEPE (untracked) for USDT; run 1 reads fill A1, run 2 reads A2 | - | run 2 finds A by the `${pairId}:` key prefix (no `exchangePairId` stored), re-reads A by `orderId`; one USDT +(A1 + A2) row under the same key, `asset:PEPE` | excluded | not imported |
 | T12b | T12 with a BNB commission on each fill | BNB | as T12, plus one BNB fee row `${pairId}:fee:<walletKey>` refreshed to the summed commission of A1 + A2; no second fee row | excluded | not imported |
+| T13 | an order with 1500 fills; P15 shows `fromId` refused with `orderId` (C-NR4) | - | the order is re-read through the trade id cursor from its first stored fill id; only that order's 1500 fills kept (other orders' fills in those pages ignored); one pair from all 1500 fills; the symbol's cursor unchanged by the re-read | excluded | not imported |
+| T14 | buy PEPE (untracked) with USDT (C-NR5) | BNB | USDT Spot -x, `asset:PEPE`; BNB Spot fee row `${pairId}:fee:<walletKey>`, `untrackedCounterpart = asset:PEPE`, no `exchangeCounterpartHoldingId`, `operation = 'trade-fee'` | both excluded | not imported |
 
 Convert, dust, dividends, P2P, fiat (sets 8, 9, 12):
 
@@ -1062,8 +1074,8 @@ Notes for Review (en, appended to the reviewer kit in set 15):
 >   list, an "Earlier history" line and a short "Not listed" note at the bottom of each Binance
 >   holding, and a "history not imported yet" line while older history loads.
 
-If probe P8 removes the dividend walk, the demo's reward row and the "Reward" words above go with it
-(set 15 writes the notes from what ships).
+Accepted: the demo's reward row and the "Reward" words above exist only if probe 2 finds dividend
+types; if probe P8 removes the dividend walk, both go (set 15 writes the notes from what ships).
 
 ## 10. Copy (en; uk proposed, translator review before deploy)
 
@@ -1135,7 +1147,7 @@ main's journal before its merge.
 | 8/15 | Convert walk | `binance.convert-history.ts` (new), `binance.history-client.ts`, `binance.history-budget.ts`, `run-crypto-sync.ts` (~6) | none | C1-C2; window halving on `moreData`; walk properties | yes (P4; C-NR3 wallet) |
 | 9/15 | dust read; dividend walk only if P8 yields an allowlist value | `binance.dust-history.ts`, `binance.dividend-history.ts` (new, conditional), client, budget, run wiring (~7) | none | D1-D3; V1-V2 and the allowlist pin if shipped | yes (P7, P8) |
 | 10/15 | trades 1/2: symbol discovery, rotation with the reserved call, `idCursorPager` | `exchange/paging/id-cursor-pager.ts`, `binance.trade-symbols.ts` (new), public `exchangeInfo` read, `walk-state` trades part (~7) | none | rotation bound `ceil(S / L)` property with `L >= 1` when changed symbols fill the lane; discovery cases; pager pages | yes (P1, P2) |
-| 11/15 | trades 2/2: order aggregation, `orderId` re-read, rows, fee rules (C-NR2), `/api/*` IP budget, lane caps measured | `binance.trade-history.ts` (new), `binance.history-client.ts`, `binance.history-budget.ts`, `run-crypto-sync.ts` (~6) | none | T1-T12b exact parity; properties at 0 / 1 h / 1 day; measured run report | yes (P1, P3, P15) |
+| 11/15 | trades 2/2: order aggregation, `orderId` re-read, rows, fee rules (C-NR2, C-NR5), C-NR4 re-read fallback, `/api/*` IP budget, lane caps measured | `binance.trade-history.ts` (new), `binance.history-client.ts`, `binance.history-budget.ts`, `run-crypto-sync.ts` (~6) | none | T1-T14 exact parity; properties at 0 / 1 h / 1 day; measured run report | yes (P1, P3, P15) |
 | 12/15 | P2P, fiat orders, fiat payments walks | `binance.p2p-history.ts`, `binance.fiat-history.ts` (new), client, budget, run wiring (~7) | none | P1-P5, F1-F3; UID 45000 lane cap; properties | yes (P5, P6; C-NR3 wallets) |
 | 13/15 | read-time bank-debit matcher and its caption | `src/statistics/exchange-funding-match/` (new), `statistics.screen.tsx`, the transaction form caption slot, i18n, demo bank debit (~6) | none | M1-M13; one-to-one tie-breaks with a distinct value per sort key | no |
 | 14/15 | exchange catalog, picker field, registry wiring, shared provider sheet, `syncJobsFor` | `exchange-catalog/`, `exchange/registry/`, `exchange-type-field/` (new), `crypto-sync-form`, `account-form.screen.tsx`, `crypto-sync-section`, `add-bank-sheet` -> `provider-sheet`, `bank-sync-section`, `sync-jobs.ts`, `provider.ts`, `deletable.ts`, i18n, `build-demo-snapshot.ts` (crypto `bankId` kept) + `binance` and `btc_wallet` demo accounts (`institution` null) + demo regen (~16) | none | picker and caption render; registry skip of an unwired id; connect-first rollback; demo invariant per connectable catalog entry | no |
@@ -1174,19 +1186,11 @@ privacy header requires).
 | P12 | Pay `fundsDetail` with several coins; `walletAssetCost` keys per coin | rows per coin and wallet | `pay-split-mismatch` stop | 6 |
 | P13 | `get-funding-asset` without `asset` omits zero rows | a missing coin reads as zero for existing holdings | none needed | 5 |
 | P14 | `EURUSDT` is a live spot symbol | USDT fallback via EURUSDT | no USDT fallback; USDT unpriced when CoinGecko fails (existing "no rate" treatment) | 5 |
-| P15 | weight headers of each new endpoint, the weight of `myTrades` with `orderId`; that `symbol` + `orderId` + `fromId` together page an order's fills by id (pages of 1000 until a short page) | caps of section 5; the re-read pages by `fromId` | caps alone bound the run; `fromId` refused with `orderId`: NEEDS RULING before set 11 | 8-12 |
+| P15 | weight headers of each new endpoint, the weight of `myTrades` with `orderId`; that `symbol` + `orderId` + `fromId` together page an order's fills by id (pages of 1000 until a short page) | caps of section 5; the re-read pages by `fromId` | caps alone bound the run; `fromId` refused with `orderId`: the C-NR4 re-read through the trade id cursor | 8-12 |
 | P16 | `walletType` of non-BTC deposits | 0 Spot, 1 Funding, else stop | stop owes the record | 6 |
 
 ### NEEDS RULING
 
-C-NR1, C-NR2 and C-NR3 are ruled (section 1); C-NR3 is final after probe 2. Open:
-
-- NR4 (blocks set 11 only if P15 refutes it): if Binance refuses `fromId` together with
-  `orderId`, how an order with more than 1000 fills is re-read whole. Options: (A) re-read through
-  the id cursor from the order's first stored fill id and keep only that order's fills; (B) hold
-  the order (`heldOrderId`) and log a fixed tag, the order's rows stay at their last amounts.
-- NR5 (blocks set 11): a third-coin fee row of an order whose RECEIVED coin is untracked (buy PEPE
-  with USDT, fee in BNB) has no received-leg holding for `exchangeCounterpartHoldingId`, so it
-  would carry only `exchangePairId`, which `exchangeExcludedTransactionIds` does not read, and count
-  as spending. Options: (A) the fee row takes `untrackedCounterpart = asset:<received code>`; (B)
-  its `exchangeCounterpartHoldingId` is the spent leg's holding.
+C-NR1 ... C-NR5 are ruled (section 1); C-NR2 is confirmed by the user; C-NR3 is final after
+probe 2; P15 decides whether the C-NR4 fallback is used. None is open; set 11 waits only on its
+probes (P1, P3, P15).
