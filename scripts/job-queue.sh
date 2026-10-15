@@ -23,7 +23,9 @@
 #              40-character HEAD of the worktree, read at START only when `git status --porcelain`
 #              (untracked files included) was empty at START and again at the end and HEAD is the
 #              same at the end; it is `unknown` for a changed tree at either point, a moved HEAD,
-#              or an unreadable repository. A line from before this field has five fields.
+#              or an unreadable repository. Known limit: an edit made and reverted while the job
+#              runs, or a change to an ignored file, leaves the head set (no content hash).
+#              A line from before this field has five fields.
 #              scripts/ff-main.sh reads it.
 #
 # Order is a plain `sort` of the ticket names. Class 1 is verify, check-all, and security (size

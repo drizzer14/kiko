@@ -12,9 +12,10 @@
 #   2. The sha is resolved to its full 40 characters in that repository, and the full commit must
 #      start with the argument (a branch named like a short sha cannot redirect it).
 #   3. done.log (scripts/job-queue.sh writes it) must hold a `verify` line whose 6th field, the
-#      HEAD the queue read at START from a clean tree, equals the full commit. The LAST such line
-#      decides, so a red verify after a green one at the same commit blocks. A `check-all` or
-#      `gate` line, a line whose head is `unknown`, and an old 5-field line never count.
+#      HEAD the queue tested (a clean tree at START and at the end, HEAD unmoved), equals the full
+#      commit. The LAST such line decides, so a red verify after a green one at the same commit
+#      blocks. A `check-all` or `gate` line, a line whose head is `unknown`, and an old 5-field
+#      line never count.
 #   4. The main checkout's HEAD must be an ancestor of the commit.
 #   5. The fast-forward merges the full commit, so main moving between these checks and the merge
 #      makes git refuse instead of moving main elsewhere. A dirty main checkout is not checked:
@@ -96,7 +97,7 @@ if [ -z "$verified_line" ] || [ "$verified_exit" != 0 ]; then
     'No successful queued verify at this commit' \
     "$DONE_LOG, last verify line for it: ${verified_line:-none}" \
     'Main moves only to a commit a queued verify passed on, so an unverified commit never reaches it.' \
-    "Queue: bash scripts/job-queue.sh verify <clean worktree at $full_commit> <label>, wait for exit 0 (a changed tree at START or a moved HEAD is recorded as unknown and does not count), then re-run bash scripts/ff-main.sh $requested"
+    "Queue: bash scripts/job-queue.sh verify <clean worktree at $full_commit> <label>, wait for exit 0 (a tree changed at START or at the end, or a moved HEAD, is recorded as unknown and does not count), then re-run bash scripts/ff-main.sh $requested"
 fi
 
 if ! git -C "$main_checkout" merge-base --is-ancestor HEAD "$full_commit" 2> /dev/null; then
