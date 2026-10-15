@@ -388,8 +388,8 @@ less.
     contract's text-only "Update value".
   - Correct the line "there is no 'Add loan' footer" (Help now has one, through the implicit
     create flow).
-- The long-title close-out (the fitting-large-title pattern, the `largeTitle` token, the
-  locked-decision entry) belongs to task 4/4.
+- The long-title close-out (the fitting-large-title pattern, the `largeTitle` token) is done in
+  task 4/4; the locked-decision entry waits for the user's live approval.
 - kiko-architecture: `entrySymbol`'s home.
 - `docs/superpowers/plans/2026-10-14-help-flows.md` F: add the Q3 reversal for viewStatistics.
 

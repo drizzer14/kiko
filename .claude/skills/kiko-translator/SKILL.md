@@ -451,7 +451,8 @@ is caught too):
   тицьнути or клацнути; `OTHER_TAP_VERB` in the same test file enforces it.
 - A uk help topic title is the noun form («Додавання рахунку», «Облік
   кредиту»), pinned by `TOPIC_TITLES` in `src/help/help-topics.test.ts`.
-- Convention, not pinned by any test: a long press is «Утримуйте».
+- A long press is «Утримуйте»; `OTHER_LONG_PRESS_VERB` in
+  `src/i18n/locales/uk.catalog-rules.test.ts` rejects the other verbs (read the regex there).
 
 ## A list of names is quoted name by name, through `common.listedName`
 

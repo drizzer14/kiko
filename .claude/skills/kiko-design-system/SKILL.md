@@ -108,7 +108,9 @@ Five token categories, defined once in a single theme module:
   scale used across screens. `largeTitle` (34pt bold, lineHeight 41,
   not Dynamic-Type scaled) mirrors the native nav-bar large title;
   use it for a full-title heading when a nav title does not fit
-  (`src/design-system/theme/theme.ts`).
+  (`src/design-system/theme/theme.ts`). A `Text` that is a screen
+  heading passes `accessibilityRole="header"`
+  (`src/design-system/components/text/text.props.d.ts`).
 - **radii** — the corner-radius scale for surfaces and controls.
 - **iconSizes** — the semantic icon-size scale for SF Symbols
   (`SymbolIcon`), keyed by the same names as `typography`
@@ -275,6 +277,21 @@ an entry (date + value) the moment the user approves a new visual.
   that sets `headerLargeTitle` itself, spreads that helper rather than
   setting `headerLargeTitle: true` inline. Device-confirm on an iOS 18
   device, not in the simulator or Jest.
+- **Long titles use the fitting-large-title layout** (pending the user's live approval, not
+  locked). Every large-title native stack passes `screenLayout={fittingLargeTitleLayout}`
+  (`src/navigation/fitting-large-title/`); a new large-title stack adds it too. It measures the
+  title (`useTitleFit`) in the native large-title font; a title that does not fit shows in full
+  as a wrapping `LargeTitleHeading` (`src/design-system/components/large-title-heading/`) as
+  the first content. `Screen` in scroll mode hosts the heading; a custom list screen renders
+  `LargeTitleHeading` itself and wires its scroll with `useLargeTitleScroll`, as `HoldingDetail`
+  does (`src/screens/holding-detail/holding-detail.screen.tsx`). A screen that mounts no heading
+  keeps the native title (the hosting guard). While the heading shows, the bar uses
+  `largeTitleHeadingOptions` (`src/navigation/large-title-screen-options/`): `headerLargeTitle`
+  false together with `headerTransparent` true and `headerShadowVisible` true. Never switch
+  `headerLargeTitle` off alone: native-stack then makes the bar opaque and lays content out
+  below it. The bar title appears once the heading scrolls under the bar;
+  `largeTitleRestoredOptions` puts the native title back. Device-confirm: Jest cannot show bar
+  translucency.
 - **Tips were removed by user ruling** (2026-10-09: "Hints still look bad, let's remove them
   for now"). There is no tip card, tip hook, or subtle-accent token; do not bring back a
   first-use tip, or its old look (tinted accent fill, lightbulb glyph, close button), without
