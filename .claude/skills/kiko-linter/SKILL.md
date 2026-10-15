@@ -2344,17 +2344,24 @@ a pre-existing finding points at. A Semgrep deny names
   line) of `.sh`, `.bash`, `.yml`, `.yaml` and shell-shebang files, with the same columns and
   exemption. `comment-line-width.sh` runs project-wide
   (`npm run check:comment-line-width`, part of `check:all`) and per file (one path
-  argument, no dedup; a file of an unread type exits 0). Read its header for the exact scope:
+  argument, no dedup; a MISSING path exits 2 first, then a file of an unread type exits 0).
+  A `#`-first line inside a multi-line string, a heredoc body or a YAML block scalar is read
+  as a comment too; the pin file is the way out for such a line. Read its header for the
+  exact scope:
   the TypeScript roots of `full-word-identifiers.sh`, scripts js/sh/bash, `rules/fixtures/`,
   `rules/*.yml`, `.maestro`, `githooks/`, and every other tracked `.sh`/`.bash`.
   `harness/kiko/scripts/run-log.mjs` is left out: it stays byte-identical with the harness
   repository. `scripts/checks/comment-line-width.pinned` lists, as `<path><TAB><exact line>`,
   the lines that cannot wrap; it is shrink-only (a pin whose line is gone or now fits fails as
-  stale) and a line that can wrap is wrapped, never pinned. `fast.sh` runs the per-file mode on
+  stale) and a line that can wrap is wrapped, never pinned. `__tests__/pin-count-ceilings.test.ts`
+  caps how many pins each pin file (this one and the markdown prose-width one) may hold; read
+  the test for the ceilings. `fast.sh` runs the per-file mode on
   a shell, YAML or githooks write; a `.js` write is not checked in the fast tier, so
   `check:comment-line-width` catches it. A tool directive keeps its `OVERRIDE(...)` on ONE
-  line directly above the statement: a continuation comment between a `biome-ignore` and its
-  statement breaks the suppression, so put the explanation above the directive. No `--write`.
+  line directly above the statement: a continuation comment between a `biome-ignore lint/...`
+  directive and its statement breaks the suppression, so put the explanation above the
+  directive. A `biome-ignore format` directive may continue on a second comment line and
+  still suppresses. No `--write`.
   Tests: `__tests__/comment-line-width.test.ts`.
 - `component-i18n-namespace.js` (`kiko-component-i18n-namespace`) enforces
   kiko-translator's "A string moved into a shared component changes

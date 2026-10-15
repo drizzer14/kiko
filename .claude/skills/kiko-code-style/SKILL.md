@@ -112,9 +112,11 @@ wraps it. A `#` comment line (first non-blank character `#`, not the `#!` line) 
 same 100-column rule in a `.sh`, `.bash`, `.yml`, `.yaml` file and in an extensionless file
 with a shell shebang; so do the comments of the scripts js and the rule fixtures.
 `npm run check:comment-line-width` checks them (`__tests__/comment-line-width.test.ts`; its
-scope is in kiko-linter's `comment-line-width.js` bullet). A fixture line that cannot wrap is
-listed by exact text in `scripts/checks/comment-line-width.pinned`; the list only shrinks, and
-you never add a row for a line that can wrap.
+scope is in kiko-linter's `comment-line-width.js` bullet). A `#`-first line inside a
+multi-line string, a heredoc body or a YAML block scalar is read as a comment too. A fixture
+line that cannot wrap is listed by exact text in
+`scripts/checks/comment-line-width.pinned`; the list only shrinks, and you never add a row for
+a line that can wrap.
 The pre-write guard (`kiko-comment-line-width`) denies a new
 physical line over 100 columns that holds comment text: a `//` comment,
 any line of a `/* */` or `/** */` block, a JSX `{/* */}` comment, or a
@@ -143,11 +145,12 @@ its code. A long code line with no comment is Biome's, not this rule's.
   Biome wraps the code. Run the formatter first, or move the comment
   above its code.
 - A tool directive (`// biome-ignore`, `// nosemgrep`, `// kiko-override`)
-  must stay on the line directly above its code, so it cannot continue on
-  a second line (Biome reports a suppression followed by another comment
-  line as unused). Put the prose in a plain comment above the directive and
-  keep the directive's own justification short enough to fit in 100
-  columns.
+  must stay on the line directly above its code, so a lint directive
+  (`biome-ignore lint/...`) cannot continue on a second line (Biome reports a
+  suppression followed by another comment line as unused). Put the prose in a
+  plain comment above the directive and keep the directive's own justification
+  short enough to fit in 100 columns. A `biome-ignore format` directive may
+  continue on a second comment line and still suppresses.
 - Markdown prose in the skills, agents and harness docs wraps at 100 columns too
   (`__tests__/markdown-prose-width.test.ts` holds the roots). Exempt: fenced code, a `|` table
   row, an ATX heading, the YAML front matter, and a line with no wrap point. A line that is

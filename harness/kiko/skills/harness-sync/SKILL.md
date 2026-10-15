@@ -40,7 +40,7 @@ in the harness repo):
   and the shrink-only exact-line pin file; the `fast.sh` case for shell, YAML and githooks
   writes; the markdown prose-width jest invariant with its shrink-only pin file; the three
   history rules widened to `__tests__` and scripts js, and the three generic shell
-  history rules in `semgrep-mobile.yml`.
+  history rules in `semgrep-mobile.yml` (they read `*.sh`, `*.bash` and `githooks/*`).
 - The CLAUDE.md trim (docs/harness/checks.md split).
 - A sync branch `h5-sync` exists in drizzer14/harness (tip `d92f28d`); its plugin patch list
   P1-P25 is pending the user.
