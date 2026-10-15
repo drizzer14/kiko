@@ -59,7 +59,7 @@ type DisconnectCopy = {
  * with a wired registry entry get a row. Falls back to the Monobank copy for
  * a provider id this map has no entry for (defensive; unreachable today,
  * since this is read only when `connectedEntry` — itself only ever set for
- * a registry-wired provider — is defined). Guideline 5.6 remediation:
+ * a registry-wired provider — is defined). Guideline 2.3.1(a) remediation:
  * PrivatBank, bunq, and Starling rows were removed — Monobank is the sole
  * shipped provider.
  */
@@ -83,7 +83,7 @@ const disconnectCopyFor = (connectedProviderId: BankProviderId): DisconnectCopy 
 // both routed THROUGH THE REGISTRY (`bankProviderRegistry[connectedProviderId]`),
 // never hardcoded to Monobank, so a later native provider needs only a
 // registry entry and a row in `connectFieldByProviderId` below, never a
-// rewrite of this section. Guideline 5.6 remediation: PrivatBank, bunq, and
+// rewrite of this section. Guideline 2.3.1(a) remediation: PrivatBank, bunq, and
 // Starling connect flows were removed — Monobank is the sole shipped
 // provider.
 const BankSyncSection: FC<BankSyncSectionProps> = ({ account }) => {

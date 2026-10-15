@@ -20,7 +20,7 @@ export type ProviderCatalogEntry = {
   eligibilityKey: AddBankTranslationKey;
 };
 
-// Guideline 5.6 remediation (App Store rejection: "features intentionally
+// Guideline 2.3.1(a) remediation (App Store rejection: "features intentionally
 // hidden during review"): PrivatBank, bunq, and Starling entries were
 // REMOVED — Monobank is the sole shipped provider. Their bank-CONNECT code
 // (src/{privatbank,bunq,starling}/) was deleted, not flag-hidden; the

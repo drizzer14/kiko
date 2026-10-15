@@ -5,7 +5,7 @@
 # either kind in the account form swaps in the holding form, so there is no
 # separate account step and no account card to open. NOT a
 # screenshot-diff check — no `takeScreenshot` step, no baseline; there is no
-# automated screenshot check of any kind any more (2026-09-19, Guideline 5.6
+# automated screenshot check of any kind any more (2026-09-19, Guideline 2.3.1(a)
 # remediation). This asserts real end-to-end BEHAVIOR: the Home net-worth
 # headline actually changes once these accounts/holdings exist, and the
 # Accounts screen renders its own Property and Debts sections

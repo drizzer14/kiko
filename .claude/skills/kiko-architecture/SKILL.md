@@ -9,7 +9,7 @@ Source of truth: `docs/superpowers/specs/2026-08-30-kiko-foundation-design.md`
 ("Storage and migrations", "Data flow — reactive queries", "Data
 collection" sections). This skill summarizes the settled contract.
 
-## Guideline 5.6 — no hidden features
+## Guideline 2.3.1(a) — no hidden features (Apple's rejection cited 5.6)
 
 Architectural, not a one-off cleanup: the App Store rejected Kiko
 1.0.0 build 7 under Guideline 5.6 ("features intentionally hidden
@@ -68,7 +68,7 @@ build-a-bundle CI gate:
   Wiring this grep into the `release` skill as a standing archive step
   is a recommended, not-yet-done follow-up.
 
-Read `CLAUDE.md`'s "Guideline 5.6 — no hidden features" for the
+Read `CLAUDE.md`'s "Guideline 2.3.1(a) — no hidden features" for the
 project-level pointer to this section.
 
 ## Storage: op-sqlite + Drizzle
@@ -1630,7 +1630,7 @@ finished; the dedup layer keeps that correct, only slower.
 The SQLCipher database-encryption migration is **always on** —
 `DB_ENCRYPTION_ENABLED` (`src/db/db-config.ts`) is `true` today, not a
 rollout flag a build can ship off. This is a security invariant, not a
-feature toggle (Guideline 5.6 sensitivity: a build/env flag that
+feature toggle (Guideline 2.3.1(a) sensitivity: a build/env flag that
 changes what a user's data protection looks like must never ship in
 the "off"/hidden state). Read these files directly rather than
 trusting a restated summary here, since the exact migration steps are

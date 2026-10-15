@@ -1,7 +1,7 @@
 import { transactions } from './schema';
 
 describe('transactions.source enum', () => {
-  // Guideline 5.6 remediation: PrivatBank, bunq, and Starling bank-CONNECT
+  // Guideline 2.3.1(a) remediation: PrivatBank, bunq, and Starling bank-CONNECT
   // were removed entirely — no user release ever shipped a transaction with
   // one of those sources, so no migration was needed to narrow this enum.
   it('names every sync source alongside manual', () => {
