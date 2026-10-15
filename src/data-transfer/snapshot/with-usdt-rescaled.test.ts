@@ -364,6 +364,58 @@ describe('withUsdtRescaled: what it leaves as stored', () => {
 
     expect(result.holdings[0]).toBe(untouched);
   });
+
+  it('leaves a whole number JSON writes with an exponent, and refuses the largest one without', () => {
+    const tables = tablesOf({
+      holdings: [
+        holding({ metadata: { principalMinorUnits: 1e21, lots: [{ costMinorUnits: 2e21 }] } }),
+      ],
+    });
+
+    expect(withUsdtRescaled(tables, LAST_SCALE_2_USDT_VERSION)).toEqual(tables);
+    expect(() =>
+      rescaled({
+        holdings: [holding({ metadata: { principalMinorUnits: 999999999999999900000 } })],
+      }),
+    ).toThrow(new Error(TOO_LARGE));
+  });
+
+  it.each([
+    ['spaces around an element', '[ {"type":"nameIs","text":"Silpo"} ]'],
+    [
+      'a whole number written with a fraction',
+      '[{"type":"amount","currency":"UAH","minorUnits":5.0}]',
+    ],
+    [
+      'an element that is no USDT amount matcher',
+      '[null,{"type":"nameIs","currency":"USDT","minorUnits":100},{"currency":"USDT","minorUnits":100}]',
+    ],
+  ])('leaves matchers text with nothing to rescale byte for byte: %s', (_name, matchers) => {
+    const result = rescaled({ categoryRules: [{ ...rule([]), matchers }] });
+
+    expect(result.categoryRules[0].matchers).toBe(matchers);
+  });
+
+  it('returns the same objects when nothing in them is rescaled', () => {
+    const untouchedMetadata = { lots: [{ quantity: 1 }] };
+    const untouchedDraft = {
+      currency: 'UAH',
+      exchange: { destinationCurrency: 'USDT', valueInMinorUnits: 1.5 },
+    };
+    const untouchedRow = row({ holdingId: 'hryvnia', amountMinorUnits: 5 });
+    const result = rescaled({
+      holdings: [
+        holding({ metadata: untouchedMetadata }),
+        holding({ id: 'hryvnia', currency: 'UAH' }),
+      ],
+      transactions: [untouchedRow],
+      transactionTemplates: [template(untouchedDraft)],
+    });
+
+    expect(result.holdings[0].metadata).toBe(untouchedMetadata);
+    expect(result.transactionTemplates?.[0].draft).toBe(untouchedDraft);
+    expect(result.transactions[0]).toBe(untouchedRow);
+  });
 });
 
 describe('withUsdtRescaled: the safe-integer bound', () => {
@@ -486,5 +538,30 @@ describe('withUsdtRescaled: the safe-integer bound', () => {
         ],
       }),
     ).toThrow(new Error(TOO_LARGE));
+  });
+
+  it('leaves a transaction and a deleted key whose amount token is below the 64-bit range', () => {
+    const key = 'usdt 1700000000 -9223372036854775809 tea';
+    const result = rescaled({
+      holdings: [holding()],
+      transactions: [row({ source: 'import', externalId: key })],
+      deletedImportKeys: [deletedKey(key)],
+    });
+
+    expect(result.transactions[0].externalId).toBe(key);
+    expect(result.deletedImportKeys?.[0].externalId).toBe(key);
+  });
+
+  it.each([
+    ['a transaction key', 'transactions'],
+    ['a deleted key', 'deletedImportKeys'],
+  ])('throws for the largest 64-bit integer as %s token', (_name, table) => {
+    const key = 'usdt 1700000000 9223372036854775807 tea';
+    const fields =
+      table === 'transactions'
+        ? { transactions: [row({ source: 'import' as const, externalId: key })] }
+        : { deletedImportKeys: [deletedKey(key)] };
+
+    expect(() => rescaled({ holdings: [holding()], ...fields })).toThrow(new Error(TOO_LARGE));
   });
 });
