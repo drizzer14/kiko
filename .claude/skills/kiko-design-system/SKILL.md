@@ -651,7 +651,8 @@ new component can land between reviews of this skill:
   EXCEPTION to the ordinary "use `footer` only for a pinned
   always-reachable action" rule: it renders through the pinned
   `footer` slot even though it is not an action, because App Store
-  Guideline 2.3.1(a) review needs it reachable without scrolling. There is
+  Guideline 5.1.1(i) needs the in-app privacy policy link easily
+  accessible (reachable without scrolling). There is
   no `fillHeight` prop — a screen whose content
   is shorter than the viewport just leaves it top-anchored; nothing in
   this codebase pins non-footer content to the bottom.
@@ -1124,8 +1125,8 @@ new component can land between reviews of this skill:
   `COLUMN_MAPPING_SYMBOL` constant every named bank's column-mapping icon uses,
   testID `bank-type-option-other-column-mapping-icon`) instead of the connect
   and statement-format icons the named banks show (its VoiceOver label reads
-  the no-parser banks' description, `bankColumnMappingOnly`), the Guideline-2.3.1(a) "not a bank"
-  disclaimer as a
+  the no-parser banks' description, `bankColumnMappingOnly`),
+  the Guideline 3.2.1(viii) / 5.2.1 "not a bank, not affiliated" disclaimer as a
   caption under the trigger (`forms.account.bankDisclaimer`, the same place and
   `caption`/`textSecondary` style as `BrokerTypeField`'s `brokerDisclaimer`,
   shown whatever is picked, "Other bank" included: it names no bank; the sheet

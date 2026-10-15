@@ -155,7 +155,7 @@ const BinanceCredentialsField: FC<BinanceCredentialsFieldProps> = ({
         error={secretError}
       />
 
-      {/* Guideline 2.3.1(a) data-handling disclosure: the key pair never leaves the
+      {/* Guideline 5.1.1 / 5.1.2 data-handling disclosure: the key pair never leaves the
           device except straight to Binance's own API. */}
       <Text variant="caption" tone="textSecondary">
         {t('accountDetail.binanceKeychainDisclosure')}
