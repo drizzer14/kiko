@@ -2514,7 +2514,11 @@ shape, and hand-rolled `utf8/utf8.ts` + `base64/base64.ts` codecs.
   LAST,** after the key rewrites that build keys from amounts. A value above the
   bound throws the Error message data-transfer/amount-too-large before any delete or insert; the
   import screen maps it through `IMPORT_ERROR_KEYS`. A new error code needs that
-  map entry plus an i18n key.
+  map entry plus an i18n key. `withUsdtRescaled` leaves a value the 0059
+  migration leaves as REAL (exponent, >= 1e21) alone, bounds an import-key
+  amount token to int64, and returns the same object and byte-identical
+  matchers text when nothing is rescaled; pinned by
+  `src/data-transfer/snapshot/with-usdt-rescaled.test.ts`.
 - **A data-only cleanup migration follows the SAME two-path rule.**
   Migration `0040_cleanup_stray_deposit_bond_balance.sql` removes a
   pre-existing stray create-time artifact (a term_deposit/bond holding whose
