@@ -1,6 +1,6 @@
 import { join } from 'node:path';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { chmodSync, cpSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, cpSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 
 import {
   createTemporaryDirectory,
@@ -75,6 +75,7 @@ const buildProject = (): Project => {
   cpSync(join(CHECKS, 'medium.sh'), join(project.root, 'scripts/checks/medium.sh'));
   cpSync(join(CHECKS, '_lib.sh'), join(project.root, 'scripts/checks/_lib.sh'));
   cpSync(join(CHECKS, 'guard-replay.js'), join(project.root, 'scripts/checks/guard-replay.js'));
+  cpSync(join(__dirname, '../Makefile'), join(project.root, 'Makefile'));
 
   for (const wrapper of NO_OP_WRAPPERS) {
     writeFile(project, `scripts/checks/${wrapper}`, stubScript('exit 0'), 0o755);
@@ -115,14 +116,30 @@ const buildProject = (): Project => {
   return project;
 };
 
-const runMedium = (project: Project, extra: NodeJS.ProcessEnv = {}): Outcome => {
-  const result = spawnSync('bash', [join(project.root, 'scripts/checks/medium.sh')], {
-    cwd: project.root,
+// `directory` is the path the hook reaches the project by; a symlink to it works too.
+const runMedium = (
+  project: Project,
+  extra: NodeJS.ProcessEnv = {},
+  directory = project.root,
+): Outcome => {
+  const result = spawnSync('bash', [join(directory, 'scripts/checks/medium.sh')], {
+    cwd: directory,
     env: {
       ...process.env,
       TMPDIR: project.state,
       ...extra,
     },
+    encoding: 'utf8',
+  });
+
+  return { code: result.status, stderr: result.stderr };
+};
+
+// `make doc-suites`, the by-hand run, against the same state directory the hook reads.
+const runByHand = (project: Project): Outcome => {
+  const result = spawnSync('make', ['doc-suites'], {
+    cwd: project.root,
+    env: { ...process.env, TMPDIR: project.state },
     encoding: 'utf8',
   });
 
@@ -259,6 +276,38 @@ describe('medium.sh doc-suites step trigger is the doc fingerprint, not the repl
 
     expect(runMedium(project)).toEqual({ code: 0, stderr: '' });
     expect(jestRuns(project)).toEqual([]);
+  });
+});
+
+describe('make doc-suites, run by hand', () => {
+  it('gives jest the discovered suites and records the pass the next Stop reads', () => {
+    const project = projectWithPass();
+    writeFile(project, 'docs/harness/new.md', 'changed\n');
+
+    expect(runByHand(project).code).toBe(0);
+    expect(runMedium(project)).toEqual({ code: 0, stderr: '' });
+    expect(jestRuns(project)).toEqual([DISCOVERED]);
+  });
+
+  it('records nothing when a suite fails, so the next Stop runs and blocks', () => {
+    const project = projectWithPass();
+    writeFile(project, 'docs/harness/new.md', 'changed\n');
+    writeFileSync(stateFile(project, 'jest.mode'), 'fail');
+
+    expect(runByHand(project).code).not.toBe(0);
+    expect(runMedium(project).code).toBe(2);
+    expect(jestRuns(project)).toEqual([DISCOVERED, DISCOVERED]);
+  });
+
+  it('records under the key a Stop reaching the project by a symlink reads', () => {
+    const project = projectWithPass();
+    const alias = join(createTemporaryDirectory('kiko-doc-suites-alias-'), 'project');
+    symlinkSync(project.root, alias);
+    writeFile(project, 'docs/harness/new.md', 'changed\n');
+
+    expect(runByHand(project).code).toBe(0);
+    expect(runMedium(project, {}, alias)).toEqual({ code: 0, stderr: '' });
+    expect(jestRuns(project)).toEqual([DISCOVERED]);
   });
 });
 

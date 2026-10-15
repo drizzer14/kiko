@@ -211,7 +211,7 @@ if [ "$doc_pending" -eq 1 ]; then
       "The suites stopped at the Stop-tier deadline before they finished." \
       "Stopped $doc_budget s after the hook started. Last output: $(tail -n 20 "$doc_output")" \
       "The Stop hook is killed at 300 s, and a killed hook ends the turn with no error and no check. Failing at the deadline keeps the unchecked docs visible." \
-      "The suites need more time than a Stop allows: run make doc-suites by hand (no deadline), then fix anything it reports." \
+      "The suites need more time than a Stop allows: run make doc-suites by hand (no deadline; its pass is recorded, so the next Stop skips the same docs), then fix anything it reports." \
       "$doc_donot"
     exit 2
   fi

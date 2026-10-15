@@ -686,3 +686,25 @@ harness_doc_fingerprint() {
     git -C "$root" hash-object -- "${docs[@]+"${docs[@]}"}" "${suites[@]+"${suites[@]}"}" 2>/dev/null
   } | harness_hash
 }
+
+# harness_doc_suites_by_hand <root> : `make doc-suites`. Runs the discovered suites with no
+# deadline and, on a pass, records the doc fingerprint under the key medium.sh reads, so the next
+# Stop skips the same docs: a deadline block there is cleared by this run. The key uses the
+# physical root (`pwd -P`), as medium.sh does, so a symlinked path to the worktree cannot give
+# the two a different state directory. The fingerprint is taken before jest starts: a doc edited
+# during the run is then not covered by the recorded pass.
+harness_doc_suites_by_hand() {
+  local root file fingerprint
+  local -a suites=()
+  root="$(cd "$1" && pwd -P)" || return 1
+  while IFS= read -r file; do
+    suites+=("$file")
+  done < <(harness_doc_suites "$root")
+  if [ ${#suites[@]} -eq 0 ]; then
+    echo "no doc-reading suite found (harness_doc_suites in scripts/checks/_lib.sh)" >&2
+    return 1
+  fi
+  fingerprint="$(harness_doc_fingerprint "$root")"
+  (cd "$root" && node_modules/.bin/jest "${suites[@]}") || return $?
+  harness_mark_pass "$root" "doc-suites" "$fingerprint"
+}
