@@ -152,17 +152,20 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   the word; `<<-` strips leading tabs; several heredocs on one line are
   read in order). Body text is never parsed as shell, so a `#`, an
   apostrophe, or a `<<word` in a body hides or denies nothing. Each body
-  is still checked on its own for a kill or `git stash` line, because a
-  body can run (`bash <<'EOF'`, `eval "$(cat <<'EOF' …)"`,
-  `ssh host <<'EOF'`, `cat <<'EOF' | sh`); only a body that a shell
+  is still judged on its own, because a body can run (`bash <<'EOF'`,
+  `eval "$(cat <<'EOF' …)"`, `ssh host <<'EOF'`, `cat <<'EOF' | sh`). A
+  data body is judged for the base kinds (`DATA_KINDS`) by the base
+  triggers; a run body (eval, `sh -c "$(cat <<…)"`, `source /dev/stdin`,
+  a span, `<(...)`) is judged in full, and only a body that a shell
   without `-c` reads as its script is also checked for an unquoted
-  heredoc. An unterminated body: the rest of the input is scanned as
+  heredoc (see "Heredoc bodies and `rules.kinds`" below). An
+  unterminated body: the rest of the input is scanned as
   shell (fail closed).
   A shell `-c` flag is matched anywhere in the arguments, not only
   before the command string (errs toward deny). A nested unquoted
   heredoc inside a body that runs is denied only when that body is a
   shell's stdin script (`bash <<'EOF'`); a kill or `git stash` line in
-  any running body is still denied. Here-strings: a `<<<` target that a
+  any body is denied. Here-strings: a `<<<` target that a
   shell without `-c` reads (`bash <<< "…"`) is its script, scanned like
   a shell stdin body (kill, stash, unquoted heredoc). A command
   substitution in command position (`$(which pkill) -f x`,
@@ -415,9 +418,15 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   shell) and denies a pkill, killall, or pattern or process-group kill in it (kind `scriptKill`;
   `scriptKillFinding`, `scriptFileOf`, `shellScriptOperand`, `readScriptFile`). One level only,
   a regular file of at most 256 KiB, kills only (`rules.kinds` is `SCRIPT_KINDS`, the kill
-  kind alone: a stash or write inside it is not judged). `kill -0` and `kill -s 0` send no
-  signal and never deny, and `$1`..`$9` is a caller's own pid like a named variable
-  (`sendsNoSignal`, `isDangerousKillTarget`). `isQueueScript` exempts `scripts/job-queue.sh`
+  kind alone: a stash or write inside it is not judged). A heredoc inside a scanned script is
+  judged for those kinds too (kill only); `DATA_KINDS` applies to typed commands only. `kill -0`
+  and `kill -s 0` send no signal and are harmless ONLY when no later word before the targets is
+  an option (matches `/^-[A-Za-z]/`); a later `-s`, `-n`, or `-sSIG` replaces the 0 with a real
+  signal and the targets are judged. These deny, typed or inside a scanned script: `kill -0 -s
+  KILL -1`, `kill -s 0 -s KILL -1`, `kill -0 -n 9 -1`, `kill -0 -sKILL -1`, `kill -s 0 -n 9 -1`.
+  `$1`..`$9` is a caller's own pid like a named variable; both rules apply to typed commands as
+  well as the script scan (`sendsNoSignal`, `isDangerousKillTarget`, `killFinding`).
+  `isQueueScript` exempts `scripts/job-queue.sh`
   whose worktree root shares this
   repository's git directory readably; a copy outside a worktree or in another repository
   denies. Known limits, NOT denied: a script built in the same command, a missing or larger
@@ -442,8 +451,8 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
 
   The `internalError` kind: `decide` fails closed, so an error thrown while judging returns an
   `internalError` finding (`INTERNAL_ERROR_REASON_LINES`) and the command is denied. A
-  malformed payload or a missing command still allows. `kill-guard.sh` exits 0 always and
-  denies through its JSON, also when judging crashed.
+  malformed or unreadable payload, an empty command, and a missing node still allow.
+  `kill-guard.sh` exits 0 always and denies through its JSON, also when judging crashed.
 
   NO-VERIFY deny (why: the tracked `githooks/pre-commit` and `githooks/pre-merge-commit` run
   `scripts/checks/commit-typecheck.sh`, a typecheck of the staged index; a commit that skips them
@@ -454,9 +463,13 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   core.hooksPath through `GIT_CONFIG_COUNT` with `GIT_CONFIG_KEY_<n>`, or through
   `GIT_CONFIG_PARAMETERS`. It also denies a `git config` that writes or unsets core.hooksPath in
   any scope (the `set`/`unset` forms of git 2.46 too), because that switches the hooks off for
-  every worktree. Entry points: `skipsHooks`, `rewritesHooksPath`, `environmentSetsHooksPath`
-  in `scripts/checks/kill-guard.js`; the kind is `noVerify` for `--no-verify`/`-n` and
-  `hooksConfig` for the `rewritesHooksPath` and `environmentSetsHooksPath` findings. Allowed: a
+  every worktree. Entry points: `skipsHooks` (the `--no-verify`/`-n` options only),
+  `rewritesHooksPath`, `runsWithHooksConfig` (the `-c`/`--config-env` entries and the
+  GIT_CONFIG_* variables), `environmentSetsHooksPath` in `scripts/checks/kill-guard.js`;
+  `hookFinding` combines them for a command that runs. The kind is `noVerify` for
+  `--no-verify`/`-n` and `hooksConfig` for the `rewritesHooksPath` and `runsWithHooksConfig`
+  findings. A data body uses `dataBodyHookFinding` (`writesCoreHooksPath`,
+  `runsWithCoreHooksPath`, `skipsHooks`). Allowed: a
   `--get` read of the key, `git config core.hooksPath` with no value, `-n` after another
   option's value or after `--`, text in a commit message (within the data-body rule below), and
   `git log -n`. The repair route for an unset core.hooksPath

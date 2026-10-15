@@ -190,7 +190,10 @@ Every count and exit code is the orchestrator's own measured result.
   (`commit-tree`, git config files, include.path, GIT_CONFIG_* exports), the
   script-content kill scan, and the same-command variable expansion. The port also carries the
   data-body kinds (`DATA_KINDS`), the run-body routing, the raw-then-expanded segment reading,
-  the chained variable scope, the `internalError` wrapper, and `kill -0` / `$1`..`$9`. It does
+  the chained variable scope, the `internalError` wrapper, and `kill -0` / `$1`..`$9`
+  (`f0e9919f`: a later option word after `kill -0` / `kill -s 0` makes the kill count;
+  `20457fac`: a heredoc in a scanned script is judged for the scan's kinds; `088a78d7` and
+  `7ce17ec5`: comments and test titles). It does
   NOT carry the GIT_CONFIG_GLOBAL/GIT_CONFIG_SYSTEM file check (deleted).
 
 From sync 2 and earlier:

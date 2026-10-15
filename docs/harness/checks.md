@@ -165,8 +165,10 @@ The same hook also denies a write into a git config file (`.git/config`, `config
 variable the same command assigns is expanded only into write targets and git directories (`-C
 $d`): a segment is judged as written, then expanded, and the expansion can only add a deny; a
 kill target and a command word are never expanded. It reads a script file a shell runs (`bash
-<file>`, `source`, a shebang path; one level, at most 256 KiB) and denies a kill in it (`kill -0`
-never); `scripts/job-queue.sh` of this repository is exempt. It also
+<file>`, `source`, a shebang path; one level, at most 256 KiB) and denies a kill in it (a
+heredoc in it is judged for kills only). `kill -0` and `kill -s 0` are harmless only when no later word before the
+targets is an option (`kill -0 -s KILL -1` denies), and `$1`..`$9` is a caller's own pid, in a
+typed command as in a script; `scripts/job-queue.sh` of this repository is exempt. It also
 denies a `git commit|merge|pull` that skips `githooks/` (`--no-verify`, `-n`, `core.hooksPath`
 overrides), `git commit-tree`, and a config-style route to the same end (`git config` long
 options resolved by git's prefix rule, `include.path`, GIT_CONFIG_COUNT/KEY/VALUE/PARAMETERS
@@ -175,7 +177,8 @@ core.hooksPath that `scripts/ensure-git-hooks.sh` writes outranks both. A heredo
 runs is judged only for the base kinds (kill, stash, hook skips by option or core.hooksPath,
 main checkout, wait loop), so text documenting the newer commands is allowed there; a body a
 shell or eval runs is judged in full. An error while judging denies (`internalError`); a
-malformed payload allows. `git rebase`, `cherry-pick`, and `am` replay commits without
+malformed payload, an empty command, and a missing node allow. `git rebase`, `cherry-pick`,
+and `am` replay commits without
 pre-commit (a known limit).
 See kiko-linter's "NO-VERIFY deny", "SHELL-WRITE deny", and "Script-content kill scan".
 
