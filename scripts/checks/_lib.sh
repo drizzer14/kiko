@@ -680,8 +680,9 @@ harness_doc_files() {
 # harness_doc_suite_fixtures <root> <suite>... : the files that the given suites name in a quoted
 # literal (a suite reads its pin lists through such a path), relative to <root>, sorted, one per
 # line: a `fixtures/...` literal names a file under <root>/__tests__, a
-# `../scripts/checks/<name>.pinned` literal names <root>/scripts/checks/<name>.pinned. A literal
-# that names no file on disk is left out.
+# `scripts/checks/<path>.pinned` or `.pinned.json` literal, with or without a leading `../`, names
+# that file under <root>, the forms harness_doc_suites discovers. A literal that names no file on
+# disk is left out.
 harness_doc_suite_fixtures() {
   local root="$1" literal
   shift
@@ -693,7 +694,7 @@ harness_doc_suite_fixtures() {
         | tr -d "'\"\`" | while IFS= read -r literal; do
           printf '%s\n' "__tests__/$literal"
         done
-      grep -h -o -E "['\"\`]\.\./scripts/checks/[A-Za-z0-9._-]+\.pinned['\"\`]" "$@" 2>/dev/null \
+      grep -h -o -E "['\"\`](\.\./)?scripts/checks/[A-Za-z0-9._/-]+\.pinned(\.json)?['\"\`]" "$@" 2>/dev/null \
         | tr -d "'\"\`" | while IFS= read -r literal; do
           printf '%s\n' "${literal#../}"
         done

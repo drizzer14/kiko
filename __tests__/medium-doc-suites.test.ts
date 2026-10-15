@@ -402,6 +402,23 @@ describe('medium.sh doc-suites step trigger is the doc fingerprint, not the repl
       expect(jestRuns(project)).toEqual([[...DISCOVERED, PIN_SUITE]]);
     });
 
+    it.each([
+      ['scripts/checks/widths.pinned', 'scripts/checks/widths.pinned'],
+      ['../scripts/checks/pins/widths.pinned', 'scripts/checks/pins/widths.pinned'],
+      ['../scripts/checks/widths.pinned.json', 'scripts/checks/widths.pinned.json'],
+    ])('runs for an edit of only the pin file that the literal %s names', (literal, pinFile) => {
+      const project = buildProject();
+      writeFile(project, PIN_SUITE, suiteNamingPin('docs/harness', literal));
+      writeFile(project, pinFile, 'one\n');
+      commitAll(project, 'pins');
+      expect(runMedium(project)).toEqual({ code: 0, stderr: '' });
+      rmSync(stateFile(project, 'jest.runs'));
+      writeFile(project, pinFile, 'one\ntwo\n');
+
+      expect(runMedium(project)).toEqual({ code: 0, stderr: '' });
+      expect(jestRuns(project)).toEqual([[...DISCOVERED, PIN_SUITE]]);
+    });
+
     it('skips for an edit of a scripts/checks pin file no suite names', () => {
       const project = buildProject();
       writeFile(
