@@ -35,7 +35,7 @@ row is the short form; read the full row there before relying on edge cases.
 | `npm run check:screen-imports` | `scripts/checks/screen-imports.sh` | a cross-screen import fails | project-wide + pre-write guard |
 | `npm run check:feature-imports` | `scripts/checks/feature-imports.sh` | an import crossing a feature without its barrel, or a `--tree` layout finding, fails | project-wide + pre-write guard |
 | `npm run check:blank-line-separation` | `scripts/checks/blank-line-separation.sh` | a blank-line-separation violation fails | project-wide + pre-write guard |
-| `npm run check:comment-line-width` | `scripts/checks/comment-line-width.sh` | a comment line over 100 columns fails; no override | project-wide + pre-write guard |
+| `npm run check:comment-line-width` | `scripts/checks/comment-line-width.sh` | a comment line over 100 columns (`//`, `/* */`, and `#` in shell/YAML/githooks files) fails; no override, only exact-line pins in `comment-line-width.pinned` (shrink-only) | project-wide + pre-write guard (TypeScript) + fast (shell, YAML, githooks) |
 | `npm run check:component-i18n-namespace` | `scripts/checks/component-i18n-namespace.sh` | a component reading another component's i18n namespace fails | project-wide + pre-write guard |
 | `npm run check:guard-replay` | `scripts/checks/guard-replay.sh` | any finding a change ADDED (a write that bypassed the pre-write guard) fails; fail-closed (on the Stop deadline failure, run `npm run check:guard-replay` by hand) | medium + project-wide |
 | `npm run check:shipped-migrations` | `scripts/checks/shipped-migrations.sh` | a shipped migration modified, deleted, or renamed fails; no override | medium + project-wide |
@@ -49,7 +49,8 @@ Composite scripts:
   blank-line-separation, comment-line-width, component-i18n-namespace, shipped-migrations, guard-replay, typecheck.
   `__tests__/check-all-lists.test.ts` pins this list to `package.json` and the hooks.
 - `npm run check:deep` — the heavy tier: `check:mutation` (Stryker +
-  `mutation-score.js`; thresholds in `docs/harness/checks.md`),
+  `mutation-score.js` (change-set score, per-file floor, TIMEOUT-HEAVY file rule; thresholds
+  in `docs/harness/checks.md`),
   then `bash scripts/checks/osv.sh` (any known CVE in `package-lock.json`
   fails). Manual, wired to no hook; the gate is queued with
   `scripts/job-queue.sh gate <worktree> <label> <base> <head>`
@@ -79,10 +80,12 @@ sessions only after a plugin reinstall plus `/reload-plugins`. A repeated `Stop`
 The git `pre-commit`/`pre-merge-commit` hooks (`githooks/`) run the pre-commit typecheck below.
 
 - `PostToolUse` (`Edit|Write|MultiEdit`): `scripts/checks/fast.sh` (lint,
-  security, secrets, import-order, full-word-identifiers on the touched file).
+  security, secrets, import-order, full-word-identifiers on the touched file; a shell, YAML or
+  githooks write runs `comment-line-width.sh` and `security.sh` on that file instead).
 - `Stop`/`SubagentStop`: `scripts/checks/medium.sh` (dup, overrides, knip,
-  deps, rules, plist, typecheck, shipped-migrations, guard replay). Wrappers
-  exit `2` and print the failure block to stderr.
+  deps, rules, plist, typecheck, shipped-migrations, guard replay; and, when the skill, agent,
+  docs or CLAUDE.md text changed since the last recorded pass, the doc-reading jest suites: on a
+  failure run `make doc-suites`). Wrappers exit `2` and print the failure block to stderr.
 - `PreToolUse` `Edit|Write|MultiEdit`: `pre-write-guard.sh` denies a write
   that adds a finding from `rules/semgrep-prewrite.yml` or `NODE_RULES`;
   fail-closed, never bypass.
@@ -103,9 +106,14 @@ The git `pre-commit`/`pre-merge-commit` hooks (`githooks/`) run the pre-commit t
     `__tests__/`, `rules/`, `e2e/` of any worktree ("SHELL-WRITE deny"); use
     Edit/Write, and `git add` + `git mv` to rename; a formatter's own
     `--write` stays allowed.
-  - a `git commit|merge|pull` that skips `githooks/` (`--no-verify`, `-n`, `core.hooksPath`
-    overrides) or a `git config` that writes or unsets core.hooksPath (any scope) ("NO-VERIFY deny"); repair with
-    `bash scripts/ensure-git-hooks.sh` or `npm ci`.
+  - a `git commit|merge|pull` that skips `githooks/` (`--no-verify`, `-n`, or a `-c` /
+    `GIT_CONFIG_*` entry for `core.hooksPath` or `include.path`), `git commit-tree`, or a
+    `git config` that writes or unsets core.hooksPath (any scope) ("NO-VERIFY deny"); repair
+    with `bash scripts/ensure-git-hooks.sh` or `npm ci`.
+  - a shell write to a git config file (`.git/config`; it holds core.hooksPath).
+  - a pkill/killall/pattern kill, or a raw main `--ff-only`, inside a script file a command
+    runs (one level; "Script-content kill scan").
+  - a command the guard cannot judge (an internal error): denied, never allowed.
   - a `while`/`until` loop that scans the process table for make verify,
     check:all, jest, stryker, semgrep, or xcodebuild ("WAIT-LOOP deny"); wait
     with `bash scripts/wait-load.sh <load> <timeout>` or a background job.
