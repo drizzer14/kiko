@@ -75,13 +75,26 @@ fi
 # no replay mark. A mark or a diff each lose a case: a by-hand replay moves the mark past a
 # committed doc edit, a worktree with no mark has no baseline, and a diff folds a file moved out
 # of a doc root into its new path alone. The cost is one run per fresh worktree or purged state
-# dir. It is empty when the project holds no doc file and no suite, so nothing is pending there.
-# The state key uses the physical root so `make doc-suites` writes the same one.
+# dir. Nothing is pending when the project holds no doc file and no suite; that is decided from
+# the two lists, not from the hash, so a hash that fails with docs present stays pending and the
+# step fails closed. The state key uses the physical root so `make doc-suites` writes the same one.
 doc_root="$(pwd -P)"
-doc_fingerprint="$(harness_doc_fingerprint "$doc_root")"
+doc_suites=()
+while IFS= read -r f; do
+  doc_suites+=("$f")
+done < <(harness_doc_suites "$doc_root")
+doc_has_files=0
+while IFS= read -r -d '' f; do
+  doc_has_files=1
+  break
+done < <(harness_doc_files "$doc_root")
+doc_fingerprint=""
 doc_pending=0
-if [ -n "$doc_fingerprint" ] && ! harness_unchanged "$doc_root" "doc-suites" "$doc_fingerprint"; then
-  doc_pending=1
+if [ ${#doc_suites[@]} -gt 0 ] || [ "$doc_has_files" -eq 1 ]; then
+  doc_fingerprint="$(harness_doc_fingerprint "$doc_root")"
+  if ! harness_unchanged "$doc_root" "doc-suites" "$doc_fingerprint"; then
+    doc_pending=1
+  fi
 fi
 
 # Nothing relevant changed (the coordinator case): stay silent.
@@ -156,10 +169,6 @@ fi
 # while this one waited, and running them again (or stopping at the deadline for docs that just
 # passed) would repeat that work. The early exit above keeps the pre-lock value.
 if [ "$doc_pending" -eq 1 ] && ! harness_unchanged "$doc_root" "doc-suites" "$doc_fingerprint"; then
-  doc_suites=()
-  while IFS= read -r f; do
-    doc_suites+=("$f")
-  done < <(harness_doc_suites "$ROOT")
   doc_jest="$ROOT/node_modules/.bin/jest"
   # The replay's own constants, so the doc step leaves the guard call tail and the checks after
   # it (which have no deadline) the same reserve the replay sizes its deadline with.
@@ -174,6 +183,16 @@ if [ "$doc_pending" -eq 1 ] && ! harness_unchanged "$doc_root" "doc-suites" "$do
   esac
   doc_why="A skill, agent, docs or CLAUDE.md edit can drift from the code these suites pin, and only a run shows it."
   doc_donot="Do not edit a suite or its pin to get past this, and do not skip the Stop tier."
+  if [ -z "$doc_fingerprint" ]; then
+    print_block \
+      "Doc-reading jest suites" \
+      "The doc fingerprint could not be computed, so the doc state cannot be compared with a pass." \
+      "Doc files or suites exist (suites found: ${#doc_suites[@]}), but hashing them printed nothing." \
+      "$doc_why" \
+      "Check that shasum and git work in this worktree; a by-hand run records no pass without a fingerprint, so the next Stop runs this check again." \
+      "$doc_donot"
+    exit 2
+  fi
   if [ ${#doc_suites[@]} -eq 0 ] || [ ! -x "$doc_jest" ] || [ -z "$doc_budget" ]; then
     print_block \
       "Doc-reading jest suites" \

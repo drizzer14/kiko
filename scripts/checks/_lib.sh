@@ -662,21 +662,31 @@ harness_doc_suites() {
   )
 }
 
+# harness_doc_files <root> : the doc files under <root> that exist on disk (tracked or untracked,
+# not ignored), relative to <root>, each followed by a NUL.
+harness_doc_files() {
+  local root="$1" pattern file
+  pattern="$(harness_doc_roots_pattern)"
+  while IFS= read -r -d '' file; do
+    if [[ "$file" =~ $pattern ]] && [ -f "$root/$file" ]; then
+      printf '%s\0' "$file"
+    fi
+  done < <(git -C "$root" ls-files -z --cached --others --exclude-standard 2>/dev/null)
+}
+
 # harness_doc_fingerprint <root> : a hash of the working-tree state of every doc file plus the
 # discovered suites' contents. It reads the working tree, not HEAD and a diff, so a committed,
 # a staged and an uncommitted edit of the same text give the same value, and a pass recorded
 # before a commit still covers it. A doc file moved out of a root or deleted drops out of the
-# name list, so that changes it too. It prints nothing when there is no doc file and no suite:
-# nothing for a suite to read, and an empty value never matches a recorded pass.
+# name list, so that changes it too. It prints nothing when there is no doc file and no suite
+# (nothing for a suite to read) and when the hash fails; a caller that must tell the two apart
+# lists the files and suites itself, and an empty value never matches a recorded pass.
 harness_doc_fingerprint() {
-  local root="$1" pattern file
+  local root="$1" file
   local -a docs=() suites=()
-  pattern="$(harness_doc_roots_pattern)"
   while IFS= read -r -d '' file; do
-    if [[ "$file" =~ $pattern ]] && [ -f "$root/$file" ]; then
-      docs+=("$file")
-    fi
-  done < <(git -C "$root" ls-files -z --cached --others --exclude-standard 2>/dev/null)
+    docs+=("$file")
+  done < <(harness_doc_files "$root")
   while IFS= read -r file; do
     suites+=("$file")
   done < <(harness_doc_suites "$root")

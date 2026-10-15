@@ -222,6 +222,23 @@ const finishingHolderDirectory = (project: Project): string => {
   return join(project.root, 'lock-wait');
 };
 
+// A directory holding a `shasum` that fails for the doc fingerprint's input (it names a doc file)
+// and passes any other call through, so the state directory and pass key still hash.
+const failingHashDirectory = (project: Project): string => {
+  writeFile(
+    project,
+    'failing-hash/shasum',
+    stubScript(
+      'input="$(cat)"',
+      'case "$input" in *base.md*) exit 1 ;; esac',
+      'printf "%s\\n" "$input" | /usr/bin/shasum "$@"',
+    ),
+    0o755,
+  );
+
+  return join(project.root, 'failing-hash');
+};
+
 // A first run records the doc pass and moves the stub replay's mark to the base commit; its jest
 // call is forgotten, so a row counts only the runs its own change causes.
 const projectWithPass = (): Project => {
@@ -492,6 +509,20 @@ describe('medium.sh doc-suites step', () => {
     });
 
     expect(outcome).toEqual({ code: 0, stderr: '' });
+    expect(jestRuns(project)).toEqual([]);
+  });
+
+  it('exits 2 with a block, running no suite, when docs exist and their hash fails', () => {
+    const project = projectWithPass();
+    writeFile(project, 'docs/harness/new.md', 'changed\n');
+
+    const outcome = runMedium(project, {
+      PATH: `${failingHashDirectory(project)}:${process.env.PATH}`,
+    });
+
+    expect(outcome.code).toBe(2);
+    expect(outcome.stderr).toContain('CHECK FAILED: Doc-reading jest suites');
+    expect(outcome.stderr).toContain('fingerprint');
     expect(jestRuns(project)).toEqual([]);
   });
 
