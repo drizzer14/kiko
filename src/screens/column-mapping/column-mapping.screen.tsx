@@ -1,4 +1,13 @@
-import { match } from 'ts-pattern';
+import {
+  type FC,
+  type ReactNode,
+  type RefObject,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
+import { match, P } from 'ts-pattern';
 import * as RNFS from 'react-native-fs';
 import { useLiveQuery } from '@kiko/db';
 import type { TFunction } from 'i18next';
@@ -47,7 +56,6 @@ import { useScrollToField } from '@kiko/design-system/use-scroll-to-field';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { importParsedStatement } from '@kiko/statement-import/import-statement';
 import ImportResultSheet from '@kiko/design-system/components/import-result-sheet';
-import { type FC, type RefObject, useEffect, useMemo, useRef, useState } from 'react';
 import { useImportResultSheet } from '@kiko/statement-import/use-import-result-sheet';
 import { previewStats, type PreviewStats } from '@kiko/statement-import/preview-stats';
 import { useTargetHoldingOptions } from '@kiko/statement-import/use-target-holding-options';
@@ -875,15 +883,18 @@ const ColumnMappingScreen: FC<ColumnMappingScreenProps> = ({ route, navigation }
     }
   };
 
-  const footer =
-    loadState.kind === 'ready' ? (
+  const footer = match(loadState)
+    .returnType<ReactNode>()
+    .with({ kind: 'ready' }, () => (
       // Import is ALWAYS enabled — `disabled={importing}` only, never a
       // standing `disabled={!canImport}` gate. See `handleImport`'s own doc
       // comment.
       <Button variant="primary" onPress={handleImport} disabled={importing}>
         {t('statementImport.importButton')}
       </Button>
-    ) : undefined;
+    ))
+    .with({ kind: P.union('loading', 'unreadable', 'xlsNotSupported') }, () => undefined)
+    .exhaustive();
 
   return (
     <Screen
