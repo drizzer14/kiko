@@ -76,6 +76,7 @@ describe('scripts/checks/mutation.sh file cap', () => {
   it('counts only the files left after the test, fixture, barrel, and styles excludes', () => {
     const { root, script } = buildRepository(sources('changed', 30));
     writeFile(root, 'src/changed-0.test.ts', 'test("x", () => {});\n');
+    writeFile(root, 'src/changed-0.test.tsx', 'test("x", () => {});\n');
     writeFile(root, 'rules/fixtures/bad.ts', 'export const bad = 1;\n');
     writeFile(root, 'src/feature/index.ts', "export * from './feature';\n");
     writeFile(root, 'src/feature/feature.styles.ts', 'export const styles = {};\n');
