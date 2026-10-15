@@ -172,12 +172,20 @@ The same hook also denies `git apply`, `merge`, `rebase`, `pull`,
 `cherry-pick`, `revert`, and `am` that target the MAIN checkout
 (`/Users/drizzer14/Developer/Projects/pff-ios`), by cwd, `cd`, `-C`,
 `--git-dir`/`--work-tree`, or `GIT_DIR=`, because every session's hooks
-run from it. Allowed there: `git merge --ff-only <ref>`,
-`git pull --ff-only`, and the recovery options `--abort`, `--quit`,
-`--skip`, `--continue`. Do the real merge in a separate detached
-worktree, verify it, then run
-`git -C /Users/drizzer14/Developer/Projects/pff-ios merge --ff-only <sha>`.
-See kiko-linter's "MAIN-CHECKOUT deny" for the full rule and limits.
+run from it. Allowed there: the recovery options `--abort`, `--quit`,
+`--skip`, `--continue`, help, and a read-only `git apply`. A merge or pull whose only option is
+`--ff-only` is its own finding, `mainFastForward`: main moves only through
+`bash scripts/ff-main.sh <sha>`. Do the real merge in a separate detached worktree, run a queued
+`scripts/job-queue.sh verify` on the merge commit, then run `bash scripts/ff-main.sh <sha>`.
+The script reads `${KIKO_QUEUE_DIR:-$HOME/.claude/kiko-queue}/done.log`: lines are
+`kind label exit start end head`, where head is the full 40-character sha the queue tested, or
+`unknown` for a tree not clean at START (untracked files count), a HEAD that moved by the end, or
+an unreadable repository. The LAST `verify` line whose head equals the full sha decides and needs
+exit 0; `check-all`, `gate`, `unknown`, and old 5-field lines never count. Main must be on
+branch main and an ancestor of the sha. There is no bypass flag or variable; an override goes to
+the user plus a run-log note. Known limit: a hand-forged done.log line passes (the file belongs to
+cooperating agents). See kiko-linter's "MAIN-CHECKOUT deny" for the full rule and limits, and the
+`scripts/ff-main.sh` header for the checks in order.
 
 The same hook also denies a write into a git config file (`.git/config`, `config.worktree`). A
 variable the same command assigns is expanded only into write targets and git directories (`-C
@@ -188,7 +196,8 @@ heredoc in it is judged for kills only). `kill -0` and `kill -s 0` are harmless 
 word before the targets can be an option: a `-X` word, a word that may expand, or a `-N` word
 with more words after it (`sendsNoSignal`; `kill -0 -s KILL -1` denies), and
 `$1`..`$9` is a caller's own pid, in a typed command as in a script;
-`scripts/job-queue.sh` of this repository is exempt. It also
+`scripts/job-queue.sh` of this repository is exempt, and `scripts/ff-main.sh` there is exempt from
+`mainFastForward` only (kills in it are still scanned). It also
 denies a `git commit|merge|pull` that skips `githooks/` (`--no-verify`, `-n`, `core.hooksPath`
 overrides), `git commit-tree`, and a config-style route to the same end (`git config` long
 options resolved by git's prefix rule, `include.path`, GIT_CONFIG_COUNT/KEY/VALUE/PARAMETERS

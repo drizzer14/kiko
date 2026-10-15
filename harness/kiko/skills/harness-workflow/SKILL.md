@@ -226,7 +226,7 @@ the count; see "Mutation base after a track merged next".
 
 ## Merging into main
 
-Never merge, rebase, pull (except `--ff-only`), cherry-pick, revert,
+Never merge, rebase, pull, cherry-pick, revert,
 am, or apply in the main checkout
 (`/Users/drizzer14/Developer/Projects/pff-ios`): every session's hooks
 run from it, so a conflict marker there breaks every hook. The
@@ -237,10 +237,12 @@ at the MERGE COMMIT (the per-window gate ran on the branch tip, not on
 the merge result). Move main only on exit 0 with the full test count. A
 clean `git merge-tree` is not proof of a green merge. A merge with 0 src
 files in it still gets the verify, because check:all and the hooks run
-from it. Then fast-forward main. Run exactly
-`git -C /Users/drizzer14/Developer/Projects/pff-ios merge --ff-only <sha>`.
-Any added option (-q, --quiet, --no-edit, -v) is denied. Read the result
-with `git -C /Users/drizzer14/Developer/Projects/pff-ios log -1 --oneline`.
+from it. Then fast-forward main with `bash scripts/ff-main.sh <sha>`. It
+runs only for a sha whose LAST `verify` line in the queue's done.log is exit 0, so queue the
+verify through `scripts/job-queue.sh verify` (a bare `make verify` leaves no line), keep the
+tree clean until it starts, and do not move HEAD after. The kill-guard denies a raw
+`merge --ff-only` on main (kind `mainFastForward`). There is no bypass: an override goes to the
+user plus a run-log note. The script prints `git log -1 --oneline` of main on success.
 
 A track that regenerates shared binary fixtures (the demo .kiko files)
 merges main first and regenerates on the merged builder; never

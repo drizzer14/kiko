@@ -267,6 +267,10 @@ never raise a timeout. See memory `check-security-timeout-under-load`.
 
 One heavy job runs at a time, queued by `scripts/job-queue.sh` (read its header for the full contract). Run `scripts/job-queue.sh verify|check-all|security <worktree> <label>` or `scripts/job-queue.sh gate <worktree> <label> <base> <head> [--long]` with run_in_background and await only its exit code; its QUEUED/WAITING/START/DONE lines are its normal stdout. State lives in `${KIKO_QUEUE_DIR:-$HOME/.claude/kiko-queue}`. Order: class 1 (verify, check-all, security) first, then gates by `changed lines:` (smallest first), then `--long` gates (user ruling 2026-10-13: a `--long` gate starts only on AC power, after every other ticket). `scripts/job-queue.sh hold <reason>` stops every start until `scripts/job-queue.sh release`; `scripts/job-queue.sh status` shows the hold, the power state, the running job, and the tickets. On battery NO job of any class starts (orchestrator default D1, accepted by the user 2026-10-13); an unreadable power state holds too. A gate refuses a tip whose `mutation.sh` has no changed-line `--list` ("merge main first", exit 2) and a moved HEAD (exit 3); the queue never checks out files (the old H6 overlay is gone). Keep `wait-load.sh` for the load wait only. Signalling only the top pid of a job chain (make -> npm -> bash -> Stryker) leaves the leaf running; the queue owns the job's process group. A queued check:all or verify runs on the worktree as it is when the job STARTS; never queue one while a developer still edits that tree, or keep that tree untouched from the queue time until the job starts.
 
+done.log lines are `kind label exit start end head`. Main moves only through
+`bash scripts/ff-main.sh <sha>`, for a sha whose last `verify` line has that full head and exit 0;
+never fast-forward main by hand (the kill-guard denies it).
+
 A gate forwards the `--list` over-count `warning:` line once before QUEUED, and after its DONE
 tail prints each `TIMEOUT-HEAVY` line of the gate log once (read `scripts/job-queue.sh`), so the
 waiter's output shows both.
