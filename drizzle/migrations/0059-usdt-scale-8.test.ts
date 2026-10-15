@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { readFileSync } from 'node:fs';
 import { DatabaseSync, type SQLInputValue } from 'node:sqlite';
 import { applyMigrationsThrough } from '@kiko/test-support/real-sqlite';
+import { computeDedupKey, DEDUP_OCCURRENCE_SEPARATOR } from '@kiko/statement-import/mapping';
 
 const MIGRATION_FILE = join(__dirname, '0059_usdt_scale_8.sql');
 
@@ -488,6 +489,170 @@ describe('USDT rescale: arrays holding elements that are not objects', () => {
 
     expect(migratedArray(location, [...bare, location.target])).toBe(
       location.textOf([...bare, location.rescaled]),
+    );
+  });
+});
+
+const insertImportRow = (
+  database: DatabaseSync,
+  id: string,
+  holdingId: string,
+  key: string,
+): void => {
+  database
+    .prepare(
+      `INSERT INTO transactions (id, holding_id, amount_minor_units, time, source, external_id)
+       VALUES (?, ?, 0, 1, 'import', ?)`,
+    )
+    .run(id, holdingId, key);
+};
+
+const insertDeletedKey = (database: DatabaseSync, holdingId: string, key: string): void => {
+  database
+    .prepare('INSERT INTO deleted_import_keys (holding_id, external_id) VALUES (?, ?)')
+    .run(holdingId, key);
+};
+
+const rowKeyOf = (database: DatabaseSync, id: string): unknown =>
+  scalarOf(database, 'SELECT external_id AS value FROM transactions WHERE id = ?', id);
+
+const deletedKeysOf = (database: DatabaseSync, holdingId: string): string[] =>
+  (
+    database
+      .prepare('SELECT external_id AS value FROM deleted_import_keys WHERE holding_id = ?')
+      .all(holdingId) as { value: string }[]
+  )
+    .map((row) => row.value)
+    .sort();
+
+const databaseWithHoldings = (): DatabaseSync => {
+  const database = databaseBefore();
+
+  insertHolding(database, 'usdt', 'USDT');
+  insertHolding(database, 'hryvnia', 'UAH');
+
+  return database;
+};
+
+describe('USDT rescale: statement-import keys', () => {
+  it('rescales the amount token of a USDT import key and of its occurrence-suffixed twin', () => {
+    const database = databaseWithHoldings();
+    const twin = `usdt 1700000000 -1250 coffee${DEDUP_OCCURRENCE_SEPARATOR}1`;
+
+    insertImportRow(database, 'plain', 'usdt', 'usdt 1700000000 -1250 coffee');
+    insertImportRow(database, 'twin', 'usdt', twin);
+    insertDeletedKey(database, 'usdt', `usdt 1700000000 -500 tea${DEDUP_OCCURRENCE_SEPARATOR}1`);
+    applyMigration(database);
+
+    expect(rowKeyOf(database, 'plain')).toBe('usdt 1700000000 -1250000000 coffee');
+    expect(rowKeyOf(database, 'twin')).toBe(
+      `usdt 1700000000 -1250000000 coffee${DEDUP_OCCURRENCE_SEPARATOR}1`,
+    );
+    expect(deletedKeysOf(database, 'usdt')).toEqual([
+      `usdt 1700000000 -500000000 tea${DEDUP_OCCURRENCE_SEPARATOR}1`,
+    ]);
+  });
+
+  it('leaves a bank-issued key alone', () => {
+    const database = databaseWithHoldings();
+
+    insertImportRow(database, 'bank', 'usdt', 'bank-issued-id-1');
+    insertImportRow(database, 'spaced', 'usdt', 'bank issued 5 id');
+    insertDeletedKey(database, 'usdt', 'bank-issued-id-1');
+    applyMigration(database);
+
+    expect(rowKeyOf(database, 'bank')).toBe('bank-issued-id-1');
+    expect(rowKeyOf(database, 'spaced')).toBe('bank issued 5 id');
+    expect(deletedKeysOf(database, 'usdt')).toEqual(['bank-issued-id-1']);
+  });
+
+  it("decides by the key's first token, not the row's holding", () => {
+    const database = databaseWithHoldings();
+
+    insertImportRow(database, 'usdt-key', 'hryvnia', 'usdt 1700000000 -5 tea');
+    insertImportRow(database, 'uah-key', 'usdt', 'hryvnia 1700000000 -5 tea');
+    insertDeletedKey(database, 'hryvnia', 'usdt 1700000000 -5 tea');
+    insertDeletedKey(database, 'usdt', 'hryvnia 1700000000 -5 tea');
+    applyMigration(database);
+
+    expect(rowKeyOf(database, 'usdt-key')).toBe('usdt 1700000000 -5000000 tea');
+    expect(rowKeyOf(database, 'uah-key')).toBe('hryvnia 1700000000 -5 tea');
+    expect(deletedKeysOf(database, 'hryvnia')).toEqual(['usdt 1700000000 -5000000 tea']);
+    expect(deletedKeysOf(database, 'usdt')).toEqual(['hryvnia 1700000000 -5 tea']);
+  });
+
+  it("rescales two keys whose new amount equals the other's old amount", () => {
+    const seed = (): DatabaseSync => {
+      const database = databaseWithHoldings();
+
+      insertImportRow(database, 'small', 'usdt', 'usdt 1700000000 -1 tea');
+      insertImportRow(database, 'large', 'usdt', 'usdt 1700000000 -1000000 tea');
+      insertDeletedKey(database, 'usdt', 'usdt 1700000000 -1 tea');
+      insertDeletedKey(database, 'usdt', 'usdt 1700000000 -1000000 tea');
+
+      return database;
+    };
+    const direct = seed();
+
+    expect(() =>
+      direct.exec(
+        `UPDATE transactions SET external_id = 'usdt 1700000000 ' ||
+           (CAST(substr(external_id, 17, instr(substr(external_id, 17), ' ') - 1) AS INTEGER)
+             * 1000000) || ' tea'`,
+      ),
+    ).toThrow(/UNIQUE constraint failed/);
+
+    const database = seed();
+
+    applyMigration(database);
+
+    expect([rowKeyOf(database, 'small'), rowKeyOf(database, 'large')]).toEqual([
+      'usdt 1700000000 -1000000 tea',
+      'usdt 1700000000 -1000000000000 tea',
+    ]);
+    expect(deletedKeysOf(database, 'usdt')).toEqual([
+      'usdt 1700000000 -1000000 tea',
+      'usdt 1700000000 -1000000000000 tea',
+    ]);
+  });
+
+  it('leaves a key whose amount token is not a plain integer', () => {
+    const database = databaseWithHoldings();
+    const keys = [
+      'usdt 1700000000 007 tea',
+      'usdt 1700000000 -0 tea',
+      'usdt 1700000000 99999999999999999999 tea',
+      'usdt 1700000000 12.5 tea',
+    ];
+
+    keys.forEach((key, index) => {
+      insertImportRow(database, `row-${index}`, 'usdt', key);
+      insertDeletedKey(database, 'usdt', key);
+    });
+    applyMigration(database);
+
+    expect(keys.map((_key, index) => rowKeyOf(database, `row-${index}`))).toEqual(keys);
+    expect(deletedKeysOf(database, 'usdt')).toEqual([...keys].sort());
+  });
+
+  it('a re-import of the same statement after the migration adds no row', () => {
+    const database = databaseWithHoldings();
+    const statementRow = {
+      currency: 'USDT',
+      timeSeconds: 1_700_000_000,
+      description: 'coffee shop',
+    } as const;
+
+    insertImportRow(
+      database,
+      'row',
+      'usdt',
+      computeDedupKey('usdt', { ...statementRow, amountMinorUnits: -1250 }, 0),
+    );
+    applyMigration(database);
+
+    expect(rowKeyOf(database, 'row')).toBe(
+      computeDedupKey('usdt', { ...statementRow, amountMinorUnits: -1_250_000_000 }, 0),
     );
   });
 });

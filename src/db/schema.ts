@@ -319,7 +319,10 @@ export type TransactionRow = typeof transactions.$inferSelect;
 // anchor already holds what the user deleted. The sync clears the keys that way
 // but never reads them and never revives a row, and the key-rewrite passes
 // (`upgradeStoredDedupKeys`, `rezoneImportTimes`) leave them as they were, so a
-// key they rewrote is a miss: the row comes back at 0, never counted twice. No
+// key they rewrote is a miss: the row comes back at 0, never counted twice.
+// Migration 0059 is the exception: it rescales the amount token of a USDT key
+// in both tables, so a re-import at the new scale finds the key it stored
+// instead of adding a row the delete had already reversed. No
 // named index: the primary key's own index serves both reads.
 export const deletedImportKeys = sqliteTable(
   'deleted_import_keys',

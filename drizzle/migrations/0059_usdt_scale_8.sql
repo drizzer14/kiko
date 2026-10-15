@@ -17,10 +17,17 @@
  element that is not rescaled is copied through its own JSON text, so a boolean stays a boolean
  and a number keeps its digits.
 
+ A statement-import key (<holding id> <time> <amount> <description>) carries the amount of the
+ row it stands for, so the amount token of every key whose first token names a USDT holding is
+ rescaled too, in transactions and in deleted_import_keys; otherwise a re-import at the new scale
+ would not find the stored key and would add the row again. A key of any other shape, or with an
+ amount token that is not a plain integer, is left alone. The keys are rewritten in two phases
+ (a unique temporary key, then the final key) because the UNIQUE (source, external_id) check
+ fires per row and a new key can equal another row's old key.
+
  Data only, no schema change, so no snapshot JSON (same as 0049). The `.kiko` restore applies the
  identical rule to a file written before the scale change.
 */
---> statement-breakpoint
 UPDATE `holdings` SET `balance_minor_units` = `balance_minor_units` * 1000000,
   `synced_balance_minor_units` = `synced_balance_minor_units` * 1000000
   WHERE `currency` = 'USDT';
@@ -115,3 +122,65 @@ UPDATE `transaction_templates` SET `draft` = json_set(`draft`, '$.returns', json
     AND EXISTS (SELECT 1 FROM json_each(CASE WHEN json_valid(`draft`) THEN `draft` END, '$.returns') AS element
       WHERE CASE WHEN element.type = 'object'
           THEN json_type(element.value, '$.amountMinorUnits') END = 'integer');
+--> statement-breakpoint
+DROP TABLE IF EXISTS `usdt_import_keys`;
+--> statement-breakpoint
+CREATE TEMP TABLE `usdt_import_keys` (`table_name` text NOT NULL, `row_key` text NOT NULL,
+  `old_key` text NOT NULL, `amount_token` text NOT NULL, `new_key` text);
+--> statement-breakpoint
+INSERT INTO `usdt_import_keys`
+  (`table_name`, `row_key`, `old_key`, `amount_token`, `new_key`)
+SELECT 'transactions', row_key, old_key, amount_token,
+  CASE WHEN CAST(amount_token AS INTEGER) || '' = amount_token
+    THEN prefix || (CAST(amount_token AS INTEGER) * 1000000) || suffix END
+FROM (SELECT row_key, old_key, holding_token, amount_token,
+      substr(old_key, 1, length(old_key) - length(after_time)) AS prefix,
+      substr(after_time, instr(after_time, ' ')) AS suffix
+    FROM (SELECT row_key, old_key, holding_token, after_time,
+        substr(after_time, 1, instr(after_time, ' ') - 1) AS amount_token
+      FROM (SELECT row_key, old_key, holding_token,
+          substr(after_holding, instr(after_holding, ' ') + 1) AS after_time
+        FROM (SELECT row_key, old_key,
+            substr(old_key, 1, instr(old_key, ' ') - 1) AS holding_token,
+            substr(old_key, instr(old_key, ' ') + 1) AS after_holding
+          FROM (SELECT `id` AS row_key, `external_id` AS old_key FROM `transactions` WHERE `source` = 'import' AND `external_id` IS NOT NULL)))))
+WHERE holding_token IN (SELECT `id` FROM `holdings` WHERE `currency` = 'USDT');
+--> statement-breakpoint
+INSERT INTO `usdt_import_keys`
+  (`table_name`, `row_key`, `old_key`, `amount_token`, `new_key`)
+SELECT 'deleted_import_keys', row_key, old_key, amount_token,
+  CASE WHEN CAST(amount_token AS INTEGER) || '' = amount_token
+    THEN prefix || (CAST(amount_token AS INTEGER) * 1000000) || suffix END
+FROM (SELECT row_key, old_key, holding_token, amount_token,
+      substr(old_key, 1, length(old_key) - length(after_time)) AS prefix,
+      substr(after_time, instr(after_time, ' ')) AS suffix
+    FROM (SELECT row_key, old_key, holding_token, after_time,
+        substr(after_time, 1, instr(after_time, ' ') - 1) AS amount_token
+      FROM (SELECT row_key, old_key, holding_token,
+          substr(after_holding, instr(after_holding, ' ') + 1) AS after_time
+        FROM (SELECT row_key, old_key,
+            substr(old_key, 1, instr(old_key, ' ') - 1) AS holding_token,
+            substr(old_key, instr(old_key, ' ') + 1) AS after_holding
+          FROM (SELECT CAST(`rowid` AS text) AS row_key, `external_id` AS old_key FROM `deleted_import_keys`)))))
+WHERE holding_token IN (SELECT `id` FROM `holdings` WHERE `currency` = 'USDT');
+--> statement-breakpoint
+UPDATE `transactions` SET `external_id` = 'usdt-rescale␟' || `id`
+  WHERE `id` IN (SELECT `row_key` FROM `usdt_import_keys`
+    WHERE `table_name` = 'transactions' AND `new_key` IS NOT NULL);
+--> statement-breakpoint
+UPDATE `deleted_import_keys` SET `external_id` = 'usdt-rescale␟' || `rowid`
+  WHERE `rowid` IN (SELECT CAST(`row_key` AS INTEGER) FROM `usdt_import_keys`
+    WHERE `table_name` = 'deleted_import_keys' AND `new_key` IS NOT NULL);
+--> statement-breakpoint
+UPDATE `transactions` SET `external_id` = (SELECT `new_key` FROM `usdt_import_keys` AS listed
+    WHERE listed.`table_name` = 'transactions' AND listed.`row_key` = `transactions`.`id`)
+  WHERE `id` IN (SELECT `row_key` FROM `usdt_import_keys`
+    WHERE `table_name` = 'transactions' AND `new_key` IS NOT NULL);
+--> statement-breakpoint
+UPDATE `deleted_import_keys` SET `external_id` = (SELECT `new_key` FROM `usdt_import_keys` AS listed
+    WHERE listed.`table_name` = 'deleted_import_keys'
+      AND CAST(listed.`row_key` AS INTEGER) = `deleted_import_keys`.`rowid`)
+  WHERE `rowid` IN (SELECT CAST(`row_key` AS INTEGER) FROM `usdt_import_keys`
+    WHERE `table_name` = 'deleted_import_keys' AND `new_key` IS NOT NULL);
+--> statement-breakpoint
+DROP TABLE `usdt_import_keys`;
