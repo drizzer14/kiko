@@ -111,7 +111,7 @@ describe('Crypto coverage — every added crypto reaches every base (no silent n
     const holding = {
       id: 'h1',
       currency: 'USDT' as Currency,
-      balanceMinorUnits: 100_000_00, // 100,000.00 USDT
+      balanceMinorUnits: 100_000_00000000, // 100,000.00 USDT
       type: 'crypto_asset' as const,
       metadata: null,
     };
@@ -121,6 +121,6 @@ describe('Crypto coverage — every added crypto reaches every base (no silent n
     // A true 1:1 peg would leave the minor-unit amount unchanged across the
     // currency swap; the real ~1.0007 drift must not.
     expect(converted.minorUnits).not.toBe(pegged.minorUnits);
-    expect(converted.minorUnits).toBe(Math.round(pegged.minorUnits * CRYPTO_USD.USDT));
+    expect(converted.minorUnits).toBe(10_007_000); // 100,070.00 USD
   });
 });

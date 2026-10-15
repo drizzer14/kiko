@@ -94,3 +94,21 @@ describe('formatMoney crypto amounts', () => {
     expect(formatMoney(Money.of('BTC', -5_000_000))).toBe('-₿0.05');
   });
 });
+
+describe('formatMoney USDT amounts', () => {
+  it('shows a USDT amount with two decimals', () => {
+    expect(formatMoney(Money.of('USDT', 12_345_000_000))).toBe('₮123.45');
+  });
+
+  it('shows a sub-cent USDT amount', () => {
+    expect(formatMoney(Money.of('USDT', 12_345))).toBe('₮0.00012345');
+  });
+
+  it('shows one USDT with two decimals', () => {
+    expect(formatMoney(Money.of('USDT', 100_000_000))).toBe('₮1.00');
+  });
+
+  it('shows the largest storable USDT amount exactly', () => {
+    expect(formatMoney(Money.of('USDT', Number.MAX_SAFE_INTEGER))).toBe('₮90,071,992.54740991');
+  });
+});

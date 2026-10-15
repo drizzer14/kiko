@@ -237,7 +237,7 @@ export const currencyScale: Record<Currency, number> = {
   ZAR: 2,
   BTC: 8,
   ETH: 8,
-  USDT: 2,
+  USDT: 8,
 };
 
 // The display symbol shown in formatted money text AND — as of Item A — the

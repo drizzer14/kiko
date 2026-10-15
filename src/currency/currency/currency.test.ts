@@ -1,3 +1,5 @@
+import { Money } from '../money';
+
 import {
   isFiat,
   isCrypto,
@@ -78,9 +80,13 @@ describe('fiat / crypto classification', () => {
 
   it('assigns a defined scale and mark to each new crypto', () => {
     expect(currencyScale.ETH).toBe(8);
-    expect(currencyScale.USDT).toBe(2);
+    expect(currencyScale.USDT).toBe(8);
     expect(currencySymbol.ETH).toBe('Ξ');
     expect(currencySymbol.USDT).toBe('₮');
+  });
+
+  it('parses 0.00012345 USDT to its minor units', () => {
+    expect(Money.fromMajor('USDT', 0.00012345).minorUnits).toBe(12345);
   });
 });
 
