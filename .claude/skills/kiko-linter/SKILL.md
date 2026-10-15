@@ -154,10 +154,9 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   apostrophe, or a `<<word` in a body hides or denies nothing. Each body
   is still judged on its own, because a body can run (`bash <<'EOF'`,
   `eval "$(cat <<'EOF' …)"`, `ssh host <<'EOF'`, `cat <<'EOF' | sh`). A
-  data body is judged for the base kinds (`DATA_KINDS`, read it in
-  `scripts/checks/kill-guard.js`) by the base
-  triggers; a run body (eval, `sh -c "$(cat <<…)"`, `source /dev/stdin`,
-  a span, `<(...)`) is judged in full, and only a body that a shell
+  data body is judged for the `DATA_KINDS` kinds (read the set in
+  `scripts/checks/kill-guard.js`) by the plain triggers; a run body (eval, `sh -c "$(cat <<…)"`,
+  `source /dev/stdin`, a span, `<(...)`) is judged in full, and only a body that a shell
   without `-c` reads as its script is also checked for an unquoted
   heredoc (see "Heredoc bodies and `rules.kinds`" below). An
   unterminated body: the rest of the input is scanned as
@@ -166,9 +165,11 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   before the command string (errs toward deny). A nested unquoted
   heredoc inside a body that runs is denied only when that body is a
   shell's stdin script (`bash <<'EOF'`); a kill or `git stash` line in
-  any body is denied. Here-strings: a `<<<` target that a
-  shell without `-c` reads (`bash <<< "…"`) is its script, scanned like
-  a shell stdin body (kill, stash, unquoted heredoc). A command
+  a body of a typed command is denied, while a heredoc inside a scanned script file is judged
+  for kills only. Here-strings: a `<<<` target that a
+  shell without `-c` reads (`bash <<< "…"`) is its script, judged in full
+  (a redirect into a guarded folder is a shell write, `bash <<< "git commit-tree HEAD"` a hook
+  skip). A command
   substitution in command position (`$(which pkill) -f x`,
   `` `true` git stash ``, `$(true)cd <main> && …`) is judged twice: as
   each guarded name any span in the segment shows, and as the next word
@@ -421,9 +422,11 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   a regular file of at most 256 KiB, kills only (`rules.kinds` is `SCRIPT_KINDS`, the kill
   kind alone: a stash or write inside it is not judged). A heredoc inside a scanned script is
   judged for those kinds too (kill only); `DATA_KINDS` applies to typed commands only. `kill -0`
-  and `kill -s 0` send no signal and are harmless ONLY when no later word before the targets is
-  an option (matches `/^-[A-Za-z]/`); a later `-s`, `-n`, or `-sSIG` replaces the 0 with a real
-  signal and the targets are judged. These deny, typed or inside a scanned script: `kill -0 -s
+  and `kill -s 0` send no signal and are harmless ONLY when no later word before the targets can be
+  an option: a word matching `/^-[A-Za-z]/`, a word that may expand (see `sendsNoSignal` in
+  `scripts/checks/kill-guard.js` for the characters), or a `-N` word with more words after it.
+  A later `-s`, `-n`, or `-sSIG` replaces the 0 with a real signal; otherwise the kill is
+  judged by its targets. These deny, typed or inside a scanned script: `kill -0 -s
   KILL -1`, `kill -s 0 -s KILL -1`, `kill -0 -n 9 -1`, `kill -0 -sKILL -1`, `kill -s 0 -n 9 -1`.
   `$1`..`$9` is a caller's own pid like a named variable; both rules apply to typed commands as
   well as the script scan (`sendsNoSignal`, `isDangerousKillTarget`, `killFinding`).
