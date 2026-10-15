@@ -32,16 +32,16 @@ const KILLED_MUTANT_AT_LINE = [
 ].join('');
 
 // Writes a trivial, fully-killed mutation.json report for the entries named in
-// the stub's own `--mutate=` argument (a comma list of `path` or
-// `path:start-end`), with those entries verbatim as the report's own
+// the stub's own `--mutate=` argument (a comma list of `path:start-end`), with those entries
+// verbatim as the report's own
 // `config.mutate` scope, so the CHANGE-SET gate
 // (scripts/checks/mutation-score.js, run by mutation.sh after a passing
 // Stryker exit) finds a report that belongs to this run and clears both the 75
 // total and the 60 per-file floor — these lines test the surrounding wrapper
 // machinery (cap, lock, ETA, streaming, dedup), not the scorer itself (see
 // __tests__/mutation-score.test.ts for that). One `files[path]` per unique
-// path, one Killed mutant per entry on that entry's start line (line 1 for a
-// plain path). Bash 3.2-safe: no arrays, no here-strings.
+// path, one Killed mutant per entry on that entry's start line. Bash 3.2-safe: no arrays, no
+// here-strings.
 const STUB_WRITES_PASSING_REPORT = [
   'mkdir -p reports/mutation',
   'mutate_argument=""',
@@ -56,11 +56,7 @@ const STUB_WRITES_PASSING_REPORT = [
   // The trailing newline matters: `read` fails on a last line without one.
   'entries_of() { printf "%s\\n" "$mutate_argument" | tr "," "\\n"; }',
   'path_of() { printf %s "$1" | sed \'s/:.*//\'; }',
-  'start_of() {',
-  '  start="$(printf %s "$1" | sed -n \'s/^[^:]*:\\([0-9][0-9]*\\)-.*/\\1/p\')"',
-  '  [ -n "$start" ] || start=1',
-  '  printf %s "$start"',
-  '}',
+  'start_of() { printf %s "$1" | sed -n \'s/^[^:]*:\\([0-9][0-9]*\\)-.*/\\1/p\'; }',
   '{',
   '  printf \'{"config":{"mutate":[\'',
   '  first=1',

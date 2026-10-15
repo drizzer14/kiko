@@ -7,12 +7,12 @@
 //
 // The score covers ONLY the `--mutate` entries `scripts/checks/mutation.sh` passed for THIS
 // run (given here as argv, verbatim): `path:start-end` for the changed lines of a file (1-based,
-// end inclusive, whole lines) and a plain `path` for a whole file. A file's row grades only the
-// mutants Stryker would have created for its entries: a mutant whose whole location lies inside
-// one of its ranges (Stryker's own rule). That matters because Stryker's incremental mode keeps an
-// old mutant outside the ranges in the report with its old status; grading it would score code
-// this change set did not touch. A plain path grades every mutant of the file. The formula is the
-// one Stryker's own "All files" row uses (mutation-testing-metrics' countFileMetrics):
+// end inclusive, whole lines). A file's row grades only the mutants Stryker would have created for
+// its entries: a mutant whose whole location lies inside one of its ranges (Stryker's own rule).
+// That matters because Stryker's incremental mode keeps an old mutant outside the ranges in the
+// report with its old status; grading it would score code this change set did not touch. The
+// formula is the one Stryker's own "All files" row uses (mutation-testing-metrics'
+// countFileMetrics):
 //
 //   score = (killed + timeout) / (killed + timeout + survived + noCoverage) * 100
 //
@@ -27,10 +27,10 @@
 // entry in report.files is a file that has no mutants (Stryker writes only
 // files that have some), which is nothing to grade, not a failure.
 //
-// Exit 2 (usage) for an entry with a range that is empty or starts below line 1, for a file given
-// both as a plain path and as a range (Stryker reads that as "do not mutate"), and for a ranged
-// file with a report mutant that has no location (whether it is in range is unknowable, and
-// guessing could pass a change set on mutants that are not its own).
+// Exit 2 (usage) for an entry that is not `path:start-end` (a plain path would grade a whole file,
+// which no run mutates), for a range that is empty or starts below line 1, and for a file with a
+// report mutant that has no location (whether it is in range is unknowable, and guessing could
+// pass a change set on mutants that are not its own).
 
 const fs = require('node:fs');
 
@@ -78,34 +78,27 @@ const usageFailure = (message) => {
 
 const ENTRY = /^(.+):(\d+)-(\d+)$/;
 
-// Groups the `--mutate` entries by path, in order of first appearance: a path with a range entry
-// holds its ranges, a plain path is a whole file.
+// Groups the `--mutate` entries by path, in order of first appearance, each path holding its
+// ranges.
 const groupEntries = (entries) => {
   const groups = new Map();
 
   for (const entry of entries) {
     const match = ENTRY.exec(entry);
-    const path = match === null ? entry : match[1];
-    const group = groups.get(path) ?? { whole: false, ranges: [] };
-    groups.set(path, group);
 
     if (match === null) {
-      group.whole = true;
-    } else {
-      const [start, end] = [Number(match[2]), Number(match[3])];
-
-      if (start < 1 || start > end) {
-        usageFailure(`malformed range entry (want 1 <= start <= end): ${entry}`);
-      }
-
-      group.ranges.push([start, end]);
+      usageFailure(`every entry is path:start-end, got: ${entry}`);
     }
 
-    if (group.whole && group.ranges.length > 0) {
-      usageFailure(
-        `${path} is given as a plain path and as a range; Stryker reads that as "do not mutate"`,
-      );
+    const [start, end] = [Number(match[2]), Number(match[3])];
+
+    if (start < 1 || start > end) {
+      usageFailure(`malformed range entry (want 1 <= start <= end): ${entry}`);
     }
+
+    const group = groups.get(match[1]) ?? { ranges: [] };
+    groups.set(match[1], group);
+    group.ranges.push([start, end]);
   }
 
   return groups;
@@ -115,10 +108,6 @@ const groupEntries = (entries) => {
 // ranges are whole lines, so the lines decide.
 const gradedMutants = (path, group, fileResult) => {
   const mutants = fileResult.mutants ?? [];
-
-  if (group.whole) {
-    return mutants;
-  }
 
   return mutants.filter((mutant) => {
     const start = mutant.location?.start?.line;

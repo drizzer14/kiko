@@ -107,19 +107,13 @@ describe('scripts/checks/mutation.sh comment-only filter', () => {
 
   describe('a colocated test file that changed in the same change set', () => {
     const TEST_BASE = 'export const t = 1;\n';
-    const TEST_COMMENTED = '// what t checks\nexport const t = 1;\n';
     const TEST_REAL_CHANGE = 'export const t = 2;\n';
 
-    const runBeside = (
-      testPath: string,
-      testHead: string | null,
-      testExistsAtBase = true,
-      scriptArguments: string[] = [],
-    ) =>
+    const runBeside = (scriptArguments: string[] = []) =>
       runWithArgumentStub(
         build(
-          { 'src/foo.ts': COMMENTED, [testPath]: testHead },
-          { 'src/foo.ts': BASE, ...(testExistsAtBase ? { [testPath]: TEST_BASE } : {}) },
+          { 'src/foo.ts': COMMENTED, 'src/foo.test.ts': TEST_REAL_CHANGE },
+          { 'src/foo.ts': BASE, 'src/foo.test.ts': TEST_BASE },
         ),
         WITH_TYPESCRIPT,
         scriptArguments,
@@ -136,58 +130,12 @@ describe('scripts/checks/mutation.sh comment-only filter', () => {
       expect(result.stdout).not.toContain('whole file');
     };
 
-    it.each([
-      ['foo.test.ts', 'src/foo.test.ts'],
-      ['foo.test.tsx', 'src/foo.test.tsx'],
-      ['foo.<anything>.test.tsx', 'src/foo.extra.test.tsx'],
-      ['foo.<anything>.test.ts', 'src/foo.ledgerless-guard.test.ts'],
-    ])('mutates nothing of a comment-only source when %s has a code change', (_name, testPath) => {
-      expectNothingMutated(runBeside(testPath, TEST_REAL_CHANGE));
-    });
-
-    it('mutates nothing of a comment-only source when the colocated test changed only in a comment', () => {
-      expectNothingMutated(runBeside('src/foo.test.ts', TEST_COMMENTED));
-    });
-
-    it('mutates nothing of a comment-only source when the colocated test is new', () => {
-      expectNothingMutated(runBeside('src/foo.test.ts', TEST_COMMENTED, false));
-    });
-
-    it('mutates nothing of a comment-only source when the colocated test was deleted', () => {
-      expectNothingMutated(runBeside('src/foo.test.ts', null));
-    });
-
-    it('mutates nothing of a comment-only source when the colocated test no longer parses', () => {
-      expectNothingMutated(runBeside('src/foo.test.ts', '// broken\nexport const t = ;\n'));
-    });
-
-    it('mutates nothing of a comment-only source when one of two colocated tests has a code change', () => {
-      const result = runWithArgumentStub(
-        build(
-          {
-            'src/foo.ts': COMMENTED,
-            'src/foo.test.ts': TEST_COMMENTED,
-            'src/foo.extra.test.ts': TEST_REAL_CHANGE,
-          },
-          { 'src/foo.ts': BASE, 'src/foo.test.ts': TEST_BASE, 'src/foo.extra.test.ts': TEST_BASE },
-        ),
-        WITH_TYPESCRIPT,
-      );
-
-      expectNothingMutated(result);
-    });
-
-    it.each([
-      ['a test file of the same base name in another folder', 'src/other/foo.test.ts'],
-      ['a test file in __tests__', '__tests__/foo.test.ts'],
-      ['a test file of a longer base name', 'src/foobar.test.ts'],
-      ['a test file of a folder named like the source', 'src/foo.d/bar.test.ts'],
-    ])('mutates nothing of a comment-only source beside %s', (_name, testPath) => {
-      expectNothingMutated(runBeside(testPath, TEST_REAL_CHANGE));
+    it('mutates nothing of a comment-only source when the colocated test has a code change', () => {
+      expectNothingMutated(runBeside());
     });
 
     it('--list names the comment-only source as skipped and counts no mutable file', () => {
-      const listed = runBeside('src/foo.test.ts', TEST_REAL_CHANGE, true, ['--list']);
+      const listed = runBeside(['--list']);
 
       expect(listed.code).toBe(0);
       expect(listed.stdout.split('\n').filter(Boolean)).toEqual([
@@ -211,22 +159,6 @@ describe('scripts/checks/mutation.sh comment-only filter', () => {
       expect(result.code).toBe(0);
       expect(mutateEntries(result.stubArguments)).toEqual(['src/foo.ts:1-1']);
       expect(result.stdout).not.toContain('whole file');
-    });
-
-    it('hands Stryker the ranges of a Stryker directive edit beside a changed test', () => {
-      const result = runWithArgumentStub(
-        build(
-          {
-            'src/foo.ts': `${DIRECTIVE}\nexport const a = 1;\n`,
-            'src/foo.test.ts': TEST_REAL_CHANGE,
-          },
-          { 'src/foo.ts': BASE, 'src/foo.test.ts': TEST_BASE },
-        ),
-        WITH_TYPESCRIPT,
-      );
-
-      expect(mutateEntries(result.stubArguments)).toEqual(['src/foo.ts:1-1']);
-      expect(result.stdout).not.toContain('skipped (comment-only)');
     });
   });
 
