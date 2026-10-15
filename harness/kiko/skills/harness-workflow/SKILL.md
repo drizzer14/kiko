@@ -413,7 +413,9 @@ and line. Fix it with Edit/Write, so the guard checks the fix. Never
 rewrite the file with Bash again. The `--write` fixers and clean merges
 pass, because only a finding the change added fails. If the replay stops at its Stop-tier deadline,
 run `npm run check:guard-replay` by hand; its pass is recorded. See
-kiko-linter's "Pre-write guard replay on the Stop tier".
+kiko-linter's "Pre-write guard replay on the Stop tier". On a doc change the Stop tier also
+runs the doc-reading jest suites first; on a failure or a deadline block, run
+`make doc-suites` by hand (a pass is recorded); see kiko-linter "The wrapper contract".
 
 ## Run verbose commands through an Orca terminal
 

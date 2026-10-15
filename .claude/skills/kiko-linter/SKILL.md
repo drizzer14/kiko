@@ -2448,9 +2448,11 @@ they land.
   that cannot run (git, node) fails closed with its own block.
 - **Deadline.** On the Stop tier the replay starts no guard call after
   `stopTierDeadlineSeconds`: at most 150 s, and less when `medium.sh`'s
-  own elapsed time (lock wait, `dup.sh`), the 25 s in-flight guard call,
+  own elapsed time (lock wait, `dup.sh`, the doc step), the 25 s in-flight guard call,
   and a 60 s reserve for the later checks leave less of the 300 s hook
-  budget. It then fails with a block telling the agent to run
+  budget. The doc step ends by the budget `node scripts/checks/guard-replay.js step-budget`
+  prints, so the replay keeps the guard-call tail and the later-checks reserve. It then fails with a
+  block telling the agent to run
   `npm run check:guard-replay` by hand, which has no deadline and
   records its pass. A killed Stop hook would otherwise end the turn with
   no error and no check. The `KIKO_GUARD_REPLAY_DEADLINE_SECONDS` test

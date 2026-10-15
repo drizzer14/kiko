@@ -111,11 +111,12 @@ discovered (a documented limit). The step runs before `guard-replay.sh` by choic
 longer matters. Jest runs with `--maxWorkers=2`. The deadline is hookStarted + the budget that
 `node scripts/checks/guard-replay.js step-budget` prints (hook budget minus the call tail minus
 the later-checks reserve; read the formula there), so the checks after the replay keep their
-reserve. At the
-deadline it stops its own jest pid and exits 2 with a block saying to run `make doc-suites`
-by hand. Zero suites, a missing jest, an unreadable budget or a fingerprint hash failure
-while doc files or suites exist also exit 2 before any jest run (fail-closed); "nothing to
-check" comes from the doc-file and suite lists, not from the hash output. A by-hand
+reserve. At the deadline it stops its own
+jest pid and exits 2 with a block saying to
+run `make doc-suites` by hand. Zero suites, a missing jest, an unreadable budget or a
+fingerprint hash failure while doc files or suites exist also exit 2 before any jest run
+(fail-closed); "nothing to check" comes from the doc-file and suite lists, not from the hash
+output. A by-hand
 `make doc-suites` pass IS recorded (physical-root key, and TMPDIR like every harness
 fingerprint), so the next Stop skips the same docs.
 

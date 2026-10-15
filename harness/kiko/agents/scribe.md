@@ -34,7 +34,9 @@ Rules:
   grep `grep -l readFileSync __tests__/*.test.ts` is a broader superset that includes slow
   spawn suites. This holds for adding or
   renaming a skill too, not only for tests that list skills. Never enumerate those tests in
-  skill or agent text; point at the grep, since a new invariant would make the list stale.
+  skill or agent text; point at `make doc-suites` and
+  `harness_doc_suites` in `scripts/checks/_lib.sh`, since a new invariant would make the
+  list stale.
 - A skill states the RULE, never a survey of current usage: "always do X" or
   "never do Y", not "today every call site does X". Descriptive wording goes
   stale the moment one new call site breaks the pattern, and it still reads
