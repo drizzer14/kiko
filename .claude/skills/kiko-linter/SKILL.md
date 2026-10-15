@@ -33,7 +33,8 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
 `scripts/checks/_lib.sh` for the exact helper):
 
 - `source "$DIR/_lib.sh"` for `print_block`.
-- Comments in a shell script wrap at 100 columns, as in any other source file; `__tests__/shell-comment-width.test.ts` pins it.
+- Comments in a shell script wrap at 100 columns, as in any other source file;
+  `npm run check:comment-line-width` checks it (`__tests__/comment-line-width.test.ts`).
 - On failure: call `print_block` (a structured WHAT/DETAILS/WHY/HOW/
   DO-NOT block) to stderr, then `exit 2`.
 - A missing path is a failure, never a pass. A missing scan root or a missing path argument
