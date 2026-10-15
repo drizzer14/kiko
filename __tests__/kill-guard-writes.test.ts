@@ -506,8 +506,8 @@ const DENIED_SAME_COMMAND_VARIABLE: string[] = [
 ];
 
 // The command's own assignments only ADD denies. A path that still names a guarded folder through
-// an unresolved `$D` denies as it always did, whatever the command assigned to `D` first: a loop
-// variable, `read`, `+=`, `eval`, `printf -v`, `select`, and `unset` all change it unseen.
+// an unresolved `$D` denies, whatever the command assigned to `D` first: a loop variable, `read`,
+// `+=`, `eval`, `printf -v`, `select`, and `unset` all change it unseen.
 const DENIED_WHATEVER_THE_VARIABLE_HOLDS: string[] = [
   `D=/tmp; sed -i '' s/a/b/ $D/src/x.ts`,
   `D=/tmp; sed -i '' s/a/b/ "\${D}/src/x.ts"`,

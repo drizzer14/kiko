@@ -36,13 +36,35 @@ const run = (payload: string): SpawnSyncReturns<string> =>
 const payloadFor = (command: string): string => JSON.stringify({ tool_input: { command } });
 
 // The kill builtin reads `-s SIG`, `-n N` and `-sSIG` again after a signal 0, so each of these
-// ends in SIGKILL to every process.
+// ends in SIGKILL to every process. A word the shell expands before the builtin parses it can
+// become that later option, and so can a later `-N` signal number.
 const SIGNAL_ZERO_THEN_OPTION = [
   'kill -0 -s KILL -1',
   'kill -s 0 -s KILL -1',
   'kill -0 -n 9 -1',
   'kill -0 -sKILL -1',
   'kill -s 0 -n 9 -1',
+  'kill -0 $(printf %s -sKILL) -1',
+  'kill -0 `printf %s -sKILL` -1',
+  'kill -0 $sig -1',
+  'kill -0 ${sig} -1',
+  'sig=-sKILL; kill -0 $sig -1',
+  'kill -s 0 $sig -1',
+  'kill -0 "$opt" -1',
+  'kill -0 $1 -1',
+  'kill -0 "$@"',
+  'kill -0 $@',
+  'kill -0 $*',
+  'set -- -sKILL -1; kill -0 "$@"',
+  'kill -0 -[s]KILL -1',
+  'kill -0 -?KILL -1',
+  'kill -0 *KILL -1',
+  'kill -0 $(pgrep x)',
+  'kill -0 {-sKILL,-1}',
+  'kill -0 -{s,}KILL -1',
+  'kill -0 -9 -1',
+  'kill -0 -1 -1',
+  'kill -s 0 -9 -1',
 ];
 
 const BLOCKED_COMMANDS: string[] = [
@@ -198,6 +220,9 @@ const ALLOWED_COMMANDS: string[] = [
   'kill -0 4242',
   // Signal 0 sends nothing (it only tests a pid), and `$1` is a caller's argument like `$pid`.
   'kill -0 "$1"',
+  'kill -0 "$pid"',
+  'kill -0 $pid',
+  'kill -0 ${pid}',
   'kill -0 0',
   'kill -0 -1',
   'kill -s 0 -1',

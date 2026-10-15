@@ -1157,12 +1157,18 @@ function killTargets(tokens) {
 // Signal 0 (`kill -0`, `kill -s 0`) only tests whether a process exists: nothing is sent, so
 // whatever it names is safe. The builtin reads `-s SIG`, `-n N` and `-sSIG` again after an earlier
 // spec, so a later option word replaces the 0 with a real signal and the command is judged by its
-// targets instead.
+// targets instead. The shell expands a word before the builtin parses it, so a later word that
+// may expand (a `$`, a backtick or `__SUBSHELL__`, a glob, a bracket, a brace) counts as a
+// possible option too, as does a `-N` signal number that other words follow.
 function sendsNoSignal(tokens) {
   const afterSpec = tokens[0] === '-s' ? tokens.slice(2) : tokens.slice(1);
   const isNull = tokens[0] === '-0' || (tokens[0] === '-s' && tokens[1] === '0');
+  const mayBeOption = (word, index) =>
+    /^-[A-Za-z]/.test(word) ||
+    /[$`*?[{]|__SUBSHELL__/.test(word) ||
+    (/^-\d+$/.test(word) && index < afterSpec.length - 1);
 
-  return isNull && !afterSpec.some((word) => /^-[A-Za-z]/.test(word));
+  return isNull && !afterSpec.some(mayBeOption);
 }
 
 // A target is safe only when it is a plain positive pid, a shell variable

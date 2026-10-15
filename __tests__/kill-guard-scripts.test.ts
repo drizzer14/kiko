@@ -81,12 +81,35 @@ scriptWith('own-argument.sh', '#!/bin/bash\nif kill -0 "$1" 2>/dev/null; then\n 
 scriptWith('own-empty-pid.sh', 'SERVER_PID=""\nkill -0 "$SERVER_PID"\nkill -s 0 "$SERVER_PID"\n');
 scriptWith('null-signal.sh', 'kill -0 0\nkill -0 -1\nkill -s 0 -1\npgrep node | xargs kill -0\n');
 // The kill builtin reads a later `-s SIG` or `-n N` after a signal 0, so these send SIGKILL to all.
+// A word the shell expands before the builtin parses it can become that later option, and so can a
+// later `-N` signal number.
 const SIGNAL_ZERO_THEN_OPTION = [
   'kill -0 -s KILL -1',
   'kill -s 0 -s KILL -1',
   'kill -0 -n 9 -1',
   'kill -0 -sKILL -1',
   'kill -s 0 -n 9 -1',
+  'kill -0 $(printf %s -sKILL) -1',
+  'kill -0 `printf %s -sKILL` -1',
+  'kill -0 $sig -1',
+  'kill -0 ${sig} -1',
+  'sig=-sKILL; kill -0 $sig -1',
+  'kill -s 0 $sig -1',
+  'kill -0 "$opt" -1',
+  'kill -0 $1 -1',
+  'kill -0 "$@"',
+  'kill -0 $@',
+  'kill -0 $*',
+  'set -- -sKILL -1; kill -0 "$@"',
+  'kill -0 -[s]KILL -1',
+  'kill -0 -?KILL -1',
+  'kill -0 *KILL -1',
+  'kill -0 $(pgrep x)',
+  'kill -0 {-sKILL,-1}',
+  'kill -0 -{s,}KILL -1',
+  'kill -0 -9 -1',
+  'kill -0 -1 -1',
+  'kill -s 0 -9 -1',
 ];
 SIGNAL_ZERO_THEN_OPTION.forEach((command, index) => {
   scriptWith(`kills-after-null-signal-${index}.sh`, `${command}\n`);
