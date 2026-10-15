@@ -51,6 +51,9 @@
 # be trapped: a waiter killed with it leaves its job running, so never SIGKILL one (the lock is
 # live by group only once the group is named; see Known limits).
 #
+# START line: `START <label> at HH:MM head <12-character sha of the worktree HEAD, or unknown>
+# (load: <averages>)`, so a log says which commit a job ran on.
+#
 # Exit codes: the job's own code (2 also covers a refused request); 3 a gate whose HEAD moved; 130
 # after SIGINT; 143 after SIGTERM.
 #
@@ -529,7 +532,10 @@ drain_job_group() {
 
 [ "$command_name" = gate ] && prepare_gate
 started_at="$(iso_stamp)"
-printf 'START %s at %s (load: %s)\n' "$label" "$(clock_time)" "$(uptime 2> /dev/null | sed 's/.*averages: //')"
+# The START line names the commit the job runs on: a gate was refused unless HEAD starts with its
+# expected head, so the worktree's own HEAD, cut to 12, is that commit in full length.
+head_sha="$(git -C "$worktree" rev-parse HEAD 2> /dev/null | cut -c1-12)"
+printf 'START %s at %s head %s (load: %s)\n' "$label" "$(clock_time)" "${head_sha:-unknown}" "$(uptime 2> /dev/null | sed 's/.*averages: //')"
 run_job
 drain_job_group
 [ "$command_name" = gate ] \
