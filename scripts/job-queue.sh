@@ -571,8 +571,8 @@ read_tested_head() {
 }
 
 # A HEAD that moved during the job means the job ran on more than one commit, and a tree that is
-# no longer clean means the job ran on something that is not that commit. make verify writes its
-# state outside the tree, so a job that dirties its own tree records unknown.
+# not clean at the end means the job ran on content that is not that commit. make verify writes
+# its state outside the tree, so a job that dirties its own tree records unknown.
 confirm_tested_head() {
   [ "$tested_head" = unknown ] && return 0
   [ "$(full_head)" = "$tested_head" ] && tree_is_clean || tested_head=unknown
