@@ -35,7 +35,19 @@ const run = (payload: string): SpawnSyncReturns<string> =>
 
 const payloadFor = (command: string): string => JSON.stringify({ tool_input: { command } });
 
+// The kill builtin reads `-s SIG`, `-n N` and `-sSIG` again after a signal 0, so each of these
+// ends in SIGKILL to every process.
+const SIGNAL_ZERO_THEN_OPTION = [
+  'kill -0 -s KILL -1',
+  'kill -s 0 -s KILL -1',
+  'kill -0 -n 9 -1',
+  'kill -0 -sKILL -1',
+  'kill -s 0 -n 9 -1',
+];
+
 const BLOCKED_COMMANDS: string[] = [
+  ...SIGNAL_ZERO_THEN_OPTION,
+  ...SIGNAL_ZERO_THEN_OPTION.map((command) => `bash -c '${command}'`),
   'pkill -f "cat" -U drizzer14',
   'killall Simulator',
   '/usr/bin/pkill node',

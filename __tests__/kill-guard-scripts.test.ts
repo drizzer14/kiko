@@ -80,6 +80,17 @@ scriptWith('own-pid.sh', 'sleep 30 &\npid=$!\nkill "$pid"\nkill -0 "$pid"\n');
 scriptWith('own-argument.sh', '#!/bin/bash\nif kill -0 "$1" 2>/dev/null; then\n  kill "$1"\nfi\n');
 scriptWith('own-empty-pid.sh', 'SERVER_PID=""\nkill -0 "$SERVER_PID"\nkill -s 0 "$SERVER_PID"\n');
 scriptWith('null-signal.sh', 'kill -0 0\nkill -0 -1\nkill -s 0 -1\npgrep node | xargs kill -0\n');
+// The kill builtin reads a later `-s SIG` or `-n N` after a signal 0, so these send SIGKILL to all.
+const SIGNAL_ZERO_THEN_OPTION = [
+  'kill -0 -s KILL -1',
+  'kill -s 0 -s KILL -1',
+  'kill -0 -n 9 -1',
+  'kill -0 -sKILL -1',
+  'kill -s 0 -n 9 -1',
+];
+SIGNAL_ZERO_THEN_OPTION.forEach((command, index) => {
+  scriptWith(`kills-after-null-signal-${index}.sh`, `${command}\n`);
+});
 scriptWith('comment.sh', '# pkill node\necho "pkill node"\n');
 scriptWith(
   'other-findings.sh',
@@ -94,6 +105,7 @@ symlinkSync(KILLING, join(SCRATCH, 'link-to-kills.sh'));
 const MISSING = join(SCRATCH, 'missing.sh');
 
 const DENIED: string[] = [
+  ...SIGNAL_ZERO_THEN_OPTION.map((_command, index) => `bash kills-after-null-signal-${index}.sh`),
   'bash kills.sh',
   'sh kills.sh',
   'zsh kills.sh',

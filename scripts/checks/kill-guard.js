@@ -1155,8 +1155,15 @@ function killTargets(tokens) {
 }
 
 // Signal 0 (`kill -0`, `kill -s 0`) only tests whether a process exists: nothing is sent, so
-// whatever it names is safe.
-const sendsNoSignal = (tokens) => tokens[0] === '-0' || (tokens[0] === '-s' && tokens[1] === '0');
+// whatever it names is safe. The builtin reads `-s SIG`, `-n N` and `-sSIG` again after an earlier
+// spec, so a later option word replaces the 0 with a real signal and the command is judged by its
+// targets instead.
+function sendsNoSignal(tokens) {
+  const afterSpec = tokens[0] === '-s' ? tokens.slice(2) : tokens.slice(1);
+  const isNull = tokens[0] === '-0' || (tokens[0] === '-s' && tokens[1] === '0');
+
+  return isNull && !afterSpec.some((word) => /^-[A-Za-z]/.test(word));
+}
 
 // A target is safe only when it is a plain positive pid, a shell variable
 // the agent's own script set (`$PID`, `"$pid"`, `${pid}` — the agent is
