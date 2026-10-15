@@ -51,6 +51,9 @@
 # be trapped: a waiter killed with it leaves its job running, so never SIGKILL one (the lock is
 # live by group only once the group is named; see Known limits).
 #
+# START line: `START <label> at HH:MM head <12-character sha of the worktree HEAD, or unknown>
+# (load: <averages>)`, so a log says which commit a job ran on.
+#
 # Exit codes: the job's own code (2 also covers a refused request); 3 a gate whose HEAD moved; 130
 # after SIGINT; 143 after SIGTERM.
 #
@@ -260,6 +263,7 @@ read_gate_size() {
   list_code=$?
   [ "$list_code" -eq 0 ] \
     || refuse "mutation.sh --list exited $list_code for $label (above the file cap, or the base does not resolve); split the change set, then re-queue."
+  printf '%s\n' "$listing" | awk '/^warning:/'
   changed_lines="$(printf '%s\n' "$listing" | sed -n 's/^changed lines: \([0-9][0-9]*\)$/\1/p' | tail -1)"
   [ -n "$changed_lines" ] \
     || refuse "mutation.sh --list for $label printed no 'changed lines:' line; merge main into the change set, then re-queue."
@@ -529,11 +533,19 @@ drain_job_group() {
 
 [ "$command_name" = gate ] && prepare_gate
 started_at="$(iso_stamp)"
-printf 'START %s at %s (load: %s)\n' "$label" "$(clock_time)" "$(uptime 2> /dev/null | sed 's/.*averages: //')"
+# The START line names the commit the job runs on: a gate was refused unless HEAD starts with its
+# expected head, so the worktree's HEAD is the queued commit; its first 12 characters name it even
+# when the expected head was given short.
+head_sha="$(git -C "$worktree" rev-parse HEAD 2> /dev/null | cut -c1-12)"
+printf 'START %s at %s head %s (load: %s)\n' "$label" "$(clock_time)" "${head_sha:-unknown}" "$(uptime 2> /dev/null | sed 's/.*averages: //')"
 run_job
 drain_job_group
 [ "$command_name" = gate ] \
-  && grep -E 'changed lines|CHANGE SET|GATE:|CHECK FAILED' "$gate_log" | tail -5
+  && {
+    grep -E 'changed lines|CHANGE SET|GATE:|CHECK FAILED' "$gate_log" | tail -5
+    # A TIMEOUT-HEAVY ruling is printed on stdout and again in the failure block, so it is deduped.
+    grep -E '^TIMEOUT-HEAVY ' "$gate_log" | awk '!seen[$0]++'
+  }
 printf '%s %s %s %s %s\n' "$command_name" "$label" "$job_code" "$started_at" "$(iso_stamp)" \
   >> "$QUEUE_DIRECTORY/done.log"
 printf 'DONE %s exit %s at %s\n' "$label" "$job_code" "$(clock_time)"

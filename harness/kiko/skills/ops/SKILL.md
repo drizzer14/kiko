@@ -40,11 +40,17 @@ Rules:
   as detected, and `stryker.conf.json` `"incremental": true` keeps it in
   `reports/stryker-incremental.json`. A pause can therefore credit up to
   one in-flight mutant per worker per pause and turn a FAIL into a PASS.
+  A paused run can also trip the TIMEOUT-HEAVY rule (`TIMEOUT_HEAVY_SHARE` and
+  `TIMEOUT_HEAVY_MINIMUM` in `scripts/checks/mutation-score.js`; clearing rules in
+  `docs/harness/checks.md` "Clearing a TIMEOUT-HEAVY file").
   Before trusting a paused run, recompute the score with the Timeout
   mutants counted as survived, or re-run without the incremental report.
   When the score is near the floor, let
   the run finish or re-run it instead of pausing. Use a pause for battery
   mode or a simulator session only when the score has headroom.
+- A TIMEOUT-HEAVY failure is cleared by the orchestrator (a plain-jest proof per mutant, or an
+  equivalent note in the BATCH READY), never by ops. Ops reports the failure block as is, never
+  re-runs to clear it, and never raises the timeout.
 - The coordinator who runs `make deep` logs the result per harness-workflow's "Run log"
   (`--gate deep --verdict pass|fail|timeout` on the run id the BATCH READY names).
 - Run check:deep / check:mutation only through the wrapper
@@ -260,6 +266,10 @@ timeouts at high load are environment, not code: re-run at low load,
 never raise a timeout. See memory `check-security-timeout-under-load`.
 
 One heavy job runs at a time, queued by `scripts/job-queue.sh` (read its header for the full contract). Run `scripts/job-queue.sh verify|check-all|security <worktree> <label>` or `scripts/job-queue.sh gate <worktree> <label> <base> <head> [--long]` with run_in_background and await only its exit code; its QUEUED/WAITING/START/DONE lines are its normal stdout. State lives in `${KIKO_QUEUE_DIR:-$HOME/.claude/kiko-queue}`. Order: class 1 (verify, check-all, security) first, then gates by `changed lines:` (smallest first), then `--long` gates (user ruling 2026-10-13: a `--long` gate starts only on AC power, after every other ticket). `scripts/job-queue.sh hold <reason>` stops every start until `scripts/job-queue.sh release`; `scripts/job-queue.sh status` shows the hold, the power state, the running job, and the tickets. On battery NO job of any class starts (orchestrator default D1, accepted by the user 2026-10-13); an unreadable power state holds too. A gate refuses a tip whose `mutation.sh` has no changed-line `--list` ("merge main first", exit 2) and a moved HEAD (exit 3); the queue never checks out files (the old H6 overlay is gone). Keep `wait-load.sh` for the load wait only. Signalling only the top pid of a job chain (make -> npm -> bash -> Stryker) leaves the leaf running; the queue owns the job's process group. A queued check:all or verify runs on the worktree as it is when the job STARTS; never queue one while a developer still edits that tree, or keep that tree untouched from the queue time until the job starts.
+
+A gate forwards the `--list` over-count `warning:` line once before QUEUED, and after its DONE
+tail prints each `TIMEOUT-HEAVY` line of the gate log once (read `scripts/job-queue.sh`), so the
+waiter's output shows both.
 
 The ONE allowed group kill (user ruling 2026-10-13): `scripts/job-queue.sh` may send TERM to the process group it created for its own job (`set -m`, then the group-TERM form its header shows), only while `pgrep -g` finds a member, never any other group; the lock stays live while any process of that group lives. You still never run a group or pattern kill yourself (kill-guard denies it).
 

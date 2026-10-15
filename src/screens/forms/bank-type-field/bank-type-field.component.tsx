@@ -85,7 +85,7 @@ const BankTypeField: FC<BankTypeFieldProps> = ({
         testID={testID}
       />
 
-      {/* Guideline 2.3.1(a) "not a bank" disclaimer, and the third-party-trademark
+      {/* Guideline 3.2.1(viii) "not a bank" disclaimer, and the 5.2.1 third-party-trademark
           clause (kiko-compliance) the broker field carries under its trigger:
           every bank is named in plain text, so the field says Kiko is not a
           bank and not affiliated with any of them, whether or not the sheet

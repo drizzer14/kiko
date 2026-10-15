@@ -63,6 +63,25 @@ describe('scripts/checks/mutation.sh change-set gate', () => {
     expect(result.stderr).toContain("CHANGE SET's own mutation score failed");
   });
 
+  it('exits 2 on a TIMEOUT-HEAVY file alone and names the way to clear it', () => {
+    const { temporaryDirectory } = freshProject();
+    const bin = writeStrykerStub(
+      temporaryDirectory,
+      stubWritingReport(reportOf(['Killed', 'Killed', 'Timeout', 'Timeout', 'Timeout'])),
+    );
+
+    const result = runWithStub(bin, temporaryDirectory, join(temporaryDirectory, 'calls'));
+
+    expect(result.code).toBe(2);
+    expect(result.stdout).toContain('CHANGE SET TOTAL: 100.00');
+    expect(result.stderr).toContain(
+      'TIMEOUT-HEAVY src/changed.ts: timeout 3 of 5 detected (60.0 %), killed 2, score without timeouts 40.00 < 60',
+    );
+    expect(result.stderr).toContain('prove each timed-out mutant in plain jest');
+    expect(result.stderr).toContain('BATCH READY');
+    expect(result.stderr).toContain('never raise the timeout');
+  });
+
   it('passes when the change set clears both thresholds', () => {
     const { temporaryDirectory } = freshProject();
     const bin = writeStrykerStub(

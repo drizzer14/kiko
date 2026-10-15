@@ -7,12 +7,12 @@
 //
 // The score covers ONLY the `--mutate` entries `scripts/checks/mutation.sh` passed for THIS
 // run (given here as argv, verbatim): `path:start-end` for the changed lines of a file (1-based,
-// end inclusive, whole lines) and a plain `path` for a whole file. A file's row grades only the
-// mutants Stryker would have created for its entries: a mutant whose whole location lies inside
-// one of its ranges (Stryker's own rule). That matters because Stryker's incremental mode keeps an
-// old mutant outside the ranges in the report with its old status; grading it would score code
-// this change set did not touch. A plain path grades every mutant of the file. The formula is the
-// one Stryker's own "All files" row uses (mutation-testing-metrics' countFileMetrics):
+// end inclusive, whole lines). A file's row grades only the mutants Stryker would have created for
+// its entries: a mutant whose whole location lies inside one of its ranges (Stryker's own rule).
+// That matters because Stryker's incremental mode keeps an old mutant outside the ranges in the
+// report with its old status; grading it would score code this change set did not touch. The
+// formula is the one Stryker's own "All files" row uses (mutation-testing-metrics'
+// countFileMetrics):
 //
 //   score = (killed + timeout) / (killed + timeout + survived + noCoverage) * 100
 //
@@ -22,20 +22,31 @@
 //
 // Gate: FAIL when the report's own recorded scope (config.mutate) is not
 // exactly the set of entries given here, when the change-set score is below
-// CHANGE_SET_THRESHOLD, or when any single graded file is below PER_FILE_FLOOR.
+// CHANGE_SET_THRESHOLD, or when any single graded file is below PER_FILE_FLOOR, or when any
+// graded file is TIMEOUT-HEAVY.
 // The scope check proves the report belongs to this run, so a file with no
 // entry in report.files is a file that has no mutants (Stryker writes only
 // files that have some), which is nothing to grade, not a failure.
 //
-// Exit 2 (usage) for an entry with a range that is empty or starts below line 1, for a file given
-// both as a plain path and as a range (Stryker reads that as "do not mutate"), and for a ranged
-// file with a report mutant that has no location (whether it is in range is unknowable, and
-// guessing could pass a change set on mutants that are not its own).
+// TIMEOUT-HEAVY: a graded file whose Timeout mutants are more than TIMEOUT_HEAVY_SHARE percent
+// of its detected ones (killed + timeout) and at least TIMEOUT_HEAVY_MINIMUM in number. The score
+// formula still counts a Timeout as detected, but a widely imported file's mutants time out on
+// jest's related-test load, not on behavior, so a file made mostly of them proves nothing about
+// its tests. It fails the gate whatever the total and the floor say, and its line names the
+// score without the timeouts. A re-run of the same gate fails it again: it is cleared outside the
+// scorer (see docs/harness/checks.md).
+//
+// Exit 2 (usage) for an entry that is not `path:start-end` (a plain path would grade a whole file,
+// which no run mutates), for a range that is empty or starts below line 1, and for a file with a
+// report mutant that has no location (whether it is in range is unknowable, and guessing could
+// pass a change set on mutants that are not its own).
 
 const fs = require('node:fs');
 
 const CHANGE_SET_THRESHOLD = 75;
 const PER_FILE_FLOOR = 60;
+const TIMEOUT_HEAVY_SHARE = 50;
+const TIMEOUT_HEAVY_MINIMUM = 3;
 
 // Declaration-only files: Stryker instruments them, but the mutants there flip
 // declaration literals (column names, types, defaults) that ARE the file's
@@ -78,34 +89,27 @@ const usageFailure = (message) => {
 
 const ENTRY = /^(.+):(\d+)-(\d+)$/;
 
-// Groups the `--mutate` entries by path, in order of first appearance: a path with a range entry
-// holds its ranges, a plain path is a whole file.
+// Groups the `--mutate` entries by path, in order of first appearance, each path holding its
+// ranges.
 const groupEntries = (entries) => {
   const groups = new Map();
 
   for (const entry of entries) {
     const match = ENTRY.exec(entry);
-    const path = match === null ? entry : match[1];
-    const group = groups.get(path) ?? { whole: false, ranges: [] };
-    groups.set(path, group);
 
     if (match === null) {
-      group.whole = true;
-    } else {
-      const [start, end] = [Number(match[2]), Number(match[3])];
-
-      if (start < 1 || start > end) {
-        usageFailure(`malformed range entry (want 1 <= start <= end): ${entry}`);
-      }
-
-      group.ranges.push([start, end]);
+      usageFailure(`every entry is path:start-end, got: ${entry}`);
     }
 
-    if (group.whole && group.ranges.length > 0) {
-      usageFailure(
-        `${path} is given as a plain path and as a range; Stryker reads that as "do not mutate"`,
-      );
+    const [start, end] = [Number(match[2]), Number(match[3])];
+
+    if (start < 1 || start > end) {
+      usageFailure(`malformed range entry (want 1 <= start <= end): ${entry}`);
     }
+
+    const group = groups.get(match[1]) ?? { ranges: [] };
+    groups.set(match[1], group);
+    group.ranges.push([start, end]);
   }
 
   return groups;
@@ -115,10 +119,6 @@ const groupEntries = (entries) => {
 // ranges are whole lines, so the lines decide.
 const gradedMutants = (path, group, fileResult) => {
   const mutants = fileResult.mutants ?? [];
-
-  if (group.whole) {
-    return mutants;
-  }
 
   return mutants.filter((mutant) => {
     const start = mutant.location?.start?.line;
@@ -190,6 +190,22 @@ const formatCounts = (row) =>
     ? `killed=${row.killed} timeout=${row.timeout} survived=${row.survived} noCoverage=${row.noCoverage}`
     : '';
 
+// The share compares integers (timeout * 100 > share * detected), so a boundary file such as
+// killed 3, timeout 3 is exactly 50 percent and never rounds either way.
+const isTimeoutHeavy = (row) =>
+  row.kind === 'graded' &&
+  row.timeout >= TIMEOUT_HEAVY_MINIMUM &&
+  row.timeout * 100 > TIMEOUT_HEAVY_SHARE * (row.killed + row.timeout);
+
+const formatTimeoutHeavy = (row) => {
+  const detected = row.killed + row.timeout;
+  const graded = detected + row.survived + row.noCoverage;
+  const share = ((row.timeout / detected) * 100).toFixed(1);
+  const withoutTimeouts = ((row.killed / graded) * 100).toFixed(2);
+
+  return `TIMEOUT-HEAVY ${row.path}: timeout ${row.timeout} of ${detected} detected (${share} %), killed ${row.killed}, score without timeouts ${withoutTimeouts} < ${PER_FILE_FLOOR}`;
+};
+
 // Renders the per-file table, the change-set total, and the thresholds, on
 // BOTH a pass and a fail, so a human sees the full picture either way.
 const renderReport = (rows, total) => {
@@ -200,9 +216,14 @@ const renderReport = (rows, total) => {
     total.score === null
       ? 'CHANGE SET TOTAL: n/a (no graded mutants)'
       : `CHANGE SET TOTAL: ${total.score.toFixed(2)} killed=${total.killed} timeout=${total.timeout} survived=${total.survived} noCoverage=${total.noCoverage}`;
-  const gateLine = `GATE: change set >= ${CHANGE_SET_THRESHOLD}, each file >= ${PER_FILE_FLOOR}`;
+  const gateLine = `GATE: change set >= ${CHANGE_SET_THRESHOLD}, each file >= ${PER_FILE_FLOOR}, a file fails TIMEOUT-HEAVY when timeout > ${TIMEOUT_HEAVY_SHARE}% of detected and >= ${TIMEOUT_HEAVY_MINIMUM}`;
 
-  return [...lines, totalLine, gateLine].join('\n');
+  return [
+    ...lines,
+    totalLine,
+    gateLine,
+    ...rows.filter(isTimeoutHeavy).map(formatTimeoutHeavy),
+  ].join('\n');
 };
 
 // The scope Stryker recorded for its own run, compared with the entries given here as sets of
@@ -240,7 +261,12 @@ const scoreChangeSet = (report, entries) => {
   const belowFloor = rows.some((row) => row.kind === 'graded' && row.score < PER_FILE_FLOOR);
   const belowThreshold = total.score !== null && total.score < CHANGE_SET_THRESHOLD;
 
-  return { passed: !belowFloor && !belowThreshold, rendered: renderReport(rows, total) };
+  const timeoutHeavy = rows.some(isTimeoutHeavy);
+
+  return {
+    passed: !belowFloor && !belowThreshold && !timeoutHeavy,
+    rendered: renderReport(rows, total),
+  };
 };
 
 const [reportPath, ...mutateEntries] = process.argv.slice(2);

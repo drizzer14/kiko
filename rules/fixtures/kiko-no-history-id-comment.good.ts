@@ -174,3 +174,9 @@ export const priorityIdNearMiss = true;
 // spec P-id, so they stay silent in a line comment and in a block comment.
 /* A Display P3 swatch, signed with a P-256 key (or P-384, or P-521). */
 export const standardNameNearMiss = true;
+
+// 27. A git flag is not an id: the hyphen in front of the letter makes -U0, -U12 and -M3 an option,
+// in a line comment and in a block comment.
+// A git diff -U0 keeps the hunks tight, -U12 widens them, and git log -M3 follows renames.
+/* A git diff -U0 keeps the hunks tight, and -U12 widens them. */
+export const gitFlagNearMiss = true;

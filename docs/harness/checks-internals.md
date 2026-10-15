@@ -74,8 +74,9 @@ The scorer (`mutation-score.js`) takes the exact `--mutate` entries as arguments
 mutants fully inside a range. It filters by range because Stryker's incremental mode carries old
 out-of-range mutants, with their old statuses, into `mutation.json` (core `incremental-differ.js`
 lines 128-142); without the filter a stale Survived would lower this run's score. The scope check
-compares the SET of entries with `config.mutate`, and the scorer exits 2 when one file is given
-both as a plain path and as a range (Stryker reads that as "do not mutate"). A kept path with
+compares the SET of entries with `config.mutate`, and the scorer exits 2 on any plain
+(non-range) entry (one file given both as a plain path and as a range is one instance;
+Stryker reads that as "do not mutate"). A kept path with
 `[ ( * ? {` is refused after the lock in a run, with no lock in `--list`, always before Stryker.
 The diff uses `--find-renames --inter-hunk-context=0 --text --no-textconv` and runs with `GIT_DIFF_OPTS=` (a context width set there outranks `-U0`), so a user's diff attributes, textconv driver, or environment cannot change the hunks. The temp file for `mutation-ranges.js` stderr is removed on EXIT, INT (exit 130), and TERM (exit 143), together with the lock.
 

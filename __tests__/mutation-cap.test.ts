@@ -4,6 +4,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 
 import {
+  runGit,
   writeFile,
   commitAll,
   mutatedFiles,
@@ -75,6 +76,7 @@ describe('scripts/checks/mutation.sh file cap', () => {
   it('counts only the files left after the test, fixture, barrel, and styles excludes', () => {
     const { root, script } = buildRepository(sources('changed', 30));
     writeFile(root, 'src/changed-0.test.ts', 'test("x", () => {});\n');
+    writeFile(root, 'src/changed-0.test.tsx', 'test("x", () => {});\n');
     writeFile(root, 'rules/fixtures/bad.ts', 'export const bad = 1;\n');
     writeFile(root, 'src/feature/index.ts', "export * from './feature';\n");
     writeFile(root, 'src/feature/feature.styles.ts', 'export const styles = {};\n');
@@ -400,5 +402,98 @@ describe('scripts/checks/mutation.sh file cap', () => {
     expect(narrow.code).toBe(0);
     expect(wide.code).toBe(0);
     expect(mutatedFiles(wide.stubArguments)).toHaveLength(3);
+  });
+});
+
+const numberedLines = (count: number): string =>
+  `${Array.from({ length: count }, (_, index) => `export const value${index} = ${index};`).join('\n')}\n`;
+
+const listWithBase = (script: string): ArgumentStubRun =>
+  runWithArgumentStub(script, { KIKO_MUTATION_BASE: 'main' }, ['--list']);
+
+// `feature` adds src/own.ts (`ownLines` lines) itself, then merges a `track` branch that adds
+// src/merged.ts (`mergedLines` lines): the list against `main` counts both files.
+const mergedRepository = (ownLines: number, mergedLines: number): string => {
+  const { root, script } = buildRepository({ 'src/own.ts': numberedLines(ownLines) });
+  runGit(root, 'checkout', '-q', '-b', 'track', 'main');
+  writeFile(root, 'src/merged.ts', numberedLines(mergedLines));
+  commitAll(root, 'merged track');
+  runGit(root, 'checkout', '-q', 'feature');
+  runGit(root, 'merge', '--no-ff', '-q', '-m', 'merge track', 'track');
+
+  return script;
+};
+
+const overCountWarning = (changedLines: number, ownLines: number): string =>
+  `warning: ${changedLines} changed lines, but this branch added only ${ownLines} of them itself (first-parent commits); a merged track is counted: set KIKO_MUTATION_BASE to the merged tip (harness-workflow "Mutation base after a track merged next")`;
+
+describe('scripts/checks/mutation.sh --list over-count warning', () => {
+  it('prints no warning for a branch with no merge, however many lines it changes', () => {
+    const { script } = buildRepository({ 'src/own.ts': numberedLines(300) });
+
+    const result = listWithBase(script);
+
+    expect(result.code).toBe(0);
+    expect(result.stdout).toContain('changed lines: 300\n');
+    expect(result.stdout).not.toContain('warning:');
+  });
+
+  it('warns with both numbers when a merged track adds 200 lines to the list', () => {
+    const result = listWithBase(mergedRepository(20, 200));
+    const lines = result.stdout.split('\n');
+
+    expect(result.code).toBe(0);
+    expect(lines).toContain(overCountWarning(220, 20));
+    // The warning follows the count line and never reads as the count line itself.
+    expect(lines.indexOf(overCountWarning(220, 20))).toBe(lines.indexOf('changed lines: 220') + 1);
+    expect(lines.filter((line) => /^changed lines: [0-9]+$/.test(line))).toEqual([
+      'changed lines: 220',
+    ]);
+    expect(result.stdout).toContain('mutable files: 2 (cap 30)');
+  });
+
+  it('prints no warning for a 10-line conflict resolution of both branches', () => {
+    const editedLines = (name: string): string =>
+      twelveLines(
+        Object.fromEntries(
+          Array.from({ length: 10 }, (_, index) => [
+            index + 1,
+            `export const ${name}${index} = 0;`,
+          ]),
+        ),
+      );
+    const { root, script } = buildMutationRepository(
+      mkdtempSync(join(tmpdir(), 'kiko-mutation-cap-')),
+      { 'src/shared.ts': editedLines('own') },
+      { 'src/shared.ts': twelveLines() },
+    );
+    runGit(root, 'checkout', '-q', '-b', 'track', 'main');
+    writeFile(root, 'src/shared.ts', editedLines('theirs'));
+    commitAll(root, 'other edit');
+    runGit(root, 'checkout', '-q', 'feature');
+    execFileSync('bash', ['-c', 'git merge --no-ff -q -m merge track || true'], {
+      cwd: root,
+      stdio: 'pipe',
+    });
+    writeFile(root, 'src/shared.ts', editedLines('resolved'));
+    commitAll(root, 'resolve the conflict');
+
+    const result = listWithBase(script);
+
+    expect(result.stdout).toContain('changed lines: 10\n');
+    expect(result.stdout).not.toContain('warning:');
+  });
+
+  it.each([
+    // own 20: the own + 50 arm decides (70).
+    [20, 50, false],
+    [20, 51, true],
+    // own 200: the 1.5 x own arm decides (300).
+    [200, 100, false],
+    [200, 101, true],
+  ])('with %i own lines and %i merged lines, the warning is %s', (ownLines, mergedLines, warns) => {
+    const result = listWithBase(mergedRepository(ownLines, mergedLines));
+
+    expect(result.stdout.includes('warning:')).toBe(warns);
   });
 });
