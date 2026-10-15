@@ -15,7 +15,7 @@ JSON fields are touched only behind `CASE WHEN json_valid(...)`; the exchange la
 `node:sqlite` (`src/test-support/real-sqlite.ts`), fnts `Either`/`maybe`, ts-pattern, i18next.
 
 **Spec:** `docs/superpowers/specs/2026-10-15-crypto-exchanges-design.md` (approved at 73336657; C-NR8 at
-ee08b145). Rulings: `.superpowers/sdd/binance-multicoin/rulings.md` (user rulings, C-NR*, plan-prep Q1-Q12, NR8,
+ee08b145; plan alignment at 764d1512). Rulings: `.superpowers/sdd/binance-multicoin/rulings.md` (user rulings, C-NR*, plan-prep Q1-Q12, NR8,
 NR9). Prep facts: `.superpowers/sdd/binance-multicoin/prep-sets-1-6.md`.
 
 **Base:** branch `binance-backfill-fix` at the plan commit. Every code fact below names a symbol or anchor text.
@@ -121,7 +121,7 @@ pass in, like `DepthConfig`. Keys and requests stay byte-identical, pinned by se
    (`insertDeletedImportKeys`), so the rescale must cover them or a re-import duplicates a deleted row. Owner: set 1
    step 7/11, test "rescales a deleted import key under a USDT holding".
 5. A `sync_state` row created by 0060 with null stamps: any reader that treats row existence as "synced"
-   (`lastSyncAt`-free checks) would show a never-synced account as synced. Owner: set 4 step 2/11, a grep of
+   (`lastSyncAt`-free checks) would show a never-synced account as synced. Owner: set 4 step 2/10, a grep of
    `syncStateRepo` readers plus a test "an account whose state row only carries walk state reads as never synced".
 
 ## Release-note items (input to set 15's What's New and Notes for Review)
@@ -131,6 +131,9 @@ pass in, like `DepthConfig`. Keys and requests stay byte-identical, pinned by se
   `curatedCoins` at set 15, not this line).
 - Two new import errors: a backup with a USDT amount too large to store exactly (set 1), and a backup made by a
   newer Kiko with a currency this version does not know (set 2).
+- Screenshots: every shipped App Store screenshot that shows a crypto amount or the demo crypto account is shot
+  again from the regenerated demo files (`docs/harness/screenshots-check.md`), since sets 1 and 2 change the crypto
+  amount text and the demo coins.
 
 ---
 
@@ -183,9 +186,11 @@ Files: `src/currency/format/format.ts`, `src/currency/format/format.test.ts`,
       123450)` -> `'1,234.50 ₴'`; re-grep the UAH suffix placement), "shows the largest safe crypto amount with every
       digit" (`Money.of('BTC', 9007199254740991)` -> `'₿90,071,992.54740991'`), "uses the locale's decimal
       separator and grouping for crypto" (`formatMoney(Money.of('BTC', 123_456_700_000), 'uk-UA')` contains
-      `'1 234,567'`; the existing uk-UA fiat case stays).
-- [ ] "was:" pins changed in this step: `format.test.ts` `toContain('1.00000000')` -> `toContain('1.00')` (and not
-      `'1.00000000'`); `format.test.ts` `'₿0.50000000'` -> `'₿0.50'`; `category-form.screen.test.tsx` test "shows an
+      `'1 234,567'`; the existing uk-UA fiat case stays), "puts the sign outside the symbol of a crypto amount"
+      (`Money.of('BTC', -5000000)` -> `'-₿0.05'`).
+- [ ] "was:" pins changed in this step: `format.test.ts` test "formats BTC with eight decimals" becomes "formats
+      one BTC with two decimals", `toContain('1.00000000')` -> `toContain('1.00')` (and not `'1.00000000'`);
+      `format.test.ts` `'₿0.50000000'` -> `'₿0.50'`; `category-form.screen.test.tsx` test "shows an
       amount in the currency of its own scale" `'₿0.00100000'` -> `'₿0.001'`. Unchanged on purpose:
       `currency.test.ts` `applySymbolPlacement('BTC', '', '0.05000000')`, `rule-summary.test.ts` mocked
       `'0.00100000 BTC'`, `rule-draft.test.ts` `'0.00100000'` input.
@@ -229,6 +234,10 @@ Files: `drizzle/migrations/0059_usdt_scale_8.sql` (new, hand-authored, no snapsh
         `draft.returns`, each beside a rescaled object: the migration succeeds, the string stays);
       - "keeps a boolean element a boolean" (`json_each` reports `true`/`false` as `1`/`0`; after the migration the
         element reads back with `json_type` = `'true'` and `'false'`, never `'integer'`; also in a `matchers` array);
+      - "keeps the digits of a bare number element" (bare elements `0.30000000000000004`, `1.50`, `1e5` and
+        `12345678901234567890` in `lots`, `matchers` and `draft.returns`, each beside a rescaled object: the column
+        text holds each element's text unchanged; `element.value` would print them as `0.3`, `1.5`, `100000.0`,
+        `1.23456789012346e+19`);
       - "leaves malformed JSON byte-unchanged and still succeeds" (U13: metadata `'{bad'`, matchers `'not json'`);
       - "leaves a string or real field and rescales its integer siblings" (U14: `"5000"`, `12.5`, integer
         `purchasePriceMinorUnits`; template `amountMinorUnits` null);
@@ -238,6 +247,9 @@ Files: `drizzle/migrations/0059_usdt_scale_8.sql` (new, hand-authored, no snapsh
 - [ ] Code: SQL shape (bound guard comes in step 4/11; keys in step 3/11). Element predicate, used verbatim in the
       rebuild, in `EXISTS` and in step 4's count: `CASE WHEN element.type = 'object' THEN json_type(element.value,
       '<field>') END = 'integer'`.
+      A non-target element is copied through its own JSON text, `json(<column> -> element.fullkey)` (`fullkey` is the
+      root-relative path, `$.lots[2]`, `$[0]`, `$.returns[1]`), so every element keeps its text: a boolean stays a
+      boolean, a bare real keeps its digits (probed on `node:sqlite` 3.50.4).
       ```sql
       UPDATE holdings SET balance_minor_units = balance_minor_units * 1000000,
         synced_balance_minor_units = synced_balance_minor_units * 1000000 WHERE currency = 'USDT';
@@ -258,11 +270,8 @@ Files: `drizzle/migrations/0059_usdt_scale_8.sql` (new, hand-authored, no snapsh
                   THEN json_type(element.value, '$.costMinorUnits') END = 'integer'
                 THEN json_set(element.value, '$.costMinorUnits',
                   json_extract(element.value, '$.costMinorUnits') * 1000000)
-              WHEN element.type IN ('object', 'array') THEN json(element.value)
-              WHEN element.type = 'true' THEN json('true')
-              WHEN element.type = 'false' THEN json('false')
-              WHEN element.type = 'null' THEN json('null')
-              ELSE element.value END ORDER BY element.key)
+              ELSE json(CASE WHEN json_valid(metadata) THEN metadata -> element.fullkey END)
+              END ORDER BY element.key)
           FROM json_each(metadata, '$.lots') AS element))
         WHERE currency = 'USDT'
           AND CASE WHEN json_valid(metadata) THEN json_type(metadata, '$.lots') END = 'array'
@@ -316,7 +325,10 @@ Files: `0059_usdt_scale_8.sql`, `0059-usdt-scale-8.test.ts`,
       seed); "a UAH value over the bound migrates" (a UAH property holding at 10_000_000_000 (100,000,000.00 UAH), a
       UAH rule matcher and a UAH template amount at 9_007_199_255: succeeds, unchanged); "an over-bound string or
       real USDT field migrates" (`"9007199255"` and `9007199255.5` in USDT metadata, matchers, lots: succeeds, those
-      values unchanged); "skips malformed JSON in the bound count" (U13 seed + an in-bound value: succeeds).
+      values unchanged); "skips malformed JSON in the bound count" (U13 seed + an in-bound value: succeeds); "aborts on
+      a value below the negative bound" (-9007199255 as a row amount and a `lots` element: the guard message);
+      "aborts on the smallest 64-bit integer without an overflow" (`-9223372036854775808` as a key token and as a
+      `lots` element: the guard message, never `integer overflow`).
       Gate test: "shows the migration error with the guard message" (`runMigrations` rejects with that message;
       `migrations-gate-error` shows `migrations.error` with it; children not rendered).
 - [ ] Red; quote the count.
@@ -325,8 +337,21 @@ Files: `0059_usdt_scale_8.sql`, `0059-usdt-scale-8.test.ts`,
       usdt_rescale_bound (over_bound) SELECT (<count>) + (<count>) + ...`, one count per rescale statement of steps 2
       and 3, each with EXACTLY that statement's predicate (`currency = 'USDT'`; the row's holding's currency; the
       CASE-guarded `json_type ... = 'integer'`; the element predicate of step 2; the matcher's own `$.currency`; the
-      draft's own `$.currency` / `$.exchange.destinationCurrency`; the key's USDT first token and integer-token rule)
-      plus `abs(value) > 9007199254`; last statement `DROP TABLE usdt_rescale_bound`.
+      draft's own `$.currency` / `$.exchange.destinationCurrency`; the key's USDT first token and integer-token rule),
+      the value term inside the CASE and two-sided, never `abs()` (`abs(-9223372036854775808)` raises `integer
+      overflow`): `CASE WHEN <predicate> THEN <value> < -9007199254 OR <value> > 9007199254 END`. For example the
+      `lots` count, probed on `node:sqlite`:
+      ```sql
+      (SELECT count(*) FROM holdings, json_each(CASE WHEN json_valid(holdings.metadata) THEN holdings.metadata END,
+          '$.lots') AS element
+        WHERE holdings.currency = 'USDT'
+          AND CASE WHEN CASE WHEN element.type = 'object' THEN json_type(element.value, '$.costMinorUnits') END
+              = 'integer'
+            THEN json_extract(element.value, '$.costMinorUnits') < -9007199254
+              OR json_extract(element.value, '$.costMinorUnits') > 9007199254 END)
+      ```
+      A key token's term: `CASE WHEN CAST(token AS INTEGER) || '' = token THEN CAST(token AS INTEGER) < -9007199254
+      OR CAST(token AS INTEGER) > 9007199254 END`. Last statement `DROP TABLE usdt_rescale_bound`.
 - [ ] Check: test files green. Commit `feat(db): refuse the USDT rescale over the safe-integer bound`.
 
 ### step 5/11: `currencyScale.USDT` = 8 and the USDT pin sweep (DP1-DP3, U9)
@@ -390,12 +415,14 @@ Files: `src/data-transfer/snapshot/with-usdt-rescaled.ts` (new), `with-usdt-resc
       its first token's holding" (U12b); "leaves a key whose amount token is not a plain integer" (`007`, `-0`,
       `99999999999999999999`, `12.5`); "leaves malformed matchers text and a non-object metadata as stored" (U13);
       "leaves a string or real field" (U14); "a UAH value over the bound restores"; "an over-bound string or real
-      USDT field restores"; "throws amount-too-large over the bound and names nothing restored" (message starts
+      USDT field restores"; "throws for an integer field far outside the safe range" (`-9223372036854775808` in a
+      `lots` element, as 0059 aborts); "keeps the parsed value of a bare number element" (step 2's bare elements);
+      "throws amount-too-large over the bound and names nothing restored" (message starts
       `data-transfer/amount-too-large`; pin the full message literal). In the migration test: "the bound literal
       equals `USDT_RESCALE_BOUND_MINOR_UNITS`" (reads the `.sql` text, not `src`).
 - [ ] Two-path test, written in this step and shown red before the code (follow
       `restore-import-time-rezone.two-path.test.ts`): seed one scale-2 database through 0058 with U1-U5c rows, a
-      legacy pre-`␟` dedup key, a two-holding USDT seed and the U13/U14 rows; path 1 applies 0059 and then the launch
+      legacy pre-`␟` dedup key, a two-holding USDT seed, the U13/U14 rows and step 2's bare number elements; path 1 applies 0059 and then the launch
       steps the gate runs (`upgradeStoredDedupKeys`, `rezoneImportTimes`); path 2 exports the seed as a version 3
       snapshot, restores it on a fresh migrated database, then runs the same launch steps. Assert every table equal
       (JSON columns compared parsed for rewritten rows, bytes for untouched rows): "a version 3 backup restores
@@ -405,7 +432,14 @@ Files: `src/data-transfer/snapshot/with-usdt-rescaled.ts` (new), `with-usdt-resc
 - [ ] Code: rescale only files with `version <= LAST_SCALE_2_USDT_VERSION` (named constant 3, never `<
       EXPORT_VERSION`). Per field: the predicate first (column parsed: metadata/draft a plain object; matchers
       `JSON.parse` in a try, rewritten with `JSON.stringify` only when a field changed; the field's own currency;
-      `Number.isSafeInteger(value)`), then the bound (`Math.abs(value) > USDT_RESCALE_BOUND_MINOR_UNITS` throws). A
+      a JSON integer as SQLite's `json_type` reads app-written JSON: `Number.isInteger(value) && Math.abs(value) <
+      1e21`, the range in which `JSON.stringify` writes a number with no fraction and no exponent), then the bound,
+      SQL's two-sided comparison (`value < -USDT_RESCALE_BOUND_MINOR_UNITS || value >
+      USDT_RESCALE_BOUND_MINOR_UNITS` throws). Accepted limit: a number text the app never writes (`12.0`, `1e5`) is
+      a real to SQLite and an integer here; the two paths agree on every value the app writes. A non-target array
+      element and every untouched field keep their parsed value; a column is re-serialized only when one of its
+      fields changed, so a number's text form (`1.50` against `1.5`) can differ only inside a rewritten column,
+      which the two-path test compares parsed. A
       key's amount token qualifies exactly when SQL's rule does: `/^-?[0-9]+$/`, `String(BigInt(token)) === token`,
       and `BigInt(token)` inside the signed 64-bit range. Key holding lookup over the holdings the restore inserts.
       In `restoreDataSnapshot`, call it LAST among the mirrors (after `withImportTimesRezoned`), on
@@ -474,6 +508,8 @@ Set 1 gate deltas: migration set -> kiko:reviewer done; device confirmation reco
 Spec ids: R1-R5, registry invariants, parser exact-parity property, NR9. Expected mutable files: about 12 (spec) /
 8-10 (prep). TIMEOUT-HEAVY risk: `currency.ts`, `decimal.ts`.
 
+Known red between commits: none (every pin that reads the grown `cryptoCurrencyOptions` moves in step 3).
+
 **Interfaces produced:**
 - `decimalToMinorUnits(text: string, scale: number, rounding: 'exact' | 'half-away-from-zero'):
   Either<DecimalAmountError, number>` in `src/currency/decimal/decimal.ts`, `DecimalAmountError = 'amount-malformed' |
@@ -482,7 +518,8 @@ Spec ids: R1-R5, registry invariants, parser exact-parity property, NR9. Expecte
   maxUnits: number }): number`, `MIN_COIN_SCALE = 2`, `curatedCoins: Readonly<Record<CuratedCoinCode, CoinEntry>>`
   in `src/currency/coins/coins.ts` (barrel `src/currency/coins/index.ts`). `coins.ts` imports nothing from
   `currency.ts`; `currency.ts` derives from it (no circular derivation).
-- `FROZEN_1_0_CRYPTO_CODES = ['BTC', 'ETH', 'USDT'] as const` in `restore-snapshot.ts`.
+- `FROZEN_1_0_CRYPTO_CODES = ['BTC', 'ETH', 'USDT'] as const` in `restore-snapshot.ts` (step 3; its restore use
+  in step 4).
 - Restore error `Error('data-transfer/unknown-currency: ...')`; key `settings.dataImport.unknownCurrencyError`.
 
 ### step 1/10: exact decimal-to-minor-units parser (Q5)
@@ -527,15 +564,34 @@ Files: `src/currency/coins/coins.ts`, `index.ts`, `coins.test.ts` (new).
 ### step 3/10: crypto lists and coin names derive from the registry
 
 Files: `currency.ts`, `src/rates/coingecko-ids/coingecko-ids.ts`, `currency.test.ts`, `coingecko-ids.test.ts`,
-`en.ts`, `uk.ts`, `currency-names.i18n.test.ts`. One commit: the new codes in `currencyOptions` need their
-`currencyNames` entries in the same commit, or the typecheck fails (`en.currencyNames[code]` over every `Currency`).
+`en.ts`, `uk.ts`, `currency-names.i18n.test.ts`, `restore-snapshot.ts` (the constant only),
+`drizzle/migrations/0044-move-crypto-cash-holdings.test.ts`, `src/rates/coingecko/coingecko.test.ts`,
+`src/rates/coingecko-history/coingecko-history.test.ts`, `holding-form.screen.test.tsx`. One commit: the new codes
+in `currencyOptions` need their `currencyNames` entries in the same commit, or the typecheck fails
+(`en.currencyNames[code]` over every `Currency`). Every pin that reads the grown `cryptoCurrencyOptions` moves in
+this step, so no suite is red between commits.
 - [ ] Tests first: "lists every curated code after the fiat block"; "derives scale, symbol and CoinGecko id from
       the registry"; "names every curated coin in en and uk" (`it.each` over the registry).
 - [ ] "was:" pins: `currency.test.ts` `currencyOptions.slice(-3)` `['BTC','ETH','USDT']` -> the curated block in
       registry order; test "treats BTC, ETH, and USDT as crypto and everything else as fiat" -> every curated code is
       crypto; `[...cryptoCurrencyOptions]` -> the curated list; `coingecko-ids.ts` record type -> `Record<CryptoCurrency,
       string>` from the registry. The USDT-only name asserts stay.
-- [ ] Code: `currencyOptions` crypto block written literally; `CryptoCurrency = CuratedCoinCode`; `cryptoCurrencies`,
+- [ ] "was:" pins that read the default `currencies = cryptoCurrencyOptions` (the default parameter itself stays;
+      each test keeps its intent by passing `['BTC', 'ETH', 'USDT']` explicitly): `coingecko.test.ts` "requests the
+      simple-price endpoint for every crypto id" (URL `ids=bitcoin,ethereum,tether`) and "returns one <crypto>->USD
+      entry per coin" (the 3-coin body); `coingecko-history.test.ts` "throws only when every coin request fails"
+      (the other curated coins would answer `ok` with no prices, so it would resolve). Re-grep every
+      `fetchCryptoPrices(`/`fetchCryptoHistory(` call without a `currencies` argument in `src` and pass the list
+      where the result depends on it.
+- [ ] "was:" pins of the frozen 1.0 list and the picker: `0044-move-crypto-cash-holdings.test.ts`
+      `expect(['BTC', 'ETH', 'USDT']).toEqual(cryptoCurrencyOptions)` -> `toEqual(FROZEN_1_0_CRYPTO_CODES)` (the
+      constant is added to `restore-snapshot.ts` in this step, exported, with no restore use yet);
+      `holding-form.screen.test.tsx` "lists crypto currencies first when creating a crypto holding"
+      `codes.slice(0, 4)` `['BTC','ETH','USDT','UAH']` -> `codes.slice(0, cryptoCurrencyOptions.length + 1)` equals
+      the curated codes in the field's crypto order (`currency-field.component.tsx` sorts each group by its en
+      `currencyNames` name, `localeCompare`; write the literal list) then `'UAH'`.
+- [ ] Code: `currencyOptions` spreads `...CURATED_COIN_CODES` after the fiat block (no literal duplicate);
+      `CryptoCurrency = CuratedCoinCode`; `cryptoCurrencies`,
       crypto `currencyScale`, crypto `currencySymbol`, `cryptoCoinGeckoId` derived from `curatedCoins` (USDT's
       literal 8 from set 1 now comes from the registry, same value); `currencyNames.<CODE>` per coin (proper nouns
       per kiko-translator). Check `npx tsc --noEmit`, `npx jest src/currency src/rates src/i18n`. Commit
@@ -547,9 +603,8 @@ Files: `restore-snapshot.ts`, `drizzle/migrations/0044-move-crypto-cash-holdings
 `restore-crypto-cash.two-path.test.ts`.
 - [ ] Tests first: "moves only the 1.0 crypto codes" (a `cash` USDC holding stays `cash`); in the 0044 test, "the
       restore's frozen list equals the migration's IN list" (reads the `.sql`).
-- [ ] "was:" pin: 0044 test `expect(['BTC', 'ETH', 'USDT']).toEqual(cryptoCurrencyOptions)` ->
-      `toEqual(FROZEN_1_0_CRYPTO_CODES)`. Code: `withCryptoCashHoldingsMoved` uses `FROZEN_1_0_CRYPTO_CODES` instead of
-      `!isFiat`. Commit `fix(data-transfer): keep the frozen 1.0 crypto list on restore`.
+- [ ] Code: `withCryptoCashHoldingsMoved` uses `FROZEN_1_0_CRYPTO_CODES` (step 3) instead of `!isFiat`. Commit
+      `fix(data-transfer): keep the frozen 1.0 crypto list on restore`.
 
 ### step 5/10: restore refuses an unknown currency code (NR9 a)
 
@@ -560,11 +615,13 @@ Files: `restore-snapshot.ts`, `restore-snapshot.test.ts` (or a new `restore-unkn
 - [ ] Tests first: "refuses a backup with a currency code this build does not know and writes nothing" (a
       holding in `'XYZ'`: rejects with prefix `data-transfer/unknown-currency`, every table equal to before); the same
       for a price point, a rate pair, the base currency setting, an amount matcher `currency`, a template
-      `draft.currency` and `draft.exchange.destinationCurrency` (`it.each`); "restores a matchers text that is not
+      `draft.currency` and `draft.exchange.destinationCurrency` (`it.each`); "refuses a code that is an inherited
+      object name" (a holding in `'constructor'`: the same refusal); "restores a matchers text that is not
       JSON as today" (the unknown-code check reads only parsed JSON); import screen: "shows the newer-Kiko message
       for an unknown currency".
 - [ ] Code: the check runs first in `restoreDataSnapshot`, before any mirror and before `readLiveDeviceSettings`;
-      a code is known when `code in currencyScale`; fields = every `{ enum: currencyOptions }` column of
+      a code is known when `Object.hasOwn(currencyScale, code)` (or `isCurrency`), never `code in` (an inherited
+      name such as `'constructor'` would pass); fields = every `{ enum: currencyOptions }` column of
       `src/db/schema.ts` (`holdings.currency`, rate and rate-history `base`/`quote`, `settings.base_currency`,
       `price_points.currency`; re-grep) plus the JSON currency fields above. If any committed fixture or demo file
       holds a code outside `currencyScale`, stop and report. `IMPORT_ERROR_KEYS` gains `['data-transfer/unknown-
@@ -581,7 +638,8 @@ Files: `src/rates/coingecko/coingecko.ts`, `coingecko.test.ts`, `rates-refresh.t
 - [ ] Tests first: "returns the priced coins when one coin is missing"; refresh "writes a UAH row per priced coin and
       none for the missing one".
 - [ ] "was:" pin: `coingecko.test.ts` "rejects when any requested coin is missing a finite usd price" -> resolves
-      with that coin absent (whole response failure still rejects). Code; check `npx jest src/rates`. Commit
+      with that coin absent (whole response failure still rejects); it passes `['BTC', 'ETH', 'USDT']` explicitly,
+      as step 3's pins do. Code; check `npx jest src/rates`. Commit
       `feat(rates): price each coin on its own`.
 
 ### step 7/10: held coins only, and a concurrency cap on CoinGecko history (Q9, NR9 b)
@@ -590,7 +648,7 @@ Files: `src/rates/coingecko-history/coingecko-history.ts`, `coingecko-history.te
 `rates-refresh.test.ts`.
 - [ ] Q9 already holds on the base: callers pass the held codes (`open-currencies-gate.ts` `historyCurrencies`,
       `rates-refresh.ts`); the `currencies = cryptoCurrencyOptions` defaults of `fetchCryptoPrices` and
-      `fetchCryptoHistory` stay, and `coingecko.test.ts` / `coingecko-history.test.ts` default calls stay. Pin it
+      `fetchCryptoHistory` stay (the default-call pins moved to explicit lists in step 3). Pin it
       with the full registry (characterization, green, state so in BATCH READY): "never requests a curated coin no
       holding uses" (refresh and backfill, one held coin of about 35).
 - [ ] Tests first: "never has more than the cap of coin requests in flight" (a fake fetch counting open requests
@@ -603,10 +661,9 @@ Files: `src/rates/coingecko-history/coingecko-history.ts`, `coingecko-history.te
 
 ### step 8/10: picker lists every curated coin
 
-Files: `holding-form.screen.test.tsx`, `currency-field.component.test.tsx` (code needs none: `holding-currency.ts`
-derives; re-grep).
-- [ ] "was:" pins: `holding-form.screen.test.tsx` `codes.slice(0, 4)` `['BTC','ETH','USDT','UAH']` -> curated block
-      then `'UAH'`; `currency-field.component.test.tsx` test "groups crypto (BTC, ETH, USDT) after every fiat
+Files: `currency-field.component.test.tsx` (code needs none: `holding-currency.ts` derives; re-grep; the holding
+form's picker pin moved in step 3).
+- [ ] "was:" pins: `currency-field.component.test.tsx` test "groups crypto (BTC, ETH, USDT) after every fiat
       currency..." -> every curated coin, alphabetical within; base-currency setting test "offers fiat only" kept or
       added. Commit `test(forms): the holding picker lists every curated coin`.
 
@@ -677,7 +734,9 @@ credential.ts`. Outside importers unchanged (`accounts.repo.ts`, `account-form.s
 Files: `exchange/budget/` (`RunBudget<Lane>`, `RequestGate`, `createExchangeRun`), Binance numbers and weight
 headers stay in `binance.history-budget.ts`; `binance.history-depth.ts` functions -> `src/crypto-sync/exchange/walk/
 depth.ts` (exported by a new `exchange/walk/index.ts`), its constants -> `BINANCE_DEPTH_CONFIG: DepthConfig` in
-`binance.history-depth.ts`, passed to the moved functions; importers (`binance.history-paging.ts`,
+`binance.history-depth.ts` (`DepthConfig = { resolutionMs; marginMs; marginCapMs; extrapolationMaxMs; maxRefusals;
+maxLapses }` from `DEPTH_RESOLUTION_MS`, `DEPTH_MARGIN_MS`, `DEPTH_MARGIN_CAP_MS`, `DEPTH_EXTRAPOLATION_MAX_MS`,
+`MAX_DEPTH_REFUSALS`, `MAX_DEPTH_LAPSES`; re-grep the exported constants), passed to the moved functions; importers (`binance.history-paging.ts`,
 `binance.transfer-history.ts`, `binance.depth-test-fixtures.ts`) import through `@kiko/crypto-sync/exchange/walk`.
 - [ ] Today's budget and depth suites green unchanged (depth tests stay in `binance/`); `check:feature-imports --tree`
       clean. Commit `refactor(exchange): budget shape and depth functions`.
@@ -685,7 +744,7 @@ depth.ts` (exported by a new `exchange/walk/index.ts`), its constants -> `BINANC
 ### step 5/9: amounts unit (no production caller yet)
 
 Files: `exchange/amounts/amounts.ts`, `index.ts`, `amounts.test.ts`.
-- [ ] Signature: `exchangeMinorUnits(currency: CryptoCurrency | Currency, text: string, use: 'balance' | 'row'):
+- [ ] Signature: `exchangeMinorUnits(currency: Currency, text: string, use: 'balance' | 'row'):
       Either<AmountError, number>`. `'balance'` rounds half away from zero past the scale and logs
       `balance-precision-rounded`; `'row'` refuses past the scale (`amount-precision`) unless the coin is
       reduced-scale, where it rounds and logs `row-precision-rounded`; both refuse an exponent form
@@ -725,8 +784,10 @@ and paging tests import Binance fixtures, so they stay), `exchange/paging/index.
 (`TotalPage` from `exchange/paging`, a type import; `BinancePageWeights`), importers.
 - [ ] Code: `Pager`, `SpanRead`, `offsetPager` are today's paging, moved; it imports `halfOf`, `SpanRead`,
       `WalkWindow` and the depth functions from `../walk`; the body reads `config.totalPageSize`,
-      `config.isRateLimitError(error)` and `config.refusedCallWeights` where it read `HISTORY_TOTAL_PAGE_SIZE`,
-      `instanceof BinanceRateLimitError` and `REFUSED_CALL`; `onRateLimit` is typed `(error: RateLimitError) =>
+      `config.isRateLimitError(error)`, `config.refusedCallWeights`, `config.depth.resolutionMs`,
+      `config.depth.maxLapses` and `config.depth.maxRefusals` where it read `HISTORY_TOTAL_PAGE_SIZE`,
+      `instanceof BinanceRateLimitError`, `REFUSED_CALL`, `DEPTH_RESOLUTION_MS`, `MAX_DEPTH_LAPSES` and
+      `MAX_DEPTH_REFUSALS` (today imported from `binance.history-depth`; no value import of `binance/` stays); `onRateLimit` is typed `(error: RateLimitError) =>
       void`; the run type comes from `exchange/budget`. No other body edit. Check: paging suites and the step 1/9
       snapshot green unchanged; `--tree` clean. Commit `refactor(exchange): paging unit with a per-exchange walk
       config`.
@@ -753,6 +814,8 @@ low (moves); two deep gates (3a, 3b).
 Spec ids: Z1-Z6, X1-X4, walk properties at 0 / 1 h / 1 day, C-NR8 (list shape). Expected mutable files: about 18.
 TIMEOUT-HEAVY risk: none app-wide; the walk files have large related-test fan-out: name proofs if flagged.
 
+Known red between commits: none (0060's version decision lands with 0060 in step 2).
+
 **Interfaces produced:** `ExchangeState`, `WalkMarks`, `WalkId`, `CoinLists` (spec section 2) and
 `parseExchangeState(text: string | null): ParsedExchangeState` in `src/crypto-sync/exchange/walk-state/`;
 `syncStateRepo.patchExchangeState(accountId, exchangeId, patch: ExchangeStatePatch)` and
@@ -761,31 +824,43 @@ TIMEOUT-HEAVY risk: none app-wide; the walk files have large related-test fan-ou
 ExchangeStatePatch) => Promise<void> }` (replaces `BinanceWalkWriteDeps` in step 5); test helpers in
 `src/test-support/walk-marks.ts`: `walkMarksOf(database | rows, accountId, walkId)`, `withWalkMarks(seed,
 accountId, walkId, marks)`, `expectWalkMarkWritten(deps, accountId, walkId, field, value)`,
-`walkStateFake(world)`.
+`walkMarkWritesOf(deps, walkId, field)` (the written values in call order), `walkStateFake(world)`.
 
-### step 1/11: test-only helper commit (Q11)
+### step 1/10: test-only helper commit (Q11)
 
-Files: `src/test-support/walk-marks.ts` (new; `test-support/**` is already `TEST_ONLY`) and the 19 test files that
+Files: `src/test-support/walk-marks.ts` (new; `test-support/**` is already `TEST_ONLY`), the 19 test files that
 read, seed or assert the 24 old keys (re-grep `binance(History|Pay|Transfer|Earn)(HistoryCursor|Cursor|
 PendingOverlap|PointCursor|RangeCursor|RescanCursor|SpanHints)` and the `BINANCE_*_FIELD(S)` / `setBinanceWalk*` /
 `resetBinanceWalkCursors` names in tests: 18 files by key text plus `binance.history-walk.properties.test.ts`),
 including `holding-metadata.test.ts`, `holdings.repo.history-cursor-account-gate.test.ts`,
-`holdings.repo.walk-owned-metadata.test.ts`, `binance.earn-test-fixtures.ts`.
+`holdings.repo.walk-owned-metadata.test.ts`, `binance.earn-test-fixtures.ts`; and the two Earn suites that reach the
+keys only through `SPOT_FIELDS` or the writer seams, `binance.earn-history.test.ts` and
+`binance.earn-history.rewards.test.ts` (re-grep `SPOT_FIELDS|writeWalk(Cursor|Pending|Hints)` in tests).
 - [ ] No app change. Every seed and read goes through `withWalkMarks`/`walkMarksOf`; every writer-call assertion
       (`deps.writeWalkCursor` / `writeWalkPending` / `writeWalkHints` `toHaveBeenCalledWith` and
       `toHaveBeenLastCalledWith`: about 62 in `binance.transactions.test.ts`, 39 in `binance.pay-history.test.ts`, 4
       in `binance.transfer-history.test.ts`; re-grep) goes through `expectWalkMarkWritten`; the stateful fakes
       (`binance.transactions.test.ts`'s writer fakes, `binance.earn-test-fixtures.ts`'s `writeWalkCursor` /
-      `writeWalkPending` / `writeWalkHints` world fakes) go through `walkStateFake`. Today the helper maps (walk id,
+      `writeWalkPending` / `writeWalkHints` world fakes, and the inline writer fakes of `binance.pay-history.test.ts`
+      and `binance.transactions.test.ts`) go through `walkStateFake`; every raw read of a writer mock goes through
+      `walkMarkWritesOf` or `expectWalkMarkWritten`: the 26 `writeWalk*.mock.calls` reads (13 in
+      `binance.transactions.test.ts`, for example the `writeWalkCursor` filter helper near the top and the
+      `account.writeWalkPending.mock.calls[0]` / `[1]` checks; 11 in `binance.pay-history.test.ts`; 1 in
+      `binance.earn-history.test.ts`, "stores the end of the window of each owed day it read, under the Earn range
+      cursor"; 1 in `binance.transfer-history.test.ts`, its `writesTo` helper), plus the `toHaveBeenCalledTimes` /
+      `not.toHaveBeenCalled` / `mock.invocationCallOrder` reads of the writers (re-grep
+      `writeWalk(Cursor|Pending|Hints)[^(]*\.mock\.|writeWalk(Cursor|Pending|Hints)\)\.(not\.)?toHaveBeenCalled`
+      per file and quote the counts). Today the helper maps (walk id,
       field) to the metadata key on the Spot holding and to today's writer; step 5 changes only the helper.
 - [ ] Check: every touched suite green, same test and assertion counts; dup.sh alone per touched file. Commit
       `test(binance): one helper for walk marks`.
 
-### step 2/11: schema and 0060 (Z1-Z5)
+### step 2/10: schema, 0060 and its version decision (Z1-Z5)
 
 Files: `src/db/schema.ts` (`syncState.exchangeState: text('exchange_state')`), `npx drizzle-kit generate --name
 exchange_state` -> `0060_*.sql` + snapshot + journal + `migrations.js` (re-check the file after generate; biome
-write), the hand-appended copy, `drizzle/migrations/0060-exchange-state.test.ts` (new).
+write), the hand-appended copy, `drizzle/migrations/0060-exchange-state.test.ts` (new),
+`src/data-transfer/crypto/envelope.test.ts`, both demo `.kiko` files.
 - [ ] Tests first (real sqlite through 0059): "creates the state row for an account with walk keys and leaves its
       stamps null" (Z1); "copies a disconnected account's floor values as stored" (Z2); "copies every walk field into
       its walk entry" (Z3, field map pinned as a table); "a walk with only a cursor copies no other field" (the
@@ -793,21 +868,53 @@ write), the hand-appended copy, `drizzle/migrations/0060-exchange-state.test.ts`
       (Z4); "copies a malformed pending value as stored" (Z5: a string, a boolean and an object `pending`; each reads
       back with its own `json_type`: `text`, `true`, `object`); "keeps a list a list" (`"[1]"` text stays text,
       `[1]` stays an array); "takes the walk state from the first Spot BTC holding" (two Spot BTC holdings with
-      different cursors: the one first by `(sort_order, created_at)` wins, as the walk reads it); "an account whose
+      different cursors: the one first by `(sort_order, created_at)` wins, as the walk reads it); "reads only the
+      first Spot BTC holding, even when it has no walk key" (the first Spot BTC holding with no walk key, a second
+      one with a cursor: no state row, no copy); "a Spot BTC holding with no walk key adds no row"; "copies no walk
+      key from a Funding holding" (`binanceAsset` `'BTC:funding'` with a cursor: no row); "an account whose
       state row only carries walk state reads as never synced" (grep every `syncStateRepo`/`syncState` reader for
       row-existence checks first and list them in the commit body).
-- [ ] Code: `ALTER TABLE sync_state ADD exchange_state text;` then one `INSERT INTO sync_state (account_id,
-      exchange_state) SELECT ... ON CONFLICT(account_id) DO UPDATE SET exchange_state = excluded.exchange_state` over
-      the first Spot BTC holding per account (`ROW_NUMBER() OVER (PARTITION BY account_id ORDER BY sort_order,
-      created_at)` = 1, filtered by `CASE WHEN json_valid(metadata) THEN json_extract(metadata, '$.binanceAsset')
-      END = 'BTC'` and a guarded has-a-walk-key test). Each walk entry is `json_group_object(field, json(h.metadata ->
-      path))` over a `VALUES (walk, field, path)` map of the 24 keys, including a row only when
-      `json_type(h.metadata, path) IS NOT NULL`, the whole expression inside `CASE WHEN json_valid(h.metadata) THEN
-      ... END`; a walk with no field is absent; `version` 1. Never `json_extract` into `json_object` (an absent key
-      writes `null`; a string becomes unquoted text; `true` becomes 1).
+- [ ] Code: `ALTER TABLE sync_state ADD exchange_state text;` then one statement that ranks first and requires a
+      walk key after (the walk reads the first Spot BTC holding even when it has no key), each walk entry a
+      `json_group_object` over the fields present, the entries joined through `json(entry)` (without it an entry
+      is stored as quoted text). Probed on `node:sqlite` 3.50.4 (map cut to 7 rows there; the file lists the 24):
+      ```sql
+      WITH walk_key_map (walk, field, path) AS (VALUES ('capital', 'cursor', '$.binanceHistoryCursor'), ...),
+      first_spot_btc AS (
+        SELECT account_id, metadata FROM (
+          SELECT account_id, metadata,
+            ROW_NUMBER() OVER (PARTITION BY account_id ORDER BY sort_order, created_at) AS position
+          FROM holdings
+          WHERE CASE WHEN json_valid(metadata) THEN json_extract(metadata, '$.binanceAsset') END = 'BTC')
+        WHERE position = 1),
+      walk_entries AS (
+        SELECT first_spot_btc.account_id AS account_id, walk_key_map.walk AS walk,
+          json_group_object(walk_key_map.field, json(CASE WHEN json_valid(first_spot_btc.metadata)
+            THEN first_spot_btc.metadata -> walk_key_map.path END)) AS entry
+        FROM first_spot_btc, walk_key_map
+        WHERE CASE WHEN json_valid(first_spot_btc.metadata)
+          THEN json_type(first_spot_btc.metadata, walk_key_map.path) END IS NOT NULL
+        GROUP BY first_spot_btc.account_id, walk_key_map.walk)
+      INSERT INTO sync_state (account_id, exchange_state)
+      SELECT account_id, json_object('version', 1, 'walks', json_group_object(walk, json(entry)))
+      FROM walk_entries GROUP BY account_id
+      ON CONFLICT(account_id) DO UPDATE SET exchange_state = excluded.exchange_state;
+      ```
+      An account whose first Spot BTC holding has no walk key has no `walk_entries` row, so no state row. Ties on
+      `(sort_order, created_at)` stay in the order the engine returns them, as the walk's `listByAccountQuery`
+      does: no `id` tiebreak on either side, and no test seeds a tie. Never `json_extract` into `json_object` (an
+      absent key writes `null`; a string becomes unquoted text; `true` becomes 1).
+- [ ] Version decision in the same commit, so `envelope.test.ts` "has a version decision for every migration" is
+      never red: `VERSION_DECISIONS` gains the reason "Through <0060 tag>, a nullable column riding inside the sync
+      state row, derived on restore: an older build drops the key and its walks read from their floors, where keys
+      dedupe; so it needed no bump." -> `{ version: 4, migrationCount: 61 }` ("was:" `migrationCount: 60`).
+      `generate-demo-kiko.test.ts` has no red window: it compares the files with `EXPORT_VERSION` (still 4) and
+      `buildDemoSnapshot` (its `syncState` is `[]` and it builds no Binance holding; re-grep), neither of which this
+      set changes; the demo files are regenerated here (`KIKO_REGEN_DEMO=1`, then the plain run green), as the spec
+      ties the regeneration to the decision commit.
 - [ ] Commit `feat(db): walk state column on sync_state`.
 
-### step 3/11: per-walk parse (X1 parse side, Z5 parse side, C-NR8 lists)
+### step 3/10: per-walk parse (X1 parse side, Z5 parse side, C-NR8 lists)
 
 Files: `exchange/walk-state/walk-state.ts`, `index.ts`, `walk-state.test.ts`.
 - [ ] Tests first: top level malformed (not JSON, wrong version) -> `malformed`; each walk field parsed by today's rule
@@ -819,7 +926,7 @@ Files: `exchange/walk-state/walk-state.ts`, `index.ts`, `walk-state.test.ts`.
       keys of the Binance Earn walk" move here (same inputs, read from a walk entry). Commit
       `feat(exchange): parse walk state per field`.
 
-### step 4/11: gated writers (X2-X4, C-NR8 union)
+### step 4/10: gated writers (X2-X4, C-NR8 union)
 
 Files: `src/sync-state/sync-state.repo.ts`, `sync-state.repo.test.ts` (real sqlite).
 - [ ] Tests first: "replaces only the named field and keeps a malformed sibling byte-identical" (X2); "writes nothing
@@ -837,7 +944,7 @@ Files: `src/sync-state/sync-state.repo.ts`, `sync-state.repo.test.ts` (real sqli
       `[]` (today's `withWalkOwnedMetadataResetToFloor` rule); point/range cursors, span hints, trades and both coin
       lists of each kind are removed. Commit `feat(sync-state): gated exchange state writers`.
 
-### step 5/11: walks, disconnect and the caption read `exchange_state`; helper switched
+### step 5/10: walks, disconnect and the caption read `exchange_state`; helper switched
 
 Files: walk readers/writers (`binance.walk-write-deps.ts`, `binance.history-walk.ts`, `binance.transactions.ts`,
 pay/transfer/earn walk entry points), `holdings.repo.ts` (`setBinanceWalkCursor`, `setBinanceWalkPending`,
@@ -856,14 +963,16 @@ pay/transfer/earn walk entry points), `holdings.repo.ts` (`setBinanceWalkCursor`
       write through `patchExchangeState`. `walkCursorsOf` and `transferOwesRange` read the parsed state from
       `useLiveQuery(syncStateRepo.getQuery(account.id), ['sync_state'])` in `crypto-sync-section.component.tsx`
       (the call site that passes `walkCursorsOf(holdings)` / `transferOwesRange(holdings)` to
-      `isBinanceHistoryBehind`), in the same commit as the walks.
+      `isBinanceHistoryBehind`), in the same commit as the walks. The caption gates on that query's `isLoading`,
+      as `bank-sync-section.component.tsx` does with `syncStateLoading`: no caption while the state row loads. Test:
+      "shows no caption while the state row is loading" (the live query mocked loading, cursors behind).
 - [ ] Retired suites: `holdings.repo.history-cursor-account-gate.test.ts` (cases moved to step 4 and the disconnect
       test); `holdings.repo.walk-owned-metadata.test.ts` walk-key carry cases (replaced by "a balance-sync upsert
       drops the old walk keys"); the walk-key describes of `holding-metadata.test.ts` (moved in step 3). The commit
       body lists each retired case and its new home. Then the full binance suites green with the switched helper.
       Commit `feat(binance): walk state lives in sync_state`.
 
-### step 6/11: malformed state pauses history, balance still syncs (X1, paused caption)
+### step 6/10: malformed state pauses history, balance still syncs (X1, paused caption)
 
 Files: run wiring (`run-crypto-sync.ts` / `binance.transactions.ts`), `binance-history-status.ts`,
 `crypto-sync-section.component.tsx`, its test, `en.ts`, `uk.ts`.
@@ -874,39 +983,33 @@ Files: run wiring (`run-crypto-sync.ts` / `binance.transactions.ts`), `binance-h
       «Імпорт історії {{exchange}} призупинено, бо Кіко не зміг прочитати збережений прогрес імпорту. Відʼєднайте й знову
       підключіть {{exchange}}, щоб це виправити; ваші активи й транзакції залишаться.» Commit.
 
-### step 7/11: restore mirror (Z6)
+### step 7/10: restore mirror (Z6)
 
 Files: `restore-snapshot.ts` (`withWalkStateMoved`), `restore-walk-state.two-path.test.ts` (new).
 - [ ] Tests first: "a backup without walk state restores equal to the migrated database" (Z1-Z5 seeds, the
-      two-Spot-BTC-holding seed and the only-a-cursor seed); "adds a state row when the backup has none" (Z6); "a
+      two-Spot-BTC-holding seed, the only-a-cursor seed, the first-holding-without-a-key seed (no row on either
+      path) and the Spot-BTC-holding-without-a-key seed (no row on either path)); "adds a state row when the backup has none" (Z6); "a
       backup with walk state restores it unchanged"; "an implicit-account merge keeps the merged account's walk
       state".
 - [ ] Code: `withWalkStateMoved` runs after `withImplicitAccountsMerged`, on its `syncState` output and on
-      `holdingsAfterImplicitMerge`; it takes the first Spot BTC holding per account by `(sortOrder, createdAt)`, the
-      one the walk reads, and copies only present fields (the 0060 rule). Commit.
+      `holdingsAfterImplicitMerge`; it ranks first and requires a walk key after, as 0060 does: the first Spot BTC
+      holding per account by a stable sort on `(sortOrder, createdAt)` (no `id` tiebreak), the one the walk reads,
+      and no row when that holding has no walk key; it copies only present fields (the 0060 rule). Commit.
 
-### step 8/11: version decision and demo
-
-Files: `envelope.test.ts`, demo `.kiko` files.
-- [ ] `VERSION_DECISIONS` gains the reason "Through <0060 tag>, a nullable column riding inside the sync state row,
-      derived on restore: an older build drops the key and its walks read from their floors, where keys dedupe; so it
-      needed no bump." -> `{ version: 4, migrationCount: 61 }` ("was:" `migrationCount: 60`). `KIKO_REGEN_DEMO=1` regen.
-      Commit.
-
-### step 9/11: walk properties at three clock gaps
+### step 8/10: walk properties at three clock gaps
 
 Files: `binance.history-walk.properties.test.ts` (has `RUN_GAPS = [0, HOUR_MS, DAY_MS]`; re-grep).
 - [ ] Every property runs on the `exchange_state` store at each gap; add "a patch never loses another walk's marks
       across runs" at the three gaps. Commit.
 
-### step 10/11: reviews
+### step 9/10: reviews
 
 - [ ] `kiko:reviewer` on 0060 before BATCH READY (top question: "can any walk mark be lost, doubled, retyped or
       misread between migration, restore, parse and writer, or read from a holding the walk does not read?"; queries
       touching `sync_state`; no index -> no EXPLAIN test).
 - [ ] Translator review of `exchangeHistoryPaused` (en + uk); diff to the coordinator for the user.
 
-### step 11/11: skill text (kiko:scribe)
+### step 10/10: skill text (kiko:scribe)
 
 - [ ] `kiko-architecture` Binance history section: walk state in `sync_state.exchange_state`, parse per field, gated
       writers, disconnect reset, the two coin lists per kind; pointers only.
@@ -959,12 +1062,17 @@ Files: `provider.ts` (`renameFromDefaults: readonly string[]`), `holdings.repo.t
 
 Files: `exchange/history-status/` (`untrackedCoinsOf`, `oversizedCoinsOf`), `binance.provider.ts` (replaces the
 balance lists `untrackedCoins.balance` and `oversizedCoins.balance` via `patchExchangeState` after each good balance
-read), `crypto-sync-section.component.tsx`, `en.ts`, `uk.ts`, tests.
+read: every wallet read succeeded; a read in which a Funding or Earn wallet failed leaves both balance lists as
+stored, spec section 4 "Not-tracked coins"), `crypto-sync-section.component.tsx`, `en.ts`, `uk.ts`, tests.
 - [ ] Keys `accountDetail.untrackedCoins`, `accountDetail.oversizedAmount` with the spec section 10 en/uk text.
       Tests first: "lists PEPE as not tracked"; "skips the write and shows the oversized line above the safe bound";
       "shows the sorted union of the balance and history lists without duplicates" (balance [PEPE, ABC], history
-      [PEPE, XYZ] -> "ABC, PEPE, XYZ"); "a good balance read replaces only the balance list" (history [XYZ] kept).
-      Commit.
+      [PEPE, XYZ] -> "ABC, PEPE, XYZ"); "a good balance read replaces only the balance list" (history [XYZ] kept);
+      "a balance read with a failed wallet keeps both balance lists" (untracked balance [PEPE], oversized balance
+      [ETH] stored; the Funding read fails and Spot lists ABC: both lists stay as stored, no patch of either);
+      "leaves out a ticker that is a curated code now" (`untrackedCoinsOf` over balance [PEPE, USDC] and history
+      [XYZ, DAI] -> [PEPE, XYZ]). `oversizedCoinsOf` keeps its union as is (every oversized ticker is a curated
+      code, so dropping curated codes would empty it). Commit.
 
 ### step 7/10: Binance public price fallback
 
@@ -1004,9 +1112,14 @@ Spec ids: S1-S3 (6a); Y1-Y8, E1-E2, W1-W2, A1-A4 (rows), N2 (Pay part), BTC key 
 property, walk properties at 0 / 1 h / 1 day (6b). Expected mutable files: about 12.
 
 Pay funds rule for the pins below (spec section 5, R-Q7): one row per `fundsDetail` entry with a curated
-`currency`, placed by today's single-wallet and `walletAssetCost` rules applied to that entry exactly as they apply
-to a BTC entry today; an order funded only in its own coin keeps today's comparison of its cost-less entries with
-the order amount; an order funded in several coins compares each coin's costs with that entry's `amount` only.
+`currency`, placed by today's rules applied to that coin's entries exactly as they apply to the BTC entries today
+(`sharesOfSend`): by its `walletAssetCost` costs, or, when the coin has no cost entry, whole on the one wallet
+`walletTypes` declares (`declared.length === 1`; with no or several declared wallets it stops
+`pay-split-mismatch`). What a coin's placement must add up to:
+- an order whose funds entries are all in its own coin, or that lists none, keeps today's comparison with the
+  order amount;
+- an order funded in a coin that is not its own, in one coin (cross-coin) or in several, compares each coin's
+  costs, or its cost-less entries, with that coin's entry `amount` only.
 
 ### step 1/11 (6a): 2-minute matcher sees only unmarked rows (S1-S3)
 
@@ -1023,9 +1136,12 @@ Files: `src/statistics/internal-transfers/internal-transfers.ts` (pure helper `r
 Files: `binance.amounts.ts` (`btcSatoshis`, set 3's home), its callers in `binance.pay-history.ts`,
 `binance.transactions.ts`, `binance.transfer-history.ts`, `binance.earn-history.ts`, tests.
 - [ ] Every row amount goes through `exchangeMinorUnits(currency, text, 'row')`; a `Left` stops the window with its
-      own code, owed at the record's point.
+      own code, owed at the record's point; an `amount-too-large` stop also adds the row's ticker to
+      `oversizedCoins.history` through a history-list patch (`patchExchangeState`, a union).
 - [ ] Tests first: A2 `"0.000000001"` -> stop `amount-precision`, owed point ("was:" 0); A3 `"1e-8"` -> stop
-      `amount-malformed` ("was:" 1); A1/A4 unchanged.
+      `amount-malformed` ("was:" 1); A1/A4 unchanged; "an amount too large owes its point and adds its coin to the
+      oversized history list" (a row of `"90071992.54740992"` BTC: stop `amount-too-large` owed at its point, and
+      `oversizedCoins.history` gains `BTC` through a history-list patch; C-NR8).
 - [ ] "was:" pins: `binance.pay-history.ts` `payRowsOf`'s `Math.abs(btcSatoshis(order.amount) ?? 0)` reads a
       malformed amount as 0 and stops `pay-amount-invalid`; it now stops with the parser's code.
       `binance.pay-history.direction.test.ts` "stops on an amount that rounds to zero satoshis" (`'-0.000000001'`)
@@ -1050,7 +1166,12 @@ Files: `exchange/walk/walk.ts` (`resolveWalletHoldings`), `binance.walk-config.t
 
 Files: `binance.history-client.ts` (`coin=` dropped), `binance.transactions.ts`, tests.
 - [ ] Tests first: "imports a USDT withdrawal as spending in the default category" (W1); "a hand-linked withdrawal stays
-      excluded" (W2); BTC keys `${accountId}:deposit:<id>` / `:withdraw:<id>` unchanged; walletType placement.
+      excluded" (W2); BTC keys `${accountId}:deposit:<id>` / `:withdraw:<id>` unchanged; walletType placement; "a
+      deposit of an untracked coin is counted, skipped and its ticker added to the not-tracked history list" (a
+      `PEPE` deposit beside a BTC one: one row, the page counted whole, `untrackedCoins.history` gains `PEPE`).
+- [ ] Code (this step and steps 5-7): a history read adds the upper-cased tickers of the records it ignored as
+      untracked through one history-list patch of `untrackedCoins` per committed window (`patchExchangeState`, a
+      union).
 - [ ] "was:" pin: `binance.history-client.test.ts` "keeps the capital reads on coin BTC with offset and limit 1000" ->
       "keeps the capital reads with offset and limit 1000 and no coin". Commit.
 
@@ -1066,22 +1187,33 @@ Files: `binance.pay-history.ts`, `binance.history-client.ts`, tests.
         unmoved, on a non-BTC order the user paid with BTC funds" -> one BTC Funding row (Y4), key
         `...:${walletType}:BTC`, cursor advances; "ignores a non-BTC order the user received though the payer paid
         with BTC funds" -> one receive row in the order's coin (Y6).
-      - `binance.pay-history.direction.test.ts` (order: BTC, amount `'-0.001'`, walletType 2, `payOrder` default):
-        "stops a send whose cost-less BTC funds entry is below the amount, the rest paid in another coin" (BTC 0.0004
-        + USDT 40, cost-less) -> `toMatchObject([{ wallet: 'BTC', amountMinorUnits: -40_000, externalId:
-        'acc-1:pay:C2C:tx-1:2' }, { wallet: 'USDT', amountMinorUnits: -4_000_000_000, externalId:
-        'acc-1:pay:C2C:tx-1:2:USDT' }])` (Y5); "stops a send whose cost-less BTC funds entry is below the amount, with
-        no other coin listed" -> unchanged, still `pay-split-mismatch` (funded only in its own coin); "stops a send
-        with no BTC funds entry at all and funds in another coin" (USDT 100) -> `toMatchObject([{ wallet: 'USDT',
-        amountMinorUnits: -10_000_000_000, externalId: 'acc-1:pay:C2C:tx-1:2:USDT' }])` (Y4 shape, cross-coin);
-        "stops when the funds named are not BTC, so no BTC movement is guessed" (USDT 1) -> `toMatchObject([{ wallet:
-        'USDT', amountMinorUnits: -100_000_000, externalId: 'acc-1:pay:C2C:tx-1:2:USDT' }])`. The cross-coin
-        `comment` is pinned by Y3 only.
+      - `binance.pay-history.direction.test.ts` (order: BTC, amount `'-0.001'`, `payOrder` default walletType 2 and
+        walletTypes `undefined`; the "a single wallet" describe passes walletTypes `[2]`), each by the funds rule
+        above:
+        - "stops a send whose cost-less BTC funds entry is below the amount, the rest paid in another coin" (BTC
+          0.0004 + USDT 40, cost-less, walletTypes `[2]`; several coins, each on the one declared wallet) ->
+          renamed "places each coin of a send paid in two coins on the one wallet named", `toMatchObject([{ wallet:
+          'BTC', amountMinorUnits: -40_000, externalId: 'acc-1:pay:C2C:tx-1:2' }, { wallet: 'USDT',
+          amountMinorUnits: -4_000_000_000, externalId: 'acc-1:pay:C2C:tx-1:2:USDT' }])` (Y5);
+        - "stops a send with no BTC funds entry at all and funds in another coin" (USDT 100, cost-less, walletTypes
+          `[2]`; one coin not its own, on the one declared wallet) -> renamed "places a send paid in another coin on
+          the one wallet named", `toMatchObject([{ wallet: 'USDT', amountMinorUnits: -10_000_000_000, externalId:
+          'acc-1:pay:C2C:tx-1:2:USDT' }])` (Y4 shape, cross-coin);
+        - "stops when the funds named are not BTC, so no BTC movement is guessed" (USDT 1, cost-less, walletTypes
+          `undefined`; one coin not its own, no declared wallet) -> renamed "stops a send paid in another coin with
+          no cost and no declared wallet", `pay-split-mismatch` ("was:" `pay-funds-not-btc`), not a USDT row;
+        - unchanged, funded only in its own coin or in none: "stops a send whose cost-less BTC funds entry is below
+          the amount, with no other coin listed" (`pay-split-mismatch`); "places a send whose cost-less BTC funds
+          entry equals the amount, besides an entry of no cost" (one BTC row, -100_000); "takes the cost-less BTC
+          funds entries together before it compares them with the amount" (one BTC row, -100_000); "stops a send
+          with an empty funds detail, whatever the one wallet walletTypes names" and the three "stops a send with no
+          cost when walletTypes is absent / empty / names two wallets" (`pay-split-mismatch`).
+        The cross-coin `comment` is pinned by Y3 only.
       - `binance.history-client.test.ts` "returns the BTC orders only, and counts every order of the page" -> returns
         every curated-coin order and counts every order; the six cases of `it.each` "does not fail the read for a
         non-BTC order with %s" -> a malformed USDT order is in `unreadable` and owes its point (`rows` only the BTC
         order, `unreadable` length 1, `gathered` 2), and the same six on an untracked-coin order (XYZ) are still
-        ignored and counted; "lists the Binance ids of the parties of a non-BTC order that was paid with BTC funds"
+        ignored and counted, the page reporting `XYZ` for the history list; "lists the Binance ids of the parties of a non-BTC order that was paid with BTC funds"
         -> lists them as for any curated order; "reads a malformed fundsDetail of a non-BTC order as no BTC funds,
         never an error" -> a malformed `fundsDetail` of a USDT order makes the order unreadable (owed point).
       Commit.
@@ -1097,14 +1229,22 @@ upper-cased `asset` is a curated code is read strictly; any other is counted and
       page beside an unreadable one and a row of another asset" -> the other curated-asset row is parsed; "is counted
       for the pager and never parsed, whatever else is wrong with it" -> holds for an untracked asset only; a malformed
       curated-asset row is unreadable and owes its point; "is told from a BTC row by its asset alone: a row with a
-      lowercase btc asset is another asset" -> a lowercase `btc` row is read as BTC (asset upper-cased once). Commit.
+      lowercase btc asset is another asset" -> a lowercase `btc` row is read as BTC (asset upper-cased once).
+      `btcRowOf` is shared by Transfer and Earn through `totalPage` (`readingsOf(..., btcRowOf(readRow), ...)`), so
+      the Earn page pin moves here too: `binance.history-client.test.ts` "counts every row of the page, and parses
+      only the rows of BTC" (`lockedRewards`, rows `{ asset: 'ETH' }` and a whole BTC row) -> renamed "counts every
+      row of the page, and reads an incomplete row of a curated coin as unreadable": `gathered` 2, `rows` length 1,
+      `unreadable` length 1 ("was:" `toEqual([])`); a second case with `{ asset: 'XYZ' }` keeps `unreadable` `[]`.
+- [ ] Test first: "a transfer of an untracked coin is counted, ignored and its ticker added to the not-tracked
+      history list" (a `PEPE` transfer beside a BTC one: one row, `untrackedCoins.history` gains `PEPE`). Commit.
 
 ### step 7/11: Earn account-wide, reward grouping per asset (E1, E2)
 
 Files: `binance.earn-history.ts`, `binance.history-client.ts` (`fetchEarnRecords` drops `asset: BINANCE_ASSET`),
 `binance.earn-history.rewards.test.ts`, `binance.history-client.test.ts`.
 - [ ] Tests first: E1 keys `...:0`, `...:1` unchanged; E2 BTC keys byte-equal to E1, USDT `...:0:USDT` (0.1),
-      `...:1:USDT` (0.5).
+      `...:1:USDT` (0.5); "an Earn record of an untracked coin is counted, ignored and its ticker added to the
+      not-tracked history list" (a `PEPE` reward beside a BTC one: one row, `untrackedCoins.history` gains `PEPE`).
 - [ ] "was:" pins: `binance.history-client.test.ts` "GETs %s with asset BTC, current and size 100, and no type" ->
       "GETs %s with current and size 100, no asset and no type"; "always sends type=ALL on the flexible rewards read"
       -> its expected query has no `asset`. Commit.
@@ -1115,13 +1255,22 @@ Files: walk entry points, `exchange/walk-state` (parse and patch of `multiCoinSi
 `syncStateRepo.resetExchangeState`, tests.
 - [ ] Rule: on a walk's first run in this set's code, the walk writes `multiCoinSeen: true` whatever the cursor, and
       `multiCoinSince` = its PLAN cursor (capital: `cursor ?? latest ?? null` in `binance.transactions.ts`; the
-      others re-grep their plan cursor) only when that is not null. A walk with `multiCoinSeen` never writes either
+      others re-grep their plan cursor) only when that is not null, both in the same `patchExchangeState` patch as
+      the cursor write of the run's first committed window, never before a window commits. A run that commits no
+      window writes neither, so the next run is again the first multi-coin run; so `multiCoinSeen` is never stored
+      without a stored cursor, which a disconnect resets to the floor. A walk with `multiCoinSeen` never writes either
       again. Capital with a null stored cursor and a legacy `latest` records `latest`, so set 15's backfill covers
       `[floor, latest)`: no history skipped. `resetExchangeState` removes `multiCoinSince` and keeps
       `multiCoinSeen: true` (the reset cursor is the floor, so every coin is read from it; nothing is owed).
 - [ ] Tests first: "records the plan cursor at the first multi-coin run"; "records none when the plan cursor is
       null"; "a second run after a null-cursor first run records none"; "records the latest row time for capital with
-      no stored cursor"; "a disconnect removes the marker's range and keeps it seen". Commit.
+      no stored cursor"; "a disconnect removes the marker's range and keeps it seen"; "writes the marker in the patch
+      of the first committed window" (the first cursor patch carries `cursor`, `multiCoinSeen` and `multiCoinSince`
+      together; no patch before it names either marker); "a disconnect before any capital window commit keeps the
+      backfill owed" (capital with no stored cursor and a legacy latest row time L; the first multi-coin run stops
+      before any window commits: neither marker is stored; the account disconnects (`resetExchangeState`) and
+      reconnects; the next run's first committed window stores `multiCoinSince` = L, so set 15 owes `[floor, L)`).
+      Commit.
 
 ### step 9/11: key identity and properties
 
