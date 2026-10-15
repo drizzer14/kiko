@@ -6,19 +6,30 @@ const MINIMUM_CRYPTO_FRACTION_DIGITS = 2;
 const decimalSeparatorOf = (locale: string): string =>
   (1.5).toLocaleString(locale, { minimumFractionDigits: 1 }).replace(/\p{Nd}/gu, '');
 
-// The whole and fraction digits come from integer division of the stored minor units, so a crypto
-// amount prints every stored digit; dividing by the scale would round it through a float.
-const formatCryptoBody = (minorUnits: number, scale: number, locale: string): string => {
+// The whole and fraction digits come from integer division of the stored minor units, so every
+// stored digit survives; dividing by the scale would round it through a float above
+// 2^53 / 10^scale. The fraction keeps its trailing zeros, and is empty at scale 0.
+export const splitMinorUnits = (
+  minorUnits: number,
+  scale: number,
+): { whole: number; fraction: string } => {
   const absolute = Math.abs(minorUnits);
   const remainder = absolute % 10 ** scale;
-  const whole = (absolute - remainder) / 10 ** scale;
-  const fraction = String(remainder)
-    .padStart(scale, '0')
+
+  return {
+    whole: (absolute - remainder) / 10 ** scale,
+    fraction: scale === 0 ? '' : String(remainder).padStart(scale, '0'),
+  };
+};
+
+const formatCryptoBody = (minorUnits: number, scale: number, locale: string): string => {
+  const { whole, fraction } = splitMinorUnits(minorUnits, scale);
+  const paddedFraction = fraction
     .replace(/0+$/, '')
     .padEnd(Math.min(MINIMUM_CRYPTO_FRACTION_DIGITS, scale), '0');
   const wholeText = whole.toLocaleString(locale, { maximumFractionDigits: 0 });
 
-  return `${wholeText}${decimalSeparatorOf(locale)}${fraction}`;
+  return `${wholeText}${decimalSeparatorOf(locale)}${paddedFraction}`;
 };
 
 const formatFiatBody = (minorUnits: number, scale: number, locale: string): string =>

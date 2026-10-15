@@ -96,6 +96,12 @@ describe('majorAmountText', () => {
   it('renders the unsigned magnitude (the sign chip carries polarity)', () => {
     expect(majorAmountText('UAH', -123_456)).toBe('1234.56');
   });
+
+  it('keeps every stored digit above 2^53 / 10^scale, where a float division rounds', () => {
+    expect(majorAmountText('USDT', 9_007_199_254_000_000)).toBe('90071992.54');
+    expect(majorAmountText('USDT', Number.MAX_SAFE_INTEGER)).toBe('90071992.54740991');
+    expect(majorAmountText('USDT', -9_007_199_254_000_000)).toBe('90071992.54');
+  });
 });
 
 describe('groupAmount fail-safe', () => {

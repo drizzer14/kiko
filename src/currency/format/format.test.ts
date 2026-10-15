@@ -1,6 +1,6 @@
 import { Money } from '../money';
 
-import { formatMoney } from './format';
+import { formatMoney, splitMinorUnits } from './format';
 
 describe('formatMoney', () => {
   it('formats fiat with two decimals and code', () => {
@@ -16,6 +16,20 @@ describe('formatMoney', () => {
 
   it('shows a negative sign', () => {
     expect(formatMoney(Money.of('UAH', -500))).toContain('-');
+  });
+});
+
+describe('splitMinorUnits', () => {
+  it('splits above 2^53 / 10^scale without a float rounding step', () => {
+    expect(splitMinorUnits(-9_007_199_254_000_000, 8)).toEqual({
+      whole: 90_071_992,
+      fraction: '54000000',
+    });
+  });
+
+  it('keeps the leading zeros of a fraction and has none at scale 0', () => {
+    expect(splitMinorUnits(5, 8)).toEqual({ whole: 0, fraction: '00000005' });
+    expect(splitMinorUnits(1234, 0)).toEqual({ whole: 1234, fraction: '' });
   });
 });
 
