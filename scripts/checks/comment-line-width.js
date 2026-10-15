@@ -4,9 +4,19 @@
 // formatter.lineWidth to 100, but Biome cannot wrap a comment, so a long comment stays long until
 // its author wraps it. A long code line with no comment is Biome's, never reported here.
 //
-// Usage: comment-line-width.js <file>...
+// Usage: comment-line-width.js [--pinned <file> --root <dir> [--complete]] <file>...
 //
-// What counts:
+// Two comment syntaxes, chosen by the file:
+//   - `#` comments in a shell or YAML file: a `.sh`, `.bash`, `.yml` or `.yaml` file, or an
+//     extensionless file whose first line is a `#!` line naming sh, bash, zsh or dash. A comment
+//     line is a line whose first non-blank character is `#`, except a `#!` on line 1. A trailing
+//     `#` after code is not read. A line that starts with `#` inside a multi-line string, a
+//     heredoc body or a YAML block scalar IS read, since the scan sees only the line; the pin
+//     file is the way out for such a line. Everything below about columns, the wrap point and
+//     the output holds for these lines too, with `#`, `##`, ... as the opener.
+//   - `//` and `/* */` comments in every other file, as described next.
+//
+// What counts (`//` and `/* */`):
 //   - Columns are Unicode code points of the line without its trailing whitespace, so a Cyrillic
 //     letter is one column, as Biome counts it. Biome counts an East Asian wide character or an
 //     emoji as two columns; this checker counts one, so it never reports a line Biome would not.
@@ -27,7 +37,13 @@
 // URL does. `// see https://...` still fails, since the words before the URL can wrap; after the
 // wrap, `// https://...` is exempt. A JSX `{/* */}` comment is measured with its braces in both
 // the overflow and the standalone measure, since the braces cannot be moved off it. There is no
-// inline override and no allowlist.
+// inline override.
+//
+// Pinned lines: `--pinned <file> --root <dir>` reads a pin file of `<path><TAB><exact line>` rows
+// (blank rows and rows starting with `#` are skipped; <path> is relative to <dir>). A violation
+// whose path and whole physical line match a row is excused, one row per occurrence. The list
+// only shrinks: a row whose line is gone or now fits is reported as a stale pin, and with
+// `--complete` so is a row whose path is not among the files named.
 //
 // Output: one `<path>:<line>: <columns> columns: <comment text>` line per finding. The comment
 // text is each comment on the line, trimmed, joined with a single space: it holds no line number
@@ -39,39 +55,47 @@
 // node_modules.
 
 const fs = require('node:fs');
+const path = require('node:path');
 
 const { commentSpans } = require('./specifier-scanner');
 
 const LINE_WIDTH = 100;
-const OPENER_PATTERN = /^\{?(?:\/\/+|\/\*+|\*+)/;
-const CLOSER_PATTERN = /\*\/\}?$/;
+const SLASH_SYNTAX = { opener: /^\{?(?:\/\/+|\/\*+|\*+)/, closer: /\*\/\}?$/ };
+// A `#` comment has no closing marker, so no word of it is dropped as one.
+const HASH_SYNTAX = { opener: /^#+/, closer: undefined };
+const HASH_FILE_PATTERN = /\.(?:sh|bash|ya?ml)$/;
+const SHELL_SHEBANG_PATTERN = /^#!\s*(?:\S*\/)?(?:env\s+)?(?:sh|bash|zsh|dash)(?:\s|$)/;
 
 const columnsOf = (text) => [...text].length;
 
 const lastOffsetOf = (span) => Math.max(span.start, span.end - 1);
 
-function wordsOf(text) {
+function wordsOf(text, syntax) {
   const words = [...text.matchAll(/\S+/g)].map((match) => ({
     text: match[0],
     end: match.index + match[0].length,
   }));
   const [first] = words;
 
-  if (first !== undefined && first.text.replace(OPENER_PATTERN, '') === '') {
+  if (first !== undefined && first.text.replace(syntax.opener, '') === '') {
     words.shift();
   }
 
   const last = words[words.length - 1];
 
-  if (last !== undefined && last.text.replace(CLOSER_PATTERN, '') === '') {
+  if (
+    syntax.closer !== undefined &&
+    last !== undefined &&
+    last.text.replace(syntax.closer, '') === ''
+  ) {
     words.pop();
   }
 
   return words;
 }
 
-function canBeWrapped(standalone) {
-  const words = wordsOf(standalone);
+function canBeWrapped(standalone, syntax) {
+  const words = wordsOf(standalone, syntax);
 
   return words.length >= 2 && columnsOf(standalone.slice(0, words[0].end)) <= LINE_WIDTH;
 }
@@ -103,7 +127,7 @@ function measureComment(trimmed, commentStart, commentEnd) {
   };
 }
 
-function checkLine(line, lineSegments) {
+function checkLine(line, lineSegments, syntax) {
   const trimmed = line.trimEnd();
   const commentStart = Math.min(...lineSegments.map((segment) => segment.start));
   const commentEnd = Math.min(
@@ -116,7 +140,7 @@ function checkLine(line, lineSegments) {
     return undefined;
   }
 
-  if (columnsOf(standalone) > LINE_WIDTH && !canBeWrapped(standalone)) {
+  if (columnsOf(standalone) > LINE_WIDTH && !canBeWrapped(standalone, syntax)) {
     return undefined;
   }
 
@@ -127,11 +151,40 @@ function checkLine(line, lineSegments) {
   return { columns: columnsOf(trimmed), text };
 }
 
+// The `#` comment spans of a shell or YAML source: every line whose first non-blank character is
+// `#`, except a `#!` on line 1. The span runs from the `#` to the end of the line.
+function hashCommentSpans(source) {
+  const spans = [];
+  let lineStart = 0;
+
+  for (const [lineIndex, line] of source.split('\n').entries()) {
+    const start = lineStart + line.length - line.trimStart().length;
+
+    if (line.trimStart().startsWith('#') && !(lineIndex === 0 && line.startsWith('#!'))) {
+      spans.push({ start, end: lineStart + line.length });
+    }
+
+    lineStart += line.length + 1;
+  }
+
+  return spans;
+}
+
+// The comment syntax a file uses: `#` for a shell or YAML file (by extension, or by a shell
+// shebang on an extensionless file), `//` and `/* */` for everything else.
+function syntaxOf(file, source) {
+  const isShellScript =
+    HASH_FILE_PATTERN.test(file) ||
+    (!/\.[^/]*$/.test(file) && SHELL_SHEBANG_PATTERN.test(source.split('\n', 1)[0]));
+
+  return isShellScript ? HASH_SYNTAX : SLASH_SYNTAX;
+}
+
 // Every line over the limit whose comment can be wrapped, as { line, columns, text }. The spans
 // arrive in file order and never overlap, so one sweep over the lines with a running offset pairs
 // each line with the comments that touch it.
-function findViolations(source) {
-  const spans = commentSpans(source);
+function findViolations(source, syntax = SLASH_SYNTAX) {
+  const spans = syntax === HASH_SYNTAX ? hashCommentSpans(source) : commentSpans(source);
   const violations = [];
   let firstSpan = 0;
   let lineStart = 0;
@@ -158,7 +211,7 @@ function findViolations(source) {
 
     const found =
       lineSegments.length > 0 && line.length > LINE_WIDTH
-        ? checkLine(line, lineSegments)
+        ? checkLine(line, lineSegments, syntax)
         : undefined;
 
     if (found !== undefined) {
@@ -171,33 +224,121 @@ function findViolations(source) {
   return violations;
 }
 
+function exitWith(message) {
+  process.stderr.write(`comment-line-width: ${message}\n`);
+  process.exit(2);
+}
+
+function parseArguments(argv) {
+  const options = { files: [], complete: false };
+
+  for (let index = 0; index < argv.length; index += 1) {
+    if (argv[index] === '--pinned' || argv[index] === '--root') {
+      options[argv[index].slice(2)] = argv[index + 1];
+      index += 1;
+    } else if (argv[index] === '--complete') {
+      options.complete = true;
+    } else {
+      options.files.push(argv[index]);
+    }
+  }
+
+  if (
+    options.files.length === 0 ||
+    (options.pinned === undefined) !== (options.root === undefined)
+  ) {
+    exitWith('usage: comment-line-width.js [--pinned <file> --root <dir> [--complete]] <file>...');
+  }
+
+  return options;
+}
+
+// Path -> the exact lines (one entry per pinned occurrence) the pin file excuses.
+function readPins(pinnedFile) {
+  const pins = new Map();
+  let text;
+
+  try {
+    text = fs.readFileSync(pinnedFile, 'utf8');
+  } catch (error) {
+    return exitWith(`could not read ${pinnedFile}: ${error.message}`);
+  }
+
+  for (const row of text.split('\n')) {
+    if (row.trim() === '' || row.startsWith('#')) {
+      continue;
+    }
+
+    const separator = row.indexOf('\t');
+
+    if (separator < 1) {
+      exitWith(`${pinnedFile}: a pin row is <path><TAB><exact line>: ${row}`);
+    }
+
+    const path = row.slice(0, separator);
+
+    pins.set(path, [...(pins.get(path) ?? []), row.slice(separator + 1).trimEnd()]);
+  }
+
+  return pins;
+}
+
+// The report lines of one file: each violation the pin file does not excuse, then each pinned
+// line the file does not hold as a violation.
+function reportFile(file, source, excusedLines) {
+  const unused = [...excusedLines];
+  const lines = source.split('\n');
+  const report = [];
+
+  for (const { line, columns, text } of findViolations(source, syntaxOf(file, source))) {
+    const pinIndex = unused.indexOf(lines[line - 1].trimEnd());
+
+    if (pinIndex >= 0) {
+      unused.splice(pinIndex, 1);
+    } else {
+      report.push(`${file}:${line}: ${columns} columns: ${text}`);
+    }
+  }
+
+  return [
+    ...report,
+    ...unused.map((line) => `${file}: stale pin, the line is gone or fits: ${line}`),
+  ];
+}
+
+function readSource(file) {
+  try {
+    return fs.readFileSync(file, 'utf8');
+  } catch (error) {
+    return exitWith(`could not read ${file}: ${error.message}`);
+  }
+}
+
 function runCli() {
-  const files = process.argv.slice(2);
+  const { files, pinned, root, complete } = parseArguments(process.argv.slice(2));
+  const pins = pinned === undefined ? new Map() : readPins(pinned);
+  const relativeOf = (file) =>
+    path
+      .relative(root ?? '', path.resolve(file))
+      .split(path.sep)
+      .join('/');
+  const scanned = new Set(files.map(relativeOf));
+  const report = files.flatMap((file) =>
+    reportFile(file, readSource(file), pins.get(relativeOf(file)) ?? []),
+  );
 
-  if (files.length === 0) {
-    process.stderr.write('usage: comment-line-width.js <file>...\n');
-    process.exit(2);
-  }
-
-  let found = false;
-
-  for (const file of files) {
-    let source;
-
-    try {
-      source = fs.readFileSync(file, 'utf8');
-    } catch (error) {
-      process.stderr.write(`comment-line-width: could not read ${file}: ${error.message}\n`);
-      process.exit(2);
-    }
-
-    for (const { line, columns, text } of findViolations(source)) {
-      found = true;
-      process.stdout.write(`${file}:${line}: ${columns} columns: ${text}\n`);
+  if (complete) {
+    for (const [pinnedPath, lines] of pins) {
+      report.push(
+        ...(scanned.has(pinnedPath)
+          ? []
+          : lines.map((line) => `${pinnedPath}: stale pin, the file is not scanned: ${line}`)),
+      );
     }
   }
 
-  process.exit(found ? 1 : 0);
+  process.stdout.write(report.map((line) => `${line}\n`).join(''));
+  process.exit(report.length > 0 ? 1 : 0);
 }
 
 if (require.main === module) {

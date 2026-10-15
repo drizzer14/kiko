@@ -92,6 +92,16 @@ describe('surfaceTranslucent vs surfaceTranslucentStrong', () => {
   });
 });
 
+describe('largeTitle typography token', () => {
+  it('pins the native large title metrics (34pt bold, 41 line height)', () => {
+    expect(darkTheme.typography.largeTitle).toEqual({
+      fontSize: 34,
+      fontWeight: '700',
+      lineHeight: 41,
+    });
+  });
+});
+
 describe('icon-size token scale', () => {
   // Every icon size is 1.25x its paired type-scale step, rounded to the nearest
   // point (iOS HIG: a symbol reads as a peer of, and slightly heavier than, the

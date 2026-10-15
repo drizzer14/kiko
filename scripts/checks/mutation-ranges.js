@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 
-// Turns `git diff -U0` output (stdin) into the ADDED-line ranges of the given paths, so
+// Turns `git diff --unified=0` output (stdin) into the ADDED-line ranges of the given paths, so
 // scripts/checks/mutation.sh can hand Stryker `path:start-end` entries (the changed lines only).
 //
-//   usage: git diff -U0 --find-renames ... | mutation-ranges.js <path>...
+//   usage: git diff --unified=0 --find-renames ... | mutation-ranges.js <path>...
 //
 // It prints one line per argument, in argument order: `<path>\t<r1>,<r2>...`. Each range is
 // `start-end` (1-based, end inclusive, whole lines, the entry shape Stryker's `mutate` takes),

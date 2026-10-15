@@ -674,16 +674,35 @@ harness_doc_files() {
   done < <(git -C "$root" ls-files -z --cached --others --exclude-standard 2>/dev/null)
 }
 
+# harness_doc_suite_fixtures <root> <suite>... : the files under <root>/__tests__ that the given
+# suites name in a quoted `fixtures/...` literal (a suite reads its pin lists through such a path),
+# relative to <root>, sorted, one per line. A literal that names no file on disk is left out.
+harness_doc_suite_fixtures() {
+  local root="$1" literal
+  shift
+  [ $# -gt 0 ] || return 0
+  (
+    cd "$root" || exit 1
+    grep -h -o -E "['\"\`]fixtures/[A-Za-z0-9._/-]+['\"\`]" "$@" 2>/dev/null \
+      | tr -d "'\"\`" | LC_ALL=C sort -u \
+      | while IFS= read -r literal; do
+        [ -f "__tests__/$literal" ] && printf '%s\n' "__tests__/$literal"
+      done
+  )
+}
+
 # harness_doc_fingerprint <root> : a hash of the working-tree state of every doc file plus the
-# discovered suites' contents. It reads the working tree, not HEAD and a diff, so a committed,
-# a staged and an uncommitted edit of the same text give the same value, and a pass recorded
-# before a commit still covers it. A doc file moved out of a root or deleted drops out of the
-# name list, so that changes it too. It prints nothing when there is no doc file and no suite
-# (nothing for a suite to read) and when the hash fails; a caller that must tell the two apart
-# lists the files and suites itself, and an empty value never matches a recorded pass.
+# discovered suites' contents and of the fixture files those suites name
+# (harness_doc_suite_fixtures), since an edit of a pin list changes what a suite reports. It reads
+# the working tree, not HEAD and a diff, so a committed, a staged and an uncommitted edit of the
+# same text give the same value, and a pass recorded before a commit still covers it. A doc file
+# moved out of a root or deleted drops out of the name list, so that changes it too. It prints
+# nothing when there is no doc file and no suite (nothing for a suite to read) and when the hash
+# fails; a caller that must tell the two apart lists the files and suites itself, and an empty
+# value never matches a recorded pass.
 harness_doc_fingerprint() {
   local root="$1" file
-  local -a docs=() suites=()
+  local -a docs=() suites=() fixtures=()
   while IFS= read -r -d '' file; do
     docs+=("$file")
   done < <(harness_doc_files "$root")
@@ -691,9 +710,14 @@ harness_doc_fingerprint() {
     suites+=("$file")
   done < <(harness_doc_suites "$root")
   [ ${#docs[@]} -gt 0 ] || [ ${#suites[@]} -gt 0 ] || return 0
+  while IFS= read -r file; do
+    fixtures+=("$file")
+  done < <(harness_doc_suite_fixtures "$root" "${suites[@]+"${suites[@]}"}")
   {
-    printf '%s\n' "${docs[@]+"${docs[@]}"}" "${suites[@]+"${suites[@]}"}"
-    git -C "$root" hash-object -- "${docs[@]+"${docs[@]}"}" "${suites[@]+"${suites[@]}"}" 2>/dev/null
+    printf '%s\n' "${docs[@]+"${docs[@]}"}" "${suites[@]+"${suites[@]}"}" \
+      "${fixtures[@]+"${fixtures[@]}"}"
+    git -C "$root" hash-object -- "${docs[@]+"${docs[@]}"}" "${suites[@]+"${suites[@]}"}" \
+      "${fixtures[@]+"${fixtures[@]}"}" 2>/dev/null
   } | harness_hash
 }
 

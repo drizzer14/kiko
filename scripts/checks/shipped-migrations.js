@@ -34,7 +34,7 @@
 // shipped), the earlier base alone decides, so a branch cut from next can
 // restore main's content and pass instead of failing one base or the other.
 //
-// A file that is absent at every base (added on this branch) is free to change.
+// A file that is absent at every base (the checked branch adds it) is free to change.
 //
 // Exit 0: clean. Exit 1: violations, one line each on stdout. Exit 2: the check
 // could not run (bad usage, a git or parse failure), so the wrapper fails

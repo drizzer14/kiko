@@ -108,8 +108,16 @@ with separators (`` `${base}:${quote}` ``) stays a template literal.
 ### Wrap comments at 100 columns
 
 Biome cannot wrap a comment, so a long one stays long until its author
-wraps it. Shell scripts (`scripts/**/*.sh`) follow the same 100-column rule for their `#` comments, pinned by
-`__tests__/shell-comment-width.test.ts`. The pre-write guard (`kiko-comment-line-width`) denies a new
+wraps it. A `#` comment line (first non-blank character `#`, not the `#!` line) follows the
+same 100-column rule in a `.sh`, `.bash`, `.yml`, `.yaml` file and in an extensionless file
+with a shell shebang; so do the comments of the scripts js and the rule fixtures.
+`npm run check:comment-line-width` checks them (`__tests__/comment-line-width.test.ts`; its
+scope is in kiko-linter's `comment-line-width.js` bullet). A `#`-first line inside a
+multi-line string, a heredoc body or a YAML block scalar is read as a comment too. A fixture
+line that cannot wrap is listed by exact text in
+`scripts/checks/comment-line-width.pinned`; the list only shrinks, and you never add a row for
+a line that can wrap.
+The pre-write guard (`kiko-comment-line-width`) denies a new
 physical line over 100 columns that holds comment text: a `//` comment,
 any line of a `/* */` or `/** */` block, a JSX `{/* */}` comment, or a
 trailing comment after code. Break the comment at a space and continue on
@@ -137,11 +145,19 @@ its code. A long code line with no comment is Biome's, not this rule's.
   Biome wraps the code. Run the formatter first, or move the comment
   above its code.
 - A tool directive (`// biome-ignore`, `// nosemgrep`, `// kiko-override`)
-  must stay on the line directly above its code, so it cannot continue on
-  a second line (Biome reports a suppression followed by another comment
-  line as unused). Put the prose in a plain comment above the directive and
-  keep the directive's own justification short enough to fit in 100
-  columns.
+  must stay on the line directly above its code, so a lint directive
+  (`biome-ignore lint/...`) cannot continue on a second line (Biome reports a
+  suppression followed by another comment line as unused). Put the prose in a
+  plain comment above the directive and keep the directive's own justification
+  short enough to fit in 100 columns. A `biome-ignore format` directive may
+  continue on a second comment line and still suppresses.
+- Markdown prose in the skills, agents and harness docs wraps at 100 columns too
+  (`__tests__/markdown-prose-width.test.ts` holds the roots). Exempt: fenced code, a `|` table
+  row, an ATX heading, the YAML front matter, and a line with no wrap point. A line that is
+  over width and not exempt fails unless it is pinned by exact text in
+  `__tests__/fixtures/markdown-prose-width.pinned.json`. The pin file only shrinks: rewrap or
+  remove a pinned line and delete its pin (a stale pin fails); never add a pin for a line you
+  write.
 - There is no inline override: the guard ignores a `nosemgrep` or
   `kiko-override` comment that names `kiko-comment-line-width`, and the
   finding still denies. `scripts/checks/comment-line-width.js` holds the
@@ -210,11 +226,13 @@ No history in a comment: no task id (`T28`), no review-round id (`I1`),
 no spec section number (`spec 6.2`), no plan citation (`per the plan`),
 and no "changed because …" narrative (the full set is the regexes of
 `kiko-no-history-id-comment` and `kiko-no-history-word-comment` in
-`rules/semgrep-prewrite.yml`). That belongs in the commit message that
+`rules/semgrep-prewrite.yml`, and the shell variants in `rules/semgrep-mobile.yml`). That
+belongs in the commit message that
 made the change, or in the skill section that owns the rule — never
-in a comment left behind in the code. Mechanized in `src/**` by the
-`kiko-no-history-id-comment` Semgrep rule (ERROR) — see the
-kiko-linter skill's own section on it for the rule's design.
+in a comment left behind in the code. Mechanized across `src`, `__tests__`, the scripts js and
+the `#` lines of `.sh`, `.bash` and `githooks/` files by the `kiko-no-history-*` Semgrep rules
+(ERROR); read their `paths` in `rules/semgrep-prewrite.yml` and `rules/semgrep-mobile.yml`, and
+the kiko-linter skill's own section on them for the design.
 
 The "changed because …" narrative words are mechanized too, by the
 `kiko-no-history-word-comment` Semgrep rule (ERROR): read the phrases in that rule's `pattern-regex` and `message` in

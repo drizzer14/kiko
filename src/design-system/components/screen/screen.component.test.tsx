@@ -1,9 +1,13 @@
 import type { ComponentProps } from 'react';
 import { render, within } from '@testing-library/react-native';
+import { HeaderHeightContext } from '@react-navigation/elements';
+import type { RenderedElement } from '@kiko/test-support/rendered-element';
 import { type StyleProp, StyleSheet, Text, type ViewStyle } from 'react-native';
 
-import type { RenderedElement } from '@kiko/test-support/rendered-element';
 import '@kiko/design-system/unistyles';
+
+import { LargeTitleHeadingContext } from '@kiko/design-system/components/large-title-heading';
+
 // Imported through the folder's index (the real path a screen consumes,
 // `design-system/components/screen`), not `./screen.component` directly, so
 // this test also exercises index.ts's re-export.
@@ -422,5 +426,83 @@ describe('Screen', () => {
     expect(footerStyle.paddingTop).toBe(footerButtonTopMargin);
     expect(totalBottomOffset(footer) - MOCK_TAB_BAR_HEIGHT).toBe(footerButtonTopMargin);
     expect(totalBottomOffset(footer) - MOCK_TAB_BAR_HEIGHT).toBe(FOOTER_GAP);
+  });
+});
+
+describe('Screen with a title heading', () => {
+  const HEADER_HEIGHT = 100;
+  const HEADING_TITLE = 'A title that is much too long for one line';
+
+  // The context a navigator layout sets while the screen's title does not fit one line of the
+  // native large title.
+  const renderWithHeading = (
+    onScrolledChange: jest.Mock,
+    props: ComponentProps<typeof Screen> = { scroll: true },
+    headingBottom = 150,
+  ) =>
+    render(
+      <HeaderHeightContext.Provider value={HEADER_HEIGHT}>
+        <LargeTitleHeadingContext.Provider
+          value={{
+            title: HEADING_TITLE,
+            scrolled: false,
+            headingBottom: { current: headingBottom },
+            onScrolledChange,
+            onHostedChange: jest.fn(),
+          }}
+        >
+          <Screen {...props}>
+            <Text>body text</Text>
+          </Screen>
+        </LargeTitleHeadingContext.Provider>
+      </HeaderHeightContext.Provider>,
+    );
+
+  it('renders the heading as the first scroll content, ahead of the screen content', async () => {
+    const { toJSON } = await renderWithHeading(jest.fn());
+    const rendered = JSON.stringify(toJSON());
+
+    expect(rendered).toContain(HEADING_TITLE);
+    expect(rendered.indexOf(HEADING_TITLE)).toBeLessThan(rendered.indexOf('body text'));
+  });
+
+  it('reports the heading scrolled under the bar from the scroll view', async () => {
+    const onScrolledChange = jest.fn();
+    const { getByTestId } = await renderWithHeading(onScrolledChange);
+    const scrollView = getByTestId(SCROLL_VIEW_TEST_ID);
+
+    scrollView.props.onScroll({ nativeEvent: { contentOffset: { x: 0, y: 50 } } });
+    scrollView.props.onScroll({ nativeEvent: { contentOffset: { x: 0, y: -HEADER_HEIGHT } } });
+
+    expect(scrollView.props.scrollEventThrottle).toBe(16);
+    expect(onScrolledChange.mock.calls).toEqual([[true], [false]]);
+  });
+
+  // The heading bar is translucent: the content rests one header height above offset zero.
+  it('does not report the heading scrolled at the rest offset under the translucent bar', async () => {
+    const onScrolledChange = jest.fn();
+    const { getByTestId } = await renderWithHeading(onScrolledChange, { scroll: true }, 90);
+
+    getByTestId(SCROLL_VIEW_TEST_ID).props.onScroll({
+      nativeEvent: { contentOffset: { x: 0, y: -HEADER_HEIGHT } },
+    });
+
+    expect(onScrolledChange.mock.calls).toEqual([[false]]);
+  });
+
+  it('renders no heading and adds no scroll handler while the native large title shows the title', async () => {
+    const { getByTestId, queryByTestId } = await renderScreen({ scroll: true });
+
+    expect(queryByTestId('large-title-heading')).toBeNull();
+    expect(getByTestId(SCROLL_VIEW_TEST_ID).props.onScroll).toBeUndefined();
+  });
+
+  it.each([
+    ['plain', {}],
+    ['bleedTop', { bleedTop: true }],
+  ])('leaves the heading to the screen in the %s branch', async (_name, props) => {
+    const { queryByTestId } = await renderWithHeading(jest.fn(), props);
+
+    expect(queryByTestId('large-title-heading')).toBeNull();
   });
 });

@@ -34,6 +34,8 @@ jest.mock('react-i18next', () => ({
   }),
 }));
 
+import { fittingLargeTitleLayout } from '../fitting-large-title';
+
 import AccountsStack from './accounts.stack';
 
 type ScreenOptions = { title?: string; animation?: string };
@@ -87,6 +89,12 @@ describe('AccountsStack', () => {
       headerBlurEffect: 'systemChromeMaterialDark',
       headerLargeStyle: { backgroundColor: 'transparent' },
     });
+  });
+
+  it('wraps every screen in the fitting large-title layout', () => {
+    const navigator = AccountsStack({}) as ReactElement<{ screenLayout: unknown }>;
+
+    expect(navigator.props.screenLayout).toBe(fittingLargeTitleLayout);
   });
 
   it('gives the tab-root Accounts list a static, localized title', () => {

@@ -110,6 +110,12 @@ const SIGNAL_ZERO_THEN_OPTION = [
   'kill -0 -9 -1',
   'kill -0 -1 -1',
   'kill -s 0 -9 -1',
+  'kill -0 ~ -1',
+  'kill -0 ~+ -1',
+  'kill -0 ~- -1',
+  'kill -0 ~user -1',
+  'kill -s 0 ~ -1',
+  'HOME=-sKILL; kill -0 ~ -1',
 ];
 SIGNAL_ZERO_THEN_OPTION.forEach((command, index) => {
   scriptWith(`kills-after-null-signal-${index}.sh`, `${command}\n`);

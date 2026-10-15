@@ -34,8 +34,8 @@
 // - otherwise the file at HEAD;
 // - absent when it did not exist there, which is the guard's own new-file
 //   case (every finding counts as new).
-// AFTER is always the working-tree file, so a violation a later commit or
-// edit already fixed does not fail.
+// AFTER is always the working-tree file, so a violation that a commit or an
+// edit after the baseline already fixed does not fail.
 //
 // `plan [<floor>]` prints one line per file to replay: the path, then one or
 // two `<commit>\t<path>` BEFORE sources, tab-separated (an empty commit means

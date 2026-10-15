@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Body of githooks/pre-commit and githooks/pre-merge-commit: runs `tsc --noEmit` on a temporary
-# copy of the STAGED index, so each commit typechecks by itself. Typecheck only, by user ruling
-# 2026-10-13: the full gate (check:all) takes minutes, so a commit gate that ran it would make
-# every commit slow. check:all runs before a merge.
+# copy of the STAGED index, so each commit typechecks by itself. Typecheck only: the full gate
+# (check:all) takes minutes, so a commit gate that ran it would make every commit slow. check:all
+# runs before a merge.
 #
 # The copy is the commit's own tree (`git checkout-index` of the index git hands the hook), so an
 # unstaged fix cannot make a bad commit pass and an unstaged or untracked broken file cannot make a
