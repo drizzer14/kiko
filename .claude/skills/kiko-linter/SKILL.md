@@ -1325,7 +1325,8 @@ or `githooks/` file (read each rule's `paths` key). The member list is the two
 `rules/semgrep-prewrite.yml`. Read them for the current set; the P-ids are `P-?\d{1,3}`
 (`P3`, `P-12`), and "Display P3" and the curve names P-256, P-384 and P-521 are
 standards, not ids, so they stay silent (`rules/fixtures/kiko-no-history-id-comment.good.ts`).
-A hyphen-led single-letter id (a git flag such as `-U0` or `-M3`) is skipped.
+A single-letter id whose hyphen has no word character before it (a git flag such as `-U0` or
+`-M3`) is skipped; `review-M3` and `Step-T12` still fire.
 The fixture pair shows each member. Two
 `pattern-regex` arms, one per comment syntax —
 a single regex spanning both `//` and `/* */` would have to

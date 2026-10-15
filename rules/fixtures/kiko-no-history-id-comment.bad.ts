@@ -499,3 +499,15 @@ export const citationInReview = true;
 // EXPECT-FINDING
 /* A block comment cites U0 as an id too. */
 export const bareIdInBlock = true;
+
+// EXPECT-FINDING
+// The cap was fixed in review-M3.
+export const wordHyphenIdInLine = true;
+
+// EXPECT-FINDING
+// Step-T12 set it.
+export const wordHyphenIdAtLineStart = true;
+
+// EXPECT-FINDING
+/* The cap was fixed in review-M3. */
+export const wordHyphenIdInBlock = true;

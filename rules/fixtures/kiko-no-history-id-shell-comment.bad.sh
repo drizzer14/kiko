@@ -36,3 +36,11 @@ hyphen=1
 # EXPECT-FINDING
 # The retry window is fixed in review M3.
 citation=1
+
+# EXPECT-FINDING
+# The cap was fixed in review-M3.
+wordHyphenId=1
+
+# EXPECT-FINDING
+# Step-T12 set it.
+wordHyphenIdAtStart=1
