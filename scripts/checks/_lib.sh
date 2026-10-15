@@ -641,9 +641,9 @@ harness_code_fingerprint() {
 }
 
 # --- The doc-reading jest suites ----------------------------------------------------------------
-# Some suites read skill, agent, docs and CLAUDE.md text and fail when it drifts from the code.
-# The tier that runs them (medium.sh, and `make doc-suites`) finds them at run time, so a new
-# suite needs no list edit.
+# Some suites read skill, agent, docs and CLAUDE.md text, or a pin list, and fail when it drifts
+# from the code. The tier that runs them (medium.sh, and `make doc-suites`) finds them at run
+# time, so a new suite needs no list edit.
 
 # harness_doc_roots_pattern : the regex a changed path matches when it is doc text a suite reads.
 harness_doc_roots_pattern() {
@@ -651,13 +651,16 @@ harness_doc_roots_pattern() {
 }
 
 # harness_doc_suites <root> : the suites under <root>/__tests__ that read a file
-# (readFileSync) and name a doc root in a quoted literal, relative to <root>, sorted. Both
-# conditions, so a suite that reads files but never a doc (a spawned-bash suite) stays out.
+# (readFileSync) and name a doc root or a pin file in a quoted literal, relative to <root>, sorted.
+# Both conditions, so a suite that reads files but never a doc (a spawned-bash suite) stays out.
+# A pin file is a `fixtures/` or `scripts/checks/` path ending in `.pinned` or `.pinned.json`; a
+# bare pin name (no directory) does not count, since a suite that only spawns the wrapper reading
+# that pin file never reads it itself.
 harness_doc_suites() {
   (
     cd "$1" || exit 1
     grep -l readFileSync __tests__/*.test.ts 2>/dev/null \
-      | xargs -r grep -l -E "['\"\`](docs/harness/|docs/superpowers/|\.claude/skills|harness/kiko/(skills|agents)|CLAUDE\.md)" 2>/dev/null \
+      | xargs -r grep -l -E "['\"\`](docs/harness/|docs/superpowers/|\.claude/skills|harness/kiko/(skills|agents)|CLAUDE\.md)|['\"\`](\.\./)?(fixtures/|scripts/checks/)[A-Za-z0-9._/-]*\.pinned(\.json)?['\"\`]" 2>/dev/null \
       | LC_ALL=C sort
   )
 }
@@ -674,20 +677,29 @@ harness_doc_files() {
   done < <(git -C "$root" ls-files -z --cached --others --exclude-standard 2>/dev/null)
 }
 
-# harness_doc_suite_fixtures <root> <suite>... : the files under <root>/__tests__ that the given
-# suites name in a quoted `fixtures/...` literal (a suite reads its pin lists through such a path),
-# relative to <root>, sorted, one per line. A literal that names no file on disk is left out.
+# harness_doc_suite_fixtures <root> <suite>... : the files that the given suites name in a quoted
+# literal (a suite reads its pin lists through such a path), relative to <root>, sorted, one per
+# line: a `fixtures/...` literal names a file under <root>/__tests__, a
+# `../scripts/checks/<name>.pinned` literal names <root>/scripts/checks/<name>.pinned. A literal
+# that names no file on disk is left out.
 harness_doc_suite_fixtures() {
   local root="$1" literal
   shift
   [ $# -gt 0 ] || return 0
   (
     cd "$root" || exit 1
-    grep -h -o -E "['\"\`]fixtures/[A-Za-z0-9._/-]+['\"\`]" "$@" 2>/dev/null \
-      | tr -d "'\"\`" | LC_ALL=C sort -u \
-      | while IFS= read -r literal; do
-        [ -f "__tests__/$literal" ] && printf '%s\n' "__tests__/$literal"
-      done
+    {
+      grep -h -o -E "['\"\`]fixtures/[A-Za-z0-9._/-]+['\"\`]" "$@" 2>/dev/null \
+        | tr -d "'\"\`" | while IFS= read -r literal; do
+          printf '%s\n' "__tests__/$literal"
+        done
+      grep -h -o -E "['\"\`]\.\./scripts/checks/[A-Za-z0-9._-]+\.pinned['\"\`]" "$@" 2>/dev/null \
+        | tr -d "'\"\`" | while IFS= read -r literal; do
+          printf '%s\n' "${literal#../}"
+        done
+    } | LC_ALL=C sort -u | while IFS= read -r literal; do
+      [ -f "$literal" ] && printf '%s\n' "$literal"
+    done
   )
 }
 

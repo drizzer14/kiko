@@ -357,6 +357,69 @@ describe('medium.sh doc-suites step trigger is the doc fingerprint, not the repl
     });
   });
 
+  describe('a pin file a suite names in a quoted literal', () => {
+    const PIN_SUITE = '__tests__/e-pins.test.ts';
+    const PIN_FILE = 'scripts/checks/widths.pinned';
+
+    const suiteNamingPin = (root: string, literal: string): string =>
+      `${suiteReading(root)}const PINNED = join(__dirname, '${literal}');\n`;
+
+    it.each(['../scripts/checks/widths.pinned', 'fixtures/widths.pinned.json'])(
+      'discovers a suite that names only the literal %s',
+      (literal) => {
+        const project = buildProject();
+        writeFile(project, PIN_SUITE, suiteNamingPin('src/features', literal));
+        commitAll(project, 'pins');
+
+        expect(runMedium(project)).toEqual({ code: 0, stderr: '' });
+        expect(jestRuns(project)).toEqual([[...DISCOVERED, PIN_SUITE]]);
+      },
+    );
+
+    it('leaves out a suite that names the bare pin name', () => {
+      const project = buildProject();
+      writeFile(project, PIN_SUITE, suiteNamingPin('src/features', 'widths.pinned'));
+      commitAll(project, 'pins');
+
+      expect(runMedium(project)).toEqual({ code: 0, stderr: '' });
+      expect(jestRuns(project)).toEqual([DISCOVERED]);
+    });
+
+    it('runs for an edit of only the scripts/checks pin file a suite names', () => {
+      const project = buildProject();
+      writeFile(
+        project,
+        PIN_SUITE,
+        suiteNamingPin('docs/harness', '../scripts/checks/widths.pinned'),
+      );
+      writeFile(project, PIN_FILE, 'one\n');
+      commitAll(project, 'pins');
+      expect(runMedium(project)).toEqual({ code: 0, stderr: '' });
+      rmSync(stateFile(project, 'jest.runs'));
+      writeFile(project, PIN_FILE, 'one\ntwo\n');
+
+      expect(runMedium(project)).toEqual({ code: 0, stderr: '' });
+      expect(jestRuns(project)).toEqual([[...DISCOVERED, PIN_SUITE]]);
+    });
+
+    it('skips for an edit of a scripts/checks pin file no suite names', () => {
+      const project = buildProject();
+      writeFile(
+        project,
+        PIN_SUITE,
+        suiteNamingPin('docs/harness', '../scripts/checks/widths.pinned'),
+      );
+      writeFile(project, 'scripts/checks/other.pinned', 'one\n');
+      commitAll(project, 'pins');
+      expect(runMedium(project)).toEqual({ code: 0, stderr: '' });
+      rmSync(stateFile(project, 'jest.runs'));
+      writeFile(project, 'scripts/checks/other.pinned', 'one\ntwo\n');
+
+      expect(runMedium(project)).toEqual({ code: 0, stderr: '' });
+      expect(jestRuns(project)).toEqual([]);
+    });
+  });
+
   it('stays silent in a project with no doc file and no suite', () => {
     const project = buildProject();
     git(project, 'rm', '-q', '-f', 'CLAUDE.md', 'docs/harness/base.md', '__tests__/a-doc.test.ts');

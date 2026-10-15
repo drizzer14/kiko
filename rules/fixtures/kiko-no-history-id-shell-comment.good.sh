@@ -15,3 +15,7 @@ quoted='# Task 7 in single quotes'
 
 # A standard name that reads like an id is not one: SHA-256 and P-256 stay silent.
 digest=sha256
+
+# A git flag is not an id: git diff -U0 keeps the hunks tight, -U12 widens them, git log -M3 follows
+# renames.
+context=0

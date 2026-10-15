@@ -483,3 +483,19 @@ export const specPriorityBlock = true;
  * the overlap guard covers P2 as well.
  */
 export const specPriorityLaterBlockLine = true;
+
+// EXPECT-FINDING
+// A bare U0 is a task id, not a git flag.
+export const bareIdWithDigit = true;
+
+// EXPECT-FINDING
+// The hyphen after the letter keeps U-3 an id.
+export const hyphenAfterLetterId = true;
+
+// EXPECT-FINDING
+// The retry window is fixed in review M3.
+export const citationInReview = true;
+
+// EXPECT-FINDING
+/* A block comment cites U0 as an id too. */
+export const bareIdInBlock = true;

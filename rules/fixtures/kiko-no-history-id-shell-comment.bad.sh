@@ -24,3 +24,15 @@ nested=1
 # EXPECT-FINDING
 # The cap came from T-12 after the review.
 review=1
+
+# EXPECT-FINDING
+# A bare U0 is a task id, not a git flag.
+bare=1
+
+# EXPECT-FINDING
+# The hyphen after the letter keeps U-3 an id.
+hyphen=1
+
+# EXPECT-FINDING
+# The retry window is fixed in review M3.
+citation=1
