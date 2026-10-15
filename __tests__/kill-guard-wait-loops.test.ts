@@ -67,7 +67,7 @@ const DENIED_WAIT_LOOPS: string[] = [
   "eval 'until ! pgrep -f jest; do sleep 1; done'",
   "bash <<'EOF'\nuntil ! pgrep -f jest; do sleep 1; done\nEOF",
   'eval "$(cat <<\'EOF\'\nuntil ! pgrep -f jest; do sleep 1; done\nEOF\n)"',
-  // A body that no shell runs is still read for a wait loop, as before.
+  // A body that no shell runs is read for a wait loop.
   "cat > f.md <<'EOF'\n- `while ps | grep jest; do sleep 1; done` denies\nEOF",
   'while top -l 1 | grep -q xcodebuild; do sleep 5; done',
   'while true; do bash -c "pgrep -f jest" || break; done',
@@ -122,7 +122,7 @@ const ALLOWED_WAIT_COMMANDS: string[] = [
   'git commit -m "$(cat <<\'X\'\nfix(harness): stop self-matching waiters\n\nThe orchestrator kept a waiter alive\nwhile the gate ran; its `pgrep -f jest` matched itself.\nX\n)"',
   'git commit -m "$(cat <<\'X\'\ndocs: note\n\nKeep polling\nuntil the run ends. A one-time `pgrep -f stryker` is fine.\nX\n)"',
   'gh pr create --title t --body "$(cat <<\'X\'\n## Summary\n- kill-guard: deny a wait loop\nwhile `ps aux | grep jest` is fine once\nX\n)"',
-  "git commit -F - <<'X'\ndocs: explain the self-match trap\n\nuntil the load drops, agents used to run\nps aux | grep jest in a loop.\nX",
+  "git commit -F - <<'X'\ndocs: explain the self-match trap\n\nuntil the load drops, agents may run\nps aux | grep jest in a loop.\nX",
   // What feeds a loop runs once, outside it.
   'while read line; do echo "$line"; done < <(ps aux | grep jest)',
   'while read line; do echo "$line"; done <<< "$(ps aux | grep jest)"',

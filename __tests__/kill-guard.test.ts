@@ -338,13 +338,13 @@ const HEREDOC_COMMANDS: string[] = [
 ];
 
 // A quoted heredoc body that no shell runs is text: a note or a commit message may show a
-// command in backticks. The body is judged as it always was (see kill-guard-heredoc-bodies.test.ts
-// for the kinds) and for nothing newer, so the texts below, which name only newer denies, pass; a
+// command in backticks. The body is judged only for the data-body kinds (see
+// kill-guard-heredoc-bodies.test.ts), so the texts below, which name only narrower denies, pass; a
 // variable the command assigns never reaches into it.
 const HEREDOC_DATA_COMMANDS: string[] = [
   "cat > f.md <<'EOF'\n- `pid=-1; kill -9 $pid` denies\nEOF",
   "git commit -F - <<'EOF'\ndocs: the guard reads `pid=-1; kill -9 $pid` as a group kill\nEOF",
-  'git commit -m "$(cat <<\'EOF\'\ndocs: `pid=-1; kill -9 $pid` now denies\nEOF\n)"',
+  'git commit -m "$(cat <<\'EOF\'\ndocs: `pid=-1; kill -9 $pid` denies\nEOF\n)"',
   "pid=-1; cat > notes.md <<'EOF'\nkill -9 $pid\nEOF",
   "cat > f.md <<'EOF'\nthe guard denies `git commit-tree` in every form\nEOF",
   "git commit -F - <<'EOF'\nfix: deny `git commit-tree`\nEOF",
@@ -413,7 +413,7 @@ const MAIN_CHECKOUT_COMMANDS: [string, string][] = [
   [MAIN_CHECKOUT, 'git apply --stat --apply x.patch'],
   [WORKTREE, `git -C ${MAIN_CHECKOUT} pull --no-ff`],
   [WORKTREE, `git -C ${MAIN_CHECKOUT} cherry-pick 1a2b3c4`],
-  // A body that no shell runs is still read for a main-checkout change, as before.
+  // A body that no shell runs is read for a main-checkout change.
   [WORKTREE, `cat > f.md <<'EOF'\n- \`git -C ${MAIN_CHECKOUT} merge x\` denies\nEOF`],
   // A directory the command assigns is read into `-C`.
   [WORKTREE, `d=${MAIN_CHECKOUT}; git -C $d merge feat/x`],
@@ -579,7 +579,7 @@ const NO_VERIFY_COMMANDS: string[] = [
   'git pull --no-verify',
   'git pull --no-verify origin main',
   'git pull --rebase --no-verify',
-  // A body that no shell runs is still read for a hook skip by option, as before.
+  // A body that no shell runs is read for a hook skip by option.
   "cat > f.md <<'EOF'\n- `git commit --no-verify` denies\nEOF",
 ];
 
@@ -638,7 +638,7 @@ const CONFIG_REWRITE_COMMANDS: string[] = [
   'git config --un core.hooksPath',
   'git config --re core',
   'git config --bogus core.hooksPath',
-  // A body that no shell runs is still read for a core.hooksPath write, as before.
+  // A body that no shell runs is read for a core.hooksPath write.
   "cat > f.md <<'EOF'\n- `git config --unset core.hooksPath` denies\nEOF",
 ];
 

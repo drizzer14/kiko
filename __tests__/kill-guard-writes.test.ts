@@ -457,8 +457,8 @@ const ALLOWED_GIT_CONFIG: string[] = [
 
 // A variable the SAME command assigns (`f=<path>`, `export f=`, `declare f=`, `local f=`) is
 // resolved where `$f` or `${f}` is used, so a write through it is judged by its path; a later
-// reassignment wins. The first row is the command a developer agent ran past the guard on
-// 2026-10-14 (run-log 20261014T2300-kiko-help-flows/1).
+// reassignment wins. The first row is a `sed -i` on a path held in a variable, which the text
+// alone does not reveal as a write into `src/`.
 const DENIED_SAME_COMMAND_VARIABLE: string[] = [
   `f=src/navigation/title-measurer/title-measurer.component.test.tsx && sed -i '' "s/a/b/g" $f && sed -i '' "s|^const LINE_HEIGHT = |x|" $f && ./node_modules/.bin/biome check --write $f`,
   `f=src/x.ts; sed -i '' 's/a/b/' "$f"`,
@@ -667,7 +667,7 @@ describe('kill-guard shell-write deny (parser only, fake repository)', () => {
     expect(Date.now() - started).toBeLessThan(2000);
   });
 
-  // Each assignment used to copy every earlier one (10000 of them took seconds of the hook's 10).
+  // Copying every earlier assignment per assignment would take seconds of the hook's 10 for 10000.
   it('judges thousands of assignments and plain commands well inside the hook timeout', () => {
     const assignments = Array.from({ length: 10000 }, (_, index) => `v${index}=/tmp/x`).join('; ');
     const plain = Array.from({ length: 6000 }, () => 'echo a').join('; ');
@@ -679,7 +679,7 @@ describe('kill-guard shell-write deny (parser only, fake repository)', () => {
   });
 
   // A command that doubles a variable 31 times would build a string past the engine's limit, and
-  // the throw used to turn the whole decision into an allow.
+  // the throw must not turn the whole decision into an allow.
   it('judges a command that doubles a variable past any size', () => {
     const doublings = Array.from({ length: 31 }, () => 'v=$v$v').join('; ');
 

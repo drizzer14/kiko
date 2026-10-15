@@ -6,9 +6,9 @@
 // signal-as-target). See docs/harness/checks.md "Automatic wiring" and
 // `.claude/skills/kiko-linter/SKILL.md` for the check-wrapper contract this
 // hook does NOT follow: it must ALWAYS exit 0, even on a crash or malformed
-// payload, so it can never break the Bash tool itself. An error thrown while judging a command is
-// a deny (`internalError`), not an allow: the command that crashed the guard may be the one it
-// stops; an unreadable payload still allows. Wired from
+// payload, so a failure of the hook process never breaks the Bash tool. An error thrown while
+// judging a command is a deny (`internalError`), not an allow: the command that crashed the guard
+// may be the one it stops; an unreadable payload still allows. Wired from
 // harness/kiko/hooks/hooks.json via scripts/checks/kill-guard.sh.
 //
 // Incident this guards against: a reviewer subagent ran
@@ -78,8 +78,8 @@
 //
 // And it reads a script file a command runs (`bash|sh|zsh|dash <file>`, `source <file>`,
 // `. <file>`, or a path run directly whose first line names a shell) and denies a pkill, killall,
-// or pattern or process-group kill in it: the incident's script sat in a scratchpad outside the
-// project, where the pre-write guard never looks. One level only (a script the script runs is not
+// or pattern or process-group kill in it: a script in a scratchpad outside the project is a place
+// the pre-write guard never looks. One level only (a script the script runs is not
 // read), a regular file of at most 256 KiB, and kills only (a `git stash` or a write inside the
 // file is not judged). `scripts/job-queue.sh` at the root of a worktree of this repository is
 // exempt: its own group TERM is the one allowed group kill. A script built in the same command, a
@@ -1623,9 +1623,10 @@ function skipsHooks(git) {
 
 // ---- the hook skips a heredoc body that no shell runs is judged for ----
 
-// Such a body is a document that may name any bypass, so it is judged for the core.hooksPath
-// spellings the guard denied before the include-path, prefix, GIT_CONFIG_* and `commit-tree`
-// denies were added, and for nothing newer. The spellings are kept here as they were.
+// Such a body is a document that may name any bypass, so it is judged only for the plain
+// core.hooksPath spellings below: a body cannot be told apart from a command piped to a shell, and
+// a document that shows an include path, a prefix-resolved option, a GIT_CONFIG_* export or
+// `commit-tree` must not deny.
 const CORE_HOOKS_PATH_ENTRY = /^core\.hookspath(?:=|$)/i;
 const CORE_HOOKS_PATH_KEY = /^core\.hookspath$/i;
 const CORE_HOOKS_PATH_PARAMETER = /(?:^|[\s'"])core\.hookspath(?:=|['"\s]|$)/i;
@@ -2669,7 +2670,7 @@ const EXPANDED_KINDS = new Set(['shellWrite', 'mainCheckout']);
 // guard cannot follow (a loop variable, `read`, `+=`) still denies what its raw text denied. The
 // second reading reports only a write or a main-checkout finding: a variable's value says where a
 // write lands or a git command runs, but never which command runs or what a kill aims at (an
-// unknown `$pid` is the agent's own, as it always was).
+// unknown `$pid` is the agent's own).
 function segmentFinding({ segment, scripts, stdinBodies, spans, place, rules }) {
   const { directories, variables } = place;
   const { words: tokens, hereStrings, redirects } = tokenize(segment);
@@ -2885,9 +2886,9 @@ function observeWaitLoops(watch, segment, spans) {
 }
 
 // The finding kinds a pass reports: a script file is read for kills only, a heredoc body that no
-// shell is known to run is read for the kinds the guard reported there before this set (a kill, a
-// git stash, a hook skip by option or core.hooksPath, a main-checkout change, a wait loop), and
-// every other finding in either is not that pass's business. `null` reports every kind.
+// shell is known to run is read for the kinds in `DATA_KINDS` (a kill, a git stash, a hook skip by
+// option or core.hooksPath, a main-checkout change, a wait loop), and every other finding in either
+// is not that pass's business. `null` reports every kind.
 const SCRIPT_KINDS = new Set(['kill']);
 const DATA_KINDS = new Set([
   'kill',
@@ -3055,14 +3056,15 @@ function rulesForSpans(segment, spans, rules) {
 // command that runs it (`eval "$(cat <<'EOF' …)"`, `sh -c "$(…)"`, a span in
 // command position), is shell text: judged in full, an unquoted heredoc
 // included. Any other body (`cat > f <<'EOF'`, `ssh host <<'EOF'`) is text, so
-// a `<<word` in it is not an operator, and it is judged for the kinds in
-// `DATA_KINDS` by the triggers the guard had when it first read such a body,
-// never for a shell write or a newer deny (`git commit-tree`, a GIT_CONFIG_*
-// export, an include path, a prefix-resolved `git config` option), and no
-// variable the command assigns reaches into it: a commit message or a notes
-// file that shows `git commit-tree` or `pid=-1; kill -9 $pid` runs nothing,
-// yet one that shows a bypass the older guard denied still denies, since a
-// body cannot be told apart from a command piped to a shell. `place` holds the
+// a `<<word` in it is not an operator, and it is judged for the kinds the
+// pass reports (`DATA_KINDS` for a typed command, the script scan's own kinds
+// inside a script) by the plain triggers of those kinds, never for a shell
+// write or a narrower deny (`git commit-tree`, a GIT_CONFIG_* export, an
+// include path, a prefix-resolved `git config` option), and no variable the
+// command assigns reaches into it: a commit message or a notes file that shows
+// `git commit-tree` or `pid=-1; kill -9 $pid` runs nothing, yet one that shows
+// a plain bypass still denies, since a body cannot be told apart from a
+// command piped to a shell. `place` holds the
 // `directories` the line may start in and the `variables` the command has
 // assigned so far (a scope, see `withVariables`); every nested line runs where its segment does.
 function findDanger(line, depth, checkHeredoc, place, rules) {
@@ -3125,8 +3127,9 @@ function findDanger(line, depth, checkHeredoc, place, rules) {
 }
 
 // The nested lines, queued scripts and heredoc bodies of one line. A body is data for the command
-// that reads it, judged for the kinds in `DATA_KINDS` with no variable the command assigns, unless
-// what a span prints is run (`rules.outputRuns`), when it is shell text, judged in full.
+// that reads it, judged for the pass's kinds (`DATA_KINDS` when it has none) with no variable the
+// command assigns, unless what a span prints is run (`rules.outputRuns`), when it is shell text,
+// judged in full.
 function nestedFinding(parts, depth, checkHeredoc, rules) {
   const { nested, scripts, bodies, placesAt, spanRules } = parts;
   const inItsPlace = (entry) => ({ text: entry.text, ...placesAt[entry.segmentIndex] });

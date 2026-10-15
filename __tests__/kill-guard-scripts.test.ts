@@ -19,8 +19,8 @@ import {
 // The script-content kill scan of scripts/checks/kill-guard.js: when a command runs a script file
 // (`bash x.sh`, `source x.sh`, `. x.sh`, `./x.sh` with a shell shebang), the guard reads that file
 // (one level, a regular file of at most 256 KiB) and denies a kill in it: a pkill, a killall, or a
-// pattern or process-group kill. The incident script sat in a scratchpad outside the project, where
-// the pre-write guard never looks. scripts/job-queue.sh at the root of a worktree of this
+// pattern or process-group kill. A script in a scratchpad outside the project is a place the
+// pre-write guard never looks. scripts/job-queue.sh at the root of a worktree of this
 // repository is exempt: its own group TERM is the one allowed group kill.
 //
 // Every text here is judged, never run: `decide` is called in node as a parser only. The scripts
@@ -345,7 +345,7 @@ const trackedShellScripts = (): string[] =>
     .split('\0')
     .filter((file) => file.endsWith('.sh') || startsWithShellShebang(file));
 
-// The guard now reads every script a command runs, so a wrong deny here would block the
+// The guard reads every script a command runs, so a wrong deny here would block the
 // coordinator's own routine commands: no tracked script and none of those commands may deny.
 describe('kill-guard script scan: every tracked script and the routine commands', () => {
   const scripts = trackedShellScripts();
