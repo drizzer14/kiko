@@ -1,6 +1,23 @@
 # HANDOFF — Kiko 1.0.0: BUILD 25 ready for user resubmission; harness agents re-tuned (2026-09-22)
 
-## ⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐ COORDINATOR HANDOFF (2026-10-15 ~14:00) — READ THIS FIRST
+## ⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐ COORDINATOR HANDOFF (2026-10-16 ~01:40) — READ THIS FIRST
+Coordinator job 828f039f. Event log: memory/refs/night-summary-2026-10-15.md (from "~14:10 Coordinator
+/clear" to the end). Session addresses: memory orca-hub (last bullets). The 2026-10-15 ~14:00 section
+below is HISTORY.
+FIRST ACTIONS of the next session: SendMessage your name to the 2 orchestrators below AND to the PM
+"Status" (then one message to Status at EVERY milestone); arm a pmset watcher (battery <-> AC) and a
+context-gauge watcher (fires at 40 %) per orchestrator terminal.
+| Thing | Value |
+|---|---|
+| main = next | bdc35f0d. origin/main = f08d323e (nothing newer pushed). Plugin 0.4.15 installed. MAIN MERGE PATH: a queued `bash scripts/job-queue.sh verify <worktree at the merge sha> <label>`, tree untouched until DONE, then `bash scripts/ff-main.sh <sha>`; raw ff on main is denied. A docs-only commit made directly in the main checkout (like this one) is not a merge. |
+| RELEASE 1.2.0 (30) | release-12 = SendMessage "release-1-2-f3" (term_81cb91bc), idle/holding. Branch release-1.2 tip a74562e0 GREEN (verify 13687, check:all 0). Archive ~/Library/Developer/Xcode/Archives/2026-10-15/Kiko 1.2.0 (30).xcarchive (src unchanged since 9767d9d4; invariants PASS). Installed on the iPhone 15 Pro over the user's data; user live check OK. Kit memory/refs/reviewer-kit (symlink to ~/Desktop/Kiko-1.1.0-build29-review/reviewer-kit): kiko-demo.kiko (en) + kiko-demo-uk.kiko, key OK, statement unchanged, HOW-TO-IMPORT 1.2.0 (30), review-notes-1.2.0.txt (plain text, 31 screens, Wolt rule demo), whats-new-1.2.0-en/uk.txt. USER: upload 1.2 + a new 1.2 screen recording (old MP4 is from 1.1). NO tag until the App Store publishes. After publication, to main via the merge path: cherry-pick d08f3b21 (version), 45a2860a + b6ce07ee (rule-demo generator), REGEN demo on main; NOT 78ecc6a3 / 1071fd6e / 9767d9d4 / binaries. Rule: no new migration on release-1.2; no .kiko export/restore on the phone while it runs 1.2 (export only from a main build). |
+| 1.3 EXCHANGES | binance-f3 = SendMessage "binance-backfill-fix-b0" (term_9cf9a6e6), worktree binance-backfill-fix. Spec 73336657 USER-APPROVED; rulings in .superpowers/sdd/binance-multicoin/rulings.md (Q1-Q16, NR1-NR9, probe rulings). Set 1 (USDT scale 8, migration 0059, .kiko v4, exact crypto display) BATCH READY 3fd36646 (verify 20741, check:all 0, gate PASS 92.21 %, survivors 13 killed + 6 equivalent); main merged into it as acf954c8 (check:all 0; verify was running at 01:13), plugin bump to 0.4.16 there. SET 1 MERGE HELD for the USER: simulator display check (sim A9850113, demo data steps in the log) + uk key review of settings.dataImport.amountTooLargeError ("export file" wording). Probes 1-4 done; probe 5 (2017 window + served depth per endpoint) being written; then R1 (forward walk = recent P2P orders arrive last) goes to the USER with measured runs. Sets 8-12 spec draft in review (gitignored). |
+| H7 | COMPLETE (8/8, closeout bb834feb); notes memory/refs/sdd-archive/h7-2026-10-15/. Open gaps for the next harness track: drizzle/ shell writes unguarded; plugin version check (second merger re-bumps); per-file rerun of timed-out mutants; fromMatcherDrafts barrel export (main follow-up). |
+| Power | UNPLUGGED since 01:13; BATTERY MODE sent (the queue starts no job on battery). Send CHARGER BACK when AC returns. |
+| Pending user items | 1.2 upload + recording; set 1 sim check + uk key; R1 after probe 5; Apple Developer Program agreement; 1.3-b Bybit questions later. |
+| Idle | duo-adaptive (must wrap 7 prose lines + a 124-col fixture line before its merge), ipad-adaptive parked. Privacy: no gh-pages publish from main before 1.3. |
+
+## ⭐ COORDINATOR HANDOFF (2026-10-15 ~14:00) — HISTORY
 Coordinator job 828f039f. Event log + OVERNIGHT DEFAULTS D1-D7 + morning walkthrough answers:
 memory/refs/night-summary-2026-10-15.md. Retrospect: memory retrospect-2026-10-15. Session addresses:
 memory orca-hub (last bullets; SendMessage names differ from titles). The 2026-10-14 section below is HISTORY.
