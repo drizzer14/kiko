@@ -240,6 +240,19 @@ describe('medium.sh on a repeated Stop', () => {
     expect(ALL_WRAPPERS.filter((wrapper) => ran(project, wrapper))).toEqual([]);
   });
 
+  it('skips a repeated Stop on a tree changed since the block, and runs nothing again', () => {
+    const project = buildBlockingProject();
+
+    expect(runWithPayloadFile(project, hookPayload('Stop', false)).code).toBe(2);
+    writeFile(project.root, 'src/kept.ts', 'export const kept = 3;\n');
+    writeFile(project.root, 'src/added.ts', 'export const added = 1;\n');
+    const repeated = runWithPayloadFile(project, hookPayload('Stop', true));
+
+    expect(repeated.code).toBe(0);
+    expect(repeated.stderr).toContain('skipped on a repeated Stop');
+    expect(argumentsSeenBy(project, 'knip.sh')).toEqual(['ran']);
+  });
+
   it.each([
     ['a first Stop (stop_hook_active false)', hookPayload('Stop', false)],
     ['a Stop with no stop_hook_active field', JSON.stringify({ hook_event_name: 'Stop' })],

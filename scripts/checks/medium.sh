@@ -76,11 +76,14 @@ if [ ${#changed[@]} -eq 0 ] && [ ${#harness_changed[@]} -eq 0 ] && [ "$replay_pe
 fi
 
 # A Stop that fires again after the hook already blocked it (the payload's stop_hook_active is
-# true) would run the same checks on the same tree and block again, a loop the session cannot
-# leave: knip alone can fail it on a file the session is not allowed to touch. The first Stop
-# already showed every failure, so a repeated one is let through with a note. Only the Stop event
-# skips: SubagentStop keeps blocking. The payload is read only when stdin is a regular file, which
-# is how dispatch.sh replays it: a pipe or a terminal a caller never closes would hang this read.
+# true) would, on an unchanged tree, run the same checks and block again, a loop the session
+# cannot leave: knip alone can fail it on a file the session is not allowed to touch. Claude Code
+# sets stop_hook_active on every Stop that follows a block in the same turn, whether or not the
+# tree changed since, so the skip cannot tell an unchanged tree from an edited one: it holds for
+# both, and an agent that edits after a block runs check:all itself. The first Stop already
+# showed every failure, so a repeated one is let through with a note. Only the Stop event skips:
+# SubagentStop keeps blocking. The payload is read only when stdin is a regular file, which is
+# how dispatch.sh replays it: a pipe or a terminal a caller never closes would hang this read.
 # Anything unreadable leaves the tier running, as before.
 repeated_stop="$(node -e '
   const fs = require("node:fs");
