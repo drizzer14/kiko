@@ -22,6 +22,18 @@ describe('Text', () => {
     expect(getByText('Head').props.allowFontScaling).toBe(true);
   });
 
+  it('marks itself as a heading for the screen reader when asked', async () => {
+    const { getByText } = await render(<Text accessibilityRole="header">Title</Text>);
+
+    expect(getByText('Title').props.accessibilityRole).toBe('header');
+  });
+
+  it('has no accessibility role of its own', async () => {
+    const { getByText } = await render(<Text>plain</Text>);
+
+    expect(getByText('plain').props.accessibilityRole).toBeUndefined();
+  });
+
   it('forwards single-line shrink-to-fit props to the underlying Text', async () => {
     const { getByText } = await render(
       <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>

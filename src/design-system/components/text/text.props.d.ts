@@ -31,6 +31,9 @@ export type TextProps = {
   // large amount shrinks to fit rather than wrapping and breaking alignment.
   // All optional; when absent, wrapping behavior is unchanged.
   numberOfLines?: number;
+  // Only the heading role is offered: it names a title to the screen reader. Any other role
+  // belongs to the interactive component that wraps the text.
+  accessibilityRole?: 'header';
   adjustsFontSizeToFit?: boolean;
   minimumFontScale?: number;
   children: ReactNode;
