@@ -160,7 +160,8 @@ RUN_LOG="${HARNESS_RUNS_DIR:-$HOME/.claude/harness-runs}/bin/run-log.mjs"; if [ 
 ```
 
 Finish, in a later Bash call (shell variables do not survive between calls), prefixed with
-`RUN_ID=<printed id>;`:
+`RUN_ID=<printed id>;`. When start printed the skip line, there is no run id: skip the finish
+snippet, never paste the skip line as `RUN_ID`:
 
 ```bash
 RUN_LOG="${HARNESS_RUNS_DIR:-$HOME/.claude/harness-runs}/bin/run-log.mjs"; if [ -f "$RUN_LOG" ]; then node "$RUN_LOG" finish --run "$RUN_ID" --outcome done; else echo "run-log: not installed, skipped"; fi

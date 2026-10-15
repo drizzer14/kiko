@@ -1923,6 +1923,19 @@ describe('consumer line', () => {
     expect(runIds(runs)).toEqual([]);
   });
 
+  test('starting with a failing copy passes its exit code and error through', () => {
+    const { runs, repo } = started();
+    writeFileSync(
+      join(runs, 'bin', 'run-log.mjs'),
+      'process.stderr.write("copy failed\\n");\nprocess.exit(3);\n',
+    );
+    const result = runSnippet(startSnippet, runs, repo);
+
+    expect(result.status).toBe(3);
+    expect(result.stdout).not.toBe(SKIPPED);
+    expect(result.stderr).toContain('copy failed');
+  });
+
   test('finishing an unknown run passes the copy exit code and error through', () => {
     const { runs, repo } = started();
     const result = runSnippet(finishSnippet, runs, repo, 'no-such-run');
