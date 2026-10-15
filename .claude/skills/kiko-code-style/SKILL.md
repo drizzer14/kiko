@@ -108,8 +108,13 @@ with separators (`` `${base}:${quote}` ``) stays a template literal.
 ### Wrap comments at 100 columns
 
 Biome cannot wrap a comment, so a long one stays long until its author
-wraps it. Shell scripts (`scripts/**/*.sh`) follow the same 100-column rule for their `#`
-comments, checked by `npm run check:comment-line-width` (`__tests__/comment-line-width.test.ts`).
+wraps it. A `#` comment line (first non-blank character `#`, not the `#!` line) follows the
+same 100-column rule in a `.sh`, `.bash`, `.yml`, `.yaml` file and in an extensionless file
+with a shell shebang; so do the comments of the scripts js and the rule fixtures.
+`npm run check:comment-line-width` checks them (`__tests__/comment-line-width.test.ts`; its
+scope is in kiko-linter's `comment-line-width.js` bullet). A fixture line that cannot wrap is
+listed by exact text in `scripts/checks/comment-line-width.pinned`; the list only shrinks, and
+you never add a row for a line that can wrap.
 The pre-write guard (`kiko-comment-line-width`) denies a new
 physical line over 100 columns that holds comment text: a `//` comment,
 any line of a `/* */` or `/** */` block, a JSX `{/* */}` comment, or a
@@ -143,6 +148,13 @@ its code. A long code line with no comment is Biome's, not this rule's.
   line as unused). Put the prose in a plain comment above the directive and
   keep the directive's own justification short enough to fit in 100
   columns.
+- Markdown prose in the skills, agents and harness docs wraps at 100 columns too
+  (`__tests__/markdown-prose-width.test.ts` holds the roots). Exempt: fenced code, a `|` table
+  row, an ATX heading, the YAML front matter, and a line with no wrap point. A line that is
+  over width and not exempt fails unless it is pinned by exact text in
+  `__tests__/fixtures/markdown-prose-width.pinned.json`. The pin file only shrinks: rewrap or
+  remove a pinned line and delete its pin (a stale pin fails); never add a pin for a line you
+  write.
 - There is no inline override: the guard ignores a `nosemgrep` or
   `kiko-override` comment that names `kiko-comment-line-width`, and the
   finding still denies. `scripts/checks/comment-line-width.js` holds the
