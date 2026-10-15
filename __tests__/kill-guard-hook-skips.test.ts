@@ -1,20 +1,12 @@
 import { join } from 'node:path';
-import { writeFileSync } from 'node:fs';
 import { type SpawnSyncReturns, spawnSync } from 'node:child_process';
 
-import {
-  createTemporaryDirectory,
-  removeTemporaryDirectories,
-} from './test-support/temporary-directory';
-
 // The hook-skip denies of scripts/checks/kill-guard.js that are not an option of the git command
-// itself: an `export` or bare assignment that sets core.hooksPath through GIT_CONFIG_*, a
-// GIT_CONFIG_GLOBAL/GIT_CONFIG_SYSTEM file that may hold a hooksPath or an include, an
+// itself: an `export` or bare assignment that sets core.hooksPath through GIT_CONFIG_*, an
 // `include.path` entry, and `git commit-tree`, which makes a commit no hook sees.
 //
 // Every text here is judged, never run: `decide` is called in node as a parser only, and the hook
-// rows only pipe JSON into kill-guard.sh. A config file the rows name is written by this test, so
-// no row names a real file.
+// rows only pipe JSON into kill-guard.sh.
 const SCRIPT = join(__dirname, '../scripts/checks/kill-guard.sh');
 const GUARD = join(__dirname, '../scripts/checks/kill-guard.js');
 
@@ -37,17 +29,6 @@ const run = (command: string): SpawnSyncReturns<string> =>
 
 const reasonOf = (command: string): string =>
   JSON.parse(run(command).stdout.trim()).hookSpecificOutput.permissionDecisionReason;
-
-const CONFIG_DIRECTORY = createTemporaryDirectory('kill-guard-config-');
-const SAFE_CONFIG = join(CONFIG_DIRECTORY, 'safe.gitconfig');
-const HOOKS_PATH_CONFIG = join(CONFIG_DIRECTORY, 'hooks.gitconfig');
-const INCLUDE_CONFIG = join(CONFIG_DIRECTORY, 'include.gitconfig');
-const MISSING_CONFIG = join(CONFIG_DIRECTORY, 'missing.gitconfig');
-writeFileSync(SAFE_CONFIG, '[user]\n\tname = someone\n');
-writeFileSync(HOOKS_PATH_CONFIG, '[core]\n\thooksPath = /dev/null\n');
-writeFileSync(INCLUDE_CONFIG, '[include]\n\tpath = elsewhere\n');
-
-afterAll(removeTemporaryDirectories);
 
 // An assignment that sets core.hooksPath (or an include) through the config environment denies by
 // itself, whatever runs after it: an `export`, a `declare -x`, or a bare statement.
@@ -82,39 +63,26 @@ const ALLOWED_ENVIRONMENT_STATEMENTS: string[] = [
   'unset GIT_CONFIG_KEY_0',
 ];
 
-// GIT_CONFIG_GLOBAL and GIT_CONFIG_SYSTEM swap the config files git reads. The guard allows
-// /dev/null and an existing readable file that holds no hooksPath and no include; a file it cannot
-// read (missing, built in the same command, named through a variable) denies.
-const deniedConfigFileCommands = (): string[] => [
-  `GIT_CONFIG_GLOBAL=${HOOKS_PATH_CONFIG} git commit -m x`,
-  `GIT_CONFIG_GLOBAL=${INCLUDE_CONFIG} git commit -m x`,
-  `GIT_CONFIG_SYSTEM=${HOOKS_PATH_CONFIG} git merge feature`,
-  `GIT_CONFIG_SYSTEM=${INCLUDE_CONFIG} git pull`,
-  `GIT_CONFIG_GLOBAL=${MISSING_CONFIG} git commit -m x`,
-  `GIT_CONFIG_SYSTEM=${MISSING_CONFIG} git commit -m x`,
-  `GIT_CONFIG_GLOBAL=${CONFIG_DIRECTORY} git commit -m x`,
-  'GIT_CONFIG_GLOBAL="$HOME/.gitconfig-agent" git commit -m x',
-  'GIT_CONFIG_GLOBAL= git commit -m x',
-  `env GIT_CONFIG_GLOBAL=${HOOKS_PATH_CONFIG} git commit -m x`,
-  `export GIT_CONFIG_GLOBAL=${HOOKS_PATH_CONFIG}`,
-  `export GIT_CONFIG_SYSTEM=${MISSING_CONFIG}; git commit -m x`,
-  `declare -x GIT_CONFIG_GLOBAL=${INCLUDE_CONFIG}`,
-  `GIT_CONFIG_GLOBAL=${HOOKS_PATH_CONFIG}; git commit -m x`,
-  `printf '[core]\\n' > ${MISSING_CONFIG}; GIT_CONFIG_GLOBAL=${MISSING_CONFIG} git commit -m x`,
-  `bash -c "GIT_CONFIG_GLOBAL=${HOOKS_PATH_CONFIG} git commit -m x"`,
-];
-
-const allowedConfigFileCommands = (): string[] => [
+// GIT_CONFIG_GLOBAL and GIT_CONFIG_SYSTEM swap the global and system config files, which are not
+// judged: scripts/ensure-git-hooks.sh writes core.hooksPath in the LOCAL scope, and the local
+// scope outranks both of them and every file they include, so a swapped file cannot switch the
+// hooks off. (GIT_CONFIG_COUNT/KEY_n/VALUE_n/PARAMETERS inject config at command scope, which does
+// outrank it: those stay denied above.)
+const CONFIG_FILE_COMMANDS: string[] = [
   'GIT_CONFIG_GLOBAL=/dev/null git commit -m x',
   'GIT_CONFIG_SYSTEM=/dev/null git merge --no-edit feature',
-  `GIT_CONFIG_GLOBAL=${SAFE_CONFIG} git commit -m x`,
-  `GIT_CONFIG_GLOBAL=${SAFE_CONFIG} GIT_CONFIG_SYSTEM=/dev/null git pull`,
-  `env GIT_CONFIG_GLOBAL=${SAFE_CONFIG} git commit -m x`,
-  'export GIT_CONFIG_GLOBAL=/dev/null',
-  `export GIT_CONFIG_GLOBAL=${SAFE_CONFIG}; git commit -m x`,
-  `GIT_CONFIG_GLOBAL=${HOOKS_PATH_CONFIG} git status`,
-  `GIT_CONFIG_GLOBAL=${MISSING_CONFIG} git log -n 3`,
-  `GIT_CONFIG_GLOBAL=${HOOKS_PATH_CONFIG} git config --get user.name`,
+  'GIT_CONFIG_GLOBAL=/tmp/hooks.gitconfig git commit -m x',
+  'GIT_CONFIG_SYSTEM=/tmp/include.gitconfig git pull',
+  'GIT_CONFIG_GLOBAL=/tmp/missing.gitconfig GIT_CONFIG_SYSTEM=/dev/null git commit -m x',
+  'GIT_CONFIG_GLOBAL="$HOME/.gitconfig-agent" git commit -m x',
+  'GIT_CONFIG_GLOBAL= git commit -m x',
+  'env GIT_CONFIG_GLOBAL=/tmp/hooks.gitconfig git commit -m x',
+  'export GIT_CONFIG_GLOBAL=/tmp/hooks.gitconfig',
+  'export GIT_CONFIG_SYSTEM=/tmp/missing.gitconfig; git commit -m x',
+  'declare -x GIT_CONFIG_GLOBAL=/tmp/include.gitconfig',
+  'GIT_CONFIG_GLOBAL=/tmp/hooks.gitconfig; git commit -m x',
+  'bash -c "GIT_CONFIG_GLOBAL=/tmp/hooks.gitconfig git commit -m x"',
+  'GIT_CONFIG_GLOBAL=/tmp/hooks.gitconfig git status',
 ];
 
 // `include.path` and `includeIf.<condition>.path` pull another file into the config, so they can
@@ -184,22 +152,8 @@ describe('kill-guard hook skips beyond the git command line (parser only)', () =
     expect(decide(command)).toBe('allow');
   });
 
-  it.each(deniedConfigFileCommands())('denies a config file it cannot vouch for: %s', (command) => {
-    expect(decide(command)).toBe('hooksConfig');
-  });
-
-  it.each(allowedConfigFileCommands())('allows a config file it can vouch for: %s', (command) => {
+  it.each(CONFIG_FILE_COMMANDS)('allows a global or system config file swap: %s', (command) => {
     expect(decide(command)).toBe('allow');
-  });
-
-  it('reads a relative config file from the payload cwd', () => {
-    const command = 'GIT_CONFIG_GLOBAL=hooks.gitconfig git commit -m x';
-
-    expect(decide(command, { cwd: CONFIG_DIRECTORY })).toBe('hooksConfig');
-    expect(
-      decide('GIT_CONFIG_GLOBAL=safe.gitconfig git commit -m x', { cwd: CONFIG_DIRECTORY }),
-    ).toBe('allow');
-    expect(decide(command)).toBe('hooksConfig');
   });
 
   it.each(DENIED_INCLUDE_COMMANDS)('denies an include entry: %s', (command) => {
@@ -235,8 +189,8 @@ describe('kill-guard hook skips (hook entry)', () => {
     expect(reason).toContain('pre-commit');
   });
 
-  it('allows the one routine form: a plain commit with a safe config file', () => {
-    const result = run(`GIT_CONFIG_GLOBAL=${SAFE_CONFIG} git commit -m x`);
+  it('allows a plain commit with a swapped global config file', () => {
+    const result = run('GIT_CONFIG_GLOBAL=/tmp/safe.gitconfig git commit -m x');
 
     expect(result.status).toBe(0);
     expect(result.stdout.trim()).toBe('');

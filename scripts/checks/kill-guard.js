@@ -66,11 +66,11 @@
 // denies when the command names the key or the section. The same config-style denies cover an
 // `include.path`/`includeIf.<c>.path` entry (a `-c`, `--config-env`, GIT_CONFIG_* or `git config`
 // write: the included file can set the key), an `export`, `declare -x`, or bare assignment that
-// sets core.hooksPath through GIT_CONFIG_* (denied by itself, whatever runs after it), and a
-// GIT_CONFIG_GLOBAL/GIT_CONFIG_SYSTEM file on a commit, merge, or pull unless it is /dev/null or an
-// existing file with no hooksPath and no include. They carry their own reason: leave
-// core.hooksPath as scripts/ensure-git-hooks.sh sets it. `git commit-tree` is denied in every form:
-// it writes a commit no hook runs for (`git update-ref` stays allowed).
+// sets core.hooksPath through GIT_CONFIG_* (denied by itself, whatever runs after it). They carry
+// their own reason: leave core.hooksPath as scripts/ensure-git-hooks.sh sets it. A
+// GIT_CONFIG_GLOBAL/GIT_CONFIG_SYSTEM file is not judged: the key sits in the local scope, which
+// outranks both and what they include. `git commit-tree` is denied in every form: it writes a
+// commit no hook runs for (`git update-ref` stays allowed).
 // A user may still bypass in their own shell; the deny binds agent Bash calls only. `-n` after
 // another option's value, after `--`, in a message, or on `git log` or `git merge`/`git pull`
 // (`--no-stat`) is not a bypass, and a `git config` read of the key is allowed.
@@ -1341,10 +1341,6 @@ const HOOKS_CONFIG_PARAMETER = new RegExp(
   `(?:^|[\\s'"])${HOOKS_CONFIG_KEY_PATTERN}(?:=|['"\\s]|$)`,
   'i',
 );
-// `GIT_CONFIG_GLOBAL` and `GIT_CONFIG_SYSTEM` replace the files git reads for those scopes.
-const CONFIG_FILE_VARIABLES = ['GIT_CONFIG_GLOBAL', 'GIT_CONFIG_SYSTEM'];
-const CONFIG_FILE_MAXIMUM_BYTES = 256 * 1024;
-const HOOKS_OR_INCLUDE = /hookspath|include/i;
 // The commands that set a variable for the shell that follows, whatever runs after them.
 const ASSIGNING_COMMANDS = new Set(['export', 'declare', 'typeset', 'local', 'readonly']);
 const NO_VERIFY_OPTION = '--no-verify';
@@ -1435,34 +1431,6 @@ const environmentSetsHooksPath = (environment) =>
     ([name, value]) =>
       (GIT_CONFIG_KEY_VARIABLE.test(name) && HOOKS_CONFIG_KEY.test(unquoted(value))) ||
       (name === 'GIT_CONFIG_PARAMETERS' && HOOKS_CONFIG_PARAMETER.test(value)),
-  );
-
-// Whether `directory` makes the config file `raw` names one the guard can vouch for: `/dev/null`,
-// or an existing regular file within the size limit that holds no hooksPath and no include. A path
-// the text cannot resolve, and a file that is missing, unreadable, or built in the same command
-// (so unreadable now), fail closed.
-function vouchesForConfigFile(raw, directory) {
-  const value = unquoted(raw);
-  if (value === '/dev/null') return true;
-  const resolved = resolveDirectory(directory, value);
-  if (resolved === null) return false;
-  try {
-    const status = fs.statSync(resolved);
-    if (!status.isFile() || status.size > CONFIG_FILE_MAXIMUM_BYTES) return false;
-
-    return !HOOKS_OR_INCLUDE.test(fs.readFileSync(resolved, 'utf8'));
-  } catch {
-    return false;
-  }
-}
-
-// Whether `environment` swaps in a GIT_CONFIG_GLOBAL or GIT_CONFIG_SYSTEM file the guard cannot
-// vouch for from every directory the command may run in.
-const environmentSwapsConfigFile = (environment, directories) =>
-  CONFIG_FILE_VARIABLES.some(
-    (name) =>
-      environment[name] !== undefined &&
-      !directories.every((directory) => vouchesForConfigFile(environment[name], directory)),
   );
 
 // The long options of `git config`, as `git config -h` lists them on git 2.38.1 (the git on this
@@ -1613,19 +1581,15 @@ function rewritesHooksPath({ subcommand, arguments: parameters }) {
 }
 
 // Whether a hook-running git command is given a config that can switch its hooks off: a `-c` or
-// `--config-env` entry that sets core.hooksPath or an include path, the same through a GIT_CONFIG_*
-// variable, or a GIT_CONFIG_GLOBAL/GIT_CONFIG_SYSTEM file the guard cannot vouch for.
+// `--config-env` entry that sets core.hooksPath or an include path, or the same through a
+// GIT_CONFIG_* variable. Both inject config at command scope, which outranks the local scope that
+// holds core.hooksPath. A GIT_CONFIG_GLOBAL/GIT_CONFIG_SYSTEM file does not: local outranks it.
 function runsWithHooksConfig(invocations) {
   const [{ subcommand, configs, environment }] = invocations;
   if (!HOOK_RUNNING_SUBCOMMANDS.has(subcommand)) return false;
 
   return (
-    configs.some((entry) => HOOKS_CONFIG_ENTRY.test(entry)) ||
-    environmentSetsHooksPath(environment) ||
-    environmentSwapsConfigFile(
-      environment,
-      invocations.map((invocation) => invocation.directory),
-    )
+    configs.some((entry) => HOOKS_CONFIG_ENTRY.test(entry)) || environmentSetsHooksPath(environment)
   );
 }
 
@@ -2413,15 +2377,9 @@ function substitutedCommandFinding(command, context) {
 }
 
 // A statement that only sets variables (a bare `NAME=value`, or an `export`/`declare`) denies by
-// itself when they set core.hooksPath through GIT_CONFIG_*, or swap in a config file the guard
-// cannot vouch for, whatever git command runs after it.
+// itself when they set core.hooksPath through GIT_CONFIG_*, whatever git command runs after it.
 function environmentFinding(environment, context) {
-  if (
-    !environmentSetsHooksPath(environment) &&
-    !environmentSwapsConfigFile(environment, context.directories)
-  ) {
-    return null;
-  }
+  if (!environmentSetsHooksPath(environment)) return null;
 
   return { kind: 'hooksConfig', detail: context.segment.trim() };
 }
