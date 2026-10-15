@@ -907,6 +907,9 @@ describe.each([
     const waiter = startQueue(sandbox, 'verify', worktree, 'one');
     await waitFor(() => readLines(join(sandbox.root, 'job-pid')).length === 1);
     const lock = join(sandbox.queue, 'lock');
+    // The queue renames the job group into the owner record after the job starts; a lock
+    // swapped before that rename would be overwritten by it.
+    await waitFor(() => readlinkSync(lock).split(' ')[1] === String(readPid(sandbox, 'job-pid')));
     rmSync(lock);
     holdLock(sandbox, `${process.pid} - verify other /elsewhere`);
     waiter.child.kill(signal);
@@ -1019,8 +1022,10 @@ describe.each([
 
   it(`stops the job and keeps no lock when ${signal} arrives before the queue knows the job's pid`, async () => {
     const sandbox = createSandbox();
-    warmExecutables([writeExecutable(join(sandbox.root, 'bin/make'), BLOCKING_MAKE_STUB)]);
-    warmExecutables([writeExecutable(join(sandbox.root, 'bin/fork-hook'), FORK_HOOK_STUB)]);
+    warmExecutables([
+      writeExecutable(join(sandbox.root, 'bin/make'), BLOCKING_MAKE_STUB),
+      writeExecutable(join(sandbox.root, 'bin/fork-hook'), FORK_HOOK_STUB),
+    ]);
     sandbox.environment.KIKO_STUB_PID = join(sandbox.root, 'job-pid');
     sandbox.environment.KIKO_STUB_HOOK_SIGNAL = signal;
     sandbox.environment.KIKO_QUEUE_FORK_HOOK = join(sandbox.root, 'bin/fork-hook');
