@@ -175,6 +175,10 @@ const BLOCKED_COMMANDS: string[] = [
   '"$(which pkill)" -f foo',
   '$(true)pkill x',
   '$(command -v kill) -9 -1',
+  // A variable the same command assigns a group target is read as that target.
+  'pid=-1; kill -9 $pid',
+  'pid=0 && kill "$pid"',
+  `export pid=-1234; kill -9 \${pid}`,
 ];
 
 const ALLOWED_COMMANDS: string[] = [
@@ -226,6 +230,10 @@ const ALLOWED_COMMANDS: string[] = [
   '$(command -v kill) 1234',
   'PID=$(pgrep -f metro)',
   'X=$(command -v pkill) npm test',
+  'pid=1234; kill $pid',
+  'sleep 30 & pid=$!; kill "$pid"',
+  'pid=$(pgrep -f metro); kill "$pid"',
+  'pid=-1; pid=$(cat pid.txt); kill -9 $pid',
 ];
 
 // A git stash in any directory — this repository, a worktree, or a scratch

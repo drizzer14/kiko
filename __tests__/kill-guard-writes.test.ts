@@ -455,7 +455,103 @@ const ALLOWED_GIT_CONFIG: string[] = [
   `echo x > ${MAIN}/.gitconfig`,
 ];
 
+// A variable the SAME command assigns (`f=<path>`, `export f=`, `declare f=`, `local f=`) is
+// resolved where `$f` or `${f}` is used, so a write through it is judged by its path; a later
+// reassignment wins. The first row is the command a developer agent ran past the guard on
+// 2026-10-14 (run-log 20261014T2300-kiko-help-flows/1).
+const DENIED_SAME_COMMAND_VARIABLE: string[] = [
+  `f=src/navigation/title-measurer/title-measurer.component.test.tsx && sed -i '' "s/a/b/g" $f && sed -i '' "s|^const LINE_HEIGHT = |x|" $f && ./node_modules/.bin/biome check --write $f`,
+  `f=src/x.ts; sed -i '' 's/a/b/' "$f"`,
+  `f=src/x.ts; sed -i 's/a/b/' \${f}`,
+  `f=src/x.ts; sed -i '' 's/a/b/' "\${f}"`,
+  `f=src/x.ts; sed -i '' 's/a/b/' $f.bak`,
+  `export f=src/x.ts && sed -i '' 's/a/b/' $f`,
+  `declare f=src/x.ts; sed -i '' 's/a/b/' $f`,
+  `declare -x f=src/x.ts; sed -i '' 's/a/b/' $f`,
+  `local f=src/x.ts; sed -i '' 's/a/b/' $f`,
+  `typeset f=src/x.ts; sed -i '' 's/a/b/' $f`,
+  `readonly f=src/x.ts; sed -i '' 's/a/b/' $f`,
+  `g=1 f=src/x.ts; sed -i '' 's/a/b/' $f`,
+  'f=src/x.ts; echo x > $f',
+  'f=src/x.ts; echo x >> "$f"',
+  'f=src/x.ts; echo x | tee $f',
+  'f=src/x.ts; echo x | tee -a "$f"',
+  'f=src/x.ts; cp /tmp/a $f',
+  'f=src/x.ts; mv /tmp/a "$f"',
+  `f=src/x.ts; perl -pi -e 's/a/b/' $f`,
+  `f=__tests__/x.test.ts; sed -i '' 's/a/b/' $f`,
+  `f=rules/x.yml; sed -i '' 's/a/b/' $f`,
+  `f=e2e/x.ts; sed -i '' 's/a/b/' $f`,
+  `f=${MAIN}/src/x.ts; sed -i '' 's/a/b/' $f`,
+  `f=${WORKTREE}/src/x.ts; sed -i '' 's/a/b/' $f`,
+  `f=/tmp/a; f=src/x.ts; sed -i '' 's/a/b/' $f`,
+  `d=src; f=$d/x.ts; sed -i '' 's/a/b/' $f`,
+  `d=src; sed -i '' 's/a/b/' $d/x.ts`,
+  `d=src; sed -i '' 's/a/b/' "$d"/x.ts`,
+  'd=src; cp /tmp/a $d/y.ts',
+  'd=src; cp -r /tmp/a $d',
+  `f=src/x.ts && python3 -c "open('$f', 'w').write('x')"`,
+  `f=src/x.ts; node -e "require('fs').writeFileSync('$f', 'x')"`,
+  `cd src && f=x.ts && sed -i '' 's/a/b/' $f`,
+  `f=x.ts; cd src && sed -i '' 's/a/b/' $f`,
+  `f=src/x.ts; true && sed -i '' 's/a/b/' $f`,
+  `f=src/x.ts\nsed -i '' 's/a/b/' $f`,
+  `f=src/x.ts; (sed -i '' 's/a/b/' $f)`,
+  `f=src/x.ts; echo $(sed -i '' 's/a/b/' $f)`,
+  `f=src/x.ts; bash -c "sed -i '' s/a/b/ $f"`,
+  `export f=src/x.ts; bash -c 'sed -i "" s/a/b/ $f'`,
+  `f=src/x.ts; eval "sed -i '' s/a/b/ $f"`,
+  `f=src/x.ts; ls src/*.ts | xargs sed -i '' 's/a/b/'`,
+  `f=src/x.ts; for g in a; do sed -i '' 's/a/b/' $f; done`,
+];
+
+const ALLOWED_SAME_COMMAND_VARIABLE: string[] = [
+  `f=/tmp/x.ts; sed -i '' 's/a/b/' $f`,
+  `f=docs/x.md; sed -i '' 's/a/b/' "$f"`,
+  'f=scripts/out.txt; echo x > $f',
+  'f=scripts/src/out.txt; echo x >> "$f"',
+  'f=/tmp/out.txt; echo x | tee $f',
+  'f=/tmp/a; cp /tmp/b $f',
+  `f=src/x.ts; f=/tmp/a; sed -i '' 's/a/b/' $f`,
+  `f=src/x.ts; sed -n 1p $f`,
+  'f=src/x.ts; cat $f',
+  'f=src/x.ts; grep a "$f"',
+  `f=src/x.ts; sed 's/a/b/' $f > /tmp/out.txt`,
+  'f=src/x.ts; cp $f /tmp/backup.ts',
+  'f=src/x.ts; mv "$f" /tmp/x.ts',
+  'f=src/x.ts; ./node_modules/.bin/biome check --write $f',
+  'f=src/x.ts; npx biome check --write $f',
+  'f=src/x.ts',
+  'f=src/x.ts; echo $f',
+  `f=src/x.ts g=1 true; sed -i '' 's/a/b/' $f`,
+  `g=src/x.ts; sed -i '' 's/a/b/' $f`,
+  `f=src/x.ts; sed -i '' 's/a/b/' "$other"`,
+  `f=src/x.ts; echo "sed -i '' s/a/b/ $f"`,
+  `f=/tmp/x.ts; python3 -c "open('$f', 'w').write('x')"`,
+  `d=/tmp; cd $d && sed -i '' 's/a/b/' x.txt`,
+  `d=src; f=/tmp/$d.ts; sed -i '' 's/a/b/' $f`,
+  `(f=src/x.ts); echo done`,
+];
+
 describe('kill-guard shell-write deny (parser only, fake repository)', () => {
+  it.each(DENIED_SAME_COMMAND_VARIABLE)(
+    'denies a write through a variable the command assigns: %s',
+    (command) => {
+      expect(decideInMain(command)).toBe('shellWrite');
+    },
+  );
+
+  it.each(ALLOWED_SAME_COMMAND_VARIABLE)(
+    'allows a variable that points outside the trees, or a read: %s',
+    (command) => {
+      expect(decideInMain(command)).toBe('allow');
+    },
+  );
+
+  it('names the resolved file in DETAILS', () => {
+    expect(detailOf(`f=src/x.ts; sed -i '' s/a/b/ $f`)).toContain(`(writes ${MAIN}/src/x.ts)`);
+  });
+
   it.each(DENIED_GIT_CONFIG)('denies a write into a git config file: %s', (command) => {
     expect(decideInMain(command)).toBe('shellWrite');
   });

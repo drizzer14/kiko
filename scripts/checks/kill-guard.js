@@ -37,7 +37,11 @@
 // no shell or interpreter runs is text, never checked for writes. The same write machinery
 // denies a write into a git config file (`.git/config`, `.git/config.worktree`, a linked
 // worktree's `config.worktree`) of any repository, and an unresolved path that spells
-// `.git/config`: that file holds core.hooksPath.
+// `.git/config`: that file holds core.hooksPath. A variable the SAME command assigns (`f=<path>`,
+// `export f=`, `declare f=`, `local f=`; a later assignment wins, in order) is expanded where
+// `$f` or `${f}` is used, so `f=src/x.ts && sed -i '' ... $f` is judged by `src/x.ts`; a variable
+// the command does not assign, or assigns from an expansion (`f=$(mktemp)`), stays unresolved and
+// is not denied (a documented limit).
 //
 // And it denies a `while` or `until` loop that scans the process table (`ps`,
 // `top`, `pstree`, or `pgrep -f`) for make verify, check:all, jest, stryker,
@@ -2322,9 +2326,9 @@ function settleFallback(location, separator) {
 
 // A subshell's directory changes end with the subshell.
 function enterSubshells(location, count) {
-  const { directories, previous, stack, fallback } = location;
+  const { directories, previous, stack, fallback, variables } = location;
   for (let open = 0; open < count; open++) {
-    location.saved.push({ directories, previous, stack, fallback });
+    location.saved.push({ directories, previous, stack, fallback, variables });
   }
 }
 
@@ -2480,7 +2484,13 @@ function scriptKillFinding(scriptFile, context) {
     const file = resolveDirectory(directory, operand);
     const text = file === null ? null : readScriptFile(file, context.rules, requireShebang);
     if (text === null) continue;
-    const kill = findDanger(text, 1, false, [directory], scan);
+    const kill = findDanger(
+      text,
+      1,
+      false,
+      { directories: [directory], variables: new Map() },
+      scan,
+    );
     if (kill !== null) return { kind: 'scriptKill', detail: `${file} holds \`${kill.detail}\`` };
   }
 
@@ -2560,10 +2570,12 @@ function redirectWrite(redirects, directories, rules) {
 // `scripts` as command text. `stdinBodies` are the heredoc bodies it reads,
 // `spans` the text of its `$(...)`/backtick spans, and `directories` the
 // places it may run in (null for one the text cannot pin down).
-function segmentFinding({ segment, scripts, stdinBodies, spans, directories, rules }) {
+function segmentFinding({ segment, scripts, stdinBodies, spans, place, rules }) {
+  const { directories, variables } = place;
   const { words: tokens, hereStrings, redirects } = tokenize(segment);
+  const expand = (word) => expandVariables(word, variables);
   const stdinScripts = [...stdinBodies, ...hereStrings];
-  const finding = commandFinding(unwrap(tokens), {
+  const finding = commandFinding(unwrap(tokens.map(expand)), {
     segment,
     scripts,
     stdinScripts,
@@ -2572,7 +2584,8 @@ function segmentFinding({ segment, scripts, stdinBodies, spans, directories, rul
     rules,
   });
   if (finding !== null) return finding;
-  const write = redirectWrite(redirects, directories, rules);
+  const targets = redirects.map((redirect) => ({ ...redirect, target: expand(redirect.target) }));
+  const write = redirectWrite(targets, directories, rules);
   if (write === null) return null;
 
   return shellWriteFinding(segment, write);
@@ -2761,12 +2774,54 @@ const wanted = (finding, rules) => (rules.killOnly && finding?.kind !== 'kill' ?
 
 function firstFinding(lines, depth, checkHeredoc, rules) {
   for (const line of lines) {
-    const finding = findDanger(line.text, depth + 1, checkHeredoc, line.directories, rules);
+    const place = { directories: line.directories, variables: line.variables };
+    const finding = findDanger(line.text, depth + 1, checkHeredoc, place, rules);
     if (finding !== null) return finding;
   }
 
   return null;
 }
+
+// ---- variables a command assigns for itself ----
+
+const VARIABLE_REFERENCE = /\$(?:\{([A-Za-z_][A-Za-z0-9_]*)\}|([A-Za-z_][A-Za-z0-9_]*))/g;
+
+// `$name` and `${name}` in `word` read as the value this command assigned earlier (quoting and
+// word splitting aside); a name it never assigned stays as it is.
+const expandVariables = (word, variables) =>
+  word.replace(VARIABLE_REFERENCE, (match, braced, bare) => variables.get(braced ?? bare) ?? match);
+
+// The variables one segment leaves set for the commands after it: a bare `NAME=value` statement,
+// or the `NAME=value` words of an `export`/`declare`/`typeset`/`local`/`readonly`. A `NAME=value`
+// in front of a command lasts for that command only, and a segment before `&` or `|` runs in a
+// subshell, so neither persists.
+function assignedVariables(segment, variables, separator) {
+  if (separator === '&' || separator === '|') return {};
+  const { tokens, environment } = unwrap(
+    words(segment).map((word) => expandVariables(word, variables)),
+  );
+  if (tokens.length === 0) return environment;
+  if (!ASSIGNING_COMMANDS.has(basename(tokens[0]))) return {};
+  const assigned = {};
+  for (const word of tokens.slice(1)) recordAssignment(assigned, word);
+
+  return assigned;
+}
+
+// A value that is itself an expansion (`$!`, `$(pgrep x)`, `$other`) is not a path the text names,
+// and expanding it would hide that a kill's target is a variable: it is recorded as unknown.
+const isLiteralValue = (value) => !/[$`]|__SUBSHELL__/.test(value);
+
+// A later assignment of a name wins, in the order the command runs them; the earlier map is left as
+// it was, because the nested text of earlier segments still reads it.
+const withVariables = (variables, assigned) =>
+  new Map([
+    ...variables,
+    ...Object.entries(assigned).map(([name, value]) => [
+      name,
+      isLiteralValue(value) ? value : null,
+    ]),
+  ]);
 
 // The texts of `entries` (heredoc bodies or nested spans) that belong to a
 // segment, by its index. Grouped once per line, since a line can hold
@@ -2802,13 +2857,21 @@ function followingCommands(segments) {
 // shell reads as its script is also checked for an unquoted heredoc; any
 // other body is text, so a `<<word` in it is not an operator, and it is not
 // checked for shell writes either (a commit message or a notes file that
-// shows `sed -i` or `> src/…` writes nothing). `directories` are the places
-// the line may start in; every nested line runs where its segment does.
-function findDanger(line, depth, checkHeredoc, directories, rules) {
+// shows `sed -i` or `> src/…` writes nothing). `place` holds the
+// `directories` the line may start in and the `variables` the command has
+// assigned so far (a Map); every nested line runs where its segment does.
+function findDanger(line, depth, checkHeredoc, place, rules) {
   if (depth > 8) return null; // guards against pathological nesting
   const { segments, nested, heredoc, bodies, opens, closes, separators } = scanLevel(line);
-  const location = { directories, previous: [null], stack: [], fallback: null, saved: [] };
-  const directoriesAt = [];
+  const location = {
+    directories: place.directories,
+    variables: place.variables,
+    previous: [null],
+    stack: [],
+    fallback: null,
+    saved: [],
+  };
+  const placesAt = [];
   const scripts = [];
   const bodiesAt = textsBySegment(bodies);
   const spansAt = textsBySegment(nested);
@@ -2818,8 +2881,8 @@ function findDanger(line, depth, checkHeredoc, directories, rules) {
 
   for (const [index, segment] of segments.entries()) {
     enterSubshells(location, opens[index]);
-    const here = location.directories;
-    directoriesAt.push(here);
+    const here = { directories: location.directories, variables: location.variables };
+    placesAt.push(here);
     const segmentScripts = [];
     const finding = wanted(
       segmentFinding({
@@ -2827,32 +2890,33 @@ function findDanger(line, depth, checkHeredoc, directories, rules) {
         scripts: segmentScripts,
         stdinBodies: bodiesAt(index),
         spans: spansAt(index),
-        directories: here,
+        place: here,
         rules,
       }) ?? observeWaitLoops(waitLoops, segment, spansAt(index)),
       rules,
     );
     if (finding !== null) return finding;
-    scripts.push(...segmentScripts.map((text) => ({ text, directories: here })));
+    scripts.push(...segmentScripts.map((text) => ({ text, ...here })));
     const after = separators[index];
     const blank = segment.trim() === '';
     if (!blank) {
       moveDirectory(location, { segment, before, after, next: nextCommands[index] });
       settleFallback(location, after);
+      location.variables = withVariables(
+        location.variables,
+        assignedVariables(segment, location.variables, after),
+      );
     }
     if (closes[index]) leaveSubshell(location);
     before = blank && CONTINUED_ON_NEXT_LINE.has(before) ? before : after;
   }
   if (checkHeredoc && heredoc !== null) return { kind: 'heredoc', detail: heredoc };
 
-  const inItsDirectory = (entry) => ({
-    text: entry.text,
-    directories: directoriesAt[entry.segmentIndex],
-  });
+  const inItsPlace = (entry) => ({ text: entry.text, ...placesAt[entry.segmentIndex] });
 
   return (
-    firstFinding([...nested.map(inItsDirectory), ...scripts], depth, checkHeredoc, rules) ??
-    firstFinding(bodies.map(inItsDirectory), depth, false, { ...rules, checkWrites: false })
+    firstFinding([...nested.map(inItsPlace), ...scripts], depth, checkHeredoc, rules) ??
+    firstFinding(bodies.map(inItsPlace), depth, false, { ...rules, checkWrites: false })
   );
 }
 
@@ -2886,7 +2950,8 @@ function decide(command, options = {}) {
   };
   const start = typeof options.cwd === 'string' ? resolveDirectory(null, options.cwd) : null;
   for (const reading of ['bash', 'zsh']) {
-    const finding = withShellReading(reading, () => findDanger(command, 0, true, [start], rules));
+    const place = { directories: [start], variables: new Map() };
+    const finding = withShellReading(reading, () => findDanger(command, 0, true, place, rules));
     if (finding !== null) return finding;
   }
 
