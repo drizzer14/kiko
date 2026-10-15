@@ -98,6 +98,7 @@ const buildProject = (): Project => {
       `echo "$@" >> "${stateFile(project, 'jest.runs')}"`,
       `mode="$(cat "${stateFile(project, 'jest.mode')}" 2>/dev/null)"`,
       '[ "$mode" = fail ] && { echo "FAIL __tests__/a-doc.test.ts doc drifted" >&2; exit 1; }',
+      '[ "$mode" = slow ] && { sleep 1; exit 0; }',
       `[ "$mode" = hang ] && { echo $$ > "${stateFile(project, 'jest.pid')}"; exec sleep 600; }`,
       'exit 0',
     ),
@@ -163,26 +164,28 @@ const jestRuns = (project: Project): string[][] =>
   jestCalls(project).map((call) => call.filter((argument) => !argument.startsWith('--')));
 
 // A directory holding a `date` that answers its first `+%s` with the real time (the hook's start)
-// and every later one with a time far past any budget, so the doc step reaches its deadline at
-// once; any other `date` call passes through.
-const futureClockDirectory = (project: Project): string => {
-  const directory = join(project.root, 'future-clock');
+// and every later one with exactly that time plus `secondsAfterStart`, so the doc step sees a
+// fixed elapsed time; any other `date` call passes through.
+const clockDirectory = (project: Project, secondsAfterStart: number): string => {
+  const directory = join(project.root, 'fixed-clock');
   const started = stateFile(project, 'clock.started');
 
   writeFile(
     project,
-    'future-clock/date',
+    'fixed-clock/date',
     stubScript(
       'if [ "$1" != "+%s" ]; then exec /bin/date "$@"; fi',
-      `if [ -e "${started}" ]; then echo $(( $(/bin/date +%s) + 100000 )); exit 0; fi`,
-      `: > "${started}"`,
-      '/bin/date +%s',
+      `if [ -e "${started}" ]; then echo $(( $(cat "${started}") + ${secondsAfterStart} )); exit 0; fi`,
+      `/bin/date +%s | tee "${started}"`,
     ),
     0o755,
   );
 
   return directory;
 };
+
+const DOC_STEP_BUDGET_SECONDS =
+  HOOK_BUDGET_SECONDS - GUARD_CALL_TAIL_SECONDS - LATER_CHECKS_RESERVE_SECONDS;
 
 // The lock directory medium.sh takes for this project, held by this test process (alive), so the
 // run under test waits for it.
@@ -466,13 +469,33 @@ describe('medium.sh doc-suites step', () => {
     writeFile(project, 'docs/harness/new.md', 'changed\n');
 
     const outcome = runMedium(project, {
-      PATH: `${futureClockDirectory(project)}:${process.env.PATH}`,
+      PATH: `${clockDirectory(project, 100000)}:${process.env.PATH}`,
     });
     const budget = Number(/Stopped (\d+) s after the hook started/.exec(outcome.stderr)?.[1]);
 
     expect(outcome.code).toBe(2);
-    expect(budget).toBeLessThanOrEqual(
-      HOOK_BUDGET_SECONDS - GUARD_CALL_TAIL_SECONDS - LATER_CHECKS_RESERVE_SECONDS,
+    expect(budget).toBeLessThanOrEqual(DOC_STEP_BUDGET_SECONDS);
+  });
+
+  it('keeps running one second before its budget and stops at it', () => {
+    const project = projectWithPass();
+    writeFileSync(stateFile(project, 'jest.mode'), 'slow');
+    writeFile(project, 'docs/harness/new.md', 'changed\n');
+
+    const before = runMedium(project, {
+      PATH: `${clockDirectory(project, DOC_STEP_BUDGET_SECONDS - 1)}:${process.env.PATH}`,
+    });
+    rmSync(stateFile(project, 'clock.started'));
+    writeFileSync(stateFile(project, 'jest.mode'), 'hang');
+    writeFile(project, 'docs/harness/new.md', 'changed again\n');
+    const atBudget = runMedium(project, {
+      PATH: `${clockDirectory(project, DOC_STEP_BUDGET_SECONDS)}:${process.env.PATH}`,
+    });
+
+    expect(before).toEqual({ code: 0, stderr: '' });
+    expect(atBudget.code).toBe(2);
+    expect(atBudget.stderr).toContain(
+      `Stopped ${DOC_STEP_BUDGET_SECONDS} s after the hook started`,
     );
   });
 
