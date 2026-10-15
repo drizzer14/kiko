@@ -41,6 +41,11 @@ in the harness repo):
   writes; the markdown prose-width jest invariant with its shrink-only pin file; the three
   history rules widened to `__tests__` and scripts js, and the three generic shell
   history rules in `semgrep-mobile.yml` (they read `*.sh`, `*.bash` and `githooks/*`).
+- H7 set 6, generic mutation and queue changes: the TIMEOUT-HEAVY gate in `mutation-score.js`
+  and its `mutation.sh` block; `mutation-score.js` refusing a plain entry; the `--list`
+  over-count warning; the job-queue START line naming the head sha; doc-suite discovery of
+  pin-file literals; the history-id hyphen-led exemption; the tracked-scripts-executable
+  invariant.
 - The CLAUDE.md trim (docs/harness/checks.md split).
 - A sync branch `h5-sync` exists in drizzer14/harness (tip `d92f28d`); its plugin patch list
   P1-P25 is pending the user.

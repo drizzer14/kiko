@@ -80,7 +80,8 @@ Rules:
   (Stryker splits on the comma, so the later ranges are never mutated).
   Never pass a
   plain path and a range for the same file (Stryker reads that as "do not
-  mutate"). The source of truth is the `entries` variable in
+  mutate"); `mutation.sh` accepts a plain path, but `mutation-score.js` exits 2 on any plain
+  (non-range) entry. The source of truth is the `entries` variable in
   `scripts/checks/mutation.sh`. Read the per-file floor (60) from
   `reports/mutation/mutation.json`.
 
@@ -214,6 +215,14 @@ itself (it prints `skipped (comment-only): <path>`; a file with no added line
 prints `skipped (no added lines): <path>`); a `Stryker` or JSX
 pragma comment, or any doubt, keeps the file; a changed colocated test beside a
 comment-only source does not.
+
+The BATCH READY quotes the CHANGE SET TOTAL line split (read it from the gate output) and any
+TIMEOUT-HEAVY file with how it was cleared. A TIMEOUT-HEAVY file (rule and constants in
+`scripts/checks/mutation-score.js`) is cleared by proving each timed-out mutant in plain jest,
+or by writing it as equivalent; the gate still fails for it, so the BATCH READY carries the
+failed gate with the proofs. Never raise the timeout; there is no allowlist file. `make
+mutable` can print a `warning:` line after `changed lines: N` when a merged track inflates
+the count; see "Mutation base after a track merged next".
 
 ## Merging into main
 
@@ -382,7 +391,10 @@ unmerged change sets, takes as its mutation base the `next` tip that
 already contains every earlier change set; otherwise the merge-base
 diff also counts the earlier sets' files against the 30 cap.
 
-After a merge of `main` into the change set, the base is the merged main tip.
+After a merge of `main` into the change set, the base is the merged main tip. `make mutable`
+(`mutation.sh --list`) prints a `warning:` line after `changed lines: N` when N is far above
+what the branch's own commits added (`warn_over_count` in `scripts/checks/mutation.sh`); it
+means the base is stale, and it changes no exit code.
 
 ## Merge conflicts vs the pre-write guard
 

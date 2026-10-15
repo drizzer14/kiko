@@ -82,6 +82,9 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   with a block that says to run `make doc-suites` by hand; zero suites, a missing jest, an
   unreadable budget or a fingerprint hash failure (while doc files or suites exist) also
   exit 2. A by-hand `make doc-suites` pass records the doc fingerprint and clears the block.
+  `harness_doc_suites` also discovers a suite that names a quoted pin-file literal, and
+  `harness_doc_suite_fixtures` fingerprints the pin files (`scripts/checks/<name>.pinned`
+  included); read both in `scripts/checks/_lib.sh`.
 
   Another exception, of a different shape: `scripts/checks/kill-guard.sh`
   (+ its sibling `scripts/checks/kill-guard.js`) is a `PreToolUse` hook on
@@ -730,7 +733,13 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   `mutation.sh` also CAPS the run: after the file selection and excludes
   above, it counts the files it would mutate and, above
   `MUTATION_FILE_CAP` (30, a plain assignment in the script), prints the
-  structured block and exits 2 BEFORE Stryker starts. Mutation testing
+  structured block and exits 2 BEFORE Stryker starts. The scorer fails a TIMEOUT-HEAVY file
+  (`TIMEOUT_HEAVY_SHARE`, `TIMEOUT_HEAVY_MINIMUM` in `mutation-score.js`; rule in
+  `docs/harness/checks.md`): `mutation-score.js` exits 1, `mutation.sh` exits 2. It is cleared
+  by the orchestrator proving each timed-out mutant in plain jest or writing it in the BATCH
+  READY as equivalent; the gate keeps failing, so the BATCH READY carries the failed gate with
+  the proofs. Never raise the timeout; no allowlist file. `mutation.sh --list` can print a
+  `warning:` line after `changed lines: N` for a merged track (`warn_over_count`). Mutation testing
   runs per small change set only (a whole-release run went 10 h 16 min
   with no result): the fix is `KIKO_MUTATION_BASE` set to the change
   set's own base commit, never a raised cap. The coordinator runs it per
@@ -845,7 +854,8 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   scorer takes the exact `--mutate` entries as arguments and grades only mutants fully inside a range,
   because Stryker's incremental mode carries old out-of-range mutants with their old statuses into
   `reports/mutation/mutation.json` (core `incremental-differ.js` lines 128-142). It exits 2 when one file is given both as a
-  plain path and as a range (Stryker reads that as "do not mutate"). A kept path with `[ ( * ? {` is refused with
+  plain path and as a range (Stryker reads that as "do not mutate"), and on any plain
+  (non-range) entry. A kept path with `[ ( * ? {` is refused with
   exit 2, after the lock in a run and with no lock in `--list`, always before Stryker. The diff uses
   `--find-renames --inter-hunk-context=0 --text --no-textconv`, run with `GIT_DIFF_OPTS=` (a -diff/binary attribute, a textconv driver, or a context width in that variable must not change the hunks). One `cleanup` removes the lock and the temp file for `mutation-ranges.js` stderr on EXIT, INT (exit 130), and TERM (exit 143). General rule: any checker that parses `git diff` hunks forces `--text --no-textconv --no-ext-diff` and `-c core.quotePath=false`, and treats a failed or unparsable diff as a block, never as "nothing to do" (H6 review 2026-10-12: a binary/textconv `.ts` diff gave no hunk and the gate passed with nothing mutated; fixed in 5f31d626). User ruling 2026-10-12, no edge-straddling mutant: Stryker 8.7.1 creates a mutant only when its whole node lies inside a range (its fully-inside rule, instrumenter syntax-helpers.js), and the scorer grades only mutants fully inside a range. Cost: an edit inside a multi-line block, condition, object or array, or an arrow body loses that construct's whole-node mutants; the inner mutants on the changed lines stay. User ruling 2026-10-12, source plus colocated test: when a source file and its colocated test both change, only the changed source lines are mutated. Cost: a weakened test is checked only against the changed lines, not the whole file. The
   scorer is unit-tested directly against constructed report fixtures
@@ -1315,6 +1325,7 @@ or `githooks/` file (read each rule's `paths` key). The member list is the two
 `rules/semgrep-prewrite.yml`. Read them for the current set; the P-ids are `P-?\d{1,3}`
 (`P3`, `P-12`), and "Display P3" and the curve names P-256, P-384 and P-521 are
 standards, not ids, so they stay silent (`rules/fixtures/kiko-no-history-id-comment.good.ts`).
+A hyphen-led single-letter id (a git flag such as `-U0` or `-M3`) is skipped.
 The fixture pair shows each member. Two
 `pattern-regex` arms, one per comment syntax —
 a single regex spanning both `//` and `/* */` would have to
