@@ -57,7 +57,8 @@ fi
 #   - .ts/.tsx under the roots full-word-identifiers.sh scans for TypeScript (src/, __tests__/,
 #     scripts/, jest/, __mocks__/, e2e/, plus App.tsx and drizzle.config.ts);
 #   - .js, .sh and .bash under scripts/;
-#   - .ts, .tsx, .js and .sh under rules/fixtures/, rules/*.yml, .maestro/*.yaml and *.yml;
+#   - .ts, .tsx, .js and .sh under rules/fixtures/, rules/*.yml, .maestro/*.yaml and
+#     .maestro/*.yml;
 #   - githooks/*, and every other .sh or .bash file git tracks or has not ignored.
 # harness/kiko/scripts/run-log.mjs is never scanned: it stays byte-identical with the harness
 # repository it is copied from. COMMENT_LINE_WIDTH_SOURCE_ROOT replaces the whole list with

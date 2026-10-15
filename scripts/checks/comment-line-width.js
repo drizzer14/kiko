@@ -10,8 +10,10 @@
 //   - `#` comments in a shell or YAML file: a `.sh`, `.bash`, `.yml` or `.yaml` file, or an
 //     extensionless file whose first line is a `#!` line naming sh, bash, zsh or dash. A comment
 //     line is a line whose first non-blank character is `#`, except a `#!` on line 1. A trailing
-//     `#` after code, or a `#` inside a string, is not read. Everything below about columns, the
-//     wrap point and the output holds for these lines too, with `#`, `##`, ... as the opener.
+//     `#` after code is not read. A line that starts with `#` inside a multi-line string, a
+//     heredoc body or a YAML block scalar IS read, since the scan sees only the line; the pin
+//     file is the way out for such a line. Everything below about columns, the wrap point and
+//     the output holds for these lines too, with `#`, `##`, ... as the opener.
 //   - `//` and `/* */` comments in every other file, as described next.
 //
 // What counts (`//` and `/* */`):
