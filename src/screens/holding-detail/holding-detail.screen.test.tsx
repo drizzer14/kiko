@@ -2811,8 +2811,10 @@ describe('HoldingDetailScreen with a title that does not fit the native large ti
         <LargeTitleHeadingContext.Provider
           value={{
             title: 'A holding with a very long name',
+            scrolled: false,
             headingBottom: { current: 150 },
             onScrolledChange,
+            onHostedChange: jest.fn(),
           }}
         >
           <HoldingDetailScreen
@@ -2855,6 +2857,24 @@ describe('HoldingDetailScreen with a title that does not fit the native large ti
     });
 
     expect(onScrolledChange).toHaveBeenCalledWith(true);
+  });
+
+  // The heading bar is translucent: the list rests one header height above offset zero.
+  it('does not report the heading scrolled at the rest offset under the translucent bar', async () => {
+    seed(cashHolding);
+    const onScrolledChange = jest.fn();
+
+    const { getByTestId } = await renderWithHeading(onScrolledChange);
+
+    await fireEvent.scroll(getByTestId('ledger-list'), {
+      nativeEvent: {
+        contentOffset: { x: 0, y: -HEADER_HEIGHT },
+        layoutMeasurement: { width: 393, height: 800 },
+        contentSize: { width: 393, height: 2000 },
+      },
+    });
+
+    expect(onScrolledChange).not.toHaveBeenCalledWith(true);
   });
 
   it('shows no heading while the native large title shows the title', async () => {

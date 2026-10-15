@@ -1,6 +1,6 @@
 import { View } from 'react-native';
-import { type FC, useContext } from 'react';
 import { useUnistyles } from 'react-native-unistyles';
+import { type FC, useContext, useLayoutEffect } from 'react';
 
 import Text from '../text';
 
@@ -19,6 +19,19 @@ const HOST_TOP_PADDING_STEP = 4;
 const LargeTitleHeading: FC = () => {
   const heading = useContext(LargeTitleHeadingContext);
   const { theme } = useUnistyles();
+  const onHostedChange = heading?.onHostedChange;
+
+  // A layout effect, so the layout learns of the heading before the first frame paints and the
+  // title is never on screen twice.
+  useLayoutEffect(() => {
+    if (onHostedChange === undefined) {
+      return;
+    }
+
+    onHostedChange(true);
+
+    return () => onHostedChange(false);
+  }, [onHostedChange]);
 
   if (heading === undefined) {
     return null;
@@ -27,6 +40,9 @@ const LargeTitleHeading: FC = () => {
   return (
     <View
       testID="large-title-heading"
+      // The bar shows the title once this has scrolled under it; VoiceOver reads it once.
+      accessibilityElementsHidden={heading.scrolled}
+      importantForAccessibility={heading.scrolled ? 'no-hide-descendants' : 'auto'}
       style={styles.heading}
       onLayout={(event) => {
         heading.headingBottom.current =

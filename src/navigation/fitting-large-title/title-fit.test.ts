@@ -84,4 +84,15 @@ describe('estimatedTitleFits', () => {
     expect(estimatedTitleFits('aaaa', 20.2, 10)).toBe(true);
     expect(estimatedTitleFits('aaaa', 20, 10)).toBe(false);
   });
+
+  // A window that has no width yet (0, or a margin wider than the window) is not a line to wrap
+  // a title in, so it must not turn every title into a heading.
+  it.each([
+    ['no width', 0],
+    ['a negative width', -32],
+  ])('counts a long title as fitting at %s, so the native large title stays', (_name, width) => {
+    expect(estimatedTitleFits('Edit, Duplicate, or Delete a Transaction', width, FONT_SIZE)).toBe(
+      true,
+    );
+  });
 });

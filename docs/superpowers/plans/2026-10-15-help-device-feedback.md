@@ -296,14 +296,24 @@ help-flows task 4/4, Option 1. This change set (task 3/3) carries no title code.
   of the native large title. The test is a hidden measuring `Text` with the same font (34pt
   bold, no font scaling) at the available width: it fits when its height is under 1.5 lines.
   A cautious JS width estimate decides on the first render; the layout measurement refines it.
-  A measurement that gives nothing usable counts as "fits".
+  A measurement that gives nothing usable, or a width of nothing or less, counts as "fits".
 - The title fits: the native large title, exactly as today.
-- The title does not fit: `headerLargeTitle` is false and `headerTitle` is `''` at rest;
-  `title` is unchanged. The full title wraps as the first scroll content in
-  `<Text variant="largeTitle">` (role header, theme tokens only). After it scrolls under the
-  bar, the inline bar title shows the full title (UIKit truncates it in the middle). Below
-  iOS 26 the bar is transparent at rest and blurred after the scroll, the locked fallback look.
-  The back label of a screen pushed from a heading-mode screen reads "Back".
+- The title does not fit: the options are `headerLargeTitle: false`, `headerTransparent: true`,
+  `headerShadowVisible: true` and `headerTitle: ''` at rest; `title` is unchanged. Switching the
+  large title off alone would make native-stack's bar opaque (it ties `translucent` and the
+  transparent background to the large title), and react-native-screens lays an opaque bar's
+  content out below it. `headerTransparent` keeps the bar translucent with the transparent
+  background, so the content lays out under the bar and rests at minus the header height, as
+  under a large title; `headerShadowVisible` keeps the bar shadow `headerTransparent` would hide.
+  The blur options stay those of the stack (`largeTitleScreenOptions`): below iOS 26 the bar is
+  transparent at rest (`headerLargeStyle`) and blurred (`headerBlurEffect`) once content scrolls
+  under it, the locked fallback look; iOS 26+ gets no extra option. The full title wraps as the
+  first scroll content in `<Text variant="largeTitle">` (role header, theme tokens only),
+  hidden from VoiceOver once it has scrolled under the bar. After it scrolls under the bar, the
+  inline bar title shows the full title (UIKit truncates it in the middle). The bar changes only
+  after the screen has rendered the heading (the heading reports it through the context); a
+  screen that never renders it keeps its native bar. The back label of a screen pushed from a
+  heading-mode screen reads "Back".
 - The hook wraps screen content only, never the native chrome or the safe areas.
 
 **Rulings (overnight defaults, the user may switch in the morning).**

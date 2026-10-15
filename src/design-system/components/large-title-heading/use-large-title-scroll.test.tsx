@@ -18,8 +18,10 @@ const withHeading =
       <LargeTitleHeadingContext.Provider
         value={{
           title: 'A long title',
+          scrolled: false,
           headingBottom: { current: headingBottom },
           onScrolledChange,
+          onHostedChange: jest.fn(),
         }}
       >
         {children}
@@ -63,6 +65,20 @@ describe('useLargeTitleScroll', () => {
     });
 
     expect(result.current.scrollEventThrottle).toBe(16);
+  });
+
+  // The bar is translucent, so the content rests at minus the header height. A heading shorter
+  // than the bar must not read as scrolled from the first event, which an opaque bar (rest at
+  // zero) would make it.
+  it('reports a heading shorter than the bar as not scrolled at rest', async () => {
+    const onScrolledChange = jest.fn();
+    const { result } = await renderHook(() => useLargeTitleScroll(), {
+      wrapper: withHeading(onScrolledChange, HEADER_HEIGHT - 2),
+    });
+
+    result.current.onScroll?.(scrollEvent(-HEADER_HEIGHT));
+
+    expect(onScrolledChange.mock.calls).toEqual([[false]]);
   });
 
   it('reports the heading scrolled under the bar, and back', async () => {

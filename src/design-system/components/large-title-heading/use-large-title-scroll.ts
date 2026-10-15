@@ -16,9 +16,11 @@ type ScrollProps = {
 const NO_HEADING_SCROLL: ScrollProps = { onScroll: undefined, scrollEventThrottle: undefined };
 
 /**
- * Whether the heading's bottom edge has scrolled up under the navigation bar. Under the inline
- * bar the content starts one header height above offset zero, so the scrolled distance is the
- * offset plus the header height. A heading that has not been measured yet is never scrolled past.
+ * Whether the heading's bottom edge has scrolled up under the navigation bar. The heading bar is
+ * translucent (`largeTitleHeadingOptions`), so the content lays out under it and the scrollable's
+ * automatic inset rests it one header height above offset zero, exactly as under a large title:
+ * the scrolled distance is the offset plus the header height. A heading that has not been
+ * measured yet is never scrolled past.
  */
 export const scrolledPastHeading = (
   offsetY: number,

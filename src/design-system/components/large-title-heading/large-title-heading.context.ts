@@ -2,11 +2,17 @@ import { createContext, type RefObject } from 'react';
 
 export type LargeTitleHeadingValue = {
   title: string;
+  // Whether the heading has scrolled up under the navigation bar, which then shows the title.
+  scrolled: boolean;
   // Where the heading's bottom edge sits in the scroll content, in points. The heading writes it
   // once it is laid out; the scroll handler reads it on every scroll event.
   headingBottom: RefObject<number>;
   // Reports whether the heading has scrolled up under the navigation bar.
   onScrolledChange: (scrolled: boolean) => void;
+  // Reports whether a screen renders the heading. The layout moves the title out of the bar only
+  // once the heading is on screen, so a screen that never renders it keeps its native title. Keep
+  // the callback's identity stable: the heading re-reports whenever it changes.
+  onHostedChange: (hosted: boolean) => void;
 };
 
 /**
