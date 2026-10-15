@@ -504,7 +504,9 @@ that reads the handoff file.
   `plugin.json` version, the coordinator runs
   `claude plugin update kiko@kiko-marketplace` from the main checkout,
   then the coordinator sends `/reload-plugins` to every Orca session
-  except the user's own (the user reloads their own session).
+  except the user's own (the user reloads their own session). If main already carries your
+  `plugin.json` version after you merge main, bump again before your merge commit (two tracks
+  bumped to 0.4.15 on 2026-10-16).
 - Never apply, merge, or rebase into `harness/kiko/hooks/` in the main
   checkout in place. Build the new file in scratch, run `bash -n`, grep
   it for conflict markers, then install it with one `mv`.
