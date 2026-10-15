@@ -28,6 +28,8 @@ fast+medium gate is picked up by `make verify` automatically through
 ## The wrapper contract
 
 `scripts/job-queue.sh` is not a `scripts/checks` wrapper: its QUEUED/WAITING/START/DONE lines are its normal stdout, not a failure block.
+A gate forwards the `--list` over-count `warning:` line before QUEUED and prints each
+`TIMEOUT-HEAVY` line of its log after the DONE tail (read `scripts/job-queue.sh`).
 
 Every check wrapper in `scripts/checks/` follows the same shape (read
 `scripts/checks/_lib.sh` for the exact helper):
@@ -83,8 +85,9 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   unreadable budget or a fingerprint hash failure (while doc files or suites exist) also
   exit 2. A by-hand `make doc-suites` pass records the doc fingerprint and clears the block.
   `harness_doc_suites` also discovers a suite that names a quoted pin-file literal, and
-  `harness_doc_suite_fixtures` fingerprints the pin files (`scripts/checks/<name>.pinned`
-  included); read both in `scripts/checks/_lib.sh`.
+  `harness_doc_suite_fixtures` fingerprints every pin-file literal form that
+  discovery accepts (`scripts/checks/` `.pinned` and `.pinned.json`, with or without `../`);
+  read both in `scripts/checks/_lib.sh`.
 
   Another exception, of a different shape: `scripts/checks/kill-guard.sh`
   (+ its sibling `scripts/checks/kill-guard.js`) is a `PreToolUse` hook on
@@ -854,8 +857,8 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   scorer takes the exact `--mutate` entries as arguments and grades only mutants fully inside a range,
   because Stryker's incremental mode carries old out-of-range mutants with their old statuses into
   `reports/mutation/mutation.json` (core `incremental-differ.js` lines 128-142). It exits 2 when one file is given both as a
-  plain path and as a range (Stryker reads that as "do not mutate"), and on any plain
-  (non-range) entry. A kept path with `[ ( * ? {` is refused with
+  (non-range) `--mutate` entry (one file given both as a plain path and as a range is one
+  instance; Stryker reads that as "do not mutate"). A kept path with `[ ( * ? {` is refused with
   exit 2, after the lock in a run and with no lock in `--list`, always before Stryker. The diff uses
   `--find-renames --inter-hunk-context=0 --text --no-textconv`, run with `GIT_DIFF_OPTS=` (a -diff/binary attribute, a textconv driver, or a context width in that variable must not change the hunks). One `cleanup` removes the lock and the temp file for `mutation-ranges.js` stderr on EXIT, INT (exit 130), and TERM (exit 143). General rule: any checker that parses `git diff` hunks forces `--text --no-textconv --no-ext-diff` and `-c core.quotePath=false`, and treats a failed or unparsable diff as a block, never as "nothing to do" (H6 review 2026-10-12: a binary/textconv `.ts` diff gave no hunk and the gate passed with nothing mutated; fixed in 5f31d626). User ruling 2026-10-12, no edge-straddling mutant: Stryker 8.7.1 creates a mutant only when its whole node lies inside a range (its fully-inside rule, instrumenter syntax-helpers.js), and the scorer grades only mutants fully inside a range. Cost: an edit inside a multi-line block, condition, object or array, or an arrow body loses that construct's whole-node mutants; the inner mutants on the changed lines stay. User ruling 2026-10-12, source plus colocated test: when a source file and its colocated test both change, only the changed source lines are mutated. Cost: a weakened test is checked only against the changed lines, not the whole file. The
   scorer is unit-tested directly against constructed report fixtures

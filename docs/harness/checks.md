@@ -58,14 +58,17 @@ Composite scripts:
   `changed lines: N`, and `mutable files: N (cap …)`, exits 2 above the cap, then a
   `timeout share (history)` line, and never starts
   Stryker or takes its lock. After `changed lines: N` it can print a `warning:` line (stdout,
-  `--list` only, never shown by a queued gate, no exit code changes) when N is above both
+  `--list`, and `job-queue.sh gate` forwards it once to the waiter's stdout before QUEUED; no
+  exit code changes) when N is above both
   1.5 x and 50 more than the lines the branch's own first-parent non-merge commits added
   (`warn_over_count` in `mutation.sh`): a merged track is counted as this branch's change, so
   set the base to the merged tip (harness-workflow "Mutation base after a track merged
   next"). **Clearing a TIMEOUT-HEAVY file:** the orchestrator proves each timed-out mutant in
   plain jest, or writes it in the BATCH READY as equivalent. The gate keeps failing for that
   file, so the BATCH READY carries the failed gate with the proofs. Never raise the timeout;
-  there is no allowlist file. The mutation step tees its output to a stable,
+  there is no allowlist file. A queued gate (`scripts/job-queue.sh gate`) prints, after its
+  DONE tail, each `TIMEOUT-HEAVY` line of the gate log once, so the waiter's output shows the
+  ruling. The mutation step tees its output to a stable,
   tailable progress log and prints an ETA from run history (shared by all
   worktrees) — a split of normal-mutant cost and the timeout share at a fitted
   timed-out cost, times this run's actual mutant count, printed live the moment
@@ -116,8 +119,9 @@ There is no replay-mark dependency: a fresh worktree or a purged state dir runs 
 and a rename out of a root or a delete changes the fingerprint. The fingerprint also covers each
 file under `__tests__/` that a discovered suite names in a quoted `fixtures/...` literal
 (`harness_doc_suite_fixtures`), such as a pin list, so an edit of only that file runs the step;
-a suite that names a quoted pin-file literal is discovered too, and a
-`scripts/checks/<name>.pinned` file is fingerprinted (read `_lib.sh` for the exact forms).
+a suite that names a quoted pin-file literal is discovered too, and every pin-file literal form
+that discovery accepts for `scripts/checks` (`.pinned` or `.pinned.json`, with or without
+`../`, in a subdirectory too) is fingerprinted (read `_lib.sh` for the exact forms).
 `harness_doc_suites` finds the
 suites at run time; there is no list to maintain. It finds a suite only when the file holds
 `readFileSync` and a quoted doc-root literal, so path-segment joins and template paths are not
