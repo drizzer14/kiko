@@ -232,7 +232,7 @@ am, or apply in the main checkout
 run from it, so a conflict marker there breaks every hook. The
 kill-guard denies these (see kiko-linter's "MAIN-CHECKOUT deny"). Do the
 real merge, conflicts and all, in a separate detached worktree. Verify
-it there = `bash scripts/wait-load.sh 8 && env -u FORCE_COLOR make verify`
+it there = a queued `scripts/job-queue.sh verify` (not a bare `make verify`)
 at the MERGE COMMIT (the per-window gate ran on the branch tip, not on
 the merge result). Move main only on exit 0 with the full test count. A
 clean `git merge-tree` is not proof of a green merge. A merge with 0 src
@@ -240,7 +240,11 @@ files in it still gets the verify, because check:all and the hooks run
 from it. Then fast-forward main with `bash scripts/ff-main.sh <sha>`. It
 runs only for a sha whose LAST `verify` line in the queue's done.log is exit 0, so queue the
 verify through `scripts/job-queue.sh verify` (a bare `make verify` leaves no line), keep the
-tree clean until it starts, and do not move HEAD after. The kill-guard denies a raw
+tree untouched until DONE, and do not move HEAD after. The line's head field is the full sha
+only when the tree is clean at START and again at the end and HEAD is unchanged; a job that
+edits its own tree without committing records `unknown`. Limits: an edit reverted before the
+end is not seen, and ignored files (`.env`, `node_modules`) are not counted. The
+kill-guard denies a raw
 `merge --ff-only` on main (kind `mainFastForward`). There is no bypass: an override goes to the
 user plus a run-log note. The script prints `git log -1 --oneline` of main on success.
 
@@ -357,11 +361,12 @@ points in a scratch worktree (`git worktree add`, detached):
 2. Merge each later change set's last commit into the previous merge
    point (T2 into point 1, T3 into point 2, ...).
 3. Make `check:all` (or the relevant verify) green at each point before
-   building the next one.
+   building the next one; the gate for main is the queued verify in "Merging into main".
 4. Each (previous point, point) pair is a mutation pair — run
    `check:deep`/mutation on it per the small-change-set rule above.
-5. Fast-forward the track branch to the last point with
-   `git merge --ff-only`.
+5. Fast-forward the track branch to the last point with `git merge --ff-only`. This
+   applies to a track branch in its own worktree, never to main (main moves through
+   `bash scripts/ff-main.sh <sha>`).
 
 A change set whose user-visible text (copy, subtitle, label) names a
 feature that only a LATER change set actually implements is held after

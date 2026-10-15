@@ -948,12 +948,6 @@ verified usage, not dead weight:
   power (every other unreadable state holds). Reason: a machine without
   `pmset` has no battery, so a hold would block forever. Risk: a Mac whose
   `pmset` is not on PATH.
-- **`scripts/ff-main.sh` exempt from the kill-guard's `mainFastForward`**: the script at a
-  worktree root of this repository runs the one `git merge --ff-only` that moves main, after
-  it checks a green queued `verify` line for the full sha in done.log; the guard still scans
-  it for kills. Reason: the guard denies every raw main fast-forward, so the sanctioned path
-  must be exempt. Known limit: a hand-forged done.log line passes (the file belongs to
-  cooperating agents); there is no bypass flag or variable.
 - **`scripts/job-queue.sh` group TERM** (user ruling A, 2026-10-13): the
   queue may send TERM to the process group it created for its own job, never
   any other group; see kill-guard's entry above.

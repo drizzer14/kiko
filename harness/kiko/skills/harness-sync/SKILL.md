@@ -51,8 +51,7 @@ in the harness repo):
   character before it.
 - H7 set 7, generic main-merge guard: `scripts/ff-main.sh` (moves main only to a sha with a
   green queued `verify` line); the done.log sixth field (the tested HEAD); the kill-guard
-  `mainFastForward` kind with its scan of scripts and data bodies and the `ff-main.sh`
-  exemption; the docs for these.
+  `mainFastForward` kind with its scan of scripts and data bodies; the docs for these.
 - The CLAUDE.md trim (docs/harness/checks.md split).
 - A sync branch `h5-sync` exists in drizzer14/harness (tip `d92f28d`); its plugin patch list
   P1-P25 is pending the user.
@@ -141,7 +140,8 @@ Switches live in the harness repo's `harness.config.json`. Read the harness READ
    count).
 9. BATCH READY, then the coordinator re-runs `npm test` AND `npm run check:all` at the tip
    before any push, then the user's OK, then
-   `bash scripts/ff-main.sh <tip>` (after a queued `verify` of the tip) and push. The
+   `git -C <harness main> merge --ff-only <tip>` (until the H7 set 7 port lands in the harness
+   repo, then `bash scripts/ff-main.sh <tip>` after a queued `verify` of the tip) and push. The
    orchestrator never
    pushes and never merges into main.
 

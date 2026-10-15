@@ -259,9 +259,8 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   FIX also names `scripts/ff-main.sh`. The way out: do the real merge in a separate detached
   worktree, run a queued `scripts/job-queue.sh verify` on the merge commit, then
   `bash scripts/ff-main.sh <sha>` (it needs the LAST `verify` line of done.log for that full
-  sha to be exit 0; read its header). `scripts/ff-main.sh` at a worktree root of this
-  repository is exempt from `mainFastForward` only (kills still scanned). A help or recovery
-  option lets
+  sha to be exit 0; read its header). `scripts/ff-main.sh` needs no exemption: its merge uses
+  a variable target. A help or recovery option lets
   the whole command through from ANY argument position, even as another
   option's value (see the limits list). A session
   in the main checkout gets this deny only after the guard merges to
@@ -580,7 +579,7 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   - Main-checkout deny, NOT denied: a path through another variable,
     `~user`, a glob, or a symlink; a git alias, script, or function;
     `export GIT_DIR=…` as its own earlier command; `env -C <main>`;
-    `git -c pull.rebase=true pull --ff-only`; a help or recovery option
+    a help or recovery option
     used as another option's value (`git merge -m --abort x` really
     merges); `cd $VAR` (counts as not main); a span as the `cd` target
     (`cd "$(echo <main>)" && git merge x`).
