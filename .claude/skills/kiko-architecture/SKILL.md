@@ -2510,6 +2510,11 @@ shape, and hand-rolled `utf8/utf8.ts` + `base64/base64.ts` codecs.
   snapshot field is optional). The composite primary key is its only index.
   Proven by `drizzle/migrations/0054-add-deleted-import-keys.test.ts` and
   `src/data-transfer/snapshot/restore-deleted-import-keys.test.ts`.
+- **`restoreDataSnapshot` takes a required `version` and runs `withUsdtRescaled`
+  LAST,** after the key rewrites that build keys from amounts. A value above the
+  bound throws the Error message data-transfer/amount-too-large before any delete or insert; the
+  import screen maps it through `IMPORT_ERROR_KEYS`. A new error code needs that
+  map entry plus an i18n key.
 - **A data-only cleanup migration follows the SAME two-path rule.**
   Migration `0040_cleanup_stray_deposit_bond_balance.sql` removes a
   pre-existing stray create-time artifact (a term_deposit/bond holding whose
@@ -2524,6 +2529,10 @@ shape, and hand-rolled `utf8/utf8.ts` + `base64/base64.ts` codecs.
   predicate and why it can only ever match the pre-fix bug, never a real
   balance (term_deposit/bond are ledgerless; every current write path either
   writes 0 unconditionally or never touches `balanceMinorUnits` at all).
+  A temp table that a later statement looks up by key is created WITH a primary
+  or unique key (0059's list is keyed by `(table_name, row_key)`), with an
+  `EXPLAIN QUERY PLAN` test; an arithmetic data migration guards its bound with
+  exactly the predicate of the statement it guards.
   `restoreDataSnapshot`'s `withStrayDepositBondBalanceCleaned` mirrors the
   identical predicate in JS, applied AFTER `withLegacyBalanceSetAtBackfilled`
   so a legacy (pre-0036) snapshot's freshly-backfilled boundary still gets
@@ -2657,6 +2666,9 @@ shape, and hand-rolled `utf8/utf8.ts` + `base64/base64.ts` codecs.
   with the reason no bump is needed: a column riding inside an existing row
   and derived on restore needs none, and neither does an idempotent data
   rewrite that the restore mirror re-applies to an older file (0049, 0050, 0051).
+  A non-idempotent data rewrite bumps `EXPORT_VERSION`; its restore mirror is
+  version-gated: `restoreDataSnapshot(snapshot, version)` and `withUsdtRescaled`
+  are the model.
   The decision per migration, each optional snapshot key included, is recorded in
   `VERSION_DECISIONS` in `src/data-transfer/crypto/envelope.test.ts`: read it there.
   A new table the file carries as an OPTIONAL key needs no bump: an older build

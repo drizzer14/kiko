@@ -758,8 +758,15 @@ why this is the deliberate exception to functional-first). It holds
 `{ currency, minorUnits }` and is immutable.
 
 - `minorUnits` is always an integer. **Never a float.** Scale is
-  per-currency: `BTC` uses 8 decimals (satoshis); `USD`, `EUR`, and
-  `UAH` use 2 (cents).
+  per-currency: read it from `currencyScale` in
+  `src/currency/currency/currency.ts`, never restate a currency's scale.
+- `formatMoney` renders a crypto amount from `splitMinorUnits` (an exact
+  integer split, no float division) and trims trailing zeros down to at
+  least 2 decimals; fiat keeps its fixed scale. Every new digit-producing
+  display or edit text (for example `majorAmountText`) uses
+  `splitMinorUnits`, never `/ 10 ** scale` or `toFixed`.
+  `splitMinorUnits` rounds a non-integer stored value first (a test pins
+  it).
 - The value object itself — construction, arithmetic, and the
   currency-mismatch guard — lives in `src/currency/`. Read it
   directly for the current method set rather than trusting a list
@@ -791,9 +798,11 @@ why this is the deliberate exception to functional-first). It holds
 
 ## Currencies
 
-A small closed set (`BTC` at scale 8, everything else at scale 2) —
-read `schema.ts`'s `currency`/`baseCurrency` enum for the exact
-current member list rather than trusting a count restated here. Map a
+A small closed set — read `schema.ts`'s `currency`/`baseCurrency` enum
+for the exact current member list and `currencyScale`
+(`src/currency/currency/currency.ts`) for each scale rather than
+trusting a count restated here. Crypto (`isCrypto`) shares one display
+rule, see `formatMoney`. Map a
 currency code to its scale with `ts-pattern`'s exhaustive `match` — a
 currency literal type, not a free string, so adding a currency is a
 compile error everywhere the mapping is missing.

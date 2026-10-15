@@ -146,7 +146,9 @@ statement again gives 65,000, not 70,000. A hand edit with no balance change
 and a closing balance that does not apply keep the keys. The sync clears the
 keys but never reads them and never revives a row. A holding or account delete
 clears its keys, and the key rewrites (`upgradeStoredDedupKeys`, `rezoneImportTimes`) leave it
-alone: a rewritten key misses and the row comes back at 0. A delete made before
+alone: a rewritten key misses and the row comes back at 0. Migration 0059 and
+its restore mirror `withUsdtRescaled` do rescale the amount token of a USDT key
+in `transactions` and `deleted_import_keys`. A delete made before
 the table existed left no key. A `.kiko` restore carries the table
 (`deletedImportKeys`, optional key, no `EXPORT_VERSION` bump) and skips a key
 whose holding it did not insert.
@@ -289,6 +291,11 @@ import row's `time` from the legacy wall-clock-as-UTC convention to a
 real instant, and the dedup key's time token along with it
 (`rezoneDedupKey`) — see "Column mapping" below for the zone reading
 itself.
+
+A change to a currency's scale, or to what the key's amount token means,
+rewrites the stored keys in `transactions` AND `deleted_import_keys` in the same
+migration (two phases for the UNIQUE key, so no intermediate state collides).
+`drizzle/migrations/0059_usdt_scale_8.sql` is the model.
 
 ## Column mapping
 

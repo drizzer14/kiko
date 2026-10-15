@@ -75,7 +75,9 @@ uploads to the App Store on the user's behalf.
   selects its own table columns), and `main` does not restore them.
 - Before installing the release build over a dev device that ran `main`, prove from the migrator
   what happens (example: 1.2 over `main`'s migration 0058 runs nothing; the extra nullable column
-  is ignored).
+  is ignored). Check `main` for a data-rewriting migration the release branch lacks: 0059
+  rescales USDT and, unlike a nullable column, is not harmless. A `main` export is read only by
+  `main`-or-later builds (`READABLE_EXPORT_VERSIONS`).
 - Release-only commits (claim fixes, version bump, demo regen) stay on the branch, small and
   separate. After publication only the version bump goes to `main` by cherry-pick, and `main`
   regenerates its own demo `.kiko` files (never the branch's binary). Test-infra fixes `main`
