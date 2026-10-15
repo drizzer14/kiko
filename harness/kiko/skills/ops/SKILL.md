@@ -293,8 +293,9 @@ never fast-forward main by hand (the kill-guard denies it).
 
 A gate forwards the `--list` over-count `warning:` line once before QUEUED. After the gate-log
 summary lines and before the DONE line it prints each `TIMEOUT-HEAVY` line of the gate log once
-(read the end of `scripts/job-queue.sh`), so the waiter's output shows both. The DONE summary
-lists every new failure line a ruling adds, so the waiter sees it.
+(read the end of `scripts/job-queue.sh`), so the waiter's output shows both. A ruling that adds a
+failure line to the gate log also adds its prefix to the DONE summary grep in
+`scripts/job-queue.sh` (read it for the current list); `REPORT SCOPE MISMATCH` is not in it today.
 
 The ONE allowed group kill (user ruling 2026-10-13): `scripts/job-queue.sh` may send TERM to the process group it created for its own job (`set -m`, then the group-TERM form its header shows), only while `pgrep -g` finds a member, never any other group; the lock stays live while any process of that group lives. You still never run a group or pattern kill yourself (kill-guard denies it).
 

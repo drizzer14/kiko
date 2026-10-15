@@ -1332,6 +1332,11 @@ after code is not read. They are in
 only; `check:security` and `check:rules` run them (fixtures
 `rules/fixtures/kiko-no-history-*-shell-comment.{bad,good}.sh`). The id arm matches `U0` in a
 comment that writes the git flag `-U0`: write `--unified=0` instead.
+Known limit: the fast shell arm's Semgrep `githooks/*` path include matches relative to the
+hook's cwd, so a githooks file edited from a session whose cwd is not at or above it (for
+example a main-rooted session editing an Orca worktree's githooks file) gets no per-write
+history-rule finding; `*.sh`/`*.bash` match from any cwd; project-wide `check:security` still
+catches it.
 
 ## `kiko-no-history-id-comment`
 

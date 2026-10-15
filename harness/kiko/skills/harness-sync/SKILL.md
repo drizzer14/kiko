@@ -20,10 +20,12 @@ changelog head, and `git -C <pff-ios> log --oneline -1 main`.
 - Current values (2026-10-15): harness main `d296f49` (plugin 1.5.0, pushed 2026-10-14) holds
   pff-ios source from the range `068a1424..e2d96c17` (the h5 sync, 214 commits); pff-ios main
   was `ad36c4cb` then. Everything on pff-ios main after `e2d96c17` is unsynced.
-- The next sync source starts after that point. It must include pff-ios `3331487a`,
-  `f3908902`, and `d21fbdc0`: kill-guard cp/mv into a protected folder itself, the xargs fill
-  rule (a fill names a folder only for a recursive copy or a move), and GNU abbreviations read
-  as recursive. The xargs unresolved-destination regression also exists in harness `30500db`.
+- The next sync source starts after that point. It must also carry pff-ios `3331487a`,
+  `f3908902`, and `d21fbdc0`: they are in the synced range but not ported, and the range-find
+  command below does not list them, so carry them by name. They hold kill-guard cp/mv into a
+  protected folder itself, the xargs fill rule (a fill names a folder only for a recursive copy
+  or a move), and GNU abbreviations read as recursive. The xargs unresolved-destination
+  regression also exists in harness `30500db`.
 - Find the range with
   `git -C <pff-ios> log --oneline <last point>..main -- harness scripts/checks scripts/wait-load.sh rules docs/harness CLAUDE.md __tests__`.
   Re-verify the sync point against the harness `git log` and CHANGELOG before you use it.
