@@ -402,7 +402,9 @@ kiko-linter's "SHELL-WRITE deny". Move
 or rename a file with `git mv` (`git add` a new file first), then edit
 it with Edit/Write; see kiko-code-style's "Folder-per-thing
 co-location". A Bash write it
-does not see (a script file, `find -exec`, a variable path)
+does not see (a script file, `find -exec`, a path held in a variable the command does not
+assign; kiko-linter's "SHELL-WRITE deny, git config files and same-command variables" covers
+the variables it does expand)
 and a commit of it still skip the pre-write guard. On `Stop` and `SubagentStop`, `medium.sh`
 replays the same guard over every `.ts`/`.tsx` file the session changed:
 the working tree, plus every commit no worktree's passed replay reached

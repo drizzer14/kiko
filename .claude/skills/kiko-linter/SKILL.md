@@ -154,7 +154,8 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   apostrophe, or a `<<word` in a body hides or denies nothing. Each body
   is still judged on its own, because a body can run (`bash <<'EOF'`,
   `eval "$(cat <<'EOF' …)"`, `ssh host <<'EOF'`, `cat <<'EOF' | sh`). A
-  data body is judged for the base kinds (`DATA_KINDS`) by the base
+  data body is judged for the base kinds (`DATA_KINDS`, read it in
+  `scripts/checks/kill-guard.js`) by the base
   triggers; a run body (eval, `sh -c "$(cat <<…)"`, `source /dev/stdin`,
   a span, `<(...)`) is judged in full, and only a body that a shell
   without `-c` reads as its script is also checked for an unquoted
@@ -590,8 +591,9 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
     (`find src -exec sed -i … {} +`, `find /tmp -exec cp {} src/ \;`,
     `find … -exec mv {} rules/ +`, `find … -exec sh -c 'sed -i …
     "$1"' _ {} \;`); `xargs -I{} sh -c '… {}'` (the `{}` is not read as
-    the input); a `cp`/`mv` whose destination is a variable (the
-    variable-path rule above); other writers and tools — `dd of=`,
+    the input); a `cp`/`mv` whose destination is a variable (the "SHELL-WRITE deny, git config
+    files and same-command variables" paragraph above: only an unassigned or
+    expansion-derived variable passes); other writers and tools — `dd of=`,
     `install`, `rsync`, `ditto`, `ln`, `truncate`, `touch`, `patch`, `awk`'s own
     `print >`, `ex`/`vim -c`, a `npx`/`uv run` wrapper
     around python or node, and a python/node write API outside
@@ -2468,7 +2470,8 @@ kill-guard's SHELL-WRITE deny (above) blocks the common Bash write
 forms into `src/`, `__tests__/`, `rules/`, and `e2e/`. It allows the `--write`
 fixers and git itself, which write source legitimately. What it does
 not see still reaches disk unchecked: a script file that writes,
-`find -exec`, a path held in a variable, and a commit of any
+`find -exec`, a path held in a variable the command does not assign (see "SHELL-WRITE deny,
+git config files and same-command variables"), and a commit of any
 of these (see its Known limits). The replay catches those writes after
 they land.
 
