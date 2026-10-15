@@ -11,13 +11,14 @@ import { computeDedupKey, DEDUP_OCCURRENCE_SEPARATOR } from '@kiko/statement-imp
 
 const MIGRATION_FILE = join(__dirname, '0059_usdt_scale_8.sql');
 
-const applyMigration = (database: DatabaseSync): void => {
-  const statements = readFileSync(MIGRATION_FILE, 'utf8')
+const migrationStatements = (): string[] =>
+  readFileSync(MIGRATION_FILE, 'utf8')
     .split('--> statement-breakpoint')
     .map((statement) => statement.trim())
     .filter((statement) => statement !== '');
 
-  for (const statement of statements) {
+const applyMigration = (database: DatabaseSync): void => {
+  for (const statement of migrationStatements()) {
     database.exec(statement);
   }
 };
@@ -634,6 +635,33 @@ describe('USDT rescale: statement-import keys', () => {
 
     expect(keys.map((_key, index) => rowKeyOf(database, `row-${index}`))).toEqual(keys);
     expect(deletedKeysOf(database, 'usdt')).toEqual([...keys].sort());
+  });
+
+  it('looks each new key up by the temp table key, never by a scan of it', () => {
+    const database = databaseWithHoldings();
+    const statements = migrationStatements();
+    const lookups = statements.filter(
+      (statement) => statement.startsWith('UPDATE') && statement.includes('AS listed'),
+    );
+
+    insertImportRow(database, 'row', 'usdt', 'usdt 1700000000 -1250 coffee');
+    insertDeletedKey(database, 'usdt', 'usdt 1700000000 -500 tea');
+
+    for (const statement of statements.slice(0, statements.indexOf(lookups[0]))) {
+      database.exec(statement);
+    }
+
+    const plan = lookups.flatMap((statement) =>
+      (database.prepare(`EXPLAIN QUERY PLAN ${statement}`).all() as { detail: string }[]).map(
+        (step) => step.detail,
+      ),
+    );
+
+    expect(lookups).toHaveLength(2);
+    expect(plan.filter((detail) => detail.includes('listed'))).toEqual([
+      expect.stringContaining('SEARCH listed USING'),
+      expect.stringContaining('SEARCH listed USING'),
+    ]);
   });
 
   it('a re-import of the same statement after the migration adds no row', () => {
