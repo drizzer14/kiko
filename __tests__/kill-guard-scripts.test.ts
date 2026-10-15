@@ -1,6 +1,15 @@
+import {
+  chmodSync,
+  closeSync,
+  copyFileSync,
+  mkdirSync,
+  openSync,
+  readSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { join } from 'node:path';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { chmodSync, copyFileSync, mkdirSync, symlinkSync, writeFileSync } from 'node:fs';
 
 import {
   createTemporaryDirectory,
@@ -287,12 +296,33 @@ describe('kill-guard script scan: scripts/job-queue.sh exemption', () => {
   });
 });
 
+// The guard reads a file run directly only when its first line names a shell (see
+// `SHELL_SHEBANG` in kill-guard.js), so a tracked hook with no extension counts as a script too.
+const SHELL_SHEBANG = /^#!\s*(?:\S*\/)?(?:env\s+(?:-\S+\s+)*)?(?:sh|bash|zsh|dash)(?:\s|$)/;
+
+const startsWithShellShebang = (file: string): boolean => {
+  try {
+    const descriptor = openSync(join(REPOSITORY_ROOT, file), 'r');
+    try {
+      const buffer = Buffer.alloc(128);
+      const length = readSync(descriptor, buffer, 0, buffer.length, 0);
+
+      return SHELL_SHEBANG.test(buffer.toString('utf8', 0, length));
+    } finally {
+      closeSync(descriptor);
+    }
+  } catch {
+    return false;
+  }
+};
+
 const trackedShellScripts = (): string[] =>
   execFileSync('git', ['ls-files', '-z'], { cwd: REPOSITORY_ROOT, encoding: 'utf8' })
     .split('\0')
-    .filter((file) => file.endsWith('.sh'));
+    .filter((file) => file.endsWith('.sh') || startsWithShellShebang(file));
 
-// The review's top question: no tracked script and no routine command of the coordinator may deny.
+// The guard now reads every script a command runs, so a wrong deny here would block the
+// coordinator's own routine commands: no tracked script and none of those commands may deny.
 describe('kill-guard script scan: every tracked script and the routine commands', () => {
   const scripts = trackedShellScripts();
   const real: Options = { cwd: REPOSITORY_ROOT };
@@ -312,18 +342,20 @@ describe('kill-guard script scan: every tracked script and the routine commands'
     'bash scripts/ensure-git-hooks.sh',
   ];
 
-  it('tracks shell scripts to cover', () => {
+  it('tracks shell scripts to cover, hooks without an extension included', () => {
     expect(scripts.length).toBeGreaterThan(20);
     expect(scripts).toContain('scripts/job-queue.sh');
+    expect(scripts).toContain('githooks/pre-commit');
+    expect(scripts).toContain('githooks/pre-merge-commit');
   });
 
-  it('allows `bash <file>` for every tracked *.sh of this repository', () => {
+  it('allows `bash <file>` for every tracked shell script of this repository', () => {
     const kinds = decideAll(scripts.map((file) => [`bash ${file}`, real]));
 
     expect(scripts.filter((_file, index) => kinds[index] !== 'allow')).toEqual([]);
   });
 
-  it('allows `source <file>` and the absolute path of every tracked *.sh', () => {
+  it('allows `source <file>` and the absolute path of every tracked shell script', () => {
     const kinds = decideAll(
       scripts.flatMap((file) => [
         [`source ${file}`, real],
