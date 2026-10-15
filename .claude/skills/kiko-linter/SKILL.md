@@ -608,8 +608,9 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   changes the mutant set) or `@jsx` (a pragma changes how the file compiles)
   is kept whatever else changed. A changed colocated test beside a comment-only
   source never keeps it (user ruling 2026-10-14, G1 a): the file mutates nothing, and
-  no whole-file keep exists. Both `git diff --name-only` calls run with
-  `-c core.quotePath=false`, so a non-ASCII test name matches. Tests:
+  no whole-file keep exists. The changed-files `git diff --name-only`
+  (`diff_names` in `scripts/checks/mutation.sh`) runs with `-c core.quotePath=false`, so a
+  non-ASCII file name matches. Tests:
   `__tests__/comment-only-changes.test.ts` (the parse cases, one spawn) and
   `__tests__/mutation-comment-only.test.ts` (the wrapper, against the stub).
 
@@ -1771,14 +1772,11 @@ is not seen.
 Mechanizes kiko-code-style's "`ts-pattern` for exhaustive mapping": a ternary
 `$X.kind === "$KIND" ? $A : $B`, which sends every other variant down the else branch.
 
-**Severity WARNING while a sweep is pending.** This is an ordinary pending sweep (see "Adding
-a pre-write guard rule", step 2). The rule has no type information, so it cannot tell a closed
-union from a plain `kind` string. The sites are not listed here: re-measure with the Semgrep command in the title-rule
-section above, filtered to this id, and read each site's union. A site on a closed union does
-not fit kiko-code-style's single-boolean-guard allowance, because that allowance covers only a
-guard with no closed-set enum behind it. Promotion condition: once the sweep to
-`match(...).exhaustive()` leaves 0 tree findings, the rule flips to ERROR. A new site uses `match`. The
-pre-write guard denies any NEW finding whatever its severity, so `// nosemgrep:
+**Severity ERROR.** The rule has no type information, so it cannot tell a closed union from a
+plain `kind` string. A site on a closed union does not fit kiko-code-style's single-boolean-guard
+allowance, because that allowance covers only a guard with no closed-set enum behind it. A site
+uses `match(...).exhaustive()`. To re-measure, run the Semgrep command in the title-rule section
+above, filtered to this id; the tree must hold 0 findings. `// nosemgrep:
 kiko-kind-ternary-prefers-match OVERRIDE(<reason>) <why>` is only for a site where `kind` is
 not a closed union.
 
