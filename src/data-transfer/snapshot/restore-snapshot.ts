@@ -784,6 +784,7 @@ export const withCryptoCashHoldingsMoved = (
  */
 export const restoreDataSnapshot = (
   snapshot: DataSnapshot,
+  version: number,
 ): Promise<{ accountsRestored: number }> =>
   write(async (databaseTransaction) => {
     // Runs first, before either table is inserted — see

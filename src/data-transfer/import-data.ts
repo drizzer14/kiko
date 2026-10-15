@@ -223,7 +223,7 @@ export const importData = async (options: {
     throw new Error(INVALID_FILE_MESSAGE);
   }
 
-  const { accountsRestored } = await restoreDataSnapshot(payload.tables);
+  const { accountsRestored } = await restoreDataSnapshot(payload.tables, envelope.version);
   // Right after the commit, ahead of every later step: the re-plan drops the
   // replaced data's pending requests and snoozes, and a later step that threw
   // would leave them on the device to fire beside the restored reminders.

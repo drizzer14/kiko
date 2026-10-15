@@ -24,6 +24,8 @@ import { applyAllMigrations } from '@kiko/test-support/real-sqlite';
 import { holdingValueBreakdown } from '@kiko/holdings/holding-value';
 import { quantityAt, SaleExceedsHoldingError, type Lot, type LotChange } from '@kiko/holdings/lots';
 
+import { EXPORT_VERSION } from '../crypto/envelope';
+
 import { readDataSnapshot } from './read-snapshot';
 import type { DataSnapshot } from './data-snapshot';
 import { restoreDataSnapshot } from './restore-snapshot';
@@ -150,7 +152,7 @@ const exportAndRestore = async (): Promise<void> => {
 
   openDatabase({ lots: [] });
   mockDatabase.exec('DELETE FROM holdings');
-  await restoreDataSnapshot(backup);
+  await restoreDataSnapshot(backup, EXPORT_VERSION);
 };
 
 // A backup made before the one-time recost has no flag key, so it restores
@@ -162,7 +164,10 @@ const restoreBackupFromBeforeTheRecost = async (): Promise<void> => {
   openDatabase({ lots: [] });
   mockDatabase.exec('DELETE FROM holdings');
   await recostStoredLots();
-  await restoreDataSnapshot({ ...backup, settings: [olderSettings as SettingsRow] });
+  await restoreDataSnapshot(
+    { ...backup, settings: [olderSettings as SettingsRow] },
+    EXPORT_VERSION,
+  );
   await recostStoredLots();
 };
 

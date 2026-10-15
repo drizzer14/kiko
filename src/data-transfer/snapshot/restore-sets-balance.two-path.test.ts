@@ -204,7 +204,7 @@ describe('restoring a .kiko file exported before the balance-set marker', () => 
     const snapshot = await readPreMarkerSnapshot(exported);
 
     mockDatabase = freshDatabase();
-    await restoreDataSnapshot(snapshot);
+    await restoreDataSnapshot(snapshot, 3);
 
     expect(markedIds(live)).toEqual(['edited-adjustment', 'opening', 'tie-a']);
     expect(markedIds(mockDatabase)).toEqual(markedIds(live));
@@ -232,7 +232,7 @@ describe('restoring a .kiko file that carries the balance-set marker', () => {
     };
 
     mockDatabase = freshDatabase();
-    await restoreDataSnapshot(snapshot);
+    await restoreDataSnapshot(snapshot, 3);
 
     expect(markedIds(mockDatabase)).toEqual(['lookalike']);
     expect(currentRowIds(mockDatabase)).toEqual(currentRowIds(exported));
@@ -255,7 +255,7 @@ describe('restoring a .kiko file that carries the balance-set marker', () => {
     };
 
     mockDatabase = freshDatabase();
-    await restoreDataSnapshot(snapshot);
+    await restoreDataSnapshot(snapshot, 3);
     await transactionsRepo.update({
       transactionId: 'opening',
       amountMinorUnits: 150,

@@ -9,6 +9,8 @@ jest.mock('@kiko/db/client', () => {
 import { DatabaseSync } from 'node:sqlite';
 import { applyAllMigrations } from '@kiko/test-support/real-sqlite';
 
+import { EXPORT_VERSION } from '../crypto/envelope';
+
 import { readDataSnapshot } from './read-snapshot';
 import type { DataSnapshot } from './data-snapshot';
 import { restoreDataSnapshot } from './restore-snapshot';
@@ -61,7 +63,7 @@ describe('restoring the app lock setting', () => {
       const backup = FILES[name](await exportedSnapshot());
 
       mockDatabase = openDatabase(liveLockEnabled);
-      await restoreDataSnapshot(backup);
+      await restoreDataSnapshot(backup, EXPORT_VERSION);
 
       expect(storedLockEnabled()).toBe(liveLockEnabled);
     });

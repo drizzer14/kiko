@@ -285,7 +285,7 @@ describe('restoring a .kiko file exported before the exchange pair id', () => {
     const snapshot = await readPreFeatureSnapshot(exported);
 
     mockDatabase = freshDatabase();
-    await restoreDataSnapshot(snapshot);
+    await restoreDataSnapshot(snapshot, 3);
 
     expect(pairIds(live)).toMatchObject({
       'z-pair-out': 'a-pair-in',
@@ -320,7 +320,7 @@ describe('restoring a .kiko file that carries the exchange pair id', () => {
     };
 
     mockDatabase = freshDatabase();
-    await restoreDataSnapshot(snapshot);
+    await restoreDataSnapshot(snapshot, 3);
 
     expect(pairIds(mockDatabase)).toEqual(pairIds(exported));
     expect(pairIds(mockDatabase)['a-pair-in']).toBe('chosen');

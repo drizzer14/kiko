@@ -402,7 +402,7 @@ const bothPaths = async (seed: (target: DatabaseSync) => void) => {
   seeded.exec(MIGRATION_0050_SQL.split('--> statement-breakpoint').join('\n'));
 
   mockDatabase = freshDatabase();
-  await restoreDataSnapshot(exportedSnapshot);
+  await restoreDataSnapshot(exportedSnapshot, 3);
 
   return { live: await rowsOf(seeded), restored: await rowsOf(mockDatabase) };
 };

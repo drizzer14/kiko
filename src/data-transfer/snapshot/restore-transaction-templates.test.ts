@@ -16,6 +16,8 @@ jest.mock('@kiko/db/client', () => {
 import { DatabaseSync } from 'node:sqlite';
 import { applyAllMigrations } from '@kiko/test-support/real-sqlite';
 
+import { EXPORT_VERSION } from '../crypto/envelope';
+
 import { readDataSnapshot } from './read-snapshot';
 import type { DataSnapshot } from './data-snapshot';
 import { restoreDataSnapshot } from './restore-snapshot';
@@ -90,7 +92,7 @@ describe('restoring the transaction templates', () => {
     const exported = templatesOf();
 
     mockDatabase = freshDatabase();
-    await restoreDataSnapshot(snapshot);
+    await restoreDataSnapshot(snapshot, EXPORT_VERSION);
 
     expect(templatesOf()).toEqual(exported);
     expect(templatesOf()).toHaveLength(2);
@@ -101,7 +103,7 @@ describe('restoring the transaction templates', () => {
       await exportWithTwoTemplates();
 
     mockDatabase = freshDatabase();
-    await expect(restoreDataSnapshot(fileWithoutTemplates)).resolves.toBeDefined();
+    await expect(restoreDataSnapshot(fileWithoutTemplates, EXPORT_VERSION)).resolves.toBeDefined();
 
     expect(templatesOf()).toEqual([]);
   });
@@ -110,18 +112,21 @@ describe('restoring the transaction templates', () => {
     const snapshot = await exportWithTwoTemplates();
 
     mockDatabase = freshDatabase();
-    await restoreDataSnapshot({
-      ...snapshot,
-      transactionTemplates: [
-        {
-          id: 'template-future',
-          name: 'Future',
-          draft: { version: 9 },
-          createdAt: 5000,
-          updatedAt: 6000,
-        },
-      ],
-    });
+    await restoreDataSnapshot(
+      {
+        ...snapshot,
+        transactionTemplates: [
+          {
+            id: 'template-future',
+            name: 'Future',
+            draft: { version: 9 },
+            createdAt: 5000,
+            updatedAt: 6000,
+          },
+        ],
+      },
+      EXPORT_VERSION,
+    );
 
     expect(templatesOf()).toEqual([
       {
@@ -142,7 +147,7 @@ describe('restoring the transaction templates', () => {
     insertTemplate('template-stale', 'Stale', '{"version":1}', 9000);
     insertTemplate('template-a', 'Old name', '{"version":1}', 9000);
 
-    await restoreDataSnapshot(snapshot);
+    await restoreDataSnapshot(snapshot, EXPORT_VERSION);
 
     expect(templatesOf()).toEqual(exported);
   });

@@ -165,11 +165,14 @@ describe('restoring a build-25-shaped snapshot, then importing an older statemen
       createdAt: handSetAt,
     } as never;
 
-    await restoreDataSnapshot({
-      ...emptySnapshot,
-      holdings: [legacyHolding],
-      transactions: [handSetTransaction],
-    });
+    await restoreDataSnapshot(
+      {
+        ...emptySnapshot,
+        holdings: [legacyHolding],
+        transactions: [handSetTransaction],
+      },
+      3,
+    );
 
     // The restore itself recovered the same boundary migration 0036 would
     // have backfilled on-device.

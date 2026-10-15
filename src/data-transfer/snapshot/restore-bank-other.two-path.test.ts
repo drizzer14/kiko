@@ -135,7 +135,7 @@ describe('restoring a .kiko file exported before Other bank was a stored bank id
     const snapshot = await snapshotOf(exported);
 
     mockDatabase = freshDatabase();
-    await restoreDataSnapshot(snapshot);
+    await restoreDataSnapshot(snapshot, 3);
 
     expect(bankIds(live)).toEqual({
       'broker-no-pick': null,
@@ -183,7 +183,7 @@ describe('restoring a .kiko file whose Monobank accounts are stored as no bank o
     const snapshot = await snapshotOf(exported);
 
     mockDatabase = freshDatabase();
-    await restoreDataSnapshot(snapshot);
+    await restoreDataSnapshot(snapshot, 3);
 
     expect(bankIds(live)).toEqual({
       'connected-broker': null,
@@ -206,7 +206,7 @@ describe('restoring a .kiko file whose Monobank accounts are stored as no bank o
     const snapshot = withoutBankIdKey(await snapshotOf(exported));
 
     mockDatabase = freshDatabase();
-    await restoreDataSnapshot(snapshot);
+    await restoreDataSnapshot(snapshot, 3);
 
     expect(bankIds(mockDatabase)).toEqual({ connected: 'monobank', disconnected: 'other' });
   });
@@ -223,7 +223,7 @@ describe('restoring a .kiko file exported before accounts.bank_id existed (migra
     expect(snapshot.accounts.every((account) => !('bankId' in account))).toBe(true);
 
     mockDatabase = freshDatabase();
-    await restoreDataSnapshot(snapshot);
+    await restoreDataSnapshot(snapshot, 3);
 
     expect(bankIds(mockDatabase)).toEqual({ cash: null, 'free-bank': 'other' });
   });
@@ -239,7 +239,7 @@ describe('restoring a .kiko file exported after Other bank was a stored bank id'
     const snapshot = await snapshotOf(exported);
 
     mockDatabase = freshDatabase();
-    await restoreDataSnapshot(snapshot);
+    await restoreDataSnapshot(snapshot, 3);
 
     expect(bankIds(mockDatabase)).toEqual({
       'broker-other': 'other',

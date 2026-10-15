@@ -11,6 +11,8 @@ import { database, holdings } from '@kiko/db';
 import { holdingValue } from '@kiko/holdings/holding-value';
 import { applyAllMigrations } from '@kiko/test-support/real-sqlite';
 
+import { EXPORT_VERSION } from '../crypto/envelope';
+
 import { readDataSnapshot } from './read-snapshot';
 import type { DataSnapshot } from './data-snapshot';
 import { restoreDataSnapshot } from './restore-snapshot';
@@ -38,7 +40,7 @@ describe('restoring a holding of a type this build no longer has', () => {
     const backup = JSON.parse(JSON.stringify(await readDataSnapshot())) as DataSnapshot;
 
     openDatabase();
-    await restoreDataSnapshot(backup);
+    await restoreDataSnapshot(backup, EXPORT_VERSION);
 
     const [restored] = await database.select().from(holdings);
 

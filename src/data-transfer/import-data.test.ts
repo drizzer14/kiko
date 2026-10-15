@@ -3,7 +3,8 @@ jest.mock('react-native-fs', () => ({ readFile: (...args: unknown[]) => mockRead
 
 const mockRestoreDataSnapshot = jest.fn();
 jest.mock('./snapshot/restore-snapshot', () => ({
-  restoreDataSnapshot: (snapshot: unknown) => mockRestoreDataSnapshot(snapshot),
+  restoreDataSnapshot: (snapshot: unknown, version: unknown) =>
+    mockRestoreDataSnapshot(snapshot, version),
 }));
 
 const mockRestoreExportSecrets = jest.fn();
@@ -49,9 +50,9 @@ import { right } from 'fnts/either';
 import { utf8ToBytes } from '@noble/ciphers/utils.js';
 
 import { importData } from './import-data';
-import { encryptEnvelope } from './crypto/envelope';
 import { encodeBytesToBase64 } from './base64/base64';
 import { generateExportKey } from './crypto/generate-key';
+import { EXPORT_VERSION, encryptEnvelope } from './crypto/envelope';
 
 const payload = {
   exportedAt: 1,
@@ -127,6 +128,18 @@ describe('importData', () => {
     await importData({ fileUri: '/tmp/x.kiko', keyBase64 });
 
     expect(order).toEqual(['restore', 'replan', 'secrets']);
+  });
+
+  it.each([1, 3, 4])("restores with the file's own version %d", async (version) => {
+    const { fileText, keyBase64 } = encryptedWith(version, {
+      categoryOverrides: [],
+      categoryRules: [],
+    });
+    mockReadFile.mockResolvedValue(fileText);
+
+    await importData({ fileUri: '/tmp/x.kiko', keyBase64 });
+
+    expect(mockRestoreDataSnapshot).toHaveBeenCalledWith(expect.anything(), version);
   });
 
   // The data is already committed, so a credential that cannot be written is
@@ -317,7 +330,7 @@ describe('importData', () => {
 
     const summary = await importData({ fileUri: '/tmp/x.kiko', keyBase64 });
 
-    expect(mockRestoreDataSnapshot).toHaveBeenCalledWith(payload.tables);
+    expect(mockRestoreDataSnapshot).toHaveBeenCalledWith(payload.tables, EXPORT_VERSION);
     expect(mockRestoreExportSecrets).toHaveBeenCalledWith(undefined, new Set(['a1']));
     expect(summary).toEqual({
       accountsRestored: 1,
@@ -502,7 +515,7 @@ describe('importData', () => {
     const { fileText, keyBase64 } = encryptedFixture();
     const envelope = JSON.parse(fileText) as { version: number };
 
-    mockReadFile.mockResolvedValue(JSON.stringify({ ...envelope, version: 4 }));
+    mockReadFile.mockResolvedValue(JSON.stringify({ ...envelope, version: 5 }));
     await expect(importData({ fileUri: '/tmp/x.kiko', keyBase64 })).rejects.toThrow(
       'data-transfer/import',
     );
@@ -609,6 +622,7 @@ describe('importData', () => {
 
       expect(mockRestoreDataSnapshot).toHaveBeenCalledWith(
         expect.objectContaining({ categoryRules: [goodRule] }),
+        3,
       );
     });
 
@@ -630,6 +644,7 @@ describe('importData', () => {
 
         expect(mockRestoreDataSnapshot).toHaveBeenCalledWith(
           expect.objectContaining({ categoryRules: [goodRule, unreadableRule] }),
+          3,
         );
       },
     );

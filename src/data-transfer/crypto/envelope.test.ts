@@ -97,7 +97,7 @@ describe('encryptEnvelope / decryptEnvelope', () => {
 // record the new length alone with the reason beside it.
 describe('the export version against the migration journal', () => {
   const VERSION_DECISIONS = {
-    version: 3,
+    version: 4,
     // Through 0050_implicit_property_debt_accounts, which merges each kind's
     // live property/debt accounts into one: a file that carries the merged rows
     // is an ordinary set of accounts to an older build (one property account
@@ -138,7 +138,10 @@ describe('the export version against the migration journal', () => {
     // that carries it drops the key, and this build restores an older file
     // without it as null, so it needed no bump (a bump would make an older build
     // refuse every new file).
-    migrationCount: 59,
+    // Through 0059_usdt_scale_8, which rescales USDT to scale 8: an older build would read
+    // every USDT value 10^6 too large, so it must refuse the file by its version; this
+    // build rescales an older file on restore.
+    migrationCount: 60,
   };
 
   it('has a version decision for every migration', () => {
