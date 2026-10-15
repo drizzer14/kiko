@@ -107,6 +107,13 @@ describe('formatMoney crypto amounts', () => {
   it('puts the sign outside the symbol of a crypto amount', () => {
     expect(formatMoney(Money.of('BTC', -5_000_000))).toBe('-₿0.05');
   });
+
+  it('rounds a stored non-integer to whole minor units instead of printing a fraction', () => {
+    // Money.of truncates, so a stored real (a seeded bond value) reaches formatMoney as a cast.
+    const stored = { currency: 'BTC', minorUnits: 12.5 } as unknown as Money;
+
+    expect(formatMoney(stored)).toBe('₿0.00000013');
+  });
 });
 
 describe('formatMoney USDT amounts', () => {

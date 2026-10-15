@@ -97,6 +97,11 @@ describe('majorAmountText', () => {
     expect(majorAmountText('UAH', -123_456)).toBe('1234.56');
   });
 
+  it('rounds a stored non-integer to whole minor units, as the float division did', () => {
+    expect(majorAmountText('UAH', 12.5)).toBe('0.13');
+    expect(majorAmountText('UAH', -12.4)).toBe('0.12');
+  });
+
   it('keeps every stored digit above 2^53 / 10^scale, where a float division rounds', () => {
     expect(majorAmountText('USDT', 9_007_199_254_000_000)).toBe('90071992.54');
     expect(majorAmountText('USDT', Number.MAX_SAFE_INTEGER)).toBe('90071992.54740991');

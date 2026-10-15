@@ -13,7 +13,8 @@ export const splitMinorUnits = (
   minorUnits: number,
   scale: number,
 ): { whole: number; fraction: string } => {
-  const absolute = Math.abs(minorUnits);
+  // A stored real (a seeded bond value) must still split into whole digits, not "12.5" padded.
+  const absolute = Math.round(Math.abs(minorUnits));
   const remainder = absolute % 10 ** scale;
 
   return {
