@@ -33,7 +33,9 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
 `scripts/checks/_lib.sh` for the exact helper):
 
 - `source "$DIR/_lib.sh"` for `print_block`.
-- Comments in a shell script wrap at 100 columns, as in any other source file; `__tests__/shell-comment-width.test.ts` pins it.
+- Comments in a shell script wrap at 100 columns, as in any other source file;
+  `npm run check:comment-line-width` checks it (`__tests__/comment-line-width.test.ts`; scope
+  in the `comment-line-width.js` bullet below).
 - On failure: call `print_block` (a structured WHAT/DETAILS/WHY/HOW/
   DO-NOT block) to stderr, then `exit 2`.
 - A missing path is a failure, never a pass. A missing scan root or a missing path argument
@@ -423,11 +425,13 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   kind alone: a stash or write inside it is not judged). A heredoc inside a scanned script is
   judged for those kinds too (kill only); `DATA_KINDS` applies to typed commands only. `kill -0`
   and `kill -s 0` send no signal and are harmless ONLY when no later word before the targets can be
-  an option: a word matching `/^-[A-Za-z]/`, a word that may expand (see `sendsNoSignal` in
-  `scripts/checks/kill-guard.js` for the characters), or a `-N` word with more words after it.
-  A later `-s`, `-n`, or `-sSIG` replaces the 0 with a real signal; otherwise the kill is
-  judged by its targets. These deny, typed or inside a scanned script: `kill -0 -s
-  KILL -1`, `kill -s 0 -s KILL -1`, `kill -0 -n 9 -1`, `kill -0 -sKILL -1`, `kill -s 0 -n 9 -1`.
+  an option: a word matching `/^-[A-Za-z]/`, a word that may expand (a leading `~`, or `$`,
+  a backtick, `*`, `?`, `[`, `{`, a subshell placeholder; `mayBeOption` in
+  `scripts/checks/kill-guard.js` is the source), or a `-N` word with more words after it.
+  A later `-s`, `-n`, or `-sSIG` replaces the 0 with a real signal, so whenever such a word
+  appears the kill is judged by its targets. These deny, typed or inside a scanned script:
+  `kill -0 -s KILL -1`, `kill -s 0 -s KILL -1`, `kill -0 -n 9 -1`, `kill -0 -sKILL -1`,
+  `kill -s 0 -n 9 -1`.
   `$1`..`$9` is a caller's own pid like a named variable; both rules apply to typed commands as
   well as the script scan (`sendsNoSignal`, `isDangerousKillTarget`, `killFinding`).
   `isQueueScript` exempts `scripts/job-queue.sh`
@@ -916,7 +920,9 @@ itself denies fail-closed on any rule missing `metadata.skill`, since
 a deny that cannot point the agent anywhere is a guard bug. Add a NEW
 prewrite-checkable rule to `semgrep-prewrite.yml` directly, not to
 `semgrep-mobile.yml` — see that file's own header comment for the full
-reasoning.
+reasoning. One exception: the three generic shell comment-history rules
+(`kiko-no-history-id-shell-comment`, `-word-`, `-date-`) live in `semgrep-mobile.yml`,
+because the pre-write guard reads TypeScript only and a shell write never reaches it.
 
 ## Semgrep facts verified on 1.175 — don't relearn these the hard way
 
@@ -1281,16 +1287,30 @@ The one-exported-component-per-`.tsx` check is a Jest invariant plus a
 pre-write guard Node rule, not Semgrep — see "One exported component per
 `.tsx` — a Jest invariant and a guard rule" below. The import-length-sort check is a hand-rolled
 shell+JS checker/fixer at the fast tier — see "Import length-sort — a
-hand-rolled checker (and fixer)" below. The comment checks are three Semgrep
-rules in `rules/semgrep-prewrite.yml` — `kiko-no-history-id-comment`,
-`kiko-no-history-word-comment`, `kiko-no-task-id-comment` — see each rule's
-section below; each rule's own `severity:` field is the source for its tier.
+hand-rolled checker (and fixer)" below. The comment checks are the comment-history
+rules (`kiko-no-history-*`, `kiko-no-task-id-comment`) in `rules/semgrep-prewrite.yml` and
+`rules/semgrep-mobile.yml` (the `*-shell-comment` rules); read both files for the set. See each
+rule's section below; each rule's own `severity:` field is the source for its tier.
+
+**Scope of the comment-history rules.** The id, word and date rules read TypeScript and
+JavaScript, now including `__tests__/` and the scripts js; their `paths.exclude` keeps `e2e/`,
+`harness/`, `App.tsx` and `drizzle.config.ts` out. Three generic shell rules in
+`rules/semgrep-mobile.yml` (`kiko-no-history-id-shell-comment`,
+`kiko-no-history-word-shell-comment`, `kiko-no-history-date-shell-comment`) apply the same
+words, ids and dates to a line of a `.sh`, `.bash` or `githooks/` file whose first non-blank
+character is `#`; a `#`
+after code is not read. They are in
+`semgrep-mobile.yml`, not `semgrep-prewrite.yml`, because the pre-write guard reads TypeScript
+only; `check:security` and `check:rules` run them (fixtures
+`rules/fixtures/kiko-no-history-*-shell-comment.{bad,good}.sh`). The id arm matches `U0` in a
+comment that writes the git flag `-U0`: write `--unified=0` instead.
 
 ## `kiko-no-history-id-comment`
 
 Mechanizes kiko-code-style's "Comments: WHY only, never history": no
 task id, review-round id, spec/decision id, or plan citation left
-behind in a `src/**` comment. The member list is the two
+behind in a comment under `src`, `__tests__`, the scripts js, or a `#` line of a `.sh`, `.bash`
+or `githooks/` file (read each rule's `paths` key). The member list is the two
 `pattern-regex` arms of `kiko-no-history-id-comment` in
 `rules/semgrep-prewrite.yml`. Read them for the current set; the P-ids are `P-?\d{1,3}`
 (`P3`, `P-12`), and "Display P3" and the curve names P-256, P-384 and P-521 are
@@ -2320,11 +2340,29 @@ a pre-existing finding points at. A Semgrep deny names
   line holds two, never the code between them), so a moved long comment
   or a renamed identifier beside it is not new and a reworded comment is.
   The row sets `overridable: false`: no override comment passes it.
-  `comment-line-width.sh` is project-wide only
-  (`npm run check:comment-line-width`) over the `.ts`/`.tsx` roots of
-  `full-word-identifiers.sh` except `rules/fixtures/`, and is part of
-  `check:all` (the tree holds no comment line over 100 columns). No
-  `--write`. Tests: `__tests__/comment-line-width.test.ts`.
+  The checker also reads `#` comment lines (first non-blank character `#`, not a `#!` first
+  line) of `.sh`, `.bash`, `.yml`, `.yaml` and shell-shebang files, with the same columns and
+  exemption. `comment-line-width.sh` runs project-wide
+  (`npm run check:comment-line-width`, part of `check:all`) and per file (one path
+  argument, no dedup; a MISSING path exits 2 first, then a file of an unread type exits 0).
+  A `#`-first line inside a multi-line string, a heredoc body or a YAML block scalar is read
+  as a comment too; the pin file is the way out for such a line. Read its header for the
+  exact scope:
+  the TypeScript roots of `full-word-identifiers.sh`, scripts js/sh/bash, `rules/fixtures/`,
+  `rules/*.yml`, `.maestro`, `githooks/`, and every other tracked `.sh`/`.bash`.
+  `harness/kiko/scripts/run-log.mjs` is left out: it stays byte-identical with the harness
+  repository. `scripts/checks/comment-line-width.pinned` lists, as `<path><TAB><exact line>`,
+  the lines that cannot wrap; it is shrink-only (a pin whose line is gone or now fits fails as
+  stale) and a line that can wrap is wrapped, never pinned. `__tests__/pin-count-ceilings.test.ts`
+  caps how many pins each pin file (this one and the markdown prose-width one) may hold; read
+  the test for the ceilings. `fast.sh` runs the per-file mode on
+  a shell, YAML or githooks write; a `.js` write is not checked in the fast tier, so
+  `check:comment-line-width` catches it. A tool directive keeps its `OVERRIDE(...)` on ONE
+  line directly above the statement: a continuation comment between a `biome-ignore lint/...`
+  directive and its statement breaks the suppression, so put the explanation above the
+  directive. A `biome-ignore format` directive may continue on a second comment line and
+  still suppresses. No `--write`.
+  Tests: `__tests__/comment-line-width.test.ts`.
 - `component-i18n-namespace.js` (`kiko-component-i18n-namespace`) enforces
   kiko-translator's "A string moved into a shared component changes
   namespace" for a literal key in the component's own folder tree: a file

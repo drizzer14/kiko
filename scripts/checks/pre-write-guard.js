@@ -6,8 +6,7 @@
 // introduces a known violation. See scripts/checks/pre-write-guard.sh for
 // the wrapper that invokes this script and its own exit-code contract (0
 // allow, 2 deny, anything else means the wrapper itself denies), and
-// docs/superpowers/specs/2026-09-25-pre-write-guard-design.md for the full
-// design.
+// the pre-write guard design spec under docs/superpowers/specs/ for the full design.
 //
 // `rebuildContents` rebuilds Write/Edit/MultiEdit into the BEFORE/AFTER pair;
 // `runSemgrep` runs ONE Semgrep process over the trees that can possibly
@@ -1316,6 +1315,7 @@ async function run() {
 }
 
 if (require.main === module) {
-  // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function) run() catches every error itself and turns it into a deny
+  // run() catches every error itself and turns it into a deny, so it never rejects.
+  // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function) run() never rejects
   run();
 }

@@ -75,6 +75,9 @@ const PINNED_SEVERITIES = {
   'kiko-no-history-id-comment': 'ERROR',
   'kiko-no-history-date-comment': 'ERROR',
   'kiko-no-history-word-comment': 'ERROR',
+  'kiko-no-history-id-shell-comment': 'ERROR',
+  'kiko-no-history-date-shell-comment': 'ERROR',
+  'kiko-no-history-word-shell-comment': 'ERROR',
   'kiko-no-task-id-comment': 'ERROR',
   'kiko-test-title-no-history': 'ERROR',
 };

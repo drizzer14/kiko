@@ -22,8 +22,9 @@ const { commentSpans, lineNumberAt } = require('./specifier-scanner');
 // directly in `components/` out.
 const COMPONENT_FOLDER = /(?:^|\/)src\/design-system\/components\/([^/]+)\//;
 
-// Group 1 is the key as printed: it stops at the closing quote, whitespace, or a `${` interpolation,
-// so one finding is always one line with no space in the key, which pre-write-guard.js parses.
+// Group 1 is the key as printed: it stops at the closing quote, whitespace, or a `${`
+// interpolation, so one finding is always one line with no space in the key, which
+// pre-write-guard.js parses.
 const COMPONENT_KEY = /['"`](components\.([A-Za-z0-9_]+)\.[^'"`\s$]*)/g;
 
 // `expand-toggle` reads `components.expandToggle.*`.

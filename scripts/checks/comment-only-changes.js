@@ -42,7 +42,7 @@
 // mutates.
 //
 // mutation.sh passes only the changed source files, so a printed path mutates nothing whatever
-// the test beside it did (user ruling 2026-10-14).
+// the test beside it did.
 //
 // Unlike every other checker in this directory it requires an npm package (typescript). That is
 // safe because it runs only inside mutation.sh, in a full worktree where Stryker itself needs

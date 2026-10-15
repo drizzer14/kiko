@@ -429,7 +429,7 @@ describe('scripts/checks/mutation.sh diff scoping', () => {
 
 // ---------------------------------------------------------------------------
 // Changed lines: the gate hands Stryker `path:start-end` entries for the lines
-// the branch added (git diff -U0), never the whole file.
+// the branch added (git diff --unified=0), never the whole file.
 // ---------------------------------------------------------------------------
 
 // `prepare` runs after the repository is committed and before the wrapper starts, so it can set
@@ -601,7 +601,8 @@ describe('scripts/checks/mutation.sh changed lines', () => {
   });
 
   it('refuses with a block and never starts Stryker when the changed-line diff fails', () => {
-    // A git wrapper that fails only for the -U0 diff, so the file-name lists before it succeed.
+    // A git wrapper that fails only for the zero-context diff, so the file-name lists before it
+    // succeed.
     const shimDirectory = mkdtempSync(join(tmpdir(), 'kiko-git-shim-'));
     const realGit = execFileSync('which', ['git'], { encoding: 'utf8' }).trim();
     writeExecutable(

@@ -35,6 +35,12 @@ in the harness repo):
 - All of H5 (not synced yet): the job queue (`scripts/job-queue.sh`), run-log wait/gaps, the
   comment/test-title rules, the pre-commit typecheck hook, the mutation ETA with timeouts, and
   the H5 closeout.
+- H7 set 5, generic comment-width and history changes: `comment-line-width.js` reads `#`
+  comments (shell, YAML, shebang files); `comment-line-width.sh` widened scope, per-file mode
+  and the shrink-only exact-line pin file; the `fast.sh` case for shell, YAML and githooks
+  writes; the markdown prose-width jest invariant with its shrink-only pin file; the three
+  history rules widened to `__tests__` and scripts js, and the three generic shell
+  history rules in `semgrep-mobile.yml` (they read `*.sh`, `*.bash` and `githooks/*`).
 - The CLAUDE.md trim (docs/harness/checks.md split).
 - A sync branch `h5-sync` exists in drizzer14/harness (tip `d92f28d`); its plugin patch list
   P1-P25 is pending the user.

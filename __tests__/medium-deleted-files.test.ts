@@ -179,7 +179,7 @@ describe('medium.sh changed-file list', () => {
 
 // A Stop that fires again after the hook already blocked it (stop_hook_active) must not run the
 // tier a second time: knip fails the same way on the same tree, and the session loops. Only a
-// `Stop` event skips; SubagentStop blocks as before. The hook payload arrives on stdin as a file,
+// `Stop` event skips; SubagentStop still blocks. The hook payload arrives on stdin as a file,
 // the way dispatch.sh replays it, so the runs below hand over a file descriptor.
 describe('medium.sh on a repeated Stop', () => {
   const ALL_WRAPPERS = [...FILE_ARGUMENT_WRAPPERS, ...PLAIN_WRAPPERS];

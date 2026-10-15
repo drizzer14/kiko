@@ -326,6 +326,37 @@ describe('medium.sh doc-suites step trigger is the doc fingerprint, not the repl
     expect(jestRuns(project)).toEqual([]);
   });
 
+  describe('a fixture file a doc suite reads', () => {
+    const suiteNamingFixture = (path: string): string =>
+      `${suiteReading('docs/harness')}const PINNED = join(__dirname, '${path}');\n`;
+
+    it('runs for an edit of only that fixture', () => {
+      const project = buildProject();
+      writeFile(project, '__tests__/e-pins.test.ts', suiteNamingFixture('fixtures/pins.json'));
+      writeFile(project, '__tests__/fixtures/pins.json', '[1]\n');
+      commitAll(project, 'pins');
+      expect(runMedium(project)).toEqual({ code: 0, stderr: '' });
+      rmSync(stateFile(project, 'jest.runs'));
+      writeFile(project, '__tests__/fixtures/pins.json', '[1, 2]\n');
+
+      expect(runMedium(project)).toEqual({ code: 0, stderr: '' });
+      expect(jestRuns(project)).toEqual([[...DISCOVERED.slice(0, 2), '__tests__/e-pins.test.ts']]);
+    });
+
+    it('skips for an edit of a fixture no doc suite names', () => {
+      const project = buildProject();
+      writeFile(project, '__tests__/e-pins.test.ts', suiteNamingFixture('fixtures/pins.json'));
+      writeFile(project, '__tests__/fixtures/other.json', '[1]\n');
+      commitAll(project, 'pins');
+      expect(runMedium(project)).toEqual({ code: 0, stderr: '' });
+      rmSync(stateFile(project, 'jest.runs'));
+      writeFile(project, '__tests__/fixtures/other.json', '[1, 2]\n');
+
+      expect(runMedium(project)).toEqual({ code: 0, stderr: '' });
+      expect(jestRuns(project)).toEqual([]);
+    });
+  });
+
   it('stays silent in a project with no doc file and no suite', () => {
     const project = buildProject();
     git(project, 'rm', '-q', '-f', 'CLAUDE.md', 'docs/harness/base.md', '__tests__/a-doc.test.ts');

@@ -200,10 +200,10 @@ changed="$(printf '%s\n' "$diff_names" | mutable_source_files)"
 # $changed, so a stray line cannot drop a file that was not a candidate. The arguments are
 # built only for a non-empty list: an empty array is an unbound variable in bash 3.2.
 #
-# A source file the script proved comment-only mutates NOTHING, whatever its colocated test did
-# (user ruling 2026-10-14): a comment holds no mutant, so there is nothing to mutate in it. The
-# cost: a test weakened beside a comment-only source edit is not mutation-checked by this gate
-# (make verify still runs that test).
+# A source file the script proved comment-only mutates NOTHING, whatever its colocated test did: a
+# comment holds no mutant, so there is nothing to mutate in it. The cost: a test weakened beside a
+# comment-only source edit is not mutation-checked by this gate (make verify still runs that
+# test).
 newline=$'\n'
 skipped_report=""
 
@@ -237,7 +237,7 @@ fi
 
 # CHANGED LINES. The kept files are mutated on the lines this branch ADDED, not whole: a one-line
 # edit of a big file once cost a whole-file run. Stryker takes `path:start-end` entries in
-# --mutate (1-based, end inclusive). mutation-ranges.js reads them from one `git diff -U0` over
+# --mutate (1-based, end inclusive). mutation-ranges.js reads them from one zero-context diff over
 # the SAME tree-wide pathspec as the name list above, never a per-file pathspec: that would hide a
 # moved file's old path, so the move would read as a new file and be mutated whole.
 #
@@ -276,7 +276,7 @@ if [ -n "$changed" ]; then
   # --text and --no-textconv: a file git reads as binary (a NUL byte, or a -diff/binary attribute)
   # prints no hunk, and a textconv driver numbers the hunks of the converted text, so neither may
   # decide which lines changed. GIT_DIFF_OPTS= for the same reason: a context width set there
-  # outranks -U0, and the ranges would then include unchanged lines.
+  # outranks the zero-context option, and the ranges would then include unchanged lines.
   if ! line_diff="$(GIT_DIFF_OPTS= git -C "$ROOT" -c core.quotePath=false diff -U0 --text --no-textconv --inter-hunk-context=0 --find-renames --no-color --no-ext-diff --src-prefix=a/ --dst-prefix=b/ "$merge_base" HEAD -- '*.ts' '*.tsx' 2>/dev/null)"; then
     print_block \
       "Stryker (mutation testing)" \

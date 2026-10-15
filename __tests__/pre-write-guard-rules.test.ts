@@ -209,9 +209,8 @@ describe('scripts/checks/pre-write-guard.sh against rules/semgrep-prewrite.yml (
     },
   );
 
-  // kiko-no-history-id-comment's own paths.exclude only names "__tests__/**"
-  // and "e2e/**" (the legacy top-level test directories), never a bare
-  // "*.test.tsx" — unlike kiko-no-raw-color-literal, which excludes every
+  // kiko-no-history-id-comment's own paths.exclude only names "e2e/**" and the harness
+  // tree, never a bare "*.test.tsx" — unlike kiko-no-raw-color-literal, which excludes every
   // test file. A co-located test file under src/ (this project's own
   // folder-per-thing convention) is therefore in scope, and a brand-new one
   // has no BEFORE tree at all, so every finding in it is new by definition.

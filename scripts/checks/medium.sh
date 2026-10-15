@@ -63,7 +63,7 @@ done
 # only committed (a clean tree) must still run it: it is pending while HEAD
 # is not where this worktree's mark ref recorded the last pass. A pass never
 # moves the mark back, so after a reset back every Stop re-runs the replay
-# until the next commit moves HEAD forward to a new mark.
+# until a commit moves HEAD forward to a new mark.
 replay_pending=1
 recorded="$(git rev-parse -q --verify "$(harness_replay_ref "$ROOT")" 2>/dev/null)"
 if [ "$recorded" = "$(harness_replay_mark "$ROOT")" ]; then
@@ -112,7 +112,7 @@ fi
 # showed every failure, so a repeated one is let through with a note. Only the Stop event skips:
 # SubagentStop keeps blocking. The payload is read only when stdin is a regular file, which is
 # how dispatch.sh replays it: a pipe or a terminal a caller never closes would hang this read.
-# Anything unreadable leaves the tier running, as before.
+# Anything unreadable leaves the tier running.
 repeated_stop="$(node -e '
   const fs = require("node:fs");
   try {

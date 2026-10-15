@@ -966,6 +966,21 @@ verified usage, not dead weight:
   test pins each count, so a doc that gains or loses a match fails; the list only shrinks and
   a new doc is never added.
 
+- **`scripts/checks/comment-line-width.pinned`**: exact comment lines over 100 columns that
+  cannot wrap (rows `<path><TAB><exact line>`; read the file for the current rows). Reason: a
+  fixture line that is itself the probe, or a line whose wrapping would change what the
+  rule under test sees. The list only shrinks: a row whose line is gone or now fits fails as a
+  stale pin, and a line that can wrap is wrapped, never pinned.
+- **`__tests__/fixtures/markdown-prose-width.pinned.json`**: exact markdown prose lines over 100
+  columns in the skill, agent and harness docs, keyed `path -> [line text]`. Reason: these
+  lines predate the prose-width rule, and rewrapping them all in one change would bury the
+  content diff. `__tests__/markdown-prose-width.test.ts` fails on a stale pin, so the list only
+  shrinks: rewrap a pinned line and delete its pin; a new line is never pinned.
+- **`harness/kiko/scripts/run-log.mjs` is outside `check:comment-line-width`**: the script must
+  stay byte-identical with the copy in the harness repository, so wrapping its comments
+  here would fork the two. `scripts/checks/comment-line-width.sh` names the exclusion in its
+  header.
+
 - **User ruling 2026-10-14 (G1 a): a comment-only source with a changed colocated test mutates
   nothing.** A source file that `comment-only-changes.js` proves comment-only prints
   `skipped (comment-only): <path>` and is not mutated, whatever its colocated test did; the
