@@ -234,6 +234,7 @@ copies it into the device-test request it sends the user.
 - **Network rule.** Any TLS, certificate-pinning, rate-limit, or
   migration-behavior change is device-verified BEFORE archiving, not
   after — Jest cannot see real network/device behavior.
+- Archive invariants: release skill step 7.
 
 ## Maestro on this host
 
