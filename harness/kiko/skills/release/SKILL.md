@@ -10,7 +10,7 @@ Standing rules:
   App Store only by the user's manual upload.
 
 Preconditions:
-- On `main`.
+- On `main`, or on a `release-X.Y` branch (see "Release branch cut from an older main").
 - Clean tree (the harmless Xcode `TARGETED_DEVICE_FAMILY`/pbxproj
   normalization is allowed).
 - `npm run check:all` is green.
@@ -50,11 +50,37 @@ uploads to the App Store on the user's behalf.
    - Add 1 to `CURRENT_PROJECT_VERSION` (all configs).
    - Set `package.json` `"version"` to `X.Y.Z`.
    - Commit as `chore(release): vX.Y.Z`.
-4. Tag and push: `git tag vX.Y.Z`, then
-   `git push origin main --follow-tags`.
+4. Tag and push: `git tag vX.Y.Z` on the release commit, then
+   `git push origin <branch> --follow-tags`. The tag waits for App Store
+   publication (see "Lessons from past submissions").
 5. Publish:
    `gh release create vX.Y.Z --title "vX.Y.Z" --notes "<changelog>"`.
    Attach NO files.
+
+## Release branch cut from an older main
+
+- Cut `release-X.Y` from the last releasable `main` commit and cherry-pick only the commits that
+  ship. Test the picks first with a trial cherry-pick in a scratch worktree (git < 2.40 has no
+  `merge-tree --merge-base`).
+- Compare the shipped files against `main` per file (`git diff --stat main -- <file>` per file,
+  or via `xargs`). A file list passed as ONE shell word compares nothing in zsh. Make sure the
+  check can fail.
+- Re-derive every user-facing claim (help text, What's New, review notes) against the BRANCH
+  code, not `main`: a claim true on `main` can be false on the branch.
+- A release branch adds no migration. `src/db/run-migrations.ts` counts the applied rows
+  (`readAppliedCount`) and slices the journal (`journal.entries.slice`), so a device that already
+  ran `main`'s later migration skips the branch's one silently.
+- While a device runs the release build, export `.kiko` only from a `main` build: an older
+  build's export drops the columns it does not know (`src/data-transfer/snapshot/read-snapshot.ts`
+  selects its own table columns), and `main` does not restore them.
+- Before installing the release build over a dev device that ran `main`, prove from the migrator
+  what happens (example: 1.2 over `main`'s migration 0058 runs nothing; the extra nullable column
+  is ignored).
+- Release-only commits (claim fixes, version bump, demo regen) stay on the branch, small and
+  separate. After publication only the version bump goes to `main` by cherry-pick, and `main`
+  regenerates its own demo `.kiko` files (never the branch's binary). Test-infra fixes `main`
+  already has are cherry-picked from `main`, never re-authored.
+- The mutation gate runs per small change set, base = the branch's cut commit.
 
 ## Part B — App Store prep, then hand off
 
@@ -81,7 +107,8 @@ The fake bank statement for the reviewer kit is generated, in the main
 checkout (the folder is untracked), by
 memory/refs/demo-statement/make-fake-statement.py and must be dated
 inside the app's default 30-day view; regenerate it with the demo .kiko
-files per submission.
+files per submission. Check its first and last row dates before the hand-off; the kit copy goes
+stale silently.
 
 6. `kiko:ops` archives the `Release` configuration (signed with the
    KikoDistribution provisioning profile and the distribution
@@ -94,7 +121,12 @@ files per submission.
      old `group.com.dmytro.pff` is absent.
    - `get-task-allow = false`.
    - The embedded provisioning profile is KikoDistribution.
-8. Hand off. First confirm the demo .kiko files and the reviewer kit were
+   - `CFBundleShortVersionString` and `CFBundleVersion` equal the bumped values.
+   - The Info.plist key DTXcodeBuild names a non-beta Xcode build (betas are 27A5xxx-style;
+     see memory `appstore-no-beta-xcode-and-bump-build`).
+   - `main.jsbundle` holds no string of a feature the build lacks (grep a distinctive identifier
+     with `strings -a | grep -c -F`; plain `grep -c` can print nothing on the 7 MB bundle).
+8. Hand off. First confirm the demo .kiko files, the fake statement and the reviewer kit were
    regenerated today (see the Freshness note above), then run the Privacy
    policy check below; hand off only when it exits 0. The skill stops here. The user uploads the archive and
    the screenshots through the Xcode Organizer. State plainly that
@@ -152,7 +184,8 @@ Paste the resulting list into the App Store review notes as Guideline
 2.3.1(a) evidence that every screen is reachable with no flag or env gate
 (see "Guideline 2.3.1(a) — no hidden features" in `kiko-architecture`). Do
 not hardcode the list here — it drifts with every added screen; always
-re-run the grep at submission time.
+re-run the grep at submission time. Describe every NEW feature of the build specifically in the
+notes; on a release branch list only what the branch contains.
 
 App Review reviews each submitted version, an update included
 (Guideline 2.1(a) asks for a complete, final build and, for an app with a
