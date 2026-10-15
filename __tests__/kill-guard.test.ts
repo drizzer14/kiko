@@ -538,6 +538,18 @@ const NO_VERIFY_COMMANDS: string[] = [
   'git pull --no-verify origin main',
   'git pull --rebase --no-verify',
   'git -c core.hooksPath=/dev/null pull',
+  'GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.hooksPath GIT_CONFIG_VALUE_0=/dev/null git commit -m x',
+  'GIT_CONFIG_COUNT=2 GIT_CONFIG_KEY_0=user.name GIT_CONFIG_VALUE_0=x GIT_CONFIG_KEY_1=CORE.HOOKSPATH GIT_CONFIG_VALUE_1= git commit -m x',
+  'env GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.hookspath GIT_CONFIG_VALUE_0=/dev/null git merge feature',
+  'GIT_CONFIG_PARAMETERS="\'core.hooksPath=/dev/null\'" git commit -m x',
+  "GIT_CONFIG_PARAMETERS=\"'user.name=x' 'core.hookspath=/dev/null'\" git commit -m x",
+];
+
+// A `git config` that writes or unsets core.hooksPath, or removes or renames its section, switches
+// the hooks off for every worktree. git reads each `--long` option as an exact name or a unique
+// prefix, so `--unset-a` is `--unset-all`; an option that is ambiguous or unknown denies when the
+// command names the key (fail closed).
+const CONFIG_REWRITE_COMMANDS: string[] = [
   'git config core.hooksPath /dev/null',
   'git config core.hooksPath ""',
   'git config --local core.hooksPath ""',
@@ -553,11 +565,25 @@ const NO_VERIFY_COMMANDS: string[] = [
   `git -C ${WORKTREE} config core.hooksPath ""`,
   'sh -c "git config --unset core.hooksPath"',
   'git add -A && git config core.hooksPath /dev/null',
-  'GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.hooksPath GIT_CONFIG_VALUE_0=/dev/null git commit -m x',
-  'GIT_CONFIG_COUNT=2 GIT_CONFIG_KEY_0=user.name GIT_CONFIG_VALUE_0=x GIT_CONFIG_KEY_1=CORE.HOOKSPATH GIT_CONFIG_VALUE_1= git commit -m x',
-  'env GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.hookspath GIT_CONFIG_VALUE_0=/dev/null git merge feature',
-  'GIT_CONFIG_PARAMETERS="\'core.hooksPath=/dev/null\'" git commit -m x',
-  "GIT_CONFIG_PARAMETERS=\"'user.name=x' 'core.hookspath=/dev/null'\" git commit -m x",
+  'git config --unset-a core.hooksPath',
+  'git config --unset-al core.hooksPath',
+  'git config --global --unset-a CORE.HOOKSPATH',
+  'git config --repl core.hooksPath x',
+  'git config --ad core.hooksPath x',
+  `git -C ${WORKTREE} config --unset-a core.hooksPath`,
+  'git config --fil .git/config --unset-a core.hooksPath',
+  'git config -f .git/config --unset-a core.hooksPath',
+  'git config --rem core',
+  'git config --remove-section CORE',
+  'git config --rename-section core x',
+  'git config --ren Core x',
+  'git config remove-section core',
+  'git config rename-section core x',
+  'git config --value=x core.hooksPath y',
+  'git config --value x core.hooksPath y',
+  'git config --un core.hooksPath',
+  'git config --re core',
+  'git config --bogus core.hooksPath',
 ];
 
 // The one-action commits the coordinator runs in the main checkout, and git spellings that only
@@ -594,7 +620,17 @@ const ALLOWED_COMMIT_COMMANDS: string[] = [
   'git config --get-all core.hooksPath',
   'git config --show-origin --get-all core.hooksPath',
   'git config get core.hooksPath',
+  'git config --get-a core.hooksPath',
+  'git config --li',
+  'git config --show-o --get core.hooksPath',
+  'git config --get --default x core.hooksPath',
+  'git config --def x --get core.hooksPath',
   'git config --list',
+  'git config --remove-section user',
+  'git config --rem user',
+  'git config --unset-a user.name',
+  'git config --value x user.name y',
+  'git config --bogus user.name',
   'git config user.name x',
   'git config --global --unset user.name',
   'git config --unset core.pager',
@@ -703,6 +739,14 @@ describe('scripts/checks/kill-guard.sh (PreToolUse Bash guard)', () => {
     expect(reason).toContain('pre-commit');
     expect(reason).toContain('--no-verify');
     expect(reason).toContain('fix the type error');
+  });
+
+  it.each(CONFIG_REWRITE_COMMANDS)('denies a config rewrite of the hooks: %s', (command) => {
+    const reason = denyReasonFor(command);
+
+    expectStandardBlock(reason);
+    expect(reason).toContain('bash scripts/ensure-git-hooks.sh');
+    expect(reason).toContain('leave core.hooksPath as scripts/ensure-git-hooks.sh sets it');
   });
 
   it('names the config and environment spellings in the DO NOT line', () => {

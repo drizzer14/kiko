@@ -48,7 +48,12 @@
 // a flag group), `-c core.hooksPath=...` or `--config-env=core.hooksPath=...` before the
 // subcommand, and core.hooksPath set through `GIT_CONFIG_COUNT`/`GIT_CONFIG_KEY_<n>` or
 // `GIT_CONFIG_PARAMETERS`, in any directory and inside a shell string. A `git config` that sets or
-// unsets core.hooksPath is denied too, in any scope: it switches the hooks off for every worktree.
+// unsets core.hooksPath, or removes or renames its `core` section, is denied too, in any scope: it
+// switches the hooks off for every worktree. git reads a `--long` option as an exact name or a
+// unique prefix (`--unset-a` is `--unset-all`), so the guard resolves each option the same way
+// (CONFIG_LONG_OPTIONS, the union of the `git config -h` lists); an ambiguous or unknown option
+// denies when the command names the key or the section. These config denies carry their own
+// reason: leave core.hooksPath as scripts/ensure-git-hooks.sh sets it.
 // A user may still bypass in their own shell; the deny binds agent Bash calls only. `-n` after
 // another option's value, after `--`, in a message, or on `git log` or `git merge`/`git pull`
 // (`--no-stat`) is not a bypass, and a `git config` read of the key is allowed.
@@ -157,6 +162,20 @@ const NO_VERIFY_REASON_LINES = [
     'GIT_CONFIG_PARAMETERS, a script file, an alias, or a variable to get past this guard.',
 ];
 
+const HOOKS_CONFIG_REASON_LINES = [
+  'WHAT FAILED:    kill-guard denied a change to the git config that holds core.hooksPath (git ' +
+    'config core.hooksPath, --unset, --remove-section core, an abbreviated option, or GIT_CONFIG_* ' +
+    'in the environment).',
+  'WHY IT MATTERS: core.hooksPath=githooks, set once by scripts/ensure-git-hooks.sh, runs the ' +
+    'pre-commit typecheck for every worktree; rewriting the key, or removing or renaming its ' +
+    'core section, switches that typecheck off everywhere until someone notices.',
+  'HOW TO FIX:     leave core.hooksPath as scripts/ensure-git-hooks.sh sets it. If it was lost, ' +
+    'repair it with `bash scripts/ensure-git-hooks.sh` (or `npm ci`, whose postinstall runs it).',
+  'DO NOT:         set, unset, remove, or rename core.hooksPath or its section through git config ' +
+    '(any scope, any option spelling or abbreviation), GIT_CONFIG_COUNT/GIT_CONFIG_KEY_<n>/' +
+    'GIT_CONFIG_PARAMETERS, a script file, an alias, or a variable to get past this guard.',
+];
+
 const REASON_BY_KIND = {
   kill: () => KILL_REASON,
   stash: (finding) => blockReason(STASH_REASON_LINES, finding.detail),
@@ -165,6 +184,7 @@ const REASON_BY_KIND = {
   shellWrite: (finding) => blockReason(SHELL_WRITE_REASON_LINES, finding.detail),
   waitLoop: (finding) => blockReason(WAIT_LOOP_REASON_LINES, finding.detail),
   noVerify: (finding) => blockReason(NO_VERIFY_REASON_LINES, finding.detail),
+  hooksConfig: (finding) => blockReason(HOOKS_CONFIG_REASON_LINES, finding.detail),
 };
 
 const reasonFor = (finding) => REASON_BY_KIND[finding.kind](finding);
@@ -1346,30 +1366,110 @@ const environmentSetsHooksPath = (environment) =>
       (name === 'GIT_CONFIG_PARAMETERS' && HOOKS_PATH_PARAMETER.test(value)),
   );
 
-// The `git config` options that only read, and the ones whose value is the NEXT word.
-const CONFIG_READ_OPTIONS = new Set([
-  '--get',
-  '--get-all',
-  '--get-regexp',
-  '--get-urlmatch',
-  '--get-color',
-  '--get-colorbool',
-  '-l',
-  '--list',
+// The long options of `git config`, as `git config -h` lists them on git 2.38.1 (the git on this
+// machine's PATH), plus the ones later gits added (`--value`, `--all`, `--regexp`, `--url`,
+// `--comment`, `--show-names`): the union, so a prefix that is unique on one git but ambiguous on
+// another reads as ambiguous (git then rejects it, and the guard denies it with a hooksPath key).
+// Each name maps to what it does: `read` (an action that only reads, so nothing is written),
+// `write` (sets or unsets the keys named after it), `section` (removes or renames the section
+// named after it), `value` (the NEXT word is its value), or `flag`.
+const CONFIG_LONG_OPTIONS = new Map([
+  ['--global', 'flag'],
+  ['--system', 'flag'],
+  ['--local', 'flag'],
+  ['--worktree', 'flag'],
+  ['--file', 'value'],
+  ['--blob', 'value'],
+  ['--get', 'read'],
+  ['--get-all', 'read'],
+  ['--get-regexp', 'read'],
+  ['--get-urlmatch', 'read'],
+  ['--get-color', 'read'],
+  ['--get-colorbool', 'read'],
+  ['--list', 'read'],
+  ['--replace-all', 'write'],
+  ['--add', 'write'],
+  ['--unset', 'write'],
+  ['--unset-all', 'write'],
+  ['--rename-section', 'section'],
+  ['--remove-section', 'section'],
+  ['--fixed-value', 'flag'],
+  ['--edit', 'flag'],
+  ['--type', 'value'],
+  ['--bool', 'flag'],
+  ['--int', 'flag'],
+  ['--bool-or-int', 'flag'],
+  ['--bool-or-str', 'flag'],
+  ['--path', 'flag'],
+  ['--expiry-date', 'flag'],
+  ['--null', 'flag'],
+  ['--name-only', 'flag'],
+  ['--includes', 'flag'],
+  ['--show-origin', 'flag'],
+  ['--show-scope', 'flag'],
+  ['--show-names', 'flag'],
+  ['--default', 'value'],
+  ['--comment', 'value'],
+  ['--value', 'value'],
+  ['--url', 'value'],
+  ['--all', 'flag'],
+  ['--regexp', 'flag'],
+  ['--help', 'read'],
+  ['--help-all', 'read'],
 ]);
-const CONFIG_WRITE_OPTIONS = new Set(['--unset', '--unset-all', '--add', '--replace-all']);
-const CONFIG_OPTIONS_WITH_VALUE = new Set([
-  '-f',
-  '--file',
-  '--blob',
-  '--type',
-  '--default',
-  '--comment',
+const CONFIG_SHORT_OPTIONS = new Map([
+  ['f', 'value'],
+  ['t', 'value'],
+  ['l', 'read'],
+  ['e', 'flag'],
+  ['z', 'flag'],
+  ['h', 'read'],
 ]);
 
-// A `git config` command line split into its options and its positional words.
+// What one `--long[=value]` word of `git config` is, as git's parse-options reads it: an exact
+// name wins; otherwise a prefix that only one name starts with resolves to it; any other word is
+// `unresolved` (ambiguous, or unknown). A `--no-<option>` negates a flag and never names an action.
+function resolveConfigLongOption(word) {
+  const name = word.split('=')[0];
+  const exact = CONFIG_LONG_OPTIONS.get(name);
+  if (exact !== undefined) return { kind: exact, hasValue: word.includes('=') };
+  if (name.startsWith('--no-')) return { kind: 'flag', hasValue: false };
+  const matches = [...CONFIG_LONG_OPTIONS].filter(([candidate]) => candidate.startsWith(name));
+  if (matches.length !== 1) return { kind: 'unresolved', hasValue: false };
+
+  return { kind: matches[0][1], hasValue: word.includes('=') };
+}
+
+// A short-option group of `git config` (`-l`, `-lz`, `-fFILE`): the strongest kind in it, and
+// whether the NEXT word is the value of its last letter.
+function resolveConfigShortOption(word) {
+  const kinds = [];
+  for (const [index, letter] of [...word.slice(1)].entries()) {
+    const kind = CONFIG_SHORT_OPTIONS.get(letter) ?? 'unresolved';
+    kinds.push(kind);
+    if (kind === 'value') {
+      return { kinds, hasValue: index < word.length - 2 };
+    }
+  }
+
+  return { kinds, hasValue: true };
+}
+
+// The kinds one option word names, and whether its value is the NEXT word.
+function readConfigOption(word) {
+  if (word.startsWith('--')) {
+    const { kind, hasValue } = resolveConfigLongOption(word);
+
+    return { kinds: [kind], takesNextWord: kind === 'value' && !hasValue };
+  }
+  const { kinds, hasValue } = resolveConfigShortOption(word);
+
+  return { kinds, takesNextWord: kinds.includes('value') && !hasValue };
+}
+
+// A `git config` command line split into the kinds of its options and its positional words.
 function splitConfigWords(parameters) {
-  const options = [];
+  const kinds = [];
   const positionals = [];
   let optionsEnded = false;
   for (let index = 0; index < parameters.length; index += 1) {
@@ -1379,34 +1479,43 @@ function splitConfigWords(parameters) {
     } else if (optionsEnded || !word.startsWith('-') || word === '-') {
       positionals.push(word);
     } else {
-      options.push(word);
-      if (CONFIG_OPTIONS_WITH_VALUE.has(word)) index += 1;
+      const option = readConfigOption(word);
+      kinds.push(...option.kinds);
+      if (option.takesNextWord) index += 1;
     }
   }
 
-  return { options, positionals };
+  return { kinds: new Set(kinds), positionals };
 }
 
-// Whether a `git config` writes or unsets core.hooksPath, which switches the hooks off for every
-// worktree until someone notices. `git config core.hooksPath` alone, and any `--get` form, only
-// read.
+const isHooksPathKey = (word) => word !== undefined && HOOKS_PATH_KEY.test(word);
+const isCoreSection = (word) => word !== undefined && word.toLowerCase() === 'core';
+
+// Whether a `git config` writes or unsets core.hooksPath, or removes or renames its section
+// (`core`), which switches the hooks off for every worktree until someone notices. `git config
+// core.hooksPath` alone, and any resolved read action (`--get` and its prefixes, `--list`), only
+// read. A word git cannot resolve to one option (ambiguous or unknown) makes git reject the whole
+// command, so it denies whenever the command names the key or the section (fail closed).
 function rewritesHooksPath({ subcommand, arguments: parameters }) {
   if (subcommand !== 'config') return false;
-  const { options, positionals } = splitConfigWords(parameters);
-  if (options.some((option) => CONFIG_READ_OPTIONS.has(option))) return false;
-  const holdsKey = (word) => word !== undefined && HOOKS_PATH_KEY.test(word);
-  if (options.some((option) => CONFIG_WRITE_OPTIONS.has(option))) return positionals.some(holdsKey);
-  // `git config set|unset <key>` (git 2.46) names the action first.
-  if (positionals[0] === 'set' || positionals[0] === 'unset') return holdsKey(positionals[1]);
+  const { kinds, positionals } = splitConfigWords(parameters);
+  const namesTarget = (word) => isHooksPathKey(word) || isCoreSection(word);
+  if (kinds.has('unresolved')) return positionals.some(namesTarget);
+  if (kinds.has('read')) return false;
+  if (kinds.has('write')) return positionals.some(isHooksPathKey);
+  if (kinds.has('section')) return positionals.some(isCoreSection);
+  // `git config set|unset <key>` and `remove-section|rename-section <name>` (git 2.46) name the
+  // action first.
+  const [action, name] = positionals;
+  if (action === 'set' || action === 'unset') return isHooksPathKey(name);
+  if (action === 'remove-section' || action === 'rename-section') return isCoreSection(name);
 
-  return holdsKey(positionals[0]) && positionals.length >= 2;
+  return isHooksPathKey(action) && positionals.length >= 2;
 }
 
-// Whether the git command is told to skip its hooks, by option, by config, or by environment, or
-// switches them off for good with `git config`.
+// Whether the git command is told to skip its hooks, by option, by config, or by environment.
 function skipsHooks(git) {
   const { subcommand, arguments: parameters, configs, environment } = git;
-  if (rewritesHooksPath(git)) return true;
   if (!HOOK_RUNNING_SUBCOMMANDS.has(subcommand)) return false;
   if (configs.some((entry) => HOOKS_PATH_CONFIG.test(entry))) return true;
   if (environmentSetsHooksPath(environment)) return true;
@@ -1431,6 +1540,7 @@ function skipsHooks(git) {
 function gitFinding(segment, invocations, rules) {
   const [git] = invocations;
   if (git.subcommand === 'stash') return { kind: 'stash', detail: segment.trim() };
+  if (rewritesHooksPath(git)) return { kind: 'hooksConfig', detail: segment.trim() };
   if (skipsHooks(git)) return { kind: 'noVerify', detail: segment.trim() };
   if (!MAIN_CHECKOUT_SUBCOMMANDS.has(git.subcommand) || leavesMainCheckoutSafe(git)) return null;
   const target = invocations
