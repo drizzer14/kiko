@@ -656,3 +656,249 @@ describe('USDT rescale: statement-import keys', () => {
     );
   });
 });
+
+const OVER_BOUND = 9_007_199_255;
+const GUARD_MESSAGE = 'CHECK constraint failed: usdt_rescale_guard';
+const SMALLEST_INTEGER = '-9223372036854775808';
+
+const dumpOf = (database: DatabaseSync): string =>
+  JSON.stringify(
+    [
+      'accounts',
+      'holdings',
+      'transactions',
+      'deleted_import_keys',
+      'category_rules',
+      'transaction_templates',
+      'price_points',
+      'currency_rates',
+      'bond_register',
+    ].map((table) => database.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()),
+  );
+
+const refusedWith = (database: DatabaseSync): string => {
+  try {
+    applyMigration(database);
+  } catch (error) {
+    return (error as Error).message;
+  }
+
+  return 'migrated';
+};
+
+describe('USDT rescale: the safe-integer bound', () => {
+  it.each([
+    [
+      'a holding balance',
+      (database: DatabaseSync) => insertHolding(database, 'usdt', 'USDT', OVER_BOUND),
+    ],
+    [
+      'a synced balance',
+      (database: DatabaseSync) => insertHolding(database, 'usdt', 'USDT', 0, null, OVER_BOUND),
+    ],
+    [
+      'a row',
+      (database: DatabaseSync) => {
+        insertHolding(database, 'usdt', 'USDT');
+        insertRow(database, 'row', 'usdt', OVER_BOUND);
+      },
+    ],
+    [
+      'a metadata field',
+      (database: DatabaseSync) =>
+        insertHolding(database, 'usdt', 'USDT', 0, `{"principalMinorUnits":${OVER_BOUND}}`),
+    ],
+    [
+      'a face value',
+      (database: DatabaseSync) =>
+        insertHolding(database, 'usdt', 'USDT', 0, `{"faceValueMinorUnits":${OVER_BOUND}}`),
+    ],
+    [
+      'a purchase price',
+      (database: DatabaseSync) =>
+        insertHolding(database, 'usdt', 'USDT', 0, `{"purchasePriceMinorUnits":${OVER_BOUND}}`),
+    ],
+    [
+      'a deposit contribution',
+      (database: DatabaseSync) =>
+        insertHolding(
+          database,
+          'usdt',
+          'USDT',
+          0,
+          `{"contributions":[{"amountMinorUnits":${OVER_BOUND},"date":1}]}`,
+        ),
+    ],
+    [
+      'a lots element',
+      (database: DatabaseSync) =>
+        insertHolding(database, 'usdt', 'USDT', 0, `{"lots":[{"costMinorUnits":${OVER_BOUND}}]}`),
+    ],
+    [
+      'a matcher',
+      (database: DatabaseSync) =>
+        insertRule(
+          database,
+          'rule',
+          `[{"type":"amount","operator":"gte","minorUnits":${OVER_BOUND},"currency":"USDT"}]`,
+        ),
+    ],
+    [
+      'a template amount',
+      (database: DatabaseSync) =>
+        insertTemplate(
+          database,
+          'template',
+          draftOf({ currency: 'USDT', amountMinorUnits: OVER_BOUND }),
+        ),
+    ],
+    [
+      'a template return',
+      (database: DatabaseSync) =>
+        insertTemplate(
+          database,
+          'template',
+          draftOf({
+            currency: 'USDT',
+            returns: [{ holdingId: null, amountMinorUnits: OVER_BOUND }],
+          }),
+        ),
+    ],
+    [
+      'an exchange value',
+      (database: DatabaseSync) =>
+        insertTemplate(
+          database,
+          'template',
+          draftOf({
+            currency: 'UAH',
+            exchange: {
+              destinationHoldingId: null,
+              destinationCurrency: 'USDT',
+              valueInMinorUnits: OVER_BOUND,
+            },
+          }),
+        ),
+    ],
+    [
+      'a row key token',
+      (database: DatabaseSync) => {
+        insertHolding(database, 'usdt', 'USDT');
+        insertImportRow(database, 'row', 'usdt', `usdt 1700000000 ${OVER_BOUND} tea`);
+      },
+    ],
+    [
+      'a deleted key token',
+      (database: DatabaseSync) => {
+        insertHolding(database, 'usdt', 'USDT');
+        insertDeletedKey(database, 'usdt', `usdt 1700000000 ${OVER_BOUND} tea`);
+      },
+    ],
+  ])('aborts on a value over the bound and writes nothing: %s', (_name, seed) => {
+    const database = databaseBefore();
+
+    seed(database);
+    insertHolding(database, 'safe', 'USDT', 5);
+
+    const before = dumpOf(database);
+
+    expect(refusedWith(database)).toContain(GUARD_MESSAGE);
+    expect(dumpOf(database)).toBe(before);
+  });
+
+  it('a UAH value over the bound migrates', () => {
+    const database = databaseBefore();
+    const rule = `[{"type":"amount","operator":"gte","minorUnits":${OVER_BOUND},"currency":"UAH"}]`;
+    const draft = draftOf({ currency: 'UAH', amountMinorUnits: OVER_BOUND });
+
+    insertHolding(database, 'property', 'UAH', 10_000_000_000);
+    insertRule(database, 'rule', rule);
+    insertTemplate(database, 'template', draft);
+    applyMigration(database);
+
+    expect(balanceOf(database, 'property')).toBe(10_000_000_000);
+    expect(matchersOf(database, 'rule')).toBe(rule);
+    expect(draftTextOf(database, 'template')).toBe(draft);
+  });
+
+  it('an over-bound string or real USDT field migrates', () => {
+    const database = databaseBefore();
+    const metadata =
+      `{"principalMinorUnits":"${OVER_BOUND}","faceValueMinorUnits":${OVER_BOUND}.5,` +
+      `"lots":[{"costMinorUnits":"${OVER_BOUND}"},{"costMinorUnits":${OVER_BOUND}.5}]}`;
+    const matchers =
+      `[{"type":"amount","operator":"gte","minorUnits":"${OVER_BOUND}","currency":"USDT"},` +
+      `{"type":"amount","operator":"gte","minorUnits":${OVER_BOUND}.5,"currency":"USDT"}]`;
+
+    insertHolding(database, 'usdt', 'USDT', 0, metadata);
+    insertRule(database, 'rule', matchers);
+    applyMigration(database);
+
+    expect(metadataOf(database, 'usdt')).toBe(metadata);
+    expect(matchersOf(database, 'rule')).toBe(matchers);
+  });
+
+  it('skips malformed JSON in the bound count', () => {
+    const database = databaseBefore();
+
+    insertHolding(database, 'broken', 'USDT', 0, '{bad');
+    insertHolding(database, 'inside', 'USDT', 9_007_199_254);
+    insertRule(database, 'broken-rule', 'not json');
+    insertTemplate(database, 'broken-template', 'also not json');
+    applyMigration(database);
+
+    expect(balanceOf(database, 'inside')).toBe(9_007_199_254_000_000);
+    expect(metadataOf(database, 'broken')).toBe('{bad');
+  });
+
+  it.each([
+    [
+      'a row amount',
+      (database: DatabaseSync) => {
+        insertHolding(database, 'usdt', 'USDT');
+        insertRow(database, 'row', 'usdt', -OVER_BOUND);
+      },
+    ],
+    [
+      'a lots element',
+      (database: DatabaseSync) =>
+        insertHolding(database, 'usdt', 'USDT', 0, `{"lots":[{"costMinorUnits":-${OVER_BOUND}}]}`),
+    ],
+  ])('aborts on a value below the negative bound: %s', (_name, seed) => {
+    const database = databaseBefore();
+
+    seed(database);
+
+    expect(refusedWith(database)).toContain(GUARD_MESSAGE);
+  });
+
+  it.each([
+    [
+      'a key token',
+      (database: DatabaseSync) => {
+        insertHolding(database, 'usdt', 'USDT');
+        insertImportRow(database, 'row', 'usdt', `usdt 1700000000 ${SMALLEST_INTEGER} tea`);
+      },
+    ],
+    [
+      'a lots element',
+      (database: DatabaseSync) =>
+        insertHolding(
+          database,
+          'usdt',
+          'USDT',
+          0,
+          `{"lots":[{"costMinorUnits":${SMALLEST_INTEGER}}]}`,
+        ),
+    ],
+  ])('aborts on the smallest 64-bit integer without an overflow: %s', (_name, seed) => {
+    const database = databaseBefore();
+
+    seed(database);
+
+    const message = refusedWith(database);
+
+    expect(message).toContain(GUARD_MESSAGE);
+    expect(message).not.toContain('integer overflow');
+  });
+});
