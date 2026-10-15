@@ -225,3 +225,12 @@ jest.mock('@kiko/reminders/native/NativeKikoReminders', () => ({
     uses24HourClock: jest.fn(() => true),
   },
 }));
+
+// Jest lays no text out, so the large-title fit hook (`useTitleFit`, which decides between the
+// native large title and the wrapping heading) has no real answer under react-test-renderer. It
+// is mocked to "fits" with no measurer, which leaves every navigator and screen test on the
+// native large title; `src/test-support/force-title-fit.ts` forces "does not fit" for the tests
+// of the heading path, and `use-title-fit.test.tsx` unmocks it to test the real hook.
+jest.mock('@kiko/navigation/fitting-large-title/use-title-fit', () => ({
+  useTitleFit: jest.fn(() => ({ fits: true, measurer: null })),
+}));

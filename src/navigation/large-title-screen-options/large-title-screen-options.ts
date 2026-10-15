@@ -21,3 +21,36 @@ export const largeTitleScreenOptions: NativeStackNavigationOptions = isLiquidGla
       headerBlurEffect: 'systemChromeMaterialDark',
       headerLargeStyle: { backgroundColor: 'transparent' },
     };
+
+// The blur only exists below iOS 26 (Liquid Glass draws its own bar), so there is nothing to set
+// on a newer OS. `blurred: false` is the transparent bar the fallback look has at rest.
+const barBlurOptions = (blurred: boolean): NativeStackNavigationOptions => {
+  if (isLiquidGlassSupported) {
+    return {};
+  }
+
+  return { headerBlurEffect: blurred ? 'systemChromeMaterialDark' : 'none' };
+};
+
+/**
+ * The options of a screen whose title does not fit the native large title and shows as a heading
+ * in the content instead: an inline bar, with no bar title until the heading has scrolled under
+ * it. `title` itself stays as it is, so the back label and the screen's own title reads still
+ * work. Below iOS 26 the bar is transparent at rest and blurred once scrolled, the fallback
+ * look of `largeTitleScreenOptions`.
+ */
+export const largeTitleHeadingOptions = (
+  title: string,
+  scrolled: boolean,
+): NativeStackNavigationOptions => ({
+  headerLargeTitle: false,
+  headerTitle: scrolled ? title : '',
+  ...barBlurOptions(scrolled),
+});
+
+/** Puts a screen back on the native large title after `largeTitleHeadingOptions`. */
+export const largeTitleRestoredOptions: NativeStackNavigationOptions = {
+  headerLargeTitle: true,
+  headerTitle: undefined,
+  ...barBlurOptions(true),
+};
