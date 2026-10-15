@@ -7,8 +7,13 @@ const agentFiles = readdirSync(agentsDirectory).filter((name) => name.endsWith('
 const denyRule =
   /^- If a hook or the permission system denies a command, stop and report it; never route around it/m;
 
-const hasBashTool = (text: string): boolean =>
-  /^tools:.*\bBash\b/m.test(text.split('---')[1] ?? '');
+const frontmatterOf = (text: string): string => text.split('---')[1] ?? '';
+
+// An agent with no one-line `tools:` inherits every tool, Bash included, and would slip past
+// hasBashTool.
+const declaresToolsLine = (text: string): boolean => /^tools:[ \t]*\S/m.test(frontmatterOf(text));
+
+const hasBashTool = (text: string): boolean => /^tools:.*\bBash\b/m.test(frontmatterOf(text));
 
 const meetsDenyRule = (text: string): boolean => !hasBashTool(text) || denyRule.test(text);
 
@@ -33,6 +38,20 @@ describe('harness agent deny rule', () => {
 
   it('requires nothing of an agent without Bash', () => {
     expect(meetsDenyRule('---\ntools: Read, Grep\n---\nbody\n')).toBe(true);
+  });
+});
+
+describe('harness agent tools line', () => {
+  it.each(agentFiles)('%s declares a one-line tools list', (name) => {
+    expect(declaresToolsLine(readFileSync(join(agentsDirectory, name), 'utf8'))).toBe(true);
+  });
+
+  it('rejects an agent with no tools line, which inherits Bash', () => {
+    expect(declaresToolsLine('---\nname: x\n---\nbody\n')).toBe(false);
+  });
+
+  it('rejects an agent whose tools are a YAML block list', () => {
+    expect(declaresToolsLine('---\ntools:\n  - Read\n  - Bash\n---\nbody\n')).toBe(false);
   });
 });
 
