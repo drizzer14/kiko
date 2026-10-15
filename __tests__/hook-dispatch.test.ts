@@ -22,8 +22,8 @@ import {
 // `cwd` for a tool-less hook) and runs THAT worktree's script, so a subagent
 // started in one checkout but editing a file that lives in another worktree
 // never runs the coordinator's copy of the rules against a file it does not
-// own. See dispatch.sh's own header comment for the full design and the pre-write guard design
-// spec's "Trigger and wiring" section for why.
+// own. See dispatch.sh's own header comment for the full design and the "Trigger and wiring"
+// section of the pre-write guard design spec under docs/superpowers/specs/ for why.
 const DISPATCH = join(__dirname, '../harness/kiko/hooks/dispatch.sh');
 
 function initGitRepository(prefix: string): string {
