@@ -1,4 +1,4 @@
-# Help device feedback (help-flows task 3/3)
+# Help device feedback (help-flows task 3/4)
 
 Base: `help-flows` tip `ce4cb552`. If `main` (category-rules `034d15fb`) has been merged in
 first, that merge commit is the base for this change set and for its mutation run.
@@ -161,7 +161,7 @@ The new keys follow the `help.actions` comment in `en.ts`: sentence case, no fin
 keys stay in step with the en keys (parity test). The user reviews the 5 new keys before deploy
 (kiko-translator "Review new/changed keys").
 
-## 3. Change set: help-flows task 3/3
+## 3. Change set: help-flows task 3/4
 
 One change set, one commit per step. Each tip can ship on its own. It has about 12 mutable
 `src` files, under the 30-file cap; confirm the count with `make mutable`.
@@ -288,7 +288,7 @@ Files: `src/i18n/locales/en.ts`, `uk.ts`, `src/help/help-topics.ts` (`stepKeys`)
 
 Long navigation titles are one app-wide problem (the Help topics, the edit forms, and the
 user-named account, holding and category screens), so they have their own change set and plan:
-help-flows task 4/4, Option 1. This change set (task 3/3) carries no title code.
+help-flows task 4/4, Option 1. This change set (task 3/4) carries no title code.
 
 **Option 1: measured fit, wrapping large-title heading, native chrome kept.**
 - One navigator `screenLayout` on all four large-title stacks decides per screen, from the

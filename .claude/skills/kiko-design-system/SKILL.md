@@ -277,8 +277,22 @@ an entry (date + value) the moment the user approves a new visual.
   that sets `headerLargeTitle` itself, spreads that helper rather than
   setting `headerLargeTitle: true` inline. Device-confirm on an iOS 18
   device, not in the simulator or Jest.
-- **Long titles use the fitting-large-title layout** (pending the user's live approval, not
-  locked). Every large-title native stack passes `screenLayout={fittingLargeTitleLayout}`
+- **Long titles use the fitting-large-title layout** (2026-10-15, locked, user: "Everything
+  lgtm"; no shorter titles applied). The user approved this on a live device, and it locks:
+  (1) the fit is measured, not guessed: `useTitleFit` measures the title in the native
+  large-title font, and an estimate only covers the first frame;
+  (2) a title that does not fit shows in full as a wrapping `largeTitle` heading, the first
+  scroll content, never truncated or shrunk;
+  (3) the bar is empty at rest, with no bar title while the heading is on screen;
+  (4) once the heading scrolls under the bar, the bar shows the full title inline;
+  (5) the bar stays translucent: `headerTransparent` true and `headerShadowVisible` true,
+  with `headerLargeTitle` off, so content lays out under it as under a large title;
+  (6) the iOS < 26 look is kept: transparent at rest, blurred once content scrolls under it,
+  and iOS 26+ passes no extra option;
+  (7) the original titles stay as they are. A long title is never shortened or renamed to
+  make it fit; a shorter name needs the user's own request.
+  Changing any of these, or the numbers they rest on, needs the user's explicit approval.
+  Mechanism: every large-title native stack passes `screenLayout={fittingLargeTitleLayout}`
   (`src/navigation/fitting-large-title/`); a new large-title stack adds it too. It measures the
   title (`useTitleFit`) in the native large-title font; a title that does not fit shows in full
   as a wrapping `LargeTitleHeading` (`src/design-system/components/large-title-heading/`) as
@@ -289,9 +303,12 @@ an entry (date + value) the moment the user approves a new visual.
   `largeTitleHeadingOptions` (`src/navigation/large-title-screen-options/`): `headerLargeTitle`
   false together with `headerTransparent` true and `headerShadowVisible` true. Never switch
   `headerLargeTitle` off alone: native-stack then makes the bar opaque and lays content out
-  below it. The bar title appears once the heading scrolls under the bar;
-  `largeTitleRestoredOptions` puts the native title back. Device-confirm: Jest cannot show bar
-  translucency.
+  below it. The bar title appears once the heading scrolls under the bar.
+  `largeTitleRestoredOptions(screenOptions)` puts the native large title back and returns the
+  screen's own `headerTransparent`, `headerShadowVisible` and `headerTitle`, read before the
+  switch (`undefined` where the screen set none): the screen's own values from before the
+  switch. A value the screen changes during heading mode is not kept (setOptions cannot remove
+  a key). Never restore with fixed values. Device-confirm: Jest cannot show bar translucency.
 - **Tips were removed by user ruling** (2026-10-09: "Hints still look bad, let's remove them
   for now"). There is no tip card, tip hook, or subtle-accent token; do not bring back a
   first-use tip, or its old look (tinted accent fill, lightbulb glyph, close button), without
