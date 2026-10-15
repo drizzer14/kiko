@@ -17,6 +17,7 @@ import {
   runWithArgumentStub,
   buildMutationRepository,
 } from './test-support/mutation-repository';
+import { warmExecutables } from './test-support/warm-executables';
 
 // scripts/checks/mutation-ranges.js turns `git diff --unified=0` output (stdin) into the
 // added-line ranges of the paths given as arguments, one `<path>\t<ranges>` line
@@ -296,9 +297,12 @@ const signalDuringRangesReader = async (
   const state = join(sandbox, 'state');
   mkdirSync(state);
   mkdirSync(join(sandbox, 'bin'));
-  writeExecutable(join(sandbox, 'bin/node'), HOLDING_NODE_STUB);
-  writeExecutable(join(sandbox, 'bin/rm'), LOGGING_REMOVE_STUB);
   const stryker = writeExecutable(join(sandbox, 'stryker'), '#!/usr/bin/env bash\nexit 0\n');
+  warmExecutables([
+    writeExecutable(join(sandbox, 'bin/node'), HOLDING_NODE_STUB),
+    writeExecutable(join(sandbox, 'bin/rm'), LOGGING_REMOVE_STUB),
+    stryker,
+  ]);
   const ready = join(sandbox, 'ready');
   const removals = join(sandbox, 'removals');
 
