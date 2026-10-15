@@ -6,22 +6,42 @@ import {
   createTemporaryDirectory,
   removeTemporaryDirectories,
 } from './test-support/temporary-directory';
+import { writeExecutable } from './test-support/mutation-repository';
 
 // scripts/checks/fast.sh is the PostToolUse tier. A write to a shell, YAML or githooks file runs
 // comment-line-width.sh on that file alone: it blocks (exit 2) on a `#` comment line over 100
-// columns, and never on a code line, a shebang, or a file of another type.
+// columns, and never on a code line, a shebang, or a file of another type. It then runs
+// security.sh on the file.
 const FAST = join(__dirname, '../scripts/checks/fast.sh');
 const LIMIT = 100;
+const NO_FINDINGS = '{"results":[],"errors":[],"paths":{"scanned":[]}}';
+
+// A real Semgrep run takes about 4 s alone, so the 5 s default would fail under load.
+jest.setTimeout(60_000);
 
 afterEach(removeTemporaryDirectories);
 
-const runFast = (relativePath: string, source: string): SpawnSyncReturns<string> => {
-  const file = join(createTemporaryDirectory('fast-hook-comment-width-'), relativePath);
+// A real Semgrep run takes seconds; only the rows about the security rules pay for it, and the
+// others put a stand-in that finds nothing first on PATH. A real run starts in the folder that
+// holds the written file, as a hook's does in the project root, so a `githooks/*` rule path
+// matches.
+const runFast = (
+  relativePath: string,
+  source: string,
+  semgrep: 'stub' | 'real' = 'stub',
+): SpawnSyncReturns<string> => {
+  const root = createTemporaryDirectory('fast-hook-comment-width-');
+  const file = join(root, relativePath);
   mkdirSync(join(file, '..'), { recursive: true });
   writeFileSync(file, source);
+  const stubs = createTemporaryDirectory('fast-hook-semgrep-stub-');
+  writeExecutable(join(stubs, 'semgrep'), `#!/usr/bin/env bash\nprintf '%s' '${NO_FINDINGS}'\n`);
 
   return spawnSync('bash', [FAST], {
     encoding: 'utf8',
+    cwd: semgrep === 'real' ? root : undefined,
+    env:
+      semgrep === 'real' ? process.env : { ...process.env, PATH: `${stubs}:${process.env.PATH}` },
     input: JSON.stringify({ tool_input: { file_path: file } }),
   });
 };
@@ -56,6 +76,28 @@ describe.each([
     const source = `#!/usr/bin/env ${long}\necho ${long}\necho ok # ${long} ${long}\n`;
 
     expect(runFast(path, source)).toMatchObject({ status: 0, stderr: '' });
+  });
+});
+
+// The pre-write guard reads only TypeScript, so a history word in a shell comment reaches the
+// Semgrep rules (rules/semgrep-mobile.yml) only through security.sh on the write.
+describe.each([
+  ['a .sh file', 'scripts/probe.sh', ''],
+  ['a .bash file', 'scripts/probe.bash', ''],
+  ['a githooks file', 'githooks/pre-commit', '#!/usr/bin/env bash\n'],
+])('fast.sh on a write to %s with a history word in a comment', (_label, path, shebang) => {
+  it('blocks and names the rule', () => {
+    const result = runFast(path, `${shebang}# this check no longer runs\necho ok\n`, 'real');
+
+    expect(result.status).toBe(2);
+    expect(result.stderr).toContain('kiko-no-history-word-shell-comment');
+  });
+
+  it('passes the same comment without the history word', () => {
+    expect(runFast(path, `${shebang}# this check runs once\necho ok\n`, 'real')).toMatchObject({
+      status: 0,
+      stderr: '',
+    });
   });
 });
 
