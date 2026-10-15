@@ -414,6 +414,13 @@
       "when": 1791971566390,
       "tag": "0058_add_untracked_counterpart",
       "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "6",
+      "when": 1792089722000,
+      "tag": "0059_usdt_scale_8",
+      "breakpoints": true
     }
   ]
 }

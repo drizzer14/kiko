@@ -60,6 +60,7 @@ import m0055 from './0055_add_dismissed_tips.sql';
 import m0056 from './0056_add_category_rules.sql';
 import m0057 from './0057_add_transaction_templates.sql';
 import m0058 from './0058_add_untracked_counterpart.sql';
+import m0059 from './0059_usdt_scale_8.sql';
 
 export default {
   journal,
@@ -123,5 +124,6 @@ export default {
     m0056,
     m0057,
     m0058,
+    m0059,
   },
 };
