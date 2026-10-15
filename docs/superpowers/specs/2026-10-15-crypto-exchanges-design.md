@@ -93,6 +93,7 @@ These are the coordinator's rulings, not the user's, except C-NR2, which the use
 | C-NR7 A | The C-NR4 / C-NR6 re-read fallback is cut from 1.3-a. P15b (`myTrades` with `symbol` + `orderId` + `fromId` pages an order's fills by id) runs in probe 3 as a hard gate before set 11: refuted or untestable (for example, no spot order on the account) -> stop and ask the coordinator | 5, 11, 12 |
 | C-CGPT A | CGPT (ChainGPT) is added to the curated list: probe 2 found it in the user's Funding wallet, and R-Q4 lists the user's own coins | 3 |
 | C-P2P-depth | Probe 2 found P2P rows 8-9 months back: the P2P walk has no fixed month cap; it walks back until Binance stops serving, and probe 3 measures the real depth | 5, 12 |
+| C-NR8 A | `exchange_state` holds two lists per kind (not tracked, oversized): a balance list, replaced by each good balance read, and a history list, which only grows and is cleared on disconnect. The account detail shows the sorted union of the two lists of a kind, without duplicates | 2, 3, 5, 7 |
 | C-Prep A (Q2-Q12) | `restoreDataSnapshot` takes a required version; an `amountTooLargeError` import key; set 3 moves code only, and sets 5-6 switch to `exchangeMinorUnits`; the parser lives in set 2; `exchangeHistoryPaused` is set 4's; per-migration `VERSION_DECISIONS`; credential wrappers stay in `binance/`, and `exchange/` is a declared container; history only for held coins; the privacy-site copies; set 4's test-helper first commit; `bond_register` excluded from 0059 | 2, 3, 7, 9, 10, 11 |
 
 ### Rulings this spec reverses
@@ -153,7 +154,7 @@ gap; the not-listed note names it.
 | `exchange/paging/` | `Pager` interface (below); `offsetPager` (today's `fetchAllByTotal` + `readSeriesSpan` + span halving); `idCursorPager` (set 10) | `binance.history-paging.ts` |
 | `exchange/walk/` | the walk engine: `planWalkPasses`, `runWalkPlan`, `walkSpans`, `buildWalkWindows`, owed ranges and points, range cursor, span hints, `settleRecords`, `commitSettledSpan`, `placeWalletRows`, depth guards; `WalkStop` codes generic, exchange codes added per exchange | `binance.history-walk.ts`, `binance.history-records.ts`, `binance.history-depth.ts` (constants become a per-exchange `DepthConfig`), `binance.walk-write-deps.ts` |
 | `exchange/walk-state/` | `ExchangeState` type, its per-walk strict parse, readers and the gated writer over `sync_state.exchange_state` (set 4) | the walk-owned metadata keys of `holding-metadata.ts` (`binanceWalkCursorFields`, `binanceWalkPendingFields`, `binanceWalkPointCursorFields`, `binanceWalkRangeCursorFields`, `binanceWalkSpanHintFields`) and `holdingsRepo.setBinanceWalkCursor`, `setBinanceWalkPending`, `setBinanceWalkSpanHints`, `resetBinanceWalkCursors` |
-| `exchange/history-status/` | `isExchangeHistoryBehind(state, latestSyncedAt)`, `untrackedCoinsOf(state)` | `screens/account-detail/crypto-sync-section/binance-history-status.ts` (`walkCursorsOf`, `transferOwesRange`, `isBinanceHistoryBehind`) |
+| `exchange/history-status/` | `isExchangeHistoryBehind(state, latestSyncedAt)`, `untrackedCoinsOf(state)` and `oversizedCoinsOf(state)` (each the sorted union of its kind's balance and history lists, C-NR8) | `screens/account-detail/crypto-sync-section/binance-history-status.ts` (`walkCursorsOf`, `transferOwesRange`, `isBinanceHistoryBehind`) |
 | `exchange/amounts/` | `exchangeMinorUnits(currency, text): Either<AmountError, number>`: a wrapper over set 2's exact decimal-to-minor-units parser in `src/currency/decimal/decimal.ts`, refusing more decimals than the scale (`amount-precision`) unless the coin is reduced-scale (section 3) and a result above `Number.MAX_SAFE_INTEGER` (`amount-too-large`) | new in set 3 with no caller; set 5 switches `sumSatoshis`/`Money.fromMajor(BINANCE_ASSET, Number(...))` in `binance.provider.ts` to it, set 6 switches `btcSatoshis` (`binance.history-walk.ts`) |
 
 The Binance host constant stays in `binance.client.ts` (re-grep the `@env` host); there is no
@@ -216,8 +217,12 @@ type ExchangeState = {
                                               //  | 'fiatOrders' | 'fiatPayments'
   trades?: { symbols: Record<string, { fromId: number | null; heldOrderId?: number }>;
              rotation: number; balanceSnapshot: Record<string, string> };
-  untrackedCoins?: string[];                  // tickers, last good balance read
-  oversizedCoins?: string[];                  // tickers refused as amount-too-large
+  untrackedCoins?: CoinLists;                 // tickers not on the coin list (C-NR8)
+  oversizedCoins?: CoinLists;                 // tickers refused as amount-too-large (C-NR8)
+};
+type CoinLists = {
+  balance?: string[];                         // replaced by each good balance read
+  history?: string[];                         // grows with each history read; cleared on disconnect
 };
 type WalkMarks = {
   cursor: number | null; rescan?: number; pending?: BinancePendingRange[];
@@ -242,7 +247,8 @@ Parse, per walk (set 4):
   run, the caption shows its paused copy (`accountDetail.exchangeHistoryPaused`, section 10; set 4
   adds the key in en and uk, with translator review), and nothing writes the column until
   disconnect resets it. The malformed text is never overwritten by a walk patch.
-- `trades`, `untrackedCoins` and `oversizedCoins` each parse on their own; a malformed one reads as
+- `trades` and each of the four coin lists (`untrackedCoins.balance`, `untrackedCoins.history`,
+  `oversizedCoins.balance`, `oversizedCoins.history`) parse on their own; a malformed one reads as
   its empty value and logs the same tag with the entry name.
 - A walk entry parses FIELD BY FIELD, each field with today's per-field rule, so a malformed field
   never empties its siblings: `cursor` and `rescan` as `binanceWalkCursorOf` reads them (a
@@ -257,7 +263,9 @@ Writer: `syncStateRepo.patchExchangeState(accountId, exchangeId, patch)` runs in
 (`src/db/client.ts`, the serialized write the repos use; not `db.transaction()`), re-reads the row,
 and writes only while `accounts.institution` is still `exchangeId` (today's `institution = 'binance'`
 gate of `setBinanceWalkCursor`). A patch names fields, not whole entries: a (walk id, field) pair,
-a trade symbol's entry, `trades.rotation`, `trades.balanceSnapshot`, or a coin list. The writer
+a trade symbol's entry, `trades.rotation`, `trades.balanceSnapshot`, or one coin list (its kind
+and its source). A balance-list patch replaces that list; a history-list patch adds tickers to it
+(a union, no duplicates), so a balance read never drops a ticker a history read found. The writer
 replaces only those and writes every other field and entry back as its stored JSON text,
 byte-identical, a malformed one included. When no `sync_state` row exists, the writer inserts one.
 
@@ -468,8 +476,9 @@ confirms the look live on the device before set 1 is done.
 Every exchange amount goes through `exchangeMinorUnits` (section 2). A balance or row above the
 bound is never truncated: the balance write for that holding is skipped (the last good balance
 stays), the row is a per-record stop owed at its point, the ticker joins
-`exchange_state.oversizedCoins`, and the account detail shows `accountDetail.oversizedAmount`
-(section 10). A balance with more decimals than the coin's scale (probe P10) rounds half away from
+`exchange_state.oversizedCoins` (its balance list for a balance, its history list for a row;
+C-NR8), and the account detail shows `accountDetail.oversizedAmount` (section 10) for the sorted
+union of the two lists. A balance with more decimals than the coin's scale (probe P10) rounds half away from
 zero and logs `balance-precision-rounded`. A ROW with more decimals is a per-record stop
 (`amount-precision`), except on a reduced-scale coin, where it rounds the same way and logs
 `row-precision-rounded`.
@@ -498,10 +507,12 @@ zero and logs `balance-precision-rounded`. A ROW with more decimals is a per-rec
 ### Not-tracked coins, LD* tokens, picker, 0044
 
 - A non-zero balance of a coin outside the registry gets no holding, no row and no price. Its
-  ticker is stored in `exchange_state.untrackedCoins` at each good balance read and listed on the
-  account detail (`accountDetail.untrackedCoins`, reason "not on Kiko's coin list"). A history
-  record of such a coin imports no row; a pair with one untracked side keeps the tracked leg
-  (section 6).
+  ticker is stored in the balance list of `exchange_state.untrackedCoins`, which each good balance
+  read replaces. A history record of such a coin imports no row (a pair with one untracked side
+  keeps the tracked leg, section 6); its ticker is added to the history list, which only grows and
+  is cleared on disconnect (C-NR8). "Joins the not-tracked line" in sections 5 and 6 means this
+  history-list add. The account detail lists the sorted union of the two lists, without duplicates
+  (`accountDetail.untrackedCoins`, reason "not on Kiko's coin list").
 - LD* (R-Tech, probe P9): an asset whose code is `LD` + X, where X is a curated code or an asset in
   this run's Simple Earn positions, is an Earn receipt token. It is skipped in Spot (Earn is read
   from the Earn endpoints) and never priced. `LDO` and other real coins starting with LD pass,
@@ -586,7 +597,8 @@ only with a measured reason (memory "bounds are measured").
   costs of each coin must sum to that entry's `amount`, else `pay-split-mismatch` as today.
 - Cross-coin: an order in X paid with Y gets Y rows (no X row, no implied conversion). `comment` =
   `<amount> <X>` (Binance's own decimal string and code; no words), written on insert only.
-- A funds entry in an untracked coin imports no row; its ticker joins the not-tracked line.
+- A funds entry in an untracked coin imports no row; its ticker joins the history list of
+  `untrackedCoins` (C-NR8), so the not-tracked line keeps it after the next balance read.
 - A receive imports one row in the order's coin (funds describe the payer side).
 - Keys: a BTC-funded row of a BTC order keeps
   `${accountId}:pay:${orderType}:${transactionId}:${walletType}` byte-identical; every other row
@@ -892,7 +904,7 @@ effect.
   Set 4 regenerates both demo `.kiko` files in the same commit.
 - Disconnect: `disconnectCryptoAccount` resets `exchange_state` (cursors to the floor, lists empty,
   point/range cursors, hints, trade cursors and coin lists removed, a malformed value replaced),
-  then clears the Keychain item. Holdings and rows stay as a manual snapshot.
+  then clears the Keychain item. Removing the coin lists clears both history lists (C-NR8). Holdings and rows stay as a manual snapshot.
 
 ### Backfill of new coins (R-Q8, sets 6 and 15)
 
@@ -1051,7 +1063,7 @@ Not-tracked and not-listed (sets 5, 15):
 | # | Account | Shown | was: |
 |---|---|---|---|
 | N1 | UA-1 | not-tracked line hidden (no untracked coin); not-listed note under each Binance holding; "Earlier history" on "Binance Funding · USDT" while the Pay backfill (B4) is owed | BTC only, no note |
-| N2 | Spot PEPE 1000, XYZ in a Pay funds entry | "Not tracked: PEPE, XYZ" | not shown |
+| N2 | run N: Spot PEPE 1000 (balance list [PEPE]), XYZ in a Pay funds entry (history list [XYZ]); run N+1: the balance read writes [PEPE] again, no Pay record of XYZ | after each run: "Not tracked: PEPE, XYZ" (C-NR8) | not shown |
 | N3 | marker `p2p:UAH:abc` (malformed total) | label "P2P purchase (UAH)"; matcher skips it | n/a |
 
 Backfill (set 15):
