@@ -386,6 +386,35 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   plugin version bump) reaches a running session after a plugin
   reinstall and `/reload-plugins`.
 
+  SHELL-WRITE deny, git config files and same-command variables. The write target predicate
+  (`isGitConfigFile`, `namesGitConfig`) also covers `.git/config`, `.git/config.worktree`, and
+  `.git/worktrees/<n>/config.worktree` of any repository, and an unresolved path that spells
+  `.git/config` denies; the reason names the git config file and `scripts/ensure-git-hooks.sh`.
+  Not denied: `rm` or `mv`-away of `.git/config`, and `git config --edit`. A variable the SAME
+  command assigns with a literal value (bare, `export`, `declare`, `typeset`, `local`,
+  `readonly`; a later assignment wins; a subshell's scope ends with it; a `NAME=v cmd` prefix and
+  an assignment before `&` or `|` do not persist) is expanded in later words, redirect targets,
+  and nested text (`expandVariables`, `assignedVariables`, `withVariables`, `isLiteralValue`;
+  `findDanger`'s place is `{ directories, variables }`). A value that is itself an expansion
+  (`$!`, `$(...)`, `$other`) stays unknown. Not tracked: `unset`, `cd $d`, `f+=x`, loop
+  variables; a conditional assignment is read as if it ran. Side effects: `git -C $d` with a
+  same-command `d` resolves for the main-checkout deny, and a `-1` held in a same-command
+  variable and passed to a kill denies. A variable the command does not assign stays unresolved
+  because failing closed would deny `tmp=$(mktemp); cp x "$tmp"` and existing allow rows.
+
+  Script-content kill scan. The guard reads a script file a command runs (`bash|sh|zsh|dash
+  <file>`, `source <file>` or `. <file>`, or a path run directly whose first line names a
+  shell) and denies a pkill, killall, or pattern or process-group kill in it (kind `scriptKill`;
+  `scriptKillFinding`, `scriptFileOf`, `shellScriptOperand`, `readScriptFile`). One level only,
+  a regular file of at most 256 KiB, kills only (`killOnly`: a stash or write inside it is not
+  judged). `isQueueScript` exempts `scripts/job-queue.sh` whose worktree root shares this
+  repository's git directory readably; a copy outside a worktree or in another repository
+  denies. Known limits, NOT denied: a script built in the same command, a missing or larger
+  file, a variable path, a script that sources another, a file for a non-shell interpreter,
+  and `make` targets; a `cp -R` copy of a linked worktree counts as this repository. Pinned by
+  `__tests__/kill-guard-scripts.test.ts` (every `git ls-files` `*.sh`, the routine coordinator
+  commands, the queue-script rows).
+
   NO-VERIFY deny (why: the tracked `githooks/pre-commit` and `githooks/pre-merge-commit` run
   `scripts/checks/commit-typecheck.sh`, a typecheck of the staged index; a commit that skips them
   lands a type error on the branch). Rule: deny a `git commit`, `git merge`, or `git pull` that
@@ -405,10 +434,25 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   commit whose staged diff touches no file tsc reads (see `docs/harness/checks-internals.md`).
   A person may bypass in their own shell; the deny binds agent Bash calls only. Rows:
   `__tests__/kill-guard.test.ts`, `__tests__/commit-typecheck.test.ts`,
-  `__tests__/ensure-git-hooks.test.ts`. Known limits, NOT denied: a bypass built at run time; an
-  `export GIT_CONFIG_*=...` line before the git command (only `NAME=value` prefixes are read);
-  `git config --value <v>` with the value as a separate word; `--remove-section core` and
-  `--rename-section core`.
+  `__tests__/ensure-git-hooks.test.ts`, `__tests__/kill-guard-hook-skips.test.ts`.
+
+  The `noVerify` kind covers `--no-verify`, `-n`, and `git commit-tree` in every form (it
+  writes a commit no hook runs for; `git update-ref` stays allowed). The kind `hooksConfig`
+  (entry points `rewritesHooksPath`, `runsWithHooksConfig`, `environmentSetsHooksPath`,
+  `environmentSwapsConfigFile`, `environmentFinding`) carries a reason naming
+  `scripts/ensure-git-hooks.sh`. A `git config` long option resolves by git's unique-prefix rule
+  (`CONFIG_LONG_OPTIONS`, the union of git 2.38.1 and later-git names, read through
+  `resolveConfigLongOption`): an ambiguous or unknown option denies when the command names a
+  hooksPath or include key or the `core` section. `--remove-section` and `--rename-section` of
+  `core` (case-insensitive, also the subcommand forms) deny. `--value` takes the next word.
+  `include.path` and `includeIf.<c>.path` are treated like core.hooksPath (a write, `-c`,
+  `--config-env`, or GIT_CONFIG_* denies; a read allows), since the included file can set the
+  key. An `export`, `declare -x`, `typeset`, `local`, `readonly`, or bare assignment of
+  `GIT_CONFIG_KEY_<n>` to those keys, or of `GIT_CONFIG_PARAMETERS` holding them, denies by
+  itself. `GIT_CONFIG_GLOBAL` and `GIT_CONFIG_SYSTEM`, on a commit, merge, or pull or exported,
+  pass only for `/dev/null` or an existing regular file of at most 256 KiB with no `hookspath`
+  and no `include`; any other denies (defense in depth: a local config outranks them). Known
+  limits, NOT denied: a bypass built at run time.
 
   Probing the kill-guard (rule): SENTINEL probes only. A probe that
   EXECUTES shell text runs ONLY through the committed runner
@@ -452,7 +496,8 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   known limit to list here, not a bug to fix. Re-verify each item in
   `kill-guard.js`, `kill-guard-probe.sh`, and their tests.
   - NOT denied: a kill or stash through an alias, a function, a script
-    file, or a variable (`$CMD`); a word built at run time
+    file the kill scan does not read (see the script-content scan above), or a variable
+    (`$CMD`); a word built at run time
     (`a=pk; ${a}ill x`, `$(printf pk)ill x`, `$(cat name.txt) x`); a
     span glued after the command word (`git$(true) stash`); a span
     glued before the name inside quotes (`"$(true)git" stash`,
@@ -472,8 +517,9 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
     `eval "$(cat <<'EOF' …)"`, or `bash -c "$(cat <<'EOF' …)"`: not
     denied. Heredoc delimiter corner cases beyond those modeled above
     (bash's `EOF)` shorthand, trailing spaces).
-  - Shell-write deny, NOT denied: a path held in a variable or loop
-    variable (`sed -i … "$f"`, `for f in …; do … > "$f"; done`) unless
+  - Shell-write deny, NOT denied: a path held in a variable the command
+    does not assign, or assigns from an expansion, or a loop
+    variable (`sed -i ... "$f"`, `for f in ...; do ... > "$f"; done`) unless
     its text names a tree folder; a `cd` into a tree through a variable
     then a relative path (`cd $VAR/src && echo x > y.ts`; plain
     `cd $VAR && echo x > src/…` IS denied); `eval` of a built string;

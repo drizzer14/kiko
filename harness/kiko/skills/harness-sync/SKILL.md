@@ -186,6 +186,9 @@ Every count and exit code is the orchestrator's own measured result.
   integer (`--step N`); pff-ios now says `--step N`; fix it in the harness repo at sync 3.
 - G1 port: in the harness repo, a comment-only source mutates nothing whatever its colocated
   tests did (pff-ios `scripts/checks/mutation.sh` has no whole-file keep).
+- kill-guard: port to drizzer14/harness the config long-option prefix fix, the new denies
+  (`commit-tree`, git config files, include.path, GIT_CONFIG_* exports and files), the
+  script-content kill scan, and the same-command variable expansion.
 
 From sync 2 and earlier:
 - Not yet ported: guard-replay, shipped-migrations, plural-count, the estimator skill; the
