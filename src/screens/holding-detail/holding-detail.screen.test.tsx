@@ -2,6 +2,7 @@ import maybe, { foldMap } from 'fnts/maybe';
 import type { ComponentProps } from 'react';
 import { Alert, StyleSheet } from 'react-native';
 import { State } from 'react-native-gesture-handler';
+import { HeaderHeightContext } from '@react-navigation/elements';
 import { act, fireEvent, render, within } from '@testing-library/react-native';
 import { fireGestureHandler, getByGestureTestId } from 'react-native-gesture-handler/jest-utils';
 import '@kiko/design-system/unistyles';
@@ -28,6 +29,7 @@ import { categoryColor } from '@kiko/statistics/category-breakdown';
 import GestureRootWrapper from '@kiko/test-support/gesture-root-wrapper';
 import { type LayoutNode, layoutOf } from '@kiko/test-support/layout-of';
 import { ancestorWithStyle } from '@kiko/test-support/ancestor-with-style';
+import { LargeTitleHeadingContext } from '@kiko/design-system/components/large-title-heading';
 import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support/navigation-props';
 
 import HoldingDetailScreen from './holding-detail.screen';
@@ -2791,5 +2793,75 @@ describe('HoldingDetailScreen — ledger row look', () => {
       testID: 'ledger-day-header',
       children: [textLayout(formatDate(new Date(2024, 0, 15, 9, 5).getTime()))],
     });
+  });
+});
+
+describe('HoldingDetailScreen with a title that does not fit the native large title', () => {
+  const HEADER_HEIGHT = 100;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  // The context a navigator layout sets while the title is too long for one line of the native
+  // large title: the list header then starts with the full title.
+  const renderWithHeading = (onScrolledChange: jest.Mock) =>
+    render(
+      <HeaderHeightContext.Provider value={HEADER_HEIGHT}>
+        <LargeTitleHeadingContext.Provider
+          value={{
+            title: 'A holding with a very long name',
+            headingBottom: { current: 150 },
+            onScrolledChange,
+          }}
+        >
+          <HoldingDetailScreen
+            navigation={asNavigationProp<HoldingDetailProps['navigation']>(navigation)}
+            route={route}
+          />
+        </LargeTitleHeadingContext.Provider>
+      </HeaderHeightContext.Provider>,
+      { wrapper: GestureRootWrapper },
+    );
+
+  it('starts the ledger list header with the heading', async () => {
+    seed(cashHolding);
+
+    const { getByTestId, getByText } = await renderWithHeading(jest.fn());
+    const headerBlocks = within(getByTestId('ledger-list')).getAllByTestId(
+      /^(large-title-heading|holding-value-header)$/,
+    );
+
+    expect(getByText('A holding with a very long name')).toBeTruthy();
+    expect(headerBlocks.map((block) => block.props.testID)).toEqual([
+      'large-title-heading',
+      'holding-value-header',
+    ]);
+  });
+
+  it('reports the heading scrolled under the bar from the ledger list', async () => {
+    seed(cashHolding);
+    const onScrolledChange = jest.fn();
+
+    const { getByTestId } = await renderWithHeading(onScrolledChange);
+    const list = getByTestId('ledger-list');
+
+    await fireEvent.scroll(list, {
+      nativeEvent: {
+        contentOffset: { x: 0, y: 50 },
+        layoutMeasurement: { width: 393, height: 800 },
+        contentSize: { width: 393, height: 2000 },
+      },
+    });
+
+    expect(onScrolledChange).toHaveBeenCalledWith(true);
+  });
+
+  it('shows no heading while the native large title shows the title', async () => {
+    seed(cashHolding);
+
+    const { queryByTestId } = await renderScreen();
+
+    expect(queryByTestId('large-title-heading')).toBeNull();
   });
 });

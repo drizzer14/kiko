@@ -37,6 +37,9 @@ import { useTimeClock } from '@kiko/i18n/use-time-clock';
 import type { PriceBook } from '@kiko/prices/price-book';
 import { transactionsRepo } from '@kiko/transactions/repo';
 import Button from '@kiko/design-system/components/button';
+import LargeTitleHeading, {
+  useLargeTitleScroll,
+} from '@kiko/design-system/components/large-title-heading';
 import { isHoldingType } from '@kiko/holdings/holding-type';
 import { asLoanMeta } from '@kiko/holdings/holding-metadata';
 import { groupByDay } from '@kiko/transactions/group-by-day';
@@ -725,6 +728,7 @@ const editableAccountId = (holding: HoldingRow | undefined): string | undefined 
 const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }) => {
   const { t } = useTranslation();
   const { theme } = useUnistyles();
+  const headingScrollProps = useLargeTitleScroll();
   const { holdingId, name: initialName } = route.params;
   // `holdingsRepo` exposes no single-row lookup, so the holding's own
   // currency (needed to render each transaction's signed MoneyText) comes
@@ -1163,8 +1167,17 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
             <LedgerRowItem row={item.row} context={rowContext} />
           </>
         )}
-        ListHeaderComponent={ledgerReadyView.headerComponent}
+        // The full title, when it is too long for the native large title, is the first thing in
+        // the list; it also shows while the ledger loads, since the title is known from the route.
+        ListHeaderComponent={
+          <>
+            <LargeTitleHeading />
+
+            {ledgerReadyView.headerComponent}
+          </>
+        }
         ListEmptyComponent={ledgerReadyView.emptyComponent}
+        {...headingScrollProps}
         // The list owns the scrolling under the native large title, so it — not
         // Screen's ScrollView — must carry the automatic content-inset
         // adjustment that seats content below the expanded large title (Screen
