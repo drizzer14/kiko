@@ -22,11 +22,11 @@ Inputs: `rulings.md`, `brainstorm.md`, `brainstorm-ops.md`, `research-binance-ap
 Kiko reads one coin from Binance. `BINANCE_ASSET = 'BTC'` filters the balance reads
 (`binance.provider.ts`: `spotSatoshis`, `fundingSatoshis`, `positionSatoshis`) and every history
 walk (capital `coin=BTC`, Pay `isBtcFunds`, Transfer `record.asset !== BINANCE_ASSET`, Earn
-`asset=BTC`). The user's own account holds USDT too: 41 of 46 Pay orders, one of three
-withdrawals and the one Convert (UAH to USDT) are USDT (inventory probe, 2026-10-15). None of them
-reaches Kiko. Trades, Convert, P2P, fiat orders, card buys, dust and distributions are not
-imported for any coin. USDT is stored at scale 2 (`currencyScale.USDT`), while Binance reports 8
-decimals, so sub-cent USDT amounts round away. The provider list is closed
+`asset=BTC`). The user's own account holds USDT too: 41 of 46 Pay orders, one of three withdrawals
+and the one Convert (UAH to USDT) are USDT (inventory probe, 2026-10-15); probe 2 also found CGPT in
+the Funding wallet. None of them reaches Kiko. Trades, Convert, P2P, fiat orders, card buys, dust
+and distributions are not imported for any coin. USDT is stored at scale 2 (`currencyScale.USDT`),
+while Binance reports 8 decimals, so sub-cent USDT amounts round away. The provider list is closed
 (`balanceProviderIds`), so a second exchange needs edits in every caller.
 
 ## Goal
@@ -90,6 +90,8 @@ These are the coordinator's rulings, not the user's, except C-NR2, which the use
 | C-NR5 A | A third-coin fee row of a trade whose RECEIVED coin is not tracked carries `untrackedCounterpart = asset:<received coin>` and stays out of spending | 5, 6, 7 |
 | C-NR6 B | The C-NR4 fallback starts from the order's stored row time (the first fill time). Not needed while P15b holds (C-NR7); P15b is a hard gate before set 11 | 5, 12 |
 | C-NR7 A | The C-NR4 / C-NR6 re-read fallback is cut from 1.3-a. P15b (`myTrades` with `symbol` + `orderId` + `fromId` pages an order's fills by id) runs in probe 3 as a hard gate before set 11: refuted or untestable (for example, no spot order on the account) -> stop and ask the coordinator | 5, 11, 12 |
+| C-CGPT A | CGPT (ChainGPT) is added to the curated list: probe 2 found it in the user's Funding wallet, and R-Q4 lists the user's own coins | 3 |
+| C-P2P-depth | Probe 2 found P2P rows 8-9 months back: the P2P walk has no fixed month cap; it walks back until Binance stops serving, and probe 3 measures the real depth | 5, 12 |
 
 ### Rulings this spec reverses
 
@@ -117,9 +119,10 @@ not-listed note (section 6); migration of BTC state and the backfill (section 7)
 (section 8); compliance (section 9); copy (section 10).
 
 Out: R-Out, plus Bybit itself (1.3-b, its own spec; section 2 lists what 1.3-b adds).
-Not possible (API limits, not choices): Pay older than 18 months, transfers older than 179 days,
-P2P older than 6 months, dust beyond the last 100 records, Binance Card spending (no API). The
-"Earlier history" line shows the gap; the not-listed note names it.
+Not possible (API limits, not choices): Pay older than 18 months, transfers older than 179 days, P2P
+older than Binance serves (probe 3 measures the depth; probe 2 served rows 8-9 months back), dust
+beyond the last 100 records, Binance Card spending (no API). The "Earlier history" line shows the
+gap; the not-listed note names it.
 
 ### Release rule (App Store Guideline 2.3.1(a))
 
@@ -204,6 +207,7 @@ type ExchangeState = {
 type WalkMarks = {
   cursor: number | null; rescan?: number; pending?: BinancePendingRange[];
   pointCursor?: number; rangeCursor?: number; spanHints?: BinanceSpanHints; multiCoinSince?: number;
+  emptyWindows?: number;                      // P2P only: empty windows in a row (section 5)
 };
 ```
 
@@ -312,7 +316,7 @@ registry; no second hand-written crypto list remains. `currencyNames.<CODE>` gai
 name per coin (`currency-names.i18n.test.ts`).
 
 Initial list rule (R-Q4), fixed in set 2's commit with its curation date and source:
-1. the user's own coins from the inventory probe (BTC, USDT);
+1. the user's own coins from the inventory probe and probe 2 (BTC, USDT, CGPT; C-CGPT);
 2. the top 30 by market cap from CoinGecko `/coins/markets` on the curation day, minus:
    stablecoins other than the four below; wrapped, bridged and liquid-staking tokens (WBTC, WETH,
    stETH, wstETH, weETH, WBETH, BNSOL, cbBTC and the like; R-Out staking); coins with no Binance
@@ -320,6 +324,12 @@ Initial list rule (R-Q4), fixed in set 2's commit with its curation date and sou
 3. USDT, USDC, FDUSD, DAI;
 4. BNB is on the list (dust and BNB fees depend on it); if it ever falls out of the top 30, it is
    kept by this rule.
+
+CGPT entry (C-CGPT; probe 2 found it in the user's Funding wallet): `code` `CGPT` (ChainGPT);
+`scale` by the formula above (probe 2: the Funding CGPT balance has at most 2 significant decimals
+as sent, so it fits any scale `>= MIN_COIN_SCALE`); `symbol` `CGPT` (the code itself);
+`coinGeckoId` `chaingpt`, which set 2 verifies against CoinGecko `/coins/list`; `binanceSymbol`,
+`baseAssetPrecision`, `maxUnits` and `dustBelow` by the "Adding a coin" rule below, read in set 2.
 
 Adding a coin later: one change with the code in `currencyOptions`, the registry entry
 (`baseAssetPrecision` from Binance `exchangeInfo`, `maxUnits`, the verified CoinGecko id,
@@ -496,7 +506,7 @@ confirm; section 12 gives each fallback.
 | Convert | `GET /sapi/v1/convert/tradeFlow` | 30 d / probe (2 years read on 2026-10-15) | `limit` 1000 + `moreData`: a window with `moreData` halves | UID 3000 | 20 | `walks.convert` | P4 |
 | Dust | `GET /sapi/v1/asset/dribblet` | last 100 records, after 2020-12-01 | none | IP 1 | 1 | none (every run; keys dedupe) | P7 |
 | Dividends | `GET /sapi/v1/asset/assetDividend` | 180 d / probe (3 years read) | `limit` 500, none: a full page halves | IP 10 | 10 | `walks.dividend` | P8 |
-| P2P | `GET /sapi/v1/c2c/orderMatch/listUserOrderHistory`, `tradeType` BUY and SELL (2 series) | 30 d / 6 months | `page`/`rows` 100 | IP 1 | 10 | `walks.p2p` | P5 |
+| P2P | `GET /sapi/v1/c2c/orderMatch/listUserOrderHistory`, `tradeType` BUY and SELL (2 series) | 30 d / back until Binance stops serving: 6 empty or refused windows in a row per series (probe 3 measures the depth; probe 2 served rows 8-9 months back) | `page`/`rows` 100 | IP 1 | 10 | `walks.p2p` | P5 |
 | Fiat orders | `GET /sapi/v1/fiat/orders`, `transactionType` 0 deposit, 1 withdraw (2 series) | probe / probe | `page`/`rows` 500 | UID 45000 | 3 | `walks.fiatOrders` | P6 |
 | Fiat payments | `GET /sapi/v1/fiat/payments`, `transactionType` 0 buy, 1 sell (2 series) | probe / probe | `page`/`rows` 100 | IP 1 | 10 | `walks.fiatPayments` | P6 |
 | Spot trades | `GET /api/v3/myTrades?symbol=&fromId=` per symbol | none (id cursor) / probe | `fromId`, 1000 | IP 20 (`/api/*`) | 100 calls | `trades.symbols[s].fromId` | P1, P2, P3 |
@@ -577,8 +587,16 @@ for money.
 
 ### P2P
 
+Depth (C-P2P-depth): the walk walks back in 30-day windows until Binance stops serving; the depth
+is measured by probe 3 (probe 2 served rows 8-9 months back). Stop rule, the one probe 3 uses: a
+window is empty when neither series (BUY, SELL) returns a row or Binance refuses it as out of
+range; 6 empty windows in a row end the walk, and the oldest window that served a row is its
+floor. A refused window counts toward the 6, never as a failure. The walk stays inside its lane
+(10 calls a run) and the SAPI IP budget: a run that ends mid-walk stores its cursor and the count
+of empty windows in a row (`walks.p2p.emptyWindows`), and the next run goes on from there.
+
 Only `orderStatus === 'COMPLETED'` imports; `CANCELLED` and similar are ignored; an open status
-owes its point until final or the 6-month floor drops it. BUY: `+amount asset` on the P2P wallet's
+owes its point until final or the walk's floor drops it. BUY: `+amount asset` on the P2P wallet's
 holding (C-NR3: observed wallet; default Funding); SELL: `-amount`. Amount = the wallet's change
 (probe P5 confirms whether `amount` is net of `commission`; until confirmed, an order with a
 non-zero `commission` is a stop owed at its point). `untrackedCounterpart =
@@ -1199,7 +1217,7 @@ privacy header requires). Probe 3 is the P15b check, run before set 11.
 | P2 | candidate symbol count for the user's coins (exchangeInfo) | lane cap 100 | lower per-run coverage; the rotation bound grows with `S` (measured) | 10 |
 | P3 | `myTrades` lookback | from id 0 | the floor where Binance stops returning rows | 11 |
 | P4 | Convert: 30-day span cap, lookback, wallet of a Convert from Funding | 30 d, 2 years, Spot | span: the window narrows to the cap; depth: floor at the deepest served; wallet: C-NR3 | 8 |
-| P5 | P2P: 6-month floor, paging fields (`total`?), statuses, wallet, `amount` net or gross of `commission`, `totalPrice` decimals | as section 5; Funding | page until a short page; wallet: C-NR3; amount: orders with commission stay owed; decimals past the fiat scale: per-record stop | 12 |
+| P5 | P2P: paging fields (`total`?), statuses, wallet, `amount` net or gross of `commission`, `totalPrice` decimals | as section 5; Funding | page until a short page; wallet: C-NR3; amount: orders with commission stay owed; decimals past the fiat scale: per-record stop | 12 |
 | P6 | fiat orders and payments: span and lookback, statuses, UID header, credited wallet, withdraw fee in `amount` | 30 d windows, `Successful`/`Completed`, Spot | windows narrow to what is served; wallet: C-NR3 | 12 |
 | P7 | dribblet: do times reach past the last 100; is `transferedAmount` net of `serviceChargeAmount` | newest 100 only; net | older dust not listed (note); gross: BNB leg = transfered minus charge | 9 |
 | P8 | assetDividend: `enInfo` values, credited wallet, overlap with Earn rewards, lookback | no allowlist value: the walk is removed from 1.3-a | - | 9 |
