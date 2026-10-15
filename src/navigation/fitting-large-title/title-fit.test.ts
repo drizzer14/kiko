@@ -85,6 +85,15 @@ describe('estimatedTitleFits', () => {
     expect(estimatedTitleFits('aaaa', 20, 10)).toBe(false);
   });
 
+  // 23 narrow glyphs at 50pt are 368pt, which is exactly 320pt of line times the 1.15 tolerance
+  // (both sides are the same float), so a title that lands on the limit counts as fitting.
+  it('fits a title whose estimate equals the tolerated line width exactly', () => {
+    const title = 'i'.repeat(23);
+
+    expect(estimateTitleWidth(title, 50)).toBe(368);
+    expect(estimatedTitleFits(title, 320, 50)).toBe(true);
+  });
+
   // A window that has no width yet (0, or a margin wider than the window) is not a line to wrap
   // a title in, so it must not turn every title into a heading.
   it.each([
