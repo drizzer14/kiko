@@ -692,11 +692,7 @@ describe('CategoryFormScreen', () => {
 
       const { getAllByTestId } = await renderForm('groceries');
 
-      expectRow(
-        getAllByTestId('rule-card')[0] as RenderedElement,
-        'Amount is at least',
-        '₿0.00100000',
-      );
+      expectRow(getAllByTestId('rule-card')[0] as RenderedElement, 'Amount is at least', '₿0.001');
     });
 
     it('reads a time on the 12-hour clock when the device uses it', async () => {

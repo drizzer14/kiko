@@ -7,8 +7,11 @@ describe('formatMoney', () => {
     expect(formatMoney(Money.of('USD', 123456))).toContain('1,234.56');
   });
 
-  it('formats BTC with eight decimals', () => {
-    expect(formatMoney(Money.of('BTC', 100_000_000))).toContain('1.00000000');
+  it('formats one BTC with two decimals', () => {
+    const formatted = formatMoney(Money.of('BTC', 100_000_000));
+
+    expect(formatted).toContain('1.00');
+    expect(formatted).not.toContain('1.00000000');
   });
 
   it('shows a negative sign', () => {
@@ -20,7 +23,7 @@ describe('formatMoney symbols', () => {
   it('puts $ / € / ₿ before the number', () => {
     expect(formatMoney(Money.fromMajor('USD', 1234.5))).toBe('$1,234.50');
     expect(formatMoney(Money.fromMajor('EUR', 10))).toBe('€10.00');
-    expect(formatMoney(Money.fromMajor('BTC', 0.5))).toBe('₿0.50000000');
+    expect(formatMoney(Money.fromMajor('BTC', 0.5))).toBe('₿0.50');
   });
 
   it('puts ₴ after the number (Ukrainian convention)', () => {
@@ -63,5 +66,31 @@ describe('formatMoney locale grouping', () => {
     const formatted = formatMoney(money, 'uk-UA');
 
     expect(formatted).toBe('1\u00A0234,56 ₴');
+  });
+});
+
+describe('formatMoney crypto amounts', () => {
+  it('shows a crypto amount with trailing zeros trimmed to two decimals', () => {
+    expect(formatMoney(Money.fromMajor('BTC', 0.05))).toBe('₿0.05');
+  });
+
+  it('keeps every significant crypto decimal', () => {
+    expect(formatMoney(Money.of('BTC', 12345))).toBe('₿0.00012345');
+  });
+
+  it('keeps a fiat amount at its fixed scale', () => {
+    expect(formatMoney(Money.of('UAH', 123450))).toBe('1,234.50 ₴');
+  });
+
+  it('shows the largest safe crypto amount with every digit', () => {
+    expect(formatMoney(Money.of('BTC', Number.MAX_SAFE_INTEGER))).toBe('₿90,071,992.54740991');
+  });
+
+  it("uses the locale's decimal separator and grouping for crypto", () => {
+    expect(formatMoney(Money.of('BTC', 123_456_700_000), 'uk-UA')).toContain('1 234,567');
+  });
+
+  it('puts the sign outside the symbol of a crypto amount', () => {
+    expect(formatMoney(Money.of('BTC', -5_000_000))).toBe('-₿0.05');
   });
 });
