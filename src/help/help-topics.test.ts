@@ -361,17 +361,22 @@ describe('the choices a help step names', () => {
     [
       'en',
       enValues,
-      'Transfers between your own accounts and wallets, currency exchanges, and cash withdrawals from your bank do not count as spending.',
+      'Transfers between your own accounts, currency exchanges, and cash withdrawals from your bank do not count as spending.',
+      /wallet/i,
     ],
     [
       'uk',
       ukValues,
-      'Перекази між власними рахунками й гаманцями, обміни валют і зняття готівки в банку не вважаються витратами.',
+      'Перекази між власними рахунками, обміни валют і зняття готівки в банку не вважаються витратами.',
+      /гаман/i,
     ],
   ] as const)(
-    'names the wallets among the own-money moves that are not spending in %s',
-    (_language, values, sentence) => {
-      expect(stepOf(values, 'viewStatistics', 7)).toContain(sentence);
+    'names the own-money moves that are not spending in %s',
+    (_language, values, sentence, wallet) => {
+      const step = stepOf(values, 'viewStatistics', 7);
+
+      expect(step).toContain(sentence);
+      expect(step).not.toMatch(wallet);
     },
   );
 
