@@ -561,8 +561,8 @@ if [ "$score_code" -ne 0 ]; then
     "Stryker (mutation testing)" \
     "The CHANGE SET's own mutation score failed the gate (the thresholds are on the GATE line)." \
     "$score_out" \
-    "A surviving mutant in the files THIS change set touched means its own tests would not catch a real regression there — the number that matters for this review, not the whole accumulated report. A report whose recorded scope differs from this change set's files fails too, because it cannot vouch for them." \
-    "Add a real assertion that fails when the mutated code is wrong, or (only for a declaration-only file with no behavioral branch) add it to the exclusion allowlist in mutation-score.js with a concrete reason, and mirror it in docs/harness/documented-exceptions.md. Re-run: npm run check:mutation" \
+    "A surviving mutant in the files THIS change set touched means its own tests would not catch a real regression there — the number that matters for this review, not the whole accumulated report. A report whose recorded scope differs from this change set's files fails too, because it cannot vouch for them. A TIMEOUT-HEAVY file (its timeouts are over the share of its detected mutants, named on the GATE line) fails whatever the totals say: a mutant that times out on jest's related-test load proves nothing about the file's tests." \
+    "Add a real assertion that fails when the mutated code is wrong, or (only for a declaration-only file with no behavioral branch) add it to the exclusion allowlist in mutation-score.js with a concrete reason, and mirror it in docs/harness/documented-exceptions.md. For a TIMEOUT-HEAVY file: prove each timed-out mutant in plain jest (apply the replacement, run the file's own test, see it fail, revert) or write it in the BATCH READY as equivalent; the gate keeps failing for that file, so the BATCH READY carries the failed gate with the proofs; never raise the timeout. Re-run: npm run check:mutation" \
     "Do not delete the failing mutant's test, and do not add a file to the exclusion allowlist without a concrete, verifiable reason (see CLAUDE.md's Override protocol)."
   exit 2
 fi

@@ -316,6 +316,29 @@ describe('_lib.sh harness_mutation_files_append', () => {
   });
 });
 
+describe('_lib.sh harness_mutation_files_append on a TIMEOUT-HEAVY report', () => {
+  it('records the heavy file once, from its row, and nothing from its TIMEOUT-HEAVY line', () => {
+    const scorerOutput = [
+      'src/heavy.ts: 100.00 killed=2 timeout=3 survived=0 noCoverage=0',
+      'CHANGE SET TOTAL: 100.00 killed=2 timeout=3 survived=0 noCoverage=0',
+      'GATE: change set >= 75, each file >= 60, a file fails TIMEOUT-HEAVY when timeout > 50% of detected and >= 3',
+      'TIMEOUT-HEAVY src/heavy.ts: timeout 3 of 5 detected (60.0 %), killed 2, score without timeouts 40.00 < 60',
+    ].join('\n');
+
+    const out = sh(
+      [
+        'root=/x/heavy',
+        'harness_mutation_files_append "$root" 2026-10-13T08:00:00Z',
+        'cat "$(harness_mutation_files_file "$root")"',
+      ].join('\n'),
+      freshTemporaryDirectory(),
+      `${scorerOutput}\n`,
+    );
+
+    expect(out).toBe('2026-10-13T08:00:00Z\tsrc/heavy.ts\t5\t3');
+  });
+});
+
 describe('_lib.sh harness_mutation_costs (pure)', () => {
   const costs = (records: string[]): string =>
     sh(
