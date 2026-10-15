@@ -154,7 +154,7 @@ gap; the not-listed note names it.
 | `exchange/paging/` | `Pager` interface (below); `offsetPager` (today's `fetchAllByTotal` + `readSeriesSpan` + span halving); `idCursorPager` (set 10) | `binance.history-paging.ts` |
 | `exchange/walk/` | the walk engine: `planWalkPasses`, `runWalkPlan`, `walkSpans`, `buildWalkWindows`, owed ranges and points, range cursor, span hints, `settleRecords`, `commitSettledSpan`, `placeWalletRows`, depth guards; `WalkStop` codes generic, exchange codes added per exchange | `binance.history-walk.ts`, `binance.history-records.ts`, `binance.history-depth.ts` (constants become a per-exchange `DepthConfig`), `binance.walk-write-deps.ts` |
 | `exchange/walk-state/` | `ExchangeState` type, its per-walk strict parse, readers and the gated writer over `sync_state.exchange_state` (set 4) | the walk-owned metadata keys of `holding-metadata.ts` (`binanceWalkCursorFields`, `binanceWalkPendingFields`, `binanceWalkPointCursorFields`, `binanceWalkRangeCursorFields`, `binanceWalkSpanHintFields`) and `holdingsRepo.setBinanceWalkCursor`, `setBinanceWalkPending`, `setBinanceWalkSpanHints`, `resetBinanceWalkCursors` |
-| `exchange/history-status/` | `isExchangeHistoryBehind(state, latestSyncedAt)`, `untrackedCoinsOf(state)` and `oversizedCoinsOf(state)` (each the sorted union of its kind's balance and history lists, C-NR8) | `screens/account-detail/crypto-sync-section/binance-history-status.ts` (`walkCursorsOf`, `transferOwesRange`, `isBinanceHistoryBehind`) |
+| `exchange/history-status/` | `isExchangeHistoryBehind(state, latestSyncedAt)`, `untrackedCoinsOf(state)` and `oversizedCoinsOf(state)` (each the sorted union of its kind's balance and history lists, C-NR8; `untrackedCoinsOf` leaves out a ticker that is a curated code now) | `screens/account-detail/crypto-sync-section/binance-history-status.ts` (`walkCursorsOf`, `transferOwesRange`, `isBinanceHistoryBehind`) |
 | `exchange/amounts/` | `exchangeMinorUnits(currency, text, use: 'balance' \| 'row'): Either<AmountError, number>`: a wrapper over set 2's exact decimal-to-minor-units parser in `src/currency/decimal/decimal.ts`; both modes refuse an exponent form (`amount-malformed`) and a result above `Number.MAX_SAFE_INTEGER` (`amount-too-large`). `'balance'`: more decimals than the scale round half away from zero and log `balance-precision-rounded`. `'row'`: more decimals than the scale are refused (`amount-precision`), except on a reduced-scale coin (section 3), where they round the same way and log `row-precision-rounded` | new in set 3 with no caller; set 5 switches `sumSatoshis`/`Money.fromMajor(BINANCE_ASSET, Number(...))` in `binance.provider.ts` to it, set 6 switches `btcSatoshis` (`binance.history-walk.ts`) |
 
 The Binance host constant stays in `binance.client.ts` (re-grep the `@env` host); there is no
@@ -451,8 +451,11 @@ restore agree, including a version 3 file with legacy dedup keys.
 
 Display (user ruling Q1, set 1): `formatMoney` (`src/currency/format/format.ts`) shows a crypto
 amount (`isCrypto`) at its exact value, with trailing zeros trimmed but never fewer than 2
-decimals. It formats with `minimumFractionDigits` 2 and `maximumFractionDigits` equal to the
-scale, so no digit is ever rounded away. Stored amounts stay exact; only the text changes. Fiat
+decimals. It splits the integer, never divides it as a float: the whole part is `(|minorUnits| -
+remainder) / 10^scale` with `remainder = |minorUnits| % 10^scale` (both exact for safe integers),
+grouped by the locale; the fraction is the remainder's digits padded to the scale, trailing zeros
+trimmed down to 2, after the locale's decimal separator. So no digit is ever rounded away. Stored
+amounts stay exact; only the text changes. Fiat
 display is unchanged (fixed at the currency's scale). This belongs to set 1, so the USDT tip is
 safe alone: without it, every USDT amount would show 8 fixed decimals. Display cases (set 1):
 
@@ -514,11 +517,15 @@ zero and logs `balance-precision-rounded`. A ROW with more decimals is a per-rec
 
 - A non-zero balance of a coin outside the registry gets no holding, no row and no price. Its
   ticker is stored in the balance list of `exchange_state.untrackedCoins`, which each good balance
-  read replaces. A history record of such a coin imports no row (a pair with one untracked side
-  keeps the tracked leg, section 6); its ticker is added to the history list, which only grows and
-  is cleared on disconnect (C-NR8). "Joins the not-tracked line" in sections 5 and 6 means this
-  history-list add. The account detail lists the sorted union of the two lists, without duplicates
-  (`accountDetail.untrackedCoins`, reason "not on Kiko's coin list").
+  read replaces. A good balance read is one in which every wallet read succeeded; a read in which
+  a Funding or Earn wallet failed (that wallet keeps its last good balance) leaves both balance
+  lists, not tracked and oversized, as stored. Every history read (capital, Pay, Transfer, Earn
+  and the later streams) imports no row for a record of such a coin (a pair with one untracked
+  side keeps the tracked leg, section 6) and adds its ticker to the history list, which only grows
+  and is cleared on disconnect (C-NR8). "Joins the not-tracked line" in sections 5 and 6 means
+  this history-list add. The account detail lists the sorted union of the two lists, without
+  duplicates and without a ticker that is a curated code now (the coin list grew since it was
+  stored) (`accountDetail.untrackedCoins`, reason "not on Kiko's coin list").
 - LD* (R-Tech, probe P9): an asset whose code is `LD` + X, where X is a curated code or an asset in
   this run's Simple Earn positions, is an Earn receipt token. It is skipped in Spot (Earn is read
   from the Earn endpoints) and never priced. `LDO` and other real coins starting with LD pass,
@@ -885,22 +892,31 @@ effect.
 - Holdings: matched by the same `binanceAsset` keys; names change only from a default (section 4).
 - Walk state (set 4, migration 0060): `ALTER TABLE sync_state ADD exchange_state text`, then one
   `INSERT INTO sync_state (account_id, exchange_state) ... ON CONFLICT(account_id) DO UPDATE SET
-  exchange_state = excluded.exchange_state` per account that has a holding with
-  `CASE WHEN json_valid(metadata) THEN json_extract(metadata, '$.binanceAsset') END = 'BTC'`
-  carrying a walk key. Every `json_extract` over `metadata` sits behind the same CASE guard,
+  exchange_state = excluded.exchange_state` per account whose FIRST Spot BTC holding carries a
+  walk key: the holdings with `CASE WHEN json_valid(metadata) THEN json_extract(metadata,
+  '$.binanceAsset') END = 'BTC'` are ranked per account by `(sort_order, created_at)`, the order
+  the walk reads them in, and only the first is read, even when it has no walk key and a later
+  one has (the walk reads the first one too; ties stay in the order the engine returns them, as
+  the walk's own query does, with no id added on either side). Every `json_extract` over
+  `metadata` sits behind the same CASE guard,
   because SQLite does not guarantee that a logical and short-circuits, and `json_extract` raises an
   error on malformed JSON (Z4 pins the malformed case). The insert creates the `sync_state` row
   when none exists (its other columns null, so nothing
-  reads the account as synced). The JSON is built with `json_object` from each `binance*` walk key
-  (cursor, rescan, pending, point cursor, range cursor, span hints per walk; field map pinned by the
-  migration test); each value is copied as stored into its own field (`json(...)` for a list or an
-  object, so `pending` lists and the `spanHints` object stay JSON, not quoted text), a malformed one
-  included, so the field-by-field parse (section 2) decides about it, never the migration. Disconnected
+  reads the account as synced). Each walk entry is a `json_group_object` over the `binance*` walk
+  keys PRESENT on that holding (cursor, rescan, pending, point cursor, range cursor, span hints per
+  walk; field map pinned by the migration test), so an absent key adds no field; each value is
+  copied as stored through `json(metadata -> path)`, so a string stays a string, `true` stays
+  `true`, and a `pending` list or the `spanHints` object stays JSON, a malformed one included, so
+  the field-by-field parse (section 2) decides about it, never the migration. The entries are
+  joined with `json_group_object(walk, json(entry))` (without `json(...)` an entry is stored as
+  quoted text); a walk with no present key has no entry. Never `json_extract` into `json_object`
+  (an absent key writes `null`, a string loses its quotes, `true` becomes `1`). Disconnected
   accounts copy too (their floor values stay). The old metadata keys are no longer read;
   `carriedMetadataKeys` stops carrying them, so the next balance sync drops them.
 - Restore mirror (set 4): `withWalkStateMoved` in `restore-snapshot.ts` applies the same copy to a
-  `.kiko` whose `syncState` rows have no `exchangeState`, and adds a `syncState` row when the file
-  has none for that account; a two-path test pins equality with 0060. No index, so no EXPLAIN QUERY
+  `.kiko` whose `syncState` rows have no `exchangeState` (the same first Spot BTC holding, the same
+  present fields), and adds a `syncState` row when the file has none for that account; a two-path
+  test pins equality with 0060. No index, so no EXPLAIN QUERY
   PLAN test.
 - Export version (set 4): 0060 adds a no-bump `VERSION_DECISIONS` entry (`envelope.test.ts`;
   version 4, migration count 61). The column rides inside the `sync_state` row, and
@@ -916,7 +932,12 @@ effect.
 
 - Set 6: on a walk's first multi-coin run, the walk writes `walks.<walk>.multiCoinSeen = true`,
   whatever its cursor, and `walks.<walk>.multiCoinSince` = its plan cursor at that run (the cursor
-  the run plans from: capital's is the stored cursor, else the latest stored capital row time). A
+  the run plans from: capital's is the stored cursor, else the latest stored capital row time), in
+  the same `patchExchangeState` patch as the cursor write of the run's first committed window,
+  never before a window commits. A run that commits no window writes neither, so the next run is
+  again the first multi-coin run. So `multiCoinSeen` is never stored without a stored cursor, which
+  a disconnect resets to the floor: a capital walk with only a legacy latest row time that is
+  disconnected before its first window commit still records `multiCoinSince` on its next run. A
   walk whose plan cursor is null at that run (never synced, or a fresh connect) sets no
   `multiCoinSince`: it reads every coin from its floor anyway. A walk with `multiCoinSeen` never
   writes either field again, so a later run after a null-cursor first run records none.
