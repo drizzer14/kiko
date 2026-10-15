@@ -375,13 +375,14 @@ Once a track has merged into `next`, set `KIKO_MUTATION_BASE` to
 changed lines mutate — not everything `next` already contains. (One line; this
 does not contradict the "Mutation testing: small change sets only"
 section above, which sets the base to the change set's OWN base commit
-before it has merged.) The same rule holds for `main`: after a merge of main into the
-change set, the base is the merged main tip.
+before it has merged.)
 
 A change set that merged `next` mid-way, or that stacks on earlier
 unmerged change sets, takes as its mutation base the `next` tip that
 already contains every earlier change set; otherwise the merge-base
 diff also counts the earlier sets' files against the 30 cap.
+
+After a merge of `main` into the change set, the base is the merged main tip.
 
 ## Merge conflicts vs the pre-write guard
 

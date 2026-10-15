@@ -99,9 +99,10 @@ before that early exit, the medium tier runs
 edit to a shipped migration is still checked, and a failure leaves the
 replay's mark ref unmoved so every later Stop fails again.
 
-The medium tier also runs the doc-reading jest suites on a doc change: a path matching
-`harness_doc_roots_pattern` in `scripts/checks/_lib.sh` (read it there for the roots) that is
-whose doc fingerprint (`harness_doc_fingerprint`) differs from the recorded `doc-suites` pass.
+The medium tier also runs the doc-reading jest suites when the doc fingerprint
+(`harness_doc_fingerprint`; roots in `harness_doc_roots_pattern`, `scripts/checks/_lib.sh`)
+differs from the recorded `doc-suites` pass. The pass is rechecked under the lock, so a Stop
+that waited behind one that already passed skips the suites.
 There is no replay-mark dependency: a fresh worktree or a purged state dir runs the step once,
 and a rename out of a root or a delete changes the fingerprint. `harness_doc_suites` finds the
 suites at run time; there is no list to maintain. It finds a suite only when the file holds
@@ -109,10 +110,13 @@ suites at run time; there is no list to maintain. It finds a suite only when the
 discovered (a documented limit). The step runs before `guard-replay.sh` by choice; the order no
 longer matters. Jest runs with `--maxWorkers=2`. The deadline is hookStarted + the budget that
 `node scripts/checks/guard-replay.js step-budget` prints (hook budget minus the call tail minus
-the later-checks reserve; 215 s today), so the checks after the replay keep their reserve. At
-the deadline it stops its own jest pid and exits 2 with a block saying to run `make doc-suites`
-by hand. Zero suites, a missing jest or an unreadable budget also exit 2 (fail-closed). A
-by-hand `make doc-suites` pass IS recorded (physical-root key, and TMPDIR like every harness
+the later-checks reserve; read the formula there), so the checks after the replay keep their
+reserve. At the
+deadline it stops its own jest pid and exits 2 with a block saying to run `make doc-suites`
+by hand. Zero suites, a missing jest, an unreadable budget or a fingerprint hash failure
+while doc files or suites exist also exit 2 before any jest run (fail-closed); "nothing to
+check" comes from the doc-file and suite lists, not from the hash output. A by-hand
+`make doc-suites` pass IS recorded (physical-root key, and TMPDIR like every harness
 fingerprint), so the next Stop skips the same docs.
 
 `tsc --noEmit` is project-wide by

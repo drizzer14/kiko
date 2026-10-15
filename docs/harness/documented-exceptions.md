@@ -978,4 +978,5 @@ verified usage, not dead weight:
   `node scripts/checks/guard-replay.js step-budget` prints, the doc step stops its own jest pid
   and exits 2 with a block telling the agent to run `make doc-suites` by hand.
   Reason: the 300 s hook limit would otherwise kill the Stop tier with no block. Zero
-  discovered suites, a missing jest or an unreadable budget also exit 2 (fail-closed).
+  discovered suites, a missing jest, an unreadable budget or a fingerprint hash failure
+  while doc files or suites exist also exit 2 (fail-closed).
