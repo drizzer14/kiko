@@ -205,8 +205,7 @@
   ],
   "harness/kiko/agents/ops.md": [
     "- Never run git stash, checkout, restore, clean, or apply in the repository, scratch clones included.",
-    "- Never use pkill, killall, or any pattern or group kill. Stop only a process ID you started yourself (kill <pid>), or let the tool timeout end a hung command.",
-    "- Wait for load only via scripts/wait-load.sh; never a ps/pgrep grep loop (kill-guard denies it). `make verify` and mutation gates go through the shared one-at-a-time queue queued by `scripts/job-queue.sh` (see the ops skill's heavy-job section); never start a second heavy job."
+    "- Never use pkill, killall, or any pattern or group kill. Stop only a process ID you started yourself (kill <pid>), or let the tool timeout end a hung command."
   ],
   "harness/kiko/agents/planner.md": [
     "- Work inside the git worktree you are given, as its single editor while you hold it. Never run git checkout, restore, stash, or clean, in any checkout or clone, scratch clones included — commit a WIP or copy the files aside instead.",

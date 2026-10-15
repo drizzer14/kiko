@@ -14,12 +14,18 @@ BATCH READY, and a coordinator-run merge and push after the user's OK.
 
 ## Last sync point
 
-- Harness main `4978749` (plugin 1.3.0, pushed 2026-10-09) holds pff-ios source up to
-  `068a1424`.
-- The next sync source starts after that point. It must include pff-ios `3331487a`,
-  `f3908902`, and `d21fbdc0`: kill-guard cp/mv into a protected folder itself, the xargs fill
-  rule (a fill names a folder only for a recursive copy or a move), and GNU abbreviations read
-  as recursive. The xargs unresolved-destination regression also exists in harness `30500db`.
+Re-verify before you use any value below: `git -C ~/Developer/Projects/harness log -1`, its
+changelog head, and `git -C <pff-ios> log --oneline -1 main`.
+
+- Current values (2026-10-15): harness main `d296f49` (plugin 1.5.0, pushed 2026-10-14) holds
+  pff-ios source from the range `068a1424..e2d96c17` (the h5 sync, 214 commits); pff-ios main
+  was `ad36c4cb` then. Everything on pff-ios main after `e2d96c17` is unsynced.
+- The next sync source starts after that point. It must also carry pff-ios `3331487a`,
+  `f3908902`, and `d21fbdc0`: they are in the synced range but not ported, and the range-find
+  command below does not list them, so carry them by name. They hold kill-guard cp/mv into a
+  protected folder itself, the xargs fill rule (a fill names a folder only for a recursive copy
+  or a move), and GNU abbreviations read as recursive. The xargs unresolved-destination
+  regression also exists in harness `30500db`.
 - Find the range with
   `git -C <pff-ios> log --oneline <last point>..main -- harness scripts/checks scripts/wait-load.sh rules docs/harness CLAUDE.md __tests__`.
   Re-verify the sync point against the harness `git log` and CHANGELOG before you use it.
@@ -32,9 +38,6 @@ in the harness repo):
   on a missing scan root. Portable only to a repo that uses the
   `src/design-system/components/<name>/` convention.
 - Capitalization-tolerant history-word phrases in the history-word comment rule (`0fb10efc`).
-- All of H5 (not synced yet): the job queue (`scripts/job-queue.sh`), run-log wait/gaps, the
-  comment/test-title rules, the pre-commit typecheck hook, the mutation ETA with timeouts, and
-  the H5 closeout.
 - H7 set 5, generic comment-width and history changes: `comment-line-width.js` reads `#`
   comments (shell, YAML, shebang files); `comment-line-width.sh` widened scope, per-file mode
   and the shrink-only exact-line pin file; the `fast.sh` case for shell, YAML and githooks
@@ -46,15 +49,25 @@ in the harness repo):
   over-count warning; the job-queue START line naming the head sha; doc-suite discovery of
   pin-file literals; the history-id flag exemption; the tracked-scripts-executable
   invariant; the job-queue gate forwarding the `--list` `warning:` line and printing each
-  TIMEOUT-HEAVY line after the DONE tail; the doc fingerprint covering every pin-file literal
-  form that discovery accepts; the history-id exemption narrowed to a hyphen with no word
-  character before it.
+  TIMEOUT-HEAVY line before the DONE line (see the ops skill's "Load rule"); the doc
+  fingerprint covering every pin-file literal form that discovery accepts; the history-id
+  exemption narrowed to a hyphen with no word character before it.
 - H7 set 7, generic main-merge guard: `scripts/ff-main.sh` (moves main only to a sha with a
   green queued `verify` line); the done.log sixth field (the tested HEAD); the kill-guard
-  `mainFastForward` kind with its scan of scripts and data bodies; the docs for these.
+  `mainFastForward` kind with its scan of scripts and data bodies; the docs for these; in
+  `job-queue.sh`: `tree_is_clean` (`--no-optional-locks` and `--untracked-files=all`),
+  `confirm_tested_head`, and `read_tested_head`'s unknown rule.
+- H7 set 3, generic doc-suite gate: the `medium.sh` doc-reading-suites Stop step; the `_lib.sh`
+  helpers `harness_doc_roots_pattern`, `harness_doc_suites`, `harness_doc_files`,
+  `harness_doc_suite_fixtures`, `harness_doc_fingerprint`, and `harness_doc_suites_by_hand`;
+  `make doc-suites`; `guard-replay.js step-budget`; the `--maxWorkers=2` doc run and its
+  300-25-60 budget.
+- H7 set 8, generic probe and test support: the `kill-guard-probe.sh` stub warm-up before the
+  alarm and its `KIKO_PROBE_STUB_FIRST_RUN_DELAY` test seam; the
+  `__tests__/test-support/warm-executables.ts` helper (`warmExecutables`) and its use in the
+  tests that exec a fresh script; the `fast.sh` shell, YAML and githooks arm that runs
+  `security.sh` beside `comment-line-width.sh`.
 - The CLAUDE.md trim (docs/harness/checks.md split).
-- A sync branch `h5-sync` exists in drizzer14/harness (tip `d92f28d`); its plugin patch list
-  P1-P25 is pending the user.
 
 ## Classification
 
@@ -190,19 +203,14 @@ Every count and exit code is the orchestrator's own measured result.
 
 - `run-log.mjs` was ported harness -> pff-ios from `cc5cd0f` (`d761245`); the
   byte-identical rule is in `harness-workflow`'s "Run log".
-- `run-log.mjs` changed again in pff-ios and needs porting to the harness repo: port whatever
-  `git diff e2d96c17..f6f96f68 -- harness/kiko/scripts/run-log.mjs` shows (the change set's own
-  range), byte-identical.
 - The script has no dispatch/step-start event, so per-step `Minutes` miss the work before the
   first verdict; fix in the harness repo.
-- The source finish snippet prints "run-log: not installed, skipped" also when `node finish`
-  exits 1 (unknown run) or 2 (empty RUN_ID), hiding a real failure; fix in the harness repo
-  (pff-ios now has the corrected D4 snippet text; the harness repo still needs it).
-- The source start snippet exits 1 with empty stdout when the installed copy is missing,
-  although its text says it "degrades to a no-op"; pff-ios now has the corrected D4 snippet
-  text; fix it in the harness repo.
-- The source harness-workflow "Run log" text says `--step <id>`, but the script needs an
-  integer (`--step N`); pff-ios now says `--step N`; fix it in the harness repo at sync 3.
+- Carried from H7: the mutation ETA split by changed-line weights; the whole history-date
+  rule; the retrospect run-log lines; the job-queue test teardown wait
+  (`tests/job-queue.test.mjs` ENOTEMPTY).
+- Carried Minors: the doc fingerprint misses a `../fixtures/...pinned` literal
+  (`harness_doc_suite_fixtures` needs a quote right before `fixtures/`; `harness_doc_suites`
+  accepts `../`); `medium.sh` computes the doc lists twice per Stop.
 - G1 port: in the harness repo, a comment-only source mutates nothing whatever its colocated
   tests did (pff-ios `scripts/checks/mutation.sh` has no whole-file keep).
 - kill-guard: port to drizzer14/harness the config long-option prefix fix, the new denies
@@ -228,9 +236,8 @@ From sync 2 and earlier:
 - Rules: the task-id skip list misses IE-11, ERC-20, CP-1252, GPT-4, FIPS-140, MPEG-4;
   prose hits "item 0", "Part B", "Audit 2024", "Option A"; history-word known misses and hits
   are pinned in fixtures.
-- Mutation: colocated tests under `__tests__/` not seen by the comment-only filter; the
-  filter runs before the cap (slow on huge diffs); `harness_code_fingerprint` ignores `.sh`
-  and `.cjs` edits.
+- Mutation: the comment-only filter runs before the cap (slow on huge
+  diffs); `harness_code_fingerprint` ignores `.sh` and `.cjs` edits.
 - `lint.sh` ROOT from a logical pwd (symlinked project path).
 - `rules/fixtures/*/src/__tests__/*.ts` match Jest's default testMatch in a project (needs
   `testPathIgnorePatterns` or a rename).

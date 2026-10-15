@@ -21,7 +21,7 @@
 | `npm run check:screen-imports` | `scripts/checks/screen-imports.sh` | a cross-screen import (`kiko-no-cross-screen-import`) fails project-wide | project-wide (`check:all`) + pre-write guard |
 | `npm run check:feature-imports` | `scripts/checks/feature-imports.sh` (+ `feature-imports.js`) | an import that crosses a feature without its barrel (`kiko-feature-imports`, B2) fails; so do the `--tree` layout findings over `src/` (loose file at a container root, unit without `index.ts`, undeclared container, a barrel that re-exports test code or another feature, a feature-level value-import cycle) | project-wide (`check:all`) + pre-write guard |
 | `npm run check:blank-line-separation` | `scripts/checks/blank-line-separation.sh` | a blank-line-separation violation (`kiko-blank-line-separation`) fails project-wide | project-wide (`check:all`) + pre-write guard |
-| `npm run check:comment-line-width` | `scripts/checks/comment-line-width.sh` (+ `.js`) | a physical line over 100 columns holding comment text (`kiko-comment-line-width`; a `#` comment of a shell or YAML file too) fails project-wide, unless the comment has no wrap point (one long URL) or the exact line is in `scripts/checks/comment-line-width.pinned` (shrink-only; a stale pin fails); a path argument runs per-file mode; no override of any kind (kiko-code-style "Wrap comments at 100 columns", kiko-linter's `comment-line-width.js` bullet for the scope) | project-wide (`check:all`) + pre-write guard (TypeScript) + fast (shell, YAML, githooks write) |
+| `npm run check:comment-line-width` | `scripts/checks/comment-line-width.sh` (+ `.js`) | a physical line over 100 columns holding comment text (`kiko-comment-line-width`; a `#` comment of a shell or YAML file too) fails project-wide, unless the comment has no wrap point (one long URL) or the exact line is in `scripts/checks/comment-line-width.pinned` (shrink-only; a stale pin fails); a path argument runs per-file mode; no override of any kind (kiko-code-style "Wrap comments at 100 columns", kiko-linter's `comment-line-width.js` bullet for the scope) | project-wide (`check:all`) + pre-write guard (TypeScript) + fast (shell, YAML, githooks write; with `security.sh` too) |
 | `npm run check:component-i18n-namespace` | `scripts/checks/component-i18n-namespace.sh` (+ `.js`) | a file under `src/design-system/components/<name>/` that reads an i18n key `components.<other>.*`, where `<other>` is not the camelCase form of `<name>` (`kiko-component-i18n-namespace`), fails project-wide; no per-file mode, no exemption list (kiko-translator "A string moved into a shared component changes namespace") | project-wide (`check:all`) + pre-write guard |
 | `npm run check:guard-replay` | `scripts/checks/guard-replay.sh` (+ `.js` planner/runner) — the unchanged pre-write guard (`pre-write-guard.sh`), run once per `.ts`/`.tsx` file the session changed, with BEFORE = the file at HEAD, or at the parent of the earliest session commit (one that no worktree's passed-replay mark ref `refs/kiko/guard-replay/<worktree id>` reaches and that is newer than the floor ref `refs/kiko/guard-replay-floor` or has a session commit as a parent; through a merge commit, a file the merge kept from one parent takes that parent's baseline, and a file it left different from every parent is checked against both parents' baselines (see `guard-replay.js`'s header)), and AFTER = the working-tree file | any finding the change ADDED fails, naming file, rule, and line (a Bash/python write or its commit bypassed the pre-write guard); a pre-existing finding does not; a replay or guard that could not run fails too (fail closed), and so does the Stop tier's deadline (at most 150 s) | medium (Stop/SubagentStop) + project-wide (`check:all`, no deadline) |
 | `npm run check:shipped-migrations` | `scripts/checks/shipped-migrations.sh` (+ `.js`) | a shipped migration file that is modified, deleted, or renamed fails; a new migration passes; no override and no exemption list. The per-file rules, the baseline, and the known limits live in kiko-linter's "Shipped migrations are never edited" | medium (Stop/SubagentStop, before the replay and the HEAD-moved early exit) + project-wide (`check:all`) |
@@ -66,9 +66,9 @@ Composite scripts:
   next"). **Clearing a TIMEOUT-HEAVY file:** the orchestrator proves each timed-out mutant in
   plain jest, or writes it in the BATCH READY as equivalent. The gate keeps failing for that
   file, so the BATCH READY carries the failed gate with the proofs. Never raise the timeout;
-  there is no allowlist file. A queued gate (`scripts/job-queue.sh gate`) prints, after its
-  DONE tail, each `TIMEOUT-HEAVY` line of the gate log once, so the waiter's output shows the
-  ruling. The mutation step tees its output to a stable,
+  there is no allowlist file. A queued gate (`scripts/job-queue.sh gate`) prints, after
+  the gate-log summary lines and before the DONE line, each `TIMEOUT-HEAVY` line of the gate log
+  once, so the waiter's output shows the ruling. The mutation step tees its output to a stable,
   tailable progress log and prints an ETA from run history (shared by all
   worktrees) — a split of normal-mutant cost and the timeout share at a fitted
   timed-out cost, times this run's actual mutant count, printed live the moment
@@ -85,7 +85,7 @@ Automatic wiring (`harness/kiko/hooks/hooks.json`, via the
 (`scripts/checks/fast.sh`: lint, security, secrets, import-order,
 full-word-identifiers on the touched file) runs on `PostToolUse` for
 `Edit|Write|MultiEdit`; for a `.sh`, `.bash`, `.yml`, `.yaml` or githooks write it runs
-`comment-line-width.sh` on that file instead (read `fast.sh`). The medium
+`comment-line-width.sh` and `security.sh` on that file instead (read `fast.sh`). The medium
 tier (`scripts/checks/medium.sh`: dup, override-guard scoped to the
 session's changed source files; knip, deps, the Semgrep rule
 fixtures, the Info.plist security assertions, and typecheck
@@ -180,7 +180,7 @@ run from it. Allowed there: the recovery options `--abort`, `--quit`,
 The script reads `${KIKO_QUEUE_DIR:-$HOME/.claude/kiko-queue}/done.log`: lines are
 `kind label exit start end head`, where head is the full 40-character sha the queue tested, or
 `unknown` unless the tree is clean at START and again at the end (`git --no-optional-locks
-status --porcelain`, untracked files counted), HEAD is unchanged, and the repository is readable.
+status --porcelain --untracked-files=all`), HEAD is unchanged, and the repository is readable.
 The queue never takes the worktree's index.lock for these reads. A job that edits its own tree
 without committing records `unknown`; an edit reverted before the end is not seen, and ignored
 files (`.env`, `node_modules`) are not counted; keep the tree untouched until DONE. The LAST
@@ -197,7 +197,8 @@ variable the same command assigns is expanded only into write targets and git di
 $d`): a segment is judged as written, then expanded, and the expansion can only add a deny; a
 kill target and a command word are never expanded. It reads a script file a shell runs (`bash
 <file>`, `source`, a shebang path; one level, at most 256 KiB) and denies a kill in it (a
-heredoc in it is judged for kills only). `kill -0` and `kill -s 0` are harmless only when no later
+heredoc in it is judged for the `SCRIPT_KINDS` kinds in kill-guard.js: kills and a raw main
+fast-forward). `kill -0` and `kill -s 0` are harmless only when no later
 word before the targets can be an option: a `-X` word, a word that may expand, or a `-N` word
 with more words after it (`sendsNoSignal`; `kill -0 -s KILL -1` denies), and
 `$1`..`$9` is a caller's own pid, in a typed command as in a script;
@@ -208,8 +209,8 @@ overrides), `git commit-tree`, and a config-style route to the same end (`git co
 options resolved by git's prefix rule, `include.path`, GIT_CONFIG_COUNT/KEY/VALUE/PARAMETERS
 exports). A `GIT_CONFIG_GLOBAL`/`GIT_CONFIG_SYSTEM` swap is not judged: the local-scope
 core.hooksPath that `scripts/ensure-git-hooks.sh` writes outranks both. A heredoc body no shell
-runs is judged only for the `DATA_KINDS` kinds (kill, stash, hook skips by option or core.hooksPath,
-main checkout, wait loop), so text documenting other commands is allowed there; a body a
+runs is judged only for the `DATA_KINDS` kinds (the set in kill-guard.js; read it there), so
+text documenting other commands is allowed there; a body a
 shell or eval runs is judged in full. An error while judging denies (`internalError`); a
 malformed payload, an empty command, and a missing node allow. `git rebase`, `cherry-pick`,
 and `am` replay commits without

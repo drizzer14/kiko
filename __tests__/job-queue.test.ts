@@ -27,6 +27,7 @@ import {
   writeExecutable,
   buildMutationRepository,
 } from './test-support/mutation-repository';
+import { warmExecutables } from './test-support/warm-executables';
 
 // scripts/job-queue.sh is the one in-repo queue for heavy jobs. Each test runs it against a
 // throwaway KIKO_QUEUE_DIR with `make`, `npm`, `caffeinate`, and `pmset` stubbed, so no real job
@@ -86,11 +87,13 @@ const createSandbox = (): Sandbox => {
   const root = mkdtempSync(join(tmpdir(), 'kiko-job-queue-'));
   const bin = join(root, 'bin');
   mkdirSync(bin);
-  writeExecutable(join(bin, 'make'), TOOL_STUB);
-  writeExecutable(join(bin, 'npm'), TOOL_STUB);
-  writeExecutable(join(bin, 'caffeinate'), CAFFEINATE_STUB);
-  writeExecutable(join(bin, 'pmset'), PMSET_STUB);
-  writeExecutable(join(bin, 'uptime'), UPTIME_STUB);
+  warmExecutables([
+    writeExecutable(join(bin, 'make'), TOOL_STUB),
+    writeExecutable(join(bin, 'npm'), TOOL_STUB),
+    writeExecutable(join(bin, 'caffeinate'), CAFFEINATE_STUB),
+    writeExecutable(join(bin, 'pmset'), PMSET_STUB),
+    writeExecutable(join(bin, 'uptime'), UPTIME_STUB),
+  ]);
   writeFileSync(join(root, 'power'), AC_POWER);
 
   const sandbox: Sandbox = {
@@ -703,6 +706,8 @@ describe('scripts/job-queue.sh gate refusals', () => {
 // ends on its own after a minute, so a failed test cannot leave it running for long.
 const BLOCKING_MAKE_STUB = [
   '#!/usr/bin/env bash',
+  // A warm-up run has no sandbox variables and must not block.
+  '[ -n "$KIKO_STUB_PID" ] || exit 0',
   'echo $$ > "$KIKO_STUB_PID"',
   'exec sleep 60',
   '',
@@ -775,9 +780,11 @@ const CHAIN_LEAF_STUB = [
 // Installs the chain as the job and points its stubs at the files a test reads.
 const useChain = (sandbox: Sandbox): void => {
   const bin = join(sandbox.root, 'bin');
-  writeExecutable(join(bin, 'make'), CHAIN_MAKE_STUB);
-  writeExecutable(join(bin, 'chain-npm'), CHAIN_NPM_STUB);
-  writeExecutable(join(bin, 'chain-leaf'), CHAIN_LEAF_STUB);
+  warmExecutables([
+    writeExecutable(join(bin, 'make'), CHAIN_MAKE_STUB),
+    writeExecutable(join(bin, 'chain-npm'), CHAIN_NPM_STUB),
+    writeExecutable(join(bin, 'chain-leaf'), CHAIN_LEAF_STUB),
+  ]);
   sandbox.environment.KIKO_STUB_BIN = bin;
   sandbox.environment.KIKO_STUB_PID = join(sandbox.root, 'job-pid');
   sandbox.environment.KIKO_STUB_MIDDLE = join(sandbox.root, 'middle-pid');
@@ -871,7 +878,7 @@ describe.each([
 
   it(`exits ${exitCode} while the job runs, stops the job, and releases the lock`, async () => {
     const sandbox = createSandbox();
-    writeExecutable(join(sandbox.root, 'bin/make'), BLOCKING_MAKE_STUB);
+    warmExecutables([writeExecutable(join(sandbox.root, 'bin/make'), BLOCKING_MAKE_STUB)]);
     sandbox.environment.KIKO_STUB_PID = join(sandbox.root, 'job-pid');
     sandbox.environment.KIKO_STUB_RELEASE = join(sandbox.root, 'release');
     const worktree = createWorktree(sandbox, 'one');
@@ -893,13 +900,16 @@ describe.each([
 
   it(`exits ${exitCode} without removing a lock another waiter now holds`, async () => {
     const sandbox = createSandbox();
-    writeExecutable(join(sandbox.root, 'bin/make'), BLOCKING_MAKE_STUB);
+    warmExecutables([writeExecutable(join(sandbox.root, 'bin/make'), BLOCKING_MAKE_STUB)]);
     sandbox.environment.KIKO_STUB_PID = join(sandbox.root, 'job-pid');
     const worktree = createWorktree(sandbox, 'one');
 
     const waiter = startQueue(sandbox, 'verify', worktree, 'one');
     await waitFor(() => readLines(join(sandbox.root, 'job-pid')).length === 1);
     const lock = join(sandbox.queue, 'lock');
+    // The queue renames the job group into the owner record after the job starts; a lock
+    // swapped before that rename would be overwritten by it.
+    await waitFor(() => readlinkSync(lock).split(' ')[1] === String(readPid(sandbox, 'job-pid')));
     rmSync(lock);
     holdLock(sandbox, `${process.pid} - verify other /elsewhere`);
     waiter.child.kill(signal);
@@ -992,7 +1002,7 @@ describe.each([
 
   it(`signals only the group it created for its own job on ${signal}, not the one its record names`, async () => {
     const sandbox = createSandbox();
-    writeExecutable(join(sandbox.root, 'bin/make'), BLOCKING_MAKE_STUB);
+    warmExecutables([writeExecutable(join(sandbox.root, 'bin/make'), BLOCKING_MAKE_STUB)]);
     sandbox.environment.KIKO_STUB_PID = join(sandbox.root, 'job-pid');
     const worktree = createWorktree(sandbox, 'one');
     const foreign = startForeignGroup(sandbox);
@@ -1000,6 +1010,9 @@ describe.each([
     const waiter = startQueue(sandbox, 'verify', worktree, 'one');
     await waitFor(() => readLines(join(sandbox.root, 'job-pid')).length === 1);
     const jobPid = Number(readFileSync(join(sandbox.root, 'job-pid'), 'utf8'));
+    // The queue names the job group in the record after the job starts; a lock swapped before
+    // that rename would be overwritten by it.
+    await waitFor(() => readlinkSync(join(sandbox.queue, 'lock')).split(' ')[1] === String(jobPid));
     rmSync(join(sandbox.queue, 'lock'));
     holdLock(sandbox, `${waiter.child.pid} ${foreign} verify one ${worktree}`);
     waiter.child.kill(signal);
@@ -1012,8 +1025,10 @@ describe.each([
 
   it(`stops the job and keeps no lock when ${signal} arrives before the queue knows the job's pid`, async () => {
     const sandbox = createSandbox();
-    writeExecutable(join(sandbox.root, 'bin/make'), BLOCKING_MAKE_STUB);
-    writeExecutable(join(sandbox.root, 'bin/fork-hook'), FORK_HOOK_STUB);
+    warmExecutables([
+      writeExecutable(join(sandbox.root, 'bin/make'), BLOCKING_MAKE_STUB),
+      writeExecutable(join(sandbox.root, 'bin/fork-hook'), FORK_HOOK_STUB),
+    ]);
     sandbox.environment.KIKO_STUB_PID = join(sandbox.root, 'job-pid');
     sandbox.environment.KIKO_STUB_HOOK_SIGNAL = signal;
     sandbox.environment.KIKO_QUEUE_FORK_HOOK = join(sandbox.root, 'bin/fork-hook');
@@ -1031,7 +1046,9 @@ describe.each([
   it(`sends no group signal on ${signal} when pgrep cannot tell, and keeps the lock`, async () => {
     const sandbox = createSandbox();
     useChain(sandbox);
-    writeExecutable(join(sandbox.root, 'bin/pgrep'), '#!/usr/bin/env bash\nexit 2\n');
+    warmExecutables([
+      writeExecutable(join(sandbox.root, 'bin/pgrep'), '#!/usr/bin/env bash\nexit 2\n'),
+    ]);
     sandbox.environment.KIKO_QUEUE_STOP_POLLS = '3';
     const worktree = createWorktree(sandbox, 'one');
 
@@ -1183,7 +1200,7 @@ describe('scripts/job-queue.sh stale state', () => {
 
   it('keeps the lock after the job ends while a process of the job still runs, then frees it', async () => {
     const sandbox = createSandbox();
-    writeExecutable(join(sandbox.root, 'bin/make'), LEAKING_MAKE_STUB);
+    warmExecutables([writeExecutable(join(sandbox.root, 'bin/make'), LEAKING_MAKE_STUB)]);
     sandbox.environment.KIKO_STUB_PID = join(sandbox.root, 'job-pid');
     sandbox.environment.KIKO_STUB_GRANDCHILD = join(sandbox.root, 'grandchild-pid');
     sandbox.environment.KIKO_STUB_RELEASE = join(sandbox.root, 'release');

@@ -29,7 +29,7 @@ fast+medium gate is picked up by `make verify` automatically through
 
 `scripts/job-queue.sh` is not a `scripts/checks` wrapper: its QUEUED/WAITING/START/DONE lines are its normal stdout, not a failure block.
 A gate forwards the `--list` over-count `warning:` line before QUEUED and prints each
-`TIMEOUT-HEAVY` line of its log after the DONE tail (read `scripts/job-queue.sh`).
+`TIMEOUT-HEAVY` line of its log before the DONE line (the ops skill's "Load rule" has the order).
 
 Every check wrapper in `scripts/checks/` follows the same shape (read
 `scripts/checks/_lib.sh` for the exact helper):
@@ -174,7 +174,8 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   heredoc inside a body that runs is denied only when that body is a
   shell's stdin script (`bash <<'EOF'`); a kill or `git stash` line in
   a body of a typed command is denied, while a heredoc inside a scanned script file is judged
-  for kills only. Here-strings: a `<<<` target that a
+  for the kills and a raw main fast-forward (`SCRIPT_KINDS` in kill-guard.js).
+  Here-strings: a `<<<` target that a
   shell without `-c` reads (`bash <<< "…"`) is its script, judged in full
   (a redirect into a guarded folder is a shell write, `bash <<< "git commit-tree HEAD"` a hook
   skip). A command
@@ -545,7 +546,12 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   them, or stays parser-only (read the runner's header for the exact
   set). The test-only env var
   `KIKO_PROBE_REFUSE_ALSO` adds refused words; the refusal tests use it
-  with the sentinel and a fake folder (`kg/fake_main`). No real kill
+  with the sentinel and a fake folder (`kg/fake_main`). The runner runs each stub once before
+  its alarm starts and clears the log, so the alarm bounds only the probe's own work; the
+  test-only `KIKO_PROBE_STUB_FIRST_RUN_DELAY=<seconds>` makes a stub sleep on its first call to
+  prove it (read the runner's header). A tightening of the guard is proven by a differential
+  over every test literal x every cwd, base against HEAD; a hand-picked sample is not proof.
+  No real kill
   word and no real main path is ever handed to the runner; they appear
   ONLY in NON-executed parser tests (node: string -> `decide()`). The
   `decide(command, options)` options `sentinelKillCommands` and
@@ -1326,6 +1332,11 @@ after code is not read. They are in
 only; `check:security` and `check:rules` run them (fixtures
 `rules/fixtures/kiko-no-history-*-shell-comment.{bad,good}.sh`). The id arm matches `U0` in a
 comment that writes the git flag `-U0`: write `--unified=0` instead.
+Known limit: the fast shell arm's Semgrep `githooks/*` path include matches relative to the
+hook's cwd, so a githooks file edited from a session whose cwd is not at or above it (for
+example a main-rooted session editing an Orca worktree's githooks file) gets no per-write
+history-rule finding; `*.sh`/`*.bash` match from any cwd; project-wide `check:security` still
+catches it.
 
 ## `kiko-no-history-id-comment`
 
@@ -2674,6 +2685,13 @@ they land.
   the deadline (a slow Semgrep stub through the
   `KIKO_GUARD_REPLAY_DEADLINE_SECONDS` test seam, a spent hook budget,
   and the clamp), and `medium.sh` itself.
+
+## A test that execs a fresh script warms it first
+
+A test that writes and execs a fresh script on macOS warms it once before any time bound starts
+(`warmExecutables` in `__tests__/test-support/warm-executables.ts`). The first exec of a
+never-seen script waits on XProtect: about 0.3 s alone, seconds under fan-out. Widen a time
+budget only with that measurement, never as a guess.
 
 ## Harness and hook changes land through a worktree
 

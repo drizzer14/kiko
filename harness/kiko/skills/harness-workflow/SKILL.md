@@ -267,6 +267,20 @@ relaxing a gate or editing CLAUDE.md; hold it until the user confirms
 in this orchestrator's own terminal. Pin each user device finding with
 a test in the fix commit.
 
+- A ruling that narrows a rule or a guard is proven by a differential, base against HEAD, over
+  the cases the rule decides; a sample the author picked is not proof.
+- Plan text follows later decisions: the orchestrator updates the plan file in the same step that
+  records the ruling, so the plan never contradicts it.
+- A guard change that alters a command the coordinator runs ships its CLAUDE.md change in the
+  same commit and needs a user ruling. The user answers in the orchestrator's own terminal; the
+  orchestrator does not ask there (no AskUserQuestion; its question goes through the coordinator).
+- A guard tightening is proven by a differential over every test literal x every cwd (kiko-linter
+  "Probing the kill-guard").
+- A planner's count (files, cases, call sites) is a floor. The developer measures the real
+  count and the brief says so.
+- A change that needs a port to the shared harness repository lists the port item in the
+  harness-sync skill in the same change.
+
 ## Never pattern-kill a process
 
 Never use pkill, killall, or any pattern or group kill. Stop only a
@@ -640,9 +654,8 @@ the job is DONE; keep that tree untouched from the queue time until DONE, and ne
 a developer still edits that tree. done.log's head field is `unknown` if the tree was dirty at
 START or at the end, or HEAD moved.
 
-A gate forwards the `--list` over-count `warning:` line once before QUEUED, and after its DONE
-tail prints each `TIMEOUT-HEAVY` line of the gate log once (read `scripts/job-queue.sh`), so the
-waiter's output shows both.
+A gate's forwarded warning and `TIMEOUT-HEAVY` lines, and their order against the DONE line,
+are in the ops skill's "Load rule" section.
 
 ## Long briefs live in a file
 

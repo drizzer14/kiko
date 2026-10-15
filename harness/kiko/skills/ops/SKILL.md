@@ -234,6 +234,7 @@ copies it into the device-test request it sends the user.
 - **Network rule.** Any TLS, certificate-pinning, rate-limit, or
   migration-behavior change is device-verified BEFORE archiving, not
   after — Jest cannot see real network/device behavior.
+- Archive invariants: release skill step 7.
 
 ## Maestro on this host
 
@@ -281,7 +282,8 @@ too. A gate refuses a tip whose `mutation.sh` has no changed-line `--list` ("mer
 bash -> Stryker) leaves the leaf running; the queue owns the job's process group. A queued check:all
 or verify reads the worktree throughout the run; never queue one while a developer still edits that
 tree, and keep that tree untouched until DONE. done.log's head field is the full 40-character HEAD
-only when the tree (untracked files counted) is clean at START and again at the end and HEAD is
+only when the tree (`tree_is_clean` in `scripts/job-queue.sh`: untracked files counted) is
+clean at START and again at the end and HEAD is
 unchanged, else `unknown`; an edit reverted before the end is not seen, and ignored files (`.env`,
 `node_modules`) are not counted.
 
@@ -289,9 +291,11 @@ done.log lines are `kind label exit start end head`. Main moves only through
 `bash scripts/ff-main.sh <sha>`, for a sha whose last `verify` line has that full head and exit 0;
 never fast-forward main by hand (the kill-guard denies it).
 
-A gate forwards the `--list` over-count `warning:` line once before QUEUED, and after its DONE
-tail prints each `TIMEOUT-HEAVY` line of the gate log once (read `scripts/job-queue.sh`), so the
-waiter's output shows both.
+A gate forwards the `--list` over-count `warning:` line once before QUEUED. After the gate-log
+summary lines and before the DONE line it prints each `TIMEOUT-HEAVY` line of the gate log once
+(read the end of `scripts/job-queue.sh`), so the waiter's output shows both. A ruling that adds a
+failure line to the gate log also adds its prefix to the DONE summary grep in
+`scripts/job-queue.sh` (read it for the current list); `REPORT SCOPE MISMATCH` is not in it today.
 
 The ONE allowed group kill (user ruling 2026-10-13): `scripts/job-queue.sh` may send TERM to the process group it created for its own job (`set -m`, then the group-TERM form its header shows), only while `pgrep -g` finds a member, never any other group; the lock stays live while any process of that group lives. You still never run a group or pattern kill yourself (kill-guard denies it).
 

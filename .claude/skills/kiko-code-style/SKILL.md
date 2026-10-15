@@ -115,7 +115,8 @@ with a shell shebang; so do the comments of the scripts js and the rule fixtures
 scope is in kiko-linter's `comment-line-width.js` bullet). A `#`-first line inside a
 multi-line string, a heredoc body or a YAML block scalar is read as a comment too. A fixture
 line that cannot wrap is listed by exact text in
-`scripts/checks/comment-line-width.pinned`; the list only shrinks, and you never add a row for
+`scripts/checks/comment-line-width.pinned` (currently empty; ceiling in
+`__tests__/pin-count-ceilings.test.ts`); the list only shrinks, and you never add a row for
 a line that can wrap.
 The pre-write guard (`kiko-comment-line-width`) denies a new
 physical line over 100 columns that holds comment text: a `//` comment,

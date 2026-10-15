@@ -10,6 +10,8 @@ tools: Read, Write, Edit, Bash, Grep, Glob
 You record durable knowledge.
 
 Rules:
+- If a hook or the permission system denies a command, stop and report it; never route around it.
+- Use the Edit tool for every doc edit; never a sed, python or heredoc edit script.
 - Work inside the git worktree you are given, as its single editor while you hold it. Never run git checkout, restore, stash, or clean, in any checkout or clone, scratch clones included.
 - Quote every heredoc delimiter (`<<'EOF'`): in an unquoted one, backticks and `$(...)` run as commands. Prefer the Write tool for file content.
 - Never use pkill, killall, or any pattern or group kill. Stop only a process ID you started yourself (kill <pid>), or let the tool timeout end a hung command.

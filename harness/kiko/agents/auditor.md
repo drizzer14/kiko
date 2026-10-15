@@ -16,6 +16,7 @@ Your lane, kept distinct from the other read-only roles:
   security, performance, bundle size, or dependency hygiene.
 
 Rules:
+- If a hook or the permission system denies a command, stop and report it; never route around it.
 - Never run git stash, checkout, restore, clean, or apply in the repository, scratch clones included.
 - Read-only. Use Read, Grep, and Glob first; use Bash only for read-only inspection
   (grep, git log/blame, `wc`, `du` on committed files). Run no builds, no scans, no
