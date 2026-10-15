@@ -3,6 +3,8 @@ import { ScrollView, View } from 'react-native';
 import { useBottomTabBarHeight } from 'react-native-bottom-tabs';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import LargeTitleHeading, { useLargeTitleScroll } from '../large-title-heading';
+
 import { styles } from './screen.styles';
 import type { ScreenProps } from './screen.props';
 import { resolveBottomClearance } from './bottom-clearance';
@@ -58,6 +60,9 @@ const Screen: FC<ScreenProps> = ({
   // content) each own it instead — reserving it in `content` too would count
   // it twice.
   const contentOwnsClearance = !bleedBottom && footer === undefined;
+  // Only set while the screen's title is too long for the native large title and shows as a
+  // heading in the content (see `LargeTitleHeading`); otherwise it adds nothing.
+  const headingScrollProps = useLargeTitleScroll();
 
   if (scroll) {
     return (
@@ -112,7 +117,10 @@ const Screen: FC<ScreenProps> = ({
           // while still dismissing the keyboard on taps to inert areas.
           keyboardShouldPersistTaps="handled"
           contentContainerStyle={styles.scrollContent(footer !== undefined)}
+          {...headingScrollProps}
         >
+          <LargeTitleHeading />
+
           {children}
         </ScrollView>
         {footer ? (
