@@ -2479,7 +2479,7 @@ function scriptKillFinding(scriptFile, context) {
   if (scriptFile === null || !context.rules.scanScripts) return null;
   const { operand, requireShebang } = scriptFile;
   if (operand === undefined) return null;
-  const scan = { ...context.rules, killOnly: true, scanScripts: false, checkWrites: false };
+  const scan = { ...context.rules, kinds: SCRIPT_KINDS, scanScripts: false, checkWrites: false };
   for (const directory of context.directories) {
     const file = resolveDirectory(directory, operand);
     const text = file === null ? null : readScriptFile(file, context.rules, requireShebang);
@@ -2769,8 +2769,14 @@ function observeWaitLoops(watch, segment, spans) {
   return closed.find((finding) => finding !== null) ?? null;
 }
 
-// A script scan looks for kills only; any other finding in a script file is not its business.
-const wanted = (finding, rules) => (rules.killOnly && finding?.kind !== 'kill' ? null : finding);
+// The finding kinds a pass reports: a script file is read for kills only, a heredoc body that no
+// shell is known to run is read for a kill or a git stash only, and every other finding in either
+// is not that pass's business. `null` reports every kind.
+const SCRIPT_KINDS = new Set(['kill']);
+const DATA_KINDS = new Set(['kill', 'stash']);
+
+const wanted = (finding, rules) =>
+  rules.kinds !== null && !rules.kinds.has(finding?.kind) ? null : finding;
 
 function firstFinding(lines, depth, checkHeredoc, rules) {
   for (const line of lines) {
@@ -2823,6 +2829,13 @@ const withVariables = (variables, assigned) =>
     ]),
   ]);
 
+// The variables after one segment. Only a write or a directory is judged through a variable, and
+// a pass that reports kills and stashes alone judges neither, so it tracks none.
+const variablesAfter = (variables, segment, separator, rules) =>
+  rules.kinds === null
+    ? withVariables(variables, assignedVariables(segment, variables, separator))
+    : variables;
+
 // The texts of `entries` (heredoc bodies or nested spans) that belong to a
 // segment, by its index. Grouped once per line, since a line can hold
 // thousands of segments.
@@ -2856,8 +2869,9 @@ function followingCommands(segments) {
 // each body is checked on its own for a kill or a git stash. Only a body a
 // shell reads as its script is also checked for an unquoted heredoc; any
 // other body is text, so a `<<word` in it is not an operator, and it is not
-// checked for shell writes either (a commit message or a notes file that
-// shows `sed -i` or `> src/…` writes nothing). `place` holds the
+// checked for shell writes or any finding but a kill or a stash, and no variable the command
+// assigns reaches into it (a commit message or a notes file that shows `sed -i`, `git commit-tree`,
+// or `pid=-1; kill -9 $pid` runs nothing). `place` holds the
 // `directories` the line may start in and the `variables` the command has
 // assigned so far (a Map); every nested line runs where its segment does.
 function findDanger(line, depth, checkHeredoc, place, rules) {
@@ -2902,10 +2916,7 @@ function findDanger(line, depth, checkHeredoc, place, rules) {
     if (!blank) {
       moveDirectory(location, { segment, before, after, next: nextCommands[index] });
       settleFallback(location, after);
-      location.variables = withVariables(
-        location.variables,
-        assignedVariables(segment, location.variables, after),
-      );
+      location.variables = variablesAfter(location.variables, segment, after, rules);
     }
     if (closes[index]) leaveSubshell(location);
     before = blank && CONTINUED_ON_NEXT_LINE.has(before) ? before : after;
@@ -2913,10 +2924,12 @@ function findDanger(line, depth, checkHeredoc, place, rules) {
   if (checkHeredoc && heredoc !== null) return { kind: 'heredoc', detail: heredoc };
 
   const inItsPlace = (entry) => ({ text: entry.text, ...placesAt[entry.segmentIndex] });
+  const asData = (entry) => ({ ...inItsPlace(entry), variables: new Map() });
+  const dataRules = { ...rules, kinds: DATA_KINDS, checkWrites: false, scanScripts: false };
 
   return (
     firstFinding([...nested.map(inItsPlace), ...scripts], depth, checkHeredoc, rules) ??
-    firstFinding(bodies.map(inItsPlace), depth, false, { ...rules, checkWrites: false })
+    firstFinding(bodies.map(asData), depth, false, dataRules)
   );
 }
 
@@ -2946,7 +2959,7 @@ function decide(command, options = {}) {
     projectCommonDirectory: gitCommonDirectory(options.projectRoot ?? PROJECT_ROOT),
     checkWrites: true,
     scanScripts: true,
-    killOnly: false,
+    kinds: null,
   };
   const start = typeof options.cwd === 'string' ? resolveDirectory(null, options.cwd) : null;
   for (const reading of ['bash', 'zsh']) {

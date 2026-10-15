@@ -294,6 +294,7 @@ const STASH_COMMANDS: string[] = [
   '$(true)git stash',
   '`true` git stash',
   'bash <<< "git stash"',
+  "cat > f.md <<'EOF'\n- `git stash` is banned\nEOF",
 ];
 
 const HEREDOC_COMMANDS: string[] = [
@@ -311,6 +312,24 @@ const HEREDOC_COMMANDS: string[] = [
   'git commit -m "$(cat <<\'EOF\'\nfix: thing (see #12)\nEOF\n)" && cat > f.md <<EOF\n`x`\nEOF',
   "bash <<'EOF'\ncat <<X\n`x`\nX\nEOF",
   "bash <<< 'cat <<X\nhello\nX'",
+];
+
+// A quoted heredoc body that no shell runs is text: a note or a commit message may show any
+// command in backticks. The body is judged for a kill or a git stash only (it can still be piped
+// to a shell), and a variable the command assigns never reaches into it.
+const HEREDOC_DATA_COMMANDS: string[] = [
+  "cat > f.md <<'EOF'\n- `pid=-1; kill -9 $pid` denies\nEOF",
+  "git commit -F - <<'EOF'\ndocs: the guard reads `pid=-1; kill -9 $pid` as a group kill\nEOF",
+  'git commit -m "$(cat <<\'EOF\'\ndocs: `pid=-1; kill -9 $pid` now denies\nEOF\n)"',
+  "pid=-1; cat > notes.md <<'EOF'\nkill -9 $pid\nEOF",
+  "cat > f.md <<'EOF'\nthe guard denies `git commit-tree` in every form\nEOF",
+  "git commit -F - <<'EOF'\nfix: deny `git commit-tree`\nEOF",
+  "cat > f.md <<'EOF'\n- `export GIT_CONFIG_KEY_0=core.hooksPath` denies\nEOF",
+  "cat > f.md <<'EOF'\n- `git -c include.path=/tmp/x commit` denies\nEOF",
+  "cat > f.md <<'EOF'\n- `git config --unset core.hooksPath` denies\nEOF",
+  "cat > f.md <<'EOF'\n- `git commit --no-verify` denies\nEOF",
+  "cat > f.md <<'EOF'\n- `git -C /Users/drizzer14/Developer/Projects/pff-ios merge x` denies\nEOF",
+  "cat > f.md <<'EOF'\n- `while ps | grep jest; do sleep 1; done` denies\nEOF",
 ];
 
 const ALLOWED_GIT_AND_HEREDOC_COMMANDS: string[] = [
@@ -707,12 +726,15 @@ describe('scripts/checks/kill-guard.sh (PreToolUse Bash guard)', () => {
     expect(reason).toContain("<<'EOF'");
   });
 
-  it.each([...ALLOWED_COMMANDS, ...ALLOWED_GIT_AND_HEREDOC_COMMANDS])('allows: %s', (command) => {
-    const result = run(payloadFor(command));
+  it.each([...ALLOWED_COMMANDS, ...ALLOWED_GIT_AND_HEREDOC_COMMANDS, ...HEREDOC_DATA_COMMANDS])(
+    'allows: %s',
+    (command) => {
+      const result = run(payloadFor(command));
 
-    expect(result.status).toBe(0);
-    expect(result.stdout.trim()).toBe('');
-  });
+      expect(result.status).toBe(0);
+      expect(result.stdout.trim()).toBe('');
+    },
+  );
 
   it.each(MAIN_CHECKOUT_COMMANDS)(
     'denies a git history change on the main checkout: in %s, %s',
