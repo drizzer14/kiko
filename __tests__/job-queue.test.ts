@@ -1374,6 +1374,11 @@ const installMake = (sandbox: Sandbox, body: string): void => {
   writeExecutable(join(sandbox.root, 'bin/make'), body);
 };
 
+// `git status` follows this setting unless the queue asks for untracked files by name.
+const hideUntrackedFiles = (worktree: string): void => {
+  execFileSync('git', ['config', 'status.showUntrackedFiles', 'no'], { cwd: worktree });
+};
+
 const finishedLine = (sandbox: Sandbox): string =>
   readLines(join(sandbox.queue, 'done.log'))[0] as string;
 
@@ -1403,6 +1408,22 @@ describe('scripts/job-queue.sh done.log tested HEAD', () => {
       'an untracked file made by the job itself',
       (_worktree: string, sandbox: Sandbox) =>
         installMake(sandbox, dirtyingMakeStub('echo new > made-by-job.txt')),
+      false,
+    ],
+    [
+      'an untracked file under status.showUntrackedFiles=no',
+      (worktree: string) => {
+        hideUntrackedFiles(worktree);
+        writeFile(worktree, 'new.txt', 'new\n');
+      },
+      false,
+    ],
+    [
+      'an untracked file made by the job itself under status.showUntrackedFiles=no',
+      (worktree: string, sandbox: Sandbox) => {
+        hideUntrackedFiles(worktree);
+        installMake(sandbox, dirtyingMakeStub('echo new > made-by-job.txt'));
+      },
       false,
     ],
   ])('verify on %s writes the 6th field', (_title, prepare, namesHead) => {

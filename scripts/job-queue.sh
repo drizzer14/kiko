@@ -548,9 +548,11 @@ full_head() {
 
 # Succeeds only when the worktree has no change at all (untracked files count). --no-optional-locks
 # keeps the read from taking the worktree's index.lock, so it never races a git command of the user.
+# --untracked-files=all overrides a status.showUntrackedFiles=no in the worktree's own config.
 tree_is_clean() {
   local changes
-  changes="$(git --no-optional-locks -C "$worktree" status --porcelain 2> /dev/null)" || return 1
+  changes="$(git --no-optional-locks -C "$worktree" status --porcelain --untracked-files=all \
+    2> /dev/null)" || return 1
   [ -z "$changes" ]
 }
 
