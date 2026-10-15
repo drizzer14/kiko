@@ -164,6 +164,25 @@ describe('fittingLargeTitleLayout', () => {
     });
   });
 
+  it("restores the screen's newest own options when they changed before the heading showed", async () => {
+    forceTitleFit(false);
+    const navigation = navigationSpy();
+    const { rerender } = await render(
+      layoutOf(navigation, { ...LARGE_TITLE_OPTIONS, headerShadowVisible: true }, <Controls />),
+    );
+    const ownOptions = { ...LARGE_TITLE_OPTIONS, headerShadowVisible: false };
+    await rerender(layoutOf(navigation, ownOptions));
+
+    forceTitleFit(true);
+    await rerender(
+      layoutOf(navigation, { ...ownOptions, ...largeTitleHeadingOptions(TITLE, false) }),
+    );
+
+    expect(navigation.setOptions).toHaveBeenLastCalledWith(
+      expect.objectContaining({ headerLargeTitle: true, headerShadowVisible: false }),
+    );
+  });
+
   it('restores the native large title once, not again on a later title change', async () => {
     forceTitleFit(false);
     const navigation = navigationSpy();
