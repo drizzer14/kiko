@@ -34,6 +34,8 @@ jest.mock('react-i18next', () => ({
   }),
 }));
 
+import { fittingLargeTitleLayout } from '../fitting-large-title';
+
 import SettingsStack from './settings.stack';
 
 type ScreenOptions = {
@@ -157,6 +159,12 @@ describe('SettingsStack', () => {
     const navigator = SettingsStack({}) as ReactElement<{ screenOptions: object }>;
 
     expect(navigator.props.screenOptions).toEqual(sharedLargeTitleOptions);
+  });
+
+  it('wraps every screen in the fitting large-title layout', () => {
+    const navigator = SettingsStack({}) as ReactElement<{ screenLayout: unknown }>;
+
+    expect(navigator.props.screenLayout).toBe(fittingLargeTitleLayout);
   });
 
   // The Help pages inherit the stack's header options, so their own options
