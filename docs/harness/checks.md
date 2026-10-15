@@ -101,13 +101,20 @@ replay's mark ref unmoved so every later Stop fails again.
 
 The medium tier also runs the doc-reading jest suites on a doc change: a path matching
 `harness_doc_roots_pattern` in `scripts/checks/_lib.sh` (read it there for the roots) that is
-uncommitted, or committed since the guard-replay mark. `harness_doc_suites` finds the suites at
-run time (`readFileSync` plus a quoted doc-root literal); there is no list to maintain. A
-`doc-suites` fingerprint (`harness_doc_fingerprint`) skips an unchanged doc state. The step runs
-before `guard-replay.sh`, so a failed doc step leaves the committed change pending. At
-hookStarted + 270 s it stops its own jest pid and exits 2 with a block saying to run
-`make doc-suites` by hand; zero suites or a missing jest also exit 2 (fail-closed). A by-hand
-`make doc-suites` pass does not record the fingerprint.
+whose doc fingerprint (`harness_doc_fingerprint`) differs from the recorded `doc-suites` pass.
+There is no replay-mark dependency: a fresh worktree or a purged state dir runs the step once,
+and a rename out of a root or a delete changes the fingerprint. `harness_doc_suites` finds the
+suites at run time; there is no list to maintain. It finds a suite only when the file holds
+`readFileSync` and a quoted doc-root literal, so path-segment joins and template paths are not
+discovered (a documented limit). The step runs before `guard-replay.sh` by choice; the order no
+longer matters. Jest runs with `--maxWorkers=2`. The deadline is hookStarted + the budget that
+`node scripts/checks/guard-replay.js step-budget` prints (hook budget minus the call tail minus
+the later-checks reserve; 215 s today), so the checks after the replay keep their reserve. At
+the deadline it stops its own jest pid and exits 2 with a block saying to run `make doc-suites`
+by hand. Zero suites, a missing jest or an unreadable budget also exit 2 (fail-closed). A
+by-hand `make doc-suites` pass IS recorded (physical-root key, and TMPDIR like every harness
+fingerprint), so the next Stop skips the same docs.
+
 `tsc --noEmit` is project-wide by
 nature — a type error surfaces in the file that CONSUMES a changed
 type, not only in the file that was edited — so it never takes a

@@ -75,9 +75,11 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   without a mention fails; keep `dup.sh`, `medium.sh` and `security.sh` named.
 
   `medium.sh`'s doc step (see `docs/harness/checks.md` "Automatic wiring") has a deadline exit
-  shaped like the guard replay's: at hookStarted + 270 s it stops its own jest pid and exits 2
-  with a block that says to run `make doc-suites` by hand; zero suites or a missing jest also
-  exit 2.
+  shaped like the guard replay's: at hookStarted + the budget that
+  `node scripts/checks/guard-replay.js step-budget` prints it stops its own jest pid and exits 2
+  with a block that says to run `make doc-suites` by hand; zero suites, a missing jest or an
+  unreadable budget also exit 2. A by-hand `make doc-suites` pass records the doc fingerprint
+  and clears the block.
 
   Another exception, of a different shape: `scripts/checks/kill-guard.sh`
   (+ its sibling `scripts/checks/kill-guard.js`) is a `PreToolUse` hook on
