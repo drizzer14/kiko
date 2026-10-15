@@ -1,5 +1,5 @@
 import { Pressable, Text, View } from 'react-native';
-import { type ReactElement, useContext } from 'react';
+import { type ReactElement, useContext, useState } from 'react';
 import { fireEvent, render } from '@testing-library/react-native';
 import type { NativeStackNavigationOptions } from '@react-navigation/native-stack';
 import { navigationSpy, type NavigationSpy } from '@kiko/test-support/navigation-props';
@@ -51,6 +51,21 @@ const Screen = () => (
     <LargeTitleHeading />
   </>
 );
+
+// A screen that stops rendering its heading while the bar shows the heading look.
+const TogglingHeadingScreen = () => {
+  const [headingShown, setHeadingShown] = useState(true);
+
+  return (
+    <>
+      <Controls />
+
+      <Pressable testID="toggle-heading" onPress={() => setHeadingShown((shown) => !shown)} />
+
+      {headingShown ? <LargeTitleHeading /> : null}
+    </>
+  );
+};
 
 const layoutOf = (
   navigation: NavigationSpy,
@@ -135,6 +150,38 @@ describe('fittingLargeTitleLayout', () => {
     await rerender(layoutOf(navigation, { ...LARGE_TITLE_OPTIONS, title: 'Another short' }));
 
     expect(navigation.setOptions).toHaveBeenCalledTimes(2);
+  });
+
+  // The bar loses its title only while the heading is on screen to show it, so a heading that
+  // unmounts hands the title back to the native bar at once.
+  it('brings the native large title back when the heading unmounts', async () => {
+    forceTitleFit(false);
+    const navigation = navigationSpy();
+    const { getByTestId } = await render(
+      layoutOf(navigation, LARGE_TITLE_OPTIONS, <TogglingHeadingScreen />),
+    );
+
+    await fireEvent.press(getByTestId('toggle-heading'));
+
+    expect(navigation.setOptions.mock.calls).toEqual([
+      [largeTitleHeadingOptions(TITLE, false)],
+      [largeTitleRestoredOptions],
+    ]);
+  });
+
+  it('starts a heading that mounts again unscrolled, with the title out of the bar', async () => {
+    forceTitleFit(false);
+    const navigation = navigationSpy();
+    const { getByTestId } = await render(
+      layoutOf(navigation, LARGE_TITLE_OPTIONS, <TogglingHeadingScreen />),
+    );
+    await fireEvent.press(getByTestId('scroll-under'));
+
+    await fireEvent.press(getByTestId('toggle-heading'));
+    await fireEvent.press(getByTestId('toggle-heading'));
+
+    expect(navigation.setOptions).toHaveBeenLastCalledWith(largeTitleHeadingOptions(TITLE, false));
+    expect(getByTestId('heading-scrolled').props.children).toBe('false');
   });
 
   it('shows the new title in the heading when the title changes', async () => {
