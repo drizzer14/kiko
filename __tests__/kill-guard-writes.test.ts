@@ -505,6 +505,23 @@ const DENIED_SAME_COMMAND_VARIABLE: string[] = [
   `f=src/x.ts; for g in a; do sed -i '' 's/a/b/' $f; done`,
 ];
 
+// The command's own assignments only ADD denies. A path that still names a guarded folder through
+// an unresolved `$D` denies as it always did, whatever the command assigned to `D` first: a loop
+// variable, `read`, `+=`, `eval`, `printf -v`, `select`, and `unset` all change it unseen.
+const DENIED_WHATEVER_THE_VARIABLE_HOLDS: string[] = [
+  `D=/tmp; sed -i '' s/a/b/ $D/src/x.ts`,
+  `D=/tmp; sed -i '' s/a/b/ "\${D}/src/x.ts"`,
+  'D=/tmp; echo x > $D/src/x.ts',
+  'D=/tmp; echo x | tee "$D/src/x.ts"',
+  `D=/tmp; for D in .; do sed -i '' s/a/b/ $D/src/x.ts; done`,
+  `D=/tmp; read D <<< .; sed -i '' s/a/b/ $D/src/x.ts`,
+  `D=/tmp; D+=x; sed -i '' s/a/b/ $D/src/x.ts`,
+  `D=/tmp; eval D=.; sed -i '' s/a/b/ $D/src/x.ts`,
+  `D=/tmp; printf -v D %s .; sed -i '' s/a/b/ $D/src/x.ts`,
+  `D=/tmp; select D in .; do break; done; sed -i '' s/a/b/ $D/src/x.ts`,
+  `D=/tmp; unset D; sed -i '' s/a/b/ $D/src/x.ts`,
+];
+
 const ALLOWED_SAME_COMMAND_VARIABLE: string[] = [
   `f=/tmp/x.ts; sed -i '' 's/a/b/' $f`,
   `f=docs/x.md; sed -i '' 's/a/b/' "$f"`,
@@ -545,6 +562,13 @@ describe('kill-guard shell-write deny (parser only, fake repository)', () => {
     'allows a variable that points outside the trees, or a read: %s',
     (command) => {
       expect(decideInMain(command)).toBe('allow');
+    },
+  );
+
+  it.each(DENIED_WHATEVER_THE_VARIABLE_HOLDS)(
+    'denies a guarded folder behind an unresolved variable the command also assigns: %s',
+    (command) => {
+      expect(decideInMain(command)).toBe('shellWrite');
     },
   );
 

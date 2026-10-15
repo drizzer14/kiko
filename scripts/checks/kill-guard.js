@@ -2569,26 +2569,41 @@ function redirectWrite(redirects, directories, rules) {
 // when it is safe. A shell's script and `eval`'s joined arguments go to
 // `scripts` as command text. `stdinBodies` are the heredoc bodies it reads,
 // `spans` the text of its `$(...)`/backtick spans, and `directories` the
-// places it may run in (null for one the text cannot pin down).
+// places it may run in (null for one the text cannot pin down). The text is judged as written
+// first; when the command assigned a variable the segment reads, it is judged once more with the
+// values filled in, so an assignment only ever adds a finding: a command that assigns a name the
+// guard cannot follow (a loop variable, `read`, `+=`) still denies what its raw text denied.
 function segmentFinding({ segment, scripts, stdinBodies, spans, place, rules }) {
   const { directories, variables } = place;
   const { words: tokens, hereStrings, redirects } = tokenize(segment);
-  const expand = (word) => expandVariables(word, variables);
   const stdinScripts = [...stdinBodies, ...hereStrings];
-  const finding = commandFinding(unwrap(tokens.map(expand)), {
-    segment,
-    scripts,
-    stdinScripts,
-    spans,
-    directories,
-    rules,
-  });
-  if (finding !== null) return finding;
-  const targets = redirects.map((redirect) => ({ ...redirect, target: expand(redirect.target) }));
-  const write = redirectWrite(targets, directories, rules);
-  if (write === null) return null;
+  const judge = (words, targets, queue) => {
+    const finding = commandFinding(unwrap(words), {
+      segment,
+      scripts: queue,
+      stdinScripts,
+      spans,
+      directories,
+      rules,
+    });
+    if (finding !== null) return finding;
+    const write = redirectWrite(targets, directories, rules);
 
-  return shellWriteFinding(segment, write);
+    return write === null ? null : shellWriteFinding(segment, write);
+  };
+  const finding = judge(tokens, redirects, scripts);
+  if (finding !== null || variables.size === 0) return finding;
+  const expand = (word) => expandVariables(word, variables);
+  const expandedWords = tokens.map(expand);
+  const expandedTargets = redirects.map((redirect) => ({
+    ...redirect,
+    target: expand(redirect.target),
+  }));
+  const unchanged =
+    expandedWords.every((word, index) => word === tokens[index]) &&
+    expandedTargets.every((redirect, index) => redirect.target === redirects[index].target);
+
+  return unchanged ? null : judge(expandedWords, expandedTargets, []);
 }
 
 // ---- wait loops that scan the process table ----
