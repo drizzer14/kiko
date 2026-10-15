@@ -135,7 +135,7 @@ P2P older than 6 months, dust beyond the last 100 records, Binance Card spending
 
 | Unit | Contents | Moves from |
 |---|---|---|
-| `exchange/registry/` | `ExchangeId` (`'binance'` in 1.3-a), `ExchangeProvider` type, `exchangeProviderRegistry: Partial<Record<ExchangeId, ExchangeProvider>>`, `isExchangeId` | replaces `balanceProviderIds`'s Binance arm, `providerDisplayName`'s Binance arm, `disconnectMessage`, the `isBalanceProviderId` branch of `syncJobsFor` (`src/sync/sync-jobs/sync-jobs.ts`) |
+| `exchange/registry/` (created in set 14, not set 3) | `ExchangeId` (`'binance'` in 1.3-a), `ExchangeProvider` type, `exchangeProviderRegistry: Partial<Record<ExchangeId, ExchangeProvider>>`, `isExchangeId` | replaces `balanceProviderIds`'s Binance arm, `providerDisplayName`'s Binance arm, `disconnectMessage`, the `isBalanceProviderId` branch of `syncJobsFor` (`src/sync/sync-jobs/sync-jobs.ts`) |
 | `exchange/credentials/` | `ExchangeCredentials = { apiKey: string; secret: string }`; `credentialServiceFor(exchangeId, accountId)` = `kiko.<exchangeId>.credentials.<accountId>`; save/load/clear over `react-native-keychain` with the shared `hardenedFor` (`WHEN_UNLOCKED_THIS_DEVICE_ONLY`, no access control) | `binance.credentials.ts` (`serviceFor`, `BINANCE_CREDENTIALS_SERVICE`): the Binance service string stays byte-identical |
 | `exchange/signing/` | `SignRequest = (request: UnsignedRequest, credentials, nowMs) => SignedRequest` (query, headers, body). Binance: HMAC-SHA256 hex over the query, `X-MBX-APIKEY` header | `binance.hmac.ts`, the signing part of `signedRequestPage` |
 | `exchange/budget/` | `RunBudget<Lane>`: per-lane call caps, narrowing calls, keeps, `canAfford(lane, cost, keep, narrowing)`, `record(lane, page, narrowing)`; one `RequestGate` per run; `createExchangeRun(clock)` | `binance.history-budget.ts` (shape); Binance numbers and weight headers stay in `binance.history-budget.ts` |
@@ -191,41 +191,49 @@ type ExchangeState = {
   walks: Partial<Record<WalkId, WalkMarks>>;   // WalkId = 'capital' | 'pay' | 'transfer' | 'earn'
                                               //  | 'convert' | 'dividend' | 'p2p'
                                               //  | 'fiatOrders' | 'fiatPayments'
-  trades?: { symbols: Record<string, { fromId: number | null }>;
+  trades?: { symbols: Record<string, { fromId: number | null; heldOrderId?: number }>;
              rotation: number; balanceSnapshot: Record<string, string> };
   untrackedCoins?: string[];                  // tickers, last good balance read
   oversizedCoins?: string[];                  // tickers refused as amount-too-large
 };
 type WalkMarks = {
   cursor: number | null; rescan?: number; pending?: OwedRange[]; pointCursor?: number;
-  rangeCursor?: number; spanHints?: SpanHint[]; multiCoinSince?: number;
+  rangeCursor?: number; spanHints?: BinanceSpanHints; multiCoinSince?: number;
 };
 ```
 
 Dust has no walk entry (one call per run, keys dedupe; section 5). `'dividend'` exists only if the
 dividend walk ships (section 5, "Dividends").
 
-`OwedRange` and `SpanHint` are today's shapes plus an optional `scope: 'backfill'` on a range
-(section 7).
+`OwedRange` is today's shape plus an optional `scope: 'backfill'` on a range (section 7).
+`spanHints` is today's `BinanceSpanHints` record (`holding-metadata.ts`: one hint list per pass,
+`forward`, `pending`, `rescan`, `point`), an object, not a list; its shape stays.
 
 Parse, per walk (set 4):
 
 - The column parses in two levels. Top level: an object with `version: 1` and an object `walks`.
   A top-level value that fails this (not JSON, wrong version) is malformed: the account's history
   walks do not run (the balance read still does), the tag `exchange-state-malformed` logs once per
-  run, the caption shows, and nothing writes the column until disconnect resets it. The malformed
-  text is never overwritten by a walk patch.
-- Each walk entry, `trades`, `untrackedCoins` and `oversizedCoins` parses on its own. A malformed
-  entry reads as that entry's empty value and logs the same tag with the entry name; every other
-  entry keeps its parsed value. A malformed `pending` keeps today's repair (`readPendingMark`: all
-  ground before the cursor is owed, written once), and that repair is the only write that replaces
-  it.
+  run, the caption shows its paused copy (`accountDetail.exchangeHistoryPaused`, section 10), and
+  nothing writes the column until disconnect resets it. The malformed text is never overwritten by
+  a walk patch.
+- `trades`, `untrackedCoins` and `oversizedCoins` each parse on their own; a malformed one reads as
+  its empty value and logs the same tag with the entry name.
+- A walk entry parses FIELD BY FIELD, each field with today's per-field rule, so a malformed field
+  never empties its siblings: `cursor` and `rescan` as `binanceWalkCursorOf` reads them (a
+  non-number reads as null); `pending` by `readPendingMark` (all ground before the cursor owed,
+  written once); `pointCursor` and `rangeCursor` by `readRoundRobinCursor` (repaired to
+  `BEFORE_EVERY_GROUND`, written once); `spanHints` by `readSpanHints` (`span-hints-malformed`,
+  reads as `NO_HINTS`); `multiCoinSince` as a number or absent. A walk entry that is not an object
+  reads as every field's empty value and logs the tag with the walk id. The developer re-greps each
+  reader and its repair write on the base. Each repair writes only its own field.
 
 Writer: `syncStateRepo.patchExchangeState(accountId, exchangeId, patch)` runs inside `write(...)`
 (`src/db/client.ts`, the serialized write the repos use; not `db.transaction()`), re-reads the row,
 and writes only while `accounts.institution` is still `exchangeId` (today's `institution = 'binance'`
-gate of `setBinanceWalkCursor`). A patch names entries (a walk id, `trades`, a coin list); the
-writer replaces only those entries and writes every other entry back as its stored JSON text,
+gate of `setBinanceWalkCursor`). A patch names fields, not whole entries: a (walk id, field) pair,
+a trade symbol's entry, `trades.rotation`, `trades.balanceSnapshot`, or a coin list. The writer
+replaces only those and writes every other field and entry back as its stored JSON text,
 byte-identical, a malformed one included. When no `sync_state` row exists, the writer inserts one.
 
 ### History-behind caption
@@ -233,8 +241,11 @@ byte-identical, a malformed one included. When no `sync_state` row exists, the w
 `isExchangeHistoryBehind` is true, after the account's first balance sync, when any walk's cursor
 is null or more than a day behind `latestSyncedAt`, when the Transfer walk owes a range, when any
 walk owes a `scope: 'backfill'` range, when the top-level state is malformed, or when a trade
-symbol in the candidate set has a null `fromId`. An owed point never shows it. The caption names
-the exchange (`accountDetail.exchangeHistoryPending`, section 10).
+symbol in the candidate set was never read (no entry, or a null `fromId`; a completed read always
+stores a number, section 5). An owed point never shows it. The caption names the exchange
+(`accountDetail.exchangeHistoryPending`, section 10); while the top-level state is malformed it
+shows `accountDetail.exchangeHistoryPaused` instead, which says history import is paused and that a
+disconnect and reconnect repairs it.
 
 ### Stays Binance-specific (`src/crypto-sync/binance/`)
 
@@ -326,7 +337,7 @@ OWN stored currency, never on the holding it sits on:
 | `category_rules.matchers` amount matchers | the matcher's own `currency` = USDT (`category-rules.d.ts`) | `minorUnits x 1000000`, via `json_each`/`json_set` |
 | `transaction_templates.draft.amountMinorUnits` and every `draft.returns[].amountMinorUnits` | `draft.currency` = USDT | `x 1000000` |
 | `transaction_templates.draft.exchange.valueInMinorUnits` | `draft.exchange.destinationCurrency` = USDT | `x 1000000` |
-| statement-import keys: `transactions.external_id` of `source = 'import'` rows on a USDT holding, and `deleted_import_keys.external_id` of a USDT holding, when the key starts with `<holding_id> ` (the `computeDedupKeyBase` shape: holding id, time seconds, amount minor units, normalized description, space-joined, then an optional `␟<n>` suffix) | the holding's currency = USDT | the third space-separated token `x 1000000`; every other byte kept |
+| statement-import keys: `transactions.external_id` of `source = 'import'` rows and `deleted_import_keys.external_id`, in the `computeDedupKeyBase` shape (holding id, time seconds, amount minor units, normalized description, space-joined, then an optional `␟<n>` suffix) | the currency of the holding named by the key's FIRST space-separated token, never the row's current `holding_id` (a row moved to another holding keeps the key it was imported under); USDT | the third space-separated token `x 1000000`; every other byte kept |
 | `price_points` with `currency = 'USDT'` | - | none: `price` is a major-unit decimal string, valued through `multiplyToMinorUnits` at the currency's scale, so its minor-unit value rescales by itself. The parity test pins it |
 | `currency_rates`, `currency_rate_history` rows `USDT:UAH` | - | none: a rate is per unit, scale-free |
 
@@ -337,24 +348,40 @@ that rule.
 Statement-import keys: rewritten inside 0059 itself, not in a launch step. Unlike 0041's upgrade
 (which needs the JS-only `normalizeTransactionName`), the amount is a fixed-position token between
 two tokens with no space (a holding id, a time in seconds), so SQL rewrites it exactly in the same
-transaction as the amounts it must stay equal to. A key that does not start with
-`<holding_id> ` (a bank-issued id) is left alone. A test pins one transaction key, one
-`␟`-suffixed key and one `deleted_import_keys` row, and that a re-import of the same statement
-after 0059 adds no row.
+transaction as the amounts it must stay equal to. The key's first token is matched against
+`holdings.id` with `holdings.currency = 'USDT'`; a key whose first token names no USDT holding (a
+bank-issued id, a non-USDT holding, a deleted holding) is left alone, whatever holding the row sits
+on now. A test pins one transaction key, one `␟`-suffixed key and one `deleted_import_keys` row,
+a USDT-keyed row that now sits on a UAH holding (rewritten) and a UAH-keyed row that now sits on a
+USDT holding (left alone), and that a re-import of the same statement after 0059 adds no row.
 
 The developer re-greps every `MinorUnits` field in `src/db/schema.ts`, `holding-metadata.ts`,
 `template-draft.ts`, `category-rules.d.ts`, `lots.ts` and any JSON shape added since, and every key
 that embeds an amount, and the migration test lists each one. Crash-safe: the runner applies the
 whole file and its bookkeeping row in one transaction, so a crash leaves 0059 to retry whole.
 
+JSON fields (`holdings.metadata`, `category_rules.matchers`, `transaction_templates.draft`): 0059
+rescales a value only where `json_valid(<column>)` holds AND `json_type(<column>, <path>) =
+'integer'`; a column that is not valid JSON, or a field that is a real, a string, null or absent,
+stays exactly as stored. The bound count below applies the same two conditions, so it never reads
+malformed JSON (and never aborts on it). `withUsdtRescaled` applies the same rule: a field is
+rescaled only when its column parsed as JSON and the value is a safe integer
+(`Number.isSafeInteger`); anything else is restored as stored. The app's writers (`JSON.stringify`)
+never store an integral real such as `5000.0`, so the two paths agree on every value the app
+writes.
+
 Bound: at scale 8 a value fits a JS number exactly up to 90,071,992.54740991 units, so a scale-2
 value above 9,007,199,254 minor units cannot rescale. 0059 first counts such values over every
 field of the table above; a non-zero count aborts the migration with a clear error before any
-write. The mechanism: `CREATE TEMP TABLE usdt_rescale_guard (over_bound integer CHECK (over_bound =
-0))` and one `INSERT ... SELECT count(*)` over the fields, so SQLite fails with "CHECK constraint
-failed: usdt_rescale_guard"; the temp table is dropped at the end. The test pins the error text and
-that nothing was written. A restore of a version 1-3 file with such a value is refused as a whole
-with the same reason (no row written).
+write. The mechanism: `CREATE TEMP TABLE usdt_rescale_bound (over_bound integer CONSTRAINT
+usdt_rescale_guard CHECK (over_bound = 0))` and one `INSERT ... SELECT count(*)` over the fields,
+so SQLite fails with "CHECK constraint failed: usdt_rescale_guard" (the named constraint gives that
+text; an unnamed one would report the expression); the temp table is dropped at the end. The test
+pins the error text and that nothing was written. What the user sees when it fires: the launch
+stops at `MigrationsGate`'s error state (`src/migration/migrations-gate/migrations.gate.tsx`,
+testID `migrations-gate-error`), whose text is `migrations.error` ("Migration error: {{message}}")
+with the CHECK message; the data stays at scale 2 and 0059 retries on the next launch. A restore of
+a version 1-3 file with such a value is refused as a whole with the same reason (no row written).
 
 `.kiko` import (set 1): `EXPORT_VERSION` (`src/data-transfer/crypto/envelope.ts`) becomes 4 and
 `READABLE_EXPORT_VERSIONS` `[1, 2, 3, 4]`. `import-data.ts` passes `envelope.version` (today used
@@ -467,7 +494,7 @@ confirm; section 12 gives each fallback.
 | Fiat orders | `GET /sapi/v1/fiat/orders`, `transactionType` 0 deposit, 1 withdraw (2 series) | probe / probe | `page`/`rows` 500 | UID 45000 | 3 | `walks.fiatOrders` | P6 |
 | Fiat payments | `GET /sapi/v1/fiat/payments`, `transactionType` 0 buy, 1 sell (2 series) | probe / probe | `page`/`rows` 100 | IP 1 | 10 | `walks.fiatPayments` | P6 |
 | Spot trades | `GET /api/v3/myTrades?symbol=&fromId=` per symbol | none (id cursor) / probe | `fromId`, 1000 | IP 20 (`/api/*`) | 100 calls | `trades.symbols[s].fromId` | P1, P2, P3 |
-| Order fills | `GET /api/v3/myTrades?symbol=&orderId=` (an order re-read, below) | - | one call per order | IP 5 (`/api/*`; P15 confirms) | shares the trades lane | - | P15 |
+| Order fills | `GET /api/v3/myTrades?symbol=&orderId=&fromId=` (an order re-read, below) | - | `fromId`, 1000, until a short page | IP 5 per page (`/api/*`; P15 confirms) | shares the trades lane | `trades.symbols[s].heldOrderId` | P15 |
 | Symbol list | `GET /api/v3/exchangeInfo` (public) | - | - | IP 20 (`/api/*`) | 1 per run | - | P2 |
 
 The lane caps are starting values. Set 11 measures a caught-up run and a backfill run on the
@@ -580,21 +607,34 @@ counterparty field is read into a type (privacy, section 9). Key
   or not) or seen in any imported history record, or a symbol with a stored `fromId`. A coin fully
   sold before 1.3 and seen nowhere else is not found: the not-listed note names it.
 - Rotation: a symbol is read this run when its base or quote balance changed since
-  `trades.balanceSnapshot`, when its `fromId` is null, or when its turn comes in the round-robin
+  `trades.balanceSnapshot`, when it was never read (no entry or a null `fromId`), when it holds a
+  `heldOrderId` (same priority as a never-read symbol, read first), or when its turn comes in the round-robin
   from `trades.rotation`. At least 1 call of the lane per run is reserved for the round-robin, so
   the changed and null-cursor symbols never take the whole lane. Each of `S` candidate symbols is
   read within `ceil(S / L)` runs, `L >= 1` the calls reserved or left for rotation (memory
   "round-robin rotates units read"; property test).
 - Paging (`idCursorPager`): `fromId` = the stored cursor, else 0; no time parameters (probe P1).
-  The cursor advances past every fill read (last trade id + 1).
+  After a completed read the symbol stores `fromId` = last trade id read + 1, or 0 when the read
+  returned no trade, so a read symbol never stores null: null (or no entry) means only "never read",
+  and the caption rule (section 2) follows from that.
 - Orders and later fills (never drop a fill of an open order): fills group by `orderId`. Every fill
-  is read once by the id cursor. When a batch holds a fill of an order whose pair was imported in an
-  earlier run (its pair id exists), the walk reads that order's fills whole with
-  `myTrades?symbol=&orderId=` before it writes the order, and writes the pair from the whole set
-  (`addManyDedup` updates the leg amounts, a bank-owned column, under the same keys). An order whose
-  fills span a page boundary inside one run pages on before it is written. A re-read that does not
-  fit the lane is a stop owed at the order's point; the cursor does not pass that order's first
-  fill in the batch.
+  is read once by the id cursor. An order was "imported earlier" when ANY stored row of `source =
+  'binance'` has an `external_id` that starts with `${pairId}:` (a leg key or a fee key), whether or
+  not the row has an `exchangePairId`: a one-sided trade (the other coin untracked, the `asset:`
+  arm) and a third-coin fee row count the same as a pair leg. The lookup is a prefix range on the
+  `transactions_source_external` unique index (`source = 'binance' AND external_id >= '${pairId}:'
+  AND external_id < '${pairId};'`, `;` being the byte after `:`), never `exchange_pair_id`. When a
+  batch holds a fill of such an order, the walk reads that order's fills whole with
+  `myTrades?symbol=&orderId=&fromId=`, paging by `fromId` (last id + 1) until a short page, before
+  it writes the order, and writes every row of the order from the whole set (`addManyDedup` updates
+  the leg and fee amounts, a bank-owned column, under the same keys). An order whose fills span a
+  page boundary inside one run pages on before it is written.
+- A re-read that does not fit the lane stops the symbol at that order's first fill in the batch
+  (the stop fill): the fills before it are written, nothing at or after it is written, `fromId` is
+  stored as the stop fill's id, and the symbol stores `heldOrderId` = that order's id. The next run
+  reads that symbol first, with the priority of a never-read symbol: the held order's re-read, then
+  the id cursor from the stop fill; `heldOrderId` is cleared in the same patch that writes the
+  order. No owed point is stored (the trades walk keys progress by id, not time).
 - Rows per order, Spot wallet: spent leg = sum of `quoteQty` (buy) or `qty` (sell), negative;
   received leg = sum of `qty` (buy) or `quoteQty` (sell) minus every commission in the received
   coin. Commission in the SPENT coin (C-NR2): added to the spent leg, so the spent leg =
@@ -602,7 +642,9 @@ counterparty field is read into a type (privacy, section 9). Key
   `-sum(commission)` on that coin's Spot holding, `exchangePairId` = the order's pair id,
   `exchangeCounterpartHoldingId` = the received leg's holding, `operation = 'trade-fee'` (R-Q13).
   A third coin that is untracked: no fee row, its ticker joins the not-tracked line.
-- One side untracked (USDT -> PEPE): the tracked leg alone, `untrackedCounterpart = asset:<CODE>`.
+- One side untracked (USDT -> PEPE): the tracked leg alone, `untrackedCounterpart = asset:<CODE>`,
+  no `exchangePairId`; its key is still `${pairId}:<walletKey>`, so a later fill finds it by the
+  key prefix and re-reads the order.
 - Pair id `${accountId}:trade:${symbol}:${orderId}`; legs `${pairId}:<walletKey>`; fee
   `${pairId}:fee:<walletKey>`. Time = the order's first fill time. `operation = 'trade'` on every
   leg.
@@ -666,8 +708,12 @@ withdrawal (<FIAT>)"; direction from the sign; (5) `operation = 'reward'` -> "Re
 `internalTransferTransactionIds` (`src/statistics/internal-transfers/internal-transfers.ts`,
 `TRANSFER_MATCH_WINDOW_MS`), called in `statistics.screen.tsx` over `ledgerWithCurrency`, is fed
 only rows with `exchangePairId`, `exchangeCounterpartHoldingId` and `untrackedCounterpart` all
-null. A marked row is already excluded by `exchangeExcludedTransactionIds` and must never consume
-an unmarked row as its partner. Set 6 ships it, because set 6 is the first set that imports
+null. `exchangeExcludedTransactionIds` (`src/statistics/exchange-exclusion/`) excludes a row with
+an `exchangeCounterpartHoldingId` or an `untrackedCounterpart`; it does not look at
+`exchangePairId`. Every pair leg and fee row this spec writes carries one of those two markers
+beside its `exchangePairId` (the one open case is NR5, section 12), so it is excluded there;
+either way, a row with any of the three markers must never consume an
+unmarked row as its partner. Set 6 ships it, because set 6 is the first set that imports
 non-BTC pairs and Pay sends of the same coin; the case S1 pins it. A BTC case (a Transfer pair leg
 and a BTC Pay send of equal amount within 2 minutes) is pinned too: it is a fix of today's
 behaviour, recorded as a reversal (section 1).
@@ -682,16 +728,22 @@ the bank row ids with the other exclusion sets; nothing is written.
   filter that hides the crypto account does not bring the debit back.
 - Exchange side: rows with a `p2p:`, `card:` or `bank:` code with a parsed total and a positive
   amount (C-NR1: the total and its fiat come from the code only).
-- Bank side: negative rows on holdings of non-crypto accounts, in that fiat currency, with
-  `categorySetByHand` false, not already excluded by any other rule. A debit the user categorized by
-  hand is never matched (M9).
+- Bank side: ALL negative rows on holdings of non-crypto accounts, in that fiat currency,
+  including rows another rule already excludes (MCC 6012, a description rule, a matched pair) and
+  rows the user categorized by hand (`categorySetByHand` true). They all take part in the
+  one-to-one match, so an exchange row consumes the debit that funded it even when that debit is
+  already excluded or hand-set, and never moves on to a second, unrelated debit (M12, M13).
 - Match: the bank amount equals minus the total, exactly in minor units, and the bank row's time is
   inside the window: P2P `[t - 1 h, t + 2 h]`, card `[t - 1 day, t + 3 days]`, fiat deposit
   `[t - 5 days, t + 1 h]`, `t` = the exchange row's time (named constants).
 - One-to-one: candidate pairs sort by (1) transfer-like bank row first (MCC 4829 or 6012, or a
   description containing `BINANCE`, compared case-insensitively), (2) absolute time gap, (3) bank
   row id, (4) exchange row id; each row matches once. An unmatched debit counts as spending.
-- Shown on the bank row: the transaction form of a matched bank row shows a caption under its
+- Exclusion set: only the matched bank row ids whose `categorySetByHand` is false. A matched
+  hand-categorized row stays exactly as the user set it (its category decides, as today) and shows
+  no caption (M9, M13); a matched row another rule already excludes stays excluded.
+- Shown on the bank row: the transaction form of a matched bank row in the exclusion set (not
+  hand-categorized) shows a caption under its
   category, `transactions.matchedP2pPurchase` / `matchedCardPurchase` / `matchedExchangeDeposit`
   ("Matched to P2P purchase", section 10), from a hook in the same folder that runs the pure
   function over the same ledger query. The developer re-greps the transaction form's caption slot.
@@ -716,8 +768,9 @@ effect.
   key. The insert creates the `sync_state` row when none exists (its other columns null, so nothing
   reads the account as synced). The JSON is built with `json_object` from each `binance*` walk key
   (cursor, rescan, pending, point cursor, range cursor, span hints per walk; field map pinned by the
-  migration test); each value is copied as stored (`json(...)` for lists), a malformed one
-  included, so the per-walk parse (section 2) decides about it, never the migration. Disconnected
+  migration test); each value is copied as stored into its own field (`json(...)` for a list or an
+  object, so `pending` lists and the `spanHints` object stay JSON, not quoted text), a malformed one
+  included, so the field-by-field parse (section 2) decides about it, never the migration. Disconnected
   accounts copy too (their floor values stay). The old metadata keys are no longer read;
   `carriedMetadataKeys` stops carrying them, so the next balance sync drops them.
 - Restore mirror (set 4): `withWalkStateMoved` in `restore-snapshot.ts` applies the same copy to a
@@ -766,11 +819,14 @@ USDT rescale (set 1; exact parity):
 | U6 | BTC/EUR holding | unchanged | equal | unchanged |
 | U7 | `.kiko` v3 with U1-U5c, legacy dedup keys | as U1-U5c, keys as U11 | equal to the migrated database | v3 restored at scale 2 |
 | U8 | value at the bound, 9007199254 | 9007199254000000 | exact | - |
-| U8b | value 9007199255 (over the bound) | 0059 aborts, "CHECK constraint failed: usdt_rescale_guard", nothing written; a v3 restore refused whole | - | - |
+| U8b | value 9007199255 (over the bound) | 0059 aborts, "CHECK constraint failed: usdt_rescale_guard", nothing written; `MigrationsGate` shows its error state (`migrations-gate-error`, `migrations.error` with that message); a v3 restore refused whole | - | - |
 | U9 | Binance balance "0.00012345" USDT | 12345 | - | 0 (rounded away) |
 | U10 | `.kiko` v4 with a USDT holding 12345000000 | restored byte-unchanged | equal | n/a (no v4) |
 | U11 | import row on a USDT holding, key `<id> 1700000000 -1250 coffee`, and a `deleted_import_keys` row `<id> 1700000000 -500 tea␟1` | `<id> 1700000000 -1250000000 coffee`; `<id> 1700000000 -500000000 tea␟1`; a re-import adds no row | - | keys unchanged |
-| U12 | import row on a USDT holding with a bank-issued key (no `<id> ` prefix) | key unchanged | - | unchanged |
+| U12 | import row on a USDT holding with a bank-issued key (first token names no holding) | key unchanged | - | unchanged |
+| U12b | import row keyed `<usdtId> ...` that now sits on a UAH holding; import row keyed `<uahId> ...` that now sits on the USDT holding; the same two keys in `deleted_import_keys` | the first rewritten, the second unchanged (key's first token decides) | - | keys unchanged |
+| U13 | USDT holding whose `metadata` is not valid JSON; a USDT `category_rules.matchers` text that is not valid JSON | 0059 succeeds and the app launches (`MigrationsGate` reaches its children); both texts byte-unchanged; the bound count skips them; a v3 restore of the same rows restores them unchanged | - | - |
+| U14 | USDT holding `metadata` with `principalMinorUnits` as `"5000"` (string) and `faceValueMinorUnits` as `12.5` (real), beside an integer `purchasePriceMinorUnits`; a USDT template with `amountMinorUnits` null | 0059 succeeds, the app launches; those values unchanged, integer siblings in the same JSON rescaled; a v3 restore gives the same | - | - |
 
 Coin registry (set 2):
 
@@ -837,12 +893,14 @@ Trades (set 11; property tests at clock gaps 0, 1 h, 1 day):
 | T3 | same | 0.0005 BNB | pair (BTC +0.01) + BNB -0.0005, same pair id | all excluded | not imported |
 | T4 | same | fee coin untracked | pair; ticker not tracked | excluded | not imported |
 | T5 | sell 0.01 BTC for 600 USDT | 0.6 USDT | BTC -0.01; USDT +599.4 | excluded | not imported |
-| T6 | USDT -> PEPE | PEPE | USDT -x, `asset:PEPE` | excluded | not imported |
+| T6 | USDT -> PEPE | PEPE | USDT -x, `asset:PEPE`, key `${pairId}:<walletKey>`, no `exchangePairId` | excluded | not imported |
 | T7 | order partly filled, later filled | - | amounts refreshed, one pair | excluded | not imported |
 | T8 | buy 0.01 BTC for 600 USDT | 0.6 USDT (spent coin) | USDT Spot -600.6; BTC Spot +0.01; no fee row | excluded | not imported |
 | T9 | BTC/EUR | EUR | EUR fiat leg | excluded | not imported |
 | T10 | run 1 reads fills A1 (order A), B1 (order B), cursor past B1; run 2 reads A2 (a later fill of A) | - | run 2 re-reads A by `orderId` (A1 + A2), rewrites A's pair from both fills; B unchanged; no fill of A dropped | excluded | not imported |
-| T11 | T10, but the `orderId` re-read does not fit the lane | - | stop owed at A's point; cursor stays at A2; next run repeats | none | not imported |
+| T11 | T10, but the `orderId` re-read does not fit the lane | - | cursor holds: `fromId` = A2's id, `heldOrderId` = A; nothing at or after A2 written; no owed point; the next run reads the symbol first, re-reads A, writes A from A1 + A2 and clears `heldOrderId` | none | not imported |
+| T12 | sell PEPE (untracked) for USDT; run 1 reads fill A1, run 2 reads A2 | - | run 2 finds A by the `${pairId}:` key prefix (no `exchangePairId` stored), re-reads A by `orderId`; one USDT +(A1 + A2) row under the same key, `asset:PEPE` | excluded | not imported |
+| T12b | T12 with a BNB commission on each fill | BNB | as T12, plus one BNB fee row `${pairId}:fee:<walletKey>` refreshed to the summed commission of A1 + A2; no second fee row | excluded | not imported |
 
 Convert, dust, dividends, P2P, fiat (sets 8, 9, 12):
 
@@ -888,9 +946,9 @@ Walk-state copy (set 4, migration 0060 and its restore mirror):
 |---|---|---|
 | Z1 | account with Spot BTC walk keys, no `sync_state` row | row created, `exchange_state` built, other columns null |
 | Z2 | disconnected account, floor values in metadata | copied as stored |
-| Z3 | every walk key of capital, Pay, Transfer, Earn set (cursor, rescan, pending, point cursor, range cursor, span hints) | each in its walk entry, field by field (map pinned) |
+| Z3 | every walk key of capital, Pay, Transfer, Earn set (cursor, rescan, pending, point cursor, range cursor, span hints) | each in its walk entry, field by field (map pinned); read back through the section 2 parse, every BTC walk's cursor, rescan, pending, point and range cursors and span hints (all four passes) equal what today's readers return from the old metadata |
 | Z4 | metadata not valid JSON | no `exchange_state` for that account; migration succeeds; walks read from their floors (keys dedupe) |
-| Z5 | Pay `pending` value not a list | copied as stored; the Pay walk entry parses as malformed and repairs per `readPendingMark`; the other walks keep their values |
+| Z5 | Pay `pending` value not a list | copied as stored; only the Pay `pending` field parses as malformed and repairs per `readPendingMark` (that field alone written); the Pay cursor, rescan, point and range cursors and span hints keep their values, as do the other walks |
 | Z6 | `.kiko` without `exchangeState` and without a `syncState` row | restore equals Z1 |
 
 Walk-state parse and writer (set 4):
@@ -917,6 +975,8 @@ Matcher (set 13):
 | M9 | P2P buy 4150.00 | -4150.00 UAH at t - 20 min, `categorySetByHand` true | counts; no caption | counts |
 | M10 | P2P buy 4150.00 | two debits of -4150.00 UAH: a grocery row at t - 5 min, an MCC 4829 row at t - 30 min | the 4829 row is excluded; the grocery row counts | counts |
 | M11 | P2P buy on a crypto account hidden by the account filter | -4150.00 UAH at t - 20 min | excluded | counts |
+| M12 | P2P buy 4150.00 | two debits of -4150.00 UAH: an MCC 6012 row at t - 30 min (already excluded), a grocery row at t - 5 min | the 6012 row is consumed by the match (stays excluded; caption shown); the grocery row counts | 6012 excluded; grocery counts |
+| M13 | P2P buy 4150.00 | two debits of -4150.00 UAH: a hand-categorized funding debit at t - 30 min, a grocery row at t - 5 min | the hand row is consumed and stays as the user set it (its category decides; no caption); the grocery row counts | hand row as set; grocery counts |
 
 Withdrawals (R-Q12): W1 a USDT withdrawal counts as spending in the default category (was: not
 imported; BTC: same as before). W2 a hand link keeps today's exclusion.
@@ -930,8 +990,9 @@ Caption (set 15):
 | K3 | Transfer owes a range | shown | shown |
 | K4 | a backfill range owed | shown | hidden |
 | K5 | only owed points | hidden | hidden |
-| K6 | a candidate trade symbol never read | shown | n/a |
-| K7 | top-level `exchange_state` malformed | shown | n/a |
+| K6 | a candidate trade symbol never read (no entry or null `fromId`) | shown | n/a |
+| K6b | every candidate symbol read, one read empty (`fromId` 0) | hidden | n/a |
+| K7 | top-level `exchange_state` malformed | shown, with the paused copy (`exchangeHistoryPaused`) | n/a |
 
 ## 8. Connect flow (R-Q10)
 
@@ -967,12 +1028,12 @@ Caption (set 15):
 |---|---|
 | Logos (Third-party trademarks) | none; plain-text names and the generic icon; `exchangeDisclaimer` under the picker |
 | Network | no new host: Binance public market data uses the pinned `api.binance.com` without a key; CoinGecko unchanged. `check:plist` unchanged |
-| Privacy policy, price fallback (set 5; `docs/privacy-policy.en.md` and `docs/privacy-policy.md`, section 3) | The fallback calls `api.binance.com` for any user holding a coin CoinGecko did not price, with or without a Binance account. Section 3's automatic list gains "cryptocurrency prices (CoinGecko, and Binance public prices when CoinGecko has none)", and the Binance bullet gains: "Also, for any user, public market prices of a coin CoinGecko did not price: Kiko sends only the market symbol (for example `BTCUSDT`); no key, address or amount is sent." The uk text mirrors it (translator review) |
+| Privacy policy, price fallback (set 5; `docs/privacy-policy.en.md` and `docs/privacy-policy.md`, section 3) | The fallback calls `api.binance.com` for any user holding a coin CoinGecko did not price, with or without a Binance account. Section 3's opening sentence "Some connections run only after you connect ... (Monobank statements, Binance, Blockstream)" names "Binance account data" instead of "Binance" (uk: «дані акаунта Binance» instead of «Binance»), because a Binance price call now runs without a connection. Section 3's automatic list gains "cryptocurrency prices (CoinGecko, and Binance public prices when CoinGecko has none)", and the Binance bullet gains: "Also, for any user, public market prices of a coin CoinGecko did not price: Kiko sends only the market symbol (for example `BTCUSDT`); no key, address or amount is sent." The uk text mirrors it (translator review) |
 | Privacy policy, Binance data (set 15) | the Binance bullet adds: balances of every coin and fiat, trades, Convert, P2P orders (amounts, fiat totals; no counterparty data), fiat deposits/withdrawals and card purchases, dust conversions, distributions (if shipped) |
 | App Privacy label | stays "Data Not Collected" (everything stays on device); the review is recorded in `memory/refs/resubmission-kit.md` section D |
 | Stored counterparty data | Pay nickname only (D4); P2P `counterPartNickName` and fiat payment method details are never read into a type |
 | API terms gate | Before set 15 merges, read and record (URL, date, clauses) Binance's Terms of Use, its API terms (the clauses on read-only third-party apps) and its market-data display terms (the clauses on showing Binance price data in a third-party app, attribution included); scribe records them in kiko-compliance. A clause that forbids the price display removes the fallback before ship. Bybit's terms (PDF in `research-bybit.md`) gate 1.3-b |
-| Demo `.kiko` | a crypto account (`institution` null) with manual holdings in at least five curated coins incl. USDT, USDC and a non-top coin (one with a dated price history); on that account (set 7) an Exchange pair USDT -> BTC with `operation = 'trade'`, a P2P buy row with `p2p:UAH:4150.00` and `operation = 'p2p'`, a card buy row with `card:UAH:2600.00`, and a matching bank debit on a bank account so the statistics matcher shows (set 13); a crypto account with `bankId = 'binance'` so the reviewer reaches the connect field; regenerated (`KIKO_REGEN_DEMO=1`) with each snapshot-shape change |
+| Demo `.kiko` (`e2e/screenshot/fixtures/kiko-demo-en.kiko`, `kiko-demo-uk.kiko`, built by `build-demo-snapshot.ts`) | a crypto account (`institution` null) with manual holdings in at least five curated coins incl. USDT, USDC, ETH, BNB and a non-top coin (one with a dated price history), plus UAH and EUR holdings; on that account (set 7) an Exchange pair USDT -> BTC with `operation = 'trade'` and its third-coin fee row (BNB, `operation = 'trade-fee'`, same pair id, labelled "Trading fee"), a Convert pair UAH -> USDT (`operation = 'convert'`), a dust pair DOGE -> BNB (`operation = 'dust'`), a P2P buy row with `p2p:UAH:4150.00` and `operation = 'p2p'`, a card buy row with `card:UAH:2600.00` (`operation = 'card'`), a fiat deposit row on the EUR holding with `bank:EUR:100.00` (`operation = 'fiat'`), a reward row (`operation = 'reward'`; dropped with the dividend walk if P8 removes it), and a matching bank debit on a bank account so the statistics matcher shows (set 13). Two connectable demo accounts, both with `institution` null so `useAutoSync` never runs: a crypto account with `bankId = 'binance'` so the reviewer reaches the Binance connect field (set 14), and one with `bankId = 'btc_wallet'` (set 14); `build-demo-snapshot.ts` maps `bankId` to null for every non-bank account today (`account.kind === 'bank' ? ... : null`), so set 14 changes that mapping. Regenerated (`KIKO_REGEN_DEMO=1`) with each snapshot-shape change: set 1 (`EXPORT_VERSION` 4; `generate-demo-kiko.test.ts` pins `envelope.version` to it), set 4 (`exchange_state` column), set 7 (rows, `operation`), set 13, set 14 |
 | 3.1.5 | read-only viewer; the notes state no trading, withdrawal or transfer is possible |
 
 Notes for Review (en, appended to the reviewer kit in set 15):
@@ -984,18 +1045,25 @@ Notes for Review (en, appended to the reviewer kit in set 15):
 > and its "not affiliated" caption are visible on that path.
 >
 > New in this version, with where to see each in the demo file (Settings > Import):
-> - Holdings in many coins (USDT, USDC, ETH and others), valued from market prices: the demo crypto
->   account.
-> - Spot trades and Convert shown as an exchange between two holdings, with "Trading fee" rows:
->   the demo crypto account's transactions.
-> - P2P and card purchases, labelled "P2P purchase (UAH)" and "Card purchase (UAH)": same account.
+> - Holdings in many coins (USDT, USDC, ETH, BNB and others) and UAH and EUR holdings, valued
+>   from market prices: the demo crypto account.
+> - Spot trades, Convert and dust conversions to BNB shown as an exchange between two holdings; a
+>   trading fee paid in a third coin (BNB) shows as a "Trading fee" row (a fee in the bought or
+>   sold coin is part of the exchange amount, with no row of its own): the demo crypto account's
+>   transactions.
+> - P2P and card purchases, labelled "P2P purchase (UAH)" and "Card purchase (UAH)", a "Bank
+>   deposit (EUR)" row and a "Reward" row: same account.
 > - A bank card payment that funded a P2P purchase is not counted as spending and shows "Matched to
 >   P2P purchase": the demo bank account's transaction and the Statistics tab.
-> - With a connected Binance account only: one holding per coin and wallet, fiat balances with
->   "Bank deposit (EUR)" / "Bank withdrawal (EUR)" rows, dust conversions to BNB, "Reward" rows, a
->   "Not tracked" line for coins outside Kiko's coin list, an
->   "Earlier history" line and a short "Not listed" note at the bottom of each Binance holding, and
->   a "history not imported yet" line while older history loads.
+> - The "Exchange or wallet" picker with Binance and Bitcoin wallet address: the demo accounts
+>   marked Binance and Bitcoin wallet.
+> - With a connected Binance account only: one holding per coin and wallet filled from Binance,
+>   fiat balances, "Bank withdrawal (EUR)" rows, a "Not tracked" line for coins outside Kiko's coin
+>   list, an "Earlier history" line and a short "Not listed" note at the bottom of each Binance
+>   holding, and a "history not imported yet" line while older history loads.
+
+If probe P8 removes the dividend walk, the demo's reward row and the "Reward" words above go with it
+(set 15 writes the notes from what ships).
 
 ## 10. Copy (en; uk proposed, translator review before deploy)
 
@@ -1014,6 +1082,7 @@ Notes for Review (en, appended to the reviewer kit in set 15):
 | `accountDetail.connectExchangeSheetTitle` | Connect an Exchange or Wallet | Підключити біржу або гаманець |
 | `accountDetail.changeExchangeAction` | Change exchange | Змінити біржу |
 | `accountDetail.exchangeHistoryPending` (replaces `binanceHistoryPending`) | Some {{exchange}} transaction history is not imported yet. Kiko will keep importing on each sync. | Частину історії транзакцій {{exchange}} ще не імпортовано. Кіко продовжить імпорт під час наступних синхронізацій. |
+| `accountDetail.exchangeHistoryPaused` (shown instead of `exchangeHistoryPending` while the top-level state is malformed, K7) | {{exchange}} history import is paused because Kiko could not read its saved import progress. Disconnect and reconnect {{exchange}} to repair it; your holdings and transactions stay. | Імпорт історії {{exchange}} призупинено, бо Кіко не зміг прочитати збережений прогрес імпорту. Відʼєднайте й знову підключіть {{exchange}}, щоб це виправити; ваші активи й транзакції залишаться. |
 | `accountDetail.untrackedCoins` | Not tracked: {{tickers}}. These coins are not on Kiko's coin list, so Kiko does not import them. | Не відстежуються: {{tickers}}. Цих монет немає в списку Кіко, тому Кіко їх не імпортує. |
 | `accountDetail.oversizedAmount` | {{coin}}: the amount is too large for Kiko to store exactly, so it was not imported. | {{coin}}: сума завелика, щоб Кіко зберіг її точно, тому її не імпортовано. |
 | `accountDetail.disconnectProviderMessage.binance` (changed) | This clears the connection and the stored API key. Your holdings and transactions stay as a manual snapshot. | (unchanged) Акаунт буде відʼєднано, але ви можете й надалі керувати ним вручну. |
@@ -1056,25 +1125,30 @@ main's journal before its merge.
 
 | Task | Content | Files / areas | Migration | Tests | Probe |
 |---|---|---|---|---|---|
-| 1/15 | USDT scale 8, migration 0059 (amounts, JSON fields, templates by own currency, rules, import keys, bound guard), restore version pass-through, `withUsdtRescaled`, `.kiko` v4 | `src/currency/currency/currency.ts` (`currencyScale.USDT`), `drizzle/migrations/0059_*.sql` + `migrations.js` + meta, `src/data-transfer/crypto/envelope.ts`, `src/data-transfer/import-data.ts`, `src/data-transfer/snapshot/restore-snapshot.ts` (~6 mutable) | 0059 USDT rescale; `kiko:reviewer` before BATCH READY | U1-U12; two-path migration/restore; bound abort pinned; display of a scale-8 USDT amount | no |
+| 1/15 | USDT scale 8, migration 0059 (amounts, JSON fields, templates by own currency, rules, import keys, bound guard), restore version pass-through, `withUsdtRescaled`, `.kiko` v4 | `src/currency/currency/currency.ts` (`currencyScale.USDT`), `drizzle/migrations/0059_*.sql` + `migrations.js` + meta, `src/data-transfer/crypto/envelope.ts`, `src/data-transfer/import-data.ts`, `src/data-transfer/snapshot/restore-snapshot.ts`, both demo files `e2e/screenshot/fixtures/kiko-demo-en.kiko` and `kiko-demo-uk.kiko` regenerated (`KIKO_REGEN_DEMO=1`; `generate-demo-kiko.test.ts` pins `EXPORT_VERSION`) (~6 mutable) | 0059 USDT rescale; `kiko:reviewer` before BATCH READY | U1-U14 (U12b included); two-path migration/restore; bound abort and its `MigrationsGate` error state pinned; malformed JSON and non-integer fields launch and stay unchanged; display of a scale-8 USDT amount | no |
 | 2/15 | curated registry with the scale formula, USDC/FDUSD/DAI and the other curated codes, exact amount parser, per-coin CoinGecko isolation, frozen 0044 list, coin names, picker | `src/currency/currency/currency.ts`, `src/currency/coins/` (new), `src/currency/decimal/decimal.ts`, `src/rates/coingecko-ids/`, `src/rates/coingecko/`, `src/rates/rates-refresh/`, `restore-snapshot.ts` (`FROZEN_1_0_CRYPTO_CODES`), `src/i18n/locales/{en,uk}.ts`, holding form picker, demo seed (~12) | none | R1-R4; registry invariants; 0044 frozen pin; CoinGecko one-id-missing case | no |
-| 3/15 | layer extraction, Binance BTC-only, no behaviour change; `Pager`, `RunBudget`, `SignRequest`, credentials unit; `offsetPager` | `src/crypto-sync/exchange/{registry,credentials,signing,budget,paging,walk,amounts}/` (moves with `git mv` + barrels), `binance.*` importers (~25 mutable; moves and importers in one commit) | none | today's suites green unchanged; a byte-identical key and request snapshot test | no |
-| 4/15 | walk state to `sync_state`, per-walk parse, `write(...)` writer | `src/db/schema.ts`, `src/sync-state/sync-state.repo.ts`, `exchange/walk-state/`, `holding-metadata.ts`, `holdings.repo.ts`, `disconnect.ts`, `restore-snapshot.ts` (`withWalkStateMoved`), walk readers/writers, `binance-history-status.ts` (~16) | 0060 ADD COLUMN + copy; `kiko:reviewer` before BATCH READY | Z1-Z6; X1-X4; two-path restore; disconnect reset; walk properties at 0 / 1 h / 1 day | no |
+| 3/15 | layer extraction, Binance BTC-only, no behaviour change; `Pager`, `RunBudget`, `SignRequest`, credentials unit; `offsetPager` | `src/crypto-sync/exchange/{credentials,signing,budget,paging,walk,amounts}/` (moves with `git mv` + barrels; no `registry/`, set 14 creates it), `binance.*` importers (~25 mutable; moves and importers in one commit). Before any other work, the developer commits the moves and importers and runs `KIKO_MUTATION_BASE=<set 3 base sha> make mutable`; over 30, set 3 is split in advance, before review (for example credentials + signing + amounts, then budget + paging + walk), each part with its own base | none | today's suites green unchanged; a byte-identical key and request snapshot test | no |
+| 4/15 | walk state to `sync_state`, per-walk parse, `write(...)` writer | `src/db/schema.ts`, `src/sync-state/sync-state.repo.ts`, `exchange/walk-state/`, `holding-metadata.ts`, `holdings.repo.ts`, `disconnect.ts`, `restore-snapshot.ts` (`withWalkStateMoved`), walk readers/writers, `binance-history-status.ts`, both demo `.kiko` files regenerated for the new column (~16) | 0060 ADD COLUMN + copy; `kiko:reviewer` before BATCH READY | Z1-Z6; X1-X4; two-path restore; disconnect reset; walk properties at 0 / 1 h / 1 day | no |
 | 5/15 | multi-coin balances, per-coin and fiat holdings, names and BTC rename, LD* skip, not-tracked and oversized lines, Binance price fallback, privacy policy price wording | `binance.provider.ts`, `binance.client.ts`, `binance.holding-keys.ts`, `provider.ts`, `sync.ts`, `holdings.repo.ts` (`renameFromDefaults`), `exchange/history-status/`, `crypto-sync-section.component.tsx`, `src/rates/` fallback, `docs/privacy-policy*.md` (~14) | none | H1-H13; N2; exact sums per coin; one coin missing a price | no (P9, P10, P13, P14 have safe defaults) |
 | 6/15 | account-wide capital, Pay, Transfer, Earn; key rules; cross-coin Pay; Earn reward grouping per asset; `multiCoinSince`; 2-minute matcher input filter | `binance.transactions.ts`, `binance.pay-history.ts`, `binance.history-client.ts`, `binance.transfer-history.ts`, `binance.earn-history.ts`, `exchange/walk/`, `src/statistics/internal-transfers/`, `statistics.screen.tsx` (~12) | none | Y1-Y8; E1-E2; S1-S3; W1-W2; key byte-identity for BTC; key uniqueness property; walk properties at 0 / 1 h / 1 day | no (P11, P12, P16 safe defaults) |
 | 7/15 | `operation` column, C-NR1 code forms and parsers, render labels, copy, demo rows | `src/db/schema.ts`, `untracked-counterpart.ts`, `row-description.ts`, `exchange-description.ts`, `transactions.repo.ts`, `src/i18n/locales/{en,uk}.ts`, migration files, demo seed + regen (~10) | 0061 ADD COLUMN; `kiko:reviewer` before BATCH READY | label order cases; code parse cases incl. N3; back-compat import of an export without the column; exclusion unchanged | no |
 | 8/15 | Convert walk | `binance.convert-history.ts` (new), `binance.history-client.ts`, `binance.history-budget.ts`, `run-crypto-sync.ts` (~6) | none | C1-C2; window halving on `moreData`; walk properties | yes (P4; C-NR3 wallet) |
 | 9/15 | dust read; dividend walk only if P8 yields an allowlist value | `binance.dust-history.ts`, `binance.dividend-history.ts` (new, conditional), client, budget, run wiring (~7) | none | D1-D3; V1-V2 and the allowlist pin if shipped | yes (P7, P8) |
 | 10/15 | trades 1/2: symbol discovery, rotation with the reserved call, `idCursorPager` | `exchange/paging/id-cursor-pager.ts`, `binance.trade-symbols.ts` (new), public `exchangeInfo` read, `walk-state` trades part (~7) | none | rotation bound `ceil(S / L)` property with `L >= 1` when changed symbols fill the lane; discovery cases; pager pages | yes (P1, P2) |
-| 11/15 | trades 2/2: order aggregation, `orderId` re-read, rows, fee rules (C-NR2), `/api/*` IP budget, lane caps measured | `binance.trade-history.ts` (new), `binance.history-client.ts`, `binance.history-budget.ts`, `run-crypto-sync.ts` (~6) | none | T1-T11 exact parity; properties at 0 / 1 h / 1 day; measured run report | yes (P1, P3, P15) |
+| 11/15 | trades 2/2: order aggregation, `orderId` re-read, rows, fee rules (C-NR2), `/api/*` IP budget, lane caps measured | `binance.trade-history.ts` (new), `binance.history-client.ts`, `binance.history-budget.ts`, `run-crypto-sync.ts` (~6) | none | T1-T12b exact parity; properties at 0 / 1 h / 1 day; measured run report | yes (P1, P3, P15) |
 | 12/15 | P2P, fiat orders, fiat payments walks | `binance.p2p-history.ts`, `binance.fiat-history.ts` (new), client, budget, run wiring (~7) | none | P1-P5, F1-F3; UID 45000 lane cap; properties | yes (P5, P6; C-NR3 wallets) |
-| 13/15 | read-time bank-debit matcher and its caption | `src/statistics/exchange-funding-match/` (new), `statistics.screen.tsx`, the transaction form caption slot, i18n, demo bank debit (~6) | none | M1-M11; one-to-one tie-breaks with a distinct value per sort key | no |
-| 14/15 | exchange catalog, picker field, registry wiring, shared provider sheet, `syncJobsFor` | `exchange-catalog/`, `exchange/registry/`, `exchange-type-field/` (new), `crypto-sync-form`, `account-form.screen.tsx`, `crypto-sync-section`, `add-bank-sheet` -> `provider-sheet`, `bank-sync-section`, `sync-jobs.ts`, `provider.ts`, `deletable.ts`, i18n, demo account (~16) | none | picker and caption render; registry skip of an unwired id; connect-first rollback; demo invariant per connectable catalog entry | no |
-| 15/15 | backfill ranges, caption, "Earlier history", not-listed note, privacy policy Binance paragraph, terms check, Notes for Review, demo regen, kiko-architecture/kiko-domain/kiko-compliance updates via scribe | `exchange/walk/` (backfill scope), the four walk files, `exchange/history-status/`, `holding-detail.screen.tsx`, i18n, `docs/privacy-policy*.md`, `e2e/screenshot/` seed (~12) | none | K1-K7; B1-B5; N1; earlier-history sum exact | no (terms gate) |
+| 13/15 | read-time bank-debit matcher and its caption | `src/statistics/exchange-funding-match/` (new), `statistics.screen.tsx`, the transaction form caption slot, i18n, demo bank debit (~6) | none | M1-M13; one-to-one tie-breaks with a distinct value per sort key | no |
+| 14/15 | exchange catalog, picker field, registry wiring, shared provider sheet, `syncJobsFor` | `exchange-catalog/`, `exchange/registry/`, `exchange-type-field/` (new), `crypto-sync-form`, `account-form.screen.tsx`, `crypto-sync-section`, `add-bank-sheet` -> `provider-sheet`, `bank-sync-section`, `sync-jobs.ts`, `provider.ts`, `deletable.ts`, i18n, `build-demo-snapshot.ts` (crypto `bankId` kept) + `binance` and `btc_wallet` demo accounts (`institution` null) + demo regen (~16) | none | picker and caption render; registry skip of an unwired id; connect-first rollback; demo invariant per connectable catalog entry | no |
+| 15/15 | backfill ranges, caption, "Earlier history", not-listed note, privacy policy Binance paragraph, terms check, Notes for Review, demo regen, kiko-architecture/kiko-domain/kiko-compliance updates via scribe | `exchange/walk/` (backfill scope), the four walk files, `exchange/history-status/`, `holding-detail.screen.tsx`, i18n, `docs/privacy-policy*.md`, `e2e/screenshot/` seed (~12) | none | K1-K7 (K6b included), `exchangeHistoryPaused` copy; B1-B5; N1; earlier-history sum exact | no (terms gate) |
 
 Sets 8-12 wait for probe 2 (R-Tech). Sets 1, 4 and 7 each carry a `kiko:reviewer` step on their
 migration before BATCH READY. Device verification with the user's key runs on the final tip
 before 1.3-a ships.
+
+Release-step note (not a code change): set 1 makes the demo files version 4, which a 1.2.x build
+cannot read. If a 1.2.x build is still in App Store review when set 1 merges, the release step
+freezes a version 3 copy of the demo file for that build's reviewer (as `kiko-demo-en-1.1.kiko` was
+kept for 1.1).
 
 ## 12. Open questions
 
@@ -1100,9 +1174,19 @@ privacy header requires).
 | P12 | Pay `fundsDetail` with several coins; `walletAssetCost` keys per coin | rows per coin and wallet | `pay-split-mismatch` stop | 6 |
 | P13 | `get-funding-asset` without `asset` omits zero rows | a missing coin reads as zero for existing holdings | none needed | 5 |
 | P14 | `EURUSDT` is a live spot symbol | USDT fallback via EURUSDT | no USDT fallback; USDT unpriced when CoinGecko fails (existing "no rate" treatment) | 5 |
-| P15 | weight headers of each new endpoint, the weight of `myTrades` with `orderId` | caps of section 5 | caps alone bound the run | 8-12 |
+| P15 | weight headers of each new endpoint, the weight of `myTrades` with `orderId`; that `symbol` + `orderId` + `fromId` together page an order's fills by id (pages of 1000 until a short page) | caps of section 5; the re-read pages by `fromId` | caps alone bound the run; `fromId` refused with `orderId`: NEEDS RULING before set 11 | 8-12 |
 | P16 | `walletType` of non-BTC deposits | 0 Spot, 1 Funding, else stop | stop owes the record | 6 |
 
 ### NEEDS RULING
 
-None open. C-NR1, C-NR2 and C-NR3 are ruled (section 1); C-NR3 is final after probe 2.
+C-NR1, C-NR2 and C-NR3 are ruled (section 1); C-NR3 is final after probe 2. Open:
+
+- NR4 (blocks set 11 only if P15 refutes it): if Binance refuses `fromId` together with
+  `orderId`, how an order with more than 1000 fills is re-read whole. Options: (A) re-read through
+  the id cursor from the order's first stored fill id and keep only that order's fills; (B) hold
+  the order (`heldOrderId`) and log a fixed tag, the order's rows stay at their last amounts.
+- NR5 (blocks set 11): a third-coin fee row of an order whose RECEIVED coin is untracked (buy PEPE
+  with USDT, fee in BNB) has no received-leg holding for `exchangeCounterpartHoldingId`, so it
+  would carry only `exchangePairId`, which `exchangeExcludedTransactionIds` does not read, and count
+  as spending. Options: (A) the fee row takes `untrackedCounterpart = asset:<received code>`; (B)
+  its `exchangeCounterpartHoldingId` is the spent leg's holding.
