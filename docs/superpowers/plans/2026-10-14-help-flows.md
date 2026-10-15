@@ -407,7 +407,9 @@ track and is not part of this plan.
   step.** (a) The en casing test accepts a quoted span that exactly equals a Title-role catalogue
   value. The allowance is exact-match.
 - **Q3. Topics whose first step needs a specific account or tab (importStatement, addHolding,
-  editTransaction, viewStatistics).** (a) No footer button: the action is `null`.
+  editTransaction, viewStatistics).** (a) No footer button: the action is `null`. The 2026-10-15
+  ruling Q7 (device-feedback plan) gives viewStatistics an "Open statistics" footer, reversing
+  Q3 (a) for that topic only.
 - **Q4. Group order.** Accounts, Holdings and Loans, Transactions, Categories, Statistics,
   Settings.
 - **Q5. Section header placement.** (a) The heading above each card (the CategoryForm "Rules" and

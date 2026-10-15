@@ -4,6 +4,7 @@ export const styles = StyleSheet.create((theme) => ({
   text: {
     variants: {
       variant: {
+        largeTitle: { ...theme.typography.largeTitle },
         title: { ...theme.typography.title },
         heading: { ...theme.typography.heading },
         body: { ...theme.typography.body },

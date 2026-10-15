@@ -22,6 +22,7 @@ import {
   restoreDefaultAnimationOfSwappedForm,
 } from '../swapped-form-options';
 import type { AccountsStackParamList } from '../types';
+import { fittingLargeTitleLayout } from '../fitting-large-title';
 import { resetTabStackOnBlur } from '../reset-tab-stack-on-blur';
 import { largeTitleScreenOptions } from '../large-title-screen-options';
 
@@ -47,7 +48,11 @@ const AccountsStack: FC = () => {
   const { t } = useTranslation();
 
   return (
-    <Stack.Navigator screenOptions={largeTitleScreenOptions} screenListeners={resetTabStackOnBlur}>
+    <Stack.Navigator
+      screenOptions={largeTitleScreenOptions}
+      screenLayout={fittingLargeTitleLayout}
+      screenListeners={resetTabStackOnBlur}
+    >
       <Stack.Screen
         name="Accounts"
         component={AccountsScreen}
