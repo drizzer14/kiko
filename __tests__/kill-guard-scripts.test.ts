@@ -67,6 +67,10 @@ scriptWith('kills-zsh.sh', '#!/bin/zsh -f\npkill node\n', 0o755);
 scriptWith('kills-plain.sh', 'pkill node\n', 0o755);
 scriptWith('kills.py', '#!/usr/bin/env python3\nimport os\nos.killpg(1, 9)\n# pkill node\n', 0o755);
 scriptWith('own-pid.sh', 'sleep 30 &\npid=$!\nkill "$pid"\nkill -0 "$pid"\n');
+// The shapes a third-party script (superpowers' stop-server.sh) uses to stop only its own server.
+scriptWith('own-argument.sh', '#!/bin/bash\nif kill -0 "$1" 2>/dev/null; then\n  kill "$1"\nfi\n');
+scriptWith('own-empty-pid.sh', 'SERVER_PID=""\nkill -0 "$SERVER_PID"\nkill -s 0 "$SERVER_PID"\n');
+scriptWith('null-signal.sh', 'kill -0 0\nkill -0 -1\nkill -s 0 -1\npgrep node | xargs kill -0\n');
 scriptWith('comment.sh', '# pkill node\necho "pkill node"\n');
 scriptWith(
   'other-findings.sh',
@@ -137,6 +141,9 @@ const DENIED: string[] = [
 const ALLOWED: string[] = [
   'bash own-pid.sh',
   'source own-pid.sh',
+  'bash own-argument.sh 4242',
+  'bash own-empty-pid.sh',
+  'bash null-signal.sh',
   'bash comment.sh',
   'bash other-findings.sh',
   'bash sources.sh',

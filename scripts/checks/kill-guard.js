@@ -1153,15 +1153,19 @@ function killTargets(tokens) {
   return tokens.slice(i);
 }
 
+// Signal 0 (`kill -0`, `kill -s 0`) only tests whether a process exists: nothing is sent, so
+// whatever it names is safe.
+const sendsNoSignal = (tokens) => tokens[0] === '-0' || (tokens[0] === '-s' && tokens[1] === '0');
+
 // A target is safe only when it is a plain positive pid, a shell variable
 // the agent's own script set (`$PID`, `"$pid"`, `${pid}` — the agent is
-// presumably stopping a process it started itself), or a job-control spec
-// (`%1` — the caller's own shell job, not a pattern match on other
-// processes). Everything else — a name, a glob, 0, a negative pid, or the
+// presumably stopping a process it started itself), a positional parameter a caller passed
+// (`"$1"` .. `"$9"`), or a job-control spec (`%1` — the caller's own shell job, not a pattern
+// match on other processes). Everything else — a name, a glob, 0, a negative pid, or the
 // `__SUBSHELL__` placeholder standing in for a `$(...)`/backtick whose
 // targets come from a live pattern match — is dangerous.
 function isDangerousKillTarget(target) {
-  if (/^\$[A-Za-z_{]/.test(target)) return false;
+  if (/^\$[A-Za-z_{1-9]/.test(target)) return false;
   if (/^%/.test(target)) return false;
   if (/^-?\d+$/.test(target)) return Number(target) <= 0;
   return true;
@@ -2516,9 +2520,10 @@ function scriptKillFinding(scriptFile, context) {
 
 // A pkill/killall (or the probe's sentinel), or a `kill` aimed at a pattern or a process group.
 function killFinding(base, { tokens: rest, viaXargs }, context) {
+  const aimsAtMany = () => viaXargs || killTargets(rest.slice(1)).some(isDangerousKillTarget);
   const isKill =
     context.rules.killCommands.has(base) ||
-    (base === 'kill' && (viaXargs || killTargets(rest.slice(1)).some(isDangerousKillTarget)));
+    (base === 'kill' && !sendsNoSignal(rest.slice(1)) && aimsAtMany());
 
   return isKill ? { kind: 'kill', detail: context.segment.trim() } : null;
 }
