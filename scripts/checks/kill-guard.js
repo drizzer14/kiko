@@ -6,7 +6,9 @@
 // signal-as-target). See docs/harness/checks.md "Automatic wiring" and
 // `.claude/skills/kiko-linter/SKILL.md` for the check-wrapper contract this
 // hook does NOT follow: it must ALWAYS exit 0, even on a crash or malformed
-// payload, so it can never break the Bash tool itself. Wired from
+// payload, so it can never break the Bash tool itself. An error thrown while judging a command is
+// a deny (`internalError`), not an allow: the command that crashed the guard may be the one it
+// stops; an unreadable payload still allows. Wired from
 // harness/kiko/hooks/hooks.json via scripts/checks/kill-guard.sh.
 //
 // Incident this guards against: a reviewer subagent ran
@@ -213,6 +215,18 @@ const SCRIPT_KILL_REASON_LINES = [
     'time, or write the script in the same command that runs it to get past this guard.',
 ];
 
+const INTERNAL_ERROR_REASON_LINES = [
+  'WHAT FAILED:    kill-guard hit an internal error while judging this command, so it could not ' +
+    'clear it.',
+  'WHY IT MATTERS: a guard that allowed a command it could not judge would let through the very ' +
+    'command that crashed it, and the guard exists to stop pattern kills, stashes, unchecked ' +
+    'writes, and skipped hooks.',
+  'HOW TO FIX:     split the command into smaller steps or simplify its longest construct (a ' +
+    'chain of variable assignments or expansions, deep nesting), then run it again; if a plain ' +
+    'short command is denied, report the error in DETAILS to the coordinator.',
+  'DO NOT:         wrap the command in a script file, an alias, or a variable to get past this guard.',
+];
+
 const REASON_BY_KIND = {
   kill: () => KILL_REASON,
   scriptKill: (finding) => blockReason(SCRIPT_KILL_REASON_LINES, finding.detail),
@@ -223,6 +237,7 @@ const REASON_BY_KIND = {
   waitLoop: (finding) => blockReason(WAIT_LOOP_REASON_LINES, finding.detail),
   noVerify: (finding) => blockReason(NO_VERIFY_REASON_LINES, finding.detail),
   hooksConfig: (finding) => blockReason(HOOKS_CONFIG_REASON_LINES, finding.detail),
+  internalError: (finding) => blockReason(INTERNAL_ERROR_REASON_LINES, finding.detail),
 };
 
 const reasonFor = (finding) => REASON_BY_KIND[finding.kind](finding);
@@ -2818,10 +2833,25 @@ function firstFinding(lines, depth, checkHeredoc, rules) {
 
 const VARIABLE_REFERENCE = /\$(?:\{([A-Za-z_][A-Za-z0-9_]*)\}|([A-Za-z_][A-Za-z0-9_]*))/g;
 
+// A value is a path the text names, not a program's output: one longer than this is unknown, and
+// one word never grows past four of them, so `v=$v$v` repeated cannot build a string the engine
+// refuses (which threw, and the hook then allowed everything).
+const VARIABLE_VALUE_LIMIT = 4096;
+const EXPANDED_WORD_LIMIT = 4 * VARIABLE_VALUE_LIMIT;
+
 // `$name` and `${name}` in `word` read as the value this command assigned earlier (quoting and
-// word splitting aside); a name it never assigned stays as it is.
-const expandVariables = (word, variables) =>
-  word.replace(VARIABLE_REFERENCE, (match, braced, bare) => variables.get(braced ?? bare) ?? match);
+// word splitting aside); a name it never assigned, or whose value is unknown, stays as it is.
+function expandVariables(word, variables) {
+  let room = EXPANDED_WORD_LIMIT;
+
+  return word.replace(VARIABLE_REFERENCE, (match, braced, bare) => {
+    const value = variables.get(braced ?? bare);
+    if (value === undefined || value === null) return match;
+    room -= value.length;
+
+    return room < 0 ? match : value;
+  });
+}
 
 // The variables one segment leaves set for the commands after it: a bare `NAME=value` statement,
 // or the `NAME=value` words of an `export`/`declare`/`typeset`/`local`/`readonly`. A `NAME=value`
@@ -2842,7 +2872,8 @@ function assignedVariables(segment, variables, separator) {
 
 // A value that is itself an expansion (`$!`, `$(pgrep x)`, `$other`) is not a path the text names,
 // and expanding it would hide that a kill's target is a variable: it is recorded as unknown.
-const isLiteralValue = (value) => !/[$`]|__SUBSHELL__/.test(value);
+const isLiteralValue = (value) =>
+  value.length <= VARIABLE_VALUE_LIMIT && !/[$`]|__SUBSHELL__/.test(value);
 
 // A later assignment of a name wins, in the order the command runs them; the earlier map is left as
 // it was, because the nested text of earlier segments still reads it.
@@ -2978,7 +3009,22 @@ const KILL_COMMANDS = ['pkill', 'killall'];
 // every command is judged once per reading, and either finding counts. The
 // outer text cannot tell whether such a delimiter hides in a nested `-c` or
 // `eval` string (`\$\"EOF\"`), so both readings always run.
+//
+// Judging fails closed: an error thrown while judging (a pathological command the scanners could
+// not take) is an `internalError` finding that denies, never an allow, because the command that
+// crashed the guard may be the one it exists to stop.
 function decide(command, options = {}) {
+  try {
+    return judge(command, options);
+  } catch (error) {
+    return {
+      kind: 'internalError',
+      detail: `${error?.name}: ${String(error?.message).slice(0, 200)}`,
+    };
+  }
+}
+
+function judge(command, options) {
   const rules = {
     killCommands: new Set([...KILL_COMMANDS, ...(options.sentinelKillCommands ?? [])]),
     mainCheckoutPath: options.mainCheckoutPath ?? MAIN_CHECKOUT_PATH,

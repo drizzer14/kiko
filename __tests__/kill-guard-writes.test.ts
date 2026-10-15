@@ -667,6 +667,23 @@ describe('kill-guard shell-write deny (parser only, fake repository)', () => {
     expect(Date.now() - started).toBeLessThan(2000);
   });
 
+  // A command that doubles a variable 31 times would build a string past the engine's limit, and
+  // the throw used to turn the whole decision into an allow.
+  it('judges a command that doubles a variable past any size', () => {
+    const doublings = Array.from({ length: 31 }, () => 'v=$v$v').join('; ');
+
+    expect(decideInMain(`v=ab; ${doublings}; pkill node`)).toBe('kill');
+    expect(decideInMain(`v=ab; ${doublings}; echo x > $v`)).toBe('allow');
+  });
+
+  it('reads a variable value of at most 4 KiB and a longer one as unknown', () => {
+    const near = `src/${'a'.repeat(4000)}.ts`;
+    const far = `src/${'a'.repeat(5000)}.ts`;
+
+    expect(decideInMain(`f=${near}; sed -i '' s/a/b/ $f`)).toBe('shellWrite');
+    expect(decideInMain(`f=${far}; sed -i '' s/a/b/ $f`)).toBe('allow');
+  });
+
   it('counts a tree only at the root of a worktree of this repository', () => {
     expect(decide('echo x > src/x.ts', { cwd: WORKTREE })).toBe('shellWrite');
     expect(decide('echo x > src/x.ts', { cwd: OTHER })).toBe('allow');

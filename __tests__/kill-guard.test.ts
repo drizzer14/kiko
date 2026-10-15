@@ -876,6 +876,19 @@ describe('kill-guard decide() test-only options (parser only)', () => {
     expect(decide(command)).toBe('kill');
   });
 
+  // A guard that allowed on a crash would let through the very command that crashed it.
+  it('denies a command it could not judge instead of allowing it', () => {
+    const script = [
+      'const { decide } = require(process.argv[1]);',
+      "const options = { get mainCheckoutPath() { throw new Error('judging failed'); } };",
+      "const finding = decide('ls', options);",
+      "process.stdout.write(finding.kind + ': ' + finding.detail);",
+    ].join('\n');
+    const result = spawnSync('node', ['-e', script, GUARD], { encoding: 'utf8' });
+
+    expect(result.stdout).toBe('internalError: Error: judging failed');
+  });
+
   it('allows the sentinel without the option', () => {
     expect(decide(`${SENTINEL} -x`)).toBe('allow');
   });
