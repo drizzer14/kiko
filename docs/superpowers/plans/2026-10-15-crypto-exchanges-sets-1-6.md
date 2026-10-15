@@ -508,7 +508,8 @@ Set 1 gate deltas: migration set -> kiko:reviewer done; device confirmation reco
 Spec ids: R1-R5, registry invariants, parser exact-parity property, NR9. Expected mutable files: about 12 (spec) /
 8-10 (prep). TIMEOUT-HEAVY risk: `currency.ts`, `decimal.ts`.
 
-Known red between commits: none (every pin that reads the grown `cryptoCurrencyOptions` moves in step 3).
+Known red between commits: none (every pin that reads the grown `currencyOptions` or `cryptoCurrencyOptions` moves
+in step 3).
 
 **Interfaces produced:**
 - `decimalToMinorUnits(text: string, scale: number, rounding: 'exact' | 'half-away-from-zero'):
@@ -566,10 +567,11 @@ Files: `src/currency/coins/coins.ts`, `index.ts`, `coins.test.ts` (new).
 Files: `currency.ts`, `src/rates/coingecko-ids/coingecko-ids.ts`, `currency.test.ts`, `coingecko-ids.test.ts`,
 `en.ts`, `uk.ts`, `currency-names.i18n.test.ts`, `restore-snapshot.ts` (the constant only),
 `drizzle/migrations/0044-move-crypto-cash-holdings.test.ts`, `src/rates/coingecko/coingecko.test.ts`,
-`src/rates/coingecko-history/coingecko-history.test.ts`, `holding-form.screen.test.tsx`. One commit: the new codes
+`src/rates/coingecko-history/coingecko-history.test.ts`, `holding-form.screen.test.tsx`,
+`src/rates/rates-refresh/crypto-coverage.test.ts`, `src/rates/repo/rates.repo.test.ts`. One commit: the new codes
 in `currencyOptions` need their `currencyNames` entries in the same commit, or the typecheck fails
-(`en.currencyNames[code]` over every `Currency`). Every pin that reads the grown `cryptoCurrencyOptions` moves in
-this step, so no suite is red between commits.
+(`en.currencyNames[code]` over every `Currency`). Every pin that reads the grown `currencyOptions` or
+`cryptoCurrencyOptions` moves in this step, so no suite is red between commits.
 - [ ] Tests first: "lists every curated code after the fiat block"; "derives scale, symbol and CoinGecko id from
       the registry"; "names every curated coin in en and uk" (`it.each` over the registry).
 - [ ] "was:" pins: `currency.test.ts` `currencyOptions.slice(-3)` `['BTC','ETH','USDT']` -> the curated block in
@@ -587,9 +589,28 @@ this step, so no suite is red between commits.
       `expect(['BTC', 'ETH', 'USDT']).toEqual(cryptoCurrencyOptions)` -> `toEqual(FROZEN_1_0_CRYPTO_CODES)` (the
       constant is added to `restore-snapshot.ts` in this step, exported, with no restore use yet);
       `holding-form.screen.test.tsx` "lists crypto currencies first when creating a crypto holding"
-      `codes.slice(0, 4)` `['BTC','ETH','USDT','UAH']` -> `codes.slice(0, cryptoCurrencyOptions.length + 1)` equals
-      the curated codes in the field's crypto order (`currency-field.component.tsx` sorts each group by its en
-      `currencyNames` name, `localeCompare`; write the literal list) then `'UAH'`.
+      `codes.slice(0, 4)` `['BTC','ETH','USDT','UAH']` -> `codes` (the mounted rows) equals the first 15 curated
+      codes in the field's crypto order (`currency-field.component.tsx` sorts each group by its en `currencyNames`
+      name, `localeCompare`; write the literal list). The picker `FlatList` mounts only `initialNumToRender={15}`
+      rows in Jest, so UAH (after every curated coin) is never mounted; the crypto-then-UAH boundary stays pinned by
+      `currency-field.component.test.tsx` "lists the crypto group before the fiat group when cryptoFirst is set"
+      (small options list, unchanged).
+- [ ] "was:" pins of the two suites that loop over the grown `currencyOptions`:
+      `crypto-coverage.test.ts` "composes a convertible path from every crypto to every base currency"
+      `for (const base of currencyOptions)` (rates for BTC/ETH/USDT only, so an unpriced curated coin as base fails)
+      -> `for (const base of [...fiatCurrencyOptions, ...CRYPTO])` (every fiat base plus the three priced coins; the
+      intent, every priced crypto reaches every base, stays); `rates.repo.test.ts` "chunks a full-sync batch under
+      the SQLite bound-parameter limit, in one transaction" `toHaveLength(11_990)` (twice) and `toBe(11_990)` -> a
+      `const pairCount = currencyOptions.length * (currencyOptions.length - 1)` used in all three asserts, and the
+      `buildRates` header comment "110 currencies x 109 cross pairs each = 11,990 rows" -> "every ordered pair of
+      `currencyOptions`" (no count). Re-grep test readers of `currencyOptions`, `cryptoCurrencyOptions`,
+      `fiatCurrencyOptions`, `isCrypto`, `isFiat` in `src`, `e2e`, `drizzle`, `__tests__` on the base; the list is a
+      floor. Readers that stay green unchanged: `amount-format.test.ts` (`it.each(currencyOptions)` round-trip and
+      fraction-digit cases cover each new coin by design), `holding-currency.test.ts` (`toEqual(currencyOptions)`,
+      derived), `rates-refresh.test.ts` "stores exactly one X:UAH row per priced currency" (fiat filter plus a
+      literal 3-coin crypto list), and the fiat-only readers `fiat-rate-seed.test.ts`,
+      `monobank-fiat-coverage.test.ts`, `currency-code.test.ts`, `history-backfill.test.ts`
+      (`fiatCurrencyOptions`). A reader not on this list that goes red moves in this step.
 - [ ] Code: `currencyOptions` spreads `...CURATED_COIN_CODES` after the fiat block (no literal duplicate);
       `CryptoCurrency = CuratedCoinCode`; `cryptoCurrencies`,
       crypto `currencyScale`, crypto `currencySymbol`, `cryptoCoinGeckoId` derived from `curatedCoins` (USDT's
@@ -664,8 +685,11 @@ Files: `src/rates/coingecko-history/coingecko-history.ts`, `coingecko-history.te
 Files: `currency-field.component.test.tsx` (code needs none: `holding-currency.ts` derives; re-grep; the holding
 form's picker pin moved in step 3).
 - [ ] "was:" pins: `currency-field.component.test.tsx` test "groups crypto (BTC, ETH, USDT) after every fiat
-      currency..." -> every curated coin, alphabetical within; base-currency setting test "offers fiat only" kept or
-      added. Commit `test(forms): the holding picker lists every curated coin`.
+      currency..." (`options: ['USDT', 'UAH', 'ETH', 'BTC']`) -> `options: [...cryptoCurrencyOptions, 'UAH']`; the
+      picker mounts only `initialNumToRender={15}` rows in Jest, so the pin is the 15 mounted labels: UAH, then the
+      first 14 curated codes in en name order (literal list; the fiat-then-crypto boundary falls inside the 15 rows);
+      base-currency setting test "offers fiat only" kept or added. Commit
+      `test(forms): the holding picker lists every curated coin`.
 
 ### step 9/10: demo seed
 
@@ -1072,7 +1096,11 @@ stored, spec section 4 "Not-tracked coins"), `crypto-sync-section.component.tsx`
       [ETH] stored; the Funding read fails and Spot lists ABC: both lists stay as stored, no patch of either);
       "leaves out a ticker that is a curated code now" (`untrackedCoinsOf` over balance [PEPE, USDC] and history
       [XYZ, DAI] -> [PEPE, XYZ]). `oversizedCoinsOf` keeps its union as is (every oversized ticker is a curated
-      code, so dropping curated codes would empty it). Commit.
+      code, so dropping curated codes would empty it).
+- [ ] Code in this order: (1) the balance-list replace with no wallet gate (every balance read patches both
+      lists); run the tests and show "a balance read with a failed wallet keeps both balance lists" red against it
+      (quote the failure in BATCH READY); (2) add the gate (patch only when every wallet read succeeded); all green.
+      Check `npx jest src/crypto-sync src/screens`. Commit.
 
 ### step 7/10: Binance public price fallback
 
@@ -1220,8 +1248,10 @@ Files: `binance.pay-history.ts`, `binance.history-client.ts`, tests.
 
 ### step 6/11: Transfer account-wide
 
-Files: `binance.transfer-history.ts`, `binance.history-client.ts` (`btcRowOf` -> a curated-row reader: a row whose
-upper-cased `asset` is a curated code is read strictly; any other is counted and ignored), tests.
+Files: `binance.transfer-history.ts`, `binance.history-client.ts` (`totalPage` takes its row filter per call:
+Transfer's `transferPage` passes a curated-row reader, a row whose upper-cased `asset` is a curated code is read
+strictly and any other is counted and ignored; the Earn page keeps passing the BTC-only `btcRowOf` until step 7, so
+no non-BTC Earn row reaches the BTC-only Earn walk at this step's tip), tests.
 - [ ] "was:" pins: `binance.transfer-history.test.ts` "a row of another asset gives no row", "a transfer of another
       asset is ignored, and counted for the pager...", "an off-contract row of another asset does not stall the BTC
       rows of its page" -> a curated asset imports on its own wallet holding, an untracked one is still counted and
@@ -1230,11 +1260,8 @@ upper-cased `asset` is a curated code is read strictly; any other is counted and
       for the pager and never parsed, whatever else is wrong with it" -> holds for an untracked asset only; a malformed
       curated-asset row is unreadable and owes its point; "is told from a BTC row by its asset alone: a row with a
       lowercase btc asset is another asset" -> a lowercase `btc` row is read as BTC (asset upper-cased once).
-      `btcRowOf` is shared by Transfer and Earn through `totalPage` (`readingsOf(..., btcRowOf(readRow), ...)`), so
-      the Earn page pin moves here too: `binance.history-client.test.ts` "counts every row of the page, and parses
-      only the rows of BTC" (`lockedRewards`, rows `{ asset: 'ETH' }` and a whole BTC row) -> renamed "counts every
-      row of the page, and reads an incomplete row of a curated coin as unreadable": `gathered` 2, `rows` length 1,
-      `unreadable` length 1 ("was:" `toEqual([])`); a second case with `{ asset: 'XYZ' }` keeps `unreadable` `[]`.
+      The Earn page pin `binance.history-client.test.ts` "counts every row of the page, and parses only the rows of
+      BTC" stays green here (Earn keeps `btcRowOf`); it moves in step 7.
 - [ ] Test first: "a transfer of an untracked coin is counted, ignored and its ticker added to the not-tracked
       history list" (a `PEPE` transfer beside a BTC one: one row, `untrackedCoins.history` gains `PEPE`). Commit.
 
@@ -1247,12 +1274,21 @@ Files: `binance.earn-history.ts`, `binance.history-client.ts` (`fetchEarnRecords
       not-tracked history list" (a `PEPE` reward beside a BTC one: one row, `untrackedCoins.history` gains `PEPE`).
 - [ ] "was:" pins: `binance.history-client.test.ts` "GETs %s with asset BTC, current and size 100, and no type" ->
       "GETs %s with current and size 100, no asset and no type"; "always sends type=ALL on the flexible rewards read"
-      -> its expected query has no `asset`. Commit.
+      -> its expected query has no `asset`; "counts every row of the page, and parses only the rows of BTC"
+      (`lockedRewards`, rows `{ asset: 'ETH' }` and a whole BTC row) -> renamed "counts every row of the page, and
+      reads an incomplete row of a curated coin as unreadable": `gathered` 2, `rows` length 1, `unreadable` length 1
+      ("was:" `toEqual([])`); a second case with `{ asset: 'XYZ' }` keeps `unreadable` `[]`.
+- [ ] Code: the Earn page passes step 6's curated-row reader instead of `btcRowOf` (drop `btcRowOf` if no reader
+      is left; knip). Commit.
 
 ### step 8/11: `multiCoinSince`
 
-Files: walk entry points, `exchange/walk-state` (parse and patch of `multiCoinSince` and `multiCoinSeen`),
+Files: walk entry points, `src/crypto-sync/exchange/walk/walk.ts` (`advanceCursor`: the marker rides its cursor
+patch), `exchange/walk-state` (parse and patch of `multiCoinSince` and `multiCoinSeen`),
 `syncStateRepo.resetExchangeState`, tests.
+- [ ] Parse rule: a present but malformed `multiCoinSince` (not a finite number) reads as the walk entry's parsed
+      `cursor` (absent when that cursor is null): fail-safe, it owes a range rather than none; a malformed
+      `multiCoinSeen` (anything but `true`) reads as absent.
 - [ ] Rule: on a walk's first run in this set's code, the walk writes `multiCoinSeen: true` whatever the cursor, and
       `multiCoinSince` = its PLAN cursor (capital: `cursor ?? latest ?? null` in `binance.transactions.ts`; the
       others re-grep their plan cursor) only when that is not null, both in the same `patchExchangeState` patch as
@@ -1269,8 +1305,10 @@ Files: walk entry points, `exchange/walk-state` (parse and patch of `multiCoinSi
       together; no patch before it names either marker); "a disconnect before any capital window commit keeps the
       backfill owed" (capital with no stored cursor and a legacy latest row time L; the first multi-coin run stops
       before any window commits: neither marker is stored; the account disconnects (`resetExchangeState`) and
-      reconnects; the next run's first committed window stores `multiCoinSince` = L, so set 15 owes `[floor, L)`).
-      Commit.
+      reconnects; the next run's first committed window stores `multiCoinSince` = L, so set 15 owes `[floor, L)`);
+      "reads a malformed multiCoinSince as the stored cursor and a malformed multiCoinSeen as absent" (a walk entry
+      with `cursor` C, `multiCoinSince: 'x'`, `multiCoinSeen: 'yes'` parses to `multiCoinSince` C and no
+      `multiCoinSeen`; the same entry with a null cursor parses to neither). Commit.
 
 ### step 9/11: key identity and properties
 
