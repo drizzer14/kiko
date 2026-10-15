@@ -463,7 +463,8 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
     denied. Heredoc delimiter corner cases beyond those modeled above
     (bash's `EOF)` shorthand, trailing spaces).
   - Shell-write deny, NOT denied: a path held in a variable or loop
-    variable (`sed -i … "$f"`, `for f in …; do … > "$f"; done`) unless
+    variable (`sed -i … "$f"`, `for f in …; do … > "$f"; done`), or assigned earlier in the same
+    command (`f=… && sed -i '' … $f`; run-log gap 20261014T2300-kiko-help-flows/1), unless
     its text names a tree folder; a `cd` into a tree through a variable
     then a relative path (`cd $VAR/src && echo x > y.ts`; plain
     `cd $VAR && echo x > src/…` IS denied); `eval` of a built string;
