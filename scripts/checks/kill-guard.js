@@ -3134,7 +3134,7 @@ function nestedFinding(parts, depth, checkHeredoc, rules) {
   const asData = (entry) => ({ ...inItsPlace(entry), variables: noVariables() });
   const dataRules = {
     ...rules,
-    kinds: DATA_KINDS,
+    kinds: rules.kinds ?? DATA_KINDS,
     dataBody: true,
     checkWrites: false,
     scanScripts: false,

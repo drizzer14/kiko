@@ -91,6 +91,13 @@ const SIGNAL_ZERO_THEN_OPTION = [
 SIGNAL_ZERO_THEN_OPTION.forEach((command, index) => {
   scriptWith(`kills-after-null-signal-${index}.sh`, `${command}\n`);
 });
+// A script file is read for kills only, so a heredoc in it that names another bypass is text.
+const MAIN_CHECKOUT = '/Users/drizzer14/Developer/Projects/pff-ios';
+scriptWith('help-stash.sh', "cat <<'EOF'\ngit stash is banned here\nEOF\n");
+scriptWith('help-no-verify.sh', "cat <<'EOF'\ngit commit --no-verify is banned\nEOF\n");
+scriptWith('help-main-merge.sh', `cat <<'EOF'\ngit -C ${MAIN_CHECKOUT} merge x\nEOF\n`);
+scriptWith('runs-heredoc-kill.sh', "bash <<'EOF'\npkill node\nEOF\n");
+scriptWith('runs-heredoc-stash.sh', "bash <<'EOF'\ngit stash\nEOF\n");
 scriptWith('comment.sh', '# pkill node\necho "pkill node"\n');
 scriptWith(
   'other-findings.sh',
@@ -152,6 +159,7 @@ const DENIED: string[] = [
   'bash kills-piped.sh',
   'bash kills-nested.sh',
   'bash stash-then-kill.sh',
+  'bash runs-heredoc-kill.sh',
   './kills-env.sh',
   './kills-zsh.sh',
   `bash ${join(SCRATCH, 'kills-all.sh')}`,
@@ -167,6 +175,10 @@ const ALLOWED: string[] = [
   'bash null-signal.sh',
   'bash comment.sh',
   'bash other-findings.sh',
+  'bash help-stash.sh',
+  'bash help-no-verify.sh',
+  'bash help-main-merge.sh',
+  'bash runs-heredoc-stash.sh',
   'bash sources.sh',
   'bash empty.sh',
   'bash shebang-only.sh',
