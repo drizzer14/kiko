@@ -18,12 +18,13 @@ import { buildDemoSnapshot } from './build-demo-snapshot';
 
 const ANCHOR = Date.UTC(2026, 8, 10, 9, 0, 0);
 
-// The rule typed live into the Dining category's rule editor: "Name starts with" Glovo, "Amount"
+// The rule typed live into the Dining category's rule editor: "Name starts with" Wolt, "Amount"
 // "Less than" 800 in hryvnias, and "Type" Expense. The editor turns the typed 800 into minor
-// units the way the line below does.
+// units through parseAmount and Money.fromMajor, which the 80 000 below is pinned against in
+// the test that reads 800.
 const RULE_CATEGORY = 'dining';
 const RULE_MATCHERS: CategoryRuleMatcher[] = [
-  { type: 'nameStartsWith', text: 'Glovo' },
+  { type: 'nameStartsWith', text: 'Wolt' },
   { type: 'amount', operator: 'lt', minorUnits: 80_000, currency: 'UAH' },
   { type: 'direction', direction: 'expense' },
 ];
@@ -38,25 +39,25 @@ type RuleDemoRow = {
 
 const RULE_DEMO_ROWS: RuleDemoRow[] = [
   {
-    description: { uk: 'Glovo: піца', en: 'Glovo: pizza' },
+    description: { uk: 'Wolt: піца', en: 'Wolt: pizza' },
     amountMinorUnits: -48_000,
     daysAgo: 3,
     fails: [],
   },
   {
-    description: { uk: 'Glovo: повернення коштів', en: 'Glovo: refund' },
+    description: { uk: 'Wolt: повернення коштів', en: 'Wolt: refund' },
     amountMinorUnits: 35_000,
     daysAgo: 5,
     fails: ['direction'],
   },
   {
-    description: { uk: 'Glovo: суші', en: 'Glovo: sushi' },
+    description: { uk: 'Wolt: суші', en: 'Wolt: sushi' },
     amountMinorUnits: -62_000,
     daysAgo: 6,
     fails: [],
   },
   {
-    description: { uk: 'Glovo: бургери', en: 'Glovo: burgers' },
+    description: { uk: 'Wolt: бургери', en: 'Wolt: burgers' },
     amountMinorUnits: -39_500,
     daysAgo: 8,
     fails: [],
@@ -68,7 +69,7 @@ const RULE_DEMO_ROWS: RuleDemoRow[] = [
     fails: ['nameStartsWith'],
   },
   {
-    description: { uk: 'Glovo: замовлення на компанію', en: 'Glovo: group order' },
+    description: { uk: 'Wolt: замовлення на компанію', en: 'Wolt: group order' },
     amountMinorUnits: -145_000,
     daysAgo: 12,
     fails: ['amount'],
@@ -144,13 +145,12 @@ describe.each(['uk', 'en'] as const)('the live rule demo rows of the %s demo fil
     );
   });
 
-  it('moves exactly the three Glovo expenses under 800 to Dining, and the confirm sheet counts 3', () => {
+  it('moves exactly the three Wolt expenses under 800 to Dining, and the confirm sheet counts 3', () => {
     const plan = planRuleRewrite(prepared, savedRule.id, candidates);
     const movers = demoRows.filter((row) => row.fails.length === 0);
 
     expect(movers).toHaveLength(3);
     expect([...plan].sort()).toEqual(movers.map((row) => row.stored?.id ?? '').sort());
-    expect(plan).toHaveLength(3);
   });
 
   it('leaves each near-miss in the default category because exactly one condition fails', () => {
@@ -183,12 +183,5 @@ describe.each(['uk', 'en'] as const)('the live rule demo rows of the %s demo fil
     for (const row of demoRows) {
       expect(row.stored !== undefined && winningRule(stored, subjectOf(row.stored))).toBeFalsy();
     }
-  });
-
-  it('moves no other row of the file', () => {
-    const plan = new Set(planRuleRewrite(prepared, savedRule.id, candidates));
-    const demoIds = new Set(demoRows.map((row) => row.stored?.id));
-
-    expect([...plan].every((id) => demoIds.has(id))).toBe(true);
   });
 });
