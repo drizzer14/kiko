@@ -37,11 +37,24 @@ const exitsZeroAfterStderr = (script: string): number[] => {
   return hits;
 };
 
-const contractSection = (skill: string): string => {
+const PINNING_REFERENCE = '`__tests__/wrapper-stderr-exit-zero.test.ts`';
+
+// Only the list item that states the exception list and cites this test counts: the section
+// names many wrappers for other reasons, and a name there would pass a wrapper vacuously.
+const exceptionParagraph = (skill: string): string => {
   const start = skill.indexOf('\n## The wrapper contract\n');
   const end = skill.indexOf('\n## ', start + 1);
+  const section = skill.slice(start, end === -1 ? undefined : end);
+  const paragraph = section
+    .split('\n\n')
+    .flatMap((block) => block.split(/\n(?=- )/))
+    .find((item) => item.includes(PINNING_REFERENCE));
 
-  return skill.slice(start, end === -1 ? undefined : end);
+  if (paragraph === undefined) {
+    throw new Error(`no paragraph of "The wrapper contract" cites ${PINNING_REFERENCE}`);
+  }
+
+  return paragraph;
 };
 
 const hitWrappers = (scripts: Record<string, string>): string[] =>
@@ -60,10 +73,36 @@ const repositoryScripts = (): Record<string, string> =>
   );
 
 describe('wrappers that write to stderr and exit 0', () => {
-  const contract = contractSection(readFileSync(LINTER_SKILL, 'utf8'));
+  const contract = exceptionParagraph(readFileSync(LINTER_SKILL, 'utf8'));
 
   it('are all named in the wrapper contract', () => {
     expect(undeclaredWrappers(repositoryScripts(), contract)).toEqual([]);
+  });
+
+  it('are named in the exception paragraph, not elsewhere in the section', () => {
+    const skill = [
+      '# Skill',
+      '## The wrapper contract',
+      '- A missing path names `other.sh` and `dup.sh` for another reason.',
+      '- Exceptions: `dup.sh` writes to stderr. Pinned by',
+      `  ${PINNING_REFERENCE}.`,
+      '',
+      'A later paragraph names `new-check.sh`.',
+      '## Next section names `late.sh`',
+    ].join('\n');
+    const notice = 'echo "a notice" >&2\nexit 0\n';
+    const scripts = { 'dup.sh': notice, 'other.sh': notice, 'new-check.sh': notice };
+
+    expect(undeclaredWrappers(scripts, exceptionParagraph(skill))).toEqual([
+      'other.sh',
+      'new-check.sh',
+    ]);
+  });
+
+  it('fails when no paragraph of the section cites this test', () => {
+    const skill = '## The wrapper contract\n\nOnly `dup.sh` is named here.\n';
+
+    expect(() => exceptionParagraph(skill)).toThrow('no paragraph of "The wrapper contract"');
   });
 
   it('still includes the wrappers the contract names, so the heuristic is not blind', () => {
