@@ -19,7 +19,11 @@
 #              and create the lock, so two waiters never remove each other's fresh lock
 #   hold       present while held; its text is the reason
 #   logs/      gate-<label>.log, the whole output of a gate (other jobs print to stdout)
-#   done.log   one line per finished job: kind label exit start end
+#   done.log   one line per finished job: kind label exit start end head. head is the full
+#              40-character HEAD of the worktree, read at START only when `git status --porcelain`
+#              (untracked files included) was empty then and HEAD is the same at the end; it is
+#              `unknown` for a changed tree, a moved HEAD, or an unreadable repository. A line from
+#              before this field has five fields. scripts/ff-main.sh reads it.
 #
 # Order is a plain `sort` of the ticket names. Class 1 is verify, check-all, and security (size
 # 0, first come first served); class 2 is a gate, class 3 a gate with --long. A gate's size is the
@@ -531,12 +535,46 @@ drain_job_group() {
   done
 }
 
+# The full HEAD of the worktree, or nothing when it cannot be read.
+full_head() {
+  local head
+  head="$(git -C "$worktree" rev-parse HEAD 2> /dev/null)" || return 0
+  case "$head" in
+    *[!0-9a-f]*) ;;
+    *) [ "${#head}" -eq 40 ] && printf '%s' "$head" ;;
+  esac
+}
+
+# The commit a job ran on, named only while that is certain: a queued job reads the working tree,
+# so a tree with any change (untracked files count) at START is not "the job at that commit".
+read_tested_head() {
+  local changes head
+  changes="$(git -C "$worktree" status --porcelain 2> /dev/null)" || {
+    printf unknown
+    return 0
+  }
+  head="$(full_head)"
+  if [ -z "$changes" ] && [ -n "$head" ]; then
+    printf '%s' "$head"
+  else
+    printf unknown
+  fi
+}
+
+# A HEAD that moved during the job means the job ran on more than one commit. Only HEAD is
+# compared, never the tree: a job may write files itself.
+confirm_tested_head() {
+  [ "$tested_head" = unknown ] && return 0
+  [ "$(full_head)" = "$tested_head" ] || tested_head=unknown
+}
+
 [ "$command_name" = gate ] && prepare_gate
 started_at="$(iso_stamp)"
 # The START line names the commit the job runs on: a gate was refused unless HEAD starts with its
 # expected head, so the worktree's HEAD is the queued commit; its first 12 characters name it even
 # when the expected head was given short.
 head_sha="$(git -C "$worktree" rev-parse HEAD 2> /dev/null | cut -c1-12)"
+tested_head="$(read_tested_head)"
 printf 'START %s at %s head %s (load: %s)\n' "$label" "$(clock_time)" "${head_sha:-unknown}" "$(uptime 2> /dev/null | sed 's/.*averages: //')"
 run_job
 drain_job_group
@@ -546,7 +584,8 @@ drain_job_group
     # A TIMEOUT-HEAVY ruling is printed on stdout and again in the failure block, so it is deduped.
     grep -E '^TIMEOUT-HEAVY ' "$gate_log" | awk '!seen[$0]++'
   }
-printf '%s %s %s %s %s\n' "$command_name" "$label" "$job_code" "$started_at" "$(iso_stamp)" \
-  >> "$QUEUE_DIRECTORY/done.log"
+confirm_tested_head
+printf '%s %s %s %s %s %s\n' "$command_name" "$label" "$job_code" "$started_at" "$(iso_stamp)" \
+  "$tested_head" >> "$QUEUE_DIRECTORY/done.log"
 printf 'DONE %s exit %s at %s\n' "$label" "$job_code" "$(clock_time)"
 exit "$job_code"
