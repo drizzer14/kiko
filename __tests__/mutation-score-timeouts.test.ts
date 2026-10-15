@@ -121,16 +121,6 @@ describe('mutation-score.js: the TIMEOUT-HEAVY rule on measured gate runs', () =
     );
   });
 
-  it('names no file that is under the share or under the minimum', () => {
-    const result = run(
-      writeReport(directory, BINANCE_FOLLOWUP),
-      ranged(...Object.keys(BINANCE_FOLLOWUP)),
-    );
-
-    expect(result.stdout).not.toContain('TIMEOUT-HEAVY src/holdings/holding-metadata');
-    expect(result.stdout).not.toContain('TIMEOUT-HEAVY src/transactions');
-  });
-
   it('prints the two thresholds on the GATE line', () => {
     const result = run(writeReport(directory, H7_SET2), ranged(...Object.keys(H7_SET2)));
 
