@@ -493,9 +493,8 @@ const RECOVERY_IN_MAIN_CHECKOUT: string[] = [
 );
 
 // The tracked githooks/ run the typecheck on every commit and merge commit, so a commit or merge
-// that skips them — `--no-verify`, commit's `-n`, or a `-c core.hooksPath=...` — is denied. Each
-// spelling is checked alone, inside a flag cluster, through a global option, and inside a shell
-// string.
+// that skips them — `--no-verify` or commit's `-n` — is denied. Each spelling is checked alone,
+// inside a flag cluster, through a global option, and inside a shell string.
 const NO_VERIFY_COMMANDS: string[] = [
   'git commit --no-verify',
   'git commit -n',
@@ -515,17 +514,8 @@ const NO_VERIFY_COMMANDS: string[] = [
   'git merge --no-verify',
   'git merge --no-ff --no-verify feature',
   'git merge feature --no-verify',
-  'git -c core.hooksPath=/dev/null commit -m x',
-  'git -c core.hooksPath=/dev/null merge feature',
-  'git -c CORE.HOOKSPATH=/dev/null commit -m x',
-  'git -c core.hookspath= commit -m x',
-  'git -c user.name=x -c core.hooksPath=/dev/null commit',
-  'git --config-env=core.hooksPath=HOOKS commit -m x',
-  'git --config-env core.hooksPath=HOOKS commit',
-  `git -C ${WORKTREE} -c core.hooksPath=/dev/null commit -m x`,
   'sh -c "git commit --no-verify -m x"',
   "bash -c 'git commit -n -m x'",
-  "bash -lc 'git -c core.hooksPath=/dev/null commit'",
   'sh -c "git merge --no-verify feature"',
   'git add -A && git commit -n -m x',
   'cd /tmp/scratch && git commit --no-verify',
@@ -537,19 +527,29 @@ const NO_VERIFY_COMMANDS: string[] = [
   'git pull --no-verify',
   'git pull --no-verify origin main',
   'git pull --rebase --no-verify',
+];
+
+// A change to the git config that holds core.hooksPath switches the hooks off for every worktree: a
+// `-c` or `--config-env` entry for one command, a GIT_CONFIG_* variable in front of the command, or
+// a `git config` that writes or unsets the key or removes or renames its section. git reads each
+// `--long` option as an exact name or a unique prefix, so `--unset-a` is `--unset-all`; an option
+// that is ambiguous or unknown denies when the command names the key (fail closed).
+const CONFIG_REWRITE_COMMANDS: string[] = [
+  'git -c core.hooksPath=/dev/null commit -m x',
+  'git -c core.hooksPath=/dev/null merge feature',
+  'git -c CORE.HOOKSPATH=/dev/null commit -m x',
+  'git -c core.hookspath= commit -m x',
+  'git -c user.name=x -c core.hooksPath=/dev/null commit',
+  'git --config-env=core.hooksPath=HOOKS commit -m x',
+  'git --config-env core.hooksPath=HOOKS commit',
+  `git -C ${WORKTREE} -c core.hooksPath=/dev/null commit -m x`,
+  "bash -lc 'git -c core.hooksPath=/dev/null commit'",
   'git -c core.hooksPath=/dev/null pull',
   'GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.hooksPath GIT_CONFIG_VALUE_0=/dev/null git commit -m x',
   'GIT_CONFIG_COUNT=2 GIT_CONFIG_KEY_0=user.name GIT_CONFIG_VALUE_0=x GIT_CONFIG_KEY_1=CORE.HOOKSPATH GIT_CONFIG_VALUE_1= git commit -m x',
   'env GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.hookspath GIT_CONFIG_VALUE_0=/dev/null git merge feature',
   'GIT_CONFIG_PARAMETERS="\'core.hooksPath=/dev/null\'" git commit -m x',
   "GIT_CONFIG_PARAMETERS=\"'user.name=x' 'core.hookspath=/dev/null'\" git commit -m x",
-];
-
-// A `git config` that writes or unsets core.hooksPath, or removes or renames its section, switches
-// the hooks off for every worktree. git reads each `--long` option as an exact name or a unique
-// prefix, so `--unset-a` is `--unset-all`; an option that is ambiguous or unknown denies when the
-// command names the key (fail closed).
-const CONFIG_REWRITE_COMMANDS: string[] = [
   'git config core.hooksPath /dev/null',
   'git config core.hooksPath ""',
   'git config --local core.hooksPath ""',

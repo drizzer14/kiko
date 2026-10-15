@@ -52,8 +52,14 @@
 // switches the hooks off for every worktree. git reads a `--long` option as an exact name or a
 // unique prefix (`--unset-a` is `--unset-all`), so the guard resolves each option the same way
 // (CONFIG_LONG_OPTIONS, the union of the `git config -h` lists); an ambiguous or unknown option
-// denies when the command names the key or the section. These config denies carry their own
-// reason: leave core.hooksPath as scripts/ensure-git-hooks.sh sets it.
+// denies when the command names the key or the section. The same config-style denies cover an
+// `include.path`/`includeIf.<c>.path` entry (a `-c`, `--config-env`, GIT_CONFIG_* or `git config`
+// write: the included file can set the key), an `export`, `declare -x`, or bare assignment that
+// sets core.hooksPath through GIT_CONFIG_* (denied by itself, whatever runs after it), and a
+// GIT_CONFIG_GLOBAL/GIT_CONFIG_SYSTEM file on a commit, merge, or pull unless it is /dev/null or an
+// existing file with no hooksPath and no include. They carry their own reason: leave
+// core.hooksPath as scripts/ensure-git-hooks.sh sets it. `git commit-tree` is denied in every form:
+// it writes a commit no hook runs for (`git update-ref` stays allowed).
 // A user may still bypass in their own shell; the deny binds agent Bash calls only. `-n` after
 // another option's value, after `--`, in a message, or on `git log` or `git merge`/`git pull`
 // (`--no-stat`) is not a bypass, and a `git config` read of the key is allowed.
@@ -148,18 +154,17 @@ const WAIT_LOOP_REASON_LINES = [
 ];
 
 const NO_VERIFY_REASON_LINES = [
-  'WHAT FAILED:    kill-guard denied a git commit, merge, or pull that skips the pre-commit hook, ' +
-    'or a git config that switches it off (--no-verify, -n, -c core.hooksPath=..., git config ' +
-    'core.hooksPath, or GIT_CONFIG_* in the environment).',
+  'WHAT FAILED:    kill-guard denied a git commit, merge, or pull that skips the pre-commit hook ' +
+    '(--no-verify, -n), or a git commit-tree, which writes a commit no hook runs for.',
   'WHY IT MATTERS: each commit must typecheck by itself: the tracked githooks/pre-commit and ' +
     'githooks/pre-merge-commit run tsc on the staged files, and a bypassed commit lands an ' +
     'unchecked type error on the branch.',
   'HOW TO FIX:     fix the type error the hook reports, git add the fix, and commit again (the ' +
-    'hook reads the index, so an unstaged fix does not count). A user may bypass in their own ' +
+    'hook reads the index, so an unstaged fix does not count); make every commit with git ' +
+    'commit, never git commit-tree, so the pre-commit hook runs. A user may bypass in their own ' +
     'shell with git commit --no-verify; an agent never does.',
-  'DO NOT:         skip the hook through --no-verify, -n, -c core.hooksPath, git config ' +
-    'core.hooksPath (set or --unset, in any scope), GIT_CONFIG_COUNT/GIT_CONFIG_KEY_<n>/' +
-    'GIT_CONFIG_PARAMETERS, a script file, an alias, or a variable to get past this guard.',
+  'DO NOT:         skip the hook through --no-verify, -n, git commit-tree, a script file, an ' +
+    'alias, or a variable to get past this guard.',
 ];
 
 const HOOKS_CONFIG_REASON_LINES = [
@@ -1257,6 +1262,7 @@ function gitInvocation(rest, directory, environment) {
     raw === undefined ? invocation.directory : resolveDirectory(invocation.directory, raw);
 
   return {
+    directory: invocation.directory,
     subcommand: rest[i],
     arguments: rest.slice(i + 1),
     configs: invocation.configs,
@@ -1269,14 +1275,26 @@ function gitInvocation(rest, directory, environment) {
 
 // `pull` runs the merge hooks, and takes `--no-verify` for the merge it starts.
 const HOOK_RUNNING_SUBCOMMANDS = new Set(['commit', 'merge', 'pull']);
+// The config keys that decide which hooks run: core.hooksPath, and `include.path` or
+// `includeIf.<condition>.path`, which pull in a file that can set it (the condition may hold dots).
 // Git config keys are case-insensitive, and a bare name or an empty value still overrides the path.
-const HOOKS_PATH_CONFIG = /^core\.hookspath(?:=|$)/i;
-const HOOKS_PATH_KEY = /^core\.hookspath$/i;
+const HOOKS_CONFIG_KEY_PATTERN = String.raw`(?:core\.hookspath|include\.path|includeif\..+\.path)`;
+const HOOKS_CONFIG_ENTRY = new RegExp(`^${HOOKS_CONFIG_KEY_PATTERN}(?:=|$)`, 'i');
+const HOOKS_CONFIG_KEY = new RegExp(`^${HOOKS_CONFIG_KEY_PATTERN}$`, 'i');
 // `GIT_CONFIG_COUNT` with `GIT_CONFIG_KEY_<n>`/`GIT_CONFIG_VALUE_<n>` names a config entry by key.
 const GIT_CONFIG_KEY_VARIABLE = /^GIT_CONFIG_KEY_\d+$/;
 // `GIT_CONFIG_PARAMETERS` holds quoted `'name=value'` entries, so the key sits after a quote or a
 // space.
-const HOOKS_PATH_PARAMETER = /(?:^|[\s'"])core\.hookspath(?:=|['"\s]|$)/i;
+const HOOKS_CONFIG_PARAMETER = new RegExp(
+  `(?:^|[\\s'"])${HOOKS_CONFIG_KEY_PATTERN}(?:=|['"\\s]|$)`,
+  'i',
+);
+// `GIT_CONFIG_GLOBAL` and `GIT_CONFIG_SYSTEM` replace the files git reads for those scopes.
+const CONFIG_FILE_VARIABLES = ['GIT_CONFIG_GLOBAL', 'GIT_CONFIG_SYSTEM'];
+const CONFIG_FILE_MAXIMUM_BYTES = 256 * 1024;
+const HOOKS_OR_INCLUDE = /hookspath|include/i;
+// The commands that set a variable for the shell that follows, whatever runs after them.
+const ASSIGNING_COMMANDS = new Set(['export', 'declare', 'typeset', 'local', 'readonly']);
 const NO_VERIFY_OPTION = '--no-verify';
 // `--no-v` is the shortest prefix of `--no-verify`. Other options share it (`--no-verbose`,
 // `--no-verify-signatures`), so git may reject it as ambiguous, and denying a command git then
@@ -1358,12 +1376,41 @@ function groupHoldsNoVerify(group) {
 
 const unquoted = (text) => text.replace(/^['"]|['"]$/g, '');
 
-// Whether the NAME=value prefixes of the command set core.hooksPath for the git it runs.
+// Whether the variables in `environment` (the NAME=value prefixes of a command, or what an
+// `export` sets) set core.hooksPath or an include path for the git that runs next.
 const environmentSetsHooksPath = (environment) =>
   Object.entries(environment).some(
     ([name, value]) =>
-      (GIT_CONFIG_KEY_VARIABLE.test(name) && HOOKS_PATH_KEY.test(unquoted(value))) ||
-      (name === 'GIT_CONFIG_PARAMETERS' && HOOKS_PATH_PARAMETER.test(value)),
+      (GIT_CONFIG_KEY_VARIABLE.test(name) && HOOKS_CONFIG_KEY.test(unquoted(value))) ||
+      (name === 'GIT_CONFIG_PARAMETERS' && HOOKS_CONFIG_PARAMETER.test(value)),
+  );
+
+// Whether `directory` makes the config file `raw` names one the guard can vouch for: `/dev/null`,
+// or an existing regular file within the size limit that holds no hooksPath and no include. A path
+// the text cannot resolve, and a file that is missing, unreadable, or built in the same command
+// (so unreadable now), fail closed.
+function vouchesForConfigFile(raw, directory) {
+  const value = unquoted(raw);
+  if (value === '/dev/null') return true;
+  const resolved = resolveDirectory(directory, value);
+  if (resolved === null) return false;
+  try {
+    const status = fs.statSync(resolved);
+    if (!status.isFile() || status.size > CONFIG_FILE_MAXIMUM_BYTES) return false;
+
+    return !HOOKS_OR_INCLUDE.test(fs.readFileSync(resolved, 'utf8'));
+  } catch {
+    return false;
+  }
+}
+
+// Whether `environment` swaps in a GIT_CONFIG_GLOBAL or GIT_CONFIG_SYSTEM file the guard cannot
+// vouch for from every directory the command may run in.
+const environmentSwapsConfigFile = (environment, directories) =>
+  CONFIG_FILE_VARIABLES.some(
+    (name) =>
+      environment[name] !== undefined &&
+      !directories.every((directory) => vouchesForConfigFile(environment[name], directory)),
   );
 
 // The long options of `git config`, as `git config -h` lists them on git 2.38.1 (the git on this
@@ -1488,7 +1535,7 @@ function splitConfigWords(parameters) {
   return { kinds: new Set(kinds), positionals };
 }
 
-const isHooksPathKey = (word) => word !== undefined && HOOKS_PATH_KEY.test(word);
+const isHooksPathKey = (word) => word !== undefined && HOOKS_CONFIG_KEY.test(word);
 const isCoreSection = (word) => word !== undefined && word.toLowerCase() === 'core';
 
 // Whether a `git config` writes or unsets core.hooksPath, or removes or renames its section
@@ -1513,12 +1560,27 @@ function rewritesHooksPath({ subcommand, arguments: parameters }) {
   return isHooksPathKey(action) && positionals.length >= 2;
 }
 
-// Whether the git command is told to skip its hooks, by option, by config, or by environment.
-function skipsHooks(git) {
-  const { subcommand, arguments: parameters, configs, environment } = git;
+// Whether a hook-running git command is given a config that can switch its hooks off: a `-c` or
+// `--config-env` entry that sets core.hooksPath or an include path, the same through a GIT_CONFIG_*
+// variable, or a GIT_CONFIG_GLOBAL/GIT_CONFIG_SYSTEM file the guard cannot vouch for.
+function runsWithHooksConfig(invocations) {
+  const [{ subcommand, configs, environment }] = invocations;
   if (!HOOK_RUNNING_SUBCOMMANDS.has(subcommand)) return false;
-  if (configs.some((entry) => HOOKS_PATH_CONFIG.test(entry))) return true;
-  if (environmentSetsHooksPath(environment)) return true;
+
+  return (
+    configs.some((entry) => HOOKS_CONFIG_ENTRY.test(entry)) ||
+    environmentSetsHooksPath(environment) ||
+    environmentSwapsConfigFile(
+      environment,
+      invocations.map((invocation) => invocation.directory),
+    )
+  );
+}
+
+// Whether the git command is told to skip its hooks by option: `--no-verify`, or commit's `-n`.
+function skipsHooks(git) {
+  const { subcommand, arguments: parameters } = git;
+  if (!HOOK_RUNNING_SUBCOMMANDS.has(subcommand)) return false;
   const valueOptions = VALUE_OPTIONS_BY_SUBCOMMAND.get(subcommand);
   let index = 0;
   while (index < parameters.length) {
@@ -1540,8 +1602,13 @@ function skipsHooks(git) {
 function gitFinding(segment, invocations, rules) {
   const [git] = invocations;
   if (git.subcommand === 'stash') return { kind: 'stash', detail: segment.trim() };
-  if (rewritesHooksPath(git)) return { kind: 'hooksConfig', detail: segment.trim() };
-  if (skipsHooks(git)) return { kind: 'noVerify', detail: segment.trim() };
+  if (rewritesHooksPath(git) || runsWithHooksConfig(invocations)) {
+    return { kind: 'hooksConfig', detail: segment.trim() };
+  }
+  // `git commit-tree` writes a commit object without running any hook.
+  if (git.subcommand === 'commit-tree' || skipsHooks(git)) {
+    return { kind: 'noVerify', detail: segment.trim() };
+  }
   if (!MAIN_CHECKOUT_SUBCOMMANDS.has(git.subcommand) || leavesMainCheckoutSafe(git)) return null;
   const target = invocations
     .flatMap((invocation) => invocation.targets)
@@ -2269,12 +2336,33 @@ function substitutedCommandFinding(command, context) {
   );
 }
 
+// A statement that only sets variables (a bare `NAME=value`, or an `export`/`declare`) denies by
+// itself when they set core.hooksPath through GIT_CONFIG_*, or swap in a config file the guard
+// cannot vouch for, whatever git command runs after it.
+function environmentFinding(environment, context) {
+  if (
+    !environmentSetsHooksPath(environment) &&
+    !environmentSwapsConfigFile(environment, context.directories)
+  ) {
+    return null;
+  }
+
+  return { kind: 'hooksConfig', detail: context.segment.trim() };
+}
+
 // The finding for one unwrapped command (see `segmentFinding`).
 function commandFinding(command, context) {
   const { tokens: rest, viaXargs, environment } = command;
-  if (rest.length === 0) return null;
+  if (rest.length === 0) return environmentFinding(environment, context);
   if (rest[0].includes(SUBSHELL_PLACEHOLDER)) return substitutedCommandFinding(command, context);
   const base = basename(rest[0]);
+
+  if (ASSIGNING_COMMANDS.has(base)) {
+    const assigned = { ...environment };
+    for (const word of rest.slice(1)) recordAssignment(assigned, word);
+
+    return environmentFinding(assigned, context);
+  }
 
   if (SHELLS.has(base)) {
     queueShellScript(rest, context.scripts, context.stdinScripts);
