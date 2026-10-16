@@ -186,3 +186,27 @@ Sentence case, no final "." (accessibility label role, kiko-translator). The en/
 - **kiko-charts** (`.claude/skills/` and `harness/kiko/skills/`): new section "Net-worth scrub line": the testIDs `net-worth-line-scrub`, `net-worth-line-scrub-label`, `NET_WORTH_SCRUB_GESTURE_TEST_ID`; same dash/stroke as the reference; default present day and the `scrubRangeKey` + focus reset; and the one sanctioned use of a measured plot width (`toLogicalX`, touch px to logical units, plus label placement in px) next to the "do not read `onLayout` width inside a chart's geometry math" rule, which stays true for the scales.
 - **kiko-gestures**: add `src/screens/statistics/net-worth-line/` to "Source files"; new section "A horizontal Pan inside a vertical ScrollView" (`activeOffsetX`/`failOffsetY` values, why no external-gesture composition, the accepted drift); name `net-worth-line.scrub.ts` as a second worked example under "Pure-gesture-math testability pattern"; the `'selection'` haptic for a per-step scrub next to `CardContextMenu`'s `'impactMedium'`.
 - **kiko-design-system**: only if option A lands, add the adjustable-chart pattern to the accessibility notes.
+
+## Review fix round (scrub-a1 rulings, 2026-10-17, after kiko:reviewer FIX FIRST on ecc68c4b)
+
+- R3 fix in this round: C1 (clear a stale selection during render when the range key changes; test:
+  drag on range A, rerender B, rerender A, line on the last point), P1 (help step 2, en + uk, text
+  below, OVERNIGHT DEFAULT pending the user's uk review), and the cheap same-file Minors S1 (the two
+  import-order breaks), S2 (theme.spacing for the label gap, typography token for the amount
+  weight), O1 (placeScrubLabel returns `left` only), O2 (drop the unreachable clamp), O3 (one
+  selectedMoney value; drop the default `context="balance"`).
+- R4 S1 is mechanizable: import-order.js keeps scanning past an ambient `declare module` block, in
+  its own commit, with a positive and a negative test case, a project-wide `npm run
+  check:import-order` differential (base vs HEAD: the only new findings may be the files this
+  track touches; any other file newly failing = stop and report), and a harness-sync port item.
+- Deferred: S3 to the scribe step (kiko-charts measured-width rule, kiko-gestures Source files);
+  P2 to the coordinator (Notes for Review, screenshot 06 refresh, resubmission-kit stale flag).
+- P1 text, help.topics.viewStatistics.steps.2:
+  - en: "Net Worth Over Time" shows your net worth across those dates. The horizontal dashed line
+    is its value on the first day: the line is green above it and red below it. The vertical
+    dashed line shows your net worth on one day, today at first. Drag across the chart to move it
+    to another day.
+  - uk: «Капітал з часом» показує ваш капітал за ці дати. Горизонтальна пунктирна лінія — його
+    значення в перший день: вище за неї лінія зелена, нижче — червона. Вертикальна пунктирна
+    лінія показує капітал за один день, спочатку за сьогодні. Проведіть пальцем по графіку, щоб
+    перемістити її на інший день.
