@@ -16,10 +16,10 @@ import type {
   PropertyMeta,
   TermDepositMeta,
 } from '@kiko/holdings/holding-metadata';
-import type { Currency } from '@kiko/currency/currency';
 import type { BankId } from '@kiko/bank-sync/bank-catalog';
 import type { AppLanguage } from '@kiko/i18n/device-language';
 import { entityColorsDark } from '@kiko/design-system/palette';
+import { isCrypto, type Currency } from '@kiko/currency/currency';
 import type { TemplateDraft } from '@kiko/transaction-templates/draft';
 import type { AccountRow, BondRegisterRow, HoldingRow } from '@kiko/db';
 import type { ReminderKind, ReminderSchedule } from '@kiko/reminders/schedule';
@@ -150,7 +150,18 @@ export type ScreenshotDataset = {
 // for every one would add nothing to the fixtures). A local subset type keeps
 // this map exhaustive over exactly what the seed uses, so it never has to grow
 // when a new currency is added to `currencyOptions`.
-type SeededCurrency = 'UAH' | 'USD' | 'EUR' | 'GBP' | 'CHF' | 'BTC';
+type SeededCurrency =
+  | 'UAH'
+  | 'USD'
+  | 'EUR'
+  | 'GBP'
+  | 'CHF'
+  | 'BTC'
+  | 'ETH'
+  | 'USDT'
+  | 'BNB'
+  | 'SOL'
+  | 'XRP';
 
 /** Value of one major unit of each seeded currency in UAH at the anchor. */
 const PRICE_IN_UAH: Record<SeededCurrency, number> = {
@@ -160,12 +171,42 @@ const PRICE_IN_UAH: Record<SeededCurrency, number> = {
   GBP: 52,
   CHF: 46,
   BTC: 2_665_000,
+  ETH: 100_000,
+  USDT: 41,
+  BNB: 30_000,
+  SOL: 4_300,
+  XRP: 55,
 };
 
-const CURRENCIES: SeededCurrency[] = ['UAH', 'USD', 'EUR', 'BTC'];
+const CURRENCIES: SeededCurrency[] = [
+  'UAH',
+  'USD',
+  'EUR',
+  'BTC',
+  'ETH',
+  'USDT',
+  'BNB',
+  'SOL',
+  'XRP',
+];
+
+// The coins beside BTC in the Binance account, each one small purchase at the coin's own scale
+// (ETH 8, USDT 8, BNB 7, SOL 6, XRP 4 decimals), so the account shows several curated coins.
+const COIN_HOLDINGS: {
+  name: string;
+  currency: SeededCurrency;
+  amountMinorUnits: number;
+  daysAgo: number;
+}[] = [
+  { name: 'Ethereum', currency: 'ETH', amountMinorUnits: 5_000_000, daysAgo: 120 },
+  { name: 'Tether', currency: 'USDT', amountMinorUnits: 15_000_000_000, daysAgo: 110 },
+  { name: 'BNB', currency: 'BNB', amountMinorUnits: 500_000, daysAgo: 100 },
+  { name: 'Solana', currency: 'SOL', amountMinorUnits: 1_500_000, daysAgo: 90 },
+  { name: 'XRP', currency: 'XRP', amountMinorUnits: 600_000, daysAgo: 80 },
+];
 
 const rateSource = (base: Currency, quote: Currency): 'monobank' | 'coingecko' =>
-  base === 'BTC' || quote === 'BTC' ? 'coingecko' : 'monobank';
+  isCrypto(base) || isCrypto(quote) ? 'coingecko' : 'monobank';
 
 /** Every ordered distinct pair, priced from the UAH anchors, stamped at the anchor. */
 const buildRates = (calendar: DemoCalendar): SeedRate[] => {
@@ -202,6 +243,11 @@ const HISTORY_PAIRS: HistoryPair[] = [
   { base: 'USD', startUah: 40.0, endUah: PRICE_IN_UAH.USD },
   { base: 'EUR', startUah: 43.0, endUah: PRICE_IN_UAH.EUR },
   { base: 'BTC', startUah: 2_000_000, endUah: PRICE_IN_UAH.BTC },
+  { base: 'ETH', startUah: 85_000, endUah: PRICE_IN_UAH.ETH },
+  { base: 'USDT', startUah: 40.0, endUah: PRICE_IN_UAH.USDT },
+  { base: 'BNB', startUah: 24_000, endUah: PRICE_IN_UAH.BNB },
+  { base: 'SOL', startUah: 3_600, endUah: PRICE_IN_UAH.SOL },
+  { base: 'XRP', startUah: 45, endUah: PRICE_IN_UAH.XRP },
 ];
 
 /** Weekly history points per foreign:UAH pair, linearly trending start -> end. */
@@ -675,6 +721,22 @@ const buildAccounts = (calendar: DemoCalendar, text: DemoText): SeedAccount[] =>
             },
           ],
         },
+        ...COIN_HOLDINGS.map(
+          ({ name, currency, amountMinorUnits, daysAgo }): SeedHolding => ({
+            name,
+            type: 'crypto_asset',
+            currency,
+            color: entityColorsDark.orange,
+            transactions: [
+              {
+                amountMinorUnits,
+                time: calendar.at(daysAgo),
+                category: null,
+                description: text.cryptoPurchase,
+              },
+            ],
+          }),
+        ),
       ],
     },
     {

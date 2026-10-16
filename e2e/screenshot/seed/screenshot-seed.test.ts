@@ -136,6 +136,11 @@ describe('buildScreenshotDataset (pure, deterministic)', () => {
       'PrivatBank',
       'Wise',
       'Binance',
+      'Ethereum',
+      'Tether',
+      'BNB',
+      'Solana',
+      'XRP',
       'US dollars',
       'Government bonds (OVDP)',
       'Apartment',
@@ -157,14 +162,16 @@ describe('buildScreenshotDataset (pure, deterministic)', () => {
     );
   });
 
-  it('seeds nine plain manual accounts spread across UAH/USD/EUR/BTC', () => {
+  it('seeds nine plain manual accounts spread across UAH/USD/EUR and six coins', () => {
     const { accounts } = buildScreenshotDataset('uk', ANCHOR);
     const currencies = accounts.flatMap((account) =>
       account.holdings.map((holding) => holding.currency),
     );
 
     expect(accounts).toHaveLength(9);
-    expect(new Set(currencies)).toEqual(new Set(['UAH', 'USD', 'EUR', 'BTC']));
+    expect(new Set(currencies)).toEqual(
+      new Set(['UAH', 'USD', 'EUR', 'BTC', 'ETH', 'USDT', 'BNB', 'SOL', 'XRP']),
+    );
   });
 
   it('spreads transactions across every one of the 10 seeded categories that it uses', () => {
@@ -216,12 +223,12 @@ describe('buildScreenshotDataset (pure, deterministic)', () => {
     expect(rebuilt).toEqual(times);
   });
 
-  it('pins every ordered currency pair (12) at one fixed fetchedAt', () => {
+  it('pins every ordered currency pair (72) at one fixed fetchedAt', () => {
     const { rates } = buildScreenshotDataset('uk', ANCHOR);
     const fetchedAts = new Set(rates.map((rate) => rate.fetchedAt));
     const requiredPairs = ['BTC:UAH', 'USD:UAH', 'EUR:UAH', 'BTC:USD', 'UAH:BTC', 'USD:BTC'];
 
-    expect(rates).toHaveLength(12);
+    expect(rates).toHaveLength(72);
     expect(fetchedAts.size).toBe(1);
 
     for (const pair of requiredPairs) {
@@ -233,9 +240,20 @@ describe('buildScreenshotDataset (pure, deterministic)', () => {
     const { history } = buildScreenshotDataset('uk', ANCHOR);
     const pairs = new Set(history.map((row) => `${row.base}:${row.quote}`));
 
-    expect(pairs).toEqual(new Set(['USD:UAH', 'EUR:UAH', 'BTC:UAH']));
+    expect(pairs).toEqual(
+      new Set([
+        'USD:UAH',
+        'EUR:UAH',
+        'BTC:UAH',
+        'ETH:UAH',
+        'USDT:UAH',
+        'BNB:UAH',
+        'SOL:UAH',
+        'XRP:UAH',
+      ]),
+    );
     // 27 weekly points (weeks 0..26) per pair.
-    expect(history).toHaveLength(3 * 27);
+    expect(history).toHaveLength(8 * 27);
   });
 
   it('keeps the invented-ISIN bond its coupons once a register refresh drops the ISIN', () => {

@@ -6,6 +6,7 @@ import {
   winningRule,
 } from '@kiko/categories/category-rules';
 import maybe, { foldMap } from 'fnts/maybe';
+import { isCrypto } from '@kiko/currency/currency';
 import { buildPriceBook } from '@kiko/prices/price-book';
 import { holdingValue } from '@kiko/holdings/holding-value';
 import { isLedgerlessHoldingType } from '@kiko/holdings/holding-descriptor';
@@ -103,6 +104,36 @@ describe('buildDemoSnapshot', () => {
           currencyOf.get(draft.exchange.destinationHoldingId ?? ''),
         );
       }
+    }
+  });
+
+  it('holds at least five curated coins in the crypto account, a UAH and a EUR holding, and one coin with a dated price history', () => {
+    const cryptoAccount = snapshot.accounts.find((account) => account.kind === 'crypto');
+    const coinCodes = snapshot.holdings
+      .filter((holding) => holding.accountId === cryptoAccount?.id)
+      .map((holding) => holding.currency);
+    const holdingCurrencies = new Set(snapshot.holdings.map((holding) => holding.currency));
+    const bitcoinDays = snapshot.currencyRateHistory
+      .filter((row) => row.base === 'BTC')
+      .map((row) => row.day);
+
+    expect(new Set(coinCodes.filter(isCrypto)).size).toBeGreaterThanOrEqual(5);
+    expect(coinCodes).toContain('USDT');
+    expect(holdingCurrencies.has('UAH')).toBe(true);
+    expect(holdingCurrencies.has('EUR')).toBe(true);
+    expect(new Set(bitcoinDays).size).toBeGreaterThan(1);
+  });
+
+  it('prices and charts every coin it holds, so none drops out of the net worth', () => {
+    const heldCoins = new Set(
+      snapshot.holdings.map((holding) => holding.currency).filter(isCrypto),
+    );
+    const pricedBases = new Set(snapshot.currencyRates.map((rate) => rate.base));
+    const chartedBases = new Set(snapshot.currencyRateHistory.map((row) => row.base));
+
+    for (const coin of heldCoins) {
+      expect(pricedBases.has(coin)).toBe(true);
+      expect(chartedBases.has(coin)).toBe(true);
     }
   });
 
