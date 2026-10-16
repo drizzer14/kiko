@@ -109,7 +109,9 @@ The fake bank statement for the reviewer kit is generated, in the main
 checkout (the folder is untracked), by
 memory/refs/demo-statement/make-fake-statement.py. The upload-day refresh does not rebuild it:
 it stays as it is unless the user asks, or its rows no longer fit the reviewer's use. Check the
-kit's demo file equals the fresh en file and that kiko-demo-key.txt opens it (a real decrypt).
+kit's demo file equals the fresh en file and that the kit's key file opens it (a real decrypt).
+The kit folder's own file list is the inventory (never copy its names here); the uk demo file
+(kiko-demo-uk.kiko) is in the kit, and the key check covers every .kiko in the kit.
 
 A demo row set that a live rule demo relies on never shares a merchant name with the kit
 statement, or the live "Apply to existing" count depends on the import order (the kit statement
@@ -133,8 +135,11 @@ e2e/screenshot/fixtures/README.md).
    - `main.jsbundle` holds no string of a feature the build lacks (grep a distinctive identifier
      with `strings -a | grep -c -F`; plain `grep -c` can print nothing on the 7 MB bundle).
 8. Hand off. First confirm the demo .kiko files and the reviewer kit copies were
-   regenerated today, the kit's demo file equals the fresh en file and kiko-demo-key.txt opens it
-   (see the Freshness note above), then run the Privacy
+   regenerated today, the kit's demo file equals the fresh en file and the kit's key file opens
+   every .kiko in it (see the Freshness note above). The kit's HOW-TO-IMPORT.txt carries the
+   archive's version and build: update its version line and its "new in X.Y" list each submission
+   (plain text). All App Store Connect texts are plain .txt files in the kit, one per field and
+   language, no markdown (the fields are plain textareas). Then run the Privacy
    policy check below; hand off only when it exits 0. The skill stops here. The user uploads the archive and
    the screenshots through the Xcode Organizer. State plainly that
    this skill does not upload to the App Store.
@@ -201,7 +206,8 @@ each version). Update notes keep the demo-access steps and add a "what
 changed in X.Y and where to find it" list; cut the tour of unchanged
 features. A new screen recording is recommended (not required) when new
 hard-to-reach features ship (permissions, biometrics); check the
-attachment per version.
+attachment per version. A recording from an earlier version is stale: the user re-records, or
+the notes do not claim a recording.
 
 ## Lessons from past submissions
 

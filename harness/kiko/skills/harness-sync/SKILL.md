@@ -153,8 +153,9 @@ Switches live in the harness repo's `harness.config.json`. Read the harness READ
    count).
 9. BATCH READY, then the coordinator re-runs `npm test` AND `npm run check:all` at the tip
    before any push, then the user's OK, then
-   `git -C <harness main> merge --ff-only <tip>` (until the H7 set 7 port lands in the harness
-   repo, then `bash scripts/ff-main.sh <tip>` after a queued `verify` of the tip) and push. The
+   `git -C <harness main> merge --ff-only <tip>` (the raw form applies to a repo that has no
+   `scripts/ff-main.sh`; where it exists, run `bash scripts/ff-main.sh <tip>` after a queued
+   `verify` of the tip) and push. The
    orchestrator never
    pushes and never merges into main.
 
