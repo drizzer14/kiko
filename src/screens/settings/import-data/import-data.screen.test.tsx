@@ -341,7 +341,7 @@ describe('ImportDataScreen', () => {
     [
       'shows the too-large message when a backup is refused by the USDT bound',
       'data-transfer/amount-too-large: a USDT amount is over the bound',
-      'This backup has a USDT amount too large for Kiko to store exactly, so nothing was imported. Your current data is unchanged.',
+      'This export file has a USDT amount too large for Kiko to store exactly, so nothing was imported. Your current data is unchanged.',
     ],
     [
       'shows the generic invalid-file error when importData throws anything else',
