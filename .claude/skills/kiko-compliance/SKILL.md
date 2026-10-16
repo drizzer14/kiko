@@ -28,7 +28,8 @@ App Store and termination of the developer account. Its intent is bait-and-switc
 added after approval (https://developer.apple.com/news/?id=vvzx6cul). This stated intent adds
 to the rule's literal text and does not narrow it: 2.5.19 bans
 ANY hidden, dormant or undocumented feature in the submitted build, not only features added
-after approval. Kiko changes no feature after approval: what the reviewer saw is what ships. Full rule, rationale, and known limits of the
+after approval. Kiko changes no feature after approval: what the reviewer saw is what ships.
+Full rule, rationale, and known limits of the
 mechanized check live in `.claude/skills/kiko-architecture/SKILL.md`
 ("Guideline 2.5.19 — no hidden features") — read that section, do not
 re-derive it here. In short, ask:
