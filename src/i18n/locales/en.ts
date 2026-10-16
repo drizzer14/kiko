@@ -1333,6 +1333,14 @@ export const en = {
   // Shared design-system components (src/design-system/components/*) that
   // carry their own hardcoded copy rather than taking it as a prop.
   components: {
+    currencyField: {
+      groups: {
+        target: 'Holding currency',
+        held: 'Your currencies',
+        fiat: 'Currencies',
+        crypto: 'Crypto',
+      },
+    },
     expandToggle: {
       showAll: 'Show all',
       showLess: 'Show less',

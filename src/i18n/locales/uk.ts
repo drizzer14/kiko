@@ -1150,6 +1150,14 @@ export const uk: typeof en = {
     transferTo: 'Переказ на {{name}}',
   },
   components: {
+    currencyField: {
+      groups: {
+        target: 'Валюта активу',
+        held: 'Ваші валюти',
+        fiat: 'Валюти',
+        crypto: 'Криптовалюти',
+      },
+    },
     expandToggle: {
       showAll: 'Показати всі',
       showLess: 'Згорнути',
