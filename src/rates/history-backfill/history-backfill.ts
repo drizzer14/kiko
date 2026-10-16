@@ -154,7 +154,8 @@ const seriesMissesEarlierDays = (
   firstDay: number | undefined,
   requestedStart: number,
 ): boolean => {
-  if (mark === undefined) {
+  // An empty mark says nothing once rows exist: they came from a later answer.
+  if (mark === undefined || (mark.firstDay === null && firstDay !== undefined)) {
     return firstDay !== undefined && firstDay > requestedStart;
   }
 
@@ -212,12 +213,21 @@ const requestStartOf = (currency: Currency, spanStart: number, today: number): n
   isCrypto(currency) ? requestedStartOf(spanStart, today) : spanStart;
 
 /**
- * The currencies a mark says have nothing to fetch for this span: the provider answered with
- * nothing, from a start at or before this one.
+ * How long an empty answer holds. A provider that has nothing for a currency today may start
+ * quoting it later (NBU adds currencies, CoinGecko lists coins), so the answer is read again
+ * after this many days, once, and stamped again: at most one request per currency per period.
+ */
+const EMPTY_MARK_HOLDS_DAYS = 7;
+
+/**
+ * The currencies a mark says have nothing to fetch for this span: a currency with no stored rows
+ * the provider answered with nothing, from a start at or before this one, within the last
+ * `EMPTY_MARK_HOLDS_DAYS` days. A currency with rows is never empty (a later answer gave them),
+ * and an empty mark with no check day has expired.
  */
 const markedEmptyCurrencies = (
   settled: SettledHistory,
-  earliestDay: number,
+  deps: Pick<BackfillDeps, 'earliestDay' | 'firstBackfilledDayByCurrency'>,
   today: number,
 ): Currency[] =>
   (Object.keys(settled) as Currency[]).filter((currency) => {
@@ -226,7 +236,10 @@ const markedEmptyCurrencies = (
     return (
       mark !== undefined &&
       mark.firstDay === null &&
-      requestStartOf(currency, toUtcMidnight(earliestDay), today) >= mark.start
+      mark.checkedOn !== undefined &&
+      today - mark.checkedOn < EMPTY_MARK_HOLDS_DAYS * DAY_MS &&
+      deps.firstBackfilledDayByCurrency?.[currency] === undefined &&
+      requestStartOf(currency, toUtcMidnight(deps.earliestDay), today) >= mark.start
     );
   });
 
@@ -264,8 +277,17 @@ const markOf = (
   answerDays: number[],
   requestedStart: number,
   existing: SettledMark | undefined,
+  context: { storedFirstDay: number | undefined; today: number },
 ): SettledMark | undefined => {
   const firstDay = answerDays.length === 0 ? null : minOf(answerDays);
+
+  // An empty answer is a mark only for a currency with no rows, stamped with the day it was read.
+  if (firstDay === null) {
+    return context.storedFirstDay !== undefined ||
+      (existing?.checkedOn === context.today && existing.start <= requestedStart)
+      ? undefined
+      : { start: requestedStart, firstDay: null, checkedOn: context.today };
+  }
 
   // An answer that reaches the start settles nothing. It still overwrites a stored mark, which
   // would otherwise keep calling the start earlier than the one it settled for.
@@ -312,6 +334,7 @@ const earnedMarks = (
         answerDaysOf(entries, currency),
         spanStart,
         input.settled[currency],
+        { storedFirstDay: deps.firstBackfilledDayByCurrency?.[currency], today: input.today },
       );
     }
   }
@@ -322,10 +345,10 @@ const earnedMarks = (
     const { entries, failedCurrencies } = input.cryptoResult.value;
 
     for (const coin of input.cryptoRequested.filter((code) => !failedCurrencies.includes(code))) {
-      const days = answerDaysOf(entries, coin);
-
-      // A coin CoinGecko answered with nothing is left to the session's known-empty set.
-      earnings[coin] = days.length === 0 ? undefined : markOf(days, coinStart, input.settled[coin]);
+      earnings[coin] = markOf(answerDaysOf(entries, coin), coinStart, input.settled[coin], {
+        storedFirstDay: deps.firstBackfilledDayByCurrency?.[coin],
+        today: input.today,
+      });
     }
   }
 
@@ -916,7 +939,7 @@ export const runBackfill = async (deps: BackfillDeps): Promise<BackfillStatus> =
   // this session, and it survives a restart.
   const knownEmpty = new Set<Currency>([
     ...sessionKnownEmpty,
-    ...markedEmptyCurrencies(settled, deps.earliestDay, today),
+    ...markedEmptyCurrencies(settled, deps, today),
   ]);
   const lastBackfilledDayByCurrency = deps.lastBackfilledDayByCurrency ?? {};
   const { neverBackfilled, resumeFrom } = resolveBackfillWindow(

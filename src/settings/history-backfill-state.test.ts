@@ -25,6 +25,21 @@ describe('parseHistoryBackfillState', () => {
     });
   });
 
+  it('reads the check day of an empty mark and leaves it out when it is not a number', () => {
+    const stored = JSON.stringify({
+      cursor: null,
+      settled: {
+        EUR: { start: 10, firstDay: null, checkedOn: 30 },
+        USD: { start: 10, firstDay: null, checkedOn: 'x' },
+      },
+    });
+
+    expect(parseHistoryBackfillState(stored).settled).toEqual({
+      EUR: { start: 10, firstDay: null, checkedOn: 30 },
+      USD: { start: 10, firstDay: null },
+    });
+  });
+
   it('reads a mark with no first day as an empty answer', () => {
     const stored = JSON.stringify({ cursor: null, settled: { EUR: { start: 10 } } });
 

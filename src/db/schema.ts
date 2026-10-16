@@ -571,9 +571,11 @@ export const settings = sqliteTable('settings', {
   // What the history backfill keeps between launches, as text that `parseHistoryBackfillState`
   // (`src/settings/`) reads: the code of the first coin CoinGecko rate-limited in the last run,
   // where the next run starts requesting crypto history, so every held coin is reached within a
-  // bounded number of runs; and, per fiat currency, the span start it was fetched from without
-  // finding an earlier day. NULL when there is nothing to keep. It belongs to this device, so a
-  // restore keeps the live value and never reads the file's.
+  // bounded number of runs; and, per fiat currency and coin, a mark { start, firstDay,
+  // checkedOn? }: the span start a fetch began from, the first day the provider answered from
+  // (null for an empty answer, which also carries the day it was read and expires after a week).
+  // NULL when there is nothing to keep. It belongs to this device, so a restore keeps the live
+  // value and never reads the file's.
   historyBackfillState: text('history_backfill_state'),
 });
 

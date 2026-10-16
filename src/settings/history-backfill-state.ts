@@ -9,7 +9,12 @@ import { type Currency, isCurrency } from '@kiko/currency/currency';
  * after `start` would answer the same way. A start before `start` is a new question, and rows
  * stored from a day after `firstDay` (a restore can bring them) mean the days are missing.
  */
-export type SettledMark = { start: number; firstDay: number | null };
+export type SettledMark = {
+  start: number;
+  firstDay: number | null;
+  /** The day an empty answer was read (`firstDay` null); it expires, so it is asked again. */
+  checkedOn?: number;
+};
 
 export type SettledHistory = Partial<Record<Currency, SettledMark>>;
 
@@ -41,6 +46,7 @@ const settledOf = (value: unknown): SettledHistory => {
       settled[code] = {
         start: mark.start,
         firstDay: finiteNumber(mark.firstDay) ? mark.firstDay : null,
+        ...(finiteNumber(mark.checkedOn) ? { checkedOn: mark.checkedOn } : {}),
       };
     }
   }
