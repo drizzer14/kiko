@@ -227,6 +227,68 @@ describe('CategoryRuleFormScreen — a new rule', () => {
   });
 });
 
+describe('CategoryRuleFormScreen — the rules read again after a Save', () => {
+  // The write stores the rule, so the live query holds it from the next read on; `goBack` is a
+  // spy here, so the form stays mounted for that read.
+  const storeOnSave = (id: string | null, category: string): void => {
+    mockSaveRule.mockImplementation(async () => {
+      mockRules = [
+        ...mockRules.filter((rule) => rule.id !== id),
+        ruleOf(id ?? 'saved', category, [SILPO]),
+      ];
+
+      return { id: id ?? 'saved', changed: 0 };
+    });
+  };
+
+  const rerenderAfterWrite = async (screen: Screen, ruleId?: string): Promise<void> => {
+    await act(async () => {
+      await screen.rerender(formElement({ categoryKey: 'food', ruleId }));
+    });
+  };
+
+  it.each([
+    ['a rule that changes nothing', 0, undefined],
+    ['a rule applied to the existing transactions', 3, 'Apply to existing'],
+    ['a rule kept for new transactions only', 3, 'New transactions only'],
+  ])(
+    'shows no duplicate error on a new rule once it is stored: %s',
+    async (_label, count, choice) => {
+      mockCountRuleRewrite.mockResolvedValue(count);
+      storeOnSave(null, 'food');
+
+      const screen = await renderCreate();
+
+      await typeName(screen, 'Silpo');
+      await pressSave(navigation.setOptions);
+
+      if (choice !== undefined) {
+        await waitFor(() => expect(screen.getByText(choice)).toBeTruthy());
+        await fireEvent.press(screen.getByText(choice));
+      }
+
+      await waitFor(() => expect(mockSaveRule).toHaveBeenCalledTimes(1));
+      await rerenderAfterWrite(screen);
+
+      expect(screen.queryByText(/already exists/)).toBeNull();
+    },
+  );
+
+  it('shows no duplicate error on an edited rule once it is stored', async () => {
+    mockRules = [ruleOf('mine', 'food', [SILPO])];
+    storeOnSave('mine', 'food');
+
+    const screen = await renderEdit('mine');
+
+    await typeName(screen, 'Silpo ');
+    await pressSave(navigation.setOptions);
+    await waitFor(() => expect(mockSaveRule).toHaveBeenCalledTimes(1));
+    await rerenderAfterWrite(screen, 'mine');
+
+    expect(screen.queryByText(/already exists/)).toBeNull();
+  });
+});
+
 describe('CategoryRuleFormScreen — an existing rule', () => {
   const stored = ruleOf('mine', 'food', [
     SILPO,
