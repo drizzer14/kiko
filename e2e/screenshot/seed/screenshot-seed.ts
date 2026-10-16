@@ -161,7 +161,9 @@ type SeededCurrency =
   | 'USDT'
   | 'BNB'
   | 'SOL'
-  | 'XRP';
+  | 'XRP'
+  | 'USDC'
+  | 'CGPT';
 
 /** Value of one major unit of each seeded currency in UAH at the anchor. */
 const PRICE_IN_UAH: Record<SeededCurrency, number> = {
@@ -176,6 +178,8 @@ const PRICE_IN_UAH: Record<SeededCurrency, number> = {
   BNB: 30_000,
   SOL: 4_300,
   XRP: 55,
+  USDC: 41,
+  CGPT: 1,
 };
 
 const CURRENCIES: SeededCurrency[] = [
@@ -188,21 +192,28 @@ const CURRENCIES: SeededCurrency[] = [
   'BNB',
   'SOL',
   'XRP',
+  'USDC',
+  'CGPT',
 ];
 
-// The coins beside BTC in the Binance account, each one small purchase at the coin's own scale
-// (ETH 8, USDT 8, BNB 7, SOL 6, XRP 4 decimals), so the account shows several curated coins.
-const COIN_HOLDINGS: {
+// What the Binance account holds beside BTC: one small deposit per coin at the coin's own scale
+// (ETH 8, USDT 8, USDC 8, BNB 7, SOL 6, CGPT 6, XRP 4 decimals), and a UAH and a EUR balance,
+// since an exchange wallet keeps fiat as a `crypto_asset` holding in a fiat currency.
+const EXCHANGE_HOLDINGS: {
   name: string;
   currency: SeededCurrency;
   amountMinorUnits: number;
   daysAgo: number;
 }[] = [
-  { name: 'Ethereum', currency: 'ETH', amountMinorUnits: 5_000_000, daysAgo: 120 },
-  { name: 'Tether', currency: 'USDT', amountMinorUnits: 15_000_000_000, daysAgo: 110 },
+  { name: 'Ethereum', currency: 'ETH', amountMinorUnits: 3_000_000, daysAgo: 120 },
+  { name: 'Tether', currency: 'USDT', amountMinorUnits: 5_000_000_000, daysAgo: 110 },
+  { name: 'USD Coin', currency: 'USDC', amountMinorUnits: 3_000_000_000, daysAgo: 105 },
   { name: 'BNB', currency: 'BNB', amountMinorUnits: 500_000, daysAgo: 100 },
-  { name: 'Solana', currency: 'SOL', amountMinorUnits: 1_500_000, daysAgo: 90 },
+  { name: 'Solana', currency: 'SOL', amountMinorUnits: 500_000, daysAgo: 90 },
+  { name: 'ChainGPT', currency: 'CGPT', amountMinorUnits: 500_000_000, daysAgo: 85 },
   { name: 'XRP', currency: 'XRP', amountMinorUnits: 600_000, daysAgo: 80 },
+  { name: 'Hryvnia', currency: 'UAH', amountMinorUnits: 100_000, daysAgo: 70 },
+  { name: 'Euro', currency: 'EUR', amountMinorUnits: 5_000, daysAgo: 60 },
 ];
 
 const rateSource = (base: Currency, quote: Currency): 'monobank' | 'coingecko' =>
@@ -248,6 +259,8 @@ const HISTORY_PAIRS: HistoryPair[] = [
   { base: 'BNB', startUah: 24_000, endUah: PRICE_IN_UAH.BNB },
   { base: 'SOL', startUah: 3_600, endUah: PRICE_IN_UAH.SOL },
   { base: 'XRP', startUah: 45, endUah: PRICE_IN_UAH.XRP },
+  { base: 'USDC', startUah: 40.0, endUah: PRICE_IN_UAH.USDC },
+  { base: 'CGPT', startUah: 0.6, endUah: PRICE_IN_UAH.CGPT },
 ];
 
 /** Weekly history points per foreign:UAH pair, linearly trending start -> end. */
@@ -721,7 +734,7 @@ const buildAccounts = (calendar: DemoCalendar, text: DemoText): SeedAccount[] =>
             },
           ],
         },
-        ...COIN_HOLDINGS.map(
+        ...EXCHANGE_HOLDINGS.map(
           ({ name, currency, amountMinorUnits, daysAgo }): SeedHolding => ({
             name,
             type: 'crypto_asset',
@@ -732,7 +745,7 @@ const buildAccounts = (calendar: DemoCalendar, text: DemoText): SeedAccount[] =>
                 amountMinorUnits,
                 time: calendar.at(daysAgo),
                 category: null,
-                description: text.cryptoPurchase,
+                description: isCrypto(currency) ? text.cryptoPurchase : text.accountTopUp,
               },
             ],
           }),

@@ -107,21 +107,22 @@ describe('buildDemoSnapshot', () => {
     }
   });
 
-  it('holds at least five curated coins in the crypto account, a UAH and a EUR holding, and one coin with a dated price history', () => {
+  it('holds UAH, EUR and at least five curated coins in the crypto account, one of them outside the top 30 with a dated price history', () => {
     const cryptoAccount = snapshot.accounts.find((account) => account.kind === 'crypto');
-    const coinCodes = snapshot.holdings
-      .filter((holding) => holding.accountId === cryptoAccount?.id)
-      .map((holding) => holding.currency);
-    const holdingCurrencies = new Set(snapshot.holdings.map((holding) => holding.currency));
-    const bitcoinDays = snapshot.currencyRateHistory
-      .filter((row) => row.base === 'BTC')
+    const cryptoHoldings = snapshot.holdings.filter(
+      (holding) => holding.accountId === cryptoAccount?.id,
+    );
+    const codes = cryptoHoldings.map((holding) => holding.currency);
+    const outsideTopThirtyDays = snapshot.currencyRateHistory
+      .filter((row) => row.base === 'CGPT')
       .map((row) => row.day);
 
-    expect(new Set(coinCodes.filter(isCrypto)).size).toBeGreaterThanOrEqual(5);
-    expect(coinCodes).toContain('USDT');
-    expect(holdingCurrencies.has('UAH')).toBe(true);
-    expect(holdingCurrencies.has('EUR')).toBe(true);
-    expect(new Set(bitcoinDays).size).toBeGreaterThan(1);
+    expect(new Set(codes.filter(isCrypto)).size).toBeGreaterThanOrEqual(5);
+    expect(codes).toEqual(
+      expect.arrayContaining(['UAH', 'EUR', 'USDC', 'ETH', 'BNB', 'USDT', 'CGPT']),
+    );
+    expect(cryptoHoldings.every((holding) => holding.type === 'crypto_asset')).toBe(true);
+    expect(new Set(outsideTopThirtyDays).size).toBeGreaterThan(1);
   });
 
   it('prices and charts every coin it holds, so none drops out of the net worth', () => {
