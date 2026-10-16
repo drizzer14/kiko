@@ -163,13 +163,18 @@ describe('decimalToMinorUnits', () => {
   // A fixed linear congruential walk over [0, 2^53), so the sweep is the same on every run.
   const safeIntegerSweep = (): bigint[] => {
     const modulus = 2n ** 53n;
-    const edges = [0n, 1n, 9n, 10n, 99n, 100n, MAXIMUM_SAFE - 1n, MAXIMUM_SAFE];
+    const powersOfTen = Array.from({ length: 16 }, (_, power) => 10n ** BigInt(power));
+    const edges = [
+      ...powersOfTen.flatMap((value) => [value - 1n, value, value + 1n]),
+      MAXIMUM_SAFE - 1n,
+      MAXIMUM_SAFE,
+    ];
     const walked: bigint[] = [];
     let state = 12345n;
 
     for (let step = 0; step < 400; step += 1) {
       state = (state * 6364136223846793005n + 1442695040888963407n) % modulus;
-      walked.push(state > MAXIMUM_SAFE ? state - MAXIMUM_SAFE : state);
+      walked.push(state);
     }
 
     return [...edges, ...walked];
@@ -211,6 +216,14 @@ describe('decimalToMinorUnits', () => {
     for (const text of ['1e-8', '', ' 1', '1 ', '+1', '1.', '.5', '1,5', '--1', '1.2.3', 'abc']) {
       expect(outcome(text, 8, 'exact')).toEqual({ error: 'amount-malformed' });
     }
+  });
+
+  it('reads leading zeros as part of the number', () => {
+    expect(outcome('007.50', 2, 'exact')).toEqual({ value: 750 });
+  });
+
+  it('rounds a small negative amount to zero, not negative zero', () => {
+    expect(outcome('-0.0004', 3, 'half-away-from-zero')).toEqual({ value: 0 });
   });
 
   it('keeps a negative amount and reads negative zero as zero', () => {

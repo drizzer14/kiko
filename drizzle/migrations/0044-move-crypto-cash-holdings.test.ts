@@ -490,15 +490,9 @@ describe('migration 0044: moves a crypto cash holding into a crypto account', ()
     expect(temporaryTableNames(database)).toEqual([]);
   });
 
-  it('pins the SQL migration currency list to the app-wide crypto set', () => {
-    // Fails the day a crypto currency is added to `currency.ts`, forcing a
-    // deliberate decision about this SQL's own hard-coded `IN (...)` list
-    // rather than silently leaving a new crypto currency's cash holding
-    // stranded.
-    expect(['BTC', 'ETH', 'USDT']).toEqual(FROZEN_1_0_CRYPTO_CODES);
-  });
-
   it("the restore's frozen list equals the migration's IN list", () => {
+    // The migration moves only the codes a 1.0 build could hold as a cash holding, so a coin
+    // added to the registry later stays out of this list and out of the restore's mirror.
     const sql = readFileSync(join(__dirname, '0044_move_crypto_cash_holdings.sql'), 'utf8');
     const inLists = [...sql.matchAll(/h\.currency IN \(([^)]*)\)/g)].map((match) =>
       [...match[1].matchAll(/'([A-Z]+)'/g)].map((code) => code[1]),

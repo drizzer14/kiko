@@ -39,7 +39,10 @@ export type CoinEntry = {
   code: CuratedCoinCode;
   /** Decimals stored, from `coinScale`. */
   scale: number;
-  /** The exchange's `baseAssetPrecision` on the curation day. */
+  /**
+   * The exchange's `baseAssetPrecision` on the curation day; for USDT, which has no USDT pair to
+   * read it from, the stored scale.
+   */
   baseAssetPrecision: number;
   /** True when `scale` is below `baseAssetPrecision`, derived, never hand-written. */
   reducedScale: boolean;
