@@ -187,6 +187,18 @@ container UUID in the result — the install URL changes on every
 install, so compare it with the prior one to prove a fresh install
 actually landed.
 
+## Simulator check
+
+- Before you install a build for a simulator check, run
+  `xcrun simctl uninstall <udid> com.dmytro-vasylkivskyi.kiko`. `simctl install` keeps the old
+  data container, and an older `kiko-encrypted.db` whose key sits in a keychain group that the
+  ad-hoc re-signed build cannot see shows the "Kiko cannot read its encryption key" screen
+  (2026-10-16, sim A9850113; cause unproven, evidence deleted).
+- After the first launch, confirm the app's first screen (the user or an allowed check) before
+  you report the sim as ready.
+- The demo `.kiko` (`e2e/screenshot/fixtures/kiko-demo-en.kiko`) has a BTC holding only, with no
+  USDT. Tell the user to add a USDT holding by hand when a check needs one.
+
 A change under `harness/kiko/` (hooks, scripts it calls) is live only
 after the coordinator's plugin update and reload — see `harness-workflow`'s "Harness hook changes
 go live only after a plugin update". Verify with a harmless probe
