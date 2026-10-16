@@ -88,4 +88,118 @@ describe('useDateRangeSelection', () => {
     expect(result.current.dateFrom).toBe(from);
     expect(result.current.dateTo).toBe(to);
   });
+
+  describe('shared between readers', () => {
+    const PICKED_FROM = new Date(2026, 0, 2);
+    const PICKED_TO = new Date(2026, 0, 9);
+
+    type Reader = Awaited<ReturnType<typeof renderOneReader>>;
+
+    const NEXT_DAY = new Date(2026, 5, 16, 9, 0, 0).getTime();
+    const SAME_DAY_LATER = new Date(2026, 5, 15, 18, 0, 0).getTime();
+
+    const renderOneReader = (onRender?: () => void) =>
+      renderHook(
+        ({ now }: { now: number }) => {
+          onRender?.();
+
+          return useDateRangeSelection(now);
+        },
+        { initialProps: { now: NOW } },
+      );
+
+    const renderTwoReaders = async (onRender?: () => void): Promise<[Reader, Reader]> => [
+      await renderOneReader(),
+      await renderOneReader(onRender),
+    ];
+
+    const expectDefaultOf = (reader: Reader, now: number): void => {
+      const range = defaultDateRange(now);
+
+      expect(reader.result.current.dateFrom).toEqual(range.from);
+      expect(reader.result.current.dateTo).toEqual(range.to);
+    };
+
+    const pickIn = async (reader: Reader): Promise<void> => {
+      await act(async () => {
+        reader.result.current.applyDateRange(PICKED_FROM, PICKED_TO);
+      });
+    };
+
+    const expectPick = (reader: Reader): void => {
+      expect(reader.result.current.dateFrom).toBe(PICKED_FROM);
+      expect(reader.result.current.dateTo).toBe(PICKED_TO);
+    };
+
+    const expectDefault = (reader: Reader): void => expectDefaultOf(reader, NOW);
+
+    it('shows a pick made in one reader in every mounted reader', async () => {
+      const [first, second] = await renderTwoReaders();
+
+      await pickIn(first);
+
+      expectPick(second);
+    });
+
+    it('clears the pick for every mounted reader', async () => {
+      const [first, second] = await renderTwoReaders();
+
+      await pickIn(first);
+      await act(async () => {
+        second.result.current.clearDateRange();
+      });
+
+      expectDefault(first);
+    });
+
+    it('moves every reader to the new day when any reader passes a later-day now', async () => {
+      const [first, second] = await renderTwoReaders();
+
+      await first.rerender({ now: NEXT_DAY });
+
+      expectDefaultOf(first, NEXT_DAY);
+      expectDefaultOf(second, NEXT_DAY);
+    });
+
+    it('keeps the newer day when a reader passes an older now', async () => {
+      const [first, second] = await renderTwoReaders();
+
+      await first.rerender({ now: NEXT_DAY });
+      await second.rerender({ now: NOW });
+
+      expectDefaultOf(first, NEXT_DAY);
+      expectDefaultOf(second, NEXT_DAY);
+    });
+
+    it('does not re-render other readers when a later now falls on the same day', async () => {
+      let secondRenders = 0;
+      const [first] = await renderTwoReaders(() => {
+        secondRenders += 1;
+      });
+      const rendersBefore = secondRenders;
+
+      await first.rerender({ now: SAME_DAY_LATER });
+
+      expect(secondRenders).toBe(rendersBefore);
+    });
+
+    it('keeps the pick while one reader unmounts and another stays mounted', async () => {
+      const [first, second] = await renderTwoReaders();
+
+      await pickIn(first);
+      await first.unmount();
+
+      expectPick(second);
+    });
+
+    it('starts on the default range again after every reader unmounts', async () => {
+      const [first, second] = await renderTwoReaders();
+
+      await pickIn(first);
+      await first.unmount();
+      await second.unmount();
+
+      expectDefault(await renderOneReader());
+    });
+  });
 });
