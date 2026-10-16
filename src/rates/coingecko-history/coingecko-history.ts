@@ -30,7 +30,7 @@ type MarketChart = { prices: [number, number][] };
 
 const RATE_LIMITED_STATUS = 429;
 
-class CoinGeckoRequestError extends Error {
+export class CoinGeckoRequestError extends Error {
   public readonly status: number;
 
   constructor(status: number) {

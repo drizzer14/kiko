@@ -1,6 +1,33 @@
 import { DAY_MS } from '@kiko/dates';
 
-import { CRYPTO_HISTORY_CONCURRENCY, fetchCryptoHistory } from './coingecko-history';
+import {
+  CoinGeckoRequestError,
+  CryptoHistoryFailure,
+  CRYPTO_HISTORY_CONCURRENCY,
+  fetchCryptoHistory,
+} from './coingecko-history';
+
+describe('CoinGeckoRequestError', () => {
+  it('names itself and carries the status of the answer', () => {
+    const error = new CoinGeckoRequestError(429);
+
+    expect(error.name).toBe('CoinGeckoRequestError');
+    expect(error.message).toBe('CoinGecko request failed: 429');
+    expect(error.status).toBe(429);
+    expect(error).toBeInstanceOf(CoinGeckoRequestError);
+  });
+});
+
+describe('CryptoHistoryFailure', () => {
+  it('names itself and carries the rate-limited coins', () => {
+    const failure = new CryptoHistoryFailure(['ETH']);
+
+    expect(failure.name).toBe('CryptoHistoryFailure');
+    expect(failure.message).toBe('CoinGecko history request failed for every coin');
+    expect(failure.rateLimitedCurrencies).toEqual(['ETH']);
+    expect(failure).toBeInstanceOf(CryptoHistoryFailure);
+  });
+});
 
 const d1 = Date.UTC(2026, 8, 1);
 const d2 = Date.UTC(2026, 8, 2);
