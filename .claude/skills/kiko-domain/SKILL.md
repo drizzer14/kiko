@@ -833,9 +833,10 @@ file, never restate its members). It imports nothing from `currency.ts`.
 (`src/data-transfer/snapshot/`) fails with its `unknown-currency` error
 (read the file for the exact code) on any currency outside
 `currencyScale`: every `{ enum: currencyOptions }` column, the JSON
-currency fields (matchers, drafts) and `bond_register` terms. Test membership with `Object.hasOwn`, never `in` (an inherited name
-such as `constructor` passes `in`). A new currency-bearing column or JSON
-field joins that check in the same commit.
+currency fields (matchers, drafts) and `bond_register` terms. Test
+membership with `Object.hasOwn`, never `in` (an inherited
+name such as `constructor` passes `in`). A new currency-bearing column
+or JSON field joins that check in the same commit.
 
 **A cash holding is fiat-only for every NEW write.** `src/holdings/holding-currency/`
 owns the rule (`holdingCurrencyOptions` for a create picker,
