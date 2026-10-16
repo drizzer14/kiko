@@ -97,6 +97,8 @@ export const en = {
       title: 'Export Data',
     },
     dataImport: {
+      amountTooLargeError:
+        'This backup has a USDT amount too large for Kiko to store exactly, so nothing was imported. Your current data is unchanged.',
       chooseFile: 'Choose file',
       confirmButton: 'Replace data',
       confirmMessage:
@@ -128,6 +130,7 @@ export const en = {
     language: 'Language',
     system: 'System',
     title: 'Settings',
+    transactionTemplates: 'Transaction templates',
   },
   language: {
     en: '🇬🇧 English',
@@ -182,29 +185,112 @@ export const en = {
     // later migration (0039) — the interest portion of a linked loan
     // payment (never its principal) files under this key.
     loan_interest: 'Loan interest',
-    // Categories screen and inline add-category-row UI copy (distinct from the
+    // Categories screen, category form and icon picker UI copy (distinct from the
     // seeded default-category display names above).
     addCategory: 'Add category',
-    changeIconLabel: 'Change {{title}} icon',
     chooseIconHeading: 'Icon',
-    chooseNewIconLabel: 'Choose new category icon',
-    colorLabel: 'Color',
-    deleteLabel: 'Delete {{title}}',
     dismissIconPicker: 'Dismiss icon picker',
     iconOptionLabel: 'Choose icon {{icon}}',
-    isDefaultLabel: '{{title}} is the default category',
-    moveToBottomLabel: 'Move {{title}} to bottom',
-    moveToTopLabel: 'Move {{title}} to top',
     namePlaceholder: 'Groceries',
-    newColorPrefix: 'New category color',
-    rowColorPrefix: '{{title}} color',
-    setAsDefaultLabel: 'Set {{title}} as default',
-    titleFieldLabel: '{{title}} title',
-    // The ultimate fallback display (src/categories/category-display.ts
-    // NEUTRAL_CATEGORY) shown only when a category cannot be resolved AND
+    // The ultimate fallback display (src/categories/category-display/category-display.ts
+    // neutralCategory()) shown only when a category cannot be resolved AND
     // the default-category row itself is missing (e.g. before the seed
     // migration runs) — not the ordinary "Other" bucket above.
     uncategorized: 'Uncategorized',
+    // The rule count on a category card; English defines every plural form so both catalogues
+    // carry the same keys (Ukrainian selects all four).
+    rulesCount_one: '{{count}} rule',
+    rulesCount_few: '{{count}} rules',
+    rulesCount_many: '{{count}} rules',
+    rulesCount_other: '{{count}} rules',
+    noRules: 'No rules',
+    default: 'Default',
+    deleteRulesNotice_one: 'Its {{count}} rule will be deleted too.',
+    deleteRulesNotice_few: 'Its {{count}} rules will be deleted too.',
+    deleteRulesNotice_many: 'Its {{count}} rules will be deleted too.',
+    deleteRulesNotice_other: 'Its {{count}} rules will be deleted too.',
+    deleteRulesNoticeUnknown: 'Its rules will be deleted too.',
+    deleteTemplates_one: 'This also clears it in {{count}} template.',
+    deleteTemplates_few: 'This also clears it in {{count}} templates.',
+    deleteTemplates_many: 'This also clears it in {{count}} templates.',
+    deleteTemplates_other: 'This also clears it in {{count}} templates.',
+    deleteTemplatesUnknown: 'This also clears it in its templates.',
+  },
+  categoryPage: {
+    rulesHeading: 'Rules',
+    setAsDefault: 'Set as default',
+    isDefault: 'Default category',
+    quotedName: '"{{name}}"',
+    unreadableRule: "This rule can't be read",
+    deleteRuleTitle: 'Delete Rule',
+    addRule: 'Add rule',
+    emptyRules: 'Add a rule to set this category on matching transactions.',
+    // The labels of a rule card's table; each names its subject because the row stands alone.
+    amountEqual: 'Amount equals',
+    amountMore: 'Amount is more than',
+    amountAtLeast: 'Amount is at least',
+    amountLess: 'Amount is less than',
+    amountAtMost: 'Amount is at most',
+    timeBefore: 'Time is before',
+    timeAfter: 'Time is after',
+  },
+  categoryForm: {
+    addTitle: 'New Category',
+  },
+  ruleForm: {
+    addTitle: 'New Rule',
+    editTitle: 'Edit Rule',
+    // A condition is what the model calls a matcher: one test a transaction must pass.
+    addMatcher: 'Add condition',
+    allMustMatch: 'A transaction must match every condition.',
+    condition: 'Condition',
+    conditionSheetTitle: 'Condition',
+    selectCondition: 'Select a condition',
+    nameIs: 'Name is',
+    nameStartsWith: 'Name starts with',
+    amount: 'Amount',
+    direction: 'Type',
+    time: 'Time',
+    operator: 'Comparison',
+    operatorSheetTitle: 'Comparison',
+    selectOperator: 'Select a comparison',
+    equal: 'Equal to',
+    more: 'More than',
+    atLeast: 'At least',
+    less: 'Less than',
+    atMost: 'At most',
+    before: 'Before',
+    after: 'After',
+    // A statement row can carry a date and no time; it is read as noon in the statement's zone.
+    timeHint: "Statement rows without a time count as noon in the statement's time zone.",
+    remove: 'Remove',
+    removeCondition: 'Remove condition {{index}}',
+    errorNoMatchers: 'Add at least one condition.',
+    errorName: 'Enter a name.',
+    errorAmountNegative: 'Enter an amount of 0 or more.',
+    errorAmountTooLarge: 'This amount is too large.',
+    errorAmountWholeOnly: 'For this currency, you can enter only a whole amount.',
+    // `count` is the digits the currency allows (never 0: a currency of no decimals reads
+    // errorAmountWholeOnly); English defines every plural form so the Ukrainian set keeps parity.
+    errorAmountDecimals_one: 'This currency allows up to {{count}} decimal place.',
+    errorAmountDecimals_few: 'This currency allows up to {{count}} decimal places.',
+    errorAmountDecimals_many: 'This currency allows up to {{count}} decimal places.',
+    errorAmountDecimals_other: 'This currency allows up to {{count}} decimal places.',
+    errorNeverMatches: 'These conditions can never match together.',
+    errorNeverMatchesTime:
+      'These times can never match together. For a window over midnight, use two rules.',
+    errorDuplicate: 'A rule with these conditions already exists in {{category}}.',
+  },
+  ruleRewrite: {
+    title: 'Apply Rule',
+    // How many existing transactions saving the rule changes; English defines every plural form so
+    // both catalogues carry the same keys (Ukrainian selects all four).
+    message_one: 'This changes {{count}} transaction.',
+    message_few: 'This changes {{count}} transactions.',
+    message_many: 'This changes {{count}} transactions.',
+    message_other: 'This changes {{count}} transactions.',
+    applyToExisting: 'Apply to existing',
+    newOnly: 'New transactions only',
   },
   forms: {
     // Field labels reused across two or more of the forms below (the account,
@@ -295,7 +381,6 @@ export const en = {
       amountPlaceholder: '500.00',
       errorMessage: 'Please try again.',
       errorTitle: 'Could not add contribution',
-      save: 'Save contribution',
     },
     holding: {
       addContribution: 'Add contribution',
@@ -491,7 +576,6 @@ export const en = {
       quantity: 'Quantity',
       quantityError: 'Enter a quantity greater than 0.',
       quantityPlaceholder: '10',
-      save: 'Save lot',
       sell: 'Sell',
       sellExceedsError: "You can't sell more than you currently hold.",
       totalCost: 'Total cost',
@@ -504,13 +588,11 @@ export const en = {
       title: 'Edit Share Change',
     },
     pricePoint: {
-      // Loan-specific title/field/button/error `PricePointFormScreen` applies
+      // Loan-specific title/field/error `PricePointFormScreen` applies
       // once the holding loads as a loan; `loanValueError` also accepts 0.
-      loanSave: 'Save outstanding',
       loanTitle: 'Update Outstanding',
       loanValue: 'Outstanding',
       loanValueError: 'Outstanding must be 0 or greater.',
-      save: 'Save value',
       title: 'Update Value',
       value: 'Value',
       valueError: 'Value must be greater than 0.',
@@ -518,6 +600,7 @@ export const en = {
     },
     transaction: {
       addReturn: 'Add return',
+      addTemplateTitle: 'Add Template',
       addTitle: 'Add Transaction',
       amountError: 'Amount must be greater than 0.',
       amountPlaceholder: '250.00',
@@ -532,9 +615,12 @@ export const en = {
       convertAmountPlaceholder: '100.00',
       convertToExchange: 'Exchange',
       counterpartAmountError: 'Amount must be greater than 0.',
+      createTransaction: 'Create transaction',
       description: 'Description',
       descriptionPlaceholder: 'Coffee',
+      editTemplateTitle: 'Edit Template',
       editTitle: 'Edit Transaction',
+      entryModeLabel: 'Entry mode',
       exchange: 'Exchange',
       expense: 'Expense',
       from: 'From',
@@ -556,19 +642,32 @@ export const en = {
       // stored choice (`loanLinkRejected`), not just an empty default.
       loanPaymentNone: 'None',
       loanPaymentSheetTitle: 'Loan Payment',
+      noTemplatesHint:
+        'No templates yet. Turn on "Save as a new template" when you save a transaction.',
       remove: 'Remove',
       removeReturn: 'Remove return {{index}}',
       returnAmount: 'Return {{index}}',
       returnsHeading: 'Change Returns',
       returnTo: 'Return to {{index}}',
       returnToSheetTitle: 'Return to {{index}}',
+      saveAsTemplate: 'Save as a new template',
       selectCategoryError: 'Select a category.',
       selectCounterpartError: 'Select an account to convert into.',
       selectDestinationError: 'Select a destination account.',
       selectHolding: 'Select holding',
+      selectHoldingError: 'No holding selected.',
+      selectTemplate: 'Select a template',
       split: 'Split',
       splitInvalidError: 'Add at least one valid return, and keep the returns below the payment.',
       syncedNotice: 'This was synced, so only the category and loan link can be changed.',
+      tabManual: 'Manual',
+      tabTemplate: 'Template',
+      template: 'Template',
+      templateName: 'Template name',
+      templateNameError: 'Enter a template name.',
+      templateNamePlaceholder: 'Rent',
+      templateNameTakenError: 'A template with this name already exists.',
+      templateSheetTitle: 'Template',
       title: 'Transaction',
       to: 'To',
       toSheetTitle: 'To',
@@ -624,7 +723,7 @@ export const en = {
   },
   // The "add a bank" catalog copy (src/bank-sync/provider-catalog/): one
   // about/eligibility pair per native provider, shown on the picker before
-  // any credential is entered. Guideline 5.6 remediation: PrivatBank, bunq,
+  // any credential is entered. Guideline 2.3.1(a) remediation: PrivatBank, bunq,
   // and Starling entries were removed — Monobank is the sole shipped
   // provider.
   addBank: {
@@ -652,7 +751,7 @@ export const en = {
     binanceConnected: 'Binance connected',
     binanceFundingResponseNotArray: 'Binance funding response was not an array',
     binanceHistoryPending:
-      'Some Binance deposit and withdrawal history is not imported yet. Kiko will keep importing on each sync.',
+      'Some Binance transaction history is not imported yet. Kiko will keep importing on each sync.',
     binanceKeychainDisclosure:
       "Your Binance API key is stored only in your device's Keychain, used only to fetch your own data directly from Binance, and is never sent to Kiko or any server.",
     binanceMissingBalancesArray: 'Binance account response did not contain a balances array',
@@ -742,7 +841,7 @@ export const en = {
   holdingDetail: {
     addLot: 'Add lot',
     addTransaction: 'Add transaction',
-    // The derived lifecycle ledger lines (src/holdings/derived-entries.ts) a
+    // The derived lifecycle ledger lines (src/holdings/derived-entries/derived-entries.ts) a
     // term-deposit or bond's Holding-detail screen renders inline — a bank
     // statement's own line structure, not a stored transaction.
     capitalization: 'Capitalization',
@@ -772,6 +871,9 @@ export const en = {
     // transactions the auto-link matcher (or a manual pick) linked to this
     // loan, newest first.
     linkedPayments: 'Linked Payments',
+    // The title of each upcoming loan payment's card: the schedule lists only
+    // loan payments, so one fixed label names them all.
+    loanPayment: 'Loan payment',
     militaryLevy: 'Military levy {{pct}}%',
     openingDeposit: 'Opening deposit',
     outstanding: 'Outstanding',
@@ -791,6 +893,9 @@ export const en = {
     purchase: 'Purchase',
     redemption: 'Redemption',
     sale: 'Sale',
+    // The marker under each upcoming loan payment: the payment is on the loan's
+    // contractual schedule, so it is not an estimate and not "Projected".
+    scheduled: 'Scheduled',
     shareChanges: 'Share Changes',
     // After the share ("1/3 · 33.33% since 01.06.2025"): the day it took effect.
     shareSince: 'since {{date}}',
@@ -822,8 +927,8 @@ export const en = {
   holdings: {
     // The delete confirm's body for a holding, or an account's holdings, whose
     // transactions are one part of a movement with another holding. Only `rows`
-    // takes a count; the other parts list holding names, joined by the caller
-    // (Hermes has no `Intl.ListFormat`).
+    // and `templates` take a count; the other parts list holding names, joined by
+    // the caller (Hermes has no `Intl.ListFormat`).
     deleteLinked: {
       rows_one: 'This also deletes {{count}} linked transaction in {{names}}.',
       rows_few: 'This also deletes {{count}} linked transactions in {{names}}.',
@@ -836,6 +941,10 @@ export const en = {
       unlinked:
         'Some exchange parts in {{names}} could not be found and stay. Check them after deleting.',
       unlinkedPlain: 'Some exchange parts could not be found and stay.',
+      templates_one: 'This also clears it in {{count}} template.',
+      templates_few: 'This also clears it in {{count}} templates.',
+      templates_many: 'This also clears it in {{count}} templates.',
+      templates_other: 'This also clears it in {{count}} templates.',
     },
   },
   home: {
@@ -880,12 +989,46 @@ export const en = {
       title: 'Start by creating an account',
     },
   },
-  // The Help page (`src/help/`). Each topic has a nav title (Title Case) and a list-row
-  // label (sentence case) as two keys, and numbered steps that each end with ".". The step keys
-  // are quoted because i18next's typed keys skip a numeric property name.
+  // The Help page (`src/help/`). Each group has a section title (Title Case, in `TITLE_KEYS`).
+  // Each topic has a nav title (Title Case, in `TITLE_KEYS`) and a list-row label (sentence case)
+  // as two keys, and numbered steps that each end with ".". The step keys are quoted because
+  // i18next's typed keys skip a numeric property name. A step names a button, field, or tab in
+  // double quotes, and the quoted text is the exact catalogue string of that label. A test checks
+  // that each quote is a catalogue string outside `help.topics` and not one that only an
+  // accessibility prop renders. The action labels are sentence case buttons with no final ".".
   help: {
     actions: {
+      addBankAccount: 'Add bank account',
+      addCryptoAccount: 'Add crypto account',
+      addLoan: 'Add loan',
+      addProperty: 'Add property',
       openCategories: 'Open categories',
+      openExportData: 'Open data export',
+      openImportData: 'Open data import',
+      openReminders: 'Open reminders',
+      openStatistics: 'Open statistics',
+      openSystem: 'Open system settings',
+      openTemplates: 'Open templates',
+    },
+    groups: {
+      accounts: {
+        title: 'Accounts',
+      },
+      categories: {
+        title: 'Categories',
+      },
+      holdings: {
+        title: 'Holdings and Loans',
+      },
+      settings: {
+        title: 'Settings',
+      },
+      statistics: {
+        title: 'Statistics',
+      },
+      transactions: {
+        title: 'Transactions',
+      },
     },
     privacy: 'All your data stays on this device.',
     rowLabel: 'Help',
@@ -902,15 +1045,178 @@ export const en = {
         },
         title: 'Add an Account',
       },
+      addHolding: {
+        rowLabel: 'Add a holding',
+        steps: {
+          '1': 'On the "Accounts" tab, open an account and tap "Add holding".',
+          '2': 'Choose its "Type". The types on offer depend on the kind of account.',
+          '3': 'For a bond, enter its ISIN, and Kiko fills in its face value, coupon, and maturity date from the NBU register.',
+          '4': 'Tap "Save", then open the holding: "Add contribution" for a deposit, "Add lot" for a precious metal, or "Add transaction" for a card.',
+          '5': 'Kiko updates crypto and precious metal prices on its own.',
+        },
+        title: 'Add a Holding',
+      },
+      addTransaction: {
+        rowLabel: 'Add a transaction',
+        steps: {
+          '1': 'On the "Home" tab, tap "+", or open a holding and tap "Add transaction".',
+          '2': 'Choose the "Type": "Expense", "Income", "Exchange", or "Split".',
+          '3': 'Choose the holding, enter the amount and a description, and pick a category.',
+          '4': 'Tap "Save". If you picked the category yourself, choose "Apply" to use it for every transaction with that name, or "Cancel" to keep it for this transaction only.',
+        },
+        title: 'Add a Transaction',
+      },
+      backupData: {
+        rowLabel: 'Back up your data',
+        steps: {
+          '1': 'Open the "Settings" tab, then tap "Export Data".',
+          '2': 'To keep syncing after a restore, turn on "Include saved passwords & keys".',
+          '3': 'Tap "Export data", then "Share file" to save the .kiko file.',
+          '4': 'Tap "Copy key" and keep the key somewhere safe. It is shown only once, and the file cannot be opened without it.',
+        },
+        title: 'Back Up Your Data',
+      },
+      categoryRules: {
+        rowLabel: 'Set categories automatically',
+        steps: {
+          '1': 'Open the "Settings" tab, tap "Categories", then tap a category.',
+          '2': 'Tap "Add rule" and set a condition on the name, the amount, or the time. Tap "Add condition" for more; a transaction must match them all.',
+          '3': 'Tap "Save". If existing transactions match, choose "Apply to existing" or "New transactions only".',
+          '4': 'Rules also sort the transactions you import or sync later.',
+          '5': 'When you change the category of a transaction and choose "Apply", Kiko adds a rule for its name.',
+        },
+        title: 'Set Categories Automatically',
+      },
+      connectCrypto: {
+        rowLabel: 'Connect Binance or a Bitcoin wallet',
+        steps: {
+          '1': 'On the "Accounts" tab, tap "Add account", enter a name, and choose "Crypto".',
+          '2': 'Under "Source", choose "Binance" or "Wallet".',
+          '3': 'For Binance, tap "Open Binance API management" and create an API key there. Paste the "API key" and "API secret", then tap "Connect Binance".',
+          '4': 'For a Bitcoin wallet, paste its address and tap "Connect wallet".',
+          '5': 'Tap "Save". Your keys stay only in the Keychain on this iPhone and are never sent to Kiko.',
+        },
+        title: 'Connect Binance or a Bitcoin Wallet',
+      },
+      connectMonobank: {
+        rowLabel: 'Connect Monobank',
+        steps: {
+          '1': 'On the "Accounts" tab, tap "Add account", enter a name, and choose "Bank".',
+          '2': 'Under "Bank type", choose Monobank.',
+          '3': 'Tap "Open api.monobank.ua", get your personal token, and paste it into "Token".',
+          '4': 'Tap "Connect Monobank", then "Save". Kiko loads your cards and their transactions.',
+          '5': 'To sync again, pull down the list on the "Home" tab, or tap "Sync" on the account page.',
+        },
+        title: 'Connect Monobank',
+      },
+      editTransaction: {
+        rowLabel: 'Edit, duplicate, or delete a transaction',
+        steps: {
+          '1': 'On the "Home" tab, find the transaction. "Accounts", "Categories", and the calendar narrow the list.',
+          '2': 'Tap it, make your changes, and tap "Save". In a synced or imported transaction, you can change only the category and the loan link.',
+          '3': 'Touch and hold a transaction you added or imported, then tap "Delete". On one you added yourself, "Duplicate" makes a copy dated now.',
+        },
+        title: 'Edit, Duplicate, or Delete a Transaction',
+      },
+      importStatement: {
+        rowLabel: 'Import a bank statement',
+        steps: {
+          '1': 'Download a statement from your bank as a CSV or XLSX file.',
+          '2': 'On the "Accounts" tab, open the bank account, tap "Import statement", and choose the file.',
+          '3': 'Check the preview, choose the "Holding" to import into, then tap "Import". Transactions already in Kiko are skipped.',
+          '4': 'If Kiko does not recognize the file, tap "Map columns manually". If you mapped this kind of file before, this step opens on its own.',
+          '5': 'Tap the row with the column names, then choose the date, amount, and currency columns.',
+          '6': 'Check "Result" and tap "Import". Next time, Kiko fills in the same columns for you.',
+        },
+        title: 'Import a Bank Statement',
+      },
       manageCategories: {
         rowLabel: 'Manage categories',
         steps: {
           '1': 'Open the "Settings" tab, then tap "Categories".',
-          '2': 'Tap "Add category", enter a name, and choose an icon and a color.',
-          '3': 'To apply a category to every transaction with the same name, open one of them, change its category, and tap "Save".',
-          '4': 'Choose "Apply". The rule also applies to future imports.',
+          '2': 'Tap "Add category", enter a name, choose an icon and a color, and tap "Save".',
+          '3': 'Tap a category to change its name, icon, or color, and to see its rules.',
+          '4': 'Tap the star at the top to make it the default category. Transactions with no category count toward it.',
+          '5': 'To delete a category other than the default, touch and hold it, then tap "Delete". Its rules are deleted too.',
         },
         title: 'Manage Categories',
+      },
+      restoreData: {
+        rowLabel: 'Restore a backup',
+        steps: {
+          '1': 'Open the "Settings" tab, then tap "Import Data".',
+          '2': 'Tap "Choose file" and pick your .kiko file.',
+          '3': 'Paste its key into "Encryption key", or tap the paste button beside it.',
+          '4': 'Tap "Import data", then "Replace data". This replaces everything in Kiko and cannot be undone.',
+        },
+        title: 'Restore a Backup',
+      },
+      setReminder: {
+        rowLabel: 'Set up a reminder',
+        steps: {
+          '1': 'Open an account you track by hand, then tap the bell at the top.',
+          '2': 'Choose "Add transactions" or, for a bank account, "Statement import".',
+          '3': 'Choose how often it repeats and at what time, then tap "Save".',
+          '4': 'To see every reminder, open the "Settings" tab and tap "Reminders". Use the switch to turn one on or off, or touch and hold it to delete it.',
+        },
+        title: 'Set Up a Reminder',
+      },
+      systemSettings: {
+        rowLabel: 'Change the language or lock the app',
+        steps: {
+          '1': 'Open the "Settings" tab, then tap "System".',
+          '2': 'Under "Language", choose your language.',
+          '3': 'Turn on "Require Face ID or passcode" to lock Kiko. Each time you launch it, it asks for Face ID or your device passcode.',
+          '4': 'To turn the lock off, Kiko first asks you to confirm it is you.',
+        },
+        title: 'Language and App Lock',
+      },
+      trackLoan: {
+        rowLabel: 'Track a loan',
+        steps: {
+          '1': 'On the "Accounts" tab, tap "Add account" and choose "Debt".',
+          '2': 'Choose the loan kind, then enter the principal, the annual rate, the start date, and the term.',
+          '3': 'Choose a "Schedule" to see upcoming payments, and the holding it is "Paid from".',
+          '4': 'Tap "Save". It shows under "Loans" on the "Accounts" tab.',
+          '5': 'When you add a payment, link it under "Loan payment". Kiko also links matching payments on its own.',
+          '6': 'To correct what you still owe, open the loan and tap "Update outstanding".',
+        },
+        title: 'Track a Loan',
+      },
+      trackProperty: {
+        rowLabel: 'Track property',
+        steps: {
+          '1': 'On the "Accounts" tab, tap "Add account" and choose "Property".',
+          '2': 'Choose what it is, such as real estate, a vehicle, or money you lent, then enter its name and cost.',
+          '3': 'If you own only part of it, set your share under "Ownership".',
+          '4': 'Tap "Save". It shows under "Properties" on the "Accounts" tab.',
+          '5': 'To record a new value, open it and tap "Update value".',
+        },
+        title: 'Track Property',
+      },
+      useTemplates: {
+        rowLabel: 'Use transaction templates',
+        steps: {
+          '1': 'When you save a transaction, turn on "Save as a new template" and fill in "Template name".',
+          '2': 'Or open the "Settings" tab, tap "Transaction templates", then "Add template".',
+          '3': 'To use one, tap "+" on the "Home" tab, choose "Template", pick a template, and tap "Save".',
+          '4': 'In "Transaction templates", tap a template to edit it, or touch and hold it to delete it.',
+        },
+        title: 'Use Transaction Templates',
+      },
+      viewStatistics: {
+        rowLabel: 'Read your statistics',
+        steps: {
+          '1': 'Open the "Statistics" tab. "Accounts" at the top chooses the accounts that every chart counts. The calendar beside it chooses the dates for "Net Worth Over Time" and the two spending charts.',
+          '2': '"Net Worth Over Time" shows your net worth across those dates. The dashed line is its value on the first day: the line is green above it and red below it.',
+          '3': '"By Type" shows what your assets are worth today by holding type, largest first. Loans and anything you owe are not part of it.',
+          '4': '"Account Contribution" shows each account as a share of what you own today. If you owe anything, "Debts" below the chart shows the total.',
+          '5': '"Expenses by Category" shows your spending over the chosen dates, with the total in the middle. "Categories" chooses which categories it counts. The list under the chart shows categories of 5% or more, and "Show all" shows the rest.',
+          '6': '"Spending Trend by Category" shows how much each category cost in each period. Tap the button above the chart to pick categories yourself ("Manual") or the top ones ("Top") by "Contribution", "Frequency", or "Rising".',
+          '7': 'Transfers between your own accounts and wallets, currency exchanges, and cash withdrawals from your bank do not count as spending. If a payment is linked to a loan, the part that repays the loan is not spending and the interest counts under "Loan interest". A small amount above the scheduled payment counts under the payment\'s own category.',
+          '8': 'Totals are in your base currency. To change it, open the "Settings" tab and tap "Base currency".',
+        },
+        title: 'Read Your Statistics',
       },
     },
   },
@@ -964,7 +1270,7 @@ export const en = {
     },
   },
   // The Home and Holding-detail rows both render the same fallback label
-  // (src/transactions/default-description.ts) for a transaction with no
+  // (src/transactions/default-description/default-description.ts) for a transaction with no
   // user-entered description, so it lives in its own small namespace rather
   // than duplicated under either screen.
   transactions: {
@@ -982,12 +1288,21 @@ export const en = {
     // (Hermes has no `Intl.ListFormat`).
     deleteLinked: {
       exchange: 'This also deletes the other part of this exchange, in {{name}}.',
+      // The same sentence when both legs hold one currency: the row reads
+      // "Transfer to/from", so its notice says transfer too.
+      transfer: 'This also deletes the other part of this transfer, in {{name}}.',
       exchangeSyncedKept:
         'The other part, in {{name}}, came from your bank and stays. Only this part is deleted.',
       exchangeUnlinked:
         'The other part of this exchange, in {{name}}, could not be found. Only this part is deleted, so check {{name}}.',
       exchangeUnlinkedPlain:
         'The other part of this exchange could not be found. Only this part is deleted.',
+      // The same two sentences when both holdings hold one currency: the row reads
+      // "Transfer to/from", so its notice says transfer too.
+      transferUnlinked:
+        'The other part of this transfer, in {{name}}, could not be found. Only this part is deleted, so check {{name}}.',
+      transferUnlinkedPlain:
+        'The other part of this transfer could not be found. Only this part is deleted.',
       deposit: 'This also removes its contribution to {{name}}.',
       depositKept:
         'Its contribution to {{name}} could not be matched and stays. Edit {{name}} to remove it.',
@@ -1008,20 +1323,26 @@ export const en = {
     },
     exchangeFrom: 'Exchange from {{name}}',
     exchangeTo: 'Exchange to {{name}}',
+    // The same movement when both sides hold one currency: an own-wallet move,
+    // not an exchange. Also names a wallet Kiko does not track.
+    transferFrom: 'Transfer from {{name}}',
+    transferTo: 'Transfer to {{name}}',
   },
   // Shared design-system components (src/design-system/components/*) that
   // carry their own hardcoded copy rather than taking it as a prop.
   components: {
+    expandToggle: {
+      showAll: 'Show all',
+      showLess: 'Show less',
+    },
     netWorthLine: {
       loadingHistory: 'Loading history',
     },
     pieChart: {
       emptyDefault: 'No accounts to show',
-      showAll: 'Show all',
-      showLess: 'Show less',
     },
   },
-  // The app-boot gate (src/migration/migrations.gate.tsx) — its own UI is the very
+  // The app-boot gate (src/migration/migrations-gate/migrations.gate.tsx) — its own UI is the very
   // first paint, before the navigator mounts, so it is keyed here rather than
   // under `common` even though it renders no other chrome.
   migrations: {
@@ -1346,6 +1667,14 @@ export const en = {
       interval_many: 'Every {{count}} days at {{time}}',
       interval_other: 'Every {{count}} days at {{time}}',
     },
+  },
+  transactionTemplates: {
+    addTemplate: 'Add template',
+    empty: {
+      message: 'Save a transaction you enter often as a template, then add it again in a few taps.',
+      title: 'No templates yet',
+    },
+    title: 'Transaction Templates',
   },
   // The human-readable display name per ISO currency code, shown alongside the
   // code in the searchable CurrencyField (trigger label, rows, accessibility

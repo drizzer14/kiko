@@ -97,8 +97,8 @@ export const settingsRepo = {
    * (`mappingKeyFor(bankId, fingerprint)`,
    * `statement-import/column-mapping/saved-mapping.ts`), keeping every
    * OTHER saved key untouched. Read-modify-write inside one `write()`, the
-   * same shape `upsertCategoryOverride` uses for its own select-then-update
-   * (`categories/category-overrides-repo/category-overrides.repo.ts`) — the
+   * same shape `applyNameRule` uses for its own select-then-update
+   * (`categories/category-rules-repo/category-rules.repo.ts`) — the
    * column stores the whole map as one JSON blob, so a plain `.set()` would
    * otherwise clobber every other bank/file's saved mapping.
    */

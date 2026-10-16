@@ -135,6 +135,27 @@ const makeInMemoryDeps = (initialAccounts: AccountRow[]) => {
   return { deps, accountsStore, holdingsStore };
 };
 
+const makeAccountDeps = (institution: AccountRow['institution']) => {
+  const inMemory = makeInMemoryDeps([cryptoAccount({ id: 'acc-1', institution })]);
+  inMemory.deps.targetAccountId = 'acc-1';
+
+  return inMemory;
+};
+
+const FAILED_FETCH_MESSAGE = 'Block explorer request failed: 400';
+
+const runFailingBalanceSync = (
+  provider: ReturnType<typeof makeProvider>['provider'],
+  deps: Partial<BalanceSyncDeps>,
+) => runBalanceSync(provider, { balances: new Error(FAILED_FETCH_MESSAGE) }, deps);
+
+const recordProgress = () => {
+  const emissions: Array<ReturnType<typeof getProgressSnapshot>> = [];
+  const unsubscribe = subscribeProgress(() => emissions.push({ ...getProgressSnapshot() }));
+
+  return { emissions, unsubscribe };
+};
+
 describe('runBalanceSync', () => {
   // runBalanceSync now drives the shared progress session (module-level singleton
   // state); reset it after each test so one test's progress never leaks.
@@ -327,18 +348,8 @@ describe('runBalanceSync', () => {
 
     it('starts its one holding at zero work and rises to full as the balance commits', async () => {
       const { provider } = makeProvider();
-      const { deps } = makeInMemoryDeps([
-        cryptoAccount({ id: 'acc-1', institution: 'btc_wallet' }),
-      ]);
-      deps.targetAccountId = 'acc-1';
-
-      const emissions: Array<{
-        completed: number;
-        total: number;
-        workCompleted: number;
-        workTotal: number;
-      }> = [];
-      const unsubscribe = subscribeProgress(() => emissions.push({ ...getProgressSnapshot() }));
+      const { deps } = makeAccountDeps('btc_wallet');
+      const { emissions, unsubscribe } = recordProgress();
 
       await runBalanceSync(provider, { balances: [walletBalance(1)] }, deps);
       unsubscribe();
@@ -353,16 +364,8 @@ describe('runBalanceSync', () => {
 
     it('weights three wallet holdings (Spot / Funding / Earn) as three equal work units', async () => {
       const { provider } = makeProvider();
-      const { deps } = makeInMemoryDeps([cryptoAccount({ id: 'acc-1', institution: 'binance' })]);
-      deps.targetAccountId = 'acc-1';
-
-      const emissions: Array<{
-        completed: number;
-        total: number;
-        workCompleted: number;
-        workTotal: number;
-      }> = [];
-      const unsubscribe = subscribeProgress(() => emissions.push({ ...getProgressSnapshot() }));
+      const { deps } = makeAccountDeps('binance');
+      const { emissions, unsubscribe } = recordProgress();
 
       await runBalanceSync(
         provider,
@@ -383,15 +386,8 @@ describe('runBalanceSync', () => {
 
     it('registers no work — so the bar never appears — when the provider returns no balance', async () => {
       const { provider } = makeProvider();
-      const { deps } = makeInMemoryDeps([
-        cryptoAccount({ id: 'acc-1', institution: 'btc_wallet' }),
-      ]);
-      deps.targetAccountId = 'acc-1';
-
-      const emissions: Array<{ workTotal: number }> = [];
-      const unsubscribe = subscribeProgress(() =>
-        emissions.push({ workTotal: getProgressSnapshot().workTotal }),
-      );
+      const { deps } = makeAccountDeps('btc_wallet');
+      const { emissions, unsubscribe } = recordProgress();
 
       await runBalanceSync(provider, { balances: [] }, deps);
       unsubscribe();
@@ -402,31 +398,22 @@ describe('runBalanceSync', () => {
 
     it('leaves the session clean (isSyncing off, progress cleared) when the provider fetch fails', async () => {
       const { provider } = makeProvider();
-      const { deps } = makeInMemoryDeps([
-        cryptoAccount({ id: 'acc-1', institution: 'btc_wallet' }),
-      ]);
-      deps.targetAccountId = 'acc-1';
+      const { deps } = makeAccountDeps('btc_wallet');
 
-      await expect(
-        runBalanceSync(
-          provider,
-          { balances: new Error('Block explorer request failed: 400') },
-          deps,
-        ),
-      ).rejects.toThrow('Block explorer request failed: 400');
+      await expect(runFailingBalanceSync(provider, deps)).rejects.toThrow(FAILED_FETCH_MESSAGE);
 
       expect(isSyncingSnapshot()).toBe(false);
       expect(getProgressSnapshot()).toEqual(zero);
     });
   });
 
-  // BUG1: auto-sync (`useAutoSync`) and pull-to-refresh (`useSyncAll`) can each
+  // Auto-sync (`useAutoSync`) and pull-to-refresh (`useSyncAll`) can each
   // fan out over the SAME connected crypto account. Without a single-flight
   // join, each starts its own `runBalanceSync` — doubling the provider (Binance)
   // request weight and double-registering the account's holdings into the
-  // shared, reference-counted progress session. Mirrors `inFlightSync` in
-  // `src/monobank/sync.ts`, keyed per account.
-  describe('single-flight join (BUG1)', () => {
+  // shared, reference-counted progress session. Mirrors `inFlightSyncs` in
+  // `src/monobank/sync/sync.ts`, keyed per account.
+  describe('single-flight join of overlapping syncs for one account', () => {
     it('shares one balance sync across overlapping triggers for the same account (provider fetched once)', async () => {
       const { provider, calls } = makeProvider();
       const { deps, holdingsStore } = makeInMemoryDeps([
@@ -462,18 +449,9 @@ describe('runBalanceSync', () => {
 
     it('releases the lock after a FAILED run so a later sync still runs', async () => {
       const { provider, calls } = makeProvider();
-      const { deps } = makeInMemoryDeps([
-        cryptoAccount({ id: 'acc-1', institution: 'btc_wallet' }),
-      ]);
-      deps.targetAccountId = 'acc-1';
+      const { deps } = makeAccountDeps('btc_wallet');
 
-      await expect(
-        runBalanceSync(
-          provider,
-          { balances: new Error('Block explorer request failed: 400') },
-          deps,
-        ),
-      ).rejects.toThrow('Block explorer request failed: 400');
+      await expect(runFailingBalanceSync(provider, deps)).rejects.toThrow(FAILED_FETCH_MESSAGE);
       await runBalanceSync(provider, { balances: [walletBalance(1)] }, deps);
 
       expect(calls).toHaveLength(2);

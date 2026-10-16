@@ -327,8 +327,8 @@ type LiveData = {
   // What the price book's `price_points` read answers.
   pricePoints?: PricePoint[];
   // Per-table isLoading overrides, for the loading-gate tests only — every
-  // key defaults to `false` (an already-resolved query), so every existing
-  // call site above keeps behaving exactly as before.
+  // key defaults to `false` (an already-resolved query), so a call site that
+  // omits it sees resolved queries.
   isLoading?: Partial<Record<string, boolean>>;
 };
 
@@ -2669,6 +2669,39 @@ describe('HomeScreen — localization', () => {
     const { getByText } = await renderHome();
 
     expect(getByText(i18n.t('transactions.exchangeTo', { name: 'Ощадний' }))).toBeTruthy();
+  });
+
+  it('renders a same-currency pair as a transfer on both legs, not an exchange', async () => {
+    // Two holdings of ONE currency: nothing was converted, so the screen must
+    // hand the row label the holdings' currencies for it to say "Transfer".
+    seed({
+      holdings: [
+        UAH_HOLDING,
+        { id: 'h-uah-2', name: 'Ощадний', accountId: 'a', currency: 'UAH', balanceMinorUnits: 0 },
+      ],
+      transactions: [
+        transaction({
+          id: 'transfer-out',
+          holdingId: 'h-uah',
+          amountMinorUnits: -1_000_000,
+          description: '',
+          exchangeCounterpartHoldingId: 'h-uah-2',
+        }),
+        transaction({
+          id: 'transfer-in',
+          holdingId: 'h-uah-2',
+          amountMinorUnits: 1_000_000,
+          description: '',
+          exchangeCounterpartHoldingId: 'h-uah',
+        }),
+      ],
+    });
+
+    const { getByText, queryByText } = await renderHome();
+
+    expect(getByText(i18n.t('transactions.transferTo', { name: 'Ощадний' }))).toBeTruthy();
+    expect(getByText(i18n.t('transactions.transferFrom', { name: 'Чорна картка' }))).toBeTruthy();
+    expect(queryByText(i18n.t('transactions.exchangeTo', { name: 'Ощадний' }))).toBeNull();
   });
 });
 

@@ -23,7 +23,7 @@
 //   JS-thread callback just runs. `BottomSheet`'s keyboard-aware lift now
 //   drives its own `useSharedValue(0)` from RN core `Keyboard` events (see
 //   `bottom-sheet.component.tsx`) rather than reanimated's own
-//   `useAnimatedKeyboard`, so this stub no longer needs to expose that hook.
+//   `useAnimatedKeyboard`, so this stub need not expose that hook.
 //
 // Any other accessed member still resolves to a no-op through the Proxy, so a
 // stray reanimated import can never crash a test.

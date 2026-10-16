@@ -52,7 +52,7 @@ describe('buildRateTable', () => {
     expect(Number.isFinite(table.EUR)).toBe(true);
   });
 
-  // P1: a stored rate of "0" is not a usable rate — admitting it into the
+  // A stored rate of "0" is not a usable rate — admitting it into the
   // table would let `canConvert` treat it as present (0 !== undefined) and
   // convert a holding to 0, while the breakdown still shows it at full
   // own-currency value. Drop it at the single source instead.
@@ -114,9 +114,9 @@ describe('canConvert', () => {
     expect(canConvert('EUR', 'UAH', rates)).toBe(false);
   });
 
-  // P1: a rate of 0 is not a usable rate — treating it as present (0 !==
-  // undefined) let `guardedNetWorth` convert a holding to 0 while
-  // `guardedBreakdown` still showed it at full own-currency value.
+  // A rate of 0 is not a usable rate — treating it as present (0 !==
+  // undefined) would let `guardedNetWorth` convert a holding to 0 while
+  // `guardedBreakdown` still shows it at full own-currency value.
   it('is false when the stored rate to the base currency is zero', () => {
     expect(canConvert('EUR', 'UAH', { EUR: 0 })).toBe(false);
   });
@@ -299,7 +299,7 @@ describe('guardedNetWorth / guardedBreakdown — base-currency flip regression',
     expect(breakdown.find((money) => money.currency === 'USD')?.minorUnits).toBe(10_000);
   });
 
-  // P1: a stored rate of 0 (e.g. a bad provider tick) must exclude the
+  // A stored rate of 0 (e.g. a bad provider tick) must exclude the
   // holding from BOTH the total and the breakdown, exactly like a MISSING
   // rate — never convert it to 0 in the total while the breakdown still
   // shows it at full own-currency value.

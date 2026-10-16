@@ -11,6 +11,7 @@ import {
 import { dayKeyOf } from '@kiko/prices/price-book';
 import { pricePointsRepo } from '@kiko/prices/price-points-repo';
 import { scrollToField, useHeaderInset } from '@kiko/design-system/scroll-to-field';
+import { expectNavBarSaveOnly, pressSave } from '@kiko/test-support/form-header-items';
 
 import PricePointFormScreen from './price-point-form.screen';
 
@@ -102,7 +103,7 @@ describe('PricePointFormScreen', () => {
 
     await fireEvent.changeText(utils.getByLabelText('Value'), '5000');
     await pickDate(utils, 2025, 6, 1);
-    await fireEvent.press(utils.getByText('Save value'));
+    await pressSave(navigation.setOptions);
 
     expect(pricePointsRepo.upsertMany).toHaveBeenCalledWith([
       {
@@ -120,7 +121,7 @@ describe('PricePointFormScreen', () => {
     const utils = await renderScreen();
 
     await fireEvent.changeText(utils.getByLabelText('Value'), '5000');
-    await fireEvent.press(utils.getByText('Save value'));
+    await pressSave(navigation.setOptions);
 
     expect(pricePointsRepo.upsertMany).toHaveBeenCalledWith([
       expect.objectContaining({ day: dayKeyOf(today()) }),
@@ -130,7 +131,7 @@ describe('PricePointFormScreen', () => {
   it('blocks save and shows an error for a value of 0', async () => {
     const utils = await renderScreen();
 
-    await fireEvent.press(utils.getByText('Save value'));
+    await pressSave(navigation.setOptions);
 
     expect(utils.getByText('Value must be greater than 0.')).toBeTruthy();
     expect(pricePointsRepo.upsertMany).not.toHaveBeenCalled();
@@ -142,7 +143,7 @@ describe('PricePointFormScreen', () => {
     const utils = await renderScreen();
 
     await fireEvent(utils.getByTestId('screen-scroll-view'), 'contentSizeChange', 0, 640);
-    await fireEvent.press(utils.getByText('Save value'));
+    await pressSave(navigation.setOptions);
 
     expect(scrollToField).toHaveBeenCalledTimes(1);
     const [scrollableRef, fieldRef, geometry, onSettled] = (scrollToField as jest.Mock).mock
@@ -157,7 +158,7 @@ describe('PricePointFormScreen', () => {
     const utils = await renderScreen();
 
     await fireEvent.changeText(utils.getByLabelText('Value'), '100');
-    await fireEvent.press(utils.getByText('Save value'));
+    await pressSave(navigation.setOptions);
 
     expect(scrollToField).not.toHaveBeenCalled();
   });
@@ -180,7 +181,12 @@ describe('PricePointFormScreen', () => {
 
     await renderScreen();
 
-    expect(navigation.setOptions).not.toHaveBeenCalled();
+    // `expect.anything()` would let a `title: undefined` slip through, so check the key itself.
+    const optionsWithTitle = navigation.setOptions.mock.calls.filter(([options]) =>
+      Object.hasOwn(options, 'title'),
+    );
+
+    expect(optionsWithTitle).toEqual([]);
   });
 
   // A loan can be recorded as fully repaid — its
@@ -191,7 +197,7 @@ describe('PricePointFormScreen', () => {
     const utils = await renderScreen();
 
     await fireEvent.changeText(utils.getByLabelText('Outstanding'), '0');
-    await fireEvent.press(utils.getByText('Save outstanding'));
+    await pressSave(navigation.setOptions);
 
     expect(pricePointsRepo.upsertMany).toHaveBeenCalledWith([
       expect.objectContaining({ instrument: 'holding:h-1', price: '0.00', currency: 'UAH' }),
@@ -207,7 +213,6 @@ describe('PricePointFormScreen', () => {
       const utils = await renderScreen();
 
       expect(utils.getByLabelText('Value')).toBeTruthy();
-      expect(utils.getByText('Save value')).toBeTruthy();
     },
   );
 
@@ -215,7 +220,7 @@ describe('PricePointFormScreen', () => {
     seed({ id: 'h-1', currency: 'UAH', type: 'property_item' });
     const utils = await renderScreen();
 
-    await fireEvent.press(utils.getByText('Save value'));
+    await pressSave(navigation.setOptions);
 
     expect(utils.getByText('Value must be greater than 0.')).toBeTruthy();
     expect(pricePointsRepo.upsertMany).not.toHaveBeenCalled();
@@ -225,22 +230,25 @@ describe('PricePointFormScreen', () => {
     seed({ id: 'h-1', currency: 'USD', type: 'share' });
     const utils = await renderScreen();
 
-    expect(utils.getByText('Save value')).toBeTruthy();
+    expect(utils.getByLabelText('Value')).toBeTruthy();
   });
 
-  // A loan's field label, Save button, and error string all read
-  // correctly for a debt too, not just the screen title.
-  it('shows the loan-specific field label, button, and error', async () => {
+  // A loan's field label and error string read correctly for a debt too, not just the
+  // screen title; its Save is the same plain "Save" as every form's.
+  it('shows the loan-specific field label and error', async () => {
     seed({ id: 'h-1', currency: 'UAH', type: 'loan' });
     const utils = await renderScreen();
 
     expect(utils.getByLabelText('Outstanding')).toBeTruthy();
-    expect(utils.getByText('Save outstanding')).toBeTruthy();
 
     await fireEvent.changeText(utils.getByLabelText('Outstanding'), '-1');
-    await fireEvent.press(utils.getByText('Save outstanding'));
+    await pressSave(navigation.setOptions);
 
     expect(utils.getByText('Outstanding must be 0 or greater.')).toBeTruthy();
+  });
+
+  it('offers Save only as the prominent nav-bar item, never as a body button', async () => {
+    expectNavBarSaveOnly(navigation.setOptions, await renderScreen());
   });
 });
 
@@ -267,7 +275,7 @@ describe('PricePointFormScreen — draft', () => {
 
     expect(second.getByLabelText('Value').props.value).toBe('5 000');
 
-    await fireEvent.press(second.getByText('Save value'));
+    await pressSave(navigation.setOptions);
 
     expect(pricePointsRepo.upsertMany).toHaveBeenCalledWith([
       expect.objectContaining({
@@ -312,7 +320,7 @@ describe('PricePointFormScreen — draft', () => {
     await fireEvent(utils.getByLabelText('Value'), 'blur');
     navigation.setParams.mockClear();
 
-    await fireEvent.press(utils.getByText('Save value'));
+    await pressSave(navigation.setOptions);
 
     expect(navigation.goBack).toHaveBeenCalledTimes(1);
     expect(navigation.setParams).not.toHaveBeenCalled();

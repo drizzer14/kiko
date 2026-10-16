@@ -1,4 +1,3 @@
-// src/i18n/device-language.test.ts
 import { deviceLanguage } from './device-language';
 
 // deviceLanguage reads NativeModules.SettingsManager.settings.AppleLanguages[0].

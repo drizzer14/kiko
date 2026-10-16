@@ -5,7 +5,7 @@
 > and `docs/harness/documented-exceptions.md`), but its content is now a
 > checklist, not a check spec.
 
-## 2026-09-19 — the automated subsystem was deleted (Guideline 5.6)
+## 2026-09-19 — the automated subsystem was deleted (Guideline 2.3.1(a))
 
 `check:screenshots` and its `:empty`/`:locked` siblings, the pixelmatch
 diff engine (scripts/checks/screenshot-diff/), the stable-glass build
@@ -17,7 +17,7 @@ and the four `.env.screenshots*` files were all **removed outright** — no
 `@env` flag, launch argument, or native module survives that makes the app
 render differently for a test harness. This is an architecture rule, not a
 one-off cleanup: see `.claude/skills/kiko-architecture/SKILL.md`
-("Guideline 5.6 — no hidden features"). The Semgrep rule
+("Guideline 2.3.1(a) — no hidden features"). The Semgrep rule
 `kiko-no-hidden-feature-flag-or-demo-import` (`rules/semgrep-mobile.yml`)
 mechanizes the ban on any `SCREENSHOT_*` `@env` read or `src/`→`e2e/`
 crossing (static import or dynamic `require`) returning.
@@ -41,11 +41,15 @@ App Store screenshots by hand, following this checklist.
 1. **Device.** Pinned simulator "iPhone 17 Pro Max" — 6.9-inch, 1320x2868,
    portrait-only. Shoot a second pass on a 6.5-inch simulator for the
    second required App Store display size (`screenshots/appstore/6.5-inch/`).
-2. **Clock.** Set the simulator's device clock to **2026-09-10** before
-   importing data. The demo dataset's `ANCHOR`
-   (`e2e/screenshot/seed/screenshot-seed.ts`) is fixed at that date and its
-   66 transactions span roughly the 6 months ending there — every "last 30
-   days" chart needs the device clock at or after `ANCHOR` to render full.
+2. **Clock.** Leave the simulator's clock on the real date and regenerate
+   the demo files first (`e2e/screenshot/fixtures/README.md`, "Regenerating").
+   The dataset is anchored on the day it was regenerated and spans roughly
+   the 6 months ending there (see `e2e/screenshot/seed/screenshot-seed.ts`).
+   The app opens on the last 30 days before the device date, so the Home
+   list and charts thin out from about the second week after the anchor and
+   are empty after about four weeks. Regenerate the files and refresh the
+   reviewer kit for every App Store submission and resubmission, and before
+   a screenshot session.
 3. **Data.** Fresh install (or wipe existing data), launch the app, go to
    Settings → Import Data, pick `e2e/screenshot/fixtures/kiko-demo-uk.kiko`,
    paste the key from `e2e/screenshot/fixtures/kiko-demo.key`, confirm the

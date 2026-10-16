@@ -164,6 +164,37 @@ describe('LockGate', () => {
     expect(getByText('Unlock')).toBeTruthy();
   });
 
+  it('keeps the Unlock label while the first attempt is pending', async () => {
+    mockAppLock.current = {
+      isReady: true,
+      isLocked: true,
+      unlock: mockUnlock,
+    };
+    mockUnlock.mockReturnValue(new Promise(() => undefined));
+    const { getByText, queryByText } = await renderGate();
+
+    expect(getByText('Unlock with Face ID or your device passcode.')).toBeTruthy();
+    expect(getByText('Unlock')).toBeTruthy();
+    expect(queryByText('Use passcode')).toBeNull();
+  });
+
+  it.each([
+    [{ kind: 'passcodeNotSet' }, 'Set a device passcode to unlock Kiko.'],
+    [{ kind: 'failed', code: undefined }, 'Authentication failed. Try again.'],
+  ])('keeps the Unlock label after %j', async (result, hint) => {
+    mockAppLock.current = {
+      isReady: true,
+      isLocked: true,
+      unlock: mockUnlock,
+    };
+    mockUnlock.mockResolvedValue(result);
+    const { findByText, getByText, queryByText } = await renderGate();
+
+    expect(await findByText(hint)).toBeTruthy();
+    expect(getByText('Unlock')).toBeTruthy();
+    expect(queryByText('Use passcode')).toBeNull();
+  });
+
   it('renders the lock screen in the persisted language, not the device language', async () => {
     // Device is `en` (the i18n module's init default under test); settings say
     // `uk`. Wraps `LockGate` in the real `MigrationsGate` deliberately — that

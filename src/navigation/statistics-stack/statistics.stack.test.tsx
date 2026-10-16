@@ -15,6 +15,8 @@ jest.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string) => key }),
 }));
 
+import { fittingLargeTitleLayout } from '../fitting-large-title';
+
 import StatisticsStack from './statistics.stack';
 import { restoreDefaultAnimationOfSwappedForm } from '../swapped-form-options';
 
@@ -118,6 +120,12 @@ describe('StatisticsStack', () => {
       expect(screenOf(name)?.props.listeners).toBe(restoreDefaultAnimationOfSwappedForm);
     },
   );
+
+  it('wraps every screen in the fitting large-title layout', () => {
+    const navigator = StatisticsStack({}) as ReactElement<{ screenLayout: unknown }>;
+
+    expect(navigator.props.screenLayout).toBe(fittingLargeTitleLayout);
+  });
 
   // Jest pins `isLiquidGlassSupported` to false (jest/setup.js), the iOS < 26
   // tier, where the scrolled bar needs the blur react-native-screens omits.

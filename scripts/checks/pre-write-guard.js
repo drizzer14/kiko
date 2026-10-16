@@ -6,8 +6,7 @@
 // introduces a known violation. See scripts/checks/pre-write-guard.sh for
 // the wrapper that invokes this script and its own exit-code contract (0
 // allow, 2 deny, anything else means the wrapper itself denies), and
-// docs/superpowers/specs/2026-09-25-pre-write-guard-design.md for the full
-// design.
+// the pre-write guard design spec under docs/superpowers/specs/ for the full design.
 //
 // `rebuildContents` rebuilds Write/Edit/MultiEdit into the BEFORE/AFTER pair;
 // `runSemgrep` runs ONE Semgrep process over the trees that can possibly
@@ -694,6 +693,27 @@ function parseCommentLineWidthCheckerOutput(stdout) {
   return findings;
 }
 
+// component-i18n-namespace.js's output is one `<path>:<line>: <key> (expected <namespace>)` line
+// per violation — see its own `runCli`. Anchored on the LAST `:<digits>: components.` run like the
+// parsers above. `matchedText` is the key alone, so moving a read is not a new finding; the
+// expected namespace rides in `detailText` for the human.
+const COMPONENT_I18N_NAMESPACE_VIOLATION_LINE = /:(\d+): (components\.\S+) \((expected [^)]+)\)$/;
+
+function parseComponentI18nNamespaceCheckerOutput(stdout) {
+  const findings = [];
+  for (const line of stdout.split('\n')) {
+    const match = COMPONENT_I18N_NAMESPACE_VIOLATION_LINE.exec(line);
+    if (match) {
+      findings.push({
+        line: Number(match[1]),
+        matchedText: match[2],
+        detailText: `${match[2]} (${match[3]})`,
+      });
+    }
+  }
+  return findings;
+}
+
 // Finds the 1-based line of the `export` declaration that introduces
 // `name` — tried, in order, against every shape
 // one-component-per-file.ts's own `classifySlice` recognizes an EXPORTED
@@ -874,6 +894,22 @@ const NODE_RULES = [
     overridable: false,
     run: (filePath) =>
       runSpawnedNodeChecker('comment-line-width.js', filePath, parseCommentLineWidthCheckerOutput),
+  },
+  {
+    ruleId: 'kiko-component-i18n-namespace',
+    extensions: ['.ts', '.tsx'],
+    fix: "move the key to the component's own components.<name>.* namespace in en.ts and uk.ts, then read it from there",
+    skill: 'kiko-translator › A string moved into a shared component changes namespace',
+    projectCheck: 'check:component-i18n-namespace',
+    // check:all fails on a `kiko-override:` line (the project-wide Node checkers have no inline
+    // override), so a pass here would only defer the failure to the gate.
+    overridable: false,
+    run: (filePath) =>
+      runSpawnedNodeChecker(
+        'component-i18n-namespace.js',
+        filePath,
+        parseComponentI18nNamespaceCheckerOutput,
+      ),
   },
 ];
 
@@ -1279,6 +1315,7 @@ async function run() {
 }
 
 if (require.main === module) {
-  // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function) run() catches every error itself and turns it into a deny
+  // run() catches every error itself and turns it into a deny, so it never rejects.
+  // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function) run() never rejects
   run();
 }

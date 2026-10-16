@@ -3,6 +3,8 @@ import { ScrollView, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { FieldBlurContext } from '@kiko/design-system/field-blur';
 
+import LargeTitleHeading, { useLargeTitleScroll } from '../large-title-heading';
+
 import { styles } from './screen.styles';
 import type { ScreenProps } from './screen.props';
 import { useBottomClearance } from './use-bottom-clearance';
@@ -60,6 +62,9 @@ const Screen: FC<ScreenProps> = ({
   // content) each own it instead — reserving it in `content` too would count
   // it twice.
   const contentOwnsClearance = !bleedBottom && footer === undefined;
+  // Only set while the screen's title is too long for the native large title and shows as a
+  // heading in the content (see `LargeTitleHeading`); otherwise it adds nothing.
+  const headingScrollProps = useLargeTitleScroll();
 
   if (scroll) {
     return (
@@ -117,7 +122,10 @@ const Screen: FC<ScreenProps> = ({
           // In a pane the content is capped and centred here, not on the scroll
           // view, so the scroll view and its indicator span the whole pane.
           contentContainerStyle={[styles.scrollContent(footer !== undefined), contentCap]}
+          {...headingScrollProps}
         >
+          <LargeTitleHeading />
+
           {fields}
         </ScrollView>
         {footer ? (

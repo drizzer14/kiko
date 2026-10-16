@@ -14,6 +14,7 @@ export type TransactionRowProps = {
   categoryByKey: ReadonlyMap<string, CategoryDisplay>;
   defaultCategoryKey: string;
   holdingNameById: ReadonlyMap<string, string>;
+  holdingCurrencyById: ReadonlyMap<string, string>;
   categoryKeyForRow: (raw: string | null) => string;
   onPress: (transactionId: string) => void;
   // Whether the detail pane shows this row's form: a boolean per row, so a change of the detail

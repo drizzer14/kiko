@@ -96,6 +96,47 @@ const pickKind = async (view: View, kind: string): Promise<void> => {
   await act(async () => sheet.props.onDismiss());
 };
 
+type HeaderItem = { title: string; buttonId: string; disabled?: boolean };
+
+type HeaderConfigProps = {
+  headerRightBarButtonItems?: HeaderItem[];
+  onPressHeaderBarButtonItem?: (event: { nativeEvent: { buttonId: string } }) => void;
+};
+
+type RenderedNode = { type: string; props: object; children: (RenderedNode | string)[] | null };
+
+// RNTL v14 dropped `UNSAFE_root` and its `findAll`, and its host `root` has no tree search, so the
+// header configs are collected from the rendered JSON.
+const headerConfigsOf = (node: RenderedNode | string | null): HeaderConfigProps[] => {
+  if (node === null || typeof node === 'string') {
+    return [];
+  }
+
+  return [
+    ...(node.type === 'RNSScreenStackHeaderConfig' ? [node.props as HeaderConfigProps] : []),
+    ...(node.children ?? []).flatMap(headerConfigsOf),
+  ];
+};
+
+// A form's Save lives in the native nav bar, so it is pressed the way the native bar reports a
+// press: through the header config native-stack hands to the native side. A disabled item is never
+// pressed, as the native bar would not deliver it.
+const pressNavBarSave = async (view: View): Promise<void> => {
+  const tree = view.toJSON() as RenderedNode | RenderedNode[] | null;
+  const roots = Array.isArray(tree) ? tree : [tree];
+  const isSave = (item: HeaderItem): boolean => item.title === 'Save';
+  const config = roots
+    .flatMap(headerConfigsOf)
+    .find((candidate) => candidate.headerRightBarButtonItems?.some(isSave));
+  const save = config?.headerRightBarButtonItems?.find(isSave);
+
+  expect(save).toBeDefined();
+  expect(save?.disabled).not.toBe(true);
+  await act(async () => {
+    config?.onPressHeaderBarButtonItem?.({ nativeEvent: { buttonId: save?.buttonId ?? '' } });
+  });
+};
+
 describe('AccountsStack — swapping between the account form and the implicit holding form', () => {
   beforeEach(() => {
     mockCreateImplicitHolding.mockResolvedValue({
@@ -270,7 +311,7 @@ describe('AccountsStack — swapping between the account form and the implicit h
     await fireEvent.changeText(view.getByLabelText('Name'), 'Family flat');
     await pickKind(view, 'property');
     await fireEvent.changeText(view.getByLabelText('Cost'), '5000');
-    await fireEvent.press(view.getByText('Save'));
+    await pressNavBarSave(view);
 
     expect(mockCreateImplicitHolding).toHaveBeenCalledTimes(1);
     expect(mockCreateImplicitHolding).toHaveBeenCalledWith(

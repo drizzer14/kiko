@@ -1,6 +1,6 @@
 ---
 name: kiko-design-system
-description: Invoke when touching theme tokens, react-native-unistyles styles, any shared design-system component (Screen, LoadingState, Box, Text, MoneyText, Button, Card, GlassSurface, BottomSheet, SymbolIcon, Switch, TextField, FieldError, FieldLabel, FieldTrigger, CurrencyBreakdown, CurrencyField, SummaryTable, EntityIconTile, CardContextMenu, ConfirmSheet, ChipRow, DayOfMonthGrid, SelectField, SelectableRow, SegmentedControl, Divider — full current set at `src/design-system/components/`), the app-lock screen/gate UI, an entity/account/holding color, or an SF Symbol tintColor. Read before adding a color, spacing, typography, or radius value, before styling a new screen, and before wiring an entity color into a card, icon, or chart.
+description: Invoke when touching theme tokens, react-native-unistyles styles, any shared design-system component (Screen, LoadingState, Box, Text, MoneyText, Button, Card, GlassSurface, BottomSheet, SymbolIcon, Switch, TextField, FieldError, FieldLabel, FieldTrigger, CurrencyBreakdown, CurrencyField, SummaryTable, EntryCard, EntryDateHeader, ExpandToggle, EntityIconTile, CardContextMenu, ConfirmSheet, ChipRow, DayOfMonthGrid, SelectField, SelectableRow, SegmentedControl, Divider — full current set at `src/design-system/components/`), the app-lock screen/gate UI, an entity/account/holding color, or an SF Symbol tintColor. Read before adding a color, spacing, typography, or radius value, before styling a new screen, and before wiring an entity color into a card, icon, or chart.
 ---
 
 # Kiko design system
@@ -106,7 +106,12 @@ The token categories, defined once in a single theme module (read
 - **spacing** — a scale used for all padding/margin/gap; components
   never hardcode a pixel value for spacing.
 - **typography** — font sizes/weights/line-heights for the type
-  scale used across screens.
+  scale used across screens. `largeTitle` (34pt bold, lineHeight 41,
+  not Dynamic-Type scaled) mirrors the native nav-bar large title;
+  use it for a full-title heading when a nav title does not fit
+  (`src/design-system/theme/theme.ts`). A `Text` that is a screen
+  heading passes `accessibilityRole="header"`
+  (`src/design-system/components/text/text.props.d.ts`).
 - **radii** — the corner-radius scale for surfaces and controls.
 - **iconSizes** — the semantic icon-size scale for SF Symbols
   (`SymbolIcon`), keyed by the same names as `typography`
@@ -245,6 +250,10 @@ an entry (date + value) the moment the user approves a new visual.
   upcoming payments' dates) are not this pattern. The Accounts screen's
   Property and Debts section headings are user data (the implicit
   account's name) and DO follow it (`ImplicitAccountHeading`).
+  `TransactionCard`'s `money` prop is optional (a transaction template's
+  amount is optional): omitted, the `rowAmount` box and its `MoneyText`
+  do not render and the title cluster keeps its `flex: 1` row; with
+  `money` the output is unchanged.
   Pinned per family by a style-contract test (`ancestorWithStyle`: the
   title's own box is `flex: 1` with no row direction, no
   `numberOfLines`). The two card tests also pin the amount's box
@@ -281,8 +290,40 @@ an entry (date + value) the moment the user approves a new visual.
   that sets `headerLargeTitle` itself, spreads that helper rather than
   setting `headerLargeTitle: true` inline. Device-confirm on an iOS 18
   device, not in the simulator or Jest.
+- **Long titles use the fitting-large-title layout** (2026-10-15, locked, user: "Everything
+  lgtm"; no shorter titles applied). The user approved this on a live device, and it locks:
+  (1) the fit is measured, not guessed: `useTitleFit` measures the title in the native
+  large-title font, and an estimate only covers the first frame;
+  (2) a title that does not fit shows in full as a wrapping `largeTitle` heading, the first
+  scroll content, never truncated or shrunk;
+  (3) the bar is empty at rest, with no bar title while the heading is on screen;
+  (4) once the heading scrolls under the bar, the bar shows the full title inline;
+  (5) the bar stays translucent: `headerTransparent` true and `headerShadowVisible` true,
+  with `headerLargeTitle` off, so content lays out under it as under a large title;
+  (6) the iOS < 26 look is kept: transparent at rest, blurred once content scrolls under it,
+  and iOS 26+ passes no extra option;
+  (7) the original titles stay as they are. A long title is never shortened or renamed to
+  make it fit; a shorter name needs the user's own request.
+  Changing any of these, or the numbers they rest on, needs the user's explicit approval.
+  Mechanism: every large-title native stack passes `screenLayout={fittingLargeTitleLayout}`
+  (`src/navigation/fitting-large-title/`); a new large-title stack adds it too. It measures the
+  title (`useTitleFit`) in the native large-title font; a title that does not fit shows in full
+  as a wrapping `LargeTitleHeading` (`src/design-system/components/large-title-heading/`) as
+  the first content. `Screen` in scroll mode hosts the heading; a custom list screen renders
+  `LargeTitleHeading` itself and wires its scroll with `useLargeTitleScroll`, as `HoldingDetail`
+  does (`src/screens/holding-detail/holding-detail.screen.tsx`). A screen that mounts no heading
+  keeps the native title (the hosting guard). While the heading shows, the bar uses
+  `largeTitleHeadingOptions` (`src/navigation/large-title-screen-options/`): `headerLargeTitle`
+  false together with `headerTransparent` true and `headerShadowVisible` true. Never switch
+  `headerLargeTitle` off alone: native-stack then makes the bar opaque and lays content out
+  below it. The bar title appears once the heading scrolls under the bar.
+  `largeTitleRestoredOptions(screenOptions)` puts the native large title back and returns the
+  screen's own `headerTransparent`, `headerShadowVisible` and `headerTitle`, read before the
+  switch (`undefined` where the screen set none): the screen's own values from before the
+  switch. A value the screen changes during heading mode is not kept (setOptions cannot remove
+  a key). Never restore with fixed values. Device-confirm: Jest cannot show bar translucency.
 - **Tips were removed by user ruling** (2026-10-09: "Hints still look bad, let's remove them
-  for now"). There is no `TipCard`, `useTip`, or `accentSubtle` token; do not bring back a
+  for now"). There is no tip card, tip hook, or subtle-accent token; do not bring back a
   first-use tip, or its old look (tinted accent fill, lightbulb glyph, close button), without
   asking the user first. `InfoHint` stays allowed.
 - **EmptyState action is primary + small** (2026-10-08). 34pt tall, 44pt
@@ -306,6 +347,14 @@ The established patterns grouped under this heading:
 - The capability-icon transparency principle — its own heading further
   down this file.
 - Field placeholder and error copy — below.
+- A form separates its field block from the next section with the shared `Divider`
+  (`src/design-system/components/divider/`), written `<Divider testID="form-divider" />`. It is
+  a direct child of the form's gap `Box`, with the default spacing and full width: no inset, no
+  spacing prop, no wrapper. It goes after the last field of the block and before the next
+  section. A section that exists only in edit mode (for example the category screen's rules
+  section) carries its divider inside the same condition, so a create-mode form shows neither.
+  Copy the placement from `src/screens/forms/account-form/account-form.screen.tsx` and
+  `src/screens/forms/holding-form/holding-form.screen.tsx`.
 - Content that APPEARS in response to a press (a banner, a confirmation) is silent to
   VoiceOver: pair it with `AccessibilityInfo.announceForAccessibility(t(...))` using the same
   i18n string as the visible text.
@@ -386,7 +435,8 @@ The established patterns grouped under this heading:
   action is a native `type: 'button'` item in `unstable_headerRightItems`,
   listed left to right: `icon: { type: 'sfSymbol' }`, `label` and
   `accessibilityLabel` from the same i18n key, `tintColor:
-  theme.colors.textPrimary`, `sharesBackground: false`. Never a
+  theme.colors.textPrimary` (a form's Save is the exception: prominent and
+  accent, see "Form Save and Cancel" below), `sharesBackground: false`. Never a
   `type: 'custom'` item or `headerRight` with a React view for a header
   action: UIKit sizes a native item's glyph, capsule, and 44pt target;
   a React view inside a custom item gets a different glyph size and
@@ -395,13 +445,29 @@ The established patterns grouped under this heading:
   native-stack 7.18.9 sends it with no index, so react-native-screens
   inserts it at the trailing edge. A native item takes no `testID`; a
   test reads the item list from `setOptions` and calls its `onPress`.
-  Consumers: `AccountDetail` (bell, then Edit; Edit only for an implicit property or debt account, which takes no new reminders), `HoldingDetail` (Edit only, for every holding: a Property or Loans holding has no account button; the implicit account is reached from its section heading on the Accounts screen, see "Section heading disclosure row" below, and edited from its AccountDetail's Edit pencil). A native item types its SF Symbol `name` as the symbol catalogue's union, so a symbol read from a stored value (not a literal) would need a guard against an unknown name, because UIKit draws no image for one.
+  Consumers: `AccountDetail` (bell, then Edit; Edit only for an implicit property or debt account, which takes no new reminders), `CategoryForm` (edit mode: a star via `useFormHeaderItems` `extraItems`, before Save; the star is `star.fill` and disabled on the default category, a state marker; shown only once the category row is read), `HoldingDetail` (Edit only, for every holding: a Property or Loans holding has no account button; the implicit account is reached from its section heading on the Accounts screen, see "Section heading disclosure row" below, and edited from its AccountDetail's Edit pencil). A native item types its SF Symbol `name` as the symbol catalogue's union, so a symbol read from a stored value (not a literal) would need a guard against an unknown name, because UIKit draws no image for one.
   The pre-write guard enforces both bans: Semgrep
   `kiko-header-item-native-only` denies a `headerRight`/`headerLeft` value
   other than `undefined` (a `StyleSheet.create` style and a destructuring
   read of the options are not header values) and a `type: 'custom'` item
   in either header item list, and `kiko-no-header-spacing-item` denies a `type: 'spacing'` item in either
   list (`rules/semgrep-prewrite.yml`).
+- **Form Save and Cancel live in the native nav bar.** Every form under
+  `src/screens/forms/` calls `useFormHeaderItems`
+  (`src/screens/forms/use-form-header-items/`). Save is the trailing
+  item: a prominent, accent-tinted `type: 'button'` with the label
+  `common.save` (no per-form Save label key). The hook takes
+  `extraItems`, listed before Save (see its file for the option). Cancel is the leading
+  plain `textPrimary` item and shows only when native-stack's
+  `canGoBack` is false (the form is the first screen of its stack or
+  pane); when a back button shows, the back button is the cancel. Save
+  is never in a form's `Screen` footer. A secondary action (ruling
+  2026-10-11: the Edit template form's "Create transaction") may stay
+  in the footer as a lone secondary button. A native bar button does not
+  end editing, so a value derived on blur is settled in the save path
+  (see `kiko-code-style`'s "Form validation model"). Tests use the
+  helpers in `src/test-support/form-header-items.ts`, never
+  `getByText('Save')`.
 - **Edit is an icon-only native bar item** (2026-09-30, locked). The
   user: "One last thing before LGTM: remove 'Edit' label from
   account/holding edit button", then, on device: "'Edit' button
@@ -444,10 +510,12 @@ The established patterns grouped under this heading:
   shared `InfoHint` (`src/design-system/components/info-hint/`): the icon is a `SymbolIcon` at the caption icon-size token,
   top-left, the text takes the rest of the row so it wraps beside the icon,
   and the row is one accessible element labelled by the message (the icon is
-  decorative). `InfoHint` is used ONLY for this reminder; the plain hint
-  (`forms.account.importOnlyBankHint`) stays a bare caption `Text`. A
-  Connect reminder uses InfoHint; any other informational hint with no
-  action stays a bare caption Text. A
+  decorative). `InfoHint` serves two hints: this reminder and the Template tab's
+  no-templates hint under the template select
+  (`src/screens/forms/transaction-form/template-select/template-select.component.tsx`);
+  the plain hint (`forms.account.importOnlyBankHint`) stays a bare caption
+  `Text`. Any other informational hint with no action stays a bare caption
+  Text. A
   SECOND Save press saves the account unconnected, storing nothing typed.
   Editing the input, pressing Connect, or the field unmounting starts over;
   a successful connect reports the input as no longer typed, so an empty or
@@ -639,7 +707,8 @@ new component can land between reviews of this skill:
   EXCEPTION to the ordinary "use `footer` only for a pinned
   always-reachable action" rule: it renders through the pinned
   `footer` slot even though it is not an action, because App Store
-  Guideline 5.6 review needs it reachable without scrolling. There is
+  Guideline 5.1.1(i) needs the in-app privacy policy link easily
+  accessible (reachable without scrolling). There is
   no `fillHeight` prop — a screen whose content
   is shorter than the viewport just leaves it top-anchored; nothing in
   this codebase pins non-footer content to the bottom.
@@ -681,16 +750,19 @@ new component can land between reviews of this skill:
   `rules/semgrep-prewrite.yml`). `destructiveTonal` is the iOS "tinted
   destructive" pattern — a translucent `negativeSubtle` fill under a
   red `negative` label (a lower-emphasis dangerous action, e.g. the
-  deposit form's per-row Remove and the categories screen's per-card
-  Delete — the two now share the IDENTICAL treatment: `destructiveTonal`
-  + `size="small"` + a leading trash icon, so Delete reads as the same
-  control as Remove everywhere it appears), NOT the solid bright
+  deposit form's per-row Remove in
+  `src/screens/forms/holding-form/term-deposit/`: `destructiveTonal` +
+  `size="small"` + a leading trash icon, so a lower-emphasis Remove/Delete
+  reads as the same control everywhere it appears; the rule editor's
+  matcher row in `src/screens/forms/category-rule-form/matcher-row/` is
+  the same control with the `ruleForm.removeCondition` accessibility
+  label carrying the row index), NOT the solid bright
   `negative` fill of `destructive`. `secondaryTonal` is its NEUTRAL
   counterpart — a faint neutral tint from the `neutralSubtle` theme
   token (`theme.ts`, sibling of `negativeSubtle`) under an ordinary
   `textPrimary` label — the standard treatment for a lower-emphasis
-  inline/standalone secondary action (e.g. the categories screen's
-  "Set as default" star), replacing a plain `secondary` `surfaceHigh`
+  inline/standalone secondary action (grep
+  `variant="secondaryTonal"` in `src/` for the live consumers), replacing a plain `secondary` `surfaceHigh`
   pill for that class of control. Both tonal variants are the exception
   to the `onAccent` rule below: a same-hue (or neutral) label on a
   same-hue tint is the tinted-button convention, so the label stays
@@ -723,12 +795,10 @@ new component can land between reviews of this skill:
   so `<Button icon="star" onPress={...} />` with no label is a COMPILE error,
   and a `__DEV__` runtime invariant in the component throws on the same shape
   for any untyped call path. This is the shared icon-only control pattern
-  — the categories screen's move-to-top/move-to-bottom reorder actions
-  (`variant="ghost"` + `size="small"`) and its "Set as default" star
-  (`variant="secondaryTonal"` + `size="small"`, `src/screens/settings/
-  categories/`) both build an icon-only control this way, plus
-  `fullWidth={false}`, rather than a raw `Pressable` + `SymbolIcon`.
-  (There is no separate `IconButton` primitive; the old one at
+  — an icon-only control is built with `Button` (an `icon`, an
+  `accessibilityLabel`, `fullWidth={false}`), never a raw `Pressable` +
+  `SymbolIcon`.
+  (There is no separate icon-button primitive; the old one at
   src/design-system/components/icon-button/ was deleted when its only
   consumer went away.)
 
@@ -750,9 +820,16 @@ new component can land between reviews of this skill:
   from its one source (never a re-typed string; read the symbol names
   in `src/holdings/entity-symbols/entity-symbols.ts`): Add holding /
   account / category / transaction → `genericEntitySymbol.<entity>`;
-  there is no "Add loan" footer: a loan is added through the implicit
-  account's create flow, and account detail's footer is always "Add
-  holding" with `genericEntitySymbol.holding`;
+  account detail's footer is "Add holding" with
+  `genericEntitySymbol.holding`; a kind-specific Add action (the Help
+  footer's bank, crypto, property and loan actions) takes
+  `accountKindSymbol[kind]` (`src/holdings/entity-symbols/`); a Help
+  footer "Open …" button takes its target's `entrySymbol.<name>` from
+  `src/navigation/entry-symbols/entry-symbols.ts` (the source the Settings
+  rows and the Statistics tab icon read); the action list is `HelpAction`
+  in `src/help/help-topics.ts`, resolved in
+  `src/screens/settings/help-topic/help-topic.screen.tsx`;
+  Add rule → `genericEntitySymbol.rule` (category form's footer, a lone `secondaryTonal`);
   Add lot → the holding's OWN type glyph (`holdingTypeSymbol[holding.type]`),
   never a fixed type's; Add contribution →
   `calendar.badge.plus` (the one call-site literal). "Update value" /
@@ -778,9 +855,7 @@ new component can land between reviews of this skill:
   restored 44pt tap target, by design, not as a shortcut.** Pick
   `compact` when the visible pill itself should still read close to
   full HIG height; pick `small` for the tightest inline/secondary
-  actions, typically paired with `secondaryTonal` or `destructiveTonal`
-  (the categories screen's Delete, "Set as default", and reorder
-  controls above are all `size="small"`). Read `button.styles.ts` and
+  actions, typically paired with `secondaryTonal` or `destructiveTonal`. Read `button.styles.ts` and
   `button.component.tsx` directly for the current height/hitSlop
   values rather than trusting a copy of the numbers here if they ever
   drift.
@@ -1098,7 +1173,11 @@ new component can land between reviews of this skill:
   hook defined there): it registers its own beforeEach spy and afterEach
   restore, so a caller has nothing to restore and cannot leak the spy into a
   later test. Read a row's SF Symbols in a test with `glyphNamesWithin` and
-  `glyphTintsWithin` (`src/test-support/glyphs-within.ts`). `AccountKindField` and
+  `glyphTintsWithin` (`src/test-support/glyphs-within.ts`). The Jest `Text`
+  mock strips `variant` and `tone`; a layout pin that needs them imports
+  `src/test-support/mock-text-variant-tone.tsx` and reads the tree with
+  `layoutOf` (`src/test-support/layout-of.ts`); `src/test-support/mock-text-tone.tsx`
+  is the tone-only variant. `AccountKindField` and
   `ModeSelectField` (`src/screens/forms/`) are now thin wrappers over
   `SelectField` — `ModeSelectField` keeps its own caller-side `visible`
   gate (a convert has no mode toggle at all) ahead of it. `BankTypeField`
@@ -1109,7 +1188,8 @@ new component can land between reviews of this skill:
   `COLUMN_MAPPING_SYMBOL` constant every named bank's column-mapping icon uses,
   testID `bank-type-option-other-column-mapping-icon`) instead of the connect
   and statement-format icons the named banks show (its VoiceOver label reads
-  the no-parser banks' description, `bankColumnMappingOnly`), the Guideline-5.6 "not a bank" disclaimer as a
+  the no-parser banks' description, `bankColumnMappingOnly`),
+  the Guideline 3.2.1(viii) / 5.2.1 "not a bank, not affiliated" disclaimer as a
   caption under the trigger (`forms.account.bankDisclaimer`, the same place and
   `caption`/`textSecondary` style as `BrokerTypeField`'s `brokerDisclaimer`,
   shown whatever is picked, "Other bank" included: it names no bank; the sheet
@@ -1147,8 +1227,9 @@ new component can land between reviews of this skill:
 - **InfoHint** (`src/design-system/components/info-hint/`) — a caption
   `textSecondary` message led by an `info.circle` `SymbolIcon` (caption
   icon-size token), top-left aligned, text wrapping beside the icon, one
-  accessible element labelled by the message. Used only for the Connect
-  reminder in the three Connect fields.
+  accessible element labelled by the message. Used for the Connect
+  reminder in the three Connect fields and for the Template tab's
+  no-templates hint (`template-select`).
 - **NoticeBanner** (`src/design-system/components/notice-banner/`) — an
   inline, non-modal notice for a state the user can keep working
   around (never an alert or sheet): a `surfaceHigh` box, a `caption`
@@ -1191,7 +1272,11 @@ new component can land between reviews of this skill:
   the kept "Holdings" heading, when the account has no ACTIVE holding (every
   account kind; closed holdings do not count). Its action is the footer's Add
   holding, so the footer drops that button while the empty state shows (the
-  Import statement button stays), as Accounts drops its footer.
+  Import statement button stays), as Accounts drops its footer. The
+  Transaction templates list (`transaction-templates-empty`, Settings stack,
+  `src/screens/settings/transaction-templates/transaction-templates.screen.tsx`)
+  shows it with Add template as its action, and its footer button hides
+  while it shows.
 - **NotificationPreAlertSheet**
   (`src/design-system/components/notification-pre-alert-sheet/`) — the
   HIG pre-alert shown before the iOS notification prompt. It has ONE
@@ -1234,6 +1319,15 @@ new component can land between reviews of this skill:
   deleted only from its page's `CardContextMenu`, so nothing under
   `src/screens/forms/` imports `ConfirmSheet`
   (`kiko-no-confirm-sheet-in-form`, `rules/semgrep-prewrite.yml`).
+  `deleteTitle` is an optional string that replaces the default
+  `common.deleteNamed` confirm title, for a card whose `name` is a
+  descriptive line rather than an entity name (the category form's rule
+  card passes `t('categoryPage.deleteRuleTitle')`), so the title never
+  nests quotes around a sentence. The key is Title Case in `TITLE_KEYS`
+  and the forwarded heading is registered in
+  `src/i18n/locales/title-keys.call-sites.test.ts`. `liftOnHold` is
+  passed only by a card in a plain (non-sortable) list; a grid card gets
+  its lift from the grid.
   `deleteMessage` is an optional async function (`() => Promise<string |
   undefined>`, never a plain string): the menu awaits it when the hold asks for
   the confirm, so the text names what is stored now. A read that fails opens the
@@ -1324,7 +1418,7 @@ new component can land between reviews of this skill:
   is `sectionHeadingRow` (row, space-between, centred, `minHeight` 44, so
   the touch target sits inside the row's own bounds). A tap navigates to
   `AccountDetail { accountId, name: accountDisplayName(account, t) }`.
-  The fix-5 edit pencil (`accounts-*-edit`, its 44pt `sectionEditRegion`
+  The fix-5 edit pencil (`accounts-*-edit`, its 44pt section edit region
   box) is gone: the account is edited from AccountDetail's Edit item.
 - **Switch** — a toggle that wraps RN's `Switch` with theme track/thumb
   colors. With `label` it renders a labeled row (label left, toggle
@@ -1338,8 +1432,8 @@ new component can land between reviews of this skill:
 - **TextField** — a labeled text input wrapping RN's `TextInput` with
   theme tokens. It calls `useFieldBlur(onBlur)`: the field's own `onBlur` runs first, then the
   Screen's `onFieldBlur`. `HoldingIdentityField` calls `useFieldBlur(undefined)`; a text field
-  outside these two must call `useFieldBlur` itself. Its disabled chrome (border/background/opacity) comes
-  from the shared `disabledFieldStyle(theme)` helper
+  outside these two must call `useFieldBlur` itself. Its disabled chrome (border/background/opacity)
+  comes from the shared `disabledFieldStyle(theme)` helper
   (`src/design-system/disabled-field-style/disabled-field-style.ts`); `DateField` and
   `TimeField` (`src/screens/forms/`) consume the SAME helper so a
   read-only date/time field renders identically to a read-only text
@@ -1355,8 +1449,8 @@ new component can land between reviews of this skill:
 - **FieldError** (`src/design-system/components/field-error/`) — the
   one inline validation-failure line a form renders DIRECTLY UNDER its
   own field (`Text variant="caption" tone="negative"`, the same tone
-  `FieldLabel`'s required asterisk uses) — never next to a footer Save
-  button, and never a reserved-height slot: it fades in on failure and
+  `FieldLabel`'s required asterisk uses) — never next to the nav-bar Save
+  item, and never a reserved-height slot: it fades in on failure and
   the layout reflows, so a valid field shows no error node at all.
   Every
   invalid field shows its OWN error at the same Save/Import press —
@@ -1433,8 +1527,12 @@ new component can land between reviews of this skill:
   left, formatted `MoneyText` right), filled row-major.
 - **SummaryTable** (`src/design-system/components/summary-table/`) — the
   one shared "label left, value right" summary block: an optional `title`
-  heading row, then a stack of `rows` (`{ key, label, value: ReactNode,
-  testID? }`), each split `space-between`. Extracted from the
+  heading row, then a stack of `rows` (row shape: read `summary-table.props.d.ts`), each split
+  `space-between`. A row may opt in to `wraps?: true` for a free-text value: the label keeps its
+  width and the value wraps inside the row; rows without it lay out exactly as before. The rule
+  card on the category form (the rule card under `src/screens/forms/category-form/`) is the caller. At
+  very large Dynamic Type a wrapping value can be squeezed narrow; check it on the device.
+  Extracted from the
   holding-detail deposit/bond value-breakdown block —
   `HoldingDetailScreen` renders its own
   principal/gross/interest/tax/expected-profit rows through this (and,
@@ -1451,10 +1549,9 @@ new component can land between reviews of this skill:
   column-mapping result section (`MappingResult`) reuse the SAME row
   layout/alignment/styling for their own summary rows (transaction count,
   currency, date span) — never the deposit table's value/percent/tax
-  COLUMNS, only its layout. The loan detail's ledger breakdown and its
-  "Upcoming Payments" list (`UpcomingPayments`, one row per installment:
-  date label, payment over a principal / interest caption) are
-  `SummaryTable`s too. A property owned in part swaps the priced
+  COLUMNS, only its layout. The loan detail's ledger breakdown is a
+  `SummaryTable` too; its "Upcoming Payments" list is NOT (it is
+  `EntryCard` rows, see **EntryCard**). A property owned in part swaps the priced
   Cost / Value / Gain rows for Whole value / Your share / Your value /
   Cost (your share) / Gain (`sharedPropertyBreakdownRows`,
   `holding-detail.screen.tsx`; testIDs `ownership-whole-value`,
@@ -1475,6 +1572,20 @@ new component can land between reviews of this skill:
   alone — RNTL's `toHaveTextContent` matcher requires an EXACT match by
   default (unlike jest-dom's substring default on web), so a testID
   spanning both label and value would break every such assertion.
+- **EntryCard** (`src/design-system/components/entry-card/`) — the shared
+  ledger card: a label, an amount, and footer lines. Read
+  `entry-card.props.d.ts` for the props.
+- **EntryDateHeader** (`src/design-system/components/entry-date-header/`) —
+  the date heading drawn above an `EntryCard`. Read
+  `entry-date-header.props.d.ts` for the props.
+- **ExpandToggle** (`src/design-system/components/expand-toggle/`) — the
+  shared "Show all" / "Show less" link with a chevron. `testID` is required
+  (`expand-toggle.props.d.ts`); the chevron takes `${testID}-chevron`. Its
+  copy reads `components.expandToggle.*` (en, uk). Never inline a second Show all / Show less
+  copy.
+- Characterization first: before extracting a shared component, pin the
+  current rendered tree with `layoutOf` BEFORE moving any JSX, and keep that
+  pin as a consumer test when the visual is locked.
 - **CurrencyField** (`src/design-system/components/currency-field/`) —
   the shared currency-picker trigger + `BottomSheet`: a labeled trigger
   showing the current selection (or a placeholder) that opens a sheet
@@ -1719,7 +1830,7 @@ user: every capability an entity supports is visible (a capability icon
 in a picker option's `trailing`/`description`), never hidden or implied.
 A capability icon stands for exactly ONE real capability — never a
 "probably true" or "usually true" one, and never gated on a build/env
-flag (Guideline 5.6). The bank picker (`BankTypeField`,
+flag (Guideline 2.3.1(a)). The bank picker (`BankTypeField`,
 `src/screens/forms/bank-type-field/`) is the exemplar: `receipt` means
 "this bank has a known, dedicated statement format" — gated on the
 catalog's own `statementFormatId` field, so a column-mapping-only bank
@@ -1785,26 +1896,19 @@ where they can drift. The pipeline is:
   `isLightEntityColor` (`entity-tint.ts`, a real WCAG contrast-ratio
   check, not a naive brightness average) picks a white or dark glyph
   tint so the SF Symbol on top stays legible on every palette swatch.
-  `entityCardBackground`/`entityTintBackground` do not exist in the
-  current module — read `entity-tint.ts` directly for the live
-  exported function set (it changes; do not restate it here) rather
-  than assuming either name.
 
 **One hue, several renderings.** An entity has exactly one color, but
 that color is rendered several different ways depending on context —
-a flat translucent tint behind a card, an opaque SF Symbol tint, a
-chart fill. Never introduce a second, parallel way to derive one of
+the icon tile's two-stop gradient, an opaque SF Symbol tint, a
+chart fill (a card itself stays neutral and untinted). Never introduce a second, parallel way to derive one of
 these renderings from a hex, and never add a second hex parser either
 — `entity-tint.ts` owns the one unexported `parseHex`. Extend
 `entity-tint.ts` with a new named function instead, so every
 rendering of an entity's color still traces back to the same
 `resolveEntityColor` call. Read `entity-tint.ts` directly for its
 current exported functions rather than trusting a list restated here
-— a duplicated `parseHex` (and, at one point, a since-removed
-`blendOverWhite` pastel-over-white blend helper) were once added
-under `money-text/` and had to be moved back into `entity-tint.ts`
-for exactly this reason; do not assume either name still exists
-there today.
+— a duplicated `parseHex` was once added under `money-text/` and had to
+be moved back into `entity-tint.ts` for exactly this reason.
 
 ## SF Symbol `tintColor` gotcha
 

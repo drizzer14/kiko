@@ -179,6 +179,7 @@ type Transaction = {
   mcc?: number | null;
   counterIban?: string | null;
   exchangeCounterpartHoldingId?: string | null;
+  untrackedCounterpart?: string | null;
   loanHoldingId?: string | null;
 };
 type CategoryRow = { key: string; title: string; icon: string };
@@ -192,8 +193,8 @@ type LiveData = {
   history?: HistoryRow[];
   categories?: CategoryRow[];
   // Per-table isLoading overrides, for the loading-gate tests only — every
-  // key defaults to `false` (an already-resolved query), so every existing
-  // call site above keeps behaving exactly as before.
+  // key defaults to `false` (an already-resolved query), so a call site that
+  // omits it sees resolved queries.
   isLoading?: Partial<Record<string, boolean>>;
   // Per-table cached-rows overrides: `true` = the table still shows the cached
   // rows of a cached display mount, before its own fresh read has applied.
@@ -213,6 +214,7 @@ const buildLiveDataByTable = (data: LiveData): Record<string, unknown[]> => ({
   // `undefined` here would be a fixture artefact the device never produces.
   transactions: (data.transactions ?? []).map((row) => ({
     exchangeCounterpartHoldingId: null,
+    untrackedCounterpart: null,
     loanHoldingId: null,
     ...row,
   })),
@@ -499,6 +501,27 @@ const seedSpendingWithExchange = (): void =>
     holdings: [UAH_HOLDING, USD_HOLDING],
     rates: [USD_UAH_RATE],
     transactions: [...EXPENSES, ...EXCHANGE_LEGS],
+    history: HISTORY,
+    categories: [...CATEGORIES, OTHER_CATEGORY],
+  });
+
+// One leg of a move to a wallet Kiko does not track: it has no counterpart
+// holding, so only the untracked code can keep its debit out of the pie.
+const UNTRACKED_WALLET_LEG: Transaction = {
+  id: 'futures-out',
+  holdingId: 'h1',
+  time: localDaysFrom(now, -2),
+  amountMinorUnits: -10_000_00,
+  category: null,
+  untrackedCounterpart: 'wallet:UMFUTURE',
+};
+
+const seedSpendingWithUntrackedWalletLeg = (): void =>
+  setLiveData({
+    accounts: [CASH, BANK],
+    holdings: [UAH_HOLDING, USD_HOLDING],
+    rates: [USD_UAH_RATE],
+    transactions: [...EXPENSES, UNTRACKED_WALLET_LEG],
     history: HISTORY,
     categories: [...CATEGORIES, OTHER_CATEGORY],
   });
@@ -2222,6 +2245,16 @@ describe('StatisticsScreen', () => {
     // the debit never reaches the pie — no 'other' wedge for its null category.
     expect(queryByTestId('category-pie-arc-other')).toBeNull();
     // Genuine spending is untouched.
+    expect(getByTestId('category-pie-arc-groceries')).toBeTruthy();
+    expect(getByTestId('category-pie-arc-transport')).toBeTruthy();
+  });
+
+  it('renders no category wedge for a move to an untracked wallet', async () => {
+    seedSpendingWithUntrackedWalletLeg();
+
+    const { getByTestId, queryByTestId } = await renderScreen();
+
+    expect(queryByTestId('category-pie-arc-other')).toBeNull();
     expect(getByTestId('category-pie-arc-groceries')).toBeTruthy();
     expect(getByTestId('category-pie-arc-transport')).toBeTruthy();
   });

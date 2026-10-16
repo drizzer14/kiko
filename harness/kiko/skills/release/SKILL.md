@@ -10,7 +10,7 @@ Standing rules:
   App Store only by the user's manual upload.
 
 Preconditions:
-- On `main`.
+- On `main`, or on a `release-X.Y` branch (see "Release branch cut from an older main").
 - Clean tree (the harmless Xcode `TARGETED_DEVICE_FAMILY`/pbxproj
   normalization is allowed).
 - `npm run check:all` is green.
@@ -18,15 +18,15 @@ Preconditions:
 Merging into `main` (coordinator ruling): never apply, merge, rebase,
 pull, cherry-pick, revert, or am in the main checkout (what passes:
 `-h`/`--help`, the recovery options such as `--abort`/`--continue`,
-`git apply --check`/`--stat`, and the `merge --ff-only`/`pull
---ff-only` update forms; see `RECOVERY_OPTIONS` there; the closed set is
+and `git apply --check`/`--stat`; see `RECOVERY_OPTIONS` there; the closed set is
 `MAIN_CHECKOUT_SUBCOMMANDS` in `scripts/checks/kill-guard.js`)
 (`/Users/drizzer14/Developer/Projects/pff-ios`); every session's hooks
 run from it, so a conflict marker there breaks every hook. The
 kill-guard denies it (see kiko-linter's "MAIN-CHECKOUT deny"). Do the
 real merge, conflicts and all, in a separate detached worktree, verify
-it there (`npm run check:all`), then fast-forward main:
-`git -C /Users/drizzer14/Developer/Projects/pff-ios merge --ff-only <sha>`.
+it there with a queued `scripts/job-queue.sh verify` of the merge commit, then fast-forward
+main with `bash scripts/ff-main.sh <sha>` (it needs that verify's done.log line to be exit 0;
+a raw `merge --ff-only` on main is denied).
 
 Who does what: the coordinator drives Part A (steps 1-5), `kiko:ops`
 does step 6, the user does step 8. The skill stops at step 8 — nobody
@@ -50,11 +50,39 @@ uploads to the App Store on the user's behalf.
    - Add 1 to `CURRENT_PROJECT_VERSION` (all configs).
    - Set `package.json` `"version"` to `X.Y.Z`.
    - Commit as `chore(release): vX.Y.Z`.
-4. Tag and push: `git tag vX.Y.Z`, then
-   `git push origin main --follow-tags`.
+4. Tag and push: `git tag vX.Y.Z` on the release commit, then
+   `git push origin <branch> --follow-tags`. The tag waits for App Store
+   publication (see "Lessons from past submissions").
 5. Publish:
    `gh release create vX.Y.Z --title "vX.Y.Z" --notes "<changelog>"`.
    Attach NO files.
+
+## Release branch cut from an older main
+
+- Cut `release-X.Y` from the last releasable `main` commit and cherry-pick only the commits that
+  ship. Test the picks first with a trial cherry-pick in a scratch worktree (git < 2.40 has no
+  `merge-tree --merge-base`).
+- Compare the shipped files against `main` per file (`git diff --stat main -- <file>` per file,
+  or via `xargs`). A file list passed as ONE shell word compares nothing in zsh. Make sure the
+  check can fail.
+- Re-derive every user-facing claim (help text, What's New, review notes) against the BRANCH
+  code, not `main`: a claim true on `main` can be false on the branch.
+- A release branch adds no migration. `src/db/run-migrations.ts` counts the applied rows
+  (`readAppliedCount`) and slices the journal (`journal.entries.slice`), so a device that already
+  ran `main`'s later migration skips the branch's one silently.
+- While a device runs the release build, export `.kiko` only from a `main` build: an older
+  build's export drops the columns it does not know (`src/data-transfer/snapshot/read-snapshot.ts`
+  selects its own table columns), and `main` does not restore them.
+- Before installing the release build over a dev device that ran `main`, prove from the migrator
+  what happens (example: 1.2 over `main`'s migration 0058 runs nothing; the extra nullable column
+  is ignored). Check `main` for a data-rewriting migration the release branch lacks: 0059
+  rescales USDT and, unlike a nullable column, is not harmless. A `main` export is read only by
+  `main`-or-later builds (`READABLE_EXPORT_VERSIONS`).
+- Release-only commits (claim fixes, version bump, demo regen) stay on the branch, small and
+  separate. After publication only the version bump goes to `main` by cherry-pick, and `main`
+  regenerates its own demo `.kiko` files (never the branch's binary). Test-infra fixes `main`
+  already has are cherry-picked from `main`, never re-authored.
+- The mutation gate runs per small change set, base = the branch's cut commit.
 
 ## Part B — App Store prep, then hand off
 
@@ -70,6 +98,26 @@ After a merge that adds a migration or a snapshot key, regenerate the demo
 see e2e/screenshot/fixtures/README.md; example commit e764fb6f) and copy
 kiko-demo-en.kiko to the reviewer kit before the build bump.
 
+Freshness: the demo dates derive from an anchor set at regen time, so the
+files thin out within weeks and go empty. Regenerate both files on the
+upload day and again on EVERY resubmission, then refresh the kit
+(memory/refs/reviewer-kit/kiko-demo.kiko = the en file), and do the same
+before a screenshot session. Read "The anchor" in
+e2e/screenshot/fixtures/README.md for the mechanism and numbers.
+
+The fake bank statement for the reviewer kit is generated, in the main
+checkout (the folder is untracked), by
+memory/refs/demo-statement/make-fake-statement.py. The upload-day refresh does not rebuild it:
+it stays as it is unless the user asks, or its rows no longer fit the reviewer's use. Check the
+kit's demo file equals the fresh en file and that the kit's key file opens it (a real decrypt).
+The kit folder's own file list is the inventory (never copy its names here); the uk demo file
+(kiko-demo-uk.kiko) is in the kit, and the key check covers every .kiko in the kit.
+
+A demo row set that a live rule demo relies on never shares a merchant name with the kit
+statement, or the live "Apply to existing" count depends on the import order (the kit statement
+has Glovo rows, so the demo uses Wolt; see "The live rule demo" in
+e2e/screenshot/fixtures/README.md).
+
 6. `kiko:ops` archives the `Release` configuration (signed with the
    KikoDistribution provisioning profile and the distribution
    certificate). Only Debug and Release configurations exist;
@@ -81,8 +129,18 @@ kiko-demo-en.kiko to the reviewer kit before the build bump.
      old `group.com.dmytro.pff` is absent.
    - `get-task-allow = false`.
    - The embedded provisioning profile is KikoDistribution.
-8. Hand off. First run the Privacy policy check below; hand off only
-   when it exits 0. The skill stops here. The user uploads the archive and
+   - `CFBundleShortVersionString` and `CFBundleVersion` equal the bumped values.
+   - The Info.plist key DTXcodeBuild names a non-beta Xcode build (betas are 27A5xxx-style;
+     see memory `appstore-no-beta-xcode-and-bump-build`).
+   - `main.jsbundle` holds no string of a feature the build lacks (grep a distinctive identifier
+     with `strings -a | grep -c -F`; plain `grep -c` can print nothing on the 7 MB bundle).
+8. Hand off. First confirm the demo .kiko files and the reviewer kit copies were
+   regenerated today, the kit's demo file equals the fresh en file and the kit's key file opens
+   every .kiko in it (see the Freshness note above). The kit's HOW-TO-IMPORT.txt carries the
+   archive's version and build: update its version line and its "new in X.Y" list each submission
+   (plain text). All App Store Connect texts are plain .txt files in the kit, one per field and
+   language, no markdown (the fields are plain textareas). Then run the Privacy
+   policy check below; hand off only when it exits 0. The skill stops here. The user uploads the archive and
    the screenshots through the Xcode Organizer. State plainly that
    this skill does not upload to the App Store.
 
@@ -135,10 +193,21 @@ grep -h -oE 'name="[A-Za-z]+"' $(find src/navigation -name '*.tsx' ! -name '*.te
 ```
 
 Paste the resulting list into the App Store review notes as Guideline
-5.6 evidence that every screen is reachable with no flag or env gate
-(see "Guideline 5.6 — no hidden features" in `kiko-architecture`). Do
+2.3.1(a) evidence that every screen is reachable with no flag or env gate
+(see "Guideline 2.3.1(a) — no hidden features" in `kiko-architecture`). Do
 not hardcode the list here — it drifts with every added screen; always
-re-run the grep at submission time.
+re-run the grep at submission time. Describe every NEW feature of the build specifically in the
+notes; on a release branch list only what the branch contains.
+
+App Review reviews each submitted version, an update included
+(Guideline 2.1(a) asks for a complete, final build and, for an app with a
+login, demo account information and the back end turned on; App Store Connect Help ties App Review information to
+each version). Update notes keep the demo-access steps and add a "what
+changed in X.Y and where to find it" list; cut the tour of unchanged
+features. A new screen recording is recommended (not required) when new
+hard-to-reach features ship (permissions, biometrics); check the
+attachment per version. A recording from an earlier version is stale: the user re-records, or
+the notes do not claim a recording.
 
 ## Lessons from past submissions
 
@@ -157,13 +226,13 @@ Durable lessons carried forward from `1.0.0`'s submission history (see
 memory `release-5-6-audit-findings` and
 `guidelines-compliance-is-architecture-rule` for the full account):
 
-- **Guideline 5.6 (hidden features) is a real rejection risk, twice
+- **Guideline 2.3.1(a) (hidden features) is a real rejection risk, twice
   over.** A build was rejected once for a screenshot/demo subsystem
   compiled into the shipping binary, and again for a `SHOW_*`-style
   flag that only hid a not-ready feature (bunq/PrivatBank) from the UI
   while its full client code still shipped. Fix by REMOVING a
   not-ready feature's code entirely, never by flag-hiding it — see
-  "Guideline 5.6 — no hidden features" in `kiko-architecture`.
+  "Guideline 2.3.1(a) — no hidden features" in `kiko-architecture`.
 - **A spent build number cannot be resubmitted.** Apple Store Connect
   will not re-accept a build number it has already seen, even after a
   rejection — bump `CURRENT_PROJECT_VERSION` before every re-archive,

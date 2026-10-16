@@ -19,11 +19,11 @@ Ask every question below of the diff you are reviewing. Report each
 compliance finding explicitly, separate from correctness and
 over-engineering findings — name the guideline number.
 
-## 5.6 — Developer Code of Conduct (hidden features)
+## 2.3.1(a) — no hidden, dormant or undocumented features (Apple's rejection cited 5.6)
 
 The rejection guideline. Full rule, rationale, and known limits of the
 mechanized check live in `.claude/skills/kiko-architecture/SKILL.md`
-("Guideline 5.6 — no hidden features") — read that section, do not
+("Guideline 2.3.1(a) — no hidden features") — read that section, do not
 re-derive it here. In short, ask:
 
 - Does this diff add or keep an `@env` flag (a `SHOW_*`/`HIDE_*`-style
@@ -33,6 +33,9 @@ re-derive it here. In short, ask:
   app `src/`?
 - Does this diff leave a not-ready feature reachable-but-hidden
   instead of physically removing its code paths?
+- Does the release note for this change describe every new feature, functionality and product
+  change specifically in the Notes for Review (App Store Connect)? Guideline 2.3.1(a): generic
+  descriptions are rejected.
 
 Mechanized: the Semgrep rule `kiko-no-hidden-feature-flag-or-demo-import`
 (`rules/semgrep-mobile.yml`, Class A ERROR, runs under
@@ -57,7 +60,15 @@ fails unless every `accounts.kind`, every `holdings.type`, and every
 for its kind, with a valid schedule — read the test for the exact checks), and `build-demo-snapshot.test.ts` fails unless every holding
 with no ledger of its own (the set `isLedgerlessHoldingType` in
 `src/holdings/holding-descriptor/holding-descriptors.ts` defines — read it
-there) values to non-zero through the app's own valuation, the demo holds at
+there) values to non-zero through the app's own valuation, the demo dataset also holds a transaction
+template of every mode (`TEMPLATE_MODES` in `src/transaction-templates/draft/template-draft.ts`;
+`e2e/screenshot/seed/screenshot-seed.test.ts` pins one per stored mode; 
+`src/screens/forms/transaction-form/transaction-form.demo-templates.test.ts` reads the committed
+`kiko-demo-en`/`kiko-demo-uk` `.kiko` files as data and pins that every demo template fills in its
+own mode with every reference seated, while `generate-demo-kiko.test.ts` proves those files equal
+the seed builder), each referencing holdings and a
+category in the snapshot (`build-demo-snapshot.test.ts`), reachable from the Templates list
+(Settings > Transaction templates), the demo holds at
 least one bank account per connectable catalog bank (derived from `bankCatalog`,
 not a count) plus one Other bank, and every demo account keeps `institution`
 null (no auto-sync starts on a demo account). A diff that adds an account
@@ -70,6 +81,9 @@ column default. Regenerate in the same commit as the migration
 e2e/screenshot/fixtures/generate-demo-kiko.test.ts`). A new visible
 feature that is not a new kind or type (a new metadata option, a new
 linked-row flow) is still a judgment question: does the dataset show it?
+Dates also derive from a regen-time anchor, so the files go sparse, then
+empty, within weeks: regenerate both and refresh the reviewer kit for every
+submission and resubmission (see "The anchor" in the fixtures README).
 
 ## 2.1 completeness / 4.2 minimum functionality
 
@@ -104,8 +118,10 @@ answers: what's declared, what's not, and why) and to
 may need to declare a required-reason API for.
 
 A new third-party data recipient also needs the privacy policy updated
-(`docs/privacy-policy*.md` §3), not only the App Privacy answers. There
-is no EODHD entry (removed with the shares cut, Guideline 5.6). The live
+(`docs/privacy-policy*.md` §3), not only the App Privacy answers. A new data
+category from an existing recipient also edits section 3 (Binance's Pay history,
+universal transfers, and Simple Earn did). There
+is no EODHD entry (removed with the shares cut, Guideline 2.3.1(a)). The live
 gh-pages policy may still name EODHD until the edited policy is
 published: check the live policy before an upload.
 
@@ -266,7 +282,7 @@ or endorsed by any bank/broker" caption under its trigger
 Ask: does this diff add a new dependency that performs analytics,
 tracking, or crash reporting? `npm run check:deps` surfaces any
 changed dependency block for confirmation (see the checks table in
-`CLAUDE.md`), which is where a new dependency is visible — but it does
+`docs/harness/checks.md`), which is where a new dependency is visible — but it does
 not judge INTENT; deciding whether a new dependency is a tracking SDK
 is a reviewer judgment call.
 

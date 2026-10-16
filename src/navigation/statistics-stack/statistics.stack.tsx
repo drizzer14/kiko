@@ -13,6 +13,7 @@ import {
 } from '../swapped-form-options';
 import { createPaneStackNavigator } from '../pane-stack';
 import type { StatisticsStackParamList } from '../types';
+import { fittingLargeTitleLayout } from '../fitting-large-title';
 import { resetTabStackOnBlur } from '../reset-tab-stack-on-blur';
 import { largeTitleScreenOptions } from '../large-title-screen-options';
 
@@ -41,6 +42,7 @@ const StatisticsStack: FC = () => {
     <Stack.Navigator
       paneConfig={PANE_CONFIG}
       screenOptions={largeTitleScreenOptions}
+      screenLayout={fittingLargeTitleLayout}
       screenListeners={resetTabStackOnBlur}
     >
       <Stack.Screen

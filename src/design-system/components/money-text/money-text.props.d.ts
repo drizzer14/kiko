@@ -13,7 +13,7 @@ export type MoneyTextContext = 'balance' | 'transaction';
 // uses) unconditionally — the case a normally fixed-color figure (interest,
 // tax) reads as when its own amount is exactly zero, where "green" or "red"
 // would misleadingly imply a nonzero accrual/withholding. Mirrors `EntryTone`
-// in `src/holdings/derived-entries.ts` (so a later batch can pass a derived
+// in `src/holdings/derived-entries/derived-entries.ts` (so a later batch can pass a derived
 // entry's tone straight through) without this module importing from the
 // domain layer, keeping the design system decoupled from `holdings` — `muted`
 // has no `EntryTone` counterpart on purpose, since "is this amount zero" is a
@@ -31,8 +31,7 @@ export type MoneyTextProps = {
   // (white). Ignored when `tone` is supplied.
   context?: MoneyTextContext;
   // Overrides the `context`-driven color resolution above with an explicit
-  // tone. Optional; when absent, behavior is unchanged (the amount is
-  // colored by `context` + sign as before).
+  // tone. Optional; when absent, the amount is colored by `context` + sign.
   tone?: MoneyTextTone;
   // Forwarded to the underlying Text so a caller can enlarge/align the amount
   // (e.g. the Home balance header). `color` is intentionally excluded so the

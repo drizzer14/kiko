@@ -3,59 +3,12 @@ import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 
+import { run, SCRIPT, ranged, fileResult, writeReport } from './test-support/mutation-score-report';
+
 // scripts/checks/mutation-score.js scores a CHANGE SET (not Stryker's own
 // whole-incremental-report "All files" row) from its JSON reporter output:
 // killed+timeout over killed+timeout+survived+noCoverage, restricted to the
-// files THIS run mutated. These spawn the real script against a report
-// fixture on disk (the __tests__/deps-ranges.test.ts pattern), rather than
-// requiring its internals directly.
-const SCRIPT = join(__dirname, '../scripts/checks/mutation-score.js');
-
-type CliResult = { code: number; stdout: string; stderr: string };
-
-const run = (reportPath: string, changedFiles: string[]): CliResult => {
-  try {
-    const stdout = execFileSync('node', [SCRIPT, reportPath, ...changedFiles], {
-      encoding: 'utf8',
-    });
-
-    return { code: 0, stdout, stderr: '' };
-  } catch (error) {
-    const failure = error as { status: number; stdout: string; stderr: string };
-
-    return { code: failure.status, stdout: failure.stdout, stderr: failure.stderr };
-  }
-};
-
-// Builds a fileResult in the real mutation-testing-report-schema shape (a flat
-// `mutants` array of `{ status }` objects) by EXPANDING a status -> count map,
-// so these tests exercise the same shape Stryker's own json reporter writes,
-// without committing a multi-hundred-KB report fixture.
-const fileResult = (counts: Record<string, number>) => ({
-  mutants: Object.entries(counts).flatMap(([status, count]) =>
-    Array.from({ length: count }, () => ({ status })),
-  ),
-});
-
-// `config.mutate` is where Stryker's report records the scope of its own run;
-// it defaults to the files that carry mutants, and `scope` overrides it for the
-// files Stryker wrote no entry for (it omits a file with zero mutants).
-const writeReport = (
-  directory: string,
-  files: Record<string, Record<string, number>>,
-  scope: string[] = Object.keys(files),
-): string => {
-  const reportPath = join(directory, 'mutation.json');
-  const reportBody = {
-    config: { mutate: scope },
-    files: Object.fromEntries(
-      Object.entries(files).map(([path, counts]) => [path, fileResult(counts)]),
-    ),
-  };
-  writeFileSync(reportPath, JSON.stringify(reportBody));
-
-  return reportPath;
-};
+// files THIS run mutated. The TIMEOUT-HEAVY rule is in mutation-score-timeouts.test.ts.
 
 let directory: string;
 
@@ -69,7 +22,7 @@ describe('mutation-score.js: the per-file and change-set formula', () => {
       'src/a.ts': { Killed: 7, Timeout: 1, Survived: 1, NoCoverage: 1 },
     });
 
-    const result = run(reportPath, ['src/a.ts']);
+    const result = run(reportPath, ranged('src/a.ts'));
 
     // (7+1) / (7+1+1+1) * 100 = 80.00
     expect(result.code).toBe(0);
@@ -80,7 +33,7 @@ describe('mutation-score.js: the per-file and change-set formula', () => {
   it('prints its own thresholds so a wrapper never restates them', () => {
     const reportPath = writeReport(directory, { 'src/a.ts': { Killed: 1 } });
 
-    const result = run(reportPath, ['src/a.ts']);
+    const result = run(reportPath, ranged('src/a.ts'));
 
     expect(result.stdout).toContain('GATE: change set >= 75, each file >= 60');
   });
@@ -97,7 +50,7 @@ describe('mutation-score.js: the per-file and change-set formula', () => {
       },
     });
 
-    const result = run(reportPath, ['src/a.ts']);
+    const result = run(reportPath, ranged('src/a.ts'));
 
     expect(result.stdout).toContain('src/a.ts: 90.00');
   });
@@ -105,7 +58,7 @@ describe('mutation-score.js: the per-file and change-set formula', () => {
   it('reports a file with zero graded mutants as ungraded, not a zero score', () => {
     const reportPath = writeReport(directory, { 'src/a.ts': { RuntimeError: 3 } });
 
-    const result = run(reportPath, ['src/a.ts']);
+    const result = run(reportPath, ranged('src/a.ts'));
 
     // Nothing to grade: this must not fail the gate and must not read as 0%.
     expect(result.code).toBe(0);
@@ -121,7 +74,7 @@ describe('mutation-score.js: the gate (75 change-set / 60 per-file floor)', () =
       'src/b.ts': { Killed: 61, Survived: 39 }, // 61
     });
 
-    const result = run(reportPath, ['src/a.ts', 'src/b.ts']);
+    const result = run(reportPath, ranged('src/a.ts', 'src/b.ts'));
 
     expect(result.code).toBe(0);
     // (90+61)/200 * 100 == 75.5
@@ -134,7 +87,7 @@ describe('mutation-score.js: the gate (75 change-set / 60 per-file floor)', () =
       'src/b.ts': { Killed: 60, Survived: 40 }, // 60
     });
 
-    const result = run(reportPath, ['src/a.ts', 'src/b.ts']);
+    const result = run(reportPath, ranged('src/a.ts', 'src/b.ts'));
 
     expect(result.code).toBe(1);
     expect(result.stdout).toContain('CHANGE SET TOTAL: 60.00');
@@ -146,7 +99,7 @@ describe('mutation-score.js: the gate (75 change-set / 60 per-file floor)', () =
       'src/strong.ts': { Killed: 995, Survived: 5 }, // 99.5
     });
 
-    const result = run(reportPath, ['src/weak.ts', 'src/strong.ts']);
+    const result = run(reportPath, ranged('src/weak.ts', 'src/strong.ts'));
 
     expect(result.code).toBe(1);
     expect(result.stdout).toContain('src/weak.ts: 5.00');
@@ -156,12 +109,13 @@ describe('mutation-score.js: the gate (75 change-set / 60 per-file floor)', () =
   });
 
   it('does not fail an in-scope file the report has no entry for (it has no mutants)', () => {
-    const reportPath = writeReport(directory, { 'src/a.ts': { Killed: 100 } }, [
-      'src/a.ts',
-      'src/constant.ts',
-    ]);
+    const reportPath = writeReport(
+      directory,
+      { 'src/a.ts': { Killed: 100 } },
+      ranged('src/a.ts', 'src/constant.ts'),
+    );
 
-    const result = run(reportPath, ['src/a.ts', 'src/constant.ts']);
+    const result = run(reportPath, ranged('src/a.ts', 'src/constant.ts'));
 
     expect(result.code).toBe(0);
     expect(result.stdout).toContain('src/constant.ts: n/a (no mutants)');
@@ -169,9 +123,9 @@ describe('mutation-score.js: the gate (75 change-set / 60 per-file floor)', () =
   });
 
   it('passes a change set whose every file has no mutants', () => {
-    const reportPath = writeReport(directory, {}, ['src/constant.ts']);
+    const reportPath = writeReport(directory, {}, ranged('src/constant.ts'));
 
-    const result = run(reportPath, ['src/constant.ts']);
+    const result = run(reportPath, ranged('src/constant.ts'));
 
     expect(result.code).toBe(0);
     expect(result.stdout).toContain('CHANGE SET TOTAL: n/a (no graded mutants)');
@@ -182,7 +136,7 @@ describe('mutation-score.js: the report must belong to this run', () => {
   it('fails when a changed file is not in the scope the report recorded', () => {
     const reportPath = writeReport(directory, { 'src/a.ts': { Killed: 100 } });
 
-    const result = run(reportPath, ['src/a.ts', 'src/never-mutated.ts']);
+    const result = run(reportPath, ranged('src/a.ts', 'src/never-mutated.ts'));
 
     expect(result.code).toBe(1);
     expect(result.stdout).toContain('does not belong to this run');
@@ -190,12 +144,13 @@ describe('mutation-score.js: the report must belong to this run', () => {
   });
 
   it('fails when the report recorded a file this run did not mutate', () => {
-    const reportPath = writeReport(directory, { 'src/a.ts': { Killed: 100 } }, [
-      'src/a.ts',
-      'src/other.ts',
-    ]);
+    const reportPath = writeReport(
+      directory,
+      { 'src/a.ts': { Killed: 100 } },
+      ranged('src/a.ts', 'src/other.ts'),
+    );
 
-    const result = run(reportPath, ['src/a.ts']);
+    const result = run(reportPath, ranged('src/a.ts'));
 
     expect(result.code).toBe(1);
     expect(result.stdout).toContain('does not belong to this run');
@@ -209,7 +164,7 @@ describe('mutation-score.js: the report must belong to this run', () => {
       JSON.stringify({ files: { 'src/a.ts': fileResult({ Killed: 100 }) } }),
     );
 
-    const result = run(reportPath, ['src/a.ts']);
+    const result = run(reportPath, ranged('src/a.ts'));
 
     expect(result.code).toBe(1);
     expect(result.stdout).toContain('does not belong to this run');
@@ -219,12 +174,217 @@ describe('mutation-score.js: the report must belong to this run', () => {
     const reportPath = writeReport(
       directory,
       { 'src/a.ts': { Killed: 100 }, 'src/b.ts': { Killed: 100 } },
-      ['src/b.ts', 'src/a.ts'],
+      ranged('src/b.ts', 'src/a.ts'),
     );
 
-    const result = run(reportPath, ['src/a.ts', 'src/b.ts']);
+    const result = run(reportPath, ranged('src/a.ts', 'src/b.ts'));
 
     expect(result.code).toBe(0);
+  });
+});
+
+// A mutant with the location Stryker's json reporter writes: `[status, startLine, endLine]`.
+type LocatedMutant = [status: string, startLine: number, endLine?: number];
+
+// The scope entries are `path:start-end` changed-line ranges, exactly as mutation.sh passes them to
+// --mutate; `config.mutate` records them verbatim.
+const writeLocatedReport = (
+  directory: string,
+  files: Record<string, Array<LocatedMutant | string>>,
+  scope: string[],
+): string => {
+  const reportPath = join(directory, 'mutation.json');
+  const reportBody = {
+    config: { mutate: scope },
+    files: Object.fromEntries(
+      Object.entries(files).map(([path, mutants]) => [
+        path,
+        {
+          mutants: mutants.map((mutant) =>
+            typeof mutant === 'string'
+              ? { status: mutant }
+              : {
+                  status: mutant[0],
+                  location: {
+                    start: { line: mutant[1], column: 1 },
+                    end: { line: mutant[2] ?? mutant[1], column: 2 },
+                  },
+                },
+          ),
+        },
+      ]),
+    ),
+  };
+  writeFileSync(reportPath, JSON.stringify(reportBody));
+
+  return reportPath;
+};
+
+describe('mutation-score.js: changed-line ranges', () => {
+  it('passes the scope check for a range report, whatever the order of the entries', () => {
+    const reportPath = writeLocatedReport(
+      directory,
+      {
+        'src/a.ts': [
+          ['Killed', 2],
+          ['Killed', 11],
+        ],
+      },
+      ['src/a.ts:10-12', 'src/a.ts:1-5'],
+    );
+
+    const result = run(reportPath, ['src/a.ts:1-5', 'src/a.ts:10-12']);
+
+    expect(result.code).toBe(0);
+    expect(result.stdout).toContain('src/a.ts: 100.00');
+  });
+
+  it('fails when the ranges differ, naming both entries', () => {
+    const reportPath = writeLocatedReport(directory, { 'src/a.ts': [['Killed', 2]] }, [
+      'src/a.ts:1-5',
+    ]);
+
+    const result = run(reportPath, ['src/a.ts:1-6']);
+
+    expect(result.code).toBe(1);
+    expect(result.stdout).toContain('does not belong to this run');
+    expect(result.stdout).toContain("changed but not in the report's scope: src/a.ts:1-6");
+    expect(result.stdout).toContain("in the report's scope but not changed: src/a.ts:1-5");
+  });
+
+  it('does not let a carried-over out-of-range mutant lower the score', () => {
+    // Incremental mode keeps an old mutant outside the ranges in files[path] with its old status.
+    const reportPath = writeLocatedReport(
+      directory,
+      {
+        'src/a.ts': [
+          ['Killed', 3],
+          ['Killed', 4],
+          ['Survived', 20],
+        ],
+      },
+      ['src/a.ts:3-4'],
+    );
+
+    const result = run(reportPath, ['src/a.ts:3-4']);
+
+    expect(result.code).toBe(0);
+    expect(result.stdout).toContain('src/a.ts: 100.00 killed=2 timeout=0 survived=0 noCoverage=0');
+    expect(result.stdout).toContain('CHANGE SET TOTAL: 100.00');
+  });
+
+  it('does not grade a mutant that starts inside a range and ends past it', () => {
+    // Stryker itself creates a mutant only when its whole location is inside a range.
+    const reportPath = writeLocatedReport(
+      directory,
+      {
+        'src/a.ts': [
+          ['Killed', 3, 4],
+          ['Survived', 4, 6],
+          ['Survived', 2, 3],
+        ],
+      },
+      ['src/a.ts:3-4'],
+    );
+
+    const result = run(reportPath, ['src/a.ts:3-4']);
+
+    expect(result.code).toBe(0);
+    expect(result.stdout).toContain('src/a.ts: 100.00 killed=1');
+  });
+
+  it('prints one row for a file with two ranges, counting the mutants of both', () => {
+    const reportPath = writeLocatedReport(
+      directory,
+      {
+        'src/a.ts': [
+          ['Killed', 1],
+          ['Killed', 2],
+          ['Survived', 10],
+          ['Killed', 11],
+        ],
+      },
+      ['src/a.ts:1-2', 'src/a.ts:10-11'],
+    );
+
+    const result = run(reportPath, ['src/a.ts:1-2', 'src/a.ts:10-11']);
+
+    expect(result.code).toBe(0);
+    expect(result.stdout.split('\n').filter((line) => line.startsWith('src/a.ts:'))).toEqual([
+      'src/a.ts: 75.00 killed=3 timeout=0 survived=1 noCoverage=0',
+    ]);
+  });
+
+  it('reports a range that holds no mutant as ungraded and passes', () => {
+    const reportPath = writeLocatedReport(directory, { 'src/a.ts': [['Survived', 20]] }, [
+      'src/a.ts:3-4',
+    ]);
+
+    const result = run(reportPath, ['src/a.ts:3-4']);
+
+    expect(result.code).toBe(0);
+    expect(result.stdout).toContain('src/a.ts: n/a (no graded mutants)');
+    expect(result.stdout).toContain('CHANGE SET TOTAL: n/a (no graded mutants)');
+  });
+
+  it('exits 2 for a ranged file that has a mutant with no location', () => {
+    const reportPath = writeLocatedReport(directory, { 'src/a.ts': [['Killed', 3], 'Killed'] }, [
+      'src/a.ts:3-4',
+    ]);
+
+    const result = run(reportPath, ['src/a.ts:3-4']);
+
+    expect(result.code).toBe(2);
+    expect(result.stderr).toContain('report mutant has no location');
+    expect(result.stderr).toContain('src/a.ts');
+  });
+
+  it('still excludes src/db/schema.ts when it is given as a range', () => {
+    const reportPath = writeLocatedReport(
+      directory,
+      {
+        'src/db/schema.ts': [
+          ['Survived', 1],
+          ['Survived', 2],
+        ],
+        'src/a.ts': [['Killed', 1]],
+      },
+      ['src/db/schema.ts:1-9', 'src/a.ts:1-3'],
+    );
+
+    const result = run(reportPath, ['src/db/schema.ts:1-9', 'src/a.ts:1-3']);
+
+    expect(result.code).toBe(0);
+    expect(result.stdout).toMatch(/src\/db\/schema\.ts: excluded \(.+\)/);
+    expect(result.stdout).toContain('CHANGE SET TOTAL: 100.00');
+  });
+
+  it.each([
+    ['a range that ends before it starts', 'src/a.ts:5-3'],
+    ['a range that starts at line 0', 'src/a.ts:0-3'],
+  ])('exits 2 for %s', (_name, entry) => {
+    const reportPath = writeLocatedReport(directory, { 'src/a.ts': [['Killed', 1]] }, [entry]);
+
+    const result = run(reportPath, [entry]);
+
+    expect(result.code).toBe(2);
+    expect(result.stderr).toContain(entry);
+  });
+
+  it('exits 2 on a plain path entry, alone or beside a range of the same file', () => {
+    const reportPath = writeLocatedReport(directory, { 'src/a.ts': [['Killed', 1]] }, [
+      'src/a.ts',
+      'src/a.ts:1-3',
+    ]);
+
+    const alone = run(reportPath, ['src/a.ts']);
+    const beside = run(reportPath, ['src/a.ts', 'src/a.ts:1-3']);
+
+    expect(alone.code).toBe(2);
+    expect(alone.stderr).toContain('every entry is path:start-end');
+    expect(alone.stderr).toContain('src/a.ts');
+    expect(beside.code).toBe(2);
+    expect(beside.stderr).toContain('every entry is path:start-end');
   });
 });
 
@@ -235,7 +395,7 @@ describe('mutation-score.js: the declaration-only exclusion allowlist', () => {
       'src/a.ts': { Killed: 100 },
     });
 
-    const result = run(reportPath, ['src/db/schema.ts', 'src/a.ts']);
+    const result = run(reportPath, ranged('src/db/schema.ts', 'src/a.ts'));
 
     expect(result.code).toBe(0);
     expect(result.stdout).toMatch(/src\/db\/schema\.ts: excluded \(.+\)/);
@@ -304,7 +464,7 @@ const REAL_WINDOW_COUNTS: Record<string, Record<string, number>> = {
 
 describe('mutation-score.js against the status counts of a real report', () => {
   it('computes each file score and the change-set total, and PASSES both gates', () => {
-    const changedFiles = Object.keys(REAL_WINDOW_COUNTS);
+    const changedFiles = ranged(...Object.keys(REAL_WINDOW_COUNTS));
     const reportPath = writeReport(directory, REAL_WINDOW_COUNTS);
 
     const result = run(reportPath, changedFiles);

@@ -15,7 +15,8 @@ import { type SpawnSyncReturns, spawnSync } from 'node:child_process';
 // pid), any `git stash` subcommand, a heredoc whose delimiter is not
 // quoted, or a git history change (`apply`, `merge`, `rebase`, `pull`,
 // `cherry-pick`, `revert`, `am`) aimed at the main checkout other than a
-// fast-forward-only update or a recovery option (the last three with a
+// recovery option (a raw fast-forward is `mainFastForward`, see
+// kill-guard-main-fast-forward.test.ts; each with a
 // WHAT/DETAILS/WHY/HOW/DO-NOT reason). It must
 // ALWAYS exit 0 — even on malformed input — so a broken guard
 // never blocks the Bash tool itself. See scripts/checks/kill-guard.js for
@@ -35,7 +36,47 @@ const run = (payload: string): SpawnSyncReturns<string> =>
 
 const payloadFor = (command: string): string => JSON.stringify({ tool_input: { command } });
 
+// The kill builtin reads `-s SIG`, `-n N` and `-sSIG` again after a signal 0, so each of these
+// ends in SIGKILL to every process. A word the shell expands before the builtin parses it can
+// become that later option, and so can a later `-N` signal number.
+const SIGNAL_ZERO_THEN_OPTION = [
+  'kill -0 -s KILL -1',
+  'kill -s 0 -s KILL -1',
+  'kill -0 -n 9 -1',
+  'kill -0 -sKILL -1',
+  'kill -s 0 -n 9 -1',
+  'kill -0 $(printf %s -sKILL) -1',
+  'kill -0 `printf %s -sKILL` -1',
+  'kill -0 $sig -1',
+  'kill -0 ${sig} -1',
+  'sig=-sKILL; kill -0 $sig -1',
+  'kill -s 0 $sig -1',
+  'kill -0 "$opt" -1',
+  'kill -0 $1 -1',
+  'kill -0 "$@"',
+  'kill -0 $@',
+  'kill -0 $*',
+  'set -- -sKILL -1; kill -0 "$@"',
+  'kill -0 -[s]KILL -1',
+  'kill -0 -?KILL -1',
+  'kill -0 *KILL -1',
+  'kill -0 $(pgrep x)',
+  'kill -0 {-sKILL,-1}',
+  'kill -0 -{s,}KILL -1',
+  'kill -0 -9 -1',
+  'kill -0 -1 -1',
+  'kill -s 0 -9 -1',
+  'kill -0 ~ -1',
+  'kill -0 ~+ -1',
+  'kill -0 ~- -1',
+  'kill -0 ~user -1',
+  'kill -s 0 ~ -1',
+  'HOME=-sKILL; kill -0 ~ -1',
+];
+
 const BLOCKED_COMMANDS: string[] = [
+  ...SIGNAL_ZERO_THEN_OPTION,
+  ...SIGNAL_ZERO_THEN_OPTION.map((command) => `bash -c '${command}'`),
   'pkill -f "cat" -U drizzer14',
   'killall Simulator',
   '/usr/bin/pkill node',
@@ -184,6 +225,18 @@ const ALLOWED_COMMANDS: string[] = [
   'kill -s TERM 1234',
   'kill "$pid"',
   'kill -0 4242',
+  // Signal 0 sends nothing (it only tests a pid), and `$1` is a caller's argument like `$pid`.
+  'kill -0 "$1"',
+  'kill -0 "$pid"',
+  'kill -0 $pid',
+  'kill -0 ${pid}',
+  'kill -0 0',
+  'kill -0 -1',
+  'kill -s 0 -1',
+  'kill -s 0 "$pid"',
+  'pgrep node | xargs kill -0',
+  'kill "$1"',
+  'kill -TERM "$2"',
   'grep -rn pkill docs/',
   'echo "never use killall"',
   'git commit -m "block pkill and killall"',
@@ -226,6 +279,16 @@ const ALLOWED_COMMANDS: string[] = [
   '$(command -v kill) 1234',
   'PID=$(pgrep -f metro)',
   'X=$(command -v pkill) npm test',
+  'pid=1234; kill $pid',
+  'sleep 30 & pid=$!; kill "$pid"',
+  'pid=$(pgrep -f metro); kill "$pid"',
+  'pid=-1; pid=$(cat pid.txt); kill -9 $pid',
+  // A kill target or a command word is judged as written: a variable the command assigns is never
+  // read into it (only a write target and a git directory are), so a `$pid` is always "your own".
+  'pid=-1; kill -9 $pid',
+  'pid=0 && kill "$pid"',
+  `export pid=-1234; kill -9 \${pid}`,
+  'c=pkill; $c node',
 ];
 
 // A git stash in any directory — this repository, a worktree, or a scratch
@@ -286,6 +349,7 @@ const STASH_COMMANDS: string[] = [
   '$(true)git stash',
   '`true` git stash',
   'bash <<< "git stash"',
+  "cat > f.md <<'EOF'\n- `git stash` is banned\nEOF",
 ];
 
 const HEREDOC_COMMANDS: string[] = [
@@ -303,6 +367,21 @@ const HEREDOC_COMMANDS: string[] = [
   'git commit -m "$(cat <<\'EOF\'\nfix: thing (see #12)\nEOF\n)" && cat > f.md <<EOF\n`x`\nEOF',
   "bash <<'EOF'\ncat <<X\n`x`\nX\nEOF",
   "bash <<< 'cat <<X\nhello\nX'",
+];
+
+// A quoted heredoc body that no shell runs is text: a note or a commit message may show a
+// command in backticks. The body is judged only for the data-body kinds (see
+// kill-guard-heredoc-bodies.test.ts), so the texts below, which name only narrower denies, pass; a
+// variable the command assigns never reaches into it.
+const HEREDOC_DATA_COMMANDS: string[] = [
+  "cat > f.md <<'EOF'\n- `pid=-1; kill -9 $pid` denies\nEOF",
+  "git commit -F - <<'EOF'\ndocs: the guard reads `pid=-1; kill -9 $pid` as a group kill\nEOF",
+  'git commit -m "$(cat <<\'EOF\'\ndocs: `pid=-1; kill -9 $pid` denies\nEOF\n)"',
+  "pid=-1; cat > notes.md <<'EOF'\nkill -9 $pid\nEOF",
+  "cat > f.md <<'EOF'\nthe guard denies `git commit-tree` in every form\nEOF",
+  "git commit -F - <<'EOF'\nfix: deny `git commit-tree`\nEOF",
+  "cat > f.md <<'EOF'\n- `export GIT_CONFIG_KEY_0=core.hooksPath` denies\nEOF",
+  "cat > f.md <<'EOF'\n- `git -c include.path=/tmp/x commit` denies\nEOF",
 ];
 
 const ALLOWED_GIT_AND_HEREDOC_COMMANDS: string[] = [
@@ -343,8 +422,8 @@ const ALLOWED_GIT_AND_HEREDOC_COMMANDS: string[] = [
 
 // The hooks' dispatcher runs from the main checkout, so a conflict marker
 // there breaks every hook in every session: git apply/merge/rebase/pull/
-// cherry-pick/revert/am aimed at it is denied, except a fast-forward-only
-// update and the recovery options; the same commands anywhere else pass.
+// cherry-pick/revert/am aimed at it is denied, except the recovery options and help; the same
+// commands anywhere else pass.
 const MAIN_CHECKOUT = '/Users/drizzer14/Developer/Projects/pff-ios';
 const WORKTREE = '/Users/drizzer14/orca/workspaces/pff-ios/shares-assets-research';
 
@@ -366,6 +445,11 @@ const MAIN_CHECKOUT_COMMANDS: [string, string][] = [
   [MAIN_CHECKOUT, 'git apply --stat --apply x.patch'],
   [WORKTREE, `git -C ${MAIN_CHECKOUT} pull --no-ff`],
   [WORKTREE, `git -C ${MAIN_CHECKOUT} cherry-pick 1a2b3c4`],
+  // A body that no shell runs is read for a main-checkout change.
+  [WORKTREE, `cat > f.md <<'EOF'\n- \`git -C ${MAIN_CHECKOUT} merge x\` denies\nEOF`],
+  // A directory the command assigns is read into `-C`.
+  [WORKTREE, `d=${MAIN_CHECKOUT}; git -C $d merge feat/x`],
+  [WORKTREE, `export d=${MAIN_CHECKOUT} && git -C "\${d}" pull --no-ff`],
   [WORKTREE, 'cd ~/Developer/Projects/pff-ios && git merge feat/x'],
   [WORKTREE, 'cd $HOME/Developer/Projects/pff-ios && git merge feat/x'],
   [WORKTREE, `cd "\${HOME}/Developer/Projects/pff-ios" && git rebase main`],
@@ -451,12 +535,6 @@ const ALLOWED_OUTSIDE_MAIN_CHECKOUT: [string, string][] = [
   [MAIN_CHECKOUT, 'git merge -h'],
   [MAIN_CHECKOUT, 'echo git merge feat/x'],
   [MAIN_CHECKOUT, 'grep -rn "git rebase" docs/'],
-  [MAIN_CHECKOUT, 'git merge --ff-only feat/x'],
-  [MAIN_CHECKOUT, 'git merge --ff-only 1a2b3c4'],
-  [MAIN_CHECKOUT, 'git pull --ff-only'],
-  [MAIN_CHECKOUT, 'git pull --ff-only origin main'],
-  [WORKTREE, `git -C ${MAIN_CHECKOUT} merge --ff-only 1a2b3c4`],
-  [WORKTREE, `git -C ${MAIN_CHECKOUT} pull --ff-only`],
   [MAIN_CHECKOUT, 'git apply --check x.patch'],
   [MAIN_CHECKOUT, 'git apply --stat x.patch'],
   [WORKTREE, 'cd ~/orca/workspaces/pff-ios/shares-assets-research && git merge feat/x'],
@@ -491,6 +569,170 @@ const RECOVERY_IN_MAIN_CHECKOUT: string[] = [
 ].flatMap((subcommand) =>
   ['--abort', '--quit', '--skip', '--continue'].map((option) => `git ${subcommand} ${option}`),
 );
+
+// The tracked githooks/ run the typecheck on every commit and merge commit, so a commit or merge
+// that skips them — `--no-verify` or commit's `-n` — is denied. Each spelling is checked alone,
+// inside a flag cluster, through a global option, and inside a shell string.
+const NO_VERIFY_COMMANDS: string[] = [
+  'git commit --no-verify',
+  'git commit -n',
+  'git commit -anm x',
+  'git commit -nm "msg"',
+  'git commit -vn',
+  'git commit -a -n -m x',
+  'git commit -m x --no-verify',
+  'git commit --amend -n',
+  'git commit --no-verif -m x',
+  'git commit --no-v -m x',
+  'git commit -m x -n',
+  'git commit --message x --no-verify',
+  `git -C ${WORKTREE} commit --no-verify`,
+  `git -C ${WORKTREE} commit -m x -n`,
+  `git -C ${MAIN_CHECKOUT} commit --no-verify -m x`,
+  'git merge --no-verify',
+  'git merge --no-ff --no-verify feature',
+  'git merge feature --no-verify',
+  'sh -c "git commit --no-verify -m x"',
+  "bash -c 'git commit -n -m x'",
+  'sh -c "git merge --no-verify feature"',
+  'git add -A && git commit -n -m x',
+  'cd /tmp/scratch && git commit --no-verify',
+  'sudo git commit -n',
+  'env FOO=1 git commit --no-verify',
+  'echo $(git commit -n)',
+  '(git commit -n)',
+  'git commit -m "$(cat <<\'EOF\'\nfix: thing\nEOF\n)" --no-verify',
+  'git pull --no-verify',
+  'git pull --no-verify origin main',
+  'git pull --rebase --no-verify',
+  // A body that no shell runs is read for a hook skip by option.
+  "cat > f.md <<'EOF'\n- `git commit --no-verify` denies\nEOF",
+];
+
+// A change to the git config that holds core.hooksPath switches the hooks off for every worktree: a
+// `-c` or `--config-env` entry for one command, a GIT_CONFIG_* variable in front of the command, or
+// a `git config` that writes or unsets the key or removes or renames its section. git reads each
+// `--long` option as an exact name or a unique prefix, so `--unset-a` is `--unset-all`; an option
+// that is ambiguous or unknown denies when the command names the key (fail closed).
+const CONFIG_REWRITE_COMMANDS: string[] = [
+  'git -c core.hooksPath=/dev/null commit -m x',
+  'git -c core.hooksPath=/dev/null merge feature',
+  'git -c CORE.HOOKSPATH=/dev/null commit -m x',
+  'git -c core.hookspath= commit -m x',
+  'git -c user.name=x -c core.hooksPath=/dev/null commit',
+  'git --config-env=core.hooksPath=HOOKS commit -m x',
+  'git --config-env core.hooksPath=HOOKS commit',
+  `git -C ${WORKTREE} -c core.hooksPath=/dev/null commit -m x`,
+  "bash -lc 'git -c core.hooksPath=/dev/null commit'",
+  'git -c core.hooksPath=/dev/null pull',
+  'GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.hooksPath GIT_CONFIG_VALUE_0=/dev/null git commit -m x',
+  'GIT_CONFIG_COUNT=2 GIT_CONFIG_KEY_0=user.name GIT_CONFIG_VALUE_0=x GIT_CONFIG_KEY_1=CORE.HOOKSPATH GIT_CONFIG_VALUE_1= git commit -m x',
+  'env GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.hookspath GIT_CONFIG_VALUE_0=/dev/null git merge feature',
+  'GIT_CONFIG_PARAMETERS="\'core.hooksPath=/dev/null\'" git commit -m x',
+  "GIT_CONFIG_PARAMETERS=\"'user.name=x' 'core.hookspath=/dev/null'\" git commit -m x",
+  'git config core.hooksPath /dev/null',
+  'git config core.hooksPath ""',
+  'git config --local core.hooksPath ""',
+  'git config --global core.hooksPath /dev/null',
+  'git config --unset core.hooksPath',
+  'git config --unset-all core.hooksPath',
+  'git config --global --unset CORE.HOOKSPATH',
+  'git config --add core.hooksPath /dev/null',
+  'git config --replace-all core.hookspath /dev/null',
+  'git config set core.hooksPath /dev/null',
+  'git config unset core.hooksPath',
+  'git config -f .git/config core.hooksPath /dev/null',
+  `git -C ${WORKTREE} config core.hooksPath ""`,
+  'sh -c "git config --unset core.hooksPath"',
+  'git add -A && git config core.hooksPath /dev/null',
+  'git config --unset-a core.hooksPath',
+  'git config --unset-al core.hooksPath',
+  'git config --global --unset-a CORE.HOOKSPATH',
+  'git config --repl core.hooksPath x',
+  'git config --ad core.hooksPath x',
+  `git -C ${WORKTREE} config --unset-a core.hooksPath`,
+  'git config --fil .git/config --unset-a core.hooksPath',
+  'git config -f .git/config --unset-a core.hooksPath',
+  'git config --rem core',
+  'git config --remove-section CORE',
+  'git config --rename-section core x',
+  'git config --ren Core x',
+  'git config remove-section core',
+  'git config rename-section core x',
+  'git config --value=x core.hooksPath y',
+  'git config --value x core.hooksPath y',
+  'git config --un core.hooksPath',
+  'git config --re core',
+  'git config --bogus core.hooksPath',
+  // A body that no shell runs is read for a core.hooksPath write.
+  "cat > f.md <<'EOF'\n- `git config --unset core.hooksPath` denies\nEOF",
+];
+
+// The one-action commits the coordinator runs in the main checkout, and git spellings that only
+// look like a bypass: `-n` is a message, a log limit, or merge's --no-stat.
+const ALLOWED_COMMIT_COMMANDS: string[] = [
+  'git commit -m "-n"',
+  'git commit -m "use --no-verify never"',
+  'git commit -m x',
+  'git commit -amn',
+  'git commit --message=-n',
+  'git commit --message -n',
+  'git commit -F -',
+  'git commit -- -n',
+  'git commit --amend --no-edit',
+  'git log -n 3',
+  'git log -n3',
+  `git -C ${WORKTREE} merge -n feature`,
+  'git -c user.name=x commit -m y',
+  'git -c core.pager=cat log',
+  'git -c core.hooksPath=/dev/null status',
+  'git commit -m x # -n',
+  'echo git commit -n',
+  'git -C /tmp/scratch log -n 3',
+  `git -C ${MAIN_CHECKOUT} commit -m "docs: x"`,
+  `git -C ${MAIN_CHECKOUT} commit -- HANDOFF.md -m "x"`,
+  `git -C ${MAIN_CHECKOUT} log -n 3`,
+  `git -C ${WORKTREE} commit -m "feat: x"`,
+  'git commit -m "$(cat <<\'EOF\'\nfix: thing\nEOF\n)"',
+  'git config core.hooksPath',
+  'git config --get core.hooksPath',
+  'git config --local --get core.hooksPath',
+  'git config --get-all core.hooksPath',
+  'git config --show-origin --get-all core.hooksPath',
+  'git config get core.hooksPath',
+  'git config --get-a core.hooksPath',
+  'git config --li',
+  'git config --show-o --get core.hooksPath',
+  'git config --get --default x core.hooksPath',
+  'git config --def x --get core.hooksPath',
+  'git config --list',
+  'git config --remove-section user',
+  'git config --rem user',
+  'git config --unset-a user.name',
+  'git config --value x user.name y',
+  'git config --bogus user.name',
+  'git config user.name x',
+  'git config --global --unset user.name',
+  'git config --unset core.pager',
+  'git config core.hooksPathFoo x',
+  'GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.pager GIT_CONFIG_VALUE_0=cat git commit -m x',
+  'GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.hooksPath GIT_CONFIG_VALUE_0=/dev/null git status',
+  'GIT_CONFIG_PARAMETERS="\'core.pager=cat\'" git commit -m x',
+];
+
+// `git pull` and a non-fast-forward `git merge` run the merge hooks too, but outside the main
+// checkout (where both are denied for another reason) these spellings are not a bypass: their
+// `-n` is --no-stat, and --no-verify-signatures is a different option.
+const ALLOWED_PULL_AND_MERGE_COMMANDS: string[] = [
+  'git merge --no-stat feature',
+  'git pull',
+  'git pull --ff-only',
+  'git pull -n',
+  'git pull --no-stat',
+  'git pull --no-verify-signatures',
+  'git pull -s ours --no-edit',
+  'git pull origin main -m x',
+];
 
 const payloadIn = (directory: string, command: string): string =>
   JSON.stringify({ cwd: directory, tool_input: { command } });
@@ -537,12 +779,15 @@ describe('scripts/checks/kill-guard.sh (PreToolUse Bash guard)', () => {
     expect(reason).toContain("<<'EOF'");
   });
 
-  it.each([...ALLOWED_COMMANDS, ...ALLOWED_GIT_AND_HEREDOC_COMMANDS])('allows: %s', (command) => {
-    const result = run(payloadFor(command));
+  it.each([...ALLOWED_COMMANDS, ...ALLOWED_GIT_AND_HEREDOC_COMMANDS, ...HEREDOC_DATA_COMMANDS])(
+    'allows: %s',
+    (command) => {
+      const result = run(payloadFor(command));
 
-    expect(result.status).toBe(0);
-    expect(result.stdout.trim()).toBe('');
-  });
+      expect(result.status).toBe(0);
+      expect(result.stdout.trim()).toBe('');
+    },
+  );
 
   it.each(MAIN_CHECKOUT_COMMANDS)(
     'denies a git history change on the main checkout: in %s, %s',
@@ -552,7 +797,7 @@ describe('scripts/checks/kill-guard.sh (PreToolUse Bash guard)', () => {
       expectStandardBlock(reason);
       expect(reason).toContain('main checkout');
       expect(reason).toContain('separate detached worktree');
-      expect(reason).toContain(`git -C ${MAIN_CHECKOUT} merge --ff-only <sha>`);
+      expect(reason).toContain('bash scripts/ff-main.sh <sha>');
     },
   );
 
@@ -564,6 +809,51 @@ describe('scripts/checks/kill-guard.sh (PreToolUse Bash guard)', () => {
   });
 
   it.each(RECOVERY_IN_MAIN_CHECKOUT)('allows recovery in the main checkout: %s', (command) => {
+    const result = run(payloadIn(MAIN_CHECKOUT, command));
+
+    expect(result.status).toBe(0);
+    expect(result.stdout.trim()).toBe('');
+  });
+
+  it.each(NO_VERIFY_COMMANDS)('denies a commit that skips the hook: %s', (command) => {
+    const reason = denyReasonFor(command);
+
+    expectStandardBlock(reason);
+    expect(reason).toContain('pre-commit');
+    expect(reason).toContain('--no-verify');
+    expect(reason).toContain('fix the type error');
+  });
+
+  it.each(CONFIG_REWRITE_COMMANDS)('denies a config rewrite of the hooks: %s', (command) => {
+    const reason = denyReasonFor(command);
+
+    expectStandardBlock(reason);
+    expect(reason).toContain('bash scripts/ensure-git-hooks.sh');
+    expect(reason).toContain('leave core.hooksPath as scripts/ensure-git-hooks.sh sets it');
+  });
+
+  it('names the config and environment spellings in the DO NOT line', () => {
+    const reason = denyReasonFor('git config --unset core.hooksPath');
+
+    expect(reason).toContain('git config core.hooksPath');
+    expect(reason).toContain('GIT_CONFIG_');
+  });
+
+  it.each(ALLOWED_PULL_AND_MERGE_COMMANDS)('allows: %s', (command) => {
+    const result = run(payloadFor(command));
+
+    expect(result.status).toBe(0);
+    expect(result.stdout.trim()).toBe('');
+  });
+
+  it.each(ALLOWED_COMMIT_COMMANDS)('allows: %s', (command) => {
+    const result = run(payloadFor(command));
+
+    expect(result.status).toBe(0);
+    expect(result.stdout.trim()).toBe('');
+  });
+
+  it.each(ALLOWED_COMMIT_COMMANDS)('allows in the main checkout: %s', (command) => {
     const result = run(payloadIn(MAIN_CHECKOUT, command));
 
     expect(result.status).toBe(0);
@@ -632,6 +922,19 @@ describe('kill-guard decide() test-only options (parser only)', () => {
     'eval "cat <<\\$\\"EOF\\"\nEOF\nit\'s\n\\$EOF\npkill x"',
   ])('denies a nested $"…" heredoc under either reading: %s', (command) => {
     expect(decide(command)).toBe('kill');
+  });
+
+  // A guard that allowed on a crash would let through the very command that crashed it.
+  it('denies a command it could not judge instead of allowing it', () => {
+    const script = [
+      'const { decide } = require(process.argv[1]);',
+      "const options = { get mainCheckoutPath() { throw new Error('judging failed'); } };",
+      "const finding = decide('ls', options);",
+      "process.stdout.write(finding.kind + ': ' + finding.detail);",
+    ].join('\n');
+    const result = spawnSync('node', ['-e', script, GUARD], { encoding: 'utf8' });
+
+    expect(result.stdout).toBe('internalError: Error: judging failed');
   });
 
   it('allows the sentinel without the option', () => {

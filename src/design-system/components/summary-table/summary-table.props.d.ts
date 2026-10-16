@@ -16,6 +16,9 @@ export type SummaryTableRow = {
   // `statement-import-transaction-count`) keeps its exact pre-existing
   // `toHaveTextContent` assertion this way, scoped to the value text alone.
   testID?: string;
+  // For a value that is free text and can run long: the label keeps its width and the value wraps
+  // inside the row. Absent, the row lays out as it always has, for the short values of the rest.
+  wraps?: true;
 };
 
 export type SummaryTableProps = {

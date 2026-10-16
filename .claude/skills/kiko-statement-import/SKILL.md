@@ -146,7 +146,9 @@ statement again gives 65,000, not 70,000. A hand edit with no balance change
 and a closing balance that does not apply keep the keys. The sync clears the
 keys but never reads them and never revives a row. A holding or account delete
 clears its keys, and the key rewrites (`upgradeStoredDedupKeys`, `rezoneImportTimes`) leave it
-alone: a rewritten key misses and the row comes back at 0. A delete made before
+alone: a rewritten key misses and the row comes back at 0. Migration 0059 and
+its restore mirror `withUsdtRescaled` do rescale the amount token of a USDT key
+in `transactions` and `deleted_import_keys`. A delete made before
 the table existed left no key. A `.kiko` restore carries the table
 (`deletedImportKeys`, optional key, no `EXPORT_VERSION` bump) and skips a key
 whose holding it did not insert.
@@ -289,6 +291,11 @@ import row's `time` from the legacy wall-clock-as-UTC convention to a
 real instant, and the dedup key's time token along with it
 (`rezoneDedupKey`) — see "Column mapping" below for the zone reading
 itself.
+
+A change to a currency's scale, or to what the key's amount token means,
+rewrites the stored keys in `transactions` AND `deleted_import_keys` in the same
+migration (two phases for the UNIQUE key, so no intermediate state collides).
+`drizzle/migrations/0059_usdt_scale_8.sql` is the model.
 
 ## Column mapping
 
@@ -661,8 +668,9 @@ follow the same layout conventions as every other Kiko screen:
   row would. The title resolves through the SAME `transactionRowDescription`
   Home uses — an empty mapped description falls back
   to the income/expense default label (fed the chosen target holding's
-  name, via each caller's own `holdingName` prop, `undefined` before a
-  holding is chosen) instead of rendering blank; `exchangeCounterpartHoldingId`
+  name (each caller's `holdingName` prop, `undefined` before a
+  holding is chosen), with empty `holdingNameById` / `holdingCurrencyById` maps
+  (`ExampleTransaction` passes none) instead of rendering blank; `exchangeCounterpartHoldingId`
   is always `null` here (an import never creates an exchange-marked row).
   The footer shows the category title and the row's own date
   (`formatDate`) via `TransactionCard`'s existing optional `footerMeta`/
@@ -697,9 +705,7 @@ follow the same layout conventions as every other Kiko screen:
   doubles as this section's own heading. The grid STARTS AT the header
   row (guessed or tapped; row 0 before one is known) and shows
   `PREVIEW_ROW_COUNT` (5) rows from there. A "Show all" toggle below the
-  grid (the pie legend's link look: caption `tone="accent"` + chevron,
-  reusing the `components.pieChart.showAll`/`showLess` keys, a 44pt tap
-  target via vertical `hitSlop`) expands to every row
+  grid (the shared `ExpandToggle`, see kiko-design-system) expands to every row
   `guessHeaderRowIndex` scans (`HEADER_SCAN_ROW_COUNT`, 10, exported from
   `table-rows.ts` so the two never drift) — never fewer than the
   collapsed window — INCLUDING the rows above the header, so the user can
@@ -750,7 +756,7 @@ follow the same layout conventions as every other Kiko screen:
   child's own margin ON TOP OF the parent's `gap`, same as CSS flexbox,
   so the two stack rather than dedupe, breaking the uniform spacing.
   `column-mapping-form.styles.ts`
-  (`column-mapping-form/`) has no `sectionHeading` style at
+  (`column-mapping-form/`) has no section-heading style at
   all. `MappingResult` renders its
   own `columnMapping.result` heading UNCONDITIONALLY, in BOTH the
   `stats === undefined` and `stats !== undefined` branches, passing NO
@@ -774,7 +780,7 @@ follow the same layout conventions as every other Kiko screen:
   (`target-holding-sheet.component.tsx`'s `SelectableRow` rows and
   `target-holding-field.component.tsx`'s `FieldTrigger`), the same
   `icon ?? defaultHoldingSymbol(holding)` / `resolveEntityColor` pair
-  `transaction-form.screen.tsx`'s exchange `HoldingSelectField` resolves
+  the transaction-form `HoldingSelectField` (`primary-holding-field/`, `split-returns/`) resolves
   — `useTargetHoldingOptions` (shared by both statement-import screens)
   now resolves `icon`/`color` onto every `TargetHoldingOption` it
   returns.

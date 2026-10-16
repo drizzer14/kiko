@@ -10,7 +10,7 @@ import {
   accounts,
   bondRegister,
   categories,
-  categoryOverrides,
+  categoryRules,
   currencyRateHistory,
   currencyRates,
   deletedImportKeys,
@@ -20,16 +20,21 @@ import {
   settings,
   syncState,
   transactions,
+  transactionTemplates,
 } from '@kiko/db';
 import { getTableColumns } from 'drizzle-orm';
 import { holdingValue } from '@kiko/holdings/holding-value';
 import { holdingRegisterCoupons } from '@kiko/bonds/nbu-register';
 import { computeDedupKeyBase } from '@kiko/statement-import/mapping';
 import { rezoneImportTime } from '@kiko/statement-import/rezone-import-times';
-import { asBondMeta, binanceHistoryCursorOf } from '@kiko/holdings/holding-metadata';
+import { asBondMeta, binanceWalkCursorOf } from '@kiko/holdings/holding-metadata';
+
+import { EXPORT_VERSION } from '../crypto/envelope';
 
 import type { DataSnapshot } from './data-snapshot';
 import { restoreDataSnapshot } from './restore-snapshot';
+
+const restore = (snapshot: DataSnapshot) => restoreDataSnapshot(snapshot, EXPORT_VERSION);
 
 const tableNameOf = (table: unknown): string => {
   if (table === accounts) return 'accounts';
@@ -48,7 +53,7 @@ const tableNameOf = (table: unknown): string => {
 
   if (table === categories) return 'categories';
 
-  if (table === categoryOverrides) return 'categoryOverrides';
+  if (table === categoryRules) return 'categoryRules';
 
   if (table === pricePoints) return 'pricePoints';
 
@@ -57,6 +62,8 @@ const tableNameOf = (table: unknown): string => {
   if (table === reminders) return 'reminders';
 
   if (table === deletedImportKeys) return 'deletedImportKeys';
+
+  if (table === transactionTemplates) return 'transactionTemplates';
   throw new Error('unknown table');
 };
 
@@ -101,7 +108,7 @@ const emptySnapshot: DataSnapshot = {
   settings: [],
   syncState: [],
   categories: [],
-  categoryOverrides: [],
+  categoryRules: [],
   pricePoints: [],
   bondRegister: [],
   reminders: [],
@@ -131,7 +138,7 @@ describe('restoreDataSnapshot', () => {
       }),
     };
 
-    await restoreDataSnapshot({
+    await restore({
       ...emptySnapshot,
       accounts: [{ id: 'a1' }] as never,
       holdings: [{ id: 'h1' }] as never,
@@ -139,13 +146,14 @@ describe('restoreDataSnapshot', () => {
     });
 
     expect(deletedTables).toEqual([
+      'transactionTemplates',
       'deletedImportKeys',
       'transactions',
       'syncState',
       'reminders',
       'holdings',
       'accounts',
-      'categoryOverrides',
+      'categoryRules',
       'categories',
       'currencyRateHistory',
       'currencyRates',
@@ -187,7 +195,7 @@ describe('restoreDataSnapshot', () => {
     const { databaseTransaction, insertedRows } = makeRowCapturingDatabaseTransaction();
     mockDatabaseTransaction = databaseTransaction;
 
-    await restoreDataSnapshot(emptySnapshot);
+    await restore(emptySnapshot);
 
     // `categories` is the exception: the `loan_interest` reseed always
     // inserts, even from an otherwise-empty snapshot. So is `settings`: the
@@ -206,7 +214,7 @@ describe('restoreDataSnapshot', () => {
       const { databaseTransaction, insertedRows } = makeRowCapturingDatabaseTransaction();
       mockDatabaseTransaction = databaseTransaction;
 
-      await restoreDataSnapshot({
+      await restore({
         ...emptySnapshot,
         categories: [
           { key: 'groceries', title: 'Groceries', icon: 'cart', color: null, sortOrder: 0 },
@@ -237,7 +245,7 @@ describe('restoreDataSnapshot', () => {
         sortOrder: 7,
       };
 
-      await restoreDataSnapshot({
+      await restore({
         ...emptySnapshot,
         categories: [ownLoanInterest] as never,
       });
@@ -250,7 +258,7 @@ describe('restoreDataSnapshot', () => {
     const { databaseTransaction, insertedRows } = makeRowCapturingDatabaseTransaction();
     mockDatabaseTransaction = databaseTransaction;
 
-    await restoreDataSnapshot({
+    await restore({
       ...emptySnapshot,
       pricePoints: [
         { instrument: 'metal:silver', day: 1, price: '190.00', currency: 'USD', source: 'nbu' },
@@ -277,7 +285,7 @@ describe('restoreDataSnapshot', () => {
       settings: legacySettings,
       syncState: legacySyncState,
       categories: legacyCategories,
-      categoryOverrides: legacyCategoryOverrides,
+      categoryRules: legacyCategoryRules,
     } = emptySnapshot;
     const legacySnapshot = {
       accounts: legacyAccounts,
@@ -288,10 +296,10 @@ describe('restoreDataSnapshot', () => {
       settings: legacySettings,
       syncState: legacySyncState,
       categories: legacyCategories,
-      categoryOverrides: legacyCategoryOverrides,
+      categoryRules: legacyCategoryRules,
     } as unknown as DataSnapshot;
 
-    await restoreDataSnapshot(legacySnapshot);
+    await restore(legacySnapshot);
 
     expect(Object.keys(insertedRows)).not.toContain('pricePoints');
   });
@@ -300,7 +308,7 @@ describe('restoreDataSnapshot', () => {
     const { databaseTransaction, insertedRows } = makeRowCapturingDatabaseTransaction();
     mockDatabaseTransaction = databaseTransaction;
 
-    await restoreDataSnapshot({
+    await restore({
       ...emptySnapshot,
       bondRegister: [
         {
@@ -337,7 +345,7 @@ describe('restoreDataSnapshot', () => {
         ownershipInput: 'fraction',
       };
 
-      await restoreDataSnapshot({
+      await restore({
         ...emptySnapshot,
         holdings: [propertyHolding(metadata)] as never,
       });
@@ -352,7 +360,7 @@ describe('restoreDataSnapshot', () => {
       const { databaseTransaction, insertedRows } = makeRowCapturingDatabaseTransaction();
       mockDatabaseTransaction = databaseTransaction;
 
-      await restoreDataSnapshot({
+      await restore({
         ...emptySnapshot,
         holdings: [propertyHolding({ category: 'real_estate', lots })] as never,
       });
@@ -370,7 +378,7 @@ describe('restoreDataSnapshot', () => {
     const legacySnapshot = { ...emptySnapshot } as unknown as Record<string, unknown>;
     delete legacySnapshot.bondRegister;
 
-    await restoreDataSnapshot(legacySnapshot as unknown as DataSnapshot);
+    await restore(legacySnapshot as unknown as DataSnapshot);
 
     expect(Object.keys(insertedRows)).not.toContain('bondRegister');
   });
@@ -393,7 +401,7 @@ describe('restoreDataSnapshot', () => {
       }),
     };
 
-    await restoreDataSnapshot({
+    await restore({
       ...emptySnapshot,
       accounts: [{ id: 'a1' }] as never,
       reminders: [{ id: 'reminder-1', accountId: 'a1', lastSnoozedAt: 5 }] as never,
@@ -441,7 +449,7 @@ describe('restoreDataSnapshot', () => {
       const { databaseTransaction, insertedRows } = makeRowCapturingDatabaseTransaction();
       mockDatabaseTransaction = databaseTransaction;
 
-      const summary = await restoreDataSnapshot({
+      const summary = await restore({
         ...emptySnapshot,
         ...twoPropertyAccounts,
       } as never);
@@ -472,7 +480,7 @@ describe('restoreDataSnapshot', () => {
     const legacySnapshot = { ...emptySnapshot } as unknown as Record<string, unknown>;
     delete legacySnapshot.reminders;
 
-    await restoreDataSnapshot(legacySnapshot as unknown as DataSnapshot);
+    await restore(legacySnapshot as unknown as DataSnapshot);
 
     expect(Object.keys(insertedRows)).not.toContain('reminders');
   });
@@ -510,7 +518,7 @@ describe('restoreDataSnapshot', () => {
       Object.fromEntries(transactionColumnNames.map((name) => [name, name === 'id' ? id : null]));
     const bigTransactions = Array.from({ length: 4500 }, (_, i) => fullShapedRow(`t${i}`));
 
-    await restoreDataSnapshot({ ...emptySnapshot, transactions: bigTransactions as never });
+    await restore({ ...emptySnapshot, transactions: bigTransactions as never });
 
     // Every chunk must bind well under SQLite's 32766-parameter ceiling —
     // the old fixed 2000-row chunk bound 2000 * 18 = 36000 and would fail
@@ -595,20 +603,21 @@ describe('restoreDataSnapshot', () => {
       balanceMinorUnits: 12_345,
     };
 
-    await restoreDataSnapshot({
+    await restore({
       ...emptySnapshot,
       accounts: [sourceAccount] as never,
       holdings: [fiatHolding, cryptoCashHolding] as never,
     });
 
     expect(deletedTables).toEqual([
+      'transactionTemplates',
       'deletedImportKeys',
       'transactions',
       'syncState',
       'reminders',
       'holdings',
       'accounts',
-      'categoryOverrides',
+      'categoryRules',
       'categories',
       'currencyRateHistory',
       'currencyRates',
@@ -688,7 +697,7 @@ describe('restoreDataSnapshot', () => {
       createdAt: 1_600_000_000_000,
     };
 
-    await restoreDataSnapshot({
+    await restore({
       ...emptySnapshot,
       accounts: [reuseTargetAccount, archivedSourceAccount] as never,
       holdings: [archivedSourceHolding] as never,
@@ -720,7 +729,7 @@ describe('restoreDataSnapshot', () => {
     mockDatabaseTransaction = databaseTransaction;
     const cryptoHolding = { id: 'h1', accountId: 'a1', type: 'crypto_asset', currency: 'BTC' };
 
-    await restoreDataSnapshot({ ...emptySnapshot, holdings: [cryptoHolding] as never });
+    await restore({ ...emptySnapshot, holdings: [cryptoHolding] as never });
 
     expect(insertedRows.holdings).toEqual([expect.objectContaining(cryptoHolding)]);
   });
@@ -730,7 +739,7 @@ describe('restoreDataSnapshot', () => {
     mockDatabaseTransaction = databaseTransaction;
     const legacyTransaction = { id: 't1', holdingId: 'h1', source: 'manual' };
 
-    await restoreDataSnapshot({
+    await restore({
       ...emptySnapshot,
       transactions: [legacyTransaction] as never,
     });
@@ -769,7 +778,7 @@ describe('restoreDataSnapshot', () => {
         captureHoldingsInsert();
       mockDatabaseTransaction = databaseTransaction;
 
-      await restoreDataSnapshot({
+      await restore({
         ...emptySnapshot,
         holdings: [{ id: 'h1', balanceMinorUnits: 5_000 }] as never,
         transactions: [
@@ -806,7 +815,7 @@ describe('restoreDataSnapshot', () => {
         captureHoldingsInsert();
       mockDatabaseTransaction = databaseTransaction;
 
-      await restoreDataSnapshot({
+      await restore({
         ...emptySnapshot,
         holdings: [{ id: 'h1', balanceMinorUnits: 5_000 }] as never,
         transactions: [
@@ -845,7 +854,7 @@ describe('restoreDataSnapshot', () => {
         captureHoldingsInsert();
       mockDatabaseTransaction = databaseTransaction;
 
-      await restoreDataSnapshot({
+      await restore({
         ...emptySnapshot,
         holdings: [{ id: 'h1', balanceMinorUnits: 5_000, balanceSetAt: 999 }] as never,
         transactions: [
@@ -879,7 +888,7 @@ describe('restoreDataSnapshot', () => {
         captureHoldingsInsert();
       mockDatabaseTransaction = databaseTransaction;
 
-      await restoreDataSnapshot({
+      await restore({
         ...emptySnapshot,
         holdings: [{ id: 'h1', balanceMinorUnits: 5_000 }] as never,
         transactions: [
@@ -963,7 +972,7 @@ describe('restoreDataSnapshot', () => {
         captureHoldingsInsert();
       mockDatabaseTransaction = databaseTransaction;
 
-      await restoreDataSnapshot({
+      await restore({
         ...emptySnapshot,
         holdings: [{ id: 'h1', balanceMinorUnits: 5_000, balanceSetAt: null }] as never,
         transactions: [
@@ -1018,7 +1027,7 @@ describe('restoreDataSnapshot', () => {
       const { databaseTransaction, insertedRows } = makeRowCapturingDatabaseTransaction();
       mockDatabaseTransaction = databaseTransaction;
 
-      await restoreDataSnapshot({
+      await restore({
         ...emptySnapshot,
         holdings: [strayHolding()] as never,
         transactions: [strayTransaction()] as never,
@@ -1034,7 +1043,7 @@ describe('restoreDataSnapshot', () => {
       const { databaseTransaction, insertedRows } = makeRowCapturingDatabaseTransaction();
       mockDatabaseTransaction = databaseTransaction;
 
-      await restoreDataSnapshot({
+      await restore({
         ...emptySnapshot,
         holdings: [strayHolding({ type: 'bond' })] as never,
         transactions: [strayTransaction()] as never,
@@ -1051,7 +1060,7 @@ describe('restoreDataSnapshot', () => {
       mockDatabaseTransaction = databaseTransaction;
       const cardHolding = strayHolding({ type: 'card' });
 
-      await restoreDataSnapshot({
+      await restore({
         ...emptySnapshot,
         holdings: [cardHolding] as never,
         transactions: [strayTransaction()] as never,
@@ -1070,7 +1079,7 @@ describe('restoreDataSnapshot', () => {
       mockDatabaseTransaction = databaseTransaction;
       const editedTransaction = strayTransaction({ description: 'Edited note' });
 
-      await restoreDataSnapshot({
+      await restore({
         ...emptySnapshot,
         holdings: [strayHolding()] as never,
         transactions: [editedTransaction] as never,
@@ -1087,7 +1096,7 @@ describe('restoreDataSnapshot', () => {
       mockDatabaseTransaction = databaseTransaction;
       const secondTransaction = strayTransaction({ id: 't2', amountMinorUnits: 1, time: 5_000 });
 
-      await restoreDataSnapshot({
+      await restore({
         ...emptySnapshot,
         holdings: [strayHolding()] as never,
         transactions: [strayTransaction(), secondTransaction] as never,
@@ -1106,7 +1115,7 @@ describe('restoreDataSnapshot', () => {
       // No `balanceSetAt` key at all — a build-25-shaped export.
       const legacyHolding = { id: 'h1', type: 'term_deposit', balanceMinorUnits: 50_000 };
 
-      await restoreDataSnapshot({
+      await restore({
         ...emptySnapshot,
         holdings: [legacyHolding] as never,
         transactions: [strayTransaction()] as never,
@@ -1123,7 +1132,7 @@ describe('restoreDataSnapshot', () => {
       mockDatabaseTransaction = databaseTransaction;
       const cleanHolding = strayHolding({ balanceMinorUnits: 0, balanceSetAt: null });
 
-      await restoreDataSnapshot({
+      await restore({
         ...emptySnapshot,
         holdings: [cleanHolding] as never,
       });
@@ -1167,7 +1176,7 @@ describe('restoreDataSnapshot', () => {
       // separate import-time rezone (its own describe block below).
       const legacySettingsRow = { id: 1, baseCurrency: 'UAH', importTimesRezoned: true };
 
-      await restoreDataSnapshot({
+      await restore({
         ...emptySnapshot,
         settings: [legacySettingsRow] as never,
         transactions: [legacyImportTransaction()] as never,
@@ -1193,7 +1202,7 @@ describe('restoreDataSnapshot', () => {
       mockDatabaseTransaction = databaseTransaction;
       const editedTransaction = legacyImportTransaction({ description: 'Top up (edited note)' });
 
-      await restoreDataSnapshot({
+      await restore({
         ...emptySnapshot,
         settings: [{ id: 1, baseCurrency: 'UAH', importTimesRezoned: true }] as never,
         transactions: [editedTransaction] as never,
@@ -1223,7 +1232,7 @@ describe('restoreDataSnapshot', () => {
       };
       const legacyShapedTransaction = legacyImportTransaction();
 
-      await restoreDataSnapshot({
+      await restore({
         ...emptySnapshot,
         settings: [alreadyMigratedSettingsRow] as never,
         transactions: [legacyShapedTransaction] as never,
@@ -1268,7 +1277,7 @@ describe('restoreDataSnapshot', () => {
       const { databaseTransaction, insertedRows } = makeRowCapturingDatabaseTransaction();
       mockDatabaseTransaction = databaseTransaction;
 
-      await restoreDataSnapshot({
+      await restore({
         ...emptySnapshot,
         // `dedupKeysUpgraded: true` keeps this section isolated from the
         // separate dedup-key upgrade above, the same way that section pins
@@ -1302,7 +1311,7 @@ describe('restoreDataSnapshot', () => {
       const { databaseTransaction, insertedRows } = makeRowCapturingDatabaseTransaction();
       mockDatabaseTransaction = databaseTransaction;
 
-      await restoreDataSnapshot({
+      await restore({
         ...emptySnapshot,
         settings: [
           { id: 1, baseCurrency: 'UAH', dedupKeysUpgraded: true, importTimesRezoned: true },
@@ -1329,7 +1338,7 @@ describe('restoreDataSnapshot', () => {
       const { databaseTransaction, insertedRows } = makeRowCapturingDatabaseTransaction();
       mockDatabaseTransaction = databaseTransaction;
 
-      await restoreDataSnapshot({
+      await restore({
         ...emptySnapshot,
         settings: [{ id: 1, baseCurrency: 'UAH', dedupKeysUpgraded: true }] as never,
         holdings: [stampedHolding] as never,
@@ -1365,7 +1374,7 @@ describe('restoreDataSnapshot', () => {
       const { databaseTransaction, insertedRows } = makeRowCapturingDatabaseTransaction();
       mockDatabaseTransaction = databaseTransaction;
 
-      await restoreDataSnapshot({
+      await restore({
         ...emptySnapshot,
         currencyRates: [
           { base: 'USD', quote: 'UAH', rate: '40', source: 'monobank', fetchedAt: 1 },
@@ -1387,7 +1396,7 @@ describe('restoreDataSnapshot', () => {
       const { databaseTransaction, insertedRows } = makeRowCapturingDatabaseTransaction();
       mockDatabaseTransaction = databaseTransaction;
 
-      await restoreDataSnapshot({
+      await restore({
         ...emptySnapshot,
         currencyRates: [
           { base: 'UAH', quote: 'GBP', rate: '0.02', source: 'monobank', fetchedAt: 5 },
@@ -1403,7 +1412,7 @@ describe('restoreDataSnapshot', () => {
       const { databaseTransaction, insertedRows } = makeRowCapturingDatabaseTransaction();
       mockDatabaseTransaction = databaseTransaction;
 
-      await restoreDataSnapshot({
+      await restore({
         ...emptySnapshot,
         currencyRates: [
           { base: 'USD', quote: 'UAH', rate: '40', source: 'monobank', fetchedAt: 1 },
@@ -1425,7 +1434,7 @@ describe('restoreDataSnapshot', () => {
         { base: 'BTC', quote: 'UAH', rate: '2600000', source: 'coingecko', fetchedAt: 1 },
       ];
 
-      await restoreDataSnapshot({ ...emptySnapshot, currencyRates: starRows as never });
+      await restore({ ...emptySnapshot, currencyRates: starRows as never });
 
       expect(insertedRows.currencyRates).toEqual(starRows);
     });
@@ -1434,7 +1443,7 @@ describe('restoreDataSnapshot', () => {
       const { databaseTransaction, insertedRows } = makeRowCapturingDatabaseTransaction();
       mockDatabaseTransaction = databaseTransaction;
 
-      await restoreDataSnapshot(emptySnapshot);
+      await restore(emptySnapshot);
 
       expect(insertedRows.currencyRates ?? []).toEqual([]);
     });
@@ -1443,7 +1452,7 @@ describe('restoreDataSnapshot', () => {
       const { databaseTransaction, insertedRows } = makeRowCapturingDatabaseTransaction();
       mockDatabaseTransaction = databaseTransaction;
 
-      await restoreDataSnapshot({
+      await restore({
         ...emptySnapshot,
         currencyRateHistory: [
           // Day 1: a full legacy pair set — only the star rows should survive.
@@ -1471,7 +1480,7 @@ describe('restoreDataSnapshot', () => {
       const { databaseTransaction, insertedRows } = makeRowCapturingDatabaseTransaction();
       mockDatabaseTransaction = databaseTransaction;
 
-      await restoreDataSnapshot(emptySnapshot);
+      await restore(emptySnapshot);
 
       expect(insertedRows.currencyRateHistory ?? []).toEqual([]);
     });
@@ -1502,7 +1511,7 @@ describe('restoreDataSnapshot', () => {
       },
     };
 
-    await restoreDataSnapshot(
+    await restore(
       JSON.parse(JSON.stringify({ ...emptySnapshot, holdings: [bond] })) as DataSnapshot,
     );
 
@@ -1531,7 +1540,7 @@ describe('restoreDataSnapshot', () => {
       },
     };
 
-    await restoreDataSnapshot(
+    await restore(
       JSON.parse(JSON.stringify({ ...emptySnapshot, holdings: [bond] })) as DataSnapshot,
     );
 
@@ -1556,12 +1565,12 @@ describe('restoreDataSnapshot', () => {
       },
     };
 
-    await restoreDataSnapshot(
+    await restore(
       JSON.parse(JSON.stringify({ ...emptySnapshot, holdings: [spot] })) as DataSnapshot,
     );
 
     const [restored] = insertedRows.holdings as { metadata: unknown }[];
 
-    expect(binanceHistoryCursorOf(restored.metadata)).toBe(1_704_326_400_000);
+    expect(binanceWalkCursorOf('binanceHistoryCursor', restored.metadata)).toBe(1_704_326_400_000);
   });
 });

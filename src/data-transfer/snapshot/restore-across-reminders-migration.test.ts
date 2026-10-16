@@ -89,7 +89,7 @@ describe('restoring across the reminders migration', () => {
     insertReminder(mockDatabase, 'reminder-on-device', 'on-device');
     mockDatabase.exec('UPDATE settings SET notifications_deliverable_since = 5');
 
-    await restoreDataSnapshot(legacyExport);
+    await restoreDataSnapshot(legacyExport, 3);
 
     expect(tableIds('accounts')).toEqual([{ id: 'backed-up' }]);
     expect(tableIds('reminders')).toEqual([]);
@@ -116,7 +116,7 @@ describe('restoring across the reminders migration', () => {
       mockDatabase
         .prepare('UPDATE settings SET notifications_deliverable_since = ?')
         .run(liveSince);
-      await restoreDataSnapshot(exported);
+      await restoreDataSnapshot(exported, 3);
 
       expect(
         mockDatabase.prepare('SELECT notifications_deliverable_since FROM settings').all(),
@@ -134,7 +134,7 @@ describe('restoring across the reminders migration', () => {
     const exported = JSON.parse(JSON.stringify(await readDataSnapshot())) as DataSnapshot;
 
     mockDatabase = openDatabase();
-    await restoreDataSnapshot(exported);
+    await restoreDataSnapshot(exported, 3);
 
     const restored = await readDataSnapshot();
 
@@ -184,7 +184,7 @@ describe('restoring across the reminders migration', () => {
     const exported = JSON.parse(JSON.stringify(await readDataSnapshot())) as DataSnapshot;
 
     mockDatabase = openDatabase();
-    await restoreDataSnapshot(exported);
+    await restoreDataSnapshot(exported, 3);
 
     expect(
       mockDatabase

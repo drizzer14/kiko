@@ -45,7 +45,7 @@ export const holdingTypesForAccountKind: Record<AccountKind, readonly HoldingTyp
 };
 
 // The holding types the Monobank sync pipeline OWNS: it creates a `card` per
-// bank card and a `jar` per jar programmatically (see src/monobank/sync.ts), so
+// bank card and a `jar` per jar programmatically (see src/monobank/sync/sync.ts), so
 // a user never manually creates one. The manual create form drops these from its
 // options; editing an existing synced row still works (its type is read-only and
 // stays whatever the sync wrote).
@@ -77,7 +77,7 @@ export const isSyncOnlyHoldingType = (type: HoldingType): boolean =>
 // (the standalone kind, always eligible — physical possession has no bank to
 // gate on). Under a `bank`-kind account it additionally requires
 // `bankSellsMetals(bankId)` — the catalog allow-list (`src/bank-sync/bank-catalog/`,
-// Guideline 5.6: always-rendered DATA, never a visibility flag), currently
+// Guideline 2.3.1(a): always-rendered DATA, never a visibility flag), currently
 // only PrivatBank. `bankId` is optional (nullable) for every existing caller
 // that has none to pass.
 export const creatableHoldingTypesForAccount = (

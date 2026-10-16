@@ -1,20 +1,55 @@
+import {
+  parseRuleMatchers,
+  prepareRules,
+  subjectOfStoredRow,
+  validateRule,
+  winningRule,
+} from '@kiko/categories/category-rules';
+import maybe, { foldMap } from 'fnts/maybe';
 import { buildPriceBook } from '@kiko/prices/price-book';
 import { holdingValue } from '@kiko/holdings/holding-value';
 import { isLedgerlessHoldingType } from '@kiko/holdings/holding-descriptor';
 import { bankCatalog, isBankId, OTHER_BANK_ID } from '@kiko/bank-sync/bank-catalog';
 import { readSeedCategoryColors } from '@kiko/db/__fixtures__/seed-category-colors';
+import { draftReferences, isTemplateDraft } from '@kiko/transaction-templates/draft';
 import { SEEDED_CATEGORIES, LOAN_INTEREST_CATEGORY } from '@kiko/db/__fixtures__/seeded-categories';
 
-import { ANCHOR, buildScreenshotDataset } from '../seed/screenshot-seed';
+import { buildScreenshotDataset } from '../seed/screenshot-seed';
 
 import { buildDemoSnapshot } from './build-demo-snapshot';
 
+const ANCHOR = Date.UTC(2026, 8, 10, 9, 0, 0);
+
 describe('buildDemoSnapshot', () => {
-  const dataset = buildScreenshotDataset('uk');
+  const dataset = buildScreenshotDataset('uk', ANCHOR);
   const snapshot = buildDemoSnapshot(dataset);
+  const templates = snapshot.transactionTemplates ?? [];
 
   it('is deterministic: two builds of the same dataset are deeply equal', () => {
-    expect(buildDemoSnapshot(buildScreenshotDataset('uk'))).toEqual(snapshot);
+    expect(buildDemoSnapshot(buildScreenshotDataset('uk', ANCHOR))).toEqual(snapshot);
+  });
+
+  it('stamps every row it creates with the dataset anchor, never a clock', () => {
+    const stamps = [
+      ...snapshot.accounts.map((account) => account.createdAt),
+      ...snapshot.holdings.map((holding) => holding.createdAt),
+      ...snapshot.transactions.map((transaction) => transaction.createdAt),
+      ...snapshot.reminders.flatMap((reminder) => [
+        reminder.activeSince,
+        reminder.createdAt,
+        reminder.updatedAt,
+      ]),
+      ...templates.flatMap((template) => [template.createdAt, template.updatedAt]),
+    ];
+
+    expect(stamps.length).toBeGreaterThan(0);
+    expect(new Set(stamps)).toEqual(new Set([ANCHOR]));
+  });
+
+  it('holds no Cyrillic letter anywhere in the English snapshot', () => {
+    const english = buildDemoSnapshot(buildScreenshotDataset('en', ANCHOR));
+
+    expect(JSON.stringify(english)).not.toMatch(/\p{Script=Cyrillic}/u);
   });
 
   it('carries an empty dismissed-tips list, the unused column at its default', () => {
@@ -26,6 +61,49 @@ describe('buildDemoSnapshot', () => {
     expect(snapshot.holdings).toHaveLength(
       dataset.accounts.reduce((total, account) => total + account.holdings.length, 0),
     );
+  });
+
+  it('carries every template the dataset describes, ided tpl-1..n in dataset order', () => {
+    expect(templates.map((template) => template.id)).toEqual(
+      dataset.templates.map((_template, index) => `tpl-${index + 1}`),
+    );
+    expect(templates.map((template) => template.name)).toEqual(
+      dataset.templates.map((template) => template.name),
+    );
+  });
+
+  // The seed test proves each draft passes the guard; the filter only narrows the type.
+  it('gives every template a draft whose holdings and category exist in the snapshot', () => {
+    const holdingIds = new Set(snapshot.holdings.map((holding) => holding.id));
+    const categoryKeys = new Set(snapshot.categories.map((category) => category.key));
+    const drafts = templates.map((template) => template.draft).filter(isTemplateDraft);
+
+    expect(drafts.length).toBeGreaterThan(0);
+
+    for (const draft of drafts) {
+      const { holdingIds: referenced, categoryKey } = draftReferences(draft);
+
+      expect(referenced.length).toBeGreaterThan(0);
+      expect(referenced.every((holdingId) => holdingIds.has(holdingId))).toBe(true);
+      expect(categoryKey === null || categoryKeys.has(categoryKey)).toBe(true);
+    }
+  });
+
+  it('gives a template the currency of the holding it pays from and of the one an exchange lands in', () => {
+    const currencyOf = new Map(snapshot.holdings.map((holding) => [holding.id, holding.currency]));
+    const drafts = templates.map((template) => template.draft).filter(isTemplateDraft);
+
+    expect(drafts.some((draft) => draft.exchange !== null)).toBe(true);
+
+    for (const draft of drafts) {
+      expect(draft.currency).toBe(currencyOf.get(draft.holdingId ?? ''));
+
+      if (draft.exchange !== null) {
+        expect(draft.exchange.destinationCurrency).toBe(
+          currencyOf.get(draft.exchange.destinationHoldingId ?? ''),
+        );
+      }
+    }
   });
 
   it('gives every bank account a catalog bank id, as a post-0049 device stores it, and no other kind a bank id', () => {
@@ -43,7 +121,7 @@ describe('buildDemoSnapshot', () => {
   });
 
   // The App Store reviewer reaches Connect only on a connectable bank's page
-  // (Guideline 5.6), so the demo must hold one account per connectable bank.
+  // (Guideline 2.3.1(a)), so the demo must hold one account per connectable bank.
   it('holds at least one bank account per connectable catalog bank, and one Other bank', () => {
     const demoBankIds = new Set(snapshot.accounts.map((account) => account.bankId));
     const connectableIds = bankCatalog
@@ -154,7 +232,87 @@ describe('buildDemoSnapshot', () => {
       LOAN_INTEREST_CATEGORY.key,
     ]);
     expect(snapshot.syncState).toEqual([]);
-    expect(snapshot.categoryOverrides).toEqual([]);
+  });
+
+  // The App Store reviewer reaches the rule editor and the rule cards only through the demo
+  // file (Guideline 2.3.1(a)), so the file must carry a rule on a name alone and one on several
+  // conditions.
+  describe('category rules', () => {
+    const rulesOf = (demoSnapshot: typeof snapshot) =>
+      demoSnapshot.categoryRules.map((rule) => ({
+        rule,
+        matchers: parseRuleMatchers(rule.matchers),
+      }));
+
+    it('holds a rule on a name alone and a rule on several conditions', () => {
+      const matcherCounts = rulesOf(snapshot).map(({ matchers }) => matchers?.length);
+
+      expect(matcherCounts).toEqual([1, 2]);
+      expect(rulesOf(snapshot)[0].matchers).toEqual([{ type: 'nameIs', text: 'Сільпо' }]);
+      expect(rulesOf(snapshot)[1].matchers).toEqual([
+        { type: 'nameIs', text: 'Uklon' },
+        { type: 'amount', operator: 'lt', minorUnits: 100_000, currency: 'UAH' },
+      ]);
+    });
+
+    it('stores each rule as the app does: ids, a seeded category, the anchor for both stamps', () => {
+      const categoryKeys = new Set(snapshot.categories.map((category) => category.key));
+
+      expect(snapshot.categoryRules.map((rule) => rule.id)).toEqual(['rule-1', 'rule-2']);
+
+      for (const rule of snapshot.categoryRules) {
+        expect(categoryKeys.has(rule.category)).toBe(true);
+        expect(rule.createdAt).toBe(ANCHOR);
+        expect(rule.updatedAt).toBe(ANCHOR);
+      }
+    });
+
+    it('holds only rules the rule editor would accept, none a twin of another', () => {
+      const prepared = prepareRules(snapshot.categoryRules);
+
+      expect(prepared.unreadable).toEqual([]);
+      expect(prepared.ordered).toHaveLength(2);
+
+      for (const rule of prepared.ordered) {
+        expect(validateRule(rule.matchers, prepared.ordered, rule.id)).toEqual({ kind: 'valid' });
+      }
+    });
+
+    it.each(['uk', 'en'] as const)(
+      'agrees with the ledger in %s: every row a rule wins already holds that rule category',
+      (language) => {
+        const languageSnapshot = buildDemoSnapshot(buildScreenshotDataset(language, ANCHOR));
+        const prepared = prepareRules(languageSnapshot.categoryRules);
+        const holdingById = new Map(
+          languageSnapshot.holdings.map((holding) => [holding.id, holding]),
+        );
+        const wins = languageSnapshot.transactions.flatMap((transaction) => {
+          const rule = winningRule(
+            prepared,
+            subjectOfStoredRow({
+              ...transaction,
+              currency: holdingById.get(transaction.holdingId)?.currency ?? null,
+            }),
+          );
+
+          return foldMap(maybe(rule), (won) => [{ transaction, rule: won }]) ?? [];
+        });
+
+        // Both rules win rows, so the reviewer sees each one matter in the ledger.
+        expect(new Set(wins.map(({ rule }) => rule.id))).toEqual(new Set(['rule-1', 'rule-2']));
+
+        for (const { transaction, rule } of wins) {
+          expect(transaction.category).toBe(rule.category);
+        }
+      },
+    );
+
+    it('writes the English rules without a Cyrillic letter and the same shape', () => {
+      const english = buildDemoSnapshot(buildScreenshotDataset('en', ANCHOR));
+
+      expect(rulesOf(english).map(({ matchers }) => matchers?.length)).toEqual([1, 2]);
+      expect(rulesOf(english)[0].matchers).toEqual([{ type: 'nameIs', text: 'Silpo' }]);
+    });
   });
 
   it('seeds every category color from the branded-colors migration, matching a real fresh install', () => {
@@ -195,6 +353,6 @@ describe('buildDemoSnapshot', () => {
   });
 
   it('applies the requested language to the settings row', () => {
-    expect(buildDemoSnapshot(buildScreenshotDataset('en')).settings[0].language).toBe('en');
+    expect(buildDemoSnapshot(buildScreenshotDataset('en', ANCHOR)).settings[0].language).toBe('en');
   });
 });

@@ -49,6 +49,20 @@ describe('CardContextMenu', () => {
     expect(onDelete).toHaveBeenCalledTimes(1);
   });
 
+  it('titles the delete confirm with the deleteTitle instead of the named title when one is given', async () => {
+    const { getByText, queryByText } = await render(
+      <CardContextMenu name="Black card" deletable onDelete={jest.fn()} deleteTitle="Delete Rule">
+        <Text>card</Text>
+      </CardContextMenu>,
+      { wrapper: GestureRootWrapper },
+    );
+
+    await holdCard();
+
+    expect(getByText('Delete Rule')).toBeTruthy();
+    expect(queryByText('Delete "Black card"')).toBeNull();
+  });
+
   it('shows the deleteMessage under the delete confirm title when one is given', async () => {
     const { getByText } = await render(
       <CardContextMenu

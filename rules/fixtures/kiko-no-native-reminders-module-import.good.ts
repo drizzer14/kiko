@@ -6,7 +6,8 @@
 // Type-only imports and re-exports are erased by Babel.
 import type { Spec } from '../../src/native-specs/NativeKikoReminders';
 import type NativeModuleInstance from '../../src/native-specs/NativeKikoReminders';
-// biome-ignore format: OVERRIDE(pattern-regex probe) the rule's regex must skip `import` and `type` split by several spaces
+// biome-ignore format: OVERRIDE(pattern-regex probe) the rule's regex must skip `import` and
+// `type` split by several spaces
 import   type { Spec as SpacedSpec } from '../../src/native-specs/NativeKikoReminders';
 
 export type { Spec as ReExportedSpec } from '../../src/native-specs/NativeKikoReminders';

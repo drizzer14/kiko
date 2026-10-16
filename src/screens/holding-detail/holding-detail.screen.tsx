@@ -35,7 +35,6 @@ import { FlatList, Pressable } from 'react-native';
 import { formatMoney } from '@kiko/currency/format';
 import Box from '@kiko/design-system/components/box';
 import { categoriesRepo } from '@kiko/categories/repo';
-import Card from '@kiko/design-system/components/card';
 import Text from '@kiko/design-system/components/text';
 import { activeLocale } from '@kiko/i18n/active-locale';
 import type { Currency } from '@kiko/currency/currency';
@@ -43,6 +42,9 @@ import { useTimeClock } from '@kiko/i18n/use-time-clock';
 import type { PriceBook } from '@kiko/prices/price-book';
 import { transactionsRepo } from '@kiko/transactions/repo';
 import Button from '@kiko/design-system/components/button';
+import LargeTitleHeading, {
+  useLargeTitleScroll,
+} from '@kiko/design-system/components/large-title-heading';
 import { isHoldingType } from '@kiko/holdings/holding-type';
 import { asLoanMeta } from '@kiko/holdings/holding-metadata';
 import { groupByDay } from '@kiko/transactions/group-by-day';
@@ -56,6 +58,7 @@ import { convert, type RateTable } from '@kiko/rates/conversion';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { alertOnCatch } from '@kiko/design-system/alert-on-catch';
 import { holdingIdentity } from '@kiko/holdings/holding-identity';
+import EntryCard from '@kiko/design-system/components/entry-card';
 import { ownershipShareDetailText } from '@kiko/holdings/ownership';
 import { yieldToMaturityText } from '@kiko/bonds/yield-to-maturity';
 import type { AccountsStackParamList } from '@kiko/navigation/types';
@@ -69,6 +72,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { asLots, changedLots, hasNegativeHolding } from '@kiko/holdings/lots';
 import { transactionRowDescription } from '@kiko/transactions/row-description';
 import CardContextMenu from '@kiko/design-system/components/card-context-menu';
+import EntryDateHeader from '@kiko/design-system/components/entry-date-header';
 import EntityHeaderIcon from '@kiko/design-system/components/entity-header-icon';
 import { type BondTerms, holdingRegisterCoupons } from '@kiko/bonds/nbu-register';
 import EntityAmountHeader from '@kiko/design-system/components/entity-amount-header';
@@ -382,6 +386,7 @@ type LedgerRowContext = {
   defaultCategoryKey: string;
   holdingName: string;
   holdingNameById: Map<string, string>;
+  holdingCurrencyById: Map<string, string>;
   onPressTransaction: (transactionId: string) => void;
   // Duplicate this ledger row into a pre-filled create form. Passed for
   // manual rows only (a synced row is not duplicable), stateless via the
@@ -423,6 +428,7 @@ const LedgerRowItem: FC<{ row: LedgerRow; context: LedgerRowContext }> = ({ row,
     defaultCategoryKey,
     holdingName,
     holdingNameById,
+    holdingCurrencyById,
     onPressTransaction,
     onDuplicateTransaction,
     lotActions,
@@ -446,32 +452,18 @@ const LedgerRowItem: FC<{ row: LedgerRow; context: LedgerRowContext }> = ({ row,
       // interest/coupon green, principal movements neutral/by-sign).
       return (
         <LotRowMenu entry={derivedRow.entry} actions={lotActions}>
-          <Card
-            padding={3}
+          <EntryCard
             testID="ledger-row"
+            label={derivedRow.entry.label}
             style={derivedRow.entry.isFuture ? styles.futureRow : undefined}
-          >
-            <Box gap={1}>
-              <Box direction="row" style={styles.rowMain}>
-                <Box style={styles.rowDescription}>
-                  <Text variant="body">{derivedRow.entry.label}</Text>
-                </Box>
-                <Box style={styles.rowAmount}>
-                  <MoneyText
-                    money={Money.of(currency, derivedRow.entry.amountMinorUnits)}
-                    tone={ledgerTone(derivedRow.entry.tone, derivedRow.entry.amountMinorUnits)}
-                  />
-                </Box>
-              </Box>
-              {footerText !== '' && (
-                <Box style={styles.rowFooter}>
-                  <Text variant="caption" tone="textSecondary">
-                    {footerText}
-                  </Text>
-                </Box>
-              )}
-            </Box>
-          </Card>
+            amount={
+              <MoneyText
+                money={Money.of(currency, derivedRow.entry.amountMinorUnits)}
+                tone={ledgerTone(derivedRow.entry.tone, derivedRow.entry.amountMinorUnits)}
+              />
+            }
+            footerLines={[footerText].filter((line) => line !== '')}
+          />
         </LotRowMenu>
       );
     })
@@ -496,6 +488,7 @@ const LedgerRowItem: FC<{ row: LedgerRow; context: LedgerRowContext }> = ({ row,
         transaction: transactionRow.transaction,
         holdingName,
         holdingNameById,
+        holdingCurrencyById,
         t,
       });
 
@@ -534,51 +527,43 @@ const LedgerRowItem: FC<{ row: LedgerRow; context: LedgerRowContext }> = ({ row,
             accessibilityRole="button"
             onPress={() => onPressTransaction(transactionRow.transaction.id)}
           >
-            <Card padding={3} testID="ledger-row">
-              <Box gap={1}>
-                <Box direction="row" style={styles.rowMain}>
-                  <Box direction="row" gap={2} style={styles.rowLead}>
-                    <SymbolIcon
-                      name={category.icon}
-                      size={theme.iconSizes.body}
-                      tone="textSecondary"
-                      color={resolveCategoryColor(category.color, categoryKey)}
-                      accessibilityLabel={category.title}
-                    />
-                    {/* A small "loan payment" marker, uniform with Home's
+            <EntryCard
+              testID="ledger-row"
+              label={description}
+              lead={
+                <>
+                  <SymbolIcon
+                    name={category.icon}
+                    size={theme.iconSizes.body}
+                    tone="textSecondary"
+                    color={resolveCategoryColor(category.color, categoryKey)}
+                    accessibilityLabel={category.title}
+                  />
+
+                  {/* A small "loan payment" marker, uniform with Home's
                       list row — shown regardless of `loanLinkSource` ('auto'
                       or 'manual' read the same marker). No accessibility
                       label: decorative, mirroring `SelectableRow`'s own
                       checkmark glyph — the row's own accessible content
                       already fully describes the transaction. */}
-                    {transactionRow.transaction.loanHoldingId != null && (
-                      <SymbolIcon
-                        name="link"
-                        size={theme.iconSizes.caption}
-                        tone="textSecondary"
-                        testID="ledger-row-loan-link-marker"
-                      />
-                    )}
-                    <Box style={styles.rowDescription}>
-                      <Text variant="body">{description}</Text>
-                    </Box>
-                  </Box>
-                  <Box style={styles.rowAmount}>
-                    <MoneyText
-                      money={Money.of(currency, transactionRow.transaction.amountMinorUnits)}
-                      context="transaction"
+                  {transactionRow.transaction.loanHoldingId != null && (
+                    <SymbolIcon
+                      name="link"
+                      size={theme.iconSizes.caption}
+                      tone="textSecondary"
+                      testID="ledger-row-loan-link-marker"
                     />
-                  </Box>
-                </Box>
-                {showTime && (
-                  <Box style={styles.rowFooter}>
-                    <Text variant="caption" tone="textSecondary">
-                      {formatTime(transactionRow.transaction.time, clock)}
-                    </Text>
-                  </Box>
-                )}
-              </Box>
-            </Card>
+                  )}
+                </>
+              }
+              amount={
+                <MoneyText
+                  money={Money.of(currency, transactionRow.transaction.amountMinorUnits)}
+                  context="transaction"
+                />
+              }
+              footerLines={showTime ? [formatTime(transactionRow.transaction.time, clock)] : []}
+            />
           </Pressable>
         </CardContextMenu>
       );
@@ -749,6 +734,7 @@ const editableAccountId = (holding: HoldingRow | undefined): string | undefined 
 const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }) => {
   const { t } = useTranslation();
   const { theme } = useUnistyles();
+  const headingScrollProps = useLargeTitleScroll();
   const { holdingId, name: initialName } = route.params;
   // `holdingsRepo` exposes no single-row lookup, so the holding's own
   // currency (needed to render each transaction's signed MoneyText) comes
@@ -969,9 +955,15 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
   const holdingName = holding?.name ?? initialName;
   // Counterpart holding names, so an Exchange/Convert leg on this holding reads
   // as "Exchange to/from <the OTHER holding's CURRENT name>" in the active
-  // language — nothing is persisted (see transactions/row-description.ts).
+  // language — nothing is persisted (see src/transactions/row-description/row-description.ts).
   const holdingNameById = useMemo(
     () => new Map(holdings.map((candidate) => [candidate.id, candidate.name])),
+    [holdings],
+  );
+  // With the names, what tells a same-currency leg ("Transfer to") from a
+  // cross-currency one ("Exchange to").
+  const holdingCurrencyById = useMemo(
+    () => new Map(holdings.map((candidate) => [candidate.id, candidate.currency])),
     [holdings],
   );
   // The holding's effective icon + color, rendered as the identity glyph beside
@@ -997,6 +989,7 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
     defaultCategoryKey,
     holdingName,
     holdingNameById,
+    holdingCurrencyById,
     onPressTransaction: (transactionId) =>
       navigation.navigate('TransactionForm', { transactionId }),
     onDuplicateTransaction: (transactionId) =>
@@ -1181,18 +1174,23 @@ const HoldingDetailScreen: FC<HoldingDetailScreenProps> = ({ route, navigation }
         renderItem={({ item }) => (
           <>
             {item.dayTitle !== null && (
-              <Box testID="ledger-day-header" style={styles.sectionHeader}>
-                <Text variant="caption" tone="textSecondary">
-                  {item.dayTitle}
-                </Text>
-              </Box>
+              <EntryDateHeader testID="ledger-day-header" title={item.dayTitle} />
             )}
 
             <LedgerRowItem row={item.row} context={rowContext} />
           </>
         )}
-        ListHeaderComponent={ledgerReadyView.headerComponent}
+        // The full title, when it is too long for the native large title, is the first thing in
+        // the list; it also shows while the ledger loads, since the title is known from the route.
+        ListHeaderComponent={
+          <>
+            <LargeTitleHeading />
+
+            {ledgerReadyView.headerComponent}
+          </>
+        }
         ListEmptyComponent={ledgerReadyView.emptyComponent}
+        {...headingScrollProps}
         // The list owns the scrolling under the native large title, so it — not
         // Screen's ScrollView — must carry the automatic content-inset
         // adjustment that seats content below the expanded large title (Screen
@@ -1236,16 +1234,6 @@ const styles = StyleSheet.create((theme) => ({
     paddingBottom: theme.spacing(4) + bottomClearance,
     gap: theme.spacing(2),
   }),
-  // A date separator heading each day group in the ledger, mirroring the Home
-  // transaction list's day header (home.styles.ts `sectionHeader`): a generous
-  // top pad gives each date label clear separation above it (stacked on the
-  // content container's `spacing(2)` gap between cells), and a small bottom pad
-  // seats the day's first row close beneath the label — the same "generous top,
-  // tight bottom" rhythm Home uses.
-  sectionHeader: {
-    paddingTop: theme.spacing(3),
-    paddingBottom: theme.spacing(1),
-  },
   // The ledger's own empty state (`home.screen.tsx`'s
   // `ListEmptyComponent` pattern) — a plain centered caption below the
   // "Transactions" heading, replacing a bare heading with nothing beneath it
@@ -1264,39 +1252,6 @@ const styles = StyleSheet.create((theme) => ({
   // layout itself now lives in the shared `SummaryTable`.
   breakdown: {
     marginTop: theme.spacing(3),
-  },
-  // The primary line of a transaction row: description on the left, amount on
-  // the right, split by space-between.
-  rowMain: {
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  // The leading cluster of a transaction row: category icon + description, kept
-  // together on the left so the row's space-between only splits this cluster
-  // from the amount. `flex: 1` bounds it to the space left of the amount; top-
-  // aligned so the icon sticks to the first line of a wrapping title.
-  rowLead: {
-    flex: 1,
-    alignItems: 'flex-start',
-  },
-  // The description cell: `flex: 1` lets a long title wrap onto multiple lines
-  // within the bounded row instead of pushing the amount off-screen.
-  rowDescription: {
-    flex: 1,
-    marginRight: theme.spacing(3),
-  },
-  // The trailing amount cell: never shrinks, so the amount stays fully visible
-  // no matter how long the description grows.
-  rowAmount: {
-    flexShrink: 0,
-  },
-  // The row's secondary line: the timestamp caption pinned to the right so it
-  // sits BELOW the value column instead of left-aligned under the description —
-  // mirroring the Home row's `rowFooter` (home.styles.ts), where the time is
-  // bottom-right of the row. Here the caption is the only footer content, so a
-  // right-aligned self is enough (no space-between split needed).
-  rowFooter: {
-    alignSelf: 'flex-end',
   },
 }));
 

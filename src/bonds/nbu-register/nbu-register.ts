@@ -204,7 +204,7 @@ const nextCouponPct = (
  * Maps one register row to `BondTerms`:
  * `nominal` -> `faceValueMinorUnits` through `Money.fromMajor` (an amount,
  * not a scaled decimal-string price/quantity, so no `decimalFromJsonNumber`
- * step is needed — the same parity every other P0 amount conversion
+ * step is needed — the same parity every other amount conversion
  * follows). A row with an unmodeled `val_code` or an unparseable
  * `pgs_date` is dropped rather than throwing, mirroring `nbu-metals.ts`'s
  * `toCurrentRate`.

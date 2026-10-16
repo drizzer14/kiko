@@ -4,7 +4,26 @@ import {
   asMetalMeta,
   asPropertyMeta,
   asTermDepositMeta,
-  binanceHistoryCursorOf,
+  BINANCE_EARN_HISTORY_CURSOR_FIELD,
+  BINANCE_EARN_PENDING_OVERLAP_FIELD,
+  BINANCE_EARN_POINT_CURSOR_FIELD,
+  BINANCE_EARN_RANGE_CURSOR_FIELD,
+  BINANCE_EARN_RESCAN_CURSOR_FIELD,
+  BINANCE_EARN_SPAN_HINTS_FIELD,
+  BINANCE_TRANSFER_HISTORY_CURSOR_FIELD,
+  BINANCE_TRANSFER_PENDING_OVERLAP_FIELD,
+  BINANCE_TRANSFER_POINT_CURSOR_FIELD,
+  BINANCE_TRANSFER_RESCAN_CURSOR_FIELD,
+  binanceWalkCursorFields,
+  binanceWalkCursorOf,
+  binanceWalkPendingFields,
+  binanceWalkPendingOf,
+  binanceWalkPointCursorFields,
+  binanceWalkPointCursorOf,
+  binanceWalkRangeCursorFields,
+  binanceWalkRangeCursorOf,
+  binanceWalkSpanHintFields,
+  binanceWalkSpanHintsOf,
   loanKinds,
   loanKindOf,
   loanSchedules,
@@ -313,21 +332,6 @@ describe('syncedAtOf', () => {
   });
 });
 
-describe('binanceHistoryCursorOf', () => {
-  it('reads a finite binanceHistoryCursor timestamp', () => {
-    expect(
-      binanceHistoryCursorOf({ binanceAsset: 'BTC', binanceHistoryCursor: 1_704_326_400_000 }),
-    ).toBe(1_704_326_400_000);
-  });
-
-  it('returns null when absent, non-numeric, or not an object', () => {
-    expect(binanceHistoryCursorOf({ binanceAsset: 'BTC' })).toBeNull();
-    expect(binanceHistoryCursorOf({ binanceHistoryCursor: 'yesterday' })).toBeNull();
-    expect(binanceHistoryCursorOf({ binanceHistoryCursor: Number.NaN })).toBeNull();
-    expect(binanceHistoryCursorOf(null)).toBeNull();
-  });
-});
-
 describe('withWalkOwnedMetadataCarried', () => {
   it('carries a walk-owned key from the stored metadata onto the target', () => {
     const target = { binanceAsset: 'BTC', syncedAt: 2_000 };
@@ -418,6 +422,615 @@ describe('withWalkOwnedMetadataResetToFloor', () => {
   it('returns undefined for null or non-object metadata', () => {
     expect(withWalkOwnedMetadataResetToFloor(null, 100)).toBeUndefined();
     expect(withWalkOwnedMetadataResetToFloor('not-an-object', 100)).toBeUndefined();
+  });
+});
+
+describe('the Binance walk cursors', () => {
+  const allCursors = {
+    binanceHistoryCursor: 1_000,
+    binanceHistoryRescanCursor: 1_500,
+    binancePayHistoryCursor: 2_000,
+    binancePayRescanCursor: 2_500,
+    binanceTransferHistoryCursor: 3_000,
+    binanceTransferRescanCursor: 3_500,
+    binanceEarnHistoryCursor: 4_000,
+    binanceEarnRescanCursor: 4_500,
+  };
+
+  it('lists the cursor and re-scan field of the capital, Pay, Transfer and Earn walks in walk order', () => {
+    expect(binanceWalkCursorFields).toEqual([
+      'binanceHistoryCursor',
+      'binanceHistoryRescanCursor',
+      'binancePayHistoryCursor',
+      'binancePayRescanCursor',
+      'binanceTransferHistoryCursor',
+      'binanceTransferRescanCursor',
+      'binanceEarnHistoryCursor',
+      'binanceEarnRescanCursor',
+    ]);
+  });
+
+  it('exports the Transfer cursor and re-scan field names the walk stores them under', () => {
+    expect(BINANCE_TRANSFER_HISTORY_CURSOR_FIELD).toBe('binanceTransferHistoryCursor');
+    expect(BINANCE_TRANSFER_RESCAN_CURSOR_FIELD).toBe('binanceTransferRescanCursor');
+    expect(BINANCE_TRANSFER_PENDING_OVERLAP_FIELD).toBe('binanceTransferPendingOverlap');
+    expect(BINANCE_TRANSFER_POINT_CURSOR_FIELD).toBe('binanceTransferPointCursor');
+  });
+
+  it('exports the six field names the Earn walk stores its marks under', () => {
+    expect(BINANCE_EARN_HISTORY_CURSOR_FIELD).toBe('binanceEarnHistoryCursor');
+    expect(BINANCE_EARN_RESCAN_CURSOR_FIELD).toBe('binanceEarnRescanCursor');
+    expect(BINANCE_EARN_PENDING_OVERLAP_FIELD).toBe('binanceEarnPendingOverlap');
+    expect(BINANCE_EARN_POINT_CURSOR_FIELD).toBe('binanceEarnPointCursor');
+    expect(BINANCE_EARN_RANGE_CURSOR_FIELD).toBe('binanceEarnRangeCursor');
+    expect(BINANCE_EARN_SPAN_HINTS_FIELD).toBe('binanceEarnSpanHints');
+  });
+
+  it('reads each field on its own, null when absent or not a finite number', () => {
+    for (const field of binanceWalkCursorFields) {
+      expect(binanceWalkCursorOf(field, { [field]: 5_000 })).toBe(5_000);
+      expect(binanceWalkCursorOf(field, { [field]: 'soon' })).toBeNull();
+      expect(binanceWalkCursorOf(field, { [field]: Number.NaN })).toBeNull();
+      expect(binanceWalkCursorOf(field, { binanceAsset: 'BTC' })).toBeNull();
+      expect(binanceWalkCursorOf(field, null)).toBeNull();
+    }
+
+    expect(binanceWalkCursorOf('binancePayHistoryCursor', allCursors)).toBe(2_000);
+  });
+
+  it('are all carried over a balance-sync metadata write', () => {
+    const target = { binanceAsset: 'BTC', syncedAt: 9_000 };
+
+    expect(withWalkOwnedMetadataCarried(target, { binanceAsset: 'BTC', ...allCursors })).toEqual({
+      binanceAsset: 'BTC',
+      syncedAt: 9_000,
+      ...allCursors,
+    });
+  });
+
+  it('are all reset to the floor on disconnect, while statementFromMs is not', () => {
+    const stored = { binanceAsset: 'BTC', ...allCursors, statementFromMs: 700 };
+
+    expect(withWalkOwnedMetadataResetToFloor(stored, 100)).toEqual({
+      binanceAsset: 'BTC',
+      binanceHistoryCursor: 100,
+      binanceHistoryRescanCursor: 100,
+      binancePayHistoryCursor: 100,
+      binancePayRescanCursor: 100,
+      binanceTransferHistoryCursor: 100,
+      binanceTransferRescanCursor: 100,
+      binanceEarnHistoryCursor: 100,
+      binanceEarnRescanCursor: 100,
+      statementFromMs: 700,
+    });
+  });
+
+  it('resets a cursor a holding carries even when it carries only one of the new ones', () => {
+    expect(
+      withWalkOwnedMetadataResetToFloor(
+        { binanceAsset: 'BTC', binanceEarnHistoryCursor: 4_000 },
+        100,
+      ),
+    ).toEqual({ binanceAsset: 'BTC', binanceEarnHistoryCursor: 100 });
+  });
+});
+
+describe('the Binance pending overlap lists', () => {
+  const range = { start: 1_000, end: 2_000 };
+
+  it('lists the capital, Pay, Transfer and Earn fields', () => {
+    expect(binanceWalkPendingFields).toEqual([
+      'binanceHistoryPendingOverlap',
+      'binancePayPendingOverlap',
+      'binanceTransferPendingOverlap',
+      'binanceEarnPendingOverlap',
+    ]);
+  });
+
+  it('reads each stored list on its own', () => {
+    for (const field of binanceWalkPendingFields) {
+      expect(binanceWalkPendingOf(field, { [field]: [range, { start: 5, end: 9 }] })).toEqual([
+        range,
+        { start: 5, end: 9 },
+      ]);
+      expect(binanceWalkPendingOf(field, { [field]: [] })).toEqual([]);
+    }
+
+    expect(
+      binanceWalkPendingOf('binancePayPendingOverlap', { binanceHistoryPendingOverlap: [range] }),
+    ).toEqual([]);
+  });
+
+  it('reads an entry with no kind as a range, and one tagged "point" as a point', () => {
+    const point = { start: 999, end: 1_001, kind: 'point' };
+
+    expect(
+      binanceWalkPendingOf('binancePayPendingOverlap', {
+        binancePayPendingOverlap: [range, point],
+      }),
+    ).toEqual([range, point]);
+  });
+
+  it('round-trips the series of a point, the one series its record was read in', () => {
+    const typed = { start: 999, end: 1_001, kind: 'point', series: 'MAIN_FUNDING' };
+
+    expect(
+      binanceWalkPendingOf('binanceTransferPendingOverlap', {
+        binanceTransferPendingOverlap: [range, typed],
+      }),
+    ).toEqual([range, typed]);
+  });
+
+  it('reads a point with no series as a point with none', () => {
+    const point = { start: 999, end: 1_001, kind: 'point' };
+
+    expect(
+      binanceWalkPendingOf('binanceTransferPendingOverlap', {
+        binanceTransferPendingOverlap: [point],
+      }),
+    ).toEqual([point]);
+  });
+
+  it('round-trips the series of a range, the one series it is owed in', () => {
+    const owedInOne = { start: 1_000, end: 2_000, series: 'MAIN_FUNDING' };
+
+    expect(
+      binanceWalkPendingOf('binanceTransferPendingOverlap', {
+        binanceTransferPendingOverlap: [range, owedInOne],
+      }),
+    ).toEqual([range, owedInOne]);
+  });
+
+  it.each([
+    ['a range with an empty series', { start: 1_000, end: 2_000, series: '' }],
+    ['a range with a blank series', { start: 1_000, end: 2_000, series: '  ' }],
+    ['a range whose series is not text', { start: 1_000, end: 2_000, series: 7 }],
+    ['a range whose series is null', { start: 1_000, end: 2_000, series: null }],
+    ['a point with an empty series', { start: 999, end: 1_001, kind: 'point', series: '' }],
+    ['a point with a blank series', { start: 999, end: 1_001, kind: 'point', series: '  ' }],
+    ['a point whose series is not text', { start: 999, end: 1_001, kind: 'point', series: 7 }],
+    ['a point whose series is null', { start: 999, end: 1_001, kind: 'point', series: null }],
+  ])('is undefined for a stored value with %s', (_label, entry) => {
+    expect(
+      binanceWalkPendingOf('binanceTransferPendingOverlap', {
+        binanceTransferPendingOverlap: [entry],
+      }),
+    ).toBeUndefined();
+  });
+
+  it('reads a short entry with no kind as a range: only the tag makes a point', () => {
+    const sliver = { start: 1_000, end: 1_002 };
+
+    expect(
+      binanceWalkPendingOf('binancePayPendingOverlap', { binancePayPendingOverlap: [sliver] }),
+    ).toEqual([sliver]);
+  });
+
+  it('is an empty list when the key is absent or the metadata is not an object', () => {
+    expect(binanceWalkPendingOf('binancePayPendingOverlap', { binanceAsset: 'BTC' })).toEqual([]);
+    expect(binanceWalkPendingOf('binancePayPendingOverlap', null)).toEqual([]);
+    expect(binanceWalkPendingOf('binancePayPendingOverlap', 'not-an-object')).toEqual([]);
+  });
+
+  it.each([
+    ['not a list', { start: 1, end: 2 }],
+    ['a list of numbers', [1_000, 2_000]],
+    ['an entry with a missing end', [{ start: 1_000 }]],
+    ['a text bound', [{ start: '1000', end: 2_000 }]],
+    ['a non-finite bound', [{ start: Number.NaN, end: 2_000 }]],
+    ['an empty range', [{ start: 2_000, end: 2_000 }]],
+    ['a backwards range', [{ start: 3_000, end: 2_000 }]],
+    ['one good and one bad entry', [range, { start: 'x', end: 1 }]],
+    ['an entry of an unknown kind', [{ start: 1_000, end: 2_000, kind: 'range' }]],
+    ['an entry whose kind is not text', [{ start: 1_000, end: 2_000, kind: 1 }]],
+    ['a point that is empty', [{ start: 2_000, end: 2_000, kind: 'point' }]],
+  ])('is undefined for a stored value that is %s', (_label, value) => {
+    expect(
+      binanceWalkPendingOf('binancePayPendingOverlap', { binancePayPendingOverlap: value }),
+    ).toBe(undefined);
+  });
+
+  it('are carried over a balance-sync metadata write', () => {
+    const target = { binanceAsset: 'BTC', syncedAt: 9_000 };
+    const typedPoint = { start: 5, end: 7, kind: 'point', series: 'MAIN_FUNDING' };
+    const stored = {
+      binanceAsset: 'BTC',
+      binanceHistoryPendingOverlap: [range],
+      binancePayPendingOverlap: [],
+      binanceTransferPendingOverlap: [typedPoint],
+    };
+
+    expect(withWalkOwnedMetadataCarried(target, stored)).toEqual({
+      binanceAsset: 'BTC',
+      syncedAt: 9_000,
+      binanceHistoryPendingOverlap: [range],
+      binancePayPendingOverlap: [],
+      binanceTransferPendingOverlap: [typedPoint],
+    });
+  });
+
+  it('are reset to an empty list on disconnect, beside the cursors reset to the floor', () => {
+    const stored = {
+      binanceAsset: 'BTC',
+      binancePayHistoryCursor: 2_000,
+      binancePayPendingOverlap: [range],
+      binanceHistoryPendingOverlap: [range],
+      binanceTransferPendingOverlap: [{ start: 5, end: 7, kind: 'point', series: 'MAIN_FUNDING' }],
+    };
+
+    expect(withWalkOwnedMetadataResetToFloor(stored, 100)).toEqual({
+      binanceAsset: 'BTC',
+      binancePayHistoryCursor: 100,
+      binancePayPendingOverlap: [],
+      binanceHistoryPendingOverlap: [],
+      binanceTransferPendingOverlap: [],
+    });
+  });
+
+  it('are reset when a holding carries a list and no cursor', () => {
+    expect(
+      withWalkOwnedMetadataResetToFloor(
+        { binanceAsset: 'BTC', binanceHistoryPendingOverlap: [range] },
+        100,
+      ),
+    ).toEqual({ binanceAsset: 'BTC', binanceHistoryPendingOverlap: [] });
+  });
+});
+
+describe('the Binance point cursors', () => {
+  it('lists the capital, Pay, Transfer and Earn fields', () => {
+    expect(binanceWalkPointCursorFields).toEqual([
+      'binanceHistoryPointCursor',
+      'binancePayPointCursor',
+      'binanceTransferPointCursor',
+      'binanceEarnPointCursor',
+    ]);
+  });
+
+  it('reads each stored cursor on its own', () => {
+    for (const field of binanceWalkPointCursorFields) {
+      expect(binanceWalkPointCursorOf(field, { [field]: 5_000 })).toBe(5_000);
+    }
+
+    expect(
+      binanceWalkPointCursorOf('binancePayPointCursor', { binanceHistoryPointCursor: 5_000 }),
+    ).toBeNull();
+  });
+
+  it('is null when the key is absent or the metadata is not an object', () => {
+    expect(binanceWalkPointCursorOf('binancePayPointCursor', { binanceAsset: 'BTC' })).toBeNull();
+    expect(binanceWalkPointCursorOf('binancePayPointCursor', null)).toBeNull();
+    expect(binanceWalkPointCursorOf('binancePayPointCursor', 'not-an-object')).toBeNull();
+  });
+
+  it.each([
+    ['text', '5000'],
+    ['not a finite number', Number.NaN],
+    ['null', null],
+    ['a list', [5_000]],
+  ])('is undefined for a stored value that is %s', (_label, value) => {
+    expect(
+      binanceWalkPointCursorOf('binancePayPointCursor', { binancePayPointCursor: value }),
+    ).toBeUndefined();
+  });
+
+  it('are carried over a balance-sync metadata write', () => {
+    const stored = {
+      binanceAsset: 'BTC',
+      binanceHistoryPointCursor: 7,
+      binancePayPointCursor: 9,
+      binanceTransferPointCursor: 11,
+    };
+
+    expect(withWalkOwnedMetadataCarried({ binanceAsset: 'BTC', syncedAt: 1 }, stored)).toEqual({
+      binanceAsset: 'BTC',
+      syncedAt: 1,
+      binanceHistoryPointCursor: 7,
+      binancePayPointCursor: 9,
+      binanceTransferPointCursor: 11,
+    });
+  });
+
+  it('are dropped on disconnect, beside the cursors reset to the floor', () => {
+    const stored = {
+      binanceAsset: 'BTC',
+      binancePayHistoryCursor: 2_000,
+      binancePayPointCursor: 9,
+      binanceHistoryPointCursor: 7,
+      binanceTransferPointCursor: 11,
+    };
+
+    expect(withWalkOwnedMetadataResetToFloor(stored, 100)).toEqual({
+      binanceAsset: 'BTC',
+      binancePayHistoryCursor: 100,
+    });
+  });
+
+  it('are dropped when a holding carries a point cursor and nothing else of the walk', () => {
+    expect(
+      withWalkOwnedMetadataResetToFloor({ binanceAsset: 'BTC', binancePayPointCursor: 9 }, 100),
+    ).toEqual({ binanceAsset: 'BTC' });
+  });
+});
+
+describe('the Binance range cursors', () => {
+  it('lists the capital, Pay, Transfer and Earn fields', () => {
+    expect(binanceWalkRangeCursorFields).toEqual([
+      'binanceHistoryRangeCursor',
+      'binancePayRangeCursor',
+      'binanceTransferRangeCursor',
+      'binanceEarnRangeCursor',
+    ]);
+  });
+
+  it('reads each stored cursor on its own', () => {
+    for (const field of binanceWalkRangeCursorFields) {
+      expect(binanceWalkRangeCursorOf(field, { [field]: 5_000 })).toBe(5_000);
+    }
+
+    expect(
+      binanceWalkRangeCursorOf('binancePayRangeCursor', { binanceHistoryRangeCursor: 5_000 }),
+    ).toBeNull();
+  });
+
+  it('is null when the key is absent or the metadata is not an object', () => {
+    expect(binanceWalkRangeCursorOf('binancePayRangeCursor', { binanceAsset: 'BTC' })).toBeNull();
+    expect(binanceWalkRangeCursorOf('binancePayRangeCursor', null)).toBeNull();
+    expect(binanceWalkRangeCursorOf('binancePayRangeCursor', 'not-an-object')).toBeNull();
+  });
+
+  it.each([
+    ['text', '5000'],
+    ['not a finite number', Number.NaN],
+    ['null', null],
+    ['a list', [5_000]],
+  ])('is undefined for a stored value that is %s', (_label, value) => {
+    expect(
+      binanceWalkRangeCursorOf('binancePayRangeCursor', { binancePayRangeCursor: value }),
+    ).toBeUndefined();
+  });
+
+  it('are carried over a balance-sync metadata write', () => {
+    const stored = {
+      binanceAsset: 'BTC',
+      binanceHistoryRangeCursor: 7,
+      binancePayRangeCursor: 9,
+      binanceTransferRangeCursor: 11,
+    };
+
+    expect(withWalkOwnedMetadataCarried({ binanceAsset: 'BTC', syncedAt: 1 }, stored)).toEqual({
+      binanceAsset: 'BTC',
+      syncedAt: 1,
+      binanceHistoryRangeCursor: 7,
+      binancePayRangeCursor: 9,
+      binanceTransferRangeCursor: 11,
+    });
+  });
+
+  it('are dropped on disconnect, beside the cursors reset to the floor', () => {
+    const stored = {
+      binanceAsset: 'BTC',
+      binancePayHistoryCursor: 2_000,
+      binancePayRangeCursor: 9,
+      binanceHistoryRangeCursor: 7,
+      binanceTransferRangeCursor: 11,
+    };
+
+    expect(withWalkOwnedMetadataResetToFloor(stored, 100)).toEqual({
+      binanceAsset: 'BTC',
+      binancePayHistoryCursor: 100,
+    });
+  });
+
+  it('are dropped when a holding carries a range cursor and nothing else of the walk', () => {
+    expect(
+      withWalkOwnedMetadataResetToFloor({ binanceAsset: 'BTC', binancePayRangeCursor: 9 }, 100),
+    ).toEqual({ binanceAsset: 'BTC' });
+  });
+});
+
+describe('the Binance span hints', () => {
+  const none = { forward: [], pending: [], rescan: [], point: [] };
+  const hints = {
+    forward: [{ start: 100, end: 150 }],
+    pending: [
+      { start: 200, end: 220 },
+      { start: 300, end: 301 },
+    ],
+    rescan: [],
+    point: [{ start: 400, end: 402 }],
+  };
+
+  it('lists the capital, Pay, Transfer and Earn fields', () => {
+    expect(binanceWalkSpanHintFields).toEqual([
+      'binanceHistorySpanHints',
+      'binancePaySpanHints',
+      'binanceTransferSpanHints',
+      'binanceEarnSpanHints',
+    ]);
+  });
+
+  it('reads each stored value on its own', () => {
+    for (const field of binanceWalkSpanHintFields) {
+      expect(binanceWalkSpanHintsOf(field, { [field]: hints })).toEqual(hints);
+    }
+
+    expect(
+      binanceWalkSpanHintsOf('binancePaySpanHints', { binanceHistorySpanHints: hints }),
+    ).toEqual(none);
+  });
+
+  it('is no hint at all when the key is absent or the metadata is not an object', () => {
+    expect(binanceWalkSpanHintsOf('binancePaySpanHints', { binanceAsset: 'BTC' })).toEqual(none);
+    expect(binanceWalkSpanHintsOf('binancePaySpanHints', null)).toEqual(none);
+    expect(binanceWalkSpanHintsOf('binancePaySpanHints', 'not-an-object')).toEqual(none);
+  });
+
+  it('reads a pass left out as no hint for it', () => {
+    expect(
+      binanceWalkSpanHintsOf('binancePaySpanHints', {
+        binancePaySpanHints: { rescan: [{ start: 1, end: 2 }] },
+      }),
+    ).toEqual({ ...none, rescan: [{ start: 1, end: 2 }] });
+  });
+
+  it.each([
+    ['text', 'x'],
+    ['null', null],
+    ['a list', [{ start: 1, end: 2 }]],
+    ['a pass that is no list', { ...hints, forward: { start: 1, end: 2 } }],
+    ['an entry that is no object', { ...hints, point: [5] }],
+    ['an entry with a text start', { ...hints, point: [{ start: '1', end: 2 }] }],
+    ['an entry with no end', { ...hints, point: [{ start: 1 }] }],
+    [
+      'an entry with a start that is not a finite number',
+      { ...hints, forward: [{ start: Number.NaN, end: 2 }] },
+    ],
+    ['an entry that ends where it starts', { ...hints, forward: [{ start: 2, end: 2 }] }],
+    ['an entry that ends before it starts', { ...hints, forward: [{ start: 3, end: 2 }] }],
+  ])('is undefined for a stored value that is %s', (_label, value) => {
+    expect(
+      binanceWalkSpanHintsOf('binancePaySpanHints', { binancePaySpanHints: value }),
+    ).toBeUndefined();
+  });
+
+  describe('the resume of a point window', () => {
+    const resume = {
+      from: 401,
+      returned: [{ start: 400, end: 402, kind: 'point', series: 'MAIN_FUNDING' }],
+      stuck: [
+        { start: 400, end: 402, kind: 'point' },
+        { start: 390, end: 410 },
+      ],
+      series: ['MAIN_FUNDING', 'FUNDING_MAIN'],
+    };
+    const resumed = { ...hints, point: [{ start: 400, end: 450, resume }] };
+    const read = (stored: unknown) =>
+      binanceWalkSpanHintsOf('binancePaySpanHints', { binancePaySpanHints: stored });
+
+    it('is read with the points a record returned and the ground a record left owed', () => {
+      expect(read(resumed)).toEqual(resumed);
+    });
+
+    it('is read with no series for a walk that reads one series', () => {
+      const { series: _series, ...single } = resume;
+      const stored = { ...hints, point: [{ start: 400, end: 450, resume: single }] };
+
+      expect(read(stored)).toEqual(stored);
+    });
+
+    it('is dropped from a hint of any other pass, which keeps its span', () => {
+      expect(
+        read({
+          forward: [{ start: 1, end: 5, resume }],
+          pending: [{ start: 2, end: 6, resume }],
+          rescan: [{ start: 3, end: 7, resume }],
+          point: [],
+        }),
+      ).toEqual({
+        forward: [{ start: 1, end: 5 }],
+        pending: [{ start: 2, end: 6 }],
+        rescan: [{ start: 3, end: 7 }],
+        point: [],
+      });
+    });
+
+    it.each([
+      ['a resume that is no object', 'x'],
+      ['a resume that starts at a text', { ...resume, from: '401' }],
+      ['a resume that starts before its window', { ...resume, from: 399 }],
+      ['a resume that starts where its span ends', { ...resume, from: 450 }],
+      ['a resume that starts after its span ends', { ...resume, from: 451 }],
+      ['a resume with no list of returned points', { ...resume, returned: undefined }],
+      ['a resume whose returned points are no list', { ...resume, returned: 'x' }],
+      ['a resume with a returned point that is no range', { ...resume, returned: [{ start: 1 }] }],
+      ['a resume with no list of stuck ground', { ...resume, stuck: undefined }],
+      [
+        'a resume with a stuck entry of kind other than a point',
+        {
+          ...resume,
+          stuck: [{ start: 1, end: 2, kind: 'range' }],
+        },
+      ],
+      ['a resume whose series are no list', { ...resume, series: 'MAIN_FUNDING' }],
+      ['a resume with an empty list of series', { ...resume, series: [] }],
+      ['a resume with a series that is blank', { ...resume, series: [' '] }],
+    ])('makes the stored value undefined for %s', (_label, bad) => {
+      expect(read({ ...hints, point: [{ start: 400, end: 450, resume: bad }] })).toBeUndefined();
+    });
+  });
+
+  it('are carried over a balance-sync metadata write', () => {
+    const stored = {
+      binanceAsset: 'BTC',
+      binanceHistorySpanHints: hints,
+      binancePaySpanHints: none,
+      binanceTransferSpanHints: hints,
+    };
+
+    expect(withWalkOwnedMetadataCarried({ binanceAsset: 'BTC', syncedAt: 1 }, stored)).toEqual({
+      ...stored,
+      syncedAt: 1,
+    });
+  });
+
+  it('are dropped on disconnect, beside the cursors reset to the floor', () => {
+    const stored = {
+      binanceAsset: 'BTC',
+      binancePayHistoryCursor: 2_000,
+      binanceHistorySpanHints: hints,
+      binancePaySpanHints: hints,
+      binanceTransferSpanHints: hints,
+    };
+
+    expect(withWalkOwnedMetadataResetToFloor(stored, 100)).toEqual({
+      binanceAsset: 'BTC',
+      binancePayHistoryCursor: 100,
+    });
+  });
+
+  it('are dropped when a holding carries hints and nothing else of the walk', () => {
+    expect(
+      withWalkOwnedMetadataResetToFloor({ binanceAsset: 'BTC', binancePaySpanHints: hints }, 100),
+    ).toEqual({ binanceAsset: 'BTC' });
+  });
+});
+
+describe('the six keys of the Binance Earn walk', () => {
+  const point = { start: 5, end: 7, kind: 'point', series: 'flexibleRewards' };
+  const hints = { forward: [], pending: [{ start: 200, end: 220 }], rescan: [], point: [] };
+  const stored = {
+    binanceAsset: 'BTC',
+    binanceEarnHistoryCursor: 4_000,
+    binanceEarnRescanCursor: 3_000,
+    binanceEarnPendingOverlap: [point],
+    binanceEarnPointCursor: 6,
+    binanceEarnRangeCursor: 9,
+    binanceEarnSpanHints: hints,
+  };
+
+  it('are carried over a balance-sync metadata write', () => {
+    expect(withWalkOwnedMetadataCarried({ binanceAsset: 'BTC', syncedAt: 1 }, stored)).toEqual({
+      ...stored,
+      syncedAt: 1,
+    });
+  });
+
+  it('are reset on disconnect: the cursors to the floor, the list to empty, the round-robin marks and the hints dropped', () => {
+    expect(withWalkOwnedMetadataResetToFloor(stored, 100)).toEqual({
+      binanceAsset: 'BTC',
+      binanceEarnHistoryCursor: 100,
+      binanceEarnRescanCursor: 100,
+      binanceEarnPendingOverlap: [],
+    });
+  });
+
+  it('are read as the other walks read theirs: a list with a point of a kind, a cursor, a number, the hints', () => {
+    expect(binanceWalkPendingOf(BINANCE_EARN_PENDING_OVERLAP_FIELD, stored)).toEqual([point]);
+    expect(binanceWalkPointCursorOf(BINANCE_EARN_POINT_CURSOR_FIELD, stored)).toBe(6);
+    expect(binanceWalkRangeCursorOf(BINANCE_EARN_RANGE_CURSOR_FIELD, stored)).toBe(9);
+    expect(binanceWalkSpanHintsOf(BINANCE_EARN_SPAN_HINTS_FIELD, stored)).toEqual(hints);
+    expect(binanceWalkCursorOf(BINANCE_EARN_RESCAN_CURSOR_FIELD, stored)).toBe(3_000);
   });
 });
 

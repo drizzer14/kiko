@@ -57,8 +57,8 @@ jest.mock('@kiko/transactions/repo', () => ({
 jest.mock('@kiko/categories/repo', () => ({
   categoriesRepo: { allQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }) },
 }));
-jest.mock('@kiko/categories/category-overrides-repo', () => ({
-  categoryOverridesRepo: { allQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }) },
+jest.mock('@kiko/categories/category-rules-repo', () => ({
+  categoryRulesRepo: { allQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }) },
 }));
 jest.mock('@kiko/accounts/accounts.repo', () => ({
   accountsRepo: {

@@ -20,6 +20,8 @@ import { runSync } from '@kiko/monobank/sync';
 import { applyAllMigrations } from '@kiko/test-support/real-sqlite';
 import type { MonobankAccount, MonobankStatementItem } from '@kiko/monobank/monobank-types';
 
+import { EXPORT_VERSION } from '../crypto/envelope';
+
 import { readDataSnapshot } from './read-snapshot';
 import { restoreDataSnapshot } from './restore-snapshot';
 
@@ -97,7 +99,7 @@ const restoredFromBackup = async (): Promise<void> => {
   const snapshot = await readDataSnapshot();
 
   mockDatabase = openDatabase();
-  await restoreDataSnapshot(snapshot);
+  await restoreDataSnapshot(snapshot, EXPORT_VERSION);
 };
 
 const syncOnce = () =>

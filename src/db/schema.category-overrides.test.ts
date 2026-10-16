@@ -99,9 +99,10 @@ describe('transaction-hold migration', () => {
 });
 
 // The ten categories `0002_seed_categories.sql` seeds carry a null
-// `color`, so the chart layer's `categoryColor` hash (`statistics/category-
-// breakdown.ts`) is what actually colors them — and over these exact ten keys
-// that hash collapses to five hues (four categories render an identical blue).
+// `color`, so the chart layer's `categoryColor` hash
+// (`statistics/category-breakdown/category-breakdown.ts`) is what actually
+// colors them — and over these exact ten keys that hash collapses to five
+// hues (four categories render an identical blue).
 // `resolveCategoryColor` prefers a STORED color over the hash, so this
 // data-only migration fills one in for eight of the ten keys, only where
 // still NULL — `utilities` and `entertainment` are intentionally left

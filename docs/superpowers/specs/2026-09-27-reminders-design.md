@@ -24,7 +24,7 @@ Status: implemented on branch reminders (tasks 1/5-5/5); smart skip amended in R
 - Re-schedule all pending requests on every app launch/foreground (reboot/update/time-zone behavior is not documented by Apple; 64 pending-request limit per app; one repeating request counts once).
 - Storage: new additive migration; reminder rules in a new `reminders` table, one row per (account, kind) — no global reminder; two nullable `settings` columns hold non-rule state (offer dismissals, notifications-deliverable-since); settingsRepo-style repo. Mind the op-sqlite single queue on app open.
 - No aps-environment entitlement, no UIBackgroundModes needed for local notifications. Check PrivacyInfo.xcprivacy if UserDefaults is used in the native module.
-- Compliance: 2.5.4 (local notifications allowed), 2.5.16 (content relates to app), 4.5.4, 5.1.2(i) (never required); 5.6: the Reminders UI ships visible, no flag gating.
+- Compliance: 2.5.4 (local notifications allowed), 2.5.16 (content relates to app), 4.5.4, 5.1.2(i) (never required); 2.3.1(a): the Reminders UI ships visible, no flag gating.
 - Contextual offer: shown only when the account has no reminder yet; one-time and dismissible per account (a dismissal is remembered, so the offer never repeats as nagging); it is an in-app, non-modal prompt, never a notification; it opens that account's reminder page prefilled with the matching type (import or add transactions).
 
 ## Known limits

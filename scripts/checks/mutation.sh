@@ -6,18 +6,30 @@
 # tailable progress log under the out-of-repo per-worktree state dir and prints
 # the exact `tail -f` command to watch it, and (b) prints an ETA derived from the
 # history of past completed runs: a PER-MUTANT rate (seconds/mutant) times this
-# run's actual mutant count, printed LIVE the moment Stryker reports that count
-# (see the harness_mutation_* helpers in _lib.sh). This exists so a human can watch a multi-minute run
-# directly — AGENTS must still NOT poll/tail it. The run's EXIT CODE is the only
+# run's actual mutant count, printed LIVE the moment Stryker reports that count, and split into
+# normal and timed-out mutants (a timeout costs far more) from the per-file history, with an
+# update at every 10% of the run when a timeout cost is known (see the harness_mutation_* helpers
+# in _lib.sh). This exists so
+# a human can watch a multi-minute
+# run directly — AGENTS must still NOT poll/tail it. The run's EXIT CODE is the only
 # signal an agent waits on (0 = pass, 2 = fail); the log and ETA are for the
 # human. None of the progress/ETA/history code may change the pass/fail result:
 # every new step is guarded and a corrupt history just means "no estimate".
 #
-# `--list` prints the files this run would mutate and their count, then exits
-# (2 above the cap) without Stryker, so a change set is sized with the gate's
-# own filter instead of a hand count. It needs no Stryker binary and takes no
-# lock, since it never starts a run. Any other argument exits 2. A changed file whose diff is
-# only comments or whitespace is left out of the list (and printed as `skipped (comment-only)`).
+# The run mutates the CHANGED LINES of the changed source files (the lines the branch added,
+# passed to Stryker as `path:start-end` entries), not the whole files.
+#
+# `--list` prints the files this run would mutate with their changed-line ranges, the sum of
+# changed lines, the file count, and the share of those files' mutants that timed out in earlier
+# runs, then exits (2 above the cap) without Stryker, so a change set is sized with the gate's own
+# filter instead of a hand count. It needs no Stryker binary and
+# takes no lock, since it never starts a run. Any other argument exits 2. A changed file whose
+# diff is only comments or whitespace is left out of the list (and printed as `skipped
+# (comment-only)`, whatever its colocated test changed: a test weakened beside a comment-only
+# source edit is not mutation-checked here), and so is one with no added line (`skipped (no
+# added lines)`). A `warning:` line follows `changed lines:` when the count is far above what the
+# branch's own commits added (a merged track is counted as this branch's change); it is advice
+# and changes no exit code.
 set -uo pipefail
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=/dev/null
@@ -70,6 +82,28 @@ fi
 # workers, which drove machine load to 152 on one occasion. If a LIVE run
 # already holds the lock, FAIL FAST (exit 2) — do not block or silently queue.
 # A stale lock (holder process gone) is reclaimed automatically.
+lock=""
+lock_held=0
+ranges_stderr=""
+
+# One cleanup for normal exit, INT, and TERM, so a killed run strands neither the machine-wide lock
+# nor the changed-line reader's stderr file. It forgets what it removed, so the EXIT trap that
+# follows an INT/TERM handler never removes a lock another run has taken in between. The traps
+# come before the first mktemp, in --list mode too.
+cleanup() {
+  if [ "$lock_held" -eq 1 ]; then
+    harness_unlock "$lock"
+    lock_held=0
+  fi
+  if [ -n "$ranges_stderr" ]; then
+    rm -f "$ranges_stderr"
+    ranges_stderr=""
+  fi
+}
+trap cleanup EXIT
+trap 'cleanup; exit 130' INT
+trap 'cleanup; exit 143' TERM
+
 if [ "$list" -eq 0 ]; then
   lock="$(harness_global_lock_dir)"
   mkdir -p "$(dirname "$lock")" 2>/dev/null || true
@@ -83,12 +117,7 @@ if [ "$list" -eq 0 ]; then
       "Do not start a second mutation run in parallel. Wait for the active one to finish."
     exit 2
   fi
-  # Release the global lock on normal exit AND on INT/TERM, so a killed run never
-  # strands the machine-wide lock. harness_unlock (rm -rf) is idempotent, so the
-  # EXIT trap re-firing after an INT/TERM handler is harmless.
-  trap 'harness_unlock "$lock"' EXIT
-  trap 'harness_unlock "$lock"; exit 130' INT
-  trap 'harness_unlock "$lock"; exit 143' TERM
+  lock_held=1
 fi
 
 # A whole-release mutation run took 10 h 16 min and produced no result, so a run
@@ -148,7 +177,11 @@ fi
 # Both git diffs below set core.quotePath=false: by default git prints a path with non-ASCII
 # bytes as a quoted, escaped string, which would miss every test-name pattern and filter.
 # An unreadable file list must never count as "nothing to mutate".
-if ! diff_names="$(git -C "$ROOT" -c core.quotePath=false diff --name-only --diff-filter=d "$merge_base" HEAD -- '*.ts' '*.tsx' 2>/dev/null)"; then
+#
+# --find-renames is explicit here and on the line diff below, so a user's diff.renames config
+# cannot flip the result: a moved file must read as a move (only its edited lines are mutated),
+# never as a new file mutated whole.
+if ! diff_names="$(git -C "$ROOT" -c core.quotePath=false diff --name-only --find-renames --diff-filter=d "$merge_base" HEAD -- '*.ts' '*.tsx' 2>/dev/null)"; then
   print_block \
     "Stryker (mutation testing)" \
     "Could not list the files changed since the merge-base with $base." \
@@ -169,31 +202,12 @@ changed="$(printf '%s\n' "$diff_names" | mutable_source_files)"
 # $changed, so a stray line cannot drop a file that was not a candidate. The arguments are
 # built only for a non-empty list: an empty array is an unbound variable in bash 3.2.
 #
-# A comment-only source file is still KEPT when a changed test file beside it (same folder:
-# foo.test.ts(x) or foo.<anything>.test.ts(x) for foo.ts(x)) is not itself comment-only: a test
-# weakened together with a comment edit must still be mutated. A comment-only test edit cannot
-# weaken a test. The test files come from their own diff (--no-renames, deletions included), and
-# a deleted, new, or unparsable one is never printed by the script, so it counts as a real change.
-# If that diff fails, nothing is skipped.
+# A source file the script proved comment-only mutates NOTHING, whatever its colocated test did: a
+# comment holds no mutant, so there is nothing to mutate in it. The cost: a test weakened beside a
+# comment-only source edit is not mutation-checked by this gate (make verify still runs that
+# test).
 newline=$'\n'
 skipped_report=""
-kept_report=""
-
-# Prints the changed test files of $test_names that sit beside the source file $1.
-colocated_tests() {
-  local stem="${1%.*}" test_name
-  while IFS= read -r test_name; do
-    case "$test_name" in
-      "$stem".test.ts | "$stem".test.tsx) printf '%s\n' "$test_name" ;;
-      "$stem".*.test.ts | "$stem".*.test.tsx)
-        case "${test_name#"$stem"}" in
-          */*) ;;
-          *) printf '%s\n' "$test_name" ;;
-        esac
-        ;;
-    esac
-  done < <(printf '%s\n' "$test_names")
-}
 
 # True when $1 is a line of $comment_only, the script's proved-comment-only list.
 proved_comment_only() {
@@ -204,56 +218,197 @@ proved_comment_only() {
 }
 
 if [ -n "$changed" ]; then
-  comment_only=""
-  if test_names="$(git -C "$ROOT" -c core.quotePath=false diff --name-only --no-renames "$merge_base" HEAD -- '*.test.ts' '*.test.tsx' 2>/dev/null)"; then
-    candidate_arguments=()
-    while IFS= read -r candidate; do
-      [ -n "$candidate" ] || continue
-      candidate_arguments+=("$candidate")
-      while IFS= read -r test_name; do
-        [ -n "$test_name" ] && candidate_arguments+=("$test_name")
-      done < <(colocated_tests "$candidate")
-    done < <(printf '%s\n' "$changed")
+  candidate_arguments=()
+  while IFS= read -r candidate; do
+    [ -n "$candidate" ] && candidate_arguments+=("$candidate")
+  done < <(printf '%s\n' "$changed")
 
-    comment_only="$(node "$DIR/comment-only-changes.js" "$merge_base" "${candidate_arguments[@]}" 2>/dev/null)" || comment_only=""
-  fi
+  comment_only="$(node "$DIR/comment-only-changes.js" "$merge_base" "${candidate_arguments[@]}" 2>/dev/null)" || comment_only=""
 
   kept=""
   while IFS= read -r candidate; do
     [ -n "$candidate" ] || continue
-    test_changed=0
-    while IFS= read -r test_name; do
-      [ -n "$test_name" ] || continue
-      proved_comment_only "$test_name" || test_changed=1
-    done < <(colocated_tests "$candidate")
-
-    if ! proved_comment_only "$candidate"; then
-      kept="${kept:+$kept$newline}$candidate"
-    elif [ "$test_changed" -eq 1 ]; then
-      kept="${kept:+$kept$newline}$candidate"
-      kept_report="${kept_report}kept (colocated test changed): ${candidate}${newline}"
-    else
+    if proved_comment_only "$candidate"; then
       skipped_report="${skipped_report}skipped (comment-only): ${candidate}${newline}"
+    else
+      kept="${kept:+$kept$newline}$candidate"
     fi
   done < <(printf '%s\n' "$changed")
   changed="$kept"
 fi
 
+# CHANGED LINES. The kept files are mutated on the lines this branch ADDED, not whole: a one-line
+# edit of a big file once cost a whole-file run. Stryker takes `path:start-end` entries in
+# --mutate (1-based, end inclusive). mutation-ranges.js reads them from one zero-context diff over
+# the SAME tree-wide pathspec as the name list above, never a per-file pathspec: that would hide a
+# moved file's old path, so the move would read as a new file and be mutated whole.
+#
+# Never hand Stryker a plain path and a range for the same file: it reads that as "do not mutate".
+# So a file is only ever its ranges. A file with no added line (a pure deletion or a pure move)
+# has nothing to mutate and leaves the list, like a comment-only one. A path with a glob
+# character is refused: Stryker can read it as a pattern, not as a literal file.
+# A diff or a script that fails is a block and exit 2: never fall back to whole files.
+# --inter-hunk-context=0 keeps a user's diff.interHunkContext from merging hunks, which would add
+# unchanged context lines to a hunk.
+norange_report=""
+entries=""
+list_report=""
+# One `path<TAB>changed lines` row per file to mutate, for the timeout share.
+file_weights=""
+changed_lines=0
+if [ -n "$changed" ]; then
+  range_paths=()
+  while IFS= read -r candidate; do
+    [ -n "$candidate" ] || continue
+    case "$candidate" in
+      *'['* | *'('* | *'*'* | *'?'* | *'{'*)
+        print_block \
+          "Stryker (mutation testing)" \
+          "A changed source file has a glob character in its path: $candidate" \
+          "Stryker checks each --mutate entry with new Minimatch(entry).hasMagic() (options-validator.js) and can read a path with one of [ ( * ? { as a pattern, not a literal file or a path:start-end range. The gate refuses these characters up front rather than guess how Stryker will read one." \
+          "A file Stryker cannot resolve would be graded n/a and the gate would pass without any mutant run on it." \
+          "Rename the file, or exclude it in mutable_source_files in mutation.sh when it needs no mutation, then re-run: npm run check:mutation" \
+          "Do not pass the path anyway, and do not drop it from the list by hand."
+        exit 2
+        ;;
+    esac
+    range_paths+=("$candidate")
+  done < <(printf '%s\n' "$changed")
+
+  # --text and --no-textconv: a file git reads as binary (a NUL byte, or a -diff/binary attribute)
+  # prints no hunk, and a textconv driver numbers the hunks of the converted text, so neither may
+  # decide which lines changed. GIT_DIFF_OPTS= for the same reason: a context width set there
+  # outranks the zero-context option, and the ranges would then include unchanged lines.
+  if ! line_diff="$(GIT_DIFF_OPTS= git -C "$ROOT" -c core.quotePath=false diff -U0 --text --no-textconv --inter-hunk-context=0 --find-renames --no-color --no-ext-diff --src-prefix=a/ --dst-prefix=b/ "$merge_base" HEAD -- '*.ts' '*.tsx' 2>/dev/null)"; then
+    print_block \
+      "Stryker (mutation testing)" \
+      "Could not read the changed lines since the merge-base with $base." \
+      "git diff -U0 $merge_base HEAD failed in $ROOT." \
+      "Without the changed lines the gate cannot say what to mutate, and it must never fall back to whole files or to nothing." \
+      "Check that the repository can read commit $merge_base, then re-run: npm run check:mutation" \
+      "Do not start Stryker directly to skip the cap."
+    exit 2
+  fi
+
+  # The script's stderr goes to its own file and is shown only in the failure block: a warning on
+  # stderr (a Node deprecation, say) beside an exit 0 must not read as a path line of its stdout.
+  if ! ranges_stderr="$(mktemp "${TMPDIR:-/tmp}/kiko-mutation-ranges.XXXXXX")"; then
+    print_block \
+      "Stryker (mutation testing)" \
+      "Could not create a temporary file for the changed-line reader." \
+      "mktemp failed under ${TMPDIR:-/tmp}." \
+      "Without the reader's output the gate cannot say what to mutate, and it must never fall back to whole files or to nothing." \
+      "Free space or fix the permissions of ${TMPDIR:-/tmp}, then re-run: npm run check:mutation" \
+      "Do not start Stryker directly to skip the cap."
+    exit 2
+  fi
+  if ! range_lines="$(printf '%s\n' "$line_diff" | node "$DIR/mutation-ranges.js" "${range_paths[@]}" 2>"$ranges_stderr")"; then
+    ranges_error="$(cat "$ranges_stderr")"
+    rm -f "$ranges_stderr"
+    print_block \
+      "Stryker (mutation testing)" \
+      "mutation-ranges.js could not read the changed lines of the changed source files." \
+      "$ranges_error" \
+      "A changed file must appear in the diff it came from; one that does not means the diff or the parse is broken, and guessing its lines would mutate the wrong code or none." \
+      "Read the output above, fix the cause, and re-run: npm run check:mutation" \
+      "Do not fall back to mutating whole files."
+    exit 2
+  fi
+  rm -f "$ranges_stderr"
+
+  tab=$'\t'
+  ranged=""
+  while IFS= read -r range_line; do
+    [ -n "$range_line" ] || continue
+    candidate="${range_line%%"$tab"*}"
+    field="${range_line#*"$tab"}"
+    if [ -z "$field" ]; then
+      norange_report="${norange_report}skipped (no added lines): ${candidate}${newline}"
+    else
+      ranged="${ranged:+$ranged$newline}$candidate"
+      file_lines=0
+      old_ifs="$IFS"
+      IFS=','
+      for range in $field; do
+        entries="${entries:+$entries$newline}$candidate:$range"
+        file_lines=$((file_lines + ${range#*-} - ${range%-*} + 1))
+      done
+      IFS="$old_ifs"
+      file_weights="${file_weights}${candidate}${tab}${file_lines}${newline}"
+      changed_lines=$((changed_lines + file_lines))
+      list_report="${list_report}${candidate} ${field} (${file_lines} changed lines)${newline}"
+    fi
+  done < <(printf '%s\n' "$range_lines")
+  changed="$ranged"
+fi
+
 file_count="$(printf '%s\n' "$changed" | grep -c . || true)"
+
+# Prints "<percent> <files with a share> <files>", the line-weighted share of mutants that
+# timed out in earlier runs of the files about to be mutated, or nothing when no file has one.
+timeout_share() {
+  printf '%s' "$file_weights" \
+    | harness_mutation_timeout_share "$(harness_mutation_files_file "$ROOT")" "$(harness_mutation_history_file "$ROOT")"
+}
+
+# Prints the lines the listed files gained in this branch's own commits: the first-parent chain
+# without its merge commits, so a track merged into the branch adds nothing. A line added and
+# removed again counts twice, which can only hide a warning, never raise a false one. Prints
+# nothing when git cannot say.
+own_added_lines() {
+  git -C "$ROOT" -c core.quotePath=false log --first-parent --no-merges --no-renames --format= --numstat "$merge_base..HEAD" -- '*.ts' '*.tsx' 2> /dev/null \
+    | LISTED="$file_weights" awk -F'\t' '
+        BEGIN {
+          count = split(ENVIRON["LISTED"], rows, "\n")
+          for (position = 1; position <= count; position++) {
+            split(rows[position], parts, "\t")
+            if (parts[1] != "") listed[parts[1]] = 1
+          }
+        }
+        $1 ~ /^[0-9]+$/ && ($3 in listed) { sum += $1 }
+        END { print sum + 0 }
+      '
+}
+
+# The branch's diff against the base counts every merged-in line as changed, which sizes a gate
+# for a whole merged track. Warns when the count is above both 1.5 x and +50 of what the branch
+# added itself. The line starts with `warning:`, so job-queue's `^changed lines: [0-9]+$` parse
+# never reads it.
+warn_over_count() {
+  local own_lines
+  own_lines="$(own_added_lines)" || return 0
+  [ -n "$own_lines" ] || return 0
+  [ "$changed_lines" -gt $((own_lines + 50)) ] || return 0
+  [ $((changed_lines * 2)) -gt $((own_lines * 3)) ] || return 0
+  printf 'warning: %s changed lines, but this branch added only %s of them itself (first-parent commits); a merged track is counted: set KIKO_MUTATION_BASE to the merged tip (harness-workflow "Mutation base after a track merged next")\n' "$changed_lines" "$own_lines"
+}
+
 if [ "$list" -eq 1 ]; then
-  [ -n "$changed" ] && printf '%s\n' "$changed"
-  printf '%s%s' "$skipped_report" "$kept_report"
+  printf '%s%s%s' "$list_report" "$skipped_report" "$norange_report"
+  printf 'changed lines: %s\n' "$changed_lines"
+  warn_over_count
   printf 'mutable files: %s (cap %s)\n' "$file_count" "$MUTATION_FILE_CAP"
+  share="$(timeout_share)"
+  if [ -n "$share" ]; then
+    share_rest="${share#* }"
+    printf 'timeout share (history): %s%% (%s of %s files)\n' "${share%% *}" "${share_rest%% *}" "${share_rest#* }"
+  else
+    printf 'timeout share (history): none\n'
+  fi
 else
-  printf '%s%s' "$skipped_report" "$kept_report"
+  printf '%s%s' "$skipped_report" "$norange_report"
 fi
 if [ -z "$changed" ]; then
-  # Nothing to mutate: the branch changed no mutable source file, or only comment/whitespace in
-  # the ones it changed. Pass.
-  [ -n "$skipped_report" ] && printf 'nothing to mutate: every changed source file is comment-only.\n'
+  # Nothing to mutate: the branch changed no mutable source file, or only comment/whitespace or
+  # removed lines in the ones it changed. Pass.
+  if [ -n "$norange_report" ]; then
+    printf 'nothing to mutate: no changed source file has added lines.\n'
+  elif [ -n "$skipped_report" ]; then
+    printf 'nothing to mutate: every changed source file is comment-only.\n'
+  fi
   exit 0
 fi
-csv="$(printf '%s' "$changed" | tr '\n' ',')"
+csv="$(printf '%s' "$entries" | tr '\n' ',')"
 mutate_arg="--mutate=${csv%,}"
 
 if [ "$file_count" -gt "$MUTATION_FILE_CAP" ]; then
@@ -304,26 +459,47 @@ rate="$(harness_mutation_rate "$hist")"
 if [ -z "$rate" ]; then
   printf 'No mutation history yet — no estimate available.\n'
 else
-  printf 'Estimated time prints once Stryker reports the mutant count (~%ss/mutant from history).\n' "$rate"
+  printf 'Estimated time prints once Stryker reports the mutant count (~%ss/mutant from history), then an update at every 10%% of the run when a timeout cost is known.\n' "$rate"
 fi
 printf 'Watch live progress:  tail -f %s\n' "$log"
+
+# The costs of a normal and of a timed-out mutant (the fit; empty when there is none), the share
+# of mutants expected to time out, and the two stryker.conf.json settings that bound a timeout's
+# cost. Every one is empty when unknown, and the filter reads an empty one as unknown. A missing
+# or unreadable config just leaves the floor out. The share the history rate already contains is
+# for the fallback, which takes it out of the normal cost so a timeout is not counted twice.
+fit="$(harness_mutation_costs "$hist")"
+fit_normal="${fit%% *}"
+fit_slow="${fit#* }"
+share="$(timeout_share)"
+history_share="$(harness_mutation_run_share "$hist")"
+stryker_limits="$(node -e '
+  const config = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
+  const integer = (value, fallback) => (Number.isInteger(value) && value >= 0 ? value : fallback);
+  process.stdout.write(`${integer(config.timeoutMS, 5000)} ${integer(config.concurrency, "")}`);
+' "$ROOT/stryker.conf.json" 2>/dev/null || true)"
 
 # A report left by an earlier run must never be mistaken for THIS run's: remove
 # it so a Stryker that writes none is caught by the missing-report check below.
 rm -f "$MUTATION_REPORT"
 
 start="$(date +%s 2>/dev/null || printf '0')"
-"$BIN" run "$mutate_arg" 2>&1 | tee "$log" | harness_mutation_eta_filter "$rate"
+"$BIN" run "$mutate_arg" 2>&1 | tee "$log" \
+  | harness_mutation_eta_filter "$rate" "$fit_normal" "$fit_slow" "${share%% *}" "${stryker_limits%% *}" "${stryker_limits#* }" "$history_share"
 code="${PIPESTATUS[0]}"
 end="$(date +%s 2>/dev/null || printf '0')"
 out="$(cat "$log" 2>/dev/null || true)"
 dur=$((end - start))
 [ "$dur" -ge 0 ] 2>/dev/null || dur=0
 
-# Best-effort parse of the mutant count (the denominator of Stryker's progress
-# "N/M tested" counter) and the overall mutation score from the captured output.
-# A parse failure yields an empty string and NEVER aborts the run.
-count="$(printf '%s' "$out" | grep -Eo '[0-9]+/[0-9]+' | tail -1 | sed 's:.*/::' 2>/dev/null || true)"
+# Best-effort parse of the counts on Stryker's LAST progress line (mutants = the denominator of
+# its "N/M tested" counter, then tested and timed out) and of the overall mutation score from
+# the captured output. A parse failure yields an empty string and NEVER aborts the run.
+counts="$(harness_mutation_run_counts 2>/dev/null < "$log" || true)"
+count="${counts%% *}"
+counts_rest="${counts#* }"
+tested="${counts_rest%% *}"
+timed_out="${counts_rest#* }"
 score="$(printf '%s' "$out" | grep -Eio 'mutation score[^0-9]*[0-9]+(\.[0-9]+)?' | grep -Eo '[0-9]+(\.[0-9]+)?' | tail -1 2>/dev/null || true)"
 [ -n "$count" ] && printf 'Mutants: %s\n' "$count"
 
@@ -369,7 +545,7 @@ esac
 # failing it. A backward clock jump mid-run can yield dur=0; a 0s record would
 # drag the rolling ETA average toward zero, so only a strictly-positive
 # duration is ever recorded. This never changes the gate's exit code.
-[ "$dur" -gt 0 ] && harness_mutation_history_append "$ROOT" "$iso" "$dur" "$count" "$score"
+[ "$dur" -gt 0 ] && harness_mutation_history_append "$ROOT" "$iso" "$dur" "$count" "$score" "$tested" "$timed_out"
 
 if [ "$code" -eq 1 ]; then
   # Stryker's OWN break threshold (stryker.conf.json's thresholds.break: 60)
@@ -401,23 +577,27 @@ if [ ! -f "$MUTATION_REPORT" ]; then
   exit 2
 fi
 
-# $changed is a newline-separated list (bash 3.2-safe: no mapfile), expanded
-# into one argv entry per file for mutation-score.js.
+# $entries is a newline-separated list (bash 3.2-safe: no mapfile), expanded
+# into one argv entry per --mutate entry for mutation-score.js, so the scorer's scope check
+# compares the report with the exact entries Stryker was given.
 file_arguments=()
 while IFS= read -r changed_file; do
   [ -n "$changed_file" ] && file_arguments+=("$changed_file")
-done < <(printf '%s\n' "$changed")
+done < <(printf '%s\n' "$entries")
 
 score_out="$(node "$DIR/mutation-score.js" "$MUTATION_REPORT" "${file_arguments[@]}" 2>&1)"
 score_code=$?
 printf '%s\n' "$score_out"
+# The scorer's rows feed the per-file timeout history whichever way the gate goes; this reads
+# its output after the fact and never feeds it or changes $score_code.
+printf '%s\n' "$score_out" | harness_mutation_files_append "$ROOT" "$iso"
 if [ "$score_code" -ne 0 ]; then
   print_block \
     "Stryker (mutation testing)" \
     "The CHANGE SET's own mutation score failed the gate (the thresholds are on the GATE line)." \
     "$score_out" \
-    "A surviving mutant in the files THIS change set touched means its own tests would not catch a real regression there — the number that matters for this review, not the whole accumulated report. A report whose recorded scope differs from this change set's files fails too, because it cannot vouch for them." \
-    "Add a real assertion that fails when the mutated code is wrong, or (only for a declaration-only file with no behavioral branch) add it to the exclusion allowlist in mutation-score.js with a concrete reason, and mirror it in docs/harness/documented-exceptions.md. Re-run: npm run check:mutation" \
+    "A surviving mutant in the files THIS change set touched means its own tests would not catch a real regression there — the number that matters for this review, not the whole accumulated report. A report whose recorded scope differs from this change set's files fails too, because it cannot vouch for them. A TIMEOUT-HEAVY file (its timeouts are over the share of its detected mutants, named on the GATE line) fails whatever the totals say: a mutant that times out on jest's related-test load proves nothing about the file's tests." \
+    "Add a real assertion that fails when the mutated code is wrong, or (only for a declaration-only file with no behavioral branch) add it to the exclusion allowlist in mutation-score.js with a concrete reason, and mirror it in docs/harness/documented-exceptions.md. For a TIMEOUT-HEAVY file: prove each timed-out mutant in plain jest (apply the replacement, run the file's own test, see it fail, revert) or write it in the BATCH READY as equivalent; the gate keeps failing for that file, so the BATCH READY carries the failed gate with the proofs; never raise the timeout. Re-run: npm run check:mutation" \
     "Do not delete the failing mutant's test, and do not add a file to the exclusion allowlist without a concrete, verifiable reason (see CLAUDE.md's Override protocol)."
   exit 2
 fi

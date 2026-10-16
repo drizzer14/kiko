@@ -21,8 +21,9 @@ import type { DateRangeFieldProps } from './date-range-field.props';
 // `startingDay`/`endingDay` round the span's two ends. `selected: true` is
 // always set (every day this builds a mark for IS the selection) — without
 // it, react-native-calendars' PeriodDay never applies `selectedDayTextColor`
-// to the label (see calendar/day/period/index.js: the on-accent text color
-// only comes from `marking.selected`, not from the fill color alone), so a
+// to the label (see react-native-calendars/src/calendar/day/period/index.js: the
+// on-accent text color only comes from `marking.selected`, not from the fill
+// color alone), so a
 // day that is both today and inside the range keeps `todayTextColor`
 // (accent-blue) over the accent-blue fill — invisible. Marking `selected`
 // makes that same accent-on-accent day fall back to the on-accent contrast

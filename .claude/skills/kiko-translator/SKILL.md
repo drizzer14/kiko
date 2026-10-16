@@ -14,20 +14,12 @@ is live on the tree.
 ## Never persist a display string — resolve with `t` at render time
 
 A transaction/holding row stores data, never a rendered label. The
-exchange-leg bug (T-6) is the cautionary case:
-`recordExchange`/`recordExchangeCounterpart` in
-`src/transactions/` write a literal English
-`description` (`` `Exchange to ${name}` ``) straight into the row — a
-later language switch can never fix a row already written that way.
-The correct pattern already exists in the codebase for this exact
-shape: `defaultTransactionDescription`
-(`src/transactions/`) takes a `TFunction` and resolves the
-label on every call, re-evaluating against whatever language is active
-now. Give a structural marker (a category key or a shared correlation
-id) to anything that today gets its "what is this row" answer baked
-into a persisted description, and resolve the label the same way
-`defaultTransactionDescription` does — never write the resolved string
-to a column. The same rule applies to a placeholder like "Never" for
+exchange-leg bug (T-6) is the cautionary case: a persisted 'Exchange to <name>'
+stayed English after a language switch and went stale after a rename. The fix:
+the row stores a structural marker (`exchangeCounterpartHoldingId`,
+`untrackedCounterpart`) and `transactionRowDescription`
+(`src/transactions/row-description/`) resolves the label with `t` at render
+time (see kiko-domain 'Exchange/Convert legs'). The same rule applies to a placeholder like "Never" for
 last-sync (T-17, `src/screens/account-detail/format-last-sync.ts`): add
 a catalogue key and thread `t` through, don't hardcode the fallback.
 
@@ -107,6 +99,11 @@ string ('дн.', 'days') reads wrong at 1, 2-4 and 21 in Ukrainian.
 Abbreviated units ('г', '%', 'шт.', 'міс.') do not decline and stay single
 keys (read `forms.units` in `src/i18n/locales/uk.ts` for the current set).
 
+**An error message that states a count is a plural key.** For example the
+allowed decimals: `t('...', { count })` takes `count` from the error value
+(the currency's digits), never from typed input. English defines all four
+forms (`_one`/`_few`/`_many`/`_other`) for parity with Ukrainian.
+
 **Ukrainian `_other` is the FRACTION form only.** `Intl.PluralRules('uk')`
 gives 'other' only for non-integers (for example 1.5 -> 'дня'). A
 whole-number field never reaches it. For "no number" (an empty field),
@@ -140,6 +137,21 @@ on a plural proves nothing about the device.
 loads a fresh i18n; add a case there for a new plural key or language, and
 never assert device plural behavior with `new Intl.PluralRules(...)` in a
 test (the shipped-locales test uses Node's only as the CLDR oracle).
+
+### A string moved into a shared component changes namespace
+
+A string moved into a shared design-system component moves to that
+component's own `components.<component>.*` namespace in en and uk in the
+same commit, never left under another component's namespace.
+
+Mechanized for a literal key in the component's own folder tree by
+`kiko-component-i18n-namespace` (`scripts/checks/component-i18n-namespace.js`,
+`npm run check:component-i18n-namespace`, no override). The scope includes the
+component's test files, so a component test that reads a composed child's key
+is flagged too: move that assertion to the child's own test. Still manual
+review: a computed namespace, i18next's key-prefix and object-return options, an imported key
+constant, string concatenation, and a design-system component reading a
+SCREEN namespace.
 
 ### A plural key is always called with `count`
 
@@ -220,6 +232,10 @@ string:
   `en.casing-by-role.test.ts` for en and in `uk.casing.test.ts` for uk
   — read them there, add a new name to the right one). A uk word
   missing from the uk `PROPER_NOUNS` is forced lowercase mid-sentence.
+  Untracked-wallet product names (`UNTRACKED_WALLETS`,
+  `src/transactions/untracked-counterpart/`) are kept out of the i18n
+  catalogue: code-side proper nouns; only the 'Transfer to/from {{name}}'
+  sentence (`transactions.transferTo`/`transactions.transferFrom`) is translated.
   uk writes the network name with a capital in every case form. It is a
   proper noun beside Monobank and Binance. The uk `PROPER_NOUNS` holds
   «Біткоїн» and «Біткоїна» today; add any other case form you use (for
@@ -239,7 +255,7 @@ The exception is a CLOSED list: only the three Settings-tab ROOT rows
 `src/i18n/locales/title-keys.ts`) are Title Case in en and read exactly
 like their nav titles, by user ruling 2026-10-08; uk stays sentence case
 with the row label equal to its title. Counter-example: the Help TOPIC
-rows (`help.topics.*.rowLabel`, `SettingsRows` in `help.screen.tsx` that
+rows (`help.topics.*.rowLabel`, `SettingsRow` in `help.screen.tsx` that
 also open a screen) stay sentence case ("Add an account" vs title "Add an
 Account"). It is not a rule for every row that opens a screen.
 
@@ -280,7 +296,10 @@ template) fails until it is listed in exactly one allowlist:
 `sheetTitle` prop, which needs no `HEADING_PROPS` entry), or
 `UNCHECKED_HEADING_SITES` (a reason: user-entered names, a month/year, a
 bank brand name). A new component that renders a prop as a heading goes
-into `HEADING_PROPS`. Every picker sheet (`SelectField` and its wrappers,
+into `HEADING_PROPS`. A component prop that forwards a heading into a
+`ConfirmSheet` title (`CardContextMenu` `deleteTitle`) goes into both
+`HEADING_PROPS` and `FORWARDED_HEADING_SITES` of that test, and its key
+into `TITLE_KEYS`; read the test for the current entries. Every picker sheet (`SelectField` and its wrappers,
 `DateField`, `TimeField`, `CategoryField`, `BankTypeField`,
 `HoldingSelectField`, `PaymentHoldingField`/`LoanPaymentField`,
 `CurrencyField`, `FilterMenu`, `ColumnSelectField`) takes a REQUIRED
@@ -319,11 +338,23 @@ strings in `src/i18n/locales/en.ts`): `emptyStates.*` title is sentence case wit
 message is a full sentence with "."; `accountDetail.emptyHoldings` (title and message)
 follows the same rule; there are no `tips.*` keys (the
 tips were removed by user ruling); `help.title` and `help.rowLabel` read
-"Help" in en and «Довідка» in uk; `help.*`
-topic titles are Title Case and listed in `TITLE_KEYS`
+"Help" in en and «Довідка» in uk; `help.topics.*` titles and
+`help.groups.*.title` are Title Case and listed in `TITLE_KEYS`
 (`src/i18n/locales/title-keys.ts`), the help steps are sentence case
-with ".". The numbered step keys are quoted (`'1'`..`'5'`) because
-i18next `ParseKeys` rejects a numeric property name.
+with ".". The numbered step keys are quoted (`'1'`, `'2'`, …; the count
+varies per topic, read `en.ts` `help.topics.*`) because i18next
+`ParseKeys` rejects a numeric property name.
+
+Every "…" (en) / «…» (uk) quote in a help step must be a real catalogue
+string outside `help.topics.*` that some screen shows as visible text,
+pinned in `src/help/help-topics.test.ts` (a label only an accessibility
+prop renders does not count; the Home FAB "+" is the one literal
+exception). The pin proves existence and visibility somewhere, NOT that
+the label shows on that screen in that state (edit-only labels, other
+screens): the writer checks each claim against the rendering code and the
+reviewer checks each label at its screen and state. Casing allowance:
+`src/i18n/locales/en.casing-by-role.test.ts` accepts a "…" span only when
+it exactly equals a `TITLE_KEYS` en value.
 
 The mechanized invariant lives in
 `src/i18n/locales/en.final-stop-by-role.test.ts` (checks both `en` and
@@ -400,9 +431,9 @@ needs for correct thousands/decimal punctuation (`uk-UA` groups
 at a `formatMoney` call site — always go through `activeLocale()` so a
 language switch changes number formatting everywhere at once.
 
-## Ukrainian catalogue rules — apostrophe and the app name
+## Ukrainian catalogue rules
 
-Two `uk.ts` rules, enforced at runtime by
+These `uk.ts` rules, enforced at runtime by
 `src/i18n/locales/uk.catalog-rules.test.ts` over every nested string
 value (not the source text, so a template literal or a computed value
 is caught too):
@@ -412,6 +443,12 @@ is caught too):
 - The app name in `uk` strings is always the Cyrillic "Кіко", never
   the Latin "Kiko". English strings keep "Kiko" — this rule applies to
   `uk.ts` only.
+- A tap is asked with «натиснути» only, never торкнутися, тапнути,
+  тицьнути or клацнути; `OTHER_TAP_VERB` in the same test file enforces it.
+- A uk help topic title is the noun form («Додавання рахунку», «Облік
+  кредиту»), pinned by `TOPIC_TITLES` in `src/help/help-topics.test.ts`.
+- A long press is «Утримуйте»; `OTHER_LONG_PRESS_VERB` in
+  `src/i18n/locales/uk.catalog-rules.test.ts` rejects the other verbs (read the regex there).
 
 ## A list of names is quoted name by name, through `common.listedName`
 

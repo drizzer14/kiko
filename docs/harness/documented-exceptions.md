@@ -159,6 +159,34 @@ verified usage, not dead weight:
   scope. Revisit or remove this exception if the two charts' structure
   ever diverges enough that the duplication is no longer a deliberate
   mirror.
+- **Tracked debt, not an ignore: `check:dup` size-limit warning**
+  (`scripts/checks/dup.sh`, dated 2026-10-11). jscpd 4.3.0 skips a file over
+  1000 lines or 100kb without a word, so the blocking run never measured the
+  large files. `dup.sh` now runs a second, NON-blocking pass: it measures each
+  skipped file ALONE with the limits raised and prints a `WARNING` on stderr
+  (exit code unchanged) for every file over the 5% threshold. No file is
+  allowlisted and the threshold is not raised: the files listed below are measured
+  debt that each warning names (the `dup.sh` warning output is the live list). Measured 2026-10-11 at base `7fc680a5`:
+  `home.screen.test.tsx` 38.24%, `accounts.screen.test.tsx` 23.87%,
+  `statement-import.screen.test.tsx` 14.72%, `transactions.repo.test.ts`
+  10.14%, `sync.test.ts` 7.67%, `statistics.screen.test.tsx` 7.38%,
+  `net-worth-series.test.ts` 7.25%, `restore-snapshot.test.ts` 7.21%,
+  `import-statement.test.ts` 7.09%, `account-form.screen.test.tsx` 6.88%,
+  `transactions.repo.remove-cascade.test.ts` 5.91%, `holdings.repo.test.ts`
+  5.75%, `holding-form.screen.test.tsx` 5.63% (every non-test source file over
+  the limit is under 2%). A second figure is tracked beside the per-file ones:
+  one more run measures the whole scope TOGETHER with the limits raised,
+  because a clone between a large file and another file is invisible to the
+  alone runs. Its baseline on 2026-10-11 is 7.33% of lines, against 3.24% for
+  the blocking run with the default limits, and it applies to the no-argument
+  (whole-repo) run only: a scoped run's combined figure is not comparable; a warning for a combined total
+  above the threshold is expected until the sweep lands, and a figure above
+  7.33% is a new regression. **Flip condition:** a separate sweep track makes
+  every large file 5% or less alone AND the combined raised total 5% or less;
+  then this warning becomes a failure (`exit 2` through `print_block`) and
+  this entry is deleted. The
+  warning is a stated exception to the "silent on success" wrapper contract
+  (kiko-linter's "The wrapper contract").
 - **`knip.json` `entry`** (an entry point, not an ignore):
   `scripts/bundle-contains.js` — the bundle freshness checker that only
   `scripts/deploy-device.sh` runs (`node scripts/bundle-contains.js`), so
@@ -169,8 +197,8 @@ verified usage, not dead weight:
   kill-guard.js`) to tokenize a Bash-tool command and deny pkill/killall,
   pattern/process-group kills, any `git stash`, an unquoted heredoc
   delimiter, a git history change on the main checkout, a shell write
-  into `src/`, `__tests__/`, or `rules/`, and a while/until process-scan
-  wait loop (see CLAUDE.md's "Automatic wiring" and
+  into `src/`, `__tests__/`, `rules/`, or `e2e/`, and a while/until process-scan
+  wait loop (see `docs/harness/checks.md` "Automatic wiring" and
   `.claude/skills/kiko-linter/SKILL.md`). It is reached only from a sibling
   `.sh` wrapper's `node` invocation — never a static `import`/`require` from
   any TypeScript/JavaScript source, and never a package.json script Knip's
@@ -186,7 +214,7 @@ verified usage, not dead weight:
   PreToolUse hook script that `scripts/checks/pre-write-guard.sh` invokes
   (`node --experimental-strip-types --no-warnings pre-write-guard.js`) to
   rebuild an Edit/Write/MultiEdit's proposed file content and deny the
-  write when it introduces a known violation (see CLAUDE.md's "Automatic
+  write when it introduces a known violation (see `docs/harness/checks.md` "Automatic
   wiring" and `.claude/skills/kiko-linter/SKILL.md`), the same reason as
   `kill-guard.js` above. It is reached only from a sibling `.sh` wrapper's
   `node` invocation — never a static `import`/`require` from any
@@ -299,6 +327,11 @@ verified usage, not dead weight:
   `__tests__/comment-only-changes.test.ts` (the script, in a throwaway git
   repository) and `__tests__/mutation-comment-only.test.ts` (the wrapper),
   both as subprocesses, not an import.
+- **`knip.json` `ignore`**: `scripts/checks/mutation-ranges.js` — the same shape as
+  `comment-only-changes.js` above. `scripts/checks/mutation.sh` reaches it only via a `node`
+  invocation, never a static `import`/`require`, so Knip reports it as unused. Exercised by
+  `__tests__/mutation-ranges.test.ts` (the script, with a synthetic diff on stdin) and the
+  `__tests__/mutation-stream.test.ts` / `mutation-cap.test.ts` wrappers, both as subprocesses.
 - **`scripts/checks/comment-only-changes.js` requires `typescript`** — the
   one checker in `scripts/checks/` that is not dependency-free (see
   kiko-linter's "Node checkers"). The rule exists because the guard-replay
@@ -324,10 +357,23 @@ verified usage, not dead weight:
   columns". Exercised by `__tests__/comment-line-width.test.ts`, which
   spawns the checker and the wrapper as subprocesses, and by
   `__tests__/pre-write-guard.test.ts`'s `comment-line-width` case.
+- **`knip.json` `ignore`**: `scripts/checks/component-i18n-namespace.js` — the
+  same shape as `comment-line-width.js` above.
+  `scripts/checks/component-i18n-namespace.sh` reaches it only via a `node`
+  invocation (its project-wide mode, `npm run check:component-i18n-namespace`;
+  it has no per-file mode), and `scripts/checks/pre-write-guard.js` reaches it
+  only via `runSpawnedNodeChecker`'s own `spawnSync` (the
+  `kiko-component-i18n-namespace` `NODE_RULES` row) — never a static
+  `import`/`require`. The project-wide mode is part of `check:all`. The
+  checker has no allowlist. Exercised by
+  `__tests__/component-i18n-namespace.test.ts`, which spawns the checker and
+  the wrapper as subprocesses, and by `__tests__/pre-write-guard.test.ts`'s
+  `component-i18n-namespace` case.
 - **`knip.json` `ignore`**: `scripts/checks/specifier-scanner.js` — the
   shared specifier scanner. Its only importers are the checkers
-  `feature-imports.js`, `screen-imports.js`, `plural-count.js`, and
-  `comment-line-width.js` (a static `require`), and all four are themselves
+  `feature-imports.js`, `screen-imports.js`, `plural-count.js`,
+  `comment-line-width.js`, and `component-i18n-namespace.js` (a static
+  `require`), and all five are themselves
   in `ignore` above, so Knip never walks into it and reports it as an
   unused file. It is reached exactly as far as those checkers are, and
   exercised through their tests.
@@ -345,7 +391,7 @@ verified usage, not dead weight:
   `@kiko/<path>`, and only by a test file. No barrel may export them
   (`--tree` `barrel-leak`), and a production file may not import them
   (`test-only-from-production`), so no test code reaches the App Store
-  build (kiko-compliance 5.6). Each entry and its reason:
+  build (kiko-compliance 2.3.1(a)). Each entry and its reason:
   - `test-support/**`: shared test helpers with no owning feature. The
     folder has no barrel.
   - `**/__fixtures__/**`: fixture data (db, monobank, the statement-import
@@ -370,10 +416,10 @@ verified usage, not dead weight:
   JSON key". The `name` field (not just word) matters: it is what lets
   `src/crypto-sync/binance/binance.transactions.ts` exempt only its
   wire-mirrored `txId` field while still catching a DIFFERENT `tx`-bearing
-  identifier chosen freely in the SAME file (`BinanceTransactionSyncDeps`, this
-  codebase's own type name, correctly renamed to `BinanceTransactionSyncDeps`
+  identifier chosen freely in the SAME file (`BinanceTxSyncDeps`, this
+  codebase's own type name, since renamed to `BinanceTransactionSyncDeps`
   during the R1.d sweep — a word-only, file-wide exemption would have
-  silently skipped that one too). Each of the 20 entries is a real,
+  silently skipped that one too). Each of the 22 entries is a real,
   verified external-format mirror, not a style preference:
   `src/db/run-migrations.ts` + its test + the six
   `src/db/schema.*.test.ts` fixtures (`idx`) mirror drizzle-kit's own
@@ -383,8 +429,8 @@ verified usage, not dead weight:
   `val_code` and from `payments[].pay_val`) mirror the National Bank of
   Ukraine securities register's own external JSON fields; `src/crypto-sync/binance/binance.client.ts` +
   its test (`msg`) mirror Binance's own error-body shape `{code, msg}`;
-  those same two files plus `binance.transactions.ts`/`.test.ts` (`tx`,
-  from `txId`) mirror the literal field name on Binance's deposit/withdraw
+  `binance.history-client.ts`/`.test.ts` plus `binance.transactions.ts`/`.test.ts`/`.placement.test.ts`
+  and `binance.pay-history.real-sqlite.test.ts` (`tx`, from `txId`) mirror the literal field name on Binance's deposit/withdraw
   history records (`GET /sapi/v1/capital/deposit/hisrec` and
   `/withdraw/history`) — found only by reading the ACTUAL diff after an
   initial mechanical `tx` → `transaction` sweep pass, not by inspection
@@ -402,10 +448,11 @@ verified usage, not dead weight:
   the linter and assist off for the whole folder, so a good fixture is
   format-checked but never linted; `knip.json` `ignore`,
   `.jscpd.json` `ignore`, and
-  `--exclude 'fixtures'` in `scripts/checks/security.sh`)**: the
+  `--exclude 'fixtures'` in `scripts/checks/security.sh`, plus its drop of
+  any `rules/fixtures/` file among its arguments)**: the
   positive/negative fixture pair that
   proves each project Semgrep rule still fires. A positive fixture is
-  deliberately non-conforming, never-imported code (a hidden Guideline 5.6
+  deliberately non-conforming, never-imported code (a hidden Guideline 2.3.1(a)
   feature flag import, a Keychain secret pushed into React state), and each
   pair is near-identical by construction — the negative fixture
   is the positive one plus the fix. Verified: without these exclusions a
@@ -422,7 +469,7 @@ verified usage, not dead weight:
   negations + the changed-file filter in `scripts/checks/mutation.sh`)**:
   five categories are excluded from the set of files Stryker
   mutates, in both places (the config's own `mutate` array and the
-  diff-scoped changed-file filter; the wrapper refuses a whole-project
+  diff-scoped changed-line filter; the wrapper refuses a whole-project
   run, so the filter is the one a gated run uses). (0) **`scripts/checks/**`** — the
   harness's own check tooling, not app logic; `import-order.js`,
   `kill-guard.js`, and `full-word-identifiers.js` are already exempt by
@@ -482,7 +529,7 @@ verified usage, not dead weight:
   `scripts/checks/mutation.sh` for the exact patterns and re-includes
   (not restated in full here so they cannot drift).
 - **`scripts/checks/mutation-score.js` declaration-only exclusion
-  allowlist**: the CHANGE-SET mutation gate (CLAUDE.md's
+  allowlist**: the CHANGE-SET mutation gate (`docs/harness/checks.md`
   `check:mutation` row) excludes a file from BOTH the change-set score
   and its own per-file floor when it is a declaration file. Today:
   **`src/db/schema.ts`** (Drizzle table/column declarations): its
@@ -498,7 +545,7 @@ verified usage, not dead weight:
   added. A changed file that is ABSENT from the json report is a file
   with no mutants (Stryker writes only files that have some) and is
   n/a, but only after the scorer has checked that the report's own
-  recorded scope (`config.mutate`) equals the changed-file list; a
+  recorded scope (`config.mutate`) equals the set of changed-line `--mutate` entries; a
   report that does not match fails the gate.
 - **`Stryker disable` comments**: not an allowlist. `check:overrides`
   (`override-guard.sh`) fails a `Stryker disable` comment without
@@ -590,17 +637,17 @@ verified usage, not dead weight:
   machine was not proof of a fresh checkout; defaulting to a committed file
   makes them reproducible. Every value is public, non-secret config (same
   rule as `.env` — see `dependency-hygiene.md`'s "`.env` is public-only").
-  Updated 2026-09-18 (Guideline 5.6 remediation, Task 1): `.env.test` no
+  Updated 2026-09-18 (Guideline 2.3.1(a) remediation, Task 1): `.env.test` no
   longer carries a `SHOW_UNREADY_BANKS`-style flag — that release-readiness
   visibility gate was removed outright, not merely defaulted off. The "add
   a bank" sheet's `visibleCatalogEntries`
   (`src/screens/account-detail/add-bank-sheet/add-bank-sheet.component.tsx`)
   now takes no flag argument: it shows every wired-registry provider in the
   catalog unconditionally, so there is nothing left for a test-env value to
-  gate. See the `kiko-architecture` skill's "Guideline 5.6 — no hidden
+  gate. See the `kiko-architecture` skill's "Guideline 2.3.1(a) — no hidden
   features" section for the standing rule this codifies.
 - **`e2e/screenshot/` — the demo-dataset subsystem lives outside `src/`,
-  and `knip.json` needs NO entry/ignore for it (2026-09-19, Guideline 5.6
+  and `knip.json` needs NO entry/ignore for it (2026-09-19, Guideline 2.3.1(a)
   remediation).** `src/` now has **zero** references into `e2e/`, of any
   kind — no static import, no dynamic `require`. The one dynamic `require`
   that used to reach `screenshot-seed.ts` from `MigrationsGate`
@@ -702,7 +749,7 @@ verified usage, not dead weight:
   `check:rules`.
 
 - **`kiko-no-source-text-read-in-test` (`rules/semgrep-prewrite.yml`)
-  excludes `__tests__/**`, and four tests carry one per-line override.**
+  excludes `__tests__/**`, and five tests carry one per-line override.**
   The exclude: harness tests read rules, scripts, docs, and temp projects,
   never a mutable source; their paths are mostly computed, so the rule
   would fire on nearly every one.
@@ -710,7 +757,7 @@ verified usage, not dead weight:
   Each override is a
   `// nosemgrep: kiko-no-source-text-read-in-test OVERRIDE(<reason>)` line
   directly above the ONE read the rule cannot prove is a non-TypeScript
-  fixture. None of these reads parses text that Stryker's instrumentation
+  fixture. None relies on text that Stryker's instrumentation
   changes. Every other read in the same file is still checked, so a new
   source-text read there is denied:
   - `src/db/settings-columns.test.ts`: reads the column names from
@@ -719,6 +766,12 @@ verified usage, not dead weight:
   - `src/i18n/locales/title-keys.call-sites.test.ts`: unwraps Stryker's
     `stryMutAct_…() ? "" : (stryCov_…(), 'key')` argument shape, and its
     own "survives Stryker mutation-testing instrumentation" case pins it.
+  - `src/help/help-topics.test.ts`: reads each catalogue-key string literal in the
+    app source and walks up to the prop it sits in, to find a label only an
+    accessibility prop renders. Stryker keeps the original literal inside its
+    `stryMutAct_…() ? "" : (stryCov_…(), 'key')` shape, so the walk from the
+    literal still reaches the same prop, and the file's "reading how a catalogue
+    key is used in source" cases pin that shape.
   - `drizzle/migrations/0044-move-crypto-cash-holdings.test.ts`: searches
     `drizzle/` and `src/` text for the literal `crypto-from-`; Stryker
     keeps the original string beside its mutant.
@@ -799,6 +852,21 @@ verified usage, not dead weight:
   `nosemgrep ... OVERRIDE(...)` in the source, never a file exclude. The flat
   fixture pair proves the rule in `check:rules`.
 
+- **`readAllRulesDatabaseTransaction`
+  (`src/categories/category-rules-repo/category-rules.repo.ts`) reads the whole
+  `category_rules` table inside `write()`, with no `where` and no cap.**
+  Callers inside a write: `saveRule` and `applyNameRule` (once each) and
+  `withCategoryRules` in `src/transactions/repo/transactions.repo.ts` (once per
+  insert batch). `kiko-no-full-table-select-in-write`
+  (`rules/semgrep-prewrite.yml`) matches only a literal `write(...)` callback
+  body, so the helper is invisible to it and there is no inline `nosemgrep`;
+  this entry is the record. Safe because the table is user-authored (one row
+  per rule) and small, and every reader needs every rule: a `where` or a cap
+  would silently drop a rule, a category not applied (spec decision 10, no
+  known limit for data correctness). Bounded: read once per write
+  (`stageDraft`) and once per insert batch, never per row; transaction rows
+  are paged. Any new whole-table reader inside a write needs its own entry.
+
 - **`src/native-specs/Native*.ts` (`NativeKikoReminders.ts`,
   `NativeDisplayRegions.ts`) — the only PascalCase `.ts` file names in
   `src/`, in a folder with no barrel.** React Native codegen reads a spec
@@ -835,8 +903,111 @@ verified usage, not dead weight:
   `^2.1.0` and `react-native-bottom-tabs` `^2.0.0`), and `package-lock.json`
   locks it at 2.2.0. depcheck and Knip see no import of it, so neither
   reports it. A missing or reshaped file (a dependant dropped, the package
-  moved or its comments changed) fails
-  `__tests__/symbol-deployment-target.test.tsx`, `sf-symbol-catalogue.test.ts`
-  and `deployment-target.test.ts` loudly, never silently. If a dependant stops
-  installing it, add it to `package.json` as an exact-pinned devDependency
-  instead.
+  moved or its comments changed) fails `__tests__/symbol-deployment-target.test.tsx`,
+  `sf-symbol-catalogue.test.ts` and `deployment-target.test.ts` loudly, never silently. If a dependant
+  stops installing it, add it to `package.json` as an exact-pinned
+  devDependency instead.
+
+- **`scripts/checks/commit-typecheck.sh` docs-only skip.** The pre-commit typecheck exits 0
+  without a run when the staged diff (renames listed under both names) touches no file whose name
+  ends in `.ts`, `.tsx`, `.mts`, `.cts`, `.js`, `.jsx`, `.mjs`, `.cjs`, or `.json` (the
+  `SOURCE_FILES` pattern in that script). Reason: tsc reads only those files and `node_modules`,
+  which follows `package.json` and `package-lock.json`, so the result then equals HEAD's. Only a
+  clean "no match" skips: a failed diff or a grep error runs the check.
+- **`scripts/ensure-git-hooks.sh` skip outside a repository root.** The `postinstall` step exits 0
+  without setting core.hooksPath when `git rev-parse --show-toplevel` fails (no repository: a
+  scratch copy without `.git`, a source tarball), or when the top level is not the folder that
+  holds the script (a copy inside another repository, whose config it must not change). Reason:
+  no commit is possible from there, so there is nothing to guard. A config it cannot read, a
+  write that fails, or a core.hooksPath that already holds another value is not skipped: it
+  prints the standard block and exits 2.
+- **`__tests__/skill-identifiers.test.ts`'s two exemption lists (non-project
+  names, and bad-name examples per skill file).** The test fails when an inline code span in a
+  skill or agent file names an identifier that no word of the code corpus
+  matches (see kiko-linter's paragraph on this test, next to the one on
+  `__tests__/cited-paths.test.ts`), so a name that is not this repository's own code must be listed. Each
+  entry is a name the skills cite on purpose that the repository never
+  contains, by category (a category's reason is verified when it is added):
+  library and runtime internals cited to explain a behavior (react-native,
+  react-native-sortables, RNGH, Unistyles, drizzle, a clipboard hook,
+  jest-haste-map), Apple names `ios/` does not use (UIKit; the built
+  Info.plist's `UIDeviceFamily`, which the source plist lacks), the
+  `Intl.Locale` week getter, fnts exports and type parameters, a TypeScript
+  option that `@react-native/typescript-config` sets (`isolatedModules`;
+  `tsconfig.json` extends it and never spells it), a SQL keyword, shell and OS
+  tools plus a python module and a node API named in the kill-guard limits,
+  `du` and `curl` as the auditor and researcher agent files name them, Semgrep
+  taint and `--time` keys, the run log's `summary.json` and `run.json`
+  (written under `~/.claude/harness-runs`, outside the repository), a
+  conventional-commit scope word, a Claude Code
+  tool and a devicectl field, and the drizzer14/harness repo's own config
+  file, keys and env var. A deliberate bad-name or bad-id example, a placeholder (`isX`,
+  `vX.Y.Z`) and a React DevTools label (`Anonymous`) are exempt per
+  `(skill file, name)` pair, not by name alone, like the
+  `full-word-identifiers` `EXEMPTIONS` above: the same name cited as a real
+  symbol in another skill must still resolve. The test also fails on an
+  entry that is no longer cited or now resolves, so the lists only shrink.
+  A name that left the code is fixed in the skill text (renamed, or written
+  without backticks), never added here.
+
+- **`scripts/checks/medium.sh` repeated-Stop skip** (user ruling Q2 A,
+  2026-10-13, confirmed in the orchestrator's terminal): on a repeated Stop
+  (payload `stop_hook_active: true`) the tier writes `medium tier: skipped on
+  a repeated Stop` to stderr and exits 0. Reason: a failing Stop started a
+  new turn that ended in the same failure and the orchestrator looped (knip
+  ran about 8 times, binance-history-a7, 2026-10-11). Cost: a repeated Stop
+  shows a failure once; the next first Stop and `check:all` still catch it.
+  Scope: Stop only, never SubagentStop, only when stdin is a regular file; an
+  unreadable payload runs the tier as before.
+- **`scripts/job-queue.sh` power rule**: a missing `pmset` binary means AC
+  power (every other unreadable state holds). Reason: a machine without
+  `pmset` has no battery, so a hold would block forever. Risk: a Mac whose
+  `pmset` is not on PATH.
+- **`scripts/job-queue.sh` group TERM** (user ruling A, 2026-10-13): the
+  queue may send TERM to the process group it created for its own job, never
+  any other group; see kill-guard's entry above.
+- **`__tests__/error-class-pins.test.ts` skips a class with an empty body**
+  (`class X extends Error {}`): such a class inherits its name and message
+  from `Error` and has no own `.name` or `.message` literal to pin, and
+  pinning it would need a `src/` change that adds one. Every non-empty
+  `extends Error` class is checked, with no per-class exemption list.
+- **`__tests__/docs-known-limit.test.ts`'s exact-path list (`PREDATING_DOCS`).** The test
+  fails when a plan or a spec under `docs/superpowers/` uses the phrase "known limit" or
+  "known limitation", because a gap filed that way ships with no owner. Two dated reminders
+  docs hold the phrase and are exempt by exact path, each pinned to its count of matches:
+  `docs/superpowers/plans/2026-09-28-reminders.md` (1) and
+  `docs/superpowers/specs/2026-09-27-reminders-design.md` (2). Reason: both are dated history
+  that predates the rule, and rewriting a dated record would falsify it. The exact-count
+  test pins each count, so a doc that gains or loses a match fails; the list only shrinks and
+  a new doc is never added.
+
+- **`scripts/checks/comment-line-width.pinned`**: exact comment lines over 100 columns that
+  cannot wrap (rows `<path><TAB><exact line>`; currently empty: `COMMENT_PIN_CEILING` is 0 in
+  `__tests__/pin-count-ceilings.test.ts`). Reason: a
+  fixture line that is itself the probe, or a line whose wrapping would change what the
+  rule under test sees. The list only shrinks: a row whose line is gone or now fits fails as a
+  stale pin, and a line that can wrap is wrapped, never pinned.
+- **`__tests__/fixtures/markdown-prose-width.pinned.json`**: exact markdown prose lines over 100
+  columns in the skill, agent and harness docs, keyed `path -> [line text]`. Reason: these
+  lines predate the prose-width rule, and rewrapping them all in one change would bury the
+  content diff. `__tests__/markdown-prose-width.test.ts` fails on a stale pin, so the list only
+  shrinks: rewrap a pinned line and delete its pin; a new line is never pinned.
+- **`harness/kiko/scripts/run-log.mjs` is outside `check:comment-line-width`**: the script must
+  stay byte-identical with the copy in the harness repository, so wrapping its comments
+  here would fork the two. `scripts/checks/comment-line-width.sh` names the exclusion in its
+  header.
+
+- **User ruling 2026-10-14 (G1 a): a comment-only source with a changed colocated test mutates
+  nothing.** A source file that `comment-only-changes.js` proves comment-only prints
+  `skipped (comment-only): <path>` and is not mutated, whatever its colocated test did; the
+  whole-file keep (its `--list` keep line) is removed from `mutation.sh`. A real change
+  with a changed test still mutates its changed-line ranges; a Stryker or JSX pragma comment, a
+  missing `typescript`, or any doubt keeps the file. Cost: a test weakened beside a
+  comment-only source edit is not mutation-checked; `make verify` still runs it.
+
+- **`medium.sh` doc step deadline exit (2026-10-15)**: at hookStarted + the budget that
+  `node scripts/checks/guard-replay.js step-budget` prints, the doc step stops its own jest pid
+  and exits 2 with a block telling the agent to run `make doc-suites` by hand.
+  Reason: the 300 s hook limit would otherwise kill the Stop tier with no block. Zero
+  discovered suites, a missing jest, an unreadable budget or a fingerprint hash failure
+  while doc files or suites exist also exit 2 (fail-closed).

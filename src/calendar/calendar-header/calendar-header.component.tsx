@@ -29,8 +29,9 @@ const SUNDAY_FIRST_WEEKDAY_KEYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sa
 
 // The weekday-label row's column order for a given `firstDay`: react-native-
 // calendars rotates its day grid by the SAME prop (`page(currentMonth,
-// firstDay, ...)`, `src/calendar/index.js`), so this header's own label row
-// must rotate identically or the labels drift out from under their columns.
+// firstDay, ...)` in `react-native-calendars/src/calendar/index.js`), so this
+// header's own label row must rotate identically or the labels drift out from
+// under their columns.
 const weekdayKeysFor = (firstDay: 0 | 1): readonly (typeof SUNDAY_FIRST_WEEKDAY_KEYS)[number][] =>
   firstDay === 1
     ? [...SUNDAY_FIRST_WEEKDAY_KEYS.slice(1), ...SUNDAY_FIRST_WEEKDAY_KEYS.slice(0, 1)]

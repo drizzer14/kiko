@@ -1,10 +1,13 @@
 import '@kiko/design-system/unistyles';
 import '@kiko/i18n/init';
 
+import type {
+  NativeStackHeaderItem,
+  NativeStackHeaderItemButton,
+} from '@react-navigation/native-stack';
 import { darkTheme } from '@kiko/design-system/theme';
 import { renderHook } from '@testing-library/react-native';
 import { navigationSpy } from '@kiko/test-support/navigation-props';
-import type { NativeStackHeaderItem } from '@react-navigation/native-stack';
 
 import { useFormHeaderItems } from '.';
 
@@ -120,6 +123,74 @@ describe('useFormHeaderItems', () => {
       await renderItems({ onSave: jest.fn(), hasSave: false, isSaving: false });
 
       expect(rightItems()).toEqual([]);
+    });
+
+    describe('with extra items', () => {
+      const starItem: NativeStackHeaderItemButton = {
+        type: 'button',
+        label: 'Set as default',
+        icon: { type: 'sfSymbol', name: 'star' },
+        onPress: jest.fn(),
+      };
+      const flagItem: NativeStackHeaderItemButton = {
+        type: 'button',
+        label: 'Flag',
+        icon: { type: 'sfSymbol', name: 'flag' },
+        onPress: jest.fn(),
+      };
+
+      it('lists them in order before Save', async () => {
+        await renderHook(() =>
+          useFormHeaderItems({
+            navigation,
+            onSave: jest.fn(),
+            hasSave: true,
+            isSaving: false,
+            extraItems: [starItem, flagItem],
+          }),
+        );
+
+        expect(rightItems().map((item) => (item as { label: string }).label)).toEqual([
+          'Set as default',
+          'Flag',
+          'Save',
+        ]);
+      });
+
+      it('lists them even for a screen with nothing to save', async () => {
+        await renderHook(() =>
+          useFormHeaderItems({
+            navigation,
+            onSave: jest.fn(),
+            hasSave: false,
+            isSaving: false,
+            extraItems: [starItem],
+          }),
+        );
+
+        expect(rightItems()).toEqual([starItem]);
+      });
+
+      it('registers the header again when the items change', async () => {
+        const { rerender } = await renderHook(
+          (props: { extraItems: NativeStackHeaderItemButton[] }) =>
+            useFormHeaderItems({
+              navigation,
+              onSave: jest.fn(),
+              hasSave: true,
+              isSaving: false,
+              extraItems: props.extraItems,
+            }),
+          { initialProps: { extraItems: [starItem] } },
+        );
+
+        await rerender({ extraItems: [flagItem] });
+
+        expect(rightItems().map((item) => (item as { label: string }).label)).toEqual([
+          'Flag',
+          'Save',
+        ]);
+      });
     });
   });
 });

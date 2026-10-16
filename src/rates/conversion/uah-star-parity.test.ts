@@ -230,7 +230,7 @@ const usdtWallet = {
   id: 'usdt-wallet',
   currency: 'USDT' as Currency,
   type: 'crypto_asset' as const,
-  balanceMinorUnits: 10_000, // 100.00 USDT
+  balanceMinorUnits: 10_000_000_000, // 100.00 USDT
   metadata: null,
 };
 const uahMetal = {

@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { type SpawnSyncReturns, spawnSync } from 'node:child_process';
 
 // The shell-write deny of scripts/checks/kill-guard.js: a Bash command that
-// writes into src/, __tests__/, or rules/ of any worktree of this repository
+// writes into src/, __tests__/, rules/, or e2e/ of any worktree of this repository
 // (`sed -i`, `perl -i`, a `>`/`>>` redirect, `tee`, a python or node
 // one-liner) skips the pre-write guard, which sees only Edit/Write/MultiEdit,
 // so the hook denies it and points at Edit/Write.
@@ -361,7 +361,251 @@ const ALLOWED: string[] = [
   "sed -i 's/a/b/' /tmp/src.txt",
 ];
 
+// e2e/ holds TypeScript the pre-write guard reads like src/.
+const DENIED_E2E: string[] = [
+  'echo x > e2e/screenshot/seed/demo-text.ts',
+  'echo x >> e2e/x.ts',
+  "sed -i 's/a/b/' e2e/x.ts",
+  'cp /tmp/x.ts e2e/x.ts',
+  'mv /tmp/x.ts e2e/',
+  'echo x | tee e2e/x.ts',
+  `python3 -c "open('e2e/screenshot/seed/demo-text.ts', 'w').write('x')"`,
+  "python3 - <<'EOF'\nfrom pathlib import Path\nPath('e2e/x.ts').write_text('x')\nEOF",
+  `echo x > ${WORKTREE}/e2e/x.ts`,
+  'cd e2e && echo x > y.ts',
+  'echo x > E2E/x.ts',
+];
+
+const ALLOWED_E2E: string[] = [
+  'cat e2e/x.ts',
+  'cat e2e/x.ts > /tmp/out.txt',
+  "sed -n '1p' e2e/x.ts",
+  "grep -rn seed e2e | sed 's/a/b/' > /tmp/out.txt",
+  'git mv e2e/a.ts e2e/b.ts',
+  'echo x > /tmp/e2e-like/x.ts',
+  "sed -i 's/a/b/' /tmp/e2e.txt",
+  'echo x > docs/e2e/x.md',
+  'echo x > scripts/e2e.sh',
+  `echo x > ${OTHER}/e2e/x.ts`,
+  `echo x > ${PLAIN}/e2e/x.ts`,
+];
+
+// The repository config holds core.hooksPath, which switches the pre-commit typecheck on, so a
+// shell write into `.git/config` (or a worktree's `config.worktree`) is a way to switch it off. A
+// path the text cannot resolve that names `.git/config` denies (fail closed).
+const DENIED_GIT_CONFIG: string[] = [
+  'echo x > .git/config',
+  'echo x >> .git/config',
+  'echo x >| .git/config',
+  'echo x | tee -a .git/config',
+  "sed -i '' 's/a/b/' .git/config",
+  "sed -i.bak 's/a/b/' .git/config",
+  "perl -pi -e 's/a/b/' .git/config",
+  'cp /tmp/x .git/config',
+  'cp -t .git /tmp/config',
+  'cp /tmp/config .git/',
+  'mv /tmp/x .git/config',
+  'echo x > .git/config.worktree',
+  'echo x > .GIT/CONFIG',
+  'cd .git && echo x > config',
+  'echo x > ./.git/config',
+  `echo x >> ${MAIN}/.git/config`,
+  `echo x >> ${MAIN}/.git/worktrees/worktree/config.worktree`,
+  `echo x > ${WORKTREE}/.git/config`,
+  'echo x > ../main/.git/config',
+  'echo x > ../main/.git/worktrees/worktree/config.worktree',
+  'echo x > /tmp/other/.git/config',
+  'echo x > "$D/.git/config"',
+  'echo x >> $D/.git/config',
+  'echo x | tee -a "$ROOT"/.git/config',
+  "sed -i '' 's/a/b/' \"$D/.git/config\"",
+  'cp /tmp/x "$D"/.git/config',
+  `python3 -c "open('.git/config', 'a').write('x')"`,
+  `python3 -c "open('${MAIN}/.git/config', 'w')"`,
+  `node -e "require('fs').appendFileSync('.git/config', 'x')"`,
+  `node -e "require('fs').writeFileSync('${MAIN}/.git/worktrees/worktree/config.worktree', 'x')"`,
+  "python3 - <<'EOF'\nfrom pathlib import Path\nPath('.git/config').write_text('x')\nEOF",
+  'bash -c "echo x >> .git/config"',
+  'true && echo x > .git/config',
+];
+
+const ALLOWED_GIT_CONFIG: string[] = [
+  'cat .git/config',
+  'cat .git/config > /tmp/config.bak',
+  'git config --get core.hooksPath',
+  'git config user.name x',
+  'echo x > /tmp/x/config',
+  'echo x > config',
+  'echo x > scripts/config',
+  'echo x > .github/config',
+  'echo x > .gitignore',
+  'echo x > docs/.git-notes/config',
+  'echo x > .git/info/exclude',
+  'echo x >> .git/COMMIT_EDITMSG',
+  'cp .git/config /tmp/config.bak',
+  'cp .git/config /tmp/snap/',
+  'mv .git/config.bak /tmp/config.bak',
+  "sed -n '1p' .git/config",
+  'grep hooksPath .git/config',
+  'echo x > "$D/config"',
+  'echo x > "$D/gitconfig"',
+  `python3 -c "print(open('.git/config').read())"`,
+  `python3 -c "open('/tmp/x', 'w').write(open('.git/config').read())"`,
+  'echo ".git/config" > /tmp/names.txt',
+  `echo x > ${MAIN}/.gitconfig`,
+];
+
+// A variable the SAME command assigns (`f=<path>`, `export f=`, `declare f=`, `local f=`) is
+// resolved where `$f` or `${f}` is used, so a write through it is judged by its path; a later
+// reassignment wins. The first row is a `sed -i` on a path held in a variable, which the text
+// alone does not reveal as a write into `src/`.
+const DENIED_SAME_COMMAND_VARIABLE: string[] = [
+  `f=src/navigation/title-measurer/title-measurer.component.test.tsx && sed -i '' "s/a/b/g" $f && sed -i '' "s|^const LINE_HEIGHT = |x|" $f && ./node_modules/.bin/biome check --write $f`,
+  `f=src/x.ts; sed -i '' 's/a/b/' "$f"`,
+  `f=src/x.ts; sed -i 's/a/b/' \${f}`,
+  `f=src/x.ts; sed -i '' 's/a/b/' "\${f}"`,
+  `f=src/x.ts; sed -i '' 's/a/b/' $f.bak`,
+  `export f=src/x.ts && sed -i '' 's/a/b/' $f`,
+  `declare f=src/x.ts; sed -i '' 's/a/b/' $f`,
+  `declare -x f=src/x.ts; sed -i '' 's/a/b/' $f`,
+  `local f=src/x.ts; sed -i '' 's/a/b/' $f`,
+  `typeset f=src/x.ts; sed -i '' 's/a/b/' $f`,
+  `readonly f=src/x.ts; sed -i '' 's/a/b/' $f`,
+  `g=1 f=src/x.ts; sed -i '' 's/a/b/' $f`,
+  'f=src/x.ts; echo x > $f',
+  'f=src/x.ts; echo x >> "$f"',
+  'f=src/x.ts; echo x | tee $f',
+  'f=src/x.ts; echo x | tee -a "$f"',
+  'f=src/x.ts; cp /tmp/a $f',
+  'f=src/x.ts; mv /tmp/a "$f"',
+  `f=src/x.ts; perl -pi -e 's/a/b/' $f`,
+  `f=__tests__/x.test.ts; sed -i '' 's/a/b/' $f`,
+  `f=rules/x.yml; sed -i '' 's/a/b/' $f`,
+  `f=e2e/x.ts; sed -i '' 's/a/b/' $f`,
+  `f=${MAIN}/src/x.ts; sed -i '' 's/a/b/' $f`,
+  `f=${WORKTREE}/src/x.ts; sed -i '' 's/a/b/' $f`,
+  `f=/tmp/a; f=src/x.ts; sed -i '' 's/a/b/' $f`,
+  `d=src; f=$d/x.ts; sed -i '' 's/a/b/' $f`,
+  `d=src; sed -i '' 's/a/b/' $d/x.ts`,
+  `d=src; sed -i '' 's/a/b/' "$d"/x.ts`,
+  'd=src; cp /tmp/a $d/y.ts',
+  'd=src; cp -r /tmp/a $d',
+  `f=src/x.ts && python3 -c "open('$f', 'w').write('x')"`,
+  `f=src/x.ts; node -e "require('fs').writeFileSync('$f', 'x')"`,
+  `cd src && f=x.ts && sed -i '' 's/a/b/' $f`,
+  `f=x.ts; cd src && sed -i '' 's/a/b/' $f`,
+  `f=src/x.ts; true && sed -i '' 's/a/b/' $f`,
+  `f=src/x.ts\nsed -i '' 's/a/b/' $f`,
+  `f=src/x.ts; (sed -i '' 's/a/b/' $f)`,
+  `f=src/x.ts; echo $(sed -i '' 's/a/b/' $f)`,
+  `f=src/x.ts; bash -c "sed -i '' s/a/b/ $f"`,
+  `export f=src/x.ts; bash -c 'sed -i "" s/a/b/ $f'`,
+  `f=src/x.ts; eval "sed -i '' s/a/b/ $f"`,
+  `f=src/x.ts; ls src/*.ts | xargs sed -i '' 's/a/b/'`,
+  `f=src/x.ts; for g in a; do sed -i '' 's/a/b/' $f; done`,
+];
+
+// The command's own assignments only ADD denies. A path that still names a guarded folder through
+// an unresolved `$D` denies, whatever the command assigned to `D` first: a loop variable, `read`,
+// `+=`, `eval`, `printf -v`, `select`, and `unset` all change it unseen.
+const DENIED_WHATEVER_THE_VARIABLE_HOLDS: string[] = [
+  `D=/tmp; sed -i '' s/a/b/ $D/src/x.ts`,
+  `D=/tmp; sed -i '' s/a/b/ "\${D}/src/x.ts"`,
+  'D=/tmp; echo x > $D/src/x.ts',
+  'D=/tmp; echo x | tee "$D/src/x.ts"',
+  `D=/tmp; for D in .; do sed -i '' s/a/b/ $D/src/x.ts; done`,
+  `D=/tmp; read D <<< .; sed -i '' s/a/b/ $D/src/x.ts`,
+  `D=/tmp; D+=x; sed -i '' s/a/b/ $D/src/x.ts`,
+  `D=/tmp; eval D=.; sed -i '' s/a/b/ $D/src/x.ts`,
+  `D=/tmp; printf -v D %s .; sed -i '' s/a/b/ $D/src/x.ts`,
+  `D=/tmp; select D in .; do break; done; sed -i '' s/a/b/ $D/src/x.ts`,
+  `D=/tmp; unset D; sed -i '' s/a/b/ $D/src/x.ts`,
+];
+
+const ALLOWED_SAME_COMMAND_VARIABLE: string[] = [
+  `f=/tmp/x.ts; sed -i '' 's/a/b/' $f`,
+  `f=docs/x.md; sed -i '' 's/a/b/' "$f"`,
+  'f=scripts/out.txt; echo x > $f',
+  'f=scripts/src/out.txt; echo x >> "$f"',
+  'f=/tmp/out.txt; echo x | tee $f',
+  'f=/tmp/a; cp /tmp/b $f',
+  `f=src/x.ts; f=/tmp/a; sed -i '' 's/a/b/' $f`,
+  `f=src/x.ts; sed -n 1p $f`,
+  'f=src/x.ts; cat $f',
+  'f=src/x.ts; grep a "$f"',
+  `f=src/x.ts; sed 's/a/b/' $f > /tmp/out.txt`,
+  'f=src/x.ts; cp $f /tmp/backup.ts',
+  'f=src/x.ts; mv "$f" /tmp/x.ts',
+  'f=src/x.ts; ./node_modules/.bin/biome check --write $f',
+  'f=src/x.ts; npx biome check --write $f',
+  'f=src/x.ts',
+  'f=src/x.ts; echo $f',
+  `f=src/x.ts g=1 true; sed -i '' 's/a/b/' $f`,
+  `g=src/x.ts; sed -i '' 's/a/b/' $f`,
+  `f=src/x.ts; sed -i '' 's/a/b/' "$other"`,
+  `f=src/x.ts; echo "sed -i '' s/a/b/ $f"`,
+  `f=/tmp/x.ts; python3 -c "open('$f', 'w').write('x')"`,
+  `d=/tmp; cd $d && sed -i '' 's/a/b/' x.txt`,
+  `d=src; f=/tmp/$d.ts; sed -i '' 's/a/b/' $f`,
+  `(f=src/x.ts); echo done`,
+];
+
 describe('kill-guard shell-write deny (parser only, fake repository)', () => {
+  it.each(DENIED_SAME_COMMAND_VARIABLE)(
+    'denies a write through a variable the command assigns: %s',
+    (command) => {
+      expect(decideInMain(command)).toBe('shellWrite');
+    },
+  );
+
+  it.each(ALLOWED_SAME_COMMAND_VARIABLE)(
+    'allows a variable that points outside the trees, or a read: %s',
+    (command) => {
+      expect(decideInMain(command)).toBe('allow');
+    },
+  );
+
+  it.each(DENIED_WHATEVER_THE_VARIABLE_HOLDS)(
+    'denies a guarded folder behind an unresolved variable the command also assigns: %s',
+    (command) => {
+      expect(decideInMain(command)).toBe('shellWrite');
+    },
+  );
+
+  it('names the resolved file in DETAILS', () => {
+    expect(detailOf(`f=src/x.ts; sed -i '' s/a/b/ $f`)).toContain(`(writes ${MAIN}/src/x.ts)`);
+  });
+
+  it.each(DENIED_GIT_CONFIG)('denies a write into a git config file: %s', (command) => {
+    expect(decideInMain(command)).toBe('shellWrite');
+  });
+
+  it.each(ALLOWED_GIT_CONFIG)(
+    'allows a read of a git config file or another path: %s',
+    (command) => {
+      expect(decideInMain(command)).toBe('allow');
+    },
+  );
+
+  it('judges a linked worktree and a path with no known directory the same way', () => {
+    expect(decide('echo x >> ../main/.git/config', { cwd: WORKTREE })).toBe('shellWrite');
+    expect(decide('echo x >> .git/config', { cwd: PLAIN })).toBe('shellWrite');
+    expect(decide('echo x >> .git/config')).toBe('shellWrite');
+    expect(decide('echo x >> /tmp/x/config')).toBe('allow');
+  });
+
+  it('names the config file in DETAILS', () => {
+    expect(detailOf('echo x >> .git/config')).toContain(`(writes ${MAIN}/.git/config)`);
+  });
+
+  it.each(DENIED_E2E)('denies a write into e2e/: %s', (command) => {
+    expect(decideInMain(command)).toBe('shellWrite');
+  });
+
+  it.each(ALLOWED_E2E)('allows a read of e2e/ or a write outside the trees: %s', (command) => {
+    expect(decideInMain(command)).toBe('allow');
+  });
+
   it.each([
     ...DENIED_SED_AND_PERL,
     ...DENIED_REDIRECTS,
@@ -423,6 +667,34 @@ describe('kill-guard shell-write deny (parser only, fake repository)', () => {
     expect(Date.now() - started).toBeLessThan(2000);
   });
 
+  // Copying every earlier assignment per assignment would take seconds of the hook's 10 for 10000.
+  it('judges thousands of assignments and plain commands well inside the hook timeout', () => {
+    const assignments = Array.from({ length: 10000 }, (_, index) => `v${index}=/tmp/x`).join('; ');
+    const plain = Array.from({ length: 6000 }, () => 'echo a').join('; ');
+    const command = `f=src/x.ts; ${assignments}; ${plain}; sed -i '' s/a/b/ $f`;
+    const started = Date.now();
+
+    expect(decideInMain(command)).toBe('shellWrite');
+    expect(Date.now() - started).toBeLessThan(1500);
+  });
+
+  // A command that doubles a variable 31 times would build a string past the engine's limit, and
+  // the throw must not turn the whole decision into an allow.
+  it('judges a command that doubles a variable past any size', () => {
+    const doublings = Array.from({ length: 31 }, () => 'v=$v$v').join('; ');
+
+    expect(decideInMain(`v=ab; ${doublings}; pkill node`)).toBe('kill');
+    expect(decideInMain(`v=ab; ${doublings}; echo x > $v`)).toBe('allow');
+  });
+
+  it('reads a variable value of at most 4 KiB and a longer one as unknown', () => {
+    const near = `src/${'a'.repeat(4000)}.ts`;
+    const far = `src/${'a'.repeat(5000)}.ts`;
+
+    expect(decideInMain(`f=${near}; sed -i '' s/a/b/ $f`)).toBe('shellWrite');
+    expect(decideInMain(`f=${far}; sed -i '' s/a/b/ $f`)).toBe('allow');
+  });
+
   it('counts a tree only at the root of a worktree of this repository', () => {
     expect(decide('echo x > src/x.ts', { cwd: WORKTREE })).toBe('shellWrite');
     expect(decide('echo x > src/x.ts', { cwd: OTHER })).toBe('allow');
@@ -450,6 +722,18 @@ describe('scripts/checks/kill-guard.sh shell-write deny (hook entry)', () => {
     expect(reason).toContain(join(REPOSITORY_ROOT, 'src/App.tsx'));
     expect(reason).toContain('Edit or Write');
     expect(reason).toContain('to move a file, use `git mv` (git add a new file first)');
+  });
+
+  it('denies a write into .git/config and names ensure-git-hooks.sh', () => {
+    const result = run(payloadIn(REPOSITORY_ROOT, 'echo x >> .git/config'));
+
+    expect(result.status).toBe(0);
+    const parsed = JSON.parse(result.stdout.trim());
+    const reason: string = parsed.hookSpecificOutput.permissionDecisionReason;
+    expect(parsed.hookSpecificOutput.permissionDecision).toBe('deny');
+    expect(BLOCK_LABELS.filter((label) => !reason.includes(label))).toEqual([]);
+    expect(reason).toContain(join(REPOSITORY_ROOT, '.git/config'));
+    expect(reason).toContain('bash scripts/ensure-git-hooks.sh');
   });
 
   it.each(['echo x > /tmp/out.txt', 'cat src/App.tsx > /dev/null', "sed -n '1p' src/App.tsx"])(

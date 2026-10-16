@@ -398,12 +398,13 @@ describe('deleting an import row after a closing balance set the balance', () =>
 
   it('leaves the name rules alone when a categorised row goes', async () => {
     run(
-      "INSERT INTO category_overrides (normalized_name, display_name, category) VALUES ('coffee', 'Coffee', 'cafe')",
+      `INSERT INTO category_rules (id, category, matchers)
+       VALUES ('coffee', 'cafe', '[{"type":"nameIs","text":"Coffee"}]')`,
     );
     await transactionsRepo.setCategory({ transactionId: idOf('first'), category: 'cafe' });
     await transactionsRepo.remove(idOf('first'));
 
-    expect(scalarOf('SELECT count(*) AS value FROM category_overrides')).toBe(1);
+    expect(scalarOf('SELECT count(*) AS value FROM category_rules')).toBe(1);
     expect(storedRowCount()).toBe(2);
   });
 });

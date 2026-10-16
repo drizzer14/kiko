@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # make verify — the single end-of-work command for the developer and qa
-# agents. Runs the three checks they used to run separately (lint, the full
+# agents. Runs the three checks (lint, the full
 # jest suite, the full gate) as ORDERED, FAIL-FAST stages: it stops at the
 # first failing stage rather than running all three regardless (this is NOT
 # a run-all). Each stage's stdout/stderr stream straight to the terminal

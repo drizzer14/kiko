@@ -3,7 +3,7 @@
 # payload from stdin and forwards it to pre-write-guard.js, which rebuilds
 # the proposed file content and denies the write when it introduces a known
 # violation. See pre-write-guard.js for the checks it runs and
-# CLAUDE.md's "Automatic wiring" note for the hook wiring
+# docs/harness/checks.md "Automatic wiring" for the hook wiring
 # (harness/kiko/hooks/hooks.json, through hooks/dispatch.sh).
 #
 # Fail closed: pre-write-guard.js already exits 0 (allow) or 2 (deny — with

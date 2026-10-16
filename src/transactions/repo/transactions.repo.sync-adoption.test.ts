@@ -115,7 +115,11 @@ const sync = (items: SyncItem[]): Promise<number> => transactionsRepo.addManyDed
 
 const excludedIds = (): Set<string> =>
   exchangeExcludedTransactionIds(
-    storedRows().map(({ id, marker }) => ({ id, exchangeCounterpartHoldingId: marker })),
+    storedRows().map(({ id, marker }) => ({
+      id,
+      exchangeCounterpartHoldingId: marker,
+      untrackedCounterpart: null,
+    })),
   );
 
 // An import row of -40 000 on the card, Converted to a manual USD leg while it
@@ -276,7 +280,8 @@ describe('a sync item adopts its import twin', () => {
 
   it('fills a missing category by the name rule an inserted row would get', async () => {
     run(
-      "INSERT INTO category_overrides (normalized_name, category, display_name) VALUES ('rozetka', 'gifts', 'Rozetka')",
+      `INSERT INTO category_rules (id, category, matchers)
+       VALUES ('rozetka', 'gifts', '[{"type":"nameIs","text":"Rozetka"}]')`,
     );
     insertRow({ id: 'i1', time: T, category: null });
 

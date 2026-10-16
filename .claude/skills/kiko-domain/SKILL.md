@@ -144,7 +144,7 @@ absent** — this skill states the shape and non-enum facts only:
   (`src/holdings/deletable/`) or any provider-registry lookup — those
   stay keyed on `institution` alone, so tagging an account
   `bankId: 'privatbank'` can never make it look connected. This is the
-  Guideline 5.6 invariant (see `guidelines-compliance-is-architecture-rule`
+  Guideline 2.3.1(a) invariant (see `guidelines-compliance-is-architecture-rule`
   in memory): never wire a picker selection into a connected-ness
   check.
 
@@ -246,7 +246,8 @@ implemented, and callers must skip it rather than assume every id resolves.
   `side`; today the `debt` kind) says loan too: the holding form's
   create title `forms.holding.addLoanTitle` ("Add Loan" / "Додати
   кредит") and its edit title `forms.holding.editLoanTitle` ("Edit Loan"
-  / "Редагувати кредит"). There is no "Add loan" footer
+  / "Редагувати кредит"). Account detail has no "Add loan" footer; the Help topic
+  footer has one (`HelpAction` `addLoan`, kiko-design-system D10).
   Holding detail passes the flag in
   the HoldingForm route (`debtAccount`) on edit, so the title is right
   on the first frame; the form reads the account row when the route has
@@ -273,8 +274,12 @@ implemented, and callers must skip it rather than assume every id resolves.
 
   Re-syncing an existing `externalId` **refreshes** that row's
   bank-owned columns — the settled `amountMinorUnits` and `hold`
-  among them — and **never** its `category` (the user's override, or
-  a name rule's rewrite) or `comment`. Read `addManyDedup` in
+  among them — and **never** its `comment`; its `category` is written
+  only for an unflagged (`category_set_by_hand = 0`), non-structural row
+  (a row that no field of `REWRITE_GUARD_FIELDS` in
+  `src/categories/category-rules/plan-rule-rewrite.ts` marks) whose amount changed and a
+  category rule wins
+  (`ruleWonTransactionSet`, `src/transactions/repo/transactions.repo.ts`). Read `addManyDedup` in
   `src/transactions/` for the exact refreshable
   set, and `transactions.hold` in `src/db/schema.ts` for why a
   pending item is imported at its provisional amount at all, rather
@@ -345,6 +350,15 @@ A SYNC-owned balance is the exception and writes no ledger row: the
 provider owns that number (`upsertByMetadataKey` in
 `src/holdings/`), and the form hides the balance field for a synced
 holding entirely.
+
+A manual create carries `ManualTransaction.categorySetByHand` (true when the
+user picked the category by hand), stored in `transactions.category_set_by_hand`;
+`recordManual` returns the new row id and `recordManualWithReturns` the payment
+row id; rules and rewrites never touch a flagged row.
+The flag on save (a hand pick or a seed with a category saves true; a pre-select
+saves false (and opens no name-rule sheet); an edit never pre-selects; "Apply" on create passes the created row
+id): see `src/screens/forms/transaction-form/use-category-pick/` and decisions 13
+and 17 of `docs/superpowers/specs/2026-10-11-category-rules-design.md`.
 
 **Every transaction updates its balance (user rule 2026-10-05).** A manual
 write (`recordManual`, each exchange or change-return leg), its edit (`update`,
@@ -506,7 +520,8 @@ in the account form's own slot, under the divider; keeps the title "Add
 Account" (the stack sets it statically for an `implicitKind` route too);
 seeds name, icon and color from the swap draft ONCE (`useState` initial
 values; a saved draft, `saved: true`, wins over the swap seed and over a
-stored row on an edit, and `useDraftParam` reads it once at mount); and Save is `accountsRepo.createImplicitHolding(implicitKind, {
+stored row on an edit, and `useDraftParam` reads it once at mount); and Save is
+`accountsRepo.createImplicitHolding(implicitKind, {
 name, type, currency, color, icon, ...active.createPayload() })` (one
 write: it finds or creates the implicit account and stores the icon with
 the holding, never in a second write), then `refreshMarketData`,
@@ -778,8 +793,15 @@ why this is the deliberate exception to functional-first). It holds
 `{ currency, minorUnits }` and is immutable.
 
 - `minorUnits` is always an integer. **Never a float.** Scale is
-  per-currency: `BTC` uses 8 decimals (satoshis); `USD`, `EUR`, and
-  `UAH` use 2 (cents).
+  per-currency: read it from `currencyScale` in
+  `src/currency/currency/currency.ts`, never restate a currency's scale.
+- `formatMoney` renders a crypto amount from `splitMinorUnits` (an exact
+  integer split, no float division) and trims trailing zeros down to at
+  least 2 decimals; fiat keeps its fixed scale. Every new digit-producing
+  display or edit text (for example `majorAmountText`) uses
+  `splitMinorUnits`, never `/ 10 ** scale` or `toFixed`.
+  `splitMinorUnits` rounds a non-integer stored value first (a test pins
+  it).
 - The value object itself — construction, arithmetic, and the
   currency-mismatch guard — lives in `src/currency/`. Read it
   directly for the current method set rather than trusting a list
@@ -811,9 +833,11 @@ why this is the deliberate exception to functional-first). It holds
 
 ## Currencies
 
-A small closed set (`BTC` at scale 8, everything else at scale 2) —
-read `schema.ts`'s `currency`/`baseCurrency` enum for the exact
-current member list rather than trusting a count restated here. Map a
+A small closed set — read `schema.ts`'s `currency`/`baseCurrency` enum
+for the exact current member list and `currencyScale`
+(`src/currency/currency/currency.ts`) for each scale rather than
+trusting a count restated here. Crypto (`isCrypto`) shares one display
+rule, see `formatMoney`. Map a
 currency code to its scale with `ts-pattern`'s exhaustive `match` — a
 currency literal type, not a free string, so adding a currency is a
 compile error everywhere the mapping is missing.
@@ -918,12 +942,21 @@ Writers hold up the other end: a category value is persisted only as
 the lowercase `categories.key` slug. `categoryForMcc`
 (`src/monobank/`) emits the slug, not a display title,
 and migration `0014_lowercase_categories` lowercased the legacy rows a
-capitalized-title era had already written. Because neither
-`transactions.category` nor `category_overrides.category` is COLLATE
-NOCASE, `categoriesRepo.delete`'s reassignment additionally compares
-case-insensitively on both sides (`lower(column) = lower(key)`), so an
-un-migrated row from an older build still gets folded onto the default
-instead of being orphaned on a deleted slug.
+capitalized-title era had already written. Neither
+`transactions.category` nor `category_rules.category` is COLLATE NOCASE;
+`categoriesRepo.delete`'s reassignment compares case-insensitively on both
+sides (`lower(column) = lower(key)`), so an un-migrated transaction row from
+an older build is folded onto the default instead of orphaned on a deleted
+slug; the category's rules are deleted in the same write, and the moved rows
+lose the by-hand flag.
+
+**Rule validation.** `src/categories/category-rules/validate-rule.ts`
+owns it; a `neverMatches` result carries `conflict: 'time' | 'other'`
+(read the `RuleValidation` type in `category-rules.d.ts`), and only the
+time conflict gets the midnight hint. The editor's matcher option lists
+come from `src/categories/category-rules/matcher-options.ts`. The
+editor's amount draft converts through `Money.fromMajor` exactly; a
+draft with too many decimals for the currency is refused.
 
 ## Spending-exclusion pipeline
 
@@ -996,13 +1029,25 @@ always, and the marker only when it is manual or imported and carries none; see
   rows — a null `mcc`, an empty description, and a cross-currency pair
   the matched-pair matcher rejects.
 - **The repository never writes a description for a leg.** The label is
-  resolved at render time through `t` from the marker plus the
-  counterpart's CURRENT name (a description the USER later types on that
-  row still wins — the resolver prefers a stored one) — `exchangeLegDescription`
-  (`src/transactions/`), applied by both
-  transaction lists via `transactionRowDescription` (`src/transactions/`). A
-  persisted sentence stayed English after a language switch and went
+  resolved at render time through `t`. `transactionRowDescription`
+  (`src/transactions/row-description/`) applies this order: (1) a stored
+  description wins; (2) a row with `exchangeCounterpartHoldingId` gets the
+  paired leg's label from `exchangeLegDescription` / `transferLegDescription`
+  (`src/transactions/exchange-description/`): 'Transfer to/from <name>' when
+  both holdings have the same currency, 'Exchange to/from <name>' otherwise or
+  when either currency is unknown; (3) a row with a known `untrackedCounterpart`
+  code (`wallet:<TYPE>`, `src/transactions/untracked-counterpart/`; wallet
+  names are proper nouns kept in code, not in i18n) gets 'Transfer to/from
+  <wallet>'; (4) otherwise `defaultTransactionDescription`. Same-currency legs,
+  including manual ones, read 'Transfer', not 'Exchange'. The caller supplies
+  `holdingNameById` and `holdingCurrencyById`, both built from the holdings live
+  query. A persisted sentence stayed English after a language switch and went
   stale after a rename; that is the bug the column exists to prevent.
+- `transactions.untrackedCounterpart` (0058, nullable `wallet:<TYPE>`) marks a
+  leg whose other side is an untracked wallet. The exchange-exclusion module
+  also excludes these rows from spending (read
+  `src/statistics/exchange-exclusion/`). The column is insert-only: it is not in
+  `BANK_OWNED_TRANSACTION_COLUMNS` (`src/transactions/repo/transactions.repo.ts`).
 - **`transactionRowDescription` is the ONE owner of a blank row's label.**
   Every surface that shows it calls it: both lists, `ExampleTransaction`,
   and the transaction form. On an edit, the form pre-fills a blank
@@ -1012,7 +1057,7 @@ always, and the marker only when it is manual or imported and carries none; see
   untouched leg keeps resolving at render time. A direct
   `defaultTransactionDescription(` call outside
   `src/transactions/row-description/` (or the helper's own folder)
-  skips the exchange branch and is denied by the
+  skips the exchange, transfer and untracked branches, and is denied by the
   `kiko-no-direct-default-transaction-description` Semgrep rule.
 - A repository input therefore carries holding IDs, never holding
   display names, for an exchange.
@@ -1065,6 +1110,12 @@ Rules:
   keeps the marker that takes its contribution out. The marker therefore may name
   a holding no leg of the pair sits on (the deposit), which is why a delete never
   clears a kept row's marker just because the row has one.
+- **A same-currency pair says "transfer".** `missingPartSentence` and
+  `exchangeSentence` (`src/transactions/remove-notice/remove-notice.ts`) pick
+  `transactions.deleteLinked.transfer`, `.transferUnlinked` and
+  `.transferUnlinkedPlain` for a pair whose legs share a currency (a manual
+  same-currency exchange between two holdings), the `exchange*` keys otherwise.
+  A Binance row is never the one deleted here: a synced row is not deletable.
 - **An unreadable deposit is not an error.** `removeDepositContributionDatabaseTransaction`
   returns false when the metadata cannot be read or no single contribution
   matches: the leg deletes and the deposit stays, as the confirm said
@@ -1086,7 +1137,9 @@ Rules:
   other part of this exchange"; a "could not be found" holding the row's own
   `exchange` sentence already names is not named again there; with a split, the exchange sentences that say
   "only this part is deleted" take the same split wording. A holding or account
-  delete lists the OTHER holdings' changes only (`RemoveHoldingsPlan.balanceChanges`).
+  delete lists the OTHER holdings' changes only (`RemoveHoldingsPlan.balanceChanges`,
+  and `templatesChanged`, the templates whose holding reference the delete clears,
+  rendered by `removeHoldingsNoticeOf` with `holdings.deleteLinked.templates`).
 - **A confirm opened twice shows the latest plan.** The `CardContextMenu`
   `deleteMessage` is async and a superseded result is dropped (see
   `kiko-design-system`).
@@ -1417,7 +1470,7 @@ bond.
 loop-invariant per holding (not per bucket) must be computed ONCE, outside
 the per-bucket loop, not re-derived at every point. `createHoldingValuer`
 (`src/statistics/holding-value-at/`) is the ONLY holding-valuation entry
-point now — there is no separate single-call `holdingValueAt` anymore, it
+point now — there is no separate single-call holding-value-at function anymore, it
 was deleted from production (its old body survives only as a local,
 un-exported `referenceHoldingValueAt` oracle inside
 `holding-value-at.test.ts`, the same "kept only as the parity oracle"
@@ -1425,7 +1478,7 @@ pattern `internal-transfers.test.ts` uses for the algorithm IT replaced).
 Every call site — including a single-instant read like
 `holdingsRepo.updateWithBalanceDelta`'s own regression test — calls
 `createHoldingValuer(holding, transactions)(t)` instead; for a one-off read
-this pays the same per-holding setup cost `holdingValueAt` used to pay
+this pays the same per-holding setup cost that single-call function used to pay
 per call, which is negligible for a single call.
 
 `buildNetWorthSeries` also decides whether a holding's value counts at
@@ -1521,7 +1574,7 @@ The counting must happen from OUTSIDE production, with **zero counting
 code in `holding-value-at.ts` or `internal-transfers.ts`** — an injected
 counter parameter or debug flag on the production function is a
 test-only hook living in shipping code, which the App Store build must
-never carry (see "Guideline 5.6 — no hidden features" in the root
+never carry (see "Guideline 2.3.1(a) — no hidden features" in the root
 `CLAUDE.md`: test/demo machinery must be ABSENT from the build, not
 merely dormant). The test instead feeds each function input ROWS whose
 own `time` (and, for holding-value-at, `amountMinorUnits`) fields are
@@ -2174,8 +2227,8 @@ needs a 0032-style migration), while the `loan` type is
 `arrow.up.forward.circle.fill` — a saved loan holding stores a null icon,
 so the new glyph needs no migration. That type glyph is now only the
 fallback for a loan with no valid kind: a loan's default glyph follows its
-kind (below). There is no "Add loan" footer
-button any more (kiko-design-system's footer mapping).
+kind (below). Account detail has no "Add loan" footer button; the Help topic footer
+has one (kiko-design-system D10).
 
 A `debt` account's Type field IS its loan-kind picker (`LoanKindField`,
 `src/screens/forms/holding-form/loan/loan-kind-field/`, testID
@@ -2224,9 +2277,18 @@ decimal-string rule.
   period via the standard formula and rounds it ONCE; every period but
   the last derives its principal as `roundedPayment - interest`.
   `differentiated` instead holds a constant PRINCIPAL per period
-  (`round(principal / termMonths)`). Either way the LAST installment's
-  principal is simply whatever balance remains, so the schedule always
-  reduces to EXACTLY 0, never a stray rounding kopeck.
+  (`round(principal / termMonths)`). Either way every non-last principal is
+  capped at the remaining balance, so the balance never goes negative. A
+  tiny loan paid off before its term keeps its row count
+  (`installmentIndexOf` and the ledger count rows) and its trailing rows
+  are zero-payment rows. The LAST principal is whatever balance remains, so
+  the principals sum exactly to the loan principal and the schedule ends at
+  exactly 0. Read `loanInstallments` and `isScheduledPayment` in
+  `src/holdings/loan-schedule/loan-schedule.ts`; its test
+  (`loan-schedule.test.ts`) pins the invariants.
+  A fix to shared money math ships with a property test of the invariant AND
+  a before/after sweep showing normal inputs unchanged. It never changes the
+  row count of the schedule (indexes and the ledger count rows).
 - `loanOutstandingMinorAt(meta, holdingId, book, instant)`: `none` reads the manual
   `holding:<id>` price-point series directly (the same mechanism
   Property's "Update value" uses), clamped to never go below 0.
@@ -2413,20 +2475,32 @@ Principal repaid / Outstanding (`loanLedgerSummary`, above; testIDs
 number as the Value header, the card, and net worth.
 An `'annuity'`/`'differentiated'` loan additionally lists EVERY remaining
 scheduled payment under an "Upcoming Payments" heading (the loan entry's
-own `upcomingInstallments` — every `loanInstallments` row due on or after
-today's local day, in schedule order; its first row is the next
+own `upcomingInstallments` — every `loanInstallments` row that
+`isScheduledPayment` accepts and that is due on or after today's local day
+(zero-payment rows after an early payoff are skipped), in schedule order; its first row is the next
 installment). `UpcomingPayments`
-(`src/screens/holding-detail/upcoming-payments/`, memoized) renders them as
-ONE shared `SummaryTable`, one row per installment: the due date as the
-label, the payment as the value, and a `holdingDetail.paymentSplit`
-caption ("Principal X · interest Y") beneath it; row testID
-`upcoming-payment-<index>`. A 30-year mortgage lists all 360 rows (the
-screen memoizes the list on the local day, so it is not rebuilt on every
-render). A `'none'` schedule and every other holding type render nothing
+(`src/screens/holding-detail/upcoming-payments/`, memoized) draws them as
+ledger cards: one `UpcomingPaymentRow` (`upcoming-payment-row/`) per
+installment, built on the shared `EntryCard` under an `EntryDateHeader`. The
+title is `holdingDetail.loanPayment`, the amount is the payment read signed
+and red like a Linked Payments row (display-only negation through
+`MoneyText` with `context="transaction"`, the same call; the accessibility
+label reads the signed amount; the principal / interest split stays
+unsigned), and the footer is the `holdingDetail.scheduled` caption, then the
+`holdingDetail.paymentSplit` caption. Read `upcoming-payment-row.component.tsx`
+for the exact row testIDs. Only the first `UPCOMING_PAYMENT_PREVIEW_COUNT`
+installments render (see `upcoming-payments.component.tsx`). A shared
+`ExpandToggle` (testID `upcoming-payments-toggle`) shows only when more
+exist, and reveals or re-hides the rest. A 30-year mortgage still has 360
+installments in the list, but only the preview count mounts until expanded.
+The screen memoizes the list on the local day, so it is not rebuilt on every
+render. A `'none'` schedule and every other holding type render nothing
 there. The list is also empty once `loanLedgerOutstandingMinorAt` reads 0
 (`upcomingInstallments`' own `<= 0` guard) — a loan fully repaid by its
 linked payments, or overpaid/over-corrected, lists nothing even while
 `loanInstallments` still has future rows on the loan's ORIGINAL schedule.
+Zero-payment rows are skipped too; the filter lives in
+`src/screens/holding-detail/holding-detail-spec/holding-detail-spec.ts`.
 
 A loan correction (the "Update outstanding" `PricePointForm` write
 above) accepts **0**, unlike every other holding type's "Update
@@ -2531,8 +2605,9 @@ MANUAL action may ever move `loanLinkRejected`.
 conflict path both the Monobank sync and statement import share) never
 refreshes any of the three loan-link columns on a re-sync — its
 `onConflictDoUpdate` `set` names only the bank-owned columns, the same
-exclusion `category`/`comment` already rely on (see that function's own
-existing doc comment). Its `setWhere` is derived from that SAME `set`
+exclusion `comment` relies on (`category` is excluded except in
+`ruleWonTransactionSet`'s guarded CASE; see the sync paragraph above) (see
+that function's own existing doc comment). Its `setWhere` is derived from that SAME `set`
 column list (`BANK_OWNED_TRANSACTION_COLUMNS`), so the UPDATE — and the
 `transactions` reactive-query fire it would otherwise trigger — is skipped
 entirely when a re-fetched row is unchanged; the loan-link columns are
@@ -2628,6 +2703,9 @@ re-checks the four eligibility conditions itself, so it stays correct when
 unit-tested directly. An informal (`'none'`-schedule) loan is never
 matched: `loanInstallments` already returns `[]` for it, so it contributes
 no candidate installment at all — no separate schedule check is needed.
+A zero-payment row is never a matcher candidate
+(`src/loans/payment-matcher/payment-matcher.ts`), because the matcher's 1.00
+tolerance floor would otherwise match a debit of up to 1.00.
 `now` bounds installments to `dueDate <= now + 3 days` (the window's own
 before-margin) — a cheap UPPER bound only, never a lower one, so a freshly
 created/edited loan backfills its WHOLE past history the first time this
@@ -2730,7 +2808,7 @@ currency — the same "a filter never hides an active selection" rule
 `buildLoanOptions` (below) already follows on the transaction form's own
 loan-payment field, or the picker would resolve no match for a link that
 still exists in the metadata and silently show "None". `isLoanFieldVisible`
-(`transaction-form.screen.tsx`) shows that field whenever the row already
+(`src/screens/forms/transaction-form/mode-and-actions/mode-and-actions.ts`) shows that field whenever the row already
 carries `selectedLoanHoldingId`, regardless of the row's own amount
 sign — a linked row later edited from debit to credit must still reach the
 field where None/Undo live.
@@ -2765,6 +2843,33 @@ but leaves the other legs behind, so the money of a movement exists on one side
 only. Only `transactions.repo.ts` and `holdings.repo.ts` (its owner) call it
 (`kiko-holding-delete-needs-cascade`, `rules/semgrep-prewrite.yml`): every other
 caller deletes through `transactionsRepo.removeHolding`.
+
+A holding delete and an account delete also clear the transaction templates'
+references to the deleted holdings in the same write, on the same two paths as the
+loan-link clear (`removeHoldingDatabaseTransaction`, `accountsRepo.remove`; see the
+`clearLoanLinksForHoldingsDatabaseTransaction` paragraph above):
+`transactionTemplatesRepo.clearHoldingsDatabaseTransaction`. A category delete
+(`categoriesRepo`) clears the template's category through
+`clearCategoryDatabaseTransaction` to EMPTY, never to the default category; the field
+stays in the template.
+
+## Transaction templates
+
+`src/transaction-templates/{draft,template-name,repo}` own a saved, reusable
+transaction draft; `transactionTemplatesRepo` is its repo and `TemplateNameTakenError`
+its error. User rules: no loan link, no comment, no date; the amount is optional; the
+name is unique case-insensitively, with Unicode folding done in JS. A save from the
+transaction form rides `alongside(databaseTransaction)` on `transactionsRepo.recordManual`
+/ `recordExchange` / `recordManualWithReturns` / `update` (runs last inside the same
+write); the transactions feature never imports templates on that save path.
+A template stores a category ONLY when the user picked it by hand (`userPickedCategory`);
+otherwise it stores none, and each use gets the CURRENT category-rule pre-select (user
+ruling 2026-10-12). On Duplicate and Edit, the source category counts as a hand pick, so
+the template keeps it. The save path reads `userPickedCategory ? effectiveCategory : null`,
+never `selectedCategory` (settled only on blur). Pin it with a red test that presses Save
+WITHOUT a blur.
+The form's template units live in `src/screens/forms/transaction-form/` (list them with
+`ls`); the Template list screen is `src/screens/settings/transaction-templates/`.
 
 ## Adding a holding type
 

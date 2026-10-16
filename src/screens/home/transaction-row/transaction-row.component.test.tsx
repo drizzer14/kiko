@@ -39,6 +39,8 @@ const baseItem: HomeTransactionRow = {
   time: Date.now(),
   description: 'Coffee',
   exchangeCounterpartHoldingId: null,
+  untrackedCounterpart: null,
+  holdingId: 'h-1',
   changeGroupId: null,
   category: 'food',
   accountId: 'a-1',
@@ -63,6 +65,7 @@ const renderRow = (
       categoryByKey={new Map()}
       defaultCategoryKey="other"
       holdingNameById={new Map()}
+      holdingCurrencyById={new Map()}
       categoryKeyForRow={(raw) => raw ?? 'other'}
       onPress={onPress}
       onDuplicate={onDuplicate}

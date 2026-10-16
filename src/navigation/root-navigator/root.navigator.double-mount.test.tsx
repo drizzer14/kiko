@@ -559,8 +559,12 @@ describe('the Accounts tab with a runtime default in its primary pane', () => {
       getAllByRole: Awaited<ReturnType<typeof walkTabs>>['getAllByRole'],
       name: string,
     ) => {
+      // A transaction form mounted in another tab carries its entry tabs, which are selected
+      // buttons too, and no list row.
       const selected = getAllByRole('button').filter(
-        (row) => row.props.accessibilityState?.selected === true,
+        (row) =>
+          row.props.accessibilityState?.selected === true &&
+          !String(row.props.testID).startsWith('entry-tabs-option-'),
       );
 
       expect(selected).toHaveLength(1);

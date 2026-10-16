@@ -104,8 +104,15 @@ const earlierBuildPayload = async (
 
   const tables = JSON.parse(JSON.stringify(await readDataSnapshot())) as Record<string, unknown>;
 
-  for (const table of ['reminders', 'pricePoints', 'bondRegister']) {
+  for (const table of ['reminders', 'pricePoints', 'bondRegister', 'categoryRules']) {
     delete tables[table];
+  }
+
+  // The earlier build kept its name rules in `categoryOverrides` and marked no row by hand.
+  tables.categoryOverrides = [];
+
+  for (const row of tables.transactions as Record<string, unknown>[]) {
+    delete row.categorySetByHand;
   }
 
   for (const row of tables.settings as Record<string, unknown>[]) {
@@ -242,6 +249,52 @@ describe('importing a version 1 file an earlier build wrote', () => {
       expect(storedImportTime()).toBe(REZONED_IMPORT_TIME);
       expect(storedImportTime()).not.toBe(LEGACY_IMPORT_TIME);
       expect(importTimesRezoned()).toBe(1);
+    });
+  });
+
+  describe('a file written before transactions carried an untracked counterpart', () => {
+    it('restores every transaction with a null untracked counterpart', async () => {
+      const payload = (await earlierBuildPayload(undefined, (database) => {
+        insertLegacyImportRow(database);
+        database
+          .prepare(
+            `INSERT INTO transactions (id, holding_id, amount_minor_units, time, source, untracked_counterpart)
+             VALUES ('t2', 'h1', -200, ?, 'manual', 'wallet:UMFUTURE')`,
+          )
+          .run(LEGACY_IMPORT_TIME);
+      })) as { tables: { transactions: Record<string, unknown>[] } };
+
+      for (const row of payload.tables.transactions) {
+        delete row.untrackedCounterpart;
+      }
+      mockDatabase = openDatabase();
+
+      await importVersionOne(payload);
+
+      expect(
+        mockDatabase.prepare('SELECT untracked_counterpart AS value FROM transactions').all(),
+      ).toEqual([{ value: null }, { value: null }]);
+    });
+
+    it('restores the untracked counterpart a file carries', async () => {
+      const payload = await earlierBuildPayload(undefined, (database) => {
+        insertLegacyImportRow(database);
+        database
+          .prepare(
+            `INSERT INTO transactions (id, holding_id, amount_minor_units, time, source, untracked_counterpart)
+             VALUES ('t2', 'h1', -200, ?, 'manual', 'wallet:UMFUTURE')`,
+          )
+          .run(LEGACY_IMPORT_TIME);
+      });
+      mockDatabase = openDatabase();
+
+      await importVersionOne(payload);
+
+      expect(
+        mockDatabase
+          .prepare('SELECT untracked_counterpart AS value FROM transactions ORDER BY id')
+          .all(),
+      ).toEqual([{ value: null }, { value: 'wallet:UMFUTURE' }]);
     });
   });
 

@@ -6,15 +6,18 @@
 # process-group/broadcast kill), any `git stash` subcommand, a heredoc
 # whose delimiter is not quoted, a git history change on the main checkout,
 # or a shell write (sed -i, perl -i, a redirect, tee, a python or node
-# one-liner) into src/, __tests__/, or rules/ of a worktree of this
+# one-liner) into src/, __tests__/, rules/, or e2e/ of a worktree of this
 # repository, or a while/until wait loop that scans ps or pgrep -f for a heavy
 # job (it matches its own command line and never ends). See kill-guard.js for
-# the full rationale and CLAUDE.md's "Automatic wiring" note for the hook
+# the full rationale and docs/harness/checks.md "Automatic wiring" for the hook
 # wiring.
 #
 # This wrapper is NOT a check (see .claude/skills/kiko-linter/SKILL.md for
 # that contract) — it must ALWAYS exit 0, even if node is missing or the
-# payload is malformed, so a broken guard never blocks the Bash tool itself.
+# payload is malformed; a deny is the JSON on stdout, never the exit code.
+# An error thrown while judging a command is a deny (`internalError`), because the command that
+# crashed the guard may be the one it exists to stop. A malformed or unreadable payload, an empty
+# command, and a missing node still allow, so a broken hook process never blocks the Bash tool.
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 node "$DIR/kill-guard.js" 2>/dev/null
 exit 0

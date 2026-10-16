@@ -45,42 +45,50 @@ used to say.
 ### A hold lifts the card, and a lifted card never opens its page
 
 `Sortable.Grid` lifts a card (`activeItemScale`) once a hold passes its
-`dragActivationDelay` — the library default, 200 ms, which is BEFORE the
+drag activation delay — the library default, 200 ms, which is BEFORE the
 `CardContextMenu` long-press (450 ms) — so every hold on a sortable card
 lifts it first. Two rules follow, shared by all three card grids
 (Accounts' main grid and its Property/Debts holding grids, and the
 account-detail holding grid):
 
-- **A lone card lifts too.** `sortEnabled` is the query's `isFresh` only,
-  never `&& data.length > 1`. react-native-sortables' touch handler gates
-  only on `sortEnabled`, the absolute layout being ready, and no other
-  active item (`DragProvider.ts` `handleTouchStart`) — it never counts
-  items — so a single card lifts and drops back (`onDragEnd` reports
-  `fromIndex === toIndex`, which `onGridDragEnd` persists nothing for).
-- **A hold that lifted the card never fires the card's tap.** A moved
-  drag and an opened context menu deliver NO `onPress`: react-native-sortables
-  1.10.0 on RNGH 3.2.1 (v3 adapter,
-  `integrations/gesture-handler/adapters/v3.ts`) makes RNGH cancel the JS
-  responder when its gesture activates (`RNRootViewGestureRecognizer.m:39-52`,
-  `cancelsJSResponder` defaults to YES). The press reaches JS only on a
-  still hold released before the menu (450 ms) with no touch-move after the
-  lift, because the v3 adapter activates on the next move. That is the path
-  this guard covers; `onActiveItemDropped` clears the flag in every other
-  case.
-  `useGridLiftGuard` (`src/design-system/use-grid-lift-guard/`) is the one
-  shared mechanism: pass its `onDragStart` and `onActiveItemDropped` to
-  the `Sortable.Grid` (both are JS callbacks the library hops to the JS
-  thread itself) and wrap each card's open handler:
-  `onOpen={openUnlessLifted(item.id, () => navigation.navigate(...))}`.
-  The lifted key is cleared by the press it suppressed, and again by
-  `onActiveItemDropped` (fires after the release, a drop animation
-  later) since a lift can end without any press. A quick tap never
-  activates the drag, so it opens as before. One hook call per screen
-  serves every grid on it (the guard is keyed by the card's id). A new
-  card grid must do the same; Jest cannot hit-test, so a screen test
-  drives `onDragStart` / `onActiveItemDropped` off the mocked grid's
-  props (`@kiko/test-support/lift-grid-card`) and the real feel is an
-  on-device check.
+#### A lone card lifts too
+
+The `kiko-sortable-grid-lone-card-lifts` Semgrep rule enforces this: a `Sortable.Grid` whose
+`sortEnabled` also counts the items fails the pre-write guard.
+
+`sortEnabled` is the query's `isFresh` only,
+never `&& data.length > 1`. react-native-sortables' touch handler gates
+only on `sortEnabled`, the absolute layout being ready, and no other
+active item (`DragProvider.ts` `handleTouchStart`) — it never counts
+items — so a single card lifts and drops back (`onDragEnd` reports
+`fromIndex === toIndex`, which `onGridDragEnd` persists nothing for). A spurious-drag worry
+is covered by that, and by `useGridLiftGuard` suppressing the tap.
+
+#### A hold that lifted the card never fires the card's tap
+
+A moved drag and an opened context menu deliver NO `onPress`: react-native-sortables
+1.10.0 on RNGH 3.2.1 (v3 adapter,
+`integrations/gesture-handler/adapters/v3.ts`) makes RNGH cancel the JS
+responder when its gesture activates (`RNRootViewGestureRecognizer.m:39-52`,
+`cancelsJSResponder` defaults to YES). The press reaches JS only on a
+still hold released before the menu (450 ms) with no touch-move after the
+lift, because the v3 adapter activates on the next move. That is the path
+this guard covers; `onActiveItemDropped` clears the flag in every other
+case.
+`useGridLiftGuard` (`src/design-system/use-grid-lift-guard/`) is the one
+shared mechanism: pass its `onDragStart` and `onActiveItemDropped` to
+the `Sortable.Grid` (both are JS callbacks the library hops to the JS
+thread itself) and wrap each card's open handler:
+`onOpen={openUnlessLifted(item.id, () => navigation.navigate(...))}`.
+The lifted key is cleared by the press it suppressed, and again by
+`onActiveItemDropped` (fires after the release, a drop animation
+later) since a lift can end without any press. A quick tap never
+activates the drag, so it opens as before. One hook call per screen
+serves every grid on it (the guard is keyed by the card's id). A new
+card grid must do the same; Jest cannot hit-test, so a screen test
+drives `onDragStart` / `onActiveItemDropped` off the mocked grid's
+props (`@kiko/test-support/lift-grid-card`) and the real feel is an
+on-device check.
 
 ## Every function called inside a worklet needs its own `'worklet'` directive
 
@@ -177,9 +185,10 @@ accounts main grid gates `sortEnabled` on the ACCOUNTS query's
 `isFresh` (a drag persists the rows on screen, so it never starts from
 a cached read), with no item-count condition — see "A hold lifts the
 card" above. (The categories grid,
-`src/screens/settings/categories/`, is a FIFTH grid with a
-deliberately different `dragActivationDelay` — see its own entry below
-— it is not part of this shared-tuning claim.)
+`src/screens/settings/categories/`, is a fifth grid built like
+Accounts: `liftOnHold` cards, a lone card lifts
+(`sortEnabled={categoriesFresh}`, no item-count condition), and the
+default activation delay, since its cards hold no text input.)
 
 ### Section-scoped grids must persist the FULL order
 
@@ -220,26 +229,16 @@ section opens nothing.
   `useAnimatedRef` passed through as `scrollableRef` to auto-scroll the
   parent list when a drag nears an edge — a grid with no surrounding
   scroll view does not need this prop.
-- **No single-item `sortEnabled` guard on a card grid.** A lone card must
-  lift on a hold like any other (see "A hold lifts the card" above), so
-  `sortEnabled` is the freshness gate alone. The spurious-drag worry that
-  once motivated `items.length > 1` is covered by `onGridDragEnd`
-  persisting nothing for a release in place and by `useGridLiftGuard`
-  suppressing the tap.
 - **`onDragEnd` always routes through `onGridDragEnd`** (`src/design-system/`)
   rather than calling the repo's `reorder()` inline, so the
   release-in-place guard lives in exactly one place.
 - **A grid whose cards contain a live text input needs a longer
-  `dragActivationDelay`, not a `customHandle`.** The categories grid
-  (`src/screens/settings/categories/`) is the one grid where every card wraps an
-  editable rename `TextInput`; the library's default 200ms activation is
-  shorter than iOS's own text-selection hold, so a hold meant to place the
-  cursor or open Paste started a card drag instead. It sets
-  `dragActivationDelay={CATEGORY_DRAG_ACTIVATION_MS}` (600ms, above that
-  threshold) rather than adding a handle, so it does not diverge from the
-  accounts/holdings grids' handle-free interaction model. Retune the
-  constant on-device if 600ms ever feels sluggish for a reorder — do not
-  guess a replacement value.
+  activation delay, not a drag handle.** The library's default
+  200ms activation is shorter than iOS's own text-selection hold, so a
+  hold meant to place the cursor or open Paste starts a card drag
+  instead. Raise the delay above that threshold rather than adding a
+  handle, so the grid keeps the handle-free interaction model of the
+  accounts/holdings grids; tune the value on-device, never guess one.
 
 ## "Synced entity renders no gesture" rule
 

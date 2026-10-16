@@ -1,9 +1,10 @@
 import type { ComponentProps } from 'react';
-import { fireEvent, render, waitFor } from '@testing-library/react-native';
+import { render, waitFor } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import '@kiko/i18n/init';
 import { clearLiveQueryCache } from '@kiko/db';
 import { holdingsRepo } from '@kiko/holdings/repo';
+import { pressSave } from '@kiko/test-support/form-header-items';
 import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support/navigation-props';
 
 import HoldingFormScreen from './holding-form.screen';
@@ -108,10 +109,12 @@ const goldBar = (lots: (typeof lotOne)[]) => ({
   metadata: { metal: 'XAU', form: 'bar', unit: 'oz', purity: '0.9999', lots },
 });
 
+const navigation = navigationSpy();
+
 const renderEdit = () =>
   render(
     <HoldingFormScreen
-      navigation={asNavigationProp<HoldingFormProps['navigation']>(navigationSpy())}
+      navigation={asNavigationProp<HoldingFormProps['navigation']>(navigation)}
       route={asRouteProp<HoldingFormProps['route']>('HoldingForm', {
         accountId: 'acc-1',
         holdingId: 'h1',
@@ -137,7 +140,7 @@ it('seeds a reopened edit form from a fresh read, so a lot added while it was cl
 
   const secondVisit = await renderEdit();
   await waitFor(() => expect(secondVisit.getByLabelText('Name').props.value).toBe('Gold bar'));
-  await fireEvent.press(secondVisit.getByText('Save'));
+  await pressSave(navigation.setOptions);
 
   expect(updateDeltaMock).toHaveBeenCalledWith(
     'h1',

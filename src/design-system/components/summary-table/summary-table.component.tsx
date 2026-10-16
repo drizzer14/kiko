@@ -23,15 +23,25 @@ const SummaryTable: FC<SummaryTableProps> = ({ title, rows, testID }) => {
 
       {rows.map((row) => (
         <Box key={row.key} direction="row" style={styles.row}>
-          <Text variant="caption" tone="textSecondary">
-            {row.label}
-          </Text>
+          {row.wraps ? (
+            <Box style={styles.wrapLabel}>
+              <Text variant="caption" tone="textSecondary">
+                {row.label}
+              </Text>
+            </Box>
+          ) : (
+            <Text variant="caption" tone="textSecondary">
+              {row.label}
+            </Text>
+          )}
           {/* The testID sits on this wrapping Box, around the VALUE only —
               not the whole row — so a caller migrating an existing testID
               (e.g. `statement-import-transaction-count`) keeps the exact
               same `toHaveTextContent` assertion it had before, scoped to the
               value text alone rather than "label + value" concatenated. */}
-          <Box testID={row.testID}>{row.value}</Box>
+          <Box testID={row.testID} style={row.wraps && styles.wrapValue}>
+            {row.value}
+          </Box>
         </Box>
       ))}
     </Box>

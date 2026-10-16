@@ -1,14 +1,15 @@
 // Formats a numeric amount string with grouped thousands AS THE USER TYPES,
 // e.g. "1000000" -> "1 000 000". A space is the grouping separator (the iOS
-// convention for UAH; see currency/format.ts), and the decimal separator the
-// decimal-pad emits (',' or '.') is preserved exactly so a half-typed decimal
-// stays editable. The inverse is `parseAmount` (currency/parse.ts), which
+// convention for UAH; see src/currency/format/format.ts), and the decimal separator
+// the decimal-pad emits (',' or '.') is preserved exactly so a half-typed decimal
+// stays editable. The inverse is `parseAmount` (src/currency/parse/parse.ts), which
 // strips the grouping spaces back out — the two round-trip.
 //
 // Robustness over partial input: a lone "0", a trailing separator ("12,"), a
 // leading-zero run ("007"), and a lone separator (",") are all preserved rather
 // than reformatted, so typing never drops a character or reshuffles digits.
 
+import { splitMinorUnits } from '@kiko/currency/format';
 import { type Currency, currencyScale } from '@kiko/currency/currency';
 
 // Inserts a grouping space every three digits from the right. A run of pure
@@ -57,7 +58,7 @@ export const groupAmount = (input: string): string => {
 /**
  * Render a STORED minor-units amount as the plain major-unit string a text
  * field shows: fixed-decimal at the currency's own scale (`currencyScale`,
- * `src/currency/currency.ts` — the single source of truth), trailing zeros
+ * `src/currency/currency/currency.ts` — the single source of truth), trailing zeros
  * trimmed, unsigned (the form's sign chip carries polarity), never grouped
  * (the caller pipes this through `groupAmount`).
  *
@@ -65,15 +66,14 @@ export const groupAmount = (input: string): string => {
  * exponential notation, and `groupAmount` refuses any value with a letter
  * (`5e-7`) by returning '' — so a valid 50-satoshi holding would open with a
  * blank Balance field, and Save would write that blank as a zero balance.
- * `toFixed(scale)` never emits an exponent.
+ * The whole and fraction digits come from the exact integer split `formatMoney` uses
+ * (`splitMinorUnits`): `toFixed` on the float quotient rounds above 2^53 / 10^scale, so a USDT
+ * balance of 9007199254000000 would open as "90071992.54000001" and Save would write it wrong.
+ * Neither path emits an exponent.
  */
 export const majorAmountText = (currency: Currency, minorUnits: number): string => {
-  const scale = currencyScale[currency];
-  const fixed = (Math.abs(minorUnits) / 10 ** scale).toFixed(scale);
+  const { whole, fraction } = splitMinorUnits(minorUnits, currencyScale[currency]);
+  const trimmedFraction = fraction.replace(/0+$/, '');
 
-  if (!fixed.includes('.')) {
-    return fixed;
-  }
-
-  return fixed.replace(/0+$/, '').replace(/\.$/, '');
+  return trimmedFraction === '' ? String(whole) : `${whole}.${trimmedFraction}`;
 };

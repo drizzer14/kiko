@@ -1,12 +1,12 @@
 ---
 name: harness-workflow
-description: Use when coordinating Kiko work. States the delegation rule and points to the superpowers process skills.
+description: Use when coordinating Kiko work. States the delegation rule, the run log, and points to the superpowers process skills.
 ---
 
 The coordinator delegates all work to the harness agents. The coordinator never edits app files inline.
 
 Rules:
-- Split complex or parallel work into separate Orca worktrees (orca-cli).
+- Split complex or parallel work into separate Orca worktrees (orca-cli). A fresh worktree has no `node_modules`: the first developer runs `npm ci`, and only ONE agent runs it (parallel installs race).
 - An orchestrator working in another repo (one with no kiko role agents, for
   example `drizzer14/harness`) starts with
   `claude --model opus --plugin-dir <that repo's plugin dir>` — never a
@@ -17,12 +17,33 @@ Rules:
 - Route web research and live API checks to `kiko:researcher` (read-only,
   cites a source URL + check date per claim); it writes no files, so the
   caller persists any durable finding via `kiko:scribe`.
+- A measurement that needs a script (corpus counts, a tool run with raised limits) goes to `kiko:ops` with the script in the scratchpad; `kiko:explorer` has only Read/Grep/Glob.
 - For a device-test request, copy `kiko:ops`'s "Device verification
   checklist" section into the request to the user.
 - Use these superpowers skills directly: brainstorming, writing-plans, executing-plans,
   subagent-driven-development, dispatching-parallel-agents, verification-before-completion,
   finishing-a-development-branch.
 - On completion, an orchestrator or role agent SendMessages the coordinator session that dispatched the work with the result (the final commit sha and a one-line summary). This is the standing default, so an orchestrator brief does not need to restate it.
+- Every session-to-session message (report, question, BATCH READY, handover) uses Claude Code
+  SendMessage, which lands in the receiving session's inbox. A session NEVER messages another
+  session through Orca (no `orca orchestration send/ask/reply`, no `orca terminal send` into a
+  session someone types in): Orca types it into the terminal input and interrupts the user's
+  typing. `orca terminal send` is only for starting a fresh session, its first brief pointer,
+  slash commands (`/reload-plugins`, `/clear`), and running a verbose command in a
+  command-runner terminal (never one someone types in); only the coordinator sends a slash
+  command into another session.
+- Do it yourself first. Before you hand the user a command or a click, check whether your own
+  tools can do it (Bash, an agent dispatch, a file edit; the coordinator also has `orca terminal
+  send` for a slash command in another session). If they can, do it and report the result.
+  Hand the user only what
+  truly needs them: slash commands in the user's OWN session, GUI-only steps (App Store
+  Connect, Device Hub poses, the physical device), entering the user's secrets, or a step a hook
+  or the permission system denied (report it, never bypass). This does not lift the user's
+  explicit gates (pushes and publishes that need the user's OK, destructive or hard-to-reverse
+  actions). Example: after a merge that bumps the kiko plugin, the coordinator runs
+  `claude plugin update kiko@kiko-marketplace` itself from the main checkout and sends
+  `/reload-plugins` to every Orca session except the user's own (read each for "Reloaded:");
+  only the user's own session reload is the user's step.
 - Every dispatch names an expected duration. When that time passes with no report,
   the orchestrator checks the agent itself (its output so far, its worktree state) —
   it does not keep waiting silently. The coordinator is not the watchdog for role
@@ -38,11 +59,116 @@ Rules:
 - When a planner's recommendation conflicts with a principle the user stated, the orchestrator
   overrules toward the principle and states why in its question to the coordinator.
 - User questions go through the coordinator. An orchestrator session never asks the user in its own terminal (no AskUserQuestion there). It sends each user question or blocker to the coordinator by SendMessage: the question, 2-4 options with a one-line consequence each, the recommended option, and the work it can do meanwhile. The coordinator asks the user and relays the answer in the user's own words.
-- Every duration or ETA given to the user, and every BATCH READY's TIMES
-  line, follows `kiko:estimator` — it owns the estimate-from-history and
-  duration-log rules.
+- Every duration or ETA given to the user follows `kiko:estimator` — it
+  owns the estimate-from-history rules. A BATCH READY's TIMES line comes
+  from the run log (see "Run log"), not from hand-written text.
 - Name a task or change set "<track> task N/M" (a number plus the total). Name a step inside a change set "step N/M". Never invent a letter id. Renumber M when the scope changes; a deferred item is not counted.
-- A fresh agent is the default for each task. Reuse an agent via SendMessage only for a same-task re-review or fix round by the SAME agent with a small context (never across tasks, never for a different diff, never after a large amount of work). Finished subagents cannot be removed from a session's list; `claude rm <id>` deletes a BACKGROUND SESSION and its worktree — never use it to tidy a finished agent.
+- A fresh agent is the default for each task. Reuse an agent via SendMessage only for a same-task re-review or fix round by the SAME agent with a small context (never across tasks, never for a different diff, never after a large amount of work). A resumed agent's later report is read from its transcript, not awaited (SubagentHandback delivers one report per agent). Finished subagents cannot be removed from a session's list; `claude rm <id>` deletes a BACKGROUND SESSION and its worktree — never use it to tidy a finished agent.
+
+- Run the FULL jest (`make verify`) before every BATCH READY. `check:all`
+  alone missed a fixture that broke two guard rules: the rule-inventory
+  and guard-rule jest suites run only in `make verify`.
+- A change set that adds a repo-wide invariant or rule merges main first and re-runs
+  `check:all`: the new rule must hold on code main gained since the base. After that merge the
+  mutation gate uses the merged main tip as `KIKO_MUTATION_BASE` (see "Mutation base after a
+  track merged next").
+- Per-task deep gates: a per-file floor miss is fixed with tests only,
+  never an exclusion.
+- Re-gate of named files across a big merge: `make mutable` prints one
+  line per file. For `<path> a-b,c-d (N changed lines)` pass one `--mutate`
+  entry per range (`<path>:a-b`, `<path>:c-d`), never the comma list
+  (Stryker splits on the comma, so the later ranges are never mutated).
+  Never pass a
+  plain path and a range for the same file (Stryker reads that as "do not
+  mutate"); Stryker accepts a plain path, but `mutation-score.js` exits 2 on any plain
+  (non-range) entry. The source of truth is the `entries` variable in
+  `scripts/checks/mutation.sh`. Read the per-file floor (60) from
+  `reports/mutation/mutation.json`.
+
+## Run log
+
+Every orchestrator session keeps a run folder, written with `run-log.mjs` (plain Node, no
+dependencies; it must stay byte-identical to the harness repo's copy), called as
+`node "${CLAUDE_PLUGIN_ROOT}/scripts/run-log.mjs" <command> ...`. Run
+`node "${CLAUDE_PLUGIN_ROOT}/scripts/run-log.mjs"` with no arguments for the exact usage;
+write only the flags it lists. Runs live under
+`${HARNESS_RUNS_DIR:-$HOME/.claude/harness-runs}/<runId>/` (`run.json`, `events.jsonl`,
+`summary.json`), outside every worktree. Every command refreshes
+`${HARNESS_RUNS_DIR:-$HOME/.claude/harness-runs}/bin/run-log.mjs`, a copy a project skill can
+call without knowing where the plugin lives.
+
+- **start**: once per "<track> task N/M", when its shape is known (`--task`, `--shape`; an Orca
+  worker adds `--orca-task` and `--orca-dispatch`). It prints the run id on stdout. Keep the id
+  in the worktree handoff file (`.superpowers/sdd/<track>/HANDOFF.md`), so a handed-over session
+  writes to the same run.
+- **event**: one per verdict, as it happens. Pass `--step N` ("step N/M", an integer) on EVERY
+  event of a step, the human, stall and timeout events too: an event without it falls into a
+  separate `-` row and the step's chain row shows Stalls 0 and Human rounds 0. Kiko mappings:
+  - the developer's report: `--gate commit --verdict pass --role developer` (a fix round's
+    report too); put the dispatch time and the estimate in `--note` on the step's first event;
+  - `check:all`: `--gate check --verdict pass` or `--gate check --verdict fail`;
+  - `make verify` or the full jest: `--gate test --verdict pass` or `--gate test --verdict fail`;
+  - `make deep` (the coordinator who runs it logs it): `--gate deep --verdict pass` or
+    `--gate deep --verdict fail`;
+  - `kiko:reviewer` APPROVE: `--gate review --verdict approve`; FIX FIRST: `--gate review
+    --verdict changes`; both with `--findings N` and `--mechanizable N` counted from the
+    "Classify every finding" tags;
+  - a human ruling relayed by the coordinator: `--gate human --verdict approve` or
+    `--gate human --verdict changes`;
+  - a stall (an agent past its estimate with no report): `--gate stall --verdict stall`;
+  - a `wait-load.sh` or ops timeout: `--gate test --verdict timeout` or
+    `--gate deep --verdict timeout`; a gate that did not run: `--gate check --verdict skipped`
+    (or the gate that was skipped);
+  - a wait (battery, load, usage limit, the user): `--gate wait --verdict pass --reason <battery|load|usage-limit|user> --minutes <N>`,
+    or `--verdict timeout` when the wait ran out; log it when the wait ends, with the step (or
+    group) of the work it interrupts. A wait event needs `--step N` or `--group N`; the command
+    refuses a wait without one (exit 2). Tag a wait with the step of the last event before it.
+    N is the waited minutes (for example from the last event's ts). Only the other gates
+    (human, stall, timeout) land in the `-` row when they have no step;
+  - the retrospect: `--gate retro --verdict pass`.
+- **finish**: at BATCH READY (`--outcome done`), or when the track is blocked or aborted
+  (`--outcome blocked` or `--outcome aborted`). `--recorded` and `--gaps` come from the
+  retrospect's report. `--archive <dir>` MOVES every regular file directly in `<dir>` into the
+  run's `artifacts/`; point it only at the session scratch folder, never a worktree root
+  (`--archive .` would move `package.json` and `CLAUDE.md`). Before the merge, the coordinator
+  checks that the run's `summary.json` exists; a run with no summary did not finish its
+  bookkeeping. A `deep` event logged after `finish` is expected: `stats` shows it, but
+  `summary.json` `totals` do not include it.
+- **gap**: `gap --run <id> --open <text>` records an open gap and prints `<runId>/<n>`;
+  `gap --run <id> --close <gapId> [--note <text>]` closes it. Open gaps one call at a
+  time; never make parallel calls on one run. `stats --gaps --repo kiko`
+  (add `--format md`, `tsv` or `json`) lists open gaps only, read from `<root>/gaps/<repo>.jsonl`.
+- **start and finish rule**: every orchestrator starts a run before a task's first dispatch and
+  finishes it at that task's BATCH READY. At a handover the run id goes into the worktree
+  HANDOFF.md and the successor keeps writing to it.
+- **stats**: `stats --repo kiko --format md` prints one row per review chain. The repo slug is
+  the origin remote's repo name (`drizzer14/kiko.git` -> `kiko`), not the checkout folder;
+  `--repo pff-ios` matches nothing and prints only the header. `Minutes` is the span from a
+  step group's first verdict to its last (the developer's work before the first verdict is not
+  counted; a one-event step shows 0); `Wait` is the sum of the group's wait events; `Work` =
+  `Minutes` - `Wait`, never below 0. For a dispatch-to-BATCH-READY time use
+  run.json `startedAt` to `summary.json` `finishedAt`. A run with no `summary.json` and no event
+  for 24 hours shows as `abandoned`. The coordinator runs `finish --outcome aborted` for a
+  track it stops, in the same turn as the worktree prune.
+
+BATCH READY's TIMES line is built from the run log, never from memory. The source of each
+field is listed in `kiko:estimator` only.
+
+A project skill outside the plugin calls the installed copy. When the copy is missing, both
+snippets print `run-log: not installed, skipped` and exit 0; when the copy is present, its own
+exit code and error pass through. Start (prints the run id):
+
+```bash
+RUN_LOG="${HARNESS_RUNS_DIR:-$HOME/.claude/harness-runs}/bin/run-log.mjs"; if [ -f "$RUN_LOG" ]; then node "$RUN_LOG" start --task "<track> task N/M" --shape build; else echo "run-log: not installed, skipped"; fi
+```
+
+Finish, in a later Bash call (shell variables do not survive between calls), prefixed with
+`RUN_ID=<printed id>;`. When start printed the skip line, there is no run id: skip the finish
+snippet, never paste the skip line as `RUN_ID`:
+
+```bash
+RUN_LOG="${HARNESS_RUNS_DIR:-$HOME/.claude/harness-runs}/bin/run-log.mjs"; if [ -f "$RUN_LOG" ]; then node "$RUN_LOG" finish --run "$RUN_ID" --outcome done; else echo "run-log: not installed, skipped"; fi
+```
 
 ## Skill drift rule
 
@@ -73,37 +199,59 @@ Who and when (coordinator ruling, 2026-09-27): the COORDINATOR runs
 reviewed change set (<= 30 source files), before its merge into next.
 Orchestrators never run it. The orchestrator's batch-ready report (the
 message that tells the coordinator a change set is reviewed and ready
-to merge) names the change set's base sha and confirms the file count
+to merge) names the change set's base sha and the run id (the coordinator works in the main
+checkout and cannot see the worktree's gitignored HANDOFF.md), and confirms the file count
 after excludes is within `MUTATION_FILE_CAP` (read it in
 `scripts/checks/mutation.sh`); a larger batch splits into change sets
 with their own bases. Count with the gate's own filter, never by hand:
 `KIKO_MUTATION_BASE=<base sha> make mutable` (it runs
-`mutation.sh --list`) prints the files and `mutable files: N (cap …)`,
+`mutation.sh --list`) prints each file's changed-line ranges, `changed lines: N`, and
+`mutable files: N (cap …)`, then a `timeout share (history)` line (quote it in the BATCH READY: a high share predicts a long run),
 exits 2 above the cap, and never starts Stryker or takes its lock. A
 change set with 0 mutable files gets no mutation run: `mutation.sh`
 exits 0 on 0 files without starting Stryker. A changed file whose diff
 is only comments or whitespace is left out of that count by the script
-itself (it prints `skipped (comment-only): <path>`); a `Stryker` or JSX
-pragma comment, a colocated test changed by more than comments, or any
-doubt, keeps the file.
+itself (it prints `skipped (comment-only): <path>`; a file with no added line
+prints `skipped (no added lines): <path>`); a `Stryker` or JSX
+pragma comment, or any doubt, keeps the file; a changed colocated test beside a
+comment-only source does not.
+
+The BATCH READY quotes the CHANGE SET TOTAL line split (read it from the gate output) and any
+TIMEOUT-HEAVY file with how it was cleared. A TIMEOUT-HEAVY file (rule and constants in
+`scripts/checks/mutation-score.js`) is cleared by proving each timed-out mutant in plain jest,
+or by writing it as equivalent; the gate still fails for it, so the BATCH READY carries the
+failed gate with the proofs. Never raise the timeout; there is no allowlist file. `make
+mutable` can print a `warning:` line after `changed lines: N` when a merged track inflates
+the count; see "Mutation base after a track merged next".
 
 ## Merging into main
 
-Never merge, rebase, pull (except `--ff-only`), cherry-pick, revert,
+Never merge, rebase, pull, cherry-pick, revert,
 am, or apply in the main checkout
 (`/Users/drizzer14/Developer/Projects/pff-ios`): every session's hooks
 run from it, so a conflict marker there breaks every hook. The
 kill-guard denies these (see kiko-linter's "MAIN-CHECKOUT deny"). Do the
 real merge, conflicts and all, in a separate detached worktree. Verify
-it there = `bash scripts/wait-load.sh 8 && env -u FORCE_COLOR make verify`
+it there = a queued `scripts/job-queue.sh verify` (not a bare `make verify`)
 at the MERGE COMMIT (the per-window gate ran on the branch tip, not on
 the merge result). Move main only on exit 0 with the full test count. A
 clean `git merge-tree` is not proof of a green merge. A merge with 0 src
 files in it still gets the verify, because check:all and the hooks run
-from it. Then fast-forward main. Run exactly
-`git -C /Users/drizzer14/Developer/Projects/pff-ios merge --ff-only <sha>`.
-Any added option (-q, --quiet, --no-edit, -v) is denied. Read the result
-with `git -C /Users/drizzer14/Developer/Projects/pff-ios log -1 --oneline`.
+from it. Then fast-forward main with `bash scripts/ff-main.sh <sha>`. It
+runs only for a sha whose LAST `verify` line in the queue's done.log is exit 0, so queue the
+verify through `scripts/job-queue.sh verify` (a bare `make verify` leaves no line), keep the
+tree untouched until DONE, and do not move HEAD after. The line's head field is the full sha
+only when the tree is clean at START and again at the end and HEAD is unchanged; a job that
+edits its own tree without committing records `unknown`. Limits: an edit reverted before the
+end is not seen, and ignored files (`.env`, `node_modules`) are not counted. The
+kill-guard denies a raw
+`merge --ff-only` on main (kind `mainFastForward`). There is no bypass: an override goes to the
+user plus a run-log note. The script prints `git log -1 --oneline` of main on success.
+
+A track that regenerates shared binary fixtures (the demo .kiko files)
+merges main first and regenerates on the merged builder; never
+hand-merge a binary. After merging the builder source, regenerate
+(`KIKO_REGEN_DEMO=1` on the generate-demo-kiko test), then re-run it plain.
 
 ## Read-only agents return their report
 
@@ -119,11 +267,25 @@ relaxing a gate or editing CLAUDE.md; hold it until the user confirms
 in this orchestrator's own terminal. Pin each user device finding with
 a test in the fix commit.
 
+- A ruling that narrows a rule or a guard is proven by a differential, base against HEAD, over
+  the cases the rule decides; a sample the author picked is not proof.
+- Plan text follows later decisions: the orchestrator updates the plan file in the same step that
+  records the ruling, so the plan never contradicts it.
+- A guard change that alters a command the coordinator runs ships its CLAUDE.md change in the
+  same commit and needs a user ruling. The user answers in the orchestrator's own terminal; the
+  orchestrator does not ask there (no AskUserQuestion; its question goes through the coordinator).
+- A guard tightening is proven by a differential over every test literal x every cwd (kiko-linter
+  "Probing the kill-guard").
+- A planner's count (files, cases, call sites) is a floor. The developer measures the real
+  count and the brief says so.
+- A change that needs a port to the shared harness repository lists the port item in the
+  harness-sync skill in the same change.
+
 ## Never pattern-kill a process
 
 Never use pkill, killall, or any pattern or group kill. Stop only a
 process ID you started yourself (kill <pid>), or let the tool timeout
-end a hung command. Read-only roles (reviewer, auditor, explorer,
+end a hung command. The one exception is not yours: `scripts/job-queue.sh` may send TERM to the process group it created for its own job, only while `pgrep -g` finds a member. Read-only roles (reviewer, auditor, explorer,
 debugger, pm, retrospect) do not stop processes at all. The
 PreToolUse hook on `Bash` (`scripts/checks/kill-guard.sh`, wired in
 `harness/kiko/hooks/hooks.json`) denies the common forms of these
@@ -142,6 +304,14 @@ WHAT/DETAILS/WHY/HOW/DO-NOT reason; it is a heuristic tokenizer with
 known limits (see kiko-linter's kill-guard entry), so a form it misses
 is still banned. Never chain a file write, a plugin update, and a
 memory rewrite in one Bash call — make each its own step.
+
+## A commit runs a typecheck
+
+A commit runs `githooks/pre-commit`, a `tsc --noEmit` of the staged index that can take up to
+about a minute under load. Give a commit Bash call `timeout: 300000`. Never pass `--no-verify` or
+`-n`: a hook failure is a type error to fix, never to bypass (kill-guard denies the bypass; see
+kiko-linter's "NO-VERIFY deny"). The commit gate is typecheck only (user ruling 2026-10-13);
+`check:all` runs before a merge.
 
 ## A write can be denied before it lands
 
@@ -205,11 +375,12 @@ points in a scratch worktree (`git worktree add`, detached):
 2. Merge each later change set's last commit into the previous merge
    point (T2 into point 1, T3 into point 2, ...).
 3. Make `check:all` (or the relevant verify) green at each point before
-   building the next one.
+   building the next one; the gate for main is the queued verify in "Merging into main".
 4. Each (previous point, point) pair is a mutation pair — run
    `check:deep`/mutation on it per the small-change-set rule above.
-5. Fast-forward the track branch to the last point with
-   `git merge --ff-only`.
+5. Fast-forward the track branch to the last point with `git merge --ff-only`. This
+   applies to a track branch in its own worktree, never to main (main moves through
+   `bash scripts/ff-main.sh <sha>`).
 
 A change set whose user-visible text (copy, subtitle, label) names a
 feature that only a LATER change set actually implements is held after
@@ -231,7 +402,7 @@ run the full `make verify`.
 
 Once a track has merged into `next`, set `KIKO_MUTATION_BASE` to
 `next`'s own sha for that track's mutation run, so only the track's own
-files mutate — not everything `next` already contains. (One line; this
+changed lines mutate — not everything `next` already contains. (One line; this
 does not contradict the "Mutation testing: small change sets only"
 section above, which sets the base to the change set's OWN base commit
 before it has merged.)
@@ -240,6 +411,11 @@ A change set that merged `next` mid-way, or that stacks on earlier
 unmerged change sets, takes as its mutation base the `next` tip that
 already contains every earlier change set; otherwise the merge-base
 diff also counts the earlier sets' files against the 30 cap.
+
+After a merge of `main` into the change set, the base is the merged main tip. `make mutable`
+(`mutation.sh --list`) prints a `warning:` line after `changed lines: N` when N is far above
+what the branch's own commits added (`warn_over_count` in `scripts/checks/mutation.sh`); it
+means the base is stale, and it changes no exit code.
 
 ## Merge conflicts vs the pre-write guard
 
@@ -253,13 +429,15 @@ merge-conflict files".
 
 ## The Stop tier replays the pre-write guard
 
-The kill-guard denies Bash writes into `src/`, `__tests__/`, and
-`rules/`; the denied forms and the known limits are listed in
+The kill-guard denies Bash writes into `src/`, `__tests__/`, `rules/`,
+and `e2e/`; the denied forms and the known limits are listed in
 kiko-linter's "SHELL-WRITE deny". Move
 or rename a file with `git mv` (`git add` a new file first), then edit
 it with Edit/Write; see kiko-code-style's "Folder-per-thing
 co-location". A Bash write it
-does not see (a script file, `find -exec`, a variable path)
+does not see (a script file, `find -exec`, a path held in a variable the command does not
+assign; kiko-linter's "SHELL-WRITE deny, git config files and same-command variables" covers
+the variables it does expand)
 and a commit of it still skip the pre-write guard. On `Stop` and `SubagentStop`, `medium.sh`
 replays the same guard over every `.ts`/`.tsx` file the session changed:
 the working tree, plus every commit no worktree's passed replay reached
@@ -270,14 +448,17 @@ and line. Fix it with Edit/Write, so the guard checks the fix. Never
 rewrite the file with Bash again. The `--write` fixers and clean merges
 pass, because only a finding the change added fails. If the replay stops at its Stop-tier deadline,
 run `npm run check:guard-replay` by hand; its pass is recorded. See
-kiko-linter's "Pre-write guard replay on the Stop tier".
+kiko-linter's "Pre-write guard replay on the Stop tier". On a doc change the Stop tier also
+runs the doc-reading jest suites first; on a failure or a deadline block, run
+`make doc-suites` by hand (a pass is recorded); see kiko-linter "The wrapper contract".
 
 ## Run verbose commands through an Orca terminal
 
 Run a verbose or long-running command inside an Orca terminal instead
 of the coordinator's own shell, so its full output stays out of the
 coordinator's context — only what you choose to read comes back.
-Mechanism: `orca terminal send --text "<cmd>" --enter --json`, then
+This is for running commands, never for messaging a session (see the
+SendMessage bullet above). Mechanism: `orca terminal send --text "<cmd>" --enter --json`, then
 read just the tail with `orca terminal read`. Full CLI usage:
 `orca skills get orca-cli` (do not copy that guide's content here).
 
@@ -320,8 +501,12 @@ that reads the handoff file.
 - Agents and skills load from the versioned plugin CACHE
   (`~/.claude/plugins/cache/kiko-marketplace/kiko/<version>`). A text
   change to an agent or skill is live only after: bump the
-  `plugin.json` version, the user runs
-  `claude plugin update kiko@kiko-marketplace`, then `/reload-plugins`.
+  `plugin.json` version, the coordinator runs
+  `claude plugin update kiko@kiko-marketplace` from the main checkout,
+  then the coordinator sends `/reload-plugins` to every Orca session
+  except the user's own (the user reloads their own session). If main already carries your
+  `plugin.json` version after you merge main, bump again before your merge commit (two tracks
+  bumped to 0.4.15 on 2026-10-16).
 - Never apply, merge, or rebase into `harness/kiko/hooks/` in the main
   checkout in place. Build the new file in scratch, run `bash -n`, grep
   it for conflict markers, then install it with one `mv`.
@@ -403,15 +588,20 @@ each side-effect import's predecessors.
 ## The Stop-hook dup check is scoped
 
 `medium.sh`'s Stop/SubagentStop hook runs jscpd scoped to the
-session's own changed files (`scripts/checks/dup.sh <changed files>`)
+session's own changed files (`scripts/checks/dup.sh <changed files still on disk>`)
 — the project-wide `npm run check:dup` (no args, scans the whole
 repo) can be green while this scoped run fails, or vice versa. Run the
 same scoped command yourself before reporting done:
-`bash scripts/checks/dup.sh <changed files>` (space-separated paths;
+`bash scripts/checks/dup.sh <changed files still on disk>` (space-separated paths;
 this is the same wrapper `check:dup` calls, `scripts/checks/dup.sh`,
 which accepts file args and falls back to the whole repo with none).
 Each touched test file must also pass the check alone, not only as
-part of the whole changed-file set.
+part of the whole changed-file set. A `WARNING` on exit 0 means a large
+file (or the combined large-file run) is over 5%, or that the pass could not
+measure (a could-not-measure, could-not-list, or mktemp WARNING carries no
+figure): it does not block, but do not grow a figure. The non-blocking
+large-file pass runs on every call, a dedup skip included; see kiko-linter
+"`check:dup` measures the files jscpd skips for size".
 
 ## Relay-verify subagent claims
 
@@ -420,6 +610,18 @@ check a subagent claims already passed — do not relay a "green" claim
 without independent verification. Also spot-check that a skill
 section a report cites actually exists at the stated path/heading
 before trusting a claim built on it.
+
+The orchestrator quotes the jest summary lines itself ("Test Suites: N
+passed", "Tests: N passed") in every BATCH READY, and never relays an
+agent's "passed" verdict (ops misreported a failed `make verify` as
+passing twice on 2026-10-10).
+
+## Probe a live API before building on its shape
+
+Before building code that depends on an API's response shape, probe it
+with real read-only calls (2026-10-10: the probe showed Binance
+walletTypes are strings and the Pay direction-by-shape rule false on
+all C2C receives).
 
 ## Deferred-to-scribe items must be named explicitly
 
@@ -436,24 +638,31 @@ in another one-off brief.
 
 ## Load rule
 
-Run `make verify` / `check:all` / full jest only when the 5-minute load
-average (`sysctl -n vm.loadavg`) is below 10: wait first with
-`bash scripts/wait-load.sh 10` (run it in the background and wait on its
-exit code: 0 once the load is below 10, 2 when its 3600 s timeout, an
-optional second argument, passes first, 3 when it cannot read the load,
-64 for a bad argument; it prints one start line and nothing else).
-Every load or "is verify still running" wait goes ONLY through
-`bash scripts/wait-load.sh <max>` (background, exit code; main checkout path
-when the worktree lacks it). Never write a loop that greps ps/pgrep output for
-make verify, check:all, jest or stryker: the loop's own command line contains
-the pattern and it matches itself. kill-guard denies this loop shape before it
-runs (kiko-linter "WAIT-LOOP deny"); a `ps -p <pid>` or `kill -0 <pid>` wait
-stays allowed. At most ONE jest-heavy agent per track; Semgrep or jest
-timeouts at high load are environment, not code: re-run at low load,
-never raise a timeout. See memory `check-security-timeout-under-load`.
+The load rule lives in the ops skill's "Load rule" section; see it. One heavy job runs at a
+time, queued by `scripts/job-queue.sh` (read its header for the full contract). Run
+`scripts/job-queue.sh verify|check-all|security <worktree> <label>` or
+`scripts/job-queue.sh gate <worktree> <label> <base> <head> [--long]` with run_in_background and
+await only its exit code; its QUEUED/WAITING/START/DONE lines are its normal stdout. State lives in
+`${KIKO_QUEUE_DIR:-$HOME/.claude/kiko-queue}`. Order: class 1 (verify, check-all, security) first,
+then gates by `changed lines:` (smallest first), then `--long` gates (user ruling 2026-10-13: a
+`--long` gate starts only on AC power, after every other ticket). `scripts/job-queue.sh hold
+<reason>` stops every start until `scripts/job-queue.sh release`; `scripts/job-queue.sh status`
+shows the hold, the power state, the running job, and the tickets. On battery NO job of any class
+starts (orchestrator default D1, accepted by the user 2026-10-13); an unreadable power state holds
+too. A gate refuses a tip whose `mutation.sh` has no changed-line `--list` ("merge main first",
+exit 2) and a moved HEAD (exit 3); the queue never checks out files (the old H6 overlay is gone).
+Keep `wait-load.sh` for the load wait only. A queued check:all or verify reads the worktree until
+the job is DONE; keep that tree untouched from the queue time until DONE, and never queue one while
+a developer still edits that tree. done.log's head field is `unknown` if the tree was dirty at
+START or at the end, or HEAD moved.
+
+A gate's forwarded warning and `TIMEOUT-HEAVY` lines, and their order against the DONE line,
+are in the ops skill's "Load rule" section.
 
 ## Long briefs live in a file
 
 A long orchestrator brief lives in `memory/refs/brief-<task>.md` in the
 main checkout (untracked); the terminal message only names that path;
-never paste a long brief or backticks into `orca terminal send`.
+never paste a long brief or backticks into `orca terminal send`. The
+pointer is the first message of a fresh session only; later messages go
+by SendMessage.

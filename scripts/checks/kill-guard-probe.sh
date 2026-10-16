@@ -59,6 +59,10 @@
 # Test-only: KIKO_PROBE_REFUSE_ALSO adds space-separated words to the
 # refusal list, so its tests prove every spelling with the sentinel and a
 # fake folder instead of handing it a real kill word or the real path.
+# Test-only: KIKO_PROBE_STUB_FIRST_RUN_DELAY=<seconds> makes each stub sleep
+# that long on its first call only (a marker file), standing in for the
+# first-exec wait of a never-seen script; the runner's warm-up call absorbs
+# it, so its tests show the alarm does not count it.
 set -euo pipefail
 
 SENTINEL=kg_sentinel_target
@@ -154,6 +158,10 @@ write_stub() {
   {
     echo '#!/bin/sh'
     printf 'log=%q\n' "$LOG"
+    if [ -n "${KIKO_PROBE_STUB_FIRST_RUN_DELAY:-}" ]; then
+      printf 'marker=%q\n' "$WORK/first-run-$name"
+      printf '[ -e "$marker" ] || { : >"$marker"; sleep %q; }\n' "$KIKO_PROBE_STUB_FIRST_RUN_DELAY"
+    fi
     echo "$header"
     echo 'for argument in "$@"; do printf " %s" "$argument" >> "$log"; done'
     echo 'printf "\n" >> "$log"'
@@ -164,6 +172,15 @@ write_stub() {
 
 write_stub "$SENTINEL" "printf 'STUB $SENTINEL' >> \"\$log\""
 write_stub git 'printf "STUB git cwd=%s" "$PWD" >> "$log"'
+
+# macOS checks a never-seen executable on its first exec (seconds under load),
+# so each stub runs once here, before the alarm starts, and the alarm then
+# bounds only the probe's own work.
+for stub in "$STUBS"/*; do
+  "$stub" </dev/null >/dev/null 2>&1 &
+done
+wait
+: >"$LOG"
 
 set +e
 cd "$WORK/cwd"

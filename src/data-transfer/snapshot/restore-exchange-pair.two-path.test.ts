@@ -46,7 +46,7 @@ const emptySnapshot: DataSnapshot = {
   settings: [],
   syncState: [],
   categories: [],
-  categoryOverrides: [],
+  categoryRules: [],
   pricePoints: [],
   bondRegister: [],
   reminders: [],
@@ -240,7 +240,14 @@ const pairIds = (target: DatabaseSync): Record<string, string | null> =>
 const readPreFeatureSnapshot = async (source: DatabaseSync): Promise<DataSnapshot> => {
   const sourceDrizzle = executingDrizzle<typeof database>(source);
   const preFeatureTransactions = await sourceDrizzle
-    .select(columnsWithout(getTableColumns(transactions), 'exchangePairId'))
+    .select(
+      columnsWithout(
+        getTableColumns(transactions),
+        'exchangePairId',
+        'categorySetByHand',
+        'untrackedCounterpart',
+      ),
+    )
     .from(transactions)
     .orderBy(asc(transactions.id));
 
@@ -278,7 +285,7 @@ describe('restoring a .kiko file exported before the exchange pair id', () => {
     const snapshot = await readPreFeatureSnapshot(exported);
 
     mockDatabase = freshDatabase();
-    await restoreDataSnapshot(snapshot);
+    await restoreDataSnapshot(snapshot, 3);
 
     expect(pairIds(live)).toMatchObject({
       'z-pair-out': 'a-pair-in',
@@ -313,7 +320,7 @@ describe('restoring a .kiko file that carries the exchange pair id', () => {
     };
 
     mockDatabase = freshDatabase();
-    await restoreDataSnapshot(snapshot);
+    await restoreDataSnapshot(snapshot, 3);
 
     expect(pairIds(mockDatabase)).toEqual(pairIds(exported));
     expect(pairIds(mockDatabase)['a-pair-in']).toBe('chosen');

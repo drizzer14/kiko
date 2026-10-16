@@ -25,12 +25,34 @@ Rules:
 - **Mutation testing runs per SMALL change set only — never on a whole
   project or a whole release.** There is no whole-release deep gate. Set
   `KIKO_MUTATION_BASE` to the change set's own base commit so only its
-  files are mutated. `scripts/checks/mutation.sh` exits 2 before Stryker
+  changed lines are mutated. `scripts/checks/mutation.sh` exits 2 before Stryker
   starts when more than 30 files would be mutated (`MUTATION_FILE_CAP`);
   `KIKO_MUTATION_FULL=1` and a `KIKO_MUTATION_BASE` that does not
   resolve are refused directly (exit 2), and no env var bypasses the cap.
   On that failure, split the run into smaller change sets — never raise
   the cap.
+- A running gate can be paused with `kill -STOP` on its own pids (the
+  stryker parent plus its `child-process-proxy-worker` children) and
+  resumed with `kill -CONT` (verified 2026-10-10/11: kill-guard allows it
+  for own pids). A pause is NOT only a time cost: after the resume,
+  Stryker's wall-clock timer fires for each in-flight mutant, so each is
+  recorded as Timeout; `scripts/checks/mutation-score.js` counts Timeout
+  as detected, and `stryker.conf.json` `"incremental": true` keeps it in
+  `reports/stryker-incremental.json`. A pause can therefore credit up to
+  one in-flight mutant per worker per pause and turn a FAIL into a PASS.
+  A paused run can also trip the TIMEOUT-HEAVY rule (`TIMEOUT_HEAVY_SHARE` and
+  `TIMEOUT_HEAVY_MINIMUM` in `scripts/checks/mutation-score.js`; clearing rules in
+  `docs/harness/checks.md` "Clearing a TIMEOUT-HEAVY file").
+  Before trusting a paused run, recompute the score with the Timeout
+  mutants counted as survived, or re-run without the incremental report.
+  When the score is near the floor, let
+  the run finish or re-run it instead of pausing. Use a pause for battery
+  mode or a simulator session only when the score has headroom.
+- A TIMEOUT-HEAVY failure is cleared by the orchestrator (a plain-jest proof per mutant, or an
+  equivalent note in the BATCH READY), never by ops. Ops reports the failure block as is, never
+  re-runs to clear it, and never raises the timeout.
+- The coordinator who runs `make deep` logs the result per harness-workflow's "Run log"
+  (`--gate deep --verdict pass|fail|timeout` on the run id the BATCH READY names).
 - Run check:deep / check:mutation only through the wrapper
   (`npm run check:deep` / `npm run check:mutation`, or `make deep`); it is
   single-flighted and tears its own workers down. Never run
@@ -75,6 +97,14 @@ Rules:
   cannot be stopped mid-flight. WHEN it runs (per reviewed change set,
   before its merge into next) is in harness-workflow's "Mutation testing:
   small change sets only".
+- **Launch every `make deep` / gate under `caffeinate -i`.** Laptop sleep
+  voided two gates on 2026-10-09 (13 h, 78/151 timeouts).
+- **After a tests-only fix for module-scope (static) mutants, delete
+  `reports/stryker-incremental.json` and `.stryker-tmp` in the gating
+  checkout before the re-run.** Run 4 reused old Survived results (only
+  54/185 re-tested). Trade-off: a fresh run re-tests every mutant (4336
+  mutants, about 4.5 h), so choose the change-set base as the last gated
+  commit of the branch.
 - **Track the known CVEs with `bash scripts/checks/osv.sh` on its own.**
   `check:deep` can stop at the mutation cap before it reaches osv, so
   its exit code does not prove the osv result.
@@ -124,7 +154,9 @@ motivated it. Summary — every step is required, not optional:
    skipped" line and continues, so always pass one. Through
    `make deploy EXPECT=…` only: a value that contains a single quote is
    not supported (set `EXPECT_BUNDLE_STRING` directly for that), and
-   make expands a `$` in the value — write `$$`. Read `scripts/deploy-device.sh` for the exact
+   make expands a `$` in the value — write `$$`. A deploy marker must
+   not also appear in a shipped migration's SQL comment: migrations are
+   bundled, so it gives a false positive ("Show tips again" in 0055). Read `scripts/deploy-device.sh` for the exact
    exit behavior. Fallback for a hand-built bundle only:
    `node scripts/bundle-contains.js <bundle> '<str>'`.
 3. Install with `devicectl`, not `xcodebuild ... install -destination
@@ -156,16 +188,18 @@ install, so compare it with the prior one to prove a fresh install
 actually landed.
 
 A change under `harness/kiko/` (hooks, scripts it calls) is live only
-after a plugin update — see `harness-workflow`'s "Harness hook changes
+after the coordinator's plugin update and reload — see `harness-workflow`'s "Harness hook changes
 go live only after a plugin update". Verify with a harmless probe
 before you rely on a hook.
 
 ## Device-test checkout
 
 Build device-test installs from the dedicated detached checkout
-`~/orca/workspaces/pff-ios/device-deploy` (move its HEAD with `git
-checkout --detach <sha>`; it keeps `node_modules`, Pods, and the build
-cache — never prune it), never from a worktree with work in progress.
+`~/orca/workspaces/pff-ios/device-deploy`. The COORDINATOR moves that
+checkout's HEAD (and the deep-gate checkout's HEAD) itself, then
+dispatches ops, which builds from it; ops never runs a checkout (see
+`agents/ops.md`). The checkout keeps `node_modules`, Pods, and the build
+cache — never prune it. Never build from from a worktree with work in progress.
 Installing over a database created by a NEWER branch is a downgrade:
 do a clean reinstall instead. After the checkout path changes, the
 first build is clean (`rm ios/build`, `pod install`). Also after any
@@ -200,12 +234,19 @@ copies it into the device-test request it sends the user.
 - **Network rule.** Any TLS, certificate-pinning, rate-limit, or
   migration-behavior change is device-verified BEFORE archiving, not
   after — Jest cannot see real network/device behavior.
+- Archive invariants: release skill step 7.
 
 ## Maestro on this host
 
 Maestro needs `JAVA_HOME=/opt/homebrew/opt/openjdk@21`; without it the
 run fails before the flow starts (verified 2026-10-08,
 `.maestro/onboarding-fresh-install.yaml`, 17/17 steps).
+
+## Commits run a typecheck
+
+A commit runs `githooks/pre-commit`, a `tsc --noEmit` of the staged index that can take up to
+about a minute under load. Give a commit Bash call `timeout: 300000`. Never pass `--no-verify` or
+`-n`: a hook failure is a type error to fix, never to bypass (kiko-linter "NO-VERIFY deny").
 
 ## Load rule
 
@@ -224,5 +265,43 @@ runs (kiko-linter "WAIT-LOOP deny"); a `ps -p <pid>` or `kill -0 <pid>` wait
 stays allowed. At most ONE jest-heavy agent per track; Semgrep or jest
 timeouts at high load are environment, not code: re-run at low load,
 never raise a timeout. See memory `check-security-timeout-under-load`.
+
+One heavy job runs at a time, queued by `scripts/job-queue.sh` (read its header for the full
+contract). Run `scripts/job-queue.sh verify|check-all|security <worktree> <label>` or
+`scripts/job-queue.sh gate <worktree> <label> <base> <head> [--long]` with run_in_background and
+await only its exit code; its QUEUED/WAITING/START/DONE lines are its normal stdout. State lives in
+`${KIKO_QUEUE_DIR:-$HOME/.claude/kiko-queue}`. Order: class 1 (verify, check-all, security) first,
+then gates by `changed lines:` (smallest first), then `--long` gates (user ruling 2026-10-13: a
+`--long` gate starts only on AC power, after every other ticket). `scripts/job-queue.sh hold
+<reason>` stops every start until `scripts/job-queue.sh release`; `scripts/job-queue.sh status`
+shows the hold, the power state, the running job, and the tickets. On battery NO job of any class
+starts (orchestrator default D1, accepted by the user 2026-10-13); an unreadable power state holds
+too. A gate refuses a tip whose `mutation.sh` has no changed-line `--list` ("merge main first", exit
+2) and a moved HEAD (exit 3); the queue never checks out files (the old H6 overlay is gone). Keep
+`wait-load.sh` for the load wait only. Signalling only the top pid of a job chain (make -> npm ->
+bash -> Stryker) leaves the leaf running; the queue owns the job's process group. A queued check:all
+or verify reads the worktree throughout the run; never queue one while a developer still edits that
+tree, and keep that tree untouched until DONE. done.log's head field is the full 40-character HEAD
+only when the tree (`tree_is_clean` in `scripts/job-queue.sh`: untracked files counted) is
+clean at START and again at the end and HEAD is
+unchanged, else `unknown`; an edit reverted before the end is not seen, and ignored files (`.env`,
+`node_modules`) are not counted.
+
+done.log lines are `kind label exit start end head`. Main moves only through
+`bash scripts/ff-main.sh <sha>`, for a sha whose last `verify` line has that full head and exit 0;
+never fast-forward main by hand (the kill-guard denies it).
+
+A gate forwards the `--list` over-count `warning:` line once before QUEUED. After the gate-log
+summary lines and before the DONE line it prints each `TIMEOUT-HEAVY` line of the gate log once
+(read the end of `scripts/job-queue.sh`), so the waiter's output shows both. A ruling that adds a
+failure line to the gate log also adds its prefix to the DONE summary grep in
+`scripts/job-queue.sh` (read it for the current list); `REPORT SCOPE MISMATCH` is not in it today.
+
+The ONE allowed group kill (user ruling 2026-10-13): `scripts/job-queue.sh` may send TERM to the process group it created for its own job (`set -m`, then the group-TERM form its header shows), only while `pgrep -g` finds a member, never any other group; the lock stays live while any process of that group lives. You still never run a group or pattern kill yourself (kill-guard denies it).
+
+Known limit: load5 can stay high while the CPU is idle, so `wait-load.sh` can block for nothing (2026-10-11: load5 31 with
+idle CPU blocked agents 35+ min). Workaround: check real CPU use
+(`top -l 2`, idle column) and pass a higher threshold, or skip the wait
+when the coordinator says so. When verify timeouts come from load, the queue (not raised thresholds or a skipped wait) is the fix.
 
 Background Claude sessions export FORCE_COLOR=3; run checks as `env -u FORCE_COLOR <command>`.

@@ -7,10 +7,10 @@ import { readFileSync } from 'node:fs';
 // silently drift from the migration (a key typo, a duplicate key, a
 // non-seeded key, or a missing `AND \`color\` IS NULL` guard) while every
 // test still passes, leaving a seeded category on the collision-prone
-// `categoryColor` hash (see `src/statistics/category-breakdown.ts`) in
+// `categoryColor` hash (see `src/statistics/category-breakdown/category-breakdown.ts`) in
 // production. Both `src/db/schema.category-overrides.test.ts` (the migration
 // registration/idempotency tests) and
-// `src/statistics/category-breakdown.test.ts` (the chart-layer contract test)
+// `src/statistics/category-breakdown/category-breakdown.test.ts` (the chart-layer contract test)
 // import this so the two suites cannot drift from each other either.
 const MIGRATION_PATH = join(
   __dirname,

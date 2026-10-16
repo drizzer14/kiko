@@ -12,10 +12,10 @@ export const labels = (t: typeof i18n.t, category: Category, row: { category: Ca
   const deleteTitle = t('common.deleteNamed', { name: category.title });
 
   // EXPECT-FINDING
-  const iconLabel = t('categories.changeIconLabel', { count: 1, title: category.title });
+  const iconLabel = t('common.changeIconLabel', { count: 1, title: category.title });
 
   // EXPECT-FINDING
-  const rowLabel = i18n.t('categories.deleteLabel', { title: row.category.title });
+  const rowLabel = i18n.t('common.deleteNamed', { title: row.category.title });
 
   return [deleteTitle, iconLabel, rowLabel];
 };

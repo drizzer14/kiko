@@ -6,7 +6,6 @@ import { holdingsRepo } from '@kiko/holdings/repo';
 import { parseAmount } from '@kiko/currency/parse';
 import Box from '@kiko/design-system/components/box';
 import DateField from '@kiko/screens/forms/date-field';
-import Button from '@kiko/design-system/components/button';
 import Screen from '@kiko/design-system/components/screen';
 import { View, type TextInputInstance } from 'react-native';
 import { groupAmount } from '@kiko/screens/forms/amount-format';
@@ -19,6 +18,7 @@ import { type Currency, currencySymbol } from '@kiko/currency/currency';
 import type { FieldInstance } from '@kiko/design-system/scroll-to-field';
 import { useScrollToField } from '@kiko/design-system/use-scroll-to-field';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { useFormHeaderItems } from '@kiko/screens/forms/use-form-header-items';
 import type { AccountsStackParamList, ContributionFormDraft } from '@kiko/navigation/types';
 
 type ContributionFormScreenProps = NativeStackScreenProps<
@@ -90,17 +90,14 @@ const ContributionFormScreen: FC<ContributionFormScreenProps> = ({ route, naviga
 
   const { onPress: onSave, isSubmitting } = useSubmitOnce(save);
 
+  useFormHeaderItems({ navigation, onSave, hasSave: true, isSaving: isSubmitting });
+
   return (
     <Screen
       scroll
       scrollableRef={scrollableRef}
       onContentSizeChange={onContentSizeChange}
       onFieldBlur={onFieldBlur}
-      footer={
-        <Button onPress={onSave} disabled={isSubmitting}>
-          {t('forms.contribution.save')}
-        </Button>
-      }
     >
       <Box gap={4}>
         <View ref={amountFieldRef}>

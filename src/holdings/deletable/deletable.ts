@@ -8,7 +8,7 @@ import { syncedMetadataFields } from '../holding-metadata';
  * Every `accounts.institution` value that marks an account as owned by a
  * sync. Driven by the registry's own id lists (`bankProviderIds`,
  * `balanceProviderIds`), never hardcoded, so a provider removed from either
- * registry (Guideline 5.6 remediation: PrivatBank, bunq, Starling) falls out
+ * registry (Guideline 2.3.1(a) remediation: PrivatBank, bunq, Starling) falls out
  * of this list automatically.
  */
 const syncedInstitutions = [...bankProviderIds, ...balanceProviderIds] as const;

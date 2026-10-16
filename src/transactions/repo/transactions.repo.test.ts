@@ -19,7 +19,7 @@ import { accountsRepo } from '@kiko/accounts';
 import { drizzle } from 'drizzle-orm/sqlite-proxy';
 import { kyivWallClockToUtcMilliseconds } from '@kiko/dates';
 import { renderCondition } from '@kiko/db/render-condition-test-helper';
-import { accounts, categoryOverrides, deletedImportKeys, holdings, transactions } from '@kiko/db';
+import { accounts, categoryRules, deletedImportKeys, holdings, transactions } from '@kiko/db';
 
 import { transactionsRepo } from './transactions.repo';
 
@@ -130,7 +130,7 @@ describe('transactionsRepo', () => {
 
   // The loan-payment matcher's own candidate read (P-NOWORK: filter what it
   // can never link at the SQL level, not in JS) — a debit, not already
-  // linked, not previously rejected, not one leg of an Exchange/Convert,
+  // linked, not rejected, not one leg of an Exchange/Convert,
   // joined against the payer holding's own currency (the matcher compares
   // that against each loan's own currency itself).
   it('scopes loanMatchCandidatesQuery to an eligible debit: unlinked, un-rejected, no exchange marker', () => {
@@ -518,16 +518,29 @@ const makeRemoveDatabaseTransaction = (options: {
   return { databaseTransaction, captured };
 };
 
-// Fake tx for addManyDedup: two reads (the name→category rules, and the rows
+// The read of every rule has no `where`, so a fake answers it straight from `from(...)`; every
+// other read goes through the `where` the fake gives it.
+const rulesOrWhere = (table: unknown, rules: unknown[], where: () => unknown) =>
+  table === categoryRules ? Promise.resolve(rules) : { where };
+
+// One stored rule row that is a name alone, as the rules table holds it.
+const nameRuleRow = (text: string, category: string, index = 0) => ({
+  id: `rule-${index}`,
+  category,
+  matchers: JSON.stringify([{ type: 'nameIs', text }]),
+  createdAt: 1,
+  updatedAt: 1,
+});
+
+// Fake tx for addManyDedup: two reads (the category rules, and the rows
 // that already hold an incoming external id) and one upsert. Each select
-// dispatches on the table it reads rather than on call order, because the rule
-// lookup is skipped entirely when no input carries a description. The upsert
+// dispatches on the table it reads rather than on call order. The upsert
 // may now run as SEVERAL chunked `.values(...)` calls (`chunkForTable`), so
 // `captured.inserted` is the FLATTENED concatenation of every chunk, in call
-// order — a single-chunk batch (every existing test below) sees the same
-// shape as before; `captured.insertCallCount` exposes how many chunks ran.
+// order — a single-chunk batch (every test below) sees the unchunked shape;
+// `captured.insertCallCount` exposes how many chunks ran.
 const makeAddManyDatabaseTransaction = (
-  rules: { normalizedName: string; category: string }[],
+  rules: { text: string; category: string }[],
   existing: { source: string; externalId: string }[] = [],
 ): {
   databaseTransaction: unknown;
@@ -544,13 +557,16 @@ const makeAddManyDatabaseTransaction = (
   } = { insertCallCount: 0 };
   const databaseTransaction = {
     select: () => ({
-      from: (table: unknown) => ({
-        where: () => Promise.resolve(table === categoryOverrides ? rules : existing),
-      }),
+      from: (table: unknown) =>
+        rulesOrWhere(
+          table,
+          rules.map(({ text, category }, index) => nameRuleRow(text, category, index)),
+          () => Promise.resolve(existing),
+        ),
     }),
     insert: (table: unknown) => ({
       values: (values: Record<string, unknown>[]) => {
-        if (table !== categoryOverrides) {
+        if (table !== categoryRules) {
           captured.inserted = (captured.inserted ?? []).concat(values);
           captured.insertCallCount += 1;
         }
@@ -569,10 +585,10 @@ const makeAddManyDatabaseTransaction = (
   return { databaseTransaction, captured };
 };
 
-describe('transactionsRepo.addManyDedup category overrides', () => {
+describe('transactionsRepo.addManyDedup category rules', () => {
   it('applies a matching rule to an incoming synced row at insert time', async () => {
     const { databaseTransaction, captured } = makeAddManyDatabaseTransaction([
-      { normalizedName: 'atb market', category: 'groceries' },
+      { text: 'atb market', category: 'groceries' },
     ]);
     mockDatabaseTransaction = databaseTransaction;
 
@@ -598,14 +614,20 @@ describe('transactionsRepo.addManyDedup category overrides', () => {
     ]);
 
     const inserted = captured.inserted ?? [];
-    expect(inserted[0]).toMatchObject({ description: 'ATB Market', category: 'groceries' });
-    // no rule for Coffee — its mapped category is left untouched
-    expect(inserted[1]).toMatchObject({ description: 'Coffee', category: 'dining' });
+    // The rows a rule won and the others are inserted apart, so the order is not asserted.
+    expect(inserted).toHaveLength(2);
+    expect(inserted).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ description: 'ATB Market', category: 'groceries' }),
+        // no rule for Coffee — its mapped category is left untouched
+        expect.objectContaining({ description: 'Coffee', category: 'dining' }),
+      ]),
+    );
   });
 
   it('matches a Cyrillic case-variant name against its rule', async () => {
     const { databaseTransaction, captured } = makeAddManyDatabaseTransaction([
-      { normalizedName: 'атб', category: 'groceries' },
+      { text: 'атб', category: 'groceries' },
     ]);
     mockDatabaseTransaction = databaseTransaction;
 
@@ -670,11 +692,11 @@ describe('transactionsRepo.addManyDedup upsert', () => {
     ]);
   });
 
-  // A binance import row carries the stable 'BTC' description (item 12). It rides
+  // A binance import row carries the stable 'BTC' description. It rides
   // the SAME shared upsert as Monobank, which already refreshes `description`, so
   // an already-imported crypto row whose description was '' gains 'BTC' on the
-  // next sync — with no repo change. These two guard that the behavior B3 relies
-  // on stays intact.
+  // next sync — with no repo change. These two guard that the behavior the Binance
+  // import relies on stays intact.
   const binanceRow = (overrides: Record<string, unknown> = {}) => ({
     holdingId: 'h-spot',
     amountMinorUnits: 50_000_000,
@@ -812,7 +834,9 @@ describe('transactionsRepo.addManyDedup upsert', () => {
   it('splits a large batch into multiple chunked inserts, each within the SQLite bound-parameter limit', async () => {
     const insertedChunkSizes: number[] = [];
     mockDatabaseTransaction = {
-      select: () => ({ from: () => ({ where: () => Promise.resolve([]) }) }),
+      select: () => ({
+        from: (table: unknown) => rulesOrWhere(table, [], () => Promise.resolve([])),
+      }),
       insert: () => ({
         values: (values: Record<string, unknown>[]) => {
           insertedChunkSizes.push(values.length);
@@ -888,11 +912,11 @@ describe('transactionsRepo.addManyDedup chunking', () => {
 
     const insertStatements = statements.filter((statement) => statement.sql.startsWith('insert'));
     // id + the 11 NewTransaction fields set on every row above, plus
-    // `loanLinkRejected` and `setsBalance` — NOT NULL columns with a default,
-    // so Drizzle binds each default value as a real param instead of emitting
-    // a literal SQL `null` the way it does for the other omitted (nullable)
-    // columns.
-    const paramsPerRow = 14;
+    // `loanLinkRejected`, `setsBalance` and `categorySetByHand` — NOT NULL
+    // columns with a default, so Drizzle binds each default value as a real
+    // param instead of emitting a literal SQL `null` the way it does for the
+    // other omitted (nullable) columns.
+    const paramsPerRow = 15;
     expect(insertStatements.length).toBeGreaterThan(1);
     expect(insertStatements.reduce((sum, statement) => sum + statement.params.length, 0)).toBe(
       rowCount * paramsPerRow,
@@ -900,62 +924,86 @@ describe('transactionsRepo.addManyDedup chunking', () => {
     expect(inserted).toBe(rowCount);
   });
 
-  it('chunks the category-override rule lookup under the SQLite bound-parameter limit', async () => {
-    const { databaseTransaction, statements } = makeOverflowGuardDatabaseTransaction();
-    mockDatabaseTransaction = databaseTransaction;
+  it('chunks the holding currency lookup under the SQLite bound-parameter limit', async () => {
+    const statements: { sql: string; params: unknown[] }[] = [];
+    // One stored rule, answered by column position (id, category, matchers, createdAt,
+    // updatedAt); every other read is empty.
+    mockDatabaseTransaction = drizzle(async (sql: string, params: unknown[]) => {
+      // Only the currency lookup is held to the ceiling: this test gives every row a holding of
+      // its own, which no other read of a sync batch is meant to see.
+      if (params.length > SQLITE_MAX_VARIABLE_NUMBER && sql.includes('"currency"')) {
+        throw new Error('too many SQL variables');
+      }
+      statements.push({ sql, params });
+
+      return {
+        rows: sql.includes('from "category_rules"')
+          ? [['rule', 'food', JSON.stringify([{ type: 'nameIs', text: 'desc' }]), 1, 1]]
+          : [],
+      };
+    });
 
     const rowCount = SQLITE_MAX_VARIABLE_NUMBER + 1;
+    // A holding of its own per row pushes the distinct holding count past the ceiling. No
+    // externalId: `countNewRows`'s own select is skipped entirely (its guard returns early on an
+    // empty externalId list), isolating this test to the currency lookup.
     const rows = Array.from({ length: rowCount }, (_, index) => ({
-      holdingId: 'h1',
+      holdingId: `h-${index}`,
       amountMinorUnits: -1,
       time: 1 + index,
       source: 'monobank' as const,
-      // A unique description per row pushes the deduplicated `keys` count
-      // past the ceiling. No externalId: `countNewRows`'s own select is
-      // skipped entirely (its guard returns early on an empty externalId
-      // list), isolating this test to the rule-lookup select.
-      description: `desc-${index}`,
+      description: 'desc',
     }));
 
     const inserted = await transactionsRepo.addManyDedup(rows);
 
-    const ruleSelects = statements.filter(
+    const currencySelects = statements.filter(
       (statement) =>
-        statement.sql.startsWith('select') && statement.sql.includes('category_overrides'),
+        statement.sql.startsWith('select') &&
+        statement.sql.includes('from "holdings"') &&
+        statement.sql.includes('"currency"'),
     );
-    expect(ruleSelects.length).toBeGreaterThan(1);
-    expect(ruleSelects.reduce((sum, statement) => sum + statement.params.length, 0)).toBe(rowCount);
+    expect(currencySelects.length).toBeGreaterThan(1);
+    expect(currencySelects.reduce((sum, statement) => sum + statement.params.length, 0)).toBe(
+      rowCount,
+    );
     expect(inserted).toBe(rowCount);
   });
 
-  it('applies category-override rules found in EVERY chunk, not just the first', async () => {
-    // Each chunked `categoryOverrides` select resolves its OWN slice of
-    // rules here (call order == chunk order), modelling what two separate
-    // DB round-trips actually return — proving `categoryByName` is built
-    // from the UNION of every chunk's rows, not just the first (or last)
-    // chunk's. A bug that dropped every chunk but one would still pass
-    // the param-count assertion above, since that only counts what was
-    // SENT, never what was UNIONED back.
-    let categoryOverrideCall = 0;
-    const rulesByCall = [
-      [{ normalizedName: 'desc-0', category: 'groceries' }],
-      [{ normalizedName: 'desc-32766', category: 'utilities' }],
+  it('reads the currency of a holding in EVERY chunk, not just the first', async () => {
+    // Each chunked holdings select resolves its OWN slice here (call order == chunk order),
+    // modelling what two separate DB round-trips actually return — proving the currency lookup
+    // is built from the UNION of every chunk's rows, not just the first (or last) chunk's. A bug
+    // that dropped every chunk but one would still pass the param-count assertion above, since
+    // that only counts what was SENT, never what was UNIONED back.
+    let currencyCall = 0;
+    const currenciesByCall = [
+      [{ id: 'h-0', currency: 'UAH' }],
+      [{ id: 'h-32766', currency: 'UAH' }],
     ];
     const captured: { inserted: Record<string, unknown>[] } = { inserted: [] };
+    const amountRule = {
+      id: 'rule',
+      category: 'groceries',
+      matchers: JSON.stringify([
+        { type: 'amount', operator: 'eq', minorUnits: 1, currency: 'UAH' },
+      ]),
+      createdAt: 1,
+      updatedAt: 1,
+    };
     mockDatabaseTransaction = {
       select: () => ({
-        from: (table: unknown) => ({
-          where: () => {
-            if (table !== categoryOverrides) {
+        from: (table: unknown) =>
+          rulesOrWhere(table, [amountRule], () => {
+            if (table !== holdings) {
               return Promise.resolve([]);
             }
 
-            const rules = rulesByCall[categoryOverrideCall] ?? [];
-            categoryOverrideCall += 1;
+            const currencies = currenciesByCall[currencyCall] ?? [];
+            currencyCall += 1;
 
-            return Promise.resolve(rules);
-          },
-        }),
+            return Promise.resolve(currencies);
+          }),
       }),
       insert: () => ({
         values: (values: Record<string, unknown>[]) => {
@@ -968,24 +1016,25 @@ describe('transactionsRepo.addManyDedup chunking', () => {
 
     const rowCount = SQLITE_MAX_VARIABLE_NUMBER + 1;
     const rows = Array.from({ length: rowCount }, (_, index) => ({
-      holdingId: 'h1',
+      holdingId: `h-${index}`,
       amountMinorUnits: -1,
       time: 1 + index,
       source: 'monobank' as const,
       category: 'other',
-      // Unique descriptions push the deduplicated `keys` count to 32767,
-      // split by `chunkRows` into a 32000-key chunk (covers `desc-0`) and a
-      // 767-key chunk (covers `desc-32766`) — one rule lands in each.
-      description: `desc-${index}`,
     }));
 
     await transactionsRepo.addManyDedup(rows);
 
-    expect(categoryOverrideCall).toBeGreaterThan(1);
-    const firstChunkRow = captured.inserted.find((row) => row.description === 'desc-0');
-    const secondChunkRow = captured.inserted.find((row) => row.description === 'desc-32766');
-    expect(firstChunkRow).toMatchObject({ category: 'groceries' });
-    expect(secondChunkRow).toMatchObject({ category: 'utilities' });
+    expect(currencyCall).toBeGreaterThan(1);
+    expect(captured.inserted.find((row) => row.holdingId === 'h-0')).toMatchObject({
+      category: 'groceries',
+    });
+    expect(captured.inserted.find((row) => row.holdingId === 'h-32766')).toMatchObject({
+      category: 'groceries',
+    });
+    expect(captured.inserted.find((row) => row.holdingId === 'h-5')).toMatchObject({
+      category: 'other',
+    });
   });
 
   it('chunks the existing-external-id lookup under the SQLite bound-parameter limit', async () => {
@@ -1087,14 +1136,11 @@ describe('transactionsRepo.addManyDedup chunking', () => {
 // not just the SQL shape a single call would have issued.
 const makeAddManyStoreDatabaseTransaction = (store: Record<string, unknown>[]) => ({
   select: () => ({
-    from: (table: unknown) => ({
-      // `categoryOverrides` never carries a matching rule here (no test row
-      // seeded), and the countNewRows existing-rows probe over `transactions`
-      // does not need to be clause-accurate — mirrors `holdings.repo.test.ts`'s
-      // `makeDatabaseTransaction`, which resolves the whole table rather than interpreting
-      // `.where(...)`.
-      where: async () => (table === categoryOverrides ? [] : store),
-    }),
+    // `categoryRules` never carries a rule here (no test row seeded), and the
+    // countNewRows existing-rows probe over `transactions` does not need to be
+    // clause-accurate — mirrors `holdings.repo.test.ts`'s `makeDatabaseTransaction`,
+    // which resolves the whole table rather than interpreting `.where(...)`.
+    from: (table: unknown) => rulesOrWhere(table, [], async () => store),
   }),
   insert: () => ({
     values: (values: Record<string, unknown>[]) => ({
@@ -1429,10 +1475,11 @@ describe('transactionsRepo.setCategory', () => {
 
     await transactionsRepo.setCategory({ transactionId: 'txn-7', category: 'dining' });
 
-    // A direct UPDATE on the transactions table, touching category and nothing
-    // else (no balance write, no other row) — the "just for this one" override.
+    // A direct UPDATE on the transactions table, touching the category and the
+    // by-hand mark and nothing else (no balance write, no other row) — the
+    // "just for this one" override.
     expect(captured.table).toBe(transactions);
-    expect(captured.set).toEqual({ category: 'dining' });
+    expect(captured.set).toEqual({ category: 'dining', categorySetByHand: true });
     // It is scoped to the single row by id (a filter was applied); it never
     // gates on `source`, so a synced bank row is categorizable too.
     expect(captured.whereArg).toBeDefined();
@@ -1592,7 +1639,7 @@ describe('transactionsRepo.recordExchange', () => {
 
     // Two ledger rows, tied STRUCTURALLY: each leg stores the OTHER leg's
     // holding id and persists NO description — the label is resolved at render
-    // time from that marker (see transactions/exchange-description.ts).
+    // time from that marker (see src/transactions/exchange-description/exchange-description.ts).
     expect(inserts).toEqual([
       expect.objectContaining({
         holdingId: 'src-1',
@@ -1681,7 +1728,7 @@ describe('transactionsRepo.recordExchange', () => {
         valueInMinorUnits: 100,
         time: 1,
       }),
-    ).rejects.toThrow();
+    ).rejects.toThrow('recordExchange: destination equals source');
   });
 
   it('rejects an excluded destination type (bond/jar)', async () => {
@@ -1785,7 +1832,7 @@ describe('transactionsRepo.recordExchangeCounterpart', () => {
 
     // Exactly ONE new ledger row: a positive receipt marked with the EXISTING
     // leg's holding id and no persisted description — the label resolves at
-    // render time (see transactions/exchange-description.ts).
+    // render time (see src/transactions/exchange-description/exchange-description.ts).
     expect(inserts).toEqual([
       expect.objectContaining({
         holdingId: 'dst-1',
@@ -1997,7 +2044,9 @@ describe('transactionsRepo.recordExchangeCounterpart', () => {
         existingHoldingId: 'existing-1',
         time: 1,
       }),
-    ).rejects.toThrow();
+    ).rejects.toThrow(
+      'recordExchangeCounterpart: a source leg must be a plain holding, got term_deposit',
+    );
   });
 
   it('throws for a bond/jar destination (excluded)', async () => {
@@ -2021,7 +2070,7 @@ describe('transactionsRepo.recordExchangeCounterpart', () => {
         existingHoldingId: 'existing-1',
         time: 1,
       }),
-    ).rejects.toThrow();
+    ).rejects.toThrow('recordExchangeCounterpart: bond is not a valid destination');
   });
 
   // Defense in depth: the counterpart picker already excludes a synced
@@ -2044,7 +2093,7 @@ describe('transactionsRepo.recordExchangeCounterpart', () => {
         existingHoldingId: 'existing-1',
         time: 123,
       }),
-    ).rejects.toThrow();
+    ).rejects.toThrow('recordExchangeCounterpart: counterpart holding dst-1 is synced');
 
     expect(inserts).toHaveLength(0);
     expect(updates).toHaveLength(0);
@@ -2163,10 +2212,6 @@ const resolveImportRowsSelect = (
   table: unknown,
   fields: Record<string, unknown> | undefined,
 ): unknown[] => {
-  if (table === categoryOverrides) {
-    return [];
-  }
-
   if (table === holdings) {
     return options.holding
       ? [{ ...options.holding, newestSyncTime: options.syncBoundaryTime ?? null }]
@@ -2208,9 +2253,8 @@ const makeImportRowsDatabaseTransaction = (
 
   const databaseTransaction = {
     select: (fields?: Record<string, unknown>) => ({
-      from: (table: unknown) => ({
-        where: () => resolveRows(resolveImportRowsSelect(options, table, fields)),
-      }),
+      from: (table: unknown) =>
+        rulesOrWhere(table, [], () => resolveRows(resolveImportRowsSelect(options, table, fields))),
     }),
     insert: () => ({
       values: (values: unknown[]) => {
@@ -2849,10 +2893,6 @@ const resolveOrderedSelect = (
   options: OrderedImportTransactionOptions,
   table: unknown,
 ): unknown[] => {
-  if (table === categoryOverrides) {
-    return [];
-  }
-
   if (table === holdings) {
     const syncTimes = options.store
       .filter((row) => row.source !== 'manual' && row.source !== 'import')
@@ -2875,9 +2915,8 @@ const makeOrderedImportDatabaseTransaction = (options: OrderedImportTransactionO
 
   return {
     select: () => ({
-      from: (table: unknown) => ({
-        where: () => resolveRows(resolveOrderedSelect(options, table)),
-      }),
+      from: (table: unknown) =>
+        rulesOrWhere(table, [], () => resolveRows(resolveOrderedSelect(options, table))),
     }),
     insert: () => ({
       values: (rows: Record<string, unknown>[]) => ({
@@ -3266,7 +3305,7 @@ describe('createCashAccount + importRows integration', () => {
             };
           }
 
-          return { where: () => resolveRows(store[keyOf(table)]) };
+          return rulesOrWhere(table, [], () => resolveRows(store[keyOf(table)]));
         },
       }),
       insert: (table: unknown) => ({

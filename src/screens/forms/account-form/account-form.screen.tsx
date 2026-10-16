@@ -11,12 +11,15 @@ import { useTranslation } from 'react-i18next';
 import { logOnFailure } from '@kiko/diagnostics';
 import { saveToken } from '@kiko/monobank/token';
 import { parseAmount } from '@kiko/currency/parse';
+import {
+  type FormHeaderItemsOptions,
+  useFormHeaderItems,
+} from '@kiko/screens/forms/use-form-header-items';
 import Box from '@kiko/design-system/components/box';
 import Text from '@kiko/design-system/components/text';
 import either, { bifoldr, isRight } from 'fnts/either';
 import { type BrokerId, isBrokerId } from '@kiko/brokers';
 import { useCryptoSync } from '@kiko/sync/use-crypto-sync';
-import Button from '@kiko/design-system/components/button';
 import Screen from '@kiko/design-system/components/screen';
 import { View, type TextInputInstance } from 'react-native';
 import { id, type AccountRow, useLiveQuery } from '@kiko/db';
@@ -50,15 +53,15 @@ import type { AccountFormDraft, AccountsStackParamList, FormDraft } from '@kiko/
 import { usePendingRowLock } from './use-pending-row-lock';
 import { useConnectReminder } from './use-connect-reminder';
 
-// This screen is registered in BOTH the Accounts and Home stacks (Home reaches it
-// from the transaction form's empty pickers), so it cannot bind its props to one
-// stack's param list. It declares exactly the navigation methods it calls,
-// structurally satisfied by either stack.
+// This screen is registered in the Accounts, Home, and Settings stacks (Home and Settings
+// reach it from the transaction form's empty pickers), so it cannot bind its props to one
+// stack's param list. It declares exactly the navigation methods it calls, structurally
+// satisfied by any of the stacks.
 type AccountFormScreenProps = {
   route: { params: AccountsStackParamList['AccountForm'] };
   navigation: {
     goBack: () => void;
-    setOptions: (options: { title: string }) => void;
+    setOptions: (options: { title: string } | FormHeaderItemsOptions) => void;
     setParams: (params: { draft: FormDraft | AccountFormDraft }) => void;
     replace: (name: 'HoldingForm', params: AccountsStackParamList['HoldingForm']) => void;
   };
@@ -653,6 +656,8 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
 
   const { onPress: onSave, isSubmitting } = useSubmitOnce(save);
 
+  useFormHeaderItems({ navigation, onSave, hasSave: true, isSaving: isSubmitting });
+
   // Selecting an account type re-seeds the icon field with that type's default
   // glyph; the user can still override it in the picker afterward, and picking
   // a different type resets the icon to the new type's default. Only reachable
@@ -714,11 +719,6 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
       automaticallyAdjustKeyboardInsets={!isCurrencySheetOpen}
       onContentSizeChange={onContentSizeChange}
       onFieldBlur={onFieldBlur}
-      footer={
-        <Button onPress={onSave} disabled={isSubmitting}>
-          {t('common.save')}
-        </Button>
-      }
     >
       <Box gap={4} testID="account-form">
         {/* One shared icon+name block for every kind, cash included: the icon
@@ -817,7 +817,7 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
             only, whether or not the account is connected. The
             live-sync Connect field stays CREATE-ONLY — editing an already-
             connected account's real connection is BankSyncSection's job on
-            the account-detail screen (Monobank-only, Guideline 5.6),
+            the account-detail screen (Monobank-only, Guideline 2.3.1(a)),
             untouched here. The credential field itself is NOT required (no asterisk): an
             account still creates with no credentials — a secret is masked
             and write-only, going straight to the Keychain on save, never

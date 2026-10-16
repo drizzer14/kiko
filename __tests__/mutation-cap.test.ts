@@ -4,10 +4,13 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 
 import {
+  runGit,
   writeFile,
   commitAll,
   mutatedFiles,
+  twelveLines,
   writeExecutable,
+  REAL_NODE_MODULES,
   type ArgumentStubRun,
   copyMutationScripts,
   runWithArgumentStub,
@@ -26,6 +29,14 @@ const sources = (prefix: string, count: number): Record<string, string> =>
       `export const value${index} = ${index};\n`,
     ]),
   );
+
+const ONE_FILE_LIST = [
+  'src/changed-0.ts 1-1 (1 changed lines)',
+  'changed lines: 1',
+  'mutable files: 1 (cap 30)',
+  'timeout share (history): none',
+  '',
+].join('\n');
 
 const buildRepository = (featureFiles: Record<string, string>): { root: string; script: string } =>
   buildMutationRepository(mkdtempSync(join(tmpdir(), 'kiko-mutation-cap-')), featureFiles);
@@ -65,6 +76,7 @@ describe('scripts/checks/mutation.sh file cap', () => {
   it('counts only the files left after the test, fixture, barrel, and styles excludes', () => {
     const { root, script } = buildRepository(sources('changed', 30));
     writeFile(root, 'src/changed-0.test.ts', 'test("x", () => {});\n');
+    writeFile(root, 'src/changed-0.test.tsx', 'test("x", () => {});\n');
     writeFile(root, 'rules/fixtures/bad.ts', 'export const bad = 1;\n');
     writeFile(root, 'src/feature/index.ts', "export * from './feature';\n");
     writeFile(root, 'src/feature/feature.styles.ts', 'export const styles = {};\n');
@@ -74,6 +86,36 @@ describe('scripts/checks/mutation.sh file cap', () => {
 
     expect(result.code).toBe(0);
     expect(mutatedFiles(result.stubArguments)).toHaveLength(30);
+  });
+
+  it('does not count a file that only lost lines: 30 files with added lines and one pure deletion run', () => {
+    const { script } = buildMutationRepository(
+      mkdtempSync(join(tmpdir(), 'kiko-mutation-cap-')),
+      { ...sources('changed', 30), 'src/trimmed.ts': 'export const first = 1;\n' },
+      { 'src/trimmed.ts': 'export const first = 1;\nexport const second = 2;\n' },
+    );
+
+    const result = runWithArgumentStub(script, { KIKO_MUTATION_BASE: 'main' });
+
+    expect(result.code).toBe(0);
+    expect(mutatedFiles(result.stubArguments)).toHaveLength(30);
+    expect(result.stdout).toContain('skipped (no added lines): src/trimmed.ts');
+  });
+
+  it.each([
+    ['a run', []],
+    ['--list', ['--list']],
+  ])('refuses a changed path with a glob character in %s, naming the file', (_name, flags) => {
+    const globPath = 'src/(group)/changed.ts';
+    const { script } = buildRepository({
+      ...sources('changed', 1),
+      [globPath]: 'export const grouped = 1;\n',
+    });
+
+    const result = runWithArgumentStub(script, { KIKO_MUTATION_BASE: 'main' }, flags);
+
+    expectRefusal(result, globPath);
+    expect(result.stderr).toContain('exclude it in mutable_source_files');
   });
 
   it('no env var raises the cap', () => {
@@ -166,7 +208,15 @@ describe('scripts/checks/mutation.sh file cap', () => {
 
     expect(result.code).toBe(0);
     expect(result.stdout).toBe(
-      'src/changed-0.ts\nsrc/changed-1.ts\nsrc/changed-2.ts\nmutable files: 3 (cap 30)\n',
+      [
+        'src/changed-0.ts 1-1 (1 changed lines)',
+        'src/changed-1.ts 1-1 (1 changed lines)',
+        'src/changed-2.ts 1-1 (1 changed lines)',
+        'changed lines: 3',
+        'mutable files: 3 (cap 30)',
+        'timeout share (history): none',
+        '',
+      ].join('\n'),
     );
     expect(result.stubArguments).toBeNull();
   });
@@ -187,7 +237,14 @@ describe('scripts/checks/mutation.sh file cap', () => {
 
     expect(result.code).toBe(0);
     expect(result.stdout).toBe(
-      'src/changed-0.ts\nsrc/db/render-condition.ts\nmutable files: 2 (cap 30)\n',
+      [
+        'src/changed-0.ts 1-1 (1 changed lines)',
+        'src/db/render-condition.ts 1-1 (1 changed lines)',
+        'changed lines: 2',
+        'mutable files: 2 (cap 30)',
+        'timeout share (history): none',
+        '',
+      ].join('\n'),
     );
   });
 
@@ -197,7 +254,57 @@ describe('scripts/checks/mutation.sh file cap', () => {
     const result = runWithArgumentStub(script, { KIKO_MUTATION_BASE: 'main' }, ['--list']);
 
     expect(result.code).toBe(0);
-    expect(result.stdout).toBe('mutable files: 0 (cap 30)\n');
+    expect(result.stdout).toBe(
+      'changed lines: 0\nmutable files: 0 (cap 30)\ntimeout share (history): none\n',
+    );
+  });
+
+  it('--list prints the ranges of a modified file and a new file, skips comment-only files, then the sums', () => {
+    const { script } = buildMutationRepository(
+      mkdtempSync(join(tmpdir(), 'kiko-mutation-cap-')),
+      {
+        'src/mod.ts': twelveLines({
+          3: 'export const edited3 = 0;',
+          4: 'export const edited4 = 0;',
+          10: 'export const edited10 = 0;',
+        }),
+        'src/new.ts': `${twelveLines({}).split('\n').slice(0, 5).join('\n')}\n`,
+        'src/tested.ts': '// why a is one\nexport const a = 1;\n',
+        'src/tested.test.ts': 'export const t = 2;\n',
+        'src/commented.ts': '// why c is one\nexport const c = 1;\n',
+        'src/old.ts': null,
+        'src/moved.ts': twelveLines({}),
+      },
+      {
+        'src/mod.ts': twelveLines({}),
+        'src/tested.ts': 'export const a = 1;\n',
+        'src/tested.test.ts': 'export const t = 1;\n',
+        'src/commented.ts': 'export const c = 1;\n',
+        'src/old.ts': twelveLines({}),
+      },
+    );
+
+    const result = runWithArgumentStub(
+      script,
+      { KIKO_MUTATION_BASE: 'main', NODE_PATH: REAL_NODE_MODULES },
+      ['--list'],
+    );
+
+    expect(result.code).toBe(0);
+    expect(result.stdout).toBe(
+      [
+        'src/mod.ts 3-4,10-10 (3 changed lines)',
+        'src/new.ts 1-5 (5 changed lines)',
+        'skipped (comment-only): src/commented.ts',
+        'skipped (comment-only): src/tested.ts',
+        'skipped (no added lines): src/moved.ts',
+        'changed lines: 8',
+        'mutable files: 2 (cap 30)',
+        'timeout share (history): none',
+        '',
+      ].join('\n'),
+    );
+    expect(result.stubArguments).toBeNull();
   });
 
   it('--list over the cap prints the list, then the cap block, and exits 2', () => {
@@ -207,7 +314,7 @@ describe('scripts/checks/mutation.sh file cap', () => {
 
     expectCapFailure(result, 31);
     expect(result.stdout.split('\n').filter((line) => line.startsWith('src/'))).toHaveLength(31);
-    expect(result.stdout).toContain('mutable files: 31 (cap 30)');
+    expect(result.stdout).toContain('changed lines: 31\nmutable files: 31 (cap 30)');
   });
 
   it('--list keeps the KIKO_MUTATION_FULL and unresolvable-base refusals', () => {
@@ -233,7 +340,7 @@ describe('scripts/checks/mutation.sh file cap', () => {
     );
 
     expect(result.code).toBe(0);
-    expect(result.stdout).toBe('src/changed-0.ts\nmutable files: 1 (cap 30)\n');
+    expect(result.stdout).toBe(ONE_FILE_LIST);
   });
 
   it('--list runs while a live run holds the global lock, and leaves that lock in place', () => {
@@ -251,7 +358,7 @@ describe('scripts/checks/mutation.sh file cap', () => {
     );
 
     expect(result.code).toBe(0);
-    expect(result.stdout).toBe('src/changed-0.ts\nmutable files: 1 (cap 30)\n');
+    expect(result.stdout).toBe(ONE_FILE_LIST);
     expect(existsSync(join(lockDirectory, 'pid'))).toBe(true);
   });
 
@@ -295,5 +402,98 @@ describe('scripts/checks/mutation.sh file cap', () => {
     expect(narrow.code).toBe(0);
     expect(wide.code).toBe(0);
     expect(mutatedFiles(wide.stubArguments)).toHaveLength(3);
+  });
+});
+
+const numberedLines = (count: number): string =>
+  `${Array.from({ length: count }, (_, index) => `export const value${index} = ${index};`).join('\n')}\n`;
+
+const listWithBase = (script: string): ArgumentStubRun =>
+  runWithArgumentStub(script, { KIKO_MUTATION_BASE: 'main' }, ['--list']);
+
+// `feature` adds src/own.ts (`ownLines` lines) itself, then merges a `track` branch that adds
+// src/merged.ts (`mergedLines` lines): the list against `main` counts both files.
+const mergedRepository = (ownLines: number, mergedLines: number): string => {
+  const { root, script } = buildRepository({ 'src/own.ts': numberedLines(ownLines) });
+  runGit(root, 'checkout', '-q', '-b', 'track', 'main');
+  writeFile(root, 'src/merged.ts', numberedLines(mergedLines));
+  commitAll(root, 'merged track');
+  runGit(root, 'checkout', '-q', 'feature');
+  runGit(root, 'merge', '--no-ff', '-q', '-m', 'merge track', 'track');
+
+  return script;
+};
+
+const overCountWarning = (changedLines: number, ownLines: number): string =>
+  `warning: ${changedLines} changed lines, but this branch added only ${ownLines} of them itself (first-parent commits); a merged track is counted: set KIKO_MUTATION_BASE to the merged tip (harness-workflow "Mutation base after a track merged next")`;
+
+describe('scripts/checks/mutation.sh --list over-count warning', () => {
+  it('prints no warning for a branch with no merge, however many lines it changes', () => {
+    const { script } = buildRepository({ 'src/own.ts': numberedLines(300) });
+
+    const result = listWithBase(script);
+
+    expect(result.code).toBe(0);
+    expect(result.stdout).toContain('changed lines: 300\n');
+    expect(result.stdout).not.toContain('warning:');
+  });
+
+  it('warns with both numbers when a merged track adds 200 lines to the list', () => {
+    const result = listWithBase(mergedRepository(20, 200));
+    const lines = result.stdout.split('\n');
+
+    expect(result.code).toBe(0);
+    expect(lines).toContain(overCountWarning(220, 20));
+    // The warning follows the count line and never reads as the count line itself.
+    expect(lines.indexOf(overCountWarning(220, 20))).toBe(lines.indexOf('changed lines: 220') + 1);
+    expect(lines.filter((line) => /^changed lines: [0-9]+$/.test(line))).toEqual([
+      'changed lines: 220',
+    ]);
+    expect(result.stdout).toContain('mutable files: 2 (cap 30)');
+  });
+
+  it('prints no warning for a 10-line conflict resolution of both branches', () => {
+    const editedLines = (name: string): string =>
+      twelveLines(
+        Object.fromEntries(
+          Array.from({ length: 10 }, (_, index) => [
+            index + 1,
+            `export const ${name}${index} = 0;`,
+          ]),
+        ),
+      );
+    const { root, script } = buildMutationRepository(
+      mkdtempSync(join(tmpdir(), 'kiko-mutation-cap-')),
+      { 'src/shared.ts': editedLines('own') },
+      { 'src/shared.ts': twelveLines() },
+    );
+    runGit(root, 'checkout', '-q', '-b', 'track', 'main');
+    writeFile(root, 'src/shared.ts', editedLines('theirs'));
+    commitAll(root, 'other edit');
+    runGit(root, 'checkout', '-q', 'feature');
+    execFileSync('bash', ['-c', 'git merge --no-ff -q -m merge track || true'], {
+      cwd: root,
+      stdio: 'pipe',
+    });
+    writeFile(root, 'src/shared.ts', editedLines('resolved'));
+    commitAll(root, 'resolve the conflict');
+
+    const result = listWithBase(script);
+
+    expect(result.stdout).toContain('changed lines: 10\n');
+    expect(result.stdout).not.toContain('warning:');
+  });
+
+  it.each([
+    // own 20: the own + 50 arm decides (70).
+    [20, 50, false],
+    [20, 51, true],
+    // own 200: the 1.5 x own arm decides (300).
+    [200, 100, false],
+    [200, 101, true],
+  ])('with %i own lines and %i merged lines, the warning is %s', (ownLines, mergedLines, warns) => {
+    const result = listWithBase(mergedRepository(ownLines, mergedLines));
+
+    expect(result.stdout.includes('warning:')).toBe(warns);
   });
 });

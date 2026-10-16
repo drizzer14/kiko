@@ -105,7 +105,9 @@ describe('RawPreview', () => {
     expect(queryByText('row-9')).toBeTruthy();
     expect(queryByText('row-10')).toBeNull();
     expect(
-      within(getByTestId('raw-preview-toggle')).getByText(i18n.t('components.pieChart.showLess')),
+      within(getByTestId('raw-preview-toggle')).getByText(
+        i18n.t('components.expandToggle.showLess'),
+      ),
     ).toBeTruthy();
     expect(getByTestId('raw-preview-toggle-chevron').props.name).toBe('chevron.up');
   });
@@ -134,7 +136,9 @@ describe('RawPreview', () => {
     expect(queryByText('row-3')).toBeTruthy();
     expect(queryByText('row-8')).toBeNull();
     expect(
-      within(getByTestId('raw-preview-toggle')).getByText(i18n.t('components.pieChart.showAll')),
+      within(getByTestId('raw-preview-toggle')).getByText(
+        i18n.t('components.expandToggle.showAll'),
+      ),
     ).toBeTruthy();
     expect(getByTestId('raw-preview-toggle-chevron').props.name).toBe('chevron.down');
   });

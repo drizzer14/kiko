@@ -22,7 +22,9 @@ import { asMetalMeta } from '@kiko/holdings/holding-metadata';
 import { buildPriceBook, dayKeyOf } from '@kiko/prices/price-book';
 import { applyAllMigrations } from '@kiko/test-support/real-sqlite';
 import { holdingValueBreakdown } from '@kiko/holdings/holding-value';
-import { quantityAt, type Lot, type LotChange } from '@kiko/holdings/lots';
+import { quantityAt, SaleExceedsHoldingError, type Lot, type LotChange } from '@kiko/holdings/lots';
+
+import { EXPORT_VERSION } from '../crypto/envelope';
 
 import { readDataSnapshot } from './read-snapshot';
 import type { DataSnapshot } from './data-snapshot';
@@ -150,7 +152,7 @@ const exportAndRestore = async (): Promise<void> => {
 
   openDatabase({ lots: [] });
   mockDatabase.exec('DELETE FROM holdings');
-  await restoreDataSnapshot(backup);
+  await restoreDataSnapshot(backup, EXPORT_VERSION);
 };
 
 // A backup made before the one-time recost has no flag key, so it restores
@@ -162,7 +164,10 @@ const restoreBackupFromBeforeTheRecost = async (): Promise<void> => {
   openDatabase({ lots: [] });
   mockDatabase.exec('DELETE FROM holdings');
   await recostStoredLots();
-  await restoreDataSnapshot({ ...backup, settings: [olderSettings as SettingsRow] });
+  await restoreDataSnapshot(
+    { ...backup, settings: [olderSettings as SettingsRow] },
+    EXPORT_VERSION,
+  );
   await recostStoredLots();
 };
 
@@ -401,7 +406,7 @@ describe('metal lots, operation x state', () => {
     openDatabase(cell.given);
 
     if (cell.rejects === true) {
-      await expect(cell.act()).rejects.toThrow();
+      await expect(cell.act()).rejects.toThrow(SaleExceedsHoldingError);
     } else {
       await cell.act();
     }

@@ -9,11 +9,19 @@ export const placeholderFor = (
   holdingName: string,
   exchangeCounterpartHoldingId: string | null,
   holdingNameById: ReadonlyMap<string, string>,
+  holdingCurrencyById: ReadonlyMap<string, string>,
   t: TFunction,
 ): string =>
   transactionRowDescription({
-    transaction: { description: '', amountMinorUnits: -1, exchangeCounterpartHoldingId },
+    transaction: {
+      holdingId: 'holding',
+      description: '',
+      amountMinorUnits: -1,
+      exchangeCounterpartHoldingId,
+      untrackedCounterpart: null,
+    },
     holdingName,
     holdingNameById,
+    holdingCurrencyById,
     t,
   });

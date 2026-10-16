@@ -26,6 +26,8 @@ jest.mock('react-i18next', () => ({
   }),
 }));
 
+import { fittingLargeTitleLayout } from '../fitting-large-title';
+
 import HomeStack from './home.stack';
 
 type ScreenOptions = {
@@ -64,6 +66,12 @@ describe('HomeStack', () => {
     const navigator = HomeStack({}) as ReactElement<{ screenOptions: object }>;
 
     expect(navigator.props.screenOptions).toEqual({ headerShown: false });
+  });
+
+  it('wraps every screen in the fitting large-title layout', () => {
+    const navigator = HomeStack({}) as ReactElement<{ screenLayout: unknown }>;
+
+    expect(navigator.props.screenLayout).toBe(fittingLargeTitleLayout);
   });
 
   it('shows the Transaction form header with the shared large-title options', () => {

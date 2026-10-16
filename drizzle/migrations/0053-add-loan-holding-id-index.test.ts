@@ -12,11 +12,15 @@ jest.mock('@kiko/db/client', () => {
 
 import { join } from 'node:path';
 import { readFileSync } from 'node:fs';
+import {
+  applyAllMigrations,
+  applyMigrationsThrough,
+  toSqlOnlyDrizzle,
+} from '@kiko/test-support/real-sqlite';
 import { transactions } from '@kiko/db';
 import { DatabaseSync } from 'node:sqlite';
 import { eq, isNotNull } from 'drizzle-orm';
 import { transactionsRepo } from '@kiko/transactions/repo';
-import { applyMigrationsThrough, toSqlOnlyDrizzle } from '@kiko/test-support/real-sqlite';
 
 const MIGRATION_SQL = readFileSync(join(__dirname, '0053_add_loan_holding_id_index.sql'), 'utf8');
 
@@ -146,9 +150,19 @@ describe('migration 0053: the index on the loan holding id', () => {
 
     const lookup = toSqlOnlyDrizzle().select({ id: transactions.id }).from(transactions);
 
+    // The matcher's query names columns that later migrations added, so it runs against the
+    // schema as shipped now, which holds this index too.
+    const currentDatabase = (): DatabaseSync => {
+      const database = new DatabaseSync(':memory:');
+
+      applyAllMigrations(database);
+
+      return database;
+    };
+
     it('keeps the loan matcher on its time window, not the partial index', () => {
       const plan = planOf(
-        migratedDatabase(),
+        currentDatabase(),
         transactionsRepo.loanMatchCandidatesQuery({ minTime: PAID, currencies: ['UAH'] }),
       );
 

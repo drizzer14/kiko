@@ -11,6 +11,8 @@ jest.mock('@kiko/db/client', () => {
 import { DatabaseSync } from 'node:sqlite';
 import { applyAllMigrations } from '@kiko/test-support/real-sqlite';
 
+import { EXPORT_VERSION } from '../crypto/envelope';
+
 import { readDataSnapshot } from './read-snapshot';
 import type { DataSnapshot } from './data-snapshot';
 import { restoreDataSnapshot } from './restore-snapshot';
@@ -40,7 +42,7 @@ const storedDismissedTips = (): unknown =>
 
 const restoreOnto = async (backup: DataSnapshot): Promise<void> => {
   mockDatabase = openDatabase(['live.tip']);
-  await restoreDataSnapshot(backup);
+  await restoreDataSnapshot(backup, EXPORT_VERSION);
 };
 
 const exportWith = async (dismissedTips: string[]): Promise<DataSnapshot> => {

@@ -39,6 +39,7 @@ const transaction = (over: Partial<TrendTransaction>): TrendTransaction => ({
   counterIban: null,
   description: '',
   exchangeCounterpartHoldingId: null,
+  untrackedCounterpart: null,
   changeGroupId: null,
   currency: 'UAH' as BreakdownTransaction['currency'],
   time: NOW,

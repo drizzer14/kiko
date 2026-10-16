@@ -2,7 +2,7 @@
 
 // Checks the closure table a round or a task writes at its end: one row per finding id, each
 // row citing the commit that fixed it and the test that pins the fix. A closure list that copies
-// a task title's range ("STAT-N1..N5") closes an id no commit touched, so the table is checked
+// a task title's range ("STAT-A1..A5") closes an id no commit touched, so the table is checked
 // by machine instead of by a reader's trust.
 //
 // Usage: closure-table.js <table.md>   (run from the repository root)
@@ -12,9 +12,9 @@
 //   | Id | Status | Fix sha | Pinning test file:line | Fails on pre-fix source |
 //
 //   Id          ONE finding id: letter-only words joined by hyphens, then letters and digits
-//               ending in a number and at most one lowercase letter (CS1, STAT-N4, SEC-C1,
-//               TX-C6a, 12). A range ("STAT-N1..N5",
-//               "N1-N5") or a list ("A, B", "A/B") is not one id; expand it to one row per id.
+//               ending in a number and at most one lowercase letter (CS1, STAT-A4, SEC-B1,
+//               TX-B6a, 12). A range ("STAT-A1..A5", "A1-A5") or a list ("A, B", "A/B") is not
+//               one id; expand it to one row per id.
 //   Status      OPEN, CLOSED, or CLOSED-UNPROVEN.
 //   Fix sha     A commit that resolves in this repository and is an ancestor of HEAD.
 //   Pinning     path:line of a test in the working tree: the file exists and has that many

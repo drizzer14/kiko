@@ -14,15 +14,60 @@ BATCH READY, and a coordinator-run merge and push after the user's OK.
 
 ## Last sync point
 
-- Harness main `4978749` (plugin 1.3.0, pushed 2026-10-09) holds pff-ios source up to
-  `068a1424`.
-- The next sync source starts after that point. It must include pff-ios `3331487a`,
-  `f3908902`, and `d21fbdc0`: kill-guard cp/mv into a protected folder itself, the xargs fill
-  rule (a fill names a folder only for a recursive copy or a move), and GNU abbreviations read
-  as recursive. The xargs unresolved-destination regression also exists in harness `30500db`.
+Re-verify before you use any value below: `git -C ~/Developer/Projects/harness log -1`, its
+changelog head, and `git -C <pff-ios> log --oneline -1 main`.
+
+- Current values (2026-10-15): harness main `d296f49` (plugin 1.5.0, pushed 2026-10-14) holds
+  pff-ios source from the range `068a1424..e2d96c17` (the h5 sync, 214 commits); pff-ios main
+  was `ad36c4cb` then. Everything on pff-ios main after `e2d96c17` is unsynced.
+- The next sync source starts after that point. It must also carry pff-ios `3331487a`,
+  `f3908902`, and `d21fbdc0`: they are in the synced range but not ported, and the range-find
+  command below does not list them, so carry them by name. They hold kill-guard cp/mv into a
+  protected folder itself, the xargs fill rule (a fill names a folder only for a recursive copy
+  or a move), and GNU abbreviations read as recursive. The xargs unresolved-destination
+  regression also exists in harness `30500db`.
 - Find the range with
   `git -C <pff-ios> log --oneline <last point>..main -- harness scripts/checks scripts/wait-load.sh rules docs/harness CLAUDE.md __tests__`.
   Re-verify the sync point against the harness `git log` and CHANGELOG before you use it.
+
+Pending for the next sync (landed in pff-ios 2026-10-11 on branch loan-schedule-cards, not yet
+in the harness repo):
+- The generic Node rule `kiko-component-i18n-namespace` (pff-ios `99a6f0bc`, fixed in
+  `0fb10efc`): a `NODE_RULES` row with `overridable: false`,
+  `component-i18n-namespace.js`/`.sh`, `check:component-i18n-namespace` in `check:all`, exit 2
+  on a missing scan root. Portable only to a repo that uses the
+  `src/design-system/components/<name>/` convention.
+- Capitalization-tolerant history-word phrases in the history-word comment rule (`0fb10efc`).
+- H7 set 5, generic comment-width and history changes: `comment-line-width.js` reads `#`
+  comments (shell, YAML, shebang files); `comment-line-width.sh` widened scope, per-file mode
+  and the shrink-only exact-line pin file; the `fast.sh` case for shell, YAML and githooks
+  writes; the markdown prose-width jest invariant with its shrink-only pin file; the three
+  history rules widened to `__tests__` and scripts js, and the three generic shell
+  history rules in `semgrep-mobile.yml` (they read `*.sh`, `*.bash` and `githooks/*`).
+- H7 set 6, generic mutation and queue changes: the TIMEOUT-HEAVY gate in `mutation-score.js`
+  and its `mutation.sh` block; `mutation-score.js` refusing a plain entry; the `--list`
+  over-count warning; the job-queue START line naming the head sha; doc-suite discovery of
+  pin-file literals; the history-id flag exemption; the tracked-scripts-executable
+  invariant; the job-queue gate forwarding the `--list` `warning:` line and printing each
+  TIMEOUT-HEAVY line before the DONE line (see the ops skill's "Load rule"); the doc
+  fingerprint covering every pin-file literal form that discovery accepts; the history-id
+  exemption narrowed to a hyphen with no word character before it.
+- H7 set 7, generic main-merge guard: `scripts/ff-main.sh` (moves main only to a sha with a
+  green queued `verify` line); the done.log sixth field (the tested HEAD); the kill-guard
+  `mainFastForward` kind with its scan of scripts and data bodies; the docs for these; in
+  `job-queue.sh`: `tree_is_clean` (`--no-optional-locks` and `--untracked-files=all`),
+  `confirm_tested_head`, and `read_tested_head`'s unknown rule.
+- H7 set 3, generic doc-suite gate: the `medium.sh` doc-reading-suites Stop step; the `_lib.sh`
+  helpers `harness_doc_roots_pattern`, `harness_doc_suites`, `harness_doc_files`,
+  `harness_doc_suite_fixtures`, `harness_doc_fingerprint`, and `harness_doc_suites_by_hand`;
+  `make doc-suites`; `guard-replay.js step-budget`; the `--maxWorkers=2` doc run and its
+  300-25-60 budget.
+- H7 set 8, generic probe and test support: the `kill-guard-probe.sh` stub warm-up before the
+  alarm and its `KIKO_PROBE_STUB_FIRST_RUN_DELAY` test seam; the
+  `__tests__/test-support/warm-executables.ts` helper (`warmExecutables`) and its use in the
+  tests that exec a fresh script; the `fast.sh` shell, YAML and githooks arm that runs
+  `security.sh` beside `comment-line-width.sh`.
+- The CLAUDE.md trim (docs/harness/checks.md split).
 
 ## Classification
 
@@ -39,7 +84,7 @@ Generic (ported in sync 2):
 - Mutation gate: change-set scoring (`mutation-score`), comment-only-changes filter,
   `Stryker disable` needs OVERRIDE, scaffolding out of the mutate set, json reporter.
 - check:closure and the check-all-lists invariant (both manual, outside check:all).
-- Comment rules: history-word, task-id, early-exit pipe consumer, history-id comment,
+- Comment rules: task-id, early-exit pipe consumer, history-id comment,
   comment-line-width, history-date, kiko-no-change-language-in-test-body (WARNING).
 - Invariants and small fixes: typecheck TS18003 notice pass, heading citations,
   cited-paths partial citations, no single-test `paths.exclude`, Biome formats good fixtures,
@@ -108,7 +153,10 @@ Switches live in the harness repo's `harness.config.json`. Read the harness READ
    count).
 9. BATCH READY, then the coordinator re-runs `npm test` AND `npm run check:all` at the tip
    before any push, then the user's OK, then
-   `git -C <harness main worktree> merge --ff-only <tip>` and push. The orchestrator never
+   `git -C <harness main> merge --ff-only <tip>` (the raw form applies to a repo that has no
+   `scripts/ff-main.sh`; where it exists, run `bash scripts/ff-main.sh <tip>` after a queued
+   `verify` of the tip) and push. The
+   orchestrator never
    pushes and never merges into main.
 
 ### Environment (plugin/** edits)
@@ -127,6 +175,7 @@ BATCH READY — HARNESS SYNC <N>
 
 Base: <sha> (harness main, plugin <version>). Tip: <sha> (branch, <n> commits). Not pushed, not merged.
 Source range: pff-ios <from>..<to> (<n> commits), plus <extra shas>.
+Run: <runId>. TIMES: per harness-workflow "Run log" / kiko:estimator.
 
 GATE (run by the orchestrator at the tip, after wait-load):
 - npm test: exit 0, <pass>/<total> (<suites>).
@@ -153,6 +202,28 @@ Every count and exit code is the orchestrator's own measured result.
 
 ## Carried follow-ups
 
+- `run-log.mjs` was ported harness -> pff-ios from `cc5cd0f` (`d761245`); the
+  byte-identical rule is in `harness-workflow`'s "Run log".
+- The script has no dispatch/step-start event, so per-step `Minutes` miss the work before the
+  first verdict; fix in the harness repo.
+- Carried from H7: the mutation ETA split by changed-line weights; the whole history-date
+  rule; the retrospect run-log lines; the job-queue test teardown wait
+  (`tests/job-queue.test.mjs` ENOTEMPTY).
+- Carried Minors: the doc fingerprint misses a `../fixtures/...pinned` literal
+  (`harness_doc_suite_fixtures` needs a quote right before `fixtures/`; `harness_doc_suites`
+  accepts `../`); `medium.sh` computes the doc lists twice per Stop.
+- G1 port: in the harness repo, a comment-only source mutates nothing whatever its colocated
+  tests did (pff-ios `scripts/checks/mutation.sh` has no whole-file keep).
+- kill-guard: port to drizzer14/harness the config long-option prefix fix, the new denies
+  (`commit-tree`, git config files, include.path, GIT_CONFIG_* exports), the
+  script-content kill scan, and the same-command variable expansion. The port also carries the
+  data-body kinds (`DATA_KINDS`), the run-body routing, the raw-then-expanded segment reading,
+  the chained variable scope, the `internalError` wrapper, and `kill -0` / `$1`..`$9`
+  (`f0e9919f`: a later option word after `kill -0` / `kill -s 0` makes the kill count;
+  `20457fac`: a heredoc in a scanned script is judged for the scan's kinds; `088a78d7` and
+  `7ce17ec5`: comments and test titles). It does
+  NOT carry the GIT_CONFIG_GLOBAL/GIT_CONFIG_SYSTEM file check (deleted).
+
 From sync 2 and earlier:
 - Not yet ported: guard-replay, shipped-migrations, plural-count, the estimator skill; the
   `check:typecheck` scope for the harness's own JS.
@@ -166,9 +237,8 @@ From sync 2 and earlier:
 - Rules: the task-id skip list misses IE-11, ERC-20, CP-1252, GPT-4, FIPS-140, MPEG-4;
   prose hits "item 0", "Part B", "Audit 2024", "Option A"; history-word known misses and hits
   are pinned in fixtures.
-- Mutation: colocated tests under `__tests__/` not seen by the comment-only filter; the
-  filter runs before the cap (slow on huge diffs); `harness_code_fingerprint` ignores `.sh`
-  and `.cjs` edits.
+- Mutation: the comment-only filter runs before the cap (slow on huge
+  diffs); `harness_code_fingerprint` ignores `.sh` and `.cjs` edits.
 - `lint.sh` ROOT from a logical pwd (symlinked project path).
 - `rules/fixtures/*/src/__tests__/*.ts` match Jest's default testMatch in a project (needs
   `testPathIgnorePatterns` or a rename).

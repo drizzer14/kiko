@@ -10,6 +10,7 @@ tools: Read, Write, Edit, Bash, Grep, Glob
 You write tests for Kiko.
 
 Rules:
+- If a hook or the permission system denies a command, stop and report it; never route around it.
 - Invoke superpowers:test-driven-development.
 - A comment explains only WHY, never what the code already shows — see kiko-code-style's "Comments" section for the full rule and the one documented exception. Applies to test code too.
 - Reach for `fnts` before hand-rolling a pipeline, a nullable check, or a throw/error-handling contract — see kiko-code-style's "`fnts` FIRST" section.
@@ -18,8 +19,12 @@ Rules:
 - Do not shorten words in identifiers — see kiko-code-style's "Full words in identifiers" section for the denylist and the explicit exception list.
 - Work inside the git worktree you are given, as its single editor while you hold it. Never run git checkout, restore, stash, or clean, in any checkout or clone, scratch clones included — commit a WIP or copy the files aside instead.
 - Never use pkill, killall, or any pattern or group kill. Stop only a process ID you started yourself (kill <pid>), or let the tool timeout end a hung command.
-- Edit files under the trees in `WRITE_GUARDED_TREES` (`scripts/checks/kill-guard.js`: today `src/`, `__tests__/`, `rules/`) only with Edit/Write. Never write them through Bash (redirects, `sed -i`, python, heredocs, scripts, `cp`/`mv`): that skips the PreToolUse pre-write guard. The kill-guard denies the common forms; do not work around a deny, use Edit/Write. To move or rename a file, use `git mv` (`git add` a new file first), then edit it with Edit/Write.
+- Edit files under the trees in `WRITE_GUARDED_TREES` (`scripts/checks/kill-guard.js`: today `src/`, `__tests__/`, `rules/`, `e2e/`) only with Edit/Write. Never write them through Bash (redirects, `sed -i`, python, heredocs, scripts, `cp`/`mv`): that skips the PreToolUse pre-write guard. The kill-guard denies the common forms; do not work around a deny, use Edit/Write. To move or rename a file, use `git mv` (`git add` a new file first), then edit it with Edit/Write.
 - Iterate with SCOPED tests (only the touched files) while developing. Run `make verify` ONCE, at the end, until it is green, before you report done — it runs lint, the full jest suite, and the gate in one fail-fast pass.
+- The SHELL-WRITE deny matches `src/`, `__tests__/`, `rules/`, `e2e/` by name, so a shell redirect into a file under that folder
+  is denied even inside your own temporary git repository. Build that repository's fixture tree
+  with the committed helpers in `__tests__/test-support/` (`ls` it) inside a jest test, or with
+  Edit/Write. A denied suite run is a blocker to report, never a silent "no suite ran".
 - Report back by calling the SubagentHandback tool with {message: <your full report>} as your LAST
   action, in a turn with no prose before the call. Never write the report or the call as plain
   text or XML; if you already did, call the tool anyway. Put pass/fail (and the exit code, where
@@ -30,6 +35,7 @@ Rules:
 - Unit and component tests: Jest with @testing-library/react-native, colocated next to the
   source file as `<name>.test.ts(x)` (e.g. `<name>.component.test.tsx`) — not in a `__tests__/`
   directory. See `kiko-code-style`'s "File suffixes" section for the exact naming.
+- A form's Save is a native nav-bar item: press it with `pressSave` from `src/test-support/form-header-items.ts` (see the kiko-design-system form Save bullet), never `getByText('Save')`.
 - iOS end-to-end tests: Maestro YAML flows.
 - A test must assert real behavior. An assertion-free test fails the Stryker check.
 - A repository test whose SQL matters (a join, an aggregate, NULL
@@ -76,7 +82,9 @@ Rules:
 - Never edit or loosen an existing expectation to make new code pass.
   If a new requirement genuinely conflicts with an existing assertion,
   stop and report both expectations for a human to rule on — do not
-  pick a resolution unilaterally.
+  pick a resolution unilaterally. Edit only assertions that pin the
+  section under change, and name the approved default that forces the edit
+  in the commit message (example: loan-schedule-cards `ec2e196d`).
 - An assertion that reads back a fixture literal instead of a value the
   code under test actually wrote or computed is not a test of the code
   — it only proves the fixture equals itself.

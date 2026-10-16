@@ -18,6 +18,8 @@ import { DatabaseSync } from 'node:sqlite';
 import { transactionsRepo } from '@kiko/transactions/repo';
 import { applyAllMigrations } from '@kiko/test-support/real-sqlite';
 
+import { EXPORT_VERSION } from '../crypto/envelope';
+
 import { readDataSnapshot } from './read-snapshot';
 import type { DataSnapshot } from './data-snapshot';
 import { restoreDataSnapshot } from './restore-snapshot';
@@ -98,7 +100,7 @@ describe('restoring the keys of deleted import rows', () => {
     const exportedKeys = keysOf();
 
     mockDatabase = freshDatabase();
-    await restoreDataSnapshot(snapshot);
+    await restoreDataSnapshot(snapshot, EXPORT_VERSION);
 
     expect(keysOf()).toEqual(exportedKeys);
     expect(balanceOf()).toBe(5300);
@@ -113,7 +115,7 @@ describe('restoring the keys of deleted import rows', () => {
     const { deletedImportKeys: _omitted, ...fileWithoutKeys } = await exportAfterDelete();
 
     mockDatabase = freshDatabase();
-    await restoreDataSnapshot(fileWithoutKeys);
+    await restoreDataSnapshot(fileWithoutKeys, EXPORT_VERSION);
 
     expect(keysOf()).toEqual([]);
 
@@ -126,13 +128,16 @@ describe('restoring the keys of deleted import rows', () => {
     const snapshot = await exportAfterDelete();
 
     mockDatabase = freshDatabase();
-    await restoreDataSnapshot({
-      ...snapshot,
-      deletedImportKeys: [
-        ...(snapshot.deletedImportKeys ?? []),
-        { holdingId: 'vanished', externalId: 'k-1', deletedAt: SEPTEMBER_FIFTEENTH },
-      ],
-    });
+    await restoreDataSnapshot(
+      {
+        ...snapshot,
+        deletedImportKeys: [
+          ...(snapshot.deletedImportKeys ?? []),
+          { holdingId: 'vanished', externalId: 'k-1', deletedAt: SEPTEMBER_FIFTEENTH },
+        ],
+      },
+      EXPORT_VERSION,
+    );
 
     expect(keysOf().map(({ holdingId, externalId }) => `${holdingId}:${externalId}`)).toEqual([
       'card:k-300',
@@ -146,7 +151,7 @@ describe('restoring the keys of deleted import rows', () => {
     insertCard(0);
     run("INSERT INTO deleted_import_keys (holding_id, external_id) VALUES ('card', 'stale')");
 
-    await restoreDataSnapshot({ ...snapshot, deletedImportKeys: [] });
+    await restoreDataSnapshot({ ...snapshot, deletedImportKeys: [] }, EXPORT_VERSION);
 
     expect(keysOf()).toEqual([]);
   });

@@ -165,3 +165,18 @@ export const caseSensitiveProseNearMiss = true;
 export const idStringAfterBlock = /* a plain note */ 'T14';
 // A plain note.
 export const idStringBelowLine = 'T14';
+
+// 25. A capital P with no digit run right after it, or a lower-case p, is not a spec id: P&L
+// (profit and loss), a Promise, p95 latency, a P2P transfer, and a PNG stay silent.
+export const priorityIdNearMiss = true;
+
+// 26. The Display P3 color space and the NIST curves P-256, P-384 and P-521 are standards, not a
+// spec P-id, so they stay silent in a line comment and in a block comment.
+/* A Display P3 swatch, signed with a P-256 key (or P-384, or P-521). */
+export const standardNameNearMiss = true;
+
+// 27. A git flag is not an id: the hyphen in front of the letter makes -U0, -U12 and -M3 an option,
+// in a line comment and in a block comment.
+// A git diff -U0 keeps the hunks tight, -U12 widens them, and git log -M3 follows renames.
+/* A git diff -U0 keeps the hunks tight, and -U12 widens them. */
+export const gitFlagNearMiss = true;

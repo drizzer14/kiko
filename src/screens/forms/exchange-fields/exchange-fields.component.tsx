@@ -37,6 +37,8 @@ const ExchangeFields: FC<ExchangeFieldsProps> = ({
   valueOutFieldRef,
   destinationFieldRef,
   valueInFieldRef,
+  showsDate = true,
+  required = true,
 }) => {
   const { t } = useTranslation();
 
@@ -51,7 +53,7 @@ const ExchangeFields: FC<ExchangeFieldsProps> = ({
           placeholder={t('forms.transaction.valueOutPlaceholder')}
           suffix={valueOutSuffix}
           error={valueOutError}
-          required
+          required={required}
         />
       </View>
 
@@ -64,7 +66,7 @@ const ExchangeFields: FC<ExchangeFieldsProps> = ({
           selectedId={destinationHoldingId}
           onSelect={onSelectDestination}
           onCreateNew={onCreateDestination}
-          required
+          required={required}
           error={destinationError}
         />
       </View>
@@ -78,11 +80,11 @@ const ExchangeFields: FC<ExchangeFieldsProps> = ({
           placeholder={t('forms.transaction.valueInPlaceholder')}
           suffix={valueInSuffix}
           error={valueInError}
-          required
+          required={required}
         />
       </View>
 
-      <DateTimeRow time={time} onChangeTime={onChangeTime} maxDate={maxDate} />
+      {showsDate && <DateTimeRow time={time} onChangeTime={onChangeTime} maxDate={maxDate} />}
     </>
   );
 };

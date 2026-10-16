@@ -9,7 +9,6 @@ import Box from '@kiko/design-system/components/box';
 import { shiftDecimal } from '@kiko/currency/decimal';
 import DateField from '@kiko/screens/forms/date-field';
 import { useLiveQuery, type HoldingRow } from '@kiko/db';
-import Button from '@kiko/design-system/components/button';
 import Screen from '@kiko/design-system/components/screen';
 import { holdingInstrument } from '@kiko/prices/instrument';
 import { View, type TextInputInstance } from 'react-native';
@@ -25,6 +24,7 @@ import { useDraftAutosave } from '@kiko/navigation/use-draft-autosave';
 import type { FieldInstance } from '@kiko/design-system/scroll-to-field';
 import { useScrollToField } from '@kiko/design-system/use-scroll-to-field';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { useFormHeaderItems } from '@kiko/screens/forms/use-form-header-items';
 import { type Currency, currencyScale, currencySymbol } from '@kiko/currency/currency';
 import type { AccountsStackParamList, PricePointFormDraft } from '@kiko/navigation/types';
 
@@ -48,13 +48,11 @@ const pricePointCopy = {
   debt: {
     title: 'forms.pricePoint.loanTitle',
     field: 'forms.pricePoint.loanValue',
-    save: 'forms.pricePoint.loanSave',
     error: 'forms.pricePoint.loanValueError',
   },
   value: {
     title: null,
     field: 'forms.pricePoint.value',
-    save: 'forms.pricePoint.save',
     error: 'forms.pricePoint.valueError',
   },
 } as const;
@@ -172,17 +170,14 @@ const PricePointFormScreen: FC<PricePointFormScreenProps> = ({ route, navigation
 
   const { onPress: onSave, isSubmitting } = useSubmitOnce(save);
 
+  useFormHeaderItems({ navigation, onSave, hasSave: true, isSaving: isSubmitting });
+
   return (
     <Screen
       scroll
       scrollableRef={scrollableRef}
       onContentSizeChange={onContentSizeChange}
       onFieldBlur={onFieldBlur}
-      footer={
-        <Button onPress={onSave} disabled={isSubmitting}>
-          {t(copy.save)}
-        </Button>
-      }
     >
       <Box gap={4}>
         <View ref={valueFieldRef}>

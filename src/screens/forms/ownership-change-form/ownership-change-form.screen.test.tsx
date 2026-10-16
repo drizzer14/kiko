@@ -10,6 +10,7 @@ import {
 } from '@kiko/test-support/navigation-props';
 import { holdingsRepo } from '@kiko/holdings/repo';
 import { scrollToField, useHeaderInset } from '@kiko/design-system/scroll-to-field';
+import { expectNavBarSaveOnly, pressSave } from '@kiko/test-support/form-header-items';
 
 import OwnershipChangeFormScreen from './ownership-change-form.screen';
 
@@ -92,6 +93,10 @@ describe('OwnershipChangeFormScreen', () => {
     expect(screen.getByLabelText('Effective from')).toHaveTextContent('01.06.2025');
   });
 
+  it('offers Save only as the prominent nav-bar item, never as a body button', async () => {
+    expectNavBarSaveOnly(navigation.setOptions, await renderScreen());
+  });
+
   it('saves an untouched change as it was', async () => {
     seed(sharedProperty('percent'));
 
@@ -99,7 +104,7 @@ describe('OwnershipChangeFormScreen', () => {
 
     expect(screen.getByLabelText('Share').props.value).toBe('33.33');
 
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(holdingsRepo.editOwnershipChange).toHaveBeenCalledWith(
       'h-1',
@@ -115,7 +120,7 @@ describe('OwnershipChangeFormScreen', () => {
 
     await fireEvent.changeText(screen.getByLabelText('Out of'), '4');
     await pickEffectiveDate(screen, 2025, 7, 1);
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(holdingsRepo.editOwnershipChange).toHaveBeenCalledWith(
       'h-1',
@@ -130,7 +135,7 @@ describe('OwnershipChangeFormScreen', () => {
 
     await fireEvent.press(screen.getByText('Percent'));
     await fireEvent.changeText(screen.getByLabelText('Share'), '25');
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(holdingsRepo.editOwnershipChange).toHaveBeenCalledWith(
       'h-1',
@@ -144,7 +149,7 @@ describe('OwnershipChangeFormScreen', () => {
     const screen = await renderScreen();
 
     await fireEvent.changeText(screen.getByLabelText('Share'), '5');
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(screen.getByText('Enter a share above 0 and up to 100%.')).toBeTruthy();
     expect(holdingsRepo.editOwnershipChange).not.toHaveBeenCalled();
@@ -157,7 +162,7 @@ describe('OwnershipChangeFormScreen', () => {
 
     await fireEvent(screen.getByTestId('screen-scroll-view'), 'contentSizeChange', 0, 640);
     await fireEvent.changeText(screen.getByLabelText('Share'), '5');
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(scrollToField).toHaveBeenCalledTimes(1);
     const [scrollableRef, fieldRef, geometry, onSettled] = (scrollToField as jest.Mock).mock
@@ -169,9 +174,9 @@ describe('OwnershipChangeFormScreen', () => {
   });
 
   it('does not scroll when the share is valid', async () => {
-    const screen = await renderScreen();
+    await renderScreen();
 
-    await fireEvent.press(screen.getByText('Save'));
+    await pressSave(navigation.setOptions);
 
     expect(scrollToField).not.toHaveBeenCalled();
   });
@@ -193,7 +198,7 @@ describe('OwnershipChangeFormScreen', () => {
       expect(second.getByLabelText('Out of').props.value).toBe('4');
       expect(second.getByLabelText('Effective from')).toHaveTextContent('01.07.2025');
 
-      await fireEvent.press(second.getByText('Save'));
+      await pressSave(navigation.setOptions);
 
       expect(holdingsRepo.editOwnershipChange).toHaveBeenCalledWith(
         'h-1',
@@ -258,7 +263,7 @@ describe('OwnershipChangeFormScreen', () => {
       await fireEvent(screen.getByLabelText('Out of'), 'blur');
       navigation.setParams.mockClear();
 
-      await fireEvent.press(screen.getByText('Save'));
+      await pressSave(navigation.setOptions);
 
       expect(navigation.goBack).toHaveBeenCalledTimes(1);
       expect(navigation.setParams).not.toHaveBeenCalled();

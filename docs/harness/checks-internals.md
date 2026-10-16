@@ -1,7 +1,7 @@
 # Checks internals: content dedup and locking
 
-This is the full mechanism behind the one-line summary in the root
-`CLAUDE.md` ("a check skips when its inputs did not change").
+This is the full mechanism behind the one-line summary in
+`docs/harness/checks.md` "Content dedup" ("a check skips when its inputs did not change").
 
 ## Why dedup exists
 
@@ -32,6 +32,8 @@ failing check always re-runs.
 
 ## Locking
 
+On a `Stop` event (not `SubagentStop`) whose payload has `stop_hook_active: true`, `medium.sh` exits 0 with a one-line stderr note instead of running, because a failing Stop tier started a new turn that ended in the same failure and the orchestrator looped (knip ran about 8 times in a row, 2026-10-11); a first `Stop` and every `SubagentStop` still run and block, the payload is read only when stdin is a regular file (`dispatch.sh` replays it as a file), and the cost is that a repeated Stop shows the failure once, with `check:all` before a commit still catching it.
+
 `medium.sh` holds a per-worktree single-flight lock so parallel
 `SubagentStop`/`Stop` runs do not launch concurrent
 `knip`/`deps`/`jscpd`.
@@ -44,24 +46,54 @@ worktree, rather than blocking or queueing. The lock is released on
 normal exit and on INT/TERM via a trap, so a killed run never strands
 it. Stryker's own `concurrency` is 2.
 
+### The in-repo job queue
+
+`scripts/job-queue.sh` queues every heavy job (verify, check-all, security, the mutation gate) so one runs at a time across worktrees; read its header for the contract. State lives in `${KIKO_QUEUE_DIR:-$HOME/.claude/kiko-queue}`. The lock is an atomic symlink whose target is the owner record `<waiter pid> <job group|-> <kind> <label> <worktree>`; a `claim` symlink (a pid) is held while a waiter checks, removes, and creates the lock. A lock is live while its waiter pid is alive OR its job group has a member. A gate holds this queue lock, then `mutation.sh` takes its own lock above.
+
 ## Mutation file cap
 
 After the lock, `mutation.sh` refuses (exit 2, structured block) a
 `KIKO_MUTATION_FULL=1` run and a `KIKO_MUTATION_BASE` that does not
 resolve, directly: a whole-project run is always above the cap. It then
-selects the files to mutate (the diff vs `KIKO_MUTATION_BASE`'s
+selects the files to mutate, then the changed lines of each (the diff vs `KIKO_MUTATION_BASE`'s
 merge-base; a failed `git diff` is a refusal too, never "nothing to
 mutate"), applies its excludes, drops the files whose diff is only
-comments or whitespace and has no colocated test changed by more than
-comments (`comment-only-changes.js`, fail-closed), and
-counts the rest. Above
+comments or whitespace, whatever its colocated test did
+(`comment-only-changes.js`, fail-closed), turns one `-U0` diff
+into added-line ranges (`mutation-ranges.js`; a file with no added line is
+skipped and not counted), and counts the rest. Above
 `MUTATION_FILE_CAP` (30) it exits 2 with the structured block before
 Stryker starts. Only then does the dedup skip run, and its fingerprint
-includes the scope (the merge-base sha and the selected file list), so
+includes the scope (the merge-base sha and the `--mutate` entries, one `path:start-end` per range), so
 a pass over a narrow change set never skips a wider or refused one at
 the same HEAD. No env var bypasses the cap: mutation testing runs per
 small change set, with `KIKO_MUTATION_BASE` set to that change set's
 own base commit.
+
+The scorer (`mutation-score.js`) takes the exact `--mutate` entries as arguments and grades only
+mutants fully inside a range. It filters by range because Stryker's incremental mode carries old
+out-of-range mutants, with their old statuses, into `mutation.json` (core `incremental-differ.js`
+lines 128-142); without the filter a stale Survived would lower this run's score. The scope check
+compares the SET of entries with `config.mutate`, and the scorer exits 2 on any plain
+(non-range) entry (one file given both as a plain path and as a range is one instance;
+Stryker reads that as "do not mutate"). A kept path with
+`[ ( * ? {` is refused after the lock in a run, with no lock in `--list`, always before Stryker.
+The diff uses `--find-renames --inter-hunk-context=0 --text --no-textconv` and runs with `GIT_DIFF_OPTS=` (a context width set there outranks `-U0`), so a user's diff attributes, textconv driver, or environment cannot change the hunks. The temp file for `mutation-ranges.js` stderr is removed on EXIT, INT (exit 130), and TERM (exit 143), together with the lock.
+
+User ruling 2026-10-12, no edge-straddling mutant: Stryker 8.7.1 creates a mutant only when its
+whole node lies inside a range (instrumenter `syntax-helpers.js` `locationIncluded`), and the
+scorer grades only mutants fully inside a range. Cost: an edit inside a multi-line block,
+condition, object or array, or an arrow body loses that construct's whole-node mutants; the inner
+mutants on the changed lines stay.
+
+User ruling 2026-10-12, source plus colocated test: when a source file and its colocated test both
+change, only the changed source lines are mutated. Cost: a weakened test is checked only against
+the changed lines, not the whole file.
+
+User ruling 2026-10-14 (G1 a): a source file proved comment-only mutates nothing
+(`skipped (comment-only): <path>`), whatever its colocated test did; no whole-file keep exists.
+A real change with a changed test still mutates its changed-line ranges. Cost: a test weakened
+beside a comment-only source edit is not mutation-checked; `make verify` still runs it.
 
 ## Guard replay: fingerprint, mark, and deadline
 
@@ -154,6 +186,20 @@ its answer depends on HEAD.
 `plist.sh`, `semgrep-rules.sh`) never record or read a fingerprint
 either: they run in full on every call.
 
+## Pre-commit typecheck: no queue, no dedup
+
+`scripts/checks/commit-typecheck.sh` (run by `githooks/pre-commit` and `githooks/pre-merge-commit`)
+is not a tier check. It records and reads no fingerprint, and it does not go through
+the in-repo job queue: it runs in full on every commit that touches a file tsc reads. It makes a
+temporary folder under `${TMPDIR:-/tmp}`, writes the staged index there with
+`git checkout-index --all`, links the real `node_modules` into it, and runs `tsc --noEmit -p .`
+inside it, so an unstaged or untracked file cannot change the answer. If git hands the hook a
+relative `GIT_INDEX_FILE`, the script makes it absolute before it changes folder, and exports it.
+The folder is removed on exit, on INT, and on TERM. It fails closed: a missing `tsc`, a missing
+`node`, a failed `mktemp`, a failed copy, or a failed diff makes the commit refuse (exit 2 with
+the structured block); only a clean `tsc`, or a staged diff with no tsc input, lets it through.
+Under load a commit can take up to about a minute.
+
 ## Which call form dedups
 
 Whether a wrapper skips depends on how it is called. A run that does not
@@ -163,17 +209,33 @@ dedup always runs in full.
   `check:plist`, `check:rules`.
 - Dedups only a single-file run (a path to an existing file; a
   whole-repo or directory target, as `check:all` runs it, always runs):
-  `check:lint`, `check:security`, `check:secrets`.
+  `check:lint`, `check:secrets`.
 - Dedups only a run given a file list (every argument an existing file,
   as the Stop tier passes the session's changed files; a no-argument run
   such as `check:all` always runs): `check:dup`, `check:overrides`.
+  `check:dup`'s large-file WARNING pass (files over jscpd's 1000-line or
+  100kb limit, measured alone, plus one combined run) is never deduped: the
+  fingerprint covers only the blocking run, and a matching fingerprint skips
+  only that run. The pass runs on every call, so a repeated scoped run prints
+  the same warning again (a Stop hook shows a warning on exit 0 only when
+  the tier fails for another reason, so a skip that hid the warning would hide
+  it for good). A scope with no large file
+  pays only the two `--debug` file listings (about 1 s on the whole repo).
+- Dedups a single file or a manual file list, never the Stop tier:
+  `check:security` (`medium.sh` does not call `security.sh`; the fast tier
+  passes one file, and a person may pass several). The key names every file
+  and the fingerprint covers every file's content plus the two Semgrep rules
+  files, so a changed file or a different file set rescans; a skip prints
+  `security.sh: SKIPPED, not a fresh scan` on stderr. A directory or
+  no-argument run always scans.
 - Dedups both a single-file run and the project-wide run:
   `check:import-order`, `check:full-word-identifiers`,
   `check:screen-imports`, `check:feature-imports`,
   `check:blank-line-separation`. The project-wide run does not dedup when
   its test-seam source-root variable is set.
 - Dedups every run (project-wide only, no per-file mode): `check:knip`,
-  `check:deps`, `check:comment-line-width` (not when its test-seam
+  `check:deps`, `check:comment-line-width` and
+  `check:component-i18n-namespace` (neither when its test-seam
   source-root variable is set), `check:shipped-migrations`,
   `check:guard-replay`, `check:mutation` (the fingerprint includes its
-  scope: merge-base and file list).
+  scope: merge-base and `--mutate` entries).

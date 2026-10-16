@@ -299,6 +299,27 @@ describe('holdingDetailSpecs upcomingInstallments', () => {
     ).toHaveLength(360);
   });
 
+  // 5 minor units over 8 months at 0% is repaid by row 5; rows 6-8 stay on the
+  // schedule with a zero payment, and a "0,00 Scheduled" card is not a payment.
+  it('lists no zero-payment installment of a degenerate loan that is not yet repaid', () => {
+    const now = Date.UTC(2025, 6, 15);
+    const meta = structuredMeta({
+      principalMinorUnits: 5,
+      startDate: now,
+      annualRatePct: 0,
+      termMonths: 8,
+      schedule: 'differentiated',
+    });
+
+    const upcoming = holdingDetailSpecs.loan.upcomingInstallments(
+      holding({ type: 'loan', metadata: meta }),
+      EMPTY_PRICE_BOOK,
+      now,
+    );
+
+    expect(upcoming.map((row) => row.index)).toEqual([1, 2, 3, 4, 5]);
+  });
+
   it('returns no installment once a correction clamps the outstanding to 0', () => {
     const now = Date.UTC(2025, 6, 15);
     const book = buildPriceBook([

@@ -81,6 +81,11 @@ const RULE_IDS_WITH_FIXTURES = [
   'kiko-no-pane-blind-bottom-clearance',
   'kiko-no-focus-hook-in-pane-default-screen',
   'kiko-no-change-language-in-test-body',
+  'kiko-no-typed-jest-require-actual',
+  'kiko-test-title-no-history',
+  'kiko-rejects-to-throw-needs-error',
+  'kiko-sortable-grid-lone-card-lifts',
+  'kiko-kind-ternary-prefers-match',
 ] as const;
 
 // kiko-no-literal-sync-error carries a path-prefixed `paths.include` (
@@ -113,6 +118,9 @@ const NESTED_FIXTURE_PREFIXES: Partial<Record<(typeof RULE_IDS_WITH_FIXTURES)[nu
     'kiko-no-focus-hook-in-pane-default-screen/src/screens/home/pane-default-example',
   'kiko-no-change-language-in-test-body':
     'kiko-no-change-language-in-test-body/src/test-support/language-example',
+  'kiko-test-title-no-history': 'kiko-test-title-no-history/src/test-support/title-example',
+  'kiko-rejects-to-throw-needs-error':
+    'kiko-rejects-to-throw-needs-error/src/test-support/rejects-example',
 };
 
 // A rule scoped by `paths.include` only fires when the guard's OWN probe
@@ -132,6 +140,8 @@ const PROBE_DIRECTORIES: Partial<Record<(typeof RULE_IDS_WITH_FIXTURES)[number],
   'kiko-no-fixed-day-offset-on-real-clock-in-test': 'src/test-support',
   'kiko-no-focus-hook-in-pane-default-screen': 'src/screens/home',
   'kiko-no-change-language-in-test-body': 'src/test-support',
+  'kiko-test-title-no-history': 'src/test-support',
+  'kiko-rejects-to-throw-needs-error': 'src/test-support',
 };
 
 function fixturePrefix(ruleId: string): string {
@@ -259,9 +269,8 @@ describe('scripts/checks/pre-write-guard.sh against rules/semgrep-prewrite.yml (
     });
   });
 
-  // kiko-no-history-id-comment's own paths.exclude only names "__tests__/**"
-  // and "e2e/**" (the legacy top-level test directories), never a bare
-  // "*.test.tsx" — unlike kiko-no-raw-color-literal, which excludes every
+  // kiko-no-history-id-comment's own paths.exclude only names "e2e/**" and the harness
+  // tree, never a bare "*.test.tsx" — unlike kiko-no-raw-color-literal, which excludes every
   // test file. A co-located test file under src/ (this project's own
   // folder-per-thing convention) is therefore in scope, and a brand-new one
   // has no BEFORE tree at all, so every finding in it is new by definition.

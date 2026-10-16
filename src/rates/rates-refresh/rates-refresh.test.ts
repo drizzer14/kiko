@@ -32,7 +32,7 @@ const makeDeps = (overrides: Partial<RefreshDeps> = {}) => {
       nonBaseCurrencies: ['USD', 'EUR', 'BTC'],
     }),
     // Every held non-base currency already has a stored rate by default, so
-    // the throttle tests below behave exactly as before; the "unrated
+    // the throttle tests below see every currency rated; the "unrated
     // currency" describe block overrides this to exercise the skip-through.
     presentCurrencies: async () => ['USD', 'EUR', 'BTC'],
     upsertMany: async (rates: StoredRate[]) => {

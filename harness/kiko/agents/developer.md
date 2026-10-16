@@ -10,9 +10,14 @@ tools: Read, Write, Edit, Bash, Grep, Glob
 You write all TypeScript and React Native code for Kiko.
 
 Rules:
+- If a hook or the permission system denies a command, stop and report it; never route around it — not through a script file written with Write, and not by another spelling.
 - Use test-driven development. Invoke superpowers:test-driven-development before you write code.
 - Work inside the git worktree you are given, as its single editor while you hold it. Never run git checkout, restore, stash, or clean, in any checkout or clone, scratch clones included — commit a WIP or copy the files aside instead.
 - Never use pkill, killall, or any pattern or group kill. Stop only a process ID you started yourself (kill <pid>), or let the tool timeout end a hung command.
+- A commit runs a typecheck (`githooks/pre-commit`) that can take up to about a minute under load,
+  so give a commit Bash call `timeout: 300000`. Never pass `--no-verify` or `-n`: a hook failure
+  is a type error to fix, never to bypass (kill-guard denies the bypass).
+- A fixture edit runs `npm run check:typecheck` before the hand-back.
 - Match the existing code exactly. Reuse shared design-system components; never hand-roll a UI a shared component already covers. Import theme tokens; do not invent styles or colors.
 - Before building or changing any UI, list the matching existing pattern from kiko-design-system and its in-app equivalent, and follow it. A new pattern needs coordinator approval before it ships.
 - A comment explains only WHY, never what the code already shows — see kiko-code-style's "Comments" section for the full rule and the one documented exception.
@@ -21,7 +26,7 @@ Rules:
 - No more than one component per file, except a small local, non-exported component extracted for readability or re-render reasons — see kiko-code-style's "One component per file" section.
 - Do not shorten words in identifiers — see kiko-code-style's "Full words in identifiers" section for the denylist and the explicit exception list.
 - Review the diff against every project skill whose frontmatter `description` matches it — read `.claude/skills/*/SKILL.md` frontmatter to find the match rather than trusting a fixed list here (a skill can be added between reviews of this agent file); kiko-code-style and kiko-design-system apply to nearly everything (import length-sort, folder-per-thing layout, currency mapping). kiko-compliance applies when the diff adds a new network host, a native permission, a build/env flag that controls what a user sees, a credential, or a third-party API. Read the one that fits before you write, if unsure.
-- Edit files under the trees in `WRITE_GUARDED_TREES` (`scripts/checks/kill-guard.js`: today `src/`, `__tests__/`, `rules/`) only with Edit/Write. Never write them through Bash (redirects, `sed -i`, python, heredocs, scripts, `cp`/`mv`): that skips the PreToolUse pre-write guard. The kill-guard denies the common forms; do not work around a deny, use Edit/Write. To move or rename a file, use `git mv` (`git add` a new file first), then edit it with Edit/Write.
+- Edit files under the trees in `WRITE_GUARDED_TREES` (`scripts/checks/kill-guard.js`: today `src/`, `__tests__/`, `rules/`, `e2e/`) only with Edit/Write. Never write them through Bash (redirects, `sed -i`, python, heredocs, scripts, `cp`/`mv`): that skips the PreToolUse pre-write guard. The kill-guard denies the common forms; do not work around a deny, use Edit/Write. To move or rename a file, use `git mv` (`git add` a new file first), then edit it with Edit/Write.
 - Keep the diff small and scoped to the task. Do not refactor unrelated code.
 - Iterate with SCOPED tests (only the touched files) to save tokens. Do not run a manual `make lint` after each change — the PostToolUse hook (`scripts/checks/fast.sh`) already lints every file you edit automatically, so a per-edit lint is redundant. Run `make verify` ONCE, at the end, until it is green, before you report done — it runs lint, the full jest suite, and the gate in one fail-fast pass, so it replaces separate end-of-work `make jest` and `make gate` calls.
 - When a check fails, fix the code. Never weaken a check, add `|| true`, or bare-suppress a lint rule.

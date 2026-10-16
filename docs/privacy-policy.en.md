@@ -60,8 +60,10 @@ service can see your device's IP address.
   statements, using your personal token; also public currency exchange rates,
   for which no token or personal data is sent.
 - **Binance** (`api.binance.com`) — your Binance balances (spot, funding,
-  Simple Earn) and your deposit and withdrawal history, using your read-only
-  API key.
+  Simple Earn), your deposit and withdrawal history, your Binance Pay history,
+  your transfers between your Binance wallets (universal transfer), and your
+  Simple Earn subscriptions, redemptions and rewards, using your read-only API
+  key.
 - **Blockstream** (`blockstream.info`) — the public on-chain balance of a
   Bitcoin address you add. Kiko sends that address to Blockstream to look it up.
 - **CoinGecko** (`api.coingecko.com`) — the current price and the daily price

@@ -1,3 +1,8 @@
+import {
+  isScheduledPayment,
+  loanInstallments,
+  type LoanInstallment,
+} from '@kiko/holdings/loan-schedule';
 import type { HoldingRow } from '@kiko/db';
 import maybe, { foldMap } from 'fnts/maybe';
 import { Money } from '@kiko/currency/money';
@@ -9,7 +14,6 @@ import { asBondMeta, asLoanMeta } from '@kiko/holdings/holding-metadata';
 import { loanLedgerOutstandingMinorAt } from '@kiko/holdings/loan-ledger';
 import { bondExpectedProfitMinor } from '@kiko/holdings/holding-descriptor';
 import { type BondTerms, holdingRegisterCoupons } from '@kiko/bonds/nbu-register';
-import { loanInstallments, type LoanInstallment } from '@kiko/holdings/loan-schedule';
 
 /** Which add action the detail screen's footer offers. */
 export type FooterAction = 'contribution' | 'transaction' | 'updateValue' | 'addLot' | 'none';
@@ -72,7 +76,8 @@ const balanceSpec: HoldingDetailSpec = {
 // reads 0 — the same outstanding every other screen shows
 // (`loanLedgerOutstandingMinorAt`), so an overpaid correction or linked
 // payments that repaid the loan hide the list even while `loanInstallments`
-// still has future rows on the ORIGINAL schedule.
+// still has future rows on the ORIGINAL schedule. A zero-payment row (a tiny
+// loan repaid before its term ends) is not a payment, so it is never listed.
 const loanUpcomingInstallments = (
   holding: HoldingRow,
   book: PriceBook,
@@ -90,7 +95,9 @@ const loanUpcomingInstallments = (
 
   const todayStart = startOfLocalDay(now);
 
-  return loanInstallments(meta).filter((row) => row.dueDate >= todayStart);
+  return loanInstallments(meta).filter(
+    (row) => isScheduledPayment(row) && row.dueDate >= todayStart,
+  );
 };
 
 // A bond's whole-life expected profit (net coupons + nominal redeemed, less

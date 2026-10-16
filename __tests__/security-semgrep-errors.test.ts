@@ -1,7 +1,11 @@
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { chmodSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, writeFileSync } from 'node:fs';
+
+import {
+  createTemporaryDirectory,
+  removeTemporaryDirectories,
+} from './test-support/temporary-directory';
 
 // scripts/checks/security.sh must fail closed when Semgrep could not
 // evaluate a rule: a rule Timeout (reported at level "warn", exit 0) or any
@@ -10,18 +14,9 @@ import { chmodSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 // on PATH stands in for the real binary so the test controls errors[].
 const SCRIPT = join(__dirname, '../scripts/checks/security.sh');
 
-const createdPaths: string[] = [];
-
-function createTempDirectory(prefix: string): string {
-  const directory = mkdtempSync(join(tmpdir(), prefix));
-  createdPaths.push(directory);
-
-  return directory;
-}
-
 function runWithSemgrepOutput(semgrepOutput: string) {
-  const stubDirectory = createTempDirectory('kiko-security-stub-');
-  const targetDirectory = createTempDirectory('kiko-security-target-');
+  const stubDirectory = createTemporaryDirectory('kiko-security-stub-');
+  const targetDirectory = createTemporaryDirectory('kiko-security-target-');
   writeFileSync(join(stubDirectory, 'semgrep-output.json'), semgrepOutput);
   const stubPath = join(stubDirectory, 'semgrep');
   writeFileSync(
@@ -46,11 +41,7 @@ function semgrepJson(errors: Record<string, unknown>[]): string {
 }
 
 afterEach(() => {
-  while (createdPaths.length > 0) {
-    const directory = createdPaths.pop();
-
-    if (directory) rmSync(directory, { recursive: true, force: true });
-  }
+  removeTemporaryDirectories();
 });
 
 describe('scripts/checks/security.sh Semgrep errors[]', () => {

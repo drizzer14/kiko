@@ -259,13 +259,13 @@ describe('a pre-0043 .kiko restore ends byte-equal to the live upgrade of the sa
       settings: [{ id: SETTINGS_ID, baseCurrency: 'UAH' }] as never,
       syncState: [],
       categories: [],
-      categoryOverrides: [],
+      categoryRules: [],
       pricePoints: [],
       bondRegister: [],
       reminders: [],
     };
 
-    await restoreDataSnapshot(snapshot);
+    await restoreDataSnapshot(snapshot, 3);
 
     const afterRestoreTransactions = sortedById(insertedRows.transactions ?? []);
     const afterRestoreHoldings = sortedById(insertedRows.holdings ?? []);

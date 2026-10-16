@@ -298,9 +298,16 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
 
   // Counterpart holding names, so an Exchange/Convert leg's label resolves to
   // the counterpart's CURRENT name in the ACTIVE language (nothing is
-  // persisted — see transactions/row-description.ts).
+  // persisted — see src/transactions/row-description/row-description.ts).
   const holdingNameById = useMemo(
     () => new Map(holdings.map((holding) => [holding.id, holding.name])),
+    [holdings],
+  );
+
+  // With the names, what tells a same-currency leg ("Transfer to") from a
+  // cross-currency one ("Exchange to").
+  const holdingCurrencyById = useMemo(
+    () => new Map(holdings.map((holding) => [holding.id, holding.currency])),
     [holdings],
   );
 
@@ -520,6 +527,7 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
           categoryByKey={categoryByKey}
           defaultCategoryKey={defaultCategoryKey}
           holdingNameById={holdingNameById}
+          holdingCurrencyById={holdingCurrencyById}
           categoryKeyForRow={categoryKeyForRow}
           onPress={handleRowPress}
           onDuplicate={handleRowDuplicate}
@@ -531,6 +539,7 @@ const HomeScreen: FC<HomeScreenProps> = ({ navigation }) => {
       categoryByKey,
       defaultCategoryKey,
       holdingNameById,
+      holdingCurrencyById,
       categoryKeyForRow,
       handleRowPress,
       handleRowDuplicate,

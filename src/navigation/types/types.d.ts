@@ -27,17 +27,22 @@ import type { OwnershipEntry } from '@kiko/screens/forms/property-ownership';
  * CREATE form pre-filled from an existing manual row (its amount, description,
  * category, and holding), dated to now — a new row on save, never an edit of
  * the source. The union makes the entry points mutually exclusive so a caller
- * can never pass more than one. It is registered in both the Home and Accounts
- * stacks (Home lists every transaction; Accounts reaches it from a holding), so
- * both param lists carry the same shape. The final member — an object with no
- * id — is the global-add entry: a create with NO holding fixed by
- * navigation, so the form renders its own primary-leg holding picker. Every
- * member may also carry the form's own `draft` (see `TransactionFormDraft`).
+ * can never pass more than one. It is registered in the Home, Accounts, Settings, and Statistics
+ * stacks (Home lists every transaction; Accounts reaches it from a holding; Settings reaches it
+ * from the templates list; Statistics opens it beside its own root), so all four param lists
+ * carry the same shape. The final member — an object with no id — is the global-add entry: a
+ * create with NO holding fixed by navigation, so the form renders its own primary-leg holding
+ * picker. The three template members open the same form for a template: `templateId` creates a
+ * transaction filled from that template, `editTemplateId` edits it, and `newTemplate` adds one.
+ * Every member may also carry the form's own `draft` (see `TransactionFormDraft`).
  */
 export type TransactionFormParams =
   | { holdingId: string; draft?: TransactionFormDraft }
   | { transactionId: string; draft?: TransactionFormDraft }
   | { duplicateOfTransactionId: string; draft?: TransactionFormDraft }
+  | { templateId: string; draft?: TransactionFormDraft }
+  | { editTemplateId: string; draft?: TransactionFormDraft }
+  | { newTemplate: true; draft?: TransactionFormDraft }
   | { draft?: TransactionFormDraft };
 
 /**
@@ -131,8 +136,8 @@ export type LotFormDraft = {
  * saved fields instead (see `HoldingFormDraft`). `initialType` and `initialCurrency` seed a
  * create on a named account, once on mount, for an "Add holding" row whose picker lists
  * only some holdings; the user can still change both. Without the Accounts
- * stack's `returnTo`, so the Home stack, which has no import screen to pop back
- * to, cannot pass one.
+ * stack's `returnTo`, so the Home and Settings stacks, which have no import
+ * screen to pop back to, cannot pass one.
  */
 type HoldingFormParams = (
   | { accountId: string; initialType?: HoldingType; initialCurrency?: Currency }
@@ -306,12 +311,23 @@ export type SettingsStackParamList = {
   Settings: undefined;
   System: undefined;
   Categories: undefined;
+  // No key: a new category; a key opens that category with its rules.
+  CategoryForm: { categoryKey?: string };
+  // No `ruleId`: a new rule for the category.
+  CategoryRuleForm: { categoryKey: string; ruleId?: string };
   ExportData: undefined;
   ImportData: undefined;
   Reminders: undefined;
   ReminderForm: ReminderFormParams;
   Help: undefined;
   HelpTopic: { topicId: HelpTopicId };
+  TransactionTemplates: undefined;
+  // The template forms, and the create forms their empty holding picker's "Add holding" row
+  // opens, sit in this stack for the reason they sit in Home's: a switch to the Accounts tab
+  // would reset this stack and drop the form's draft.
+  TransactionForm: TransactionFormParams;
+  AccountForm: AccountsStackParamList['AccountForm'];
+  HoldingForm: HoldingFormParams;
 };
 
 export type StatisticsStackParamList = {

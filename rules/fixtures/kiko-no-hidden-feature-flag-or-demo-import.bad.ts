@@ -1,4 +1,4 @@
-// Semgrep fixture (POSITIVE): the Guideline 5.6 "hidden feature" pattern —
+// Semgrep fixture (POSITIVE): the Guideline 2.3.1(a) "hidden feature" pattern —
 // App Store rejected build 7 for "features intentionally hidden during
 // review". `kiko-no-hidden-feature-flag-or-demo-import` MUST report a
 // finding on each of the four pinned lines below: importing a
@@ -33,7 +33,7 @@ export const isFeatureVisible = (): boolean => SHOW_UNREADY_FEATURE === 'true';
 // pinned finding is unchanged: it is still a static `import` reaching from
 // `rules/fixtures/` into `e2e/`, which is what the rule's second arm matches
 // regardless of which member is imported.
-export const runSeed = (): unknown => buildScreenshotDataset('uk');
+export const runSeed = (): unknown => buildScreenshotDataset('uk', 0);
 
 // EXPECT-FINDING
 import { SCREENSHOT_MODE } from '@env';
@@ -45,5 +45,5 @@ export const lazySeed = async (): Promise<void> => {
     // EXPECT-FINDING
     require('../../e2e/screenshot/seed/screenshot-seed') as typeof import('../../e2e/screenshot/seed/screenshot-seed');
 
-  buildScreenshotDataset('uk');
+  buildScreenshotDataset('uk', 0);
 };

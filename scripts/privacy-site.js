@@ -3,7 +3,8 @@
 // (the `check` mode touches the network, which no gate may do).
 //
 //   node scripts/privacy-site.js build [outDir]   docs/privacy-policy*.md -> index.html + en.html
-//   node scripts/privacy-site.js check [url]      live page vs the build of the md; .env.example/src hosts vs the md
+//   node scripts/privacy-site.js check [url]      live page vs the build of the md;
+//                                                 .env.example/src hosts vs the md
 //
 // Exit 0 = in sync, 1 = drift (the release must publish the page first), 2 = usage/fetch error.
 
@@ -110,7 +111,8 @@ function list(block) {
   return `<ul>\n${items.map((item) => `    <li>${inline(item)}</li>`).join('\n')}\n  </ul>`;
 }
 
-// Markdown subset the two policy files use: # / ## headings, a `>` language line, paragraphs, `- ` lists.
+// Markdown subset the two policy files use: # / ## headings, a `>` language line, paragraphs,
+// `- ` lists.
 function blockToHtml(block, page) {
   if (block.startsWith('> ')) return languageLine(page);
   if (block.startsWith('# ')) return `<h1>${inline(block.slice(2))}</h1>`;

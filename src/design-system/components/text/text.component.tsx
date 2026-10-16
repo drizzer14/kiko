@@ -10,6 +10,7 @@ const Text: FC<TextProps> = ({
   tone = 'textPrimary',
   style,
   numberOfLines,
+  accessibilityRole,
   adjustsFontSizeToFit,
   minimumFontScale,
   children,
@@ -20,7 +21,10 @@ const Text: FC<TextProps> = ({
   return (
     <RNText
       style={[styles.text, style]}
+      // The native large title is a fixed 34pt, so this variant must not scale.
+      allowFontScaling={variant !== 'largeTitle'}
       numberOfLines={numberOfLines}
+      accessibilityRole={accessibilityRole}
       adjustsFontSizeToFit={adjustsFontSizeToFit}
       minimumFontScale={minimumFontScale}
     >

@@ -1,7 +1,10 @@
+import type {
+  NativeStackHeaderItemButton,
+  NativeStackNavigationOptions,
+} from '@react-navigation/native-stack';
 import { useTranslation } from 'react-i18next';
 import { useUnistyles } from 'react-native-unistyles';
 import { useEffect, useLayoutEffect, useRef } from 'react';
-import type { NativeStackNavigationOptions } from '@react-navigation/native-stack';
 
 export type FormHeaderItemsOptions = Pick<
   NativeStackNavigationOptions,
@@ -14,7 +17,13 @@ type FormHeaderItemsParams = {
   // Whether the form has anything to save; a read-only form keeps only its Cancel.
   hasSave: boolean;
   isSaving: boolean;
+  // Further trailing actions, listed before Save. The header registers again whenever the list's
+  // identity changes, so a caller keeps it in a `useMemo`.
+  extraItems?: NativeStackHeaderItemButton[];
 };
+
+// One shared empty list, so a form without extra items keeps a stable dependency.
+const NO_EXTRA_ITEMS: NativeStackHeaderItemButton[] = [];
 
 /**
  * The nav-bar pair of a form: Cancel leading and a prominent Save trailing (HIG sheets: always
@@ -27,6 +36,7 @@ export const useFormHeaderItems = ({
   onSave,
   hasSave,
   isSaving,
+  extraItems = NO_EXTRA_ITEMS,
 }: FormHeaderItemsParams): void => {
   const { t } = useTranslation();
   const { theme } = useUnistyles();
@@ -53,21 +63,23 @@ export const useFormHeaderItems = ({
                 onPress: () => navigation.goBack(),
               },
             ],
-      unstable_headerRightItems: () =>
-        hasSave
+      unstable_headerRightItems: () => [
+        ...extraItems,
+        ...(hasSave
           ? [
               {
-                type: 'button',
+                type: 'button' as const,
                 label: t('common.save'),
                 accessibilityLabel: t('common.save'),
-                variant: 'prominent',
+                variant: 'prominent' as const,
                 tintColor: theme.colors.accent,
                 sharesBackground: false,
                 disabled: isSaving,
                 onPress: () => latestSave.current(),
               },
             ]
-          : [],
+          : []),
+      ],
     });
-  }, [navigation, t, theme.colors.textPrimary, theme.colors.accent, hasSave, isSaving]);
+  }, [navigation, t, theme.colors.textPrimary, theme.colors.accent, hasSave, isSaving, extraItems]);
 };

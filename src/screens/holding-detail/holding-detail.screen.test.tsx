@@ -2,6 +2,7 @@ import maybe, { foldMap } from 'fnts/maybe';
 import type { ComponentProps } from 'react';
 import { Alert, StyleSheet } from 'react-native';
 import { State } from 'react-native-gesture-handler';
+import { HeaderHeightContext } from '@react-navigation/elements';
 import { act, fireEvent, render, within } from '@testing-library/react-native';
 import { fireGestureHandler, getByGestureTestId } from 'react-native-gesture-handler/jest-utils';
 import '@kiko/design-system/unistyles';
@@ -26,8 +27,10 @@ import type { LoanMeta } from '@kiko/holdings/holding-metadata';
 import { localDaysFrom } from '@kiko/test-support/local-days-from';
 import { categoryColor } from '@kiko/statistics/category-breakdown';
 import GestureRootWrapper from '@kiko/test-support/gesture-root-wrapper';
+import { type LayoutNode, layoutOf } from '@kiko/test-support/layout-of';
 import { ancestorWithStyle } from '@kiko/test-support/ancestor-with-style';
 import { PaneContext, paneContextOf } from '@kiko/design-system/pane-context';
+import { LargeTitleHeadingContext } from '@kiko/design-system/components/large-title-heading';
 import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support/navigation-props';
 
 import HoldingDetailScreen from './holding-detail.screen';
@@ -351,8 +354,8 @@ const seed = (
   // unaffected (a priced holding with no points falls back to cost basis).
   pricePoints: unknown[] = [],
   // Per-table isLoading overrides, for the loading-gate tests only — every
-  // key defaults to `false` (an already-resolved query), so every existing
-  // call site above keeps behaving exactly as before.
+  // key defaults to `false` (an already-resolved query), so a call site that
+  // omits it sees resolved queries.
   isLoading: Partial<Record<string, boolean>> = {},
   // The rows `listLinkedToLoanQuery` resolves to — the loan detail's own
   // "Linked payments" section. Defaults to none, so every existing
@@ -979,6 +982,42 @@ describe('HoldingDetailScreen', () => {
 
     expect(getByText('Exchange to Savings')).toBeTruthy();
     expect(queryByText('Everyday card expense')).toBeNull();
+  });
+
+  it('labels a leg to a holding of the same currency as a transfer, not an exchange', async () => {
+    // Nothing is converted between two holdings of one currency, so the screen
+    // must hand the row label both holdings' currencies for it to say "Transfer".
+    seed(
+      cardHolding,
+      [
+        {
+          id: 'x3',
+          holdingId: 'h-1',
+          amountMinorUnits: -5000,
+          time: 2,
+          description: '',
+          exchangeCounterpartHoldingId: 'h-2',
+          source: 'manual',
+        },
+        {
+          id: 'x4',
+          holdingId: 'h-1',
+          amountMinorUnits: 5000,
+          time: 1,
+          description: '',
+          exchangeCounterpartHoldingId: 'h-2',
+          source: 'manual',
+        },
+      ],
+      [],
+      [{ id: 'h-2', name: 'Savings', type: 'cash', currency: 'UAH', balanceMinorUnits: 0 }],
+    );
+
+    const { getByText, queryByText } = await renderScreen();
+
+    expect(getByText('Transfer to Savings')).toBeTruthy();
+    expect(getByText('Transfer from Savings')).toBeTruthy();
+    expect(queryByText('Exchange to Savings')).toBeNull();
   });
 
   it('renders an existing exchange leg label on a crypto_asset holding, unchanged by the type', async () => {
@@ -2053,7 +2092,7 @@ describe('HoldingDetailScreen', () => {
     );
   });
 
-  it('lists every remaining payment of an annuity loan, starting at the next installment', async () => {
+  it('lists the next payments of an annuity loan as cards, starting at the next installment', async () => {
     seed(annuityLoanHolding);
 
     const { getByText, getByTestId, getAllByTestId } = await renderScreen();
@@ -2068,24 +2107,68 @@ describe('HoldingDetailScreen', () => {
     }
 
     expect(getByText('Upcoming Payments')).toBeTruthy();
-    expect(getAllByTestId(/^upcoming-payment-/)).toHaveLength(upcoming.length);
-    // Scoped per row: a swapped principal/interest would fail here, unlike a
+    // Bounded to the next year: the rest sits behind "Show all".
+    expect(upcoming.length).toBeGreaterThan(12);
+    expect(getAllByTestId(/^upcoming-payment-/)).toHaveLength(12);
+    // Scoped per card: a swapped principal/interest would fail here, unlike a
     // bare `getByText` search over the whole screen.
     expect(getByTestId(`upcoming-payment-${next.index}`)).toHaveTextContent(
-      formatMoney(Money.of('UAH', next.paymentMinorUnits)).concat(
-        `Principal ${formatMoney(Money.of('UAH', next.principalMinorUnits))}`,
+      formatMoney(Money.of('UAH', -next.paymentMinorUnits)),
+      { exact: false },
+    );
+    expect(getByTestId(`upcoming-payment-${next.index}`)).toHaveTextContent(
+      `Principal ${formatMoney(Money.of('UAH', next.principalMinorUnits))}`.concat(
         ` · interest ${formatMoney(Money.of('UAH', next.interestMinorUnits))}`,
       ),
+      { exact: false },
     );
   });
 
-  it('renders every remaining payment of a 30-year mortgage', async () => {
+  it('draws the upcoming payments between the breakdown and the linked payments', async () => {
+    seed(
+      annuityLoanHolding,
+      [],
+      [],
+      [{ id: 'payer-1', name: 'Everyday card', type: 'card', currency: 'UAH' }],
+      [],
+      [{ baseCurrency: 'UAH' }],
+      undefined,
+      [],
+      {},
+      [
+        {
+          id: 'txn-linked',
+          holdingId: 'payer-1',
+          amountMinorUnits: -100_000,
+          time: 1_000,
+          description: 'First installment',
+          source: 'manual',
+          loanHoldingId: 'h-1',
+          loanLinkSource: 'manual',
+        },
+      ],
+    );
+
+    const { getAllByText } = await renderScreen();
+
+    expect(
+      getAllByText(/^(Interest paid|Upcoming Payments|Linked Payments)$/).map((node) =>
+        String(node.children),
+      ),
+    ).toEqual(['Interest paid', 'Upcoming Payments', 'Linked Payments']);
+  });
+
+  it('bounds a 30-year mortgage to its next 12 cards, and Show all reveals all 360', async () => {
     seed({
       ...annuityLoanHolding,
       metadata: { ...annuityLoanMeta, startDate: startMonthsAgo(0), termMonths: 360 },
     });
 
-    const { getAllByTestId } = await renderScreen();
+    const { getAllByTestId, getByTestId } = await renderScreen();
+
+    expect(getAllByTestId(/^upcoming-payment-/)).toHaveLength(12);
+
+    await fireEvent.press(getByTestId('upcoming-payments-toggle'));
 
     expect(getAllByTestId(/^upcoming-payment-/)).toHaveLength(360);
   });
@@ -2648,5 +2731,284 @@ describe('HoldingDetailScreen — bond yield to maturity', () => {
 
       await expectStepUpCoupons();
     });
+  });
+});
+
+const textLayout = (content: string): LayoutNode => ({ style: {}, children: [content] });
+
+const descriptionLayout = (label: string): LayoutNode => ({
+  style: { flex: 1, marginRight: darkTheme.spacing(3) },
+  children: [textLayout(label)],
+});
+
+const amountLayout = (testID: string): LayoutNode => ({
+  style: { flexShrink: 0 },
+  children: [{ testID, children: [expect.any(String)] }],
+});
+
+const mainRowLayout = (children: LayoutNode[]): LayoutNode => ({
+  style: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
+  children,
+});
+
+const leadLayout = (children: LayoutNode[]): LayoutNode => ({
+  style: { alignItems: 'flex-start', flex: 1, flexDirection: 'row', gap: darkTheme.spacing(2) },
+  children,
+});
+
+const categoryIconLayout: LayoutNode = {
+  style: { height: darkTheme.iconSizes.body, width: darkTheme.iconSizes.body },
+  symbol: expect.any(String),
+  tint: expect.any(String),
+  children: [],
+};
+
+// `objectContaining`: the footer may gain a cross-axis alignment without
+// losing the right-flush `alignSelf` the row look depends on.
+const footerLayout = (caption: string): LayoutNode => ({
+  style: expect.objectContaining({ alignSelf: 'flex-end' }),
+  children: [{ style: { textAlign: 'right' }, children: [caption] }],
+});
+
+const cardLayout = (children: LayoutNode[]): LayoutNode => ({
+  style: expect.objectContaining({
+    padding: darkTheme.spacing(3),
+    borderRadius: darkTheme.radii.md,
+  }),
+  testID: 'ledger-row',
+  children: [{ style: { gap: darkTheme.spacing(1) }, children }],
+});
+
+// Pins the approved look of the ledger rows and their day header, which the shared
+// EntryCard / EntryDateHeader draw.
+describe('HoldingDetailScreen — ledger row look', () => {
+  it('draws a settled derived row as a card: label left, amount right, a right-aligned caption', async () => {
+    seed(depositHolding);
+
+    const { getAllByTestId } = await renderScreen();
+    const row = getAllByTestId('ledger-row').find(
+      (candidate) =>
+        within(candidate).queryByText('Interest accrual') !== null &&
+        within(candidate).queryByText('Computed') !== null,
+    );
+
+    if (row === undefined) {
+      throw new Error('fixture must carry a settled interest accrual row');
+    }
+
+    expect(layoutOf(row)).toEqual(
+      cardLayout([
+        mainRowLayout([descriptionLayout('Interest accrual'), amountLayout('money-tone-positive')]),
+        footerLayout('Computed'),
+      ]),
+    );
+    expect(StyleSheet.flatten(row.props.style)).not.toHaveProperty('opacity');
+  });
+
+  it('dims a projected derived row to half opacity and captions it Projected', async () => {
+    seed(futureDepositHolding);
+
+    const { getAllByTestId } = await renderScreen();
+    const row = getAllByTestId('ledger-row').find(
+      (candidate) => within(candidate).queryByText('Projected') !== null,
+    );
+
+    if (row === undefined) {
+      throw new Error('fixture must carry a projected row');
+    }
+
+    expect(layoutOf(row)).toEqual(
+      cardLayout([
+        mainRowLayout([descriptionLayout('Interest accrual'), amountLayout('money-tone-positive')]),
+        footerLayout('Projected'),
+      ]),
+    );
+    expect(StyleSheet.flatten(row.props.style)).toMatchObject({ opacity: 0.5 });
+  });
+
+  it('draws a stored transaction row with its category icon, loan-link marker, and time caption', async () => {
+    seed(cardHolding, [
+      {
+        id: 'x1',
+        amountMinorUnits: -5000,
+        time: new Date(2024, 0, 15, 9, 5).getTime(),
+        description: 'Loan payment',
+        source: 'manual',
+        loanHoldingId: 'loan-1',
+      },
+    ]);
+
+    const { getAllByTestId } = await renderScreen();
+
+    expect(layoutOf(getAllByTestId('ledger-row')[0])).toEqual(
+      cardLayout([
+        mainRowLayout([
+          leadLayout([
+            categoryIconLayout,
+            {
+              style: { height: darkTheme.iconSizes.caption, width: darkTheme.iconSizes.caption },
+              symbol: 'link',
+              // The native symbol takes the textSecondary token as 8-digit hex.
+              tint: '#ebebf599',
+              testID: 'ledger-row-loan-link-marker',
+              children: [],
+            },
+            descriptionLayout('Loan payment'),
+          ]),
+          amountLayout('money-tone-auto'),
+        ]),
+        footerLayout('09:05'),
+      ]),
+    );
+  });
+
+  it('draws a stored transaction row without a footer or loan-link marker when it has neither', async () => {
+    seed(depositHolding, [
+      {
+        id: 'x1',
+        amountMinorUnits: 5000,
+        time: new Date(2024, 5, 20, 9, 5).getTime(),
+        description: 'Top-up',
+        source: 'manual',
+      },
+    ]);
+
+    const { getAllByTestId } = await renderScreen();
+    const row = getAllByTestId('ledger-row').find(
+      (candidate) => within(candidate).queryByText('Top-up') !== null,
+    );
+
+    if (row === undefined) {
+      throw new Error('fixture must carry the stored row');
+    }
+
+    expect(layoutOf(row)).toEqual(
+      cardLayout([
+        mainRowLayout([
+          leadLayout([categoryIconLayout, descriptionLayout('Top-up')]),
+          amountLayout('money-tone-auto'),
+        ]),
+      ]),
+    );
+  });
+
+  it('spaces the ledger cells by the spacing(2) content-container gap', async () => {
+    seed(cardHolding);
+
+    const { getByTestId } = await renderScreen();
+
+    expect(StyleSheet.flatten(getByTestId('ledger-list').props.contentContainerStyle).gap).toBe(
+      darkTheme.spacing(2),
+    );
+  });
+
+  it('heads a day with a caption label glued above its first card', async () => {
+    seed(cardHolding, [
+      {
+        id: 'x1',
+        amountMinorUnits: -5000,
+        time: new Date(2024, 0, 15, 9, 5).getTime(),
+        description: 'Coffee',
+        source: 'manual',
+      },
+    ]);
+
+    const { getByTestId } = await renderScreen();
+
+    expect(layoutOf(getByTestId('ledger-day-header'))).toEqual({
+      style: { paddingTop: darkTheme.spacing(3), paddingBottom: darkTheme.spacing(1) },
+      testID: 'ledger-day-header',
+      children: [textLayout(formatDate(new Date(2024, 0, 15, 9, 5).getTime()))],
+    });
+  });
+});
+
+describe('HoldingDetailScreen with a title that does not fit the native large title', () => {
+  const HEADER_HEIGHT = 100;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  // The context a navigator layout sets while the title is too long for one line of the native
+  // large title: the list header then starts with the full title.
+  const renderWithHeading = (onScrolledChange: jest.Mock) =>
+    render(
+      <HeaderHeightContext.Provider value={HEADER_HEIGHT}>
+        <LargeTitleHeadingContext.Provider
+          value={{
+            title: 'A holding with a very long name',
+            scrolled: false,
+            headingBottom: { current: 150 },
+            onScrolledChange,
+            onHostedChange: jest.fn(),
+          }}
+        >
+          <HoldingDetailScreen
+            navigation={asNavigationProp<HoldingDetailProps['navigation']>(navigation)}
+            route={route}
+          />
+        </LargeTitleHeadingContext.Provider>
+      </HeaderHeightContext.Provider>,
+      { wrapper: GestureRootWrapper },
+    );
+
+  it('starts the ledger list header with the heading', async () => {
+    seed(cashHolding);
+
+    const { getByTestId, getByText } = await renderWithHeading(jest.fn());
+    const headerBlocks = within(getByTestId('ledger-list')).getAllByTestId(
+      /^(large-title-heading|holding-value-header)$/,
+    );
+
+    expect(getByText('A holding with a very long name')).toBeTruthy();
+    expect(headerBlocks.map((block) => block.props.testID)).toEqual([
+      'large-title-heading',
+      'holding-value-header',
+    ]);
+  });
+
+  it('reports the heading scrolled under the bar from the ledger list', async () => {
+    seed(cashHolding);
+    const onScrolledChange = jest.fn();
+
+    const { getByTestId } = await renderWithHeading(onScrolledChange);
+    const list = getByTestId('ledger-list');
+
+    await fireEvent.scroll(list, {
+      nativeEvent: {
+        contentOffset: { x: 0, y: 50 },
+        layoutMeasurement: { width: 393, height: 800 },
+        contentSize: { width: 393, height: 2000 },
+      },
+    });
+
+    expect(onScrolledChange).toHaveBeenCalledWith(true);
+  });
+
+  // The heading bar is translucent: the list rests one header height above offset zero.
+  it('does not report the heading scrolled at the rest offset under the translucent bar', async () => {
+    seed(cashHolding);
+    const onScrolledChange = jest.fn();
+
+    const { getByTestId } = await renderWithHeading(onScrolledChange);
+
+    await fireEvent.scroll(getByTestId('ledger-list'), {
+      nativeEvent: {
+        contentOffset: { x: 0, y: -HEADER_HEIGHT },
+        layoutMeasurement: { width: 393, height: 800 },
+        contentSize: { width: 393, height: 2000 },
+      },
+    });
+
+    expect(onScrolledChange).not.toHaveBeenCalledWith(true);
+  });
+
+  it('shows no heading while the native large title shows the title', async () => {
+    seed(cashHolding);
+
+    const { queryByTestId } = await renderScreen();
+
+    expect(queryByTestId('large-title-heading')).toBeNull();
   });
 });

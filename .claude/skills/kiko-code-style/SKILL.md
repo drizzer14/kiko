@@ -108,7 +108,17 @@ with separators (`` `${base}:${quote}` ``) stays a template literal.
 ### Wrap comments at 100 columns
 
 Biome cannot wrap a comment, so a long one stays long until its author
-wraps it. The pre-write guard (`kiko-comment-line-width`) denies a new
+wraps it. A `#` comment line (first non-blank character `#`, not the `#!` line) follows the
+same 100-column rule in a `.sh`, `.bash`, `.yml`, `.yaml` file and in an extensionless file
+with a shell shebang; so do the comments of the scripts js and the rule fixtures.
+`npm run check:comment-line-width` checks them (`__tests__/comment-line-width.test.ts`; its
+scope is in kiko-linter's `comment-line-width.js` bullet). A `#`-first line inside a
+multi-line string, a heredoc body or a YAML block scalar is read as a comment too. A fixture
+line that cannot wrap is listed by exact text in
+`scripts/checks/comment-line-width.pinned` (currently empty; ceiling in
+`__tests__/pin-count-ceilings.test.ts`); the list only shrinks, and you never add a row for
+a line that can wrap.
+The pre-write guard (`kiko-comment-line-width`) denies a new
 physical line over 100 columns that holds comment text: a `//` comment,
 any line of a `/* */` or `/** */` block, a JSX `{/* */}` comment, or a
 trailing comment after code. Break the comment at a space and continue on
@@ -136,11 +146,19 @@ its code. A long code line with no comment is Biome's, not this rule's.
   Biome wraps the code. Run the formatter first, or move the comment
   above its code.
 - A tool directive (`// biome-ignore`, `// nosemgrep`, `// kiko-override`)
-  must stay on the line directly above its code, so it cannot continue on
-  a second line (Biome reports a suppression followed by another comment
-  line as unused). Put the prose in a plain comment above the directive and
-  keep the directive's own justification short enough to fit in 100
-  columns.
+  must stay on the line directly above its code, so a lint directive
+  (`biome-ignore lint/...`) cannot continue on a second line (Biome reports a
+  suppression followed by another comment line as unused). Put the prose in a
+  plain comment above the directive and keep the directive's own justification
+  short enough to fit in 100 columns. A `biome-ignore format` directive may
+  continue on a second comment line and still suppresses.
+- Markdown prose in the skills, agents and harness docs wraps at 100 columns too
+  (`__tests__/markdown-prose-width.test.ts` holds the roots). Exempt: fenced code, a `|` table
+  row, an ATX heading, the YAML front matter, and a line with no wrap point. A line that is
+  over width and not exempt fails unless it is pinned by exact text in
+  `__tests__/fixtures/markdown-prose-width.pinned.json`. The pin file only shrinks: rewrap or
+  remove a pinned line and delete its pin (a stale pin fails); never add a pin for a line you
+  write.
 - There is no inline override: the guard ignores a `nosemgrep` or
   `kiko-override` comment that names `kiko-comment-line-width`, and the
   finding still denies. `scripts/checks/comment-line-width.js` holds the
@@ -209,15 +227,18 @@ No history in a comment: no task id (`T28`), no review-round id (`I1`),
 no spec section number (`spec 6.2`), no plan citation (`per the plan`),
 and no "changed because …" narrative (the full set is the regexes of
 `kiko-no-history-id-comment` and `kiko-no-history-word-comment` in
-`rules/semgrep-prewrite.yml`). That belongs in the commit message that
+`rules/semgrep-prewrite.yml`, and the shell variants in `rules/semgrep-mobile.yml`). That
+belongs in the commit message that
 made the change, or in the skill section that owns the rule — never
-in a comment left behind in the code. Mechanized in `src/**` by the
-`kiko-no-history-id-comment` Semgrep rule (ERROR) — see the
-kiko-linter skill's own section on it for the rule's design.
+in a comment left behind in the code. Mechanized across `src`, `__tests__`, the scripts js and
+the `#` lines of `.sh`, `.bash` and `githooks/` files by the `kiko-no-history-*` Semgrep rules
+(ERROR); read their `paths` in `rules/semgrep-prewrite.yml` and `rules/semgrep-mobile.yml`, and
+the kiko-linter skill's own section on them for the design.
 
 The "changed because …" narrative words are mechanized too, by the
-`kiko-no-history-word-comment` Semgrep rule (WARNING until its sweep
-lands): `it replaces`, `no longer`, `used to`, and `previously`. Write
+`kiko-no-history-word-comment` Semgrep rule (ERROR): read the phrases in that rule's `pattern-regex` and `message` in
+`rules/semgrep-prewrite.yml` (they include a `was:` label before an old value,
+`// was: 30`). Write
 how the code works today and why ("matches the holding", "a card absent
 from the snapshot"), never what it did before.
 
@@ -234,13 +255,27 @@ those shapes; a date that is data (a fixture day, a DST day) stays.
 
 A comment names no task, step, finding, or spec id (`item 6`, `DEVICE BUG`,
 `Bug A2`, `Feature 1`, `SEC-C1`, `(A1)`): it states the reason itself. The
-`kiko-no-task-id-comment` Semgrep rule (WARNING until its sweep lands)
+`kiko-no-task-id-comment` Semgrep rule (ERROR)
 mechanizes the shapes listed in its kiko-linter section.
+
+A path cited in a `src` comment must exist, with or without its root. A rooted path
+(`src/…`, `docs/…`, a migration file name) must exist on disk. A rootless partial citation
+that ends in a file extension (`monobank/sync/sync.ts`) must match a tracked file's path
+suffix. `__tests__/cited-paths.test.ts` checks both; write the sentence without a path when
+the file is gone.
 
 Documented exception: the data-provenance date comment in
 `src/rates/fiat-rate-seed/fiat-rate-seed.ts` stays — it records WHEN
 the seed values were captured, which the code cannot show on its own,
 not a history narrative about a task or review round.
+
+### A test title carries no history
+
+A test or suite title says what the test pins. It carries no task id or ruling id as a prefix
+(`X1 `, `X1:`, `ruling A2`), no numbered device-check prefix (`device check 3`), no task id as
+a trailing `(P2)` or `(task C2)`, and no `(was: ` label. The id and the old value belong in the commit message. Mechanized by the
+`kiko-test-title-no-history` Semgrep rule (see kiko-linter's own section for its scope and
+limits).
 
 ## Split a `useEffect` per logical concern, before it ships
 
@@ -307,7 +342,11 @@ mapping site that hasn't been updated, not a silent runtime gap. See
 descriptor/form/detail-spec checklist a new holding type needs.
 
 A single boolean guard used exactly once (an `if`/`else` with no
-closed-set enum behind it) may stay as-is. Every branch over a closed
+closed-set enum behind it) may stay as-is. A ternary on one `kind` literal of a closed union
+(`x.kind === 'a' ? p : q`) is an `if`/`else` chain and uses `match(...).exhaustive()`; it is
+mechanized as an ERROR by `kiko-kind-ternary-prefers-match` (re-measure with the command in
+kiko-linter's `kiko-kind-ternary-prefers-match` section),
+and a `nosemgrep` OVERRIDE fits only where `kind` is not a closed union. Every branch over a closed
 literal set uses `ts-pattern`'s `match(...).exhaustive()` (or a typed
 `Record` for a pure lookup) — no `switch`, with no exception; mechanized
 by the `kiko-no-switch` Semgrep rule (see kiko-linter's own
@@ -322,10 +361,12 @@ flag such as `converting`) goes into ONE typed table
 the override first: `converting ? 'converting' : mode`) — not parallel
 `if`-chains over the `isX` booleans. A new mode is then a compile error
 in one table. See `MODE_BEHAVIOR` in
-`src/screens/forms/transaction-form/transaction-form.screen.tsx`; this
+`src/screens/forms/transaction-form/validation/validation.ts`; this
 closes the open note of finding U5 in
 `docs/reviews/2026-09-codebase-review.md` that this section did not cover
 booleans derived from a union. A judgment rule, not mechanized.
+
+In a per-row or per-keystroke hot path (rule matching over every transaction), use a typed `Record` table, not `match(...).exhaustive()`: the ts-pattern matcher cost 952 ms against 10 ms for the same lookup over 10 000 rows x 200 rules (`src/categories/category-rules`). Exhaustiveness stays in the Record's key type. Judgment rule, not mechanized.
 
 The set itself needs exactly one source of truth. Derive the literal
 union type from a `const` tuple, instead of hand-maintaining a union
@@ -646,7 +687,9 @@ message keys before calling `Alert.alert` itself).
 Every Kiko form (`account-form.screen.tsx` and its siblings) follows
 one validation model — don't hand-roll a different one:
 
-- The Save/submit button is **always enabled**, never a standing
+- The Save is the form's nav-bar item from `useFormHeaderItems`
+  (`src/screens/forms/use-form-header-items/`), never a footer button
+  (Import on the statement import screen stays a footer button). It is **always enabled**, never a standing
   `disabled={!isValid}` gate. Validate on press instead: the submit
   handler checks its own guard (e.g. `canSave = trimmedName !== ''`)
   and returns early when it fails, only then revealing the error.
@@ -654,15 +697,24 @@ one validation model — don't hand-roll a different one:
   saved value depends on data still loading: the holding form's edit
   waits for the price book. See `kiko-design-system`'s FieldError
   entry.
+- A native bar-button press does not blur the focused field, so a value
+  derived on blur (for example the TransactionForm category auto-pick)
+  is settled synchronously in the save path, by the same function the
+  blur handler calls (see `useCategoryPick` in
+  `src/screens/forms/transaction-form/use-category-pick/use-category-pick.ts`).
+  Pin it with a test that presses Save without a blur.
 - A blocked field shows its message via the shared `FieldError`
   component (`src/design-system/components/field-error/`), not a
   hand-rolled `Box`+`Text` caption — see that component's own doc
   comment for the rationale.
-- The error's visibility is its own piece of state (e.g.
-  `showNameError`), set true only after a failed submit attempt, so a
+- The shared attempted-submit flag is its own piece of state (`attemptedSave` in the forms under
+  `src/screens/forms/`; the connect fields and the import screens keep their own, for example `showTokenRequiredError`
+  in `monobank-connect-field.component.tsx`, `attemptedConnect` in
+  `binance-credentials-field.component.tsx`, `attemptedImport` in `column-mapping.screen.tsx` and
+  `statement-import.screen.tsx`), set true only after a failed submit attempt, so a
   fresh form shows no error before the user has tried to save.
 - Every field's error is computed from ONLY that field's own inputs,
-  gated by the shared attempted-submit flag — never by comparing
+  gated by that form's attempted-submit flag — never by comparing
   against a single shared "first failing field" reason. That shape
   hides every error but one until the fields ahead of it are fixed one
   at a time, and un-hides the next one instead of clearing once fixed.
@@ -848,10 +900,7 @@ acronym rule.
 
 This applies inside a compound name too, not just standalone —
 `isBTCEntry` (`src/crypto-sync/binance/binance.provider.ts`), not
-`isBtcEntry`, is a live example. (History: `fetchBtcPrice` was renamed
-`fetchBTCPrice` during review for the same reason; that function no
-longer exists — read the current tree for a live example rather than
-assuming this name still does.)
+`isBtcEntry`, is a live example.
 
 Note: the Drizzle schema's own column names (`externalId`, `mcc`)
 follow ordinary camelCase per Drizzle/SQL convention, not this rule
@@ -885,7 +934,7 @@ shortened word):
 | `ctx` | `context` |
 | `el` | `element` |
 | `opts` | `options` |
-| `tmp` | `temporary` |
+| `tmp` / `temp` | `temporary` |
 | `num` | `number` |
 | `arr` / `obj` / `str` | a descriptive name for what the array/object/string actually holds |
 
@@ -1034,6 +1083,11 @@ it**. Never scatter a thing's implementation, test, and styles as
 loose siblings in a shared flat folder; a folder that is a flat dump
 of many unrelated files is hard to read and navigate (user directive).
 
+The transaction-form screen follows this: `transaction-form.screen.tsx` keeps
+the state, the hydrate effect, the save handlers and the layout; its helpers,
+components and hooks live in unit folders under
+`src/screens/forms/transaction-form/`.
+
 Two shapes this takes today:
 
 - A design-system **component** folder (see "One component per file"
@@ -1091,8 +1145,8 @@ To move or rename a file (into a unit folder, for example), use
 Edit/Write, so the pre-write guard checks the change. `git mv` leaves
 the content unchanged, and guard-replay follows the rename, so the
 file's pre-existing findings keep their baseline. Never use a plain
-`mv`/`cp` (the kill-guard denies it into `src/`, `__tests__/`, and
-`rules/`, and a plain move reads as a new file whose every finding
+`mv`/`cp` (the kill-guard denies it into `src/`, `__tests__/`, `rules/`, and
+`e2e/`, and a plain move reads as a new file whose every finding
 looks new), and never edit the moved file with sed or another Bash
 write.
 
@@ -1202,6 +1256,22 @@ assuming a package is already covered — a package added to
 `package.json` without also being added there will fail its first
 test with an unhelpful parse error, not an obviously-related one.
 
+## A jest.requireActual call takes no type argument
+
+Write `jest.requireActual('module') as { ... }`, or bind the result to an annotated const
+(`const actual: Shape = jest.requireActual('module')`); never `jest.requireActual<Shape>('module')`,
+and the same for `jest.requireMock`, `jest.createMockFromModule` and `jest.genMockFromModule`.
+Jest finds the tests to run for a changed file
+(`--findRelatedTests`, which Stryker's per-test coverage also uses) by a regex over each file's
+text. jest-haste-map's dependency extractor reads only those four names with optional
+whitespace, then a string literal. A type argument between the name and the `(` hides the module,
+so a change to that module does not select the test. The rule covers every
+file that calls it (a test, a `__mocks__` file, a test-support helper): a typed call in a helper cuts
+the chain from the test through the helper to the real module too.
+
+Semgrep `kiko-no-typed-jest-require-actual` (`rules/semgrep-prewrite.yml`) denies the typed form at
+write time; a comment or a string that spells the typed form is flagged too (a test builds the text at runtime or keeps it under `rules/fixtures/`); its known limits are in kiko-linter's "`kiko-no-typed-jest-require-actual`".
+
 ## Tests read a module, never a source file's text
 
 A test never reads a `.ts`/`.tsx` source file's text to derive what it
@@ -1221,15 +1291,11 @@ Semgrep `kiko-no-source-text-read-in-test` (`rules/semgrep-prewrite.yml`)
 enforces this in every `*.test.ts(x)` and `src/test-support/**`. It
 flags a `readFileSync`/`readFile`/`createReadStream` call whose path it
 cannot prove is a non-TypeScript file, so a walked or computed path is
-flagged too. Four tests keep one text read each by a documented
+flagged too. A test that must read source text keeps one documented
 per-line override (`// nosemgrep: kiko-no-source-text-read-in-test
 OVERRIDE(<reason>)` on the line above that read), never a whole-file
-exclude, so a new read in the same file is still denied. Three search
-src text for a word or a literal that Stryker's instrumentation keeps
-(`settings-columns.test.ts`, `title-keys.call-sites.test.ts`,
-`0044-move-crypto-cash-holdings.test.ts`), and
-`generate-demo-kiko.test.ts` reads its `.kiko` fixtures by a name from a
-table. Harness tests under `__tests__/` are out of scope: they read
+exclude. The current inventory is in `docs/harness/documented-exceptions.md`.
+Harness tests under `__tests__/` are out of scope: they read
 rules, scripts, docs, and temp projects.
 
 Known limits:
@@ -1242,6 +1308,17 @@ Known limits:
 - A template path (`` `${__dirname}/x.csv` ``) fires even with a
   non-TypeScript extension: the rule reads only a string literal or a
   join. A safe false positive: write `join(__dirname, 'x.csv')`.
+
+## A rejection names its error
+
+A `.rejects` assertion names what the call rejects with: the error class, a message, or
+`toHaveProperty('cause.message', ...)`. Any `.rejects` form that passes on every failure (a bare
+`toThrow()` is the plainest) also passes on a typo that throws before the code under test runs;
+the forms are the patterns of `kiko-rejects-to-throw-needs-error` in `rules/semgrep-prewrite.yml`
+(see kiko-linter's own section).
+
+Pin the exact message the call produces, read from jest's Received output, never a guessed
+message or a loosened regex: a guess that happens to pass proves nothing about the real failure.
 
 ## Reviewed, and deliberately not changed
 

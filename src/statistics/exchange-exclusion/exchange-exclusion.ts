@@ -12,14 +12,25 @@
  * matcher requires the same currency). It also catches the single-legged case
  * — an exchange into a term deposit writes a metadata contribution instead of
  * a credit row, so there is no counterpart row to pair against at all.
+ *
+ * A row with an `untrackedCounterpart` code is the same kind of movement, to a
+ * Binance wallet Kiko does not track: it has no counterpart holding to name, so
+ * the code is its marker.
  */
 export const exchangeExcludedTransactionIds = (
-  transactions: readonly { id: string; exchangeCounterpartHoldingId: string | null }[],
+  transactions: readonly {
+    id: string;
+    exchangeCounterpartHoldingId: string | null;
+    untrackedCounterpart: string | null;
+  }[],
 ): Set<string> => {
   const ids = new Set<string>();
 
   for (const transaction of transactions) {
-    if (transaction.exchangeCounterpartHoldingId !== null) {
+    if (
+      transaction.exchangeCounterpartHoldingId !== null ||
+      transaction.untrackedCounterpart !== null
+    ) {
       ids.add(transaction.id);
     }
   }

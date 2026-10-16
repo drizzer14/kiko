@@ -13,6 +13,7 @@ import {
 } from '../swapped-form-options';
 import type { HomeStackParamList } from '../types';
 import { createPaneStackNavigator } from '../pane-stack';
+import { fittingLargeTitleLayout } from '../fitting-large-title';
 import { resetTabStackOnBlur } from '../reset-tab-stack-on-blur';
 import { largeTitleScreenOptions } from '../large-title-screen-options';
 
@@ -45,6 +46,7 @@ const HomeStack: FC = () => {
     <Stack.Navigator
       paneConfig={PANE_CONFIG}
       screenOptions={{ headerShown: false }}
+      screenLayout={fittingLargeTitleLayout}
       screenListeners={resetTabStackOnBlur}
     >
       <Stack.Screen name="Home" component={HomeScreen} />

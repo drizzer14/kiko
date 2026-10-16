@@ -37,6 +37,65 @@ describe('removeNotice', () => {
     ).toBe('This also deletes the other part of this exchange, in Dollar card, Cash.');
   });
 
+  it('calls the other part a transfer, as the row is labelled, when both legs hold one currency', () => {
+    expect(
+      removeNotice(
+        {
+          split: false,
+          exchange: { kind: 'deleted', names: ['Binance Funding'], sameCurrency: true },
+        },
+        i18n.t,
+      ),
+    ).toBe('This also deletes the other part of this transfer, in Binance Funding.');
+  });
+
+  it('keeps the exchange wording when the legs hold different currencies', () => {
+    expect(
+      removeNotice(
+        {
+          split: false,
+          exchange: { kind: 'deleted', names: ['Dollar card'], sameCurrency: false },
+        },
+        i18n.t,
+      ),
+    ).toBe('This also deletes the other part of this exchange, in Dollar card.');
+  });
+
+  describe('in Ukrainian', () => {
+    beforeEach(async () => {
+      await i18n.changeLanguage('uk');
+    });
+
+    it('writes the transfer wording with the same name interpolation as the exchange one', () => {
+      const notice = (sameCurrency: boolean) =>
+        removeNotice(
+          { split: false, exchange: { kind: 'deleted', names: ['Cash'], sameCurrency } },
+          i18n.t,
+        );
+
+      expect(notice(true)).toBe('Також буде видалено другу частину цього переказу, у «Cash».');
+      expect(notice(false)).toBe('Також буде видалено другу частину цього обміну, у «Cash».');
+    });
+
+    it('writes both missing-part wordings, quoting the name where the exchange one does', () => {
+      const notice = (exchange: ExchangeRemoval) =>
+        removeNotice({ split: false, exchange }, i18n.t);
+
+      expect(notice({ kind: 'missing', name: 'Cash', sameCurrency: true })).toBe(
+        'Другу частину цього переказу, у «Cash», не знайдено. Буде видалено лише цю частину, тож перевірте «Cash».',
+      );
+      expect(notice({ kind: 'missing', sameCurrency: true })).toBe(
+        'Другу частину цього переказу не знайдено. Буде видалено лише цю частину.',
+      );
+      expect(notice({ kind: 'missing', name: 'Cash' })).toBe(
+        'Другу частину цього обміну, у «Cash», не знайдено. Буде видалено лише цю частину, тож перевірте «Cash».',
+      );
+      expect(notice({ kind: 'missing' })).toBe(
+        'Другу частину цього обміну не знайдено. Буде видалено лише цю частину.',
+      );
+    });
+  });
+
   it('says a bank-owned other part stays, and that only this part goes', () => {
     expect(
       removeNotice(
@@ -59,6 +118,31 @@ describe('removeNotice', () => {
   it('says the other part could not be found, with no holding to name', () => {
     expect(removeNotice({ split: false, exchange: { kind: 'missing' } }, i18n.t)).toBe(
       'The other part of this exchange could not be found. Only this part is deleted.',
+    );
+  });
+
+  it('calls a missing other part a transfer, as the row is labelled, when both holdings hold one currency', () => {
+    expect(
+      removeNotice(
+        { split: false, exchange: { kind: 'missing', name: 'Dollar card', sameCurrency: true } },
+        i18n.t,
+      ),
+    ).toBe(
+      'The other part of this transfer, in Dollar card, could not be found. Only this part is deleted, so check Dollar card.',
+    );
+    expect(
+      removeNotice({ split: false, exchange: { kind: 'missing', sameCurrency: true } }, i18n.t),
+    ).toBe('The other part of this transfer could not be found. Only this part is deleted.');
+  });
+
+  it('keeps the exchange wording for a missing other part in another currency', () => {
+    expect(
+      removeNotice(
+        { split: false, exchange: { kind: 'missing', name: 'Dollar card', sameCurrency: false } },
+        i18n.t,
+      ),
+    ).toBe(
+      'The other part of this exchange, in Dollar card, could not be found. Only this part is deleted, so check Dollar card.',
     );
   });
 
@@ -303,6 +387,7 @@ describe('removeNotice', () => {
             keptSynced: [],
             unlinked: [],
             unlinkedPlain: false,
+            templatesChanged: 0,
             balanceChanges: [{ name: 'Dollar card', currency: 'USD', minorUnits: -1_000 }],
           },
           i18n.t,
@@ -379,6 +464,7 @@ const NOTHING_ELSE: RemoveHoldingsPlan = {
   keptSynced: [],
   unlinked: [],
   unlinkedPlain: false,
+  templatesChanged: 0,
 };
 
 describe('removeHoldingsNotice', () => {
@@ -447,6 +533,8 @@ describe('removeHoldingsNotice', () => {
           keptSynced: ['Monobank card'],
           unlinked: ['Cash'],
           unlinkedPlain: false,
+          templatesChanged: 3,
+          balanceChanges: [{ name: 'Dollar card', currency: 'USD', minorUnits: -1_000 }],
         },
         i18n.t,
       ),
@@ -457,8 +545,42 @@ describe('removeHoldingsNotice', () => {
         'Some contributions to Bond could not be matched and stay. Edit the deposit to remove them.',
         'Linked transactions from your bank stay in Monobank card.',
         'Some exchange parts in Cash could not be found and stay. Check them after deleting.',
+        'This changes the balance of Dollar card by -$10.00.',
+        'This also clears it in 3 templates.',
       ].join(' '),
     );
+  });
+
+  describe('the templates a delete changes', () => {
+    it('says nothing for none', () => {
+      expect(removeHoldingsNotice(NOTHING_ELSE, i18n.t)).toBeUndefined();
+    });
+
+    it.each([
+      [1, 'This also clears it in 1 template.'],
+      [2, 'This also clears it in 2 templates.'],
+    ])('reads the English count %s', (count, expected) => {
+      expect(removeHoldingsNotice({ ...NOTHING_ELSE, templatesChanged: count }, i18n.t)).toBe(
+        expected,
+      );
+    });
+
+    describe('in Ukrainian', () => {
+      beforeEach(async () => {
+        await i18n.changeLanguage('uk');
+      });
+
+      it.each([
+        [1, 'Також його буде очищено в 1 шаблоні.'],
+        [2, 'Також його буде очищено в 2 шаблонах.'],
+        [5, 'Також його буде очищено в 5 шаблонах.'],
+        [21, 'Також його буде очищено в 21 шаблоні.'],
+      ])('reads the count %s with the right plural form', (count, expected) => {
+        expect(removeHoldingsNotice({ ...NOTHING_ELSE, templatesChanged: count }, i18n.t)).toBe(
+          expected,
+        );
+      });
+    });
   });
 
   // The count reads through `installPluralRulesFallback` on a device, whose

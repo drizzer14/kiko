@@ -53,6 +53,7 @@ const CONTAINERS = new Set([
   'statement-import/formats',
   'statistics',
   'sync',
+  'transaction-templates',
   'transactions',
 ]);
 
@@ -61,7 +62,7 @@ const CONTAINERS = new Set([
 const SCREEN_CONTAINERS = new Set(['screens', 'screens/forms', 'screens/settings']);
 
 // Imported deep, and only by test files: a barrel that exported one would
-// put test code in the App Store build (kiko-compliance 5.6).
+// put test code in the App Store build (kiko-compliance 2.3.1(a)).
 const TEST_ONLY = [
   { path: 'test-support/**', reason: 'shared, ownerless test helpers; no barrel' },
   { path: '**/__fixtures__/**', reason: 'fixture data' },

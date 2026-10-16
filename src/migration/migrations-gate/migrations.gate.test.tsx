@@ -276,6 +276,22 @@ describe('MigrationsGate', () => {
     expect(queryByText('ready')).toBeNull();
   });
 
+  it('shows the migration error with the guard message', async () => {
+    mockRunMigrations.mockRejectedValue(new Error('CHECK constraint failed: usdt_rescale_guard'));
+
+    const { findByText, getByTestId, queryByText } = await render(
+      <MigrationsGate>
+        <Text>ready</Text>
+      </MigrationsGate>,
+    );
+
+    expect(
+      await findByText('Migration error: CHECK constraint failed: usdt_rescale_guard'),
+    ).toBeTruthy();
+    expect(getByTestId('migrations-gate-error')).toBeTruthy();
+    expect(queryByText('ready')).toBeNull();
+  });
+
   it('ensures the settings row before reporting success', async () => {
     const order: string[] = [];
     mockRunMigrations.mockImplementation(async () => {

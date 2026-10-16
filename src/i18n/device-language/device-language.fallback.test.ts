@@ -1,4 +1,3 @@
-// src/i18n/device-language.fallback.test.ts
 import { deviceLanguage } from './device-language';
 
 jest.mock('react-native', () => ({ NativeModules: {} }));

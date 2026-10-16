@@ -55,7 +55,7 @@ const emptySnapshot: DataSnapshot = {
   settings: [],
   syncState: [],
   categories: [],
-  categoryOverrides: [],
+  categoryRules: [],
   pricePoints: [],
   bondRegister: [],
   reminders: [],
@@ -161,7 +161,15 @@ const readPreMarkerSnapshot = async (source: DatabaseSync): Promise<DataSnapshot
     .from(holdings)
     .orderBy(asc(holdings.id));
   const preMarkerTransactions = await sourceDrizzle
-    .select(columnsWithout(getTableColumns(transactions), 'setsBalance', 'exchangePairId'))
+    .select(
+      columnsWithout(
+        getTableColumns(transactions),
+        'setsBalance',
+        'exchangePairId',
+        'categorySetByHand',
+        'untrackedCounterpart',
+      ),
+    )
     .from(transactions)
     .orderBy(asc(transactions.id));
 
@@ -196,7 +204,7 @@ describe('restoring a .kiko file exported before the balance-set marker', () => 
     const snapshot = await readPreMarkerSnapshot(exported);
 
     mockDatabase = freshDatabase();
-    await restoreDataSnapshot(snapshot);
+    await restoreDataSnapshot(snapshot, 3);
 
     expect(markedIds(live)).toEqual(['edited-adjustment', 'opening', 'tie-a']);
     expect(markedIds(mockDatabase)).toEqual(markedIds(live));
@@ -224,7 +232,7 @@ describe('restoring a .kiko file that carries the balance-set marker', () => {
     };
 
     mockDatabase = freshDatabase();
-    await restoreDataSnapshot(snapshot);
+    await restoreDataSnapshot(snapshot, 3);
 
     expect(markedIds(mockDatabase)).toEqual(['lookalike']);
     expect(currentRowIds(mockDatabase)).toEqual(currentRowIds(exported));
@@ -247,7 +255,7 @@ describe('restoring a .kiko file that carries the balance-set marker', () => {
     };
 
     mockDatabase = freshDatabase();
-    await restoreDataSnapshot(snapshot);
+    await restoreDataSnapshot(snapshot, 3);
     await transactionsRepo.update({
       transactionId: 'opening',
       amountMinorUnits: 150,

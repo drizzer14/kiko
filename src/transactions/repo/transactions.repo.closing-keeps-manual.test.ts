@@ -99,7 +99,7 @@ const statementClosing = (): Closing => closing(10_000, OCTOBER_1);
 
 const importStatement = () => importWithPreview(statementRows(), statementClosing());
 
-const recordManual = (amountMinorUnits: number, time: number): Promise<void> =>
+const recordManual = (amountMinorUnits: number, time: number): Promise<string> =>
   transactionsRepo.recordManual({ holdingId: 'card', amountMinorUnits, time });
 
 beforeEach(async () => {

@@ -23,6 +23,7 @@ import {
 } from '../swapped-form-options';
 import type { AccountsStackParamList } from '../types';
 import { createPaneStackNavigator } from '../pane-stack';
+import { fittingLargeTitleLayout } from '../fitting-large-title';
 import { resetTabStackOnBlur } from '../reset-tab-stack-on-blur';
 import { largeTitleScreenOptions } from '../large-title-screen-options';
 
@@ -56,6 +57,7 @@ const AccountsStack: FC = () => {
     <Stack.Navigator
       paneConfig={PANE_CONFIG}
       screenOptions={largeTitleScreenOptions}
+      screenLayout={fittingLargeTitleLayout}
       screenListeners={resetTabStackOnBlur}
     >
       <Stack.Screen

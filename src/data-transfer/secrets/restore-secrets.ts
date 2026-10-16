@@ -17,7 +17,7 @@ const onlyRestoredAccounts = <Entry extends { accountId: string }>(
  * from a file that did not carry it) from an imported archive, each secret to
  * the SAME account id it was exported under —
  * `import-data.ts` calls `restoreDataSnapshot` (which preserves original ids)
- * BEFORE this, so `serviceFor(accountId)` (`monobank/token.ts` /
+ * BEFORE this, so `serviceFor(accountId)` (`src/monobank/token/token.ts` /
  * `binance.credentials.ts`) resolves to exactly the Keychain item the
  * freshly-restored account row expects, letting a restored connection resume
  * syncing immediately. A secret whose account `accountIds` does not hold is

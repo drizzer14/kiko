@@ -69,12 +69,15 @@ const ExampleTransaction: FC<ExampleTransactionProps> = ({ transaction, holdingN
   const categoryKey = resolveCategoryKey(rawCategory, categoryByKey, defaultCategoryKey);
   const title = transactionRowDescription({
     transaction: {
+      holdingId: '',
       description: transaction.description,
       amountMinorUnits: transaction.amountMinorUnits,
       exchangeCounterpartHoldingId: null,
+      untrackedCounterpart: null,
     },
     holdingName: holdingName ?? '',
     holdingNameById: new Map(),
+    holdingCurrencyById: new Map(),
     t,
   });
 

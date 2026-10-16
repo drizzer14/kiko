@@ -1,6 +1,6 @@
 const mockDisconnectAccount = jest.fn(async (_id: string) => {});
 const mockClearCredentials = jest.fn(async (_id: string) => {});
-const mockResetBinanceHistoryCursor = jest.fn(async (_id: string, _floorMs: number) => {});
+const mockResetBinanceWalkCursors = jest.fn(async (_id: string, _floorMs: number) => {});
 
 jest.mock('@kiko/accounts/accounts.repo', () => ({
   accountsRepo: { disconnect: (id: string) => mockDisconnectAccount(id) },
@@ -10,12 +10,13 @@ jest.mock('@kiko/crypto-sync/binance/binance.credentials', () => ({
 }));
 jest.mock('@kiko/holdings/repo', () => ({
   holdingsRepo: {
-    resetBinanceHistoryCursor: (id: string, floorMs: number) =>
-      mockResetBinanceHistoryCursor(id, floorMs),
+    resetBinanceWalkCursors: (id: string, floorMs: number) =>
+      mockResetBinanceWalkCursors(id, floorMs),
   },
 }));
 
 import { HISTORY_FLOOR_MS } from '@kiko/crypto-sync/binance';
+import { withWalkOwnedMetadataResetToFloor } from '@kiko/holdings/holding-metadata';
 
 import { disconnectCryptoAccount } from './disconnect';
 
@@ -23,12 +24,12 @@ describe('disconnectCryptoAccount', () => {
   beforeEach(() => {
     mockDisconnectAccount.mockClear();
     mockClearCredentials.mockClear();
-    mockResetBinanceHistoryCursor.mockClear();
+    mockResetBinanceWalkCursors.mockClear();
   });
 
   it('for Binance, resets the history cursor to the floor, then the DB disconnect, then the Keychain credentials', async () => {
     const order: string[] = [];
-    mockResetBinanceHistoryCursor.mockImplementation(async () => {
+    mockResetBinanceWalkCursors.mockImplementation(async () => {
       order.push('cursor');
     });
     mockDisconnectAccount.mockImplementation(async () => {
@@ -40,7 +41,7 @@ describe('disconnectCryptoAccount', () => {
 
     await disconnectCryptoAccount('acc-1', 'binance');
 
-    expect(mockResetBinanceHistoryCursor).toHaveBeenCalledWith('acc-1', HISTORY_FLOOR_MS);
+    expect(mockResetBinanceWalkCursors).toHaveBeenCalledWith('acc-1', HISTORY_FLOOR_MS);
     expect(mockDisconnectAccount).toHaveBeenCalledWith('acc-1');
     // The per-account Keychain item is cleared by the account id, so one Binance
     // connection's disconnect never touches another's credentials.
@@ -48,16 +49,72 @@ describe('disconnectCryptoAccount', () => {
     expect(order).toEqual(['cursor', 'db', 'keychain']);
   });
 
+  it('for Binance, resets the four Transfer walk keys of a Spot holding: cursors to the floor, the list to empty, no point cursor', async () => {
+    let reset: Record<string, unknown> | undefined;
+    mockResetBinanceWalkCursors.mockImplementation(async (_id, floorMs) => {
+      reset = withWalkOwnedMetadataResetToFloor(
+        {
+          binanceAsset: 'BTC',
+          binanceTransferHistoryCursor: 9_000,
+          binanceTransferRescanCursor: 8_000,
+          binanceTransferPendingOverlap: [
+            { start: 5, end: 7, kind: 'point', series: 'MAIN_FUNDING' },
+          ],
+          binanceTransferPointCursor: 6,
+        },
+        floorMs,
+      );
+    });
+
+    await disconnectCryptoAccount('acc-1', 'binance');
+
+    expect(reset).toEqual({
+      binanceAsset: 'BTC',
+      binanceTransferHistoryCursor: HISTORY_FLOOR_MS,
+      binanceTransferRescanCursor: HISTORY_FLOOR_MS,
+      binanceTransferPendingOverlap: [],
+    });
+  });
+
+  it('for Binance, resets the six Earn walk keys of a Spot holding: cursors to the floor, the list to empty, no point cursor, no range cursor, no hints', async () => {
+    let reset: Record<string, unknown> | undefined;
+    mockResetBinanceWalkCursors.mockImplementation(async (_id, floorMs) => {
+      reset = withWalkOwnedMetadataResetToFloor(
+        {
+          binanceAsset: 'BTC',
+          binanceEarnHistoryCursor: 9_000,
+          binanceEarnRescanCursor: 8_000,
+          binanceEarnPendingOverlap: [
+            { start: 5, end: 7, kind: 'point', series: 'flexibleRewards' },
+          ],
+          binanceEarnPointCursor: 6,
+          binanceEarnRangeCursor: 7,
+          binanceEarnSpanHints: { forward: [], pending: [], rescan: [], point: [] },
+        },
+        floorMs,
+      );
+    });
+
+    await disconnectCryptoAccount('acc-1', 'binance');
+
+    expect(reset).toEqual({
+      binanceAsset: 'BTC',
+      binanceEarnHistoryCursor: HISTORY_FLOOR_MS,
+      binanceEarnRescanCursor: HISTORY_FLOOR_MS,
+      binanceEarnPendingOverlap: [],
+    });
+  });
+
   it('for a wallet, runs only the DB disconnect — no cursor to reset, no secret to clear', async () => {
     await disconnectCryptoAccount('acc-1', 'btc_wallet');
 
-    expect(mockResetBinanceHistoryCursor).not.toHaveBeenCalled();
+    expect(mockResetBinanceWalkCursors).not.toHaveBeenCalled();
     expect(mockDisconnectAccount).toHaveBeenCalledWith('acc-1');
     expect(mockClearCredentials).not.toHaveBeenCalled();
   });
 
   it('does not disconnect or clear the credentials if resetting the history cursor fails', async () => {
-    mockResetBinanceHistoryCursor.mockRejectedValueOnce(new Error('cursor boom'));
+    mockResetBinanceWalkCursors.mockRejectedValueOnce(new Error('cursor boom'));
 
     await expect(disconnectCryptoAccount('acc-1', 'binance')).rejects.toThrow('cursor boom');
     expect(mockDisconnectAccount).not.toHaveBeenCalled();

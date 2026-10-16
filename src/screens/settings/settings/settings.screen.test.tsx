@@ -10,6 +10,7 @@ import {
   navigationSpy,
 } from '@kiko/test-support/navigation-props';
 import { darkTheme } from '@kiko/design-system/theme';
+import { genericEntitySymbol } from '@kiko/holdings/entity-symbols';
 import { chevronSize, chevronTrailingWhitespace } from '@kiko/screens/settings/settings-row';
 
 import pkg from '../../../../package.json';
@@ -169,20 +170,20 @@ describe('SettingsScreen', () => {
     const { getByTestId } = await renderScreen(navigation);
 
     const currencyCard = getByTestId('settings-card-base-currency');
-    const categoriesCard = getByTestId('settings-card-categories');
+    const groupCard = getByTestId('settings-card-templates-and-categories');
 
     // Two distinct Card surfaces, one per setting.
     expect(currencyCard).toBeTruthy();
-    expect(categoriesCard).toBeTruthy();
-    expect(currencyCard).not.toBe(categoriesCard);
+    expect(groupCard).toBeTruthy();
+    expect(currencyCard).not.toBe(groupCard);
 
     // The base-currency row lives only inside its own card...
     expect(within(currencyCard).getByTestId('settings-row-base-currency')).toBeTruthy();
     expect(within(currencyCard).queryByTestId('settings-row-categories')).toBeNull();
 
-    // ...and the Categories row lives only inside its own card.
-    expect(within(categoriesCard).getByTestId('settings-row-categories')).toBeTruthy();
-    expect(within(categoriesCard).queryByTestId('settings-row-base-currency')).toBeNull();
+    // ...and the Categories row lives only inside the templates-and-categories card.
+    expect(within(groupCard).getByTestId('settings-row-categories')).toBeTruthy();
+    expect(within(groupCard).queryByTestId('settings-row-base-currency')).toBeNull();
   });
 
   it('renders the System navigation card at the very top, then Reminders, then Import/Export', async () => {
@@ -202,7 +203,7 @@ describe('SettingsScreen', () => {
       'settings-card-reminders',
       'settings-card-data-transfer',
       'settings-card-base-currency',
-      'settings-card-categories',
+      'settings-card-templates-and-categories',
       'settings-card-help',
     ]);
   });
@@ -272,7 +273,7 @@ describe('SettingsScreen', () => {
     const marginRight = StyleSheet.flatten(divider.props.style).marginRight;
 
     // The card's own padding is 0 (each row carries its own
-    // `paddingHorizontal`, see `dataTransferRowStyle`), so the row's padding
+    // `paddingHorizontal`, see `groupedRowStyle`), so the row's padding
     // alone is not the whole story: the divider must also cross the
     // trailing whitespace inside the (resized) chevron's own render frame,
     // so it visually terminates at the ">" glyph's right edge rather than
@@ -358,6 +359,59 @@ describe('SettingsScreen', () => {
     await fireEvent.press(getByTestId('settings-row-base-currency'));
 
     expect(getByTestId('screen-scroll-view').props.automaticallyAdjustKeyboardInsets).toBe(false);
+  });
+
+  it('groups Transaction templates and Categories into one card, templates first', async () => {
+    const { getByTestId, getAllByTestId } = await renderScreen();
+
+    const card = getByTestId('settings-card-templates-and-categories');
+
+    expect(within(card).getByText('Transaction templates')).toBeTruthy();
+    expect(within(card).getByText('Categories')).toBeTruthy();
+    expect(
+      card.queryAll((node) => node.props.name === genericEntitySymbol.template).length,
+    ).toBeGreaterThan(0);
+
+    const order = getAllByTestId(
+      /^settings-(row-(transaction-templates|categories)|divider-templates-and-categories)$/,
+    ).map((node) => node.props.testID as string);
+    expect(order).toEqual([
+      'settings-row-transaction-templates',
+      'settings-divider-templates-and-categories',
+      'settings-row-categories',
+    ]);
+  });
+
+  it('styles the templates-and-categories card like the Import/Export card', async () => {
+    const { getByTestId } = await renderScreen();
+
+    const card = getByTestId('settings-card-templates-and-categories');
+    const divider = getByTestId('settings-divider-templates-and-categories');
+    const dividerStyle = StyleSheet.flatten(divider.props.style);
+
+    expect(StyleSheet.flatten(card.props.style).padding).toBe(0);
+    expect(
+      StyleSheet.flatten(getByTestId('settings-row-transaction-templates').props.style)
+        .paddingVertical,
+    ).toBe(darkTheme.spacing(3));
+    expect(
+      StyleSheet.flatten(getByTestId('settings-row-categories').props.style).paddingVertical,
+    ).toBe(darkTheme.spacing(3));
+    expect(dividerStyle.marginLeft).toBe(
+      darkTheme.spacing(3) + darkTheme.iconSizes.body + darkTheme.spacing(3),
+    );
+    expect(dividerStyle.marginRight).toBe(
+      darkTheme.spacing(3) + chevronTrailingWhitespace(chevronSize(darkTheme), darkTheme),
+    );
+  });
+
+  it('navigates to the TransactionTemplates sub-screen when its row is pressed', async () => {
+    const navigation = navigationSpy();
+    const { getByTestId } = await renderScreen(navigation);
+
+    await fireEvent.press(getByTestId('settings-row-transaction-templates'));
+
+    expect(mockOpenInPane).toHaveBeenCalledWith('TransactionTemplates');
   });
 
   it('navigates to the Categories sub-screen when the Categories row is pressed', async () => {
@@ -558,13 +612,20 @@ describe('SettingsScreen — loading gate', () => {
 // On a wide window the menu is one pane and the page of a row the other: the row whose page the
 // detail pane opened with (Categories until another is opened) is marked. On one pane nothing is.
 describe('SettingsScreen — the selected row', () => {
-  // Import and Export share one card, so there the row is marked and the card is not.
+  // Import and Export share one card, and so do Templates and Categories, so there the row is
+  // marked and the card is not.
   const ROWS = [
     ['System', 'settings-card-system', 'settings-row-system', true],
     ['Reminders', 'settings-card-reminders', 'settings-row-reminders', true],
     ['ImportData', 'settings-card-data-transfer', 'settings-row-import-data', false],
     ['ExportData', 'settings-card-data-transfer', 'settings-row-export-data', false],
-    ['Categories', 'settings-card-categories', 'settings-row-categories', true],
+    [
+      'TransactionTemplates',
+      'settings-card-templates-and-categories',
+      'settings-row-transaction-templates',
+      false,
+    ],
+    ['Categories', 'settings-card-templates-and-categories', 'settings-row-categories', false],
     ['Help', 'settings-card-help', 'settings-row-help', true],
   ] as const;
 
@@ -605,13 +666,14 @@ describe('SettingsScreen — the selected row', () => {
     expect(row.backgroundColor === darkTheme.colors.accent).toBe(!marksCard);
   });
 
-  it('marks the Categories card, and no other card, while its default shows', async () => {
+  it('marks the Categories row, and no card, while its default shows', async () => {
     mockUseDetailPaneRoute.mockReturnValue({ name: 'Categories', isDefault: true });
     const { getByTestId } = await renderScreen();
     const fillOf = (cardId: string) =>
       StyleSheet.flatten(getByTestId(cardId).props.style).backgroundColor;
 
-    expect(fillOf('settings-card-categories')).toBe(darkTheme.colors.accent);
+    expect(fillOf('settings-row-categories')).toBe(darkTheme.colors.accent);
+    expect(fillOf('settings-card-templates-and-categories')).not.toBe(darkTheme.colors.accent);
     expect(fillOf('settings-card-help')).not.toBe(darkTheme.colors.accent);
     expect(fillOf('settings-card-system')).not.toBe(darkTheme.colors.accent);
   });
@@ -630,7 +692,7 @@ describe('SettingsScreen — no tip', () => {
     mockLiveQueryIsLoading = false;
   });
 
-  it('puts the Categories card straight after the base-currency card, with no tip between', async () => {
+  it('puts the templates-and-categories card straight after the base-currency card, with no tip between', async () => {
     const { getAllByTestId } = await renderScreen();
 
     const order = getAllByTestId(/^settings-card-/).map((node) => node.props.testID as string);
@@ -640,7 +702,7 @@ describe('SettingsScreen — no tip', () => {
       'settings-card-reminders',
       'settings-card-data-transfer',
       'settings-card-base-currency',
-      'settings-card-categories',
+      'settings-card-templates-and-categories',
       'settings-card-help',
     ]);
   });

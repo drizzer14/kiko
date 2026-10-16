@@ -105,6 +105,7 @@ const mockRemoveHoldingsPlan = jest.fn(
     keptSynced: [],
     unlinked: [],
     unlinkedPlain: false,
+    templatesChanged: 0,
   }),
 );
 const mockCloseMany = jest.fn((..._args: unknown[]): Promise<void> => Promise.resolve());
@@ -139,7 +140,7 @@ jest.mock('@kiko/reminders/offer', () => ({
   useReminderOffer: (...args: unknown[]) => mockUseReminderOffer(...args),
 }));
 // `BankSyncSection` (real, unmocked here) calls `useSync` once per render for
-// its sole shipped provider (Guideline 5.6 remediation: Monobank-only).
+// its sole shipped provider (Guideline 2.3.1(a) remediation: Monobank-only).
 jest.mock('@kiko/sync/use-sync', () => ({
   useSync: () => mockUseSync(),
 }));
@@ -265,8 +266,8 @@ const setLiveData = (data: {
   settings?: Settings[];
   syncState?: SyncState[];
   // Every flag below defaults to `false` (an already-resolved query), so
-  // every existing call site keeps behaving exactly as before; a test that
-  // cares about the loading gate passes one or more explicitly.
+  // a call site that omits them sees resolved queries; a test that cares
+  // about the loading gate passes one or more explicitly.
   accountsIsLoading?: boolean;
   holdingsIsLoading?: boolean;
   ratesIsLoading?: boolean;
@@ -1016,6 +1017,7 @@ describe('AccountDetailScreen', () => {
       keptSynced: [],
       unlinked: [],
       unlinkedPlain: false,
+      templatesChanged: 0,
     });
     setLiveData({
       accounts: [account()],
@@ -1410,7 +1412,7 @@ describe('AccountDetailScreen', () => {
     expect(queryByText('Disconnect')).toBeNull();
   });
 
-  // PrivatBank, bunq, and Starling have no bank-CONNECT (Guideline 5.6) —
+  // PrivatBank, bunq, and Starling have no bank-CONNECT (Guideline 2.3.1(a)) —
   // Monobank is the sole shipped native provider, so the picker sheet lists
   // exactly one row and there is no cross-provider routing to exercise here
   // (see `bank-sync-section.component.test.tsx` and

@@ -1,10 +1,14 @@
 import { DAY_MS } from '@kiko/dates';
+import {
+  isScheduledPayment,
+  loanInstallments,
+  withinInstallmentTolerance,
+} from '@kiko/holdings/loan-schedule';
 import type { HoldingRow } from '@kiko/db';
 import maybe, { foldMap } from 'fnts/maybe';
 import { dayKeyOf } from '@kiko/prices/price-book';
 import type { Currency } from '@kiko/currency/currency';
 import { asLoanMeta, type LoanMeta } from '@kiko/holdings/holding-metadata';
-import { loanInstallments, withinInstallmentTolerance } from '@kiko/holdings/loan-schedule';
 
 // Exported so `use-loan-auto-link.ts` can derive its own SQL-level lower
 // bound ("earliest loan start minus the window's own before-margin") from
@@ -83,6 +87,7 @@ export type MatchableTransaction = {
   loanHoldingId: string | null;
   loanLinkRejected: boolean;
   exchangeCounterpartHoldingId: string | null;
+  untrackedCounterpart: string | null;
 };
 
 type LoanPaymentMatch = {
@@ -93,13 +98,15 @@ type LoanPaymentMatch = {
 
 // Rule-4's candidate filter: a debit, never already linked or already
 // rejected (a manual "None" or Undo must stick — kiko-domain), never one leg
-// of an Exchange/Convert (a structural marker, not a description guess — see
-// `exchange-exclusion.ts`'s identical check).
+// of an Exchange/Convert, and never a move to an untracked Binance wallet
+// (structural markers, not a description guess — see `exchange-exclusion.ts`'s
+// identical checks).
 const isEligibleTransaction = (transaction: MatchableTransaction): boolean =>
   transaction.amountMinorUnits < 0 &&
   transaction.loanHoldingId === null &&
   !transaction.loanLinkRejected &&
-  transaction.exchangeCounterpartHoldingId === null;
+  transaction.exchangeCounterpartHoldingId === null &&
+  transaction.untrackedCounterpart === null;
 
 // Rule 2: the transaction's own LOCAL day, 3 days before to 7 days after the
 // due date's local day — both bounds inclusive, the same "both bounds
@@ -199,6 +206,7 @@ const candidateInstallmentsFor = (
   const cutoffDayKey = dayKeyOf(now) + WINDOW_BEFORE_DAYS * DAY_MS;
 
   return loanInstallments(meta)
+    .filter(isScheduledPayment)
     .filter((installment) => dayKeyOf(installment.dueDate) <= cutoffDayKey)
     .map((installment) => ({
       loanHoldingId: loan.id,
