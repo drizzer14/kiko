@@ -10,6 +10,12 @@ import {
   navigationSpy,
   paramsAfter,
 } from '@kiko/test-support/navigation-props';
+import {
+  expectNavBarSaveOnly,
+  headerItems,
+  pressSave,
+  saveItem,
+} from '@kiko/test-support/form-header-items';
 import { darkTheme } from '@kiko/design-system/theme';
 import { holdingTypes } from '@kiko/holdings/holding-type';
 import { pickCategory } from '@kiko/test-support/pick-category';
@@ -27,7 +33,6 @@ import { resolveCreateHoldingTarget } from '@kiko/screens/forms/create-holding-t
 // Prefixed `mock*` so Jest's hoisted mock factory may reference it. Overrides
 // ONLY `useAnimatedRef` — see the module for the full rationale.
 import { mockReanimatedScrollToEnd } from '@kiko/test-support/mock-reanimated-scroll-to-end';
-import { expectNavBarSaveOnly, pressSave, saveItem } from '@kiko/test-support/form-header-items';
 
 import TransactionFormScreen from './transaction-form.screen';
 
@@ -295,27 +300,6 @@ const renderEmptyCreate = (): ReturnType<typeof render> => {
   const route = transactionFormRoute({});
 
   return render(<TransactionFormScreen route={route} navigation={navigationProp} />);
-};
-
-type HeaderSlot = 'unstable_headerLeftItems' | 'unstable_headerRightItems';
-
-type HeaderItem = {
-  type: string;
-  label: string;
-  variant?: string;
-  disabled?: boolean;
-  onPress: () => void;
-};
-
-// The items the screen last registered for one nav-bar slot, asked the way native-stack asks:
-// `canGoBack` says whether the stack draws a back button for this screen.
-const headerItems = (slot: HeaderSlot, canGoBack = false): HeaderItem[] => {
-  const registrations: Partial<Record<HeaderSlot, (props: object) => HeaderItem[]>>[] =
-    navigation.setOptions.mock.calls
-      .map(([options]) => options)
-      .filter((options) => slot in options);
-
-  return registrations.at(-1)?.[slot]?.({ canGoBack }) ?? [];
 };
 
 // Drive the DateField calendar: open the "Date" sheet, then fire the mocked
@@ -1120,6 +1104,9 @@ describe('TransactionFormScreen — localization', () => {
     expect(getByLabelText('Куди')).toBeTruthy();
     expect(getByLabelText('Отримано')).toBeTruthy();
     expect(saveItem(navigation.setOptions, 'Зберегти')).toBeDefined();
+    expect(
+      headerItems(navigation.setOptions, 'unstable_headerLeftItems').map((item) => item.label),
+    ).toEqual(['Скасувати']);
   });
 });
 
@@ -1844,12 +1831,12 @@ describe('TransactionFormScreen — nav-bar Cancel and Save', () => {
     it('offers Cancel where the stack draws no back button, and Cancel closes the form', async () => {
       await renderAdd();
 
-      expect(headerItems('unstable_headerLeftItems', false).map((item) => item.label)).toEqual([
-        'Cancel',
-      ]);
+      expect(
+        headerItems(navigation.setOptions, 'unstable_headerLeftItems').map((item) => item.label),
+      ).toEqual(['Cancel']);
 
       await act(async () => {
-        headerItems('unstable_headerLeftItems', false)[0].onPress();
+        headerItems(navigation.setOptions, 'unstable_headerLeftItems')[0].onPress();
       });
 
       expect(navigation.goBack).toHaveBeenCalledTimes(1);
@@ -1861,16 +1848,40 @@ describe('TransactionFormScreen — nav-bar Cancel and Save', () => {
 
       // The header is registered (Save is there), and its leading slot is left to the back button.
       expect(saveItem(navigation.setOptions)).toBeDefined();
-      expect(headerItems('unstable_headerLeftItems', true)).toEqual([]);
+      expect(headerItems(navigation.setOptions, 'unstable_headerLeftItems', true)).toEqual([]);
     });
 
     it('offers the same Cancel on an edit', async () => {
       await renderEdit('txn-1');
 
-      expect(headerItems('unstable_headerLeftItems', false).map((item) => item.label)).toEqual([
-        'Cancel',
-      ]);
-      expect(headerItems('unstable_headerLeftItems', true)).toEqual([]);
+      expect(
+        headerItems(navigation.setOptions, 'unstable_headerLeftItems').map((item) => item.label),
+      ).toEqual(['Cancel']);
+      expect(headerItems(navigation.setOptions, 'unstable_headerLeftItems', true)).toEqual([]);
+    });
+  });
+
+  describe('the trailing slot', () => {
+    it('is disabled while the write is in flight', async () => {
+      let resolveWrite: () => void = () => {};
+      mockRecordManual.mockImplementationOnce(
+        () =>
+          new Promise<void>((resolve) => {
+            resolveWrite = resolve;
+          }),
+      );
+      const utils = await renderAdd();
+
+      await fireEvent.changeText(utils.getByLabelText('Amount'), '12.34');
+      await pickCategory(utils, 'Groceries');
+      await pressSave(navigation.setOptions);
+
+      expect(saveItem(navigation.setOptions)?.disabled).toBe(true);
+
+      await act(async () => {
+        resolveWrite();
+      });
+      await waitFor(() => expect(saveItem(navigation.setOptions)?.disabled).toBe(false));
     });
   });
 
@@ -1886,9 +1897,9 @@ describe('TransactionFormScreen — nav-bar Cancel and Save', () => {
       });
       const utils = await renderEdit('txn-9');
 
-      expect(headerItems('unstable_headerLeftItems', false).map((item) => item.label)).toEqual([
-        'Cancel',
-      ]);
+      expect(
+        headerItems(navigation.setOptions, 'unstable_headerLeftItems').map((item) => item.label),
+      ).toEqual(['Cancel']);
       expect(saveItem(navigation.setOptions)).toBeUndefined();
 
       await pickCategory(utils, 'Groceries');
@@ -5460,6 +5471,30 @@ describe('TransactionFormScreen — draft', () => {
     expect(second.getByLabelText('Amount').props.value).toBe('7');
   });
 
+  it('brings back a rule-picked category as not picked by hand, so it follows the description', async () => {
+    setLiveData(
+      [{ id: 'h1', currency: 'UAH', balanceMinorUnits: 0, type: 'cash' }],
+      undefined,
+      CATEGORIES,
+      [],
+      [],
+      [nameRule('coffee', 'dining')],
+    );
+    const first = await renderAdd();
+    await fireEvent.changeText(first.getByLabelText('Description'), 'Coffee');
+    await fireEvent(first.getByLabelText('Description'), 'blur');
+    await first.unmount();
+
+    const second = await reopen({ holdingId: 'h1' });
+
+    expect(second.getByLabelText('Category')).toHaveTextContent('Dining', { exact: false });
+
+    await fireEvent.changeText(second.getByLabelText('Description'), 'Other');
+    await fireEvent(second.getByLabelText('Description'), 'blur');
+
+    expect(second.getByLabelText('Category')).not.toHaveTextContent('Dining', { exact: false });
+  });
+
   describe('an edit', () => {
     beforeEach(() => {
       setLiveData([{ id: 'h1', currency: 'UAH', balanceMinorUnits: 5000, type: 'term_deposit' }], {
@@ -5588,6 +5623,10 @@ describe('TransactionFormScreen — draft', () => {
       selectedCategory: null,
       userPickedCategory: false,
       prefilledLabel: null,
+      saveAsTemplate: false,
+      templateName: '',
+      tab: 'manual',
+      pickedTemplateId: null,
     });
     expect(JSON.parse(JSON.stringify(draft))).toEqual(draft);
   });

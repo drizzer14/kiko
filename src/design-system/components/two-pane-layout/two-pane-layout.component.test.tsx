@@ -2,7 +2,7 @@ import { StyleSheet, Text } from 'react-native';
 import { darkTheme } from '@kiko/design-system/theme';
 import { render, screen } from '@testing-library/react-native';
 import type { FoldRegion, LayoutMode } from '@kiko/display-regions';
-import { paneContextOf, usePaneContext } from '@kiko/design-system/pane-context';
+import { paneContextOf, usePaneContext, usePaneWidth } from '@kiko/design-system/pane-context';
 
 import '@kiko/design-system/unistyles';
 
@@ -28,6 +28,23 @@ const renderLayout = () =>
     <TwoPaneLayout
       companion={<Text testID="companion-content">companion</Text>}
       primary={<Text testID="primary-content">primary</Text>}
+    />,
+  );
+
+// What a child sees of the pane it is rendered in: the pane context and the pane width.
+const PaneProbe = ({ name }: { name: string }) => (
+  <>
+    <Text testID={`probe-${name}`}>{JSON.stringify(usePaneContext())}</Text>
+    <Text testID={`width-${name}`}>{String(usePaneWidth())}</Text>
+  </>
+);
+
+const renderProbes = (mode?: 'rows') =>
+  render(
+    <TwoPaneLayout
+      mode={mode}
+      companion={<PaneProbe name="companion" />}
+      primary={<PaneProbe name="primary" />}
     />,
   );
 
@@ -143,18 +160,9 @@ describe('TwoPaneLayout', () => {
 
   // The screen content in a pane sizes itself by the pane it is in; the layout only says which.
   describe('the pane each child is rendered in', () => {
-    const PaneProbe = ({ name }: { name: string }) => (
-      <Text testID={`probe-${name}`}>{JSON.stringify(usePaneContext())}</Text>
-    );
-
     it.each(['columns', 'rows'] as const)('is the %s companion and primary pane', async (mode) => {
       mockUseLayoutMode.mockReturnValue(mode);
-      await render(
-        <TwoPaneLayout
-          companion={<PaneProbe name="companion" />}
-          primary={<PaneProbe name="primary" />}
-        />,
-      );
+      await renderProbes();
 
       expect(screen.getByTestId('probe-companion').children).toEqual([
         JSON.stringify(paneContextOf(mode, 'companion')),
@@ -166,13 +174,7 @@ describe('TwoPaneLayout', () => {
 
     it('is the pinned mode, not the window one', async () => {
       mockUseLayoutMode.mockReturnValue('columns');
-      await render(
-        <TwoPaneLayout
-          mode="rows"
-          companion={<PaneProbe name="companion" />}
-          primary={<PaneProbe name="primary" />}
-        />,
-      );
+      await renderProbes('rows');
 
       expect(screen.getByTestId('probe-primary').children).toEqual([
         JSON.stringify(paneContextOf('rows', 'primary')),
@@ -181,14 +183,42 @@ describe('TwoPaneLayout', () => {
 
     it('is no pane at all in single mode, where the window is the screen', async () => {
       mockUseLayoutMode.mockReturnValue('single');
-      await render(
-        <TwoPaneLayout
-          companion={<PaneProbe name="companion" />}
-          primary={<PaneProbe name="primary" />}
-        />,
-      );
+      await renderProbes();
 
       expect(screen.getByTestId('probe-primary').children).toEqual(['null']);
+    });
+  });
+
+  // A title sizes itself by the pane's own header, so each child is told its pane's frame width.
+  describe('the width of the pane each child is rendered in', () => {
+    it('is half the window less the divider in columns', async () => {
+      await renderProbes();
+
+      expect(screen.getByTestId('width-companion').children).toEqual([String(HALF)]);
+      expect(screen.getByTestId('width-primary').children).toEqual([String(HALF)]);
+    });
+
+    it('is each side of the fold when the window is folded in columns', async () => {
+      mockUseFoldRegion.mockReturnValue({ x: 400, y: 0, width: 11, height: 669 });
+      await renderProbes();
+
+      expect(screen.getByTestId('width-companion').children).toEqual(['400']);
+      expect(screen.getByTestId('width-primary').children).toEqual([String(951 - 411)]);
+    });
+
+    it('is the whole window in rows', async () => {
+      mockUseLayoutMode.mockReturnValue('rows');
+      await renderProbes();
+
+      expect(screen.getByTestId('width-companion').children).toEqual(['951']);
+      expect(screen.getByTestId('width-primary').children).toEqual(['951']);
+    });
+
+    it('is no width at all in single mode, where the window is the screen', async () => {
+      mockUseLayoutMode.mockReturnValue('single');
+      await renderProbes();
+
+      expect(screen.getByTestId('width-primary').children).toEqual(['null']);
     });
   });
 });

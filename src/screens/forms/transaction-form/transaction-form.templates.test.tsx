@@ -3,6 +3,12 @@ import type { ComponentProps } from 'react';
 import { fireEvent, render, within } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { DAY_MS } from '@kiko/dates';
+import {
+  asNavigationProp,
+  asRouteProp,
+  navigationSpy,
+  paramsAfter,
+} from '@kiko/test-support/navigation-props';
 import { scrollToField } from '@kiko/design-system/scroll-to-field';
 import type { TransactionFormParams } from '@kiko/navigation/types';
 import { TemplateNameTakenError } from '@kiko/transaction-templates/repo';
@@ -11,7 +17,6 @@ import { EMPTY_DRAFT, type TemplateDraft } from '@kiko/transaction-templates/dra
 // Prefixed `mock*` so Jest's hoisted mock factory may reference it. Overrides
 // ONLY `useAnimatedRef` — see the module for the full rationale.
 import { mockReanimatedScrollToEnd } from '@kiko/test-support/mock-reanimated-scroll-to-end';
-import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support/navigation-props';
 
 import { readRouteEntry } from './route-entry';
 import TransactionFormScreen from './transaction-form.screen';
@@ -2160,6 +2165,75 @@ describe('TransactionFormScreen — Manual and Template tabs', () => {
       expect(utils.getByTestId('template-field')).toHaveTextContent('Rent');
       expect(utils.getByLabelText('Amount').props.value).toBe('1 050');
       expect(saveItem(navigation.setOptions)).toBeDefined();
+    });
+  });
+
+  // A fold or an unfold remounts the form with the route params it left behind, so what the user
+  // set up in it, the template tab and the save-as-template switch included, has to come back.
+  describe('across a remount', () => {
+    const reopen = (opened: TransactionFormParams) =>
+      render(templateScreen(paramsAfter(navigation, opened) as TransactionFormParams));
+
+    it('keeps the holding field an add from a holding shows once a template seats another holding', async () => {
+      setLiveData({ draft: EXPENSE, templateList: TEMPLATES });
+      const first = await render(templateScreen({ holdingId: 'usd' }));
+      await fireEvent.press(within(first.getByTestId('entry-tabs')).getByText('Template'));
+      await pickTemplate(first, 't1');
+      await fireEvent(first.getByLabelText('Description'), 'blur');
+      await first.unmount();
+
+      const second = await reopen({ holdingId: 'usd' });
+
+      expect(second.getByLabelText('Holding')).toHaveTextContent('Wallet UAHHome');
+
+      await pressSave(navigation.setOptions);
+
+      expect(mockRecordManual).toHaveBeenCalledWith(
+        expect.objectContaining({ holdingId: 'h1', amountMinorUnits: -105000 }),
+      );
+    });
+
+    it('keeps the holding picker empty after a template with no holding, never seating the default', async () => {
+      setLiveData({ draft: EXPENSE, templateList: TEMPLATES, latestManualHoldingId: 'h1' });
+      const first = await render(templateScreen({}));
+      await fireEvent.press(within(first.getByTestId('entry-tabs')).getByText('Template'));
+      await pickTemplate(first, 't3');
+      await fireEvent(first.getByLabelText('Description'), 'blur');
+      await first.unmount();
+
+      const second = await reopen({});
+
+      expect(second.getByLabelText('Holding')).toHaveTextContent('Select holding');
+      expect(second.getByLabelText('Description').props.value).toBe('Coffee');
+    });
+
+    it('keeps the Template tab with the template it picked', async () => {
+      setLiveData({ draft: EXPENSE, templateList: TEMPLATES });
+      const first = await render(templateScreen({}));
+      await fireEvent.press(within(first.getByTestId('entry-tabs')).getByText('Template'));
+      await pickTemplate(first, 't1');
+      await fireEvent(first.getByLabelText('Description'), 'blur');
+      await first.unmount();
+
+      const second = await reopen({});
+
+      expect(second.getByTestId('template-field')).toHaveTextContent('Rent');
+      expect(second.getByLabelText('Amount').props.value).toBe('1 050');
+    });
+
+    it('keeps the save-as-template switch and the name typed in its field', async () => {
+      setLiveData({ draft: EXPENSE });
+      const first = await render(templateScreen({ holdingId: 'h1' }));
+      await fireEvent.changeText(first.getByLabelText('Amount'), '250');
+      await fireEvent(first.getByRole('switch'), 'valueChange', true);
+      await fireEvent.changeText(first.getByLabelText('Template name'), 'Rent');
+      await fireEvent(first.getByLabelText('Amount'), 'blur');
+      await first.unmount();
+
+      const second = await reopen({ holdingId: 'h1' });
+
+      expect(second.getByRole('switch').props.value).toBe(true);
+      expect(second.getByLabelText('Template name').props.value).toBe('Rent');
     });
   });
 

@@ -6,6 +6,7 @@ import type { ReminderDraft } from '@kiko/reminders/rules';
 import type { BankId } from '@kiko/bank-sync/bank-catalog';
 import type { ReminderKind } from '@kiko/reminders/schedule';
 import type { HoldingType } from '@kiko/holdings/holding-type';
+import type { EntryTab } from '@kiko/screens/forms/transaction-form';
 import type { NavigatorScreenParams } from '@react-navigation/native';
 import type { FormMode } from '@kiko/screens/forms/mode-select-field';
 import type { StatementFormatId } from '@kiko/statement-import/parser';
@@ -47,7 +48,8 @@ export type TransactionFormParams =
 
 /**
  * Every field the transaction form keeps in its state: a typed amount, the mode and the holdings
- * picked for it, the day, the category and whether the user chose it. What the form seeds from a
+ * picked for it, the day, the category and whether the user chose it, the Template tab and the
+ * template picked there, and the save-as-template switch with its name. What the form seeds from a
  * stored row (an edit, a duplicate) is in it too, as the user left it, so a draft wins over it.
  */
 export type TransactionFormDraft = {
@@ -65,6 +67,10 @@ export type TransactionFormDraft = {
   selectedCategory: string | null;
   userPickedCategory: boolean;
   prefilledLabel: string | null;
+  saveAsTemplate: boolean;
+  templateName: string;
+  tab: EntryTab;
+  pickedTemplateId: string | null;
 };
 
 /**

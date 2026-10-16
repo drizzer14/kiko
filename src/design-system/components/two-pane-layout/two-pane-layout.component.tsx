@@ -3,7 +3,7 @@ import { useUnistyles } from 'react-native-unistyles';
 import { useWindowDimensions, View } from 'react-native';
 import { useFoldRegion, useLayoutMode } from '@kiko/display-regions';
 import { resolvePaneGeometry } from '@kiko/design-system/pane-geometry';
-import { PaneContext, paneContextOf } from '@kiko/design-system/pane-context';
+import { PaneContext, PaneWidthContext, paneContextOf } from '@kiko/design-system/pane-context';
 
 import { styles } from './two-pane-layout.styles';
 import type { TwoPaneLayoutProps } from './two-pane-layout.props';
@@ -29,7 +29,9 @@ const TwoPaneLayout: FC<TwoPaneLayoutProps> = ({ companion, primary, mode: pinne
     <View style={styles.root}>
       <View style={styles.pane(geometry.companion)} testID="two-pane-companion">
         <PaneContext.Provider value={paneContextOf(mode, 'companion')}>
-          {companion}
+          <PaneWidthContext.Provider value={geometry.companion.width}>
+            {companion}
+          </PaneWidthContext.Provider>
         </PaneContext.Provider>
       </View>
       {!geometry.isFolded && (
@@ -40,7 +42,9 @@ const TwoPaneLayout: FC<TwoPaneLayoutProps> = ({ companion, primary, mode: pinne
       )}
       <View style={styles.pane(geometry.primary)} testID="two-pane-primary">
         <PaneContext.Provider value={paneContextOf(mode, 'primary')}>
-          {primary}
+          <PaneWidthContext.Provider value={geometry.primary.width}>
+            {primary}
+          </PaneWidthContext.Provider>
         </PaneContext.Provider>
       </View>
     </View>

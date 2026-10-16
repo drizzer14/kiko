@@ -136,7 +136,10 @@ type TransactionFormScreenProps = {
 
 // What the form's state opens with: the draft the route carries, else a blank add dated now. The
 // day is read here, not at module load, so a form opened tomorrow does not open on today.
-const openingOf = (draft: TransactionFormDraft | undefined): TransactionFormDraft =>
+const openingOf = (
+  draft: TransactionFormDraft | undefined,
+  initialTab: EntryTab,
+): TransactionFormDraft =>
   draft ?? {
     primaryHoldingId: null,
     mode: DEFAULT_MODE,
@@ -152,10 +155,15 @@ const openingOf = (draft: TransactionFormDraft | undefined): TransactionFormDraf
     selectedCategory: null,
     userPickedCategory: false,
     prefilledLabel: null,
+    saveAsTemplate: false,
+    templateName: '',
+    tab: initialTab,
+    pickedTemplateId: null,
   };
 
-// The draft an entry opens from. A template entry (to add, to edit, or to fill from) seeds from
-// the template it names instead, and its own fields (name, tab) are not in the draft.
+// The draft an entry opens from. A template entry (to add, to edit, or to fill from) opens from
+// none, a known limit: an edit and a fill seed from the template they name, and an add names none
+// and seeds the default holding.
 const draftOfEntry = (
   draft: TransactionFormDraft | undefined,
   isTemplateMode: boolean,
@@ -171,11 +179,15 @@ const nextReturnIdOf = (rows: readonly ChangeReturnRow[]): number =>
 
 // Whether a draft already holds every field, so the stored row (an edit, a duplicate) must not
 // seed over it. A global add that saved before its default holding was seated still needs that
-// one seat, which touches nothing else.
+// one seat, which touches nothing else. A template picked since has seated its own holding or
+// emptied the seam on purpose, so an empty holding beside a picked template is a choice, not a
+// seat that is still to come.
 const isDraftComplete = (
   draft: TransactionFormDraft | undefined,
   seedsDefaultHolding: boolean,
-): boolean => draft !== undefined && !(seedsDefaultHolding && draft.primaryHoldingId === null);
+): boolean =>
+  draft !== undefined &&
+  !(seedsDefaultHolding && draft.primaryHoldingId === null && draft.pickedTemplateId === null);
 
 const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigation }) => {
   const { t } = useTranslation();
@@ -252,7 +264,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   // filled come back from the draft the form saved there (see `useDraftAutosave`).
   const { initialDraft, saveDraft } = useDraftParam<TransactionFormDraft>(navigation, route);
   const entryDraft = draftOfEntry(initialDraft, isTemplateMode, templateQueryId);
-  const [opening] = useState(() => openingOf(entryDraft));
+  const [opening] = useState(() => openingOf(entryDraft, initialTab));
   // ONE by-id subscription serves both the edit source and the duplicate source
   // (never both at once — the union keeps the params mutually exclusive).
   const { data: matchedTransactions } = useLiveQuery(
@@ -326,8 +338,14 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   // empty again: a template with none of its own falls back to it.
   const pageHolding = holdings.find((candidate) => candidate.id === holdingParamId);
   // Set once a template seats a holding other than the page's, and never cleared (see
-  // `revealsHoldingField`): an add from a holding then shows its holding field.
-  const [isHoldingFieldRevealed, setHoldingFieldRevealed] = useState(false);
+  // `revealsHoldingField`): an add from a holding then shows its holding field. A form restored
+  // from a draft opens with the field shown when the draft holds such a holding.
+  const [isHoldingFieldRevealed, setHoldingFieldRevealed] = useState(
+    () =>
+      foldMap(maybe(opening.primaryHoldingId), (seatedHoldingId) =>
+        revealsHoldingField(false, holdingParamId, seatedHoldingId),
+      ) ?? false,
+  );
   const holdingField = resolveHoldingField({
     isEmptyCreate,
     isRevealed: isHoldingFieldRevealed,
@@ -532,17 +550,18 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     time,
     mode,
     currency: holding?.currency ?? null,
-    initial: {
-      category: opening.selectedCategory,
-      isPicked: opening.userPickedCategory,
-      description: opening.description,
-    },
+    initial: { category: opening.selectedCategory, isPicked: opening.userPickedCategory },
   });
   // A draft the route carries holds every field, so the stored row never seeds over it.
   const [hydrated, setHydrated] = useState(isDraftComplete(entryDraft, seedsDefaultHolding));
   // Held from the seed rather than re-resolved at Save, so a counterpart
   // renamed mid-edit cannot turn the untouched label into stored text.
   const [prefilledLabel, setPrefilledLabel] = useState<string | null>(opening.prefilledLabel);
+  // The template name field: filled by an Edit template, typed in an Add template.
+  const [templateName, setTemplateName] = useState(opening.templateName);
+  const [saveAsTemplate, setSaveAsTemplate] = useState(opening.saveAsTemplate);
+  const [tab, setTab] = useState<EntryTab>(opening.tab);
+  const [pickedTemplateId, setPickedTemplateId] = useState<string | null>(opening.pickedTemplateId);
   const draft: TransactionFormDraft = {
     primaryHoldingId,
     mode,
@@ -558,11 +577,12 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     selectedCategory,
     userPickedCategory,
     prefilledLabel,
+    saveAsTemplate,
+    templateName,
+    tab,
+    pickedTemplateId,
   };
   const onFieldBlur = useDraftAutosave(draft, saveDraft);
-  // The template name field: filled by an Edit template, typed in an Add template.
-  const [templateName, setTemplateName] = useState('');
-  const [saveAsTemplate, setSaveAsTemplate] = useState(false);
   const templateSwitch = resolveTemplateSwitch({
     isOn: saveAsTemplate,
     isReadOnly,
@@ -570,8 +590,6 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
     isTemplateMode,
   });
   const blankLabel = resolveBlankLabel({ existing, holding, holdings, t });
-  const [tab, setTab] = useState<EntryTab>(initialTab);
-  const [pickedTemplateId, setPickedTemplateId] = useState<string | null>(null);
   // The template the Template tab has picked: the select's pick, else the one the route names.
   const { template: selectedTemplate, id: selectedTemplateId } = resolveSelectedTemplate({
     pickedId: pickedTemplateId,

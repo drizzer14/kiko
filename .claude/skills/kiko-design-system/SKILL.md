@@ -307,7 +307,8 @@ an entry (date + value) the moment the user approves a new visual.
   Changing any of these, or the numbers they rest on, needs the user's explicit approval.
   Mechanism: every large-title native stack passes `screenLayout={fittingLargeTitleLayout}`
   (`src/navigation/fitting-large-title/`); a new large-title stack adds it too. It measures the
-  title (`useTitleFit`) in the native large-title font; a title that does not fit shows in full
+  title (`useTitleFit`) in the native large-title font, against the width of its own pane in a
+  split window (`usePaneWidth`) and the window's otherwise; a title that does not fit shows in full
   as a wrapping `LargeTitleHeading` (`src/design-system/components/large-title-heading/`) as
   the first content. `Screen` in scroll mode hosts the heading; a custom list screen renders
   `LargeTitleHeading` itself and wires its scroll with `useLargeTitleScroll`, as `HoldingDetail`
@@ -1818,10 +1819,8 @@ new component can land between reviews of this skill:
   `Card` selected surface, and a category glyph with no colour of its own then takes `onAccent`.
   Home marks a `TransactionRow` selected through `useDetailPaneRoute` and `detailParamOf`
   (`kiko-architecture`, "Row marking").
-- **Form header** (`useFormHeaderItems`, `src/screens/forms/use-form-header-items/`) — the
-  nav-bar pair of a form: Cancel leading, only where the pane's own stack draws no back button,
-  and a prominent Save trailing; `hasSave` false keeps only Cancel. A form that uses it has no
-  footer Save. Read the folder for the current consumers.
+- **Form header** (`useFormHeaderItems`, `src/screens/forms/use-form-header-items/`) — see
+  "Form Save and Cancel live in the native nav bar" above.
 
 ## Capability icons — the transparency principle
 

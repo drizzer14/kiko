@@ -16,9 +16,9 @@ jest.mock('react-i18next', () => ({
 }));
 
 import { fittingLargeTitleLayout } from '../fitting-large-title';
+import { restoreDefaultAnimationOfSwappedForm } from '../swapped-form-options';
 
 import StatisticsStack from './statistics.stack';
-import { restoreDefaultAnimationOfSwappedForm } from '../swapped-form-options';
 
 type ScreenElement = ReactElement<{ name: string }>;
 

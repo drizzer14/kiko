@@ -34,3 +34,13 @@ export const paneContextOf = (mode: SplitMode, pane: PaneName): PaneContextValue
 export const PaneContext = createContext<PaneContextValue | null>(null);
 
 export const usePaneContext = (): PaneContextValue | null => useContext(PaneContext);
+
+// Apart from `PaneContext` because a width is a number a consumer compares by value, while the
+// value of `PaneContext` is one shared object per pane that a consumer must not see change.
+export const PaneWidthContext = createContext<number | null>(null);
+
+/**
+ * The width of the pane a screen is rendered in, in points, for what sizes itself by the pane's own
+ * header (a title): null outside a pane, where the window is the screen.
+ */
+export const usePaneWidth = (): number | null => useContext(PaneWidthContext);

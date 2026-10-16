@@ -65,7 +65,8 @@ const setup = async (rules: CategoryRuleRow[], draft: Partial<Draft> = {}) => {
 
   const setDescription = jest.fn();
   const hook = await renderHook(
-    (current: Draft) => useCategoryPick({ ...current, setDescription }),
+    (current: Draft) =>
+      useCategoryPick({ ...current, setDescription, initial: { category: null, isPicked: false } }),
     { initialProps: { ...BLANK_DRAFT, ...draft } },
   );
   // Each change names only the field it moves, over the draft the hook started with.
@@ -177,7 +178,9 @@ describe('useCategoryPick', () => {
     });
 
     it('acts on the live description for the category Save writes, before any blur', async () => {
-      const { result, run } = await setup([COFFEE_RULE], { description: 'Coffee' });
+      const { result, change, run } = await setup([COFFEE_RULE]);
+
+      await change({ description: 'Coffee' });
 
       expect(result.current.selectedCategory).toBeNull();
       expect(result.current.effectiveCategory).toBe('dining');
@@ -185,6 +188,13 @@ describe('useCategoryPick', () => {
       await run(() => result.current.settleDescription());
 
       expect(result.current.selectedCategory).toBe('dining');
+    });
+
+    it('opens with the description it is given settled, as a form restored from a draft does', async () => {
+      const { result } = await setup([COFFEE_RULE], { description: 'Coffee' });
+
+      expect(result.current.selectedCategory).toBe('dining');
+      expect(result.current.userPickedCategory).toBe(false);
     });
 
     it('never replaces a category the user picked', async () => {
@@ -221,7 +231,9 @@ describe('useCategoryPick', () => {
     });
 
     it('settles the seeded description, so a rule pre-selects before any blur', async () => {
-      const { result, run } = await setup([COFFEE_RULE], { description: 'Coffee' });
+      const { result, change, run } = await setup([COFFEE_RULE]);
+
+      await change({ description: 'Coffee' });
 
       expect(result.current.selectedCategory).toBeNull();
 
