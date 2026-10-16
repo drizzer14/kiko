@@ -37,6 +37,7 @@ import { planImportTimeRezone } from '@kiko/statement-import/rezone-import-times
 
 import type { DataSnapshot } from './data-snapshot';
 import { withUsdtRescaled } from './with-usdt-rescaled';
+import { assertKnownCurrencies } from './assert-known-currencies';
 import { withImplicitAccountsMerged } from './with-implicit-accounts-merged';
 
 /** Migration 0036's `MAX(time)` per holding, computed in one pass over
@@ -796,6 +797,8 @@ export const restoreDataSnapshot = (
   version: number,
 ): Promise<{ accountsRestored: number }> =>
   write(async (databaseTransaction) => {
+    assertKnownCurrencies(snapshot);
+
     // Runs first, before either table is inserted — see
     // `withCryptoCashHoldingsMoved`'s own doc comment.
     const { accounts: accountsAfterCryptoCashMove, holdings: holdingsAfterCryptoCashMove } =
