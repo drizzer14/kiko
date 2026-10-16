@@ -66,7 +66,6 @@
     "`holdingFormDraft`, all in `holding-form/holding-form-target/`. In implicit mode the form: queries no account",
     "the screen that owns the sheet's Modal. `setParams` is immediate. `replace`, never `navigate`: Back from either form",
     "lot-form eligible when that function can return `'addLot'` (read the `FooterAction` union there). `metal`",
-    "create form uses to list cryptocurrencies first (`src/holdings/holding-currency/holding-currency.ts`).",
     "  whose marker names a deleted holding is cleared. The delete keeps the pair id and moves no balance: a",
     "  `exchange` sentence already names is not named again there; with a split, the exchange sentences that say",
     "`settings.lockEnabled` is LIVE (a `.kiko` restore never changes it) — wired through `src/auth/use-app-lock.ts`",

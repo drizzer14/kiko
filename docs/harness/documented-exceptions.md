@@ -171,9 +171,9 @@ verified usage, not dead weight:
   `statement-import.screen.test.tsx` 14.72%, `transactions.repo.test.ts`
   10.14%, `sync.test.ts` 7.67%, `statistics.screen.test.tsx` 7.38%,
   `net-worth-series.test.ts` 7.25%, `restore-snapshot.test.ts` 7.21%,
-  `import-statement.test.ts` 7.09%, `account-form.screen.test.tsx` 6.88%,
+  `import-statement.test.ts` 7.09%, `account-form.screen.test.tsx` 6.55%,
   `transactions.repo.remove-cascade.test.ts` 5.91%, `holdings.repo.test.ts`
-  5.75%, `holding-form.screen.test.tsx` 5.63% (every non-test source file over
+  5.75%, `holding-form.screen.test.tsx` 5.36% (every non-test source file over
   the limit is under 2%). A second figure is tracked beside the per-file ones:
   one more run measures the whole scope TOGETHER with the limits raised,
   because a clone between a large file and another file is invisible to the
