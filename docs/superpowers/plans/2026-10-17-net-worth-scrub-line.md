@@ -115,6 +115,11 @@ Exported constants: `SCRUB_ACTIVE_OFFSET_X = 10`, `SCRUB_FAIL_OFFSET_Y = 10` (po
 
 ## Decisions for the coordinator
 
+**Rulings (scrub-a1, 2026-10-17, OVERNIGHT DEFAULTS, the user is away; on the morning list):**
+D1 = Option A (adjustable plot, `stepScrubIndex`, both strings). D2 = `trigger('selection')`.
+D3 = no tap-to-jump. Precedent: coordinator overnight mode (take the recommended option).
+Cost if wrong: A to B drops `stepScrubIndex`, one string and three tests; D2/D3 are one-line changes.
+
 1. **VoiceOver (pick one).**
    - **Option A (recommended): the plot is one `adjustable` element.** VoiceOver reads "Net worth by day, <amount>, <date>, adjustable"; swipe up/down moves the line one point (`stepScrubIndex`), reusing the same selection state, so a VoiceOver user gets the feature, not only the present-day value. Cost: one pure function, the a11y props, two strings, three more tests.
    - **Option B (smallest): the label is an accessible text element.** VoiceOver reads "<amount>, <date>" for whatever day the line is on (the present day unless a sighted drag moved it). Read-only; a VoiceOver user cannot move the line. Cost: one string, one test.
