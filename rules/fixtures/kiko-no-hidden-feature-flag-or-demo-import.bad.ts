@@ -1,4 +1,4 @@
-// Semgrep fixture (POSITIVE): the Guideline 2.3.1(a) "hidden feature" pattern —
+// Semgrep fixture (POSITIVE): the Guideline 2.5.19 "hidden feature" pattern —
 // App Store rejected build 7 for "features intentionally hidden during
 // review". `kiko-no-hidden-feature-flag-or-demo-import` MUST report a
 // finding on each of the four pinned lines below: importing a
