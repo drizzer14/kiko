@@ -237,6 +237,8 @@ const markedEmptyCurrencies = (
       mark !== undefined &&
       mark.firstDay === null &&
       mark.checkedOn !== undefined &&
+      // A check day after today (the clock moved back) is expired, not held for weeks.
+      today >= mark.checkedOn &&
       today - mark.checkedOn < EMPTY_MARK_HOLDS_DAYS * DAY_MS &&
       deps.firstBackfilledDayByCurrency?.[currency] === undefined &&
       requestStartOf(currency, toUtcMidnight(deps.earliestDay), today) >= mark.start

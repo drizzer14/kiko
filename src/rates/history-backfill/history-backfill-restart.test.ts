@@ -366,6 +366,20 @@ describe('runBackfill — filling the earlier days of a span that moved earlier,
       });
     });
 
+    // A check day after today (the clock moved back) would otherwise hold the mark for weeks.
+    it('is asked on this launch when its mark is dated in the future', async () => {
+      const data = noEurRows();
+      data.settled.value = {
+        EUR: { start: daysAgo(300), firstDay: null, checkedOn: TODAY + 30 * DAY_MS },
+      };
+      const nbuCalls: Currency[][] = [];
+
+      await launchAll({ ...emptyBase(data), nbuCalls }, [{}]);
+
+      expect(eurCalls(nbuCalls)).toBe(1);
+      expect(data.settled.value.EUR?.checkedOn).toBe(TODAY);
+    });
+
     // An empty answer for a currency that already has rows says nothing about new days.
     it('is still fetched for new days when it has rows', async () => {
       const data = persisted([...rowsBetween('USD', 100, 0), ...rowsBetween('EUR', 100, 0)]);
