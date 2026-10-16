@@ -515,6 +515,24 @@ describe('refreshRates — the data-presence gate', () => {
     expect(captured).toHaveLength(0);
   });
 
+  it('never requests a curated coin no holding uses', async () => {
+    const requestedUrls: string[] = [];
+    const recordingFetch = (async (url: string) => {
+      requestedUrls.push(url);
+
+      return { ok: true, status: 200, json: async () => ({ bitcoin: { usd: 65_000 } }) };
+    }) as unknown as typeof fetch;
+    const { deps } = makeDeps({
+      fetchCryptoPrices: (currencies) => fetchCryptoPrices(recordingFetch, currencies),
+      openCurrencies: async () => ({ needsFiat: true, cryptoCurrencies: ['BTC'] }),
+    });
+
+    await refreshRates(deps);
+
+    expect(requestedUrls).toHaveLength(1);
+    expect(requestedUrls[0]).toContain('ids=bitcoin&');
+  });
+
   it('passes only the held crypto currencies to fetchCryptoPrices, never the full supported set', async () => {
     let receivedCurrencies: string[] = [];
     const { deps } = makeDeps({

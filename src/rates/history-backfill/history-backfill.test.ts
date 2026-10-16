@@ -960,6 +960,24 @@ describe('runBackfill — the data-presence gate', () => {
     expect(receivedCurrencies).toEqual(['USD']);
   });
 
+  it('never requests a curated coin no holding uses', async () => {
+    const requestedIds: string[] = [];
+    const recordingFetch = (async (url: string) => {
+      requestedIds.push(/coins\/([a-z-]+)\/market_chart/.exec(url)?.[1] ?? '');
+
+      return { ok: true, status: 200, json: async () => ({ prices: [] }) };
+    }) as unknown as typeof fetch;
+    const deps = makeDeps({
+      fetchCryptoHistory: (days, currencies) =>
+        fetchCoinGeckoHistory(days, recordingFetch, currencies),
+      historyCurrencies: async () => ({ fiatCurrencies: ['USD'], cryptoCurrencies: ['BTC'] }),
+    });
+
+    await runBackfill(deps);
+
+    expect(requestedIds).toEqual(['bitcoin']);
+  });
+
   it('passes only the held crypto currencies to fetchCryptoHistory, never the full supported set', async () => {
     let receivedCurrencies: string[] = [];
     const deps = makeDeps({

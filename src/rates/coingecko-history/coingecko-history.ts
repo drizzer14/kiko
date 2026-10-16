@@ -61,6 +61,36 @@ const fetchOneCoinHistory = async (
 };
 
 /**
+ * The most `market_chart` requests in flight at once. The free tier rate-limits a burst, and a
+ * holder of many coins would otherwise open one request per coin together.
+ */
+export const CRYPTO_HISTORY_CONCURRENCY = 2;
+
+/**
+ * Runs the tasks through a small pool and settles each on its own, in task order, so a failed
+ * task never stops the others and the result lines up with the input by index.
+ */
+const settleWithConcurrencyCap = async <Result>(
+  tasks: readonly (() => Promise<Result>)[],
+  cap: number,
+): Promise<PromiseSettledResult<Result>[]> => {
+  const results: PromiseSettledResult<Result>[] = [];
+  let nextIndex = 0;
+
+  const worker = async (): Promise<void> => {
+    while (nextIndex < tasks.length) {
+      const index = nextIndex;
+      nextIndex += 1;
+      [results[index]] = await Promise.allSettled([tasks[index]()]);
+    }
+  };
+
+  await Promise.all(Array.from({ length: Math.min(cap, tasks.length) }, worker));
+
+  return results;
+};
+
+/**
  * Fetch the daily USD price series for the last `days` days for every HELD
  * crypto (`currencies`, defaulting to every supported one), one
  * `market_chart` request per coin (clamped to the free tier's 365-day
@@ -83,10 +113,12 @@ export const fetchCryptoHistory = async (
     return { entries: [], failedCurrencies: [] };
   }
 
-  const results = await Promise.allSettled(
-    currencies.map((currency) =>
-      fetchOneCoinHistory(currency, cryptoCoinGeckoId[currency], days, fetchImpl),
+  const results = await settleWithConcurrencyCap(
+    currencies.map(
+      (currency) => () =>
+        fetchOneCoinHistory(currency, cryptoCoinGeckoId[currency], days, fetchImpl),
     ),
+    CRYPTO_HISTORY_CONCURRENCY,
   );
 
   const fulfilled = results.filter(

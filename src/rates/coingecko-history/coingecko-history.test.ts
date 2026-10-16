@@ -1,6 +1,6 @@
 import { DAY_MS } from '@kiko/dates';
 
-import { fetchCryptoHistory } from './coingecko-history';
+import { CRYPTO_HISTORY_CONCURRENCY, fetchCryptoHistory } from './coingecko-history';
 
 const d1 = Date.UTC(2026, 8, 1);
 const d2 = Date.UTC(2026, 8, 2);
@@ -113,6 +113,45 @@ describe('fetchCryptoHistory', () => {
 
   it('references DAY_MS-aligned days in its fixtures', () => {
     expect(d2 - d1).toBe(DAY_MS);
+  });
+
+  describe('a concurrency cap', () => {
+    const SIX_COINS = ['BTC', 'ETH', 'USDT', 'BNB', 'XRP', 'SOL'] as const;
+
+    it('never has more than the cap of coin requests in flight', async () => {
+      let inFlight = 0;
+      let mostInFlight = 0;
+      const fetchImpl = (async () => {
+        inFlight += 1;
+        mostInFlight = Math.max(mostInFlight, inFlight);
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        inFlight -= 1;
+
+        return { ok: true, status: 200, json: async () => ({ prices: [[d1, 1]] }) };
+      }) as unknown as typeof fetch;
+
+      await fetchCryptoHistory(1, fetchImpl, SIX_COINS);
+
+      expect(mostInFlight).toBe(CRYPTO_HISTORY_CONCURRENCY);
+    });
+
+    it('still fetches every coin under the cap', async () => {
+      const { entries, failedCurrencies } = await fetchCryptoHistory(
+        1,
+        makeRoutedFetch({
+          bitcoin: { prices: [[d1, 78_552]] },
+          ethereum: { prices: [[d1, 3_100]] },
+          tether: { prices: [[d1, 1.0]] },
+          binancecoin: { ok: false, prices: [] },
+          ripple: { prices: [[d1, 2]] },
+          solana: { prices: [[d1, 150]] },
+        }),
+        SIX_COINS,
+      );
+
+      expect(failedCurrencies).toEqual(['BNB']);
+      expect(entries.map((entry) => entry.base)).toEqual(['BTC', 'ETH', 'USDT', 'XRP', 'SOL']);
+    });
   });
 
   // kiko-architecture: no request for data the user does not have — a caller
