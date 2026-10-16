@@ -137,7 +137,7 @@ describe('buildScreenshotDataset (pure, deterministic)', () => {
       'Wise',
       'Binance',
       'Ethereum',
-      'Tether',
+      'USDT',
       'USD Coin',
       'BNB',
       'Solana',

@@ -1504,7 +1504,7 @@ export const uk: typeof en = {
     ZAR: 'Ренд',
     BTC: 'Bitcoin',
     ETH: 'Ethereum',
-    USDT: 'Tether',
+    USDT: 'USDT',
     BNB: 'BNB',
     XRP: 'XRP',
     USDC: 'USD Coin',

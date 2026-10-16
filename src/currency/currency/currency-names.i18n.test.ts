@@ -7,7 +7,7 @@ import { currencyOptions } from './currency';
 const CURATED_ENGLISH_NAMES: Record<CuratedCoinCode, string> = {
   BTC: 'Bitcoin',
   ETH: 'Ethereum',
-  USDT: 'Tether',
+  USDT: 'USDT',
   BNB: 'BNB',
   XRP: 'XRP',
   USDC: 'USD Coin',

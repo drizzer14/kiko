@@ -275,7 +275,7 @@ describe('CurrencyField', () => {
     expect(labels).toEqual([
       'BTC Bitcoin',
       'ETH Ethereum',
-      'USDT Tether',
+      'USDT USDT',
       'UAH Ukrainian Hryvnia',
       'ARS Argentine Peso',
     ]);

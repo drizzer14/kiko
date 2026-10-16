@@ -206,7 +206,7 @@ const EXCHANGE_HOLDINGS: {
   daysAgo: number;
 }[] = [
   { name: 'Ethereum', currency: 'ETH', amountMinorUnits: 3_000_000, daysAgo: 120 },
-  { name: 'Tether', currency: 'USDT', amountMinorUnits: 5_000_000_000, daysAgo: 110 },
+  { name: 'USDT', currency: 'USDT', amountMinorUnits: 5_000_000_000, daysAgo: 110 },
   { name: 'USD Coin', currency: 'USDC', amountMinorUnits: 3_000_000_000, daysAgo: 105 },
   { name: 'BNB', currency: 'BNB', amountMinorUnits: 500_000, daysAgo: 100 },
   { name: 'Solana', currency: 'SOL', amountMinorUnits: 500_000, daysAgo: 90 },

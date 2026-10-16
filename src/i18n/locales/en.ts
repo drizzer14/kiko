@@ -1794,7 +1794,7 @@ export const en = {
     ZAR: 'South African Rand',
     BTC: 'Bitcoin',
     ETH: 'Ethereum',
-    USDT: 'Tether',
+    USDT: 'USDT',
     BNB: 'BNB',
     XRP: 'XRP',
     USDC: 'USD Coin',
