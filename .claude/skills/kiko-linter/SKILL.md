@@ -1960,8 +1960,10 @@ The `kiko-kind-ternary-prefers-match` rule's twin for a `type` tag: a ternary
 exhaustive mapping") reads through `match(...).with({ type: ... }, ...).exhaustive()`.
 
 **Severity WARNING.** A separate id, so the `kind` rule stays a pinned ERROR: the tree already
-holds `type` ternaries (a `holding.type === 'bond' ? ... : null` narrowing in three files) and
-`check:security` fails on any ERROR. `check:security` surfaces them without failing and the
+holds `type` ternaries (a `holding.type === 'bond' ? ... : null` narrowing; re-measure the
+count and sites with the command below, they are listed in run-log gap
+20261016T2009-kiko-currency-pickers/1) and `check:security` fails on any
+ERROR. `check:security` surfaces them without failing and the
 pre-write guard denies a NEW one. **Promotion condition:** flip to ERROR, and add the id to
 `PINNED_SEVERITIES` in `__tests__/rule-inventory.test.ts`, when `check:security` reports 0
 findings for this id. To re-measure, run the Semgrep command in the `kiko-test-title-no-history`

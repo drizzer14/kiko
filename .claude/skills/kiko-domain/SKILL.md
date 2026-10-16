@@ -845,8 +845,11 @@ create a cash holding rejects a crypto currency: the holding form and
 cash-account form offer fiat only, and `holdingsRepo.create` and
 `accountsRepo.createCashAccount` throw. Statement import and the syncs
 never create a cash holding. `isCurrencyExpectedForHoldingType` is the currency a type is
-CREATED in (a `crypto_asset` is expected in a cryptocurrency, though a write also accepts fiat); a
-picker that needs a holding in a given currency uses it. `isCryptoHoldingType` is the type test the
+CREATED in: a `crypto_asset` in a cryptocurrency, every other type in a fiat one, though a
+write tolerates more (a `crypto_asset` accepts fiat; only `cash` is fiat-only). It is the
+holding picker's first group (`currencyPickerGroups`, which adds a fiat group after the crypto
+one for a `crypto_asset`), and the "create payment holding" type filter reads the same
+function, so the two cannot drift. `isCryptoHoldingType` is the type test the
 create picker uses to lead with the cryptocurrency group
 (`src/holdings/holding-currency/holding-currency.ts`).
 An ALREADY-stored crypto cash holding (a

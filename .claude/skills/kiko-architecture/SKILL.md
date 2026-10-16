@@ -849,6 +849,11 @@ gate says there is nothing to do.
   that may add the first holding of a new currency or type triggers
   these gated refreshes WITHOUT awaiting them, so Save never blocks on
   the network.
+- **A read that only ORDERS a picker never gates**: `useHeldCurrencies` renders the picker
+  unordered on `[]` until its first read, and never shows a loading state. Settings keeps this
+  subscription for the app's lifetime by design: one `SELECT DISTINCT` per holdings/accounts
+  write, and a paused query would reorder the rows when the sheet opens. Add `paused` only if
+  the cost shows up.
 - **`useCurrentPriceBook`'s and `usePriceBook`'s `enabled` argument**: `useLiveQuery`'s own
   `enabled` parameter (default `true`) skips BOTH the query and the
   reactive subscription while `false`, reporting `data: []` and

@@ -1524,9 +1524,10 @@ new component can land between reviews of this skill:
   builds `groups` with `useCurrencyPickerGroups(context)` /
   `currencyPickerGroups(context, ordering)` in
   `src/holdings/currency-picker-groups/`; read that file for the contexts
-  and the group kinds. Each group renders under its own heading and is
-  ordered by `orderCurrencies` (read `currency-group.ts` for the rule),
-  and an empty group is dropped. Supports `hideLabel` for a caller that already labels the
+  and the group kinds. A heading row shows only while MORE THAN ONE group is showing, and a
+  search drops a group it empties. Each group is ordered by `orderCurrencies` (read
+  `currency-group.ts` for the rule), and an empty group is dropped.
+  Supports `hideLabel` for a caller that already labels the
   control externally (the Settings base-currency row), `required`, and
   a `disabled` read-only state. `error` follows every field's contract:
   `FieldTrigger` renders it under the trigger (reflow, not reserve, testID
