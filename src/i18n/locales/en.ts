@@ -1060,7 +1060,7 @@ export const en = {
           '1': 'On the "Home" tab, tap "+", or open a holding and tap "Add transaction".',
           '2': 'Choose the "Type": "Expense", "Income", "Exchange", or "Split".',
           '3': 'Choose the holding, enter the amount and a description, and pick a category.',
-          '4': 'Tap "Save". If you picked the category yourself, choose "Apply" to use it for every transaction with that name, or "Cancel" to keep it for this transaction only.',
+          '4': 'Tap "Save". If you picked a category that your rules do not already give this transaction, choose "Apply" to use it for every transaction with that name, or "Cancel" to keep it for this transaction only.',
         },
         title: 'Add a Transaction',
       },
@@ -1111,7 +1111,7 @@ export const en = {
         rowLabel: 'Edit, duplicate, or delete a transaction',
         steps: {
           '1': 'On the "Home" tab, find the transaction. "Accounts", "Categories", and the calendar narrow the list.',
-          '2': 'Tap it, make your changes, and tap "Save". In a synced or imported transaction, you can change only the category and the loan link.',
+          '2': 'Tap it, make your changes, and tap "Save". If you changed the category, choose "Apply" to use it for every transaction with that name, or "Just for this one". In a synced or imported transaction, you can change only the category and the loan link.',
           '3': 'Touch and hold a transaction you added or imported, then tap "Delete". On one you added yourself, "Duplicate" makes a copy dated now.',
         },
         title: 'Edit, Duplicate, or Delete a Transaction',
