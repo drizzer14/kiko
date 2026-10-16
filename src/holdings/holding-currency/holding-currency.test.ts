@@ -1,26 +1,12 @@
-import { currencyOptions, fiatCurrencyOptions } from '@kiko/currency/currency';
+import type { Currency } from '@kiko/currency/currency';
 
-import { holdingTypes } from '../holding-type';
+import { type HoldingType, holdingTypes } from '../holding-type';
 
 import {
-  holdingCurrencyOptions,
   isCryptoHoldingType,
   isCurrencyAllowedForHoldingType,
   isCurrencyExpectedForHoldingType,
 } from './holding-currency';
-
-describe('holdingCurrencyOptions', () => {
-  it('offers a cash holding fiat currencies only', () => {
-    expect(holdingCurrencyOptions('cash')).toEqual(fiatCurrencyOptions);
-    expect(holdingCurrencyOptions('cash')).not.toContain('BTC');
-  });
-
-  it('offers every other holding type the full currency set', () => {
-    for (const type of holdingTypes.filter((candidate) => candidate !== 'cash')) {
-      expect(holdingCurrencyOptions(type)).toEqual(currencyOptions);
-    }
-  });
-});
 
 describe('isCurrencyAllowedForHoldingType', () => {
   it('rejects a crypto currency on a cash holding', () => {
@@ -58,14 +44,20 @@ describe('isCurrencyExpectedForHoldingType', () => {
     expect(isCurrencyAllowedForHoldingType('crypto_asset', 'UAH')).toBe(true);
   });
 
-  it('expects every other type in either kind of currency', () => {
-    const otherTypes = holdingTypes.filter(
-      (candidate) => !['cash', 'crypto_asset'].includes(candidate),
-    );
-
-    for (const type of otherTypes) {
-      expect(isCurrencyExpectedForHoldingType(type, 'UAH')).toBe(true);
-      expect(isCurrencyExpectedForHoldingType(type, 'BTC')).toBe(true);
-    }
+  it.each(
+    holdingTypes.flatMap((type): [HoldingType, Currency, boolean][] => [
+      [type, 'UAH', type !== 'crypto_asset'],
+      [type, 'BTC', type === 'crypto_asset'],
+    ]),
+  )('%s in %s is expected: %s', (type, currency, expected) => {
+    expect(isCurrencyExpectedForHoldingType(type, currency)).toBe(expected);
   });
+
+  it.each(holdingTypes.filter((type) => type !== 'cash'))(
+    'still lets a write put %s in either kind of currency',
+    (type) => {
+      expect(isCurrencyAllowedForHoldingType(type, 'UAH')).toBe(true);
+      expect(isCurrencyAllowedForHoldingType(type, 'BTC')).toBe(true);
+    },
+  );
 });
