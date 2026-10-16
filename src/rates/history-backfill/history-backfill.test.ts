@@ -16,6 +16,7 @@ import {
   type BackfillStatus,
   composeHistoryRows,
   deriveLastBackfilledDay,
+  deriveFirstBackfilledDayByCurrency,
   deriveLastBackfilledDayByCurrency,
   missingDays,
   planBackfillRun,
@@ -64,6 +65,23 @@ describe('deriveLastBackfilledDay', () => {
 
   it('returns null when there is no history yet', () => {
     expect(deriveLastBackfilledDay([])).toBeNull();
+  });
+});
+
+describe('deriveFirstBackfilledDayByCurrency', () => {
+  it('returns each currency own earliest stored day', () => {
+    const rows = [
+      { base: 'BTC' as const, day: day(2) },
+      { base: 'BTC' as const, day: day(0) },
+      { base: 'ETH' as const, day: day(1) },
+      { base: 'ETH' as const, day: day(3) },
+    ];
+
+    expect(deriveFirstBackfilledDayByCurrency(rows)).toEqual({ BTC: day(0), ETH: day(1) });
+  });
+
+  it('returns nothing when there is no history yet', () => {
+    expect(deriveFirstBackfilledDayByCurrency([])).toEqual({});
   });
 });
 

@@ -5,6 +5,7 @@ import {
   type CryptoCurrency,
 } from '@kiko/currency/currency';
 import { DAY_MS } from '@kiko/dates';
+import { minOf } from '@kiko/numbers';
 import either, { bifoldr } from 'fnts/either';
 import { settingsRepo } from '@kiko/settings';
 import { logOnFailure } from '@kiko/diagnostics';
@@ -97,7 +98,22 @@ export type BackfillDeps = {
    */
   readHistoryBackfillCursor?: () => Promise<string | null>;
   writeHistoryBackfillCursor?: (cursor: string | null) => Promise<void>;
+  /**
+   * Every currency's OWN first stored day (`deriveFirstBackfilledDayByCurrency(historyRows)`):
+   * with the last day it tells a held coin that lacks the days at the start of a span that moved
+   * earlier. Defaults to `{}`, where no coin is known to lack them.
+   */
+  firstBackfilledDayByCurrency?: Partial<Record<Currency, number>>;
+  /**
+   * Injectable override for `youngCurrenciesThisRun`, the coins whose answer started after the
+   * requested start. Production never passes this.
+   */
+  youngCurrencies?: Set<Currency>;
 };
+
+// Per app run, like `knownEmptyCurrenciesThisRun`: a coin CoinGecko answered from a day later than
+// the start of the span did not exist before it, so it is not asked for the earlier days again.
+const youngCurrenciesThisRun = new Set<Currency>();
 
 const readStoredCursor = async (): Promise<string | null> =>
   (await settingsRepo.historyBackfillCursorQuery()).at(0)?.historyBackfillCursor ?? null;
@@ -106,32 +122,75 @@ const writeStoredCursor = async (cursor: string | null): Promise<void> => {
   await settingsRepo.setHistoryBackfillCursor(cursor);
 };
 
-/**
- * The held coins this run asks CoinGecko about, in code order: those whose own last stored day is
- * before the day the run fills (a coin never stored counts as behind), minus coins already known
- * to have no data this session. A caller that asks for the whole span again (an explicit null
- * resume day) gets every held coin, since a coin that is current at the top can still miss days
- * below.
- */
-const coinsNeedingHistory = (
-  cryptoCurrencies: CryptoCurrency[],
-  lastBackfilledDayByCurrency: Partial<Record<Currency, number>>,
-  knownEmpty: ReadonlySet<Currency>,
-  today: number,
-  wholeSpan: boolean,
-): CryptoCurrency[] =>
-  cryptoCurrencies
-    .filter((coin) => {
-      const lastDay = lastBackfilledDayByCurrency[coin];
+type CoinNeedInput = {
+  cryptoCurrencies: CryptoCurrency[];
+  lastBackfilledDayByCurrency: Partial<Record<Currency, number>>;
+  firstBackfilledDayByCurrency: Partial<Record<Currency, number>>;
+  knownEmpty: ReadonlySet<Currency>;
+  young: ReadonlySet<Currency>;
+  today: number;
+  requestedStart: number;
+};
 
-      return !knownEmpty.has(coin) && (wholeSpan || lastDay === undefined || lastDay < today);
+/**
+ * The held coins this run asks CoinGecko about, in code order. A coin is asked about when its own
+ * last stored day is before the day the run fills (never stored counts as behind), or when its
+ * first stored day is later than the start of the span (the span moved earlier and this coin
+ * lacks those days), unless the coin is already known to have no data this session or, for the
+ * earlier days only, is young: its last answer started after that start, so nothing earlier
+ * exists. Each coin is decided from its own stored rows, so a span that moves earlier asks only
+ * the coins that miss days. A coin with no known first day counts as complete there.
+ */
+const coinsNeedingHistory = (input: CoinNeedInput): CryptoCurrency[] =>
+  input.cryptoCurrencies
+    .filter((coin) => {
+      const lastDay = input.lastBackfilledDayByCurrency[coin];
+      const firstDay = input.firstBackfilledDayByCurrency[coin];
+      const missesTop = lastDay === undefined || lastDay < input.today;
+      const missesEarlierDays =
+        firstDay !== undefined && firstDay > input.requestedStart && !input.young.has(coin);
+
+      return !input.knownEmpty.has(coin) && (missesTop || missesEarlierDays);
     })
     .sort();
+
+/** CoinGecko's free tier serves 365 days: today and the 364 before it. */
+const WINDOW_DAYS_BEFORE_TODAY = 364;
+
+/** The first day a run asks a coin for: the span's start, but never before the window. */
+const requestedStartOf = (spanStart: number, today: number): number =>
+  Math.max(spanStart, today - WINDOW_DAYS_BEFORE_TODAY * DAY_MS);
+
+// A coin whose answer starts after the requested start has nothing older to give: it is young.
+// Asking again in the same session would get the same answer.
+const recordYoungCoins = (
+  plan: { requested: CryptoCurrency[]; requestedStart: number; young: Set<Currency> },
+  cryptoResult: PromiseSettledResult<CryptoHistory>,
+): void => {
+  if (cryptoResult.status === 'rejected') {
+    return;
+  }
+
+  for (const coin of plan.requested) {
+    const days = cryptoResult.value.entries
+      .filter((entry) => entry.base === coin)
+      .map((entry) => entry.day);
+
+    if (days.length > 0 && minOf(days) > plan.requestedStart) {
+      plan.young.add(coin);
+    }
+  }
+};
 
 const readCursorOrNull = async (readCursor: () => Promise<string | null>): Promise<string | null> =>
   bifoldr(await either<unknown, string | null>(readCursor)) ?? null;
 
-type CryptoPlan = { requested: CryptoCurrency[]; storedCursor: string | null };
+type CryptoPlan = {
+  requested: CryptoCurrency[];
+  storedCursor: string | null;
+  requestedStart: number;
+  young: Set<Currency>;
+};
 
 /** Which coins this run requests, in request order, and the cursor that order started from. */
 const planCryptoRequests = async (
@@ -141,22 +200,23 @@ const planCryptoRequests = async (
     lastBackfilledDayByCurrency: Partial<Record<Currency, number>>;
     knownEmpty: ReadonlySet<Currency>;
     today: number;
-    wholeSpan: boolean;
+    spanStart: number;
   },
 ): Promise<CryptoPlan> => {
-  const needing = coinsNeedingHistory(
-    input.cryptoCurrencies,
-    input.lastBackfilledDayByCurrency,
-    input.knownEmpty,
-    input.today,
-    input.wholeSpan,
-  );
+  const young = deps.youngCurrencies ?? youngCurrenciesThisRun;
+  const requestedStart = requestedStartOf(input.spanStart, input.today);
+  const needing = coinsNeedingHistory({
+    ...input,
+    firstBackfilledDayByCurrency: deps.firstBackfilledDayByCurrency ?? {},
+    young,
+    requestedStart,
+  });
   const storedCursor =
     needing.length > 0
       ? await readCursorOrNull(deps.readHistoryBackfillCursor ?? readStoredCursor)
       : null;
 
-  return { requested: rotatedFrom(needing, storedCursor), storedCursor };
+  return { requested: rotatedFrom(needing, storedCursor), storedCursor, requestedStart, young };
 };
 
 // A cursor that cannot be saved costs only the rotation (the next run starts where this one
@@ -240,6 +300,23 @@ export const deriveLastBackfilledDayByCurrency = (
     const current = days[row.base];
 
     if (current === undefined || row.day > current) {
+      days[row.base] = row.day;
+    }
+  }
+
+  return days;
+};
+
+/** Every currency's own first stored day, keyed like `deriveLastBackfilledDayByCurrency`. */
+export const deriveFirstBackfilledDayByCurrency = (
+  rows: Pick<CurrencyRateHistoryRow, 'base' | 'day'>[],
+): Partial<Record<Currency, number>> => {
+  const days: Partial<Record<Currency, number>> = {};
+
+  for (const row of rows) {
+    const current = days[row.base];
+
+    if (current === undefined || row.day < current) {
       days[row.base] = row.day;
     }
   }
@@ -709,7 +786,7 @@ export const runBackfill = async (deps: BackfillDeps): Promise<BackfillStatus> =
     lastBackfilledDayByCurrency,
     knownEmpty,
     today,
-    wholeSpan: lastBackfilledDay === null,
+    spanStart,
   });
   const cryptoRequested = cryptoPlan.requested;
   // Settle the two providers independently: CoinGecko's free tier can 401 a
@@ -722,6 +799,8 @@ export const runBackfill = async (deps: BackfillDeps): Promise<BackfillStatus> =
     runNbuLeg(fiatCurrenciesToFetch, loadNbu, spanStart, today),
     runCryptoLeg(cryptoRequested, loadCrypto, cryptoDays),
   ]);
+
+  recordYoungCoins(cryptoPlan, cryptoResult);
 
   const { rows, failures } = composeAndClassify(
     fiatCurrencies,

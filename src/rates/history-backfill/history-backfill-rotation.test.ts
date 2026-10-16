@@ -43,15 +43,21 @@ const stubbedRun = async (input: {
   cursor: string | null;
   knownEmpty?: Set<Currency>;
   lastBackfilledDay?: number | null;
+  earliestDay?: number;
+  today?: number;
+  firstDays?: Partial<Record<Currency, number>>;
+  young?: Set<Currency>;
   answer?: (currencies: CryptoCurrency[]) => Promise<CryptoHistory>;
 }) => {
   const requested: CryptoCurrency[][] = [];
   const cursor: CursorStore = { value: input.cursor };
   const deps: BackfillDeps = {
-    earliestDay: day(0),
-    // An explicit null asks for the whole span again, which wants every held coin.
+    earliestDay: input.earliestDay ?? day(0),
+    // An explicit null is the span moving earlier: the window is the whole span again.
     lastBackfilledDay: input.lastBackfilledDay === undefined ? day(1) : input.lastBackfilledDay,
-    today: TODAY,
+    today: input.today ?? TODAY,
+    firstBackfilledDayByCurrency: input.firstDays,
+    youngCurrencies: input.young ?? new Set(),
     fetchNbuHistory: async () => ({ entries: usdAnchors, failedCurrencies: [] }),
     fetchCryptoHistory: async (_days, currencies) => {
       requested.push(currencies);
@@ -95,15 +101,64 @@ describe('runBackfill — which crypto history it requests, and from where', () 
     expect(requested).toEqual([['BTC', 'SOL']]);
   });
 
-  it('requests every held coin again when the caller asks for the whole span', async () => {
-    const { requested } = await stubbedRun({
-      held: ['BTC', 'ETH', 'SOL'],
-      doneDays: { USD: TODAY, BTC: TODAY, ETH: TODAY, SOL: TODAY },
-      cursor: null,
-      lastBackfilledDay: null,
+  describe('when the span moves earlier', () => {
+    const EIGHT: CryptoCurrency[] = ['ADA', 'BNB', 'BTC', 'DOGE', 'ETH', 'SOL', 'USDT', 'XRP'];
+    const current = Object.fromEntries(EIGHT.map((coin) => [coin, TODAY]));
+    const fromTheStart = Object.fromEntries(EIGHT.map((coin) => [coin, day(0)]));
+
+    const SOL_FROM_DAY_ONE: CryptoHistory = {
+      entries: [
+        { base: 'SOL', quote: 'USD', day: day(1), rate: 1, source: 'coingecko' },
+        { base: 'SOL', quote: 'USD', day: day(2), rate: 1, source: 'coingecko' },
+      ],
+      failedCurrencies: [],
+      rateLimitedCurrencies: [],
+    };
+
+    it('requests only the coins that lack the earlier days', async () => {
+      const { requested } = await stubbedRun({
+        held: EIGHT,
+        doneDays: { USD: TODAY, ...current },
+        firstDays: { ...fromTheStart, SOL: day(1) },
+        cursor: null,
+        lastBackfilledDay: null,
+      });
+
+      expect(requested).toEqual([['SOL']]);
     });
 
-    expect(requested).toEqual([['BTC', 'ETH', 'SOL']]);
+    it('does not ask a young coin again in the same session', async () => {
+      const young = new Set<Currency>();
+      const run = () =>
+        stubbedRun({
+          held: EIGHT,
+          doneDays: { USD: TODAY, ...current },
+          firstDays: { ...fromTheStart, SOL: day(1) },
+          cursor: null,
+          lastBackfilledDay: null,
+          young,
+          answer: async () => SOL_FROM_DAY_ONE,
+        });
+
+      expect((await run()).requested).toEqual([['SOL']]);
+      expect((await run()).requested).toEqual([]);
+      expect(young.has('SOL')).toBe(true);
+    });
+
+    it('does not count the days past the 365-day window as missing', async () => {
+      const today = day(2000);
+      const { requested } = await stubbedRun({
+        held: ['BTC', 'ETH'],
+        doneDays: { USD: today, BTC: today, ETH: today },
+        firstDays: { BTC: today - 364 * DAY_MS, ETH: today - 300 * DAY_MS },
+        cursor: null,
+        lastBackfilledDay: null,
+        earliestDay: day(0),
+        today,
+      });
+
+      expect(requested).toEqual([['ETH']]);
+    });
   });
 
   it('requests nothing when every held coin is current', async () => {
