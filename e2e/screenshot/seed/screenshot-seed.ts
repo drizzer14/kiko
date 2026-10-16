@@ -199,12 +199,15 @@ const CURRENCIES: SeededCurrency[] = [
 // What the Binance account holds beside BTC: one small deposit per coin at the coin's own scale
 // (ETH 8, USDT 8, USDC 8, BNB 7, SOL 6, CGPT 6, XRP 4 decimals), and a UAH and a EUR balance,
 // since an exchange wallet keeps fiat as a `crypto_asset` holding in a fiat currency.
-const EXCHANGE_HOLDINGS: {
+type ExchangeHolding = {
   name: string;
   currency: SeededCurrency;
   amountMinorUnits: number;
   daysAgo: number;
-}[] = [
+};
+
+// The coin names are brand names and stay Latin in both languages; the two fiat names are text.
+const buildExchangeHoldings = (text: DemoText): ExchangeHolding[] => [
   { name: 'Ethereum', currency: 'ETH', amountMinorUnits: 3_000_000, daysAgo: 120 },
   { name: 'USDT', currency: 'USDT', amountMinorUnits: 5_000_000_000, daysAgo: 110 },
   { name: 'USD Coin', currency: 'USDC', amountMinorUnits: 3_000_000_000, daysAgo: 105 },
@@ -212,8 +215,8 @@ const EXCHANGE_HOLDINGS: {
   { name: 'Solana', currency: 'SOL', amountMinorUnits: 500_000, daysAgo: 90 },
   { name: 'ChainGPT', currency: 'CGPT', amountMinorUnits: 500_000_000, daysAgo: 85 },
   { name: 'XRP', currency: 'XRP', amountMinorUnits: 600_000, daysAgo: 80 },
-  { name: 'Hryvnia', currency: 'UAH', amountMinorUnits: 100_000, daysAgo: 70 },
-  { name: 'Euro', currency: 'EUR', amountMinorUnits: 5_000, daysAgo: 60 },
+  { name: text.hryvnia, currency: 'UAH', amountMinorUnits: 100_000, daysAgo: 70 },
+  { name: text.euro, currency: 'EUR', amountMinorUnits: 5_000, daysAgo: 60 },
 ];
 
 const rateSource = (base: Currency, quote: Currency): 'monobank' | 'coingecko' =>
@@ -734,7 +737,7 @@ const buildAccounts = (calendar: DemoCalendar, text: DemoText): SeedAccount[] =>
             },
           ],
         },
-        ...EXCHANGE_HOLDINGS.map(
+        ...buildExchangeHoldings(text).map(
           ({ name, currency, amountMinorUnits, daysAgo }): SeedHolding => ({
             name,
             type: 'crypto_asset',
