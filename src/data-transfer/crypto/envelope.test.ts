@@ -141,7 +141,12 @@ describe('the export version against the migration journal', () => {
     // Through 0059_usdt_scale_8, which rescales USDT to scale 8: an older build would read
     // every USDT value 10^6 too large, so it must refuse the file by its version; this
     // build rescales an older file on restore.
-    migrationCount: 60,
+    // Through 0060_add_history_backfill_cursor, a nullable column riding inside the settings
+    // row (`historyBackfillCursor`): where the history backfill resumes on this device. An older
+    // build restoring a file that carries it drops the key; this build keeps its live value and
+    // ignores the file's, so a file without it restores the same, and it needed no bump (a
+    // bump would make an older build refuse every new file).
+    migrationCount: 61,
   };
 
   it('has a version decision for every migration', () => {

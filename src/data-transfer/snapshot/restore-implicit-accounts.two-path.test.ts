@@ -77,6 +77,19 @@ const MIGRATION_0058_SQL = readFileSync(
   'utf8',
 );
 
+const HISTORY_BACKFILL_CURSOR_SQL = readFileSync(
+  join(
+    __dirname,
+    '..',
+    '..',
+    '..',
+    'drizzle',
+    'migrations',
+    '0060_add_history_backfill_cursor.sql',
+  ),
+  'utf8',
+);
+
 const databaseBefore0050 = (): DatabaseSync => {
   const target = new DatabaseSync(':memory:');
 
@@ -93,6 +106,7 @@ const databaseBefore0050 = (): DatabaseSync => {
   target.exec(MIGRATION_0056_SQL);
   target.exec(MIGRATION_0057_SQL);
   target.exec(MIGRATION_0058_SQL);
+  target.exec(HISTORY_BACKFILL_CURSOR_SQL);
   target.exec('PRAGMA foreign_keys = ON;');
 
   return target;

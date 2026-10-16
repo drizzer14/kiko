@@ -68,6 +68,19 @@ const MIGRATION_0058_SQL = readFileSync(
   'utf8',
 );
 
+const HISTORY_BACKFILL_CURSOR_SQL = readFileSync(
+  join(
+    __dirname,
+    '..',
+    '..',
+    '..',
+    'drizzle',
+    'migrations',
+    '0060_add_history_backfill_cursor.sql',
+  ),
+  'utf8',
+);
+
 type LegacyOverride = {
   normalizedName: string;
   category: string;
@@ -294,6 +307,7 @@ describe('restoring a .kiko file this build exported', () => {
     exported.exec(MIGRATION_0056_SQL.split('--> statement-breakpoint').join('\n'));
     exported.exec(MIGRATION_0057_SQL);
     exported.exec(MIGRATION_0058_SQL);
+    exported.exec(HISTORY_BACKFILL_CURSOR_SQL);
 
     await restoreExportOf(exported);
 

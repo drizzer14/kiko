@@ -13,4 +13,6 @@ export const KEPT_FROM_LIVE_ON_RESTORE = [
   // When iOS first allowed notifications on this device: the reminders'
   // ignored count starts from it.
   'notificationsDeliverableSince',
+  // Where this device's history backfill resumes; a file carries another device's position.
+  'historyBackfillCursor',
 ] as const satisfies readonly (keyof SettingsRow)[];

@@ -493,6 +493,7 @@ type LiveDeviceSettings = Pick<SettingsRow, (typeof KEPT_FROM_LIVE_ON_RESTORE)[n
 const NO_LIVE_DEVICE_SETTINGS = {
   lockEnabled: false,
   notificationsDeliverableSince: null,
+  historyBackfillCursor: null,
 } satisfies LiveDeviceSettings;
 
 const keptFromLive = (row: SettingsRow): LiveDeviceSettings =>

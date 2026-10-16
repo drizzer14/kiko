@@ -568,6 +568,12 @@ export const settings = sqliteTable('settings', {
   // shipped it, so the column stays rather than a new migration dropping it, and a backup still
   // carries and restores it. A restored backup without the key keeps the default `[]`.
   dismissedTips: text('dismissed_tips', { mode: 'json' }).$type<string[]>().notNull().default([]),
+  // Where the next history backfill starts requesting crypto history: the code of the first coin
+  // whose request failed in the last run, or NULL when none did. CoinGecko's free tier answers
+  // 429 after a short burst, so the run order rotates from here and every held coin is reached
+  // within a bounded number of runs. It belongs to this device, so a restore keeps the live
+  // value and never reads the file's.
+  historyBackfillCursor: text('history_backfill_cursor'),
 });
 
 export type SettingsRow = typeof settings.$inferSelect;

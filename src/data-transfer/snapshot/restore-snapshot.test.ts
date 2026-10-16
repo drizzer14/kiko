@@ -173,7 +173,12 @@ describe('restoreDataSnapshot', () => {
       'settings',
     ]);
     expect(insertedRows.settings).toEqual([
-      { id: 1, lockEnabled: false, notificationsDeliverableSince: null },
+      {
+        id: 1,
+        lockEnabled: false,
+        notificationsDeliverableSince: null,
+        historyBackfillCursor: null,
+      },
     ]);
     expect(insertedRows.accounts).toEqual([{ id: 'a1' }]);
     // `{ id: 'h1' }` carries no `balanceSetAt` key — the legacy-backfill path
@@ -1193,6 +1198,7 @@ describe('restoreDataSnapshot', () => {
           dedupKeysUpgraded: true,
           lockEnabled: false,
           notificationsDeliverableSince: null,
+          historyBackfillCursor: null,
         },
       ]);
     });
@@ -1217,6 +1223,7 @@ describe('restoreDataSnapshot', () => {
           dedupKeysUpgraded: true,
           lockEnabled: false,
           notificationsDeliverableSince: null,
+          historyBackfillCursor: null,
         },
       ]);
     });
@@ -1244,6 +1251,7 @@ describe('restoreDataSnapshot', () => {
           ...alreadyMigratedSettingsRow,
           lockEnabled: false,
           notificationsDeliverableSince: null,
+          historyBackfillCursor: null,
         },
       ]);
     });
@@ -1303,6 +1311,7 @@ describe('restoreDataSnapshot', () => {
           importTimesRezoned: true,
           lockEnabled: false,
           notificationsDeliverableSince: null,
+          historyBackfillCursor: null,
         },
       ]);
     });
@@ -1330,6 +1339,7 @@ describe('restoreDataSnapshot', () => {
           importTimesRezoned: true,
           lockEnabled: false,
           notificationsDeliverableSince: null,
+          historyBackfillCursor: null,
         },
       ]);
     });
@@ -1359,6 +1369,7 @@ describe('restoreDataSnapshot', () => {
           importTimesRezoned: true,
           lockEnabled: false,
           notificationsDeliverableSince: null,
+          historyBackfillCursor: null,
         },
       ]);
     });
