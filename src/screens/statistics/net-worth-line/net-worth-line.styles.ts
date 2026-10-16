@@ -39,6 +39,15 @@ export const styles = StyleSheet.create((theme) => ({
   plot: {
     flex: 1,
   },
+  // The scrub line's label: pinned to the plot's top, its `left` set inline from the measured
+  // plot width (the line moves under the finger), on the card surface so it stays readable over
+  // the line and the gridlines.
+  scrubLabel: {
+    position: 'absolute',
+    top: 0,
+    paddingHorizontal: theme.spacing(1),
+    backgroundColor: theme.colors.surface,
+  },
   // The X time axis row: the SAME two-column shape as `plotRow` above — a
   // fixed-width spacer for the Y-axis label column, then a flex:1 label track
   // that lines up exactly with the SVG plot beside that column. Structuring it as

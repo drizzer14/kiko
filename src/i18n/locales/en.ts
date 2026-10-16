@@ -1337,6 +1337,8 @@ export const en = {
     },
     netWorthLine: {
       loadingHistory: 'Loading history',
+      selectedDay: '{{amount}}, {{date}}',
+      chartAccessibilityLabel: 'Net worth by day',
     },
     pieChart: {
       emptyDefault: 'No accounts to show',

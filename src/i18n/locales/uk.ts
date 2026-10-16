@@ -1154,6 +1154,8 @@ export const uk: typeof en = {
     },
     netWorthLine: {
       loadingHistory: 'Завантаження історії',
+      selectedDay: '{{amount}}, {{date}}',
+      chartAccessibilityLabel: 'Капітал за днями',
     },
     pieChart: {
       emptyDefault: 'Створіть рахунок аби побачити його тут',
