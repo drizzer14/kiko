@@ -141,6 +141,29 @@ const launch = async (input: LaunchInput) => {
   return either<unknown, BackfillStatus>(() => runBackfill(deps));
 };
 
+// Successive launches over the same persisted data, each with its own overrides.
+const launchAll = async (base: LaunchInput, steps: Partial<LaunchInput>[]): Promise<void> => {
+  for (const step of steps) {
+    await launch({ ...base, ...step });
+  }
+};
+
+const fiatBase = (data: Persisted, extra: Partial<LaunchInput> = {}): LaunchInput => ({
+  data,
+  held: [],
+  fiat: ['EUR', 'USD'],
+  earliestDay: daysAgo(300),
+  ...extra,
+});
+
+const coinBase = (data: Persisted, coinStartsAt: LaunchInput['coinStartsAt']): LaunchInput => ({
+  data,
+  held: ['BTC', 'SOL'],
+  fiat: ['USD'],
+  earliestDay: daysAgo(300),
+  coinStartsAt,
+});
+
 describe('runBackfill — filling the earlier days of a span that moved earlier, across a restart', () => {
   it('fills the earlier days of the coins a rate-limited run left behind', async () => {
     const data = persisted([
@@ -215,40 +238,31 @@ describe('runBackfill — filling the earlier days of a span that moved earlier,
     const lateData = () =>
       persisted([...rowsBetween('USD', 100, 0), ...rowsBetween('EUR', 100, 0)]);
 
+    const lateBase = (data: Persisted) =>
+      fiatBase(data, { earliestDay: start, nbuStartsAt: { EUR: quotedFrom } });
+
     it('is fetched once over two launches and counts as complete for that span start', async () => {
       const data = lateData();
-      const base = {
-        data,
-        held: [],
-        fiat: ['EUR' as Currency, 'USD' as Currency],
-        earliestDay: start,
-        nbuStartsAt: { EUR: quotedFrom },
-      };
       const nbuCalls: Currency[][] = [];
 
-      await launch({ ...base, wholeSpan: true, nbuCalls });
+      await launchAll({ ...lateBase(data), nbuCalls }, [{ wholeSpan: true }]);
 
       expect(firstStoredDay(data.stored, 'EUR')).toBe(quotedFrom);
       expect(data.settled.value).toEqual({ EUR: { start, firstDay: quotedFrom } });
 
-      await launch({ ...base, nbuCalls });
-      await launch({ ...base, nbuCalls });
+      await launchAll({ ...lateBase(data), nbuCalls }, [{}, {}]);
 
       expect(nbuCalls).toHaveLength(1);
     });
 
     it('is fetched again when the span starts earlier than the one it settled for', async () => {
       const data = lateData();
-      const base = {
-        data,
-        held: [],
-        fiat: ['EUR' as Currency, 'USD' as Currency],
-        nbuStartsAt: { EUR: quotedFrom },
-      };
       const nbuCalls: Currency[][] = [];
 
-      await launch({ ...base, earliestDay: start, wholeSpan: true, nbuCalls });
-      await launch({ ...base, earliestDay: daysAgo(340), nbuCalls });
+      await launchAll({ ...lateBase(data), nbuCalls }, [
+        { wholeSpan: true },
+        { earliestDay: daysAgo(340) },
+      ]);
 
       expect(nbuCalls).toHaveLength(2);
       expect(data.settled.value).toEqual({ EUR: { start: daysAgo(340), firstDay: quotedFrom } });
@@ -258,20 +272,13 @@ describe('runBackfill — filling the earlier days of a span that moved earlier,
     // currency settled with nothing stored.
     it('is fetched again on the next launch when the rows could not be stored', async () => {
       const data = lateData();
-      const base = {
-        data,
-        held: [],
-        fiat: ['EUR' as Currency, 'USD' as Currency],
-        earliestDay: start,
-        nbuStartsAt: { EUR: quotedFrom },
-      };
       const nbuCalls: Currency[][] = [];
 
-      await launch({ ...base, wholeSpan: true, failUpsert: true, nbuCalls });
+      await launchAll({ ...lateBase(data), nbuCalls }, [{ wholeSpan: true, failUpsert: true }]);
 
       expect(data.settled.value).toEqual({});
 
-      await launch({ ...base, nbuCalls });
+      await launchAll({ ...lateBase(data), nbuCalls }, [{}]);
 
       expect(nbuCalls).toHaveLength(2);
       expect(firstStoredDay(data.stored, 'EUR')).toBe(quotedFrom);
@@ -280,18 +287,11 @@ describe('runBackfill — filling the earlier days of a span that moved earlier,
     // A restore keeps this device's marks but brings the file's rows, which may start later than
     // the first day the mark remembers.
     it('is fetched again when a restore brought rows that start after its first answered day', async () => {
-      const data = persisted([...rowsBetween('USD', 100, 0), ...rowsBetween('EUR', 100, 0)]);
+      const data = lateData();
       data.settled.value = { EUR: { start, firstDay: quotedFrom } };
       const nbuCalls: Currency[][] = [];
 
-      await launch({
-        data,
-        held: [],
-        fiat: ['EUR' as Currency, 'USD' as Currency],
-        earliestDay: start,
-        nbuStartsAt: { EUR: quotedFrom },
-        nbuCalls,
-      });
+      await launchAll({ ...lateBase(data), nbuCalls }, [{}]);
 
       expect(nbuCalls).toHaveLength(1);
       expect(firstStoredDay(data.stored, 'EUR')).toBe(quotedFrom);
@@ -302,64 +302,61 @@ describe('runBackfill — filling the earlier days of a span that moved earlier,
     const eurCalls = (nbuCalls: Currency[][]) =>
       nbuCalls.filter((currencies) => currencies.includes('EUR')).length;
 
-    const emptyBase = (data: Persisted) => ({
-      data,
-      held: [],
-      fiat: ['EUR' as Currency, 'USD' as Currency],
-      earliestDay: daysAgo(300),
-      nbuStartsAt: { EUR: TODAY + 30 * DAY_MS },
-    });
+    const emptyBase = (data: Persisted) =>
+      fiatBase(data, { nbuStartsAt: { EUR: TODAY + 30 * DAY_MS } });
+
+    const noEurRows = () => persisted([...rowsBetween('USD', 100, 0)]);
 
     it('is asked once over two launches when it has no rows, and the mark carries the check day', async () => {
-      const data = persisted([...rowsBetween('USD', 100, 0)]);
+      const data = noEurRows();
       const nbuCalls: Currency[][] = [];
 
-      await launch({ ...emptyBase(data), wholeSpan: true, nbuCalls });
+      await launchAll({ ...emptyBase(data), nbuCalls }, [{ wholeSpan: true }]);
 
       expect(data.settled.value).toEqual({
         EUR: { start: daysAgo(300), firstDay: null, checkedOn: TODAY },
       });
 
-      await launch({ ...emptyBase(data), nbuCalls });
-      await launch({ ...emptyBase(data), nbuCalls });
+      await launchAll({ ...emptyBase(data), nbuCalls }, [{}, {}]);
 
       expect(eurCalls(nbuCalls)).toBe(1);
     });
 
     it('is not asked again within 7 days, over two launches', async () => {
-      const data = persisted([...rowsBetween('USD', 100, 0)]);
+      const data = noEurRows();
       const nbuCalls: Currency[][] = [];
 
-      await launch({ ...emptyBase(data), wholeSpan: true, nbuCalls });
-      await launch({ ...emptyBase(data), today: TODAY + 6 * DAY_MS, nbuCalls });
-      await launch({ ...emptyBase(data), today: TODAY + 6 * DAY_MS, nbuCalls });
+      await launchAll({ ...emptyBase(data), nbuCalls }, [
+        { wholeSpan: true },
+        { today: TODAY + 6 * DAY_MS },
+        { today: TODAY + 6 * DAY_MS },
+      ]);
 
       expect(eurCalls(nbuCalls)).toBe(1);
     });
 
     it('gets its rows on the first launch after 7 days once NBU starts quoting it', async () => {
-      const data = persisted([...rowsBetween('USD', 100, 0)]);
+      const data = noEurRows();
       const nbuCalls: Currency[][] = [];
 
-      await launch({ ...emptyBase(data), wholeSpan: true, nbuCalls });
-      await launch({
-        ...emptyBase(data),
-        today: TODAY + 7 * DAY_MS,
-        nbuStartsAt: { EUR: daysAgo(250) },
-        nbuCalls,
-      });
+      await launchAll({ ...emptyBase(data), nbuCalls }, [
+        { wholeSpan: true },
+        { today: TODAY + 7 * DAY_MS, nbuStartsAt: { EUR: daysAgo(250) } },
+      ]);
 
       expect(eurCalls(nbuCalls)).toBe(2);
       expect(firstStoredDay(data.stored, 'EUR')).toBe(daysAgo(250));
     });
 
     it('is asked only once more after 7 days when it is still empty, and the mark is re-stamped', async () => {
-      const data = persisted([...rowsBetween('USD', 100, 0)]);
+      const data = noEurRows();
       const nbuCalls: Currency[][] = [];
 
-      await launch({ ...emptyBase(data), wholeSpan: true, nbuCalls });
-      await launch({ ...emptyBase(data), today: TODAY + 8 * DAY_MS, nbuCalls });
-      await launch({ ...emptyBase(data), today: TODAY + 9 * DAY_MS, nbuCalls });
+      await launchAll({ ...emptyBase(data), nbuCalls }, [
+        { wholeSpan: true },
+        { today: TODAY + 8 * DAY_MS },
+        { today: TODAY + 9 * DAY_MS },
+      ]);
 
       expect(eurCalls(nbuCalls)).toBe(2);
       expect(data.settled.value.EUR).toEqual({
@@ -372,14 +369,15 @@ describe('runBackfill — filling the earlier days of a span that moved earlier,
     // An empty answer for a currency that already has rows says nothing about new days.
     it('is still fetched for new days when it has rows', async () => {
       const data = persisted([...rowsBetween('USD', 100, 0), ...rowsBetween('EUR', 100, 0)]);
-      const base = { ...emptyBase(data), nbuStartsAt: { EUR: TODAY + 30 * DAY_MS } };
       const nbuCalls: Currency[][] = [];
 
-      await launch({ ...base, wholeSpan: true, nbuCalls });
+      await launchAll({ ...emptyBase(data), nbuCalls }, [{ wholeSpan: true }]);
 
       expect(data.settled.value).toEqual({});
 
-      await launch({ ...base, nbuStartsAt: {}, today: TODAY + DAY_MS, nbuCalls });
+      await launchAll({ ...emptyBase(data), nbuCalls }, [
+        { nbuStartsAt: {}, today: TODAY + DAY_MS },
+      ]);
 
       expect(eurCalls(nbuCalls)).toBe(2);
       expect(
@@ -388,53 +386,37 @@ describe('runBackfill — filling the earlier days of a span that moved earlier,
     });
   });
 
-  describe('a coin CoinGecko answers with nothing', () => {
-    it('is asked once over two launches when it has no rows', async () => {
-      const data = persisted([...rowsBetween('USD', 100, 0), ...rowsBetween('BTC', 100, 0)]);
-      const base = {
-        data,
-        held: ['BTC' as CryptoCurrency, 'SOL' as CryptoCurrency],
-        fiat: ['USD' as Currency],
-        earliestDay: daysAgo(300),
-        coinStartsAt: { SOL: TODAY + 30 * DAY_MS },
-      };
-      const requested: CryptoCurrency[][] = [];
-
-      await launch({ ...base, wholeSpan: true, requested });
-      await launch({ ...base, requested });
-      await launch({ ...base, requested });
-
-      expect(requested).toEqual([['BTC', 'SOL']]);
-      expect(data.settled.value.SOL).toEqual({
-        start: daysAgo(300),
-        firstDay: null,
-        checkedOn: TODAY,
-      });
-    });
-  });
-
-  describe('a coin CoinGecko lists after the span starts', () => {
+  // SOL answers with nothing (no rows), or from a day after the span start (rows from 100 days
+  // back): either way it costs one whole-span run over two launches, not one per launch.
+  describe.each([
+    [
+      'a coin CoinGecko answers with nothing',
+      TODAY + 30 * DAY_MS,
+      ['BTC'],
+      { firstDay: null, checkedOn: TODAY },
+    ],
+    [
+      'a coin CoinGecko lists after the span starts',
+      daysAgo(150),
+      ['BTC', 'SOL'],
+      { firstDay: daysAgo(150) },
+    ],
+  ] as const)('%s', (_name, startsAt, withRows, mark) => {
     it('causes one whole-span run over two launches', async () => {
       const data = persisted([
         ...rowsBetween('USD', 100, 0),
-        ...rowsBetween('BTC', 100, 0),
-        ...rowsBetween('SOL', 100, 0),
+        ...withRows.flatMap((coin) => rowsBetween(coin, 100, 0)),
       ]);
-      const base = {
-        data,
-        held: ['BTC' as CryptoCurrency, 'SOL' as CryptoCurrency],
-        fiat: ['USD' as Currency],
-        earliestDay: daysAgo(300),
-        coinStartsAt: { SOL: daysAgo(150) },
-      };
       const requested: CryptoCurrency[][] = [];
 
-      await launch({ ...base, wholeSpan: true, requested });
-      await launch({ ...base, requested });
-      await launch({ ...base, requested });
+      await launchAll({ ...coinBase(data, { SOL: startsAt }), requested }, [
+        { wholeSpan: true },
+        {},
+        {},
+      ]);
 
       expect(requested).toEqual([['BTC', 'SOL']]);
-      expect(data.settled.value.SOL).toEqual({ start: daysAgo(300), firstDay: daysAgo(150) });
+      expect(data.settled.value.SOL).toEqual({ start: daysAgo(300), ...mark });
     });
   });
 });
