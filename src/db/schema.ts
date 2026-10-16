@@ -574,7 +574,7 @@ export const settings = sqliteTable('settings', {
   // bounded number of runs; and, per fiat currency, the span start it was fetched from without
   // finding an earlier day. NULL when there is nothing to keep. It belongs to this device, so a
   // restore keeps the live value and never reads the file's.
-  historyBackfillCursor: text('history_backfill_cursor'),
+  historyBackfillState: text('history_backfill_state'),
 });
 
 export type SettingsRow = typeof settings.$inferSelect;

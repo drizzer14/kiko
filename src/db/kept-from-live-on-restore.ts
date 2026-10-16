@@ -14,5 +14,5 @@ export const KEPT_FROM_LIVE_ON_RESTORE = [
   // ignored count starts from it.
   'notificationsDeliverableSince',
   // Where this device's history backfill resumes; a file carries another device's position.
-  'historyBackfillCursor',
+  'historyBackfillState',
 ] as const satisfies readonly (keyof SettingsRow)[];

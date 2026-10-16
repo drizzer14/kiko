@@ -133,7 +133,7 @@ export const settingsRepo = {
   /** The stored history backfill state as text; `parseHistoryBackfillState` reads it. */
   historyBackfillStateQuery: () =>
     database
-      .select({ historyBackfillCursor: settings.historyBackfillCursor })
+      .select({ historyBackfillState: settings.historyBackfillState })
       .from(settings)
       .where(eq(settings.id, SETTINGS_ID)),
   /**
@@ -144,14 +144,14 @@ export const settingsRepo = {
   changeHistoryBackfillState: (change: (state: HistoryBackfillState) => HistoryBackfillState) =>
     write(async (databaseTransaction) => {
       const rows = await databaseTransaction
-        .select({ historyBackfillCursor: settings.historyBackfillCursor })
+        .select({ historyBackfillState: settings.historyBackfillState })
         .from(settings)
         .where(eq(settings.id, SETTINGS_ID));
-      const state = parseHistoryBackfillState(rows[0]?.historyBackfillCursor ?? null);
+      const state = parseHistoryBackfillState(rows[0]?.historyBackfillState ?? null);
 
       await databaseTransaction
         .update(settings)
-        .set({ historyBackfillCursor: serializeHistoryBackfillState(change(state)) })
+        .set({ historyBackfillState: serializeHistoryBackfillState(change(state)) })
         .where(eq(settings.id, SETTINGS_ID));
     }),
   setNotificationsDeliverableSince: (deliverableSince: number | null) =>

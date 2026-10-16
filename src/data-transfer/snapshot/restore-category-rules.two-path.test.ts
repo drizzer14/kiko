@@ -69,15 +69,7 @@ const MIGRATION_0058_SQL = readFileSync(
 );
 
 const HISTORY_BACKFILL_CURSOR_SQL = readFileSync(
-  join(
-    __dirname,
-    '..',
-    '..',
-    '..',
-    'drizzle',
-    'migrations',
-    '0060_add_history_backfill_cursor.sql',
-  ),
+  join(__dirname, '..', '..', '..', 'drizzle', 'migrations', '0060_add_history_backfill_state.sql'),
   'utf8',
 );
 

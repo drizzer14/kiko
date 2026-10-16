@@ -40,7 +40,7 @@ export type BackfillStatus = {
  * The backfill is resumable WITHOUT any new persistence: the last-backfilled day
  * is derived from the history table itself (the maximum stored `day`), so the
  * caller reads `rateHistoryRepo.historyRowsQuery()` and passes it here. The one thing it does
- * persist is where the crypto requests start (`historyBackfillCursor`), so a provider that cuts
+ * persist is where the crypto requests start (`historyBackfillState`), so a provider that cuts
  * every run short cannot keep the same coins waiting. Fetch modules and the repo write are
  * injectable for tests.
  */
@@ -93,14 +93,14 @@ export type BackfillDeps = {
    */
   knownEmptyCurrencies?: Set<Currency>;
   /**
-   * Where this device's crypto history requests start (`settings.historyBackfillCursor`), and the
+   * Where this device's crypto history requests start (`settings.historyBackfillState`), and the
    * writer for the next run's start. Defaults to the settings row; a test passes its own store.
    */
   readHistoryBackfillCursor?: () => Promise<string | null>;
   writeHistoryBackfillCursor?: (cursor: string | null) => Promise<void>;
   /**
    * The fiat currencies already fetched from a span start without finding an earlier day, with
-   * that start (`settings.historyBackfillCursor` holds them beside the coin cursor), and the
+   * that start (`settings.historyBackfillState` holds them beside the coin cursor), and the
    * writer for them. Defaults to the settings row; a test passes its own store.
    */
   readSettledFiatSpanStarts?: () => Promise<SettledSpanStarts>;
@@ -126,7 +126,7 @@ const youngCurrenciesThisRun = new Set<Currency>();
 // its own part and keeps the other.
 const readStoredState = async (): Promise<HistoryBackfillState> =>
   parseHistoryBackfillState(
-    (await settingsRepo.historyBackfillStateQuery()).at(0)?.historyBackfillCursor ?? null,
+    (await settingsRepo.historyBackfillStateQuery()).at(0)?.historyBackfillState ?? null,
   );
 
 const readStoredCursor = async (): Promise<string | null> => (await readStoredState()).cursor;

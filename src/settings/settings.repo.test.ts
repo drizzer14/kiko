@@ -115,7 +115,7 @@ describe('settingsRepo', () => {
   it('builds a query that reads only the history backfill state of the single settings row', () => {
     const { sql } = settingsRepo.historyBackfillStateQuery().toSQL();
 
-    expect(sql).toContain('history_backfill_cursor');
+    expect(sql).toContain('history_backfill_state');
     expect(sql).not.toContain('base_currency');
   });
 
@@ -124,21 +124,21 @@ describe('settingsRepo', () => {
       const store: Record<string, unknown>[] = [
         {
           id: 1,
-          historyBackfillCursor: JSON.stringify({ cursor: null, settledFrom: { EUR: 5 } }),
+          historyBackfillState: JSON.stringify({ cursor: null, settledFrom: { EUR: 5 } }),
         },
       ];
       mockDatabaseTransaction = makeSettingsRowDatabaseTransaction(store);
 
       await settingsRepo.changeHistoryBackfillState((state) => ({ ...state, cursor: 'XRP' }));
 
-      expect(parseHistoryBackfillState(store[0].historyBackfillCursor as string)).toEqual({
+      expect(parseHistoryBackfillState(store[0].historyBackfillState as string)).toEqual({
         cursor: 'XRP',
         settledFrom: { EUR: 5 },
       });
     });
 
     it('writes a settled span start and keeps the coin cursor already stored', async () => {
-      const store: Record<string, unknown>[] = [{ id: 1, historyBackfillCursor: 'XRP' }];
+      const store: Record<string, unknown>[] = [{ id: 1, historyBackfillState: 'XRP' }];
       mockDatabaseTransaction = makeSettingsRowDatabaseTransaction(store);
 
       await settingsRepo.changeHistoryBackfillState((state) => ({
@@ -146,19 +146,19 @@ describe('settingsRepo', () => {
         settledFrom: { ...state.settledFrom, EUR: 7 },
       }));
 
-      expect(parseHistoryBackfillState(store[0].historyBackfillCursor as string)).toEqual({
+      expect(parseHistoryBackfillState(store[0].historyBackfillState as string)).toEqual({
         cursor: 'XRP',
         settledFrom: { EUR: 7 },
       });
     });
 
     it('clears the column when the change leaves nothing to keep', async () => {
-      const store: Record<string, unknown>[] = [{ id: 1, historyBackfillCursor: 'XRP' }];
+      const store: Record<string, unknown>[] = [{ id: 1, historyBackfillState: 'XRP' }];
       mockDatabaseTransaction = makeSettingsRowDatabaseTransaction(store);
 
       await settingsRepo.changeHistoryBackfillState(() => EMPTY_HISTORY_BACKFILL_STATE);
 
-      expect(store[0].historyBackfillCursor).toBeNull();
+      expect(store[0].historyBackfillState).toBeNull();
     });
   });
 

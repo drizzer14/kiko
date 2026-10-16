@@ -3,7 +3,7 @@ import { bifoldr, eitherSync } from 'fnts/either';
 import { type Currency, isCurrency } from '@kiko/currency/currency';
 
 /**
- * What the history backfill keeps between launches, in `settings.historyBackfillCursor`.
+ * What the history backfill keeps between launches, in `settings.historyBackfillState`.
  *
  * - `cursor`: the code of the coin the next run starts requesting crypto history with.
  * - `settledFrom`: per fiat currency, the span start (a UTC-midnight day) its history was fetched
