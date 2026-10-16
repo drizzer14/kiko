@@ -4,7 +4,7 @@ import '@kiko/design-system/unistyles';
 // Real i18n init (side effect), same as App.tsx, so the search placeholder's
 // `t(...)` resolves under test the same way it does at runtime.
 import '@kiko/i18n/init';
-import { fiatCurrencyOptions } from '@kiko/currency/currency';
+import { cryptoCurrencyOptions, fiatCurrencyOptions } from '@kiko/currency/currency';
 
 import CurrencyField from '.';
 import type { CurrencyFieldProps } from './currency-field.props';
@@ -231,17 +231,32 @@ describe('CurrencyField', () => {
     expect(rows[1]).toHaveProp('accessibilityLabel', 'AOA Angolan Kwanza');
   });
 
-  it('groups crypto (BTC, ETH, USDT) after every fiat currency, sorted alphabetically within itself', async () => {
-    const utils = await renderCurrencyField({ options: ['USDT', 'UAH', 'ETH', 'BTC'] });
+  it('groups every curated coin after every fiat currency, sorted alphabetically within itself', async () => {
+    const utils = await renderCurrencyField({ options: [...cryptoCurrencyOptions, 'UAH'] });
     await open(utils);
 
     const rows = utils.getAllByTestId(/^currency-option-/);
     const labels = rows.map((row) => row.props.accessibilityLabel as string);
 
-    // The lone fiat currency (UAH) comes first, then the crypto trio —
-    // alphabetically by localized name (Bitcoin, Ethereum, Tether), never in
-    // the `options` array's own order.
-    expect(labels).toEqual(['UAH Ukrainian Hryvnia', 'BTC Bitcoin', 'ETH Ethereum', 'USDT Tether']);
+    // The list mounts its first 15 rows only: the lone fiat currency (UAH) first, then the
+    // first 14 coins by localized name, never in the `options` array's own order.
+    expect(labels).toEqual([
+      'UAH Ukrainian Hryvnia',
+      'AVAX Avalanche',
+      'BTC Bitcoin',
+      'BCH Bitcoin Cash',
+      'BNB BNB',
+      'ADA Cardano',
+      'CGPT ChainGPT',
+      'LINK Chainlink',
+      'DAI Dai',
+      'DOGE Dogecoin',
+      'ETH Ethereum',
+      'FDUSD First Digital USD',
+      'HYPE Hyperliquid',
+      'LTC Litecoin',
+      'NEAR NEAR Protocol',
+    ]);
   });
 
   it('lists the crypto group before the fiat group when cryptoFirst is set', async () => {
