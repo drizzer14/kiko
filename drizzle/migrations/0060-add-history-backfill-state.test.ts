@@ -1,4 +1,4 @@
-// drizzle/migrations/0060-add-history-backfill-cursor.test.ts
+// drizzle/migrations/0060-add-history-backfill-state.test.ts
 //
 // Runs the shipped SQL on a real `node:sqlite` engine seeded as a device's
 // database stood before it, so the column and its nullability are proven on the
@@ -8,7 +8,7 @@ import { readFileSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
 import { applyMigrationsThrough } from '@kiko/test-support/real-sqlite';
 
-const MIGRATION_SQL = readFileSync(join(__dirname, '0060_add_history_backfill_cursor.sql'), 'utf8');
+const MIGRATION_SQL = readFileSync(join(__dirname, '0060_add_history_backfill_state.sql'), 'utf8');
 
 type Column = { name: string; type: string; notnull: number; dflt_value: string | null };
 
@@ -32,27 +32,27 @@ const databaseThrough0059 = (): DatabaseSync => {
 const settingsColumns = (database: DatabaseSync): Column[] =>
   database.prepare("SELECT * FROM pragma_table_info('settings')").all() as Column[];
 
-const cursorOf = (database: DatabaseSync, id: number): string | null =>
+const stateOf = (database: DatabaseSync, id: number): string | null =>
   (
     database
-      .prepare('SELECT history_backfill_cursor AS value FROM settings WHERE id = ?')
+      .prepare('SELECT history_backfill_state AS value FROM settings WHERE id = ?')
       .get(id) as {
       value: string | null;
     }
   ).value;
 
-describe('migration 0060: the history backfill cursor column', () => {
+describe('migration 0060: the history backfill state column', () => {
   it('adds the column', () => {
     const database = databaseThrough0059();
 
     expect(settingsColumns(database).map((column) => column.name)).not.toContain(
-      'history_backfill_cursor',
+      'history_backfill_state',
     );
 
     applyMigration(database);
 
     expect(settingsColumns(database).map((column) => column.name)).toContain(
-      'history_backfill_cursor',
+      'history_backfill_state',
     );
   });
 
@@ -61,7 +61,7 @@ describe('migration 0060: the history backfill cursor column', () => {
 
     applyMigration(database);
 
-    const column = settingsColumns(database).find(({ name }) => name === 'history_backfill_cursor');
+    const column = settingsColumns(database).find(({ name }) => name === 'history_backfill_state');
 
     expect(column).toMatchObject({ type: 'TEXT', notnull: 0, dflt_value: null });
   });
@@ -71,15 +71,15 @@ describe('migration 0060: the history backfill cursor column', () => {
 
     applyMigration(database);
 
-    expect(cursorOf(database, 1)).toBeNull();
+    expect(stateOf(database, 1)).toBeNull();
   });
 
-  it('keeps a stored coin code', () => {
+  it('keeps a stored state text', () => {
     const database = databaseThrough0059();
 
     applyMigration(database);
-    database.prepare("UPDATE settings SET history_backfill_cursor = 'XRP' WHERE id = 1").run();
+    database.prepare("UPDATE settings SET history_backfill_state = 'XRP' WHERE id = 1").run();
 
-    expect(cursorOf(database, 1)).toBe('XRP');
+    expect(stateOf(database, 1)).toBe('XRP');
   });
 });

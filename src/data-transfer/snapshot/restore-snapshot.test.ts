@@ -177,7 +177,7 @@ describe('restoreDataSnapshot', () => {
         id: 1,
         lockEnabled: false,
         notificationsDeliverableSince: null,
-        historyBackfillCursor: null,
+        historyBackfillState: null,
       },
     ]);
     expect(insertedRows.accounts).toEqual([{ id: 'a1' }]);
@@ -1198,7 +1198,7 @@ describe('restoreDataSnapshot', () => {
           dedupKeysUpgraded: true,
           lockEnabled: false,
           notificationsDeliverableSince: null,
-          historyBackfillCursor: null,
+          historyBackfillState: null,
         },
       ]);
     });
@@ -1223,7 +1223,7 @@ describe('restoreDataSnapshot', () => {
           dedupKeysUpgraded: true,
           lockEnabled: false,
           notificationsDeliverableSince: null,
-          historyBackfillCursor: null,
+          historyBackfillState: null,
         },
       ]);
     });
@@ -1251,7 +1251,7 @@ describe('restoreDataSnapshot', () => {
           ...alreadyMigratedSettingsRow,
           lockEnabled: false,
           notificationsDeliverableSince: null,
-          historyBackfillCursor: null,
+          historyBackfillState: null,
         },
       ]);
     });
@@ -1311,7 +1311,7 @@ describe('restoreDataSnapshot', () => {
           importTimesRezoned: true,
           lockEnabled: false,
           notificationsDeliverableSince: null,
-          historyBackfillCursor: null,
+          historyBackfillState: null,
         },
       ]);
     });
@@ -1339,7 +1339,7 @@ describe('restoreDataSnapshot', () => {
           importTimesRezoned: true,
           lockEnabled: false,
           notificationsDeliverableSince: null,
-          historyBackfillCursor: null,
+          historyBackfillState: null,
         },
       ]);
     });
@@ -1369,7 +1369,7 @@ describe('restoreDataSnapshot', () => {
           importTimesRezoned: true,
           lockEnabled: false,
           notificationsDeliverableSince: null,
-          historyBackfillCursor: null,
+          historyBackfillState: null,
         },
       ]);
     });

@@ -655,14 +655,10 @@ export const holdingsRepo = {
    * `open-currencies-gate.ts`): a closed holding still needs its own
    * `X:UAH` history rows for the net-worth line's past buckets, so this
    * query has no `closedAt`/archived-account filter at all, unlike
-   * `openCurrenciesQuery` above. Ordered by code: the backfill rotates through the
-   * held coins from a stored cursor, which only means something over one fixed order.
+   * `openCurrenciesQuery` above.
    */
   historyCurrenciesQuery: () =>
-    database
-      .selectDistinct({ currency: holdings.currency })
-      .from(holdings)
-      .orderBy(asc(holdings.currency)),
+    database.selectDistinct({ currency: holdings.currency }).from(holdings),
   /**
    * Every OPEN loan holding — the loan-payment matcher's own gate query
    * (`src/loans/payment-matcher/`, `src/loans/use-loan-auto-link/`): it reads

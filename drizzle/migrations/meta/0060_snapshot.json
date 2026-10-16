@@ -809,8 +809,8 @@
           "autoincrement": false,
           "default": "'[]'"
         },
-        "history_backfill_cursor": {
-          "name": "history_backfill_cursor",
+        "history_backfill_state": {
+          "name": "history_backfill_state",
           "type": "text",
           "primaryKey": false,
           "notNull": false,

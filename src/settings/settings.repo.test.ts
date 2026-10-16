@@ -15,6 +15,7 @@ import { database } from '@kiko/db';
 import type { SavedColumnMapping } from '@kiko/statement-import/column-mapping';
 
 import { isReminderOfferDismissed, settingsRepo } from './settings.repo';
+import { EMPTY_HISTORY_BACKFILL_STATE, parseHistoryBackfillState } from './history-backfill-state';
 
 /**
  * A fake `write`-transaction handle backed by a plain array, standing in for
@@ -111,23 +112,71 @@ describe('settingsRepo', () => {
     expect(captured.whereCalled).toBe(true);
   });
 
-  it('builds a query that reads only the history backfill cursor of the single settings row', () => {
-    const { sql } = settingsRepo.historyBackfillCursorQuery().toSQL();
+  it('builds a query that reads only the history backfill state of the single settings row', () => {
+    const { sql } = settingsRepo.historyBackfillStateQuery().toSQL();
 
-    expect(sql).toContain('history_backfill_cursor');
+    expect(sql).toContain('history_backfill_state');
     expect(sql).not.toContain('base_currency');
   });
 
-  it('setHistoryBackfillCursor writes a coin code, and null clears it', async () => {
-    const { captured, databaseTransaction } = captureSetDatabaseTransaction();
-    mockDatabaseTransaction = databaseTransaction;
+  describe('changeHistoryBackfillState', () => {
+    it('writes a cursor and keeps the settled marks already stored', async () => {
+      const store: Record<string, unknown>[] = [
+        {
+          id: 1,
+          historyBackfillState: JSON.stringify({
+            cursor: null,
+            settled: { EUR: { start: 5, firstDay: 6 } },
+          }),
+        },
+      ];
+      mockDatabaseTransaction = makeSettingsRowDatabaseTransaction(store);
 
-    await settingsRepo.setHistoryBackfillCursor('XRP');
-    expect(captured.set).toEqual({ historyBackfillCursor: 'XRP' });
+      await settingsRepo.changeHistoryBackfillState((state) => ({ ...state, cursor: 'XRP' }));
 
-    await settingsRepo.setHistoryBackfillCursor(null);
-    expect(captured.set).toEqual({ historyBackfillCursor: null });
-    expect(captured.whereCalled).toBe(true);
+      expect(parseHistoryBackfillState(store[0].historyBackfillState as string)).toEqual({
+        cursor: 'XRP',
+        settled: { EUR: { start: 5, firstDay: 6 } },
+      });
+    });
+
+    it('clears the column when the change leaves nothing to keep', async () => {
+      const store: Record<string, unknown>[] = [{ id: 1, historyBackfillState: 'XRP' }];
+      mockDatabaseTransaction = makeSettingsRowDatabaseTransaction(store);
+
+      await settingsRepo.changeHistoryBackfillState(() => EMPTY_HISTORY_BACKFILL_STATE);
+
+      expect(store[0].historyBackfillState).toBeNull();
+    });
+  });
+
+  describe('recordSettledHistory', () => {
+    it('adds marks beside the stored ones and the coin cursor, and replaces a mark it overlaps', async () => {
+      const store: Record<string, unknown>[] = [
+        {
+          id: 1,
+          historyBackfillState: JSON.stringify({
+            cursor: 'XRP',
+            settled: { EUR: { start: 5, firstDay: 6 }, GBP: { start: 5, firstDay: 9 } },
+          }),
+        },
+      ];
+      mockDatabaseTransaction = makeSettingsRowDatabaseTransaction(store);
+
+      await settingsRepo.recordSettledHistory({
+        EUR: { start: 2, firstDay: 3 },
+        USD: { start: 2, firstDay: null },
+      });
+
+      expect(parseHistoryBackfillState(store[0].historyBackfillState as string)).toEqual({
+        cursor: 'XRP',
+        settled: {
+          EUR: { start: 2, firstDay: 3 },
+          GBP: { start: 5, firstDay: 9 },
+          USD: { start: 2, firstDay: null },
+        },
+      });
+    });
   });
 
   it('setLanguage updates the single settings row with the chosen language', async () => {

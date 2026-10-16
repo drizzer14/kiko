@@ -37,15 +37,7 @@ const USDT_RESCALE_SQL = readFileSync(
 // The snapshot reader selects the cursor column the later migration adds, so the scale 2 database
 // carries it too (null on the settings row).
 const HISTORY_BACKFILL_CURSOR_SQL = readFileSync(
-  join(
-    __dirname,
-    '..',
-    '..',
-    '..',
-    'drizzle',
-    'migrations',
-    '0060_add_history_backfill_cursor.sql',
-  ),
+  join(__dirname, '..', '..', '..', 'drizzle', 'migrations', '0060_add_history_backfill_state.sql'),
   'utf8',
 );
 

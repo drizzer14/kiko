@@ -236,10 +236,11 @@ string:
   `src/transactions/untracked-counterpart/`) are kept out of the i18n
   catalogue: code-side proper nouns; only the 'Transfer to/from {{name}}'
   sentence (`transactions.transferTo`/`transactions.transferFrom`) is translated.
-  uk writes the network name with a capital in every case form. It is a
-  proper noun beside Monobank and Binance. The uk `PROPER_NOUNS` holds
-  «Біткоїн» and «Біткоїна» today; add any other case form you use (for
-  example «Біткоїну») to that list in the same commit. Also
+  uk writes coin and network brand names in Latin, identical to en
+  (Bitcoin, USDT), never transliterated; the uk coin names are pinned
+  uk = en. The uk proper nouns that keep a capital mid-sentence live in
+  `PROPER_NOUNS` in `uk.casing.test.ts`: read it there, never copy its
+  members into this skill. Also
   acronyms (ISIN, API, CSV, BTC, ISO codes), a unit in
   parentheses cases per the rule of the role it sits inside, and a
   capital letter standing for a user-chosen number ("Every N days" /

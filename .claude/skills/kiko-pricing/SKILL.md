@@ -49,12 +49,15 @@ non-currency `price_points` store.
   (Monobank buy rate, else NBU) — stored as ONE `BTC:UAH` row, always
   `source = 'coingecko'`; no fiat anchor that run (both fiat providers
   failed) means no crypto row at all, exactly as before, until a run
-  with a fiat anchor lands. `ETH`/`USDT` derive the same way.
+  with a fiat anchor lands. Every other coin derives the same way; the
+  coin ids and scales live in `curatedCoins`/`coinScale`
+  (`src/currency/coins/coins.ts`), a stablecoin priced from the market,
+  never 1:1.
 - Store live results in `currencyRates`, one `X:UAH` row per priced
   currency (`buildUahRows`, `rates-refresh.ts`) — never a cross row
   between two non-UAH currencies, since a cross rate resolves at READ
   TIME through `rateBetween` (below). A full Monobank sync writes
-  ~109 rows (106 fiat + 3 crypto), not the ~11,990-row cross join a
+  ~106 fiat rows plus one per curated coin, not the ~11,990-row cross join a
   legacy write once composed (kiko-architecture's "Bulk insert" section).
   Refresh on sync, throttled to respect each provider's own cache
   window — do not poll faster than the upstream cache refreshes.
@@ -160,10 +163,47 @@ shape, never fewer converting buckets on a gap day.
 
 A fiat currency NBU does not quote at all (NBU covers about 40 of the
 107 supported currencies) answers with a fulfilled, EMPTY range —
-never a rejection — so it is recorded in `knownEmptyCurrenciesThisRun`
-like any other never-backfilled currency the provider answered empty
-for, and `buildNetWorthSeries` backs its value flat at the live rate (the seed
-underneath when live lacks it).
+never a rejection — so it gets an empty settled mark (below), and
+`buildNetWorthSeries` backs its value flat at the live rate (the seed
+underneath when live lacks it). NBU's range endpoint quotes EVERY calendar
+day, weekends and holidays included (measured 2019-2025 for nine
+currencies, 2026-10-17), so the fiat missing-days tolerance is 0 days: a
+first stored day later than the span start means NBU had no quote before it.
+
+Crypto history rules (`src/rates/coingecko-history/coingecko-history.ts`,
+`history-backfill.ts`; read the symbols there):
+
+- Only HELD coins are fetched. Each coin is its own CoinGecko request,
+  isolated: a coin that fails or answers empty is left out and logged,
+  never written as a zero row, and never discards another coin's rows. The
+  ids come from `curatedCoins` (`src/currency/coins/coins.ts`); a stablecoin
+  is priced from the market like any coin, never pinned 1:1.
+- Requests run at most `CRYPTO_HISTORY_CONCURRENCY` at a time (the free
+  tier 429s a burst; the cap was measured, see memory
+  `bounds-are-measured-not-briefed`). `CoinGeckoRequestError` carries the
+  HTTP status; `rateLimitedCurrencies` lists the coins answered 429, and a
+  whole-leg failure throws `CryptoHistoryFailure` naming them.
+- Rotation: the persisted cursor (`settings.history_backfill_state`, below)
+  names the coin the next run starts from. It advances ONLY on the throttle
+  signal (429): it moves to the first rate-limited coin, never on any other
+  failure, and is saved after `upsertMany`. Bound: every held coin is
+  answered within `ceil(n / L)` runs (n held coins, L the concurrency),
+  across app restarts.
+- The per-series need is `seriesMissesEarlierDays`, shared by coins and
+  fiat, from the stored first/last days and the settled marks. It runs
+  BEFORE the "complete" early return, so a restart refills a series that
+  lacks earlier days.
+- Settled marks (`recordSettledHistory`, `settings.history_backfill_state`
+  JSON `{ cursor, settled }`, parsed and serialized by
+  `src/settings/history-backfill-state.ts`; the repo's
+  `changeHistoryBackfillState` merges in one `write()`): a mark is earned
+  only from a run that began at the span start, and only for a series that
+  did not fail. It records `start` and `firstDay` (the first day the
+  provider answered), so a young coin (listed after the span start) stops
+  re-fetching. An EMPTY mark (`firstDay` null) applies only when the
+  currency has no stored rows and holds `EMPTY_MARK_HOLDS_DAYS` from
+  `checkedOn`; a future `checkedOn` counts as expired. A mark that stops
+  requests must expire and must apply only when no data exists.
 
 The Statistics screen drives an incremental, non-blocking backfill of
 `currency_rate_history` (`src/rates/history-backfill/history-backfill.ts`):
@@ -213,12 +253,9 @@ the per-currency MINIMUM instead means the most-lagging held currency
 always drives the window; the idempotent `(base, quote, day)` upsert
 makes re-covering an already-current currency in that same wider
 window free. A currency with no stored day at all still forces the
-whole span (`null`), same as before, UNLESS `knownEmptyCurrencies`
-already confirmed it has no data to give — see that set's own doc
-comment in `history-backfill.ts` for the retry-vs-remembered-empty
-distinction (a REJECTED leg or a per-coin `failedCurrencies` entry is
-never recorded as known-empty; only a leg that fully answered yet
-composed nothing for a NEVER-backfilled currency is).
+whole span (`null`), same as before, UNLESS an empty settled mark
+already confirmed it has no data to give (rules above; a REJECTED leg or
+a per-coin `failedCurrencies` entry never earns a mark).
 
 The caller's own `lastBackfilledDay` OVERRIDES that per-currency
 minimum with an explicit `null` — `resolveBackfillWindow` checks it

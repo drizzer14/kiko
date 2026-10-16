@@ -113,6 +113,17 @@ describe('buildScreenshotDataset (pure, deterministic)', () => {
     expect(JSON.stringify(buildScreenshotDataset('uk', ANCHOR))).toMatch(CYRILLIC);
   });
 
+  it('names the UAH and EUR holdings of the exchange account in the dataset language', () => {
+    const fiatNamesOf = (language: 'uk' | 'en') =>
+      buildScreenshotDataset(language, ANCHOR)
+        .accounts.find((account) => account.kind === 'crypto')
+        ?.holdings.filter((holding) => holding.currency === 'UAH' || holding.currency === 'EUR')
+        .map((holding) => holding.name);
+
+    expect(fiatNamesOf('uk')).toEqual(['Гривня', 'Євро']);
+    expect(fiatNamesOf('en')).toEqual(['Hryvnia', 'Euro']);
+  });
+
   it('names the English accounts and holdings in English', () => {
     const { accounts } = buildScreenshotDataset('en', ANCHOR);
 
