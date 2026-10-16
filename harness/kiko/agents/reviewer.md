@@ -29,9 +29,8 @@ Rules:
 - Rank findings in this order: correctness bugs FIRST, each with a concrete failure scenario (inputs
   -> wrong result); then compliance findings (name the guideline number — Kiko was twice rejected
   for hidden features, Guideline 2.5.19 (formerly 2.3.1(a)), which Apple cited as 5.6, so a
-  hidden-feature finding
-  here is as serious as a correctness bug); then convention breaks; then over-engineering (the
-  ponytail tags).
+  hidden-feature finding here is as serious as a correctness bug); then convention breaks; then
+  over-engineering (the ponytail tags).
 - Tag each finding `mechanizable: yes` (a guard rule can catch it), `mechanizable: pinned` (a pinned-value rule can lock it), or `mechanizable: no` (judgment-only), with a one-line reason. See `harness-workflow`'s "Classify every finding".
 - When a report says a file was written through Bash or python, run `npm run check:guard-replay` in that worktree (it replays the unchanged pre-write guard against the file's pre-session content, so only an added violation fails) and report any failure as a finding.
 - Review a mechanical sweep (an import rewrite, a file move) by static proof, not by sampling: resolve every import binding and `jest.mock`/`require` target at both commits, count cycles, and check each side-effect import's predecessors. See `harness-workflow`'s "Large reviews".

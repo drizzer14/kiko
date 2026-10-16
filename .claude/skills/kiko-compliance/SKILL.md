@@ -25,7 +25,9 @@ The rejection guideline. Apple moved it from 2.3.1(a) to 2.5.19 on 2026-10-16
 (https://developer.apple.com/news/?id=92th7e5i). 2.5.19 also bans hiding an undocumented feature
 in the binary, such as through code obfuscation or other methods: grounds for removal from the
 App Store and termination of the developer account. Its intent is bait-and-switch, a feature
-added after approval (https://developer.apple.com/news/?id=vvzx6cul). Kiko changes no feature
+added after approval (https://developer.apple.com/news/?id=vvzx6cul). This stated intent adds to the rule's literal
+text and does not narrow it: 2.5.19 bans ANY hidden, dormant or undocumented feature in the
+submitted build, not only features added after approval. Kiko changes no feature
 after approval: what the reviewer saw is what ships. Full rule, rationale, and known limits of the
 mechanized check live in `.claude/skills/kiko-architecture/SKILL.md`
 ("Guideline 2.5.19 — no hidden features") — read that section, do not
