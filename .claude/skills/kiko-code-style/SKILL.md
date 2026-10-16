@@ -346,7 +346,9 @@ closed-set enum behind it) may stay as-is. A ternary on one `kind` literal of a 
 (`x.kind === 'a' ? p : q`) is an `if`/`else` chain and uses `match(...).exhaustive()`; it is
 mechanized as an ERROR by `kiko-kind-ternary-prefers-match` (re-measure with the command in
 kiko-linter's `kiko-kind-ternary-prefers-match` section),
-and a `nosemgrep` OVERRIDE fits only where `kind` is not a closed union. Every branch over a closed
+and a `nosemgrep` OVERRIDE fits only where `kind` is not a closed union. A ternary on one `type`
+tag follows the same rule, flagged by `kiko-type-ternary-prefers-match` (WARNING until the tree is
+swept; see kiko-linter's section for it). Every branch over a closed
 literal set uses `ts-pattern`'s `match(...).exhaustive()` (or a typed
 `Record` for a pure lookup) — no `switch`, with no exception; mechanized
 by the `kiko-no-switch` Semgrep rule (see kiko-linter's own
