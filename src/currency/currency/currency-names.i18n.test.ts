@@ -65,20 +65,12 @@ describe('currencyNames i18n coverage', () => {
     expect(uk.currencyNames.CHF).toBe('Швейцарський франк');
   });
 
-  it('hand-authors the Ukrainian hryvnia and Bitcoin names', () => {
+  it('hand-authors the Ukrainian hryvnia name', () => {
     expect(uk.currencyNames.UAH).toBe('Українська гривня');
-    expect(uk.currencyNames.BTC).toBe('Біткоїн');
   });
 
   it.each(CURATED_COIN_CODES)('names the curated coin %s in en and uk', (code) => {
     expect(en.currencyNames[code]).toBe(CURATED_ENGLISH_NAMES[code]);
-    expect(uk.currencyNames[code].length).toBeGreaterThan(0);
-  });
-
-  it('hand-authors the new crypto names in both languages', () => {
-    expect(en.currencyNames.ETH).toBe('Ethereum');
-    expect(en.currencyNames.USDT).toBe('Tether');
-    expect(uk.currencyNames.ETH.length).toBeGreaterThan(0);
-    expect(uk.currencyNames.USDT.length).toBeGreaterThan(0);
+    expect(uk.currencyNames[code]).toBe(CURATED_ENGLISH_NAMES[code]);
   });
 });

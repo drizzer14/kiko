@@ -1392,8 +1392,8 @@ export const uk: typeof en = {
   },
   // Ukrainian currency display names, keyed by ISO letter code (mirrors
   // en.currencyNames). Official NBU names where the NBU exchange feed quotes the
-  // currency; authored Ukrainian names for the codes NBU does not quote. UAH and
-  // BTC are hand-authored.
+  // currency; authored Ukrainian names for the codes NBU does not quote. UAH is
+  // hand-authored, and every coin keeps its Latin brand name.
   currencyNames: {
     UAH: 'Українська гривня',
     USD: 'Долар США',
@@ -1502,9 +1502,9 @@ export const uk: typeof en = {
     XOF: 'Західноафриканський франк КФА',
     YER: 'Єменський ріал',
     ZAR: 'Ренд',
-    BTC: 'Біткоїн',
-    ETH: 'Ефіріум',
-    USDT: 'Тезер',
+    BTC: 'Bitcoin',
+    ETH: 'Ethereum',
+    USDT: 'Tether',
     BNB: 'BNB',
     XRP: 'XRP',
     USDC: 'USD Coin',
