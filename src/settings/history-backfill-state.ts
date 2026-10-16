@@ -3,39 +3,55 @@ import { bifoldr, eitherSync } from 'fnts/either';
 import { type Currency, isCurrency } from '@kiko/currency/currency';
 
 /**
+ * A currency whose history was fetched from `start` (a UTC-midnight day, the span start the
+ * request began at) and whose provider answered from `firstDay` on, or with nothing at all
+ * (`firstDay` null). The provider has no day before `firstDay`, so asking again for a start at or
+ * after `start` would answer the same way. A start before `start` is a new question, and rows
+ * stored from a day after `firstDay` (a restore can bring them) mean the days are missing.
+ */
+export type SettledMark = { start: number; firstDay: number | null };
+
+export type SettledHistory = Partial<Record<Currency, SettledMark>>;
+
+/**
  * What the history backfill keeps between launches, in `settings.historyBackfillState`.
  *
  * - `cursor`: the code of the coin the next run starts requesting crypto history with.
- * - `settledFrom`: per fiat currency, the span start (a UTC-midnight day) its history was fetched
- *   from without finding an earlier day. NBU started quoting such a currency later than the span
- *   starts, so asking again for the same start would answer the same way.
+ * - `settled`: the marks above, per fiat currency and per coin.
  */
 export type HistoryBackfillState = {
   cursor: string | null;
-  settledFrom: Partial<Record<Currency, number>>;
+  settled: SettledHistory;
 };
 
-export const EMPTY_HISTORY_BACKFILL_STATE: HistoryBackfillState = { cursor: null, settledFrom: {} };
+export const EMPTY_HISTORY_BACKFILL_STATE: HistoryBackfillState = { cursor: null, settled: {} };
 
-const settledFromOf = (value: unknown): HistoryBackfillState['settledFrom'] => {
-  const settledFrom: HistoryBackfillState['settledFrom'] = {};
+const finiteNumber = (value: unknown): value is number =>
+  typeof value === 'number' && Number.isFinite(value);
+
+const settledOf = (value: unknown): SettledHistory => {
+  const settled: SettledHistory = {};
 
   if (!isRecord(value)) {
-    return settledFrom;
+    return settled;
   }
 
-  for (const [code, day] of Object.entries(value)) {
-    if (isCurrency(code) && typeof day === 'number' && Number.isFinite(day)) {
-      settledFrom[code] = day;
+  for (const [code, mark] of Object.entries(value)) {
+    if (isCurrency(code) && isRecord(mark) && finiteNumber(mark.start)) {
+      settled[code] = {
+        start: mark.start,
+        firstDay: finiteNumber(mark.firstDay) ? mark.firstDay : null,
+      };
     }
   }
 
-  return settledFrom;
+  return settled;
 };
 
 /**
- * Reads the stored text. A bare coin code is a cursor stored before the settled span starts
- * joined it; anything unreadable is dropped, as a cursor that is lost only costs the rotation.
+ * Reads the stored text. A bare coin code is a cursor stored before the marks joined it;
+ * anything unreadable is dropped, as a cursor that is lost only costs the rotation and a mark
+ * that is lost only costs one more request.
  */
 export const parseHistoryBackfillState = (stored: string | null): HistoryBackfillState => {
   if (stored === null) {
@@ -43,7 +59,7 @@ export const parseHistoryBackfillState = (stored: string | null): HistoryBackfil
   }
 
   if (!stored.startsWith('{')) {
-    return { cursor: stored, settledFrom: {} };
+    return { cursor: stored, settled: {} };
   }
 
   const parsed = bifoldr(eitherSync<unknown, unknown>(() => JSON.parse(stored)));
@@ -54,12 +70,12 @@ export const parseHistoryBackfillState = (stored: string | null): HistoryBackfil
 
   return {
     cursor: typeof parsed.cursor === 'string' ? parsed.cursor : null,
-    settledFrom: settledFromOf(parsed.settledFrom),
+    settled: settledOf(parsed.settled),
   };
 };
 
 /** The text to store: null when there is nothing to keep. */
 export const serializeHistoryBackfillState = (state: HistoryBackfillState): string | null =>
-  state.cursor === null && Object.keys(state.settledFrom).length === 0
+  state.cursor === null && Object.keys(state.settled).length === 0
     ? null
-    : JSON.stringify({ cursor: state.cursor, settledFrom: state.settledFrom });
+    : JSON.stringify({ cursor: state.cursor, settled: state.settled });

@@ -1,4 +1,5 @@
 import { DAY_MS } from '@kiko/dates';
+import type { SettledHistory } from '@kiko/settings';
 import { CURATED_COIN_CODES } from '@kiko/currency/coins';
 import type { CryptoCurrency, Currency } from '@kiko/currency/currency';
 
@@ -46,18 +47,22 @@ const stubbedRun = async (input: {
   earliestDay?: number;
   today?: number;
   firstDays?: Partial<Record<Currency, number>>;
-  young?: Set<Currency>;
+  settled?: { value: SettledHistory };
   answer?: (currencies: CryptoCurrency[]) => Promise<CryptoHistory>;
 }) => {
   const requested: CryptoCurrency[][] = [];
   const cursor: CursorStore = { value: input.cursor };
+  const settled = input.settled ?? { value: {} };
   const deps: BackfillDeps = {
     earliestDay: input.earliestDay ?? day(0),
     // An explicit null is the span moving earlier: the window is the whole span again.
     lastBackfilledDay: input.lastBackfilledDay === undefined ? day(1) : input.lastBackfilledDay,
     today: input.today ?? TODAY,
     firstBackfilledDayByCurrency: input.firstDays,
-    youngCurrencies: input.young ?? new Set(),
+    readSettledHistory: async () => settled.value,
+    writeSettledHistory: async (additions) => {
+      settled.value = { ...settled.value, ...additions };
+    },
     fetchNbuHistory: async () => ({ entries: usdAnchors, failedCurrencies: [] }),
     fetchCryptoHistory: async (_days, currencies) => {
       requested.push(currencies);
@@ -127,8 +132,8 @@ describe('runBackfill — which crypto history it requests, and from where', () 
       expect(requested).toEqual([['SOL']]);
     });
 
-    it('does not ask a young coin again in the same session', async () => {
-      const young = new Set<Currency>();
+    it('does not ask a young coin again, on the next launch either', async () => {
+      const settled = { value: {} as SettledHistory };
       const run = () =>
         stubbedRun({
           held: EIGHT,
@@ -136,13 +141,43 @@ describe('runBackfill — which crypto history it requests, and from where', () 
           firstDays: { ...fromTheStart, SOL: day(1) },
           cursor: null,
           lastBackfilledDay: null,
-          young,
+          settled,
           answer: async () => SOL_FROM_DAY_ONE,
         });
 
       expect((await run()).requested).toEqual([['SOL']]);
+      expect(settled.value).toEqual({ SOL: { start: day(0), firstDay: day(1) } });
       expect((await run()).requested).toEqual([]);
-      expect(young.has('SOL')).toBe(true);
+      expect((await run()).requested).toEqual([]);
+    });
+
+    it('asks a young coin again when the span starts earlier than the one it settled for', async () => {
+      const settled = { value: { SOL: { start: day(5), firstDay: day(6) } } as SettledHistory };
+      const { requested } = await stubbedRun({
+        held: ['SOL'],
+        doneDays: { USD: TODAY, SOL: TODAY },
+        firstDays: { SOL: day(6) },
+        cursor: null,
+        lastBackfilledDay: null,
+        earliestDay: day(0),
+        settled,
+      });
+
+      expect(requested).toEqual([['SOL']]);
+    });
+
+    it('asks a settled coin again when its stored rows start after the first answered day', async () => {
+      const settled = { value: { SOL: { start: day(0), firstDay: day(1) } } as SettledHistory };
+      const { requested } = await stubbedRun({
+        held: ['SOL'],
+        doneDays: { USD: TODAY, SOL: TODAY },
+        firstDays: { SOL: day(2) },
+        cursor: null,
+        lastBackfilledDay: null,
+        settled,
+      });
+
+      expect(requested).toEqual([['SOL']]);
     });
 
     it('does not count the days past the 365-day window as missing', async () => {

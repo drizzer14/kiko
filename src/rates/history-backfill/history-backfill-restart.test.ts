@@ -1,11 +1,14 @@
+import either from 'fnts/either';
 import { DAY_MS } from '@kiko/dates';
 import { minOf } from '@kiko/numbers';
+import type { SettledHistory } from '@kiko/settings';
 import type { CryptoCurrency, Currency } from '@kiko/currency/currency';
 
 import type { HistoryRateEntry } from '../history-entry';
 
 import {
   type BackfillDeps,
+  type BackfillStatus,
   deriveFirstBackfilledDayByCurrency,
   deriveLastBackfilledDay,
   deriveLastBackfilledDayByCurrency,
@@ -41,11 +44,11 @@ const anchorsFor = (base: Currency, quote: Currency, start: number, end: number)
 const firstStoredDay = (stored: StoredRow[], base: Currency): number =>
   minOf(stored.filter((row) => row.base === base).map((row) => row.day));
 
-// What survives an app restart: the stored rows, the coin cursor and the settled span starts.
+// What survives an app restart: the stored rows, the coin cursor and the settled marks.
 type Persisted = {
   stored: StoredRow[];
   cursor: { value: string | null };
-  settled: { value: Partial<Record<Currency, number>> };
+  settled: { value: SettledHistory };
 };
 
 const persisted = (stored: StoredRow[]): Persisted => ({
@@ -62,8 +65,11 @@ type LaunchInput = {
   perRunLimit?: number;
   wholeSpan?: boolean;
   failFiat?: Currency[];
+  failUpsert?: boolean;
   // The day NBU starts quoting a currency; before it the answer holds nothing.
   nbuStartsAt?: Partial<Record<Currency, number>>;
+  // The day CoinGecko's series of a coin starts.
+  coinStartsAt?: Partial<Record<Currency, number>>;
   requested?: CryptoCurrency[][];
   nbuCalls?: Currency[][];
 };
@@ -97,30 +103,41 @@ const launch = async (input: LaunchInput) => {
       return {
         entries: currencies
           .slice(0, limit)
-          .flatMap((coin) => anchorsFor(coin, 'USD', daysAgo(count - 1), TODAY)),
+          .flatMap((coin) =>
+            anchorsFor(
+              coin,
+              'USD',
+              Math.max(daysAgo(count - 1), input.coinStartsAt?.[coin] ?? 0),
+              TODAY,
+            ),
+          ),
         failedCurrencies: limited,
         rateLimitedCurrencies: limited,
       };
     },
     upsertMany: async (rows) => {
+      if (input.failUpsert) {
+        throw new Error('disk full');
+      }
+
       data.stored.push(...(rows as StoredRow[]));
     },
     historyCurrencies: async () => ({ fiatCurrencies: input.fiat, cryptoCurrencies: input.held }),
     lastBackfilledDayByCurrency: deriveLastBackfilledDayByCurrency(data.stored),
     firstBackfilledDayByCurrency: deriveFirstBackfilledDayByCurrency(data.stored),
     knownEmptyCurrencies: new Set(),
-    youngCurrencies: new Set(),
     readHistoryBackfillCursor: async () => data.cursor.value,
     writeHistoryBackfillCursor: async (next) => {
       data.cursor.value = next;
     },
-    readSettledFiatSpanStarts: async () => data.settled.value,
-    writeSettledFiatSpanStarts: async (next) => {
-      data.settled.value = next;
+    readSettledHistory: async () => data.settled.value,
+    writeSettledHistory: async (additions) => {
+      data.settled.value = { ...data.settled.value, ...additions };
     },
   };
 
-  return runBackfill(deps);
+  // A failed upsert rejects the run, as the screen's own catch arm sees it.
+  return either<unknown, BackfillStatus>(() => runBackfill(deps));
 };
 
 describe('runBackfill — filling the earlier days of a span that moved earlier, across a restart', () => {
@@ -211,7 +228,7 @@ describe('runBackfill — filling the earlier days of a span that moved earlier,
       await launch({ ...base, wholeSpan: true, nbuCalls });
 
       expect(firstStoredDay(data.stored, 'EUR')).toBe(quotedFrom);
-      expect(data.settled.value).toEqual({ EUR: start });
+      expect(data.settled.value).toEqual({ EUR: { start, firstDay: quotedFrom } });
 
       await launch({ ...base, nbuCalls });
       await launch({ ...base, nbuCalls });
@@ -233,7 +250,98 @@ describe('runBackfill — filling the earlier days of a span that moved earlier,
       await launch({ ...base, earliestDay: daysAgo(340), nbuCalls });
 
       expect(nbuCalls).toHaveLength(2);
-      expect(data.settled.value).toEqual({ EUR: daysAgo(340) });
+      expect(data.settled.value).toEqual({ EUR: { start: daysAgo(340), firstDay: quotedFrom } });
+    });
+
+    // The mark is written after the rows: a failed write of the rows must not leave the
+    // currency settled with nothing stored.
+    it('is fetched again on the next launch when the rows could not be stored', async () => {
+      const data = lateData();
+      const base = {
+        data,
+        held: [],
+        fiat: ['EUR' as Currency, 'USD' as Currency],
+        earliestDay: start,
+        nbuStartsAt: { EUR: quotedFrom },
+      };
+      const nbuCalls: Currency[][] = [];
+
+      await launch({ ...base, wholeSpan: true, failUpsert: true, nbuCalls });
+
+      expect(data.settled.value).toEqual({});
+
+      await launch({ ...base, nbuCalls });
+
+      expect(nbuCalls).toHaveLength(2);
+      expect(firstStoredDay(data.stored, 'EUR')).toBe(quotedFrom);
+    });
+
+    // A restore keeps this device's marks but brings the file's rows, which may start later than
+    // the first day the mark remembers.
+    it('is fetched again when a restore brought rows that start after its first answered day', async () => {
+      const data = persisted([...rowsBetween('USD', 100, 0), ...rowsBetween('EUR', 100, 0)]);
+      data.settled.value = { EUR: { start, firstDay: quotedFrom } };
+      const nbuCalls: Currency[][] = [];
+
+      await launch({
+        data,
+        held: [],
+        fiat: ['EUR' as Currency, 'USD' as Currency],
+        earliestDay: start,
+        nbuStartsAt: { EUR: quotedFrom },
+        nbuCalls,
+      });
+
+      expect(nbuCalls).toHaveLength(1);
+      expect(firstStoredDay(data.stored, 'EUR')).toBe(quotedFrom);
+    });
+  });
+
+  describe('a fiat currency NBU answers with nothing', () => {
+    it('is asked once over two launches', async () => {
+      const data = persisted([...rowsBetween('USD', 100, 0)]);
+      const base = {
+        data,
+        held: [],
+        fiat: ['EUR' as Currency, 'USD' as Currency],
+        earliestDay: daysAgo(300),
+        nbuStartsAt: { EUR: TODAY + DAY_MS },
+      };
+      const nbuCalls: Currency[][] = [];
+
+      await launch({ ...base, wholeSpan: true, nbuCalls });
+
+      expect(data.settled.value).toEqual({ EUR: { start: daysAgo(300), firstDay: null } });
+
+      await launch({ ...base, nbuCalls });
+      await launch({ ...base, nbuCalls });
+
+      expect(nbuCalls).toHaveLength(1);
+    });
+  });
+
+  describe('a coin CoinGecko lists after the span starts', () => {
+    it('causes one whole-span run over two launches', async () => {
+      const data = persisted([
+        ...rowsBetween('USD', 100, 0),
+        ...rowsBetween('BTC', 100, 0),
+        ...rowsBetween('SOL', 100, 0),
+      ]);
+      const base = {
+        data,
+        held: ['BTC' as CryptoCurrency, 'SOL' as CryptoCurrency],
+        fiat: ['USD' as Currency],
+        earliestDay: daysAgo(300),
+        coinStartsAt: { SOL: daysAgo(150) },
+      };
+      const requested: CryptoCurrency[][] = [];
+
+      await launch({ ...base, wholeSpan: true, requested });
+      await launch({ ...base, requested });
+      await launch({ ...base, requested });
+
+      expect(requested).toEqual([['BTC', 'SOL']]);
+      expect(data.settled.value.SOL).toEqual({ start: daysAgo(300), firstDay: daysAgo(150) });
     });
   });
 });

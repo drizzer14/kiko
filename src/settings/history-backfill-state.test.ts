@@ -10,25 +10,44 @@ describe('parseHistoryBackfillState', () => {
   });
 
   it('reads a plain coin code as the cursor', () => {
-    expect(parseHistoryBackfillState('XRP')).toEqual({ cursor: 'XRP', settledFrom: {} });
+    expect(parseHistoryBackfillState('XRP')).toEqual({ cursor: 'XRP', settled: {} });
   });
 
-  it('reads the cursor and the settled span starts from stored JSON', () => {
-    const stored = JSON.stringify({ cursor: 'ETH', settledFrom: { EUR: 1_700_000_000_000 } });
+  it('reads the cursor and the settled marks from stored JSON', () => {
+    const stored = JSON.stringify({
+      cursor: 'ETH',
+      settled: { EUR: { start: 10, firstDay: 20 }, XRP: { start: 10, firstDay: null } },
+    });
 
     expect(parseHistoryBackfillState(stored)).toEqual({
       cursor: 'ETH',
-      settledFrom: { EUR: 1_700_000_000_000 },
+      settled: { EUR: { start: 10, firstDay: 20 }, XRP: { start: 10, firstDay: null } },
     });
   });
 
-  it('drops what it cannot read: a bad JSON text, a non-currency key, a non-number day', () => {
+  it('reads a mark with no first day as an empty answer', () => {
+    const stored = JSON.stringify({ cursor: null, settled: { EUR: { start: 10 } } });
+
+    expect(parseHistoryBackfillState(stored).settled).toEqual({
+      EUR: { start: 10, firstDay: null },
+    });
+  });
+
+  it('drops what it cannot read: bad JSON, a non-currency key, a mark that is not a record', () => {
     expect(parseHistoryBackfillState('{not json')).toEqual(EMPTY_HISTORY_BACKFILL_STATE);
     expect(
       parseHistoryBackfillState(
-        JSON.stringify({ cursor: 7, settledFrom: { EUR: 'soon', XYZ: 5, USD: 6 } }),
+        JSON.stringify({
+          cursor: 7,
+          settled: {
+            EUR: 'soon',
+            XYZ: { start: 5, firstDay: 6 },
+            GBP: { start: 'x', firstDay: 1 },
+            USD: { start: 6, firstDay: 7 },
+          },
+        }),
       ),
-    ).toEqual({ cursor: null, settledFrom: { USD: 6 } });
+    ).toEqual({ cursor: null, settled: { USD: { start: 6, firstDay: 7 } } });
   });
 });
 
@@ -37,14 +56,17 @@ describe('serializeHistoryBackfillState', () => {
     expect(serializeHistoryBackfillState(EMPTY_HISTORY_BACKFILL_STATE)).toBeNull();
   });
 
-  it('round-trips a cursor with settled span starts', () => {
-    const state = { cursor: 'BNB', settledFrom: { EUR: 5, USD: 9 } } as const;
+  it('round-trips a cursor with settled marks', () => {
+    const state = {
+      cursor: 'BNB',
+      settled: { EUR: { start: 5, firstDay: 8 }, USD: { start: 9, firstDay: null } },
+    } as const;
 
     expect(parseHistoryBackfillState(serializeHistoryBackfillState(state))).toEqual(state);
   });
 
-  it('keeps a settled span start without a cursor', () => {
-    const state = { cursor: null, settledFrom: { EUR: 5 } } as const;
+  it('keeps a settled mark without a cursor', () => {
+    const state = { cursor: null, settled: { EUR: { start: 5, firstDay: 6 } } } as const;
 
     expect(parseHistoryBackfillState(serializeHistoryBackfillState(state))).toEqual(state);
   });

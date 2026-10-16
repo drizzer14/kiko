@@ -120,11 +120,14 @@ describe('settingsRepo', () => {
   });
 
   describe('changeHistoryBackfillState', () => {
-    it('writes a cursor and keeps the settled span starts already stored', async () => {
+    it('writes a cursor and keeps the settled marks already stored', async () => {
       const store: Record<string, unknown>[] = [
         {
           id: 1,
-          historyBackfillState: JSON.stringify({ cursor: null, settledFrom: { EUR: 5 } }),
+          historyBackfillState: JSON.stringify({
+            cursor: null,
+            settled: { EUR: { start: 5, firstDay: 6 } },
+          }),
         },
       ];
       mockDatabaseTransaction = makeSettingsRowDatabaseTransaction(store);
@@ -133,22 +136,7 @@ describe('settingsRepo', () => {
 
       expect(parseHistoryBackfillState(store[0].historyBackfillState as string)).toEqual({
         cursor: 'XRP',
-        settledFrom: { EUR: 5 },
-      });
-    });
-
-    it('writes a settled span start and keeps the coin cursor already stored', async () => {
-      const store: Record<string, unknown>[] = [{ id: 1, historyBackfillState: 'XRP' }];
-      mockDatabaseTransaction = makeSettingsRowDatabaseTransaction(store);
-
-      await settingsRepo.changeHistoryBackfillState((state) => ({
-        ...state,
-        settledFrom: { ...state.settledFrom, EUR: 7 },
-      }));
-
-      expect(parseHistoryBackfillState(store[0].historyBackfillState as string)).toEqual({
-        cursor: 'XRP',
-        settledFrom: { EUR: 7 },
+        settled: { EUR: { start: 5, firstDay: 6 } },
       });
     });
 
@@ -159,6 +147,35 @@ describe('settingsRepo', () => {
       await settingsRepo.changeHistoryBackfillState(() => EMPTY_HISTORY_BACKFILL_STATE);
 
       expect(store[0].historyBackfillState).toBeNull();
+    });
+  });
+
+  describe('recordSettledHistory', () => {
+    it('adds marks beside the stored ones and the coin cursor, and replaces a mark it overlaps', async () => {
+      const store: Record<string, unknown>[] = [
+        {
+          id: 1,
+          historyBackfillState: JSON.stringify({
+            cursor: 'XRP',
+            settled: { EUR: { start: 5, firstDay: 6 }, GBP: { start: 5, firstDay: 9 } },
+          }),
+        },
+      ];
+      mockDatabaseTransaction = makeSettingsRowDatabaseTransaction(store);
+
+      await settingsRepo.recordSettledHistory({
+        EUR: { start: 2, firstDay: 3 },
+        USD: { start: 2, firstDay: null },
+      });
+
+      expect(parseHistoryBackfillState(store[0].historyBackfillState as string)).toEqual({
+        cursor: 'XRP',
+        settled: {
+          EUR: { start: 2, firstDay: 3 },
+          GBP: { start: 5, firstDay: 9 },
+          USD: { start: 2, firstDay: null },
+        },
+      });
     });
   });
 

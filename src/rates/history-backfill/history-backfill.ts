@@ -1,4 +1,11 @@
 import {
+  type SettledMark,
+  type SettledHistory,
+  type HistoryBackfillState,
+  parseHistoryBackfillState,
+  settingsRepo,
+} from '@kiko/settings';
+import {
   isCrypto,
   currencyOptions,
   type Currency,
@@ -10,7 +17,6 @@ import either, { bifoldr } from 'fnts/either';
 import { logOnFailure } from '@kiko/diagnostics';
 import type { CurrencyRateHistoryRow } from '@kiko/db';
 import { rateHistoryRepo } from '@kiko/rates/rate-history-repo';
-import { type HistoryBackfillState, parseHistoryBackfillState, settingsRepo } from '@kiko/settings';
 
 import {
   historyCurrencies as defaultHistoryCurrencies,
@@ -99,31 +105,23 @@ export type BackfillDeps = {
   readHistoryBackfillCursor?: () => Promise<string | null>;
   writeHistoryBackfillCursor?: (cursor: string | null) => Promise<void>;
   /**
-   * The fiat currencies already fetched from a span start without finding an earlier day, with
-   * that start (`settings.historyBackfillState` holds them beside the coin cursor), and the
-   * writer for them. Defaults to the settings row; a test passes its own store.
+   * The settled marks (`settings.historyBackfillState` holds them beside the coin cursor): the
+   * currencies, fiat and coin, already fetched from a span start without finding an earlier day,
+   * with the first day the provider answered from. The writer adds marks and keeps the others.
+   * Defaults to the settings row; a test passes its own store.
    */
-  readSettledFiatSpanStarts?: () => Promise<SettledSpanStarts>;
-  writeSettledFiatSpanStarts?: (settledSpanStarts: SettledSpanStarts) => Promise<void>;
+  readSettledHistory?: () => Promise<SettledHistory>;
+  writeSettledHistory?: (additions: SettledHistory) => Promise<void>;
   /**
    * Every currency's OWN first stored day (`deriveFirstBackfilledDayByCurrency(historyRows)`):
    * with the last day it tells a held coin that lacks the days at the start of a span that moved
    * earlier. Defaults to `{}`, where no coin is known to lack them.
    */
   firstBackfilledDayByCurrency?: Partial<Record<Currency, number>>;
-  /**
-   * Injectable override for `youngCurrenciesThisRun`, the coins whose answer started after the
-   * requested start. Production never passes this.
-   */
-  youngCurrencies?: Set<Currency>;
 };
 
-// Per app run, like `knownEmptyCurrenciesThisRun`: a coin CoinGecko answered from a day later than
-// the start of the span did not exist before it, so it is not asked for the earlier days again.
-const youngCurrenciesThisRun = new Set<Currency>();
-
-// The coin cursor and the settled fiat span starts share one settings column; each writer changes
-// its own part and keeps the other.
+// The coin cursor and the settled marks share one settings column; each writer changes its own
+// part and keeps the other.
 const readStoredState = async (): Promise<HistoryBackfillState> =>
   parseHistoryBackfillState(
     (await settingsRepo.historyBackfillStateQuery()).at(0)?.historyBackfillState ?? null,
@@ -135,37 +133,34 @@ const writeStoredCursor = async (cursor: string | null): Promise<void> => {
   await settingsRepo.changeHistoryBackfillState((state) => ({ ...state, cursor }));
 };
 
-const readStoredSettledSpanStarts = async (): Promise<SettledSpanStarts> =>
-  (await readStoredState()).settledFrom;
+const readStoredSettled = async (): Promise<SettledHistory> => (await readStoredState()).settled;
 
-const writeStoredSettledSpanStarts = async (settledFrom: SettledSpanStarts): Promise<void> => {
-  await settingsRepo.changeHistoryBackfillState((state) => ({ ...state, settledFrom }));
-};
-
-type SettledSpanStarts = HistoryBackfillState['settledFrom'];
+const writeStoredSettled = (additions: SettledHistory): Promise<void> =>
+  settingsRepo.recordSettledHistory(additions);
 
 /**
- * Whether a fiat currency lacks days at the start of the span: its first stored day is later than
- * the span start and it was not already fetched from that start (or an earlier one) without
- * finding an earlier day. NBU quotes every calendar day, weekends and holidays included (checked
- * for nine currencies over 2019 to 2025: no day without a quote), so a first day later than the
- * start means NBU had no quote before it, and no tolerance is needed.
+ * Whether a series lacks days at the start of the span it is asked for. Without a mark, its
+ * first stored day is later than the start. With one (a fetch already began from `mark.start`
+ * and the provider answered from `mark.firstDay` on, or with nothing), the days before
+ * `firstDay` do not exist; the series lacks days only for a start before the one it settled for,
+ * or when its stored rows start after `firstDay` (a restore brings rows that may).
+ *
+ * NBU quotes every calendar day, weekends and holidays included (checked for nine currencies
+ * over 2019 to 2025: no day without a quote), so for fiat a first day later than the start means
+ * NBU had no quote before it, and no tolerance is needed.
  */
-const fiatMissesEarlierDays = (
-  currency: Currency,
-  input: {
-    firstBackfilledDayByCurrency: Partial<Record<Currency, number>>;
-    settledSpanStarts: SettledSpanStarts;
-    fiatStart: number;
-  },
+const seriesMissesEarlierDays = (
+  mark: SettledMark | undefined,
+  firstDay: number | undefined,
+  requestedStart: number,
 ): boolean => {
-  const firstDay = input.firstBackfilledDayByCurrency[currency];
-  const settledStart = input.settledSpanStarts[currency];
+  if (mark === undefined) {
+    return firstDay !== undefined && firstDay > requestedStart;
+  }
 
   return (
-    firstDay !== undefined &&
-    firstDay > input.fiatStart &&
-    (settledStart === undefined || settledStart > input.fiatStart)
+    requestedStart < mark.start ||
+    (mark.firstDay !== null && firstDay !== undefined && firstDay > mark.firstDay)
   );
 };
 
@@ -174,19 +169,18 @@ type CoinNeedInput = {
   lastBackfilledDayByCurrency: Partial<Record<Currency, number>>;
   firstBackfilledDayByCurrency: Partial<Record<Currency, number>>;
   knownEmpty: ReadonlySet<Currency>;
-  young: ReadonlySet<Currency>;
+  settled: SettledHistory;
   today: number;
   requestedStart: number;
 };
 
 /**
  * The held coins this run asks CoinGecko about, in code order. A coin is asked about when its own
- * last stored day is before the day the run fills (never stored counts as behind), or when its
- * first stored day is later than the start of the span (the span moved earlier and this coin
- * lacks those days), unless the coin is already known to have no data this session or, for the
- * earlier days only, is young: its last answer started after that start, so nothing earlier
- * exists. Each coin is decided from its own stored rows, so a span that moves earlier asks only
- * the coins that miss days. A coin with no known first day counts as complete there.
+ * last stored day is before the day the run fills (never stored counts as behind), or when it
+ * lacks days at the start of the span (`seriesMissesEarlierDays`: the span moved earlier, or a
+ * restore brought rows that start late), unless the coin is already known to have no data. Each
+ * coin is decided from its own stored rows and its own mark, so a span that moves earlier asks
+ * only the coins that miss days. A coin with no known first day counts as complete there.
  */
 const coinsNeedingHistory = (input: CoinNeedInput): CryptoCurrency[] =>
   input.cryptoCurrencies
@@ -194,18 +188,47 @@ const coinsNeedingHistory = (input: CoinNeedInput): CryptoCurrency[] =>
       const lastDay = input.lastBackfilledDayByCurrency[coin];
       const missesTop = lastDay === undefined || lastDay < input.today;
 
-      return !input.knownEmpty.has(coin) && (missesTop || missesEarlierDays(coin, input));
+      return (
+        !input.knownEmpty.has(coin) &&
+        (missesTop ||
+          seriesMissesEarlierDays(
+            input.settled[coin],
+            input.firstBackfilledDayByCurrency[coin],
+            input.requestedStart,
+          ))
+      );
     })
     .sort();
 
-const missesEarlierDays = (
-  coin: CryptoCurrency,
-  input: Pick<CoinNeedInput, 'firstBackfilledDayByCurrency' | 'young' | 'requestedStart'>,
-): boolean => {
-  const firstDay = input.firstBackfilledDayByCurrency[coin];
+/** CoinGecko's free tier serves 365 days: today and the 364 before it. */
+const WINDOW_DAYS_BEFORE_TODAY = 364;
 
-  return firstDay !== undefined && firstDay > input.requestedStart && !input.young.has(coin);
-};
+/** The first day a run asks a coin for: the span's start, but never before the window. */
+const requestedStartOf = (spanStart: number, today: number): number =>
+  Math.max(spanStart, today - WINDOW_DAYS_BEFORE_TODAY * DAY_MS);
+
+/** The first day the span asks a currency for: coins stop at the free tier's window. */
+const requestStartOf = (currency: Currency, spanStart: number, today: number): number =>
+  isCrypto(currency) ? requestedStartOf(spanStart, today) : spanStart;
+
+/**
+ * The currencies a mark says have nothing to fetch for this span: the provider answered with
+ * nothing, from a start at or before this one.
+ */
+const markedEmptyCurrencies = (
+  settled: SettledHistory,
+  earliestDay: number,
+  today: number,
+): Currency[] =>
+  (Object.keys(settled) as Currency[]).filter((currency) => {
+    const mark = settled[currency];
+
+    return (
+      mark !== undefined &&
+      mark.firstDay === null &&
+      requestStartOf(currency, toUtcMidnight(earliestDay), today) >= mark.start
+    );
+  });
 
 /**
  * Whether a held coin or fiat currency lacks days at the start of the span, judged from the whole
@@ -216,109 +239,108 @@ const missesEarlierDays = (
 const anySeriesMissesEarlierDays = (
   deps: BackfillDeps,
   input: {
-    fiatCurrencies: Currency[];
-    cryptoCurrencies: CryptoCurrency[];
+    held: Currency[];
     knownEmpty: ReadonlySet<Currency>;
-    settledSpanStarts: SettledSpanStarts;
+    settled: SettledHistory;
     today: number;
   },
-): boolean => {
-  const firstBackfilledDayByCurrency = deps.firstBackfilledDayByCurrency ?? {};
-  const coinNeeds = {
-    firstBackfilledDayByCurrency,
-    young: deps.youngCurrencies ?? youngCurrenciesThisRun,
-    requestedStart: requestedStartOf(toUtcMidnight(deps.earliestDay), input.today),
-  };
-  const fiatNeeds = {
-    firstBackfilledDayByCurrency,
-    settledSpanStarts: input.settledSpanStarts,
-    fiatStart: toUtcMidnight(deps.earliestDay),
-  };
-
-  return (
-    input.cryptoCurrencies.some(
-      (coin) => !input.knownEmpty.has(coin) && missesEarlierDays(coin, coinNeeds),
-    ) ||
-    input.fiatCurrencies.some(
-      (currency) => !input.knownEmpty.has(currency) && fiatMissesEarlierDays(currency, fiatNeeds),
-    )
+): boolean =>
+  input.held.some(
+    (currency) =>
+      !input.knownEmpty.has(currency) &&
+      seriesMissesEarlierDays(
+        input.settled[currency],
+        deps.firstBackfilledDayByCurrency?.[currency],
+        requestStartOf(currency, toUtcMidnight(deps.earliestDay), input.today),
+      ),
   );
+
+const readSettledOrEmpty = async (deps: BackfillDeps): Promise<SettledHistory> =>
+  bifoldr(await either<unknown, SettledHistory>(deps.readSettledHistory ?? readStoredSettled)) ??
+  {};
+
+/** The mark a currency's answer earns, or undefined when it earns none. */
+const markOf = (
+  answerDays: number[],
+  requestedStart: number,
+  existing: SettledMark | undefined,
+): SettledMark | undefined => {
+  const firstDay = answerDays.length === 0 ? null : minOf(answerDays);
+
+  // An answer that reaches the start settles nothing. It still overwrites a stored mark, which
+  // would otherwise keep calling the start earlier than the one it settled for.
+  if (firstDay !== null && firstDay <= requestedStart && existing === undefined) {
+    return undefined;
+  }
+
+  return existing !== undefined &&
+    existing.firstDay === firstDay &&
+    existing.start <= requestedStart
+    ? undefined
+    : { start: requestedStart, firstDay };
 };
 
-const readSettledSpanStartsOrEmpty = async (deps: BackfillDeps): Promise<SettledSpanStarts> =>
-  bifoldr(
-    await either<unknown, SettledSpanStarts>(
-      deps.readSettledFiatSpanStarts ?? readStoredSettledSpanStarts,
-    ),
-  ) ?? {};
+const answerDaysOf = (entries: HistoryRateEntry[], currency: Currency): number[] =>
+  entries.filter((entry) => entry.base === currency).map((entry) => entry.day);
 
-// A fiat currency NBU answered, from the span start, with a first day later than that start has
-// no earlier day to give: it is settled for that span start. The fact is stored, so a restart
-// does not ask again; a span that starts earlier is a new question and asks once more. Only a run
-// whose request began at the span start can say so.
-const saveSettledFiatSpanStarts = async (
+/**
+ * The marks a run earns: a currency whose provider answered, from the very start of the span,
+ * with a first day after that start (a currency or coin listed late, or a long gap), or with
+ * nothing at all, has no earlier day to give. Only a run whose request began at the span start
+ * can say so, and only for a currency whose own request did not fail.
+ */
+const earnedMarks = (
   deps: BackfillDeps,
   input: {
     nbuResult: PromiseSettledResult<NbuHistory>;
     fiatRequested: Currency[];
-    settledSpanStarts: SettledSpanStarts;
+    cryptoResult: PromiseSettledResult<CryptoHistory>;
+    cryptoRequested: CryptoCurrency[];
+    settled: SettledHistory;
     spanStart: number;
+    today: number;
   },
-): Promise<void> => {
-  const fiatStart = toUtcMidnight(deps.earliestDay);
+): SettledHistory => {
+  const earnings: SettledHistory = {};
+  const spanStart = toUtcMidnight(deps.earliestDay);
 
-  if (input.nbuResult.status === 'rejected' || input.spanStart > fiatStart) {
-    return;
-  }
+  if (input.nbuResult.status === 'fulfilled' && input.spanStart <= spanStart) {
+    const { entries, failedCurrencies } = input.nbuResult.value;
 
-  const { entries, failedCurrencies } = input.nbuResult.value;
-  const next = { ...input.settledSpanStarts };
-  let changed = false;
-
-  for (const currency of input.fiatRequested.filter((code) => !failedCurrencies.includes(code))) {
-    const days = entries.filter((entry) => entry.base === currency).map((entry) => entry.day);
-
-    if (days.length > 0 && minOf(days) > fiatStart && next[currency] !== fiatStart) {
-      next[currency] = fiatStart;
-      changed = true;
+    for (const currency of input.fiatRequested.filter((code) => !failedCurrencies.includes(code))) {
+      earnings[currency] = markOf(
+        answerDaysOf(entries, currency),
+        spanStart,
+        input.settled[currency],
+      );
     }
   }
 
-  if (changed) {
-    const write = deps.writeSettledFiatSpanStarts ?? writeStoredSettledSpanStarts;
+  const coinStart = requestedStartOf(spanStart, input.today);
 
-    await logOnFailure('[history backfill] settled span starts not saved', () => write(next));
+  if (input.cryptoResult.status === 'fulfilled' && input.spanStart <= coinStart) {
+    const { entries, failedCurrencies } = input.cryptoResult.value;
+
+    for (const coin of input.cryptoRequested.filter((code) => !failedCurrencies.includes(code))) {
+      const days = answerDaysOf(entries, coin);
+
+      // A coin CoinGecko answered with nothing is left to the session's known-empty set.
+      earnings[coin] = days.length === 0 ? undefined : markOf(days, coinStart, input.settled[coin]);
+    }
   }
+
+  return Object.fromEntries(
+    Object.entries(earnings).filter(([, mark]) => mark !== undefined),
+  ) as SettledHistory;
 };
 
-/** CoinGecko's free tier serves 365 days: today and the 364 before it. */
-const WINDOW_DAYS_BEFORE_TODAY = 364;
+// Saved AFTER the rows are stored: a mark that outlived a failed write would call a currency
+// settled while its rows are missing. A mark that cannot be saved costs only one more request.
+const saveEarnedMarks = async (deps: BackfillDeps, earned: SettledHistory): Promise<void> => {
+  if (Object.keys(earned).length > 0) {
+    const write = deps.writeSettledHistory ?? writeStoredSettled;
 
-/** The first day a run asks a coin for: the span's start, but never before the window. */
-const requestedStartOf = (spanStart: number, today: number): number =>
-  Math.max(spanStart, today - WINDOW_DAYS_BEFORE_TODAY * DAY_MS);
-
-// A coin whose answer starts after the requested start has nothing older to give: it is young.
-// Asking again in the same session would get the same answer. A CoinGecko series that is only
-// shorter than asked (a thin answer, not a young coin) marks the coin young for this session
-// too; that is harmless, since the set is forgotten on the next launch and the coin is asked
-// for its earlier days again then.
-const recordYoungCoins = (
-  plan: { requested: CryptoCurrency[]; requestedStart: number; young: Set<Currency> },
-  cryptoResult: PromiseSettledResult<CryptoHistory>,
-): void => {
-  if (cryptoResult.status === 'rejected') {
-    return;
-  }
-
-  for (const coin of plan.requested) {
-    const days = cryptoResult.value.entries
-      .filter((entry) => entry.base === coin)
-      .map((entry) => entry.day);
-
-    if (days.length > 0 && minOf(days) > plan.requestedStart) {
-      plan.young.add(coin);
-    }
+    await logOnFailure('[history backfill] settled marks not saved', () => write(earned));
   }
 };
 
@@ -328,8 +350,6 @@ const readCursorOrNull = async (readCursor: () => Promise<string | null>): Promi
 type CryptoPlan = {
   requested: CryptoCurrency[];
   storedCursor: string | null;
-  requestedStart: number;
-  young: Set<Currency>;
 };
 
 /** Which coins this run requests, in request order, and the cursor that order started from. */
@@ -339,24 +359,22 @@ const planCryptoRequests = async (
     cryptoCurrencies: CryptoCurrency[];
     lastBackfilledDayByCurrency: Partial<Record<Currency, number>>;
     knownEmpty: ReadonlySet<Currency>;
+    settled: SettledHistory;
     today: number;
     spanStart: number;
   },
 ): Promise<CryptoPlan> => {
-  const young = deps.youngCurrencies ?? youngCurrenciesThisRun;
-  const requestedStart = requestedStartOf(input.spanStart, input.today);
   const needing = coinsNeedingHistory({
     ...input,
     firstBackfilledDayByCurrency: deps.firstBackfilledDayByCurrency ?? {},
-    young,
-    requestedStart,
+    requestedStart: requestedStartOf(input.spanStart, input.today),
   });
   const storedCursor =
     needing.length > 0
       ? await readCursorOrNull(deps.readHistoryBackfillCursor ?? readStoredCursor)
       : null;
 
-  return { requested: rotatedFrom(needing, storedCursor), storedCursor, requestedStart, young };
+  return { requested: rotatedFrom(needing, storedCursor), storedCursor };
 };
 
 // A cursor that cannot be saved costs only the rotation (the next run starts where this one
@@ -892,7 +910,14 @@ export const runBackfill = async (deps: BackfillDeps): Promise<BackfillStatus> =
     return { state: 'complete', lastDay: lastBackfilledDay };
   }
 
-  const knownEmpty = deps.knownEmptyCurrencies ?? knownEmptyCurrenciesThisRun;
+  const sessionKnownEmpty = deps.knownEmptyCurrencies ?? knownEmptyCurrenciesThisRun;
+  const settled = await readSettledOrEmpty(deps);
+  // A currency a stored mark says the provider has nothing for is as empty as one found empty
+  // this session, and it survives a restart.
+  const knownEmpty = new Set<Currency>([
+    ...sessionKnownEmpty,
+    ...markedEmptyCurrencies(settled, deps.earliestDay, today),
+  ]);
   const lastBackfilledDayByCurrency = deps.lastBackfilledDayByCurrency ?? {};
   const { neverBackfilled, resumeFrom } = resolveBackfillWindow(
     fiatCurrencies,
@@ -902,12 +927,10 @@ export const runBackfill = async (deps: BackfillDeps): Promise<BackfillStatus> =
     lastBackfilledDay,
   );
 
-  const settledSpanStarts = await readSettledSpanStartsOrEmpty(deps);
   const wholeSpan = anySeriesMissesEarlierDays(deps, {
-    fiatCurrencies,
-    cryptoCurrencies,
+    held: [...fiatCurrencies, ...cryptoCurrencies],
     knownEmpty,
-    settledSpanStarts,
+    settled,
     today,
   });
   const days = missingDays(deps.earliestDay, wholeSpan ? null : resumeFrom, today);
@@ -933,6 +956,7 @@ export const runBackfill = async (deps: BackfillDeps): Promise<BackfillStatus> =
     cryptoCurrencies,
     lastBackfilledDayByCurrency,
     knownEmpty,
+    settled,
     today,
     spanStart,
   });
@@ -948,14 +972,6 @@ export const runBackfill = async (deps: BackfillDeps): Promise<BackfillStatus> =
     runCryptoLeg(cryptoRequested, loadCrypto, cryptoDays),
   ]);
 
-  recordYoungCoins(cryptoPlan, cryptoResult);
-  await saveSettledFiatSpanStarts(deps, {
-    nbuResult,
-    fiatRequested: fiatCurrenciesToFetch,
-    settledSpanStarts,
-    spanStart,
-  });
-
   const { rows, failures } = composeAndClassify(
     fiatCurrencies,
     cryptoRequested,
@@ -963,15 +979,28 @@ export const runBackfill = async (deps: BackfillDeps): Promise<BackfillStatus> =
     days,
     nbuResult,
     cryptoResult,
-    knownEmpty,
+    sessionKnownEmpty,
   );
 
   if (rows.length > 0) {
     await upsertMany(rows);
   }
 
-  // After the rows are stored: the cursor then never moves past coins whose rows were lost.
+  // After the rows are stored: neither the cursor nor a mark then runs ahead of rows that were
+  // lost with a failed write.
   await saveNextCursor(deps, cryptoPlan, cryptoResult);
+  await saveEarnedMarks(
+    deps,
+    earnedMarks(deps, {
+      nbuResult,
+      fiatRequested: fiatCurrenciesToFetch,
+      cryptoResult,
+      cryptoRequested,
+      settled,
+      spanStart,
+      today,
+    }),
+  );
 
   if (failures.length > 0) {
     // An attempted currency's fetch failed for this span and nothing composed
