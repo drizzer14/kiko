@@ -1,3 +1,4 @@
+import type { ComponentProps } from 'react';
 import { fireEvent, render } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import '@kiko/i18n/init';
@@ -15,6 +16,20 @@ const columnOptions = [
   { value: 6, label: 'Currency' },
 ];
 
+const renderFields = (overrides: Partial<ComponentProps<typeof CurrencyFields>> = {}) =>
+  render(
+    <CurrencyFields
+      columnOptions={columnOptions}
+      mode="fixed"
+      onModeChange={jest.fn()}
+      currencyColumn={undefined}
+      onCurrencyColumnChange={jest.fn()}
+      fixedCurrency="UAH"
+      onFixedCurrencyChange={jest.fn()}
+      {...overrides}
+    />,
+  );
+
 describe('CurrencyFields', () => {
   beforeEach(() => {
     holdCurrencies([]);
@@ -22,18 +37,10 @@ describe('CurrencyFields', () => {
 
   it('fixed mode lists the target currency first under Holding currency, once', async () => {
     holdCurrencies(['USD']);
-    const { getByTestId, getAllByTestId, getByPlaceholderText } = await render(
-      <CurrencyFields
-        columnOptions={columnOptions}
-        mode="fixed"
-        onModeChange={jest.fn()}
-        currencyColumn={undefined}
-        onCurrencyColumnChange={jest.fn()}
-        fixedCurrency="EUR"
-        onFixedCurrencyChange={jest.fn()}
-        targetHolding={{ currency: 'EUR', type: 'cash' }}
-      />,
-    );
+    const { getByTestId, getAllByTestId, getByPlaceholderText } = await renderFields({
+      fixedCurrency: 'EUR',
+      targetHolding: { currency: 'EUR', type: 'cash' },
+    });
 
     await fireEvent.press(getByTestId('column-mapping-fixed-currency'));
 
@@ -56,17 +63,7 @@ describe('CurrencyFields', () => {
 
   it('lists the user currencies first when no target holding is chosen', async () => {
     holdCurrencies(['USD', 'BTC']);
-    const { getByTestId, getAllByTestId } = await render(
-      <CurrencyFields
-        columnOptions={columnOptions}
-        mode="fixed"
-        onModeChange={jest.fn()}
-        currencyColumn={undefined}
-        onCurrencyColumnChange={jest.fn()}
-        fixedCurrency="UAH"
-        onFixedCurrencyChange={jest.fn()}
-      />,
-    );
+    const { getByTestId, getAllByTestId } = await renderFields();
 
     await fireEvent.press(getByTestId('column-mapping-fixed-currency'));
 
@@ -79,34 +76,14 @@ describe('CurrencyFields', () => {
   });
 
   it('shows a currency-column field in column mode', async () => {
-    const { getByTestId, queryByTestId } = await render(
-      <CurrencyFields
-        columnOptions={columnOptions}
-        mode="column"
-        onModeChange={jest.fn()}
-        currencyColumn={undefined}
-        onCurrencyColumnChange={jest.fn()}
-        fixedCurrency="UAH"
-        onFixedCurrencyChange={jest.fn()}
-      />,
-    );
+    const { getByTestId, queryByTestId } = await renderFields({ mode: 'column' });
 
     expect(getByTestId('column-mapping-currency-column')).toBeTruthy();
     expect(queryByTestId('column-mapping-fixed-currency')).toBeNull();
   });
 
   it('shows the fixed-currency field in fixed mode, defaulted from the caller', async () => {
-    const { getByTestId, getByText, queryByTestId } = await render(
-      <CurrencyFields
-        columnOptions={columnOptions}
-        mode="fixed"
-        onModeChange={jest.fn()}
-        currencyColumn={undefined}
-        onCurrencyColumnChange={jest.fn()}
-        fixedCurrency="UAH"
-        onFixedCurrencyChange={jest.fn()}
-      />,
-    );
+    const { getByTestId, getByText, queryByTestId } = await renderFields();
 
     expect(queryByTestId('column-mapping-currency-column')).toBeNull();
     expect(getByTestId('column-mapping-fixed-currency')).toBeTruthy();
@@ -115,17 +92,7 @@ describe('CurrencyFields', () => {
 
   it('calls onModeChange when the currency-column pill is pressed', async () => {
     const onModeChange = jest.fn();
-    const { getByText } = await render(
-      <CurrencyFields
-        columnOptions={columnOptions}
-        mode="fixed"
-        onModeChange={onModeChange}
-        currencyColumn={undefined}
-        onCurrencyColumnChange={jest.fn()}
-        fixedCurrency="UAH"
-        onFixedCurrencyChange={jest.fn()}
-      />,
-    );
+    const { getByText } = await renderFields({ onModeChange });
 
     await fireEvent.press(getByText('Currency column'));
 
