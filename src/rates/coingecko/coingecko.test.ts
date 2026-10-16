@@ -37,15 +37,26 @@ describe('fetchCryptoPrices', () => {
     await expect(fetchCryptoPrices(makeFetch({}, false))).rejects.toThrow('429');
   });
 
-  it('rejects when any requested coin is missing a finite usd price', async () => {
+  it('returns the priced coins when one coin is missing', async () => {
     await expect(
       fetchCryptoPrices(makeFetch({ bitcoin: { usd: 65_000 } }), FIRST_THREE),
-    ).rejects.toThrow(/CoinGecko/);
+    ).resolves.toEqual([{ base: 'BTC', quote: 'USD', rate: 65_000, source: 'coingecko' }]);
+  });
+
+  it('leaves out a coin whose usd price is not a finite number', async () => {
+    const result = await fetchCryptoPrices(
+      makeFetch({ bitcoin: { usd: 65_000 }, ethereum: { usd: 3_200 }, tether: { usd: 'lots' } }),
+      FIRST_THREE,
+    );
+
+    expect(result.map((entry) => entry.base)).toEqual(['BTC', 'ETH']);
+  });
+
+  it('rejects when no requested coin has a finite usd price', async () => {
+    await expect(fetchCryptoPrices(makeFetch({}), FIRST_THREE)).rejects.toThrow(/CoinGecko/);
+    await expect(fetchCryptoPrices(makeFetch(null), FIRST_THREE)).rejects.toThrow(/CoinGecko/);
     await expect(
-      fetchCryptoPrices(
-        makeFetch({ bitcoin: { usd: 65_000 }, ethereum: { usd: 3_200 }, tether: { usd: 'lots' } }),
-        FIRST_THREE,
-      ),
+      fetchCryptoPrices(makeFetch({ bitcoin: { usd: Number.NaN } }), ['BTC']),
     ).rejects.toThrow(/CoinGecko/);
   });
 

@@ -1,6 +1,7 @@
 import { currencyOptions, isCrypto, isCurrency } from '@kiko/currency/currency';
 
 import type { RateEntry } from '../conversion';
+import { fetchCryptoPrices } from '../coingecko';
 import { buildRateTable, canConvert } from '../net-worth-view';
 
 import { type FiatRatesOfRun, type RefreshDeps, refreshRates } from './rates-refresh';
@@ -50,6 +51,28 @@ const makeDeps = (overrides: Partial<RefreshDeps> = {}) => {
 };
 
 describe('refreshRates', () => {
+  it('writes a UAH row per priced coin and none for the missing one', async () => {
+    const onlyBitcoinAnswered = (async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ bitcoin: { usd: 65_000 } }),
+    })) as unknown as typeof fetch;
+    const { deps, captured } = makeDeps({
+      openCurrencies: async () => ({
+        needsFiat: true,
+        cryptoCurrencies: ['BTC', 'ETH'],
+        nonBaseCurrencies: ['USD', 'EUR', 'BTC', 'ETH'],
+      }),
+      fetchCryptoPrices: (currencies) => fetchCryptoPrices(onlyBitcoinAnswered, currencies),
+    });
+
+    await refreshRates(deps);
+
+    const bases = captured.flat().map((row) => row.base);
+    expect(bases).toContain('BTC');
+    expect(bases).not.toContain('ETH');
+  });
+
   it('composes one X:UAH row per priced currency and upserts them once', async () => {
     const { deps, captured } = makeDeps();
 
