@@ -26,11 +26,14 @@ import { groupAmount } from '@kiko/screens/forms/amount-format';
 import TextField from '@kiko/design-system/components/text-field';
 import SelectField from '@kiko/design-system/components/select-field';
 import CurrencyField from '@kiko/design-system/components/currency-field';
+import { useCurrencyPickerGroups } from '@kiko/holdings/currency-picker-groups';
 import SegmentedControl from '@kiko/design-system/components/segmented-control';
 
 import type { MatcherRowProps } from './matcher-row.props';
 
 type MatcherType = CategoryRuleMatcher['type'];
+
+const ANY_CURRENCY_CONTEXT = { kind: 'any' } as const;
 
 // One condition of a rule: a select for its type and the inputs that type needs. The row keeps no
 // state of its own; the editor holds every draft, so a row can change type and back without
@@ -44,6 +47,7 @@ const MatcherRow: FC<MatcherRowProps> = ({
   error,
 }) => {
   const { t } = useTranslation();
+  const currencyGroups = useCurrencyPickerGroups(ANY_CURRENCY_CONTEXT);
 
   const typeLabels: Record<MatcherType, string> = {
     nameIs: t('ruleForm.nameIs'),
@@ -91,6 +95,7 @@ const MatcherRow: FC<MatcherRowProps> = ({
           sheetTitle={t('forms.fields.currencySheetTitle')}
           selected={draft.currency}
           onSelect={(currency) => onChange({ currency })}
+          groups={currencyGroups}
           testID={`matcher-currency-${position}`}
         />
       </>

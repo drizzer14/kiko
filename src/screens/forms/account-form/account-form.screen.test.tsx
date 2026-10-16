@@ -11,6 +11,7 @@ import {
   navigationSpy,
 } from '@kiko/test-support/navigation-props';
 import { darkTheme } from '@kiko/design-system/theme';
+import { holdCurrencies } from '@kiko/test-support/held-currencies';
 import type { ConnectReminder } from '@kiko/design-system/connect-reminder';
 import { scrollToField, useHeaderInset } from '@kiko/design-system/scroll-to-field';
 import { spyOnModalAnimationPerTest } from '@kiko/test-support/modal-animation-spy';
@@ -90,6 +91,14 @@ let mockAccounts: unknown[] = [];
 jest.mock('@kiko/db/use-live-query', () => ({
   useLiveQuery: () => ({ data: mockAccounts }),
 }));
+jest.mock(
+  '@kiko/holdings/use-held-currencies',
+  () => jest.requireActual('@kiko/test-support/held-currencies').heldCurrenciesModule,
+);
+
+afterEach(() => {
+  holdCurrencies([]);
+});
 jest.mock('@kiko/accounts/accounts.repo', () => ({
   accountsRepo: {
     byIdQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }),
@@ -303,6 +312,16 @@ const renderForm = async (
   );
 
   return { ...view, navigation };
+};
+
+// The create form already on a named cash account, where every cash-save test starts.
+const renderCashForm = async () => {
+  const view = await renderForm();
+
+  await fireEvent.changeText(view.getByLabelText('Name'), 'Wallet');
+  await selectKind(view.getByTestId, 'cash');
+
+  return view;
 };
 
 describe('AccountFormScreen', () => {
@@ -942,10 +961,8 @@ describe('AccountFormScreen', () => {
   });
 
   it('persists a picked icon on a cash account created atomically', async () => {
-    const { getByLabelText, getByTestId, navigation } = await renderForm();
+    const { getByLabelText, navigation } = await renderCashForm();
 
-    await fireEvent.changeText(getByLabelText('Name'), 'Wallet');
-    await selectKind(getByTestId, 'cash');
     await fireEvent.changeText(getByLabelText('Initial value'), '100');
     await fireEvent.press(getByLabelText('Change Icon'));
     await fireEvent.press(getByLabelText('Choose icon banknote'));
@@ -1140,10 +1157,8 @@ describe('AccountFormScreen', () => {
   });
 
   it('saves a typed zero initial value', async () => {
-    const { getByLabelText, getByTestId, navigation } = await renderForm();
+    const { getByLabelText, navigation } = await renderCashForm();
 
-    await fireEvent.changeText(getByLabelText('Name'), 'Wallet');
-    await selectKind(getByTestId, 'cash');
     await fireEvent.changeText(getByLabelText('Initial value'), '0');
     await pressSave(navigation.setOptions);
 
@@ -1198,6 +1213,24 @@ describe('AccountFormScreen', () => {
 
     await fireEvent.changeText(search, 'GBP');
     expect(getByTestId('currency-option-GBP')).toBeTruthy();
+    expect(queryByTestId('currency-option-BTC')).toBeNull();
+  });
+
+  it('cash currency picker shows no group heading and no coin', async () => {
+    holdCurrencies(['USD', 'BTC']);
+    const { getByPlaceholderText, getByTestId, getAllByTestId, queryByTestId } =
+      await renderCashForm();
+    await fireEvent.press(getByTestId('account-currency-field'));
+
+    expect(queryByTestId(/^currency-group-/)).toBeNull();
+    expect(
+      getAllByTestId(/^currency-option-/)
+        .slice(0, 3)
+        .map((row) => String(row.props.testID)),
+    ).toEqual(['currency-option-USD', 'currency-option-UAH', 'currency-option-EUR']);
+
+    await fireEvent.changeText(getByPlaceholderText('Search by code or name'), 'BTC');
+
     expect(queryByTestId('currency-option-BTC')).toBeNull();
   });
 
@@ -1274,10 +1307,8 @@ describe('AccountFormScreen color follows kind until dirty', () => {
   });
 
   it('persists the manually picked color on a cash account', async () => {
-    const { getByLabelText, getByTestId, navigation } = await renderForm();
+    const { getByLabelText, navigation } = await renderCashForm();
 
-    await fireEvent.changeText(getByLabelText('Name'), 'Wallet');
-    await selectKind(getByTestId, 'cash');
     await fireEvent.changeText(getByLabelText('Initial value'), '100');
     await fireEvent.press(getByLabelText('Color violet'));
     await pressSave(navigation.setOptions);

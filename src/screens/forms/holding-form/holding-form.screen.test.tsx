@@ -20,6 +20,7 @@ import type { Metal } from '@kiko/holdings/holding-metadata';
 import { fieldSuffix } from '@kiko/test-support/field-suffix';
 import { defaultHoldingColor } from '@kiko/holdings/entity-colors';
 import { isLabelInvalid } from '@kiko/test-support/field-label-spy';
+import { holdCurrencies } from '@kiko/test-support/held-currencies';
 import { refreshBondRegisterIfStale } from '@kiko/bonds/bond-register-repo';
 import { type HoldingType, holdingTypes } from '@kiko/holdings/holding-type';
 import { scrollToField, useHeaderInset } from '@kiko/design-system/scroll-to-field';
@@ -165,6 +166,10 @@ jest.mock('@kiko/db/use-live-query', () => ({
   // mocked `bondRegisterRepo` below) tells them apart.
   useLiveQuery: (...args: [{ __kind?: string }, string[], boolean?]) => mockUseLiveQuery(...args),
 }));
+jest.mock(
+  '@kiko/holdings/use-held-currencies',
+  () => jest.requireActual('@kiko/test-support/held-currencies').heldCurrenciesModule,
+);
 // `findByIsinQuery`/`fetchedAtQuery`'s return values are opaque to the
 // mocked `useLiveQuery` above (it only reads `__kind`), so a bare stub is
 // enough — the same pattern `accountsRepo.byIdQuery` uses below.
@@ -246,6 +251,7 @@ beforeEach(() => {
   mockPricePointsLoading = false;
   mockAllHoldings = [];
   mockAllAccounts = [];
+  holdCurrencies([]);
 });
 
 const renderScreen = () =>
@@ -379,22 +385,23 @@ describe('HoldingFormScreen term deposit', () => {
     }
   });
 
-  it('offers crypto currencies for a holding (BTC and UAH present)', async () => {
-    // A holding may legitimately be in a crypto currency, so — unlike the cash
-    // account form — the holding currency picker keeps the FULL set: opening the
-    // field offers both fiat (UAH) and crypto (BTC).
-    const { getByTestId, getByPlaceholderText } = await renderScreen();
+  it('term deposit offers no coin', async () => {
+    holdCurrencies(['USD', 'BTC']);
+    const { getByTestId, queryByTestId, getByPlaceholderText, getAllByTestId } =
+      await renderScreen();
 
     await fireEvent.press(getByTestId('holding-currency-field'));
 
-    // UAH is the first option, so it renders eagerly — a fiat is offered.
-    expect(getByTestId('currency-option-UAH')).toBeTruthy();
+    const firstCodes = getAllByTestId(/^currency-option-/)
+      .slice(0, 3)
+      .map((row) => String(row.props.testID).replace('currency-option-', ''));
 
-    // BTC is the last currency, so the virtualized list does not mount it
-    // eagerly; search for it (as currency-field.component.test.tsx does) to
-    // prove the holding picker still offers crypto.
+    expect(firstCodes).toEqual(['USD', 'UAH', 'EUR']);
+    expect(queryByTestId(/^currency-group-/)).toBeNull();
+
     await fireEvent.changeText(getByPlaceholderText('Search by code or name'), 'BTC');
-    expect(getByTestId('currency-option-BTC')).toBeTruthy();
+
+    expect(queryByTestId('currency-option-BTC')).toBeNull();
   });
 
   it('offers a new cash holding fiat currencies only', async () => {
@@ -411,34 +418,24 @@ describe('HoldingFormScreen term deposit', () => {
     expect(getByTestId('currency-option-EUR')).toBeTruthy();
   });
 
-  it('lists crypto currencies first when creating a crypto holding', async () => {
+  it('crypto holding lists Crypto before Currencies', async () => {
     mockAccountKind = 'crypto';
-    const { getByTestId, getAllByTestId } = await renderScreen();
+    holdCurrencies(['USD', 'BTC']);
+    const { getByTestId, getAllByTestId, getByPlaceholderText } = await renderScreen();
 
     await fireEvent.press(getByTestId('holding-currency-field'));
 
-    const codes = getAllByTestId(/^currency-option-/).map((row) =>
-      String(row.props.testID).replace('currency-option-', ''),
-    );
+    expect(getByTestId('currency-group-crypto')).toHaveTextContent('Crypto');
+    expect(getAllByTestId(/^currency-option-/)[0]).toHaveProp('testID', 'currency-option-BTC');
 
-    // The list mounts its first 15 rows only, all of them crypto, sorted by English name.
-    expect(codes).toEqual([
-      'AVAX',
-      'BTC',
-      'BCH',
-      'BNB',
-      'ADA',
-      'CGPT',
-      'LINK',
-      'DAI',
-      'DOGE',
-      'ETH',
-      'FDUSD',
-      'HYPE',
-      'LTC',
-      'NEAR',
-      'SOL',
-    ]);
+    // The fiat group is below the virtualized window; a search that keeps both groups brings it in.
+    await fireEvent.changeText(getByPlaceholderText('Search by code or name'), 'USD');
+
+    expect(
+      getAllByTestId(/^currency-group-/).map((heading) => String(heading.props.testID)),
+    ).toEqual(['currency-group-crypto', 'currency-group-fiat']);
+    expect(getByTestId('currency-group-fiat')).toHaveTextContent('Currencies');
+    expect(getByTestId('currency-option-USD')).toBeTruthy();
   });
 
   // The currency sheet's search field lives inside a Modal above this
@@ -3078,6 +3075,38 @@ describe('HoldingFormScreen loan', () => {
         'HoldingForm',
         expect.objectContaining({ accountId: 'brk', initialType: 'cash' }),
       );
+    });
+
+    it('create payment holding from a loan offers only types expected in its currency', async () => {
+      const coins = {
+        id: 'coins',
+        name: 'Coins',
+        kind: 'crypto',
+        institution: null,
+        bankId: null,
+        archivedAt: null,
+      };
+
+      // A legacy loan in a coin: a write accepts it, but only a crypto asset is expected in one.
+      mockAccountKind = 'debt';
+      mockAllAccounts = [IMPORT_BANK, coins];
+      const bitcoinLoanRoute = asRouteProp<HoldingFormProps['route']>('HoldingForm', {
+        accountId: 'acc-1',
+        initialType: 'loan',
+        initialCurrency: 'BTC',
+      });
+      const screen = await render(
+        <HoldingFormScreen navigation={navigationProp(navigation)} route={bitcoinLoanRoute} />,
+      );
+
+      await openPaidFromSheet(screen);
+      await pressAddHolding(screen);
+
+      expect(navigation.push).toHaveBeenCalledWith('HoldingForm', {
+        accountId: 'coins',
+        initialType: 'crypto_asset',
+        initialCurrency: 'BTC',
+      });
     });
 
     it('opens the form in the loan currency', async () => {

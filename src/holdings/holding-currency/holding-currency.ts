@@ -1,10 +1,4 @@
-import {
-  type Currency,
-  currencyOptions,
-  fiatCurrencyOptions,
-  isCrypto,
-  isFiat,
-} from '@kiko/currency/currency';
+import { type Currency, isCrypto, isFiat } from '@kiko/currency/currency';
 
 import type { HoldingType } from '../holding-type';
 
@@ -13,9 +7,6 @@ import type { HoldingType } from '../holding-type';
 // be in a coin). Only the write paths read this: the create form's picker lists
 // what `isCurrencyExpectedForHoldingType` expects, which is narrower.
 const isFiatOnlyHoldingType = (type: HoldingType): boolean => type === 'cash';
-
-export const holdingCurrencyOptions = (type: HoldingType): readonly Currency[] =>
-  isFiatOnlyHoldingType(type) ? fiatCurrencyOptions : currencyOptions;
 
 export const isCurrencyAllowedForHoldingType = (type: HoldingType, currency: Currency): boolean =>
   !isFiatOnlyHoldingType(type) || isFiat(currency);

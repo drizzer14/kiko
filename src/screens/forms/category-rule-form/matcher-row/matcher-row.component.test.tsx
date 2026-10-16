@@ -2,11 +2,21 @@ import { act, fireEvent, render } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
 import { fieldSuffix } from '@kiko/test-support/field-suffix';
+import { holdCurrencies } from '@kiko/test-support/held-currencies';
 
 import { emptyMatcherDraft } from '../rule-draft';
 
 import MatcherRow from './matcher-row.component';
 import type { MatcherRowProps } from './matcher-row.props';
+
+jest.mock(
+  '@kiko/holdings/use-held-currencies',
+  () => jest.requireActual('@kiko/test-support/held-currencies').heldCurrenciesModule,
+);
+
+beforeEach(() => {
+  holdCurrencies([]);
+});
 
 const renderRow = (overrides: Partial<MatcherRowProps> = {}) =>
   render(
@@ -141,6 +151,27 @@ describe('MatcherRow', () => {
       await fireEvent.press(getByTestId('currency-option-EUR'));
 
       expect(onChange).toHaveBeenCalledWith({ currency: 'EUR' });
+    });
+
+    it('amount currency lists the user’s currencies first', async () => {
+      holdCurrencies(['USD', 'BTC']);
+      const { getByTestId, getAllByTestId } = await renderRow({ draft: amountDraft });
+
+      await fireEvent.press(getByTestId('matcher-currency-0'));
+
+      expect(
+        getAllByTestId(/^currency-(group|option)-/)
+          .slice(0, 6)
+          .map((row) => String(row.props.testID)),
+      ).toEqual([
+        'currency-group-held',
+        'currency-option-BTC',
+        'currency-option-USD',
+        'currency-group-fiat',
+        'currency-option-UAH',
+        'currency-option-EUR',
+      ]);
+      expect(getByTestId('currency-group-held')).toHaveTextContent('Your currencies');
     });
 
     it('shows its error under the amount field, not a name error', async () => {

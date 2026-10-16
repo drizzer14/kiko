@@ -1,7 +1,8 @@
-import type { FC } from 'react';
+import { type FC, useMemo } from 'react';
 import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
 import CurrencyField from '@kiko/design-system/components/currency-field';
+import { useCurrencyPickerGroups } from '@kiko/holdings/currency-picker-groups';
 import SegmentedControl from '@kiko/design-system/components/segmented-control';
 
 import ColumnSelectField from '../column-select-field';
@@ -29,9 +30,15 @@ const CurrencyFields: FC<CurrencyFieldsProps> = ({
   onCurrencyColumnChange,
   fixedCurrency,
   onFixedCurrencyChange,
+  targetHolding,
   currencyColumnError,
 }) => {
   const { t } = useTranslation();
+  const currencyContext = useMemo(
+    () => ({ kind: 'statement', target: targetHolding }) as const,
+    [targetHolding],
+  );
+  const currencyGroups = useCurrencyPickerGroups(currencyContext);
 
   return (
     <>
@@ -63,6 +70,7 @@ const CurrencyFields: FC<CurrencyFieldsProps> = ({
           sheetTitle={t('columnMapping.fixedCurrencySheetTitle')}
           selected={fixedCurrency}
           onSelect={onFixedCurrencyChange}
+          groups={currencyGroups}
           testID="column-mapping-fixed-currency"
         />
       )}
