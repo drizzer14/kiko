@@ -120,7 +120,7 @@ export const en = {
       successMessage: 'Import complete — {{count}} accounts restored.',
       title: 'Import Data',
       unknownCurrencyError:
-        'This backup was made by a newer version of Kiko and holds a currency this version does not know, so nothing was imported. Update Kiko and try again. Your current data is unchanged.',
+        'This export file was made by a newer version of Kiko and holds a currency this version does not know, so nothing was imported. Update Kiko and try again. Your current data is unchanged.',
       wrongFileTypeError: 'Choose a Kiko export file (.kiko).',
       wrongKeyError: 'The key is wrong, or the file is corrupted.',
     },
