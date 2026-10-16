@@ -43,6 +43,26 @@ describe('fetchCryptoPrices', () => {
     ).resolves.toEqual([{ base: 'BTC', quote: 'USD', rate: 65_000, source: 'coingecko' }]);
   });
 
+  it('logs the coins CoinGecko left unpriced, by code only', async () => {
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    await fetchCryptoPrices(makeFetch({ bitcoin: { usd: 65_000 } }), FIRST_THREE);
+
+    expect(warn).toHaveBeenCalledWith('[coingecko] coins left unpriced', {
+      currencies: ['ETH', 'USDT'],
+    });
+    warn.mockRestore();
+  });
+
+  it('logs nothing when every requested coin is priced', async () => {
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    await fetchCryptoPrices(makeFetch(body), FIRST_THREE);
+
+    expect(warn).not.toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
   it('leaves out a coin whose usd price is not a finite number', async () => {
     const result = await fetchCryptoPrices(
       makeFetch({ bitcoin: { usd: 65_000 }, ethereum: { usd: 3_200 }, tether: { usd: 'lots' } }),

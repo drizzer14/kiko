@@ -71,5 +71,15 @@ export const fetchCryptoPrices = async (
     throw new Error('CoinGecko price response did not contain a finite usd value for any coin');
   }
 
+  const pricedBases = new Set(priced.map((entry) => entry.base));
+  const unpriced = currencies.filter((base) => !pricedBases.has(base));
+
+  if (unpriced.length > 0) {
+    // Codes only, no amounts: the one trace of a coin CoinGecko dropped, since the caller sees a
+    // shorter list and nothing else.
+    // biome-ignore lint/suspicious/noConsole: OVERRIDE(diagnostic) coins CoinGecko left unpriced
+    console.warn('[coingecko] coins left unpriced', { currencies: unpriced });
+  }
+
   return priced;
 };
