@@ -836,17 +836,13 @@ gate says there is nothing to do.
   `planBackfillRun` sends when an older transaction extends the
   transaction span earlier than any prior run covered, which the
   per-currency minimum alone cannot see (kiko-pricing's "History
-  backfill" section has the full rule). A currency whose providers all answered for
-  the whole span but returned no row for it (a held coin CoinGecko
-  never returns) is kept in an in-memory `knownEmptyCurrenciesThisRun`
-  set and excluded from that minimum, so Statistics does not refetch
-  the full span on every focus (a rejected leg is never recorded — it
-  retries; nor is a coin whose OWN CoinGecko request failed while
-  another coin's succeeded: `fetchCryptoHistory` settles per coin and
-  returns `failedCurrencies` beside its `entries` — `runBackfill` itself
-  reports `'failed'`, never `'complete'`, whenever an attempted
-  currency's fetch failed and nothing composed for it this run (see
-  kiko-pricing's "History backfill" section for the full outcome rule).
+  backfill" section has the full rule). A currency the providers answered
+  empty for, and one that settled from a later first day (a young coin),
+  is excluded from that minimum by a persisted settled mark, so
+  Statistics does not refetch the full span on every focus; a failed
+  request earns no mark and retries (kiko-pricing's "History backfill"
+  section has the marks, the empty-mark expiry, the 429 rotation and the
+  outcome rule).
   The metal twin, `emptyBackwardFloorByMetal`,
   records only an ANSWERED empty backward range — a failed request
   throws before it is recorded). A create/restore
@@ -2423,11 +2419,11 @@ shape, and hand-rolled `utf8/utf8.ts` + `base64/base64.ts` codecs.
   `secrets/restore-secrets.ts` restores each account secret back to its
   original account id — a legacy file that still carries the removed
   `eodhdKey` imports fine, the key ignored and never written to the
-  Keychain. A restore keeps this device's live `settings.lockEnabled` (the app lock is turned off only after
-  `confirmOwner` in Settings, so a file never decides it), and
-  `settings.notificationsDeliverableSince` (when iOS first allowed
-  notifications on this device), never the file's. They are the one list
-  `KEPT_FROM_LIVE_ON_RESTORE` (`src/db/kept-from-live-on-restore.ts`), read
+  Keychain. A restore keeps this device's live value of each device-local settings
+  column, never the file's (the app lock is turned off only after
+  `confirmOwner` in Settings, so a file never decides it). They are the
+  members of `KEPT_FROM_LIVE_ON_RESTORE` (`src/db/kept-from-live-on-restore.ts`;
+  read the file for the list and each member's reason), read
   by `restore-snapshot.ts` and by `settings-columns.test.ts`, which
   classifies every settings column as kept-live or from-file. A file with
   no key for one of them, or no settings row at all, still keeps the live
@@ -2688,6 +2684,15 @@ shape, and hand-rolled `utf8/utf8.ts` + `base64/base64.ts` codecs.
   `VERSION_DECISIONS` comment and bump `migrationCount` in
   `src/data-transfer/crypto/envelope.test.ts`; the scoped jest run must include
   `e2e/screenshot` and `src/data-transfer/crypto`.
+  Worked example of a device-local settings column: 0060
+  `settings.history_backfill_state` (nullable; the history backfill's resume
+  state). It is listed in `KEPT_FROM_LIVE_ON_RESTORE`, so a file never
+  decides it, it needs no `EXPORT_VERSION` bump, and its reason is the
+  `VERSION_DECISIONS` entry in `envelope.test.ts` (read it there).
+  Renaming an UNSHIPPED migration needs a new journal `when` in
+  `drizzle/migrations/meta/_journal.json`: drizzle skips any entry whose `when` is not
+  later than the last applied one, so a device that ran the old name never
+  runs the renamed file.
 
 ## Reminders (local notifications)
 
@@ -3059,11 +3064,11 @@ what a change must keep.
   `holdings`/`accounts` and inserts them last, with `snapshot.reminders
   ?? []`, so a pre-reminders `.kiko` restores with no reminders. The
   settings row comes from the backup except the columns this device
-  keeps (`KEPT_FROM_LIVE_ON_RESTORE`), so of the two reminder settings
-  columns only `reminderOfferDismissals` comes from the backup:
-  `notificationsDeliverableSince` stays this device's, because a file
-  from another device cannot know when iOS first allowed notifications
-  here (`restore-across-reminders-migration.test.ts` pins the old-backup
+  keeps (`KEPT_FROM_LIVE_ON_RESTORE`; read the file), so of the two
+  reminder settings columns only `reminderOfferDismissals` comes from the
+  backup: `notificationsDeliverableSince` stays this device's, because a
+  file from another device cannot know when iOS first allowed
+  notifications here (`restore-across-reminders-migration.test.ts` pins the old-backup
   case). `importData` awaits
   `replanRestoredReminders()` (`src/reminders/use-reminder-scheduler/`)
   right after the snapshot commits, ahead of every later step: the
