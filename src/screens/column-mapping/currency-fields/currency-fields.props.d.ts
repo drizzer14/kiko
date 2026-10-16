@@ -17,6 +17,6 @@ export type CurrencyFieldsProps = {
   onCurrencyColumnChange: (value: number | undefined) => void;
   fixedCurrency: Currency;
   onFixedCurrencyChange: (currency: Currency) => void;
-  targetHolding?: TargetHolding;
+  targetHolding: TargetHolding | undefined;
   currencyColumnError?: string;
 };

@@ -46,11 +46,11 @@ import { useCurrentPriceBook } from '@kiko/prices/use-current-price-book';
 import { useScrollToField } from '@kiko/design-system/use-scroll-to-field';
 import { isSyncedAccount, isSyncedHolding } from '@kiko/holdings/deletable';
 import { toHoldingOption } from '@kiko/screens/forms/holding-select-option';
+import { type FC, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useCurrencyPickerGroups } from '@kiko/holdings/currency-picker-groups';
 import type { AccountsStackParamList, FormDraft } from '@kiko/navigation/types';
 import { isCurrencyExpectedForHoldingType } from '@kiko/holdings/holding-currency';
 import type { HoldingSelectOption } from '@kiko/screens/forms/holding-select-field';
-import { type FC, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { defaultHoldingSymbol, holdingTypeSymbol } from '@kiko/holdings/entity-symbols';
 import HoldingIdentityField from '@kiko/design-system/components/holding-identity-field';
 import { type ImplicitAccountKind, isImplicitAccountKind } from '@kiko/holdings/implicit-account';
@@ -392,8 +392,7 @@ const HoldingFormScreen: FC<HoldingFormScreenProps> = ({ route, navigation }) =>
   // An "Add holding" row opens the form on a type its picker lists (`start.type`),
   // which the snap below keeps while the account offers it.
   const [type, setType] = useState<HoldingType>(startingType(start.type, typeOptions));
-  const currencyContext = useMemo(() => ({ kind: 'holding', type }) as const, [type]);
-  const currencyGroups = useCurrencyPickerGroups(currencyContext);
+  const currencyGroups = useCurrencyPickerGroups({ kind: 'holding', type });
 
   // Reactive `PriceBook`, passed through `EditContext.book` to every hook's
   // own `saveEdit`: a loan edit that changes its schedule INTO `'none'`

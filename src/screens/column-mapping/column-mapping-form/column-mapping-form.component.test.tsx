@@ -85,6 +85,7 @@ const propsWith = (overrides: Partial<ColumnMappingFormProps> = {}): ColumnMappi
   onCurrencyColumnChange: jest.fn(),
   fixedCurrency: 'UAH',
   onFixedCurrencyChange: jest.fn(),
+  targetHolding: undefined,
   descriptionColumn: undefined,
   onDescriptionColumnChange: jest.fn(),
   counterpartyColumn: undefined,

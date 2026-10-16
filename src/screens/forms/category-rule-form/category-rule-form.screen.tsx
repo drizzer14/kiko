@@ -21,6 +21,7 @@ import { buildCategoryDisplayMap } from '@kiko/categories/category-display';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { categoryKeyOf, prepareRules } from '@kiko/categories/category-rules';
 import { useFormHeaderItems } from '@kiko/screens/forms/use-form-header-items';
+import { useCurrencyPickerGroups } from '@kiko/holdings/currency-picker-groups';
 import { type FC, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
 import {
@@ -94,6 +95,7 @@ const CategoryRuleFormScreen: FC<CategoryRuleFormScreenProps> = ({ navigation, r
   );
   const isReady = useDataReady(rulesLoading, settingsLoading);
   const baseCurrency = settingsRows.at(0)?.baseCurrency ?? 'UAH';
+  const currencyGroups = useCurrencyPickerGroups({ kind: 'any' });
   const [rows, setRows] = useState<DraftRow[]>([]);
   const [hydrated, setHydrated] = useState(false);
   const rowViews = useRef<(FieldInstance | null)[]>([]);
@@ -206,6 +208,7 @@ const CategoryRuleFormScreen: FC<CategoryRuleFormScreenProps> = ({ navigation, r
 
                 <MatcherRow
                   draft={row.draft}
+                  currencyGroups={currencyGroups}
                   position={position}
                   canRemove={rows.length > 1}
                   onChange={(fields) => changeRow(row.key, fields)}

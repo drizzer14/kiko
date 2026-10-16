@@ -94,7 +94,7 @@ export type ColumnMappingFormProps = {
   onCurrencyColumnChange: (value: number | undefined) => void;
   fixedCurrency: Currency;
   onFixedCurrencyChange: (currency: Currency) => void;
-  targetHolding?: TargetHolding;
+  targetHolding: TargetHolding | undefined;
   descriptionColumn: number | undefined;
   onDescriptionColumnChange: (value: number | undefined) => void;
   counterpartyColumn: number | undefined;

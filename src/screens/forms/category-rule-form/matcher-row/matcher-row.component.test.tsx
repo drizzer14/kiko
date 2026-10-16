@@ -2,26 +2,20 @@ import { act, fireEvent, render } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
 import { fieldSuffix } from '@kiko/test-support/field-suffix';
-import { holdCurrencies } from '@kiko/test-support/held-currencies';
+import type { CurrencyGroup } from '@kiko/currency/currency-group';
 
 import { emptyMatcherDraft } from '../rule-draft';
 
 import MatcherRow from './matcher-row.component';
 import type { MatcherRowProps } from './matcher-row.props';
 
-jest.mock(
-  '@kiko/holdings/use-held-currencies',
-  () => jest.requireActual('@kiko/test-support/held-currencies').heldCurrenciesModule,
-);
-
-beforeEach(() => {
-  holdCurrencies([]);
-});
+const CURRENCY_GROUPS: CurrencyGroup[] = [{ kind: 'fiat', currencies: ['UAH', 'USD', 'EUR'] }];
 
 const renderRow = (overrides: Partial<MatcherRowProps> = {}) =>
   render(
     <MatcherRow
       draft={emptyMatcherDraft('UAH')}
+      currencyGroups={CURRENCY_GROUPS}
       position={0}
       canRemove={false}
       onChange={jest.fn()}
@@ -153,9 +147,14 @@ describe('MatcherRow', () => {
       expect(onChange).toHaveBeenCalledWith({ currency: 'EUR' });
     });
 
-    it('amount currency lists the user’s currencies first', async () => {
-      holdCurrencies(['USD', 'BTC']);
-      const { getByTestId, getAllByTestId } = await renderRow({ draft: amountDraft });
+    it('amount currency lists the groups it is handed, in order', async () => {
+      const { getByTestId, getAllByTestId } = await renderRow({
+        draft: amountDraft,
+        currencyGroups: [
+          { kind: 'held', currencies: ['BTC', 'USD'] },
+          { kind: 'fiat', currencies: ['UAH', 'EUR'] },
+        ],
+      });
 
       await fireEvent.press(getByTestId('matcher-currency-0'));
 

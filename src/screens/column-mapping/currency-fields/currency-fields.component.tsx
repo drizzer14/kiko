@@ -1,4 +1,4 @@
-import { type FC, useMemo } from 'react';
+import type { FC } from 'react';
 import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
 import CurrencyField from '@kiko/design-system/components/currency-field';
@@ -34,11 +34,7 @@ const CurrencyFields: FC<CurrencyFieldsProps> = ({
   currencyColumnError,
 }) => {
   const { t } = useTranslation();
-  const currencyContext = useMemo(
-    () => ({ kind: 'statement', target: targetHolding }) as const,
-    [targetHolding],
-  );
-  const currencyGroups = useCurrencyPickerGroups(currencyContext);
+  const currencyGroups = useCurrencyPickerGroups({ kind: 'statement', target: targetHolding });
 
   return (
     <>

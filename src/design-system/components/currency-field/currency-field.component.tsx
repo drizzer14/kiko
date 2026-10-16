@@ -1,3 +1,4 @@
+import { match } from 'ts-pattern';
 import type { TFunction } from 'i18next';
 import maybe, { foldMap } from 'fnts/maybe';
 import { useTranslation } from 'react-i18next';
@@ -41,7 +42,10 @@ type PickerRow =
   | { type: 'currency'; code: Currency };
 
 const rowKey = (row: PickerRow): string =>
-  row.type === 'heading' ? `heading-${row.kind}` : row.code;
+  match(row)
+    .with({ type: 'heading' }, ({ kind }) => `heading-${kind}`)
+    .with({ type: 'currency' }, ({ code }) => code)
+    .exhaustive();
 
 // The rows to render: each group's currencies that match the search, in the order the group
 // gives them (the caller's group builder owns ordering, so a search only filters). A group the
@@ -182,33 +186,32 @@ const CurrencyField: FC<CurrencyFieldProps> = ({
         <FlatList
           data={rows}
           keyExtractor={rowKey}
-          renderItem={({ item: row }) => {
-            if (row.type === 'heading') {
-              return (
+          renderItem={({ item: row }) =>
+            match(row)
+              .with({ type: 'heading' }, ({ kind }) => (
                 <Box
                   style={styles.heading}
                   accessibilityRole="header"
-                  testID={`currency-group-${row.kind}`}
+                  testID={`currency-group-${kind}`}
                 >
                   <Text variant="caption" tone="textSecondary">
-                    {t(`components.currencyField.groups.${row.kind}`)}
+                    {t(`components.currencyField.groups.${kind}`)}
                   </Text>
                 </Box>
-              );
-            }
-
-            return (
-              <SelectableRow
-                testID={`currency-option-${row.code}`}
-                accessibilityRole="button"
-                accessibilityLabel={`${row.code} ${currencyName(t, row.code)}`}
-                selected={row.code === selected}
-                onPress={() => handleSelect(row.code)}
-                label={currencyName(t, row.code)}
-                leadingText={currencySymbol[row.code]}
-              />
-            );
-          }}
+              ))
+              .with({ type: 'currency' }, ({ code }) => (
+                <SelectableRow
+                  testID={`currency-option-${code}`}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${code} ${currencyName(t, code)}`}
+                  selected={code === selected}
+                  onPress={() => handleSelect(code)}
+                  label={currencyName(t, code)}
+                  leadingText={currencySymbol[code]}
+                />
+              ))
+              .exhaustive()
+          }
           initialNumToRender={15}
           windowSize={5}
           showsVerticalScrollIndicator={false}

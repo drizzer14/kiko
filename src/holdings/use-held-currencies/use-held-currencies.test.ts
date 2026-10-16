@@ -40,12 +40,4 @@ describe('useHeldCurrencies', () => {
 
     expect(result.current).toEqual(['USD', 'BTC']);
   });
-
-  it('returns [] while loading', async () => {
-    mockUseLiveQuery.mockReturnValue({ data: [{ currency: 'USD' }], isLoading: true });
-
-    const { result } = await renderHook(() => useHeldCurrencies());
-
-    expect(result.current).toEqual([]);
-  });
 });

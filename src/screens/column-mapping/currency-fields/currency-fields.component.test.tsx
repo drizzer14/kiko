@@ -26,6 +26,7 @@ const renderFields = (overrides: Partial<ComponentProps<typeof CurrencyFields>> 
       onCurrencyColumnChange={jest.fn()}
       fixedCurrency="UAH"
       onFixedCurrencyChange={jest.fn()}
+      targetHolding={undefined}
       {...overrides}
     />,
   );
