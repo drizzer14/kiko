@@ -293,6 +293,8 @@ describe('runBackfill', () => {
         cryptoCurrencies: ['BTC'],
       }),
       lastBackfilledDayByCurrency,
+      readHistoryBackfillCursor: async () => null,
+      writeHistoryBackfillCursor: async () => {},
       ...overrides,
     };
 
@@ -880,6 +882,11 @@ describe('runBackfill — the data-presence gate', () => {
     fetchNbuHistory: async () => ({ entries: nbu, failedCurrencies: [] }),
     fetchCryptoHistory: async () => answered(btc),
     upsertMany: async () => {},
+    readHistoryBackfillCursor: async () => null,
+    writeHistoryBackfillCursor: async () => {},
+    // Its own set: the module's shared one would carry a coin an earlier test found empty, and a
+    // coin known to be empty is not requested again.
+    knownEmptyCurrencies: new Set(),
     ...overrides,
   });
 

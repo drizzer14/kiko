@@ -5,6 +5,9 @@ import {
   type CryptoCurrency,
 } from '@kiko/currency/currency';
 import { DAY_MS } from '@kiko/dates';
+import either, { bifoldr } from 'fnts/either';
+import { settingsRepo } from '@kiko/settings';
+import { logOnFailure } from '@kiko/diagnostics';
 import type { CurrencyRateHistoryRow } from '@kiko/db';
 import { rateHistoryRepo } from '@kiko/rates/rate-history-repo';
 
@@ -35,8 +38,10 @@ export type BackfillStatus = {
 /**
  * The backfill is resumable WITHOUT any new persistence: the last-backfilled day
  * is derived from the history table itself (the maximum stored `day`), so the
- * caller reads `rateHistoryRepo.historyRowsQuery()` and passes it here. Fetch
- * modules and the repo write are injectable for tests.
+ * caller reads `rateHistoryRepo.historyRowsQuery()` and passes it here. The one thing it does
+ * persist is where the crypto requests start (`historyBackfillCursor`), so a provider that cuts
+ * every run short cannot keep the same coins waiting. Fetch modules and the repo write are
+ * injectable for tests.
  */
 export type BackfillDeps = {
   /** Earliest day the app has data for (holding/transaction), any instant on it. */
@@ -86,6 +91,118 @@ export type BackfillDeps = {
    * singleton across unrelated cases. Production never passes this.
    */
   knownEmptyCurrencies?: Set<Currency>;
+  /**
+   * Where this device's crypto history requests start (`settings.historyBackfillCursor`), and the
+   * writer for the next run's start. Defaults to the settings row; a test passes its own store.
+   */
+  readHistoryBackfillCursor?: () => Promise<string | null>;
+  writeHistoryBackfillCursor?: (cursor: string | null) => Promise<void>;
+};
+
+const readStoredCursor = async (): Promise<string | null> =>
+  (await settingsRepo.historyBackfillCursorQuery()).at(0)?.historyBackfillCursor ?? null;
+
+const writeStoredCursor = async (cursor: string | null): Promise<void> => {
+  await settingsRepo.setHistoryBackfillCursor(cursor);
+};
+
+/**
+ * The held coins this run asks CoinGecko about, in code order: those whose own last stored day is
+ * before the day the run fills (a coin never stored counts as behind), minus coins already known
+ * to have no data this session. A caller that asks for the whole span again (an explicit null
+ * resume day) gets every held coin, since a coin that is current at the top can still miss days
+ * below.
+ */
+const coinsNeedingHistory = (
+  cryptoCurrencies: CryptoCurrency[],
+  lastBackfilledDayByCurrency: Partial<Record<Currency, number>>,
+  knownEmpty: ReadonlySet<Currency>,
+  today: number,
+  wholeSpan: boolean,
+): CryptoCurrency[] =>
+  cryptoCurrencies
+    .filter((coin) => {
+      const lastDay = lastBackfilledDayByCurrency[coin];
+
+      return !knownEmpty.has(coin) && (wholeSpan || lastDay === undefined || lastDay < today);
+    })
+    .sort();
+
+const readCursorOrNull = async (readCursor: () => Promise<string | null>): Promise<string | null> =>
+  bifoldr(await either<unknown, string | null>(readCursor)) ?? null;
+
+type CryptoPlan = { requested: CryptoCurrency[]; storedCursor: string | null };
+
+/** Which coins this run requests, in request order, and the cursor that order started from. */
+const planCryptoRequests = async (
+  deps: BackfillDeps,
+  input: {
+    cryptoCurrencies: CryptoCurrency[];
+    lastBackfilledDayByCurrency: Partial<Record<Currency, number>>;
+    knownEmpty: ReadonlySet<Currency>;
+    today: number;
+    wholeSpan: boolean;
+  },
+): Promise<CryptoPlan> => {
+  const needing = coinsNeedingHistory(
+    input.cryptoCurrencies,
+    input.lastBackfilledDayByCurrency,
+    input.knownEmpty,
+    input.today,
+    input.wholeSpan,
+  );
+  const storedCursor =
+    needing.length > 0
+      ? await readCursorOrNull(deps.readHistoryBackfillCursor ?? readStoredCursor)
+      : null;
+
+  return { requested: rotatedFrom(needing, storedCursor), storedCursor };
+};
+
+// A cursor that cannot be saved costs only the rotation (the next run starts where this one
+// did), never the rows this run composed.
+const saveNextCursor = async (
+  deps: BackfillDeps,
+  plan: CryptoPlan,
+  cryptoResult: PromiseSettledResult<CryptoHistory>,
+): Promise<void> => {
+  const cursor = nextCursor(plan.requested, cryptoResult);
+
+  if (plan.requested.length > 0 && cursor !== plan.storedCursor) {
+    const writeCursor = deps.writeHistoryBackfillCursor ?? writeStoredCursor;
+
+    await logOnFailure('[history backfill] cursor not saved', () => writeCursor(cursor));
+  }
+};
+
+/** The coins from the first one at or after `cursor`, wrapping to the ones before it. */
+const rotatedFrom = (coins: CryptoCurrency[], cursor: string | null): CryptoCurrency[] => {
+  const start = cursor === null ? -1 : coins.findIndex((coin) => coin >= cursor);
+
+  return start <= 0 ? coins : [...coins.slice(start), ...coins.slice(0, start)];
+};
+
+/**
+ * The coin the next run starts with: the first of `requested`, in request order, whose request
+ * failed (a whole-leg failure counts every coin as failed). With none failed, null.
+ *
+ * This is what bounds the wait. CoinGecko's free tier answers 429 after a short burst, so a run
+ * gets through only the first L coins of its order. Starting the next run at the first coin that
+ * failed makes every run answer the next L coins of one fixed cyclic order, so every held coin is
+ * answered within ceil(n / L) runs, even when the coins before it never gain a row and stay
+ * behind forever.
+ */
+const nextCursor = (
+  requested: CryptoCurrency[],
+  cryptoResult: PromiseSettledResult<CryptoHistory>,
+): string | null => {
+  if (cryptoResult.status === 'rejected') {
+    return requested[0] ?? null;
+  }
+
+  const { failedCurrencies } = cryptoResult.value;
+
+  return requested.find((coin) => failedCurrencies.includes(coin)) ?? null;
 };
 
 /**
@@ -577,6 +694,14 @@ export const runBackfill = async (deps: BackfillDeps): Promise<BackfillStatus> =
   // answer differently — sending it again would re-request the same empty
   // range on every single run for as long as Statistics stays mounted.
   const fiatCurrenciesToFetch = fiatCurrencies.filter((currency) => !knownEmpty.has(currency));
+  const cryptoPlan = await planCryptoRequests(deps, {
+    cryptoCurrencies,
+    lastBackfilledDayByCurrency,
+    knownEmpty,
+    today,
+    wholeSpan: lastBackfilledDay === null,
+  });
+  const cryptoRequested = cryptoPlan.requested;
   // Settle the two providers independently: CoinGecko's free tier can 401 a
   // long crypto span, and an all-or-nothing `Promise.all` would then discard the
   // NBU fiat rates too. Whichever source succeeds still contributes its anchors.
@@ -585,12 +710,14 @@ export const runBackfill = async (deps: BackfillDeps): Promise<BackfillStatus> =
   // ever calling its fetch function.
   const [nbuResult, cryptoResult] = await Promise.allSettled([
     runNbuLeg(fiatCurrenciesToFetch, loadNbu, spanStart, today),
-    runCryptoLeg(cryptoCurrencies, loadCrypto, cryptoDays),
+    runCryptoLeg(cryptoRequested, loadCrypto, cryptoDays),
   ]);
+
+  await saveNextCursor(deps, cryptoPlan, cryptoResult);
 
   const { rows, failures } = composeAndClassify(
     fiatCurrencies,
-    cryptoCurrencies,
+    cryptoRequested,
     neverBackfilled,
     days,
     nbuResult,

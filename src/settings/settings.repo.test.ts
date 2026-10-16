@@ -111,6 +111,25 @@ describe('settingsRepo', () => {
     expect(captured.whereCalled).toBe(true);
   });
 
+  it('builds a query that reads only the history backfill cursor of the single settings row', () => {
+    const { sql } = settingsRepo.historyBackfillCursorQuery().toSQL();
+
+    expect(sql).toContain('history_backfill_cursor');
+    expect(sql).not.toContain('base_currency');
+  });
+
+  it('setHistoryBackfillCursor writes a coin code, and null clears it', async () => {
+    const { captured, databaseTransaction } = captureSetDatabaseTransaction();
+    mockDatabaseTransaction = databaseTransaction;
+
+    await settingsRepo.setHistoryBackfillCursor('XRP');
+    expect(captured.set).toEqual({ historyBackfillCursor: 'XRP' });
+
+    await settingsRepo.setHistoryBackfillCursor(null);
+    expect(captured.set).toEqual({ historyBackfillCursor: null });
+    expect(captured.whereCalled).toBe(true);
+  });
+
   it('setLanguage updates the single settings row with the chosen language', async () => {
     const { captured, databaseTransaction } = captureSetDatabaseTransaction();
     mockDatabaseTransaction = databaseTransaction;

@@ -175,6 +175,12 @@ describe('holdingsRepo', () => {
     expect(sql.toLowerCase()).not.toContain('accounts');
   });
 
+  it('orders the history currencies by code, so the backfill rotation walks one stable order', () => {
+    const { sql } = holdingsRepo.historyCurrenciesQuery().toSQL();
+
+    expect(sql.toLowerCase()).toMatch(/order by "holdings"\."currency"/);
+  });
+
   // The loan-payment matcher's own gate query (P-NOWORK): every OPEN loan
   // holding, so a caller can return early — before ever reading the (larger)
   // transaction table — the moment this is empty.

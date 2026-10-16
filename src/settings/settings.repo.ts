@@ -124,6 +124,19 @@ export const settingsRepo = {
       .select({ notificationsDeliverableSince: settings.notificationsDeliverableSince })
       .from(settings)
       .where(eq(settings.id, SETTINGS_ID)),
+  historyBackfillCursorQuery: () =>
+    database
+      .select({ historyBackfillCursor: settings.historyBackfillCursor })
+      .from(settings)
+      .where(eq(settings.id, SETTINGS_ID)),
+  /** Where the next history backfill starts requesting crypto; null starts at the first coin. */
+  setHistoryBackfillCursor: (cursor: string | null) =>
+    write((databaseTransaction) =>
+      databaseTransaction
+        .update(settings)
+        .set({ historyBackfillCursor: cursor })
+        .where(eq(settings.id, SETTINGS_ID)),
+    ),
   setNotificationsDeliverableSince: (deliverableSince: number | null) =>
     write((databaseTransaction) =>
       databaseTransaction
