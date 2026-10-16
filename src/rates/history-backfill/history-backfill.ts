@@ -7,10 +7,10 @@ import {
 import { DAY_MS } from '@kiko/dates';
 import { minOf } from '@kiko/numbers';
 import either, { bifoldr } from 'fnts/either';
-import { settingsRepo } from '@kiko/settings';
 import { logOnFailure } from '@kiko/diagnostics';
 import type { CurrencyRateHistoryRow } from '@kiko/db';
 import { rateHistoryRepo } from '@kiko/rates/rate-history-repo';
+import { type HistoryBackfillState, parseHistoryBackfillState, settingsRepo } from '@kiko/settings';
 
 import {
   historyCurrencies as defaultHistoryCurrencies,
@@ -99,6 +99,13 @@ export type BackfillDeps = {
   readHistoryBackfillCursor?: () => Promise<string | null>;
   writeHistoryBackfillCursor?: (cursor: string | null) => Promise<void>;
   /**
+   * The fiat currencies already fetched from a span start without finding an earlier day, with
+   * that start (`settings.historyBackfillCursor` holds them beside the coin cursor), and the
+   * writer for them. Defaults to the settings row; a test passes its own store.
+   */
+  readSettledFiatSpanStarts?: () => Promise<SettledSpanStarts>;
+  writeSettledFiatSpanStarts?: (settledSpanStarts: SettledSpanStarts) => Promise<void>;
+  /**
    * Every currency's OWN first stored day (`deriveFirstBackfilledDayByCurrency(historyRows)`):
    * with the last day it tells a held coin that lacks the days at the start of a span that moved
    * earlier. Defaults to `{}`, where no coin is known to lack them.
@@ -115,11 +122,51 @@ export type BackfillDeps = {
 // the start of the span did not exist before it, so it is not asked for the earlier days again.
 const youngCurrenciesThisRun = new Set<Currency>();
 
-const readStoredCursor = async (): Promise<string | null> =>
-  (await settingsRepo.historyBackfillCursorQuery()).at(0)?.historyBackfillCursor ?? null;
+// The coin cursor and the settled fiat span starts share one settings column; each writer changes
+// its own part and keeps the other.
+const readStoredState = async (): Promise<HistoryBackfillState> =>
+  parseHistoryBackfillState(
+    (await settingsRepo.historyBackfillStateQuery()).at(0)?.historyBackfillCursor ?? null,
+  );
+
+const readStoredCursor = async (): Promise<string | null> => (await readStoredState()).cursor;
 
 const writeStoredCursor = async (cursor: string | null): Promise<void> => {
-  await settingsRepo.setHistoryBackfillCursor(cursor);
+  await settingsRepo.changeHistoryBackfillState((state) => ({ ...state, cursor }));
+};
+
+const readStoredSettledSpanStarts = async (): Promise<SettledSpanStarts> =>
+  (await readStoredState()).settledFrom;
+
+const writeStoredSettledSpanStarts = async (settledFrom: SettledSpanStarts): Promise<void> => {
+  await settingsRepo.changeHistoryBackfillState((state) => ({ ...state, settledFrom }));
+};
+
+type SettledSpanStarts = HistoryBackfillState['settledFrom'];
+
+/**
+ * Whether a fiat currency lacks days at the start of the span: its first stored day is later than
+ * the span start and it was not already fetched from that start (or an earlier one) without
+ * finding an earlier day. NBU quotes every calendar day, weekends and holidays included (checked
+ * for nine currencies over 2019 to 2025: no day without a quote), so a first day later than the
+ * start means NBU had no quote before it, and no tolerance is needed.
+ */
+const fiatMissesEarlierDays = (
+  currency: Currency,
+  input: {
+    firstBackfilledDayByCurrency: Partial<Record<Currency, number>>;
+    settledSpanStarts: SettledSpanStarts;
+    fiatStart: number;
+  },
+): boolean => {
+  const firstDay = input.firstBackfilledDayByCurrency[currency];
+  const settledStart = input.settledSpanStarts[currency];
+
+  return (
+    firstDay !== undefined &&
+    firstDay > input.fiatStart &&
+    (settledStart === undefined || settledStart > input.fiatStart)
+  );
 };
 
 type CoinNeedInput = {
@@ -161,27 +208,87 @@ const missesEarlierDays = (
 };
 
 /**
- * Whether a held coin lacks days at the start of the span, judged from the whole span and not from
- * the resume day: a run cut short by the rate limit leaves the last stored day at today, so after
- * a restart the resume day alone would call the window empty and never fill those days.
+ * Whether a held coin or fiat currency lacks days at the start of the span, judged from the whole
+ * span and not from the resume day: a run cut short by a provider failure or the rate limit
+ * leaves the last stored day at today, so after a restart the resume day alone would call the
+ * window empty and never fill those days.
  */
-const anyCoinMissesEarlierDays = (
+const anySeriesMissesEarlierDays = (
   deps: BackfillDeps,
   input: {
+    fiatCurrencies: Currency[];
     cryptoCurrencies: CryptoCurrency[];
     knownEmpty: ReadonlySet<Currency>;
+    settledSpanStarts: SettledSpanStarts;
     today: number;
   },
 ): boolean => {
-  const needs = {
-    firstBackfilledDayByCurrency: deps.firstBackfilledDayByCurrency ?? {},
+  const firstBackfilledDayByCurrency = deps.firstBackfilledDayByCurrency ?? {};
+  const coinNeeds = {
+    firstBackfilledDayByCurrency,
     young: deps.youngCurrencies ?? youngCurrenciesThisRun,
     requestedStart: requestedStartOf(toUtcMidnight(deps.earliestDay), input.today),
   };
+  const fiatNeeds = {
+    firstBackfilledDayByCurrency,
+    settledSpanStarts: input.settledSpanStarts,
+    fiatStart: toUtcMidnight(deps.earliestDay),
+  };
 
-  return input.cryptoCurrencies.some(
-    (coin) => !input.knownEmpty.has(coin) && missesEarlierDays(coin, needs),
+  return (
+    input.cryptoCurrencies.some(
+      (coin) => !input.knownEmpty.has(coin) && missesEarlierDays(coin, coinNeeds),
+    ) ||
+    input.fiatCurrencies.some(
+      (currency) => !input.knownEmpty.has(currency) && fiatMissesEarlierDays(currency, fiatNeeds),
+    )
   );
+};
+
+const readSettledSpanStartsOrEmpty = async (deps: BackfillDeps): Promise<SettledSpanStarts> =>
+  bifoldr(
+    await either<unknown, SettledSpanStarts>(
+      deps.readSettledFiatSpanStarts ?? readStoredSettledSpanStarts,
+    ),
+  ) ?? {};
+
+// A fiat currency NBU answered, from the span start, with a first day later than that start has
+// no earlier day to give: it is settled for that span start. The fact is stored, so a restart
+// does not ask again; a span that starts earlier is a new question and asks once more. Only a run
+// whose request began at the span start can say so.
+const saveSettledFiatSpanStarts = async (
+  deps: BackfillDeps,
+  input: {
+    nbuResult: PromiseSettledResult<NbuHistory>;
+    fiatRequested: Currency[];
+    settledSpanStarts: SettledSpanStarts;
+    spanStart: number;
+  },
+): Promise<void> => {
+  const fiatStart = toUtcMidnight(deps.earliestDay);
+
+  if (input.nbuResult.status === 'rejected' || input.spanStart > fiatStart) {
+    return;
+  }
+
+  const { entries, failedCurrencies } = input.nbuResult.value;
+  const next = { ...input.settledSpanStarts };
+  let changed = false;
+
+  for (const currency of input.fiatRequested.filter((code) => !failedCurrencies.includes(code))) {
+    const days = entries.filter((entry) => entry.base === currency).map((entry) => entry.day);
+
+    if (days.length > 0 && minOf(days) > fiatStart && next[currency] !== fiatStart) {
+      next[currency] = fiatStart;
+      changed = true;
+    }
+  }
+
+  if (changed) {
+    const write = deps.writeSettledFiatSpanStarts ?? writeStoredSettledSpanStarts;
+
+    await logOnFailure('[history backfill] settled span starts not saved', () => write(next));
+  }
 };
 
 /** CoinGecko's free tier serves 365 days: today and the 364 before it. */
@@ -795,7 +902,14 @@ export const runBackfill = async (deps: BackfillDeps): Promise<BackfillStatus> =
     lastBackfilledDay,
   );
 
-  const wholeSpan = anyCoinMissesEarlierDays(deps, { cryptoCurrencies, knownEmpty, today });
+  const settledSpanStarts = await readSettledSpanStartsOrEmpty(deps);
+  const wholeSpan = anySeriesMissesEarlierDays(deps, {
+    fiatCurrencies,
+    cryptoCurrencies,
+    knownEmpty,
+    settledSpanStarts,
+    today,
+  });
   const days = missingDays(deps.earliestDay, wholeSpan ? null : resumeFrom, today);
 
   if (days.length === 0) {
@@ -835,6 +949,12 @@ export const runBackfill = async (deps: BackfillDeps): Promise<BackfillStatus> =
   ]);
 
   recordYoungCoins(cryptoPlan, cryptoResult);
+  await saveSettledFiatSpanStarts(deps, {
+    nbuResult,
+    fiatRequested: fiatCurrenciesToFetch,
+    settledSpanStarts,
+    spanStart,
+  });
 
   const { rows, failures } = composeAndClassify(
     fiatCurrencies,
