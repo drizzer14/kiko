@@ -3,6 +3,7 @@ import {
   type PreparedRules,
   type RuleDirection,
   type RuleSubject,
+  isSameCategory,
   subjectOfDraft,
   winningRule,
 } from '@kiko/categories/category-rules';
@@ -65,20 +66,31 @@ export const categoryForDraft = (draft: CategoryDraft, prepared: PreparedRules):
   foldMap(maybe(subjectOfFormDraft(draft)), (subject) => ruleCategoryFor(subject, prepared)) ??
   null;
 
-// Whether the form offers the name rule at all: an edit that changed the category always does; a
-// create does only for a category the user chose (a pick, or a seed a Duplicate or a template
-// carries), because applying one the rules pre-selected would rewrite every same-name row to a
-// category nobody chose. Kept module-level so its operators stay out of the screen component's
-// cognitive-complexity budget.
+// Whether the form offers the name rule at all: an edit that changed the category always does, so
+// the user can move the old same-name rows too; a create does only for a category the user chose
+// (a pick, or a seed a Duplicate or a template carries), because applying one the rules
+// pre-selected would rewrite every same-name row to a category nobody chose. A create does not
+// offer it for a category the rules already give this draft (`ruleCategory`, null when none
+// matches): the rules sort this row there already, so the offer is not needed for it. A name rule
+// could still sort other rows, which the user can add in the rule editor. Kept module-level so its
+// operators stay out of the screen component's cognitive-complexity budget.
 export const offersCategoryNameRule = ({
   categoryChanged,
   isEditing,
   userPickedCategory,
+  effectiveCategory,
+  ruleCategory,
 }: {
   categoryChanged: boolean;
   isEditing: boolean;
   userPickedCategory: boolean;
-}): boolean => categoryChanged && (isEditing || userPickedCategory);
+  effectiveCategory: string | null;
+  ruleCategory: string | null;
+}): boolean =>
+  categoryChanged &&
+  (isEditing ||
+    (userPickedCategory &&
+      (ruleCategory === null || !isSameCategory(effectiveCategory, ruleCategory))));
 
 // Whether `save` needs to raise the propagation-confirm sheet, and with what
 // payload: only when the form offers a name rule (`offersNameRule`: the category changed to one

@@ -114,7 +114,36 @@ describe('offersCategoryNameRule', () => {
     ],
     ['an edit that kept its category', { categoryChanged: false, isEditing: true }, true, false],
   ])('for %s', (_label, flags, userPickedCategory, expected) => {
-    expect(offersCategoryNameRule({ ...flags, userPickedCategory })).toBe(expected);
+    expect(
+      offersCategoryNameRule({
+        ...flags,
+        userPickedCategory,
+        effectiveCategory: 'dining',
+        ruleCategory: null,
+      }),
+    ).toBe(expected);
+  });
+
+  it.each([
+    ['a create pick equal to the rule category', false, 'dining', 'dining', false],
+    ['an edit equal to the rule category', true, 'dining', 'dining', true],
+    ['a create pick equal to it but for case', false, 'Dining', 'dining', false],
+    ['an edit equal to it but for case', true, 'dining', 'Dining', true],
+    ['a create pick that differs from the rule category', false, 'groceries', 'dining', true],
+    ['an edit that differs from the rule category', true, 'groceries', 'dining', true],
+    ['a create pick when no rule gives a category', false, 'dining', null, true],
+    ['a create with no category held while a rule gives one', false, null, 'dining', true],
+    ['an edit when no rule gives a category', true, 'dining', null, true],
+  ])('for %s', (_label, isEditing, effectiveCategory, ruleCategory, expected) => {
+    expect(
+      offersCategoryNameRule({
+        categoryChanged: true,
+        isEditing,
+        userPickedCategory: true,
+        effectiveCategory,
+        ruleCategory,
+      }),
+    ).toBe(expected);
   });
 });
 
