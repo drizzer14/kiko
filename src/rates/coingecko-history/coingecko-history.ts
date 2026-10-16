@@ -81,7 +81,12 @@ const settleWithConcurrencyCap = async <Result>(
     while (nextIndex < tasks.length) {
       const index = nextIndex;
       nextIndex += 1;
-      [results[index]] = await Promise.allSettled([tasks[index]()]);
+
+      try {
+        results[index] = { status: 'fulfilled', value: await tasks[index]() };
+      } catch (reason) {
+        results[index] = { status: 'rejected', reason };
+      }
     }
   };
 
