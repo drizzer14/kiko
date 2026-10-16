@@ -498,6 +498,15 @@ describe('migration 0044: moves a crypto cash holding into a crypto account', ()
     expect(['BTC', 'ETH', 'USDT']).toEqual(FROZEN_1_0_CRYPTO_CODES);
   });
 
+  it("the restore's frozen list equals the migration's IN list", () => {
+    const sql = readFileSync(join(__dirname, '0044_move_crypto_cash_holdings.sql'), 'utf8');
+    const inLists = [...sql.matchAll(/h\.currency IN \(([^)]*)\)/g)].map((match) =>
+      [...match[1].matchAll(/'([A-Z]+)'/g)].map((code) => code[1]),
+    );
+
+    expect(inLists).toEqual([[...FROZEN_1_0_CRYPTO_CODES]]);
+  });
+
   it('the "crypto-from-" id prefix is minted ONLY by this migration and its restore mirror', () => {
     // Every real account id instead comes from `id()` (`src/db/id.ts`), a v4
     // UUID whose first block is 8 lowercase HEX digits — 'r' (the second

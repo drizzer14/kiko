@@ -28,8 +28,8 @@ import { eq } from 'drizzle-orm';
 import { maxOf } from '@kiko/numbers';
 import maybe, { foldMap } from 'fnts/maybe';
 import { SETTINGS_ID } from '@kiko/settings';
+import type { Currency } from '@kiko/currency/currency';
 import { entityColorsDark } from '@kiko/design-system/palette';
-import { isFiat, type Currency } from '@kiko/currency/currency';
 import { upgradeLegacyDedupKey } from '@kiko/statement-import/mapping';
 import { type BankId, OTHER_BANK_ID } from '@kiko/bank-sync/bank-catalog';
 import { isBalanceSetShapedRow } from '@kiko/transactions/balance-set-row';
@@ -672,9 +672,9 @@ export const FROZEN_1_0_CRYPTO_CODES = ['BTC', 'ETH', 'USDT'] as const;
  * Mirrors migration 0044 (`drizzle/migrations/0044_move_crypto_cash_holdings.sql`
  * — that file's doc comment is the full statement of the matching rule,
  * including the archived-source carve-out) for a `.kiko` restore: a `cash`
- * holding in a crypto currency (`!isFiat`, the same set the SQL's frozen
- * `IN ('BTC', 'ETH', 'USDT')` pins for a 1.0 build —
- * `0044-move-crypto-cash-holdings.test.ts` proves the two lists agree)
+ * holding in a 1.0 crypto currency (`FROZEN_1_0_CRYPTO_CODES`, the SQL's frozen
+ * `IN ('BTC', 'ETH', 'USDT')` — `0044-move-crypto-cash-holdings.test.ts`
+ * proves the two lists agree)
  * moves onto a crypto account, using the SAME deterministic
  * `crypto-from-<source id>` id so the two paths agree on the same account
  * for the same source. `affected` is empty for an already-migrated export
@@ -688,7 +688,9 @@ export const withCryptoCashHoldingsMoved = (
   snapshotHoldings: HoldingRow[],
 ): { accounts: AccountRow[]; holdings: HoldingRow[] } => {
   const affected = snapshotHoldings.filter(
-    (holding) => holding.type === 'cash' && !isFiat(holding.currency),
+    (holding) =>
+      holding.type === 'cash' &&
+      (FROZEN_1_0_CRYPTO_CODES as readonly string[]).includes(holding.currency),
   );
 
   if (affected.length === 0) {
