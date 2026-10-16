@@ -55,6 +55,13 @@ const UNKNOWN_CURRENCY_CASES: [string, DataSnapshot][] = [
     'a rate history base',
     { ...emptySnapshot, currencyRateHistory: [{ base: 'XYZ', quote: 'USD' }] as never },
   ],
+  [
+    'a bond register term',
+    {
+      ...emptySnapshot,
+      bondRegister: [{ isin: 'UA4000000001', terms: { currency: 'XYZ' } }] as never,
+    },
+  ],
   ['the base currency setting', { ...emptySnapshot, settings: [{ baseCurrency: 'XYZ' }] as never }],
   [
     'an amount matcher',

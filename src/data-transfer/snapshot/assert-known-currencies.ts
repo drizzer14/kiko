@@ -40,12 +40,16 @@ const hasUnknownDraftCurrency = (draft: unknown): boolean =>
   (isUnknownCurrency(draft.currency) ||
     (isRecord(draft.exchange) && isUnknownCurrency(draft.exchange.destinationCurrency)));
 
+const hasUnknownBondTermsCurrency = (terms: unknown): boolean =>
+  isRecord(terms) && isUnknownCurrency(terms.currency);
+
 const snapshotHasUnknownCurrency = (snapshot: DataSnapshot): boolean =>
   hasUnknownCurrency(snapshot.holdings, ['currency']) ||
   hasUnknownCurrency(snapshot.pricePoints, ['currency']) ||
   hasUnknownCurrency(snapshot.currencyRates, ['base', 'quote']) ||
   hasUnknownCurrency(snapshot.currencyRateHistory, ['base', 'quote']) ||
   hasUnknownCurrency(snapshot.settings, ['baseCurrency']) ||
+  (snapshot.bondRegister ?? []).some((entry) => hasUnknownBondTermsCurrency(entry.terms)) ||
   (snapshot.categoryRules ?? []).some((rule) => hasUnknownMatcherCurrency(rule.matchers)) ||
   (snapshot.transactionTemplates ?? []).some((template) => hasUnknownDraftCurrency(template.draft));
 
