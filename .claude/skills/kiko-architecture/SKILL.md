@@ -763,7 +763,9 @@ hand-written `toLowerCase()` in a screen.
 derived from the whole draft. Seed a loaded draft only through `seedCategory`
 (one call sets the category, the hand-pick flag and the settled description);
 the nav-bar Save settles the description first. Rule: coupled state is set by
-one seed function, never by a pair of exported setters. On a create, the
+one seed function, never by a pair of exported setters. `useCategoryPick` takes a required
+`initial: { category, isPicked }` and opens with its description settled, so a restored draft shows
+the category and pick flag it was saved with; every caller passes `initial`. On a create, the
 name-rule sheet ("Apply to all transactions named X?") is offered only when the
 user picked the category by hand or a Duplicate/template seed carries one
 (what a template stores is kiko-domain "Transaction templates"); a

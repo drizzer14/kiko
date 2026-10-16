@@ -660,6 +660,10 @@ new component can land between reviews of this skill:
   Flat = a hairline divider; folded = the fold region is the gap. Each pane
   child is given a `PaneContext` (`src/design-system/pane-context/`): the
   window edges the pane touches, which a `Screen` inside it reads.
+  Each pane also gets `PaneWidthContext` (same folder; read with `usePaneWidth`): the pane's own
+  frame width, a number kept apart from `PaneContext` (compared by value). Only `useTitleFit`
+  reads it (a long large title is measured against the pane width, not the window's); a screen's
+  own sizing reads `PaneContext`.
   Rule (user ruling R13, 2026-10-09): TwoPaneLayout POSITIONS PANE
   FRAMES ONLY — no width cap, no safe-area padding; native bars span
   the full pane; the `paneMaxWidth` cap and per-pane safe areas belong

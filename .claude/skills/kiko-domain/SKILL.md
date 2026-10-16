@@ -2991,3 +2991,15 @@ what an edit reads from the stored row and does not edit (a metal's lots, a prop
 changes) is read again from the database, so a draft cannot save an old copy over a newer one.
 What the form edits but a draft holds as its own copy (deposit contribution rows) can be stale.
 Never put a secret in a draft (see kiko-architecture "Fold and unfold").
+
+The transaction form's draft is `TransactionFormDraft` (`src/navigation/types/types.d.ts`; read
+the type, not a copy of its fields). It also keeps the entry state main added (the save-as-template
+switch and name, the tab, the picked template), so a fold keeps them. A picked template with a null
+holding means the holding was cleared on purpose, so hydration
+(`src/screens/forms/transaction-form/hydration/hydration.ts`, `clearsHolding`) must not seat the
+default holding over it; the other writer of draft references is `resolveDraftReferences`
+(`template-references/template-references.ts`). Template entries (`templateId`, `editTemplateId`,
+`newTemplate`) never open from a draft: coordinator ruling B, 2026-10-17, same as main, so a fold or
+unfold there loses unsaved edits. A restored form shows its holding field per `revealsHoldingField`
+(`route-entry/route-entry.ts`), recomputed at mount, not stored. Known residual: a template with no
+holding after one with a holding hides the field after a remount; the write target stays correct.
