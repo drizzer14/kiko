@@ -4,7 +4,7 @@ import type { CryptoCurrency, Currency } from '@kiko/currency/currency';
 
 import { cryptoCoinGeckoId } from '../coingecko-ids';
 import type { HistoryRateEntry } from '../history-entry';
-import { type CryptoHistory, fetchCryptoHistory } from '../coingecko-history';
+import { type CryptoHistory, CryptoHistoryFailure, fetchCryptoHistory } from '../coingecko-history';
 
 import {
   type BackfillDeps,
@@ -24,9 +24,13 @@ const usdAnchors: HistoryRateEntry[] = [0, 1, 2].map((index) => ({
   source: 'nbu',
 }));
 
-const answered = (failedCurrencies: CryptoCurrency[] = []): CryptoHistory => ({
+const answered = (
+  rateLimitedCurrencies: CryptoCurrency[] = [],
+  otherFailedCurrencies: CryptoCurrency[] = [],
+): CryptoHistory => ({
   entries: [],
-  failedCurrencies,
+  failedCurrencies: [...otherFailedCurrencies, ...rateLimitedCurrencies],
+  rateLimitedCurrencies,
 });
 
 type CursorStore = { value: string | null };
@@ -127,7 +131,7 @@ describe('runBackfill — which crypto history it requests, and from where', () 
     expect(requested).toEqual([expected]);
   });
 
-  it('stores the first coin that failed, in request order, as the next cursor', async () => {
+  it('stores the first rate-limited coin, in request order, as the next cursor', async () => {
     const { cursor } = await stubbedRun({
       held: ['BTC', 'ETH', 'SOL'],
       doneDays: {},
@@ -138,11 +142,23 @@ describe('runBackfill — which crypto history it requests, and from where', () 
     expect(cursor.value).toBe('ETH');
   });
 
-  it('clears the cursor when no coin failed', async () => {
+  it('skips a coin that failed for another reason when it picks the cursor', async () => {
+    const { cursor } = await stubbedRun({
+      held: ['BTC', 'ETH', 'SOL'],
+      doneDays: {},
+      cursor: null,
+      answer: async () => answered(['SOL'], ['BTC']),
+    });
+
+    expect(cursor.value).toBe('SOL');
+  });
+
+  it('clears the cursor when no coin was rate-limited, even if one failed otherwise', async () => {
     const { cursor } = await stubbedRun({
       held: ['BTC', 'ETH'],
       doneDays: {},
       cursor: 'ETH',
+      answer: async () => answered([], ['BTC']),
     });
 
     expect(cursor.value).toBeNull();
@@ -159,6 +175,44 @@ describe('runBackfill — which crypto history it requests, and from where', () 
     });
 
     expect(cursor.value).toBe('ETH');
+  });
+
+  it('moves to the first rate-limited coin when the whole crypto leg failed', async () => {
+    const { cursor } = await stubbedRun({
+      held: ['BTC', 'ETH', 'SOL'],
+      doneDays: {},
+      cursor: null,
+      answer: async () => {
+        throw new CryptoHistoryFailure(['SOL', 'ETH']);
+      },
+    });
+
+    expect(cursor.value).toBe('ETH');
+  });
+
+  it('saves the cursor only after the rows are stored', async () => {
+    const calls: string[] = [];
+    const deps: BackfillDeps = {
+      earliestDay: day(0),
+      lastBackfilledDay: day(1),
+      today: TODAY,
+      fetchNbuHistory: async () => ({ entries: usdAnchors, failedCurrencies: [] }),
+      fetchCryptoHistory: async () => answered(['BTC']),
+      upsertMany: async () => {
+        calls.push('rows');
+      },
+      historyCurrencies: async () => ({ fiatCurrencies: ['USD'], cryptoCurrencies: ['BTC'] }),
+      lastBackfilledDayByCurrency: {},
+      knownEmptyCurrencies: new Set(),
+      readHistoryBackfillCursor: async () => null,
+      writeHistoryBackfillCursor: async () => {
+        calls.push('cursor');
+      },
+    };
+
+    await runBackfill(deps);
+
+    expect(calls).toEqual(['rows', 'cursor']);
   });
 
   it('still completes when the cursor cannot be saved', async () => {
@@ -190,10 +244,12 @@ describe('runBackfill — which crypto history it requests, and from where', () 
 // A whole backfill against a fake CoinGecko that answers 429 once a run has sent `perRunLimit`
 // requests, with the cursor kept between runs and everything else in memory forgotten between
 // them, as an app restart forgets it.
+type Outcome = 'rows' | 'empty' | 'not-found';
+
 const simulate = (input: {
   held: CryptoCurrency[];
   perRunLimit: number;
-  gainsRows: (code: CryptoCurrency) => boolean;
+  outcomeOf: (code: CryptoCurrency) => Outcome;
 }) => {
   const stored: { base: Currency; quote: Currency; day: number }[] = [];
   const answeredCoins = new Set<CryptoCurrency>();
@@ -220,8 +276,14 @@ const simulate = (input: {
         throw new Error('the fake CoinGecko was asked for an unknown coin');
       }
 
+      const outcome = input.outcomeOf(code);
+
+      if (outcome === 'not-found') {
+        return { ok: false, status: 404, json: async () => ({}) };
+      }
+
       answeredCoins.add(code);
-      const prices = input.gainsRows(code) ? [day(0), day(1), day(2)].map((d) => [d, 2]) : [];
+      const prices = outcome === 'rows' ? [day(0), day(1), day(2)].map((d) => [d, 2]) : [];
 
       return { ok: true, status: 200, json: async () => ({ prices }) };
     }) as unknown as typeof fetch;
@@ -255,7 +317,7 @@ describe('runBackfill — converging past the CoinGecko burst limit', () => {
     const { runOnce, stored } = simulate({
       held: SEVEN,
       perRunLimit: 6,
-      gainsRows: () => true,
+      outcomeOf: () => 'rows',
     });
 
     await runOnce();
@@ -270,7 +332,26 @@ describe('runBackfill — converging past the CoinGecko burst limit', () => {
     const { runOnce, answeredCoins, cursor } = simulate({
       held: SEVEN,
       perRunLimit: 6,
-      gainsRows: (code) => code === 'XRP',
+      outcomeOf: (code) => (code === 'XRP' ? 'rows' : 'empty'),
+    });
+
+    await runOnce();
+
+    expect(answeredCoins.has('XRP')).toBe(false);
+    expect(cursor.value).toBe('XRP');
+
+    await runOnce();
+
+    expect(answeredCoins.has('XRP')).toBe(true);
+  });
+
+  // A coin that fails on its own, every run, is not the burst limit: it must neither become the
+  // cursor nor keep the coins behind it waiting.
+  it('reaches the 7th coin within 2 runs when the first coin always answers 404', async () => {
+    const { runOnce, answeredCoins, cursor } = simulate({
+      held: SEVEN,
+      perRunLimit: 6,
+      outcomeOf: (code) => (code === 'ADA' ? 'not-found' : 'empty'),
     });
 
     await runOnce();
@@ -294,7 +375,7 @@ describe('runBackfill — converging past the CoinGecko burst limit', () => {
       const { runOnce, answeredCoins } = simulate({
         held,
         perRunLimit,
-        gainsRows: (code) => held.indexOf(code) % 2 === 1,
+        outcomeOf: (code) => (held.indexOf(code) % 2 === 1 ? 'rows' : 'empty'),
       });
 
       for (let run = 0; run < Math.ceil(coinCount / perRunLimit); run += 1) {
@@ -302,6 +383,31 @@ describe('runBackfill — converging past the CoinGecko burst limit', () => {
       }
 
       expect([...answeredCoins].sort()).toEqual(held);
+    },
+  );
+
+  // The first coin of the order answers 404 on every request but still uses a request of the run.
+  it.each(pairs)(
+    'answers every other of %i held coins within ceil(n / limit) runs at %i requests per run when one always fails',
+    async (coinCount, perRunLimit) => {
+      const held = [...CURATED_COIN_CODES].slice(0, coinCount).sort();
+      const { runOnce, answeredCoins } = simulate({
+        held,
+        perRunLimit,
+        outcomeOf: (code) => {
+          if (code === held[0]) {
+            return 'not-found';
+          }
+
+          return held.indexOf(code) % 2 === 1 ? 'rows' : 'empty';
+        },
+      });
+
+      for (let run = 0; run < Math.ceil(coinCount / perRunLimit); run += 1) {
+        await runOnce();
+      }
+
+      expect([...answeredCoins].sort()).toEqual(held.slice(1).sort());
     },
   );
 });

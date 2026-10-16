@@ -17,7 +17,7 @@ import {
 } from '../open-currencies-gate';
 import { type NbuHistory, fetchNbuHistory } from '../nbu-history';
 import { type HistoryRateEntry, toUtcMidnight } from '../history-entry';
-import { type CryptoHistory, fetchCryptoHistory } from '../coingecko-history';
+import { type CryptoHistory, CryptoHistoryFailure, fetchCryptoHistory } from '../coingecko-history';
 
 /** A row ready for `rateHistoryRepo.upsertMany` (rate stored as text). */
 type NewHistoryRow = Pick<CurrencyRateHistoryRow, 'base' | 'quote' | 'day' | 'rate' | 'source'>;
@@ -183,26 +183,32 @@ const rotatedFrom = (coins: CryptoCurrency[], cursor: string | null): CryptoCurr
 };
 
 /**
- * The coin the next run starts with: the first of `requested`, in request order, whose request
- * failed (a whole-leg failure counts every coin as failed). With none failed, null.
+ * The coin the next run starts with: the first of `requested`, in request order, that CoinGecko
+ * rate-limited (HTTP 429). With none rate-limited, null. When the whole leg failed it is the first
+ * rate-limited coin the failure names, or the unchanged start when none was.
  *
  * This is what bounds the wait. CoinGecko's free tier answers 429 after a short burst, so a run
- * gets through only the first L coins of its order. Starting the next run at the first coin that
- * failed makes every run answer the next L coins of one fixed cyclic order, so every held coin is
- * answered within ceil(n / L) runs, even when the coins before it never gain a row and stay
- * behind forever.
+ * gets through only the first L coins of its order, and every coin after them is rate-limited.
+ * Starting the next run at the first rate-limited coin makes every run answer the next L coins of
+ * one fixed cyclic order (a coin that fails by itself, a 404 for instance, takes a request but
+ * never the cursor). Take the coins that have not yet been answered: they are a block that starts
+ * at the cursor, and each run answers at least L of them, so every held coin is answered within
+ * ceil(n / L) runs, even when the coins before it never gain a row and stay behind forever.
  */
 const nextCursor = (
   requested: CryptoCurrency[],
   cryptoResult: PromiseSettledResult<CryptoHistory>,
 ): string | null => {
   if (cryptoResult.status === 'rejected') {
-    return requested[0] ?? null;
+    const { reason } = cryptoResult;
+    const rateLimited = reason instanceof CryptoHistoryFailure ? reason.rateLimitedCurrencies : [];
+
+    return requested.find((coin) => rateLimited.includes(coin)) ?? requested[0] ?? null;
   }
 
-  const { failedCurrencies } = cryptoResult.value;
+  const { rateLimitedCurrencies } = cryptoResult.value;
 
-  return requested.find((coin) => failedCurrencies.includes(coin)) ?? null;
+  return requested.find((coin) => rateLimitedCurrencies.includes(coin)) ?? null;
 };
 
 /**
@@ -450,7 +456,11 @@ const runNbuLeg = (
     : Promise.resolve(NO_NBU_HISTORY);
 
 /** A crypto leg that requested nothing: no entries, no failed coin. */
-const NO_CRYPTO_HISTORY: CryptoHistory = { entries: [], failedCurrencies: [] };
+const NO_CRYPTO_HISTORY: CryptoHistory = {
+  entries: [],
+  failedCurrencies: [],
+  rateLimitedCurrencies: [],
+};
 
 /**
  * The CoinGecko leg, gated on a non-empty held set — no entries without ever calling
@@ -713,8 +723,6 @@ export const runBackfill = async (deps: BackfillDeps): Promise<BackfillStatus> =
     runCryptoLeg(cryptoRequested, loadCrypto, cryptoDays),
   ]);
 
-  await saveNextCursor(deps, cryptoPlan, cryptoResult);
-
   const { rows, failures } = composeAndClassify(
     fiatCurrencies,
     cryptoRequested,
@@ -728,6 +736,9 @@ export const runBackfill = async (deps: BackfillDeps): Promise<BackfillStatus> =
   if (rows.length > 0) {
     await upsertMany(rows);
   }
+
+  // After the rows are stored: the cursor then never moves past coins whose rows were lost.
+  await saveNextCursor(deps, cryptoPlan, cryptoResult);
 
   if (failures.length > 0) {
     // An attempted currency's fetch failed for this span and nothing composed

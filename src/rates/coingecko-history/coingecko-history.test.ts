@@ -8,14 +8,18 @@ const d2 = Date.UTC(2026, 8, 2);
 // Route each coin id to its own price series; a coin's non-ok response is modeled
 // per url so the "one coin fails, others survive" case can be exercised.
 const makeRoutedFetch = (
-  byCoin: Record<string, { ok?: boolean; prices: [number, number][] }>,
+  byCoin: Record<string, { ok?: boolean; status?: number; prices: [number, number][] }>,
 ): typeof fetch =>
   (async (url: string) => {
     const id = /coins\/([a-z]+)\/market_chart/.exec(url)?.[1] ?? '';
     const entry = byCoin[id] ?? { prices: [] };
     const ok = entry.ok ?? true;
 
-    return { ok, status: ok ? 200 : 429, json: async () => ({ prices: entry.prices }) };
+    return {
+      ok,
+      status: ok ? 200 : (entry.status ?? 429),
+      json: async () => ({ prices: entry.prices }),
+    };
   }) as unknown as typeof fetch;
 
 describe('fetchCryptoHistory', () => {
@@ -95,6 +99,23 @@ describe('fetchCryptoHistory', () => {
     );
 
     expect(failedCurrencies).toEqual(['ETH']);
+  });
+
+  // The burst limit is what a later run must route around; a coin that fails for any other
+  // reason (a renamed id answering 404) is listed apart from it.
+  it('lists a coin answered with 429 apart from one that failed for another reason', async () => {
+    const result = await fetchCryptoHistory(
+      1,
+      makeRoutedFetch({
+        bitcoin: { prices: [[d1, 78_552]] },
+        ethereum: { ok: false, status: 429, prices: [] },
+        solana: { ok: false, status: 404, prices: [] },
+      }),
+      ['BTC', 'ETH', 'SOL'],
+    );
+
+    expect(result.failedCurrencies).toEqual(['ETH', 'SOL']);
+    expect(result.rateLimitedCurrencies).toEqual(['ETH']);
   });
 
   it('throws only when every coin request fails', async () => {
@@ -182,6 +203,7 @@ describe('fetchCryptoHistory', () => {
       await expect(fetchCryptoHistory(1, fetchImpl, [])).resolves.toEqual({
         entries: [],
         failedCurrencies: [],
+        rateLimitedCurrencies: [],
       });
       expect(called).toBe(false);
     });

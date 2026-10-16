@@ -31,6 +31,7 @@ type NbuCall = { currencies: Currency[]; start: number; end: number };
 const answered = (entries: HistoryRateEntry[]): CryptoHistory => ({
   entries,
   failedCurrencies: [],
+  rateLimitedCurrencies: [],
 });
 
 describe('missingDays', () => {
@@ -814,7 +815,7 @@ describe('runBackfill — a lagging currency with existing rows is not permanent
           entries.push({ base: 'BTC', quote: 'USD', day: d, rate: 65_000, source: 'coingecko' });
         }
 
-        return { entries, failedCurrencies: [] };
+        return { entries, failedCurrencies: [], rateLimitedCurrencies: [] };
       }),
     );
 
