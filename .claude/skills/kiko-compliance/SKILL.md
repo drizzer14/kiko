@@ -19,11 +19,16 @@ Ask every question below of the diff you are reviewing. Report each
 compliance finding explicitly, separate from correctness and
 over-engineering findings — name the guideline number.
 
-## 2.3.1(a) — no hidden, dormant or undocumented features (Apple's rejection cited 5.6)
+## 2.5.19 — no hidden, dormant or undocumented features (formerly 2.3.1(a); Apple's rejection cited 5.6)
 
-The rejection guideline. Full rule, rationale, and known limits of the
+The rejection guideline. Apple moved it from 2.3.1(a) to 2.5.19 on 2026-10-16
+(https://developer.apple.com/news/?id=92th7e5i). 2.5.19 also bans hiding an undocumented feature
+in the binary, such as through code obfuscation or other methods: grounds for removal from the
+App Store and termination of the developer account. Its intent is bait-and-switch, a feature
+added after approval (https://developer.apple.com/news/?id=vvzx6cul). Kiko changes no feature
+after approval: what the reviewer saw is what ships. Full rule, rationale, and known limits of the
 mechanized check live in `.claude/skills/kiko-architecture/SKILL.md`
-("Guideline 2.3.1(a) — no hidden features") — read that section, do not
+("Guideline 2.5.19 — no hidden features") — read that section, do not
 re-derive it here. In short, ask:
 
 - Does this diff add or keep an `@env` flag (a `SHOW_*`/`HIDE_*`-style
@@ -121,7 +126,7 @@ A new third-party data recipient also needs the privacy policy updated
 (`docs/privacy-policy*.md` §3), not only the App Privacy answers. A new data
 category from an existing recipient also edits section 3 (Binance's Pay history,
 universal transfers, and Simple Earn did). There
-is no EODHD entry (removed with the shares cut, Guideline 2.3.1(a)). The live
+is no EODHD entry (removed with the shares cut, Guideline 2.5.19). The live
 gh-pages policy may still name EODHD until the edited policy is
 published: check the live policy before an upload.
 

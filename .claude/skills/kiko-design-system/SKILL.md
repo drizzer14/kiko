@@ -1749,7 +1749,7 @@ user: every capability an entity supports is visible (a capability icon
 in a picker option's `trailing`/`description`), never hidden or implied.
 A capability icon stands for exactly ONE real capability — never a
 "probably true" or "usually true" one, and never gated on a build/env
-flag (Guideline 2.3.1(a)). The bank picker (`BankTypeField`,
+flag (Guideline 2.5.19). The bank picker (`BankTypeField`,
 `src/screens/forms/bank-type-field/`) is the exemplar: `receipt` means
 "this bank has a known, dedicated statement format" — gated on the
 catalog's own `statementFormatId` field, so a column-mapping-only bank
