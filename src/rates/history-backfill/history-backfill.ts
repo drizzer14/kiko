@@ -145,14 +145,44 @@ const coinsNeedingHistory = (input: CoinNeedInput): CryptoCurrency[] =>
   input.cryptoCurrencies
     .filter((coin) => {
       const lastDay = input.lastBackfilledDayByCurrency[coin];
-      const firstDay = input.firstBackfilledDayByCurrency[coin];
       const missesTop = lastDay === undefined || lastDay < input.today;
-      const missesEarlierDays =
-        firstDay !== undefined && firstDay > input.requestedStart && !input.young.has(coin);
 
-      return !input.knownEmpty.has(coin) && (missesTop || missesEarlierDays);
+      return !input.knownEmpty.has(coin) && (missesTop || missesEarlierDays(coin, input));
     })
     .sort();
+
+const missesEarlierDays = (
+  coin: CryptoCurrency,
+  input: Pick<CoinNeedInput, 'firstBackfilledDayByCurrency' | 'young' | 'requestedStart'>,
+): boolean => {
+  const firstDay = input.firstBackfilledDayByCurrency[coin];
+
+  return firstDay !== undefined && firstDay > input.requestedStart && !input.young.has(coin);
+};
+
+/**
+ * Whether a held coin lacks days at the start of the span, judged from the whole span and not from
+ * the resume day: a run cut short by the rate limit leaves the last stored day at today, so after
+ * a restart the resume day alone would call the window empty and never fill those days.
+ */
+const anyCoinMissesEarlierDays = (
+  deps: BackfillDeps,
+  input: {
+    cryptoCurrencies: CryptoCurrency[];
+    knownEmpty: ReadonlySet<Currency>;
+    today: number;
+  },
+): boolean => {
+  const needs = {
+    firstBackfilledDayByCurrency: deps.firstBackfilledDayByCurrency ?? {},
+    young: deps.youngCurrencies ?? youngCurrenciesThisRun,
+    requestedStart: requestedStartOf(toUtcMidnight(deps.earliestDay), input.today),
+  };
+
+  return input.cryptoCurrencies.some(
+    (coin) => !input.knownEmpty.has(coin) && missesEarlierDays(coin, needs),
+  );
+};
 
 /** CoinGecko's free tier serves 365 days: today and the 364 before it. */
 const WINDOW_DAYS_BEFORE_TODAY = 364;
@@ -162,7 +192,10 @@ const requestedStartOf = (spanStart: number, today: number): number =>
   Math.max(spanStart, today - WINDOW_DAYS_BEFORE_TODAY * DAY_MS);
 
 // A coin whose answer starts after the requested start has nothing older to give: it is young.
-// Asking again in the same session would get the same answer.
+// Asking again in the same session would get the same answer. A CoinGecko series that is only
+// shorter than asked (a thin answer, not a young coin) marks the coin young for this session
+// too; that is harmless, since the set is forgotten on the next launch and the coin is asked
+// for its earlier days again then.
 const recordYoungCoins = (
   plan: { requested: CryptoCurrency[]; requestedStart: number; young: Set<Currency> },
   cryptoResult: PromiseSettledResult<CryptoHistory>,
@@ -762,7 +795,8 @@ export const runBackfill = async (deps: BackfillDeps): Promise<BackfillStatus> =
     lastBackfilledDay,
   );
 
-  const days = missingDays(deps.earliestDay, resumeFrom, today);
+  const wholeSpan = anyCoinMissesEarlierDays(deps, { cryptoCurrencies, knownEmpty, today });
+  const days = missingDays(deps.earliestDay, wholeSpan ? null : resumeFrom, today);
 
   if (days.length === 0) {
     return { state: 'complete', lastDay: lastBackfilledDay };
