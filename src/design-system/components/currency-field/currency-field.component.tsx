@@ -60,7 +60,7 @@ const pinUahFirst = (fiat: readonly Currency[]): Currency[] => {
 
 // The rows to render: fiat first (alphabetical by localized name, with UAH
 // pinned to the top only while the search box is empty), then the crypto set
-// (BTC/ETH/USDT — classified through the domain's `isCrypto`, never a local
+// (the curated coins — classified through the domain's `isCrypto`, never a local
 // code check) as a separate group, also alphabetical by localized name, after
 // all fiats — or before them when `cryptoFirst` is set. Filtering by the search
 // query happens first, so a search reorders only what it matched.

@@ -1,4 +1,4 @@
-import { type Currency, currencyOptions } from '@kiko/currency/currency';
+import { type Currency, fiatCurrencyOptions } from '@kiko/currency/currency';
 
 import { rateBetween, type RateEntry } from '../conversion';
 import { composeRateTable } from '../monobank-feed-test-helper';
@@ -26,7 +26,7 @@ describe('Crypto coverage — every added crypto reaches every base (no silent n
     const table = await composeTable();
 
     for (const crypto of CRYPTO) {
-      for (const base of currencyOptions) {
+      for (const base of [...fiatCurrencyOptions, ...CRYPTO]) {
         if (base === crypto) {
           continue;
         }

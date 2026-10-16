@@ -106,6 +106,7 @@ describe('fetchCryptoHistory', () => {
           ethereum: { ok: false, prices: [] },
           tether: { ok: false, prices: [] },
         }),
+        ['BTC', 'ETH', 'USDT'],
       ),
     ).rejects.toThrow(/CoinGecko/);
   });

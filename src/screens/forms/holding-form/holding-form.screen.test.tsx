@@ -421,7 +421,24 @@ describe('HoldingFormScreen term deposit', () => {
       String(row.props.testID).replace('currency-option-', ''),
     );
 
-    expect(codes.slice(0, 4)).toEqual(['BTC', 'ETH', 'USDT', 'UAH']);
+    // The list mounts its first 15 rows only, all of them crypto, sorted by English name.
+    expect(codes).toEqual([
+      'AVAX',
+      'BTC',
+      'BCH',
+      'BNB',
+      'ADA',
+      'CGPT',
+      'LINK',
+      'DAI',
+      'DOGE',
+      'ETH',
+      'FDUSD',
+      'HYPE',
+      'LTC',
+      'NEAR',
+      'SOL',
+    ]);
   });
 
   // The currency sheet's search field lives inside a Modal above this

@@ -250,8 +250,17 @@ const entryOf = (code: CuratedCoinCode): CoinEntry => {
   };
 };
 
-// `Object.fromEntries` widens its result to `Record<string, CoinEntry>`; the object built here is
-// a `Record<CuratedCoinCode, CoinEntry>` because `CURATED_COIN_CODES` lists every code once.
-export const curatedCoins: Readonly<Record<CuratedCoinCode, CoinEntry>> = Object.fromEntries(
-  CURATED_COIN_CODES.map((code) => [code, entryOf(code)]),
-) as Record<CuratedCoinCode, CoinEntry>;
+// `Object.fromEntries` widens its result to `Record<string, Value>`; the object built here is a
+// `Record<CuratedCoinCode, Value>` because `CURATED_COIN_CODES` lists every code once.
+const recordByCode = <Value>(valueForCode: (code: CuratedCoinCode) => Value) =>
+  Object.fromEntries(CURATED_COIN_CODES.map((code) => [code, valueForCode(code)])) as Record<
+    CuratedCoinCode,
+    Value
+  >;
+
+export const curatedCoins: Readonly<Record<CuratedCoinCode, CoinEntry>> = recordByCode(entryOf);
+
+/** One field of every registry entry, keyed by code: the shape a per-currency map spreads in. */
+export const recordByCoin = <Value>(
+  select: (entry: CoinEntry) => Value,
+): Record<CuratedCoinCode, Value> => recordByCode((code) => select(curatedCoins[code]));

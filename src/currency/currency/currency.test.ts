@@ -1,4 +1,5 @@
 import { Money } from '../money';
+import { CURATED_COIN_CODES, curatedCoins } from '../coins';
 
 import {
   isFiat,
@@ -17,8 +18,9 @@ describe('currencyOptions', () => {
     expect(currencyOptions.slice(0, 5)).toEqual(['UAH', 'USD', 'EUR', 'GBP', 'CHF']);
   });
 
-  it('ends with the crypto block: BTC, ETH, USDT', () => {
-    expect(currencyOptions.slice(-3)).toEqual(['BTC', 'ETH', 'USDT']);
+  it('lists every curated code after the fiat block', () => {
+    expect(currencyOptions.slice(-CURATED_COIN_CODES.length)).toEqual([...CURATED_COIN_CODES]);
+    expect(currencyOptions.slice(0, -CURATED_COIN_CODES.length).some(isCrypto)).toBe(false);
   });
 
   it('includes the additional Monobank-priced fiats', () => {
@@ -47,8 +49,8 @@ describe('isCurrency', () => {
 });
 
 describe('fiat / crypto classification', () => {
-  it('treats BTC, ETH, and USDT as crypto and everything else as fiat', () => {
-    for (const code of ['BTC', 'ETH', 'USDT'] as const) {
+  it('treats every curated coin as crypto and everything else as fiat', () => {
+    for (const code of CURATED_COIN_CODES) {
       expect(isCrypto(code)).toBe(true);
       expect(isFiat(code)).toBe(false);
     }
@@ -60,18 +62,18 @@ describe('fiat / crypto classification', () => {
   });
 
   it('exposes the fiat subset (every option except the crypto block), order-preserving', () => {
-    const cryptoBlock = new Set(['BTC', 'ETH', 'USDT']);
+    const cryptoBlock = new Set<string>(CURATED_COIN_CODES);
     expect([...fiatCurrencyOptions]).toEqual(
       currencyOptions.filter((code) => !cryptoBlock.has(code)),
     );
 
-    for (const code of ['BTC', 'ETH', 'USDT'] as const) {
+    for (const code of CURATED_COIN_CODES) {
       expect(fiatCurrencyOptions).not.toContain(code);
     }
   });
 
-  it('exposes the crypto subset (BTC, ETH, USDT), order-preserving', () => {
-    expect([...cryptoCurrencyOptions]).toEqual(['BTC', 'ETH', 'USDT']);
+  it('exposes the crypto subset (the curated coins), order-preserving', () => {
+    expect([...cryptoCurrencyOptions]).toEqual([...CURATED_COIN_CODES]);
 
     for (const code of cryptoCurrencyOptions) {
       expect(isCrypto(code)).toBe(true);
@@ -83,6 +85,13 @@ describe('fiat / crypto classification', () => {
     expect(currencyScale.USDT).toBe(8);
     expect(currencySymbol.ETH).toBe('Ξ');
     expect(currencySymbol.USDT).toBe('₮');
+  });
+
+  it('derives scale and symbol from the registry', () => {
+    for (const entry of Object.values(curatedCoins)) {
+      expect(currencyScale[entry.code]).toBe(entry.scale);
+      expect(currencySymbol[entry.code]).toBe(entry.symbol);
+    }
   });
 
   it('parses 0.00012345 USDT to its minor units', () => {

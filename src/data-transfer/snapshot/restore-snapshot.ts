@@ -663,6 +663,12 @@ const cryptoCashReuseTarget = (snapshotAccounts: AccountRow[]): AccountRow | und
     })[0];
 
 /**
+ * The crypto codes a 1.0 build could hold as a `cash` holding: migration 0044's SQL `IN` list,
+ * frozen. The curated registry grows past it, so a restore must not read the live crypto set.
+ */
+export const FROZEN_1_0_CRYPTO_CODES = ['BTC', 'ETH', 'USDT'] as const;
+
+/**
  * Mirrors migration 0044 (`drizzle/migrations/0044_move_crypto_cash_holdings.sql`
  * — that file's doc comment is the full statement of the matching rule,
  * including the archived-source carve-out) for a `.kiko` restore: a `cash`

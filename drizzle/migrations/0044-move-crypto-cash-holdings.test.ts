@@ -10,7 +10,7 @@ import { join, relative } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { activeHoldings } from '@kiko/rates/active-holdings';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
-import { cryptoCurrencyOptions } from '@kiko/currency/currency';
+import { FROZEN_1_0_CRYPTO_CODES } from '@kiko/data-transfer';
 import { applyMigrationsThrough } from '@kiko/test-support/real-sqlite';
 
 const REPO_ROOT = join(__dirname, '..', '..');
@@ -187,7 +187,7 @@ const dumpTable = (database: DatabaseSync, table: string, orderBy: string): unkn
 const foreignKeyCheck = (database: DatabaseSync): unknown[] =>
   database.prepare('PRAGMA foreign_key_check;').all();
 
-const tempTableNames = (database: DatabaseSync): unknown[] =>
+const temporaryTableNames = (database: DatabaseSync): unknown[] =>
   database.prepare('SELECT name FROM sqlite_temp_master;').all();
 
 /** The sorted ids `activeHoldings` (`src/rates/active-holdings`) — the ONE
@@ -487,7 +487,7 @@ describe('migration 0044: moves a crypto cash holding into a crypto account', ()
 
     expect(dumpTable(database, 'accounts', 'id')).toEqual(accountsBefore);
     expect(dumpTable(database, 'holdings', 'id')).toEqual(holdingsBefore);
-    expect(tempTableNames(database)).toEqual([]);
+    expect(temporaryTableNames(database)).toEqual([]);
   });
 
   it('pins the SQL migration currency list to the app-wide crypto set', () => {
@@ -495,7 +495,7 @@ describe('migration 0044: moves a crypto cash holding into a crypto account', ()
     // deliberate decision about this SQL's own hard-coded `IN (...)` list
     // rather than silently leaving a new crypto currency's cash holding
     // stranded.
-    expect(['BTC', 'ETH', 'USDT']).toEqual(cryptoCurrencyOptions);
+    expect(['BTC', 'ETH', 'USDT']).toEqual(FROZEN_1_0_CRYPTO_CODES);
   });
 
   it('the "crypto-from-" id prefix is minted ONLY by this migration and its restore mirror', () => {
