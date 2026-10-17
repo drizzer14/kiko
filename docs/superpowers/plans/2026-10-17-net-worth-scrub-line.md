@@ -204,9 +204,20 @@ Sentence case, no final "." (accessibility label role, kiko-translator). The en/
 - P1 text, help.topics.viewStatistics.steps.2:
   - en: "Net Worth Over Time" shows your net worth across those dates. The horizontal dashed line
     is its value on the first day: the line is green above it and red below it. The vertical
-    dashed line shows your net worth on one day, today at first. Drag across the chart to move it
+    dashed line shows your net worth on one day, the last of those dates at first. Drag across the chart to move it
     to another day.
   - uk: «Капітал з часом» показує ваш капітал за ці дати. Горизонтальна пунктирна лінія — його
     значення в перший день: вище за неї лінія зелена, нижче — червона. Вертикальна пунктирна
-    лінія показує капітал за один день, спочатку за сьогодні. Проведіть пальцем по графіку, щоб
+    лінія показує капітал за один день, спочатку за останню з цих дат. Проведіть пальцем по графіку, щоб
     перемістити її на інший день.
+
+## Review 2 rulings (scrub-a1, whole-branch APPROVE at 8d881c63, 8 Minor)
+
+- R5: the P1 text above is corrected ("today at first" was false for a range that ends in the
+  past; the line starts on the last point, endOfLocalDay(dateTo)). Same-file Minors ride it: #1
+  clear a stale selection also while points are empty (the clear sits before the empty return);
+  #4 the amount weight is a plain '600' (the documented semibold convention), not the heading token.
+  Coordinator order: one check-all + one verify at the new tip.
+- #2/#7 (import-order closer shapes, cross-run duplicate test) -> run-log gap /1. #8 not taken
+  (R4 ruled). #5/#6 -> scribe step (kiko-linter, kiko-code-style, import-order.js header comment,
+  harness-sync port item).
