@@ -56,8 +56,9 @@ status" bullet ("lives in ONE module store … never in per-component `useState`
   or a Clear) replaces the snapshot `{ customRange, defaultRange }` and notifies. Home publishes a
   newer `Date.now()` on every render, so a same-day publish must not change the snapshot, or the
   re-render would loop. While `clock` is `null` (before the first publish, the first frame after a
-  launch), a reader falls back to its own `now`. The last unsubscribe resets `clock` to `null`
-  together with the pick (D1).
+  launch), a reader falls back to its own `now`. When no reader is subscribed after the commit, `clock` and the pick reset together (D1, D4).
+  The reset is deferred one `Promise` microtask with a `listeners.size === 0` re-check, so a
+  same-commit swap of every reader keeps both.
 - **Why (a) over (b), a store-owned midnight timer or AppState clock.** A JS timer does not fire
   while the app is suspended, so (b) would also need an AppState listener. It would also ignore
   Statistics' focus refresh and add a second clock source. (a) keeps today's triggers and only
@@ -153,16 +154,18 @@ File: `src/design-system/use-date-range-selection/use-date-range-selection.ts` o
 
 - Module scope: `let sharedCustomRange: CustomRange | null = null`, a `listeners` Set, a
   `setSharedCustomRange(next)` that publishes and notifies (it exits early when `next` is the same
-  object), `subscribe` (on the last unsubscribe, reset `sharedCustomRange` to `null`; do not
-  notify), and `getSnapshot`. All are stable module functions, shaped like `sync-status.ts`.
+  object), `subscribe` (on the last unsubscribe, schedule `Promise.resolve().then(...)` that resets the snapshot
+  to the empty one and `clock` to `null` only if `listeners.size === 0` still holds; never
+  `queueMicrotask`; do not notify), and `getSnapshot`. All are stable module functions, shaped like `sync-status.ts`.
 - Module scope also holds `clock: number | null` and a snapshot
   `{ customRange, defaultRange }`. Replace the snapshot only on a pick, a Clear, or a publish that
   moves `clock` to a newer local day (`startOfLocalDay` from `@kiko/dates`). `publishNow(next)`
   ignores a `next <= clock` and updates `clock` silently on a newer same-day value. See Mechanism.
 - The hook: `const snapshot = useSyncExternalStore(subscribe, getSnapshot)` and
   `useLayoutEffect(() => publishNow(now), [now])`. The range is
-  `snapshot.customRange ?? (snapshot.defaultRange ?? defaultDateRange(now))`, where the last part
-  is the null-clock fallback. The return shape and the `applyDateRange` / `clearDateRange`
+  `snapshot.customRange ?? sharedDefault`, where `sharedDefault` is `snapshot.defaultRange` only if
+  it is non-null and `startOfLocalDay(defaultRange.to) >= startOfLocalDay(now)`, otherwise
+  `defaultDateRange(now)` (also the null-clock fallback). The return shape and the `applyDateRange` / `clearDateRange`
   signatures stay the same.
 - Do not export the store internals (Knip). `index.ts` does not change.
 - Update the hook's doc comment: one pick and one default shared by every reader (Home and
@@ -218,3 +221,8 @@ and the green tests.
 | Fold/unfold replaces both panes (pick held) | pick kept | pick kept | both reset |
 | Device clock set back by hand, no day crossing yet | may differ until Statistics re-focuses (known limit, D5) | may differ until Statistics re-focuses (known limit, D5) | same |
 | No pick, past midnight, either screen's trigger (D2) | new-day default | the same new-day default | Home moved on its re-render, Statistics only on its re-focus (could differ by a day) |
+
+Known limit, review 2 M3: a reader that commits in the NEXT commit after the last reader
+unmounted (outside the same flush) finds the store already reset, so its published `now` is lost
+and its first publish is silent; not reachable on base 0c456466; the Duo device check must include
+a fold with a held pick.
