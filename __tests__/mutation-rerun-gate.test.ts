@@ -24,7 +24,6 @@ import { HIGH_LOAD, LOW_LOAD, sysctlCallCount, writeSysctlStub } from './test-su
 // stub Stryker answers the two calls: the first writes a report and the incremental file, the
 // second records the incremental file it was given and writes the rerun report.
 const ENTRY = 'src/changed.ts:1-1';
-const CHECKS = join(__dirname, '../scripts/checks');
 const WAIT_LOAD = join(__dirname, '../scripts/wait-load.sh');
 
 type Row = [identifier: string, status: string];
@@ -105,10 +104,6 @@ const runScenario = (scenario: Scenario) => {
   buildMutationRepository(root, { 'src/changed.ts': 'export const changed = 1;\n' });
   mkdirSync(join(root, 'scripts'), { recursive: true });
   copyFileSync(WAIT_LOAD, join(root, 'scripts/wait-load.sh'));
-  // The helper is copied once it exists; the gate rows fail on their own assertions until then.
-  if (existsSync(join(CHECKS, 'mutation-rerun.js'))) {
-    copyFileSync(join(CHECKS, 'mutation-rerun.js'), join(root, 'scripts/checks/mutation-rerun.js'));
-  }
 
   const state = join(temporaryDirectory, 'state');
   const bin = join(temporaryDirectory, 'bin');

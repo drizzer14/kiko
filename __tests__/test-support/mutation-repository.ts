@@ -20,6 +20,7 @@ const LIB = join(__dirname, '../../scripts/checks/_lib.sh');
 const SCORE_SCRIPT = join(__dirname, '../../scripts/checks/mutation-score.js');
 const COMMENT_ONLY_SCRIPT = join(__dirname, '../../scripts/checks/comment-only-changes.js');
 const RANGES_SCRIPT = join(__dirname, '../../scripts/checks/mutation-ranges.js');
+const RERUN_SCRIPT = join(__dirname, '../../scripts/checks/mutation-rerun.js');
 
 // The throwaway repository has no node_modules, so the comment-only script
 // cannot find `typescript` there and keeps every file. A test that needs the
@@ -148,6 +149,7 @@ export const copyMutationScripts = (root: string): string => {
   copyFileSync(SCORE_SCRIPT, join(root, 'scripts/checks/mutation-score.js'));
   copyFileSync(COMMENT_ONLY_SCRIPT, join(root, 'scripts/checks/comment-only-changes.js'));
   copyFileSync(RANGES_SCRIPT, join(root, 'scripts/checks/mutation-ranges.js'));
+  copyFileSync(RERUN_SCRIPT, join(root, 'scripts/checks/mutation-rerun.js'));
 
   return script;
 };
