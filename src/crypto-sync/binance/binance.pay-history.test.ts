@@ -114,13 +114,13 @@ const storedState = (stored: StoredMarks = {}) => {
   };
 };
 
+const holdingWith = (id: string, metadata: Record<string, unknown>): HoldingRow =>
+  ({ id, metadata }) as unknown as HoldingRow;
+
 /**
  * The Spot holding of a connected account and the writers over its stored state, as the Pay walk
  * left them. It carries no capital cursor: the Pay walk does not read one.
  */
-const holdingWith = (id: string, metadata: Record<string, unknown>): HoldingRow =>
-  ({ id, metadata }) as unknown as HoldingRow;
-
 const payWalkWith = (pay: WalkMarkSeed, alongside: HoldingRow[] = []) =>
   walkStateDeps({ accountId: WALK_ACCOUNT_ID, alongside, marks: { pay } });
 
@@ -357,9 +357,7 @@ describe('the walk and the capital walk', () => {
 
     const result = await sync(deps);
 
-    expect(
-      walkMarksOf(await deps.listHoldings(WALK_ACCOUNT_ID), WALK_ACCOUNT_ID, 'capital'),
-    ).not.toHaveProperty('cursor');
+    expect(walkMarkWritesOf(deps, 'capital', 'cursor')).toEqual([]);
     expect(result).toEqual({ imported: 0, complete: true });
     expect(deps.fetchAccount).toHaveBeenCalledTimes(1);
     expect(deps.fetchPayHistory).toHaveBeenCalledTimes(7);
@@ -424,7 +422,6 @@ describe('importing the orders of a window', () => {
   it('commits the rows before it advances the watermark', async () => {
     const calls: string[] = [];
     const deps = makeDeps({
-      ...recent(),
       fetchPayHistory: jest.fn(async () => {
         calls.push('fetchPayHistory');
 
@@ -435,14 +432,15 @@ describe('importing the orders of a window', () => {
 
         return rows.length;
       }),
-      ...walkStateFake({
+      ...walkStateDeps({
         accountId: WALK_ACCOUNT_ID,
+        marks: { pay: { cursor: NOW - 3_600_000 } },
         onWrite: ({ walkName, field }) => {
           if (NUMBER_MARK_FIELDS.some((numberField) => numberField === field)) {
             calls.push(`${walkName}:cursor`);
           }
         },
-      }).deps,
+      }),
     });
 
     await sync(deps);
@@ -519,7 +517,6 @@ describe('an adaptive window', () => {
       payPage([order({ transactionId: 'b' })]),
     ];
     const deps = makeDeps({
-      ...oneWindow(),
       fetchPayHistory: jest.fn(async () => {
         calls.push('fetch');
 
@@ -530,14 +527,15 @@ describe('an adaptive window', () => {
 
         return rows.length;
       }),
-      ...walkStateFake({
+      ...walkStateDeps({
         accountId: WALK_ACCOUNT_ID,
+        marks: { pay: { cursor: WINDOW_START } },
         onWrite: ({ walkName, field, value }) => {
           if (field === 'cursor') {
             calls.push(`${walkName}:cursor ${(value as number) - WINDOW_START}`);
           }
         },
-      }).deps,
+      }),
     });
 
     const result = await sync(deps);
@@ -2450,11 +2448,7 @@ describe('wallet holdings', () => {
       ],
     });
     const deps = makeDeps({
-      ...walkStateDeps({
-        accountId: WALK_ACCOUNT_ID,
-        alongside: [funding],
-        marks: { pay: { cursor: NOW - 3_600_000 } },
-      }),
+      ...payWalkWith({ cursor: NOW - 3_600_000 }, [funding]),
       fetchPayHistory: jest.fn(async () => payPage([split])),
     });
 

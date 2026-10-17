@@ -29,7 +29,6 @@ import {
   BINANCE_TRANSFER_SPAN_HINTS_FIELD,
 } from '@kiko/holdings/holding-metadata';
 import type { HoldingRow } from '@kiko/db';
-import { isRecord } from '@kiko/type-guards';
 import type { DatabaseSync } from 'node:sqlite';
 import type { BinanceWalkWriteDeps } from '@kiko/crypto-sync/exchange/walk';
 
@@ -103,7 +102,7 @@ const WRITERS: Record<WalkField, WalkWriter> = {
 
 type Metadata = Record<string, unknown>;
 
-type MarksSource = DatabaseSync | HoldingRow[] | Metadata;
+type MarksSource = DatabaseSync | Metadata;
 
 const SPOT_ASSET = 'BTC';
 
@@ -130,18 +129,6 @@ const storedSpotOf = (database: DatabaseSync, accountId: string): StoredSpot => 
 };
 
 const metadataOf = (source: MarksSource, accountId: string): Metadata => {
-  if (Array.isArray(source)) {
-    const spot = source.find(
-      (holding) => isRecord(holding.metadata) && holding.metadata.binanceAsset === SPOT_ASSET,
-    );
-
-    if (!isRecord(spot?.metadata)) {
-      throw new Error(`walk-marks: no Spot ${SPOT_ASSET} holding among the ${source.length} given`);
-    }
-
-    return spot.metadata;
-  }
-
   if (isDatabase(source)) {
     return JSON.parse(storedSpotOf(source, accountId).metadata) as Metadata;
   }
