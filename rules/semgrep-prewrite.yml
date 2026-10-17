@@ -808,7 +808,13 @@ rules:
   # `$F(...)` x statement-sequence match is quadratic on a large test file
   # whose "Gesture" substrings (`fireGestureHandler`, `GestureRootWrapper`)
   # defeat Semgrep's prefilter, which crossed the per-rule timeout under
-  # load and made the guard deny "could not check" at random.
+  # load and made the guard deny "could not check" at random. Each
+  # declaration sequence is split into a declaration-then-`...` arm and a
+  # `...`-then-declaration arm, never one `... decl ...`: the two-sided `...`
+  # creates O(k*m) ranges per declaration on a long component body and timed
+  # out check:security on `net-worth-line.component.tsx` (1.5-2.9 s for this
+  # rule alone, 0.12-0.19 s split, same findings). Dropping the leading `...`
+  # alone loses findings.
   - id: kiko-worklet-directive-required
     languages: [typescript]
     severity: ERROR
@@ -851,21 +857,29 @@ rules:
       - pattern: $F(...)
       - pattern-either:
           - pattern-inside: |
-              ...
               const $F = (...) => { ... }
               ...
           - pattern-inside: |
               ...
+              const $F = (...) => { ... }
+          - pattern-inside: |
               function $F(...) { ... }
               ...
+          - pattern-inside: |
+              ...
+              function $F(...) { ... }
       - pattern-not-inside: |
-          ...
           const $F = (...) => { 'worklet'; ... }
           ...
       - pattern-not-inside: |
           ...
+          const $F = (...) => { 'worklet'; ... }
+      - pattern-not-inside: |
           function $F(...) { 'worklet'; ... }
           ...
+      - pattern-not-inside: |
+          ...
+          function $F(...) { 'worklet'; ... }
       - pattern-not-inside: |
           $HOOK(..., (...) => {
             ...
