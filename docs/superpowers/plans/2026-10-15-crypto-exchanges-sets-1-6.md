@@ -78,16 +78,18 @@ pass in, like `DepthConfig`. Keys and requests stay byte-identical, pinned by se
   barrel (the pager depends on the walk, never the reverse):
   ```ts
   type ExchangeWalkConfig<RateLimitError extends Error, Weights> = {
-    asset: string;                                                  // 'BTC' for Binance in 1.3-a
-    metadataField: string;                                          // 'binanceAsset'
+    asset: ExchangeHolding['currency'];                             // 'BTC' for Binance in 1.3-a
+    metadataField: ExchangeHolding['metadataField'];                // 'binanceAsset'
     holdingKeyOf: (holding: Pick<HoldingRow, 'metadata'>) => string | undefined;
     walletHoldingNameOf: (key: string) => string;                   // wallet key -> default name
     isRateLimitError: (error: unknown) => error is RateLimitError;
     totalPageSize: number;
     refusedCallWeights: Weights;                                    // today's REFUSED_CALL
-    depth: DepthConfig;                                             // set 3 step 4/9
+    depth: DepthConfig;                                             // unread; set 4 removes it
   };
   ```
+  No code reads `depth` (the depth config travels on `DepthMemory.config` and `DepthGuard.config`);
+  set 4's first commit removes it (deferred review Minor m1).
   `onRateLimit` callers keep reading `error.retryAfterMs` (`binance.earn-history.ts`,
   `binance.transfer-history.ts`, `setBinanceCooldownUntil`) because the guard narrows to `RateLimitError`.
 - `TotalPage<Row, Weights>` (`{ rows; unreadable; total; gathered } & Weights`) lands in `exchange/paging`;
@@ -758,10 +760,10 @@ credential.ts`. Outside importers unchanged (`accounts.repo.ts`, `account-form.s
 
 ### step 4/9: budget shape, and depth functions into `exchange/walk`
 
-Files: `exchange/budget/` (`RunBudget<Lane>`, `RequestGate`, `createExchangeRun`), Binance numbers and weight
+Files: `exchange/budget/` (`RunBudget<Lane, Cost, Weights>`, `RequestGate`, `createExchangeRun`), Binance numbers and weight
 headers stay in `binance.history-budget.ts`; `binance.history-depth.ts` functions -> `src/crypto-sync/exchange/walk/
 depth.ts` (exported by a new `exchange/walk/index.ts`), its constants -> `BINANCE_DEPTH_CONFIG: DepthConfig` in
-`binance.history-depth.ts` (`DepthConfig = { resolutionMs; marginMs; marginCapMs; extrapolationMaxMs; maxRefusals;
+`binance.depth-config.ts`; the depth config travels on `DepthMemory.config` and `DepthGuard.config` (`DepthConfig = { resolutionMs; marginMs; marginCapMs; extrapolationMaxMs; maxRefusals;
 maxLapses }` from `DEPTH_RESOLUTION_MS`, `DEPTH_MARGIN_MS`, `DEPTH_MARGIN_CAP_MS`, `DEPTH_EXTRAPOLATION_MAX_MS`,
 `MAX_DEPTH_REFUSALS`, `MAX_DEPTH_LAPSES`; re-grep the exported constants), passed to the moved functions; importers (`binance.history-paging.ts`,
 `binance.transfer-history.ts`, `binance.depth-test-fixtures.ts`) import through `@kiko/crypto-sync/exchange/walk`.
@@ -776,7 +778,7 @@ Files: `exchange/amounts/amounts.ts`, `index.ts`, `amounts.test.ts`.
       `balance-precision-rounded`; `'row'` refuses past the scale (`amount-precision`) unless the coin is
       reduced-scale, where it rounds and logs `row-precision-rounded`; both refuse an exponent form
       (`amount-malformed`) and a result above the safe integer (`amount-too-large`). The tags are fixed text, no amount.
-- [ ] Tests first (imported through `@kiko/crypto-sync/exchange/amounts`, so knip sees a consumer):
+- [ ] Tests first (the test imports the unit through `'.'`; an alias into its own feature is denied):
       "returns exact minor units", "refuses more decimals than the scale for a row", "rounds a balance with more
       decimals than the scale half away from zero", "rounds a row on a reduced-scale coin", "refuses above the safe
       integer", "refuses an exponent form". Code wraps `decimalToMinorUnits` with the registry's scale and
@@ -809,10 +811,10 @@ placement rule), `exchange/walk/index.ts`, every Binance walk entry point (passe
 Files: `git mv binance.history-paging.ts exchange/paging/paging.ts` (tests per the placement rule; the moving-depth
 and paging tests import Binance fixtures, so they stay), `exchange/paging/index.ts`, `binance.history-client.ts`
 (`TotalPage` from `exchange/paging`, a type import; `BinancePageWeights`), importers.
-- [ ] Code: `Pager`, `SpanRead`, `offsetPager` are today's paging, moved; it imports `halfOf`, `SpanRead`,
-      `WalkWindow` and the depth functions from `../walk`; the body reads `config.totalPageSize`,
-      `config.isRateLimitError(error)`, `config.refusedCallWeights`, `config.depth.resolutionMs`,
-      `config.depth.maxLapses` and `config.depth.maxRefusals` where it read `HISTORY_TOTAL_PAGE_SIZE`,
+- [ ] Code: the moved units are `fetchAllByTotal`, `readSeriesSpan` and `TotalPage<Row, Weights>` (no `Pager` or
+      `offsetPager` exists); it imports `halfOf`, `WalkWindow` and the depth functions from `../walk`; the body
+      reads `config.totalPageSize`, `config.isRateLimitError(error)`, `config.refusedCallWeights` and, as
+      `depth.config.*` on the `DepthGuard`, `resolutionMs`, `maxLapses` and `maxRefusals` where it read `HISTORY_TOTAL_PAGE_SIZE`,
       `instanceof BinanceRateLimitError`, `REFUSED_CALL`, `DEPTH_RESOLUTION_MS`, `MAX_DEPTH_LAPSES` and
       `MAX_DEPTH_REFUSALS` (today imported from `binance.history-depth`; no value import of `binance/` stays); `onRateLimit` is typed `(error: RateLimitError) =>
       void`; the run type comes from `exchange/budget`. No other body edit. Check: paging suites and the step 1/9
@@ -840,6 +842,10 @@ low (moves); two deep gates (3a, 3b).
 
 Spec ids: Z1-Z6, X1-X4, walk properties at 0 / 1 h / 1 day, C-NR8 (list shape). Expected mutable files: about 18.
 TIMEOUT-HEAVY risk: none app-wide; the walk files have large related-test fan-out: name proofs if flagged.
+
+First commit: deferred set 3 Minors: drop `ExchangeWalkConfig.depth` (`walk-config.ts`,
+`binance.walk-config.ts`, its test; fix the walk-config doc comment); retitle `binance.walk-config.test.ts`
+"carries today asset…" (no relative-time wording).
 
 Known red between commits: none (0061's version decision lands with 0061 in step 2).
 

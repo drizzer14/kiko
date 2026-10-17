@@ -1861,18 +1861,28 @@ than restated here:
   span import (spec section 7, "Strict capital parse").
   Each client call is ONE offset page of ONE window; the offset-paging
   lives in `binance.transactions.ts`, not the client. The walk shared by
-  every Binance history walk lives in `binance.history-walk.ts` (read it for
-  its exports: `planWalkPasses`, `runWalkPlan`, `walkSpans`,
-  `buildWalkWindows`, the mark readers/writers, `btcSatoshis`,
-  `BinanceWalkStop`); the per-record commits live in
-  `binance.history-records.ts` (`settleRecords`, `commitSettledSpan`). The
+  every Binance history walk lives in the shared exchange layer,
+  `src/crypto-sync/exchange/walk/walk.ts` (read it for its exports:
+  `planWalkPasses`, `runWalkPlan`, `walkSpans`, `buildWalkWindows`, the mark
+  readers/writers, `BinanceWalkStop`); `btcSatoshis` is in
+  `binance.amounts.ts`; the per-record commits live in
+  `exchange/walk/records.ts` (`settleRecords`, `commitSettledSpan`). What a
+  walk reads about one exchange is an `ExchangeWalkConfig`
+  (`exchange/walk/walk-config.ts`; Binance's is `BINANCE_WALK_CONFIG` in
+  `binance.walk-config.ts`). The other exchange units are `exchange/signing`,
+  `exchange/credentials`, `exchange/budget` (`RunBudget`, `createExchangeRun`),
+  `exchange/walk/depth.ts` (Binance's `BINANCE_DEPTH_CONFIG` is in
+  `binance.depth-config.ts`) and `exchange/amounts` (`exchangeMinorUnits`);
+  read each folder's barrel. The walk, records, paging and depth tests stay
+  in `binance/` (they import Binance fixtures); `walk.series-ranges.test.ts`
+  lives beside the walk. The
   capital caller is `binance.transactions.ts` (`WINDOW_MS`, `MAX_WINDOWS`,
   `MAX_PAGES_PER_WINDOW`), the Pay caller `binance.pay-history.ts`
   (`PAY_WINDOW_MS`, `MAX_WINDOWS`; see "Binance Pay" below). The Transfer
   caller is `binance.transfer-history.ts` (`syncBinanceTransferHistory`, run
   third in `run-crypto-sync.ts`; see "Binance Transfer" below); the paging
-  helpers live in `binance.history-paging.ts` (`fetchAllByTotal`,
-  `readSeriesSpan`) and the write seam in `binance.walk-write-deps.ts`
+  helpers live in `exchange/paging/paging.ts` (`fetchAllByTotal`,
+  `readSeriesSpan`) and the write seam in `exchange/walk/walk-write-deps.ts`
   (`BinanceWalkWriteDeps`).
 - **Passes per walk; 89-day windows on capital and Pay, 30-day on Transfer.**
   The Transfer walk reads 30-day windows within a 179-day floor
@@ -1883,7 +1893,7 @@ than restated here:
   now, moving the cursor) and the window RE-SCAN (a stored mark; never
   writes the forward cursor). Every walk (capital, Pay, Transfer, Earn)
   runs it. `WalkPass` is `'forward' | 'pending' | 'rescan'` plus the points
-  pass (read it in `binance.history-walk.ts`); a run reads the forward pass, the owed
+  pass (read it in `exchange/walk/walk.ts`); a run reads the forward pass, the owed
   ranges (`pending`, in a round-robin from the range cursor), the re-scan,
   then the owed points last.
 - **One pacing gate per run.** `createBinanceHistoryRun`
@@ -1907,7 +1917,7 @@ than restated here:
   instant is imported." `binanceWalkCursorOf(field, metadata)`
   (`holding-metadata.ts`) and `holdingsRepo.setBinanceWalkCursor`
   (`holdings.repo.ts`) are the reader/writer. The plan comes from
-  `planWalkPasses` (`binance.history-walk.ts`; read its input type for the
+  `planWalkPasses` (`exchange/walk/walk.ts`; read its input type for the
   cursor, re-scan cursor, point cursor, pending list, floor, window and
   `RESYNC_OVERLAP_MS`). The capital walk feeds it
   `planCursor = cursor ?? latestTransactionTime ?? null`, so a LEGACY holding
@@ -1972,10 +1982,10 @@ than restated here:
   paged within the remaining budget is not committed and not marked; the
   next run redoes it from the same, unmoved watermark.
   The budget keeps calls for later passes: `RESCAN_KEEP` and `POINT_KEEP`
-  (`binance.history-walk.ts`) are the calls an owed range must leave for
+  (`exchange/walk/walk.ts`) are the calls an owed range must leave for
   the re-scan and for the points, and `canAfford` takes the calls to keep.
   `syncBinanceTransactions` returns the `WalkResult` `{ imported, complete }`
-  (`binance.history-walk.ts`) — `complete: false` means history remains
+  (`exchange/walk/walk.ts`) — `complete: false` means history remains
   behind and a later run (or sync press) resumes from the marks.
 - **A thrown error under `src/crypto-sync` is a named class with a fixed
   message.** Semgrep `kiko-no-literal-sync-error` flags
@@ -2048,15 +2058,16 @@ than restated here:
   imported. `walletOf` in `binance.transactions.ts` places each row by
   `walletType`: 0 or absent is Spot, 1 is Funding, any other value stops the
   walk (`capital-wallet-unknown`). The stop codes are the `BinanceWalkStop`
-  codes (`binance.history-walk.ts`; the spec lists them): read them there. The wallet holding is found by `binanceKeyOf`
-  (`binance.holding-keys.ts`) and, only for a row whose key is new, created
-  at zero by `holdingsRepo.ensureExchangeHoldings` (insert-only); a row
-  already stored keeps its holding. Earn gets no capital rows. The walks
-  share this through `resolveWalletHoldings` (`binance.history-walk.ts`). Only
+  codes (`exchange/walk/walk.ts`; the spec lists them): read them there.
+  The wallet holding is found by `binanceKeyOf` (`binance.holding-keys.ts`) and,
+  only for a row whose key is new, created at zero by
+  `holdingsRepo.ensureExchangeHoldings` (insert-only); a row already stored keeps its
+  holding. Earn gets no capital rows. The walks
+  share this through `resolveWalletHoldings` (`exchange/walk/walk.ts`). Only
   the capital walk passes `createKeys` (`placeRows` in
   `binance.transactions.ts`): a wallet that only receives rows already stored
   elsewhere is not created as an empty holding. `placeWalletRows`
-  (`binance.history-records.ts`), which places the rows of the Pay, Transfer
+  (`exchange/walk/records.ts`), which places the rows of the Pay, Transfer
   and Earn walks, passes none and so creates every missing wallet holding at
   zero.
 - **Pairing and untracked wallets.** Transfer and Earn legs share an
@@ -2103,7 +2114,7 @@ record imports only at `TRANSFER_SETTLED_STATUS`; BTC only. The stop codes live 
   `readSpan` never rejects the run for it. A span at or below the floor of now reads as empty
   (no call, nothing owed); any other span is read, in each type, from the floor of now or the
   start Binance serves that type, whichever is later, found by bisection
-  (`binance.history-depth.ts`, `binance.history-paging.ts`) and
+  (`exchange/walk/depth.ts`, `exchange/paging/paging.ts`) and
   remembered for that type (`createDepthMemories`: a memory per type, so a type that keeps less
   narrows only itself) with the clock it was served at. A search begins at the start another type
   is served from when one is known (`DepthGuard.hintMs`, `narrowFromHint`), which decides only
@@ -2137,7 +2148,7 @@ record imports only at `TRANSFER_SETTLED_STATUS`; BTC only. The stop codes live 
   A span read that narrows (a type is refused a start, finds its memory lapsed, asks the end of
   the span, or reads a band) draws its calls from the lane's narrowing calls first
   (`LANE_NARROWING_CALLS` in `binance.history-budget.ts`; `spanRunOf` in
-  `binance.history-paging.ts`), and from the lane's cap (`LANE_CALL_CAPS`) after them; a span read
+  `exchange/paging/paging.ts`), and from the lane's cap (`LANE_CALL_CAPS`) after them; a span read
   that does not narrow draws the cap alone. Those two constants are the source of the call
   counts; the measured costs, the pacing times, the simulation tables that chose the narrowing
   calls and the first run's reach are in spec section 5 (read it there, do not copy a figure).
@@ -2228,7 +2239,7 @@ stop codes and scenario rows.
 - **The owed list.** Each walk keeps one walk-owned list of owed ground
   (`binanceWalkPendingFields`, `holding-metadata.ts`): a range (no `kind`) or
   a point (`kind: 'point'`); the kind alone tells them apart. At most
-  `MAX_PENDING_RANGES` ranges (`binance.history-walk.ts`; the two nearest
+  `MAX_PENDING_RANGES` ranges (`exchange/walk/walk.ts`; the two nearest
   merge); a point is never merged with, held by or dropped with a range;
   equal points are one.
 - **Canonical points.** A stuck record owes `[t - 1, t + 1]` (Pay, a
@@ -2294,10 +2305,11 @@ stop codes and scenario rows.
   A point window whose first span needs h halvings, one span a run, completes
   within 2h + 1 runs, while no later span comes back full (a later span that is
   too full halves again, one more run a halving).
-- **STOP_ENDS_PASS and R28** (plan OVERNIGHT item 17). `STOP_ENDS_PASS` (`binance.history-walk.ts`) says a stop
-  in the forward pass ends only that pass, so the run goes on to the owed
-  ranges, the re-scan and the points; the cursor never passes a stuck record
-  (but see the Transfer and Earn forward stops; Earn: `EARN_FORWARD_OWES`); a
+- **STOP_ENDS_PASS and R28** (plan OVERNIGHT item 17).
+  `STOP_ENDS_PASS` (`exchange/walk/walk.ts`) says a stop in the forward pass ends only that pass,
+  so the run goes on to the owed ranges, the re-scan and the points;
+  the cursor never passes a stuck record (but see the Transfer and Earn forward stops;
+  Earn: `EARN_FORWARD_OWES`); a
   budget or rate limit ends every read.
 - **R13.** Pay direction comes from the uid alone (`payDirection`): payer id =
   uid is out, receiver id = uid is in.

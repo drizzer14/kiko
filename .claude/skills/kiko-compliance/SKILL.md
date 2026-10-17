@@ -144,9 +144,9 @@ that section. A secret belongs in the iOS Keychain
 (`react-native-keychain`); see `.claude/skills/kiko-architecture/SKILL.md`
 for the existing Keychain-backed examples (the Monobank token, the
 SQLCipher database key in `src/db/keys/db-key.ts`, the Binance credentials in
-`src/crypto-sync/binance/binance.credentials.ts` — read that file for its
-service name and `accessible` policy, `WHEN_UNLOCKED_THIS_DEVICE_ONLY` at
-the time of writing).
+`src/crypto-sync/binance/binance.credentials.ts` holds the service name; the
+`accessible` policy lives in `src/crypto-sync/exchange/credentials/credentials.ts`,
+`WHEN_UNLOCKED_THIS_DEVICE_ONLY` at the time of writing).
 
 A credential that travels in a request URL (an `api_token` query parameter;
 no client sends one today) or a request header (`X-Token`, `X-MBX-APIKEY`)

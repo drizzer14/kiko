@@ -203,7 +203,7 @@ Not in 1.3-a by rule:
 | `exchange/credentials/` | `ExchangeCredentials = { apiKey: string; secret: string }`; `credentialServiceFor(exchangeId, accountId)` = `kiko.<exchangeId>.credentials.<accountId>`; save/load/clear over `react-native-keychain` with the shared `hardenedFor` (`WHEN_UNLOCKED_THIS_DEVICE_ONLY`, no access control) | `binance.credentials.ts` (`serviceFor`, `BINANCE_CREDENTIALS_SERVICE`): the Binance service string stays byte-identical |
 | `exchange/signing/` | `SignRequest = (request: UnsignedRequest, credentials, nowMs) => SignedRequest` (query, headers, body). Binance: HMAC-SHA256 hex over the query, `X-MBX-APIKEY` header | `binance.hmac.ts`, the signing part of `signedRequestPage` |
 | `exchange/budget/` | `RunBudget<Lane>`: per-lane call caps, narrowing calls, keeps, `canAfford(lane, cost, keep, narrowing)`, `record(lane, page, narrowing)`; one `RequestGate` per run; `createExchangeRun(clock)` | `binance.history-budget.ts` (shape); Binance numbers and weight headers stay in `binance.history-budget.ts` |
-| `exchange/paging/` | `Pager` interface (below); `offsetPager` (today's `fetchAllByTotal` + `readSeriesSpan` + span halving); `idCursorPager` (set 10) | `binance.history-paging.ts` |
+| `exchange/paging/` | set 3: `fetchAllByTotal`, `readSeriesSpan` (with span halving) and `TotalPage<Row, Weights>` in `paging.ts`; no `Pager` or `offsetPager` exists, the interface below is the set 10 target; `idCursorPager` (set 10) | `binance.history-paging.ts` |
 | `exchange/walk/` | the walk engine: `planWalkPasses`, `runWalkPlan`, `walkSpans`, `buildWalkWindows`, owed ranges and points, range cursor, span hints, `settleRecords`, `commitSettledSpan`, `placeWalletRows`, depth guards; `WalkStop` codes generic, exchange codes added per exchange | `binance.history-walk.ts`, `binance.history-records.ts`, `binance.history-depth.ts` (constants become a per-exchange `DepthConfig`), `binance.walk-write-deps.ts` |
 | `exchange/walk-state/` | `ExchangeState` type, its per-walk strict parse, readers and the gated writer over `sync_state.exchange_state` (set 4) | the walk-owned metadata keys of `holding-metadata.ts` (`binanceWalkCursorFields`, `binanceWalkPendingFields`, `binanceWalkPointCursorFields`, `binanceWalkRangeCursorFields`, `binanceWalkSpanHintFields`) and `holdingsRepo.setBinanceWalkCursor`, `setBinanceWalkPending`, `setBinanceWalkSpanHints`, `resetBinanceWalkCursors` |
 | `exchange/history-status/` | `isExchangeHistoryBehind(state, latestSyncedAt)`, `untrackedCoinsOf(state)` and `oversizedCoinsOf(state)` (each the sorted union of its kind's balance and history lists, C-NR8; `untrackedCoinsOf` leaves out a ticker that is a curated code now); `notImportedCountsOf(state)`, the count of `notImported` entries per kind in the fixed order of `NOT_IMPORTED_KINDS` (C-NR-A, set 8; section 6, "Not-imported line") | `screens/account-detail/crypto-sync-section/binance-history-status.ts` (`walkCursorsOf`, `transferOwesRange`, `isBinanceHistoryBehind`) |
@@ -212,7 +212,7 @@ Not in 1.3-a by rule:
 The Binance host constant stays in `binance.client.ts` (re-grep the `@env` host); there is no
 hosts unit in 1.3-a.
 
-Set 3 moves code only. `btcSatoshis` and `sumSatoshis` keep their behaviour there: a JS number or
+Set 3 moves code only. `btcSatoshis` and `sumSatoshis` keep their behaviour there (`btcSatoshis` now lives in `binance.amounts.ts`): a JS number or
 any `Number()`-parsable string (an exponent form too), rounded through `Money.fromMajor`. The
 switch to `exchangeMinorUnits` in sets 5 and 6 is a behaviour change on off-contract input, so its
 cases carry "was:" rows (A1-A4, section 7).
@@ -240,6 +240,9 @@ type ExchangeProvider = {
 
 ### Pager interface
 
+Set 10 target. Set 3 shipped the function form (`fetchAllByTotal`, `readSeriesSpan`); no `Pager`
+type exists yet.
+
 ```ts
 type SpanRead<Record> =
   | { kind: 'read'; records: Record[]; unreadable: UnreadableRow[]; calls: number }
@@ -251,7 +254,7 @@ type Pager<Series, Record> = {
 };
 ```
 
-- `offsetPager`: today's behaviour moved as is (time window, `current`/offset pages, `total`
+- offset paging (today's `fetchAllByTotal` and `readSeriesSpan`, moved as is in set 3) (time window, `current`/offset pages, `total`
   drift checks, halving, 50-page cap at 1 ms).
 - `idCursorPager` (set 10): a series has an id cursor, not a time window. `readFrom(series,
   fromId, budget)` reads pages of `limit` ascending by id until a short page or the lane cap; it
@@ -302,7 +305,7 @@ only a disconnect clears it. The record id and time let a later version owe the 
 when it learns to import that kind (for example the C-P2P-SELL-MAKER follow-up). An entry never
 shows the caption (K8). The developer re-greps `TranslationKey` on the base.
 
-`BinancePendingRange` (`holding-metadata.ts`; `OwedGround` in `binance.history-walk.ts` is an
+`BinancePendingRange` (`holding-metadata.ts`; `OwedGround` in `exchange/walk/walk.ts` is an
 alias of it) is today's shape plus an optional `scope: 'backfill'` on a range (section 7).
 `spanHints` is today's `BinanceSpanHints` record (`holding-metadata.ts`: one hint list per pass,
 `forward`, `pending`, `rescan`, `point`), an object, not a list; its shape stays.
