@@ -1126,6 +1126,59 @@ describe('scripts/job-queue.sh on SIGINT during the lock record rename', () => {
   });
 });
 
+// Blocks BEFORE the real mv, on the first rename of a `lock.*` file (the queue recording its job
+// group): it writes its pid to the armed file, then waits for the release file, as a rename
+// that is still in flight when the queue is interrupted. The bounded poll (80 s) ends it on its
+// own so a failing run cannot hang.
+const PRE_RENAME_BLOCKING_MV_STUB = [
+  '#!/usr/bin/env bash',
+  'armed=0',
+  'for argument in "$@"; do',
+  `  case "\${argument##*/}" in lock.*) armed=1 ;; esac`,
+  'done',
+  '[ "$armed" = 1 ] || exec /bin/mv "$@"',
+  '[ -n "$KIKO_STUB_MV_ARMED" ] || exec /bin/mv "$@"',
+  'mkdir "$KIKO_STUB_MV_ARMED.once" 2> /dev/null || exec /bin/mv "$@"',
+  'echo $$ > "$KIKO_STUB_MV_ARMED"',
+  'for ((poll = 0; poll < 4000; poll += 1)); do',
+  '  [ ! -e "$KIKO_STUB_MV_RELEASE" ] || break',
+  '  sleep 0.02',
+  'done',
+  'exec /bin/mv "$@"',
+  '',
+].join('\n');
+
+describe('scripts/job-queue.sh on SIGINT before the lock record rename lands', () => {
+  it('leaves no lock behind when the rename that records the job group lands after the exit', async () => {
+    const sandbox = createSandbox();
+    warmExecutables([
+      writeExecutable(join(sandbox.root, 'bin/make'), BLOCKING_MAKE_STUB),
+      writeExecutable(join(sandbox.root, 'bin/mv'), PRE_RENAME_BLOCKING_MV_STUB),
+    ]);
+    sandbox.environment.KIKO_STUB_PID = join(sandbox.root, 'job-pid');
+    sandbox.environment.KIKO_STUB_MV_ARMED = join(sandbox.root, 'mv-armed');
+    sandbox.environment.KIKO_STUB_MV_RELEASE = join(sandbox.root, 'release');
+    const worktree = createWorktree(sandbox, 'one');
+    const release = (): void => writeFileSync(join(sandbox.root, 'release'), '');
+
+    try {
+      const waiter = startQueue(sandbox, 'verify', worktree, 'one');
+      await waitFor(() => readLines(join(sandbox.root, 'mv-armed')).length === 1);
+      const renamePid = readPid(sandbox, 'mv-armed');
+      waiter.child.kill('SIGINT');
+      await waitFor(() => waiter.child.exitCode !== null);
+      release();
+      await waitFor(() => !processIsAlive(renamePid));
+
+      expect(waiter.child.exitCode).toBe(130);
+      expect(lockPresent(sandbox)).toBe(false);
+      expect(entriesOf(sandbox.queue).filter((entry) => entry.startsWith('lock'))).toEqual([]);
+    } finally {
+      release();
+    }
+  });
+});
+
 // A pid that is certainly dead: the subshell prints its own pid and exits before spawnSync returns.
 const deadPid = (): string =>
   spawnSync('bash', ['-c', 'echo $$'], { encoding: 'utf8' }).stdout.trim();
@@ -1300,6 +1353,27 @@ const lostLines = (sandbox: Sandbox): string[] =>
 const lockLostLines = (sandbox: Sandbox): string[] =>
   readLines(join(sandbox.queue, 'done.log')).filter((line) => line.split(' ')[2] === 'lost');
 
+// The prune reads a ticket's waiter pid through `cut -f4`. This stub holds each waiter there, on
+// the dead ticket only, until both waiters have arrived, so both certainly see the ticket still
+// present and reach the removal together: only an atomic removal then writes one LOST line. The
+// bounded poll (80 s) ends it on its own so a failing run cannot hang.
+const PRUNE_BARRIER_CUT_STUB = [
+  '#!/usr/bin/env bash',
+  '[ -n "$KIKO_STUB_CUT_ARRIVALS" ] || exec /usr/bin/cut "$@"',
+  'input="$(cat)"',
+  `case "$input" in *-ghost) ;; *) printf '%s\\n' "$input" | /usr/bin/cut "$@"; exit $? ;; esac`,
+  `case "$*" in *-f4*) ;; *) printf '%s\\n' "$input" | /usr/bin/cut "$@"; exit $? ;; esac`,
+  'mkdir -p "$KIKO_STUB_CUT_ARRIVALS"',
+  ': > "$KIKO_STUB_CUT_ARRIVALS/$PPID"',
+  'for ((poll = 0; poll < 4000; poll += 1)); do',
+  '  arrivals=("$KIKO_STUB_CUT_ARRIVALS"/*)',
+  '  [ "${#arrivals[@]}" -lt 2 ] || break',
+  '  sleep 0.02',
+  'done',
+  `printf '%s\\n' "$input" | /usr/bin/cut "$@"`,
+  '',
+].join('\n');
+
 describe('scripts/job-queue.sh LOST lines', () => {
   it('writes one done.log line for a ticket whose waiter is dead, queued time from its epoch', async () => {
     const sandbox = createSandbox();
@@ -1325,14 +1399,18 @@ describe('scripts/job-queue.sh LOST lines', () => {
     const ticket = join(sandbox.queue, 'tickets', `1-0000000000-1700000000-${waiterPid}-ghost`);
     mkdirSync(join(sandbox.queue, 'tickets'), { recursive: true });
     writeFileSync(ticket, '');
-    // A hold keeps both waiters polling (and pruning) without either starting a job.
-    runQueue(sandbox, 'hold', 'test');
+    warmExecutables([writeExecutable(join(sandbox.root, 'bin/cut'), PRUNE_BARRIER_CUT_STUB)]);
+    sandbox.environment.KIKO_STUB_CUT_ARRIVALS = join(sandbox.root, 'prune-arrivals');
+    // A lock held by a live pid keeps both waiters polling (and pruning) without either starting
+    // a job.
+    holdLock(sandbox);
 
     startQueue(sandbox, 'verify', worktree, 'one');
     startQueue(sandbox, 'verify', worktree, 'two');
     await waitFor(() => !isPresent(ticket));
-    await new Promise((settle) => setTimeout(settle, 600));
+    await waitForPasses(sandbox, 6);
 
+    expect(entriesOf(join(sandbox.root, 'prune-arrivals'))).toHaveLength(2);
     expect(lostLines(sandbox)).toHaveLength(1);
   });
 

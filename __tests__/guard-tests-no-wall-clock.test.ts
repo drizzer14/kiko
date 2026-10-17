@@ -75,3 +75,52 @@ describe('pre-write-guard tests assert on no clock delta', () => {
     expect(clockReadingsIn(readFileSync(join(TESTS_DIRECTORY, file), 'utf8'))).toEqual([]);
   });
 });
+
+// A fixed sleep that the test then treats as "nothing more will happen" is a clock proof: under
+// load the sleep ends before the late work does. A sleep is allowed only as the pause of a bounded
+// poll loop, which fails the test when the awaited state never appears.
+const QUEUE_TEST_FILES = ['job-queue.test.ts', 'ff-main.test.ts'];
+
+const SLEEP_CALL = /setTimeout\(\s*[\w$]+\s*,\s*[\d_]+\s*\)/;
+
+const settleSleepsIn = (source: string): string[] => {
+  const lines = source.split('\n');
+
+  return lines.filter(
+    (line, index) =>
+      SLEEP_CALL.test(line) && !lines.slice(Math.max(0, index - 6), index).some(isPollBound),
+  );
+};
+
+const isPollBound = (line: string): boolean => /\bpoll\s*>=\s*\w+/.test(line);
+
+describe('queue tests settle by a rendezvous or a pass count, never by a fixed sleep', () => {
+  it.each([
+    ['a 600 ms settle wait', 'await new Promise((settle) => setTimeout(settle, 600));', 1],
+    [
+      'a settle wait after a poll',
+      'await waitFor(() => !isPresent(ticket));\n  await new Promise((settle) => setTimeout(settle, 600));',
+      1,
+    ],
+    [
+      'the pause of a bounded poll loop',
+      [
+        'for (let poll = 0; !condition(); poll += 1) {',
+        '  if (poll >= POLL_LIMIT) {',
+        "    throw new Error('never');",
+        '  }',
+        '',
+        '  await new Promise((settle) => setTimeout(settle, 20));',
+        '}',
+      ].join('\n'),
+      0,
+    ],
+    ['a jest timeout', 'jest.setTimeout(120_000);', 0],
+  ])('finds the settle sleeps of %s', (_label, source, expected) => {
+    expect(settleSleepsIn(source)).toHaveLength(expected);
+  });
+
+  it.each(QUEUE_TEST_FILES)('%s has no settle sleep', (file) => {
+    expect(settleSleepsIn(readFileSync(join(TESTS_DIRECTORY, file), 'utf8'))).toEqual([]);
+  });
+});
