@@ -42,7 +42,6 @@ import {
   type EarnRecordKind,
   UNIVERSAL_TRANSFER_TYPES,
 } from './binance.history-client';
-import { HISTORY_FLOOR_MS } from './binance.transactions';
 import { LANE_CALL_CAPS } from './binance.history-budget';
 import { floorToSecond } from './binance.earn-test-fixtures';
 import { settledTransfersOf, TRANSFER_FORWARD_OWES } from './binance.transfer-history';
@@ -783,7 +782,7 @@ const storedMarksOf = async (
   const stored = await readWalkMarks(deps, SIMULATION_ACCOUNT_ID, walkName);
   const pending = await readPendingMark({
     stored: stored.pending,
-    owedIfUnreadable: { start: HISTORY_FLOOR_MS, end: stored.cursor ?? HISTORY_FLOOR_MS },
+    owedIfUnreadable: { start: stored.cursor ?? 0, end: stored.cursor ?? 0 },
     knownSeries,
     write: walkMarkWriterOf(deps, SIMULATION_ACCOUNT_ID, walkName),
   });
@@ -952,6 +951,7 @@ const simulate = async (input: Simulation): Promise<Outcome> => {
                 advanceWalkMarks({
                   pass,
                   span,
+                  series: window.series,
                   owed,
                   plan,
                   marks: live,
@@ -1525,6 +1525,28 @@ const insideMergedRangeScenario = (lane: Lane, seed: number, withTwin = true): S
 };
 
 /**
+ * An owed range with no series, and inside it the point of a stuck record of one series. A record
+ * of another series sits on the edge of that point: only a read of the range, in every series,
+ * returns it, so a read of the point in the stuck record's own series must not cut the point out
+ * of the range.
+ */
+const pointInSeriesRangeScenario = (lane: Lane, seed: number): Scenario => {
+  const builder = builderOf(lane, seed);
+  const range = builder.rangeAt(0);
+  const stuck = builder.record(builder.interiorOf(range), NEVER);
+  const otherSeries = (lane.series ?? []).find((series) => series !== stuck.series);
+  const twin = {
+    ...builder.twinOf(stuck),
+    ...foldMap(maybe(otherSeries), (series) => ({ series })),
+  };
+
+  return {
+    owed: [range, pointOf(stuck)],
+    records: [stuck, twin, builder.record(builder.interiorOf(range))],
+  };
+};
+
+/**
  * A stuck record at `time` that holds the forward pass back for good, so the cursor never passes
  * it. The Transfer lane owes the point of a record with a time and goes past it, so its record
  * has none: the client could not read its time, and it owes the whole span, which only a stop of
@@ -2068,6 +2090,29 @@ describe.each(LANES)('owed ground that never commits, $name lane', (laneOfName) 
       async ({ seed, bound }) => {
         await check(
           { scenario: insideMergedRangeScenario(lane, seed) },
+          { imported: bound, pointed: 1 },
+          bound + 5,
+        );
+      },
+    );
+
+    // A lane that reads one series has no point in a series, so there is nothing to cut.
+    const whenLaneReadsSeries = lane.series === undefined ? it.skip.each : it.each;
+
+    whenLaneReadsSeries(
+      seeds.flatMap((seed) =>
+        [undefined, HOUR_MS].map((spanMs) => ({ seed, spanMs, bound: rangeRuns(lane, 1) + 40 })),
+      ),
+    )(
+      'P1-P4: an owed range with no series and a stuck record of one series found as a point inside it, a record of another series at its time (seed $seed, a read too full above $spanMs ms keeps the range pass reading for many runs, so the point is read alone first): a read of the point never cuts it out of the range, so the other series record imports within $bound runs and the point stays',
+      async ({ seed, spanMs, bound }) => {
+        await check(
+          {
+            scenario: pointInSeriesRangeScenario(lane, seed),
+            ...foldMap(maybe(spanMs), (span) => ({
+              dense: { range: { start: BASE_MS, end: BASE_MS + 2 * DAY_MS }, spanMs: span },
+            })),
+          },
           { imported: bound, pointed: 1 },
           bound + 5,
         );
