@@ -160,9 +160,9 @@ main_commit="$(git -C "$main_checkout" rev-parse HEAD 2> /dev/null)"
 git -C "$main_checkout" diff --quiet "$main_commit" "$full_commit" \
   -- harness/kiko ":!$PLUGIN_MANIFEST" 2> /dev/null
 harness_changed=$?
+main_version="$(plugin_version "$main_commit")"
+commit_version="$(plugin_version "$full_commit")"
 if [ "$harness_changed" -ne 0 ]; then
-  main_version="$(plugin_version "$main_commit")"
-  commit_version="$(plugin_version "$full_commit")"
   if [ -z "$main_version" ] || ! version_above "$commit_version" "$main_version"; then
     fail \
       'A harness/kiko change needs a plugin.json version above main'"'"'s' \
@@ -172,9 +172,6 @@ if [ "$harness_changed" -ne 0 ]; then
   fi
 fi
 
-# Reads both versions again, so this rule stands alone from the harness-change rule above.
-main_version="$(plugin_version "$main_commit")"
-commit_version="$(plugin_version "$full_commit")"
 if [ -n "$main_version" ] && { [ -z "$commit_version" ] || version_above "$main_version" "$commit_version"; }; then
   fail \
     'A plugin.json version below main'"'"'s is refused' \
