@@ -684,6 +684,11 @@ describe('scripts/ff-main.sh plugin version rule', () => {
       'other-with-manifest',
     ],
     ['a plugin.json-only commit that deletes the manifest', null, 'manifest-only'],
+    [
+      'a plugin.json-only commit with a non-numeric version',
+      pluginManifest('0.5.0-rc.1'),
+      'manifest-only',
+    ],
   ])('refuses any version decrease: %s', (_title, commitManifest, kind) => {
     const fixture = createFixture();
     withMainManifest(fixture, pluginManifest('0.4.22'));
@@ -714,6 +719,12 @@ describe('scripts/ff-main.sh plugin version rule', () => {
       'manifest-only',
     ],
     ['no manifest at main or in the commit and no harness change', null, null, 'other'],
+    [
+      'no manifest at main and a plugin.json-only commit that adds one',
+      null,
+      pluginManifest('0.1.0'),
+      'manifest-only',
+    ],
   ])('moves main without a decrease: %s', (_title, mainManifest, commitManifest, kind) => {
     const fixture = createFixture();
 

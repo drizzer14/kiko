@@ -4,10 +4,10 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { type SpawnSyncReturns, spawnSync } from 'node:child_process';
 
 import {
-  HIGH_LOAD as HIGH,
+  HIGH_LOAD,
   LOW_LOAD as LOW,
   sysctlCallCount,
-  writeSysctlStub as writeSharedSysctlStub,
+  writeSysctlStub,
 } from './test-support/sysctl-stub';
 
 // scripts/wait-load.sh waits until the 5-minute load average (the second number of
@@ -25,8 +25,8 @@ afterEach(() => {
   rmSync(directory, { recursive: true, force: true });
 });
 
-const writeSysctlStub = (high: string, low: string, highCalls: number): void =>
-  writeSharedSysctlStub(directory, high, low, highCalls);
+const stubLoad = (high: string, low: string, highCalls: number): void =>
+  writeSysctlStub(directory, high, low, highCalls);
 
 const callCount = (): number => sysctlCallCount(directory);
 
@@ -49,7 +49,7 @@ const run = (...scriptArguments: string[]): SpawnSyncReturns<string> =>
 
 describe('scripts/wait-load.sh', () => {
   it('exits 0 and prints nothing when the load is already below the maximum', () => {
-    writeSysctlStub(HIGH, LOW, 0);
+    stubLoad(HIGH_LOAD, LOW, 0);
 
     const result = run('10');
 
@@ -60,7 +60,7 @@ describe('scripts/wait-load.sh', () => {
   });
 
   it('waits while the load is high, prints one start line, and exits 0 once it drops', () => {
-    writeSysctlStub(HIGH, LOW, 2);
+    stubLoad(HIGH_LOAD, LOW, 2);
 
     const result = run('10');
 
@@ -73,13 +73,13 @@ describe('scripts/wait-load.sh', () => {
   });
 
   it('reads the second number, so a high 1-minute or 15-minute average does not block it', () => {
-    writeSysctlStub('{ 40.00 4.25 40.00 }', LOW, 99);
+    stubLoad('{ 40.00 4.25 40.00 }', LOW, 99);
 
     expect(run('10').status).toBe(0);
   });
 
   it('exits 2 with a clear message when the timeout passes before the load drops', () => {
-    writeSysctlStub(HIGH, LOW, 9999);
+    stubLoad(HIGH_LOAD, LOW, 9999);
 
     const result = run('10', '1');
 
@@ -91,7 +91,7 @@ describe('scripts/wait-load.sh', () => {
   });
 
   it('treats a load equal to the maximum as not below it', () => {
-    writeSysctlStub('{ 1.00 10.00 1.00 }', LOW, 9999);
+    stubLoad('{ 1.00 10.00 1.00 }', LOW, 9999);
 
     const result = run('10', '0');
 
@@ -100,17 +100,17 @@ describe('scripts/wait-load.sh', () => {
   });
 
   it('compares decimals, so 9.99 is below 10 and 10.01 is not', () => {
-    writeSysctlStub('{ 1.00 9.99 1.00 }', LOW, 9999);
+    stubLoad('{ 1.00 9.99 1.00 }', LOW, 9999);
 
     expect(run('10', '0').status).toBe(0);
 
-    writeSysctlStub('{ 1.00 10.01 1.00 }', LOW, 9999);
+    stubLoad('{ 1.00 10.01 1.00 }', LOW, 9999);
 
     expect(run('10', '0').status).toBe(2);
   });
 
   it('reads a locale that prints a comma decimal, and accepts a comma maximum', () => {
-    writeSysctlStub('{ 1,50 4,25 3,00 }', LOW, 9999);
+    stubLoad('{ 1,50 4,25 3,00 }', LOW, 9999);
 
     expect(run('10').status).toBe(0);
     expect(run('4,5').status).toBe(0);
@@ -118,7 +118,7 @@ describe('scripts/wait-load.sh', () => {
   });
 
   it('exits 3 when sysctl prints something that is not a load average', () => {
-    writeSysctlStub('garbage', 'garbage', 9999);
+    stubLoad('garbage', 'garbage', 9999);
 
     const result = run('10');
 
@@ -142,7 +142,7 @@ describe('scripts/wait-load.sh', () => {
     ['a maximum with two decimal points', ['1.2.3']],
     ['three arguments', ['10', '5', '7']],
   ])('exits 64 with the usage line for %s', (_name, scriptArguments) => {
-    writeSysctlStub(HIGH, LOW, 0);
+    stubLoad(HIGH_LOAD, LOW, 0);
 
     const result = run(...scriptArguments);
 
@@ -168,7 +168,7 @@ describe('scripts/wait-load.sh', () => {
       'KIKO_WAIT_LOAD_INTERVAL',
     ],
   ])('exits 64 naming the bad value for %s', (_name, scriptArguments, environment, message) => {
-    writeSysctlStub(HIGH, LOW, 0);
+    stubLoad(HIGH_LOAD, LOW, 0);
 
     const result = runWith(environment, ...scriptArguments);
 

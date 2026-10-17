@@ -294,6 +294,45 @@ describe('scripts/checks/mutation.sh rerun of the timed-out mutants', () => {
     );
   });
 
+  describe('a rerun mutant that ends in neither Killed, Survived nor Timeout', () => {
+    const first = rows(['Killed', 'Killed', 'Timeout', 'Timeout', 'Timeout', 'Timeout']);
+
+    it('shows every RuntimeError as other and leaves the verdict where it was', () => {
+      const run = runScenario({
+        first: reportOf(first),
+        incremental: incrementalOf(first),
+        second: reportOf(
+          rows([
+            'Killed',
+            'Killed',
+            'RuntimeError',
+            'RuntimeError',
+            'RuntimeError',
+            'RuntimeError',
+          ]),
+        ),
+      });
+
+      expect(run.code).toBe(0);
+      expect(rerunLines(run.lines)).toEqual([
+        'RERUN src/changed.ts: 4 timed out -> 0 killed, 0 survived, 0 timeout, 4 other (RuntimeError 4)',
+      ]);
+    });
+
+    it('counts a mutant missing from the final report as other too', () => {
+      const run = runScenario({
+        first: reportOf(first),
+        incremental: incrementalOf(first),
+        second: reportOf(rows(['Killed', 'Killed', 'Killed', 'RuntimeError', 'Killed'])),
+      });
+
+      expect(run.code).toBe(0);
+      expect(rerunLines(run.lines)).toEqual([
+        'RERUN src/changed.ts: 4 timed out -> 2 killed, 0 survived, 0 timeout, 2 other (RuntimeError 1, missing 1)',
+      ]);
+    });
+  });
+
   it('fails when the survivors of the rerun drop the file below the floor', () => {
     const first = rows(['Killed', 'Timeout', 'Timeout', 'Timeout']);
     const run = runScenario({

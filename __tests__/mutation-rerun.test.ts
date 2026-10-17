@@ -68,10 +68,6 @@ const readIncremental = (): ReturnType<typeof incremental> =>
   JSON.parse(readFileSync(incrementalPath, 'utf8'));
 
 describe('scripts/checks/mutation-rerun.js', () => {
-  it('ships next to the scorer as a script', () => {
-    expect(existsSync(SCRIPT)).toBe(true);
-  });
-
   it('removes exactly the named mutants of the named files and keeps everything else', () => {
     writeIncremental();
 

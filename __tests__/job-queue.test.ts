@@ -1855,6 +1855,49 @@ describe('scripts/job-queue.sh gate start load defer', () => {
     expect(result.stdout).toMatch(/^LOAD WAIT EXPIRED gate: load 12\.25$/m);
   });
 
+  // The whole-second SECONDS clock reads a wait of W seconds after a real wait of more than W - 1.
+  it.each([
+    [
+      'a hold',
+      (sandbox: Sandbox) => runQueue(sandbox, 'hold', 'maintenance'),
+      (sandbox: Sandbox) => runQueue(sandbox, 'release'),
+    ],
+    [
+      'battery power',
+      (sandbox: Sandbox) =>
+        writeFileSync(sandbox.environment.KIKO_STUB_POWER as string, BATTERY_POWER),
+      (sandbox: Sandbox) => writeFileSync(sandbox.environment.KIKO_STUB_POWER as string, AC_POWER),
+    ],
+  ])(
+    'gives the gate its full load wait again after %s that outlasted the limit',
+    async (_name, engage, release) => {
+      const limitSeconds = 3;
+      const sandbox = createSandbox();
+      const gate = createGateWorktree(sandbox, 'gate', listing(12));
+      stubLoad(sandbox, HIGH_LOAD, 9999);
+      sandbox.environment.KIKO_QUEUE_GATE_LOAD_WAIT_SECONDS = String(limitSeconds);
+
+      const waiter = startQueue(sandbox, 'gate', gate.worktree, 'gate', 'main', gate.head);
+      await waitFor(() => waiter.stdout().includes('WAITING gate: load'));
+      await new Promise((settle) => setTimeout(settle, 1200));
+      engage(sandbox);
+      await waitFor(() => /^WAITING gate: (hold|battery)/m.test(waiter.stdout()));
+      await new Promise((settle) => setTimeout(settle, (limitSeconds + 1.5) * 1000));
+      expect(waiter.stdout()).not.toContain('LOAD WAIT EXPIRED');
+      const releasedAt = Date.now();
+      release(sandbox);
+      await waitFor(
+        () => waiter.stdout().includes('LOAD WAIT EXPIRED') || waiter.child.exitCode !== null,
+      );
+      const waitedAfterRelease = Date.now() - releasedAt;
+      const result = await waiter.finished;
+
+      expect(result.code).toBe(0);
+      expect(result.stdout).toMatch(/^LOAD WAIT EXPIRED gate: load 12\.25$/m);
+      expect(waitedAfterRelease).toBeGreaterThanOrEqual((limitSeconds - 1) * 1000);
+    },
+  );
+
   it('starts the wait only when the lock is free, never while a running job holds it', async () => {
     const sandbox = createSandbox();
     const gate = createGateWorktree(sandbox, 'gate', listing(12));
