@@ -631,10 +631,20 @@ print_rerun_summary() {
     }
     for (const [path, identifiers] of wanted) {
       const counts = { Killed: 0, Survived: 0, Timeout: 0 };
+      const other = new Map();
+      const seen = new Set();
       for (const mutant of report.files?.[path]?.mutants ?? []) {
-        if (identifiers.has(String(mutant.id)) && mutant.status in counts) counts[mutant.status] += 1;
+        const identifier = String(mutant.id);
+        if (!identifiers.has(identifier)) continue;
+        seen.add(identifier);
+        if (mutant.status in counts) counts[mutant.status] += 1;
+        else other.set(mutant.status, (other.get(mutant.status) ?? 0) + 1);
       }
-      console.log(`RERUN ${path}: ${identifiers.size} timed out -> ${counts.Killed} killed, ${counts.Survived} survived, ${counts.Timeout} timeout`);
+      const parts = [...other].sort(([a], [b]) => (a < b ? -1 : 1)).map(([status, count]) => `${status} ${count}`);
+      if (seen.size < identifiers.size) parts.push(`missing ${identifiers.size - seen.size}`);
+      const otherTotal = (identifiers.size - counts.Killed - counts.Survived - counts.Timeout);
+      const otherNote = otherTotal > 0 ? `, ${otherTotal} other (${parts.join(", ")})` : "";
+      console.log(`RERUN ${path}: ${identifiers.size} timed out -> ${counts.Killed} killed, ${counts.Survived} survived, ${counts.Timeout} timeout${otherNote}`);
     }
   ' "$MUTATION_REPORT" 2>/dev/null || true
 }
@@ -647,8 +657,10 @@ rerun_note=""
 # later, not a hang. Stryker's incremental mode reuses a Timeout result, so the timed-out mutants
 # are removed from reports/stryker-incremental.json and Stryker runs once more: its new dry run
 # measures the quiet machine the wait below made, it runs only the dropped mutants, and every
-# other result is reused. The timeout formula is untouched, so a real infinite loop times out
-# again and stays Timeout. The final report is scored with the same rule and is the verdict.
+# other result is reused. The timeout formula is untouched, so a hang normally times out again
+# and stays Timeout, but a memory-filling hang can end RuntimeError (V8 runs out of memory before
+# Stryker's timer; Stryker reports Error after its retries). The scorer does not count that and
+# the summary shows it as other. The final report is scored with the same rule and is the verdict.
 rerun_timed_out_mutants() {
   local candidates candidate_count wait_seconds wait_code rerun_error rerun_offset rerun_code rerun_out
   candidates="$(node "$DIR/mutation-score.js" --rerun-candidates "$MUTATION_REPORT" "${file_arguments[@]}" 2>/dev/null)" || return 0

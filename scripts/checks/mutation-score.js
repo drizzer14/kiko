@@ -35,9 +35,11 @@
 // its tests. It fails the gate whatever the total and the floor say, and its line names the
 // score without the timeouts. The verdict on a report never changes, but the gate does not stop at
 // it: when TIMEOUT-HEAVY is the only failure, scripts/checks/mutation.sh reruns the timed-out
-// mutants once under a quiet machine and scores the final report with this same rule. A file whose
-// timeouts are real loops still fails there and is cleared by the manual method (see
-// docs/harness/checks.md).
+// mutants once under a quiet machine and scores the final report with this same rule. A hang
+// normally times out again there and the file still fails, cleared by the manual method (see
+// docs/harness/checks.md). A memory-filling hang can instead end RuntimeError (V8 runs out of
+// memory before Stryker's timer; Stryker reports Error after its retries), which this scorer does
+// not count; the rerun summary shows it as other.
 //
 // `--rerun-candidates <report.json> <mutate-entry>...` prints that rerun set instead of a score:
 // one `path<TAB>mutant id` line for every Timeout mutant inside the graded ranges of each
