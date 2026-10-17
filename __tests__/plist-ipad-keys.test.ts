@@ -1,11 +1,11 @@
 import { join } from 'node:path';
 import { chmodSync, readFileSync, writeFileSync } from 'node:fs';
 
-import { buildPlistRoot, runPlistCheck } from './test-support/plist-root';
 import {
   createTemporaryDirectory,
   removeTemporaryDirectories,
 } from './test-support/temporary-directory';
+import { buildPlistRoot, runPlistCheck } from './test-support/plist-root';
 
 const REAL_INFO_PLIST = readFileSync(join(__dirname, '../ios/Kiko/Info.plist'), 'utf8');
 
