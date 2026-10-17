@@ -49,9 +49,13 @@ const stubbedRun = async (input: {
   firstDays?: Partial<Record<Currency, number>>;
   settled?: { value: SettledHistory };
   answer?: (currencies: CryptoCurrency[]) => Promise<CryptoHistory>;
+  failSettledWrite?: boolean;
 }) => {
   const requested: CryptoCurrency[][] = [];
   const cursor: CursorStore = { value: input.cursor };
+  const cursorReads: number[] = [];
+  const cursorWrites: (string | null)[] = [];
+  const settledWrites: SettledHistory[] = [];
   const settled = input.settled ?? { value: {} };
   const deps: BackfillDeps = {
     earliestDay: input.earliestDay ?? day(0),
@@ -61,6 +65,12 @@ const stubbedRun = async (input: {
     firstBackfilledDayByCurrency: input.firstDays,
     readSettledHistory: async () => settled.value,
     writeSettledHistory: async (additions) => {
+      settledWrites.push(additions);
+
+      if (input.failSettledWrite) {
+        throw new Error('disk full');
+      }
+
       settled.value = { ...settled.value, ...additions };
     },
     fetchNbuHistory: async () => ({ entries: usdAnchors, failedCurrencies: [] }),
@@ -73,15 +83,20 @@ const stubbedRun = async (input: {
     historyCurrencies: async () => ({ fiatCurrencies: ['USD'], cryptoCurrencies: input.held }),
     lastBackfilledDayByCurrency: input.doneDays,
     knownEmptyCurrencies: input.knownEmpty ?? new Set(),
-    readHistoryBackfillCursor: async () => cursor.value,
+    readHistoryBackfillCursor: async () => {
+      cursorReads.push(1);
+
+      return cursor.value;
+    },
     writeHistoryBackfillCursor: async (next) => {
+      cursorWrites.push(next);
       cursor.value = next;
     },
   };
 
   await runBackfill(deps);
 
-  return { requested, cursor };
+  return { requested, cursor, cursorReads, cursorWrites, settledWrites };
 };
 
 describe('runBackfill — which crypto history it requests, and from where', () => {
@@ -383,8 +398,79 @@ describe('runBackfill — which crypto history it requests, and from where', () 
     await expect(runBackfill(deps)).resolves.toEqual(
       expect.objectContaining({ state: 'complete' }),
     );
+    expect(warn).toHaveBeenCalledWith(
+      '[history backfill] cursor not saved',
+      expect.objectContaining({ name: 'Error' }),
+    );
 
     warn.mockRestore();
+  });
+
+  describe('what a run saves', () => {
+    const BTC_FROM_THE_START: CryptoHistory = {
+      entries: [0, 1, 2].map((index) => ({
+        base: 'BTC',
+        quote: 'USD',
+        day: day(index),
+        rate: 1,
+        source: 'coingecko',
+      })),
+      failedCurrencies: [],
+      rateLimitedCurrencies: [],
+    };
+
+    it('saves no settled marks when every answer reaches the start of the span', async () => {
+      const { settledWrites } = await stubbedRun({
+        held: ['BTC'],
+        doneDays: {},
+        cursor: null,
+        lastBackfilledDay: null,
+        answer: async () => BTC_FROM_THE_START,
+      });
+
+      expect(settledWrites).toEqual([]);
+    });
+
+    it('neither reads nor writes the cursor when every held coin is current', async () => {
+      const { cursorReads, cursorWrites } = await stubbedRun({
+        held: ['BTC', 'ETH'],
+        doneDays: { USD: day(1), BTC: TODAY, ETH: TODAY },
+        cursor: null,
+      });
+
+      expect(cursorReads).toEqual([]);
+      expect(cursorWrites).toEqual([]);
+    });
+
+    it('does not write the cursor when it would stay the same', async () => {
+      const { cursorReads, cursorWrites } = await stubbedRun({
+        held: ['BTC'],
+        doneDays: {},
+        cursor: null,
+      });
+
+      expect(cursorReads).toHaveLength(1);
+      expect(cursorWrites).toEqual([]);
+    });
+
+    it('still completes, and says so, when the settled marks cannot be saved', async () => {
+      const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+      await stubbedRun({
+        held: ['BTC'],
+        doneDays: {},
+        cursor: null,
+        lastBackfilledDay: null,
+        failSettledWrite: true,
+      });
+
+      expect(warn).toHaveBeenCalledWith(
+        '[history backfill] settled marks not saved',
+        expect.objectContaining({ name: 'Error' }),
+      );
+
+      warn.mockRestore();
+    });
   });
 });
 
