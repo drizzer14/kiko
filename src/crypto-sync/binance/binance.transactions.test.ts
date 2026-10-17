@@ -5,6 +5,7 @@ import {
   withWalkOwnedMetadataResetToFloor,
 } from '@kiko/holdings/holding-metadata';
 import type { HoldingRow } from '@kiko/db';
+import type { OwedGround, UnreadableRow, WalkWindow } from '@kiko/crypto-sync/exchange/walk';
 
 import {
   type BinanceTransactionRow,
@@ -27,10 +28,8 @@ import {
   HISTORY_PAGE_LIMIT,
   type HistoryPage,
   type HistoryWindow,
-  type UnreadableRow,
 } from './binance.history-client';
 import { BinanceRateLimitError } from './binance.client';
-import type { OwedGround, WalkWindow } from './binance.history-walk';
 
 const NOW = 1_704_326_400_000; // 2024-01-04T00:00:00Z
 const ACCOUNT_ID = 'acc-1';

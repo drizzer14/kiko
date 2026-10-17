@@ -3,6 +3,7 @@ import {
   type DepthGuard,
   type DepthMemory,
   type DepthProbe,
+  halfOf,
   hasDepthLapsed,
   isDepthMarginCapped,
   knownStartOf,
@@ -12,17 +13,15 @@ import {
   narrowLapsedStart,
   narrowRefusedStart,
   rememberServedStart,
+  type SpanRead,
+  type UnreadableRow,
+  type WalkWindow,
   widenDepthMargin,
 } from '@kiko/crypto-sync/exchange/walk';
 import maybe, { foldMap } from 'fnts/maybe';
 
-import {
-  HISTORY_TOTAL_PAGE_SIZE,
-  type TotalPage,
-  type UnreadableRow,
-} from './binance.history-client';
 import { BinanceRateLimitError } from './binance.client';
-import { halfOf, type SpanRead, type WalkWindow } from './binance.history-walk';
+import { HISTORY_TOTAL_PAGE_SIZE, type TotalPage } from './binance.history-client';
 import type { BinanceHistoryRun, BudgetLane, CallCost } from './binance.history-budget';
 
 /**

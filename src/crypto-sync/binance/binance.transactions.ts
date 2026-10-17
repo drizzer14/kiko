@@ -9,25 +9,27 @@ import {
   BINANCE_HISTORY_SPAN_HINTS_FIELD,
   binanceWalkCursorOf,
 } from '@kiko/holdings/holding-metadata';
-import type { HoldingRow } from '@kiko/db';
-import maybe, { foldMap } from 'fnts/maybe';
-import { transactionsRepo } from '@kiko/transactions/repo';
-import { type ExchangeHolding, holdingsRepo } from '@kiko/holdings/repo';
-
 import {
   advanceWalkMarks,
   BinanceWalkStop,
-  btcSatoshis,
+  type BinanceWalkWriteDeps,
+  commitSettledSpan,
+  defaultWalkWriteDeps,
   dropReadPoints,
   halfOf,
+  instantAt,
+  joinSettled,
   planWalkPasses,
   readPendingMark,
   readWalkRoundRobins,
   resolveWalletHoldings,
   roundRobinHooksOf,
   runWalkPlan,
+  settleRecords,
+  settleUnreadable,
   type SpanCommit,
   type SpanRead,
+  type UnreadableRow,
   type WalkMarkFields,
   type WalkMarks,
   walkSpans,
@@ -36,7 +38,12 @@ import {
   type WalkResult,
   walkWritersOf,
   type WalkWindow,
-} from './binance.history-walk';
+} from '@kiko/crypto-sync/exchange/walk';
+import type { HoldingRow } from '@kiko/db';
+import maybe, { foldMap } from 'fnts/maybe';
+import { transactionsRepo } from '@kiko/transactions/repo';
+import { type ExchangeHolding, holdingsRepo } from '@kiko/holdings/repo';
+
 import {
   type BinanceHistoryRun,
   type BudgetLane,
@@ -51,18 +58,11 @@ import {
   HISTORY_PAGE_LIMIT,
   type HistoryPage,
   type HistoryWindow,
-  type UnreadableRow,
 } from './binance.history-client';
-import {
-  commitSettledSpan,
-  instantAt,
-  joinSettled,
-  settleRecords,
-  settleUnreadable,
-} from './binance.history-records';
+import { btcSatoshis } from './binance.amounts';
+import { BINANCE_WALK_CONFIG } from './binance.walk-config';
 import { type BinanceCredentials, readCredentials } from './binance.credentials';
 import { isBinanceCoolingDown, setBinanceCooldownUntil } from './binance.cooldown';
-import { type BinanceWalkWriteDeps, defaultWalkWriteDeps } from './binance.walk-write-deps';
 import { BINANCE_ASSET, BinanceRateLimitError, type FetchAccountOptions } from './binance.client';
 import { type BinanceWalletKey, binanceKeyOf, FUNDING_KEY, SPOT_KEY } from './binance.holding-keys';
 
@@ -453,6 +453,7 @@ const placeRows = async (
     accountId,
     keys: [...new Set(planned.map((row) => row.wallet))],
     createKeys: [...new Set(newRows.map((row) => row.wallet))],
+    config: BINANCE_WALK_CONFIG,
     listHoldings: deps.listHoldings,
     ensureHoldings: deps.ensureHoldings,
   });

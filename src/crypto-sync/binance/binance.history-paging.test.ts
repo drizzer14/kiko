@@ -5,6 +5,7 @@ import {
   type DepthGuard,
   type DepthMemory,
   rememberServedStart,
+  type UnreadableRow,
 } from '@kiko/crypto-sync/exchange/walk';
 
 import {
@@ -30,7 +31,7 @@ import {
   refusedSpanReadsOf,
   skippedMsOf,
 } from './binance.depth-test-fixtures';
-import type { TotalPage, UnreadableRow } from './binance.history-client';
+import type { TotalPage } from './binance.history-client';
 import { fetchAllByTotal, readSeriesSpan } from './binance.history-paging';
 import { BinanceHistoryTooOldError, BinanceRateLimitError } from './binance.client';
 

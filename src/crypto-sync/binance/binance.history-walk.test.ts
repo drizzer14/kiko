@@ -1,11 +1,7 @@
 import { DAY_MS } from '@kiko/dates';
-import type { HoldingRow } from '@kiko/db';
-import type { BinanceSpanHint, BinanceSpanHints } from '@kiko/holdings/holding-metadata';
-
 import {
   advanceWalkMarks,
   BinanceWalkStop,
-  btcSatoshis,
   buildWalkWindows,
   distinctGround,
   dropReadPoints,
@@ -39,7 +35,12 @@ import {
   type WalkWindow,
   type WindowOutcome,
   withoutRead,
-} from './binance.history-walk';
+} from '@kiko/crypto-sync/exchange/walk';
+import type { HoldingRow } from '@kiko/db';
+import type { BinanceSpanHint, BinanceSpanHints } from '@kiko/holdings/holding-metadata';
+
+import { btcSatoshis } from './binance.amounts';
+import { BINANCE_WALK_CONFIG } from './binance.walk-config';
 import { EARN_KEY, FUNDING_KEY, SPOT_KEY } from './binance.holding-keys';
 
 const WINDOW_MS = 89 * DAY_MS;
@@ -4268,6 +4269,7 @@ describe('resolveWalletHoldings', () => {
     const resolved = await resolveWalletHoldings({
       accountId: 'acc-1',
       keys: [SPOT_KEY, FUNDING_KEY],
+      config: BINANCE_WALK_CONFIG,
       listHoldings,
       ensureHoldings,
     });
@@ -4300,6 +4302,7 @@ describe('resolveWalletHoldings', () => {
     const resolved = await resolveWalletHoldings({
       accountId: 'acc-1',
       keys: [EARN_KEY],
+      config: BINANCE_WALK_CONFIG,
       listHoldings,
       ensureHoldings,
     });
@@ -4316,6 +4319,7 @@ describe('resolveWalletHoldings', () => {
     await resolveWalletHoldings({
       accountId: 'acc-1',
       keys: [SPOT_KEY, FUNDING_KEY, EARN_KEY],
+      config: BINANCE_WALK_CONFIG,
       listHoldings,
       ensureHoldings,
     });
@@ -4335,6 +4339,7 @@ describe('resolveWalletHoldings', () => {
       accountId: 'acc-1',
       keys: [SPOT_KEY, FUNDING_KEY, EARN_KEY],
       createKeys: [EARN_KEY],
+      config: BINANCE_WALK_CONFIG,
       listHoldings,
       ensureHoldings,
     });
@@ -4352,6 +4357,7 @@ describe('resolveWalletHoldings', () => {
       accountId: 'acc-1',
       keys: [FUNDING_KEY],
       createKeys: [],
+      config: BINANCE_WALK_CONFIG,
       listHoldings,
       ensureHoldings,
     });
@@ -4367,6 +4373,7 @@ describe('resolveWalletHoldings', () => {
     const resolved = await resolveWalletHoldings({
       accountId: 'acc-1',
       keys: [FUNDING_KEY],
+      config: BINANCE_WALK_CONFIG,
       listHoldings,
       ensureHoldings,
     });

@@ -11,8 +11,8 @@ import {
   type WalkPlan,
   type WalkWindow,
   withoutRead,
-} from './binance.history-walk';
-import { commitSettledSpan } from './binance.history-records';
+} from './walk';
+import { commitSettledSpan } from './records';
 
 const FIELDS = {
   cursor: 'binanceTransferHistoryCursor',

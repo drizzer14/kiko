@@ -10,18 +10,22 @@ import {
   type BinanceSpanHintPass,
   type BinanceSpanHints,
 } from '@kiko/holdings/holding-metadata';
-import maybe, { foldMap } from 'fnts/maybe';
-
 import {
   advanceWalkMarks,
   BinanceWalkStop,
+  commitSettledSpan,
   dropReadPoints,
   halfOf,
+  instantAt,
+  joinSettled,
   NO_HINTS,
-  planWalkPasses,
-  runWalkPlan,
   type OwedGround,
   type OwedWindow,
+  planWalkPasses,
+  runWalkPlan,
+  type SettledSpan,
+  settleRecords,
+  settleUnreadable,
   type SpanRead,
   storePointCursor,
   storeRangeCursor,
@@ -30,7 +34,9 @@ import {
   type WalkMarkFields,
   type WalkMarks,
   type WalkWindow,
-} from './binance.history-walk';
+} from '@kiko/crypto-sync/exchange/walk';
+import maybe, { foldMap } from 'fnts/maybe';
+
 import {
   EARN_FORWARD_OWES,
   EARN_SERIES,
@@ -42,14 +48,6 @@ import {
   type EarnRecordKind,
   UNIVERSAL_TRANSFER_TYPES,
 } from './binance.history-client';
-import {
-  commitSettledSpan,
-  instantAt,
-  joinSettled,
-  type SettledSpan,
-  settleRecords,
-  settleUnreadable,
-} from './binance.history-records';
 import { LANE_CALL_CAPS } from './binance.history-budget';
 import { floorToSecond } from './binance.earn-test-fixtures';
 import { settledTransfersOf, TRANSFER_FORWARD_OWES } from './binance.transfer-history';

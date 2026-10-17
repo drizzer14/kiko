@@ -1,14 +1,17 @@
-import type { HoldingRow } from '@kiko/db';
-
 import {
+  BinanceWalkStop,
   commitSettledSpan,
   instantAt,
   joinSettled,
+  type OwedGround,
   placeWalletRows,
   settleRecords,
   settleUnreadable,
-} from './binance.history-records';
-import { BinanceWalkStop, type OwedGround, type WalkWindow } from './binance.history-walk';
+  type WalkWindow,
+} from '@kiko/crypto-sync/exchange/walk';
+import type { HoldingRow } from '@kiko/db';
+
+import { BINANCE_WALK_CONFIG } from './binance.walk-config';
 import { type BinanceWalletKey, EARN_KEY, FUNDING_KEY, SPOT_KEY } from './binance.holding-keys';
 
 const SPAN = { start: 1_000, end: 5_000 };
@@ -697,6 +700,7 @@ describe('placeWalletRows', () => {
     placeWalletRows({
       accountId: 'acc-1',
       planned,
+      config: BINANCE_WALK_CONFIG,
       listHoldings,
       ensureHoldings,
       missingCode: 'x-holding-missing',

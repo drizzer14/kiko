@@ -9,32 +9,27 @@ import {
   BINANCE_TRANSFER_SPAN_HINTS_FIELD,
   binanceWalkCursorOf,
 } from '@kiko/holdings/holding-metadata';
-import type { HoldingRow } from '@kiko/db';
-import maybe, { foldMap } from 'fnts/maybe';
-import {
-  type UNTRACKED_WALLETS,
-  untrackedWalletCode,
-} from '@kiko/transactions/untracked-counterpart';
-import { transactionsRepo } from '@kiko/transactions/repo';
-import { type ExchangeHolding, holdingsRepo } from '@kiko/holdings/repo';
-import { createDepthMemories, type DepthGuard } from '@kiko/crypto-sync/exchange/walk';
-
-import {
-  BINANCE_ASSET,
-  BinanceHistoryTooOldError,
-  type FetchAccountOptions,
-} from './binance.client';
 import {
   advanceWalkMarks,
   BinanceWalkStop,
-  btcSatoshis,
+  type BinanceWalkWriteDeps,
+  commitSettledSpan,
+  createDepthMemories,
+  defaultWalkWriteDeps,
+  type DepthGuard,
   dropReadPoints,
+  instantAt,
+  joinSettled,
   type OwedWindow,
+  placeWalletRows,
   planWalkPasses,
   readPendingMark,
   readWalkRoundRobins,
   roundRobinHooksOf,
   runWalkPlan,
+  type SettledSpan,
+  settleRecords,
+  settleUnreadable,
   type SpanCommit,
   type SpanRead,
   storePlannedList,
@@ -46,7 +41,21 @@ import {
   type WalkResult,
   walkWritersOf,
   type WalkWindow,
-} from './binance.history-walk';
+} from '@kiko/crypto-sync/exchange/walk';
+import type { HoldingRow } from '@kiko/db';
+import maybe, { foldMap } from 'fnts/maybe';
+import {
+  type UNTRACKED_WALLETS,
+  untrackedWalletCode,
+} from '@kiko/transactions/untracked-counterpart';
+import { transactionsRepo } from '@kiko/transactions/repo';
+import { type ExchangeHolding, holdingsRepo } from '@kiko/holdings/repo';
+
+import {
+  BINANCE_ASSET,
+  BinanceHistoryTooOldError,
+  type FetchAccountOptions,
+} from './binance.client';
 import {
   type BinanceTransactionRow,
   HISTORY_FLOOR_MS,
@@ -59,21 +68,13 @@ import {
   UNIVERSAL_TRANSFER_TYPES,
   type UniversalTransferType,
 } from './binance.history-client';
-import {
-  commitSettledSpan,
-  instantAt,
-  joinSettled,
-  placeWalletRows,
-  type SettledSpan,
-  settleRecords,
-  settleUnreadable,
-} from './binance.history-records';
+import { btcSatoshis } from './binance.amounts';
+import { BINANCE_WALK_CONFIG } from './binance.walk-config';
 import { BINANCE_DEPTH_CONFIG } from './binance.depth-config';
 import { type BinanceHistoryRun, COSTS } from './binance.history-budget';
 import { readSeriesSpan, type SeriesSpan } from './binance.history-paging';
 import { type BinanceCredentials, readCredentials } from './binance.credentials';
 import { isBinanceCoolingDown, setBinanceCooldownUntil } from './binance.cooldown';
-import { type BinanceWalkWriteDeps, defaultWalkWriteDeps } from './binance.walk-write-deps';
 import { type BinanceWalletKey, binanceKeyOf, FUNDING_KEY, SPOT_KEY } from './binance.holding-keys';
 
 /** Binance does not document the widest range a transfer read takes; 30 days is the working cap. */
@@ -473,6 +474,7 @@ const commitSpan = (
       placeWalletRows({
         accountId,
         planned,
+        config: BINANCE_WALK_CONFIG,
         listHoldings: deps.listHoldings,
         ensureHoldings: deps.ensureHoldings,
         missingCode: 'transfer-holding-missing',

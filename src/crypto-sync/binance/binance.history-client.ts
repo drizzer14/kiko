@@ -1,6 +1,7 @@
 import maybe, { foldMap } from 'fnts/maybe';
 import { isRecord } from '@kiko/type-guards';
 import { bifoldMap, eitherSync } from 'fnts/either';
+import type { UnreadableRow } from '@kiko/crypto-sync/exchange/walk';
 
 import {
   BINANCE_ASSET,
@@ -114,12 +115,11 @@ const recordReader =
         ) as Parsed<Readers>)
       : parseFailure();
 
-/**
- * A row the client could not read, kept for the walk instead of failing the read: it holds
- * nothing of the row but its own time field when that is usable (a finite number or, for a
- * withdrawal, a datetime text), else `undefined`. The walk owes the row's point, or its span.
- */
-export type UnreadableRow = { time: number | string | undefined };
+/** The minute's spent weight of Binance's two limits, when Binance reports them. */
+export type BinancePageWeights = {
+  usedUidWeight1m: number | undefined;
+  usedIpWeight1m: number | undefined;
+};
 
 /**
  * One page of one window, with the minute's spent weight when Binance reports it. `rows` are the
@@ -128,9 +128,7 @@ export type UnreadableRow = { time: number | string | undefined };
 export type HistoryPage<Row> = {
   rows: Row[];
   unreadable: UnreadableRow[];
-  usedUidWeight1m: number | undefined;
-  usedIpWeight1m: number | undefined;
-};
+} & BinancePageWeights;
 
 /**
  * A page of a `{ rows, total }` endpoint, paged by `current`. `gathered` counts every row of the
