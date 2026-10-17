@@ -107,7 +107,9 @@ Rules:
   commit of the branch.
 - **Track the known CVEs with `bash scripts/checks/osv.sh` on its own.**
   `check:deep` can stop at the mutation cap before it reaches osv, so
-  its exit code does not prove the osv result.
+  its exit code does not prove the osv result. An exit 2 whose only failure is osv with the
+  tracked CVEs (`docs/harness/dependency-hygiene.md`) is a PASS for the mutation part: read
+  the CHANGE SET TOTAL and per-file lines in the gate log.
 - **`devicectl` "unavailable" or CoreDevice error 4016 means the phone
   is not reachable: ask the user to join the iPhone to the Mac's WiFi
   network (builds install over the network; the 2026-09-27 cause), or
@@ -262,9 +264,12 @@ about a minute under load. Give a commit Bash call `timeout: 300000`. Never pass
 
 ## Load rule
 
-Run `make verify` / `check:all` / full jest only when the 5-minute load
-average (`sysctl -n vm.loadavg`) is below 10: wait first with
-`bash scripts/wait-load.sh 10` (run it in the background and wait on its
+Queued jobs (`make verify`, `check:all`, gates) go straight to `scripts/job-queue.sh`, which
+serializes them; never put a `wait-load.sh` limit in front of a queue job (with many tracks the
+load never passes it). Throttle feature tracks with a LOAD HOLD instead: no new jest or tsc
+agent until RESUME, and a RESUME names its limits (one agent, targeted jest with
+`--maxWorkers=2`). Use `bash scripts/wait-load.sh <max>` only for a lone security run or a
+direct run outside the queue (run it in the background and wait on its
 exit code: 0 once the load is below 10, 2 when its 3600 s timeout, an
 optional second argument, passes first, 3 when it cannot read the load,
 64 for a bad argument; it prints one start line and nothing else).
@@ -289,7 +294,10 @@ then gates by `changed lines:` (smallest first), then `--long` gates (user rulin
 shows the hold, the power state, the running job, and the tickets. On battery NO job of any class
 starts (orchestrator default D1, accepted by the user 2026-10-13); an unreadable power state holds
 too. A gate refuses a tip whose `mutation.sh` has no changed-line `--list` ("merge main first", exit
-2) and a moved HEAD (exit 3); the queue never checks out files (the old H6 overlay is gone). Keep
+2) and a moved HEAD (exit 3); the queue never checks out files (the old H6 overlay is gone). Queue
+from the TARGET worktree's own `scripts/job-queue.sh`, never a copy from another branch. Closing a
+session kills its queue waiters and their tickets vanish with no done.log line: at handover or
+close run `scripts/job-queue.sh status`, re-queue or hand over your own tickets. Keep
 `wait-load.sh` for the load wait only. Signalling only the top pid of a job chain (make -> npm ->
 bash -> Stryker) leaves the leaf running; the queue owns the job's process group. A queued check:all
 or verify reads the worktree throughout the run; never queue one while a developer still edits that
