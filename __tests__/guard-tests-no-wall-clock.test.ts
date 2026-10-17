@@ -126,6 +126,26 @@ describe('queue tests settle by a rendezvous or a pass count, never by a fixed s
     ],
     ['a spawned sleep', "spawnSync('sleep', ['0.6']);", 1],
     [
+      'a settle sleep after the closing brace of a bounded poll loop',
+      [
+        'for (let poll = 0; !condition(); poll += 1) {',
+        '  if (poll >= POLL_LIMIT) {',
+        "    throw new Error('never');",
+        '  }',
+        '}',
+        '',
+        'await new Promise((settle) => setTimeout(settle, 600));',
+      ].join('\n'),
+      1,
+    ],
+    [
+      'a renamed timers/promises delay',
+      ["import { setTimeout as delay } from 'node:timers/promises';", '', 'await delay(600);'].join(
+        '\n',
+      ),
+      1,
+    ],
+    [
       'a named delay in a bounded poll loop',
       [
         'for (let poll = 0; !condition(); poll += 1) {',
