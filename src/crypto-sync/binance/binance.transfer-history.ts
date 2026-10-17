@@ -50,6 +50,7 @@ import {
 } from '@kiko/transactions/untracked-counterpart';
 import { transactionsRepo } from '@kiko/transactions/repo';
 import { type ExchangeHolding, holdingsRepo } from '@kiko/holdings/repo';
+import { readSeriesSpan, type SeriesSpan } from '@kiko/crypto-sync/exchange/paging';
 
 import {
   BINANCE_ASSET,
@@ -72,7 +73,6 @@ import { btcSatoshis } from './binance.amounts';
 import { BINANCE_WALK_CONFIG } from './binance.walk-config';
 import { BINANCE_DEPTH_CONFIG } from './binance.depth-config';
 import { type BinanceHistoryRun, COSTS } from './binance.history-budget';
-import { readSeriesSpan, type SeriesSpan } from './binance.history-paging';
 import { type BinanceCredentials, readCredentials } from './binance.credentials';
 import { isBinanceCoolingDown, setBinanceCooldownUntil } from './binance.cooldown';
 import { type BinanceWalletKey, binanceKeyOf, FUNDING_KEY, SPOT_KEY } from './binance.holding-keys';
@@ -373,8 +373,9 @@ const readSpan = async (
 ): Promise<SpanRead<SeriesSpan<UniversalTransferType, BinanceUniversalTransfer>> | undefined> => {
   const { deps, run, accountId, apiKey, secret, options } = context;
 
-  return readSeriesSpan<UniversalTransferType, BinanceUniversalTransfer>({
+  return readSeriesSpan({
     run,
+    config: BINANCE_WALK_CONFIG,
     lane: 'transfer',
     cost: COSTS.transfer,
     span,

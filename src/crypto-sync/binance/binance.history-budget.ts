@@ -4,6 +4,8 @@ import {
   type RunBudget,
 } from '@kiko/crypto-sync/exchange/budget';
 
+import type { BinancePageWeights } from './binance.history-client';
+
 /**
  * One lane per walk, so a long backfill in one walk cannot starve the others. The
  * capital walk has two: its withdraw reads are the expensive ones, its deposit
@@ -74,10 +76,7 @@ export const COSTS = {
   earn: { ip: 150 },
 } as const satisfies Record<string, CallCost>;
 
-/** The weights Binance reports on a response, which a page carries (`usedWeightsFromHeaders`). */
-type PageWeights = { usedUidWeight1m: number | undefined; usedIpWeight1m: number | undefined };
-
-export type BinanceRunBudget = RunBudget<BudgetLane, CallCost, PageWeights>;
+export type BinanceRunBudget = RunBudget<BudgetLane, CallCost, BinancePageWeights>;
 
 /**
  * One budget per Binance arm run. A response without a header keeps the last
@@ -134,7 +133,7 @@ export const createBinanceRunBudget = (): BinanceRunBudget => {
 };
 
 /** The pacing gate and the weight budget every walk of one Binance arm run shares. */
-export type BinanceHistoryRun = ExchangeRun<BudgetLane, CallCost, PageWeights>;
+export type BinanceHistoryRun = ExchangeRun<BudgetLane, CallCost, BinancePageWeights>;
 
 export const createBinanceHistoryRun = (clock: {
   now: () => number;

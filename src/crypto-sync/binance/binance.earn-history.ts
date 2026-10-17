@@ -43,6 +43,7 @@ import type { HoldingRow } from '@kiko/db';
 import maybe, { foldMap } from 'fnts/maybe';
 import { transactionsRepo } from '@kiko/transactions/repo';
 import { type ExchangeHolding, holdingsRepo } from '@kiko/holdings/repo';
+import { readSeriesSpan, type SeriesSpan } from '@kiko/crypto-sync/exchange/paging';
 
 import {
   type BinanceWalletKey,
@@ -63,7 +64,6 @@ import { BINANCE_WALK_CONFIG } from './binance.walk-config';
 import type { FetchAccountOptions } from './binance.client';
 import type { BinanceHistoryRow } from './binance.transfer-history';
 import { type BinanceHistoryRun, COSTS } from './binance.history-budget';
-import { readSeriesSpan, type SeriesSpan } from './binance.history-paging';
 import { HISTORY_FLOOR_MS, RESYNC_OVERLAP_MS } from './binance.transactions';
 import { type BinanceCredentials, readCredentials } from './binance.credentials';
 import { isBinanceCoolingDown, setBinanceCooldownUntil } from './binance.cooldown';
@@ -732,8 +732,9 @@ const readSpan = (
 ): Promise<SpanRead<SeriesSpan<EarnRecordKind, EarnRecord>> | undefined> => {
   const { deps, run, accountId, apiKey, secret, options } = context;
 
-  return readSeriesSpan<EarnRecordKind, EarnRecord>({
+  return readSeriesSpan({
     run,
+    config: BINANCE_WALK_CONFIG,
     lane: 'earn',
     cost: COSTS.earn,
     span,

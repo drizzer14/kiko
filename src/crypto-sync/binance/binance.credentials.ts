@@ -49,8 +49,8 @@ let hasRepairedAccessPolicy = false;
 
 /**
  * Store the pair as ONE JSON Keychain item under the PER-ACCOUNT service for
- * `accountId`, hardened (see `hardenedFor`). Each connected account owns its own item, so
- * saving account A's pair never touches account B's.
+ * `accountId`, hardened (see `hardenedFor` in `exchange/credentials`). Each connected account owns
+ * its own item, so saving account A's pair never touches account B's.
  */
 export const saveCredentials = async (
   accountId: string,

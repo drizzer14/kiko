@@ -2,6 +2,7 @@ import maybe, { foldMap } from 'fnts/maybe';
 import { isRecord } from '@kiko/type-guards';
 import { bifoldMap, eitherSync } from 'fnts/either';
 import type { UnreadableRow } from '@kiko/crypto-sync/exchange/walk';
+import type { TotalPage as ExchangeTotalPage } from '@kiko/crypto-sync/exchange/paging';
 
 import {
   BINANCE_ASSET,
@@ -115,7 +116,7 @@ const recordReader =
         ) as Parsed<Readers>)
       : parseFailure();
 
-/** The minute's spent weight of Binance's two limits, when Binance reports them. */
+/** The weights Binance reports on a response, which a page carries (`usedWeightsFromHeaders`). */
 export type BinancePageWeights = {
   usedUidWeight1m: number | undefined;
   usedIpWeight1m: number | undefined;
@@ -135,7 +136,7 @@ export type HistoryPage<Row> = {
  * page, of any asset and unreadable ones too: `total` counts them all, so the pager compares the
  * two. `rows` are the BTC rows that parsed.
  */
-export type TotalPage<Row> = HistoryPage<Row> & { total: number; gathered: number };
+export type TotalPage<Row> = ExchangeTotalPage<Row, BinancePageWeights>;
 
 type Reading<Value> = { value: Value } | { unreadable: UnreadableRow };
 
