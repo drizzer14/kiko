@@ -131,14 +131,19 @@ describe('useDateRangeSelection', () => {
       expect(latest[name].dateTo).toEqual(range.to);
     };
 
-    const renderOneReader = (onRender?: () => void) =>
+    const renderOneReader = (
+      onRender?: (selection: ReturnType<typeof useDateRangeSelection>) => void,
+      initialNow: number = NOW,
+    ) =>
       renderHook(
         ({ now }: { now: number }) => {
-          onRender?.();
+          const selection = useDateRangeSelection(now);
 
-          return useDateRangeSelection(now);
+          onRender?.(selection);
+
+          return selection;
         },
-        { initialProps: { now: NOW } },
+        { initialProps: { now: initialNow } },
       );
 
     const renderTwoReaders = async (onRender?: () => void): Promise<[Reader, Reader]> => [
@@ -214,6 +219,30 @@ describe('useDateRangeSelection', () => {
       await first.rerender({ now: SAME_DAY_LATER });
 
       expect(secondRenders).toBe(rendersBefore);
+    });
+
+    it('never renders a shared default older than its own day in a reader mounted after a day crossing', async () => {
+      const dayAfterNextDay = new Date(2026, 5, 17, 9, 0, 0).getTime();
+      const staleRange = defaultDateRange(NEXT_DAY);
+      const ownRange = defaultDateRange(dayAfterNextDay);
+      const rendered: Array<{ dateFrom: Date | null; dateTo: Date | null }> = [];
+      const first = await renderOneReader();
+
+      await first.rerender({ now: NEXT_DAY });
+
+      await renderOneReader(
+        ({ dateFrom, dateTo }) => rendered.push({ dateFrom, dateTo }),
+        dayAfterNextDay,
+      );
+
+      expect(rendered.length).toBeGreaterThan(0);
+      expect(
+        rendered.filter(({ dateTo }) => dateTo?.getTime() === staleRange.to.getTime()),
+      ).toEqual([]);
+      expect(rendered).toEqual(
+        rendered.map(() => ({ dateFrom: ownRange.from, dateTo: ownRange.to })),
+      );
+      expectDefaultOf(first, dayAfterNextDay);
     });
 
     it('keeps the pick while one reader unmounts and another stays mounted', async () => {
