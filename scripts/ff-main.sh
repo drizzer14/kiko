@@ -16,8 +16,8 @@
 #      commit. The LAST such line decides, so a red verify after a green one at the same commit
 #      blocks. A `check-all` or `gate` line, a line whose head is `unknown`, and an old 5-field
 #      line never count; neither does a LOST line (`lost <label> ...` or `<kind> <label> lost ...`,
-#      written by job-queue.sh for a job that never ran). Each line with fewer than 6 fields prints
-#      one WARNING on stderr and is ignored.
+#      written by job-queue.sh for a job whose result was never recorded). Each line with fewer
+#      than 6 fields prints one WARNING on stderr and is ignored.
 #   4. The main checkout's HEAD must be an ancestor of the commit.
 #   5. The fast-forward merges the full commit, so main moving between these checks and the merge
 #      makes git refuse instead of moving main elsewhere. A dirty main checkout is not checked:

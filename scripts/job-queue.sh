@@ -26,14 +26,15 @@
 #              or an unreadable repository. Known limit: an edit made and reverted while the job
 #              runs, or a change to an ignored file, leaves the head set (no content hash).
 #              A line from before this field has five fields.
-#              A job that never ran leaves a LOST line in the same six-field order, so its loss is
-#              visible: a waiter that pruned a ticket whose waiter pid was dead writes `lost <label>
-#              <waiter pid> <queued time from the ticket epoch> <now> unknown`; a waiter that
-#              reclaimed a lock that was not live writes `<kind> <label> lost <now> <now> unknown`
-#              from the owner record. Each is written only by the process whose atomic `mv` of the
-#              ticket or lock won, so two waiters never write it twice. Neither form is a `verify`
-#              line with exit 0, so scripts/ff-main.sh never counts one. `status` and
-#              scripts/ff-main.sh print a WARNING for a line with fewer than 6 fields.
+#              A job whose result was never recorded leaves a LOST line in the same six-field order,
+#              so its loss is visible (the lock form may follow a job that ran fully, its waiter
+#              having died while it held the lock): a waiter that pruned a ticket whose waiter pid
+#              was dead writes `lost <label> <waiter pid> <queued time from the ticket epoch> <now>
+#              unknown`; a waiter that reclaimed a lock that was not live writes `<kind> <label>
+#              lost <now> <now> unknown` from the owner record. Each is written only by the process
+#              whose atomic `mv` of the ticket or lock won, so two waiters never write it twice.
+#              Neither form is a `verify` line with exit 0, so scripts/ff-main.sh never counts one.
+#              `status` and scripts/ff-main.sh print a WARNING for a line with fewer than 6 fields.
 #              scripts/ff-main.sh reads it.
 #   format     the queue format stamp, an integer: QUEUE_FORMAT below. A job command writes it when
 #              it is missing or lower, and exits 2 when it is higher, because a copy of this script
@@ -286,7 +287,7 @@ check_queue_format() {
     '' | *[!0-9]*) stamp=0 ;;
   esac
   if [ "${#stamp}" -gt 9 ] || [ "$((10#$stamp))" -gt "$QUEUE_FORMAT" ]; then
-    refuse "the queue directory has format $stamp, newer than the format $QUEUE_FORMAT of this script: this is an older job-queue.sh copy; run the one in the main checkout or a current worktree."
+    refuse "the queue directory has format $stamp, newer than the format $QUEUE_FORMAT of this script: this is an older job-queue.sh copy; queue from the target worktree's own scripts/job-queue.sh (the stamp names the newest format any copy has used)."
   fi
   [ "$((10#$stamp))" -lt "$QUEUE_FORMAT" ] || return 0
   printf '%s\n' "$QUEUE_FORMAT" > "$pending" && mv -f "$pending" "$format_path"
@@ -375,10 +376,19 @@ lock_is_live() {
 
 # Runs a command in the background and waits on it with the wait builtin: bash 3.2 loses a SIGINT
 # sent to this pid alone when it arrives as a foreground child is reaped, and the wait builtin does
-# not. The status is the command's own.
+# not. The status is the command's own. The pid is kept in in_flight so cleanup can end it and
+# wait for it: a signal trap that ran while the record step's rename was still in flight would
+# otherwise let the rename land after the lock was released. It covers the record step's external
+# commands only; a command substitution and the wait loops are not covered.
+in_flight=''
 run_awaited() {
+  local status
   "$@" &
-  wait $!
+  in_flight=$!
+  wait "$in_flight"
+  status=$?
+  in_flight=''
+  return "$status"
 }
 
 # Names the job group in the owner record with a second atomic step: a temporary symlink renamed
@@ -488,8 +498,17 @@ release_lock() {
   rm -f "$LOCK_PATH"
 }
 
-# Stops only the processes this script started (its own job and sleep), never one found by name.
+# Stops only the processes this script started (its own job, sleep, and in-flight record command),
+# never one found by name. The in-flight command is ended and waited for before the lock is read:
+# a rename is atomic, so after the wait it has either landed or never will, and the temporary
+# symlink a killed `ln` left is removed.
 cleanup() {
+  if [ -n "$in_flight" ]; then
+    kill "$in_flight" 2> /dev/null
+    wait "$in_flight" 2> /dev/null
+    in_flight=''
+    rm -f "$QUEUE_DIRECTORY/lock.$$"
+  fi
   if [ -n "$sleeper" ]; then
     kill "$sleeper" 2> /dev/null
     sleeper=''
