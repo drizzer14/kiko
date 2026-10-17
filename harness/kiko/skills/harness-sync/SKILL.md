@@ -67,6 +67,9 @@ in the harness repo):
   `__tests__/test-support/warm-executables.ts` helper (`warmExecutables`) and its use in the
   tests that exec a fresh script; the `fast.sh` shell, YAML and githooks arm that runs
   `security.sh` beside `comment-line-width.sh`.
+- pff-ios `339a3d7c`: generic `import-order.js` change (`ambientBlockEnd`, `checkRun`,
+  `fixRun`; `__tests__/import-order.test.ts` +4 cases). Portable as is; carry the gap /1
+  closer widening if it lands first.
 - The CLAUDE.md trim (docs/harness/checks.md split).
 
 ## Classification

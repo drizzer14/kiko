@@ -1738,7 +1738,8 @@ new component can land between reviews of this skill:
 - **BarChart**, **PieChart**, **NetWorthLine** — the `react-native-svg`
   visualization components; see the dedicated `kiko-charts` skill for
   their coordinate-space and testID conventions before touching any
-  of the three. `PieChart` additionally supports `innerRatio` (ring
+  of the three. `NetWorthLine` has a scrub line with its own label
+  (see `kiko-charts`). `PieChart` additionally supports `innerRatio` (ring
   thickness) and `centerTotal` (an amount centered in the donut hole)
   — see `kiko-charts`.
 

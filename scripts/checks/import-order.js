@@ -3,7 +3,8 @@
 // Mechanizes kiko-code-style's "Import ordering" rule (hand-enforced, not
 // covered by Biome's organizeImports — see biome.json's
 // assist.actions.source.organizeImports.level: "off"). Checks (and, given
-// --write, fixes) the LEADING import header of a .ts/.tsx file: 3 groups, in
+// --write, fixes) the leading import header, and each import run after a
+// column-0 `declare module` block, of a .ts/.tsx file: 3 groups, in
 // this order and each separated by a blank line — external (including a
 // path alias like '@kiko/...'), then '../**' parent-relative, then './**'
 // sibling-relative — each holding only imports of its own kind (a group
