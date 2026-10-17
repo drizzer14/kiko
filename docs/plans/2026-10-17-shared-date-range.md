@@ -37,11 +37,18 @@ status" bullet ("lives in ONE module store … never in per-component `useState`
 
 - No provider, so there is no mount point. It works on every layout (Duo inner two-pane, iPad, Duo
   outer, iPhone) because every mounted reader subscribes to the same module.
-- **Resets when the last reader unsubscribes** (the `listeners.size === 0` reset in
-  `use-notification-permission.ts`). Today a range lives as long as its screen stays mounted. Now
+- **Resets when no reader is mounted after the commit (D1, D4).** The last unsubscribe does not
+  reset at once: it defers the reset by ONE microtask (`Promise.resolve().then(...)`, never
+  `queueMicrotask`, which jest fake timers replace) and re-checks `listeners.size === 0` inside it.
+  React runs a commit's passive cleanups and the new tree's passive mounts in one synchronous flush,
+  so a full-tree swap (fold/unfold replaces both panes) has subscribers again before the microtask
+  and the pick and the clock survive. Today a range lives as long as its screen stays mounted. Now
   it lives as long as either screen stays mounted. The tabs stay mounted in the app, so a pick
   survives a tab switch, the same as today. In jest, RNTL's auto-cleanup unmounts after each it, so
   the existing screen its stay independent with no test-only reset export.
+- **Render rule.** A reader uses `shared.defaultRange` only when its day is at least the day of
+  the reader's own `now`; otherwise `defaultDateRange(now)`. This is pure (no store write in
+  render), and a reader mounted after a day crossing does not paint the stale default for a frame.
 - **Clock (D2), option (a).** Each reader publishes its `now` in a `useLayoutEffect` keyed on
   `now`; it never writes the store during render. `publishNow(next)` ignores a `next` that is not
   newer than `clock`. A newer `next` on the same local day (`startOfLocalDay`) updates `clock`
@@ -208,4 +215,6 @@ and the green tests.
 | Clear on either | default | default | only that screen resets |
 | Tab switch, both mounted | pick kept | pick kept | each kept its own |
 | Both unmount, then mount | default | default | default / default |
+| Fold/unfold replaces both panes (pick held) | pick kept | pick kept | both reset |
+| Device clock set back by hand, no day crossing yet | may differ until Statistics re-focuses (known limit, D5) | may differ until Statistics re-focuses (known limit, D5) | same |
 | No pick, past midnight, either screen's trigger (D2) | new-day default | the same new-day default | Home moved on its re-render, Statistics only on its re-focus (could differ by a day) |

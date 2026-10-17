@@ -68,10 +68,22 @@ const subscribe = (listener: Listener): (() => void) => {
     listeners.delete(listener);
 
     // With no reader mounted nothing keeps the pick or the clock alive, so the
-    // next mount starts on the default range again.
+    // next mount starts on the default range again. The reset waits one
+    // microtask: React runs a commit's passive cleanups and the new tree's
+    // passive mounts in one synchronous flush, so a same-commit swap of every
+    // reader (a fold/unfold) has subscribers again by then and keeps the pick
+    // and the clock. A plain `Promise` and never `queueMicrotask`, which jest's
+    // fake timers replace, so the reset would not run and would leak into the
+    // next test.
     if (listeners.size === 0) {
-      snapshot = EMPTY_SNAPSHOT;
-      clock = null;
+      // The callback only reads and writes module state, so it never rejects.
+      // biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function)
+      Promise.resolve().then(() => {
+        if (listeners.size === 0) {
+          snapshot = EMPTY_SNAPSHOT;
+          clock = null;
+        }
+      });
     }
   };
 };
@@ -80,18 +92,21 @@ const getSnapshot = (): Snapshot => snapshot;
 
 /**
  * The date-range selection behind a `DateRangeField`, ONE shared selection for
- * every reader (Home and Statistics): a pick made in one shows in the other,
- * and Clear clears both. `customRange` holds an explicit user pick; `null`
- * means "show the default (last-30-days) range". The default is shared too: it
- * comes from the latest `now` any reader published and moves only when that
- * `now` reaches a new calendar day, so both screens never show different
- * defaults. It is derived from `now` instead of being frozen once at mount —
- * a tab stays mounted after it is left, and a range stored at mount would stop
- * including today once a calendar day passes. A reader falls back to its own
- * `now` until a new day is published. A user pick still stays exactly as
- * given, even one side left null (open-ended) via the date-range field. The
- * pick and the clock reset when the last reader unmounts, so the range starts
- * on the default at every launch.
+ * every reader (Home and Statistics): one pick and one default for every
+ * mounted reader, so a pick made in one shows in the other and Clear clears
+ * both. `customRange` holds an explicit user pick; `null` means "show the
+ * default (last-30-days) range". The default is shared too: it comes from the
+ * latest `now` any reader published and moves only when that `now` reaches a
+ * new calendar day. It is derived from `now` instead of being frozen once at
+ * mount — a tab stays mounted after it is left, and a range stored at mount
+ * would stop including today once a calendar day passes. A reader falls back
+ * to its own `now` until a new day is published, and never shows a shared
+ * default older than its own day. A user pick still stays exactly as given,
+ * even one side left null (open-ended) via the date-range field. The pick and
+ * the clock reset only when no reader is mounted after the commit, so the range
+ * starts on the default at every launch while a fold/unfold that replaces both
+ * panes keeps the pick. Known limit: a device clock set back by hand before any
+ * day crossing can split the panes until Statistics re-focuses.
  */
 export const useDateRangeSelection = (now: number): DateRangeSelection => {
   const shared = useSyncExternalStore(subscribe, getSnapshot);
@@ -103,7 +118,14 @@ export const useDateRangeSelection = (now: number): DateRangeSelection => {
     publishNow(now);
   }, [now]);
 
-  const range = shared.customRange ?? shared.defaultRange ?? defaultDateRange(now);
+  // A reader mounted after a day crossing must not paint the stale shared
+  // default for one frame while the subscribed pane already shows the new day.
+  const sharedDefault =
+    shared.defaultRange !== null &&
+    startOfLocalDay(shared.defaultRange.to.getTime()) >= startOfLocalDay(now)
+      ? shared.defaultRange
+      : defaultDateRange(now);
+  const range = shared.customRange ?? sharedDefault;
 
   // The date-range modal commits both bounds at once on Apply; either may be
   // null when that side of the range is left open-ended.
