@@ -220,13 +220,55 @@ elif [ "$disk_space_sources" != "none" ]; then
   fi
 fi
 
+# --- 6. iPad scene keys --------------------------------------------------------
+# The iPad window is resizable and single-scene. UIRequiresFullScreen in either
+# value opts out of multitasking resizing, a missing scene manifest drops the
+# SceneDelegate the app boots through, and a second scene would run two
+# module-store trees against one database. A `plutil` read that fails reports
+# the key as missing rather than passing: an unreadable key is never "fine".
+ipad_orientations="$(plutil -extract 'UISupportedInterfaceOrientations~ipad' json -o - "$PLIST" 2>/dev/null)"
+if [ -z "$ipad_orientations" ]; then
+  add_problem "UISupportedInterfaceOrientations~ipad is missing from ios/Kiko/Info.plist (or plutil could not read it); all four orientations are required"
+else
+  for orientation in UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown; do
+    if ! grep -qF "\"$orientation\"" <<<"$ipad_orientations"; then
+      add_problem "UISupportedInterfaceOrientations~ipad is missing $orientation in ios/Kiko/Info.plist"
+    fi
+  done
+fi
+
+if plutil -type UIRequiresFullScreen "$PLIST" >/dev/null 2>&1; then
+  add_problem "UIRequiresFullScreen must be absent from ios/Kiko/Info.plist (true or false); either value opts the iPad app out of resizable multitasking windows"
+fi
+
+if ! plutil -type UIApplicationSceneManifest "$PLIST" >/dev/null 2>&1; then
+  add_problem "UIApplicationSceneManifest is missing from ios/Kiko/Info.plist; the app boots through its SceneDelegate"
+else
+  multiple_scenes="$(plutil -extract UIApplicationSceneManifest.UIApplicationSupportsMultipleScenes raw -o - "$PLIST" 2>/dev/null)"
+  if [ "$multiple_scenes" != "false" ]; then
+    add_problem "UIApplicationSupportsMultipleScenes must be false in ios/Kiko/Info.plist (found: '${multiple_scenes:-missing}'); the app is single-scene"
+  fi
+fi
+
+# TN3208 / ITMS-90870: a resizable iPad app with no launch screen declared is
+# rejected on upload.
+launch_screen_declared=""
+for launch_key in UILaunchStoryboardName UILaunchStoryboards UILaunchScreen UILaunchScreens; do
+  if plutil -type "$launch_key" "$PLIST" >/dev/null 2>&1; then
+    launch_screen_declared="yes"
+  fi
+done
+if [ -z "$launch_screen_declared" ]; then
+  add_problem "none of UILaunchStoryboardName, UILaunchStoryboards, UILaunchScreen, UILaunchScreens is declared in ios/Kiko/Info.plist (TN3208, ITMS-90870)"
+fi
+
 if [ -n "$problems" ]; then
   print_block \
     "iOS Info.plist assertions" \
-    "The shipped Info.plist, a credential client's request headers, its localized name tables, or the privacy manifest do not satisfy the project's invariants." \
+    "The shipped Info.plist, a credential client's request headers, its localized name tables, the privacy manifest, or the iPad scene keys do not satisfy the project's invariants." \
     "$problems" \
-    "The plist is the app's ATS, pinning, and privacy-declaration policy. An unpinned credential-bearing host can be MITM'd by any device-trusted CA (an MDM or coerced configuration profile), which reads the credential and the response; a credential (URL parameter or header) without a Cache-Control: no-store request header lets NSURLCache write it to Cache.db; a single-pin domain cannot survive a certificate rotation without an outage; NSAllowsLocalNetworking in a Release build exempts .local/loopback from ATS in the shipped binary; an empty NS*UsageDescription is an App Store review rejection trigger; a missing or unwired InfoPlist.strings shows one language's home-screen name to every user; an undeclared required-reason API draws ITMS-91053 on upload. See docs/security/README.md." \
-    "Fix ios/Kiko/Info.plist (and docs/security/README.md's host table), add the Cache-Control: no-store header to the named credential client, or fix ios/Kiko/<language>.lproj/InfoPlist.strings and its project wiring, or ios/Kiko/PrivacyInfo.xcprivacy. Re-run: npm run check:plist" \
+    "The plist is the app's ATS, pinning, and privacy-declaration policy. An unpinned credential-bearing host can be MITM'd by any device-trusted CA (an MDM or coerced configuration profile), which reads the credential and the response; a credential (URL parameter or header) without a Cache-Control: no-store request header lets NSURLCache write it to Cache.db; a single-pin domain cannot survive a certificate rotation without an outage; NSAllowsLocalNetworking in a Release build exempts .local/loopback from ATS in the shipped binary; an empty NS*UsageDescription is an App Store review rejection trigger; a missing or unwired InfoPlist.strings shows one language's home-screen name to every user; an undeclared required-reason API draws ITMS-91053 on upload; UIRequiresFullScreen, a missing scene manifest, a missing iPad orientation, or multiple scenes breaks the resizable single-scene iPad window, and no declared launch screen draws ITMS-90870. See docs/security/README.md." \
+    "Fix ios/Kiko/Info.plist (and docs/security/README.md's host table; the iPad keys are UISupportedInterfaceOrientations~ipad, UIRequiresFullScreen, UIApplicationSceneManifest, and the launch screen key), add the Cache-Control: no-store header to the named credential client, or fix ios/Kiko/<language>.lproj/InfoPlist.strings and its project wiring, or ios/Kiko/PrivacyInfo.xcprivacy. Re-run: npm run check:plist" \
     "Do not delete the assertion or add the host to an ignore list. Pin the host, or stop sending it a credential. Do not satisfy 1b with a comment, an unused constant, or no-cache; keep a required-reason entry while the dependency that links the API ships."
   exit 2
 fi
