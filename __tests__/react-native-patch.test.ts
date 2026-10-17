@@ -1,5 +1,5 @@
 import { join } from 'node:path';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 
 const ROOT = join(__dirname, '..');
 const SCROLL_VIEW_FILE =
@@ -34,5 +34,17 @@ describe('the React Native ScrollView keyboard patch', () => {
 
     expect(source).toContain('A field outside this scroll view must not move its offset');
     expect(source).not.toContain('_firstResponderViewOutsideScrollView.inputAccessoryView');
+  });
+});
+
+// A patch edits node_modules silently after `npm ci`, so each one must be justified and
+// re-checked on its package's upgrade in the exceptions inventory.
+describe('the patch-package patches', () => {
+  it('are each named in docs/harness/documented-exceptions.md', () => {
+    const patchFiles = readdirSync(join(ROOT, 'patches')).filter((name) => name.endsWith('.patch'));
+    const inventory = readFileSync(join(ROOT, 'docs/harness/documented-exceptions.md'), 'utf8');
+
+    expect(patchFiles.length).toBeGreaterThan(0);
+    expect(patchFiles.filter((name) => !inventory.includes(`patches/${name}`))).toEqual([]);
   });
 });
