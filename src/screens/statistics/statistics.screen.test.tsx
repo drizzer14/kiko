@@ -34,6 +34,15 @@ jest.mock('@kiko/statistics/net-worth-series', () => {
   };
 });
 
+// An iPhone window: jest's default window is 750 pt wide, which lays the cards out in two columns,
+// and this suite pins the one-column screen.
+const mockWindow = { width: 390, height: 844, scale: 3, fontScale: 1 };
+
+jest.mock('react-native/Libraries/Utilities/useWindowDimensions', () => ({
+  __esModule: true,
+  default: () => mockWindow,
+}));
+
 // A standalone screen render has no pane navigator; default on screen (matches every other test
 // in this file), overridden per test. Statistics is a companion default in the Home tab, which is
 // on screen and never focused, so `useIsFocused` is mocked false: only visibility may decide.

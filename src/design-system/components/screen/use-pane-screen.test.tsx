@@ -39,6 +39,14 @@ describe('useContentCap', () => {
     expect(result.current).toBe(styles.paneCap);
   });
 
+  it('caps the content in a pane on a compact window', async () => {
+    mockUseLayoutMode.mockReturnValue('columns');
+
+    const { result } = await renderHook(() => useContentCap(), { wrapper: inPane });
+
+    expect(result.current).toBe(styles.paneCap);
+  });
+
   it('caps the content of a single pane on a regular window', async () => {
     mockUseDisplayRegions.mockReturnValue({ horizontalSizeClass: 'regular' });
 

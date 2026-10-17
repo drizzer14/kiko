@@ -30,8 +30,9 @@ export const useTitleFit = (title: string): TitleFit => {
   const paneWidth = usePaneWidth();
   const { theme } = useUnistyles();
   const [measurement, setMeasurement] = useState<Measurement>();
-  // A split window gives each pane its own header, about half the window wide, so the pane's width
-  // is the line the title has; the window is the line only where it is the screen.
+  // A split window gives each pane its own header, a third or two thirds of a wide window and
+  // half of any other, so the pane's width is the line the title has; the window is the line only
+  // where it is the screen.
   const availableWidth = (paneWidth ?? windowWidth) - 2 * theme.spacing(LARGE_TITLE_MARGIN_STEP);
   const key = `${availableWidth}:${title}`;
 

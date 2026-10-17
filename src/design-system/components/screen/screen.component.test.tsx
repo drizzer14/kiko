@@ -600,6 +600,28 @@ describe('Screen', () => {
       expect(content.padding).toBe(16);
     });
 
+    it.each([
+      ['scroll', { scroll: true }],
+      ['plain', {}],
+    ] as const)('skips the content cap of the %s branch when uncapped', async (_name, props) => {
+      const view = await renderInPane({ ...props, uncapped: true }, 'columns', 'primary');
+      const root = StyleSheet.flatten(rootOf(view, props)?.props.style);
+
+      expect(root.maxWidth).toBeUndefined();
+      expect(root.alignSelf).toBeUndefined();
+
+      if ('scroll' in props) {
+        const content = StyleSheet.flatten(
+          view.getByTestId(SCROLL_VIEW_TEST_ID).props.contentContainerStyle,
+        );
+
+        expect(content.maxWidth).toBeUndefined();
+        expect(content.width).toBeUndefined();
+        expect(content.alignSelf).toBeUndefined();
+        expect(content.padding).toBe(16);
+      }
+    });
+
     it('leaves a bleedTop child the whole pane, to cap its own content', async () => {
       const view = await renderInPane({ bleedTop: true }, 'rows', 'primary');
       const root = StyleSheet.flatten(rootOf(view, { bleedTop: true })?.props.style);

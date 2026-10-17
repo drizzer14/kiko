@@ -17,6 +17,8 @@ describe('resolveLayoutMode', () => {
     ['a wide regular window at two minimum panes and a divider', 'regular', 721, 500, 'columns'],
     ['a tall regular window below two minimum panes', 'regular', 500, 720, 'single'],
     ['a tall narrow regular window with room for two panes', 'regular', 400, 900, 'rows'],
+    ['a regular window just below the wide companion share', 'regular', 1099, 820, 'columns'],
+    ['a regular window at the wide companion share', 'regular', 1100, 820, 'columns'],
     ['a 13-inch-class landscape regular window', 'regular', 1366, 1024, 'columns'],
   ])('resolves %s', (_name, sizeClass, width, height, expected) => {
     expect(resolveLayoutMode(sizeClass, width, height)).toBe(expected);

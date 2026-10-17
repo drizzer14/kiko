@@ -52,7 +52,6 @@ import Box from '@kiko/design-system/components/box';
 import { categoriesRepo } from '@kiko/categories/repo';
 import Card from '@kiko/design-system/components/card';
 import Text from '@kiko/design-system/components/text';
-import type { ScrollViewInstance } from 'react-native';
 import type { Currency } from '@kiko/currency/currency';
 import { ibanOf } from '@kiko/holdings/holding-metadata';
 import { transactionsRepo } from '@kiko/transactions/repo';
@@ -65,6 +64,7 @@ import { bucketDaysForSpan } from '@kiko/statistics/buckets';
 import { endOfLocalDay, startOfLocalDay } from '@kiko/dates';
 import { localMidnightOfDayKey } from '@kiko/prices/price-book';
 import { rateHistoryRepo } from '@kiko/rates/rate-history-repo';
+import { usePaneWidth } from '@kiko/design-system/pane-context';
 import { useIsScreenVisible } from '@kiko/navigation/pane-stack';
 import MoneyText from '@kiko/design-system/components/money-text';
 import { accountIdentity } from '@kiko/holdings/account-identity';
@@ -82,6 +82,7 @@ import { visibleSelection } from '@kiko/design-system/visible-selection';
 import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
 import type { SeriesTransaction } from '@kiko/statistics/holding-value-at';
 import { toggleFilterValue } from '@kiko/design-system/toggle-filter-value';
+import { type ScrollViewInstance, useWindowDimensions } from 'react-native';
 import DateRangeField from '@kiko/design-system/components/date-range-field';
 import { type NavigationProp, useNavigation } from '@react-navigation/native';
 import { holdingDescriptorOrUndefined } from '@kiko/holdings/holding-descriptor';
@@ -99,6 +100,7 @@ import NetWorthLine from './net-worth-line';
 import { styles } from './statistics.styles';
 import TrendFilterField from './trend-filter-field';
 import CategoryTrendLine from './category-trend-line';
+import StatisticsGrid, { resolveGridColumns } from './statistics-grid';
 
 // Adapt a category spending slice onto the shared `PieChart` slice shape: the
 // category KEY is the slice identity (its React key + testID suffix), its title
@@ -175,6 +177,12 @@ const CATEGORY_LEGEND_MIN_SHARE = 0.05;
  */
 const StatisticsScreen: FC = () => {
   const { t, i18n } = useTranslation();
+  // The columns follow the width of the pane the screen is in, or the window's where no pane
+  // applies, and nothing else: a filter or a date range never moves a card.
+  const { width: windowWidth } = useWindowDimensions();
+  const columns = resolveGridColumns(usePaneWidth() ?? windowWidth);
+  // At one column a card keeps the look it has always had; in a row it fills its cell's height.
+  const cardStyle = columns > 1 ? styles.gridCard : undefined;
   // This screen sits in its own tab's stack; the stack hands a navigate it
   // cannot answer (a jump to the Accounts tab) up to the tab navigator.
   const navigation = useNavigation<NavigationProp<TabParamList>>();
@@ -1177,7 +1185,7 @@ const StatisticsScreen: FC = () => {
   }
 
   return (
-    <Screen scroll scrollableRef={scrollRef}>
+    <Screen scroll scrollableRef={scrollRef} uncapped={columns > 1}>
       <Box gap={4} testID="statistics-blocks">
         <Box direction="row" gap={3} style={styles.filterBar}>
           <FilterMenu
@@ -1200,109 +1208,139 @@ const StatisticsScreen: FC = () => {
           />
         </Box>
 
-        <Card testID="statistics-block-line" padding={4} radius="lg">
-          <Box gap={3}>
-            <Text variant="heading" style={styles.cardTitle}>
-              {t('statistics.netWorthOverTime')}
-            </Text>
+        <StatisticsGrid
+          columns={columns}
+          lead={
+            <Card testID="statistics-block-line" padding={4} radius="lg">
+              <Box gap={3}>
+                <Text variant="heading" style={styles.cardTitle}>
+                  {t('statistics.netWorthOverTime')}
+                </Text>
 
-            <NetWorthLine
-              points={netWorth.points}
-              startReference={netWorth.startReference}
-              baseCurrency={baseCurrency}
-              loading={backfillStatus.state === 'loading'}
-            />
-          </Box>
-        </Card>
+                <NetWorthLine
+                  points={netWorth.points}
+                  startReference={netWorth.startReference}
+                  baseCurrency={baseCurrency}
+                  loading={backfillStatus.state === 'loading'}
+                />
+              </Box>
+            </Card>
+          }
+          cards={[
+            <Card
+              key="statistics-block-bar"
+              testID="statistics-block-bar"
+              padding={4}
+              radius="lg"
+              style={cardStyle}
+            >
+              <Box gap={3}>
+                <Text variant="heading" style={styles.cardTitle}>
+                  {t('statistics.byType')}
+                </Text>
 
-        <Card testID="statistics-block-bar" padding={4} radius="lg">
-          <Box gap={3}>
-            <Text variant="heading" style={styles.cardTitle}>
-              {t('statistics.byType')}
-            </Text>
+                <BarChart data={typeSlices} baseCurrency={baseCurrency} />
+              </Box>
+            </Card>,
 
-            <BarChart data={typeSlices} baseCurrency={baseCurrency} />
-          </Box>
-        </Card>
+            <Card
+              key="statistics-block-pie"
+              testID="statistics-block-pie"
+              padding={4}
+              radius="lg"
+              style={cardStyle}
+            >
+              <Box gap={3}>
+                <Text variant="heading" style={styles.cardTitle}>
+                  {t('statistics.accountContribution')}
+                </Text>
 
-        <Card testID="statistics-block-pie" padding={4} radius="lg">
-          <Box gap={3}>
-            <Text variant="heading" style={styles.cardTitle}>
-              {t('statistics.accountContribution')}
-            </Text>
+                <PieChart slices={slices} baseCurrency={baseCurrency} />
 
-            <PieChart slices={slices} baseCurrency={baseCurrency} />
+                {!debtTotal.isZero() && (
+                  // SummaryTable is the shared "label left, value right" layout
+                  // every other summary line in the app already uses, rather
+                  // than a hand-built flexDirection row.
+                  <SummaryTable
+                    testID="statistics-debts-total"
+                    rows={[
+                      {
+                        key: 'debts',
+                        label: t('statistics.debtsTotal'),
+                        value: <MoneyText money={debtTotal} context="balance" />,
+                      },
+                    ]}
+                  />
+                )}
+              </Box>
+            </Card>,
 
-            {!debtTotal.isZero() && (
-              // SummaryTable is the shared "label left, value right" layout
-              // every other summary line in the app already uses, rather
-              // than a hand-built flexDirection row.
-              <SummaryTable
-                testID="statistics-debts-total"
-                rows={[
-                  {
-                    key: 'debts',
-                    label: t('statistics.debtsTotal'),
-                    value: <MoneyText money={debtTotal} context="balance" />,
-                  },
-                ]}
-              />
-            )}
-          </Box>
-        </Card>
+            <Card
+              key="statistics-block-category"
+              testID="statistics-block-category"
+              padding={4}
+              radius="lg"
+              style={cardStyle}
+            >
+              <Box gap={3}>
+                <Text variant="heading" style={styles.cardTitle}>
+                  {t('statistics.expensesByCategory')}
+                </Text>
 
-        <Card testID="statistics-block-category" padding={4} radius="lg">
-          <Box gap={3}>
-            <Text variant="heading" style={styles.cardTitle}>
-              {t('statistics.expensesByCategory')}
-            </Text>
+                <Box direction="row" gap={3} style={styles.filterBar}>
+                  <FilterMenu
+                    label={t('statistics.filterCategories')}
+                    sheetTitle={t('statistics.filterCategoriesSheetTitle')}
+                    testID="statistics-category-filter"
+                    options={categoryOptions}
+                    selected={selectedCategories}
+                    onToggle={(value) => setSelectedCategories(toggleFilterValue(value))}
+                    triggerIcon={genericEntitySymbol.category}
+                  />
+                </Box>
 
-            <Box direction="row" gap={3} style={styles.filterBar}>
-              <FilterMenu
-                label={t('statistics.filterCategories')}
-                sheetTitle={t('statistics.filterCategoriesSheetTitle')}
-                testID="statistics-category-filter"
-                options={categoryOptions}
-                selected={selectedCategories}
-                onToggle={(value) => setSelectedCategories(toggleFilterValue(value))}
-                triggerIcon={genericEntitySymbol.category}
-              />
-            </Box>
+                <PieChart
+                  slices={categorySlices.map(toPieSlice)}
+                  baseCurrency={baseCurrency}
+                  testID="category-pie"
+                  emptyLabel={t('statistics.noSpendingToShow')}
+                  innerRatio={CATEGORY_DONUT_INNER_RATIO}
+                  centerTotal={categoryTotal}
+                  legendMinShare={CATEGORY_LEGEND_MIN_SHARE}
+                />
+              </Box>
+            </Card>,
 
-            <PieChart
-              slices={categorySlices.map(toPieSlice)}
-              baseCurrency={baseCurrency}
-              testID="category-pie"
-              emptyLabel={t('statistics.noSpendingToShow')}
-              innerRatio={CATEGORY_DONUT_INNER_RATIO}
-              centerTotal={categoryTotal}
-              legendMinShare={CATEGORY_LEGEND_MIN_SHARE}
-            />
-          </Box>
-        </Card>
+            <Card
+              key="statistics-block-trend"
+              testID="statistics-block-trend"
+              padding={4}
+              radius="lg"
+              style={cardStyle}
+            >
+              <Box gap={3}>
+                <Text variant="heading" style={styles.cardTitle}>
+                  {t('statistics.spendingTrendByCategory')}
+                </Text>
 
-        <Card testID="statistics-block-trend" padding={4} radius="lg">
-          <Box gap={3}>
-            <Text variant="heading" style={styles.cardTitle}>
-              {t('statistics.spendingTrendByCategory')}
-            </Text>
+                <Box direction="row" style={styles.filterBar}>
+                  <TrendFilterField
+                    testID="statistics-trend-filter"
+                    filter={appliedTrendFilter}
+                    categoryOptions={categoryOptions}
+                    onSave={saveTrendFilter}
+                  />
+                </Box>
 
-            <Box direction="row" style={styles.filterBar}>
-              <TrendFilterField
-                testID="statistics-trend-filter"
-                filter={appliedTrendFilter}
-                categoryOptions={categoryOptions}
-                onSave={saveTrendFilter}
-              />
-            </Box>
-
-            <CategoryTrendLine
-              series={trendSeries}
-              baseCurrency={baseCurrency}
-              emptyLabel={t('statistics.noSpendingToShow')}
-            />
-          </Box>
-        </Card>
+                <CategoryTrendLine
+                  series={trendSeries}
+                  baseCurrency={baseCurrency}
+                  emptyLabel={t('statistics.noSpendingToShow')}
+                />
+              </Box>
+            </Card>,
+          ]}
+        />
       </Box>
     </Screen>
   );

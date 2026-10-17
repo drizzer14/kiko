@@ -254,7 +254,6 @@ describe('TwoPaneLayout', () => {
       const root = StyleSheet.flatten(screen.getByTestId('screen-content').parent?.props.style);
 
       expect(root.maxWidth).toBe(darkTheme.layout.paneMaxWidth);
-      expect(root.maxWidth).toBe(600);
       expect(root.alignSelf).toBe('center');
     });
   });

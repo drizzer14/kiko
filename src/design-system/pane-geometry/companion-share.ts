@@ -4,8 +4,9 @@ import type { PaneName } from '@kiko/design-system/pane-context';
 
 export const EQUAL_SHARE = 1 / 2;
 export const WIDE_SHARE = 2 / 3;
-// The narrowest window whose smaller pane at the wide share still holds the minimum pane length:
-// (1100 - hairline) / 3 is about 366 pt, so the sweep above it never goes under 360 pt.
+// The narrowest window that gets the wide split. 1100 is a spec choice: above the Duo's ~951 and
+// below the iPad mini's 1133 landscape width. That the smaller pane stays above 360 pt there
+// ((1100 - hairline) / 3 is about 366 pt) is a side fact, not the reason for the number.
 export const WIDE_SPLIT_MIN_WIDTH = 1100;
 
 type Window = { width: number; height: number };

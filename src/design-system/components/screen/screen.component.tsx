@@ -20,6 +20,7 @@ const Screen: FC<ScreenProps> = ({
   onContentSizeChange,
   automaticallyAdjustKeyboardInsets = true,
   onFieldBlur,
+  uncapped = false,
 }) => {
   // The fields' way to report a blur to the screen; every layout below renders them.
   const fields = (
@@ -52,7 +53,9 @@ const Screen: FC<ScreenProps> = ({
   // too: it also gives a pane that is not at the window's bottom no clearance,
   // since no tab bar is over it.
   const bottomClearance = useBottomClearance();
-  const contentCap = useContentCap();
+  const paneCap = useContentCap();
+  // The footer follows the content: a capped footer under uncapped content would not line up.
+  const contentCap = uncapped ? undefined : paneCap;
   const scrollIndicatorProps = useScrollIndicatorProps();
   const { plainEdges, largeTitleEdges } = usePaneScreen();
   // The plain branch's `content` reserves the clearance itself only when it is

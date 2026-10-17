@@ -47,7 +47,7 @@ const clamp = (value: number, lowest: number, highest: number) =>
 
 // Pure pane geometry. Flat: the companion takes `companionShare` of the length less the hairline
 // divider. Folded: each pane ends at the fold edge, so the panes are equal only when the fold is
-// centred and the share is ignored; the divider is then the fold's own gap, which the caller does
+// centred. A fold ignores the share. The divider is then the fold's own gap, which the caller does
 // not draw. A fold not oriented along the mode's cross axis is a transient from a rotation (the
 // window and the fold arrive separately), so it counts as flat.
 export const resolvePaneGeometry = (
