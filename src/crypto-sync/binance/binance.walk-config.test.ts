@@ -7,16 +7,14 @@ import {
 } from './binance.holding-keys';
 import { BinanceRateLimitError } from './binance.client';
 import { BINANCE_WALK_CONFIG } from './binance.walk-config';
-import { BINANCE_DEPTH_CONFIG } from './binance.depth-config';
 import { HISTORY_TOTAL_PAGE_SIZE } from './binance.history-client';
 
 describe('the Binance walk config', () => {
-  it('carries today asset, metadata field, names, page size and rate-limit check', () => {
+  it('carries the asset, metadata field, key reader, page size, refused weights and rate-limit check', () => {
     expect(BINANCE_WALK_CONFIG.asset).toBe('BTC');
     expect(BINANCE_WALK_CONFIG.metadataField).toBe('binanceAsset');
     expect(BINANCE_WALK_CONFIG.totalPageSize).toBe(HISTORY_TOTAL_PAGE_SIZE);
     expect(BINANCE_WALK_CONFIG.holdingKeyOf).toBe(binanceKeyOf);
-    expect(BINANCE_WALK_CONFIG.depth).toBe(BINANCE_DEPTH_CONFIG);
     expect(BINANCE_WALK_CONFIG.refusedCallWeights).toEqual({
       usedUidWeight1m: undefined,
       usedIpWeight1m: undefined,

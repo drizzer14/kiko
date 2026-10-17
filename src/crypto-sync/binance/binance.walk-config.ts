@@ -1,6 +1,5 @@
 import type { ExchangeWalkConfig } from '@kiko/crypto-sync/exchange/walk';
 
-import { BINANCE_DEPTH_CONFIG } from './binance.depth-config';
 import { BINANCE_ASSET, BinanceRateLimitError } from './binance.client';
 import { type BinancePageWeights, HISTORY_TOTAL_PAGE_SIZE } from './binance.history-client';
 import { type BinanceWalletKey, binanceKeyOf, WALLET_HOLDING_NAMES } from './binance.holding-keys';
@@ -14,5 +13,4 @@ export const BINANCE_WALK_CONFIG: ExchangeWalkConfig<BinanceRateLimitError, Bina
     error instanceof BinanceRateLimitError,
   totalPageSize: HISTORY_TOTAL_PAGE_SIZE,
   refusedCallWeights: { usedUidWeight1m: undefined, usedIpWeight1m: undefined },
-  depth: BINANCE_DEPTH_CONFIG,
 };
