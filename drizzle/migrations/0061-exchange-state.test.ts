@@ -359,6 +359,22 @@ describe('migration 0061: the walk state column on sync_state', () => {
     expect(stateOf(database, 'object-pending')?.walks.pay.pending).toEqual({ start: 1 });
   });
 
+  it('copies a stored JSON null beside a cursor: a present null is kept, not dropped', () => {
+    const database = databaseThrough0060();
+
+    seedSpot(database, 'account', {
+      binancePayHistoryCursor: 5,
+      binancePayPendingOverlap: null,
+      binancePayPointCursor: null,
+    });
+    applyMigration(database);
+
+    expect(jsonTypeOf(database, 'account', '$.walks.pay.cursor')).toBe('integer');
+    expect(jsonTypeOf(database, 'account', '$.walks.pay.pending')).toBe('null');
+    expect(jsonTypeOf(database, 'account', '$.walks.pay.pointCursor')).toBe('null');
+    expect(jsonTypeOf(database, 'account', '$.walks.pay.rescan')).toBeNull();
+  });
+
   it('keeps a list a list', () => {
     const database = databaseThrough0060();
 
