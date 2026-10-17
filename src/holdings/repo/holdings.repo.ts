@@ -37,7 +37,7 @@ import {
   syncClosedFromOf,
   STATEMENT_FROM_FIELD,
   SYNC_CLOSED_FROM_FIELD,
-  withWalkOwnedMetadataCarried,
+  withCarriedMetadataKeys,
 } from '../holding-metadata';
 import { isSyncedHolding } from '../deletable';
 import { asLots, withLotChange, type LotChange } from '../lots';
@@ -186,7 +186,7 @@ const insertSyncedHolding = async (
 // provider.ts).
 //
 // The update branch also reads the row's OWN stored metadata (not just
-// `id`/`name`) so `withWalkOwnedMetadataCarried` can carry a sync-owned key
+// `id`/`name`) so `withCarriedMetadataKeys` can carry a sync-owned key
 // (a reopened card's or jar's `statementFromMs`) over the
 // caller's `merged` object — a routine balance sync's `metadata: { syncedAt }`
 // would otherwise wipe it every run, since `merged` is built from the
@@ -236,7 +236,7 @@ const upsertByMetadataKey = async (
     const rename = renameFromDefault !== undefined && current.name === renameFromDefault;
     const syncClosedFrom = syncClosedFromOf(current.metadata);
     const reopenFrom = current.closedAt !== null && syncClosedFrom !== null ? syncClosedFrom : null;
-    const carried = withWalkOwnedMetadataCarried(merged, current.metadata);
+    const carried = withCarriedMetadataKeys(merged, current.metadata);
     await databaseTransaction
       .update(holdings)
       .set({

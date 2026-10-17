@@ -1935,14 +1935,17 @@ than restated here:
   marks are not in that metadata (they live in `sync_state.exchange_state`),
   so nothing there needs carrying: `carriedMetadataKeys` (`holding-metadata.ts`)
   holds only a reopened Monobank card's `statementFromMs`
-  (`withWalkOwnedMetadataCarried`), and a walk key an older build left in the
+  (`withCarriedMetadataKeys`), and a walk key an older build left in the
   metadata is dropped by the next upsert.
 - **Per-record commits, crash-safe.** The walk goes oldest -> newest.
   Rows commit (`transactionsRepo.addManyDedup`) BEFORE the mark moves
   (`syncStateRepo.patchExchangeState`) — separate writes, so a crash between
-  them re-imports idempotently rather than losing progress. In the pending
-  pass and the re-scan the list (the read span out, its points in) and the
-  mark are one patch list, one write, after the rows. A stop tied to one record with a time inside
+  them re-imports idempotently rather than losing progress. In the forward
+  pass the owed list and the cursor are one patch list, and in the re-scan the
+  list and the re-scan mark are, one write after the rows. In the pending
+  pass `advancePending` writes only the list (the read span out, its points
+  in), and `markRangeRead` writes the range cursor as a separate write. A
+  stop tied to one record with a time inside
   the span owes only that record's point; any other stop, or a record with
   no usable time, owes the whole span; every record the walk can trust
   imports either way. The forward pass leaves a span uncommitted on any

@@ -204,7 +204,7 @@ export const statementFromOf = numberFieldOf(STATEMENT_FROM_FIELD);
  * are not in the metadata at all (they live in `sync_state.exchange_state`), so
  * an old walk key an upsert finds there is dropped, not carried.
  */
-export const withWalkOwnedMetadataCarried = (
+export const withCarriedMetadataKeys = (
   target: Record<string, unknown>,
   storedMetadata: unknown,
 ): Record<string, unknown> => {

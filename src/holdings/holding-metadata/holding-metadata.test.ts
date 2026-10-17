@@ -16,7 +16,7 @@ import {
   statementFromOf,
   syncClosedFromOf,
   walletAddressOf,
-  withWalkOwnedMetadataCarried,
+  withCarriedMetadataKeys,
   type BondMeta,
   type CompoundingFrequency,
   type LoanMeta,
@@ -311,12 +311,12 @@ describe('syncedAtOf', () => {
   });
 });
 
-describe('withWalkOwnedMetadataCarried', () => {
+describe('withCarriedMetadataKeys', () => {
   it('carries a sync-owned key from the stored metadata onto the target', () => {
     const target = { monobankId: 'card-1', syncedAt: 2_000 };
     const stored = { monobankId: 'card-1', statementFromMs: 1_000, syncedAt: 1_000 };
 
-    expect(withWalkOwnedMetadataCarried(target, stored)).toEqual({
+    expect(withCarriedMetadataKeys(target, stored)).toEqual({
       monobankId: 'card-1',
       syncedAt: 2_000,
       statementFromMs: 1_000,
@@ -335,20 +335,20 @@ describe('withWalkOwnedMetadataCarried', () => {
       binancePaySpanHints: { forward: [], pending: [], rescan: [], point: [] },
     };
 
-    expect(withWalkOwnedMetadataCarried(target, stored)).toEqual(target);
+    expect(withCarriedMetadataKeys(target, stored)).toEqual(target);
   });
 
   it('leaves the target unchanged when the stored metadata has no sync-owned key', () => {
     const target = { binanceAsset: 'BTC', syncedAt: 2_000 };
 
-    expect(withWalkOwnedMetadataCarried(target, { binanceAsset: 'BTC' })).toEqual(target);
+    expect(withCarriedMetadataKeys(target, { binanceAsset: 'BTC' })).toEqual(target);
   });
 
   it('leaves the target unchanged when the stored metadata is null or not an object', () => {
     const target = { binanceAsset: 'BTC', syncedAt: 2_000 };
 
-    expect(withWalkOwnedMetadataCarried(target, null)).toEqual(target);
-    expect(withWalkOwnedMetadataCarried(target, 'not-an-object')).toEqual(target);
+    expect(withCarriedMetadataKeys(target, null)).toEqual(target);
+    expect(withCarriedMetadataKeys(target, 'not-an-object')).toEqual(target);
   });
 });
 
@@ -371,12 +371,12 @@ describe('syncClosedFromOf / statementFromOf', () => {
   });
 });
 
-describe('withWalkOwnedMetadataCarried — the reopen statement cursor', () => {
+describe('withCarriedMetadataKeys — the reopen statement cursor', () => {
   it('carries statementFromMs, and never the sync-close mark', () => {
     const target = { monobankId: 'card-1', syncedAt: 2_000 };
     const stored = { monobankId: 'card-1', statementFromMs: 500, syncClosedFromMs: 400 };
 
-    expect(withWalkOwnedMetadataCarried(target, stored)).toEqual({
+    expect(withCarriedMetadataKeys(target, stored)).toEqual({
       monobankId: 'card-1',
       syncedAt: 2_000,
       statementFromMs: 500,

@@ -104,6 +104,8 @@ const READS: Record<WalkField, StoredReads[]> = {
     ['a boolean', true, null],
     ['a list', [5_000], null],
     ['an object', {}, null],
+    ['a list of ranges', RANGES, null],
+    ['span hints', HINTS, null],
   ],
   rescan: [
     ['nothing stored', undefined, null],
@@ -111,13 +113,19 @@ const READS: Record<WalkField, StoredReads[]> = {
     ['zero', 0, 0],
     ['a number', 5_000, 5_000],
     ['a number as text', '5000', null],
+    ['a boolean', true, null],
     ['a list', [5_000], null],
+    ['an object', {}, null],
+    ['a list of ranges', RANGES, null],
+    ['span hints', HINTS, null],
   ],
   pending: [
     ['nothing stored', undefined, []],
     ['a JSON null', null, undefined],
+    ['zero', 0, undefined],
     ['a number', 5_000, undefined],
     ['text', '5000', undefined],
+    ['a boolean', true, undefined],
     ['an empty list', [], []],
     ['an object', {}, undefined],
     ['a list of numbers', [5_000], undefined],
@@ -135,6 +143,8 @@ const READS: Record<WalkField, StoredReads[]> = {
     ['a boolean', true, undefined],
     ['a list', [5_000], undefined],
     ['an object', {}, undefined],
+    ['a list of ranges', RANGES, undefined],
+    ['span hints', HINTS, undefined],
   ],
   rangeCursor: [
     ['nothing stored', undefined, null],
@@ -145,12 +155,18 @@ const READS: Record<WalkField, StoredReads[]> = {
     ['a boolean', true, undefined],
     ['a list', [5_000], undefined],
     ['an object', {}, undefined],
+    ['a list of ranges', RANGES, undefined],
+    ['span hints', HINTS, undefined],
   ],
   spanHints: [
     ['nothing stored', undefined, NO_HINTS],
     ['a JSON null', null, undefined],
+    ['zero', 0, undefined],
     ['a number', 5_000, undefined],
+    ['text', '5000', undefined],
+    ['a boolean', true, undefined],
     ['a list', [], undefined],
+    ['a list of ranges', RANGES, undefined],
     ['an empty object', {}, NO_HINTS],
     ['hints', HINTS, HINTS],
     ['hints whose pass is no list', { forward: { start: 1, end: 2 } }, undefined],
@@ -299,11 +315,14 @@ describe('parseExchangeState', () => {
       ['pointCursor', undefined],
       ['rangeCursor', undefined],
       ['spanHints', undefined],
-    ] as const)('reads as the stored null it always read as: the %s', (field, reads) => {
-      for (const walkName of WALK_NAMES) {
-        expect(marksOfStoredField(walkName, field, null)).toStrictEqual(reads);
-      }
-    });
+    ] as const)(
+      'reads a stored null as no value for a cursor, malformed for the rest: the %s',
+      (field, reads) => {
+        for (const walkName of WALK_NAMES) {
+          expect(marksOfStoredField(walkName, field, null)).toStrictEqual(reads);
+        }
+      },
+    );
   });
 
   describe('a stored value', () => {

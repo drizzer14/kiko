@@ -30,7 +30,11 @@ jest.mock('@kiko/reminders/scheduler/sync-reminders', () => ({
 }));
 jest.mock('@kiko/sync-state/sync-state.repo', () => ({
   syncStateRepo: {
-    getQuery: () => ({ __syncState: true, toSQL: () => ({ sql: '', params: [] }) }),
+    getQuery: (accountId: string) => ({
+      __syncState: true,
+      __accountId: accountId,
+      toSQL: () => ({ sql: '', params: [accountId] }),
+    }),
   },
 }));
 jest.mock('@kiko/sync/use-crypto-sync', () => ({
@@ -113,8 +117,10 @@ jest.mock('@kiko/design-system/components/button', () => {
 
 const ADDRESS = 'bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq';
 
+const ACCOUNT_ID = 'a';
+
 const account = (overrides: Partial<AccountRow> = {}): AccountRow => ({
-  id: 'a',
+  id: ACCOUNT_ID,
   name: 'Cold storage',
   kind: 'crypto',
   institution: null,
@@ -129,7 +135,7 @@ const account = (overrides: Partial<AccountRow> = {}): AccountRow => ({
 
 const holding = (metadata: unknown): HoldingRow => ({
   id: 'h1',
-  accountId: 'a',
+  accountId: ACCOUNT_ID,
   name: 'BTC Wallet',
   type: 'crypto_asset',
   currency: 'BTC',
@@ -147,12 +153,22 @@ const holding = (metadata: unknown): HoldingRow => ({
 
 /**
  * Seed the two connected-accounts live queries, keyed on the institution each one was built
- * for.
+ * for. The `sync_state` query answers only for the account the section renders: a query built
+ * for another account id finds no row.
  */
 const setConnected = (connected: { btc_wallet?: AccountRow[]; binance?: AccountRow[] }): void => {
   mockUseLiveQuery.mockImplementation(
-    (query: { __institution: 'btc_wallet' | 'binance'; __syncState?: true }) =>
-      query.__syncState === true ? syncStateResult : { data: connected[query.__institution] ?? [] },
+    (query: {
+      __institution: 'btc_wallet' | 'binance';
+      __syncState?: true;
+      __accountId?: string;
+    }) => {
+      if (query.__syncState !== true) {
+        return { data: connected[query.__institution] ?? [] };
+      }
+
+      return query.__accountId === ACCOUNT_ID ? syncStateResult : { data: [], isLoading: false };
+    },
   );
 };
 
@@ -180,7 +196,7 @@ const walkCursors = (
 ): ExchangeStateSeed =>
   withWalkMarkSeeds(
     {},
-    'acc-1',
+    ACCOUNT_ID,
     Object.fromEntries(
       WALK_NAMES.map((walkName) => [
         walkName,
@@ -191,13 +207,19 @@ const walkCursors = (
 
 // A connected Binance account whose spot holding the balance sync stamped, over the given walk
 // state row (and whether that row's first read is still queued).
-const renderBinance = (state: ExchangeStateSeed, isLoading = false) => {
+const renderBinance = (
+  state: ExchangeStateSeed,
+  isLoading = false,
+  metadata: Record<string, unknown> = {},
+) => {
   setSyncState(state, isLoading);
 
   return render(
     <CryptoSyncSection
       account={account({ institution: 'binance' })}
-      holdings={[holding({ binanceAsset: 'BTC', syncedAt: CONNECTED_WALLET_SYNCED_AT })]}
+      holdings={[
+        holding({ binanceAsset: 'BTC', syncedAt: CONNECTED_WALLET_SYNCED_AT, ...metadata }),
+      ]}
     />,
   );
 };
@@ -463,7 +485,7 @@ describe('CryptoSyncSection', () => {
 
   it('shows the caption when a walk has no cursor yet, though the capital walk is current', async () => {
     const { getByText } = await renderBinance(
-      withWalkMarks({}, 'acc-1', 'capital', { cursor: CONNECTED_WALLET_SYNCED_AT - HOUR_MS }),
+      withWalkMarks({}, ACCOUNT_ID, 'capital', { cursor: CONNECTED_WALLET_SYNCED_AT - HOUR_MS }),
     );
 
     expect(getByText(HISTORY_CAPTION, { exact: false })).toBeTruthy();
@@ -475,8 +497,14 @@ describe('CryptoSyncSection', () => {
     expect(queryByText(HISTORY_CAPTION, { exact: false })).toBeNull();
   });
 
-  it("hides the caption when the state row's cursors are current and the metadata keys are gone", async () => {
-    const { queryByText } = await renderBinance(walkCursors(HOUR_MS));
+  it('reads the state row, not the old walk keys an upgraded device still holds behind in the metadata', async () => {
+    const behind = CONNECTED_WALLET_SYNCED_AT - 3 * DAY_MS;
+    const { queryByText } = await renderBinance(walkCursors(HOUR_MS), false, {
+      binanceHistoryCursor: behind,
+      binancePayHistoryCursor: behind,
+      binanceTransferHistoryCursor: behind,
+      binanceEarnHistoryCursor: behind,
+    });
 
     expect(queryByText(HISTORY_CAPTION, { exact: false })).toBeNull();
   });
@@ -489,7 +517,7 @@ describe('CryptoSyncSection', () => {
 
   it('shows no caption while the cursors are current and only a Transfer point is owed', async () => {
     const { queryByText } = await renderBinance(
-      withWalkMarks(walkCursors(2 * HOUR_MS), 'acc-1', 'transfer', {
+      withWalkMarks(walkCursors(2 * HOUR_MS), ACCOUNT_ID, 'transfer', {
         pending: [{ start: 5, end: 7, kind: 'point', series: 'MAIN_FUNDING' }],
       }),
     );
@@ -504,7 +532,7 @@ describe('CryptoSyncSection', () => {
     'shows the caption while the cursors are current and the Transfer walk owes %s',
     async (_label, owed) => {
       const { getByText } = await renderBinance(
-        withWalkMarks(walkCursors(2 * HOUR_MS), 'acc-1', 'transfer', { pending: [owed] }),
+        withWalkMarks(walkCursors(2 * HOUR_MS), ACCOUNT_ID, 'transfer', { pending: [owed] }),
       );
 
       expect(getByText(HISTORY_CAPTION, { exact: false })).toBeTruthy();

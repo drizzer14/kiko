@@ -176,21 +176,21 @@ const writesOf = (deps: Partial<ExchangeStateDeps>): WalkWrite[] => {
   );
 };
 
-/** The writers a walk had before its marks were one state: the numbers, the lists, the hints. */
+/** The number marks share one group: `last` compares the latest write among them. */
 const groupOf = (field: WalkField): string => (isNumberField(field) ? 'number' : field);
 
 type WriteOptions = { last?: boolean };
 
 export const expectWalkMarkWritten = (
   deps: Partial<ExchangeStateDeps>,
-  _accountId: string,
+  accountId: string,
   walkName: WalkName,
   field: WalkField,
   value: unknown,
   { last = false }: WriteOptions = {},
 ): void => {
-  const expected = { walkName, field, value };
-  const writes = writesOf(deps).map(({ order: _order, accountId: _written, ...write }) => write);
+  const expected = { accountId, walkName, field, value };
+  const writes = writesOf(deps).map(({ order: _order, ...write }) => write);
 
   if (last) {
     expect(writes.filter((write) => groupOf(write.field) === groupOf(field)).at(-1)).toEqual(
@@ -259,17 +259,26 @@ export const walkStateFake = (world: WalkWorld = {}) => {
       (write, index) => {
         writes.push(write);
         world.onWrite?.(write);
-        state = JSON.parse(
-          exchangeStatePatched(JSON.stringify(state), [walkPatches[index]]) ?? '',
-        ) as ExchangeStateSeed;
+
+        if (written === accountId) {
+          state = JSON.parse(
+            exchangeStatePatched(JSON.stringify(state), [walkPatches[index]]) ?? '',
+          ) as ExchangeStateSeed;
+        }
       },
     );
   };
 
-  /** Each call is a set of deps that count their own calls but share the one stored state. */
+  /**
+   * Each call is a set of deps that count their own calls but share the one stored state. The state
+   * is the one account's row: a read for another account finds no row, and a write for another
+   * account is recorded but changes nothing.
+   */
   const freshDeps = (): WalkStateDeps => {
     const mocks: WalkStateDeps = {
-      readExchangeState: jest.fn(async (_accountId: string) => JSON.stringify(state)),
+      readExchangeState: jest.fn(async (read: string) =>
+        read === accountId ? JSON.stringify(state) : null,
+      ),
       patchExchangeState: jest.fn(async (written: string, patches) => {
         apply(mocks.patchExchangeState, written, patches);
       }),

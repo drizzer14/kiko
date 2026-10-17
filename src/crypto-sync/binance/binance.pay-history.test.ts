@@ -151,7 +151,7 @@ const makeDeps = (over: Partial<BinancePayHistoryDeps> = {}): BinancePayHistoryD
 
 const freshRun = () => createBinanceHistoryRun({ now: () => NOW, sleep: async () => undefined });
 
-const sync = (deps: BinancePayHistoryDeps, accountId: string = nextAccountId(), run = freshRun()) =>
+const sync = (deps: BinancePayHistoryDeps, accountId: string = WALK_ACCOUNT_ID, run = freshRun()) =>
   syncBinancePayHistory({ targetAccountId: accountId, run }, deps);
 
 type PayQuery = { startTime: number; endTime: number };
@@ -398,7 +398,7 @@ describe('importing the orders of a window', () => {
   const recent = () => payWalkAt(NOW - 3_600_000);
 
   it('maps an outgoing order onto Spot, signed, with the nickname and the account-keyed id', async () => {
-    const accountId = nextAccountId();
+    const accountId = WALK_ACCOUNT_ID;
     const deps = makeDeps({
       ...recent(),
       fetchPayHistory: scripted([payPage([order()])]),
@@ -2528,7 +2528,7 @@ describe('the range cursor and the span hints of the round-robin', () => {
       budget: { canAfford: () => requests.mock.calls.length < 3, record: () => undefined },
     };
 
-    await sync(first, nextAccountId(), run);
+    await sync(first, WALK_ACCOUNT_ID, run);
 
     const stored = walkMarkWritesOf(first, 'pay', 'spanHints').at(-1) as { pending: unknown };
     expect(stored.pending).toEqual([{ start: day.start, end: day.start + DAY_MS / 4 }]);

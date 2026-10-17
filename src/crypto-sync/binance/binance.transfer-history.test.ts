@@ -397,6 +397,7 @@ const holdingWith = (id: string, metadata: Record<string, unknown>): HoldingRow 
   ({ id, metadata }) as unknown as HoldingRow;
 
 type World = {
+  accountId: string;
   state: ReturnType<typeof walkStateFake>;
   others: HoldingRow[];
   added: BinanceHistoryRow[];
@@ -410,11 +411,14 @@ type World = {
 const worldOf = (
   marks: WalkMarkSeed = {},
   others: HoldingRow[] = [holdingWith('h-funding', { binanceAsset: FUNDING_KEY })],
+  accountId = 'acc-1',
 ): World => {
   const events: string[] = [];
 
   return {
+    accountId,
     state: walkStateFake({
+      accountId,
       marks: { transfer: marks },
       onWrite: ({ walkName, field }) => {
         if (field !== 'spanHints') {
@@ -483,7 +487,7 @@ const walkOnce = async (input: {
   now?: number;
   over?: Partial<BinanceTransferHistoryDeps>;
 }) => {
-  const { world, entries = [], answer, accountId = 'acc-1', run = freshRun() } = input;
+  const { world, entries = [], answer, accountId = world.accountId, run = freshRun() } = input;
   const deps = depsOf(world, serverOf(entries, answer, input.endLeftOut), {
     ...foldMap(maybe(input.now), (nowMs) => ({ now: () => nowMs })),
     ...input.over,
@@ -2332,7 +2336,7 @@ describe('the budget of a run', () => {
 
   it('on a 429: sets the cooldown, ends every later read, and the next run asks nothing while it lasts', async () => {
     const accountId = nextAccountId();
-    const world = worldOf();
+    const world = worldOf({}, undefined, accountId);
     let seen = 0;
 
     const first = await walkOnce({
@@ -2490,13 +2494,17 @@ describe('the range cursor and the span hints of the round-robin', () => {
 
     it('imports a transfer in a later window of the range within ceil(windows / reads a run) runs, though the FAILED transfer owed beside it leaves a read of one window a run', async () => {
       const accountId = nextAccountId();
-      const world = worldOf({
-        cursor: NOW - HOUR_MS,
-        pending: [
-          { start: floor, end: agoMs(40) },
-          { start: failedAt - 1, end: failedAt + 1, kind: 'point', series: 'MAIN_FUNDING' },
-        ],
-      });
+      const world = worldOf(
+        {
+          cursor: NOW - HOUR_MS,
+          pending: [
+            { start: floor, end: agoMs(40) },
+            { start: failedAt - 1, end: failedAt + 1, kind: 'point', series: 'MAIN_FUNDING' },
+          ],
+        },
+        undefined,
+        accountId,
+      );
       const importedAt: number[] = [];
 
       for (let run = 0; run < 2 * owedWindows; run += 1) {

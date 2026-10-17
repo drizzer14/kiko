@@ -1,3 +1,4 @@
+import { match } from 'ts-pattern';
 import { accountsRepo } from '@kiko/accounts';
 
 import type { BalanceProviderId } from '../provider';
@@ -25,12 +26,11 @@ export const disconnectCryptoAccount = async (
   accountId: string,
   providerId: BalanceProviderId,
 ): Promise<void> => {
-  if (providerId === 'binance') {
-    await accountsRepo.disconnectExchange(accountId, providerId, HISTORY_FLOOR_MS);
-    await clearCredentials(accountId);
-
-    return;
-  }
-
-  await accountsRepo.disconnect(accountId);
+  await match(providerId)
+    .with('binance', async (exchangeId) => {
+      await accountsRepo.disconnectExchange(accountId, exchangeId, HISTORY_FLOOR_MS);
+      await clearCredentials(accountId);
+    })
+    .with('btc_wallet', () => accountsRepo.disconnect(accountId))
+    .exhaustive();
 };

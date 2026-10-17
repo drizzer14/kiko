@@ -155,8 +155,8 @@ const depositServer = (all: BinanceDeposit[]) =>
  * A stateful Spot holding for a multi-run test: each run's `listHoldings` reads whatever the
  * LAST run's writers wrote, so a resumed run genuinely picks up from where the prior one left off.
  */
-const makeStatefulSpotAccount = () => {
-  const state = walkStateFake({ accountId: ACCOUNT_ID });
+const makeStatefulSpotAccount = (accountId = ACCOUNT_ID) => {
+  const state = walkStateFake({ accountId });
   const capital = () => state.marksOf('capital');
 
   return {
@@ -875,7 +875,7 @@ describe('a settled capital row the walk cannot trust stops its window', () => {
 describe('resumable, budgeted walk', () => {
   it('a first sync completes over several runs, each staying within the withdraw-call budget', async () => {
     let clock = NOW;
-    const account = makeStatefulSpotAccount();
+    const account = makeStatefulSpotAccount('acc-first-sync');
     // A per-UTC-minute call counter mirrors Binance's real weight ceiling: more
     // than 10 withdraw calls in one minute 429s. The fallback budget (9 per
     // run) must keep every run safely under this.
@@ -925,7 +925,7 @@ describe('resumable, budgeted walk', () => {
   });
 
   it('run 1 makes at most the capital withdraw lane cap, one window per call', async () => {
-    const account = makeStatefulSpotAccount();
+    const account = makeStatefulSpotAccount('acc-budget');
     const fetchWithdrawHistory = jest.fn(async () => historyPage([withdrawal()]));
     const deps = makeFirstSyncDeps(account, { fetchWithdrawHistory });
 
@@ -969,7 +969,7 @@ describe('resumable, budgeted walk', () => {
   });
 
   it('a 429 stops the walk without rejecting, commits every EARLIER window, and cools down until Retry-After passes', async () => {
-    const account = makeStatefulSpotAccount();
+    const account = makeStatefulSpotAccount('acc-429');
     let callCount = 0;
     const fetchWithdrawHistory = jest.fn(async () => {
       callCount += 1;
@@ -1037,7 +1037,7 @@ describe('resumable, budgeted walk', () => {
   ];
 
   it.each(RATE_LIMITS)('%s', async (_name, accountId, status, retryAfterMs, elapsedMs) => {
-    const account = makeStatefulSpotAccount();
+    const account = makeStatefulSpotAccount(accountId);
     let clock = NOW;
     const fetchWithdrawHistory = jest.fn(async () => {
       throw new BinanceRateLimitError(status, retryAfterMs);
@@ -1056,7 +1056,7 @@ describe('resumable, budgeted walk', () => {
   });
 
   it('the used-UID-weight header stops the run after the window it was reported on', async () => {
-    const account = makeStatefulSpotAccount();
+    const account = makeStatefulSpotAccount('acc-weight');
     // Leaves no room for another withdraw call (one more would exceed the
     // per-minute ceiling).
     const reportedWeight = UID_WEIGHT_BUDGET_1M - COSTS.withdraw.uid + 1;
@@ -1103,7 +1103,7 @@ describe('resumable, budgeted walk', () => {
   });
 
   it('a window needing a 2nd withdraw page when only 1 call is left is not committed and not marked', async () => {
-    const account = makeStatefulSpotAccount();
+    const account = makeStatefulSpotAccount('acc-partial-window');
     const fullPage = Array.from({ length: HISTORY_PAGE_LIMIT }, (_unused, index) =>
       withdrawal({ id: `w${index}` }),
     );
@@ -1134,7 +1134,7 @@ describe('resumable, budgeted walk', () => {
   it('crash order: rows commit before the watermark advances, for the same window', async () => {
     const invocationCallOrder: string[] = [];
     const account = walkStateFake({
-      accountId: ACCOUNT_ID,
+      accountId: 'acc-crash-order',
       onWrite: ({ walkName, field }) => logWrite(invocationCallOrder, walkName, field),
     });
     const addTransactions = jest.fn(async (rows: BinanceTransactionRow[]) => {
@@ -1153,8 +1153,8 @@ describe('resumable, budgeted walk', () => {
 
     await sync(deps, 'acc-crash-order');
 
-    // The owed overlap day is stored before the cursor moves, and leaves the list once the
-    // re-scan has read it.
+    // The rows commit first; the owed overlap day then goes into the list ahead of the cursor
+    // move, and leaves the list once the re-scan has read it.
     expect(invocationCallOrder).toEqual([
       'addTransactions',
       'capital:pending',
@@ -1164,7 +1164,7 @@ describe('resumable, budgeted walk', () => {
   });
 
   it('regression: rows from an earlier, committed window ARE written despite a later 429 (inverse of the all-or-nothing bug)', async () => {
-    const account = makeStatefulSpotAccount();
+    const account = makeStatefulSpotAccount('acc-regression');
     let callCount = 0;
     const fetchWithdrawHistory = jest.fn(async () => {
       callCount += 1;
@@ -1339,7 +1339,7 @@ describe('forward progress on a heavy account', () => {
 
   /** A heavy account whose capital cursor is 2 days behind. */
   const heavyState = async (): Promise<HeavyState> => {
-    const account = makeStatefulSpotAccount();
+    const account = makeStatefulSpotAccount(ACCOUNT);
     account.seed('capital', { cursor: NOW - 2 * DAY_MS });
 
     return { account, imported: new Set() };
@@ -1426,7 +1426,7 @@ describe('forward progress with a dense day just behind the cursor', () => {
   const keyOf = (record: BinanceWithdrawal): string => `${ACCOUNT}:withdraw:${record.id}`;
 
   const denseState = async () => {
-    const account = makeStatefulSpotAccount();
+    const account = makeStatefulSpotAccount(ACCOUNT);
     account.seed('capital', { cursor: CURSOR });
 
     return { account, imported: new Set<string>() };
@@ -1497,7 +1497,7 @@ describe('a capital cursor older than the re-scan window', () => {
   const keyOf = (record: BinanceWithdrawal): string => `${ACCOUNT}:withdraw:${record.id}`;
 
   const oldCursorState = async (cursor = CURSOR) => {
-    const account = makeStatefulSpotAccount();
+    const account = makeStatefulSpotAccount(ACCOUNT);
     account.seed('capital', { cursor });
 
     return { account, imported: new Set<string>() };
@@ -1630,7 +1630,7 @@ describe('the pending overlap days of the capital walk', () => {
   const keyOf = (record: BinanceWithdrawal): string => `${ACCOUNT}:withdraw:${record.id}`;
 
   const stateOf = async (cursor: number | null, pending: OwedGround[] = []) => {
-    const account = makeStatefulSpotAccount();
+    const account = makeStatefulSpotAccount(ACCOUNT);
 
     account.seed('capital', { cursor: cursor ?? undefined, pending });
 
