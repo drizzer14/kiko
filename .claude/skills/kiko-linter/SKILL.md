@@ -1116,11 +1116,21 @@ because the pre-write guard reads TypeScript only and a shell write never reache
   match time per large file, and under `check:security`'s full-tree
   load it hit the per-rule timeout on `holding-form.screen.test.tsx`
   (4173 lines), which fails the gate. The guard speed check did not
-  show that. So open no `pattern-inside` with `...`: write
-  `<declaration>` / `...`. The rule then costs at most 0.08 s of rule
-  match time per file (Semgrep `--time`, `match_times`, not wall time),
-  and it accepts a known false negative: a use placed before a hoisted
-  `async function` declaration is not flagged. For every new statement-sequence rule, run both the
+  show that. So never write the two-sided `...` / `<decl>` / `...`
+  (O(k*m) ranges per declaration): write `<declaration>` / `...`. A
+  one-sided leading arm `...` / `<decl>` is allowed only when it is
+  needed to keep findings (e.g. a use placed before a hoisted
+  declaration) and its cost is measured with `semgrep --time` on the
+  largest matching file (`match_times`, not wall time). Example:
+  `kiko-worklet-directive-required` once used two-sided arms and timed
+  out `check:security` on
+  `src/screens/statistics/net-worth-line/net-worth-line.component.tsx`
+  (1.4-2.9 s of rule match time against the 5 s default per-rule
+  budget under load); split into one-sided arms it costs 0.12-0.21 s
+  there and the whole tree went 2.69 s to 0.35 s, with identical
+  findings. Pin each arm with its own fixture. A rule with only the
+  trailing arm accepts the false negative that a use placed before a
+  hoisted `async function` is not flagged. For every new statement-sequence rule, run both the
   guard speed check in "Adding a pre-write guard rule" AND a
   whole-tree `npm run check:security`; the fixtures are too small to
   show either cost.
@@ -1295,8 +1305,9 @@ argument of a reanimated worklet hook, `runOnUI`, or a
 list. It does NOT catch an imported helper (that stays a review item),
 excludes a helper declared inside the callback itself, and excludes
 test files (Jest mocks reanimated; the rule's comment states the
-timeout reason). Known false positive: a call in the deps argument of
-`useAnimatedStyle` is flagged too. This is a real, previously-shipped bug class (see
+timeout reason). A call in the deps argument of
+`useAnimatedStyle` is NOT flagged (the rule's focus-metavariable
+and the rule's good fixture deps case pin it). This is a real, previously-shipped bug class (see
 `kiko-gestures`'s "Every function called inside a worklet needs its
 own `'worklet'` directive" and memory
 `worklet-directive-debug-swallows-release-aborts`): the missing

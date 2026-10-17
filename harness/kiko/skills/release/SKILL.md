@@ -243,3 +243,5 @@ memory `release-5-6-audit-findings` and
   will not re-accept a build number it has already seen, even after a
   rejection — bump `CURRENT_PROJECT_VERSION` before every re-archive,
   including a same-`MARKETING_VERSION` hotfix re-submission.
+- **A spent build's archive is MOVED, never deleted or renamed in place.** Move it out of
+  `~/Library/Developer/Xcode/Archives` to `Archives-spent/<name> SPENT-DO-NOT-UPLOAD.xcarchive`.

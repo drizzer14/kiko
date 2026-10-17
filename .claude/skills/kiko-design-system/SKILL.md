@@ -1535,6 +1535,10 @@ new component can land between reviews of this skill:
   Currency check). A field opens a picker sheet for one
   selection among many options; `ChipRow` below toggles inline
   among a small fixed set instead.
+- **DateRangeField** (`src/design-system/components/date-range-field/`) —
+  the date-range picker trigger + sheet. The range behind a DateRangeField
+  is shared by Home and Statistics (kiko-domain "no custom range" pattern);
+  never give a screen its own range state.
 - **ChipRow** (`src/design-system/components/chip-row/`) — the ONE
   shared wrap-flow chips component: a compact wrap-flow row for a short
   code/label chip, never an equal-width column grid (that is

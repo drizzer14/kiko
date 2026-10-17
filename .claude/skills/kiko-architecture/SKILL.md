@@ -2797,6 +2797,17 @@ what a change must keep.
   a sync status) that several screens show lives in ONE module store
   (`useSyncExternalStore`; see `src/monobank/sync-status/`,
   `src/reminders/permission/`), never in per-component `useState`.
+- **Shared UI state across screens.** State two mounted screens must show
+  identically (the Home/Statistics date range; see kiko-domain's "no custom
+  range" pattern) lives in ONE module store read with `useSyncExternalStore`
+  (`src/design-system/use-date-range-selection/`), never per-screen
+  `useState`. It resets when no reader is mounted, deferred one
+  `Promise.resolve().then(...)` microtask with a `listeners.size === 0`
+  re-check, so a same-commit swap of every reader keeps it; never
+  `queueMicrotask`. A reader publishes into the store in `useLayoutEffect`,
+  never during render. The notification-permission store resets at once on
+  `size === 0`: the deferral applies only where a whole-tree swap must keep
+  the state.
 - **Permission.** `useNotificationPermission()`
   (`src/reminders/permission/`) returns `{ status, request }` and never
   rejects. `status` is ONE module-level store read through

@@ -205,7 +205,11 @@ From `biome.json`'s `linter.rules`:
   `rerender` call (RNTL returns a promise). A deliberate fire-and-forget
   of a total function (an `either(...)` call, `refreshMarketData`,
   `runLoanAutoLink`, a hook's shared `sync`) stays a plain expression
-  statement with a justified override on the line above:
+  statement with a justified override on the line above: the bare form
+  `// biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function)`
+  with a comment line above it naming the callee and why it never rejects
+  (the form most uses follow). The one-line form with the callee after the
+  reason is also accepted by `check:overrides`:
   `// biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function) <callee> never rejects`.
   Verify the callee never rejects before you write that; if it can
   reject, handle the rejection instead. For `logOnFailure(...)` (never

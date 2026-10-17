@@ -1612,19 +1612,28 @@ production function — and never `performance.now()`/`Date.now()` deltas.
 
 The hook `useDateRangeSelection(now)`
 (`src/design-system/use-date-range-selection/use-date-range-selection.ts`)
-owns the active date range for both Statistics and Home and returns
-`{ dateFrom, dateTo, applyDateRange, clearDateRange }`. It keeps the user's
-pick as a private `customRange`
-(`{ from: Date | null; to: Date | null } | null` — `null` means "show the
-default range"). The DEFAULT range comes from `defaultDateRange(now)` on
-every render and is never stored: `dateFrom`/`dateTo` are plain `const`s
-computed each render from `customRange ?? defaultDateRange(now)`, never
-`useState`. A range stored once at mount would freeze at that `now`, so a
-tab left mounted past midnight (both tabs stay mounted — kiko-architecture)
-would stop including "today". `applyDateRange`/`clearDateRange` only write
-`customRange`; `clearDateRange` resets it to `null`, back to the default,
-never to a frozen "30 days as of Clear" snapshot. A screen must not hold
-its own `dateFrom`/`dateTo` state: call the hook with its own `now`.
+owns the ONE date range shared by Home and Statistics and returns
+`{ dateFrom, dateTo, applyDateRange, clearDateRange }`. The pick
+(`customRange`, `{ from: Date | null; to: Date | null } | null` — `null`
+means "show the default range") and the default live in ONE module store
+read with `useSyncExternalStore`, never per-screen `useState`, so a pick
+or a Clear in one screen shows in the other (the Duo two-pane layout shows
+both). The shared default comes from a forward-only clock: each reader
+publishes its `now` in `useLayoutEffect` (never a write during render),
+and the store notifies only on a new local day, a pick or a Clear, so
+Home's fresh `Date.now()` every render does not loop. A reader mounted
+after a day crossing renders `defaultDateRange(now)` when the shared
+default is older than its own day (a pure render rule, no stale frame). A
+range stored once at mount would freeze at that `now`, so a tab left
+mounted past midnight (both tabs stay mounted — kiko-architecture) would
+stop including "today". `clearDateRange` resets the pick to `null`, back
+to the default, never to a frozen "30 days as of Clear" snapshot. The
+store resets when no reader is mounted after the commit, deferred ONE
+`Promise` microtask with a `listeners.size === 0` re-check, because a
+fold/unfold that swaps every reader unmounts and remounts in one commit
+and must keep the pick; use `Promise.resolve().then(...)`, never
+`queueMicrotask` (jest modern fake timers replace it). A screen must not
+hold its own `dateFrom`/`dateTo` state: call the hook with its own `now`.
 Statistics' own `now`
 already refreshes on focus (`useFocusRefreshedNow`); Home's `now` is a
 plain `Date.now()` read fresh every render. Deriving `dateFrom`/`dateTo`

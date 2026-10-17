@@ -1,6 +1,27 @@
 # HANDOFF — Kiko 1.0.0: BUILD 25 ready for user resubmission; harness agents re-tuned (2026-09-22)
 
-## ⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐ COORDINATOR HANDOFF (2026-10-16 ~01:40) — READ THIS FIRST
+## ⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐ COORDINATOR HANDOFF (2026-10-17 ~14:30) — READ THIS FIRST
+Coordinator was SendMessage "pff-ios-8a" (job 828f039f). Event logs: memory/refs/night-summary-2026-10-16.md (from
+"~21:49 LAPTOP REBOOT") and memory/refs/night-summary-2026-10-17.md. The 2026-10-16 ~01:40 section below is HISTORY.
+FIRST ACTIONS of the next session:
+1. Walk the user through memory/refs/morning-walkthrough-2026-10-17.md IN ITS ORDER, one item at a time
+   (AskUserQuestion, recommendation first); log each answer and send it to the named track.
+2. `orca terminal list` (Orca restores sessions); ListAgents; tell each live orchestrator your SendMessage name.
+3. Arm: a background watcher on memory/refs/coordinator-inbox.log (sessions that cannot reach SendMessage append one
+   line there), a pmset watcher (battery <-> AC), a gauge watcher (memory/refs/gaugewatch.sh, 40 %) per orchestrator.
+4. Orca send hygiene: always send WITH Enter, after `orca terminal read --screen` shows no prompt and an empty input box.
+| Thing | Value |
+|---|---|
+| main = next | a74b8a00 (tonight: 4509644b guidelines 2.5.19, f505a37c 1.2 fixes, edda07f2 net-worth chart line, 024164c7 Binance set 2 + migration 0060, ee8728e4 currency pickers, a74b8a00 shared date range). Plugin 0.4.20 installed. origin/main NOT pushed. MERGE PATH: queued verify at the exact sha (from the target worktree's own scripts) + `bash scripts/ff-main.sh <sha>`. |
+| Retro 2026-10-17 | Memory written by kiko:scribe; skill drift commit in worktree retro-2026-10-17 (plugin 0.4.21): queued verify + ff-main.sh, then claude plugin update + /reload-plugins. See the night summary end for its state. |
+| 1.3 EXCHANGES | binance-f5 = term_b3646f95-3fff-49aa-a901-904662fd7410 (worktree binance-backfill-fix; reports via the inbox file). Set 2 MERGED. Set 3 (exchange-layer extraction, code moves only, 2 change sets, run 20261017T1100) RUNNING from ee8728e4; 4-7 h to BATCH READY; then two gates (3a base ee8728e4, 3b base its step-5 sha). Notes: .superpowers/sdd/binance-multicoin/HANDOFF.md. |
+| RELEASE 1.2.0 (31) | In App Store review. release-12 h1 = SendMessage "release-1-2-87" (term_0b5853a0), idle. Step 7 DONE (fixes on main). Step 8 after publication (tag v1.2.0 on f0f1d2a8 + main follow-ups). Build 30 archive in ~/Library/Developer/Xcode/Archives-spent/. |
+| DUO | duo-g1 = term_9337ecde (inbox), IDLE. duo-adaptive 5a3dacaf (user sim check LGTM). Merge to main needs a fresh main merge + split plan (walkthrough item 5). |
+| NET-WORTH-SCRUB | MERGED. scrub-a1 = term_52d337e5 finishing its run log (asked twice): then archive .superpowers to memory/refs/sdd-archive/net-worth-scrub-2026-10-17/, close the terminal, prune the worktree. |
+| iPhone | Scratch build device-features 5873d789 (= today's features, shows 1.1.0 (29)); user live check LGTM. Worktree device-features to prune after the user agrees (walkthrough item 8). |
+| Status | PM session "Status" (term_68c9abb1): one message per milestone. |
+
+## ⭐ COORDINATOR HANDOFF (2026-10-16 ~01:40) — HISTORY
 Coordinator job 828f039f. Event log: memory/refs/night-summary-2026-10-15.md (from "~14:10 Coordinator
 /clear" to the end). Session addresses: memory orca-hub (last bullets). The 2026-10-15 ~14:00 section
 below is HISTORY.
