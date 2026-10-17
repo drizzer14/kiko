@@ -2,6 +2,7 @@
   "enabledPlugins": {
     "kiko@kiko-marketplace": true
   },
+  "autoMemoryDirectory": "/Users/drizzer14/.claude/projects/-Users-drizzer14-Developer-Projects-pff-ios/memory",
   "permissions": {
     "allow": [
       "Bash(make:*)",
