@@ -7,8 +7,8 @@ import Animated, {
 import { type FC, useEffect } from 'react';
 import { useUnistyles } from 'react-native-unistyles';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useFoldRegion, useLayoutMode } from '@kiko/display-regions';
 import { isLiquidGlassSupported, LiquidGlassView } from '@callstack/liquid-glass';
+import { useDisplayRegions, useFoldRegion, useLayoutMode } from '@kiko/display-regions';
 import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 import { Keyboard, Modal, Pressable, ScrollView, useWindowDimensions, View } from 'react-native';
 
@@ -155,8 +155,10 @@ const BottomSheet: FC<BottomSheetProps> = ({
   // screen's remount anyway, so a brief mismatch is harmless.
   const layoutMode = useLayoutMode();
   const foldRegion = useFoldRegion();
+  const { horizontalSizeClass } = useDisplayRegions();
   const frame = resolveSheetFrame({
     mode: layoutMode,
+    sizeClass: horizontalSizeClass,
     window,
     fold: foldRegion,
     hairline: theme.layout.hairline,

@@ -86,6 +86,7 @@ const RULE_IDS_WITH_FIXTURES = [
   'kiko-rejects-to-throw-needs-error',
   'kiko-sortable-grid-lone-card-lifts',
   'kiko-kind-ternary-prefers-match',
+  'kiko-no-device-idiom',
 ] as const;
 
 // kiko-no-literal-sync-error carries a path-prefixed `paths.include` (
@@ -121,6 +122,7 @@ const NESTED_FIXTURE_PREFIXES: Partial<Record<(typeof RULE_IDS_WITH_FIXTURES)[nu
   'kiko-test-title-no-history': 'kiko-test-title-no-history/src/test-support/title-example',
   'kiko-rejects-to-throw-needs-error':
     'kiko-rejects-to-throw-needs-error/src/test-support/rejects-example',
+  'kiko-no-device-idiom': 'kiko-no-device-idiom/src/layout/device-idiom',
 };
 
 // A rule scoped by `paths.include` only fires when the guard's OWN probe
@@ -142,6 +144,7 @@ const PROBE_DIRECTORIES: Partial<Record<(typeof RULE_IDS_WITH_FIXTURES)[number],
   'kiko-no-change-language-in-test-body': 'src/test-support',
   'kiko-test-title-no-history': 'src/test-support',
   'kiko-rejects-to-throw-needs-error': 'src/test-support',
+  'kiko-no-device-idiom': 'src/layout',
 };
 
 function fixturePrefix(ruleId: string): string {

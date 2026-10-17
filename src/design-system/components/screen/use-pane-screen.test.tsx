@@ -47,6 +47,20 @@ describe('useContentCap', () => {
     expect(result.current).toBe(styles.paneCap);
   });
 
+  // The panes follow the settled mode, which lags the live one by a settle delay: a screen not yet
+  // in a pane must keep its cap while the live mode already reads split.
+  it.each<LayoutMode>(['single', 'columns', 'rows'])(
+    'caps the content outside a pane on a regular window while the live mode reads %s',
+    async (mode) => {
+      mockUseLayoutMode.mockReturnValue(mode);
+      mockUseDisplayRegions.mockReturnValue({ horizontalSizeClass: 'regular' });
+
+      const { result } = await renderHook(() => useContentCap());
+
+      expect(result.current).toBe(styles.paneCap);
+    },
+  );
+
   it('leaves the content of a single pane on a compact window uncapped', async () => {
     const { result } = await renderHook(() => useContentCap());
 

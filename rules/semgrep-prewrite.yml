@@ -2200,3 +2200,32 @@ rules:
       fix: "jest.requireActual('module') as { ... }  (or `const actual: Shape = jest.requireActual('module')`), no `<T>` on the call; the same for requireMock, createMockFromModule and genMockFromModule."
       skill: "kiko-code-style › A jest.requireActual call takes no type argument"
     pattern-regex: '\bjest\s*(?:\?\.|\.)\s*(?:require(?:Actual|Mock)|createMockFromModule|genMockFromModule)\s*<'
+  # The layout keys off the horizontal size class and the window or pane width, never the device:
+  # a later device that reports a regular class must get the same layout. A word regex over
+  # `generic`, not AST patterns: the four idiom words are the whole signal, so an import alias
+  # (`Platform as P`), a namespace read (`RN.Platform.isPad`), an optional chain, a bracket read,
+  # a destructure and an Objective-C read all match, and Semgrep has no Objective-C grammar. It
+  # reads comments and strings too, so a source comment cannot name the idiom either. The pre-write
+  # guard sees the TypeScript half only (it never reads `ios/`); the Swift and Objective-C half is
+  # proven project-wide by `security.sh`. `ios/Kiko` is the app's own native code, never Pods.
+  - id: kiko-no-device-idiom
+    languages: [generic]
+    severity: ERROR
+    message: >
+      The device idiom is read. A layout decision keys off the horizontal size class and the
+      window or pane width (`useDisplayRegions().horizontalSizeClass`, `useLayoutMode()`), never
+      `Platform.isPad`, `Platform.constants.interfaceIdiom`, `userInterfaceIdiom` or
+      `UI_USER_INTERFACE_IDIOM`, so a later device that reports a regular class gets the same
+      layout.
+    metadata:
+      fix: "Read the size class (`useDisplayRegions().horizontalSizeClass`) or the layout mode (`useLayoutMode()`); in native code, `traitCollection.horizontalSizeClass`."
+      skill: "kiko-architecture › Pane navigation"
+    paths:
+      include:
+        - "src/**/*.ts"
+        - "src/**/*.tsx"
+        - "ios/Kiko/**/*.swift"
+        - "ios/Kiko/**/*.m"
+        - "ios/Kiko/**/*.mm"
+        - "ios/Kiko/**/*.h"
+    pattern-regex: '\b(?:isPad|interfaceIdiom|userInterfaceIdiom|UI_USER_INTERFACE_IDIOM)\b'

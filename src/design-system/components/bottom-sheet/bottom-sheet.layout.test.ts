@@ -1,4 +1,4 @@
-import type { FoldRegion } from '@kiko/display-regions';
+import type { FoldRegion, HorizontalSizeClass } from '@kiko/display-regions';
 
 import { resolveSheetFrame } from './bottom-sheet.layout';
 
@@ -14,11 +14,30 @@ const frameOf = (
   mode: 'single' | 'columns' | 'rows',
   window: { width: number; height: number },
   fold: FoldRegion = null,
-) => resolveSheetFrame({ mode, window, fold, hairline: HAIRLINE, maxWidth: MAX_WIDTH });
+  sizeClass: HorizontalSizeClass = 'compact',
+) => resolveSheetFrame({ mode, sizeClass, window, fold, hairline: HAIRLINE, maxWidth: MAX_WIDTH });
 
 describe('resolveSheetFrame', () => {
   it('leaves a single window full width, as before', () => {
     expect(frameOf('single', OUTER)).toEqual({});
+  });
+
+  it('caps a single regular window at the maximum width and centres it', () => {
+    expect(frameOf('single', { width: 720, height: 500 }, null, 'regular')).toEqual({
+      width: 540,
+      left: (720 - 540) / 2,
+    });
+  });
+
+  it('shrinks the card to a single regular window narrower than the maximum width', () => {
+    expect(frameOf('single', { width: 500, height: 720 }, null, 'regular')).toEqual({
+      width: 500,
+      left: 0,
+    });
+  });
+
+  it('leaves a single compact iPhone window full width', () => {
+    expect(frameOf('single', { width: 390, height: 844 })).toEqual({});
   });
 
   it('leaves a single window alone even while a fold is reported', () => {

@@ -10,9 +10,9 @@ const REPOSITORY_ROOT = join(__dirname, '../..');
 const SCRIPT = join(REPOSITORY_ROOT, 'scripts/checks/plist.sh');
 const LIB = join(REPOSITORY_ROOT, 'scripts/checks/_lib.sh');
 
-export const INFO_PLIST = 'ios/Kiko/Info.plist';
+const INFO_PLIST = 'ios/Kiko/Info.plist';
 export const PROJECT_PATH = 'ios/Kiko.xcodeproj/project.pbxproj';
-export const ENGLISH_NAME_TABLE = 'ios/Kiko/en.lproj/InfoPlist.strings';
+const ENGLISH_NAME_TABLE = 'ios/Kiko/en.lproj/InfoPlist.strings';
 export const UKRAINIAN_NAME_TABLE = 'ios/Kiko/uk.lproj/InfoPlist.strings';
 export const PRIVACY_MANIFEST = 'ios/Kiko/PrivacyInfo.xcprivacy';
 

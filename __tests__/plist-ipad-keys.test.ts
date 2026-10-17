@@ -1,8 +1,11 @@
 import { join } from 'node:path';
-import { readFileSync } from 'node:fs';
+import { chmodSync, readFileSync, writeFileSync } from 'node:fs';
 
 import { buildPlistRoot, runPlistCheck } from './test-support/plist-root';
-import { removeTemporaryDirectories } from './test-support/temporary-directory';
+import {
+  createTemporaryDirectory,
+  removeTemporaryDirectories,
+} from './test-support/temporary-directory';
 
 const REAL_INFO_PLIST = readFileSync(join(__dirname, '../ios/Kiko/Info.plist'), 'utf8');
 
@@ -140,6 +143,32 @@ describe('scripts/checks/plist.sh iPad scene keys', () => {
       'none of UILaunchStoryboardName, UILaunchStoryboards, UILaunchScreen, UILaunchScreens is declared',
     );
     expect(result.stderr).not.toContain('is not a valid property list');
+  });
+
+  // The top-level key read is the one `node` call that cannot be told from a missing key: a stub
+  // that fails only that call proves the check fails closed rather than passing on no keys.
+  it('fails closed (exit 2) when the top-level keys of Info.plist cannot be read', () => {
+    const stubDirectory = createTemporaryDirectory('kiko-plist-node-stub-');
+    const stub = join(stubDirectory, 'node');
+    writeFileSync(
+      stub,
+      [
+        '#!/bin/sh',
+        `case "$*" in *'Object.keys(JSON.parse(input))'*) exit 1 ;; esac`,
+        `exec '${process.execPath}' "$@"`,
+        '',
+      ].join('\n'),
+    );
+    chmodSync(stub, 0o755);
+
+    const result = runPlistCheck(buildPlistRoot({ infoPlist: REAL_INFO_PLIST }), {
+      ...process.env,
+      PATH: `${stubDirectory}:${process.env.PATH}`,
+    });
+
+    expect(result.status).toBe(2);
+    expect(result.stderr).toContain('could not read the top-level keys of ios/Kiko/Info.plist');
+    expect(result.stderr).not.toContain('UIRequiresFullScreen must be absent');
   });
 
   it('passes when the launch screen key carries a device modifier', () => {

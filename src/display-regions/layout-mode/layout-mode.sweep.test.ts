@@ -3,6 +3,8 @@ import { type LayoutMode, MINIMUM_PANE_LENGTH, resolveLayoutMode } from '.';
 const SMALLEST_LENGTH = 320;
 const LARGEST_LENGTH = 1376;
 const DIVIDER = 1;
+// A rule broken everywhere would otherwise collect a million strings.
+const MISMATCHES_REPORTED = 10;
 
 const expectedRegularMode = (width: number, height: number): LayoutMode => {
   const isWide = width >= height;
@@ -31,7 +33,8 @@ const mismatchesAt = (width: number, height: number): string[] => {
 };
 
 describe('resolveLayoutMode over every integer window', () => {
-  // One `it` over ~2.2M windows: an `it.each` here would register that many tests.
+  // One `it` over 1,117,249 windows, each in both size classes: an `it.each` here would register
+  // that many tests.
   it('is single on compact, and splits a regular window exactly when two minimum panes fit', () => {
     const mismatches: string[] = [];
 
@@ -39,10 +42,12 @@ describe('resolveLayoutMode over every integer window', () => {
 
     for (let width = SMALLEST_LENGTH; width <= LARGEST_LENGTH; width += 1) {
       for (let height = SMALLEST_LENGTH; height <= LARGEST_LENGTH; height += 1) {
-        mismatches.push(...mismatchesAt(width, height));
+        if (mismatches.length < MISMATCHES_REPORTED) {
+          mismatches.push(...mismatchesAt(width, height));
+        }
       }
     }
 
-    expect(mismatches.slice(0, 10)).toEqual([]);
+    expect(mismatches.slice(0, MISMATCHES_REPORTED)).toEqual([]);
   });
 });
