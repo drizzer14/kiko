@@ -24,7 +24,10 @@
 #      against the main checkout's HEAD must carry a plugin.json `version` strictly above the one
 #      at main's HEAD (numeric dotted compare), because a plugin update only reaches running
 #      sessions under a new version. An unreadable or missing version at either commit refuses.
-#   6. The fast-forward merges the full commit, so main moving between these checks and the merge
+#   6. A commit whose plugin.json `version` is strictly below the one at main's HEAD, or whose
+#      plugin.json is missing or unreadable while main's is readable, is refused whatever the diff.
+#      An equal or higher version, or no readable version at main, passes this rule.
+#   7. The fast-forward merges the full commit, so main moving between these checks and the merge
 #      makes git refuse instead of moving main elsewhere. A dirty main checkout is not checked:
 #      git itself refuses a fast-forward that would overwrite a local change.
 #
@@ -167,6 +170,17 @@ if [ "$harness_changed" -ne 0 ]; then
       'A plugin update reaches running sessions only under a new version, so an unbumped harness change never goes live.' \
       "Bump $PLUGIN_MANIFEST to the next free patch above ${main_version:-the version at main}, queue a verify at the new tip, then re-run with its sha."
   fi
+fi
+
+# Reads both versions again, so this rule stands alone from the harness-change rule above.
+main_version="$(plugin_version "$main_commit")"
+commit_version="$(plugin_version "$full_commit")"
+if [ -n "$main_version" ] && { [ -z "$commit_version" ] || version_above "$main_version" "$commit_version"; }; then
+  fail \
+    'A plugin.json version below main'"'"'s is refused' \
+    "$PLUGIN_MANIFEST version at main ${main_commit}: ${main_version}; at $full_commit: ${commit_version:-unreadable or missing}" \
+    'A lowered or removed version hides a plugin update from running sessions that already hold main'"'"'s version.' \
+    "Restore a $PLUGIN_MANIFEST version at or above $main_version, queue a verify at the new tip, then re-run with its sha."
 fi
 
 if ! merge_output="$(git -C "$main_checkout" merge --ff-only "$full_commit" 2>&1)"; then

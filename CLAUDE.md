@@ -101,7 +101,8 @@ The git `pre-commit`/`pre-merge-commit` hooks (`githooks/`) run the pre-commit t
     allowed: `--abort|--quit|--skip|--continue`.
     Merge in a separate detached worktree, then `bash scripts/ff-main.sh <sha>`
     (a raw `merge --ff-only`/`pull --ff-only` on main is denied; the script refuses a
-    `harness/kiko` change whose `plugin.json` version is not above main's).
+    `harness/kiko` change whose `plugin.json` version is not above main's, and any commit that
+    lowers or removes that version).
   - a shell write (`sed -i`, `perl -i`, `>`/`>>`, `tee`, `cp`/`mv` (also
     `gcp`/`gmv`), python/node one-liner or stdin heredoc script) into `src/`,
     `__tests__/`, `rules/`, `e2e/`, `drizzle/` of any worktree ("SHELL-WRITE deny"); use
