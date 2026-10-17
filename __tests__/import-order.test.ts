@@ -242,6 +242,57 @@ describe('scripts/checks/import-order.sh', () => {
     expect(result.status).toBe(0);
   });
 
+  // An ambient `declare module` block between two import runs (net-worth-line.component.tsx
+  // augments react-native-svg's props there): the imports after it are real imports and are
+  // checked, each run on its own, so the block never merges or reorders them.
+  describe('an ambient declare module block between import runs', () => {
+    const AMBIENT_BLOCK =
+      "declare module 'some-external-package-name' {\n" +
+      '  interface SomeProps {\n' +
+      '    testID?: string;\n' +
+      '  }\n' +
+      '}\n';
+
+    it('flags an unsorted import run after the block', () => {
+      const result = runCheck(
+        "import { x } from 'y';\n" +
+          '\n' +
+          AMBIENT_BLOCK +
+          '\n' +
+          "import { aVeryLongIdentifierNameHere } from 'some-external-package-name';\n" +
+          "import { z } from 'w';\n" +
+          '\n' +
+          'export const Foo = 1;\n',
+      );
+
+      expect(result.status).toBe(2);
+      expect(result.stderr).toContain('Import ordering');
+    });
+
+    it('passes a sorted import run after the block, and does not merge it with the run before', () => {
+      const result = runCheck(
+        "import { x } from 'y';\n" +
+          '\n' +
+          AMBIENT_BLOCK +
+          '\n' +
+          "import { z } from 'w';\n" +
+          "import { aVeryLongIdentifierNameHere } from 'some-external-package-name';\n" +
+          '\n' +
+          'export const Foo = 1;\n',
+      );
+
+      expect(result.status).toBe(0);
+    });
+
+    it('passes a block with no import after it', () => {
+      const result = runCheck(
+        "import { x } from 'y';\n" + '\n' + AMBIENT_BLOCK + '\n' + 'export const Foo = 1;\n',
+      );
+
+      expect(result.status).toBe(0);
+    });
+  });
+
   describe('duplicate module specifier', () => {
     it.each([
       [
@@ -442,6 +493,36 @@ describe('scripts/checks/import-order.js --write', () => {
     expect(fixed).toBe(
       "import { type FC, useEffect } from 'react';\n" +
         "import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';\n" +
+        '\n' +
+        'export const Foo = 1;\n',
+    );
+  });
+
+  it('reorders the import run after an ambient declare module block and keeps the block', () => {
+    const block =
+      "declare module 'some-external-package-name' {\n" +
+      '  interface SomeProps {\n' +
+      '    testID?: string;\n' +
+      '  }\n' +
+      '}\n';
+    const fixed = write(
+      "import { x } from 'y';\n" +
+        '\n' +
+        block +
+        '\n' +
+        "import { aVeryLongIdentifierNameHere } from 'some-external-package-name';\n" +
+        "import { z } from 'w';\n" +
+        '\n' +
+        'export const Foo = 1;\n',
+    );
+
+    expect(fixed).toBe(
+      "import { x } from 'y';\n" +
+        '\n' +
+        block +
+        '\n' +
+        "import { z } from 'w';\n" +
+        "import { aVeryLongIdentifierNameHere } from 'some-external-package-name';\n" +
         '\n' +
         'export const Foo = 1;\n',
     );
