@@ -237,8 +237,33 @@ else
   done
 fi
 
-if plutil -type UIRequiresFullScreen "$PLIST" >/dev/null 2>&1; then
-  add_problem "UIRequiresFullScreen must be absent from ios/Kiko/Info.plist (true or false); either value opts the iPad app out of resizable multitasking windows"
+# An Info.plist key takes a device modifier (`UIRequiresFullScreen~ipad`, and
+# a `-<platform>` suffix before it), so the opt-out and the launch screen are
+# matched on every top-level key rather than on the bare name. The answer is
+# one key per line; an empty one (plutil or node failed) fails closed.
+top_level_keys="$(plutil -convert json -o - "$PLIST" 2>/dev/null | node -e '
+let input = "";
+process.stdin.on("data", (chunk) => (input += chunk)).on("end", () => {
+  try {
+    process.stdout.write(Object.keys(JSON.parse(input)).join("\n"));
+  } catch {
+    process.stdout.write("");
+  }
+});
+')"
+modifier_suffix='(-[a-z]+)?(~[a-z]+)?'
+if [ -z "$top_level_keys" ]; then
+  add_problem "plist.sh could not read the top-level keys of ios/Kiko/Info.plist (plutil or node failed), so UIRequiresFullScreen and the launch screen keys cannot be checked"
+else
+  if grep -qE "^UIRequiresFullScreen${modifier_suffix}\$" <<<"$top_level_keys"; then
+    add_problem "UIRequiresFullScreen must be absent from ios/Kiko/Info.plist (true or false, with or without a device modifier); any value opts the iPad app out of resizable multitasking windows"
+  fi
+
+  # TN3208 / ITMS-90870: a resizable iPad app with no launch screen declared is
+  # rejected on upload.
+  if ! grep -qE "^(UILaunchStoryboardName|UILaunchStoryboards|UILaunchScreen|UILaunchScreens)${modifier_suffix}\$" <<<"$top_level_keys"; then
+    add_problem "none of UILaunchStoryboardName, UILaunchStoryboards, UILaunchScreen, UILaunchScreens is declared in ios/Kiko/Info.plist (TN3208, ITMS-90870)"
+  fi
 fi
 
 if ! plutil -type UIApplicationSceneManifest "$PLIST" >/dev/null 2>&1; then
@@ -248,18 +273,6 @@ else
   if [ "$multiple_scenes" != "false" ]; then
     add_problem "UIApplicationSupportsMultipleScenes must be false in ios/Kiko/Info.plist (found: '${multiple_scenes:-missing}'); the app is single-scene"
   fi
-fi
-
-# TN3208 / ITMS-90870: a resizable iPad app with no launch screen declared is
-# rejected on upload.
-launch_screen_declared=""
-for launch_key in UILaunchStoryboardName UILaunchStoryboards UILaunchScreen UILaunchScreens; do
-  if plutil -type "$launch_key" "$PLIST" >/dev/null 2>&1; then
-    launch_screen_declared="yes"
-  fi
-done
-if [ -z "$launch_screen_declared" ]; then
-  add_problem "none of UILaunchStoryboardName, UILaunchStoryboards, UILaunchScreen, UILaunchScreens is declared in ios/Kiko/Info.plist (TN3208, ITMS-90870)"
 fi
 
 if [ -n "$problems" ]; then

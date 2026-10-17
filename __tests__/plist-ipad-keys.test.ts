@@ -1,75 +1,12 @@
-import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
-import { spawnSync } from 'node:child_process';
-import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { readFileSync } from 'node:fs';
 
-// scripts/checks/plist.sh computes its ROOT as scripts/checks/../.., so each
-// case runs a COPY of it inside a throwaway root whose Info.plist the test
-// controls.
-const REPOSITORY_ROOT = join(__dirname, '..');
-const SCRIPT = join(REPOSITORY_ROOT, 'scripts/checks/plist.sh');
-const LIB = join(REPOSITORY_ROOT, 'scripts/checks/_lib.sh');
-const REAL_INFO_PLIST = readFileSync(join(REPOSITORY_ROOT, 'ios/Kiko/Info.plist'), 'utf8');
+import { buildPlistRoot, runPlistCheck } from './test-support/plist-root';
+import { removeTemporaryDirectories } from './test-support/temporary-directory';
 
-const PROJECT_PATH = 'ios/Kiko.xcodeproj/project.pbxproj';
+const REAL_INFO_PLIST = readFileSync(join(__dirname, '../ios/Kiko/Info.plist'), 'utf8');
 
-const createdPaths: string[] = [];
-
-const writeFile = (root: string, relativePath: string, body: string): void => {
-  const absolutePath = join(root, relativePath);
-  mkdirSync(dirname(absolutePath), { recursive: true });
-  writeFileSync(absolutePath, body);
-};
-
-const PROJECT_FILE = [
-  'name = "Inject Debug-only ATS local networking";',
-  '862F59B3640A40159C5B4910 /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; };',
-  'path = Kiko/en.lproj/InfoPlist.strings;',
-  'path = Kiko/uk.lproj/InfoPlist.strings;',
-  '/* Begin PBXResourcesBuildPhase section */',
-  '0000000000000000000000AA /* InfoPlist.strings in Resources */,',
-  '/* End PBXResourcesBuildPhase section */',
-  '',
-].join('\n');
-
-const PRIVACY_MANIFEST = [
-  '<?xml version="1.0" encoding="UTF-8"?>',
-  '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">',
-  '<plist version="1.0">',
-  '<dict>',
-  '<key>NSPrivacyAccessedAPITypes</key>',
-  '<array>',
-  '<dict><key>NSPrivacyAccessedAPIType</key><string>NSPrivacyAccessedAPICategoryDiskSpace</string><key>NSPrivacyAccessedAPITypeReasons</key><array><string>E174.1</string></array></dict>',
-  '</array>',
-  '</dict>',
-  '</plist>',
-  '',
-].join('\n');
-
-// Every root is valid on every assertion but the one a case breaks, so the
-// Info.plist is the only thing a case varies.
-const buildRoot = (infoPlist: string): string => {
-  const root = mkdtempSync(join(tmpdir(), 'kiko-plist-ipad-'));
-  createdPaths.push(root);
-  mkdirSync(join(root, 'scripts/checks'), { recursive: true });
-  copyFileSync(SCRIPT, join(root, 'scripts/checks/plist.sh'));
-  copyFileSync(LIB, join(root, 'scripts/checks/_lib.sh'));
-  writeFile(root, 'ios/Kiko/Info.plist', infoPlist);
-  writeFile(root, PROJECT_PATH, PROJECT_FILE);
-  writeFile(root, 'ios/Kiko/en.lproj/InfoPlist.strings', '"CFBundleDisplayName" = "Kiko";\n');
-  writeFile(root, 'ios/Kiko/uk.lproj/InfoPlist.strings', '"CFBundleDisplayName" = "Кіко";\n');
-  writeFile(root, 'ios/Kiko/PrivacyInfo.xcprivacy', PRIVACY_MANIFEST);
-  writeFile(root, 'package.json', '{ "dependencies": {} }\n');
-  writeFile(root, '.env', '');
-  mkdirSync(join(root, 'src'), { recursive: true });
-
-  return root;
-};
-
-const runPlistCheck = (infoPlist: string) =>
-  spawnSync('bash', [join(buildRoot(infoPlist), 'scripts/checks/plist.sh')], {
-    encoding: 'utf8',
-  });
+const runInfoPlistCheck = (infoPlist: string) => runPlistCheck(buildPlistRoot({ infoPlist }));
 
 // Throws when the real plist lacks the pattern, so a case cannot pass by
 // mutating nothing.
@@ -81,15 +18,18 @@ const replaceOnce = (source: string, pattern: RegExp, replacement: string): stri
   return source.replace(pattern, replacement);
 };
 
-afterEach(() => {
-  createdPaths.splice(0).forEach((path) => {
-    rmSync(path, { recursive: true, force: true });
-  });
-});
+const withFullScreenKey = (key: string, value: string): string =>
+  replaceOnce(
+    REAL_INFO_PLIST,
+    /<key>UIViewControllerBasedStatusBarAppearance<\/key>/,
+    `<key>${key}</key>\n\t<${value}/>\n\t<key>UIViewControllerBasedStatusBarAppearance</key>`,
+  );
+
+afterEach(removeTemporaryDirectories);
 
 describe('scripts/checks/plist.sh iPad scene keys', () => {
   it('passes on the real Info.plist', () => {
-    const result = runPlistCheck(REAL_INFO_PLIST);
+    const result = runInfoPlistCheck(REAL_INFO_PLIST);
 
     expect(result.stderr).toBe('');
     expect(result.status).toBe(0);
@@ -101,7 +41,7 @@ describe('scripts/checks/plist.sh iPad scene keys', () => {
     'UIInterfaceOrientationPortrait',
     'UIInterfaceOrientationPortraitUpsideDown',
   ])('fails (exit 2) naming %s when the iPad orientations lack it', (orientation) => {
-    const result = runPlistCheck(
+    const result = runInfoPlistCheck(
       replaceOnce(
         REAL_INFO_PLIST,
         new RegExp(
@@ -117,21 +57,35 @@ describe('scripts/checks/plist.sh iPad scene keys', () => {
     );
   });
 
-  it.each(['true', 'false'])('fails (exit 2) when UIRequiresFullScreen is <%s/>', (value) => {
-    const result = runPlistCheck(
+  it('fails (exit 2) when the iPad orientations key is absent entirely', () => {
+    const result = runInfoPlistCheck(
       replaceOnce(
         REAL_INFO_PLIST,
-        /<key>UIViewControllerBasedStatusBarAppearance<\/key>/,
-        `<key>UIRequiresFullScreen</key>\n\t<${value}/>\n\t<key>UIViewControllerBasedStatusBarAppearance</key>`,
+        /<key>UISupportedInterfaceOrientations~ipad<\/key>\s*<array>[\s\S]*?<\/array>\s*/,
+        '',
       ),
     );
 
     expect(result.status).toBe(2);
+    expect(result.stderr).toContain('UISupportedInterfaceOrientations~ipad is missing from');
+    expect(result.stderr).not.toContain('is not a valid property list');
+  });
+
+  it.each([
+    ['UIRequiresFullScreen', 'true'],
+    ['UIRequiresFullScreen', 'false'],
+    ['UIRequiresFullScreen~ipad', 'true'],
+    ['UIRequiresFullScreen~ipad', 'false'],
+  ])('fails (exit 2) when %s is <%s/>', (key, value) => {
+    const result = runInfoPlistCheck(withFullScreenKey(key, value));
+
+    expect(result.status).toBe(2);
     expect(result.stderr).toContain('UIRequiresFullScreen must be absent');
+    expect(result.stderr).not.toContain('is not a valid property list');
   });
 
   it('fails (exit 2) when UIApplicationSceneManifest is absent', () => {
-    const result = runPlistCheck(
+    const result = runInfoPlistCheck(
       replaceOnce(
         REAL_INFO_PLIST,
         /<key>UIApplicationSceneManifest<\/key>\s*<dict>[\s\S]*?<\/array>\s*<\/dict>\s*<\/dict>\s*/,
@@ -141,10 +95,11 @@ describe('scripts/checks/plist.sh iPad scene keys', () => {
 
     expect(result.status).toBe(2);
     expect(result.stderr).toContain('UIApplicationSceneManifest is missing');
+    expect(result.stderr).not.toContain('is not a valid property list');
   });
 
   it('fails (exit 2) when UIApplicationSupportsMultipleScenes is true', () => {
-    const result = runPlistCheck(
+    const result = runInfoPlistCheck(
       replaceOnce(
         REAL_INFO_PLIST,
         /(<key>UIApplicationSupportsMultipleScenes<\/key>\s*)<false\/>/,
@@ -156,8 +111,23 @@ describe('scripts/checks/plist.sh iPad scene keys', () => {
     expect(result.stderr).toContain('UIApplicationSupportsMultipleScenes must be false');
   });
 
+  it('fails (exit 2) when UIApplicationSupportsMultipleScenes is absent', () => {
+    const result = runInfoPlistCheck(
+      replaceOnce(
+        REAL_INFO_PLIST,
+        /<key>UIApplicationSupportsMultipleScenes<\/key>\s*<false\/>\s*/,
+        '',
+      ),
+    );
+
+    expect(result.status).toBe(2);
+    expect(result.stderr).toContain('UIApplicationSupportsMultipleScenes must be false');
+    expect(result.stderr).toContain("found: 'missing'");
+    expect(result.stderr).not.toContain('is not a valid property list');
+  });
+
   it('fails (exit 2) when no launch screen key is declared', () => {
-    const result = runPlistCheck(
+    const result = runInfoPlistCheck(
       replaceOnce(
         REAL_INFO_PLIST,
         /<key>UILaunchStoryboardName<\/key>\s*<string>[^<]*<\/string>\s*/,
@@ -169,5 +139,19 @@ describe('scripts/checks/plist.sh iPad scene keys', () => {
     expect(result.stderr).toContain(
       'none of UILaunchStoryboardName, UILaunchStoryboards, UILaunchScreen, UILaunchScreens is declared',
     );
+    expect(result.stderr).not.toContain('is not a valid property list');
+  });
+
+  it('passes when the launch screen key carries a device modifier', () => {
+    const result = runInfoPlistCheck(
+      replaceOnce(
+        REAL_INFO_PLIST,
+        /<key>UILaunchStoryboardName<\/key>/,
+        '<key>UILaunchStoryboardName~ipad</key>',
+      ),
+    );
+
+    expect(result.stderr).toBe('');
+    expect(result.status).toBe(0);
   });
 });

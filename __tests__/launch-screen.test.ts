@@ -3,8 +3,8 @@ import { readFileSync } from 'node:fs';
 
 const STORYBOARD = readFileSync(join(__dirname, '../ios/Kiko/LaunchScreen.storyboard'), 'utf8');
 
-// An explicit colour, not a system one: the launch screen renders before any
-// trait resolution, and theme.colors.background is #000000.
+// An explicit colour matches theme.colors.background (#000000) whatever the trait resolution or
+// cached snapshot.
 const ROOT_VIEW_BACKGROUND = /<view key="view"[\s\S]*?<\/view>/.exec(STORYBOARD)?.[0] ?? '';
 
 describe('ios/Kiko/LaunchScreen.storyboard', () => {
