@@ -1070,6 +1070,62 @@ describe.each([
   });
 });
 
+// Passes through to the real mv. After the first rename of a `lock.*` file (the queue recording
+// its job group) it blocks until the test creates the release file, as a slow rename would; the
+// bounded poll (80 s, past the test's own 60 s wait) ends it on its own so a failing run cannot
+// hang.
+const BLOCKING_MV_STUB = [
+  '#!/usr/bin/env bash',
+  '/bin/mv "$@" || exit $?',
+  'armed=0',
+  'for argument in "$@"; do',
+  '  case "${argument##*/}" in lock.*) armed=1 ;; esac',
+  'done',
+  '[ "$armed" = 1 ] || exit 0',
+  '[ -n "$KIKO_STUB_MV_ARMED" ] || exit 0',
+  'mkdir "$KIKO_STUB_MV_ARMED.once" 2> /dev/null || exit 0',
+  'for ((poll = 0; poll < 4000; poll += 1)); do',
+  '  [ ! -e "$KIKO_STUB_MV_RELEASE" ] || exit 0',
+  '  sleep 0.02',
+  'done',
+  '',
+].join('\n');
+
+describe('scripts/job-queue.sh on SIGINT during the lock record rename', () => {
+  it('exits 130 without waiting for the rename that records the job group to return', async () => {
+    const sandbox = createSandbox();
+    warmExecutables([
+      writeExecutable(join(sandbox.root, 'bin/make'), BLOCKING_MAKE_STUB),
+      writeExecutable(join(sandbox.root, 'bin/mv'), BLOCKING_MV_STUB),
+    ]);
+    sandbox.environment.KIKO_STUB_PID = join(sandbox.root, 'job-pid');
+    sandbox.environment.KIKO_STUB_MV_ARMED = join(sandbox.root, 'mv-armed');
+    sandbox.environment.KIKO_STUB_MV_RELEASE = join(sandbox.root, 'release');
+    const worktree = createWorktree(sandbox, 'one');
+    const release = (): void => writeFileSync(join(sandbox.root, 'release'), '');
+
+    try {
+      const waiter = startQueue(sandbox, 'verify', worktree, 'one');
+      await waitFor(() => readLines(join(sandbox.root, 'job-pid')).length === 1);
+      const jobPid = readPid(sandbox, 'job-pid');
+      await waitFor(
+        () => readlinkSync(join(sandbox.queue, 'lock')).split(' ')[1] === String(jobPid),
+      );
+      waiter.child.kill('SIGINT');
+      const exitedBeforeRelease = await waitFor(() => waiter.child.exitCode !== null).then(
+        () => true,
+        () => false,
+      );
+
+      expect(exitedBeforeRelease).toBe(true);
+      expect(waiter.child.exitCode).toBe(130);
+      expect(processIsAlive(jobPid)).toBe(false);
+    } finally {
+      release();
+    }
+  });
+});
+
 // A pid that is certainly dead: the subshell prints its own pid and exits before spawnSync returns.
 const deadPid = (): string =>
   spawnSync('bash', ['-c', 'echo $$'], { encoding: 'utf8' }).stdout.trim();
