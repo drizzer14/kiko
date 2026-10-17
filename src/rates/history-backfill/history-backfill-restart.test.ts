@@ -477,6 +477,59 @@ describe('runBackfill — filling the earlier days of a span that moved earlier,
     });
   });
 
+  describe('a run that settles nothing', () => {
+    // The resume window starts at today, after the span's own start: the answer cannot say the
+    // earlier days are empty.
+    it('stamps no mark on a fiat currency when the run resumes after the span start', async () => {
+      const data = persisted([...rowsBetween('USD', 100, 1), ...rowsBetween('EUR', 100, 1)]);
+      const writes: SettledHistory[] = [];
+
+      await launch(fiatBase(data, { earliestDay: daysAgo(100), writes }));
+
+      expect(writes).toEqual([]);
+      expect(data.settled.value).toEqual({});
+    });
+
+    it('stamps no mark on a coin when the run resumes after the span start', async () => {
+      const data = persisted(rowsBetween('SOL', 100, 1));
+      const writes: SettledHistory[] = [];
+
+      await launch({ data, held: ['SOL'], fiat: [], earliestDay: daysAgo(100), writes });
+
+      expect(writes).toEqual([]);
+      expect(data.settled.value).toEqual({});
+    });
+
+    it('stamps no mark on a fiat currency whose own request failed, and asks again', async () => {
+      const data = persisted(rowsBetween('USD', 100, 0));
+      const nbuCalls: Currency[][] = [];
+      const base = fiatBase(data, { nbuCalls });
+
+      await launch({ ...base, wholeSpan: true, failFiat: ['EUR'] });
+
+      expect(data.settled.value).toEqual({});
+
+      nbuCalls.length = 0;
+      await launch(base);
+
+      expect(nbuCalls.flat()).toContain('EUR');
+    });
+
+    it('stamps no mark on a coin whose own request failed, and asks again', async () => {
+      const data = persisted([]);
+      const requested: CryptoCurrency[][] = [];
+      const base = { data, held: ['SOL' as CryptoCurrency], fiat: ['USD' as Currency] };
+
+      await launch({ ...base, earliestDay: daysAgo(300), wholeSpan: true, perRunLimit: 0 });
+
+      expect(data.settled.value).toEqual({});
+
+      await launch({ ...base, earliestDay: daysAgo(300), requested });
+
+      expect(requested).toEqual([['SOL']]);
+    });
+  });
+
   // SOL answers with nothing (no rows), or from a day after the span start (rows from 100 days
   // back): either way it costs one whole-span run over two launches, not one per launch.
   describe.each([
