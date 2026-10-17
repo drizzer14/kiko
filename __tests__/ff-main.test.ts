@@ -240,6 +240,34 @@ describe('scripts/ff-main.sh moves main', () => {
   });
 });
 
+describe('scripts/ff-main.sh short done.log lines', () => {
+  const shortLine = 'verify label 0 2026-10-15T10:00:00Z 2026-10-15T10:05:00Z';
+
+  it('warns about a line with fewer than 6 fields and still moves main on a green line', () => {
+    const fixture = createFixture();
+    record(fixture, shortLine, doneLine(fixture.tipCommit));
+
+    const result = runScript(fixture, [fixture.tipCommit]);
+    const warnings = result.stderr.split('\n').filter((line) => line.includes('WARNING'));
+
+    expect(result.status).toBe(0);
+    expect(mainHead(fixture)).toBe(fixture.tipCommit);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain(shortLine);
+  });
+
+  it('warns and still ignores the short line, so the refusal stands', () => {
+    const fixture = createFixture();
+    record(fixture, shortLine);
+
+    const result = runScript(fixture, [fixture.tipCommit]);
+
+    expect(result.status).toBe(2);
+    expect(mainHead(fixture)).toBe(fixture.baseCommit);
+    expect(result.stderr.split('\n').filter((line) => line.includes('WARNING'))).toHaveLength(1);
+  });
+});
+
 const BLOCK_LABELS = [
   'CHECK FAILED: ff-main.sh',
   'WHAT FAILED:',

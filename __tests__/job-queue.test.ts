@@ -1236,6 +1236,108 @@ describe('scripts/job-queue.sh stale state', () => {
   });
 });
 
+const ISO_STAMP = '\\d{4}-\\d\\d-\\d\\dT\\d\\d:\\d\\d:\\d\\dZ';
+
+const lostLines = (sandbox: Sandbox): string[] =>
+  readLines(join(sandbox.queue, 'done.log')).filter((line) => line.split(' ')[0] === 'lost');
+
+const lockLostLines = (sandbox: Sandbox): string[] =>
+  readLines(join(sandbox.queue, 'done.log')).filter((line) => line.split(' ')[2] === 'lost');
+
+describe('scripts/job-queue.sh LOST lines', () => {
+  it('writes one done.log line for a ticket whose waiter is dead, queued time from its epoch', async () => {
+    const sandbox = createSandbox();
+    const worktree = createWorktree(sandbox, 'one');
+    const waiterPid = deadPid();
+    mkdirSync(join(sandbox.queue, 'tickets'), { recursive: true });
+    writeFileSync(join(sandbox.queue, 'tickets', `1-0000000000-1700000000-${waiterPid}-ghost`), '');
+
+    const result = await startQueue(sandbox, 'verify', worktree, 'one').finished;
+
+    expect(result.code).toBe(0);
+    const lines = lostLines(sandbox);
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toMatch(
+      new RegExp(`^lost ghost ${waiterPid} 2023-11-14T22:13:20Z ${ISO_STAMP} unknown$`),
+    );
+  });
+
+  it('writes the line once when two waiters prune the same dead ticket', async () => {
+    const sandbox = createSandbox();
+    const worktree = createWorktree(sandbox, 'one');
+    const waiterPid = deadPid();
+    const ticket = join(sandbox.queue, 'tickets', `1-0000000000-1700000000-${waiterPid}-ghost`);
+    mkdirSync(join(sandbox.queue, 'tickets'), { recursive: true });
+    writeFileSync(ticket, '');
+    // A hold keeps both waiters polling (and pruning) without either starting a job.
+    runQueue(sandbox, 'hold', 'test');
+
+    startQueue(sandbox, 'verify', worktree, 'one');
+    startQueue(sandbox, 'verify', worktree, 'two');
+    await waitFor(() => !isPresent(ticket));
+    await new Promise((settle) => setTimeout(settle, 600));
+
+    expect(lostLines(sandbox)).toHaveLength(1);
+  });
+
+  it('writes one line from the owner record for a reclaimed dead lock', async () => {
+    const sandbox = createSandbox();
+    const worktree = createWorktree(sandbox, 'one');
+    holdLock(sandbox, `${deadPid()} - gate ghost /elsewhere`);
+
+    const result = await startQueue(sandbox, 'verify', worktree, 'one').finished;
+
+    expect(result.code).toBe(0);
+    const lines = lockLostLines(sandbox);
+    expect(lines).toHaveLength(1);
+    const [kind, label, outcome, start, end, head] = lines[0].split(' ');
+    expect([kind, label, outcome, head]).toEqual(['gate', 'ghost', 'lost', 'unknown']);
+    expect(start).toMatch(new RegExp(`^${ISO_STAMP}$`));
+    expect(end).toBe(start);
+  });
+});
+
+describe('scripts/job-queue.sh old copy', () => {
+  it('exits 2 naming an older copy when the queue directory format is newer than the script', () => {
+    const sandbox = createSandbox();
+    const worktree = createWorktree(sandbox, 'one');
+    mkdirSync(sandbox.queue, { recursive: true });
+    writeFileSync(join(sandbox.queue, 'format'), '9999\n');
+
+    const result = runQueue(sandbox, 'verify', worktree, 'one');
+
+    expect(result.status).toBe(2);
+    expect(result.stderr).toContain('an older job-queue.sh copy');
+    expect(readLines(sandbox.environment.KIKO_STUB_CALLS as string)).toEqual([]);
+    expect(entriesOf(join(sandbox.queue, 'tickets'))).toEqual([]);
+  });
+
+  it('warns once on stderr and still runs the job when the worktree holds a different copy', () => {
+    const sandbox = createSandbox();
+    const worktree = createWorktree(sandbox, 'one');
+    mkdirSync(join(worktree, 'scripts'));
+    writeFileSync(join(worktree, 'scripts/job-queue.sh'), '#!/usr/bin/env bash\n# a newer copy\n');
+
+    const result = runQueue(sandbox, 'verify', worktree, 'one');
+
+    expect(result.status).toBe(0);
+    expect(result.stderr.split('\n').filter((line) => line.includes('WARNING'))).toHaveLength(1);
+    expect(startedWorktrees(sandbox)).toEqual([worktree]);
+  });
+
+  it('prints no warning when the worktree holds the same copy', () => {
+    const sandbox = createSandbox();
+    const worktree = createWorktree(sandbox, 'one');
+    mkdirSync(join(worktree, 'scripts'));
+    writeFileSync(join(worktree, 'scripts/job-queue.sh'), readFileSync(SCRIPT));
+
+    const result = runQueue(sandbox, 'verify', worktree, 'one');
+
+    expect(result.status).toBe(0);
+    expect(result.stderr).not.toContain('WARNING');
+  });
+});
+
 const BATTERY_POWER = "Now drawing from 'Battery Power'\n";
 
 describe('scripts/job-queue.sh hold and release', () => {
@@ -1530,5 +1632,24 @@ describe('scripts/job-queue.sh status', () => {
     expect(result.stdout).toContain(`queued: 1-0000000000-1-${process.pid}-next`);
     expect(result.stdout).toContain('battery power: no job starts');
     expect(result.stdout).not.toContain('queue empty');
+  });
+
+  it('prints a WARNING for each done.log line with fewer than 6 fields', () => {
+    const sandbox = createSandbox();
+    mkdirSync(sandbox.queue, { recursive: true });
+    const shortOld = 'verify old 0 2026-10-15T10:00:00Z 2026-10-15T10:05:00Z';
+    const shortTorn = 'verify torn';
+    const whole = `verify whole 0 2026-10-15T10:00:00Z 2026-10-15T10:05:00Z ${'a'.repeat(40)}`;
+    writeFileSync(join(sandbox.queue, 'done.log'), `${shortOld}\n${whole}\n${shortTorn}\n`);
+
+    const result = runQueue(sandbox, 'status');
+    const warnings = `${result.stdout}\n${result.stderr}`
+      .split('\n')
+      .filter((line) => line.includes('WARNING'));
+
+    expect(result.status).toBe(0);
+    expect(warnings).toHaveLength(2);
+    expect(warnings[0]).toContain(shortOld);
+    expect(warnings[1]).toContain(shortTorn);
   });
 });
