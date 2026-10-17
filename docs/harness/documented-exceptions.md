@@ -11,7 +11,7 @@ verified usage, not dead weight:
   `@babel/plugin-transform-runtime` as helper imports in compiled
   output, never a static import), `@typescript/native-preview` (the
   `tsgo` / TS7 binary, reserved for a future typecheck script that
-  does not exist yet), `jscpd`, and `depcheck` (each invoked
+  does not exist yet), `jscpd` and `depcheck` (each invoked
   only via `npx --no-install <tool>` inside its own
   `scripts/checks/*.sh` wrapper, never from a package.json script
   Knip's static scan can see). Also `@env` — the virtual module that
@@ -366,6 +366,15 @@ verified usage, not dead weight:
   in `ignore` above, so Knip never walks into it and reports it as an
   unused file. It is reached exactly as far as those checkers are, and
   exercised through their tests.
+- **`knip.json` `ignore`**: `scripts/checks/mutation-rerun.js` — run by path as
+  `node "$DIR/mutation-rerun.js"` in `scripts/checks/mutation.sh` (the TIMEOUT-HEAVY rerun),
+  never a static import, so Knip sees no importer.
+- **`knip.json` `ignore`**: `scripts/checks/mutation-score.js` — run by path as
+  `node "$DIR/mutation-score.js"` in `scripts/checks/mutation.sh` (the change-set scorer and
+  `--rerun-candidates`), never a static import, so Knip sees no importer.
+- **`knip.json` `ignore`**: `scripts/checks/plural-count.js` — spawned by path as a node child
+  process by `scripts/checks/pre-write-guard.js` (`runSpawnedNodeChecker('plural-count.js', ...)`)
+  and by `__tests__/plural-count.test.ts`, never a static import, so Knip sees no importer.
 - **`knip.json` `ignore`**: `scripts/checks/deps-ranges.js` — the same
   shape as `guard-replay.js`/`import-order.js` above.
   `scripts/checks/deps.sh` (part of `check:deps`) reaches it only via a
@@ -985,12 +994,3 @@ verified usage, not dead weight:
   Reason: the 300 s hook limit would otherwise kill the Stop tier with no block. Zero
   discovered suites, a missing jest, an unreadable budget or a fingerprint hash failure
   while doc files or suites exist also exit 2 (fail-closed).
-- **`knip.json` `ignore`**: `scripts/checks/mutation-rerun.js` — run by path as
-  `node "$DIR/mutation-rerun.js"` in `scripts/checks/mutation.sh` (the TIMEOUT-HEAVY rerun),
-  never a static import, so Knip sees no importer.
-- **`knip.json` `ignore`**: `scripts/checks/mutation-score.js` — run by path as
-  `node "$DIR/mutation-score.js"` in `scripts/checks/mutation.sh` (the change-set scorer and
-  `--rerun-candidates`), never a static import, so Knip sees no importer.
-- **`knip.json` `ignore`**: `scripts/checks/plural-count.js` — spawned by path as a node child
-  process by `scripts/checks/pre-write-guard.js` (`runSpawnedNodeChecker('plural-count.js', ...)`)
-  and by `__tests__/plural-count.test.ts`, never a static import, so Knip sees no importer.

@@ -764,11 +764,13 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   `MUTATION_FILE_CAP` (30, a plain assignment in the script), prints the
   structured block and exits 2 BEFORE Stryker starts. The scorer fails a TIMEOUT-HEAVY file
   (`TIMEOUT_HEAVY_SHARE`, `TIMEOUT_HEAVY_MINIMUM` in `mutation-score.js`; rule in
-  `docs/harness/checks.md`): `mutation-score.js` exits 1, `mutation.sh` exits 2. It is cleared
-  by the orchestrator proving each timed-out mutant in plain jest or writing it in the BATCH
-  READY as equivalent; the gate keeps failing, so the BATCH READY carries the failed gate with
-  the proofs. Never raise the timeout; no allowlist file. `mutation.sh --list` can print a
-  `warning:` line after `changed lines: N` for a merged track (`warn_over_count`). Mutation testing
+  `docs/harness/checks.md`): `mutation-score.js` exits 1, `mutation.sh` exits 2. When it is
+  the only failure, the gate reruns the timed-out mutants alone and the final rerun report is
+  the verdict. Only if that report still fails or the rerun was skipped does the orchestrator
+  prove each timed-out mutant in plain jest or write it in the BATCH READY as equivalent
+  (`docs/harness/checks.md`, "Clearing a TIMEOUT-HEAVY file"). Never raise the timeout; no
+  allowlist file. `mutation.sh --list` can print a `warning:` line after `changed lines: N`
+  for a merged track (`warn_over_count`). Mutation testing
   runs per small change set only (a whole-release run went 10 h 16 min
   with no result): the fix is `KIKO_MUTATION_BASE` set to the change
   set's own base commit, never a raised cap. The coordinator runs it per

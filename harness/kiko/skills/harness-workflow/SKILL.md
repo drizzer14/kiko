@@ -223,11 +223,14 @@ comment-only source does not.
 
 The BATCH READY quotes the CHANGE SET TOTAL line split (read it from the gate output) and any
 TIMEOUT-HEAVY file with how it was cleared. A TIMEOUT-HEAVY file (rule and constants in
-`scripts/checks/mutation-score.js`) is cleared by proving each timed-out mutant in plain jest,
-or by writing it as equivalent; the gate still fails for it, so the BATCH READY carries the
-failed gate with the proofs. Never raise the timeout; there is no allowlist file. `make
-mutable` can print a `warning:` line after `changed lines: N` when a merged track inflates
-the count; see "Mutation base after a track merged next".
+`scripts/checks/mutation-score.js`) is cleared by the gate itself: when it is the only
+failure, the gate reruns the timed-out mutants alone and the final rerun report is the
+verdict. Only if that report still fails or the rerun was skipped does the BATCH READY
+carry the failed gate with each timed-out mutant proven in plain jest or written as
+equivalent (`docs/harness/checks.md`, "Clearing a TIMEOUT-HEAVY file").
+Never raise the timeout; there is no allowlist file. `make mutable` can print a
+`warning:` line after `changed lines: N` when a merged track inflates the count;
+see "Mutation base after a track merged next".
 
 ## Merging into main
 
