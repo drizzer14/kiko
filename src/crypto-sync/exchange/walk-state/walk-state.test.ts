@@ -160,7 +160,7 @@ describe('parseExchangeState', () => {
     it('reads nothing of a walk id or a key a newer build wrote', () => {
       expect(
         parseExchangeState(
-          stateTextOf({ walks: { bybitSpot: { cursor: 5 } }, notImported: ['p2p-sale:1:2'] }),
+          stateTextOf({ walks: { bybitSpot: { cursor: 5 } }, laterBuildKey: ['p2p-sale:1:2'] }),
         ),
       ).toEqual(EMPTY_STATE);
     });
@@ -235,20 +235,23 @@ describe('parseExchangeState', () => {
       ['a text', 'x'],
       ['a boolean', true],
       ['an object', { start: 1, end: 2 }],
-    ])('of the Pay pending value being %s leaves Pay and every other walk as stored', (_l, bad) => {
-      const parsed = readableOf(
-        JSON.stringify({
-          version: 1,
-          walks: { capital: good, pay: { ...good, pending: bad }, transfer: good, earn: good },
-        }),
-      );
+    ])(
+      'of the Pay pending value being %s leaves Pay and every other walk as stored',
+      (_label, bad) => {
+        const parsed = readableOf(
+          JSON.stringify({
+            version: 1,
+            walks: { capital: good, pay: { ...good, pending: bad }, transfer: good, earn: good },
+          }),
+        );
 
-      expect(parsed.walks.pay).toStrictEqual({ ...good, pending: undefined });
-      expect(parsed.walks.capital).toStrictEqual(good);
-      expect(parsed.walks.transfer).toStrictEqual(good);
-      expect(parsed.walks.earn).toStrictEqual(good);
-      expect(parsed.unreadable).toEqual([]);
-    });
+        expect(parsed.walks.pay).toStrictEqual({ ...good, pending: undefined });
+        expect(parsed.walks.capital).toStrictEqual(good);
+        expect(parsed.walks.transfer).toStrictEqual(good);
+        expect(parsed.walks.earn).toStrictEqual(good);
+        expect(parsed.unreadable).toEqual([]);
+      },
+    );
   });
 
   describe('a field stored as JSON null', () => {
@@ -382,6 +385,12 @@ describe('parseExchangeState', () => {
       const typed = { start: 999, end: 1_001, kind: 'point', series: 'MAIN_FUNDING' };
 
       expect(pendingOf([range, typed], 'transfer')).toEqual([range, typed]);
+    });
+
+    it('parses a list with a series the walk does not read as stored', () => {
+      const other = { start: 999, end: 1_001, kind: 'point', series: 'NOT_READ_BY_THE_WALK' };
+
+      expect(pendingOf([range, other], 'transfer')).toEqual([range, other]);
     });
 
     it('reads a point with no series as a point with none', () => {
@@ -631,31 +640,127 @@ describe('parseExchangeState', () => {
       ['text', 'x'],
       ['null', null],
       ['a list', []],
-      ['symbols that are a list', { ...trades, symbols: [] }],
-      ['a symbol that is no object', { ...trades, symbols: { BTCUSDT: 5 } }],
-      ['a symbol with a text fromId', { ...trades, symbols: { BTCUSDT: { fromId: '5' } } }],
-      ['a symbol with no fromId', { ...trades, symbols: { BTCUSDT: {} } }],
-      [
-        'a symbol with a heldOrderId that is text',
-        { ...trades, symbols: { BTCUSDT: { fromId: 5, heldOrderId: '9' } } },
-      ],
-      ['a rotation that is text', { ...trades, rotation: '3' }],
-      ['no rotation', { symbols: trades.symbols, balanceSnapshot: trades.balanceSnapshot }],
-      ['a balance snapshot that is a list', { ...trades, balanceSnapshot: ['0.5'] }],
-      ['a balance of a coin that is no text', { ...trades, balanceSnapshot: { BTC: 0.5 } }],
-    ])('read as empty and are named for %s, and nothing else is emptied', (_label, bad) => {
+    ])(
+      'read as empty and are named when they are %s, and nothing else is emptied',
+      (_label, bad) => {
+        const parsed = readableOf(
+          stateTextOf({
+            trades: bad,
+            walks: { capital: { cursor: 1_000 } },
+            untrackedCoins: { balance: ['PEPE'] },
+          }),
+        );
+
+        expect(parsed.trades).toEqual(EMPTY_TRADES);
+        expect(parsed.unreadable).toEqual(['trades']);
+        expect(parsed.walks.capital.cursor).toBe(1_000);
+        expect(parsed.untrackedCoins.balance).toEqual(['PEPE']);
+      },
+    );
+
+    it.each([
+      ['no object', 5],
+      ['an object with a text fromId', { fromId: '5' }],
+      ['an object with no fromId', {}],
+      ['an object with a heldOrderId that is text', { fromId: 5, heldOrderId: '9' }],
+    ])('drop a symbol that is %s alone, and name it', (_label, bad) => {
+      const parsed = readableOf(
+        stateTextOf({ trades: { ...trades, symbols: { ...trades.symbols, OLDUSDT: bad } } }),
+      );
+
+      expect(parsed.trades).toEqual(trades);
+      expect(parsed.unreadable).toEqual(['trades.symbols.OLDUSDT']);
+    });
+
+    it('read the symbols that are good when one is bad, in the order stored', () => {
       const parsed = readableOf(
         stateTextOf({
-          trades: bad,
-          walks: { capital: { cursor: 1_000 } },
-          untrackedCoins: { balance: ['PEPE'] },
+          trades: {
+            ...trades,
+            symbols: { A: { fromId: 1 }, BAD: { fromId: '5' }, B: { fromId: 2 } },
+          },
         }),
       );
 
-      expect(parsed.trades).toEqual(EMPTY_TRADES);
-      expect(parsed.unreadable).toEqual(['trades']);
-      expect(parsed.walks.capital.cursor).toBe(1_000);
-      expect(parsed.untrackedCoins.balance).toEqual(['PEPE']);
+      expect(parsed.trades.symbols).toEqual({ A: { fromId: 1 }, B: { fromId: 2 } });
+      expect(Object.keys(parsed.trades.symbols)).toEqual(['A', 'B']);
+      expect(parsed.trades.rotation).toBe(3);
+      expect(parsed.trades.balanceSnapshot).toEqual(trades.balanceSnapshot);
+      expect(parsed.unreadable).toEqual(['trades.symbols.BAD']);
+    });
+
+    it('read a symbol with a cleared heldOrderId as a symbol without one', () => {
+      const parsed = readableOf(
+        stateTextOf({
+          trades: { ...trades, symbols: { BTCUSDT: { fromId: 5, heldOrderId: null } } },
+        }),
+      );
+
+      expect(parsed.trades.symbols).toStrictEqual({ BTCUSDT: { fromId: 5 } });
+      expect(parsed.unreadable).toEqual([]);
+    });
+
+    it('read no symbols and name them when the symbols are no object', () => {
+      for (const bad of [[], 'x', null]) {
+        const parsed = readableOf(stateTextOf({ trades: { ...trades, symbols: bad } }));
+
+        expect(parsed.trades).toEqual({ ...trades, symbols: {} });
+        expect(parsed.unreadable).toEqual(['trades.symbols']);
+      }
+    });
+
+    it.each([
+      ['text', '3'],
+      ['null', null],
+    ])('read the rotation as 0 and name it when it is %s, and keep the rest', (_label, bad) => {
+      const parsed = readableOf(stateTextOf({ trades: { ...trades, rotation: bad } }));
+
+      expect(parsed.trades).toEqual({ ...trades, rotation: 0 });
+      expect(parsed.unreadable).toEqual(['trades.rotation']);
+    });
+
+    it('read a rotation or symbols left out as empty, and name nothing', () => {
+      const parsed = readableOf(stateTextOf({ trades: { balanceSnapshot: { BTC: '1' } } }));
+
+      expect(parsed.trades).toEqual({ symbols: {}, rotation: 0, balanceSnapshot: { BTC: '1' } });
+      expect(parsed.unreadable).toEqual([]);
+    });
+
+    it('read a balance snapshot that is no object as empty, and name it', () => {
+      for (const bad of [['0.5'], 'x', null]) {
+        const parsed = readableOf(stateTextOf({ trades: { ...trades, balanceSnapshot: bad } }));
+
+        expect(parsed.trades).toEqual({ ...trades, balanceSnapshot: {} });
+        expect(parsed.unreadable).toEqual(['trades.balanceSnapshot']);
+      }
+    });
+
+    it('drop the balance of a coin that is no text alone, and name it', () => {
+      const parsed = readableOf(
+        stateTextOf({ trades: { ...trades, balanceSnapshot: { BTC: 0.5, USDT: '120.25' } } }),
+      );
+
+      expect(parsed.trades).toEqual({ ...trades, balanceSnapshot: { USDT: '120.25' } });
+      expect(parsed.unreadable).toEqual(['trades.balanceSnapshot.BTC']);
+    });
+
+    it('name each part it could not read, in a fixed order', () => {
+      const parsed = readableOf(
+        stateTextOf({
+          trades: {
+            symbols: { B: 1, A: { fromId: 1 }, C: null },
+            rotation: 'x',
+            balanceSnapshot: { USDT: 1, BTC: '1' },
+          },
+        }),
+      );
+
+      expect(parsed.unreadable).toEqual([
+        'trades.symbols.B',
+        'trades.symbols.C',
+        'trades.rotation',
+        'trades.balanceSnapshot.USDT',
+      ]);
     });
   });
 
@@ -701,7 +806,7 @@ describe('parseExchangeState', () => {
           ['a list holding null', [null]],
         ])(
           'parses alone: empty and named when it is %s, the others keep their values',
-          (_l, bad) => {
+          (_label, bad) => {
             const other = kind === 'untrackedCoins' ? 'oversizedCoins' : 'untrackedCoins';
             const parsed = readableOf(
               stateTextOf({ ...stored, [kind]: { ...stored[kind], [source]: bad } }),

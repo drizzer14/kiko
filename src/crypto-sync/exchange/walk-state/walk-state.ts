@@ -61,7 +61,8 @@ export type ExchangeState = {
  * The marks of one walk as a run reads them. A field a walk repairs when it is unreadable keeps
  * the tri-state of the rule that reads it: `undefined` is a value that is stored but unreadable
  * (the walk logs a fixed code and writes the repair of that one field), where an absent field
- * reads as its empty value.
+ * reads as its empty value. A `pending` list that is defined can still fail its walk's series
+ * check (`readPendingMark`, `hasKnownSeries`), which repairs it in the walk, not here.
  */
 export type ParsedWalkMarks = {
   cursor: number | null;
@@ -97,8 +98,11 @@ const isNumber = (value: unknown): value is number => finiteNumberOrNull(value) 
 const isStringList = (value: unknown): value is string[] =>
   Array.isArray(value) && value.every((item) => typeof item === 'string');
 
-const isTextRecord = (value: unknown): value is Record<string, string> =>
-  isRecord(value) && Object.values(value).every((item) => typeof item === 'string');
+const numberOrUndefined = (value: unknown): number | undefined =>
+  isNumber(value) ? value : undefined;
+
+const textOrUndefined = (value: unknown): string | undefined =>
+  typeof value === 'string' ? value : undefined;
 
 const recordOrUndefined = (value: unknown): Metadata | undefined =>
   isRecord(value) ? value : undefined;
@@ -106,7 +110,10 @@ const recordOrUndefined = (value: unknown): Metadata | undefined =>
 const stringListOrUndefined = (value: unknown): string[] | undefined =>
   isStringList(value) ? value : undefined;
 
-/** Each field follows the rule that reads it from a holding's metadata today. */
+/**
+ * Each field parses with the rule that already reads it from a holding's metadata, so one rule
+ * decides what is readable and what a walk repairs, whichever store the marks come from.
+ */
 const marksOf = (entry: Metadata): ParsedWalkMarks => ({
   cursor: finiteNumberOrNull(entry.cursor),
   rescan: finiteNumberOrNull(entry.rescan),
@@ -118,6 +125,7 @@ const marksOf = (entry: Metadata): ParsedWalkMarks => ({
 
 const emptyMarks = (): ParsedWalkMarks => marksOf({});
 
+/** A `null` heldOrderId is a cleared one: the same symbol as one that never held an order. */
 const tradeSymbolOf = (stored: unknown): TradeSymbol | undefined => {
   if (!isRecord(stored)) {
     return undefined;
@@ -129,39 +137,14 @@ const tradeSymbolOf = (stored: unknown): TradeSymbol | undefined => {
     return undefined;
   }
 
-  if (heldOrderId === undefined) {
+  if (heldOrderId === undefined || heldOrderId === null) {
     return { fromId };
   }
 
   return isNumber(heldOrderId) ? { fromId, heldOrderId } : undefined;
 };
 
-const tradeSymbolsOf = (stored: unknown): Record<string, TradeSymbol> | undefined => {
-  if (!isRecord(stored)) {
-    return undefined;
-  }
-
-  const symbols = Object.entries(stored).map(([symbol, entry]) => [symbol, tradeSymbolOf(entry)]);
-
-  return symbols.every((symbol): symbol is [string, TradeSymbol] => symbol[1] !== undefined)
-    ? Object.fromEntries(symbols)
-    : undefined;
-};
-
-const tradesOf = (stored: unknown): ExchangeTrades | undefined => {
-  if (!isRecord(stored)) {
-    return undefined;
-  }
-
-  const { rotation, balanceSnapshot } = stored;
-  const symbols = tradeSymbolsOf(stored.symbols);
-
-  return symbols !== undefined && isNumber(rotation) && isTextRecord(balanceSnapshot)
-    ? { symbols, rotation, balanceSnapshot }
-    : undefined;
-};
-
-const emptyTrades = (): ExchangeTrades => ({ symbols: {}, rotation: 0, balanceSnapshot: {} });
+const zero = (): number => 0;
 
 const emptyList = (): string[] => [];
 
@@ -179,6 +162,61 @@ const entryOf = <Value>(
   return {
     value: parsed ?? empty(),
     unreadable: stored !== undefined && parsed === undefined ? [name] : [],
+  };
+};
+
+/**
+ * Every entry of a record parses alone: one `parse` cannot read is dropped and named
+ * `<name>.<key>`, so a bad entry never empties the good ones next to it.
+ */
+const recordOf = <Value>(
+  name: string,
+  stored: unknown,
+  parse: (stored: unknown) => Value | undefined,
+): ReadEntry<Record<string, Value>> => {
+  const container = entryOf(name, stored, recordOrUndefined, emptyRecord);
+  const entries = Object.entries(container.value).map(([key, entry]) => ({
+    key,
+    parsed: parse(entry),
+  }));
+
+  return {
+    value: Object.fromEntries(
+      entries.flatMap(
+        ({ key, parsed }) =>
+          foldMap(maybe(parsed), (value): [string, Value][] => [[key, value]]) ?? [],
+      ),
+    ),
+    unreadable: [
+      ...container.unreadable,
+      ...entries.filter(({ parsed }) => parsed === undefined).map(({ key }) => `${name}.${key}`),
+    ],
+  };
+};
+
+/** Each part of the trades parses alone, so a bad part never empties another. */
+const tradesOf = (stored: unknown): ReadEntry<ExchangeTrades> => {
+  const container = entryOf('trades', stored, recordOrUndefined, emptyRecord);
+  const symbols = recordOf('trades.symbols', container.value.symbols, tradeSymbolOf);
+  const rotation = entryOf('trades.rotation', container.value.rotation, numberOrUndefined, zero);
+  const balanceSnapshot = recordOf(
+    'trades.balanceSnapshot',
+    container.value.balanceSnapshot,
+    textOrUndefined,
+  );
+
+  return {
+    value: {
+      symbols: symbols.value,
+      rotation: rotation.value,
+      balanceSnapshot: balanceSnapshot.value,
+    },
+    unreadable: [
+      ...container.unreadable,
+      ...symbols.unreadable,
+      ...rotation.unreadable,
+      ...balanceSnapshot.unreadable,
+    ],
   };
 };
 
@@ -210,7 +248,7 @@ const parsedOf = (stored: TopLevel): ParsedExchangeState => {
       emptyMarks,
     ),
   }));
-  const trades = entryOf('trades', stored.trades, tradesOf, emptyTrades);
+  const trades = tradesOf(stored.trades);
   const untrackedCoins = coinListsOf('untrackedCoins', stored.untrackedCoins);
   const oversizedCoins = coinListsOf('oversizedCoins', stored.oversizedCoins);
 
@@ -245,4 +283,4 @@ const parsedFromText = (text: string): ParsedExchangeState => {
  * No text (no row, or a column never written) is a state with nothing in it.
  */
 export const parseExchangeState = (text: string | null): ParsedExchangeState =>
-  foldMap(maybe(text), parsedFromText) ?? parsedFromText('{"version":1,"walks":{}}');
+  foldMap(maybe(text), parsedFromText) ?? parsedOf({ version: 1, walks: {} });
