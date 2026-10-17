@@ -516,12 +516,13 @@ const withMainManifest = (fixture: Fixture, manifest: string): void => {
   runGit(fixture.main, fixture.environment, 'merge', '--ff-only', head);
 };
 
-type ChangeKind = 'harness' | 'other' | 'manifest-only';
+type ChangeKind = 'harness' | 'other' | 'manifest-only' | 'other-with-manifest';
 
 const CHANGE: Record<ChangeKind, { files: string[]; touchesManifest: boolean }> = {
   harness: { files: ['harness/kiko/skills/example/SKILL.md'], touchesManifest: true },
   other: { files: ['unrelated.txt'], touchesManifest: false },
   'manifest-only': { files: [], touchesManifest: true },
+  'other-with-manifest': { files: ['unrelated.txt'], touchesManifest: true },
 };
 
 // A null manifest deletes the file from the commit under test.
@@ -669,6 +670,64 @@ describe('scripts/ff-main.sh plugin version rule', () => {
     if (!moves) {
       expect(result.stderr).toContain('plugin.json');
     }
+  });
+
+  it.each<[string, string | null, ChangeKind]>([
+    [
+      'a plugin.json-only commit that lowers the version',
+      pluginManifest('0.4.21'),
+      'manifest-only',
+    ],
+    [
+      'a commit outside harness/kiko that lowers the version',
+      pluginManifest('0.4.21'),
+      'other-with-manifest',
+    ],
+    ['a plugin.json-only commit that deletes the manifest', null, 'manifest-only'],
+  ])('refuses any version decrease: %s', (_title, commitManifest, kind) => {
+    const fixture = createFixture();
+    withMainManifest(fixture, pluginManifest('0.4.22'));
+    const before = mainHead(fixture);
+    const head = commitPluginChange(fixture, kind, commitManifest);
+    record(fixture, doneLine(head));
+
+    const result = runScript(fixture, [head]);
+    const lines = result.stderr.split('\n');
+
+    expect(mainHead(fixture)).toBe(before);
+    expect(result.status).toBe(2);
+    expect(lines).toContain("WHAT FAILED:    A plugin.json version below main's is refused");
+    expect(lines.find((line) => line.startsWith('DETAILS:'))).toContain('0.4.22');
+  });
+
+  it.each<[string, string | null, string | null, ChangeKind]>([
+    [
+      'no harness change at an equal version',
+      pluginManifest('0.4.22'),
+      pluginManifest('0.4.22'),
+      'other-with-manifest',
+    ],
+    [
+      'a plugin.json-only commit that raises the version',
+      pluginManifest('0.4.22'),
+      pluginManifest('0.4.23'),
+      'manifest-only',
+    ],
+    ['no manifest at main or in the commit and no harness change', null, null, 'other'],
+  ])('moves main without a decrease: %s', (_title, mainManifest, commitManifest, kind) => {
+    const fixture = createFixture();
+
+    if (mainManifest !== null) {
+      withMainManifest(fixture, mainManifest);
+    }
+
+    const head = commitPluginChange(fixture, kind, commitManifest);
+    record(fixture, doneLine(head));
+
+    const result = runScript(fixture, [head]);
+
+    expect(mainHead(fixture)).toBe(head);
+    expect(result.status).toBe(0);
   });
 
   it('refuses a harness change after a merge brought main ahead to the same version', () => {
