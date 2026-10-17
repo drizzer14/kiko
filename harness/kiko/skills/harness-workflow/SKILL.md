@@ -511,7 +511,10 @@ that reads the handoff file.
   then the coordinator sends `/reload-plugins` to every Orca session
   except the user's own (the user reloads their own session). If main already carries your
   `plugin.json` version after you merge main, bump again before your merge commit; read the
-  current version in `harness/kiko/.claude-plugin/plugin.json`.
+  current version in `harness/kiko/.claude-plugin/plugin.json`. `scripts/ff-main.sh` enforces
+  it (user ruling 2026-10-18): it refuses (exit 2) a commit that changes `harness/kiko/**`
+  (`plugin.json` excluded) unless its `plugin.json` version is strictly above main's (numeric
+  dotted compare; an unreadable or missing version refuses).
 - Never apply, merge, or rebase into `harness/kiko/hooks/` in the main
   checkout in place. Build the new file in scratch, run `bash -n`, grep
   it for conflict markers, then install it with one `mv`.

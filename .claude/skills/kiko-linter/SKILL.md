@@ -2854,10 +2854,16 @@ mechanizable (see harness-workflow's "Classify every finding").
      with `join(..., '<name>')` for a path inside it, never from the clock.
      The invariant also covers the queue tests (`job-queue.test.ts`,
      `ff-main.test.ts`): no settle sleep; prove concurrency by a rendezvous.
+     The poll-bound exemption applies only inside the braces of the loop
+     that holds the bound; a renamed `timers/promises` `setTimeout` import
+     counts as a sleep.
    - bash 3.2 (macOS): a trapped SIGINT sent to one pid is lost when it
      lands as a foreground external child is reaped. Where a signal must
      not be lost, run the command as `cmd & wait $!` (`run_awaited` in
-     `scripts/job-queue.sh`), and end and wait an in-flight one in cleanup.
+     `scripts/job-queue.sh`), and end an in-flight one first in
+     `stop_on_signal` (`end_in_flight`, before `terminate_job_group`) and
+     again at the top of cleanup on the EXIT path; a pid reaped during a
+     long terminate poll can be reused.
      The wait loop and command substitutions are not covered (open gap
      20261017T1654-kiko-harness-h8/1).
    - A test that needs a scratch folder uses

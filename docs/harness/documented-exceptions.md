@@ -20,14 +20,9 @@ verified usage, not dead weight:
   it is not a real npm package, so Knip's resolver reports the import
   as an unlisted dependency. The package itself (`react-native-dotenv`)
   is seen through `babel.config.js`; only the synthetic `@env`
-  specifier needs ignoring. Also `babel-plugin-inline-import` — a
-  Babel plugin referenced only as the string `'inline-import'` in
-  `babel.config.js` (it inlines the drizzle-orm migration `.sql`
-  files as string exports), never imported from source, so Knip's
-  static scan cannot see the usage. Also `babel-plugin-module-resolver`
-  — a Babel plugin referenced only as the string `'module-resolver'` in
-  `babel.config.js` (it resolves the `@kiko/*` path aliases to `src/*`),
-  never imported from source, so Knip's static scan cannot see the usage.
+  specifier needs ignoring. The Babel plugins `babel-plugin-inline-import`
+  and `babel-plugin-module-resolver` are not ignored: Knip sees both
+  through `babel.config.js`.
 - **`tsconfig.json` `compilerOptions.types`**: the base
   `@react-native/typescript-config` pins `types: ["jest"]`, which
   drops the Node ambient globals and module typings that three test
@@ -80,15 +75,9 @@ verified usage, not dead weight:
   itself being used). Also `react-native-dotenv` — a Babel plugin referenced only
   as the string `'module:react-native-dotenv'` in `babel.config.js`,
   never imported from source, so depcheck's static scan cannot see the
-  usage and reports it as an unused devDependency. Also
-  `babel-plugin-inline-import` — a Babel plugin referenced only as the
-  string `'inline-import'` in `babel.config.js` (it inlines the
-  drizzle-orm migration `.sql` files as string exports), never
-  imported from source, for the same reason. Also
-  `babel-plugin-module-resolver` — referenced only as the string
-  `'module-resolver'` in `babel.config.js` (it resolves the `@kiko/*`
-  path aliases to `src/*`), never imported from source, for the same
-  reason.
+  usage and reports it as an unused devDependency. The Babel plugins
+  `babel-plugin-inline-import` and `babel-plugin-module-resolver` are
+  not ignored: depcheck sees both through `babel.config.js`.
 - **`.gitleaks.toml` allowlist**: `ios/Podfile.lock` — CocoaPods lists
   a SHA1 checksum per pod, which gitleaks' `generic-api-key` rule
   flags as a false positive (verified fingerprint:
