@@ -1,22 +1,13 @@
 import { DAY_MS } from '@kiko/dates';
 import type { HoldingRow } from '@kiko/db';
-import { type WalkId, type WalkMarks, withWalkMarks } from '@kiko/test-support/walk-marks';
+import { withWalkMarkSeeds } from '@kiko/test-support/walk-marks';
 
 import { isBinanceHistoryBehind, transferOwesRange, walkCursorsOf } from './binance-history-status';
 
 const NOW = 1_704_326_400_000;
 const HOUR_MS = 60 * 60 * 1000;
 
-/** What a Spot holding stores once each walk named has run, on top of what else it carries. */
-const spotCarrying = (
-  marks: Partial<Record<WalkId, WalkMarks>>,
-  base: Record<string, unknown> = { binanceAsset: 'BTC' },
-): Record<string, unknown> =>
-  Object.entries(marks).reduce(
-    (metadata, [walkId, walkMarks]) =>
-      withWalkMarks(metadata, 'acc-1', walkId as WalkId, walkMarks),
-    base,
-  );
+const SPOT = { binanceAsset: 'BTC' };
 
 describe('isBinanceHistoryBehind', () => {
   const caughtUp = [NOW - HOUR_MS, NOW - 2 * HOUR_MS, NOW - HOUR_MS, NOW - 3 * HOUR_MS];
@@ -87,7 +78,9 @@ describe('transferOwesRange', () => {
     metadata,
   });
   const carrying = (owed: unknown) =>
-    holding(spotCarrying({ capital: { cursor: NOW }, transfer: { pending: owed } }));
+    holding(
+      withWalkMarkSeeds(SPOT, 'acc-1', { capital: { cursor: NOW }, transfer: { pending: owed } }),
+    );
 
   it.each([
     ['a range owed in every type', [{ start: 1, end: 3 }]],
@@ -115,7 +108,7 @@ describe('transferOwesRange', () => {
   it('is false when no holding carries the capital cursor', () => {
     expect(
       transferOwesRange([
-        holding(spotCarrying({ transfer: { pending: [{ start: 1, end: 3 }] } }, {})),
+        holding(withWalkMarkSeeds({}, 'acc-1', { transfer: { pending: [{ start: 1, end: 3 }] } })),
       ]),
     ).toBe(false);
   });
@@ -130,7 +123,7 @@ describe('walkCursorsOf', () => {
     const holdings = [
       holding({ binanceAsset: 'BTC:funding' }),
       holding(
-        spotCarrying({
+        withWalkMarkSeeds(SPOT, 'acc-1', {
           capital: { cursor: 1 },
           pay: { cursor: 2 },
           transfer: { cursor: 3 },
@@ -144,29 +137,23 @@ describe('walkCursorsOf', () => {
   });
 
   it('reads a cursor a walk has not written yet as null', () => {
-    expect(walkCursorsOf([holding(spotCarrying({ capital: { cursor: NOW } }))])).toEqual([
-      NOW,
-      null,
-      null,
-      null,
-    ]);
+    expect(
+      walkCursorsOf([holding(withWalkMarkSeeds(SPOT, 'acc-1', { capital: { cursor: NOW } }))]),
+    ).toEqual([NOW, null, null, null]);
   });
 
   it('is four nulls when no holding carries the capital cursor (a wallet account, or a never-run history walk)', () => {
     expect(walkCursorsOf([holding({ walletAddress: 'bc1q' })])).toEqual([null, null, null, null]);
-    expect(walkCursorsOf([holding(spotCarrying({ earn: { cursor: NOW } }))])).toEqual([
-      null,
-      null,
-      null,
-      null,
-    ]);
+    expect(
+      walkCursorsOf([holding(withWalkMarkSeeds(SPOT, 'acc-1', { earn: { cursor: NOW } }))]),
+    ).toEqual([null, null, null, null]);
     expect(walkCursorsOf([])).toEqual([null, null, null, null]);
   });
 
   it('does not read an owed point as a cursor: a list of ground changes nothing', () => {
     const cursors = walkCursorsOf([
       holding(
-        spotCarrying({
+        withWalkMarkSeeds(SPOT, 'acc-1', {
           capital: { cursor: NOW },
           pay: { cursor: NOW },
           transfer: {

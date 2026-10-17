@@ -4,7 +4,7 @@ import type { HoldingRow } from '@kiko/db';
 import maybe, { foldMap } from 'fnts/maybe';
 import type { ExchangeHolding } from '@kiko/holdings/repo';
 import { BinanceWalkStop } from '@kiko/crypto-sync/exchange/walk';
-import { type WalkMarks, walkStateFake } from '@kiko/test-support/walk-marks';
+import { type WalkMarkSeed, walkStateFake } from '@kiko/test-support/walk-marks';
 
 import type {
   EarnRecordByKind,
@@ -223,7 +223,7 @@ type World = {
  * hold: the other holdings, the rows written, and the writes in order.
  */
 export const worldOf = (
-  marks: WalkMarks = {},
+  marks: WalkMarkSeed = {},
   others: HoldingRow[] = [
     holdingWith('h-funding', { binanceAsset: FUNDING_KEY }),
     holdingWith('h-earn', { binanceAsset: EARN_KEY }),
@@ -234,11 +234,9 @@ export const worldOf = (
   return {
     state: walkStateFake({
       marks: { earn: marks },
-      onWrite: ({ field }) => {
-        if (field === 'pending') {
-          events.push('list');
-        } else if (field !== 'spanHints') {
-          events.push(`cursor:${field}`);
+      onWrite: ({ walkName, field }) => {
+        if (field !== 'spanHints') {
+          events.push(`${walkName}:${field}`);
         }
       },
     }),
@@ -248,7 +246,7 @@ export const worldOf = (
   };
 };
 
-export const marksOf = (world: World): WalkMarks => world.state.marksOf('earn');
+export const marksOf = (world: World): WalkMarkSeed => world.state.marksOf('earn');
 
 const depsOf = (
   world: World,
@@ -274,7 +272,7 @@ const depsOf = (
 
     return rows.length;
   }),
-  ...world.state.deps,
+  ...world.state.freshDeps(),
   ...over,
 });
 

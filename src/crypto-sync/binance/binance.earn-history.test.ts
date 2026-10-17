@@ -1659,11 +1659,11 @@ describe('the order of the writes', () => {
           : undefined,
     });
 
-    const lastForward = world.events.lastIndexOf('cursor:cursor');
+    const lastForward = world.events.lastIndexOf('earn:cursor');
     expect(world.events.slice(lastForward + 1, lastForward + 4)).toEqual([
       'rows',
-      'list',
-      'cursor:rescan',
+      'earn:pending',
+      'earn:rescan',
     ]);
   });
 
@@ -1672,7 +1672,7 @@ describe('the order of the writes', () => {
 
     await walkOnce({ world });
 
-    expect(world.events.indexOf('list')).toBeLessThan(world.events.indexOf('cursor:cursor'));
+    expect(world.events.indexOf('earn:pending')).toBeLessThan(world.events.indexOf('earn:cursor'));
   });
 });
 

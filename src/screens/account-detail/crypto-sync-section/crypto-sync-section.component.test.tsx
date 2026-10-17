@@ -3,9 +3,14 @@ import { Alert, StyleSheet } from 'react-native';
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
+import {
+  type WalkName,
+  WALK_NAMES,
+  withWalkMarkSeeds,
+  withWalkMarks,
+} from '@kiko/test-support/walk-marks';
 import { DAY_MS, formatDateTime } from '@kiko/dates';
 import type { AccountRow, HoldingRow } from '@kiko/db';
-import { type WalkId, withWalkMarks } from '@kiko/test-support/walk-marks';
 
 import CryptoSyncSection from './crypto-sync-section.component';
 
@@ -153,17 +158,18 @@ const HISTORY_CAPTION = 'Some Binance transaction history is not imported yet.';
 // The four forward cursors of the history walks, each `behindMs` behind the balance sync.
 const walkCursors = (
   behindMs: number,
-  over: Partial<Record<WalkId, number>> = {},
+  over: Partial<Record<WalkName, number>> = {},
 ): Record<string, unknown> =>
-  WALK_IDS.reduce(
-    (metadata, walkId) =>
-      withWalkMarks(metadata, 'acc-1', walkId, {
-        cursor: over[walkId] ?? CONNECTED_WALLET_SYNCED_AT - behindMs,
-      }),
+  withWalkMarkSeeds(
     {},
+    'acc-1',
+    Object.fromEntries(
+      WALK_NAMES.map((walkName) => [
+        walkName,
+        { cursor: over[walkName] ?? CONNECTED_WALLET_SYNCED_AT - behindMs },
+      ]),
+    ),
   );
-
-const WALK_IDS: WalkId[] = ['capital', 'pay', 'transfer', 'earn'];
 
 // Shared by every "already connected to a wallet" test below — each one only
 // differs in what it asserts afterward, never in how the section itself is

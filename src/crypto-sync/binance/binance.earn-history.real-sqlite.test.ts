@@ -15,7 +15,7 @@ jest.mock('@kiko/db/client', () => {
 import { DAY_MS } from '@kiko/dates';
 import { DatabaseSync } from 'node:sqlite';
 import { applyAllMigrations } from '@kiko/test-support/real-sqlite';
-import { type WalkMarks, walkMarksOf, withWalkMarks } from '@kiko/test-support/walk-marks';
+import { seedWalkMarks, type WalkMarkSeed, walkMarksOf } from '@kiko/test-support/walk-marks';
 
 import type {
   EarnRecordByKind,
@@ -60,11 +60,8 @@ const openDatabase = (): DatabaseSync => {
         `INSERT INTO holdings (id, account_id, name, type, currency, balance_minor_units, metadata)
          VALUES (?, ?, 'Binance Spot', 'crypto_asset', 'BTC', 100, ?)`,
       )
-      .run(
-        `h-spot-${account}`,
-        account,
-        JSON.stringify(withWalkMarks({ binanceAsset: 'BTC' }, account, 'earn', { cursor: CURSOR })),
-      );
+      .run(`h-spot-${account}`, account, JSON.stringify({ binanceAsset: 'BTC' }));
+    seedWalkMarks(rawDatabase, account, 'earn', { cursor: CURSOR });
   }
 
   return rawDatabase;
@@ -137,7 +134,7 @@ const holdingByKey = (
     )
     .get(accountId, key) as { id: string; balance_minor_units: number } | undefined;
 
-const marksOf = (accountId: string): WalkMarks => walkMarksOf(mockDatabase, accountId, 'earn');
+const marksOf = (accountId: string): WalkMarkSeed => walkMarksOf(mockDatabase, accountId, 'earn');
 
 const rewardKey = (number: number): string =>
   `acc-1:earn:reward:flexible:BTC001:REALTIME:${REWARD_TIME}:${number}`;

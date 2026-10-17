@@ -3,7 +3,7 @@ import { minOf } from '@kiko/numbers';
 import { i18n } from '@kiko/i18n/init';
 import {
   type WalkField,
-  type WalkMarks,
+  type WalkMarkSeed,
   walkMarkWritesOf,
   walkStateFake,
 } from '@kiko/test-support/walk-marks';
@@ -408,7 +408,7 @@ type World = {
  * hold: the other holdings, the rows written, and the writes in order.
  */
 const worldOf = (
-  marks: WalkMarks = {},
+  marks: WalkMarkSeed = {},
   others: HoldingRow[] = [holdingWith('h-funding', { binanceAsset: FUNDING_KEY })],
 ): World => {
   const events: string[] = [];
@@ -416,11 +416,9 @@ const worldOf = (
   return {
     state: walkStateFake({
       marks: { transfer: marks },
-      onWrite: ({ field }) => {
-        if (field === 'pending') {
-          events.push('list');
-        } else if (field !== 'spanHints') {
-          events.push(`cursor:${field}`);
+      onWrite: ({ walkName, field }) => {
+        if (field !== 'spanHints') {
+          events.push(`${walkName}:${field}`);
         }
       },
     }),
@@ -430,7 +428,7 @@ const worldOf = (
   };
 };
 
-const marksOf = (world: World): WalkMarks => world.state.marksOf('transfer');
+const marksOf = (world: World): WalkMarkSeed => world.state.marksOf('transfer');
 
 const depsOf = (
   world: World,
@@ -456,7 +454,7 @@ const depsOf = (
 
     return rows.length;
   }),
-  ...world.state.deps,
+  ...world.state.freshDeps(),
   ...over,
 });
 
@@ -2408,11 +2406,11 @@ describe('the order of the writes', () => {
           : undefined,
     });
 
-    const lastForward = world.events.lastIndexOf('cursor:cursor');
+    const lastForward = world.events.lastIndexOf('transfer:cursor');
     expect(world.events.slice(lastForward + 1, lastForward + 4)).toEqual([
       'rows',
-      'list',
-      'cursor:rescan',
+      'transfer:pending',
+      'transfer:rescan',
     ]);
   });
 
@@ -2421,7 +2419,9 @@ describe('the order of the writes', () => {
 
     await walkOnce({ world });
 
-    expect(world.events.indexOf('list')).toBeLessThan(world.events.indexOf('cursor:cursor'));
+    expect(world.events.indexOf('transfer:pending')).toBeLessThan(
+      world.events.indexOf('transfer:cursor'),
+    );
   });
 });
 

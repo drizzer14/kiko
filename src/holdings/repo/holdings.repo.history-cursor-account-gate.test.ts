@@ -28,27 +28,16 @@ import {
 } from '@kiko/holdings/holding-metadata';
 import type { database } from '@kiko/db';
 import { DatabaseSync } from 'node:sqlite';
+import { WALK_NAMES, withWalkMarkSeeds } from '@kiko/test-support/walk-marks';
 import { applyAllMigrations, executingDrizzle } from '@kiko/test-support/real-sqlite';
-import { type WalkId, type WalkMarks, withWalkMarks } from '@kiko/test-support/walk-marks';
 
 import { holdingsRepo } from './holdings.repo';
 
-const WALK_IDS: WalkId[] = ['capital', 'pay', 'transfer', 'earn'];
+const SPOT = { binanceAsset: 'BTC', syncedAt: 500 };
 
-/** The Spot holding's metadata once each walk named has marks, over what else it carries. */
-const spotWithMarks = (
-  marks: Partial<Record<WalkId, WalkMarks>>,
-  base: Record<string, unknown> = { binanceAsset: 'BTC', syncedAt: 500 },
-): Record<string, unknown> =>
-  Object.entries(marks).reduce(
-    (metadata, [walkId, walkMarks]) =>
-      withWalkMarks(metadata, 'acc-1', walkId as WalkId, walkMarks),
-    base,
-  );
+const STORED = withWalkMarkSeeds(SPOT, 'acc-1', { capital: { cursor: 500 } });
 
-const STORED = spotWithMarks({ capital: { cursor: 500 } });
-
-const FLOORED = spotWithMarks({ capital: { cursor: 1 } });
+const FLOORED = withWalkMarkSeeds(SPOT, 'acc-1', { capital: { cursor: 1 } });
 
 const openTestDatabase = (institution: string | null): DatabaseSync => {
   const rawDatabase = new DatabaseSync(':memory:');
@@ -109,7 +98,11 @@ describe("holdingsRepo.setBinanceWalkCursor — gated on the holding's account s
     await holdingsRepo.setBinanceWalkCursor('h-spot', 'binanceEarnHistoryCursor', 800);
 
     expect(storedMetadata(rawDatabase)).toEqual(
-      spotWithMarks({ capital: { cursor: 500 }, pay: { cursor: 700 }, earn: { cursor: 800 } }),
+      withWalkMarkSeeds(SPOT, 'acc-1', {
+        capital: { cursor: 500 },
+        pay: { cursor: 700 },
+        earn: { cursor: 800 },
+      }),
     );
   });
 
@@ -140,8 +133,10 @@ describe("holdingsRepo.setBinanceWalkCursor — gated on the holding's account s
     await holdingsRepo.resetBinanceWalkCursors('acc-1', 1);
 
     expect(storedMetadata(rawDatabase)).toEqual(
-      spotWithMarks(
-        Object.fromEntries(WALK_IDS.map((walkId) => [walkId, { cursor: 1, rescan: 1 }])),
+      withWalkMarkSeeds(
+        SPOT,
+        'acc-1',
+        Object.fromEntries(WALK_NAMES.map((walkName) => [walkName, { cursor: 1, rescan: 1 }])),
       ),
     );
   });
@@ -242,7 +237,7 @@ describe("holdingsRepo.setBinanceWalkPending — gated on the holding's account 
     await holdingsRepo.resetBinanceWalkCursors('acc-1', 1);
 
     expect(storedMetadata(rawDatabase)).toEqual(
-      spotWithMarks({
+      withWalkMarkSeeds(SPOT, 'acc-1', {
         capital: { cursor: 1, pending: [] },
         pay: { pending: [] },
         transfer: { pending: [] },
@@ -259,13 +254,13 @@ describe("holdingsRepo.setBinanceWalkPending — gated on the holding's account 
     await holdingsRepo.setBinanceWalkPending('h-spot', 'binanceTransferPendingOverlap', [typed]);
 
     expect(storedMetadata(rawDatabase)).toMatchObject(
-      spotWithMarks({ transfer: { pending: [typed] } }, {}),
+      withWalkMarkSeeds({}, 'acc-1', { transfer: { pending: [typed] } }),
     );
 
     await holdingsRepo.resetBinanceWalkCursors('acc-1', 1);
 
     expect(storedMetadata(rawDatabase)).toMatchObject(
-      spotWithMarks({ transfer: { pending: [] } }, {}),
+      withWalkMarkSeeds({}, 'acc-1', { transfer: { pending: [] } }),
     );
   });
 
@@ -279,7 +274,7 @@ describe("holdingsRepo.setBinanceWalkPending — gated on the holding's account 
     await holdingsRepo.setBinanceWalkPending('h-spot', 'binancePayPendingOverlap', ranges);
 
     expect(storedMetadata(rawDatabase)).toEqual(
-      spotWithMarks({ capital: { cursor: 1 }, pay: { pending: [] } }),
+      withWalkMarkSeeds(SPOT, 'acc-1', { capital: { cursor: 1 }, pay: { pending: [] } }),
     );
   });
 });

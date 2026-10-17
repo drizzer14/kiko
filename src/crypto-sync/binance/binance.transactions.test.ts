@@ -1,11 +1,13 @@
 import { DAY_MS } from '@kiko/dates';
 import {
   expectWalkMarkWritten,
-  NUMBER_MARK_FIELDS,
+  numberMarkWritesOfAnyWalk,
   type WalkField,
-  type WalkMarks,
+  type WalkMarkSeed,
+  type WalkName,
   walkMarkWritesOf,
   walkMarksOf,
+  walkStateDeps,
   walkStateFake,
   withWalkMarks,
 } from '@kiko/test-support/walk-marks';
@@ -46,11 +48,8 @@ const ACCOUNT_ID = 'acc-1';
 // The code reads only `id` and `metadata.binanceAsset` off a holding, so a
 // minimal shape cast to HoldingRow is enough for these unit tests.
 const spotHolding = { id: 'h-spot', metadata: { binanceAsset: 'BTC' } } as unknown as HoldingRow;
-const spotWithCursor = (cursor: number): HoldingRow =>
-  ({
-    id: 'h-spot',
-    metadata: withWalkMarks({ binanceAsset: 'BTC' }, ACCOUNT_ID, 'capital', { cursor }),
-  }) as unknown as HoldingRow;
+const capitalWalkAt = (cursor: number) =>
+  walkStateDeps({ accountId: ACCOUNT_ID, marks: { capital: { cursor } } });
 const fundingHolding = {
   id: 'h-funding',
   metadata: { binanceAsset: 'BTC:funding' },
@@ -177,9 +176,9 @@ const makeStatefulSpotAccount = () => {
 type StatefulSpotAccount = ReturnType<typeof makeStatefulSpotAccount>;
 
 /** Logs the writes a crash order is about: a number mark is a 'cursor', a list a 'pending'. */
-const logWrite = (log: string[], field: WalkField): void => {
+const logWrite = (log: string[], walkName: WalkName, field: WalkField): void => {
   if (field !== 'spanHints') {
-    log.push(field === 'pending' ? 'pending' : 'cursor');
+    log.push(`${walkName}:${field === 'pending' ? 'pending' : 'cursor'}`);
   }
 };
 
@@ -455,7 +454,7 @@ describe('syncBinanceTransactions', () => {
     const fetchDepositHistory = emptyDepositFetch();
     const cursor = NOW - 2 * 60 * 60 * 1000;
     const deps = makeDeps({
-      listHoldings: async () => [spotWithCursor(cursor)],
+      ...capitalWalkAt(cursor),
       latestTransactionTime: async () => Date.UTC(2019, 0, 1),
       fetchDepositHistory,
     });
@@ -475,7 +474,7 @@ describe('syncBinanceTransactions', () => {
     // before the disconnect must not pull the walk forward past the floor.
     const fetchDepositHistory = emptyDepositFetch();
     const deps = makeDeps({
-      listHoldings: async () => [spotWithCursor(HISTORY_FLOOR_MS)],
+      ...capitalWalkAt(HISTORY_FLOOR_MS),
       latestTransactionTime: async () => NOW - 89 * DAY_MS,
       fetchDepositHistory,
     });
@@ -737,9 +736,9 @@ describe('wallet placement by walletType (C-matrix)', () => {
         return rows.length;
       }),
       ...walkStateFake({
-        onWrite: ({ field }) => {
+        onWrite: ({ walkName, field }) => {
           if (field !== 'pending') {
-            logWrite(order, field);
+            logWrite(order, walkName, field);
           }
         },
       }).deps,
@@ -749,7 +748,7 @@ describe('wallet placement by walletType (C-matrix)', () => {
 
     await sync(deps);
 
-    expect(order.slice(0, 3)).toEqual(['ensureHoldings', 'addTransactions', 'cursor']);
+    expect(order.slice(0, 3)).toEqual(['ensureHoldings', 'addTransactions', 'capital:cursor']);
   });
 });
 
@@ -802,7 +801,7 @@ describe('a settled capital row the walk cannot trust stops its window', () => {
 
     expect(result).toEqual({ imported: 0, complete: false });
     expect(deps.addTransactions).not.toHaveBeenCalled();
-    expect(walkMarkWritesOf(deps, 'capital', NUMBER_MARK_FIELDS)).toEqual([]);
+    expect(numberMarkWritesOfAnyWalk(deps)).toEqual([]);
     expect(warn.mock.calls).toEqual([[STOP_TAG, { name: 'BinanceWalkStop', code }]]);
   });
 
@@ -957,7 +956,7 @@ describe('resumable, budgeted walk', () => {
     expect(result).toEqual({ imported: 0, complete: false });
     expect(deps.fetchDepositHistory).not.toHaveBeenCalled();
     expect(deps.fetchWithdrawHistory).not.toHaveBeenCalled();
-    expect(walkMarkWritesOf(deps, 'capital', NUMBER_MARK_FIELDS)).toEqual([]);
+    expect(numberMarkWritesOfAnyWalk(deps)).toEqual([]);
   });
 
   it('records what the walk spends on the shared run, so a later walk sees it', async () => {
@@ -1003,7 +1002,7 @@ describe('resumable, budgeted walk', () => {
 
     expect(run1).toEqual({ imported: 0, complete: false });
     // 2 windows committed (withdraw calls 1 and 2 succeeded); the 3rd's window is not.
-    expect(walkMarkWritesOf(account.deps, 'capital', NUMBER_MARK_FIELDS)).toHaveLength(2);
+    expect(numberMarkWritesOfAnyWalk(account.deps)).toHaveLength(2);
 
     const callsAfterRun1 = fetchWithdrawHistory.mock.calls.length;
     const firstWindowStart = depositWindows[0].startTime;
@@ -1073,7 +1072,7 @@ describe('resumable, budgeted walk', () => {
 
     expect(fetchWithdrawHistory).toHaveBeenCalledTimes(1);
     expect(result.complete).toBe(false);
-    expect(walkMarkWritesOf(account.deps, 'capital', NUMBER_MARK_FIELDS)).toHaveLength(1);
+    expect(numberMarkWritesOfAnyWalk(account.deps)).toHaveLength(1);
   });
 
   it('a deposit page that leaves no IP room stops the window before the next deposit call', async () => {
@@ -1088,7 +1087,7 @@ describe('resumable, budgeted walk', () => {
     expect(fetchDepositHistory).toHaveBeenCalledTimes(1);
     expect(deps.fetchWithdrawHistory).not.toHaveBeenCalled();
     expect(deps.addTransactions).not.toHaveBeenCalled();
-    expect(walkMarkWritesOf(deps, 'capital', NUMBER_MARK_FIELDS)).toEqual([]);
+    expect(numberMarkWritesOfAnyWalk(deps)).toEqual([]);
   });
 
   it('a deposit page that leaves room for exactly one more IP weight lets the walk go on with the half', async () => {
@@ -1130,7 +1129,7 @@ describe('resumable, budgeted walk', () => {
     expect(result.complete).toBe(false);
     expect(fetchWithdrawHistory).toHaveBeenCalledTimes(LANE_CALL_CAPS.capitalWithdraw);
     // The 8 EARLIER windows committed; the 9th (the unfinished one) did not.
-    expect(walkMarkWritesOf(account.deps, 'capital', NUMBER_MARK_FIELDS)).toHaveLength(
+    expect(numberMarkWritesOfAnyWalk(account.deps)).toHaveLength(
       LANE_CALL_CAPS.capitalWithdraw - 1,
     );
   });
@@ -1139,7 +1138,7 @@ describe('resumable, budgeted walk', () => {
     const invocationCallOrder: string[] = [];
     const account = walkStateFake({
       accountId: ACCOUNT_ID,
-      onWrite: ({ field }) => logWrite(invocationCallOrder, field),
+      onWrite: ({ walkName, field }) => logWrite(invocationCallOrder, walkName, field),
     });
     const addTransactions = jest.fn(async (rows: BinanceTransactionRow[]) => {
       invocationCallOrder.push('addTransactions');
@@ -1159,7 +1158,12 @@ describe('resumable, budgeted walk', () => {
 
     // The owed overlap day is stored before the cursor moves, and leaves the list once the
     // re-scan has read it.
-    expect(invocationCallOrder).toEqual(['addTransactions', 'pending', 'cursor', 'pending']);
+    expect(invocationCallOrder).toEqual([
+      'addTransactions',
+      'capital:pending',
+      'capital:cursor',
+      'capital:pending',
+    ]);
   });
 
   it('regression: rows from an earlier, committed window ARE written despite a later 429 (inverse of the all-or-nothing bug)', async () => {
@@ -1191,7 +1195,7 @@ describe('the capital re-scan', () => {
   const FORWARD_FIELD = 'cursor';
   const RESCAN_FIELD = 'rescan';
 
-  const accountWith = async (marks: WalkMarks) => {
+  const accountWith = async (marks: WalkMarkSeed) => {
     const account = makeStatefulSpotAccount();
 
     account.seed('capital', marks);
@@ -1602,8 +1606,8 @@ describe('a capital cursor older than the re-scan window', () => {
     const writes = state.account
       .writes()
       .filter((write) => write.field !== 'spanHints')
-      .map((write) => write.field);
-    expect(writes.slice(0, 2)).toEqual(['pending', 'cursor']);
+      .map((write) => `${write.walkName}:${write.field}`);
+    expect(writes.slice(0, 2)).toEqual(['capital:pending', 'capital:cursor']);
     expect(walkMarkWritesOf(state.account.deps, 'capital', 'pending')[0]).toEqual([
       { start: CURSOR - DAY_MS, end: CURSOR },
     ]);
@@ -1974,6 +1978,7 @@ describe('the pending overlap days of the capital walk', () => {
         .writes()
         .find(
           (write) =>
+            write.walkName === 'capital' &&
             write.field === 'pending' &&
             (write.value as WalkWindow[]).some((range) => range.start === stuckAt - 1_000),
         );
@@ -2344,6 +2349,7 @@ describe('the pending overlap days of the capital walk', () => {
           .writes()
           .find(
             (write) =>
+              write.walkName === 'capital' &&
               write.field === 'pending' &&
               (write.value as WalkWindow[]).some((range) => range.start === stuckAt - 1),
           );
@@ -2388,7 +2394,7 @@ describe('the pending overlap days of the capital walk', () => {
 
         await runOver(state, [fixedRecord()]);
 
-        const writes = state.account.writes();
+        const writes = state.account.writes().filter((write) => write.walkName === 'capital');
         const pointWrite = writes.find((write) => write.field === 'pointCursor');
         const lastListWrite = Math.max(
           ...writes.filter((write) => write.field === 'pending').map((write) => write.order),

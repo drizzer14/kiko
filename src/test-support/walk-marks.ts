@@ -29,11 +29,11 @@ import {
   BINANCE_TRANSFER_SPAN_HINTS_FIELD,
 } from '@kiko/holdings/holding-metadata';
 import type { HoldingRow } from '@kiko/db';
-import maybe, { foldMap } from 'fnts/maybe';
+import { isRecord } from '@kiko/type-guards';
 import type { DatabaseSync } from 'node:sqlite';
 import type { BinanceWalkWriteDeps } from '@kiko/crypto-sync/exchange/walk';
 
-export type WalkId = 'capital' | 'pay' | 'transfer' | 'earn';
+export type WalkName = 'capital' | 'pay' | 'transfer' | 'earn';
 
 export type WalkField =
   | 'cursor'
@@ -44,7 +44,7 @@ export type WalkField =
   | 'spanHints';
 
 /** Any value, because a test also seeds a malformed mark to prove the walk reads it as none. */
-export type WalkMarks = Partial<Record<WalkField, unknown>>;
+export type WalkMarkSeed = Partial<Record<WalkField, unknown>>;
 
 const SPOT_HOLDING_ID = 'h-spot';
 
@@ -84,9 +84,9 @@ const KEYS = {
     rangeCursor: BINANCE_EARN_RANGE_CURSOR_FIELD,
     spanHints: BINANCE_EARN_SPAN_HINTS_FIELD,
   },
-} as const satisfies Record<WalkId, Record<WalkField, string>>;
+} as const satisfies Record<WalkName, Record<WalkField, string>>;
 
-const WALK_IDS = Object.keys(KEYS) as WalkId[];
+export const WALK_NAMES = Object.keys(KEYS) as WalkName[];
 
 const FIELDS = Object.keys(KEYS.capital) as WalkField[];
 
@@ -107,11 +107,27 @@ type MarksSource = DatabaseSync | HoldingRow[] | Metadata;
 
 const SPOT_ASSET = 'BTC';
 
-const isRecord = (value: unknown): value is Metadata =>
-  typeof value === 'object' && value !== null && !Array.isArray(value);
-
 const isDatabase = (source: MarksSource): source is DatabaseSync =>
   'prepare' in source && typeof source.prepare === 'function';
+
+type StoredSpot = { id: string; metadata: string };
+
+/** The Spot holding the walks read: the first Spot BTC holding of the account. */
+const storedSpotOf = (database: DatabaseSync, accountId: string): StoredSpot => {
+  const stored = database
+    .prepare(
+      `SELECT id, metadata FROM holdings
+        WHERE account_id = ? AND json_extract(metadata, '$.binanceAsset') = ?
+        ORDER BY sort_order, created_at LIMIT 1`,
+    )
+    .get(accountId, SPOT_ASSET) as StoredSpot | undefined;
+
+  if (stored === undefined) {
+    throw new Error(`walk-marks: account "${accountId}" has no Spot ${SPOT_ASSET} holding`);
+  }
+
+  return stored;
+};
 
 const metadataOf = (source: MarksSource, accountId: string): Metadata => {
   if (Array.isArray(source)) {
@@ -119,32 +135,32 @@ const metadataOf = (source: MarksSource, accountId: string): Metadata => {
       (holding) => isRecord(holding.metadata) && holding.metadata.binanceAsset === SPOT_ASSET,
     );
 
-    return isRecord(spot?.metadata) ? spot.metadata : {};
+    if (!isRecord(spot?.metadata)) {
+      throw new Error(`walk-marks: no Spot ${SPOT_ASSET} holding among the ${source.length} given`);
+    }
+
+    return spot.metadata;
   }
 
   if (isDatabase(source)) {
-    const stored = source
-      .prepare(
-        `SELECT metadata FROM holdings
-          WHERE account_id = ? AND json_extract(metadata, '$.binanceAsset') = ?
-          ORDER BY sort_order, created_at LIMIT 1`,
-      )
-      .get(accountId, SPOT_ASSET) as { metadata: string } | undefined;
-
-    return foldMap(maybe(stored), (row) => JSON.parse(row.metadata) as Metadata) ?? {};
+    return JSON.parse(storedSpotOf(source, accountId).metadata) as Metadata;
   }
 
   return source;
 };
 
 /** A field is left out of the result when the walk holds no mark for it. */
-export const walkMarksOf = (source: MarksSource, accountId: string, walkId: WalkId): WalkMarks => {
+export const walkMarksOf = (
+  source: MarksSource,
+  accountId: string,
+  walkName: WalkName,
+): WalkMarkSeed => {
   const metadata = metadataOf(source, accountId);
 
   return Object.fromEntries(
-    FIELDS.filter((field) => KEYS[walkId][field] in metadata).map((field) => [
+    FIELDS.filter((field) => KEYS[walkName][field] in metadata).map((field) => [
       field,
-      metadata[KEYS[walkId][field]],
+      metadata[KEYS[walkName][field]],
     ]),
   );
 };
@@ -153,62 +169,117 @@ export const walkMarksOf = (source: MarksSource, accountId: string, walkId: Walk
 export const withWalkMarks = (
   seed: Metadata,
   _accountId: string,
-  walkId: WalkId,
-  marks: WalkMarks,
+  walkName: WalkName,
+  marks: WalkMarkSeed,
 ): Metadata => ({
   ...seed,
   ...Object.fromEntries(
     FIELDS.filter((field) => marks[field] !== undefined).map((field) => [
-      KEYS[walkId][field],
+      KEYS[walkName][field],
       marks[field],
     ]),
   ),
 });
 
-type WriteOptions = { last?: boolean; holdingId?: string };
+/** The marks of several walks at once, each over what the seed already holds. */
+export const withWalkMarkSeeds = (
+  seed: Metadata,
+  accountId: string,
+  seeds: Partial<Record<WalkName, WalkMarkSeed>>,
+): Metadata =>
+  WALK_NAMES.reduce(
+    (metadata, walkName) => withWalkMarks(metadata, accountId, walkName, seeds[walkName] ?? {}),
+    seed,
+  );
+
+/**
+ * Sets the given marks of one walk on the account's Spot holding in a migrated database, over the
+ * marks it already holds; a field given as `undefined` is removed.
+ */
+export const seedWalkMarks = (
+  database: DatabaseSync,
+  accountId: string,
+  walkName: WalkName,
+  marks: WalkMarkSeed,
+): void => {
+  const spot = storedSpotOf(database, accountId);
+  const removed: string[] = FIELDS.filter(
+    (field) => field in marks && marks[field] === undefined,
+  ).map((field) => KEYS[walkName][field]);
+  const metadata = Object.fromEntries(
+    Object.entries(
+      withWalkMarks(JSON.parse(spot.metadata) as Metadata, accountId, walkName, marks),
+    ).filter(([key]) => !removed.includes(key)),
+  );
+
+  database
+    .prepare('UPDATE holdings SET metadata = ? WHERE id = ?')
+    .run(JSON.stringify(metadata), spot.id);
+};
+
+type WriteOptions = { last?: boolean };
 
 export const expectWalkMarkWritten = (
   deps: Partial<BinanceWalkWriteDeps>,
   _accountId: string,
-  walkId: WalkId,
+  walkName: WalkName,
   field: WalkField,
   value: unknown,
-  { last = false, holdingId = SPOT_HOLDING_ID }: WriteOptions = {},
+  { last = false }: WriteOptions = {},
 ): void => {
   const writer = expect(deps[WRITERS[field]]);
 
   if (last) {
-    writer.toHaveBeenLastCalledWith(holdingId, KEYS[walkId][field], value);
+    writer.toHaveBeenLastCalledWith(SPOT_HOLDING_ID, KEYS[walkName][field], value);
   } else {
-    writer.toHaveBeenCalledWith(holdingId, KEYS[walkId][field], value);
+    writer.toHaveBeenCalledWith(SPOT_HOLDING_ID, KEYS[walkName][field], value);
   }
 };
 
-/** Several fields give the writes of all of them, as the one writer that takes them saw them. */
+/** Several fields give the writes of all of them, in the order they were made across writers. */
 export const walkMarkWritesOf = (
   deps: Partial<BinanceWalkWriteDeps>,
-  walkId: WalkId,
+  walkName: WalkName,
   field: WalkField | readonly WalkField[],
 ): unknown[] => {
   const fields = typeof field === 'string' ? [field] : field;
-  const keys = new Set<string>(fields.map((each) => KEYS[walkId][each]));
+  const keys = new Set<string>(fields.map((each) => KEYS[walkName][each]));
   const writers = new Set(fields.map((each) => WRITERS[each]));
 
-  return [...writers].flatMap((writer) =>
-    ((deps[writer] as jest.Mock | undefined)?.mock.calls ?? [])
-      .filter((call) => keys.has(call[1] as string))
-      .map((call) => call[2] as unknown),
-  );
+  return [...writers]
+    .flatMap((writer) => {
+      const mock = deps[writer] as jest.Mock | undefined;
+
+      return (mock?.mock.calls ?? []).map((call, index) => ({
+        key: call[1] as string,
+        value: call[2] as unknown,
+        order: mock?.mock.invocationCallOrder[index] ?? 0,
+      }));
+    })
+    .filter((write) => keys.has(write.key))
+    .sort((left, right) => left.order - right.order)
+    .map((write) => write.value);
 };
 
+/** Every number mark any walk wrote, so a write to a walk the run never owned is counted too. */
+export const numberMarkWritesOfAnyWalk = (deps: Partial<BinanceWalkWriteDeps>): number[] =>
+  ((deps.writeWalkCursor as jest.Mock | undefined)?.mock.calls ?? []).map(
+    (call) => call[2] as number,
+  );
+
 /** `order` is the jest call order of the writer, to compare with a call of any other mock. */
-type WalkWrite = { walkId: WalkId; field: WalkField; value: unknown; order: number };
+type WalkWrite = {
+  walkName: WalkName;
+  field: WalkField;
+  value: unknown;
+  order: number;
+};
 
 type WalkWorld = {
   accountId?: string;
-  holdingId?: string;
-  metadata?: Metadata;
-  marks?: Partial<Record<WalkId, WalkMarks>>;
+  marks?: Partial<Record<WalkName, WalkMarkSeed>>;
+  /** Holdings listed after the Spot holding, such as a Funding or an Earn one. */
+  alongside?: HoldingRow[];
   /** Called before the fake applies the write, so a test can log the order of writes. */
   onWrite?: (write: WalkWrite) => void;
 };
@@ -217,27 +288,25 @@ type WalkStateDeps = {
   [Writer in WalkWriter]: jest.Mock<Promise<void>, Parameters<BinanceWalkWriteDeps[Writer]>>;
 };
 
-const OWNER_OF_KEY = new Map<string, { walkId: WalkId; field: WalkField }>(
-  WALK_IDS.flatMap((walkId) =>
-    FIELDS.map((field): [string, { walkId: WalkId; field: WalkField }] => [
-      KEYS[walkId][field],
-      { walkId, field },
-    ]),
+type WalkOwner = { walkName: WalkName; field: WalkField };
+
+const OWNER_OF_KEY = new Map<string, WalkOwner>(
+  WALK_NAMES.flatMap((walkName) =>
+    FIELDS.map((field): [string, WalkOwner] => [KEYS[walkName][field], { walkName, field }]),
   ),
 );
 
 /** Throws on a key no walk owns: a fake that accepted one would hide a mistyped mark. */
 export const walkStateFake = (world: WalkWorld = {}) => {
   const accountId = world.accountId ?? 'acc-1';
-  const holdingId = world.holdingId ?? SPOT_HOLDING_ID;
-  let metadata: Metadata = { binanceAsset: SPOT_ASSET, ...world.metadata };
+  let metadata: Metadata = { binanceAsset: SPOT_ASSET };
 
-  const seed = (walkId: WalkId, marks: WalkMarks): void => {
-    metadata = withWalkMarks(metadata, accountId, walkId, marks);
+  const seed = (walkName: WalkName, marks: WalkMarkSeed): void => {
+    metadata = withWalkMarks(metadata, accountId, walkName, marks);
   };
 
-  for (const walkId of WALK_IDS) {
-    seed(walkId, world.marks?.[walkId] ?? {});
+  for (const walkName of WALK_NAMES) {
+    seed(walkName, world.marks?.[walkName] ?? {});
   }
 
   const writes: WalkWrite[] = [];
@@ -273,13 +342,22 @@ export const walkStateFake = (world: WalkWorld = {}) => {
     return mocks;
   };
 
+  const listHoldings = async (): Promise<HoldingRow[]> =>
+    [{ id: SPOT_HOLDING_ID, metadata }, ...(world.alongside ?? [])] as unknown as HoldingRow[];
+
   return {
     deps: freshDeps(),
     freshDeps,
     seed,
     writes: (): WalkWrite[] => [...writes],
-    marksOf: (walkId: WalkId): WalkMarks => walkMarksOf(metadata, accountId, walkId),
-    listHoldings: async (): Promise<HoldingRow[]> =>
-      [{ id: holdingId, metadata }] as unknown as HoldingRow[],
+    marksOf: (walkName: WalkName): WalkMarkSeed => walkMarksOf(metadata, accountId, walkName),
+    listHoldings,
   };
+};
+
+/** The reads and writers of a walk over one stored state, seeded with the given marks. */
+export const walkStateDeps = (world: WalkWorld = {}) => {
+  const { deps, listHoldings } = walkStateFake(world);
+
+  return { ...deps, listHoldings };
 };
