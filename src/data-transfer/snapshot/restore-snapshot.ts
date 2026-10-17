@@ -37,6 +37,7 @@ import { planImportTimeRezone } from '@kiko/statement-import/rezone-import-times
 
 import type { DataSnapshot } from './data-snapshot';
 import { withUsdtRescaled } from './with-usdt-rescaled';
+import { withWalkStateMoved } from './with-walk-state-moved';
 import { assertKnownCurrencies } from './assert-known-currencies';
 import { withImplicitAccountsMerged } from './with-implicit-accounts-merged';
 
@@ -821,13 +822,20 @@ export const restoreDataSnapshot = (
       holdings: holdingsAfterImplicitMerge,
       reminders: remindersToInsert,
       settings: settingsAfterImplicitMerge,
-      syncState: syncStateToInsert,
+      syncState: syncStateAfterImplicitMerge,
     } = withImplicitAccountsMerged({
       accounts: accountsAfterBankIdBackfill,
       holdings: holdingsAfterCryptoCashMove,
       reminders: snapshot.reminders ?? [],
       settings: snapshot.settings,
       syncState: snapshot.syncState,
+    });
+    // After the merge, as 0061 runs after 0050: a merged account's Spot BTC holding now sits on
+    // the kept account, which is where its walk state belongs. Reads only the holdings' account,
+    // order and metadata, and writes only the sync state.
+    const syncStateToInsert = withWalkStateMoved({
+      holdings: holdingsAfterImplicitMerge,
+      syncState: syncStateAfterImplicitMerge,
     });
 
     const deleteAllTables = async (): Promise<void> => {
