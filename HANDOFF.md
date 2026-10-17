@@ -7,10 +7,8 @@ The 2026-10-17 ~14:30 section below is HISTORY. The morning walkthrough of 2026-
 FIRST ACTIONS of the next session:
 1. ListAgents (all sessions are in ONE registry now: Orca profile claude-profiles/915a0295.../home). If a session is
    missing, it runs in an old terminal: restart it (memory orca-hub, "TWO SESSION REGISTRIES").
-2. Queue: `bash scripts/job-queue.sh status`. ipad-t6-deep (base 00eb199e, head 9115a856, worktree deep-ipad-t6) was
-   RUNNING with its waiter in the OLD coordinator session: if that session is gone, the ticket may show a `lost` line;
-   read done.log / logs/gate-ipad-t6-deep.log; re-queue once if needed. On its end: tell ipad-a2 "gate done" (its ops
-   simulator pass 2 is HELD for it), report the score; remove deep-ipad-t6.
+2. Queue: `bash scripts/job-queue.sh status`. ipad-t6-deep finished PASS (84.00, osv-only exit 2); "gate done" sent;
+   ipad-a2's Device Hub simulator pass 2 is the ONE heavy job: hold every other gate until ipad-a2 reports it done.
 3. Arm: inbox watcher (memory/refs/coordinator-inbox.log), pmset watcher, gauge watchers (memory/refs/gaugewatch.sh,
    40 %) for binance-f6, ipad-a2, h8-a1. After any plugin.json bump merges: `claude plugin update kiko@kiko-marketplace`
    from the main checkout + /reload-plugins per screen check.
