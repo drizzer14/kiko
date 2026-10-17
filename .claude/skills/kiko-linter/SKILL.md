@@ -270,7 +270,10 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   SHELL-WRITE deny (why: the pre-write guard sees only Edit/Write/
   MultiEdit, so a file a Bash command writes lands unchecked until
   guard-replay at Stop). Rule: deny a Bash write into `src/`,
-  `__tests__/`, `rules/`, or `e2e/` (`WRITE_GUARDED_TREES` in `scripts/checks/kill-guard.js`; `e2e/` joined
+  `__tests__/`, `rules/`, `e2e/`, or `drizzle/`
+  (`WRITE_GUARDED_TREES` in `scripts/checks/kill-guard.js`; `drizzle/` is
+  guarded against shell writes only: no pre-write SQL rule covers an Edit/Write there, and
+  shipped-migrations covers it at Stop; `e2e/` joined
   on 2026-10-11 after a python write broke
   `e2e/screenshot/seed/demo-text.ts`; the pre-write guard and guard-replay
   read any `.ts`/`.tsx` outside `EXCLUDED_PREFIXES`, so `e2e/*.ts` is in
@@ -2590,7 +2593,7 @@ On a `Stop` event (not `SubagentStop`) whose payload has `stop_hook_active: true
 
 The pre-write guard sees only `Edit`/`Write`/`MultiEdit`. The
 kill-guard's SHELL-WRITE deny (above) blocks the common Bash write
-forms into `src/`, `__tests__/`, `rules/`, and `e2e/`. It allows the `--write`
+forms into `src/`, `__tests__/`, `rules/`, `e2e/`, and `drizzle/`. It allows the `--write`
 fixers and git itself, which write source legitimately. What it does
 not see still reaches disk unchecked: a script file that writes,
 `find -exec`, a path held in a variable the command does not assign (see "SHELL-WRITE deny,

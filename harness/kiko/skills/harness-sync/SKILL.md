@@ -226,6 +226,8 @@ Every count and exit code is the orchestrator's own measured result.
   `20457fac`: a heredoc in a scanned script is judged for the scan's kinds; `088a78d7` and
   `7ce17ec5`: comments and test titles). It does
   NOT carry the GIT_CONFIG_GLOBAL/GIT_CONFIG_SYSTEM file check (deleted).
+- kill-guard `drizzle/` shell-write deny (`b566307f`): the mechanism is generic, the tree list is
+  kiko's, so port it as a configurable list (`WRITE_GUARDED_TREES`), not a hard-coded `drizzle`.
 
 From sync 2 and earlier:
 - Not yet ported: guard-replay, shipped-migrations, plural-count, the estimator skill; the
