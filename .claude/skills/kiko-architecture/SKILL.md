@@ -1914,8 +1914,9 @@ than restated here:
   instant is imported." `parseExchangeState` and `walk-values.ts`
   (`exchange/walk-state/`) are the reader, `syncStateRepo.patchExchangeState`
   (a list of patches in one write) the writer. A patch applies to the RAW
-  stored JSON, never the re-serialized parse (the parse drops `notImported`,
-  `multiCoin*` and unknown walk ids and repairs malformed fields;
+  stored JSON, never the re-serialized parse (the parse drops any field this
+  build does not read, such as `notImported` or an unknown walk id, and
+  repairs malformed fields;
   `exchange-state-patch.ts`); a malformed top level makes a patch write
   nothing, only a disconnect replaces it. The plan comes from
   `planWalkPasses` (`exchange/walk/walk.ts`; read its input type for the

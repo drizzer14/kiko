@@ -1310,7 +1310,7 @@ patch), `exchange/walk-state` (parse and patch of `multiCoinSince` and `multiCoi
       window writes neither, so the next run is again the first multi-coin run; so `multiCoinSeen` is never stored
       without a stored cursor, which a disconnect resets to the floor. A walk with `multiCoinSeen` never writes either
       again. Capital with a null stored cursor and a legacy `latest` records `latest`, so set 15's backfill covers
-      `[floor, latest)`: no history skipped. the reset (`resetExchangeStateDatabaseTransaction`) removes `multiCoinSince` and keeps
+      `[floor, latest)`: no history skipped. The reset (`resetExchangeStateDatabaseTransaction`) removes `multiCoinSince` and keeps
       `multiCoinSeen: true` (the reset cursor is the floor, so every coin is read from it; nothing is owed).
 - [ ] Tests first: "records the plan cursor at the first multi-coin run"; "records none when the plan cursor is
       null"; "a second run after a null-cursor first run records none"; "records the latest row time for capital with
