@@ -260,7 +260,8 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   FIX also names `scripts/ff-main.sh`. The way out: do the real merge in a separate detached
   worktree, run a queued `scripts/job-queue.sh verify` on the merge commit, then
   `bash scripts/ff-main.sh <sha>` (it needs the LAST `verify` line of done.log for that full
-  sha to be exit 0; read its header). `scripts/ff-main.sh` needs no exemption: its merge uses
+  sha to be exit 0; read its header; a `harness/kiko` change also needs a plugin.json
+  version strictly above main's). `scripts/ff-main.sh` needs no exemption: its merge uses
   a variable target. A help or recovery option lets
   the whole command through from ANY argument position, even as another
   option's value (see the limits list). A session
@@ -2856,7 +2857,11 @@ mechanizable (see harness-workflow's "Classify every finding").
      `ff-main.test.ts`): no settle sleep; prove concurrency by a rendezvous.
      The poll-bound exemption applies only inside the braces of the loop
      that holds the bound; a renamed `timers/promises` `setTimeout` import
-     counts as a sleep.
+     counts as a sleep. Known limits: braces are counted per line, string,
+     template and comment content included, so an unbalanced brace in a
+     string or comment inside the loop can hide or flag a sleep; rename
+     detection covers only `import { setTimeout as <name> }`, not a
+     require destructure (gap 20261017T1654-kiko-harness-h8/2).
    - bash 3.2 (macOS): a trapped SIGINT sent to one pid is lost when it
      lands as a foreground external child is reaped. Where a signal must
      not be lost, run the command as `cmd & wait $!` (`run_awaited` in

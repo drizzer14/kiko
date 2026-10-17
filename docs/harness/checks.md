@@ -192,7 +192,7 @@ older `job-queue.sh` copy refuses with exit 2. A copy that differs from the targ
 script prints a WARNING. Main must be on
 branch main and an ancestor of the sha. A commit that changes `harness/kiko/**` (`plugin.json`
 excluded) is refused (exit 2) unless its `plugin.json` version is strictly above main's (numeric
-dotted compare; an unreadable or missing version refuses; user ruling 2026-10-18). There is no
+dotted compare; an unreadable or missing version refuses; user ruling 2026-10-17). There is no
 bypass flag or variable; an override goes to the user plus a run-log note. Known limit: a
 hand-forged done.log line passes (the file belongs to
 cooperating agents), and `KIKO_QUEUE_DIR` redirects the evidence to another directory. See

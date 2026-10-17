@@ -11,7 +11,7 @@ verified usage, not dead weight:
   `@babel/plugin-transform-runtime` as helper imports in compiled
   output, never a static import), `@typescript/native-preview` (the
   `tsgo` / TS7 binary, reserved for a future typecheck script that
-  does not exist yet), `jscpd`, `knip`, and `depcheck` (each invoked
+  does not exist yet), `jscpd`, and `depcheck` (each invoked
   only via `npx --no-install <tool>` inside its own
   `scripts/checks/*.sh` wrapper, never from a package.json script
   Knip's static scan can see). Also `@env` — the virtual module that
