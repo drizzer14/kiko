@@ -1079,7 +1079,7 @@ const BLOCKING_MV_STUB = [
   '/bin/mv "$@" || exit $?',
   'armed=0',
   'for argument in "$@"; do',
-  '  case "${argument##*/}" in lock.*) armed=1 ;; esac',
+  `  case "\${argument##*/}" in lock.*) armed=1 ;; esac`,
   'done',
   '[ "$armed" = 1 ] || exit 0',
   '[ -n "$KIKO_STUB_MV_ARMED" ] || exit 0',
