@@ -1011,3 +1011,26 @@ verified usage, not dead weight:
   Reason: the 300 s hook limit would otherwise kill the Stop tier with no block. Zero
   discovered suites, a missing jest, an unreadable budget or a fingerprint hash failure
   while doc files or suites exist also exit 2 (fail-closed).
+
+- **patch-package patches (`patches/`, applied by `postinstall`)**: three patches edit
+  `node_modules` after `npm ci`; re-check each on upgrade of its package.
+  - `patches/react-native+0.87.1.patch` (`react-native@0.87.1`,
+    `RCTScrollViewComponentView.mm` only): D1. The native keyboard handler of every
+    `ScrollView` with `automaticallyAdjustKeyboardInsets` shifted its content offset by the
+    keyboard height for a field OUTSIDE it (the outside-field `inputAccessoryView` branch). The
+    patch drops that branch, so an offset moves only for a field inside the scroll view; the
+    inset math is unchanged. It fixes the Duo/iPad two-pane blank pane (a field in one pane
+    moved the other pane's list) and the same shift of a Screen covered by a pushed form.
+    Pinned by `__tests__/react-native-patch.test.ts` ("the React Native ScrollView keyboard
+    patch": the patch touches that one file, `react-native` is exactly `0.87.1`, the installed
+    file has the guard). A React Native upgrade fails that pin: re-check the patch then.
+  - `patches/react-native-nitro-sfsymbols+2.0.0.patch` (`react-native-nitro-sfsymbols@2.0.0`):
+    the diff adds two lines to `init` of the generated `HybridNitroSfsymbolsComponent.mm`,
+    setting `_props` to a static default `HybridNitroSfsymbolsProps` before `updateView` runs.
+    The diff does not state why; it gives the view non-null props from its first
+    `updateView`.
+  - `patches/read-excel-file+9.3.10.patch` (`read-excel-file@9.3.10`, its `commonjs` and
+    `modules` `zip/unzipFromArrayBuffer.js`): `unzipAsync` calls `fflate`'s `unzipSync`
+    instead of the async `unzip`. The diff's own comment: async `unzip` does `new Worker(...)`
+    for an entry that inflates to 512 KB or more, Hermes has no `Worker` global, so it threw
+    `ReferenceError` on device (never under Jest).
