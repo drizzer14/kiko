@@ -142,11 +142,11 @@ anything there ships in plaintext) are in
 `docs/harness/dependency-hygiene.md` ("`.env` is public-only") — read
 that section. A secret belongs in the iOS Keychain
 (`react-native-keychain`); see `.claude/skills/kiko-architecture/SKILL.md`
-for the existing Keychain-backed examples (the Monobank token, the
-SQLCipher database key in `src/db/keys/db-key.ts`, the Binance credentials in
-`src/crypto-sync/binance/binance.credentials.ts` holds the service name; the
+for the existing Keychain-backed examples: the Monobank token, the
+SQLCipher database key in `src/db/keys/db-key.ts`, and the Binance credentials
+(`src/crypto-sync/binance/binance.credentials.ts` holds the service name; the
 `accessible` policy lives in `src/crypto-sync/exchange/credentials/credentials.ts`,
-`WHEN_UNLOCKED_THIS_DEVICE_ONLY` at the time of writing).
+read the value there).
 
 A credential that travels in a request URL (an `api_token` query parameter;
 no client sends one today) or a request header (`X-Token`, `X-MBX-APIKEY`)
