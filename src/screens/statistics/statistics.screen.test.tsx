@@ -805,6 +805,36 @@ describe('StatisticsScreen', () => {
     expect(mockRunBackfill).toHaveBeenCalled();
   });
 
+  it("hands the backfill each currency's first stored day from the history that loaded", async () => {
+    const baseData: LiveData = {
+      accounts: [CASH, BANK],
+      holdings: [UAH_HOLDING, USD_HOLDING],
+      rates: [USD_UAH_RATE],
+      transactions: TRANSACTIONS,
+    };
+    const day = (daysAgo: number): number => toUtcMidnight(now) - daysAgo * DAY_MS;
+    setLiveData({ ...baseData, history: [], isLoading: { currency_rate_history: true } });
+
+    const { rerender } = await renderScreen();
+
+    setLiveData({
+      ...baseData,
+      history: [
+        { base: 'USD', quote: 'UAH', day: day(2), rate: '40' },
+        { base: 'USD', quote: 'UAH', day: day(5), rate: '40' },
+        { base: 'EUR', quote: 'UAH', day: day(3), rate: '45' },
+      ],
+    });
+    await act(async () => {
+      rerender(<StatisticsScreen />);
+    });
+
+    expect(mockRunBackfill).toHaveBeenCalledTimes(1);
+    expect(mockRunBackfill.mock.calls[0]?.[0]).toMatchObject({
+      firstBackfilledDayByCurrency: { USD: day(5), EUR: day(3) },
+    });
+  });
+
   // kiko-architecture: a cached display mount's rows can be one read old, and
   // a run marks its span covered for the rest of the mount. A run planned from
   // the cached resume point (for example, history a .kiko restore replaced)
