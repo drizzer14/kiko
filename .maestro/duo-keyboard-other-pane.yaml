@@ -48,6 +48,12 @@ appId: com.dmytro-vasylkivskyi.kiko
     id: "settings-row-import-data"
 - assertVisible: "Choose file"
 
+# Two-pane guard: in a single pane Import Data is pushed OVER the Settings list, so the row is
+# hidden. Seeing it next to the open Import Data screen proves the unfolded two-pane layout; a
+# failure here means "precondition: not unfolded", not D1.
+- assertVisible:
+    id: "settings-row-system"
+
 # Focus the "Encryption key" field (its placeholder `settings.dataImport.keyPlaceholder`;
 # the label "Encryption key" is a separate Text), then dismiss with the keyboard's Done
 # accessory (`common.done`). Three rounds, so an unpatched build's shift adds up.
