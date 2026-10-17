@@ -129,6 +129,20 @@ describe('exchange credentials', () => {
     expect(await loadExchangeCredentials(SAMPLE, ACCOUNT_A)).toBeUndefined();
   });
 
+  it.each([
+    ['the JSON null', 'null'],
+    ['a pair without its apiKey', JSON.stringify({ secret: 'only-half' })],
+    ['a pair without its secret', JSON.stringify({ apiKey: 'only-half' })],
+    ['a pair whose apiKey is not a string', JSON.stringify({ apiKey: 5, secret: 's' })],
+    ['a pair whose secret is not a string', JSON.stringify({ apiKey: 'a', secret: 5 })],
+  ])('loads nothing from %s', async (_label, password) => {
+    await Keychain.setGenericPassword('sample', password, {
+      service: credentialServiceFor(SAMPLE, ACCOUNT_A),
+    });
+
+    expect(await loadExchangeCredentials(SAMPLE, ACCOUNT_A)).toBeUndefined();
+  });
+
   it('clears the pair of one account and leaves the others', async () => {
     await saveExchangeCredentials(SAMPLE, ACCOUNT_A, fixture);
     await saveExchangeCredentials(SAMPLE, ACCOUNT_B, fixture);
