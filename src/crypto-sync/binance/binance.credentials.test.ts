@@ -212,6 +212,13 @@ describe('binance credentials — once-per-process re-save latch', () => {
     expect(mockSet).toHaveBeenCalledTimes(1);
   });
 
+  it('writes nothing when no pair is stored, so a read of an empty Keychain stays a read', async () => {
+    const { mod: fresh } = freshCredentials();
+
+    expect(await fresh.readCredentials(ACCOUNT_A)).toBeUndefined();
+    expect(mockSet).not.toHaveBeenCalled();
+  });
+
   it('does not trip the latch when the re-save rejects, so a later read retries it', async () => {
     const { mod: fresh, keychain: freshKeychain } = freshCredentials();
     await freshKeychain.setGenericPassword('binance', JSON.stringify(fixture), {
