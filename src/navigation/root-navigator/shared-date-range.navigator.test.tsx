@@ -6,6 +6,7 @@ import HomeScreen from '@kiko/screens/home';
 import StatisticsScreen from '@kiko/screens/statistics';
 import { formatDate, defaultDateRange } from '@kiko/dates';
 import { localDaysFrom } from '@kiko/test-support/local-days-from';
+import GestureRootWrapper from '@kiko/test-support/gesture-root-wrapper';
 import { act, fireEvent, render, within } from '@testing-library/react-native';
 import { asNavigationProp, asRouteProp, navigationSpy } from '@kiko/test-support/navigation-props';
 
@@ -98,9 +99,9 @@ const HOLDING = {
 
 // The oldest transaction sets the calendar's selectable floor; with none, the floor is today and a
 // day pick before it is ignored.
-// Read lazily and set from the clock each it uses: the fake-clock midnight it must not see a floor
-// computed from the real date.
-let oldestTime = 0 as number;
+// Each it sets this from its own clock and the mocks read it lazily, so the fake-clock midnight it
+// never sees a floor computed from the real date.
+let oldestTime = 0;
 
 const oldestTransaction = () => ({
   id: 't1',
@@ -135,21 +136,25 @@ const answerLiveQuery = (query: { kind?: string }, tables: string[]) => {
 
 const navigation = navigationSpy();
 
-const bothScreens = () => (
-  <>
-    <View testID="home-pane">
-      <HomeScreen
-        navigation={asNavigationProp<HomeProps['navigation']>(navigation)}
-        route={asRouteProp<HomeProps['route']>('Home')}
-      />
-    </View>
-    <View testID="statistics-pane">
-      <StatisticsScreen />
-    </View>
-  </>
-);
+const bothScreens = () => {
+  return (
+    <>
+      <View testID="home-pane">
+        <HomeScreen
+          navigation={asNavigationProp<HomeProps['navigation']>(navigation)}
+          route={asRouteProp<HomeProps['route']>('Home')}
+        />
+      </View>
+      <View testID="statistics-pane">
+        <StatisticsScreen />
+      </View>
+    </>
+  );
+};
 
-const renderBoth = (): ReturnType<typeof render> => render(bothScreens());
+// The net-worth plot carries the scrub line's GestureDetector, which needs a root view.
+const renderBoth = (): ReturnType<typeof render> =>
+  render(bothScreens(), { wrapper: GestureRootWrapper });
 
 type Rendered = Awaited<ReturnType<typeof render>>;
 
