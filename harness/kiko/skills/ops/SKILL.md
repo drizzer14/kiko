@@ -268,7 +268,11 @@ Queued jobs (`make verify`, `check:all`, gates) go straight to `scripts/job-queu
 serializes them; never put a `wait-load.sh` limit in front of a queue job (with many tracks the
 load never passes it). Throttle feature tracks with a LOAD HOLD instead: no new jest or tsc
 agent until RESUME, and a RESUME names its limits (one agent, targeted jest with
-`--maxWorkers=2`). Use `bash scripts/wait-load.sh <max>` only for a lone security run or a
+`--maxWorkers=2`). The one exception is built into the queue: a gate at the head waits while
+the 5-minute load is 10 or more, at most 1200 s (`KIKO_QUEUE_GATE_LOAD_WAIT_SECONDS`), then
+starts with `LOAD WAIT EXPIRED`; the clock resets during a hold or battery pause. A
+TIMEOUT-HEAVY rerun inside the gate waits for load below 10 for at most 1800 s itself. Do not
+add your own limit. Use `bash scripts/wait-load.sh <max>` only for a lone security run or a
 direct run outside the queue (run it in the background and wait on its
 exit code: 0 once the load is below 10, 2 when its 3600 s timeout, an
 optional second argument, passes first, 3 when it cannot read the load,
@@ -318,7 +322,14 @@ A gate forwards the `--list` over-count `warning:` line once before QUEUED. Afte
 summary lines and before the DONE line it prints each `TIMEOUT-HEAVY` line of the gate log once
 (read the end of `scripts/job-queue.sh`), so the waiter's output shows both. A ruling that adds a
 failure line to the gate log also adds its prefix to the DONE summary grep in
-`scripts/job-queue.sh` (read it for the current list); `REPORT SCOPE MISMATCH` is not in it today.
+`scripts/job-queue.sh` (read it for the current list). Today the DONE summary carries the last
+five `changed lines`, `CHANGE SET`, `GATE:` and `CHECK FAILED` lines (never a `FIRST RUN: `
+line), then each distinct `TIMEOUT-HEAVY`, `REPORT SCOPE MISMATCH` and `RERUN ` line (this
+includes `RERUN SKIPPED`). Clearing a TIMEOUT-HEAVY file: `docs/harness/checks.md` "Clearing a
+TIMEOUT-HEAVY file" (the rerun inside the gate, then the manual fallback).
+
+Spotlight indexes `~/orca/workspaces/*/node_modules` and adds load; the user adds
+`~/orca/workspaces` to System Settings > Spotlight > Privacy.
 
 The ONE allowed group kill (user ruling 2026-10-13): `scripts/job-queue.sh` may send TERM to the process group it created for its own job (`set -m`, then the group-TERM form its header shows), only while `pgrep -g` finds a member, never any other group; the lock stays live while any process of that group lives. You still never run a group or pattern kill yourself (kill-guard denies it).
 

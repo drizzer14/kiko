@@ -30,6 +30,8 @@ fast+medium gate is picked up by `make verify` automatically through
 `scripts/job-queue.sh` is not a `scripts/checks` wrapper: its QUEUED/WAITING/START/DONE lines are its normal stdout, not a failure block.
 A gate forwards the `--list` over-count `warning:` line before QUEUED and prints each
 `TIMEOUT-HEAVY` line of its log before the DONE line (the ops skill's "Load rule" has the order).
+The rerun and the manual fallback for a TIMEOUT-HEAVY file:
+`docs/harness/checks.md` "Clearing a TIMEOUT-HEAVY file".
 
 Every check wrapper in `scripts/checks/` follows the same shape (read
 `scripts/checks/_lib.sh` for the exact helper):
@@ -261,9 +263,9 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   worktree, run a queued `scripts/job-queue.sh verify` on the merge commit, then
   `bash scripts/ff-main.sh <sha>` (it needs the LAST `verify` line of done.log for that full
   sha to be exit 0; read its header; a `harness/kiko` change also needs a plugin.json
-  version strictly above main's; known limit: a commit changing only
-  plugin.json may lower the version and main still moves, gap
-  20261017T1654-kiko-harness-h8/3). `scripts/ff-main.sh` needs no exemption: its merge uses
+  version strictly above main's, and no commit may lower, remove, or make unreadable that
+  version while main has a readable one, user ruling 2026-10-18).
+  `scripts/ff-main.sh` needs no exemption: its merge uses
   a variable target. A help or recovery option lets
   the whole command through from ANY argument position, even as another
   option's value (see the limits list). A session

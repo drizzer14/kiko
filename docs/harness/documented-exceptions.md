@@ -985,3 +985,12 @@ verified usage, not dead weight:
   Reason: the 300 s hook limit would otherwise kill the Stop tier with no block. Zero
   discovered suites, a missing jest, an unreadable budget or a fingerprint hash failure
   while doc files or suites exist also exit 2 (fail-closed).
+- **`knip.json` `ignore`**: `scripts/checks/mutation-rerun.js` — run by path as
+  `node "$DIR/mutation-rerun.js"` in `scripts/checks/mutation.sh` (the TIMEOUT-HEAVY rerun),
+  never a static import, so Knip sees no importer.
+- **`knip.json` `ignore`**: `scripts/checks/mutation-score.js` — run by path as
+  `node "$DIR/mutation-score.js"` in `scripts/checks/mutation.sh` (the change-set scorer and
+  `--rerun-candidates`), never a static import, so Knip sees no importer.
+- **`knip.json` `ignore`**: `scripts/checks/plural-count.js` — spawned by path as a node child
+  process by `scripts/checks/pre-write-guard.js` (`runSpawnedNodeChecker('plural-count.js', ...)`)
+  and by `__tests__/plural-count.test.ts`, never a static import, so Knip sees no importer.

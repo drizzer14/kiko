@@ -50,7 +50,8 @@ Composite scripts:
   `__tests__/check-all-lists.test.ts` pins this list to `package.json` and the hooks.
 - `npm run check:deep` — the heavy tier: `check:mutation` (Stryker +
   `mutation-score.js` (change-set score, per-file floor, TIMEOUT-HEAVY file rule; thresholds
-  in `docs/harness/checks.md`),
+  in `docs/harness/checks.md`; a lone TIMEOUT-HEAVY failure reruns its timed-out mutants inside
+  the gate),
   then `bash scripts/checks/osv.sh` (any known CVE in `package-lock.json`
   fails). Manual, wired to no hook; the gate is queued with
   `scripts/job-queue.sh gate <worktree> <label> <base> <head>`
@@ -102,7 +103,7 @@ The git `pre-commit`/`pre-merge-commit` hooks (`githooks/`) run the pre-commit t
     Merge in a separate detached worktree, then `bash scripts/ff-main.sh <sha>`
     (a raw `merge --ff-only`/`pull --ff-only` on main is denied; the script refuses a
     `harness/kiko` change whose `plugin.json` version is not above main's, and any commit that
-    lowers or removes that version).
+    lowers, removes, or makes unreadable that version).
   - a shell write (`sed -i`, `perl -i`, `>`/`>>`, `tee`, `cp`/`mv` (also
     `gcp`/`gmv`), python/node one-liner or stdin heredoc script) into `src/`,
     `__tests__/`, `rules/`, `e2e/`, `drizzle/` of any worktree ("SHELL-WRITE deny"); use

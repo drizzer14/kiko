@@ -516,7 +516,9 @@ that reads the handoff file.
   current version in `harness/kiko/.claude-plugin/plugin.json`. `scripts/ff-main.sh` enforces
   it (user ruling 2026-10-17): it refuses (exit 2) a commit that changes `harness/kiko/**`
   (`plugin.json` excluded) unless its `plugin.json` version is strictly above main's (numeric
-  dotted compare; an unreadable or missing version refuses).
+  dotted compare; an unreadable or missing version refuses). It also refuses any commit that
+  lowers, removes, or makes unreadable that version while main has a readable one (user ruling
+  2026-10-18); a missing manifest at main never refuses by this rule.
 - Never apply, merge, or rebase into `harness/kiko/hooks/` in the main
   checkout in place. Build the new file in scratch, run `bash -n`, grep
   it for conflict markers, then install it with one `mv`.
