@@ -28,7 +28,7 @@ import {
   buildMutationRepository,
 } from './test-support/mutation-repository';
 import { warmExecutables } from './test-support/warm-executables';
-import { HIGH_LOAD, LOW_LOAD, writeSysctlStub } from './test-support/sysctl-stub';
+import { HIGH_LOAD, LOW_LOAD, sysctlCallCount, writeSysctlStub } from './test-support/sysctl-stub';
 
 // scripts/job-queue.sh is the one in-repo queue for heavy jobs. Each test runs it against a
 // throwaway KIKO_QUEUE_DIR with `make`, `npm`, `caffeinate`, and `pmset` stubbed, so no real job
@@ -1731,6 +1731,12 @@ describe('scripts/job-queue.sh gate start load defer', () => {
     warmExecutables([join(sandbox.root, 'bin/sysctl')]);
   };
 
+  // The poll sleep is a child of the waiter. A signal sent once it exists lands in the wait
+  // builtin, not in the gap between the fork of the sleep and the record of its pid, where the
+  // sleep would outlive the queue and hold the output pipe open.
+  const sleepsBetweenPolls = (waiter: Waiter): boolean =>
+    spawnSync('pgrep', ['-P', String(waiter.child.pid), '-x', 'sleep']).status === 0;
+
   const orderOf = (text: string, ...markers: RegExp[]): number[] =>
     markers.map((marker) => text.search(marker));
 
@@ -1808,6 +1814,90 @@ describe('scripts/job-queue.sh gate start load defer', () => {
     expect(result.code).toBe(0);
     expect(startedWorktrees(sandbox)).toEqual([gate.worktree]);
   });
+
+  it('keeps the hold reason while the queue is held and reads no load, then defers after release', async () => {
+    const sandbox = createSandbox();
+    const gate = createGateWorktree(sandbox, 'gate', listing(12));
+    stubLoad(sandbox, HIGH_LOAD, 9999);
+    sandbox.environment.KIKO_QUEUE_GATE_LOAD_WAIT_SECONDS = '1';
+    runQueue(sandbox, 'hold', 'maintenance');
+
+    const waiter = startQueue(sandbox, 'gate', gate.worktree, 'gate', 'main', gate.head);
+    await waitFor(() => waiter.stdout().includes('WAITING gate: hold (maintenance)'));
+
+    expect(waiter.stdout()).not.toMatch(/^WAITING gate: load/m);
+    expect(sysctlCallCount(join(sandbox.root, 'bin'))).toBe(0);
+    runQueue(sandbox, 'release');
+    const result = await waiter.finished;
+
+    expect(result.code).toBe(0);
+    expect(result.stdout).toMatch(/^WAITING gate: load\b/m);
+    expect(result.stdout).toMatch(/^LOAD WAIT EXPIRED gate: load 12\.25$/m);
+  });
+
+  it('keeps the battery reason while on battery and reads no load, then defers on AC power', async () => {
+    const sandbox = createSandbox();
+    const gate = createGateWorktree(sandbox, 'gate', listing(12));
+    stubLoad(sandbox, HIGH_LOAD, 9999);
+    sandbox.environment.KIKO_QUEUE_GATE_LOAD_WAIT_SECONDS = '1';
+    writeFileSync(sandbox.environment.KIKO_STUB_POWER as string, BATTERY_POWER);
+
+    const waiter = startQueue(sandbox, 'gate', gate.worktree, 'gate', 'main', gate.head);
+    await waitFor(() => waiter.stdout().includes('WAITING gate: battery power'));
+    await waitForPasses(sandbox);
+
+    expect(waiter.stdout()).not.toMatch(/^WAITING gate: load/m);
+    expect(sysctlCallCount(join(sandbox.root, 'bin'))).toBe(0);
+    writeFileSync(sandbox.environment.KIKO_STUB_POWER as string, AC_POWER);
+    const result = await waiter.finished;
+
+    expect(result.code).toBe(0);
+    expect(result.stdout).toMatch(/^LOAD WAIT EXPIRED gate: load 12\.25$/m);
+  });
+
+  it('starts the wait only when the lock is free, never while a running job holds it', async () => {
+    const sandbox = createSandbox();
+    const gate = createGateWorktree(sandbox, 'gate', listing(12));
+    stubLoad(sandbox, HIGH_LOAD, 9999);
+    sandbox.environment.KIKO_QUEUE_GATE_LOAD_WAIT_SECONDS = '1';
+    const lock = holdLock(sandbox);
+
+    const waiter = startQueue(sandbox, 'gate', gate.worktree, 'gate', 'main', gate.head);
+    await waitForPasses(sandbox, 20);
+
+    expect(waiter.stdout()).not.toMatch(/^(WAITING|LOAD WAIT EXPIRED) /m);
+    rmSync(lock, { recursive: true });
+    const result = await waiter.finished;
+
+    expect(result.code).toBe(0);
+    expect(result.stdout).toMatch(/^WAITING gate: load\b/m);
+    expect(result.stdout).toMatch(/^LOAD WAIT EXPIRED gate: load 12\.25$/m);
+  });
+
+  it.each([
+    ['SIGTERM', 143],
+    ['SIGINT', 130],
+  ] as const)(
+    'exits %s promptly from the load wait and removes its ticket',
+    async (signal, code) => {
+      const sandbox = createSandbox();
+      sandbox.environment.KIKO_QUEUE_POLL_SECONDS = LONG_POLL_SECONDS;
+      const gate = createGateWorktree(sandbox, 'gate', listing(12));
+      stubLoad(sandbox, HIGH_LOAD, 9999);
+
+      const waiter = startQueue(sandbox, 'gate', gate.worktree, 'gate', 'main', gate.head);
+      await waitFor(
+        () => waiter.stdout().includes('WAITING gate: load') && sleepsBetweenPolls(waiter),
+      );
+      waiter.child.kill(signal);
+      const result = await waiter.finished;
+
+      expect(result.code).toBe(code);
+      expect(entriesOf(join(sandbox.queue, 'tickets'))).toEqual([]);
+      expect(lockPresent(sandbox)).toBe(false);
+      expect(startedWorktrees(sandbox)).toEqual([]);
+    },
+  );
 });
 
 // A `make` stub that commits inside the worktree it was given (`make -C <dir> verify`).
