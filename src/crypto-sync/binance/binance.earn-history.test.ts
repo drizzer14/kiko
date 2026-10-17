@@ -1533,6 +1533,34 @@ describe('the budget of a run', () => {
     ).toHaveLength(2);
   });
 
+  it('a point read in its own kind leaves the range around it owed in the other five kinds, when no range was read', async () => {
+    const owedRange = { start: agoMs(100), end: agoMs(99) };
+    const at = owedRange.start + DAY_MS / 2;
+    const world = worldOf({
+      cursor: agoMs(1),
+      pending: [owedRange, pointOf(at, 'flexibleRewards')],
+    });
+    const run = freshRun();
+    spend(run, CAP - 2 * KIND_COUNT - 1 - (KIND_COUNT - 1));
+
+    const { requests } = await walkOnce({ world, run });
+
+    expect(requests.filter((request) => request.startTime === owedRange.start)).toEqual([]);
+    expect(requests.filter((request) => request.startTime === at - 1)).toHaveLength(1);
+    expect(
+      listOf(world).some((ground) => {
+        const { start, end, kind, series } = ground as {
+          start: number;
+          end: number;
+          kind?: string;
+          series?: string;
+        };
+
+        return kind !== 'point' && series === undefined && start <= at && at + 1 <= end;
+      }),
+    ).toBe(true);
+  });
+
   it('enters no span whose 6 calls do not fit beside the calls it keeps, and no request is made for part of it', async () => {
     const run = freshRun();
     spend(run, CAP - KIND_COUNT + 1);

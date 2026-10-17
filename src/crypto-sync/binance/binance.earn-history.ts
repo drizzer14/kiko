@@ -748,6 +748,7 @@ const readSpan = (
  */
 const commitSpan = (
   context: EarnContext,
+  window: OwedWindow,
   span: WalkWindow,
   read: SeriesSpan<EarnRecordKind, EarnRecord>,
   pass: WalkPass,
@@ -773,6 +774,7 @@ const commitSpan = (
       advanceWalkMarks({
         pass,
         span,
+        series: window.series,
         owed,
         plan,
         marks,
@@ -851,7 +853,7 @@ const runSync = async (
       walkSpans({
         window,
         read: (span, keepCalls) => readSpan(context, window, span, keepCalls),
-        commit: (span, read) => commitSpan(context, span, read, pass),
+        commit: (span, read) => commitSpan(context, window, span, read, pass),
         keep,
         hint,
         onComplete: (read) =>
