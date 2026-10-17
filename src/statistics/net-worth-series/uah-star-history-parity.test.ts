@@ -91,7 +91,7 @@ const fetchCryptoHistory = async () => {
     });
   }
 
-  return { entries: rows, failedCurrencies: [] };
+  return { entries: rows, failedCurrencies: [], rateLimitedCurrencies: [] };
 };
 
 type HistoryRow = Pick<CurrencyRateHistoryRow, 'base' | 'quote' | 'day' | 'rate'>;

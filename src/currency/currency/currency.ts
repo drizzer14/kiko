@@ -1,8 +1,11 @@
+import { CURATED_COIN_CODES, recordByCoin, type CuratedCoinCode } from '../coins';
+
 /**
  * The single source of truth for the supported currency codes, in canonical
  * display order: UAH, USD, EUR, GBP, CHF first (the originally shipped set), then
  * every additional fiat Monobank prices against UAH sorted by ISO letter code,
- * then BTC last (crypto). Every currency selector — the base-currency switch in
+ * then the curated coins last (crypto, in the registry's order). Every
+ * currency selector — the base-currency switch in
  * Settings and the account/holding form currency pickers — iterates this one
  * array, so the order is defined here once and stays consistent everywhere.
  *
@@ -10,7 +13,7 @@
  * feed quotes against a base leg (UAH/USD/EUR): each is reachable from every
  * base currency through the UAH-anchored cross pairs
  * `src/rates/rates-refresh/rates-refresh.ts` composes, so no holding silently
- * drops out of a net-worth total, then the crypto block last (BTC, ETH, USDT).
+ * drops out of a net-worth total, then the crypto block last (`src/currency/coins/coins.ts`).
  */
 export const currencyOptions = [
   'UAH',
@@ -120,9 +123,7 @@ export const currencyOptions = [
   'XOF',
   'YER',
   'ZAR',
-  'BTC',
-  'ETH',
-  'USDT',
+  ...CURATED_COIN_CODES,
 ] as const;
 
 export type Currency = (typeof currencyOptions)[number];
@@ -235,9 +236,7 @@ export const currencyScale: Record<Currency, number> = {
   XOF: 0,
   YER: 2,
   ZAR: 2,
-  BTC: 8,
-  ETH: 8,
-  USDT: 8,
+  ...recordByCoin((entry) => entry.scale),
 };
 
 // The display symbol shown in formatted money text AND — as of Item A — the
@@ -356,19 +355,17 @@ export const currencySymbol: Record<Currency, string> = {
   XOF: 'XOF',
   YER: 'YER',
   ZAR: 'ZAR',
-  BTC: '₿',
-  ETH: 'Ξ',
-  USDT: '₮',
+  ...recordByCoin((entry) => entry.symbol),
 };
 
 /** The crypto subset of `Currency` — `isCrypto`'s own type-guard narrowing. */
-export type CryptoCurrency = 'BTC' | 'ETH' | 'USDT';
+export type CryptoCurrency = CuratedCoinCode;
 
 // The crypto codes. Everything else in `currencyOptions` is fiat. `isCrypto`
 // (and, through it, `isFiat`/`fiatCurrencyOptions`) reads this ONE set rather
 // than re-enumerating which codes are crypto. Not exported: consumers classify
 // through the predicates, so exposing the raw Set would be dead surface.
-const cryptoCurrencies: ReadonlySet<Currency> = new Set<Currency>(['BTC', 'ETH', 'USDT']);
+const cryptoCurrencies: ReadonlySet<Currency> = new Set<Currency>(CURATED_COIN_CODES);
 
 // A type guard (not a bare boolean predicate): narrows `.filter(isCrypto)` to
 // `CryptoCurrency[]` (see `cryptoCurrencyOptions` below), so a caller that

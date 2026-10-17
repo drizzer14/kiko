@@ -98,7 +98,7 @@ export const en = {
     },
     dataImport: {
       amountTooLargeError:
-        'This backup has a USDT amount too large for Kiko to store exactly, so nothing was imported. Your current data is unchanged.',
+        'This export file has a USDT amount too large for Kiko to store exactly, so nothing was imported. Your current data is unchanged.',
       chooseFile: 'Choose file',
       confirmButton: 'Replace data',
       confirmMessage:
@@ -119,6 +119,8 @@ export const en = {
       rowLabel: 'Import Data',
       successMessage: 'Import complete — {{count}} accounts restored.',
       title: 'Import Data',
+      unknownCurrencyError:
+        'This export file was made by a newer version of Kiko and holds a currency this version does not know, so nothing was imported. Update Kiko and try again. Your current data is unchanged.',
       wrongFileTypeError: 'Choose a Kiko export file (.kiko).',
       wrongKeyError: 'The key is wrong, or the file is corrupted.',
     },
@@ -1331,6 +1333,14 @@ export const en = {
   // Shared design-system components (src/design-system/components/*) that
   // carry their own hardcoded copy rather than taking it as a prop.
   components: {
+    currencyField: {
+      groups: {
+        target: 'Holding currency',
+        held: 'Your currencies',
+        fiat: 'Currencies',
+        crypto: 'Crypto',
+      },
+    },
     expandToggle: {
       showAll: 'Show all',
       showLess: 'Show less',
@@ -1794,6 +1804,26 @@ export const en = {
     ZAR: 'South African Rand',
     BTC: 'Bitcoin',
     ETH: 'Ethereum',
-    USDT: 'Tether',
+    USDT: 'USDT',
+    BNB: 'BNB',
+    XRP: 'XRP',
+    USDC: 'USD Coin',
+    SOL: 'Solana',
+    TRX: 'TRON',
+    ZEC: 'Zcash',
+    HYPE: 'Hyperliquid',
+    DOGE: 'Dogecoin',
+    LINK: 'Chainlink',
+    ADA: 'Cardano',
+    NEAR: 'NEAR Protocol',
+    XLM: 'Stellar',
+    BCH: 'Bitcoin Cash',
+    LTC: 'Litecoin',
+    UNI: 'Uniswap',
+    DAI: 'Dai',
+    AVAX: 'Avalanche',
+    SUI: 'Sui',
+    FDUSD: 'First Digital USD',
+    CGPT: 'ChainGPT',
   },
 };

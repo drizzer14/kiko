@@ -1953,6 +1953,33 @@ not a closed union.
 both ternaries). Not seen: `!==`, `==`, a reversed literal (`'x' === a.kind`), a ternary on a
 variable that holds the kind, and a plain `if` on `kind`.
 
+## `kiko-type-ternary-prefers-match`
+
+The `kiko-kind-ternary-prefers-match` rule's twin for a `type` tag: a ternary
+`$X.type === "$TYPE" ? $A : $B` on a discriminated union (kiko-code-style's "`ts-pattern` for
+exhaustive mapping") reads through `match(...).with({ type: ... }, ...).exhaustive()`.
+
+**Severity WARNING.** A separate id, so the `kind` rule stays a pinned ERROR: the tree already
+holds `type` ternaries (a `holding.type === 'bond' ? ... : null` narrowing; re-measure the
+count and sites with the command below, they are listed in run-log gap
+20261016T2009-kiko-currency-pickers/1) and `check:security` fails on any
+ERROR. `check:security` surfaces them without failing and the
+pre-write guard denies a NEW one. **Promotion condition:** flip to ERROR, and add the id to
+`PINNED_SEVERITIES` in `__tests__/rule-inventory.test.ts`, when `check:security` reports 0
+findings for this id. To re-measure, run the Semgrep command in the `kiko-test-title-no-history`
+section above, filtered to this id. A site on a `type` that is a plain string (a DOM or event
+`type`) is not a union: it keeps the ternary under `// nosemgrep: kiko-type-ternary-prefers-match
+OVERRIDE(<reason>) <why>`.
+
+**Scope.** App source: `paths.exclude` is the test files, `__tests__/**`, `e2e/**`,
+`scripts/**`, and `harness/**`. The fixture pair is
+`rules/fixtures/kiko-type-ternary-prefers-match.bad.ts` and `.good.ts`.
+
+**Known limits.** The same shapes as the `kind` rule: only an `===` against a literal. The `if`
+plus early-return form (`if (row.type === 'heading') { return ... }`) is not matched, because
+Semgrep has no type information and a statement `if` on an event's `type` is everywhere in
+handlers; no fixture can prove that form free of false positives.
+
 ## The `docs-known-limit` invariant
 
 `__tests__/docs-known-limit.test.ts` fails when a plan or a spec under `docs/superpowers/`

@@ -59,6 +59,7 @@ const CONNECTION_NAMES: Record<ExportSecretKind, string> = {
 const IMPORT_ERROR_KEYS = [
   ['data-transfer/decrypt', 'settings.dataImport.wrongKeyError'],
   ['data-transfer/amount-too-large', 'settings.dataImport.amountTooLargeError'],
+  ['data-transfer/unknown-currency', 'settings.dataImport.unknownCurrencyError'],
 ] as const;
 
 const importErrorKey = (error: unknown) => {

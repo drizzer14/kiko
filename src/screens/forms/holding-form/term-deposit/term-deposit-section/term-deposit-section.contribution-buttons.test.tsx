@@ -67,6 +67,11 @@ jest.mock('@kiko/holdings/repo', () => ({
   },
 }));
 
+jest.mock(
+  '@kiko/holdings/use-held-currencies',
+  () => jest.requireActual('@kiko/test-support/held-currencies').heldCurrenciesModule,
+);
+
 jest.mock('@kiko/db/use-live-query', () => ({
   // A bank account, so the create form defaults to a term deposit and renders
   // the contributions block with its Add/Remove controls.

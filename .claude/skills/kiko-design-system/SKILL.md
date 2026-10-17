@@ -1519,12 +1519,15 @@ new component can land between reviews of this skill:
 - **CurrencyField** (`src/design-system/components/currency-field/`) —
   the shared currency-picker trigger + `BottomSheet`: a labeled trigger
   showing the current selection (or a placeholder) that opens a sheet
-  listing a caller-supplied `options` set (defaults to every currency;
-  the cash-account form passes fiat-only, the holding form its type's
-  `holdingCurrencyOptions` — fiat-only for cash, the full set
-  otherwise). The sheet lists fiat first, then crypto; `cryptoFirst`
-  flips the two groups (each keeps its own order) — the crypto-holding
-  create form sets it. Supports `hideLabel` for a caller that already labels the
+  listing a REQUIRED `groups: readonly CurrencyGroup[]` prop (no default
+  set; `CurrencyGroup` lives in `src/currency/currency-group/`). A caller
+  builds `groups` with `useCurrencyPickerGroups(context)` /
+  `currencyPickerGroups(context, ordering)` in
+  `src/holdings/currency-picker-groups/`; read that file for the contexts
+  and the group kinds. A heading row shows only while MORE THAN ONE group is showing, and a
+  search drops a group it empties. Each group is ordered by `orderCurrencies` (read
+  `currency-group.ts` for the rule), and an empty group is dropped.
+  Supports `hideLabel` for a caller that already labels the
   control externally (the Settings base-currency row), `required`, and
   a `disabled` read-only state. `error` follows every field's contract:
   `FieldTrigger` renders it under the trigger (reflow, not reserve, testID

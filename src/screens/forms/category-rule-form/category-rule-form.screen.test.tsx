@@ -4,6 +4,7 @@ import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
 import { fieldSuffix } from '@kiko/test-support/field-suffix';
+import { holdCurrencies } from '@kiko/test-support/held-currencies';
 import { scrollToField } from '@kiko/design-system/scroll-to-field';
 import type { CategoryRuleMatcher } from '@kiko/categories/category-rules';
 import { expectNavBarSaveOnly, pressSave, saveItem } from '@kiko/test-support/form-header-items';
@@ -41,6 +42,10 @@ jest.mock('@kiko/categories/category-rules-repo', () => ({
 jest.mock('@kiko/settings/settings.repo', () => ({
   settingsRepo: { getQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }) },
 }));
+jest.mock(
+  '@kiko/holdings/use-held-currencies',
+  () => jest.requireActual('@kiko/test-support/held-currencies').heldCurrenciesModule,
+);
 jest.mock('@kiko/design-system/scroll-to-field/scroll-to-field');
 jest.mock('@kiko/db/use-live-query', () => ({
   useLiveQuery: (_query: unknown, keys: string[]) => {
@@ -111,6 +116,7 @@ beforeEach(() => {
   mockSettingsRows = [{ baseCurrency: 'UAH' }];
   mockRulesLoading = false;
   mockSettingsLoading = false;
+  holdCurrencies([]);
   mockCountRuleRewrite.mockResolvedValue(0);
   mockSaveRule.mockResolvedValue({ id: 'saved', changed: 0 });
   jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
@@ -177,6 +183,30 @@ describe('CategoryRuleFormScreen — a new rule', () => {
 
     expect(fieldSuffix(screen.getByLabelText('Amount'))).toBe('$');
     expect(screen.getByTestId('matcher-currency-0')).toHaveTextContent(/US Dollar/);
+  });
+
+  it('amount currency lists the user’s currencies first', async () => {
+    holdCurrencies(['USD', 'BTC']);
+
+    const screen = await renderCreate();
+
+    await pickType(screen, 0, 'amount');
+    await fireEvent.press(screen.getByTestId('matcher-currency-0'));
+
+    expect(
+      screen
+        .getAllByTestId(/^currency-(group|option)-/)
+        .slice(0, 6)
+        .map((row) => String(row.props.testID)),
+    ).toEqual([
+      'currency-group-held',
+      'currency-option-BTC',
+      'currency-option-USD',
+      'currency-group-fiat',
+      'currency-option-UAH',
+      'currency-option-EUR',
+    ]);
+    expect(screen.getByTestId('currency-group-held')).toHaveTextContent('Your currencies');
   });
 
   it('removes a condition, and offers no removal on the one left', async () => {

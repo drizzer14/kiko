@@ -398,7 +398,7 @@ describe('the Ukrainian wording of the help topics', () => {
   const TOPIC_TITLES = [
     ['addAccount', 'Додавання рахунку'],
     ['connectMonobank', 'Підключення Monobank'],
-    ['connectCrypto', 'Підключення Binance або гаманця Біткоїна'],
+    ['connectCrypto', 'Підключення Binance або гаманця Bitcoin'],
     ['importStatement', 'Імпорт банківської виписки'],
     ['setReminder', 'Налаштування нагадування'],
     ['addHolding', 'Додавання активу'],

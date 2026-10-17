@@ -55,6 +55,10 @@ jest.mock('@kiko/holdings/repo', () => ({
     allQuery: () => mockQuery('all holdings', [], () => mockTables.holdings),
   },
 }));
+jest.mock(
+  '@kiko/holdings/use-held-currencies',
+  () => jest.requireActual('@kiko/test-support/held-currencies').heldCurrenciesModule,
+);
 jest.mock('@kiko/accounts/accounts.repo', () => ({
   accountsRepo: {
     byIdQuery: (accountId: string) =>

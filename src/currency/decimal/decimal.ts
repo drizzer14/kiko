@@ -1,3 +1,5 @@
+import { left, right, type Either } from 'fnts/either';
+
 import { type Currency, currencyScale } from '../currency';
 
 // Prices, quantities, and purity are scaled decimal STRINGS (kiko-domain's
@@ -212,3 +214,49 @@ export const scaleMinorUnits = (
   denominator: number,
 ): number =>
   Number(roundHalfAwayFromZero(BigInt(minorUnits) * BigInt(numerator), BigInt(denominator)));
+
+export type DecimalAmountError = 'amount-malformed' | 'amount-precision' | 'amount-too-large';
+
+// No exponent, no spaces, no plus sign, and a point needs digits on both sides: an exchange
+// sends plain decimal text, and anything else is a payload this parser must not guess at.
+const DECIMAL_AMOUNT_PATTERN = /^-?[0-9]+(\.[0-9]+)?$/;
+
+const MAXIMUM_SAFE_UNITS = BigInt(Number.MAX_SAFE_INTEGER);
+
+/**
+ * Parses an exchange's decimal text straight to integer minor units at `scale`, through BigInt,
+ * so no float ever sits between the text and the stored value. `exact` refuses any non-zero digit
+ * past the scale (`amount-precision`); `half-away-from-zero` rounds it. A result outside the safe
+ * integer range is `amount-too-large`.
+ */
+export const decimalToMinorUnits = (
+  text: string,
+  scale: number,
+  rounding: 'exact' | 'half-away-from-zero',
+): Either<DecimalAmountError, number> => {
+  if (!DECIMAL_AMOUNT_PATTERN.test(text)) {
+    return left('amount-malformed');
+  }
+
+  const parsed = parseSignedDecimal(text);
+
+  if (parsed.scale <= scale) {
+    const widened = parsed.signedDigits * 10n ** BigInt(scale - parsed.scale);
+
+    return toSafeMinorUnits(widened);
+  }
+
+  const divisor = 10n ** BigInt(parsed.scale - scale);
+
+  if (rounding === 'exact' && parsed.signedDigits % divisor !== 0n) {
+    return left('amount-precision');
+  }
+
+  return toSafeMinorUnits(roundHalfAwayFromZero(parsed.signedDigits, divisor));
+};
+
+const toSafeMinorUnits = (units: bigint): Either<DecimalAmountError, number> => {
+  const magnitude = units < 0n ? -units : units;
+
+  return magnitude > MAXIMUM_SAFE_UNITS ? left('amount-too-large') : right(Number(units));
+};

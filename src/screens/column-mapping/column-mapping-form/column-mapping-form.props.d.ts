@@ -13,7 +13,7 @@ import type { FieldInstance } from '@kiko/design-system/scroll-to-field';
 import type { TargetHoldingOption } from '@kiko/design-system/components/target-holding-sheet';
 
 import type { AmountMode } from '../amount-fields/amount-fields.props';
-import type { CurrencyMode } from '../currency-fields/currency-fields.props';
+import type { CurrencyMode, TargetHolding } from '../currency-fields/currency-fields.props';
 import type { ColumnSelectFieldOption } from '../column-select-field/column-select-field.props';
 
 export type Encoding = 'utf-8' | 'windows-1251';
@@ -94,6 +94,7 @@ export type ColumnMappingFormProps = {
   onCurrencyColumnChange: (value: number | undefined) => void;
   fixedCurrency: Currency;
   onFixedCurrencyChange: (currency: Currency) => void;
+  targetHolding: TargetHolding | undefined;
   descriptionColumn: number | undefined;
   onDescriptionColumnChange: (value: number | undefined) => void;
   counterpartyColumn: number | undefined;

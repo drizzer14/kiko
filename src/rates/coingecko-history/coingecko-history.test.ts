@@ -1,6 +1,33 @@
 import { DAY_MS } from '@kiko/dates';
 
-import { fetchCryptoHistory } from './coingecko-history';
+import {
+  CoinGeckoRequestError,
+  CryptoHistoryFailure,
+  CRYPTO_HISTORY_CONCURRENCY,
+  fetchCryptoHistory,
+} from './coingecko-history';
+
+describe('CoinGeckoRequestError', () => {
+  it('names itself and carries the status of the answer', () => {
+    const error = new CoinGeckoRequestError(429);
+
+    expect(error.name).toBe('CoinGeckoRequestError');
+    expect(error.message).toBe('CoinGecko request failed: 429');
+    expect(error.status).toBe(429);
+    expect(error).toBeInstanceOf(CoinGeckoRequestError);
+  });
+});
+
+describe('CryptoHistoryFailure', () => {
+  it('names itself and carries the rate-limited coins', () => {
+    const failure = new CryptoHistoryFailure(['ETH']);
+
+    expect(failure.name).toBe('CryptoHistoryFailure');
+    expect(failure.message).toBe('CoinGecko history request failed for every coin');
+    expect(failure.rateLimitedCurrencies).toEqual(['ETH']);
+    expect(failure).toBeInstanceOf(CryptoHistoryFailure);
+  });
+});
 
 const d1 = Date.UTC(2026, 8, 1);
 const d2 = Date.UTC(2026, 8, 2);
@@ -8,14 +35,18 @@ const d2 = Date.UTC(2026, 8, 2);
 // Route each coin id to its own price series; a coin's non-ok response is modeled
 // per url so the "one coin fails, others survive" case can be exercised.
 const makeRoutedFetch = (
-  byCoin: Record<string, { ok?: boolean; prices: [number, number][] }>,
+  byCoin: Record<string, { ok?: boolean; status?: number; prices: [number, number][] }>,
 ): typeof fetch =>
   (async (url: string) => {
     const id = /coins\/([a-z]+)\/market_chart/.exec(url)?.[1] ?? '';
     const entry = byCoin[id] ?? { prices: [] };
     const ok = entry.ok ?? true;
 
-    return { ok, status: ok ? 200 : 429, json: async () => ({ prices: entry.prices }) };
+    return {
+      ok,
+      status: ok ? 200 : (entry.status ?? 429),
+      json: async () => ({ prices: entry.prices }),
+    };
   }) as unknown as typeof fetch;
 
 describe('fetchCryptoHistory', () => {
@@ -97,6 +128,23 @@ describe('fetchCryptoHistory', () => {
     expect(failedCurrencies).toEqual(['ETH']);
   });
 
+  // The burst limit is what a later run must route around; a coin that fails for any other
+  // reason (a renamed id answering 404) is listed apart from it.
+  it('lists a coin answered with 429 apart from one that failed for another reason', async () => {
+    const result = await fetchCryptoHistory(
+      1,
+      makeRoutedFetch({
+        bitcoin: { prices: [[d1, 78_552]] },
+        ethereum: { ok: false, status: 429, prices: [] },
+        solana: { ok: false, status: 404, prices: [] },
+      }),
+      ['BTC', 'ETH', 'SOL'],
+    );
+
+    expect(result.failedCurrencies).toEqual(['ETH', 'SOL']);
+    expect(result.rateLimitedCurrencies).toEqual(['ETH']);
+  });
+
   it('throws only when every coin request fails', async () => {
     await expect(
       fetchCryptoHistory(
@@ -106,12 +154,52 @@ describe('fetchCryptoHistory', () => {
           ethereum: { ok: false, prices: [] },
           tether: { ok: false, prices: [] },
         }),
+        ['BTC', 'ETH', 'USDT'],
       ),
     ).rejects.toThrow(/CoinGecko/);
   });
 
   it('references DAY_MS-aligned days in its fixtures', () => {
     expect(d2 - d1).toBe(DAY_MS);
+  });
+
+  describe('a concurrency cap', () => {
+    const SIX_COINS = ['BTC', 'ETH', 'USDT', 'BNB', 'XRP', 'SOL'] as const;
+
+    it('never has more than the cap of coin requests in flight', async () => {
+      let inFlight = 0;
+      let mostInFlight = 0;
+      const fetchImpl = (async () => {
+        inFlight += 1;
+        mostInFlight = Math.max(mostInFlight, inFlight);
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        inFlight -= 1;
+
+        return { ok: true, status: 200, json: async () => ({ prices: [[d1, 1]] }) };
+      }) as unknown as typeof fetch;
+
+      await fetchCryptoHistory(1, fetchImpl, SIX_COINS);
+
+      expect(mostInFlight).toBe(CRYPTO_HISTORY_CONCURRENCY);
+    });
+
+    it('still fetches every coin under the cap', async () => {
+      const { entries, failedCurrencies } = await fetchCryptoHistory(
+        1,
+        makeRoutedFetch({
+          bitcoin: { prices: [[d1, 78_552]] },
+          ethereum: { prices: [[d1, 3_100]] },
+          tether: { prices: [[d1, 1.0]] },
+          binancecoin: { ok: false, prices: [] },
+          ripple: { prices: [[d1, 2]] },
+          solana: { prices: [[d1, 150]] },
+        }),
+        SIX_COINS,
+      );
+
+      expect(failedCurrencies).toEqual(['BNB']);
+      expect(entries.map((entry) => entry.base)).toEqual(['BTC', 'ETH', 'USDT', 'XRP', 'SOL']);
+    });
   });
 
   // kiko-architecture: no request for data the user does not have — a caller
@@ -142,6 +230,7 @@ describe('fetchCryptoHistory', () => {
       await expect(fetchCryptoHistory(1, fetchImpl, [])).resolves.toEqual({
         entries: [],
         failedCurrencies: [],
+        rateLimitedCurrencies: [],
       });
       expect(called).toBe(false);
     });

@@ -36,17 +36,18 @@ import BrokerTypeField from '@kiko/screens/forms/broker-type-field';
 import { resolveEntityColor } from '@kiko/design-system/entity-tint';
 import ColorPicker from '@kiko/design-system/components/color-picker';
 import AccountKindField from '@kiko/screens/forms/account-kind-field';
+import { type Currency, currencySymbol } from '@kiko/currency/currency';
 import type { FieldInstance } from '@kiko/design-system/scroll-to-field';
 import CurrencyField from '@kiko/design-system/components/currency-field';
 import { useScrollToField } from '@kiko/design-system/use-scroll-to-field';
 import CryptoSyncForm from '@kiko/design-system/components/crypto-sync-form';
+import { useCurrencyPickerGroups } from '@kiko/holdings/currency-picker-groups';
 import type { AccountsStackParamList, FormDraft } from '@kiko/navigation/types';
 import { type FC, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { accountKindSymbol, genericEntitySymbol } from '@kiko/holdings/entity-symbols';
 import { type BankId, isBankId, isSpecificBankId } from '@kiko/bank-sync/bank-catalog';
 import HoldingIdentityField from '@kiko/design-system/components/holding-identity-field';
 import MonobankConnectField from '@kiko/design-system/components/monobank-connect-field';
-import { type Currency, currencySymbol, fiatCurrencyOptions } from '@kiko/currency/currency';
 
 import { useConnectReminder } from './use-connect-reminder';
 
@@ -147,6 +148,8 @@ const catalogPickErrorText = (
 // neutral fallback below.
 const INITIAL_KIND: Kind = 'bank';
 
+const CASH_CURRENCY_CONTEXT = { kind: 'fiat' } as const;
+
 // Neutral placeholder glyph shown in the create form's icon chip until the user
 // picks one (and the glyph a cleared icon falls back to). The persisted default
 // (a kind-derived icon) is applied by the account list rows when the stored icon
@@ -206,6 +209,7 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
   const seed = createSeed(route.params?.initialKind, route.params?.draft);
 
   const { t } = useTranslation();
+  const currencyGroups = useCurrencyPickerGroups(CASH_CURRENCY_CONTEXT);
 
   const [name, setName] = useState(seed.name);
   const [kind, setKind] = useState<Kind>(seed.kind);
@@ -721,7 +725,7 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
               sheetTitle={t('forms.fields.currencySheetTitle')}
               selected={currency}
               onSelect={setCurrency}
-              options={fiatCurrencyOptions}
+              groups={currencyGroups}
               onOpenChange={setIsCurrencySheetOpen}
               testID="account-currency-field"
             />

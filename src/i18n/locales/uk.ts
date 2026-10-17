@@ -79,7 +79,7 @@ export const uk: typeof en = {
     },
     dataImport: {
       amountTooLargeError:
-        'У цій резервній копії є сума в USDT, завелика, щоб Кіко зберіг її точно, тому нічого не імпортовано. Ваші поточні дані не змінено.',
+        'У цьому файлі експорту є сума в USDT, завелика, щоб Кіко зберіг її точно, тому нічого не імпортовано. Ваші поточні дані не змінено.',
       chooseFile: 'Обрати файл',
       confirmButton: 'Замінити дані',
       confirmMessage:
@@ -100,6 +100,8 @@ export const uk: typeof en = {
       rowLabel: 'Імпорт даних',
       successMessage: 'Імпорт завершено — відновлено рахунків: {{count}}.',
       title: 'Імпорт даних',
+      unknownCurrencyError:
+        'Цей файл експорту створено новішою версією Кіко, і в ньому є валюта, якої ця версія не знає, тому нічого не імпортовано. Оновіть Кіко й спробуйте ще раз. Ваші поточні дані не змінено.',
       wrongFileTypeError: 'Оберіть файл експорту Кіко (.kiko).',
       wrongKeyError: 'Ключ невірний, або файл пошкоджений.',
     },
@@ -440,7 +442,7 @@ export const uk: typeof en = {
         bond: 'ОВДП',
         card: 'Зарплатна картка',
         cash: 'Готівка вдома',
-        cryptoAsset: 'Біткоїн',
+        cryptoAsset: 'Bitcoin',
         deposit: 'Депозит на 6 місяців',
         jar: 'Банка на відпустку',
         loan: 'Іпотека',
@@ -628,7 +630,7 @@ export const uk: typeof en = {
     addAccount: 'Додати рахунок',
     empty: {
       message:
-        'Рахунком може бути банківська картка, готівка, крипто чи майно. Рахунки Monobank, Binance і Біткоїн можуть синхронізуватися.',
+        'Рахунком може бути банківська картка, готівка, крипто чи майно. Рахунки Monobank, Binance і Bitcoin можуть синхронізуватися.',
       title: 'Ще немає рахунків',
     },
     icon: 'Іконка {{name}}',
@@ -887,7 +889,7 @@ export const uk: typeof en = {
           '1': 'На вкладці «Рахунки» натисніть «Додати рахунок».',
           '2': 'Оберіть вид рахунку: банк, готівка, крипто, майно, метали, борг або брокер.',
           '3': 'Введіть назву. Для готівки потрібні валюта й початкова сума; для банківського рахунку потрібен банк.',
-          '4': 'За бажанням підключіть Monobank за токеном, Binance за API-ключем або гаманець Біткоїна за адресою.',
+          '4': 'За бажанням підключіть Monobank за токеном, Binance за API-ключем або гаманець Bitcoin за адресою.',
           '5': 'Для інших банків відкрийте рахунок, натисніть «Імпортувати виписку» й оберіть файл CSV або XLSX зі свого банку.',
         },
         title: 'Додавання рахунку',
@@ -935,15 +937,15 @@ export const uk: typeof en = {
         title: 'Автоматичні категорії',
       },
       connectCrypto: {
-        rowLabel: 'Підключення Binance або гаманця Біткоїна',
+        rowLabel: 'Підключення Binance або гаманця Bitcoin',
         steps: {
           '1': 'На вкладці «Рахунки» натисніть «Додати рахунок», введіть назву й оберіть «Крипто».',
           '2': 'У полі «Джерело» оберіть «Binance» або «Гаманець».',
           '3': 'Для Binance натисніть «Відкрити керування API Binance» і створіть там API-ключ. Вставте «API ключ» і «API секрет», потім натисніть «Підключити Binance».',
-          '4': 'Для гаманця Біткоїна вставте його адресу й натисніть «Підключити гаманець».',
+          '4': 'Для гаманця Bitcoin вставте його адресу й натисніть «Підключити гаманець».',
           '5': 'Натисніть «Зберегти». Ключі зберігаються лише в Keychain цього iPhone і ніколи не надсилаються до Кіко.',
         },
-        title: 'Підключення Binance або гаманця Біткоїна',
+        title: 'Підключення Binance або гаманця Bitcoin',
       },
       connectMonobank: {
         rowLabel: 'Підключення Monobank',
@@ -1148,6 +1150,14 @@ export const uk: typeof en = {
     transferTo: 'Переказ на {{name}}',
   },
   components: {
+    currencyField: {
+      groups: {
+        target: 'Валюта активу',
+        held: 'Ваші валюти',
+        fiat: 'Валюти',
+        crypto: 'Криптовалюти',
+      },
+    },
     expandToggle: {
       showAll: 'Показати всі',
       showLess: 'Згорнути',
@@ -1392,8 +1402,8 @@ export const uk: typeof en = {
   },
   // Ukrainian currency display names, keyed by ISO letter code (mirrors
   // en.currencyNames). Official NBU names where the NBU exchange feed quotes the
-  // currency; authored Ukrainian names for the codes NBU does not quote. UAH and
-  // BTC are hand-authored.
+  // currency; authored Ukrainian names for the codes NBU does not quote. UAH is
+  // hand-authored, and every coin keeps its Latin brand name.
   currencyNames: {
     UAH: 'Українська гривня',
     USD: 'Долар США',
@@ -1502,8 +1512,28 @@ export const uk: typeof en = {
     XOF: 'Західноафриканський франк КФА',
     YER: 'Єменський ріал',
     ZAR: 'Ренд',
-    BTC: 'Біткоїн',
-    ETH: 'Ефіріум',
-    USDT: 'Тезер',
+    BTC: 'Bitcoin',
+    ETH: 'Ethereum',
+    USDT: 'USDT',
+    BNB: 'BNB',
+    XRP: 'XRP',
+    USDC: 'USD Coin',
+    SOL: 'Solana',
+    TRX: 'TRON',
+    ZEC: 'Zcash',
+    HYPE: 'Hyperliquid',
+    DOGE: 'Dogecoin',
+    LINK: 'Chainlink',
+    ADA: 'Cardano',
+    NEAR: 'NEAR Protocol',
+    XLM: 'Stellar',
+    BCH: 'Bitcoin Cash',
+    LTC: 'Litecoin',
+    UNI: 'Uniswap',
+    DAI: 'Dai',
+    AVAX: 'Avalanche',
+    SUI: 'Sui',
+    FDUSD: 'First Digital USD',
+    CGPT: 'ChainGPT',
   },
 };

@@ -99,6 +99,39 @@ const makeRowCapturingDatabaseTransaction = (): {
 
 const NOW = Date.UTC(2026, 0, 1);
 
+// What a restore keeps from the live settings row when no live row exists.
+const NO_LIVE_DEVICE_SETTINGS = {
+  lockEnabled: false,
+  notificationsDeliverableSince: null,
+  historyBackfillState: null,
+};
+
+// A transaction handle that records the order of deletes and inserts and every inserted row.
+const makeRecordingDatabaseTransaction = () => {
+  const deletedTables: string[] = [];
+  const insertedTables: string[] = [];
+  const insertedRows: Record<string, unknown[]> = {};
+  const databaseTransaction = {
+    ...noLiveSettings,
+    delete: (table: unknown) => {
+      deletedTables.push(tableNameOf(table));
+
+      return Promise.resolve();
+    },
+    insert: (table: unknown) => ({
+      values: (rows: unknown[]) => {
+        const name = tableNameOf(table);
+        insertedTables.push(name);
+        insertedRows[name] = [...(insertedRows[name] ?? []), ...rows];
+
+        return Promise.resolve();
+      },
+    }),
+  };
+
+  return { databaseTransaction, deletedTables, insertedTables, insertedRows };
+};
+
 const emptySnapshot: DataSnapshot = {
   accounts: [],
   holdings: [],
@@ -116,27 +149,9 @@ const emptySnapshot: DataSnapshot = {
 
 describe('restoreDataSnapshot', () => {
   it('deletes every table child-first, then inserts every table parent-first', async () => {
-    const deletedTables: string[] = [];
-    const insertedTables: string[] = [];
-    const insertedRows: Record<string, unknown[]> = {};
-
-    mockDatabaseTransaction = {
-      ...noLiveSettings,
-      delete: (table: unknown) => {
-        deletedTables.push(tableNameOf(table));
-
-        return Promise.resolve();
-      },
-      insert: (table: unknown) => ({
-        values: (rows: unknown[]) => {
-          const name = tableNameOf(table);
-          insertedTables.push(name);
-          insertedRows[name] = [...(insertedRows[name] ?? []), ...rows];
-
-          return Promise.resolve();
-        },
-      }),
-    };
+    const { databaseTransaction, deletedTables, insertedTables, insertedRows } =
+      makeRecordingDatabaseTransaction();
+    mockDatabaseTransaction = databaseTransaction;
 
     await restore({
       ...emptySnapshot,
@@ -172,9 +187,7 @@ describe('restoreDataSnapshot', () => {
       'transactions',
       'settings',
     ]);
-    expect(insertedRows.settings).toEqual([
-      { id: 1, lockEnabled: false, notificationsDeliverableSince: null },
-    ]);
+    expect(insertedRows.settings).toEqual([{ id: 1, ...NO_LIVE_DEVICE_SETTINGS }]);
     expect(insertedRows.accounts).toEqual([{ id: 'a1' }]);
     // `{ id: 'h1' }` carries no `balanceSetAt` key — the legacy-backfill path
     // (see the dedicated tests below) stamps `null` since `t1` (this test's
@@ -545,27 +558,9 @@ describe('restoreDataSnapshot', () => {
   // Mirrors migration 0044: a cash holding in a crypto currency moves onto
   // a new crypto account, the same as a live device upgrade.
   it('moves a cash holding in a crypto currency onto a new crypto account, deleting and inserting every table', async () => {
-    const deletedTables: string[] = [];
-    const insertedTables: string[] = [];
-    const insertedRows: Record<string, unknown[]> = {};
-
-    mockDatabaseTransaction = {
-      ...noLiveSettings,
-      delete: (table: unknown) => {
-        deletedTables.push(tableNameOf(table));
-
-        return Promise.resolve();
-      },
-      insert: (table: unknown) => ({
-        values: (rows: unknown[]) => {
-          const name = tableNameOf(table);
-          insertedTables.push(name);
-          insertedRows[name] = [...(insertedRows[name] ?? []), ...rows];
-
-          return Promise.resolve();
-        },
-      }),
-    };
+    const { databaseTransaction, deletedTables, insertedTables, insertedRows } =
+      makeRecordingDatabaseTransaction();
+    mockDatabaseTransaction = databaseTransaction;
 
     const sourceAccount = {
       id: 'a1',
@@ -1191,8 +1186,7 @@ describe('restoreDataSnapshot', () => {
           baseCurrency: 'UAH',
           importTimesRezoned: true,
           dedupKeysUpgraded: true,
-          lockEnabled: false,
-          notificationsDeliverableSince: null,
+          ...NO_LIVE_DEVICE_SETTINGS,
         },
       ]);
     });
@@ -1215,8 +1209,7 @@ describe('restoreDataSnapshot', () => {
           baseCurrency: 'UAH',
           importTimesRezoned: true,
           dedupKeysUpgraded: true,
-          lockEnabled: false,
-          notificationsDeliverableSince: null,
+          ...NO_LIVE_DEVICE_SETTINGS,
         },
       ]);
     });
@@ -1242,8 +1235,7 @@ describe('restoreDataSnapshot', () => {
       expect(insertedRows.settings).toEqual([
         {
           ...alreadyMigratedSettingsRow,
-          lockEnabled: false,
-          notificationsDeliverableSince: null,
+          ...NO_LIVE_DEVICE_SETTINGS,
         },
       ]);
     });
@@ -1301,8 +1293,7 @@ describe('restoreDataSnapshot', () => {
           baseCurrency: 'UAH',
           dedupKeysUpgraded: true,
           importTimesRezoned: true,
-          lockEnabled: false,
-          notificationsDeliverableSince: null,
+          ...NO_LIVE_DEVICE_SETTINGS,
         },
       ]);
     });
@@ -1328,8 +1319,7 @@ describe('restoreDataSnapshot', () => {
           baseCurrency: 'UAH',
           dedupKeysUpgraded: true,
           importTimesRezoned: true,
-          lockEnabled: false,
-          notificationsDeliverableSince: null,
+          ...NO_LIVE_DEVICE_SETTINGS,
         },
       ]);
     });
@@ -1357,8 +1347,7 @@ describe('restoreDataSnapshot', () => {
           baseCurrency: 'UAH',
           dedupKeysUpgraded: true,
           importTimesRezoned: true,
-          lockEnabled: false,
-          notificationsDeliverableSince: null,
+          ...NO_LIVE_DEVICE_SETTINGS,
         },
       ]);
     });

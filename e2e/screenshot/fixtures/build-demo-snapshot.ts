@@ -122,6 +122,7 @@ const buildSettings = (dataset: ScreenshotDataset): SettingsRow[] => [
     importTimesRezoned: true,
     reminderOfferDismissals: null,
     notificationsDeliverableSince: null,
+    historyBackfillState: null,
     quoteQuota: null,
     // Every demo lot list is one buy, so the one-time recost has nothing to
     // change: `true` skips it on import, the same as a recosted device.

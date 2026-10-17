@@ -825,16 +825,34 @@ derive from `currencyOptions` rather than carrying their own literal
 list. A Drizzle `text({ enum: [...] })` is a TS-only compile-time
 hint, not a DB constraint, so changing the set needs no migration.
 
+**The crypto members come from the coin registry**: `curatedCoins` and
+`coinScale` in `src/currency/coins/coins.ts` (ids, names, scales; read the
+file, never restate its members). It imports nothing from `currency.ts`.
+
+**A restore rejects an unknown currency.** `assert-known-currencies.ts`
+(`src/data-transfer/snapshot/`) fails with its `unknown-currency` error
+(read the file for the exact code) on any currency outside
+`currencyScale`: every `{ enum: currencyOptions }` column, the JSON
+currency fields (matchers, drafts) and `bond_register` terms. Test
+membership with `Object.hasOwn`, never `in` (an inherited
+name such as `constructor` passes `in`). A new currency-bearing column
+or JSON field joins that check in the same commit.
+
 **A cash holding is fiat-only for every NEW write.** `src/holdings/holding-currency/`
-owns the rule (`holdingCurrencyOptions` for a create picker,
-`isCurrencyAllowedForHoldingType` for a write). Every path that can
+owns the rule (`isCurrencyExpectedForHoldingType` feeds the create
+picker's groups via `currencyPickerGroups`, `isCurrencyAllowedForHoldingType`
+guards a write). Every path that can
 create a cash holding rejects a crypto currency: the holding form and
 cash-account form offer fiat only, and `holdingsRepo.create` and
 `accountsRepo.createCashAccount` throw. Statement import and the syncs
 never create a cash holding. `isCurrencyExpectedForHoldingType` is the currency a type is
-CREATED in (a `crypto_asset` is expected in a cryptocurrency, though a write also accepts fiat); a
-picker that needs a holding in a given currency uses it. `isCryptoHoldingType` is the type test the
-create form uses to list cryptocurrencies first (`src/holdings/holding-currency/holding-currency.ts`).
+CREATED in: a `crypto_asset` in a cryptocurrency, every other type in a fiat one, though a
+write tolerates more (a `crypto_asset` accepts fiat; only `cash` is fiat-only). It is the
+holding picker's first group (`currencyPickerGroups`, which adds a fiat group after the crypto
+one for a `crypto_asset`), and the "create payment holding" type filter reads the same
+function, so the two cannot drift. `isCryptoHoldingType` is the type test the
+create picker uses to lead with the cryptocurrency group
+(`src/holdings/holding-currency/holding-currency.ts`).
 An ALREADY-stored crypto cash holding (a
 1.0-era BTC/ETH/USDT `cash` holding) is migration `0044`'s job, not this
 rule's — `0044_move_crypto_cash_holdings.sql`'s doc comment is the full
