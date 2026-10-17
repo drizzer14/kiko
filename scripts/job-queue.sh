@@ -376,8 +376,8 @@ lock_is_live() {
 
 # Runs a command in the background and waits on it with the wait builtin: bash 3.2 loses a SIGINT
 # sent to this pid alone when it arrives as a foreground child is reaped, and the wait builtin does
-# not. The status is the command's own. The pid is kept in in_flight so cleanup can end it and
-# wait for it: a signal trap that ran while the record step's rename was still in flight would
+# not. The status is the command's own. The pid is kept in in_flight so end_in_flight can end it
+# and wait for it: a signal trap that ran while the record step's rename was still in flight would
 # otherwise let the rename land after the lock was released. It covers the record step's external
 # commands only; a command substitution and the wait loops are not covered.
 in_flight=''
@@ -498,17 +498,23 @@ release_lock() {
   rm -f "$LOCK_PATH"
 }
 
+# Ends the in-flight record command and waits for it: a rename is atomic, so after the wait it has
+# either landed or never will, and the temporary symlink a killed `ln` left is removed. A signal
+# runs this before the job group is ended, because that step can take minutes and the pid would
+# otherwise be reused by then; cleanup runs it again for the EXIT path, where it is a no-op once
+# the pid is gone.
+end_in_flight() {
+  [ -n "$in_flight" ] || return 0
+  kill "$in_flight" 2> /dev/null
+  wait "$in_flight" 2> /dev/null
+  in_flight=''
+  rm -f "$QUEUE_DIRECTORY/lock.$$"
+}
+
 # Stops only the processes this script started (its own job, sleep, and in-flight record command),
-# never one found by name. The in-flight command is ended and waited for before the lock is read:
-# a rename is atomic, so after the wait it has either landed or never will, and the temporary
-# symlink a killed `ln` left is removed.
+# never one found by name. The in-flight command is ended before the lock is read.
 cleanup() {
-  if [ -n "$in_flight" ]; then
-    kill "$in_flight" 2> /dev/null
-    wait "$in_flight" 2> /dev/null
-    in_flight=''
-    rm -f "$QUEUE_DIRECTORY/lock.$$"
-  fi
+  end_in_flight
   if [ -n "$sleeper" ]; then
     kill "$sleeper" 2> /dev/null
     sleeper=''
@@ -536,6 +542,7 @@ stop_on_signal() {
     return 0
   fi
   trap "exit $exit_code" INT TERM
+  end_in_flight
   terminate_job_group
   cleanup
   exit "$exit_code"

@@ -81,7 +81,7 @@ describe('pre-write-guard tests assert on no clock delta', () => {
 // poll loop, which fails the test when the awaited state never appears.
 const QUEUE_TEST_FILES = ['job-queue.test.ts', 'ff-main.test.ts'];
 
-const SLEEP_CALL = /setTimeout\(\s*[\w$]+\s*,\s*[\d_]+\s*\)/;
+const SLEEP_CALL = /(?<!jest\.)\bsetTimeout\(|\bspawnSync\(\s*['"]sleep['"]/;
 
 const settleSleepsIn = (source: string): string[] => {
   const lines = source.split('\n');
