@@ -113,7 +113,7 @@ const ARGUMENT_STUB = [
 // commit, so every run would be refused. A test's own `environment` still wins.
 const SCOPE_VARIABLES = new Set(['KIKO_MUTATION_BASE', 'KIKO_MUTATION_FULL']);
 
-const wrapperEnvironment = (environment: Record<string, string>): NodeJS.ProcessEnv => ({
+export const wrapperEnvironment = (environment: Record<string, string>): NodeJS.ProcessEnv => ({
   ...Object.fromEntries(Object.entries(process.env).filter(([name]) => !SCOPE_VARIABLES.has(name))),
   ...environment,
 });

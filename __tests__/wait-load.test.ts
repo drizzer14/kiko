@@ -1,16 +1,19 @@
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync } from 'node:fs';
 import { type SpawnSyncReturns, spawnSync } from 'node:child_process';
 
-import { writeExecutable } from './test-support/mutation-repository';
+import {
+  HIGH_LOAD as HIGH,
+  LOW_LOAD as LOW,
+  sysctlCallCount,
+  writeSysctlStub as writeSharedSysctlStub,
+} from './test-support/sysctl-stub';
 
 // scripts/wait-load.sh waits until the 5-minute load average (the second number of
 // `sysctl -n vm.loadavg`) is below its first argument, so a heavy command starts on a quiet
 // machine. The tests put a stub `sysctl` first on PATH, so no real load is read.
 const SCRIPT = join(__dirname, '../scripts/wait-load.sh');
-const HIGH = '{ 1.50 12.25 3.00 }';
-const LOW = '{ 1.50 4.25 3.00 }';
 
 let directory: string;
 
@@ -22,24 +25,10 @@ afterEach(() => {
   rmSync(directory, { recursive: true, force: true });
 });
 
-// The stub answers `highCalls` times with `high`, then with `low` forever; it fails any other
-// invocation, so a script that asked sysctl for something else cannot pass by accident.
-const writeSysctlStub = (high: string, low: string, highCalls: number): void => {
-  writeExecutable(
-    join(directory, 'sysctl'),
-    [
-      '#!/usr/bin/env bash',
-      '[ "$*" = "-n vm.loadavg" ] || exit 1',
-      `calls="${join(directory, 'calls')}"`,
-      'count="$(cat "$calls" 2>/dev/null || echo 0)"',
-      'printf %s "$((count + 1))" > "$calls"',
-      `if [ "$count" -lt ${highCalls} ]; then printf '%s\\n' '${high}'; else printf '%s\\n' '${low}'; fi`,
-      '',
-    ].join('\n'),
-  );
-};
+const writeSysctlStub = (high: string, low: string, highCalls: number): void =>
+  writeSharedSysctlStub(directory, high, low, highCalls);
 
-const callCount = (): number => Number(readFileSync(join(directory, 'calls'), 'utf8'));
+const callCount = (): number => sysctlCallCount(directory);
 
 const runWith = (
   environment: Record<string, string>,
