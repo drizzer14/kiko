@@ -1,8 +1,5 @@
 import { match, P } from 'ts-pattern';
-import maybe, { foldMap } from 'fnts/maybe';
-
 import {
-  DEPTH_RESOLUTION_MS,
   type DepthGuard,
   type DepthMemory,
   type DepthProbe,
@@ -11,14 +8,14 @@ import {
   knownStartOf,
   type LapsedRange,
   lapsedRangeOf,
-  MAX_DEPTH_LAPSES,
-  MAX_DEPTH_REFUSALS,
   type Narrowed,
   narrowLapsedStart,
   narrowRefusedStart,
   rememberServedStart,
   widenDepthMargin,
-} from './binance.history-depth';
+} from '@kiko/crypto-sync/exchange/walk';
+import maybe, { foldMap } from 'fnts/maybe';
+
 import {
   HISTORY_TOTAL_PAGE_SIZE,
   type TotalPage,
@@ -273,7 +270,7 @@ const narrowAfterRefusal = async <Series extends string, Row>(
   run.budget.record(lane, REFUSED_CALL);
   tally.refusals += 1;
 
-  if (tally.refusals >= MAX_DEPTH_REFUSALS) {
+  if (tally.refusals >= depth.config.maxRefusals) {
     return CLEAN_STOP;
   }
 
@@ -297,6 +294,7 @@ const narrowFromRefused = <Series extends string, Row>(
       endMs: input.span.end,
       floorMs: input.depth.floorMs(),
       hintMs: input.depth.hintMs(input.name),
+      config: input.depth.config,
       probe,
     }),
   );
@@ -357,12 +355,18 @@ const narrowAfterLapse = async <Series extends string, Row>(
   run.budget.beginNarrowing();
   tally.lapses += 1;
 
-  if (tally.lapses > MAX_DEPTH_LAPSES) {
+  if (tally.lapses > depth.config.maxLapses) {
     return CLEAN_STOP;
   }
 
   const after = await narrowDepth(input, (probe) =>
-    narrowLapsedStart({ ...range, endMs: span.end, floorMs: depth.floorMs(), probe }),
+    narrowLapsedStart({
+      ...range,
+      endMs: span.end,
+      floorMs: depth.floorMs(),
+      config: depth.config,
+      probe,
+    }),
   );
 
   // A search that ends against the start the memory held (the depth stood still) leaves the ground
@@ -372,7 +376,7 @@ const narrowAfterLapse = async <Series extends string, Row>(
     after.kind === 'retry' &&
     depth.memory.servedAtMs !== undefined &&
     depth.memory.startMs !== undefined &&
-    depth.memory.startMs - range.lowMs <= DEPTH_RESOLUTION_MS
+    depth.memory.startMs - range.lowMs <= depth.config.resolutionMs
   ) {
     depth.memory.startMs = range.lowMs;
   }

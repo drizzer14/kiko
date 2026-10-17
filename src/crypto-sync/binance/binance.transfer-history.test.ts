@@ -35,7 +35,7 @@ import { BinanceWalkStop } from './binance.history-walk';
 import { HISTORY_FLOOR_MS } from './binance.transactions';
 import { isBinanceCoolingDown } from './binance.cooldown';
 import { FUNDING_KEY, SPOT_KEY } from './binance.holding-keys';
-import { DEPTH_MARGIN_MS, DEPTH_RESOLUTION_MS } from './binance.history-depth';
+import { DEPTH_MARGIN_MS, DEPTH_RESOLUTION_MS } from './binance.depth-config';
 import { BinanceHistoryTooOldError, BinanceRateLimitError } from './binance.client';
 import { jitterMs, movingClockOf, suspendableRun } from './binance.depth-test-fixtures';
 

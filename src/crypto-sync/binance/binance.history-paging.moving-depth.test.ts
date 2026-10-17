@@ -1,5 +1,6 @@
 import { DAY_MS } from '@kiko/dates';
 import { maxOf } from '@kiko/numbers';
+import { rememberServedStart, widenDepthMargin } from '@kiko/crypto-sync/exchange/walk';
 
 import {
   DEPTH_EXTRAPOLATION_MAX_MS,
@@ -7,9 +8,7 @@ import {
   DEPTH_MARGIN_MS,
   DEPTH_RESOLUTION_MS,
   MAX_DEPTH_REFUSALS,
-  rememberServedStart,
-  widenDepthMargin,
-} from './binance.history-depth';
+} from './binance.depth-config';
 import {
   crossingOf,
   type DepthCall,

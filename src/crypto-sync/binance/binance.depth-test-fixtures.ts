@@ -1,9 +1,10 @@
 import { DAY_MS } from '@kiko/dates';
 import { match, P } from 'ts-pattern';
+import { createDepthMemories, type DepthGuard } from '@kiko/crypto-sync/exchange/walk';
 
 import { readSeriesSpan } from './binance.history-paging';
 import { BinanceHistoryTooOldError } from './binance.client';
-import { createDepthMemories, type DepthGuard } from './binance.history-depth';
+import { BINANCE_DEPTH_CONFIG } from './binance.depth-config';
 import { type BinanceHistoryRun, COSTS, createBinanceHistoryRun } from './binance.history-budget';
 
 /**
@@ -118,7 +119,7 @@ export const depthWorldOf = (input: {
     isRefusal: (error) => error instanceof BinanceHistoryTooOldError,
     nowMs: () => clock.now,
     floorMs: () => clock.now - 179 * DAY_MS,
-    ...createDepthMemories(() => clock.now),
+    ...createDepthMemories(() => clock.now, BINANCE_DEPTH_CONFIG),
   };
   const calls: DepthCall[] = [];
   const edgeOf = (series: string, atMs: number): number =>

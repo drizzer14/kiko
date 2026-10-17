@@ -1,15 +1,18 @@
 import { DAY_MS } from '@kiko/dates';
-
 import {
   createDepthMemories,
   createDepthMemory,
-  DEPTH_MARGIN_MS,
-  DEPTH_RESOLUTION_MS,
   type DepthGuard,
   type DepthMemory,
-  MAX_DEPTH_REFUSALS,
   rememberServedStart,
-} from './binance.history-depth';
+} from '@kiko/crypto-sync/exchange/walk';
+
+import {
+  BINANCE_DEPTH_CONFIG,
+  DEPTH_MARGIN_MS,
+  DEPTH_RESOLUTION_MS,
+  MAX_DEPTH_REFUSALS,
+} from './binance.depth-config';
 import {
   BINANCE_REQUEST_INTERVAL_MS,
   COSTS,
@@ -405,13 +408,13 @@ describe('readSeriesSpan, against a Binance that refuses a start older than it k
     isRefusal: (error) => error instanceof BinanceHistoryTooOldError,
     nowMs: () => NOW,
     floorMs: () => BASE - DAY_MS,
-    ...createDepthMemories(() => NOW),
+    ...createDepthMemories(() => NOW, BINANCE_DEPTH_CONFIG),
     ...over,
   });
 
   /** A memory that holds a start Binance refused, a bound that does not move with the clock. */
   const boundedAt = (startMs: number): DepthMemory => {
-    const memory = createDepthMemory();
+    const memory = createDepthMemory(BINANCE_DEPTH_CONFIG);
     rememberServedStart(memory, { startMs, servedAtMs: undefined });
 
     return memory;

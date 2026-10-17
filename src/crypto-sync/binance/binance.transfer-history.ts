@@ -17,6 +17,7 @@ import {
 } from '@kiko/transactions/untracked-counterpart';
 import { transactionsRepo } from '@kiko/transactions/repo';
 import { type ExchangeHolding, holdingsRepo } from '@kiko/holdings/repo';
+import { createDepthMemories, type DepthGuard } from '@kiko/crypto-sync/exchange/walk';
 
 import {
   BINANCE_ASSET,
@@ -67,9 +68,9 @@ import {
   settleRecords,
   settleUnreadable,
 } from './binance.history-records';
+import { BINANCE_DEPTH_CONFIG } from './binance.depth-config';
 import { type BinanceHistoryRun, COSTS } from './binance.history-budget';
 import { readSeriesSpan, type SeriesSpan } from './binance.history-paging';
-import { createDepthMemories, type DepthGuard } from './binance.history-depth';
 import { type BinanceCredentials, readCredentials } from './binance.credentials';
 import { isBinanceCoolingDown, setBinanceCooldownUntil } from './binance.cooldown';
 import { type BinanceWalkWriteDeps, defaultWalkWriteDeps } from './binance.walk-write-deps';
@@ -339,7 +340,7 @@ type TransferContext = {
   options: FetchAccountOptions;
   marks: WalkMarks;
   plan: WalkPlan;
-  depthMemories: Pick<DepthGuard, 'memoryOf' | 'hintMs' | 'refusedBoundMs'>;
+  depthMemories: Pick<DepthGuard, 'config' | 'memoryOf' | 'hintMs' | 'refusedBoundMs'>;
 };
 
 /** The types a window is read in: every one, or the ones its owed points name. */
@@ -555,7 +556,7 @@ const runSync = async (
     options: { fetchImpl: deps.fetchImpl, now: deps.now },
     marks: { cursor, rescanCursor, ...roundRobins, pending },
     plan,
-    depthMemories: createDepthMemories(deps.now),
+    depthMemories: createDepthMemories(deps.now, BINANCE_DEPTH_CONFIG),
   };
 
   await storePlannedList({
