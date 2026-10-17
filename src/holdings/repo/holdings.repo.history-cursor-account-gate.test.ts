@@ -29,8 +29,26 @@ import {
 import type { database } from '@kiko/db';
 import { DatabaseSync } from 'node:sqlite';
 import { applyAllMigrations, executingDrizzle } from '@kiko/test-support/real-sqlite';
+import { type WalkId, type WalkMarks, withWalkMarks } from '@kiko/test-support/walk-marks';
 
 import { holdingsRepo } from './holdings.repo';
+
+const WALK_IDS: WalkId[] = ['capital', 'pay', 'transfer', 'earn'];
+
+/** The Spot holding's metadata once each walk named has marks, over what else it carries. */
+const spotWithMarks = (
+  marks: Partial<Record<WalkId, WalkMarks>>,
+  base: Record<string, unknown> = { binanceAsset: 'BTC', syncedAt: 500 },
+): Record<string, unknown> =>
+  Object.entries(marks).reduce(
+    (metadata, [walkId, walkMarks]) =>
+      withWalkMarks(metadata, 'acc-1', walkId as WalkId, walkMarks),
+    base,
+  );
+
+const STORED = spotWithMarks({ capital: { cursor: 500 } });
+
+const FLOORED = spotWithMarks({ capital: { cursor: 1 } });
 
 const openTestDatabase = (institution: string | null): DatabaseSync => {
   const rawDatabase = new DatabaseSync(':memory:');
@@ -47,7 +65,7 @@ const openTestDatabase = (institution: string | null): DatabaseSync => {
       `INSERT INTO holdings (id, account_id, name, type, currency, balance_minor_units, metadata)
        VALUES ('h-spot', 'acc-1', 'Binance Spot', 'crypto_asset', 'BTC', 100, ?)`,
     )
-    .run(JSON.stringify({ binanceAsset: 'BTC', binanceHistoryCursor: 500, syncedAt: 500 }));
+    .run(JSON.stringify(STORED));
 
   return rawDatabase;
 };
@@ -68,11 +86,7 @@ describe("holdingsRepo.setBinanceWalkCursor — gated on the holding's account s
 
     await holdingsRepo.setBinanceWalkCursor('h-spot', 'binanceHistoryCursor', 999_999);
 
-    expect(storedMetadata(rawDatabase)).toEqual({
-      binanceAsset: 'BTC',
-      binanceHistoryCursor: 500,
-      syncedAt: 500,
-    });
+    expect(storedMetadata(rawDatabase)).toEqual(STORED);
   });
 
   it.each(binanceWalkCursorFields)(
@@ -83,12 +97,7 @@ describe("holdingsRepo.setBinanceWalkCursor — gated on the holding's account s
 
       await holdingsRepo.setBinanceWalkCursor('h-spot', field, 999_999);
 
-      expect(storedMetadata(rawDatabase)).toEqual({
-        binanceAsset: 'BTC',
-        binanceHistoryCursor: 500,
-        syncedAt: 500,
-        [field]: 999_999,
-      });
+      expect(storedMetadata(rawDatabase)).toEqual({ ...STORED, [field]: 999_999 });
     },
   );
 
@@ -99,13 +108,9 @@ describe("holdingsRepo.setBinanceWalkCursor — gated on the holding's account s
     await holdingsRepo.setBinanceWalkCursor('h-spot', 'binancePayHistoryCursor', 700);
     await holdingsRepo.setBinanceWalkCursor('h-spot', 'binanceEarnHistoryCursor', 800);
 
-    expect(storedMetadata(rawDatabase)).toEqual({
-      binanceAsset: 'BTC',
-      binanceHistoryCursor: 500,
-      binancePayHistoryCursor: 700,
-      binanceEarnHistoryCursor: 800,
-      syncedAt: 500,
-    });
+    expect(storedMetadata(rawDatabase)).toEqual(
+      spotWithMarks({ capital: { cursor: 500 }, pay: { cursor: 700 }, earn: { cursor: 800 } }),
+    );
   });
 
   it("a disconnect's floor write is not undone by a walk's late-arriving window commit", async () => {
@@ -122,11 +127,7 @@ describe("holdingsRepo.setBinanceWalkCursor — gated on the holding's account s
     // institution — it must not resurrect a forward watermark over the floor.
     await holdingsRepo.setBinanceWalkCursor('h-spot', 'binanceHistoryCursor', 999_999);
 
-    expect(storedMetadata(rawDatabase)).toEqual({
-      binanceAsset: 'BTC',
-      binanceHistoryCursor: 1,
-      syncedAt: 500,
-    });
+    expect(storedMetadata(rawDatabase)).toEqual(FLOORED);
   });
 
   it('a disconnect resets every walk cursor the Spot holding carries to the floor', async () => {
@@ -138,18 +139,11 @@ describe("holdingsRepo.setBinanceWalkCursor — gated on the holding's account s
     }
     await holdingsRepo.resetBinanceWalkCursors('acc-1', 1);
 
-    expect(storedMetadata(rawDatabase)).toEqual({
-      binanceAsset: 'BTC',
-      binanceHistoryCursor: 1,
-      binanceHistoryRescanCursor: 1,
-      binancePayHistoryCursor: 1,
-      binancePayRescanCursor: 1,
-      binanceTransferHistoryCursor: 1,
-      binanceTransferRescanCursor: 1,
-      binanceEarnHistoryCursor: 1,
-      binanceEarnRescanCursor: 1,
-      syncedAt: 500,
-    });
+    expect(storedMetadata(rawDatabase)).toEqual(
+      spotWithMarks(
+        Object.fromEntries(WALK_IDS.map((walkId) => [walkId, { cursor: 1, rescan: 1 }])),
+      ),
+    );
   });
 });
 
@@ -199,11 +193,7 @@ describe.each(DROPPED_ON_DISCONNECT)(
 
         await holdingsRepo.resetBinanceWalkCursors('acc-1', 1);
 
-        expect(storedMetadata(rawDatabase)).toEqual({
-          binanceAsset: 'BTC',
-          binanceHistoryCursor: 1,
-          syncedAt: 500,
-        });
+        expect(storedMetadata(rawDatabase)).toEqual(FLOORED);
       },
     );
 
@@ -213,11 +203,7 @@ describe.each(DROPPED_ON_DISCONNECT)(
 
       await write(fields[0]);
 
-      expect(storedMetadata(rawDatabase)).toEqual({
-        binanceAsset: 'BTC',
-        binanceHistoryCursor: 500,
-        syncedAt: 500,
-      });
+      expect(storedMetadata(rawDatabase)).toEqual(STORED);
     });
   },
 );
@@ -233,12 +219,7 @@ describe("holdingsRepo.setBinanceWalkPending — gated on the holding's account 
 
       await holdingsRepo.setBinanceWalkPending('h-spot', field, ranges);
 
-      expect(storedMetadata(rawDatabase)).toEqual({
-        binanceAsset: 'BTC',
-        binanceHistoryCursor: 500,
-        syncedAt: 500,
-        [field]: ranges,
-      });
+      expect(storedMetadata(rawDatabase)).toEqual({ ...STORED, [field]: ranges });
     },
   );
 
@@ -248,11 +229,7 @@ describe("holdingsRepo.setBinanceWalkPending — gated on the holding's account 
 
     await holdingsRepo.setBinanceWalkPending('h-spot', 'binancePayPendingOverlap', ranges);
 
-    expect(storedMetadata(rawDatabase)).toEqual({
-      binanceAsset: 'BTC',
-      binanceHistoryCursor: 500,
-      syncedAt: 500,
-    });
+    expect(storedMetadata(rawDatabase)).toEqual(STORED);
   });
 
   it('a disconnect resets every list the Spot holding carries to an empty list', async () => {
@@ -264,15 +241,14 @@ describe("holdingsRepo.setBinanceWalkPending — gated on the holding's account 
     }
     await holdingsRepo.resetBinanceWalkCursors('acc-1', 1);
 
-    expect(storedMetadata(rawDatabase)).toEqual({
-      binanceAsset: 'BTC',
-      binanceHistoryCursor: 1,
-      binanceHistoryPendingOverlap: [],
-      binancePayPendingOverlap: [],
-      binanceTransferPendingOverlap: [],
-      binanceEarnPendingOverlap: [],
-      syncedAt: 500,
-    });
+    expect(storedMetadata(rawDatabase)).toEqual(
+      spotWithMarks({
+        capital: { cursor: 1, pending: [] },
+        pay: { pending: [] },
+        transfer: { pending: [] },
+        earn: { pending: [] },
+      }),
+    );
   });
 
   it('stores the series of a typed point on a Transfer list, and a disconnect empties it', async () => {
@@ -282,11 +258,15 @@ describe("holdingsRepo.setBinanceWalkPending — gated on the holding's account 
 
     await holdingsRepo.setBinanceWalkPending('h-spot', 'binanceTransferPendingOverlap', [typed]);
 
-    expect(storedMetadata(rawDatabase)).toMatchObject({ binanceTransferPendingOverlap: [typed] });
+    expect(storedMetadata(rawDatabase)).toMatchObject(
+      spotWithMarks({ transfer: { pending: [typed] } }, {}),
+    );
 
     await holdingsRepo.resetBinanceWalkCursors('acc-1', 1);
 
-    expect(storedMetadata(rawDatabase)).toMatchObject({ binanceTransferPendingOverlap: [] });
+    expect(storedMetadata(rawDatabase)).toMatchObject(
+      spotWithMarks({ transfer: { pending: [] } }, {}),
+    );
   });
 
   it("a disconnect's reset is not undone by a walk's late-arriving write", async () => {
@@ -298,11 +278,8 @@ describe("holdingsRepo.setBinanceWalkPending — gated on the holding's account 
     rawDatabase.prepare("UPDATE accounts SET institution = NULL WHERE id = 'acc-1'").run();
     await holdingsRepo.setBinanceWalkPending('h-spot', 'binancePayPendingOverlap', ranges);
 
-    expect(storedMetadata(rawDatabase)).toEqual({
-      binanceAsset: 'BTC',
-      binanceHistoryCursor: 1,
-      binancePayPendingOverlap: [],
-      syncedAt: 500,
-    });
+    expect(storedMetadata(rawDatabase)).toEqual(
+      spotWithMarks({ capital: { cursor: 1 }, pay: { pending: [] } }),
+    );
   });
 });

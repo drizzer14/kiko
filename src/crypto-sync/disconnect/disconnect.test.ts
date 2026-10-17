@@ -16,6 +16,7 @@ jest.mock('@kiko/holdings/repo', () => ({
 }));
 
 import { HISTORY_FLOOR_MS } from '@kiko/crypto-sync/binance';
+import { withWalkMarks } from '@kiko/test-support/walk-marks';
 import { withWalkOwnedMetadataResetToFloor } from '@kiko/holdings/holding-metadata';
 
 import { disconnectCryptoAccount } from './disconnect';
@@ -53,56 +54,52 @@ describe('disconnectCryptoAccount', () => {
     let reset: Record<string, unknown> | undefined;
     mockResetBinanceWalkCursors.mockImplementation(async (_id, floorMs) => {
       reset = withWalkOwnedMetadataResetToFloor(
-        {
-          binanceAsset: 'BTC',
-          binanceTransferHistoryCursor: 9_000,
-          binanceTransferRescanCursor: 8_000,
-          binanceTransferPendingOverlap: [
-            { start: 5, end: 7, kind: 'point', series: 'MAIN_FUNDING' },
-          ],
-          binanceTransferPointCursor: 6,
-        },
+        withWalkMarks({ binanceAsset: 'BTC' }, 'acc-1', 'transfer', {
+          cursor: 9_000,
+          rescan: 8_000,
+          pending: [{ start: 5, end: 7, kind: 'point', series: 'MAIN_FUNDING' }],
+          pointCursor: 6,
+        }),
         floorMs,
       );
     });
 
     await disconnectCryptoAccount('acc-1', 'binance');
 
-    expect(reset).toEqual({
-      binanceAsset: 'BTC',
-      binanceTransferHistoryCursor: HISTORY_FLOOR_MS,
-      binanceTransferRescanCursor: HISTORY_FLOOR_MS,
-      binanceTransferPendingOverlap: [],
-    });
+    expect(reset).toEqual(
+      withWalkMarks({ binanceAsset: 'BTC' }, 'acc-1', 'transfer', {
+        cursor: HISTORY_FLOOR_MS,
+        rescan: HISTORY_FLOOR_MS,
+        pending: [],
+      }),
+    );
   });
 
   it('for Binance, resets the six Earn walk keys of a Spot holding: cursors to the floor, the list to empty, no point cursor, no range cursor, no hints', async () => {
     let reset: Record<string, unknown> | undefined;
     mockResetBinanceWalkCursors.mockImplementation(async (_id, floorMs) => {
       reset = withWalkOwnedMetadataResetToFloor(
-        {
-          binanceAsset: 'BTC',
-          binanceEarnHistoryCursor: 9_000,
-          binanceEarnRescanCursor: 8_000,
-          binanceEarnPendingOverlap: [
-            { start: 5, end: 7, kind: 'point', series: 'flexibleRewards' },
-          ],
-          binanceEarnPointCursor: 6,
-          binanceEarnRangeCursor: 7,
-          binanceEarnSpanHints: { forward: [], pending: [], rescan: [], point: [] },
-        },
+        withWalkMarks({ binanceAsset: 'BTC' }, 'acc-1', 'earn', {
+          cursor: 9_000,
+          rescan: 8_000,
+          pending: [{ start: 5, end: 7, kind: 'point', series: 'flexibleRewards' }],
+          pointCursor: 6,
+          rangeCursor: 7,
+          spanHints: { forward: [], pending: [], rescan: [], point: [] },
+        }),
         floorMs,
       );
     });
 
     await disconnectCryptoAccount('acc-1', 'binance');
 
-    expect(reset).toEqual({
-      binanceAsset: 'BTC',
-      binanceEarnHistoryCursor: HISTORY_FLOOR_MS,
-      binanceEarnRescanCursor: HISTORY_FLOOR_MS,
-      binanceEarnPendingOverlap: [],
-    });
+    expect(reset).toEqual(
+      withWalkMarks({ binanceAsset: 'BTC' }, 'acc-1', 'earn', {
+        cursor: HISTORY_FLOOR_MS,
+        rescan: HISTORY_FLOOR_MS,
+        pending: [],
+      }),
+    );
   });
 
   it('for a wallet, runs only the DB disconnect — no cursor to reset, no secret to clear', async () => {

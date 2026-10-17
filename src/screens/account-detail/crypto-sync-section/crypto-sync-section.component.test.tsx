@@ -5,6 +5,7 @@ import '@kiko/design-system/unistyles';
 import { i18n } from '@kiko/i18n/init';
 import { DAY_MS, formatDateTime } from '@kiko/dates';
 import type { AccountRow, HoldingRow } from '@kiko/db';
+import { type WalkId, withWalkMarks } from '@kiko/test-support/walk-marks';
 
 import CryptoSyncSection from './crypto-sync-section.component';
 
@@ -150,13 +151,19 @@ const HOUR_MS = 60 * 60 * 1000;
 const HISTORY_CAPTION = 'Some Binance transaction history is not imported yet.';
 
 // The four forward cursors of the history walks, each `behindMs` behind the balance sync.
-const walkCursors = (behindMs: number, over: Record<string, number> = {}) => ({
-  binanceHistoryCursor: CONNECTED_WALLET_SYNCED_AT - behindMs,
-  binancePayHistoryCursor: CONNECTED_WALLET_SYNCED_AT - behindMs,
-  binanceTransferHistoryCursor: CONNECTED_WALLET_SYNCED_AT - behindMs,
-  binanceEarnHistoryCursor: CONNECTED_WALLET_SYNCED_AT - behindMs,
-  ...over,
-});
+const walkCursors = (
+  behindMs: number,
+  over: Partial<Record<WalkId, number>> = {},
+): Record<string, unknown> =>
+  WALK_IDS.reduce(
+    (metadata, walkId) =>
+      withWalkMarks(metadata, 'acc-1', walkId, {
+        cursor: over[walkId] ?? CONNECTED_WALLET_SYNCED_AT - behindMs,
+      }),
+    {},
+  );
+
+const WALK_IDS: WalkId[] = ['capital', 'pay', 'transfer', 'earn'];
 
 // Shared by every "already connected to a wallet" test below — each one only
 // differs in what it asserts afterward, never in how the section itself is
@@ -426,9 +433,7 @@ describe('CryptoSyncSection', () => {
         holdings={[
           holding({
             binanceAsset: 'BTC',
-            ...walkCursors(HOUR_MS, {
-              binanceEarnHistoryCursor: CONNECTED_WALLET_SYNCED_AT - 3 * DAY_MS,
-            }),
+            ...walkCursors(HOUR_MS, { earn: CONNECTED_WALLET_SYNCED_AT - 3 * DAY_MS }),
             syncedAt: CONNECTED_WALLET_SYNCED_AT,
           }),
         ]}
@@ -445,7 +450,9 @@ describe('CryptoSyncSection', () => {
         holdings={[
           holding({
             binanceAsset: 'BTC',
-            binanceHistoryCursor: CONNECTED_WALLET_SYNCED_AT - HOUR_MS,
+            ...withWalkMarks({}, 'acc-1', 'capital', {
+              cursor: CONNECTED_WALLET_SYNCED_AT - HOUR_MS,
+            }),
             syncedAt: CONNECTED_WALLET_SYNCED_AT,
           }),
         ]}
@@ -480,9 +487,9 @@ describe('CryptoSyncSection', () => {
           holding({
             binanceAsset: 'BTC',
             ...walkCursors(2 * HOUR_MS),
-            binanceTransferPendingOverlap: [
-              { start: 5, end: 7, kind: 'point', series: 'MAIN_FUNDING' },
-            ],
+            ...withWalkMarks({}, 'acc-1', 'transfer', {
+              pending: [{ start: 5, end: 7, kind: 'point', series: 'MAIN_FUNDING' }],
+            }),
             syncedAt: CONNECTED_WALLET_SYNCED_AT,
           }),
         ]}
@@ -505,7 +512,7 @@ describe('CryptoSyncSection', () => {
             holding({
               binanceAsset: 'BTC',
               ...walkCursors(2 * HOUR_MS),
-              binanceTransferPendingOverlap: [owed],
+              ...withWalkMarks({}, 'acc-1', 'transfer', { pending: [owed] }),
               syncedAt: CONNECTED_WALLET_SYNCED_AT,
             }),
           ]}

@@ -1,6 +1,12 @@
 import { DAY_MS } from '@kiko/dates';
 import { minOf } from '@kiko/numbers';
 import { i18n } from '@kiko/i18n/init';
+import {
+  type WalkField,
+  type WalkMarks,
+  walkMarkWritesOf,
+  walkStateFake,
+} from '@kiko/test-support/walk-marks';
 import type { HoldingRow } from '@kiko/db';
 import maybe, { foldMap } from 'fnts/maybe';
 import type { ExchangeHolding } from '@kiko/holdings/repo';
@@ -43,12 +49,6 @@ const FLOOR = NOW - 179 * DAY_MS;
 const STOP_TAG = '[binance sync] history window stopped';
 const CAP = LANE_CALL_CAPS.transfer;
 const TYPE_COUNT = UNIVERSAL_TRANSFER_TYPES.length;
-const SPOT_FIELDS = {
-  cursor: 'binanceTransferHistoryCursor',
-  rescan: 'binanceTransferRescanCursor',
-  pending: 'binanceTransferPendingOverlap',
-  point: 'binanceTransferPointCursor',
-} as const;
 
 const agoMs = (days: number): number => NOW - days * DAY_MS;
 
@@ -397,7 +397,7 @@ const holdingWith = (id: string, metadata: Record<string, unknown>): HoldingRow 
   ({ id, metadata }) as unknown as HoldingRow;
 
 type World = {
-  metadata: Record<string, unknown>;
+  state: ReturnType<typeof walkStateFake>;
   others: HoldingRow[];
   added: BinanceHistoryRow[];
   events: string[];
@@ -408,14 +408,29 @@ type World = {
  * hold: the other holdings, the rows written, and the writes in order.
  */
 const worldOf = (
-  metadata: Record<string, unknown> = {},
+  marks: WalkMarks = {},
   others: HoldingRow[] = [holdingWith('h-funding', { binanceAsset: FUNDING_KEY })],
-): World => ({
-  metadata: { binanceAsset: SPOT_KEY, ...metadata },
-  others,
-  added: [],
-  events: [],
-});
+): World => {
+  const events: string[] = [];
+
+  return {
+    state: walkStateFake({
+      marks: { transfer: marks },
+      onWrite: ({ field }) => {
+        if (field === 'pending') {
+          events.push('list');
+        } else if (field !== 'spanHints') {
+          events.push(`cursor:${field}`);
+        }
+      },
+    }),
+    others,
+    added: [],
+    events,
+  };
+};
+
+const marksOf = (world: World): WalkMarks => world.state.marksOf('transfer');
 
 const depsOf = (
   world: World,
@@ -425,7 +440,7 @@ const depsOf = (
   now: () => NOW,
   fetchImpl: (async () => ({})) as unknown as typeof fetch,
   readCredentials: async () => ({ apiKey: 'api-key', secret: 'secret' }),
-  listHoldings: async () => [holdingWith('h-spot', world.metadata), ...world.others],
+  listHoldings: async () => [...(await world.state.listHoldings()), ...world.others],
   fetchUniversalTransfers: server,
   ensureHoldings: jest.fn(async (created: Omit<ExchangeHolding, 'renameFromDefault'>[]) => {
     for (const holding of created) {
@@ -441,17 +456,7 @@ const depsOf = (
 
     return rows.length;
   }),
-  writeWalkCursor: jest.fn(async (_holdingId: string, field: string, cursorMs: number) => {
-    world.events.push(`cursor:${field}`);
-    world.metadata = { ...world.metadata, [field]: cursorMs };
-  }),
-  writeWalkPending: jest.fn(async (_holdingId: string, field: string, ranges: unknown[]) => {
-    world.events.push('list');
-    world.metadata = { ...world.metadata, [field]: ranges };
-  }),
-  writeWalkHints: jest.fn(async (_holdingId: string, field: string, hints: unknown) => {
-    world.metadata = { ...world.metadata, [field]: hints };
-  }),
+  ...world.state.deps,
   ...over,
 });
 
@@ -545,8 +550,7 @@ const walkRuns = async (input: {
 const walkTwice = (input: Omit<Parameters<typeof walkRuns>[0], 'runs'>) =>
   walkRuns({ ...input, runs: 2 });
 
-const listOf = (world: World): unknown[] =>
-  (world.metadata[SPOT_FIELDS.pending] as unknown[] | undefined) ?? [];
+const listOf = (world: World): unknown[] => (marksOf(world).pending as unknown[] | undefined) ?? [];
 
 const pointsIn = (list: unknown[]): unknown[] =>
   list.filter((ground) => (ground as { kind?: string }).kind === 'point');
@@ -580,7 +584,7 @@ afterEach(() => {
 });
 
 describe('the rows of a settled transfer, written', () => {
-  const cursorBehind = { [SPOT_FIELDS.cursor]: agoMs(5) };
+  const cursorBehind = { cursor: agoMs(5) };
 
   it('writes Spot -x and Funding +x, each leg naming the other holding, one pair id, out of spending, labelled "Transfer to/from"', async () => {
     const world = worldOf(cursorBehind);
@@ -736,7 +740,7 @@ describe('the rows of a settled transfer, written', () => {
     await walkOnce({ world, entries });
     const first = world.added.map((row) => row.externalId);
     world.added = [];
-    world.metadata = { ...world.metadata, ...cursorBehind };
+    world.state.seed('transfer', cursorBehind);
     await walkOnce({ world, entries });
 
     expect(world.added.map((row) => row.externalId)).toEqual(first);
@@ -746,9 +750,9 @@ describe('the rows of a settled transfer, written', () => {
 describe('where the walk starts and what it never asks', () => {
   it('starts the first window at the floor of 179 days, and never before it, whatever the stored marks say', async () => {
     const world = worldOf({
-      [SPOT_FIELDS.cursor]: HISTORY_FLOOR_MS,
-      [SPOT_FIELDS.rescan]: HISTORY_FLOOR_MS,
-      [SPOT_FIELDS.pending]: [
+      cursor: HISTORY_FLOOR_MS,
+      rescan: HISTORY_FLOOR_MS,
+      pending: [
         { start: HISTORY_FLOOR_MS, end: HISTORY_FLOOR_MS + DAY_MS },
         pointOf(HISTORY_FLOOR_MS + 5 * DAY_MS, 'MAIN_FUNDING'),
       ],
@@ -762,19 +766,16 @@ describe('where the walk starts and what it never asks', () => {
 
   it.each([
     ['no mark at all', {}],
-    ['a forward cursor older than the floor', { [SPOT_FIELDS.cursor]: agoMs(400) }],
+    ['a forward cursor older than the floor', { cursor: agoMs(400) }],
     [
       'an old re-scan mark behind a recent forward cursor',
-      { [SPOT_FIELDS.cursor]: agoMs(2), [SPOT_FIELDS.rescan]: agoMs(400) },
+      { cursor: agoMs(2), rescan: agoMs(400) },
     ],
     [
       'an owed range and a point before the floor',
       {
-        [SPOT_FIELDS.cursor]: agoMs(2),
-        [SPOT_FIELDS.pending]: [
-          { start: agoMs(300), end: agoMs(299) },
-          pointOf(agoMs(250), 'FUNDING_MAIN'),
-        ],
+        cursor: agoMs(2),
+        pending: [{ start: agoMs(300), end: agoMs(299) }, pointOf(agoMs(250), 'FUNDING_MAIN')],
       },
     ],
   ])('sends no request that starts before the floor, with %s', async (_label, marks) => {
@@ -785,7 +786,7 @@ describe('where the walk starts and what it never asks', () => {
   });
 
   it('asks MAIN_FUNDING and FUNDING_MAIN first, then the 18 other types, for every span', async () => {
-    const world = worldOf({ [SPOT_FIELDS.cursor]: agoMs(5) });
+    const world = worldOf({ cursor: agoMs(5) });
 
     const { requests } = await walkOnce({ world });
 
@@ -798,7 +799,7 @@ describe('where the walk starts and what it never asks', () => {
   });
 
   it('never asks a range with start equal to end', async () => {
-    const world = worldOf({ [SPOT_FIELDS.cursor]: agoMs(5) });
+    const world = worldOf({ cursor: agoMs(5) });
 
     const { requests } = await walkOnce({
       world,
@@ -824,7 +825,7 @@ describe('where the walk starts and what it never asks', () => {
 });
 
 describe('a span too full for one page, and a page that does not add up', () => {
-  const caughtUp = { [SPOT_FIELDS.cursor]: agoMs(5) };
+  const caughtUp = { cursor: agoMs(5) };
 
   it('halves a span whose first type comes back full, and reads every type again in the half', async () => {
     const world = worldOf(caughtUp);
@@ -850,7 +851,7 @@ describe('a span too full for one page, and a page that does not add up', () => 
 
   it('pages a span of one millisecond by current until the rows counted are the total, and writes every row', async () => {
     const at = NOW - 1_000;
-    const world = worldOf({ [SPOT_FIELDS.cursor]: at });
+    const world = worldOf({ cursor: at });
     const many = Array.from({ length: 120 }, (_unused, index) =>
       entryOf({ type: 'MAIN_UMFUTURE', tranId: `many-${index}`, timestamp: at }),
     );
@@ -878,7 +879,7 @@ describe('a span too full for one page, and a page that does not add up', () => 
     });
 
     expect(stopCodes(warn)).toContain('transfer-page-drift');
-    expect(world.metadata[SPOT_FIELDS.cursor]).toBe(agoMs(5));
+    expect(marksOf(world).cursor).toBe(agoMs(5));
     expect(requests.some((request) => request.startTime < agoMs(5))).toBe(true);
   });
 
@@ -919,7 +920,7 @@ describe('a span too full for one page, and a page that does not add up', () => 
 });
 
 describe('a transfer the walk cannot trust', () => {
-  const caughtUp = { [SPOT_FIELDS.cursor]: agoMs(5) };
+  const caughtUp = { cursor: agoMs(5) };
   const stuckAt = agoMs(10);
   const stuck = (over: Partial<BinanceUniversalTransfer> = {}) =>
     entryOf({ status: 'PENDING', tranId: 'stuck', timestamp: stuckAt, ...over });
@@ -941,7 +942,7 @@ describe('a transfer the walk cannot trust', () => {
   });
 
   it('in the forward pass, a stop with no time to owe a point at commits nothing of the span, ends the forward pass with the cursor unmoved, and the run goes on to the re-scan', async () => {
-    const world = worldOf({ [SPOT_FIELDS.cursor]: agoMs(20) });
+    const world = worldOf({ cursor: agoMs(20) });
 
     const { requests } = await walkOnce({
       world,
@@ -949,7 +950,7 @@ describe('a transfer the walk cannot trust', () => {
     });
 
     expect(world.added).toEqual([]);
-    expect(world.metadata[SPOT_FIELDS.cursor]).toBe(agoMs(20));
+    expect(marksOf(world).cursor).toBe(agoMs(20));
     expect(requests.some((request) => request.startTime === agoMs(30))).toBe(true);
   });
 
@@ -967,7 +968,7 @@ describe('a transfer the walk cannot trust', () => {
     const idsOf = (world: World) => [...new Set(world.added.map((row) => row.externalId))].sort();
 
     it('is owed at its own point and the cursor goes past it: the other transfers of the span, the newer ones too, import in the same run', async () => {
-      const world = worldOf({ [SPOT_FIELDS.cursor]: agoMs(20) });
+      const world = worldOf({ cursor: agoMs(20) });
 
       const { result } = await walkOnce({ world, entries: [entry, other, newer] });
 
@@ -976,13 +977,13 @@ describe('a transfer the walk cannot trust', () => {
         'acc-1:xfer:MAIN_FUNDING:newer:BTC:funding',
         'acc-1:xfer:UMFUTURE_MAIN:fine:BTC',
       ]);
-      expect(world.metadata[SPOT_FIELDS.cursor]).toBe(NOW);
+      expect(marksOf(world).cursor).toBe(NOW);
       expect(listOf(world)).toContainEqual(pointOf(stuckAt, 'MAIN_FUNDING'));
       expect(result.complete).toBe(false);
     });
 
     it('stays owed in every run after it, and a second identical run imports no row it had not', async () => {
-      const world = worldOf({ [SPOT_FIELDS.cursor]: agoMs(20) });
+      const world = worldOf({ cursor: agoMs(20) });
 
       await walkOnce({ world, entries: [entry, other, newer] });
       await walkOnce({ world, entries: [entry, other, newer] });
@@ -998,7 +999,7 @@ describe('a transfer the walk cannot trust', () => {
     const idsOf = (world: World) => [...new Set(world.added.map((row) => row.externalId))].sort();
 
     it('is owed at its own point and the cursor goes past it: the other transfers of the span, the newer ones too, import in the same run', async () => {
-      const world = worldOf({ [SPOT_FIELDS.cursor]: agoMs(20) });
+      const world = worldOf({ cursor: agoMs(20) });
 
       const { result } = await walkOnce({ world, entries: [failed, other, newer] });
 
@@ -1007,14 +1008,14 @@ describe('a transfer the walk cannot trust', () => {
         'acc-1:xfer:MAIN_FUNDING:newer:BTC:funding',
         'acc-1:xfer:UMFUTURE_MAIN:fine:BTC',
       ]);
-      expect(world.metadata[SPOT_FIELDS.cursor]).toBe(NOW);
+      expect(marksOf(world).cursor).toBe(NOW);
       expect(listOf(world)).toContainEqual(pointOf(stuckAt, 'MAIN_FUNDING'));
       expect(result.complete).toBe(false);
       expect(stopCodes(warn)).toContain('transfer-failed');
     });
 
     it('stays owed in every run after it, whatever the cursor, and a second identical run imports no row it had not', async () => {
-      const world = worldOf({ [SPOT_FIELDS.cursor]: agoMs(20) });
+      const world = worldOf({ cursor: agoMs(20) });
 
       await walkOnce({ world, entries: [failed, other, newer] });
       await walkOnce({ world, entries: [failed, other, newer] });
@@ -1024,19 +1025,19 @@ describe('a transfer the walk cannot trust', () => {
     });
 
     it('does not take a stop with no time with it: an unreadable row with no time beside it still leaves the span uncommitted and the cursor unmoved', async () => {
-      const world = worldOf({ [SPOT_FIELDS.cursor]: agoMs(20) });
+      const world = worldOf({ cursor: agoMs(20) });
 
       await walkOnce({
         world,
         entries: [failed, unreadableOf('FUNDING_MAIN', undefined), other, newer],
       });
 
-      expect(world.metadata[SPOT_FIELDS.cursor]).toBe(agoMs(20));
+      expect(marksOf(world).cursor).toBe(agoMs(20));
       expect(idsOf(world)).not.toContain('acc-1:xfer:MAIN_FUNDING:newer:BTC');
     });
 
     it('does not take a stop of the span as a whole with it: a type that drifted beside it still leaves the span uncommitted and the cursor unmoved', async () => {
-      const world = worldOf({ [SPOT_FIELDS.cursor]: agoMs(20) });
+      const world = worldOf({ cursor: agoMs(20) });
 
       await walkOnce({
         world,
@@ -1048,7 +1049,7 @@ describe('a transfer the walk cannot trust', () => {
       });
 
       expect(stopCodes(warn)).toContain('transfer-page-drift');
-      expect(world.metadata[SPOT_FIELDS.cursor]).toBe(agoMs(20));
+      expect(marksOf(world).cursor).toBe(agoMs(20));
       expect(idsOf(world)).not.toContain('acc-1:xfer:MAIN_FUNDING:newer:BTC');
     });
   });
@@ -1089,8 +1090,8 @@ describe('a transfer the walk cannot trust', () => {
     const failedAt = FLOOR + DAY_MS;
     const failed = entryOf({ status: 'FAILED', tranId: 'failed', timestamp: failedAt });
     const world = worldOf({
-      [SPOT_FIELDS.cursor]: agoMs(5),
-      [SPOT_FIELDS.pending]: [{ start: FLOOR, end: FLOOR + 3 * DAY_MS }],
+      cursor: agoMs(5),
+      pending: [{ start: FLOOR, end: FLOOR + 3 * DAY_MS }],
     });
 
     await walkOnce({ world, entries: [failed] });
@@ -1161,8 +1162,8 @@ describe('a point read', () => {
   it('asks its own type only, one call, for exactly the window of the point', async () => {
     const at = agoMs(100);
     const world = worldOf({
-      [SPOT_FIELDS.cursor]: agoMs(1),
-      [SPOT_FIELDS.pending]: [pointOf(at, 'MAIN_UMFUTURE')],
+      cursor: agoMs(1),
+      pending: [pointOf(at, 'MAIN_UMFUTURE')],
     });
 
     const { requests } = await walkOnce({ world });
@@ -1175,11 +1176,8 @@ describe('a point read', () => {
   it('asks the union of the types of points that start together, as one window, once in each', async () => {
     const at = agoMs(100);
     const world = worldOf({
-      [SPOT_FIELDS.cursor]: agoMs(1),
-      [SPOT_FIELDS.pending]: [
-        pointOf(at, 'MAIN_UMFUTURE'),
-        { ...pointOf(at, 'FUNDING_MAIN'), end: at + 1_000 },
-      ],
+      cursor: agoMs(1),
+      pending: [pointOf(at, 'MAIN_UMFUTURE'), { ...pointOf(at, 'FUNDING_MAIN'), end: at + 1_000 }],
     });
 
     const { requests } = await walkOnce({ world });
@@ -1192,8 +1190,8 @@ describe('a point read', () => {
   it('takes the point off the list once its own record comes back settled, and writes the row', async () => {
     const at = agoMs(100);
     const world = worldOf({
-      [SPOT_FIELDS.cursor]: agoMs(1),
-      [SPOT_FIELDS.pending]: [pointOf(at, 'MAIN_UMFUTURE')],
+      cursor: agoMs(1),
+      pending: [pointOf(at, 'MAIN_UMFUTURE')],
     });
     const settled = entryOf({ type: 'MAIN_UMFUTURE', tranId: 'late', timestamp: at });
 
@@ -1222,7 +1220,7 @@ describe('a read that leaves the end out, as the live transfer endpoint does', (
 
     it('imports a transfer on the boundary of two windows of 30 days once, in the window that starts there', async () => {
       const start = agoMs(70);
-      const world = worldOf({ [SPOT_FIELDS.cursor]: start });
+      const world = worldOf({ cursor: start });
 
       const { afterFirst, ids } = await walkTwice({
         world,
@@ -1238,7 +1236,7 @@ describe('a read that leaves the end out, as the live transfer endpoint does', (
     it('imports a transfer on the boundary of the two halves of a span that came back full once', async () => {
       const start = agoMs(5);
       const half = start + Math.floor((NOW - start) / 2);
-      const world = worldOf({ [SPOT_FIELDS.cursor]: start });
+      const world = worldOf({ cursor: start });
 
       const { afterFirst, ids } = await walkTwice({
         world,
@@ -1260,8 +1258,8 @@ describe('a read that leaves the end out, as the live transfer endpoint does', (
     it('imports an owed transfer once from the read of its point, and takes the point off the list', async () => {
       const at = agoMs(100);
       const world = worldOf({
-        [SPOT_FIELDS.cursor]: agoMs(1),
-        [SPOT_FIELDS.pending]: [pointOf(at, 'MAIN_FUNDING')],
+        cursor: agoMs(1),
+        pending: [pointOf(at, 'MAIN_FUNDING')],
       });
 
       const { afterFirst, ids } = await walkTwice({
@@ -1280,7 +1278,7 @@ describe('a read that leaves the end out, as the live transfer endpoint does', (
   it.each([HOUR_MS, DAY_MS])(
     'imports a transfer at the very end of a run in the next run, %i ms later: the end read left it out, the cursor start reads it',
     async (gapMs) => {
-      const world = worldOf({ [SPOT_FIELDS.cursor]: agoMs(2) });
+      const world = worldOf({ cursor: agoMs(2) });
 
       const { afterFirst, ids } = await walkTwice({
         world,
@@ -1329,14 +1327,14 @@ describe('a Binance that refuses a startTime older than the history it keeps (co
 
       expect(requests.length).toBeGreaterThan(0);
       expect(minOf(requests.map((request) => request.startTime))).toBe(FLOOR);
-      expect(world.metadata[SPOT_FIELDS.cursor]).toBe(secondNow);
+      expect(marksOf(world).cursor).toBe(secondNow);
     });
 
     it('cuts an owed range that reaches back before the floor, and reads the rest of it', async () => {
       const world = worldOf({
-        [SPOT_FIELDS.cursor]: agoMs(1),
-        [SPOT_FIELDS.rescan]: agoMs(1) - 1,
-        [SPOT_FIELDS.pending]: [{ start: agoMs(190), end: agoMs(170) }],
+        cursor: agoMs(1),
+        rescan: agoMs(1) - 1,
+        pending: [{ start: agoMs(190), end: agoMs(170) }],
       });
 
       const { requests } = await walkKeeping({ world, days: 180, gapMs });
@@ -1359,16 +1357,16 @@ describe('a Binance that refuses a startTime older than the history it keeps (co
       const { ids, secondNow } = await walkKeeping({ world, entries, days: 100, gapMs });
 
       expect([...ids].sort()).toEqual(['edge', 'deep', 'kept', 'newest'].flatMap(keysOf).sort());
-      expect(world.metadata[SPOT_FIELDS.cursor]).toBe(secondNow);
+      expect(marksOf(world).cursor).toBe(secondNow);
       expect(listOf(world)).toEqual([]);
       expect(stopCodes(warn)).toEqual([]);
     });
 
     it('reads a refused owed range as empty and drops it from the list, as the floor would', async () => {
       const world = worldOf({
-        [SPOT_FIELDS.cursor]: agoMs(1),
-        [SPOT_FIELDS.rescan]: agoMs(1) - 1,
-        [SPOT_FIELDS.pending]: [{ start: agoMs(150), end: agoMs(140) }],
+        cursor: agoMs(1),
+        rescan: agoMs(1) - 1,
+        pending: [{ start: agoMs(150), end: agoMs(140) }],
       });
 
       await walkKeeping({ world, days: 100, gapMs });
@@ -1378,7 +1376,7 @@ describe('a Binance that refuses a startTime older than the history it keeps (co
   });
 
   it('asks the first type twice of a span it refuses whole, the refused start and a start at its end, and each other type the start at its end alone', async () => {
-    const world = worldOf({ [SPOT_FIELDS.cursor]: agoMs(150) });
+    const world = worldOf({ cursor: agoMs(150) });
 
     const { requests } = await walkOnce({ world, answer: keepingDays(100, NOW) });
 
@@ -1467,9 +1465,9 @@ describe('a Binance that refuses a startTime older than the history it keeps (co
 
     it('reads a span that lies wholly below the floor of now as empty, with no request', async () => {
       const world = worldOf({
-        [SPOT_FIELDS.cursor]: agoMs(1),
-        [SPOT_FIELDS.rescan]: agoMs(1) - 1,
-        [SPOT_FIELDS.pending]: [{ start: FLOOR, end: FLOOR + DAY_MS }],
+        cursor: agoMs(1),
+        rescan: agoMs(1) - 1,
+        pending: [{ start: FLOOR, end: FLOOR + DAY_MS }],
       });
 
       const { requests } = await walkOnce({ world, ...suspendedFrom(NOW) });
@@ -1486,7 +1484,7 @@ describe('a Binance that refuses a startTime older than the history it keeps (co
   describe('when a span crosses the depth Binance keeps', () => {
     const BOUNDARY = agoMs(100);
     const crossing = entryOf({ tranId: 'crossing', timestamp: BOUNDARY + DAY_MS / 2 });
-    const crossingWorld = () => worldOf({ [SPOT_FIELDS.cursor]: agoMs(105) });
+    const crossingWorld = () => worldOf({ cursor: agoMs(105) });
 
     it('moves the start of the span up by bisection, within a stated number of requests, to the oldest start Binance serves', async () => {
       const world = crossingWorld();
@@ -1576,7 +1574,7 @@ describe('a Binance that refuses a startTime older than the history it keeps (co
     });
 
     it('asks no more than once for the start Binance refused when the span comes back full and is halved', async () => {
-      const world = worldOf({ [SPOT_FIELDS.cursor]: agoMs(105) });
+      const world = worldOf({ cursor: agoMs(105) });
       const keeping = keepingDays(100, NOW);
       const dense: Answer = (query) =>
         query.endTime - query.startTime > 3 * DAY_MS && query.type === 'MAIN_FUNDING'
@@ -1662,7 +1660,7 @@ describe('a Binance that refuses a startTime older than the history it keeps (co
         });
         snapshots.push({
           ids: new Set(world.added.map((row) => row.externalId)),
-          cursor: world.metadata[SPOT_FIELDS.cursor],
+          cursor: marksOf(world).cursor,
           requests,
           pending: listOf(world).length,
           endMs: clock.now,
@@ -2239,7 +2237,7 @@ describe('a Binance that refuses a startTime older than the history it keeps (co
   });
 
   it('loses no row and reads none twice when Binance refuses the start on a type after earlier types returned rows', async () => {
-    const world = worldOf({ [SPOT_FIELDS.cursor]: agoMs(60) });
+    const world = worldOf({ cursor: agoMs(60) });
     const clock = { now: NOW };
     const keeping = keepingDays(61, () => clock.now);
     let served = 0;
@@ -2278,8 +2276,8 @@ describe('the budget of a run', () => {
       pointOf(agoMs(170) + index * 5 * DAY_MS, UNIVERSAL_TRANSFER_TYPES[index % TYPE_COUNT]),
     );
     const world = worldOf({
-      [SPOT_FIELDS.cursor]: agoMs(1),
-      [SPOT_FIELDS.pending]: [owedRange, ...points],
+      cursor: agoMs(1),
+      pending: [owedRange, ...points],
     });
 
     const { requests } = await walkOnce({ world });
@@ -2330,7 +2328,7 @@ describe('the budget of a run', () => {
 
     expect(requests).toHaveLength(CAP);
     expect(result.complete).toBe(false);
-    expect(world.metadata[SPOT_FIELDS.cursor]).toBe(FLOOR + 4 * TRANSFER_WINDOW_MS);
+    expect(marksOf(world).cursor).toBe(FLOOR + 4 * TRANSFER_WINDOW_MS);
     expect(requests[0].endTime - requests[0].startTime).toBe(TRANSFER_WINDOW_MS);
   });
 
@@ -2385,7 +2383,7 @@ describe('the budget of a run', () => {
         },
       }),
     ).rejects.toThrow('boom');
-    expect(world.metadata[SPOT_FIELDS.cursor]).toBe(FLOOR + TRANSFER_WINDOW_MS);
+    expect(marksOf(world).cursor).toBe(FLOOR + TRANSFER_WINDOW_MS);
   });
 
   it('charges each call to the transfer lane at its own weight', () => {
@@ -2395,7 +2393,7 @@ describe('the budget of a run', () => {
 
 describe('the order of the writes', () => {
   it('writes the rows, then the list, then the re-scan mark, for a span of the re-scan', async () => {
-    const world = worldOf({ [SPOT_FIELDS.cursor]: agoMs(5) });
+    const world = worldOf({ cursor: agoMs(5) });
     const first = agoMs(25);
 
     await walkOnce({
@@ -2410,22 +2408,20 @@ describe('the order of the writes', () => {
           : undefined,
     });
 
-    const lastForward = world.events.lastIndexOf(`cursor:${SPOT_FIELDS.cursor}`);
+    const lastForward = world.events.lastIndexOf('cursor:cursor');
     expect(world.events.slice(lastForward + 1, lastForward + 4)).toEqual([
       'rows',
       'list',
-      `cursor:${SPOT_FIELDS.rescan}`,
+      'cursor:rescan',
     ]);
   });
 
   it('writes the list with the overlap day before the cursor moves past it', async () => {
-    const world = worldOf({ [SPOT_FIELDS.cursor]: agoMs(5) });
+    const world = worldOf({ cursor: agoMs(5) });
 
     await walkOnce({ world });
 
-    expect(world.events.indexOf('list')).toBeLessThan(
-      world.events.indexOf(`cursor:${SPOT_FIELDS.cursor}`),
-    );
+    expect(world.events.indexOf('list')).toBeLessThan(world.events.indexOf('cursor:cursor'));
   });
 });
 
@@ -2435,9 +2431,7 @@ describe('the range cursor and the span hints of the round-robin', () => {
     end: agoMs(150) + index * 10 * DAY_MS + DAY_MS,
   });
   const days = [dayAt(0), dayAt(1), dayAt(2)];
-  const RANGE_FIELD = 'binanceTransferRangeCursor';
-  const HINTS_FIELD = 'binanceTransferSpanHints';
-  const base = { [SPOT_FIELDS.cursor]: agoMs(2), [SPOT_FIELDS.pending]: days };
+  const base = { cursor: agoMs(2), pending: days };
   const dayStartsOf = (requests: TransferQuery[]): number[] => [
     ...new Set(
       requests
@@ -2445,14 +2439,12 @@ describe('the range cursor and the span hints of the round-robin', () => {
         .filter((start) => days.some((day) => day.start === start)),
     ),
   ];
-  const writesTo = (deps: BinanceTransferHistoryDeps, field: string): number[] =>
-    (deps.writeWalkCursor as jest.Mock).mock.calls
-      .filter((call) => call[1] === field)
-      .map((call) => call[2] as number);
+  const writesTo = (deps: BinanceTransferHistoryDeps, field: WalkField): number[] =>
+    walkMarkWritesOf(deps, 'transfer', field) as number[];
   const codesLogged = () => warn.mock.calls.map((call) => (call[1] as { code?: string }).code);
 
   it('reads the owed days that start after the stored range cursor first, then wraps around', async () => {
-    const world = worldOf({ ...base, [RANGE_FIELD]: days[0].end });
+    const world = worldOf({ ...base, rangeCursor: days[0].end });
 
     const { requests } = await walkOnce({ world });
 
@@ -2465,17 +2457,17 @@ describe('the range cursor and the span hints of the round-robin', () => {
 
     const { deps } = await walkOnce({ world });
 
-    expect(writesTo(deps, RANGE_FIELD)).toEqual([days[0].end, days[1].end]);
+    expect(writesTo(deps, 'rangeCursor')).toEqual([days[0].end, days[1].end]);
   });
 
   it('starts at the oldest day, and stores that start, when the stored cursor is no number', async () => {
-    const world = worldOf({ ...base, [RANGE_FIELD]: 'soon' });
+    const world = worldOf({ ...base, rangeCursor: 'soon' });
 
     const { requests, deps } = await walkOnce({ world });
 
     expect(dayStartsOf(requests)[0]).toBe(days[0].start);
     expect(codesLogged()).toContain('range-cursor-malformed');
-    expect(writesTo(deps, RANGE_FIELD)[0]).toBe(Number.MIN_SAFE_INTEGER);
+    expect(writesTo(deps, 'rangeCursor')[0]).toBe(Number.MIN_SAFE_INTEGER);
   });
 
   describe('with one owed range of five windows whose first window is owed whole by every read', () => {
@@ -2499,8 +2491,8 @@ describe('the range cursor and the span hints of the round-robin', () => {
     it('imports a transfer in a later window of the range within ceil(windows / reads a run) runs, though the FAILED transfer owed beside it leaves a read of one window a run', async () => {
       const accountId = nextAccountId();
       const world = worldOf({
-        [SPOT_FIELDS.cursor]: NOW - HOUR_MS,
-        [SPOT_FIELDS.pending]: [
+        cursor: NOW - HOUR_MS,
+        pending: [
           { start: floor, end: agoMs(40) },
           { start: failedAt - 1, end: failedAt + 1, kind: 'point', series: 'MAIN_FUNDING' },
         ],
@@ -2540,7 +2532,7 @@ describe('the range cursor and the span hints of the round-robin', () => {
       requests.filter((query) => query.type === 'MAIN_FUNDING' && query.endTime <= time + 1);
 
     it('keeps the resume of the window when the run ends after its first span committed, and the next run goes on from there', async () => {
-      const world = worldOf({ [SPOT_FIELDS.cursor]: agoMs(2), [SPOT_FIELDS.pending]: [point] });
+      const world = worldOf({ cursor: agoMs(2), pending: [point] });
       const fetcher = serverOf(entries, dense);
       // The point is the last read of a run, and this run affords the read of its whole window
       // (which comes back full) and of its first half, and no read after them.
@@ -2555,7 +2547,7 @@ describe('the range cursor and the span hints of the round-robin', () => {
 
       await walkOnce({ world, run, over: { fetchUniversalTransfers: fetcher } });
 
-      expect((world.metadata[HINTS_FIELD] as { point: unknown[] }).point).toEqual([
+      expect((marksOf(world).spanHints as { point: unknown[] }).point).toEqual([
         {
           start: point.start,
           end: point.end,
@@ -2568,7 +2560,7 @@ describe('the range cursor and the span hints of the round-robin', () => {
 
       expect(pointRequestsOf(requests).map((query) => query.startTime)).toEqual([time]);
       expect(pointsIn(listOf(world))).toEqual([]);
-      expect((world.metadata[HINTS_FIELD] as { point: unknown[] }).point).toEqual([]);
+      expect((marksOf(world).spanHints as { point: unknown[] }).point).toEqual([]);
     });
   });
 
@@ -2580,7 +2572,7 @@ describe('the range cursor and the span hints of the round-robin', () => {
         : undefined;
 
     it('stores the span the day was left at when its halving chain is cut short, and begins with it in the next run', async () => {
-      const world = worldOf({ ...base, [SPOT_FIELDS.pending]: [day] });
+      const world = worldOf({ ...base, pending: [day] });
       const fetcher = serverOf([], dense);
       // The forward window and the re-scan keep their calls: a read of the day, whose first type
       // comes back full, leaves no call for the read of its half.
@@ -2595,7 +2587,7 @@ describe('the range cursor and the span hints of the round-robin', () => {
 
       await walkOnce({ world, run, over: { fetchUniversalTransfers: fetcher } });
 
-      expect((world.metadata[HINTS_FIELD] as { pending: unknown[] }).pending).toEqual([
+      expect((marksOf(world).spanHints as { pending: unknown[] }).pending).toEqual([
         { start: day.start, end: day.start + DAY_MS / 2 },
       ]);
 
@@ -2607,12 +2599,12 @@ describe('the range cursor and the span hints of the round-robin', () => {
     });
 
     it('stores a malformed hint over with none, logging one fixed code, and reads the whole window', async () => {
-      const world = worldOf({ ...base, [SPOT_FIELDS.pending]: [day], [HINTS_FIELD]: 'soon' });
+      const world = worldOf({ ...base, pending: [day], spanHints: 'soon' });
 
       const { requests } = await walkOnce({ world });
 
       expect(codesLogged()).toContain('span-hints-malformed');
-      expect(world.metadata[HINTS_FIELD]).toEqual({
+      expect(marksOf(world).spanHints).toEqual({
         forward: [],
         pending: [],
         rescan: [],
@@ -2628,8 +2620,8 @@ describe('the run on a malformed mark', () => {
 
   it('owes the ground before the cursor once, stores it at once, and logs one fixed code, for a point of a type the walk does not read', async () => {
     const world = worldOf({
-      [SPOT_FIELDS.cursor]: agoMs(5),
-      [SPOT_FIELDS.pending]: [{ start: 1, end: 2, kind: 'point', series: 'MAIN_MARS' }],
+      cursor: agoMs(5),
+      pending: [{ start: 1, end: 2, kind: 'point', series: 'MAIN_MARS' }],
     });
 
     await walkOnce({ world });
@@ -2639,7 +2631,7 @@ describe('the run on a malformed mark', () => {
   });
 
   it('repairs a point cursor that is no number, logging one fixed code', async () => {
-    const world = worldOf({ [SPOT_FIELDS.cursor]: agoMs(5), [SPOT_FIELDS.point]: 'x' });
+    const world = worldOf({ cursor: agoMs(5), pointCursor: 'x' });
 
     await walkOnce({ world });
 

@@ -15,6 +15,7 @@ jest.mock('@kiko/db/client', () => {
 import { DAY_MS } from '@kiko/dates';
 import { DatabaseSync } from 'node:sqlite';
 import { applyAllMigrations } from '@kiko/test-support/real-sqlite';
+import { type WalkMarks, walkMarksOf, withWalkMarks } from '@kiko/test-support/walk-marks';
 
 import type {
   EarnRecordByKind,
@@ -62,7 +63,7 @@ const openDatabase = (): DatabaseSync => {
       .run(
         `h-spot-${account}`,
         account,
-        JSON.stringify({ binanceAsset: 'BTC', binanceEarnHistoryCursor: CURSOR }),
+        JSON.stringify(withWalkMarks({ binanceAsset: 'BTC' }, account, 'earn', { cursor: CURSOR })),
       );
   }
 
@@ -136,13 +137,7 @@ const holdingByKey = (
     )
     .get(accountId, key) as { id: string; balance_minor_units: number } | undefined;
 
-const spotMetadata = (accountId: string): Record<string, unknown> => {
-  const stored = mockDatabase
-    .prepare('SELECT metadata FROM holdings WHERE id = ?')
-    .get(`h-spot-${accountId}`) as { metadata: string };
-
-  return JSON.parse(stored.metadata);
-};
+const marksOf = (accountId: string): WalkMarks => walkMarksOf(mockDatabase, accountId, 'earn');
 
 const rewardKey = (number: number): string =>
   `acc-1:earn:reward:flexible:BTC001:REALTIME:${REWARD_TIME}:${number}`;
@@ -276,7 +271,7 @@ describe('the Earn walk on real SQLite', () => {
 
     expect(first.imported).toBe(0);
     expect(storedRows()).toEqual([]);
-    expect(spotMetadata('acc-1').binanceEarnPendingOverlap).toEqual([
+    expect(marksOf('acc-1').pending).toEqual([
       {
         start: REWARD_TIME - 5 * DAY_MS - 1,
         end: REWARD_TIME - 5 * DAY_MS + 1,
@@ -289,6 +284,6 @@ describe('the Earn walk on real SQLite', () => {
 
     expect(second.imported).toBe(1);
     expect(storedRows()).toHaveLength(1);
-    expect(spotMetadata('acc-1').binanceEarnPendingOverlap).toEqual([]);
+    expect(marksOf('acc-1').pending).toEqual([]);
   });
 });

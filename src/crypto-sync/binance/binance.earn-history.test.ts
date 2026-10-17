@@ -1,6 +1,7 @@
 import { DAY_MS } from '@kiko/dates';
 import { minOf } from '@kiko/numbers';
 import { i18n } from '@kiko/i18n/init';
+import { walkMarkWritesOf } from '@kiko/test-support/walk-marks';
 import { transactionRowDescription } from '@kiko/transactions/row-description';
 import { exchangeExcludedTransactionIds } from '@kiko/statistics/exchange-exclusion';
 
@@ -32,7 +33,7 @@ import {
   pageOf,
   pointOf,
   pointsIn,
-  SPOT_FIELDS,
+  marksOf,
   stopCodeOf,
   stopCodes,
   unreadableEntryOf,
@@ -462,7 +463,7 @@ describe('redemptionRowsOf', () => {
 });
 
 describe('the rows of a settled record, written', () => {
-  const cursorBehind = { [SPOT_FIELDS.cursor]: agoMs(5) };
+  const cursorBehind = { cursor: agoMs(5) };
 
   it('writes Spot -a and Earn +a, each leg naming the other holding, out of spending, labelled "Transfer to/from"', async () => {
     const world = worldOf(cursorBehind);
@@ -591,7 +592,7 @@ describe('the rows of a settled record, written', () => {
     await walkOnce({ world, entries });
     const first = idsOf(world);
     world.added = [];
-    world.metadata = { ...world.metadata, ...cursorBehind };
+    world.state.seed('earn', cursorBehind);
     await walkOnce({ world, entries });
 
     expect(idsOf(world)).toEqual(first);
@@ -633,9 +634,9 @@ describe('the rows of a settled record, written', () => {
 describe('where the walk starts and what it never asks', () => {
   it('starts the first window on 1 January 2022, and never before it, whatever the stored marks say', async () => {
     const world = worldOf({
-      [SPOT_FIELDS.cursor]: HISTORY_FLOOR_MS,
-      [SPOT_FIELDS.rescan]: HISTORY_FLOOR_MS,
-      [SPOT_FIELDS.pending]: [
+      cursor: HISTORY_FLOOR_MS,
+      rescan: HISTORY_FLOOR_MS,
+      pending: [
         { start: HISTORY_FLOOR_MS, end: HISTORY_FLOOR_MS + DAY_MS },
         pointOf(HISTORY_FLOOR_MS + 5 * DAY_MS, 'flexibleRewards'),
       ],
@@ -649,12 +650,12 @@ describe('where the walk starts and what it never asks', () => {
 
   it.each([
     ['no mark at all', {}],
-    ['an old re-scan mark behind a recent forward cursor', { [SPOT_FIELDS.rescan]: agoMs(2000) }],
+    ['an old re-scan mark behind a recent forward cursor', { rescan: agoMs(2000) }],
     [
       'an owed range and a point before the floor',
       {
-        [SPOT_FIELDS.cursor]: agoMs(2),
-        [SPOT_FIELDS.pending]: [
+        cursor: agoMs(2),
+        pending: [
           { start: EARN_FLOOR_MS - 3 * DAY_MS, end: EARN_FLOOR_MS - 2 * DAY_MS },
           pointOf(EARN_FLOOR_MS - DAY_MS, 'lockedRewards'),
         ],
@@ -670,7 +671,7 @@ describe('where the walk starts and what it never asks', () => {
   });
 
   it('asks the two reward kinds first, then the four others, for every span, with the first page', async () => {
-    const world = worldOf({ [SPOT_FIELDS.cursor]: agoMs(5) });
+    const world = worldOf({ cursor: agoMs(5) });
 
     const { requests } = await walkOnce({ world });
 
@@ -681,7 +682,7 @@ describe('where the walk starts and what it never asks', () => {
   });
 
   it('never asks a range with start equal to end', async () => {
-    const world = worldOf({ [SPOT_FIELDS.cursor]: agoMs(5) });
+    const world = worldOf({ cursor: agoMs(5) });
 
     const { requests } = await walkOnce({
       world,
@@ -694,7 +695,7 @@ describe('where the walk starts and what it never asks', () => {
 });
 
 describe('a span too full for one page, and a page that does not add up', () => {
-  const caughtUp = { [SPOT_FIELDS.cursor]: agoMs(5) };
+  const caughtUp = { cursor: agoMs(5) };
 
   it('halves a span whose first kind comes back full, and reads every kind again in the half', async () => {
     const world = worldOf(caughtUp);
@@ -726,7 +727,7 @@ describe('a span too full for one page, and a page that does not add up', () => 
 
   it('pages a span of one millisecond by current until the rows counted are the total, and writes every reward', async () => {
     const at = NOW - 1_000;
-    const world = worldOf({ [SPOT_FIELDS.cursor]: at });
+    const world = worldOf({ cursor: at });
     const many = Array.from({ length: 120 }, (_unused, index) =>
       entryOf('lockedRewards', lockedRewardOf({ positionId: `pos-${index}`, time: at })),
     );
@@ -754,7 +755,7 @@ describe('a span too full for one page, and a page that does not add up', () => 
     });
 
     expect(stopCodes(warn)).toContain('earn-page-drift');
-    expect(world.metadata[SPOT_FIELDS.cursor]).toBe(agoMs(5));
+    expect(marksOf(world).cursor).toBe(agoMs(5));
   });
 
   it('a drifted kind in the re-scan commits the other five and owes the span as a range', async () => {
@@ -780,7 +781,7 @@ describe('a span too full for one page, and a page that does not add up', () => 
 });
 
 describe('a record the walk cannot trust', () => {
-  const caughtUp = { [SPOT_FIELDS.cursor]: agoMs(5) };
+  const caughtUp = { cursor: agoMs(5) };
   const stuckAt = agoMs(10);
   const other = entryOf(
     'lockedRedemption',
@@ -1202,7 +1203,7 @@ describe('a record the walk cannot trust', () => {
       'flexibleRedemption',
       flexibleRedemptionOf({ redeemId: 'newer', time: agoMs(2) }),
     );
-    const forwardMarks = { [SPOT_FIELDS.cursor]: agoMs(20) };
+    const forwardMarks = { cursor: agoMs(20) };
 
     it('is owed at its own point and the cursor goes past it: the other records of the span, the newer ones too, import in the same run', async () => {
       const world = worldOf(forwardMarks);
@@ -1215,7 +1216,7 @@ describe('a record the walk cannot trust', () => {
         'acc-1:earn:redeem:locked:fine:BTC',
         'acc-1:earn:redeem:locked:fine:BTC:earn',
       ]);
-      expect(world.metadata[SPOT_FIELDS.cursor]).toBe(NOW);
+      expect(marksOf(world).cursor).toBe(NOW);
       expect(listOf(world)).toContainEqual(pointOf(stuckAt, kind));
       expect(result.complete).toBe(false);
     });
@@ -1232,7 +1233,7 @@ describe('a record the walk cannot trust', () => {
   });
 
   describe('in the forward window, a stop that owes more than a point', () => {
-    const forwardMarks = { [SPOT_FIELDS.cursor]: agoMs(20) };
+    const forwardMarks = { cursor: agoMs(20) };
     const newer = entryOf(
       'flexibleRedemption',
       flexibleRedemptionOf({ redeemId: 'newer', time: agoMs(2) }),
@@ -1247,7 +1248,7 @@ describe('a record the walk cannot trust', () => {
       });
 
       expect(world.added).toEqual([]);
-      expect(world.metadata[SPOT_FIELDS.cursor]).toBe(agoMs(20));
+      expect(marksOf(world).cursor).toBe(agoMs(20));
       expect(requests.some((request) => request.startTime === agoMs(30))).toBe(true);
     });
 
@@ -1264,7 +1265,7 @@ describe('a record the walk cannot trust', () => {
       });
 
       expect(stopCodes(warn)).toContain('earn-page-drift');
-      expect(world.metadata[SPOT_FIELDS.cursor]).toBe(agoMs(20));
+      expect(marksOf(world).cursor).toBe(agoMs(20));
       expect(idsOf(world)).not.toContain('acc-1:earn:redeem:flexible:newer:BTC');
     });
   });
@@ -1274,8 +1275,8 @@ describe('a point read', () => {
   it('asks its own kind only, one call, for exactly the window of the point', async () => {
     const at = agoMs(100);
     const world = worldOf({
-      [SPOT_FIELDS.cursor]: agoMs(1),
-      [SPOT_FIELDS.pending]: [pointOf(at, 'lockedSubscription')],
+      cursor: agoMs(1),
+      pending: [pointOf(at, 'lockedSubscription')],
     });
 
     const { requests } = await walkOnce({ world });
@@ -1288,8 +1289,8 @@ describe('a point read', () => {
   it('asks the union of the kinds of points that start together, as one window, once in each', async () => {
     const at = agoMs(100);
     const world = worldOf({
-      [SPOT_FIELDS.cursor]: agoMs(1),
-      [SPOT_FIELDS.pending]: [
+      cursor: agoMs(1),
+      pending: [
         pointOf(at, 'lockedSubscription'),
         { ...pointOf(at, 'flexibleRewards'), end: at + 1_000 },
       ],
@@ -1308,8 +1309,8 @@ describe('a point read', () => {
   it('takes the point off the list once its own record comes back settled, and writes the rows', async () => {
     const at = agoMs(100);
     const world = worldOf({
-      [SPOT_FIELDS.cursor]: agoMs(1),
-      [SPOT_FIELDS.pending]: [pointOf(at, 'lockedSubscription')],
+      cursor: agoMs(1),
+      pending: [pointOf(at, 'lockedSubscription')],
     });
 
     await walkOnce({
@@ -1351,13 +1352,13 @@ describe('a read that compares each end to the second, as Binance does', () => {
       const runs = [AT + 300, AT + 300 + 10 * MINUTE_MS + gapMs];
 
       it('moves the cursor to now, owes the one point and never the span, and imports a later record', async () => {
-        const world = worldOf({ [SPOT_FIELDS.cursor]: AT - 10 * DAY_MS });
+        const world = worldOf({ cursor: AT - 10 * DAY_MS });
 
         for (const now of runs) {
           await walkOnce({ world, entries: [stuck, later], precision: 'second', now });
         }
 
-        expect(world.metadata[SPOT_FIELDS.cursor]).toBe(runs[1]);
+        expect(marksOf(world).cursor).toBe(runs[1]);
         expect(listOf(world)).toEqual([pointOf(AT, 'flexibleSubscription')]);
         expect(idsOf(world)).toEqual(LATER_IDS);
       });
@@ -1365,7 +1366,7 @@ describe('a read that compares each end to the second, as Binance does', () => {
       it('does the same when the cursor sits on a halving boundary in the second of the record', async () => {
         const start = AT - DAY_MS;
         const first = start + 2 * (DAY_MS + 300);
-        const world = worldOf({ [SPOT_FIELDS.cursor]: start });
+        const world = worldOf({ cursor: start });
         const halved = entryOf(
           'flexibleSubscription',
           flexibleSubscriptionOf({ time: AT + 12 * HOUR_MS, purchaseId: 'p-later' }),
@@ -1385,13 +1386,13 @@ describe('a read that compares each end to the second, as Binance does', () => {
           });
         }
 
-        expect(world.metadata[SPOT_FIELDS.cursor]).toBe(first + HOUR_MS + gapMs);
+        expect(marksOf(world).cursor).toBe(first + HOUR_MS + gapMs);
         expect(listOf(world)).toEqual([pointOf(AT, 'flexibleSubscription')]);
         expect(idsOf(world)).toEqual(LATER_IDS);
       });
 
       it('imports a record it can trust once, and owes nothing for it', async () => {
-        const world = worldOf({ [SPOT_FIELDS.cursor]: AT - 10 * DAY_MS });
+        const world = worldOf({ cursor: AT - 10 * DAY_MS });
         const trusted = entryOf(
           'flexibleSubscription',
           flexibleSubscriptionOf({ time: AT, purchaseId: 'p-ok' }),
@@ -1403,7 +1404,7 @@ describe('a read that compares each end to the second, as Binance does', () => {
 
         expect(idsOf(world)).toHaveLength(4);
         expect(listOf(world)).toEqual([]);
-        expect(world.metadata[SPOT_FIELDS.cursor]).toBe(runs[1]);
+        expect(marksOf(world).cursor).toBe(runs[1]);
       });
     },
   );
@@ -1455,9 +1456,9 @@ describe('a read that compares each end to the second, as Binance does', () => {
     it('owes the point of a stuck record one second before the point, and no range', async () => {
       const base = AT + 60 * DAY_MS;
       const world = worldOf({
-        [SPOT_FIELDS.cursor]: base,
-        [SPOT_FIELDS.rescan]: base - 1,
-        [SPOT_FIELDS.pending]: [pointOf(AT, 'flexibleSubscription')],
+        cursor: base,
+        rescan: base - 1,
+        pending: [pointOf(AT, 'flexibleSubscription')],
       });
       const neighbour = entryOf(
         'flexibleSubscription',
@@ -1494,8 +1495,8 @@ describe('the budget of a run', () => {
       pointOf(agoMs(170) + index * 5 * DAY_MS, EARN_SERIES[index % KIND_COUNT]),
     );
     const world = worldOf({
-      [SPOT_FIELDS.cursor]: agoMs(1),
-      [SPOT_FIELDS.pending]: [owedRange, ...points],
+      cursor: agoMs(1),
+      pending: [owedRange, ...points],
     });
 
     const { requests } = await walkOnce({ world });
@@ -1516,8 +1517,8 @@ describe('the budget of a run', () => {
       end: agoMs(ago) + DAY_MS,
     }));
     const world = worldOf({
-      [SPOT_FIELDS.cursor]: agoMs(1),
-      [SPOT_FIELDS.pending]: [...days, pointOf(agoMs(300), 'lockedRewards')],
+      cursor: agoMs(1),
+      pending: [...days, pointOf(agoMs(300), 'lockedRewards')],
     });
 
     const { requests } = await walkOnce({ world });
@@ -1567,7 +1568,7 @@ describe('the budget of a run', () => {
 
     expect(requests).toHaveLength(CAP);
     expect(result.complete).toBe(false);
-    expect(world.metadata[SPOT_FIELDS.cursor]).toBe(EARN_FLOOR_MS + 5 * EARN_WINDOW_MS);
+    expect(marksOf(world).cursor).toBe(EARN_FLOOR_MS + 5 * EARN_WINDOW_MS);
     expect(requests[0].endTime - requests[0].startTime).toBe(EARN_WINDOW_MS);
   });
 
@@ -1633,7 +1634,7 @@ describe('the budget of a run', () => {
         },
       }),
     ).rejects.toThrow('boom');
-    expect(world.metadata[SPOT_FIELDS.cursor]).toBe(EARN_FLOOR_MS + EARN_WINDOW_MS);
+    expect(marksOf(world).cursor).toBe(EARN_FLOOR_MS + EARN_WINDOW_MS);
   });
 
   it('charges each call to the earn lane at its own weight', () => {
@@ -1643,7 +1644,7 @@ describe('the budget of a run', () => {
 
 describe('the order of the writes', () => {
   it('writes the rows, then the list, then the re-scan mark, for a span of the re-scan', async () => {
-    const world = worldOf({ [SPOT_FIELDS.cursor]: agoMs(5) });
+    const world = worldOf({ cursor: agoMs(5) });
     const first = agoMs(25);
 
     await walkOnce({
@@ -1658,22 +1659,20 @@ describe('the order of the writes', () => {
           : undefined,
     });
 
-    const lastForward = world.events.lastIndexOf(`cursor:${SPOT_FIELDS.cursor}`);
+    const lastForward = world.events.lastIndexOf('cursor:cursor');
     expect(world.events.slice(lastForward + 1, lastForward + 4)).toEqual([
       'rows',
       'list',
-      `cursor:${SPOT_FIELDS.rescan}`,
+      'cursor:rescan',
     ]);
   });
 
   it('writes the list with the overlap day before the cursor moves past it', async () => {
-    const world = worldOf({ [SPOT_FIELDS.cursor]: agoMs(5) });
+    const world = worldOf({ cursor: agoMs(5) });
 
     await walkOnce({ world });
 
-    expect(world.events.indexOf('list')).toBeLessThan(
-      world.events.indexOf(`cursor:${SPOT_FIELDS.cursor}`),
-    );
+    expect(world.events.indexOf('list')).toBeLessThan(world.events.indexOf('cursor:cursor'));
   });
 });
 
@@ -1683,21 +1682,19 @@ describe('the range cursor, the point cursor and the span hints of the round-rob
     start: agoMs(150) + index * 10 * DAY_MS,
     end: agoMs(150) + index * 10 * DAY_MS + DAY_MS,
   }));
-  const base = { [SPOT_FIELDS.cursor]: agoMs(2), [SPOT_FIELDS.pending]: days };
+  const base = { cursor: agoMs(2), pending: days };
 
   it('stores the end of the window of each owed day it read, under the Earn range cursor', async () => {
     const world = worldOf(base);
 
     const { deps } = await walkOnce({ world });
 
-    const writes = (deps.writeWalkCursor as jest.Mock).mock.calls
-      .filter((call) => call[1] === SPOT_FIELDS.range)
-      .map((call) => call[2]);
+    const writes = walkMarkWritesOf(deps, 'earn', 'rangeCursor');
     expect(writes).toEqual([days[0].end, days[1].end, days[2].end]);
   });
 
   it('reads the owed days that start after the stored range cursor first, then wraps around', async () => {
-    const world = worldOf({ ...base, [SPOT_FIELDS.range]: days[1].end });
+    const world = worldOf({ ...base, rangeCursor: days[1].end });
 
     const { requests } = await walkOnce({ world });
 
@@ -1714,22 +1711,22 @@ describe('the range cursor, the point cursor and the span hints of the round-rob
   it('stores the point cursor of the point it read, under the Earn point cursor', async () => {
     const at = agoMs(100);
     const world = worldOf({
-      [SPOT_FIELDS.cursor]: agoMs(1),
-      [SPOT_FIELDS.pending]: [pointOf(at, 'lockedRewards')],
+      cursor: agoMs(1),
+      pending: [pointOf(at, 'lockedRewards')],
     });
 
     await walkOnce({ world });
 
-    expect(world.metadata[SPOT_FIELDS.point]).toBe(at - 1);
+    expect(marksOf(world).pointCursor).toBe(at - 1);
   });
 
   it('stores a malformed hint over with none, logging one fixed code, under the Earn span hints', async () => {
-    const world = worldOf({ ...base, [SPOT_FIELDS.hints]: 'soon' });
+    const world = worldOf({ ...base, spanHints: 'soon' });
 
     await walkOnce({ world });
 
     expect(codesLogged()).toContain('span-hints-malformed');
-    expect(world.metadata[SPOT_FIELDS.hints]).toEqual({
+    expect(marksOf(world).spanHints).toEqual({
       forward: [],
       pending: [],
       rescan: [],
@@ -1738,7 +1735,7 @@ describe('the range cursor, the point cursor and the span hints of the round-rob
   });
 
   it('repairs a range cursor and a point cursor that are no numbers, logging one fixed code each', async () => {
-    const world = worldOf({ ...base, [SPOT_FIELDS.range]: 'soon', [SPOT_FIELDS.point]: 'x' });
+    const world = worldOf({ ...base, rangeCursor: 'soon', pointCursor: 'x' });
 
     await walkOnce({ world });
 
@@ -1749,8 +1746,8 @@ describe('the range cursor, the point cursor and the span hints of the round-rob
 
   it('owes the ground before the cursor once, and logs one fixed code, for a point of a kind the walk does not read', async () => {
     const world = worldOf({
-      [SPOT_FIELDS.cursor]: agoMs(5),
-      [SPOT_FIELDS.pending]: [{ start: 1, end: 2, kind: 'point', series: 'MAIN_FUNDING' }],
+      cursor: agoMs(5),
+      pending: [{ start: 1, end: 2, kind: 'point', series: 'MAIN_FUNDING' }],
     });
 
     await walkOnce({ world });

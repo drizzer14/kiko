@@ -24,10 +24,11 @@ import {
 } from '@kiko/db';
 import { getTableColumns } from 'drizzle-orm';
 import { holdingValue } from '@kiko/holdings/holding-value';
+import { asBondMeta } from '@kiko/holdings/holding-metadata';
 import { holdingRegisterCoupons } from '@kiko/bonds/nbu-register';
 import { computeDedupKeyBase } from '@kiko/statement-import/mapping';
+import { walkMarksOf, withWalkMarks } from '@kiko/test-support/walk-marks';
 import { rezoneImportTime } from '@kiko/statement-import/rezone-import-times';
-import { asBondMeta, binanceWalkCursorOf } from '@kiko/holdings/holding-metadata';
 
 import { EXPORT_VERSION } from '../crypto/envelope';
 
@@ -1547,11 +1548,12 @@ describe('restoreDataSnapshot', () => {
       currency: 'BTC',
       balanceMinorUnits: 50_000_000,
       balanceSetAt: null,
-      metadata: {
-        binanceAsset: 'BTC',
-        binanceHistoryCursor: 1_704_326_400_000,
-        syncedAt: 1_704_326_400_000,
-      },
+      metadata: withWalkMarks(
+        { binanceAsset: 'BTC', syncedAt: 1_704_326_400_000 },
+        'acc-1',
+        'capital',
+        { cursor: 1_704_326_400_000 },
+      ),
     };
 
     await restore(
@@ -1560,6 +1562,8 @@ describe('restoreDataSnapshot', () => {
 
     const [restored] = insertedRows.holdings as { metadata: unknown }[];
 
-    expect(binanceWalkCursorOf('binanceHistoryCursor', restored.metadata)).toBe(1_704_326_400_000);
+    expect(
+      walkMarksOf(restored.metadata as Record<string, unknown>, 'acc-1', 'capital').cursor,
+    ).toBe(1_704_326_400_000);
   });
 });

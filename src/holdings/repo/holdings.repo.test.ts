@@ -27,6 +27,7 @@ import { Money } from '@kiko/currency/money';
 import { accountsRepo } from '@kiko/accounts';
 import { createHoldingValuer } from '@kiko/statistics/holding-value-at';
 import { captureSetDatabaseTransaction } from '@kiko/db/capture-set-tx';
+import { type WalkId, type WalkMarks, withWalkMarks } from '@kiko/test-support/walk-marks';
 import { write, accounts, deletedImportKeys, holdings, pricePoints, transactions } from '@kiko/db';
 
 import { holdingsRepo, type LoanPricePointOp } from './holdings.repo';
@@ -958,21 +959,28 @@ describe('holdingsRepo.upsertMonobank (via the shared metadata-key helper)', () 
   });
 });
 
+/** A Spot holding's metadata once each walk named has marks, on top of what else it carries. */
+const spotWithMarks = (
+  marks: Partial<Record<WalkId, WalkMarks>>,
+  base: Record<string, unknown> = { binanceAsset: 'BTC', syncedAt: 500 },
+): Record<string, unknown> =>
+  Object.entries(marks).reduce(
+    (metadata, [walkId, walkMarks]) =>
+      withWalkMarks(metadata, 'acc-1', walkId as WalkId, walkMarks),
+    base,
+  );
+
 describe('holdingsRepo.resetBinanceWalkCursors', () => {
   it('resets every walk cursor to the given floor on holdings that have it, and leaves every other metadata key untouched', async () => {
     const rows = [
       {
         id: 'h-spot',
-        metadata: {
-          binanceAsset: 'BTC',
-          binanceHistoryCursor: 1_000,
-          binanceHistoryRescanCursor: 1_500,
-          binancePayHistoryCursor: 2_000,
-          binancePayRescanCursor: 2_500,
-          binanceTransferHistoryCursor: 3_000,
-          binanceEarnHistoryCursor: 4_000,
-          syncedAt: 500,
-        },
+        metadata: spotWithMarks({
+          capital: { cursor: 1_000, rescan: 1_500 },
+          pay: { cursor: 2_000, rescan: 2_500 },
+          transfer: { cursor: 3_000 },
+          earn: { cursor: 4_000 },
+        }),
       },
       { id: 'h-funding', metadata: { binanceAsset: 'BTC:funding', syncedAt: 500 } },
     ];
@@ -999,16 +1007,12 @@ describe('holdingsRepo.resetBinanceWalkCursors', () => {
     // Only the holding that actually carried the key is written, to the floor.
     expect(updates).toEqual([
       {
-        metadata: {
-          binanceAsset: 'BTC',
-          binanceHistoryCursor: 100,
-          binanceHistoryRescanCursor: 100,
-          binancePayHistoryCursor: 100,
-          binancePayRescanCursor: 100,
-          binanceTransferHistoryCursor: 100,
-          binanceEarnHistoryCursor: 100,
-          syncedAt: 500,
-        },
+        metadata: spotWithMarks({
+          capital: { cursor: 100, rescan: 100 },
+          pay: { cursor: 100, rescan: 100 },
+          transfer: { cursor: 100 },
+          earn: { cursor: 100 },
+        }),
       },
     ]);
   });
@@ -1071,7 +1075,7 @@ describe('holdingsRepo.setBinanceWalkCursor', () => {
     await holdingsRepo.setBinanceWalkCursor('h-spot', 'binanceHistoryCursor', 1_704_326_400_000);
 
     expect(updates).toEqual([
-      { metadata: { binanceAsset: 'BTC', syncedAt: 500, binanceHistoryCursor: 1_704_326_400_000 } },
+      { metadata: spotWithMarks({ capital: { cursor: 1_704_326_400_000 } }) },
     ]);
   });
 
@@ -1084,7 +1088,7 @@ describe('holdingsRepo.setBinanceWalkCursor', () => {
 
     await holdingsRepo.setBinanceWalkCursor('h-spot', 'binancePayHistoryCursor', 1_000);
 
-    expect(updates).toEqual([{ metadata: { binancePayHistoryCursor: 1_000 } }]);
+    expect(updates).toEqual([{ metadata: spotWithMarks({ pay: { cursor: 1_000 } }, {}) }]);
   });
 
   it('is a no-op when the holding’s account is no longer connected to Binance', async () => {

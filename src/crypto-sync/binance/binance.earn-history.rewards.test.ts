@@ -15,7 +15,6 @@ import {
   listOf,
   lockedRewardOf,
   pointOf,
-  SPOT_FIELDS,
   stopCodeOf,
   stopCodes,
   unreadableEntryOf,
@@ -271,7 +270,7 @@ describe('settledEarnOf: the reward groups of a span', () => {
 });
 
 describe('the reward groups of a walk', () => {
-  const caughtUp = { [SPOT_FIELDS.cursor]: agoMs(5) };
+  const caughtUp = { cursor: agoMs(5) };
   const stuckAt = agoMs(10);
   let warn: jest.SpyInstance;
 

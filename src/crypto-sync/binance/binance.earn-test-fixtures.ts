@@ -4,6 +4,7 @@ import type { HoldingRow } from '@kiko/db';
 import maybe, { foldMap } from 'fnts/maybe';
 import type { ExchangeHolding } from '@kiko/holdings/repo';
 import { BinanceWalkStop } from '@kiko/crypto-sync/exchange/walk';
+import { type WalkMarks, walkStateFake } from '@kiko/test-support/walk-marks';
 
 import type {
   EarnRecordByKind,
@@ -12,9 +13,9 @@ import type {
   TotalQuery,
 } from './binance.history-client';
 import { NOW } from './binance.pay-test-fixtures';
+import { EARN_KEY, FUNDING_KEY } from './binance.holding-keys';
 import { createBinanceHistoryRun } from './binance.history-budget';
 import type { BinanceHistoryRow } from './binance.transfer-history';
-import { EARN_KEY, FUNDING_KEY, SPOT_KEY } from './binance.holding-keys';
 import { type BinanceEarnHistoryDeps, syncBinanceEarnHistory } from './binance.earn-history';
 
 export const agoMs = (days: number): number => NOW - days * DAY_MS;
@@ -116,15 +117,6 @@ export const stopCodeOf = (attempt: () => unknown): string | undefined => {
   return undefined;
 };
 
-export const SPOT_FIELDS = {
-  cursor: 'binanceEarnHistoryCursor',
-  rescan: 'binanceEarnRescanCursor',
-  pending: 'binanceEarnPendingOverlap',
-  point: 'binanceEarnPointCursor',
-  range: 'binanceEarnRangeCursor',
-  hints: 'binanceEarnSpanHints',
-} as const;
-
 /** What Binance holds: a row (or one the client could not read) and the kind it is read under. */
 type EarnEntry =
   | { kind: EarnRecordKind; time: number; row: EarnRecordByKind[EarnRecordKind] }
@@ -220,7 +212,7 @@ const holdingWith = (id: string, metadata: Record<string, unknown>): HoldingRow 
   ({ id, metadata }) as unknown as HoldingRow;
 
 type World = {
-  metadata: Record<string, unknown>;
+  state: ReturnType<typeof walkStateFake>;
   others: HoldingRow[];
   added: BinanceHistoryRow[];
   events: string[];
@@ -231,17 +223,32 @@ type World = {
  * hold: the other holdings, the rows written, and the writes in order.
  */
 export const worldOf = (
-  metadata: Record<string, unknown> = {},
+  marks: WalkMarks = {},
   others: HoldingRow[] = [
     holdingWith('h-funding', { binanceAsset: FUNDING_KEY }),
     holdingWith('h-earn', { binanceAsset: EARN_KEY }),
   ],
-): World => ({
-  metadata: { binanceAsset: SPOT_KEY, ...metadata },
-  others,
-  added: [],
-  events: [],
-});
+): World => {
+  const events: string[] = [];
+
+  return {
+    state: walkStateFake({
+      marks: { earn: marks },
+      onWrite: ({ field }) => {
+        if (field === 'pending') {
+          events.push('list');
+        } else if (field !== 'spanHints') {
+          events.push(`cursor:${field}`);
+        }
+      },
+    }),
+    others,
+    added: [],
+    events,
+  };
+};
+
+export const marksOf = (world: World): WalkMarks => world.state.marksOf('earn');
 
 const depsOf = (
   world: World,
@@ -251,7 +258,7 @@ const depsOf = (
   now: () => NOW,
   fetchImpl: (async () => ({})) as unknown as typeof fetch,
   readCredentials: async () => ({ apiKey: 'test-key', secret: 'secret' }),
-  listHoldings: async () => [holdingWith('h-spot', world.metadata), ...world.others],
+  listHoldings: async () => [...(await world.state.listHoldings()), ...world.others],
   fetchEarnRecords: server as unknown as BinanceEarnHistoryDeps['fetchEarnRecords'],
   ensureHoldings: jest.fn(async (created: Omit<ExchangeHolding, 'renameFromDefault'>[]) => {
     for (const holding of created) {
@@ -267,17 +274,7 @@ const depsOf = (
 
     return rows.length;
   }),
-  writeWalkCursor: jest.fn(async (_holdingId: string, field: string, cursorMs: number) => {
-    world.events.push(`cursor:${field}`);
-    world.metadata = { ...world.metadata, [field]: cursorMs };
-  }),
-  writeWalkPending: jest.fn(async (_holdingId: string, field: string, ranges: unknown[]) => {
-    world.events.push('list');
-    world.metadata = { ...world.metadata, [field]: ranges };
-  }),
-  writeWalkHints: jest.fn(async (_holdingId: string, field: string, hints: unknown) => {
-    world.metadata = { ...world.metadata, [field]: hints };
-  }),
+  ...world.state.deps,
   ...over,
 });
 
@@ -312,7 +309,7 @@ export const walkOnce = async (input: {
 };
 
 export const listOf = (world: World): unknown[] =>
-  (world.metadata[SPOT_FIELDS.pending] as unknown[] | undefined) ?? [];
+  (marksOf(world).pending as unknown[] | undefined) ?? [];
 
 export const pointsIn = (list: unknown[]): unknown[] =>
   list.filter((ground) => (ground as { kind?: string }).kind === 'point');

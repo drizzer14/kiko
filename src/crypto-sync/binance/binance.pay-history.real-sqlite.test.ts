@@ -12,6 +12,12 @@ jest.mock('@kiko/db/client', () => {
 });
 
 import { DAY_MS } from '@kiko/dates';
+import {
+  type WalkId,
+  type WalkMarks,
+  walkMarksOf,
+  withWalkMarks,
+} from '@kiko/test-support/walk-marks';
 import { DatabaseSync } from 'node:sqlite';
 import { holdingsRepo } from '@kiko/holdings/repo';
 import { transactionsRepo } from '@kiko/transactions/repo';
@@ -59,7 +65,9 @@ const openDatabase = (): DatabaseSync => {
       `INSERT INTO holdings (id, account_id, name, type, currency, balance_minor_units, metadata)
        VALUES ('h-spot', 'acc-1', 'Binance Spot', 'crypto_asset', 'BTC', 100, ?)`,
     )
-    .run(JSON.stringify({ binanceAsset: 'BTC', binanceHistoryCursor: NOW }));
+    .run(
+      JSON.stringify(withWalkMarks({ binanceAsset: 'BTC' }, 'acc-1', 'capital', { cursor: NOW })),
+    );
 
   return rawDatabase;
 };
@@ -164,6 +172,8 @@ const importCapitalDeposit = (id: string, amountMinorUnits: number, time: number
     },
   ]);
 
+const marksOf = (walkId: WalkId): WalkMarks => walkMarksOf(mockDatabase, ACCOUNT_ID, walkId);
+
 const spotMetadata = (): Record<string, unknown> => {
   const stored = mockDatabase
     .prepare("SELECT metadata FROM holdings WHERE id = 'h-spot'")
@@ -204,7 +214,7 @@ describe('the Pay walk on real SQLite', () => {
     const result = await runWalk([received({ transactionId: 'no-capital-cursor' })]);
 
     expect(result).toEqual({ imported: 1, complete: true });
-    expect(spotMetadata()).toMatchObject({ binancePayHistoryCursor: NOW });
+    expect(marksOf('pay')).toMatchObject({ cursor: NOW });
   });
 
   it('stores the counterparty nickname, signed, on Spot', async () => {
@@ -230,12 +240,9 @@ describe('the Pay walk on real SQLite', () => {
   it('writes the Pay cursor next to the capital cursor on the Spot holding', async () => {
     await runWalk([]);
 
-    const stored = mockDatabase
-      .prepare("SELECT metadata FROM holdings WHERE id = 'h-spot'")
-      .get() as { metadata: string };
-    expect(JSON.parse(stored.metadata)).toMatchObject({
-      binanceHistoryCursor: NOW,
-      binancePayHistoryCursor: NOW,
+    expect({ capital: marksOf('capital'), pay: marksOf('pay') }).toMatchObject({
+      capital: { cursor: NOW },
+      pay: { cursor: NOW },
     });
   });
 
@@ -251,12 +258,12 @@ describe('the Pay walk on real SQLite', () => {
   });
 
   it('finishes a stored re-scan through the same keys: the order is imported once, the mark restarts, and a disconnect resets it', async () => {
-    const inProgress = {
-      binanceAsset: 'BTC',
-      binanceHistoryCursor: NOW,
-      binancePayHistoryCursor: NOW - 2 * DAY_MS,
-      binancePayRescanCursor: NOW - 40 * DAY_MS,
-    };
+    const inProgress = withWalkMarks(
+      withWalkMarks({ binanceAsset: 'BTC' }, ACCOUNT_ID, 'capital', { cursor: NOW }),
+      ACCOUNT_ID,
+      'pay',
+      { cursor: NOW - 2 * DAY_MS, rescan: NOW - 40 * DAY_MS },
+    );
     mockDatabase
       .prepare("UPDATE holdings SET metadata = ? WHERE id = 'h-spot'")
       .run(JSON.stringify(inProgress));
@@ -268,24 +275,25 @@ describe('the Pay walk on real SQLite', () => {
     expect(first.imported).toBe(1);
     expect(second.imported).toBe(0);
     expect(storedRows().map((row) => row.external_id)).toEqual(['acc-1:pay:C2C:late:2']);
-    expect(spotMetadata()).toMatchObject({
-      binancePayHistoryCursor: NOW,
-      binancePayRescanCursor: HISTORY_FLOOR_MS,
-    });
+    expect(marksOf('pay')).toMatchObject({ cursor: NOW, rescan: HISTORY_FLOOR_MS });
 
     mockDatabase
-      .prepare("UPDATE holdings SET metadata = json_set(metadata, '$.binancePayRescanCursor', ?)")
-      .run(NOW - 40 * DAY_MS);
+      .prepare('UPDATE holdings SET metadata = ?')
+      .run(
+        JSON.stringify(
+          withWalkMarks(spotMetadata(), ACCOUNT_ID, 'pay', { rescan: NOW - 40 * DAY_MS }),
+        ),
+      );
     await holdingsRepo.resetBinanceWalkCursors(ACCOUNT_ID, 1);
 
-    expect(spotMetadata()).toMatchObject({ binancePayHistoryCursor: 1, binancePayRescanCursor: 1 });
+    expect(marksOf('pay')).toMatchObject({ cursor: 1, rescan: 1 });
   });
 
   it('keeps the overlap day behind a stale cursor on the Spot holding until a run has read it, and a disconnect empties the list', async () => {
     const cursor = NOW - 120 * DAY_MS;
     mockDatabase
       .prepare("UPDATE holdings SET metadata = ? WHERE id = 'h-spot'")
-      .run(JSON.stringify({ binanceAsset: 'BTC', binancePayHistoryCursor: cursor }));
+      .run(JSON.stringify(withWalkMarks({ binanceAsset: 'BTC' }, ACCOUNT_ID, 'pay', { cursor })));
     const late = received({ transactionId: 'late', transactionTime: cursor - DAY_MS / 2 });
     const answerByRange = (cutAfter: number) => {
       let calls = 0;
@@ -325,48 +333,48 @@ describe('the Pay walk on real SQLite', () => {
 
     await expect(walkWith(2)).rejects.toThrow('run suspended');
 
-    expect(spotMetadata()).toMatchObject({
-      binancePayHistoryCursor: NOW,
-      binancePayPendingOverlap: [{ start: cursor - DAY_MS, end: cursor }],
+    expect(marksOf('pay')).toMatchObject({
+      cursor: NOW,
+      pending: [{ start: cursor - DAY_MS, end: cursor }],
     });
     expect(storedRows()).toEqual([]);
 
     const resumed = await walkWith(10);
 
     expect(resumed.imported).toBe(1);
-    expect(spotMetadata()).toMatchObject({ binancePayPendingOverlap: [] });
+    expect(marksOf('pay')).toMatchObject({ pending: [] });
     expect(storedRows().map((row) => row.external_id)).toEqual(['acc-1:pay:C2C:late:1']);
 
     mockDatabase
-      .prepare(
-        "UPDATE holdings SET metadata = json_set(metadata, '$.binancePayPendingOverlap', json(?))",
-      )
-      .run(JSON.stringify([{ start: 1, end: 2 }]));
+      .prepare('UPDATE holdings SET metadata = ?')
+      .run(
+        JSON.stringify(
+          withWalkMarks(spotMetadata(), ACCOUNT_ID, 'pay', { pending: [{ start: 1, end: 2 }] }),
+        ),
+      );
     await holdingsRepo.resetBinanceWalkCursors(ACCOUNT_ID, 1);
 
-    expect(spotMetadata()).toMatchObject({ binancePayPendingOverlap: [] });
+    expect(marksOf('pay')).toMatchObject({ pending: [] });
   });
 
   it('writes the range cursor of an owed day it read on the Spot holding, and a disconnect drops it', async () => {
     const day = { start: NOW - 150 * DAY_MS, end: NOW - 149 * DAY_MS };
     mockDatabase.prepare("UPDATE holdings SET metadata = ? WHERE id = 'h-spot'").run(
-      JSON.stringify({
-        binanceAsset: 'BTC',
-        binancePayHistoryCursor: NOW - 2 * DAY_MS,
-        binancePayPendingOverlap: [day],
-      }),
+      JSON.stringify(
+        withWalkMarks({ binanceAsset: 'BTC' }, ACCOUNT_ID, 'pay', {
+          cursor: NOW - 2 * DAY_MS,
+          pending: [day],
+        }),
+      ),
     );
 
     await runWalk([]);
 
-    expect(spotMetadata()).toMatchObject({
-      binancePayRangeCursor: day.end,
-      binancePayPendingOverlap: [],
-    });
+    expect(marksOf('pay')).toMatchObject({ rangeCursor: day.end, pending: [] });
 
     await holdingsRepo.resetBinanceWalkCursors(ACCOUNT_ID, 1);
 
-    expect(spotMetadata()).not.toHaveProperty('binancePayRangeCursor');
+    expect(marksOf('pay')).not.toHaveProperty('rangeCursor');
   });
 
   it('creates a missing Earn holding at zero for an Earn order, and never touches an existing balance', async () => {
@@ -440,10 +448,7 @@ describe('the Pay walk on real SQLite', () => {
 
     await runWalk([]);
 
-    const stored = mockDatabase
-      .prepare("SELECT metadata FROM holdings WHERE id = 'h-spot'")
-      .get() as { metadata: string };
-    expect(JSON.parse(stored.metadata).binancePayHistoryCursor).toBeUndefined();
+    expect(marksOf('pay').cursor).toBeUndefined();
   });
 });
 
