@@ -40,7 +40,7 @@ export type CoinLists = {
   history?: string[];
 };
 
-type TradeSymbol = { fromId: number | null; heldOrderId?: number };
+export type TradeSymbol = { fromId: number | null; heldOrderId?: number };
 
 export type ExchangeTrades = {
   symbols: Record<string, TradeSymbol>;
@@ -221,7 +221,7 @@ const tradesOf = (stored: unknown): ReadEntry<ExchangeTrades> => {
 };
 
 /** The two lists of a kind parse alone, so a malformed one never empties the other. */
-const coinListsOf = (kind: string, stored: unknown): ReadEntry<Required<CoinLists>> => {
+export const coinListsOf = (kind: string, stored: unknown): ReadEntry<Required<CoinLists>> => {
   const container = entryOf(kind, stored, recordOrUndefined, emptyRecord);
   const { balance: storedBalance, history: storedHistory } = container.value;
   const balance = entryOf(`${kind}.balance`, storedBalance, stringListOrUndefined, emptyList);
@@ -233,12 +233,13 @@ const coinListsOf = (kind: string, stored: unknown): ReadEntry<Required<CoinList
   };
 };
 
-type TopLevel = Metadata & { walks: Metadata };
+/** The stored JSON as a writer sees it: raw values, so a field no build reads stays as stored. */
+export type StoredExchangeState = Metadata & { walks: Metadata };
 
-const isTopLevel = (stored: unknown): stored is TopLevel =>
+const isTopLevel = (stored: unknown): stored is StoredExchangeState =>
   isRecord(stored) && stored.version === 1 && isRecord(stored.walks);
 
-const parsedOf = (stored: TopLevel): ParsedExchangeState => {
+const parsedOf = (stored: StoredExchangeState): ParsedExchangeState => {
   const walks = WALK_IDS.map((walkId) => ({
     walkId,
     ...entryOf(
@@ -270,17 +271,30 @@ const parsedOf = (stored: TopLevel): ParsedExchangeState => {
   };
 };
 
-const parsedFromText = (text: string): ParsedExchangeState => {
+const topLevelFromText = (text: string): StoredExchangeState | undefined => {
   const stored: unknown = bifoldr(eitherSync<Error, unknown>(() => JSON.parse(text)));
 
-  return isTopLevel(stored) ? parsedOf(stored) : { kind: 'malformed' };
+  return isTopLevel(stored) ? stored : undefined;
 };
 
+const emptyStoredState = (): StoredExchangeState => ({ version: 1, walks: {} });
+
 /**
- * Reads the text of `sync_state.exchange_state` in two levels: the top level (an object with
- * `version: 1` and an object `walks`) is malformed or not, and then every entry parses on its own
- * and reads as its empty value when it is unreadable, so a malformed entry never empties another.
- * No text (no row, or a column never written) is a state with nothing in it.
+ * The raw top level of `sync_state.exchange_state`, or `undefined` when it is malformed (an object
+ * with `version: 1` and an object `walks` is the only top level a build reads). No text (no row,
+ * or a column never written) is a state with nothing in it. The one rule for "malformed", for the
+ * parse that reads the column and for the writers that patch its raw JSON.
  */
-export const parseExchangeState = (text: string | null): ParsedExchangeState =>
-  foldMap(maybe(text), parsedFromText) ?? parsedOf({ version: 1, walks: {} });
+export const storedExchangeStateOf = (text: string | null): StoredExchangeState | undefined =>
+  text === null ? emptyStoredState() : topLevelFromText(text);
+
+/**
+ * Reads the text of `sync_state.exchange_state` in two levels: the top level is malformed or not,
+ * and then every entry parses on its own and reads as its empty value when it is unreadable, so a
+ * malformed entry never empties another.
+ */
+export const parseExchangeState = (text: string | null): ParsedExchangeState => {
+  const stored = storedExchangeStateOf(text);
+
+  return stored === undefined ? { kind: 'malformed' } : parsedOf(stored);
+};

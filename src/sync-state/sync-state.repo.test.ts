@@ -14,7 +14,10 @@ jest.mock('@kiko/db/client', () => {
   };
 });
 
+import { DatabaseSync } from 'node:sqlite';
 import { database, type syncState } from '@kiko/db';
+import type { ExchangeStatePatch } from '@kiko/crypto-sync/exchange/walk-state';
+import { applyAllMigrations, executingDrizzle } from '@kiko/test-support/real-sqlite';
 
 import { syncStateRepo } from './sync-state.repo';
 
@@ -174,5 +177,417 @@ describe('syncStateRepo', () => {
     };
 
     expect(row.accountId).toBe('acct-A');
+  });
+});
+
+// The exchange state writers run their re-read, institution gate and write inside one `write(...)`.
+// The fake handle above would never enforce the join or the upsert, so these cases point the same
+// mocked `write` at the shipped schema on a real in-process engine.
+const FLOOR_MS = 1;
+
+const openExchangeDatabase = (
+  institution: string | null,
+  exchangeState?: string | null,
+): DatabaseSync => {
+  const rawDatabase = new DatabaseSync(':memory:');
+
+  applyAllMigrations(rawDatabase);
+  rawDatabase.exec('PRAGMA foreign_keys = ON;');
+  rawDatabase
+    .prepare(
+      "INSERT INTO accounts (id, name, kind, institution) VALUES ('acc-1', 'Binance', 'crypto', ?)",
+    )
+    .run(institution);
+
+  if (exchangeState !== undefined) {
+    rawDatabase
+      .prepare("INSERT INTO sync_state (account_id, exchange_state) VALUES ('acc-1', ?)")
+      .run(exchangeState);
+  }
+
+  mockDatabaseTransaction = executingDrizzle<typeof database>(rawDatabase);
+
+  return rawDatabase;
+};
+
+/** `undefined` when the account has no `sync_state` row at all. */
+const storedExchangeState = (rawDatabase: DatabaseSync): string | null | undefined =>
+  (
+    rawDatabase.prepare("SELECT exchange_state FROM sync_state WHERE account_id = 'acc-1'").get() as
+      | { exchange_state: string | null }
+      | undefined
+  )?.exchange_state;
+
+const storedExchangeStateJson = (rawDatabase: DatabaseSync): unknown =>
+  JSON.parse(storedExchangeState(rawDatabase) as string);
+
+const walkStateText = (walks: Record<string, unknown>): string =>
+  JSON.stringify({ version: 1, walks });
+
+const patchWalk = (
+  walkId: 'capital' | 'pay' | 'earn',
+  field: 'cursor',
+  value: number,
+): ExchangeStatePatch => ({ kind: 'walk', walkId, field, value });
+
+const patchPending = (walkId: 'pay'): ExchangeStatePatch => ({
+  kind: 'walk',
+  walkId,
+  field: 'pending',
+  value: [{ start: 100, end: 200 }],
+});
+
+const patchCoinList = (
+  coins: 'untrackedCoins' | 'oversizedCoins',
+  list: 'balance' | 'history',
+  tickers: string[],
+): ExchangeStatePatch => ({ kind: 'coinList', coins, list, tickers });
+
+const patchInOrder = async (...patches: ExchangeStatePatch[]): Promise<void> => {
+  for (const patch of patches) {
+    await syncStateRepo.patchExchangeState('acc-1', 'binance', patch);
+  }
+};
+
+const MALFORMED_TOP_LEVELS = [
+  'not json',
+  'null',
+  '[]',
+  '{"version":2,"walks":{}}',
+  '{"version":1}',
+  '{"version":1,"walks":[]}',
+];
+
+describe('syncStateRepo.patchExchangeState', () => {
+  it('replaces only the named field and keeps a malformed sibling byte-identical', async () => {
+    // The parse drops `notImported`, `multiCoinSince` and an unknown walk id and repairs a
+    // malformed field, so none of it may travel through the parse on its way back to the column.
+    const stored = JSON.stringify({
+      version: 1,
+      futureKey: { keep: [1, 2] },
+      notImported: ['p2p-sale:1:2'],
+      walks: {
+        pay: {
+          cursor: 123_456,
+          pointCursor: 'junk',
+          multiCoinSince: 'later',
+          spanHints: { forward: 'x' },
+        },
+        earn: 'not-an-object',
+        mystery: { cursor: 9 },
+      },
+    });
+    const rawDatabase = openExchangeDatabase('binance', stored);
+
+    await syncStateRepo.patchExchangeState('acc-1', 'binance', patchWalk('pay', 'cursor', 777));
+
+    expect(storedExchangeState(rawDatabase)).toBe(
+      stored.replace('"cursor":123456', '"cursor":777'),
+    );
+  });
+
+  it.each<[string, ExchangeStatePatch, unknown]>([
+    ['cursor', { kind: 'walk', walkId: 'pay', field: 'cursor', value: null }, { cursor: null }],
+    ['rescan', { kind: 'walk', walkId: 'pay', field: 'rescan', value: 40 }, { rescan: 40 }],
+    [
+      'pending',
+      { kind: 'walk', walkId: 'pay', field: 'pending', value: [{ start: 1, end: 2 }] },
+      { pending: [{ start: 1, end: 2 }] },
+    ],
+    [
+      'pointCursor',
+      { kind: 'walk', walkId: 'pay', field: 'pointCursor', value: 5 },
+      { pointCursor: 5 },
+    ],
+    [
+      'rangeCursor',
+      { kind: 'walk', walkId: 'pay', field: 'rangeCursor', value: 6 },
+      { rangeCursor: 6 },
+    ],
+    [
+      'spanHints',
+      {
+        kind: 'walk',
+        walkId: 'pay',
+        field: 'spanHints',
+        value: { forward: [{ start: 1, end: 2 }], pending: [], rescan: [], point: [] },
+      },
+      { spanHints: { forward: [{ start: 1, end: 2 }], pending: [], rescan: [], point: [] } },
+    ],
+  ])('writes the %s of a walk and nothing else of that walk', async (_field, patch, written) => {
+    const rawDatabase = openExchangeDatabase('binance', walkStateText({ pay: { cursor: 10 } }));
+
+    await syncStateRepo.patchExchangeState('acc-1', 'binance', patch);
+
+    expect(storedExchangeStateJson(rawDatabase)).toEqual({
+      version: 1,
+      walks: { pay: { cursor: 10, ...(written as object) } },
+    });
+  });
+
+  it('replaces a walk entry that is not an object with the one field', async () => {
+    const rawDatabase = openExchangeDatabase('binance', walkStateText({ pay: 'oops' }));
+
+    await syncStateRepo.patchExchangeState('acc-1', 'binance', patchWalk('pay', 'cursor', 5));
+
+    expect(storedExchangeStateJson(rawDatabase)).toEqual({
+      version: 1,
+      walks: { pay: { cursor: 5 } },
+    });
+  });
+
+  it('writes a trade symbol, the rotation and the balance snapshot each alone', async () => {
+    const rawDatabase = openExchangeDatabase(
+      'binance',
+      JSON.stringify({ version: 1, walks: {}, trades: { symbols: 'junk', rotation: 2 } }),
+    );
+
+    await patchInOrder(
+      { kind: 'tradeSymbol', symbol: 'BTCUSDT', entry: { fromId: 5, heldOrderId: 7 } },
+      { kind: 'tradeSymbol', symbol: 'ETHUSDT', entry: { fromId: null } },
+      { kind: 'tradesRotation', value: 3 },
+      { kind: 'tradesBalanceSnapshot', value: { BTC: '1.5' } },
+    );
+
+    expect(storedExchangeStateJson(rawDatabase)).toEqual({
+      version: 1,
+      walks: {},
+      trades: {
+        symbols: { BTCUSDT: { fromId: 5, heldOrderId: 7 }, ETHUSDT: { fromId: null } },
+        rotation: 3,
+        balanceSnapshot: { BTC: '1.5' },
+      },
+    });
+  });
+
+  it('starts the trades entry with an empty rotation and snapshot when none is stored', async () => {
+    const rawDatabase = openExchangeDatabase('binance', walkStateText({}));
+
+    await patchInOrder({ kind: 'tradeSymbol', symbol: 'BTCUSDT', entry: { fromId: 5 } });
+
+    expect(storedExchangeStateJson(rawDatabase)).toEqual({
+      version: 1,
+      walks: {},
+      trades: { symbols: { BTCUSDT: { fromId: 5 } }, rotation: 0, balanceSnapshot: {} },
+    });
+  });
+
+  it.each([
+    ['inserts the row when none exists', undefined],
+    ['fills a column no walk has written yet', null],
+  ])('%s', async (_title, seed) => {
+    const rawDatabase = openExchangeDatabase('binance', seed);
+
+    await patchInOrder(patchWalk('pay', 'cursor', 5));
+
+    expect(storedExchangeStateJson(rawDatabase)).toEqual({
+      version: 1,
+      walks: { pay: { cursor: 5 } },
+    });
+  });
+
+  it.each(MALFORMED_TOP_LEVELS)('never overwrites a malformed top level: %s', async (stored) => {
+    const rawDatabase = openExchangeDatabase('binance', stored);
+
+    await patchInOrder(patchWalk('pay', 'cursor', 5));
+
+    expect(storedExchangeState(rawDatabase)).toBe(stored);
+  });
+
+  describe.each(['untrackedCoins', 'oversizedCoins'] as const)('the %s lists', (coins) => {
+    const stored = (lists: unknown): string =>
+      JSON.stringify({ version: 1, walks: {}, [coins]: lists });
+
+    it('replaces a balance list and adds to a history list without duplicates', async () => {
+      const rawDatabase = openExchangeDatabase(
+        'binance',
+        stored({ balance: ['AAA', 'BBB'], history: ['XXX'] }),
+      );
+
+      await patchInOrder(
+        patchCoinList(coins, 'balance', ['CCC']),
+        patchCoinList(coins, 'history', ['YYY', 'XXX', 'YYY']),
+      );
+
+      expect(storedExchangeStateJson(rawDatabase)).toEqual({
+        version: 1,
+        walks: {},
+        [coins]: { balance: ['CCC'], history: ['XXX', 'YYY'] },
+      });
+    });
+
+    it.each([
+      ['starts a list no read has written yet', undefined, { history: ['YYY'] }],
+      [
+        'reads a malformed stored history as empty and keeps the balance list as stored',
+        { balance: 'junk', history: ['XXX', 7] },
+        { balance: 'junk', history: ['YYY'] },
+      ],
+    ])('%s', async (_title, seed, written) => {
+      const rawDatabase = openExchangeDatabase('binance', stored(seed));
+
+      await patchInOrder(patchCoinList(coins, 'history', ['YYY']));
+
+      expect(storedExchangeStateJson(rawDatabase)).toEqual({
+        version: 1,
+        walks: {},
+        [coins]: written,
+      });
+    });
+  });
+
+  describe('the account gate (moved from holdings.repo.history-cursor-account-gate.test.ts)', () => {
+    const CONNECTED = walkStateText({ capital: { cursor: 500 } });
+
+    it.each([
+      ['has left the exchange', null],
+      ['belongs to another exchange', 'bybit'],
+    ])('writes nothing once the account %s', async (_case, institution) => {
+      const rawDatabase = openExchangeDatabase(institution, CONNECTED);
+
+      await patchInOrder(patchWalk('capital', 'cursor', 999_999));
+
+      expect(storedExchangeState(rawDatabase)).toBe(CONNECTED);
+    });
+
+    it.each([
+      ['left the exchange', 'acc-1', null],
+      ['does not exist', 'ghost', 'binance'],
+    ])('inserts no row for an account that %s', async (_case, accountId, institution) => {
+      const rawDatabase = openExchangeDatabase(institution);
+
+      await syncStateRepo.patchExchangeState(
+        accountId,
+        'binance',
+        patchWalk('capital', 'cursor', 999_999),
+      );
+
+      expect(storedExchangeState(rawDatabase)).toBeUndefined();
+    });
+
+    it('is a no-op on a disconnected account', async () => {
+      const rawDatabase = openExchangeDatabase(null, CONNECTED);
+
+      await patchInOrder(patchWalk('capital', 'cursor', 999_999));
+
+      expect(storedExchangeStateJson(rawDatabase)).toEqual({
+        version: 1,
+        walks: { capital: { cursor: 500 } },
+      });
+    });
+
+    it('keeps the other walks cursors when one walk advances its own', async () => {
+      const rawDatabase = openExchangeDatabase('binance', CONNECTED);
+
+      await patchInOrder(patchWalk('pay', 'cursor', 700), patchWalk('earn', 'cursor', 800));
+
+      expect(storedExchangeStateJson(rawDatabase)).toEqual({
+        version: 1,
+        walks: { capital: { cursor: 500 }, pay: { cursor: 700 }, earn: { cursor: 800 } },
+      });
+    });
+
+    it.each<[string, ExchangeStatePatch]>([
+      [
+        "a disconnect's floor write is not undone by a walk's late-arriving window commit",
+        patchWalk('capital', 'cursor', 999_999),
+      ],
+      ["a disconnect's reset is not undone by a walk's late-arriving write", patchPending('pay')],
+    ])('%s', async (_title, latePatch) => {
+      const rawDatabase = openExchangeDatabase('binance', CONNECTED);
+      await patchInOrder(patchPending('pay'));
+
+      // The disconnect in its own real order: reset FIRST, then clear the institution.
+      await syncStateRepo.resetExchangeState('acc-1', 'binance', FLOOR_MS);
+      rawDatabase.prepare("UPDATE accounts SET institution = NULL WHERE id = 'acc-1'").run();
+
+      // A write from a walk that started BEFORE the disconnect, arriving after it: it must not
+      // resurrect a forward watermark or a pending list over the reset.
+      await patchInOrder(latePatch);
+
+      expect(storedExchangeStateJson(rawDatabase)).toEqual({
+        version: 1,
+        walks: { capital: { cursor: FLOOR_MS }, pay: { pending: [] } },
+      });
+    });
+  });
+});
+
+describe('syncStateRepo.resetExchangeState', () => {
+  const SPAN_HINTS = {
+    forward: [{ start: 100, end: 150 }],
+    pending: [],
+    rescan: [{ start: 200, end: 210 }],
+    point: [],
+  };
+  const RANGES = [{ start: 100, end: 200 }];
+
+  it('resets every walk to the floor, empties pending lists, removes the coin lists and replaces a malformed value', async () => {
+    const rawDatabase = openExchangeDatabase(
+      'binance',
+      JSON.stringify({
+        version: 1,
+        futureKey: true,
+        notImported: ['p2p-sale:1:2'],
+        trades: { symbols: { BTCUSDT: { fromId: 5 } }, rotation: 2, balanceSnapshot: {} },
+        untrackedCoins: { balance: ['AAA'], history: ['BBB'] },
+        oversizedCoins: { balance: ['CCC'], history: ['DDD'] },
+        walks: {
+          capital: {
+            cursor: 500,
+            rescan: 400,
+            pending: RANGES,
+            pointCursor: 3,
+            rangeCursor: 4,
+            spanHints: SPAN_HINTS,
+          },
+          pay: { cursor: 700, pending: RANGES },
+          transfer: { pointCursor: 5, multiCoinSince: 8 },
+          convert: { cursor: null, rescan: 'junk' },
+          earn: 'not-an-object',
+          mystery: { cursor: 9 },
+        },
+      }),
+    );
+
+    await syncStateRepo.resetExchangeState('acc-1', 'binance', FLOOR_MS);
+
+    expect(storedExchangeStateJson(rawDatabase)).toEqual({
+      version: 1,
+      walks: {
+        capital: { cursor: FLOOR_MS, rescan: FLOOR_MS, pending: [] },
+        pay: { cursor: FLOOR_MS, pending: [] },
+        transfer: {},
+        convert: { cursor: FLOOR_MS, rescan: FLOOR_MS },
+      },
+    });
+
+    for (const malformed of MALFORMED_TOP_LEVELS) {
+      const malformedDatabase = openExchangeDatabase('binance', malformed);
+
+      await syncStateRepo.resetExchangeState('acc-1', 'binance', FLOOR_MS);
+
+      expect(storedExchangeState(malformedDatabase)).toBe('{"version":1,"walks":{}}');
+    }
+  });
+
+  it('writes nothing once the account left the exchange', async () => {
+    const stored = walkStateText({ capital: { cursor: 500 } });
+    const rawDatabase = openExchangeDatabase(null, stored);
+
+    await syncStateRepo.resetExchangeState('acc-1', 'binance', FLOOR_MS);
+
+    expect(storedExchangeState(rawDatabase)).toBe(stored);
+  });
+
+  it.each([
+    ['no row', undefined],
+    ['a null column', null],
+  ])('leaves %s as it is when no walk ever wrote state', async (_case, seed) => {
+    const rawDatabase = openExchangeDatabase('binance', seed);
+
+    await syncStateRepo.resetExchangeState('acc-1', 'binance', FLOOR_MS);
+
+    expect(storedExchangeState(rawDatabase)).toBe(seed);
   });
 });

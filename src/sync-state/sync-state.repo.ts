@@ -1,5 +1,35 @@
 import { eq } from 'drizzle-orm';
-import { type Repository, syncState, database, write } from '@kiko/db';
+import {
+  type ExchangeStatePatch,
+  exchangeStatePatched,
+  exchangeStateReset,
+} from '@kiko/crypto-sync/exchange/walk-state';
+import { type Repository, accounts, syncState, database, write } from '@kiko/db';
+
+/**
+ * The stored `exchange_state` text of an account that is STILL connected to `exchangeId`, read
+ * inside the writer's own `write(...)`: `undefined` when the account is gone or left the exchange
+ * (a walk holds the credentials for its whole run, so a disconnect can commit while it is in
+ * flight), `{ text: null }` when it has no state row or a never-written column.
+ */
+const connectedExchangeState = async (
+  databaseTransaction: typeof database,
+  accountId: string,
+  exchangeId: string,
+): Promise<{ text: string | null } | undefined> => {
+  const rows = await databaseTransaction
+    .select({ institution: accounts.institution, exchangeState: syncState.exchangeState })
+    .from(accounts)
+    .leftJoin(syncState, eq(syncState.accountId, accounts.id))
+    .where(eq(accounts.id, accountId));
+  const row = rows.at(0);
+
+  if (row === undefined || row.institution !== exchangeId) {
+    return undefined;
+  }
+
+  return { text: row.exchangeState };
+};
 
 /**
  * The per-connection Monobank sync cursor repository. It de-globalizes the
@@ -71,4 +101,51 @@ export const syncStateRepo = {
         .set({ failedSyncMonobankIds: ids })
         .where(eq(syncState.accountId, accountId)),
     ),
+  /**
+   * Write one change to an exchange account's `exchange_state` (a walk's mark, a trade entry, a
+   * coin list), only while `accounts.institution` is still `exchangeId`: the re-read, the gate and
+   * the write share one `write(...)`, which op-sqlite runs on its one worker queue, so a late
+   * write from a walk started before a disconnect finds the institution cleared and writes
+   * nothing, instead of undoing the disconnect's reset. It patches the stored JSON text, never the
+   * parse (see `exchangeStatePatched`), inserts the row when none exists, and writes nothing when
+   * the stored top level is malformed.
+   */
+  patchExchangeState: (accountId: string, exchangeId: string, patch: ExchangeStatePatch) =>
+    write(async (databaseTransaction) => {
+      const stored = await connectedExchangeState(databaseTransaction, accountId, exchangeId);
+
+      if (stored === undefined) {
+        return;
+      }
+
+      const text = exchangeStatePatched(stored.text, patch);
+
+      if (text === undefined) {
+        return;
+      }
+
+      await databaseTransaction
+        .insert(syncState)
+        .values({ accountId, exchangeState: text })
+        .onConflictDoUpdate({ target: syncState.accountId, set: { exchangeState: text } });
+    }),
+  /**
+   * Replace an exchange account's whole `exchange_state` with its walks reset to `floorMs`
+   * (`exchangeStateReset`): `disconnectCryptoAccount` calls it BEFORE `accountsRepo.disconnect`,
+   * so the institution gate below still passes for it and is already closed for any walk write
+   * that arrives later. A column nothing ever wrote stays null.
+   */
+  resetExchangeState: (accountId: string, exchangeId: string, floorMs: number) =>
+    write(async (databaseTransaction) => {
+      const stored = await connectedExchangeState(databaseTransaction, accountId, exchangeId);
+
+      if (stored === undefined || stored.text === null) {
+        return;
+      }
+
+      await databaseTransaction
+        .update(syncState)
+        .set({ exchangeState: exchangeStateReset(stored.text, floorMs) })
+        .where(eq(syncState.accountId, accountId));
+    }),
 } satisfies Repository;
