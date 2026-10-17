@@ -111,8 +111,10 @@ Section 1, HIG Layout).
      - A detail opened from the 1/3 pane (for example a transaction from Home) replaces the
        dashboard in the 2/3 slot, as in the Duo. It keeps the 600 pt content cap, centered.
      - Accounts and Settings tabs keep equal halves (a list beside a detail does not gain from 2/3).
-   - `resolvePaneGeometry` takes the split ratio as an input; `TwoPaneLayout` and the BottomSheet
-     `centredFrame` both pass the same value, so a sheet frame matches the panes.
+   - `resolvePaneGeometry` takes the split ratio as an input from `TwoPaneLayout`; the BottomSheet
+     keeps the equal share, because a flat sheet centres in the window (Section 4) and a fold
+     overrides any ratio, so the share never changes a sheet frame (orchestrator ruling
+     2026-10-17, preflight R1).
    - Pane width at 1366: ~910 (dashboard, 2 columns) and ~455 (Home). The BottomSheet keeps its
      540 pt cap.
 3. Minimum pane width: two panes only when each pane is at least 360 pt. A regular window narrower
