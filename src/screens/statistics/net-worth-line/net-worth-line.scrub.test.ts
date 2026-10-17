@@ -105,6 +105,23 @@ describe('placeScrubLabel', () => {
     expect(place(50, 120, 100)).toBe(0);
   });
 
+  it('keeps the left side when the label sits exactly flush with the plot start', () => {
+    expect(place(86, 80, 100)).toBe(0);
+  });
+
+  it('clamps against the plot end when neither side fits and the centre overshoots', () => {
+    expect(place(80, 80, 100)).toBe(20);
+  });
+
+  it('never leaves a 100-wide plot for any line position', () => {
+    for (let lineX = 0; lineX <= 100; lineX += 1) {
+      const left = place(lineX, 80, 100);
+
+      expect(left).toBeGreaterThanOrEqual(0);
+      expect(left + 80).toBeLessThanOrEqual(100);
+    }
+  });
+
   it('never leaves the plot for any line position', () => {
     for (let lineX = 0; lineX <= 240; lineX += 1) {
       const left = place(lineX);

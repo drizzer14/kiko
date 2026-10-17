@@ -207,6 +207,63 @@ describe('NetWorthLine scrub line', () => {
     expect(labelStyle(view).opacity).not.toBe(0);
   });
 
+  it('shows the label at its exact place beside the line (the gap is 8)', async () => {
+    const view = await renderLine();
+    await measure(view);
+
+    expect(pointXs(view)[3]).toBe(312);
+    expect(labelStyle(view).left).toBe(146);
+
+    await drag([-50]);
+
+    expect(pointXs(view)[0]).toBe(8);
+    expect(labelStyle(view).left).toBe(14);
+  });
+
+  it('keeps the label hidden after only the plot is measured', async () => {
+    const view = await renderLine();
+
+    await fireEvent(view.getByTestId('net-worth-line-plot'), 'layout', layoutEvent(PLOT_WIDTH));
+
+    expect(labelStyle(view).opacity).toBe(0);
+  });
+
+  it('keeps the label hidden after only the label is measured', async () => {
+    const view = await renderLine();
+
+    await fireEvent(
+      view.getByTestId('net-worth-line-scrub-label'),
+      'layout',
+      layoutEvent(LABEL_WIDTH),
+    );
+
+    expect(labelStyle(view).opacity).toBe(0);
+  });
+
+  it('shows the label fully once both are measured', async () => {
+    const view = await renderLine();
+    await measure(view);
+
+    expect(labelStyle(view).opacity).toBe(1);
+  });
+
+  it('ticks again when a new drag returns to a point after the line moved elsewhere', async () => {
+    const view = await renderLine();
+    await measure(view);
+    const xs = pointXs(view).map(touchXOf);
+
+    await drag([xs[1]]);
+    await fireEvent(view.getByTestId('net-worth-line-plot'), 'accessibilityAction', {
+      nativeEvent: { actionName: 'increment' },
+    });
+    expect(scrubX(view)).toBe(pointXs(view)[2]);
+
+    await drag([xs[1]]);
+
+    expect(scrubX(view)).toBe(pointXs(view)[1]);
+    expect(trigger).toHaveBeenCalledTimes(2);
+  });
+
   it('goes back to the present day when the period changes', async () => {
     const view = await renderLine();
     await measure(view);
@@ -326,6 +383,19 @@ describe('NetWorthLine scrub line', () => {
       }
       expect(scrubX(view)).toBe(pointXs(view)[0]);
       expect(trigger).not.toHaveBeenCalled();
+    });
+
+    it('ignores an accessibility action that is not a step', async () => {
+      const view = await renderLine();
+
+      await fireEvent(view.getByTestId('net-worth-line-plot'), 'accessibilityAction', {
+        nativeEvent: { actionName: 'activate' },
+      });
+
+      expect(scrubX(view)).toBe(pointXs(view)[3]);
+      expect(view.getByTestId('net-worth-line-plot').props.accessibilityValue).toEqual({
+        text: selectedDayText(points[3]),
+      });
     });
 
     describe('in Ukrainian', () => {
