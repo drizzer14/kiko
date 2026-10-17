@@ -224,3 +224,43 @@ describe('paths.exclude (kiko-linter › Adding a pre-write guard rule)', () => 
     expect(ruleFileTexts.flatMap(singleTestFileExcludes)).toEqual([]);
   });
 });
+
+// The SHELL-WRITE deny's trees live in kill-guard.js; its inventory row and the header of
+// kill-guard-writes.test.ts name them, so a tree added there and not named here fails.
+const WRITE_GUARDED_TREES_PATTERN = /const WRITE_GUARDED_TREES = new Set\(\[([^\]]*)\]\)/;
+
+const SHELL_WRITE_ROW_PREFIX = '| (kill-guard) SHELL-WRITE deny |';
+
+const WRITES_TEST_HEADER_LINES = 14;
+
+describe('every WRITE_GUARDED_TREES member is named where the SHELL-WRITE deny is documented', () => {
+  const guardSource = readFileSync(join(REPOSITORY_ROOT, 'scripts/checks/kill-guard.js'), 'utf8');
+
+  const trees = (guardSource.match(WRITE_GUARDED_TREES_PATTERN)?.[1] ?? '')
+    .split(',')
+    .map((member) => member.trim().replace(/'/g, ''))
+    .filter((member) => member !== '');
+
+  const inventoryRow =
+    readFileSync(join(REPOSITORY_ROOT, INVENTORY), 'utf8')
+      .split('\n')
+      .find((line) => line.startsWith(SHELL_WRITE_ROW_PREFIX)) ?? '';
+
+  const writesTestHeader = readFileSync(join(__dirname, 'kill-guard-writes.test.ts'), 'utf8')
+    .split('\n')
+    .slice(0, WRITES_TEST_HEADER_LINES)
+    .join('\n');
+
+  it('reads a non-empty tree list and an inventory row', () => {
+    expect(trees.length).toBeGreaterThan(0);
+    expect(inventoryRow).not.toBe('');
+  });
+
+  it('names each tree in the inventory row', () => {
+    expect(trees.filter((tree) => !inventoryRow.includes(`\`${tree}/\``))).toEqual([]);
+  });
+
+  it('names each tree in the kill-guard-writes.test.ts header', () => {
+    expect(trees.filter((tree) => !writesTestHeader.includes(`${tree}/`))).toEqual([]);
+  });
+});

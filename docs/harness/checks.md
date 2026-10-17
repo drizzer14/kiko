@@ -185,7 +185,11 @@ The queue never takes the worktree's index.lock for these reads. A job that edit
 without committing records `unknown`; an edit reverted before the end is not seen, and ignored
 files (`.env`, `node_modules`) are not counted; keep the tree untouched until DONE. The LAST
 `verify` line whose head equals the full sha decides and needs exit 0;
-`check-all`, `gate`, `unknown`, and old 5-field lines never count. Main must be on
+`check-all`, `gate`, `unknown`, `lost`, and old 5-field lines never count. The queue writes one
+`lost` line when a waiter prunes a dead waiter's ticket, and a lock-form `lost` line when it
+reclaims a dead lock (its job may have run fully). `$QUEUE_DIRECTORY/format` is a format stamp: an
+older `job-queue.sh` copy refuses with exit 2. A copy that differs from the target worktree's own
+script prints a WARNING. Main must be on
 branch main and an ancestor of the sha. There is no bypass flag or variable; an override goes to
 the user plus a run-log note. Known limit: a hand-forged done.log line passes (the file belongs to
 cooperating agents), and `KIKO_QUEUE_DIR` redirects the evidence to another directory. See

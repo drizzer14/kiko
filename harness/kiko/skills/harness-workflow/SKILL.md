@@ -657,8 +657,10 @@ starts (orchestrator default D1, accepted by the user 2026-10-13); an unreadable
 too. A gate refuses a tip whose `mutation.sh` has no changed-line `--list` ("merge main first",
 exit 2) and a moved HEAD (exit 3); the queue never checks out files (the old H6 overlay is gone).
 Queue from the TARGET worktree's own `scripts/job-queue.sh`, never a copy from another branch
-(an older copy writes done.log lines `ff-main.sh` rejects). Closing a session kills its queue
-waiters and their tickets vanish with no done.log line: at handover or close run
+(an older copy refuses with exit 2 on the queue's `format` stamp, and a differing copy prints a
+WARNING). Closing a session kills its queue waiters: the next waiter that prunes a dead waiter's
+ticket writes one `lost` done.log line, and a reclaimed dead lock writes a lock-form `lost` line
+(its job may have run fully). At handover or close run
 `scripts/job-queue.sh status`, re-queue or hand over your own tickets, and never close a terminal
 with a live waiter. When many tracks run, the load never drops below a `wait-load.sh` limit:
 queue directly (the queue serializes) and throttle feature tracks with a LOAD HOLD (no new jest

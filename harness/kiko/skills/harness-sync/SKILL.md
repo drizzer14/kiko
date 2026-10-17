@@ -57,6 +57,11 @@ in the harness repo):
   `mainFastForward` kind with its scan of scripts and data bodies; the docs for these; in
   `job-queue.sh`: `tree_is_clean` (`--no-optional-locks` and `--untracked-files=all`),
   `confirm_tested_head`, and `read_tested_head`'s unknown rule.
+- H8 task 2, generic queue changes: the `lost` done.log lines (a pruned dead waiter's ticket; a
+  reclaimed dead lock, lock form); the queue `format` stamp (an older copy refuses, exit 2) and
+  the old-copy WARNING; `run_awaited` (`cmd & wait $!`, so a pid-only SIGINT is not lost on bash
+  3.2) with the in-flight command ended and waited for in cleanup; the no-settle-sleep rule for
+  queue tests (rendezvous, never a clock).
 - H7 set 3, generic doc-suite gate: the `medium.sh` doc-reading-suites Stop step; the `_lib.sh`
   helpers `harness_doc_roots_pattern`, `harness_doc_suites`, `harness_doc_files`,
   `harness_doc_suite_fixtures`, `harness_doc_fingerprint`, and `harness_doc_suites_by_hand`;

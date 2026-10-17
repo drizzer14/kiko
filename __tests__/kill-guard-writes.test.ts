@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { type SpawnSyncReturns, spawnSync } from 'node:child_process';
 
 // The shell-write deny of scripts/checks/kill-guard.js: a Bash command that
-// writes into src/, __tests__/, rules/, or e2e/ of any worktree of this repository
+// writes into src/, __tests__/, rules/, e2e/, or drizzle/ of any worktree of this repository
 // (`sed -i`, `perl -i`, a `>`/`>>` redirect, `tee`, a python or node
 // one-liner) skips the pre-write guard, which sees only Edit/Write/MultiEdit,
 // so the hook denies it and points at Edit/Write.

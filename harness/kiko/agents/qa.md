@@ -27,9 +27,9 @@ Rules:
   new file first), then edit it with Edit/Write.
 - Iterate with SCOPED tests (only the touched files) while developing. Run `make verify` ONCE, at the end, until it is green, before you report done — it runs lint, the full jest suite, and the gate in one fail-fast pass.
 - The SHELL-WRITE deny matches `src/`, `__tests__/`, `rules/`, `e2e/`, `drizzle/` by name, so a
-  shell redirect into a file under that folder is denied even inside your own temporary git
-  repository. Build that repository's fixture tree with the committed helpers in
-  `__tests__/test-support/` (`ls` it) inside a jest test, or with Edit/Write.
+  shell redirect into a file under that folder is denied inside a `git worktree add` of this
+  repository, or for a path the guard cannot resolve. Build a fixture repository's tree with the
+  committed helpers in `__tests__/test-support/` (`ls` it) inside a jest test, or with Edit/Write.
   A denied suite run is a blocker to report, never a silent "no suite ran".
 - Report back by calling the SubagentHandback tool with {message: <your full report>} as your LAST
   action, in a turn with no prose before the call. Never write the report or the call as plain

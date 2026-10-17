@@ -272,8 +272,9 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   guard-replay at Stop). Rule: deny a Bash write into `src/`,
   `__tests__/`, `rules/`, `e2e/`, or `drizzle/`
   (`WRITE_GUARDED_TREES` in `scripts/checks/kill-guard.js`; `drizzle/` is
-  guarded against shell writes only: no pre-write SQL rule covers an Edit/Write there, and
-  shipped-migrations covers it at Stop; `e2e/` joined
+  checked by the pre-write guard and guard-replay for `drizzle/migrations/*.test.ts` (`.ts` is in
+  scope); a `.sql` or `.json` there has no pre-write rule, and shipped-migrations covers a shipped
+  migration at Stop; `e2e/` joined
   on 2026-10-11 after a python write broke
   `e2e/screenshot/seed/demo-text.ts`; the pre-write guard and guard-replay
   read any `.ts`/`.tsx` outside `EXCLUDED_PREFIXES`, so `e2e/*.ts` is in
@@ -351,8 +352,10 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   so `hooks.json` is unchanged and no plugin reinstall is needed; a
   session in the main checkout gets it only after the merge to main.
 
-  A shell redirect into a tree is denied even inside your own temporary git repository: build its
-  fixture tree with the helpers in `__tests__/test-support/` inside a jest test, or with Edit/Write.
+  A shell redirect into a tree is denied inside a `git worktree add` of this repository, or for a
+  path the guard cannot resolve; it is not denied inside an unrelated temporary repository, yet
+  build its fixture tree with the helpers in `__tests__/test-support/` inside a jest test, or with
+  Edit/Write.
 
   WAIT-LOOP deny (why: a `while`/`until` loop whose process scan names
   the job it waits for matches its OWN command line, so it never ends;
@@ -2849,6 +2852,14 @@ mechanizable (see harness-workflow's "Classify every finding").
      call, `+new Date`, `Date()`, and a shell `date -u +%s`, `date +"%s"`.
      A unique temporary name comes from `createTemporaryDirectory(prefix)`,
      with `join(..., '<name>')` for a path inside it, never from the clock.
+     The invariant also covers the queue tests (`job-queue.test.ts`,
+     `ff-main.test.ts`): no settle sleep; prove concurrency by a rendezvous.
+   - bash 3.2 (macOS): a trapped SIGINT sent to one pid is lost when it
+     lands as a foreground external child is reaped. Where a signal must
+     not be lost, run the command as `cmd & wait $!` (`run_awaited` in
+     `scripts/job-queue.sh`), and end and wait an in-flight one in cleanup.
+     The wait loop and command substitutions are not covered (open gap
+     20261017T1654-kiko-harness-h8/1).
    - A test that needs a scratch folder uses
      `__tests__/test-support/temporary-directory.ts` (`createTemporaryDirectory`
      and `removeTemporaryDirectories` in an `afterEach`). New code uses the

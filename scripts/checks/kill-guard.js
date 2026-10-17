@@ -159,14 +159,12 @@ const SHELL_WRITE_REASON_LINES = [
     'Stop, after the fact.',
   'HOW TO FIX:     use the Edit or Write tool for that file; to move a file, use `git mv` ' +
     '(git add a new file first), which guard-replay follows as a rename. A path the guard ' +
-    'cannot resolve (a ' +
-    'variable, a glob) counts when a folder in it is named src, rules, e2e, drizzle, or __tests__: ' +
-    'write the ' +
-    'literal path, or use another folder name. Reading it, a redirect to /dev/null or to a path ' +
-    'outside those trees (your scratchpad, /tmp), git itself (without a redirect into those ' +
-    'trees), and a formatter or fixer writing on its own (./node_modules/.bin/biome check ' +
-    "--write, the harness's " +
-    'import-order --write) stay allowed. A git config file holds core.hooksPath: leave it as ' +
+    'cannot resolve (a variable, a glob) counts when a folder in it is named src, rules, e2e, ' +
+    'drizzle, or __tests__: write the literal path, or use another folder name. Reading it, a ' +
+    'redirect to /dev/null or to a path outside those trees (your scratchpad, /tmp), git itself ' +
+    '(without a redirect into those trees), and a formatter or fixer writing on its own ' +
+    "(./node_modules/.bin/biome check --write, the harness's import-order --write) stay allowed. " +
+    'A git config file holds core.hooksPath: leave it as ' +
     'scripts/ensure-git-hooks.sh sets it (repair with `bash scripts/ensure-git-hooks.sh`), and ' +
     'change any other setting with `git config`.',
   'DO NOT:         route the write through a variable, a script file, a shell fed by a pipe, or ' +
