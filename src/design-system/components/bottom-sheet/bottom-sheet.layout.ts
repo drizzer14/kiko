@@ -10,7 +10,7 @@ type SheetFrameInput = {
   maxWidth: number;
 };
 
-// An absent field leaves the card as it was: full width, uncapped.
+// An absent field means no constraint: full width, uncapped.
 export type SheetFrame = { width?: number; left?: number; heightCap?: number };
 
 // The card narrowed to `maxWidth` and centred: across the whole window when it is flat, inside the
