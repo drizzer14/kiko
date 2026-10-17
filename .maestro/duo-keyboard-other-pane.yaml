@@ -21,6 +21,9 @@
 # Run (host note, ops skill "Maestro on this host"):
 #   JAVA_HOME=/opt/homebrew/opt/openjdk@21 maestro --device E862974E test \
 #     .maestro/duo-keyboard-other-pane.yaml
+# Maestro has no switch to turn its automatic failure screenshot off (`maestro test --help`:
+# only --debug-output / --test-output-dir choose where artifacts go). To keep it out of the
+# repo, add `--debug-output <dir outside the worktree>` and delete that directory after.
 #
 # Authored WITHOUT a live Maestro run (battery, no simulator use): the first execution must
 # confirm the step sequence, in particular that tapping the secure field by its placeholder
@@ -46,7 +49,8 @@ appId: com.dmytro-vasylkivskyi.kiko
 # "Import Data" row (`settings-row-import-data`) opens the screen in the RIGHT pane.
 - tapOn:
     id: "settings-row-import-data"
-- assertVisible: "Choose file"
+- assertVisible:
+    id: "settings-button-pick-file"
 
 # Two-pane guard: in a single pane Import Data is pushed OVER the Settings list, so the row is
 # hidden. Seeing it next to the open Import Data screen proves the unfolded two-pane layout; a
@@ -54,14 +58,18 @@ appId: com.dmytro-vasylkivskyi.kiko
 - assertVisible:
     id: "settings-row-system"
 
-# Focus the "Encryption key" field (its placeholder `settings.dataImport.keyPlaceholder`;
-# the label "Encryption key" is a separate Text), then dismiss with the keyboard's Done
-# accessory (`common.done`). Three rounds, so an unpatched build's shift adds up.
+# Focus the "Encryption key" field and dismiss with the keyboard's Done accessory. The field
+# has no testID (import-data.screen.tsx passes none) and the Done button has none of its own
+# (the accessory's `keyboard-done-accessory` id is on its container), so both are matched by
+# a regex over the en and uk catalogues, which keeps the flow language-independent:
+# `settings.dataImport.keyPlaceholder` (en "Paste the key from your export", uk "Вставте ключ,
+# наданий при експорті") and `common.done` (en "Done", uk "Готово"). Three rounds, so an
+# unpatched build's shift adds up.
 - repeat:
     times: 3
     commands:
-      - tapOn: "Paste the key from your export"
-      - tapOn: "Done"
+      - tapOn: "Paste the key from your export|Вставте ключ, наданий при експорті"
+      - tapOn: "Done|Готово"
 
 # The left pane must not have moved: the top row is still on screen.
 - assertVisible:
