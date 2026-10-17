@@ -92,6 +92,26 @@ describe('serviceFor', () => {
   });
 });
 
+describe('the Binance Keychain item', () => {
+  it('is saved, read and cleared under the service string kiko.binance.credentials.<accountId> and the username binance', async () => {
+    const service = 'kiko.binance.credentials.acc-a';
+
+    await saveCredentials(ACCOUNT_A, fixture);
+
+    expect(mockSet).toHaveBeenCalledWith(
+      'binance',
+      '{"apiKey":"api-key-fixture","secret":"secret-fixture"}',
+      { service, accessible: 'AccessibleWhenUnlockedThisDeviceOnly' },
+    );
+    expect(await readCredentials(ACCOUNT_A)).toEqual(fixture);
+    expect(mockGet).toHaveBeenLastCalledWith({ service });
+
+    await clearCredentials(ACCOUNT_A);
+
+    expect(keychain.resetGenericPassword).toHaveBeenLastCalledWith({ service });
+  });
+});
+
 describe('per-account binance credentials', () => {
   it('saves the pair as one JSON Keychain item under the per-account service, unlocked-only with no per-read biometric', async () => {
     await saveCredentials(ACCOUNT_A, fixture);

@@ -1,5 +1,11 @@
-import * as Keychain from 'react-native-keychain';
-import { bifoldr, eitherSync } from 'fnts/either';
+import {
+  clearExchangeCredentials,
+  credentialServiceFor,
+  type ExchangeCredentials,
+  type ExchangeKeychain,
+  loadExchangeCredentials,
+  saveExchangeCredentials,
+} from '@kiko/crypto-sync/exchange/credentials';
 
 /**
  * The single GLOBAL Binance credentials service. Historically the app stored ONE
@@ -10,6 +16,13 @@ import { bifoldr, eitherSync } from 'fnts/either';
  */
 export const BINANCE_CREDENTIALS_SERVICE = 'kiko.binance.credentials';
 
+// Stored items outlive an app update, so the service string and the username are part of the
+// stored data: a changed byte would orphan every connected user's pair.
+const BINANCE_KEYCHAIN: ExchangeKeychain = {
+  service: BINANCE_CREDENTIALS_SERVICE,
+  username: 'binance',
+};
+
 /**
  * The per-account Keychain service for a Binance key pair, keyed by the stable
  * `accounts.id` (a local uuid — NOT a secret, so embedding it here leaks
@@ -17,33 +30,9 @@ export const BINANCE_CREDENTIALS_SERVICE = 'kiko.binance.credentials';
  * read/clear for account A can never touch account B's credentials.
  */
 export const serviceFor = (accountId: string): string =>
-  `${BINANCE_CREDENTIALS_SERVICE}.${accountId}`;
+  credentialServiceFor(BINANCE_KEYCHAIN, accountId);
 
-export type BinanceCredentials = { apiKey: string; secret: string };
-
-const isCredentials = (value: unknown): value is BinanceCredentials =>
-  typeof value === 'object' &&
-  value !== null &&
-  typeof (value as { apiKey?: unknown }).apiKey === 'string' &&
-  typeof (value as { secret?: unknown }).secret === 'string';
-
-/**
- * Storage-at-rest policy for the read-only Binance key pair: readable only
- * while the device is unlocked, and bound to this device (never iCloud-synced
- * or restored onto another one from a backup). Deliberately NO `accessControl`
- * — an item carrying `BIOMETRY_CURRENT_SET` forces a Face ID /
- * Touch ID prompt on EVERY read, so a pull-to-refresh sync (`readCredentials`
- * -> `fetchAccount`) would prompt the user each time. The app-wide biometric
- * gate is `LockGate` (`src/auth`), which replaces the per-item prompt. The pair
- * is never written to SQLite, holding metadata, or a log. Only the `service`
- * differs between the global item and each per-account item; the hardening is
- * identical, so it is derived here from ONE place and reused verbatim by every
- * writer (the per-account save and the credential migration).
- */
-export const hardenedFor = (service: string): Keychain.SetOptions => ({
-  service,
-  accessible: Keychain.ACCESSIBLE.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
-});
+export type BinanceCredentials = ExchangeCredentials;
 
 /**
  * Once-per-process latch for the legacy-policy re-save below: a module-level
@@ -60,27 +49,19 @@ let hasRepairedAccessPolicy = false;
 
 /**
  * Store the pair as ONE JSON Keychain item under the PER-ACCOUNT service for
- * `accountId`, hardened per above. Each connected account owns its own item, so
- * saving account A's pair never touches account B's. The pair goes ONLY to the
- * Keychain — never to SQLite, `sync_state`, `settings`, `holdings.metadata`, or a
- * log.
+ * `accountId`, hardened (see `hardenedFor`). Each connected account owns its own item, so
+ * saving account A's pair never touches account B's.
  */
 export const saveCredentials = async (
   accountId: string,
   credentials: BinanceCredentials,
 ): Promise<void> => {
-  await Keychain.setGenericPassword(
-    'binance',
-    JSON.stringify(credentials),
-    hardenedFor(serviceFor(accountId)),
-  );
+  await saveExchangeCredentials(BINANCE_KEYCHAIN, accountId, credentials);
   hasRepairedAccessPolicy = true;
 };
 
 /**
- * Reads the pair for ONE account. The per-account service string is derived from
- * the account id on every call, so a read for account A can never return account
- * B's credentials. No biometric prompt for an item stored under the hardened
+ * Reads the pair for ONE account. No biometric prompt for an item stored under the hardened
  * policy. A pair written before the hardening shipped still carries the old
  * per-read `BIOMETRY_CURRENT_SET` control (its first read here still prompts
  * once, unavoidably); it is re-saved once per process under the hardened,
@@ -90,16 +71,9 @@ export const saveCredentials = async (
 export const readCredentials = async (
   accountId: string,
 ): Promise<BinanceCredentials | undefined> => {
-  const stored = await Keychain.getGenericPassword({ service: serviceFor(accountId) });
+  const credentials = await loadExchangeCredentials(BINANCE_KEYCHAIN, accountId);
 
-  if (!stored) {
-    return undefined;
-  }
-
-  const parsed = eitherSync<unknown, unknown>(() => JSON.parse(stored.password));
-  const value = bifoldr(parsed);
-
-  if (!isCredentials(value)) {
+  if (credentials === undefined) {
     return undefined;
   }
 
@@ -111,12 +85,12 @@ export const readCredentials = async (
   // could disturb stored credentials if a write failed partway. `readToken`
   // and `readDbKey` are pure; this now matches them after the first call.
   if (!hasRepairedAccessPolicy) {
-    await saveCredentials(accountId, value);
+    await saveCredentials(accountId, credentials);
   }
 
-  return value;
+  return credentials;
 };
 
 export const clearCredentials = async (accountId: string): Promise<void> => {
-  await Keychain.resetGenericPassword({ service: serviceFor(accountId) });
+  await clearExchangeCredentials(BINANCE_KEYCHAIN, accountId);
 };
