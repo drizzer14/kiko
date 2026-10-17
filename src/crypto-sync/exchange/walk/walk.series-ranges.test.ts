@@ -223,6 +223,7 @@ describe('advanceWalkMarks, with ranges that are owed in one series', () => {
     await advanceWalkMarks({
       pass: 'forward',
       span: { start: 100, end: 2_000 },
+      series: undefined,
       owed: [owed],
       plan: planOf({ rescanEnd: 1_000_000 }),
       marks,

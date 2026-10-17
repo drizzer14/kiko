@@ -633,8 +633,11 @@ export type WalkMarks = {
 
 type MarkAdvance = {
   span: WalkWindow;
-  /** The series the span was read in, none for every series (see `OwedWindow`). */
-  series?: readonly string[];
+  /**
+   * The series the span was read in, none for every series (see `OwedWindow`). A required key, so
+   * a walk that reads some series per window cannot leave it out and cut ground it never read.
+   */
+  series: readonly string[] | undefined;
   /** The ground of `span` the walk could not commit, which stays owed (a point, or the span). */
   owed?: OwedGround[];
   plan: WalkPlan;

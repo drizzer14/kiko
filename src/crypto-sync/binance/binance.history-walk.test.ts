@@ -1716,6 +1716,7 @@ describe('advanceWalkMarks', () => {
     await advanceWalkMarks({
       pass,
       span,
+      series: undefined,
       owed,
       plan: walkPlan,
       marks,

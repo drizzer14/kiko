@@ -573,6 +573,8 @@ const commitSpan = (
       advanceWalkMarks({
         pass,
         span,
+        // No `seriesOf`: a window is never narrowed to some series, so a span reads all of it.
+        series: undefined,
         owed,
         plan,
         marks,
