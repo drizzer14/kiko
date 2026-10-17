@@ -21,10 +21,12 @@ import {
   storeRangeCursor,
   storeSpanHints,
   walkSpans,
+  walkMarkWriterOf,
   type WalkMarks,
   type WalkWindow,
 } from '@kiko/crypto-sync/exchange/walk';
 import maybe, { foldMap } from 'fnts/maybe';
+import { walkStateFake, type WalkField } from '@kiko/test-support/walk-marks';
 import type { BinanceSpanHintPass, BinanceSpanHints } from '@kiko/crypto-sync/exchange/walk-state';
 
 import {
@@ -2965,3 +2967,107 @@ describe.each(LANES.filter((lane) => lane.walk === 'earn'))(
     );
   },
 );
+
+const SHARED_WALKS = ['capital', 'pay', 'transfer', 'earn'] as const;
+
+type SharedWalk = (typeof SHARED_WALKS)[number];
+
+type WrittenMarks = Partial<Record<WalkField, unknown>>;
+
+/** A small deterministic sequence, so the order the walks write in is not picked by hand. */
+const nextRandom = (state: number): number => (state * 1_103_515_245 + 12_345) % 2 ** 31;
+
+const interleavedWalks = (seed: number, run: number): SharedWalk[] =>
+  SHARED_WALKS.map((walk, index) => ({ walk, key: nextRandom(seed + run * 7 + index * 13) }))
+    .sort((left, right) => left.key - right.key)
+    .map(({ walk }) => walk);
+
+const freshMarks = (): WalkMarks => ({
+  cursor: null,
+  rescanCursor: null,
+  pointCursor: null,
+  rangeCursor: null,
+  hints: NO_HINTS,
+  pending: [],
+});
+
+describe.each(SEEDS)('walk marks in one shared state, order seed %d', (seed) => {
+  const ACCOUNT_ID = 'acc-1';
+  const UNKNOWN_KEYS = { futureKey: { note: 'kept' }, notImported: ['XYZ'] };
+  const UNKNOWN_WALKS = { somebodyElse: { cursor: 7, pending: [{ start: 1, end: 2 }] } };
+  const RUNS = 8;
+
+  it.each(RUN_GAPS.map((gapMs) => ({ gapMs })))(
+    "a patch never loses another walk's marks across runs, runs $gapMs ms apart: each walk holds what it last wrote, and the unknown keys and walk ids stay",
+    async ({ gapMs }) => {
+      const fake = walkStateFake({
+        accountId: ACCOUNT_ID,
+        marks: { capital: { cursor: FLOOR_MS }, earn: { rescan: FLOOR_MS } },
+        unknown: { keys: UNKNOWN_KEYS, walks: UNKNOWN_WALKS },
+      });
+      const lastWritten: Record<SharedWalk, WrittenMarks> = {
+        capital: { cursor: FLOOR_MS },
+        pay: {},
+        transfer: {},
+        earn: { rescan: FLOOR_MS },
+      };
+      const live: Record<SharedWalk, WalkMarks> = {
+        capital: freshMarks(),
+        pay: freshMarks(),
+        transfer: freshMarks(),
+        earn: freshMarks(),
+      };
+      const observed = new Set<string>();
+
+      const expectEveryWalkHoldsItsOwn = async (): Promise<void> => {
+        SHARED_WALKS.forEach((walk) => {
+          expect(fake.marksOf(walk)).toEqual(lastWritten[walk]);
+        });
+
+        const stored = JSON.parse((await fake.deps.readExchangeState(ACCOUNT_ID)) ?? '');
+
+        expect(stored).toMatchObject({ ...UNKNOWN_KEYS, walks: UNKNOWN_WALKS });
+        observed.add(JSON.stringify(stored.walks));
+      };
+
+      for (let run = 0; run < RUNS; run += 1) {
+        const time = START_MS + run * gapMs;
+
+        for (const walk of interleavedWalks(seed, run)) {
+          const write = walkMarkWriterOf(fake.freshDeps(), ACCOUNT_ID, walk);
+          const own = SHARED_WALKS.indexOf(walk) + 1;
+          const start = time + own * SECOND_MS + run;
+          const window = { start, end: start + HOUR_MS };
+          const pending = [{ start, end: start + own * HOUR_MS }];
+          const hints = { ...NO_HINTS, forward: [{ start, end: start + own }] };
+
+          await storePointCursor({ window, marks: live[walk], write });
+          lastWritten[walk].pointCursor = start;
+          await expectEveryWalkHoldsItsOwn();
+
+          await storeRangeCursor({ window, marks: live[walk], write });
+          lastWritten[walk].rangeCursor = window.end;
+          await expectEveryWalkHoldsItsOwn();
+
+          await write([
+            { field: 'pending', value: pending },
+            { field: 'cursor', value: time + own },
+          ]);
+          lastWritten[walk].pending = pending;
+          lastWritten[walk].cursor = time + own;
+          await expectEveryWalkHoldsItsOwn();
+
+          if ((run + own) % 2 === 0) {
+            await storeSpanHints({ hints, marks: live[walk], write });
+            lastWritten[walk].spanHints = hints;
+            await write([{ field: 'rescan', value: time - own }]);
+            lastWritten[walk].rescan = time - own;
+            await expectEveryWalkHoldsItsOwn();
+          }
+        }
+      }
+
+      expect(observed.size).toBeGreaterThan(RUNS);
+    },
+  );
+});

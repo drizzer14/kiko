@@ -223,6 +223,8 @@ export const numberMarkWritesOfAnyWalk = (deps: Partial<ExchangeStateDeps>): num
 type WalkWorld = {
   accountId?: string;
   marks?: Partial<Record<WalkName, WalkMarkSeed>>;
+  /** Stored JSON this build does not read (a top-level key, an unknown walk id), kept as it is. */
+  unknown?: { keys?: Record<string, unknown>; walks?: Record<string, unknown> };
   /** Holdings listed after the Spot holding, such as a Funding or an Earn one. */
   alongside?: HoldingRow[];
   /** Called before the fake applies the write, so a test can log the order of writes. */
@@ -234,7 +236,12 @@ type WalkStateDeps = { patchExchangeState: PatchMock; readExchangeState: jest.Mo
 /** Throws on a patch no walk owns: a fake that accepted one would hide a mistyped mark. */
 export const walkStateFake = (world: WalkWorld = {}) => {
   const accountId = world.accountId ?? 'acc-1';
-  let state = withWalkMarkSeeds({}, accountId, world.marks ?? {});
+  const seeded = withWalkMarkSeeds({}, accountId, world.marks ?? {});
+  let state: ExchangeStateSeed = {
+    ...world.unknown?.keys,
+    ...seeded,
+    walks: { ...world.unknown?.walks, ...seeded.walks },
+  };
 
   const seed = (walkName: WalkName, marks: WalkMarkSeed): void => {
     state = withWalkMarks(state, accountId, walkName, marks);
