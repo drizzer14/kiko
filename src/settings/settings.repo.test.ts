@@ -45,9 +45,14 @@ const makeSettingsRowDatabaseTransaction = (store: Record<string, unknown>[]): u
       },
     }),
   }),
-  select: () => ({
+  select: (projection?: Record<string, unknown>) => ({
     from: () => ({
-      where: async () => store,
+      where: async () =>
+        projection === undefined
+          ? store
+          : store.map((row) =>
+              Object.fromEntries(Object.keys(projection).map((key) => [key, row[key]])),
+            ),
     }),
   }),
 });
@@ -138,6 +143,16 @@ describe('settingsRepo', () => {
         cursor: 'XRP',
         settled: { EUR: { start: 5, firstDay: 6 } },
       });
+    });
+
+    it('hands the change the empty state when no settings row exists yet', async () => {
+      const store: Record<string, unknown>[] = [];
+      mockDatabaseTransaction = makeSettingsRowDatabaseTransaction(store);
+      const change = jest.fn(() => EMPTY_HISTORY_BACKFILL_STATE);
+
+      await expect(settingsRepo.changeHistoryBackfillState(change)).resolves.toBeUndefined();
+
+      expect(change).toHaveBeenCalledWith({ cursor: null, settled: {} });
     });
 
     it('clears the column when the change leaves nothing to keep', async () => {
