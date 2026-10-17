@@ -33,8 +33,6 @@
     "@typescript/native-preview",
     "jscpd",
     "depcheck",
-    "@env",
-    "babel-plugin-inline-import",
-    "babel-plugin-module-resolver"
+    "@env"
   ]
 }
