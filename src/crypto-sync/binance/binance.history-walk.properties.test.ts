@@ -2096,29 +2096,6 @@ describe.each(LANES)('owed ground that never commits, $name lane', (laneOfName) 
       },
     );
 
-    // A lane that reads one series has no point in a series, so there is nothing to cut.
-    const whenLaneReadsSeries = lane.series === undefined ? it.skip.each : it.each;
-
-    whenLaneReadsSeries(
-      seeds.flatMap((seed) =>
-        [undefined, HOUR_MS].map((spanMs) => ({ seed, spanMs, bound: rangeRuns(lane, 1) + 40 })),
-      ),
-    )(
-      'P1-P4: an owed range with no series and a stuck record of one series found as a point inside it, a record of another series at its time (seed $seed, a read too full above $spanMs ms keeps the range pass reading for many runs, so the point is read alone first): a read of the point never cuts it out of the range, so the other series record imports within $bound runs and the point stays',
-      async ({ seed, spanMs, bound }) => {
-        await check(
-          {
-            scenario: pointInSeriesRangeScenario(lane, seed),
-            ...foldMap(maybe(spanMs), (span) => ({
-              dense: { range: { start: BASE_MS, end: BASE_MS + 2 * DAY_MS }, spanMs: span },
-            })),
-          },
-          { imported: bound, pointed: 1 },
-          bound + 5,
-        );
-      },
-    );
-
     it.each(
       [1, 3, 12].map((count) => ({ count, bound: pointRuns(count + 1, pointReadsOf(lane)) })),
     )(
@@ -2910,6 +2887,50 @@ describe.each(LANES)('a split window resumes in the next run, $name lane', (lane
     },
   );
 });
+
+describe.each(LANES.filter((lane) => lane.series !== undefined))(
+  'a point of one series inside a range owed in every series, $name lane',
+  (laneOfName) => {
+    let warn: jest.SpyInstance;
+
+    beforeEach(() => {
+      warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    });
+
+    afterEach(() => {
+      warn.mockRestore();
+    });
+
+    describe.each(readingsOf(laneOfName))('a read that returns the records with %s', (reading) => {
+      const lane = laneUnder(laneOfName, reading);
+      const seeds = reading === 'both ends included' ? SEEDS : SEEDS.slice(0, 1);
+
+      it.each(
+        seeds.flatMap((seed) =>
+          [undefined, HOUR_MS].map((spanMs) => ({ seed, spanMs, bound: rangeRuns(lane, 1) + 40 })),
+        ),
+      )(
+        'P1-P4: an owed range with no series and a stuck record of one series found as a point inside it, a record of another series at its time (seed $seed, a read too full above $spanMs ms keeps the range pass reading for many runs, so the point is read alone first): a read of the point never cuts it out of the range, so the other series record imports within $bound runs and the point stays',
+        async ({ seed, spanMs, bound }) => {
+          const scenario = pointInSeriesRangeScenario(lane, seed);
+          const outcome = await simulate({
+            lane,
+            reading,
+            scenario,
+            runs: bound + 5,
+            ...foldMap(maybe(spanMs), (span) => ({
+              dense: { range: { start: BASE_MS, end: BASE_MS + 2 * DAY_MS }, spanMs: span },
+            })),
+          });
+
+          expect(
+            violationsOf(lane, reading, outcome, scenario, { imported: bound, pointed: 1 }),
+          ).toEqual([]);
+        },
+      );
+    });
+  },
+);
 
 describe.each(LANES.filter((lane) => lane.walk === 'earn'))(
   'a reward group with one member the client cannot read, $name lane',
