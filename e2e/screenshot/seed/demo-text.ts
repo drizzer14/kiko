@@ -44,6 +44,12 @@ const uk = {
   templateGroceries: 'Продукти на тиждень',
   templateBuyDollars: 'Купівля доларів',
   templateDinner: 'Вечеря з друзями',
+  woltPizza: 'Wolt: піца',
+  woltRefund: 'Wolt: повернення коштів',
+  woltSushi: 'Wolt: суші',
+  woltBurgers: 'Wolt: бургери',
+  boltFoodShawarma: 'Bolt Food: шаурма',
+  woltGroupOrder: 'Wolt: замовлення на компанію',
 };
 
 /**
@@ -99,6 +105,12 @@ const en: DemoText = {
   templateGroceries: 'Weekly groceries',
   templateBuyDollars: 'Buy dollars',
   templateDinner: 'Dinner with friends',
+  woltPizza: 'Wolt: pizza',
+  woltRefund: 'Wolt: refund',
+  woltSushi: 'Wolt: sushi',
+  woltBurgers: 'Wolt: burgers',
+  boltFoodShawarma: 'Bolt Food: shawarma',
+  woltGroupOrder: 'Wolt: group order',
 };
 
 export const demoText = { uk, en } satisfies Record<AppLanguage, DemoText>;
