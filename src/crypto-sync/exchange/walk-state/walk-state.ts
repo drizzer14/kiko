@@ -89,7 +89,7 @@ export type ParsedExchangeState =
       unreadable: string[];
     };
 
-type Metadata = Record<string, unknown>;
+export type Metadata = Record<string, unknown>;
 
 type ReadEntry<Value> = { value: Value; unreadable: string[] };
 
@@ -149,6 +149,10 @@ const zero = (): number => 0;
 const emptyList = (): string[] => [];
 
 const emptyRecord = (): Metadata => ({});
+
+/** A stored value that is no record reads as an empty one, for a writer that replaces it. */
+export const recordOrEmpty = (value: unknown): Metadata =>
+  recordOrUndefined(value) ?? emptyRecord();
 
 /** A stored value `parse` cannot read reads as `empty()` and is named, unless it is absent. */
 const entryOf = <Value>(
@@ -293,8 +297,5 @@ export const storedExchangeStateOf = (text: string | null): StoredExchangeState 
  * and then every entry parses on its own and reads as its empty value when it is unreadable, so a
  * malformed entry never empties another.
  */
-export const parseExchangeState = (text: string | null): ParsedExchangeState => {
-  const stored = storedExchangeStateOf(text);
-
-  return stored === undefined ? { kind: 'malformed' } : parsedOf(stored);
-};
+export const parseExchangeState = (text: string | null): ParsedExchangeState =>
+  foldMap(maybe(storedExchangeStateOf(text)), parsedOf) ?? { kind: 'malformed' };

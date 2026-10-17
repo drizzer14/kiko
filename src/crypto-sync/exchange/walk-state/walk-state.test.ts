@@ -26,7 +26,7 @@ import {
   parseExchangeState,
   WALK_IDS,
   type WalkId,
-} from '.';
+} from './walk-state';
 
 type ReadableState = Extract<ParsedExchangeState, { kind: 'parsed' }>;
 

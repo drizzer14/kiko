@@ -4,6 +4,7 @@ import {
   exchangeStatePatched,
   exchangeStateReset,
 } from '@kiko/crypto-sync/exchange/walk-state';
+import type { BalanceProviderId } from '@kiko/crypto-sync/provider';
 import { type Repository, accounts, syncState, database, write } from '@kiko/db';
 
 /**
@@ -15,7 +16,7 @@ import { type Repository, accounts, syncState, database, write } from '@kiko/db'
 const connectedExchangeState = async (
   databaseTransaction: typeof database,
   accountId: string,
-  exchangeId: string,
+  exchangeId: BalanceProviderId,
 ): Promise<{ text: string | null } | undefined> => {
   const rows = await databaseTransaction
     .select({ institution: accounts.institution, exchangeState: syncState.exchangeState })
@@ -32,13 +33,13 @@ const connectedExchangeState = async (
 };
 
 /**
- * The per-connection Monobank sync cursor repository. It de-globalizes the
- * former single-row `settings` cursor: every read and write is keyed by the
- * connected Monobank account's `accounts.id`, so a second connection can never
- * share and corrupt another's cursor (see the `syncState` table comment in
- * `src/db/schema.ts`). It mirrors the shape of `settings.repo.ts`'s retired
- * cursor setters exactly — a read returns a query builder for `useLiveQuery`; a
- * write performs one transactional update scoped to the account id.
+ * The per-connection sync state repository: the Monobank sync cursors and an exchange account's
+ * walk state (`exchange_state`). It de-globalizes the former single-row `settings` cursor: every
+ * read and write is keyed by the connected account's `accounts.id`, so a second connection can
+ * never share and corrupt another's state (see the `syncState` table comment in
+ * `src/db/schema.ts`). It mirrors the shape of `settings.repo.ts`'s retired cursor setters
+ * exactly — a read returns a query builder for `useLiveQuery`; a write performs one transactional
+ * update scoped to the account id.
  */
 export const syncStateRepo = {
   getQuery: (accountId: string) =>
@@ -102,15 +103,21 @@ export const syncStateRepo = {
         .where(eq(syncState.accountId, accountId)),
     ),
   /**
-   * Write one change to an exchange account's `exchange_state` (a walk's mark, a trade entry, a
-   * coin list), only while `accounts.institution` is still `exchangeId`: the re-read, the gate and
-   * the write share one `write(...)`, which op-sqlite runs on its one worker queue, so a late
-   * write from a walk started before a disconnect finds the institution cleared and writes
-   * nothing, instead of undoing the disconnect's reset. It patches the stored JSON text, never the
-   * parse (see `exchangeStatePatched`), inserts the row when none exists, and writes nothing when
-   * the stored top level is malformed.
+   * Write changes to an exchange account's `exchange_state` (a walk's mark, a trade entry, a coin
+   * list), only while `accounts.institution` is still `exchangeId`: the re-read, the gate and the
+   * write share one `write(...)`, which op-sqlite runs on its one worker queue, so the patches of
+   * a call land together (a cursor with the other marks written beside it), and a late write from
+   * a walk started before a disconnect finds the institution cleared and writes nothing, instead
+   * of undoing the disconnect's reset (`resetExchangeStateDatabaseTransaction`, which the
+   * disconnect runs in the same write that clears the institution). It patches the stored JSON
+   * text, never the parse (see `exchangeStatePatched`), inserts the row when none exists, and
+   * writes nothing when the stored top level is malformed.
    */
-  patchExchangeState: (accountId: string, exchangeId: string, patch: ExchangeStatePatch) =>
+  patchExchangeState: (
+    accountId: string,
+    exchangeId: BalanceProviderId,
+    patches: readonly ExchangeStatePatch[],
+  ) =>
     write(async (databaseTransaction) => {
       const stored = await connectedExchangeState(databaseTransaction, accountId, exchangeId);
 
@@ -118,7 +125,7 @@ export const syncStateRepo = {
         return;
       }
 
-      const text = exchangeStatePatched(stored.text, patch);
+      const text = exchangeStatePatched(stored.text, patches);
 
       if (text === undefined) {
         return;
@@ -131,21 +138,27 @@ export const syncStateRepo = {
     }),
   /**
    * Replace an exchange account's whole `exchange_state` with its walks reset to `floorMs`
-   * (`exchangeStateReset`): `disconnectCryptoAccount` calls it BEFORE `accountsRepo.disconnect`,
-   * so the institution gate below still passes for it and is already closed for any walk write
-   * that arrives later. A column nothing ever wrote stays null.
+   * (`exchangeStateReset`), inside the caller's `write(...)`. It is the first half of
+   * `accountsRepo.disconnectExchange`, which clears the institution in the same write: the gate
+   * passes for the reset, and a walk's patch queued behind that write finds the institution
+   * cleared and writes nothing, so nothing lands between the reset and the clear. A column
+   * nothing ever wrote stays null.
    */
-  resetExchangeState: (accountId: string, exchangeId: string, floorMs: number) =>
-    write(async (databaseTransaction) => {
-      const stored = await connectedExchangeState(databaseTransaction, accountId, exchangeId);
+  resetExchangeStateDatabaseTransaction: async (
+    databaseTransaction: typeof database,
+    accountId: string,
+    exchangeId: BalanceProviderId,
+    floorMs: number,
+  ) => {
+    const stored = await connectedExchangeState(databaseTransaction, accountId, exchangeId);
 
-      if (stored === undefined || stored.text === null) {
-        return;
-      }
+    if (stored === undefined || stored.text === null) {
+      return;
+    }
 
-      await databaseTransaction
-        .update(syncState)
-        .set({ exchangeState: exchangeStateReset(stored.text, floorMs) })
-        .where(eq(syncState.accountId, accountId));
-    }),
+    await databaseTransaction
+      .update(syncState)
+      .set({ exchangeState: exchangeStateReset(stored.text, floorMs) })
+      .where(eq(syncState.accountId, accountId));
+  },
 } satisfies Repository;

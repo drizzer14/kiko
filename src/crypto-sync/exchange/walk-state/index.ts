@@ -1,2 +1,5 @@
-export * from './walk-state';
-export * from './exchange-state-patch';
+export {
+  type ExchangeStatePatch,
+  exchangeStatePatched,
+  exchangeStateReset,
+} from './exchange-state-patch';

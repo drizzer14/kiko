@@ -5,11 +5,13 @@ import { isRecord } from '@kiko/type-guards';
 import {
   type CoinLists,
   type ExchangeTrades,
+  type Metadata,
   type StoredExchangeState,
   type TradeSymbol,
   type WalkId,
   type WalkMarks,
   coinListsOf,
+  recordOrEmpty,
   storedExchangeStateOf,
   WALK_IDS,
 } from './walk-state';
@@ -39,10 +41,6 @@ export type ExchangeStatePatch =
       list: keyof CoinLists;
       tickers: string[];
     };
-
-type Metadata = Record<string, unknown>;
-
-const recordOrEmpty = (stored: unknown): Metadata => (isRecord(stored) ? stored : {});
 
 const withWalkField = (
   stored: StoredExchangeState,
@@ -107,26 +105,27 @@ const patchedState = (
     .exhaustive();
 
 /**
- * The column text after `patch`, or `undefined` when the top level is malformed: the patch then
- * writes nothing, because the stored text is never overwritten by a walk (only a disconnect
- * replaces it). It patches the RAW stored JSON, never the parse, which drops what this build does
- * not read (`notImported`, an unknown walk id) and repairs what is malformed: every field the
- * patch does not name stays as stored.
+ * The column text after `patches`, applied in order to the one stored state, or `undefined` when
+ * the top level is malformed: the patches then write nothing, because the stored text is never
+ * overwritten by a walk (only a disconnect replaces it). It patches the RAW stored JSON, never the
+ * parse, which drops what this build does not read (`notImported`, an unknown walk id) and repairs
+ * what is malformed: every field the patches do not name keeps its stored value. Every writer
+ * stores canonical JSON, which round-trips byte-identically, so an untouched part keeps its bytes.
  */
 export const exchangeStatePatched = (
   text: string | null,
-  patch: ExchangeStatePatch,
+  patches: readonly ExchangeStatePatch[],
 ): string | undefined =>
   foldMap(maybe(storedExchangeStateOf(text)), (stored) =>
-    JSON.stringify(patchedState(stored, patch)),
+    JSON.stringify(patches.reduce(patchedState, stored)),
   );
 
 /**
- * A walk entry after a disconnect, by the rule `withWalkOwnedMetadataResetToFloor` applies to the
- * old metadata keys: a stored `cursor` or `rescan` becomes the floor (never a forward watermark a
- * reconnected DIFFERENT account would inherit), and a stored `pending` becomes `[]` (ranges of the
- * old account's history). Everything else the entry held (point and range cursors, span hints) is
- * dropped: no mark there means "start at the oldest ground, with no span to resume".
+ * A walk entry after a disconnect: a stored `cursor` or `rescan` becomes the floor (never a
+ * forward watermark a reconnected DIFFERENT account would inherit), and a stored `pending` becomes
+ * `[]` (ranges of the old account's history). Everything else the entry held (point and range
+ * cursors, span hints) is dropped: no mark there means "start at the oldest ground, with no span
+ * to resume".
  */
 const marksAfterDisconnect = (entry: Metadata, floorMs: number): Metadata =>
   Object.fromEntries(
@@ -135,25 +134,37 @@ const marksAfterDisconnect = (entry: Metadata, floorMs: number): Metadata =>
     ),
   );
 
+/**
+ * The capital walk is the one walk with no mark at a cursor that is missing: it starts at the
+ * newest capital row it already imported, which a reconnected DIFFERENT account would inherit as
+ * its own history. So a capital entry that is stored but unreadable, and a top level that is
+ * malformed, both reset to a floor cursor rather than to nothing. Every other walk starts at its
+ * floor without a cursor, so an unreadable entry of theirs is dropped.
+ */
+const capitalFloorMarks = (floorMs: number): Metadata => ({ cursor: floorMs });
+
 const walksAfterDisconnect = (walks: Metadata, floorMs: number): Metadata =>
   Object.fromEntries(
     WALK_IDS.flatMap((walkId) => {
       const entry = walks[walkId];
 
-      return isRecord(entry) ? [[walkId, marksAfterDisconnect(entry, floorMs)]] : [];
+      if (isRecord(entry)) {
+        return [[walkId, marksAfterDisconnect(entry, floorMs)]];
+      }
+
+      return walkId === 'capital' && walkId in walks ? [[walkId, capitalFloorMarks(floorMs)]] : [];
     }),
   );
 
 /**
  * The whole column text after a disconnect: walks only, so the trades, both coin lists of each
- * kind, `notImported` and anything an unknown build wrote are gone. A malformed value is replaced
- * by an empty state.
+ * kind, `notImported` and anything an unknown build wrote are gone. A malformed top level is
+ * replaced by a state that holds the capital floor cursor alone.
  */
 export const exchangeStateReset = (text: string, floorMs: number): string =>
   JSON.stringify({
     version: 1,
-    walks:
-      foldMap(maybe(storedExchangeStateOf(text)), ({ walks }) =>
-        walksAfterDisconnect(walks, floorMs),
-      ) ?? {},
+    walks: foldMap(maybe(storedExchangeStateOf(text)), ({ walks }) =>
+      walksAfterDisconnect(walks, floorMs),
+    ) ?? { capital: capitalFloorMarks(floorMs) },
   });

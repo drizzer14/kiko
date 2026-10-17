@@ -22,12 +22,14 @@ import {
   isImplicitAccountKind,
 } from '@kiko/holdings/implicit-account';
 import { logOnFailure } from '@kiko/diagnostics';
+import { syncStateRepo } from '@kiko/sync-state';
 import { clearToken } from '@kiko/monobank/token';
 import type { Money } from '@kiko/currency/money';
 import { and, asc, eq, isNull, sql } from 'drizzle-orm';
 import type { Currency } from '@kiko/currency/currency';
 import { clearCredentials } from '@kiko/crypto-sync/binance';
 import { SYNCED_AT_FIELD } from '@kiko/holdings/holding-metadata';
+import type { BalanceProviderId } from '@kiko/crypto-sync/provider';
 import { holdingTypesForAccountKind } from '@kiko/holdings/holding-type';
 import { transactionTemplatesRepo } from '@kiko/transaction-templates/repo';
 import { cascadeLinkedRowsDatabaseTransaction } from '@kiko/transactions/repo';
@@ -143,6 +145,39 @@ const withoutSyncMetadata = (metadata: Record<string, unknown>): Record<string, 
   const kept = Object.entries(metadata).filter(([key]) => !strippedOnDisconnect.includes(key));
 
   return kept.length > 0 ? Object.fromEntries(kept) : null;
+};
+
+const disconnectDatabaseTransaction = async (
+  databaseTransaction: typeof database,
+  accountId: string,
+): Promise<void> => {
+  await databaseTransaction
+    .update(accounts)
+    .set({ institution: null })
+    .where(eq(accounts.id, accountId));
+  const accountHoldings = await databaseTransaction
+    .select()
+    .from(holdings)
+    .where(eq(holdings.accountId, accountId));
+
+  // The loop's only job now is to drop `syncedAt` — the account's cleared
+  // institution (written above) is what makes each holding manual, so
+  // there is no `isSyncedHolding` guard left to apply here.
+  for (const holding of accountHoldings) {
+    const metadata = holding.metadata;
+
+    // A JSON column can hold a non-object (nothing here writes one, but the
+    // `in` test below would throw on it), and only a record can carry the
+    // stamp — so both are skipped.
+    if (typeof metadata !== 'object' || metadata === null || !(SYNCED_AT_FIELD in metadata)) {
+      continue;
+    }
+
+    await databaseTransaction
+      .update(holdings)
+      .set({ metadata: withoutSyncMetadata(metadata as Record<string, unknown>) })
+      .where(eq(holdings.id, holding.id));
+  }
 };
 
 export const accountsRepo = {
@@ -321,34 +356,25 @@ export const accountsRepo = {
    * `crypto-sync/disconnect` operations compose both.
    */
   disconnect: (accountId: string) =>
+    write((databaseTransaction) => disconnectDatabaseTransaction(databaseTransaction, accountId)),
+  /**
+   * Disconnect an exchange account: the walk state reset to `floorMs`
+   * (`syncStateRepo.resetExchangeStateDatabaseTransaction`) and then the same clear `disconnect`
+   * runs, in ONE write. The reset passes the institution gate and the clear closes it in that
+   * write, so a walk's patch queued behind it finds the institution cleared and writes nothing,
+   * where a patch landing between two writes would bring back a cursor or a coin list the reset
+   * removed. A failure in either half rolls back both: the account stays connected with its
+   * state. Clearing the Keychain item stays with `crypto-sync/disconnect`.
+   */
+  disconnectExchange: (accountId: string, exchangeId: BalanceProviderId, floorMs: number) =>
     write(async (databaseTransaction) => {
-      await databaseTransaction
-        .update(accounts)
-        .set({ institution: null })
-        .where(eq(accounts.id, accountId));
-      const accountHoldings = await databaseTransaction
-        .select()
-        .from(holdings)
-        .where(eq(holdings.accountId, accountId));
-
-      // The loop's only job now is to drop `syncedAt` — the account's cleared
-      // institution (written above) is what makes each holding manual, so
-      // there is no `isSyncedHolding` guard left to apply here.
-      for (const holding of accountHoldings) {
-        const metadata = holding.metadata;
-
-        // A JSON column can hold a non-object (nothing here writes one, but the
-        // `in` test below would throw on it), and only a record can carry the
-        // stamp — so both are skipped.
-        if (typeof metadata !== 'object' || metadata === null || !(SYNCED_AT_FIELD in metadata)) {
-          continue;
-        }
-
-        await databaseTransaction
-          .update(holdings)
-          .set({ metadata: withoutSyncMetadata(metadata as Record<string, unknown>) })
-          .where(eq(holdings.id, holding.id));
-      }
+      await syncStateRepo.resetExchangeStateDatabaseTransaction(
+        databaseTransaction,
+        accountId,
+        exchangeId,
+        floorMs,
+      );
+      await disconnectDatabaseTransaction(databaseTransaction, accountId);
     }),
   update: (accountId: string, patch: Partial<AccountRow>) =>
     write((databaseTransaction) =>
