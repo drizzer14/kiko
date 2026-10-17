@@ -300,6 +300,104 @@ describe('useSaveRule — a rule that changes transactions', () => {
   });
 });
 
+describe('useSaveRule — the rules read again after a Save', () => {
+  const SAVED = ruleOf('saved', 'food', [SILPO]);
+
+  it.each([
+    ['a rule that changes nothing', 0, async (_hook: Hook) => undefined],
+    [
+      'a rule applied to the existing transactions',
+      3,
+      async (hook: Hook) => {
+        await act(async () => {
+          hook.result.current.sheet.apply.onPress();
+        });
+      },
+    ],
+    [
+      'a rule kept for new transactions only',
+      3,
+      async (hook: Hook) => {
+        await act(async () => {
+          hook.result.current.sheet.keepNew.onPress();
+        });
+      },
+    ],
+  ])('names no twin of a new rule once it is stored: %s', async (_label, count, choose) => {
+    mockCountRuleRewrite.mockResolvedValue(count);
+    const hook = await setup();
+
+    await pressSave(hook);
+    await choose(hook);
+    expect(mockSaveRule).toHaveBeenCalledTimes(1);
+
+    await hook.rerender({
+      ruleId: null,
+      categoryKey: 'food',
+      drafts: [nameDraft('Silpo')],
+      rules: [SAVED],
+      onSaved,
+      onRefused,
+    });
+
+    expect(hook.result.current.errors.rule).toBeUndefined();
+  });
+
+  it('names no twin of an edited rule once it is stored', async () => {
+    const hook = await setup({ ruleId: 'mine', rules: [ruleOf('mine', 'food', [SILPO])] });
+
+    await pressSave(hook);
+    await hook.rerender({
+      ruleId: 'mine',
+      categoryKey: 'food',
+      drafts: [nameDraft('Silpo')],
+      rules: [ruleOf('mine', 'food', [SILPO])],
+      onSaved,
+      onRefused,
+    });
+
+    expect(hook.result.current.errors.rule).toBeUndefined();
+  });
+});
+
+describe('useSaveRule — a refused draft after a failed write', () => {
+  it.each([
+    ['the Save press', 0, async (_hook: Hook) => undefined],
+    [
+      'the sheet choice',
+      3,
+      async (hook: Hook) => {
+        await act(async () => {
+          hook.result.current.sheet.apply.onPress();
+        });
+      },
+    ],
+  ])('shows its error once the write of %s has failed', async (_label, count, choose) => {
+    mockCountRuleRewrite.mockResolvedValue(count);
+    mockSaveRule.mockRejectedValueOnce(new Error('disk full'));
+    const hook = await setup();
+
+    await pressSave(hook);
+    await choose(hook);
+    await waitFor(() =>
+      expect(Alert.alert).toHaveBeenCalledWith('Could not save', 'Please try again.'),
+    );
+
+    await hook.rerender({
+      ruleId: null,
+      categoryKey: 'food',
+      drafts: [nameDraft('Silpo')],
+      rules: [ruleOf('taken', 'shops', [SILPO])],
+      onSaved,
+      onRefused,
+    });
+    await pressSave(hook);
+
+    expect(onRefused).toHaveBeenCalledWith({ kind: 'rule' });
+    expect(hook.result.current.errors.rule).toEqual({ kind: 'duplicate', category: 'shops' });
+  });
+});
+
 describe('useSaveRule — a Save pressed twice', () => {
   it('counts and saves once', async () => {
     const hook = await setup();

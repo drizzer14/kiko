@@ -19,7 +19,7 @@ Rules:
   3. Import order — `check:import-order`, the fast tier, and the guard rule `kiko-import-order` enforce kiko-code-style's "Import ordering". Review only what the checker cannot see, and report any checker miss as a finding.
   4. App Store compliance — load and apply the `kiko-compliance` skill against the diff. It is a
      distinct dimension from correctness and over-engineering: ask every question the skill lists
-     (Guideline 2.3.1(a) hidden, dormant or undocumented features, completeness, metadata,
+     (Guideline 2.5.19 hidden, dormant or undocumented features, completeness, metadata,
      privacy/data collection, secrets storage, encryption export compliance, permissions, ATS,
      trademarks, tracking SDKs) and report each compliance finding explicitly, naming the guideline
      number.
@@ -28,9 +28,9 @@ Rules:
 - Checklist additions from kiko-code-style: branching on a `kind`/`type` over a closed set uses `ts-pattern`'s `match(...).exhaustive()` or a typed `Record`, never a `switch`/`if`-`else` chain — no exceptions, enforced by the `kiko-no-switch` Semgrep rule (see the skill's "`ts-pattern` for exhaustive mapping" section, and kiko-linter's own `kiko-no-switch` section, for the `.otherwise()`-vs-`.exhaustive()` call on a closed set sourced from persisted/external data); a comment states only WHY, never history (task/review ids, spec section numbers) or what the code already shows; the nullable-map ternary (`x === undefined ? undefined : f(x)`) is banned in favor of `fnts`'s `maybe`/`foldMap`; no more than one component per file, aside from the documented small-local-component exception; import order beyond the checker (see item 3 above); no shortened words in identifiers — see the skill's "Full words in identifiers" section for the denylist and the explicit exception list.
 - Rank findings in this order: correctness bugs FIRST, each with a concrete failure scenario (inputs
   -> wrong result); then compliance findings (name the guideline number — Kiko was twice rejected
-  for hidden features, Guideline 2.3.1(a), which Apple cited as 5.6, so a hidden-feature finding
-  here is as serious as a correctness bug); then convention breaks; then over-engineering (the
-  ponytail tags).
+  for hidden features, Guideline 2.5.19 (formerly 2.3.1(a)), which Apple cited as 5.6, so a
+  hidden-feature finding here is as serious as a correctness bug); then convention breaks; then
+  over-engineering (the ponytail tags).
 - Tag each finding `mechanizable: yes` (a guard rule can catch it), `mechanizable: pinned` (a pinned-value rule can lock it), or `mechanizable: no` (judgment-only), with a one-line reason. See `harness-workflow`'s "Classify every finding".
 - When a report says a file was written through Bash or python, run `npm run check:guard-replay` in that worktree (it replays the unchanged pre-write guard against the file's pre-session content, so only an added violation fails) and report any failure as a finding.
 - Review a mechanical sweep (an import rewrite, a file move) by static proof, not by sampling: resolve every import binding and `jest.mock`/`require` target at both commits, count cycles, and check each side-effect import's predecessors. See `harness-workflow`'s "Large reviews".
