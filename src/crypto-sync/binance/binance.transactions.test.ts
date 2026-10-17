@@ -11,12 +11,9 @@ import {
   walkStateFake,
   withWalkMarks,
 } from '@kiko/test-support/walk-marks';
-import {
-  type BinanceSpanHints,
-  withWalkOwnedMetadataResetToFloor,
-} from '@kiko/holdings/holding-metadata';
 import type { HoldingRow } from '@kiko/db';
 import type { OwedGround, UnreadableRow, WalkWindow } from '@kiko/crypto-sync/exchange/walk';
+import { type BinanceSpanHints, exchangeStateReset } from '@kiko/crypto-sync/exchange/walk-state';
 
 import {
   type BinanceTransactionRow,
@@ -1817,14 +1814,11 @@ describe('the pending overlap days of the capital walk', () => {
 
   it('empties the list and walks from the floor after a disconnect reset the walk', async () => {
     const owed = { start: NOW - 300 * DAY_MS, end: NOW - 299 * DAY_MS };
-    const reset = withWalkOwnedMetadataResetToFloor(
-      withWalkMarks({ binanceAsset: 'BTC' }, ACCOUNT_ID, 'capital', {
-        cursor: NOW,
-        pending: [owed],
-      }),
+    const reset = exchangeStateReset(
+      JSON.stringify(withWalkMarks({}, ACCOUNT_ID, 'capital', { cursor: NOW, pending: [owed] })),
       HISTORY_FLOOR_MS,
     );
-    const resetMarks = walkMarksOf(reset ?? {}, ACCOUNT_ID, 'capital');
+    const resetMarks = walkMarksOf(JSON.parse(reset), ACCOUNT_ID, 'capital');
     const state = await stateOf(HISTORY_FLOOR_MS, resetMarks.pending as OwedGround[] | undefined);
 
     const { deps } = await runOver(state, []);

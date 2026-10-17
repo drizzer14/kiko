@@ -1,40 +1,22 @@
+import { match } from 'ts-pattern';
 import { DAY_MS } from '@kiko/dates';
-import {
-  BINANCE_EARN_HISTORY_CURSOR_FIELD,
-  BINANCE_HISTORY_CURSOR_FIELD,
-  BINANCE_PAY_HISTORY_CURSOR_FIELD,
-  BINANCE_TRANSFER_HISTORY_CURSOR_FIELD,
-  BINANCE_TRANSFER_PENDING_OVERLAP_FIELD,
-  binanceWalkCursorOf,
-  binanceWalkPendingOf,
-} from '@kiko/holdings/holding-metadata';
-import type { HoldingRow } from '@kiko/db';
-import maybe, { foldMap } from 'fnts/maybe';
+import type { ParsedExchangeState, WalkId } from '@kiko/crypto-sync/exchange/walk-state';
 
-/** The forward cursor of each history walk: capital, Pay, Transfer and Earn. */
-const WALK_CURSOR_FIELDS = [
-  BINANCE_HISTORY_CURSOR_FIELD,
-  BINANCE_PAY_HISTORY_CURSOR_FIELD,
-  BINANCE_TRANSFER_HISTORY_CURSOR_FIELD,
-  BINANCE_EARN_HISTORY_CURSOR_FIELD,
-] as const;
+/** The walks whose forward cursor the caption compares: capital, Pay, Transfer and Earn. */
+const CAPTION_WALKS: readonly WalkId[] = ['capital', 'pay', 'transfer', 'earn'];
 
 /**
- * The four walks' forward watermarks among an account's holdings. Every walk keeps its marks on
- * the Spot holding, which is the one that carries the capital cursor, so a plain scan for it
- * avoids hard-coding the Spot match key here too. A walk that has not written its cursor yet
- * reads as null; an account with no capital cursor at all reads as four nulls.
+ * The four walks' forward watermarks in the account's walk state. A walk that has not written its
+ * cursor yet reads as null, and so does every walk of a state that is not readable.
  */
-export const walkCursorsOf = (holdings: Pick<HoldingRow, 'metadata'>[]): (number | null)[] => {
-  const carrier = holdings.find(
-    (holding) => binanceWalkCursorOf(BINANCE_HISTORY_CURSOR_FIELD, holding.metadata) !== null,
-  );
+export const walkCursorsOf = (state: ParsedExchangeState): (number | null)[] =>
+  match(state)
+    .returnType<(number | null)[]>()
+    .with({ kind: 'parsed' }, ({ walks }) => CAPTION_WALKS.map((walkId) => walks[walkId].cursor))
+    .with({ kind: 'malformed' }, () => CAPTION_WALKS.map(() => null))
+    .exhaustive();
 
-  return WALK_CURSOR_FIELDS.map(
-    (field) =>
-      foldMap(maybe(carrier), (found) => binanceWalkCursorOf(field, found.metadata)) ?? null,
-  );
-};
+const isRange = (ground: { kind?: 'point' }): boolean => ground.kind !== 'point';
 
 /**
  * Whether the Transfer walk owes a range, in every type or in one: ground its forward cursor has
@@ -42,16 +24,12 @@ export const walkCursorsOf = (holdings: Pick<HoldingRow, 'metadata'>[]): (number
  * edge band). An owed point is not a range: a record the walk keeps owed is read again on every
  * sync. A list that is not well formed owes nothing here; the walk repairs it on its next run.
  */
-export const transferOwesRange = (holdings: Pick<HoldingRow, 'metadata'>[]): boolean => {
-  const carrier = holdings.find(
-    (holding) => binanceWalkCursorOf(BINANCE_HISTORY_CURSOR_FIELD, holding.metadata) !== null,
-  );
-  const owed = foldMap(maybe(carrier), (found) =>
-    binanceWalkPendingOf(BINANCE_TRANSFER_PENDING_OVERLAP_FIELD, found.metadata),
-  );
-
-  return owed?.some((ground) => ground.kind !== 'point') ?? false;
-};
+export const transferOwesRange = (state: ParsedExchangeState): boolean =>
+  match(state)
+    .returnType<boolean>()
+    .with({ kind: 'parsed' }, ({ walks }) => walks.transfer.pending?.some(isRange) ?? false)
+    .with({ kind: 'malformed' }, () => false)
+    .exhaustive();
 
 /**
  * True when a Binance history walk is meaningfully behind the account's own balance sync: any

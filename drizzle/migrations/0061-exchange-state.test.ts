@@ -18,6 +18,7 @@ import maybe, { foldMap } from 'fnts/maybe';
 import { syncStateRepo } from '@kiko/sync-state';
 import { DatabaseSync, type SQLInputValue } from 'node:sqlite';
 import { applyMigrationsThrough } from '@kiko/test-support/real-sqlite';
+import { parseExchangeState } from '@kiko/crypto-sync/exchange/walk-state';
 
 const MIGRATION_FILE = join(__dirname, '0061_exchange_state.sql');
 
@@ -79,6 +80,34 @@ const storedValueOf = (walk: Walk, field: Field): unknown => {
   }
 
   return base;
+};
+
+// The same distinct value per (walk, field), with every pass of the span hints holding a hint and
+// the point pass one that kept a resume, so the read-back proves the whole of what a walk reads.
+const readBackValueOf = (walk: Walk, field: Field): unknown => {
+  if (field !== 'spanHints') {
+    return storedValueOf(walk, field);
+  }
+
+  const base = 1_700_000_000_000 + WALKS.indexOf(walk) * 100 + FIELDS.indexOf(field);
+
+  return {
+    forward: [{ start: base, end: base + 1 }],
+    pending: [{ start: base + 2, end: base + 3 }],
+    rescan: [{ start: base + 4, end: base + 5 }],
+    point: [
+      {
+        start: base + 6,
+        end: base + 9,
+        resume: {
+          from: base + 7,
+          returned: [{ start: base + 6, end: base + 7, kind: 'point' }],
+          stuck: [{ start: base + 7, end: base + 8, kind: 'point', series: 'MAIN_FUNDING' }],
+          series: ['MAIN_FUNDING'],
+        },
+      },
+    ],
+  };
 };
 
 const FLOOR_MS = Date.UTC(2017, 6, 14);
@@ -470,6 +499,31 @@ describe('migration 0061: the walk state column on sync_state', () => {
     applyMigration(database);
 
     expect(stateRowCount(database)).toBe(0);
+  });
+
+  it('reads back every BTC walk mark equal to the old metadata', () => {
+    const database = databaseThrough0060();
+    const oldMetadata = Object.fromEntries(
+      WALK_KEY_MAP.map(([walk, field, key]) => [key, readBackValueOf(walk, field)]),
+    );
+
+    seedSpot(database, 'account', oldMetadata);
+    applyMigration(database);
+
+    const parsed = parseExchangeState(rawStateOf(database, 'account') ?? null);
+
+    expect(parsed.kind).toBe('parsed');
+
+    for (const walk of WALKS) {
+      expect(parsed.kind === 'parsed' ? parsed.walks[walk] : undefined).toEqual(
+        Object.fromEntries(
+          WALK_KEY_MAP.filter(([keyWalk]) => keyWalk === walk).map(([, field, key]) => [
+            field,
+            oldMetadata[key],
+          ]),
+        ),
+      );
+    }
   });
 
   it('an account whose state row only carries walk state reads as never synced', async () => {

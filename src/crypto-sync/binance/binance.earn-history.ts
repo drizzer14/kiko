@@ -1,27 +1,19 @@
 import { DAY_MS } from '@kiko/dates';
 import { match, P } from 'ts-pattern';
 import {
-  BINANCE_EARN_HISTORY_CURSOR_FIELD,
-  BINANCE_EARN_PENDING_OVERLAP_FIELD,
-  BINANCE_EARN_POINT_CURSOR_FIELD,
-  BINANCE_EARN_RANGE_CURSOR_FIELD,
-  BINANCE_EARN_RESCAN_CURSOR_FIELD,
-  BINANCE_EARN_SPAN_HINTS_FIELD,
-  binanceWalkCursorOf,
-} from '@kiko/holdings/holding-metadata';
-import {
   advanceWalkMarks,
   BinanceWalkStop,
-  type BinanceWalkWriteDeps,
   commitSettledSpan,
-  defaultWalkWriteDeps,
   dropReadPoints,
+  type ExchangeStateDeps,
+  exchangeStateDepsOf,
   instantAt,
   joinSettled,
   type OwedWindow,
   placeWalletRows,
   planWalkPasses,
   readPendingMark,
+  readWalkMarks,
   readWalkRoundRobins,
   roundRobinHooksOf,
   runWalkPlan,
@@ -30,13 +22,13 @@ import {
   settleUnreadable,
   type SpanCommit,
   type SpanRead,
-  type WalkMarkFields,
+  type WalkMarkWriter,
   type WalkMarks,
+  walkMarkWriterOf,
   walkSpans,
   type WalkPass,
   type WalkPlan,
   type WalkResult,
-  walkWritersOf,
   type WalkWindow,
 } from '@kiko/crypto-sync/exchange/walk';
 import type { HoldingRow } from '@kiko/db';
@@ -154,15 +146,6 @@ export const EARN_FORWARD_OWES: readonly string[] = [
   EARN_REWARD_TYPE_UNKNOWN,
   EARN_ROW_UNREADABLE,
 ];
-
-const EARN_MARK_FIELDS: WalkMarkFields = {
-  cursor: BINANCE_EARN_HISTORY_CURSOR_FIELD,
-  rescan: BINANCE_EARN_RESCAN_CURSOR_FIELD,
-  point: BINANCE_EARN_POINT_CURSOR_FIELD,
-  range: BINANCE_EARN_RANGE_CURSOR_FIELD,
-  hints: BINANCE_EARN_SPAN_HINTS_FIELD,
-  pending: BINANCE_EARN_PENDING_OVERLAP_FIELD,
-};
 
 /** The description of a reward: income, so no "Transfer to/from" label applies. */
 const REWARD_DESCRIPTION = 'Binance Earn';
@@ -674,9 +657,9 @@ export const settledEarnOf = (input: {
 /**
  * The injectable seams of the Earn walk: the credential and holding reads, the Earn read (one
  * page of one kind of one range), the insert-only holding creation, the deduping import, and
- * the mark writes. Pacing and the weight budget come from the run.
+ * the walk state read and write. Pacing and the weight budget come from the run.
  */
-export type BinanceEarnHistoryDeps = BinanceWalkWriteDeps & {
+export type BinanceEarnHistoryDeps = ExchangeStateDeps & {
   now: () => number;
   fetchImpl: typeof fetch;
   readCredentials: (accountId: string) => Promise<BinanceCredentials | undefined>;
@@ -687,7 +670,7 @@ export type BinanceEarnHistoryDeps = BinanceWalkWriteDeps & {
 };
 
 const defaultEarnHistoryDeps: BinanceEarnHistoryDeps = {
-  ...defaultWalkWriteDeps,
+  ...exchangeStateDepsOf('binance'),
   now: () => Date.now(),
   fetchImpl: fetch,
   readCredentials,
@@ -701,12 +684,12 @@ type EarnContext = {
   deps: BinanceEarnHistoryDeps;
   run: BinanceHistoryRun;
   accountId: string;
-  spot: HoldingRow;
   apiKey: string;
   secret: string;
   options: FetchAccountOptions;
   marks: WalkMarks;
   plan: WalkPlan;
+  write: WalkMarkWriter;
 };
 
 /** The kinds a window is read in: every one, or the ones its owed points name. */
@@ -769,7 +752,7 @@ const commitSpan = (
   read: SeriesSpan<EarnRecordKind, EarnRecord>,
   pass: WalkPass,
 ): Promise<SpanCommit | undefined> => {
-  const { deps, accountId, spot, plan, marks } = context;
+  const { deps, accountId, plan, marks, write } = context;
 
   return commitSettledSpan({
     pass,
@@ -794,9 +777,7 @@ const commitSpan = (
         plan,
         marks,
         restartMs: HISTORY_FLOOR_MS,
-        fields: EARN_MARK_FIELDS,
-        write: (field, cursorMs) => deps.writeWalkCursor(spot.id, field, cursorMs),
-        writePending: (field, ranges) => deps.writeWalkPending(spot.id, field, ranges),
+        write,
       }),
   });
 };
@@ -820,20 +801,20 @@ const runSync = async (
     return { imported: 0, complete: true };
   }
 
-  const cursor = binanceWalkCursorOf(EARN_MARK_FIELDS.cursor, spot.metadata);
-  const rescanCursor = binanceWalkCursorOf(EARN_MARK_FIELDS.rescan, spot.metadata);
-  const writers = walkWritersOf(spot.id, deps);
-  const roundRobins = await readWalkRoundRobins({
-    fields: EARN_MARK_FIELDS,
-    metadata: spot.metadata,
-    ...writers,
-  });
+  const stored = await readWalkMarks(deps, accountId, 'earn');
+
+  if (stored === undefined) {
+    return { imported: 0, complete: false };
+  }
+
+  const { cursor, rescan: rescanCursor } = stored;
+  const write = walkMarkWriterOf(deps, accountId, 'earn');
+  const roundRobins = await readWalkRoundRobins({ stored, write });
   const pending = await readPendingMark({
-    field: EARN_MARK_FIELDS.pending,
-    metadata: spot.metadata,
+    stored: stored.pending,
     owedIfUnreadable: { start: EARN_FLOOR_MS, end: cursor ?? EARN_FLOOR_MS },
     knownSeries: EARN_SERIES,
-    write: (field, ranges) => deps.writeWalkPending(spot.id, field, ranges),
+    write,
   });
   const plan = planWalkPasses({
     cursor,
@@ -856,12 +837,12 @@ const runSync = async (
     deps,
     run,
     accountId,
-    spot,
     apiKey: credentials.apiKey,
     secret: credentials.secret,
     options: { fetchImpl: deps.fetchImpl, now: deps.now },
     marks: { cursor, rescanCursor, ...roundRobins, pending },
     plan,
+    write,
   };
 
   return runWalkPlan({
@@ -883,11 +864,10 @@ const runSync = async (
             window,
             read,
             marks: context.marks,
-            fields: EARN_MARK_FIELDS,
-            writePending: (field, ranges) => deps.writeWalkPending(spot.id, field, ranges),
+            write,
           }),
       }),
-    ...roundRobinHooksOf({ marks: context.marks, fields: EARN_MARK_FIELDS, ...writers }),
+    ...roundRobinHooksOf({ marks: context.marks, write }),
   });
 };
 

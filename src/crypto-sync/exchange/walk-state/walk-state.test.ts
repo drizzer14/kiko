@@ -1,21 +1,4 @@
-import {
-  WALK_NAMES,
-  type WalkField,
-  type WalkName,
-  withWalkMarks,
-} from '@kiko/test-support/walk-marks';
-import {
-  binanceWalkCursorOf,
-  binanceWalkPendingOf,
-  binanceWalkPointCursorOf,
-  binanceWalkRangeCursorOf,
-  binanceWalkSpanHintsOf,
-  type BinanceWalkCursorField,
-  type BinanceWalkPendingField,
-  type BinanceWalkPointCursorField,
-  type BinanceWalkRangeCursorField,
-  type BinanceWalkSpanHintField,
-} from '@kiko/holdings/holding-metadata';
+import { WALK_NAMES, type WalkField } from '@kiko/test-support/walk-marks';
 
 import { readPendingMark, readPointCursor, readRangeCursor, readSpanHints } from '../walk';
 
@@ -82,42 +65,96 @@ const marksOfStoredField = (walkId: WalkId, field: WalkField, stored: unknown): 
 const walkEntryOf = (walkId: WalkId, entry: unknown): ReadableState =>
   readableOf(stateTextOf({ walks: { [walkId]: entry } }));
 
-/** The metadata key of a walk's field today: only the test helper names it. */
-const oldKeyOf = (walkName: WalkName, field: WalkField): string =>
-  Object.keys(withWalkMarks({}, 'acc-1', walkName, { [field]: 1 }))[0];
-
-const TODAY: Record<WalkField, (key: string, metadata: Metadata) => unknown> = {
-  cursor: (key, metadata) => binanceWalkCursorOf(key as BinanceWalkCursorField, metadata),
-  rescan: (key, metadata) => binanceWalkCursorOf(key as BinanceWalkCursorField, metadata),
-  pending: (key, metadata) => binanceWalkPendingOf(key as BinanceWalkPendingField, metadata),
-  pointCursor: (key, metadata) =>
-    binanceWalkPointCursorOf(key as BinanceWalkPointCursorField, metadata),
-  rangeCursor: (key, metadata) =>
-    binanceWalkRangeCursorOf(key as BinanceWalkRangeCursorField, metadata),
-  spanHints: (key, metadata) => binanceWalkSpanHintsOf(key as BinanceWalkSpanHintField, metadata),
-};
-
 type Write = () => Promise<undefined>;
 
 /**
- * Today's reader of each repairable field, with its own repair write. The series a walk reads is
- * its own setting, so the pending reader is given the one series the test values name.
+ * The walk's own reader of each repairable field, with its own repair write. The series a walk
+ * reads is its own setting, so the pending reader is given the one series the test values name.
  */
 const REPAIRS = {
-  pending: (key: string, metadata: Metadata, write: Write) =>
+  pending: (stored: unknown, write: Write) =>
     readPendingMark({
-      field: key as BinanceWalkPendingField,
-      metadata,
+      stored: stored as ParsedWalkMarks['pending'],
       owedIfUnreadable: { start: 0, end: 1 },
       knownSeries: ['MAIN_FUNDING'],
       write,
     }),
-  pointCursor: (key: string, metadata: Metadata, write: Write) =>
-    readPointCursor({ field: key as BinanceWalkPointCursorField, metadata, write }),
-  rangeCursor: (key: string, metadata: Metadata, write: Write) =>
-    readRangeCursor({ field: key as BinanceWalkRangeCursorField, metadata, write }),
-  spanHints: (key: string, metadata: Metadata, write: Write) =>
-    readSpanHints({ field: key as BinanceWalkSpanHintField, metadata, write }),
+  pointCursor: (stored: unknown, write: Write) =>
+    readPointCursor({ stored: stored as ParsedWalkMarks['pointCursor'], write }),
+  rangeCursor: (stored: unknown, write: Write) =>
+    readRangeCursor({ stored: stored as ParsedWalkMarks['rangeCursor'], write }),
+  spanHints: (stored: unknown, write: Write) =>
+    readSpanHints({ stored: stored as ParsedWalkMarks['spanHints'], write }),
+};
+
+const RANGES = [{ start: 1, end: 2 }];
+const TYPED_POINT = [{ start: 1, end: 2, kind: 'point', series: 'MAIN_FUNDING' }];
+const HINTS = { forward: [{ start: 1, end: 2 }], pending: [], rescan: [], point: [] };
+
+type StoredReads = [label: string, stored: unknown, reads: unknown];
+
+/** What a field reads for a stored value: `undefined` is a value that is stored but unreadable. */
+const READS: Record<WalkField, StoredReads[]> = {
+  cursor: [
+    ['nothing stored', undefined, null],
+    ['a JSON null', null, null],
+    ['zero', 0, 0],
+    ['a number', 5_000, 5_000],
+    ['a number as text', '5000', null],
+    ['a boolean', true, null],
+    ['a list', [5_000], null],
+    ['an object', {}, null],
+  ],
+  rescan: [
+    ['nothing stored', undefined, null],
+    ['a JSON null', null, null],
+    ['zero', 0, 0],
+    ['a number', 5_000, 5_000],
+    ['a number as text', '5000', null],
+    ['a list', [5_000], null],
+  ],
+  pending: [
+    ['nothing stored', undefined, []],
+    ['a JSON null', null, undefined],
+    ['a number', 5_000, undefined],
+    ['text', '5000', undefined],
+    ['an empty list', [], []],
+    ['an object', {}, undefined],
+    ['a list of numbers', [5_000], undefined],
+    ['a range', RANGES, RANGES],
+    ['a typed point', TYPED_POINT, TYPED_POINT],
+    ['a range that ends before it starts', [{ start: 2, end: 1 }], undefined],
+    ['span hints', HINTS, undefined],
+  ],
+  pointCursor: [
+    ['nothing stored', undefined, null],
+    ['a JSON null', null, undefined],
+    ['zero', 0, 0],
+    ['a number', 5_000, 5_000],
+    ['a number as text', '5000', undefined],
+    ['a boolean', true, undefined],
+    ['a list', [5_000], undefined],
+    ['an object', {}, undefined],
+  ],
+  rangeCursor: [
+    ['nothing stored', undefined, null],
+    ['a JSON null', null, undefined],
+    ['zero', 0, 0],
+    ['a number', 5_000, 5_000],
+    ['a number as text', '5000', undefined],
+    ['a boolean', true, undefined],
+    ['a list', [5_000], undefined],
+    ['an object', {}, undefined],
+  ],
+  spanHints: [
+    ['nothing stored', undefined, NO_HINTS],
+    ['a JSON null', null, undefined],
+    ['a number', 5_000, undefined],
+    ['a list', [], undefined],
+    ['an empty object', {}, NO_HINTS],
+    ['hints', HINTS, HINTS],
+    ['hints whose pass is no list', { forward: { start: 1, end: 2 } }, undefined],
+  ],
 };
 
 const FIELDS: WalkField[] = [
@@ -262,66 +299,42 @@ describe('parseExchangeState', () => {
       ['pointCursor', undefined],
       ['rangeCursor', undefined],
       ['spanHints', undefined],
-    ] as const)('reads as the stored null of today: the %s', (field, reads) => {
+    ] as const)('reads as the stored null it always read as: the %s', (field, reads) => {
       for (const walkName of WALK_NAMES) {
-        const metadata = withWalkMarks({}, 'acc-1', walkName, { [field]: null });
-
         expect(marksOfStoredField(walkName, field, null)).toStrictEqual(reads);
-        expect(marksOfStoredField(walkName, field, null)).toStrictEqual(
-          TODAY[field](oldKeyOf(walkName, field), metadata),
-        );
       }
     });
   });
 
   describe('a stored value', () => {
-    const STORED_VALUES: unknown[] = [
-      undefined,
-      null,
-      0,
-      5_000,
-      '5000',
-      true,
-      [],
-      {},
-      [5_000],
-      [{ start: 1, end: 2 }],
-      [{ start: 1, end: 2, kind: 'point', series: 'MAIN_FUNDING' }],
-      [{ start: 2, end: 1 }],
-      { forward: [{ start: 1, end: 2 }], pending: [], rescan: [], point: [] },
-      { forward: { start: 1, end: 2 } },
-    ];
-
-    it.each(FIELDS)('reads as today reads it, for every walk: the %s', (field) => {
+    it.each(FIELDS)('reads as the field reads it, for every walk: the %s', (field) => {
       for (const walkName of WALK_NAMES) {
-        for (const stored of STORED_VALUES) {
-          const metadata = withWalkMarks({}, 'acc-1', walkName, { [field]: stored });
-
-          expect([walkName, stored, marksOfStoredField(walkName, field, stored)]).toEqual([
+        for (const [label, stored, reads] of READS[field]) {
+          expect([walkName, label, marksOfStoredField(walkName, field, stored)]).toStrictEqual([
             walkName,
-            stored,
-            TODAY[field](oldKeyOf(walkName, field), metadata),
+            label,
+            reads,
           ]);
         }
       }
     });
 
     it.each(['pending', 'pointCursor', 'rangeCursor', 'spanHints'] as const)(
-      'is malformed exactly when today repairs it: the %s',
+      'is malformed exactly when the walk repairs it: the %s',
       async (field) => {
         const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
 
         for (const walkName of WALK_NAMES) {
-          for (const stored of STORED_VALUES) {
-            const metadata = withWalkMarks({}, 'acc-1', walkName, { [field]: stored });
+          for (const [label, stored] of READS[field]) {
             const write = jest.fn(async () => undefined);
+            const parsed = marksOfStoredField(walkName, field, stored);
 
-            await REPAIRS[field](oldKeyOf(walkName, field), metadata, write);
+            await REPAIRS[field](parsed, write);
 
-            expect([walkName, stored, write.mock.calls.length > 0]).toEqual([
+            expect([walkName, label, write.mock.calls.length > 0]).toEqual([
               walkName,
-              stored,
-              marksOfStoredField(walkName, field, stored) === undefined,
+              label,
+              parsed === undefined,
             ]);
           }
         }

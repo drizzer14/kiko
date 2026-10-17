@@ -14,15 +14,6 @@ import {
 } from './walk';
 import { commitSettledSpan } from './records';
 
-const FIELDS = {
-  cursor: 'binanceTransferHistoryCursor',
-  rescan: 'binanceTransferRescanCursor',
-  point: 'binanceTransferPointCursor',
-  range: 'binanceTransferRangeCursor',
-  hints: 'binanceTransferSpanHints',
-  pending: 'binanceTransferPendingOverlap',
-} as const;
-
 const KNOWN = ['MAIN_FUNDING', 'FUNDING_MAIN'];
 
 const rangeOf = (start: number, end: number, series?: string): OwedGround =>
@@ -155,9 +146,7 @@ describe('advanceWalkMarks, with ranges that are owed in one series', () => {
       plan: planOf({ rescanEnd: 1_000_000 }),
       marks,
       restartMs: 5,
-      fields: FIELDS,
       write: async () => undefined,
-      writePending: async () => undefined,
     });
 
     return marks.pending;
@@ -226,10 +215,10 @@ describe('advanceWalkMarks, with ranges that are owed in one series', () => {
     expect(pending).toEqual([rangeOf(70_000, 90_500, 'MAIN_FUNDING')]);
   });
 
-  it('stores the ground a forward span owes in one series, before the cursor moves past it', async () => {
+  it('stores the ground a forward span owes in one series with the cursor that moves past it, in one write', async () => {
     const owed = rangeOf(1_000, 1_900, 'MAIN_FUNDING');
     const marks = markOf([]);
-    const writes: string[] = [];
+    const writes: string[][] = [];
 
     await advanceWalkMarks({
       pass: 'forward',
@@ -238,21 +227,16 @@ describe('advanceWalkMarks, with ranges that are owed in one series', () => {
       plan: planOf({ rescanEnd: 1_000_000 }),
       marks,
       restartMs: 5,
-      fields: FIELDS,
-      write: async (field) => {
-        writes.push(field);
-      },
-      writePending: async (field, ranges) => {
-        writes.push(`${field}:${JSON.stringify(ranges)}`);
+      write: async (patches) => {
+        writes.push(patches.map((patch) => `${patch.field}:${JSON.stringify(patch.value)}`));
       },
     });
 
-    expect(writes).toEqual([`${FIELDS.pending}:${JSON.stringify([owed])}`, FIELDS.cursor]);
+    expect(writes).toEqual([[`pending:${JSON.stringify([owed])}`, 'cursor:2000']]);
   });
 });
 
 describe('readPendingMark, for ranges that are owed in one series', () => {
-  const FIELD = 'binanceTransferPendingOverlap';
   const owedBefore = { start: 1_000, end: 5_000 };
 
   const readMark = (stored: OwedGround[], knownSeries?: string[]) => {
@@ -261,8 +245,7 @@ describe('readPendingMark, for ranges that are owed in one series', () => {
     return {
       write,
       ranges: readPendingMark({
-        field: FIELD,
-        metadata: { [FIELD]: stored },
+        stored,
         owedIfUnreadable: owedBefore,
         knownSeries,
         write,
@@ -295,7 +278,7 @@ describe('readPendingMark, for ranges that are owed in one series', () => {
     const { ranges, write } = readMark([rangeOf(10, 12, 'MAIN_MARS')], known);
 
     expect(await ranges).toEqual([owedBefore]);
-    expect(write).toHaveBeenCalledWith(FIELD, [owedBefore]);
+    expect(write).toHaveBeenCalledWith([{ field: 'pending', value: [owedBefore] }]);
   });
 });
 

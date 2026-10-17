@@ -16,14 +16,12 @@ import {
   WALK_IDS,
 } from './walk-state';
 
-type WalkFieldPatch = {
-  [Field in keyof WalkMarks]-?: {
-    kind: 'walk';
-    walkId: WalkId;
-    field: Field;
-    value: Required<WalkMarks>[Field];
-  };
+/** One mark of a walk and its new value, for a writer that is bound to the walk. */
+export type WalkMarkPatch = {
+  [Field in keyof WalkMarks]-?: { field: Field; value: Required<WalkMarks>[Field] };
 }[keyof WalkMarks];
+
+type WalkFieldPatch = WalkMarkPatch & { kind: 'walk'; walkId: WalkId };
 
 /**
  * What a walk or a balance read changes in `sync_state.exchange_state`: one field of one walk, one

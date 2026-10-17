@@ -1,3 +1,7 @@
+import maybe, { foldMap } from 'fnts/maybe';
+import { isRecord } from '@kiko/type-guards';
+import { bifoldr, eitherSync } from 'fnts/either';
+
 import {
   type BinancePendingRange,
   type BinanceSpanHints,
@@ -5,10 +9,7 @@ import {
   binanceWalkRoundRobinValueOf,
   binanceWalkSpanHintsValueOf,
   finiteNumberOrNull,
-} from '@kiko/holdings/holding-metadata';
-import maybe, { foldMap } from 'fnts/maybe';
-import { isRecord } from '@kiko/type-guards';
-import { bifoldr, eitherSync } from 'fnts/either';
+} from './walk-values';
 
 export const WALK_IDS = [
   'capital',
@@ -110,10 +111,7 @@ const recordOrUndefined = (value: unknown): Metadata | undefined =>
 const stringListOrUndefined = (value: unknown): string[] | undefined =>
   isStringList(value) ? value : undefined;
 
-/**
- * Each field parses with the rule that already reads it from a holding's metadata, so one rule
- * decides what is readable and what a walk repairs, whichever store the marks come from.
- */
+/** Each field parses with the one rule that decides what is readable and what a walk repairs. */
 const marksOf = (entry: Metadata): ParsedWalkMarks => ({
   cursor: finiteNumberOrNull(entry.cursor),
   rescan: finiteNumberOrNull(entry.rescan),

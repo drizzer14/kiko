@@ -19,7 +19,7 @@ import {
   walkMarksOf,
 } from '@kiko/test-support/walk-marks';
 import { DatabaseSync } from 'node:sqlite';
-import { holdingsRepo } from '@kiko/holdings/repo';
+import { accountsRepo } from '@kiko/accounts';
 import { transactionsRepo } from '@kiko/transactions/repo';
 import { applyAllMigrations } from '@kiko/test-support/real-sqlite';
 
@@ -263,12 +263,12 @@ describe('the Pay walk on real SQLite', () => {
     expect(marksOf('pay')).toMatchObject({ cursor: NOW, rescan: HISTORY_FLOOR_MS });
 
     seedWalkMarks(mockDatabase, ACCOUNT_ID, 'pay', { rescan: NOW - 40 * DAY_MS });
-    await holdingsRepo.resetBinanceWalkCursors(ACCOUNT_ID, 1);
+    await accountsRepo.disconnectExchange(ACCOUNT_ID, 'binance', 1);
 
     expect(marksOf('pay')).toMatchObject({ cursor: 1, rescan: 1 });
   });
 
-  it('keeps the overlap day behind a stale cursor on the Spot holding until a run has read it, and a disconnect empties the list', async () => {
+  it('keeps the overlap day behind a stale cursor until a run has read it, and a disconnect empties the list', async () => {
     const cursor = NOW - 120 * DAY_MS;
     seedWalkMarks(mockDatabase, ACCOUNT_ID, 'capital', { cursor: undefined });
     seedWalkMarks(mockDatabase, ACCOUNT_ID, 'pay', { cursor });
@@ -324,12 +324,12 @@ describe('the Pay walk on real SQLite', () => {
     expect(storedRows().map((row) => row.external_id)).toEqual(['acc-1:pay:C2C:late:1']);
 
     seedWalkMarks(mockDatabase, ACCOUNT_ID, 'pay', { pending: [{ start: 1, end: 2 }] });
-    await holdingsRepo.resetBinanceWalkCursors(ACCOUNT_ID, 1);
+    await accountsRepo.disconnectExchange(ACCOUNT_ID, 'binance', 1);
 
     expect(marksOf('pay')).toMatchObject({ pending: [] });
   });
 
-  it('writes the range cursor of an owed day it read on the Spot holding, and a disconnect drops it', async () => {
+  it('writes the range cursor of an owed day it read, and a disconnect drops it', async () => {
     const day = { start: NOW - 150 * DAY_MS, end: NOW - 149 * DAY_MS };
     seedWalkMarks(mockDatabase, ACCOUNT_ID, 'capital', { cursor: undefined });
     seedWalkMarks(mockDatabase, ACCOUNT_ID, 'pay', { cursor: NOW - 2 * DAY_MS, pending: [day] });
@@ -338,7 +338,7 @@ describe('the Pay walk on real SQLite', () => {
 
     expect(marksOf('pay')).toMatchObject({ rangeCursor: day.end, pending: [] });
 
-    await holdingsRepo.resetBinanceWalkCursors(ACCOUNT_ID, 1);
+    await accountsRepo.disconnectExchange(ACCOUNT_ID, 'binance', 1);
 
     expect(marksOf('pay')).not.toHaveProperty('rangeCursor');
   });
@@ -447,9 +447,7 @@ describe('the capital cursor beside rows of the other walks on real SQLite', () 
   const OLD_DEPOSIT = { id: 'old', amount: '0.5', insertTime: Date.UTC(2019, 2, 1) };
 
   const withoutCapitalCursor = (): void => {
-    mockDatabase
-      .prepare("UPDATE holdings SET metadata = ? WHERE id = 'h-spot'")
-      .run(JSON.stringify({ binanceAsset: 'BTC' }));
+    seedWalkMarks(mockDatabase, ACCOUNT_ID, 'capital', { cursor: undefined });
   };
 
   /** Binance answering as it does: the deposits that fall in the window asked for. */

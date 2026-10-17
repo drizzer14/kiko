@@ -12,7 +12,7 @@ import {
   withWalkMarks,
 } from '@kiko/test-support/walk-marks';
 import type { HoldingRow } from '@kiko/db';
-import { withWalkOwnedMetadataResetToFloor } from '@kiko/holdings/holding-metadata';
+import { exchangeStateReset } from '@kiko/crypto-sync/exchange/walk-state';
 import type { OwedGround, UnreadableRow, WalkWindow } from '@kiko/crypto-sync/exchange/walk';
 
 import {
@@ -1289,15 +1289,17 @@ describe('the pending overlap days of a walk', () => {
 
   it('empties the list and walks from the floor after a disconnect reset the walk', async () => {
     const owed = { start: NOW - 300 * DAY_MS, end: NOW - 299 * DAY_MS };
-    const reset = withWalkOwnedMetadataResetToFloor(
-      withWalkMarks({ binanceAsset: 'BTC' }, WALK_ACCOUNT_ID, 'pay', {
-        cursor: NOW,
-        rescan: NOW - DAY_MS,
-        pending: [owed],
-      }),
+    const reset = exchangeStateReset(
+      JSON.stringify(
+        withWalkMarks({}, WALK_ACCOUNT_ID, 'pay', {
+          cursor: NOW,
+          rescan: NOW - DAY_MS,
+          pending: [owed],
+        }),
+      ),
       HISTORY_FLOOR_MS,
     );
-    const resetMarks = walkMarksOf(reset ?? {}, WALK_ACCOUNT_ID, 'pay');
+    const resetMarks = walkMarksOf(JSON.parse(reset), WALK_ACCOUNT_ID, 'pay');
     const state = stateOf({
       payCursor: HISTORY_FLOOR_MS,
       rescanCursor: HISTORY_FLOOR_MS,

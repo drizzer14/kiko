@@ -1,16 +1,6 @@
 import { match } from 'ts-pattern';
 import { DAY_MS } from '@kiko/dates';
 import {
-  BINANCE_PAY_HISTORY_CURSOR_FIELD,
-  BINANCE_PAY_PENDING_OVERLAP_FIELD,
-  BINANCE_PAY_POINT_CURSOR_FIELD,
-  BINANCE_PAY_RANGE_CURSOR_FIELD,
-  BINANCE_PAY_RESCAN_CURSOR_FIELD,
-  BINANCE_PAY_SPAN_HINTS_FIELD,
-  type BinanceSpanHintPass,
-  type BinanceSpanHints,
-} from '@kiko/holdings/holding-metadata';
-import {
   advanceWalkMarks,
   BinanceWalkStop,
   commitSettledSpan,
@@ -31,11 +21,11 @@ import {
   storeRangeCursor,
   storeSpanHints,
   walkSpans,
-  type WalkMarkFields,
   type WalkMarks,
   type WalkWindow,
 } from '@kiko/crypto-sync/exchange/walk';
 import maybe, { foldMap } from 'fnts/maybe';
+import type { BinanceSpanHintPass, BinanceSpanHints } from '@kiko/crypto-sync/exchange/walk-state';
 
 import {
   EARN_FORWARD_OWES,
@@ -418,15 +408,6 @@ const pointOf = (record: SimRecord): OwedGround => ({
 /** Whether the list holds the very ground `record` owes: the point it was found at. */
 const holdsPointOf = (owed: OwedGround[], record: SimRecord): boolean =>
   owed.some((ground) => sameWindow(ground, pointOf(record)) && ground.series === record.series);
-
-const MARK_FIELDS: WalkMarkFields = {
-  cursor: BINANCE_PAY_HISTORY_CURSOR_FIELD,
-  rescan: BINANCE_PAY_RESCAN_CURSOR_FIELD,
-  point: BINANCE_PAY_POINT_CURSOR_FIELD,
-  range: BINANCE_PAY_RANGE_CURSOR_FIELD,
-  hints: BINANCE_PAY_SPAN_HINTS_FIELD,
-  pending: BINANCE_PAY_PENDING_OVERLAP_FIELD,
-};
 
 /** The rows of a record: its id, or a stop while the record is stuck. */
 const rowsOf = (entry: SimRecord, run: number): number[] => {
@@ -855,30 +836,14 @@ const simulate = async (input: Simulation): Promise<Outcome> => {
       callsOf,
       canAfford: (keep) => reads + keep < lane.reads,
       markPointRead: (window) =>
-        storePointCursor({
-          window,
-          marks: live,
-          field: MARK_FIELDS.point,
-          write: async () => undefined,
-        }),
+        storePointCursor({ window, marks: live, write: async () => undefined }),
       markRangeRead: async (window) => {
         record.rangesRead.push(window.start);
-        await storeRangeCursor({
-          window,
-          marks: live,
-          field: MARK_FIELDS.range,
-          write: async () => undefined,
-        });
+        await storeRangeCursor({ window, marks: live, write: async () => undefined });
       },
       hints: {
         stored: live.hints,
-        store: (hints) =>
-          storeSpanHints({
-            hints,
-            marks: live,
-            field: MARK_FIELDS.hints,
-            write: async () => undefined,
-          }),
+        store: (hints) => storeSpanHints({ hints, marks: live, write: async () => undefined }),
       },
       runWindow: (window, pass, keep, hint) => {
         if (pass !== 'forward' && !pastForward) {
@@ -928,8 +893,7 @@ const simulate = async (input: Simulation): Promise<Outcome> => {
               window,
               read,
               marks: live,
-              fields: MARK_FIELDS,
-              writePending: async () => undefined,
+              write: async () => undefined,
             }),
           commit: async (span, page) => {
             const committed = await commitSettledSpan({
@@ -959,9 +923,7 @@ const simulate = async (input: Simulation): Promise<Outcome> => {
                   plan,
                   marks: live,
                   restartMs: FLOOR_MS,
-                  fields: MARK_FIELDS,
                   write: async () => undefined,
-                  writePending: async () => undefined,
                 }),
             });
 

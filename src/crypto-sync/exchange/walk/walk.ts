@@ -1,29 +1,22 @@
 import { match } from 'ts-pattern';
 import { maxOf } from '@kiko/numbers';
-import {
-  type BinancePendingRange,
-  type BinanceSpanHint,
-  type BinanceSpanHintPass,
-  type BinanceSpanHints,
-  type BinanceSpanResume,
-  type BinanceWalkCursorField,
-  type BinanceWalkNumberField,
-  type BinanceWalkPendingField,
-  type BinanceWalkPointCursorField,
-  type BinanceWalkRangeCursorField,
-  type BinanceWalkSpanHintField,
-  binanceWalkPendingOf,
-  binanceWalkPointCursorOf,
-  binanceWalkRangeCursorOf,
-  binanceWalkSpanHintsOf,
-} from '@kiko/holdings/holding-metadata';
 import type { HoldingRow } from '@kiko/db';
 import maybe, { foldMap } from 'fnts/maybe';
 import { logFailure } from '@kiko/diagnostics';
 import type { ExchangeHolding } from '@kiko/holdings/repo';
 
+import type {
+  BinancePendingRange,
+  BinanceSpanHint,
+  BinanceSpanHintPass,
+  BinanceSpanHints,
+  BinanceSpanResume,
+  ParsedWalkMarks,
+  WalkMarkPatch,
+} from '../walk-state';
+
 import type { ExchangeWalkConfig } from './walk-config';
-import type { BinanceWalkWriteDeps } from './walk-write-deps';
+import type { WalkMarkWriter } from './exchange-state-deps';
 
 /** What one walk reports: rows imported this run, and whether it reached the end of its span. */
 export type WalkResult = { imported: number; complete: boolean };
@@ -323,14 +316,12 @@ const hasKnownSeries = (
  * entry of a series the walk does not read (`knownSeries`) is malformed too.
  */
 export const readPendingMark = async (input: {
-  field: BinanceWalkPendingField;
-  metadata: unknown;
+  stored: ParsedWalkMarks['pending'];
   owedIfUnreadable: WalkWindow;
   knownSeries?: readonly string[];
-  write: (field: BinanceWalkPendingField, ranges: OwedGround[]) => Promise<void>;
+  write: WalkMarkWriter;
 }): Promise<OwedGround[]> => {
-  const { field, metadata, owedIfUnreadable, knownSeries, write } = input;
-  const stored = binanceWalkPendingOf(field, metadata);
+  const { stored, owedIfUnreadable, knownSeries, write } = input;
 
   if (stored?.every((ground) => hasKnownSeries(ground, knownSeries))) {
     return stored;
@@ -341,7 +332,7 @@ export const readPendingMark = async (input: {
     new BinanceWalkStop('pending-malformed'),
   );
   const owed = owedIfUnreadable.start < owedIfUnreadable.end ? [owedIfUnreadable] : [];
-  await write(field, owed);
+  await write([{ field: 'pending', value: owed }]);
 
   return owed;
 };
@@ -361,9 +352,9 @@ const BEFORE_EVERY_GROUND = Number.MIN_SAFE_INTEGER;
  */
 const readRoundRobinCursor = async (input: {
   stored: number | null | undefined;
-  field: BinanceWalkNumberField;
+  field: 'pointCursor' | 'rangeCursor';
   unreadable: { message: string; code: string };
-  write: (field: BinanceWalkNumberField, cursorMs: number) => Promise<void>;
+  write: WalkMarkWriter;
 }): Promise<number | null> => {
   const { stored, field, unreadable, write } = input;
 
@@ -372,20 +363,19 @@ const readRoundRobinCursor = async (input: {
   }
 
   logFailure(unreadable.message, new BinanceWalkStop(unreadable.code));
-  await write(field, BEFORE_EVERY_GROUND);
+  await write([{ field, value: BEFORE_EVERY_GROUND }]);
 
   return BEFORE_EVERY_GROUND;
 };
 
 /** The stored point cursor of one walk (see `readRoundRobinCursor`). */
 export const readPointCursor = (input: {
-  field: BinanceWalkPointCursorField;
-  metadata: unknown;
-  write: (field: BinanceWalkNumberField, cursorMs: number) => Promise<void>;
+  stored: ParsedWalkMarks['pointCursor'];
+  write: WalkMarkWriter;
 }): Promise<number | null> =>
   readRoundRobinCursor({
-    stored: binanceWalkPointCursorOf(input.field, input.metadata),
-    field: input.field,
+    stored: input.stored,
+    field: 'pointCursor',
     unreadable: {
       message: '[binance sync] point cursor unreadable',
       code: 'point-cursor-malformed',
@@ -395,13 +385,12 @@ export const readPointCursor = (input: {
 
 /** The stored range cursor of one walk (see `readRoundRobinCursor`). */
 export const readRangeCursor = (input: {
-  field: BinanceWalkRangeCursorField;
-  metadata: unknown;
-  write: (field: BinanceWalkNumberField, cursorMs: number) => Promise<void>;
+  stored: ParsedWalkMarks['rangeCursor'];
+  write: WalkMarkWriter;
 }): Promise<number | null> =>
   readRoundRobinCursor({
-    stored: binanceWalkRangeCursorOf(input.field, input.metadata),
-    field: input.field,
+    stored: input.stored,
+    field: 'rangeCursor',
     unreadable: {
       message: '[binance sync] range cursor unreadable',
       code: 'range-cursor-malformed',
@@ -419,19 +408,17 @@ export const NO_HINTS: BinanceSpanHints = { forward: [], pending: [], rescan: []
  * and never thrown (a corrupt value must not fail a balance sync), is logged by one run only.
  */
 export const readSpanHints = async (input: {
-  field: BinanceWalkSpanHintField;
-  metadata: unknown;
-  write: (field: BinanceWalkSpanHintField, hints: BinanceSpanHints) => Promise<void>;
+  stored: ParsedWalkMarks['spanHints'];
+  write: WalkMarkWriter;
 }): Promise<BinanceSpanHints> => {
-  const { field, metadata, write } = input;
-  const stored = binanceWalkSpanHintsOf(field, metadata);
+  const { stored, write } = input;
 
   if (stored !== undefined) {
     return stored;
   }
 
   logFailure('[binance sync] span hints unreadable', new BinanceWalkStop('span-hints-malformed'));
-  await write(field, NO_HINTS);
+  await write([{ field: 'spanHints', value: NO_HINTS }]);
 
   return NO_HINTS;
 };
@@ -644,14 +631,6 @@ export type WalkMarks = {
   listStored?: boolean;
 };
 
-/** The metadata field each of a walk's marks is stored under. */
-export type WalkMarkFields = Record<'cursor' | 'rescan', BinanceWalkCursorField> & {
-  point: BinanceWalkPointCursorField;
-  range: BinanceWalkRangeCursorField;
-  hints: BinanceWalkSpanHintField;
-  pending: BinanceWalkPendingField;
-};
-
 type MarkAdvance = {
   span: WalkWindow;
   /** The series the span was read in, none for every series (see `OwedWindow`). */
@@ -661,9 +640,7 @@ type MarkAdvance = {
   plan: WalkPlan;
   marks: WalkMarks;
   restartMs: number;
-  fields: WalkMarkFields;
-  write: (field: BinanceWalkNumberField, cursorMs: number) => Promise<void>;
-  writePending: (field: BinanceWalkPendingField, ranges: OwedGround[]) => Promise<void>;
+  write: WalkMarkWriter;
 };
 
 /** Stored lists are cut to nothing and merged to no limit: only a run's plan bounds a list. */
@@ -672,13 +649,23 @@ const UNBOUNDED = { floorMs: Number.NEGATIVE_INFINITY, endTime: Number.POSITIVE_
 const sameList = (left: OwedGround[], right: OwedGround[]): boolean =>
   left.length === right.length && left.every((ground, index) => sameGround(ground, right[index]));
 
-const storePending = async (
-  input: Pick<MarkAdvance, 'marks' | 'fields' | 'writePending'>,
-  next: OwedGround[],
-): Promise<void> => {
-  if (!sameList(next, input.marks.pending)) {
-    input.marks.pending = next;
-    await input.writePending(input.fields.pending, next);
+/**
+ * The write of `next` as the walk's list of owed ground: none when it is the list the run last
+ * wrote, and the marks keep it as the one written.
+ */
+const pendingPatchesOf = (marks: WalkMarks, next: OwedGround[]): WalkMarkPatch[] => {
+  if (sameList(next, marks.pending)) {
+    return [];
+  }
+
+  marks.pending = next;
+
+  return [{ field: 'pending', value: next }];
+};
+
+const writeAll = async (write: WalkMarkWriter, patches: WalkMarkPatch[]): Promise<void> => {
+  if (patches.length > 0) {
+    await write(patches);
   }
 };
 
@@ -689,14 +676,14 @@ const storePending = async (
  * owed windows read. A crash after it only leaves ground the next run reads again.
  */
 export const storePlannedList = async (
-  input: Pick<MarkAdvance, 'plan' | 'marks' | 'fields' | 'writePending'>,
+  input: Pick<MarkAdvance, 'plan' | 'marks' | 'write'>,
 ): Promise<void> => {
-  await storePending(input, input.plan.pendingRanges);
+  await writeAll(input.write, pendingPatchesOf(input.marks, input.plan.pendingRanges));
   input.marks.listStored = true;
 };
 
 const advanceCursor = async (input: MarkAdvance): Promise<void> => {
-  const { span, plan, marks, fields, write } = input;
+  const { span, plan, marks, write } = input;
 
   // The ground a forward span owes (a record the forward pass goes past, see `commitSettledSpan`)
   // is stored with the run's own list, and kept by every later forward span of the run.
@@ -707,18 +694,17 @@ const advanceCursor = async (input: MarkAdvance): Promise<void> => {
   const forwardOwed = marks.forwardOwed ?? [];
   const listed = marks.listStored === true ? marks.pending : plan.pendingRanges;
 
-  // The owed ground goes first: a crash after it only leaves a range the next run reads
-  // again, while a crash after the cursor alone would leave the overlap behind the old
-  // cursor owed to no run.
-  await storePending(
-    input,
+  // The owed ground and the cursor are one write: a cursor alone would leave the overlap behind
+  // the old cursor owed to no run.
+  const pending = pendingPatchesOf(
+    marks,
     forwardOwed.length === 0
       ? listed
       : normalizePending([...listed, ...forwardOwed], UNBOUNDED, Number.POSITIVE_INFINITY),
   );
 
   marks.cursor = Math.max(span.end, marks.cursor ?? span.end);
-  await write(fields.cursor, marks.cursor);
+  await write([...pending, { field: 'cursor', value: marks.cursor }]);
 };
 
 /** Whether `outer` holds all of `inner`. */
@@ -760,10 +746,9 @@ export const dropReadPoints = async (input: {
   window: WalkWindow;
   read: OwedGround[];
   marks: WalkMarks;
-  fields: WalkMarkFields;
-  writePending: (field: BinanceWalkPendingField, ranges: OwedGround[]) => Promise<void>;
+  write: WalkMarkWriter;
 }): Promise<void> => {
-  const { pass, window, read, marks } = input;
+  const { pass, window, read, marks, write } = input;
 
   if (pass === 'forward') {
     return;
@@ -772,19 +757,23 @@ export const dropReadPoints = async (input: {
   const isSettled = (ground: OwedGround): boolean =>
     isPoint(ground) && holdsAll(window, ground) && read.some((point) => samePoint(point, ground));
 
-  await storePending(
-    input,
-    marks.pending.filter((ground) => !isSettled(ground)),
+  await writeAll(
+    write,
+    pendingPatchesOf(
+      marks,
+      marks.pending.filter((ground) => !isSettled(ground)),
+    ),
   );
 };
 
 /**
- * The list without the ground the span read, and with the ground of it that stays owed: one
- * write, so a crash leaves either the list as it was or the list with the stuck records in it.
+ * The write of the list without the ground the span read, and with the ground of it that stays
+ * owed: one patch, so a crash leaves either the list as it was or the list with the stuck records
+ * in it.
  */
-const advancePending = (input: MarkAdvance): Promise<void> =>
-  storePending(
-    input,
+const pendingAdvance = (input: MarkAdvance): WalkMarkPatch[] =>
+  pendingPatchesOf(
+    input.marks,
     normalizePending(
       [...withoutReadGround(input), ...(input.owed ?? [])],
       UNBOUNDED,
@@ -792,19 +781,25 @@ const advancePending = (input: MarkAdvance): Promise<void> =>
     ),
   );
 
-const advanceRescan = async (input: MarkAdvance): Promise<void> => {
-  const { span, plan, marks, restartMs, fields, write } = input;
-  const rescanCursor = rescanCursorAfter({ span, plan, restartMs });
+const advancePending = (input: MarkAdvance): Promise<void> =>
+  writeAll(input.write, pendingAdvance(input));
 
-  // The list goes before the mark: a crash after the mark alone would pass a stuck record
-  // that no list holds, while a crash after the list only has the re-scan read the span again.
-  await advancePending(input);
+const advanceRescan = async (input: MarkAdvance): Promise<void> => {
+  const { span, plan, marks, restartMs, write } = input;
+  const rescanCursor = rescanCursorAfter({ span, plan, restartMs });
+  const pending = pendingAdvance(input);
 
   // A finished pass that was never started has no mark to reset: skip the redundant write.
-  if (rescanCursor !== (marks.rescanCursor ?? restartMs)) {
-    marks.rescanCursor = rescanCursor;
-    await write(fields.rescan, rescanCursor);
+  if (rescanCursor === (marks.rescanCursor ?? restartMs)) {
+    await writeAll(write, pending);
+
+    return;
   }
+
+  marks.rescanCursor = rescanCursor;
+
+  // The list and the mark are one write: a mark alone would pass a stuck record that no list holds.
+  await write([...pending, { field: 'rescan', value: rescanCursor }]);
 };
 
 /**
@@ -816,8 +811,8 @@ const advanceRescan = async (input: MarkAdvance): Promise<void> => {
  * forward pass. A re-scan span and a pending span take the ground they read out of the
  * list, put `owed` (the part of it the walk could not commit: its stuck records) back, and an
  * entry leaves the list only by being read (a point: once its whole window was read and a record
- * that owes exactly it came back, see `dropReadPoints`). `write` gets the field of the cursor that
- * moved and its value; `writePending` the field of the list and its new content.
+ * that owes exactly it came back, see `dropReadPoints`). `write` gets one write for the span: the
+ * list when it changed, and the mark that moved.
  */
 export const advanceWalkMarks = (input: MarkAdvance & { pass: WalkPass }): Promise<void> =>
   match(input.pass)
@@ -880,14 +875,13 @@ const POINT_KEEP = 1;
 export const storePointCursor = async (input: {
   window: WalkWindow;
   marks: WalkMarks;
-  field: BinanceWalkPointCursorField;
-  write: (field: BinanceWalkNumberField, cursorMs: number) => Promise<void>;
+  write: WalkMarkWriter;
 }): Promise<void> => {
-  const { window, marks, field, write } = input;
+  const { window, marks, write } = input;
 
   if (marks.pointCursor !== window.start) {
     marks.pointCursor = window.start;
-    await write(field, window.start);
+    await write([{ field: 'pointCursor', value: window.start }]);
   }
 };
 
@@ -900,14 +894,13 @@ export const storePointCursor = async (input: {
 export const storeRangeCursor = async (input: {
   window: WalkWindow;
   marks: WalkMarks;
-  field: BinanceWalkRangeCursorField;
-  write: (field: BinanceWalkNumberField, cursorMs: number) => Promise<void>;
+  write: WalkMarkWriter;
 }): Promise<void> => {
-  const { window, marks, field, write } = input;
+  const { window, marks, write } = input;
 
   if (marks.rangeCursor !== window.end) {
     marks.rangeCursor = window.end;
-    await write(field, window.end);
+    await write([{ field: 'rangeCursor', value: window.end }]);
   }
 };
 
@@ -915,43 +908,28 @@ export const storeRangeCursor = async (input: {
 export const storeSpanHints = async (input: {
   hints: BinanceSpanHints;
   marks: WalkMarks;
-  field: BinanceWalkSpanHintField;
-  write: (field: BinanceWalkSpanHintField, hints: BinanceSpanHints) => Promise<void>;
+  write: WalkMarkWriter;
 }): Promise<void> => {
-  const { hints, marks, field, write } = input;
+  const { hints, marks, write } = input;
 
   marks.hints = hints;
-  await write(field, hints);
+  await write([{ field: 'spanHints', value: hints }]);
 };
-
-/** How a walk writes its cursors and its span hints: its holding's writers, one for each. */
-type WalkWriters = {
-  writeCursor: (field: BinanceWalkNumberField, cursorMs: number) => Promise<void>;
-  writeHints: (field: BinanceWalkSpanHintField, hints: BinanceSpanHints) => Promise<void>;
-};
-
-/** The writers of a walk, bound to the holding that carries its marks. */
-export const walkWritersOf = (
-  holdingId: string,
-  deps: Pick<BinanceWalkWriteDeps, 'writeWalkCursor' | 'writeWalkHints'>,
-): WalkWriters => ({
-  writeCursor: (field, cursorMs) => deps.writeWalkCursor(holdingId, field, cursorMs),
-  writeHints: (field, hints) => deps.writeWalkHints(holdingId, field, hints),
-});
 
 /**
- * What a walk reads of its two round-robins and its span hints from its holding's metadata, each
+ * What a walk reads of its two round-robins and its span hints from its stored marks, each
  * repaired when malformed (see `readRoundRobinCursor`, `readSpanHints`).
  */
-export const readWalkRoundRobins = async (
-  input: { fields: WalkMarkFields; metadata: unknown } & WalkWriters,
-): Promise<Pick<WalkMarks, 'pointCursor' | 'rangeCursor' | 'hints'>> => {
-  const { fields, metadata, writeCursor, writeHints } = input;
+export const readWalkRoundRobins = async (input: {
+  stored: ParsedWalkMarks;
+  write: WalkMarkWriter;
+}): Promise<Pick<WalkMarks, 'pointCursor' | 'rangeCursor' | 'hints'>> => {
+  const { stored, write } = input;
 
   return {
-    pointCursor: await readPointCursor({ field: fields.point, metadata, write: writeCursor }),
-    rangeCursor: await readRangeCursor({ field: fields.range, metadata, write: writeCursor }),
-    hints: await readSpanHints({ field: fields.hints, metadata, write: writeHints }),
+    pointCursor: await readPointCursor({ stored: stored.pointCursor, write }),
+    rangeCursor: await readRangeCursor({ stored: stored.rangeCursor, write }),
+    hints: await readSpanHints({ stored: stored.spanHints, write }),
   };
 };
 
@@ -959,20 +937,15 @@ export const readWalkRoundRobins = async (
  * What `runWalkPlan` needs of a walk's round-robins and span hints, over the walk's own `marks`:
  * mark a point or a range once its read has started, and store the hints.
  */
-export const roundRobinHooksOf = (
-  input: { marks: WalkMarks; fields: WalkMarkFields } & WalkWriters,
-) => {
-  const { marks, fields, writeCursor, writeHints } = input;
+export const roundRobinHooksOf = (input: { marks: WalkMarks; write: WalkMarkWriter }) => {
+  const { marks, write } = input;
 
   return {
-    markPointRead: (window: OwedWindow) =>
-      storePointCursor({ window, marks, field: fields.point, write: writeCursor }),
-    markRangeRead: (window: OwedWindow) =>
-      storeRangeCursor({ window, marks, field: fields.range, write: writeCursor }),
+    markPointRead: (window: OwedWindow) => storePointCursor({ window, marks, write }),
+    markRangeRead: (window: OwedWindow) => storeRangeCursor({ window, marks, write }),
     hints: {
       stored: marks.hints,
-      store: (hints: BinanceSpanHints) =>
-        storeSpanHints({ hints, marks, field: fields.hints, write: writeHints }),
+      store: (hints: BinanceSpanHints) => storeSpanHints({ hints, marks, write }),
     },
   };
 };

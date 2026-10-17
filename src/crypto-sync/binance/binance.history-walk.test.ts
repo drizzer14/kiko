@@ -35,7 +35,13 @@ import {
   withoutRead,
 } from '@kiko/crypto-sync/exchange/walk';
 import type { HoldingRow } from '@kiko/db';
-import type { BinanceSpanHint, BinanceSpanHints } from '@kiko/holdings/holding-metadata';
+import {
+  type BinanceSpanHint,
+  type BinanceSpanHints,
+  type ParsedWalkMarks,
+  parseExchangeState,
+  type WalkMarkPatch,
+} from '@kiko/crypto-sync/exchange/walk-state';
 
 import { btcSatoshis } from './binance.amounts';
 import { BINANCE_WALK_CONFIG } from './binance.walk-config';
@@ -1680,10 +1686,9 @@ describe('advanceWalkMarks', () => {
   const plan = planOf({ rescanEnd: 1_000 });
   const RESTART_MS = 5;
 
-  const FORWARD_FIELD = 'binancePayHistoryCursor';
-  const RESCAN_FIELD = 'binancePayRescanCursor';
-  const PENDING_FIELD = 'binancePayPendingOverlap';
-  const POINT_FIELD = 'binancePayPointCursor';
+  const FORWARD_FIELD = 'cursor';
+  const RESCAN_FIELD = 'rescan';
+  const PENDING_FIELD = 'pending';
 
   type Write = [string, number | OwedGround[]];
 
@@ -1699,14 +1704,14 @@ describe('advanceWalkMarks', () => {
 
   const pointOf = (start: number, end: number): OwedGround => ({ start, end, kind: 'point' });
 
-  const advance = async (
+  const advanceCalls = async (
     pass: WalkPass,
     span: WalkWindow,
     marks: WalkMarks,
     walkPlan: WalkPlan = plan,
     owed: OwedGround[] = [],
   ) => {
-    const writes: Write[] = [];
+    const calls: Write[][] = [];
 
     await advanceWalkMarks({
       pass,
@@ -1715,24 +1720,21 @@ describe('advanceWalkMarks', () => {
       plan: walkPlan,
       marks,
       restartMs: RESTART_MS,
-      fields: {
-        cursor: FORWARD_FIELD,
-        rescan: RESCAN_FIELD,
-        point: POINT_FIELD,
-        range: 'binancePayRangeCursor',
-        hints: 'binancePaySpanHints',
-        pending: PENDING_FIELD,
-      },
-      write: async (field, cursorMs) => {
-        writes.push([field, cursorMs]);
-      },
-      writePending: async (field, ranges) => {
-        writes.push([field, ranges]);
+      write: async (patches) => {
+        calls.push(patches.map((patch): Write => [patch.field, patch.value as Write[1]]));
       },
     });
 
-    return writes;
+    return calls;
   };
+
+  const advance = async (
+    pass: WalkPass,
+    span: WalkWindow,
+    marks: WalkMarks,
+    walkPlan: WalkPlan = plan,
+    owed: OwedGround[] = [],
+  ) => (await advanceCalls(pass, span, marks, walkPlan, owed)).flat();
 
   it('moves the cursor to the end of a forward span', async () => {
     const marks = markOf({ cursor: 100 });
@@ -1800,12 +1802,15 @@ describe('advanceWalkMarks', () => {
     const day = { start: 70_000, end: 100_000 };
     const planned = planOf({ rescanEnd: 1_000_000, pendingRanges: [day] });
 
-    it('stores the list before it moves the cursor, so a crash between the two loses nothing', async () => {
+    it('stores the list with the cursor in one write, so no crash moves the cursor without it', async () => {
       const marks = markOf({ cursor: 100 });
+      const calls = await advanceCalls('forward', { start: 100, end: 400 }, marks, planned);
 
-      expect(await advance('forward', { start: 100, end: 400 }, marks, planned)).toEqual([
-        [PENDING_FIELD, [day]],
-        [FORWARD_FIELD, 400],
+      expect(calls).toEqual([
+        [
+          [PENDING_FIELD, [day]],
+          [FORWARD_FIELD, 400],
+        ],
       ]);
       expect(marks).toEqual({
         cursor: 400,
@@ -1815,6 +1820,18 @@ describe('advanceWalkMarks', () => {
         hints: NO_HINTS,
         pending: [day],
       });
+    });
+
+    it('stores the list with the re-scan mark in one write: a span that read ground takes it off the list', async () => {
+      const marks = markOf({ cursor: 900, pending: [day] });
+      const calls = await advanceCalls('rescan', { start: 60_000, end: 110_000 }, marks, planned);
+
+      expect(calls).toEqual([
+        [
+          [PENDING_FIELD, []],
+          [RESCAN_FIELD, 110_000],
+        ],
+      ]);
     });
 
     it('stores the list once: the next forward span moves only the cursor', async () => {
@@ -1868,14 +1885,6 @@ describe('advanceWalkMarks', () => {
     });
 
     describe('when the run stored the planned list before any pass', () => {
-      const FIELDS = {
-        cursor: FORWARD_FIELD,
-        rescan: RESCAN_FIELD,
-        point: POINT_FIELD,
-        range: 'binancePayRangeCursor',
-        hints: 'binancePaySpanHints',
-        pending: PENDING_FIELD,
-      } as const;
       const stale = { start: 10_000, end: 20_000 };
       const storedPlan = planOf({ rescanEnd: 1_000_000, pendingRanges: [stale, day] });
 
@@ -1885,9 +1894,8 @@ describe('advanceWalkMarks', () => {
         await storePlannedList({
           plan: storedPlan,
           marks,
-          fields: FIELDS,
-          writePending: async (field, ranges) => {
-            writes.push([field, ranges]);
+          write: async (patches) => {
+            writes.push(...patches.map((patch): Write => [patch.field, patch.value as Write[1]]));
           },
         });
 
@@ -2141,14 +2149,7 @@ describe('advanceWalkMarks', () => {
 });
 
 describe('dropReadPoints', () => {
-  const FIELDS = {
-    cursor: 'binancePayHistoryCursor',
-    rescan: 'binancePayRescanCursor',
-    point: 'binancePayPointCursor',
-    range: 'binancePayRangeCursor',
-    hints: 'binancePaySpanHints',
-    pending: 'binancePayPendingOverlap',
-  } as const;
+  const PENDING_FIELD = 'pending';
 
   const pointOf = (start: number, end: number): OwedGround => ({ start, end, kind: 'point' });
   const point = pointOf(79_999, 80_001);
@@ -2176,9 +2177,13 @@ describe('dropReadPoints', () => {
       window,
       read,
       marks,
-      fields: FIELDS,
-      writePending: async (field, ranges) => {
-        writes.push([field, ranges]);
+      write: async (patches) => {
+        writes.push(
+          ...patches.map((patch): [string, OwedGround[]] => [
+            patch.field,
+            patch.value as OwedGround[],
+          ]),
+        );
       },
     });
 
@@ -2188,7 +2193,7 @@ describe('dropReadPoints', () => {
   it('takes a point off the list when the window holds all of it and a returned record owes exactly it, in one write', async () => {
     const { marks, writes } = await drop({ pending: [point], read: [point] });
 
-    expect(writes).toEqual([[FIELDS.pending, []]]);
+    expect(writes).toEqual([[PENDING_FIELD, []]]);
     expect(marks.pending).toEqual([]);
   });
 
@@ -2249,7 +2254,7 @@ describe('dropReadPoints', () => {
 
     const { marks, writes } = await drop({ pending: [range, point], read: [point] });
 
-    expect(writes).toEqual([[FIELDS.pending, [range]]]);
+    expect(writes).toEqual([[PENDING_FIELD, [range]]]);
     expect(marks.pending).toEqual([range]);
   });
 
@@ -2292,7 +2297,7 @@ describe('dropReadPoints', () => {
         read: [typed('MAIN_FUNDING')],
       });
 
-      expect(writes).toEqual([[FIELDS.pending, []]]);
+      expect(writes).toEqual([[PENDING_FIELD, []]]);
       expect(marks.pending).toEqual([]);
     });
   });
@@ -2354,20 +2359,38 @@ describe('withoutRead', () => {
   });
 });
 
+const patchWriter = () => jest.fn(async (_patches: readonly WalkMarkPatch[]) => undefined);
+
+/** The marks of the Pay walk read from its stored entry, whatever the entry is. */
+const payMarksOf = (entry: unknown): ParsedWalkMarks => {
+  const parsed = parseExchangeState(JSON.stringify({ version: 1, walks: { pay: entry } }));
+
+  if (parsed.kind === 'malformed') {
+    throw new Error('payMarksOf: the state is not readable');
+  }
+
+  return parsed.walks.pay;
+};
+
 describe('readPendingMark', () => {
-  const FIELD = 'binancePayPendingOverlap';
+  const FIELD = 'pending';
   const owedBefore = { start: 1_000, end: 5_000 };
 
   const readMark = (
-    metadata: unknown,
+    entry: unknown,
     owedIfUnreadable = owedBefore,
     knownSeries?: readonly string[],
   ) => {
-    const write = jest.fn(async (_field: string, _ranges: WalkWindow[]) => undefined);
+    const write = patchWriter();
 
     return {
       write,
-      ranges: readPendingMark({ field: FIELD, metadata, owedIfUnreadable, knownSeries, write }),
+      ranges: readPendingMark({
+        stored: payMarksOf(entry).pending,
+        owedIfUnreadable,
+        knownSeries,
+        write,
+      }),
     };
   };
 
@@ -2409,7 +2432,7 @@ describe('readPendingMark', () => {
       await ranges;
 
       expect(write).toHaveBeenCalledTimes(1);
-      expect(write).toHaveBeenCalledWith(FIELD, [owedBefore]);
+      expect(write).toHaveBeenCalledWith([{ field: FIELD, value: [owedBefore] }]);
     });
 
     it('logs one fixed code and never throws', async () => {
@@ -2426,7 +2449,7 @@ describe('readPendingMark', () => {
       const { ranges, write } = readMark({ [FIELD]: 'x' }, { start: 5_000, end: 5_000 });
 
       expect(await ranges).toEqual([]);
-      expect(write).toHaveBeenCalledWith(FIELD, []);
+      expect(write).toHaveBeenCalledWith([{ field: FIELD, value: [] }]);
     });
   });
 
@@ -2459,7 +2482,7 @@ describe('readPendingMark', () => {
       const { ranges, write } = readMark({ [FIELD]: [typedPoint, stray] }, owedBefore, KNOWN);
 
       expect(await ranges).toEqual([owedBefore]);
-      expect(write).toHaveBeenCalledWith(FIELD, [owedBefore]);
+      expect(write).toHaveBeenCalledWith([{ field: FIELD, value: [owedBefore] }]);
       expect(warn).toHaveBeenCalledWith('[binance sync] pending overlap ranges unreadable', {
         name: 'BinanceWalkStop',
         code: 'pending-malformed',
@@ -2470,13 +2493,13 @@ describe('readPendingMark', () => {
       const { ranges, write } = readMark({ [FIELD]: [typedPoint] });
 
       expect(await ranges).toEqual([owedBefore]);
-      expect(write).toHaveBeenCalledWith(FIELD, [owedBefore]);
+      expect(write).toHaveBeenCalledWith([{ field: FIELD, value: [owedBefore] }]);
     });
   });
 });
 
 describe('readPointCursor', () => {
-  const FIELD = 'binancePayPointCursor';
+  const FIELD = 'pointCursor';
   let warn: jest.SpyInstance;
 
   beforeEach(() => {
@@ -2487,10 +2510,10 @@ describe('readPointCursor', () => {
     warn.mockRestore();
   });
 
-  const readCursor = (metadata: unknown) => {
-    const write = jest.fn(async (_field: string, _cursorMs: number) => undefined);
+  const readCursor = (entry: unknown) => {
+    const write = patchWriter();
 
-    return { write, cursor: readPointCursor({ field: FIELD, metadata, write }) };
+    return { write, cursor: readPointCursor({ stored: payMarksOf(entry).pointCursor, write }) };
   };
 
   it('reads the stored cursor of one walk, and writes nothing', async () => {
@@ -2542,8 +2565,7 @@ describe('readPointCursor', () => {
 
         await cursor;
 
-        expect(write).toHaveBeenCalledTimes(1);
-        expect(write).toHaveBeenCalledWith(FIELD, Number.MIN_SAFE_INTEGER);
+        expect(write.mock.calls).toEqual([[[{ field: FIELD, value: Number.MIN_SAFE_INTEGER }]]]);
       },
     );
 
@@ -2562,7 +2584,7 @@ describe('readPointCursor', () => {
 });
 
 describe('storePointCursor', () => {
-  const FIELD = 'binanceHistoryPointCursor';
+  const FIELD = 'pointCursor';
   const marksOf = (pointCursor: number | null): WalkMarks => ({
     cursor: null,
     rescanCursor: null,
@@ -2574,21 +2596,20 @@ describe('storePointCursor', () => {
 
   it('stores the start of the point that was read, and keeps it in the marks', async () => {
     const marks = marksOf(null);
-    const write = jest.fn(async (_field: string, _cursorMs: number) => undefined);
+    const write = patchWriter();
 
-    await storePointCursor({ window: { start: 700, end: 702 }, marks, field: FIELD, write });
+    await storePointCursor({ window: { start: 700, end: 702 }, marks, write });
 
-    expect(write).toHaveBeenCalledWith(FIELD, 700);
+    expect(write).toHaveBeenCalledWith([{ field: FIELD, value: 700 }]);
     expect(marks.pointCursor).toBe(700);
   });
 
   it('writes nothing when that start already is the stored cursor', async () => {
-    const write = jest.fn(async (_field: string, _cursorMs: number) => undefined);
+    const write = patchWriter();
 
     await storePointCursor({
       window: { start: 700, end: 702 },
       marks: marksOf(700),
-      field: FIELD,
       write,
     });
 
@@ -2597,7 +2618,7 @@ describe('storePointCursor', () => {
 });
 
 describe('readRangeCursor', () => {
-  const FIELD = 'binancePayRangeCursor';
+  const FIELD = 'rangeCursor';
   let warn: jest.SpyInstance;
 
   beforeEach(() => {
@@ -2608,10 +2629,10 @@ describe('readRangeCursor', () => {
     warn.mockRestore();
   });
 
-  const readCursor = (metadata: unknown) => {
-    const write = jest.fn(async (_field: string, _cursorMs: number) => undefined);
+  const readCursor = (entry: unknown) => {
+    const write = patchWriter();
 
-    return { write, cursor: readRangeCursor({ field: FIELD, metadata, write }) };
+    return { write, cursor: readRangeCursor({ stored: payMarksOf(entry).rangeCursor, write }) };
   };
 
   it('reads the stored cursor of one walk, and writes nothing', async () => {
@@ -2657,13 +2678,13 @@ describe('readRangeCursor', () => {
       await cursor;
 
       expect(write).toHaveBeenCalledTimes(1);
-      expect(write).toHaveBeenCalledWith(FIELD, Number.MIN_SAFE_INTEGER);
+      expect(write).toHaveBeenCalledWith([{ field: FIELD, value: Number.MIN_SAFE_INTEGER }]);
     });
   });
 });
 
 describe('storeRangeCursor', () => {
-  const FIELD = 'binanceHistoryRangeCursor';
+  const FIELD = 'rangeCursor';
   const marksOf = (rangeCursor: number | null): WalkMarks => ({
     cursor: null,
     rescanCursor: null,
@@ -2675,21 +2696,20 @@ describe('storeRangeCursor', () => {
 
   it('stores the end of the window that was read, and keeps it in the marks', async () => {
     const marks = marksOf(null);
-    const write = jest.fn(async (_field: string, _cursorMs: number) => undefined);
+    const write = patchWriter();
 
-    await storeRangeCursor({ window: { start: 700, end: 760 }, marks, field: FIELD, write });
+    await storeRangeCursor({ window: { start: 700, end: 760 }, marks, write });
 
-    expect(write).toHaveBeenCalledWith(FIELD, 760);
+    expect(write).toHaveBeenCalledWith([{ field: FIELD, value: 760 }]);
     expect(marks.rangeCursor).toBe(760);
   });
 
   it('writes nothing when that end already is the stored cursor', async () => {
-    const write = jest.fn(async (_field: string, _cursorMs: number) => undefined);
+    const write = patchWriter();
 
     await storeRangeCursor({
       window: { start: 700, end: 760 },
       marks: marksOf(760),
-      field: FIELD,
       write,
     });
 
@@ -2698,7 +2718,7 @@ describe('storeRangeCursor', () => {
 });
 
 describe('readSpanHints', () => {
-  const FIELD = 'binancePaySpanHints';
+  const FIELD = 'spanHints';
   let warn: jest.SpyInstance;
 
   beforeEach(() => {
@@ -2709,10 +2729,10 @@ describe('readSpanHints', () => {
     warn.mockRestore();
   });
 
-  const readHints = (metadata: unknown) => {
-    const write = jest.fn(async (_field: string, _hints: unknown) => undefined);
+  const readHints = (entry: unknown) => {
+    const write = patchWriter();
 
-    return { write, hints: readSpanHints({ field: FIELD, metadata, write }) };
+    return { write, hints: readSpanHints({ stored: payMarksOf(entry).spanHints, write }) };
   };
 
   it('reads the stored hints of one walk, and writes nothing', async () => {
@@ -2758,13 +2778,13 @@ describe('readSpanHints', () => {
       await hints;
 
       expect(write).toHaveBeenCalledTimes(1);
-      expect(write).toHaveBeenCalledWith(FIELD, NO_HINTS);
+      expect(write).toHaveBeenCalledWith([{ field: FIELD, value: NO_HINTS }]);
     });
   });
 });
 
 describe('storeSpanHints', () => {
-  const FIELD = 'binanceTransferSpanHints';
+  const FIELD = 'spanHints';
 
   it('stores the hints and keeps them in the marks', async () => {
     const marks: WalkMarks = {
@@ -2775,25 +2795,17 @@ describe('storeSpanHints', () => {
       hints: NO_HINTS,
       pending: [],
     };
-    const write = jest.fn(async (_field: string, _hints: unknown) => undefined);
+    const write = patchWriter();
     const next = { ...NO_HINTS, forward: [{ start: 1, end: 2 }] };
 
-    await storeSpanHints({ hints: next, marks, field: FIELD, write });
+    await storeSpanHints({ hints: next, marks, write });
 
-    expect(write).toHaveBeenCalledWith(FIELD, next);
+    expect(write).toHaveBeenCalledWith([{ field: FIELD, value: next }]);
     expect(marks.hints).toEqual(next);
   });
 });
 
 describe('the round-robins and hints of a walk', () => {
-  const FIELDS = {
-    cursor: 'binancePayHistoryCursor',
-    rescan: 'binancePayRescanCursor',
-    point: 'binancePayPointCursor',
-    range: 'binancePayRangeCursor',
-    hints: 'binancePaySpanHints',
-    pending: 'binancePayPendingOverlap',
-  } as const;
   const marksOf = (): WalkMarks => ({
     cursor: null,
     rescanCursor: null,
@@ -2802,72 +2814,57 @@ describe('the round-robins and hints of a walk', () => {
     hints: NO_HINTS,
     pending: [],
   });
-  const writers = () => ({
-    writeCursor: jest.fn(async (_field: string, _cursorMs: number) => undefined),
-    writeHints: jest.fn(async (_field: string, _hints: BinanceSpanHints) => undefined),
-  });
 
-  it('reads each of the three marks of the walk from its own key', async () => {
+  it('reads each of the three marks of the walk from its own field', async () => {
     const stored = { ...NO_HINTS, point: [{ start: 1, end: 3 }] };
 
     const read = await readWalkRoundRobins({
-      fields: FIELDS,
-      metadata: {
-        binancePayPointCursor: 5,
-        binancePayRangeCursor: 9,
-        binancePaySpanHints: stored,
-      },
-      ...writers(),
+      stored: payMarksOf({ pointCursor: 5, rangeCursor: 9, spanHints: stored }),
+      write: patchWriter(),
     });
 
     expect(read).toEqual({ pointCursor: 5, rangeCursor: 9, hints: stored });
   });
 
-  it('writes a repair for each mark through its own writer', async () => {
+  it('writes a repair for each unreadable mark, to its own field', async () => {
     const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
-    const { writeCursor, writeHints } = writers();
+    const write = patchWriter();
 
     await readWalkRoundRobins({
-      fields: FIELDS,
-      metadata: {
-        binancePayPointCursor: 'x',
-        binancePayRangeCursor: 'y',
-        binancePaySpanHints: 'z',
-      },
-      writeCursor,
-      writeHints,
+      stored: payMarksOf({ pointCursor: 'x', rangeCursor: 'y', spanHints: 'z' }),
+      write,
     });
 
-    expect(writeCursor.mock.calls).toEqual([
-      ['binancePayPointCursor', Number.MIN_SAFE_INTEGER],
-      ['binancePayRangeCursor', Number.MIN_SAFE_INTEGER],
+    expect(write.mock.calls).toEqual([
+      [[{ field: 'pointCursor', value: Number.MIN_SAFE_INTEGER }]],
+      [[{ field: 'rangeCursor', value: Number.MIN_SAFE_INTEGER }]],
+      [[{ field: 'spanHints', value: NO_HINTS }]],
     ]);
-    expect(writeHints.mock.calls).toEqual([['binancePaySpanHints', NO_HINTS]]);
     warn.mockRestore();
   });
 
   it('marks a point by its start and a range by its end, each in its own field, and stores hints in theirs', async () => {
     const marks = marksOf();
-    const { writeCursor, writeHints } = writers();
-    const hooks = roundRobinHooksOf({ marks, fields: FIELDS, writeCursor, writeHints });
+    const write = patchWriter();
+    const hooks = roundRobinHooksOf({ marks, write });
     const next = { ...NO_HINTS, rescan: [{ start: 4, end: 6 }] };
 
     await hooks.markPointRead({ start: 10, end: 20 });
     await hooks.markRangeRead({ start: 30, end: 40 });
     await hooks.hints.store(next);
 
-    expect(writeCursor.mock.calls).toEqual([
-      ['binancePayPointCursor', 10],
-      ['binancePayRangeCursor', 40],
+    expect(write.mock.calls).toEqual([
+      [[{ field: 'pointCursor', value: 10 }]],
+      [[{ field: 'rangeCursor', value: 40 }]],
+      [[{ field: 'spanHints', value: next }]],
     ]);
-    expect(writeHints.mock.calls).toEqual([['binancePaySpanHints', next]]);
     expect(marks).toMatchObject({ pointCursor: 10, rangeCursor: 40, hints: next });
   });
 
   it('hands runWalkPlan the hints the marks hold', () => {
     const marks = { ...marksOf(), hints: { ...NO_HINTS, forward: [{ start: 1, end: 2 }] } };
 
-    const hooks = roundRobinHooksOf({ marks, fields: FIELDS, ...writers() });
+    const hooks = roundRobinHooksOf({ marks, write: patchWriter() });
 
     expect(hooks.hints.stored).toEqual(marks.hints);
   });
