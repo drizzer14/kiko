@@ -295,8 +295,11 @@ shows the hold, the power state, the running job, and the tickets. On battery NO
 starts (orchestrator default D1, accepted by the user 2026-10-13); an unreadable power state holds
 too. A gate refuses a tip whose `mutation.sh` has no changed-line `--list` ("merge main first", exit
 2) and a moved HEAD (exit 3); the queue never checks out files (the old H6 overlay is gone). Queue
-from the TARGET worktree's own `scripts/job-queue.sh`, never a copy from another branch. Closing a
-session kills its queue waiters and their tickets vanish with no done.log line: at handover or
+from the TARGET worktree's own `scripts/job-queue.sh`, never a copy from another branch: the queue
+directory's `format` stamp makes an older copy refuse with exit 2, and a copy that differs from the
+target worktree's own script prints a WARNING. Closing a session kills its queue waiters: the next
+waiter that prunes a dead waiter's ticket writes one `lost` done.log line, and a reclaimed dead
+lock writes a lock-form `lost` line (its job may have run fully). At handover or
 close run `scripts/job-queue.sh status`, re-queue or hand over your own tickets. Keep
 `wait-load.sh` for the load wait only. Signalling only the top pid of a job chain (make -> npm ->
 bash -> Stryker) leaves the leaf running; the queue owns the job's process group. A queued check:all

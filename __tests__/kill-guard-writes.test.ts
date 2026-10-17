@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { type SpawnSyncReturns, spawnSync } from 'node:child_process';
 
 // The shell-write deny of scripts/checks/kill-guard.js: a Bash command that
-// writes into src/, __tests__/, rules/, or e2e/ of any worktree of this repository
+// writes into src/, __tests__/, rules/, e2e/, or drizzle/ of any worktree of this repository
 // (`sed -i`, `perl -i`, a `>`/`>>` redirect, `tee`, a python or node
 // one-liner) skips the pre-write guard, which sees only Edit/Write/MultiEdit,
 // so the hook denies it and points at Edit/Write.
@@ -37,6 +37,7 @@ for (const folder of [
   'main/src',
   'main/__tests__',
   'main/rules',
+  'main/drizzle/migrations/meta',
   'main/scripts',
   'main/docs/src',
   'main/node_modules/package/src',
@@ -550,7 +551,52 @@ const ALLOWED_SAME_COMMAND_VARIABLE: string[] = [
   `(f=src/x.ts); echo done`,
 ];
 
+// drizzle/ holds the shipped SQL migrations and their journal; the pre-write guard sees no shell
+// write into it, so it is guarded like the trees above. The files are the real case: a migration
+// and the journal that lists it.
+const MIGRATION_FILES = [
+  'drizzle/migrations/0059_usdt_scale_8.sql',
+  'drizzle/migrations/meta/_journal.json',
+];
+
+const WRITE_TEMPLATES: Array<(file: string) => string> = [
+  (file) => `sed -i '' 's/a/b/' ${file}`,
+  (file) => `echo x > ${file}`,
+  (file) => `echo x >> ${file}`,
+  (file) => `echo x | tee ${file}`,
+  (file) => `cp /tmp/x ${file}`,
+  (file) => `mv /tmp/x ${file}`,
+  (file) => `python3 - <<'EOF'\nopen('${file}', 'w').write('x')\nEOF`,
+  (file) => `node -e "require('fs').writeFileSync('${file}', 'x')"`,
+];
+
+const DENIED_DRIZZLE: string[] = MIGRATION_FILES.flatMap((file) =>
+  [file, `${WORKTREE}/${file}`].flatMap((target) =>
+    WRITE_TEMPLATES.map((template) => template(target)),
+  ),
+);
+
+const ALLOWED_DRIZZLE: string[] = [
+  ...MIGRATION_FILES.flatMap((file) => [
+    `cat ${file}`,
+    `grep -n usdt ${file}`,
+    `git mv ${file} ${file}.old`,
+  ]),
+  'npx drizzle-kit generate',
+  ...['docs/drizzle', '/tmp/drizzle', `${OTHER}/drizzle`, `${PLAIN}/drizzle`].map(
+    (folder) => `echo x > ${folder}/migrations/0059_usdt_scale_8.sql`,
+  ),
+];
+
 describe('kill-guard shell-write deny (parser only, fake repository)', () => {
+  it.each(DENIED_DRIZZLE)('denies a write into drizzle/: %s', (command) => {
+    expect(decideInMain(command)).toBe('shellWrite');
+  });
+
+  it.each(ALLOWED_DRIZZLE)('allows a read of drizzle/ or a write outside it: %s', (command) => {
+    expect(decideInMain(command)).toBe('allow');
+  });
+
   it.each(DENIED_SAME_COMMAND_VARIABLE)(
     'denies a write through a variable the command assigns: %s',
     (command) => {

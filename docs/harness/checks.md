@@ -185,9 +185,21 @@ The queue never takes the worktree's index.lock for these reads. A job that edit
 without committing records `unknown`; an edit reverted before the end is not seen, and ignored
 files (`.env`, `node_modules`) are not counted; keep the tree untouched until DONE. The LAST
 `verify` line whose head equals the full sha decides and needs exit 0;
-`check-all`, `gate`, `unknown`, and old 5-field lines never count. Main must be on
-branch main and an ancestor of the sha. There is no bypass flag or variable; an override goes to
-the user plus a run-log note. Known limit: a hand-forged done.log line passes (the file belongs to
+`check-all`, `gate`, `unknown`, `lost`, and old 5-field lines never count. The queue writes one
+`lost` line when a waiter prunes a dead waiter's ticket, and a lock-form `lost` line when it
+reclaims a dead lock (its job may have run fully). `$QUEUE_DIRECTORY/format` is a format stamp: an
+older `job-queue.sh` copy refuses with exit 2. A copy that differs from the target worktree's own
+script prints a WARNING. Short lines before the first 6-field line give ONE summary WARNING
+(count and the last line); a later short line gets its own WARNING with its line number (`status`
+and `ff-main.sh`). Main must be on
+branch main and an ancestor of the sha. A commit that changes `harness/kiko/**` (`plugin.json`
+excluded) is refused (exit 2) unless its `plugin.json` version is strictly above main's (numeric
+dotted compare; an unreadable or missing version refuses; user ruling 2026-10-17). Known limit: a
+commit that
+changes only `plugin.json` may lower the version and main still moves (run-log gap
+20261017T1654-kiko-harness-h8/3, needs a user call). There is no
+bypass flag or variable; an override goes to the user plus a run-log note. Known limit: a
+hand-forged done.log line passes (the file belongs to
 cooperating agents), and `KIKO_QUEUE_DIR` redirects the evidence to another directory. See
 kiko-linter's "MAIN-CHECKOUT deny" for the full rule and limits, and the
 `scripts/ff-main.sh` header for the checks in order.
@@ -220,7 +232,7 @@ See kiko-linter's "NO-VERIFY deny", "SHELL-WRITE deny", and "Script-content kill
 The same hook also denies a shell write (`sed -i`, `perl -i`, a `>`/`>>`
 redirect, `tee`, `cp`/`mv` (also `gcp`/`gmv`), a python/node one-liner or stdin heredoc
 script (ruby/perl code — `-e` or a stdin script — is a known limit))
-into `src/`, `__tests__/`, `rules/`, or `e2e/` of any worktree of this
+into `src/`, `__tests__/`, `rules/`, `e2e/`, or `drizzle/` of any worktree of this
 repository, because the pre-write guard sees only Edit/Write/MultiEdit:
 use Edit or Write. Move or rename a file with `git mv` (`git add` a new
 file first), then edit it with Edit/Write. Reads, git itself, and a

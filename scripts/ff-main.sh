@@ -15,9 +15,16 @@
 #      HEAD the queue tested (a clean tree at START and at the end, HEAD unmoved), equals the full
 #      commit. The LAST such line decides, so a red verify after a green one at the same commit
 #      blocks. A `check-all` or `gate` line, a line whose head is `unknown`, and an old 5-field
-#      line never count.
+#      line never count; neither does a LOST line (`lost <label> ...` or `<kind> <label> lost ...`,
+#      written by job-queue.sh for a job whose result was never recorded). A line with fewer than
+#      6 fields is ignored: those before the first 6-field line print ONE WARNING on stderr
+#      (count and the last such line), each one after it prints its own with its line number.
 #   4. The main checkout's HEAD must be an ancestor of the commit.
-#   5. The fast-forward merges the full commit, so main moving between these checks and the merge
+#   5. A commit that changes harness/kiko (other than harness/kiko/.claude-plugin/plugin.json)
+#      against the main checkout's HEAD must carry a plugin.json `version` strictly above the one
+#      at main's HEAD (numeric dotted compare), because a plugin update only reaches running
+#      sessions under a new version. An unreadable or missing version at either commit refuses.
+#   6. The fast-forward merges the full commit, so main moving between these checks and the merge
 #      makes git refuse instead of moving main elsewhere. A dirty main checkout is not checked:
 #      git itself refuses a fast-forward that would overwrite a local change.
 #
@@ -87,6 +94,21 @@ if [ -z "$full_commit" ]; then
     'Pass the sha of the tip you verified, from git rev-parse HEAD in its worktree.'
 fi
 
+# A line with fewer than 6 fields never counts below; the warning keeps that from being silent. The
+# short lines before the first 6-field line (the old block of a log that predates the head field)
+# fold into one summary WARNING, so that block cannot bury a later torn line; each short line after
+# it keeps its own WARNING. The awk text is the same as scripts/job-queue.sh's.
+awk '
+  function flush_leading() {
+    if (leading > 0) printf "WARNING: %d done.log line(s) with fewer than 6 fields before the first 6-field line (ignored); the last: %s\n", leading, last_leading
+    leading = 0
+  }
+  NF >= 6 { flush_leading(); seen = 1; next }
+  NF > 0 && seen { print "WARNING: done.log line " NR " has fewer than 6 fields (ignored): " $0; next }
+  NF > 0 { leading++; last_leading = $0 }
+  END { flush_leading() }
+' "$DONE_LOG" >&2 2> /dev/null
+
 # A string comparison on purpose: a field of digits and one `e` would otherwise compare as a number.
 verified_line="$(awk -v commit="$full_commit" \
   '$1 == "verify" && NF >= 6 && ($6 "") == (commit "") { line = $0 } END { if (line != "") print line }' \
@@ -106,6 +128,45 @@ if ! git -C "$main_checkout" merge-base --is-ancestor HEAD "$full_commit" 2> /de
     "main at $main_checkout is at $(git -C "$main_checkout" rev-parse HEAD 2> /dev/null), which $full_commit does not contain" \
     'Only a fast-forward is allowed, and a commit that lacks main would drop its work.' \
     'Merge main into the branch, queue a verify at the new tip, then re-run with its sha.'
+fi
+
+PLUGIN_MANIFEST='harness/kiko/.claude-plugin/plugin.json'
+
+# plugin_version <rev>: the dotted numeric `version` of the manifest at that commit, else nothing.
+plugin_version() {
+  git -C "$main_checkout" show "$1:$PLUGIN_MANIFEST" 2> /dev/null \
+    | sed -n '/.*"version"[[:space:]]*:[[:space:]]*"\([0-9][0-9]*\(\.[0-9][0-9]*\)*\)".*/{s//\1/p;q;}'
+}
+
+# version_above <candidate> <base>: succeeds when candidate is strictly above base, field by field.
+version_above() {
+  awk -v candidate="$1" -v base="$2" 'BEGIN {
+    candidate_count = split(candidate, candidate_fields, ".")
+    base_count = split(base, base_fields, ".")
+    count = candidate_count > base_count ? candidate_count : base_count
+    for (index_field = 1; index_field <= count; index_field++) {
+      candidate_value = candidate_fields[index_field] + 0
+      base_value = base_fields[index_field] + 0
+      if (candidate_value != base_value) exit(candidate_value > base_value ? 0 : 1)
+    }
+    exit 1
+  }'
+}
+
+main_commit="$(git -C "$main_checkout" rev-parse HEAD 2> /dev/null)"
+git -C "$main_checkout" diff --quiet "$main_commit" "$full_commit" \
+  -- harness/kiko ":!$PLUGIN_MANIFEST" 2> /dev/null
+harness_changed=$?
+if [ "$harness_changed" -ne 0 ]; then
+  main_version="$(plugin_version "$main_commit")"
+  commit_version="$(plugin_version "$full_commit")"
+  if [ -z "$main_version" ] || ! version_above "$commit_version" "$main_version"; then
+    fail \
+      'A harness/kiko change needs a plugin.json version above main'"'"'s' \
+      "$PLUGIN_MANIFEST version at main ${main_commit}: ${main_version:-unreadable or missing}; at $full_commit: ${commit_version:-unreadable or missing}" \
+      'A plugin update reaches running sessions only under a new version, so an unbumped harness change never goes live.' \
+      "Bump $PLUGIN_MANIFEST to the next free patch above ${main_version:-the version at main}, queue a verify at the new tip, then re-run with its sha."
+  fi
 fi
 
 if ! merge_output="$(git -C "$main_checkout" merge --ff-only "$full_commit" 2>&1)"; then

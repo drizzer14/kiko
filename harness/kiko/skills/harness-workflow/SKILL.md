@@ -263,6 +263,8 @@ hand-merge a binary. After merging the builder source, regenerate
 A read-only agent (debugger, reviewer, auditor, researcher, explorer)
 returns its report in its final message; the orchestrator writes the
 named report file from it. Never ask a read-only agent to write a file.
+A read-only role never starts or stops a process (no churners, no signals), even if a brief
+allows it.
 
 ## Rulings
 
@@ -435,7 +437,7 @@ merge-conflict files".
 ## The Stop tier replays the pre-write guard
 
 The kill-guard denies Bash writes into `src/`, `__tests__/`, `rules/`,
-and `e2e/`; the denied forms and the known limits are listed in
+`e2e/`, and `drizzle/`; the denied forms and the known limits are listed in
 kiko-linter's "SHELL-WRITE deny". Move
 or rename a file with `git mv` (`git add` a new file first), then edit
 it with Edit/Write; see kiko-code-style's "Folder-per-thing
@@ -511,7 +513,10 @@ that reads the handoff file.
   then the coordinator sends `/reload-plugins` to every Orca session
   except the user's own (the user reloads their own session). If main already carries your
   `plugin.json` version after you merge main, bump again before your merge commit; read the
-  current version in `harness/kiko/.claude-plugin/plugin.json`.
+  current version in `harness/kiko/.claude-plugin/plugin.json`. `scripts/ff-main.sh` enforces
+  it (user ruling 2026-10-17): it refuses (exit 2) a commit that changes `harness/kiko/**`
+  (`plugin.json` excluded) unless its `plugin.json` version is strictly above main's (numeric
+  dotted compare; an unreadable or missing version refuses).
 - Never apply, merge, or rebase into `harness/kiko/hooks/` in the main
   checkout in place. Build the new file in scratch, run `bash -n`, grep
   it for conflict markers, then install it with one `mv`.
@@ -621,6 +626,19 @@ passed", "Tests: N passed") in every BATCH READY, and never relays an
 agent's "passed" verdict (ops misreported a failed `make verify` as
 passing twice on 2026-10-10).
 
+## A signal or race flake needs a measured probe
+
+For a signal or race flake a source read is a hypothesis only. A fix needs a probe of N trials
+with a baseline (H8: foreground `mv` lost 90/2600, `mv & wait $!` 0/3400) and a red row that
+fails on the base. Load and signal probes go to `kiko:ops`.
+
+A fix that moves work to the background lists its new interleavings in the brief (late completion
+after cleanup, pid reuse during a long stop, a signal while starting), each with a rendezvous
+red row.
+
+A date written into a doc comes from `git log -1 --format=%cs` (or `date +%F`) at write time,
+never from a session's own notes clock.
+
 ## Probe a live API before building on its shape
 
 Before building code that depends on an API's response shape, probe it
@@ -657,8 +675,10 @@ starts (orchestrator default D1, accepted by the user 2026-10-13); an unreadable
 too. A gate refuses a tip whose `mutation.sh` has no changed-line `--list` ("merge main first",
 exit 2) and a moved HEAD (exit 3); the queue never checks out files (the old H6 overlay is gone).
 Queue from the TARGET worktree's own `scripts/job-queue.sh`, never a copy from another branch
-(an older copy writes done.log lines `ff-main.sh` rejects). Closing a session kills its queue
-waiters and their tickets vanish with no done.log line: at handover or close run
+(an older copy refuses with exit 2 on the queue's `format` stamp, and a differing copy prints a
+WARNING). Closing a session kills its queue waiters: the next waiter that prunes a dead waiter's
+ticket writes one `lost` done.log line, and a reclaimed dead lock writes a lock-form `lost` line
+(its job may have run fully). At handover or close run
 `scripts/job-queue.sh status`, re-queue or hand over your own tickets, and never close a terminal
 with a live waiter. When many tracks run, the load never drops below a `wait-load.sh` limit:
 queue directly (the queue serializes) and throttle feature tracks with a LOAD HOLD (no new jest

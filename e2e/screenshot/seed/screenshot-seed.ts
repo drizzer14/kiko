@@ -471,6 +471,27 @@ const buildCarLoanPayments = (calendar: DemoCalendar, text: DemoText): SeedTrans
     loanHoldingKey: CAR_LOAN_KEY,
   }));
 
+// Six rows left in the default category, which no stored rule claims, so a rule typed live in
+// the app has something to move: "Name starts with" Wolt, "Amount" less than 800, "Type" Expense
+// takes the pizza, sushi and burgers. Each of the other three fails one condition (an income,
+// another name, an amount of 800 or more) and stays, which shows that every condition must match.
+// The merchant is one the reviewer's fake Monobank statement never names, so importing that
+// statement does not add rows the live rule would move.
+const buildFoodDeliveryTransactions = (calendar: DemoCalendar, text: DemoText): SeedTransaction[] =>
+  [
+    { amountMinorUnits: -48_000, daysAgo: 3, description: text.woltPizza },
+    { amountMinorUnits: 35_000, daysAgo: 5, description: text.woltRefund },
+    { amountMinorUnits: -62_000, daysAgo: 6, description: text.woltSushi },
+    { amountMinorUnits: -39_500, daysAgo: 8, description: text.woltBurgers },
+    { amountMinorUnits: -52_000, daysAgo: 10, description: text.boltFoodShawarma },
+    { amountMinorUnits: -145_000, daysAgo: 12, description: text.woltGroupOrder },
+  ].map(({ amountMinorUnits, daysAgo, description }) => ({
+    amountMinorUnits,
+    time: calendar.at(daysAgo),
+    category: 'other',
+    description,
+  }));
+
 /** The main UAH card ledger: an opening deposit, then a monthly salary + spends. */
 const buildMainCardTransactions = (calendar: DemoCalendar, text: DemoText): SeedTransaction[] => {
   const monthlyExpenses = buildMonthlyExpenses(text);
@@ -523,7 +544,11 @@ const buildMainCardTransactions = (calendar: DemoCalendar, text: DemoText): Seed
     }
   }
 
-  return [...list, ...buildCarLoanPayments(calendar, text)];
+  return [
+    ...list,
+    ...buildCarLoanPayments(calendar, text),
+    ...buildFoodDeliveryTransactions(calendar, text),
+  ];
 };
 
 // ---------------------------------------------------------------------------

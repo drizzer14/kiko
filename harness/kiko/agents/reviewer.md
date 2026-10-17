@@ -38,13 +38,15 @@ Rules:
 - If the diff is correct and lean, say so plainly. Do not invent findings to look thorough.
 - The ponytail persona applies only to this review. It does not change your output style elsewhere.
 - You are read-only; you do not stop processes at all — no pkill, killall, kill, or
-  any pattern/group kill.
+  any pattern/group kill. Never start a process either (no churners), even if a brief allows
+  it; load and signal probes go to `kiko:ops`.
 - Flag any diff that alters a user-approved visual (locked decisions live in `kiko-design-system`) unless the user explicitly approved the change.
 - Execute kill-guard probe text ONLY through `scripts/checks/kill-guard-probe.sh`, with the sentinel `kg_sentinel_target` in place of any kill command and a fake main folder in place of the real one; real kill words go only in non-executed `decide()` tests. The runner is not a sandbox. See kiko-linter's "Probing the kill-guard".
-- The SHELL-WRITE deny matches `src/`, `__tests__/`, `rules/`, `e2e/` by name, so a shell redirect into a file under that folder
-  is denied even inside your own temporary git repository. Build that repository's fixture tree
-  with the committed helpers in `__tests__/test-support/` (`ls` it) inside a jest test, or with
-  Edit/Write. A denied suite run is a blocker to report, never a silent "no suite ran".
+- The SHELL-WRITE deny matches `src/`, `__tests__/`, `rules/`, `e2e/`, `drizzle/` by name, so a
+  shell redirect into a file under that folder is denied inside a `git worktree add` of this
+  repository, or for a path the guard cannot resolve. Build a fixture repository's tree with the
+  committed helpers in `__tests__/test-support/` (`ls` it) inside a jest test, or with Edit/Write.
+  A denied suite run is a blocker to report, never a silent "no suite ran".
 - Run the changed tests (`npx jest <files> --maxWorkers=2`) and any new check. The report lists
   which suites ran, which did not, and why.
 - Report back by calling the SubagentHandback tool with {message: <your full report>} as your LAST

@@ -260,7 +260,10 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   FIX also names `scripts/ff-main.sh`. The way out: do the real merge in a separate detached
   worktree, run a queued `scripts/job-queue.sh verify` on the merge commit, then
   `bash scripts/ff-main.sh <sha>` (it needs the LAST `verify` line of done.log for that full
-  sha to be exit 0; read its header). `scripts/ff-main.sh` needs no exemption: its merge uses
+  sha to be exit 0; read its header; a `harness/kiko` change also needs a plugin.json
+  version strictly above main's; known limit: a commit changing only
+  plugin.json may lower the version and main still moves, gap
+  20261017T1654-kiko-harness-h8/3). `scripts/ff-main.sh` needs no exemption: its merge uses
   a variable target. A help or recovery option lets
   the whole command through from ANY argument position, even as another
   option's value (see the limits list). A session
@@ -270,7 +273,11 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   SHELL-WRITE deny (why: the pre-write guard sees only Edit/Write/
   MultiEdit, so a file a Bash command writes lands unchecked until
   guard-replay at Stop). Rule: deny a Bash write into `src/`,
-  `__tests__/`, `rules/`, or `e2e/` (`WRITE_GUARDED_TREES` in `scripts/checks/kill-guard.js`; `e2e/` joined
+  `__tests__/`, `rules/`, `e2e/`, or `drizzle/`
+  (`WRITE_GUARDED_TREES` in `scripts/checks/kill-guard.js`; `drizzle/` is
+  checked by the pre-write guard and guard-replay for `drizzle/migrations/*.test.ts` (`.ts` is in
+  scope); a `.sql` or `.json` there has no pre-write rule, and shipped-migrations covers a shipped
+  migration at Stop; `e2e/` joined
   on 2026-10-11 after a python write broke
   `e2e/screenshot/seed/demo-text.ts`; the pre-write guard and guard-replay
   read any `.ts`/`.tsx` outside `EXCLUDED_PREFIXES`, so `e2e/*.ts` is in
@@ -348,8 +355,10 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   so `hooks.json` is unchanged and no plugin reinstall is needed; a
   session in the main checkout gets it only after the merge to main.
 
-  A shell redirect into a tree is denied even inside your own temporary git repository: build its
-  fixture tree with the helpers in `__tests__/test-support/` inside a jest test, or with Edit/Write.
+  A shell redirect into a tree is denied inside a `git worktree add` of this repository, or for a
+  path the guard cannot resolve; it is not denied inside an unrelated temporary repository, yet
+  build its fixture tree with the helpers in `__tests__/test-support/` inside a jest test, or with
+  Edit/Write.
 
   WAIT-LOOP deny (why: a `while`/`until` loop whose process scan names
   the job it waits for matches its OWN command line, so it never ends;
@@ -2590,7 +2599,7 @@ On a `Stop` event (not `SubagentStop`) whose payload has `stop_hook_active: true
 
 The pre-write guard sees only `Edit`/`Write`/`MultiEdit`. The
 kill-guard's SHELL-WRITE deny (above) blocks the common Bash write
-forms into `src/`, `__tests__/`, `rules/`, and `e2e/`. It allows the `--write`
+forms into `src/`, `__tests__/`, `rules/`, `e2e/`, and `drizzle/`. It allows the `--write`
 fixers and git itself, which write source legitimately. What it does
 not see still reaches disk unchecked: a script file that writes,
 `find -exec`, a path held in a variable the command does not assign (see "SHELL-WRITE deny,
@@ -2846,6 +2855,27 @@ mechanizable (see harness-workflow's "Classify every finding").
      call, `+new Date`, `Date()`, and a shell `date -u +%s`, `date +"%s"`.
      A unique temporary name comes from `createTemporaryDirectory(prefix)`,
      with `join(..., '<name>')` for a path inside it, never from the clock.
+     The invariant also covers the queue tests (`job-queue.test.ts`,
+     `ff-main.test.ts`): no settle sleep; prove concurrency by a rendezvous.
+     The poll-bound exemption applies only inside the braces of the loop
+     that holds the bound; a renamed `timers/promises` `setTimeout` import
+     counts as a sleep. Known limits: braces are counted per line, string,
+     template and comment content included, so an unbalanced brace in a
+     string or comment inside the loop can hide or flag a sleep; rename
+     detection covers only `import { setTimeout as <name> }`; the
+     sleep pattern also misses `promisify(setTimeout)`, `execSync('sleep')`,
+     `spawnSync('/bin/sleep')` and a require destructure of
+     `timers/promises` (gap 20261017T1654-kiko-harness-h8/4; read
+     `SLEEP_CALL` in its rule file).
+   - bash 3.2 (macOS): a trapped SIGINT sent to one pid is lost when it
+     lands as a foreground external child is reaped. Where a signal must
+     not be lost, run the command as `cmd & wait $!` (`run_awaited` in
+     `scripts/job-queue.sh`), and end an in-flight one first in
+     `stop_on_signal` (`end_in_flight`, before `terminate_job_group`) and
+     again at the top of cleanup on the EXIT path; a pid reaped during a
+     long terminate poll can be reused.
+     The job-queue wait loop and `$(...)` command substitutions are not
+     covered (open gap 20261017T1654-kiko-harness-h8/1).
    - A test that needs a scratch folder uses
      `__tests__/test-support/temporary-directory.ts` (`createTemporaryDirectory`
      and `removeTemporaryDirectories` in an `afterEach`). New code uses the

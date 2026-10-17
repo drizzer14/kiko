@@ -11,7 +11,7 @@ verified usage, not dead weight:
   `@babel/plugin-transform-runtime` as helper imports in compiled
   output, never a static import), `@typescript/native-preview` (the
   `tsgo` / TS7 binary, reserved for a future typecheck script that
-  does not exist yet), `jscpd`, `knip`, and `depcheck` (each invoked
+  does not exist yet), `jscpd`, and `depcheck` (each invoked
   only via `npx --no-install <tool>` inside its own
   `scripts/checks/*.sh` wrapper, never from a package.json script
   Knip's static scan can see). Also `@env` — the virtual module that
@@ -20,14 +20,9 @@ verified usage, not dead weight:
   it is not a real npm package, so Knip's resolver reports the import
   as an unlisted dependency. The package itself (`react-native-dotenv`)
   is seen through `babel.config.js`; only the synthetic `@env`
-  specifier needs ignoring. Also `babel-plugin-inline-import` — a
-  Babel plugin referenced only as the string `'inline-import'` in
-  `babel.config.js` (it inlines the drizzle-orm migration `.sql`
-  files as string exports), never imported from source, so Knip's
-  static scan cannot see the usage. Also `babel-plugin-module-resolver`
-  — a Babel plugin referenced only as the string `'module-resolver'` in
-  `babel.config.js` (it resolves the `@kiko/*` path aliases to `src/*`),
-  never imported from source, so Knip's static scan cannot see the usage.
+  specifier needs ignoring. The Babel plugins `babel-plugin-inline-import`
+  and `babel-plugin-module-resolver` are not ignored: Knip sees both
+  through `babel.config.js`.
 - **`tsconfig.json` `compilerOptions.types`**: the base
   `@react-native/typescript-config` pins `types: ["jest"]`, which
   drops the Node ambient globals and module typings that three test
@@ -80,15 +75,9 @@ verified usage, not dead weight:
   itself being used). Also `react-native-dotenv` — a Babel plugin referenced only
   as the string `'module:react-native-dotenv'` in `babel.config.js`,
   never imported from source, so depcheck's static scan cannot see the
-  usage and reports it as an unused devDependency. Also
-  `babel-plugin-inline-import` — a Babel plugin referenced only as the
-  string `'inline-import'` in `babel.config.js` (it inlines the
-  drizzle-orm migration `.sql` files as string exports), never
-  imported from source, for the same reason. Also
-  `babel-plugin-module-resolver` — referenced only as the string
-  `'module-resolver'` in `babel.config.js` (it resolves the `@kiko/*`
-  path aliases to `src/*`), never imported from source, for the same
-  reason.
+  usage and reports it as an unused devDependency. The Babel plugins
+  `babel-plugin-inline-import` and `babel-plugin-module-resolver` are
+  not ignored: depcheck sees both through `babel.config.js`.
 - **`.gitleaks.toml` allowlist**: `ios/Podfile.lock` — CocoaPods lists
   a SHA1 checksum per pod, which gitleaks' `generic-api-key` rule
   flags as a false positive (verified fingerprint:
@@ -197,7 +186,7 @@ verified usage, not dead weight:
   kill-guard.js`) to tokenize a Bash-tool command and deny pkill/killall,
   pattern/process-group kills, any `git stash`, an unquoted heredoc
   delimiter, a git history change on the main checkout, a shell write
-  into `src/`, `__tests__/`, `rules/`, or `e2e/`, and a while/until process-scan
+  into `src/`, `__tests__/`, `rules/`, `e2e/`, or `drizzle/`, and a while/until process-scan
   wait loop (see `docs/harness/checks.md` "Automatic wiring" and
   `.claude/skills/kiko-linter/SKILL.md`). It is reached only from a sibling
   `.sh` wrapper's `node` invocation — never a static `import`/`require` from

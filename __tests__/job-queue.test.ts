@@ -1070,6 +1070,162 @@ describe.each([
   });
 });
 
+// Passes through to the real mv. After the first rename of a `lock.*` file (the queue recording
+// its job group) it blocks until the test creates the release file, as a slow rename would; the
+// bounded poll (80 s, past the test's own 60 s wait) ends it on its own so a failing run cannot
+// hang.
+const BLOCKING_MV_STUB = [
+  '#!/usr/bin/env bash',
+  '/bin/mv "$@" || exit $?',
+  'armed=0',
+  'for argument in "$@"; do',
+  `  case "\${argument##*/}" in lock.*) armed=1 ;; esac`,
+  'done',
+  '[ "$armed" = 1 ] || exit 0',
+  '[ -n "$KIKO_STUB_MV_ARMED" ] || exit 0',
+  'mkdir "$KIKO_STUB_MV_ARMED.once" 2> /dev/null || exit 0',
+  'for ((poll = 0; poll < 4000; poll += 1)); do',
+  '  [ ! -e "$KIKO_STUB_MV_RELEASE" ] || exit 0',
+  '  sleep 0.02',
+  'done',
+  '',
+].join('\n');
+
+describe('scripts/job-queue.sh on SIGINT during the lock record rename', () => {
+  it('exits 130 without waiting for the rename that records the job group to return', async () => {
+    const sandbox = createSandbox();
+    warmExecutables([
+      writeExecutable(join(sandbox.root, 'bin/make'), BLOCKING_MAKE_STUB),
+      writeExecutable(join(sandbox.root, 'bin/mv'), BLOCKING_MV_STUB),
+    ]);
+    sandbox.environment.KIKO_STUB_PID = join(sandbox.root, 'job-pid');
+    sandbox.environment.KIKO_STUB_MV_ARMED = join(sandbox.root, 'mv-armed');
+    sandbox.environment.KIKO_STUB_MV_RELEASE = join(sandbox.root, 'release');
+    const worktree = createWorktree(sandbox, 'one');
+    const release = (): void => writeFileSync(join(sandbox.root, 'release'), '');
+
+    try {
+      const waiter = startQueue(sandbox, 'verify', worktree, 'one');
+      await waitFor(() => readLines(join(sandbox.root, 'job-pid')).length === 1);
+      const jobPid = readPid(sandbox, 'job-pid');
+      await waitFor(
+        () => readlinkSync(join(sandbox.queue, 'lock')).split(' ')[1] === String(jobPid),
+      );
+      waiter.child.kill('SIGINT');
+      const exitedBeforeRelease = await waitFor(() => waiter.child.exitCode !== null).then(
+        () => true,
+        () => false,
+      );
+
+      expect(exitedBeforeRelease).toBe(true);
+      expect(waiter.child.exitCode).toBe(130);
+      expect(processIsAlive(jobPid)).toBe(false);
+    } finally {
+      release();
+    }
+  });
+});
+
+// Blocks BEFORE the real mv, on the first rename of a `lock.*` file (the queue recording its job
+// group): it writes its pid to the armed file, then waits for the release file, as a rename
+// that is still in flight when the queue is interrupted. The bounded poll (80 s) ends it on its
+// own so a failing run cannot hang.
+const PRE_RENAME_BLOCKING_MV_STUB = [
+  '#!/usr/bin/env bash',
+  'armed=0',
+  'for argument in "$@"; do',
+  `  case "\${argument##*/}" in lock.*) armed=1 ;; esac`,
+  'done',
+  '[ "$armed" = 1 ] || exec /bin/mv "$@"',
+  '[ -n "$KIKO_STUB_MV_ARMED" ] || exec /bin/mv "$@"',
+  'mkdir "$KIKO_STUB_MV_ARMED.once" 2> /dev/null || exec /bin/mv "$@"',
+  'echo $$ > "$KIKO_STUB_MV_ARMED"',
+  'for ((poll = 0; poll < 4000; poll += 1)); do',
+  '  [ ! -e "$KIKO_STUB_MV_RELEASE" ] || break',
+  '  sleep 0.02',
+  'done',
+  'exec /bin/mv "$@"',
+  '',
+].join('\n');
+
+describe('scripts/job-queue.sh on SIGINT before the lock record rename lands', () => {
+  it('leaves no lock behind when the rename that records the job group lands after the exit', async () => {
+    const sandbox = createSandbox();
+    warmExecutables([
+      writeExecutable(join(sandbox.root, 'bin/make'), BLOCKING_MAKE_STUB),
+      writeExecutable(join(sandbox.root, 'bin/mv'), PRE_RENAME_BLOCKING_MV_STUB),
+    ]);
+    sandbox.environment.KIKO_STUB_PID = join(sandbox.root, 'job-pid');
+    sandbox.environment.KIKO_STUB_MV_ARMED = join(sandbox.root, 'mv-armed');
+    sandbox.environment.KIKO_STUB_MV_RELEASE = join(sandbox.root, 'release');
+    const worktree = createWorktree(sandbox, 'one');
+    const release = (): void => writeFileSync(join(sandbox.root, 'release'), '');
+
+    try {
+      const waiter = startQueue(sandbox, 'verify', worktree, 'one');
+      await waitFor(() => readLines(join(sandbox.root, 'mv-armed')).length === 1);
+      const renamePid = readPid(sandbox, 'mv-armed');
+      waiter.child.kill('SIGINT');
+      await waitFor(() => waiter.child.exitCode !== null);
+      release();
+      await waitFor(() => !processIsAlive(renamePid));
+
+      expect(waiter.child.exitCode).toBe(130);
+      expect(lockPresent(sandbox)).toBe(false);
+      expect(entriesOf(sandbox.queue).filter((entry) => entry.startsWith('lock'))).toEqual([]);
+    } finally {
+      release();
+    }
+  });
+});
+
+// The blocking rename, but it leaves a marker file when it is terminated, so a job can tell
+// whether the in-flight command was ended before the job itself was.
+const MARKING_PRE_RENAME_MV_STUB = PRE_RENAME_BLOCKING_MV_STUB.replace(
+  '#!/usr/bin/env bash\n',
+  '#!/usr/bin/env bash\ntrap \'echo ended > "$KIKO_STUB_MV_TERMINATED"; exit 143\' TERM\n',
+);
+
+// On TERM the job records whether the marker already exists, then ends its own sleep and exits.
+const ORDER_RECORDING_MAKE_STUB = [
+  '#!/usr/bin/env bash',
+  '[ -n "$KIKO_STUB_PID" ] || exit 0',
+  'echo $$ > "$KIKO_STUB_PID"',
+  `trap 'if [ -e "$KIKO_STUB_MV_TERMINATED" ]; then echo in-flight-first > "$KIKO_STUB_ORDER"; else echo job-first > "$KIKO_STUB_ORDER"; fi; kill "$sleeper"; exit 0' TERM`,
+  'sleep 60 &',
+  'sleeper=$!',
+  'wait "$sleeper"',
+  '',
+].join('\n');
+
+describe('scripts/job-queue.sh stop order on a signal', () => {
+  it('ends the in-flight record command before it terminates the job group', async () => {
+    const sandbox = createSandbox();
+    warmExecutables([
+      writeExecutable(join(sandbox.root, 'bin/make'), ORDER_RECORDING_MAKE_STUB),
+      writeExecutable(join(sandbox.root, 'bin/mv'), MARKING_PRE_RENAME_MV_STUB),
+    ]);
+    sandbox.environment.KIKO_STUB_PID = join(sandbox.root, 'job-pid');
+    sandbox.environment.KIKO_STUB_MV_ARMED = join(sandbox.root, 'mv-armed');
+    sandbox.environment.KIKO_STUB_MV_RELEASE = join(sandbox.root, 'release');
+    sandbox.environment.KIKO_STUB_MV_TERMINATED = join(sandbox.root, 'mv-terminated');
+    sandbox.environment.KIKO_STUB_ORDER = join(sandbox.root, 'order');
+    const worktree = createWorktree(sandbox, 'one');
+    const release = (): void => writeFileSync(join(sandbox.root, 'release'), '');
+
+    try {
+      const waiter = startQueue(sandbox, 'verify', worktree, 'one');
+      await waitFor(() => readLines(join(sandbox.root, 'mv-armed')).length === 1);
+      waiter.child.kill('SIGINT');
+      await waitFor(() => waiter.child.exitCode !== null);
+
+      expect(readLines(join(sandbox.root, 'order'))).toEqual(['in-flight-first']);
+    } finally {
+      release();
+    }
+  });
+});
+
 // A pid that is certainly dead: the subshell prints its own pid and exits before spawnSync returns.
 const deadPid = (): string =>
   spawnSync('bash', ['-c', 'echo $$'], { encoding: 'utf8' }).stdout.trim();
@@ -1233,6 +1389,133 @@ describe('scripts/job-queue.sh stale state', () => {
 
     expect(result.code).toBe(0);
     expect(entriesOf(join(sandbox.queue, 'tickets'))).toEqual([]);
+  });
+});
+
+const ISO_STAMP = '\\d{4}-\\d\\d-\\d\\dT\\d\\d:\\d\\d:\\d\\dZ';
+
+const lostLines = (sandbox: Sandbox): string[] =>
+  readLines(join(sandbox.queue, 'done.log')).filter((line) => line.split(' ')[0] === 'lost');
+
+const lockLostLines = (sandbox: Sandbox): string[] =>
+  readLines(join(sandbox.queue, 'done.log')).filter((line) => line.split(' ')[2] === 'lost');
+
+// The prune reads a ticket's waiter pid through `cut -f4`. This stub holds each waiter there, on
+// the dead ticket only, until both waiters have arrived, so both certainly see the ticket still
+// present and reach the removal together: only an atomic removal then writes one LOST line. The
+// bounded poll (80 s) ends it on its own so a failing run cannot hang.
+const PRUNE_BARRIER_CUT_STUB = [
+  '#!/usr/bin/env bash',
+  '[ -n "$KIKO_STUB_CUT_ARRIVALS" ] || exec /usr/bin/cut "$@"',
+  'input="$(cat)"',
+  `case "$input" in *-ghost) ;; *) printf '%s\\n' "$input" | /usr/bin/cut "$@"; exit $? ;; esac`,
+  `case "$*" in *-f4*) ;; *) printf '%s\\n' "$input" | /usr/bin/cut "$@"; exit $? ;; esac`,
+  'mkdir -p "$KIKO_STUB_CUT_ARRIVALS"',
+  ': > "$KIKO_STUB_CUT_ARRIVALS/$PPID"',
+  'for ((poll = 0; poll < 4000; poll += 1)); do',
+  '  arrivals=("$KIKO_STUB_CUT_ARRIVALS"/*)',
+  '  [ "${#arrivals[@]}" -lt 2 ] || break',
+  '  sleep 0.02',
+  'done',
+  `printf '%s\\n' "$input" | /usr/bin/cut "$@"`,
+  '',
+].join('\n');
+
+describe('scripts/job-queue.sh LOST lines', () => {
+  it('writes one done.log line for a ticket whose waiter is dead, queued time from its epoch', async () => {
+    const sandbox = createSandbox();
+    const worktree = createWorktree(sandbox, 'one');
+    const waiterPid = deadPid();
+    mkdirSync(join(sandbox.queue, 'tickets'), { recursive: true });
+    writeFileSync(join(sandbox.queue, 'tickets', `1-0000000000-1700000000-${waiterPid}-ghost`), '');
+
+    const result = await startQueue(sandbox, 'verify', worktree, 'one').finished;
+
+    expect(result.code).toBe(0);
+    const lines = lostLines(sandbox);
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toMatch(
+      new RegExp(`^lost ghost ${waiterPid} 2023-11-14T22:13:20Z ${ISO_STAMP} unknown$`),
+    );
+  });
+
+  it('writes the line once when two waiters prune the same dead ticket', async () => {
+    const sandbox = createSandbox();
+    const worktree = createWorktree(sandbox, 'one');
+    const waiterPid = deadPid();
+    const ticket = join(sandbox.queue, 'tickets', `1-0000000000-1700000000-${waiterPid}-ghost`);
+    mkdirSync(join(sandbox.queue, 'tickets'), { recursive: true });
+    writeFileSync(ticket, '');
+    warmExecutables([writeExecutable(join(sandbox.root, 'bin/cut'), PRUNE_BARRIER_CUT_STUB)]);
+    sandbox.environment.KIKO_STUB_CUT_ARRIVALS = join(sandbox.root, 'prune-arrivals');
+    // A lock held by a live pid keeps both waiters polling (and pruning) without either starting
+    // a job.
+    holdLock(sandbox);
+
+    startQueue(sandbox, 'verify', worktree, 'one');
+    startQueue(sandbox, 'verify', worktree, 'two');
+    await waitFor(() => !isPresent(ticket));
+    await waitForPasses(sandbox, 6);
+
+    expect(entriesOf(join(sandbox.root, 'prune-arrivals'))).toHaveLength(2);
+    expect(lostLines(sandbox)).toHaveLength(1);
+  });
+
+  it('writes one line from the owner record for a reclaimed dead lock', async () => {
+    const sandbox = createSandbox();
+    const worktree = createWorktree(sandbox, 'one');
+    holdLock(sandbox, `${deadPid()} - gate ghost /elsewhere`);
+
+    const result = await startQueue(sandbox, 'verify', worktree, 'one').finished;
+
+    expect(result.code).toBe(0);
+    const lines = lockLostLines(sandbox);
+    expect(lines).toHaveLength(1);
+    const [kind, label, outcome, start, end, head] = lines[0].split(' ');
+    expect([kind, label, outcome, head]).toEqual(['gate', 'ghost', 'lost', 'unknown']);
+    expect(start).toMatch(new RegExp(`^${ISO_STAMP}$`));
+    expect(end).toBe(start);
+  });
+});
+
+describe('scripts/job-queue.sh old copy', () => {
+  it('exits 2 naming an older copy when the queue directory format is newer than the script', () => {
+    const sandbox = createSandbox();
+    const worktree = createWorktree(sandbox, 'one');
+    mkdirSync(sandbox.queue, { recursive: true });
+    writeFileSync(join(sandbox.queue, 'format'), '9999\n');
+
+    const result = runQueue(sandbox, 'verify', worktree, 'one');
+
+    expect(result.status).toBe(2);
+    expect(result.stderr).toContain('an older job-queue.sh copy');
+    expect(readLines(sandbox.environment.KIKO_STUB_CALLS as string)).toEqual([]);
+    expect(entriesOf(join(sandbox.queue, 'tickets'))).toEqual([]);
+  });
+
+  it('warns once on stderr and still runs the job when the worktree holds a different copy', () => {
+    const sandbox = createSandbox();
+    const worktree = createWorktree(sandbox, 'one');
+    mkdirSync(join(worktree, 'scripts'));
+    writeFileSync(join(worktree, 'scripts/job-queue.sh'), '#!/usr/bin/env bash\n# a newer copy\n');
+
+    const result = runQueue(sandbox, 'verify', worktree, 'one');
+
+    expect(result.status).toBe(0);
+    expect(result.stderr.split('\n').filter((line) => line.includes('WARNING'))).toHaveLength(1);
+    expect(startedWorktrees(sandbox)).toEqual([worktree]);
+  });
+
+  it('prints no warning when the worktree holds the same copy', () => {
+    const sandbox = createSandbox();
+    const worktree = createWorktree(sandbox, 'one');
+    mkdirSync(join(worktree, 'scripts'));
+    writeFileSync(join(worktree, 'scripts/job-queue.sh'), readFileSync(SCRIPT));
+
+    const result = runQueue(sandbox, 'verify', worktree, 'one');
+
+    expect(result.status).toBe(0);
+    expect(result.stderr).not.toContain('WARNING');
   });
 });
 
@@ -1530,5 +1813,72 @@ describe('scripts/job-queue.sh status', () => {
     expect(result.stdout).toContain(`queued: 1-0000000000-1-${process.pid}-next`);
     expect(result.stdout).toContain('battery power: no job starts');
     expect(result.stdout).not.toContain('queue empty');
+  });
+
+  it('prints a WARNING for each done.log line with fewer than 6 fields', () => {
+    const sandbox = createSandbox();
+    mkdirSync(sandbox.queue, { recursive: true });
+    const shortOld = 'verify old 0 2026-10-15T10:00:00Z 2026-10-15T10:05:00Z';
+    const shortTorn = 'verify torn';
+    const whole = `verify whole 0 2026-10-15T10:00:00Z 2026-10-15T10:05:00Z ${'a'.repeat(40)}`;
+    writeFileSync(join(sandbox.queue, 'done.log'), `${shortOld}\n${whole}\n${shortTorn}\n`);
+
+    const result = runQueue(sandbox, 'status');
+    const warnings = `${result.stdout}\n${result.stderr}`
+      .split('\n')
+      .filter((line) => line.includes('WARNING'));
+
+    expect(result.status).toBe(0);
+    expect(warnings).toHaveLength(2);
+    expect(warnings[0]).toContain(shortOld);
+    expect(warnings[1]).toContain(shortTorn);
+  });
+
+  describe('a done.log whose old 5-field block predates the head field', () => {
+    const shortAt = (index: number) =>
+      `verify old-${String(index).padStart(3, '0')} 0 2026-10-15T10:00:00Z 2026-10-15T10:05:00Z`;
+    const whole = `verify whole 0 2026-10-15T10:00:00Z 2026-10-15T10:05:00Z ${'a'.repeat(40)}`;
+    const warningsOf = (doneLog: string) => {
+      const sandbox = createSandbox();
+      mkdirSync(sandbox.queue, { recursive: true });
+      writeFileSync(join(sandbox.queue, 'done.log'), doneLog);
+      const result = runQueue(sandbox, 'status');
+
+      return {
+        status: result.status,
+        warnings: `${result.stdout}\n${result.stderr}`
+          .split('\n')
+          .filter((line) => line.includes('WARNING')),
+      };
+    };
+    const leading = Array.from({ length: 60 }, (_, index) => shortAt(index + 1));
+
+    it('summarizes the short lines before the first 6-field line in one WARNING', () => {
+      const lateOne = 'verify late-one 1 2026-10-16T22:33:18Z 2026-10-16T22:44:16Z';
+      const lateTwo = 'verify torn';
+
+      const { status, warnings } = warningsOf(
+        `${[...leading, whole, lateOne, lateTwo].join('\n')}\n`,
+      );
+
+      expect(status).toBe(0);
+      expect(warnings).toHaveLength(3);
+      expect(warnings[0]).toContain('60');
+      expect(warnings[0]).toContain(shortAt(60));
+      expect(warnings[1]).toContain(lateOne);
+      expect(warnings[1]).toContain('62');
+      expect(warnings[2]).toContain(lateTwo);
+      expect(warnings[2]).toContain('63');
+    });
+
+    it('gives a file of only short lines a single summary WARNING', () => {
+      const { warnings } = warningsOf(
+        `${Array.from({ length: 5 }, (_, index) => shortAt(index + 1)).join('\n')}\n`,
+      );
+
+      expect(warnings).toHaveLength(1);
+      expect(warnings[0]).toContain('5');
+      expect(warnings[0]).toContain(shortAt(5));
+    });
   });
 });
