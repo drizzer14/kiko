@@ -462,6 +462,99 @@ describe('scripts/ff-main.sh refuses', () => {
   });
 });
 
+const PLUGIN_MANIFEST = 'harness/kiko/.claude-plugin/plugin.json';
+
+const pluginManifest = (version: string): string =>
+  `${JSON.stringify({ name: 'kiko', version })}\n`;
+
+// main gets the plugin manifest first, so a commit above it changes harness/kiko against main's
+// own HEAD, which is what the rule compares.
+const withMainVersion = (fixture: Fixture, version: string): void => {
+  const head = commitFile(fixture, fixture.work, PLUGIN_MANIFEST, pluginManifest(version));
+  runGit(fixture.main, fixture.environment, 'merge', '--ff-only', head);
+};
+
+const commitPluginChange = (
+  fixture: Fixture,
+  kind: 'harness' | 'other' | 'manifest-only',
+  version: string,
+): string => {
+  if (kind === 'harness') {
+    writeFile(fixture.work, 'harness/kiko/skills/example/SKILL.md', 'changed\n');
+  }
+
+  if (kind === 'other') {
+    writeFile(fixture.work, 'unrelated.txt', 'changed\n');
+  }
+
+  if (kind !== 'other') {
+    writeFile(fixture.work, PLUGIN_MANIFEST, pluginManifest(version));
+  }
+
+  runGit(fixture.work, fixture.environment, 'add', '-A');
+  runGit(fixture.work, fixture.environment, 'commit', '-qm', 'plugin change');
+
+  return runGit(fixture.work, fixture.environment, 'rev-parse', 'HEAD');
+};
+
+describe('scripts/ff-main.sh plugin version rule', () => {
+  it.each<[string, string, string, 'harness' | 'other' | 'manifest-only', boolean]>([
+    ['a harness change at main version', '0.4.21', '0.4.21', 'harness', false],
+    ['a harness change with a higher version', '0.4.21', '0.4.22', 'harness', true],
+    ['a harness change with a lower version', '0.4.21', '0.4.20', 'harness', false],
+    ['no harness change at main version', '0.4.21', '0.4.21', 'other', true],
+    ['a harness change from 0.4.9 to 0.4.10 (numeric compare)', '0.4.9', '0.4.10', 'harness', true],
+    [
+      'a harness change from 0.4.10 to 0.4.9 (numeric compare)',
+      '0.4.10',
+      '0.4.9',
+      'harness',
+      false,
+    ],
+    ['a pure plugin.json bump above main', '0.4.21', '0.4.22', 'manifest-only', true],
+  ])('for %s', (_title, mainVersion, commitVersion, kind, moves) => {
+    const fixture = createFixture();
+    withMainVersion(fixture, mainVersion);
+    const before = mainHead(fixture);
+    const head = commitPluginChange(fixture, kind, commitVersion);
+    record(fixture, doneLine(head));
+
+    const result = runScript(fixture, [head]);
+
+    expect(mainHead(fixture)).toBe(moves ? head : before);
+    expect(result.status).toBe(moves ? 0 : 2);
+
+    if (!moves) {
+      expect(result.stderr).toContain('plugin.json');
+      expect(result.stderr).toContain(mainVersion);
+    }
+  });
+
+  it('refuses a harness change after a merge brought main ahead to the same version', () => {
+    const fixture = createFixture();
+    withMainVersion(fixture, '0.4.21');
+    const branchPoint = mainHead(fixture);
+    const ownChange = commitPluginChange(fixture, 'harness', '0.4.22');
+    runGit(fixture.main, fixture.environment, 'checkout', '-q', '-b', 'other-track');
+    writeFile(fixture.main, PLUGIN_MANIFEST, pluginManifest('0.4.22'));
+    runGit(fixture.main, fixture.environment, 'commit', '-qam', 'other track bump');
+    runGit(fixture.main, fixture.environment, 'checkout', '-q', 'main');
+    runGit(fixture.main, fixture.environment, 'merge', '--ff-only', 'other-track');
+    runGit(fixture.work, fixture.environment, 'merge', '-q', '--no-edit', 'main');
+    const head = runGit(fixture.work, fixture.environment, 'rev-parse', 'HEAD');
+    record(fixture, doneLine(head));
+    const before = mainHead(fixture);
+
+    const result = runScript(fixture, [head]);
+
+    expect(ownChange).not.toBe(branchPoint);
+    expect(result.status).toBe(2);
+    expect(mainHead(fixture)).toBe(before);
+    expect(result.stderr).toContain('plugin.json');
+    expect(result.stderr).toContain('0.4.22');
+  });
+});
+
 describe('scripts/ff-main.sh text', () => {
   const text = readFileSync(SCRIPT, 'utf8');
 
