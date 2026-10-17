@@ -11,6 +11,7 @@ import type { HoldingRow } from '@kiko/db';
 import maybe, { foldMap } from 'fnts/maybe';
 import type { ExchangeHolding } from '@kiko/holdings/repo';
 import { BinanceWalkStop } from '@kiko/crypto-sync/exchange/walk';
+import { parseExchangeState } from '@kiko/crypto-sync/exchange/walk-state';
 import { transactionRowDescription } from '@kiko/transactions/row-description';
 import { exchangeExcludedTransactionIds } from '@kiko/statistics/exchange-exclusion';
 
@@ -1201,6 +1202,24 @@ describe('a point read', () => {
 
     expect(world.added.map((row) => row.externalId)).toEqual(['acc-1:xfer:MAIN_UMFUTURE:late:BTC']);
     expect(pointsIn(listOf(world))).toEqual([]);
+  });
+
+  it('leaves a list the walk state reads back when the rows of the point cannot be placed', async () => {
+    const at = agoMs(100);
+    const world = worldOf({ cursor: agoMs(1), pending: [pointOf(at, 'MAIN_FUNDING')] }, []);
+
+    await walkOnce({
+      world,
+      entries: [entryOf({ type: 'MAIN_FUNDING', tranId: 'late', timestamp: at })],
+      over: { ensureHoldings: jest.fn(async () => undefined) },
+    });
+
+    expect(stopCodes(warn)).toContain('transfer-holding-missing');
+    expect(
+      parseExchangeState(
+        JSON.stringify({ version: 1, walks: { transfer: { pending: marksOf(world).pending } } }),
+      ),
+    ).toMatchObject({ kind: 'parsed', walks: { transfer: { pending: expect.any(Array) } } });
   });
 });
 

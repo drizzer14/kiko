@@ -3472,6 +3472,29 @@ describe('walkSpans', () => {
     expect(byDefault.mock.calls.every(([, keep]) => keep === 0)).toBe(true);
   });
 
+  it('hands the commit a first span of its start and end only, never its window with the series list', async () => {
+    const committed: WalkWindow[] = [];
+
+    await walkSpans({
+      window: { ...window, series: ['x'] },
+      read: readByWidth(),
+      commit: commitCount(1, committed),
+    });
+
+    expect(committed[0]).toStrictEqual({ start: 0, end: 25 });
+    expect(committed.every((span) => !('series' in span))).toBe(true);
+
+    const whole: WalkWindow[] = [];
+
+    await walkSpans({
+      window: { start: 0, end: 20, series: ['x'] },
+      read: readByWidth(),
+      commit: commitCount(1, whole),
+    });
+
+    expect(whole).toStrictEqual([{ start: 0, end: 20 }]);
+  });
+
   it('commits the spans oldest first, each once, until the window is covered', async () => {
     const committed: WalkWindow[] = [];
 

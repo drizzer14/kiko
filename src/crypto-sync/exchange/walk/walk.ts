@@ -1245,12 +1245,14 @@ const stepAfterRead = <Page>(input: {
 /**
  * The span a window starts with: the part of its hint from the window's start, when the hint holds
  * that start (from the start of the ground its resume has not read yet, if it has one), else the
- * window.
+ * window's own start and end: never the window object, whose series list (a point window is read in
+ * several series) a commit would store as the series of the ground it owes, which a stored range
+ * cannot hold (a stored range's series is one name).
  */
 const firstSpanOf = (window: WalkWindow, hint: BinanceSpanHint | undefined): WalkWindow =>
   hint !== undefined && holdsStart(hint, window.start)
     ? { start: hint.resume?.from ?? window.start, end: Math.min(hint.end, window.end) }
-    : window;
+    : { start: window.start, end: window.end };
 
 /**
  * The hint to leave when a window is left while at `span`. When no span of the window committed,

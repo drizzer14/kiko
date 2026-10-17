@@ -2,6 +2,7 @@ import { DAY_MS } from '@kiko/dates';
 import { minOf } from '@kiko/numbers';
 import { i18n } from '@kiko/i18n/init';
 import { walkMarkWritesOf } from '@kiko/test-support/walk-marks';
+import { parseExchangeState } from '@kiko/crypto-sync/exchange/walk-state';
 import { transactionRowDescription } from '@kiko/transactions/row-description';
 import { exchangeExcludedTransactionIds } from '@kiko/statistics/exchange-exclusion';
 
@@ -1754,5 +1755,67 @@ describe('the range cursor, the point cursor and the span hints of the round-rob
 
     expect(codesLogged()).toContain('pending-malformed');
     expect(listOf(world)).not.toContainEqual(expect.objectContaining({ series: 'MAIN_FUNDING' }));
+  });
+});
+
+describe('the owed list a point window leaves, which the next run must be able to read', () => {
+  const stuckAt = agoMs(10);
+  const seriesOfEach = (world: ReturnType<typeof worldOf>) =>
+    listOf(world).map((ground) => (ground as { series?: unknown }).series);
+  const heldBy = (world: ReturnType<typeof worldOf>) =>
+    listOf(world).some(
+      (ground) =>
+        (ground as { start: number }).start <= stuckAt &&
+        stuckAt <= (ground as { end: number }).end,
+    );
+
+  it('a point read in its own kind that drifts leaves a list with no series list in it, and the next run owes no repair', async () => {
+    const world = worldOf({
+      cursor: agoMs(5),
+      pending: [pointOf(stuckAt, 'flexibleRewards')],
+    });
+
+    await walkOnce({
+      world,
+      answer: (query) =>
+        query.kind === 'flexibleRewards' && query.endTime - query.startTime < DAY_MS
+          ? pageOf({ total: 4 })
+          : undefined,
+    });
+
+    expect(stopCodes(warn)).toContain('earn-page-drift');
+    expect(
+      seriesOfEach(world).every((series) => series === undefined || typeof series === 'string'),
+    ).toBe(true);
+
+    warn.mockClear();
+    await walkOnce({ world });
+
+    expect(stopCodes(warn)).not.toContain('pending-malformed');
+    expect(warn.mock.calls.map((call) => call[0])).not.toContain(
+      '[binance sync] pending overlap ranges unreadable',
+    );
+    expect(heldBy(world)).toBe(true);
+  });
+
+  it('a point whose rows cannot be placed leaves a list the walk state reads back', async () => {
+    const world = worldOf(
+      { cursor: agoMs(5), pending: [pointOf(stuckAt, 'flexibleSubscription')] },
+      [],
+    );
+
+    await walkOnce({
+      world,
+      entries: [entryOf('flexibleSubscription', flexibleSubscriptionOf({ time: stuckAt }))],
+      over: { ensureHoldings: jest.fn(async () => undefined) },
+    });
+
+    expect(stopCodes(warn)).toContain('earn-holding-missing');
+    expect(
+      parseExchangeState(
+        JSON.stringify({ version: 1, walks: { earn: { pending: marksOf(world).pending } } }),
+      ),
+    ).toMatchObject({ kind: 'parsed', walks: { earn: { pending: expect.any(Array) } } });
+    expect(heldBy(world)).toBe(true);
   });
 });
