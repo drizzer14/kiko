@@ -170,6 +170,7 @@ describe('syncStateRepo', () => {
       lastFullSyncAt: null,
       lastSyncDisplayAt: null,
       failedSyncMonobankIds: null,
+      exchangeState: null,
     };
 
     expect(row.accountId).toBe('acct-A');

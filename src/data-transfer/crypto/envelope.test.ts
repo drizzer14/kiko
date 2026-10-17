@@ -146,7 +146,10 @@ describe('the export version against the migration journal', () => {
     // build restoring a file that carries it drops the key; this build keeps its live value and
     // ignores the file's, so a file without it restores the same, and it needed no bump (a
     // bump would make an older build refuse every new file).
-    migrationCount: 61,
+    // Through 0061_exchange_state, a nullable column riding inside the sync state row, derived on
+    // restore: an older build drops the key and its walks read from their floors, where keys
+    // dedupe; so it needed no bump.
+    migrationCount: 62,
   };
 
   it('has a version decision for every migration', () => {
