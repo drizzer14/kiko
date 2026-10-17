@@ -1208,7 +1208,7 @@ export const en = {
         rowLabel: 'Read your statistics',
         steps: {
           '1': 'Open the "Statistics" tab. "Accounts" at the top chooses the accounts that every chart counts. The calendar beside it chooses the dates for "Net Worth Over Time" and the two spending charts.',
-          '2': '"Net Worth Over Time" shows your net worth across those dates. The horizontal dashed line is its value on the first day: the line is green above it and red below it. The vertical dashed line shows your net worth on one day, today at first. Drag across the chart to move it to another day.',
+          '2': '"Net Worth Over Time" shows your net worth across those dates. The horizontal dashed line is its value on the first day: the line is green above it and red below it. The vertical dashed line shows your net worth on one day, the last of those dates at first. Drag across the chart to move it to another day.',
           '3': '"By Type" shows what your assets are worth today by holding type, largest first. Loans and anything you owe are not part of it.',
           '4': '"Account Contribution" shows each account as a share of what you own today. If you owe anything, "Debts" below the chart shows the total.',
           '5': '"Expenses by Category" shows your spending over the chosen dates, with the total in the middle. "Categories" chooses which categories it counts. The list under the chart shows categories of 5% or more, and "Show all" shows the rest.',

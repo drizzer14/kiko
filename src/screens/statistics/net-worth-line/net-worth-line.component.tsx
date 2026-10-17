@@ -541,6 +541,13 @@ const NetWorthLine: FC<NetWorthLineProps> = ({
   // numeric day.month format — so it needs no such subscription.
   const { t } = useTranslation();
 
+  // A selection from another range is cleared here, not left to stop matching: re-picking that
+  // range later would otherwise bring the old dragged index back instead of the present day. An
+  // empty series has no range, so it clears too, ahead of the empty return below.
+  if (selection !== null && (points.length === 0 || selection.rangeKey !== scrubRangeKey(points))) {
+    setSelection(null);
+  }
+
   if (points.length === 0) {
     return loading ? (
       <StatusMessage
@@ -555,12 +562,6 @@ const NetWorthLine: FC<NetWorthLineProps> = ({
         height={height}
       />
     );
-  }
-
-  // A selection from another range is cleared here, not left to stop matching: re-picking that
-  // range later would otherwise bring the old dragged index back instead of the present day.
-  if (selection !== null && selection.rangeKey !== scrubRangeKey(points)) {
-    setSelection(null);
   }
 
   const scales = buildScales(points, startReference, height);

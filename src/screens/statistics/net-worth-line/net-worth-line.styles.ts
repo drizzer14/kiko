@@ -48,10 +48,10 @@ export const styles = StyleSheet.create((theme) => ({
     paddingHorizontal: theme.spacing(1),
     backgroundColor: theme.colors.surface,
   },
-  // The label's amount: caption-sized and in the heading weight, so it reads above its date line.
+  // The label's amount: caption-sized and semibold, so it reads above its date line.
   scrubAmount: {
     fontSize: theme.typography.caption.fontSize,
-    fontWeight: theme.typography.heading.fontWeight,
+    fontWeight: '600',
   },
   // The X time axis row: the SAME two-column shape as `plotRow` above — a
   // fixed-width spacer for the Y-axis label column, then a flex:1 label track
