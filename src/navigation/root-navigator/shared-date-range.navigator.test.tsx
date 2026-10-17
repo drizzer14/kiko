@@ -98,26 +98,29 @@ const HOLDING = {
 
 // The oldest transaction sets the calendar's selectable floor; with none, the floor is today and a
 // day pick before it is ignored.
-const OLDEST_TIME = localDaysFrom(Date.now(), -40);
-const OLDEST_TRANSACTION = {
+// Read lazily and set from the clock each it uses: the fake-clock midnight it must not see a floor
+// computed from the real date.
+let oldestTime = 0 as number;
+
+const oldestTransaction = () => ({
   id: 't1',
   holdingId: 'h1',
-  time: OLDEST_TIME,
+  time: oldestTime,
   amountMinorUnits: -5000,
   exchangeCounterpartHoldingId: null,
   untrackedCounterpart: null,
   loanHoldingId: null,
-};
+});
 
 const answerLiveQuery = (query: { kind?: string }, tables: string[]) => {
   const byTable: Record<string, unknown[]> = {
     accounts: [ACCOUNT],
     holdings: [HOLDING],
     settings: [{ baseCurrency: 'UAH' }],
-    transactions: [OLDEST_TRANSACTION],
+    transactions: [oldestTransaction()],
   };
   const ledger: Record<string, unknown[]> = {
-    span: [{ earliest: OLDEST_TIME, latest: OLDEST_TIME }],
+    span: [{ earliest: oldestTime, latest: oldestTime }],
   };
 
   return {
@@ -208,6 +211,7 @@ const expectBothShow = (rendered: Rendered, label: string): void => {
 
 describe('shared date range across Home and Statistics', () => {
   beforeEach(() => {
+    oldestTime = localDaysFrom(Date.now(), -40);
     mockUseLiveQuery.mockImplementation(answerLiveQuery);
   });
 
@@ -260,6 +264,7 @@ describe('shared date range across Home and Statistics', () => {
 
     it('moves both screens to the same new-day range after midnight with no pick', async () => {
       jest.useFakeTimers({ now: new Date(2026, 5, 15, 23, 59, 0) });
+      oldestTime = localDaysFrom(Date.now(), -40);
       const rendered = await renderBoth();
 
       expectBothShow(rendered, defaultLabel());

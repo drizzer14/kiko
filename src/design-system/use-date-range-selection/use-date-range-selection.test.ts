@@ -1,5 +1,6 @@
 import { defaultDateRange } from '@kiko/dates';
-import { act, renderHook } from '@testing-library/react-native';
+import { createElement, Fragment } from 'react';
+import { act, render, renderHook } from '@testing-library/react-native';
 
 import { useDateRangeSelection } from './use-date-range-selection';
 
@@ -97,6 +98,38 @@ describe('useDateRangeSelection', () => {
 
     const NEXT_DAY = new Date(2026, 5, 16, 9, 0, 0).getTime();
     const SAME_DAY_LATER = new Date(2026, 5, 15, 18, 0, 0).getTime();
+    // Differs from NOW so the re-render really changes the [now] dependency.
+    const OLDER_THAN_NEXT_DAY = NOW + 3_600_000;
+    const NEXT_DAY_LATER = new Date(2026, 5, 16, 10, 0, 0).getTime();
+
+    type SwapProps = { generation: number; firstNow: number; secondNow: number };
+
+    const latest: Record<string, ReturnType<typeof useDateRangeSelection>> = {};
+
+    const SwapReader = ({ name, now }: { name: string; now: number }): null => {
+      latest[name] = useDateRangeSelection(now);
+
+      return null;
+    };
+
+    // A new key replaces both readers in one commit, like a fold/unfold that rebuilds the tree.
+    const SwapPair = ({ generation, firstNow, secondNow }: SwapProps) =>
+      createElement(
+        Fragment,
+        { key: generation },
+        createElement(SwapReader, { name: 'first', now: firstNow }),
+        createElement(SwapReader, { name: 'second', now: secondNow }),
+      );
+
+    const renderSwappable = (): ReturnType<typeof render> =>
+      render(createElement(SwapPair, { generation: 0, firstNow: NOW, secondNow: NOW }));
+
+    const expectLatestDefault = (name: string, now: number): void => {
+      const range = defaultDateRange(now);
+
+      expect(latest[name].dateFrom).toEqual(range.from);
+      expect(latest[name].dateTo).toEqual(range.to);
+    };
 
     const renderOneReader = (onRender?: () => void) =>
       renderHook(
@@ -165,7 +198,7 @@ describe('useDateRangeSelection', () => {
       const [first, second] = await renderTwoReaders();
 
       await first.rerender({ now: NEXT_DAY });
-      await second.rerender({ now: NOW });
+      await second.rerender({ now: OLDER_THAN_NEXT_DAY });
 
       expectDefaultOf(first, NEXT_DAY);
       expectDefaultOf(second, NEXT_DAY);
@@ -200,6 +233,51 @@ describe('useDateRangeSelection', () => {
       await second.unmount();
 
       expectDefault(await renderOneReader());
+    });
+
+    it('forgets the clock after every reader unmounts', async () => {
+      const [first, second] = await renderTwoReaders();
+
+      await first.rerender({ now: NEXT_DAY });
+      await first.unmount();
+      await second.unmount();
+
+      const [third, fourth] = await renderTwoReaders();
+
+      await third.rerender({ now: NEXT_DAY_LATER });
+
+      expectDefaultOf(third, NEXT_DAY_LATER);
+      expectDefaultOf(fourth, NEXT_DAY_LATER);
+    });
+
+    it('keeps the pick when every reader is replaced in one commit', async () => {
+      const rendered = await renderSwappable();
+
+      await act(async () => {
+        latest.first.applyDateRange(PICKED_FROM, PICKED_TO);
+      });
+      await rendered.rerender(
+        createElement(SwapPair, { generation: 1, firstNow: NOW, secondNow: NOW }),
+      );
+
+      expect(latest.first.dateFrom).toBe(PICKED_FROM);
+      expect(latest.first.dateTo).toBe(PICKED_TO);
+      expect(latest.second.dateFrom).toBe(PICKED_FROM);
+      expect(latest.second.dateTo).toBe(PICKED_TO);
+    });
+
+    it('moves every reader to a later day after every reader is replaced in one commit with no pick', async () => {
+      const rendered = await renderSwappable();
+
+      await rendered.rerender(
+        createElement(SwapPair, { generation: 1, firstNow: NOW, secondNow: NOW }),
+      );
+      await rendered.rerender(
+        createElement(SwapPair, { generation: 1, firstNow: NEXT_DAY, secondNow: NOW }),
+      );
+
+      expectLatestDefault('first', NEXT_DAY);
+      expectLatestDefault('second', NEXT_DAY);
     });
   });
 });
