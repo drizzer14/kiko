@@ -1863,7 +1863,7 @@ describe('scripts/job-queue.sh status', () => {
 
       expect(status).toBe(0);
       expect(warnings).toHaveLength(3);
-      expect(warnings[0]).toContain('60');
+      expect(warnings[0]).toContain('WARNING: 60 done.log');
       expect(warnings[0]).toContain(shortAt(60));
       expect(warnings[1]).toContain(lateOne);
       expect(warnings[1]).toContain('62');
@@ -1877,7 +1877,7 @@ describe('scripts/job-queue.sh status', () => {
       );
 
       expect(warnings).toHaveLength(1);
-      expect(warnings[0]).toContain('5');
+      expect(warnings[0]).toContain('WARNING: 5 done.log');
       expect(warnings[0]).toContain(shortAt(5));
     });
   });
