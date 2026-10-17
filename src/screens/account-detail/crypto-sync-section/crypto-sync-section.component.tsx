@@ -118,9 +118,15 @@ const CryptoSyncSection: FC<CryptoSyncSectionProps> = ({ account, holdings }) =>
     // later (a SEPARATE, slower step), so the caption would otherwise flash on
     // every sync after more than a day away.
     const walkState = parseExchangeState(syncStateRows.at(0)?.exchangeState ?? null);
+    // A state this build cannot read pauses the history (the run starts no walk on it), and its
+    // caption replaces the "behind" one: a null cursor of such a state would read as behind. It is
+    // a standing fact of the stored state, not a lag a sync closes, so a sync in flight keeps it.
+    const historyPaused =
+      !syncStateLoading && connectedProvider === 'binance' && walkState.kind === 'malformed';
     const historyBehind =
       !isSyncing &&
       !syncStateLoading &&
+      !historyPaused &&
       connectedProvider === 'binance' &&
       isBinanceHistoryBehind({
         cursors: walkCursorsOf(walkState),
@@ -146,6 +152,14 @@ const CryptoSyncSection: FC<CryptoSyncSectionProps> = ({ account, holdings }) =>
               })}
             </Text>
           </Box>
+
+          {historyPaused && (
+            <Text variant="caption" tone="textSecondary">
+              {t('accountDetail.exchangeHistoryPaused', {
+                exchange: providerDisplayName(connectedProvider, t),
+              })}
+            </Text>
+          )}
 
           {historyBehind && (
             <Text variant="caption" tone="textSecondary">

@@ -659,10 +659,6 @@ const runSync = async (
 
   const stored = await readWalkMarks(deps, accountId, 'pay');
 
-  if (stored === undefined) {
-    return { imported: 0, complete: false };
-  }
-
   const { cursor: payCursor, rescan: rescanCursor } = stored;
   const write = walkMarkWriterOf(deps, accountId, 'pay');
   const roundRobins = await readWalkRoundRobins({ stored, write });

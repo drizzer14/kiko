@@ -1,5 +1,6 @@
-// A walk never runs on a stored state this build cannot read, and never writes it: a walk that ran
-// would start from its floor on every run, since nothing it wrote would stick.
+// `runCryptoSync` never starts a walk on a stored state this build cannot read. A walk that is
+// started on one anyway fails before it reads Binance or writes the column: it would start from
+// its floor on every run, since nothing it wrote would stick.
 import type { HoldingRow } from '@kiko/db';
 import type { WalkResult } from '@kiko/crypto-sync/exchange/walk';
 
@@ -75,11 +76,11 @@ const UNREADABLE_STATES = [
 
 describe.each(CASES)('the %s walk', (_name, run) => {
   it.each(UNREADABLE_STATES)(
-    'does nothing and reports history remaining for %s',
+    'rejects before it reads Binance or writes the state, for %s',
     async (_label, text) => {
       const shared = sharedDeps(text);
 
-      expect(await run(shared)).toEqual({ imported: 0, complete: false });
+      await expect(run(shared)).rejects.toMatchObject({ code: 'exchange-state-malformed' });
       expect(shared.patchExchangeState).not.toHaveBeenCalled();
       expect(shared.fetchImpl).not.toHaveBeenCalled();
     },

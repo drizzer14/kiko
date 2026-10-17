@@ -189,6 +189,9 @@ const HOUR_MS = 60 * 60 * 1000;
 
 const HISTORY_CAPTION = 'Some Binance transaction history is not imported yet.';
 
+const PAUSED_CAPTION =
+  'Binance history import is paused because Kiko could not read its saved import progress. Disconnect and reconnect Binance to repair it; your holdings and transactions stay.';
+
 // The four forward cursors of the history walks, each `behindMs` behind the balance sync.
 const walkCursors = (
   behindMs: number,
@@ -552,6 +555,67 @@ describe('CryptoSyncSection', () => {
 
     expect(queryByText(HISTORY_CAPTION, { exact: false })).toBeNull();
   });
+
+  describe('a walk state this build cannot read', () => {
+    // The column is stored as text, so a state no build reads is seeded as text, not as a seed
+    // object.
+    const renderMalformed = (text: string, isLoading = false) => {
+      syncStateResult = { data: [{ exchangeState: text }], isLoading };
+
+      return render(
+        <CryptoSyncSection
+          account={account({ institution: 'binance' })}
+          holdings={[holding({ binanceAsset: 'BTC', syncedAt: CONNECTED_WALLET_SYNCED_AT })]}
+        />,
+      );
+    };
+
+    it.each([
+      ['text that is not JSON', '{not json'],
+      ['a state of another version', '{"version":2,"walks":{}}'],
+      ['a state with no walks', '{"version":1}'],
+    ])('shows the paused caption for %s', async (_label, text) => {
+      const { getByText } = await renderMalformed(text);
+
+      expect(getByText(PAUSED_CAPTION)).toBeTruthy();
+    });
+
+    it('shows the paused caption instead of the behind caption, never both', async () => {
+      const { getByText, queryByText } = await renderMalformed('{not json');
+
+      expect(getByText(PAUSED_CAPTION)).toBeTruthy();
+      expect(queryByText(HISTORY_CAPTION, { exact: false })).toBeNull();
+    });
+
+    it('shows the paused caption while a sync is in flight: a paused history does not flash', async () => {
+      mockUseCryptoSync.mockReturnValue({ isSyncing: true, error: undefined, sync: mockSync });
+
+      const { getByText } = await renderMalformed('{not json');
+
+      expect(getByText(PAUSED_CAPTION)).toBeTruthy();
+    });
+
+    it('shows no caption while the state row is loading', async () => {
+      const { queryByText } = await renderMalformed('{not json', true);
+
+      expect(queryByText(PAUSED_CAPTION)).toBeNull();
+      expect(queryByText(HISTORY_CAPTION, { exact: false })).toBeNull();
+    });
+
+    it('shows no paused caption on a state that parses, an unreadable entry too', async () => {
+      const { queryByText } = await renderMalformed('{"version":1,"walks":{"pay":"oops"}}');
+
+      expect(queryByText(PAUSED_CAPTION)).toBeNull();
+    });
+
+    it('never shows the paused caption for a wallet account', async () => {
+      syncStateResult = { data: [{ exchangeState: '{not json' }], isLoading: false };
+
+      const { queryByText } = await renderConnectedWallet();
+
+      expect(queryByText(PAUSED_CAPTION)).toBeNull();
+    });
+  });
 });
 
 describe('CryptoSyncSection — localization', () => {
@@ -588,5 +652,39 @@ describe('CryptoSyncSection — localization', () => {
     const { getByText } = await renderSection({ institution: 'binance' });
 
     expect(getByText(/Ніколи/)).toBeTruthy();
+  });
+});
+
+describe('CryptoSyncSection — paused caption localization', () => {
+  beforeEach(async () => {
+    jest.clearAllMocks();
+    mockUseCryptoSync.mockReturnValue({ isSyncing: false, error: undefined, sync: mockSync });
+    setConnected({});
+    await act(async () => {
+      await i18n.changeLanguage('uk');
+    });
+  });
+
+  afterEach(async () => {
+    await act(async () => {
+      await i18n.changeLanguage('en');
+    });
+  });
+
+  it('renders the paused caption in Ukrainian, naming Binance twice', async () => {
+    syncStateResult = { data: [{ exchangeState: '{not json' }], isLoading: false };
+
+    const { getByText } = await render(
+      <CryptoSyncSection
+        account={account({ institution: 'binance' })}
+        holdings={[holding({ binanceAsset: 'BTC', syncedAt: CONNECTED_WALLET_SYNCED_AT })]}
+      />,
+    );
+
+    expect(
+      getByText(
+        'Імпорт історії Binance призупинено, бо Кіко не зміг прочитати збережений прогрес імпорту. Відʼєднайте й знову підключіть Binance, щоб це виправити; ваші активи й транзакції залишаться.',
+      ),
+    ).toBeTruthy();
   });
 });

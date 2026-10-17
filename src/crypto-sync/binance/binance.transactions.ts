@@ -581,10 +581,6 @@ const runSync = async (
 
   const stored = await readWalkMarks(deps, accountId, 'capital');
 
-  if (stored === undefined) {
-    return { imported: 0, complete: false };
-  }
-
   const { apiKey, secret } = credentials;
   const options: FetchAccountOptions = { fetchImpl: deps.fetchImpl, now: deps.now };
   // The watermark takes priority; a holding that never had one (legacy data,

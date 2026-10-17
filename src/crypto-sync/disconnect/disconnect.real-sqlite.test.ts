@@ -19,6 +19,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { HISTORY_FLOOR_MS } from '@kiko/crypto-sync/binance';
 import { applyAllMigrations } from '@kiko/test-support/real-sqlite';
 import { seedWalkMarks, walkMarksOf } from '@kiko/test-support/walk-marks';
+import { parseExchangeState } from '@kiko/crypto-sync/exchange/walk-state';
 
 import { disconnectCryptoAccount } from './disconnect';
 
@@ -26,6 +27,13 @@ const NOW = 1_800_000_000_000;
 
 const rowCount = (table: string): number =>
   (mockDatabase.prepare(`SELECT COUNT(*) AS total FROM ${table}`).get() as { total: number }).total;
+
+const storedState = (): string =>
+  (
+    mockDatabase
+      .prepare("SELECT exchange_state FROM sync_state WHERE account_id = 'acc-1'")
+      .get() as { exchange_state: string }
+  ).exchange_state;
 
 const connectedBinanceAccount = (): void => {
   mockDatabase.exec('PRAGMA foreign_keys = ON;');
@@ -80,4 +88,30 @@ describe('disconnectCryptoAccount over the real repos', () => {
     expect(rowCount('transactions')).toBe(1);
     expect(mockClearCredentials).toHaveBeenCalledWith('acc-1');
   });
+
+  // The paused caption promises this repair: "Disconnect and reconnect to repair it; your holdings
+  // and transactions stay."
+  it.each([
+    ['text that is not JSON', '{not json'],
+    ['a state of another version', '{"version":2,"walks":{}}'],
+    ['a state with no walks', '{"version":1}'],
+  ])(
+    'for Binance, repairs %s to a state a run reads, and keeps the holdings and the rows',
+    async (_label, malformed) => {
+      connectedBinanceAccount();
+      mockDatabase
+        .prepare("UPDATE sync_state SET exchange_state = ? WHERE account_id = 'acc-1'")
+        .run(malformed);
+      expect(parseExchangeState(storedState()).kind).toBe('malformed');
+
+      await disconnectCryptoAccount('acc-1', 'binance');
+
+      expect(parseExchangeState(storedState()).kind).toBe('parsed');
+      expect(storedState()).toBe(
+        `{"version":1,"walks":{"capital":{"cursor":${HISTORY_FLOOR_MS}}}}`,
+      );
+      expect(rowCount('holdings')).toBe(1);
+      expect(rowCount('transactions')).toBe(1);
+    },
+  );
 });

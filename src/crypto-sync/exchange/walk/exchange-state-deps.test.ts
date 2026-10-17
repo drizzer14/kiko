@@ -81,8 +81,11 @@ describe('readWalkMarks', () => {
     ['text that is not JSON', '{not json'],
     ['a state of another version', '{"version":2,"walks":{}}'],
     ['a state with no walks', '{"version":1}'],
-  ])('reads no marks for %s: the walk does not run on it', async (_label, text) => {
-    expect(await readWalkMarks(readOf(text), 'acc-1', 'capital')).toBeUndefined();
+  ])('rejects for %s: the run never starts a walk on it', async (_label, text) => {
+    await expect(readWalkMarks(readOf(text), 'acc-1', 'capital')).rejects.toMatchObject({
+      name: 'BinanceWalkStop',
+      code: 'exchange-state-malformed',
+    });
   });
 });
 

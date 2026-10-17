@@ -803,10 +803,6 @@ const runSync = async (
 
   const stored = await readWalkMarks(deps, accountId, 'earn');
 
-  if (stored === undefined) {
-    return { imported: 0, complete: false };
-  }
-
   const { cursor, rescan: rescanCursor } = stored;
   const write = walkMarkWriterOf(deps, accountId, 'earn');
   const roundRobins = await readWalkRoundRobins({ stored, write });
