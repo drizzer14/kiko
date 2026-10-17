@@ -89,8 +89,8 @@ describe('disconnectCryptoAccount over the real repos', () => {
     expect(mockClearCredentials).toHaveBeenCalledWith('acc-1');
   });
 
-  // The paused caption promises this repair: "Disconnect and reconnect to repair it; your holdings
-  // and transactions stay."
+  // The paused caption promises this fix: "Disconnect and reconnect to fix this. Your holdings
+  // and transactions are kept."
   it.each([
     ['text that is not JSON', '{not json'],
     ['a state of another version', '{"version":2,"walks":{}}'],

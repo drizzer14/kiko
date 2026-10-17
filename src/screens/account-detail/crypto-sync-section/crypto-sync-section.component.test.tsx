@@ -190,7 +190,7 @@ const HOUR_MS = 60 * 60 * 1000;
 const HISTORY_CAPTION = 'Some Binance transaction history is not imported yet.';
 
 const PAUSED_CAPTION =
-  'Binance history import is paused because Kiko could not read its saved import progress. Disconnect and reconnect Binance to repair it; your holdings and transactions stay.';
+  'Binance history import is paused because Kiko could not read its saved import progress. Disconnect and reconnect Binance to fix this. Your holdings and transactions are kept.';
 
 // The four forward cursors of the history walks, each `behindMs` behind the balance sync.
 const walkCursors = (
@@ -683,7 +683,7 @@ describe('CryptoSyncSection — paused caption localization', () => {
 
     expect(
       getByText(
-        'Імпорт історії Binance призупинено, бо Кіко не зміг прочитати збережений прогрес імпорту. Відʼєднайте й знову підключіть Binance, щоб це виправити; ваші активи й транзакції залишаться.',
+        'Імпорт історії Binance призупинено: Кіко не зміг прочитати збережений стан імпорту. Щоб це виправити, відключіть і знову підключіть Binance. Ваші активи й транзакції збережуться.',
       ),
     ).toBeTruthy();
   });
