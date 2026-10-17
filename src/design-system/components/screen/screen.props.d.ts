@@ -89,8 +89,10 @@ export type ScreenProps = {
   // its fields in its route params saves it here, so it passes no blur handler to each field.
   onFieldBlur?: () => void;
   // Skips the pane content cap (`useContentCap()`) on the scroll content container and on the plain
-  // root, so the content spans the whole pane. Only the Statistics grid at two or more columns
-  // sets it: its cards need the pane's full width, which the cap would take away. Every other
-  // screen keeps the cap.
+  // root, so the content spans the whole pane, and on the footer too, which would not line up
+  // under uncapped content. A `bleedTop` or `bleedBottom` child caps itself through
+  // `useContentCap()`, so on those branches `uncapped` uncaps only the footer. Only the Statistics
+  // grid at two or more columns sets it: its cards need the pane's full width, which the cap would
+  // take away. Every other screen keeps the cap.
   uncapped?: boolean;
 };

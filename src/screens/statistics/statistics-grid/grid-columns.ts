@@ -1,10 +1,13 @@
 export type GridColumns = 1 | 2 | 3;
 
-// Above every Duo width (its widest pane is 669) and below the narrowest iPad pane (744), so a
-// Duo screen never changes and an iPad pane always gets a second column.
+// Above every Duo width (its widest pane is 669) and below the narrowest iPad width that gets two
+// columns (744, an iPad mini's portrait pane), so a Duo screen never changes. A half pane of a
+// landscape 721 to 1099 pt window (360 to 549 pt) stays at one column, as the spec's layout table
+// has it.
 export const TWO_COLUMN_MIN_WIDTH = 700;
 
-// A 13-inch iPad window is 1032 wide, the one width that has room for three cards across.
+// Room for three cards across: a 13-inch iPad window is 1032 wide, and a 12.9-inch one is 1024 in
+// portrait.
 export const THREE_COLUMN_MIN_WIDTH = 1000;
 
 /**

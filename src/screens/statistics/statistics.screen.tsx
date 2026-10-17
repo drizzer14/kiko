@@ -49,6 +49,7 @@ import {
 import { holdingsRepo } from '@kiko/holdings/repo';
 import either, { bifold, isLeft } from 'fnts/either';
 import Box from '@kiko/design-system/components/box';
+import { useLayoutMode } from '@kiko/display-regions';
 import { categoriesRepo } from '@kiko/categories/repo';
 import Card from '@kiko/design-system/components/card';
 import Text from '@kiko/design-system/components/text';
@@ -178,9 +179,18 @@ const CATEGORY_LEGEND_MIN_SHARE = 0.05;
 const StatisticsScreen: FC = () => {
   const { t, i18n } = useTranslation();
   // The columns follow the width of the pane the screen is in, or the window's where no pane
-  // applies, and nothing else: a filter or a date range never moves a card.
+  // applies, and nothing else: a filter or a date range never moves a card. Outside a pane the
+  // window counts only while the live layout mode is `single`: a split window is about to put
+  // this screen in a pane, and the settled mode lags the live one, so until it does the screen
+  // keeps one capped column instead of flashing a full-window grid (as `useContentCap` keeps its
+  // cap through the same lag).
   const { width: windowWidth } = useWindowDimensions();
-  const columns = resolveGridColumns(usePaneWidth() ?? windowWidth);
+  const paneWidth = usePaneWidth();
+  const layoutMode = useLayoutMode();
+  const columns =
+    paneWidth === null && layoutMode !== 'single'
+      ? 1
+      : resolveGridColumns(paneWidth ?? windowWidth);
   // At one column a card keeps the look it has always had; in a row it fills its cell's height.
   const cardStyle = columns > 1 ? styles.gridCard : undefined;
   // This screen sits in its own tab's stack; the stack hands a navigate it
