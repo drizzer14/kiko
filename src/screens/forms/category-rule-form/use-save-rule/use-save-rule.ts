@@ -50,6 +50,13 @@ export const useSaveRule = ({
   const [attempted, setAttempted] = useState(false);
   // The count stays after the sheet hides, so its text holds still while it fades.
   const [sheet, setSheet] = useState({ visible: false, count: 0 });
+  // Hides the errors from the moment a write starts (cleared if it fails): once the rule is
+  // stored, the live rules read holds it, so the unchanged draft would name the stored rule as its
+  // own twin while the screen is still on its way out. State, because it must re-render.
+  const [storing, setStoring] = useState(false);
+  // Makes the leave happen once: the sheet may report that it closed more than once, and only the
+  // first report after a stored write may leave. A ref, so a handler the sheet kept from before the
+  // write still sees it.
   const storedRef = useRef(false);
   const conversion = useMemo(() => fromMatcherDrafts(drafts), [drafts]);
   const otherRules = useMemo(() => prepareRules(rules).ordered, [rules]);
@@ -84,9 +91,11 @@ export const useSaveRule = ({
         return;
       }
 
+      setStoring(true);
       await categoryRulesRepo.saveRule({ ...rule, applyToExisting: false });
       onSaved();
     } catch {
+      setStoring(false);
       alertSaveFailed();
     }
   };
@@ -99,6 +108,7 @@ export const useSaveRule = ({
     }
 
     try {
+      setStoring(true);
       await categoryRulesRepo.saveRule({
         id: ruleId,
         category: categoryKey,
@@ -108,6 +118,7 @@ export const useSaveRule = ({
       storedRef.current = true;
       setSheet((current) => ({ ...current, visible: false }));
     } catch {
+      setStoring(false);
       alertSaveFailed();
     }
   };
@@ -129,10 +140,12 @@ export const useSaveRule = ({
     }
   };
 
+  const showsErrors = attempted && !storing;
+
   return {
     errors: {
-      rows: attempted && conversion.kind === 'invalid' ? conversion.errors : NO_ROW_ERRORS,
-      rule: attempted ? refusal : undefined,
+      rows: showsErrors && conversion.kind === 'invalid' ? conversion.errors : NO_ROW_ERRORS,
+      rule: showsErrors ? refusal : undefined,
     },
     save: saveControl,
     sheet: { ...sheet, onDismiss, onClosed, apply, keepNew },

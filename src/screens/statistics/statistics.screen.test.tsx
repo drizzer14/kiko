@@ -54,6 +54,7 @@ import type { TrendFilter } from '@kiko/statistics/trend-filter';
 import { localDaysFrom } from '@kiko/test-support/local-days-from';
 import type { BackfillStatus } from '@kiko/rates/history-backfill';
 import { categoryColor } from '@kiko/statistics/category-breakdown';
+import GestureRootWrapper from '@kiko/test-support/gesture-root-wrapper';
 import { DAY_MS, formatDate, startOfLocalDay, defaultDateRange } from '@kiko/dates';
 import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
 import '@kiko/design-system/unistyles';
@@ -565,7 +566,9 @@ const seedSpendingWithMccMovements = (): void =>
     categories: [...CATEGORIES, CASH_CATEGORY],
   });
 
-const renderScreen = (): ReturnType<typeof render> => render(<StatisticsScreen />);
+// The net-worth plot carries the scrub line's GestureDetector, which needs a root view.
+const renderScreen = (): ReturnType<typeof render> =>
+  render(<StatisticsScreen />, { wrapper: GestureRootWrapper });
 
 // Open one filter menu, tap an option row, then dismiss via the backdrop.
 const pressFilter = async (

@@ -24,7 +24,13 @@ scale/tick builder (`buildScales`, `buildTicks`,
 `buildXGridTicks`/`buildXLabelTicks`, and `bar-chart`/`pie-chart`'s
 equivalents) works in the same fixed logical units regardless of device
 width — do not read `Dimensions` or a layout `onLayout` width inside a
-chart's geometry math.
+chart's scale or tick math.
+
+The one sanctioned use of a measured width: mapping a touch onto the chart
+and placing an overlay. Scales stay in `VIEW_WIDTH` units;
+`toLogicalX(touchX, plotWidth, viewWidth)` converts a touch (it returns
+`null` while `plotWidth` is 0); an overlay's pixel x is
+`logicalX * plotWidth / VIEW_WIDTH` (see `net-worth-line.scrub.ts`).
 
 ## Hand-rolled scale/tick builders
 
@@ -90,7 +96,10 @@ polyline's `points`) is to look the element up by `testID` through the
 manual mock and read its props back. A chart primitive with no `testID`
 is untestable geometry — always add one when adding a new primitive,
 following the existing `<chart-name>-<primitive>[-<key>]` naming (e.g.
-`bar-chart-bar-card`, `net-worth-line-x-grid-0.50`).
+`bar-chart-bar-card`, `net-worth-line-x-grid-0.50`). The NetWorthLine scrub
+adds `net-worth-line-scrub`, `net-worth-line-scrub-label`,
+`net-worth-line-plot`, and `NET_WORTH_SCRUB_GESTURE_TEST_ID`
+(`net-worth-line-scrub-gesture`, exported by the component).
 
 ## Adding a new chart requires extending the mock
 
@@ -171,6 +180,31 @@ needed NO change to `NetWorthLine` itself: `buildLineSegments` and
 (above), which is exactly the "cross 0" case. The Y axis already floors to the series' own minimum (whatever
 that is, positive or negative), so a negative range draws correctly
 with no separate floor-at-0 logic to remove.
+
+## NetWorthLine scrub line
+
+The pure math lives in `net-worth-line.scrub.ts` (read it for the current
+signatures and constants): `toLogicalX`, `nearestPointIndex` (the lower index
+wins a tie), `placeScrubLabel` (right of the line when it fits, else left,
+else clamped inside the plot, returning `left`), `scrubRangeKey`,
+`resolveScrubIndex`, `stepScrubIndex`.
+
+- The vertical `<Line testID="net-worth-line-scrub">` reuses the baseline's
+  constants (`REFERENCE_DASH`, `GRID_STROKE_WIDTH`,
+  `theme.colors.textSecondary`). It is always drawn, on the last point by
+  default.
+- `ScrubLabel` is an overlay `View` OUTSIDE the `Svg` (`MoneyText` plus the
+  date, surface background). It measures its own width and stays at opacity 0
+  until measured.
+- The selection is stored as `{ rangeKey, index }`; `rangeKey` is the first
+  `t`, last `t` and point count. A period change or an empty series clears it
+  during render; a live update with the same range keeps it; a navigation
+  `focus` event resets it.
+- The plot `View` is `accessibilityRole="adjustable"` with `increment` and
+  `decrement` actions (`stepScrubIndex`); its `accessibilityValue` comes from
+  `components.netWorthLine.selectedDay`.
+- The scrub state hooks sit above the empty/loading early return so hook order
+  never changes. The gesture wiring is in kiko-gestures.
 
 ## Legend percent labels sum to 100
 
