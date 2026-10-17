@@ -28,6 +28,7 @@ const mockUpdateTransaction = jest.fn();
 const mockSetLoanPayment = jest.fn();
 const mockUndoAutoLoanLink = jest.fn();
 const mockUseLiveQuery = jest.fn();
+const mockApplyNameRule = jest.fn();
 
 // A write takes its optional template step last, and an undefined one is the same call as none.
 const mockWithoutUndefinedTail = (args: unknown[]): unknown[] =>
@@ -82,7 +83,7 @@ jest.mock('@kiko/categories/repo', () => ({
 }));
 jest.mock('@kiko/categories/category-rules-repo', () => ({
   categoryRulesRepo: {
-    applyNameRule: jest.fn(),
+    applyNameRule: (...args: unknown[]) => mockApplyNameRule(...args),
     allQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }),
   },
 }));
@@ -157,6 +158,12 @@ const nameRule = (text: string, category: string) => ({
   matchers: JSON.stringify([{ type: 'nameIs', text }]),
   createdAt: 1,
   updatedAt: 1,
+});
+
+// A stored rule row whose matchers are the given list, for a winner no name rule gives.
+const matcherRule = (id: string, category: string, matchers: readonly object[]) => ({
+  ...nameRule(id, category),
+  matchers: JSON.stringify(matchers),
 });
 
 type LiveData = {
@@ -356,6 +363,49 @@ describe('TransactionFormScreen — filled from a template', () => {
     expect(mockRecordManual).toHaveBeenCalledWith(
       expect.objectContaining({ category: 'groceries', categorySetByHand: true }),
     );
+  });
+
+  it.each([
+    ['a name rule', nameRule('coffee', 'dining')],
+    [
+      'an amount and name-prefix rule',
+      matcherRule('small-coffee', 'dining', [
+        { type: 'nameStartsWith', text: 'cof' },
+        { type: 'amount', operator: 'lt', minorUnits: 200_000, currency: 'UAH' },
+        { type: 'direction', direction: 'expense' },
+      ]),
+    ],
+  ])(
+    'offers no category propagation for a template category %s already gives',
+    async (_label, rule) => {
+      setLiveData({
+        draft: { ...EXPENSE, description: 'Coffee', category: 'dining' },
+        categoryRules: [rule],
+      });
+
+      const { queryByText } = await render(templateScreen());
+      await pressSave(navigation.setOptions);
+
+      expect(queryByText('Apply Category to All')).toBeNull();
+      expect(mockApplyNameRule).not.toHaveBeenCalled();
+      expect(navigation.goBack).toHaveBeenCalledTimes(1);
+      expect(mockRecordManual).toHaveBeenCalledWith(
+        expect.objectContaining({ category: 'dining', categorySetByHand: true }),
+      );
+    },
+  );
+
+  it('offers category propagation for a template category that differs from the name rule', async () => {
+    setLiveData({
+      draft: { ...EXPENSE, description: 'Coffee', category: 'groceries' },
+      categoryRules: [nameRule('coffee', 'dining')],
+    });
+
+    const { getByText } = await render(templateScreen());
+    await pressSave(navigation.setOptions);
+
+    expect(getByText('Apply Category to All')).toBeTruthy();
+    expect(navigation.goBack).not.toHaveBeenCalled();
   });
 
   it('saves the rule pre-select of a template with no category as no pick', async () => {

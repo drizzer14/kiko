@@ -746,6 +746,8 @@ sweep.
 The convention (handwritten, Prettier-only exemplar:
 `~/Developer/Projects/ovpn-ui`):
 
+- A column-0 `declare module` block ends the import run; the imports after
+  it are an independent run (see kiko-linter "Import length-sort").
 - Keep 3 import GROUPS in this order, each separated by a blank line:
   (1) external packages and path aliases (`@kiko/...`, the most
   common import after B2), (2) `../**` parent-relative, (3) `./**`

@@ -940,6 +940,32 @@ describe('TransactionFormScreen — category pre-select from name rules', () => 
     expect(navigation.goBack).not.toHaveBeenCalled();
   });
 
+  it('opens no propagation sheet for a hand pick equal to the category the rule gives', async () => {
+    const utils = await renderAdd();
+    await fireEvent.changeText(utils.getByLabelText('Amount'), '12.34');
+    await fireEvent.changeText(utils.getByLabelText('Description'), 'Coffee');
+    await pickCategory(utils, 'Dining');
+    await pressSave(navigation.setOptions);
+
+    expect(utils.queryByText('Apply Category to All')).toBeNull();
+    expect(mockApplyNameRule).not.toHaveBeenCalled();
+    expect(mockRecordManual).toHaveBeenCalledWith(
+      expect.objectContaining({ category: 'dining', categorySetByHand: true }),
+    );
+    expect(navigation.goBack).toHaveBeenCalled();
+  });
+
+  it('opens the propagation sheet for a hand pick that differs from the category the rule gives', async () => {
+    const utils = await renderAdd();
+    await fireEvent.changeText(utils.getByLabelText('Amount'), '12.34');
+    await fireEvent.changeText(utils.getByLabelText('Description'), 'Coffee');
+    await pickCategory(utils, 'Groceries');
+    await pressSave(navigation.setOptions);
+
+    expect(utils.getByText('Apply Category to All')).toBeTruthy();
+    expect(navigation.goBack).not.toHaveBeenCalled();
+  });
+
   it('re-nulls the auto-pick so the category reason reappears when the name settles to a non-match', async () => {
     const utils = await renderAdd();
     const { getByLabelText, getByText, queryByText } = utils;
@@ -2057,6 +2083,69 @@ describe('TransactionFormScreen — synced (binance) row', () => {
 describe('TransactionFormScreen — category editing', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+  });
+
+  describe('of a Coffee row in Groceries', () => {
+    const setCoffeeRow = (ruleCategory: string): void =>
+      setLiveData(
+        [{ id: 'h1', currency: 'UAH', balanceMinorUnits: 5000, type: 'term_deposit' }],
+        {
+          id: 'txn-1',
+          holdingId: 'h1',
+          amountMinorUnits: -1234,
+          time: 42,
+          description: 'Coffee',
+          source: 'manual',
+          category: 'groceries',
+        },
+        [...CATEGORIES, { key: 'travel', title: 'Travel', icon: 'airplane' }],
+        [],
+        [],
+        [nameRule('coffee', ruleCategory)],
+      );
+
+    it('opens the propagation sheet for an edit to the category the rule gives', async () => {
+      mockSetCategory.mockResolvedValue(undefined);
+      setCoffeeRow('dining');
+      const utils = await renderEdit('txn-1');
+      await pickCategory(utils, 'Dining');
+      await pressSave(navigation.setOptions);
+
+      expect(utils.getByText('Apply Category to All')).toBeTruthy();
+      expect(navigation.goBack).not.toHaveBeenCalled();
+
+      await fireEvent.press(utils.getByText('Just for this one'));
+
+      await waitFor(() =>
+        expect(mockSetCategory).toHaveBeenCalledWith({
+          transactionId: 'txn-1',
+          category: 'dining',
+        }),
+      );
+      expect(mockApplyNameRule).not.toHaveBeenCalled();
+      expect(navigation.goBack).toHaveBeenCalled();
+    });
+
+    it('opens the propagation sheet for an edit to a category the rule does not give', async () => {
+      mockSetCategory.mockResolvedValue(undefined);
+      setCoffeeRow('travel');
+      const utils = await renderEdit('txn-1');
+      await pickCategory(utils, 'Dining');
+      await pressSave(navigation.setOptions);
+
+      expect(utils.getByText('Apply Category to All')).toBeTruthy();
+      expect(navigation.goBack).not.toHaveBeenCalled();
+
+      await fireEvent.press(utils.getByText('Just for this one'));
+
+      await waitFor(() =>
+        expect(mockSetCategory).toHaveBeenCalledWith({
+          transactionId: 'txn-1',
+          category: 'dining',
+        }),
+      );
+      expect(navigation.goBack).toHaveBeenCalled();
+    });
   });
 
   it('creates a name rule for a MANUAL row category change through applyNameRule after confirming', async () => {
