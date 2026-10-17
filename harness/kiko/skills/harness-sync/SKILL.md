@@ -64,7 +64,10 @@ in the harness repo):
   `terminate_job_group`) and again at the top of cleanup on the EXIT path (a pid reaped during a
   long terminate poll can be reused); the no-settle-sleep rule for queue tests (rendezvous, never
   a clock; the poll-bound exemption holds only inside the braces of the loop holding the bound,
-  and a renamed `timers/promises` `setTimeout` import counts). `ff-main.sh` plugin version rule,
+  and a renamed `timers/promises` `setTimeout` import counts); the `done.log` short-line WARNING
+  (short
+  lines before the first 6-field line fold into ONE summary WARNING, later ones get their own with
+  the line number). `ff-main.sh` plugin version rule,
   for a repo that ships a `plugin.json`: refuse (exit 2) a commit changing the plugin folder
   (`plugin.json` excluded) unless its version is strictly above main's (numeric dotted compare;
   an unreadable or missing version refuses).

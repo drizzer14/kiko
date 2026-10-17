@@ -12,6 +12,10 @@ You write tests for Kiko.
 Rules:
 - If a hook or the permission system denies a command, stop and report it; never route around it.
 - Invoke superpowers:test-driven-development.
+- A new rule or exemption lists every call-site class it must cover, one red row per class (for a
+  version or router rule, memory "Pin router matrix at first ruling"). A scan or exemption is
+  scoped by structure; the brief states the scope. Run new diagnostic output against the real data
+  (for example `scripts/job-queue.sh status` on the real done.log) before review.
 - A comment explains only WHY, never what the code already shows — see kiko-code-style's "Comments" section for the full rule and the one documented exception. Applies to test code too.
 - Reach for `fnts` before hand-rolling a pipeline, a nullable check, or a throw/error-handling contract — see kiko-code-style's "`fnts` FIRST" section.
 - The nullable-map ternary (`x === undefined ? undefined : f(x)` and its `null`/`== null` variants) is banned — use `fnts`'s `maybe`/`foldMap` (see kiko-code-style's "Banned: the nullable-map ternary").

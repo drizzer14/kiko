@@ -261,7 +261,9 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   worktree, run a queued `scripts/job-queue.sh verify` on the merge commit, then
   `bash scripts/ff-main.sh <sha>` (it needs the LAST `verify` line of done.log for that full
   sha to be exit 0; read its header; a `harness/kiko` change also needs a plugin.json
-  version strictly above main's). `scripts/ff-main.sh` needs no exemption: its merge uses
+  version strictly above main's; known limit: a commit changing only
+  plugin.json may lower the version and main still moves, gap
+  20261017T1654-kiko-harness-h8/3). `scripts/ff-main.sh` needs no exemption: its merge uses
   a variable target. A help or recovery option lets
   the whole command through from ANY argument position, even as another
   option's value (see the limits list). A session
@@ -2860,8 +2862,11 @@ mechanizable (see harness-workflow's "Classify every finding").
      counts as a sleep. Known limits: braces are counted per line, string,
      template and comment content included, so an unbalanced brace in a
      string or comment inside the loop can hide or flag a sleep; rename
-     detection covers only `import { setTimeout as <name> }`, not a
-     require destructure (gap 20261017T1654-kiko-harness-h8/2).
+     detection covers only `import { setTimeout as <name> }`; the
+     sleep pattern also misses `promisify(setTimeout)`, `execSync('sleep')`,
+     `spawnSync('/bin/sleep')` and a require destructure of
+     `timers/promises` (gap 20261017T1654-kiko-harness-h8/4; read
+     `SLEEP_CALL` in its rule file).
    - bash 3.2 (macOS): a trapped SIGINT sent to one pid is lost when it
      lands as a foreground external child is reaped. Where a signal must
      not be lost, run the command as `cmd & wait $!` (`run_awaited` in
@@ -2869,8 +2874,8 @@ mechanizable (see harness-workflow's "Classify every finding").
      `stop_on_signal` (`end_in_flight`, before `terminate_job_group`) and
      again at the top of cleanup on the EXIT path; a pid reaped during a
      long terminate poll can be reused.
-     The wait loop and command substitutions are not covered (open gap
-     20261017T1654-kiko-harness-h8/1).
+     The job-queue wait loop and `$(...)` command substitutions are not
+     covered (open gap 20261017T1654-kiko-harness-h8/1).
    - A test that needs a scratch folder uses
      `__tests__/test-support/temporary-directory.ts` (`createTemporaryDirectory`
      and `removeTemporaryDirectories` in an `afterEach`). New code uses the

@@ -263,6 +263,8 @@ hand-merge a binary. After merging the builder source, regenerate
 A read-only agent (debugger, reviewer, auditor, researcher, explorer)
 returns its report in its final message; the orchestrator writes the
 named report file from it. Never ask a read-only agent to write a file.
+A read-only role never starts or stops a process (no churners, no signals), even if a brief
+allows it.
 
 ## Rulings
 
@@ -623,6 +625,19 @@ The orchestrator quotes the jest summary lines itself ("Test Suites: N
 passed", "Tests: N passed") in every BATCH READY, and never relays an
 agent's "passed" verdict (ops misreported a failed `make verify` as
 passing twice on 2026-10-10).
+
+## A signal or race flake needs a measured probe
+
+For a signal or race flake a source read is a hypothesis only. A fix needs a probe of N trials
+with a baseline (H8: foreground `mv` lost 90/2600, `mv & wait $!` 0/3400) and a red row that
+fails on the base. Load and signal probes go to `kiko:ops`.
+
+A fix that moves work to the background lists its new interleavings in the brief (late completion
+after cleanup, pid reuse during a long stop, a signal while starting), each with a rendezvous
+red row.
+
+A date written into a doc comes from `git log -1 --format=%cs` (or `date +%F`) at write time,
+never from a session's own notes clock.
 
 ## Probe a live API before building on its shape
 
