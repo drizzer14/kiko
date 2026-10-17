@@ -1179,6 +1179,53 @@ describe('scripts/job-queue.sh on SIGINT before the lock record rename lands', (
   });
 });
 
+// The blocking rename, but it leaves a marker file when it is terminated, so a job can tell
+// whether the in-flight command was ended before the job itself was.
+const MARKING_PRE_RENAME_MV_STUB = PRE_RENAME_BLOCKING_MV_STUB.replace(
+  '#!/usr/bin/env bash\n',
+  '#!/usr/bin/env bash\ntrap \'echo ended > "$KIKO_STUB_MV_TERMINATED"; exit 143\' TERM\n',
+);
+
+// On TERM the job records whether the marker already exists, then ends its own sleep and exits.
+const ORDER_RECORDING_MAKE_STUB = [
+  '#!/usr/bin/env bash',
+  '[ -n "$KIKO_STUB_PID" ] || exit 0',
+  'echo $$ > "$KIKO_STUB_PID"',
+  `trap 'if [ -e "$KIKO_STUB_MV_TERMINATED" ]; then echo in-flight-first > "$KIKO_STUB_ORDER"; else echo job-first > "$KIKO_STUB_ORDER"; fi; kill "$sleeper"; exit 0' TERM`,
+  'sleep 60 &',
+  'sleeper=$!',
+  'wait "$sleeper"',
+  '',
+].join('\n');
+
+describe('scripts/job-queue.sh stop order on a signal', () => {
+  it('ends the in-flight record command before it terminates the job group', async () => {
+    const sandbox = createSandbox();
+    warmExecutables([
+      writeExecutable(join(sandbox.root, 'bin/make'), ORDER_RECORDING_MAKE_STUB),
+      writeExecutable(join(sandbox.root, 'bin/mv'), MARKING_PRE_RENAME_MV_STUB),
+    ]);
+    sandbox.environment.KIKO_STUB_PID = join(sandbox.root, 'job-pid');
+    sandbox.environment.KIKO_STUB_MV_ARMED = join(sandbox.root, 'mv-armed');
+    sandbox.environment.KIKO_STUB_MV_RELEASE = join(sandbox.root, 'release');
+    sandbox.environment.KIKO_STUB_MV_TERMINATED = join(sandbox.root, 'mv-terminated');
+    sandbox.environment.KIKO_STUB_ORDER = join(sandbox.root, 'order');
+    const worktree = createWorktree(sandbox, 'one');
+    const release = (): void => writeFileSync(join(sandbox.root, 'release'), '');
+
+    try {
+      const waiter = startQueue(sandbox, 'verify', worktree, 'one');
+      await waitFor(() => readLines(join(sandbox.root, 'mv-armed')).length === 1);
+      waiter.child.kill('SIGINT');
+      await waitFor(() => waiter.child.exitCode !== null);
+
+      expect(readLines(join(sandbox.root, 'order'))).toEqual(['in-flight-first']);
+    } finally {
+      release();
+    }
+  });
+});
+
 // A pid that is certainly dead: the subshell prints its own pid and exits before spawnSync returns.
 const deadPid = (): string =>
   spawnSync('bash', ['-c', 'echo $$'], { encoding: 'utf8' }).stdout.trim();

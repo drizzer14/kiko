@@ -116,6 +116,28 @@ describe('queue tests settle by a rendezvous or a pass count, never by a fixed s
       0,
     ],
     ['a jest timeout', 'jest.setTimeout(120_000);', 0],
+    ['a named delay', 'await new Promise((settle) => setTimeout(settle, SETTLE_MS));', 1],
+    ['an arrow callback', 'await new Promise((settle) => setTimeout(() => settle(), 600));', 1],
+    ['an awaited timers/promises sleep', 'await setTimeout(600);', 1],
+    [
+      'a call split over lines',
+      'await new Promise((settle) =>\n  setTimeout(settle,\n    600),\n);',
+      1,
+    ],
+    ['a spawned sleep', "spawnSync('sleep', ['0.6']);", 1],
+    [
+      'a named delay in a bounded poll loop',
+      [
+        'for (let poll = 0; !condition(); poll += 1) {',
+        '  if (poll >= POLL_LIMIT) {',
+        "    throw new Error('never');",
+        '  }',
+        '',
+        '  await new Promise((settle) => setTimeout(settle, POLL_MS));',
+        '}',
+      ].join('\n'),
+      0,
+    ],
   ])('finds the settle sleeps of %s', (_label, source, expected) => {
     expect(settleSleepsIn(source)).toHaveLength(expected);
   });
