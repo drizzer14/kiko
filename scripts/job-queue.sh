@@ -65,10 +65,11 @@
 # is removed once the group is empty, and a DRAIN line says a process of the job still runs.
 #
 # Gate start defer: a gate at the head also waits while the 5-minute load is at or above 10 (user
-# ruling Q2 = A). The check runs once per poll, only while no hold or power reason stops the start
-# and no live job holds the lock, as one read of `wait-load.sh 10 0`. A high load prints one
+# ruling 2026-10-17). The check runs once per poll, only while no hold or power reason stops the
+# start and no live job holds the lock, as one read of `wait-load.sh 10 0`. A high load prints one
 # `WAITING <label>: load ...` line and keeps the gate queued, at most 1200 seconds counted from the
-# first such read; the count starts over if the gate loses the head or a job takes the lock. Then
+# first such read; the count starts over if the gate loses the head, a job takes the lock, or a
+# hold or power reason stops the start, so a gate released from a pause gets its full wait. Then
 # `LOAD WAIT EXPIRED <label>: load <x>` is printed once and the gate starts anyway. A gate's first
 # mutants time out on load drift between its dry run and its run, which a quiet start lowers. A
 # verify, check-all, or security job is never deferred. A hold or a battery or unknown power state
@@ -129,7 +130,7 @@ POLL_SECONDS="${KIKO_QUEUE_POLL_SECONDS:-30}"
 STOP_POLLS="${KIKO_QUEUE_STOP_POLLS:-20}"
 SCRIPT_DIRECTORY="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # A gate at the head waits while the 5-minute load is at or above GATE_START_MAX_LOAD, at most
-# GATE_START_MAX_WAIT seconds. The two values are the user's ruling (Q2 = A), not a tuning knob.
+# GATE_START_MAX_WAIT seconds. The two values are the user's ruling (2026-10-17), not a tuning knob.
 GATE_START_MAX_LOAD=10
 GATE_START_MAX_WAIT="${KIKO_QUEUE_GATE_LOAD_WAIT_SECONDS:-1200}"
 
@@ -641,8 +642,8 @@ lock_is_held() {
   { [ -L "$LOCK_PATH" ] || [ -e "$LOCK_PATH" ]; } && lock_is_live
 }
 
-# The load wait starts over whenever the gate stops being the next to start: it lost the head, or a
-# job holds the lock.
+# The load wait starts over whenever the gate stops being the next to start: it lost the head, a
+# job holds the lock, or a hold or power reason stops the start.
 load_wait_started=''
 load_wait_expired=0
 load_unknown_announced=0
@@ -714,7 +715,7 @@ while :; do
   prune_stale_tickets
   reason="$(blocked_reason)"
   if [ -n "$reason" ]; then
-    :
+    reset_load_wait
   elif [ "$(head_ticket)" != "$ticket_name" ]; then
     reset_load_wait
   elif defer_for_load; then
