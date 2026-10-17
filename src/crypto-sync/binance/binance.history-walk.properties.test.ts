@@ -12,6 +12,7 @@ import {
   type OwedGround,
   type OwedWindow,
   planWalkPasses,
+  readPendingMark,
   runWalkPlan,
   type SettledSpan,
   settleRecords,
@@ -21,12 +22,13 @@ import {
   storeRangeCursor,
   storeSpanHints,
   walkSpans,
+  readWalkMarks,
   walkMarkWriterOf,
   type WalkMarks,
   type WalkWindow,
 } from '@kiko/crypto-sync/exchange/walk';
 import maybe, { foldMap } from 'fnts/maybe';
-import { walkStateFake, type WalkField } from '@kiko/test-support/walk-marks';
+import { walkStateFake, type WalkField, type WalkName } from '@kiko/test-support/walk-marks';
 import type { BinanceSpanHintPass, BinanceSpanHints } from '@kiko/crypto-sync/exchange/walk-state';
 
 import {
@@ -40,6 +42,7 @@ import {
   type EarnRecordKind,
   UNIVERSAL_TRANSFER_TYPES,
 } from './binance.history-client';
+import { HISTORY_FLOOR_MS } from './binance.transactions';
 import { LANE_CALL_CAPS } from './binance.history-budget';
 import { floorToSecond } from './binance.earn-test-fixtures';
 import { settledTransfersOf, TRANSFER_FORWARD_OWES } from './binance.transfer-history';
@@ -767,22 +770,51 @@ const endTimeOf = (input: Simulation, run: number): number => {
   return START_MS + (input.skewMs ?? 0) + early * (catchUp?.gapMs ?? 0) + (run - early) * gapMs;
 };
 
+const SIMULATION_ACCOUNT_ID = 'acc-1';
+
+const walkNameOf = (lane: Lane): WalkName => lane.walk ?? (lane.name === 'Pay' ? 'pay' : 'capital');
+
+/** The marks of a run as the walk reads them from the stored state, the one thing runs share. */
+const storedMarksOf = async (
+  deps: ReturnType<typeof walkStateFake>['deps'],
+  walkName: WalkName,
+  knownSeries: Lane['series'],
+): Promise<WalkMarks> => {
+  const stored = await readWalkMarks(deps, SIMULATION_ACCOUNT_ID, walkName);
+  const pending = await readPendingMark({
+    stored: stored.pending,
+    owedIfUnreadable: { start: HISTORY_FLOOR_MS, end: stored.cursor ?? HISTORY_FLOOR_MS },
+    knownSeries,
+    write: walkMarkWriterOf(deps, SIMULATION_ACCOUNT_ID, walkName),
+  });
+
+  return {
+    cursor: stored.cursor,
+    rescanCursor: stored.rescan,
+    pointCursor: stored.pointCursor ?? null,
+    rangeCursor: stored.rangeCursor ?? null,
+    hints: stored.spanHints ?? NO_HINTS,
+    pending,
+  };
+};
+
 const simulate = async (input: Simulation): Promise<Outcome> => {
   const { lane, scenario, runs } = input;
   const { forwardOwes } = lane;
   const importedAt = new Map<number, number>();
   const writes: Outcome['writes'] = [];
-  let marks: WalkMarks = {
-    cursor: START_MS,
-    rescanCursor: null,
-    pointCursor: null,
-    rangeCursor: null,
-    hints: NO_HINTS,
-    pending: scenario.owed,
-  };
+  const walkName = walkNameOf(lane);
+  const fake = walkStateFake({
+    accountId: SIMULATION_ACCOUNT_ID,
+    marks: { [walkName]: { cursor: START_MS, pending: scenario.owed } },
+  });
   const records: RunRecord[] = [];
 
   for (let run = 0; run < runs; run += 1) {
+    const deps = fake.freshDeps();
+    const write = walkMarkWriterOf(deps, SIMULATION_ACCOUNT_ID, walkName);
+    const marks = await storedMarksOf(deps, walkName, lane.series);
+
     const live: WalkMarks = { ...marks, pending: [...marks.pending] };
     const record: RunRecord = {
       owed: [],
@@ -837,15 +869,14 @@ const simulate = async (input: Simulation): Promise<Outcome> => {
       plan,
       callsOf,
       canAfford: (keep) => reads + keep < lane.reads,
-      markPointRead: (window) =>
-        storePointCursor({ window, marks: live, write: async () => undefined }),
+      markPointRead: (window) => storePointCursor({ window, marks: live, write }),
       markRangeRead: async (window) => {
         record.rangesRead.push(window.start);
-        await storeRangeCursor({ window, marks: live, write: async () => undefined });
+        await storeRangeCursor({ window, marks: live, write });
       },
       hints: {
         stored: live.hints,
-        store: (hints) => storeSpanHints({ hints, marks: live, write: async () => undefined }),
+        store: (hints) => storeSpanHints({ hints, marks: live, write }),
       },
       runWindow: (window, pass, keep, hint) => {
         if (pass !== 'forward' && !pastForward) {
@@ -895,7 +926,7 @@ const simulate = async (input: Simulation): Promise<Outcome> => {
               window,
               read,
               marks: live,
-              write: async () => undefined,
+              write,
             }),
           commit: async (span, page) => {
             const committed = await commitSettledSpan({
@@ -925,7 +956,7 @@ const simulate = async (input: Simulation): Promise<Outcome> => {
                   plan,
                   marks: live,
                   restartMs: FLOOR_MS,
-                  write: async () => undefined,
+                  write,
                 }),
             });
 
@@ -945,10 +976,11 @@ const simulate = async (input: Simulation): Promise<Outcome> => {
       },
     });
 
-    marks = live;
-    record.owed = live.pending;
-    record.hints = live.hints;
-    record.cursor = live.cursor;
+    const left = await storedMarksOf(fake.freshDeps(), walkName, lane.series);
+
+    record.owed = left.pending;
+    record.hints = left.hints;
+    record.cursor = left.cursor;
     record.callsAfterForward = pastForward ? record.callsAfterForward : lane.reads - reads;
     record.readsOfAPoint = Math.max(0, ...pointReads.values());
     records.push(record);
