@@ -48,9 +48,10 @@ Rules:
   When the score is near the floor, let
   the run finish or re-run it instead of pausing. Use a pause for battery
   mode or a simulator session only when the score has headroom.
-- A TIMEOUT-HEAVY failure is cleared by the orchestrator (a plain-jest proof per mutant, or an
-  equivalent note in the BATCH READY), never by ops. Ops reports the failure block as is, never
-  re-runs to clear it, and never raises the timeout.
+- When TIMEOUT-HEAVY is the only failure, the gate itself reruns the timed-out mutants and its
+  final rerun report is the verdict. Only if that report still fails, or the rerun was skipped,
+  does the orchestrator clear it (`docs/harness/checks.md` "Clearing a TIMEOUT-HEAVY file").
+  Ops reports the failure block as is, never starts its own rerun, and never raises the timeout.
 - The coordinator who runs `make deep` logs the result per harness-workflow's "Run log"
   (`--gate deep --verdict pass|fail|timeout` on the run id the BATCH READY names).
 - Run check:deep / check:mutation only through the wrapper
@@ -269,9 +270,11 @@ serializes them; never put a `wait-load.sh` limit in front of a queue job (with 
 load never passes it). Throttle feature tracks with a LOAD HOLD instead: no new jest or tsc
 agent until RESUME, and a RESUME names its limits (one agent, targeted jest with
 `--maxWorkers=2`). The one exception is built into the queue: a gate at the head waits while
-the 5-minute load is 10 or more, at most 1200 s (`KIKO_QUEUE_GATE_LOAD_WAIT_SECONDS`), then
+the 5-minute load is at the limit, for at most the maximum wait (`GATE_START_MAX_LOAD`,
+`GATE_START_MAX_WAIT` in `scripts/job-queue.sh`), then
 starts with `LOAD WAIT EXPIRED`; the clock resets during a hold or battery pause. A
-TIMEOUT-HEAVY rerun inside the gate waits for load below 10 for at most 1800 s itself. Do not
+TIMEOUT-HEAVY rerun inside the gate waits for low load itself (limits in
+`docs/harness/checks.md`). Do not
 add your own limit. Use `bash scripts/wait-load.sh <max>` only for a lone security run or a
 direct run outside the queue (run it in the background and wait on its
 exit code: 0 once the load is below 10, 2 when its 3600 s timeout, an

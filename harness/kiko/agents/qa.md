@@ -29,6 +29,8 @@ Rules:
   `cp`/`mv`): that skips the PreToolUse pre-write guard. The kill-guard denies the common forms;
   do not work around a deny, use Edit/Write. To move or rename a file, use `git mv` (`git add` a
   new file first), then edit it with Edit/Write.
+- A qa that edits a test file also runs every `__tests__/guard-*.test.ts` and every doc-reading
+  pin suite that scans test files (`guard-tests-no-wall-clock` pins `job-queue.test.ts`).
 - Iterate with SCOPED tests (only the touched files) while developing. Run `make verify` ONCE, at the end, until it is green, before you report done — it runs lint, the full jest suite, and the gate in one fail-fast pass.
 - The SHELL-WRITE deny matches `src/`, `__tests__/`, `rules/`, `e2e/`, `drizzle/` by name, so a
   shell redirect into a file under that folder is denied inside a `git worktree add` of this

@@ -18,6 +18,11 @@ Rules:
   so give a commit Bash call `timeout: 300000`. Never pass `--no-verify` or `-n`: a hook failure
   is a type error to fix, never to bypass (kill-guard denies the bypass).
 - A fixture edit runs `npm run check:typecheck` before the hand-back.
+- A new file under `scripts/` that a shell wrapper runs by path needs `npm run check:knip`, a
+  `knip.json` ignore and a documented-exceptions bullet in the same commit (the
+  knip-ignore-documented pin enforces the bullet).
+- `tsc` rejects an ES2023 array method (`findLast`, `findLastIndex`): the base lib stops short
+  of it.
 - Match the existing code exactly. Reuse shared design-system components; never hand-roll a UI a shared component already covers. Import theme tokens; do not invent styles or colors.
 - Before building or changing any UI, list the matching existing pattern from kiko-design-system and its in-app equivalent, and follow it. A new pattern needs coordinator approval before it ships.
 - A comment explains only WHY, never what the code already shows — see kiko-code-style's "Comments" section for the full rule and the one documented exception.
