@@ -1032,5 +1032,6 @@ verified usage, not dead weight:
   - `patches/read-excel-file+9.3.10.patch` (`read-excel-file@9.3.10`, its `commonjs` and
     `modules` `zip/unzipFromArrayBuffer.js`): `unzipAsync` calls `fflate`'s `unzipSync`
     instead of the async `unzip`. The diff's own comment: async `unzip` does `new Worker(...)`
-    for an entry that inflates to 512 KB or more, Hermes has no `Worker` global, so it threw
-    `ReferenceError` on device (never under Jest).
+    for an entry that decompresses to 512 KB or more AND compresses to under 80% of its
+    original size, Hermes has no `Worker` global, so it threw `ReferenceError` on device (never
+    under Jest).

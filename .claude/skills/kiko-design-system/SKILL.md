@@ -702,12 +702,20 @@ new component can land between reviews of this skill:
   `@kiko/display-regions` too. `useScrollIndicatorProps()` (`use-pane-screen.ts`, exported by
   the Screen barrel) is spread into every ScrollView or list a screen renders: it turns off
   UIKit's automatic indicator insets only for a pane that does not reach the window's right edge.
-  Its `scroll`
-  ScrollView is also the tab-root scroll container an active-tab
+  Its `scroll` ScrollView is also the tab-root scroll container an active-tab
   re-tap returns to the top, where `HeaderHeightContext` is the LIVE
   header height — see
   `src/navigation/use-scroll-to-top-on-tab-press/use-scroll-to-top-on-tab-press.ts`, which targets
   the tracked expanded height rather than a live height plus a band.
+  Keyboard offset: `react-native` 0.87.1 is patched
+  (`patches/react-native+0.87.1.patch`, listed in `docs/harness/documented-exceptions.md`) so a
+  ScrollView with `automaticallyAdjustKeyboardInsets` moves its content offset only when the
+  focused field is INSIDE it. Every other ScrollView (the other pane, a Screen under a pushed
+  form) gets only the bottom inset, which resets on hide. Never rely on a ScrollView's offset
+  for a field outside it. The sheet hand gates
+  `automaticallyAdjustKeyboardInsets={!isCurrencySheetOpen}` in `settings.screen.tsx` and
+  `account-form.screen.tsx`, and `{!isSearchSheetOpen}` in `holding-form.screen.tsx`, stay until
+  a device confirm shows them redundant; do not remove them on code reasoning alone.
   Settings' About block (app name/version, copyright, links) is an
   EXCEPTION to the ordinary "use `footer` only for a pinned
   always-reachable action" rule: it renders through the pinned
