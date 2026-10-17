@@ -34,7 +34,9 @@
 #              lost <now> <now> unknown` from the owner record. Each is written only by the process
 #              whose atomic `mv` of the ticket or lock won, so two waiters never write it twice.
 #              Neither form is a `verify` line with exit 0, so scripts/ff-main.sh never counts one.
-#              `status` and scripts/ff-main.sh print a WARNING for a line with fewer than 6 fields.
+#              `status` and scripts/ff-main.sh print WARNINGs for lines with fewer than 6 fields:
+#              the ones before the first 6-field line in ONE summary (count and the last such
+#              line), each one after it on its own with its line number. All are ignored.
 #              scripts/ff-main.sh reads it.
 #   format     the queue format stamp, an integer: QUEUE_FORMAT below. A job command writes it when
 #              it is missing or lower, and exits 2 when it is higher, because a copy of this script
@@ -182,10 +184,20 @@ blocked_reason() {
 }
 
 # A line from before the head field, or a torn one, has fewer than 6 fields and is ignored by every
-# reader; the warning keeps that from being silent.
+# reader; the warning keeps that from being silent. The short lines before the first 6-field line
+# (the old block of a log that predates the head field) fold into one summary WARNING, so that
+# block cannot bury a later torn line; each short line after it keeps its own WARNING.
 warn_short_done_lines() {
-  awk 'NF > 0 && NF < 6 { print "WARNING: done.log line has fewer than 6 fields: " $0 }' \
-    "$DONE_LOG" 2> /dev/null
+  awk '
+    function flush_leading() {
+      if (leading > 0) printf "WARNING: %d done.log line(s) with fewer than 6 fields before the first 6-field line (ignored); the last: %s\n", leading, last_leading
+      leading = 0
+    }
+    NF >= 6 { flush_leading(); seen = 1; next }
+    NF > 0 && seen { print "WARNING: done.log line " NR " has fewer than 6 fields (ignored): " $0; next }
+    NF > 0 { leading++; last_leading = $0 }
+    END { flush_leading() }
+  ' "$DONE_LOG" 2> /dev/null
 }
 
 queue_status() {

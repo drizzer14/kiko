@@ -16,8 +16,9 @@
 #      commit. The LAST such line decides, so a red verify after a green one at the same commit
 #      blocks. A `check-all` or `gate` line, a line whose head is `unknown`, and an old 5-field
 #      line never count; neither does a LOST line (`lost <label> ...` or `<kind> <label> lost ...`,
-#      written by job-queue.sh for a job whose result was never recorded). Each line with fewer
-#      than 6 fields prints one WARNING on stderr and is ignored.
+#      written by job-queue.sh for a job whose result was never recorded). A line with fewer than
+#      6 fields is ignored: those before the first 6-field line print ONE WARNING on stderr
+#      (count and the last such line), each one after it prints its own with its line number.
 #   4. The main checkout's HEAD must be an ancestor of the commit.
 #   5. A commit that changes harness/kiko (other than harness/kiko/.claude-plugin/plugin.json)
 #      against the main checkout's HEAD must carry a plugin.json `version` strictly above the one
@@ -93,9 +94,20 @@ if [ -z "$full_commit" ]; then
     'Pass the sha of the tip you verified, from git rev-parse HEAD in its worktree.'
 fi
 
-# A line with fewer than 6 fields never counts below; the warning keeps that from being silent.
-awk 'NF > 0 && NF < 6 { print "WARNING: done.log line has fewer than 6 fields (ignored): " $0 }' \
-  "$DONE_LOG" >&2 2> /dev/null
+# A line with fewer than 6 fields never counts below; the warning keeps that from being silent. The
+# short lines before the first 6-field line (the old block of a log that predates the head field)
+# fold into one summary WARNING, so that block cannot bury a later torn line; each short line after
+# it keeps its own WARNING. The awk text is the same as scripts/job-queue.sh's.
+awk '
+  function flush_leading() {
+    if (leading > 0) printf "WARNING: %d done.log line(s) with fewer than 6 fields before the first 6-field line (ignored); the last: %s\n", leading, last_leading
+    leading = 0
+  }
+  NF >= 6 { flush_leading(); seen = 1; next }
+  NF > 0 && seen { print "WARNING: done.log line " NR " has fewer than 6 fields (ignored): " $0; next }
+  NF > 0 { leading++; last_leading = $0 }
+  END { flush_leading() }
+' "$DONE_LOG" >&2 2> /dev/null
 
 # A string comparison on purpose: a field of digits and one `e` would otherwise compare as a number.
 verified_line="$(awk -v commit="$full_commit" \
