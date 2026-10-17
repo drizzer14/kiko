@@ -1,8 +1,42 @@
+import { MINIMUM_PANE_LENGTH } from '@kiko/display-regions';
+
 import { resolvePaneGeometry } from '.';
 
 const HAIRLINE = 1;
 
 describe('resolvePaneGeometry', () => {
+  describe('the Duo fixtures keep every pane at the minimum pane length or more', () => {
+    it('flat landscape inner window', () => {
+      const geometry = resolvePaneGeometry('columns', { width: 951, height: 669 }, null, HAIRLINE);
+
+      expect(geometry.companion.width).toBeGreaterThanOrEqual(MINIMUM_PANE_LENGTH);
+      expect(geometry.primary.width).toBeGreaterThanOrEqual(MINIMUM_PANE_LENGTH);
+    });
+
+    it('flat portrait inner window', () => {
+      const geometry = resolvePaneGeometry('rows', { width: 669, height: 951 }, null, HAIRLINE);
+
+      expect(geometry.companion.height).toBeGreaterThanOrEqual(MINIMUM_PANE_LENGTH);
+      expect(geometry.primary.height).toBeGreaterThanOrEqual(MINIMUM_PANE_LENGTH);
+    });
+
+    it('half-open landscape fold', () => {
+      const fold = { x: 455.5, y: 0, width: 40, height: 669 };
+      const geometry = resolvePaneGeometry('columns', { width: 951, height: 669 }, fold, HAIRLINE);
+
+      expect(geometry.companion.width).toBeGreaterThanOrEqual(MINIMUM_PANE_LENGTH);
+      expect(geometry.primary.width).toBeGreaterThanOrEqual(MINIMUM_PANE_LENGTH);
+    });
+
+    it('portrait fold in the rows window', () => {
+      const fold = { x: 0, y: 470, width: 669, height: 24 };
+      const geometry = resolvePaneGeometry('rows', { width: 669, height: 951 }, fold, HAIRLINE);
+
+      expect(geometry.companion.height).toBeGreaterThanOrEqual(MINIMUM_PANE_LENGTH);
+      expect(geometry.primary.height).toBeGreaterThanOrEqual(MINIMUM_PANE_LENGTH);
+    });
+  });
+
   it('splits a flat columns window into equal halves around a hairline divider', () => {
     const geometry = resolvePaneGeometry('columns', { width: 951, height: 669 }, null, HAIRLINE);
 

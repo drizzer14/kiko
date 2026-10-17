@@ -1,6 +1,7 @@
 import maybe, { foldMap } from 'fnts/maybe';
 import type { Edge } from 'react-native-safe-area-context';
 import { usePaneContext } from '@kiko/design-system/pane-context';
+import { useDisplayRegions, useLayoutMode } from '@kiko/display-regions';
 
 import { styles } from './screen.styles';
 
@@ -14,12 +15,23 @@ const ALL_EDGES: readonly Edge[] = ['top', 'right', 'bottom', 'left'];
 const LARGE_TITLE_EDGES: readonly Edge[] = ['left', 'right', 'bottom'];
 
 /**
- * The style that centres content in a pane and caps it at the pane max width, or nothing outside
- * a pane. A scrollable surface applies it to its content container, never to itself, so the
- * scroll view and its indicator span the whole pane; a screen with no scroll view takes it on its
- * root, so the native header and bars, which are not inside it, still span the pane.
+ * The style that centres content and caps it at the pane max width, in a pane or in `single` on a
+ * regular window (where one screen would otherwise stretch across the whole window), and nothing
+ * on a compact window. A scrollable surface applies it to its content container, never to itself,
+ * so the scroll view and its indicator span the whole pane; a screen with no scroll view takes it
+ * on its root, so the native header and bars, which are not inside it, still span the pane.
  */
-export const useContentCap = () => foldMap(maybe(usePaneContext()), () => styles.paneCap);
+export const useContentCap = () => {
+  const pane = usePaneContext();
+  const layoutMode = useLayoutMode();
+  const { horizontalSizeClass } = useDisplayRegions();
+
+  if (pane !== null || (layoutMode === 'single' && horizontalSizeClass === 'regular')) {
+    return styles.paneCap;
+  }
+
+  return undefined;
+};
 
 const STOP_INDICATOR_INSETS = { automaticallyAdjustsScrollIndicatorInsets: false } as const;
 

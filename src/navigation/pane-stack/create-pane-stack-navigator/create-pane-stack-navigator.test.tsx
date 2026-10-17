@@ -303,6 +303,30 @@ describe('createPaneStackNavigator', () => {
       expect(screen.getByTestId('screen-Detail')).toBeTruthy();
     });
 
+    // The mocked mode stands for the resolved mode: a regular 900x700 window is `columns`, and
+    // a resize to 700x700 resolves `single`.
+    it('resize keeps the route: the detail survives the fold and returns to its pane', async () => {
+      await renderApp();
+      await press('open-Accounts');
+      const detailKey = navigationRef.getRootState()?.routes[0]?.state?.routes[1]?.key;
+
+      await emitMode('single');
+      await elapse(SETTLE_DELAY_MS);
+
+      expect(paneActions().filter((type) => type === 'PANE_FOLD')).toHaveLength(1);
+      expect(stackRouteNames()).toEqual(['Accounts', 'Detail']);
+      expect(screen.getByTestId('screen-Detail')).toBeTruthy();
+
+      await emitMode('columns');
+      await elapse(SETTLE_DELAY_MS);
+
+      expect(paneActions()).toEqual(['PANE_OPEN', 'PANE_FOLD', 'PANE_UNFOLD']);
+      expect(dispatched).toEqual(['PANE_OPEN', 'PANE_FOLD', 'PANE_UNFOLD']);
+      expect(navigationRef.getRootState()?.routes[0]?.state?.routes[1]?.key).toBe(detailKey);
+      expect(screen.getByTestId('screen-Accounts')).toBeTruthy();
+      expect(screen.getByTestId('screen-Detail')).toBeTruthy();
+    });
+
     it('survives the recorded burst of an outer display: one fold, no matter the transient rows', async () => {
       await renderApp();
 

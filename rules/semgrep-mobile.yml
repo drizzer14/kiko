@@ -385,6 +385,51 @@ rules:
         - "*.test.tsx"
     patterns:
       - pattern: $X.balanceMinorUnits
+  # The layout keys off the horizontal size class and the window or pane width, never the device:
+  # a later device that reports a regular class must get the same layout. One rule id, two
+  # languages: the TypeScript patterns read `Platform.isPad` and `Platform.constants.interfaceIdiom`
+  # (also destructured, or through a `const` of `Platform.constants`), and the regex reads the
+  # app's own Swift for `userInterfaceIdiom` (it reads a TypeScript file for the word too).
+  # Semgrep resolves no import alias of `Platform` here (`import { Platform as P }` goes unseen),
+  # and a `Platform` handed through a function argument is not followed.
+  - id: kiko-no-device-idiom
+    languages: [typescript, swift]
+    severity: ERROR
+    message: >
+      The device idiom is read. A layout decision keys off the horizontal size class and the
+      window or pane width (`useDisplayRegions().horizontalSizeClass`, `useLayoutMode()`), never
+      `Platform.isPad`, `Platform.constants.interfaceIdiom`, or `userInterfaceIdiom`, so a later
+      device that reports a regular class gets the same layout.
+    metadata:
+      fix: "Read the size class (`useDisplayRegions().horizontalSizeClass`) or the layout mode (`useLayoutMode()`); in Swift, trait on `traitCollection.horizontalSizeClass`."
+      skill: "kiko-architecture › Pane navigation"
+    paths:
+      include:
+        - "src/**/*.ts"
+        - "src/**/*.tsx"
+        - "ios/Kiko/**/*.swift"
+    pattern-either:
+      - pattern: Platform.isPad
+      - pattern: Platform.constants.interfaceIdiom
+      - pattern: "const { ..., isPad: $X, ... } = Platform"
+      - pattern: "const { ..., isPad, ... } = Platform"
+      - pattern: "const { ..., constants: { ..., interfaceIdiom: $X, ... }, ... } = Platform"
+      - pattern: "const { ..., constants: { ..., interfaceIdiom, ... }, ... } = Platform"
+      - pattern: "const { ..., interfaceIdiom: $X, ... } = Platform.constants"
+      - pattern: "const { ..., interfaceIdiom, ... } = Platform.constants"
+      - patterns:
+          - pattern: $C.interfaceIdiom
+          - pattern-either:
+              - pattern-inside: |
+                  const { ..., constants: $C, ... } = Platform;
+                  ...
+              - pattern-inside: |
+                  const { ..., constants, ... } = Platform;
+                  ...
+              - pattern-inside: |
+                  const $C = Platform.constants;
+                  ...
+      - pattern-regex: \buserInterfaceIdiom\b
   # Scans .sh, which the pre-write guard never reads. Why `generic`, the pipefail scope, and the
   # limits: kiko-linter > Never pipe into grep -q or head under pipefail.
   - id: kiko-no-early-exit-pipe-consumer

@@ -34,6 +34,10 @@ jest.mock('react-native-bottom-tabs', () => ({
 const mockUseVerticalBarEdge = jest.fn((): 'leading' | 'trailing' | 'none' => 'none');
 jest.mock('@kiko/display-regions', () => ({
   useVerticalBarEdge: () => mockUseVerticalBarEdge(),
+  // The content cap reads the layout mode and the size class: a compact single window, as on an
+  // iPhone, caps nothing.
+  useLayoutMode: () => 'single',
+  useDisplayRegions: () => ({ horizontalSizeClass: 'compact' }),
 }));
 
 // A device with a home indicator reports a non-zero bottom safe-area inset.
