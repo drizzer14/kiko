@@ -3,12 +3,7 @@ import { join } from 'node:path';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { type SpawnSyncReturns, spawnSync } from 'node:child_process';
 
-import {
-  HIGH_LOAD,
-  LOW_LOAD as LOW,
-  sysctlCallCount,
-  writeSysctlStub,
-} from './test-support/sysctl-stub';
+import { HIGH_LOAD, LOW_LOAD, sysctlCallCount, writeSysctlStub } from './test-support/sysctl-stub';
 
 // scripts/wait-load.sh waits until the 5-minute load average (the second number of
 // `sysctl -n vm.loadavg`) is below its first argument, so a heavy command starts on a quiet
@@ -49,7 +44,7 @@ const run = (...scriptArguments: string[]): SpawnSyncReturns<string> =>
 
 describe('scripts/wait-load.sh', () => {
   it('exits 0 and prints nothing when the load is already below the maximum', () => {
-    stubLoad(HIGH_LOAD, LOW, 0);
+    stubLoad(HIGH_LOAD, LOW_LOAD, 0);
 
     const result = run('10');
 
@@ -60,7 +55,7 @@ describe('scripts/wait-load.sh', () => {
   });
 
   it('waits while the load is high, prints one start line, and exits 0 once it drops', () => {
-    stubLoad(HIGH_LOAD, LOW, 2);
+    stubLoad(HIGH_LOAD, LOW_LOAD, 2);
 
     const result = run('10');
 
@@ -73,13 +68,13 @@ describe('scripts/wait-load.sh', () => {
   });
 
   it('reads the second number, so a high 1-minute or 15-minute average does not block it', () => {
-    stubLoad('{ 40.00 4.25 40.00 }', LOW, 99);
+    stubLoad('{ 40.00 4.25 40.00 }', LOW_LOAD, 99);
 
     expect(run('10').status).toBe(0);
   });
 
   it('exits 2 with a clear message when the timeout passes before the load drops', () => {
-    stubLoad(HIGH_LOAD, LOW, 9999);
+    stubLoad(HIGH_LOAD, LOW_LOAD, 9999);
 
     const result = run('10', '1');
 
@@ -91,7 +86,7 @@ describe('scripts/wait-load.sh', () => {
   });
 
   it('treats a load equal to the maximum as not below it', () => {
-    stubLoad('{ 1.00 10.00 1.00 }', LOW, 9999);
+    stubLoad('{ 1.00 10.00 1.00 }', LOW_LOAD, 9999);
 
     const result = run('10', '0');
 
@@ -100,17 +95,17 @@ describe('scripts/wait-load.sh', () => {
   });
 
   it('compares decimals, so 9.99 is below 10 and 10.01 is not', () => {
-    stubLoad('{ 1.00 9.99 1.00 }', LOW, 9999);
+    stubLoad('{ 1.00 9.99 1.00 }', LOW_LOAD, 9999);
 
     expect(run('10', '0').status).toBe(0);
 
-    stubLoad('{ 1.00 10.01 1.00 }', LOW, 9999);
+    stubLoad('{ 1.00 10.01 1.00 }', LOW_LOAD, 9999);
 
     expect(run('10', '0').status).toBe(2);
   });
 
   it('reads a locale that prints a comma decimal, and accepts a comma maximum', () => {
-    stubLoad('{ 1,50 4,25 3,00 }', LOW, 9999);
+    stubLoad('{ 1,50 4,25 3,00 }', LOW_LOAD, 9999);
 
     expect(run('10').status).toBe(0);
     expect(run('4,5').status).toBe(0);
@@ -142,7 +137,7 @@ describe('scripts/wait-load.sh', () => {
     ['a maximum with two decimal points', ['1.2.3']],
     ['three arguments', ['10', '5', '7']],
   ])('exits 64 with the usage line for %s', (_name, scriptArguments) => {
-    stubLoad(HIGH_LOAD, LOW, 0);
+    stubLoad(HIGH_LOAD, LOW_LOAD, 0);
 
     const result = run(...scriptArguments);
 
@@ -168,7 +163,7 @@ describe('scripts/wait-load.sh', () => {
       'KIKO_WAIT_LOAD_INTERVAL',
     ],
   ])('exits 64 naming the bad value for %s', (_name, scriptArguments, environment, message) => {
-    stubLoad(HIGH_LOAD, LOW, 0);
+    stubLoad(HIGH_LOAD, LOW_LOAD, 0);
 
     const result = runWith(environment, ...scriptArguments);
 

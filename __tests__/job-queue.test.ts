@@ -1855,7 +1855,8 @@ describe('scripts/job-queue.sh gate start load defer', () => {
     expect(result.stdout).toMatch(/^LOAD WAIT EXPIRED gate: load 12\.25$/m);
   });
 
-  // The whole-second SECONDS clock reads a wait of W seconds after a real wait of more than W - 1.
+  // A reset clock prints a fresh load WAITING line after the release; a clock that kept running
+  // through the hold or battery pause expires at once, with no such line.
   it.each([
     [
       'a hold',
@@ -1871,30 +1872,45 @@ describe('scripts/job-queue.sh gate start load defer', () => {
   ])(
     'gives the gate its full load wait again after %s that outlasted the limit',
     async (_name, engage, release) => {
-      const limitSeconds = 3;
       const sandbox = createSandbox();
       const gate = createGateWorktree(sandbox, 'gate', listing(12));
       stubLoad(sandbox, HIGH_LOAD, 9999);
-      sandbox.environment.KIKO_QUEUE_GATE_LOAD_WAIT_SECONDS = String(limitSeconds);
+      sandbox.environment.KIKO_QUEUE_GATE_LOAD_WAIT_SECONDS = '1';
+      // A hold reads no power state, so the poll sleep itself is the pass counter here.
+      const sleepLog = join(sandbox.root, 'sleeps');
+      sandbox.environment.KIKO_STUB_SLEEP_LOG = sleepLog;
+      warmExecutables([
+        writeExecutable(
+          join(sandbox.root, 'bin', 'sleep'),
+          [
+            '#!/usr/bin/env bash',
+            'printf "sleep\\n" >> "$KIKO_STUB_SLEEP_LOG"',
+            'exec /bin/sleep "$@"',
+            '',
+          ].join('\n'),
+        ),
+      ]);
 
       const waiter = startQueue(sandbox, 'gate', gate.worktree, 'gate', 'main', gate.head);
       await waitFor(() => waiter.stdout().includes('WAITING gate: load'));
-      await new Promise((settle) => setTimeout(settle, 1200));
       engage(sandbox);
       await waitFor(() => /^WAITING gate: (hold|battery)/m.test(waiter.stdout()));
-      await new Promise((settle) => setTimeout(settle, (limitSeconds + 1.5) * 1000));
+      const outlastingPasses = readLines(sleepLog).length + 20;
+      await waitFor(() => readLines(sleepLog).length >= outlastingPasses);
       expect(waiter.stdout()).not.toContain('LOAD WAIT EXPIRED');
-      const releasedAt = Date.now();
       release(sandbox);
-      await waitFor(
-        () => waiter.stdout().includes('LOAD WAIT EXPIRED') || waiter.child.exitCode !== null,
-      );
-      const waitedAfterRelease = Date.now() - releasedAt;
       const result = await waiter.finished;
+      const lines = result.stdout.split('\n');
+      const pausedAt = lines.findIndex((line) => /^WAITING gate: (hold|battery)/.test(line));
+      const afterPause = lines.slice(pausedAt + 1);
+      const loadWaitingAgainAt = afterPause.findIndex((line) =>
+        line.startsWith('WAITING gate: load'),
+      );
+      const expiredAt = afterPause.indexOf('LOAD WAIT EXPIRED gate: load 12.25');
 
       expect(result.code).toBe(0);
-      expect(result.stdout).toMatch(/^LOAD WAIT EXPIRED gate: load 12\.25$/m);
-      expect(waitedAfterRelease).toBeGreaterThanOrEqual((limitSeconds - 1) * 1000);
+      expect(loadWaitingAgainAt).toBeGreaterThanOrEqual(0);
+      expect(expiredAt).toBeGreaterThan(loadWaitingAgainAt);
     },
   );
 
