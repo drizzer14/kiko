@@ -73,6 +73,7 @@ type LaunchInput = {
   coinStartsAt?: Partial<Record<Currency, number>>;
   requested?: CryptoCurrency[][];
   nbuCalls?: Currency[][];
+  writes?: SettledHistory[];
 };
 
 // One launch of the app: everything in memory starts empty and only the persisted data is kept,
@@ -133,6 +134,7 @@ const launch = async (input: LaunchInput) => {
     },
     readSettledHistory: async () => data.settled.value,
     writeSettledHistory: async (additions) => {
+      input.writes?.push(additions);
       data.settled.value = { ...data.settled.value, ...additions };
     },
   };
@@ -284,6 +286,42 @@ describe('runBackfill — filling the earlier days of a span that moved earlier,
       expect(firstStoredDay(data.stored, 'EUR')).toBe(quotedFrom);
     });
 
+    it('settles for a span start earlier than the one a first answer settled for', async () => {
+      const data = lateData();
+      const nbuCalls: Currency[][] = [];
+
+      await launchAll({ ...lateBase(data), earliestDay: daysAgo(340), nbuStartsAt: {}, nbuCalls }, [
+        { wholeSpan: true, earliestDay: start, nbuStartsAt: { EUR: quotedFrom } },
+        {},
+        {},
+      ]);
+
+      expect(nbuCalls).toHaveLength(2);
+      expect(data.settled.value).toEqual({
+        EUR: { start: daysAgo(340), firstDay: daysAgo(340) },
+      });
+    });
+
+    it('replaces the first day of its mark when a later whole-span answer starts earlier', async () => {
+      const data = lateData();
+
+      await launchAll(lateBase(data), [
+        { wholeSpan: true },
+        { wholeSpan: true, nbuStartsAt: { EUR: daysAgo(280) } },
+      ]);
+
+      expect(data.settled.value).toEqual({ EUR: { start, firstDay: daysAgo(280) } });
+    });
+
+    it('keeps its mark when a whole-span answer repeats the first day it settled for', async () => {
+      const data = lateData();
+      const writes: SettledHistory[] = [];
+
+      await launchAll({ ...lateBase(data), writes }, [{ wholeSpan: true }, { wholeSpan: true }]);
+
+      expect(writes).toHaveLength(1);
+    });
+
     // A restore keeps this device's marks but brings the file's rows, which may start later than
     // the first day the mark remembers.
     it('is fetched again when a restore brought rows that start after its first answered day', async () => {
@@ -363,6 +401,45 @@ describe('runBackfill — filling the earlier days of a span that moved earlier,
         start: daysAgo(300),
         firstDay: null,
         checkedOn: TODAY + 8 * DAY_MS,
+      });
+    });
+
+    it('is asked again, with its mark restamped, when the span starts earlier than the mark', async () => {
+      const data = noEurRows();
+      const nbuCalls: Currency[][] = [];
+
+      await launchAll({ ...emptyBase(data), nbuCalls }, [
+        { wholeSpan: true },
+        { earliestDay: daysAgo(340) },
+      ]);
+
+      expect(eurCalls(nbuCalls)).toBe(2);
+      expect(data.settled.value.EUR).toEqual({
+        start: daysAgo(340),
+        firstDay: null,
+        checkedOn: TODAY,
+      });
+    });
+
+    // A mark that names a first day and a check day together is not one the app writes, but a
+    // stored one is read as it is: the first day says the currency is not empty.
+    it('is asked, and its mark kept, when the mark names both a first day and a check day', async () => {
+      const data = noEurRows();
+      data.settled.value = {
+        EUR: { start: daysAgo(300), firstDay: daysAgo(250), checkedOn: TODAY },
+        GBP: undefined,
+      };
+      const nbuCalls: Currency[][] = [];
+      const writes: SettledHistory[] = [];
+
+      await launchAll({ ...emptyBase(data), nbuCalls, writes }, [{}]);
+
+      expect(eurCalls(nbuCalls)).toBe(1);
+      expect(writes).toEqual([]);
+      expect(data.settled.value.EUR).toEqual({
+        start: daysAgo(300),
+        firstDay: daysAgo(250),
+        checkedOn: TODAY,
       });
     });
 

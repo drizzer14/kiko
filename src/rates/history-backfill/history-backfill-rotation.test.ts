@@ -180,6 +180,53 @@ describe('runBackfill — which crypto history it requests, and from where', () 
       expect(requested).toEqual([['SOL']]);
     });
 
+    it('asks a coin with an empty mark again once rows exist from a later day', async () => {
+      const settled = {
+        value: { SOL: { start: day(0), firstDay: null, checkedOn: TODAY } } as SettledHistory,
+      };
+      const { requested } = await stubbedRun({
+        held: ['SOL'],
+        doneDays: { USD: TODAY, SOL: TODAY },
+        firstDays: { SOL: day(1) },
+        cursor: null,
+        lastBackfilledDay: null,
+        settled,
+      });
+
+      expect(requested).toEqual([['SOL']]);
+    });
+
+    it('asks a coin whose empty mark started later than the span again', async () => {
+      const settled = {
+        value: { SOL: { start: day(1), firstDay: null, checkedOn: TODAY } } as SettledHistory,
+      };
+      const { requested } = await stubbedRun({
+        held: ['SOL'],
+        doneDays: { USD: TODAY, SOL: TODAY },
+        cursor: null,
+        lastBackfilledDay: null,
+        settled,
+      });
+
+      expect(requested).toEqual([['SOL']]);
+    });
+
+    it('treats an empty mark as holding when no stored first days are known', async () => {
+      const settled = {
+        value: { SOL: { start: day(0), firstDay: null, checkedOn: TODAY } } as SettledHistory,
+      };
+
+      const { requested } = await stubbedRun({
+        held: ['SOL'],
+        doneDays: { USD: TODAY },
+        cursor: null,
+        lastBackfilledDay: null,
+        settled,
+      });
+
+      expect(requested).toEqual([]);
+    });
+
     it('does not count the days past the 365-day window as missing', async () => {
       const today = day(2000);
       const { requested } = await stubbedRun({
@@ -194,6 +241,16 @@ describe('runBackfill — which crypto history it requests, and from where', () 
 
       expect(requested).toEqual([['ETH']]);
     });
+  });
+
+  it('requests the held coins in code order, whatever order they are held in', async () => {
+    const { requested } = await stubbedRun({
+      held: ['SOL', 'BTC', 'ETH'],
+      doneDays: {},
+      cursor: null,
+    });
+
+    expect(requested).toEqual([['BTC', 'ETH', 'SOL']]);
   });
 
   it('requests nothing when every held coin is current', async () => {
