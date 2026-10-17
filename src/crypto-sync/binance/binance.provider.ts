@@ -10,6 +10,7 @@ import type { BalanceProvider, ProviderBalance } from '../provider';
 import {
   type BinanceAccount,
   type BinanceBalance,
+  BINANCE_ASSET,
   BinanceRateLimitError,
   type BinanceFlexiblePosition,
   type BinanceFundingAsset,
@@ -55,9 +56,6 @@ export const defaultBinanceDeps: BinanceDeps = {
   fetchFlexiblePosition,
   fetchLockedPosition,
 };
-
-/** The only asset the sync reads; every other asset in every wallet is ignored. */
-const BINANCE_ASSET = 'BTC';
 
 /**
  * The pre-split default name of the single aggregated holding. The Spot balance
