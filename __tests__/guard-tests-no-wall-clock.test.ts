@@ -83,16 +83,43 @@ const QUEUE_TEST_FILES = ['job-queue.test.ts', 'ff-main.test.ts'];
 
 const SLEEP_CALL = /(?<!jest\.)\bsetTimeout\(|\bspawnSync\(\s*['"]sleep['"]/;
 
+const RENAMED_SLEEP_IMPORT =
+  /import\s*\{[^}]*\bsetTimeout\s+as\s+(\w+)[^}]*\}\s*from\s*['"](?:node:)?timers\/promises['"]/g;
+
+const isPollBound = (line: string): boolean => /\bpoll\s*>=\s*\w+/.test(line);
+
+const braceChange = (line: string): number =>
+  (line.match(/\{/g) ?? []).length - (line.match(/\}/g) ?? []).length;
+
+// The bound only covers a sleep that sits inside the braces of the loop holding it: once the
+// running brace depth from the bound line drops below zero, that loop has closed.
+const staysInsideLoop = (lines: string[]): boolean => {
+  let depth = 0;
+
+  return lines.every((line) => {
+    depth += braceChange(line);
+
+    return depth >= 0;
+  });
+};
+
 const settleSleepsIn = (source: string): string[] => {
   const lines = source.split('\n');
+  const renamedSleeps = [...source.matchAll(RENAMED_SLEEP_IMPORT)].map(([, name]) => name);
+  const isSleep = (line: string): boolean =>
+    SLEEP_CALL.test(line) || renamedSleeps.some((name) => new RegExp(`\\b${name}\\(`).test(line));
 
   return lines.filter(
     (line, index) =>
-      SLEEP_CALL.test(line) && !lines.slice(Math.max(0, index - 6), index).some(isPollBound),
+      isSleep(line) &&
+      !lines
+        .slice(Math.max(0, index - 6), index)
+        .some(
+          (candidate, offset, window) =>
+            isPollBound(candidate) && staysInsideLoop(window.slice(offset)),
+        ),
   );
 };
-
-const isPollBound = (line: string): boolean => /\bpoll\s*>=\s*\w+/.test(line);
 
 describe('queue tests settle by a rendezvous or a pass count, never by a fixed sleep', () => {
   it.each([

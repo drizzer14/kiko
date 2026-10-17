@@ -123,8 +123,7 @@ PLUGIN_MANIFEST='harness/kiko/.claude-plugin/plugin.json'
 # plugin_version <rev>: the dotted numeric `version` of the manifest at that commit, else nothing.
 plugin_version() {
   git -C "$main_checkout" show "$1:$PLUGIN_MANIFEST" 2> /dev/null \
-    | sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([0-9][0-9]*\(\.[0-9][0-9]*\)*\)".*/\1/p' \
-    | sed -n '1p'
+    | sed -n '/.*"version"[[:space:]]*:[[:space:]]*"\([0-9][0-9]*\(\.[0-9][0-9]*\)*\)".*/{s//\1/p;q;}'
 }
 
 # version_above <candidate> <base>: succeeds when candidate is strictly above base, field by field.
@@ -149,8 +148,7 @@ harness_changed=$?
 if [ "$harness_changed" -ne 0 ]; then
   main_version="$(plugin_version "$main_commit")"
   commit_version="$(plugin_version "$full_commit")"
-  if [ -z "$main_version" ] || [ -z "$commit_version" ] \
-    || ! version_above "$commit_version" "$main_version"; then
+  if [ -z "$main_version" ] || ! version_above "$commit_version" "$main_version"; then
     fail \
       'A harness/kiko change needs a plugin.json version above main'"'"'s' \
       "$PLUGIN_MANIFEST version at main ${main_commit}: ${main_version:-unreadable or missing}; at $full_commit: ${commit_version:-unreadable or missing}" \
