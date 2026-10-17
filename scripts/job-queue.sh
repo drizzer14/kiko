@@ -373,13 +373,22 @@ lock_is_live() {
   pid_is_alive "$waiter" || group_has_members "$group"
 }
 
+# Runs a command in the background and waits on it with the wait builtin: bash 3.2 loses a SIGINT
+# sent to this pid alone when it arrives as a foreground child is reaped, and the wait builtin does
+# not. The status is the command's own.
+run_awaited() {
+  "$@" &
+  wait $!
+}
+
 # Names the job group in the owner record with a second atomic step: a temporary symlink renamed
 # over the lock, so the record is never missing.
 record_job_group() {
   local pending="$QUEUE_DIRECTORY/lock.$$"
   [ -n "$job_group" ] && holds_lock || return 0
-  rm -f "$pending"
-  ln -s "$(lock_record "$job_group")" "$pending" 2> /dev/null && mv -f "$pending" "$LOCK_PATH"
+  run_awaited rm -f "$pending"
+  run_awaited ln -s "$(lock_record "$job_group")" "$pending" 2> /dev/null \
+    && run_awaited mv -f "$pending" "$LOCK_PATH"
 }
 
 release_claim() {
