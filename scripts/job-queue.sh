@@ -26,7 +26,22 @@
 #              or an unreadable repository. Known limit: an edit made and reverted while the job
 #              runs, or a change to an ignored file, leaves the head set (no content hash).
 #              A line from before this field has five fields.
+#              A job that never ran leaves a LOST line in the same six-field order, so its loss is
+#              visible: a waiter that pruned a ticket whose waiter pid was dead writes `lost <label>
+#              <waiter pid> <queued time from the ticket epoch> <now> unknown`; a waiter that
+#              reclaimed a lock that was not live writes `<kind> <label> lost <now> <now> unknown`
+#              from the owner record. Each is written only by the process whose atomic `mv` of the
+#              ticket or lock won, so two waiters never write it twice. Neither form is a `verify`
+#              line with exit 0, so scripts/ff-main.sh never counts one. `status` and
+#              scripts/ff-main.sh print a WARNING for a line with fewer than 6 fields.
 #              scripts/ff-main.sh reads it.
+#   format     the queue format stamp, an integer: QUEUE_FORMAT below. A job command writes it when
+#              it is missing or lower, and exits 2 when it is higher, because a copy of this script
+#              older than the one that wrote the queue directory would misread its state.
+#
+# Old copy: a job command prints one WARNING on stderr when the running script differs from
+# <worktree>/scripts/job-queue.sh (the job still runs): a copy kept outside the worktree misses the
+# fixes made there since.
 #
 # Order is a plain `sort` of the ticket names. Class 1 is verify, check-all, and security (size
 # 0, first come first served); class 2 is a gate, class 3 a gate with --long. A gate's size is the
@@ -81,6 +96,9 @@
 # the fork of a job and the read of its pid).
 set -uo pipefail
 
+# Raise it when this script changes how it reads or writes the queue directory, so an older copy
+# refuses instead of misreading.
+QUEUE_FORMAT=1
 QUEUE_DIRECTORY="${KIKO_QUEUE_DIR:-$HOME/.claude/kiko-queue}"
 TICKETS_DIRECTORY="$QUEUE_DIRECTORY/tickets"
 LOCK_PATH="$QUEUE_DIRECTORY/lock"
@@ -106,6 +124,7 @@ refuse() {
 }
 
 HOLD_FILE="$QUEUE_DIRECTORY/hold"
+DONE_LOG="$QUEUE_DIRECTORY/done.log"
 
 ticket_names() { ls "$TICKETS_DIRECTORY" 2>/dev/null | LC_ALL=C sort; }
 
@@ -161,6 +180,13 @@ blocked_reason() {
   fi
 }
 
+# A line from before the head field, or a torn one, has fewer than 6 fields and is ignored by every
+# reader; the warning keeps that from being silent.
+warn_short_done_lines() {
+  awk 'NF > 0 && NF < 6 { print "WARNING: done.log line has fewer than 6 fields: " $0 }' \
+    "$DONE_LOG" 2> /dev/null
+}
+
 queue_status() {
   local busy=0 ticket power
   if [ -f "$HOLD_FILE" ]; then
@@ -179,6 +205,7 @@ queue_status() {
     printf 'queued: %s\n' "$ticket"
   done
   [ "$busy" -eq 1 ] || printf 'queue empty\n'
+  warn_short_done_lines
 }
 
 valid_label() {
@@ -243,6 +270,38 @@ valid_label "$label" || usage "invalid label: $label"
 
 clock_time() { date +%H:%M; }
 iso_stamp() { date -u +%Y-%m-%dT%H:%M:%SZ; }
+
+# BSD date reads -r as seconds, GNU date as a file, so the GNU form is the fallback.
+epoch_stamp() {
+  date -u -r "$1" +%Y-%m-%dT%H:%M:%SZ 2> /dev/null || date -u -d "@$1" +%Y-%m-%dT%H:%M:%SZ
+}
+
+# The stamp is read before the queue directory is touched, so an older copy changes nothing. A
+# stamp of ten or more digits is higher than any format, and one that is not a number is replaced.
+check_queue_format() {
+  local format_path="$QUEUE_DIRECTORY/format" stamp pending="$QUEUE_DIRECTORY/format.$$"
+  mkdir -p "$QUEUE_DIRECTORY"
+  stamp="$(head -1 "$format_path" 2> /dev/null)"
+  case "$stamp" in
+    '' | *[!0-9]*) stamp=0 ;;
+  esac
+  if [ "${#stamp}" -gt 9 ] || [ "$((10#$stamp))" -gt "$QUEUE_FORMAT" ]; then
+    refuse "the queue directory has format $stamp, newer than the format $QUEUE_FORMAT of this script: this is an older job-queue.sh copy; run the one in the main checkout or a current worktree."
+  fi
+  [ "$((10#$stamp))" -lt "$QUEUE_FORMAT" ] || return 0
+  printf '%s\n' "$QUEUE_FORMAT" > "$pending" && mv -f "$pending" "$format_path"
+}
+
+warn_if_copy_differs() {
+  local worktree_copy="$worktree/scripts/job-queue.sh"
+  [ -f "$worktree_copy" ] || return 0
+  cmp -s "${BASH_SOURCE[0]}" "$worktree_copy" \
+    || printf 'WARNING: this job-queue.sh differs from %s; it may lack fixes made there.\n' \
+      "$worktree_copy" >&2
+}
+
+check_queue_format
+warn_if_copy_differs
 
 # A gate mutates the tip it was queued for, so a worktree that moved is refused, at enqueue and
 # again at start: the queue never checks out another commit.
@@ -341,6 +400,25 @@ take_claim() {
   return 1
 }
 
+# A lock that is not live is moved aside with one atomic rename; the process whose rename won owns
+# the owner record and writes the one LOST line for it. A lock with no readable record (not a
+# symlink) is removed with no line, since it names no job.
+reclaim_dead_lock() {
+  local moved="$QUEUE_DIRECTORY/lost-lock.$$" record lost_kind lost_label now
+  rm -rf "$moved"
+  if ! mv "$LOCK_PATH" "$moved" 2> /dev/null; then
+    rm -rf "$LOCK_PATH"
+    return 0
+  fi
+  record="$(readlink "$moved" 2> /dev/null)"
+  rm -rf "$moved"
+  lost_kind="$(printf '%s' "$record" | awk '{ print $3 }')"
+  lost_label="$(printf '%s' "$record" | awk '{ print $4 }')"
+  [ -n "$lost_kind" ] && [ -n "$lost_label" ] || return 0
+  now="$(iso_stamp)"
+  printf '%s %s lost %s %s unknown\n' "$lost_kind" "$lost_label" "$now" "$now" >> "$DONE_LOG"
+}
+
 # Check, remove, and create the lock under the claim, so no other waiter sees it half done.
 acquire_lock() {
   local lock_code
@@ -350,7 +428,7 @@ acquire_lock() {
       release_claim
       return 1
     fi
-    rm -rf "$LOCK_PATH"
+    reclaim_dead_lock
   fi
   ln -s "$(lock_record -)" "$LOCK_PATH" 2> /dev/null
   lock_code=$?
@@ -451,16 +529,34 @@ if [ "$command_name" = gate ]; then
 fi
 printf 'QUEUED %s (%s) ahead: %s\n' "$label" "$kind_text" "$(tickets_ahead)"
 
+# The ticket of a dead waiter is moved aside with one atomic rename, so two waiters that prune it
+# at the same time write one LOST line: only the rename that won writes it. The label is the rest
+# of the name after the pid (it may hold dashes).
+drop_dead_ticket() {
+  local ticket="$1" waiter_pid="$2" moved="$QUEUE_DIRECTORY/pruned.$$" queued_epoch lost_label queued
+  mv "$TICKETS_DIRECTORY/$ticket" "$moved" 2> /dev/null || return 0
+  rm -f "$moved"
+  queued_epoch="$(printf '%s' "$ticket" | cut -d- -f3)"
+  lost_label="$(printf '%s' "$ticket" | cut -d- -f5-)"
+  queued=unknown
+  case "$queued_epoch" in
+    '' | *[!0-9]*) ;;
+    *) queued="$(epoch_stamp "$queued_epoch")" || queued=unknown ;;
+  esac
+  printf 'lost %s %s %s %s unknown\n' "${lost_label:-unknown}" "$waiter_pid" "$queued" \
+    "$(iso_stamp)" >> "$DONE_LOG"
+}
+
 # A ticket name carries its waiter's pid (the fourth dash-separated field). A waiter killed
 # without a trap leaves its ticket behind, and so does a file that is no ticket at all; either
-# would hold the head of the queue forever.
+# would hold the head of the queue forever. Only a ticket with a pid leaves a LOST line.
 prune_stale_tickets() {
   local ticket waiter_pid
   for ticket in $(ticket_names); do
     waiter_pid="$(printf '%s' "$ticket" | cut -d- -f4)"
     case "$waiter_pid" in
       '' | *[!0-9]*) rm -f "$TICKETS_DIRECTORY/$ticket" ;;
-      *) kill -0 "$waiter_pid" 2> /dev/null || rm -f "$TICKETS_DIRECTORY/$ticket" ;;
+      *) kill -0 "$waiter_pid" 2> /dev/null || drop_dead_ticket "$ticket" "$waiter_pid" ;;
     esac
   done
 }
@@ -596,6 +692,6 @@ drain_job_group
   }
 confirm_tested_head
 printf '%s %s %s %s %s %s\n' "$command_name" "$label" "$job_code" "$started_at" "$(iso_stamp)" \
-  "$tested_head" >> "$QUEUE_DIRECTORY/done.log"
+  "$tested_head" >> "$DONE_LOG"
 printf 'DONE %s exit %s at %s\n' "$label" "$job_code" "$(clock_time)"
 exit "$job_code"

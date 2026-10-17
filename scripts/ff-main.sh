@@ -15,7 +15,9 @@
 #      HEAD the queue tested (a clean tree at START and at the end, HEAD unmoved), equals the full
 #      commit. The LAST such line decides, so a red verify after a green one at the same commit
 #      blocks. A `check-all` or `gate` line, a line whose head is `unknown`, and an old 5-field
-#      line never count.
+#      line never count; neither does a LOST line (`lost <label> ...` or `<kind> <label> lost ...`,
+#      written by job-queue.sh for a job that never ran). Each line with fewer than 6 fields prints
+#      one WARNING on stderr and is ignored.
 #   4. The main checkout's HEAD must be an ancestor of the commit.
 #   5. The fast-forward merges the full commit, so main moving between these checks and the merge
 #      makes git refuse instead of moving main elsewhere. A dirty main checkout is not checked:
@@ -86,6 +88,10 @@ if [ -z "$full_commit" ]; then
     'Only a commit the repository holds can have been verified.' \
     'Pass the sha of the tip you verified, from git rev-parse HEAD in its worktree.'
 fi
+
+# A line with fewer than 6 fields never counts below; the warning keeps that from being silent.
+awk 'NF > 0 && NF < 6 { print "WARNING: done.log line has fewer than 6 fields (ignored): " $0 }' \
+  "$DONE_LOG" >&2 2> /dev/null
 
 # A string comparison on purpose: a field of digits and one `e` would otherwise compare as a number.
 verified_line="$(awk -v commit="$full_commit" \
