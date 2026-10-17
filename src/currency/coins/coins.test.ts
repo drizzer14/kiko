@@ -34,6 +34,32 @@ const CURATED_SCALES = [
   ['CGPT', 6],
 ] as const;
 
+const COINGECKO_IDS = [
+  ['BTC', 'bitcoin'],
+  ['ETH', 'ethereum'],
+  ['USDT', 'tether'],
+  ['BNB', 'binancecoin'],
+  ['XRP', 'ripple'],
+  ['USDC', 'usd-coin'],
+  ['SOL', 'solana'],
+  ['TRX', 'tron'],
+  ['ZEC', 'zcash'],
+  ['HYPE', 'hyperliquid'],
+  ['DOGE', 'dogecoin'],
+  ['LINK', 'chainlink'],
+  ['ADA', 'cardano'],
+  ['NEAR', 'near'],
+  ['XLM', 'stellar'],
+  ['BCH', 'bitcoin-cash'],
+  ['LTC', 'litecoin'],
+  ['UNI', 'uniswap'],
+  ['DAI', 'dai'],
+  ['AVAX', 'avalanche-2'],
+  ['SUI', 'sui'],
+  ['FDUSD', 'first-digital-usd'],
+  ['CGPT', 'chaingpt'],
+] as const;
+
 describe('coinScale', () => {
   it('derives scale 8 for a stablecoin', () => {
     expect(coinScale({ baseAssetPrecision: 8, maxUnits: 90_000_000 })).toBe(8);
@@ -91,6 +117,10 @@ describe('curatedCoins', () => {
     const ids = Object.values(curatedCoins).map((entry) => entry.coinGeckoId);
 
     expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it.each(COINGECKO_IDS)('maps %s to the CoinGecko id %s', (code, coinGeckoId) => {
+    expect(curatedCoins[code].coinGeckoId).toBe(coinGeckoId);
   });
 
   it('puts the four stablecoins at 90,000,000 units', () => {
