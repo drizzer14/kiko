@@ -811,10 +811,8 @@ rules:
   # load and made the guard deny "could not check" at random. Each
   # declaration sequence is split into a declaration-then-`...` arm and a
   # `...`-then-declaration arm, never one `... decl ...`: the two-sided `...`
-  # creates O(k*m) ranges per declaration on a long component body and timed
-  # out check:security on `net-worth-line.component.tsx` (1.5-2.9 s for this
-  # rule alone, 0.12-0.19 s split, same findings). Dropping the leading `...`
-  # alone loses findings.
+  # creates O(k*m) ranges per declaration, so it timed out on a long
+  # component body, while the one-sided arms keep the same findings.
   - id: kiko-worklet-directive-required
     languages: [typescript]
     severity: ERROR
