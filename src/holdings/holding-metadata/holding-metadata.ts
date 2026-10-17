@@ -401,6 +401,13 @@ const carriedMetadataKeys = [
   STATEMENT_FROM_FIELD,
 ] as const;
 
+/**
+ * A stored cursor, or `null` when none is stored or the value is no finite number. A cursor read
+ * from a metadata key and one read from a walk entry of `sync_state` follow this one rule.
+ */
+export const finiteNumberOrNull = (stored: unknown): number | null =>
+  isNumber(stored) ? stored : null;
+
 const numberFieldOf =
   (field: string) =>
   (metadata: unknown): number | null => {
@@ -408,9 +415,7 @@ const numberFieldOf =
       return null;
     }
 
-    const value = metadata[field];
-
-    return isNumber(value) ? value : null;
+    return finiteNumberOrNull(metadata[field]);
   };
 
 export const binanceWalkCursorOf = (
@@ -460,17 +465,12 @@ const asPendingRanges = (value: unknown): BinancePendingRange[] | undefined => {
 };
 
 /**
- * One walk's stored pending ranges, `[]` when none is stored, `undefined` when a value is
- * stored but is not a list of well-formed ranges (`readPendingMark` logs a fixed code and
- * repairs it: all the ground before the cursor is owed once, and stored at once; a parse
- * failure must never fail a balance sync).
+ * One walk's stored pending ranges, `[]` when none is stored (`stored` is `undefined`),
+ * `undefined` when a value is stored but is not a list of well-formed ranges (`readPendingMark`
+ * logs a fixed code and repairs it: all the ground before the cursor is owed once, and stored at
+ * once; a parse failure must never fail a balance sync). A stored JSON null is a stored value.
  */
-export const binanceWalkPendingOf = (
-  field: BinanceWalkPendingField,
-  metadata: unknown,
-): BinancePendingRange[] | undefined => {
-  const stored = isRecord(metadata) ? metadata[field] : undefined;
-
+export const binanceWalkPendingValueOf = (stored: unknown): BinancePendingRange[] | undefined => {
   if (stored === undefined) {
     return [];
   }
@@ -478,15 +478,26 @@ export const binanceWalkPendingOf = (
   return asPendingRanges(stored);
 };
 
-const roundRobinCursorOf = (field: string, metadata: unknown): number | null | undefined => {
-  const stored = isRecord(metadata) ? metadata[field] : undefined;
+export const binanceWalkPendingOf = (
+  field: BinanceWalkPendingField,
+  metadata: unknown,
+): BinancePendingRange[] | undefined =>
+  binanceWalkPendingValueOf(isRecord(metadata) ? metadata[field] : undefined);
 
+/**
+ * A stored round-robin cursor: `null` when none is stored (`stored` is `undefined`), `undefined`
+ * when a value is stored but is no finite number. A stored JSON null is a stored value.
+ */
+export const binanceWalkRoundRobinValueOf = (stored: unknown): number | null | undefined => {
   if (stored === undefined) {
     return null;
   }
 
   return isNumber(stored) ? stored : undefined;
 };
+
+const roundRobinCursorOf = (field: string, metadata: unknown): number | null | undefined =>
+  binanceWalkRoundRobinValueOf(isRecord(metadata) ? metadata[field] : undefined);
 
 /**
  * One walk's stored point cursor: `null` when none is stored, `undefined` when a value is stored
@@ -582,16 +593,12 @@ const asSpanHintList = (value: unknown, withResume = false): BinanceSpanHint[] |
 };
 
 /**
- * One walk's stored span hints: none for each pass when nothing is stored, `undefined` when a
- * value is stored but is not a record of well-formed lists (the caller logs a fixed code and
- * stores no hint at once; a parse failure must never fail a balance sync).
+ * One walk's stored span hints: none for each pass when nothing is stored (`stored` is
+ * `undefined`), `undefined` when a value is stored but is not a record of well-formed lists (the
+ * caller logs a fixed code and stores no hint at once; a parse failure must never fail a balance
+ * sync). A stored JSON null is a stored value.
  */
-export const binanceWalkSpanHintsOf = (
-  field: BinanceWalkSpanHintField,
-  metadata: unknown,
-): BinanceSpanHints | undefined => {
-  const stored = isRecord(metadata) ? metadata[field] : undefined;
-
+export const binanceWalkSpanHintsValueOf = (stored: unknown): BinanceSpanHints | undefined => {
   if (stored === undefined) {
     return { forward: [], pending: [], rescan: [], point: [] };
   }
@@ -612,6 +619,12 @@ export const binanceWalkSpanHintsOf = (
     ? undefined
     : { forward, pending, rescan, point };
 };
+
+export const binanceWalkSpanHintsOf = (
+  field: BinanceWalkSpanHintField,
+  metadata: unknown,
+): BinanceSpanHints | undefined =>
+  binanceWalkSpanHintsValueOf(isRecord(metadata) ? metadata[field] : undefined);
 
 export const syncClosedFromOf = numberFieldOf(SYNC_CLOSED_FROM_FIELD);
 

@@ -466,11 +466,9 @@ describe('the Binance walk cursors', () => {
     expect(BINANCE_EARN_SPAN_HINTS_FIELD).toBe('binanceEarnSpanHints');
   });
 
-  it('reads each field on its own, null when absent or not a finite number', () => {
+  it('reads the number stored under its own field, null when absent or the metadata is no object', () => {
     for (const field of binanceWalkCursorFields) {
       expect(binanceWalkCursorOf(field, { [field]: 5_000 })).toBe(5_000);
-      expect(binanceWalkCursorOf(field, { [field]: 'soon' })).toBeNull();
-      expect(binanceWalkCursorOf(field, { [field]: Number.NaN })).toBeNull();
       expect(binanceWalkCursorOf(field, { binanceAsset: 'BTC' })).toBeNull();
       expect(binanceWalkCursorOf(field, null)).toBeNull();
     }
@@ -527,107 +525,19 @@ describe('the Binance pending overlap lists', () => {
     ]);
   });
 
-  it('reads each stored list on its own', () => {
+  it('reads the list stored under its own field, empty when absent or the metadata is no object', () => {
     for (const field of binanceWalkPendingFields) {
       expect(binanceWalkPendingOf(field, { [field]: [range, { start: 5, end: 9 }] })).toEqual([
         range,
         { start: 5, end: 9 },
       ]);
-      expect(binanceWalkPendingOf(field, { [field]: [] })).toEqual([]);
     }
 
     expect(
       binanceWalkPendingOf('binancePayPendingOverlap', { binanceHistoryPendingOverlap: [range] }),
     ).toEqual([]);
-  });
-
-  it('reads an entry with no kind as a range, and one tagged "point" as a point', () => {
-    const point = { start: 999, end: 1_001, kind: 'point' };
-
-    expect(
-      binanceWalkPendingOf('binancePayPendingOverlap', {
-        binancePayPendingOverlap: [range, point],
-      }),
-    ).toEqual([range, point]);
-  });
-
-  it('round-trips the series of a point, the one series its record was read in', () => {
-    const typed = { start: 999, end: 1_001, kind: 'point', series: 'MAIN_FUNDING' };
-
-    expect(
-      binanceWalkPendingOf('binanceTransferPendingOverlap', {
-        binanceTransferPendingOverlap: [range, typed],
-      }),
-    ).toEqual([range, typed]);
-  });
-
-  it('reads a point with no series as a point with none', () => {
-    const point = { start: 999, end: 1_001, kind: 'point' };
-
-    expect(
-      binanceWalkPendingOf('binanceTransferPendingOverlap', {
-        binanceTransferPendingOverlap: [point],
-      }),
-    ).toEqual([point]);
-  });
-
-  it('round-trips the series of a range, the one series it is owed in', () => {
-    const owedInOne = { start: 1_000, end: 2_000, series: 'MAIN_FUNDING' };
-
-    expect(
-      binanceWalkPendingOf('binanceTransferPendingOverlap', {
-        binanceTransferPendingOverlap: [range, owedInOne],
-      }),
-    ).toEqual([range, owedInOne]);
-  });
-
-  it.each([
-    ['a range with an empty series', { start: 1_000, end: 2_000, series: '' }],
-    ['a range with a blank series', { start: 1_000, end: 2_000, series: '  ' }],
-    ['a range whose series is not text', { start: 1_000, end: 2_000, series: 7 }],
-    ['a range whose series is null', { start: 1_000, end: 2_000, series: null }],
-    ['a point with an empty series', { start: 999, end: 1_001, kind: 'point', series: '' }],
-    ['a point with a blank series', { start: 999, end: 1_001, kind: 'point', series: '  ' }],
-    ['a point whose series is not text', { start: 999, end: 1_001, kind: 'point', series: 7 }],
-    ['a point whose series is null', { start: 999, end: 1_001, kind: 'point', series: null }],
-  ])('is undefined for a stored value with %s', (_label, entry) => {
-    expect(
-      binanceWalkPendingOf('binanceTransferPendingOverlap', {
-        binanceTransferPendingOverlap: [entry],
-      }),
-    ).toBeUndefined();
-  });
-
-  it('reads a short entry with no kind as a range: only the tag makes a point', () => {
-    const sliver = { start: 1_000, end: 1_002 };
-
-    expect(
-      binanceWalkPendingOf('binancePayPendingOverlap', { binancePayPendingOverlap: [sliver] }),
-    ).toEqual([sliver]);
-  });
-
-  it('is an empty list when the key is absent or the metadata is not an object', () => {
-    expect(binanceWalkPendingOf('binancePayPendingOverlap', { binanceAsset: 'BTC' })).toEqual([]);
     expect(binanceWalkPendingOf('binancePayPendingOverlap', null)).toEqual([]);
     expect(binanceWalkPendingOf('binancePayPendingOverlap', 'not-an-object')).toEqual([]);
-  });
-
-  it.each([
-    ['not a list', { start: 1, end: 2 }],
-    ['a list of numbers', [1_000, 2_000]],
-    ['an entry with a missing end', [{ start: 1_000 }]],
-    ['a text bound', [{ start: '1000', end: 2_000 }]],
-    ['a non-finite bound', [{ start: Number.NaN, end: 2_000 }]],
-    ['an empty range', [{ start: 2_000, end: 2_000 }]],
-    ['a backwards range', [{ start: 3_000, end: 2_000 }]],
-    ['one good and one bad entry', [range, { start: 'x', end: 1 }]],
-    ['an entry of an unknown kind', [{ start: 1_000, end: 2_000, kind: 'range' }]],
-    ['an entry whose kind is not text', [{ start: 1_000, end: 2_000, kind: 1 }]],
-    ['a point that is empty', [{ start: 2_000, end: 2_000, kind: 'point' }]],
-  ])('is undefined for a stored value that is %s', (_label, value) => {
-    expect(
-      binanceWalkPendingOf('binancePayPendingOverlap', { binancePayPendingOverlap: value }),
-    ).toBe(undefined);
   });
 
   it('are carried over a balance-sync metadata write', () => {
@@ -687,7 +597,7 @@ describe('the Binance point cursors', () => {
     ]);
   });
 
-  it('reads each stored cursor on its own', () => {
+  it('reads the number stored under its own field, null when absent or the metadata is no object', () => {
     for (const field of binanceWalkPointCursorFields) {
       expect(binanceWalkPointCursorOf(field, { [field]: 5_000 })).toBe(5_000);
     }
@@ -695,23 +605,8 @@ describe('the Binance point cursors', () => {
     expect(
       binanceWalkPointCursorOf('binancePayPointCursor', { binanceHistoryPointCursor: 5_000 }),
     ).toBeNull();
-  });
-
-  it('is null when the key is absent or the metadata is not an object', () => {
-    expect(binanceWalkPointCursorOf('binancePayPointCursor', { binanceAsset: 'BTC' })).toBeNull();
     expect(binanceWalkPointCursorOf('binancePayPointCursor', null)).toBeNull();
     expect(binanceWalkPointCursorOf('binancePayPointCursor', 'not-an-object')).toBeNull();
-  });
-
-  it.each([
-    ['text', '5000'],
-    ['not a finite number', Number.NaN],
-    ['null', null],
-    ['a list', [5_000]],
-  ])('is undefined for a stored value that is %s', (_label, value) => {
-    expect(
-      binanceWalkPointCursorOf('binancePayPointCursor', { binancePayPointCursor: value }),
-    ).toBeUndefined();
   });
 
   it('are carried over a balance-sync metadata write', () => {
@@ -763,7 +658,7 @@ describe('the Binance range cursors', () => {
     ]);
   });
 
-  it('reads each stored cursor on its own', () => {
+  it('reads the number stored under its own field, null when absent or the metadata is no object', () => {
     for (const field of binanceWalkRangeCursorFields) {
       expect(binanceWalkRangeCursorOf(field, { [field]: 5_000 })).toBe(5_000);
     }
@@ -771,23 +666,8 @@ describe('the Binance range cursors', () => {
     expect(
       binanceWalkRangeCursorOf('binancePayRangeCursor', { binanceHistoryRangeCursor: 5_000 }),
     ).toBeNull();
-  });
-
-  it('is null when the key is absent or the metadata is not an object', () => {
-    expect(binanceWalkRangeCursorOf('binancePayRangeCursor', { binanceAsset: 'BTC' })).toBeNull();
     expect(binanceWalkRangeCursorOf('binancePayRangeCursor', null)).toBeNull();
     expect(binanceWalkRangeCursorOf('binancePayRangeCursor', 'not-an-object')).toBeNull();
-  });
-
-  it.each([
-    ['text', '5000'],
-    ['not a finite number', Number.NaN],
-    ['null', null],
-    ['a list', [5_000]],
-  ])('is undefined for a stored value that is %s', (_label, value) => {
-    expect(
-      binanceWalkRangeCursorOf('binancePayRangeCursor', { binancePayRangeCursor: value }),
-    ).toBeUndefined();
   });
 
   it('are carried over a balance-sync metadata write', () => {
@@ -850,7 +730,7 @@ describe('the Binance span hints', () => {
     ]);
   });
 
-  it('reads each stored value on its own', () => {
+  it('reads the value stored under its own field, none when absent or the metadata is no object', () => {
     for (const field of binanceWalkSpanHintFields) {
       expect(binanceWalkSpanHintsOf(field, { [field]: hints })).toEqual(hints);
     }
@@ -858,106 +738,8 @@ describe('the Binance span hints', () => {
     expect(
       binanceWalkSpanHintsOf('binancePaySpanHints', { binanceHistorySpanHints: hints }),
     ).toEqual(none);
-  });
-
-  it('is no hint at all when the key is absent or the metadata is not an object', () => {
-    expect(binanceWalkSpanHintsOf('binancePaySpanHints', { binanceAsset: 'BTC' })).toEqual(none);
     expect(binanceWalkSpanHintsOf('binancePaySpanHints', null)).toEqual(none);
     expect(binanceWalkSpanHintsOf('binancePaySpanHints', 'not-an-object')).toEqual(none);
-  });
-
-  it('reads a pass left out as no hint for it', () => {
-    expect(
-      binanceWalkSpanHintsOf('binancePaySpanHints', {
-        binancePaySpanHints: { rescan: [{ start: 1, end: 2 }] },
-      }),
-    ).toEqual({ ...none, rescan: [{ start: 1, end: 2 }] });
-  });
-
-  it.each([
-    ['text', 'x'],
-    ['null', null],
-    ['a list', [{ start: 1, end: 2 }]],
-    ['a pass that is no list', { ...hints, forward: { start: 1, end: 2 } }],
-    ['an entry that is no object', { ...hints, point: [5] }],
-    ['an entry with a text start', { ...hints, point: [{ start: '1', end: 2 }] }],
-    ['an entry with no end', { ...hints, point: [{ start: 1 }] }],
-    [
-      'an entry with a start that is not a finite number',
-      { ...hints, forward: [{ start: Number.NaN, end: 2 }] },
-    ],
-    ['an entry that ends where it starts', { ...hints, forward: [{ start: 2, end: 2 }] }],
-    ['an entry that ends before it starts', { ...hints, forward: [{ start: 3, end: 2 }] }],
-  ])('is undefined for a stored value that is %s', (_label, value) => {
-    expect(
-      binanceWalkSpanHintsOf('binancePaySpanHints', { binancePaySpanHints: value }),
-    ).toBeUndefined();
-  });
-
-  describe('the resume of a point window', () => {
-    const resume = {
-      from: 401,
-      returned: [{ start: 400, end: 402, kind: 'point', series: 'MAIN_FUNDING' }],
-      stuck: [
-        { start: 400, end: 402, kind: 'point' },
-        { start: 390, end: 410 },
-      ],
-      series: ['MAIN_FUNDING', 'FUNDING_MAIN'],
-    };
-    const resumed = { ...hints, point: [{ start: 400, end: 450, resume }] };
-    const read = (stored: unknown) =>
-      binanceWalkSpanHintsOf('binancePaySpanHints', { binancePaySpanHints: stored });
-
-    it('is read with the points a record returned and the ground a record left owed', () => {
-      expect(read(resumed)).toEqual(resumed);
-    });
-
-    it('is read with no series for a walk that reads one series', () => {
-      const { series: _series, ...single } = resume;
-      const stored = { ...hints, point: [{ start: 400, end: 450, resume: single }] };
-
-      expect(read(stored)).toEqual(stored);
-    });
-
-    it('is dropped from a hint of any other pass, which keeps its span', () => {
-      expect(
-        read({
-          forward: [{ start: 1, end: 5, resume }],
-          pending: [{ start: 2, end: 6, resume }],
-          rescan: [{ start: 3, end: 7, resume }],
-          point: [],
-        }),
-      ).toEqual({
-        forward: [{ start: 1, end: 5 }],
-        pending: [{ start: 2, end: 6 }],
-        rescan: [{ start: 3, end: 7 }],
-        point: [],
-      });
-    });
-
-    it.each([
-      ['a resume that is no object', 'x'],
-      ['a resume that starts at a text', { ...resume, from: '401' }],
-      ['a resume that starts before its window', { ...resume, from: 399 }],
-      ['a resume that starts where its span ends', { ...resume, from: 450 }],
-      ['a resume that starts after its span ends', { ...resume, from: 451 }],
-      ['a resume with no list of returned points', { ...resume, returned: undefined }],
-      ['a resume whose returned points are no list', { ...resume, returned: 'x' }],
-      ['a resume with a returned point that is no range', { ...resume, returned: [{ start: 1 }] }],
-      ['a resume with no list of stuck ground', { ...resume, stuck: undefined }],
-      [
-        'a resume with a stuck entry of kind other than a point',
-        {
-          ...resume,
-          stuck: [{ start: 1, end: 2, kind: 'range' }],
-        },
-      ],
-      ['a resume whose series are no list', { ...resume, series: 'MAIN_FUNDING' }],
-      ['a resume with an empty list of series', { ...resume, series: [] }],
-      ['a resume with a series that is blank', { ...resume, series: [' '] }],
-    ])('makes the stored value undefined for %s', (_label, bad) => {
-      expect(read({ ...hints, point: [{ start: 400, end: 450, resume: bad }] })).toBeUndefined();
-    });
   });
 
   it('are carried over a balance-sync metadata write', () => {
@@ -1023,14 +805,6 @@ describe('the six keys of the Binance Earn walk', () => {
       binanceEarnRescanCursor: 100,
       binanceEarnPendingOverlap: [],
     });
-  });
-
-  it('are read as the other walks read theirs: a list with a point of a kind, a cursor, a number, the hints', () => {
-    expect(binanceWalkPendingOf(BINANCE_EARN_PENDING_OVERLAP_FIELD, stored)).toEqual([point]);
-    expect(binanceWalkPointCursorOf(BINANCE_EARN_POINT_CURSOR_FIELD, stored)).toBe(6);
-    expect(binanceWalkRangeCursorOf(BINANCE_EARN_RANGE_CURSOR_FIELD, stored)).toBe(9);
-    expect(binanceWalkSpanHintsOf(BINANCE_EARN_SPAN_HINTS_FIELD, stored)).toEqual(hints);
-    expect(binanceWalkCursorOf(BINANCE_EARN_RESCAN_CURSOR_FIELD, stored)).toBe(3_000);
   });
 });
 

@@ -1,0 +1,747 @@
+import {
+  WALK_NAMES,
+  type WalkField,
+  type WalkName,
+  withWalkMarks,
+} from '@kiko/test-support/walk-marks';
+import {
+  binanceWalkCursorOf,
+  binanceWalkPendingOf,
+  binanceWalkPointCursorOf,
+  binanceWalkRangeCursorOf,
+  binanceWalkSpanHintsOf,
+  type BinanceWalkCursorField,
+  type BinanceWalkPendingField,
+  type BinanceWalkPointCursorField,
+  type BinanceWalkRangeCursorField,
+  type BinanceWalkSpanHintField,
+} from '@kiko/holdings/holding-metadata';
+
+import { readPendingMark, readPointCursor, readRangeCursor, readSpanHints } from '../walk';
+
+import {
+  type ExchangeState,
+  type ParsedExchangeState,
+  type ParsedWalkMarks,
+  parseExchangeState,
+  WALK_IDS,
+  type WalkId,
+} from '.';
+
+type ReadableState = Extract<ParsedExchangeState, { kind: 'parsed' }>;
+
+type Metadata = Record<string, unknown>;
+
+const NO_HINTS = { forward: [], pending: [], rescan: [], point: [] };
+
+const emptyMarks = (): ParsedWalkMarks => ({
+  cursor: null,
+  rescan: null,
+  pending: [],
+  pointCursor: null,
+  rangeCursor: null,
+  spanHints: NO_HINTS,
+});
+
+const EMPTY_TRADES = { symbols: {}, rotation: 0, balanceSnapshot: {} };
+
+const EMPTY_STATE: ReadableState = {
+  kind: 'parsed',
+  walks: Object.fromEntries(WALK_IDS.map((walkId) => [walkId, emptyMarks()])) as Record<
+    WalkId,
+    ParsedWalkMarks
+  >,
+  trades: EMPTY_TRADES,
+  untrackedCoins: { balance: [], history: [] },
+  oversizedCoins: { balance: [], history: [] },
+  unreadable: [],
+};
+
+const readableOf = (text: string | null): ReadableState => {
+  const parsed = parseExchangeState(text);
+
+  if (parsed.kind === 'malformed') {
+    throw new Error(`walk-state test: a state that should read as malformed: ${text}`);
+  }
+
+  return parsed;
+};
+
+const stateTextOf = (rest: Metadata): string => JSON.stringify({ version: 1, walks: {}, ...rest });
+
+/** The marks of one walk read from the text of its entry, so a test can put raw JSON in it. */
+const marksOfRaw = (entryJson: string, walkId: WalkId = 'pay'): ParsedWalkMarks =>
+  readableOf(`{"version":1,"walks":{"${walkId}":${entryJson}}}`).walks[walkId];
+
+const marksOf = (entry: unknown, walkId: WalkId = 'pay'): ParsedWalkMarks =>
+  marksOfRaw(JSON.stringify(entry), walkId);
+
+const marksOfStoredField = (walkId: WalkId, field: WalkField, stored: unknown): unknown =>
+  marksOf({ [field]: stored }, walkId)[field];
+
+const walkEntryOf = (walkId: WalkId, entry: unknown): ReadableState =>
+  readableOf(stateTextOf({ walks: { [walkId]: entry } }));
+
+/** The metadata key of a walk's field today: only the test helper names it. */
+const oldKeyOf = (walkName: WalkName, field: WalkField): string =>
+  Object.keys(withWalkMarks({}, 'acc-1', walkName, { [field]: 1 }))[0];
+
+const TODAY: Record<WalkField, (key: string, metadata: Metadata) => unknown> = {
+  cursor: (key, metadata) => binanceWalkCursorOf(key as BinanceWalkCursorField, metadata),
+  rescan: (key, metadata) => binanceWalkCursorOf(key as BinanceWalkCursorField, metadata),
+  pending: (key, metadata) => binanceWalkPendingOf(key as BinanceWalkPendingField, metadata),
+  pointCursor: (key, metadata) =>
+    binanceWalkPointCursorOf(key as BinanceWalkPointCursorField, metadata),
+  rangeCursor: (key, metadata) =>
+    binanceWalkRangeCursorOf(key as BinanceWalkRangeCursorField, metadata),
+  spanHints: (key, metadata) => binanceWalkSpanHintsOf(key as BinanceWalkSpanHintField, metadata),
+};
+
+type Write = () => Promise<undefined>;
+
+/**
+ * Today's reader of each repairable field, with its own repair write. The series a walk reads is
+ * its own setting, so the pending reader is given the one series the test values name.
+ */
+const REPAIRS = {
+  pending: (key: string, metadata: Metadata, write: Write) =>
+    readPendingMark({
+      field: key as BinanceWalkPendingField,
+      metadata,
+      owedIfUnreadable: { start: 0, end: 1 },
+      knownSeries: ['MAIN_FUNDING'],
+      write,
+    }),
+  pointCursor: (key: string, metadata: Metadata, write: Write) =>
+    readPointCursor({ field: key as BinanceWalkPointCursorField, metadata, write }),
+  rangeCursor: (key: string, metadata: Metadata, write: Write) =>
+    readRangeCursor({ field: key as BinanceWalkRangeCursorField, metadata, write }),
+  spanHints: (key: string, metadata: Metadata, write: Write) =>
+    readSpanHints({ field: key as BinanceWalkSpanHintField, metadata, write }),
+};
+
+const FIELDS: WalkField[] = [
+  'cursor',
+  'rescan',
+  'pending',
+  'pointCursor',
+  'rangeCursor',
+  'spanHints',
+];
+
+describe('parseExchangeState', () => {
+  describe('the top level', () => {
+    it('reads no stored text as a state with nothing in it', () => {
+      expect(parseExchangeState(null)).toEqual(EMPTY_STATE);
+    });
+
+    it.each([
+      ['text that is not JSON', '{not json'],
+      ['an empty text', ''],
+      ['JSON null', 'null'],
+      ['a list', '[]'],
+      ['a JSON text', '"x"'],
+      ['a number', '5'],
+      ['an object with no version', '{"walks":{}}'],
+      ['a newer version', '{"version":2,"walks":{}}'],
+      ['a version that is text', '{"version":"1","walks":{}}'],
+      ['an object with no walks', '{"version":1}'],
+      ['walks that are a list', '{"version":1,"walks":[]}'],
+      ['walks that are null', '{"version":1,"walks":null}'],
+      ['walks that are text', '{"version":1,"walks":"x"}'],
+    ])('is malformed for %s', (_label, text) => {
+      expect(parseExchangeState(text)).toEqual({ kind: 'malformed' });
+    });
+
+    it('reads a state with no walk entry as every walk empty', () => {
+      expect(parseExchangeState('{"version":1,"walks":{}}')).toEqual(EMPTY_STATE);
+    });
+
+    it('reads nothing of a walk id or a key a newer build wrote', () => {
+      expect(
+        parseExchangeState(
+          stateTextOf({ walks: { bybitSpot: { cursor: 5 } }, notImported: ['p2p-sale:1:2'] }),
+        ),
+      ).toEqual(EMPTY_STATE);
+    });
+
+    it('reads each walk entry on its own', () => {
+      const stored = {
+        version: 1,
+        walks: {
+          capital: { cursor: 1_000 },
+          pay: { cursor: 2_000, pointCursor: 7 },
+          transfer: { rescan: 3_000 },
+          earn: { rangeCursor: 9 },
+        },
+      } satisfies ExchangeState;
+      const { walks } = readableOf(JSON.stringify(stored));
+
+      expect(walks.capital).toEqual({ ...emptyMarks(), cursor: 1_000 });
+      expect(walks.pay).toEqual({ ...emptyMarks(), cursor: 2_000, pointCursor: 7 });
+      expect(walks.transfer).toEqual({ ...emptyMarks(), rescan: 3_000 });
+      expect(walks.earn).toEqual({ ...emptyMarks(), rangeCursor: 9 });
+      expect(walks.convert).toEqual(emptyMarks());
+    });
+
+    it.each(WALK_IDS)('reads the entry of the %s walk the same way', (walkId) => {
+      expect(marksOf({ cursor: 5_000, pending: [{ start: 1, end: 2 }] }, walkId)).toEqual({
+        ...emptyMarks(),
+        cursor: 5_000,
+        pending: [{ start: 1, end: 2 }],
+      });
+    });
+  });
+
+  describe('a walk entry that is not an object', () => {
+    it.each([
+      ['text', 'x'],
+      ['null', null],
+      ['a number', 5],
+      ['a list', [{ cursor: 5 }]],
+    ])('reads as every field empty, for %s, and is named', (_label, entry) => {
+      const parsed = readableOf(
+        JSON.stringify({ version: 1, walks: { pay: entry, capital: { cursor: 1_000 } } }),
+      );
+
+      expect(parsed.walks.pay).toEqual(emptyMarks());
+      expect(parsed.walks.capital).toEqual({ ...emptyMarks(), cursor: 1_000 });
+      expect(parsed.unreadable).toEqual(['walks.pay']);
+    });
+  });
+
+  describe('a malformed field', () => {
+    const good = {
+      cursor: 1_000,
+      rescan: 900,
+      pending: [{ start: 1, end: 2 }],
+      pointCursor: 7,
+      rangeCursor: 8,
+      spanHints: { forward: [{ start: 100, end: 150 }], pending: [], rescan: [], point: [] },
+    };
+
+    it.each([
+      ['cursor', 'soon', null],
+      ['rescan', 'soon', null],
+      ['pending', 'x', undefined],
+      ['pointCursor', 'x', undefined],
+      ['rangeCursor', 'x', undefined],
+      ['spanHints', 'x', undefined],
+    ])('never empties its siblings: the %s', (field, bad, reads) => {
+      expect(marksOf({ ...good, [field]: bad })).toStrictEqual({ ...good, [field]: reads });
+    });
+
+    it.each([
+      ['a text', 'x'],
+      ['a boolean', true],
+      ['an object', { start: 1, end: 2 }],
+    ])('of the Pay pending value being %s leaves Pay and every other walk as stored', (_l, bad) => {
+      const parsed = readableOf(
+        JSON.stringify({
+          version: 1,
+          walks: { capital: good, pay: { ...good, pending: bad }, transfer: good, earn: good },
+        }),
+      );
+
+      expect(parsed.walks.pay).toStrictEqual({ ...good, pending: undefined });
+      expect(parsed.walks.capital).toStrictEqual(good);
+      expect(parsed.walks.transfer).toStrictEqual(good);
+      expect(parsed.walks.earn).toStrictEqual(good);
+      expect(parsed.unreadable).toEqual([]);
+    });
+  });
+
+  describe('a field stored as JSON null', () => {
+    it.each([
+      ['cursor', null],
+      ['rescan', null],
+      ['pending', undefined],
+      ['pointCursor', undefined],
+      ['rangeCursor', undefined],
+      ['spanHints', undefined],
+    ] as const)('reads as the stored null of today: the %s', (field, reads) => {
+      for (const walkName of WALK_NAMES) {
+        const metadata = withWalkMarks({}, 'acc-1', walkName, { [field]: null });
+
+        expect(marksOfStoredField(walkName, field, null)).toStrictEqual(reads);
+        expect(marksOfStoredField(walkName, field, null)).toStrictEqual(
+          TODAY[field](oldKeyOf(walkName, field), metadata),
+        );
+      }
+    });
+  });
+
+  describe('a stored value', () => {
+    const STORED_VALUES: unknown[] = [
+      undefined,
+      null,
+      0,
+      5_000,
+      '5000',
+      true,
+      [],
+      {},
+      [5_000],
+      [{ start: 1, end: 2 }],
+      [{ start: 1, end: 2, kind: 'point', series: 'MAIN_FUNDING' }],
+      [{ start: 2, end: 1 }],
+      { forward: [{ start: 1, end: 2 }], pending: [], rescan: [], point: [] },
+      { forward: { start: 1, end: 2 } },
+    ];
+
+    it.each(FIELDS)('reads as today reads it, for every walk: the %s', (field) => {
+      for (const walkName of WALK_NAMES) {
+        for (const stored of STORED_VALUES) {
+          const metadata = withWalkMarks({}, 'acc-1', walkName, { [field]: stored });
+
+          expect([walkName, stored, marksOfStoredField(walkName, field, stored)]).toEqual([
+            walkName,
+            stored,
+            TODAY[field](oldKeyOf(walkName, field), metadata),
+          ]);
+        }
+      }
+    });
+
+    it.each(['pending', 'pointCursor', 'rangeCursor', 'spanHints'] as const)(
+      'is malformed exactly when today repairs it: the %s',
+      async (field) => {
+        const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+        for (const walkName of WALK_NAMES) {
+          for (const stored of STORED_VALUES) {
+            const metadata = withWalkMarks({}, 'acc-1', walkName, { [field]: stored });
+            const write = jest.fn(async () => undefined);
+
+            await REPAIRS[field](oldKeyOf(walkName, field), metadata, write);
+
+            expect([walkName, stored, write.mock.calls.length > 0]).toEqual([
+              walkName,
+              stored,
+              marksOfStoredField(walkName, field, stored) === undefined,
+            ]);
+          }
+        }
+
+        warn.mockRestore();
+      },
+    );
+  });
+
+  describe('the cursors', () => {
+    it('are read from the entry of their own walk', () => {
+      const { walks } = readableOf(
+        JSON.stringify({
+          version: 1,
+          walks: {
+            capital: { cursor: 1_000, rescan: 1_500 },
+            pay: { cursor: 2_000, rescan: 2_500 },
+            transfer: { cursor: 3_000, rescan: 3_500 },
+            earn: { cursor: 4_000, rescan: 4_500 },
+          },
+        }),
+      );
+      const own = [walks.capital, walks.pay, walks.transfer, walks.earn];
+
+      expect(own.map((marks) => marks.cursor)).toEqual([1_000, 2_000, 3_000, 4_000]);
+      expect(own.map((marks) => marks.rescan)).toEqual([1_500, 2_500, 3_500, 4_500]);
+    });
+
+    it.each([
+      ['text', '"soon"'],
+      ['not a finite number', '1e999'],
+    ])('read null when the value is %s', (_label, raw) => {
+      expect(marksOfRaw(`{"cursor":${raw},"rescan":${raw}}`)).toEqual(emptyMarks());
+    });
+  });
+
+  describe('the pending overlap lists', () => {
+    const range = { start: 1_000, end: 2_000 };
+    const pendingOf = (stored: unknown, walkId: WalkId = 'pay') =>
+      marksOf({ pending: stored }, walkId).pending;
+
+    it('reads each stored list on its own', () => {
+      for (const walkId of ['capital', 'pay', 'transfer', 'earn'] as const) {
+        expect(pendingOf([range, { start: 5, end: 9 }], walkId)).toEqual([
+          range,
+          { start: 5, end: 9 },
+        ]);
+        expect(pendingOf([], walkId)).toEqual([]);
+      }
+
+      expect(walkEntryOf('capital', { pending: [range] }).walks.pay.pending).toEqual([]);
+    });
+
+    it('reads an entry with no kind as a range, and one tagged "point" as a point', () => {
+      const point = { start: 999, end: 1_001, kind: 'point' };
+
+      expect(pendingOf([range, point])).toEqual([range, point]);
+    });
+
+    it('round-trips the series of a point, the one series its record was read in', () => {
+      const typed = { start: 999, end: 1_001, kind: 'point', series: 'MAIN_FUNDING' };
+
+      expect(pendingOf([range, typed], 'transfer')).toEqual([range, typed]);
+    });
+
+    it('reads a point with no series as a point with none', () => {
+      const point = { start: 999, end: 1_001, kind: 'point' };
+
+      expect(pendingOf([point], 'transfer')).toEqual([point]);
+    });
+
+    it('round-trips the series of a range, the one series it is owed in', () => {
+      const owedInOne = { start: 1_000, end: 2_000, series: 'MAIN_FUNDING' };
+
+      expect(pendingOf([range, owedInOne], 'transfer')).toEqual([range, owedInOne]);
+    });
+
+    it.each([
+      ['a range with an empty series', { start: 1_000, end: 2_000, series: '' }],
+      ['a range with a blank series', { start: 1_000, end: 2_000, series: '  ' }],
+      ['a range whose series is not text', { start: 1_000, end: 2_000, series: 7 }],
+      ['a range whose series is null', { start: 1_000, end: 2_000, series: null }],
+      ['a point with an empty series', { start: 999, end: 1_001, kind: 'point', series: '' }],
+      ['a point with a blank series', { start: 999, end: 1_001, kind: 'point', series: '  ' }],
+      ['a point whose series is not text', { start: 999, end: 1_001, kind: 'point', series: 7 }],
+      ['a point whose series is null', { start: 999, end: 1_001, kind: 'point', series: null }],
+    ])('is malformed for a stored value with %s', (_label, entry) => {
+      expect(pendingOf([entry], 'transfer')).toBeUndefined();
+    });
+
+    it('reads a short entry with no kind as a range: only the tag makes a point', () => {
+      const sliver = { start: 1_000, end: 1_002 };
+
+      expect(pendingOf([sliver])).toEqual([sliver]);
+    });
+
+    it('is an empty list when the field is absent or the entry is not an object', () => {
+      expect(marksOf({}).pending).toEqual([]);
+      expect(walkEntryOf('pay', 'x').walks.pay.pending).toEqual([]);
+      expect(walkEntryOf('pay', null).walks.pay.pending).toEqual([]);
+    });
+
+    it.each([
+      ['not a list', { start: 1, end: 2 }],
+      ['a list of numbers', [1_000, 2_000]],
+      ['an entry with a missing end', [{ start: 1_000 }]],
+      ['a text bound', [{ start: '1000', end: 2_000 }]],
+      ['an empty range', [{ start: 2_000, end: 2_000 }]],
+      ['a backwards range', [{ start: 3_000, end: 2_000 }]],
+      ['one good and one bad entry', [range, { start: 'x', end: 1 }]],
+      ['an entry of an unknown kind', [{ start: 1_000, end: 2_000, kind: 'range' }]],
+      ['an entry whose kind is not text', [{ start: 1_000, end: 2_000, kind: 1 }]],
+      ['a point that is empty', [{ start: 2_000, end: 2_000, kind: 'point' }]],
+    ])('is malformed for a stored value that is %s', (_label, value) => {
+      expect(pendingOf(value)).toBeUndefined();
+    });
+
+    it('is malformed for a bound that is not a finite number', () => {
+      expect(marksOfRaw('{"pending":[{"start":1e999,"end":2000}]}').pending).toBeUndefined();
+    });
+  });
+
+  describe.each([
+    ['point', 'pointCursor'],
+    ['range', 'rangeCursor'],
+  ] as const)('the %s cursors', (_kind, field) => {
+    it('reads each stored cursor on its own', () => {
+      for (const walkId of ['capital', 'pay', 'transfer', 'earn'] as const) {
+        expect(marksOf({ [field]: 5_000 }, walkId)[field]).toBe(5_000);
+      }
+
+      expect(walkEntryOf('capital', { [field]: 5_000 }).walks.pay[field]).toBeNull();
+    });
+
+    it('is null when the field is absent or the entry is not an object', () => {
+      expect(marksOf({})[field]).toBeNull();
+      expect(walkEntryOf('pay', 'x').walks.pay[field]).toBeNull();
+      expect(walkEntryOf('pay', null).walks.pay[field]).toBeNull();
+    });
+
+    it.each([
+      ['text', '"5000"'],
+      ['not a finite number', '1e999'],
+      ['null', 'null'],
+      ['a list', '[5000]'],
+    ])('is malformed for a stored value that is %s', (_label, raw) => {
+      expect(marksOfRaw(`{"${field}":${raw}}`)[field]).toBeUndefined();
+    });
+  });
+
+  describe('the span hints', () => {
+    const hints = {
+      forward: [{ start: 100, end: 150 }],
+      pending: [
+        { start: 200, end: 220 },
+        { start: 300, end: 301 },
+      ],
+      rescan: [],
+      point: [{ start: 400, end: 402 }],
+    };
+    const hintsOf = (stored: unknown, walkId: WalkId = 'pay') =>
+      marksOf({ spanHints: stored }, walkId).spanHints;
+
+    it('reads each stored value on its own', () => {
+      for (const walkId of ['capital', 'pay', 'transfer', 'earn'] as const) {
+        expect(hintsOf(hints, walkId)).toEqual(hints);
+      }
+
+      expect(walkEntryOf('capital', { spanHints: hints }).walks.pay.spanHints).toEqual(NO_HINTS);
+    });
+
+    it('is no hint at all when the field is absent or the entry is not an object', () => {
+      expect(marksOf({}).spanHints).toEqual(NO_HINTS);
+      expect(walkEntryOf('pay', 'x').walks.pay.spanHints).toEqual(NO_HINTS);
+      expect(walkEntryOf('pay', null).walks.pay.spanHints).toEqual(NO_HINTS);
+    });
+
+    it('reads a pass left out as no hint for it', () => {
+      expect(hintsOf({ rescan: [{ start: 1, end: 2 }] })).toEqual({
+        ...NO_HINTS,
+        rescan: [{ start: 1, end: 2 }],
+      });
+    });
+
+    it.each([
+      ['text', 'x'],
+      ['null', null],
+      ['a list', [{ start: 1, end: 2 }]],
+      ['a pass that is no list', { ...hints, forward: { start: 1, end: 2 } }],
+      ['an entry that is no object', { ...hints, point: [5] }],
+      ['an entry with a text start', { ...hints, point: [{ start: '1', end: 2 }] }],
+      ['an entry with no end', { ...hints, point: [{ start: 1 }] }],
+      ['an entry that ends where it starts', { ...hints, forward: [{ start: 2, end: 2 }] }],
+      ['an entry that ends before it starts', { ...hints, forward: [{ start: 3, end: 2 }] }],
+    ])('is malformed for a stored value that is %s', (_label, value) => {
+      expect(hintsOf(value)).toBeUndefined();
+    });
+
+    it('is malformed for a start that is not a finite number', () => {
+      const text =
+        '{"spanHints":{"forward":[{"start":1e999,"end":2}],"pending":[],"rescan":[],"point":[]}}';
+
+      expect(marksOfRaw(text).spanHints).toBeUndefined();
+    });
+
+    describe('the resume of a point window', () => {
+      const resume = {
+        from: 401,
+        returned: [{ start: 400, end: 402, kind: 'point', series: 'MAIN_FUNDING' }],
+        stuck: [
+          { start: 400, end: 402, kind: 'point' },
+          { start: 390, end: 410 },
+        ],
+        series: ['MAIN_FUNDING', 'FUNDING_MAIN'],
+      };
+      const resumed = { ...hints, point: [{ start: 400, end: 450, resume }] };
+
+      it('is read with the points a record returned and the ground a record left owed', () => {
+        expect(hintsOf(resumed)).toEqual(resumed);
+      });
+
+      it('is read with no series for a walk that reads one series', () => {
+        const { series: _series, ...single } = resume;
+        const stored = { ...hints, point: [{ start: 400, end: 450, resume: single }] };
+
+        expect(hintsOf(stored)).toEqual(stored);
+      });
+
+      it('is dropped from a hint of any other pass, which keeps its span', () => {
+        expect(
+          hintsOf({
+            forward: [{ start: 1, end: 5, resume }],
+            pending: [{ start: 2, end: 6, resume }],
+            rescan: [{ start: 3, end: 7, resume }],
+            point: [],
+          }),
+        ).toEqual({
+          forward: [{ start: 1, end: 5 }],
+          pending: [{ start: 2, end: 6 }],
+          rescan: [{ start: 3, end: 7 }],
+          point: [],
+        });
+      });
+
+      it.each([
+        ['a resume that is no object', 'x'],
+        ['a resume that starts at a text', { ...resume, from: '401' }],
+        ['a resume that starts before its window', { ...resume, from: 399 }],
+        ['a resume that starts where its span ends', { ...resume, from: 450 }],
+        ['a resume that starts after its span ends', { ...resume, from: 451 }],
+        ['a resume with no list of returned points', { ...resume, returned: undefined }],
+        ['a resume whose returned points are no list', { ...resume, returned: 'x' }],
+        [
+          'a resume with a returned point that is no range',
+          { ...resume, returned: [{ start: 1 }] },
+        ],
+        ['a resume with no list of stuck ground', { ...resume, stuck: undefined }],
+        [
+          'a resume with a stuck entry of kind other than a point',
+          { ...resume, stuck: [{ start: 1, end: 2, kind: 'range' }] },
+        ],
+        ['a resume whose series are no list', { ...resume, series: 'MAIN_FUNDING' }],
+        ['a resume with an empty list of series', { ...resume, series: [] }],
+        ['a resume with a series that is blank', { ...resume, series: [' '] }],
+      ])('makes the stored value malformed for %s', (_label, bad) => {
+        const stored = { ...hints, point: [{ start: 400, end: 450, resume: bad }] };
+
+        expect(hintsOf(stored)).toBeUndefined();
+      });
+    });
+  });
+
+  describe('the six fields of the Earn walk', () => {
+    const point = { start: 5, end: 7, kind: 'point', series: 'flexibleRewards' };
+    const hints = { forward: [], pending: [{ start: 200, end: 220 }], rescan: [], point: [] };
+
+    it('are read as the other walks read theirs: a list with a point of a kind, a cursor, a number, the hints', () => {
+      const stored = {
+        cursor: 4_000,
+        rescan: 3_000,
+        pending: [point],
+        pointCursor: 6,
+        rangeCursor: 9,
+        spanHints: hints,
+      };
+
+      expect(marksOf(stored, 'earn')).toEqual(stored);
+    });
+  });
+
+  describe('the trades', () => {
+    const trades = {
+      symbols: { BTCUSDT: { fromId: 5, heldOrderId: 9 }, ETHUSDT: { fromId: null } },
+      rotation: 3,
+      balanceSnapshot: { BTC: '0.5', USDT: '120.25' },
+    };
+
+    it('are read as stored', () => {
+      expect(readableOf(stateTextOf({ trades })).trades).toEqual(trades);
+    });
+
+    it('are empty when absent, and nothing is named', () => {
+      const parsed = readableOf(stateTextOf({}));
+
+      expect(parsed.trades).toEqual(EMPTY_TRADES);
+      expect(parsed.unreadable).toEqual([]);
+    });
+
+    it.each([
+      ['text', 'x'],
+      ['null', null],
+      ['a list', []],
+      ['symbols that are a list', { ...trades, symbols: [] }],
+      ['a symbol that is no object', { ...trades, symbols: { BTCUSDT: 5 } }],
+      ['a symbol with a text fromId', { ...trades, symbols: { BTCUSDT: { fromId: '5' } } }],
+      ['a symbol with no fromId', { ...trades, symbols: { BTCUSDT: {} } }],
+      [
+        'a symbol with a heldOrderId that is text',
+        { ...trades, symbols: { BTCUSDT: { fromId: 5, heldOrderId: '9' } } },
+      ],
+      ['a rotation that is text', { ...trades, rotation: '3' }],
+      ['no rotation', { symbols: trades.symbols, balanceSnapshot: trades.balanceSnapshot }],
+      ['a balance snapshot that is a list', { ...trades, balanceSnapshot: ['0.5'] }],
+      ['a balance of a coin that is no text', { ...trades, balanceSnapshot: { BTC: 0.5 } }],
+    ])('read as empty and are named for %s, and nothing else is emptied', (_label, bad) => {
+      const parsed = readableOf(
+        stateTextOf({
+          trades: bad,
+          walks: { capital: { cursor: 1_000 } },
+          untrackedCoins: { balance: ['PEPE'] },
+        }),
+      );
+
+      expect(parsed.trades).toEqual(EMPTY_TRADES);
+      expect(parsed.unreadable).toEqual(['trades']);
+      expect(parsed.walks.capital.cursor).toBe(1_000);
+      expect(parsed.untrackedCoins.balance).toEqual(['PEPE']);
+    });
+  });
+
+  describe('the coin lists', () => {
+    const stored = {
+      untrackedCoins: { balance: ['PEPE'], history: ['XYZ'] },
+      oversizedCoins: { balance: ['SHIB'], history: ['DOGE', 'FLOKI'] },
+    };
+    const KINDS = ['untrackedCoins', 'oversizedCoins'] as const;
+    const SOURCES = ['balance', 'history'] as const;
+
+    it('are read as stored', () => {
+      const parsed = readableOf(stateTextOf(stored));
+
+      expect(parsed.untrackedCoins).toEqual(stored.untrackedCoins);
+      expect(parsed.oversizedCoins).toEqual(stored.oversizedCoins);
+      expect(parsed.unreadable).toEqual([]);
+    });
+
+    it('are empty when absent, and nothing is named', () => {
+      const parsed = readableOf(stateTextOf({}));
+
+      expect(parsed.untrackedCoins).toEqual({ balance: [], history: [] });
+      expect(parsed.oversizedCoins).toEqual({ balance: [], history: [] });
+      expect(parsed.unreadable).toEqual([]);
+    });
+
+    it('read a list left out of a kind as empty, and name nothing', () => {
+      const parsed = readableOf(stateTextOf({ untrackedCoins: { history: ['XYZ'] } }));
+
+      expect(parsed.untrackedCoins).toEqual({ balance: [], history: ['XYZ'] });
+      expect(parsed.unreadable).toEqual([]);
+    });
+
+    describe.each(KINDS.flatMap((kind) => SOURCES.map((source) => [kind, source] as const)))(
+      'the %s %s list',
+      (kind, source) => {
+        it.each([
+          ['text', 'x'],
+          ['null', null],
+          ['an object', { 0: 'PEPE' }],
+          ['a list holding a number', ['PEPE', 5]],
+          ['a list holding null', [null]],
+        ])(
+          'parses alone: empty and named when it is %s, the others keep their values',
+          (_l, bad) => {
+            const other = kind === 'untrackedCoins' ? 'oversizedCoins' : 'untrackedCoins';
+            const parsed = readableOf(
+              stateTextOf({ ...stored, [kind]: { ...stored[kind], [source]: bad } }),
+            );
+
+            expect(parsed[kind]).toEqual({ ...stored[kind], [source]: [] });
+            expect(parsed[other]).toEqual(stored[other]);
+            expect(parsed.unreadable).toEqual([`${kind}.${source}`]);
+          },
+        );
+      },
+    );
+
+    it.each(KINDS)('read as empty and are named when the %s are no object', (kind) => {
+      for (const bad of ['x', null, ['PEPE']]) {
+        const parsed = readableOf(stateTextOf({ ...stored, [kind]: bad }));
+
+        expect(parsed[kind]).toEqual({ balance: [], history: [] });
+        expect(parsed.unreadable).toEqual([kind]);
+      }
+    });
+  });
+
+  it('names every entry it could not read, in a fixed order', () => {
+    const parsed = readableOf(
+      stateTextOf({
+        walks: { earn: 'x', capital: 5 },
+        trades: 'x',
+        oversizedCoins: { history: 'x' },
+        untrackedCoins: { balance: 'x', history: 'x' },
+      }),
+    );
+
+    expect(parsed.unreadable).toEqual([
+      'walks.capital',
+      'walks.earn',
+      'trades',
+      'untrackedCoins.balance',
+      'untrackedCoins.history',
+      'oversizedCoins.history',
+    ]);
+  });
+});
