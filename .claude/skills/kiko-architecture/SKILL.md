@@ -1913,7 +1913,11 @@ than restated here:
   walk (`walks.capital.cursor`): "every window ending at or before this
   instant is imported." `parseExchangeState` and `walk-values.ts`
   (`exchange/walk-state/`) are the reader, `syncStateRepo.patchExchangeState`
-  (a list of patches in one write) the writer. The plan comes from
+  (a list of patches in one write) the writer. A patch applies to the RAW
+  stored JSON, never the re-serialized parse (the parse drops `notImported`,
+  `multiCoin*` and unknown walk ids and repairs malformed fields;
+  `exchange-state-patch.ts`); a malformed top level makes a patch write
+  nothing, only a disconnect replaces it. The plan comes from
   `planWalkPasses` (`exchange/walk/walk.ts`; read its input type for the
   cursor, re-scan cursor, point cursor, pending list, floor, window and
   `RESYNC_OVERLAP_MS`). The capital walk feeds it
@@ -2007,16 +2011,20 @@ than restated here:
   finds the institution cleared; `clearCredentials` follows. In each walk
   entry a stored `cursor` or `rescan` becomes `HISTORY_FLOOR_MS`, a `pending`
   list `[]`, and the point cursor, range cursor and span hints are DROPPED (no
-  mark = before the oldest point or range, no span to resume). A cursor is
-  never dropped: a missing cursor falls back to the legacy
-  `latestTransactionTime` cursor, which a reconnected
-  DIFFERENT Binance account would inherit as if it were its own
-  already-imported history, silently skipping that account's own older
+  mark = before the oldest point or range, no span to resume). Only the CAPITAL
+  entry gets `{cursor: floor}` when it is stored but unreadable, because a
+  missing capital cursor falls back to the legacy `latestTransactionTime`
+  cursor, which a reconnected DIFFERENT Binance account would inherit as if
+  it were its own already-imported history, silently skipping that account's
+  own older
   records. `binanceAsset`/`walletAddress` are untouched, so a SAME-account
   reconnect still re-adopts the holding (`upsertByMetadataKey`'s
   match-by-key) and simply re-walks from the floor. Connecting a DIFFERENT
   Binance account afterward walks its own history from the floor instead
-  of inheriting a stale, forward watermark.
+  of inheriting a stale, forward watermark. A malformed top level becomes
+  `{capital: {cursor: floor}}`; another walk's unreadable entry is dropped
+  (it starts at its floor). A failure in either half of
+  `accountsRepo.disconnectExchange` rolls back both.
 - **A BTC wallet re-sync fetches every OPEN holding's stored address.**
   `bitcoinWalletProvider` (`src/crypto-sync/btc-wallet/`) syncs the Connect
   address first, then each open holding's stored address (a closed holding's
@@ -2037,7 +2045,11 @@ than restated here:
   passed; only the Transfer walk's owed RANGE counts, as `transferOwesRange` reads
   the Transfer `pending` list alone), false before the account's own first balance sync.
   An owed point never
-  shows it. `CryptoSyncSection`
+  shows it. A malformed walk state PAUSES the history: `CryptoSyncSection`'s
+  `historyPaused` (Binance and `walkState.kind === 'malformed'`) shows
+  `accountDetail.exchangeHistoryPaused` INSTEAD of `binanceHistoryPending`, and
+  the repair is disconnect + reconnect (`resetExchangeStateDatabaseTransaction`
+  replaces a malformed top level with a capital floor cursor). `CryptoSyncSection`
   renders the `accountDetail.binanceHistoryPending` caption under the
   status line only when `connectedProvider === 'binance'`, so a wallet
   account never evaluates or shows it.
@@ -2277,6 +2289,11 @@ stop codes and scenario rows.
   its first span within h + 1 runs of one read each, at any gap between runs
   (the properties run at 0, an hour and a day). A malformed value is
   ignored, stored over at once and logged (`span-hints-malformed`).
+- **A committed span names the series it read.** `MarkAdvance.series`
+  (`walk.ts`) is a REQUIRED key: a walk that sets `seriesOf` (Transfer, Earn)
+  passes `series: window.series`; Capital and Pay pass `series: undefined`. An
+  omitted series made a points-pass read cut owed ranges of every kind (Earn
+  record loss).
 - **A point window keeps its progress across runs (R34).** A point leaves
   the list only when its WHOLE window was read to its end, so a window left
   after some spans committed would start over every run. `walkSpans` reports a
@@ -2689,6 +2706,15 @@ shape, and hand-rolled `utf8/utf8.ts` + `base64/base64.ts` codecs.
   `VERSION_DECISIONS` comment and bump `migrationCount` in
   `src/data-transfer/crypto/envelope.test.ts`; the scoped jest run must include
   `e2e/screenshot` and `src/data-transfer/crypto`.
+  Migration 0061 (`exchange_state`) has a restore mirror,
+  `withWalkStateMoved` (`snapshot/with-walk-state-moved.ts`, keys in
+  `legacy-walk-keys.ts`), called in `restore-snapshot.ts`: a stored string
+  `exchangeState` (even malformed) is kept; null or absent is filled from the
+  account's first Spot BTC holding's metadata, stamps kept; an account with
+  walk keys and no row gets a new row with null stamps; the old holding keys
+  stay. Read `restore-walk-state.two-path.test.ts`,
+  `drizzle/migrations/0061-exchange-state.test.ts` and its `VERSION_DECISIONS`
+  entry in `envelope.test.ts`.
   Worked example of a device-local settings column: 0060
   `settings.history_backfill_state` (nullable; the history backfill's resume
   state). It is listed in `KEPT_FROM_LIVE_ON_RESTORE`, so a file never
