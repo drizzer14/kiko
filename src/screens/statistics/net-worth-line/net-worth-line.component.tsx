@@ -1,7 +1,10 @@
-import { type FC, memo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useUnistyles } from 'react-native-unistyles';
-import { type DimensionValue, View } from 'react-native';
+import { trigger } from 'react-native-haptic-feedback';
+import { NavigationContext } from '@react-navigation/native';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import { type FC, memo, useContext, useEffect, useRef, useState } from 'react';
+import { type DimensionValue, type LayoutChangeEvent, View } from 'react-native';
 import { Defs, G, Line, LinearGradient, Path, Polyline, Stop, Svg } from 'react-native-svg';
 
 // react-native-svg declares `testID` (via AccessibilityProps -> CommonPathProps)
@@ -19,16 +22,32 @@ declare module 'react-native-svg' {
   }
 }
 
-import { formatDayMonth } from '@kiko/dates';
 import { maxOf, minOf } from '@kiko/numbers';
+import { Money } from '@kiko/currency/money';
+import { formatMoney } from '@kiko/currency/format';
 import Box from '@kiko/design-system/components/box';
 import Text from '@kiko/design-system/components/text';
 import { activeLocale } from '@kiko/i18n/active-locale';
 import type { Currency } from '@kiko/currency/currency';
+import { formatDate, formatDayMonth } from '@kiko/dates';
+import MoneyText from '@kiko/design-system/components/money-text';
 import type { NetWorthPoint } from '@kiko/statistics/net-worth-series';
 import { chooseCompactUnit, formatCompactMoney } from '@kiko/currency/compact';
 
+import {
+  nearestPointIndex,
+  placeScrubLabel,
+  resolveScrubIndex,
+  SCRUB_ACTIVE_OFFSET_X,
+  SCRUB_FAIL_OFFSET_Y,
+  type ScrubSelection,
+  scrubRangeKey,
+  stepScrubIndex,
+  toLogicalX,
+} from './net-worth-line.scrub';
 import { styles } from './net-worth-line.styles';
+
+export const NET_WORTH_SCRUB_GESTURE_TEST_ID = 'net-worth-line-scrub-gesture';
 
 /**
  * The converted net-worth line over time. Each point's `amount` is total net
@@ -459,6 +478,40 @@ const StatusMessage: FC<{ testID: string; message: string; height: number }> = (
   );
 };
 
+// A VoiceOver swipe up or down on the adjustable plot steps the line one point.
+const ACCESSIBILITY_STEPS: Partial<Record<string, 1 | -1>> = { increment: 1, decrement: -1 };
+
+type ScrubLabelProps = {
+  money: Money;
+  time: number;
+  lineX: number;
+  plotWidth: number;
+  gap: number;
+};
+
+// The small day label beside the scrub line. It measures its own width so `placeScrubLabel` can
+// flip it away from a plot edge, and stays invisible until both widths are known so the first
+// frame never draws it mis-placed.
+const ScrubLabel: FC<ScrubLabelProps> = ({ money, time, lineX, plotWidth, gap }) => {
+  const [labelWidth, setLabelWidth] = useState(0);
+  const left = placeScrubLabel(lineX, labelWidth, plotWidth, gap);
+  const measured = labelWidth > 0 && plotWidth > 0;
+
+  return (
+    <View
+      testID="net-worth-line-scrub-label"
+      pointerEvents="none"
+      onLayout={(event: LayoutChangeEvent) => setLabelWidth(event.nativeEvent.layout.width)}
+      style={[styles.scrubLabel, { left, opacity: measured ? 1 : 0 }]}
+    >
+      <MoneyText money={money} style={styles.scrubAmount} numberOfLines={1} />
+      <Text variant="caption" tone="textSecondary">
+        {formatDate(time)}
+      </Text>
+    </View>
+  );
+};
+
 const NetWorthLine: FC<NetWorthLineProps> = ({
   points,
   startReference,
@@ -467,6 +520,16 @@ const NetWorthLine: FC<NetWorthLineProps> = ({
   height = DEFAULT_HEIGHT,
 }) => {
   const { theme } = useUnistyles();
+  // The scrub state sits above the empty/loading early return so the hook order never changes.
+  const [selection, setSelection] = useState<ScrubSelection | null>(null);
+  const [plotWidth, setPlotWidth] = useState(0);
+  const lastTickIndex = useRef<number | null>(null);
+  // Statistics is a tab that stays mounted, so its `focus` event is the screen being opened
+  // again; outside a navigator (`undefined`) there is no such event and nothing is listened to.
+  const navigation = useContext(NavigationContext);
+
+  useEffect(() => navigation?.addListener('focus', () => setSelection(null)), [navigation]);
+
   // The red/negative fill needs more opacity than the green band on the OLED
   // true-black background (see NEGATIVE_AREA_OPACITY above).
   const negativeAreaOpacity = NEGATIVE_AREA_OPACITY;
@@ -477,6 +540,13 @@ const NetWorthLine: FC<NetWorthLineProps> = ({
   // it. formatAxisTime (the X-axis date label) is locale-independent — a fixed
   // numeric day.month format — so it needs no such subscription.
   const { t } = useTranslation();
+
+  // A selection from another range is cleared here, not left to stop matching: re-picking that
+  // range later would otherwise bring the old dragged index back instead of the present day. An
+  // empty series has no range, so it clears too, ahead of the empty return below.
+  if (selection !== null && (points.length === 0 || selection.rangeKey !== scrubRangeKey(points))) {
+    setSelection(null);
+  }
 
   if (points.length === 0) {
     return loading ? (
@@ -510,6 +580,62 @@ const NetWorthLine: FC<NetWorthLineProps> = ({
   const { greenTopY, redBottomY } = bandExtremes(points, scales, referenceY);
   const hasGreenBand = greenTopY < referenceY;
   const hasRedBand = redBottomY > referenceY;
+  const selectedIndex = resolveScrubIndex(selection, points);
+  const selectedPoint = points[selectedIndex];
+  const selectedX = scales.x(selectedPoint.t);
+  const selectedMoney = Money.fromMajor(baseCurrency, selectedPoint.amount);
+  const selectedDayText = t('components.netWorthLine.selectedDay', {
+    amount: formatMoney(selectedMoney, activeLocale()),
+    date: formatDate(selectedPoint.t),
+  });
+
+  const select = (index: number): void => {
+    setSelection({ rangeKey: scrubRangeKey(points), index });
+  };
+
+  const moveTo = (event: { x: number }): void => {
+    const logicalX = toLogicalX(event.x, plotWidth, VIEW_WIDTH);
+
+    if (logicalX === null) {
+      return;
+    }
+
+    const index = nearestPointIndex(
+      points.map((point) => scales.x(point.t)),
+      logicalX,
+    );
+
+    // The ref, not the rendered index, is compared against: several touch events can arrive
+    // before React re-renders, and each new point must tick the haptic exactly once.
+    if (index === (lastTickIndex.current ?? selectedIndex)) {
+      return;
+    }
+
+    lastTickIndex.current = index;
+    trigger('selection');
+    select(index);
+  };
+
+  // A new drag starts from the line's rendered position again: the line can have moved since the
+  // last drag (a period change, a focus reset, a VoiceOver step) without this ref knowing.
+  const scrub = Gesture.Pan()
+    .activeOffsetX([-SCRUB_ACTIVE_OFFSET_X, SCRUB_ACTIVE_OFFSET_X])
+    .failOffsetY([-SCRUB_FAIL_OFFSET_Y, SCRUB_FAIL_OFFSET_Y])
+    .runOnJS(true)
+    .withTestId(NET_WORTH_SCRUB_GESTURE_TEST_ID)
+    .onBegin(() => {
+      lastTickIndex.current = null;
+    })
+    .onStart(moveTo)
+    .onUpdate(moveTo);
+
+  const stepSelection = (actionName: string): void => {
+    const delta = ACCESSIBILITY_STEPS[actionName];
+
+    if (delta !== undefined) {
+      select(stepScrubIndex(selectedIndex, delta, points.length));
+    }
+  };
 
   return (
     <Box style={styles.container}>
@@ -534,65 +660,76 @@ const NetWorthLine: FC<NetWorthLineProps> = ({
           ))}
         </View>
 
-        <View style={[styles.plot, { height }]}>
-          <Svg
-            width="100%"
-            height={height}
-            viewBox={`0 0 ${VIEW_WIDTH} ${height}`}
-            preserveAspectRatio="none"
+        <GestureDetector gesture={scrub}>
+          <View
+            testID="net-worth-line-plot"
+            style={[styles.plot, { height }]}
+            onLayout={(event: LayoutChangeEvent) => setPlotWidth(event.nativeEvent.layout.width)}
+            accessible
+            accessibilityRole="adjustable"
+            accessibilityLabel={t('components.netWorthLine.chartAccessibilityLabel')}
+            accessibilityValue={{ text: selectedDayText }}
+            accessibilityActions={[{ name: 'increment' }, { name: 'decrement' }]}
+            onAccessibilityAction={(event) => stepSelection(event.nativeEvent.actionName)}
           >
-            <G>
-              {ticks.map((tick) => (
-                <Line
-                  key={tick.key}
-                  testID={`net-worth-line-y-grid-${tick.key}`}
-                  x1={PADDING_X}
-                  y1={scales.y(tick.value)}
-                  x2={VIEW_WIDTH - PADDING_X}
-                  y2={scales.y(tick.value)}
-                  stroke={theme.colors.border}
-                  strokeWidth={GRID_STROKE_WIDTH}
-                />
-              ))}
-            </G>
+            <Svg
+              width="100%"
+              height={height}
+              viewBox={`0 0 ${VIEW_WIDTH} ${height}`}
+              preserveAspectRatio="none"
+            >
+              <G>
+                {ticks.map((tick) => (
+                  <Line
+                    key={tick.key}
+                    testID={`net-worth-line-y-grid-${tick.key}`}
+                    x1={PADDING_X}
+                    y1={scales.y(tick.value)}
+                    x2={VIEW_WIDTH - PADDING_X}
+                    y2={scales.y(tick.value)}
+                    stroke={theme.colors.border}
+                    strokeWidth={GRID_STROKE_WIDTH}
+                  />
+                ))}
+              </G>
 
-            <G>
-              {xGridTicks.map((tick) => (
-                <Line
-                  key={tick.key}
-                  testID={`net-worth-line-x-grid-${tick.key}`}
-                  x1={scales.x(tick.time)}
-                  y1={PADDING_Y}
-                  x2={scales.x(tick.time)}
-                  y2={baselineY}
-                  stroke={theme.colors.border}
-                  strokeWidth={GRID_STROKE_WIDTH}
-                />
-              ))}
-            </G>
+              <G>
+                {xGridTicks.map((tick) => (
+                  <Line
+                    key={tick.key}
+                    testID={`net-worth-line-x-grid-${tick.key}`}
+                    x1={scales.x(tick.time)}
+                    y1={PADDING_Y}
+                    x2={scales.x(tick.time)}
+                    y2={baselineY}
+                    stroke={theme.colors.border}
+                    strokeWidth={GRID_STROKE_WIDTH}
+                  />
+                ))}
+              </G>
 
-            <Line
-              testID="net-worth-line-x-axis"
-              x1={PADDING_X}
-              y1={baselineY}
-              x2={VIEW_WIDTH - PADDING_X}
-              y2={baselineY}
-              stroke={theme.colors.border}
-              strokeWidth={GRID_STROKE_WIDTH}
-            />
+              <Line
+                testID="net-worth-line-x-axis"
+                x1={PADDING_X}
+                y1={baselineY}
+                x2={VIEW_WIDTH - PADDING_X}
+                y2={baselineY}
+                stroke={theme.colors.border}
+                strokeWidth={GRID_STROKE_WIDTH}
+              />
 
-            <Line
-              testID="net-worth-line-reference"
-              x1={PADDING_X}
-              y1={referenceY}
-              x2={VIEW_WIDTH - PADDING_X}
-              y2={referenceY}
-              stroke={theme.colors.textSecondary}
-              strokeWidth={GRID_STROKE_WIDTH}
-              strokeDasharray={REFERENCE_DASH}
-            />
+              <Line
+                testID="net-worth-line-reference"
+                x1={PADDING_X}
+                y1={referenceY}
+                x2={VIEW_WIDTH - PADDING_X}
+                y2={referenceY}
+                stroke={theme.colors.textSecondary}
+                strokeWidth={GRID_STROKE_WIDTH}
+                strokeDasharray={REFERENCE_DASH}
+              />
 
-            {/* The area fills BETWEEN the line and the dashed reference
+              {/* The area fills BETWEEN the line and the dashed reference
                 baseline, not the chart bottom. TWO separate paths, each the line
                 clamped and CROSSING-AWARE to one side of the reference (no clip
                 path — ClipPath did not render on real iOS react-native-svg):
@@ -601,92 +738,113 @@ const NetWorthLine: FC<NetWorthLineProps> = ({
                 referenceY, referenceY -> redBottomY), not the whole plot half,
                 so a shallow dip/rise still shows readable color. A side with no
                 point on it renders neither its gradient nor its Path. */}
-            <Defs>
+              <Defs>
+                {hasGreenBand ? (
+                  <LinearGradient
+                    testID="net-worth-line-gradient-positive"
+                    id="net-worth-line-gradient-positive"
+                    x1="0"
+                    y1={greenTopY}
+                    x2="0"
+                    y2={referenceY}
+                    gradientUnits="userSpaceOnUse"
+                  >
+                    <Stop
+                      testID="net-worth-line-gradient-positive-stop-line"
+                      offset="0"
+                      stopColor={theme.colors.positive}
+                      stopOpacity={AREA_OPACITY}
+                    />
+                    <Stop
+                      testID="net-worth-line-gradient-positive-stop-reference"
+                      offset="1"
+                      stopColor={theme.colors.positive}
+                      stopOpacity={0}
+                    />
+                  </LinearGradient>
+                ) : null}
+
+                {hasRedBand ? (
+                  <LinearGradient
+                    testID="net-worth-line-gradient-negative"
+                    id="net-worth-line-gradient-negative"
+                    x1="0"
+                    y1={referenceY}
+                    x2="0"
+                    y2={redBottomY}
+                    gradientUnits="userSpaceOnUse"
+                  >
+                    <Stop
+                      testID="net-worth-line-gradient-negative-stop-reference"
+                      offset="0"
+                      stopColor={theme.colors.negative}
+                      stopOpacity={0}
+                    />
+                    <Stop
+                      testID="net-worth-line-gradient-negative-stop-line"
+                      offset="1"
+                      stopColor={theme.colors.negative}
+                      stopOpacity={negativeAreaOpacity}
+                    />
+                  </LinearGradient>
+                ) : null}
+              </Defs>
+
               {hasGreenBand ? (
-                <LinearGradient
-                  testID="net-worth-line-gradient-positive"
-                  id="net-worth-line-gradient-positive"
-                  x1="0"
-                  y1={greenTopY}
-                  x2="0"
-                  y2={referenceY}
-                  gradientUnits="userSpaceOnUse"
-                >
-                  <Stop
-                    testID="net-worth-line-gradient-positive-stop-line"
-                    offset="0"
-                    stopColor={theme.colors.positive}
-                    stopOpacity={AREA_OPACITY}
-                  />
-                  <Stop
-                    testID="net-worth-line-gradient-positive-stop-reference"
-                    offset="1"
-                    stopColor={theme.colors.positive}
-                    stopOpacity={0}
-                  />
-                </LinearGradient>
+                <Path
+                  testID="net-worth-line-area-positive"
+                  d={toAreaPath(points, scales, referenceY, 'above')}
+                  fill="url(#net-worth-line-gradient-positive)"
+                  stroke="none"
+                />
               ) : null}
 
               {hasRedBand ? (
-                <LinearGradient
-                  testID="net-worth-line-gradient-negative"
-                  id="net-worth-line-gradient-negative"
-                  x1="0"
-                  y1={referenceY}
-                  x2="0"
-                  y2={redBottomY}
-                  gradientUnits="userSpaceOnUse"
-                >
-                  <Stop
-                    testID="net-worth-line-gradient-negative-stop-reference"
-                    offset="0"
-                    stopColor={theme.colors.negative}
-                    stopOpacity={0}
-                  />
-                  <Stop
-                    testID="net-worth-line-gradient-negative-stop-line"
-                    offset="1"
-                    stopColor={theme.colors.negative}
-                    stopOpacity={negativeAreaOpacity}
-                  />
-                </LinearGradient>
+                <Path
+                  testID="net-worth-line-area-negative"
+                  d={toAreaPath(points, scales, referenceY, 'below')}
+                  fill="url(#net-worth-line-gradient-negative)"
+                  stroke="none"
+                />
               ) : null}
-            </Defs>
 
-            {hasGreenBand ? (
-              <Path
-                testID="net-worth-line-area-positive"
-                d={toAreaPath(points, scales, referenceY, 'above')}
-                fill="url(#net-worth-line-gradient-positive)"
-                stroke="none"
-              />
-            ) : null}
-
-            {hasRedBand ? (
-              <Path
-                testID="net-worth-line-area-negative"
-                d={toAreaPath(points, scales, referenceY, 'below')}
-                fill="url(#net-worth-line-gradient-negative)"
-                stroke="none"
-              />
-            ) : null}
-
-            {/* See buildLineSegments above: the stroke reads sign at a
+              {/* See buildLineSegments above: the stroke reads sign at a
                 glance, green above / red below the dashed reference, split
                 at the SAME crossing x the fill above uses. A non-crossing
                 series renders as exactly one segment/color. */}
-            {buildLineSegments(points, scales, referenceY).map((segment) => (
-              <Polyline
-                key={segment.key}
-                testID={`net-worth-line-polyline-${segment.key}`}
-                points={segment.points}
-                fill="none"
-                stroke={segment.side === 'above' ? theme.colors.positive : theme.colors.negative}
-                strokeWidth={LINE_STROKE_WIDTH}
+              {buildLineSegments(points, scales, referenceY).map((segment) => (
+                <Polyline
+                  key={segment.key}
+                  testID={`net-worth-line-polyline-${segment.key}`}
+                  points={segment.points}
+                  fill="none"
+                  stroke={segment.side === 'above' ? theme.colors.positive : theme.colors.negative}
+                  strokeWidth={LINE_STROKE_WIDTH}
+                />
+              ))}
+
+              {/* The scrub line: the baseline's dash, colour and width, always drawn. */}
+              <Line
+                testID="net-worth-line-scrub"
+                x1={selectedX}
+                y1={PADDING_Y}
+                x2={selectedX}
+                y2={baselineY}
+                stroke={theme.colors.textSecondary}
+                strokeWidth={GRID_STROKE_WIDTH}
+                strokeDasharray={REFERENCE_DASH}
               />
-            ))}
-          </Svg>
-        </View>
+            </Svg>
+
+            <ScrubLabel
+              money={selectedMoney}
+              time={selectedPoint.t}
+              lineX={(selectedX * plotWidth) / VIEW_WIDTH}
+              plotWidth={plotWidth}
+              gap={theme.spacing(2)}
+            />
+          </View>
+        </GestureDetector>
       </View>
 
       <View testID="net-worth-line-x-axis-labels" style={styles.xAxis}>

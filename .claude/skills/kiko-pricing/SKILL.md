@@ -727,7 +727,7 @@ trust a bank name or task tag copied here) and `bankSellsMetals(bankId)`,
 defaulting to `false` for an unset/unrecognized `bankId` —
 deliberately the OPPOSITE default from `isConnectableBank`'s
 permissive `true`, since an unknown bank must not silently unlock the
-allow-listed `metal` holding type. Guideline 2.3.1(a): `sellsMetals` is
+allow-listed `metal` holding type. Guideline 2.5.19: `sellsMetals` is
 always-rendered data on the fully-rendered static catalog array, never
 a visibility flag — every bank row always renders in the bank picker;
 only the CREATABLE holding-type set differs. `metal` is allow-listed

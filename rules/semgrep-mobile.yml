@@ -46,14 +46,14 @@ rules:
       - metavariable-regex:
           metavariable: $TOKEN
           regex: (?i).*(token|secret|password|credential|api_?key).*|key$
-  # Guideline 2.3.1(a) (App Store rejection of build 7: "features intentionally
+  # Guideline 2.5.19, formerly 2.3.1(a) (App Store rejection of build 7: "features intentionally
   # hidden during review"). Three shapes, one rule: importing a
   # SHOW_*/HIDE_*/SCREENSHOT_* visibility-control @env flag (any flag named
   # that way IS a visibility-control switch by the project's own naming
   # convention — see CLAUDE.md/documented-exceptions.md), a static `import`
   # reaching from app source into the dev-only `e2e/` tree, and a dynamic
   # `require(...)` reaching the same `e2e/` tree. All three are
-  # deterministic, always-a-bug shapes, so ERROR: a 2.3.1(a) violation blocks a
+  # deterministic, always-a-bug shapes, so ERROR: a 2.5.19 violation blocks a
   # release outright, there is no legitimate reason to ship any of them.
   #
   # The dynamic `require` arm exists because Metro's dead-code elimination
@@ -86,7 +86,7 @@ rules:
     languages: [typescript, javascript]
     severity: ERROR
     message: >
-      Guideline 2.3.1(a) hidden-feature pattern: this either imports a
+      Guideline 2.5.19 hidden-feature pattern: this either imports a
       SHOW_*/HIDE_*/SCREENSHOT_* visibility-control @env flag to gate what UI
       renders, statically imports a dev-only module from `e2e/`
       (screenshot/demo/seed data) into app source, or dynamically

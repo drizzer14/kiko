@@ -2135,6 +2135,15 @@ file-level prefix comment when both were present in the same file —
 see `net-worth-series.test.ts` for a worked example of both rules
 applying in the same file at once).
 
+A column-0 `declare module` block (or a one-line `declare module 'x';`) ends
+an import run. The imports after it form an independent run: fresh
+group-order and adjacency state, no order or adjacency check across the
+block. `--write` keeps the block verbatim and fixes the next run
+(`ambientBlockEnd`, `checkRun`, `fixRun`). Duplicate specifiers are checked
+across all runs. Known limit (run-log gap 20261016T2311-kiko-net-worth-scrub/1):
+only a bare column-0 `}` closes the block, so `};`, `} // x`, an indented
+block or a one-line-body block still hides the imports after it.
+
 `--write` (`node scripts/checks/import-order.js --write <file...>`) is
 a repo-sweep tool, not part of the check-wrapper contract (see "The
 wrapper contract" above — a checker only checks) — it is invoked by

@@ -140,13 +140,13 @@ A suppression or ignore-list entry is acceptable only when it names a concrete r
 agent can verify. The full inventory lives in **`docs/harness/documented-exceptions.md`**. Read
 and UPDATE it when you add, change, or rely on an exception.
 
-## Guideline 2.3.1(a) — no hidden features (Apple's rejection cited 5.6)
+## Guideline 2.5.19 — no hidden features (formerly 2.3.1(a); Apple's rejection cited 5.6)
 
 Standing architecture rule, not a one-off cleanup: every feature ships VISIBLE to an App Store
 reviewer in a release build — no flag-gated or conditional-visibility feature, and no
 demo/seed/screenshot module in or imported from app `src/`. The full rule, the mechanized Semgrep
 check (`kiko-no-hidden-feature-flag-or-demo-import`), and its known limits live in
-**`.claude/skills/kiko-architecture/SKILL.md`** ("Guideline 2.3.1(a) — no hidden features"). Read that
+**`.claude/skills/kiko-architecture/SKILL.md`** ("Guideline 2.5.19 — no hidden features"). Read that
 section before adding any build/env flag that controls what a user sees, or any dev-only demo/seed
 module.
 

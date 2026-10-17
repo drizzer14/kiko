@@ -1,12 +1,17 @@
 import { i18n } from '@kiko/i18n/init';
 import { endOfLocalDay, startOfLocalDay } from '@kiko/dates';
-import { act, render, within } from '@testing-library/react-native';
 import type { NetWorthPoint } from '@kiko/statistics/net-worth-series';
+import GestureRootWrapper from '@kiko/test-support/gesture-root-wrapper';
+import { act, render as renderBare, within } from '@testing-library/react-native';
 
 import { darkTheme } from '@kiko/design-system/theme';
 import '@kiko/design-system/unistyles';
 import NetWorthLine from './index';
 import { buildLineSegments, buildTicks, toAreaPath } from './net-worth-line.component';
+
+// The plot carries the scrub line's GestureDetector, which needs a GestureHandlerRootView.
+const render: typeof renderBare = (ui, options) =>
+  renderBare(ui, { wrapper: GestureRootWrapper, ...options });
 
 // Every "y,x" coordinate's Y value in a path `d` string — every number that
 // follows a comma. The area builders clamp these to `referenceY`, so a test can

@@ -46,6 +46,11 @@ const snapshotWithHolding = (currency: string): DataSnapshot => ({
   holdings: [{ id: 'h1', currency }] as never,
 });
 
+const categoryRuleSnapshot = (matchers: unknown): DataSnapshot => ({
+  ...emptySnapshot,
+  categoryRules: [{ id: 'r1', matchers: JSON.stringify(matchers) }] as never,
+});
+
 const UNKNOWN_CURRENCY_CASES: [string, DataSnapshot][] = [
   ['a holding', snapshotWithHolding('XYZ')],
   ['a price point', { ...emptySnapshot, pricePoints: [{ id: 'p1', currency: 'XYZ' }] as never }],
@@ -54,6 +59,21 @@ const UNKNOWN_CURRENCY_CASES: [string, DataSnapshot][] = [
   [
     'a rate history base',
     { ...emptySnapshot, currencyRateHistory: [{ base: 'XYZ', quote: 'USD' }] as never },
+  ],
+  [
+    'a rate history quote',
+    { ...emptySnapshot, currencyRateHistory: [{ base: 'USD', quote: 'XYZ' }] as never },
+  ],
+  [
+    'an array in place of a holding currency',
+    { ...emptySnapshot, holdings: [{ id: 'h1', currency: ['USD'] }] as never },
+  ],
+  [
+    'an unknown amount matcher after a known one',
+    categoryRuleSnapshot([
+      { type: 'amount', operator: 'gte', minorUnits: 100, currency: 'USD' },
+      { type: 'amount', operator: 'gte', minorUnits: 100, currency: 'XYZ' },
+    ]),
   ],
   [
     'a bond register term',
@@ -120,6 +140,24 @@ describe('restoreDataSnapshot with a currency code this build does not know', ()
       { accountsRestored: 0 },
     );
     expect(insertInto).toHaveBeenCalled();
+  });
+
+  it('leaves a missing currency to the insert instead of refusing the backup', async () => {
+    await expect(
+      restoreDataSnapshot(
+        { ...emptySnapshot, currencyRates: [{ base: null, quote: 'USD' }] as never },
+        EXPORT_VERSION,
+      ),
+    ).resolves.toEqual({ accountsRestored: 0 });
+  });
+
+  it.each([
+    ['a matcher that is not an amount', [{ type: 'nameIs', text: 'x', currency: 'XYZ' }]],
+    ['matchers that are not records', [null, 'x', 5]],
+  ])('restores a backup with %s', async (_where, matchers) => {
+    await expect(
+      restoreDataSnapshot(categoryRuleSnapshot(matchers), EXPORT_VERSION),
+    ).resolves.toEqual({ accountsRestored: 0 });
   });
 
   it('restores a matchers text that is not JSON as it was stored', async () => {
