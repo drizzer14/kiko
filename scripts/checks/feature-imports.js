@@ -34,6 +34,7 @@ const CONTAINERS = new Set([
   'calendar',
   'categories',
   'crypto-sync',
+  'crypto-sync/exchange',
   'currency',
   'design-system',
   'design-system/components',

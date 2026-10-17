@@ -11,7 +11,7 @@ import {
 
 const NOW = 1_704_326_400_000;
 // signQuery('secret-fixture', 'timestamp=1704326400000&recvWindow=5000') — see
-// binance.hmac.test.ts.
+// exchange/signing/signing.test.ts.
 const EXPECTED_SIGNATURE = 'c548b5a5c27c61b57b685766340cfe11dff7cb5d0a693484f3af3e13f129df7f';
 
 const accountBody = {

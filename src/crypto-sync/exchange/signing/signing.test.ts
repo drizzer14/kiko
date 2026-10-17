@@ -1,4 +1,4 @@
-import { signQuery } from './binance.hmac';
+import { signQuery } from './signing';
 
 // RFC 4231 test case 2 (HMAC-SHA-256).
 const RFC4231_CASE_2 = {
