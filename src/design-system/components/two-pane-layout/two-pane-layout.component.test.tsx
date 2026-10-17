@@ -6,6 +6,8 @@ import { paneContextOf, usePaneContext, usePaneWidth } from '@kiko/design-system
 
 import '@kiko/design-system/unistyles';
 
+import Screen from '@kiko/design-system/components/screen';
+
 import TwoPaneLayout from '.';
 
 const mockUseLayoutMode = jest.fn((): LayoutMode => 'columns');
@@ -13,15 +15,23 @@ const mockUseFoldRegion = jest.fn((): FoldRegion => null);
 jest.mock('@kiko/display-regions', () => ({
   useLayoutMode: () => mockUseLayoutMode(),
   useFoldRegion: () => mockUseFoldRegion(),
+  useVerticalBarEdge: () => 'none',
+  useDisplayRegions: () => ({ horizontalSizeClass: 'regular' }),
 }));
 
+jest.mock('react-native-bottom-tabs', () => ({ useBottomTabBarHeight: () => 0 }));
+
+const mockWindow = { width: 951, height: 669, scale: 3, fontScale: 1 };
 jest.mock('react-native/Libraries/Utilities/useWindowDimensions', () => ({
   __esModule: true,
-  default: () => ({ width: 951, height: 669, scale: 3, fontScale: 1 }),
+  default: () => mockWindow,
 }));
 
 const HAIRLINE = darkTheme.layout.hairline;
 const HALF = (951 - HAIRLINE) / 2;
+// 2/3 and 1/3 of the 1366 pt window less the divider: 910 and 455 at a 1 pt divider.
+const WIDE_COMPANION = ((1366 - HAIRLINE) * 2) / 3;
+const WIDE_PRIMARY = (1366 - HAIRLINE) / 3;
 
 const renderLayout = () =>
   render(
@@ -58,6 +68,8 @@ describe('TwoPaneLayout', () => {
   beforeEach(() => {
     mockUseLayoutMode.mockReturnValue('columns');
     mockUseFoldRegion.mockReturnValue(null);
+    mockWindow.width = 951;
+    mockWindow.height = 669;
   });
 
   it('renders only the primary content in single mode', async () => {
@@ -186,6 +198,64 @@ describe('TwoPaneLayout', () => {
       await renderProbes();
 
       expect(screen.getByTestId('probe-primary').children).toEqual(['null']);
+    });
+  });
+
+  describe('wideSlot companion on a 1366 x 1024 window', () => {
+    beforeEach(() => {
+      mockWindow.width = 1366;
+      mockWindow.height = 1024;
+    });
+
+    it('gives the companion two thirds of the window less the divider', async () => {
+      await render(
+        <TwoPaneLayout
+          wideSlot="companion"
+          companion={<Text testID="companion-content">companion</Text>}
+          primary={<Text testID="primary-content">primary</Text>}
+        />,
+      );
+
+      expect(frameOf('two-pane-companion').width).toBeCloseTo(WIDE_COMPANION, 5);
+      expect(frameOf('two-pane-divider').x).toBeCloseTo(WIDE_COMPANION, 5);
+      expect(frameOf('two-pane-primary').x).toBeCloseTo(WIDE_COMPANION + HAIRLINE, 5);
+      expect(frameOf('two-pane-primary').width).toBeCloseTo(WIDE_PRIMARY, 5);
+    });
+
+    it('tells each child the width of its own, unequal, frame', async () => {
+      await render(
+        <TwoPaneLayout
+          wideSlot="companion"
+          companion={<PaneProbe name="companion" />}
+          primary={<PaneProbe name="primary" />}
+        />,
+      );
+
+      expect(Number(screen.getByTestId('width-companion').children[0])).toBeCloseTo(
+        WIDE_COMPANION,
+        5,
+      );
+      expect(Number(screen.getByTestId('width-primary').children[0])).toBeCloseTo(WIDE_PRIMARY, 5);
+    });
+
+    it('keeps the content cap and centring for a Screen in the wide companion', async () => {
+      await render(
+        <TwoPaneLayout
+          wideSlot="companion"
+          companion={
+            <Screen>
+              <Text>companion screen</Text>
+            </Screen>
+          }
+          primary={<Text testID="primary-content">primary</Text>}
+        />,
+      );
+
+      const root = StyleSheet.flatten(screen.getByTestId('screen-content').parent?.props.style);
+
+      expect(root.maxWidth).toBe(darkTheme.layout.paneMaxWidth);
+      expect(root.maxWidth).toBe(600);
+      expect(root.alignSelf).toBe('center');
     });
   });
 

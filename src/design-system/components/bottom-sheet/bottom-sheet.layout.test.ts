@@ -62,6 +62,22 @@ describe('resolveSheetFrame', () => {
     });
   });
 
+  it('characterization: a 1100 x 820 columns card is 540 wide, centred in the window', () => {
+    expect(frameOf('columns', { width: 1100, height: 820 }, null, 'regular')).toEqual({
+      width: 540,
+      left: (1100 - 540) / 2,
+    });
+  });
+
+  it('characterization: a folded 1100 pt window still centres the card in the fold primary', () => {
+    const fold = { x: 400, y: 0, width: FOLD_GAP, height: 820 };
+
+    expect(frameOf('columns', { width: 1100, height: 820 }, fold, 'regular')).toEqual({
+      width: 540,
+      left: 424 + (676 - 540) / 2,
+    });
+  });
+
   it('shrinks the card to a right pane narrower than the maximum width', () => {
     const fold = { x: 463, y: 0, width: FOLD_GAP, height: 669 };
 

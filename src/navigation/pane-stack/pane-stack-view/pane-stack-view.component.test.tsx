@@ -1,3 +1,5 @@
+import { StyleSheet } from 'react-native';
+import { darkTheme } from '@kiko/design-system/theme';
 import { render, screen } from '@testing-library/react-native';
 import type { FoldRegion, LayoutMode } from '@kiko/display-regions';
 
@@ -21,18 +23,39 @@ jest.mock('@react-navigation/native', () => ({
   useIsFocused: () => true,
 }));
 
+const HAIRLINE = darkTheme.layout.hairline;
+
+const mockWindow = { width: 951, height: 669, scale: 3, fontScale: 1 };
+jest.mock('react-native/Libraries/Utilities/useWindowDimensions', () => ({
+  __esModule: true,
+  default: () => mockWindow,
+}));
+
+const mockDetailMounted = jest.fn();
 const mockNativeStackView = jest.fn();
 jest.mock('@react-navigation/native-stack', () => {
-  const { useContext } = require('react');
+  const { useContext, useEffect } = require('react');
   const { View } = require('react-native');
   const { OpenInPaneContext } = require('../open-in-pane');
   const { PaneVisibilityContext } = require('../pane-visibility');
 
+  const DetailScreen = () => {
+    useEffect(() => {
+      mockDetailMounted();
+    }, []);
+
+    return <View testID="detail-screen" />;
+  };
+
   return {
-    NativeStackView: (props: { state: { routes: { key: string }[] } }) => {
+    NativeStackView: (props: { state: { routes: { key: string; name: string }[] } }) => {
       mockNativeStackView(props, useContext(PaneVisibilityContext), useContext(OpenInPaneContext));
 
-      return <View testID={`stack-${props.state.routes.map((route) => route.key).join('+')}`} />;
+      return (
+        <View testID={`stack-${props.state.routes.map((route) => route.key).join('+')}`}>
+          {props.state.routes.some((route) => route.name === 'WideDetail') && <DetailScreen />}
+        </View>
+      );
     },
   };
 });
@@ -92,7 +115,69 @@ const renderedProps = () =>
 describe('PaneStackView', () => {
   beforeEach(() => {
     mockNativeStackView.mockClear();
+    mockDetailMounted.mockClear();
     mockUseFoldRegion.mockReturnValue(null);
+    mockWindow.width = 951;
+    mockWindow.height = 669;
+  });
+
+  describe('a wide split crossing the 1100 pt threshold', () => {
+    const WIDE_HOME: PaneConfig = { rootPane: 'primary', wideSlot: 'companion' };
+    const state = stackState([route('home', 'Home'), route('detail', 'WideDetail')], {
+      home: 'primary',
+      detail: 'companion',
+    });
+
+    const showWindow = (width: number) => {
+      mockWindow.width = width;
+      mockWindow.height = 820;
+    };
+
+    const renderAt = (width: number) => {
+      showWindow(width);
+
+      return (
+        <PaneStackView
+          mode="columns"
+          state={state}
+          navigation={navigation}
+          descriptors={descriptors}
+          describe={describeRoute}
+          paneConfig={WIDE_HOME}
+        />
+      );
+    };
+
+    const companionWidth = () =>
+      StyleSheet.flatten(screen.getByTestId('two-pane-companion').props.style).width;
+
+    it('keeps columns, the slice route keys and one mounted detail screen across 1099, 1100, 1366', async () => {
+      const view = await render(renderAt(1099));
+
+      expect(companionWidth()).toBeCloseTo((1099 - HAIRLINE) / 2, 5);
+
+      await view.rerender(renderAt(1100));
+
+      expect(companionWidth()).toBeCloseTo(((1100 - HAIRLINE) * 2) / 3, 5);
+
+      await view.rerender(renderAt(1366));
+
+      expect(companionWidth()).toBeCloseTo(((1366 - HAIRLINE) * 2) / 3, 5);
+      expect(
+        StyleSheet.flatten(screen.getByTestId('two-pane-primary').props.style).left,
+      ).toBeCloseTo(((1366 - HAIRLINE) * 2) / 3 + HAIRLINE, 5);
+      expect(screen.getByTestId('stack-detail')).toBeTruthy();
+      expect(screen.getByTestId('stack-home')).toBeTruthy();
+      expect(screen.getAllByTestId('detail-screen')).toHaveLength(1);
+      expect(mockDetailMounted).toHaveBeenCalledTimes(1);
+
+      const lastTwo = renderedProps().slice(-2);
+
+      expect(lastTwo.map((props) => props.state.routes.map((entry) => entry.key))).toEqual([
+        ['detail'],
+        ['home'],
+      ]);
+    });
   });
 
   it('renders one native stack with the whole state in single mode', async () => {

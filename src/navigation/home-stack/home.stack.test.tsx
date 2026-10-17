@@ -68,6 +68,12 @@ describe('HomeStack', () => {
     expect(navigator.props.screenOptions).toEqual({ headerShown: false });
   });
 
+  it('gives the companion pane the wide share of a wide split', () => {
+    const navigator = HomeStack({}) as ReactElement<{ paneConfig: { wideSlot?: string } }>;
+
+    expect(navigator.props.paneConfig.wideSlot).toBe('companion');
+  });
+
   it('wraps every screen in the fitting large-title layout', () => {
     const navigator = HomeStack({}) as ReactElement<{ screenLayout: unknown }>;
 

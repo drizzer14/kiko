@@ -45,22 +45,26 @@ const AXES: Record<SplitMode, Axis> = {
 const clamp = (value: number, lowest: number, highest: number) =>
   Math.min(Math.max(value, lowest), highest);
 
-// Pure pane geometry. Flat: equal halves around a hairline divider. Folded: each pane ends at the
-// fold edge, so the panes are equal only when the fold is centred; the divider is then the fold's
-// own gap, which the caller does not draw. A fold not oriented along the mode's cross axis is a
-// transient from a rotation (the window and the fold arrive separately), so it counts as flat.
+// Pure pane geometry. Flat: the companion takes `companionShare` of the length less the hairline
+// divider. Folded: each pane ends at the fold edge, so the panes are equal only when the fold is
+// centred and the share is ignored; the divider is then the fold's own gap, which the caller does
+// not draw. A fold not oriented along the mode's cross axis is a transient from a rotation (the
+// window and the fold arrive separately), so it counts as flat.
 export const resolvePaneGeometry = (
   mode: SplitMode,
   window: Window,
   fold: FoldRegion,
   hairline: number,
+  companionShare: number,
 ): PaneGeometry => {
   const axis = AXES[mode];
   const length = axis.windowLength(window);
   const isFolded = fold !== null && axis.foldRunsAlongCrossAxis(fold);
   // The fold's extent is clamped into the window so a fold that overhangs never makes a pane
   // negative.
-  const start = isFolded ? clamp(axis.foldStart(fold), 0, length) : (length - hairline) / 2;
+  const start = isFolded
+    ? clamp(axis.foldStart(fold), 0, length)
+    : (length - hairline) * companionShare;
   const gap = isFolded
     ? clamp(axis.foldStart(fold) + axis.foldLength(fold), start, length) - start
     : hairline;

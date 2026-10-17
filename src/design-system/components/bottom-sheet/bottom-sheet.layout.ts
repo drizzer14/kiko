@@ -1,5 +1,5 @@
 import { match } from 'ts-pattern';
-import { resolvePaneGeometry } from '@kiko/design-system/pane-geometry';
+import { EQUAL_SHARE, resolvePaneGeometry } from '@kiko/design-system/pane-geometry';
 import type { FoldRegion, HorizontalSizeClass, LayoutMode } from '@kiko/display-regions';
 
 type SheetFrameInput = {
@@ -20,7 +20,7 @@ const centredFrame = (
   mode: Exclude<LayoutMode, 'single'>,
   { window, fold, hairline, maxWidth }: Omit<SheetFrameInput, 'mode' | 'sizeClass'>,
 ) => {
-  const { primary, isFolded } = resolvePaneGeometry(mode, window, fold, hairline);
+  const { primary, isFolded } = resolvePaneGeometry(mode, window, fold, hairline, EQUAL_SHARE);
   const host = isFolded ? primary : { x: 0, width: window.width };
   const width = Math.min(maxWidth, host.width);
   const left = host.x + (host.width - width) / 2;

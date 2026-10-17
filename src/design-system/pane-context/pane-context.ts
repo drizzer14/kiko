@@ -3,7 +3,7 @@ import type { LayoutMode } from '@kiko/display-regions';
 
 type SplitMode = Exclude<LayoutMode, 'single'>;
 
-type PaneName = 'companion' | 'primary';
+export type PaneName = 'companion' | 'primary';
 
 // Which edges of the window a pane touches. A pane keeps a safe-area inset only on an edge it
 // shares with the window, and only a pane at the bottom edge sits above the tab bar.

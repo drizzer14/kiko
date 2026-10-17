@@ -121,6 +121,14 @@ describe('StatisticsStack', () => {
     },
   );
 
+  it('gives the primary pane the wide share of a wide split', () => {
+    const navigator = StatisticsStack({}) as ReactElement<{
+      paneConfig: { wideSlot?: string };
+    }>;
+
+    expect(navigator.props.paneConfig.wideSlot).toBe('primary');
+  });
+
   it('wraps every screen in the fitting large-title layout', () => {
     const navigator = StatisticsStack({}) as ReactElement<{ screenLayout: unknown }>;
 

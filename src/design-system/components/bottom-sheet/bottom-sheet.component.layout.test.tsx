@@ -82,6 +82,26 @@ describe('BottomSheet on a two-pane display', () => {
     expect(cardStyle().marginLeft).toBe((951 - darkTheme.layout.sheetMaxWidth) / 2);
   });
 
+  it('characterization: centres the card in the 1100 x 820 window, not in a wide pane', async () => {
+    mockUseLayoutMode.mockReturnValue('columns');
+    mockUseDisplayRegions.mockReturnValue({ horizontalSizeClass: 'regular' });
+    showWindow(1100, 820);
+    await renderSheet();
+
+    expect(cardStyle().width).toBe(darkTheme.layout.sheetMaxWidth);
+    expect(cardStyle().marginLeft).toBe((1100 - 540) / 2);
+  });
+
+  it('characterization: a folded 1100 pt window uses the fold primary for the card', async () => {
+    mockUseLayoutMode.mockReturnValue('columns');
+    mockUseDisplayRegions.mockReturnValue({ horizontalSizeClass: 'regular' });
+    mockUseFoldRegion.mockReturnValue({ x: 400, y: 0, width: FOLD_GAP, height: 820 });
+    showWindow(1100, 820);
+    await renderSheet();
+
+    expect(cardStyle().marginLeft).toBe(400 + FOLD_GAP + (1100 - 424 - 540) / 2);
+  });
+
   it('centres the card in a portrait inner display too', async () => {
     mockUseLayoutMode.mockReturnValue('rows');
     showWindow(669, 951);
