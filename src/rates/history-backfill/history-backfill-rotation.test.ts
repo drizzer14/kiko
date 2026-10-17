@@ -94,9 +94,9 @@ const stubbedRun = async (input: {
     },
   };
 
-  await runBackfill(deps);
+  const status = await runBackfill(deps);
 
-  return { requested, cursor, cursorReads, cursorWrites, settledWrites };
+  return { requested, cursor, cursorReads, cursorWrites, settledWrites, status };
 };
 
 describe('runBackfill — which crypto history it requests, and from where', () => {
@@ -456,20 +456,23 @@ describe('runBackfill — which crypto history it requests, and from where', () 
     it('still completes, and says so, when the settled marks cannot be saved', async () => {
       const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
 
-      await stubbedRun({
-        held: ['BTC'],
-        doneDays: {},
-        cursor: null,
-        lastBackfilledDay: null,
-        failSettledWrite: true,
-      });
+      try {
+        const { status } = await stubbedRun({
+          held: ['BTC'],
+          doneDays: {},
+          cursor: null,
+          lastBackfilledDay: null,
+          failSettledWrite: true,
+        });
 
-      expect(warn).toHaveBeenCalledWith(
-        '[history backfill] settled marks not saved',
-        expect.objectContaining({ name: 'Error' }),
-      );
-
-      warn.mockRestore();
+        expect(status).toEqual(expect.objectContaining({ state: 'complete' }));
+        expect(warn).toHaveBeenCalledWith(
+          '[history backfill] settled marks not saved',
+          expect.objectContaining({ name: 'Error' }),
+        );
+      } finally {
+        warn.mockRestore();
+      }
     });
   });
 });

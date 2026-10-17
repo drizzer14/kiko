@@ -30,10 +30,8 @@ const answeredNothing = (rateLimited: CryptoCurrency[] = []): CryptoHistory => (
   rateLimitedCurrencies: rateLimited,
 });
 
-type ChangeState = (state: HistoryBackfillState) => HistoryBackfillState;
-
-// The settings row the run reads, and the two settings writers it calls, replaced by spies so a
-// run goes through the repo's own default reader and writers.
+// The run uses history-backfill.ts's own default reader and writers; the settings repo they call
+// is spied underneath: the row it reads, and the two writers.
 const settingsRow = (stored: HistoryBackfillState) => {
   jest
     .spyOn(settingsRepo, 'historyBackfillStateQuery')
@@ -110,11 +108,11 @@ describe('runBackfill — the settings row as the default store of the cursor an
   it('saves the next cursor through a change that keeps the stored marks', async () => {
     const { changed } = settingsRow({ cursor: null, settled: {} });
 
-    await runWithDefaultStore({ fiat: ['USD'], held: ['SOL'], rateLimited: ['SOL'] });
+    await runWithDefaultStore({ fiat: ['USD'], held: ['BTC', 'SOL'], rateLimited: ['SOL'] });
 
     expect(changed).toHaveBeenCalledTimes(1);
 
-    const change = changed.mock.calls[0][0] as ChangeState;
+    const [change] = changed.mock.calls[0];
     const marks: SettledHistory = { EUR: { start: 1, firstDay: 2 } };
 
     expect(change({ cursor: null, settled: marks })).toEqual({ cursor: 'SOL', settled: marks });

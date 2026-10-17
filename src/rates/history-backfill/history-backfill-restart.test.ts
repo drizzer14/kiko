@@ -290,11 +290,9 @@ describe('runBackfill — filling the earlier days of a span that moved earlier,
       const data = lateData();
       const nbuCalls: Currency[][] = [];
 
-      await launchAll({ ...lateBase(data), earliestDay: daysAgo(340), nbuStartsAt: {}, nbuCalls }, [
-        { wholeSpan: true, earliestDay: start, nbuStartsAt: { EUR: quotedFrom } },
-        {},
-        {},
-      ]);
+      const earlier = { earliestDay: daysAgo(340), nbuStartsAt: {} };
+
+      await launchAll({ ...lateBase(data), nbuCalls }, [{ wholeSpan: true }, earlier, earlier]);
 
       expect(nbuCalls).toHaveLength(2);
       expect(data.settled.value).toEqual({
@@ -518,9 +516,9 @@ describe('runBackfill — filling the earlier days of a span that moved earlier,
     it('stamps no mark on a coin whose own request failed, and asks again', async () => {
       const data = persisted([]);
       const requested: CryptoCurrency[][] = [];
-      const base = { data, held: ['SOL' as CryptoCurrency], fiat: ['USD' as Currency] };
+      const base = { data, held: ['BTC', 'SOL'] as CryptoCurrency[], fiat: ['USD' as Currency] };
 
-      await launch({ ...base, earliestDay: daysAgo(300), wholeSpan: true, perRunLimit: 0 });
+      await launch({ ...base, earliestDay: daysAgo(300), wholeSpan: true, perRunLimit: 1 });
 
       expect(data.settled.value).toEqual({});
 
