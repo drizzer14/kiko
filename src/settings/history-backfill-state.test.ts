@@ -66,7 +66,40 @@ describe('parseHistoryBackfillState', () => {
   });
 });
 
+describe('parseHistoryBackfillState with numbers that are not finite', () => {
+  // A literal past the double range reads back as Infinity, which JSON.stringify never writes.
+  const stored =
+    '{"cursor":null,"settled":{"EUR":{"start":1e999,"firstDay":1},' +
+    '"USD":{"start":5,"firstDay":1e999,"checkedOn":1e999}}}';
+
+  it('drops a mark whose start is infinite and reads an infinite day as absent', () => {
+    expect(parseHistoryBackfillState(stored).settled).toEqual({
+      USD: { start: 5, firstDay: null },
+    });
+  });
+});
+
+describe('parseHistoryBackfillState with no usable settled marks', () => {
+  it.each([
+    ['absent', { cursor: 'ETH' }],
+    ['null', { cursor: 'ETH', settled: null }],
+  ])('keeps the cursor and reads settled marks that are %s as none', (_kind, value) => {
+    expect(parseHistoryBackfillState(JSON.stringify(value))).toEqual({
+      cursor: 'ETH',
+      settled: {},
+    });
+  });
+});
+
 describe('serializeHistoryBackfillState', () => {
+  it('keeps a cursor that has no settled marks', () => {
+    const state = { cursor: 'BNB', settled: {} } as const;
+    const stored = serializeHistoryBackfillState(state);
+
+    expect(stored).toBe('{"cursor":"BNB","settled":{}}');
+    expect(parseHistoryBackfillState(stored)).toEqual(state);
+  });
+
   it('stores the empty state as null', () => {
     expect(serializeHistoryBackfillState(EMPTY_HISTORY_BACKFILL_STATE)).toBeNull();
   });
