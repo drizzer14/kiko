@@ -34,15 +34,15 @@ const centredFrame = (
 const singleFrame = (
   sizeClass: HorizontalSizeClass,
   { window, maxWidth }: Pick<SheetFrameInput, 'window' | 'maxWidth'>,
-): SheetFrame => {
-  if (sizeClass === 'compact') {
-    return {};
-  }
+): SheetFrame =>
+  match(sizeClass)
+    .with('compact', (): SheetFrame => ({}))
+    .with('regular', (): SheetFrame => {
+      const width = Math.min(maxWidth, window.width);
 
-  const width = Math.min(maxWidth, window.width);
-
-  return { width, left: (window.width - width) / 2 };
-};
+      return { width, left: (window.width - width) / 2 };
+    })
+    .exhaustive();
 
 // Where the bottom-sheet card sits. A single compact window keeps the full-width sheet. A regular
 // window, single or two-pane, narrows the card (the iPad form-sheet pattern) and centres it. The

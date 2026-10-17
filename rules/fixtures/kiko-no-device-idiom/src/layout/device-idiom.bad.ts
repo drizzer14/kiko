@@ -1,9 +1,9 @@
 // Semgrep fixture (POSITIVE): kiko-no-device-idiom MUST report a finding on every pinned line
 // below. Never "fix" this file — see kiko-architecture's "Pane navigation".
 
-// React Native's `Platform` type declares the idiom fields only on its iOS member, so a read off the
-// whole `Platform` union does not type-check. These local declarations stand in for `Platform`, its
-// namespace read, an `import { Platform as P }` alias and the native constants, and keep the
+// React Native's `Platform` type declares the idiom fields only on its iOS member, so a read off
+// the whole `Platform` union does not type-check. These local declarations stand in for `Platform`,
+// its namespace read, an `import { Platform as P }` alias and the native constants, and keep the
 // fixture type-checking; the rule matches the words, not the types.
 type IdiomPlatform = { isPad: boolean; constants: { interfaceIdiom: string } };
 declare const Platform: IdiomPlatform;

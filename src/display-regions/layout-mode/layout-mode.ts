@@ -1,3 +1,5 @@
+import { match } from 'ts-pattern';
+
 import type { HorizontalSizeClass } from '../display-regions-native';
 
 export type LayoutMode = 'single' | 'columns' | 'rows';
@@ -16,16 +18,16 @@ export const resolveLayoutMode = (
   sizeClass: HorizontalSizeClass,
   width: number,
   height: number,
-): LayoutMode => {
-  if (sizeClass === 'compact') {
-    return 'single';
-  }
+): LayoutMode =>
+  match(sizeClass)
+    .with('compact', (): LayoutMode => 'single')
+    .with('regular', (): LayoutMode => {
+      const isTall = height > width;
 
-  const isTall = height > width;
+      if ((isTall ? height : width) < MINIMUM_SPLIT_LENGTH) {
+        return 'single';
+      }
 
-  if ((isTall ? height : width) < MINIMUM_SPLIT_LENGTH) {
-    return 'single';
-  }
-
-  return isTall ? 'rows' : 'columns';
-};
+      return isTall ? 'rows' : 'columns';
+    })
+    .exhaustive();

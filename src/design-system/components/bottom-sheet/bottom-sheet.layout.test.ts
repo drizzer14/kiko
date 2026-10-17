@@ -18,10 +18,6 @@ const frameOf = (
 ) => resolveSheetFrame({ mode, sizeClass, window, fold, hairline: HAIRLINE, maxWidth: MAX_WIDTH });
 
 describe('resolveSheetFrame', () => {
-  it('leaves a single window full width, as before', () => {
-    expect(frameOf('single', OUTER)).toEqual({});
-  });
-
   it('caps a single regular window at the maximum width and centres it', () => {
     expect(frameOf('single', { width: 720, height: 500 }, null, 'regular')).toEqual({
       width: 540,
@@ -36,8 +32,9 @@ describe('resolveSheetFrame', () => {
     });
   });
 
-  it('leaves a single compact iPhone window full width', () => {
+  it('leaves a single compact window full width, an iPhone or the Duo outer display', () => {
     expect(frameOf('single', { width: 390, height: 844 })).toEqual({});
+    expect(frameOf('single', OUTER)).toEqual({});
   });
 
   it('leaves a single window alone even while a fold is reported', () => {
