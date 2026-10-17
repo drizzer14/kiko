@@ -266,6 +266,48 @@ describe('scripts/ff-main.sh short done.log lines', () => {
     expect(mainHead(fixture)).toBe(fixture.baseCommit);
     expect(result.stderr.split('\n').filter((line) => line.includes('WARNING'))).toHaveLength(1);
   });
+
+  describe('a done.log whose old 5-field block predates the head field', () => {
+    const shortAt = (index: number) =>
+      `verify old-${String(index).padStart(3, '0')} 0 2026-10-15T10:00:00Z 2026-10-15T10:05:00Z`;
+    const leading = Array.from({ length: 60 }, (_, index) => shortAt(index + 1));
+    const warningsOf = (stderr: string) =>
+      stderr.split('\n').filter((line) => line.includes('WARNING'));
+
+    it('summarizes the leading short lines in one WARNING and still moves main', () => {
+      const lateOne = 'verify late-one 1 2026-10-16T22:33:18Z 2026-10-16T22:44:16Z';
+      const lateTwo = 'verify torn';
+      const fixture = createFixture();
+      record(fixture, ...leading, doneLine(fixture.tipCommit), lateOne, lateTwo);
+
+      const result = runScript(fixture, [fixture.tipCommit]);
+      const warnings = warningsOf(result.stderr);
+
+      expect(result.status).toBe(0);
+      expect(mainHead(fixture)).toBe(fixture.tipCommit);
+      expect(warnings).toHaveLength(3);
+      expect(warnings[0]).toContain('60');
+      expect(warnings[0]).toContain(shortAt(60));
+      expect(warnings[1]).toContain(lateOne);
+      expect(warnings[1]).toContain('62');
+      expect(warnings[2]).toContain(lateTwo);
+      expect(warnings[2]).toContain('63');
+    });
+
+    it('gives a file of only short lines one summary WARNING and the refusal stands', () => {
+      const fixture = createFixture();
+      record(fixture, ...leading.slice(0, 5));
+
+      const result = runScript(fixture, [fixture.tipCommit]);
+      const warnings = warningsOf(result.stderr);
+
+      expect(result.status).toBe(2);
+      expect(mainHead(fixture)).toBe(fixture.baseCommit);
+      expect(warnings).toHaveLength(1);
+      expect(warnings[0]).toContain('5');
+      expect(warnings[0]).toContain(shortAt(5));
+    });
+  });
 });
 
 const BLOCK_LABELS = [

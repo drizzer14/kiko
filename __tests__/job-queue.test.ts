@@ -1833,4 +1833,52 @@ describe('scripts/job-queue.sh status', () => {
     expect(warnings[0]).toContain(shortOld);
     expect(warnings[1]).toContain(shortTorn);
   });
+
+  describe('a done.log whose old 5-field block predates the head field', () => {
+    const shortAt = (index: number) =>
+      `verify old-${String(index).padStart(3, '0')} 0 2026-10-15T10:00:00Z 2026-10-15T10:05:00Z`;
+    const whole = `verify whole 0 2026-10-15T10:00:00Z 2026-10-15T10:05:00Z ${'a'.repeat(40)}`;
+    const warningsOf = (doneLog: string) => {
+      const sandbox = createSandbox();
+      mkdirSync(sandbox.queue, { recursive: true });
+      writeFileSync(join(sandbox.queue, 'done.log'), doneLog);
+      const result = runQueue(sandbox, 'status');
+
+      return {
+        status: result.status,
+        warnings: `${result.stdout}\n${result.stderr}`
+          .split('\n')
+          .filter((line) => line.includes('WARNING')),
+      };
+    };
+    const leading = Array.from({ length: 60 }, (_, index) => shortAt(index + 1));
+
+    it('summarizes the short lines before the first 6-field line in one WARNING', () => {
+      const lateOne = 'verify late-one 1 2026-10-16T22:33:18Z 2026-10-16T22:44:16Z';
+      const lateTwo = 'verify torn';
+
+      const { status, warnings } = warningsOf(
+        `${[...leading, whole, lateOne, lateTwo].join('\n')}\n`,
+      );
+
+      expect(status).toBe(0);
+      expect(warnings).toHaveLength(3);
+      expect(warnings[0]).toContain('60');
+      expect(warnings[0]).toContain(shortAt(60));
+      expect(warnings[1]).toContain(lateOne);
+      expect(warnings[1]).toContain('62');
+      expect(warnings[2]).toContain(lateTwo);
+      expect(warnings[2]).toContain('63');
+    });
+
+    it('gives a file of only short lines a single summary WARNING', () => {
+      const { warnings } = warningsOf(
+        `${Array.from({ length: 5 }, (_, index) => shortAt(index + 1)).join('\n')}\n`,
+      );
+
+      expect(warnings).toHaveLength(1);
+      expect(warnings[0]).toContain('5');
+      expect(warnings[0]).toContain(shortAt(5));
+    });
+  });
 });
