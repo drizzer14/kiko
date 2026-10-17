@@ -8,12 +8,7 @@ import type { NetWorthPoint } from '@kiko/statistics/net-worth-series';
 export const SCRUB_ACTIVE_OFFSET_X = 10;
 export const SCRUB_FAIL_OFFSET_Y = 10;
 
-// The gap between the line and its label, in device pixels (two spacing units).
-export const SCRUB_LABEL_GAP = 8;
-
 export type ScrubSelection = { rangeKey: string; index: number };
-
-type ScrubLabelPlacement = { side: 'right' | 'left' | 'clamped'; left: number };
 
 // A touch's x in the chart's logical units, or `null` while the plot is not measured yet. The
 // touch may be outside the plot: the finger can leave it mid-drag.
@@ -41,19 +36,16 @@ export const placeScrubLabel = (
   labelWidth: number,
   plotWidth: number,
   gap: number,
-): ScrubLabelPlacement => {
+): number => {
   if (lineX + gap + labelWidth <= plotWidth) {
-    return { side: 'right', left: lineX + gap };
+    return lineX + gap;
   }
 
   if (lineX - gap - labelWidth >= 0) {
-    return { side: 'left', left: lineX - gap - labelWidth };
+    return lineX - gap - labelWidth;
   }
 
-  return {
-    side: 'clamped',
-    left: Math.min(Math.max(lineX - labelWidth / 2, 0), Math.max(plotWidth - labelWidth, 0)),
-  };
+  return Math.min(Math.max(lineX - labelWidth / 2, 0), Math.max(plotWidth - labelWidth, 0));
 };
 
 // The identity of the plotted range: a period change moves the first or last `t`, while a live
@@ -61,19 +53,17 @@ export const placeScrubLabel = (
 export const scrubRangeKey = (points: readonly NetWorthPoint[]): string =>
   String(points[0].t).concat(':', String(points[points.length - 1].t), ':', String(points.length));
 
-// The selected index, derived on every render so a stale selection never needs a reset effect:
-// the present day (the last point) unless a selection exists for the current range.
+// The selected index: the present day (the last point) unless a selection exists for the current
+// range. The range key includes the point count, so a matching selection's index is in range.
 export const resolveScrubIndex = (
   selection: ScrubSelection | null,
   points: readonly NetWorthPoint[],
 ): number => {
-  const lastIndex = points.length - 1;
-
   if (selection === null || selection.rangeKey !== scrubRangeKey(points)) {
-    return lastIndex;
+    return points.length - 1;
   }
 
-  return Math.min(Math.max(selection.index, 0), lastIndex);
+  return selection.index;
 };
 
 // One accessibility step (a VoiceOver swipe up or down) along the points, clamped at both ends.

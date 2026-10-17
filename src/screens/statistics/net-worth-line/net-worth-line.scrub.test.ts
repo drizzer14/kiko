@@ -78,36 +78,36 @@ describe('placeScrubLabel', () => {
     placeScrubLabel(lineX, labelWidth, plotWidth, 6);
 
   it('puts the label right of a line at the left edge', () => {
-    expect(place(0)).toEqual({ side: 'right', left: 6 });
+    expect(place(0)).toBe(6);
   });
 
   it('keeps the right side while the label exactly fits (154 + 6 + 80 = 240)', () => {
-    expect(place(154)).toEqual({ side: 'right', left: 160 });
+    expect(place(154)).toBe(160);
   });
 
   it('flips left one pixel past the exact fit', () => {
-    expect(place(155)).toEqual({ side: 'left', left: 69 });
+    expect(place(155)).toBe(69);
   });
 
   it('defaults to the right side when both sides fit', () => {
-    expect(place(86).side).toBe('right');
+    expect(place(86)).toBe(92);
   });
 
   it('flips left for a line at the right edge', () => {
-    expect(place(240)).toEqual({ side: 'left', left: 154 });
+    expect(place(240)).toBe(154);
   });
 
   it('clamps and centres when neither side fits, inside the plot', () => {
-    expect(place(50, 80, 100)).toEqual({ side: 'clamped', left: 10 });
+    expect(place(50, 80, 100)).toBe(10);
   });
 
   it('clamps to 0 when the label is wider than the plot', () => {
-    expect(place(50, 120, 100)).toEqual({ side: 'clamped', left: 0 });
+    expect(place(50, 120, 100)).toBe(0);
   });
 
   it('never leaves the plot for any line position', () => {
     for (let lineX = 0; lineX <= 240; lineX += 1) {
-      const { left } = place(lineX);
+      const left = place(lineX);
 
       expect(left).toBeGreaterThanOrEqual(0);
       expect(left + 80).toBeLessThanOrEqual(240);
@@ -153,14 +153,6 @@ describe('resolveScrubIndex', () => {
 
   it('goes back to the present day when the range key is stale', () => {
     expect(resolveScrubIndex({ rangeKey: 'stale', index: 1 }, points)).toBe(3);
-  });
-
-  it('clamps an index past the end', () => {
-    expect(resolveScrubIndex({ rangeKey, index: 9 }, points)).toBe(3);
-  });
-
-  it('clamps a negative index to the first point', () => {
-    expect(resolveScrubIndex({ rangeKey, index: -4 }, points)).toBe(0);
   });
 
   it('resolves a one-point series to 0', () => {

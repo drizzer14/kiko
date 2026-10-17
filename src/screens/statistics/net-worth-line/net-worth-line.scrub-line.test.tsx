@@ -218,6 +218,19 @@ describe('NetWorthLine scrub line', () => {
     expect(labelWithin(view).getByText(amountText(40))).toBeTruthy();
   });
 
+  it('stays on the present day when the earlier range is picked again', async () => {
+    const view = await renderLine();
+    await measure(view);
+    await drag([touchXOf(pointXs(view)[1])]);
+
+    await view.rerenderPoints(buildPoints(-5, [10, 20, 30, 40]));
+    await view.rerenderPoints(points);
+
+    expect(scrubX(view)).toBe(pointXs(view)[3]);
+    expect(labelWithin(view).getByText(amountText(points[3].amount))).toBeTruthy();
+    expect(labelWithin(view).getByText(formatDate(points[3].t))).toBeTruthy();
+  });
+
   it('keeps the line where it is on a live update with the same range key', async () => {
     const view = await renderLine();
     await measure(view);

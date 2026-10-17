@@ -28,25 +28,24 @@ import { formatMoney } from '@kiko/currency/format';
 import Box from '@kiko/design-system/components/box';
 import Text from '@kiko/design-system/components/text';
 import { activeLocale } from '@kiko/i18n/active-locale';
-import { formatDate, formatDayMonth } from '@kiko/dates';
 import type { Currency } from '@kiko/currency/currency';
+import { formatDate, formatDayMonth } from '@kiko/dates';
 import MoneyText from '@kiko/design-system/components/money-text';
 import type { NetWorthPoint } from '@kiko/statistics/net-worth-series';
 import { chooseCompactUnit, formatCompactMoney } from '@kiko/currency/compact';
 
-import { styles } from './net-worth-line.styles';
 import {
   nearestPointIndex,
   placeScrubLabel,
   resolveScrubIndex,
   SCRUB_ACTIVE_OFFSET_X,
   SCRUB_FAIL_OFFSET_Y,
-  SCRUB_LABEL_GAP,
   type ScrubSelection,
   scrubRangeKey,
   stepScrubIndex,
   toLogicalX,
 } from './net-worth-line.scrub';
+import { styles } from './net-worth-line.styles';
 
 export const NET_WORTH_SCRUB_GESTURE_TEST_ID = 'net-worth-line-scrub-gesture';
 
@@ -482,23 +481,20 @@ const StatusMessage: FC<{ testID: string; message: string; height: number }> = (
 // A VoiceOver swipe up or down on the adjustable plot steps the line one point.
 const ACCESSIBILITY_STEPS: Partial<Record<string, 1 | -1>> = { increment: 1, decrement: -1 };
 
-const selectedDayMoney = (point: NetWorthPoint, baseCurrency: Currency): Money =>
-  Money.fromMajor(baseCurrency, point.amount);
-
 type ScrubLabelProps = {
-  point: NetWorthPoint;
-  baseCurrency: Currency;
+  money: Money;
+  time: number;
   lineX: number;
   plotWidth: number;
+  gap: number;
 };
 
 // The small day label beside the scrub line. It measures its own width so `placeScrubLabel` can
 // flip it away from a plot edge, and stays invisible until both widths are known so the first
 // frame never draws it mis-placed.
-const ScrubLabel: FC<ScrubLabelProps> = ({ point, baseCurrency, lineX, plotWidth }) => {
-  const { theme } = useUnistyles();
+const ScrubLabel: FC<ScrubLabelProps> = ({ money, time, lineX, plotWidth, gap }) => {
   const [labelWidth, setLabelWidth] = useState(0);
-  const { left } = placeScrubLabel(lineX, labelWidth, plotWidth, SCRUB_LABEL_GAP);
+  const left = placeScrubLabel(lineX, labelWidth, plotWidth, gap);
   const measured = labelWidth > 0 && plotWidth > 0;
 
   return (
@@ -508,14 +504,9 @@ const ScrubLabel: FC<ScrubLabelProps> = ({ point, baseCurrency, lineX, plotWidth
       onLayout={(event: LayoutChangeEvent) => setLabelWidth(event.nativeEvent.layout.width)}
       style={[styles.scrubLabel, { left, opacity: measured ? 1 : 0 }]}
     >
-      <MoneyText
-        money={selectedDayMoney(point, baseCurrency)}
-        context="balance"
-        style={{ fontSize: theme.typography.caption.fontSize, fontWeight: '600' }}
-        numberOfLines={1}
-      />
+      <MoneyText money={money} style={styles.scrubAmount} numberOfLines={1} />
       <Text variant="caption" tone="textSecondary">
-        {formatDate(point.t)}
+        {formatDate(time)}
       </Text>
     </View>
   );
@@ -566,6 +557,12 @@ const NetWorthLine: FC<NetWorthLineProps> = ({
     );
   }
 
+  // A selection from another range is cleared here, not left to stop matching: re-picking that
+  // range later would otherwise bring the old dragged index back instead of the present day.
+  if (selection !== null && selection.rangeKey !== scrubRangeKey(points)) {
+    setSelection(null);
+  }
+
   const scales = buildScales(points, startReference, height);
   const ticks = buildTicks(points, startReference);
   const xLabelTicks = buildXLabelTicks(scales);
@@ -585,8 +582,9 @@ const NetWorthLine: FC<NetWorthLineProps> = ({
   const selectedIndex = resolveScrubIndex(selection, points);
   const selectedPoint = points[selectedIndex];
   const selectedX = scales.x(selectedPoint.t);
+  const selectedMoney = Money.fromMajor(baseCurrency, selectedPoint.amount);
   const selectedDayText = t('components.netWorthLine.selectedDay', {
-    amount: formatMoney(selectedDayMoney(selectedPoint, baseCurrency), activeLocale()),
+    amount: formatMoney(selectedMoney, activeLocale()),
     date: formatDate(selectedPoint.t),
   });
 
@@ -838,10 +836,11 @@ const NetWorthLine: FC<NetWorthLineProps> = ({
             </Svg>
 
             <ScrubLabel
-              point={selectedPoint}
-              baseCurrency={baseCurrency}
+              money={selectedMoney}
+              time={selectedPoint.t}
               lineX={(selectedX * plotWidth) / VIEW_WIDTH}
               plotWidth={plotWidth}
+              gap={theme.spacing(2)}
             />
           </View>
         </GestureDetector>
