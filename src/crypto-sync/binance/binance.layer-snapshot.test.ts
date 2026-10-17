@@ -38,6 +38,7 @@ import {
   flexibleRedemptionOf,
   flexibleRewardOf,
   flexibleSubscriptionOf,
+  fullPage,
   lockedRedemptionOf,
   lockedRewardOf,
   lockedSubscriptionOf,
@@ -248,6 +249,68 @@ const within = (window: { startTime: number; endTime: number }, time: number): b
 
 const unweighted = { usedUidWeight1m: undefined, usedIpWeight1m: undefined };
 
+// Every read a walk issues, in order, with the window or page it asked for: a move that changes
+// which span is read, how it is split or paged, or in what order, changes this list even when the
+// rows a fixture holds still land in the same place.
+const recorder = () => {
+  const reads: unknown[] = [];
+
+  return { reads, record: (kind: string, query: object) => reads.push({ kind, ...query }) };
+};
+
+// A read of the span that starts `startDaysAgo` before the fixed clock and ends `endDaysAgo`
+// before it.
+const readOf = (
+  kind: string,
+  startDaysAgo: number,
+  endDaysAgo: number,
+  rest: Record<string, unknown> = {},
+) => ({
+  kind,
+  startTime: NOW - startDaysAgo * DAY_MS,
+  endTime: NOW - endDaysAgo * DAY_MS,
+  ...rest,
+});
+
+// The transfer types, in the order the transfer walk reads them.
+const TRANSFER_TYPES = [
+  'MAIN_FUNDING',
+  'FUNDING_MAIN',
+  'MAIN_UMFUTURE',
+  'UMFUTURE_MAIN',
+  'MAIN_CMFUTURE',
+  'CMFUTURE_MAIN',
+  'MAIN_MARGIN',
+  'MARGIN_MAIN',
+  'MAIN_OPTION',
+  'OPTION_MAIN',
+  'MAIN_PORTFOLIO_MARGIN',
+  'PORTFOLIO_MARGIN_MAIN',
+  'FUNDING_UMFUTURE',
+  'UMFUTURE_FUNDING',
+  'FUNDING_CMFUTURE',
+  'CMFUTURE_FUNDING',
+  'FUNDING_MARGIN',
+  'MARGIN_FUNDING',
+  'FUNDING_OPTION',
+  'OPTION_FUNDING',
+];
+
+const transferReads = (startDaysAgo: number, endDaysAgo: number) =>
+  TRANSFER_TYPES.map((type) => readOf('transfer', startDaysAgo, endDaysAgo, { type, current: 1 }));
+
+const EARN_READ_ORDER = [
+  'flexibleRewards',
+  'lockedRewards',
+  'flexibleSubscription',
+  'flexibleRedemption',
+  'lockedSubscription',
+  'lockedRedemption',
+];
+
+const earnReads = (startDaysAgo: number, endDaysAgo: number) =>
+  EARN_READ_ORDER.map((kind) => readOf(kind, startDaysAgo, endDaysAgo, { current: 1 }));
+
 const TWO_DAYS_AGO = NOW - 2 * DAY_MS;
 const WITHDRAWN_AT = Date.UTC(2026, 9, 8);
 
@@ -262,9 +325,10 @@ const WITHDRAWALS: BinanceWithdrawal[] = JSON.parse(`[
   {"id":"w-1","amount":"0.125","transactionFee":"0.0001","coin":"BTC","txId":"wd-tx","applyTime":"2026-10-08 00:00:00","status":6}
 ]`);
 
-describe('the external ids and rows every walk writes for one fixture', () => {
+describe('the request windows and the external ids and rows every walk produces for one fixture', () => {
   it('capital: a Spot deposit, a Funding deposit keyed by its hash, and a withdrawal', async () => {
     const { rows, addTransactions } = collector();
+    const { reads, record } = recorder();
     const overrides: Partial<BinanceTransactionSyncDeps> = {
       ...walkWrites,
       addTransactions,
@@ -274,24 +338,38 @@ describe('the external ids and rows every walk writes for one fixture', () => {
       latestTransactionTime: async () => undefined,
       readCredentials: async () => ({ apiKey: API_KEY, secret: SECRET }),
       listHoldings: async () => [spotWith({ binanceHistoryCursor: NOW - 5 * DAY_MS }), FUNDING],
-      fetchDepositHistory: async (_key, _secret, window): Promise<HistoryPage<BinanceDeposit>> => ({
-        rows: DEPOSITS.filter((record) => within(window, record.insertTime)),
-        unreadable: [],
-        ...unweighted,
-      }),
+      fetchDepositHistory: async (_key, _secret, window): Promise<HistoryPage<BinanceDeposit>> => {
+        record('deposit', window);
+
+        return {
+          rows: DEPOSITS.filter((deposit) => within(window, deposit.insertTime)),
+          unreadable: [],
+          ...unweighted,
+        };
+      },
       fetchWithdrawHistory: async (
         _key,
         _secret,
         window,
-      ): Promise<HistoryPage<BinanceWithdrawal>> => ({
-        rows: within(window, WITHDRAWN_AT) ? WITHDRAWALS : [],
-        unreadable: [],
-        ...unweighted,
-      }),
+      ): Promise<HistoryPage<BinanceWithdrawal>> => {
+        record('withdraw', window);
+
+        return {
+          rows: within(window, WITHDRAWN_AT) ? WITHDRAWALS : [],
+          unreadable: [],
+          ...unweighted,
+        };
+      },
     };
 
     await syncBinanceTransactions({ targetAccountId: ACCOUNT, run: freshRun() }, overrides);
 
+    expect(reads).toEqual([
+      readOf('deposit', 5, 0, { offset: 0 }),
+      readOf('withdraw', 5, 0, { offset: 0 }),
+      readOf('deposit', 89, 5, { offset: 0 }),
+      readOf('withdraw', 89, 5, { offset: 0 }),
+    ]);
     expect(placed(rows())).toEqual([
       ['acc-1:deposit:d-1', 'h-spot', 50_000_000],
       ['acc-1:deposit:dep-tx-2', 'h-funding', 25_000_000],
@@ -331,6 +409,7 @@ describe('the external ids and rows every walk writes for one fixture', () => {
       }),
     ];
     const { rows, addTransactions } = collector();
+    const { reads, record } = recorder();
     const overrides: Partial<BinancePayHistoryDeps> = {
       ...walkWrites,
       addTransactions,
@@ -344,6 +423,8 @@ describe('the external ids and rows every walk writes for one fixture', () => {
         EARN,
       ],
       fetchPayHistory: async (_key, _secret, window): Promise<PayHistoryPage> => {
+        record('pay', window);
+
         const inWindow = orders.filter((order) => within(window, order.transactionTime));
 
         return {
@@ -358,6 +439,7 @@ describe('the external ids and rows every walk writes for one fixture', () => {
 
     await syncBinancePayHistory({ targetAccountId: ACCOUNT, run: freshRun() }, overrides);
 
+    expect(reads).toEqual([readOf('pay', 30, 0), readOf('pay', 89, 30)]);
     expect(placed(rows())).toEqual([
       ['acc-1:pay:C2C:tx-1:2', 'h-spot', -100_000],
       ['acc-1:pay:C2C:tx-2:1', 'h-funding', -50_000],
@@ -381,6 +463,7 @@ describe('the external ids and rows every walk writes for one fixture', () => {
       transfer('MAIN_MARGIN', 't-2'),
     ];
     const { rows, addTransactions } = collector<BinanceHistoryRow>();
+    const { reads, record } = recorder();
     const overrides: Partial<BinanceTransferHistoryDeps> = {
       ...walkWrites,
       addTransactions,
@@ -396,6 +479,8 @@ describe('the external ids and rows every walk writes for one fixture', () => {
         _secret,
         query,
       ): Promise<TotalPage<BinanceUniversalTransfer>> => {
+        record('transfer', query);
+
         const inRead = transfers.filter(
           (record) => record.type === query.type && within(query, record.timestamp),
         );
@@ -412,6 +497,7 @@ describe('the external ids and rows every walk writes for one fixture', () => {
 
     await syncBinanceTransferHistory({ targetAccountId: ACCOUNT, run: freshRun() }, overrides);
 
+    expect(reads).toEqual([...transferReads(5, 0), ...transferReads(30, 5)]);
     expect(placed(rows())).toEqual([
       ['acc-1:xfer:FUNDING_MAIN:t-1:BTC', 'h-spot', 100_000],
       ['acc-1:xfer:FUNDING_MAIN:t-1:BTC:funding', 'h-funding', -100_000],
@@ -424,7 +510,7 @@ describe('the external ids and rows every walk writes for one fixture', () => {
   it('earn: both products subscribed and redeemed, a flexible reward on Earn and a locked reward on Spot', async () => {
     const world = worldOf({ binanceEarnHistoryCursor: NOW - 5 * DAY_MS });
 
-    await walkOnce({
+    const { requests } = await walkOnce({
       world,
       entries: [
         entryOf('flexibleSubscription', flexibleSubscriptionOf()),
@@ -436,6 +522,7 @@ describe('the external ids and rows every walk writes for one fixture', () => {
       ],
     });
 
+    expect(requests).toEqual([...earnReads(5, 0), ...earnReads(30, 5)]);
     expect(placed(uniqueByKey(world.added))).toEqual([
       ['acc-1:earn:redeem:flexible:r-1:BTC', 'h-spot', 100_000],
       ['acc-1:earn:redeem:flexible:r-1:BTC:earn', 'h-earn', -100_000],
@@ -447,6 +534,37 @@ describe('the external ids and rows every walk writes for one fixture', () => {
       ['acc-1:earn:sub:flexible:p-1:BTC:earn', 'h-earn', 100_000],
       ['acc-1:earn:sub:locked:p-2:BTC', 'h-spot', -100_000],
       ['acc-1:earn:sub:locked:p-2:BTC:earn', 'h-earn', 100_000],
+    ]);
+  });
+
+  it('earn: a subscription read that comes back full is split in half and each half is read', async () => {
+    const world = worldOf({ binanceEarnHistoryCursor: NOW - 5 * DAY_MS });
+
+    const { requests } = await walkOnce({
+      world,
+      entries: [entryOf('flexibleSubscription', flexibleSubscriptionOf())],
+      answer: (query) =>
+        query.kind === 'flexibleSubscription' && query.endTime - query.startTime > 2 * DAY_MS
+          ? fullPage()
+          : undefined,
+    });
+
+    expect(requests.filter((request) => request.kind === 'flexibleSubscription')).toEqual(
+      [
+        [5, 0],
+        [5, 2.5],
+        [5, 3.75],
+        [3.75, 1.25],
+        [3.75, 2.5],
+        [2.5, 0],
+        [2.5, 1.25],
+      ].map(([startDaysAgo, endDaysAgo]) =>
+        readOf('flexibleSubscription', startDaysAgo, endDaysAgo, { current: 1 }),
+      ),
+    );
+    expect(placed(uniqueByKey(world.added))).toEqual([
+      ['acc-1:earn:sub:flexible:p-1:BTC', 'h-spot', -100_000],
+      ['acc-1:earn:sub:flexible:p-1:BTC:earn', 'h-earn', 100_000],
     ]);
   });
 });
