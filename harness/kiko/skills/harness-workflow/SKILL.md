@@ -279,6 +279,8 @@ a test in the fix commit.
 
 - A ruling that narrows a rule or a guard is proven by a differential, base against HEAD, over
   the cases the rule decides; a sample the author picked is not proof.
+- Before dispatching a ruling that changes a guard decision, grep the test file's ALLOWED rows
+  for a case it would flip (a pinned `cp -r /tmp/kikox harness/` allowed row).
 - Plan text follows later decisions: the orchestrator updates the plan file in the same step that
   records the ruling, so the plan never contradicts it.
 - A guard change that alters a command the coordinator runs ships its CLAUDE.md change in the

@@ -287,10 +287,11 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   folder with a file after it, so `os.path.join('skills', n)` run from `.claude` is denied.
   A `cp`/`mv` is also denied when a folder lands exactly on `<worktree>/.claude` or
   `<worktree>/harness` (`cp -r /tmp/x/.claude .`: the folder may hold a tree), and when a
-  recursive copy puts a source's contents there (`cp -r`, `-R`, `-a`, or `-T`): a source
-  ending in `/` or `/.`, or with a glob or variable as its last segment
-  (`cp -r /tmp/x/* .claude/`). A file copied into `.claude/` and a slash-less folder copied
-  into `harness/` (`cp -r /tmp/kikox harness/`) stay allowed.
+  recursive copy puts a source's contents there (`cp -r`, `-R`, `-a`; `-T` counts only
+  together with one of those, and a recursive `-T` copy counts whatever the source looks
+  like): without `-T`, a source ending in `/` or `/.`, or with a glob or variable as its
+  last segment (`cp -r /tmp/x/* .claude/`). A file copied into `.claude/` and a slash-less
+  folder copied into `harness/` (`cp -r /tmp/kikox harness/`) stay allowed.
   `scripts/` and `githooks/` match like `src/`: resolved inside any worktree of this repository, or
   unresolved with a non-final folder segment of that name. A YAML file (`YAML_FILE`,
   `isYamlInsideWorktree`; case-insensitive final extension) counts at any depth inside a project
@@ -300,11 +301,15 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   (`echo x > $(pwd)/src/a`) tokenizes as a standalone word, so the guarded path is never seen
   and the write is allowed, for every guarded tree; the quoted form is denied. (b) A `~/...`
   target resolves through HOME and is judged like any resolved path (outside every worktree is
-  allowed). (c) `xargs cp`/`mv` into a prefix is judged by the tree match, with each tree name
-  as a fixed input; the YAML marker (`xargs-input.yml`) counts resolved paths only, so it does
-  not cover a prefix. An unresolved destination such as `$X/harness/` is denied only for a
-  recursive `cp` or a `mv`, through the `src` marker (`$X/harness/src/_`); a plain `cp` there
-  stays allowed. The parent-folder rule above is not applied behind `xargs`.
+  allowed). (c) `xargs cp`/`mv` into a resolved worktree folder, a prefix such as
+  `<wt>/harness/` included, is denied through the YAML marker (`xargs-input.yml`, a YAML file
+  inside a worktree); the tree names fill only where the text resolves them. An unresolved
+  destination such as `$X/harness/` is denied only for a recursive `cp` or a `mv`, through the
+  `src` marker (`$X/harness/src/_`); a plain `cp` there stays allowed. The parent-folder rule
+  above is not applied behind `xargs`. (d) A copy of a folder's CONTENTS into a worktree root
+  (`cp -r /tmp/x/ .`, `cp -r /tmp/x/. .`, `cp -r /tmp/x/* .`) is allowed for every tree (the
+  pinned allowed row is `cp -r /tmp/x/* .`). The parent-folder rule judges only
+  `<wt>/.claude` and `<wt>/harness` as the destination.
   A shell `cp` into a scratch worktree's `scripts/` (the gate-scratch pattern) is now denied:
   build the scratch from a git merge or commit, or use `git archive <sha> scripts |
   tar -x -C <folder>` into a folder that is not a worktree (the guard judges redirects, `cp`/`mv`,
@@ -376,8 +381,8 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   is denied whatever the input files are (fail closed: the names are
   unknowable): `ls | xargs -I{} cp {} .maestro/` denies. An unresolved
   destination gets no YAML check, only the folder-name fills above.
-  Known YAML limits: outside `xargs`, a recursive or `-T` folder copy
-  that holds YAML passes, since the folder's name cannot tell
+  Known YAML limits: outside `xargs`, a recursive folder copy
+  (`-T` included) that holds YAML passes, since the folder's name cannot tell
   (`cp -r /tmp/flows .maestro/` allowed; only a literal `*.yml` path
   denies); an `xargs` `cp`/`mv` whose destination the text cannot
   resolve still lets a YAML file into a worktree (`cd "$X" && ls
@@ -619,7 +624,12 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   fixed set of cwds, and records every flipped pair; classify each as intended or not (H9
   2026-10-18: 43,738 pairs, 0 deny->allow). The preload only calls `decide()`; it never executes
   a command. Timing-bound tests may fail under the preload (overhead); the proof run of the
-  suites is the plain one.
+  suites is the plain one. Classify a probe row by the path it resolves to (and its cwd),
+  never by a regex over the command text.
+  Writing a red row for a path rule: do not assume `~/` stays unresolved (`resolveDirectory`
+  expands HOME). A tree entry of 2 or more segments needs the parent-folder `cp`/`mv` rule and
+  a resolved-candidate check in `expressionPaths`. Judge resolved paths, never literal text,
+  when a resolved path is available.
   No real kill
   word and no real main path is ever handed to the runner; they appear
   ONLY in NON-executed parser tests (node: string -> `decide()`). The

@@ -254,7 +254,9 @@ Every count and exit code is the orchestrator's own measured result.
   appear as consecutive non-final segments, as written or with its `.` and `//` segments
   folded; case-folded), the parent-folder rule (a `cp`/`mv` that lands a folder exactly on
   `<worktree>/.claude` or the plugin folder's parent, or a recursive copy of a source's
-  contents there, is denied), and the `.claude/skills` and `.claude/agents` entries. The
+  contents there, is denied; `-T` counts only with a recursive flag), `expressionPaths`
+  judges resolved `/_` candidates and `namesGuardedTree` checks raw and normalized text, and
+  the `.claude/skills` and `.claude/agents` entries. The
   plugin-folder entry is repo-specific: in the harness repo it is that repo's plugin folder,
   not `harness/kiko`. Create `.claude/agents/.gitkeep` so the path resolves.
 
