@@ -18,18 +18,6 @@ export const EARN_KEY = 'BTC:earn';
 
 export type BinanceWalletKey = typeof SPOT_KEY | typeof FUNDING_KEY | typeof EARN_KEY;
 
-/**
- * Default display names for the holdings a sync creates. 'Binance' and its
- * wallet names are brand terms, read the same in every language, and each name
- * is user-editable after creation — an upsert never rewrites it, so a renamed
- * holding keeps its name.
- */
-export const WALLET_HOLDING_NAMES: Record<BinanceWalletKey, string> = {
-  [SPOT_KEY]: 'Binance Spot',
-  [FUNDING_KEY]: 'Binance Funding',
-  [EARN_KEY]: 'Binance Earn',
-};
-
 export type BinanceWallet = 'spot' | 'funding' | 'earn';
 
 /**
@@ -60,6 +48,29 @@ const WALLET_LABELS: Record<BinanceWallet, string> = {
 /** The default name of a holding the sync creates for a coin: "Binance Spot · USDT". */
 export const coinHoldingName = (code: Currency, wallet: BinanceWallet): string =>
   `Binance ${WALLET_LABELS[wallet]} · ${code}`;
+
+/**
+ * Default display names for the BTC holdings a sync creates. 'Binance' and its
+ * wallet names are brand terms, read the same in every language, and each name
+ * is user-editable after creation — an upsert never rewrites it, except the
+ * one-time rename from `PREVIOUS_BTC_HOLDING_NAMES`.
+ */
+export const WALLET_HOLDING_NAMES: Record<BinanceWalletKey, string> = {
+  [SPOT_KEY]: coinHoldingName('BTC', 'spot'),
+  [FUNDING_KEY]: coinHoldingName('BTC', 'funding'),
+  [EARN_KEY]: coinHoldingName('BTC', 'earn'),
+};
+
+/**
+ * The default names earlier releases gave each wallet's BTC holding, so a stored holding that
+ * still carries one is renamed to its `coinHoldingName`; a name the user chose matches none.
+ * The single BTC holding of the pre-split release was 'Binance BTC', which became Spot.
+ */
+export const PREVIOUS_BTC_HOLDING_NAMES: Record<BinanceWallet, readonly string[]> = {
+  spot: ['Binance BTC', 'Binance Spot'],
+  funding: ['Binance Funding'],
+  earn: ['Binance Earn'],
+};
 
 /** The `metadata.binanceAsset` key stored on a holding, if any. */
 export const binanceKeyOf = (holding: Pick<HoldingRow, 'metadata'>): string | undefined => {

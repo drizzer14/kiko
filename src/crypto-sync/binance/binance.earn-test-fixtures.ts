@@ -258,7 +258,7 @@ const depsOf = (
   readCredentials: async () => ({ apiKey: 'test-key', secret: 'secret' }),
   listHoldings: async () => [...(await world.state.listHoldings()), ...world.others],
   fetchEarnRecords: server as unknown as BinanceEarnHistoryDeps['fetchEarnRecords'],
-  ensureHoldings: jest.fn(async (created: Omit<ExchangeHolding, 'renameFromDefault'>[]) => {
+  ensureHoldings: jest.fn(async (created: Omit<ExchangeHolding, 'renameFromDefaults'>[]) => {
     for (const holding of created) {
       world.events.push(`ensure:${holding.metadataKey}`);
       world.others.push(

@@ -30,12 +30,10 @@ import {
   type BinanceWallet,
   binanceKeyOf,
   coinHoldingName,
-  EARN_KEY,
-  FUNDING_KEY,
   holdingKeyOf,
   partsOfHoldingKey,
+  PREVIOUS_BTC_HOLDING_NAMES,
   SPOT_KEY,
-  WALLET_HOLDING_NAMES,
 } from './binance.holding-keys';
 import { isTrackedBinanceAsset } from './binance.tracked-coin';
 import { type BinanceCredentials, readCredentials } from './binance.credentials';
@@ -66,14 +64,6 @@ export const defaultBinanceDeps: BinanceDeps = {
   fetchFlexiblePosition,
   fetchLockedPosition,
 };
-
-/**
- * The pre-split default name of the single aggregated holding. The Spot balance
- * carries it as `renameFromDefault`, so the upsert relabels a still-default
- * legacy holding to 'Binance Spot' on the first post-split sync while leaving a
- * user-edited name untouched (see `renameFromDefault` in `../provider`).
- */
-const LEGACY_HOLDING_NAME = 'Binance BTC';
 
 type AmountFailureKey =
   | 'accountDetail.binanceNonNumericBalanceAmount'
@@ -268,23 +258,12 @@ const existingBinanceKeys = (holdings: HoldingRow[]): Set<string> => {
   return keys;
 };
 
-// BTC keeps its pre-per-coin default names until the rename moves a stored holding with them.
-const BTC_HOLDING_NAMES: Record<BinanceWallet, string> = {
-  spot: WALLET_HOLDING_NAMES[SPOT_KEY],
-  funding: WALLET_HOLDING_NAMES[FUNDING_KEY],
-  earn: WALLET_HOLDING_NAMES[EARN_KEY],
-};
-
-const holdingNameOf = (currency: Currency, wallet: BinanceWallet): string =>
-  currency === BINANCE_ASSET ? BTC_HOLDING_NAMES[wallet] : coinHoldingName(currency, wallet);
-
-// The Spot BTC holding is the one the pre-split single holding became; it carries the old
-// default name so the upsert relabels it, and only it.
+// Only a BTC holding can carry an earlier default name, so no other coin is ever renamed.
 const renameOf = (
   currency: Currency,
   wallet: BinanceWallet,
-): Pick<ProviderBalance, 'renameFromDefault'> =>
-  currency === BINANCE_ASSET && wallet === 'spot' ? { renameFromDefault: LEGACY_HOLDING_NAME } : {};
+): Pick<ProviderBalance, 'renameFromDefaults'> =>
+  currency === BINANCE_ASSET ? { renameFromDefaults: PREVIOUS_BTC_HOLDING_NAMES[wallet] } : {};
 
 /** The least balance that creates a holding: a coin's dust threshold, any non-zero fiat balance. */
 const appearMinorUnitsOf = (currency: Currency): number =>
@@ -332,7 +311,7 @@ const appendWallet = (
         currency,
         balanceMinorUnits,
         metadataKey,
-        name: holdingNameOf(currency, wallet),
+        name: coinHoldingName(currency, wallet),
         ...renameOf(currency, wallet),
       });
     }

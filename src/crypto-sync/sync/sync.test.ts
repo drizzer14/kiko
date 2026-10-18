@@ -212,6 +212,28 @@ describe('runBalanceSync', () => {
     ]);
   });
 
+  it('hands a balance renameFromDefaults on to the upsert', async () => {
+    const { provider } = makeProvider('binance');
+    const { deps } = makeInMemoryDeps([cryptoAccount()]);
+    deps.targetAccountId = 'acc-1';
+    const upserted: Parameters<BalanceSyncDeps['upsertHoldings']>[0][] = [];
+    const inMemoryUpsert = deps.upsertHoldings;
+    deps.upsertHoldings = async (holdingsList) => {
+      upserted.push(holdingsList);
+      await inMemoryUpsert?.(holdingsList);
+    };
+
+    await runBalanceSync(
+      provider,
+      { balances: [{ ...walletBalance(1), renameFromDefaults: ['Binance BTC', 'Binance Spot'] }] },
+      deps,
+    );
+
+    expect(upserted.flat().map(({ renameFromDefaults }) => renameFromDefaults)).toEqual([
+      ['Binance BTC', 'Binance Spot'],
+    ]);
+  });
+
   it('with no target id, syncs into the account already connected under the provider institution and hands it its holdings', async () => {
     const { provider, calls } = makeProvider();
     const { deps, holdingsStore } = makeInMemoryDeps([

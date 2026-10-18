@@ -151,9 +151,9 @@ describe('binanceProvider — Spot holding', () => {
       currency: 'BTC',
       balanceMinorUnits: 75_000_000, // 0.5 + 0.25 BTC
       metadataKey: 'BTC',
-      name: 'Binance Spot',
+      name: 'Binance Spot · BTC',
       // The transition marker: relabel a still-default legacy holding to Spot.
-      renameFromDefault: 'Binance BTC',
+      renameFromDefaults: ['Binance BTC', 'Binance Spot'],
     });
   });
 
@@ -186,8 +186,8 @@ describe('binanceProvider — Spot holding', () => {
           currency: 'BTC',
           balanceMinorUnits: units,
           metadataKey: 'BTC',
-          name: 'Binance Spot',
-          renameFromDefault: 'Binance BTC',
+          name: 'Binance Spot · BTC',
+          renameFromDefaults: ['Binance BTC', 'Binance Spot'],
         },
       ]);
     },
@@ -302,7 +302,8 @@ describe('binanceProvider — Funding holding', () => {
       currency: 'BTC',
       balanceMinorUnits: 40_000_000, // 0.4 BTC
       metadataKey: 'BTC:funding',
-      name: 'Binance Funding',
+      name: 'Binance Funding · BTC',
+      renameFromDefaults: ['Binance Funding'],
     });
   });
 
@@ -378,7 +379,8 @@ describe('binanceProvider — Funding holding', () => {
       currency: 'BTC',
       balanceMinorUnits: 0,
       metadataKey: 'BTC:funding',
-      name: 'Binance Funding',
+      name: 'Binance Funding · BTC',
+      renameFromDefaults: ['Binance Funding'],
     });
   });
 });
@@ -407,7 +409,8 @@ describe('binanceProvider — Earn holding (Flexible + Locked combined)', () => 
       currency: 'BTC',
       balanceMinorUnits: 50_000_000, // 0.3 + 0.2 BTC, one holding
       metadataKey: 'BTC:earn',
-      name: 'Binance Earn',
+      name: 'Binance Earn · BTC',
+      renameFromDefaults: ['Binance Earn'],
     });
     // No separate flexible/locked holdings exist.
     expect(byKey(balances, 'BTC:flexible')).toBeUndefined();
@@ -524,18 +527,37 @@ describe('binanceProvider — data transition from the single aggregated holding
     expect(balances.filter((balance) => balance.metadataKey === 'BTC')).toHaveLength(1);
   });
 
-  // The legacy aggregated holding kept the old default name "Binance BTC"; once
-  // it becomes Spot-only it must relabel to "Binance Spot" so the grid does not
-  // mix "Binance BTC" with "Binance Funding"/"Binance Earn". The Spot balance
-  // carries the old default as `renameFromDefault`, so the upsert renames a
-  // still-default holding while leaving a user-edited name untouched.
-  it('marks the Spot balance to relabel a legacy default-named holding to "Binance Spot"', async () => {
+  // The BTC holdings of the earlier releases kept their old default names; each balance
+  // carries them as `renameFromDefaults`, so the upsert renames a still-default holding to
+  // "Binance <Wallet> · BTC" while leaving a user-edited name untouched (H9, H10).
+  it.each<[BinanceWallet, string, string[]]>([
+    ['spot', 'Binance Spot · BTC', ['Binance BTC', 'Binance Spot']],
+    ['funding', 'Binance Funding · BTC', ['Binance Funding']],
+    ['earn', 'Binance Earn · BTC', ['Binance Earn']],
+  ])('names the %s BTC balance "%s" and renames it from %j', async (wallet, name, defaults) => {
     const deps = makeDeps([{ asset: 'BTC', free: '1', locked: '0' }]);
+    deps.fetchFundingAsset.mockResolvedValue([
+      { asset: 'BTC', free: '1', locked: '0', freeze: '0', withdrawing: '0' },
+    ]);
+    deps.fetchFlexiblePosition.mockResolvedValue({
+      rows: [{ asset: 'BTC', totalAmount: '1' }],
+      total: 1,
+    });
 
     const balances = await binanceProvider.fetchBalances(deps, emptyTarget);
 
-    expect(byKey(balances, 'BTC')?.name).toBe('Binance Spot');
-    expect(byKey(balances, 'BTC')?.renameFromDefault).toBe('Binance BTC');
+    expect(byKey(balances, holdingKeyOf('BTC', wallet))).toMatchObject({
+      name,
+      renameFromDefaults: defaults,
+    });
+  });
+
+  it('never marks a coin other than BTC for a rename', async () => {
+    const deps = makeDeps([{ asset: 'USDT', free: '5', locked: '0' }]);
+
+    const balances = await binanceProvider.fetchBalances(deps, emptyTarget);
+
+    expect(byKey(balances, 'USDT')?.renameFromDefaults).toBeUndefined();
   });
 });
 

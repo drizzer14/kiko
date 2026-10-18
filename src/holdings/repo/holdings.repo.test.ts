@@ -828,27 +828,30 @@ describe('holdingsRepo.upsertExchange', () => {
     expect(updates[0]).toMatchObject({ balanceMinorUnits: 0 });
   });
 
-  // The one-time transition rename: when `renameFromDefault` is set and the
-  // matched holding's name STILL equals that old default, the update rewrites
+  // The one-time transition rename: when `renameFromDefaults` is set and the
+  // matched holding's name STILL equals one of the old defaults, the update rewrites
   // the name; a user-edited name never matches and is left untouched.
-  it('renames a matched holding whose name is still the old default', async () => {
-    const { databaseTransaction, updates } = makeUpsertDatabaseTransaction([
-      { id: 'h-legacy', name: 'Binance BTC' },
-    ]);
-    mockDatabaseTransaction = databaseTransaction;
+  it.each(['Binance BTC', 'Binance Spot'])(
+    'renames a matched holding whose name is still the old default "%s"',
+    async (storedName) => {
+      const { databaseTransaction, updates } = makeUpsertDatabaseTransaction([
+        { id: 'h-legacy', name: storedName },
+      ]);
+      mockDatabaseTransaction = databaseTransaction;
 
-    await holdingsRepo.upsertExchange({
-      ...walletHolding,
-      name: 'Binance Spot',
-      metadataField: 'binanceAsset',
-      metadataKey: 'BTC',
-      renameFromDefault: 'Binance BTC',
-    });
+      await holdingsRepo.upsertExchange({
+        ...walletHolding,
+        name: 'Binance Spot · BTC',
+        metadataField: 'binanceAsset',
+        metadataKey: 'BTC',
+        renameFromDefaults: ['Binance BTC', 'Binance Spot'],
+      });
 
-    expect(updates[0]).toMatchObject({ name: 'Binance Spot' });
-  });
+      expect(updates[0]).toMatchObject({ name: 'Binance Spot · BTC' });
+    },
+  );
 
-  it('preserves a user-edited name even when renameFromDefault is set', async () => {
+  it('preserves a user-edited name even when renameFromDefaults is set', async () => {
     const { databaseTransaction, updates } = makeUpsertDatabaseTransaction([
       { id: 'h-legacy', name: 'My Binance stack' },
     ]);
@@ -856,10 +859,27 @@ describe('holdingsRepo.upsertExchange', () => {
 
     await holdingsRepo.upsertExchange({
       ...walletHolding,
-      name: 'Binance Spot',
+      name: 'Binance Spot · BTC',
       metadataField: 'binanceAsset',
       metadataKey: 'BTC',
-      renameFromDefault: 'Binance BTC',
+      renameFromDefaults: ['Binance BTC', 'Binance Spot'],
+    });
+
+    expect(updates[0]).not.toHaveProperty('name');
+  });
+
+  it('preserves a stored name when renameFromDefaults is empty', async () => {
+    const { databaseTransaction, updates } = makeUpsertDatabaseTransaction([
+      { id: 'h-legacy', name: 'Binance BTC' },
+    ]);
+    mockDatabaseTransaction = databaseTransaction;
+
+    await holdingsRepo.upsertExchange({
+      ...walletHolding,
+      name: 'Binance Spot · BTC',
+      metadataField: 'binanceAsset',
+      metadataKey: 'BTC',
+      renameFromDefaults: [],
     });
 
     expect(updates[0]).not.toHaveProperty('name');

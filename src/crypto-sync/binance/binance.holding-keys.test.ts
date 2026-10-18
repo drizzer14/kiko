@@ -4,7 +4,9 @@ import {
   FUNDING_KEY,
   holdingKeyOf,
   partsOfHoldingKey,
+  PREVIOUS_BTC_HOLDING_NAMES,
   SPOT_KEY,
+  WALLET_HOLDING_NAMES,
 } from './binance.holding-keys';
 
 describe('holdingKeyOf', () => {
@@ -70,5 +72,23 @@ describe('coinHoldingName', () => {
     expect(coinHoldingName('USDT', 'spot')).toBe('Binance Spot · USDT');
     expect(coinHoldingName('EUR', 'funding')).toBe('Binance Funding · EUR');
     expect(coinHoldingName('ETH', 'earn')).toBe('Binance Earn · ETH');
+  });
+});
+
+describe('the BTC holding names', () => {
+  it('name the three BTC holdings "Binance <Wallet> · BTC", keyed by the three BTC keys', () => {
+    expect(WALLET_HOLDING_NAMES).toEqual({
+      [SPOT_KEY]: 'Binance Spot · BTC',
+      [FUNDING_KEY]: 'Binance Funding · BTC',
+      [EARN_KEY]: 'Binance Earn · BTC',
+    });
+  });
+
+  it('list the earlier defaults a BTC holding is renamed from, Spot from both of its two', () => {
+    expect(PREVIOUS_BTC_HOLDING_NAMES).toEqual({
+      spot: ['Binance BTC', 'Binance Spot'],
+      funding: ['Binance Funding'],
+      earn: ['Binance Earn'],
+    });
   });
 });
