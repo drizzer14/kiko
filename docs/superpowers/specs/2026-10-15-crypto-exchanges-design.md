@@ -116,7 +116,7 @@ These are the coordinator's rulings, not the user's, except C-NR2, which the use
 | C-NR7 A | The C-NR4 / C-NR6 re-read fallback is cut from 1.3-a. P15b (`myTrades` with `symbol` + `orderId` + `fromId` pages an order's fills by id) runs in probe 3 as a hard gate before set 11: refuted or untestable (for example, no spot order on the account) -> stop and ask the coordinator | 5, 11, 12 |
 | C-CGPT A | CGPT (ChainGPT) is added to the curated list: probe 2 found it in the user's Funding wallet, and R-Q4 lists the user's own coins | 3 |
 | C-P2P-depth (stop rule replaced by C-P2P-stop) | The P2P walk has no month cap. Its stop rule is C-P2P-stop. Probe 3 found rows in 29 of 36 windows (oldest month served 2023-11, the limit of that walk). Probe 4 found rows in 31 of 38 windows, back to about 2023-09, and the oldest window it walked had rows ("the oldest walked window had rows on 1 side(s)"), so the real floor is older and unknown. The longest run of empty windows seen was 3 (probe 3, windows 11-13) | 5, 12 |
-| C-NR8 A | `exchange_state` holds two lists per kind (not tracked, oversized): a balance list, replaced by each good balance read, and a history list, which only grows and is cleared on disconnect. The account detail shows the sorted union of the two lists of a kind, without duplicates | 2, 3, 5, 7 |
+| C-NR8 A | `exchange_state` holds two lists per kind (not tracked, oversized): a balance list, and a history list, which only grows and is cleared on disconnect. The account detail shows the sorted union of the two lists of a kind, without duplicates. The not-tracked balance list is replaced only by a read where EVERY wallet read. The oversized balance list is kept per wallet (`oversizedCoins.balanceByWallet`): a wallet that read replaces its own array, a failed wallet keeps it, a complete read replaces all, and `balance` is derived from them (`exchange-state-patch.ts`) | 2, 3, 5, 7 |
 | C-Prep A (Q2-Q12) | `restoreDataSnapshot` takes a required version; an `amountTooLargeError` import key; set 3 moves code only, and sets 5-6 switch to `exchangeMinorUnits`; the parser lives in set 2; `exchangeHistoryPaused` is set 4's; per-migration `VERSION_DECISIONS`; credential wrappers stay in `binance/`, and `exchange/` is a declared container; history only for held coins; the privacy-site copies; set 4's test-helper first commit; `bond_register` excluded from 0059 | 2, 3, 7, 9, 10, 11 |
 | C-NR9 A (2026-10-15) | (a) From set 2 on, a restore refuses a file with a currency code that is not in `currencyScale`: no row is written, and one new import error key is added (en + uk, translator review), since no "made by a newer Kiko" key exists. (b) Set 2 adds a small concurrency cap to `fetchCryptoHistory` (`CRYPTO_HISTORY_CONCURRENCY`; the developer measures it, starting at 2). There are never more requests in flight than the cap, and every coin is still fetched | 3, 11 (set 2) |
 | C-P5 A (2026-10-16) | The crypto row of a P2P BUY is `takerAmount`, net of the fee per R-Q13. When `takerAmount` is absent, the row is `amount - takerCommission`, computed exactly with the decimal parser. When both exist and disagree, the order is refused into the not-imported list (visible) and never guessed. The `p2p:<FIAT>:<TOTAL>` marker holds `totalPrice` as Binance gives it (C-NR1 normalization only) and is never derived from `amount x unitPrice`. Probe 4: `takerAmount = amount - takerCommission` in 69 of 69 fee-bearing orders; `amount x unitPrice = totalPrice` in only 2 of 69 | 5, 7 |
@@ -206,13 +206,13 @@ Not in 1.3-a by rule:
 | `exchange/paging/` | set 3: `fetchAllByTotal`, `readSeriesSpan` (with span halving) and `TotalPage<Row, Weights>` in `paging.ts`; no `Pager` or `offsetPager` exists, the interface below is the set 10 target; `idCursorPager` (set 10) | `binance.history-paging.ts` |
 | `exchange/walk/` | the walk engine: `planWalkPasses`, `runWalkPlan`, `walkSpans`, `buildWalkWindows`, owed ranges and points, range cursor, span hints, `settleRecords`, `commitSettledSpan`, `placeWalletRows`, depth guards; `WalkStop` codes generic, exchange codes added per exchange | `binance.history-walk.ts`, `binance.history-records.ts`, `binance.history-depth.ts` (constants become a per-exchange `DepthConfig`), `binance.walk-write-deps.ts` |
 | `exchange/walk-state/` | `ExchangeState` type, its per-walk strict parse, readers and the gated writer over `sync_state.exchange_state` (set 4) | the walk-owned metadata keys of `holding-metadata.ts` (`binanceWalkCursorFields`, `binanceWalkPendingFields`, `binanceWalkPointCursorFields`, `binanceWalkRangeCursorFields`, `binanceWalkSpanHintFields`) and `holdingsRepo.setBinanceWalkCursor`, `setBinanceWalkPending`, `setBinanceWalkSpanHints`, `resetBinanceWalkCursors` |
-| `exchange/history-status/` | `isExchangeHistoryBehind(state, latestSyncedAt)`, `untrackedCoinsOf(state)` and `oversizedCoinsOf(state)` (each the sorted union of its kind's balance and history lists, C-NR8; `untrackedCoinsOf` leaves out a ticker that is a curated code now); `notImportedCountsOf(state)`, the count of `notImported` entries per kind in the fixed order of `NOT_IMPORTED_KINDS` (C-NR-A, set 8; section 6, "Not-imported line") | `screens/account-detail/crypto-sync-section/binance-history-status.ts` (`walkCursorsOf`, `transferOwesRange`, `isBinanceHistoryBehind`) |
-| `exchange/amounts/` | `exchangeMinorUnits(currency, text, use: 'balance' \| 'row'): Either<AmountError, number>`: a wrapper over set 2's exact decimal-to-minor-units parser in `src/currency/decimal/decimal.ts`; both modes refuse an exponent form (`amount-malformed`) and a result above `Number.MAX_SAFE_INTEGER` (`amount-too-large`). `'balance'`: more decimals than the scale round half away from zero and log `balance-precision-rounded`. `'row'`: more decimals than the scale are refused (`amount-precision`), except on a reduced-scale coin (section 3), where they round the same way and log `row-precision-rounded` | new in set 3 with no caller; set 5 switches `sumSatoshis`/`Money.fromMajor(BINANCE_ASSET, Number(...))` in `binance.provider.ts` to it, set 6 switches `btcSatoshis` (`binance.history-walk.ts`) |
+| `exchange/history-status/` | `isExchangeHistoryBehind(state, latestSyncedAt)`, `untrackedCoinsOf(state, isTracked)` and `oversizedCoinsOf(state)` (each the sorted union of its kind's balance and history lists, C-NR8; `untrackedCoinsOf` leaves out a ticker that the exchange's tracked rule accepts now, `isTrackedBinanceAsset` for Binance: a curated crypto or a `BINANCE_FIAT_CODES` fiat; INR, PEN and KES stay on the list); `notImportedCountsOf(state)`, the count of `notImported` entries per kind in the fixed order of `NOT_IMPORTED_KINDS` (C-NR-A, set 8; section 6, "Not-imported line") | `screens/account-detail/crypto-sync-section/binance-history-status.ts` (`walkCursorsOf`, `transferOwesRange`, `isBinanceHistoryBehind`) |
+| `exchange/amounts/` | `exchangeMinorUnits(currency, text, use: 'balance' \| 'row'): Either<AmountError, number>`: a wrapper over set 2's exact decimal-to-minor-units parser in `src/currency/decimal/decimal.ts`; both modes refuse an exponent form (`amount-malformed`) and a result above `Number.MAX_SAFE_INTEGER` (`amount-too-large`). `'balance'`: more decimals than the scale round half away from zero and log `balance-precision-rounded`. `'row'`: more decimals than the scale are refused (`amount-precision`), except on a reduced-scale coin (section 3), where they round the same way and log `row-precision-rounded` | new in set 3 with no caller; set 5 switched the balance sum in `binance.provider.ts` (`sumAmounts`, over `exchangeMinorUnits`) to it (done), set 6 switches `btcSatoshis` (`binance.history-walk.ts`) |
 
 The Binance host constant stays in `binance.client.ts` (re-grep the `@env` host); there is no
 hosts unit in 1.3-a.
 
-Set 3 moves code only. `btcSatoshis` and `sumSatoshis` keep their behaviour there (`btcSatoshis` now lives in `binance.amounts.ts`): a JS number or
+Set 3 moves code only. `btcSatoshis` and the old `sumSatoshis` (replaced by `sumAmounts` in set 5) keep their behaviour there (`btcSatoshis` now lives in `binance.amounts.ts`): a JS number or
 any `Number()`-parsable string (an exponent form too), rounded through `Money.fromMajor`. The
 switch to `exchangeMinorUnits` in sets 5 and 6 is a behaviour change on off-contract input, so its
 cases carry "was:" rows (A1-A4, section 7).
@@ -273,7 +273,8 @@ type ExchangeState = {
   trades?: { symbols: Record<string, { fromId: number | null; heldOrderId?: number }>;
              rotation: number; balanceSnapshot: Record<string, string> };
   untrackedCoins?: CoinLists;                 // tickers not on the coin list (C-NR8)
-  oversizedCoins?: CoinLists;                 // tickers refused as amount-too-large (C-NR8)
+  oversizedCoins?: CoinLists & { balanceByWallet?: Record<string, string[]> };
+                                              // tickers refused: too large or malformed (C-NR8)
   notImported?: string[];                     // records a rule refuses for good (C-NR-A):
                                               //  '<kind>:<record id>:<time ms>', no duplicates
 };
@@ -320,7 +321,8 @@ Parse, per walk (set 4):
   disconnect resets it. The malformed text is never overwritten by a walk patch.
 - `trades` parses per PART (`symbols`, `rotation`, `balanceSnapshot`): a bad part never empties
   another (`tradesOf`, `walk-state.ts`). Each of the four coin lists (`untrackedCoins.balance`, `untrackedCoins.history`,
-  `oversizedCoins.balance`, `oversizedCoins.history`) and `notImported` parse on their own. A
+  `oversizedCoins.balance`, `oversizedCoins.history`) and `notImported` parse on their own, and
+  `oversizedCoins.balanceByWallet` is parsed per wallet (`oversizedByWalletOf`). A
   malformed one reads as its empty value and logs the same tag with the entry name. A
   `notImported` entry whose kind is not in `NOT_IMPORTED_KINDS` is dropped on read and logged (a
   newer build's kind).
@@ -565,10 +567,10 @@ confirms the look live on the device before set 1 is done.
 ### Safe-integer bound and the visible error
 
 Every exchange amount goes through `exchangeMinorUnits` (section 2). A balance or row above the
-bound is never truncated: the balance write for that holding is skipped (the last good balance
-stays), the row is a per-record stop owed at its point, the ticker joins
-`exchange_state.oversizedCoins` (its balance list for a balance, its history list for a row;
-C-NR8), and the account detail shows `accountDetail.oversizedAmount` (section 10) for the sorted
+bound, or a malformed one (`refused`, `binance.provider.ts`), is never truncated: that coin alone
+is skipped, its holding keeps its last balance (a failed wallet is a different case), the row is a per-record stop owed at its point, the ticker joins
+`exchange_state.oversizedCoins` (its balance list, kept per wallet in `balanceByWallet`, for a
+balance; its history list for a row; C-NR8), and the account detail shows `accountDetail.oversizedAmount` (section 10) for the sorted
 union of the two lists. A balance with more decimals than the coin's scale (probe P10) rounds half away from
 zero and logs `balance-precision-rounded`. A ROW with more decimals is a per-record stop
 (`amount-precision`), except on a reduced-scale coin, where it rounds the same way and logs
@@ -582,8 +584,14 @@ zero and logs `balance-precision-rounded`. A ROW with more decimals is a per-rec
   debt). `buildUahRows` writes one `X:UAH` row per priced coin.
 - Fallback for a coin CoinGecko did not price (set 5): Binance public market data on the pinned
   host, no key sent. It runs for every user holding that coin, with or without a Binance account.
-  Current: `GET /api/v3/ticker/price?symbol=<binanceSymbol>` (weight 2). Dated history:
-  `GET /api/v3/klines?symbol=<binanceSymbol>&interval=1d` (weight 2, up to 1000 days per call). The
+  Current: `GET /api/v3/klines?symbol=<binanceSymbol>&interval=1d&limit=1` (weight 2), accepted
+  only if the candle's UTC open day is today. Dated history: the same path with `startTime`,
+  `endTime` and `limit` (weight 2, up to 1000 days per call); a series that ends before yesterday
+  UTC (a halted pair) is no price. Rows carry `source = 'binance'`. Settled marks come only from
+  CoinGecko's own answer, an unexpired empty mark also holds while every stored row of the coin
+  is Binance's, and a coin leaves the rate-limit rotation only when its Binance series reaches the
+  range start. `data-api.binance.vision` is a later option (Binance's docs recommend it for
+  public market data); set 5 keeps `api.binance.com` by ruling D1. The
   USDT-quoted price converts through USDT's own price; when USDT itself is unpriced, USDT's price
   comes from `EURUSDT` (probe P14) and the EUR fiat anchor. Never 1:1 for any stablecoin. Calls
   count against the `/api/*` IP budget (section 5). The privacy policy says so (section 9).
@@ -604,18 +612,19 @@ zero and logs `balance-precision-rounded`. A ROW with more decimals is a per-rec
 - A non-zero balance of a coin outside the registry gets no holding, no row and no price. Its
   ticker is stored in the balance list of `exchange_state.untrackedCoins`, which each good balance
   read replaces. A good balance read is one in which every wallet read succeeded; a read in which
-  a Funding or Earn wallet failed (that wallet keeps its last good balance) leaves both balance
-  lists, not tracked and oversized, as stored. Every history read (capital, Pay, Transfer, Earn
+  a Funding or Earn wallet failed (that wallet keeps its last good balance) leaves only the
+  not-tracked list as stored; the oversized list is patched per wallet (`balanceByWallet`). Every history read (capital, Pay, Transfer, Earn
   and the later streams) imports no row for a record of such a coin (a pair with one untracked
   side keeps the tracked leg, section 6) and adds its ticker to the history list, which only grows
   and is cleared on disconnect (C-NR8). "Joins the not-tracked line" in sections 5 and 6 means
   this history-list add. The account detail lists the sorted union of the two lists, without
-  duplicates and without a ticker that is a curated code now (the coin list grew since it was
-  stored) (`accountDetail.untrackedCoins`, reason "not on Kiko's coin list").
-- LD* (R-Tech, probe P9): an asset whose code is `LD` + X, where X is a curated code or an asset in
-  this run's Simple Earn positions, is an Earn receipt token. It is skipped in Spot (Earn is read
-  from the Earn endpoints) and never priced. `LDO` and other real coins starting with LD pass,
-  because the rest of their code is neither.
+  duplicates and without a ticker the exchange's tracked rule accepts now (`isTrackedBinanceAsset`;
+  the coin list grew since it was stored) (`accountDetail.untrackedCoins`, reason "not on Kiko's coin list").
+- LD* (R-Tech, probe P9): an asset whose code is `LD` + X, where X is a tracked asset
+  (`isTrackedBinanceAsset`; LDEUR is hidden) or an asset in this run's Simple Earn positions, is an
+  Earn receipt token (`isReceiptToken`). It is skipped in Spot (Earn is read from the Earn
+  endpoints) and never priced. `LDO` and other real coins starting with LD pass, because the rest
+  of their code is neither.
 - Picker (R-Picker, set 2): `CurrencyField` and `holdingCurrencyOptions` list every curated coin for
   a `crypto_asset`; the base-currency setting keeps offering fiat only.
 - Migration 0044 stays frozen (set 2). `withCryptoCashHoldingsMoved` (`restore-snapshot.ts`) switches
@@ -629,8 +638,12 @@ zero and logs `balance-precision-rounded`. A ROW with more decimals is a per-rec
   `metadata.binanceAsset`: `<CODE>` for Spot, `<CODE>:funding`, `<CODE>:earn`. BTC keys stay
   `BTC`, `BTC:funding`, `BTC:earn` (`SPOT_KEY`, `FUNDING_KEY`, `EARN_KEY`). A fiat holding is a
   `crypto_asset` holding in a fiat currency (a write accepts fiat for that type,
-  `isCurrencyAllowedForHoldingType`); only fiat codes in `currencyOptions` qualify, another fiat is
-  a not-tracked ticker.
+  `isCurrencyAllowedForHoldingType`); only the fiat codes in `BINANCE_FIAT_CODES`
+  (`binance.tracked-coin.ts`: UAH USD EUR GBP AED ARS AUD BRL COP CZK IDR JPY KZT MXN NGN PLN RON
+  THB TRY ZAR) qualify; another fiat is a not-tracked ticker. The list is the Kiko fiat codes that
+  are quote assets of `GET api/v3/exchangeInfo`, a snapshot: a new Binance fiat needs a list
+  update. SCR and MNT are not tracked (the same code is another asset on Binance). The
+  authoritative list would be `isLegalMoney` in `/sapi/v1/capital/config/getall` (signed).
 - `ProviderBalance` gains `currency: Currency`; `runBalanceSyncInner` writes it instead of `'BTC'`.
   `fetchBalances` reads all assets from the four existing calls (no new call; `asset=` dropped from
   the funding and Earn reads).
@@ -639,15 +652,21 @@ zero and logs `balance-precision-rounded`. A ROW with more decimals is a per-rec
 - Stay: an existing holding is written every good read, a zero included; it is never archived by
   the sync. A dust balance below `dustBelow` with no holding and no row creates none.
 - Spot anchor: a Spot read failure fails the balance sync as today; no zero Spot holding is created
-  for a coin never held (the forced zero Spot BTC write applies only when the Spot BTC holding
-  exists).
-- Wallet failures keep today's rule per wallet (`walletSatoshis` -> `null` leaves every holding of
-  that wallet at its last good balance).
+  for a coin never held. The zero Spot BTC anchor is written whenever NO Spot BTC holding exists
+  (also when the Spot BTC amount is refused); an existing Spot BTC holding with a refused amount
+  keeps its last balance. Set 6 removes the anchor together with the four walk guards.
+- Wallet failures keep today's rule per wallet (`walletRead` returns `null` and leaves every
+  holding of that wallet at its last good balance).
 - Names: `Binance <Wallet> · <CODE>` ("Binance Spot · USDT", "Binance Funding · EUR",
   "Binance Earn · BTC"); proper nouns, the same in en and uk, written on insert only.
 - BTC rename: `ProviderBalance.renameFromDefault` becomes `renameFromDefaults: readonly string[]`.
   Spot BTC renames from `'Binance BTC'` or `'Binance Spot'` to `'Binance Spot · BTC'`; Funding BTC
-  from `'Binance Funding'`; Earn BTC from `'Binance Earn'`. A user-edited name never matches.
+  from `'Binance Funding'`; Earn BTC from `'Binance Earn'`. The rename runs once per holding, at
+  the FIRST upsert that carries `renameFromDefaults`; that upsert then sets the mark
+  `defaultNameRenameSettled` (metadata, carried through upserts and kept through a `.kiko`
+  round trip) whether or not it renamed. A user name equal to an old default before the first
+  marked sync is renamed once; after it, never. A user-edited name never matches
+  (`holding-keys.ts`, `holdings.repo.ts`, `holding-metadata.ts`).
 
 ## 5. Binance history streams
 
@@ -792,9 +811,9 @@ reason (R-Walk A).
 
 ### Pay (R-Q7)
 
-- An order in any curated coin imports. Direction and placement rules stay (history spec section
+- An order in any tracked coin (`isTrackedBinanceAsset`) imports. Direction and placement rules stay (history spec section
   4: uid direction, R22 receive placement by date, `walletTypes`/`walletAssetCost` split).
-- Funds: one row per `fundsDetail` entry with a curated `currency`, per wallet in its
+- Funds: one row per `fundsDetail` entry with a tracked `currency`, per wallet in its
   `walletAssetCost`, amount = that wallet's cost in that coin, on that coin's wallet holding. The
   costs of each coin must sum to that entry's `amount`, else `pay-split-mismatch` as today.
 - Cross-coin: an order in X paid with Y gets Y rows (no X row, no implied conversion). `comment` =
@@ -846,7 +865,7 @@ wallet check.
    - Pair id `${accountId}:convert:${orderId}`; leg keys `${pairId}:<walletKey>`.
    - No fee field (the fee is in the rate).
    - A fiat side (UAH, EUR) is a fiat holding leg.
-   - A side whose coin is not curated: the tracked leg alone, with `untrackedCounterpart =
+   - A side whose coin is not tracked: the tracked leg alone, with `untrackedCounterpart =
      asset:<CODE>` and no `exchangePairId`; its ticker joins the not-tracked line (section 3).
 
 Window and depth:
@@ -945,8 +964,10 @@ Row placement:
   the P2P wallet's fiat holding ("Binance Funding · UAH", created at zero by its first row, R-Q6),
   with the same row, marker and label rules. The R-Q14 matcher pairs its bank debit like any P2P
   buy (M14).
-- An `asset` that is neither a curated coin nor a fiat code in `currencyOptions`: no row, and its
-  ticker joins the not-tracked line.
+- An `asset` the tracked rule (`isTrackedBinanceAsset`) does not accept: the record is COUNTED, no
+  row is imported, and its ticker is added to `untrackedCoins.history` (a not-tracked line entry).
+  A history record that is skipped this way is counted, not an oversized stop; an oversized
+  history amount stops the walk (a point is owed).
 
 Not-imported entries (C-P2P-SELL-MAKER B, C-NR-A):
 - Each entry is `<kind>:<orderNumber>:<createTime>`. The cursor moves past the order. The account
@@ -1362,8 +1383,8 @@ Exact amounts, set 5 (balances) and set 6 (rows), when callers switch to `exchan
 |---|---|---|---|
 | A1 | BTC `"0.00012345"` | 12345 | 12345 |
 | A2 | BTC row `"0.000000001"` (9 decimals) | stop `amount-precision`, owed point | 0 (rounded by `Money.fromMajor`) |
-| A3 | BTC `"1e-8"` (exponent form) | refused as malformed (row: stop; balance: wallet keeps its last good balance) | 1 |
-| A4 | BTC JSON number `0.5` (not a string) | read through `decimalFromJsonNumber`: 50000000 | 50000000 |
+| A3 | BTC `"1e-8"` (exponent form) | refused as malformed (row: stop; balance: that coin alone is skipped, keeps its last balance and lands in `oversizedCoins`, per wallet) | 1 |
+| A4 | BTC JSON number `0.5` (not a string) | read through `decimalFromJsonNumber`: 50000000 | refused (only a string was read; a JSON number made the whole wallet read fail) |
 
 Holdings (set 5):
 
@@ -1380,7 +1401,7 @@ Holdings (set 5):
 | H9 | Spot BTC named "Binance Spot" | exists | renamed "Binance Spot · BTC" | "Binance Spot" |
 | H10 | Spot BTC named "My BTC" | exists | name kept | kept |
 | H11 | Funding read fails | USDT:funding exists | last good balance kept | BTC only |
-| H12 | amount above the safe bound | - | no write; oversized line | n/a |
+| H12 | amount above the safe bound | - | no write for that coin; oversized line | an oversized or malformed tracked Spot coin failed the WHOLE sync; now only that coin is skipped |
 | H13 | UA-1 balance read (Spot BTC only non-zero) | Spot BTC | Spot BTC written; no USDT or UAH holding from the balance read; not-tracked line empty | BTC only |
 
 Pay (set 6):
@@ -1602,11 +1623,11 @@ Caption (set 15):
 |---|---|
 | Logos (Third-party trademarks) | none; plain-text names and the generic icon; `exchangeDisclaimer` under the picker |
 | Network | no new host: Binance public market data uses the pinned `api.binance.com` without a key; CoinGecko unchanged. `check:plist` unchanged |
-| Privacy policy, price fallback (set 5; `docs/privacy-policy.en.md` and `docs/privacy-policy.md`, section 3, and the published copies `docs/privacy-site/en.html` and `docs/privacy-site/index.html`, which carry the same wording in the same commit) | The fallback calls `api.binance.com` for any user holding a coin CoinGecko did not price, with or without a Binance account. Section 3's opening sentence "Some connections run only after you connect ... (Monobank statements, Binance, Blockstream)" names "Binance account data" instead of "Binance" (uk: «дані акаунта Binance» instead of «Binance»), because a Binance price call now runs without a connection. Section 3's automatic list gains "cryptocurrency prices (CoinGecko, and Binance public prices when CoinGecko has none)", and the Binance bullet gains: "Also, for any user, public market prices of a coin CoinGecko did not price: Kiko sends only the market symbol (for example `BTCUSDT`); no key, address or amount is sent." The uk text mirrors it (translator review) |
+| Privacy policy, price fallback (set 5; `docs/privacy-policy.en.md` and `docs/privacy-policy.md`, section 3, and the published copies `docs/privacy-site/en.html` and `docs/privacy-site/index.html`, which carry the same wording in the same commit) | The fallback calls `api.binance.com` for any user holding a coin CoinGecko did not price, with or without a Binance account. Section 3's opening sentence "Some connections run only after you connect ... (Monobank statements, Binance, Blockstream)" names "Binance account data" instead of "Binance" (uk: «дані облікового запису Binance» instead of «Binance»), because a Binance price call now runs without a connection. Section 3's automatic list gains "cryptocurrency prices (CoinGecko, and Binance public prices when CoinGecko has none)", and the Binance bullet gains: "Also, for any user, public market prices of a coin CoinGecko did not price: Kiko sends only the market symbol (for example `BTCUSDT`) and the dates of the prices it needs; no key, address, or amount is sent." The uk text mirrors it («символ торгової пари», «дати потрібних цін»; translator review). The effective date is re-dated to the publish day when gh-pages goes out later (user answer 2026-10-18) |
 | Privacy policy, Binance data (set 15) | The Binance bullet adds: balances of every coin and fiat, trades, Convert, P2P orders (amounts and fiat totals of purchases; order numbers and times of records Kiko does not import yet; no counterparty data), fiat deposits and withdrawals, card purchases, dust conversions, and the ids and times of Convert and fiat records Kiko does not import yet. The ids and times of records not imported are kept on the device in the import progress (`exchange_state`) and travel in a `.kiko` export |
 | App Privacy label | stays "Data Not Collected" (everything stays on device); the review is recorded in `memory/refs/resubmission-kit.md` section D |
 | Stored counterparty data | Pay nickname only (D4). The P2P fields `counterPartNickName`, `advNo`, `payMethodName` and `additionalKycVerify` (probes 2-4 key list) and fiat payment method details are never read into a type. A not-imported entry stores the record id and time only |
-| API terms gate | Before set 15 merges, read and record (URL, date, clauses) Binance's Terms of Use, its API terms (the clauses on read-only third-party apps) and its market-data display terms (the clauses on showing Binance price data in a third-party app, attribution included); scribe records them in kiko-compliance. A clause that forbids the price display removes the fallback before ship. Bybit's terms (PDF in `research-bybit.md`) gate 1.3-b |
+| API terms gate | Before set 15 merges, read and record (URL, date, clauses) Binance's Terms of Use, its API terms (the clauses on read-only third-party apps) and its market-data display terms (the clauses on showing Binance price data in a third-party app, attribution included); scribe records them in kiko-compliance. A clause that forbids the price display removes the fallback before ship. Bybit's terms (PDF in `research-bybit.md`) gate 1.3-b. **C2 note (set 5, 2026-10-18).** Terms read: Binance Terms of Use, ADGM Binance entities (NEL/NCCL/NTL), effective 21 July 2026 (the version served to this region; other regions can get other terms); PDF `https://bin.bnbstatic.com/static/cms/cg08ou2ak0tn7mcplvfg/file/bf4879710c904b991848972ec4818ba2cf9e4ce314c09adae84fa2750d3477f7.pdf`, checked 2026-10-18 (the `/en/terms` page is a pdf.js iframe). Cl. 27: IP licence non-exclusive, only as necessary to receive Binance Services, non-commercial personal or internal business use; trade marks EXCLUDED. Cl. 14.1.2(b): account access via APIs is "subject to separate API terms and our approval". Cl. 31.1(d): no IP infringement. Cl. 31.1(e) and 25.5: no use from the List of Prohibited Countries, no VPN circumvention. Cl. 33.6: third-party apps are the user's own risk, no endorsement. Cl. 33.11: market data is "for information purposes", no accuracy or availability warranty. NOT found: a clause on keyless public market data, attribution text, or an explicit redistribution or display ban. Prohibited Countries (updated 5 Jan 2026): United States (also citizens), Canada, Netherlands, Cuba, North Korea, Iran, Crimea, so-called DPR and LPR. NOT read: the separate API terms, the Prohibited Use Policy. Docs read: market-data-endpoints (no licence text); general-api-information ("please use the base endpoint https://data-api.binance.vision" for public market data; 429/418 bans of 2 minutes to 3 days with Retry-After; 403 WAF; per IP). Ruling D1: keep `api.binance.com`; `data-api.binance.vision` is a later option. **User ruling C2 (2026-10-18):** the release hold is LIFTED on two conditions: (1) no Binance logo anywhere in the app or the metadata; (2) the fallback stays fail-soft (451, 403, 418, 429 or any error is no price this sync, never a crash or a wrong value, never a retry loop). There is NO device-region check: the fallback runs for every user, also in a Prohibited Country. |
 | Demo `.kiko` (`e2e/screenshot/fixtures/kiko-demo-en.kiko`, `kiko-demo-uk.kiko`, built by `build-demo-snapshot.ts`) | a crypto account (`institution` null) with manual holdings in at least five curated coins incl. USDT, USDC, ETH, BNB and a non-top coin (one with a dated price history), plus UAH and EUR holdings; on that account (set 7) an Exchange pair USDT -> BTC with `operation = 'trade'` and its third-coin fee row (BNB, `operation = 'trade-fee'`, same pair id, labelled "Trading fee"), a Convert pair UAH -> USDT (`operation = 'convert'`), a dust pair DOGE -> BNB (`operation = 'dust'`), a P2P buy row with `p2p:UAH:4150.00` and `operation = 'p2p'`, a card buy row with `card:UAH:2600.00` (`operation = 'card'`), a fiat deposit row on the EUR holding with `bank:EUR:100.00` (`operation = 'fiat'`), and a matching bank debit on a bank account so the statistics matcher shows (set 13). Two connectable demo accounts, both with `institution` null so `useAutoSync` never runs: a crypto account with `bankId = 'binance'` so the reviewer reaches the Binance connect field (set 14), and one with `bankId = 'btc_wallet'` (set 14); `build-demo-snapshot.ts` maps `bankId` to null for every non-bank account today (`account.kind === 'bank' ? ... : null`), so set 14 changes that mapping. Regenerated (`KIKO_REGEN_DEMO=1`) with each snapshot-shape change: set 1 (`EXPORT_VERSION` 4; `generate-demo-kiko.test.ts` pins `envelope.version` to it), set 4 (`exchange_state` column), set 7 (rows, `operation`), set 13, set 14 |
 | 3.1.5 | read-only viewer; the notes state no trading, withdrawal or transfer is possible |
 
@@ -1658,8 +1679,8 @@ not in 1.3-a (C-Div).
 | `accountDetail.changeExchangeAction` | Change exchange | Змінити біржу |
 | `accountDetail.exchangeHistoryPending` (replaces `binanceHistoryPending`) | Some {{exchange}} transaction history is not imported yet. Kiko will keep importing on each sync. | Частину історії транзакцій {{exchange}} ще не імпортовано. Кіко продовжить імпорт під час наступних синхронізацій. |
 | `accountDetail.exchangeHistoryPaused` (set 4; shown instead of the pending caption while the top-level state is malformed, X1 and K7) | {{exchange}} history import is paused because Kiko could not read its saved import progress. Disconnect and reconnect {{exchange}} to fix this. Your holdings and transactions are kept. | Імпорт історії {{exchange}} призупинено: Кіко не зміг прочитати збережений стан імпорту. Щоб це виправити, відключіть і знову підключіть {{exchange}}. Ваші активи й транзакції збережуться. |
-| `accountDetail.untrackedCoins` | Not tracked: {{tickers}}. These coins are not on Kiko's coin list, so Kiko does not import them. | Не відстежуються: {{tickers}}. Цих монет немає в списку Кіко, тому Кіко їх не імпортує. |
-| `accountDetail.oversizedAmount` | {{coin}}: the amount is too large for Kiko to store exactly, so it was not imported. | {{coin}}: сума завелика, щоб Кіко зберіг її точно, тому її не імпортовано. |
+| `accountDetail.untrackedCoins` | Not tracked: {{tickers}}. Kiko does not import a currency its Binance sync does not support. | Не відстежуються: {{tickers}}. Кіко не імпортує валюту, яку не підтримує синхронізація Binance. |
+| `accountDetail.oversizedAmount` | {{coin}}: Kiko could not import an amount exactly, so it was skipped. | {{coin}}: Кіко не зміг точно імпортувати суму, тому її пропущено. |
 | `settings.dataImport.amountTooLargeError` (set 1; a version 1-3 backup refused by the USDT safe-integer bound, U8b) | The "export file" text (`en.ts` and `uk.ts` are the source: read it there) | The "export file" text (read it in `uk.ts`) |
 | `accountDetail.disconnectProviderMessage.binance` (changed) | This clears the connection and the stored API key. Your holdings and transactions stay as a manual snapshot. | (unchanged) Акаунт буде відʼєднано, але ви можете й надалі керувати ним вручну. |
 | `holdingDetail.earlierHistory` | Earlier history: {{amount}} | Попередня історія: {{amount}} |

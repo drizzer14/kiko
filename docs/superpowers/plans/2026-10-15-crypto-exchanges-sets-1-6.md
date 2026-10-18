@@ -1067,13 +1067,15 @@ Files: `src/crypto-sync/provider/provider.ts`, `src/crypto-sync/sync/sync.ts`, b
 
 ### step 2/10: balances through `exchangeMinorUnits` (A1-A4 balance arms)
 
-Files: `binance.provider.ts` (`sumSatoshis`, `Money.fromMajor(BINANCE_ASSET, Number(...))`), tests.
+Files: `binance.provider.ts` (`sumAmounts` and `amountMinorUnits` replaced `sumSatoshis` and
+`Money.fromMajor(BINANCE_ASSET, Number(...))`), tests.
 - [ ] Every balance goes through `exchangeMinorUnits(currency, text, 'balance')` (half away from zero past the scale,
       tag `balance-precision-rounded`), and only after the LD* skip and the not-tracked filter (a malformed balance of
       an untracked coin never fails anything).
 - [ ] Tests: A1 `"0.00012345"` -> 12345 (same); A3 `"1e-8"` on Funding or Earn -> that wallet keeps its last good
-      balance ("was:" 1); A3 on Spot -> the balance sync fails as a Spot read failure, nothing written (the Spot
-      anchor; "was:" 1); A4 JSON number `0.5` via `decimalFromJsonNumber` -> 50000000 (same); "rounds a balance with
+      balance ("was:" 1); A3 on Spot -> the refused coin is skipped alone (the sync does not fail; the Spot BTC
+      anchor rule is in spec section 4; "was:" 1); A4 JSON number `0.5` via `decimalFromJsonNumber` -> 50000000
+      ("was:" refused: only a string was read); "rounds a balance with
       more decimals than the scale half away from zero" (`"0.000000015"` BTC -> 2, tag logged). Commit.
 
 ### step 3/10: every asset, per-coin and fiat keys, LD* skip (H1, H5, H7, H8)
@@ -1093,24 +1095,26 @@ form `<CODE>`, `<CODE>:funding`, `<CODE>:earn`; BTC keys unchanged), `binance.pr
 
 Files: `provider.ts` (`renameFromDefaults: readonly string[]`), `holdings.repo.ts`, `binance.holding-keys.ts`, tests.
 - [ ] Tests first: Spot BTC from `'Binance BTC'` or `'Binance Spot'` -> `'Binance Spot · BTC'`; Funding/Earn; a user name
-      kept. "was:" pins: default names `'Binance Spot'`/`'Binance Funding'`/`'Binance Earn'` in 16 test files
-      (re-grep `WALLET_HOLDING_NAMES` and the literals) -> `'Binance <Wallet> · <CODE>'`. Commit.
+      kept. "was:" pins: default names `'Binance Spot'`/`'Binance Funding'`/`'Binance Earn'` in test files (c74936e8
+      touched 10: 8 pin produced names, the others are input fixtures; re-grep `WALLET_HOLDING_NAMES` and the literals) -> `'Binance <Wallet> · <CODE>'`. Commit.
 
 ### step 6/10: not-tracked and oversized lines (H6, H12, N2 balance part, C-NR8)
 
 Files: `exchange/history-status/` (`untrackedCoinsOf`, `oversizedCoinsOf`), `binance.provider.ts` (replaces the
-balance lists `untrackedCoins.balance` and `oversizedCoins.balance` via `patchExchangeState` after each good balance
-read: every wallet read succeeded; a read in which a Funding or Earn wallet failed leaves both balance lists as
-stored, spec section 4 "Not-tracked coins"), `crypto-sync-section.component.tsx`, `en.ts`, `uk.ts`, tests.
+not-tracked list `untrackedCoins.balance` as stored unless every wallet read, and the oversized list per wallet
+(`oversizedBalance`, `balanceByWallet`) via `patchExchangeState`, spec section 4 "Not-tracked coins"; on a first
+connect `ProviderRead` and `runBinanceSyncAndImport` write the lists after the institution is set, under
+`logOnFailure('[binance sync] balance lists failed')`), `crypto-sync-section.component.tsx`, `en.ts`, `uk.ts`, tests.
 - [ ] Keys `accountDetail.untrackedCoins`, `accountDetail.oversizedAmount` with the spec section 10 en/uk text.
       Tests first: "lists PEPE as not tracked"; "skips the write and shows the oversized line above the safe bound";
       "shows the sorted union of the balance and history lists without duplicates" (balance [PEPE, ABC], history
       [PEPE, XYZ] -> "ABC, PEPE, XYZ"); "a good balance read replaces only the balance list" (history [XYZ] kept);
-      "a balance read with a failed wallet keeps both balance lists" (untracked balance [PEPE], oversized balance
-      [ETH] stored; the Funding read fails and Spot lists ABC: both lists stay as stored, no patch of either);
-      "leaves out a ticker that is a curated code now" (`untrackedCoinsOf` over balance [PEPE, USDC] and history
-      [XYZ, DAI] -> [PEPE, XYZ]). `oversizedCoinsOf` keeps its union as is (every oversized ticker is a curated
-      code, so dropping curated codes would empty it).
+      "a balance read with a failed wallet keeps the not-tracked list" (untracked balance [PEPE] stored; the Funding
+      read fails and Spot lists ABC: the list stays as stored; the oversized list is patched per wallet, a failed
+      wallet keeping its array; the acceptance pin was renamed, coordinator-approved);
+      "leaves out a ticker the tracked rule accepts now" (`untrackedCoinsOf(state, isTracked)` over balance [PEPE,
+      USDC] and history [XYZ, DAI] -> [PEPE, XYZ]). `oversizedCoinsOf` keeps its union as is (every oversized ticker
+      is a tracked coin, so dropping tracked coins would empty it).
 - [ ] Code in this order: (1) the balance-list replace with no wallet gate (every balance read patches both
       lists); run the tests and show "a balance read with a failed wallet keeps both balance lists" red against it
       (quote the failure in BATCH READY); (2) add the gate (patch only when every wallet read succeeded); all green.
@@ -1118,19 +1122,21 @@ stored, spec section 4 "Not-tracked coins"), `crypto-sync-section.component.tsx`
 
 ### step 7/10: Binance public price fallback
 
-Files: `src/rates/binance-market/` (new; `ticker/price`, `klines` on the pinned host, no key), `rates-refresh.ts`,
+Files: `src/rates/binance-market/` (new; `klines` with `limit=1`, accepted only for today's UTC candle, on the pinned host, no key), `rates-refresh.ts`,
 `history-backfill.ts`, tests.
 - [ ] Tests first: "prices a coin CoinGecko missed through its USDT symbol and USDT's price"; "prices USDT through
       EURUSDT and the EUR anchor when USDT is unpriced"; "never assumes 1:1"; "one coin missing from both stays out of
       net worth"; no key header sent. `check:plist` unchanged (no new host). Commit.
-- [ ] Release hold (C2): no build that contains this fallback goes to App Review before Binance's market-data terms
-      are read and recorded (source URL, check date, the clause that allows the use) in the set 5 BATCH READY; the
-      coordinator holds the upload until then.
+- [x] Release hold (C2): LIFTED by the user ruling 2026-10-18 on two conditions (no Binance logo in the app or
+      metadata; the fallback stays fail-soft) and with no device-region check; the terms facts and the ruling are
+      in the spec's "API terms gate" C2 note. BATCH READY cites the ruling instead of a hold.
 
 ### step 8/10: privacy wording (Q10)
 
 Files: `docs/privacy-policy.en.md`, `docs/privacy-policy.md`, `docs/privacy-site/en.html`, `docs/privacy-site/index.html`.
-- [ ] Spec section 9 "Privacy policy, price fallback" text, same commit for all four. Commit.
+- [ ] Spec section 9 "Privacy policy, price fallback" text (the Binance bullet names the market symbol and the dates
+      of the prices it needs), same commit for all four. The effective date is 18 October 2026; re-date it to the
+      publish day when gh-pages goes out later. Commit.
 
 ### step 9/10: reviews
 
@@ -1142,7 +1148,7 @@ Files: `docs/privacy-policy.en.md`, `docs/privacy-policy.md`, `docs/privacy-site
 
 ### step 10/10: skill text (kiko:scribe)
 
-- [ ] `kiko-architecture` "Binance exchange sync" (`asset=BTC` line, keys, names), the sync lines on crypto upserts
+- [ ] `kiko-architecture` "Binance exchange sync" (the false "all three SAPI reads send `asset=BTC`" line, keys, names), the sync lines on crypto upserts
       (re-grep "every crypto/exchange holding a `runBalanceSync` upserts" and the "crypto balance + Binance transaction
       import" line); `kiko-compliance` Binance bullets (privacy-site files, the market-data terms hold); pointers only.
 
@@ -1153,8 +1159,8 @@ Files: `docs/privacy-policy.en.md`, `docs/privacy-policy.md`, `docs/privacy-site
 Spec ids: S1-S3 (6a); Y1-Y8, E1-E2, W1-W2, A1-A4 (rows), N2 (Pay part), BTC key byte identity, key uniqueness
 property, walk properties at 0 / 1 h / 1 day (6b). Expected mutable files: about 12.
 
-Pay funds rule for the pins below (spec section 5, R-Q7): one row per `fundsDetail` entry with a curated
-`currency`, placed by today's rules applied to that coin's entries exactly as they apply to the BTC entries today
+Pay funds rule for the pins below (spec section 5, R-Q7): one row per `fundsDetail` entry with a tracked
+`currency` (`isTrackedBinanceAsset`), placed by today's rules applied to that coin's entries exactly as they apply to the BTC entries today
 (`sharesOfSend`): by its `walletAssetCost` costs, or, when the coin has no cost entry, whole on the one wallet
 `walletTypes` declares (`declared.length === 1`; with no or several declared wallets it stops
 `pay-split-mismatch`). What a coin's placement must add up to:
@@ -1263,8 +1269,9 @@ Files: `binance.pay-history.ts`, `binance.history-client.ts`, tests.
 ### step 6/11: Transfer account-wide
 
 Files: `binance.transfer-history.ts`, `binance.history-client.ts` (`totalPage` takes its row filter per call:
-Transfer's `transferPage` passes a curated-row reader, a row whose upper-cased `asset` is a curated code is read
-strictly and any other is counted and ignored; the Earn page keeps passing the BTC-only `btcRowOf` until step 7, so
+Transfer's `transferPage` passes a tracked-row reader, a row whose upper-cased `asset` the tracked rule accepts is
+read strictly; any other is COUNTED, imported as no row, and its ticker is added to `untrackedCoins.history` (an
+oversized history record stops the walk and owes its point); the Earn page keeps passing the BTC-only `btcRowOf` until step 7, so
 no non-BTC Earn row reaches the BTC-only Earn walk at this step's tip), tests.
 - [ ] "was:" pins: `binance.transfer-history.test.ts` "a row of another asset gives no row", "a transfer of another
       asset is ignored, and counted for the pager...", "an off-contract row of another asset does not stall the BTC
@@ -1292,7 +1299,7 @@ Files: `binance.earn-history.ts`, `binance.history-client.ts` (`fetchEarnRecords
       (`lockedRewards`, rows `{ asset: 'ETH' }` and a whole BTC row) -> renamed "counts every row of the page, and
       reads an incomplete row of a curated coin as unreadable": `gathered` 2, `rows` length 1, `unreadable` length 1
       ("was:" `toEqual([])`); a second case with `{ asset: 'XYZ' }` keeps `unreadable` `[]`.
-- [ ] Code: the Earn page passes step 6's curated-row reader instead of `btcRowOf` (drop `btcRowOf` if no reader
+- [ ] Code: the Earn page passes step 6's tracked-row reader instead of `btcRowOf` (drop `btcRowOf` if no reader
       is left; knip). Commit.
 
 ### step 8/11: `multiCoinSince`
@@ -1339,5 +1346,13 @@ patch), `exchange/walk-state` (parse and patch of `multiCoinSince` and `multiCoi
 - [ ] `kiko-architecture`: `coin=BTC` capital line, Pay/Transfer/Earn per-coin rules and keys, `multiCoinSince` and
       `multiCoinSeen`; `kiko-compliance` Binance history bullets (re-grep "transaction history import failed"
       context) where set 6 changes them.
+
+Set 6 notes owed from set 5 (retrospect 2026-10-18):
+- The zero Spot BTC anchor (`binance.provider.ts`) and the four walk guards (the `spot === undefined` return in
+  `binance.transactions.ts`, `binance.transfer-history.ts`, `binance.pay-history.ts`, `binance.earn-history.ts`)
+  are removed together, in one commit.
+- `WALLET_HOLDING_NAMES` (`binance.holding-keys.ts`) duplicates `coinHoldingName`; set 6 drops one of them.
+- Accepted known costs: a coin CoinGecko left empty and Binance priced is asked of CoinGecko once per 7 days and
+  of Binance every run; a pair that halted yesterday gets a one-day carry in its history.
 
 End of plan: `make verify` through the queue on the set 6 tip, re-run until green.
