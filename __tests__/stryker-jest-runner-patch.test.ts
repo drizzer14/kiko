@@ -199,8 +199,9 @@ describe('patched Stryker environment', () => {
       FakeEnvironment.events.push(event.name);
 
       if (FakeEnvironment.lateTestName !== undefined && state !== undefined) {
-        // Stands for jest-circus finishing its own run_start work (collecting tests) after a
-        // real asynchronous wait; a selection that ran before this await would never see the test.
+        // Stands for the wrapped environment's own handler doing async work at run_start, after
+        // a real asynchronous wait; a selection that ran before this await would never see the
+        // test.
         await new Promise((resolve) => setImmediate(resolve));
         state.rootDescribeBlock.children.push(
           testNode(FakeEnvironment.lateTestName, state.rootDescribeBlock),

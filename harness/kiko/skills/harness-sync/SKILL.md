@@ -43,6 +43,10 @@ in the harness repo):
   defer on load in `job-queue.sh`; the `ff-main.sh` rule refusing a plugin.json version
   decrease, removal or unreadable version; the `knip-ignore-documented` pin suite
   (`__tests__/knip-ignore-documented.test.ts`).
+- H9 generic port: the Stryker jest-runner exact-Set patch (`patches/@stryker-mutator+jest-runner+
+  8.7.1.patch`, `__tests__/stryker-jest-runner-patch.test.ts`, the `mutation.sh` patched-runner
+  preflight). The mechanism is generic (it touches only the installed runner, not Kiko code); port
+  it only to a repo that runs Stryker's jest runner at those exact pinned versions.
 - H7 set 5, generic comment-width and history changes: `comment-line-width.js` reads `#`
   comments (shell, YAML, shebang files); `comment-line-width.sh` widened scope, per-file mode
   and the shrink-only exact-line pin file; the `fast.sh` case for shell, YAML and githooks

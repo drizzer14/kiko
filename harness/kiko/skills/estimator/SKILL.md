@@ -77,6 +77,10 @@ Rules:
 - Rule reversal touching many tests: x1.5-2; hook-code task (kill-guard):
   x1.7-2.6 of the agent estimate.
 - Stryker's start-of-run ETA is unreliable (~7 h quoted for a 224 min run).
+- A mutation window's estimate no longer treats a mutant covered by more than about 430 tests as
+  a deterministic timeout: that was the regex cost the standing jest-runner patch removed
+  (`docs/harness/checks.md` "Clearing a TIMEOUT-HEAVY file"). Fallback figure for a real
+  timeout, Method A plain-jest proofs: about 19 min per 195 mutants.
 - A TIMEOUT-HEAVY rerun adds a Stryker dry run plus the rerun mutants and a load wait; a gate
   can start late at high load (`GATE_START_MAX_WAIT` in `scripts/job-queue.sh`).
 

@@ -799,7 +799,13 @@ Every check wrapper in `scripts/checks/` follows the same shape (read
   `mutation.sh` also CAPS the run: after the file selection and excludes
   above, it counts the files it would mutate and, above
   `MUTATION_FILE_CAP` (30, a plain assignment in the script), prints the
-  structured block and exits 2 BEFORE Stryker starts. The scorer fails a TIMEOUT-HEAVY file
+  structured block and exits 2 BEFORE Stryker starts. A patched-runner preflight (after the
+  `--list` exit, before the dedup skip) exits 2 the same way when the installed
+  `@stryker-mutator/jest-runner` files lack the `kiko-patch: exact covering-test selection`
+  marker. `__tests__/stryker-jest-runner-patch.test.ts` pins `@stryker-mutator/jest-runner`,
+  `@stryker-mutator/core` and `jest-circus` versions and runs the patched code; an upgrade of
+  any of the three re-derives and re-proves the patch (`docs/harness/dependency-hygiene.md`
+  "Standing patch"). The scorer fails a TIMEOUT-HEAVY file
   (`TIMEOUT_HEAVY_SHARE`, `TIMEOUT_HEAVY_MINIMUM` in `mutation-score.js`; rule in
   `docs/harness/checks.md`): `mutation-score.js` exits 1, `mutation.sh` exits 2. When it is
   the only failure, the gate reruns the timed-out mutants alone and the final rerun report is
