@@ -481,9 +481,11 @@ verified usage, not dead weight:
   0.6-2.4 s at load about 10 but 7-28 s at load 28-40; `express-ssrf` timed out on
   `src/screens/forms/holding-form/holding-form.screen.test.tsx`). Proof each
   cannot match: none of the rules checks for an `express` import. Their taint
-  sources are handler-shaped: a `function ... ($REQ, $RES)` (or a typed
-  `({ $REQ }: Request, $RES: Response) =>`) reading `$REQ.query`, `.body`,
-  `.params`, `.cookies` or `.headers`. Their sinks are an express response method
+  sources are handler-shaped: a `function ... ($REQ, $RES)` or `function ... ($REQ, $RES, $NEXT)`
+  (or a typed `({ $REQ }: Request, $RES: Response[, $NEXT: NextFunction]) =>`) reading
+  `$REQ.query`, `.body`, `.params`, `.cookies` or `.headers` (four rules also `$REQ.files`);
+  `express-res-sendfile` also takes any function with a `string`-typed parameter.
+  Their sinks are an express response method
   (`$RES.send`, `.write`, `.redirect`, `.sendFile`, `.render`, `.set`, `.header`,
   `.setHeader`, `.writeHead`), a call into a package that is imported by no tracked
   file (`puppeteer`, `phantom`, `libxmljs`, `vm2`, `request`, `xml2json`,
@@ -500,9 +502,12 @@ verified usage, not dead weight:
   sink with no HTTP handler (a fetch double
   ``function mockFetch(request, init) { return `<html>${request.body}</html>`; }``
   is a `raw-html-format` source and sink). So the proof has two parts. (1) No sink is
-  reachable from a handler-shaped function, meaning any 2-parameter function reading a
-  parameter's `query`, `body`, `params`, `cookies` or `headers`: no sink-package call,
-  no express response method, no HTML-looking string built from such a value, no
+  reachable from a handler-shaped function, meaning any 2- or 3-parameter function
+  `(request, response[, next])` reading a parameter's `query`, `body`, `params`,
+  `cookies`, `headers` or (four rules) `files`, and, for `express-res-sendfile`, any
+  function with a `string`-typed parameter: no sink-package call,
+  no express response method (no `.sendFile(` or `.sendfile(` call at all), no
+  HTML-looking string built from such a value, no
   dynamic `require(x)` (and there is no `createServer`, `.listen(`, `http`, `https`,
   `express`, `koa` or `fastify` import, no `(req, res)` or `(request, response)`
   function, no `Request`/`Response` typed handler). (2) The measured run: a scan
@@ -512,7 +517,9 @@ verified usage, not dead weight:
   `__tests__/pre-write-guard.test.ts` and `scripts/checks/kill-guard.js`, and a
   grep confirms neither contains `document.write`, `document.writeln` or
   `insertAdjacentHTML`). The `react-unsanitized-method` sinks are only those three
-  DOM calls, which do not exist in React Native; no tracked file calls them. The id
+  DOM calls, matched by the TEXT of a `document.write`, `document.writeln` or
+  `insertAdjacentHTML` call in any file (a jest test included), which do not exist
+  in React Native; no tracked code or test file contains that text. The id
   must be the full check_id: semgrep 1.175.0 treats it as exact, so the short form
   (`javascript.express.security.audit.express-ssrf`) excludes nothing and an
   unknown id is silently ignored; the test pins the full form. The exclusion
@@ -520,13 +527,15 @@ verified usage, not dead weight:
   lets an older pass skip a scan. Still running: `react-unsanitized-property`,
   every other `p/typescript`, `p/react` and `p/secrets` rule, and every `kiko-*`
   rule on every file. Never add a file, a `kiko-*` rule, or an id that can match
-  here. Re-check trigger: if any (request, response) HTTP handler is ever added
-  (express or not, for example a Node mock server in `scripts/` or `e2e/`), if any
-  of the sink packages above is imported, if a dynamic `require(x)` is added, if an
-  HTML string is built from a parameter's `body`, `headers`, `query`, `params` or
-  `cookies` inside a 2-parameter function, or if a DOM target (a web view that
-  renders DOM, or a web build) is added, remove the matching ids in the same
-  change.
+  here. Re-check trigger: if any (request, response[, next]) HTTP handler is ever
+  added (express or not, for example a Node mock server in `scripts/` or `e2e/`), if
+  any of the sink packages above is imported, if a dynamic `require(x)` is added, if
+  an HTML string is built from a parameter's `body`, `headers`, `query`, `params`,
+  `cookies` or `files` inside a 2- or 3-parameter function, if a `.sendFile(` or
+  `.sendfile(` call is added, if the text of a `document.write`, `document.writeln`
+  or `insertAdjacentHTML` call is added to any file (a jest test too), or if a DOM
+  target (a web view that renders DOM, or a web build) is added, remove the
+  matching ids in the same change.
 - **Stryker mutate-set exclusions (`stryker.conf.json` `mutate`
   negations + the changed-file filter in `scripts/checks/mutation.sh`)**:
   five categories are excluded from the set of files Stryker

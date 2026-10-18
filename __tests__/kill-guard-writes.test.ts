@@ -268,9 +268,27 @@ const DENIED_COPY_MOVE: string[] = [
   'ls | xargs -I{} gcp --arch {} "$BK"/',
   'ls | xargs -I{} cp --recursive=x {} "$BK"/',
   'cp -r /tmp/src "$BK"/',
+  // The names xargs reads are unknowable, so a cp/mv behind it into any folder of a worktree may
+  // write a YAML file there (fail closed), whatever its text shows.
+  'ls /tmp/*.yml | xargs cp -t .maestro',
+  "printf '%s\\n' /tmp/evil.yml | xargs -I{} cp {} .github/workflows/",
+  'ls /tmp/*.yml | xargs mv --target-directory=.maestro',
+  'ls /tmp/*.txt | xargs cp -t docs/x',
+  'ls /tmp/*.txt | xargs -I{} cp {} docs/',
+  `ls /tmp/*.yml | xargs cp -t ${WORKTREE}/.maestro`,
+  `ls /tmp/*.yml | xargs -I{} mv {} ${MAIN}/.maestro/`,
 ];
 
 const ALLOWED_COPY_MOVE: string[] = [
+  // A destination outside every worktree, or under node_modules/, holds no project YAML file; a
+  // xargs command that is no cp/mv writes nothing.
+  'ls /tmp/*.yml | xargs cp -t /tmp/out',
+  'ls /tmp/*.yml | xargs -I{} cp {} /tmp/out/',
+  'ls /tmp/*.yml | xargs cp -t node_modules/package',
+  'ls /tmp/*.yml | xargs -I{} cp {} node_modules/package/',
+  `ls /tmp/*.yml | xargs cp -t ${OTHER}/docs`,
+  'ls /tmp/*.yml | xargs cat',
+  'ls /tmp/*.yml | xargs grep appId',
   "find src -name '*.snap' | xargs cp -t /tmp/snaps",
   'ls src/*.ts | xargs -I{} cp {} /tmp/backup/',
   'ls src/*.ts | xargs -I {} mv {} /tmp/backup/',
@@ -926,6 +944,21 @@ describe('scripts/checks/kill-guard.sh shell-write deny (hook entry)', () => {
     expect(reason).toContain('scripts/');
     expect(reason).toContain('githooks/');
     expect(reason).toContain('YAML');
+    expect(reason).toContain(
+      'into src/, __tests__/, rules/, e2e/, drizzle/, scripts/, or githooks/',
+    );
+    expect(reason).toContain('into a YAML file (.yml, .yaml)');
+  });
+
+  it('keeps the allowed scope and the fix hint true for a YAML or xargs deny', () => {
+    const result = run(payloadIn(REPOSITORY_ROOT, 'echo x > .maestro/flow.yaml'));
+    const reason: string = JSON.parse(result.stdout.trim()).hookSpecificOutput
+      .permissionDecisionReason;
+
+    expect(reason).toContain('not a YAML file of a worktree');
+    expect(reason).toContain('write the literal path, or use Edit or Write');
+    expect(reason).not.toContain('use another folder name');
+    expect(reason).not.toContain('outside the worktrees');
   });
 
   it('denies a write into .git/config and names ensure-git-hooks.sh', () => {

@@ -247,8 +247,9 @@ script (ruby/perl code — `-e` or a stdin script — is a known limit))
 into `src/`, `__tests__/`, `rules/`, `e2e/`, `drizzle/`, `scripts/`, or `githooks/` of any
 worktree of this repository, or into a YAML file (a final segment ending in `.yml` or `.yaml`,
 at any depth of a worktree except under `node_modules/`; one the text cannot resolve is denied
-too), because the pre-write guard sees only Edit/Write/MultiEdit:
-use Edit or Write. Move or rename a file with `git mv` (`git add` a new
+too; a `cp`/`mv` behind `xargs` whose destination the text resolves into a worktree folder is
+denied too, since its input names may be YAML), because the pre-write guard sees only
+Edit/Write/MultiEdit: use Edit or Write. Move or rename a file with `git mv` (`git add` a new
 file first), then edit it with Edit/Write. Reads, git itself, and a
 formatter's own `--write` stay allowed. See kiko-linter's "SHELL-WRITE
 deny" for the full rule, limits, and where it is live.

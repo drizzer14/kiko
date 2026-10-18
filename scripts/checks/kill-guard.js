@@ -39,8 +39,10 @@
 // (or `>|`, `&>`, `<>`) redirect, `tee`, a python `-c` or node `-e` one-liner
 // (or one fed by a heredoc or here-string on its stdin)
 // that opens a file for writing, and `xargs`
-// running an in-place edit — because the pre-write guard sees only
-// Edit/Write/MultiEdit, so such a write lands unchecked. A heredoc body that
+// running an in-place edit, or a cp/mv whose destination the text resolves into a folder of a
+// worktree (the names xargs reads are unknown, so any of them may be a YAML file; a destination
+// outside every worktree, or under `node_modules/`, stays allowed) — because the pre-write guard
+// sees only Edit/Write/MultiEdit, so such a write lands unchecked. A heredoc body that
 // no shell or interpreter runs is text, never checked for writes (see `findDanger` for the
 // kinds it is checked for). The same write machinery
 // denies a write into a git config file (`.git/config`, `.git/config.worktree`, a linked
@@ -164,10 +166,11 @@ const SHELL_WRITE_REASON_LINES = [
   'HOW TO FIX:     use the Edit or Write tool for that file; to move a file, use `git mv` ' +
     '(git add a new file first), which guard-replay follows as a rename. A path the guard ' +
     'cannot resolve (a variable, a glob) counts when a folder in it is named src, rules, e2e, ' +
-    'drizzle, scripts, githooks, or __tests__, or when it ends in .yml or .yaml: write the ' +
-    'literal path, or use another folder name. Reading it, a ' +
-    'redirect to /dev/null or to a path outside those trees and outside the worktrees (your ' +
-    'scratchpad, /tmp), git itself ' +
+    'drizzle, scripts, githooks, or __tests__, or when it ends in .yml or .yaml, and so does a ' +
+    'cp or mv behind xargs into a folder of a worktree (the names xargs reads are unknown): ' +
+    'write the literal path, or use Edit or Write. Reading it, a ' +
+    'redirect to /dev/null or to a path outside those trees that is not a YAML file of a ' +
+    'worktree (your scratchpad, /tmp, docs/notes.md), git itself ' +
     '(without a redirect into those trees), and a formatter or fixer writing on its own ' +
     "(./node_modules/.bin/biome check --write, the harness's import-order --write) stay allowed. " +
     'A git config file holds core.hooksPath: leave it as ' +
@@ -2324,7 +2327,8 @@ const withXargsInput = (parameters, placeholder, input) =>
 // (a plain file) and once as each tree folder's name (`ls | xargs -I{} cp
 // -r {} .` may write `./src`). Those folder names are `named`; a plain cp
 // cannot copy a folder, so `canCopyFolder` is false for it and its `named`
-// targets count only where the text resolves them.
+// targets count only where the text resolves them. The input may also be a YAML file, so a
+// destination the text resolves into a worktree folder counts through a `.yml` marker (`yaml`).
 function xargsCopyMoveTargets(base, parameters, placeholder) {
   if (!COPY_MOVE_COMMANDS.has(base) || inputMayBeDestination(parameters, placeholder)) return null;
   const targetsFor = (inputs) =>
@@ -2333,6 +2337,7 @@ function xargsCopyMoveTargets(base, parameters, placeholder) {
 
   return {
     plain: targetsFor(['xargs-input']),
+    yaml: targetsFor(['xargs-input.yml']),
     named: targetsFor([...WRITE_GUARDED_TREES]),
     canCopyFolder: MOVE_COMMANDS.has(base) || options.some((option) => option.recursive),
   };
@@ -2353,6 +2358,7 @@ function commandWrite(
 
     return (
       firstGuardedWrite(targets.plain, directories, rules, { destination }) ??
+      firstGuardedWrite(targets.yaml, directories, rules, { destination, resolvedOnly: true }) ??
       firstGuardedWrite(targets.named, directories, rules, {
         destination,
         resolvedOnly: !targets.canCopyFolder,
