@@ -193,6 +193,52 @@ Section 1, HIG Layout).
 - `sidebarAdaptable` stays OFF (direction B keeps the native tab bar; HIG Sidebars: "Consider using
   a tab bar first"). The clearance work therefore targets the fixed top tab bar only.
 
+### Measured (2026-10-17/18, iOS 27.0 simulators via Device Hub, Release build)
+
+Every window: fold null, scale 2, fontScale 1, pixelRatio 2, barEdge `none`. Insets are
+top/bottom (left and right 0). "tbh" is `useBottomTabBarHeight()`. "n/r" = not recorded.
+
+| Device | Window | Size class / mode | Bar | Insets | tbh | Window (pt) |
+|---|---|---|---|---|---|---|
+| Pro 13-inch | full portrait | regular / rows | top | 32/20 | 64 | 1032x1376 |
+| Pro 13-inch | full landscape | regular / columns | top | 32/20 | 64 (72 after Stage Manager) | 1376x1032 |
+| Pro 13-inch | Stage Manager left/right half | regular / rows | top | 32/10 | 72 | 683x909 |
+| Pro 13-inch | Stage Manager free window | regular / columns | top | 10/10 | 64 | 1201x865.5 |
+| Pro 13-inch | Stage Manager top half | regular / columns | top | 32/10 | 64 | 1376x511 |
+| Pro 13-inch | Stage Manager bottom half | regular / columns | top | 10/20 | 64 | 1376x511 |
+| Pro 13-inch | Stage Manager quarter | regular / single | top | n/r | 64 | 683x511 |
+| Pro 13-inch | Slide Over | compact / single | bottom | 10/20 | 77 | 375x968 |
+| Pro 13-inch | Stage Manager compact | compact / single | bottom | 10/10 | 72 | 375x563 |
+| mini | full portrait | regular / rows | top | 32/20 | 64 | 744x1133 |
+| mini | full landscape | regular / columns | top | n/r | n/r | 1133x744 |
+
+- Rule the data supports: a regular window has the top floating bar; a compact window has the
+  bottom bar. `verticalBarEdge` is `none` in every window, so it cannot say where the bar is;
+  the placement comes from the size class. `tabBarHeight` is reported greater than 0 with a top
+  bar and is not the pill height. The bar's bottom edge is the top inset plus the 44 pt pill
+  (76 pt full screen, 86 pt in the free window with its window-control band, 54 pt in the
+  bottom half).
+- A 683 pt wide window is regular (under 721 pt); it is `rows` only because its height is at
+  least 721 pt.
+- F4: headerless top content (Home net worth label, the first row of a 683x511 single pane)
+  sits under the bar. A large title clears the bar at rest (title about 173 pt, bar 76 pt);
+  scrolled content slides up to the bar line. In a landscape left pane, content scrolls under
+  the bar. In the compact 375x563 window the bottom bar covers the chart footer and the Home
+  action button overlaps a row amount.
+- F5: the import picker is a centred page sheet (about 70% wide), not a popover; Files shows
+  "On My iPad". The Export share sheet is a small centred popover (about 27% wide) that is not
+  anchored to its button. A BottomSheet is about 39% wide, centred and bottom-anchored; in
+  landscape it runs off the bottom edge. With a hardware keyboard the BottomSheet search sheet
+  stays put.
+- F6: launch shows a black window and logo, with no white flash (dark). All four Maestro flows
+  fail at the first tab tap on iPad: the floating bar exposes no tab ids (`house.fill`,
+  `tray` not found).
+- Keyboard: after a field in one pane loses focus, both panes stay shifted up (the Duo track
+  owns the fix, ruling R35).
+- NOT measured, open for the user's manual pass: an iOS 27.1 iPad (that runtime supports the
+  iPhone Duo only), classic Split View (1/3, 1/2, 2/3; needs a drag), Fill & Arrange, a window
+  721-1100 pt wide (the free window came out 1201 pt), and the software keyboard.
+
 ## Section 4 - popovers, sheets, keyboard
 
 - Share: `src/screens/settings/export-data/export-data.screen.tsx:99, :125` call `Share.share({ url })` with no anchor. Pass the
