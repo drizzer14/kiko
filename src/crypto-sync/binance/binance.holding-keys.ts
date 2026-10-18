@@ -1,4 +1,3 @@
-import { match, P } from 'ts-pattern';
 import type { HoldingRow } from '@kiko/db';
 import type { Currency } from '@kiko/currency/currency';
 
@@ -18,26 +17,38 @@ export const EARN_KEY = 'BTC:earn';
 
 export type BinanceWalletKey = typeof SPOT_KEY | typeof FUNDING_KEY | typeof EARN_KEY;
 
-export type BinanceWallet = 'spot' | 'funding' | 'earn';
+const BINANCE_WALLETS = ['spot', 'funding', 'earn'] as const;
+
+export type BinanceWallet = (typeof BINANCE_WALLETS)[number];
+
+/** What follows the code in a holding key, per wallet: a Spot key is the bare code. */
+const KEY_SUFFIX: Record<BinanceWallet, string> = {
+  spot: '',
+  funding: ':funding',
+  earn: ':earn',
+};
+
+const keyOf = (code: string, wallet: BinanceWallet): string => `${code}${KEY_SUFFIX[wallet]}`;
 
 /**
  * The open key form of one (coin, wallet) holding: `<CODE>`, `<CODE>:funding`, `<CODE>:earn`. It
  * yields the three BTC constants above for BTC, so a stored BTC holding keeps matching.
  */
-export const holdingKeyOf = (code: Currency, wallet: BinanceWallet): string =>
-  wallet === 'spot' ? code : `${code}:${wallet}`;
+export const holdingKeyOf = (code: Currency, wallet: BinanceWallet): string => keyOf(code, wallet);
 
 type HoldingKeyParts = { code: Currency; wallet: BinanceWallet };
 
 /** The coin and wallet a stored key names; a key `holdingKeyOf` never makes names none. */
-export const partsOfHoldingKey = (key: string): HoldingKeyParts | undefined =>
-  match(key.split(':'))
-    .with([P.when(isTrackedBinanceAsset)], ([code]): HoldingKeyParts => ({ code, wallet: 'spot' }))
-    .with(
-      [P.when(isTrackedBinanceAsset), P.union('funding', 'earn')],
-      ([code, wallet]): HoldingKeyParts => ({ code, wallet }),
-    )
-    .otherwise(() => undefined);
+export const partsOfHoldingKey = (key: string): HoldingKeyParts | undefined => {
+  const [code = ''] = key.split(':');
+  const wallet = BINANCE_WALLETS.find((candidate) => keyOf(code, candidate) === key);
+
+  if (wallet === undefined || !isTrackedBinanceAsset(code)) {
+    return undefined;
+  }
+
+  return { code, wallet };
+};
 
 const WALLET_LABELS: Record<BinanceWallet, string> = {
   spot: 'Spot',
