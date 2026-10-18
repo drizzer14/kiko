@@ -581,6 +581,17 @@ describe('parseExchangeState', () => {
         expect(hintsOf(resumed)).toEqual(resumed);
       });
 
+      it('is read for a resume that starts exactly where its window starts', () => {
+        const start = 400;
+        const stored = {
+          ...hints,
+          point: [{ start, end: 450, resume: { ...resume, from: start } }],
+        };
+
+        expect(stored.point[0].resume.from).toBe(stored.point[0].start);
+        expect(hintsOf(stored)).toEqual(stored);
+      });
+
       it('is read with no series for a walk that reads one series', () => {
         const { series: _series, ...single } = resume;
         const stored = { ...hints, point: [{ start: 400, end: 450, resume: single }] };
@@ -624,6 +635,14 @@ describe('parseExchangeState', () => {
         ['a resume whose series are no list', { ...resume, series: 'MAIN_FUNDING' }],
         ['a resume with an empty list of series', { ...resume, series: [] }],
         ['a resume with a series that is blank', { ...resume, series: [' '] }],
+        [
+          'a resume with one series that is blank beside a good one',
+          { ...resume, series: ['MAIN_FUNDING', ' '] },
+        ],
+        [
+          'a resume with one series that is no text beside a good one',
+          { ...resume, series: ['MAIN_FUNDING', 7] },
+        ],
       ])('makes the stored value malformed for %s', (_label, bad) => {
         const stored = { ...hints, point: [{ start: 400, end: 450, resume: bad }] };
 
