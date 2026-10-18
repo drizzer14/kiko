@@ -244,8 +244,10 @@ See kiko-linter's "NO-VERIFY deny", "SHELL-WRITE deny", and "Script-content kill
 The same hook also denies a shell write (`sed -i`, `perl -i`, a `>`/`>>`
 redirect, `tee`, `cp`/`mv` (also `gcp`/`gmv`), a python/node one-liner or stdin heredoc
 script (ruby/perl code — `-e` or a stdin script — is a known limit))
-into `src/`, `__tests__/`, `rules/`, `e2e/`, or `drizzle/` of any worktree of this
-repository, because the pre-write guard sees only Edit/Write/MultiEdit:
+into `src/`, `__tests__/`, `rules/`, `e2e/`, `drizzle/`, `scripts/`, or `githooks/` of any
+worktree of this repository, or into a YAML file (a final segment ending in `.yml` or `.yaml`,
+at any depth of a worktree except under `node_modules/`; one the text cannot resolve is denied
+too), because the pre-write guard sees only Edit/Write/MultiEdit:
 use Edit or Write. Move or rename a file with `git mv` (`git add` a new
 file first), then edit it with Edit/Write. Reads, git itself, and a
 formatter's own `--write` stay allowed. See kiko-linter's "SHELL-WRITE
