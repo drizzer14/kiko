@@ -26,6 +26,9 @@ const uk = {
   privatBank: 'ПриватБанк',
   freelanceProject: 'Фріланс-проєкт',
   bitcoinPurchase: 'Купівля BTC',
+  cryptoPurchase: 'Купівля криптовалюти',
+  hryvnia: 'Гривня',
+  euro: 'Євро',
   broker: 'Брокер',
   usDollars: 'Долари',
   brokerageTopUp: 'Поповнення брокерського рахунку',
@@ -41,6 +44,12 @@ const uk = {
   templateGroceries: 'Продукти на тиждень',
   templateBuyDollars: 'Купівля доларів',
   templateDinner: 'Вечеря з друзями',
+  woltPizza: 'Wolt: піца',
+  woltRefund: 'Wolt: повернення коштів',
+  woltSushi: 'Wolt: суші',
+  woltBurgers: 'Wolt: бургери',
+  boltFoodShawarma: 'Bolt Food: шаурма',
+  woltGroupOrder: 'Wolt: замовлення на компанію',
 };
 
 /**
@@ -78,6 +87,9 @@ const en: DemoText = {
   privatBank: 'PrivatBank',
   freelanceProject: 'Freelance project',
   bitcoinPurchase: 'BTC purchase',
+  cryptoPurchase: 'Crypto purchase',
+  hryvnia: 'Hryvnia',
+  euro: 'Euro',
   broker: 'Broker',
   usDollars: 'US dollars',
   brokerageTopUp: 'Brokerage account top-up',
@@ -93,6 +105,12 @@ const en: DemoText = {
   templateGroceries: 'Weekly groceries',
   templateBuyDollars: 'Buy dollars',
   templateDinner: 'Dinner with friends',
+  woltPizza: 'Wolt: pizza',
+  woltRefund: 'Wolt: refund',
+  woltSushi: 'Wolt: sushi',
+  woltBurgers: 'Wolt: burgers',
+  boltFoodShawarma: 'Bolt Food: shawarma',
+  woltGroupOrder: 'Wolt: group order',
 };
 
 export const demoText = { uk, en } satisfies Record<AppLanguage, DemoText>;

@@ -1,5 +1,5 @@
+import type { FC } from 'react';
 import { match } from 'ts-pattern';
-import { type FC, useState } from 'react';
 import SettingsRow, {
   chevronSize,
   chevronTrailingWhitespace,
@@ -10,6 +10,7 @@ import Box from '@kiko/design-system/components/box';
 import { useDataReady, useLiveQuery } from '@kiko/db';
 import Text from '@kiko/design-system/components/text';
 import Card from '@kiko/design-system/components/card';
+import type { Currency } from '@kiko/currency/currency';
 import Screen from '@kiko/design-system/components/screen';
 import Divider from '@kiko/design-system/components/divider';
 import { entrySymbol } from '@kiko/navigation/entry-symbols';
@@ -21,14 +22,16 @@ import LoadingState from '@kiko/design-system/components/loading-state';
 import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
 import CurrencyField from '@kiko/design-system/components/currency-field';
 import { Linking, Pressable, type ScrollViewInstance } from 'react-native';
-import { type Currency, fiatCurrencyOptions } from '@kiko/currency/currency';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useDetailPaneRoute, useOpenInPane } from '@kiko/navigation/pane-stack';
+import { useCurrencyPickerGroups } from '@kiko/holdings/currency-picker-groups';
 import { useScrollToTopOnTabPress } from '@kiko/navigation/use-scroll-to-top-on-tab-press';
 
 import pkg from '../../../../package.json';
 
 type SettingsScreenProps = NativeStackScreenProps<SettingsStackParamList, 'Settings'>;
+
+const BASE_CURRENCY_CONTEXT = { kind: 'fiat' } as const;
 
 // The privacy-policy link opens the page matching the CURRENT app language,
 // not the device locale — mirrors `activeLocale()`'s uk/otherwise shape
@@ -68,16 +71,10 @@ const SettingsScreen: FC<SettingsScreenProps> = () => {
   // The live `contentOffset.y`, so the hook can skip a redundant scroll.
   const scrollOffset = useScrollOffset(scrollRef);
   useScrollToTopOnTabPress(scrollRef, scrollOffset);
-  // Same root cause as the account/holding forms (see
-  // `holding-form.screen.tsx`'s own comment): while the base-currency sheet's
-  // search field can be focused, this screen's background ScrollView must
-  // NOT react to the keyboard's frame change — it does not contain that
-  // responder, but `automaticallyAdjustKeyboardInsets` reacts to any focus
-  // regardless (`screen.component.tsx`, `CurrencyField`'s `onOpenChange`).
-  const [isCurrencySheetOpen, setIsCurrencySheetOpen] = useState(false);
 
   const { t, i18n } = useTranslation();
   const { theme } = useUnistyles();
+  const currencyGroups = useCurrencyPickerGroups(BASE_CURRENCY_CONTEXT);
 
   const { data, isLoading } = useLiveQuery(settingsRepo.getQuery(), ['settings'], true, {
     cached: true,
@@ -148,7 +145,6 @@ const SettingsScreen: FC<SettingsScreenProps> = () => {
     <Screen
       scroll
       scrollableRef={scrollRef}
-      automaticallyAdjustKeyboardInsets={!isCurrencySheetOpen}
       footer={
         // App Store compliance footer: app name + version, copyright, and a
         // Privacy Policy link. It renders through the pinned `footer` slot so
@@ -242,7 +238,7 @@ const SettingsScreen: FC<SettingsScreenProps> = () => {
         {/* The base currency is FIAT-ONLY: it drives every net-worth conversion,
             so a crypto base (BTC) is not selectable here. The field reuses the
             shared searchable CurrencyField the account/holding forms use, its
-            `options` restricted to `fiatCurrencyOptions`. It is wrapped in a
+            groups limited to the fiat context. It is wrapped in a
             SettingsRow so it carries the same leading icon + label framing as
             every other settings row; `hideLabel` suppresses CurrencyField's own
             inline caption so "Base Currency" is not shown twice, while the label
@@ -256,8 +252,7 @@ const SettingsScreen: FC<SettingsScreenProps> = () => {
               hideLabel
               selected={settings?.baseCurrency}
               onSelect={handleSelectCurrency}
-              onOpenChange={setIsCurrencySheetOpen}
-              options={fiatCurrencyOptions}
+              groups={currencyGroups}
             />
           </SettingsRow>
         </Card>

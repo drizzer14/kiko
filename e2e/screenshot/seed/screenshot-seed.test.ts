@@ -113,6 +113,17 @@ describe('buildScreenshotDataset (pure, deterministic)', () => {
     expect(JSON.stringify(buildScreenshotDataset('uk', ANCHOR))).toMatch(CYRILLIC);
   });
 
+  it('names the UAH and EUR holdings of the exchange account in the dataset language', () => {
+    const fiatNamesOf = (language: 'uk' | 'en') =>
+      buildScreenshotDataset(language, ANCHOR)
+        .accounts.find((account) => account.kind === 'crypto')
+        ?.holdings.filter((holding) => holding.currency === 'UAH' || holding.currency === 'EUR')
+        .map((holding) => holding.name);
+
+    expect(fiatNamesOf('uk')).toEqual(['Гривня', 'Євро']);
+    expect(fiatNamesOf('en')).toEqual(['Hryvnia', 'Euro']);
+  });
+
   it('names the English accounts and holdings in English', () => {
     const { accounts } = buildScreenshotDataset('en', ANCHOR);
 
@@ -136,6 +147,15 @@ describe('buildScreenshotDataset (pure, deterministic)', () => {
       'PrivatBank',
       'Wise',
       'Binance',
+      'Ethereum',
+      'USDT',
+      'USD Coin',
+      'BNB',
+      'Solana',
+      'ChainGPT',
+      'XRP',
+      'Hryvnia',
+      'Euro',
       'US dollars',
       'Government bonds (OVDP)',
       'Apartment',
@@ -157,14 +177,16 @@ describe('buildScreenshotDataset (pure, deterministic)', () => {
     );
   });
 
-  it('seeds nine plain manual accounts spread across UAH/USD/EUR/BTC', () => {
+  it('seeds nine plain manual accounts spread across UAH/USD/EUR and eight coins', () => {
     const { accounts } = buildScreenshotDataset('uk', ANCHOR);
     const currencies = accounts.flatMap((account) =>
       account.holdings.map((holding) => holding.currency),
     );
 
     expect(accounts).toHaveLength(9);
-    expect(new Set(currencies)).toEqual(new Set(['UAH', 'USD', 'EUR', 'BTC']));
+    expect(new Set(currencies)).toEqual(
+      new Set(['UAH', 'USD', 'EUR', 'BTC', 'ETH', 'USDT', 'BNB', 'SOL', 'XRP', 'USDC', 'CGPT']),
+    );
   });
 
   it('spreads transactions across every one of the 10 seeded categories that it uses', () => {
@@ -216,12 +238,12 @@ describe('buildScreenshotDataset (pure, deterministic)', () => {
     expect(rebuilt).toEqual(times);
   });
 
-  it('pins every ordered currency pair (12) at one fixed fetchedAt', () => {
+  it('pins every ordered currency pair (110) at one fixed fetchedAt', () => {
     const { rates } = buildScreenshotDataset('uk', ANCHOR);
     const fetchedAts = new Set(rates.map((rate) => rate.fetchedAt));
     const requiredPairs = ['BTC:UAH', 'USD:UAH', 'EUR:UAH', 'BTC:USD', 'UAH:BTC', 'USD:BTC'];
 
-    expect(rates).toHaveLength(12);
+    expect(rates).toHaveLength(110);
     expect(fetchedAts.size).toBe(1);
 
     for (const pair of requiredPairs) {
@@ -233,9 +255,22 @@ describe('buildScreenshotDataset (pure, deterministic)', () => {
     const { history } = buildScreenshotDataset('uk', ANCHOR);
     const pairs = new Set(history.map((row) => `${row.base}:${row.quote}`));
 
-    expect(pairs).toEqual(new Set(['USD:UAH', 'EUR:UAH', 'BTC:UAH']));
+    expect(pairs).toEqual(
+      new Set([
+        'USD:UAH',
+        'EUR:UAH',
+        'BTC:UAH',
+        'ETH:UAH',
+        'USDT:UAH',
+        'BNB:UAH',
+        'SOL:UAH',
+        'XRP:UAH',
+        'USDC:UAH',
+        'CGPT:UAH',
+      ]),
+    );
     // 27 weekly points (weeks 0..26) per pair.
-    expect(history).toHaveLength(3 * 27);
+    expect(history).toHaveLength(10 * 27);
   });
 
   it('keeps the invented-ISIN bond its coupons once a register refresh drops the ISIN', () => {
@@ -274,7 +309,7 @@ describe('buildScreenshotDataset (pure, deterministic)', () => {
   });
 
   // The reviewer reaches the Templates screen and the form's template modes only through
-  // this dataset (Guideline 2.3.1(a)), so it holds a template of every mode.
+  // this dataset (Guideline 2.5.19), so it holds a template of every mode.
   describe.each(['uk', 'en'] as const)('the %s transaction templates', (language) => {
     const { accounts, templates } = buildScreenshotDataset(language, ANCHOR);
     const holdingKeys = new Set(
@@ -367,8 +402,9 @@ describe('buildScreenshotDataset (pure, deterministic)', () => {
     }
 
     // A realistic, DOWN-TO-EARTH multi-currency cash ledger: over ₴120k, under
-    // ₴180k. The deterministic dataset totals ₴136,650 (₴16,450 UAH card after
-    // two ₴10,400 car-loan payments + ₴6,000 jar + ₴5,500 cash + $1,220≈₴50,020
+    // ₴180k. The deterministic dataset totals ₴133,535 (₴13,335 UAH card after
+    // two ₴10,400 car-loan payments and ₴3,115 of net food-delivery spending + ₴6,000 jar
+    // + ₴5,500 cash + $1,220≈₴50,020
     // + €600≈₴26,700 + 0.012 BTC≈₴31,980); the bracket is tight enough to catch
     // a scale regression, loose enough to survive a single amount tweak.
     expect(total.minorUnits).toBeGreaterThan(Money.of('UAH', 12_000_000).minorUnits);

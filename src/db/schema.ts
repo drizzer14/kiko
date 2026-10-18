@@ -568,6 +568,15 @@ export const settings = sqliteTable('settings', {
   // shipped it, so the column stays rather than a new migration dropping it, and a backup still
   // carries and restores it. A restored backup without the key keeps the default `[]`.
   dismissedTips: text('dismissed_tips', { mode: 'json' }).$type<string[]>().notNull().default([]),
+  // What the history backfill keeps between launches, as text that `parseHistoryBackfillState`
+  // (`src/settings/`) reads: the code of the first coin CoinGecko rate-limited in the last run,
+  // where the next run starts requesting crypto history, so every held coin is reached within a
+  // bounded number of runs; and, per fiat currency and coin, a mark { start, firstDay,
+  // checkedOn? }: the span start a fetch began from, the first day the provider answered from
+  // (null for an empty answer, which also carries the day it was read and expires after a week).
+  // NULL when there is nothing to keep. It belongs to this device, so a restore keeps the live
+  // value and never reads the file's.
+  historyBackfillState: text('history_backfill_state'),
 });
 
 export type SettingsRow = typeof settings.$inferSelect;
@@ -593,6 +602,11 @@ export const syncState = sqliteTable('sync_state', {
   lastFullSyncAt: integer('last_full_sync_at'),
   lastSyncDisplayAt: integer('last_sync_display_at'),
   failedSyncMonobankIds: text('failed_sync_monobank_ids', { mode: 'json' }).$type<string[]>(),
+  // An exchange account's history walk state as JSON text: one entry per walk, its marks, and the
+  // coin lists. Plain text on purpose, so a value an older or newer build wrote reads back as
+  // stored and the reader decides about it, field by field. Null for a Monobank account and for
+  // an exchange account no walk has run for.
+  exchangeState: text('exchange_state'),
 });
 
 export type SyncStateRow = typeof syncState.$inferSelect;

@@ -34,3 +34,29 @@ export const useLiftSheetStyle = (liftScale: { value: number }) => {
     return { transform: [{ scale: clampForLift(liftScale.value) }] };
   });
 };
+
+// Semgrep fixture (POSITIVE) continuation: the untagged helper is declared
+// AFTER the hook call, not before it — a hoisted function declaration, then a
+// const (both still reach the worklet's closure untagged). The rule matches a
+// declaration on either side of the call, so
+// `kiko-worklet-directive-required` MUST report a finding on each pinned line
+// below.
+export const useDropStyle = (dropScale: { value: number }) =>
+  useAnimatedStyle(() => {
+    // EXPECT-FINDING
+    return { transform: [{ scale: shrinkForDrop(dropScale.value) }] };
+  });
+
+function shrinkForDrop(dropScaleValue: number): number {
+  return dropScaleValue / 2;
+}
+
+export const useRiseStyle = (riseScale: { value: number }) =>
+  useAnimatedStyle(() => {
+    // EXPECT-FINDING
+    return { transform: [{ scale: growForRise(riseScale.value) }] };
+  });
+
+const growForRise = (riseScaleValue: number): number => {
+  return riseScaleValue * 3;
+};

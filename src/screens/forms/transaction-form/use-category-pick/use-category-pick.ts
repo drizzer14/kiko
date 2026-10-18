@@ -72,6 +72,11 @@ export const useCategoryPick = ({
   const categoryForDescription = (name: string): string | null =>
     categoryForDraft({ description: name, amount, time, mode, currency }, preparedRules);
 
+  // What the rules give the LIVE draft, whatever the form holds: the reference a new transaction's
+  // chosen category is compared against, so a create that picks what the rules already give is not
+  // offered a name rule.
+  const ruleCategory = categoryForDescription(description);
+
   // A hand pick or an edit holds its own category; only a create without one is derived.
   const holdsOwnCategory = userPickedCategory || isEditing;
 
@@ -84,7 +89,7 @@ export const useCategoryPick = ({
 
   // The category Save acts on: the same, but for the LIVE description, because a nav-bar Save
   // does not end editing, so no blur has settled it yet.
-  const effectiveCategory = holdsOwnCategory ? storedCategory : categoryForDescription(description);
+  const effectiveCategory = holdsOwnCategory ? storedCategory : ruleCategory;
 
   // The description SETTLES on a blur or a Save, so the picker shows what Save validates and
   // writes, as a blur would have left it.
@@ -104,6 +109,7 @@ export const useCategoryPick = ({
   return {
     selectedCategory,
     effectiveCategory,
+    ruleCategory,
     userPickedCategory,
     seedCategory,
     selectCategory,

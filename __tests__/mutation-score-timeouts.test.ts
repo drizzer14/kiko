@@ -2,7 +2,15 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { mkdtempSync } from 'node:fs';
 
-import { run, ranged, writeReport } from './test-support/mutation-score-report';
+import {
+  run,
+  ranged,
+  writeReport,
+  runArguments,
+  writeShapedReport,
+  runRerunCandidates,
+} from './test-support/mutation-score-report';
+import { WALK, AMOUNTS, SET3B_FILES, SET3B_SCOPE } from './test-support/mutation-binance-set3b';
 
 // A mutant that times out on jest's related-test load proves nothing about behavior, so
 // scripts/checks/mutation-score.js fails a graded file whose Timeout share of the detected
@@ -193,5 +201,179 @@ describe('mutation-score.js: the TIMEOUT-HEAVY boundary', () => {
 
     expect(result.code).toBe(0);
     expect(heavyLines(result.stdout)).toEqual([]);
+  });
+});
+
+// The rerun set of the gate: every Timeout mutant inside the graded ranges of a TIMEOUT-HEAVY
+// file, one `path<TAB>mutant id` line each, and only when TIMEOUT-HEAVY is the gate's sole failure.
+describe('mutation-score.js --rerun-candidates', () => {
+  const candidateLine = (path: string, identifier: number): string => `${path}\t${identifier}`;
+  const idsBetween = (first: number, last: number): number[] =>
+    Array.from({ length: last - first + 1 }, (_, offset) => first + offset);
+  const linesOf = (stdout: string): string[] => stdout.split('\n').filter(Boolean).sort();
+
+  it('lists the 33 timed-out mutants of the two heavy files of the binance set 3b gate', () => {
+    const report = writeShapedReport(directory, SET3B_SCOPE, SET3B_FILES);
+
+    const result = runRerunCandidates(report, SET3B_SCOPE);
+
+    expect(result.code).toBe(0);
+    expect(linesOf(result.stdout)).toEqual(
+      [
+        ...idsBetween(1, 19).map((identifier) => candidateLine(AMOUNTS, identifier)),
+        ...idsBetween(32, 45).map((identifier) => candidateLine(WALK, identifier)),
+      ].sort(),
+    );
+  });
+
+  it('lists every Timeout mutant of each heavy file of the binance follow-up run, and no other', () => {
+    const files = BINANCE_FOLLOWUP;
+    const result = runRerunCandidates(writeReport(directory, files), ranged(...Object.keys(files)));
+
+    const perFile = new Map<string, number>();
+
+    for (const line of linesOf(result.stdout)) {
+      const path = line.split('\t')[0] as string;
+      perFile.set(path, (perFile.get(path) ?? 0) + 1);
+    }
+
+    expect(result.code).toBe(0);
+    expect(Object.fromEntries(perFile)).toEqual({
+      'src/crypto-sync/binance/binance.history-budget.ts': 23,
+      'src/crypto-sync/binance/binance.history-depth.ts': 82,
+      'src/crypto-sync/binance/binance.history-paging.ts': 173,
+      'src/crypto-sync/binance/binance.history-records.ts': 12,
+      'src/crypto-sync/binance/binance.history-walk.ts': 99,
+      'src/crypto-sync/binance/binance.transfer-history.ts': 11,
+    });
+  });
+
+  it('names the mutants of a file by the ids its report holds', () => {
+    const files = {
+      'src/crypto-sync/binance/binance.history-budget.ts': { Killed: 2, Timeout: 23 },
+    };
+    const result = runRerunCandidates(writeReport(directory, files), ranged(...Object.keys(files)));
+
+    expect(linesOf(result.stdout)).toEqual(
+      idsBetween(2, 24)
+        .map((identifier) =>
+          candidateLine('src/crypto-sync/binance/binance.history-budget.ts', identifier),
+        )
+        .sort(),
+    );
+  });
+
+  it('leaves out the timeouts of a file that is not heavy', () => {
+    const files = {
+      'src/heavy.ts': { Killed: 2, Timeout: 3 },
+      'src/light.ts': { Killed: 10, Timeout: 2 },
+    };
+    const result = runRerunCandidates(writeReport(directory, files), ranged(...Object.keys(files)));
+
+    expect(result.code).toBe(0);
+    expect(linesOf(result.stdout)).toEqual(
+      idsBetween(2, 4).map((identifier) => candidateLine('src/heavy.ts', identifier)),
+    );
+  });
+
+  it('leaves out a Timeout mutant outside the graded ranges of a heavy file', () => {
+    const scope = ['src/heavy.ts:1-9'];
+    const report = writeShapedReport(directory, scope, {
+      'src/heavy.ts': [
+        ['1', 'Killed', 1, 1],
+        ['2', 'Timeout', 2, 2],
+        ['3', 'Timeout', 3, 3],
+        ['4', 'Timeout', 4, 4],
+        ['5', 'Timeout', 50, 50],
+      ],
+    });
+
+    const result = runRerunCandidates(report, scope);
+
+    expect(result.code).toBe(0);
+    expect(linesOf(result.stdout)).toEqual(
+      idsBetween(2, 4).map((identifier) => candidateLine('src/heavy.ts', identifier)),
+    );
+  });
+
+  it.each([
+    [
+      'a file below the floor',
+      {
+        'src/heavy.ts': { Killed: 2, Timeout: 3 },
+        'src/low.ts': { Killed: 1, Survived: 3 },
+        'src/big.ts': { Killed: 100 },
+      },
+    ],
+    [
+      'a change set below the total',
+      {
+        'src/heavy.ts': { Killed: 2, Timeout: 3 },
+        'src/second.ts': { Killed: 3, Survived: 2 },
+        'src/third.ts': { Killed: 3, Survived: 2 },
+      },
+    ],
+  ])('prints nothing when %s fails the gate too', (_name, files) => {
+    const result = runRerunCandidates(writeReport(directory, files), ranged(...Object.keys(files)));
+
+    expect(result.code).toBe(0);
+    expect(result.stdout).toBe('');
+  });
+
+  it('prints nothing when the report belongs to another run', () => {
+    const files = { 'src/heavy.ts': { Killed: 2, Timeout: 3 } };
+    const report = writeReport(directory, files, ['src/heavy.ts:1-2']);
+
+    const result = runRerunCandidates(report, ranged('src/heavy.ts'));
+
+    expect(result.code).toBe(0);
+    expect(result.stdout).toBe('');
+  });
+
+  it('prints nothing when no file is heavy', () => {
+    const files = { 'src/a.ts': { Killed: 10, Timeout: 2 } };
+
+    const result = runRerunCandidates(writeReport(directory, files), ranged('src/a.ts'));
+
+    expect(result.code).toBe(0);
+    expect(result.stdout).toBe('');
+  });
+
+  describe('usage', () => {
+    const USAGE = 'usage: mutation-score.js --rerun-candidates <report.json> <mutate-entry>...';
+
+    it('exits 2 with the usage when no report is given', () => {
+      const result = runArguments(['--rerun-candidates']);
+
+      expect(result.code).toBe(2);
+      expect(result.stderr).toContain(USAGE);
+    });
+
+    it('exits 2 with the usage when no entry is given', () => {
+      const report = writeReport(directory, { 'src/heavy.ts': { Killed: 2, Timeout: 3 } });
+
+      const result = runArguments(['--rerun-candidates', report]);
+
+      expect(result.code).toBe(2);
+      expect(result.stderr).toContain(USAGE);
+    });
+
+    it('exits 2 for an entry that is not path:start-end', () => {
+      const report = writeReport(directory, { 'src/heavy.ts': { Killed: 2, Timeout: 3 } });
+
+      const result = runRerunCandidates(report, ['src/heavy.ts']);
+
+      expect(result.code).toBe(2);
+      expect(result.stderr).toContain('every entry is path:start-end, got: src/heavy.ts');
+    });
+
+    it('exits 2 and names the report it could not read', () => {
+      const missing = join(directory, 'missing.json');
+
+      const result = runRerunCandidates(missing, ranged('src/heavy.ts'));
+
+      expect(result.code).toBe(2);
+      expect(result.stderr).toContain(`could not read or parse ${missing}`);
+    });
   });
 });

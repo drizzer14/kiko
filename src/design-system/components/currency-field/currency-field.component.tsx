@@ -1,15 +1,11 @@
-import {
-  type Currency,
-  currencyOptions,
-  currencySymbol,
-  isCrypto,
-  isFiat,
-} from '@kiko/currency/currency';
+import { match } from 'ts-pattern';
 import type { TFunction } from 'i18next';
 import maybe, { foldMap } from 'fnts/maybe';
 import { useTranslation } from 'react-i18next';
 import { FlatList, Keyboard } from 'react-native';
 import { type FC, useEffect, useState } from 'react';
+import type { CurrencyGroup } from '@kiko/currency/currency-group';
+import { type Currency, currencySymbol } from '@kiko/currency/currency';
 
 import Box from '../box';
 import Text from '../text';
@@ -41,44 +37,36 @@ const matches = (t: TFunction, code: Currency, query: string): boolean => {
   );
 };
 
-// Orders currency codes by their LOCALIZED name in the active language,
-// case- and accent-insensitively (`sensitivity: 'base'`), so the list reads
-// alphabetically in whatever language the app is showing rather than by ISO
-// code. Curried so it can be handed straight to `Array.prototype.sort`.
-const byLocalizedName =
-  (t: TFunction, language: string) =>
-  (a: Currency, b: Currency): number =>
-    currencyName(t, a).localeCompare(currencyName(t, b), language, { sensitivity: 'base' });
+type PickerRow =
+  | { type: 'heading'; kind: CurrencyGroup['kind'] }
+  | { type: 'currency'; code: Currency };
 
-// UAH pins to the TOP of the fiat list, ahead of the alphabetical order — but
-// only when the list is not being searched (see `visibleCurrencies`).
-const pinUahFirst = (fiat: readonly Currency[]): Currency[] => {
-  const others = fiat.filter((code) => code !== 'UAH');
+const rowKey = (row: PickerRow): string =>
+  match(row)
+    .with({ type: 'heading' }, ({ kind }) => `heading-${kind}`)
+    .with({ type: 'currency' }, ({ code }) => code)
+    .exhaustive();
 
-  return fiat.includes('UAH') ? ['UAH', ...others] : [...others];
-};
+// The rows to render: each group's currencies that match the search, in the order the group
+// gives them (the caller's group builder owns ordering, so a search only filters). A group the
+// search empties is dropped, and a heading row leads a group only while more than one group is
+// left, because a lone group needs no label.
+const visibleRows = (
+  groups: readonly CurrencyGroup[],
+  t: TFunction,
+  query: string,
+): PickerRow[] => {
+  const shown = groups
+    .map(({ kind, currencies }) => ({
+      kind,
+      currencies: currencies.filter((code) => matches(t, code, query)),
+    }))
+    .filter(({ currencies }) => currencies.length > 0);
 
-// The rows to render: fiat first (alphabetical by localized name, with UAH
-// pinned to the top only while the search box is empty), then the crypto set
-// (BTC/ETH/USDT — classified through the domain's `isCrypto`, never a local
-// code check) as a separate group, also alphabetical by localized name, after
-// all fiats — or before them when `cryptoFirst` is set. Filtering by the search
-// query happens first, so a search reorders only what it matched.
-const visibleCurrencies = (input: {
-  options: readonly Currency[];
-  t: TFunction;
-  language: string;
-  query: string;
-  cryptoFirst: boolean;
-}): Currency[] => {
-  const { options, t, language, query, cryptoFirst } = input;
-  const compare = byLocalizedName(t, language);
-  const matched = options.filter((code) => matches(t, code, query));
-  const fiat = matched.filter(isFiat).sort(compare);
-  const crypto = matched.filter(isCrypto).sort(compare);
-  const orderedFiat = query.trim() === '' ? pinUahFirst(fiat) : fiat;
-
-  return cryptoFirst ? [...crypto, ...orderedFiat] : [...orderedFiat, ...crypto];
+  return shown.flatMap(({ kind, currencies }): PickerRow[] => [
+    ...(shown.length > 1 ? [{ type: 'heading' as const, kind }] : []),
+    ...currencies.map((code) => ({ type: 'currency' as const, code })),
+  ]);
 };
 
 // A labeled, searchable single-select currency picker: the field shows the
@@ -88,42 +76,26 @@ const visibleCurrencies = (input: {
 // value), or a placeholder when none, and opens a bottom sheet with a pinned
 // search TextField above a virtualized list of `SelectableRow`s. Modeled on
 // CategoryField's field-plus-sheet chrome (FieldTrigger + BottomSheet + an
-// own list), with a search box added above the list so the full
-// six-currency (soon more) set stays quick to narrow by code OR name. The
-// cash-account form restricts `options` to `fiatCurrencyOptions` (no crypto);
-// the holding form passes its type's own set (`holdingCurrencyOptions`: fiat
-// for cash, the full set otherwise, crypto first for a crypto holding) and
-// marks the field `disabled` in edit mode (a holding's currency cannot change
-// after creation).
+// own list), with a search box added above the list so the whole supported
+// set stays quick to narrow by code OR name. The list is the caller's `groups`,
+// already ordered (`useCurrencyPickerGroups` builds them from the form's context),
+// so this component only filters and labels them; the holding form marks the
+// field `disabled` in edit mode (a holding's currency cannot change after creation).
 const CurrencyField: FC<CurrencyFieldProps> = ({
   label,
   sheetTitle,
   selected,
   onSelect,
-  options = currencyOptions,
-  cryptoFirst = false,
+  groups,
   required,
   disabled,
   error,
   hideLabel,
   testID,
-  onOpenChange,
 }) => {
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
-
-  // A hosting Screen's `automaticallyAdjustKeyboardInsets` misfires a
-  // scroll/inset adjustment on its OWN background ScrollView when this
-  // sheet's search field gets focus, even though that ScrollView does not
-  // contain the responder — and it never self-corrects. `updateOpen`
-  // notifies `onOpenChange` at every open/close site (synchronously with the
-  // state update, so a caller can gate that prop off before the search field
-  // can be focused) instead of calling `setOpen` directly.
-  const updateOpen = (next: boolean): void => {
-    setOpen(next);
-    onOpenChange?.(next);
-  };
 
   // Reset the query each time the sheet closes so a reopen starts fresh
   // rather than replaying the previous search.
@@ -133,27 +105,20 @@ const CurrencyField: FC<CurrencyFieldProps> = ({
     }
   }, [open]);
 
-  const visible = visibleCurrencies({
-    options,
-    t,
-    language: i18n.language,
-    query,
-    cryptoFirst,
-  });
+  const rows = visibleRows(groups, t, query);
 
   const handleSelect = (code: Currency): void => {
     // The search TextField above is the app's only focusable input inside a
-    // sheet — without a dismiss on selection the keyboard stays up (and the
-    // background form stays scrolled, per Screen's
-    // automaticallyAdjustKeyboardInsets) even after the sheet closes.
+    // sheet — without a dismiss on selection the keyboard stays up even after
+    // the sheet closes.
     Keyboard.dismiss();
     onSelect(code);
-    updateOpen(false);
+    setOpen(false);
   };
 
   const handleDismiss = (): void => {
     Keyboard.dismiss();
-    updateOpen(false);
+    setOpen(false);
   };
 
   // The trigger's value mirrors the option rows exactly: the currency NAME
@@ -174,7 +139,7 @@ const CurrencyField: FC<CurrencyFieldProps> = ({
         disabled={disabled}
         error={error}
         testID={testID}
-        onPress={() => updateOpen(true)}
+        onPress={() => setOpen(true)}
         leadingText={foldMap(maybe(selected), (currency) => currencySymbol[currency])}
         value={triggerValue}
         valueTone={selected === undefined ? 'textSecondary' : 'textPrimary'}
@@ -205,19 +170,34 @@ const CurrencyField: FC<CurrencyFieldProps> = ({
         />
 
         <FlatList
-          data={visible}
-          keyExtractor={(code) => code}
-          renderItem={({ item: code }) => (
-            <SelectableRow
-              testID={`currency-option-${code}`}
-              accessibilityRole="button"
-              accessibilityLabel={`${code} ${currencyName(t, code)}`}
-              selected={code === selected}
-              onPress={() => handleSelect(code)}
-              label={currencyName(t, code)}
-              leadingText={currencySymbol[code]}
-            />
-          )}
+          data={rows}
+          keyExtractor={rowKey}
+          renderItem={({ item: row }) =>
+            match(row)
+              .with({ type: 'heading' }, ({ kind }) => (
+                <Box
+                  style={styles.heading}
+                  accessibilityRole="header"
+                  testID={`currency-group-${kind}`}
+                >
+                  <Text variant="caption" tone="textSecondary">
+                    {t(`components.currencyField.groups.${kind}`)}
+                  </Text>
+                </Box>
+              ))
+              .with({ type: 'currency' }, ({ code }) => (
+                <SelectableRow
+                  testID={`currency-option-${code}`}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${code} ${currencyName(t, code)}`}
+                  selected={code === selected}
+                  onPress={() => handleSelect(code)}
+                  label={currencyName(t, code)}
+                  leadingText={currencySymbol[code]}
+                />
+              ))
+              .exhaustive()
+          }
           initialNumToRender={15}
           windowSize={5}
           showsVerticalScrollIndicator={false}

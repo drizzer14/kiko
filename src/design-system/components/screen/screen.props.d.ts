@@ -75,15 +75,9 @@ export type ScreenProps = {
   onContentSizeChange?: (contentWidth: number, contentHeight: number) => void;
   // Escape hatch for the `scroll`-mode ScrollView's `automaticallyAdjustKeyboardInsets`
   // (see `screen.component.tsx`). Defaults to `true`, its long-standing
-  // behavior. That prop has no per-responder scoping — it reacts to ANY
-  // focused input, including one hosted inside a BottomSheet floating above
-  // this ScrollView (e.g. `CurrencyField`'s search TextField), which
-  // misfires a scroll/inset adjustment on THIS background ScrollView for a
-  // responder it does not even contain, and never self-corrects. A caller
-  // that hosts such a sheet flips this to `false` for the duration the
-  // sheet is open (e.g. via `CurrencyField`'s `onOpenChange`), then back to
-  // `true` once it closes. Only meaningful in `scroll` mode; ignored
-  // otherwise.
+  // behavior. The patched React Native moves the offset only for a field inside this ScrollView,
+  // so a field in a sheet or another pane needs no `false` here. Only meaningful in `scroll`
+  // mode; ignored otherwise.
   automaticallyAdjustKeyboardInsets?: boolean;
   // Called whenever a text field inside loses focus (`useFieldBlur`). A form that keeps a draft of
   // its fields in its route params saves it here, so it passes no blur handler to each field.

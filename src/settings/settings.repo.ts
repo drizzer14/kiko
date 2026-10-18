@@ -6,6 +6,13 @@ import type { TrendFilter } from '@kiko/statistics/trend-filter';
 import type { SavedColumnMapping } from '@kiko/statement-import/column-mapping';
 import { type Repository, type SettingsRow, settings, database, write } from '@kiko/db';
 
+import {
+  type SettledHistory,
+  type HistoryBackfillState,
+  parseHistoryBackfillState,
+  serializeHistoryBackfillState,
+} from './history-backfill-state';
+
 /** Settings is a single row, keyed at id = 1. */
 export const SETTINGS_ID = 1;
 
@@ -36,6 +43,27 @@ export const recordReminderOfferDismissal = async (
     .set({ reminderOfferDismissals: { ...existing, [accountId]: [...dismissedKinds, kind] } })
     .where(eq(settings.id, SETTINGS_ID));
 };
+
+/**
+ * Changes one part of the history backfill state and keeps the rest: the coin cursor and the
+ * settled marks share one column. Read-modify-write inside one `write()`, like
+ * `saveStatementMapping`.
+ */
+const changeHistoryBackfillState = (
+  change: (state: HistoryBackfillState) => HistoryBackfillState,
+) =>
+  write(async (databaseTransaction) => {
+    const rows = await databaseTransaction
+      .select({ historyBackfillState: settings.historyBackfillState })
+      .from(settings)
+      .where(eq(settings.id, SETTINGS_ID));
+    const state = parseHistoryBackfillState(rows[0]?.historyBackfillState ?? null);
+
+    await databaseTransaction
+      .update(settings)
+      .set({ historyBackfillState: serializeHistoryBackfillState(change(state)) })
+      .where(eq(settings.id, SETTINGS_ID));
+  });
 
 export const settingsRepo = {
   getQuery: () => database.select().from(settings).where(eq(settings.id, SETTINGS_ID)),
@@ -124,6 +152,22 @@ export const settingsRepo = {
       .select({ notificationsDeliverableSince: settings.notificationsDeliverableSince })
       .from(settings)
       .where(eq(settings.id, SETTINGS_ID)),
+  /** The stored history backfill state as text; `parseHistoryBackfillState` reads it. */
+  historyBackfillStateQuery: () =>
+    database
+      .select({ historyBackfillState: settings.historyBackfillState })
+      .from(settings)
+      .where(eq(settings.id, SETTINGS_ID)),
+  /**
+   * Adds settled marks beside the stored ones, replacing only a mark of the same currency, and
+   * keeps the coin cursor.
+   */
+  recordSettledHistory: (additions: SettledHistory) =>
+    changeHistoryBackfillState((state) => ({
+      ...state,
+      settled: { ...state.settled, ...additions },
+    })),
+  changeHistoryBackfillState,
   setNotificationsDeliverableSince: (deliverableSince: number | null) =>
     write((databaseTransaction) =>
       databaseTransaction

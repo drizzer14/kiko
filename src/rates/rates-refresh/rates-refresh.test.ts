@@ -1,6 +1,7 @@
 import { currencyOptions, isCrypto, isCurrency } from '@kiko/currency/currency';
 
 import type { RateEntry } from '../conversion';
+import { fetchCryptoPrices } from '../coingecko';
 import { buildRateTable, canConvert } from '../net-worth-view';
 
 import { type FiatRatesOfRun, type RefreshDeps, refreshRates } from './rates-refresh';
@@ -50,6 +51,28 @@ const makeDeps = (overrides: Partial<RefreshDeps> = {}) => {
 };
 
 describe('refreshRates', () => {
+  it('writes a UAH row per priced coin and none for the missing one', async () => {
+    const onlyBitcoinAnswered = (async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ bitcoin: { usd: 65_000 } }),
+    })) as unknown as typeof fetch;
+    const { deps, captured } = makeDeps({
+      openCurrencies: async () => ({
+        needsFiat: true,
+        cryptoCurrencies: ['BTC', 'ETH'],
+        nonBaseCurrencies: ['USD', 'EUR', 'BTC', 'ETH'],
+      }),
+      fetchCryptoPrices: (currencies) => fetchCryptoPrices(onlyBitcoinAnswered, currencies),
+    });
+
+    await refreshRates(deps);
+
+    const bases = captured.flat().map((row) => row.base);
+    expect(bases).toContain('BTC');
+    expect(bases).not.toContain('ETH');
+  });
+
   it('composes one X:UAH row per priced currency and upserts them once', async () => {
     const { deps, captured } = makeDeps();
 
@@ -490,6 +513,24 @@ describe('refreshRates — the data-presence gate', () => {
     // (asserted below) but composed no pair — the existing "no USD anchor"
     // behavior (see the describe block above), not a bug in the gate itself.
     expect(captured).toHaveLength(0);
+  });
+
+  it('never requests a curated coin no holding uses', async () => {
+    const requestedUrls: string[] = [];
+    const recordingFetch = (async (url: string) => {
+      requestedUrls.push(url);
+
+      return { ok: true, status: 200, json: async () => ({ bitcoin: { usd: 65_000 } }) };
+    }) as unknown as typeof fetch;
+    const { deps } = makeDeps({
+      fetchCryptoPrices: (currencies) => fetchCryptoPrices(recordingFetch, currencies),
+      openCurrencies: async () => ({ needsFiat: true, cryptoCurrencies: ['BTC'] }),
+    });
+
+    await refreshRates(deps);
+
+    expect(requestedUrls).toHaveLength(1);
+    expect(requestedUrls[0]).toContain('ids=bitcoin&');
   });
 
   it('passes only the held crypto currencies to fetchCryptoPrices, never the full supported set', async () => {

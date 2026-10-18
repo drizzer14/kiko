@@ -16,6 +16,7 @@ import {
   type BackfillStatus,
   composeHistoryRows,
   deriveLastBackfilledDay,
+  deriveFirstBackfilledDayByCurrency,
   deriveLastBackfilledDayByCurrency,
   missingDays,
   planBackfillRun,
@@ -31,6 +32,7 @@ type NbuCall = { currencies: Currency[]; start: number; end: number };
 const answered = (entries: HistoryRateEntry[]): CryptoHistory => ({
   entries,
   failedCurrencies: [],
+  rateLimitedCurrencies: [],
 });
 
 describe('missingDays', () => {
@@ -63,6 +65,23 @@ describe('deriveLastBackfilledDay', () => {
 
   it('returns null when there is no history yet', () => {
     expect(deriveLastBackfilledDay([])).toBeNull();
+  });
+});
+
+describe('deriveFirstBackfilledDayByCurrency', () => {
+  it('returns each currency own earliest stored day', () => {
+    const rows = [
+      { base: 'BTC' as const, day: day(2) },
+      { base: 'BTC' as const, day: day(0) },
+      { base: 'ETH' as const, day: day(1) },
+      { base: 'ETH' as const, day: day(3) },
+    ];
+
+    expect(deriveFirstBackfilledDayByCurrency(rows)).toEqual({ BTC: day(0), ETH: day(1) });
+  });
+
+  it('returns nothing when there is no history yet', () => {
+    expect(deriveFirstBackfilledDayByCurrency([])).toEqual({});
   });
 });
 
@@ -293,6 +312,8 @@ describe('runBackfill', () => {
         cryptoCurrencies: ['BTC'],
       }),
       lastBackfilledDayByCurrency,
+      readHistoryBackfillCursor: async () => null,
+      writeHistoryBackfillCursor: async () => {},
       ...overrides,
     };
 
@@ -812,7 +833,7 @@ describe('runBackfill — a lagging currency with existing rows is not permanent
           entries.push({ base: 'BTC', quote: 'USD', day: d, rate: 65_000, source: 'coingecko' });
         }
 
-        return { entries, failedCurrencies: [] };
+        return { entries, failedCurrencies: [], rateLimitedCurrencies: [] };
       }),
     );
 
@@ -880,6 +901,11 @@ describe('runBackfill — the data-presence gate', () => {
     fetchNbuHistory: async () => ({ entries: nbu, failedCurrencies: [] }),
     fetchCryptoHistory: async () => answered(btc),
     upsertMany: async () => {},
+    readHistoryBackfillCursor: async () => null,
+    writeHistoryBackfillCursor: async () => {},
+    // Its own set: the module's shared one would carry a coin an earlier test found empty, and a
+    // coin known to be empty is not requested again.
+    knownEmptyCurrencies: new Set(),
     ...overrides,
   });
 
@@ -958,6 +984,24 @@ describe('runBackfill — the data-presence gate', () => {
     await runBackfill(deps);
 
     expect(receivedCurrencies).toEqual(['USD']);
+  });
+
+  it('never requests a curated coin no holding uses', async () => {
+    const requestedIds: string[] = [];
+    const recordingFetch = (async (url: string) => {
+      requestedIds.push(/coins\/([a-z-]+)\/market_chart/.exec(url)?.[1] ?? '');
+
+      return { ok: true, status: 200, json: async () => ({ prices: [] }) };
+    }) as unknown as typeof fetch;
+    const deps = makeDeps({
+      fetchCryptoHistory: (days, currencies) =>
+        fetchCoinGeckoHistory(days, recordingFetch, currencies),
+      historyCurrencies: async () => ({ fiatCurrencies: ['USD'], cryptoCurrencies: ['BTC'] }),
+    });
+
+    await runBackfill(deps);
+
+    expect(requestedIds).toEqual(['bitcoin']);
   });
 
   it('passes only the held crypto currencies to fetchCryptoHistory, never the full supported set', async () => {

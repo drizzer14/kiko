@@ -726,8 +726,8 @@ const ColumnMappingScreen: FC<ColumnMappingScreenProps> = ({ route, navigation }
 
   // Import skips every row whose currency is not the target holding's, so in
   // fixed mode the target's own currency is the only default that imports.
-  const targetCurrency = holdings.find((holding) => holding.id === selectedHoldingId)?.currency;
-  const defaultCurrency: Currency = targetCurrency ?? holdings.at(0)?.currency ?? 'UAH';
+  const targetHolding = holdings.find((holding) => holding.id === selectedHoldingId);
+  const defaultCurrency: Currency = targetHolding?.currency ?? holdings.at(0)?.currency ?? 'UAH';
   const fixedCurrency = explicitFixedCurrency ?? defaultCurrency;
 
   const headerRow = foldMap(maybe(headerRowIndex), (index) => rows[index] ?? []) ?? [];
@@ -945,6 +945,7 @@ const ColumnMappingScreen: FC<ColumnMappingScreenProps> = ({ route, navigation }
             onCurrencyColumnChange={setCurrencyColumn}
             fixedCurrency={fixedCurrency}
             onFixedCurrencyChange={setExplicitFixedCurrency}
+            targetHolding={targetHolding}
             descriptionColumn={descriptionColumn}
             onDescriptionColumnChange={setDescriptionColumn}
             counterpartyColumn={counterpartyColumn}

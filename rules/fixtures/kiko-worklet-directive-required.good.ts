@@ -1,7 +1,8 @@
 import { useAnimatedStyle, withTiming } from 'react-native-reanimated';
 
-// Semgrep fixture (NEGATIVE): four shapes `kiko-worklet-directive-required`
-// must NOT flag — a same-file helper tagged with its own `'worklet'`
+// Semgrep fixture (NEGATIVE): five shapes `kiko-worklet-directive-required`
+// must NOT flag (the fifth, a tagged helper declared after the hook call, is
+// at the bottom) — a same-file helper tagged with its own `'worklet'`
 // directive, a helper defined INLINE directly inside the worklet callback
 // (already part of that worklet's own closure, per kiko-gestures — never
 // captured remotely), and a function imported from ANOTHER module
@@ -34,3 +35,22 @@ const dependencyListFor = (liftValue: number): number[] => {
 
 export const useFadeStyle = (opacity: { value: number }) =>
   useAnimatedStyle(() => ({ opacity: opacity.value }), dependencyListFor(1));
+
+// A helper tagged with its own `'worklet'` directive but declared AFTER the
+// hook call (a hoisted function declaration, then a const) is still safe: the
+// rule's "not tagged" exclusions must cover a declaration on either side of
+// the call, not only one declared before it.
+export const useDimStyle = (dimValue: { value: number }) =>
+  useAnimatedStyle(() => ({ opacity: dimForLater(dimValue.value) * dimByLater(dimValue.value) }));
+
+function dimForLater(dimOpacityValue: number): number {
+  'worklet';
+
+  return dimOpacityValue * 0.25;
+}
+
+const dimByLater = (dimOpacityValue: number): number => {
+  'worklet';
+
+  return dimOpacityValue * 0.75;
+};

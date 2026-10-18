@@ -103,11 +103,13 @@ const makeUpsertDatabaseTransaction = (store: NewRate[], chunkSizes: number[]): 
   }),
 });
 
-// 110 currencies x 109 cross pairs each = 11,990 rows — the legacy cross-join
+// Every ordered pair of `currencyOptions` — the legacy cross-join
 // shape a live Monobank sync stored before the UAH-star rewrite (a live sync
-// now writes ~109 rows, one `X:UAH` per priced currency); still the largest
+// now writes one `X:UAH` per priced currency); still the largest
 // batch `upsertMany`'s chunking must survive, since a `.kiko` restore of a
 // pre-star export can still hand it a legacy-shaped batch this size.
+const pairCount = currencyOptions.length * (currencyOptions.length - 1);
+
 const buildRates = (): NewRate[] => {
   const rows: NewRate[] = [];
 
@@ -161,7 +163,7 @@ describe('ratesRepo', () => {
       mockDatabaseTransaction = makeUpsertDatabaseTransaction(store, chunkSizes);
 
       const rates = buildRates();
-      expect(rates).toHaveLength(11_990);
+      expect(rates).toHaveLength(pairCount);
 
       await ratesRepo.upsertMany(rates);
 
@@ -173,8 +175,8 @@ describe('ratesRepo', () => {
       for (const size of chunkSizes) {
         expect(size * PARAMS_PER_ROW).toBeLessThanOrEqual(SQLITE_MAX_VARIABLE_NUMBER);
       }
-      expect(chunkSizes.reduce((sum, size) => sum + size, 0)).toBe(11_990);
-      expect(store).toHaveLength(11_990);
+      expect(chunkSizes.reduce((sum, size) => sum + size, 0)).toBe(pairCount);
+      expect(store).toHaveLength(pairCount);
       // All chunks ran inside the same single write (one op-sqlite transaction).
       expect(writeCalls).toBe(1);
     });

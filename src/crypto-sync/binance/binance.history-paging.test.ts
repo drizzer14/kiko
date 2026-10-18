@@ -1,17 +1,24 @@
 import { DAY_MS } from '@kiko/dates';
-
 import {
   createDepthMemories,
   createDepthMemory,
-  DEPTH_MARGIN_MS,
-  DEPTH_RESOLUTION_MS,
   type DepthGuard,
   type DepthMemory,
-  MAX_DEPTH_REFUSALS,
   rememberServedStart,
-} from './binance.history-depth';
+  type UnreadableRow,
+} from '@kiko/crypto-sync/exchange/walk';
+import { fetchAllByTotal, readSeriesSpan } from '@kiko/crypto-sync/exchange/paging';
+
+import {
+  BINANCE_DEPTH_CONFIG,
+  DEPTH_MARGIN_MS,
+  DEPTH_RESOLUTION_MS,
+  MAX_DEPTH_REFUSALS,
+} from './binance.depth-config';
 import {
   BINANCE_REQUEST_INTERVAL_MS,
+  type BudgetLane,
+  type CallCost,
   COSTS,
   createBinanceHistoryRun,
   IP_BUDGET_1M,
@@ -27,8 +34,8 @@ import {
   refusedSpanReadsOf,
   skippedMsOf,
 } from './binance.depth-test-fixtures';
-import type { TotalPage, UnreadableRow } from './binance.history-client';
-import { fetchAllByTotal, readSeriesSpan } from './binance.history-paging';
+import { BINANCE_WALK_CONFIG } from './binance.walk-config';
+import type { BinancePageWeights, TotalPage } from './binance.history-client';
 import { BinanceHistoryTooOldError, BinanceRateLimitError } from './binance.client';
 
 const NOW = 1_704_326_400_000;
@@ -39,6 +46,17 @@ const ONE_MS_SPAN = { start: 1_000, end: 1_001 };
 const CAP = LANE_CALL_CAPS.transfer;
 
 type Row = { id: number };
+
+type SeriesSpanInput<Series extends string> = Parameters<
+  typeof readSeriesSpan<
+    Series,
+    Row,
+    BudgetLane,
+    CallCost,
+    BinancePageWeights,
+    BinanceRateLimitError
+  >
+>[0];
 
 const freshRun = () => createBinanceHistoryRun({ now: () => NOW, sleep: async () => undefined });
 
@@ -68,12 +86,15 @@ const scripted = (pages: TotalPage<Row>[]) => {
 };
 
 const pagingOf = (
-  over: Partial<Parameters<typeof fetchAllByTotal<Row>>[0]> & {
+  over: Partial<
+    Parameters<typeof fetchAllByTotal<Row, BudgetLane, CallCost, BinancePageWeights>>[0]
+  > & {
     fetchPage: (current: number) => Promise<TotalPage<Row> | undefined>;
   },
 ) =>
-  fetchAllByTotal<Row>({
+  fetchAllByTotal({
     run: freshRun(),
+    config: BINANCE_WALK_CONFIG,
     lane: 'transfer',
     cost: COSTS.transfer,
     keep: 0,
@@ -235,12 +256,13 @@ describe('readSeriesSpan', () => {
   type Series = (typeof SERIES)[number];
 
   const readOf = (
-    over: Partial<Parameters<typeof readSeriesSpan<Series, Row>>[0]> & {
+    over: Partial<SeriesSpanInput<Series>> & {
       fetchPage: (series: Series, span: typeof SPAN, current: number) => Promise<TotalPage<Row>>;
     },
   ) =>
-    readSeriesSpan<Series, Row>({
+    readSeriesSpan({
       run: freshRun(),
+      config: BINANCE_WALK_CONFIG,
       lane: 'transfer',
       cost: COSTS.transfer,
       span: SPAN,
@@ -405,13 +427,13 @@ describe('readSeriesSpan, against a Binance that refuses a start older than it k
     isRefusal: (error) => error instanceof BinanceHistoryTooOldError,
     nowMs: () => NOW,
     floorMs: () => BASE - DAY_MS,
-    ...createDepthMemories(() => NOW),
+    ...createDepthMemories(() => NOW, BINANCE_DEPTH_CONFIG),
     ...over,
   });
 
   /** A memory that holds a start Binance refused, a bound that does not move with the clock. */
   const boundedAt = (startMs: number): DepthMemory => {
-    const memory = createDepthMemory();
+    const memory = createDepthMemory(BINANCE_DEPTH_CONFIG);
     rememberServedStart(memory, { startMs, servedAtMs: undefined });
 
     return memory;
@@ -431,12 +453,13 @@ describe('readSeriesSpan, against a Binance that refuses a start older than it k
     });
 
   const readDeep = (
-    over: Partial<Parameters<typeof readSeriesSpan<Series, Row>>[0]> & {
+    over: Partial<SeriesSpanInput<Series>> & {
       fetchPage: (series: Series, span: typeof DEEP, current: number) => Promise<TotalPage<Row>>;
     },
   ) =>
-    readSeriesSpan<Series, Row>({
+    readSeriesSpan({
       run: freshRun(),
+      config: BINANCE_WALK_CONFIG,
       lane: 'transfer',
       cost: COSTS.transfer,
       span: DEEP,

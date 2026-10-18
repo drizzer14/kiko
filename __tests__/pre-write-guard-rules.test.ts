@@ -87,6 +87,7 @@ const RULE_IDS_WITH_FIXTURES = [
   'kiko-sortable-grid-lone-card-lifts',
   'kiko-kind-ternary-prefers-match',
   'kiko-no-device-idiom',
+  'kiko-type-ternary-prefers-match',
 ] as const;
 
 // kiko-no-literal-sync-error carries a path-prefixed `paths.include` (

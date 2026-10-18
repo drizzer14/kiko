@@ -5,9 +5,9 @@
 // in-process `node:sqlite` engine, and mocks `@kiko/db/client`'s `write` to
 // route `holdingsRepo.upsertExchangeMany`'s OWN write — the real call path a
 // balance sync uses, not an internal raw-transaction helper — through
-// `executingDrizzle` against it. The only way to prove a walk-owned key (the
-// Binance history cursor) survives a routine balance-sync upsert while every
-// OTHER stored field still updates.
+// `executingDrizzle` against it. The only way to prove which stored metadata key
+// survives a routine balance-sync upsert while every OTHER stored field still
+// updates.
 let mockWorkDatabase: unknown;
 jest.mock('@kiko/db/client', () => {
   const actual = jest.requireActual('@kiko/db/client');
@@ -46,8 +46,7 @@ const seedSpot = (rawDatabase: DatabaseSync, metadata: Record<string, unknown>):
     .run(JSON.stringify(metadata));
 };
 
-// The exact shape a balance sync writes (`runBalanceSyncInner`): a fresh `{ syncedAt }` object,
-// never carrying the walk's own marks.
+// The exact shape a balance sync writes (`runBalanceSyncInner`): a fresh `{ syncedAt }` object.
 const balanceSyncOfSpot = () =>
   holdingsRepo.upsertExchangeMany([
     {
@@ -62,63 +61,32 @@ const balanceSyncOfSpot = () =>
     },
   ]);
 
-describe('holdingsRepo.upsertExchangeMany — walk-owned metadata carry-over', () => {
-  it('a balance-sync upsert keeps the stored binanceHistoryCursor AND still replaces every other synced field', async () => {
+// What a build before the walk state moved to `sync_state` left on a Spot holding.
+const OLD_WALK_KEYS = {
+  binanceHistoryCursor: 1_000,
+  binanceHistoryRescanCursor: 900,
+  binanceHistoryPendingOverlap: [{ start: 1, end: 2 }],
+  binancePayPointCursor: 5,
+  binanceTransferRangeCursor: 11,
+  binanceEarnSpanHints: { forward: [{ start: 1, end: 5 }], pending: [], rescan: [], point: [] },
+};
+
+describe('holdingsRepo.upsertExchangeMany — the metadata carry-over', () => {
+  it('a balance-sync upsert drops the old walk keys AND still replaces every other synced field', async () => {
     const rawDatabase = openTestDatabase();
     const drizzleDatabase = executingDrizzle<typeof database>(rawDatabase);
     mockWorkDatabase = drizzleDatabase;
-    seedSpot(rawDatabase, { binanceAsset: 'BTC', binanceHistoryCursor: 1_000, syncedAt: 500 });
+    seedSpot(rawDatabase, { binanceAsset: 'BTC', syncedAt: 500, ...OLD_WALK_KEYS });
 
     await balanceSyncOfSpot();
 
     const row = (await drizzleDatabase.select().from(holdings).where(eq(holdings.id, 'h-spot')))[0];
 
     expect(row.balanceMinorUnits).toBe(250);
-    expect(row.metadata).toEqual({
-      binanceAsset: 'BTC',
-      syncedAt: 2_000,
-      binanceHistoryCursor: 1_000,
-    });
+    expect(row.metadata).toEqual({ binanceAsset: 'BTC', syncedAt: 2_000 });
   });
 
-  it('a balance-sync upsert keeps every range cursor and every span hint of the three walks, and a disconnect then drops them', async () => {
-    const rawDatabase = openTestDatabase();
-    const drizzleDatabase = executingDrizzle<typeof database>(rawDatabase);
-    mockWorkDatabase = drizzleDatabase;
-    const hints = {
-      forward: [{ start: 1, end: 5 }],
-      pending: [{ start: 10, end: 20 }],
-      rescan: [],
-      point: [{ start: 30, end: 31 }],
-    };
-    const walkOwned = {
-      binanceHistoryRangeCursor: 11,
-      binancePayRangeCursor: 12,
-      binanceTransferRangeCursor: 13,
-      binanceHistorySpanHints: hints,
-      binancePaySpanHints: hints,
-      binanceTransferSpanHints: hints,
-    };
-    seedSpot(rawDatabase, { binanceAsset: 'BTC', syncedAt: 500, ...walkOwned });
-
-    await balanceSyncOfSpot();
-
-    const carried = (
-      await drizzleDatabase.select().from(holdings).where(eq(holdings.id, 'h-spot'))
-    )[0];
-
-    expect(carried.metadata).toEqual({ binanceAsset: 'BTC', syncedAt: 2_000, ...walkOwned });
-
-    await holdingsRepo.resetBinanceWalkCursors('acc-1', 1);
-
-    const reset = (
-      await drizzleDatabase.select().from(holdings).where(eq(holdings.id, 'h-spot'))
-    )[0];
-
-    expect(reset.metadata).toEqual({ binanceAsset: 'BTC', syncedAt: 2_000 });
-  });
-
-  it('adds no binanceHistoryCursor key for a holding that never had one (wallet/Monobank rows unaffected)', async () => {
+  it('adds no walk key for a holding that never had one (wallet/Monobank rows unaffected)', async () => {
     const rawDatabase = openTestDatabase();
     const drizzleDatabase = executingDrizzle<typeof database>(rawDatabase);
     mockWorkDatabase = drizzleDatabase;

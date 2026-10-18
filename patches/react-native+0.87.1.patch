@@ -1,0 +1,29 @@
+diff --git a/node_modules/react-native/React/Fabric/Mounting/ComponentViews/ScrollView/RCTScrollViewComponentView.mm b/node_modules/react-native/React/Fabric/Mounting/ComponentViews/ScrollView/RCTScrollViewComponentView.mm
+index 548987f..e78cd8b 100644
+--- a/node_modules/react-native/React/Fabric/Mounting/ComponentViews/ScrollView/RCTScrollViewComponentView.mm
++++ b/node_modules/react-native/React/Fabric/Mounting/ComponentViews/ScrollView/RCTScrollViewComponentView.mm
+@@ -200,7 +200,6 @@ RCTSendScrollEventForNativeAnimations_DEPRECATED(UIScrollView *scrollView, NSInt
+   UIViewAnimationCurve curve =
+       (UIViewAnimationCurve)[notification.userInfo[UIKeyboardAnimationCurveUserInfoKey] unsignedIntegerValue];
+   CGRect keyboardEndFrame = [notification.userInfo[UIKeyboardFrameEndUserInfoKey] CGRectValue];
+-  CGRect keyboardBeginFrame = [notification.userInfo[UIKeyboardFrameBeginUserInfoKey] CGRectValue];
+ 
+   CGPoint absoluteViewOrigin = [self convertPoint:self.bounds.origin toView:nil];
+   CGFloat scrollViewLowerY = isInverted ? absoluteViewOrigin.y : absoluteViewOrigin.y + self.bounds.size.height;
+@@ -222,13 +221,9 @@ RCTSendScrollEventForNativeAnimations_DEPRECATED(UIScrollView *scrollView, NSInt
+                                                  to:nil
+                                                from:self
+                                            forEvent:nil]) {
+-    if (CGRectEqualToRect(_firstResponderFocus, CGRectNull)) {
+-      UIView *inputAccessoryView = _firstResponderViewOutsideScrollView.inputAccessoryView;
+-      if (inputAccessoryView) {
+-        // Text input view is within the inputAccessoryView.
+-        contentDiff = keyboardEndFrame.origin.y - keyboardBeginFrame.origin.y;
+-      }
+-    } else {
++    // A field outside this scroll view must not move its offset: every scroll view hears the
++    // keyboard, so a second pane or a screen under a pushed form would shift by the keyboard height.
++    if (!CGRectEqualToRect(_firstResponderFocus, CGRectNull)) {
+       // Inner text field focused
+       CGFloat focusEnd = CGRectGetMaxY(self.firstResponderFocus);
+       if (focusEnd > keyboardEndFrame.origin.y) {

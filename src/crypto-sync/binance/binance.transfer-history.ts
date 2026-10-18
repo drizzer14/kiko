@@ -1,14 +1,39 @@
 import { match } from 'ts-pattern';
 import { DAY_MS } from '@kiko/dates';
 import {
-  BINANCE_TRANSFER_HISTORY_CURSOR_FIELD,
-  BINANCE_TRANSFER_PENDING_OVERLAP_FIELD,
-  BINANCE_TRANSFER_POINT_CURSOR_FIELD,
-  BINANCE_TRANSFER_RANGE_CURSOR_FIELD,
-  BINANCE_TRANSFER_RESCAN_CURSOR_FIELD,
-  BINANCE_TRANSFER_SPAN_HINTS_FIELD,
-  binanceWalkCursorOf,
-} from '@kiko/holdings/holding-metadata';
+  advanceWalkMarks,
+  BinanceWalkStop,
+  commitSettledSpan,
+  createDepthMemories,
+  type DepthGuard,
+  dropReadPoints,
+  type ExchangeStateDeps,
+  exchangeStateDepsOf,
+  instantAt,
+  joinSettled,
+  type OwedWindow,
+  placeWalletRows,
+  planWalkPasses,
+  readPendingMark,
+  readWalkMarks,
+  readWalkRoundRobins,
+  roundRobinHooksOf,
+  runWalkPlan,
+  type SettledSpan,
+  settleRecords,
+  settleUnreadable,
+  type SpanCommit,
+  type SpanRead,
+  storePlannedList,
+  type WalkMarkWriter,
+  type WalkMarks,
+  walkMarkWriterOf,
+  walkSpans,
+  type WalkPass,
+  type WalkPlan,
+  type WalkResult,
+  type WalkWindow,
+} from '@kiko/crypto-sync/exchange/walk';
 import type { HoldingRow } from '@kiko/db';
 import maybe, { foldMap } from 'fnts/maybe';
 import {
@@ -17,35 +42,13 @@ import {
 } from '@kiko/transactions/untracked-counterpart';
 import { transactionsRepo } from '@kiko/transactions/repo';
 import { type ExchangeHolding, holdingsRepo } from '@kiko/holdings/repo';
+import { readSeriesSpan, type SeriesSpan } from '@kiko/crypto-sync/exchange/paging';
 
 import {
   BINANCE_ASSET,
   BinanceHistoryTooOldError,
   type FetchAccountOptions,
 } from './binance.client';
-import {
-  advanceWalkMarks,
-  BinanceWalkStop,
-  btcSatoshis,
-  dropReadPoints,
-  type OwedWindow,
-  planWalkPasses,
-  readPendingMark,
-  readWalkRoundRobins,
-  roundRobinHooksOf,
-  runWalkPlan,
-  type SpanCommit,
-  type SpanRead,
-  storePlannedList,
-  type WalkMarkFields,
-  type WalkMarks,
-  walkSpans,
-  type WalkPass,
-  type WalkPlan,
-  type WalkResult,
-  walkWritersOf,
-  type WalkWindow,
-} from './binance.history-walk';
 import {
   type BinanceTransactionRow,
   HISTORY_FLOOR_MS,
@@ -58,21 +61,12 @@ import {
   UNIVERSAL_TRANSFER_TYPES,
   type UniversalTransferType,
 } from './binance.history-client';
-import {
-  commitSettledSpan,
-  instantAt,
-  joinSettled,
-  placeWalletRows,
-  type SettledSpan,
-  settleRecords,
-  settleUnreadable,
-} from './binance.history-records';
+import { btcSatoshis } from './binance.amounts';
+import { BINANCE_WALK_CONFIG } from './binance.walk-config';
+import { BINANCE_DEPTH_CONFIG } from './binance.depth-config';
 import { type BinanceHistoryRun, COSTS } from './binance.history-budget';
-import { readSeriesSpan, type SeriesSpan } from './binance.history-paging';
-import { createDepthMemories, type DepthGuard } from './binance.history-depth';
 import { type BinanceCredentials, readCredentials } from './binance.credentials';
 import { isBinanceCoolingDown, setBinanceCooldownUntil } from './binance.cooldown';
-import { type BinanceWalkWriteDeps, defaultWalkWriteDeps } from './binance.walk-write-deps';
 import { type BinanceWalletKey, binanceKeyOf, FUNDING_KEY, SPOT_KEY } from './binance.holding-keys';
 
 /** Binance does not document the widest range a transfer read takes; 30 days is the working cap. */
@@ -129,15 +123,6 @@ export const TRANSFER_FORWARD_OWES: readonly string[] = [
   TRANSFER_AMOUNT_INVALID,
   TRANSFER_ROW_UNREADABLE,
 ];
-
-const TRANSFER_MARK_FIELDS: WalkMarkFields = {
-  cursor: BINANCE_TRANSFER_HISTORY_CURSOR_FIELD,
-  rescan: BINANCE_TRANSFER_RESCAN_CURSOR_FIELD,
-  point: BINANCE_TRANSFER_POINT_CURSOR_FIELD,
-  range: BINANCE_TRANSFER_RANGE_CURSOR_FIELD,
-  hints: BINANCE_TRANSFER_SPAN_HINTS_FIELD,
-  pending: BINANCE_TRANSFER_PENDING_OVERLAP_FIELD,
-};
 
 /**
  * The earliest `startTime` the walk asks transfer history for: 179 whole days back (see
@@ -301,9 +286,9 @@ export const transferRowsOf = (
 /**
  * The injectable seams of the Transfer walk: the credential and holding reads, the transfer read
  * (one page of one type of one range), the insert-only holding creation, the deduping import, and
- * the mark writes. Pacing and the weight budget come from the run.
+ * the walk state read and write. Pacing and the weight budget come from the run.
  */
-export type BinanceTransferHistoryDeps = BinanceWalkWriteDeps & {
+export type BinanceTransferHistoryDeps = ExchangeStateDeps & {
   now: () => number;
   fetchImpl: typeof fetch;
   readCredentials: (accountId: string) => Promise<BinanceCredentials | undefined>;
@@ -319,7 +304,7 @@ export type BinanceTransferHistoryDeps = BinanceWalkWriteDeps & {
 };
 
 const defaultTransferHistoryDeps: BinanceTransferHistoryDeps = {
-  ...defaultWalkWriteDeps,
+  ...exchangeStateDepsOf('binance'),
   now: () => Date.now(),
   fetchImpl: fetch,
   readCredentials,
@@ -333,13 +318,13 @@ type TransferContext = {
   deps: BinanceTransferHistoryDeps;
   run: BinanceHistoryRun;
   accountId: string;
-  spot: HoldingRow;
   apiKey: string;
   secret: string;
   options: FetchAccountOptions;
   marks: WalkMarks;
   plan: WalkPlan;
-  depthMemories: Pick<DepthGuard, 'memoryOf' | 'hintMs' | 'refusedBoundMs'>;
+  write: WalkMarkWriter;
+  depthMemories: Pick<DepthGuard, 'config' | 'memoryOf' | 'hintMs' | 'refusedBoundMs'>;
 };
 
 /** The types a window is read in: every one, or the ones its owed points name. */
@@ -371,8 +356,9 @@ const readSpan = async (
 ): Promise<SpanRead<SeriesSpan<UniversalTransferType, BinanceUniversalTransfer>> | undefined> => {
   const { deps, run, accountId, apiKey, secret, options } = context;
 
-  return readSeriesSpan<UniversalTransferType, BinanceUniversalTransfer>({
+  return readSeriesSpan({
     run,
+    config: BINANCE_WALK_CONFIG,
     lane: 'transfer',
     cost: COSTS.transfer,
     span,
@@ -461,7 +447,7 @@ const commitSpan = (
   read: SeriesSpan<UniversalTransferType, BinanceUniversalTransfer>,
   pass: WalkPass,
 ): Promise<SpanCommit | undefined> => {
-  const { deps, accountId, spot, plan, marks } = context;
+  const { deps, accountId, plan, marks, write } = context;
 
   return commitSettledSpan({
     pass,
@@ -472,6 +458,7 @@ const commitSpan = (
       placeWalletRows({
         accountId,
         planned,
+        config: BINANCE_WALK_CONFIG,
         listHoldings: deps.listHoldings,
         ensureHoldings: deps.ensureHoldings,
         missingCode: 'transfer-holding-missing',
@@ -486,9 +473,7 @@ const commitSpan = (
         plan,
         marks,
         restartMs: HISTORY_FLOOR_MS,
-        fields: TRANSFER_MARK_FIELDS,
-        write: (field, cursorMs) => deps.writeWalkCursor(spot.id, field, cursorMs),
-        writePending: (field, ranges) => deps.writeWalkPending(spot.id, field, ranges),
+        write,
       }),
   });
 };
@@ -512,21 +497,17 @@ const runSync = async (
     return { imported: 0, complete: true };
   }
 
-  const cursor = binanceWalkCursorOf(TRANSFER_MARK_FIELDS.cursor, spot.metadata);
-  const rescanCursor = binanceWalkCursorOf(TRANSFER_MARK_FIELDS.rescan, spot.metadata);
-  const writers = walkWritersOf(spot.id, deps);
-  const roundRobins = await readWalkRoundRobins({
-    fields: TRANSFER_MARK_FIELDS,
-    metadata: spot.metadata,
-    ...writers,
-  });
+  const stored = await readWalkMarks(deps, accountId, 'transfer');
+
+  const { cursor, rescan: rescanCursor } = stored;
+  const write = walkMarkWriterOf(deps, accountId, 'transfer');
+  const roundRobins = await readWalkRoundRobins({ stored, write });
   const floorMs = transferFloorMs(now);
   const pending = await readPendingMark({
-    field: TRANSFER_MARK_FIELDS.pending,
-    metadata: spot.metadata,
+    stored: stored.pending,
     owedIfUnreadable: { start: floorMs, end: cursor ?? floorMs },
     knownSeries: UNIVERSAL_TRANSFER_TYPES,
-    write: (field, ranges) => deps.writeWalkPending(spot.id, field, ranges),
+    write,
   });
   const plan = planWalkPasses({
     cursor,
@@ -549,21 +530,16 @@ const runSync = async (
     deps,
     run,
     accountId,
-    spot,
     apiKey: credentials.apiKey,
     secret: credentials.secret,
     options: { fetchImpl: deps.fetchImpl, now: deps.now },
     marks: { cursor, rescanCursor, ...roundRobins, pending },
     plan,
-    depthMemories: createDepthMemories(deps.now),
+    write,
+    depthMemories: createDepthMemories(deps.now, BINANCE_DEPTH_CONFIG),
   };
 
-  await storePlannedList({
-    plan,
-    marks: context.marks,
-    fields: TRANSFER_MARK_FIELDS,
-    writePending: (field, ranges) => deps.writeWalkPending(spot.id, field, ranges),
-  });
+  await storePlannedList({ plan, marks: context.marks, write });
 
   return runWalkPlan({
     plan,
@@ -585,11 +561,10 @@ const runSync = async (
             window,
             read,
             marks: context.marks,
-            fields: TRANSFER_MARK_FIELDS,
-            writePending: (field, ranges) => deps.writeWalkPending(spot.id, field, ranges),
+            write,
           }),
       }),
-    ...roundRobinHooksOf({ marks: context.marks, fields: TRANSFER_MARK_FIELDS, ...writers }),
+    ...roundRobinHooksOf({ marks: context.marks, write }),
   });
 };
 

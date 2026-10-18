@@ -9,7 +9,7 @@ Source of truth: `docs/superpowers/specs/2026-08-30-kiko-foundation-design.md`
 ("Storage and migrations", "Data flow — reactive queries", "Data
 collection" sections). This skill summarizes the settled contract.
 
-## Guideline 2.3.1(a) — no hidden features (Apple's rejection cited 5.6)
+## Guideline 2.5.19 — no hidden features (formerly 2.3.1(a); Apple's rejection cited 5.6)
 
 Architectural, not a one-off cleanup: the App Store rejected Kiko
 1.0.0 build 7 under Guideline 5.6 ("features intentionally hidden
@@ -68,7 +68,7 @@ build-a-bundle CI gate:
   Wiring this grep into the `release` skill as a standing archive step
   is a recommended, not-yet-done follow-up.
 
-Read `CLAUDE.md`'s "Guideline 2.3.1(a) — no hidden features" for the
+Read `CLAUDE.md`'s "Guideline 2.5.19 — no hidden features" for the
 project-level pointer to this section.
 
 ## Storage: op-sqlite + Drizzle
@@ -837,23 +837,24 @@ gate says there is nothing to do.
   `planBackfillRun` sends when an older transaction extends the
   transaction span earlier than any prior run covered, which the
   per-currency minimum alone cannot see (kiko-pricing's "History
-  backfill" section has the full rule). A currency whose providers all answered for
-  the whole span but returned no row for it (a held coin CoinGecko
-  never returns) is kept in an in-memory `knownEmptyCurrenciesThisRun`
-  set and excluded from that minimum, so Statistics does not refetch
-  the full span on every focus (a rejected leg is never recorded — it
-  retries; nor is a coin whose OWN CoinGecko request failed while
-  another coin's succeeded: `fetchCryptoHistory` settles per coin and
-  returns `failedCurrencies` beside its `entries` — `runBackfill` itself
-  reports `'failed'`, never `'complete'`, whenever an attempted
-  currency's fetch failed and nothing composed for it this run (see
-  kiko-pricing's "History backfill" section for the full outcome rule).
+  backfill" section has the full rule). A currency the providers answered
+  empty for, and one that settled from a later first day (a young coin),
+  is excluded from that minimum by a persisted settled mark, so
+  Statistics does not refetch the full span on every focus; a failed
+  request earns no mark and retries (kiko-pricing's "History backfill"
+  section has the marks, the empty-mark expiry, the 429 rotation and the
+  outcome rule).
   The metal twin, `emptyBackwardFloorByMetal`,
   records only an ANSWERED empty backward range — a failed request
   throws before it is recorded). A create/restore
   that may add the first holding of a new currency or type triggers
   these gated refreshes WITHOUT awaiting them, so Save never blocks on
   the network.
+- **A read that only ORDERS a picker never gates**: `useHeldCurrencies` renders the picker
+  unordered on `[]` until its first read, and never shows a loading state. Settings keeps this
+  subscription for the app's lifetime by design: one `SELECT DISTINCT` per holdings/accounts
+  write, and a paused query would reorder the rows when the sheet opens. Add `paused` only if
+  the cost shows up.
 - **`useCurrentPriceBook`'s and `usePriceBook`'s `enabled` argument**: `useLiveQuery`'s own
   `enabled` parameter (default `true`) skips BOTH the query and the
   reactive subscription while `false`, reporting `data: []` and
@@ -1638,7 +1639,7 @@ finished; the dedup layer keeps that correct, only slower.
 The SQLCipher database-encryption migration is **always on** —
 `DB_ENCRYPTION_ENABLED` (`src/db/db-config.ts`) is `true` today, not a
 rollout flag a build can ship off. This is a security invariant, not a
-feature toggle (Guideline 2.3.1(a) sensitivity: a build/env flag that
+feature toggle (Guideline 2.5.19 sensitivity: a build/env flag that
 changes what a user's data protection looks like must never ship in
 the "off"/hidden state). Read these files directly rather than
 trusting a restated summary here, since the exact migration steps are
@@ -1868,19 +1869,33 @@ than restated here:
   span import (spec section 7, "Strict capital parse").
   Each client call is ONE offset page of ONE window; the offset-paging
   lives in `binance.transactions.ts`, not the client. The walk shared by
-  every Binance history walk lives in `binance.history-walk.ts` (read it for
-  its exports: `planWalkPasses`, `runWalkPlan`, `walkSpans`,
-  `buildWalkWindows`, the mark readers/writers, `btcSatoshis`,
-  `BinanceWalkStop`); the per-record commits live in
-  `binance.history-records.ts` (`settleRecords`, `commitSettledSpan`). The
+  every Binance history walk lives in the shared exchange layer,
+  `src/crypto-sync/exchange/walk/walk.ts` (read it for its exports:
+  `planWalkPasses`, `runWalkPlan`, `walkSpans`, `buildWalkWindows`, the mark
+  readers/writers, `BinanceWalkStop`); `btcSatoshis` is in
+  `binance.amounts.ts`; the per-record commits live in
+  `exchange/walk/records.ts` (`settleRecords`, `commitSettledSpan`). What a
+  walk reads about one exchange is an `ExchangeWalkConfig`
+  (`exchange/walk/walk-config.ts`; Binance's is `BINANCE_WALK_CONFIG` in
+  `binance.walk-config.ts`). The other exchange units are `exchange/signing`,
+  `exchange/credentials`, `exchange/budget` (`RunBudget`, `createExchangeRun`),
+  `exchange/walk/depth.ts` (Binance's `BINANCE_DEPTH_CONFIG` is in
+  `binance.depth-config.ts`) and `exchange/amounts` (`exchangeMinorUnits`);
+  read each folder's barrel. `exchange/credentials` (`saveExchangeCredentials`,
+  `clearExchangeCredentials`) takes no per-account lock: a caller serializes its own writes and
+  clears (Binance does, with its write tokens, in `binance/binance.credentials.ts`); never call
+  these two helpers from anywhere else (see the header of `exchange/credentials/credentials.ts`).
+  The walk, records, paging and depth tests stay
+  in `binance/` (they import Binance fixtures); `walk.series-ranges.test.ts`
+  lives beside the walk. The
   capital caller is `binance.transactions.ts` (`WINDOW_MS`, `MAX_WINDOWS`,
   `MAX_PAGES_PER_WINDOW`), the Pay caller `binance.pay-history.ts`
   (`PAY_WINDOW_MS`, `MAX_WINDOWS`; see "Binance Pay" below). The Transfer
   caller is `binance.transfer-history.ts` (`syncBinanceTransferHistory`, run
   third in `run-crypto-sync.ts`; see "Binance Transfer" below); the paging
-  helpers live in `binance.history-paging.ts` (`fetchAllByTotal`,
-  `readSeriesSpan`) and the write seam in `binance.walk-write-deps.ts`
-  (`BinanceWalkWriteDeps`).
+  helpers live in `exchange/paging/paging.ts` (`fetchAllByTotal`,
+  `readSeriesSpan`) and the walk-state seam in `exchange/walk/exchange-state-deps.ts`
+  (`ExchangeStateDeps`, `exchangeStateDepsOf`).
 - **Passes per walk; 89-day windows on capital and Pay, 30-day on Transfer.**
   The Transfer walk reads 30-day windows within a 179-day floor
   (`TRANSFER_WINDOW_MS`, `transferFloorMs`). Binance rejects a `startTime`/
@@ -1890,7 +1905,7 @@ than restated here:
   now, moving the cursor) and the window RE-SCAN (a stored mark; never
   writes the forward cursor). Every walk (capital, Pay, Transfer, Earn)
   runs it. `WalkPass` is `'forward' | 'pending' | 'rescan'` plus the points
-  pass (read it in `binance.history-walk.ts`); a run reads the forward pass, the owed
+  pass (read it in `exchange/walk/walk.ts`); a run reads the forward pass, the owed
   ranges (`pending`, in a round-robin from the range cursor), the re-scan,
   then the owed points last.
 - **One pacing gate per run.** `createBinanceHistoryRun`
@@ -1902,19 +1917,21 @@ than restated here:
   The clock and `sleep` are inputs to `createBinanceHistoryRun`, not
   `BinanceTransactionSyncDeps` seams, and there is no `gate` seam (same
   rationale as Monobank).
-- **The watermark: a walk-owned key on the Spot holding's metadata, NOT
-  `sync_state`.** `sync_state.last_sync_at` already means the Monobank
+- **The watermark: the walk's `cursor` in `sync_state.exchange_state`, NOT
+  `sync_state.last_sync_at`.** `last_sync_at` already means the Monobank
   statement-window cursor for a Monobank account (the table's own doc
-  comment in `db/schema.ts`; no crypto-sync code has ever read or written
-  it), so the history walk does not reuse it — the same reasoning that
-  puts a balance sync's own `SYNCED_AT_FIELD` stamp on the holding rather
-  than `settings.lastSyncAt`. The watermark instead lives at
-  `holdings.metadata.binanceHistoryCursor` on the Spot holding (the one
-  deposits/withdrawals attach to): "every window ending at or before this
-  instant is imported." `binanceWalkCursorOf(field, metadata)`
-  (`holding-metadata.ts`) and `holdingsRepo.setBinanceWalkCursor`
-  (`holdings.repo.ts`) are the reader/writer. The plan comes from
-  `planWalkPasses` (`binance.history-walk.ts`; read its input type for the
+  comment in `db/schema.ts`), so the history walk does not reuse it. The
+  watermark lives in the account's `exchange_state` JSON, in the entry of its
+  walk (`walks.capital.cursor`): "every window ending at or before this
+  instant is imported." `parseExchangeState` and `walk-values.ts`
+  (`exchange/walk-state/`) are the reader, `syncStateRepo.patchExchangeState`
+  (a list of patches in one write) the writer. A patch applies to the RAW
+  stored JSON, never the re-serialized parse (the parse drops any field this
+  build does not read, such as `notImported` or an unknown walk id, and
+  repairs malformed fields;
+  `exchange-state-patch.ts`); a malformed top level makes a patch write
+  nothing, only a disconnect replaces it. The plan comes from
+  `planWalkPasses` (`exchange/walk/walk.ts`; read its input type for the
   cursor, re-scan cursor, point cursor, pending list, floor, window and
   `RESYNC_OVERLAP_MS`). The capital walk feeds it
   `planCursor = cursor ?? latestTransactionTime ?? null`, so a LEGACY holding
@@ -1926,48 +1943,38 @@ than restated here:
   an account with no capital row starts at the floor. The forward pass starts at `max(floor, cursor)`. The
   re-scan covers `[base, forward start)` with
   `base = max(floor, min(end - window, forward start - RESYNC_OVERLAP_MS))`,
-  kept in its own mark (one per walk; read `binanceWalkCursorFields` in
-  `holding-metadata.ts` for the keys); it stores the floor
+  kept in its own mark (`rescan`, one per walk entry; read `WalkMarks` in
+  `exchange/walk-state/walk-state.ts`); it stores the floor
   when finished, and a mark behind the base starts a new pass.
-- **`upsertByMetadataKey` carries the watermark across a balance sync.** A
-  balance sync's own upsert (`runBalanceSyncInner` -> `upsertExchangeMany`)
-  writes a FRESH `{ syncedAt }` metadata object on every run, for every
-  provider — a blind overwrite that would otherwise wipe
-  `binanceHistoryCursor` the instant the NEXT balance sync ran (the
-  Binance arm always runs balance-then-history in the same invocation, so
-  this bites on literally every subsequent sync). The upsert reads the
-  stored row's metadata inside the same write and carries over any
-  `carriedMetadataKeys` entry (read it in `holding-metadata.ts`: the walk
-  cursors `binanceWalkCursorFields`, the owed lists `binanceWalkPendingFields`,
-  the point cursors `binanceWalkPointCursorFields`, the range cursors
-  `binanceWalkRangeCursorFields` and the span hints
-  `binanceWalkSpanHintFields`, plus a reopened
-  Monobank card's `statementFromMs`):
-  `withWalkOwnedMetadataCarried` ALWAYS overwrites the target's own key
-  with the stored value when the stored row has it, regardless of
-  whether the caller's object also set that key; every other key is still
-  fully replaced exactly as before. The two lists differ on purpose:
-  `withWalkOwnedMetadataResetToFloor` (the Binance disconnect) resets only
-  the Binance walk keys and never touches `statementFromMs`. A
-  wallet holding never carries either kind of key.
+- **A balance sync never touches the walk state.** A balance sync's own
+  upsert (`runBalanceSyncInner` -> `upsertExchangeMany`) writes a FRESH
+  `{ syncedAt }` metadata object on every run, for every provider. The walk
+  marks are not in that metadata (they live in `sync_state.exchange_state`),
+  so nothing there needs carrying: `carriedMetadataKeys` (`holding-metadata.ts`)
+  holds only a reopened Monobank card's `statementFromMs`
+  (`withCarriedMetadataKeys`), and a walk key an older build left in the
+  metadata is dropped by the next upsert.
 - **Per-record commits, crash-safe.** The walk goes oldest -> newest.
   Rows commit (`transactionsRepo.addManyDedup`) BEFORE the mark moves
-  (`setBinanceWalkCursor`) — separate writes, so a crash between them
-  re-imports idempotently rather than losing progress. In the pending pass
-  and the re-scan one list write follows the rows (the read span out, its
-  points in), then the mark. A stop tied to one record with a time inside
+  (`syncStateRepo.patchExchangeState`) — separate writes, so a crash between
+  them re-imports idempotently rather than losing progress. In the forward
+  pass the owed list and the cursor are one patch list, and in the re-scan the
+  list and the re-scan mark are, one write after the rows. In the pending
+  pass `advancePending` writes only the list (the read span out, its points
+  in), and `markRangeRead` writes the range cursor as a separate write. A
+  stop tied to one record with a time inside
   the span owes only that record's point; any other stop, or a record with
   no usable time, owes the whole span; every record the walk can trust
   imports either way. The forward pass leaves a span uncommitted on any
   stop, except in the Transfer and Earn lanes, where a stop tied to one record
   with a usable time owes that point and the span commits
-  (`TRANSFER_FORWARD_OWES`, `EARN_FORWARD_OWES`). `setBinanceWalkCursor` also
-  gates the write on the holding's OWN account still being
-  `institution = 'binance'` (joined in the same query) and is a no-op
-  otherwise — a walk holds the account's credentials for its whole run, so
-  a disconnect can commit while a window write is still in flight; without
-  the gate that late write would resurrect a forward watermark over the
-  floor `resetBinanceWalkCursors` just wrote (see below).
+  (`TRANSFER_FORWARD_OWES`, `EARN_FORWARD_OWES`). `patchExchangeState` also
+  gates the write on the account still being `institution = 'binance'`
+  (read in the same write) and is a no-op otherwise — a walk holds the
+  account's credentials for its whole run, so a disconnect can commit while
+  a window write is still in flight; without the gate that late write would
+  resurrect a forward watermark over the floor the disconnect just wrote
+  (see below).
 - **A per-lane call budget, refreshed from Binance's own headers.**
   `createBinanceRunBudget` (`binance.history-budget.ts`) caps each
   `BudgetLane` at its `LANE_CALL_CAPS` entry and charges `COSTS` per call.
@@ -1979,10 +1986,10 @@ than restated here:
   paged within the remaining budget is not committed and not marked; the
   next run redoes it from the same, unmoved watermark.
   The budget keeps calls for later passes: `RESCAN_KEEP` and `POINT_KEEP`
-  (`binance.history-walk.ts`) are the calls an owed range must leave for
+  (`exchange/walk/walk.ts`) are the calls an owed range must leave for
   the re-scan and for the points, and `canAfford` takes the calls to keep.
   `syncBinanceTransactions` returns the `WalkResult` `{ imported, complete }`
-  (`binance.history-walk.ts`) — `complete: false` means history remains
+  (`exchange/walk/walk.ts`) — `complete: false` means history remains
   behind and a later run (or sync press) resumes from the marks.
 - **A thrown error under `src/crypto-sync` is a named class with a fixed
   message.** Semgrep `kiko-no-literal-sync-error` flags
@@ -2009,25 +2016,28 @@ than restated here:
   surfaced as the localized `accountDetail.binanceRequestFailed` message
   (never the raw `BinanceRateLimitError` text) — Spot's failure still
   fails the whole balance sync, per its own strict rule above.
-- **Disconnect resets the walk keys, not the whole metadata object.**
-  `disconnectCryptoAccount`'s Binance path
-  calls `holdingsRepo.resetBinanceWalkCursors(accountId, HISTORY_FLOOR_MS)`
-  (built on `withWalkOwnedMetadataResetToFloor`) BEFORE `accountsRepo.disconnect`
-  — a failure after the reset only causes a harmless, idempotent re-walk
-  from the floor. It touches ONLY the walk keys: each cursor in
-  `binanceWalkCursorFields` already present is set to `HISTORY_FLOOR_MS`, each
-  owed list in `binanceWalkPendingFields` to `[]`, and each point cursor in
-  `binanceWalkPointCursorFields`, `binanceWalkRangeCursorFields` and
-  `binanceWalkSpanHintFields` is DELETED (no key = before the oldest point
-  or range, no span to resume). A cursor is never deleted: a DELETED cursor falls back
-  to the legacy `latestTransactionTime` cursor, which a reconnected
-  DIFFERENT Binance account would inherit as if it were its own
-  already-imported history, silently skipping that account's own older
+- **Disconnect resets the walk state, not the holdings.**
+  `disconnectCryptoAccount`'s Binance path calls
+  `accountsRepo.disconnectExchange(accountId, 'binance', HISTORY_FLOOR_MS)`,
+  ONE write that resets `exchange_state` (`exchangeStateReset`,
+  `exchange/walk-state/`) and then clears the institution, so a late walk patch
+  finds the institution cleared; `clearCredentials` follows. In each walk
+  entry a stored `cursor` or `rescan` becomes `HISTORY_FLOOR_MS`, a `pending`
+  list `[]`, and the point cursor, range cursor and span hints are DROPPED (no
+  mark = before the oldest point or range, no span to resume). Only the CAPITAL
+  entry gets `{cursor: floor}` when it is stored but unreadable, because a
+  missing capital cursor falls back to the legacy `latestTransactionTime`
+  cursor, which a reconnected DIFFERENT Binance account would inherit as if
+  it were its own already-imported history, silently skipping that account's
+  own older
   records. `binanceAsset`/`walletAddress` are untouched, so a SAME-account
   reconnect still re-adopts the holding (`upsertByMetadataKey`'s
   match-by-key) and simply re-walks from the floor. Connecting a DIFFERENT
   Binance account afterward walks its own history from the floor instead
-  of inheriting a stale, forward watermark.
+  of inheriting a stale, forward watermark. A malformed top level becomes
+  `{capital: {cursor: floor}}`; another walk's unreadable entry is dropped
+  (it starts at its floor). A failure in either half of
+  `accountsRepo.disconnectExchange` rolls back both.
 - **A BTC wallet re-sync fetches every OPEN holding's stored address.**
   `bitcoinWalletProvider` (`src/crypto-sync/btc-wallet/`) syncs the Connect
   address first, then each open holding's stored address (a closed holding's
@@ -2037,16 +2047,22 @@ than restated here:
   not an error); only a wallet that never stored an address throws.
 - **The lagging-history caption.** `isBinanceHistoryBehind` /
   `walkCursorsOf` (`screens/account-detail/crypto-sync-section/binance-history-status.ts`)
-  derive purely from the account's own `holdings` (already a screen prop —
-  no extra query): `walkCursorsOf` reads the four forward cursors (capital, Pay,
-  Transfer, Earn) off the holding that carries `binanceHistoryCursor` (only Spot
-  ever does; four nulls when none does), `isBinanceHistoryBehind`
+  derive from the account's `sync_state` row (`CryptoSyncSection` reads it with
+  its own `useLiveQuery` and shows no caption while it is loading):
+  `walkCursorsOf` reads the four forward cursors (capital, Pay,
+  Transfer, Earn) off the parsed `exchange_state` (four nulls when it is not
+  readable), `isBinanceHistoryBehind`
   compares them against `latestSyncedAt(holdings)` (the existing balance-sync
   stamp), true when ANY of the four walks never caught up (`null` cursor) or is behind by
   more than a day, or when the Transfer walk owes a range (`transferOwesRange`: ground its cursor
   passed; only the Transfer walk's owed RANGE counts, as `transferOwesRange` reads
-  `BINANCE_TRANSFER_PENDING_OVERLAP_FIELD` alone), false before the account's own first balance sync. An owed point never
-  shows it. `CryptoSyncSection`
+  the Transfer `pending` list alone), false before the account's own first balance sync.
+  An owed point never
+  shows it. A malformed walk state PAUSES the history: `CryptoSyncSection`'s
+  `historyPaused` (Binance and `walkState.kind === 'malformed'`) shows
+  `accountDetail.exchangeHistoryPaused` INSTEAD of `binanceHistoryPending`, and
+  the repair is disconnect + reconnect (`resetExchangeStateDatabaseTransaction`
+  replaces a malformed top level with a capital floor cursor). `CryptoSyncSection`
   renders the `accountDetail.binanceHistoryPending` caption under the
   status line only when `connectedProvider === 'binance'`, so a wallet
   account never evaluates or shows it.
@@ -2055,15 +2071,16 @@ than restated here:
   imported. `walletOf` in `binance.transactions.ts` places each row by
   `walletType`: 0 or absent is Spot, 1 is Funding, any other value stops the
   walk (`capital-wallet-unknown`). The stop codes are the `BinanceWalkStop`
-  codes (`binance.history-walk.ts`; the spec lists them): read them there. The wallet holding is found by `binanceKeyOf`
-  (`binance.holding-keys.ts`) and, only for a row whose key is new, created
-  at zero by `holdingsRepo.ensureExchangeHoldings` (insert-only); a row
-  already stored keeps its holding. Earn gets no capital rows. The walks
-  share this through `resolveWalletHoldings` (`binance.history-walk.ts`). Only
+  codes (`exchange/walk/walk.ts`; the spec lists them): read them there.
+  The wallet holding is found by `binanceKeyOf` (`binance.holding-keys.ts`) and,
+  only for a row whose key is new, created at zero by
+  `holdingsRepo.ensureExchangeHoldings` (insert-only); a row already stored keeps its
+  holding. Earn gets no capital rows. The walks
+  share this through `resolveWalletHoldings` (`exchange/walk/walk.ts`). Only
   the capital walk passes `createKeys` (`placeRows` in
   `binance.transactions.ts`): a wallet that only receives rows already stored
   elsewhere is not created as an empty holding. `placeWalletRows`
-  (`binance.history-records.ts`), which places the rows of the Pay, Transfer
+  (`exchange/walk/records.ts`), which places the rows of the Pay, Transfer
   and Earn walks, passes none and so creates every missing wallet holding at
   zero.
 - **Pairing and untracked wallets.** Transfer and Earn legs share an
@@ -2110,7 +2127,7 @@ record imports only at `TRANSFER_SETTLED_STATUS`; BTC only. The stop codes live 
   `readSpan` never rejects the run for it. A span at or below the floor of now reads as empty
   (no call, nothing owed); any other span is read, in each type, from the floor of now or the
   start Binance serves that type, whichever is later, found by bisection
-  (`binance.history-depth.ts`, `binance.history-paging.ts`) and
+  (`exchange/walk/depth.ts`, `exchange/paging/paging.ts`) and
   remembered for that type (`createDepthMemories`: a memory per type, so a type that keeps less
   narrows only itself) with the clock it was served at. A search begins at the start another type
   is served from when one is known (`DepthGuard.hintMs`, `narrowFromHint`), which decides only
@@ -2144,7 +2161,7 @@ record imports only at `TRANSFER_SETTLED_STATUS`; BTC only. The stop codes live 
   A span read that narrows (a type is refused a start, finds its memory lapsed, asks the end of
   the span, or reads a band) draws its calls from the lane's narrowing calls first
   (`LANE_NARROWING_CALLS` in `binance.history-budget.ts`; `spanRunOf` in
-  `binance.history-paging.ts`), and from the lane's cap (`LANE_CALL_CAPS`) after them; a span read
+  `exchange/paging/paging.ts`), and from the lane's cap (`LANE_CALL_CAPS`) after them; a span read
   that does not narrow draws the cap alone. Those two constants are the source of the call
   counts; the measured costs, the pacing times, the simulation tables that chose the narrowing
   calls and the first run's reach are in spec section 5 (read it there, do not copy a figure).
@@ -2178,9 +2195,9 @@ The Earn walk (`binance.earn-history.ts`) imports BTC Simple Earn history on the
 (see above and "Binance Transfer"), in 30-day windows (`EARN_WINDOW_MS`) from `EARN_FLOOR_MS`
 (2022-01-01). One window is one read per record kind (`EARN_SERIES`: the flexible and locked
 rewards first, then subscriptions and redemptions; `callsOf` counts them, `LANE_CALL_CAPS.earn`
-caps the lane). It keeps six walk-owned keys on the Spot holding (`BINANCE_EARN_*_FIELD`:
-forward cursor, re-scan, pending list, point cursor, range cursor, span hints), carried on a
-balance sync and dropped on a disconnect through the field arrays. The stop codes live in
+caps the lane). It keeps six marks in its `earn` entry of `exchange_state` (`cursor`,
+`rescan`, `pending`, `pointCursor`, `rangeCursor`, `spanHints`), reset by a disconnect
+(`exchangeStateReset`). The stop codes live in
 `binance.earn-history.ts`; the design is in the spec (section 6, the E matrix) and the plan.
 
 - **A reward group is ONE record.** Binance gives a reward no id: the rows of a group
@@ -2232,10 +2249,10 @@ two passes as the capital walk (see above). Design: spec section 4
 `docs/superpowers/plans/2026-10-10-binance-history.md`. Read the spec for the
 stop codes and scenario rows.
 
-- **The owed list.** Each walk keeps one walk-owned list of owed ground
-  (`binanceWalkPendingFields`, `holding-metadata.ts`): a range (no `kind`) or
+- **The owed list.** Each walk keeps one list of owed ground
+  (`pending` in its `exchange_state` entry, `walk-values.ts`): a range (no `kind`) or
   a point (`kind: 'point'`); the kind alone tells them apart. At most
-  `MAX_PENDING_RANGES` ranges (`binance.history-walk.ts`; the two nearest
+  `MAX_PENDING_RANGES` ranges (`exchange/walk/walk.ts`; the two nearest
   merge); a point is never merged with, held by or dropped with a range;
   equal points are one.
 - **Canonical points.** A stuck record owes `[t - 1, t + 1]` (Pay, a
@@ -2251,14 +2268,14 @@ stop codes and scenario rows.
   VERIFY 14 is CLOSED (the filter field is `timestamp`; twins 0, mismatch 0),
   so the point does not need to carry the stuck record's identity.
 - **Round-robin over points.** One point cursor per walk
-  (`binanceWalkPointCursorFields`) holds the start of the point read last; it
+  (`pointCursor`) holds the start of the point read last; it
   moves once a point read starts, finished or not. Each of P points is read
   within `ceil(P / L)` runs whose forward pass leaves a call (L >= 1, the
   points such a run reads). A malformed cursor is repaired at once and logged
   (`point-cursor-malformed`). The rotation is deterministic and bounded; a
   random or fail-closed-by-length rotation has no testable bound.
 - **Round-robin over owed WINDOWS (R31) and span hints (R32).** One range
-  cursor per walk (`binanceWalkRangeCursorFields`) holds the END of the window
+  cursor per walk (`rangeCursor`) holds the END of the window
   of a range read last; `planWalkPasses` builds the windows of all owed ranges
   first (oldest first), and the pending pass reads the windows that start AT OR
   AFTER the cursor first (`windowsFrom`), then wraps. It rotates windows, not
@@ -2270,7 +2287,7 @@ stop codes and scenario rows.
   finished or not. Each of W owed windows is read within `ceil(W / L)` runs
   that enter the pending pass (L >= 1, the windows such a run reads). A
   malformed cursor is repaired at once and logged (`range-cursor-malformed`).
-  One hints key per walk (`binanceWalkSpanHintFields`) holds, per pass (forward, pending, re-scan,
+  One hints mark per walk (`spanHints`) holds, per pass (forward, pending, re-scan,
   point), the narrowest span a window was left at when `walkSpans` stopped
   before any span committed; a window whose start the hint HOLDS
   (`hint.start <= window.start < hint.end`, `holdsStart`) begins with what is
@@ -2285,6 +2302,11 @@ stop codes and scenario rows.
   its first span within h + 1 runs of one read each, at any gap between runs
   (the properties run at 0, an hour and a day). A malformed value is
   ignored, stored over at once and logged (`span-hints-malformed`).
+- **A committed span names the series it read.** `MarkAdvance.series`
+  (`walk.ts`) is a REQUIRED key: a walk that sets `seriesOf` (Transfer, Earn)
+  passes `series: window.series`; Capital and Pay pass `series: undefined`. An
+  omitted series made a points-pass read cut owed ranges of every kind (Earn
+  record loss).
 - **A point window keeps its progress across runs (R34).** A point leaves
   the list only when its WHOLE window was read to its end, so a window left
   after some spans committed would start over every run. `walkSpans` reports a
@@ -2301,10 +2323,11 @@ stop codes and scenario rows.
   A point window whose first span needs h halvings, one span a run, completes
   within 2h + 1 runs, while no later span comes back full (a later span that is
   too full halves again, one more run a halving).
-- **STOP_ENDS_PASS and R28** (plan OVERNIGHT item 17). `STOP_ENDS_PASS` (`binance.history-walk.ts`) says a stop
-  in the forward pass ends only that pass, so the run goes on to the owed
-  ranges, the re-scan and the points; the cursor never passes a stuck record
-  (but see the Transfer and Earn forward stops; Earn: `EARN_FORWARD_OWES`); a
+- **STOP_ENDS_PASS and R28** (plan OVERNIGHT item 17).
+  `STOP_ENDS_PASS` (`exchange/walk/walk.ts`) says a stop in the forward pass ends only that pass,
+  so the run goes on to the owed ranges, the re-scan and the points;
+  the cursor never passes a stuck record (but see the Transfer and Earn forward stops;
+  Earn: `EARN_FORWARD_OWES`); a
   budget or rate limit ends every read.
 - **R13.** Pay direction comes from the uid alone (`payDirection`): payer id =
   uid is out, receiver id = uid is in.
@@ -2431,11 +2454,11 @@ shape, and hand-rolled `utf8/utf8.ts` + `base64/base64.ts` codecs.
   `secrets/restore-secrets.ts` restores each account secret back to its
   original account id — a legacy file that still carries the removed
   `eodhdKey` imports fine, the key ignored and never written to the
-  Keychain. A restore keeps this device's live `settings.lockEnabled` (the app lock is turned off only after
-  `confirmOwner` in Settings, so a file never decides it), and
-  `settings.notificationsDeliverableSince` (when iOS first allowed
-  notifications on this device), never the file's. They are the one list
-  `KEPT_FROM_LIVE_ON_RESTORE` (`src/db/kept-from-live-on-restore.ts`), read
+  Keychain. A restore keeps this device's live value of each device-local settings
+  column, never the file's (the app lock is turned off only after
+  `confirmOwner` in Settings, so a file never decides it). They are the
+  members of `KEPT_FROM_LIVE_ON_RESTORE` (`src/db/kept-from-live-on-restore.ts`;
+  read the file for the list and each member's reason), read
   by `restore-snapshot.ts` and by `settings-columns.test.ts`, which
   classifies every settings column as kept-live or from-file. A file with
   no key for one of them, or no settings row at all, still keeps the live
@@ -2696,6 +2719,24 @@ shape, and hand-rolled `utf8/utf8.ts` + `base64/base64.ts` codecs.
   `VERSION_DECISIONS` comment and bump `migrationCount` in
   `src/data-transfer/crypto/envelope.test.ts`; the scoped jest run must include
   `e2e/screenshot` and `src/data-transfer/crypto`.
+  Migration 0061 (`exchange_state`) has a restore mirror,
+  `withWalkStateMoved` (`snapshot/with-walk-state-moved.ts`, keys in
+  `legacy-walk-keys.ts`), called in `restore-snapshot.ts`: a stored string
+  `exchangeState` (even malformed) is kept; null or absent is filled from the
+  account's first Spot BTC holding's metadata, stamps kept; an account with
+  walk keys and no row gets a new row with null stamps; the old holding keys
+  stay. Read `restore-walk-state.two-path.test.ts`,
+  `drizzle/migrations/0061-exchange-state.test.ts` and its `VERSION_DECISIONS`
+  entry in `envelope.test.ts`.
+  Worked example of a device-local settings column: 0060
+  `settings.history_backfill_state` (nullable; the history backfill's resume
+  state). It is listed in `KEPT_FROM_LIVE_ON_RESTORE`, so a file never
+  decides it, it needs no `EXPORT_VERSION` bump, and its reason is the
+  `VERSION_DECISIONS` entry in `envelope.test.ts` (read it there).
+  Renaming an UNSHIPPED migration needs a new journal `when` in
+  `drizzle/migrations/meta/_journal.json`: drizzle skips any entry whose `when` is not
+  later than the last applied one, so a device that ran the old name never
+  runs the renamed file.
 
 ## Reminders (local notifications)
 
@@ -2783,6 +2824,17 @@ what a change must keep.
   a sync status) that several screens show lives in ONE module store
   (`useSyncExternalStore`; see `src/monobank/sync-status/`,
   `src/reminders/permission/`), never in per-component `useState`.
+- **Shared UI state across screens.** State two mounted screens must show
+  identically (the Home/Statistics date range; see kiko-domain's "no custom
+  range" pattern) lives in ONE module store read with `useSyncExternalStore`
+  (`src/design-system/use-date-range-selection/`), never per-screen
+  `useState`. It resets when no reader is mounted, deferred one
+  `Promise.resolve().then(...)` microtask with a `listeners.size === 0`
+  re-check, so a same-commit swap of every reader keeps it; never
+  `queueMicrotask`. A reader publishes into the store in `useLayoutEffect`,
+  never during render. The notification-permission store resets at once on
+  `size === 0`: the deferral applies only where a whole-tree swap must keep
+  the state.
 - **Permission.** `useNotificationPermission()`
   (`src/reminders/permission/`) returns `{ status, request }` and never
   rejects. `status` is ONE module-level store read through
@@ -3072,8 +3124,11 @@ what a change must keep.
   reset resolves; a restart loses tokens, so nothing is cleared: fail safe) inside the
   per-account serialized Keychain write chain. The `readCredentials` access-policy repair is
   one serialized compare-and-set step (re-read inside the step, re-save the same pair only if
-  unchanged; it records no new token). No step calls another serialized step (no re-entry).
-  Save writes
+  unchanged; it records no new token); `readCredentials` calls this serialized repair, never an
+  unserialized re-save (that could restore a pair a clear had just removed; pinned by "the
+  access-policy repair is one serialized step > leaves a pair that was cleared between its read
+  and its save cleared" in `binance.credentials.test.ts`). No step calls another serialized step (no
+  re-entry). Save writes
   the picked icon in the same `saveFormAccount` write (a second write that
   failed after the row existed would read as no row).
 - **Backup/restore.** `DataSnapshot.reminders` is read ordered by
@@ -3081,11 +3136,11 @@ what a change must keep.
   `holdings`/`accounts` and inserts them last, with `snapshot.reminders
   ?? []`, so a pre-reminders `.kiko` restores with no reminders. The
   settings row comes from the backup except the columns this device
-  keeps (`KEPT_FROM_LIVE_ON_RESTORE`), so of the two reminder settings
-  columns only `reminderOfferDismissals` comes from the backup:
-  `notificationsDeliverableSince` stays this device's, because a file
-  from another device cannot know when iOS first allowed notifications
-  here (`restore-across-reminders-migration.test.ts` pins the old-backup
+  keeps (`KEPT_FROM_LIVE_ON_RESTORE`; read the file), so of the two
+  reminder settings columns only `reminderOfferDismissals` comes from the
+  backup: `notificationsDeliverableSince` stays this device's, because a
+  file from another device cannot know when iOS first allowed
+  notifications here (`restore-across-reminders-migration.test.ts` pins the old-backup
   case). `importData` awaits
   `replanRestoredReminders()` (`src/reminders/use-reminder-scheduler/`)
   right after the snapshot commits, ahead of every later step: the
@@ -3247,10 +3302,11 @@ function; when a review finds hidden state on one holding path, grep every
 `setPrimaryHoldingId` caller and every seed path, share one helper, and pin one red test per
 path.
 
-Field visibility is sticky: on Add-from-holding the holding field shows once a template seats
-a different holding (`revealsHoldingField` / `resolveHoldingField`, `route-entry/`) and stays
-shown, showing the holding Save writes. One state set in the seed branch holds it; it is
-never derived per render.
+Field visibility is sticky within one mount: on Add-from-holding the holding field shows once a
+template seats a different holding (`revealsHoldingField` / `resolveHoldingField`,
+`route-entry/`). It is local state, not in the draft; a remount recomputes it from the draft's
+holding. Known limit: it can hide after a remount (a re-pick of the page's own holding, or a
+template with no holding after one with a holding). The write target stays the page's holding.
 
 ## Navigator-layer title behaviour
 

@@ -1,5 +1,6 @@
 import { DAY_MS } from '@kiko/dates';
 import { maxOf } from '@kiko/numbers';
+import { rememberServedStart, widenDepthMargin } from '@kiko/crypto-sync/exchange/walk';
 
 import {
   DEPTH_EXTRAPOLATION_MAX_MS,
@@ -7,9 +8,7 @@ import {
   DEPTH_MARGIN_MS,
   DEPTH_RESOLUTION_MS,
   MAX_DEPTH_REFUSALS,
-  rememberServedStart,
-  widenDepthMargin,
-} from './binance.history-depth';
+} from './binance.depth-config';
 import {
   crossingOf,
   type DepthCall,
@@ -170,6 +169,21 @@ describe('readSeriesSpan, against a depth that moves with the clock or in steps 
     expect(world.calls.map(({ refused }) => refused)).toEqual([false, false]);
     expect(world.calls[1]?.read).toEqual({ start: edgeMs, end: world.calls[0]?.read.start });
     expect(owedOf(result)).toEqual([]);
+  });
+
+  it('reads the band from the start the memory held when a narrowing ends exactly one resolution above it, as the depth stood still', async () => {
+    const { world, edgeMs } = worldServedAgo(127_000, DAY_MS);
+
+    await readDepthWorld(world);
+
+    const probes = probesOf(world.calls);
+    expect(probes).toHaveLength(8);
+    expect(probes[0]?.read.start).toBe(edgeMs + 128_000);
+    expect(probes.at(-1)?.read.start).toBe(edgeMs + DEPTH_RESOLUTION_MS);
+    expect(world.calls.at(-1)?.read).toEqual({
+      start: edgeMs,
+      end: world.calls.at(-2)?.read.start,
+    });
   });
 
   it('owes the band below the start a read began at when the depth moved past its start meanwhile', async () => {

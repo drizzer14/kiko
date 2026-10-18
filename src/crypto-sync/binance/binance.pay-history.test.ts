@@ -1,9 +1,19 @@
 import { DAY_MS } from '@kiko/dates';
 import {
-  binanceWalkPendingOf,
-  withWalkOwnedMetadataResetToFloor,
-} from '@kiko/holdings/holding-metadata';
+  expectWalkMarkWritten,
+  NUMBER_MARK_FIELDS,
+  numberMarkWritesOfAnyWalk,
+  type WalkField,
+  type WalkMarkSeed,
+  walkMarkWritesOf,
+  walkMarksOf,
+  walkStateDeps,
+  walkStateFake,
+  withWalkMarks,
+} from '@kiko/test-support/walk-marks';
 import type { HoldingRow } from '@kiko/db';
+import { exchangeStateReset } from '@kiko/crypto-sync/exchange/walk-state';
+import type { OwedGround, UnreadableRow, WalkWindow } from '@kiko/crypto-sync/exchange/walk';
 
 import {
   type BinancePayHistoryDeps,
@@ -21,11 +31,9 @@ import {
   type BinancePayOrder,
   PAY_PAGE_LIMIT,
   type PayHistoryPage,
-  type UnreadableRow,
 } from './binance.history-client';
 import { BinanceRateLimitError } from './binance.client';
 import { HISTORY_FLOOR_MS } from './binance.transactions';
-import type { OwedGround, WalkWindow } from './binance.history-walk';
 import { isBinanceCoolingDown, setBinanceCooldownUntil } from './binance.cooldown';
 import { costOn, NOW, OTHER, OWN, party, payOrder } from './binance.pay-test-fixtures';
 
@@ -55,45 +63,95 @@ const payPage = (rows: BinancePayOrder[], over: Partial<PayHistoryPage> = {}): P
 const fullPage = (over: Partial<PayHistoryPage> = {}): PayHistoryPage =>
   payPage([], { gathered: PAY_PAGE_LIMIT, ...over });
 
+const WALK_ACCOUNT_ID = 'acc-pay-walk';
+
+type StoredMarks = {
+  payCursor?: number | null;
+  rescanCursor?: number | null;
+  pointCursor?: unknown;
+  pending?: OwedGround[];
+};
+
+/** What a walk stored before the run, kept up to date by the writes of each run over it. */
+const storedState = (stored: StoredMarks = {}) => {
+  const accountId = nextAccountId();
+  const fake = walkStateFake({
+    accountId,
+    marks: {
+      pay: {
+        cursor: stored.payCursor ?? undefined,
+        rescan: stored.rescanCursor ?? undefined,
+        pointCursor: stored.pointCursor,
+        pending: stored.pending ?? [],
+      },
+    },
+  });
+  const marks = () => fake.marksOf('pay');
+
+  return {
+    accountId,
+    fake,
+    imported: new Set<string>(),
+    get payCursor(): number | null {
+      return (marks().cursor as number | undefined) ?? null;
+    },
+    get rescanCursor(): number | null {
+      return (marks().rescan as number | undefined) ?? null;
+    },
+    get pointCursor(): number | null {
+      return (marks().pointCursor as number | undefined) ?? null;
+    },
+    get pending(): OwedGround[] {
+      return (marks().pending as OwedGround[] | undefined) ?? [];
+    },
+    // Every write to any walk's marks in order, by walk and field, to pin what goes before what.
+    get order(): string[] {
+      return fake
+        .writes()
+        .filter((write) => write.field !== 'spanHints')
+        .map((write) => `${write.walkName}:${write.field}`);
+    },
+  };
+};
+
 const holdingWith = (id: string, metadata: Record<string, unknown>): HoldingRow =>
   ({ id, metadata }) as unknown as HoldingRow;
 
 /**
- * The Spot holding of a connected account. It carries no capital cursor: the Pay walk does
- * not read one.
+ * The Spot holding of a connected account and the writers over its stored state, as the Pay walk
+ * left them. It carries no capital cursor: the Pay walk does not read one.
  */
-const spotAt = (
+const payWalkWith = (pay: WalkMarkSeed, alongside: HoldingRow[] = []) =>
+  walkStateDeps({ accountId: WALK_ACCOUNT_ID, alongside, marks: { pay } });
+
+const payWalkAt = (
   payCursor: number | null = null,
   rescanCursor: number | null = null,
   pending?: WalkWindow[],
   pointCursor: number | null = null,
-): HoldingRow =>
-  holdingWith('h-spot', {
-    binanceAsset: 'BTC',
-    binancePayHistoryCursor: payCursor ?? undefined,
-    binancePayRescanCursor: rescanCursor ?? undefined,
-    binancePayPendingOverlap: pending,
-    binancePayPointCursor: pointCursor ?? undefined,
+) =>
+  payWalkWith({
+    cursor: payCursor ?? undefined,
+    rescan: rescanCursor ?? undefined,
+    pending,
+    pointCursor: pointCursor ?? undefined,
   });
 
 const makeDeps = (over: Partial<BinancePayHistoryDeps> = {}): BinancePayHistoryDeps => ({
   now: () => NOW,
   fetchImpl: (async () => ({})) as unknown as typeof fetch,
   readCredentials: async () => ({ apiKey: 'api-key', secret: 'secret' }),
-  listHoldings: async () => [spotAt()],
   fetchAccount: jest.fn(async () => ({ balances: [], uid: OWN })),
   fetchPayHistory: jest.fn(async () => payPage([])),
   ensureHoldings: jest.fn(async () => undefined),
   addTransactions: jest.fn(async (rows: unknown[]) => rows.length),
-  writeWalkCursor: jest.fn(async () => undefined),
-  writeWalkPending: jest.fn(async () => undefined),
-  writeWalkHints: jest.fn(async () => undefined),
+  ...payWalkAt(),
   ...over,
 });
 
 const freshRun = () => createBinanceHistoryRun({ now: () => NOW, sleep: async () => undefined });
 
-const sync = (deps: BinancePayHistoryDeps, accountId: string = nextAccountId(), run = freshRun()) =>
+const sync = (deps: BinancePayHistoryDeps, accountId: string = WALK_ACCOUNT_ID, run = freshRun()) =>
   syncBinancePayHistory({ targetAccountId: accountId, run }, deps);
 
 type PayQuery = { startTime: number; endTime: number };
@@ -113,13 +171,9 @@ type AddedRow = {
 const addedRows = (deps: BinancePayHistoryDeps, call = 0) =>
   (deps.addTransactions as jest.Mock).mock.calls[call][0] as AddedRow[];
 
-const FORWARD_CURSOR_FIELD = 'binancePayHistoryCursor';
-
 /** The values written to the forward cursor, in order; the re-scan mark is another field. */
 const cursorWritesOf = (deps: BinancePayHistoryDeps): number[] =>
-  (deps.writeWalkCursor as jest.Mock).mock.calls
-    .filter((call) => call[1] === FORWARD_CURSOR_FIELD)
-    .map((call) => call[2] as number);
+  walkMarkWritesOf(deps, 'pay', 'cursor') as number[];
 
 /** The pages of a scripted history, in order; an empty page once they run out. */
 const scripted = (pages: PayHistoryPage[]) => jest.fn(async () => pages.shift() ?? payPage([]));
@@ -220,7 +274,7 @@ describe('the walk window range', () => {
   });
 
   it('asks for the floor, not the 2017 cursor a disconnect left, on a reconnect', async () => {
-    const deps = makeDeps({ listHoldings: async () => [spotAt(HISTORY_FLOOR_MS)] });
+    const deps = makeDeps(payWalkAt(HISTORY_FLOOR_MS));
 
     await sync(deps);
 
@@ -240,7 +294,7 @@ describe('the walk window range', () => {
   ])(
     'sends no startTime before the Pay floor, with %s',
     async (_label, payCursor, rescanCursor) => {
-      const deps = makeDeps({ listHoldings: async () => [spotAt(payCursor, rescanCursor)] });
+      const deps = makeDeps(payWalkAt(payCursor, rescanCursor));
 
       await sync(deps);
 
@@ -253,7 +307,7 @@ describe('the walk window range', () => {
 
   it('walks forward from a cursor that is nearly caught up, then re-scans the window behind it', async () => {
     const cursor = NOW - 3_600_000;
-    const deps = makeDeps({ listHoldings: async () => [spotAt(cursor)] });
+    const deps = makeDeps(payWalkAt(cursor));
 
     await sync(deps);
 
@@ -265,7 +319,7 @@ describe('the walk window range', () => {
 
   it('walks forward from a cursor that is older than a window, then re-scans the overlap day behind it', async () => {
     const cursor = NOW - 120 * DAY_MS;
-    const deps = makeDeps({ listHoldings: async () => [spotAt(cursor)] });
+    const deps = makeDeps(payWalkAt(cursor));
 
     await sync(deps);
 
@@ -279,32 +333,31 @@ describe('the walk window range', () => {
 
     await sync(deps);
 
-    const written = (deps.writeWalkCursor as jest.Mock).mock.calls;
-    expect(written.map((call) => call.slice(0, 2))).toEqual(
-      Array.from({ length: 7 }, () => ['h-spot', 'binancePayHistoryCursor']),
-    );
+    expect({
+      numberMarks: numberMarkWritesOfAnyWalk(deps).length,
+      forwardCursor: cursorWritesOf(deps).length,
+    }).toEqual({ numberMarks: 7, forwardCursor: 7 });
     expect(cursorWritesOf(deps)).toEqual(queriesOf(deps).map((query) => query.endTime));
   });
 });
 
 describe('the walk and the capital walk', () => {
   it('ends the newest window at now and commits it', async () => {
-    const deps = makeDeps({ listHoldings: async () => [spotAt(NOW - 3_600_000)] });
+    const deps = makeDeps(payWalkAt(NOW - 3_600_000));
 
     const result = await sync(deps);
 
     expect(result).toEqual({ imported: 0, complete: true });
     expect(queriesOf(deps)[0].endTime).toBe(NOW);
-    expect(deps.writeWalkCursor).toHaveBeenLastCalledWith('h-spot', 'binancePayHistoryCursor', NOW);
+    expectWalkMarkWritten(deps, WALK_ACCOUNT_ID, 'pay', 'cursor', NOW, { last: true });
   });
 
   it('runs with a Spot holding that has no capital watermark, and reads none', async () => {
-    const spot = spotAt();
-    const deps = makeDeps({ listHoldings: async () => [spot] });
+    const deps = makeDeps(payWalkAt());
 
     const result = await sync(deps);
 
-    expect(spot.metadata).not.toHaveProperty('binanceHistoryCursor');
+    expect(walkMarkWritesOf(deps, 'capital', 'cursor')).toEqual([]);
     expect(result).toEqual({ imported: 0, complete: true });
     expect(deps.fetchAccount).toHaveBeenCalledTimes(1);
     expect(deps.fetchPayHistory).toHaveBeenCalledTimes(7);
@@ -312,18 +365,14 @@ describe('the walk and the capital walk', () => {
   });
 
   it('starts the next run from the cursor it left', async () => {
-    const written: number[] = [];
-    const first = makeDeps({
-      writeWalkCursor: jest.fn(async (_id: string, _field: string, cursorMs: number) => {
-        written.push(cursorMs);
-      }),
-    });
+    const first = makeDeps();
     await sync(first);
 
+    const written = walkMarkWritesOf(first, 'pay', NUMBER_MARK_FIELDS) as number[];
     const later = NOW + 2 * DAY_MS;
     const second = makeDeps({
       now: () => later,
-      listHoldings: async () => [spotAt(written.at(-1))],
+      ...payWalkAt(written.at(-1)),
     });
     await sync(second);
 
@@ -346,12 +395,12 @@ describe('the walk and the capital walk', () => {
 });
 
 describe('importing the orders of a window', () => {
-  const recent = { listHoldings: async () => [spotAt(NOW - 3_600_000)] };
+  const recent = () => payWalkAt(NOW - 3_600_000);
 
   it('maps an outgoing order onto Spot, signed, with the nickname and the account-keyed id', async () => {
-    const accountId = nextAccountId();
+    const accountId = WALK_ACCOUNT_ID;
     const deps = makeDeps({
-      ...recent,
+      ...recent(),
       fetchPayHistory: scripted([payPage([order()])]),
     });
 
@@ -373,7 +422,6 @@ describe('importing the orders of a window', () => {
   it('commits the rows before it advances the watermark', async () => {
     const calls: string[] = [];
     const deps = makeDeps({
-      ...recent,
       fetchPayHistory: jest.fn(async () => {
         calls.push('fetchPayHistory');
 
@@ -384,8 +432,14 @@ describe('importing the orders of a window', () => {
 
         return rows.length;
       }),
-      writeWalkCursor: jest.fn(async () => {
-        calls.push('writeWalkCursor');
+      ...walkStateDeps({
+        accountId: WALK_ACCOUNT_ID,
+        marks: { pay: { cursor: NOW - 3_600_000 } },
+        onWrite: ({ walkName, field }) => {
+          if (NUMBER_MARK_FIELDS.some((numberField) => numberField === field)) {
+            calls.push(`${walkName}:cursor`);
+          }
+        },
       }),
     });
 
@@ -396,19 +450,19 @@ describe('importing the orders of a window', () => {
     expect(calls).toEqual([
       'fetchPayHistory',
       'addTransactions',
-      'writeWalkCursor',
+      'pay:cursor',
       'fetchPayHistory',
       'addTransactions',
     ]);
   });
 
   it('advances the watermark without an import for a window with no BTC order', async () => {
-    const deps = makeDeps(recent);
+    const deps = makeDeps(recent());
 
     await sync(deps);
 
     expect(deps.addTransactions).not.toHaveBeenCalled();
-    expect(deps.writeWalkCursor).toHaveBeenCalledTimes(1);
+    expect(numberMarkWritesOfAnyWalk(deps)).toHaveLength(1);
   });
 
   it('reads an incoming order with the uid it fetched once for the whole run', async () => {
@@ -427,7 +481,7 @@ describe('importing the orders of a window', () => {
 
   it('stores only the counterparty name: no id, no party fields reach a row', async () => {
     const deps = makeDeps({
-      ...recent,
+      ...recent(),
       fetchPayHistory: jest.fn(async () => payPage([order()])),
     });
 
@@ -452,7 +506,7 @@ describe('an adaptive window', () => {
   // one window, and the only ground behind it to re-scan is the overlap day.
   const WINDOW_START = NOW - PAY_WINDOW_MS;
   const WINDOW_END = NOW;
-  const oneWindow = { listHoldings: async () => [spotAt(WINDOW_START)] };
+  const oneWindow = () => payWalkAt(WINDOW_START);
   const HALF = Math.floor(PAY_WINDOW_MS / 2);
 
   it('halves a full window, commits the half that fits, then reads on from where it ended', async () => {
@@ -463,7 +517,6 @@ describe('an adaptive window', () => {
       payPage([order({ transactionId: 'b' })]),
     ];
     const deps = makeDeps({
-      ...oneWindow,
       fetchPayHistory: jest.fn(async () => {
         calls.push('fetch');
 
@@ -474,10 +527,14 @@ describe('an adaptive window', () => {
 
         return rows.length;
       }),
-      writeWalkCursor: jest.fn(async (_id: string, field: string, cursorMs: number) => {
-        if (field === FORWARD_CURSOR_FIELD) {
-          calls.push(`cursor ${cursorMs - WINDOW_START}`);
-        }
+      ...walkStateDeps({
+        accountId: WALK_ACCOUNT_ID,
+        marks: { pay: { cursor: WINDOW_START } },
+        onWrite: ({ walkName, field, value }) => {
+          if (field === 'cursor') {
+            calls.push(`${walkName}:cursor ${(value as number) - WINDOW_START}`);
+          }
+        },
       }),
     });
 
@@ -493,10 +550,10 @@ describe('an adaptive window', () => {
       'fetch',
       'fetch',
       'add',
-      `cursor ${HALF}`,
+      `pay:cursor ${HALF}`,
       'fetch',
       'add',
-      `cursor ${PAY_WINDOW_MS}`,
+      `pay:cursor ${PAY_WINDOW_MS}`,
       'fetch',
     ]);
     expect(result).toEqual({ imported: 2, complete: true });
@@ -506,7 +563,7 @@ describe('an adaptive window', () => {
     // Seven halvings of the 89-day window the walk starts at the cursor.
     const cursor = NOW - 120 * DAY_MS;
     const deps = makeDeps({
-      listHoldings: async () => [spotAt(cursor)],
+      ...payWalkAt(cursor),
       fetchPayHistory: scripted([...Array.from({ length: 7 }, () => fullPage()), payPage([])]),
     });
 
@@ -524,7 +581,7 @@ describe('an adaptive window', () => {
 
   it('counts a full page of other coins as a full page, so their orders cannot end the window early', async () => {
     const deps = makeDeps({
-      ...oneWindow,
+      ...oneWindow(),
       fetchPayHistory: scripted([fullPage(), payPage([order()]), payPage([])]),
     });
 
@@ -538,7 +595,7 @@ describe('an adaptive window', () => {
   it('keeps an order that two sub-windows both return under one key', async () => {
     const boundary = order({ transactionId: 'boundary', transactionTime: WINDOW_START + HALF });
     const deps = makeDeps({
-      ...oneWindow,
+      ...oneWindow(),
       fetchPayHistory: scripted([fullPage(), payPage([boundary]), payPage([boundary])]),
     });
 
@@ -550,7 +607,7 @@ describe('an adaptive window', () => {
 
   it('sends no request whose startTime is not before its endTime', async () => {
     const deps = makeDeps({
-      listHoldings: async () => [spotAt(NOW - 8)],
+      ...payWalkAt(NOW - 8),
       fetchPayHistory: serverOf(spreadOrders(PAY_PAGE_LIMIT + 50, NOW - 3, 0), {
         ascending: true,
         endExclusive: false,
@@ -565,7 +622,7 @@ describe('an adaptive window', () => {
 
   it('stops a one-millisecond window that is still full, with the cursor unmoved', async () => {
     const deps = makeDeps({
-      listHoldings: async () => [spotAt(NOW - 2)],
+      ...payWalkAt(NOW - 2),
       fetchPayHistory: forwardOnly(
         NOW - 2,
         serverOf(spreadOrders(PAY_PAGE_LIMIT + 50, NOW - 2, 0), {
@@ -583,7 +640,7 @@ describe('an adaptive window', () => {
     ]);
     expect(result).toEqual({ imported: 0, complete: false });
     expect(deps.addTransactions).not.toHaveBeenCalled();
-    expect(deps.writeWalkCursor).not.toHaveBeenCalled();
+    expect(numberMarkWritesOfAnyWalk(deps)).toEqual([]);
     expect(warn.mock.calls).toEqual([
       [WARN_TAG_STOP, { name: 'BinanceWalkStop', code: 'pay-page-stuck' }],
     ]);
@@ -592,7 +649,7 @@ describe('an adaptive window', () => {
   it('keeps what committed before the sub-window that cannot be split', async () => {
     const early = order({ transactionId: 'early', transactionTime: NOW - 7 });
     const deps = makeDeps({
-      listHoldings: async () => [spotAt(NOW - 8)],
+      ...payWalkAt(NOW - 8),
       fetchPayHistory: serverOf([early, ...spreadOrders(PAY_PAGE_LIMIT + 50, NOW - 3, 0)], {
         ascending: false,
         endExclusive: false,
@@ -603,7 +660,7 @@ describe('an adaptive window', () => {
 
     expect(result).toEqual({ imported: 1, complete: false });
     expect(storedKeysOf(deps)).toHaveLength(1);
-    expect(deps.writeWalkCursor).toHaveBeenCalledTimes(1);
+    expect(numberMarkWritesOfAnyWalk(deps)).toHaveLength(1);
     expect(warn.mock.calls).toEqual([
       [WARN_TAG_STOP, { name: 'BinanceWalkStop', code: 'pay-page-stuck' }],
     ]);
@@ -617,7 +674,7 @@ describe('an adaptive window', () => {
   ])('against a history that answers %s', (_label, shape) => {
     it('imports every order of a window with more than a page of them, once each', async () => {
       const orders = spreadOrders(250, WINDOW_START + 1, 80 * DAY_MS);
-      const deps = makeDeps({ ...oneWindow, fetchPayHistory: serverOf(orders, shape) });
+      const deps = makeDeps({ ...oneWindow(), fetchPayHistory: serverOf(orders, shape) });
 
       const result = await sync(deps);
 
@@ -631,7 +688,7 @@ describe('an adaptive window', () => {
         order({ transactionId: `tie-${index}`, transactionTime: WINDOW_START + 10 * DAY_MS }),
       );
       const orders = [...tie, ...spreadOrders(90, WINDOW_START + 1, 80 * DAY_MS)];
-      const deps = makeDeps({ ...oneWindow, fetchPayHistory: serverOf(orders, shape) });
+      const deps = makeDeps({ ...oneWindow(), fetchPayHistory: serverOf(orders, shape) });
 
       const result = await sync(deps);
 
@@ -643,14 +700,13 @@ describe('an adaptive window', () => {
   it('picks up on the next run when one run cannot get through the window, and never passes now', async () => {
     const accountId = nextAccountId();
     const orders = spreadOrders(2000, FLOOR + 1, 80 * DAY_MS);
-    let payCursor: number | null = null;
-    const written: number[] = [];
+    const account = walkStateFake({ accountId });
     const runs: boolean[] = [];
     const imported = new Set<string>();
 
     for (let attempt = 0; attempt < 12 && runs.at(-1) !== true; attempt += 1) {
       const deps = makeDeps({
-        listHoldings: async () => [spotAt(payCursor)],
+        listHoldings: account.listHoldings,
         fetchPayHistory: serverOf(orders, { ascending: true, endExclusive: false }),
         addTransactions: jest.fn(async (rows: { externalId: string }[]) => {
           for (const row of rows) {
@@ -659,16 +715,13 @@ describe('an adaptive window', () => {
 
           return rows.length;
         }),
-        writeWalkCursor: jest.fn(async (_id: string, field: string, cursorMs: number) => {
-          if (field === FORWARD_CURSOR_FIELD) {
-            payCursor = cursorMs;
-            written.push(cursorMs);
-          }
-        }),
+        ...account.deps,
       });
 
       runs.push((await sync(deps, accountId)).complete);
     }
+
+    const written = walkMarkWritesOf(account.deps, 'pay', 'cursor') as number[];
 
     expect(runs.length).toBeGreaterThan(1);
     expect(runs.slice(0, -1).every((complete) => !complete)).toBe(true);
@@ -682,33 +735,14 @@ describe('an adaptive window', () => {
 });
 
 describe('forward progress on a busy account', () => {
-  const FORWARD_FIELD = 'binancePayHistoryCursor';
-  const RESCAN_FIELD = 'binancePayRescanCursor';
+  const FORWARD_FIELD = 'cursor';
+  const RESCAN_FIELD = 'rescan';
+  const PENDING_FIELD = 'pending';
   const ASCENDING = { ascending: true, endExclusive: false };
 
-  type WalkState = {
-    accountId: string;
-    payCursor: number | null;
-    rescanCursor: number | null;
-    pending: WalkWindow[];
-    imported: Set<string>;
-    writes: [string, number][];
-    // Every write to the walk's marks in order, by field, to pin what goes before what.
-    order: string[];
-  };
+  const freshState = storedState;
 
-  const PENDING_FIELD = 'binancePayPendingOverlap';
-
-  const freshState = (over: Partial<WalkState> = {}): WalkState => ({
-    accountId: nextAccountId(),
-    payCursor: null,
-    rescanCursor: null,
-    pending: [],
-    imported: new Set(),
-    writes: [],
-    order: [],
-    ...over,
-  });
+  type WalkState = ReturnType<typeof freshState>;
 
   /**
    * One run over the stored state; a key the state already holds is not imported again.
@@ -723,7 +757,7 @@ describe('forward progress on a busy account', () => {
   ) => {
     const deps = makeDeps({
       now: () => at,
-      listHoldings: async () => [spotAt(state.payCursor, state.rescanCursor, state.pending)],
+      listHoldings: state.fake.listHoldings,
       fetchPayHistory: serverOf(orders, ASCENDING),
       addTransactions: jest.fn(async (rows: { externalId: string }[]) => {
         const fresh = rows.filter((row) => !state.imported.has(row.externalId));
@@ -734,28 +768,18 @@ describe('forward progress on a busy account', () => {
 
         return fresh.length;
       }),
-      writeWalkCursor: jest.fn(async (_id: string, field: string, cursorMs: number) => {
-        state.writes.push([field, cursorMs]);
-        state.order.push(field);
-
-        if (field === FORWARD_FIELD) {
-          state.payCursor = cursorMs;
-        } else if (field === RESCAN_FIELD) {
-          state.rescanCursor = cursorMs;
-        }
-      }),
-      writeWalkPending: jest.fn(async (_id: string, _field: string, ranges: WalkWindow[]) => {
-        state.pending = ranges;
-        state.order.push(PENDING_FIELD);
-      }),
+      ...state.fake.freshDeps(),
       ...over,
     });
 
     return { deps, result: await sync(deps, state.accountId, run) };
   };
 
-  const writesTo = (state: WalkState, field: string): number[] =>
-    state.writes.filter(([written]) => written === field).map(([, cursorMs]) => cursorMs);
+  const writesTo = (state: WalkState, field: WalkField): number[] =>
+    state.fake
+      .writes()
+      .filter((write) => write.walkName === 'pay' && write.field === field)
+      .map((write) => write.value as number);
 
   // 900 orders over the last 88 days, the cursor 2 days behind: more than one run's calls reach.
   const busyOrders = spreadOrders(900, NOW - 88 * DAY_MS, 88 * DAY_MS);
@@ -1040,7 +1064,7 @@ describe('forward progress on a busy account', () => {
       await runOver(state, spreadOrders(2000, CURSOR + 1, 80 * DAY_MS));
 
       expect(state.pending).toEqual([{ start: CURSOR - DAY_MS, end: CURSOR }]);
-      expect(state.order.slice(0, 2)).toEqual([PENDING_FIELD, FORWARD_FIELD]);
+      expect(state.order.slice(0, 2)).toEqual([`pay:${PENDING_FIELD}`, `pay:${FORWARD_FIELD}`]);
     });
 
     // A re-scan mark the sliding window has outrun is a pass the window does not reach any
@@ -1058,31 +1082,12 @@ describe('forward progress on a busy account', () => {
 });
 
 describe('the pending overlap days of a walk', () => {
-  const FORWARD_FIELD = 'binancePayHistoryCursor';
-  const RESCAN_FIELD = 'binancePayRescanCursor';
   const ASCENDING = { ascending: true, endExclusive: false };
   const SUSPENDED = 'run suspended';
 
-  const POINT_FIELD = 'binancePayPointCursor';
+  const stateOf = storedState;
 
-  type PendingState = {
-    accountId: string;
-    payCursor: number | null;
-    rescanCursor: number | null;
-    pointCursor: number | null;
-    pending: OwedGround[];
-    imported: Set<string>;
-  };
-
-  const stateOf = (over: Partial<PendingState> = {}): PendingState => ({
-    accountId: nextAccountId(),
-    payCursor: null,
-    rescanCursor: null,
-    pointCursor: null,
-    pending: [],
-    imported: new Set(),
-    ...over,
-  });
+  type PendingState = ReturnType<typeof stateOf>;
 
   const keyOf = (state: PendingState, candidate: BinancePayOrder): string =>
     `${state.accountId}:pay:C2C:${candidate.transactionId}:2`;
@@ -1111,9 +1116,7 @@ describe('the pending overlap days of a walk', () => {
   ) => {
     const deps = makeDeps({
       now: () => at,
-      listHoldings: async () => [
-        spotAt(state.payCursor, state.rescanCursor, state.pending, state.pointCursor),
-      ],
+      listHoldings: state.fake.listHoldings,
       fetchPayHistory: serverOf(orders, ASCENDING),
       addTransactions: jest.fn(async (rows: { externalId: string }[]) => {
         const fresh = rows.filter((row) => !state.imported.has(row.externalId));
@@ -1124,18 +1127,7 @@ describe('the pending overlap days of a walk', () => {
 
         return fresh.length;
       }),
-      writeWalkCursor: jest.fn(async (_id: string, field: string, cursorMs: number) => {
-        if (field === FORWARD_FIELD) {
-          state.payCursor = cursorMs;
-        } else if (field === RESCAN_FIELD) {
-          state.rescanCursor = cursorMs;
-        } else if (field === POINT_FIELD) {
-          state.pointCursor = cursorMs;
-        }
-      }),
-      writeWalkPending: jest.fn(async (_id: string, _field: string, ranges: OwedGround[]) => {
-        state.pending = ranges;
-      }),
+      ...state.fake.freshDeps(),
       ...over,
     });
 
@@ -1297,24 +1289,26 @@ describe('the pending overlap days of a walk', () => {
 
   it('empties the list and walks from the floor after a disconnect reset the walk', async () => {
     const owed = { start: NOW - 300 * DAY_MS, end: NOW - 299 * DAY_MS };
-    const reset = withWalkOwnedMetadataResetToFloor(
-      {
-        binanceAsset: 'BTC',
-        binancePayHistoryCursor: NOW,
-        binancePayRescanCursor: NOW - DAY_MS,
-        binancePayPendingOverlap: [owed],
-      },
+    const reset = exchangeStateReset(
+      JSON.stringify(
+        withWalkMarks({}, WALK_ACCOUNT_ID, 'pay', {
+          cursor: NOW,
+          rescan: NOW - DAY_MS,
+          pending: [owed],
+        }),
+      ),
       HISTORY_FLOOR_MS,
     );
+    const resetMarks = walkMarksOf(JSON.parse(reset), WALK_ACCOUNT_ID, 'pay');
     const state = stateOf({
       payCursor: HISTORY_FLOOR_MS,
       rescanCursor: HISTORY_FLOOR_MS,
-      pending: binanceWalkPendingOf('binancePayPendingOverlap', reset),
+      pending: resetMarks.pending as WalkWindow[] | undefined,
     });
 
     const { deps } = await runOver(state, []);
 
-    expect(reset?.binancePayPendingOverlap).toEqual([]);
+    expect(resetMarks.pending).toEqual([]);
     expect(queriesOf(deps)[0].startTime).toBe(payFloorMs(NOW));
     expect(queriesOf(deps).every((query) => query.startTime >= payFloorMs(NOW))).toBe(true);
     expect(state.pending).toEqual([]);
@@ -1392,10 +1386,8 @@ describe('the pending overlap days of a walk', () => {
 
       const { deps } = await runOver(state, []);
 
-      expect((deps.writeWalkPending as jest.Mock).mock.calls[0]).toEqual([
-        'h-spot',
-        'binancePayPendingOverlap',
-        [{ start: payFloorMs(NOW), end: CURSOR }],
+      expect(walkMarkWritesOf(deps, 'pay', 'pending')[0]).toEqual([
+        { start: payFloorMs(NOW), end: CURSOR },
       ]);
     });
 
@@ -1461,12 +1453,16 @@ describe('the pending overlap days of a walk', () => {
       const { deps } = await runOver(state, [stuckOrder(), fixedOrder()]);
 
       const adds = deps.addTransactions as jest.Mock;
-      const listWrites = deps.writeWalkPending as jest.Mock;
       const addedAt = adds.mock.invocationCallOrder[0];
-      const owedAt = listWrites.mock.calls.findIndex((call) =>
-        (call[2] as WalkWindow[]).some((range) => range.start === stuckAt - 1),
-      );
-      expect(addedAt).toBeLessThan(listWrites.mock.invocationCallOrder[owedAt]);
+      const owedWrite = state.fake
+        .writes()
+        .find(
+          (write) =>
+            write.walkName === 'pay' &&
+            write.field === 'pending' &&
+            (write.value as WalkWindow[]).some((range) => range.start === stuckAt - 1),
+        );
+      expect(addedAt).toBeLessThan(owedWrite?.order ?? Number.NaN);
     });
 
     it('re-scans the orders after a stuck one in the same run, and owes the stuck order at its point', async () => {
@@ -1839,12 +1835,16 @@ describe('the pending overlap days of a walk', () => {
           fetchPayHistory: reporting(serverOf([goodOrder()], ASCENDING), [{ time: stuckAt }]),
         });
 
-        const listWrites = deps.writeWalkPending as jest.Mock;
-        const owedAt = listWrites.mock.calls.findIndex((call) =>
-          (call[2] as WalkWindow[]).some((range) => range.start === stuckAt - 1),
-        );
+        const owedWrite = state.fake
+          .writes()
+          .find(
+            (write) =>
+              write.walkName === 'pay' &&
+              write.field === 'pending' &&
+              (write.value as WalkWindow[]).some((range) => range.start === stuckAt - 1),
+          );
         expect((deps.addTransactions as jest.Mock).mock.invocationCallOrder[0]).toBeLessThan(
-          listWrites.mock.invocationCallOrder[owedAt],
+          owedWrite?.order ?? Number.NaN,
         );
       });
     });
@@ -1928,15 +1928,18 @@ describe('the pending overlap days of a walk', () => {
         await runOver(state, [stuckOrder()]);
         const fixed = order({ transactionId: 'repaired', transactionTime: stuckAt });
 
-        const { deps } = await runOver(state, [fixed]);
+        const writtenBefore = state.fake.writes().length;
 
-        const cursorWrites = deps.writeWalkCursor as jest.Mock;
-        const pointWriteAt = cursorWrites.mock.calls.findIndex((call) => call[1] === POINT_FIELD);
+        await runOver(state, [fixed]);
+
+        const writes = state.fake.writes().slice(writtenBefore);
+        const payWrites = writes.filter((write) => write.walkName === 'pay');
+        const pointWrite = payWrites.find((write) => write.field === 'pointCursor');
         const lastListWrite = Math.max(
-          ...(deps.writeWalkPending as jest.Mock).mock.invocationCallOrder,
+          ...payWrites.filter((write) => write.field === 'pending').map((write) => write.order),
         );
-        expect(cursorWrites.mock.calls[pointWriteAt][2]).toBe(stuckAt - 1);
-        expect(cursorWrites.mock.invocationCallOrder[pointWriteAt]).toBeGreaterThan(lastListWrite);
+        expect(pointWrite?.value).toBe(stuckAt - 1);
+        expect(pointWrite?.order).toBeGreaterThan(lastListWrite);
         expect(state.pointCursor).toBe(stuckAt - 1);
       });
 
@@ -1955,14 +1958,7 @@ describe('the pending overlap days of a walk', () => {
 
       it('starts at the oldest point, with one fixed log code, when the stored cursor is no number', async () => {
         const deps = makeDeps({
-          listHoldings: async () => [
-            holdingWith('h-spot', {
-              binanceAsset: 'BTC',
-              binancePayHistoryCursor: CURSOR,
-              binancePayPendingOverlap: points,
-              binancePayPointCursor: 'soon',
-            }),
-          ],
+          ...payWalkWith({ cursor: CURSOR, pending: points, pointCursor: 'soon' }),
           fetchPayHistory: serverOf(stuckAtEach(), ASCENDING),
         });
 
@@ -1979,13 +1975,11 @@ describe('the pending overlap days of a walk', () => {
         const state = stateOf({
           payCursor: CURSOR,
           pending: points,
-          pointCursor: 'soon' as unknown as number,
+          pointCursor: 'soon',
         });
 
         const first = await runOver(state, stuckAtEach());
-        const written = (first.deps.writeWalkCursor as jest.Mock).mock.calls
-          .filter((call) => call[1] === POINT_FIELD)
-          .map((call) => call[2]);
+        const written = walkMarkWritesOf(first.deps, 'pay', 'pointCursor');
         await runOver(state, stuckAtEach());
 
         expect(written[0]).toBe(Number.MIN_SAFE_INTEGER);
@@ -2030,7 +2024,7 @@ describe('the weight budget and the call cap', () => {
 
     expect(deps.fetchPayHistory).toHaveBeenCalledTimes(1);
     expect(result).toEqual({ imported: 1, complete: false });
-    expect(deps.writeWalkCursor).toHaveBeenCalledTimes(1);
+    expect(numberMarkWritesOfAnyWalk(deps)).toHaveLength(1);
   });
 
   it('continues when the page left room for exactly one more call', async () => {
@@ -2048,7 +2042,7 @@ describe('the weight budget and the call cap', () => {
 
   it('counts the uid read against the same cap: 20 calls in all, none committed past it', async () => {
     const deps = makeDeps({
-      listHoldings: async () => [spotAt(NOW - 3_600_000)],
+      ...payWalkAt(NOW - 3_600_000),
       fetchPayHistory: jest.fn(async () => fullPage()),
     });
 
@@ -2058,7 +2052,7 @@ describe('the weight budget and the call cap', () => {
     expect(deps.fetchAccount).toHaveBeenCalledTimes(1);
     expect(deps.fetchPayHistory).toHaveBeenCalledTimes(19);
     expect(result).toEqual({ imported: 0, complete: false });
-    expect(deps.writeWalkCursor).not.toHaveBeenCalled();
+    expect(numberMarkWritesOfAnyWalk(deps)).toEqual([]);
     expect(warn).not.toHaveBeenCalled();
   });
 
@@ -2080,7 +2074,7 @@ describe('the weight budget and the call cap', () => {
 
   it('counts the rows of a sub-window committed before the budget ran out', async () => {
     const deps = makeDeps({
-      listHoldings: async () => [spotAt(NOW - 3_600_000)],
+      ...payWalkAt(NOW - 3_600_000),
       fetchPayHistory: scripted([
         fullPage(),
         payPage([order()], { usedUidWeight1m: UID_WEIGHT_BUDGET_1M - COSTS.pay.uid + 1 }),
@@ -2129,7 +2123,7 @@ describe('rate limits and failures', () => {
     const result = await sync(deps, accountId);
 
     expect(result).toEqual({ imported: 0, complete: false });
-    expect(deps.writeWalkCursor).toHaveBeenCalledTimes(2);
+    expect(numberMarkWritesOfAnyWalk(deps)).toHaveLength(2);
     expect(isBinanceCoolingDown(accountId, NOW + 29_000)).toBe(true);
     expect(isBinanceCoolingDown(accountId, NOW + 30_000)).toBe(false);
   });
@@ -2163,7 +2157,7 @@ describe('rate limits and failures', () => {
 
   it('stops the window, cursor unmoved, when the uid read fails for any other reason', async () => {
     const deps = makeDeps({
-      listHoldings: async () => [spotAt(NOW - 3_600_000)],
+      ...payWalkAt(NOW - 3_600_000),
       fetchAccount: jest.fn(async () => {
         throw new Error('SECRET-BODY');
       }),
@@ -2173,7 +2167,7 @@ describe('rate limits and failures', () => {
 
     expect(result).toEqual({ imported: 0, complete: false });
     expect(deps.fetchPayHistory).not.toHaveBeenCalled();
-    expect(deps.writeWalkCursor).not.toHaveBeenCalled();
+    expect(numberMarkWritesOfAnyWalk(deps)).toEqual([]);
     expect(warn.mock.calls).toEqual([
       [WARN_TAG_STOP, { name: 'BinanceWalkStop', code: 'pay-uid-unavailable' }],
     ]);
@@ -2182,7 +2176,7 @@ describe('rate limits and failures', () => {
 
   it('stops the window, cursor unmoved, when the account has no uid, even with no order in it', async () => {
     const deps = makeDeps({
-      listHoldings: async () => [spotAt(NOW - 3_600_000)],
+      ...payWalkAt(NOW - 3_600_000),
       fetchAccount: jest.fn(async () => ({ balances: [], uid: null })),
     });
 
@@ -2190,7 +2184,7 @@ describe('rate limits and failures', () => {
 
     expect(result).toEqual({ imported: 0, complete: false });
     expect(deps.fetchPayHistory).not.toHaveBeenCalled();
-    expect(deps.writeWalkCursor).not.toHaveBeenCalled();
+    expect(numberMarkWritesOfAnyWalk(deps)).toEqual([]);
     expect(warn.mock.calls).toEqual([
       [WARN_TAG_STOP, { name: 'BinanceWalkStop', code: 'pay-uid-unavailable' }],
     ]);
@@ -2211,7 +2205,7 @@ describe('rate limits and failures', () => {
     });
 
     await expect(sync(deps)).rejects.toThrow('Binance request failed: 401');
-    expect(deps.writeWalkCursor).toHaveBeenCalledTimes(2);
+    expect(numberMarkWritesOfAnyWalk(deps)).toHaveLength(2);
   });
 
   it('does not set a cooldown on a permission failure', async () => {
@@ -2228,10 +2222,10 @@ describe('rate limits and failures', () => {
 });
 
 describe('an order the walk cannot trust stops its window', () => {
-  const recent = { listHoldings: async () => [spotAt(NOW - 3_600_000)] };
+  const recent = () => payWalkAt(NOW - 3_600_000);
 
   const readsOf = (...orders: BinancePayOrder[]): Partial<BinancePayHistoryDeps> => ({
-    ...recent,
+    ...recent(),
     fetchPayHistory: forwardPageOf(NOW - 3_600_000, payPage(orders)),
   });
 
@@ -2242,7 +2236,7 @@ describe('an order the walk cannot trust stops its window', () => {
 
     expect(result).toEqual({ imported: 0, complete: false });
     expect(deps.addTransactions).not.toHaveBeenCalled();
-    expect(deps.writeWalkCursor).not.toHaveBeenCalled();
+    expect(numberMarkWritesOfAnyWalk(deps)).toEqual([]);
     expect(warn.mock.calls).toEqual([
       [WARN_TAG_STOP, { name: 'BinanceWalkStop', code: 'pay-id-missing' }],
     ]);
@@ -2254,7 +2248,7 @@ describe('an order the walk cannot trust stops its window', () => {
     const result = await sync(deps);
 
     expect(result).toEqual({ imported: 0, complete: false });
-    expect(deps.writeWalkCursor).not.toHaveBeenCalled();
+    expect(numberMarkWritesOfAnyWalk(deps)).toEqual([]);
     expect(warn.mock.calls).toEqual([
       [WARN_TAG_STOP, { name: 'BinanceWalkStop', code: 'pay-direction-ambiguous' }],
     ]);
@@ -2289,7 +2283,7 @@ describe('an order the walk cannot trust stops its window', () => {
     const result = await sync(deps);
 
     expect(result).toEqual({ imported: 0, complete: false });
-    expect(deps.writeWalkCursor).toHaveBeenCalledTimes(1);
+    expect(numberMarkWritesOfAnyWalk(deps)).toHaveLength(1);
     expect(warn.mock.calls).toEqual([
       [WARN_TAG_STOP, { name: 'BinanceWalkStop', code: 'pay-wallet-unknown' }],
     ]);
@@ -2297,14 +2291,14 @@ describe('an order the walk cannot trust stops its window', () => {
 });
 
 describe('orders paid in other coins', () => {
-  const recent = { listHoldings: async () => [spotAt(NOW - 3_600_000)] };
+  const recent = () => payWalkAt(NOW - 3_600_000);
   const PAID_AT = NOW - 1_800_000;
   const sentByUser = { payerId: OWN, receiverId: OTHER, transactionTime: PAID_AT };
   const receivedByUser = { payerId: OTHER, receiverId: OWN, transactionTime: PAID_AT };
 
   it('stops the window, cursor unmoved, on a non-BTC order the user paid with BTC funds', async () => {
     const deps = makeDeps({
-      ...recent,
+      ...recent(),
       fetchPayHistory: forwardPageOf(
         NOW - 3_600_000,
         payPage([order()], { btcFundedOtherCoinOrders: [sentByUser] }),
@@ -2315,7 +2309,7 @@ describe('orders paid in other coins', () => {
 
     expect(result).toEqual({ imported: 0, complete: false });
     expect(deps.addTransactions).not.toHaveBeenCalled();
-    expect(deps.writeWalkCursor).not.toHaveBeenCalled();
+    expect(numberMarkWritesOfAnyWalk(deps)).toEqual([]);
     expect(warn.mock.calls).toEqual([
       [WARN_TAG_STOP, { name: 'BinanceWalkStop', code: 'pay-btc-funded-other-coin' }],
     ]);
@@ -2323,7 +2317,7 @@ describe('orders paid in other coins', () => {
 
   it('ignores a non-BTC order the user received though the payer paid with BTC funds', async () => {
     const deps = makeDeps({
-      ...recent,
+      ...recent(),
       fetchPayHistory: jest.fn(async () =>
         payPage([order()], { btcFundedOtherCoinOrders: [receivedByUser] }),
       ),
@@ -2345,7 +2339,7 @@ describe('orders paid in other coins', () => {
     const unsettled = { ...parties, transactionTime: PAID_AT };
 
     const deps = makeDeps({
-      ...recent,
+      ...recent(),
       fetchPayHistory: forwardPageOf(
         NOW - 3_600_000,
         payPage([], { btcFundedOtherCoinOrders: [receivedByUser, unsettled] }),
@@ -2362,7 +2356,7 @@ describe('orders paid in other coins', () => {
 
   it('commits the part of a full window before the order, and stops at the part holding it', async () => {
     const deps = makeDeps({
-      listHoldings: async () => [spotAt(NOW - PAY_WINDOW_MS)],
+      ...payWalkAt(NOW - PAY_WINDOW_MS),
       fetchPayHistory: scripted([
         fullPage({ btcFundedOtherCoinOrders: [sentByUser] }),
         payPage([order({ transactionId: 'clean' })]),
@@ -2386,9 +2380,14 @@ describe('wallet holdings', () => {
   it('creates a missing Earn holding at zero, then places the row on it', async () => {
     let created = false;
     const earn = holdingWith('h-earn', { binanceAsset: 'BTC:earn' });
+    const seeded = payWalkAt(NOW - 3_600_000);
     const deps = makeDeps({
-      listHoldings: async () =>
-        created ? [spotAt(NOW - 3_600_000), earn] : [spotAt(NOW - 3_600_000)],
+      ...seeded,
+      listHoldings: async () => {
+        const held = await seeded.listHoldings();
+
+        return created ? [...held, earn] : held;
+      },
       ensureHoldings: jest.fn(async () => {
         created = true;
       }),
@@ -2423,7 +2422,7 @@ describe('wallet holdings', () => {
 
   it('stops the window when the holding is still absent after it was created', async () => {
     const deps = makeDeps({
-      listHoldings: async () => [spotAt(NOW - 3_600_000)],
+      ...payWalkAt(NOW - 3_600_000),
       fetchPayHistory: forwardPageOf(NOW - 3_600_000, payPage([earnOrder])),
     });
 
@@ -2451,7 +2450,7 @@ describe('wallet holdings', () => {
       ],
     });
     const deps = makeDeps({
-      listHoldings: async () => [spotAt(NOW - 3_600_000), funding],
+      ...payWalkWith({ cursor: NOW - 3_600_000 }, [funding]),
       fetchPayHistory: jest.fn(async () => payPage([split])),
     });
 
@@ -2471,30 +2470,17 @@ describe('the range cursor and the span hints of the round-robin', () => {
     end: NOW - 150 * DAY_MS + index * 10 * DAY_MS + DAY_MS,
   });
   const days = [dayAt(0), dayAt(1), dayAt(2)];
-  const RANGE_FIELD = 'binancePayRangeCursor';
-  const HINTS_FIELD = 'binancePaySpanHints';
-  const metadataOf = (extra: Record<string, unknown> = {}) =>
-    holdingWith('h-spot', {
-      binanceAsset: 'BTC',
-      binancePayHistoryCursor: CURSOR,
-      binancePayPendingOverlap: days,
-      ...extra,
-    });
   const dayStartsOf = (deps: BinancePayHistoryDeps): number[] =>
     queriesOf(deps)
       .map((query) => query.startTime)
       .filter((start) => days.some((day) => day.start === start));
-  const depsWith = (
-    extra: Record<string, unknown> = {},
-    over: Partial<BinancePayHistoryDeps> = {},
-  ) => makeDeps({ listHoldings: async () => [metadataOf(extra)], ...over });
-  const writesTo = (deps: BinancePayHistoryDeps, field: string) =>
-    (deps.writeWalkCursor as jest.Mock).mock.calls
-      .filter((call) => call[1] === field)
-      .map((call) => call[2] as number);
+  const depsWith = (extra: WalkMarkSeed = {}, over: Partial<BinancePayHistoryDeps> = {}) =>
+    makeDeps({ ...payWalkWith({ cursor: CURSOR, pending: days, ...extra }), ...over });
+  const writesTo = (deps: BinancePayHistoryDeps, field: WalkField) =>
+    walkMarkWritesOf(deps, 'pay', field) as number[];
 
   it('reads the owed days that start after the stored range cursor first, then wraps around', async () => {
-    const deps = depsWith({ [RANGE_FIELD]: days[0].end });
+    const deps = depsWith({ rangeCursor: days[0].end });
 
     await sync(deps);
 
@@ -2506,11 +2492,11 @@ describe('the range cursor and the span hints of the round-robin', () => {
 
     await sync(deps);
 
-    expect(writesTo(deps, RANGE_FIELD)).toEqual(days.map((day) => day.end));
+    expect(writesTo(deps, 'rangeCursor')).toEqual(days.map((day) => day.end));
   });
 
   it('starts at the oldest day, with one fixed log code, and stores that start, when the stored cursor is no number', async () => {
-    const deps = depsWith({ [RANGE_FIELD]: 'soon' });
+    const deps = depsWith({ rangeCursor: 'soon' });
 
     await sync(deps);
 
@@ -2519,7 +2505,7 @@ describe('the range cursor and the span hints of the round-robin', () => {
       '[binance sync] range cursor unreadable',
       { name: 'BinanceWalkStop', code: 'range-cursor-malformed' },
     ]);
-    expect(writesTo(deps, RANGE_FIELD)[0]).toBe(Number.MIN_SAFE_INTEGER);
+    expect(writesTo(deps, 'rangeCursor')[0]).toBe(Number.MIN_SAFE_INTEGER);
   });
 
   it('stores the span a day was left at when its halving chain is cut short, and begins with it in the next run', async () => {
@@ -2532,7 +2518,7 @@ describe('the range cursor and the span hints of the round-robin', () => {
       );
     const requests = dense();
     const first = depsWith(
-      { binancePayPendingOverlap: [day] },
+      { pending: [day] },
       { fetchPayHistory: requests as unknown as BinancePayHistoryDeps['fetchPayHistory'] },
     );
     // The forward window, then the day (too full), then its half (too full): no request is left
@@ -2542,13 +2528,13 @@ describe('the range cursor and the span hints of the round-robin', () => {
       budget: { canAfford: () => requests.mock.calls.length < 3, record: () => undefined },
     };
 
-    await sync(first, nextAccountId(), run);
+    await sync(first, WALK_ACCOUNT_ID, run);
 
-    const stored = (first.writeWalkHints as jest.Mock).mock.calls.at(-1)?.[2];
+    const stored = walkMarkWritesOf(first, 'pay', 'spanHints').at(-1) as { pending: unknown };
     expect(stored.pending).toEqual([{ start: day.start, end: day.start + DAY_MS / 4 }]);
 
     const second = depsWith(
-      { binancePayPendingOverlap: [day], [HINTS_FIELD]: stored },
+      { pending: [day], spanHints: stored },
       { fetchPayHistory: dense() as unknown as BinancePayHistoryDeps['fetchPayHistory'] },
     );
 
@@ -2557,11 +2543,13 @@ describe('the range cursor and the span hints of the round-robin', () => {
     expect(queriesOf(second).find((query) => query.startTime === day.start)?.endTime).toBe(
       day.start + DAY_MS / 4,
     );
-    expect((second.writeWalkHints as jest.Mock).mock.calls.at(-1)?.[2].pending).toEqual([]);
+    expect(
+      (walkMarkWritesOf(second, 'pay', 'spanHints').at(-1) as { pending: unknown }).pending,
+    ).toEqual([]);
   });
 
   it('stores a malformed hint over with none, logging one fixed code, and reads the whole window', async () => {
-    const deps = depsWith({ binancePayPendingOverlap: [days[0]], [HINTS_FIELD]: 'soon' });
+    const deps = depsWith({ pending: [days[0]], spanHints: 'soon' });
 
     await sync(deps);
 
@@ -2569,7 +2557,7 @@ describe('the range cursor and the span hints of the round-robin', () => {
       '[binance sync] span hints unreadable',
       { name: 'BinanceWalkStop', code: 'span-hints-malformed' },
     ]);
-    expect(deps.writeWalkHints).toHaveBeenCalledWith('h-spot', HINTS_FIELD, {
+    expectWalkMarkWritten(deps, WALK_ACCOUNT_ID, 'pay', 'spanHints', {
       forward: [],
       pending: [],
       rescan: [],

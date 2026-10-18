@@ -205,7 +205,11 @@ From `biome.json`'s `linter.rules`:
   `rerender` call (RNTL returns a promise). A deliberate fire-and-forget
   of a total function (an `either(...)` call, `refreshMarketData`,
   `runLoanAutoLink`, a hook's shared `sync`) stays a plain expression
-  statement with a justified override on the line above:
+  statement with a justified override on the line above: the bare form
+  `// biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function)`
+  with a comment line above it naming the callee and why it never rejects
+  (the form most uses follow). The one-line form with the callee after the
+  reason is also accepted by `check:overrides`:
   `// biome-ignore lint/nursery/noFloatingPromises: OVERRIDE(total function) <callee> never rejects`.
   Verify the callee never rejects before you write that; if it can
   reject, handle the rejection instead. For `logOnFailure(...)` (never
@@ -346,7 +350,9 @@ closed-set enum behind it) may stay as-is. A ternary on one `kind` literal of a 
 (`x.kind === 'a' ? p : q`) is an `if`/`else` chain and uses `match(...).exhaustive()`; it is
 mechanized as an ERROR by `kiko-kind-ternary-prefers-match` (re-measure with the command in
 kiko-linter's `kiko-kind-ternary-prefers-match` section),
-and a `nosemgrep` OVERRIDE fits only where `kind` is not a closed union. Every branch over a closed
+and a `nosemgrep` OVERRIDE fits only where `kind` is not a closed union. A ternary on one `type`
+tag follows the same rule, flagged by `kiko-type-ternary-prefers-match` (WARNING until the tree is
+swept; see kiko-linter's section for it). Every branch over a closed
 literal set uses `ts-pattern`'s `match(...).exhaustive()` (or a typed
 `Record` for a pure lookup) — no `switch`, with no exception; mechanized
 by the `kiko-no-switch` Semgrep rule (see kiko-linter's own
@@ -742,6 +748,8 @@ sweep.
 The convention (handwritten, Prettier-only exemplar:
 `~/Developer/Projects/ovpn-ui`):
 
+- A column-0 `declare module` block ends the import run; the imports after
+  it are an independent run (see kiko-linter "Import length-sort").
 - Keep 3 import GROUPS in this order, each separated by a blank line:
   (1) external packages and path aliases (`@kiko/...`, the most
   common import after B2), (2) `../**` parent-relative, (3) `./**`

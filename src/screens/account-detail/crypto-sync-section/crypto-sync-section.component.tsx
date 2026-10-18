@@ -7,9 +7,9 @@ import {
 import type { TFunction } from 'i18next';
 import { type FC, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { syncStateRepo } from '@kiko/sync-state';
 import Box from '@kiko/design-system/components/box';
 import Text from '@kiko/design-system/components/text';
-import type { AccountRow, HoldingRow } from '@kiko/db';
 import { useTimeClock } from '@kiko/i18n/use-time-clock';
 import { useCryptoSync } from '@kiko/sync/use-crypto-sync';
 import SymbolIcon from '@kiko/design-system/components/symbol';
@@ -18,6 +18,8 @@ import { alertOnCatch } from '@kiko/design-system/alert-on-catch';
 import { disconnectCryptoAccount } from '@kiko/crypto-sync/disconnect';
 import ConfirmSheet from '@kiko/design-system/components/confirm-sheet';
 import { replanReminders } from '@kiko/reminders/use-reminder-scheduler';
+import { type AccountRow, type HoldingRow, useLiveQuery } from '@kiko/db';
+import { parseExchangeState } from '@kiko/crypto-sync/exchange/walk-state';
 import type { CryptoSyncRequest } from '@kiko/crypto-sync/run-crypto-sync';
 import CryptoSyncForm from '@kiko/design-system/components/crypto-sync-form';
 
@@ -47,6 +49,13 @@ const CryptoSyncSection: FC<CryptoSyncSectionProps> = ({ account, holdings }) =>
   const { t } = useTranslation();
   const clock = useTimeClock();
   const { isSyncing, error, sync } = useCryptoSync();
+  // The history walks' marks live in this account's own `sync_state` row, read through its own
+  // live query and gated on its own isLoading: the caption never answers "behind" from a row that
+  // is still on its first load (kiko-architecture's useLiveQuery consumer rule).
+  const { data: syncStateRows, isLoading: syncStateLoading } = useLiveQuery(
+    syncStateRepo.getQuery(account.id),
+    ['sync_state'],
+  );
   // Multi-connection: each crypto account connects independently, so
   // there is no "connected elsewhere" gate — another account holding this source
   // does not block connecting it here.
@@ -108,13 +117,21 @@ const CryptoSyncSection: FC<CryptoSyncSectionProps> = ({ account, holdings }) =>
     // commits, but the history walk's own cursor only catches up a few seconds
     // later (a SEPARATE, slower step), so the caption would otherwise flash on
     // every sync after more than a day away.
+    const walkState = parseExchangeState(syncStateRows.at(0)?.exchangeState ?? null);
+    // A state this build cannot read pauses the history (the run starts no walk on it), and its
+    // caption replaces the "behind" one: a null cursor of such a state would read as behind. It is
+    // a standing fact of the stored state, not a lag a sync closes, so a sync in flight keeps it.
+    const historyPaused =
+      !syncStateLoading && connectedProvider === 'binance' && walkState.kind === 'malformed';
     const historyBehind =
       !isSyncing &&
+      !syncStateLoading &&
+      !historyPaused &&
       connectedProvider === 'binance' &&
       isBinanceHistoryBehind({
-        cursors: walkCursorsOf(holdings),
+        cursors: walkCursorsOf(walkState),
         lastBalanceSyncAt: latestSyncedAt(holdings),
-        owesRange: transferOwesRange(holdings),
+        owesRange: transferOwesRange(walkState),
       });
 
     return (
@@ -135,6 +152,14 @@ const CryptoSyncSection: FC<CryptoSyncSectionProps> = ({ account, holdings }) =>
               })}
             </Text>
           </Box>
+
+          {historyPaused && (
+            <Text variant="caption" tone="textSecondary">
+              {t('accountDetail.exchangeHistoryPaused', {
+                exchange: providerDisplayName(connectedProvider, t),
+              })}
+            </Text>
+          )}
 
           {historyBehind && (
             <Text variant="caption" tone="textSecondary">

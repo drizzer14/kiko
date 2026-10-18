@@ -89,6 +89,10 @@ jest.mock('@kiko/settings/settings.repo', () => ({
   },
 }));
 
+jest.mock(
+  '@kiko/holdings/use-held-currencies',
+  () => jest.requireActual('@kiko/test-support/held-currencies').heldCurrenciesModule,
+);
 const mockUseLiveQuery = jest.fn();
 jest.mock('@kiko/db/use-live-query', () => ({
   useLiveQuery: (...args: unknown[]) => mockUseLiveQuery(...args),
@@ -857,6 +861,30 @@ describe('ColumnMappingScreen', () => {
       await importInto(view, 'h2');
 
       expect(importedCurrency()).toBe('USD');
+    });
+
+    it('passes the selected target holding to the fixed-currency picker', async () => {
+      const bitcoinHolding: Holding = {
+        id: 'h3',
+        name: 'Bitcoin',
+        accountId: 'a',
+        currency: 'BTC',
+        type: 'crypto_asset',
+      };
+      setLiveData({ accounts: [monobankAccount], holdings: [monobankHolding, bitcoinHolding] });
+      const view = await renderMonobankScreen();
+      await mapMonobankColumns(view);
+
+      await fireEvent.press(view.getByTestId('mock-select-holding-h3'));
+      await fireEvent.press(view.getByTestId('column-mapping-fixed-currency'));
+
+      // The target's own coin heads the list, and its type brings the coin group below it.
+      expect(
+        view
+          .getAllByTestId(/^currency-(group|option)-/)
+          .slice(0, 3)
+          .map((row) => String(row.props.testID)),
+      ).toEqual(['currency-group-target', 'currency-option-BTC', 'currency-group-crypto']);
     });
 
     it('keeps a currency the user picked when the target changes', async () => {

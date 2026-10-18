@@ -1,6 +1,6 @@
 import { DAY_MS } from '@kiko/dates';
+import { BinanceWalkStop } from '@kiko/crypto-sync/exchange/walk';
 
-import { BinanceWalkStop } from './binance.history-walk';
 import type { BinancePayOrder } from './binance.history-client';
 import { payDescription, payDirection, payRowsOf } from './binance.pay-history';
 import { costOn, NOW, OTHER, OWN, party, payOrder } from './binance.pay-test-fixtures';

@@ -94,6 +94,26 @@ describe('serviceFor', () => {
   });
 });
 
+describe('the Binance Keychain item', () => {
+  it('is saved, read and cleared under the service string kiko.binance.credentials.<accountId> and the username binance', async () => {
+    const service = 'kiko.binance.credentials.acc-a';
+
+    await saveCredentials(ACCOUNT_A, fixture);
+
+    expect(mockSet).toHaveBeenCalledWith(
+      'binance',
+      '{"apiKey":"api-key-fixture","secret":"secret-fixture"}',
+      { service, accessible: 'AccessibleWhenUnlockedThisDeviceOnly' },
+    );
+    expect(await readCredentials(ACCOUNT_A)).toEqual(fixture);
+    expect(mockGet).toHaveBeenLastCalledWith({ service });
+
+    await clearCredentials(ACCOUNT_A);
+
+    expect(keychain.resetGenericPassword).toHaveBeenLastCalledWith({ service });
+  });
+});
+
 describe('per-account binance credentials', () => {
   it('saves the pair as one JSON Keychain item under the per-account service, unlocked-only with no per-read biometric', async () => {
     await saveCredentials(ACCOUNT_A, fixture);
@@ -192,6 +212,13 @@ describe('binance credentials — once-per-process re-save latch', () => {
     await fresh.readCredentials(ACCOUNT_A);
 
     expect(mockSet).toHaveBeenCalledTimes(1);
+  });
+
+  it('writes nothing when no pair is stored, so a read of an empty Keychain stays a read', async () => {
+    const { mod: fresh } = freshCredentials();
+
+    expect(await fresh.readCredentials(ACCOUNT_A)).toBeUndefined();
+    expect(mockSet).not.toHaveBeenCalled();
   });
 
   it('does not trip the latch when the re-save rejects, so a later read retries it', async () => {

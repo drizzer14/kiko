@@ -28,6 +28,16 @@ jest.mock('@kiko/crypto-sync/binance/binance.earn-history', () => ({
 jest.mock('react-native-keychain', () => ({
   ACCESSIBLE: { WHEN_UNLOCKED_THIS_DEVICE_ONLY: 'AccessibleWhenUnlockedThisDeviceOnly' },
 }));
+// The run reads the account's walk state once, through the state repo; a patch call here would be
+// a write to the column, which a run on a malformed state must never make.
+const mockGetSyncState = jest.fn();
+const mockPatchExchangeState = jest.fn();
+jest.mock('@kiko/sync-state/sync-state.repo', () => ({
+  syncStateRepo: {
+    getQuery: (...args: unknown[]) => mockGetSyncState(...args),
+    patchExchangeState: (...args: unknown[]) => mockPatchExchangeState(...args),
+  },
+}));
 
 import { bitcoinWalletProvider, defaultBitcoinWalletDeps } from '../btc-wallet';
 import { BINANCE_REQUEST_INTERVAL_MS, binanceProvider, defaultBinanceDeps } from '../binance';
@@ -39,6 +49,7 @@ const ADDRESS = 'bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq';
 describe('runCryptoSync', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockGetSyncState.mockResolvedValue([]);
     mockRunBalanceSync.mockResolvedValue({ syncedHoldings: 1 });
     mockSyncBinanceTransactions.mockResolvedValue({ imported: 0, complete: true });
     mockSyncBinancePayHistory.mockResolvedValue({ imported: 0, complete: true });
@@ -274,6 +285,85 @@ describe('runCryptoSync', () => {
     expect(warn).toHaveBeenCalledTimes(1);
     expect(warn.mock.calls[0][0]).toBe('[binance sync] capital history failed');
     warn.mockRestore();
+  });
+
+  describe('a walk state this build cannot read', () => {
+    // How many times each of the four walks ran, in the order capital, Pay, Transfer, Earn.
+    const walkRunCounts = (): number[] =>
+      [
+        mockSyncBinanceTransactions,
+        mockSyncBinancePayHistory,
+        mockSyncBinanceTransferHistory,
+        mockSyncBinanceEarnHistory,
+      ].map((walk) => walk.mock.calls.length);
+
+    it.each([
+      ['text that is not JSON', '{not json'],
+      ['a state of another version', '{"version":2,"walks":{}}'],
+      ['a state with no walks', '{"version":1}'],
+    ])(
+      'writes the balance and runs no history walk on a malformed state: %s',
+      async (_label, exchangeState) => {
+        const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+        mockGetSyncState.mockResolvedValue([{ exchangeState }]);
+
+        const result = await runCryptoSync({ providerId: 'binance', targetAccountId: 'acc-2' });
+
+        expect(result).toEqual({ syncedHoldings: 1 });
+        expect(mockRunBalanceSync).toHaveBeenCalledTimes(1);
+        expect(walkRunCounts()).toEqual([0, 0, 0, 0]);
+        expect(mockPatchExchangeState).not.toHaveBeenCalled();
+        expect(warn).toHaveBeenCalledTimes(1);
+        expect(warn).toHaveBeenCalledWith('[binance sync] walk state unreadable', {
+          name: 'BinanceWalkStop',
+          code: 'exchange-state-malformed',
+        });
+        warn.mockRestore();
+      },
+    );
+
+    it('reads the state once, after the balance sync', async () => {
+      mockGetSyncState.mockResolvedValue([{ exchangeState: '{not json' }]);
+      const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+
+      await runCryptoSync({ providerId: 'binance', targetAccountId: 'acc-2' });
+
+      expect(mockGetSyncState).toHaveBeenCalledTimes(1);
+      expect(mockGetSyncState).toHaveBeenCalledWith('acc-2');
+      expect(mockRunBalanceSync.mock.invocationCallOrder[0]).toBeLessThan(
+        mockGetSyncState.mock.invocationCallOrder[0],
+      );
+      warn.mockRestore();
+    });
+
+    it('logs nothing and runs all four walks on a state that parses, an unreadable entry too', async () => {
+      const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+      mockGetSyncState.mockResolvedValue([
+        { exchangeState: '{"version":1,"walks":{"pay":"oops"}}' },
+      ]);
+
+      await runCryptoSync({ providerId: 'binance', targetAccountId: 'acc-2' });
+
+      expect(walkRunCounts()).toEqual([1, 1, 1, 1]);
+      expect(warn).not.toHaveBeenCalled();
+      warn.mockRestore();
+    });
+
+    it('still resolves with the balance result when the state cannot be read, logging only its name', async () => {
+      const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+      mockGetSyncState.mockRejectedValue(new Error('disk full SECRET'));
+
+      const result = await runCryptoSync({ providerId: 'binance', targetAccountId: 'acc-2' });
+
+      expect(result).toEqual({ syncedHoldings: 1 });
+      expect(walkRunCounts()).toEqual([0, 0, 0, 0]);
+      expect(warn).toHaveBeenCalledWith('[binance sync] walk state read failed', {
+        name: 'Error',
+        code: undefined,
+      });
+      expect(JSON.stringify(warn.mock.calls)).not.toContain('SECRET');
+      warn.mockRestore();
+    });
   });
 
   it('does not run the Pay, the Transfer or the Earn walk for a wallet request', async () => {

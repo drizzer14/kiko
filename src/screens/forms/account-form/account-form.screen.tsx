@@ -36,17 +36,18 @@ import { resolveEntityColor } from '@kiko/design-system/entity-tint';
 import ColorPicker from '@kiko/design-system/components/color-picker';
 import AccountKindField from '@kiko/screens/forms/account-kind-field';
 import { useDraftAutosave } from '@kiko/navigation/use-draft-autosave';
+import { type Currency, currencySymbol } from '@kiko/currency/currency';
 import type { FieldInstance } from '@kiko/design-system/scroll-to-field';
 import CurrencyField from '@kiko/design-system/components/currency-field';
 import { useScrollToField } from '@kiko/design-system/use-scroll-to-field';
 import CryptoSyncForm from '@kiko/design-system/components/crypto-sync-form';
 import { type FC, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { isSavedDraft, useDraftParam } from '@kiko/navigation/use-draft-param';
+import { useCurrencyPickerGroups } from '@kiko/holdings/currency-picker-groups';
 import { accountKindSymbol, genericEntitySymbol } from '@kiko/holdings/entity-symbols';
 import { type BankId, isBankId, isSpecificBankId } from '@kiko/bank-sync/bank-catalog';
 import HoldingIdentityField from '@kiko/design-system/components/holding-identity-field';
 import MonobankConnectField from '@kiko/design-system/components/monobank-connect-field';
-import { type Currency, currencySymbol, fiatCurrencyOptions } from '@kiko/currency/currency';
 import { type BinanceWriteToken, clearCredentialsIfWrittenBy } from '@kiko/crypto-sync/binance';
 import type { AccountFormDraft, AccountsStackParamList, FormDraft } from '@kiko/navigation/types';
 
@@ -194,6 +195,8 @@ const catalogPickErrorText = (
 // neutral fallback below.
 const INITIAL_KIND: Kind = 'bank';
 
+const CASH_CURRENCY_CONTEXT = { kind: 'fiat' } as const;
+
 // Neutral placeholder glyph shown in the create form's icon chip until the user
 // picks one (and the glyph a cleared icon falls back to). The persisted default
 // (a kind-derived icon) is applied by the account list rows when the stored icon
@@ -252,6 +255,7 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
   const isEdit = editId !== undefined;
 
   const { t } = useTranslation();
+  const currencyGroups = useCurrencyPickerGroups(CASH_CURRENCY_CONTEXT);
 
   const { initialDraft, saveDraft } = useDraftParam<FormDraft | AccountFormDraft>(
     navigation,
@@ -359,12 +363,6 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
   // first show, so a fresh create form shows no error before the user has
   // tried to submit.
   const [attemptedSave, setAttemptedSave] = useState(false);
-  // While the currency sheet's search field can
-  // be focused, this screen's background ScrollView must NOT react to the
-  // keyboard's frame change — it does not contain that responder, but
-  // `automaticallyAdjustKeyboardInsets` reacts to any focus regardless
-  // (see `screen.component.tsx`, `CurrencyField`'s `onOpenChange`).
-  const [isCurrencySheetOpen, setIsCurrencySheetOpen] = useState(false);
 
   // The name field's own wrapper — a blocked Connect/Save (empty name) scrolls
   // it into view alongside its inline error, rather than leaving the reason
@@ -716,7 +714,6 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
     <Screen
       scroll
       scrollableRef={scrollableRef}
-      automaticallyAdjustKeyboardInsets={!isCurrencySheetOpen}
       onContentSizeChange={onContentSizeChange}
       onFieldBlur={onFieldBlur}
     >
@@ -791,8 +788,7 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
               sheetTitle={t('forms.fields.currencySheetTitle')}
               selected={currency}
               onSelect={setCurrency}
-              options={fiatCurrencyOptions}
-              onOpenChange={setIsCurrencySheetOpen}
+              groups={currencyGroups}
               testID="account-currency-field"
             />
 
@@ -817,7 +813,7 @@ const AccountFormScreen: FC<AccountFormScreenProps> = ({ route, navigation }) =>
             only, whether or not the account is connected. The
             live-sync Connect field stays CREATE-ONLY — editing an already-
             connected account's real connection is BankSyncSection's job on
-            the account-detail screen (Monobank-only, Guideline 2.3.1(a)),
+            the account-detail screen (Monobank-only, Guideline 2.5.19),
             untouched here. The credential field itself is NOT required (no asterisk): an
             account still creates with no credentials — a secret is masked
             and write-only, going straight to the Keychain on save, never

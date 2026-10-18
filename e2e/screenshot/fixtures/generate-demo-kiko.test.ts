@@ -88,7 +88,7 @@ describe('buildDemoEnvelopeJson (always runs — proves the encoder itself, not 
 });
 
 // The App Store reviewer reaches every feature through this dataset
-// (Guideline 2.3.1(a)), so an account kind, holding type, or reminder kind missing
+// (Guideline 2.5.19), so an account kind, holding type, or reminder kind missing
 // from it is a feature the reviewer cannot see.
 describe('the demo dataset covers every account kind, holding type, and reminder kind', () => {
   for (const { language } of DEMO_FILES) {

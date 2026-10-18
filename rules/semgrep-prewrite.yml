@@ -808,7 +808,11 @@ rules:
   # `$F(...)` x statement-sequence match is quadratic on a large test file
   # whose "Gesture" substrings (`fireGestureHandler`, `GestureRootWrapper`)
   # defeat Semgrep's prefilter, which crossed the per-rule timeout under
-  # load and made the guard deny "could not check" at random.
+  # load and made the guard deny "could not check" at random. Each
+  # declaration sequence is split into a declaration-then-`...` arm and a
+  # `...`-then-declaration arm, never one `... decl ...`: the two-sided `...`
+  # creates O(k*m) ranges per declaration, so it timed out on a long
+  # component body, while the one-sided arms keep the same findings.
   - id: kiko-worklet-directive-required
     languages: [typescript]
     severity: ERROR
@@ -851,21 +855,29 @@ rules:
       - pattern: $F(...)
       - pattern-either:
           - pattern-inside: |
-              ...
               const $F = (...) => { ... }
               ...
           - pattern-inside: |
               ...
+              const $F = (...) => { ... }
+          - pattern-inside: |
               function $F(...) { ... }
               ...
+          - pattern-inside: |
+              ...
+              function $F(...) { ... }
       - pattern-not-inside: |
-          ...
           const $F = (...) => { 'worklet'; ... }
           ...
       - pattern-not-inside: |
           ...
+          const $F = (...) => { 'worklet'; ... }
+      - pattern-not-inside: |
           function $F(...) { 'worklet'; ... }
           ...
+      - pattern-not-inside: |
+          ...
+          function $F(...) { 'worklet'; ... }
       - pattern-not-inside: |
           $HOOK(..., (...) => {
             ...
@@ -1424,6 +1436,42 @@ rules:
         - "harness/**"
     patterns:
       - pattern: '$X.kind === "$KIND" ? $A : $B'
+  # kiko-code-style's "`ts-pattern` for exhaustive mapping": the same ternary on a `.type` tag.
+  # Semgrep has no type information: a `.type` on a DOM or event object (a plain string) is a
+  # false positive, and such a site stays a ternary under a `nosemgrep` OVERRIDE. WARNING: the
+  # tree already holds findings for this id (a `holding.type === 'bond' ? ... : null` narrowing
+  # in three files) and `check:security` fails on any ERROR, so the pre-write guard denies a NEW
+  # one while the existing ones are swept. Promote to ERROR when `check:security` reports 0
+  # findings for this id. See kiko-linter's "kiko-type-ternary-prefers-match" section.
+  - id: kiko-type-ternary-prefers-match
+    languages: [typescript]
+    severity: WARNING
+    message: >
+      A ternary on one `type` literal sends every other variant down the else
+      branch, so a new variant of the union falls through silently. Read the
+      union with `match(...).with({ type: ... }, ...).exhaustive()` so a new
+      variant is a type error (or give `.with` arms for every variant) — see
+      kiko-code-style's "`ts-pattern` for exhaustive mapping". The single
+      boolean guard that section allows has no closed-set enum behind it, so
+      it does not cover a ternary on the `type` of a closed union. Keep the
+      ternary only when `type` is not a closed union (a DOM or event `type`
+      string): mark that site with
+      `// nosemgrep: kiko-type-ternary-prefers-match OVERRIDE(<reason>) <why>`,
+      because the pre-write guard denies any new finding whatever its
+      severity.
+    metadata:
+      fix: "Replace the ternary with match(x).with({ type: '...' }, ...).exhaustive() so a new variant fails to compile; keep it only when type is not a closed union."
+      skill: "kiko-code-style › `ts-pattern` for exhaustive mapping"
+    paths:
+      exclude:
+        - "*.test.ts"
+        - "*.test.tsx"
+        - "__tests__/**"
+        - "e2e/**"
+        - "scripts/**"
+        - "harness/**"
+    patterns:
+      - pattern: '$X.type === "$TYPE" ? $A : $B'
   # kiko-design-system's CardContextMenu: a form has no in-form Delete. An
   # entity is deleted only from its page's touch-and-hold CardContextMenu,
   # which owns the ConfirmSheet, so a form never imports the sheet at all

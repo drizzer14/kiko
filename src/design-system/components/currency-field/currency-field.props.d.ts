@@ -1,4 +1,5 @@
 import type { Currency } from '@kiko/currency/currency';
+import type { CurrencyGroup } from '@kiko/currency/currency-group';
 
 export type CurrencyFieldProps = {
   /** Caption above the field and the trigger's accessibility label. */
@@ -20,18 +21,12 @@ export type CurrencyFieldProps = {
   selected: Currency | undefined;
   onSelect: (currency: Currency) => void;
   /**
-   * The pickable set. Defaults to `currencyOptions`. The cash-account form
-   * passes `fiatCurrencyOptions` (fiat only); the holding form passes its
-   * type's `holdingCurrencyOptions` (fiat only for cash, the full set
-   * otherwise — a crypto holding needs a crypto currency).
+   * The pickable currencies as groups, in display order, each already ordered:
+   * the field filters them by the search and keeps the order. A heading row labels
+   * a group only while more than one group is showing. Build them with
+   * `useCurrencyPickerGroups` from the form's context.
    */
-  options?: readonly Currency[];
-  /**
-   * Lists the crypto group before the fiat group (each keeps its own order).
-   * Defaults to false. The crypto-holding create form sets it, where a crypto
-   * currency is the likely pick.
-   */
-  cryptoFirst?: boolean;
+  groups: readonly CurrencyGroup[];
   /** Shows the required asterisk on the label. Defaults to false. */
   required?: boolean;
   /** Read-only: the trigger is inert and dimmed, no sheet opens. Defaults to false. */
@@ -43,12 +38,4 @@ export type CurrencyFieldProps = {
   error?: string;
   /** testID for the trigger, so a flow can open the sheet. */
   testID?: string;
-  /**
-   * Notifies a hosting Screen when this field's sheet opens or closes, so it
-   * can suspend its own `automaticallyAdjustKeyboardInsets` while the sheet's
-   * search field can be focused — that background ScrollView otherwise
-   * misfires a scroll/inset adjustment for a responder it does not even
-   * contain (see `screen.component.tsx`).
-   */
-  onOpenChange?: (open: boolean) => void;
 };

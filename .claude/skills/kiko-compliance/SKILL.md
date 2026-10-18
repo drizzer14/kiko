@@ -19,11 +19,22 @@ Ask every question below of the diff you are reviewing. Report each
 compliance finding explicitly, separate from correctness and
 over-engineering findings — name the guideline number.
 
-## 2.3.1(a) — no hidden, dormant or undocumented features (Apple's rejection cited 5.6)
+## 2.5.19 — no hidden, dormant or undocumented features (formerly 2.3.1(a); Apple's rejection cited 5.6)
 
-The rejection guideline. Full rule, rationale, and known limits of the
+The rejection guideline. Apple moved it from 2.3.1(a) to 2.5.19 on 2026-10-16
+(https://developer.apple.com/news/?id=92th7e5i). Only the hidden-feature rule moved: the
+Notes-for-Review sentence stayed in 2.3.1(a) (checked 2026-10-18,
+https://developer.apple.com/app-store/review/guidelines/), so citing it below is correct.
+2.5.19 also bans hiding an undocumented feature
+in the binary, such as through code obfuscation or other methods: grounds for removal from the
+App Store and termination of the developer account. Its intent is bait-and-switch, a feature
+added after approval (https://developer.apple.com/news/?id=vvzx6cul). This stated intent adds
+to the rule's literal text and does not narrow it: 2.5.19 bans
+ANY hidden, dormant or undocumented feature in the submitted build, not only features added
+after approval. Kiko changes no feature after approval: what the reviewer saw is what ships.
+Full rule, rationale, and known limits of the
 mechanized check live in `.claude/skills/kiko-architecture/SKILL.md`
-("Guideline 2.3.1(a) — no hidden features") — read that section, do not
+("Guideline 2.5.19 — no hidden features") — read that section, do not
 re-derive it here. In short, ask:
 
 - Does this diff add or keep an `@env` flag (a `SHOW_*`/`HIDE_*`-style
@@ -36,6 +47,12 @@ re-derive it here. In short, ask:
 - Does the release note for this change describe every new feature, functionality and product
   change specifically in the Notes for Review (App Store Connect)? Guideline 2.3.1(a): generic
   descriptions are rejected.
+
+Cite 2.5.19 for the no-hidden-feature rule. In `src/`, `e2e/` and `.maestro/` (docs and
+skills are outside the rule), 2.3.1(a) appears only as "2.3.1(a) remediation", "formerly
+2.3.1(a)" or "2.3.1(a), now 2.5.19" on the citation's line, enforced by
+`kiko-no-stale-guideline-2-3-1a-citation`; cite the Notes-for-Review duty there by name
+("the Notes-for-Review duty") without the old number.
 
 Mechanized: the Semgrep rule `kiko-no-hidden-feature-flag-or-demo-import`
 (`rules/semgrep-mobile.yml`, Class A ERROR, runs under
@@ -121,7 +138,7 @@ A new third-party data recipient also needs the privacy policy updated
 (`docs/privacy-policy*.md` §3), not only the App Privacy answers. A new data
 category from an existing recipient also edits section 3 (Binance's Pay history,
 universal transfers, and Simple Earn did). There
-is no EODHD entry (removed with the shares cut, Guideline 2.3.1(a)). The live
+is no EODHD entry (removed with the shares cut, Guideline 2.5.19). The live
 gh-pages policy may still name EODHD until the edited policy is
 published: check the live policy before an upload.
 
@@ -134,11 +151,11 @@ anything there ships in plaintext) are in
 `docs/harness/dependency-hygiene.md` ("`.env` is public-only") — read
 that section. A secret belongs in the iOS Keychain
 (`react-native-keychain`); see `.claude/skills/kiko-architecture/SKILL.md`
-for the existing Keychain-backed examples (the Monobank token, the
-SQLCipher database key in `src/db/keys/db-key.ts`, the Binance credentials in
-`src/crypto-sync/binance/binance.credentials.ts` — read that file for its
-service name and `accessible` policy, `WHEN_UNLOCKED_THIS_DEVICE_ONLY` at
-the time of writing).
+for the existing Keychain-backed examples: the Monobank token, the
+SQLCipher database key in `src/db/keys/db-key.ts`, and the Binance credentials
+(`src/crypto-sync/binance/binance.credentials.ts` holds the service name; the
+`accessible` policy lives in `src/crypto-sync/exchange/credentials/credentials.ts`,
+read the value there).
 
 A credential that travels in a request URL (an `api_token` query parameter;
 no client sends one today) or a request header (`X-Token`, `X-MBX-APIKEY`)

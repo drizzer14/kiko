@@ -1,6 +1,8 @@
 import maybe, { foldMap } from 'fnts/maybe';
 import { isRecord } from '@kiko/type-guards';
 import { bifoldMap, eitherSync } from 'fnts/either';
+import type { UnreadableRow } from '@kiko/crypto-sync/exchange/walk';
+import type { TotalPage as ExchangeTotalPage } from '@kiko/crypto-sync/exchange/paging';
 
 import {
   BINANCE_ASSET,
@@ -114,12 +116,11 @@ const recordReader =
         ) as Parsed<Readers>)
       : parseFailure();
 
-/**
- * A row the client could not read, kept for the walk instead of failing the read: it holds
- * nothing of the row but its own time field when that is usable (a finite number or, for a
- * withdrawal, a datetime text), else `undefined`. The walk owes the row's point, or its span.
- */
-export type UnreadableRow = { time: number | string | undefined };
+/** The weights Binance reports on a response, which a page carries (`usedWeightsFromHeaders`). */
+export type BinancePageWeights = {
+  usedUidWeight1m: number | undefined;
+  usedIpWeight1m: number | undefined;
+};
 
 /**
  * One page of one window, with the minute's spent weight when Binance reports it. `rows` are the
@@ -128,16 +129,14 @@ export type UnreadableRow = { time: number | string | undefined };
 export type HistoryPage<Row> = {
   rows: Row[];
   unreadable: UnreadableRow[];
-  usedUidWeight1m: number | undefined;
-  usedIpWeight1m: number | undefined;
-};
+} & BinancePageWeights;
 
 /**
  * A page of a `{ rows, total }` endpoint, paged by `current`. `gathered` counts every row of the
  * page, of any asset and unreadable ones too: `total` counts them all, so the pager compares the
  * two. `rows` are the BTC rows that parsed.
  */
-export type TotalPage<Row> = HistoryPage<Row> & { total: number; gathered: number };
+export type TotalPage<Row> = ExchangeTotalPage<Row, BinancePageWeights>;
 
 type Reading<Value> = { value: Value } | { unreadable: UnreadableRow };
 

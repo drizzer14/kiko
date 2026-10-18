@@ -64,7 +64,7 @@ const buildCategories = (): CategoryRow[] => {
 
 /**
  * Two rules, so the reviewer finds both kinds on the category page and in the rule editor (the
- * demo file is the only way to see them, Guideline 2.3.1(a)): a name alone, and a name with an
+ * demo file is the only way to see them, Guideline 2.5.19): a name alone, and a name with an
  * amount. Each one agrees with the ledger it ships with, so no row would change category if a
  * rule were applied to existing transactions. Stored as the export stores a rule: the matchers
  * as the JSON text the table holds.
@@ -122,6 +122,7 @@ const buildSettings = (dataset: ScreenshotDataset): SettingsRow[] => [
     importTimesRezoned: true,
     reminderOfferDismissals: null,
     notificationsDeliverableSince: null,
+    historyBackfillState: null,
     quoteQuota: null,
     // Every demo lot list is one buy, so the one-time recost has nothing to
     // change: `true` skips it on import, the same as a recosted device.

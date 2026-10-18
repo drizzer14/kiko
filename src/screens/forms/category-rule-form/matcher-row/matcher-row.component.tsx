@@ -37,6 +37,7 @@ type MatcherType = CategoryRuleMatcher['type'];
 // losing what was typed.
 const MatcherRow: FC<MatcherRowProps> = ({
   draft,
+  currencyGroups,
   position,
   canRemove,
   onChange,
@@ -91,6 +92,7 @@ const MatcherRow: FC<MatcherRowProps> = ({
           sheetTitle={t('forms.fields.currencySheetTitle')}
           selected={draft.currency}
           onSelect={(currency) => onChange({ currency })}
+          groups={currencyGroups}
           testID={`matcher-currency-${position}`}
         />
       </>

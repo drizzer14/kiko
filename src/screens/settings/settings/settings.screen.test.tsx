@@ -10,6 +10,7 @@ import {
   navigationSpy,
 } from '@kiko/test-support/navigation-props';
 import { darkTheme } from '@kiko/design-system/theme';
+import { holdCurrencies } from '@kiko/test-support/held-currencies';
 import { genericEntitySymbol } from '@kiko/holdings/entity-symbols';
 import { chevronSize, chevronTrailingWhitespace } from '@kiko/screens/settings/settings-row';
 
@@ -58,6 +59,15 @@ const mockUseLiveQuery = jest.fn((_query: SqlQuery, _tables: string[], enabled =
 jest.mock('@kiko/db/use-live-query', () => ({
   useLiveQuery: (...args: Parameters<typeof mockUseLiveQuery>) => mockUseLiveQuery(...args),
 }));
+
+jest.mock(
+  '@kiko/holdings/use-held-currencies',
+  () => jest.requireActual('@kiko/test-support/held-currencies').heldCurrenciesModule,
+);
+
+afterEach(() => {
+  holdCurrencies([]);
+});
 
 // The active-tab re-tap → scroll-to-top hook reads the navigation context, which
 // a standalone screen render lacks; stand it in with a spy so this test can
@@ -344,21 +354,33 @@ describe('SettingsScreen', () => {
     expect(queryByTestId('currency-option-BTC')).toBeNull();
   });
 
-  // Same root cause as the account/holding forms (`holding-form.screen.test.tsx`'s own
-  // test of this name): the currency
-  // sheet's search field lives inside a Modal above this Screen's background
-  // ScrollView, which otherwise misfires `automaticallyAdjustKeyboardInsets`
-  // for a responder it does not contain. This screen's base-currency
-  // `CurrencyField` had no `onOpenChange` wiring at all, so the fix that
-  // already covered the account/holding forms never reached Settings.
-  it('suspends automaticallyAdjustKeyboardInsets on the background ScrollView while the currency sheet is open', async () => {
-    const { getByTestId } = await renderScreen();
-
-    expect(getByTestId('screen-scroll-view').props.automaticallyAdjustKeyboardInsets).toBe(true);
+  it('base currency picker shows no group heading and no coin', async () => {
+    holdCurrencies(['USD', 'BTC']);
+    const { getByPlaceholderText, getByTestId, getAllByTestId, queryByTestId } =
+      await renderScreen();
 
     await fireEvent.press(getByTestId('settings-row-base-currency'));
 
-    expect(getByTestId('screen-scroll-view').props.automaticallyAdjustKeyboardInsets).toBe(false);
+    expect(queryByTestId(/^currency-group-/)).toBeNull();
+    expect(
+      getAllByTestId(/^currency-option-/)
+        .slice(0, 3)
+        .map((row) => String(row.props.testID)),
+    ).toEqual(['currency-option-USD', 'currency-option-UAH', 'currency-option-EUR']);
+
+    await fireEvent.changeText(getByPlaceholderText('Search by code or name'), 'BTC');
+
+    expect(queryByTestId('currency-option-BTC')).toBeNull();
+  });
+
+  // The patched React Native moves a scroll view's offset only for a field inside it, so the
+  // sheet's search field cannot misfire this screen: the Screen keeps its keyboard adjustment on.
+  it('keeps automaticallyAdjustKeyboardInsets on the background ScrollView while the currency sheet is open', async () => {
+    const { getByTestId } = await renderScreen();
+
+    await fireEvent.press(getByTestId('settings-row-base-currency'));
+
+    expect(getByTestId('screen-scroll-view').props.automaticallyAdjustKeyboardInsets).toBe(true);
   });
 
   it('groups Transaction templates and Categories into one card, templates first', async () => {

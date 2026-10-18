@@ -1,0 +1,7 @@
+# Semgrep fixture (POSITIVE): a Maestro flow comment cites the stale number.
+# `kiko-no-stale-guideline-2-3-1a-citation` MUST report a finding on the pinned line below.
+appId: com.example.fixture
+---
+# EXPECT-FINDING
+# This flow asserts real behavior with no hidden feature (Guideline 2.3.1(a)).
+- launchApp

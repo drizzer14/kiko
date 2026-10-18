@@ -702,12 +702,22 @@ new component can land between reviews of this skill:
   `@kiko/display-regions` too. `useScrollIndicatorProps()` (`use-pane-screen.ts`, exported by
   the Screen barrel) is spread into every ScrollView or list a screen renders: it turns off
   UIKit's automatic indicator insets only for a pane that does not reach the window's right edge.
-  Its `scroll`
-  ScrollView is also the tab-root scroll container an active-tab
+  Its `scroll` ScrollView is also the tab-root scroll container an active-tab
   re-tap returns to the top, where `HeaderHeightContext` is the LIVE
   header height — see
   `src/navigation/use-scroll-to-top-on-tab-press/use-scroll-to-top-on-tab-press.ts`, which targets
   the tracked expanded height rather than a live height plus a band.
+  Keyboard offset: `react-native` 0.87.1 is patched
+  (`patches/react-native+0.87.1.patch`, listed in `docs/harness/documented-exceptions.md`) so a
+  ScrollView with `automaticallyAdjustKeyboardInsets` moves its content offset only when the
+  focused field is INSIDE it. Every other ScrollView (the other pane, a Screen under a pushed
+  form) gets only the bottom inset, which resets on hide. Never rely on a ScrollView's offset
+  for a field outside it. No screen gates `automaticallyAdjustKeyboardInsets` for a sheet: a
+  field in a sheet or another pane moves no other ScrollView's offset, so `CurrencyField` has no
+  open-state callback and a Screen keeps the default while a sheet is open. Proof scope: a device
+  check (user, unfolded Duo, 2026-10-18) proved the OTHER-pane case; the sheet case is proven by
+  code only (it takes the same native branch); scrolling a field the keyboard covers into view
+  inside its OWN Screen has no device proof.
   Settings' About block (app name/version, copyright, links) is an
   EXCEPTION to the ordinary "use `footer` only for a pinned
   always-reachable action" rule: it renders through the pinned
@@ -1594,12 +1604,15 @@ new component can land between reviews of this skill:
 - **CurrencyField** (`src/design-system/components/currency-field/`) —
   the shared currency-picker trigger + `BottomSheet`: a labeled trigger
   showing the current selection (or a placeholder) that opens a sheet
-  listing a caller-supplied `options` set (defaults to every currency;
-  the cash-account form passes fiat-only, the holding form its type's
-  `holdingCurrencyOptions` — fiat-only for cash, the full set
-  otherwise). The sheet lists fiat first, then crypto; `cryptoFirst`
-  flips the two groups (each keeps its own order) — the crypto-holding
-  create form sets it. Supports `hideLabel` for a caller that already labels the
+  listing a REQUIRED `groups: readonly CurrencyGroup[]` prop (no default
+  set; `CurrencyGroup` lives in `src/currency/currency-group/`). A caller
+  builds `groups` with `useCurrencyPickerGroups(context)` /
+  `currencyPickerGroups(context, ordering)` in
+  `src/holdings/currency-picker-groups/`; read that file for the contexts
+  and the group kinds. A heading row shows only while MORE THAN ONE group is showing, and a
+  search drops a group it empties. Each group is ordered by `orderCurrencies` (read
+  `currency-group.ts` for the rule), and an empty group is dropped.
+  Supports `hideLabel` for a caller that already labels the
   control externally (the Settings base-currency row), `required`, and
   a `disabled` read-only state. `error` follows every field's contract:
   `FieldTrigger` renders it under the trigger (reflow, not reserve, testID
@@ -1607,6 +1620,10 @@ new component can land between reviews of this skill:
   Currency check). A field opens a picker sheet for one
   selection among many options; `ChipRow` below toggles inline
   among a small fixed set instead.
+- **DateRangeField** (`src/design-system/components/date-range-field/`) —
+  the date-range picker trigger + sheet. The range behind a DateRangeField
+  is shared by Home and Statistics (kiko-domain "no custom range" pattern);
+  never give a screen its own range state.
 - **ChipRow** (`src/design-system/components/chip-row/`) — the ONE
   shared wrap-flow chips component: a compact wrap-flow row for a short
   code/label chip, never an equal-width column grid (that is
@@ -1812,7 +1829,8 @@ new component can land between reviews of this skill:
 - **BarChart**, **PieChart**, **NetWorthLine** — the `react-native-svg`
   visualization components; see the dedicated `kiko-charts` skill for
   their coordinate-space and testID conventions before touching any
-  of the three. `PieChart` additionally supports `innerRatio` (ring
+  of the three. `NetWorthLine` has a scrub line with its own label
+  (see `kiko-charts`). `PieChart` additionally supports `innerRatio` (ring
   thickness) and `centerTotal` (an amount centered in the donut hole;
   its sizing rule is in `kiko-charts`).
 - **ColorPicker** (`src/design-system/components/color-picker/`) — a seven-column swatch grid
@@ -1833,7 +1851,7 @@ user: every capability an entity supports is visible (a capability icon
 in a picker option's `trailing`/`description`), never hidden or implied.
 A capability icon stands for exactly ONE real capability — never a
 "probably true" or "usually true" one, and never gated on a build/env
-flag (Guideline 2.3.1(a)). The bank picker (`BankTypeField`,
+flag (Guideline 2.5.19). The bank picker (`BankTypeField`,
 `src/screens/forms/bank-type-field/`) is the exemplar: `receipt` means
 "this bank has a known, dedicated statement format" — gated on the
 catalog's own `statementFormatId` field, so a column-mapping-only bank

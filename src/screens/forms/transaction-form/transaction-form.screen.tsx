@@ -337,9 +337,12 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   // The holding an add from a holding names, which stays the form's holding whenever the seam is
   // empty again: a template with none of its own falls back to it.
   const pageHolding = holdings.find((candidate) => candidate.id === holdingParamId);
-  // Set once a template seats a holding other than the page's, and never cleared (see
-  // `revealsHoldingField`): an add from a holding then shows its holding field. A form restored
-  // from a draft opens with the field shown when the draft holds such a holding.
+  // Set once a template seats a holding other than the page's, and never cleared within one mount
+  // (see `revealsHoldingField`): an add from a holding then shows its holding field. A form
+  // restored from a draft opens with the field shown only when the draft holds such a holding.
+  // Known limit: the flag itself is not in the draft, so two paths hide the field after a
+  // fold or unfold. The user re-picks the page's own holding, or picks a template with no
+  // holding after one with a holding. The write target stays right in both: the page's holding.
   const [isHoldingFieldRevealed, setHoldingFieldRevealed] = useState(
     () =>
       foldMap(maybe(opening.primaryHoldingId), (seatedHoldingId) =>
@@ -537,6 +540,7 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   const {
     selectedCategory,
     effectiveCategory,
+    ruleCategory,
     userPickedCategory,
     seedCategory,
     selectCategory,
@@ -776,7 +780,13 @@ const TransactionFormScreen: FC<TransactionFormScreenProps> = ({ route, navigati
   // the hydration latch closes.
   const originalCategoryKey = existing?.category ? existing.category.toLowerCase() : null;
   const categoryChanged = effectiveCategory !== null && effectiveCategory !== originalCategoryKey;
-  const offersNameRule = offersCategoryNameRule({ categoryChanged, isEditing, userPickedCategory });
+  const offersNameRule = offersCategoryNameRule({
+    categoryChanged,
+    isEditing,
+    userPickedCategory,
+    effectiveCategory,
+    ruleCategory,
+  });
 
   const loanFieldVisible = isLoanFieldVisible(
     existing?.amountMinorUnits,

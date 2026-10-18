@@ -72,6 +72,10 @@ jest.mock('@kiko/holdings/repo', () => ({
     allQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }),
   },
 }));
+jest.mock(
+  '@kiko/holdings/use-held-currencies',
+  () => jest.requireActual('@kiko/test-support/held-currencies').heldCurrenciesModule,
+);
 jest.mock('@kiko/bonds/bond-register-repo', () => ({
   bondRegisterRepo: {
     findByIsinQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }),

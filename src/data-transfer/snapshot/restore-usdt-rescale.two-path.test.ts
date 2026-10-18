@@ -34,6 +34,18 @@ const USDT_RESCALE_SQL = readFileSync(
   'utf8',
 );
 
+// The snapshot reader selects the columns the later migrations add, so the scale 2 database
+// carries them too (null on the settings row and on every sync state row).
+const HISTORY_BACKFILL_CURSOR_SQL = readFileSync(
+  join(__dirname, '..', '..', '..', 'drizzle', 'migrations', '0060_add_history_backfill_state.sql'),
+  'utf8',
+);
+
+const EXCHANGE_STATE_SQL = readFileSync(
+  join(__dirname, '..', '..', '..', 'drizzle', 'migrations', '0061_exchange_state.sql'),
+  'utf8',
+);
+
 const SCALE_TWO_VERSION = 3;
 const IMPORTED_AT = Date.UTC(2026, 2, 3, 9, 45, 0);
 const JSON_COLUMNS = ['metadata', 'matchers', 'draft'];
@@ -215,6 +227,8 @@ const scaleTwoDatabase = (): DatabaseSync => {
   const target = new DatabaseSync(':memory:');
 
   applyMigrationsThrough(target, '0058_add_untracked_counterpart');
+  target.exec(HISTORY_BACKFILL_CURSOR_SQL);
+  target.exec(EXCHANGE_STATE_SQL);
   seedScaleTwoDatabase(target);
 
   return target;
