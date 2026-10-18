@@ -2,7 +2,7 @@
 
 > 🇺🇦 [Українською](./privacy-policy.md) · 🇬🇧 English
 
-**Effective date:** 5 October 2026
+**Effective date:** 18 October 2026
 
 Kiko is a personal finance app developed by Dmytro Vasylkivskyi ("we", "us").
 This policy explains how Kiko handles your information.
@@ -49,10 +49,11 @@ and its key safe.
 Kiko communicates directly from your device with the services below, only as
 far as your accounts and holdings need them. Some connections run only after
 you connect an account, add a Bitcoin address, or save a key (Monobank
-statements, Binance, Blockstream). Others run automatically to value
-what you track: currency exchange rates (Monobank and the National Bank of
-Ukraine), cryptocurrency prices (CoinGecko), and precious-metal prices and the
-government bond register (National Bank of Ukraine). Kiko does not route these
+statements, Binance account data, Blockstream). Others run automatically to
+value what you track: currency exchange rates (Monobank and the National Bank
+of Ukraine), cryptocurrency prices (CoinGecko, and Binance public prices when
+CoinGecko has none), and precious-metal prices and the government bond
+register (National Bank of Ukraine). Kiko does not route these
 connections through any server of ours. Like any internet connection, each
 service can see your device's IP address.
 
@@ -63,7 +64,9 @@ service can see your device's IP address.
   Simple Earn), your deposit and withdrawal history, your Binance Pay history,
   your transfers between your Binance wallets (universal transfer), and your
   Simple Earn subscriptions, redemptions and rewards, using your read-only API
-  key.
+  key. Also, for any user, public market prices of a coin CoinGecko did not
+  price: Kiko sends only the market symbol (for example `BTCUSDT`); no key,
+  address or amount is sent.
 - **Blockstream** (`blockstream.info`) — the public on-chain balance of a
   Bitcoin address you add. Kiko sends that address to Blockstream to look it up.
 - **CoinGecko** (`api.coingecko.com`) — the current price and the daily price
