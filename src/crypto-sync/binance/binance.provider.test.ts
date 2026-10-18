@@ -589,13 +589,17 @@ describe('binanceProvider — balance amounts through exchangeMinorUnits', () =>
   it('fails the Spot read on a balance beyond the safe integer rather than truncating it', async () => {
     const deps = makeDeps([{ asset: 'BTC', free: '90071992.54740992', locked: '0' }]);
 
-    await expect(binanceProvider.fetchBalances(deps, emptyTarget)).rejects.toThrow(/Binance/);
+    await expect(binanceProvider.fetchBalances(deps, emptyTarget)).rejects.toThrow(
+      i18n.t('accountDetail.binanceNonNumericBalanceAmount'),
+    );
   });
 
   it('fails the Spot read when two safe amounts add beyond the safe integer', async () => {
     const deps = makeDeps([{ asset: 'BTC', free: '90071992.54740991', locked: '0.00000001' }]);
 
-    await expect(binanceProvider.fetchBalances(deps, emptyTarget)).rejects.toThrow(/Binance/);
+    await expect(binanceProvider.fetchBalances(deps, emptyTarget)).rejects.toThrow(
+      i18n.t('accountDetail.binanceNonNumericBalanceAmount'),
+    );
   });
 
   it('never fails on a malformed balance of a coin it does not track', async () => {
