@@ -34,6 +34,8 @@ jest.mock('react-native-bottom-tabs', () => ({
 const mockUseVerticalBarEdge = jest.fn((): 'leading' | 'trailing' | 'none' => 'none');
 jest.mock('@kiko/display-regions', () => ({
   useVerticalBarEdge: () => mockUseVerticalBarEdge(),
+  // An unknown native edge keeps today's rule, which these cases pin.
+  useTabBarEdge: () => 'none',
   // The content cap reads the layout mode and the size class: a compact single window, as on an
   // iPhone, caps nothing.
   useLayoutMode: () => 'single',

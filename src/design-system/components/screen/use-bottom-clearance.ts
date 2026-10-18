@@ -1,10 +1,9 @@
-import { useWindowDimensions } from 'react-native';
-import { useVerticalBarEdge } from '@kiko/display-regions';
 import { useBottomTabBarHeight } from 'react-native-bottom-tabs';
 import { usePaneContext } from '@kiko/design-system/pane-context';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { resolveBottomClearance } from './bottom-clearance';
+import { useTabBarPlacement } from './use-tab-bar-placement';
 
 /**
  * The clearance a view that owns the bottom edge of its screen adds above the safe-area inset, so
@@ -15,11 +14,10 @@ import { resolveBottomClearance } from './bottom-clearance';
 export const useBottomClearance = (): number => {
   const tabBarHeight = useBottomTabBarHeight();
   const insets = useSafeAreaInsets();
-  const windowHeight = useWindowDimensions().height;
-  const verticalBarEdge = useVerticalBarEdge();
+  const placement = useTabBarPlacement();
   const isAwayFromWindowBottom = usePaneContext()?.edges.bottom === false;
 
   return isAwayFromWindowBottom
     ? 0
-    : resolveBottomClearance(tabBarHeight, insets.bottom, verticalBarEdge, windowHeight);
+    : resolveBottomClearance(tabBarHeight, insets.bottom, placement);
 };

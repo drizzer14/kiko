@@ -16,6 +16,7 @@ jest.mock('@kiko/display-regions', () => ({
   useLayoutMode: () => mockUseLayoutMode(),
   useFoldRegion: () => mockUseFoldRegion(),
   useVerticalBarEdge: () => 'none',
+  useTabBarEdge: () => 'none',
   useDisplayRegions: () => ({ horizontalSizeClass: 'regular' }),
 }));
 

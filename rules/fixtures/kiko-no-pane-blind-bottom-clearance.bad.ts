@@ -8,7 +8,7 @@
 // EXPECT-FINDING
 import { resolveBottomClearance } from '@kiko/design-system/components/screen/bottom-clearance';
 
-export const aliasedClearance = resolveBottomClearance(80, 34, 'none', 844);
+export const aliasedClearance = resolveBottomClearance(80, 34, 'bottom');
 
 // A named import with an alias binding, from the Screen barrel. The barrel does
 // not export the function today; the rule guards a future re-export.
@@ -16,7 +16,7 @@ export const aliasedClearance = resolveBottomClearance(80, 34, 'none', 844);
 // EXPECT-FINDING
 import { resolveBottomClearance as pickClearance } from '@kiko/design-system/components/screen';
 
-export const barrelClearance = pickClearance(80, 34, 'none', 844);
+export const barrelClearance = pickClearance(80, 34, 'bottom');
 
 // A clause spread over several lines.
 // EXPECT-FINDING
@@ -24,7 +24,7 @@ import {
   resolveBottomClearance as multiLineClearance,
 } from '../../src/design-system/components/screen/bottom-clearance';
 
-export const multiLine = multiLineClearance(80, 34, 'none', 844);
+export const multiLine = multiLineClearance(80, 34, 'bottom');
 
 // A relative import of the module file, naming no function.
 // EXPECT-FINDING
