@@ -62,6 +62,7 @@ jest.mock('@kiko/categories/repo', () => ({
   categoriesRepo: { allQuery: () => ({ toSQL: () => ({ sql: '', params: [] }) }) },
 }));
 
+import GestureRootWrapper from '@kiko/test-support/gesture-root-wrapper';
 import { act, fireEvent, render, within } from '@testing-library/react-native';
 
 import '@kiko/design-system/unistyles';
@@ -96,7 +97,8 @@ const tables: Record<string, unknown[]> = {
   price_points: [],
 };
 
-const renderScreen = () => render(<StatisticsScreen />);
+// The net-worth plot carries the scrub line's GestureDetector, which needs a root view.
+const renderScreen = () => render(<StatisticsScreen />, { wrapper: GestureRootWrapper });
 
 describe('StatisticsScreen cards', () => {
   beforeEach(() => {
