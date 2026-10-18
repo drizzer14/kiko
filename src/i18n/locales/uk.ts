@@ -727,7 +727,7 @@ export const uk: typeof en = {
     noWalletAddressStored: 'Адресу гаманця не збережено; підключіть гаманець перед синхронізацією.',
     openBinanceLink: 'Відкрити керування API Binance',
     openMonobankLink: 'Відкрити api.monobank.ua',
-    oversizedAmount: '{{coin}}: сума завелика, щоб Кіко зберіг її точно, тому її не імпортовано.',
+    oversizedAmount: '{{coin}}: Кіко не зміг імпортувати цю суму точно, тому її пропущено.',
     pasteApiKey: 'Вставити API ключ із буфера обміну',
     pasteApiSecret: 'Вставити API секрет із буфера обміну',
     pasteFromClipboard: 'Вставити з буфера обміну',

@@ -819,8 +819,7 @@ export const en = {
     noWalletAddressStored: 'No wallet address stored; connect a wallet before syncing.',
     openBinanceLink: 'Open Binance API management',
     openMonobankLink: 'Open api.monobank.ua',
-    oversizedAmount:
-      '{{coin}}: the amount is too large for Kiko to store exactly, so it was not imported.',
+    oversizedAmount: '{{coin}}: Kiko could not import this amount exactly, so it was skipped.',
     pasteApiKey: 'Paste API key from clipboard',
     pasteApiSecret: 'Paste API secret from clipboard',
     pasteFromClipboard: 'Paste from clipboard',

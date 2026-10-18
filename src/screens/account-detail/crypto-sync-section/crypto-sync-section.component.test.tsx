@@ -709,7 +709,7 @@ type CoinLists = { balance?: unknown; history?: unknown };
 const UNTRACKED_LINE_PREFIX = 'Not tracked: ';
 
 const oversizedLine = (coin: string): string =>
-  `${coin}: the amount is too large for Kiko to store exactly, so it was not imported.`;
+  `${coin}: Kiko could not import this amount exactly, so it was skipped.`;
 
 // The account's stored coin lists, under a state that parses.
 const renderWithLists = (
@@ -790,7 +790,7 @@ describe('CryptoSyncSection — not-tracked and oversized lines', () => {
       untrackedCoins: { balance: ['PEPE'], history: [] },
     });
 
-    expect(queryByText('the amount is too large', { exact: false })).toBeNull();
+    expect(queryByText('could not import this amount', { exact: false })).toBeNull();
   });
 
   it('keeps both lines while a sync is in flight, since they state what the last sync found', async () => {
@@ -816,7 +816,7 @@ describe('CryptoSyncSection — not-tracked and oversized lines', () => {
     );
 
     expect(queryByText(UNTRACKED_LINE_PREFIX, { exact: false })).toBeNull();
-    expect(queryByText('the amount is too large', { exact: false })).toBeNull();
+    expect(queryByText('could not import this amount', { exact: false })).toBeNull();
   });
 
   it('shows neither line for a state this build cannot read', async () => {
@@ -830,7 +830,7 @@ describe('CryptoSyncSection — not-tracked and oversized lines', () => {
     );
 
     expect(queryByText(UNTRACKED_LINE_PREFIX, { exact: false })).toBeNull();
-    expect(queryByText('the amount is too large', { exact: false })).toBeNull();
+    expect(queryByText('could not import this amount', { exact: false })).toBeNull();
   });
 
   it('shows neither line for a wallet account', async () => {
@@ -843,7 +843,7 @@ describe('CryptoSyncSection — not-tracked and oversized lines', () => {
     );
 
     expect(queryByText(UNTRACKED_LINE_PREFIX, { exact: false })).toBeNull();
-    expect(queryByText('the amount is too large', { exact: false })).toBeNull();
+    expect(queryByText('could not import this amount', { exact: false })).toBeNull();
   });
 });
 
@@ -875,7 +875,7 @@ describe('CryptoSyncSection — not-tracked and oversized lines in Ukrainian', (
       ),
     ).toBeTruthy();
     expect(
-      getByText('BTC: сума завелика, щоб Кіко зберіг її точно, тому її не імпортовано.'),
+      getByText('BTC: Кіко не зміг імпортувати цю суму точно, тому її пропущено.'),
     ).toBeTruthy();
   });
 });
